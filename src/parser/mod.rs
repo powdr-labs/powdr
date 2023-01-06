@@ -57,6 +57,7 @@ mod test {
 
     #[test]
     fn parse_example_files() {
+        parse_file("test_files/arith.pil");
         parse_file("test_files/config.pil");
         parse_file("test_files/binary.pil");
         parse_file("test_files/byte4.pil");

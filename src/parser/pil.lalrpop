@@ -100,11 +100,21 @@ ProductOp: BinaryOperator = {
 
 Power: Box<Expression> = {
     <Power> <PowOp> <Term> => Box::new(Expression::BinaryOperation(<>)),
-    Term,
+    Unary,
 }
 
 PowOp: BinaryOperator = {
     "**" => BinaryOperator::Pow,
+}
+
+Unary: Box<Expression> = {
+    UnaryOp Term => Box::new(Expression::UnaryOperation(<>)),
+    Term,
+}
+
+UnaryOp: UnaryOperator = {
+    "+" => UnaryOperator::Plus,
+    "-" => UnaryOperator::Minus,
 }
 
 Term: Box<Expression> = {

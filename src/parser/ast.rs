@@ -29,6 +29,7 @@ pub enum Expression {
     // TODO use bignum or something
     Number(u64),
     BinaryOperation(Box<Expression>, BinaryOperator, Box<Expression>),
+    UnaryOperation(UnaryOperator, Box<Expression>),
 }
 
 #[derive(Debug, PartialEq, Eq, Default)]
@@ -43,6 +44,12 @@ pub struct PolynomialReference {
     pub name: String,
     pub index: Option<Box<Expression>>,
     pub next: bool,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum UnaryOperator {
+    Plus,
+    Minus,
 }
 
 #[derive(Debug, PartialEq, Eq)]
