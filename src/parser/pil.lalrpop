@@ -18,9 +18,12 @@ pub PILFile: PILFile = {
 Statement = {
     Include,
     Namespace,
+    ConstantDefinition,
     PolynomialDefinition,
     PolynomialConstantDeclaration,
-    ConstantDefinition,
+    PolynomialCommitDeclaration,
+    PolynomialIdentity,
+    PlookupIdentity,
 };
 
 Include: Statement = {
@@ -31,6 +34,10 @@ Namespace: Statement = {
     "namespace" <name:Identifier> "(" <pol_degree:Expression> ")" => Statement::Namespace(<>)
 }
 
+ConstantDefinition: Statement = {
+    "constant" <ConstantIdentifier> "=" <Expression> => Statement::ConstantDefinition(<>)
+}
+
 PolynomialDefinition: Statement = {
     "pol" <Identifier> "=" <Expression> => Statement::PolynomialDefinition(<>)
 }
@@ -39,16 +46,33 @@ PolynomialConstantDeclaration: Statement = {
     "pol" "constant" <Identifier> => Statement::PolynomialConstantDeclaration(<>)
 }
 
-ConstantDefinition: Statement = {
-    "constant" <ConstantIdentifier> "=" <Expression> => Statement::ConstantDefinition(<>)
+PolynomialCommitDeclaration: Statement = {
+    "pol" "commit" <Identifier> => Statement::PolynomialCommitDeclaration(<>)
+}
+
+PolynomialIdentity: Statement = {
+    <l:BoxedExpression> "=" <r:BoxedExpression> => Statement::PolynomialIdentity(Expression::BinaryOperation(l, BinaryOperator::Sub, r))
+}
+
+PlookupIdentity: Statement = {
+    <SelectedExpressions> "in" <SelectedExpressions> => Statement::PlookupIdentity(<>)
+}
+
+SelectedExpressions: SelectedExpressions = {
+    <selector:Expression?> "{" <expressions:ExpressionList> "}" => SelectedExpressions{<>},
+    Expression => SelectedExpressions{selector: None, expressions: vec![<>]},
+}
+
+ExpressionList: Vec<Expression> = {
+    <mut list:( <Expression> "," )*> <end:Expression>  => { list.push(end); list }
 }
 
 Expression: Expression = {
-    SumExpression => *<>,
+    BoxedExpression => *<>,
 }
 
-SumExpression: Box<Expression> = {
-    SumExpression SumOp Product => Box::new(Expression::BinaryOperation(<>)),
+BoxedExpression: Box<Expression> = {
+    BoxedExpression SumOp Product => Box::new(Expression::BinaryOperation(<>)),
     Product,
 }
 
@@ -78,8 +102,16 @@ PowOp: BinaryOperator = {
 
 Term: Box<Expression> = {
     ConstantIdentifier => Box::new(Expression::Constant(<>)),
+    PolynomialReference => Box::new(Expression::PolynomialReference(<>)),
     Number => Box::new(Expression::Number(<>)),
-    "(" <SumExpression> ")",
+    "(" <BoxedExpression> ")",
+}
+
+PolynomialReference: PolynomialReference = {
+    <namespace:( <Identifier> "." )?>
+    <name:Identifier>
+    <index:( "[" <BoxedExpression> "]" )?>
+    <next:"'"?> => PolynomialReference{namespace, name, index, next: next.is_some()},
 }
 
 StringLiteral: String = {
@@ -87,13 +119,13 @@ StringLiteral: String = {
 }
 
 Identifier: String = {
-    r"[a-zA-Z_][a-zA-Z$_0-9]+" => <>.to_string()
+    r"[a-zA-Z_][a-zA-Z$_0-9]*" => <>.to_string()
 }
 
 ConstantIdentifier: String = {
     // TODO it seems the lexer splits the token after %
     "%N" => <>.to_string(),
-    r"%[a-zA-Z_][a-zA-Z$_0-9]+" => <>.to_string(),
+    r"%[a-zA-Z_][a-zA-Z$_0-9]*" => <>.to_string(),
 }
 
 Number: u64 = {
