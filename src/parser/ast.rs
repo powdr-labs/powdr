@@ -8,8 +8,8 @@ pub enum Statement {
     /// Name of namespace and polynomial degree (constant)
     Namespace(String, Expression),
     PolynomialDefinition(String, Expression),
-    PolynomialConstantDeclaration(String),
-    PolynomialCommitDeclaration(String),
+    PolynomialConstantDeclaration(Vec<PolynomialName>),
+    PolynomialCommitDeclaration(Vec<PolynomialName>),
     PolynomialIdentity(Expression),
     PlookupIdentity(SelectedExpressions, SelectedExpressions),
     ConstantDefinition(String, Expression),
@@ -29,6 +29,12 @@ pub enum Expression {
     // TODO use bignum or something
     Number(u64),
     BinaryOperation(Box<Expression>, BinaryOperator, Box<Expression>),
+}
+
+#[derive(Debug, PartialEq, Eq, Default)]
+pub struct PolynomialName {
+    pub name: String,
+    pub array_size: Option<Expression>,
 }
 
 #[derive(Debug, PartialEq, Eq, Default)]

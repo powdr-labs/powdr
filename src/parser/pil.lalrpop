@@ -43,15 +43,22 @@ PolynomialDefinition: Statement = {
 }
 
 PolynomialConstantDeclaration: Statement = {
-    "pol" "constant" <Identifier> => Statement::PolynomialConstantDeclaration(<>)
+    "pol" "constant" <PolynomialNameList> => Statement::PolynomialConstantDeclaration(<>)
 }
 
 PolynomialCommitDeclaration: Statement = {
-    "pol" "commit" <Identifier> => Statement::PolynomialCommitDeclaration(<>)
+    "pol" "commit" <PolynomialNameList> => Statement::PolynomialCommitDeclaration(<>)
 }
 
 PolynomialIdentity: Statement = {
     <l:BoxedExpression> "=" <r:BoxedExpression> => Statement::PolynomialIdentity(Expression::BinaryOperation(l, BinaryOperator::Sub, r))
+}
+
+PolynomialNameList: Vec<PolynomialName> = {
+    <mut list:( <PolynomialName> "," )*> <end:PolynomialName>  => { list.push(end); list }
+}
+PolynomialName: PolynomialName = {
+    <name:Identifier> <array_size:( "[" <Expression> "]" )?> => PolynomialName{<>}
 }
 
 PlookupIdentity: Statement = {
