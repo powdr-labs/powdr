@@ -1,0 +1,107 @@
+/*
+    PLOOKUP OPERATIONS
+    ==================
+    PIL State Machine that compute 256 bits operations:
+        - [X] ADD   (OPCODE = 0)
+        - [X] SUB   (OPCODE = 1)
+        - [X] LT    (OPCODE = 2)
+        - [X] SLT   (OPCODE = 3)
+        - [X] EQ    (OPCODE = 4)
+        - [X] AND   (OPCODE = 5)
+        - [X] OR    (OPCODE = 6)
+        - [X] XOR   (OPCODE = 7)
+*/
+
+namespace Binary(%N);
+
+//  ##############################################################
+    //  CONSTANT POLINOMIALS
+    //  ##############################################################
+    //  Plockup polinomials
+    //  ==============================================================
+    //  ==== IN ====
+    //  P_OPCODE    (3  bits) Operation code
+    //  P_CIN       (1  bits) Carry in
+    //  P_LAST      (1  bits) Last byte
+    //  P_A         (8  bits) Input A
+    //  P_B         (8  bits) Input B
+    //  ==== OUT ======
+    //  P_C         (8 bits) Output C
+    //  P_COUT      (1  bits) Carry out
+    //  P_USE_CARRY (1  bits) Carry out
+    //  ==== TOTAL ====
+    //  3 + 1 + 1 + 8 + 8 = 21 bits
+    //  ==============================================================
+    //  NAME    | 0 | 1 | 2 | 3 | ... | 32 |
+    //  ==============================================================
+    //  RESET   | 1 | 0 | 0 | 0 | ... |  1 |
+    //  FACTOR0 | 0x1 | 0x100 | 0x10000 | 0x1000000 | 0x0 | 0x0   | ... | 0x0 | 0x0   | 0x0     | 0x0       |
+    //  FACTOR1 | 0x0 | 0x0   | 0x0     | 0x0       | 0x1 | 0x100 | ... | 0x0 | 0x0   | 0x0     | 0x0       |
+    //  ...
+    //  FACTOR7 | 0x0 | 0x0   | 0x0     | 0x0       | 0x0 | 0x0   | ... | 0x1 | 0x100 | 0x10000 | 0x1000000 |
+    pol constant P_OPCODE, P_A, P_B, P_CIN, P_LAST, P_USE_CARRY;
+    pol constant P_C, P_COUT;
+
+    pol constant RESET;
+    pol constant FACTOR[8];
+
+    // ############################################################
+    // COMMIT POLINOMIALS
+    // ############################################################
+    // opcode = (2  bits) Operation code
+    // ============================================================
+    // a0-a7, a0-a7, a0-a7
+    // 256 bits operations -> 32 Bytes / 4 Bytes (per registry) ->
+    //          8 Registries
+    // ============================================================
+    // freeInA, freeInB, freeInC -> 1 Byte input
+    // ============================================================
+    // cIn -> Carry In ; cOut -> Carry Out ; lCIn -> Latch Carry in
+    // ============================================================
+    pol commit freeInA, freeInB, freeInC;
+    pol commit a0, a1, a2, a3, a4, a5, a6, a7;
+    pol commit b0, b1, b2, b3, b4, b5, b6, b7;
+    pol commit c0, c1, c2, c3, c4, c5, c6, c7;
+    pol commit opcode;
+    pol commit cIn, cOut;
+    pol commit lCout,lOpcode;
+    pol commit last;
+    pol commit useCarry;
+
+    opcode' * ( 1 - RESET' ) = opcode * ( 1 - RESET' );
+    cIn' * ( 1 - RESET' ) = cOut * ( 1 - RESET' );
+    lCout' = cOut;
+    lOpcode' = opcode;
+
+    {last, opcode, freeInA, freeInB , cIn, useCarry ,freeInC, cOut} in {P_LAST, P_OPCODE, P_A, P_B, P_CIN, P_USE_CARRY, P_C, P_COUT};
+
+    a0' = a0 * (1 - RESET) + freeInA * FACTOR[0];
+    a1' = a1 * (1 - RESET) + freeInA * FACTOR[1];
+    a2' = a2 * (1 - RESET) + freeInA * FACTOR[2];
+    a3' = a3 * (1 - RESET) + freeInA * FACTOR[3];
+    a4' = a4 * (1 - RESET) + freeInA * FACTOR[4];
+    a5' = a5 * (1 - RESET) + freeInA * FACTOR[5];
+    a6' = a6 * (1 - RESET) + freeInA * FACTOR[6];
+    a7' = a7 * (1 - RESET) + freeInA * FACTOR[7];
+
+    b0' = b0 * (1 - RESET) + freeInB * FACTOR[0];
+    b1' = b1 * (1 - RESET) + freeInB * FACTOR[1];
+    b2' = b2 * (1 - RESET) + freeInB * FACTOR[2];
+    b3' = b3 * (1 - RESET) + freeInB * FACTOR[3];
+    b4' = b4 * (1 - RESET) + freeInB * FACTOR[4];
+    b5' = b5 * (1 - RESET) + freeInB * FACTOR[5];
+    b6' = b6 * (1 - RESET) + freeInB * FACTOR[6];
+    b7' = b7 * (1 - RESET) + freeInB * FACTOR[7];
+
+    pol c0Temp = c0 * (1 - RESET) + freeInC * FACTOR[0];
+    c0' = useCarry * (cOut - c0Temp ) + c0Temp;
+
+    c1' = c1 * (1 - RESET) + freeInC * FACTOR[1];
+    c2' = c2 * (1 - RESET) + freeInC * FACTOR[2];
+    c3' = c3 * (1 - RESET) + freeInC * FACTOR[3];
+    c4' = c4 * (1 - RESET) + freeInC * FACTOR[4];
+    c5' = c5 * (1 - RESET) + freeInC * FACTOR[5];
+    c6' = c6 * (1 - RESET) + freeInC * FACTOR[6];
+
+    pol c7Temp = c7 * (1 - RESET) + freeInC * FACTOR[7];
+    c7' = (1 - useCarry) * c7Temp;

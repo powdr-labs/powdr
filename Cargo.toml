@@ -5,8 +5,8 @@ edition = "2021"
 build = "build.rs"
 
 [dependencies]
-lalrpop-util = "0.19.7"
+lalrpop-util = {version = "0.19.8", features = ["lexer"]}
 regex = "1"
 
 [build-dependencies]
-lalrpop = "0.19.7"
+lalrpop = "0.19.8"

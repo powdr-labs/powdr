@@ -1,0 +1,32 @@
+use std::str::FromStr;
+use crate::parser::ast::*;
+
+grammar;
+
+//match {
+//    "+",
+//    "-",
+//    "*",
+//    "/",
+//    "(",
+//    ")",
+//    r"[0-9]+",
+//
+//    // Skip whitespace and comments
+//    r"\s*" => { },
+//    r"//[^\n\r]*[\n\r]*" => { }, // `// comment`
+//    r"/\*([^\*]*\*+[^\*/])*([^\*]*\*+|[^\*])*\*/" => { }, // `/* comment */`
+//}
+
+pub PILFile: PILFile = {
+    (<Statement> ";")* => PILFile{statements: <>}
+
+};
+
+Statement: Statement = {
+    IncludeStatement => Statement::IncludeStatement(<>)
+};
+
+IncludeStatement: IncludeStatement = {
+    "include" <file:r#""[^"]*""#> => IncludeStatement{file: file[1..file.len() - 1].to_string()}
+};
