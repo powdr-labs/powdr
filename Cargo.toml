@@ -1,0 +1,12 @@
+[package]
+name = "powdr"
+version = "0.1.0"
+edition = "2021"
+build = "build.rs"
+
+[dependencies]
+lalrpop-util = "0.19.7"
+regex = "1"
+
+[build-dependencies]
+lalrpop = "0.19.7"
