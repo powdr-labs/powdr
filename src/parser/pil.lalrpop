@@ -1,3 +1,4 @@
+use std::str::FromStr;
 use crate::parser::ast::*;
 
 grammar;
@@ -19,6 +20,7 @@ Statement = {
     Namespace,
     PolynomialDefinition,
     PolynomialConstantDeclaration,
+    ConstantDefinition,
 };
 
 Include: Statement = {
@@ -37,8 +39,47 @@ PolynomialConstantDeclaration: Statement = {
     "pol" "constant" <Identifier> => Statement::PolynomialConstantDeclaration(<>)
 }
 
+ConstantDefinition: Statement = {
+    "constant" <ConstantIdentifier> "=" <Expression> => Statement::ConstantDefinition(<>)
+}
+
 Expression: Expression = {
-    ConstantIdentifier => Expression::Constant(<>)
+    SumExpression => *<>,
+}
+
+SumExpression: Box<Expression> = {
+    SumExpression SumOp Product => Box::new(Expression::BinaryOperation(<>)),
+    Product,
+}
+
+SumOp: BinaryOperator = {
+    "+" => BinaryOperator::Add,
+    "-" => BinaryOperator::Sub,
+}
+
+Product: Box<Expression> = {
+    Product ProductOp Power => Box::new(Expression::BinaryOperation(<>)),
+    Power,
+}
+
+ProductOp: BinaryOperator = {
+    "*" => BinaryOperator::Mul,
+    "/" => BinaryOperator::Div,
+}
+
+Power: Box<Expression> = {
+    <Power> <PowOp> <Term> => Box::new(Expression::BinaryOperation(<>)),
+    Term,
+}
+
+PowOp: BinaryOperator = {
+    "**" => BinaryOperator::Pow,
+}
+
+Term: Box<Expression> = {
+    ConstantIdentifier => Box::new(Expression::Constant(<>)),
+    Number => Box::new(Expression::Number(<>)),
+    "(" <SumExpression> ")",
 }
 
 StringLiteral: String = {
@@ -53,4 +94,8 @@ ConstantIdentifier: String = {
     // TODO it seems the lexer splits the token after %
     "%N" => <>.to_string(),
     r"%[a-zA-Z_][a-zA-Z$_0-9]+" => <>.to_string(),
+}
+
+Number: u64 = {
+    r"[0-9]+" => u64::from_str(<>).unwrap(),
 }

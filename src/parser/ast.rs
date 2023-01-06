@@ -9,10 +9,23 @@ pub enum Statement {
     Namespace(String, Expression),
     PolynomialDefinition(String, Expression),
     PolynomialConstantDeclaration(String),
+    ConstantDefinition(String, Expression),
 }
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Expression {
     /// Reference to a constant, "%ConstantName"
     Constant(String),
+    // TODO use bignum or something
+    Number(u64),
+    BinaryOperation(Box<Expression>, BinaryOperator, Box<Expression>),
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum BinaryOperator {
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Pow,
 }

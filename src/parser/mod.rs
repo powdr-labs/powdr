@@ -34,5 +34,6 @@ mod test {
     #[test]
     fn parse_example_files() {
         parse_file("test_files/global.pil");
+        parse_file("test_files/config.pil");
     }
 }
