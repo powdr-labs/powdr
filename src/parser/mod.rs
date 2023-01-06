@@ -4,8 +4,14 @@ pub mod ast;
 
 lalrpop_mod!(pil, "/parser/pil.rs");
 
+pub fn parse(input: &str) -> Result<ast::PILFile, ParseError<usize, lexer::Token, &str>> {
+    pil::PILFileParser::new().parse(input)
+}
+
 #[cfg(test)]
 mod test {
+    use std::fs;
+
     use super::*;
     use ast::*;
 
@@ -17,13 +23,16 @@ mod test {
     #[test]
     fn simple_include() {
         let parsed = pil::PILFileParser::new().parse("include \"x\";").unwrap();
-        assert_eq!(
-            parsed,
-            PILFile {
-                statements: vec![Statement::IncludeStatement(IncludeStatement {
-                    file: "x".to_string()
-                })]
-            }
-        );
+        assert_eq!(parsed, PILFile(vec![Statement::Include("x".to_string())]));
+    }
+
+    fn parse_file(name: &str) -> PILFile {
+        let input = fs::read_to_string(name).unwrap();
+        parse(&input).unwrap()
+    }
+
+    #[test]
+    fn parse_example_files() {
+        parse_file("test_files/global.pil");
     }
 }

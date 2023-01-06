@@ -1,14 +1,18 @@
 #[derive(Debug, PartialEq, Eq)]
-pub struct PILFile {
-    pub statements: Vec<Statement>,
-}
+pub struct PILFile(pub Vec<Statement>);
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Statement {
-    IncludeStatement(IncludeStatement),
+    /// File name
+    Include(String),
+    /// Name of namespace and polynomial degree (constant)
+    Namespace(String, Expression),
+    PolynomialDefinition(String, Expression),
+    PolynomialConstantDeclaration(String),
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub struct IncludeStatement {
-    pub file: String,
+pub enum Expression {
+    /// Reference to a constant, "%ConstantName"
+    Constant(String),
 }
