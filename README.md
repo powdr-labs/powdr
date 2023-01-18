@@ -63,6 +63,37 @@ The zkASM language of polygon/hermez can be used as a basis, but with the follow
 - The execution process and the constraints generated from an instruction have to be defined at the same place.
 - The correspondence between assembly identifiers and polynomials has to be direct.
 
+Example from polygon-hermez zkASM:
+
+```
+$               :ADD, MSTORE(SP++), JMP(readCode)
+```
+
+The `$` means that the "input" is computed depending on the instruction on the right hand side.
+To understand the data flow, the implicit inputs and outputs of the instructions must be known:
+
+- `ADD` reads from registers `A` and `B` and outputs in the implicit default register. It also invokes a state machine.
+- `MSTORE` writes to memory and reads from the implicit default register
+- `JMP` only handles control-flow, but we could also have `JMPN` here which would read from the implicit default register
+
+Combining these is fine as long as for every register, there is only one writing to that register.
+
+It might be better to make the order of the instructions explicit (i.e. put them in separate statements) and rely on an
+optimizer to combine instructions into a single step if they are not conflicting.
+
+A better notation might be:
+
+```
+X := ADD(A, B);
+MSTORE(SP++, X);
+JMP(readCode);
+```
+
+If we assume we have an optimizer that combines instructions, we could also think about an optimizer that performs automatic register
+compression, so that we could use an arbitrary number of registers in the source code, but specify a certain (smaller) number of
+registers for the target architecture. It would not be possible to move registers to memory in that case, but the optimizer would just
+report an error if the number of used registers is too large.
+
 ### High-level language
 
 The third layer is a high-level language that has all the usual features of a regular programming language like loops,
