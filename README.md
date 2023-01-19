@@ -94,6 +94,9 @@ compression, so that we could use an arbitrary number of registers in the source
 registers for the target architecture. It would not be possible to move registers to memory in that case, but the optimizer would just
 report an error if the number of used registers is too large.
 
+Further things to help that has to be done manually in assembly: Allow non-recursive calls to functions such that only the registers
+needed by the caller are saved and restored from memory locations.
+
 ### High-level language
 
 The third layer is a high-level language that has all the usual features of a regular programming language like loops,
