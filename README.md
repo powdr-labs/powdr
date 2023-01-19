@@ -97,6 +97,8 @@ report an error if the number of used registers is too large.
 Further things to help that has to be done manually in assembly: Allow non-recursive calls to functions such that only the registers
 needed by the caller are saved and restored from memory locations.
 
+Counters about which state machine is invoked how often should be automatically maintained.
+
 ### High-level language
 
 The third layer is a high-level language that has all the usual features of a regular programming language like loops,
