@@ -31,6 +31,41 @@ There should be a way to create a "cross product" of constants somehow, so that 
 above is trivial.
 This could also help to combine two lookps into one.
 
+#### Cross-Product Brainstorming
+
+It might come in handy to not explicitly define all the constant polynomials but instead implicitly define them
+in the lookup:
+
+```
+(op, a, b, c) in OP: {ADD, SUB, MUL} x A: u16 x B: u16 x C: u16 where match OP {
+    ADD => A + B == C,
+    SUB => A - B == C,
+    MUL => A * B == C,
+};
+```
+
+The lookup is composed of
+```
+LEFT in RIGHT where FUN;
+```
+Where `LEFT` is a tuple of committed polynomials, `RIGHT` is an `x`-product of tuples of constant polynomials, expressions or variable declarations
+and `FUN` is a function of the variables that returns `bool`.
+
+The semantics is as follows: If there is more than one factor, then all factors has to have finite size such that
+the product of the sizes is less than the maximal polynomials size. New constant polynomials are constructed,
+so that there is at least one row for all combinations of rows in the factor (cross product).
+If `FUN` is present, then all rows where the function returns `false` are removed.
+
+In the example above, we first construct four constant polynomials. These will not be used in the end, but a
+"stretched" version of them, but it will become clearer if you think of them like tables in a database
+and the lookup constructs a query. The first is `OP` - it just has three rows: `ADD`, `SUB`, `MUL`.
+The second is `A` which has one row for each value between `0` and `2**16-1`. The constant polynomials for `B`
+and `C` are identical to `A`.
+The cross-product then first constructs polynomials of size `3 * 65536 * 65536 * 65536` such that the four-tuple
+contains all combinations of rows. The function finally reduces the polynomials to size `3 * 65536 * 65536`,
+because onyl one value of `C` is valid for each `OP`-`A`-`B`-combination.
+
+
 ### Types
 
 Polynomials are typed (which adds a constraint automatically unless it can be proven that it is not needed due to a lookup):
