@@ -47,10 +47,16 @@ There can be user-defined types for enums or bitfields.
 The language should have as few built-in as possible. There should be ways to define functions or templates, for example the following:
 
 ```
-fun<T> ite(c: bool, a: T, b: T) -> T = c * (a - b) + b;
+fn<T> ite(c: bool, a: T, b: T) -> T = c * (a - b) + b;
 ```
 
-There should be ways to handle complex types like arrays and structs efficiently.
+There should be ways to handle complex types like arrays and structs efficiently:
+
+```
+fn<T> mul(a: T[], b: T[]) -> T[] = [a[i] * b[i] | i: 0..a.len()];
+```
+
+We will stick as much to Rust as possible for now. This means there is a trait for the multiplication operator that we define.
 
 ### Instruction / Assembly language
 
