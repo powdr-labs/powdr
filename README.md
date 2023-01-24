@@ -76,6 +76,25 @@ pol commit isJump: bool; // creates constraint "isJump * (1-isJump) = 0;"
 
 There can be user-defined types for enums or bitfields.
 
+### Underconstrained systems and Nondeterminism
+
+Ideally, the language should not allow under constrained systems in the high
+level case.  Take the state machine (SM) abstraction, for example. Some
+polynomials are left underconstrained because the code that uses the SM
+constrains it on that side (1). In other cases, lookups are responsible for
+constraining the polynomials (2).
+
+#### Pre-conditions
+
+In (1), the user should state in the SM that those polynomials have
+pre-conditions that match all applications of that SM, and convince the
+compiler that the system is not underconstrained.
+
+### Post-conditions
+
+Similarly, in (2), users should also show when the combintation of lookups have
+certain properties.
+
 
 ### Templates
 
