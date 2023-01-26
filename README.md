@@ -159,6 +159,58 @@ needed by the caller are saved and restored from memory locations.
 
 Counters about which state machine is invoked how often should be automatically maintained.
 
+#### Syntax and Defining Instructions
+
+A powdr-asm file is a list of statements and labels. The main built-in concept is those of the program counter (`pc`).
+It is possible to define functions (those usually relate to state machines defined in PIL) and instructions
+(which typically modify control-flow). It is possible to perform certain computations on registers, but those will be
+carried out in the base field and on each register element separately (TODO improve this).
+
+Here is an example program followed by the definitions of the functions and instructions:
+```
+  A = mload(B)
+  A = add(A, B)
+repeat:
+  Z = eq(B, 0)
+  jmpi Z out
+  A = mul(A, 2)
+  B = sub(B, 1)
+  jmp repeat
+out:
+```
+
+And here are the definitions of the instructions (and some others) - they probably need to be put in a different file or at least at the start of the file:
+```
+instr jmp l: label { pc' = l }
+instr jmpi c: bool, l: label { pc' = c * l + (1 - c) * pc }
+instr call l: label { rr' = pc + 1; pc' = l }
+instr ret { pc' = rr }
+fun eq(A, B) -> C { C = binary(0, A, B) }
+fun add(A, B) -> C { C = binary(1, A, B) }
+fun sub(A, B) -> C { C = binary(2, A, B) }
+fun mul(A, B) -> C { C = binary(3, A, B) }
+fun binary(op, A, B) -> C {
+    {op, A, B, C} is {Binary.op, Binary.A, Binary.B, Binary.C}
+}
+```
+
+During compilation, each instruction is turned into a flag (a bit inside a larger value) and the definition of the instructions are turned
+into something like the following constraints (they will of course be optimized further) and lookups:
+```
+pc' = jmp * jmp_arg1 + jmpi * (c * jmpi_arg2 + (1 - jmpi_arg1) * pc) + regular * (pc + 1);
+binary {op, A, B, C} in {Binary.op, Binary.A, Binary.B, Binary.C};
+binaryCounter' = binaryCounter + binary;
+```
+The constants for the program are filled accordingly and there is a second set of committed polynomials that
+corresponds to the execution and they are matched with a lookup. The information above is everything the prover
+needs to fill the committed polynomials.
+
+
+TODO: How to connect to state machines? Is it really possible to have arbitrary inputs or should we assume the inputs
+to be in certain registers? The same is true for instructions - it might be much more efficient to have them access fixed registers.
+One main benefit is that it allows to squash together multiple instructions that use different registers.
+
+
 ### High-level language
 
 The third layer is a high-level language that has all the usual features of a regular programming language like loops,
