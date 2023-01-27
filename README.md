@@ -210,6 +210,10 @@ TODO: How to connect to state machines? Is it really possible to have arbitrary 
 to be in certain registers? The same is true for instructions - it might be much more efficient to have them access fixed registers.
 One main benefit is that it allows to squash together multiple instructions that use different registers.
 
+Partial answer to the second question: Instructions could have "immediate arguments" in the sense that
+the arguments are not totally free expressions but taken from a fixed list of values / registers.
+These could also be seen as overloads of the instructions: Add an arbitrary value to the value in register A (fixed register),
+load from memory pointed to by the stack pointer and increase it (`B = mload SP++`) or not (`B = mload SP`).
 
 ### High-level language
 
