@@ -5,6 +5,7 @@ edition = "2021"
 build = "build.rs"
 
 [dependencies]
+json = "0.12.4"
 lalrpop-util = {version = "0.19.8", features = ["lexer"]}
 regex = "1"
 
