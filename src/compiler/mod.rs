@@ -17,8 +17,8 @@ pub fn compile(path: &str) {
 
 #[derive(Default)]
 struct Context {
-    namespace: String,
-    included_files: HashSet<String>,
+    _namespace: String,
+    _included_files: HashSet<String>,
 }
 
 impl Context {
@@ -37,9 +37,9 @@ impl Context {
         }
     }
 
-    fn handle_include(&mut self, path: &str) {
+    fn handle_include(&mut self, _path: &str) {
         // TODO
     }
 
-    fn handle_namespace(&mut self, name: &str, degree: &Expression) {}
+    fn handle_namespace(&mut self, _name: &str, _degree: &Expression) {}
 }
