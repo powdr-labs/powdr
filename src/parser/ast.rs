@@ -15,19 +15,21 @@ pub enum Statement {
     ConstantDefinition(String, Expression),
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct SelectedExpressions {
     pub selector: Option<Expression>,
     pub expressions: Vec<Expression>,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+// TODO use bignum or something
+pub type ConstantNumberType = i128;
+
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum Expression {
     /// Reference to a constant, "%ConstantName"
     Constant(String),
     PolynomialReference(PolynomialReference),
-    // TODO use bignum or something
-    Number(u64),
+    Number(ConstantNumberType),
     BinaryOperation(Box<Expression>, BinaryOperator, Box<Expression>),
     UnaryOperation(UnaryOperator, Box<Expression>),
 }
@@ -38,7 +40,7 @@ pub struct PolynomialName {
     pub array_size: Option<Expression>,
 }
 
-#[derive(Debug, PartialEq, Eq, Default)]
+#[derive(Debug, PartialEq, Eq, Default, Clone)]
 pub struct PolynomialReference {
     pub namespace: Option<String>,
     pub name: String,
@@ -46,13 +48,13 @@ pub struct PolynomialReference {
     pub next: bool,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum UnaryOperator {
     Plus,
     Minus,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum BinaryOperator {
     Add,
     Sub,

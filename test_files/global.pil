@@ -1,3 +1,5 @@
+include "config.pil";
+
 namespace Global(%N);
     pol constant L1;    // 1, 0, 0, 0, 0,
     pol constant BYTE;
