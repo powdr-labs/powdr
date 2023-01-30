@@ -2,7 +2,11 @@ use lalrpop_util::*;
 
 pub mod ast;
 
-lalrpop_mod!(pil, "/parser/pil.rs");
+lalrpop_mod!(
+    #[allow(clippy::all)]
+    pil,
+    "/parser/pil.rs"
+);
 
 pub fn parse(input: &str) -> Result<ast::PILFile, ParseError<usize, lexer::Token, &str>> {
     pil::PILFileParser::new().parse(input)
