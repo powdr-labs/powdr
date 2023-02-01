@@ -3,7 +3,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::parser;
-use crate::parser::ast::*;
+use crate::parser::ast::{self, Statement};
+pub use crate::parser::ast::{BinaryOperator, ConstantNumberType, UnaryOperator};
 
 pub fn analyze(path: &Path) -> Analyzed {
     let mut ctx = Context::new();
@@ -97,6 +98,30 @@ pub struct PlookupIdentity {
     pub haystack: SelectedExpressions,
 }
 
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct SelectedExpressions {
+    pub selector: Option<Expression>,
+    pub expressions: Vec<Expression>,
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub enum Expression {
+    Constant(String),
+    PolynomialReference(PolynomialReference),
+    Number(ConstantNumberType),
+    BinaryOperation(Box<Expression>, BinaryOperator, Box<Expression>),
+    UnaryOperation(UnaryOperator, Box<Expression>),
+}
+
+#[derive(Debug, PartialEq, Eq, Default, Clone)]
+pub struct PolynomialReference {
+    // TODO would be better to use numeric IDs instead of names,
+    // but the IDs as they are overlap. Maybe we can change that.
+    pub name: String,
+    pub index: Option<u64>,
+    pub next: bool,
+}
+
 #[derive(Copy, Clone, PartialEq)]
 pub enum PolynomialType {
     Committed,
@@ -154,17 +179,17 @@ impl Context {
         self.process_file(&dir);
     }
 
-    fn handle_namespace(&mut self, name: &str, degree: &Expression) {
-        self.polynomial_degree = self.simplify_expression(degree).unwrap();
+    fn handle_namespace(&mut self, name: &str, degree: &ast::Expression) {
+        self.polynomial_degree = self.evaluate_expression(degree).unwrap();
         self.namespace = name.to_owned();
     }
 
     fn handle_polynomial_declaration(
         &mut self,
-        polynomials: &Vec<PolynomialName>,
+        polynomials: &Vec<ast::PolynomialName>,
         polynomial_type: PolynomialType,
     ) {
-        for PolynomialName { name, array_size } in polynomials {
+        for ast::PolynomialName { name, array_size } in polynomials {
             let counter = match polynomial_type {
                 PolynomialType::Committed => &mut self.commit_poly_counter,
                 PolynomialType::Constant => &mut self.constant_poly_counter,
@@ -179,7 +204,7 @@ impl Context {
                 poly_type: polynomial_type,
                 length: array_size
                     .as_ref()
-                    .map(|l| self.simplify_expression(l).unwrap()),
+                    .map(|l| self.evaluate_expression(l).unwrap()),
             };
             let name = poly.absolute_name.clone();
             let is_new = self.declarations.insert(name, poly).is_none();
@@ -187,57 +212,101 @@ impl Context {
         }
     }
 
-    fn handle_polynomial_identity(&mut self, expression: &Expression) {
-        self.polynomial_identities.push(expression.clone())
+    fn handle_polynomial_identity(&mut self, expression: &ast::Expression) {
+        let expr = self.process_expression(expression);
+        self.polynomial_identities.push(expr);
     }
 
     fn handle_plookup_identity(
         &mut self,
-        key: &SelectedExpressions,
-        haystack: &SelectedExpressions,
+        key: &ast::SelectedExpressions,
+        haystack: &ast::SelectedExpressions,
     ) {
-        self.plookup_identities.push(PlookupIdentity {
-            key: key.clone(),
-            haystack: haystack.clone(),
-        })
+        let key = self.process_selected_expression(key);
+        let haystack = self.process_selected_expression(haystack);
+        self.plookup_identities
+            .push(PlookupIdentity { key, haystack })
     }
 
-    fn handle_constant_definition(&mut self, name: &str, value: &Expression) {
+    fn handle_constant_definition(&mut self, name: &str, value: &ast::Expression) {
         let is_new = self
             .constants
-            .insert(name.to_string(), self.simplify_expression(value).unwrap())
+            .insert(name.to_string(), self.evaluate_expression(value).unwrap())
             .is_none();
         assert!(is_new);
     }
 
     fn namespaced(&self, name: &String) -> String {
-        format!("{}.{name}", self.namespace)
+        self.namespaced_ref(&None, name)
     }
 
-    /// @todo apply this to all expressions during analysis phase and make the function
-    /// private.
-    pub fn simplify_expression(&self, expr: &Expression) -> Option<ConstantNumberType> {
-        match expr {
-            Expression::Constant(name) => Some(self.constants[name]),
-            Expression::PolynomialReference(_) => todo!(),
-            Expression::Number(n) => Some(*n),
-            Expression::BinaryOperation(left, op, right) => {
-                self.simplify_binary_operation(left, op, right)
-            }
-            Expression::UnaryOperation(_, _) => todo!(),
+    fn namespaced_ref(&self, namespace: &Option<String>, name: &String) -> String {
+        format!("{}.{name}", namespace.as_ref().unwrap_or(&self.namespace))
+    }
+
+    fn process_selected_expression(&self, expr: &ast::SelectedExpressions) -> SelectedExpressions {
+        SelectedExpressions {
+            selector: expr.selector.as_ref().map(|e| self.process_expression(e)),
+            expressions: expr
+                .expressions
+                .iter()
+                .map(|e| self.process_expression(e))
+                .collect(),
         }
     }
 
-    fn simplify_binary_operation(
+    fn process_expression(&self, expr: &ast::Expression) -> Expression {
+        match expr {
+            ast::Expression::Constant(name) => Expression::Constant(name.clone()),
+            ast::Expression::PolynomialReference(poly) => {
+                let index = poly
+                    .index
+                    .as_ref()
+                    .map(|i| self.evaluate_expression(i).unwrap() as u64);
+                Expression::PolynomialReference(PolynomialReference {
+                    name: self.namespaced_ref(&poly.namespace, &poly.name),
+                    index,
+                    next: poly.next,
+                })
+            }
+            ast::Expression::Number(n) => Expression::Number(*n),
+            ast::Expression::BinaryOperation(left, op, right) => {
+                if let Some(value) = self.evaluate_binary_operation(left, op, right) {
+                    Expression::Number(value)
+                } else {
+                    Expression::BinaryOperation(
+                        Box::new(self.process_expression(left)),
+                        *op,
+                        Box::new(self.process_expression(right)),
+                    )
+                }
+            }
+            ast::Expression::UnaryOperation(_, _) => todo!(),
+        }
+    }
+
+    fn evaluate_expression(&self, expr: &ast::Expression) -> Option<ConstantNumberType> {
+        match expr {
+            ast::Expression::Constant(name) => Some(self.constants[name]),
+            ast::Expression::PolynomialReference(_) => None,
+            ast::Expression::Number(n) => Some(*n),
+            ast::Expression::BinaryOperation(left, op, right) => {
+                self.evaluate_binary_operation(left, op, right)
+            }
+            ast::Expression::UnaryOperation(_, _) => todo!(),
+        }
+    }
+
+    fn evaluate_binary_operation(
         &self,
-        left: &Expression,
+        left: &ast::Expression,
         op: &BinaryOperator,
-        right: &Expression,
+        right: &ast::Expression,
     ) -> Option<ConstantNumberType> {
         // TODO handle owerflow and maybe use bigint instead.
         if let (Some(left), Some(right)) = (
-            self.simplify_expression(left),
-            self.simplify_expression(right),
+            self.evaluate_expression(left),
+            self.evaluate_expression(right),
         ) {
             Some(match op {
                 BinaryOperator::Add => left + right,

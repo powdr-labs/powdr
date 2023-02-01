@@ -1,36 +1,22 @@
-use std::collections::BTreeMap;
+use std::{cmp, collections::BTreeMap};
 
 use json::{object, JsonValue};
 
-use crate::{
-    analyzer::{Analyzed, PolynomialType},
-    parser::ast::Expression,
-};
+use crate::analyzer::{Analyzed, BinaryOperator, Expression, PolynomialReference, PolynomialType};
+
+struct Exporter<'a> {
+    analyzed: &'a Analyzed,
+    expressions: Vec<JsonValue>,
+}
 
 pub fn export(analyzed: &Analyzed) -> JsonValue {
-    let references = analyzed
-        .declarations
-        .iter()
-        .map(|(name, poly)| {
-            let mut out = object! {
-                type: polynomial_type_to_json_string(poly.poly_type),
-                id: poly.id,
-                polDeg: poly.degree as i64,
-                isArray: poly.is_array(),
-            };
-            if poly.is_array() {
-                out["len"] = JsonValue::from(poly.length.unwrap() as i64);
-            }
-            (name.clone(), out)
-        })
-        .collect::<BTreeMap<String, JsonValue>>();
-    let mut expressions: Vec<JsonValue> = Vec::new();
+    let mut exporter = Exporter::new(analyzed);
     let pol_identities = analyzed
         .polynomial_identities
         .iter()
         .map(|expr| {
             object! {
-                e: extract_expression(expr, &mut expressions)
+                e: exporter.extract_expression(expr)
             }
         })
         .collect::<Vec<JsonValue>>();
@@ -40,8 +26,8 @@ pub fn export(analyzed: &Analyzed) -> JsonValue {
         nIm: analyzed.intermediate_count(),
         nConstants: analyzed.constant_count(),
         publics: [],
-        references: references,
-        expressions: [],
+        references: exporter.references(),
+        expressions: exporter.expressions,
         polIdentities: pol_identities,
         plookupIdentities: [],
         permutationIdentities: [],
@@ -57,26 +43,104 @@ fn polynomial_type_to_json_string(t: PolynomialType) -> &'static str {
     }
 }
 
-fn extract_expression(expr: &Expression, expressions: &mut Vec<JsonValue>) -> usize {
-    let id = expressions.len();
-    expressions.push(expression_to_json(expr));
-    id
+fn polynomial_reference_type_to_json_string(t: PolynomialType) -> &'static str {
+    match t {
+        PolynomialType::Committed => "cm",
+        PolynomialType::Constant => "const",
+        PolynomialType::Intermediate => todo!(),
+    }
 }
 
-fn expression_to_json(expr: &Expression) -> JsonValue {
-    // TODO apply simplify_expression if possible - do that already during analysis.
-    match expr {
-        Expression::Constant(_) => todo!(),
-        Expression::PolynomialReference(poly) => {
-            object! {
-                op: "const",
-                deg: 1,
-                id: 3,
-                next: poly.next
-            }
+impl<'a> Exporter<'a> {
+    fn new(analyzed: &'a Analyzed) -> Self {
+        Self {
+            analyzed,
+            expressions: vec![],
         }
-        Expression::Number(_) => todo!(),
-        Expression::BinaryOperation(_, _, _) => todo!(),
-        Expression::UnaryOperation(_, _) => todo!(),
+    }
+
+    fn references(&self) -> JsonValue {
+        self.analyzed
+            .declarations
+            .iter()
+            .map(|(name, poly)| {
+                let mut out = object! {
+                    type: polynomial_type_to_json_string(poly.poly_type),
+                    id: poly.id,
+                    polDeg: poly.degree as i64,
+                    isArray: poly.is_array(),
+                };
+                if poly.is_array() {
+                    out["len"] = JsonValue::from(poly.length.unwrap() as i64);
+                }
+                (name.clone(), out)
+            })
+            .collect::<BTreeMap<String, JsonValue>>()
+            .into()
+    }
+
+    fn extract_expression(&mut self, expr: &Expression) -> usize {
+        let id = self.expressions.len();
+        let json = self.expression_to_json(expr).1;
+        self.expressions.push(json);
+        id
+    }
+
+    fn expression_to_json(&mut self, expr: &Expression) -> (u32, JsonValue) {
+        match expr {
+            Expression::Constant(name) => (
+                1,
+                object! {
+                    // TODO I think "const" is for constant poly, not a constant value.
+                    op: "const",
+                    deg: 1,
+                    // TODO is it declarations or constants?
+                    id: self.analyzed.declarations[name].id,
+                    next: false
+                },
+            ),
+            Expression::PolynomialReference(PolynomialReference { name, index, next }) => {
+                let poly = &self.analyzed.declarations[name];
+                let mut poly_json = object! {
+                    id: poly.id,
+                    op: polynomial_reference_type_to_json_string(poly.poly_type),
+                    deg: 1,
+                    next: *next,
+                };
+                if let Some(index) = *index {
+                    // TODO correct?
+                    poly_json["index"] = index.into();
+                }
+                (1, poly_json)
+            }
+            Expression::Number(value) => (
+                0,
+                object! {
+                    op: "number",
+                    deg: 0,
+                    value: *value as i64,
+                },
+            ),
+            Expression::BinaryOperation(left, op, right) => {
+                let (deg_left, left) = self.expression_to_json(left);
+                let (deg_right, right) = self.expression_to_json(right);
+                let (op, degree) = match op {
+                    BinaryOperator::Add => ("add", cmp::max(deg_left, deg_right)),
+                    BinaryOperator::Sub => ("sub", cmp::max(deg_left, deg_right)),
+                    BinaryOperator::Mul => ("mul", deg_left + deg_right), // TODO correct?
+                    BinaryOperator::Div => ("div", deg_left + deg_right), // TODO correct?
+                    BinaryOperator::Pow => ("pow", deg_left + deg_right), // TODO correct?
+                };
+                (
+                    degree,
+                    object! {
+                        op: op,
+                        deg: degree,
+                        values: [left, right],
+                    },
+                )
+            }
+            Expression::UnaryOperation(_, _) => todo!(),
+        }
     }
 }
