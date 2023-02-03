@@ -145,6 +145,6 @@ ConstantIdentifier: String = {
     r"%[a-zA-Z_][a-zA-Z$_0-9]*" => <>.to_string(),
 }
 
-Number: u64 = {
-    r"[0-9]+" => u64::from_str(<>).unwrap(),
+Number: i128 = {
+    r"[0-9]+" => i128::from_str(<>).unwrap(),
 }

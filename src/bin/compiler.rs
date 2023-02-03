@@ -1,5 +1,7 @@
-use std::env;
+use std::{env, path::Path};
 
 fn main() {
-    powdr::compiler::compile(&env::args().nth(1).unwrap());
+    let analyzed = powdr::analyzer::analyze(Path::new(&env::args().nth(1).unwrap()));
+    let json_out = powdr::json_exporter::export(&analyzed);
+    println!("{}", json_out.pretty(4));
 }
