@@ -2,7 +2,9 @@ use std::{cmp, collections::BTreeMap};
 
 use json::{object, JsonValue};
 
-use crate::analyzer::{Analyzed, BinaryOperator, Expression, PolynomialReference, PolynomialType};
+use crate::analyzer::{
+    Analyzed, BinaryOperator, Expression, PolynomialReference, PolynomialType, UnaryOperator,
+};
 
 struct Exporter<'a> {
     analyzed: &'a Analyzed,
@@ -188,7 +190,21 @@ impl<'a> Exporter<'a> {
                     dependencies,
                 )
             }
-            Expression::UnaryOperation(_, _) => todo!(),
+            Expression::UnaryOperation(op, value) => {
+                let (deg, value, deps) = self.expression_to_json(value);
+                match op {
+                    UnaryOperator::Plus => (deg, value, deps),
+                    UnaryOperator::Minus => (
+                        deg,
+                        object! {
+                            op: "neg",
+                            deg: deg,
+                            values: [value],
+                        },
+                        deps,
+                    ),
+                }
+            }
         }
     }
 }
