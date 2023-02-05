@@ -306,7 +306,13 @@ impl Context {
                     )
                 }
             }
-            ast::Expression::UnaryOperation(_, _) => todo!(),
+            ast::Expression::UnaryOperation(op, value) => {
+                if let Some(value) = self.evaluate_unary_operation(op, value) {
+                    Expression::Number(value)
+                } else {
+                    Expression::UnaryOperation(*op, Box::new(self.process_expression(value)))
+                }
+            }
         }
     }
 
@@ -318,7 +324,7 @@ impl Context {
             ast::Expression::BinaryOperation(left, op, right) => {
                 self.evaluate_binary_operation(left, op, right)
             }
-            ast::Expression::UnaryOperation(_, _) => todo!(),
+            ast::Expression::UnaryOperation(op, value) => self.evaluate_unary_operation(op, value),
         }
     }
 
@@ -346,5 +352,17 @@ impl Context {
         } else {
             None
         }
+    }
+
+    fn evaluate_unary_operation(
+        &self,
+        op: &UnaryOperator,
+        value: &ast::Expression,
+    ) -> Option<ConstantNumberType> {
+        // TODO handle owerflow and maybe use bigint instead.
+        self.evaluate_expression(value).map(|v| match op {
+            UnaryOperator::Plus => v,
+            UnaryOperator::Minus => -v,
+        })
     }
 }
