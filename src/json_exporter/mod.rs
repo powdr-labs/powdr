@@ -37,6 +37,14 @@ pub fn export(analyzed: &Analyzed) -> JsonValue {
             }
         })
         .collect::<Vec<JsonValue>>();
+    for value in analyzed
+        .definitions
+        .iter()
+        .filter_map(|(_n, (_p, v))| v.as_ref())
+    {
+        let (_, expr, _) = exporter.expression_to_json(value);
+        exporter.expressions.push(expr);
+    }
     object! {
         nCommitments: analyzed.commitment_count(),
         nQ: 0, // number of expressions with degree == 2
@@ -64,7 +72,7 @@ fn polynomial_reference_type_to_json_string(t: PolynomialType) -> &'static str {
     match t {
         PolynomialType::Committed => "cm",
         PolynomialType::Constant => "const",
-        PolynomialType::Intermediate => todo!(),
+        PolynomialType::Intermediate => "exp",
     }
 }
 
@@ -78,9 +86,9 @@ impl<'a> Exporter<'a> {
 
     fn references(&self) -> JsonValue {
         self.analyzed
-            .declarations
+            .definitions
             .iter()
-            .map(|(name, poly)| {
+            .map(|(name, (poly, _value))| {
                 let mut out = object! {
                     type: polynomial_type_to_json_string(poly.poly_type),
                     id: poly.id,
@@ -98,7 +106,8 @@ impl<'a> Exporter<'a> {
 
     fn extract_expression(&mut self, expr: &Expression) -> usize {
         let id = self.expressions.len();
-        let json = self.expression_to_json(expr).1;
+        let (_, mut json, dependencies) = self.expression_to_json(expr);
+        json["deps"] = dependencies.into();
         self.expressions.push(json);
         id
     }
@@ -111,7 +120,8 @@ impl<'a> Exporter<'a> {
         expr.iter().map(|e| self.extract_expression(e)).collect()
     }
 
-    fn expression_to_json(&mut self, expr: &Expression) -> (u32, JsonValue) {
+    /// returns the degree, the json value and the dependencies (intermediate polynomial IDs)
+    fn expression_to_json(&mut self, expr: &Expression) -> (u32, JsonValue, Vec<u64>) {
         match expr {
             Expression::Constant(name) => (
                 1,
@@ -120,13 +130,16 @@ impl<'a> Exporter<'a> {
                     op: "const",
                     deg: 1,
                     // TODO is it declarations or constants?
-                    id: self.analyzed.declarations[name].id,
+                    id: self.analyzed.definitions[name].0.id,
                     next: false
                 },
+                Vec::new(),
             ),
             Expression::PolynomialReference(PolynomialReference { name, index, next }) => {
-                let poly = &self.analyzed.declarations[name];
+                let poly = &self.analyzed.definitions[name].0;
                 let mut poly_json = object! {
+                    // TODO I think for intemediate polys, this might not be the poly ID but
+                    // the expression ID
                     id: poly.id,
                     op: polynomial_reference_type_to_json_string(poly.poly_type),
                     deg: 1,
@@ -134,9 +147,16 @@ impl<'a> Exporter<'a> {
                 };
                 if let Some(index) = *index {
                     // TODO correct?
+                    // TODO I think this should be poly.id + index somehow...
+                    // TODO this also means we have to space the poly ids apart.
                     poly_json["index"] = index.into();
                 }
-                (1, poly_json)
+                let dependencies = if poly.poly_type == PolynomialType::Intermediate {
+                    vec![poly.id]
+                } else {
+                    Vec::new()
+                };
+                (1, poly_json, dependencies)
             }
             Expression::Number(value) => (
                 0,
@@ -145,10 +165,11 @@ impl<'a> Exporter<'a> {
                     deg: 0,
                     value: *value as i64,
                 },
+                Vec::new(),
             ),
             Expression::BinaryOperation(left, op, right) => {
-                let (deg_left, left) = self.expression_to_json(left);
-                let (deg_right, right) = self.expression_to_json(right);
+                let (deg_left, left, deps_left) = self.expression_to_json(left);
+                let (deg_right, right, deps_right) = self.expression_to_json(right);
                 let (op, degree) = match op {
                     BinaryOperator::Add => ("add", cmp::max(deg_left, deg_right)),
                     BinaryOperator::Sub => ("sub", cmp::max(deg_left, deg_right)),
@@ -156,6 +177,7 @@ impl<'a> Exporter<'a> {
                     BinaryOperator::Div => ("div", deg_left + deg_right), // TODO correct?
                     BinaryOperator::Pow => ("pow", deg_left + deg_right), // TODO correct?
                 };
+                let dependencies = [deps_left, deps_right].concat();
                 (
                     degree,
                     object! {
@@ -163,6 +185,7 @@ impl<'a> Exporter<'a> {
                         deg: degree,
                         values: [left, right],
                     },
+                    dependencies,
                 )
             }
             Expression::UnaryOperation(_, _) => todo!(),
