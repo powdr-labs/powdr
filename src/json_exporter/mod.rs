@@ -3,7 +3,8 @@ use std::{cmp, collections::BTreeMap};
 use json::{object, JsonValue};
 
 use crate::analyzer::{
-    Analyzed, BinaryOperator, Expression, PolynomialReference, PolynomialType, UnaryOperator,
+    Analyzed, BinaryOperator, Expression, PolynomialReference, PolynomialType, StatementIdentifier,
+    UnaryOperator,
 };
 
 struct Exporter<'a> {
@@ -13,39 +14,36 @@ struct Exporter<'a> {
 
 pub fn export(analyzed: &Analyzed) -> JsonValue {
     let mut exporter = Exporter::new(analyzed);
-    let pol_identities = analyzed
-        .polynomial_identities
-        .iter()
-        .map(|expr| {
-            object! {
-                e: exporter.extract_expression(expr)
+    let mut pol_identities = Vec::new();
+    let mut plookup_identities = Vec::new();
+    for item in &analyzed.source_order {
+        match item {
+            StatementIdentifier::Definition(name) => {
+                if let (_poly, Some(value)) = &analyzed.definitions[name] {
+                    let (_, expr, _) = exporter.expression_to_json(value);
+                    exporter.expressions.push(expr);
+                }
             }
-        })
-        .collect::<Vec<JsonValue>>();
-
-    let plookup_identities = analyzed
-        .plookup_identities
-        .iter()
-        .map(|identity| {
-            let sel_f = exporter.extract_expression_opt(&identity.key.selector);
-            let f = exporter.extract_expression_vec(&identity.key.expressions);
-            let sel_t = exporter.extract_expression_opt(&identity.haystack.selector);
-            let t = exporter.extract_expression_vec(&identity.haystack.expressions);
-            object! {
-                selF: sel_f,
-                f: f,
-                selT: sel_t,
-                t: t,
+            StatementIdentifier::Identity(id) => {
+                let expr = &analyzed.polynomial_identities[*id];
+                pol_identities.push(object! {
+                    e: exporter.extract_expression(expr)
+                })
             }
-        })
-        .collect::<Vec<JsonValue>>();
-    for value in analyzed
-        .definitions
-        .iter()
-        .filter_map(|(_n, (_p, v))| v.as_ref())
-    {
-        let (_, expr, _) = exporter.expression_to_json(value);
-        exporter.expressions.push(expr);
+            StatementIdentifier::Plookup(id) => {
+                let identity = &analyzed.plookups[*id];
+                let sel_f = exporter.extract_expression_opt(&identity.key.selector);
+                let f = exporter.extract_expression_vec(&identity.key.expressions);
+                let sel_t = exporter.extract_expression_opt(&identity.haystack.selector);
+                let t = exporter.extract_expression_vec(&identity.haystack.expressions);
+                plookup_identities.push(object! {
+                    selF: sel_f,
+                    f: f,
+                    selT: sel_t,
+                    t: t,
+                });
+            }
+        }
     }
     object! {
         nCommitments: analyzed.commitment_count(),
@@ -109,7 +107,9 @@ impl<'a> Exporter<'a> {
     fn extract_expression(&mut self, expr: &Expression) -> usize {
         let id = self.expressions.len();
         let (_, mut json, dependencies) = self.expression_to_json(expr);
-        json["deps"] = dependencies.into();
+        if !dependencies.is_empty() {
+            json["deps"] = dependencies.into();
+        }
         self.expressions.push(json);
         id
     }
@@ -165,7 +165,7 @@ impl<'a> Exporter<'a> {
                 object! {
                     op: "number",
                     deg: 0,
-                    value: *value as i64,
+                    value: format!("{}", *value as i64),
                 },
                 Vec::new(),
             ),

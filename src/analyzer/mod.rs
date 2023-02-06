@@ -20,7 +20,10 @@ struct Context {
     constants: HashMap<String, ConstantNumberType>,
     definitions: HashMap<String, (Polynomial, Option<Expression>)>,
     polynomial_identities: Vec<Expression>,
-    plookup_identities: Vec<PlookupIdentity>,
+    plookups: Vec<PlookupIdentity>,
+    /// The order in which definitions and identities
+    /// appear in the source.
+    source_order: Vec<StatementIdentifier>,
     included_files: HashSet<PathBuf>,
     current_dir: PathBuf,
     commit_poly_counter: u64,
@@ -28,12 +31,21 @@ struct Context {
     intermediate_poly_counter: u64,
 }
 
+pub enum StatementIdentifier {
+    Definition(String),
+    Identity(usize),
+    Plookup(usize),
+}
+
 pub struct Analyzed {
     /// Constants are not namespaced!
     pub constants: HashMap<String, ConstantNumberType>,
     pub definitions: HashMap<String, (Polynomial, Option<Expression>)>,
     pub polynomial_identities: Vec<Expression>,
-    pub plookup_identities: Vec<PlookupIdentity>,
+    pub plookups: Vec<PlookupIdentity>,
+    /// The order in which definitions and identities
+    /// appear in the source.
+    pub source_order: Vec<StatementIdentifier>,
 }
 
 impl Analyzed {
@@ -68,7 +80,8 @@ impl From<Context> for Analyzed {
             constants,
             definitions,
             polynomial_identities,
-            plookup_identities,
+            plookups: plookup_identities,
+            source_order,
             ..
         }: Context,
     ) -> Self {
@@ -76,7 +89,8 @@ impl From<Context> for Analyzed {
             constants,
             definitions,
             polynomial_identities,
-            plookup_identities,
+            plookups: plookup_identities,
+            source_order,
         }
     }
 }
@@ -232,14 +246,22 @@ impl Context {
         };
         let name = poly.absolute_name.clone();
         let value = value.map(|e| self.process_expression(e));
-        let is_new = self.definitions.insert(name, (poly, value)).is_none();
+        let is_new = self
+            .definitions
+            .insert(name.clone(), (poly, value))
+            .is_none();
         assert!(is_new);
+        self.source_order
+            .push(StatementIdentifier::Definition(name));
         id
     }
 
     fn handle_polynomial_identity(&mut self, expression: &ast::Expression) {
         let expr = self.process_expression(expression);
         self.polynomial_identities.push(expr);
+        self.source_order.push(StatementIdentifier::Identity(
+            self.polynomial_identities.len() - 1,
+        ));
     }
 
     fn handle_plookup_identity(
@@ -249,11 +271,13 @@ impl Context {
     ) {
         let key = self.process_selected_expression(key);
         let haystack = self.process_selected_expression(haystack);
-        self.plookup_identities
-            .push(PlookupIdentity { key, haystack })
+        self.plookups.push(PlookupIdentity { key, haystack });
+        self.source_order
+            .push(StatementIdentifier::Plookup(self.plookups.len() - 1));
     }
 
     fn handle_constant_definition(&mut self, name: &str, value: &ast::Expression) {
+        // TODO does the order matter here?
         let is_new = self
             .constants
             .insert(name.to_string(), self.evaluate_expression(value).unwrap())
