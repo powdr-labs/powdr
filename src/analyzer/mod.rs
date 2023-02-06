@@ -138,7 +138,7 @@ pub struct PolynomialReference {
     pub next: bool,
 }
 
-#[derive(Copy, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 pub enum PolynomialType {
     Committed,
     Constant,
@@ -228,21 +228,22 @@ impl Context {
         polynomial_type: PolynomialType,
         value: Option<&ast::Expression>,
     ) -> u64 {
+        let length = array_size
+            .as_ref()
+            .map(|l| self.evaluate_expression(l).unwrap());
         let counter = match polynomial_type {
             PolynomialType::Committed => &mut self.commit_poly_counter,
             PolynomialType::Constant => &mut self.constant_poly_counter,
             PolynomialType::Intermediate => &mut self.intermediate_poly_counter,
         };
         let id = *counter;
-        *counter += 1;
+        *counter += length.unwrap_or(1) as u64;
         let poly = Polynomial {
             id,
             absolute_name: self.namespaced(name),
             degree: self.polynomial_degree,
             poly_type: polynomial_type,
-            length: array_size
-                .as_ref()
-                .map(|l| self.evaluate_expression(l).unwrap()),
+            length,
         };
         let name = poly.absolute_name.clone();
         let value = value.map(|e| self.process_expression(e));

@@ -1,4 +1,7 @@
-use std::{cmp, collections::BTreeMap};
+use std::{
+    cmp,
+    collections::{BTreeMap, HashMap},
+};
 
 use json::{object, JsonValue};
 
@@ -10,6 +13,9 @@ use crate::analyzer::{
 struct Exporter<'a> {
     analyzed: &'a Analyzed,
     expressions: Vec<JsonValue>,
+    /// Translates from polynomial IDs to expression IDs for intermediate
+    /// polynomials.
+    intermediate_poly_expression_ids: HashMap<u64, u64>,
 }
 
 pub fn export(analyzed: &Analyzed) -> JsonValue {
@@ -19,9 +25,13 @@ pub fn export(analyzed: &Analyzed) -> JsonValue {
     for item in &analyzed.source_order {
         match item {
             StatementIdentifier::Definition(name) => {
-                if let (_poly, Some(value)) = &analyzed.definitions[name] {
+                if let (poly, Some(value)) = &analyzed.definitions[name] {
                     let (_, expr, _) = exporter.expression_to_json(value);
                     exporter.expressions.push(expr);
+                    assert_eq!(poly.poly_type, PolynomialType::Intermediate);
+                    exporter
+                        .intermediate_poly_expression_ids
+                        .insert(poly.id, (exporter.expressions.len() - 1) as u64);
                 }
             }
             StatementIdentifier::Identity(id) => {
@@ -81,6 +91,7 @@ impl<'a> Exporter<'a> {
         Self {
             analyzed,
             expressions: vec![],
+            intermediate_poly_expression_ids: HashMap::new(),
         }
     }
 
@@ -89,9 +100,14 @@ impl<'a> Exporter<'a> {
             .definitions
             .iter()
             .map(|(name, (poly, _value))| {
+                let id = if poly.poly_type == PolynomialType::Intermediate {
+                    self.intermediate_poly_expression_ids[&poly.id]
+                } else {
+                    poly.id
+                };
                 let mut out = object! {
                     type: polynomial_type_to_json_string(poly.poly_type),
-                    id: poly.id,
+                    id: id,
                     polDeg: poly.degree as i64,
                     isArray: poly.is_array(),
                 };
@@ -139,22 +155,20 @@ impl<'a> Exporter<'a> {
             ),
             Expression::PolynomialReference(PolynomialReference { name, index, next }) => {
                 let poly = &self.analyzed.definitions[name].0;
-                let mut poly_json = object! {
-                    // TODO I think for intemediate polys, this might not be the poly ID but
-                    // the expression ID
-                    id: poly.id,
+                let id = if poly.poly_type == PolynomialType::Intermediate {
+                    assert!(index.is_none());
+                    self.intermediate_poly_expression_ids[&poly.id]
+                } else {
+                    poly.id + index.unwrap_or_default()
+                };
+                let poly_json = object! {
+                    id: id,
                     op: polynomial_reference_type_to_json_string(poly.poly_type),
                     deg: 1,
                     next: *next,
                 };
-                if let Some(index) = *index {
-                    // TODO correct?
-                    // TODO I think this should be poly.id + index somehow...
-                    // TODO this also means we have to space the poly ids apart.
-                    poly_json["index"] = index.into();
-                }
                 let dependencies = if poly.poly_type == PolynomialType::Intermediate {
-                    vec![poly.id]
+                    vec![id]
                 } else {
                     Vec::new()
                 };
@@ -179,7 +193,6 @@ impl<'a> Exporter<'a> {
                     BinaryOperator::Div => ("div", deg_left + deg_right), // TODO correct?
                     BinaryOperator::Pow => ("pow", deg_left + deg_right), // TODO correct?
                 };
-                let dependencies = [deps_left, deps_right].concat();
                 (
                     degree,
                     object! {
@@ -187,7 +200,7 @@ impl<'a> Exporter<'a> {
                         deg: degree,
                         values: [left, right],
                     },
-                    dependencies,
+                    [deps_left, deps_right].concat(),
                 )
             }
             Expression::UnaryOperation(op, value) => {
