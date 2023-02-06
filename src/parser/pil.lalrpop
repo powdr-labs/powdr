@@ -27,31 +27,31 @@ Statement = {
 };
 
 Include: Statement = {
-    "include" <file:StringLiteral> => Statement::Include(<>)
+    <start:@L> "include" <file:StringLiteral> => Statement::Include(<>)
 };
 
 Namespace: Statement = {
-    "namespace" <name:Identifier> "(" <pol_degree:Expression> ")" => Statement::Namespace(<>)
+    <start:@L> "namespace" <name:Identifier> "(" <pol_degree:Expression> ")" => Statement::Namespace(<>)
 }
 
 ConstantDefinition: Statement = {
-    "constant" <ConstantIdentifier> "=" <Expression> => Statement::ConstantDefinition(<>)
+    <@L> "constant" <ConstantIdentifier> "=" <Expression> => Statement::ConstantDefinition(<>)
 }
 
 PolynomialDefinition: Statement = {
-    "pol" <Identifier> "=" <Expression> => Statement::PolynomialDefinition(<>)
+    <@L> "pol" <Identifier> "=" <Expression> => Statement::PolynomialDefinition(<>)
 }
 
 PolynomialConstantDeclaration: Statement = {
-    "pol" "constant" <PolynomialNameList> => Statement::PolynomialConstantDeclaration(<>)
+    <@L> "pol" "constant" <PolynomialNameList> => Statement::PolynomialConstantDeclaration(<>)
 }
 
 PolynomialCommitDeclaration: Statement = {
-    "pol" "commit" <PolynomialNameList> => Statement::PolynomialCommitDeclaration(<>)
+    <@L> "pol" "commit" <PolynomialNameList> => Statement::PolynomialCommitDeclaration(<>)
 }
 
 PolynomialIdentity: Statement = {
-    <l:BoxedExpression> "=" <r:BoxedExpression> => Statement::PolynomialIdentity(Expression::BinaryOperation(l, BinaryOperator::Sub, r))
+    <start:@L> <l:BoxedExpression> "=" <r:BoxedExpression> => Statement::PolynomialIdentity(start, Expression::BinaryOperation(l, BinaryOperator::Sub, r))
 }
 
 PolynomialNameList: Vec<PolynomialName> = {
@@ -62,7 +62,7 @@ PolynomialName: PolynomialName = {
 }
 
 PlookupIdentity: Statement = {
-    <SelectedExpressions> "in" <SelectedExpressions> => Statement::PlookupIdentity(<>)
+    <@L> <SelectedExpressions> "in" <SelectedExpressions> => Statement::PlookupIdentity(<>)
 }
 
 SelectedExpressions: SelectedExpressions = {

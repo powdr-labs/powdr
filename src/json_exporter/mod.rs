@@ -36,22 +36,26 @@ pub fn export(analyzed: &Analyzed) -> JsonValue {
                 }
             }
             StatementIdentifier::Identity(id) => {
-                let expr = &analyzed.polynomial_identities[*id];
+                let (expr, source_ref) = &analyzed.polynomial_identities[*id];
                 pol_identities.push(object! {
-                    e: exporter.extract_expression(expr, 2)
+                    e: exporter.extract_expression(expr, 2),
+                    fileName: source_ref.file.clone(),
+                    line: source_ref.line,
                 })
             }
             StatementIdentifier::Plookup(id) => {
-                let identity = &analyzed.plookups[*id];
-                let f = exporter.extract_expression_vec(&identity.key.expressions, 1);
-                let sel_f = exporter.extract_expression_opt(&identity.key.selector, 1);
-                let t = exporter.extract_expression_vec(&identity.haystack.expressions, 1);
-                let sel_t = exporter.extract_expression_opt(&identity.haystack.selector, 1);
+                let plookup = &analyzed.plookups[*id];
+                let f = exporter.extract_expression_vec(&plookup.key.expressions, 1);
+                let sel_f = exporter.extract_expression_opt(&plookup.key.selector, 1);
+                let t = exporter.extract_expression_vec(&plookup.haystack.expressions, 1);
+                let sel_t = exporter.extract_expression_opt(&plookup.haystack.selector, 1);
                 plookup_identities.push(object! {
                     selF: sel_f,
                     f: f,
                     selT: sel_t,
                     t: t,
+                    fileName: plookup.source.file.clone(),
+                    line: plookup.source.line,
                 });
             }
         }
@@ -126,10 +130,10 @@ impl<'a> Exporter<'a> {
     /// @returns the expression ID
     fn extract_expression(&mut self, expr: &Expression, max_degree: u32) -> usize {
         let id = self.expressions.len();
-        let (mut degree, mut json, dependencies) = self.expression_to_json(expr);
+        let (degree, mut json, dependencies) = self.expression_to_json(expr);
         if degree > max_degree {
-            degree = 1;
             json["idQ"] = self.number_q.into();
+            json["degree"] = 1.into();
             self.number_q += 1;
         }
         if !dependencies.is_empty() {
