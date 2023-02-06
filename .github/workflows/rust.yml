@@ -25,10 +25,18 @@ jobs:
           ~/.cargo/git
           target
         key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.toml') }}
+    - name: ⚡ Cache nodejs
+      uses: actions/cache@v2
+      with:
+        path: |
+          ~/pilcom/node_modules
+        key: ${{ runner.os }}-pilcom-node-modules
     - name: Build
       run: cargo build --verbose
+    - name: Install pilcom
+      run: git clone https://github.com/0xPolygonHermez/pilcom.git && cd pilcom && npm install
     - name: Run tests
-      run: cargo test --verbose
+      run: PILCOM=$(pwd)/pilcom/src/pil.js cargo test --verbose
     - name: Lint
       run: cargo clippy --all --all-features -- -D warnings
     - name: Format

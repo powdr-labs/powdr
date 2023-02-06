@@ -1,7 +1,5 @@
-use std::{
-    cmp,
-    collections::{BTreeMap, HashMap},
-};
+use std::cmp;
+use std::collections::{BTreeMap, HashMap};
 
 use json::{object, JsonValue};
 
@@ -239,5 +237,60 @@ impl<'a> Exporter<'a> {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use std::fs;
+    use std::path::Path;
+    use std::process::Command;
+
+    use crate::analyzer;
+
+    use super::*;
+
+    fn compare_export_file(file: &str) {
+        let analyzed = analyzer::analyze(Path::new(file));
+        let json_out = export(&analyzed);
+
+        let pilcom = std::env::var("PILCOM")
+            .expect("Please set PILCOM to the path to the pilcom js file 'src/pil.js'.");
+        let pilcom_output = Command::new("node")
+            .args([pilcom, file.to_string()])
+            .output()
+            .expect("failed to run pilcom");
+        if !pilcom_output.status.success() {
+            panic!(
+                "Pilcom run was unsuccessful.\nStdout: {}\nStderr: {}\n",
+                String::from_utf8_lossy(&pilcom_output.stdout),
+                String::from_utf8_lossy(&pilcom_output.stderr)
+            );
+        }
+
+        let output_file = format!(
+            "{}.json",
+            Path::new(file)
+                .canonicalize()
+                .unwrap()
+                .file_name()
+                .unwrap()
+                .to_str()
+                .unwrap()
+        );
+        let pilcom_out = fs::read_to_string(&output_file).unwrap_or_else(|_| {
+            panic!("Pilcom did not generate {output_file} at the expected location.")
+        });
+        let pilcom_parsed = json::parse(&pilcom_out).expect("Invalid json from pilcom.");
+        assert_eq!(json_out, pilcom_parsed);
+    }
+
+    #[test]
+    fn export_example_files() {
+        //compare_export_file("test_files/arith.pil");
+        compare_export_file("test_files/config.pil");
+        //compare_export_file("test_files/binary.pil");
+        compare_export_file("test_files/byte4.pil");
+        compare_export_file("test_files/global.pil");
     }
 }
