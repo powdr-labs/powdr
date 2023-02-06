@@ -16,6 +16,7 @@ struct Exporter<'a> {
     /// Translates from polynomial IDs to expression IDs for intermediate
     /// polynomials.
     intermediate_poly_expression_ids: HashMap<u64, u64>,
+    number_q: u64,
 }
 
 pub fn export(analyzed: &Analyzed) -> JsonValue {
@@ -37,15 +38,15 @@ pub fn export(analyzed: &Analyzed) -> JsonValue {
             StatementIdentifier::Identity(id) => {
                 let expr = &analyzed.polynomial_identities[*id];
                 pol_identities.push(object! {
-                    e: exporter.extract_expression(expr)
+                    e: exporter.extract_expression(expr, 2)
                 })
             }
             StatementIdentifier::Plookup(id) => {
                 let identity = &analyzed.plookups[*id];
-                let sel_f = exporter.extract_expression_opt(&identity.key.selector);
-                let f = exporter.extract_expression_vec(&identity.key.expressions);
-                let sel_t = exporter.extract_expression_opt(&identity.haystack.selector);
-                let t = exporter.extract_expression_vec(&identity.haystack.expressions);
+                let f = exporter.extract_expression_vec(&identity.key.expressions, 1);
+                let sel_f = exporter.extract_expression_opt(&identity.key.selector, 1);
+                let t = exporter.extract_expression_vec(&identity.haystack.expressions, 1);
+                let sel_t = exporter.extract_expression_opt(&identity.haystack.selector, 1);
                 plookup_identities.push(object! {
                     selF: sel_f,
                     f: f,
@@ -92,6 +93,7 @@ impl<'a> Exporter<'a> {
             analyzed,
             expressions: vec![],
             intermediate_poly_expression_ids: HashMap::new(),
+            number_q: 0,
         }
     }
 
@@ -120,9 +122,16 @@ impl<'a> Exporter<'a> {
             .into()
     }
 
-    fn extract_expression(&mut self, expr: &Expression) -> usize {
+    /// Processes the given expression
+    /// @returns the expression ID
+    fn extract_expression(&mut self, expr: &Expression, max_degree: u32) -> usize {
         let id = self.expressions.len();
-        let (_, mut json, dependencies) = self.expression_to_json(expr);
+        let (mut degree, mut json, dependencies) = self.expression_to_json(expr);
+        if degree > max_degree {
+            degree = 1;
+            json["idQ"] = self.number_q.into();
+            self.number_q += 1;
+        }
         if !dependencies.is_empty() {
             json["deps"] = dependencies.into();
         }
@@ -130,12 +139,19 @@ impl<'a> Exporter<'a> {
         id
     }
 
-    fn extract_expression_opt(&mut self, expr: &Option<Expression>) -> Option<usize> {
-        expr.as_ref().map(|e| self.extract_expression(e))
+    fn extract_expression_opt(
+        &mut self,
+        expr: &Option<Expression>,
+        max_degree: u32,
+    ) -> Option<usize> {
+        expr.as_ref()
+            .map(|e| self.extract_expression(e, max_degree))
     }
 
-    fn extract_expression_vec(&mut self, expr: &[Expression]) -> Vec<usize> {
-        expr.iter().map(|e| self.extract_expression(e)).collect()
+    fn extract_expression_vec(&mut self, expr: &[Expression], max_degree: u32) -> Vec<usize> {
+        expr.iter()
+            .map(|e| self.extract_expression(e, max_degree))
+            .collect()
     }
 
     /// returns the degree, the json value and the dependencies (intermediate polynomial IDs)
