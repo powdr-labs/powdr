@@ -4,15 +4,15 @@ pub struct PILFile(pub Vec<Statement>);
 #[derive(Debug, PartialEq, Eq)]
 pub enum Statement {
     /// File name
-    Include(String),
+    Include(usize, String),
     /// Name of namespace and polynomial degree (constant)
-    Namespace(String, Expression),
-    PolynomialDefinition(String, Expression),
-    PolynomialConstantDeclaration(Vec<PolynomialName>),
-    PolynomialCommitDeclaration(Vec<PolynomialName>),
-    PolynomialIdentity(Expression),
-    PlookupIdentity(SelectedExpressions, SelectedExpressions),
-    ConstantDefinition(String, Expression),
+    Namespace(usize, String, Expression),
+    PolynomialDefinition(usize, String, Expression),
+    PolynomialConstantDeclaration(usize, Vec<PolynomialName>),
+    PolynomialCommitDeclaration(usize, Vec<PolynomialName>),
+    PolynomialIdentity(usize, Expression),
+    PlookupIdentity(usize, SelectedExpressions, SelectedExpressions),
+    ConstantDefinition(usize, String, Expression),
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]

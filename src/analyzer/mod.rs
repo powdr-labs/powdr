@@ -19,8 +19,11 @@ struct Context {
     /// Constants are not namespaced!
     constants: HashMap<String, ConstantNumberType>,
     definitions: HashMap<String, (Polynomial, Option<Expression>)>,
-    polynomial_identities: Vec<Expression>,
-    plookup_identities: Vec<PlookupIdentity>,
+    polynomial_identities: Vec<(Expression, SourceRef)>,
+    plookups: Vec<PlookupIdentity>,
+    /// The order in which definitions and identities
+    /// appear in the source.
+    source_order: Vec<StatementIdentifier>,
     included_files: HashSet<PathBuf>,
     current_dir: PathBuf,
     commit_poly_counter: u64,
@@ -28,12 +31,21 @@ struct Context {
     intermediate_poly_counter: u64,
 }
 
+pub enum StatementIdentifier {
+    Definition(String),
+    Identity(usize),
+    Plookup(usize),
+}
+
 pub struct Analyzed {
     /// Constants are not namespaced!
     pub constants: HashMap<String, ConstantNumberType>,
     pub definitions: HashMap<String, (Polynomial, Option<Expression>)>,
-    pub polynomial_identities: Vec<Expression>,
-    pub plookup_identities: Vec<PlookupIdentity>,
+    pub polynomial_identities: Vec<(Expression, SourceRef)>,
+    pub plookups: Vec<PlookupIdentity>,
+    /// The order in which definitions and identities
+    /// appear in the source.
+    pub source_order: Vec<StatementIdentifier>,
 }
 
 impl Analyzed {
@@ -68,7 +80,8 @@ impl From<Context> for Analyzed {
             constants,
             definitions,
             polynomial_identities,
-            plookup_identities,
+            plookups: plookup_identities,
+            source_order,
             ..
         }: Context,
     ) -> Self {
@@ -76,13 +89,15 @@ impl From<Context> for Analyzed {
             constants,
             definitions,
             polynomial_identities,
-            plookup_identities,
+            plookups: plookup_identities,
+            source_order,
         }
     }
 }
 
 pub struct Polynomial {
     pub id: u64,
+    pub source: SourceRef,
     pub absolute_name: String,
     pub poly_type: PolynomialType,
     pub degree: ConstantNumberType,
@@ -96,6 +111,7 @@ impl Polynomial {
 }
 
 pub struct PlookupIdentity {
+    pub source: SourceRef,
     pub key: SelectedExpressions,
     pub haystack: SelectedExpressions,
 }
@@ -124,11 +140,17 @@ pub struct PolynomialReference {
     pub next: bool,
 }
 
-#[derive(Copy, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 pub enum PolynomialType {
     Committed,
     Constant,
     Intermediate,
+}
+
+#[derive(Debug, Clone)]
+pub struct SourceRef {
+    pub file: String, // TODO should maybe be a shared pointer
+    pub line: usize,
 }
 
 impl Context {
@@ -145,30 +167,47 @@ impl Context {
             return;
         }
         let contents = fs::read_to_string(path.clone()).unwrap();
+        // TOOD make this work for other line endings
+        let line_breaks = compute_line_breaks(&contents);
         let pil_file = parser::parse(&contents).unwrap();
         let old_current_dir = self.current_dir.clone();
         self.current_dir = path.parent().unwrap().to_path_buf();
 
+        let to_source_ref = |start| SourceRef {
+            line: offset_to_line(start, &line_breaks),
+            file: path.file_name().unwrap().to_str().unwrap().to_string(),
+        };
+
         for statement in &pil_file.0 {
             match statement {
-                Statement::Include(include) => self.handle_include(include),
-                Statement::Namespace(name, degree) => self.handle_namespace(name, degree),
-                Statement::PolynomialDefinition(name, value) => {
-                    self.handle_polynomial_definition(name, PolynomialType::Intermediate, value)
+                Statement::Include(_, include) => self.handle_include(include),
+                Statement::Namespace(_, name, degree) => self.handle_namespace(name, degree),
+                Statement::PolynomialDefinition(start, name, value) => self
+                    .handle_polynomial_definition(
+                        to_source_ref(*start),
+                        name,
+                        PolynomialType::Intermediate,
+                        value,
+                    ),
+                Statement::PolynomialConstantDeclaration(start, polynomials) => self
+                    .handle_polynomial_declarations(
+                        to_source_ref(*start),
+                        polynomials,
+                        PolynomialType::Constant,
+                    ),
+                Statement::PolynomialCommitDeclaration(start, polynomials) => self
+                    .handle_polynomial_declarations(
+                        to_source_ref(*start),
+                        polynomials,
+                        PolynomialType::Committed,
+                    ),
+                Statement::PolynomialIdentity(start, expression) => {
+                    self.handle_polynomial_identity(to_source_ref(*start), expression)
                 }
-                Statement::PolynomialConstantDeclaration(polynomials) => {
-                    self.handle_polynomial_declarations(polynomials, PolynomialType::Constant)
+                Statement::PlookupIdentity(start, key, haystack) => {
+                    self.handle_plookup_identity(to_source_ref(*start), key, haystack)
                 }
-                Statement::PolynomialCommitDeclaration(polynomials) => {
-                    self.handle_polynomial_declarations(polynomials, PolynomialType::Committed)
-                }
-                Statement::PolynomialIdentity(expression) => {
-                    self.handle_polynomial_identity(expression)
-                }
-                Statement::PlookupIdentity(key, haystack) => {
-                    self.handle_plookup_identity(key, haystack)
-                }
-                Statement::ConstantDefinition(name, value) => {
+                Statement::ConstantDefinition(_, name, value) => {
                     self.handle_constant_definition(name, value)
                 }
             }
@@ -190,70 +229,97 @@ impl Context {
 
     fn handle_polynomial_definition(
         &mut self,
+        source: SourceRef,
         name: &String,
         polynomial_type: PolynomialType,
         value: &ast::Expression,
     ) {
-        self.handle_polynomial_declaration(name, &None, polynomial_type, Some(value));
+        self.handle_polynomial_declaration(source, name, &None, polynomial_type, Some(value));
     }
 
     fn handle_polynomial_declarations(
         &mut self,
+        source: SourceRef,
         polynomials: &[ast::PolynomialName],
         polynomial_type: PolynomialType,
     ) {
         for ast::PolynomialName { name, array_size } in polynomials {
-            self.handle_polynomial_declaration(name, array_size, polynomial_type, None);
+            self.handle_polynomial_declaration(
+                source.clone(),
+                name,
+                array_size,
+                polynomial_type,
+                None,
+            );
         }
     }
 
     fn handle_polynomial_declaration(
         &mut self,
+        source: SourceRef,
         name: &String,
         array_size: &Option<ast::Expression>,
         polynomial_type: PolynomialType,
         value: Option<&ast::Expression>,
     ) -> u64 {
+        let length = array_size
+            .as_ref()
+            .map(|l| self.evaluate_expression(l).unwrap());
         let counter = match polynomial_type {
             PolynomialType::Committed => &mut self.commit_poly_counter,
             PolynomialType::Constant => &mut self.constant_poly_counter,
             PolynomialType::Intermediate => &mut self.intermediate_poly_counter,
         };
         let id = *counter;
-        *counter += 1;
+        *counter += length.unwrap_or(1) as u64;
         let poly = Polynomial {
             id,
+            source,
             absolute_name: self.namespaced(name),
             degree: self.polynomial_degree,
             poly_type: polynomial_type,
-            length: array_size
-                .as_ref()
-                .map(|l| self.evaluate_expression(l).unwrap()),
+            length,
         };
         let name = poly.absolute_name.clone();
         let value = value.map(|e| self.process_expression(e));
-        let is_new = self.definitions.insert(name, (poly, value)).is_none();
+        let is_new = self
+            .definitions
+            .insert(name.clone(), (poly, value))
+            .is_none();
         assert!(is_new);
+        self.source_order
+            .push(StatementIdentifier::Definition(name));
         id
     }
 
-    fn handle_polynomial_identity(&mut self, expression: &ast::Expression) {
+    fn handle_polynomial_identity(&mut self, source: SourceRef, expression: &ast::Expression) {
         let expr = self.process_expression(expression);
-        self.polynomial_identities.push(expr);
+        self.polynomial_identities.push((expr, source));
+        self.source_order.push(StatementIdentifier::Identity(
+            self.polynomial_identities.len() - 1,
+        ));
     }
 
     fn handle_plookup_identity(
         &mut self,
+        source: SourceRef,
+
         key: &ast::SelectedExpressions,
         haystack: &ast::SelectedExpressions,
     ) {
         let key = self.process_selected_expression(key);
         let haystack = self.process_selected_expression(haystack);
-        self.plookup_identities
-            .push(PlookupIdentity { key, haystack })
+        self.plookups.push(PlookupIdentity {
+            source,
+            key,
+            haystack,
+        });
+        self.source_order
+            .push(StatementIdentifier::Plookup(self.plookups.len() - 1));
     }
 
     fn handle_constant_definition(&mut self, name: &str, value: &ast::Expression) {
+        // TODO does the order matter here?
         let is_new = self
             .constants
             .insert(name.to_string(), self.evaluate_expression(value).unwrap())
@@ -364,5 +430,42 @@ impl Context {
             UnaryOperator::Plus => v,
             UnaryOperator::Minus => -v,
         })
+    }
+}
+
+fn compute_line_breaks(source: &str) -> Vec<usize> {
+    source
+        .chars()
+        .enumerate()
+        .filter_map(|(b, v)| if v == '\n' { Some(b) } else { None })
+        .collect::<Vec<_>>()
+}
+
+fn offset_to_line(offset: usize, line_breaks: &[usize]) -> usize {
+    line_breaks.partition_point(|break_offset| break_offset < &offset) + 1
+}
+
+#[cfg(test)]
+mod test {
+    use super::{compute_line_breaks, offset_to_line};
+
+    #[test]
+    pub fn line_calc() {
+        let input = "abc\nde";
+        let breaks = compute_line_breaks(input);
+        let lines = (0..input.len())
+            .map(|o| offset_to_line(o, &breaks))
+            .collect::<Vec<_>>();
+        assert_eq!(lines, [1, 1, 1, 1, 2, 2]);
+    }
+
+    #[test]
+    pub fn line_calc_empty_start() {
+        let input = "\nab\n\nc\nde\n";
+        let breaks = compute_line_breaks(input);
+        let lines = (0..input.len())
+            .map(|o| offset_to_line(o, &breaks))
+            .collect::<Vec<_>>();
+        assert_eq!(lines, [1, 2, 2, 2, 3, 4, 4, 5, 5, 5]);
     }
 }

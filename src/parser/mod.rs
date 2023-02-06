@@ -27,7 +27,30 @@ mod test {
     #[test]
     fn simple_include() {
         let parsed = pil::PILFileParser::new().parse("include \"x\";").unwrap();
-        assert_eq!(parsed, PILFile(vec![Statement::Include("x".to_string())]));
+        assert_eq!(
+            parsed,
+            PILFile(vec![Statement::Include(0, "x".to_string())])
+        );
+    }
+
+    #[test]
+    fn start_offsets() {
+        let parsed = pil::PILFileParser::new()
+            .parse("include \"x\"; pol commit t;")
+            .unwrap();
+        assert_eq!(
+            parsed,
+            PILFile(vec![
+                Statement::Include(0, "x".to_string()),
+                Statement::PolynomialCommitDeclaration(
+                    13,
+                    vec![PolynomialName {
+                        name: "t".to_string(),
+                        array_size: None
+                    }]
+                )
+            ])
+        );
     }
 
     #[test]
@@ -36,6 +59,7 @@ mod test {
         assert_eq!(
             parsed,
             PILFile(vec![Statement::PlookupIdentity(
+                0,
                 SelectedExpressions {
                     selector: None,
                     expressions: vec![Expression::PolynomialReference(PolynomialReference {
