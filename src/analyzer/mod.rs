@@ -49,28 +49,30 @@ pub struct Analyzed {
 }
 
 impl Analyzed {
-    /// @returns the number of committed polynomials
+    /// @returns the number of committed polynomials (with multiplicities for arrays)
     pub fn commitment_count(&self) -> usize {
-        self.filtered_declarations(PolynomialType::Committed)
-            .count()
+        self.declaration_type_count(PolynomialType::Committed)
     }
-    /// @returns the number of intermediate polynomials
+    /// @returns the number of intermediate polynomials (with multiplicities for arrays)
     pub fn intermediate_count(&self) -> usize {
-        self.filtered_declarations(PolynomialType::Intermediate)
-            .count()
+        self.declaration_type_count(PolynomialType::Intermediate)
     }
-    /// @returns the number of constant polynomials
+    /// @returns the number of constant polynomials (with multiplicities for arrays)
     pub fn constant_count(&self) -> usize {
-        self.filtered_declarations(PolynomialType::Constant).count()
+        self.declaration_type_count(PolynomialType::Constant)
     }
 
-    fn filtered_declarations(
-        &self,
-        poly_type: PolynomialType,
-    ) -> impl Iterator<Item = (&String, &(Polynomial, Option<Expression>))> {
+    fn declaration_type_count(&self, poly_type: PolynomialType) -> usize {
         self.definitions
             .iter()
-            .filter(move |(_name, (poly, _))| poly.poly_type == poly_type)
+            .filter_map(move |(_name, (poly, _))| {
+                if poly.poly_type == poly_type {
+                    Some(poly.length.unwrap_or(1) as usize)
+                } else {
+                    None
+                }
+            })
+            .sum()
     }
 }
 

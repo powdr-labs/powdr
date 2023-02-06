@@ -25,12 +25,11 @@ pub fn export(analyzed: &Analyzed) -> JsonValue {
         match item {
             StatementIdentifier::Definition(name) => {
                 if let (poly, Some(value)) = &analyzed.definitions[name] {
-                    let (_, expr, _) = exporter.expression_to_json(value);
-                    exporter.expressions.push(expr);
+                    let expression_id = exporter.extract_expression(value, 1);
                     assert_eq!(poly.poly_type, PolynomialType::Intermediate);
                     exporter
                         .intermediate_poly_expression_ids
-                        .insert(poly.id, (exporter.expressions.len() - 1) as u64);
+                        .insert(poly.id, expression_id as u64);
                 }
             }
             StatementIdentifier::Identity(id) => {
@@ -60,7 +59,7 @@ pub fn export(analyzed: &Analyzed) -> JsonValue {
     }
     object! {
         nCommitments: analyzed.commitment_count(),
-        nQ: 0, // number of expressions with degree == 2
+        nQ: exporter.number_q,
         nIm: analyzed.intermediate_count(),
         nConstants: analyzed.constant_count(),
         publics: [], // @TODO
@@ -131,7 +130,7 @@ impl<'a> Exporter<'a> {
         let (degree, mut json, dependencies) = self.expression_to_json(expr);
         if degree > max_degree {
             json["idQ"] = self.number_q.into();
-            json["degree"] = 1.into();
+            json["deg"] = 1.into();
             self.number_q += 1;
         }
         if !dependencies.is_empty() {
@@ -289,7 +288,7 @@ mod test {
     fn export_example_files() {
         //compare_export_file("test_files/arith.pil");
         compare_export_file("test_files/config.pil");
-        //compare_export_file("test_files/binary.pil");
+        compare_export_file("test_files/binary.pil");
         compare_export_file("test_files/byte4.pil");
         compare_export_file("test_files/global.pil");
     }
