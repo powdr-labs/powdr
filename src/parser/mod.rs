@@ -1,3 +1,7 @@
+use codespan_reporting::diagnostic::{Diagnostic, Label};
+use codespan_reporting::files::SimpleFiles;
+use codespan_reporting::term;
+use codespan_reporting::term::termcolor::{ColorChoice, StandardStream};
 use lalrpop_util::*;
 
 pub mod ast;
@@ -8,8 +12,53 @@ lalrpop_mod!(
     "/parser/pil.rs"
 );
 
-pub fn parse(input: &str) -> Result<ast::PILFile, ParseError<usize, lexer::Token, &str>> {
-    pil::PILFileParser::new().parse(input)
+#[derive(Debug)]
+pub struct ParseError<'a> {
+    start: usize,
+    end: usize,
+    file_name: String,
+    contents: &'a str,
+    message: String,
+}
+
+impl<'a> ParseError<'a> {
+    pub fn output_to_stderr(&self) {
+        let config = term::Config::default();
+        let mut files = SimpleFiles::new();
+        let file_id = files.add(&self.file_name, self.contents);
+        let diagnostic = Diagnostic::error()
+            .with_message(&self.message)
+            .with_labels(vec![Label::primary(file_id, self.start..self.end)]);
+        let mut writer = StandardStream::stderr(ColorChoice::Always);
+        term::emit(&mut writer, &config, &files, &diagnostic).unwrap()
+    }
+}
+
+pub fn parse<'a>(file_name: Option<&str>, input: &'a str) -> Result<ast::PILFile, ParseError<'a>> {
+    pil::PILFileParser::new().parse(input).map_err(|err| {
+        let (&start, &end) = match &err {
+            lalrpop_util::ParseError::InvalidToken { location } => (location, location),
+            lalrpop_util::ParseError::UnrecognizedEOF {
+                location,
+                expected: _,
+            } => (location, location),
+            lalrpop_util::ParseError::UnrecognizedToken {
+                token: (start, _, end),
+                expected: _,
+            } => (start, end),
+            lalrpop_util::ParseError::ExtraToken {
+                token: (start, _, end),
+            } => (start, end),
+            lalrpop_util::ParseError::User { error: _ } => (&0, &0),
+        };
+        ParseError {
+            start,
+            end,
+            file_name: file_name.unwrap_or("input").to_string(),
+            contents: input,
+            message: format!("{err}"),
+        }
+    })
 }
 
 #[cfg(test)]
@@ -80,7 +129,11 @@ mod test {
 
     fn parse_file(name: &str) -> PILFile {
         let input = fs::read_to_string(name).unwrap();
-        parse(&input).unwrap()
+        parse(Some(name), &input).unwrap_or_else(|err| {
+            eprintln!("Parse error during test:");
+            err.output_to_stderr();
+            panic!();
+        })
     }
 
     #[test]

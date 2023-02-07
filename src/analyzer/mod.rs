@@ -182,7 +182,12 @@ impl Context {
         let contents = fs::read_to_string(path.clone()).unwrap();
         // TOOD make this work for other line endings
         let line_breaks = compute_line_breaks(&contents);
-        let pil_file = parser::parse(&contents).unwrap();
+        let pil_file =
+            parser::parse(Some(path.to_str().unwrap()), &contents).unwrap_or_else(|err| {
+                eprintln!("Error parsing .pil file:");
+                err.output_to_stderr();
+                panic!();
+            });
         let old_current_dir = self.current_dir.clone();
         self.current_dir = path.parent().unwrap().to_path_buf();
 
