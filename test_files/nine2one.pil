@@ -1,0 +1,13 @@
+include "keccakf.pil";
+
+namespace Nine2One(%N);
+    pol constant FieldLatch;  // [0:44,1]
+    pol constant Factor;  // 1,2,4,8,...,2**43
+
+    pol commit bit;
+    pol commit field44;
+
+    field44' = (1-FieldLatch)*field44 + bit*Factor;
+    bit *(1-bit) = 0;
+
+    FieldLatch*(field44 - KeccakF.a44) = 0;

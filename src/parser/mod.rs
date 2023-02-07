@@ -90,5 +90,6 @@ mod test {
         parse_file("test_files/binary.pil");
         parse_file("test_files/byte4.pil");
         parse_file("test_files/global.pil");
+        parse_file("test_files/mem.pil");
     }
 }

@@ -133,7 +133,7 @@ impl<'a> Exporter<'a> {
             json["deg"] = 1.into();
             self.number_q += 1;
         }
-        if !dependencies.is_empty() {
+        if !dependencies.is_empty() && json["op"] != "exp" {
             json["deps"] = dependencies.into();
         }
         self.expressions.push(json);
@@ -342,5 +342,10 @@ mod test {
         // We ignore the specific value assigned to idQ.
         // It is just a counter and pilcom assigns it in a weird order.
         compare_export_file_ignore_idq("test_files/arith.pil");
+    }
+
+    #[test]
+    fn export_mem() {
+        compare_export_file_ignore_idq("test_files/mem.pil");
     }
 }
