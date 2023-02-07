@@ -368,7 +368,8 @@ mod test {
     }
 
     #[test]
-    fn export_nine2one() {
+    fn export_padding() {
         compare_export_file("test_files/nine2one.pil");
+        compare_export_file_ignore_idq("test_files/padding_kkbit.pil");
     }
 }

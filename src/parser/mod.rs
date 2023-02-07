@@ -147,5 +147,6 @@ mod test {
         parse_file("test_files/mem_align.pil");
         parse_file("test_files/keccakf.pil");
         parse_file("test_files/nine2one.pil");
+        parse_file("test_files/padding_kkbit.pil");
     }
 }

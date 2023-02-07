@@ -127,5 +127,4 @@ namespace PaddingKKBit(%N);
 
     pol constant ConnSOutBit, ConnSInBit, ConnNine2OneBit;
 
-    {sOutBit, sInBit, Nine2One.bit} connect {ConnSOutBit, ConnSInBit, ConnNine2OneBit}
-
+    {sOutBit, sInBit, Nine2One.bit} connect {ConnSOutBit, ConnSInBit, ConnNine2OneBit};
