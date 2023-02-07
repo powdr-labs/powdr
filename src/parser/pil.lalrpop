@@ -151,5 +151,6 @@ ConstantIdentifier: String = {
 }
 
 Number: i128 = {
-    r"[0-9]+" => i128::from_str(<>).unwrap(),
+    r"[0-9][0-9_]*" => i128::from_str(&<>.replace('_', "")).unwrap(),
+    r"0x[0-9A-Fa-f][0-9A-Fa-f_]*" => i128::from_str_radix(&<>[2..].replace('_', ""), 16).unwrap(),
 }
