@@ -386,7 +386,12 @@ impl Context {
 
     fn evaluate_expression(&self, expr: &ast::Expression) -> Option<ConstantNumberType> {
         match expr {
-            ast::Expression::Constant(name) => Some(self.constants[name]),
+            ast::Expression::Constant(name) => Some(
+                *self
+                    .constants
+                    .get(name)
+                    .unwrap_or_else(|| panic!("Constant {name} not found.")),
+            ),
             ast::Expression::PolynomialReference(_) => None,
             ast::Expression::Number(n) => Some(*n),
             ast::Expression::BinaryOperation(left, op, right) => {

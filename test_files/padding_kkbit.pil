@@ -1,0 +1,131 @@
+/*
+    Padding Keccak rBit
+    This state machine packs the rBits in bytes (r8)
+    And stOut bits in 8 field Elements of 32bit slints.
+    It also forces the connection bettwien keccak-f blocks.
+
+          rBit                 sOutBit     sInBit
+            ●                     ●          ●
+            ●                     ●          ●
+            ●                     ●          ●
+            ●                     ●          ●
+            ●                     ●          ●
+            ●                     ●          ●
+            ●                     ●          ●
+            ●                     ●          ●
+                   ●
+            ●                     ●          ●
+            ●                     ●          ●
+            ●                     ●          ●              ┌─────────────────┐
+            ●                     ●          ●              │r8 calcuulations │
+            ●                     ●          ●              │  9*136 = 1467   │
+            ●                     ●          ●              │                 │
+            ●                     ●          ●              └─────────────────┘
+            ●                     ●          ●
+                   ● r8[i*136+k]
+            .                     .          .
+            .                     .          .
+            .                     .          .
+            ●                     ●          ●
+            ●                     ●          ●
+            ●                     ●          ●
+            ●                     ●          ●
+            ●                     ●          ●
+            ●                     ●          ●
+            ●                     ●          ●
+            ●                     ●          ●
+                   ●
+         ───────────────────────────────────────────────
+                                  ●          ●
+                                  ●          ●
+                                  ●          ●              ┌─────────────────┐
+                                  ●          ●              │    capacity     │
+                                  ●          ●              │   connection    │
+                                  .          .              │       512       │
+                                  .          .              └─────────────────┘
+                                  .          .
+                                  ●          ●
+                                  ●          ●
+         ──────────────────────────────────────────────
+                                  ●
+                                  ●                         ┌─────────────────┐
+                                  ●                         │   packet sOut   │
+                                  .                         │   Calculation   │
+                                  .                         │      256+1      │
+                                  .                         └─────────────────┘
+                                  ●
+                                  ●
+                                       ●●●●●●●●      sOut{0..7}[i]
+*/
+
+/*
+
+    The output for r8 is:
+
+    [r8, r8Id]
+
+    The output for sOut
+
+    [sOut0, sOut1, sOut2, sOut3, sOut4, sOut5, sOut6, sOut7, connect, sOutId]
+
+*/
+
+include "nine2one.pil";
+
+namespace PaddingKKBit(%N);
+    pol commit rBit, sOutBit;
+
+    // Input connection                                                          rBit -> 1 1 0 1  0  1  1   1   X
+                                                                             // Fr8   -> 1 2 4 8 16 32 64 128   0
+                                                                             //  r8   -> 0 1 3 3 11 11 43 107 235
+                                                                             //latchR8-> 0 0 0 0  0  0  0   0   1  0 0 0 0 0
+    pol commit r8;
+    pol constant r8Id;
+
+    pol commit connected;
+    pol commit sOut0, sOut1, sOut2, sOut3, sOut4, sOut5, sOut6, sOut7;
+    pol constant sOutId;
+
+    pol constant latchR8;
+    pol constant Fr8;     // Factor to add to r8
+    pol constant rBitValid;  // 1 when rIn can be 0 or 1
+
+    pol constant latchSOut;
+    pol constant FSOut0, FSOut1, FSOut2, FSOut3, FSOut4, FSOut5, FSOut6, FSOut7;
+
+    r8' = r8 * (1-latchR8) + rBit*Fr8;
+
+    sOut0' = sOut0*(1-latchSOut) + sOutBit*FSOut0;
+    sOut1' = sOut1*(1-latchSOut) + sOutBit*FSOut1;
+    sOut2' = sOut2*(1-latchSOut) + sOutBit*FSOut2;
+    sOut3' = sOut3*(1-latchSOut) + sOutBit*FSOut3;
+    sOut4' = sOut4*(1-latchSOut) + sOutBit*FSOut4;
+    sOut5' = sOut5*(1-latchSOut) + sOutBit*FSOut5;
+    sOut6' = sOut6*(1-latchSOut) + sOutBit*FSOut6;
+    sOut7' = sOut7*(1-latchSOut) + sOutBit*FSOut7;
+
+    connected'*(1-latchSOut) = connected*(1-latchSOut);
+    connected * (1-connected) = 0;
+    rBit *( 1- rBit) = 0;
+    (1-rBitValid)*rBit = 0;        // Force rBit to 0 on non used pins.
+    sOutBit *( 1- sOutBit) = 0;
+
+    /*
+    connected, sOutBit, rBit   => sInBit
+        0         0       0          0
+        0         0       1          1
+        0         1       0          0
+        0         1       1          1
+        1         0       0          0
+        1         0       1          1
+        1         1       0          1
+        1         1       1          0
+    */
+
+    pol aux_sInBit = (sOutBit - 2*sOutBit*rBit);
+    pol sInBit = connected * aux_sInBit + rBit;
+
+    pol constant ConnSOutBit, ConnSInBit, ConnNine2OneBit;
+
+    {sOutBit, sInBit, Nine2One.bit} connect {ConnSOutBit, ConnSInBit, ConnNine2OneBit}
+

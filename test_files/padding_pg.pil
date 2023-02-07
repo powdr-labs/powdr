@@ -1,0 +1,182 @@
+include "global.pil";
+include "poseidong.pil";
+
+namespace PaddingPG(%N);
+
+    // Polynomials that are used to compute a hash chunk
+    pol commit acc[8];
+    pol commit freeIn;
+    pol commit addr;
+
+    freeIn in Global.BYTE;
+
+    pol constant F[8];
+    pol constant lastBlock;
+
+    // rem: It can be different only the first byte of a new Hash.
+    pol commit rem;
+
+    rem' * (1-lastHash) = (rem-1)*(1-lastHash);
+
+    pol commit remInv;
+    pol remIsZero = 1 - rem*remInv;
+    remIsZero*rem = 0;
+
+
+    pol commit spare;
+    pol lastHash = lastBlock*(spare + remIsZero);
+    spare' = (spare + remIsZero)*(1-lastHash);
+
+    pol commit lastHashLen;
+    pol commit lastHashDigest;
+
+    lastHashLen * (1 - lastHashLen) = 0;
+    lastHashDigest * (1 - lastHashDigest) = 0;
+
+    lastHashLen * (1 - lastHash) = 0;
+    lastHashDigest * (1 - lastHash) = 0;
+
+    pol commit firstHash;
+    firstHash' = lastHash;
+
+    pol aFreeIn = (1 - (remIsZero + spare))*freeIn + remIsZero + lastHash*0x80;
+
+    pol acc0C = acc[0] + F[0] * aFreeIn;
+    pol acc1C = acc[1] + F[1] * aFreeIn;
+    pol acc2C = acc[2] + F[2] * aFreeIn;
+    pol acc3C = acc[3] + F[3] * aFreeIn;
+    pol acc4C = acc[4] + F[4] * aFreeIn;
+    pol acc5C = acc[5] + F[5] * aFreeIn;
+    pol acc6C = acc[6] + F[6] * aFreeIn;
+    pol acc7C = acc[7] + F[7] * aFreeIn;
+
+    acc[0]' = acc0C*(1-lastBlock);
+    acc[1]' = acc1C*(1-lastBlock);
+    acc[2]' = acc2C*(1-lastBlock);
+    acc[3]' = acc3C*(1-lastBlock);
+    acc[4]' = acc4C*(1-lastBlock);
+    acc[5]' = acc5C*(1-lastBlock);
+    acc[6]' = acc6C*(1-lastBlock);
+    acc[7]' = acc7C*(1-lastBlock);
+
+    lastBlock {
+        acc0C,
+        acc1C,
+        acc2C,
+        acc3C,
+        acc4C,
+        acc5C,
+        acc6C,
+        acc7C,
+        prevHash0,
+        prevHash1,
+        prevHash2,
+        prevHash3,
+        curHash0,
+        curHash1,
+        curHash2,
+        curHash3
+     } in PoseidonG.LATCH {
+        PoseidonG.in0,
+        PoseidonG.in1,
+        PoseidonG.in2,
+        PoseidonG.in3,
+        PoseidonG.in4,
+        PoseidonG.in5,
+        PoseidonG.in6,
+        PoseidonG.in7,
+        PoseidonG.hashType,
+        PoseidonG.cap1,
+        PoseidonG.cap2,
+        PoseidonG.cap3,
+        PoseidonG.hash0,
+        PoseidonG.hash1,
+        PoseidonG.hash2,
+        PoseidonG.hash3
+     };
+
+    pol commit curHash0, curHash1, curHash2, curHash3;
+    curHash0' * (1-lastBlock) = curHash0*(1-lastBlock);
+    curHash1' * (1-lastBlock) = curHash1*(1-lastBlock);
+    curHash2' * (1-lastBlock) = curHash2*(1-lastBlock);
+    curHash3' * (1-lastBlock) = curHash3*(1-lastBlock);
+
+    pol commit prevHash0, prevHash1, prevHash2, prevHash3;
+    prevHash0' = lastBlock*(curHash0 - prevHash0)  +  prevHash0   - lastHash*curHash0;
+    prevHash1' = lastBlock*(curHash1 - prevHash1)  +  prevHash1   - lastHash*curHash1;
+    prevHash2' = lastBlock*(curHash2 - prevHash2)  +  prevHash2   - lastHash*curHash2;
+    prevHash3' = lastBlock*(curHash3 - prevHash3)  +  prevHash3   - lastHash*curHash3;
+
+    pol commit incCounter;
+    // if lastHash=0 && lastBLock=0 then incCounter'=incCounter
+    // if lastHash=0 && lastBLock=1 then incCounter'=incCounter+1
+    // if lastHash=1 && lastBlock=1 then incCounter'=1
+    incCounter' = incCounter*(1-lastBlock) + (incCounter +1)*(lastBlock-lastHash) + lastHash;
+
+
+
+    pol commit len;
+    len * firstHash = rem * firstHash;
+    len'*(1-lastHash) = len*(1-lastHash);
+
+    (addr' -addr) * (1-lastHash) = 0;
+
+    pol doInc = lastHash * (1-Global.L1');
+    (addr' - 1 -addr) * doInc = 0;
+
+    // chunkReader generator
+
+    pol commit crOffset;
+    pol commit crLen;
+
+    pol commit crOffsetInv;
+    pol crLatch = 1 - crOffset*crOffsetInv;
+    crOffset * crLatch = 0;
+
+    crOffset'*(1-crLatch) = (crOffset - 1)*(1-crLatch);
+    crLen'*(1-crLatch) = crLen*(1-crLatch);
+    crLatch * crOffset' = crLatch * (crLen' -1);
+
+    pol commit crF0, crF1, crF2, crF3, crF4, crF5, crF6, crF7;
+
+    { crOffset, crF0, crF1, crF2, crF3,
+                crF4, crF5, crF6, crF7} in
+    { Global.STEP32, Global.BYTE_FACTOR[0], Global.BYTE_FACTOR[1], Global.BYTE_FACTOR[2], Global.BYTE_FACTOR[3],
+                     Global.BYTE_FACTOR[4], Global.BYTE_FACTOR[5], Global.BYTE_FACTOR[6], Global.BYTE_FACTOR[7] };
+
+
+    pol commit crV0, crV1, crV2, crV3, crV4, crV5, crV6, crV7;
+
+    pol crV0C = crV0 + crF0 * aFreeIn;
+    pol crV1C = crV1 + crF1 * aFreeIn;
+    pol crV2C = crV2 + crF2 * aFreeIn;
+    pol crV3C = crV3 + crF3 * aFreeIn;
+    pol crV4C = crV4 + crF4 * aFreeIn;
+    pol crV5C = crV5 + crF5 * aFreeIn;
+    pol crV6C = crV6 + crF6 * aFreeIn;
+    pol crV7C = crV7 + crF7 * aFreeIn;
+
+    crV0' = crV0C*(1-crLatch);
+    crV1' = crV1C*(1-crLatch);
+    crV2' = crV2C*(1-crLatch);
+    crV3' = crV3C*(1-crLatch);
+    crV4' = crV4C*(1-crLatch);
+    crV5' = crV5C*(1-crLatch);
+    crV6' = crV6C*(1-crLatch);
+    crV7' = crV7C*(1-crLatch);
+
+    (1-crLatch) * lastHash = 0;  // Ensure qhen a hash ends it resets the address.
+
+
+    /* Read Data output
+        crLatch [hash0, hash1, hash2, hash3, hash4, hash5, hash6, hash7, crOffset - crLen -1, crLen, crV0C, crV1C, crV2C, crV3C, crV4C, crV5C, crV6C, crV7C]
+    */
+
+    /* Read Len output
+        lastHash [hash0, hash1, hash2, hash3, hash4, hash5, hash6, hash7, len]
+    */
+
+
+
+
+

@@ -1,0 +1,155 @@
+include "padding_kkbit.pil";
+
+namespace PaddingKK(%N);
+
+    // Polynomials that are used to compute a hash chunk
+    pol commit freeIn;
+    pol constant r8Id;
+    pol commit connected;
+    pol commit addr;
+
+    pol constant lastBlock;
+    pol constant lastBlockLatch;
+    pol constant r8valid;
+
+    // rem: It can be different only the first byte of a new Hash.
+    pol commit rem;
+
+    rem' * (1-lastHash) = (rem-1)*(1-lastHash);
+
+    pol commit remInv;
+    pol remIsZero = 1 - rem*remInv;
+    remIsZero*rem = 0;
+
+    pol commit spare;
+    pol lastHash = lastBlock*(spare + remIsZero);
+    pol lastHashLatch = lastBlockLatch * (spare + remIsZero);
+    spare' = (spare + remIsZero)*(1-lastHash);
+
+    pol commit lastHashLen;
+    pol commit lastHashDigest;
+
+    lastHashLen * (1 - lastHashLen) = 0;
+    lastHashDigest * (1 - lastHashDigest) = 0;
+
+    lastHashLen * (1 - lastHashLatch) = 0;
+    lastHashDigest * (1 - lastHashLatch) = 0;
+
+    pol commit firstHash;
+    firstHash' = lastHash;
+
+    pol aFreeIn = (1 - (remIsZero + spare))*freeIn + remIsZero + lastHash*0x80;
+    r8valid {aFreeIn, r8Id, connected} in { PaddingKKBit.r8, PaddingKKBit.r8Id, PaddingKKBit.connected };
+
+    connected' * ( 1-lastBlock) = connected * (1-lastBlock);
+    connected'*lastBlock = (1 - lastHash)*lastBlock;
+
+    pol constant sOutId;
+
+    lastHashLatch {
+        hash0,
+        hash1,
+        hash2,
+        hash3,
+        hash4,
+        hash5,
+        hash6,
+        hash7,
+        sOutId
+     } in {
+        PaddingKKBit.sOut0,
+        PaddingKKBit.sOut1,
+        PaddingKKBit.sOut2,
+        PaddingKKBit.sOut3,
+        PaddingKKBit.sOut4,
+        PaddingKKBit.sOut5,
+        PaddingKKBit.sOut6,
+        PaddingKKBit.sOut7,
+        PaddingKKBit.sOutId
+     };
+
+    pol constant forceLastHash;
+    (1-lastHash)*forceLastHash = 0;   // Force first block to be the beggining
+
+    pol commit len;
+    len * firstHash = rem * firstHash;
+    len'*(1-lastHash) = len*(1-lastHash);
+
+    pol commit hash0, hash1, hash2, hash3, hash4, hash5, hash6, hash7;
+    (hash0' - hash0) * (1-lastHash) = 0;
+    (hash1' - hash1) * (1-lastHash) = 0;
+    (hash2' - hash2) * (1-lastHash) = 0;
+    (hash3' - hash3) * (1-lastHash) = 0;
+    (hash4' - hash4) * (1-lastHash) = 0;
+    (hash5' - hash5) * (1-lastHash) = 0;
+    (hash6' - hash6) * (1-lastHash) = 0;
+    (hash7' - hash7) * (1-lastHash) = 0;
+
+    (addr' -addr) * (1-lastHash) = 0;
+    (addr' - 1 -addr) * lastHashLatch = 0;
+
+    pol commit incCounter;
+    // if lastHash=0 && lastBLock=0 then incCounter'=incCounter
+    // if lastHash=0 && lastBLock=1 then incCounter'=incCounter+1
+    // if lastHash=1 && lastBlock=1 then incCounter'=1
+    incCounter' = incCounter*(1-lastBlock) + (incCounter +1)*(lastBlock-lastHash) + lastHash;
+
+
+    // chunkReader generator
+
+    pol commit crOffset;
+    pol commit crLen;
+
+    pol commit crOffsetInv;
+    pol crLatch = 1 - crOffset*crOffsetInv;
+    crOffset * crLatch = 0;
+
+    crOffset'*(1-crLatch) = (crOffset - 1)*(1-crLatch);
+    crLen'*(1-crLatch) = crLen*(1-crLatch);
+    crLatch * crOffset' = crLatch * (crLen' -1);
+
+    pol commit crF0, crF1, crF2, crF3, crF4, crF5, crF6, crF7;
+
+    { crOffset, crF0, crF1, crF2, crF3,
+                crF4, crF5, crF6, crF7} in
+    { Global.STEP32, Global.BYTE_FACTOR[0], Global.BYTE_FACTOR[1], Global.BYTE_FACTOR[2], Global.BYTE_FACTOR[3],
+                     Global.BYTE_FACTOR[4], Global.BYTE_FACTOR[5], Global.BYTE_FACTOR[6], Global.BYTE_FACTOR[7] };
+
+
+    pol commit crV0, crV1, crV2, crV3, crV4, crV5, crV6, crV7;
+
+    pol crV0C = crV0 + crF0 * aFreeIn;
+    pol crV1C = crV1 + crF1 * aFreeIn;
+    pol crV2C = crV2 + crF2 * aFreeIn;
+    pol crV3C = crV3 + crF3 * aFreeIn;
+    pol crV4C = crV4 + crF4 * aFreeIn;
+    pol crV5C = crV5 + crF5 * aFreeIn;
+    pol crV6C = crV6 + crF6 * aFreeIn;
+    pol crV7C = crV7 + crF7 * aFreeIn;
+
+    crV0' = crV0C*(1-crLatch);
+    crV1' = crV1C*(1-crLatch);
+    crV2' = crV2C*(1-crLatch);
+    crV3' = crV3C*(1-crLatch);
+    crV4' = crV4C*(1-crLatch);
+    crV5' = crV5C*(1-crLatch);
+    crV6' = crV6C*(1-crLatch);
+    crV7' = crV7C*(1-crLatch);
+
+    (1-crLatch) * lastHash = 0;  // Ensure qhen a hash ends it resets the address.
+
+    /* Read Data output
+        crLatch * crValid {addr, PaddingKK.len - PaddingKK.rem - PaddingKK.crLen + 1, crLen, crV0C, crV1C, crV2C, crV3C, crV4C, crV5C, crV6C, crV7C}
+    */
+
+    /* Read Len output
+        lastHashLatch {addr, len}
+    */
+
+    /* Read Len digest
+        lastHashLatch { addr, hash0, hash1, hash2, hash3, hash4, hash5, hash6, hash7 }
+    */
+
+
+
+

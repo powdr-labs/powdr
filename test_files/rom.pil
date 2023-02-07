@@ -1,0 +1,41 @@
+namespace Rom(%N);
+
+    pol constant CONST0;
+    pol constant CONST1;
+    pol constant CONST2;
+    pol constant CONST3;
+    pol constant CONST4;
+    pol constant CONST5;
+    pol constant CONST6;
+    pol constant CONST7;
+    pol constant offset;
+
+    pol constant inA, inB, inC, inROTL_C, inD, inE, inSR, inFREE, inCTX, inSP, inPC, inGAS, inMAXMEM, inHASHPOS, inSTEP, inRR ,inRCX;
+    pol constant inCntArith, inCntBinary, inCntKeccakF, inCntMemAlign, inCntPaddingPG, inCntPoseidonG;
+    pol constant incStack;
+    pol constant binOpcode;
+    pol constant jmpAddr, elseAddr;
+
+    pol constant line;
+
+    pol constant operations;
+
+    /*
+      comment genereated with:
+      node tools/pil_pol_table/bits_compose.js "arithEq0,arithEq1,arithEq2,assert,bin,hashK,hashKDigest,hashKLen,hashP,hashPDigest,hashPLen,ind,indRR,isMem,isStack,JMP,JMPC,JMPN,memAlignRD,memAlignWR,memAlignWR8,mOp,mWR,repeat,setA,setB,setC,setCTX,setD,setE,setGAS,setHASHPOS,setMAXMEM,setPC,setRCX,setRR,setSP,setSR,sRD,sWR,useCTX,useJmpAddr,JMPZ,call,return,hashK1,hashP1,useElseAddr"
+
+      operations =
+              2**0  * arithEq0      + 2**1  * arithEq1      + 2**2  * arithEq2      + 2**3  * assert
+            + 2**4  * bin           + 2**5  * hashK         + 2**6  * hashKDigest   + 2**7  * hashKLen
+            + 2**8  * hashP         + 2**9  * hashPDigest   + 2**10 * hashPLen      + 2**11 * ind
+            + 2**12 * indRR         + 2**13 * isMem         + 2**14 * isStack       + 2**15 * JMP
+            + 2**16 * JMPC          + 2**17 * JMPN          + 2**18 * memAlignRD    + 2**19 * memAlignWR
+            + 2**20 * memAlignWR8   + 2**21 * mOp           + 2**22 * mWR           + 2**23 * repeat
+            + 2**24 * setA          + 2**25 * setB          + 2**26 * setC          + 2**27 * setCTX
+            + 2**28 * setD          + 2**29 * setE          + 2**30 * setGAS        + 2**31 * setHASHPOS
+            + 2**32 * setMAXMEM     + 2**33 * setPC         + 2**34 * setRCX        + 2**35 * setRR
+            + 2**36 * setSP         + 2**37 * setSR         + 2**38 * sRD           + 2**39 * sWR
+            + 2**40 * useCTX        + 2**41 * useJmpAddr    + 2**42 * JMPZ          + 2**43 * call
+            + 2**44 * return        + 2**45 * hashK1        + 2**46 * hashP1        + 2**47 * useElseAddr
+
+    */

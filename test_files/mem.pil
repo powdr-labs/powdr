@@ -1,0 +1,49 @@
+include "global.pil";
+namespace Mem(%N);
+
+    pol INCS = Global.STEP + 1;
+    pol ISNOTLAST = (1 - Global.LLAST);
+
+    pol commit addr;
+    pol commit step;
+    pol commit mOp, mWr;
+    pol commit val[8];
+    pol commit lastAccess; // 1 if its the last access of a given address
+
+    // The list is sorted by [addr, step]
+
+    lastAccess * (lastAccess - 1) = 0;
+    ISNOTLAST { lastAccess*(  addr' - addr - (step'-step) )  +   (step'-step) } in INCS;
+    (1 - lastAccess) * (addr' - addr) = 0;
+
+    mOp * (mOp -1) = 0;
+    mWr * (mWr -1) = 0;
+    // mWr could be 1 only if mOp is 1
+    (1 - mOp) * mWr = 0;
+
+    pol isWrite = mOp' * mWr';
+    pol rdSame = (1-isWrite) * (1-lastAccess);
+    pol rdDifferent = (1-isWrite) * lastAccess;
+
+    // lastAccess has to be 1 in the last evaluation. This is necessary to
+    // validate [rdDifferent * (val[0]') = 0;] correctly (in a cyclic way)
+    (lastAccess - 1) * (1 - ISNOTLAST) = 0;
+
+    rdSame * (val[0]' - val[0])  =  0;
+    rdSame * (val[1]' - val[1])  =  0;
+    rdSame * (val[2]' - val[2])  =  0;
+    rdSame * (val[3]' - val[3])  =  0;
+    rdSame * (val[4]' - val[4])  =  0;
+    rdSame * (val[5]' - val[5])  =  0;
+    rdSame * (val[6]' - val[6])  =  0;
+    rdSame * (val[7]' - val[7])  =  0;
+
+    // The first evaluation is successfully validated when the evaluation cycle is restarted
+    rdDifferent * (val[0]')  =  0;
+    rdDifferent * (val[1]')  =  0;
+    rdDifferent * (val[2]')  =  0;
+    rdDifferent * (val[3]')  =  0;
+    rdDifferent * (val[4]')  =  0;
+    rdDifferent * (val[5]')  =  0;
+    rdDifferent * (val[6]')  =  0;
+    rdDifferent * (val[7]')  =  0;

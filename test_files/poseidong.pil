@@ -1,0 +1,142 @@
+namespace PoseidonG(%N);
+
+    pol constant LAST;   // 0, 0, 0, ...0, 1,      0, ...., 0, 1, 0, ....
+    pol constant LATCH;  // 1, 0, 0, 0, ..., 0,    1, 0, 0,
+    pol constant LASTBLOCK;   // 0, 0, 0, ...0, 1,      0, ...., 0, 1, 0, ....
+    pol constant PARTIAL;
+    pol constant C[12];
+    pol commit in0, in1, in2, in3, in4, in5, in6, in7, hashType, cap1, cap2, cap3;
+    pol commit hash0, hash1, hash2, hash3;
+    pol commit result1, result2, result3;
+
+    pol a0 = in0 + C[0];
+    pol a1 = in1 + C[1];
+    pol a2 = in2 + C[2];
+    pol a3 = in3 + C[3];
+    pol a4 = in4 + C[4];
+    pol a5 = in5 + C[5];
+    pol a6 = in6 + C[6];
+    pol a7 = in7 + C[7];
+    pol a8 = hashType + C[8];
+    pol a9 = cap1 + C[9];
+    pol a10 = cap2 + C[10];
+    pol a11 = cap3 + C[11];
+
+    pol x2_0 = a0 * a0;
+    pol x4_0 = x2_0 * x2_0;
+    pol x6_0 = x2_0 * x4_0;
+    pol x7_0 = x6_0 * a0;
+
+    pol x2_1 = a1 * a1;
+    pol x4_1 = x2_1 * x2_1;
+    pol x6_1 = x2_1 * x4_1;
+    pol x7_1 = x6_1 * a1;
+
+    pol x2_2 = a2 * a2;
+    pol x4_2 = x2_2 * x2_2;
+    pol x6_2 = x2_2 * x4_2;
+    pol x7_2 = x6_2 * a2;
+
+    pol x2_3 = a3 * a3;
+    pol x4_3 = x2_3 * x2_3;
+    pol x6_3 = x2_3 * x4_3;
+    pol x7_3 = x6_3 * a3;
+
+    pol x2_4 = a4 * a4;
+    pol x4_4 = x2_4 * x2_4;
+    pol x6_4 = x2_4 * x4_4;
+    pol x7_4 = x6_4 * a4;
+
+    pol x2_5 = a5 * a5;
+    pol x4_5 = x2_5 * x2_5;
+    pol x6_5 = x2_5 * x4_5;
+    pol x7_5 = x6_5 * a5;
+
+    pol x2_6 = a6 * a6;
+    pol x4_6 = x2_6 * x2_6;
+    pol x6_6 = x2_6 * x4_6;
+    pol x7_6 = x6_6 * a6;
+
+    pol x2_7 = a7 * a7;
+    pol x4_7 = x2_7 * x2_7;
+    pol x6_7 = x2_7 * x4_7;
+    pol x7_7 = x6_7 * a7;
+
+    pol x2_8 = a8 * a8;
+    pol x4_8 = x2_8 * x2_8;
+    pol x6_8 = x2_8 * x4_8;
+    pol x7_8 = x6_8 * a8;
+
+    pol x2_9 = a9 * a9;
+    pol x4_9 = x2_9 * x2_9;
+    pol x6_9 = x2_9 * x4_9;
+    pol x7_9 = x6_9 * a9;
+
+    pol x2_10 = a10 * a10;
+    pol x4_10 = x2_10 * x2_10;
+    pol x6_10 = x2_10 * x4_10;
+    pol x7_10 = x6_10 * a10;
+
+    pol x2_11 = a11 * a11;
+    pol x4_11 = x2_11 * x2_11;
+    pol x6_11 = x2_11 * x4_11;
+    pol x7_11 = x6_11 * a11;
+
+    pol b0 = x7_0;
+    pol b1 = PARTIAL * (a1 - x7_1) + x7_1;
+    pol b2 = PARTIAL * (a2 - x7_2) + x7_2;
+    pol b3 = PARTIAL * (a3 - x7_3) + x7_3;
+    pol b4 = PARTIAL * (a4 - x7_4) + x7_4;
+    pol b5 = PARTIAL * (a5 - x7_5) + x7_5;
+    pol b6 = PARTIAL * (a6 - x7_6) + x7_6;
+    pol b7 = PARTIAL * (a7 - x7_7) + x7_7;
+    pol b8 = PARTIAL * (a8 - x7_8) + x7_8;
+    pol b9 = PARTIAL * (a9 - x7_9) + x7_9;
+    pol b10 = PARTIAL * (a10 - x7_10) + x7_10;
+    pol b11 = PARTIAL * (a11 - x7_11) + x7_11;
+
+    pol  c0 = 25*b0 + 15*b1 + 41*b2 + 16*b3 +  2*b4 + 28*b5 + 13*b6 + 13*b7 + 39*b8 + 18*b9 + 34*b10 + 20*b11;
+    pol  c1 = 20*b0 + 17*b1 + 15*b2 + 41*b3 + 16*b4 +  2*b5 + 28*b6 + 13*b7 + 13*b8 + 39*b9 + 18*b10 + 34*b11 ;
+    pol  c2 = 34*b0 + 20*b1 + 17*b2 + 15*b3 + 41*b4 + 16*b5 +  2*b6 + 28*b7 + 13*b8 + 13*b9 + 39*b10 + 18*b11;
+    pol  c3 = 18*b0 + 34*b1 + 20*b2 + 17*b3 + 15*b4 + 41*b5 + 16*b6 +  2*b7 + 28*b8 + 13*b9 + 13*b10 + 39*b11;
+    pol  c4 = 39*b0 + 18*b1 + 34*b2 + 20*b3 + 17*b4 + 15*b5 + 41*b6 + 16*b7 +  2*b8 + 28*b9 + 13*b10 + 13*b11;
+    pol  c5 = 13*b0 + 39*b1 + 18*b2 + 34*b3 + 20*b4 + 17*b5 + 15*b6 + 41*b7 + 16*b8 +  2*b9 + 28*b10 + 13*b11;
+    pol  c6 = 13*b0 + 13*b1 + 39*b2 + 18*b3 + 34*b4 + 20*b5 + 17*b6 + 15*b7 + 41*b8 + 16*b9 +  2*b10 + 28*b11;
+    pol  c7 = 28*b0 + 13*b1 + 13*b2 + 39*b3 + 18*b4 + 34*b5 + 20*b6 + 17*b7 + 15*b8 + 41*b9 + 16*b10 +  2*b11;
+    pol  c8 =  2*b0 + 28*b1 + 13*b2 + 13*b3 + 39*b4 + 18*b5 + 34*b6 + 20*b7 + 17*b8 + 15*b9 + 41*b10 + 16*b11;
+    pol  c9 = 16*b0 +  2*b1 + 28*b2 + 13*b3 + 13*b4 + 39*b5 + 18*b6 + 34*b7 + 20*b8 + 17*b9 + 15*b10 + 41*b11;
+    pol c10 = 41*b0 + 16*b1 +  2*b2 + 28*b3 + 13*b4 + 13*b5 + 39*b6 + 18*b7 + 34*b8 + 20*b9 + 17*b10 + 15*b11;
+    pol c11 = 15*b0 + 41*b1 + 16*b2 +  2*b3 + 28*b4 + 13*b5 + 13*b6 + 39*b7 + 18*b8 + 34*b9 + 20*b10 + 17*b11;
+
+    (in0' - c0) * (1-LAST) = 0;
+    (in1' - c1) * (1-LAST) = 0;
+    (in2' - c2) * (1-LAST) = 0;
+    (in3' - c3) * (1-LAST) = 0;
+    (in4' - c4) * (1-LAST) = 0;
+    (in5' - c5) * (1-LAST) = 0;
+    (in6' - c6) * (1-LAST) = 0;
+    (in7' - c7) * (1-LAST) = 0;
+    (hashType' - c8) * (1-LAST) = 0;
+    (cap1' - c9) * (1-LAST) = 0;
+    (cap2' - c10) * (1-LAST) = 0;
+    (cap3' - c11) * (1-LAST) = 0;
+
+    (hash0 - in0)*LASTBLOCK = 0;
+    (hash1 - in1)*LASTBLOCK = 0;
+    (hash2 - in2)*LASTBLOCK = 0;
+    (hash3 - in3)*LASTBLOCK = 0;
+
+    (hash0 - hash0')*(1-LAST) = 0;
+    (hash1 - hash1')*(1-LAST) = 0;
+    (hash2 - hash2')*(1-LAST) = 0;
+    (hash3 - hash3')*(1-LAST) = 0;
+
+    result1 * (1 - result1) = 0;
+    result2 * (1 - result2) = 0;
+    result3 * (1 - result3) = 0;
+
+    result1 * (1 - LATCH) = 0;
+    result2 * (1 - LATCH) = 0;
+    result3 * (1 - LATCH) = 0;
+
+

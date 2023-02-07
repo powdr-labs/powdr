@@ -1,0 +1,192 @@
+include "global.pil";
+namespace MemAlign(%N);
+
+    /*
+    * OPERATIONS
+    *
+    *  (m0,m1,D) => v
+    *  (m0,m1,D,v) => (w0, w1)
+    *
+    *  @m0 = addr   @m1 = addr + 32 (ethereum)
+    *
+    *  Ethereum => BigEndian
+    *  m0[7],m0[6],...,m0[1],m0[0],m1[7],m1[6],...,m1[1],m1[0]
+    *
+    *  inM (8 bits, 32 steps)
+    */
+
+    // 32 bytes of M0, M1 ordered from HSB to LSB (32, 31, 30, ... == M[7].3, M[7].2, M[7].1, M[7].0, M[6].3, ..)
+    pol commit inM[2];
+
+    // 32 bytes of V
+    pol commit inV;
+
+    // write 32 bytes (256 bits)
+    pol commit wr256;
+
+    // write 1 byte (8 bits), its special case because need to ignore
+    // the rest of bytes, only LSB of V was stored (on w0 with offset)
+    pol commit wr8;
+
+    pol commit m0[8];
+    pol commit m1[8];
+    pol commit w0[8];
+    pol commit w1[8];
+    pol commit v[8];
+
+    // when m1 is "active", means aligned with inV
+    // also when wr8 = 1, used to indicate when store the LSB
+    pol commit selM1;
+
+    // factors to build V[] in correct way, because order of V bytes
+    // changes according the offset and wr8
+    pol commit factorV[8];
+
+    pol commit offset;
+
+    // BYTE_C4096 = 0 (x4096), 1 (x4096), ... , 31 (x4096), 32 (x4096), 0 (x4096), 1 (x4096), ...
+    pol constant BYTE_C4096; // [0:4096..255:4096]
+
+    // FACTOR was same for all combinations of offset, wr8, wr256 is a f(step)
+    // FACTOR[7] = 2**24, 2**16, 2**8, 1, 0 (x60)
+    // FACTOR[6] = 0, 0, 0, 0, 2**24, 2**16, 2**8, 1, 0 (x56)
+    // FACTOR[5] = 0, 0, 0, 0, 0, 0, 0, 0, 2**24, 2**16, 2**8, 1, 0 (x52)
+    // :
+    // FACTOR[0] = 0 (x28), 2**24, 2**16, 2**8, 1, 0 (x32)
+    pol constant FACTOR[8];
+
+    // FACTOR change according the combinations of offset, wr8, wr256 and step.
+    pol constant FACTORV[8];
+
+    // STEP32
+    //    0 - 1023  WR256 = 0 WR8 = 0
+    // 1024 - 2047  WR256 = 0 WR8 = 0
+    // 2048 - 3071  WR256 = 1 WR8 = 0
+    // 3072 - 4096  WR256 = 0 WR8 = 1
+    pol constant WR256; // [0:2048,1:1024:0:1024]
+    pol constant WR8;   // [0:3072,1:1024]
+
+    // OFFSET = 0 (x32), 1 (x32), ... , 31 (x32), 32 (x32), 0 (x32), 1 (x32), ...
+    pol constant OFFSET; // [0:32..31:32]
+
+    pol constant SELM1;
+
+    pol RESET = Global.CLK32[0];
+
+    //              RangeCheck                  Latch   Clock
+    // factorV      Plookup (FACTORV)           no      yes
+    // wr256        Plookup (WR256)             yes     no
+    // wr8          Plookup (WR8)               yes     no
+    // offset       Plookup (OFFSET)            yes     no
+    // inV          RangeCheck (BYTE_C4096)     no      yes
+    // inM[0..1]    RangeCheck (BYTE2A,BYTE2)   no      yes
+    // m0[0..7]     Built                       no      yes
+    // m1[0..7]     Built                       no      yes
+    // w0[0..7]     Built                       no      yes
+    // w1[0..7]     Built                       no      yes
+    // v[0..7]      Built                       no      yes
+    // selM1        Plookup (SELM1)             no      yes
+
+    // Latchs
+    (1 - RESET) * wr256' = (1 - RESET) * wr256;
+    (1 - RESET) * offset' = (1 - RESET) * offset;
+    (1 - RESET) * wr8' = (1 - RESET) * wr8;
+
+    pol commit resultRd;
+    pol commit resultWr8;
+    pol commit resultWr256;
+    (1 - RESET) * resultRd = 0;
+    (1 - RESET) * resultWr8 = 0;
+    (1 - RESET) * resultWr256 = 0;
+
+    (1 - wr8) * resultWr8 = 0;
+    (1 - wr256) * resultWr256 = 0;
+    wr8 * wr256 = 0;
+
+    // RangeCheck
+    {inM[1], inM[0]} in {Global.BYTE_2A, Global.BYTE};
+
+    // Plookup
+    {
+        Global.STEP32, offset', wr256', wr8', selM1, inV,
+        factorV[0], factorV[1], factorV[2], factorV[3], factorV[4], factorV[5], factorV[6], factorV[7]
+    } in {
+        Global.STEP32, OFFSET, WR256, WR8, SELM1, BYTE_C4096,
+        FACTORV[0], FACTORV[1], FACTORV[2], FACTORV[3], FACTORV[4], FACTORV[5], FACTORV[6], FACTORV[7]
+    };
+
+    m0[0]' = (1-RESET) * m0[0] + FACTOR[0] * inM[0];
+    m0[1]' = (1-RESET) * m0[1] + FACTOR[1] * inM[0];
+    m0[2]' = (1-RESET) * m0[2] + FACTOR[2] * inM[0];
+    m0[3]' = (1-RESET) * m0[3] + FACTOR[3] * inM[0];
+    m0[4]' = (1-RESET) * m0[4] + FACTOR[4] * inM[0];
+    m0[5]' = (1-RESET) * m0[5] + FACTOR[5] * inM[0];
+    m0[6]' = (1-RESET) * m0[6] + FACTOR[6] * inM[0];
+    m0[7]' = (1-RESET) * m0[7] + FACTOR[7] * inM[0];
+
+    m1[0]' = (1-RESET) * m1[0] + FACTOR[0] * inM[1];
+    m1[1]' = (1-RESET) * m1[1] + FACTOR[1] * inM[1];
+    m1[2]' = (1-RESET) * m1[2] + FACTOR[2] * inM[1];
+    m1[3]' = (1-RESET) * m1[3] + FACTOR[3] * inM[1];
+    m1[4]' = (1-RESET) * m1[4] + FACTOR[4] * inM[1];
+    m1[5]' = (1-RESET) * m1[5] + FACTOR[5] * inM[1];
+    m1[6]' = (1-RESET) * m1[6] + FACTOR[6] * inM[1];
+    m1[7]' = (1-RESET) * m1[7] + FACTOR[7] * inM[1];
+
+    // selW0 contains data to be store in w0, must be 0 in "reading mode"
+    // in "writting mode", in particular with wr8 only on byte must be
+    // stored, for this reason use selM1 that was active only one clock (in wr8 mode)
+    pol selW0 = (1 - selM1) * wr256' + selM1 * wr8';
+
+    // selW1 contains data to be store in w1, must be 0 in "reading mode"
+    pol selW1 = selM1 * wr256';
+
+    // NOTE: when wr8 = 1 implies wr256 = 0, check in this situations where use selM1
+    // to verify that non exists collateral effects
+    //
+    // pol selW0 = selM1 (because wr256 = 0 and wr8 = 1)
+    //
+    // selM1 used in pol _inM, but _inM is only used on dataV
+    // pol dataV = (1 - wr256' - wr8') * _inM + (wr256' + wr8') * inV;
+    // pol dataV = inV (because wr256 = 0 and wr8 = 1)
+    //
+    // CONCLUSION: it's safe reuse selM1 to indicate when store byte
+
+    // data to "write" on w, if current byte must be override by V contains inV
+    // if not contains inM "in reading mode" must be 0.
+    pol dataW0 = (wr8' + wr256') * inM[0] + selW0 * (inV - inM[0]);
+    pol dataW1 = (wr8' + wr256') * inM[1] + selW1 * (inV - inM[1]);
+
+    w0[0]' = (1-RESET) * w0[0] + FACTOR[0] * dataW0;
+    w0[1]' = (1-RESET) * w0[1] + FACTOR[1] * dataW0;
+    w0[2]' = (1-RESET) * w0[2] + FACTOR[2] * dataW0;
+    w0[3]' = (1-RESET) * w0[3] + FACTOR[3] * dataW0;
+    w0[4]' = (1-RESET) * w0[4] + FACTOR[4] * dataW0;
+    w0[5]' = (1-RESET) * w0[5] + FACTOR[5] * dataW0;
+    w0[6]' = (1-RESET) * w0[6] + FACTOR[6] * dataW0;
+    w0[7]' = (1-RESET) * w0[7] + FACTOR[7] * dataW0;
+
+    w1[0]' = (1-RESET) * w1[0] + FACTOR[0] * dataW1;
+    w1[1]' = (1-RESET) * w1[1] + FACTOR[1] * dataW1;
+    w1[2]' = (1-RESET) * w1[2] + FACTOR[2] * dataW1;
+    w1[3]' = (1-RESET) * w1[3] + FACTOR[3] * dataW1;
+    w1[4]' = (1-RESET) * w1[4] + FACTOR[4] * dataW1;
+    w1[5]' = (1-RESET) * w1[5] + FACTOR[5] * dataW1;
+    w1[6]' = (1-RESET) * w1[6] + FACTOR[6] * dataW1;
+    w1[7]' = (1-RESET) * w1[7] + FACTOR[7] * dataW1;
+
+    // _inM contains "active" value of inM
+    pol _inM = (1 - selM1) * inM[0] + selM1 * inM[1];
+
+    // contains data to store in V, could be one of inM if was reading or inV if was writting
+    pol dataV = (1 - wr256' - wr8') * _inM + (wr256' + wr8') * inV;
+
+    // factorV = f(STEP, offset, wr8)
+    v[0]' = (1-RESET) * v[0] + factorV[0] * dataV;
+    v[1]' = (1-RESET) * v[1] + factorV[1] * dataV;
+    v[2]' = (1-RESET) * v[2] + factorV[2] * dataV;
+    v[3]' = (1-RESET) * v[3] + factorV[3] * dataV;
+    v[4]' = (1-RESET) * v[4] + factorV[4] * dataV;
+    v[5]' = (1-RESET) * v[5] + factorV[5] * dataV;
+    v[6]' = (1-RESET) * v[6] + factorV[6] * dataV;
+    v[7]' = (1-RESET) * v[7] + factorV[7] * dataV;
