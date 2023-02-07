@@ -91,5 +91,6 @@ mod test {
         parse_file("test_files/byte4.pil");
         parse_file("test_files/global.pil");
         parse_file("test_files/mem.pil");
+        parse_file("test_files/keccakf.pil");
     }
 }

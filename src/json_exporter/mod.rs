@@ -21,6 +21,7 @@ pub fn export(analyzed: &Analyzed) -> JsonValue {
     let mut exporter = Exporter::new(analyzed);
     let mut pol_identities = Vec::new();
     let mut plookup_identities = Vec::new();
+    let mut connection_identities = Vec::new();
     for item in &analyzed.source_order {
         match item {
             StatementIdentifier::Definition(name) => {
@@ -55,6 +56,17 @@ pub fn export(analyzed: &Analyzed) -> JsonValue {
                     line: plookup.source.line,
                 });
             }
+            StatementIdentifier::Connection(id) => {
+                let connection = &analyzed.connections[*id];
+                let pols = exporter.extract_expression_vec(&connection.polynomials, 1);
+                let connections = exporter.extract_expression_vec(&connection.connections, 1);
+                connection_identities.push(object! {
+                    pols: pols,
+                    connections: connections,
+                    fileName: connection.source.file.clone(),
+                    line: connection.source.line,
+                });
+            }
         }
     }
     object! {
@@ -68,7 +80,7 @@ pub fn export(analyzed: &Analyzed) -> JsonValue {
         polIdentities: pol_identities,
         plookupIdentities: plookup_identities,
         permutationIdentities: [],
-        connectionIdentities: []
+        connectionIdentities: connection_identities,
     }
 }
 
@@ -347,5 +359,10 @@ mod test {
     #[test]
     fn export_mem() {
         compare_export_file_ignore_idq("test_files/mem.pil");
+    }
+
+    #[test]
+    fn export_keccakf() {
+        compare_export_file_ignore_idq("test_files/keccakf.pil");
     }
 }
