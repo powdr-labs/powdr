@@ -8,6 +8,10 @@ use crate::analyzer::{
     UnaryOperator,
 };
 
+use self::expression_counter::compute_intermediate_expression_ids;
+
+mod expression_counter;
+
 struct Exporter<'a> {
     analyzed: &'a Analyzed,
     expressions: Vec<JsonValue>,
@@ -26,11 +30,12 @@ pub fn export(analyzed: &Analyzed) -> JsonValue {
         match item {
             StatementIdentifier::Definition(name) => {
                 if let (poly, Some(value)) = &analyzed.definitions[name] {
-                    let expression_id = exporter.extract_expression(value, 1);
                     assert_eq!(poly.poly_type, PolynomialType::Intermediate);
-                    exporter
-                        .intermediate_poly_expression_ids
-                        .insert(poly.id, expression_id as u64);
+                    let expression_id = exporter.extract_expression(value, 1);
+                    assert_eq!(
+                        expression_id,
+                        exporter.intermediate_poly_expression_ids[&poly.id] as usize
+                    );
                 }
             }
             StatementIdentifier::Identity(id) => {
@@ -105,7 +110,7 @@ impl<'a> Exporter<'a> {
         Self {
             analyzed,
             expressions: vec![],
-            intermediate_poly_expression_ids: HashMap::new(),
+            intermediate_poly_expression_ids: compute_intermediate_expression_ids(analyzed),
             number_q: 0,
         }
     }
@@ -168,7 +173,7 @@ impl<'a> Exporter<'a> {
     }
 
     /// returns the degree, the json value and the dependencies (intermediate polynomial IDs)
-    fn expression_to_json(&mut self, expr: &Expression) -> (u32, JsonValue, Vec<u64>) {
+    fn expression_to_json(&self, expr: &Expression) -> (u32, JsonValue, Vec<u64>) {
         match expr {
             Expression::Constant(name) => (
                 1,
@@ -308,24 +313,34 @@ mod test {
         assert_eq!(json_out, pilcom_parsed);
     }
 
-    fn set_idq_to_99(v: &mut JsonValue) {
+    /// Normalizes the json in that it replaces all idQ values by "99"
+    /// and converts hex numbers to decimal.
+    fn normalize_idq_and_hex(v: &mut JsonValue) {
         match v {
             JsonValue::Object(obj) => obj.iter_mut().for_each(|(key, value)| {
                 if key == "idQ" {
                     *value = 99.into();
+                } else if key == "value" {
+                    match value.as_str() {
+                        Some(v) if v.starts_with("0x") => {
+                            *value =
+                                format!("{}", i64::from_str_radix(&v[2..], 16).unwrap()).into();
+                        }
+                        _ => {}
+                    }
                 } else {
-                    set_idq_to_99(value)
+                    normalize_idq_and_hex(value)
                 }
             }),
-            JsonValue::Array(arr) => arr.iter_mut().for_each(set_idq_to_99),
+            JsonValue::Array(arr) => arr.iter_mut().for_each(normalize_idq_and_hex),
             _ => {}
         }
     }
 
-    fn compare_export_file_ignore_idq(file: &str) {
+    fn compare_export_file_ignore_idq_hex(file: &str) {
         let (mut json_out, mut pilcom_parsed) = generate_json_pair(file);
-        set_idq_to_99(&mut json_out);
-        set_idq_to_99(&mut pilcom_parsed);
+        normalize_idq_and_hex(&mut json_out);
+        normalize_idq_and_hex(&mut pilcom_parsed);
         assert_eq!(json_out, pilcom_parsed);
     }
 
@@ -353,23 +368,24 @@ mod test {
     fn export_arith() {
         // We ignore the specific value assigned to idQ.
         // It is just a counter and pilcom assigns it in a weird order.
-        compare_export_file_ignore_idq("test_files/arith.pil");
+        compare_export_file_ignore_idq_hex("test_files/arith.pil");
     }
 
     #[test]
     fn export_mem() {
-        compare_export_file_ignore_idq("test_files/mem.pil");
-        compare_export_file_ignore_idq("test_files/mem_align.pil");
+        compare_export_file_ignore_idq_hex("test_files/mem.pil");
+        compare_export_file_ignore_idq_hex("test_files/mem_align.pil");
     }
 
     #[test]
     fn export_keccakf() {
-        compare_export_file_ignore_idq("test_files/keccakf.pil");
+        compare_export_file_ignore_idq_hex("test_files/keccakf.pil");
     }
 
     #[test]
     fn export_padding() {
         compare_export_file("test_files/nine2one.pil");
-        compare_export_file_ignore_idq("test_files/padding_kkbit.pil");
+        compare_export_file_ignore_idq_hex("test_files/padding_kkbit.pil");
+        compare_export_file_ignore_idq_hex("test_files/padding_kk.pil");
     }
 }
