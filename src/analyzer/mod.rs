@@ -21,6 +21,7 @@ struct Context {
     definitions: HashMap<String, (Polynomial, Option<Expression>)>,
     polynomial_identities: Vec<(Expression, SourceRef)>,
     plookups: Vec<PlookupIdentity>,
+    connections: Vec<ConnectionIdentity>,
     /// The order in which definitions and identities
     /// appear in the source.
     source_order: Vec<StatementIdentifier>,
@@ -35,6 +36,7 @@ pub enum StatementIdentifier {
     Definition(String),
     Identity(usize),
     Plookup(usize),
+    Connection(usize),
 }
 
 pub struct Analyzed {
@@ -43,6 +45,7 @@ pub struct Analyzed {
     pub definitions: HashMap<String, (Polynomial, Option<Expression>)>,
     pub polynomial_identities: Vec<(Expression, SourceRef)>,
     pub plookups: Vec<PlookupIdentity>,
+    pub connections: Vec<ConnectionIdentity>,
     /// The order in which definitions and identities
     /// appear in the source.
     pub source_order: Vec<StatementIdentifier>,
@@ -82,7 +85,8 @@ impl From<Context> for Analyzed {
             constants,
             definitions,
             polynomial_identities,
-            plookups: plookup_identities,
+            plookups,
+            connections,
             source_order,
             ..
         }: Context,
@@ -91,7 +95,8 @@ impl From<Context> for Analyzed {
             constants,
             definitions,
             polynomial_identities,
-            plookups: plookup_identities,
+            plookups,
+            connections,
             source_order,
         }
     }
@@ -122,6 +127,12 @@ pub struct PlookupIdentity {
 pub struct SelectedExpressions {
     pub selector: Option<Expression>,
     pub expressions: Vec<Expression>,
+}
+
+pub struct ConnectionIdentity {
+    pub source: SourceRef,
+    pub polynomials: Vec<Expression>,
+    pub connections: Vec<Expression>,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -208,6 +219,9 @@ impl Context {
                 }
                 Statement::PlookupIdentity(start, key, haystack) => {
                     self.handle_plookup_identity(to_source_ref(*start), key, haystack)
+                }
+                Statement::ConnectIdentity(start, left, right) => {
+                    self.handle_connect_identity(to_source_ref(*start), left, right)
                 }
                 Statement::ConstantDefinition(_, name, value) => {
                     self.handle_constant_definition(name, value)
@@ -320,6 +334,22 @@ impl Context {
             .push(StatementIdentifier::Plookup(self.plookups.len() - 1));
     }
 
+    fn handle_connect_identity(
+        &mut self,
+        source: SourceRef,
+
+        left: &[ast::Expression],
+        right: &[ast::Expression],
+    ) {
+        self.connections.push(ConnectionIdentity {
+            source,
+            polynomials: self.process_expressions(left),
+            connections: self.process_expressions(right),
+        });
+        self.source_order
+            .push(StatementIdentifier::Connection(self.connections.len() - 1));
+    }
+
     fn handle_constant_definition(&mut self, name: &str, value: &ast::Expression) {
         // TODO does the order matter here?
         let is_new = self
@@ -340,12 +370,12 @@ impl Context {
     fn process_selected_expression(&self, expr: &ast::SelectedExpressions) -> SelectedExpressions {
         SelectedExpressions {
             selector: expr.selector.as_ref().map(|e| self.process_expression(e)),
-            expressions: expr
-                .expressions
-                .iter()
-                .map(|e| self.process_expression(e))
-                .collect(),
+            expressions: self.process_expressions(&expr.expressions),
         }
+    }
+
+    fn process_expressions(&self, exprs: &[ast::Expression]) -> Vec<Expression> {
+        exprs.iter().map(|e| self.process_expression(e)).collect()
     }
 
     fn process_expression(&self, expr: &ast::Expression) -> Expression {

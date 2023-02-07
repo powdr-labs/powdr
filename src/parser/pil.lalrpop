@@ -24,6 +24,7 @@ Statement = {
     PolynomialCommitDeclaration,
     PolynomialIdentity,
     PlookupIdentity,
+    ConnectIdentity,
 };
 
 Include: Statement = {
@@ -68,6 +69,10 @@ PlookupIdentity: Statement = {
 SelectedExpressions: SelectedExpressions = {
     <selector:Expression?> "{" <expressions:ExpressionList> "}" => SelectedExpressions{<>},
     Expression => SelectedExpressions{selector: None, expressions: vec![<>]},
+}
+
+ConnectIdentity: Statement = {
+    <@L> "{" <ExpressionList> "}" "connect" "{" <ExpressionList> "}" => Statement::ConnectIdentity(<>)
 }
 
 ExpressionList: Vec<Expression> = {

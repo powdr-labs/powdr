@@ -12,6 +12,7 @@ pub enum Statement {
     PolynomialCommitDeclaration(usize, Vec<PolynomialName>),
     PolynomialIdentity(usize, Expression),
     PlookupIdentity(usize, SelectedExpressions, SelectedExpressions),
+    ConnectIdentity(usize, Vec<Expression>, Vec<Expression>),
     ConstantDefinition(usize, String, Expression),
 }
 
