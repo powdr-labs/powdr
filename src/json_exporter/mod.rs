@@ -206,9 +206,16 @@ impl<'a> Exporter<'a> {
                 let (op, degree) = match op {
                     BinaryOperator::Add => ("add", cmp::max(deg_left, deg_right)),
                     BinaryOperator::Sub => ("sub", cmp::max(deg_left, deg_right)),
-                    BinaryOperator::Mul => ("mul", deg_left + deg_right), // TODO correct?
-                    BinaryOperator::Div => ("div", deg_left + deg_right), // TODO correct?
-                    BinaryOperator::Pow => ("pow", deg_left + deg_right), // TODO correct?
+                    BinaryOperator::Mul => ("mul", deg_left + deg_right),
+                    BinaryOperator::Div => panic!("Div is not really allowed"),
+                    BinaryOperator::Pow => {
+                        assert_eq!(
+                            deg_left + deg_right,
+                            0,
+                            "Exponentiation can only be used on constants."
+                        );
+                        ("pow", deg_left + deg_right)
+                    }
                 };
                 (
                     degree,
@@ -249,7 +256,7 @@ mod test {
 
     use super::*;
 
-    fn compare_export_file(file: &str) {
+    fn generate_json_pair(file: &str) -> (JsonValue, JsonValue) {
         let analyzed = analyzer::analyze(Path::new(file));
         let json_out = export(&analyzed);
 
@@ -281,15 +288,59 @@ mod test {
             panic!("Pilcom did not generate {output_file} at the expected location.")
         });
         let pilcom_parsed = json::parse(&pilcom_out).expect("Invalid json from pilcom.");
+        (json_out, pilcom_parsed)
+    }
+
+    fn compare_export_file(file: &str) {
+        let (json_out, pilcom_parsed) = generate_json_pair(file);
+        assert_eq!(json_out, pilcom_parsed);
+    }
+
+    fn set_idq_to_99(v: &mut JsonValue) {
+        match v {
+            JsonValue::Object(obj) => obj.iter_mut().for_each(|(key, value)| {
+                if key == "idQ" {
+                    *value = 99.into();
+                } else {
+                    set_idq_to_99(value)
+                }
+            }),
+            JsonValue::Array(arr) => arr.iter_mut().for_each(set_idq_to_99),
+            _ => {}
+        }
+    }
+
+    fn compare_export_file_ignore_idq(file: &str) {
+        let (mut json_out, mut pilcom_parsed) = generate_json_pair(file);
+        set_idq_to_99(&mut json_out);
+        set_idq_to_99(&mut pilcom_parsed);
         assert_eq!(json_out, pilcom_parsed);
     }
 
     #[test]
-    fn export_example_files() {
-        //compare_export_file("test_files/arith.pil");
+    fn export_config() {
         compare_export_file("test_files/config.pil");
+    }
+
+    #[test]
+    fn export_binary() {
         compare_export_file("test_files/binary.pil");
+    }
+
+    #[test]
+    fn export_byte4() {
         compare_export_file("test_files/byte4.pil");
+    }
+
+    #[test]
+    fn export_global() {
         compare_export_file("test_files/global.pil");
+    }
+
+    #[test]
+    fn export_arith() {
+        // We ignore the specific value assigned to idQ.
+        // It is just a counter and pilcom assigns it in a weird order.
+        compare_export_file_ignore_idq("test_files/arith.pil");
     }
 }
