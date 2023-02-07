@@ -366,4 +366,9 @@ mod test {
     fn export_keccakf() {
         compare_export_file_ignore_idq("test_files/keccakf.pil");
     }
+
+    #[test]
+    fn export_nine2one() {
+        compare_export_file("test_files/nine2one.pil");
+    }
 }
