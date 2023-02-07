@@ -359,6 +359,7 @@ mod test {
     #[test]
     fn export_mem() {
         compare_export_file_ignore_idq("test_files/mem.pil");
+        compare_export_file_ignore_idq("test_files/mem_align.pil");
     }
 
     #[test]
