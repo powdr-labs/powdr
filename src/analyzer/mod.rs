@@ -181,7 +181,7 @@ impl Context {
         }
         let contents = fs::read_to_string(path.clone()).unwrap();
         // TOOD make this work for other line endings
-        let line_breaks = compute_line_breaks(&contents);
+        let line_starts = compute_line_starts(&contents);
         let pil_file =
             parser::parse(Some(path.to_str().unwrap()), &contents).unwrap_or_else(|err| {
                 eprintln!("Error parsing .pil file:");
@@ -192,7 +192,7 @@ impl Context {
         self.current_dir = path.parent().unwrap().to_path_buf();
 
         let to_source_ref = |start| SourceRef {
-            line: offset_to_line(start, &line_breaks),
+            line: offset_to_line(start, &line_starts),
             file: path.file_name().unwrap().to_str().unwrap().to_string(),
         };
 
@@ -475,26 +475,27 @@ impl Context {
     }
 }
 
-fn compute_line_breaks(source: &str) -> Vec<usize> {
-    source
-        .chars()
-        .enumerate()
-        .filter_map(|(b, v)| if v == '\n' { Some(b) } else { None })
+fn compute_line_starts(source: &str) -> Vec<usize> {
+    std::iter::once(0)
+        .chain(source.match_indices('\n').map(|(i, _)| i + 1))
         .collect::<Vec<_>>()
 }
 
-fn offset_to_line(offset: usize, line_breaks: &[usize]) -> usize {
-    line_breaks.partition_point(|break_offset| break_offset < &offset) + 1
+fn offset_to_line(offset: usize, line_starts: &[usize]) -> usize {
+    match line_starts.binary_search(&offset) {
+        Ok(line) => line + 1,
+        Err(next_line) => next_line,
+    }
 }
 
 #[cfg(test)]
 mod test {
-    use super::{compute_line_breaks, offset_to_line};
+    use super::{compute_line_starts, offset_to_line};
 
     #[test]
     pub fn line_calc() {
         let input = "abc\nde";
-        let breaks = compute_line_breaks(input);
+        let breaks = compute_line_starts(input);
         let lines = (0..input.len())
             .map(|o| offset_to_line(o, &breaks))
             .collect::<Vec<_>>();
@@ -504,7 +505,7 @@ mod test {
     #[test]
     pub fn line_calc_empty_start() {
         let input = "\nab\n\nc\nde\n";
-        let breaks = compute_line_breaks(input);
+        let breaks = compute_line_starts(input);
         let lines = (0..input.len())
             .map(|o| offset_to_line(o, &breaks))
             .collect::<Vec<_>>();
