@@ -32,12 +32,13 @@ pub fn export(analyzed: &Analyzed) -> JsonValue {
         match item {
             StatementIdentifier::Definition(name) => {
                 if let (poly, Some(value)) = &analyzed.definitions[name] {
-                    assert_eq!(poly.poly_type, PolynomialType::Intermediate);
-                    let expression_id = exporter.extract_expression(value, 1);
-                    assert_eq!(
-                        expression_id,
-                        exporter.intermediate_poly_expression_ids[&poly.id] as usize
-                    );
+                    if poly.poly_type == PolynomialType::Intermediate {
+                        let expression_id = exporter.extract_expression(value, 1);
+                        assert_eq!(
+                            expression_id,
+                            exporter.intermediate_poly_expression_ids[&poly.id] as usize
+                        );
+                    }
                 }
             }
             StatementIdentifier::PublicDeclaration(name) => {
@@ -223,6 +224,9 @@ impl<'a> Exporter<'a> {
             ),
             Expression::PolynomialReference(reference) => {
                 self.polynomial_reference_to_json(reference)
+            }
+            Expression::LocalVariableReference(_) => {
+                panic!("No local variable references allowed here.")
             }
             Expression::PublicReference(name) => (
                 0,

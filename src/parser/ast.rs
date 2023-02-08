@@ -10,6 +10,7 @@ pub enum Statement {
     PolynomialDefinition(usize, String, Expression),
     PublicDeclaration(usize, String, PolynomialReference, Expression),
     PolynomialConstantDeclaration(usize, Vec<PolynomialName>),
+    PolynomialConstantDefinition(usize, String, Vec<String>, Expression),
     PolynomialCommitDeclaration(usize, Vec<PolynomialName>),
     PolynomialIdentity(usize, Expression),
     PlookupIdentity(usize, SelectedExpressions, SelectedExpressions),
