@@ -47,7 +47,7 @@ pub fn export(analyzed: &Analyzed) -> JsonValue {
                 publics.push(object! {
                     name: name.clone(),
                     polId: json["id"].clone(), // This includes the array offset
-                    polType: json["op"].clone(),
+                    polType: polynomial_reference_type_to_type(json["op"].as_str().unwrap()),
                     idx: pub_def.index as u64,
                     id: id
                 });
@@ -119,11 +119,7 @@ pub fn export(analyzed: &Analyzed) -> JsonValue {
 }
 
 fn polynomial_type_to_json_string(t: PolynomialType) -> &'static str {
-    match t {
-        PolynomialType::Committed => "cmP",
-        PolynomialType::Constant => "constP",
-        PolynomialType::Intermediate => "imP",
-    }
+    polynomial_reference_type_to_type(polynomial_reference_type_to_json_string(t))
 }
 
 fn polynomial_reference_type_to_json_string(t: PolynomialType) -> &'static str {
@@ -131,6 +127,15 @@ fn polynomial_reference_type_to_json_string(t: PolynomialType) -> &'static str {
         PolynomialType::Committed => "cm",
         PolynomialType::Constant => "const",
         PolynomialType::Intermediate => "exp",
+    }
+}
+
+fn polynomial_reference_type_to_type(t: &str) -> &'static str {
+    match t {
+        "cm" => "cmP",
+        "const" => "constP",
+        "exp" => "imP",
+        _ => panic!("Invalid polynomial referenc etype {t}"),
     }
 }
 
@@ -224,7 +229,7 @@ impl<'a> Exporter<'a> {
                 object! {
                     op: "public",
                     deg: 0,
-                    id: 99 // TODO
+                    id: self.analyzed.public_declarations[name].id,
                 },
                 Vec::new(),
             ),
@@ -445,6 +450,6 @@ mod test {
     #[test]
     fn export_main() {
         compare_export_file_ignore_idq_hex("test_files/rom.pil");
-        //compare_export_file_ignore_idq_hex("test_files/main.pil");
+        compare_export_file_ignore_idq_hex("test_files/main.pil");
     }
 }

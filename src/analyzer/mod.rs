@@ -128,6 +128,7 @@ impl Polynomial {
 }
 
 pub struct PublicDeclaration {
+    pub id: u64,
     pub source: SourceRef,
     pub name: String,
     pub polynomial: PolynomialReference,
@@ -354,15 +355,19 @@ impl Context {
         poly: &ast::PolynomialReference,
         index: &ast::Expression,
     ) {
+        let id = self.public_declarations.len() as u64;
         self.public_declarations.insert(
             name.to_string(),
             PublicDeclaration {
+                id,
                 source,
                 name: name.to_string(),
                 polynomial: self.process_polynomial_reference(poly),
                 index: self.evaluate_expression(index).unwrap(),
             },
         );
+        self.source_order
+            .push(StatementIdentifier::PublicDeclaration(name.to_string()));
     }
 
     fn handle_polynomial_identity(&mut self, source: SourceRef, expression: &ast::Expression) {
