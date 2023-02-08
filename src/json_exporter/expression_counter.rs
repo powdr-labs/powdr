@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 
 use crate::analyzer::{
-    Analyzed, ConnectionIdentity, Expression, PlookupIdentity, Polynomial, PolynomialType,
-    SelectedExpressions, StatementIdentifier,
+    Analyzed, ConnectionIdentity, Expression, PermutationIdentity, PlookupIdentity, Polynomial,
+    PolynomialType, PublicDeclaration, SelectedExpressions, StatementIdentifier,
 };
 
 /// Computes expression IDs for each intermediate polynomial.
@@ -18,8 +18,12 @@ pub fn compute_intermediate_expression_ids(analyzed: &Analyzed) -> HashMap<u64, 
                 }
                 poly.expression_count()
             }
+            StatementIdentifier::PublicDeclaration(name) => {
+                analyzed.public_declarations[name].expression_count()
+            }
             StatementIdentifier::Identity(_) => 1,
             StatementIdentifier::Plookup(id) => analyzed.plookups[*id].expression_count(),
+            StatementIdentifier::Permutation(id) => analyzed.permutations[*id].expression_count(),
             StatementIdentifier::Connection(id) => analyzed.connections[*id].expression_count(),
         }
     }
@@ -41,9 +45,21 @@ impl ExpressionCounter for Polynomial {
     }
 }
 
+impl ExpressionCounter for PublicDeclaration {
+    fn expression_count(&self) -> usize {
+        0
+    }
+}
+
 impl ExpressionCounter for PlookupIdentity {
     fn expression_count(&self) -> usize {
         self.key.expression_count() + self.haystack.expression_count()
+    }
+}
+
+impl ExpressionCounter for PermutationIdentity {
+    fn expression_count(&self) -> usize {
+        self.left.expression_count() + self.right.expression_count()
     }
 }
 

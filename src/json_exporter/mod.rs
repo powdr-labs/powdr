@@ -23,8 +23,10 @@ struct Exporter<'a> {
 
 pub fn export(analyzed: &Analyzed) -> JsonValue {
     let mut exporter = Exporter::new(analyzed);
+    let mut publics = Vec::new();
     let mut pol_identities = Vec::new();
     let mut plookup_identities = Vec::new();
+    let mut permutation_identities = Vec::new();
     let mut connection_identities = Vec::new();
     for item in &analyzed.source_order {
         match item {
@@ -37,6 +39,18 @@ pub fn export(analyzed: &Analyzed) -> JsonValue {
                         exporter.intermediate_poly_expression_ids[&poly.id] as usize
                     );
                 }
+            }
+            StatementIdentifier::PublicDeclaration(name) => {
+                let pub_def = &analyzed.public_declarations[name];
+                let (_, json, _) = exporter.polynomial_reference_to_json(&pub_def.polynomial);
+                let id = publics.len();
+                publics.push(object! {
+                    name: name.clone(),
+                    polId: json["id"].clone(), // This includes the array offset
+                    polType: polynomial_reference_type_to_type(json["op"].as_str().unwrap()),
+                    idx: pub_def.index as u64,
+                    id: id
+                });
             }
             StatementIdentifier::Identity(id) => {
                 let (expr, source_ref) = &analyzed.polynomial_identities[*id];
@@ -61,6 +75,21 @@ pub fn export(analyzed: &Analyzed) -> JsonValue {
                     line: plookup.source.line,
                 });
             }
+            StatementIdentifier::Permutation(id) => {
+                let permutation = &analyzed.permutations[*id];
+                let f = exporter.extract_expression_vec(&permutation.left.expressions, 1);
+                let sel_f = exporter.extract_expression_opt(&permutation.left.selector, 1);
+                let t = exporter.extract_expression_vec(&permutation.right.expressions, 1);
+                let sel_t = exporter.extract_expression_opt(&permutation.right.selector, 1);
+                permutation_identities.push(object! {
+                    selF: sel_f,
+                    f: f,
+                    selT: sel_t,
+                    t: t,
+                    fileName: permutation.source.file.clone(),
+                    line: permutation.source.line,
+                });
+            }
             StatementIdentifier::Connection(id) => {
                 let connection = &analyzed.connections[*id];
                 let pols = exporter.extract_expression_vec(&connection.polynomials, 1);
@@ -79,22 +108,18 @@ pub fn export(analyzed: &Analyzed) -> JsonValue {
         nQ: exporter.number_q,
         nIm: analyzed.intermediate_count(),
         nConstants: analyzed.constant_count(),
-        publics: [], // @TODO
+        publics: publics,
         references: exporter.references(),
         expressions: exporter.expressions,
         polIdentities: pol_identities,
         plookupIdentities: plookup_identities,
-        permutationIdentities: [],
+        permutationIdentities: permutation_identities,
         connectionIdentities: connection_identities,
     }
 }
 
 fn polynomial_type_to_json_string(t: PolynomialType) -> &'static str {
-    match t {
-        PolynomialType::Committed => "cmP",
-        PolynomialType::Constant => "constP",
-        PolynomialType::Intermediate => "imP",
-    }
+    polynomial_reference_type_to_type(polynomial_reference_type_to_json_string(t))
 }
 
 fn polynomial_reference_type_to_json_string(t: PolynomialType) -> &'static str {
@@ -102,6 +127,15 @@ fn polynomial_reference_type_to_json_string(t: PolynomialType) -> &'static str {
         PolynomialType::Committed => "cm",
         PolynomialType::Constant => "const",
         PolynomialType::Intermediate => "exp",
+    }
+}
+
+fn polynomial_reference_type_to_type(t: &str) -> &'static str {
+    match t {
+        "cm" => "cmP",
+        "const" => "constP",
+        "exp" => "imP",
+        _ => panic!("Invalid polynomial referenc etype {t}"),
     }
 }
 
@@ -187,27 +221,18 @@ impl<'a> Exporter<'a> {
                 },
                 Vec::new(),
             ),
-            Expression::PolynomialReference(PolynomialReference { name, index, next }) => {
-                let poly = &self.analyzed.definitions[name].0;
-                let id = if poly.poly_type == PolynomialType::Intermediate {
-                    assert!(index.is_none());
-                    self.intermediate_poly_expression_ids[&poly.id]
-                } else {
-                    poly.id + index.unwrap_or_default()
-                };
-                let poly_json = object! {
-                    id: id,
-                    op: polynomial_reference_type_to_json_string(poly.poly_type),
-                    deg: 1,
-                    next: *next,
-                };
-                let dependencies = if poly.poly_type == PolynomialType::Intermediate {
-                    vec![id]
-                } else {
-                    Vec::new()
-                };
-                (1, poly_json, dependencies)
+            Expression::PolynomialReference(reference) => {
+                self.polynomial_reference_to_json(reference)
             }
+            Expression::PublicReference(name) => (
+                0,
+                object! {
+                    op: "public",
+                    deg: 0,
+                    id: self.analyzed.public_declarations[name].id,
+                },
+                Vec::new(),
+            ),
             Expression::Number(value) => (
                 0,
                 object! {
@@ -260,6 +285,31 @@ impl<'a> Exporter<'a> {
                 }
             }
         }
+    }
+
+    fn polynomial_reference_to_json(
+        &self,
+        PolynomialReference { name, index, next }: &PolynomialReference,
+    ) -> (u32, JsonValue, Vec<u64>) {
+        let poly = &self.analyzed.definitions[name].0;
+        let id = if poly.poly_type == PolynomialType::Intermediate {
+            assert!(index.is_none());
+            self.intermediate_poly_expression_ids[&poly.id]
+        } else {
+            poly.id + index.unwrap_or_default()
+        };
+        let poly_json = object! {
+            id: id,
+            op: polynomial_reference_type_to_json_string(poly.poly_type),
+            deg: 1,
+            next: *next,
+        };
+        let dependencies = if poly.poly_type == PolynomialType::Intermediate {
+            vec![id]
+        } else {
+            Vec::new()
+        };
+        (1, poly_json, dependencies)
     }
 }
 
@@ -387,5 +437,19 @@ mod test {
         compare_export_file("test_files/nine2one.pil");
         compare_export_file_ignore_idq_hex("test_files/padding_kkbit.pil");
         compare_export_file_ignore_idq_hex("test_files/padding_kk.pil");
+        compare_export_file_ignore_idq_hex("test_files/padding_kk.pil");
+    }
+
+    #[test]
+    fn export_poseidong() {
+        compare_export_file_ignore_idq_hex("test_files/padding_pg.pil");
+        compare_export_file_ignore_idq_hex("test_files/poseidong.pil");
+        compare_export_file_ignore_idq_hex("test_files/storage.pil");
+    }
+
+    #[test]
+    fn export_main() {
+        compare_export_file_ignore_idq_hex("test_files/rom.pil");
+        compare_export_file_ignore_idq_hex("test_files/main.pil");
     }
 }

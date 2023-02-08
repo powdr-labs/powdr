@@ -3,7 +3,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::parser;
-use crate::parser::ast::{self, Statement};
+use crate::parser::ast;
 pub use crate::parser::ast::{BinaryOperator, ConstantNumberType, UnaryOperator};
 
 pub fn analyze(path: &Path) -> Analyzed {
@@ -19,8 +19,10 @@ struct Context {
     /// Constants are not namespaced!
     constants: HashMap<String, ConstantNumberType>,
     definitions: HashMap<String, (Polynomial, Option<Expression>)>,
+    public_declarations: HashMap<String, PublicDeclaration>,
     polynomial_identities: Vec<(Expression, SourceRef)>,
     plookups: Vec<PlookupIdentity>,
+    permutations: Vec<PermutationIdentity>,
     connections: Vec<ConnectionIdentity>,
     /// The order in which definitions and identities
     /// appear in the source.
@@ -34,8 +36,10 @@ struct Context {
 
 pub enum StatementIdentifier {
     Definition(String),
+    PublicDeclaration(String),
     Identity(usize),
     Plookup(usize),
+    Permutation(usize),
     Connection(usize),
 }
 
@@ -43,8 +47,10 @@ pub struct Analyzed {
     /// Constants are not namespaced!
     pub constants: HashMap<String, ConstantNumberType>,
     pub definitions: HashMap<String, (Polynomial, Option<Expression>)>,
+    pub public_declarations: HashMap<String, PublicDeclaration>,
     pub polynomial_identities: Vec<(Expression, SourceRef)>,
     pub plookups: Vec<PlookupIdentity>,
+    pub permutations: Vec<PermutationIdentity>,
     pub connections: Vec<ConnectionIdentity>,
     /// The order in which definitions and identities
     /// appear in the source.
@@ -84,8 +90,10 @@ impl From<Context> for Analyzed {
         Context {
             constants,
             definitions,
+            public_declarations,
             polynomial_identities,
             plookups,
+            permutations,
             connections,
             source_order,
             ..
@@ -94,8 +102,10 @@ impl From<Context> for Analyzed {
         Self {
             constants,
             definitions,
+            public_declarations,
             polynomial_identities,
             plookups,
+            permutations,
             connections,
             source_order,
         }
@@ -117,10 +127,25 @@ impl Polynomial {
     }
 }
 
+pub struct PublicDeclaration {
+    pub id: u64,
+    pub source: SourceRef,
+    pub name: String,
+    pub polynomial: PolynomialReference,
+    /// The evaluation point of the polynomial, not the array index.
+    pub index: ConstantNumberType,
+}
+
 pub struct PlookupIdentity {
     pub source: SourceRef,
     pub key: SelectedExpressions,
     pub haystack: SelectedExpressions,
+}
+
+pub struct PermutationIdentity {
+    pub source: SourceRef,
+    pub left: SelectedExpressions,
+    pub right: SelectedExpressions,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -139,6 +164,7 @@ pub struct ConnectionIdentity {
 pub enum Expression {
     Constant(String),
     PolynomialReference(PolynomialReference),
+    PublicReference(String),
     Number(ConstantNumberType),
     BinaryOperation(Box<Expression>, BinaryOperator, Box<Expression>),
     UnaryOperation(UnaryOperator, Box<Expression>),
@@ -175,8 +201,10 @@ impl Context {
     }
 
     pub fn process_file(&mut self, path: &Path) {
-        let path = path.canonicalize().unwrap();
-        if self.included_files.contains(&path) {
+        let path = path
+            .canonicalize()
+            .unwrap_or_else(|e| panic!("File {path:?} not found: {e}"));
+        if !self.included_files.insert(path.clone()) {
             return;
         }
         let contents = fs::read_to_string(path.clone()).unwrap();
@@ -197,6 +225,7 @@ impl Context {
         };
 
         for statement in &pil_file.0 {
+            use ast::Statement;
             match statement {
                 Statement::Include(_, include) => self.handle_include(include),
                 Statement::Namespace(_, name, degree) => self.handle_namespace(name, degree),
@@ -207,6 +236,9 @@ impl Context {
                         PolynomialType::Intermediate,
                         value,
                     ),
+                Statement::PublicDeclaration(start, name, polynomial, index) => {
+                    self.handle_public_declaration(to_source_ref(*start), name, polynomial, index)
+                }
                 Statement::PolynomialConstantDeclaration(start, polynomials) => self
                     .handle_polynomial_declarations(
                         to_source_ref(*start),
@@ -224,6 +256,9 @@ impl Context {
                 }
                 Statement::PlookupIdentity(start, key, haystack) => {
                     self.handle_plookup_identity(to_source_ref(*start), key, haystack)
+                }
+                Statement::PermutationIdentity(start, left, right) => {
+                    self.handle_permutation_identity(to_source_ref(*start), left, right)
                 }
                 Statement::ConnectIdentity(start, left, right) => {
                     self.handle_connect_identity(to_source_ref(*start), left, right)
@@ -313,6 +348,28 @@ impl Context {
         id
     }
 
+    fn handle_public_declaration(
+        &mut self,
+        source: SourceRef,
+        name: &str,
+        poly: &ast::PolynomialReference,
+        index: &ast::Expression,
+    ) {
+        let id = self.public_declarations.len() as u64;
+        self.public_declarations.insert(
+            name.to_string(),
+            PublicDeclaration {
+                id,
+                source,
+                name: name.to_string(),
+                polynomial: self.process_polynomial_reference(poly),
+                index: self.evaluate_expression(index).unwrap(),
+            },
+        );
+        self.source_order
+            .push(StatementIdentifier::PublicDeclaration(name.to_string()));
+    }
+
     fn handle_polynomial_identity(&mut self, source: SourceRef, expression: &ast::Expression) {
         let expr = self.process_expression(expression);
         self.polynomial_identities.push((expr, source));
@@ -324,7 +381,6 @@ impl Context {
     fn handle_plookup_identity(
         &mut self,
         source: SourceRef,
-
         key: &ast::SelectedExpressions,
         haystack: &ast::SelectedExpressions,
     ) {
@@ -337,6 +393,24 @@ impl Context {
         });
         self.source_order
             .push(StatementIdentifier::Plookup(self.plookups.len() - 1));
+    }
+
+    fn handle_permutation_identity(
+        &mut self,
+        source: SourceRef,
+        left: &ast::SelectedExpressions,
+        right: &ast::SelectedExpressions,
+    ) {
+        let left = self.process_selected_expression(left);
+        let right = self.process_selected_expression(right);
+        self.permutations.push(PermutationIdentity {
+            source,
+            left,
+            right,
+        });
+        self.source_order.push(StatementIdentifier::Permutation(
+            self.permutations.len() - 1,
+        ));
     }
 
     fn handle_connect_identity(
@@ -361,7 +435,7 @@ impl Context {
             .constants
             .insert(name.to_string(), self.evaluate_expression(value).unwrap())
             .is_none();
-        assert!(is_new);
+        assert!(is_new, "Constant {name} was defined twice.");
     }
 
     fn namespaced(&self, name: &String) -> String {
@@ -387,16 +461,9 @@ impl Context {
         match expr {
             ast::Expression::Constant(name) => Expression::Constant(name.clone()),
             ast::Expression::PolynomialReference(poly) => {
-                let index = poly
-                    .index
-                    .as_ref()
-                    .map(|i| self.evaluate_expression(i).unwrap() as u64);
-                Expression::PolynomialReference(PolynomialReference {
-                    name: self.namespaced_ref(&poly.namespace, &poly.name),
-                    index,
-                    next: poly.next,
-                })
+                Expression::PolynomialReference(self.process_polynomial_reference(poly))
             }
+            ast::Expression::PublicReference(name) => Expression::PublicReference(name.clone()),
             ast::Expression::Number(n) => Expression::Number(*n),
             ast::Expression::BinaryOperation(left, op, right) => {
                 if let Some(value) = self.evaluate_binary_operation(left, op, right) {
@@ -419,6 +486,18 @@ impl Context {
         }
     }
 
+    fn process_polynomial_reference(&self, poly: &ast::PolynomialReference) -> PolynomialReference {
+        let index = poly
+            .index
+            .as_ref()
+            .map(|i| self.evaluate_expression(i).unwrap() as u64);
+        PolynomialReference {
+            name: self.namespaced_ref(&poly.namespace, &poly.name),
+            index,
+            next: poly.next,
+        }
+    }
+
     fn evaluate_expression(&self, expr: &ast::Expression) -> Option<ConstantNumberType> {
         match expr {
             ast::Expression::Constant(name) => Some(
@@ -428,6 +507,7 @@ impl Context {
                     .unwrap_or_else(|| panic!("Constant {name} not found.")),
             ),
             ast::Expression::PolynomialReference(_) => None,
+            ast::Expression::PublicReference(_) => None,
             ast::Expression::Number(n) => Some(*n),
             ast::Expression::BinaryOperation(left, op, right) => {
                 self.evaluate_binary_operation(left, op, right)
