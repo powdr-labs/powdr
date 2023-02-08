@@ -1,3 +1,4 @@
+include "global.pil";
 include "poseidong.pil";
 
 namespace Storage(%N);
@@ -271,5 +272,5 @@ namespace Storage(%N);
         rInFree, rInNewRoot, rInOldRoot, rInRkey, rInRkeyBit, rInSiblingRkey, rInSiblingValueHash,
         rSetHashLeft, rSetHashRight, rSetLevel, rSetNewRoot, rSetOldRoot, rSetRkey,
         rSetRkeyBit, rSetSiblingRkey, rSetSiblingValueHash, rSetValueHigh, rSetValueLow
-    }
+    };
 

@@ -8,10 +8,12 @@ pub enum Statement {
     /// Name of namespace and polynomial degree (constant)
     Namespace(usize, String, Expression),
     PolynomialDefinition(usize, String, Expression),
+    PublicDeclaration(usize, String, PolynomialReference, Expression),
     PolynomialConstantDeclaration(usize, Vec<PolynomialName>),
     PolynomialCommitDeclaration(usize, Vec<PolynomialName>),
     PolynomialIdentity(usize, Expression),
     PlookupIdentity(usize, SelectedExpressions, SelectedExpressions),
+    PermutationIdentity(usize, SelectedExpressions, SelectedExpressions),
     ConnectIdentity(usize, Vec<Expression>, Vec<Expression>),
     ConstantDefinition(usize, String, Expression),
 }
@@ -30,6 +32,7 @@ pub enum Expression {
     /// Reference to a constant, "%ConstantName"
     Constant(String),
     PolynomialReference(PolynomialReference),
+    PublicReference(String),
     Number(ConstantNumberType),
     BinaryOperation(Box<Expression>, BinaryOperator, Box<Expression>),
     UnaryOperation(UnaryOperator, Box<Expression>),
