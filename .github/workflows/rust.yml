@@ -34,9 +34,10 @@ jobs:
     - name: Build
       run: cargo build --verbose
     - name: Install pilcom
-      run: git clone https://github.com/0xPolygonHermez/pilcom.git && cd pilcom && npm install
+#      run: git clone https://github.com/0xPolygonHermez/pilcom.git  && cd pilcom && npm install
+      run: git clone https://github.com/chriseth/pilcom.git -b parse_json_if_json_passed && cd pilcom && npm install
     - name: Run tests
-      run: PILCOM=$(pwd)/pilcom/src/pil.js cargo test --verbose
+      run: PILCOM=$(pwd)/pilcom/ cargo test --verbose
     - name: Lint
       run: cargo clippy --all --all-features -- -D warnings
     - name: Format

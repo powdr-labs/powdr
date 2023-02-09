@@ -78,13 +78,24 @@ impl Analyzed {
         self.declaration_type_count(PolynomialType::Constant)
     }
 
-    pub fn constants_in_source_order(&self) -> Vec<&(Polynomial, Option<Expression>)> {
+    pub fn constant_polys_in_source_order(&self) -> Vec<&(Polynomial, Option<Expression>)> {
+        self.definitions_in_source_order(PolynomialType::Constant)
+    }
+
+    pub fn committed_polys_in_source_order(&self) -> Vec<&(Polynomial, Option<Expression>)> {
+        self.definitions_in_source_order(PolynomialType::Committed)
+    }
+
+    pub fn definitions_in_source_order(
+        &self,
+        poly_type: PolynomialType,
+    ) -> Vec<&(Polynomial, Option<Expression>)> {
         self.source_order
             .iter()
-            .filter_map(|statement| {
+            .filter_map(move |statement| {
                 if let StatementIdentifier::Definition(name) = statement {
                     let definition = &self.definitions[name];
-                    if definition.0.poly_type == PolynomialType::Constant {
+                    if definition.0.poly_type == poly_type {
                         return Some(definition);
                     }
                 }
