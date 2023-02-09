@@ -32,6 +32,7 @@ struct Context {
     commit_poly_counter: u64,
     constant_poly_counter: u64,
     intermediate_poly_counter: u64,
+    local_variables: HashMap<String, u64>,
 }
 
 pub enum StatementIdentifier {
@@ -69,6 +70,21 @@ impl Analyzed {
     /// @returns the number of constant polynomials (with multiplicities for arrays)
     pub fn constant_count(&self) -> usize {
         self.declaration_type_count(PolynomialType::Constant)
+    }
+
+    pub fn constants_in_source_order(&self) -> Vec<&(Polynomial, Option<Expression>)> {
+        self.source_order
+            .iter()
+            .filter_map(|statement| {
+                if let StatementIdentifier::Definition(name) = statement {
+                    let definition = &self.definitions[name];
+                    if definition.0.poly_type == PolynomialType::Constant {
+                        return Some(definition);
+                    }
+                }
+                None
+            })
+            .collect()
     }
 
     fn declaration_type_count(&self, poly_type: PolynomialType) -> usize {
@@ -164,6 +180,7 @@ pub struct ConnectionIdentity {
 pub enum Expression {
     Constant(String),
     PolynomialReference(PolynomialReference),
+    LocalVariableReference(u64),
     PublicReference(String),
     Number(ConstantNumberType),
     BinaryOperation(Box<Expression>, BinaryOperator, Box<Expression>),
@@ -229,13 +246,16 @@ impl Context {
             match statement {
                 Statement::Include(_, include) => self.handle_include(include),
                 Statement::Namespace(_, name, degree) => self.handle_namespace(name, degree),
-                Statement::PolynomialDefinition(start, name, value) => self
-                    .handle_polynomial_definition(
+                Statement::PolynomialDefinition(start, name, value) => {
+                    self.handle_polynomial_definition(
                         to_source_ref(*start),
                         name,
+                        &None,
                         PolynomialType::Intermediate,
-                        value,
-                    ),
+                        None,
+                        Some(value),
+                    );
+                }
                 Statement::PublicDeclaration(start, name, polynomial, index) => {
                     self.handle_public_declaration(to_source_ref(*start), name, polynomial, index)
                 }
@@ -245,6 +265,16 @@ impl Context {
                         polynomials,
                         PolynomialType::Constant,
                     ),
+                Statement::PolynomialConstantDefinition(start, name, parameters, value) => {
+                    self.handle_polynomial_definition(
+                        to_source_ref(*start),
+                        name,
+                        &None,
+                        PolynomialType::Constant,
+                        Some(parameters),
+                        Some(value),
+                    );
+                }
                 Statement::PolynomialCommitDeclaration(start, polynomials) => self
                     .handle_polynomial_declarations(
                         to_source_ref(*start),
@@ -283,16 +313,6 @@ impl Context {
         self.namespace = name.to_owned();
     }
 
-    fn handle_polynomial_definition(
-        &mut self,
-        source: SourceRef,
-        name: &String,
-        polynomial_type: PolynomialType,
-        value: &ast::Expression,
-    ) {
-        self.handle_polynomial_declaration(source, name, &None, polynomial_type, Some(value));
-    }
-
     fn handle_polynomial_declarations(
         &mut self,
         source: SourceRef,
@@ -300,24 +320,30 @@ impl Context {
         polynomial_type: PolynomialType,
     ) {
         for ast::PolynomialName { name, array_size } in polynomials {
-            self.handle_polynomial_declaration(
+            self.handle_polynomial_definition(
                 source.clone(),
                 name,
                 array_size,
                 polynomial_type,
                 None,
+                None,
             );
         }
     }
 
-    fn handle_polynomial_declaration(
+    fn handle_polynomial_definition(
         &mut self,
         source: SourceRef,
         name: &String,
         array_size: &Option<ast::Expression>,
         polynomial_type: PolynomialType,
+        parameters: Option<&[String]>,
         value: Option<&ast::Expression>,
     ) -> u64 {
+        if parameters.is_some() {
+            assert!(array_size.is_none());
+            assert!(polynomial_type == PolynomialType::Constant);
+        }
         let length = array_size
             .as_ref()
             .map(|l| self.evaluate_expression(l).unwrap());
@@ -337,7 +363,16 @@ impl Context {
             length,
         };
         let name = poly.absolute_name.clone();
+        self.local_variables = parameters
+            .map(|p| {
+                p.iter()
+                    .enumerate()
+                    .map(|(i, p)| (p.clone(), i as u64))
+                    .collect()
+            })
+            .unwrap_or_default();
         let value = value.map(|e| self.process_expression(e));
+        self.local_variables = HashMap::default();
         let is_new = self
             .definitions
             .insert(name.clone(), (poly, value))
@@ -461,7 +496,14 @@ impl Context {
         match expr {
             ast::Expression::Constant(name) => Expression::Constant(name.clone()),
             ast::Expression::PolynomialReference(poly) => {
-                Expression::PolynomialReference(self.process_polynomial_reference(poly))
+                if poly.namespace.is_none() && self.local_variables.contains_key(&poly.name) {
+                    let id = self.local_variables[&poly.name];
+                    assert!(!poly.next);
+                    assert!(poly.index.is_none());
+                    Expression::LocalVariableReference(id)
+                } else {
+                    Expression::PolynomialReference(self.process_polynomial_reference(poly))
+                }
             }
             ast::Expression::PublicReference(name) => Expression::PublicReference(name.clone()),
             ast::Expression::Number(n) => Expression::Number(*n),

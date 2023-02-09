@@ -22,6 +22,7 @@ Statement = {
     PolynomialDefinition,
     PublicDeclaration,
     PolynomialConstantDeclaration,
+    PolynomialConstantDefinition,
     PolynomialCommitDeclaration,
     PolynomialIdentity,
     PlookupIdentity,
@@ -53,6 +54,15 @@ PolynomialConstantDeclaration: Statement = {
     <@L> "pol" "constant" <PolynomialNameList> => Statement::PolynomialConstantDeclaration(<>)
 }
 
+PolynomialConstantDefinition: Statement = {
+    <@L> "pol" "constant" <Identifier> "(" <ParameterList> ")" "{" <Expression> "}"
+        => Statement::PolynomialConstantDefinition(<>)
+}
+
+ParameterList: Vec<String> = {
+    <mut list:( <Identifier> "," )*> <end:Identifier>  => { list.push(end); list }
+}
+
 PolynomialCommitDeclaration: Statement = {
     <@L> "pol" "commit" <PolynomialNameList> => Statement::PolynomialCommitDeclaration(<>)
 }
@@ -64,6 +74,7 @@ PolynomialIdentity: Statement = {
 PolynomialNameList: Vec<PolynomialName> = {
     <mut list:( <PolynomialName> "," )*> <end:PolynomialName>  => { list.push(end); list }
 }
+
 PolynomialName: PolynomialName = {
     <name:Identifier> <array_size:( "[" <Expression> "]" )?> => PolynomialName{<>}
 }
