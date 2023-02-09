@@ -14,16 +14,16 @@ Main goal: Everything is written in the same language, if possible not even spre
 Define constants directly in the pil file:
 
 ```
-pol constant BYTE = |i| i % 0xff;
+pol constant BYTE(i) { i % 0xff };
 ```
 
 Constants can also depend on each other:
 
 ```
-pol constant A = |i| i & 0xffff;
-pol constant B = |i| (i / 0x10000) & 0xffff;
-pol constant SUM = |i| (A[i] + B[i]) & 0xffff;
-pol constant OVERFLOW = |i| (A[i] + B[i]) >> 16;
+pol constant A(i) { i & 0xffff };
+pol constant B(i) { (i / 0x10000) & 0xffff };
+pol constant SUM(i) { (A[i] + B[i]) & 0xffff };
+pol constant OVERFLOW(i) { (A[i] + B[i]) >> 16 };
 ```
 
 By just declaring A and B to be of type u16, it might not be needed to define them?
@@ -65,6 +65,12 @@ The cross-product then first constructs polynomials of size `3 * 65536 * 65536 *
 contains all combinations of rows. The function finally reduces the polynomials to size `3 * 65536 * 65536`,
 because onyl one value of `C` is valid for each `OP`-`A`-`B`-combination.
 
+### The "Polynomial" Terminology
+
+While the terminology makes sense looking at the final encoding, polynomials should probably be called something
+else, since they do not really resemble polynomials. The confusion is more apparent when you allow in-line definitions.
+
+Maybe we should call them just "column".
 
 ### Types
 
