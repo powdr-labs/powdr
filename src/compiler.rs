@@ -1,4 +1,6 @@
-use std::{fs, io::Write, path::Path};
+use std::fs;
+use std::io::{BufWriter, Write};
+use std::path::Path;
 
 use analyzer::ConstantNumberType;
 
@@ -11,14 +13,14 @@ pub fn compile(pil_file: &Path) {
     let (constants, degree) = constant_evaluator::generate(&analyzed);
     if analyzed.constant_count() == constants.len() {
         write_polys_file(
-            &mut fs::File::create("constants.bin").unwrap(),
+            &mut BufWriter::new(&mut fs::File::create("constants.bin").unwrap()),
             degree,
             &constants,
         );
         println!("Wrote constants.bin.");
         let commits = commit_evaluator::generate(&analyzed, &degree, &constants);
         write_polys_file(
-            &mut fs::File::create("commits.bin").unwrap(),
+            &mut BufWriter::new(&mut fs::File::create("commits.bin").unwrap()),
             degree,
             &commits,
         );
