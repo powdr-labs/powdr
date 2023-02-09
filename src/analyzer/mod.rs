@@ -12,6 +12,12 @@ pub fn analyze(path: &Path) -> Analyzed {
     ctx.into()
 }
 
+pub fn analyze_string(contents: &str) -> Analyzed {
+    let mut ctx = Context::new();
+    ctx.process_file_contents(Path::new("input"), contents);
+    ctx.into()
+}
+
 #[derive(Default)]
 struct Context {
     namespace: String,
@@ -225,10 +231,14 @@ impl Context {
             return;
         }
         let contents = fs::read_to_string(path.clone()).unwrap();
+        self.process_file_contents(&path, &contents);
+    }
+
+    pub fn process_file_contents(&mut self, path: &Path, contents: &str) {
         // TOOD make this work for other line endings
-        let line_starts = compute_line_starts(&contents);
+        let line_starts = compute_line_starts(contents);
         let pil_file =
-            parser::parse(Some(path.to_str().unwrap()), &contents).unwrap_or_else(|err| {
+            parser::parse(Some(path.to_str().unwrap()), contents).unwrap_or_else(|err| {
                 eprintln!("Error parsing .pil file:");
                 err.output_to_stderr();
                 panic!();

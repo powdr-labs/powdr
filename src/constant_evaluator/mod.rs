@@ -97,3 +97,36 @@ impl<'a> Evaluator<'a> {
         }
     }
 }
+
+#[cfg(test)]
+mod test {
+    use crate::analyzer::analyze_string;
+
+    use super::generate;
+
+    #[test]
+    pub fn test_last() {
+        let src = r#"
+            constant %N = 8;
+            namespace F(%N);
+            pol constant LAST(i) { 1 - (i - (%N - 1)) / (i - (%N - 1)) };
+        "#;
+        let analyzed = analyze_string(src);
+        let (constants, degree) = generate(&analyzed);
+        assert_eq!(degree, 8);
+        assert_eq!(constants, vec![vec![0, 0, 0, 0, 0, 0, 0, 1]]);
+    }
+
+    #[test]
+    pub fn test_counter() {
+        let src = r#"
+            constant %N = 8;
+            namespace F(%N);
+            pol constant LAST(i) { 2 * (i - 1) };
+        "#;
+        let analyzed = analyze_string(src);
+        let (constants, degree) = generate(&analyzed);
+        assert_eq!(degree, 8);
+        assert_eq!(constants, vec![vec![-2, 0, 2, 4, 6, 8, 10, 12]]);
+    }
+}
