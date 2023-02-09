@@ -3,10 +3,12 @@ use crate::analyzer::{Analyzed, BinaryOperator, ConstantNumberType, Expression, 
 /// Generates the constant polynomial values for all constant polynomials
 /// that are defined (and not just declared).
 /// @returns the values (in source order) and the degree of the polynomials.
-pub fn generate(analyzed: &Analyzed) -> (Vec<Vec<ConstantNumberType>>, ConstantNumberType) {
+pub fn generate(
+    analyzed: &Analyzed,
+) -> (Vec<(&String, Vec<ConstantNumberType>)>, ConstantNumberType) {
     let mut degree = None;
     let values = analyzed
-        .constants_in_source_order()
+        .constant_polys_in_source_order()
         .iter()
         .filter_map(|(poly, value)| {
             if let Some(value) = value {
@@ -15,7 +17,10 @@ pub fn generate(analyzed: &Analyzed) -> (Vec<Vec<ConstantNumberType>>, ConstantN
                 } else {
                     degree = Some(poly.degree);
                 }
-                return Some(generate_values(analyzed, poly.degree, value));
+                return Some((
+                    &poly.absolute_name,
+                    generate_values(analyzed, poly.degree, value),
+                ));
             }
             None
         })
@@ -114,7 +119,10 @@ mod test {
         let analyzed = analyze_string(src);
         let (constants, degree) = generate(&analyzed);
         assert_eq!(degree, 8);
-        assert_eq!(constants, vec![vec![0, 0, 0, 0, 0, 0, 0, 1]]);
+        assert_eq!(
+            constants,
+            vec![(&"F.LAST".to_string(), vec![0, 0, 0, 0, 0, 0, 0, 1])]
+        );
     }
 
     #[test]
@@ -122,11 +130,14 @@ mod test {
         let src = r#"
             constant %N = 8;
             namespace F(%N);
-            pol constant LAST(i) { 2 * (i - 1) };
+            pol constant EVEN(i) { 2 * (i - 1) };
         "#;
         let analyzed = analyze_string(src);
         let (constants, degree) = generate(&analyzed);
         assert_eq!(degree, 8);
-        assert_eq!(constants, vec![vec![-2, 0, 2, 4, 6, 8, 10, 12]]);
+        assert_eq!(
+            constants,
+            vec![(&"F.EVEN".to_string(), vec![-2, 0, 2, 4, 6, 8, 10, 12])]
+        );
     }
 }

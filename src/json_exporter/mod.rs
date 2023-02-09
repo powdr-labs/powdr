@@ -331,10 +331,11 @@ mod test {
         let analyzed = analyzer::analyze(Path::new(file));
         let json_out = export(&analyzed);
 
-        let pilcom = std::env::var("PILCOM")
-            .expect("Please set PILCOM to the path to the pilcom js file 'src/pil.js'.");
+        let pilcom = std::env::var("PILCOM").expect(
+            "Please set the PILCOM environment variable to the path to the pilcom repository.",
+        );
         let pilcom_output = Command::new("node")
-            .args([pilcom, file.to_string()])
+            .args([format!("{pilcom}/src/pil.js"), file.to_string()])
             .output()
             .expect("failed to run pilcom");
         if !pilcom_output.status.success() {

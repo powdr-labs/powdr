@@ -1,0 +1,13 @@
+constant %N = 16;
+
+namespace Fibonacci(%N);
+    pol constant ISLAST(i) { 1 - (i - (%N - 1)) / (i - (%N - 1)) }; // 0 / 0 == 0 makes this work...
+    pol commit x, y;
+
+    ISLAST * (y' - 1) = 0;
+    ISLAST * (x' - 1) = 0;
+
+    (1-ISLAST) * (x' - y) = 0;
+    (1-ISLAST) * (y' - (x + y)) = 0;
+
+    public out = y(%N-1);
