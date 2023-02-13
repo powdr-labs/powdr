@@ -4,8 +4,8 @@ use std::collections::{BTreeMap, HashMap};
 use json::{object, JsonValue};
 
 use crate::analyzer::{
-    Analyzed, BinaryOperator, Expression, PolynomialReference, PolynomialType, StatementIdentifier,
-    UnaryOperator,
+    Analyzed, BinaryOperator, Expression, IdentityKind, PolynomialReference, PolynomialType,
+    StatementIdentifier, UnaryOperator,
 };
 
 use self::expression_counter::compute_intermediate_expression_ids;
@@ -54,53 +54,54 @@ pub fn export(analyzed: &Analyzed) -> JsonValue {
                 });
             }
             StatementIdentifier::Identity(id) => {
-                let (expr, source_ref) = &analyzed.polynomial_identities[*id];
-                pol_identities.push(object! {
-                    e: exporter.extract_expression(expr, 2),
-                    fileName: source_ref.file.clone(),
-                    line: source_ref.line,
-                })
-            }
-            StatementIdentifier::Plookup(id) => {
-                let plookup = &analyzed.plookups[*id];
-                let f = exporter.extract_expression_vec(&plookup.key.expressions, 1);
-                let sel_f = exporter.extract_expression_opt(&plookup.key.selector, 1);
-                let t = exporter.extract_expression_vec(&plookup.haystack.expressions, 1);
-                let sel_t = exporter.extract_expression_opt(&plookup.haystack.selector, 1);
-                plookup_identities.push(object! {
-                    selF: sel_f,
-                    f: f,
-                    selT: sel_t,
-                    t: t,
-                    fileName: plookup.source.file.clone(),
-                    line: plookup.source.line,
-                });
-            }
-            StatementIdentifier::Permutation(id) => {
-                let permutation = &analyzed.permutations[*id];
-                let f = exporter.extract_expression_vec(&permutation.left.expressions, 1);
-                let sel_f = exporter.extract_expression_opt(&permutation.left.selector, 1);
-                let t = exporter.extract_expression_vec(&permutation.right.expressions, 1);
-                let sel_t = exporter.extract_expression_opt(&permutation.right.selector, 1);
-                permutation_identities.push(object! {
-                    selF: sel_f,
-                    f: f,
-                    selT: sel_t,
-                    t: t,
-                    fileName: permutation.source.file.clone(),
-                    line: permutation.source.line,
-                });
-            }
-            StatementIdentifier::Connection(id) => {
-                let connection = &analyzed.connections[*id];
-                let pols = exporter.extract_expression_vec(&connection.polynomials, 1);
-                let connections = exporter.extract_expression_vec(&connection.connections, 1);
-                connection_identities.push(object! {
-                    pols: pols,
-                    connections: connections,
-                    fileName: connection.source.file.clone(),
-                    line: connection.source.line,
-                });
+                let identity = &analyzed.identities[*id];
+                let file_name = identity.source.file.clone();
+                let line = identity.source.line;
+                let selector_degree = if identity.kind == IdentityKind::Polynomial {
+                    2
+                } else {
+                    1
+                };
+                let left = exporter.extract_expression_vec(&identity.left.expressions, 1);
+                let sel_left =
+                    exporter.extract_expression_opt(&identity.left.selector, selector_degree);
+                let right = exporter.extract_expression_vec(&identity.right.expressions, 1);
+                let sel_right = exporter.extract_expression_opt(&identity.right.selector, 1);
+                match identity.kind {
+                    IdentityKind::Polynomial => pol_identities.push(object! {
+                        e: sel_left.unwrap(),
+                        fileName: file_name,
+                        line: line
+                    }),
+                    IdentityKind::Plookup => {
+                        plookup_identities.push(object! {
+                            selF: sel_left,
+                            f: left,
+                            selT: sel_right,
+                            t: right,
+                            fileName: file_name,
+                            line: line
+                        });
+                    }
+                    IdentityKind::Permutation => {
+                        permutation_identities.push(object! {
+                            selF: sel_left,
+                            f: left,
+                            selT: sel_right,
+                            t: right,
+                            fileName: file_name,
+                            line: line
+                        });
+                    }
+                    IdentityKind::Connect => {
+                        connection_identities.push(object! {
+                            pols: left,
+                            connections: right,
+                            fileName: file_name,
+                            line: line
+                        });
+                    }
+                }
             }
         }
     }

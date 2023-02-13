@@ -1,6 +1,8 @@
 use std::collections::HashMap;
 
-use crate::analyzer::{Analyzed, BinaryOperator, ConstantNumberType, Expression, UnaryOperator};
+use crate::analyzer::{
+    Analyzed, BinaryOperator, ConstantNumberType, Expression, IdentityKind, UnaryOperator,
+};
 
 mod affine_expression;
 
@@ -77,10 +79,13 @@ impl<'a> Evaluator<'a> {
         loop {
             let mut progress = false;
             // TODO also use lookups, not only polynomial identities
-            for (identity, _) in &self.analyzed.polynomial_identities {
-                if let Some((id, value)) = self.evaluate(identity).and_then(|expr| expr.solve()) {
-                    self.next[id] = Some(value);
-                    progress = true;
+            for identity in &self.analyzed.identities {
+                if identity.kind == IdentityKind::Polynomial {
+                    let expr = identity.left.selector.as_ref().unwrap();
+                    if let Some((id, value)) = self.evaluate(expr).and_then(|expr| expr.solve()) {
+                        self.next[id] = Some(value);
+                        progress = true;
+                    }
                 }
             }
             if !progress || self.next.iter().all(|v| v.is_some()) {

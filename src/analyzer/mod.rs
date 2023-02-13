@@ -26,18 +26,17 @@ struct Context {
     constants: HashMap<String, ConstantNumberType>,
     definitions: HashMap<String, (Polynomial, Option<Expression>)>,
     public_declarations: HashMap<String, PublicDeclaration>,
-    polynomial_identities: Vec<(Expression, SourceRef)>,
-    plookups: Vec<PlookupIdentity>,
-    permutations: Vec<PermutationIdentity>,
-    connections: Vec<ConnectionIdentity>,
+    identities: Vec<Identity>,
     /// The order in which definitions and identities
     /// appear in the source.
     source_order: Vec<StatementIdentifier>,
     included_files: HashSet<PathBuf>,
-    current_dir: PathBuf,
+    line_starts: Vec<usize>,
+    current_file: PathBuf,
     commit_poly_counter: u64,
     constant_poly_counter: u64,
     intermediate_poly_counter: u64,
+    identity_counter: HashMap<IdentityKind, u64>,
     local_variables: HashMap<String, u64>,
 }
 
@@ -45,9 +44,6 @@ pub enum StatementIdentifier {
     Definition(String),
     PublicDeclaration(String),
     Identity(usize),
-    Plookup(usize),
-    Permutation(usize),
-    Connection(usize),
 }
 
 pub struct Analyzed {
@@ -55,10 +51,7 @@ pub struct Analyzed {
     pub constants: HashMap<String, ConstantNumberType>,
     pub definitions: HashMap<String, (Polynomial, Option<Expression>)>,
     pub public_declarations: HashMap<String, PublicDeclaration>,
-    pub polynomial_identities: Vec<(Expression, SourceRef)>,
-    pub plookups: Vec<PlookupIdentity>,
-    pub permutations: Vec<PermutationIdentity>,
-    pub connections: Vec<ConnectionIdentity>,
+    pub identities: Vec<Identity>,
     /// The order in which definitions and identities
     /// appear in the source.
     pub source_order: Vec<StatementIdentifier>,
@@ -124,10 +117,7 @@ impl From<Context> for Analyzed {
             constants,
             definitions,
             public_declarations,
-            polynomial_identities,
-            plookups,
-            permutations,
-            connections,
+            identities,
             source_order,
             ..
         }: Context,
@@ -136,10 +126,7 @@ impl From<Context> for Analyzed {
             constants,
             definitions,
             public_declarations,
-            polynomial_identities,
-            plookups,
-            permutations,
-            connections,
+            identities,
             source_order,
         }
     }
@@ -169,28 +156,30 @@ pub struct PublicDeclaration {
     pub index: ConstantNumberType,
 }
 
-pub struct PlookupIdentity {
+#[derive(Debug, PartialEq, Clone)]
+pub struct Identity {
+    /// The ID is specific to the kind.
+    pub id: u64,
+    pub kind: IdentityKind,
     pub source: SourceRef,
-    pub key: SelectedExpressions,
-    pub haystack: SelectedExpressions,
-}
-
-pub struct PermutationIdentity {
-    pub source: SourceRef,
+    /// For a simple polynomial identity, the selector contains
+    /// the actual expression.
     pub left: SelectedExpressions,
     pub right: SelectedExpressions,
 }
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
+pub enum IdentityKind {
+    Polynomial,
+    Plookup,
+    Permutation,
+    Connect,
+}
+
+#[derive(Debug, Default, PartialEq, Eq, Clone)]
 pub struct SelectedExpressions {
     pub selector: Option<Expression>,
     pub expressions: Vec<Expression>,
-}
-
-pub struct ConnectionIdentity {
-    pub source: SourceRef,
-    pub polynomials: Vec<Expression>,
-    pub connections: Vec<Expression>,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -220,7 +209,7 @@ pub enum PolynomialType {
     Intermediate,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct SourceRef {
     pub file: String, // TODO should maybe be a shared pointer
     pub line: usize,
@@ -246,21 +235,18 @@ impl Context {
     }
 
     pub fn process_file_contents(&mut self, path: &Path, contents: &str) {
+        let old_current_file = std::mem::take(&mut self.current_file);
+        let old_line_starts = std::mem::take(&mut self.line_starts);
+
         // TOOD make this work for other line endings
-        let line_starts = compute_line_starts(contents);
+        self.line_starts = compute_line_starts(contents);
+        self.current_file = path.to_path_buf();
         let pil_file =
             parser::parse(Some(path.to_str().unwrap()), contents).unwrap_or_else(|err| {
                 eprintln!("Error parsing .pil file:");
                 err.output_to_stderr();
                 panic!();
             });
-        let old_current_dir = self.current_dir.clone();
-        self.current_dir = path.parent().unwrap().to_path_buf();
-
-        let to_source_ref = |start| SourceRef {
-            line: offset_to_line(start, &line_starts),
-            file: path.file_name().unwrap().to_str().unwrap().to_string(),
-        };
 
         for statement in &pil_file.0 {
             use ast::Statement;
@@ -269,7 +255,7 @@ impl Context {
                 Statement::Namespace(_, name, degree) => self.handle_namespace(name, degree),
                 Statement::PolynomialDefinition(start, name, value) => {
                     self.handle_polynomial_definition(
-                        to_source_ref(*start),
+                        self.to_source_ref(*start),
                         name,
                         &None,
                         PolynomialType::Intermediate,
@@ -277,18 +263,17 @@ impl Context {
                         Some(value),
                     );
                 }
-                Statement::PublicDeclaration(start, name, polynomial, index) => {
-                    self.handle_public_declaration(to_source_ref(*start), name, polynomial, index)
-                }
+                Statement::PublicDeclaration(start, name, polynomial, index) => self
+                    .handle_public_declaration(self.to_source_ref(*start), name, polynomial, index),
                 Statement::PolynomialConstantDeclaration(start, polynomials) => self
                     .handle_polynomial_declarations(
-                        to_source_ref(*start),
+                        self.to_source_ref(*start),
                         polynomials,
                         PolynomialType::Constant,
                     ),
                 Statement::PolynomialConstantDefinition(start, name, parameters, value) => {
                     self.handle_polynomial_definition(
-                        to_source_ref(*start),
+                        self.to_source_ref(*start),
                         name,
                         &None,
                         PolynomialType::Constant,
@@ -298,33 +283,86 @@ impl Context {
                 }
                 Statement::PolynomialCommitDeclaration(start, polynomials) => self
                     .handle_polynomial_declarations(
-                        to_source_ref(*start),
+                        self.to_source_ref(*start),
                         polynomials,
                         PolynomialType::Committed,
                     ),
-                Statement::PolynomialIdentity(start, expression) => {
-                    self.handle_polynomial_identity(to_source_ref(*start), expression)
-                }
-                Statement::PlookupIdentity(start, key, haystack) => {
-                    self.handle_plookup_identity(to_source_ref(*start), key, haystack)
-                }
-                Statement::PermutationIdentity(start, left, right) => {
-                    self.handle_permutation_identity(to_source_ref(*start), left, right)
-                }
-                Statement::ConnectIdentity(start, left, right) => {
-                    self.handle_connect_identity(to_source_ref(*start), left, right)
-                }
                 Statement::ConstantDefinition(_, name, value) => {
                     self.handle_constant_definition(name, value)
+                }
+                _ => {
+                    let identity = self.process_identity_statement(statement);
+                    let id = self.identities.len();
+                    self.identities.push(identity);
+                    self.source_order.push(StatementIdentifier::Identity(id));
                 }
             }
         }
 
-        self.current_dir = old_current_dir;
+        self.current_file = old_current_file;
+        self.line_starts = old_line_starts;
+    }
+
+    fn to_source_ref(&self, start: usize) -> SourceRef {
+        let file = self.current_file.file_name().unwrap().to_str().unwrap();
+        SourceRef {
+            line: offset_to_line(start, &self.line_starts),
+            file: file.to_string(),
+        }
+    }
+
+    fn process_identity_statement(&mut self, statement: &ast::Statement) -> Identity {
+        let (start, kind, left, right) = match statement {
+            ast::Statement::PolynomialIdentity(start, expression) => (
+                start,
+                IdentityKind::Polynomial,
+                SelectedExpressions {
+                    selector: Some(self.process_expression(expression)),
+                    expressions: vec![],
+                },
+                SelectedExpressions::default(),
+            ),
+            ast::Statement::PlookupIdentity(start, key, haystack) => (
+                start,
+                IdentityKind::Plookup,
+                self.process_selected_expression(key),
+                self.process_selected_expression(haystack),
+            ),
+            ast::Statement::PermutationIdentity(start, left, right) => (
+                start,
+                IdentityKind::Permutation,
+                self.process_selected_expression(left),
+                self.process_selected_expression(right),
+            ),
+            ast::Statement::ConnectIdentity(start, left, right) => (
+                start,
+                IdentityKind::Connect,
+                SelectedExpressions {
+                    selector: None,
+                    expressions: self.process_expressions(left),
+                },
+                SelectedExpressions {
+                    selector: None,
+                    expressions: self.process_expressions(right),
+                },
+            ),
+            // TODO at some point, these should all be caught by the type checker.
+            _ => {
+                panic!("Only identities allowed at this point.")
+            }
+        };
+        let id = self.dispense_id(kind);
+        Identity {
+            id,
+            kind,
+            source: self.to_source_ref(*start),
+            left,
+            right,
+        }
     }
 
     fn handle_include(&mut self, path: &str) {
-        let mut dir = self.current_dir.clone();
+        let mut dir = self.current_file.parent().unwrap().to_owned();
         dir.push(path);
         self.process_file(&dir);
     }
@@ -426,65 +464,6 @@ impl Context {
             .push(StatementIdentifier::PublicDeclaration(name.to_string()));
     }
 
-    fn handle_polynomial_identity(&mut self, source: SourceRef, expression: &ast::Expression) {
-        let expr = self.process_expression(expression);
-        self.polynomial_identities.push((expr, source));
-        self.source_order.push(StatementIdentifier::Identity(
-            self.polynomial_identities.len() - 1,
-        ));
-    }
-
-    fn handle_plookup_identity(
-        &mut self,
-        source: SourceRef,
-        key: &ast::SelectedExpressions,
-        haystack: &ast::SelectedExpressions,
-    ) {
-        let key = self.process_selected_expression(key);
-        let haystack = self.process_selected_expression(haystack);
-        self.plookups.push(PlookupIdentity {
-            source,
-            key,
-            haystack,
-        });
-        self.source_order
-            .push(StatementIdentifier::Plookup(self.plookups.len() - 1));
-    }
-
-    fn handle_permutation_identity(
-        &mut self,
-        source: SourceRef,
-        left: &ast::SelectedExpressions,
-        right: &ast::SelectedExpressions,
-    ) {
-        let left = self.process_selected_expression(left);
-        let right = self.process_selected_expression(right);
-        self.permutations.push(PermutationIdentity {
-            source,
-            left,
-            right,
-        });
-        self.source_order.push(StatementIdentifier::Permutation(
-            self.permutations.len() - 1,
-        ));
-    }
-
-    fn handle_connect_identity(
-        &mut self,
-        source: SourceRef,
-
-        left: &[ast::Expression],
-        right: &[ast::Expression],
-    ) {
-        self.connections.push(ConnectionIdentity {
-            source,
-            polynomials: self.process_expressions(left),
-            connections: self.process_expressions(right),
-        });
-        self.source_order
-            .push(StatementIdentifier::Connection(self.connections.len() - 1));
-    }
-
     fn handle_constant_definition(&mut self, name: &str, value: &ast::Expression) {
         // TODO does the order matter here?
         let is_new = self
@@ -492,6 +471,13 @@ impl Context {
             .insert(name.to_string(), self.evaluate_expression(value).unwrap())
             .is_none();
         assert!(is_new, "Constant {name} was defined twice.");
+    }
+
+    fn dispense_id(&mut self, kind: IdentityKind) -> u64 {
+        let cnt = self.identity_counter.entry(kind).or_default();
+        let id = *cnt;
+        *cnt += 1;
+        id
     }
 
     fn namespaced(&self, name: &String) -> String {
