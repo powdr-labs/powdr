@@ -118,6 +118,34 @@ fn<T> mul(a: T[], b: T[]) -> T[] = [a[i] * b[i] | i: 0..a.len()];
 
 We will stick as much to Rust as possible for now. This means there is a trait for the multiplication operator that we define.
 
+### Macros
+
+As a "quick and dirty" hack, we implemented syntactic macros for now:
+
+```
+macro ite(C, A, B) { C * A + (1 - C) * B }
+```
+
+Macros can evaluate to zero or more statements (constraints / identities) and
+zero or one expression.
+The statements are terminated by `;` and the last element is the expression.
+Macros can of course also invoke other macros:
+
+```
+macro bool(X) { X * (1 - X) = 0; }
+macro ite(C, A, B) { bool(C); C * A + (1 - C) * B }
+```
+
+In the example above, `bool` evaluates to one polynomial identity constraint and no expression.
+The macro `ite` adds the identity constraint generated through the invocation of `bool`
+to the list and evaluates to an expression at the same time.
+
+If a macro is used in statement context, it cannot have an expression and
+if it is used in expression context, it must have an expression (but can also have statements).
+
+The optimizer will of course ensure that redundant constraints are removed
+(be it because the are just duplicated or because they are already implied by lookups).
+
 ### Instruction / Assembly language
 
 The second layer of this langauge is to define an assembly-like language that helps in defining complex constants.

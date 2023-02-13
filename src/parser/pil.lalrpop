@@ -28,6 +28,8 @@ Statement = {
     PlookupIdentity,
     PermutationIdentity,
     ConnectIdentity,
+    MacroDefinition,
+    FunctionCallStatement
 };
 
 Include: Statement = {
@@ -96,6 +98,17 @@ ConnectIdentity: Statement = {
     <@L> "{" <ExpressionList> "}" "connect" "{" <ExpressionList> "}" => Statement::ConnectIdentity(<>)
 }
 
+MacroDefinition: Statement = {
+    <@L> "macro" <Identifier> "(" <ParameterList> ")" "{" <( <Statement> ";")*> <Expression?> "}"
+        => Statement::MacroDefinition(<>)
+}
+
+FunctionCallStatement: Statement = {
+    <@L> <Identifier> "(" <ExpressionList> ")" => Statement::FunctionCall(<>)
+}
+ 
+
+
 ExpressionList: Vec<Expression> = {
     <mut list:( <Expression> "," )*> <end:Expression>  => { list.push(end); list }
 }
@@ -144,11 +157,16 @@ UnaryOp: UnaryOperator = {
 }
 
 Term: Box<Expression> = {
+    FunctionCall => Box::new(<>),
     ConstantIdentifier => Box::new(Expression::Constant(<>)),
     PolynomialReference => Box::new(Expression::PolynomialReference(<>)),
     PublicReference => Box::new(Expression::PublicReference(<>)),
     Number => Box::new(Expression::Number(<>)),
     "(" <BoxedExpression> ")",
+}
+
+FunctionCall: Expression = {
+    <Identifier> "(" <ExpressionList> ")" => Expression::FunctionCall(<>)
 }
 
 PolynomialReference: PolynomialReference = {

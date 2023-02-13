@@ -140,4 +140,45 @@ mod test {
             vec![(&"F.EVEN".to_string(), vec![-2, 0, 2, 4, 6, 8, 10, 12])]
         );
     }
+
+    #[test]
+    pub fn test_macro() {
+        let src = r#"
+            constant %N = 8;
+            namespace F(%N);
+            macro minus_one(X) { X - 1 };
+            pol constant EVEN(i) { 2 * minus_one(i) };
+        "#;
+        let analyzed = analyze_string(src);
+        let (constants, degree) = generate(&analyzed);
+        assert_eq!(degree, 8);
+        assert_eq!(
+            constants,
+            vec![(&"F.EVEN".to_string(), vec![-2, 0, 2, 4, 6, 8, 10, 12])]
+        );
+    }
+
+    #[test]
+    pub fn test_macro_double() {
+        let src = r#"
+            constant %N = 12;
+            namespace F(%N);
+            macro is_nonzero(X) { X / X };
+            macro is_zero(X) { 1 - is_nonzero(X) };
+            macro is_one(X) { is_zero(1 - X) };
+            macro is_equal(A, B) { is_zero(A - B) };
+            macro ite(C, T, F) { is_one(C) * T + is_zero(C) * F };
+            pol constant TEN(i) { ite(is_equal(i, 10), 1, 0) };
+        "#;
+        let analyzed = analyze_string(src);
+        let (constants, degree) = generate(&analyzed);
+        assert_eq!(degree, 12);
+        assert_eq!(
+            constants,
+            vec![(
+                &"F.TEN".to_string(),
+                [[0; 10].to_vec(), [1, 0].to_vec()].concat()
+            )]
+        );
+    }
 }

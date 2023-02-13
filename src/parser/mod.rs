@@ -155,4 +155,46 @@ mod test {
         parse_file("test_files/rom.pil");
         parse_file("test_files/storage.pil");
     }
+
+    #[test]
+    fn simple_macro() {
+        let parsed = pil::PILFileParser::new()
+            .parse("macro f(x) { x in g; x + 1 };")
+            .unwrap();
+        assert_eq!(
+            parsed,
+            PILFile(vec![Statement::MacroDefinition(
+                0,
+                "f".to_string(),
+                vec!["x".to_string()],
+                vec![Statement::PlookupIdentity(
+                    13,
+                    SelectedExpressions {
+                        selector: None,
+                        expressions: vec![Expression::PolynomialReference(PolynomialReference {
+                            name: "x".to_string(),
+                            ..Default::default()
+                        })]
+                    },
+                    SelectedExpressions {
+                        selector: None,
+                        expressions: vec![Expression::PolynomialReference(PolynomialReference {
+                            name: "g".to_string(),
+                            ..Default::default()
+                        })]
+                    }
+                )],
+                Some(Expression::BinaryOperation(
+                    Box::new(Expression::PolynomialReference(PolynomialReference {
+                        namespace: None,
+                        name: "x".to_string(),
+                        index: None,
+                        next: false
+                    })),
+                    BinaryOperator::Add,
+                    Box::new(Expression::Number(1))
+                ))
+            )])
+        );
+    }
 }

@@ -26,6 +26,7 @@ struct Context {
     constants: HashMap<String, ConstantNumberType>,
     definitions: HashMap<String, (Polynomial, Option<Expression>)>,
     public_declarations: HashMap<String, PublicDeclaration>,
+    macros: HashMap<String, MacroDefinition>,
     identities: Vec<Identity>,
     /// The order in which definitions and identities
     /// appear in the source.
@@ -38,6 +39,8 @@ struct Context {
     intermediate_poly_counter: u64,
     identity_counter: HashMap<IdentityKind, u64>,
     local_variables: HashMap<String, u64>,
+    /// If we are evaluating a macro, this holds the arguments.
+    macro_arguments: Option<Vec<Expression>>,
 }
 
 pub enum StatementIdentifier {
@@ -209,6 +212,15 @@ pub enum PolynomialType {
     Intermediate,
 }
 
+#[derive(Debug)]
+pub struct MacroDefinition {
+    pub source: SourceRef,
+    pub absolute_name: String,
+    pub parameters: Vec<String>,
+    pub identities: Vec<ast::Statement>,
+    pub expression: Option<ast::Expression>,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct SourceRef {
     pub file: String, // TODO should maybe be a shared pointer
@@ -290,11 +302,16 @@ impl Context {
                 Statement::ConstantDefinition(_, name, value) => {
                     self.handle_constant_definition(name, value)
                 }
+                Statement::MacroDefinition(start, name, params, statments, expression) => self
+                    .handle_macro_definition(
+                        self.to_source_ref(*start),
+                        name,
+                        params,
+                        statments,
+                        expression,
+                    ),
                 _ => {
-                    let identity = self.process_identity_statement(statement);
-                    let id = self.identities.len();
-                    self.identities.push(identity);
-                    self.source_order.push(StatementIdentifier::Identity(id));
+                    self.handle_identity_statement(statement);
                 }
             }
         }
@@ -311,7 +328,16 @@ impl Context {
         }
     }
 
-    fn process_identity_statement(&mut self, statement: &ast::Statement) -> Identity {
+    fn handle_identity_statement(&mut self, statement: &ast::Statement) {
+        if let ast::Statement::FunctionCall(_start, name, arguments) = statement {
+            // TODO check that it does not contain local variable references.
+            // But we also need to do some other well-formedness checks.
+            if self.process_macro_call(name, arguments).is_some() {
+                panic!("Invoked a macro in statement context with non-empty expression.");
+            }
+            return;
+        }
+
         let (start, kind, left, right) = match statement {
             ast::Statement::PolynomialIdentity(start, expression) => (
                 start,
@@ -352,13 +378,16 @@ impl Context {
             }
         };
         let id = self.dispense_id(kind);
-        Identity {
+        let identity = Identity {
             id,
             kind,
             source: self.to_source_ref(*start),
             left,
             right,
-        }
+        };
+        let id = self.identities.len();
+        self.identities.push(identity);
+        self.source_order.push(StatementIdentifier::Identity(id));
     }
 
     fn handle_include(&mut self, path: &str) {
@@ -422,6 +451,7 @@ impl Context {
             length,
         };
         let name = poly.absolute_name.clone();
+        assert!(self.local_variables.is_empty());
         self.local_variables = parameters
             .map(|p| {
                 p.iter()
@@ -431,7 +461,7 @@ impl Context {
             })
             .unwrap_or_default();
         let value = value.map(|e| self.process_expression(e));
-        self.local_variables = HashMap::default();
+        self.local_variables.clear();
         let is_new = self
             .definitions
             .insert(name.clone(), (poly, value))
@@ -480,6 +510,30 @@ impl Context {
         id
     }
 
+    fn handle_macro_definition(
+        &mut self,
+        source: SourceRef,
+        name: &String,
+        params: &[String],
+        statements: &[ast::Statement],
+        expression: &Option<ast::Expression>,
+    ) {
+        let is_new = self
+            .macros
+            .insert(
+                name.clone(),
+                MacroDefinition {
+                    source,
+                    absolute_name: self.namespaced(name),
+                    parameters: params.to_vec(),
+                    identities: statements.to_vec(),
+                    expression: expression.clone(),
+                },
+            )
+            .is_none();
+        assert!(is_new);
+    }
+
     fn namespaced(&self, name: &String) -> String {
         self.namespaced_ref(&None, name)
     }
@@ -488,26 +542,35 @@ impl Context {
         format!("{}.{name}", namespace.as_ref().unwrap_or(&self.namespace))
     }
 
-    fn process_selected_expression(&self, expr: &ast::SelectedExpressions) -> SelectedExpressions {
+    fn process_selected_expression(
+        &mut self,
+        expr: &ast::SelectedExpressions,
+    ) -> SelectedExpressions {
         SelectedExpressions {
             selector: expr.selector.as_ref().map(|e| self.process_expression(e)),
             expressions: self.process_expressions(&expr.expressions),
         }
     }
 
-    fn process_expressions(&self, exprs: &[ast::Expression]) -> Vec<Expression> {
+    fn process_expressions(&mut self, exprs: &[ast::Expression]) -> Vec<Expression> {
         exprs.iter().map(|e| self.process_expression(e)).collect()
     }
 
-    fn process_expression(&self, expr: &ast::Expression) -> Expression {
+    fn process_expression(&mut self, expr: &ast::Expression) -> Expression {
         match expr {
             ast::Expression::Constant(name) => Expression::Constant(name.clone()),
             ast::Expression::PolynomialReference(poly) => {
                 if poly.namespace.is_none() && self.local_variables.contains_key(&poly.name) {
                     let id = self.local_variables[&poly.name];
+                    // TODO to make this work inside macros, "next" and "index" need to be
+                    // their own ast nodes / operators.
                     assert!(!poly.next);
                     assert!(poly.index.is_none());
-                    Expression::LocalVariableReference(id)
+                    if let Some(arguments) = &self.macro_arguments {
+                        arguments[id as usize].clone()
+                    } else {
+                        Expression::LocalVariableReference(id)
+                    }
                 } else {
                     Expression::PolynomialReference(self.process_polynomial_reference(poly))
                 }
@@ -532,7 +595,39 @@ impl Context {
                     Expression::UnaryOperation(*op, Box::new(self.process_expression(value)))
                 }
             }
+            ast::Expression::FunctionCall(name, arguments) => self
+                .process_macro_call(name, arguments)
+                .expect("Invoked a macro in expression context with empty expression."),
         }
+    }
+
+    fn process_macro_call(
+        &mut self,
+        name: &String,
+        arguments: &[ast::Expression],
+    ) -> Option<Expression> {
+        let arguments = Some(self.process_expressions(arguments));
+        let old_arguments = std::mem::replace(&mut self.macro_arguments, arguments);
+
+        let old_locals = std::mem::take(&mut self.local_variables);
+
+        let mac = &self.macros[name];
+        self.local_variables = mac
+            .parameters
+            .iter()
+            .enumerate()
+            .map(|(i, n)| (n.clone(), i as u64))
+            .collect();
+        // TODO avoid clones
+        let expression = mac.expression.clone();
+        let identities = mac.identities.clone();
+        for identity in &identities {
+            self.handle_identity_statement(identity);
+        }
+        let result = expression.map(|expr| self.process_expression(&expr));
+        self.macro_arguments = old_arguments;
+        self.local_variables = old_locals;
+        result
     }
 
     fn process_polynomial_reference(&self, poly: &ast::PolynomialReference) -> PolynomialReference {
@@ -562,6 +657,7 @@ impl Context {
                 self.evaluate_binary_operation(left, op, right)
             }
             ast::Expression::UnaryOperation(op, value) => self.evaluate_unary_operation(op, value),
+            ast::Expression::FunctionCall(_, _) => None, // TODO we should also try to evaluate through macro calls.
         }
     }
 
