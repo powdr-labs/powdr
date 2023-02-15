@@ -129,7 +129,39 @@ Expression: Expression = {
 }
 
 BoxedExpression: Box<Expression> = {
-    BoxedExpression SumOp Product => Box::new(Expression::BinaryOperation(<>)),
+    BinaryOr
+}
+
+BinaryOr: Box<Expression> = {
+    BinaryOr BinaryOrOp BinaryAnd => Box::new(Expression::BinaryOperation(<>)),
+    BinaryAnd,
+}
+
+BinaryOrOp: BinaryOperator = {
+    "|" => BinaryOperator::BinaryOr,
+}
+
+BinaryAnd: Box<Expression> = {
+    BinaryAnd BinaryAndOp BitShift => Box::new(Expression::BinaryOperation(<>)),
+    BitShift,
+}
+
+BinaryAndOp: BinaryOperator = {
+    "&" => BinaryOperator::BinaryAnd,
+}
+
+BitShift: Box<Expression> = {
+    BitShift BitShiftOp Sum => Box::new(Expression::BinaryOperation(<>)),
+    Sum,
+}
+
+BitShiftOp: BinaryOperator = {
+    "<<" => BinaryOperator::ShiftLeft,
+    ">>" => BinaryOperator::ShiftRight,
+}
+
+Sum: Box<Expression> = {
+    Sum SumOp Product => Box::new(Expression::BinaryOperation(<>)),
     Product,
 }
 
@@ -146,6 +178,7 @@ Product: Box<Expression> = {
 ProductOp: BinaryOperator = {
     "*" => BinaryOperator::Mul,
     "/" => BinaryOperator::Div,
+    "%" => BinaryOperator::Mod,
 }
 
 Power: Box<Expression> = {

@@ -263,6 +263,13 @@ impl<'a> Exporter<'a> {
                         );
                         ("pow", deg_left + deg_right)
                     }
+                    BinaryOperator::Mod
+                    | BinaryOperator::BinaryAnd
+                    | BinaryOperator::BinaryOr
+                    | BinaryOperator::ShiftLeft
+                    | BinaryOperator::ShiftRight => {
+                        panic!("Operator {op:?} not supported on polynomials.")
+                    }
                 };
                 (
                     degree,
