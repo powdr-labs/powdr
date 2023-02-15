@@ -45,7 +45,7 @@ ConstantDefinition: Statement = {
 }
 
 PolynomialDefinition: Statement = {
-    <@L> "pol" <Identifier> "=" <Expression> => Statement::PolynomialDefinition(<>)
+    <@L> PolCol <Identifier> "=" <Expression> => Statement::PolynomialDefinition(<>)
 }
 
 PublicDeclaration: Statement = {
@@ -53,11 +53,11 @@ PublicDeclaration: Statement = {
 }
 
 PolynomialConstantDeclaration: Statement = {
-    <@L> "pol" "constant" <PolynomialNameList> => Statement::PolynomialConstantDeclaration(<>)
+    <@L> PolCol ConstantFixed <PolynomialNameList> => Statement::PolynomialConstantDeclaration(<>)
 }
 
 PolynomialConstantDefinition: Statement = {
-    <@L> "pol" "constant" <Identifier> "(" <ParameterList> ")" "{" <Expression> "}"
+    <@L> PolCol ConstantFixed <Identifier> "(" <ParameterList> ")" "{" <Expression> "}"
         => Statement::PolynomialConstantDefinition(<>)
 }
 
@@ -66,7 +66,7 @@ ParameterList: Vec<String> = {
 }
 
 PolynomialCommitDeclaration: Statement = {
-    <@L> "pol" "commit" <PolynomialNameList> => Statement::PolynomialCommitDeclaration(<>)
+    <@L> PolCol CommitWitness <PolynomialNameList> => Statement::PolynomialCommitDeclaration(<>)
 }
 
 PolynomialIdentity: Statement = {
@@ -106,7 +106,18 @@ MacroDefinition: Statement = {
 FunctionCallStatement: Statement = {
     <@L> <Identifier> "(" <ExpressionList> ")" => Statement::FunctionCall(<>)
 }
- 
+
+PolCol = {
+    "pol", "col"
+} 
+
+CommitWitness = {
+    "commit", "witness"
+} 
+
+ConstantFixed = {
+    "constant", "fixed"
+} 
 
 
 ExpressionList: Vec<Expression> = {
