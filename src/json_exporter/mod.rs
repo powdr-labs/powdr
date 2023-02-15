@@ -402,60 +402,60 @@ mod test {
 
     #[test]
     fn export_config() {
-        compare_export_file("test_files/config.pil");
+        compare_export_file("tests/polygon-hermez/config.pil");
     }
 
     #[test]
     fn export_binary() {
-        compare_export_file("test_files/binary.pil");
+        compare_export_file("tests/polygon-hermez/binary.pil");
     }
 
     #[test]
     fn export_byte4() {
-        compare_export_file("test_files/byte4.pil");
+        compare_export_file("tests/polygon-hermez/byte4.pil");
     }
 
     #[test]
     fn export_global() {
-        compare_export_file("test_files/global.pil");
+        compare_export_file("tests/polygon-hermez/global.pil");
     }
 
     #[test]
     fn export_arith() {
         // We ignore the specific value assigned to idQ.
         // It is just a counter and pilcom assigns it in a weird order.
-        compare_export_file_ignore_idq_hex("test_files/arith.pil");
+        compare_export_file_ignore_idq_hex("tests/polygon-hermez/arith.pil");
     }
 
     #[test]
     fn export_mem() {
-        compare_export_file_ignore_idq_hex("test_files/mem.pil");
-        compare_export_file_ignore_idq_hex("test_files/mem_align.pil");
+        compare_export_file_ignore_idq_hex("tests/polygon-hermez/mem.pil");
+        compare_export_file_ignore_idq_hex("tests/polygon-hermez/mem_align.pil");
     }
 
     #[test]
     fn export_keccakf() {
-        compare_export_file_ignore_idq_hex("test_files/keccakf.pil");
+        compare_export_file_ignore_idq_hex("tests/polygon-hermez/keccakf.pil");
     }
 
     #[test]
     fn export_padding() {
-        compare_export_file("test_files/nine2one.pil");
-        compare_export_file_ignore_idq_hex("test_files/padding_kkbit.pil");
-        compare_export_file_ignore_idq_hex("test_files/padding_kk.pil");
-        compare_export_file_ignore_idq_hex("test_files/padding_kk.pil");
+        compare_export_file("tests/polygon-hermez/nine2one.pil");
+        compare_export_file_ignore_idq_hex("tests/polygon-hermez/padding_kkbit.pil");
+        compare_export_file_ignore_idq_hex("tests/polygon-hermez/padding_kk.pil");
+        compare_export_file_ignore_idq_hex("tests/polygon-hermez/padding_kk.pil");
     }
 
     #[test]
     fn export_poseidong() {
-        compare_export_file_ignore_idq_hex("test_files/padding_pg.pil");
-        compare_export_file_ignore_idq_hex("test_files/poseidong.pil");
-        compare_export_file_ignore_idq_hex("test_files/storage.pil");
+        compare_export_file_ignore_idq_hex("tests/polygon-hermez/padding_pg.pil");
+        compare_export_file_ignore_idq_hex("tests/polygon-hermez/poseidong.pil");
+        compare_export_file_ignore_idq_hex("tests/polygon-hermez/storage.pil");
     }
 
     #[test]
     fn export_main() {
-        compare_export_file_ignore_idq_hex("test_files/rom.pil");
-        compare_export_file_ignore_idq_hex("test_files/main.pil");
+        compare_export_file_ignore_idq_hex("tests/polygon-hermez/rom.pil");
+        compare_export_file_ignore_idq_hex("tests/polygon-hermez/main.pil");
     }
 }
