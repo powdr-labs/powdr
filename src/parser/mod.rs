@@ -138,22 +138,22 @@ mod test {
 
     #[test]
     fn parse_example_files() {
-        parse_file("test_files/arith.pil");
-        parse_file("test_files/binary.pil");
-        parse_file("test_files/byte4.pil");
-        parse_file("test_files/config.pil");
-        parse_file("test_files/global.pil");
-        parse_file("test_files/keccakf.pil");
-        parse_file("test_files/main.pil");
-        parse_file("test_files/mem_align.pil");
-        parse_file("test_files/mem.pil");
-        parse_file("test_files/nine2one.pil");
-        parse_file("test_files/padding_kk.pil");
-        parse_file("test_files/padding_kkbit.pil");
-        parse_file("test_files/padding_pg.pil");
-        parse_file("test_files/poseidong.pil");
-        parse_file("test_files/rom.pil");
-        parse_file("test_files/storage.pil");
+        parse_file("tests/polygon-hermez/arith.pil");
+        parse_file("tests/polygon-hermez/binary.pil");
+        parse_file("tests/polygon-hermez/byte4.pil");
+        parse_file("tests/polygon-hermez/config.pil");
+        parse_file("tests/polygon-hermez/global.pil");
+        parse_file("tests/polygon-hermez/keccakf.pil");
+        parse_file("tests/polygon-hermez/main.pil");
+        parse_file("tests/polygon-hermez/mem_align.pil");
+        parse_file("tests/polygon-hermez/mem.pil");
+        parse_file("tests/polygon-hermez/nine2one.pil");
+        parse_file("tests/polygon-hermez/padding_kk.pil");
+        parse_file("tests/polygon-hermez/padding_kkbit.pil");
+        parse_file("tests/polygon-hermez/padding_pg.pil");
+        parse_file("tests/polygon-hermez/poseidong.pil");
+        parse_file("tests/polygon-hermez/rom.pil");
+        parse_file("tests/polygon-hermez/storage.pil");
     }
 
     #[test]
