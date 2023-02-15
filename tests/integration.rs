@@ -42,3 +42,8 @@ fn test_fibonacci() {
 fn test_fibonacci_macro() {
     verify("fib_macro.pil");
 }
+
+#[test]
+fn test_global() {
+    verify("global.pil");
+}

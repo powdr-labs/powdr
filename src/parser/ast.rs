@@ -74,5 +74,10 @@ pub enum BinaryOperator {
     Sub,
     Mul,
     Div,
+    Mod,
     Pow,
+    BinaryAnd,
+    BinaryOr,
+    ShiftLeft,
+    ShiftRight,
 }

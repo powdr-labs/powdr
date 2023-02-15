@@ -87,6 +87,11 @@ impl<'a> Evaluator<'a> {
                 assert!(right <= u32::MAX.into());
                 left.pow(right as u32)
             }
+            BinaryOperator::Mod => left % right,
+            BinaryOperator::BinaryAnd => left & right,
+            BinaryOperator::BinaryOr => left | right,
+            BinaryOperator::ShiftLeft => left << right,
+            BinaryOperator::ShiftRight => left >> right,
         }
     }
 

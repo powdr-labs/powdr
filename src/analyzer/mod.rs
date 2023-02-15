@@ -611,7 +611,10 @@ impl Context {
 
         let old_locals = std::mem::take(&mut self.local_variables);
 
-        let mac = &self.macros[name];
+        let mac = &self
+            .macros
+            .get(name)
+            .unwrap_or_else(|| panic!("Macro {name} not found."));
         self.local_variables = mac
             .parameters
             .iter()
@@ -681,6 +684,11 @@ impl Context {
                     assert!(right <= u32::MAX.into());
                     left.pow(right as u32)
                 }
+                BinaryOperator::Mod => left % right,
+                BinaryOperator::BinaryAnd => left & right,
+                BinaryOperator::BinaryOr => left | right,
+                BinaryOperator::ShiftLeft => left << right,
+                BinaryOperator::ShiftRight => left >> right,
             })
         } else {
             None

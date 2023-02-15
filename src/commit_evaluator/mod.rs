@@ -196,6 +196,27 @@ impl<'a> Evaluator<'a> {
                         None
                     }
                 }
+                BinaryOperator::Mod
+                | BinaryOperator::BinaryAnd
+                | BinaryOperator::BinaryOr
+                | BinaryOperator::ShiftLeft
+                | BinaryOperator::ShiftRight => {
+                    if let (Some(left), Some(right)) =
+                        (left.constant_value(), right.constant_value())
+                    {
+                        let result = match op {
+                            BinaryOperator::Mod => left % right,
+                            BinaryOperator::BinaryAnd => left & right,
+                            BinaryOperator::BinaryOr => left | right,
+                            BinaryOperator::ShiftLeft => left << right,
+                            BinaryOperator::ShiftRight => left >> right,
+                            _ => panic!(),
+                        };
+                        Some(result.into())
+                    } else {
+                        panic!()
+                    }
+                }
             }
         } else {
             None
