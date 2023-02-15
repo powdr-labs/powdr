@@ -194,6 +194,8 @@ pub enum Expression {
     Number(ConstantNumberType),
     BinaryOperation(Box<Expression>, BinaryOperator, Box<Expression>),
     UnaryOperation(UnaryOperator, Box<Expression>),
+    /// Call to a non-macro function (like a constant polynomial)
+    FunctionCall(String, Vec<Expression>),
 }
 
 #[derive(Debug, PartialEq, Eq, Default, Clone)]
@@ -330,6 +332,11 @@ impl Context {
 
     fn handle_identity_statement(&mut self, statement: &ast::Statement) {
         if let ast::Statement::FunctionCall(_start, name, arguments) = statement {
+            if !self.macros.contains_key(name) {
+                panic!(
+                    "Macro {name} not found - only macros allowed at this point, no fixed columns."
+                );
+            }
             // TODO check that it does not contain local variable references.
             // But we also need to do some other well-formedness checks.
             if self.process_macro_call(name, arguments).is_some() {
@@ -595,9 +602,13 @@ impl Context {
                     Expression::UnaryOperation(*op, Box::new(self.process_expression(value)))
                 }
             }
-            ast::Expression::FunctionCall(name, arguments) => self
-                .process_macro_call(name, arguments)
-                .expect("Invoked a macro in expression context with empty expression."),
+            ast::Expression::FunctionCall(name, arguments) if self.macros.contains_key(name) => {
+                self.process_macro_call(name, arguments)
+                    .expect("Invoked a macro in expression context with empty expression.")
+            }
+            ast::Expression::FunctionCall(name, arguments) => {
+                Expression::FunctionCall(self.namespaced(name), self.process_expressions(arguments))
+            }
         }
     }
 

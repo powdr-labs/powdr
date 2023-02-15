@@ -157,6 +157,7 @@ impl<'a> Evaluator<'a> {
             Expression::UnaryOperation(op, expr) => self.evaluate_unary_operation(op, expr),
             Expression::LocalVariableReference(_) => panic!(),
             Expression::PublicReference(_) => panic!(),
+            Expression::FunctionCall(_, _) => panic!(),
         }
     }
     fn evaluate_binary_operation(

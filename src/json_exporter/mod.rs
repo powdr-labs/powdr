@@ -296,6 +296,9 @@ impl<'a> Exporter<'a> {
                     ),
                 }
             }
+            Expression::FunctionCall(_, _) => {
+                panic!("No function calls allowed here.")
+            }
         }
     }
 
