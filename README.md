@@ -1,6 +1,7 @@
 # powdr
 an extended polynomial identity language (PIL) in rust
 
+WARNING: This is a proof-of concept implementation. It is missing many internal checks. DO NOT USE FOR PRODUCTION!
 
 ## Ideas
 
@@ -150,6 +151,8 @@ The optimizer will of course ensure that redundant constraints are removed
 
 The second layer of this langauge is to define an assembly-like language that helps in defining complex constants.
 
+A more detailed description of the current plans can be found in [notes_asm.md](notes_asm.md).
+
 The zkASM language of polygon/hermez can be used as a basis, but with the following changes:
 
 - The number of registers needs to be user-defined
@@ -178,7 +181,7 @@ optimizer to combine instructions into a single step if they are not conflicting
 A better notation might be:
 
 ```
-X := ADD(A, B);
+X <= ADD(A, B);
 MSTORE(SP++, X);
 JMP(readCode);
 ```
@@ -202,13 +205,13 @@ carried out in the base field and on each register element separately (TODO impr
 
 Here is an example program followed by the definitions of the functions and instructions:
 ```
-  A = mload(B)
-  A = add(A, B)
+  A <= mload(B)
+  A <= add(A, B)
 repeat:
-  Z = eq(B, 0)
+  Z <= eq(B, 0)
   jmpi Z out
-  A = mul(A, 2)
-  B = sub(B, 1)
+  A <= mul(A, 2)
+  B <= sub(B, 1)
   jmp repeat
 out:
 ```
@@ -219,10 +222,10 @@ instr jmp l: label { pc' = l }
 instr jmpi c: bool, l: label { pc' = c * l + (1 - c) * pc }
 instr call l: label { rr' = pc + 1; pc' = l }
 instr ret { pc' = rr }
-fun eq(A, B) -> C { C = binary(0, A, B) }
-fun add(A, B) -> C { C = binary(1, A, B) }
-fun sub(A, B) -> C { C = binary(2, A, B) }
-fun mul(A, B) -> C { C = binary(3, A, B) }
+fun eq(A, B) -> C { C <= binary(0, A, B) }
+fun add(A, B) -> C { C <= binary(1, A, B) }
+fun sub(A, B) -> C { C <= binary(2, A, B) }
+fun mul(A, B) -> C { C <= binary(3, A, B) }
 fun binary(op, A, B) -> C {
     {op, A, B, C} is {Binary.op, Binary.A, Binary.B, Binary.C}
 }
