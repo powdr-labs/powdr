@@ -71,7 +71,16 @@ because onyl one value of `C` is valid for each `OP`-`A`-`B`-combination.
 While the terminology makes sense looking at the final encoding, polynomials should probably be called something
 else, since they do not really resemble polynomials. The confusion is more apparent when you allow in-line definitions.
 
-Maybe we should call them just "column".
+The keyword `col` can be used as an alias for `pol`. The qualifiers `commit` and `constant` for polynomials
+(but not for number constants) can be replaced by `witness` and `fixed`, respectively:
+
+```
+constant %N = 16;
+
+namespace Fibonacci(%N);
+    col fixed ISLAST(i);
+    col witness x, y;
+```
 
 ### Types
 
