@@ -46,6 +46,7 @@ pub enum Expression {
     BinaryOperation(Box<Expression>, BinaryOperator, Box<Expression>),
     UnaryOperation(UnaryOperator, Box<Expression>),
     FunctionCall(String, Vec<Expression>),
+    FreeInput(Box<Expression>),
 }
 
 #[derive(Debug, PartialEq, Eq, Default, Clone)]

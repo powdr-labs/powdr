@@ -1,5 +1,6 @@
 use std::str::FromStr;
 use crate::parser::ast::*;
+use crate::parser::asm_ast::*;
 
 grammar;
 
@@ -14,6 +15,12 @@ pub PILFile: PILFile = {
     (<Statement> ";")* => PILFile(<>)
 
 };
+
+pub ASMFile: ASMFile = {
+    (<ASMStatement>)* => ASMFile(<>)
+};
+
+// ---------------------------- PIL part -----------------------------
 
 Statement = {
     Include,
@@ -119,8 +126,80 @@ ConstantFixed = {
     "constant", "fixed"
 } 
 
+// ---------------------------- ASM part -----------------------------
+
+
+ASMStatement: ASMStatement = {
+    RegisterDeclaration,
+    InstructionDeclaration,
+    InlinePil,
+    Assignment,
+    Instruction,
+    Label,
+}
+
+RegisterDeclaration: ASMStatement = {
+    // TODO default update
+    <@L> "reg" <Identifier> <( "[" <RegisterFlag> "]" )?> ";" => ASMStatement::RegisterDeclaration(<>)
+
+}
+
+RegisterFlag: RegisterFlag = {
+    "@pc" => RegisterFlag::IsPC,
+    "<=" => RegisterFlag::IsDefaultAssignment
+}
+
+InstructionDeclaration: ASMStatement = {
+    <@L> "instr" <Identifier> <InstructionParamList> "{" <EqualityExpressionList> "}" => ASMStatement::InstructionDeclaration(<>)
+}
+
+EqualityExpressionList: Vec<Expression> = {
+    <mut list:( <EqualityExpression> "," )*> <end:EqualityExpression>  => { list.push(end); list }
+}
+
+EqualityExpression: Expression = {
+    <l:BoxedExpression> "=" <r:BoxedExpression> => Expression::BinaryOperation(l, BinaryOperator::Sub, r)
+}
+
+InstructionParamList: Vec<InstructionParam> = {
+    => vec![],
+    <mut list:( <InstructionParam> "," )*> <end:InstructionParam>  => { list.push(end); list }
+}
+
+InstructionParam: InstructionParam = {
+    <assign_read:AssignOperator?> <name: Identifier> <param_type:(":" <Identifier>)?> <assign_write:AssignOperator?> =>
+        InstructionParam{name, param_type, assignment_reg: (assign_read, assign_write)}
+}
+
+InlinePil: ASMStatement = {
+    <@L> "pil{" <(<Statement> ";")*> "}" => ASMStatement::InlinePil(<>)
+}
+
+Assignment: ASMStatement = {
+    <@L> <IdentifierList> <AssignOperator> <BoxedExpression> ";" => ASMStatement::Assignment(<>)
+
+}
+
+IdentifierList: Vec<String> = {
+    <mut list:( <Identifier> "," )*> <end:Identifier>  => { list.push(end); list }
+}
+
+AssignOperator: Option<String> = {
+    "<=" <Identifier?> "="
+}
+
+Instruction: ASMStatement = {
+    <@L> <Identifier> <ExpressionList> ";" => ASMStatement::Instruction(<>)
+}
+
+Label: ASMStatement = {
+    <@L> <Identifier> "::" => ASMStatement::Label(<>)
+}
+
+// ---------------------------- Expressions -----------------------------
 
 ExpressionList: Vec<Expression> = {
+    => vec![],
     <mut list:( <Expression> "," )*> <end:Expression>  => { list.push(end); list }
 }
 
@@ -207,6 +286,7 @@ Term: Box<Expression> = {
     PublicReference => Box::new(Expression::PublicReference(<>)),
     Number => Box::new(Expression::Number(<>)),
     "(" <BoxedExpression> ")",
+    "${" <BoxedExpression> "}" => Box::new(Expression::FreeInput(<>))
 }
 
 FunctionCall: Expression = {
@@ -223,6 +303,9 @@ PolynomialReference: PolynomialReference = {
 PublicReference: String = {
     ":" <Identifier>
 }
+
+// ---------------------------- Terminals -----------------------------
+
 
 StringLiteral: String = {
     r#""[^"]*""# => <>[1..<>.len() - 1].to_string()
