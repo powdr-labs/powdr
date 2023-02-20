@@ -8,6 +8,13 @@ fn main() {
             Ok(ast) => println!("{ast:?}"),
             Err(err) => err.output_to_stderr(),
         }
+    } else if env::args().nth(1).unwrap() == "--reformat" {
+        let file_name = env::args().nth(2).unwrap();
+        let contents = fs::read_to_string(Path::new(&file_name)).unwrap();
+        match powdr::parser::parse(Some(&file_name), &contents) {
+            Ok(ast) => println!("{ast}"),
+            Err(err) => err.output_to_stderr(),
+        }
     } else {
         powdr::compiler::compile(Path::new(&env::args().nth(1).unwrap()));
     }
