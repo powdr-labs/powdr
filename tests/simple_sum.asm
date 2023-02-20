@@ -6,10 +6,10 @@
 // Code in `${`...`}` is rust-like code that is run by the prover
 // to generate free inputs.
 
+reg X[<=]; // "<=" means it is the default assignment register.
 reg A;
 reg CNT;
 reg pc[@pc]; // "@pc" means "pc' = pc + 1" is the default propagation (instead of pc' = pc) and it tracks the line in the program.
-reg X[<=]; // "<=" means it is the default assignment register.
 
 // Code in `pil{`..`}` is pil code that is inserted into the pil file.
 pil{
