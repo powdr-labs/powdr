@@ -36,61 +36,47 @@ impl<'a> ParseError<'a> {
 }
 
 pub fn parse<'a>(file_name: Option<&str>, input: &'a str) -> Result<ast::PILFile, ParseError<'a>> {
-    powdr::PILFileParser::new().parse(input).map_err(|err| {
-        let (&start, &end) = match &err {
-            lalrpop_util::ParseError::InvalidToken { location } => (location, location),
-            lalrpop_util::ParseError::UnrecognizedEOF {
-                location,
-                expected: _,
-            } => (location, location),
-            lalrpop_util::ParseError::UnrecognizedToken {
-                token: (start, _, end),
-                expected: _,
-            } => (start, end),
-            lalrpop_util::ParseError::ExtraToken {
-                token: (start, _, end),
-            } => (start, end),
-            lalrpop_util::ParseError::User { error: _ } => (&0, &0),
-        };
-        ParseError {
-            start,
-            end,
-            file_name: file_name.unwrap_or("input").to_string(),
-            contents: input,
-            message: format!("{err}"),
-        }
-    })
+    powdr::PILFileParser::new()
+        .parse(input)
+        .map_err(|err| handle_error(err, file_name, input))
 }
 
 pub fn parse_asm<'a>(
     file_name: Option<&str>,
     input: &'a str,
 ) -> Result<asm_ast::ASMFile, ParseError<'a>> {
-    powdr::ASMFileParser::new().parse(input).map_err(|err| {
-        // TODO code duplication
-        let (&start, &end) = match &err {
-            lalrpop_util::ParseError::InvalidToken { location } => (location, location),
-            lalrpop_util::ParseError::UnrecognizedEOF {
-                location,
-                expected: _,
-            } => (location, location),
-            lalrpop_util::ParseError::UnrecognizedToken {
-                token: (start, _, end),
-                expected: _,
-            } => (start, end),
-            lalrpop_util::ParseError::ExtraToken {
-                token: (start, _, end),
-            } => (start, end),
-            lalrpop_util::ParseError::User { error: _ } => (&0, &0),
-        };
-        ParseError {
-            start,
-            end,
-            file_name: file_name.unwrap_or("input").to_string(),
-            contents: input,
-            message: format!("{err}"),
-        }
-    })
+    powdr::ASMFileParser::new()
+        .parse(input)
+        .map_err(|err| handle_error(err, file_name, input))
+}
+
+fn handle_error<'a>(
+    err: lalrpop_util::ParseError<usize, lexer::Token, &str>,
+    file_name: Option<&str>,
+    input: &'a str,
+) -> ParseError<'a> {
+    let (&start, &end) = match &err {
+        lalrpop_util::ParseError::InvalidToken { location } => (location, location),
+        lalrpop_util::ParseError::UnrecognizedEOF {
+            location,
+            expected: _,
+        } => (location, location),
+        lalrpop_util::ParseError::UnrecognizedToken {
+            token: (start, _, end),
+            expected: _,
+        } => (start, end),
+        lalrpop_util::ParseError::ExtraToken {
+            token: (start, _, end),
+        } => (start, end),
+        lalrpop_util::ParseError::User { error: _ } => (&0, &0),
+    };
+    ParseError {
+        start,
+        end,
+        file_name: file_name.unwrap_or("input").to_string(),
+        contents: input,
+        message: format!("{err}"),
+    }
 }
 
 #[cfg(test)]
