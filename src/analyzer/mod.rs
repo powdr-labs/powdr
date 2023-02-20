@@ -609,6 +609,7 @@ impl Context {
             ast::Expression::FunctionCall(name, arguments) => {
                 Expression::FunctionCall(self.namespaced(name), self.process_expressions(arguments))
             }
+            ast::Expression::FreeInput(_) => panic!(),
         }
     }
 
@@ -671,7 +672,8 @@ impl Context {
                 self.evaluate_binary_operation(left, op, right)
             }
             ast::Expression::UnaryOperation(op, value) => self.evaluate_unary_operation(op, value),
-            ast::Expression::FunctionCall(_, _) => None, // TODO we should also try to evaluate through macro calls.
+            ast::Expression::FunctionCall(_, _) => None,
+            ast::Expression::FreeInput(_) => panic!(),
         }
     }
 

@@ -4,12 +4,13 @@ use codespan_reporting::term;
 use codespan_reporting::term::termcolor::{ColorChoice, StandardStream};
 use lalrpop_util::*;
 
+pub mod asm_ast;
 pub mod ast;
 
 lalrpop_mod!(
     #[allow(clippy::all)]
-    pil,
-    "/parser/pil.rs"
+    powdr,
+    "/parser/powdr.rs"
 );
 
 #[derive(Debug)]
@@ -35,7 +36,38 @@ impl<'a> ParseError<'a> {
 }
 
 pub fn parse<'a>(file_name: Option<&str>, input: &'a str) -> Result<ast::PILFile, ParseError<'a>> {
-    pil::PILFileParser::new().parse(input).map_err(|err| {
+    powdr::PILFileParser::new().parse(input).map_err(|err| {
+        let (&start, &end) = match &err {
+            lalrpop_util::ParseError::InvalidToken { location } => (location, location),
+            lalrpop_util::ParseError::UnrecognizedEOF {
+                location,
+                expected: _,
+            } => (location, location),
+            lalrpop_util::ParseError::UnrecognizedToken {
+                token: (start, _, end),
+                expected: _,
+            } => (start, end),
+            lalrpop_util::ParseError::ExtraToken {
+                token: (start, _, end),
+            } => (start, end),
+            lalrpop_util::ParseError::User { error: _ } => (&0, &0),
+        };
+        ParseError {
+            start,
+            end,
+            file_name: file_name.unwrap_or("input").to_string(),
+            contents: input,
+            message: format!("{err}"),
+        }
+    })
+}
+
+pub fn parse_asm<'a>(
+    file_name: Option<&str>,
+    input: &'a str,
+) -> Result<asm_ast::ASMFile, ParseError<'a>> {
+    powdr::ASMFileParser::new().parse(input).map_err(|err| {
+        // TODO code duplication
         let (&start, &end) = match &err {
             lalrpop_util::ParseError::InvalidToken { location } => (location, location),
             lalrpop_util::ParseError::UnrecognizedEOF {
@@ -65,17 +97,17 @@ pub fn parse<'a>(file_name: Option<&str>, input: &'a str) -> Result<ast::PILFile
 mod test {
     use std::fs;
 
-    use super::*;
+    use super::{asm_ast::ASMFile, *};
     use ast::*;
 
     #[test]
     fn empty() {
-        assert!(pil::PILFileParser::new().parse("").is_ok());
+        assert!(powdr::PILFileParser::new().parse("").is_ok());
     }
 
     #[test]
     fn simple_include() {
-        let parsed = pil::PILFileParser::new().parse("include \"x\";").unwrap();
+        let parsed = powdr::PILFileParser::new().parse("include \"x\";").unwrap();
         assert_eq!(
             parsed,
             PILFile(vec![Statement::Include(0, "x".to_string())])
@@ -84,7 +116,7 @@ mod test {
 
     #[test]
     fn start_offsets() {
-        let parsed = pil::PILFileParser::new()
+        let parsed = powdr::PILFileParser::new()
             .parse("include \"x\"; pol commit t;")
             .unwrap();
         assert_eq!(
@@ -104,7 +136,7 @@ mod test {
 
     #[test]
     fn simple_plookup() {
-        let parsed = pil::PILFileParser::new().parse("f in g;").unwrap();
+        let parsed = powdr::PILFileParser::new().parse("f in g;").unwrap();
         assert_eq!(
             parsed,
             PILFile(vec![Statement::PlookupIdentity(
@@ -136,6 +168,15 @@ mod test {
         })
     }
 
+    fn parse_asm_file(name: &str) -> ASMFile {
+        let input = fs::read_to_string(name).unwrap();
+        parse_asm(Some(name), &input).unwrap_or_else(|err| {
+            eprintln!("Parse error during test:");
+            err.output_to_stderr();
+            panic!();
+        })
+    }
+
     #[test]
     fn parse_example_files() {
         parse_file("tests/polygon-hermez/arith.pil");
@@ -158,7 +199,7 @@ mod test {
 
     #[test]
     fn simple_macro() {
-        let parsed = pil::PILFileParser::new()
+        let parsed = powdr::PILFileParser::new()
             .parse("macro f(x) { x in g; x + 1 };")
             .unwrap();
         assert_eq!(
@@ -196,5 +237,10 @@ mod test {
                 ))
             )])
         );
+    }
+
+    #[test]
+    fn parse_example_asm_files() {
+        parse_asm_file("tests/simple_sum.asm");
     }
 }
