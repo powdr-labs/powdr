@@ -4,8 +4,8 @@ use std::collections::{BTreeMap, HashMap};
 use json::{object, JsonValue};
 
 use crate::analyzer::{
-    Analyzed, BinaryOperator, Expression, IdentityKind, PolynomialReference, PolynomialType,
-    StatementIdentifier, UnaryOperator,
+    Analyzed, BinaryOperator, Expression, FunctionValueDefinition, IdentityKind,
+    PolynomialReference, PolynomialType, StatementIdentifier, UnaryOperator,
 };
 
 use self::expression_counter::compute_intermediate_expression_ids;
@@ -33,11 +33,15 @@ pub fn export(analyzed: &Analyzed) -> JsonValue {
             StatementIdentifier::Definition(name) => {
                 if let (poly, Some(value)) = &analyzed.definitions[name] {
                     if poly.poly_type == PolynomialType::Intermediate {
-                        let expression_id = exporter.extract_expression(value, 1);
-                        assert_eq!(
-                            expression_id,
-                            exporter.intermediate_poly_expression_ids[&poly.id] as usize
-                        );
+                        if let FunctionValueDefinition::Mapping(value) = value {
+                            let expression_id = exporter.extract_expression(value, 1);
+                            assert_eq!(
+                                expression_id,
+                                exporter.intermediate_poly_expression_ids[&poly.id] as usize
+                            );
+                        } else {
+                            panic!("Expected single value");
+                        }
                     }
                 }
             }

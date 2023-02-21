@@ -1,6 +1,9 @@
 use std::collections::HashMap;
 
-use crate::analyzer::{Analyzed, BinaryOperator, ConstantNumberType, Expression, UnaryOperator};
+use crate::analyzer::{
+    Analyzed, BinaryOperator, ConstantNumberType, Expression, FunctionValueDefinition,
+    UnaryOperator,
+};
 
 /// Generates the constant polynomial values for all constant polynomials
 /// that are defined (and not just declared).
@@ -33,19 +36,34 @@ pub fn generate(
 fn generate_values(
     analyzed: &Analyzed,
     degree: ConstantNumberType,
-    body: &Expression,
+    body: &FunctionValueDefinition,
     other_constants: &HashMap<&String, Vec<ConstantNumberType>>,
 ) -> Vec<ConstantNumberType> {
-    (0..degree)
-        .map(|i| {
-            Evaluator {
+    match body {
+        FunctionValueDefinition::Mapping(body) => (0..degree)
+            .map(|i| {
+                Evaluator {
+                    analyzed,
+                    variables: &[i],
+                    other_constants,
+                }
+                .evaluate(body)
+            })
+            .collect(),
+        FunctionValueDefinition::Array(values) => {
+            let evaluator = Evaluator {
                 analyzed,
-                variables: &[i],
+                variables: &[],
                 other_constants,
+            };
+            let mut values: Vec<_> = values.iter().map(|v| evaluator.evaluate(v)).collect();
+            // TODO we fill with zeros - should we warn? should we repeat?
+            if degree as usize > values.len() {
+                values.resize(degree as usize, 0)
             }
-            .evaluate(body)
-        })
-        .collect()
+            values
+        }
+    }
 }
 
 struct Evaluator<'a> {
@@ -234,6 +252,36 @@ mod test {
             (
                 &"F.doubled_half_nibble".to_string(),
                 [0i128, 0, 1, 1, 2, 2, 3, 3, 4, 4].to_vec()
+            )
+        );
+    }
+
+    #[test]
+    pub fn test_arrays() {
+        let src = r#"
+            constant %N = 10;
+            namespace F(%N);
+            col fixed alt = [0, 1, 0, 1, 0, 1];
+            col fixed empty = [];
+            col fixed ref_other = [%N-1, alt(1), 8];
+        "#;
+        let analyzed = analyze_string(src);
+        let (constants, degree) = generate(&analyzed);
+        assert_eq!(degree, 10);
+        assert_eq!(constants.len(), 3);
+        assert_eq!(
+            constants[0],
+            (
+                &"F.alt".to_string(),
+                [0i128, 1, 0, 1, 0, 1, 0, 0, 0, 0].to_vec()
+            )
+        );
+        assert_eq!(constants[1], (&"F.empty".to_string(), [0i128; 10].to_vec()));
+        assert_eq!(
+            constants[2],
+            (
+                &"F.ref_other".to_string(),
+                [9i128, 1, 8, 0, 0, 0, 0, 0, 0, 0].to_vec()
             )
         );
     }

@@ -64,8 +64,13 @@ PolynomialConstantDeclaration: Statement = {
 }
 
 PolynomialConstantDefinition: Statement = {
-    <@L> PolCol ConstantFixed <Identifier> "(" <ParameterList> ")" "{" <Expression> "}"
+    <@L> PolCol ConstantFixed <Identifier> <FunctionDefinition>
         => Statement::PolynomialConstantDefinition(<>)
+}
+
+FunctionDefinition: FunctionDefinition = {
+    "(" <ParameterList> ")" "{" <Expression> "}" => FunctionDefinition::Mapping(<>),
+    "=" "[" <ExpressionList> "]" => FunctionDefinition::Array(<>),
 }
 
 ParameterList: Vec<String> = {
