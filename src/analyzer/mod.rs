@@ -22,7 +22,7 @@ pub enum StatementIdentifier {
 pub struct Analyzed {
     /// Constants are not namespaced!
     pub constants: HashMap<String, ConstantNumberType>,
-    pub definitions: HashMap<String, (Polynomial, Option<Expression>)>,
+    pub definitions: HashMap<String, (Polynomial, Option<FunctionValueDefinition>)>,
     pub public_declarations: HashMap<String, PublicDeclaration>,
     pub identities: Vec<Identity>,
     /// The order in which definitions and identities
@@ -44,18 +44,22 @@ impl Analyzed {
         self.declaration_type_count(PolynomialType::Constant)
     }
 
-    pub fn constant_polys_in_source_order(&self) -> Vec<&(Polynomial, Option<Expression>)> {
+    pub fn constant_polys_in_source_order(
+        &self,
+    ) -> Vec<&(Polynomial, Option<FunctionValueDefinition>)> {
         self.definitions_in_source_order(PolynomialType::Constant)
     }
 
-    pub fn committed_polys_in_source_order(&self) -> Vec<&(Polynomial, Option<Expression>)> {
+    pub fn committed_polys_in_source_order(
+        &self,
+    ) -> Vec<&(Polynomial, Option<FunctionValueDefinition>)> {
         self.definitions_in_source_order(PolynomialType::Committed)
     }
 
     pub fn definitions_in_source_order(
         &self,
         poly_type: PolynomialType,
-    ) -> Vec<&(Polynomial, Option<Expression>)> {
+    ) -> Vec<&(Polynomial, Option<FunctionValueDefinition>)> {
         self.source_order
             .iter()
             .filter_map(move |statement| {
@@ -97,6 +101,11 @@ impl Polynomial {
     pub fn is_array(&self) -> bool {
         self.length.is_some()
     }
+}
+
+pub enum FunctionValueDefinition {
+    Mapping(Expression),
+    Array(Vec<Expression>),
 }
 
 pub struct PublicDeclaration {

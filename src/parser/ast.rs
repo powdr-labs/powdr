@@ -10,7 +10,7 @@ pub enum Statement {
     PolynomialDefinition(usize, String, Expression),
     PublicDeclaration(usize, String, PolynomialReference, Expression),
     PolynomialConstantDeclaration(usize, Vec<PolynomialName>),
-    PolynomialConstantDefinition(usize, String, Vec<String>, Expression),
+    PolynomialConstantDefinition(usize, String, FunctionDefinition),
     PolynomialCommitDeclaration(usize, Vec<PolynomialName>),
     PolynomialIdentity(usize, Expression),
     PlookupIdentity(usize, SelectedExpressions, SelectedExpressions),
@@ -81,4 +81,12 @@ pub enum BinaryOperator {
     BinaryOr,
     ShiftLeft,
     ShiftRight,
+}
+
+/// The definition of a function (excluding its name):
+/// Either a param-value mapping or an array of values.
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub enum FunctionDefinition {
+    Mapping(Vec<String>, Expression),
+    Array(Vec<Expression>),
 }

@@ -26,7 +26,7 @@ struct PILContext {
     polynomial_degree: ConstantNumberType,
     /// Constants are not namespaced!
     constants: HashMap<String, ConstantNumberType>,
-    definitions: HashMap<String, (Polynomial, Option<Expression>)>,
+    definitions: HashMap<String, (Polynomial, Option<FunctionValueDefinition>)>,
     public_declarations: HashMap<String, PublicDeclaration>,
     macros: HashMap<String, MacroDefinition>,
     identities: Vec<Identity>,
@@ -119,8 +119,7 @@ impl PILContext {
                         name,
                         &None,
                         PolynomialType::Intermediate,
-                        None,
-                        Some(value),
+                        Some(&ast::FunctionDefinition::Mapping(vec![], value.clone())),
                     );
                 }
                 Statement::PublicDeclaration(start, name, polynomial, index) => self
@@ -131,14 +130,13 @@ impl PILContext {
                         polynomials,
                         PolynomialType::Constant,
                     ),
-                Statement::PolynomialConstantDefinition(start, name, parameters, value) => {
+                Statement::PolynomialConstantDefinition(start, name, definition) => {
                     self.handle_polynomial_definition(
                         self.to_source_ref(*start),
                         name,
                         &None,
                         PolynomialType::Constant,
-                        Some(parameters),
-                        Some(value),
+                        Some(definition),
                     );
                 }
                 Statement::PolynomialCommitDeclaration(start, polynomials) => self
@@ -267,7 +265,6 @@ impl PILContext {
                 array_size,
                 polynomial_type,
                 None,
-                None,
             );
         }
     }
@@ -278,13 +275,8 @@ impl PILContext {
         name: &String,
         array_size: &Option<ast::Expression>,
         polynomial_type: PolynomialType,
-        parameters: Option<&[String]>,
-        value: Option<&ast::Expression>,
+        value: Option<&ast::FunctionDefinition>,
     ) -> u64 {
-        if parameters.is_some() {
-            assert!(array_size.is_none());
-            assert!(polynomial_type == PolynomialType::Constant);
-        }
         let length = array_size
             .as_ref()
             .map(|l| self.evaluate_expression(l).unwrap());
@@ -304,17 +296,27 @@ impl PILContext {
             length,
         };
         let name = poly.absolute_name.clone();
-        assert!(self.local_variables.is_empty());
-        self.local_variables = parameters
-            .map(|p| {
-                p.iter()
+        let value = value.map(|v| match v {
+            ast::FunctionDefinition::Mapping(params, value) => {
+                assert!(array_size.is_none());
+                if !params.is_empty() {
+                    assert!(polynomial_type == PolynomialType::Constant);
+                }
+
+                assert!(self.local_variables.is_empty());
+                self.local_variables = params
+                    .iter()
                     .enumerate()
                     .map(|(i, p)| (p.clone(), i as u64))
-                    .collect()
-            })
-            .unwrap_or_default();
-        let value = value.map(|e| self.process_expression(e));
-        self.local_variables.clear();
+                    .collect();
+                let value = self.process_expression(value);
+                self.local_variables.clear();
+                FunctionValueDefinition::Mapping(value)
+            }
+            ast::FunctionDefinition::Array(value) => {
+                FunctionValueDefinition::Array(self.process_expressions(value))
+            }
+        });
         let is_new = self
             .definitions
             .insert(name.clone(), (poly, value))

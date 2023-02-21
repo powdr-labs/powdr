@@ -33,12 +33,16 @@ impl Display for Statement {
             Statement::PolynomialConstantDeclaration(_, names) => {
                 write!(f, "pol constant {};", format_names(names))
             }
-            Statement::PolynomialConstantDefinition(_, name, params, body) => {
-                write!(
-                    f,
-                    "pol constant {name}({}) {{ {body} }};",
-                    params.join(", ")
-                )
+            Statement::PolynomialConstantDefinition(_, name, definition) => {
+                write!(f, "pol constant {name}")?;
+                match definition {
+                    FunctionDefinition::Mapping(params, body) => {
+                        write!(f, "({}) {{ {body} }};", params.join(", "))
+                    }
+                    FunctionDefinition::Array(values) => {
+                        write!(f, " = [{}];", format_expressions(values))
+                    }
+                }
             }
             Statement::PolynomialCommitDeclaration(_, names) => {
                 write!(f, "pol commit {};", format_names(names))
