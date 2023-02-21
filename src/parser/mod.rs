@@ -6,6 +6,7 @@ use lalrpop_util::*;
 
 pub mod asm_ast;
 pub mod ast;
+pub mod display;
 
 lalrpop_mod!(
     #[allow(clippy::all)]
