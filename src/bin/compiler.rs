@@ -4,8 +4,8 @@ fn main() {
     if env::args().nth(1).unwrap() == "--asm" {
         let file_name = env::args().nth(2).unwrap();
         let contents = fs::read_to_string(Path::new(&file_name)).unwrap();
-        match powdr::parser::parse_asm(Some(&file_name), &contents) {
-            Ok(ast) => println!("{ast:?}"),
+        match powdr::asm_compiler::compile(Some(&file_name), &contents) {
+            Ok(pil) => println!("{pil}"),
             Err(err) => err.output_to_stderr(),
         }
     } else if env::args().nth(1).unwrap() == "--reformat" {
@@ -16,6 +16,6 @@ fn main() {
             Err(err) => err.output_to_stderr(),
         }
     } else {
-        powdr::compiler::compile(Path::new(&env::args().nth(1).unwrap()));
+        powdr::compiler::compile_pil(Path::new(&env::args().nth(1).unwrap()));
     }
 }

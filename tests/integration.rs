@@ -3,7 +3,7 @@ use std::{path::Path, process::Command};
 use powdr::compiler;
 
 fn verify(file_name: &str) {
-    compiler::compile(Path::new(&format!("./tests/{file_name}")));
+    compiler::compile_pil(Path::new(&format!("./tests/{file_name}")));
 
     let pilcom = std::env::var("PILCOM")
         .expect("Please set the PILCOM environment variable to the path to the pilcom repository.");
@@ -12,7 +12,7 @@ fn verify(file_name: &str) {
         .args([
             format!("{pilcom}/src/main_pilverifier.js"),
             "commits.bin".to_string(),
-            "-p".to_string(),
+            "-j".to_string(),
             format!("{file_name}.json"),
             "-c".to_string(),
             "constants.bin".to_string(),
