@@ -477,6 +477,7 @@ fn witness_column(start: usize, name: &str) -> Statement {
             name: name.to_string(),
             array_size: None,
         }],
+        None,
     )
 }
 

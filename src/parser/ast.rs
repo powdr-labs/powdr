@@ -11,7 +11,7 @@ pub enum Statement {
     PublicDeclaration(usize, String, PolynomialReference, Expression),
     PolynomialConstantDeclaration(usize, Vec<PolynomialName>),
     PolynomialConstantDefinition(usize, String, FunctionDefinition),
-    PolynomialCommitDeclaration(usize, Vec<PolynomialName>),
+    PolynomialCommitDeclaration(usize, Vec<PolynomialName>, Option<FunctionDefinition>),
     PolynomialIdentity(usize, Expression),
     PlookupIdentity(usize, SelectedExpressions, SelectedExpressions),
     PermutationIdentity(usize, SelectedExpressions, SelectedExpressions),
@@ -89,6 +89,10 @@ pub enum BinaryOperator {
 /// Either a param-value mapping or an array of values.
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum FunctionDefinition {
+    /// Parameter-value-mapping.
     Mapping(Vec<String>, Expression),
+    /// Array of values.
     Array(Vec<Expression>),
+    /// Prover query.
+    Query(Vec<String>, Expression),
 }

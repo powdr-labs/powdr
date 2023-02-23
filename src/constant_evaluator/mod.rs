@@ -63,6 +63,7 @@ fn generate_values(
             }
             values
         }
+        FunctionValueDefinition::Query(_) => panic!("Query used for fixed column."),
     }
 }
 

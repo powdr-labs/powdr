@@ -1,9 +1,9 @@
 use std::{path::Path, process::Command};
 
-use powdr::compiler;
+use powdr::{analyzer::ConstantNumberType, compiler};
 
-fn verify(file_name: &str) {
-    compiler::compile_pil(Path::new(&format!("./tests/{file_name}")));
+fn verify(file_name: &str, query_callback: Option<fn(&str) -> Option<ConstantNumberType>>) {
+    compiler::compile_pil(Path::new(&format!("./tests/{file_name}")), query_callback);
 
     let pilcom = std::env::var("PILCOM")
         .expect("Please set the PILCOM environment variable to the path to the pilcom repository.");
@@ -35,15 +35,31 @@ fn verify(file_name: &str) {
 
 #[test]
 fn test_fibonacci() {
-    verify("fibonacci.pil");
+    verify("fibonacci.pil", None);
 }
 
 #[test]
 fn test_fibonacci_macro() {
-    verify("fib_macro.pil");
+    verify("fib_macro.pil", None);
 }
 
 #[test]
 fn test_global() {
-    verify("global.pil");
+    verify("global.pil", None);
+}
+
+#[test]
+fn test_sum_via_witness_query() {
+    verify(
+        "sum_via_witness_query.pil",
+        Some(|q| {
+            match q {
+                "\"in\", 0" => Some(7.into()),
+                "\"in\", 1" => Some(8.into()),
+                "\"in\", 2" => Some(2.into()),
+                "\"in\", 3" => None, // This line checks that if we return "None", the system still tries to figure it out on its own.
+                _ => None,
+            }
+        }),
+    );
 }

@@ -1,0 +1,26 @@
+constant %N = 4;
+
+namespace Sum(%N);
+    constant %last_row = %N - 1;
+
+    macro is_nonzero(X) { X / X }; // 0 / 0 == 0 makes this work...
+    macro is_zero(X) { 1 - is_nonzero(X) };
+    macro is_equal(A, B) { is_zero(A - B) };
+    macro ite(C, A, B) { is_nonzero(C) * A + is_zero(C) * B};
+
+    macro one_hot(i, index) { is_equal(i, index) };
+
+    pol fixed ISLAST(i) { one_hot(i, %last_row) };
+    pol fixed ISALMOSTLAST(i) { one_hot(i, %last_row - 1) };
+    pol fixed ISFIRST = [ 1, 0 ];
+
+    col witness input(i) query ("in", i);
+    col witness sum;
+
+    ISLAST * sum' = 0;
+    sum' = (1 - ISLAST) * (sum + input);
+    // This is just to see that a query is optional or can also
+    // return "try to figure it out on your own"
+    // TODO: This woulb be better if we could use "ISLAST * input = 0".
+    ISALMOSTLAST * input' = 0;
+    public out = sum(%N-1);

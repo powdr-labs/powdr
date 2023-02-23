@@ -16,11 +16,7 @@ impl Display for PILFile {
 impl Display for Statement {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
-            Statement::Include(_, path) => write!(
-                f,
-                "include \"{}\";",
-                path.replace('\\', "\\\\").replace('"', "\\\"")
-            ),
+            Statement::Include(_, path) => write!(f, "include {};", quote(path)),
             Statement::Namespace(_, name, poly_length) => {
                 write!(f, "namespace {name}({poly_length});")
             }
@@ -34,18 +30,15 @@ impl Display for Statement {
                 write!(f, "pol constant {};", format_names(names))
             }
             Statement::PolynomialConstantDefinition(_, name, definition) => {
-                write!(f, "pol constant {name}")?;
-                match definition {
-                    FunctionDefinition::Mapping(params, body) => {
-                        write!(f, "({}) {{ {body} }};", params.join(", "))
-                    }
-                    FunctionDefinition::Array(values) => {
-                        write!(f, " = [{}];", format_expressions(values))
-                    }
-                }
+                write!(f, "pol constant {name}{definition};")
             }
-            Statement::PolynomialCommitDeclaration(_, names) => {
-                write!(f, "pol commit {};", format_names(names))
+            Statement::PolynomialCommitDeclaration(_, names, value) => {
+                write!(
+                    f,
+                    "pol commit {}{};",
+                    format_names(names),
+                    value.as_ref().map(|v| format!("{v}")).unwrap_or_default()
+                )
             }
             Statement::PolynomialIdentity(_, expression) => {
                 if let Expression::BinaryOperation(left, BinaryOperator::Sub, right) = expression {
@@ -85,12 +78,32 @@ impl Display for Statement {
     }
 }
 
+fn quote(input: &str) -> String {
+    format!("\"{}\"", input.replace('\\', "\\\\").replace('"', "\\\""))
+}
+
 fn format_names(names: &[PolynomialName]) -> String {
     names
         .iter()
         .map(|n| format!("{n}"))
         .collect::<Vec<_>>()
         .join(", ")
+}
+
+impl Display for FunctionDefinition {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        match self {
+            FunctionDefinition::Mapping(params, body) => {
+                write!(f, "({}) {{ {body} }}", params.join(", "))
+            }
+            FunctionDefinition::Array(values) => {
+                write!(f, " = [{}]", format_expressions(values))
+            }
+            FunctionDefinition::Query(params, value) => {
+                write!(f, "({}) query {value}", params.join(", "),)
+            }
+        }
+    }
 }
 
 impl Display for SelectedExpressions {
@@ -226,6 +239,13 @@ macro on_regular_row(cond) { ((1 - ISLAST) * cond) = 0; };
 on_regular_row(constrain_equal_expr(x', y));
 on_regular_row(constrain_equal_expr(y', (x + y)));
 public out = y(%last_row);"#;
+        let printed = format!("{}", parser::parse(Some("input"), input).unwrap());
+        assert_eq!(input.trim(), printed.trim());
+    }
+
+    #[test]
+    fn reparse_witness_query() {
+        let input = r#"pol commit wit(i) query (x(i), y(i));"#;
         let printed = format!("{}", parser::parse(Some("input"), input).unwrap());
         assert_eq!(input.trim(), printed.trim());
     }

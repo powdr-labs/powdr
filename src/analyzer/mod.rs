@@ -106,6 +106,7 @@ impl Polynomial {
 pub enum FunctionValueDefinition {
     Mapping(Expression),
     Array(Vec<Expression>),
+    Query(Expression),
 }
 
 pub struct PublicDeclaration {

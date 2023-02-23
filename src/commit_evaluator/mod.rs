@@ -1,7 +1,8 @@
 use std::collections::HashMap;
 
 use crate::analyzer::{
-    Analyzed, BinaryOperator, ConstantNumberType, Expression, IdentityKind, UnaryOperator,
+    Analyzed, BinaryOperator, ConstantNumberType, Expression, FunctionValueDefinition,
+    IdentityKind, UnaryOperator,
 };
 
 mod affine_expression;
@@ -14,21 +15,22 @@ pub fn generate<'a>(
     analyzed: &'a Analyzed,
     degree: &ConstantNumberType,
     constants: &[(&String, Vec<ConstantNumberType>)],
+    query_callback: Option<fn(&str) -> Option<ConstantNumberType>>,
 ) -> Vec<(&'a String, Vec<ConstantNumberType>)> {
-    let polys: Vec<&String> = analyzed
+    let polys: Vec<WitnessColumn> = analyzed
         .committed_polys_in_source_order()
         .iter()
-        .map(|(poly, value)| {
-            assert!(value.is_none());
+        .enumerate()
+        .map(|(i, (poly, value))| {
             if poly.length.is_some() {
                 unimplemented!("Committed arrays not implemented.")
             }
-            &poly.absolute_name
+            WitnessColumn::new(i, &poly.absolute_name, value)
         })
         .collect();
     let mut values: Vec<(&String, Vec<i128>)> =
-        polys.iter().map(|name| (*name, Vec::new())).collect();
-    let mut evaluator = Evaluator::new(analyzed, constants, polys);
+        polys.iter().map(|p| (p.name, Vec::new())).collect();
+    let mut evaluator = Evaluator::new(analyzed, constants, &polys, query_callback);
     for row in 0..*degree as usize {
         let row_values = evaluator.compute_next_row(row);
         for (col, v) in row_values.into_iter().enumerate() {
@@ -38,11 +40,34 @@ pub fn generate<'a>(
     values
 }
 
+struct WitnessColumn<'a> {
+    id: usize,
+    name: &'a String,
+    query: Option<&'a Expression>,
+}
+
+impl<'a> WitnessColumn<'a> {
+    pub fn new(
+        id: usize,
+        name: &'a String,
+        value: &'a Option<FunctionValueDefinition>,
+    ) -> WitnessColumn<'a> {
+        let query = if let Some(FunctionValueDefinition::Query(query)) = value {
+            Some(query)
+        } else {
+            None
+        };
+        WitnessColumn { id, name, query }
+    }
+}
+
 struct Evaluator<'a> {
     analyzed: &'a Analyzed,
     constants: HashMap<&'a String, &'a Vec<ConstantNumberType>>,
-    /// Maps the committed polynomial names to their IDs internal to this component.
-    committed: HashMap<&'a String, usize>,
+    query_callback: Option<fn(&str) -> Option<ConstantNumberType>>,
+    /// Maps the committed polynomial names to their IDs internal to this component
+    /// and optional parameter and query string.
+    committed: HashMap<&'a String, &'a WitnessColumn<'a>>,
     committed_names: Vec<&'a String>,
     /// Values of the committed polynomials
     current: Vec<Option<ConstantNumberType>>,
@@ -55,7 +80,8 @@ impl<'a> Evaluator<'a> {
     pub fn new(
         analyzed: &'a Analyzed,
         constants: &'a [(&String, Vec<ConstantNumberType>)],
-        committed: Vec<&'a String>,
+        committed: &'a Vec<WitnessColumn<'a>>,
+        query_callback: Option<fn(&str) -> Option<ConstantNumberType>>,
     ) -> Self {
         Evaluator {
             analyzed,
@@ -63,8 +89,9 @@ impl<'a> Evaluator<'a> {
                 .iter()
                 .map(|(name, values)| (*name, values))
                 .collect(),
-            committed: committed.iter().enumerate().map(|(i, c)| (*c, i)).collect(),
-            committed_names: committed.clone(),
+            query_callback,
+            committed: committed.iter().map(|p| (p.name, p)).collect(),
+            committed_names: committed.iter().map(|p| p.name).collect(),
             current: vec![None; committed.len()],
             next: vec![None; committed.len()],
             next_row: 0,
@@ -79,6 +106,19 @@ impl<'a> Evaluator<'a> {
         loop {
             let mut progress = false;
             // TODO also use lookups, not only polynomial identities
+
+            if let Some(query_callback) = self.query_callback {
+                for column in self.committed.values() {
+                    if self.next[column.id].is_none() && column.query.is_some() {
+                        if let Some(value) =
+                            query_callback(&self.interpolate_query(column.query.unwrap()))
+                        {
+                            self.next[column.id] = Some(value);
+                            progress = true;
+                        }
+                    }
+                }
+            }
             for identity in &self.analyzed.identities {
                 if identity.kind == IdentityKind::Polynomial {
                     let expr = identity.left.selector.as_ref().unwrap();
@@ -114,6 +154,31 @@ impl<'a> Evaluator<'a> {
         }
     }
 
+    fn interpolate_query(&self, query: &Expression) -> String {
+        // TODO combine that with the constant evaluator and the commit evaluator...
+        match query {
+            Expression::Tuple(items) => items
+                .iter()
+                .map(|i| self.interpolate_query(i))
+                .collect::<Vec<_>>()
+                .join(", "),
+            Expression::LocalVariableReference(i) => {
+                assert!(*i == 0);
+                format!("{}", self.next_row)
+            }
+            Expression::Constant(_) => todo!(),
+            Expression::PolynomialReference(_) => todo!(),
+            Expression::PublicReference(_) => todo!(),
+            Expression::Number(n) => format!("{n}"),
+            Expression::String(s) => {
+                format!("\"{}\"", s.replace('\\', "\\\\").replace('"', "\\\""))
+            }
+            Expression::BinaryOperation(_, _, _) => todo!(),
+            Expression::UnaryOperation(_, _) => todo!(),
+            Expression::FunctionCall(_, _) => todo!(),
+        }
+    }
+
     /// Tries to evaluate the expression to an expression affine in the committed polynomials,
     /// taking current values of polynomials into account.
     /// @returns an expression affine in the committed polynomials of the next row.
@@ -124,18 +189,22 @@ impl<'a> Evaluator<'a> {
             Expression::Constant(name) => Some(self.analyzed.constants[name].into()),
             Expression::PolynomialReference(poly) => {
                 // TODO arrays
-                if let Some(&id) = self.committed.get(&poly.name) {
+                if let Some(WitnessColumn { id, .. }) = self.committed.get(&poly.name) {
                     // Committed polynomial
                     if poly.next {
-                        Some(if let Some(value) = self.next[id] {
+                        Some(if let Some(value) = self.next[*id] {
                             // We already computed the concrete value
                             value.into()
                         } else {
                             // We continue with a symbolic value
-                            AffineExpression::from_committed_poly_value(id)
+                            AffineExpression::from_committed_poly_value(*id)
                         })
                     } else {
-                        self.current[id].map(|value| value.into())
+                        // TODO make this work in case we have a constraint
+                        // that does not contain a "next" on any witness columns.
+                        // In that case, we can use this constraint to derive
+                        // a value (from constants or already computed witnesses).
+                        self.current[*id].map(|value| value.into())
                     }
                 } else {
                     // Constant polynomial (or something else)
