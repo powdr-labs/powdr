@@ -80,6 +80,8 @@ impl<'a> Evaluator<'a> {
             Expression::LocalVariableReference(i) => self.variables[*i as usize],
             Expression::PublicReference(_) => todo!(),
             Expression::Number(n) => *n,
+            Expression::String(_) => panic!(),
+            Expression::Tuple(_) => panic!(),
             Expression::BinaryOperation(left, op, right) => {
                 self.evaluate_binary_operation(left, op, right)
             }

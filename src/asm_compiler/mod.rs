@@ -239,6 +239,8 @@ impl ASMPILConverter {
                 )]
             }
             Expression::Number(value) => vec![(*value, AffineExpressionComponent::Constant)],
+            Expression::String(_) => panic!(),
+            Expression::Tuple(_) => panic!(),
             Expression::FreeInput(expr) => {
                 vec![(1, AffineExpressionComponent::FreeInput(*expr.clone()))]
             }
@@ -560,9 +562,13 @@ fn substitute(input: &Expression, substitution: &HashMap<String, String>) -> Exp
             name.clone(),
             args.iter().map(|e| substitute(e, substitution)).collect(),
         ),
+        Expression::Tuple(items) => {
+            Expression::Tuple(items.iter().map(|e| substitute(e, substitution)).collect())
+        }
         Expression::Constant(_)
         | Expression::PublicReference(_)
         | Expression::Number(_)
+        | Expression::String(_)
         | Expression::FreeInput(_) => input.clone(),
     }
 }

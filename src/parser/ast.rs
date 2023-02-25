@@ -43,6 +43,8 @@ pub enum Expression {
     PolynomialReference(PolynomialReference),
     PublicReference(String),
     Number(ConstantNumberType),
+    String(String),
+    Tuple(Vec<Expression>),
     BinaryOperation(Box<Expression>, BinaryOperator, Box<Expression>),
     UnaryOperation(UnaryOperator, Box<Expression>),
     FunctionCall(String, Vec<Expression>),

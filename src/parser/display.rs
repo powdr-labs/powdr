@@ -122,6 +122,8 @@ impl Display for Expression {
             Expression::PolynomialReference(reference) => write!(f, "{reference}"),
             Expression::PublicReference(name) => write!(f, "{name}"),
             Expression::Number(value) => write!(f, "{value}"),
+            Expression::String(value) => write!(f, "\"{value}\""), // TODO quote?
+            Expression::Tuple(items) => write!(f, "({})", format_expressions(items)),
             Expression::BinaryOperation(left, op, right) => write!(f, "({left} {op} {right})"),
             Expression::UnaryOperation(op, exp) => write!(f, "{op}{exp}"),
             Expression::FunctionCall(fun, args) => write!(f, "{fun}({})", format_expressions(args)),
@@ -224,6 +226,13 @@ macro on_regular_row(cond) { ((1 - ISLAST) * cond) = 0; };
 on_regular_row(constrain_equal_expr(x', y));
 on_regular_row(constrain_equal_expr(y', (x + y)));
 public out = y(%last_row);"#;
+        let printed = format!("{}", parser::parse(Some("input"), input).unwrap());
+        assert_eq!(input.trim(), printed.trim());
+    }
+
+    #[test]
+    fn reparse_strings_and_tuples() {
+        let input = r#"constant %N = ("abc", 3);"#;
         let printed = format!("{}", parser::parse(Some("input"), input).unwrap());
         assert_eq!(input.trim(), printed.trim());
     }

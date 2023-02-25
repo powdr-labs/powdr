@@ -432,6 +432,8 @@ impl PILContext {
             }
             ast::Expression::PublicReference(name) => Expression::PublicReference(name.clone()),
             ast::Expression::Number(n) => Expression::Number(*n),
+            ast::Expression::String(value) => Expression::String(value.clone()),
+            ast::Expression::Tuple(items) => Expression::Tuple(self.process_expressions(items)),
             ast::Expression::BinaryOperation(left, op, right) => {
                 if let Some(value) = self.evaluate_binary_operation(left, op, right) {
                     Expression::Number(value)
@@ -516,6 +518,8 @@ impl PILContext {
             ast::Expression::PolynomialReference(_) => None,
             ast::Expression::PublicReference(_) => None,
             ast::Expression::Number(n) => Some(*n),
+            ast::Expression::String(_) => None,
+            ast::Expression::Tuple(_) => None,
             ast::Expression::BinaryOperation(left, op, right) => {
                 self.evaluate_binary_operation(left, op, right)
             }

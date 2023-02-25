@@ -303,6 +303,8 @@ impl<'a> Exporter<'a> {
             Expression::FunctionCall(_, _) => {
                 panic!("No function calls allowed here.")
             }
+            Expression::String(_) => panic!("Strings not allowed here."),
+            Expression::Tuple(_) => panic!("Tuples not allowed here"),
         }
     }
 
