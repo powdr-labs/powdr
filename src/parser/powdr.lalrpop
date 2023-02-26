@@ -290,6 +290,8 @@ Term: Box<Expression> = {
     PolynomialReference => Box::new(Expression::PolynomialReference(<>)),
     PublicReference => Box::new(Expression::PublicReference(<>)),
     Number => Box::new(Expression::Number(<>)),
+    StringLiteral => Box::new(Expression::String(<>)),
+    "(" <head:Expression> "," <tail:ExpressionList> ")" => { let mut list = vec![head]; list.extend(tail); Box::new(Expression::Tuple(list)) },
     "(" <BoxedExpression> ")",
     "${" <BoxedExpression> "}" => Box::new(Expression::FreeInput(<>))
 }

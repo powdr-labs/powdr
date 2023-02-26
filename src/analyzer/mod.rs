@@ -150,6 +150,8 @@ pub enum Expression {
     LocalVariableReference(u64),
     PublicReference(String),
     Number(ConstantNumberType),
+    String(String),
+    Tuple(Vec<Expression>),
     BinaryOperation(Box<Expression>, BinaryOperator, Box<Expression>),
     UnaryOperation(UnaryOperator, Box<Expression>),
     /// Call to a non-macro function (like a constant polynomial)
