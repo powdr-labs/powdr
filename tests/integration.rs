@@ -3,19 +3,23 @@ use std::{path::Path, process::Command};
 use powdr::{analyzer::ConstantNumberType, compiler};
 
 fn verify(file_name: &str, query_callback: Option<fn(&str) -> Option<ConstantNumberType>>) {
-    compiler::compile_pil(Path::new(&format!("./tests/{file_name}")), query_callback);
+    let input_file = Path::new(&format!("./tests/{file_name}"))
+        .canonicalize()
+        .unwrap();
+
+    let temp_dir = mktemp::Temp::new_dir().unwrap();
+    compiler::compile_pil(&input_file, &temp_dir, query_callback);
 
     let pilcom = std::env::var("PILCOM")
         .expect("Please set the PILCOM environment variable to the path to the pilcom repository.");
-
     let verifier_output = Command::new("node")
         .args([
             format!("{pilcom}/src/main_pilverifier.js"),
-            "commits.bin".to_string(),
+            format!("{}/commits.bin", temp_dir.as_path().to_string_lossy()),
             "-j".to_string(),
-            format!("{file_name}.json"),
+            format!("{}/{file_name}.json", temp_dir.as_path().to_string_lossy()),
             "-c".to_string(),
-            "constants.bin".to_string(),
+            format!("{}/constants.bin", temp_dir.as_path().to_string_lossy()),
         ])
         .output()
         .expect("failed to run pil verifier");
@@ -31,6 +35,8 @@ fn verify(file_name: &str, query_callback: Option<fn(&str) -> Option<ConstantNum
             panic!("Verified did not say 'PIL OK': {output}");
         }
     }
+
+    drop(temp_dir);
 }
 
 #[test]

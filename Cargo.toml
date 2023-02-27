@@ -8,6 +8,7 @@ build = "build.rs"
 codespan-reporting = "0.11.1"
 json = "0.12.4"
 lalrpop-util = {version = "0.19.8", features = ["lexer"]}
+mktemp = "0.5.0"
 regex = "1"
 
 [build-dependencies]
