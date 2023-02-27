@@ -16,6 +16,6 @@ fn main() {
             Err(err) => err.output_to_stderr(),
         }
     } else {
-        powdr::compiler::compile_pil(Path::new(&env::args().nth(1).unwrap()));
+        powdr::compiler::compile_pil(Path::new(&env::args().nth(1).unwrap()), None);
     }
 }

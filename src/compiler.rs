@@ -8,7 +8,10 @@ use crate::{analyzer, commit_evaluator, constant_evaluator, json_exporter};
 
 /// Compiles a .pil file to its json form and also tries to generate
 /// constants and committed polynomials.
-pub fn compile_pil(pil_file: &Path) {
+pub fn compile_pil(
+    pil_file: &Path,
+    query_callback: Option<fn(&str) -> Option<ConstantNumberType>>,
+) {
     let analyzed = analyzer::analyze(pil_file);
     let (constants, degree) = constant_evaluator::generate(&analyzed);
     if analyzed.constant_count() == constants.len() {
@@ -18,7 +21,7 @@ pub fn compile_pil(pil_file: &Path) {
             &constants,
         );
         println!("Wrote constants.bin.");
-        let commits = commit_evaluator::generate(&analyzed, &degree, &constants);
+        let commits = commit_evaluator::generate(&analyzed, &degree, &constants, query_callback);
         write_polys_file(
             &mut BufWriter::new(&mut fs::File::create("commits.bin").unwrap()),
             degree,

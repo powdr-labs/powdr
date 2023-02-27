@@ -78,7 +78,9 @@ ParameterList: Vec<String> = {
 }
 
 PolynomialCommitDeclaration: Statement = {
-    <@L> PolCol CommitWitness <PolynomialNameList> => Statement::PolynomialCommitDeclaration(<>)
+    <@L> PolCol CommitWitness <PolynomialNameList> => Statement::PolynomialCommitDeclaration(<>, None),
+    <start:@L> PolCol CommitWitness <name:PolynomialName> "(" <param:ParameterList> ")" "query" <value:Expression>
+     => Statement::PolynomialCommitDeclaration(start, vec![name], Some(FunctionDefinition::Query(param, value)))
 }
 
 PolynomialIdentity: Statement = {

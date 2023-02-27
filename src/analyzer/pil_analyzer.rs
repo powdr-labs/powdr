@@ -139,12 +139,23 @@ impl PILContext {
                         Some(definition),
                     );
                 }
-                Statement::PolynomialCommitDeclaration(start, polynomials) => self
+                Statement::PolynomialCommitDeclaration(start, polynomials, None) => self
                     .handle_polynomial_declarations(
                         self.to_source_ref(*start),
                         polynomials,
                         PolynomialType::Committed,
                     ),
+                Statement::PolynomialCommitDeclaration(start, polynomials, Some(definition)) => {
+                    assert!(polynomials.len() == 1);
+                    let name = polynomials.first().unwrap();
+                    self.handle_polynomial_definition(
+                        self.to_source_ref(*start),
+                        &name.name,
+                        &name.array_size,
+                        PolynomialType::Committed,
+                        Some(definition),
+                    );
+                }
                 Statement::ConstantDefinition(_, name, value) => {
                     self.handle_constant_definition(name, value)
                 }
@@ -280,6 +291,9 @@ impl PILContext {
         let length = array_size
             .as_ref()
             .map(|l| self.evaluate_expression(l).unwrap());
+        if length.is_some() {
+            assert!(value.is_none());
+        }
         let counter = match polynomial_type {
             PolynomialType::Committed => &mut self.commit_poly_counter,
             PolynomialType::Constant => &mut self.constant_poly_counter,
@@ -297,10 +311,14 @@ impl PILContext {
         };
         let name = poly.absolute_name.clone();
         let value = value.map(|v| match v {
-            ast::FunctionDefinition::Mapping(params, value) => {
+            ast::FunctionDefinition::Mapping(params, expr)
+            | ast::FunctionDefinition::Query(params, expr) => {
                 assert!(array_size.is_none());
                 if !params.is_empty() {
-                    assert!(polynomial_type == PolynomialType::Constant);
+                    assert!(
+                        polynomial_type == PolynomialType::Constant
+                            || polynomial_type == PolynomialType::Committed
+                    );
                 }
 
                 assert!(self.local_variables.is_empty());
@@ -309,9 +327,17 @@ impl PILContext {
                     .enumerate()
                     .map(|(i, p)| (p.clone(), i as u64))
                     .collect();
-                let value = self.process_expression(value);
+                let processed_value = self.process_expression(expr);
                 self.local_variables.clear();
-                FunctionValueDefinition::Mapping(value)
+                match v {
+                    ast::FunctionDefinition::Mapping(_, _) => {
+                        FunctionValueDefinition::Mapping(processed_value)
+                    }
+                    ast::FunctionDefinition::Query(_, _) => {
+                        FunctionValueDefinition::Query(processed_value)
+                    }
+                    _ => panic!(),
+                }
             }
             ast::FunctionDefinition::Array(value) => {
                 FunctionValueDefinition::Array(self.process_expressions(value))

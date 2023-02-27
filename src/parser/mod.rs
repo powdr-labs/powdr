@@ -115,7 +115,8 @@ mod test {
                     vec![PolynomialName {
                         name: "t".to_string(),
                         array_size: None
-                    }]
+                    }],
+                    None
                 )
             ])
         );
