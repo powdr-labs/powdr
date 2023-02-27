@@ -15,7 +15,7 @@ pub fn generate<'a>(
     analyzed: &'a Analyzed,
     degree: &ConstantNumberType,
     constants: &[(&String, Vec<ConstantNumberType>)],
-    query_callback: Option<fn(&str) -> Option<ConstantNumberType>>,
+    query_callback: Option<impl FnMut(&str) -> Option<ConstantNumberType>>,
 ) -> Vec<(&'a String, Vec<ConstantNumberType>)> {
     let polys: Vec<WitnessColumn> = analyzed
         .committed_polys_in_source_order()
@@ -61,10 +61,13 @@ impl<'a> WitnessColumn<'a> {
     }
 }
 
-struct Evaluator<'a> {
+struct Evaluator<'a, QueryCallback>
+where
+    QueryCallback: FnMut(&'a str) -> Option<ConstantNumberType>,
+{
     analyzed: &'a Analyzed,
     constants: HashMap<&'a String, &'a Vec<ConstantNumberType>>,
-    query_callback: Option<fn(&str) -> Option<ConstantNumberType>>,
+    query_callback: Option<QueryCallback>,
     /// Maps the committed polynomial names to their IDs internal to this component
     /// and optional parameter and query string.
     committed: HashMap<&'a String, &'a WitnessColumn<'a>>,
@@ -76,12 +79,15 @@ struct Evaluator<'a> {
     next_row: usize,
 }
 
-impl<'a> Evaluator<'a> {
+impl<'a, QueryCallback> Evaluator<'a, QueryCallback>
+where
+    QueryCallback: FnMut(&str) -> Option<ConstantNumberType>,
+{
     pub fn new(
         analyzed: &'a Analyzed,
         constants: &'a [(&String, Vec<ConstantNumberType>)],
         committed: &'a Vec<WitnessColumn<'a>>,
-        query_callback: Option<fn(&str) -> Option<ConstantNumberType>>,
+        query_callback: Option<QueryCallback>,
     ) -> Self {
         Evaluator {
             analyzed,
@@ -107,12 +113,12 @@ impl<'a> Evaluator<'a> {
             let mut progress = false;
             // TODO also use lookups, not only polynomial identities
 
-            if let Some(query_callback) = self.query_callback {
+            if self.query_callback.is_some() {
                 for column in self.committed.values() {
                     if self.next[column.id].is_none() && column.query.is_some() {
-                        if let Some(value) =
-                            query_callback(&self.interpolate_query(column.query.unwrap()))
-                        {
+                        let query = self.interpolate_query(column.query.unwrap());
+                        let result = self.query_callback.as_mut().unwrap()(&query);
+                        if let Some(value) = result {
                             self.next[column.id] = Some(value);
                             progress = true;
                         }
