@@ -128,7 +128,12 @@ where
             for identity in &self.analyzed.identities {
                 if identity.kind == IdentityKind::Polynomial {
                     let expr = identity.left.selector.as_ref().unwrap();
-                    if let Some((id, value)) = self.evaluate(expr).and_then(|expr| expr.solve()) {
+                    // If there is no "next" reference in the expression,
+                    // we just evaluate it directly on the "next" row.
+                    let on_next = !self.contains_next_ref(expr);
+                    if let Some((id, value)) =
+                        self.evaluate(expr, on_next).and_then(|expr| expr.solve())
+                    {
                         self.next[id] = Some(value);
                         progress = true;
                     }
@@ -187,8 +192,10 @@ where
 
     /// Tries to evaluate the expression to an expression affine in the committed polynomials,
     /// taking current values of polynomials into account.
+    /// @param on_next If true, the regular polynomial references are assumed to reference the "next" row.
+    ///     (otherwise they reference the "current" row).
     /// @returns an expression affine in the committed polynomials of the next row.
-    fn evaluate(&self, expr: &Expression) -> Option<AffineExpression> {
+    fn evaluate(&self, expr: &Expression, on_next: bool) -> Option<AffineExpression> {
         // @TODO if we iterate on processing the constraints in the same row,
         // we could store the simplified values.
         match expr {
@@ -197,7 +204,9 @@ where
                 // TODO arrays
                 if let Some(WitnessColumn { id, .. }) = self.committed.get(&poly.name) {
                     // Committed polynomial
-                    if poly.next {
+                    if !poly.next && !on_next {
+                        self.current[*id].map(|value| value.into())
+                    } else if (poly.next && !on_next) || (!poly.next && on_next) {
                         Some(if let Some(value) = self.next[*id] {
                             // We already computed the concrete value
                             value.into()
@@ -205,31 +214,29 @@ where
                             // We continue with a symbolic value
                             AffineExpression::from_committed_poly_value(*id)
                         })
+                    } else if poly.next && on_next {
+                        // "double next"
+                        None
                     } else {
-                        // TODO make this work in case we have a constraint
-                        // that does not contain a "next" on any witness columns.
-                        // In that case, we can use this constraint to derive
-                        // a value (from constants or already computed witnesses).
-                        self.current[*id].map(|value| value.into())
+                        unreachable!();
                     }
                 } else {
                     // Constant polynomial (or something else)
                     self.constants.get(&poly.name).map(|values| {
                         let degree = values.len();
-                        let row = if poly.next {
-                            self.next_row
-                        } else {
-                            (self.next_row + degree - 1) % degree
-                        };
+                        let offset = if poly.next { 1 } else { 0 } + if on_next { 1 } else { 0 };
+                        let row = (self.next_row + degree + offset - 1) % degree;
                         values[row].into()
                     })
                 }
             }
             Expression::Number(n) => Some((*n).into()),
             Expression::BinaryOperation(left, op, right) => {
-                self.evaluate_binary_operation(left, op, right)
+                self.evaluate_binary_operation(left, op, right, on_next)
             }
-            Expression::UnaryOperation(op, expr) => self.evaluate_unary_operation(op, expr),
+            Expression::UnaryOperation(op, expr) => {
+                self.evaluate_unary_operation(op, expr, on_next)
+            }
             Expression::Tuple(_) => panic!(),
             Expression::String(_) => panic!(),
             Expression::LocalVariableReference(_) => panic!(),
@@ -242,8 +249,11 @@ where
         left: &Expression,
         op: &BinaryOperator,
         right: &Expression,
+        on_next: bool,
     ) -> Option<AffineExpression> {
-        if let (Some(left), Some(right)) = (self.evaluate(left), self.evaluate(right)) {
+        if let (Some(left), Some(right)) =
+            (self.evaluate(left, on_next), self.evaluate(right, on_next))
+        {
             match op {
                 BinaryOperator::Add => Some(left + right),
                 BinaryOperator::Sub => Some(left - right),
@@ -305,10 +315,31 @@ where
         &self,
         op: &UnaryOperator,
         expr: &Expression,
+        on_next: bool,
     ) -> Option<AffineExpression> {
-        self.evaluate(expr).map(|v| match op {
+        self.evaluate(expr, on_next).map(|v| match op {
             UnaryOperator::Plus => v,
             UnaryOperator::Minus => -v,
         })
+    }
+
+    /// @returns true if the expression contains a reference to a next value of a witness column.
+    fn contains_next_ref(&self, expr: &Expression) -> bool {
+        match expr {
+            Expression::PolynomialReference(poly) => {
+                poly.next && self.committed.contains_key(&poly.name)
+            }
+            Expression::Tuple(items) => items.iter().any(|e| self.contains_next_ref(e)),
+            Expression::BinaryOperation(l, _, r) => {
+                self.contains_next_ref(l) || self.contains_next_ref(r)
+            }
+            Expression::UnaryOperation(_, e) => self.contains_next_ref(e),
+            Expression::FunctionCall(_, args) => args.iter().any(|e| self.contains_next_ref(e)),
+            Expression::Constant(_)
+            | Expression::LocalVariableReference(_)
+            | Expression::PublicReference(_)
+            | Expression::Number(_)
+            | Expression::String(_) => false,
+        }
     }
 }

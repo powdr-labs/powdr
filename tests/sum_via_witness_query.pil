@@ -21,6 +21,5 @@ namespace Sum(%N);
     sum' = (1 - ISLAST) * (sum + input);
     // This is just to see that a query is optional or can also
     // return "try to figure it out on your own"
-    // TODO: This woulb be better if we could use "ISLAST * input = 0".
-    ISALMOSTLAST * input' = 0;
+    ISLAST * input = 0;
     public out = sum(%N-1);
