@@ -128,8 +128,11 @@ where
             for identity in &self.analyzed.identities {
                 if identity.kind == IdentityKind::Polynomial {
                     let expr = identity.left.selector.as_ref().unwrap();
+                    // If there is no "next" reference in the expression,
+                    // we just evaluate it directly on the "next" row.
+                    let on_next = !self.contains_next_ref(expr);
                     if let Some((id, value)) =
-                        self.evaluate(expr, false).and_then(|expr| expr.solve())
+                        self.evaluate(expr, on_next).and_then(|expr| expr.solve())
                     {
                         self.next[id] = Some(value);
                         progress = true;
