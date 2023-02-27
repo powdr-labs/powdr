@@ -345,6 +345,9 @@ mod test {
     use super::*;
 
     fn generate_json_pair(file: &str) -> (JsonValue, JsonValue) {
+        let temp_dir = mktemp::Temp::new_dir().unwrap();
+        let output_file = temp_dir.join("out.json");
+
         let analyzed = analyzer::analyze(Path::new(file));
         let json_out = export(&analyzed);
 
@@ -352,7 +355,12 @@ mod test {
             "Please set the PILCOM environment variable to the path to the pilcom repository.",
         );
         let pilcom_output = Command::new("node")
-            .args([format!("{pilcom}/src/pil.js"), file.to_string()])
+            .args([
+                format!("{pilcom}/src/pil.js"),
+                file.to_string(),
+                "-o".to_string(),
+                format!("{}", output_file.to_string_lossy()),
+            ])
             .output()
             .expect("failed to run pilcom");
         if !pilcom_output.status.success() {
@@ -363,19 +371,10 @@ mod test {
             );
         }
 
-        let output_file = format!(
-            "{}.json",
-            Path::new(file)
-                .canonicalize()
-                .unwrap()
-                .file_name()
-                .unwrap()
-                .to_str()
-                .unwrap()
-        );
         let pilcom_out = fs::read_to_string(&output_file).unwrap_or_else(|_| {
-            panic!("Pilcom did not generate {output_file} at the expected location.")
+            panic!("Pilcom did not generate {output_file:?} at the expected location.")
         });
+        drop(temp_dir);
         let pilcom_parsed = json::parse(&pilcom_out).expect("Invalid json from pilcom.");
         (json_out, pilcom_parsed)
     }

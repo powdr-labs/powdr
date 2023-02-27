@@ -14,20 +14,21 @@ pub fn no_callback() -> Option<fn(&str) -> Option<ConstantNumberType>> {
 /// constants and committed polynomials.
 pub fn compile_pil(
     pil_file: &Path,
+    output_dir: &Path,
     query_callback: Option<impl FnMut(&str) -> Option<ConstantNumberType>>,
 ) {
     let analyzed = analyzer::analyze(pil_file);
     let (constants, degree) = constant_evaluator::generate(&analyzed);
     if analyzed.constant_count() == constants.len() {
         write_polys_file(
-            &mut BufWriter::new(&mut fs::File::create("constants.bin").unwrap()),
+            &mut BufWriter::new(&mut fs::File::create(output_dir.join("constants.bin")).unwrap()),
             degree,
             &constants,
         );
         println!("Wrote constants.bin.");
         let commits = commit_evaluator::generate(&analyzed, &degree, &constants, query_callback);
         write_polys_file(
-            &mut BufWriter::new(&mut fs::File::create("commits.bin").unwrap()),
+            &mut BufWriter::new(&mut fs::File::create(output_dir.join("commits.bin")).unwrap()),
             degree,
             &commits,
         );
@@ -38,7 +39,7 @@ pub fn compile_pil(
     let json_out = json_exporter::export(&analyzed);
     let json_file = format!("{}.json", pil_file.file_name().unwrap().to_str().unwrap());
     json_out
-        .write(&mut fs::File::create(&json_file).unwrap())
+        .write(&mut fs::File::create(output_dir.join(&json_file)).unwrap())
         .unwrap();
     println!("Wrote {json_file}.");
 }
