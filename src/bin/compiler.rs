@@ -1,5 +1,7 @@
 use std::{env, fs, path::Path};
 
+use powdr::compiler::no_callback;
+
 fn main() {
     if env::args().nth(1).unwrap() == "--asm" {
         let file_name = env::args().nth(2).unwrap();
@@ -16,6 +18,6 @@ fn main() {
             Err(err) => err.output_to_stderr(),
         }
     } else {
-        powdr::compiler::compile_pil(Path::new(&env::args().nth(1).unwrap()), None);
+        powdr::compiler::compile_pil(Path::new(&env::args().nth(1).unwrap()), no_callback());
     }
 }

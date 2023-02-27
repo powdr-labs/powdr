@@ -6,11 +6,15 @@ use analyzer::ConstantNumberType;
 
 use crate::{analyzer, commit_evaluator, constant_evaluator, json_exporter};
 
+pub fn no_callback() -> Option<fn(&str) -> Option<ConstantNumberType>> {
+    None
+}
+
 /// Compiles a .pil file to its json form and also tries to generate
 /// constants and committed polynomials.
 pub fn compile_pil(
     pil_file: &Path,
-    query_callback: Option<fn(&str) -> Option<ConstantNumberType>>,
+    query_callback: Option<impl FnMut(&str) -> Option<ConstantNumberType>>,
 ) {
     let analyzed = analyzer::analyze(pil_file);
     let (constants, degree) = constant_evaluator::generate(&analyzed);
