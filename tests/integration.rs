@@ -69,3 +69,16 @@ fn test_sum_via_witness_query() {
         }),
     );
 }
+
+#[test]
+fn test_witness_lookup() {
+    verify(
+        "witness_lookup.pil",
+        Some(|q| match q {
+            "\"input\", 0" => Some(3.into()),
+            "\"input\", 1" => Some(5.into()),
+            "\"input\", 2" => Some(2.into()),
+            _ => Some(7.into()),
+        }),
+    );
+}

@@ -79,6 +79,16 @@ where
     next_row: usize,
 }
 
+#[derive(PartialEq, Eq, Clone, Copy)]
+enum EvaluationRow {
+    /// p is p[next_row - 1], p' is p[next_row]
+    Current,
+    /// p is p[next_row], p' is p[next_row + 1]
+    Next,
+    /// p is p[arg], p' is p[arg + 1]
+    Specific(usize),
+}
+
 impl<'a, QueryCallback> Evaluator<'a, QueryCallback>
 where
     QueryCallback: FnMut(&str) -> Option<ConstantNumberType>,
@@ -126,20 +136,106 @@ where
                 }
             }
             for identity in &self.analyzed.identities {
-                if identity.kind == IdentityKind::Polynomial {
-                    let expr = identity.left.selector.as_ref().unwrap();
-                    // If there is no "next" reference in the expression,
-                    // we just evaluate it directly on the "next" row.
-                    let on_next = !self.contains_next_ref(expr);
-                    if let Some((id, value)) =
-                        self.evaluate(expr, on_next).and_then(|expr| expr.solve())
-                    {
-                        self.next[id] = Some(value);
-                        progress = true;
+                match identity.kind {
+                    IdentityKind::Polynomial => {
+                        let expr = identity.left.selector.as_ref().unwrap();
+                        // If there is no "next" reference in the expression,
+                        // we just evaluate it directly on the "next" row.
+                        let row = if self.contains_next_ref(expr) {
+                            EvaluationRow::Current
+                        } else {
+                            EvaluationRow::Next
+                        };
+                        if let Some((id, value)) =
+                            self.evaluate(expr, row).and_then(|expr| expr.solve())
+                        {
+                            self.next[id] = Some(value);
+                            progress = true;
+                        }
                     }
+                    IdentityKind::Plookup => {
+                        if identity.left.selector.is_some() || identity.right.selector.is_some() {
+                            // TODO not yet supported.
+                            continue;
+                        }
+                        // If we already know the LHS, skip it.
+                        if identity
+                            .left
+                            .expressions
+                            .iter()
+                            .map(|e| self.evaluate(e, EvaluationRow::Next))
+                            .all(|v| v.is_some() && v.unwrap().is_constant())
+                        {
+                            continue;
+                        }
+
+                        // TODO we only support the following case:
+                        // - The first component on the LHS has to be known
+                        // - The first component on the RHS has to be a direct fixed column reference
+                        // - The first match of those uniquely determines the rest of the RHS.
+                        let left_key = self.evaluate(
+                            identity.left.expressions.first().unwrap(),
+                            EvaluationRow::Next,
+                        );
+                        if left_key.is_none() || !left_key.as_ref().unwrap().is_constant() {
+                            continue;
+                        }
+                        let left_key = left_key.unwrap().constant_value().unwrap();
+                        let right_key = identity.right.expressions.first().unwrap();
+                        let rhs_row = if let Expression::PolynomialReference(poly) = right_key {
+                            // TODO we really need an index on this.
+                            self.constants
+                                .get(&poly.name)
+                                .and_then(|values| values.iter().position(|v| *v == left_key))
+                        } else {
+                            None
+                        };
+                        if rhs_row.is_none() {
+                            continue;
+                        }
+                        for (l, r) in identity
+                            .left
+                            .expressions
+                            .iter()
+                            .zip(&identity.right.expressions)
+                            .skip(1)
+                        {
+                            if let Some(r) = self
+                                .evaluate(r, EvaluationRow::Specific(rhs_row.unwrap()))
+                                .and_then(|r| r.constant_value())
+                            {
+                                let expr = Expression::BinaryOperation(
+                                    Box::new(l.clone()),
+                                    BinaryOperator::Sub,
+                                    Box::new(Expression::Number(r)),
+                                );
+                                if let Some((id, value)) = self
+                                    .evaluate(&expr, EvaluationRow::Next)
+                                    .and_then(|expr| expr.solve())
+                                {
+                                    self.next[id] = Some(value);
+                                    progress = true;
+                                }
+                            }
+
+                            // TODO would be nice if we could have an "evaluate on row"
+                        }
+                    }
+                    _ => {}
                 }
             }
-            if !progress || self.next.iter().all(|v| v.is_some()) {
+            if !progress {
+                break;
+            }
+            if self.next.iter().all(|v| v.is_some()) {
+                // let values = self
+                //     .next
+                //     .iter()
+                //     .enumerate()
+                //     .map(|(i, v)| format!("{} = {}", self.committed_names[i], v.unwrap()))
+                //     .collect::<Vec<_>>()
+                //     .join(", ");
+                // println!("Row {next_row}: {values}");
                 break;
             }
         }
@@ -192,10 +288,8 @@ where
 
     /// Tries to evaluate the expression to an expression affine in the committed polynomials,
     /// taking current values of polynomials into account.
-    /// @param on_next If true, the regular polynomial references are assumed to reference the "next" row.
-    ///     (otherwise they reference the "current" row).
     /// @returns an expression affine in the committed polynomials of the next row.
-    fn evaluate(&self, expr: &Expression, on_next: bool) -> Option<AffineExpression> {
+    fn evaluate(&self, expr: &Expression, row: EvaluationRow) -> Option<AffineExpression> {
         // @TODO if we iterate on processing the constraints in the same row,
         // we could store the simplified values.
         match expr {
@@ -204,9 +298,11 @@ where
                 // TODO arrays
                 if let Some(WitnessColumn { id, .. }) = self.committed.get(&poly.name) {
                     // Committed polynomial
-                    if !poly.next && !on_next {
+                    if !poly.next && row == EvaluationRow::Current {
                         self.current[*id].map(|value| value.into())
-                    } else if (poly.next && !on_next) || (!poly.next && on_next) {
+                    } else if (poly.next && row == EvaluationRow::Current)
+                        || (!poly.next && row == EvaluationRow::Next)
+                    {
                         Some(if let Some(value) = self.next[*id] {
                             // We already computed the concrete value
                             value.into()
@@ -214,29 +310,31 @@ where
                             // We continue with a symbolic value
                             AffineExpression::from_committed_poly_value(*id)
                         })
-                    } else if poly.next && on_next {
-                        // "double next"
-                        None
                     } else {
-                        unreachable!();
+                        // "double next" or evaluation of a witness on a specific row
+                        None
                     }
                 } else {
                     // Constant polynomial (or something else)
                     self.constants.get(&poly.name).map(|values| {
                         let degree = values.len();
-                        let offset = if poly.next { 1 } else { 0 } + if on_next { 1 } else { 0 };
-                        let row = (self.next_row + degree + offset - 1) % degree;
+                        let mut row = match row {
+                            EvaluationRow::Current => (self.next_row + degree - 1) % degree,
+                            EvaluationRow::Next => self.next_row,
+                            EvaluationRow::Specific(r) => r,
+                        };
+                        if poly.next {
+                            row = (row + 1) % degree;
+                        }
                         values[row].into()
                     })
                 }
             }
             Expression::Number(n) => Some((*n).into()),
             Expression::BinaryOperation(left, op, right) => {
-                self.evaluate_binary_operation(left, op, right, on_next)
+                self.evaluate_binary_operation(left, op, right, row)
             }
-            Expression::UnaryOperation(op, expr) => {
-                self.evaluate_unary_operation(op, expr, on_next)
-            }
+            Expression::UnaryOperation(op, expr) => self.evaluate_unary_operation(op, expr, row),
             Expression::Tuple(_) => panic!(),
             Expression::String(_) => panic!(),
             Expression::LocalVariableReference(_) => panic!(),
@@ -249,11 +347,9 @@ where
         left: &Expression,
         op: &BinaryOperator,
         right: &Expression,
-        on_next: bool,
+        row: EvaluationRow,
     ) -> Option<AffineExpression> {
-        if let (Some(left), Some(right)) =
-            (self.evaluate(left, on_next), self.evaluate(right, on_next))
-        {
+        if let (Some(left), Some(right)) = (self.evaluate(left, row), self.evaluate(right, row)) {
             match op {
                 BinaryOperator::Add => Some(left + right),
                 BinaryOperator::Sub => Some(left - right),
@@ -315,9 +411,9 @@ where
         &self,
         op: &UnaryOperator,
         expr: &Expression,
-        on_next: bool,
+        row: EvaluationRow,
     ) -> Option<AffineExpression> {
-        self.evaluate(expr, on_next).map(|v| match op {
+        self.evaluate(expr, row).map(|v| match op {
             UnaryOperator::Plus => v,
             UnaryOperator::Minus => -v,
         })
