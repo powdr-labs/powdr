@@ -1,26 +1,70 @@
-use std::{path::Path, process::Command};
+use std::{fs, path::Path, process::Command};
 
 use powdr::compiler;
 use powdr::number::AbstractNumberType;
 
-fn verify(file_name: &str, query_callback: Option<fn(&str) -> Option<AbstractNumberType>>) {
+fn verify_pil(file_name: &str, query_callback: Option<fn(&str) -> Option<AbstractNumberType>>) {
     let input_file = Path::new(&format!("./tests/{file_name}"))
         .canonicalize()
         .unwrap();
 
     let temp_dir = mktemp::Temp::new_dir().unwrap();
-    compiler::compile_pil(&input_file, &temp_dir, query_callback);
+    assert!(compiler::compile_pil(
+        &input_file,
+        &temp_dir,
+        query_callback
+    ));
+    verify(file_name, &temp_dir);
+}
 
+fn verify_asm(file_name: &str, inputs: Vec<AbstractNumberType>) {
+    let contents = fs::read_to_string(format!("./tests/{file_name}")).unwrap();
+    let pil = powdr::asm_compiler::compile(Some(file_name), &contents).unwrap();
+    let pil_file_name = "asm.pil";
+    let temp_dir = mktemp::Temp::new_dir().unwrap();
+    assert!(compiler::compile_pil_ast(
+        &pil,
+        pil_file_name,
+        &temp_dir,
+        Some(|input: &str| {
+            let items = input.split(',').map(|s| s.trim()).collect::<Vec<_>>();
+            let mut it = items.iter();
+            let _current_step = it.next().unwrap();
+            let current_pc = it.next().unwrap();
+            while let Some(pc_check) = it.next() {
+                if pc_check == current_pc {
+                    assert_eq!(*it.next().unwrap(), "\"input\"");
+                    let index: usize = it.next().map(|s| s.parse().unwrap()).unwrap();
+                    return Some(inputs[index].clone());
+                } else {
+                    it.next();
+                    it.next();
+                }
+            }
+            None
+        }),
+    ));
+    verify(pil_file_name, &temp_dir);
+}
+
+fn verify(file_name: &str, temp_dir: &Path) {
     let pilcom = std::env::var("PILCOM")
         .expect("Please set the PILCOM environment variable to the path to the pilcom repository.");
+    let constants_file = format!("{}/constants.bin", temp_dir.to_string_lossy());
+    let commits_file = format!("{}/commits.bin", temp_dir.to_string_lossy());
+    assert!(
+        fs::metadata(&constants_file).unwrap().len() > 0,
+        "Empty constants file"
+    );
+
     let verifier_output = Command::new("node")
         .args([
             format!("{pilcom}/src/main_pilverifier.js"),
-            format!("{}/commits.bin", temp_dir.as_path().to_string_lossy()),
+            commits_file,
             "-j".to_string(),
-            format!("{}/{file_name}.json", temp_dir.as_path().to_string_lossy()),
+            format!("{}/{file_name}.json", temp_dir.to_string_lossy()),
             "-c".to_string(),
-            format!("{}/constants.bin", temp_dir.as_path().to_string_lossy()),
+            constants_file,
         ])
         .output()
         .expect("failed to run pil verifier");
@@ -36,28 +80,26 @@ fn verify(file_name: &str, query_callback: Option<fn(&str) -> Option<AbstractNum
             panic!("Verified did not say 'PIL OK': {output}");
         }
     }
-
-    drop(temp_dir);
 }
 
 #[test]
 fn test_fibonacci() {
-    verify("fibonacci.pil", None);
+    verify_pil("fibonacci.pil", None);
 }
 
 #[test]
 fn test_fibonacci_macro() {
-    verify("fib_macro.pil", None);
+    verify_pil("fib_macro.pil", None);
 }
 
 #[test]
 fn test_global() {
-    verify("global.pil", None);
+    verify_pil("global.pil", None);
 }
 
 #[test]
 fn test_sum_via_witness_query() {
-    verify(
+    verify_pil(
         "sum_via_witness_query.pil",
         Some(|q| {
             match q {
@@ -73,7 +115,7 @@ fn test_sum_via_witness_query() {
 
 #[test]
 fn test_witness_lookup() {
-    verify(
+    verify_pil(
         "witness_lookup.pil",
         Some(|q| match q {
             "\"input\", 0" => Some(3.into()),
@@ -81,5 +123,14 @@ fn test_witness_lookup() {
             "\"input\", 2" => Some(2.into()),
             _ => Some(7.into()),
         }),
+    );
+}
+
+#[test]
+#[ignore]
+fn simple_sum_asm() {
+    verify_asm(
+        "simple_sum.asm",
+        [16, 4, 1, 2, 8, 5].iter().map(|&x| x.into()).collect(),
     );
 }

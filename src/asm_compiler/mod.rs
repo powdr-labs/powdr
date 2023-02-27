@@ -650,6 +650,7 @@ pol commit XInv;
 pol commit XIsZero;
 XIsZero = (1 - (X * XInv));
 (XIsZero * X) = 0;
+(XIsZero * (1 - XIsZero)) = 0;
 pol commit instr_jmpz;
 pol commit instr_jmpz_param_l;
 pol commit instr_jmp;
