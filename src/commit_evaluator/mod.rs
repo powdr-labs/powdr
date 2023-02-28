@@ -1,7 +1,7 @@
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 use crate::analyzer::{
-    Analyzed, BinaryOperator, ConstantNumberType, Expression, FunctionValueDefinition,
+    Analyzed, BinaryOperator, ConstantNumberType, Expression, FunctionValueDefinition, Identity,
     IdentityKind, UnaryOperator,
 };
 
@@ -61,6 +61,8 @@ impl<'a> WitnessColumn<'a> {
     }
 }
 
+type EvalResult = Result<Vec<(usize, ConstantNumberType)>, String>;
+
 struct Evaluator<'a, QueryCallback>
 where
     QueryCallback: FnMut(&'a str) -> Option<ConstantNumberType>,
@@ -70,13 +72,15 @@ where
     query_callback: Option<QueryCallback>,
     /// Maps the committed polynomial names to their IDs internal to this component
     /// and optional parameter and query string.
-    committed: HashMap<&'a String, &'a WitnessColumn<'a>>,
+    committed: BTreeMap<&'a String, &'a WitnessColumn<'a>>,
     committed_names: Vec<&'a String>,
     /// Values of the committed polynomials
     current: Vec<Option<ConstantNumberType>>,
     /// Values of the committed polynomials in the next row
     next: Vec<Option<ConstantNumberType>>,
     next_row: usize,
+    failure_reasons: Vec<String>,
+    progress: bool,
 }
 
 #[derive(PartialEq, Eq, Clone, Copy)]
@@ -88,6 +92,9 @@ enum EvaluationRow {
     /// p is p[arg], p' is p[arg + 1]
     Specific(usize),
 }
+
+// This could have more structure in the future.
+type EvalError = String;
 
 impl<'a, QueryCallback> Evaluator<'a, QueryCallback>
 where
@@ -111,6 +118,8 @@ where
             current: vec![None; committed.len()],
             next: vec![None; committed.len()],
             next_row: 0,
+            failure_reasons: vec![],
+            progress: true,
         }
     }
 
@@ -120,111 +129,29 @@ where
         // TODO maybe better to generate a dependency graph than looping multiple times.
         // TODO at least we could cache the affine expressions between loops.
         loop {
-            let mut progress = false;
-            // TODO also use lookups, not only polynomial identities
+            self.progress = false;
+            self.failure_reasons.clear();
 
             if self.query_callback.is_some() {
-                for column in self.committed.values() {
-                    if self.next[column.id].is_none() && column.query.is_some() {
-                        let query = self.interpolate_query(column.query.unwrap());
-                        let result = self.query_callback.as_mut().unwrap()(&query);
-                        if let Some(value) = result {
-                            self.next[column.id] = Some(value);
-                            progress = true;
-                        }
+                // TODO avoid clone
+                for column in self.committed.clone().values() {
+                    if !self.has_known_next_value(column.id) && column.query.is_some() {
+                        let result = self.process_witness_query(column);
+                        self.handle_eval_result(result)
                     }
                 }
             }
             for identity in &self.analyzed.identities {
-                match identity.kind {
+                let result = match identity.kind {
                     IdentityKind::Polynomial => {
-                        let expr = identity.left.selector.as_ref().unwrap();
-                        // If there is no "next" reference in the expression,
-                        // we just evaluate it directly on the "next" row.
-                        let row = if self.contains_next_ref(expr) {
-                            EvaluationRow::Current
-                        } else {
-                            EvaluationRow::Next
-                        };
-                        if let Some((id, value)) =
-                            self.evaluate(expr, row).and_then(|expr| expr.solve())
-                        {
-                            self.next[id] = Some(value);
-                            progress = true;
-                        }
+                        self.process_polynomial_identity(identity.left.selector.as_ref().unwrap())
                     }
-                    IdentityKind::Plookup => {
-                        if identity.left.selector.is_some() || identity.right.selector.is_some() {
-                            // TODO not yet supported.
-                            continue;
-                        }
-                        // If we already know the LHS, skip it.
-                        if identity
-                            .left
-                            .expressions
-                            .iter()
-                            .map(|e| self.evaluate(e, EvaluationRow::Next))
-                            .all(|v| v.is_some() && v.unwrap().is_constant())
-                        {
-                            continue;
-                        }
-
-                        // TODO we only support the following case:
-                        // - The first component on the LHS has to be known
-                        // - The first component on the RHS has to be a direct fixed column reference
-                        // - The first match of those uniquely determines the rest of the RHS.
-                        let left_key = self.evaluate(
-                            identity.left.expressions.first().unwrap(),
-                            EvaluationRow::Next,
-                        );
-                        if left_key.is_none() || !left_key.as_ref().unwrap().is_constant() {
-                            continue;
-                        }
-                        let left_key = left_key.unwrap().constant_value().unwrap();
-                        let right_key = identity.right.expressions.first().unwrap();
-                        let rhs_row = if let Expression::PolynomialReference(poly) = right_key {
-                            // TODO we really need an index on this.
-                            self.constants
-                                .get(&poly.name)
-                                .and_then(|values| values.iter().position(|v| *v == left_key))
-                        } else {
-                            None
-                        };
-                        if rhs_row.is_none() {
-                            continue;
-                        }
-                        for (l, r) in identity
-                            .left
-                            .expressions
-                            .iter()
-                            .zip(&identity.right.expressions)
-                            .skip(1)
-                        {
-                            if let Some(r) = self
-                                .evaluate(r, EvaluationRow::Specific(rhs_row.unwrap()))
-                                .and_then(|r| r.constant_value())
-                            {
-                                let expr = Expression::BinaryOperation(
-                                    Box::new(l.clone()),
-                                    BinaryOperator::Sub,
-                                    Box::new(Expression::Number(r)),
-                                );
-                                if let Some((id, value)) = self
-                                    .evaluate(&expr, EvaluationRow::Next)
-                                    .and_then(|expr| expr.solve())
-                                {
-                                    self.next[id] = Some(value);
-                                    progress = true;
-                                }
-                            }
-
-                            // TODO would be nice if we could have an "evaluate on row"
-                        }
-                    }
-                    _ => {}
-                }
+                    IdentityKind::Plookup => self.process_plookup(identity),
+                    _ => Ok(vec![]),
+                };
+                self.handle_eval_result(result);
             }
-            if !progress {
+            if !self.progress {
                 break;
             }
             if self.next.iter().all(|v| v.is_some()) {
@@ -253,11 +180,27 @@ where
                     .collect::<Vec<String>>()
                     .join(", ")
             );
+            eprintln!("Reasons: {}", self.failure_reasons.join("\n"));
             panic!();
         } else {
             std::mem::swap(&mut self.next, &mut self.current);
             self.next = vec![None; self.current.len()];
             self.current.iter().map(|v| v.unwrap()).collect()
+        }
+    }
+
+    fn process_witness_query(
+        &mut self,
+        column: &&WitnessColumn,
+    ) -> Result<Vec<(usize, ConstantNumberType)>, String> {
+        let query = self.interpolate_query(column.query.unwrap());
+        if let Some(value) = self.query_callback.as_mut().unwrap()(&query) {
+            Ok(vec![(column.id, value)])
+        } else {
+            Err(format!(
+                "No query answer for {} query: {query}.",
+                self.committed_names[column.id]
+            ))
         }
     }
 
@@ -286,24 +229,163 @@ where
         }
     }
 
+    fn process_polynomial_identity(&mut self, identity: &Expression) -> EvalResult {
+        // If there is no "next" reference in the expression,
+        // we just evaluate it directly on the "next" row.
+        let row = if self.contains_next_ref(identity) {
+            EvaluationRow::Current
+        } else {
+            EvaluationRow::Next
+        };
+        let evaluated = self.evaluate(identity, row)?;
+        match evaluated.solve() {
+            Some((id, value)) => Ok(vec![(id, value)]),
+            None => Err(format!(
+                "Could not solve expression {}",
+                self.format_affine_expression(evaluated)
+            )),
+        }
+    }
+
+    fn process_plookup(&mut self, identity: &Identity) -> EvalResult {
+        if identity.left.selector.is_some() || identity.right.selector.is_some() {
+            return Err("Selectors not yet supported.".to_string());
+        }
+        let left = identity
+            .left
+            .expressions
+            .iter()
+            .map(|e| self.evaluate(e, EvaluationRow::Next))
+            .collect::<Vec<_>>();
+        // If we already know the LHS, skip it.
+        if left
+            .iter()
+            .all(|v| v.is_ok() && v.as_ref().unwrap().is_constant())
+        {
+            return Ok(vec![]);
+        }
+
+        let left_key = left[0].clone().and_then(|v| match v.constant_value() {
+            Some(v) => Ok(v),
+            None => Err(format!(
+                "First expression needs to be constant but is not: {}.",
+                self.format_affine_expression(v)
+            )),
+        })?;
+
+        let right_key = identity.right.expressions.first().unwrap();
+        let rhs_row = if let Expression::PolynomialReference(poly) = right_key {
+            // TODO we really need a search index on this.
+            self.constants
+                .get(&poly.name)
+                .and_then(|values| values.iter().position(|v| *v == left_key))
+                .ok_or_else(|| {
+                    format!(
+                        "Unable to find matching row on the RHS where the first element is {left_key} - only fixed columns supported there."
+                    )
+                })
+        } else {
+            Err("First item on the RHS must be a polynomial reference.".to_string())
+        }?;
+
+        // TODO we only support the following case:
+        // - The first component on the LHS has to be known
+        // - The first component on the RHS has to be a direct fixed column reference
+        // - The first match of those uniquely determines the rest of the RHS.
+
+        //TODO there should be a shortcut to succeed if any of an iterator is "Ok" and combine the errors otherwise.
+        let mut result = vec![];
+        let mut reasons = vec![];
+        for (l, r) in identity
+            .left
+            .expressions
+            .iter()
+            .zip(&identity.right.expressions)
+            .skip(1)
+        {
+            match self.equate_to_constant_rhs(l, r, rhs_row) {
+                Ok(assignments) => result.extend(assignments),
+                Err(err) => reasons.push(err),
+            }
+        }
+        if result.is_empty() {
+            Err(reasons.join(", "))
+        } else {
+            Ok(result)
+        }
+    }
+
+    fn equate_to_constant_rhs(&self, l: &Expression, r: &Expression, rhs_row: usize) -> EvalResult {
+        let r = self
+            .evaluate(r, EvaluationRow::Specific(rhs_row))
+            .and_then(|r| {
+                r.constant_value().ok_or_else(|| {
+                    format!(
+                        "Constant value required: {}",
+                        self.format_affine_expression(r)
+                    )
+                })
+            })?;
+
+        let expr = Expression::BinaryOperation(
+            Box::new(l.clone()),
+            BinaryOperator::Sub,
+            Box::new(Expression::Number(r)),
+        );
+        let evaluated = self.evaluate(&expr, EvaluationRow::Next)?;
+        match evaluated.solve() {
+            Some((id, value)) => Ok(vec![(id, value)]),
+            None => Err(format!(
+                "Could not solve expression {}",
+                self.format_affine_expression(evaluated)
+            )),
+        }
+    }
+
+    fn handle_eval_result(&mut self, result: EvalResult) {
+        match result {
+            Ok(assignments) => {
+                for (id, value) in assignments {
+                    self.next[id] = Some(value);
+                    self.progress = true;
+                }
+            }
+            Err(reason) => {
+                self.failure_reasons.push(reason);
+            }
+        }
+    }
+
+    fn has_known_next_value(&self, id: usize) -> bool {
+        self.next[id].is_some()
+    }
+
     /// Tries to evaluate the expression to an expression affine in the committed polynomials,
     /// taking current values of polynomials into account.
-    /// @returns an expression affine in the committed polynomials of the next row.
-    fn evaluate(&self, expr: &Expression, row: EvaluationRow) -> Option<AffineExpression> {
+    /// @returns an expression affine in the committed polynomials
+    fn evaluate(
+        &self,
+        expr: &Expression,
+        row: EvaluationRow,
+    ) -> Result<AffineExpression, EvalError> {
         // @TODO if we iterate on processing the constraints in the same row,
         // we could store the simplified values.
         match expr {
-            Expression::Constant(name) => Some(self.analyzed.constants[name].into()),
+            Expression::Constant(name) => Ok(self.analyzed.constants[name].into()),
             Expression::PolynomialReference(poly) => {
                 // TODO arrays
                 if let Some(WitnessColumn { id, .. }) = self.committed.get(&poly.name) {
                     // Committed polynomial
                     if !poly.next && row == EvaluationRow::Current {
-                        self.current[*id].map(|value| value.into())
+                        // All values in the "current" row should usually be known.
+                        // The exception is when we start the analysis on the first row.
+                        self.current[*id].map(|value| value.into()).ok_or_else(|| {
+                            format!("Previous value of column {} not yet known.", poly.name)
+                        })
                     } else if (poly.next && row == EvaluationRow::Current)
                         || (!poly.next && row == EvaluationRow::Next)
                     {
-                        Some(if let Some(value) = self.next[*id] {
+                        Ok(if let Some(value) = self.next[*id] {
                             // We already computed the concrete value
                             value.into()
                         } else {
@@ -312,25 +394,27 @@ where
                         })
                     } else {
                         // "double next" or evaluation of a witness on a specific row
-                        None
+                        Err(format!(
+                            "{}' references the next-next row when evaluating on the current row.",
+                            self.committed_names[*id]
+                        ))
                     }
                 } else {
                     // Constant polynomial (or something else)
-                    self.constants.get(&poly.name).map(|values| {
-                        let degree = values.len();
-                        let mut row = match row {
-                            EvaluationRow::Current => (self.next_row + degree - 1) % degree,
-                            EvaluationRow::Next => self.next_row,
-                            EvaluationRow::Specific(r) => r,
-                        };
-                        if poly.next {
-                            row = (row + 1) % degree;
-                        }
-                        values[row].into()
-                    })
+                    let values = self.constants[&poly.name];
+                    let degree = values.len();
+                    let mut row = match row {
+                        EvaluationRow::Current => (self.next_row + degree - 1) % degree,
+                        EvaluationRow::Next => self.next_row,
+                        EvaluationRow::Specific(r) => r,
+                    };
+                    if poly.next {
+                        row = (row + 1) % degree;
+                    }
+                    Ok(values[row].into())
                 }
             }
-            Expression::Number(n) => Some((*n).into()),
+            Expression::Number(n) => Ok((*n).into()),
             Expression::BinaryOperation(left, op, right) => {
                 self.evaluate_binary_operation(left, op, right, row)
             }
@@ -342,42 +426,58 @@ where
             Expression::FunctionCall(_, _) => panic!(),
         }
     }
+
     fn evaluate_binary_operation(
         &self,
         left: &Expression,
         op: &BinaryOperator,
         right: &Expression,
         row: EvaluationRow,
-    ) -> Option<AffineExpression> {
-        if let (Some(left), Some(right)) = (self.evaluate(left, row), self.evaluate(right, row)) {
-            match op {
-                BinaryOperator::Add => Some(left + right),
-                BinaryOperator::Sub => Some(left - right),
+    ) -> Result<AffineExpression, EvalError> {
+        match (self.evaluate(left, row), self.evaluate(right, row)) {
+            (Ok(left), Ok(right)) => match op {
+                BinaryOperator::Add => Ok(left + right),
+                BinaryOperator::Sub => Ok(left - right),
                 BinaryOperator::Mul => {
                     if let Some(f) = left.constant_value() {
-                        Some(right.mul(f))
+                        Ok(right.mul(f))
+                    } else if let Some(f) = right.constant_value() {
+                        Ok(left.mul(f))
                     } else {
-                        right.constant_value().map(|f| left.mul(f))
+                        Err(format!(
+                            "Multiplication of two non-constants: ({}) * ({})",
+                            self.format_affine_expression(left),
+                            self.format_affine_expression(right)
+                        ))
                     }
                 }
                 BinaryOperator::Div => {
                     if let (Some(l), Some(r)) = (left.constant_value(), right.constant_value()) {
                         // TODO Maybe warn about division by zero here.
                         if l == 0 {
-                            Some(0.into())
+                            Ok(0.into())
                         } else {
-                            Some((l / r).into())
+                            // TODO We have to do division in the proper field.
+                            Ok((l / r).into())
                         }
                     } else {
-                        None
+                        Err(format!(
+                            "Division of two non-constants: ({}) / ({})",
+                            self.format_affine_expression(left),
+                            self.format_affine_expression(right)
+                        ))
                     }
                 }
                 BinaryOperator::Pow => {
                     if let (Some(l), Some(r)) = (left.constant_value(), right.constant_value()) {
                         assert!(r <= u32::MAX.into());
-                        Some(l.pow(r as u32).into())
+                        Ok(l.pow(r as u32).into())
                     } else {
-                        None
+                        Err(format!(
+                            "Pow of two non-constants: ({}) ** ({})",
+                            self.format_affine_expression(left),
+                            self.format_affine_expression(right)
+                        ))
                     }
                 }
                 BinaryOperator::Mod
@@ -396,14 +496,14 @@ where
                             BinaryOperator::ShiftRight => left >> right,
                             _ => panic!(),
                         };
-                        Some(result.into())
+                        Ok(result.into())
                     } else {
                         panic!()
                     }
                 }
-            }
-        } else {
-            None
+            },
+            (Ok(_), Err(reason)) | (Err(reason), Ok(_)) => Err(reason),
+            (Err(r1), Err(r2)) => Err(format!("{r1}, {r2}")),
         }
     }
 
@@ -412,7 +512,7 @@ where
         op: &UnaryOperator,
         expr: &Expression,
         row: EvaluationRow,
-    ) -> Option<AffineExpression> {
+    ) -> Result<AffineExpression, EvalError> {
         self.evaluate(expr, row).map(|v| match op {
             UnaryOperator::Plus => v,
             UnaryOperator::Minus => -v,
@@ -437,5 +537,15 @@ where
             | Expression::Number(_)
             | Expression::String(_) => false,
         }
+    }
+
+    fn format_affine_expression(&self, e: AffineExpression) -> String {
+        e.coefficients
+            .iter()
+            .enumerate()
+            .map(|(i, c)| format!("{} * {c}", self.committed_names[i]))
+            .chain(e.constant_value().map(|v| format!("{v}")))
+            .collect::<Vec<_>>()
+            .join(" + ")
     }
 }

@@ -3,8 +3,8 @@ use crate::analyzer::ConstantNumberType;
 /// An expression affine in the committed polynomials.
 #[derive(Debug, Clone, PartialEq)]
 pub struct AffineExpression {
-    coefficients: Vec<ConstantNumberType>,
-    offset: ConstantNumberType,
+    pub coefficients: Vec<ConstantNumberType>,
+    pub offset: ConstantNumberType,
 }
 
 impl From<ConstantNumberType> for AffineExpression {
