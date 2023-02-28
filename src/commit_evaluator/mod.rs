@@ -148,7 +148,8 @@ where
                     }
                     IdentityKind::Plookup => self.process_plookup(identity),
                     _ => Ok(vec![]),
-                };
+                }
+                .map_err(|err| format!("No progress on {identity}:\n    {err}"));
                 self.handle_eval_result(result);
             }
             if !self.progress {
@@ -543,6 +544,7 @@ where
         e.coefficients
             .iter()
             .enumerate()
+            .filter(|(_, &c)| c != 0)
             .map(|(i, c)| format!("{} * {c}", self.committed_names[i]))
             .chain(e.constant_value().map(|v| format!("{v}")))
             .collect::<Vec<_>>()

@@ -1,3 +1,4 @@
+pub mod display;
 pub mod pil_analyzer;
 
 use std::collections::HashMap;
