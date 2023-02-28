@@ -5,7 +5,8 @@ use crate::parser::ast::*;
 use crate::parser::{self, ParseError};
 
 pub fn compile<'a>(file_name: Option<&str>, input: &'a str) -> Result<PILFile, ParseError<'a>> {
-    parser::parse_asm(file_name, input).map(|ast| ASMPILConverter::new().convert(ast))
+    let max_steps = 1024;
+    parser::parse_asm(file_name, input).map(|ast| ASMPILConverter::new().convert(ast, max_steps))
 }
 
 #[derive(Default)]
@@ -27,7 +28,19 @@ impl ASMPILConverter {
         Default::default()
     }
 
-    fn convert(&mut self, input: ASMFile) -> PILFile {
+    fn convert(&mut self, input: ASMFile, max_steps: usize) -> PILFile {
+        // TODO configure the degree
+        self.pil.push(Statement::Namespace(
+            0,
+            "Assembly".to_string(),
+            Expression::Number(max_steps as ConstantNumberType),
+        ));
+        self.pil.push(Statement::PolynomialConstantDefinition(
+            0,
+            "first_step".to_string(),
+            FunctionDefinition::Array(vec![build_number(1.into())]),
+        ));
+
         for statement in &input.0 {
             match statement {
                 ASMStatement::RegisterDeclaration(start, name, flags) => {
@@ -97,6 +110,12 @@ impl ASMPILConverter {
             Some(RegisterFlag::IsPC) => {
                 assert_eq!(self.pc_name, None);
                 self.pc_name = Some(name.clone());
+                // initialize pc to zero. TODO This will not work with the regular update / wrap-around
+                self.pil.push(Statement::PolynomialIdentity(
+                    0,
+                    build_mul(direct_reference(name), direct_reference("first_step")),
+                ));
+
                 self.line_lookup.push((name.clone(), "line".to_string()));
                 default_update = Some(build_add(direct_reference(name), build_number(1)));
             }
@@ -112,6 +131,11 @@ impl ASMPILConverter {
                     direct_reference(self.default_assignment_reg()),
                 )];
                 default_update = Some(direct_reference(name));
+                // initialize register to zero. TODO This will not be compatible with wrap-around
+                self.pil.push(Statement::PolynomialIdentity(
+                    0,
+                    build_mul(direct_reference(name), direct_reference("first_step")),
+                ));
             }
         };
         self.registers.insert(
@@ -321,6 +345,7 @@ impl ASMPILConverter {
     }
 
     fn create_fixed_columns_for_program(&mut self) {
+        // TODO this should loop with the number of lines in the program, as should all the other program constants!
         self.pil.push(Statement::PolynomialConstantDefinition(
             0,
             "line".to_string(),
@@ -587,14 +612,20 @@ mod test {
     #[test]
     pub fn compile_simple_sum() {
         let expectation = r#"
+namespace Assembly(1024);
+pol constant first_step = [1];
+(pc * first_step) = 0;
+pol commit pc;
 pol commit X;
 pol commit reg_write_A;
+(A * first_step) = 0;
 pol commit A;
 pol commit reg_write_CNT;
+(CNT * first_step) = 0;
 pol commit CNT;
-pol commit pc;
 pol commit XInv;
-pol XIsZero = (1 - (X * XInv));
+pol commit XIsZero;
+XIsZero = (1 - (X * XInv));
 (XIsZero * X) = 0;
 pol commit instr_jmpz;
 pol commit instr_jmpz_param_l;
@@ -627,7 +658,7 @@ pol constant p_read_X_CNT = [0, 0, 1, 0, 0, 0, 0, 0, 0];
 pol constant p_read_X_pc = [0, 0, 0, 0, 0, 0, 0, 0, 0];
 pol constant p_reg_write_A = [0, 0, 0, 1, 0, 0, 0, 1, 0];
 pol constant p_reg_write_CNT = [1, 0, 0, 0, 0, 0, 0, 0, 0];
-{ reg_write_A, reg_write_CNT, pc, instr_jmpz, instr_jmpz_param_l, instr_jmp, instr_jmp_param_l, instr_dec_CNT, instr_assert_zero, X_const, X_read_free, read_X_A, read_X_CNT, read_X_pc } in { p_reg_write_A, p_reg_write_CNT, line, p_instr_jmpz, p_instr_jmpz_param_l, p_instr_jmp, p_instr_jmp_param_l, p_instr_dec_CNT, p_instr_assert_zero, p_X_const, p_X_read_free, p_read_X_A, p_read_X_CNT, p_read_X_pc };
+{ pc, reg_write_A, reg_write_CNT, instr_jmpz, instr_jmpz_param_l, instr_jmp, instr_jmp_param_l, instr_dec_CNT, instr_assert_zero, X_const, X_read_free, read_X_A, read_X_CNT, read_X_pc } in { line, p_reg_write_A, p_reg_write_CNT, p_instr_jmpz, p_instr_jmpz_param_l, p_instr_jmp, p_instr_jmp_param_l, p_instr_dec_CNT, p_instr_assert_zero, p_X_const, p_X_read_free, p_read_X_A, p_read_X_CNT, p_read_X_pc };
 "#;
         let file_name = "tests/simple_sum.asm";
         let contents = fs::read_to_string(file_name).unwrap();
