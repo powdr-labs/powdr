@@ -73,7 +73,7 @@ impl ASMPILConverter {
                 }),
         );
 
-        self.create_fixed_columns_for_program();
+        self.translate_code_lines();
 
         self.pil.push(Statement::PlookupIdentity(
             0,
@@ -145,7 +145,7 @@ impl ASMPILConverter {
                 default_update,
             },
         );
-        self.pil.push(witness_column(*start, name));
+        self.pil.push(witness_column(*start, name, None));
     }
 
     fn handle_instruction_def(
@@ -316,7 +316,6 @@ impl ASMPILConverter {
         let read_free = format!("{}_read_free", self.default_assignment_reg());
         self.create_witness_fixed_pair(0, &read_free);
         let free_value = format!("{}_free_value", self.default_assignment_reg());
-        self.pil.push(witness_column(0, &free_value));
         let registers = self
             .registers
             .keys()
@@ -344,7 +343,9 @@ impl ASMPILConverter {
         ));
     }
 
-    fn create_fixed_columns_for_program(&mut self) {
+    /// Translates the code lines to fixed column but also fills
+    /// the query hints for the free inputs.
+    fn translate_code_lines(&mut self) {
         // TODO this should loop with the number of lines in the program, as should all the other program constants!
         self.pil.push(Statement::PolynomialConstantDefinition(
             0,
@@ -357,6 +358,11 @@ impl ASMPILConverter {
             .iter()
             .map(|n| (n, vec![0; self.code_lines.len()]))
             .collect::<BTreeMap<_, _>>();
+        let mut free_value_queries = vec![
+            direct_reference("i"),
+            direct_reference(self.pc_name.as_ref().unwrap()),
+        ];
+
         let label_positions = self.compute_label_positions();
         for (i, line) in self.code_lines.iter().enumerate() {
             if let Some(reg) = &line.write_reg {
@@ -376,12 +382,16 @@ impl ASMPILConverter {
                             .get_mut(&format!("p_{}_const", self.default_assignment_reg()))
                             .unwrap()[i] = *coeff
                     }
-                    AffineExpressionComponent::FreeInput(_) => {
+                    AffineExpressionComponent::FreeInput(expr) => {
                         // The program just stores that we read a free input, the actual value
                         // is part of the execution trace that generates the witness.
                         program_constants
                             .get_mut(&format!("p_{}_read_free", self.default_assignment_reg()))
                             .unwrap()[i] = 1.into();
+                        free_value_queries.push(Expression::Tuple(vec![
+                            build_number(i as ConstantNumberType),
+                            expr.clone(),
+                        ]));
                     }
                 }
             }
@@ -405,6 +415,15 @@ impl ASMPILConverter {
                 assert!(line.instruction_literal_args.is_empty());
             }
         }
+        let free_value = format!("{}_free_value", self.default_assignment_reg());
+        self.pil.push(witness_column(
+            0,
+            &free_value,
+            Some(FunctionDefinition::Query(
+                vec!["i".to_string()],
+                Expression::Tuple(free_value_queries),
+            )),
+        ));
         for (name, values) in program_constants {
             self.pil.push(Statement::PolynomialConstantDefinition(
                 0,
@@ -425,7 +444,7 @@ impl ASMPILConverter {
     /// Creates a pair of witness and fixed column and matches them in the lookup.
     fn create_witness_fixed_pair(&mut self, start: usize, name: &str) {
         let fixed_name = format!("p_{name}");
-        self.pil.push(witness_column(start, name));
+        self.pil.push(witness_column(start, name, None));
         self.line_lookup
             .push((name.to_string(), fixed_name.clone()));
         self.program_constant_names.push(fixed_name);
@@ -495,14 +514,14 @@ enum AffineExpressionComponent {
     FreeInput(Expression),
 }
 
-fn witness_column(start: usize, name: &str) -> Statement {
+fn witness_column(start: usize, name: &str, def: Option<FunctionDefinition>) -> Statement {
     Statement::PolynomialCommitDeclaration(
         start,
         vec![PolynomialName {
             name: name.to_string(),
             array_size: None,
         }],
-        None,
+        def,
     )
 }
 
@@ -636,7 +655,6 @@ pol commit instr_assert_zero;
 (instr_assert_zero * (XIsZero - 1)) = 0;
 pol commit X_const;
 pol commit X_read_free;
-pol commit X_free_value;
 pol commit read_X_A;
 pol commit read_X_CNT;
 pol commit read_X_pc;
@@ -645,6 +663,7 @@ A' = ((reg_write_A * X) + ((1 - reg_write_A) * A));
 CNT' = (((reg_write_CNT * X) + (instr_dec_CNT * (CNT - 1))) + ((1 - (reg_write_CNT + instr_dec_CNT)) * CNT));
 pc' = (((instr_jmpz * ((XIsZero * instr_jmpz_param_l) + ((1 - XIsZero) * (pc + 1)))) + (instr_jmp * instr_jmp_param_l)) + ((1 - (instr_jmpz + instr_jmp)) * (pc + 1)));
 pol constant line(i) { i };
+pol commit X_free_value(i) query (i, pc, (0, ("input", 1)), (3, ("input", (CNT + 1))), (7, ("input", 0)));
 pol constant p_X_const = [0, 0, 0, 0, 0, 0, 0, 0, 0];
 pol constant p_X_read_free = [1, 0, 0, 1, 0, 0, 0, 1, 0];
 pol constant p_instr_assert_zero = [0, 0, 0, 0, 0, 0, 0, 0, 1];
