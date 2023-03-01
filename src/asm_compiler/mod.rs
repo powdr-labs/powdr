@@ -111,13 +111,16 @@ impl ASMPILConverter {
             Some(RegisterFlag::IsPC) => {
                 assert_eq!(self.pc_name, None);
                 self.pc_name = Some(name.clone());
-                // initialize pc to zero. TODO This will not work with the regular update / wrap-around
-                self.pil.push(Statement::PolynomialIdentity(
-                    0,
-                    build_mul(direct_reference(name), direct_reference("first_step")),
-                ));
-
                 self.line_lookup.push((name.clone(), "line".to_string()));
+                // This might be superfluous but makes it easier to determine that the PC needs to
+                // be zero in the first row.
+                self.pil.push(Statement::PolynomialIdentity(
+                    *start,
+                    build_mul(direct_reference("first_step"), direct_reference(name)),
+                ));
+                // The value here is actually irrelevant, it is only important
+                // that "first_step'" is included to compute the "default condition"
+                conditioned_updates.push((next_reference("first_step"), build_number(0.into())));
                 default_update = Some(build_add(direct_reference(name), build_number(1.into())));
             }
             Some(RegisterFlag::IsDefaultAssignment) => {
@@ -127,16 +130,22 @@ impl ASMPILConverter {
             None => {
                 let write_flag = format!("reg_write_{name}");
                 self.create_witness_fixed_pair(*start, &write_flag);
-                conditioned_updates = vec![(
-                    direct_reference(&write_flag),
-                    direct_reference(self.default_assignment_reg()),
-                )];
-                default_update = Some(direct_reference(name));
-                // initialize register to zero. TODO This will not be compatible with wrap-around
+                // This might be superfluous but makes it easier to determine that the register needs to
+                // be zero in the first row.
                 self.pil.push(Statement::PolynomialIdentity(
-                    0,
-                    build_mul(direct_reference(name), direct_reference("first_step")),
+                    *start,
+                    build_mul(direct_reference("first_step"), direct_reference(name)),
                 ));
+                conditioned_updates = vec![
+                    // The value here is actually irrelevant, it is only important
+                    // that "first_step'" is included to compute the "default condition"
+                    (next_reference("first_step"), build_number(0.into())),
+                    (
+                        direct_reference(&write_flag),
+                        direct_reference(self.default_assignment_reg()),
+                    ),
+                ];
+                default_update = Some(direct_reference(name));
             }
         };
         self.registers.insert(
@@ -391,7 +400,7 @@ impl ASMPILConverter {
                         // is part of the execution trace that generates the witness.
                         program_constants
                             .get_mut(&format!("p_{}_read_free", self.default_assignment_reg()))
-                            .unwrap()[i] = 1.into();
+                            .unwrap()[i] = coeff.clone();
                         free_value_queries.push(Expression::Tuple(vec![
                             build_number(i.into()),
                             expr.clone(),
@@ -477,6 +486,8 @@ impl Register {
             .map(|(cond, value)| build_mul(cond.clone(), value.clone()))
             .reduce(build_add);
 
+        // TODO for computing the default condition, we need to ensure
+        // that the conditions all exclude each other
         match (self.conditioned_updates.len(), &self.default_update) {
             (0, update) => update.clone(),
             (_, None) => Some(updates.unwrap()),
@@ -637,14 +648,14 @@ mod test {
         let expectation = r#"
 namespace Assembly(1024);
 pol constant first_step = [1];
-(pc * first_step) = 0;
+(first_step * pc) = 0;
 pol commit pc;
 pol commit X;
 pol commit reg_write_A;
-(A * first_step) = 0;
+(first_step * A) = 0;
 pol commit A;
 pol commit reg_write_CNT;
-(CNT * first_step) = 0;
+(first_step * CNT) = 0;
 pol commit CNT;
 pol commit XInv;
 pol commit XIsZero;
@@ -664,9 +675,9 @@ pol commit read_X_A;
 pol commit read_X_CNT;
 pol commit read_X_pc;
 X = (((((read_X_A * A) + (read_X_CNT * CNT)) + (read_X_pc * pc)) + X_const) + (X_read_free * X_free_value));
-A' = ((reg_write_A * X) + ((1 - reg_write_A) * A));
-CNT' = (((reg_write_CNT * X) + (instr_dec_CNT * (CNT - 1))) + ((1 - (reg_write_CNT + instr_dec_CNT)) * CNT));
-pc' = (((instr_jmpz * ((XIsZero * instr_jmpz_param_l) + ((1 - XIsZero) * (pc + 1)))) + (instr_jmp * instr_jmp_param_l)) + ((1 - (instr_jmpz + instr_jmp)) * (pc + 1)));
+A' = (((first_step' * 0) + (reg_write_A * X)) + ((1 - (first_step' + reg_write_A)) * A));
+CNT' = ((((first_step' * 0) + (reg_write_CNT * X)) + (instr_dec_CNT * (CNT - 1))) + ((1 - ((first_step' + reg_write_CNT) + instr_dec_CNT)) * CNT));
+pc' = ((((first_step' * 0) + (instr_jmpz * ((XIsZero * instr_jmpz_param_l) + ((1 - XIsZero) * (pc + 1))))) + (instr_jmp * instr_jmp_param_l)) + ((1 - ((first_step' + instr_jmpz) + instr_jmp)) * (pc + 1)));
 pol constant line(i) { i };
 pol commit X_free_value(i) query (i, pc, (0, ("input", 1)), (3, ("input", (CNT + 1))), (7, ("input", 0)));
 pol constant p_X_const = [0, 0, 0, 0, 0, 0, 0, 0, 0];
