@@ -1,3 +1,5 @@
+use crate::number::AbstractNumberType;
+
 #[derive(Debug, PartialEq, Eq)]
 pub struct PILFile(pub Vec<Statement>);
 
@@ -33,16 +35,13 @@ pub struct SelectedExpressions {
     pub expressions: Vec<Expression>,
 }
 
-// TODO use bignum or something
-pub type ConstantNumberType = i128;
-
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum Expression {
     /// Reference to a constant, "%ConstantName"
     Constant(String),
     PolynomialReference(PolynomialReference),
     PublicReference(String),
-    Number(ConstantNumberType),
+    Number(AbstractNumberType),
     String(String),
     Tuple(Vec<Expression>),
     BinaryOperation(Box<Expression>, BinaryOperator, Box<Expression>),

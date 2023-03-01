@@ -1,6 +1,7 @@
 use std::str::FromStr;
 use crate::parser::ast::*;
 use crate::parser::asm_ast::*;
+use crate::number::AbstractNumberType;
 
 grammar;
 
@@ -330,7 +331,7 @@ ConstantIdentifier: String = {
     r"%[a-zA-Z_][a-zA-Z$_0-9]*" => <>.to_string(),
 }
 
-Number: i128 = {
-    r"[0-9][0-9_]*" => i128::from_str(&<>.replace('_', "")).unwrap(),
-    r"0x[0-9A-Fa-f][0-9A-Fa-f_]*" => i128::from_str_radix(&<>[2..].replace('_', ""), 16).unwrap(),
+Number: AbstractNumberType = {
+    r"[0-9][0-9_]*" => i128::from_str(&<>.replace('_', "")).unwrap().into(),
+    r"0x[0-9A-Fa-f][0-9A-Fa-f_]*" => i128::from_str_radix(&<>[2..].replace('_', ""), 16).unwrap().into(),
 }

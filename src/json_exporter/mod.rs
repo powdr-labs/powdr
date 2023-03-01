@@ -53,7 +53,7 @@ pub fn export(analyzed: &Analyzed) -> JsonValue {
                     name: name.clone(),
                     polId: json["id"].clone(), // This includes the array offset
                     polType: polynomial_reference_type_to_type(json["op"].as_str().unwrap()),
-                    idx: pub_def.index as u64,
+                    idx: pub_def.index,
                     id: id
                 });
             }
@@ -247,7 +247,7 @@ impl<'a> Exporter<'a> {
                 object! {
                     op: "number",
                     deg: 0,
-                    value: format!("{}", *value as i64),
+                    value: format!("{value}"),
                 },
                 Vec::new(),
             ),

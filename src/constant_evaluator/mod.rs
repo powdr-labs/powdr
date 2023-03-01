@@ -1,16 +1,14 @@
 use std::collections::HashMap;
 
 use crate::analyzer::{
-    Analyzed, BinaryOperator, ConstantNumberType, Expression, FunctionValueDefinition,
-    UnaryOperator,
+    Analyzed, BinaryOperator, Expression, FunctionValueDefinition, UnaryOperator,
 };
+use crate::number::{abstract_to_degree, AbstractNumberType, DegreeType};
 
 /// Generates the constant polynomial values for all constant polynomials
 /// that are defined (and not just declared).
 /// @returns the values (in source order) and the degree of the polynomials.
-pub fn generate(
-    analyzed: &Analyzed,
-) -> (Vec<(&String, Vec<ConstantNumberType>)>, ConstantNumberType) {
+pub fn generate(analyzed: &Analyzed) -> (Vec<(&String, Vec<AbstractNumberType>)>, DegreeType) {
     let mut degree = None;
     let mut other_constants = HashMap::new();
     for (poly, value) in analyzed.constant_polys_in_source_order() {
@@ -35,16 +33,16 @@ pub fn generate(
 
 fn generate_values(
     analyzed: &Analyzed,
-    degree: ConstantNumberType,
+    degree: DegreeType,
     body: &FunctionValueDefinition,
-    other_constants: &HashMap<&String, Vec<ConstantNumberType>>,
-) -> Vec<ConstantNumberType> {
+    other_constants: &HashMap<&String, Vec<AbstractNumberType>>,
+) -> Vec<AbstractNumberType> {
     match body {
         FunctionValueDefinition::Mapping(body) => (0..degree)
             .map(|i| {
                 Evaluator {
                     analyzed,
-                    variables: &[i],
+                    variables: &[i.into()],
                     other_constants,
                 }
                 .evaluate(body)
@@ -59,7 +57,7 @@ fn generate_values(
             let mut values: Vec<_> = values.iter().map(|v| evaluator.evaluate(v)).collect();
             // TODO we fill with zeros - should we warn? should we repeat?
             if degree as usize > values.len() {
-                values.resize(degree as usize, 0)
+                values.resize(degree as usize, 0.into())
             }
             values
         }
@@ -69,18 +67,18 @@ fn generate_values(
 
 struct Evaluator<'a> {
     analyzed: &'a Analyzed,
-    other_constants: &'a HashMap<&'a String, Vec<ConstantNumberType>>,
-    variables: &'a [ConstantNumberType],
+    other_constants: &'a HashMap<&'a String, Vec<AbstractNumberType>>,
+    variables: &'a [AbstractNumberType],
 }
 
 impl<'a> Evaluator<'a> {
-    fn evaluate(&self, expr: &Expression) -> ConstantNumberType {
+    fn evaluate(&self, expr: &Expression) -> AbstractNumberType {
         match expr {
-            Expression::Constant(name) => self.analyzed.constants[name],
+            Expression::Constant(name) => self.analyzed.constants[name].clone(),
             Expression::PolynomialReference(_) => todo!(),
-            Expression::LocalVariableReference(i) => self.variables[*i as usize],
+            Expression::LocalVariableReference(i) => self.variables[*i as usize].clone(),
             Expression::PublicReference(_) => todo!(),
-            Expression::Number(n) => *n,
+            Expression::Number(n) => n.clone(),
             Expression::String(_) => panic!(),
             Expression::Tuple(_) => panic!(),
             Expression::BinaryOperation(left, op, right) => {
@@ -90,7 +88,7 @@ impl<'a> Evaluator<'a> {
             Expression::FunctionCall(name, args) => {
                 let arg_values = args.iter().map(|a| self.evaluate(a)).collect::<Vec<_>>();
                 assert!(arg_values.len() == 1);
-                self.other_constants[name][arg_values[0] as usize]
+                self.other_constants[name][abstract_to_degree(&arg_values[0]) as usize].clone()
             }
         }
     }
@@ -100,7 +98,7 @@ impl<'a> Evaluator<'a> {
         left: &Expression,
         op: &BinaryOperator,
         right: &Expression,
-    ) -> ConstantNumberType {
+    ) -> AbstractNumberType {
         let left = self.evaluate(left);
         let right = self.evaluate(right);
         match op {
@@ -108,21 +106,18 @@ impl<'a> Evaluator<'a> {
             BinaryOperator::Sub => left - right,
             BinaryOperator::Mul => left * right,
             BinaryOperator::Div => {
-                if left == 0 {
-                    0
+                if left == 0.into() {
+                    0.into()
                 } else {
                     left / right
                 }
             }
-            BinaryOperator::Pow => {
-                assert!(right <= u32::MAX.into());
-                left.pow(right as u32)
-            }
+            BinaryOperator::Pow => left.pow(abstract_to_degree(&right) as u32),
             BinaryOperator::Mod => left % right,
             BinaryOperator::BinaryAnd => left & right,
             BinaryOperator::BinaryOr => left | right,
-            BinaryOperator::ShiftLeft => left << right,
-            BinaryOperator::ShiftRight => left >> right,
+            BinaryOperator::ShiftLeft => left << abstract_to_degree(&right),
+            BinaryOperator::ShiftRight => left >> abstract_to_degree(&right),
         }
     }
 
@@ -130,7 +125,7 @@ impl<'a> Evaluator<'a> {
         &self,
         op: &UnaryOperator,
         expr: &Expression,
-    ) -> ConstantNumberType {
+    ) -> AbstractNumberType {
         let v = self.evaluate(expr);
         match op {
             UnaryOperator::Plus => v,
@@ -143,7 +138,11 @@ impl<'a> Evaluator<'a> {
 mod test {
     use crate::analyzer::analyze_string;
 
-    use super::generate;
+    use super::*;
+
+    fn convert(input: Vec<i32>) -> Vec<AbstractNumberType> {
+        input.into_iter().map(|x| x.into()).collect()
+    }
 
     #[test]
     pub fn test_last() {
@@ -157,7 +156,7 @@ mod test {
         assert_eq!(degree, 8);
         assert_eq!(
             constants,
-            vec![(&"F.LAST".to_string(), vec![0, 0, 0, 0, 0, 0, 0, 1])]
+            vec![(&"F.LAST".to_string(), convert(vec![0, 0, 0, 0, 0, 0, 0, 1]))]
         );
     }
 
@@ -173,7 +172,10 @@ mod test {
         assert_eq!(degree, 8);
         assert_eq!(
             constants,
-            vec![(&"F.EVEN".to_string(), vec![-2, 0, 2, 4, 6, 8, 10, 12])]
+            vec![(
+                &"F.EVEN".to_string(),
+                convert(vec![-2, 0, 2, 4, 6, 8, 10, 12])
+            )]
         );
     }
 
@@ -190,7 +192,10 @@ mod test {
         assert_eq!(degree, 8);
         assert_eq!(
             constants,
-            vec![(&"F.EVEN".to_string(), vec![-2, 0, 2, 4, 6, 8, 10, 12])]
+            vec![(
+                &"F.EVEN".to_string(),
+                convert(vec![-2, 0, 2, 4, 6, 8, 10, 12])
+            )]
         );
     }
 
@@ -213,7 +218,7 @@ mod test {
             constants,
             vec![(
                 &"F.TEN".to_string(),
-                [[0; 10].to_vec(), [1, 0].to_vec()].concat()
+                convert([[0; 10].to_vec(), [1, 0].to_vec()].concat())
             )]
         );
     }
@@ -234,27 +239,30 @@ mod test {
         assert_eq!(constants.len(), 4);
         assert_eq!(
             constants[0],
-            (&"F.seq".to_string(), (0..=9i128).collect::<Vec<_>>())
+            (
+                &"F.seq".to_string(),
+                convert((0..=9i32).collect::<Vec<_>>())
+            )
         );
         assert_eq!(
             constants[1],
             (
                 &"F.doub".to_string(),
-                [1i128, 3, 5, 7, 9, 1, 3, 5, 7, 9].to_vec()
+                convert([1i32, 3, 5, 7, 9, 1, 3, 5, 7, 9].to_vec())
             )
         );
         assert_eq!(
             constants[2],
             (
                 &"F.half_nibble".to_string(),
-                [0i128, 1, 2, 3, 4, 5, 6, 7, 0, 1].to_vec()
+                convert([0i32, 1, 2, 3, 4, 5, 6, 7, 0, 1].to_vec())
             )
         );
         assert_eq!(
             constants[3],
             (
                 &"F.doubled_half_nibble".to_string(),
-                [0i128, 0, 1, 1, 2, 2, 3, 3, 4, 4].to_vec()
+                convert([0i32, 0, 1, 1, 2, 2, 3, 3, 4, 4].to_vec())
             )
         );
     }
@@ -276,15 +284,18 @@ mod test {
             constants[0],
             (
                 &"F.alt".to_string(),
-                [0i128, 1, 0, 1, 0, 1, 0, 0, 0, 0].to_vec()
+                convert([0i32, 1, 0, 1, 0, 1, 0, 0, 0, 0].to_vec())
             )
         );
-        assert_eq!(constants[1], (&"F.empty".to_string(), [0i128; 10].to_vec()));
+        assert_eq!(
+            constants[1],
+            (&"F.empty".to_string(), convert([0i32; 10].to_vec()))
+        );
         assert_eq!(
             constants[2],
             (
                 &"F.ref_other".to_string(),
-                [9i128, 1, 8, 0, 0, 0, 0, 0, 0, 0].to_vec()
+                convert([9i32, 1, 8, 0, 0, 0, 0, 0, 0, 0].to_vec())
             )
         );
     }

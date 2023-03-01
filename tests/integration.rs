@@ -1,8 +1,9 @@
 use std::{path::Path, process::Command};
 
-use powdr::{analyzer::ConstantNumberType, compiler};
+use powdr::compiler;
+use powdr::number::AbstractNumberType;
 
-fn verify(file_name: &str, query_callback: Option<fn(&str) -> Option<ConstantNumberType>>) {
+fn verify(file_name: &str, query_callback: Option<fn(&str) -> Option<AbstractNumberType>>) {
     let input_file = Path::new(&format!("./tests/{file_name}"))
         .canonicalize()
         .unwrap();
