@@ -17,6 +17,7 @@ pil{
     col witness XIsZero;
     XIsZero  = 1 - X * XInv;
     XIsZero * X = 0;
+    XIsZero * (1 - XIsZero) = 0;
 }
 
 instr jmpz <=X= c, l: label { pc' = XIsZero * l + (1 - XIsZero) * (pc + 1) }

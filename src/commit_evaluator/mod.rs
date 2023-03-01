@@ -130,7 +130,10 @@ where
 
         // TODO maybe better to generate a dependency graph than looping multiple times.
         // TODO at least we could cache the affine expressions between loops.
+
+        let mut identity_failed;
         loop {
+            identity_failed = false;
             self.progress = false;
             self.failure_reasons.clear();
 
@@ -152,6 +155,9 @@ where
                     _ => Ok(vec![]),
                 }
                 .map_err(|err| format!("No progress on {identity}:\n    {err}"));
+                if result.is_err() {
+                    identity_failed = true;
+                }
                 self.handle_eval_result(result);
             }
             if !self.progress {
@@ -169,7 +175,7 @@ where
                 break;
             }
         }
-        if self.next.iter().any(|v| v.is_none()) {
+        if identity_failed && self.next.iter().any(|v| v.is_none()) {
             eprintln!(
                 "Error: Row {next_row}: Unable to derive values for committed polynomials: {}",
                 self.next
@@ -183,12 +189,32 @@ where
                     .collect::<Vec<String>>()
                     .join(", ")
             );
-            eprintln!("Reasons: {}", self.failure_reasons.join("\n"));
+            eprintln!("Reasons: {}", self.failure_reasons.join("\n\n"));
+            eprintln!(
+                "Current values:\n{}",
+                self.next
+                    .iter()
+                    .enumerate()
+                    .map(|(i, v)| format!(
+                        "{} = {}",
+                        self.committed_names[i],
+                        v.as_ref()
+                            .map(|v| format!("{v}"))
+                            .unwrap_or("<unknown>".to_string())
+                    ))
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            );
             panic!();
         } else {
             std::mem::swap(&mut self.next, &mut self.current);
             self.next = vec![None; self.current.len()];
-            self.current.iter().map(|v| v.clone().unwrap()).collect()
+            // TODO check a bit better that "None" values do not
+            // violate constraints.
+            self.current
+                .iter()
+                .map(|v| v.clone().unwrap_or_default())
+                .collect()
         }
     }
 
@@ -196,7 +222,7 @@ where
         &mut self,
         column: &&WitnessColumn,
     ) -> Result<Vec<(usize, AbstractNumberType)>, String> {
-        let query = self.interpolate_query(column.query.unwrap());
+        let query = self.interpolate_query(column.query.unwrap())?;
         if let Some(value) = self.query_callback.as_mut().unwrap()(&query) {
             Ok(vec![(column.id, value)])
         } else {
@@ -207,28 +233,28 @@ where
         }
     }
 
-    fn interpolate_query(&self, query: &Expression) -> String {
+    fn interpolate_query(&self, query: &Expression) -> Result<String, String> {
+        if let Ok(v) = self.evaluate(query, EvaluationRow::Next) {
+            if v.is_constant() {
+                return Ok(self.format_affine_expression(v));
+            }
+        }
         // TODO combine that with the constant evaluator and the commit evaluator...
         match query {
-            Expression::Tuple(items) => items
+            Expression::Tuple(items) => Ok(items
                 .iter()
                 .map(|i| self.interpolate_query(i))
-                .collect::<Vec<_>>()
-                .join(", "),
+                .collect::<Result<Vec<_>, _>>()?
+                .join(", ")),
             Expression::LocalVariableReference(i) => {
                 assert!(*i == 0);
-                format!("{}", self.next_row)
+                Ok(format!("{}", self.next_row))
             }
-            Expression::Constant(_) => todo!(),
-            Expression::PolynomialReference(_) => todo!(),
-            Expression::PublicReference(_) => todo!(),
-            Expression::Number(n) => format!("{n}"),
-            Expression::String(s) => {
-                format!("\"{}\"", s.replace('\\', "\\\\").replace('"', "\\\""))
-            }
-            Expression::BinaryOperation(_, _, _) => todo!(),
-            Expression::UnaryOperation(_, _) => todo!(),
-            Expression::FunctionCall(_, _) => todo!(),
+            Expression::String(s) => Ok(format!(
+                "\"{}\"",
+                s.replace('\\', "\\\\").replace('"', "\\\"")
+            )),
+            _ => Err(format!("Cannot handle / evaluate {query}")),
         }
     }
 
@@ -241,12 +267,16 @@ where
             EvaluationRow::Next
         };
         let evaluated = self.evaluate(identity, row)?;
-        match evaluated.solve() {
-            Some((id, value)) => Ok(vec![(id, value)]),
-            None => Err(format!(
-                "Could not solve expression {}",
-                self.format_affine_expression(evaluated)
-            )),
+        if evaluated.constant_value() == Some(0.into()) {
+            Ok(vec![])
+        } else {
+            match evaluated.solve() {
+                Some((id, value)) => Ok(vec![(id, value)]),
+                None => Err(format!(
+                    "Could not solve expression {} (might be an invalid constraint)",
+                    self.format_affine_expression(evaluated)
+                )),
+            }
         }
     }
 
@@ -345,7 +375,7 @@ where
         match evaluated.solve() {
             Some((id, value)) => Ok(vec![(id, value)]),
             None => Err(format!(
-                "Could not solve expression {}",
+                "Could not solve expression {} (might be an invalid constraint)",
                 self.format_affine_expression(evaluated)
             )),
         }
@@ -431,11 +461,13 @@ where
                 self.evaluate_binary_operation(left, op, right, row)
             }
             Expression::UnaryOperation(op, expr) => self.evaluate_unary_operation(op, expr, row),
-            Expression::Tuple(_) => panic!(),
-            Expression::String(_) => panic!(),
-            Expression::LocalVariableReference(_) => panic!(),
-            Expression::PublicReference(_) => panic!(),
-            Expression::FunctionCall(_, _) => panic!(),
+            Expression::Tuple(_) => Err("Tuple not implemented.".to_string()),
+            Expression::String(_) => Err("String not implemented.".to_string()),
+            Expression::LocalVariableReference(_) => {
+                Err("Local variable references not implemented.".to_string())
+            }
+            Expression::PublicReference(_) => Err("Public references not implemented.".to_string()),
+            Expression::FunctionCall(_, _) => Err("Function calls not implemented.".to_string()),
         }
     }
 
@@ -555,7 +587,16 @@ where
             .iter()
             .enumerate()
             .filter(|(_, c)| !is_zero(c))
-            .map(|(i, c)| format!("{} * {c}", self.committed_names[i]))
+            .map(|(i, c)| {
+                let name = self.committed_names[i];
+                if *c == 1.into() {
+                    name.clone()
+                } else if *c == (-1).into() {
+                    format!("-{name}")
+                } else {
+                    format!("{c} * {name}")
+                }
+            })
             .chain(e.constant_value().map(|v| format!("{v}")))
             .collect::<Vec<_>>()
             .join(" + ")
