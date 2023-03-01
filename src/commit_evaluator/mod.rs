@@ -39,6 +39,12 @@ pub fn generate<'a>(
             values[col].1.push(v);
         }
     }
+    for (col, v) in evaluator.compute_next_row(0).into_iter().enumerate() {
+        if v != values[col].1[0] {
+            eprintln!("Wrap-around value for column {} does not match: {} (wrap-around) vs. {} (first row).",
+            polys[col].name, v, values[col].1[0]);
+        }
+    }
     values
 }
 
@@ -175,6 +181,7 @@ where
                 break;
             }
         }
+        //println!("\n\n================================\n");
         if identity_failed && self.next.iter().any(|v| v.is_none()) {
             eprintln!(
                 "Error: Row {next_row}: Unable to derive values for committed polynomials: {}",
@@ -199,7 +206,7 @@ where
                         "{} = {}",
                         self.committed_names[i],
                         v.as_ref()
-                            .map(|v| format!("{v}"))
+                            .map(format_number)
                             .unwrap_or("<unknown>".to_string())
                     ))
                     .collect::<Vec<_>>()
@@ -385,6 +392,7 @@ where
         match result {
             Ok(assignments) => {
                 for (id, value) in assignments {
+                    //println!("{} = {value}", self.committed_names[id]);
                     self.next[id] = Some(value);
                     self.progress = true;
                 }
@@ -594,11 +602,21 @@ where
                 } else if *c == (-1).into() {
                     format!("-{name}")
                 } else {
-                    format!("{c} * {name}")
+                    format!("{} * {name}", format_number(c))
                 }
             })
             .chain(e.constant_value().map(|v| format!("{v}")))
             .collect::<Vec<_>>()
             .join(" + ")
+    }
+}
+
+const GOLDILOCKS_MOD: u64 = 0xffffffff00000001u64;
+
+fn format_number(x: &AbstractNumberType) -> String {
+    if *x > (GOLDILOCKS_MOD / 2).into() {
+        format!("{}", GOLDILOCKS_MOD - x)
+    } else {
+        format!("{x}")
     }
 }

@@ -127,7 +127,6 @@ fn test_witness_lookup() {
 }
 
 #[test]
-#[ignore]
 fn simple_sum_asm() {
     verify_asm(
         "simple_sum.asm",
