@@ -2,8 +2,9 @@ use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use crate::number::{abstract_to_degree, DegreeType};
 use crate::parser::ast;
-pub use crate::parser::ast::{BinaryOperator, ConstantNumberType, UnaryOperator};
+pub use crate::parser::ast::{BinaryOperator, UnaryOperator};
 use crate::{line_utils, parser};
 
 use super::*;
@@ -23,9 +24,9 @@ pub fn process_pil_file_contents(contents: &str) -> Analyzed {
 #[derive(Default)]
 struct PILContext {
     namespace: String,
-    polynomial_degree: ConstantNumberType,
+    polynomial_degree: DegreeType,
     /// Constants are not namespaced!
-    constants: HashMap<String, ConstantNumberType>,
+    constants: HashMap<String, AbstractNumberType>,
     definitions: HashMap<String, (Polynomial, Option<FunctionValueDefinition>)>,
     public_declarations: HashMap<String, PublicDeclaration>,
     macros: HashMap<String, MacroDefinition>,
@@ -259,7 +260,7 @@ impl PILContext {
     }
 
     fn handle_namespace(&mut self, name: &str, degree: &ast::Expression) {
-        self.polynomial_degree = self.evaluate_expression(degree).unwrap();
+        self.polynomial_degree = abstract_to_degree(&self.evaluate_expression(degree).unwrap());
         self.namespace = name.to_owned();
     }
 
@@ -290,7 +291,8 @@ impl PILContext {
     ) -> u64 {
         let length = array_size
             .as_ref()
-            .map(|l| self.evaluate_expression(l).unwrap());
+            .map(|l| self.evaluate_expression(l).unwrap())
+            .map(|l| abstract_to_degree(&l));
         if length.is_some() {
             assert!(value.is_none());
         }
@@ -300,7 +302,7 @@ impl PILContext {
             PolynomialType::Intermediate => &mut self.intermediate_poly_counter,
         };
         let id = *counter;
-        *counter += length.unwrap_or(1) as u64;
+        *counter += length.unwrap_or(1);
         let poly = Polynomial {
             id,
             source,
@@ -368,7 +370,7 @@ impl PILContext {
                 source,
                 name: name.to_string(),
                 polynomial: self.process_polynomial_reference(poly),
-                index: self.evaluate_expression(index).unwrap(),
+                index: abstract_to_degree(&self.evaluate_expression(index).unwrap()),
             },
         );
         self.source_order
@@ -457,7 +459,7 @@ impl PILContext {
                 }
             }
             ast::Expression::PublicReference(name) => Expression::PublicReference(name.clone()),
-            ast::Expression::Number(n) => Expression::Number(*n),
+            ast::Expression::Number(n) => Expression::Number(n.clone()),
             ast::Expression::String(value) => Expression::String(value.clone()),
             ast::Expression::Tuple(items) => Expression::Tuple(self.process_expressions(items)),
             ast::Expression::BinaryOperation(left, op, right) => {
@@ -525,7 +527,8 @@ impl PILContext {
         let index = poly
             .index
             .as_ref()
-            .map(|i| self.evaluate_expression(i).unwrap() as u64);
+            .map(|i| self.evaluate_expression(i).unwrap())
+            .map(|i| abstract_to_degree(&i));
         PolynomialReference {
             name: self.namespaced_ref(&poly.namespace, &poly.name),
             index,
@@ -533,17 +536,17 @@ impl PILContext {
         }
     }
 
-    fn evaluate_expression(&self, expr: &ast::Expression) -> Option<ConstantNumberType> {
+    fn evaluate_expression(&self, expr: &ast::Expression) -> Option<AbstractNumberType> {
         match expr {
             ast::Expression::Constant(name) => Some(
-                *self
-                    .constants
+                self.constants
                     .get(name)
-                    .unwrap_or_else(|| panic!("Constant {name} not found.")),
+                    .unwrap_or_else(|| panic!("Constant {name} not found."))
+                    .clone(),
             ),
             ast::Expression::PolynomialReference(_) => None,
             ast::Expression::PublicReference(_) => None,
-            ast::Expression::Number(n) => Some(*n),
+            ast::Expression::Number(n) => Some(n.clone()),
             ast::Expression::String(_) => None,
             ast::Expression::Tuple(_) => None,
             ast::Expression::BinaryOperation(left, op, right) => {
@@ -560,8 +563,7 @@ impl PILContext {
         left: &ast::Expression,
         op: &BinaryOperator,
         right: &ast::Expression,
-    ) -> Option<ConstantNumberType> {
-        // TODO handle owerflow and maybe use bigint instead.
+    ) -> Option<AbstractNumberType> {
         if let (Some(left), Some(right)) = (
             self.evaluate_expression(left),
             self.evaluate_expression(right),
@@ -572,14 +574,14 @@ impl PILContext {
                 BinaryOperator::Mul => left * right,
                 BinaryOperator::Div => left / right,
                 BinaryOperator::Pow => {
-                    assert!(right <= u32::MAX.into());
-                    left.pow(right as u32)
+                    assert!(AbstractNumberType::from(0) <= right && right <= u32::MAX.into());
+                    left.pow(abstract_to_degree(&right) as u32)
                 }
                 BinaryOperator::Mod => left % right,
                 BinaryOperator::BinaryAnd => left & right,
                 BinaryOperator::BinaryOr => left | right,
-                BinaryOperator::ShiftLeft => left << right,
-                BinaryOperator::ShiftRight => left >> right,
+                BinaryOperator::ShiftLeft => left << abstract_to_degree(&right),
+                BinaryOperator::ShiftRight => left >> abstract_to_degree(&right),
             })
         } else {
             None
@@ -590,8 +592,7 @@ impl PILContext {
         &self,
         op: &UnaryOperator,
         value: &ast::Expression,
-    ) -> Option<ConstantNumberType> {
-        // TODO handle owerflow and maybe use bigint instead.
+    ) -> Option<AbstractNumberType> {
         self.evaluate_expression(value).map(|v| match op {
             UnaryOperator::Plus => v,
             UnaryOperator::Minus => -v,

@@ -221,7 +221,7 @@ mod test {
                         next: false
                     })),
                     BinaryOperator::Add,
-                    Box::new(Expression::Number(1))
+                    Box::new(Expression::Number(1.into()))
                 ))
             )])
         );

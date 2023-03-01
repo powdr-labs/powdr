@@ -1,5 +1,6 @@
 use std::collections::{BTreeMap, HashMap};
 
+use crate::number::AbstractNumberType;
 use crate::parser::asm_ast::*;
 use crate::parser::ast::*;
 use crate::parser::{self, ParseError};
@@ -33,7 +34,7 @@ impl ASMPILConverter {
         self.pil.push(Statement::Namespace(
             0,
             "Assembly".to_string(),
-            Expression::Number(max_steps as ConstantNumberType),
+            Expression::Number(AbstractNumberType::from(max_steps)),
         ));
         self.pil.push(Statement::PolynomialConstantDefinition(
             0,
@@ -117,7 +118,7 @@ impl ASMPILConverter {
                 ));
 
                 self.line_lookup.push((name.clone(), "line".to_string()));
-                default_update = Some(build_add(direct_reference(name), build_number(1)));
+                default_update = Some(build_add(direct_reference(name), build_number(1.into())));
             }
             Some(RegisterFlag::IsDefaultAssignment) => {
                 assert_eq!(self.default_assignment, None);
@@ -247,7 +248,7 @@ impl ASMPILConverter {
     fn process_assignment_value(
         &self,
         value: &Expression,
-    ) -> Vec<(ConstantNumberType, AffineExpressionComponent)> {
+    ) -> Vec<(AbstractNumberType, AffineExpressionComponent)> {
         match value {
             Expression::Constant(_) => panic!(),
             Expression::PublicReference(_) => panic!(),
@@ -258,15 +259,18 @@ impl ASMPILConverter {
                 assert!(!reference.next);
                 // TODO check it actually is a register
                 vec![(
-                    1,
+                    1.into(),
                     AffineExpressionComponent::Register(reference.name.clone()),
                 )]
             }
-            Expression::Number(value) => vec![(*value, AffineExpressionComponent::Constant)],
+            Expression::Number(value) => vec![(value.clone(), AffineExpressionComponent::Constant)],
             Expression::String(_) => panic!(),
             Expression::Tuple(_) => panic!(),
             Expression::FreeInput(expr) => {
-                vec![(1, AffineExpressionComponent::FreeInput(*expr.clone()))]
+                vec![(
+                    1.into(),
+                    AffineExpressionComponent::FreeInput(*expr.clone()),
+                )]
             }
             Expression::BinaryOperation(left, op, right) => match op {
                 BinaryOperator::Add => self.add_assignment_value(
@@ -295,9 +299,9 @@ impl ASMPILConverter {
 
     fn add_assignment_value(
         &self,
-        mut left: Vec<(ConstantNumberType, AffineExpressionComponent)>,
-        right: Vec<(ConstantNumberType, AffineExpressionComponent)>,
-    ) -> Vec<(ConstantNumberType, AffineExpressionComponent)> {
+        mut left: Vec<(AbstractNumberType, AffineExpressionComponent)>,
+        right: Vec<(AbstractNumberType, AffineExpressionComponent)>,
+    ) -> Vec<(AbstractNumberType, AffineExpressionComponent)> {
         // TODO combine (or at leats check for) same components.
         left.extend(right);
         left
@@ -305,8 +309,8 @@ impl ASMPILConverter {
 
     fn negate_assignment_value(
         &self,
-        expr: Vec<(ConstantNumberType, AffineExpressionComponent)>,
-    ) -> Vec<(ConstantNumberType, AffineExpressionComponent)> {
+        expr: Vec<(AbstractNumberType, AffineExpressionComponent)>,
+    ) -> Vec<(AbstractNumberType, AffineExpressionComponent)> {
         expr.into_iter().map(|(v, c)| (-v, c)).collect()
     }
 
@@ -356,7 +360,7 @@ impl ASMPILConverter {
         let mut program_constants = self
             .program_constant_names
             .iter()
-            .map(|n| (n, vec![0; self.code_lines.len()]))
+            .map(|n| (n, vec![AbstractNumberType::from(0); self.code_lines.len()]))
             .collect::<BTreeMap<_, _>>();
         let mut free_value_queries = vec![
             direct_reference("i"),
@@ -375,12 +379,12 @@ impl ASMPILConverter {
                     AffineExpressionComponent::Register(reg) => {
                         program_constants
                             .get_mut(&format!("p_read_{}_{reg}", self.default_assignment_reg()))
-                            .unwrap()[i] = *coeff;
+                            .unwrap()[i] = coeff.clone();
                     }
                     AffineExpressionComponent::Constant => {
                         program_constants
                             .get_mut(&format!("p_{}_const", self.default_assignment_reg()))
-                            .unwrap()[i] = *coeff
+                            .unwrap()[i] = coeff.clone()
                     }
                     AffineExpressionComponent::FreeInput(expr) => {
                         // The program just stores that we read a free input, the actual value
@@ -389,7 +393,7 @@ impl ASMPILConverter {
                             .get_mut(&format!("p_{}_read_free", self.default_assignment_reg()))
                             .unwrap()[i] = 1.into();
                         free_value_queries.push(Expression::Tuple(vec![
-                            build_number(i as ConstantNumberType),
+                            build_number(i.into()),
                             expr.clone(),
                         ]));
                     }
@@ -478,7 +482,7 @@ impl Register {
             (_, None) => Some(updates.unwrap()),
             (_, Some(def)) => {
                 let default_condition = build_sub(
-                    build_number(1),
+                    build_number(1.into()),
                     self.conditioned_updates
                         .iter()
                         .map(|(cond, _value)| cond.clone())
@@ -501,7 +505,7 @@ struct Instruction {
 #[derive(Default)]
 struct CodeLine {
     write_reg: Option<String>,
-    value: Vec<(ConstantNumberType, AffineExpressionComponent)>,
+    value: Vec<(AbstractNumberType, AffineExpressionComponent)>,
     label: Option<String>,
     instruction: Option<String>,
     // TODO we only support labels for now.
@@ -563,7 +567,7 @@ fn build_unary_expr(op: UnaryOperator, exp: Expression) -> Expression {
     Expression::UnaryOperation(op, Box::new(exp))
 }
 
-fn build_number(value: i128) -> Expression {
+fn build_number(value: AbstractNumberType) -> Expression {
     Expression::Number(value)
 }
 

@@ -4,7 +4,8 @@ pub mod pil_analyzer;
 use std::collections::HashMap;
 use std::path::Path;
 
-pub use crate::parser::ast::{BinaryOperator, ConstantNumberType, UnaryOperator};
+use crate::number::{AbstractNumberType, DegreeType};
+pub use crate::parser::ast::{BinaryOperator, UnaryOperator};
 
 pub fn analyze(path: &Path) -> Analyzed {
     pil_analyzer::process_pil_file(path)
@@ -22,7 +23,7 @@ pub enum StatementIdentifier {
 
 pub struct Analyzed {
     /// Constants are not namespaced!
-    pub constants: HashMap<String, ConstantNumberType>,
+    pub constants: HashMap<String, AbstractNumberType>,
     pub definitions: HashMap<String, (Polynomial, Option<FunctionValueDefinition>)>,
     pub public_declarations: HashMap<String, PublicDeclaration>,
     pub identities: Vec<Identity>,
@@ -94,8 +95,8 @@ pub struct Polynomial {
     pub source: SourceRef,
     pub absolute_name: String,
     pub poly_type: PolynomialType,
-    pub degree: ConstantNumberType,
-    pub length: Option<ConstantNumberType>,
+    pub degree: DegreeType,
+    pub length: Option<DegreeType>,
 }
 
 impl Polynomial {
@@ -116,7 +117,7 @@ pub struct PublicDeclaration {
     pub name: String,
     pub polynomial: PolynomialReference,
     /// The evaluation point of the polynomial, not the array index.
-    pub index: ConstantNumberType,
+    pub index: DegreeType,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -151,7 +152,7 @@ pub enum Expression {
     PolynomialReference(PolynomialReference),
     LocalVariableReference(u64),
     PublicReference(String),
-    Number(ConstantNumberType),
+    Number(AbstractNumberType),
     String(String),
     Tuple(Vec<Expression>),
     BinaryOperation(Box<Expression>, BinaryOperator, Box<Expression>),

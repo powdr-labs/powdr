@@ -2,12 +2,13 @@ use std::fs;
 use std::io::{BufWriter, Write};
 use std::path::Path;
 
-use analyzer::ConstantNumberType;
+use num_bigint::Sign;
 
+use crate::number::{abstract_to_degree, AbstractNumberType, DegreeType};
 use crate::parser::ast::PILFile;
 use crate::{analyzer, commit_evaluator, constant_evaluator, json_exporter};
 
-pub fn no_callback() -> Option<fn(&str) -> Option<ConstantNumberType>> {
+pub fn no_callback() -> Option<fn(&str) -> Option<AbstractNumberType>> {
     None
 }
 
@@ -18,7 +19,7 @@ pub fn no_callback() -> Option<fn(&str) -> Option<ConstantNumberType>> {
 pub fn compile_pil(
     pil_file: &Path,
     output_dir: &Path,
-    query_callback: Option<impl FnMut(&str) -> Option<ConstantNumberType>>,
+    query_callback: Option<impl FnMut(&str) -> Option<AbstractNumberType>>,
 ) -> bool {
     compile(
         &analyzer::analyze(pil_file),
@@ -32,7 +33,7 @@ pub fn compile_pil_ast(
     pil: &PILFile,
     file_name: &str,
     output_dir: &Path,
-    query_callback: Option<impl FnMut(&str) -> Option<ConstantNumberType>>,
+    query_callback: Option<impl FnMut(&str) -> Option<AbstractNumberType>>,
 ) -> bool {
     // TODO exporting this to string as a hack because the parser
     // is tied into the analyzer due to imports.
@@ -48,7 +49,7 @@ fn compile(
     analyzed: &analyzer::Analyzed,
     file_name: &str,
     output_dir: &Path,
-    query_callback: Option<impl FnMut(&str) -> Option<ConstantNumberType>>,
+    query_callback: Option<impl FnMut(&str) -> Option<AbstractNumberType>>,
 ) -> bool {
     let mut success = true;
     let (constants, degree) = constant_evaluator::generate(analyzed);
@@ -81,17 +82,18 @@ fn compile(
 
 fn write_polys_file(
     file: &mut impl Write,
-    degree: ConstantNumberType,
-    polys: &Vec<(&String, Vec<ConstantNumberType>)>,
+    degree: DegreeType,
+    polys: &Vec<(&String, Vec<AbstractNumberType>)>,
 ) {
     for i in 0..degree as usize {
         for (_name, constant) in polys {
-            let mut v = constant[i];
-            if v < 0 {
+            let mut v = constant[i].clone();
+            if v.sign() == Sign::Minus {
                 // This hardcodes the goldilocks field
-                v += 0xffffffff00000001;
+                v += 0xffffffff00000001u64;
             }
-            file.write_all(&(v as u64).to_le_bytes()).unwrap();
+            file.write_all(&abstract_to_degree(&v).to_le_bytes())
+                .unwrap();
         }
     }
 }
