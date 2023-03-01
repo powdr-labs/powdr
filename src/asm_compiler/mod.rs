@@ -670,7 +670,7 @@ pc' = (((instr_jmpz * ((XIsZero * instr_jmpz_param_l) + ((1 - XIsZero) * (pc + 1
 pol constant line(i) { i };
 pol commit X_free_value(i) query (i, pc, (0, ("input", 1)), (3, ("input", (CNT + 1))), (7, ("input", 0)));
 pol constant p_X_const = [0, 0, 0, 0, 0, 0, 0, 0, 0];
-pol constant p_X_read_free = [1, 0, 0, 1, 0, 0, 0, 1, 0];
+pol constant p_X_read_free = [1, 0, 0, 1, 0, 0, 0, -1, 0];
 pol constant p_instr_assert_zero = [0, 0, 0, 0, 0, 0, 0, 0, 1];
 pol constant p_instr_dec_CNT = [0, 0, 0, 0, 1, 0, 0, 0, 0];
 pol constant p_instr_jmp = [0, 0, 0, 0, 0, 1, 0, 0, 0];
