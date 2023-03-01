@@ -24,17 +24,17 @@ instr jmp l: label { pc' = l }
 instr dec_CNT { CNT' = CNT - 1 }
 instr assert_zero <=X= a { XIsZero = 1 }
 
-CNT <=X= ${ input[1] };
+CNT <=X= ${ ("input", 1) };
 
 start::
  jmpz CNT, end;
- A <=X= A + ${ input[CNT + 1] };
+ A <=X= A + ${ ("input", CNT + 1) };
  // Could use "CNT <=X= CNT - 1", but that would need X.
  dec_CNT;
  jmp start;
 
 end::
- A <=X= A - ${ input[0] };
+ A <=X= A - ${ ("input", 0) };
  assert_zero A;
 
  
