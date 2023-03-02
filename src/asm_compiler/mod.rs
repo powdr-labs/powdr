@@ -161,7 +161,7 @@ impl ASMPILConverter {
     fn handle_instruction_def(
         &mut self,
         start: &usize,
-        body: &Vec<Expression>,
+        body: &Vec<InstructionBodyElement>,
         name: &String,
         params: &Vec<InstructionParam>,
     ) {
@@ -181,19 +181,24 @@ impl ASMPILConverter {
         }
 
         for expr in body {
-            let expr = substitute(expr, &substitutions);
-            match extract_update(expr) {
-                (Some(var), expr) => {
-                    self.registers
-                        .get_mut(&var)
-                        .unwrap()
-                        .conditioned_updates
-                        .push((direct_reference(&col_name), expr));
+            match expr {
+                InstructionBodyElement::Expression(expr) => {
+                    let expr = substitute(expr, &substitutions);
+                    match extract_update(expr) {
+                        (Some(var), expr) => {
+                            self.registers
+                                .get_mut(&var)
+                                .unwrap()
+                                .conditioned_updates
+                                .push((direct_reference(&col_name), expr));
+                        }
+                        (None, expr) => self.pil.push(Statement::PolynomialIdentity(
+                            0,
+                            build_mul(direct_reference(&col_name), expr.clone()),
+                        )),
+                    }
                 }
-                (None, expr) => self.pil.push(Statement::PolynomialIdentity(
-                    0,
-                    build_mul(direct_reference(&col_name), expr.clone()),
-                )),
+                InstructionBodyElement::PlookupIdentity(_, _) => todo!(),
             }
         }
         let instr = Instruction {
