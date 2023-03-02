@@ -11,6 +11,18 @@ pub fn offset_to_line(offset: usize, line_starts: &[usize]) -> usize {
     }
 }
 
+pub fn quote(input: &str) -> String {
+    format!("\"{}\"", input.replace('\\', "\\\\").replace('"', "\\\""))
+}
+
+pub fn indent(input: &str, indentation: &str) -> String {
+    if input.is_empty() {
+        String::new()
+    } else {
+        indentation.to_string() + &input.replace('\n', &format!("\n{indentation}"))
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::{compute_line_starts, offset_to_line};
