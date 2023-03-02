@@ -86,6 +86,11 @@ impl AffineExpression {
             }
         })
     }
+
+    /// Returns true if it can be determined that this expression can never be zero.
+    pub fn is_invalid(&self) -> bool {
+        self.constant_value().map(|v| v != 0.into()) == Some(true)
+    }
 }
 
 fn clamp(mut x: AbstractNumberType) -> AbstractNumberType {
