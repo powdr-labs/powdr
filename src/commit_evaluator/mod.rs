@@ -22,6 +22,7 @@ pub fn generate<'a>(
     degree: &DegreeType,
     constants: &[(&String, Vec<AbstractNumberType>)],
     query_callback: Option<impl FnMut(&str) -> Option<AbstractNumberType>>,
+    verbose: bool,
 ) -> Vec<(&'a String, Vec<AbstractNumberType>)> {
     let polys: Vec<WitnessColumn> = analyzed
         .committed_polys_in_source_order()
@@ -37,6 +38,7 @@ pub fn generate<'a>(
     let mut values: Vec<(&String, Vec<AbstractNumberType>)> =
         polys.iter().map(|p| (p.name, Vec::new())).collect();
     let mut evaluator = Evaluator::new(analyzed, constants, &polys, query_callback);
+    evaluator.set_verbose(verbose);
     for row in 0..*degree as DegreeType {
         let row_values = evaluator.compute_next_row(row);
         for (col, v) in row_values.into_iter().enumerate() {
@@ -93,6 +95,7 @@ where
     next_row: DegreeType,
     failure_reasons: Vec<String>,
     progress: bool,
+    verbose: bool,
 }
 
 #[derive(PartialEq, Eq, Clone, Copy)]
@@ -129,7 +132,12 @@ where
             next_row: 0,
             failure_reasons: vec![],
             progress: true,
+            verbose: false,
         }
+    }
+
+    pub fn set_verbose(&mut self, verbose: bool) {
+        self.verbose = verbose;
     }
 
     pub fn compute_next_row(&mut self, next_row: DegreeType) -> Vec<AbstractNumberType> {
@@ -144,15 +152,6 @@ where
             self.progress = false;
             self.failure_reasons.clear();
 
-            if self.query_callback.is_some() {
-                // TODO avoid clone
-                for column in self.committed.clone().values() {
-                    if !self.has_known_next_value(column.id) && column.query.is_some() {
-                        let result = self.process_witness_query(column);
-                        self.handle_eval_result(result)
-                    }
-                }
-            }
             for identity in &self.analyzed.identities {
                 let result = match identity.kind {
                     IdentityKind::Polynomial => {
@@ -173,25 +172,25 @@ where
                 }
                 self.handle_eval_result(result);
             }
+            if self.query_callback.is_some() {
+                // TODO avoid clone
+                for column in self.committed.clone().values() {
+                    if !self.has_known_next_value(column.id) && column.query.is_some() {
+                        let result = self.process_witness_query(column);
+                        self.handle_eval_result(result)
+                    }
+                }
+            }
             if !self.progress {
                 break;
             }
             if self.next.iter().all(|v| v.is_some()) {
-                // let values = self
-                //     .next
-                //     .iter()
-                //     .enumerate()
-                //     .map(|(i, v)| format!("{} = {}", self.committed_names[i], v.unwrap()))
-                //     .collect::<Vec<_>>()
-                //     .join(", ");
-                // println!("Row {next_row}: {values}");
                 break;
             }
         }
-        //println!("\n\n================================\n");
         if identity_failed && self.next.iter().any(|v| v.is_none()) {
             eprintln!(
-                "Error: Row {next_row}: Unable to derive values for committed polynomials: {}",
+                "\nError: Row {next_row}: Unable to derive values for committed polynomials: {}\n",
                 self.next
                     .iter()
                     .enumerate()
@@ -203,24 +202,19 @@ where
                     .collect::<Vec<String>>()
                     .join(", ")
             );
-            eprintln!("Reasons: {}", self.failure_reasons.join("\n\n"));
+            eprintln!("Reasons:\n{}\n", self.failure_reasons.join("\n\n"));
             eprintln!(
                 "Current values:\n{}",
-                self.next
-                    .iter()
-                    .enumerate()
-                    .map(|(i, v)| format!(
-                        "{} = {}",
-                        self.committed_names[i],
-                        v.as_ref()
-                            .map(format_number)
-                            .unwrap_or("<unknown>".to_string())
-                    ))
-                    .collect::<Vec<_>>()
-                    .join("\n")
+                indent(&self.format_next_values().join("\n"), "    ")
             );
             panic!();
         } else {
+            if self.verbose {
+                println!(
+                    "===== Row {next_row}:\n{}",
+                    indent(&self.format_next_values().join("\n"), "    ")
+                );
+            }
             std::mem::swap(&mut self.next, &mut self.current);
             self.next = vec![None; self.current.len()];
             // TODO check a bit better that "None" values do not
@@ -230,6 +224,22 @@ where
                 .map(|v| v.clone().unwrap_or_default())
                 .collect()
         }
+    }
+
+    fn format_next_values(&self) -> Vec<String> {
+        self.next
+            .iter()
+            .enumerate()
+            .map(|(i, v)| {
+                format!(
+                    "{} = {}",
+                    self.committed_names[i],
+                    v.as_ref()
+                        .map(format_number)
+                        .unwrap_or("<unknown>".to_string())
+                )
+            })
+            .collect()
     }
 
     fn process_witness_query(

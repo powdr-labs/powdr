@@ -27,6 +27,7 @@ pub fn compile_pil(
         pil_file.file_name().unwrap().to_str().unwrap(),
         output_dir,
         query_callback,
+        false,
     )
 }
 
@@ -35,6 +36,7 @@ pub fn compile_pil_ast(
     file_name: &str,
     output_dir: &Path,
     query_callback: Option<impl FnMut(&str) -> Option<AbstractNumberType>>,
+    verbose: bool,
 ) -> bool {
     // TODO exporting this to string as a hack because the parser
     // is tied into the analyzer due to imports.
@@ -43,6 +45,7 @@ pub fn compile_pil_ast(
         file_name,
         output_dir,
         query_callback,
+        verbose,
     )
 }
 
@@ -53,6 +56,7 @@ pub fn compile_asm(
     inputs: Vec<AbstractNumberType>,
     output_dir: &Path,
     force_overwrite: bool,
+    verbose: bool,
 ) {
     let contents = fs::read_to_string(file_name).unwrap();
     let pil = asm_compiler::compile(Some(file_name), &contents).unwrap_or_else(|err| {
@@ -93,6 +97,7 @@ pub fn compile_asm(
         pil_file_name.to_str().unwrap(),
         output_dir,
         Some(query_callback),
+        verbose,
     );
 }
 
@@ -101,6 +106,7 @@ fn compile(
     file_name: &str,
     output_dir: &Path,
     query_callback: Option<impl FnMut(&str) -> Option<AbstractNumberType>>,
+    verbose: bool,
 ) -> bool {
     let mut success = true;
     let (constants, degree) = constant_evaluator::generate(analyzed);
@@ -111,7 +117,8 @@ fn compile(
             &constants,
         );
         println!("Wrote constants.bin.");
-        let commits = commit_evaluator::generate(analyzed, &degree, &constants, query_callback);
+        let commits =
+            commit_evaluator::generate(analyzed, &degree, &constants, query_callback, verbose);
         write_polys_file(
             &mut BufWriter::new(&mut fs::File::create(output_dir.join("commits.bin")).unwrap()),
             degree,

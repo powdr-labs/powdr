@@ -42,6 +42,7 @@ fn verify_asm(file_name: &str, inputs: Vec<AbstractNumberType>) {
             }
             None
         }),
+        false
     ));
     verify(pil_file_name, &temp_dir);
 }
