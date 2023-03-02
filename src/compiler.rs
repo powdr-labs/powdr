@@ -55,7 +55,11 @@ pub fn compile_asm(
     force_overwrite: bool,
 ) {
     let contents = fs::read_to_string(file_name).unwrap();
-    let pil = asm_compiler::compile(Some(file_name), &contents).unwrap();
+    let pil = asm_compiler::compile(Some(file_name), &contents).unwrap_or_else(|err| {
+        eprintln!("Error parsing .asm file:");
+        err.output_to_stderr();
+        panic!();
+    });
     let pil_file_name = output_dir.join(format!(
         "{}.pil",
         Path::new(file_name).file_stem().unwrap().to_str().unwrap()
