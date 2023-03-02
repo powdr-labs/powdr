@@ -59,6 +59,8 @@ fn main() {
         } => {
             let inputs = inputs
                 .split(',')
+                .map(|x| x.trim())
+                .filter(|x| !x.is_empty())
                 .map(|x| x.parse().unwrap())
                 .collect::<Vec<AbstractNumberType>>();
             powdr::compiler::compile_asm(&file, inputs, Path::new(&output_directory), force);
