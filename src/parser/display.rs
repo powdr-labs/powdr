@@ -1,5 +1,7 @@
 use std::fmt::{Display, Formatter, Result};
 
+use crate::utils::quote;
+
 use super::ast::*;
 
 // TODO indentation
@@ -76,10 +78,6 @@ impl Display for Statement {
             }
         }
     }
-}
-
-fn quote(input: &str) -> String {
-    format!("\"{}\"", input.replace('\\', "\\\\").replace('"', "\\\""))
 }
 
 fn format_names(names: &[PolynomialName]) -> String {

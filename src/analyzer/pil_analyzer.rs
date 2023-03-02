@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use crate::number::{abstract_to_degree, DegreeType};
 use crate::parser::ast;
 pub use crate::parser::ast::{BinaryOperator, UnaryOperator};
-use crate::{line_utils, parser};
+use crate::{parser, utils};
 
 use super::*;
 
@@ -100,7 +100,7 @@ impl PILContext {
         let old_line_starts = std::mem::take(&mut self.line_starts);
 
         // TOOD make this work for other line endings
-        self.line_starts = line_utils::compute_line_starts(contents);
+        self.line_starts = utils::compute_line_starts(contents);
         self.current_file = path.to_path_buf();
         let pil_file =
             parser::parse(Some(path.to_str().unwrap()), contents).unwrap_or_else(|err| {
@@ -181,7 +181,7 @@ impl PILContext {
     fn to_source_ref(&self, start: usize) -> SourceRef {
         let file = self.current_file.file_name().unwrap().to_str().unwrap();
         SourceRef {
-            line: line_utils::offset_to_line(start, &self.line_starts),
+            line: utils::offset_to_line(start, &self.line_starts),
             file: file.to_string(),
         }
     }

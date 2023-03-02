@@ -6,10 +6,14 @@ use crate::analyzer::{
 };
 // TODO should use finite field instead of abstract number
 use crate::number::{abstract_to_degree, is_zero, AbstractNumberType, DegreeType};
+use crate::utils::indent;
 
 mod affine_expression;
+mod eval_error;
 
 use affine_expression::AffineExpression;
+
+use self::eval_error::EvalError;
 
 /// Generates the committed polynomial values
 /// @returns the values (in source order) and the degree of the polynomials.
@@ -69,7 +73,7 @@ impl<'a> WitnessColumn<'a> {
     }
 }
 
-type EvalResult = Result<Vec<(usize, AbstractNumberType)>, String>;
+type EvalResult = Result<Vec<(usize, AbstractNumberType)>, EvalError>;
 
 struct Evaluator<'a, QueryCallback>
 where
@@ -100,9 +104,6 @@ enum EvaluationRow {
     /// p is p[arg], p' is p[arg + 1]
     Specific(DegreeType),
 }
-
-// This could have more structure in the future.
-type EvalError = String;
 
 impl<'a, QueryCallback> Evaluator<'a, QueryCallback>
 where
@@ -160,7 +161,13 @@ where
                     IdentityKind::Plookup => self.process_plookup(identity),
                     _ => Ok(vec![]),
                 }
-                .map_err(|err| format!("No progress on {identity}:\n    {err}"));
+                .map_err(|err| {
+                    format!(
+                        "No progress on {identity}:\n{}",
+                        indent(&format!("{err}"), "    ")
+                    )
+                    .into()
+                });
                 if result.is_err() {
                     identity_failed = true;
                 }
@@ -228,7 +235,7 @@ where
     fn process_witness_query(
         &mut self,
         column: &&WitnessColumn,
-    ) -> Result<Vec<(usize, AbstractNumberType)>, String> {
+    ) -> Result<Vec<(usize, AbstractNumberType)>, EvalError> {
         let query = self.interpolate_query(column.query.unwrap())?;
         if let Some(value) = self.query_callback.as_mut().unwrap()(&query) {
             Ok(vec![(column.id, value)])
@@ -236,7 +243,8 @@ where
             Err(format!(
                 "No query answer for {} query: {query}.",
                 self.committed_names[column.id]
-            ))
+            )
+            .into())
         }
     }
 
@@ -282,9 +290,9 @@ where
                 None => {
                     let formatted = self.format_affine_expression(&evaluated);
                     Err(if evaluated.is_invalid() {
-                        format!("Constraint is invalid ({formatted} != 0).")
+                        format!("Constraint is invalid ({formatted} != 0).").into()
                     } else {
-                        format!("Could not solve expression {formatted} = 0.")
+                        format!("Could not solve expression {formatted} = 0.").into()
                     })
                 }
             }
@@ -293,7 +301,7 @@ where
 
     fn process_plookup(&mut self, identity: &Identity) -> EvalResult {
         if identity.left.selector.is_some() || identity.right.selector.is_some() {
-            return Err("Selectors not yet supported.".to_string());
+            return Err("Selectors not yet supported.".to_string().into());
         }
         let left = identity
             .left
@@ -314,7 +322,8 @@ where
             None => Err(format!(
                 "First expression needs to be constant but is not: {}.",
                 self.format_affine_expression(&v)
-            )),
+            )
+            .into()),
         })?;
 
         let right_key = identity.right.expressions.first().unwrap();
@@ -354,7 +363,7 @@ where
             }
         }
         if result.is_empty() {
-            Err(reasons.join(", "))
+            Err(reasons.into_iter().reduce(eval_error::combine).unwrap())
         } else {
             Ok(result)
         }
@@ -374,6 +383,7 @@ where
                         "Constant value required: {}",
                         self.format_affine_expression(&r)
                     )
+                    .into()
                 })
             })?;
 
@@ -391,9 +401,9 @@ where
                     // TODO somehow also add `l` and `r` to the error message.
                     let formatted = self.format_affine_expression(&evaluated);
                     Err(if evaluated.is_invalid() {
-                        format!("Constraint is invalid ({formatted} != 0).")
+                        format!("Constraint is invalid ({formatted} != 0).").into()
                     } else {
-                        format!("Could not solve expression {formatted} = 0.")
+                        format!("Could not solve expression {formatted} = 0.").into()
                     })
                 }
             },
@@ -410,7 +420,7 @@ where
                 }
             }
             Err(reason) => {
-                self.failure_reasons.push(reason);
+                self.failure_reasons.push(format!("{reason}"));
             }
         }
     }
@@ -441,9 +451,7 @@ where
                         self.current[*id]
                             .as_ref()
                             .map(|value| value.clone().into())
-                            .ok_or_else(|| {
-                                format!("Previous value of column {} not yet known.", poly.name)
-                            })
+                            .ok_or_else(|| EvalError::PreviousValueUnknown(poly.name.clone()))
                     } else if (poly.next && row == EvaluationRow::Current)
                         || (!poly.next && row == EvaluationRow::Next)
                     {
@@ -459,7 +467,8 @@ where
                         Err(format!(
                             "{}' references the next-next row when evaluating on the current row.",
                             self.committed_names[*id]
-                        ))
+                        )
+                        .into())
                     }
                 } else {
                     // Constant polynomial (or something else)
@@ -481,13 +490,19 @@ where
                 self.evaluate_binary_operation(left, op, right, row)
             }
             Expression::UnaryOperation(op, expr) => self.evaluate_unary_operation(op, expr, row),
-            Expression::Tuple(_) => Err("Tuple not implemented.".to_string()),
-            Expression::String(_) => Err("String not implemented.".to_string()),
+            Expression::Tuple(_) => Err("Tuple not implemented.".to_string().into()),
+            Expression::String(_) => Err("String not implemented.".to_string().into()),
             Expression::LocalVariableReference(_) => {
-                Err("Local variable references not implemented.".to_string())
+                Err("Local variable references not implemented."
+                    .to_string()
+                    .into())
             }
-            Expression::PublicReference(_) => Err("Public references not implemented.".to_string()),
-            Expression::FunctionCall(_, _) => Err("Function calls not implemented.".to_string()),
+            Expression::PublicReference(_) => {
+                Err("Public references not implemented.".to_string().into())
+            }
+            Expression::FunctionCall(_, _) => {
+                Err("Function calls not implemented.".to_string().into())
+            }
         }
     }
 
@@ -512,7 +527,8 @@ where
                             "Multiplication of two non-constants: ({}) * ({})",
                             self.format_affine_expression(&left),
                             self.format_affine_expression(&right)
-                        ))
+                        )
+                        .into())
                     }
                 }
                 BinaryOperator::Div => {
@@ -529,7 +545,8 @@ where
                             "Division of two non-constants: ({}) / ({})",
                             self.format_affine_expression(&left),
                             self.format_affine_expression(&right)
-                        ))
+                        )
+                        .into())
                     }
                 }
                 BinaryOperator::Pow => {
@@ -540,7 +557,8 @@ where
                             "Pow of two non-constants: ({}) ** ({})",
                             self.format_affine_expression(&left),
                             self.format_affine_expression(&right)
-                        ))
+                        )
+                        .into())
                     }
                 }
                 BinaryOperator::Mod
@@ -566,7 +584,7 @@ where
                 }
             },
             (Ok(_), Err(reason)) | (Err(reason), Ok(_)) => Err(reason),
-            (Err(r1), Err(r2)) => Err(format!("{r1}, {r2}")),
+            (Err(r1), Err(r2)) => Err(eval_error::combine(r1, r2)),
         }
     }
 
