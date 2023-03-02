@@ -5,12 +5,13 @@ edition = "2021"
 build = "build.rs"
 
 [dependencies]
-codespan-reporting = "0.11.1"
-json = "0.12.4"
-lalrpop-util = {version = "0.19.8", features = ["lexer"]}
+clap = { version = "^4.1", features = ["derive"] }
+codespan-reporting = "^0.11"
+itertools = "^0.10"
+json = "^0.12"
+lalrpop-util = {version = "^0.19", features = ["lexer"]}
 mktemp = "0.5.0"
-num-bigint = "0.4.3"
-regex = "1"
+num-bigint = "^0.4"
 
 [build-dependencies]
-lalrpop = "0.19.8"
+lalrpop = "^0.19"

@@ -2,11 +2,12 @@ use std::fs;
 use std::io::{BufWriter, Write};
 use std::path::Path;
 
+use itertools::Itertools;
 use num_bigint::Sign;
 
 use crate::number::{abstract_to_degree, AbstractNumberType, DegreeType};
 use crate::parser::ast::PILFile;
-use crate::{analyzer, commit_evaluator, constant_evaluator, json_exporter};
+use crate::{analyzer, asm_compiler, commit_evaluator, constant_evaluator, json_exporter};
 
 pub fn no_callback() -> Option<fn(&str) -> Option<AbstractNumberType>> {
     None
@@ -43,6 +44,52 @@ pub fn compile_pil_ast(
         output_dir,
         query_callback,
     )
+}
+
+/// Compiles a .asm file, outputs the PIL on stdout and tries to generate
+/// fixed and witness columns.
+pub fn compile_asm(
+    file_name: &str,
+    inputs: Vec<AbstractNumberType>,
+    output_dir: &Path,
+    force_overwrite: bool,
+) {
+    let contents = fs::read_to_string(file_name).unwrap();
+    let pil = asm_compiler::compile(Some(file_name), &contents).unwrap();
+    let pil_file_name = output_dir.join(format!(
+        "{}.pil",
+        Path::new(file_name).file_stem().unwrap().to_str().unwrap()
+    ));
+    if pil_file_name.exists() && !force_overwrite {
+        eprint!(
+            "Target file {} already exists. Not overwriting.",
+            pil_file_name.to_str().unwrap()
+        );
+        return;
+    }
+    fs::write(pil_file_name.clone(), format!("{pil}")).unwrap();
+
+    let query_callback = |query: &str| -> Option<AbstractNumberType> {
+        let items = query.split(',').map(|s| s.trim()).collect::<Vec<_>>();
+        let mut it = items.iter();
+        let _current_step = it.next().unwrap();
+        let current_pc = it.next().unwrap();
+        assert!(it.clone().len() % 3 == 0);
+        for (pc_check, input, index) in it.tuples() {
+            if pc_check == current_pc {
+                assert_eq!(*input, "\"input\"");
+                let index: usize = index.parse().unwrap();
+                return inputs.get(index).cloned();
+            }
+        }
+        None
+    };
+    compile_pil_ast(
+        &pil,
+        pil_file_name.to_str().unwrap(),
+        output_dir,
+        Some(query_callback),
+    );
 }
 
 fn compile(

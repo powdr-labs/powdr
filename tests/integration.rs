@@ -1,5 +1,6 @@
 use std::{fs, path::Path, process::Command};
 
+use itertools::Itertools;
 use powdr::compiler;
 use powdr::number::AbstractNumberType;
 
@@ -31,14 +32,12 @@ fn verify_asm(file_name: &str, inputs: Vec<AbstractNumberType>) {
             let mut it = items.iter();
             let _current_step = it.next().unwrap();
             let current_pc = it.next().unwrap();
-            while let Some(pc_check) = it.next() {
+            assert!(it.clone().len() % 3 == 0);
+            for (pc_check, input, index) in it.tuples() {
                 if pc_check == current_pc {
-                    assert_eq!(*it.next().unwrap(), "\"input\"");
-                    let index: usize = it.next().map(|s| s.parse().unwrap()).unwrap();
-                    return Some(inputs[index].clone());
-                } else {
-                    it.next();
-                    it.next();
+                    assert_eq!(*input, "\"input\"");
+                    let index: usize = index.parse().unwrap();
+                    return inputs.get(index).cloned();
                 }
             }
             None
