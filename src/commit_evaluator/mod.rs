@@ -243,7 +243,7 @@ where
     fn interpolate_query(&self, query: &Expression) -> Result<String, String> {
         if let Ok(v) = self.evaluate(query, EvaluationRow::Next) {
             if v.is_constant() {
-                return Ok(self.format_affine_expression(v));
+                return Ok(self.format_affine_expression(&v));
             }
         }
         // TODO combine that with the constant evaluator and the commit evaluator...
@@ -279,10 +279,14 @@ where
         } else {
             match evaluated.solve() {
                 Some((id, value)) => Ok(vec![(id, value)]),
-                None => Err(format!(
-                    "Could not solve expression {} (might be an invalid constraint)",
-                    self.format_affine_expression(evaluated)
-                )),
+                None => {
+                    let formatted = self.format_affine_expression(&evaluated);
+                    Err(if evaluated.is_invalid() {
+                        format!("Constraint is invalid ({formatted} != 0).")
+                    } else {
+                        format!("Could not solve expression {formatted} = 0.")
+                    })
+                }
             }
         }
     }
@@ -309,7 +313,7 @@ where
             Some(v) => Ok(v),
             None => Err(format!(
                 "First expression needs to be constant but is not: {}.",
-                self.format_affine_expression(v)
+                self.format_affine_expression(&v)
             )),
         })?;
 
@@ -368,7 +372,7 @@ where
                 r.constant_value().ok_or_else(|| {
                     format!(
                         "Constant value required: {}",
-                        self.format_affine_expression(r)
+                        self.format_affine_expression(&r)
                     )
                 })
             })?;
@@ -381,10 +385,18 @@ where
         let evaluated = self.evaluate(&expr, EvaluationRow::Next)?;
         match evaluated.solve() {
             Some((id, value)) => Ok(vec![(id, value)]),
-            None => Err(format!(
-                "Could not solve expression {} (might be an invalid constraint)",
-                self.format_affine_expression(evaluated)
-            )),
+            None => match evaluated.solve() {
+                Some((id, value)) => Ok(vec![(id, value)]),
+                None => {
+                    // TODO somehow also add `l` and `r` to the error message.
+                    let formatted = self.format_affine_expression(&evaluated);
+                    Err(if evaluated.is_invalid() {
+                        format!("Constraint is invalid ({formatted} != 0).")
+                    } else {
+                        format!("Could not solve expression {formatted} = 0.")
+                    })
+                }
+            },
         }
     }
 
@@ -498,8 +510,8 @@ where
                     } else {
                         Err(format!(
                             "Multiplication of two non-constants: ({}) * ({})",
-                            self.format_affine_expression(left),
-                            self.format_affine_expression(right)
+                            self.format_affine_expression(&left),
+                            self.format_affine_expression(&right)
                         ))
                     }
                 }
@@ -515,8 +527,8 @@ where
                     } else {
                         Err(format!(
                             "Division of two non-constants: ({}) / ({})",
-                            self.format_affine_expression(left),
-                            self.format_affine_expression(right)
+                            self.format_affine_expression(&left),
+                            self.format_affine_expression(&right)
                         ))
                     }
                 }
@@ -526,8 +538,8 @@ where
                     } else {
                         Err(format!(
                             "Pow of two non-constants: ({}) ** ({})",
-                            self.format_affine_expression(left),
-                            self.format_affine_expression(right)
+                            self.format_affine_expression(&left),
+                            self.format_affine_expression(&right)
                         ))
                     }
                 }
@@ -590,7 +602,7 @@ where
         }
     }
 
-    fn format_affine_expression(&self, e: AffineExpression) -> String {
+    fn format_affine_expression(&self, e: &AffineExpression) -> String {
         e.coefficients
             .iter()
             .enumerate()
