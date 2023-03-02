@@ -30,6 +30,11 @@ enum Commands {
         #[arg(short, long)]
         #[arg(default_value_t = false)]
         force: bool,
+
+        /// Verbose output (provides a full execution trace).
+        #[arg(short, long)]
+        #[arg(default_value_t = false)]
+        verbose: bool,
     },
 
     /// Parses and prints the PIL file on stdout.
@@ -56,6 +61,7 @@ fn main() {
             inputs,
             output_directory,
             force,
+            verbose,
         } => {
             let inputs = inputs
                 .split(',')
@@ -63,7 +69,13 @@ fn main() {
                 .filter(|x| !x.is_empty())
                 .map(|x| x.parse().unwrap())
                 .collect::<Vec<AbstractNumberType>>();
-            powdr::compiler::compile_asm(&file, inputs, Path::new(&output_directory), force);
+            powdr::compiler::compile_asm(
+                &file,
+                inputs,
+                Path::new(&output_directory),
+                force,
+                verbose,
+            );
         }
         Commands::Reformat { file } => {
             let contents = fs::read_to_string(&file).unwrap();
