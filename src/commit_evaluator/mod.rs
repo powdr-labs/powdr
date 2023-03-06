@@ -20,11 +20,11 @@ use self::eval_error::EvalError;
 pub fn generate<'a>(
     analyzed: &'a Analyzed,
     degree: &DegreeType,
-    constants: &[(&String, Vec<AbstractNumberType>)],
+    fixed_cols: &[(&String, Vec<AbstractNumberType>)],
     query_callback: Option<impl FnMut(&str) -> Option<AbstractNumberType>>,
     verbose: bool,
 ) -> Vec<(&'a String, Vec<AbstractNumberType>)> {
-    let polys: Vec<WitnessColumn> = analyzed
+    let witness_cols: Vec<WitnessColumn> = analyzed
         .committed_polys_in_source_order()
         .iter()
         .enumerate()
@@ -36,8 +36,14 @@ pub fn generate<'a>(
         })
         .collect();
     let mut values: Vec<(&String, Vec<AbstractNumberType>)> =
-        polys.iter().map(|p| (p.name, Vec::new())).collect();
-    let mut evaluator = Evaluator::new(analyzed, constants, &polys, query_callback);
+        witness_cols.iter().map(|p| (p.name, Vec::new())).collect();
+    let mut evaluator = Evaluator::new(
+        &analyzed.constants,
+        analyzed.identities.iter().collect(),
+        fixed_cols.iter().map(|(n, v)| (*n, v)).collect(),
+        &witness_cols,
+        query_callback,
+    );
     evaluator.set_verbose(verbose);
     for row in 0..*degree as DegreeType {
         let row_values = evaluator.compute_next_row(row);
@@ -48,7 +54,7 @@ pub fn generate<'a>(
     for (col, v) in evaluator.compute_next_row(0).into_iter().enumerate() {
         if v != values[col].1[0] {
             eprintln!("Wrap-around value for column {} does not match: {} (wrap-around) vs. {} (first row).",
-            polys[col].name, v, values[col].1[0]);
+            witness_cols[col].name, v, values[col].1[0]);
         }
     }
     values
@@ -81,8 +87,9 @@ struct Evaluator<'a, QueryCallback>
 where
     QueryCallback: FnMut(&'a str) -> Option<AbstractNumberType>,
 {
-    analyzed: &'a Analyzed,
-    constants: HashMap<&'a String, &'a Vec<AbstractNumberType>>,
+    identities: Vec<&'a Identity>,
+    constants: &'a HashMap<String, AbstractNumberType>,
+    fixed_cols: HashMap<&'a String, &'a Vec<AbstractNumberType>>,
     query_callback: Option<QueryCallback>,
     /// Maps the committed polynomial names to their IDs internal to this component
     /// and optional parameter and query string.
@@ -113,22 +120,21 @@ where
     QueryCallback: FnMut(&str) -> Option<AbstractNumberType>,
 {
     pub fn new(
-        analyzed: &'a Analyzed,
-        constants: &'a [(&String, Vec<AbstractNumberType>)],
-        committed: &'a Vec<WitnessColumn<'a>>,
+        constants: &'a HashMap<String, AbstractNumberType>,
+        identities: Vec<&'a Identity>,
+        fixed_cols: HashMap<&'a String, &'a Vec<AbstractNumberType>>,
+        witness_cols: &'a Vec<WitnessColumn<'a>>,
         query_callback: Option<QueryCallback>,
     ) -> Self {
         Evaluator {
-            analyzed,
-            constants: constants
-                .iter()
-                .map(|(name, values)| (*name, values))
-                .collect(),
+            constants,
+            identities,
+            fixed_cols,
             query_callback,
-            committed: committed.iter().map(|p| (p.name, p)).collect(),
-            committed_names: committed.iter().map(|p| p.name).collect(),
-            current: vec![None; committed.len()],
-            next: vec![None; committed.len()],
+            committed: witness_cols.iter().map(|p| (p.name, p)).collect(),
+            committed_names: witness_cols.iter().map(|p| p.name).collect(),
+            current: vec![None; witness_cols.len()],
+            next: vec![None; witness_cols.len()],
             next_row: 0,
             failure_reasons: vec![],
             progress: true,
@@ -152,7 +158,8 @@ where
             self.progress = false;
             self.failure_reasons.clear();
 
-            for identity in &self.analyzed.identities {
+            // TODO avoid clone
+            for identity in &self.identities.clone() {
                 let result = match identity.kind {
                     IdentityKind::Polynomial => {
                         self.process_polynomial_identity(identity.left.selector.as_ref().unwrap())
@@ -285,7 +292,7 @@ where
         }
     }
 
-    fn process_polynomial_identity(&mut self, identity: &Expression) -> EvalResult {
+    fn process_polynomial_identity(&self, identity: &Expression) -> EvalResult {
         // If there is no "next" reference in the expression,
         // we just evaluate it directly on the "next" row.
         let row = if self.contains_next_ref(identity) {
@@ -311,7 +318,7 @@ where
         }
     }
 
-    fn process_plookup(&mut self, identity: &Identity) -> EvalResult {
+    fn process_plookup(&self, identity: &Identity) -> EvalResult {
         if let Some(left_selector) = &identity.left.selector {
             let value = self.evaluate(left_selector, EvaluationRow::Next)?;
             match value.constant_value() {
@@ -357,7 +364,7 @@ where
         let right_key = identity.right.expressions.first().unwrap();
         let rhs_row = if let Expression::PolynomialReference(poly) = right_key {
             // TODO we really need a search index on this.
-            self.constants
+            self.fixed_cols
                 .get(&poly.name)
                 .and_then(|values| values.iter().position(|v| *v == left_key))
                 .ok_or_else(|| {
@@ -468,7 +475,7 @@ where
         // @TODO if we iterate on processing the constraints in the same row,
         // we could store the simplified values.
         match expr {
-            Expression::Constant(name) => Ok(self.analyzed.constants[name].clone().into()),
+            Expression::Constant(name) => Ok(self.constants[name].clone().into()),
             Expression::PolynomialReference(poly) => {
                 // TODO arrays
                 if let Some(WitnessColumn { id, .. }) = self.committed.get(&poly.name) {
@@ -500,7 +507,7 @@ where
                     }
                 } else {
                     // Constant polynomial (or something else)
-                    let values = self.constants[&poly.name];
+                    let values = self.fixed_cols[&poly.name];
                     let degree = values.len() as DegreeType;
                     let mut row = match row {
                         EvaluationRow::Current => (self.next_row + degree - 1) % degree,
