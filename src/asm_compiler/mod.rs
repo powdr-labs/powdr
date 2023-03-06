@@ -442,6 +442,16 @@ impl ASMPILConverter {
                 }
             }
             if let Some(instr) = &line.instruction {
+                if line.write_reg.is_some() {
+                    // If an instruction stores a value, we need to "read" it from the free input
+                    // because we assume that the assignment register is assigned in inline
+                    // pil. TODO This is horrible and needs to be fixed by a proper mechanism
+                    // that enforces that the assignment register is actually properly constrained.
+                    assert!(line.value.is_empty());
+                    program_constants
+                        .get_mut(&format!("p_{}_read_free", self.default_assignment_reg()))
+                        .unwrap()[i] = 1.into();
+                }
                 program_constants
                     .get_mut(&format!("p_instr_{instr}"))
                     .unwrap()[i] = 1.into();
