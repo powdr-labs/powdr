@@ -161,12 +161,12 @@ impl ASMPILConverter {
     fn handle_instruction_def(
         &mut self,
         start: &usize,
-        body: &Vec<Expression>,
+        body: &Vec<InstructionBodyElement>,
         name: &String,
         params: &Vec<InstructionParam>,
     ) {
-        let col_name = format!("instr_{name}");
-        self.create_witness_fixed_pair(*start, &col_name);
+        let instruction_flag = format!("instr_{name}");
+        self.create_witness_fixed_pair(*start, &instruction_flag);
         // it's part of the lookup!
         //self.pil.push(constrain_zero_one(&col_name));
 
@@ -181,19 +181,40 @@ impl ASMPILConverter {
         }
 
         for expr in body {
-            let expr = substitute(expr, &substitutions);
-            match extract_update(expr) {
-                (Some(var), expr) => {
-                    self.registers
-                        .get_mut(&var)
-                        .unwrap()
-                        .conditioned_updates
-                        .push((direct_reference(&col_name), expr));
+            match expr {
+                InstructionBodyElement::Expression(expr) => {
+                    let expr = substitute(expr, &substitutions);
+                    match extract_update(expr) {
+                        (Some(var), expr) => {
+                            self.registers
+                                .get_mut(&var)
+                                .unwrap()
+                                .conditioned_updates
+                                .push((direct_reference(&instruction_flag), expr));
+                        }
+                        (None, expr) => self.pil.push(Statement::PolynomialIdentity(
+                            0,
+                            build_mul(direct_reference(&instruction_flag), expr.clone()),
+                        )),
+                    }
                 }
-                (None, expr) => self.pil.push(Statement::PolynomialIdentity(
-                    0,
-                    build_mul(direct_reference(&col_name), expr.clone()),
-                )),
+                InstructionBodyElement::PlookupIdentity(left, right) => {
+                    assert!(left.selector.is_none(), "LHS selector not supported, could and-combine with instruction flag later.");
+                    self.pil.push(Statement::PlookupIdentity(
+                        *start,
+                        SelectedExpressions {
+                            selector: Some(direct_reference(&instruction_flag)),
+                            expressions: substitute_vec(&left.expressions, &substitutions),
+                        },
+                        SelectedExpressions {
+                            selector: right
+                                .selector
+                                .as_ref()
+                                .map(|s| substitute(s, &substitutions)),
+                            expressions: substitute_vec(&right.expressions, &substitutions),
+                        },
+                    ));
+                }
             }
         }
         let instr = Instruction {
@@ -223,30 +244,42 @@ impl ASMPILConverter {
         let instr = &self.instructions[instr_name];
         assert_eq!(instr.params.len(), args.len());
         let mut value = vec![];
-        let instruction_literal_args = instr
-            .params
-            .iter()
-            .zip(args)
-            .map(|(p, a)| {
-                if p.assignment_reg.0.is_some() || p.assignment_reg.1.is_some() {
-                    // TODO this ignores which param it is, but it's ok
-                    // TODO if we have  more than one assignment op, we cannot just use
-                    // value here anymore. But I guess the same is for assignment.
-                    // TODO check that we do not use the same assignment var twice
-                    value = self.process_assignment_value(a);
-                    None
-                } else if p.param_type == Some("label".to_string()) {
-                    if let Expression::PolynomialReference(r) = a {
-                        Some(r.name.clone())
-                    } else {
-                        panic!();
-                    }
+        let mut instruction_literal_args = vec![];
+        let mut write_reg = None;
+        for (p, a) in instr.params.iter().zip(args) {
+            // TODO literal arguments can actually only be passed in.
+            if p.assignment_reg.0.is_some() {
+                // TODO this ignores which param it is, but it's ok
+                // TODO if we have  more than one assignment op, we cannot just use
+                // value here anymore. But I guess the same is for assignment.
+                // TODO check that we do not use the same assignment var twice
+                assert!(value.is_empty());
+                value = self.process_assignment_value(a);
+                instruction_literal_args.push(None);
+            } else if p.assignment_reg.1.is_some() {
+                // TODO this ignores which param it is, but it's ok
+                // TODO if we have  more than one assignment op, we cannot just use
+                // value here anymore. But I guess the same is for assignment.
+                if let Expression::PolynomialReference(r) = a {
+                    assert!(write_reg.is_none());
+                    write_reg = Some(r.name.clone());
                 } else {
-                    todo!("Param type not supported.");
+                    panic!("Expected direct register to assign to in instruction call.");
                 }
-            })
-            .collect();
+                instruction_literal_args.push(None);
+            } else if p.param_type == Some("label".to_string()) {
+                if let Expression::PolynomialReference(r) = a {
+                    instruction_literal_args.push(Some(r.name.clone()))
+                } else {
+                    panic!();
+                }
+            } else {
+                todo!("Param type not supported.");
+            }
+        }
+        assert_eq!(instruction_literal_args.len(), instr.params.len());
         self.code_lines.push(CodeLine {
+            write_reg,
             instruction: Some(instr_name.clone()),
             value,
             instruction_literal_args,
@@ -631,6 +664,10 @@ fn substitute(input: &Expression, substitution: &HashMap<String, String>) -> Exp
         | Expression::String(_)
         | Expression::FreeInput(_) => input.clone(),
     }
+}
+
+fn substitute_vec(input: &[Expression], substitution: &HashMap<String, String>) -> Vec<Expression> {
+    input.iter().map(|e| substitute(e, substitution)).collect()
 }
 
 fn substitute_string(input: &String, substitution: &HashMap<String, String>) -> String {

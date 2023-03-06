@@ -188,9 +188,11 @@ where
                 break;
             }
         }
-        if identity_failed && self.next.iter().any(|v| v.is_none()) {
+        // Identity check failure on the first row is not fatal. We will proceed with
+        // "unknown", report zero and re-check the wrap-around against the zero values at the end.
+        if identity_failed && next_row != 0 {
             eprintln!(
-                "\nError: Row {next_row}: Unable to derive values for committed polynomials: {}\n",
+                "\nError: Row {next_row}: Identity check failer or unable to derive values for committed polynomials: {}\n",
                 self.next
                     .iter()
                     .enumerate()
@@ -310,7 +312,23 @@ where
     }
 
     fn process_plookup(&mut self, identity: &Identity) -> EvalResult {
-        if identity.left.selector.is_some() || identity.right.selector.is_some() {
+        if let Some(left_selector) = &identity.left.selector {
+            let value = self.evaluate(left_selector, EvaluationRow::Next)?;
+            match value.constant_value() {
+                Some(v) if v == 0.into() => {
+                    return Ok(vec![]);
+                }
+                Some(v) if v == 1.into() => {}
+                _ => {
+                    return Err(format!(
+                        "Value of the selector on the left hand side unknown or not boolean: {}",
+                        self.format_affine_expression(&value)
+                    )
+                    .into())
+                }
+            };
+        }
+        if identity.right.selector.is_some() {
             return Err("Selectors not yet supported.".to_string().into());
         }
         let left = identity

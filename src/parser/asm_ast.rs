@@ -1,4 +1,4 @@
-use super::ast::{Expression, Statement};
+use super::ast::{Expression, SelectedExpressions, Statement};
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct ASMFile(pub Vec<ASMStatement>);
@@ -6,7 +6,12 @@ pub struct ASMFile(pub Vec<ASMStatement>);
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum ASMStatement {
     RegisterDeclaration(usize, String, Option<RegisterFlag>),
-    InstructionDeclaration(usize, String, Vec<InstructionParam>, Vec<Expression>),
+    InstructionDeclaration(
+        usize,
+        String,
+        Vec<InstructionParam>,
+        Vec<InstructionBodyElement>,
+    ),
     InlinePil(usize, Vec<Statement>),
     Assignment(usize, Vec<String>, Option<String>, Box<Expression>),
     Instruction(usize, String, Vec<Expression>),
@@ -27,4 +32,10 @@ pub struct InstructionParam {
     /// It is a double option, because the arrow can be optional and the
     /// assign register inside the arrow is optional as well.
     pub assignment_reg: (Option<Option<String>>, Option<Option<String>>),
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub enum InstructionBodyElement {
+    Expression(Expression),
+    PlookupIdentity(SelectedExpressions, SelectedExpressions),
 }

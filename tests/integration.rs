@@ -133,3 +133,12 @@ fn simple_sum_asm() {
         [16, 4, 1, 2, 8, 5].iter().map(|&x| x.into()).collect(),
     );
 }
+
+#[test]
+#[ignore]
+fn palindrome() {
+    verify_asm(
+        "palindrome.asm",
+        [7, 1, 7, 3, 9, 3, 7, 1].iter().map(|&x| x.into()).collect(),
+    );
+}

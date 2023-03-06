@@ -88,7 +88,8 @@ impl<'a> Evaluator<'a> {
             Expression::FunctionCall(name, args) => {
                 let arg_values = args.iter().map(|a| self.evaluate(a)).collect::<Vec<_>>();
                 assert!(arg_values.len() == 1);
-                self.other_constants[name][abstract_to_degree(&arg_values[0]) as usize].clone()
+                let values = &self.other_constants[name];
+                values[abstract_to_degree(&arg_values[0]) as usize % values.len()].clone()
             }
         }
     }

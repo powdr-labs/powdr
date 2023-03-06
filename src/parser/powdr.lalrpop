@@ -158,15 +158,16 @@ RegisterFlag: RegisterFlag = {
 }
 
 InstructionDeclaration: ASMStatement = {
-    <@L> "instr" <Identifier> <InstructionParamList> "{" <EqualityExpressionList> "}" => ASMStatement::InstructionDeclaration(<>)
+    <@L> "instr" <Identifier> <InstructionParamList> "{" <InstructionBodyElements> "}" => ASMStatement::InstructionDeclaration(<>)
 }
 
-EqualityExpressionList: Vec<Expression> = {
-    <mut list:( <EqualityExpression> "," )*> <end:EqualityExpression>  => { list.push(end); list }
+InstructionBodyElements: Vec<InstructionBodyElement> = {
+    <mut list:( <InstructionBodyElement> "," )*> <end:InstructionBodyElement>  => { list.push(end); list }
 }
 
-EqualityExpression: Expression = {
-    <l:BoxedExpression> "=" <r:BoxedExpression> => Expression::BinaryOperation(l, BinaryOperator::Sub, r)
+InstructionBodyElement: InstructionBodyElement = {
+    <l:BoxedExpression> "=" <r:BoxedExpression> => InstructionBodyElement::Expression(Expression::BinaryOperation(l, BinaryOperator::Sub, r)),
+    <SelectedExpressions> "in" <SelectedExpressions> => InstructionBodyElement::PlookupIdentity(<>),
 }
 
 InstructionParamList: Vec<InstructionParam> = {
