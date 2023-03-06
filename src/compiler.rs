@@ -118,7 +118,7 @@ fn compile(
         );
         println!("Wrote constants.bin.");
         let commits =
-            commit_evaluator::generate(analyzed, &degree, &constants, query_callback, verbose);
+            commit_evaluator::generate(analyzed, degree, &constants, query_callback, verbose);
         write_polys_file(
             &mut BufWriter::new(&mut fs::File::create(output_dir.join("commits.bin")).unwrap()),
             degree,

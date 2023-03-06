@@ -7,17 +7,16 @@ use crate::number::{AbstractNumberType, DegreeType};
 
 use super::affine_expression::AffineExpression;
 use super::eval_error::{self, EvalError};
-use super::WitnessColumn;
-
-type EvalResult = Result<Vec<(usize, AbstractNumberType)>, EvalError>;
+use super::machine::Machine;
+use super::{EvalResult, FixedData, WitnessColumn};
 
 pub struct Evaluator<'a, QueryCallback>
 where
     QueryCallback: FnMut(&'a str) -> Option<AbstractNumberType>,
 {
+    fixed_data: &'a FixedData<'a>,
     identities: Vec<&'a Identity>,
-    constants: &'a HashMap<String, AbstractNumberType>,
-    fixed_cols: HashMap<&'a String, &'a Vec<AbstractNumberType>>,
+    machines: Vec<Machine<'a>>,
     query_callback: Option<QueryCallback>,
     /// Maps the witness polynomial names to their IDs internal to this component
     /// and optional parameter and query string.
@@ -30,7 +29,6 @@ where
     next_row: DegreeType,
     failure_reasons: Vec<String>,
     progress: bool,
-    verbose: bool,
 }
 
 #[derive(PartialEq, Eq, Clone, Copy)]
@@ -48,16 +46,17 @@ where
     QueryCallback: FnMut(&str) -> Option<AbstractNumberType>,
 {
     pub fn new(
-        constants: &'a HashMap<String, AbstractNumberType>,
+        fixed_data: &'a FixedData<'a>,
         identities: Vec<&'a Identity>,
-        fixed_cols: HashMap<&'a String, &'a Vec<AbstractNumberType>>,
-        witness_cols: &'a Vec<WitnessColumn<'a>>,
+        machines: Vec<Machine<'a>>,
         query_callback: Option<QueryCallback>,
     ) -> Self {
+        let witness_cols = fixed_data.witness_cols;
+
         Evaluator {
-            constants,
+            fixed_data,
             identities,
-            fixed_cols,
+            machines,
             query_callback,
             witness_cols: witness_cols.iter().map(|p| (p.name, p)).collect(),
             witness_names: witness_cols.iter().map(|p| p.name).collect(),
@@ -66,12 +65,7 @@ where
             next_row: 0,
             failure_reasons: vec![],
             progress: true,
-            verbose: false,
         }
-    }
-
-    pub fn set_verbose(&mut self, verbose: bool) {
-        self.verbose = verbose;
     }
 
     pub fn compute_next_row(&mut self, next_row: DegreeType) -> Vec<AbstractNumberType> {
@@ -93,7 +87,7 @@ where
                         self.process_polynomial_identity(identity.left.selector.as_ref().unwrap())
                     }
                     IdentityKind::Plookup => self.process_plookup(identity),
-                    _ => Ok(vec![]),
+                    _ => Err("Unsupported lookup type".to_string().into()),
                 }
                 .map_err(|err| {
                     format!(
@@ -146,7 +140,7 @@ where
             );
             panic!();
         } else {
-            if self.verbose {
+            if self.fixed_data.verbose {
                 println!(
                     "===== Row {next_row}:\n{}",
                     indent(&self.format_next_values().join("\n"), "    ")
@@ -161,6 +155,14 @@ where
                 .map(|v| v.clone().unwrap_or_default())
                 .collect()
         }
+    }
+
+    pub fn machine_witness_col_values(&mut self) -> HashMap<String, Vec<AbstractNumberType>> {
+        let mut result: HashMap<_, _> = Default::default();
+        for m in &mut self.machines {
+            result.extend(m.witness_col_values());
+        }
+        result
     }
 
     fn format_next_values(&self) -> Vec<String> {
@@ -184,7 +186,7 @@ where
         column: &&WitnessColumn,
     ) -> Result<Vec<(usize, AbstractNumberType)>, EvalError> {
         let query = self.interpolate_query(column.query.unwrap())?;
-        if let Some(value) = self.query_callback.as_mut().unwrap()(&query) {
+        if let Some(value) = self.query_callback.as_mut().and_then(|c| (c)(&query)) {
             Ok(vec![(column.id, value)])
         } else {
             Err(format!(
@@ -246,7 +248,7 @@ where
         }
     }
 
-    fn process_plookup(&self, identity: &Identity) -> EvalResult {
+    fn process_plookup(&mut self, identity: &Identity) -> EvalResult {
         if let Some(left_selector) = &identity.left.selector {
             let value = self.evaluate(left_selector, EvaluationRow::Next)?;
             match value.constant_value() {
@@ -264,35 +266,65 @@ where
             };
         }
         if identity.right.selector.is_some() {
-            return Err("Selectors not yet supported.".to_string().into());
+            return Err("Selectors at the RHS not yet supported.".to_string().into());
         }
+
+        let mut reasons = vec![];
         let left = identity
             .left
             .expressions
             .iter()
             .map(|e| self.evaluate(e, EvaluationRow::Next))
+            .map(|e| match e {
+                Ok(r) => Some(r),
+                Err(e) => {
+                    reasons.push(e);
+                    None
+                }
+            })
             .collect::<Vec<_>>();
+
+        // TODO: We need to call the machine even if the LHS is already known.
+        // But then we also need a way to flag "progress" and we also need
+        // always call the machine, even if all witnesses are already known.
+
+        // Try to see if it's a query to a machine.
+        for m in &mut self.machines {
+            // TODO also consider the reasons above.
+            let result = m.process_plookup(&left, &identity.right)?;
+            if !result.is_empty() {
+                return Ok(result);
+            }
+        }
+
         // If we already know the LHS, skip it.
         if left
             .iter()
-            .all(|v| v.is_ok() && v.as_ref().unwrap().is_constant())
+            .all(|v| v.is_some() && v.as_ref().unwrap().is_constant())
         {
             return Ok(vec![]);
         }
 
-        let left_key = left[0].clone().and_then(|v| match v.constant_value() {
-            Some(v) => Ok(v),
-            None => Err(format!(
-                "First expression needs to be constant but is not: {}.",
-                self.format_affine_expression(&v)
-            )
-            .into()),
-        })?;
+        // TODO turn the rest of this code into a specialized machine that does
+        // lookups inside constants.
+
+        // TODO this ignores the error in `reasons` above.
+        let left_key = match left[0].clone() {
+            Some(v) => match v.constant_value() {
+                Some(v) => Ok(v),
+                None => Err(format!(
+                    "First expression needs to be constant but is not: {}.",
+                    self.format_affine_expression(&v)
+                )),
+            },
+            // TODO this ignores the error in `reasons` above.
+            None => Err("First expression on the LHS is unknown.".to_string()),
+        }?;
 
         let right_key = identity.right.expressions.first().unwrap();
         let rhs_row = if let Expression::PolynomialReference(poly) = right_key {
             // TODO we really need a search index on this.
-            self.fixed_cols
+            self.fixed_data.fixed_cols
                 .get(&poly.name)
                 .and_then(|values| values.iter().position(|v| *v == left_key))
                 .ok_or_else(|| {
@@ -312,7 +344,6 @@ where
 
         //TODO there should be a shortcut to succeed if any of an iterator is "Ok" and combine the errors otherwise.
         let mut result = vec![];
-        let mut reasons = vec![];
         for (l, r) in identity
             .left
             .expressions
@@ -402,7 +433,7 @@ where
         // @TODO if we iterate on processing the constraints in the same row,
         // we could store the simplified values.
         match expr {
-            Expression::Constant(name) => Ok(self.constants[name].clone().into()),
+            Expression::Constant(name) => Ok(self.fixed_data.constants[name].clone().into()),
             Expression::PolynomialReference(poly) => {
                 // TODO arrays
                 if let Some(WitnessColumn { id, .. }) = self.witness_cols.get(&poly.name) {
@@ -434,7 +465,7 @@ where
                     }
                 } else {
                     // Constant polynomial (or something else)
-                    let values = self.fixed_cols[&poly.name];
+                    let values = self.fixed_data.fixed_cols[&poly.name];
                     let degree = values.len() as DegreeType;
                     let mut row = match row {
                         EvaluationRow::Current => (self.next_row + degree - 1) % degree,
