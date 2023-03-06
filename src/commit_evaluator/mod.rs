@@ -310,7 +310,23 @@ where
     }
 
     fn process_plookup(&mut self, identity: &Identity) -> EvalResult {
-        if identity.left.selector.is_some() || identity.right.selector.is_some() {
+        if let Some(left_selector) = &identity.left.selector {
+            let value = self.evaluate(left_selector, EvaluationRow::Next)?;
+            match value.constant_value() {
+                Some(v) if v == 0.into() => {
+                    return Ok(vec![]);
+                }
+                Some(v) if v == 1.into() => {}
+                _ => {
+                    return Err(format!(
+                        "Value of the selector on the left hand side unknown or not boolean: {}",
+                        self.format_affine_expression(&value)
+                    )
+                    .into())
+                }
+            };
+        }
+        if identity.right.selector.is_some() {
             return Err("Selectors not yet supported.".to_string().into());
         }
         let left = identity
