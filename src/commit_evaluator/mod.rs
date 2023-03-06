@@ -188,9 +188,11 @@ where
                 break;
             }
         }
-        if identity_failed && self.next.iter().any(|v| v.is_none()) {
+        // Identity check failure on the first row is not fatal. We will proceed with
+        // "unknown", report zero and re-check the wrap-around against the zero values at the end.
+        if identity_failed && next_row != 0 {
             eprintln!(
-                "\nError: Row {next_row}: Unable to derive values for committed polynomials: {}\n",
+                "\nError: Row {next_row}: Identity check failer or unable to derive values for committed polynomials: {}\n",
                 self.next
                     .iter()
                     .enumerate()
