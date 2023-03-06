@@ -19,13 +19,13 @@ where
     constants: &'a HashMap<String, AbstractNumberType>,
     fixed_cols: HashMap<&'a String, &'a Vec<AbstractNumberType>>,
     query_callback: Option<QueryCallback>,
-    /// Maps the committed polynomial names to their IDs internal to this component
+    /// Maps the witness polynomial names to their IDs internal to this component
     /// and optional parameter and query string.
-    committed: BTreeMap<&'a String, &'a WitnessColumn<'a>>,
-    committed_names: Vec<&'a String>,
-    /// Values of the committed polynomials
+    witness_cols: BTreeMap<&'a String, &'a WitnessColumn<'a>>,
+    witness_names: Vec<&'a String>,
+    /// Values of the witness polynomials
     current: Vec<Option<AbstractNumberType>>,
-    /// Values of the committed polynomials in the next row
+    /// Values of the witness polynomials in the next row
     next: Vec<Option<AbstractNumberType>>,
     next_row: DegreeType,
     failure_reasons: Vec<String>,
@@ -59,8 +59,8 @@ where
             identities,
             fixed_cols,
             query_callback,
-            committed: witness_cols.iter().map(|p| (p.name, p)).collect(),
-            committed_names: witness_cols.iter().map(|p| p.name).collect(),
+            witness_cols: witness_cols.iter().map(|p| (p.name, p)).collect(),
+            witness_names: witness_cols.iter().map(|p| p.name).collect(),
             current: vec![None; witness_cols.len()],
             next: vec![None; witness_cols.len()],
             next_row: 0,
@@ -109,7 +109,7 @@ where
             }
             if self.query_callback.is_some() {
                 // TODO avoid clone
-                for column in self.committed.clone().values() {
+                for column in self.witness_cols.clone().values() {
                     if !self.has_known_next_value(column.id) && column.query.is_some() {
                         let result = self.process_witness_query(column);
                         self.handle_eval_result(result)
@@ -127,12 +127,12 @@ where
         // "unknown", report zero and re-check the wrap-around against the zero values at the end.
         if identity_failed && next_row != 0 {
             eprintln!(
-                "\nError: Row {next_row}: Identity check failer or unable to derive values for committed polynomials: {}\n",
+                "\nError: Row {next_row}: Identity check failer or unable to derive values for witness polynomials: {}\n",
                 self.next
                     .iter()
                     .enumerate()
                     .filter_map(|(i, v)| if v.is_none() {
-                        Some(self.committed_names[i].clone())
+                        Some(self.witness_names[i].clone())
                     } else {
                         None
                     })
@@ -170,7 +170,7 @@ where
             .map(|(i, v)| {
                 format!(
                     "{} = {}",
-                    self.committed_names[i],
+                    self.witness_names[i],
                     v.as_ref()
                         .map(format_number)
                         .unwrap_or("<unknown>".to_string())
@@ -189,7 +189,7 @@ where
         } else {
             Err(format!(
                 "No query answer for {} query: {query}.",
-                self.committed_names[column.id]
+                self.witness_names[column.id]
             )
             .into())
         }
@@ -377,7 +377,6 @@ where
         match result {
             Ok(assignments) => {
                 for (id, value) in assignments {
-                    //println!("{} = {value}", self.committed_names[id]);
                     self.next[id] = Some(value);
                     self.progress = true;
                 }
@@ -392,9 +391,9 @@ where
         self.next[id].is_some()
     }
 
-    /// Tries to evaluate the expression to an expression affine in the committed polynomials,
+    /// Tries to evaluate the expression to an expression affine in the witness polynomials,
     /// taking current values of polynomials into account.
-    /// @returns an expression affine in the committed polynomials
+    /// @returns an expression affine in the witness polynomials
     fn evaluate(
         &self,
         expr: &Expression,
@@ -406,8 +405,8 @@ where
             Expression::Constant(name) => Ok(self.constants[name].clone().into()),
             Expression::PolynomialReference(poly) => {
                 // TODO arrays
-                if let Some(WitnessColumn { id, .. }) = self.committed.get(&poly.name) {
-                    // Committed polynomial
+                if let Some(WitnessColumn { id, .. }) = self.witness_cols.get(&poly.name) {
+                    // Witness polynomial
                     if !poly.next && row == EvaluationRow::Current {
                         // All values in the "current" row should usually be known.
                         // The exception is when we start the analysis on the first row.
@@ -423,13 +422,13 @@ where
                             value.into()
                         } else {
                             // We continue with a symbolic value
-                            AffineExpression::from_committed_poly_value(*id)
+                            AffineExpression::from_wittness_poly_value(*id)
                         })
                     } else {
                         // "double next" or evaluation of a witness on a specific row
                         Err(format!(
                             "{}' references the next-next row when evaluating on the current row.",
-                            self.committed_names[*id]
+                            self.witness_names[*id]
                         )
                         .into())
                     }
@@ -567,7 +566,7 @@ where
     fn contains_next_ref(&self, expr: &Expression) -> bool {
         match expr {
             Expression::PolynomialReference(poly) => {
-                poly.next && self.committed.contains_key(&poly.name)
+                poly.next && self.witness_cols.contains_key(&poly.name)
             }
             Expression::Tuple(items) => items.iter().any(|e| self.contains_next_ref(e)),
             Expression::BinaryOperation(l, _, r) => {
@@ -589,7 +588,7 @@ where
             .enumerate()
             .filter(|(_, c)| !is_zero(c))
             .map(|(i, c)| {
-                let name = self.committed_names[i];
+                let name = self.witness_names[i];
                 if *c == 1.into() {
                     name.clone()
                 } else if *c == (-1).into() {
