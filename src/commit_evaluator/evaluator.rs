@@ -104,6 +104,8 @@ where
             if self.query_callback.is_some() {
                 // TODO avoid clone
                 for column in self.witness_cols.clone().values() {
+                    // TOOD we should acutally query even if it is already known, to check
+                    // if the value would be different.
                     if !self.has_known_next_value(column.id) && column.query.is_some() {
                         let result = self.process_witness_query(column);
                         self.handle_eval_result(result)
@@ -369,6 +371,8 @@ where
         r: &Expression,
         rhs_row: DegreeType,
     ) -> EvalResult {
+        // This needs to be a costant because symbolic variables
+        // would reference a different row!
         let r = self
             .evaluate(r, EvaluationRow::Specific(rhs_row))
             .and_then(|r| {
@@ -381,26 +385,18 @@ where
                 })
             })?;
 
-        let expr = Expression::BinaryOperation(
-            Box::new(l.clone()),
-            BinaryOperator::Sub,
-            Box::new(Expression::Number(r)),
-        );
-        let evaluated = self.evaluate(&expr, EvaluationRow::Next)?;
+        let evaluated = self.evaluate(l, EvaluationRow::Next)? - r.into();
         match evaluated.solve() {
             Some((id, value)) => Ok(vec![(id, value)]),
-            None => match evaluated.solve() {
-                Some((id, value)) => Ok(vec![(id, value)]),
-                None => {
-                    // TODO somehow also add `l` and `r` to the error message.
-                    let formatted = self.format_affine_expression(&evaluated);
-                    Err(if evaluated.is_invalid() {
-                        format!("Constraint is invalid ({formatted} != 0).").into()
-                    } else {
-                        format!("Could not solve expression {formatted} = 0.").into()
-                    })
-                }
-            },
+            None => {
+                // TODO somehow also add `l` and `r` to the error message.
+                let formatted = self.format_affine_expression(&evaluated);
+                Err(if evaluated.is_invalid() {
+                    format!("Constraint is invalid ({formatted} != 0).").into()
+                } else {
+                    format!("Could not solve expression {formatted} = 0.").into()
+                })
+            }
         }
     }
 
