@@ -2,7 +2,10 @@ use std::collections::HashSet;
 
 use crate::analyzer::{Expression, Identity, SelectedExpressions};
 
-use super::{machine::Machine, FixedData, WitnessColumn};
+use super::machine::Machine;
+
+use super::sorted_witness_machine::SortedWitnesses;
+use super::{FixedData, WitnessColumn};
 
 /// Finds machines in the witness columns and identities
 /// and returns a list of machines and the identities
@@ -11,7 +14,7 @@ pub fn split_out_machines<'a>(
     fixed: &'a FixedData<'a>,
     identities: &'a [Identity],
     witness_cols: &'a [WitnessColumn],
-) -> (Vec<Machine<'a>>, Vec<&'a Identity>) {
+) -> (Vec<Box<dyn Machine>>, Vec<&'a Identity>) {
     // TODO we only split out one machine for now.
     // We could also split the machine into independent sub-machines.
 
@@ -31,7 +34,7 @@ pub fn split_out_machines<'a>(
 
     // Split identities into those that only concern the machine
     // witnesses and those that concern any other witness.
-    let (machine_identities, identities) = identities.iter().partition(|i| {
+    let (machine_identities, identities): (Vec<_>, _) = identities.iter().partition(|i| {
         // The identity has at least one a machine witness, but
         // all referenced witnesses are machine witnesses.
         let mw = machine_witness_extractor.in_identity(i);
@@ -41,9 +44,9 @@ pub fn split_out_machines<'a>(
     // TODO we probably nede to check that machine witnesses do not appear
     // in any identity among `identities` except on the RHS.
 
-    let machine = Machine::new(fixed, machine_identities, machine_witnesses);
+    let machine = SortedWitnesses::try_new(fixed, &machine_identities, &machine_witnesses);
 
-    (vec![machine], identities)
+    (vec![machine.unwrap()], identities)
 }
 
 /// Extracts all references to any of the given names

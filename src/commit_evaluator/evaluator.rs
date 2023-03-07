@@ -7,7 +7,7 @@ use crate::number::{AbstractNumberType, DegreeType};
 
 use super::affine_expression::AffineExpression;
 use super::eval_error::{self, EvalError};
-use super::machine::Machine;
+use super::machine::{LookupReturn, Machine};
 use super::{EvalResult, FixedData, WitnessColumn};
 
 pub struct Evaluator<'a, QueryCallback>
@@ -16,7 +16,7 @@ where
 {
     fixed_data: &'a FixedData<'a>,
     identities: Vec<&'a Identity>,
-    machines: Vec<Machine<'a>>,
+    machines: Vec<Box<dyn Machine>>,
     query_callback: Option<QueryCallback>,
     /// Maps the witness polynomial names to their IDs internal to this component
     /// and optional parameter and query string.
@@ -48,7 +48,7 @@ where
     pub fn new(
         fixed_data: &'a FixedData<'a>,
         identities: Vec<&'a Identity>,
-        machines: Vec<Machine<'a>>,
+        machines: Vec<Box<dyn Machine>>,
         query_callback: Option<QueryCallback>,
     ) -> Self {
         let witness_cols = fixed_data.witness_cols;
@@ -104,6 +104,8 @@ where
             if self.query_callback.is_some() {
                 // TODO avoid clone
                 for column in self.witness_cols.clone().values() {
+                    // TOOD we should acutally query even if it is already known, to check
+                    // if the value would be different.
                     if !self.has_known_next_value(column.id) && column.query.is_some() {
                         let result = self.process_witness_query(column);
                         self.handle_eval_result(result)
@@ -160,7 +162,7 @@ where
     pub fn machine_witness_col_values(&mut self) -> HashMap<String, Vec<AbstractNumberType>> {
         let mut result: HashMap<_, _> = Default::default();
         for m in &mut self.machines {
-            result.extend(m.witness_col_values());
+            result.extend(m.witness_col_values(self.fixed_data));
         }
         result
     }
@@ -291,9 +293,10 @@ where
         // Try to see if it's a query to a machine.
         for m in &mut self.machines {
             // TODO also consider the reasons above.
-            let result = m.process_plookup(&left, &identity.right)?;
-            if !result.is_empty() {
-                return Ok(result);
+            if let LookupReturn::Assignments(assignments) =
+                m.process_plookup(self.fixed_data, &left, &identity.right)?
+            {
+                return Ok(assignments);
             }
         }
 
@@ -369,6 +372,8 @@ where
         r: &Expression,
         rhs_row: DegreeType,
     ) -> EvalResult {
+        // This needs to be a costant because symbolic variables
+        // would reference a different row!
         let r = self
             .evaluate(r, EvaluationRow::Specific(rhs_row))
             .and_then(|r| {
@@ -381,26 +386,18 @@ where
                 })
             })?;
 
-        let expr = Expression::BinaryOperation(
-            Box::new(l.clone()),
-            BinaryOperator::Sub,
-            Box::new(Expression::Number(r)),
-        );
-        let evaluated = self.evaluate(&expr, EvaluationRow::Next)?;
+        let evaluated = self.evaluate(l, EvaluationRow::Next)? - r.into();
         match evaluated.solve() {
             Some((id, value)) => Ok(vec![(id, value)]),
-            None => match evaluated.solve() {
-                Some((id, value)) => Ok(vec![(id, value)]),
-                None => {
-                    // TODO somehow also add `l` and `r` to the error message.
-                    let formatted = self.format_affine_expression(&evaluated);
-                    Err(if evaluated.is_invalid() {
-                        format!("Constraint is invalid ({formatted} != 0).").into()
-                    } else {
-                        format!("Could not solve expression {formatted} = 0.").into()
-                    })
-                }
-            },
+            None => {
+                // TODO somehow also add `l` and `r` to the error message.
+                let formatted = self.format_affine_expression(&evaluated);
+                Err(if evaluated.is_invalid() {
+                    format!("Constraint is invalid ({formatted} != 0).").into()
+                } else {
+                    format!("Could not solve expression {formatted} = 0.").into()
+                })
+            }
         }
     }
 
