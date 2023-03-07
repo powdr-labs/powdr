@@ -1,15 +1,21 @@
+use std::collections::HashMap;
+
 use crate::analyzer::{Analyzed, Expression, FunctionValueDefinition};
 use crate::number::{AbstractNumberType, DegreeType};
+
+use self::eval_error::EvalError;
 
 mod affine_expression;
 mod eval_error;
 mod evaluator;
+mod machine;
+mod machine_extractor;
 
 /// Generates the committed polynomial values
 /// @returns the values (in source order) and the degree of the polynomials.
 pub fn generate<'a>(
     analyzed: &'a Analyzed,
-    degree: &DegreeType,
+    degree: DegreeType,
     fixed_cols: &[(&String, Vec<AbstractNumberType>)],
     query_callback: Option<impl FnMut(&str) -> Option<AbstractNumberType>>,
     verbose: bool,
@@ -25,17 +31,20 @@ pub fn generate<'a>(
             WitnessColumn::new(i, &poly.absolute_name, value)
         })
         .collect();
+    let fixed = FixedData {
+        degree,
+        constants: &analyzed.constants,
+        fixed_cols: fixed_cols.iter().map(|(n, v)| (*n, v)).collect(),
+        witness_cols: &witness_cols,
+        verbose,
+    };
+    let (machines, identities) =
+        machine_extractor::split_out_machines(&fixed, &analyzed.identities, &witness_cols);
+    let mut evaluator = evaluator::Evaluator::new(&fixed, identities, machines, query_callback);
+
     let mut values: Vec<(&String, Vec<AbstractNumberType>)> =
         witness_cols.iter().map(|p| (p.name, Vec::new())).collect();
-    let mut evaluator = evaluator::Evaluator::new(
-        &analyzed.constants,
-        analyzed.identities.iter().collect(),
-        fixed_cols.iter().map(|(n, v)| (*n, v)).collect(),
-        &witness_cols,
-        query_callback,
-    );
-    evaluator.set_verbose(verbose);
-    for row in 0..*degree as DegreeType {
+    for row in 0..degree as DegreeType {
         let row_values = evaluator.compute_next_row(row);
         for (col, v) in row_values.into_iter().enumerate() {
             values[col].1.push(v);
@@ -47,7 +56,42 @@ pub fn generate<'a>(
             witness_cols[col].name, v, values[col].1[0]);
         }
     }
+    for (name, data) in evaluator.machine_witness_col_values() {
+        let (_, col) = values.iter_mut().find(|(n, _)| *n == &name).unwrap();
+        *col = data;
+    }
     values
+}
+
+/// Result of evaluating an expression / lookup:
+/// A new assignment to a witness column identified by an ID or an error.
+type EvalResult = Result<Vec<(usize, AbstractNumberType)>, EvalError>;
+
+/// Data that is fixed for witness generation.
+pub struct FixedData<'a> {
+    degree: DegreeType,
+    constants: &'a HashMap<String, AbstractNumberType>,
+    fixed_cols: HashMap<&'a String, &'a Vec<AbstractNumberType>>,
+    witness_cols: &'a Vec<WitnessColumn<'a>>,
+    verbose: bool,
+}
+
+impl<'a> FixedData<'a> {
+    pub fn new(
+        degree: DegreeType,
+        constants: &'a HashMap<String, AbstractNumberType>,
+        fixed_cols: HashMap<&'a String, &'a Vec<AbstractNumberType>>,
+        witness_cols: &'a Vec<WitnessColumn<'a>>,
+        verbose: bool,
+    ) -> Self {
+        FixedData {
+            degree,
+            constants,
+            fixed_cols,
+            witness_cols,
+            verbose,
+        }
+    }
 }
 
 pub struct WitnessColumn<'a> {

@@ -135,7 +135,6 @@ fn simple_sum_asm() {
 }
 
 #[test]
-#[ignore]
 fn palindrome() {
     verify_asm(
         "palindrome.asm",
