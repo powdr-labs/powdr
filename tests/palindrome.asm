@@ -43,7 +43,7 @@ ADDR <=X= 0;
 mstore CNT;
 
 store_values::
- jmpz CNT, check;
+ jmpz CNT, check_start;
  ADDR <=X= CNT;
  mstore ${ ("input", CNT + 1) };
  CNT <=X= CNT - 1;
