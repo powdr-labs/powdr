@@ -1,5 +1,5 @@
 use crate::analyzer::{BinaryOperator, Expression, Identity, IdentityKind, UnaryOperator};
-use crate::number::{abstract_to_degree, is_zero};
+use crate::number::{abstract_to_degree, format_number};
 use crate::utils::indent;
 use std::collections::{BTreeMap, HashMap};
 // TODO should use finite field instead of abstract number
@@ -18,10 +18,8 @@ where
     identities: Vec<&'a Identity>,
     machines: Vec<Box<dyn Machine>>,
     query_callback: Option<QueryCallback>,
-    /// Maps the witness polynomial names to their IDs internal to this component
-    /// and optional parameter and query string.
+    /// Maps the witness polynomial names to optional parameter and query string.
     witness_cols: BTreeMap<&'a String, &'a WitnessColumn<'a>>,
-    witness_names: Vec<&'a String>,
     /// Values of the witness polynomials
     current: Vec<Option<AbstractNumberType>>,
     /// Values of the witness polynomials in the next row
@@ -59,7 +57,6 @@ where
             machines,
             query_callback,
             witness_cols: witness_cols.iter().map(|p| (p.name, p)).collect(),
-            witness_names: witness_cols.iter().map(|p| p.name).collect(),
             current: vec![None; witness_cols.len()],
             next: vec![None; witness_cols.len()],
             next_row: 0,
@@ -128,7 +125,7 @@ where
                     .iter()
                     .enumerate()
                     .filter_map(|(i, v)| if v.is_none() {
-                        Some(self.witness_names[i].clone())
+                        Some(self.fixed_data.witness_cols[i].name.clone())
                     } else {
                         None
                     })
@@ -174,7 +171,7 @@ where
             .map(|(i, v)| {
                 format!(
                     "{} = {}",
-                    self.witness_names[i],
+                    AffineExpression::from_wittness_poly_value(i).format(self.fixed_data),
                     v.as_ref()
                         .map(format_number)
                         .unwrap_or("<unknown>".to_string())
@@ -191,18 +188,14 @@ where
         if let Some(value) = self.query_callback.as_mut().and_then(|c| (c)(&query)) {
             Ok(vec![(column.id, value)])
         } else {
-            Err(format!(
-                "No query answer for {} query: {query}.",
-                self.witness_names[column.id]
-            )
-            .into())
+            Err(format!("No query answer for {} query: {query}.", column.name).into())
         }
     }
 
     fn interpolate_query(&self, query: &Expression) -> Result<String, String> {
         if let Ok(v) = self.evaluate(query, EvaluationRow::Next) {
             if v.is_constant() {
-                return Ok(self.format_affine_expression(&v));
+                return Ok(v.format(self.fixed_data));
             }
         }
         // TODO combine that with the constant evaluator and the commit evaluator...
@@ -239,7 +232,7 @@ where
             match evaluated.solve() {
                 Some((id, value)) => Ok(vec![(id, value)]),
                 None => {
-                    let formatted = self.format_affine_expression(&evaluated);
+                    let formatted = evaluated.format(self.fixed_data);
                     Err(if evaluated.is_invalid() {
                         format!("Constraint is invalid ({formatted} != 0).").into()
                     } else {
@@ -261,7 +254,7 @@ where
                 _ => {
                     return Err(format!(
                         "Value of the selector on the left hand side unknown or not boolean: {}",
-                        self.format_affine_expression(&value)
+                        value.format(self.fixed_data)
                     )
                     .into())
                 }
@@ -317,7 +310,7 @@ where
                 Some(v) => Ok(v),
                 None => Err(format!(
                     "First expression needs to be constant but is not: {}.",
-                    self.format_affine_expression(&v)
+                    v.format(self.fixed_data)
                 )),
             },
             // TODO this ignores the error in `reasons` above.
@@ -374,11 +367,7 @@ where
             .evaluate(r, EvaluationRow::Specific(rhs_row))
             .and_then(|r| {
                 r.constant_value().ok_or_else(|| {
-                    format!(
-                        "Constant value required: {}",
-                        self.format_affine_expression(&r)
-                    )
-                    .into()
+                    format!("Constant value required: {}", r.format(self.fixed_data)).into()
                 })
             })?;
 
@@ -386,7 +375,7 @@ where
         match evaluated.solve() {
             Some((id, value)) => Ok(vec![(id, value)]),
             None => {
-                let formatted = self.format_affine_expression(l);
+                let formatted = l.format(self.fixed_data);
                 Err(if evaluated.is_invalid() {
                     format!("Constraint is invalid ({formatted} != {r}).",).into()
                 } else {
@@ -451,7 +440,7 @@ where
                         // "double next" or evaluation of a witness on a specific row
                         Err(format!(
                             "{}' references the next-next row when evaluating on the current row.",
-                            self.witness_names[*id]
+                            self.fixed_data.witness_cols[*id].name,
                         )
                         .into())
                     }
@@ -510,8 +499,8 @@ where
                     } else {
                         Err(format!(
                             "Multiplication of two non-constants: ({}) * ({})",
-                            self.format_affine_expression(&left),
-                            self.format_affine_expression(&right)
+                            left.format(self.fixed_data),
+                            right.format(self.fixed_data),
                         )
                         .into())
                     }
@@ -528,8 +517,8 @@ where
                     } else {
                         Err(format!(
                             "Division of two non-constants: ({}) / ({})",
-                            self.format_affine_expression(&left),
-                            self.format_affine_expression(&right)
+                            left.format(self.fixed_data),
+                            right.format(self.fixed_data),
                         )
                         .into())
                     }
@@ -540,8 +529,8 @@ where
                     } else {
                         Err(format!(
                             "Pow of two non-constants: ({}) ** ({})",
-                            self.format_affine_expression(&left),
-                            self.format_affine_expression(&right)
+                            left.format(self.fixed_data),
+                            right.format(self.fixed_data),
                         )
                         .into())
                     }
@@ -603,35 +592,5 @@ where
             | Expression::Number(_)
             | Expression::String(_) => false,
         }
-    }
-
-    fn format_affine_expression(&self, e: &AffineExpression) -> String {
-        e.coefficients
-            .iter()
-            .enumerate()
-            .filter(|(_, c)| !is_zero(c))
-            .map(|(i, c)| {
-                let name = self.witness_names[i];
-                if *c == 1.into() {
-                    name.clone()
-                } else if *c == (-1).into() {
-                    format!("-{name}")
-                } else {
-                    format!("{} * {name}", format_number(c))
-                }
-            })
-            .chain(e.constant_value().map(|v| format!("{v}")))
-            .collect::<Vec<_>>()
-            .join(" + ")
-    }
-}
-
-const GOLDILOCKS_MOD: u64 = 0xffffffff00000001u64;
-
-fn format_number(x: &AbstractNumberType) -> String {
-    if *x > (GOLDILOCKS_MOD / 2).into() {
-        format!("{}", GOLDILOCKS_MOD - x)
-    } else {
-        format!("{x}")
     }
 }

@@ -4,6 +4,7 @@ use crate::analyzer::{Analyzed, Expression, FunctionValueDefinition};
 use crate::number::{AbstractNumberType, DegreeType};
 
 use self::eval_error::EvalError;
+use self::util::WitnessColumnNamer;
 
 mod affine_expression;
 mod eval_error;
@@ -11,6 +12,7 @@ mod evaluator;
 mod machine;
 mod machine_extractor;
 mod sorted_witness_machine;
+mod util;
 
 /// Generates the committed polynomial values
 /// @returns the values (in source order) and the degree of the polynomials.
@@ -92,6 +94,12 @@ impl<'a> FixedData<'a> {
             witness_cols,
             verbose,
         }
+    }
+}
+
+impl<'a> WitnessColumnNamer for FixedData<'a> {
+    fn name(&self, i: usize) -> &String {
+        self.witness_cols[i].name
     }
 }
 

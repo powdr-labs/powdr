@@ -1,7 +1,7 @@
 // TODO this should probably rather be a finite field element.
-use crate::number::{is_zero, AbstractNumberType};
+use crate::number::{format_number, is_zero, AbstractNumberType, GOLDILOCKS_MOD};
 
-const GOLDILOCKS_MOD: u64 = 0xffffffff00000001u64;
+use super::util::WitnessColumnNamer;
 
 /// An expression affine in the committed polynomials.
 #[derive(Debug, Clone, PartialEq)]
@@ -90,6 +90,26 @@ impl AffineExpression {
     /// Returns true if it can be determined that this expression can never be zero.
     pub fn is_invalid(&self) -> bool {
         self.constant_value().map(|v| v != 0.into()) == Some(true)
+    }
+
+    pub fn format(&self, namer: &impl WitnessColumnNamer) -> String {
+        self.coefficients
+            .iter()
+            .enumerate()
+            .filter(|(_, c)| !is_zero(c))
+            .map(|(i, c)| {
+                let name = namer.name(i);
+                if *c == 1.into() {
+                    name.clone()
+                } else if *c == (-1).into() {
+                    format!("-{name}")
+                } else {
+                    format!("{} * {name}", format_number(c))
+                }
+            })
+            .chain(self.constant_value().map(|v| format!("{v}")))
+            .collect::<Vec<_>>()
+            .join(" + ")
     }
 }
 
