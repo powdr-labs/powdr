@@ -7,7 +7,7 @@ use crate::number::{AbstractNumberType, DegreeType};
 
 use super::affine_expression::AffineExpression;
 use super::eval_error::{self, EvalError};
-use super::machine::Machine;
+use super::machine::{LookupReturn, Machine};
 use super::{EvalResult, FixedData, WitnessColumn};
 
 pub struct Evaluator<'a, QueryCallback>
@@ -16,7 +16,7 @@ where
 {
     fixed_data: &'a FixedData<'a>,
     identities: Vec<&'a Identity>,
-    machines: Vec<Machine<'a>>,
+    machines: Vec<Box<dyn Machine>>,
     query_callback: Option<QueryCallback>,
     /// Maps the witness polynomial names to their IDs internal to this component
     /// and optional parameter and query string.
@@ -48,7 +48,7 @@ where
     pub fn new(
         fixed_data: &'a FixedData<'a>,
         identities: Vec<&'a Identity>,
-        machines: Vec<Machine<'a>>,
+        machines: Vec<Box<dyn Machine>>,
         query_callback: Option<QueryCallback>,
     ) -> Self {
         let witness_cols = fixed_data.witness_cols;
@@ -162,7 +162,7 @@ where
     pub fn machine_witness_col_values(&mut self) -> HashMap<String, Vec<AbstractNumberType>> {
         let mut result: HashMap<_, _> = Default::default();
         for m in &mut self.machines {
-            result.extend(m.witness_col_values());
+            result.extend(m.witness_col_values(self.fixed_data));
         }
         result
     }
@@ -293,9 +293,10 @@ where
         // Try to see if it's a query to a machine.
         for m in &mut self.machines {
             // TODO also consider the reasons above.
-            let result = m.process_plookup(&left, &identity.right)?;
-            if !result.is_empty() {
-                return Ok(result);
+            if let LookupReturn::Assignments(assignments) =
+                m.process_plookup(self.fixed_data, &left, &identity.right)?
+            {
+                return Ok(assignments);
             }
         }
 

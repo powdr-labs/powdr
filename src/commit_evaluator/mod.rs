@@ -10,6 +10,7 @@ mod eval_error;
 mod evaluator;
 mod machine;
 mod machine_extractor;
+mod sorted_witness_machine;
 
 /// Generates the committed polynomial values
 /// @returns the values (in source order) and the degree of the polynomials.
