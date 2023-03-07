@@ -347,17 +347,13 @@ where
 
         //TODO there should be a shortcut to succeed if any of an iterator is "Ok" and combine the errors otherwise.
         let mut result = vec![];
-        for (l, r) in identity
-            .left
-            .expressions
-            .iter()
-            .zip(&identity.right.expressions)
-            .skip(1)
-        {
-            match self.equate_to_constant_rhs(l, r, rhs_row) {
-                Ok(assignments) => result.extend(assignments),
-                Err(err) => reasons.push(err),
-            }
+        for (l, r) in left.iter().zip(&identity.right.expressions).skip(1) {
+            if let Some(l) = l {
+                match self.equate_to_constant_rhs(l, r, rhs_row) {
+                    Ok(assignments) => result.extend(assignments),
+                    Err(err) => reasons.push(err),
+                }
+            } // The error is already in "reasons"
         }
         if result.is_empty() {
             Err(reasons.into_iter().reduce(eval_error::combine).unwrap())
@@ -368,7 +364,7 @@ where
 
     fn equate_to_constant_rhs(
         &self,
-        l: &Expression,
+        l: &AffineExpression,
         r: &Expression,
         rhs_row: DegreeType,
     ) -> EvalResult {
@@ -386,16 +382,15 @@ where
                 })
             })?;
 
-        let evaluated = self.evaluate(l, EvaluationRow::Next)? - r.into();
+        let evaluated = l.clone() - r.clone().into();
         match evaluated.solve() {
             Some((id, value)) => Ok(vec![(id, value)]),
             None => {
-                // TODO somehow also add `l` and `r` to the error message.
-                let formatted = self.format_affine_expression(&evaluated);
+                let formatted = self.format_affine_expression(l);
                 Err(if evaluated.is_invalid() {
-                    format!("Constraint is invalid ({formatted} != 0).").into()
+                    format!("Constraint is invalid ({formatted} != {r}).",).into()
                 } else {
-                    format!("Could not solve expression {formatted} = 0.").into()
+                    format!("Could not solve expression {formatted} = {r}.",).into()
                 })
             }
         }
