@@ -6,9 +6,10 @@ use std::collections::{BTreeMap, HashMap};
 use crate::number::{AbstractNumberType, DegreeType};
 
 use super::affine_expression::AffineExpression;
-use super::eval_error::{self, EvalError};
+use super::eval_error::EvalError;
 use super::expression_evaluator::{ExpressionEvaluator, SymbolicVariables};
 use super::machine::{LookupReturn, Machine};
+use super::util::contains_next_ref;
 use super::{EvalResult, FixedData, WitnessColumn};
 
 pub struct Evaluator<'a, QueryCallback>
@@ -36,8 +37,6 @@ enum EvaluationRow {
     Current,
     /// p is p[next_row], p' is p[next_row + 1]
     Next,
-    /// p is p[arg], p' is p[arg + 1]
-    Specific(DegreeType),
 }
 
 impl<'a, QueryCallback> Evaluator<'a, QueryCallback>
@@ -221,7 +220,7 @@ where
     fn process_polynomial_identity(&self, identity: &Expression) -> EvalResult {
         // If there is no "next" reference in the expression,
         // we just evaluate it directly on the "next" row.
-        let row = if self.contains_next_ref(identity) {
+        let row = if contains_next_ref(identity, self.fixed_data) {
             EvaluationRow::Current
         } else {
             EvaluationRow::Next
@@ -265,26 +264,17 @@ where
             return Err("Selectors at the RHS not yet supported.".to_string().into());
         }
 
-        let mut reasons = vec![];
         let left = identity
             .left
             .expressions
             .iter()
             .map(|e| self.evaluate(e, EvaluationRow::Next))
-            .map(|e| match e {
-                Ok(r) => Some(r),
-                Err(e) => {
-                    reasons.push(e);
-                    None
-                }
-            })
             .collect::<Vec<_>>();
 
-        // TODO: We need to call the machine even if the LHS is already known.
-        // But then we also need a way to flag "progress" and we also need
-        // always call the machine, even if all witnesses are already known.
-
-        // Try to see if it's a query to a machine.
+        // Now query the machines.
+        // Note that we should always query all machines that match, because they might
+        // update their internal data, even if all values are already known.
+        // TODO could it be that multiple machines match?
         for m in &mut self.machines {
             // TODO also consider the reasons above.
             if let LookupReturn::Assignments(assignments) =
@@ -294,97 +284,9 @@ where
             }
         }
 
-        // If we already know the LHS, skip it.
-        if left
-            .iter()
-            .all(|v| v.is_some() && v.as_ref().unwrap().is_constant())
-        {
-            return Ok(vec![]);
-        }
-
-        // TODO turn the rest of this code into a specialized machine that does
-        // lookups inside constants.
-
-        // TODO this ignores the error in `reasons` above.
-        let left_key = match left[0].clone() {
-            Some(v) => match v.constant_value() {
-                Some(v) => Ok(v),
-                None => Err(format!(
-                    "First expression needs to be constant but is not: {}.",
-                    v.format(self.fixed_data)
-                )),
-            },
-            // TODO this ignores the error in `reasons` above.
-            None => Err("First expression on the LHS is unknown.".to_string()),
-        }?;
-
-        let right_key = identity.right.expressions.first().unwrap();
-        let rhs_row = if let Expression::PolynomialReference(poly) = right_key {
-            // TODO we really need a search index on this.
-            self.fixed_data.fixed_cols
-                .get(poly.name.as_str())
-                .cloned()
-                .and_then(|values| values.iter().position(|v| *v == left_key))
-                .ok_or_else(|| {
-                    format!(
-                        "Unable to find matching row on the RHS where the first element is {left_key} - only fixed columns supported there."
-                    )
-                })
-                .map(|i| i as DegreeType)
-        } else {
-            Err("First item on the RHS must be a polynomial reference.".to_string())
-        }?;
-
-        // TODO we only support the following case:
-        // - The first component on the LHS has to be known
-        // - The first component on the RHS has to be a direct fixed column reference
-        // - The first match of those uniquely determines the rest of the RHS.
-
-        //TODO there should be a shortcut to succeed if any of an iterator is "Ok" and combine the errors otherwise.
-        let mut result = vec![];
-        for (l, r) in left.iter().zip(&identity.right.expressions).skip(1) {
-            if let Some(l) = l {
-                match self.equate_to_constant_rhs(l, r, rhs_row) {
-                    Ok(assignments) => result.extend(assignments),
-                    Err(err) => reasons.push(err),
-                }
-            } // The error is already in "reasons"
-        }
-        if result.is_empty() {
-            Err(reasons.into_iter().reduce(eval_error::combine).unwrap())
-        } else {
-            Ok(result)
-        }
-    }
-
-    fn equate_to_constant_rhs(
-        &self,
-        l: &AffineExpression,
-        r: &Expression,
-        rhs_row: DegreeType,
-    ) -> EvalResult {
-        // This needs to be a costant because symbolic variables
-        // would reference a different row!
-        let r = self
-            .evaluate(r, EvaluationRow::Specific(rhs_row))
-            .and_then(|r| {
-                r.constant_value().ok_or_else(|| {
-                    format!("Constant value required: {}", r.format(self.fixed_data)).into()
-                })
-            })?;
-
-        let evaluated = l.clone() - r.clone().into();
-        match evaluated.solve() {
-            Some((id, value)) => Ok(vec![(id, value)]),
-            None => {
-                let formatted = l.format(self.fixed_data);
-                Err(if evaluated.is_invalid() {
-                    format!("Constraint is invalid ({formatted} != {r}).",).into()
-                } else {
-                    format!("Could not solve expression {formatted} = {r}.",).into()
-                })
-            }
-        }
+        Err("Could not find a matching machine for the lookup."
+            .to_string()
+            .into())
     }
 
     fn handle_eval_result(&mut self, result: EvalResult) {
@@ -421,25 +323,6 @@ where
             evaluate_row,
         })
         .evaluate(expr)
-    }
-    /// @returns true if the expression contains a reference to a next value of a witness column.
-    fn contains_next_ref(&self, expr: &Expression) -> bool {
-        match expr {
-            Expression::PolynomialReference(poly) => {
-                poly.next && self.witness_cols.contains_key(poly.name.as_str())
-            }
-            Expression::Tuple(items) => items.iter().any(|e| self.contains_next_ref(e)),
-            Expression::BinaryOperation(l, _, r) => {
-                self.contains_next_ref(l) || self.contains_next_ref(r)
-            }
-            Expression::UnaryOperation(_, e) => self.contains_next_ref(e),
-            Expression::FunctionCall(_, args) => args.iter().any(|e| self.contains_next_ref(e)),
-            Expression::Constant(_)
-            | Expression::LocalVariableReference(_)
-            | Expression::PublicReference(_)
-            | Expression::Number(_)
-            | Expression::String(_) => false,
-        }
     }
 }
 
@@ -488,9 +371,6 @@ impl<'a> SymbolicVariables for EvaluationData<'a> {
                     )
                     .into())
                 }
-                (_, EvaluationRow::Specific(_)) => {
-                    panic!("Witness polynomial {name} evaluated on specific row.")
-                }
             }
         } else {
             // Constant polynomial (or something else)
@@ -499,7 +379,6 @@ impl<'a> SymbolicVariables for EvaluationData<'a> {
             let mut row = match self.evaluate_row {
                 EvaluationRow::Current => (self.next_row + degree - 1) % degree,
                 EvaluationRow::Next => self.next_row,
-                EvaluationRow::Specific(r) => r,
             };
             if next {
                 row = (row + 1) % degree;

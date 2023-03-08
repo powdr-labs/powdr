@@ -10,6 +10,7 @@ mod affine_expression;
 mod eval_error;
 mod evaluator;
 mod expression_evaluator;
+mod fixed_lookup_machine;
 mod machine;
 mod machine_extractor;
 mod sorted_witness_machine;

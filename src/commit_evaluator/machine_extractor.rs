@@ -2,6 +2,7 @@ use std::collections::HashSet;
 
 use crate::analyzer::{Expression, Identity, SelectedExpressions};
 
+use super::fixed_lookup_machine::FixedLookup;
 use super::machine::Machine;
 
 use super::sorted_witness_machine::SortedWitnesses;
@@ -18,6 +19,8 @@ pub fn split_out_machines<'a>(
     // TODO we only split out one machine for now.
     // We could also split the machine into independent sub-machines.
 
+    // The lookup-in-fixed-columns machine, it always exists with an empty set of witnesses.
+    let fixed_lookup = FixedLookup::try_new(fixed, &[], &Default::default()).unwrap();
     let witness_names = witness_cols.iter().map(|c| c.name).collect::<HashSet<_>>();
     let all_witnesses = ReferenceExtractor::new(witness_names.clone());
     // Extract all witness columns in the RHS of lookups.
@@ -27,7 +30,7 @@ pub fn split_out_machines<'a>(
         .reduce(|l, r| &l | &r)
         .unwrap_or_default();
     if machine_witnesses.is_empty() {
-        return (vec![], identities.iter().collect());
+        return (vec![fixed_lookup], identities.iter().collect());
     }
 
     let machine_witness_extractor = ReferenceExtractor::new(machine_witnesses.clone());
@@ -46,7 +49,7 @@ pub fn split_out_machines<'a>(
 
     let machine = SortedWitnesses::try_new(fixed, &machine_identities, &machine_witnesses);
 
-    (vec![machine.unwrap()], identities)
+    (vec![machine.unwrap(), fixed_lookup], identities)
 }
 
 /// Extracts all references to any of the given names
