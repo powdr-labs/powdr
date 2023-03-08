@@ -1,5 +1,5 @@
-use crate::analyzer::{BinaryOperator, Expression, Identity, IdentityKind, UnaryOperator};
-use crate::number::{abstract_to_degree, format_number};
+use crate::analyzer::{Expression, Identity, IdentityKind};
+use crate::number::format_number;
 use crate::utils::indent;
 use std::collections::{BTreeMap, HashMap};
 // TODO should use finite field instead of abstract number
@@ -7,6 +7,7 @@ use crate::number::{AbstractNumberType, DegreeType};
 
 use super::affine_expression::AffineExpression;
 use super::eval_error::{self, EvalError};
+use super::expression_evaluator::{ExpressionEvaluator, SymbolicVariables};
 use super::machine::{LookupReturn, Machine};
 use super::{EvalResult, FixedData, WitnessColumn};
 
@@ -409,171 +410,17 @@ where
     fn evaluate(
         &self,
         expr: &Expression,
-        row: EvaluationRow,
+        evaluate_row: EvaluationRow,
     ) -> Result<AffineExpression, EvalError> {
-        // @TODO if we iterate on processing the constraints in the same row,
-        // we could store the simplified values.
-        match expr {
-            Expression::Constant(name) => Ok(self.fixed_data.constants[name].clone().into()),
-            Expression::PolynomialReference(poly) => {
-                // TODO arrays
-                if let Some(WitnessColumn { id, .. }) = self.witness_cols.get(&poly.name) {
-                    // Witness polynomial
-                    if !poly.next && row == EvaluationRow::Current {
-                        // All values in the "current" row should usually be known.
-                        // The exception is when we start the analysis on the first row.
-                        self.current[*id]
-                            .as_ref()
-                            .map(|value| value.clone().into())
-                            .ok_or_else(|| EvalError::PreviousValueUnknown(poly.name.clone()))
-                    } else if (poly.next && row == EvaluationRow::Current)
-                        || (!poly.next && row == EvaluationRow::Next)
-                    {
-                        Ok(if let Some(value) = self.next[*id].clone() {
-                            // We already computed the concrete value
-                            value.into()
-                        } else {
-                            // We continue with a symbolic value
-                            AffineExpression::from_wittness_poly_value(*id)
-                        })
-                    } else {
-                        // "double next" or evaluation of a witness on a specific row
-                        Err(format!(
-                            "{}' references the next-next row when evaluating on the current row.",
-                            self.fixed_data.witness_cols[*id].name,
-                        )
-                        .into())
-                    }
-                } else {
-                    // Constant polynomial (or something else)
-                    let values = self.fixed_data.fixed_cols[&poly.name];
-                    let degree = values.len() as DegreeType;
-                    let mut row = match row {
-                        EvaluationRow::Current => (self.next_row + degree - 1) % degree,
-                        EvaluationRow::Next => self.next_row,
-                        EvaluationRow::Specific(r) => r,
-                    };
-                    if poly.next {
-                        row = (row + 1) % degree;
-                    }
-                    Ok(values[row as usize].clone().into())
-                }
-            }
-            Expression::Number(n) => Ok(n.clone().into()),
-            Expression::BinaryOperation(left, op, right) => {
-                self.evaluate_binary_operation(left, op, right, row)
-            }
-            Expression::UnaryOperation(op, expr) => self.evaluate_unary_operation(op, expr, row),
-            Expression::Tuple(_) => Err("Tuple not implemented.".to_string().into()),
-            Expression::String(_) => Err("String not implemented.".to_string().into()),
-            Expression::LocalVariableReference(_) => {
-                Err("Local variable references not implemented."
-                    .to_string()
-                    .into())
-            }
-            Expression::PublicReference(_) => {
-                Err("Public references not implemented.".to_string().into())
-            }
-            Expression::FunctionCall(_, _) => {
-                Err("Function calls not implemented.".to_string().into())
-            }
-        }
-    }
-
-    fn evaluate_binary_operation(
-        &self,
-        left: &Expression,
-        op: &BinaryOperator,
-        right: &Expression,
-        row: EvaluationRow,
-    ) -> Result<AffineExpression, EvalError> {
-        match (self.evaluate(left, row), self.evaluate(right, row)) {
-            (Ok(left), Ok(right)) => match op {
-                BinaryOperator::Add => Ok(left + right),
-                BinaryOperator::Sub => Ok(left - right),
-                BinaryOperator::Mul => {
-                    if let Some(f) = left.constant_value() {
-                        Ok(right.mul(f))
-                    } else if let Some(f) = right.constant_value() {
-                        Ok(left.mul(f))
-                    } else {
-                        Err(format!(
-                            "Multiplication of two non-constants: ({}) * ({})",
-                            left.format(self.fixed_data),
-                            right.format(self.fixed_data),
-                        )
-                        .into())
-                    }
-                }
-                BinaryOperator::Div => {
-                    if let (Some(l), Some(r)) = (left.constant_value(), right.constant_value()) {
-                        // TODO Maybe warn about division by zero here.
-                        if l == 0.into() {
-                            Ok(0.into())
-                        } else {
-                            // TODO We have to do division in the proper field.
-                            Ok((l / r).into())
-                        }
-                    } else {
-                        Err(format!(
-                            "Division of two non-constants: ({}) / ({})",
-                            left.format(self.fixed_data),
-                            right.format(self.fixed_data),
-                        )
-                        .into())
-                    }
-                }
-                BinaryOperator::Pow => {
-                    if let (Some(l), Some(r)) = (left.constant_value(), right.constant_value()) {
-                        Ok(l.pow(abstract_to_degree(&r) as u32).into())
-                    } else {
-                        Err(format!(
-                            "Pow of two non-constants: ({}) ** ({})",
-                            left.format(self.fixed_data),
-                            right.format(self.fixed_data),
-                        )
-                        .into())
-                    }
-                }
-                BinaryOperator::Mod
-                | BinaryOperator::BinaryAnd
-                | BinaryOperator::BinaryOr
-                | BinaryOperator::ShiftLeft
-                | BinaryOperator::ShiftRight => {
-                    if let (Some(left), Some(right)) =
-                        (left.constant_value(), right.constant_value())
-                    {
-                        let result = match op {
-                            BinaryOperator::Mod => left % right,
-                            BinaryOperator::BinaryAnd => left & right,
-                            BinaryOperator::BinaryOr => left | right,
-                            BinaryOperator::ShiftLeft => left << abstract_to_degree(&right),
-                            BinaryOperator::ShiftRight => left >> abstract_to_degree(&right),
-                            _ => panic!(),
-                        };
-                        Ok(result.into())
-                    } else {
-                        panic!()
-                    }
-                }
-            },
-            (Ok(_), Err(reason)) | (Err(reason), Ok(_)) => Err(reason),
-            (Err(r1), Err(r2)) => Err(eval_error::combine(r1, r2)),
-        }
-    }
-
-    fn evaluate_unary_operation(
-        &self,
-        op: &UnaryOperator,
-        expr: &Expression,
-        row: EvaluationRow,
-    ) -> Result<AffineExpression, EvalError> {
-        self.evaluate(expr, row).map(|v| match op {
-            UnaryOperator::Plus => v,
-            UnaryOperator::Minus => -v,
+        ExpressionEvaluator::new(EvaluationData {
+            fixed_data: self.fixed_data,
+            current_witnesses: &self.current,
+            next_witnesses: &self.next,
+            next_row: self.next_row,
+            evaluate_row,
         })
+        .evaluate(expr)
     }
-
     /// @returns true if the expression contains a reference to a next value of a witness column.
     fn contains_next_ref(&self, expr: &Expression) -> bool {
         match expr {
@@ -592,5 +439,75 @@ where
             | Expression::Number(_)
             | Expression::String(_) => false,
         }
+    }
+}
+
+struct EvaluationData<'a> {
+    pub fixed_data: &'a FixedData<'a>,
+    /// Values of the witness polynomials in the current / last row
+    pub current_witnesses: &'a Vec<Option<AbstractNumberType>>,
+    /// Values of the witness polynomials in the next row
+    pub next_witnesses: &'a Vec<Option<AbstractNumberType>>,
+    pub next_row: DegreeType,
+    pub evaluate_row: EvaluationRow,
+}
+
+impl<'a> SymbolicVariables for EvaluationData<'a> {
+    fn constant(&self, name: &String) -> Result<AffineExpression, EvalError> {
+        Ok(self.fixed_data.constants[name].clone().into())
+    }
+
+    fn value(&self, name: &String, next: bool) -> Result<AffineExpression, EvalError> {
+        // TODO arrays
+        if let Some(id) = self.fixed_data.witness_ids.get(name) {
+            // TODO we could also work with both p and p' as symoblic variables and only eliminate them at the end.
+
+            match (next, self.evaluate_row) {
+                (false, EvaluationRow::Current) => {
+                    // All values in the "current" row should usually be known.
+                    // The exception is when we start the analysis on the first row.
+                    self.current_witnesses[*id]
+                        .as_ref()
+                        .map(|value| value.clone().into())
+                        .ok_or_else(|| EvalError::PreviousValueUnknown(name.to_string()))
+                }
+                (false, EvaluationRow::Next) | (true, EvaluationRow::Current) => {
+                    Ok(if let Some(value) = &self.next_witnesses[*id] {
+                        // We already computed the concrete value
+                        value.clone().into()
+                    } else {
+                        // We continue with a symbolic value
+                        AffineExpression::from_wittness_poly_value(*id)
+                    })
+                }
+                (true, EvaluationRow::Next) => {
+                    // "double next" or evaluation of a witness on a specific row
+                    Err(format!(
+                        "{name}' references the next-next row when evaluating on the current row.",
+                    )
+                    .into())
+                }
+                (_, EvaluationRow::Specific(_)) => {
+                    panic!("Witness polynomial {name} evaluated on specific row.")
+                }
+            }
+        } else {
+            // Constant polynomial (or something else)
+            let values = self.fixed_data.fixed_cols[name];
+            let degree = values.len() as DegreeType;
+            let mut row = match self.evaluate_row {
+                EvaluationRow::Current => (self.next_row + degree - 1) % degree,
+                EvaluationRow::Next => self.next_row,
+                EvaluationRow::Specific(r) => r,
+            };
+            if next {
+                row = (row + 1) % degree;
+            }
+            Ok(values[row as usize].clone().into())
+        }
+    }
+
+    fn format(&self, expr: AffineExpression) -> String {
+        expr.format(self.fixed_data)
     }
 }

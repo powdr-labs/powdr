@@ -9,6 +9,7 @@ use self::util::WitnessColumnNamer;
 mod affine_expression;
 mod eval_error;
 mod evaluator;
+mod expression_evaluator;
 mod machine;
 mod machine_extractor;
 mod sorted_witness_machine;
@@ -39,6 +40,7 @@ pub fn generate<'a>(
         constants: &analyzed.constants,
         fixed_cols: fixed_cols.iter().map(|(n, v)| (*n, v)).collect(),
         witness_cols: &witness_cols,
+        witness_ids: witness_cols.iter().map(|w| (w.name, w.id)).collect(),
         verbose,
     };
     let (machines, identities) =
@@ -76,6 +78,7 @@ pub struct FixedData<'a> {
     constants: &'a HashMap<String, AbstractNumberType>,
     fixed_cols: HashMap<&'a String, &'a Vec<AbstractNumberType>>,
     witness_cols: &'a Vec<WitnessColumn<'a>>,
+    witness_ids: HashMap<&'a String, usize>,
     verbose: bool,
 }
 
@@ -85,6 +88,7 @@ impl<'a> FixedData<'a> {
         constants: &'a HashMap<String, AbstractNumberType>,
         fixed_cols: HashMap<&'a String, &'a Vec<AbstractNumberType>>,
         witness_cols: &'a Vec<WitnessColumn<'a>>,
+        witness_ids: HashMap<&'a String, usize>,
         verbose: bool,
     ) -> Self {
         FixedData {
@@ -92,6 +96,7 @@ impl<'a> FixedData<'a> {
             constants,
             fixed_cols,
             witness_cols,
+            witness_ids,
             verbose,
         }
     }
