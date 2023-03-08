@@ -52,18 +52,18 @@ pub fn split_out_machines<'a>(
 /// Extracts all references to any of the given names
 /// in expressions and identities.
 struct ReferenceExtractor<'a> {
-    names: HashSet<&'a String>,
+    names: HashSet<&'a str>,
 }
 
 impl<'a> ReferenceExtractor<'a> {
-    pub fn new(names: HashSet<&'a String>) -> Self {
+    pub fn new(names: HashSet<&'a str>) -> Self {
         ReferenceExtractor { names }
     }
-    pub fn in_identity(&self, identity: &'a Identity) -> HashSet<&'a String> {
+    pub fn in_identity(&self, identity: &'a Identity) -> HashSet<&'a str> {
         &self.in_selected_expressions(&identity.left)
             | &self.in_selected_expressions(&identity.right)
     }
-    pub fn in_selected_expressions(&self, selexpr: &'a SelectedExpressions) -> HashSet<&'a String> {
+    pub fn in_selected_expressions(&self, selexpr: &'a SelectedExpressions) -> HashSet<&'a str> {
         selexpr
             .expressions
             .iter()
@@ -72,12 +72,12 @@ impl<'a> ReferenceExtractor<'a> {
             .reduce(|l, r| &l | &r)
             .unwrap_or_default()
     }
-    pub fn in_expression(&self, expr: &'a Expression) -> HashSet<&'a String> {
+    pub fn in_expression(&self, expr: &'a Expression) -> HashSet<&'a str> {
         match expr {
             Expression::Constant(_) => todo!(),
             Expression::PolynomialReference(p) => {
-                if self.names.contains(&p.name) {
-                    [&p.name].into()
+                if self.names.contains(p.name.as_str()) {
+                    [p.name.as_str()].into()
                 } else {
                     HashSet::default()
                 }
@@ -92,7 +92,7 @@ impl<'a> ReferenceExtractor<'a> {
             | Expression::String(_) => HashSet::default(),
         }
     }
-    pub fn in_expressions(&self, exprs: &'a [Expression]) -> HashSet<&'a String> {
+    pub fn in_expressions(&self, exprs: &'a [Expression]) -> HashSet<&'a str> {
         exprs
             .iter()
             .map(|e| self.in_expression(e))

@@ -1,5 +1,6 @@
 // Verfies that a sum in the input has been computed properly.
 // Input: sum, cnt, x_1, x_2, ..., x_cnt
+//         ?, 4, 1, 2, 3, 4
 // This input is assumed to be present in a minirust variable called "input"
 // of type "Vec<FieldElement>"
 
@@ -15,6 +16,10 @@ reg CNT;
 pil{
     col witness XInv;
     col witness XIsZero;
+    // assume X = 7
+    // XisZero * 7 = 0 -> XIzZero = 0
+    // 0 = 1 - 7 * XInv
+    // => XInv = 1/7 (finite field)
     XIsZero  = 1 - X * XInv;
     XIsZero * X = 0;
     XIsZero * (1 - XIsZero) = 0;

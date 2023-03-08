@@ -18,3 +18,13 @@ pub fn abstract_to_degree(input: &AbstractNumberType) -> DegreeType {
 pub fn is_zero(x: &AbstractNumberType) -> bool {
     x.sign() == Sign::NoSign
 }
+
+pub const GOLDILOCKS_MOD: u64 = 0xffffffff00000001u64;
+
+pub fn format_number(x: &AbstractNumberType) -> String {
+    if *x > (GOLDILOCKS_MOD / 2).into() {
+        format!("{}", GOLDILOCKS_MOD - x)
+    } else {
+        format!("{x}")
+    }
+}

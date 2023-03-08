@@ -13,7 +13,7 @@ pub struct SortedWitnesses {
     _identities: Vec<Identity>,
     /// Maps the witness polynomial names to their IDs internal to this component
     /// and optional parameter and query string.
-    //witness_cols: BTreeMap<&'a String, &'a WitnessColumn<'a>>,
+    //witness_cols: BTreeMap<&'a str, &'a WitnessColumn<'a>>,
     witness_names: HashSet<String>,
 
     // TODO this is specific to the sorted write-once memory machine.
@@ -24,7 +24,7 @@ impl SortedWitnesses {
     pub fn try_new(
         _fixed_data: &FixedData,
         identities: &[&Identity],
-        witness_names: &HashSet<&String>,
+        witness_names: &HashSet<&str>,
     ) -> Option<Box<Self>> {
         // TODO we should check the identities and select certain machines
         // based on patterns (and just return an object that implements a trait).
@@ -33,7 +33,7 @@ impl SortedWitnesses {
 
         Some(Box::new(SortedWitnesses {
             _identities: identities.iter().map(|&i| i.clone()).collect(),
-            witness_names: witness_names.iter().map(|&w| w.clone()).collect(),
+            witness_names: witness_names.iter().map(|&w| w.to_string()).collect(),
             data: Default::default(),
         }))
     }

@@ -284,7 +284,7 @@ impl PILContext {
     fn handle_polynomial_definition(
         &mut self,
         source: SourceRef,
-        name: &String,
+        name: &str,
         array_size: &Option<ast::Expression>,
         polynomial_type: PolynomialType,
         value: Option<&ast::FunctionDefinition>,
@@ -396,7 +396,7 @@ impl PILContext {
     fn handle_macro_definition(
         &mut self,
         source: SourceRef,
-        name: &String,
+        name: &str,
         params: &[String],
         statements: &[ast::Statement],
         expression: &Option<ast::Expression>,
@@ -404,7 +404,7 @@ impl PILContext {
         let is_new = self
             .macros
             .insert(
-                name.clone(),
+                name.to_string(),
                 MacroDefinition {
                     source,
                     absolute_name: self.namespaced(name),
@@ -417,11 +417,11 @@ impl PILContext {
         assert!(is_new);
     }
 
-    fn namespaced(&self, name: &String) -> String {
+    fn namespaced(&self, name: &str) -> String {
         self.namespaced_ref(&None, name)
     }
 
-    fn namespaced_ref(&self, namespace: &Option<String>, name: &String) -> String {
+    fn namespaced_ref(&self, namespace: &Option<String>, name: &str) -> String {
         format!("{}.{name}", namespace.as_ref().unwrap_or(&self.namespace))
     }
 
@@ -493,7 +493,7 @@ impl PILContext {
 
     fn process_macro_call(
         &mut self,
-        name: &String,
+        name: &str,
         arguments: &[ast::Expression],
     ) -> Option<Expression> {
         let arguments = Some(self.process_expressions(arguments));
