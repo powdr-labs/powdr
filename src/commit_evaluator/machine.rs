@@ -16,7 +16,7 @@ pub trait Machine {
     //     witness_names: HashSet<&'a str>,
     // ) -> Option<Box<Self>>;
 
-    /// Process o plookup. Not all values on the LHS need to be available.
+    /// Process a plookup. Not all values on the LHS need to be available.
     /// Can update internal data.
     fn process_plookup(
         &mut self,

@@ -47,9 +47,12 @@ pub fn split_out_machines<'a>(
     // TODO we probably nede to check that machine witnesses do not appear
     // in any identity among `identities` except on the RHS.
 
-    let machine = SortedWitnesses::try_new(fixed, &machine_identities, &machine_witnesses);
-
-    (vec![machine.unwrap(), fixed_lookup], identities)
+    if let Some(machine) = SortedWitnesses::try_new(fixed, &machine_identities, &machine_witnesses)
+    {
+        (vec![machine, fixed_lookup], identities)
+    } else {
+        (vec![fixed_lookup], identities)
+    }
 }
 
 /// Extracts all references to any of the given names

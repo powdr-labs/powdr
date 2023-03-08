@@ -10,10 +10,12 @@ mod affine_expression;
 mod eval_error;
 mod evaluator;
 mod expression_evaluator;
+pub mod fixed_evaluator;
 mod fixed_lookup_machine;
 mod machine;
 mod machine_extractor;
 mod sorted_witness_machine;
+pub mod symbolic_evaluator;
 mod util;
 
 /// Generates the committed polynomial values
@@ -104,8 +106,8 @@ impl<'a> FixedData<'a> {
 }
 
 impl<'a> WitnessColumnNamer for FixedData<'a> {
-    fn name(&self, i: usize) -> &str {
-        self.witness_cols[i].name
+    fn name(&self, i: usize) -> String {
+        self.witness_cols[i].name.to_string()
     }
 }
 

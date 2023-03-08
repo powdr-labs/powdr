@@ -4,7 +4,7 @@ use crate::number::{format_number, is_zero, AbstractNumberType, GOLDILOCKS_MOD};
 use super::util::WitnessColumnNamer;
 
 /// An expression affine in the committed polynomials.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct AffineExpression {
     pub coefficients: Vec<AbstractNumberType>,
     pub offset: AbstractNumberType,
@@ -37,7 +37,7 @@ impl AffineExpression {
     }
 
     pub fn is_constant(&self) -> bool {
-        self.coefficients.iter().all(is_zero)
+        self.nonzero_coefficients().next().is_none()
     }
 
     pub fn constant_value(&self) -> Option<AbstractNumberType> {
@@ -46,6 +46,18 @@ impl AffineExpression {
         } else {
             None
         }
+    }
+
+    pub fn nonzero_variables(&self) -> Vec<usize> {
+        self.nonzero_coefficients().map(|(i, _)| i).collect()
+    }
+
+    /// @returns an iterator of the nonzero coefficients and their variable IDs (but not the offset).
+    pub fn nonzero_coefficients(&self) -> impl Iterator<Item = (usize, &AbstractNumberType)> {
+        self.coefficients
+            .iter()
+            .enumerate()
+            .filter(|(_, c)| !is_zero(c))
     }
 
     pub fn mul(mut self, factor: AbstractNumberType) -> AffineExpression {
@@ -61,11 +73,7 @@ impl AffineExpression {
     /// returns the index of the variable and the assignment that evaluates the
     /// affine expression to zero.
     pub fn solve(&self) -> Option<(usize, AbstractNumberType)> {
-        let mut nonzero = self
-            .coefficients
-            .iter()
-            .enumerate()
-            .filter(|(_, c)| !is_zero(c));
+        let mut nonzero = self.nonzero_coefficients();
         nonzero.next().and_then(|(i, c)| {
             if nonzero.next().is_none() {
                 // c * a + o = 0 <=> a = -o/c
@@ -93,14 +101,11 @@ impl AffineExpression {
     }
 
     pub fn format(&self, namer: &impl WitnessColumnNamer) -> String {
-        self.coefficients
-            .iter()
-            .enumerate()
-            .filter(|(_, c)| !is_zero(c))
+        self.nonzero_coefficients()
             .map(|(i, c)| {
                 let name = namer.name(i);
                 if *c == 1.into() {
-                    name.to_string()
+                    name
                 } else if *c == (-1).into() {
                     format!("-{name}")
                 } else {
@@ -142,6 +147,12 @@ fn pow(
 
 fn inv(x: AbstractNumberType, m: AbstractNumberType) -> AbstractNumberType {
     pow(x, m.clone() - 2, m)
+}
+
+impl PartialEq for AffineExpression {
+    fn eq(&self, other: &Self) -> bool {
+        self.offset == other.offset && self.nonzero_coefficients().eq(other.nonzero_coefficients())
+    }
 }
 
 impl std::ops::Add for AffineExpression {
