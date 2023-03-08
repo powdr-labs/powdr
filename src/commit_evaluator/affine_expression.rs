@@ -100,7 +100,7 @@ impl AffineExpression {
             .map(|(i, c)| {
                 let name = namer.name(i);
                 if *c == 1.into() {
-                    name.clone()
+                    name.to_string()
                 } else if *c == (-1).into() {
                     format!("-{name}")
                 } else {

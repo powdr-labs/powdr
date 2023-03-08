@@ -102,7 +102,7 @@ impl ASMPILConverter {
     fn handle_register_declaration(
         &mut self,
         flags: &Option<RegisterFlag>,
-        name: &String,
+        name: &str,
         start: &usize,
     ) {
         let mut conditioned_updates = vec![];
@@ -110,8 +110,9 @@ impl ASMPILConverter {
         match flags {
             Some(RegisterFlag::IsPC) => {
                 assert_eq!(self.pc_name, None);
-                self.pc_name = Some(name.clone());
-                self.line_lookup.push((name.clone(), "line".to_string()));
+                self.pc_name = Some(name.to_string());
+                self.line_lookup
+                    .push((name.to_string(), "line".to_string()));
                 // This might be superfluous but makes it easier to determine that the PC needs to
                 // be zero in the first row.
                 self.pil.push(Statement::PolynomialIdentity(
@@ -125,7 +126,7 @@ impl ASMPILConverter {
             }
             Some(RegisterFlag::IsDefaultAssignment) => {
                 assert_eq!(self.default_assignment, None);
-                self.default_assignment = Some(name.clone());
+                self.default_assignment = Some(name.to_string());
             }
             None => {
                 let write_flag = format!("reg_write_{name}");
@@ -149,7 +150,7 @@ impl ASMPILConverter {
             }
         };
         self.registers.insert(
-            name.clone(),
+            name.to_string(),
             Register {
                 conditioned_updates,
                 default_update,
@@ -162,7 +163,7 @@ impl ASMPILConverter {
         &mut self,
         start: &usize,
         body: &Vec<InstructionBodyElement>,
-        name: &String,
+        name: &str,
         params: &Vec<InstructionParam>,
     ) {
         let instruction_flag = format!("instr_{name}");
@@ -220,7 +221,7 @@ impl ASMPILConverter {
         let instr = Instruction {
             params: params.clone(),
         };
-        self.instructions.insert(name.clone(), instr);
+        self.instructions.insert(name.to_string(), instr);
     }
 
     fn handle_assignment(
@@ -240,7 +241,7 @@ impl ASMPILConverter {
         })
     }
 
-    fn handle_instruction(&mut self, instr_name: &String, args: &Vec<Expression>) {
+    fn handle_instruction(&mut self, instr_name: &str, args: &Vec<Expression>) {
         let instr = &self.instructions[instr_name];
         assert_eq!(instr.params.len(), args.len());
         let mut value = vec![];
@@ -280,7 +281,7 @@ impl ASMPILConverter {
         assert_eq!(instruction_literal_args.len(), instr.params.len());
         self.code_lines.push(CodeLine {
             write_reg,
-            instruction: Some(instr_name.clone()),
+            instruction: Some(instr_name.to_string()),
             value,
             instruction_literal_args,
             ..Default::default()
@@ -680,8 +681,11 @@ fn substitute_vec(input: &[Expression], substitution: &HashMap<String, String>) 
     input.iter().map(|e| substitute(e, substitution)).collect()
 }
 
-fn substitute_string(input: &String, substitution: &HashMap<String, String>) -> String {
-    substitution.get(input).unwrap_or(input).clone()
+fn substitute_string(input: &str, substitution: &HashMap<String, String>) -> String {
+    substitution
+        .get(input)
+        .cloned()
+        .unwrap_or_else(|| input.to_string())
 }
 
 #[cfg(test)]

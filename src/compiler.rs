@@ -141,7 +141,7 @@ fn compile(
 fn write_polys_file(
     file: &mut impl Write,
     degree: DegreeType,
-    polys: &Vec<(&String, Vec<AbstractNumberType>)>,
+    polys: &Vec<(&str, Vec<AbstractNumberType>)>,
 ) {
     for i in 0..degree as usize {
         for (_name, constant) in polys {

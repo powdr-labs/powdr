@@ -6,9 +6,9 @@ use super::eval_error::{self, EvalError};
 
 pub trait SymbolicVariables {
     /// Acutal constant, not fixed polynomial
-    fn constant(&self, name: &String) -> Result<AffineExpression, EvalError>;
+    fn constant(&self, name: &str) -> Result<AffineExpression, EvalError>;
     /// Value of a polynomial (fixed or witness).
-    fn value(&self, name: &String, next: bool) -> Result<AffineExpression, EvalError>;
+    fn value(&self, name: &str, next: bool) -> Result<AffineExpression, EvalError>;
     fn format(&self, expr: AffineExpression) -> String;
 }
 

@@ -20,7 +20,7 @@ where
     machines: Vec<Box<dyn Machine>>,
     query_callback: Option<QueryCallback>,
     /// Maps the witness polynomial names to optional parameter and query string.
-    witness_cols: BTreeMap<&'a String, &'a WitnessColumn<'a>>,
+    witness_cols: BTreeMap<&'a str, &'a WitnessColumn<'a>>,
     /// Values of the witness polynomials
     current: Vec<Option<AbstractNumberType>>,
     /// Values of the witness polynomials in the next row
@@ -126,7 +126,7 @@ where
                     .iter()
                     .enumerate()
                     .filter_map(|(i, v)| if v.is_none() {
-                        Some(self.fixed_data.witness_cols[i].name.clone())
+                        Some(self.fixed_data.witness_cols[i].name.to_string())
                     } else {
                         None
                     })
@@ -322,7 +322,8 @@ where
         let rhs_row = if let Expression::PolynomialReference(poly) = right_key {
             // TODO we really need a search index on this.
             self.fixed_data.fixed_cols
-                .get(&poly.name)
+                .get(poly.name.as_str())
+                .cloned()
                 .and_then(|values| values.iter().position(|v| *v == left_key))
                 .ok_or_else(|| {
                     format!(
@@ -425,7 +426,7 @@ where
     fn contains_next_ref(&self, expr: &Expression) -> bool {
         match expr {
             Expression::PolynomialReference(poly) => {
-                poly.next && self.witness_cols.contains_key(&poly.name)
+                poly.next && self.witness_cols.contains_key(poly.name.as_str())
             }
             Expression::Tuple(items) => items.iter().any(|e| self.contains_next_ref(e)),
             Expression::BinaryOperation(l, _, r) => {
@@ -453,11 +454,11 @@ struct EvaluationData<'a> {
 }
 
 impl<'a> SymbolicVariables for EvaluationData<'a> {
-    fn constant(&self, name: &String) -> Result<AffineExpression, EvalError> {
+    fn constant(&self, name: &str) -> Result<AffineExpression, EvalError> {
         Ok(self.fixed_data.constants[name].clone().into())
     }
 
-    fn value(&self, name: &String, next: bool) -> Result<AffineExpression, EvalError> {
+    fn value(&self, name: &str, next: bool) -> Result<AffineExpression, EvalError> {
         // TODO arrays
         if let Some(id) = self.fixed_data.witness_ids.get(name) {
             // TODO we could also work with both p and p' as symoblic variables and only eliminate them at the end.

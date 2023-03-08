@@ -20,10 +20,10 @@ mod util;
 pub fn generate<'a>(
     analyzed: &'a Analyzed,
     degree: DegreeType,
-    fixed_cols: &[(&String, Vec<AbstractNumberType>)],
+    fixed_cols: &[(&str, Vec<AbstractNumberType>)],
     query_callback: Option<impl FnMut(&str) -> Option<AbstractNumberType>>,
     verbose: bool,
-) -> Vec<(&'a String, Vec<AbstractNumberType>)> {
+) -> Vec<(&'a str, Vec<AbstractNumberType>)> {
     let witness_cols: Vec<WitnessColumn> = analyzed
         .committed_polys_in_source_order()
         .iter()
@@ -47,7 +47,7 @@ pub fn generate<'a>(
         machine_extractor::split_out_machines(&fixed, &analyzed.identities, &witness_cols);
     let mut evaluator = evaluator::Evaluator::new(&fixed, identities, machines, query_callback);
 
-    let mut values: Vec<(&String, Vec<AbstractNumberType>)> =
+    let mut values: Vec<(&str, Vec<AbstractNumberType>)> =
         witness_cols.iter().map(|p| (p.name, Vec::new())).collect();
     for row in 0..degree as DegreeType {
         let row_values = evaluator.compute_next_row(row);
@@ -62,7 +62,7 @@ pub fn generate<'a>(
         }
     }
     for (name, data) in evaluator.machine_witness_col_values() {
-        let (_, col) = values.iter_mut().find(|(n, _)| *n == &name).unwrap();
+        let (_, col) = values.iter_mut().find(|(n, _)| *n == name).unwrap();
         *col = data;
     }
     values
@@ -76,9 +76,9 @@ type EvalResult = Result<Vec<(usize, AbstractNumberType)>, EvalError>;
 pub struct FixedData<'a> {
     degree: DegreeType,
     constants: &'a HashMap<String, AbstractNumberType>,
-    fixed_cols: HashMap<&'a String, &'a Vec<AbstractNumberType>>,
+    fixed_cols: HashMap<&'a str, &'a Vec<AbstractNumberType>>,
     witness_cols: &'a Vec<WitnessColumn<'a>>,
-    witness_ids: HashMap<&'a String, usize>,
+    witness_ids: HashMap<&'a str, usize>,
     verbose: bool,
 }
 
@@ -86,9 +86,9 @@ impl<'a> FixedData<'a> {
     pub fn new(
         degree: DegreeType,
         constants: &'a HashMap<String, AbstractNumberType>,
-        fixed_cols: HashMap<&'a String, &'a Vec<AbstractNumberType>>,
+        fixed_cols: HashMap<&'a str, &'a Vec<AbstractNumberType>>,
         witness_cols: &'a Vec<WitnessColumn<'a>>,
-        witness_ids: HashMap<&'a String, usize>,
+        witness_ids: HashMap<&'a str, usize>,
         verbose: bool,
     ) -> Self {
         FixedData {
@@ -103,21 +103,21 @@ impl<'a> FixedData<'a> {
 }
 
 impl<'a> WitnessColumnNamer for FixedData<'a> {
-    fn name(&self, i: usize) -> &String {
+    fn name(&self, i: usize) -> &str {
         self.witness_cols[i].name
     }
 }
 
 pub struct WitnessColumn<'a> {
     id: usize,
-    name: &'a String,
+    name: &'a str,
     query: Option<&'a Expression>,
 }
 
 impl<'a> WitnessColumn<'a> {
     pub fn new(
         id: usize,
-        name: &'a String,
+        name: &'a str,
         value: &'a Option<FunctionValueDefinition>,
     ) -> WitnessColumn<'a> {
         let query = if let Some(FunctionValueDefinition::Query(query)) = value {

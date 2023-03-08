@@ -13,7 +13,7 @@ pub trait Machine {
     // fn try_new(
     //     fixed_data: &'a FixedData<'a>,
     //     identities: Vec<&'a Identity>,
-    //     witness_names: HashSet<&'a String>,
+    //     witness_names: HashSet<&'a str>,
     // ) -> Option<Box<Self>>;
 
     /// Process o plookup. Not all values on the LHS need to be available.
