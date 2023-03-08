@@ -21,7 +21,7 @@ pub trait Machine {
     fn process_plookup(
         &mut self,
         fixed_data: &FixedData,
-        left: &[Option<AffineExpression>],
+        left: &[Result<AffineExpression, EvalError>],
         right: &SelectedExpressions,
     ) -> LookupResult;
 

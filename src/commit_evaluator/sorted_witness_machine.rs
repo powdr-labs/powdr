@@ -5,6 +5,7 @@ use crate::commit_evaluator::machine::LookupReturn;
 use crate::number::AbstractNumberType;
 
 use super::affine_expression::AffineExpression;
+use super::eval_error::EvalError;
 use super::machine::{LookupResult, Machine};
 use super::FixedData;
 
@@ -46,7 +47,7 @@ impl Machine for SortedWitnesses {
     fn process_plookup(
         &mut self,
         fixed_data: &FixedData,
-        left: &[Option<AffineExpression>],
+        left: &[Result<AffineExpression, EvalError>],
         right: &SelectedExpressions,
     ) -> LookupResult {
         assert!(right.selector.is_none());
@@ -70,7 +71,7 @@ impl Machine for SortedWitnesses {
         assert_eq!(rhs[0].unwrap(), &"Assembly.m_addr".to_string());
         assert_eq!(rhs[1].unwrap(), &"Assembly.m_value".to_string());
         match (&left[0], &left[1]) {
-            (Some(a), Some(v)) => match (a.constant_value(), v.constant_value()) {
+            (Ok(a), Ok(v)) => match (a.constant_value(), v.constant_value()) {
                 (Some(a), Some(v)) => match self.data.entry(a.clone()) {
                     Entry::Vacant(e) => {
                         if fixed_data.verbose {
@@ -106,8 +107,10 @@ impl Machine for SortedWitnesses {
                     .to_string()
                     .into()),
             },
-
-            _ => Ok(LookupReturn::Assignments(vec![])),
+            (Err(e), Ok(_)) | (Ok(_), Err(e)) => {
+                Err(format!("LHS value unknown for lookup: {e}").into())
+            }
+            (Err(e1), Err(e2)) => Err(format!("LHS values unknown for lookup: {e1}, {e2}").into()),
         }
     }
 
