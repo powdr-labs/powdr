@@ -45,7 +45,6 @@ impl Machine for FixedLookup {
             .iter()
             .any(|e| contains_witness_ref(e, fixed_data))
         {
-            println!("NA");
             return Ok(LookupReturn::NotApplicable);
         }
 

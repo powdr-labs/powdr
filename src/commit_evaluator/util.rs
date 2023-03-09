@@ -3,7 +3,7 @@ use crate::analyzer::Expression;
 use super::FixedData;
 
 pub trait WitnessColumnNamer {
-    fn name(&self, i: usize) -> &str;
+    fn name(&self, i: usize) -> String;
 }
 
 /// @returns true if the expression contains a reference to a next value of a witness column.
