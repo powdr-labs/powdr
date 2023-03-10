@@ -37,5 +37,11 @@ pub struct InstructionParam {
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum InstructionBodyElement {
     Expression(Expression),
-    PlookupIdentity(SelectedExpressions, SelectedExpressions),
+    PlookupIdentity(SelectedExpressions, PlookupOperator, SelectedExpressions),
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub enum PlookupOperator {
+    In,
+    Is,
 }

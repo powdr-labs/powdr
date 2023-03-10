@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-use crate::analyzer::{Expression, Identity, SelectedExpressions};
+use crate::analyzer::{Expression, Identity, IdentityKind, SelectedExpressions};
 use crate::commit_evaluator::eval_error;
 use crate::commit_evaluator::expression_evaluator::ExpressionEvaluator;
 use crate::commit_evaluator::machine::LookupReturn;
@@ -35,15 +35,17 @@ impl Machine for FixedLookup {
     fn process_plookup(
         &mut self,
         fixed_data: &FixedData,
+        kind: IdentityKind,
         left: &[Result<AffineExpression, EvalError>],
         right: &SelectedExpressions,
     ) -> LookupResult {
-        // This is a matching machine if the RHS is fully constant.
-        assert!(right.selector.is_none());
-        if right
-            .expressions
-            .iter()
-            .any(|e| contains_witness_ref(e, fixed_data))
+        // This is a matching machine if it is a plookup and the RHS is fully constant.
+        if kind != IdentityKind::Plookup
+            || right.selector.is_some()
+            || right
+                .expressions
+                .iter()
+                .any(|e| contains_witness_ref(e, fixed_data))
         {
             return Ok(LookupReturn::NotApplicable);
         }

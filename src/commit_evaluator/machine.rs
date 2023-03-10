@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
-use crate::{analyzer::SelectedExpressions, number::AbstractNumberType};
+use crate::analyzer::{IdentityKind, SelectedExpressions};
+use crate::number::AbstractNumberType;
 
 use super::{affine_expression::AffineExpression, eval_error::EvalError, FixedData};
 
@@ -21,6 +22,7 @@ pub trait Machine {
     fn process_plookup(
         &mut self,
         fixed_data: &FixedData,
+        kind: IdentityKind,
         left: &[Result<AffineExpression, EvalError>],
         right: &SelectedExpressions,
     ) -> LookupResult;

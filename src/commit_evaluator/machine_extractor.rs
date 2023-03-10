@@ -2,6 +2,7 @@ use std::collections::HashSet;
 
 use crate::analyzer::{Expression, Identity, SelectedExpressions};
 
+use super::double_sorted_witness_machine::DoubleSortedWitnesses;
 use super::fixed_lookup_machine::FixedLookup;
 use super::machine::Machine;
 
@@ -20,25 +21,26 @@ pub fn split_out_machines<'a>(
     // We could also split the machine into independent sub-machines.
 
     // The lookup-in-fixed-columns machine, it always exists with an empty set of witnesses.
-    let fixed_lookup = FixedLookup::try_new(fixed, &[], &Default::default()).unwrap();
+    let mut machines: Vec<Box<dyn Machine>> =
+        vec![FixedLookup::try_new(fixed, &[], &Default::default()).unwrap()];
+
     let witness_names = witness_cols.iter().map(|c| c.name).collect::<HashSet<_>>();
     let all_witnesses = ReferenceExtractor::new(witness_names.clone());
     // Extract all witness columns in the RHS of lookups.
-    let machine_witnesses = identities
+    let lookup_witnesses = identities
         .iter()
         .map(|i| all_witnesses.in_selected_expressions(&i.right))
         .reduce(|l, r| &l | &r)
         .unwrap_or_default();
-    if machine_witnesses.is_empty() {
-        return (vec![fixed_lookup], identities.iter().collect());
-    }
 
+    // Recursively extend the set to all witnesses connected through identities.
+    let machine_witnesses = all_connected_witnesses(&all_witnesses, lookup_witnesses, identities);
     let machine_witness_extractor = ReferenceExtractor::new(machine_witnesses.clone());
 
     // Split identities into those that only concern the machine
     // witnesses and those that concern any other witness.
-    let (machine_identities, identities): (Vec<_>, _) = identities.iter().partition(|i| {
-        // The identity has at least one a machine witness, but
+    let (machine_identities, base_identities): (Vec<_>, _) = identities.iter().partition(|i| {
+        // The identity has at least one machine witness, but
         // all referenced witnesses are machine witnesses.
         let mw = machine_witness_extractor.in_identity(i);
         !mw.is_empty() && all_witnesses.in_identity(i).is_subset(&mw)
@@ -49,9 +51,50 @@ pub fn split_out_machines<'a>(
 
     if let Some(machine) = SortedWitnesses::try_new(fixed, &machine_identities, &machine_witnesses)
     {
-        (vec![machine, fixed_lookup], identities)
-    } else {
-        (vec![fixed_lookup], identities)
+        machines.push(machine);
+    } else if let Some(machine) =
+        DoubleSortedWitnesses::try_new(fixed, &machine_identities, &machine_witnesses)
+    {
+        machines.push(machine);
+    }
+    (machines, base_identities)
+}
+
+fn all_connected_witnesses<'a>(
+    all_witnesses: &'a ReferenceExtractor,
+    mut witnesses: HashSet<&'a str>,
+    identities: &'a [Identity],
+) -> HashSet<&'a str> {
+    let mut count = witnesses.len();
+    loop {
+        for i in identities {
+            match i.kind {
+                crate::analyzer::IdentityKind::Polynomial => {
+                    // Any current witness in the identity adds all other witnesses.
+                    let in_identity = all_witnesses.in_identity(i);
+                    if in_identity.intersection(&witnesses).next().is_some() {
+                        witnesses.extend(in_identity);
+                    }
+                }
+                crate::analyzer::IdentityKind::Plookup
+                | crate::analyzer::IdentityKind::Permutation
+                | crate::analyzer::IdentityKind::Connect => {
+                    // If we already have witnesses on the LHS, include the RHS, but not vice-versa.
+                    let in_lhs = all_witnesses.in_selected_expressions(&i.left);
+                    let in_rhs = all_witnesses.in_selected_expressions(&i.right);
+                    if in_lhs.intersection(&witnesses).next().is_some() {
+                        witnesses.extend(in_lhs);
+                        witnesses.extend(in_rhs);
+                    } else if in_rhs.intersection(&witnesses).next().is_some() {
+                        witnesses.extend(in_rhs);
+                    }
+                }
+            };
+        }
+        if witnesses.len() == count {
+            return witnesses;
+        }
+        count = witnesses.len()
     }
 }
 
