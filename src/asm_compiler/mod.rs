@@ -199,22 +199,17 @@ impl ASMPILConverter {
                         )),
                     }
                 }
-                InstructionBodyElement::PlookupIdentity(left, right) => {
+                InstructionBodyElement::PlookupIdentity(left, op, right) => {
                     assert!(left.selector.is_none(), "LHS selector not supported, could and-combine with instruction flag later.");
-                    self.pil.push(Statement::PlookupIdentity(
-                        *start,
-                        SelectedExpressions {
-                            selector: Some(direct_reference(&instruction_flag)),
-                            expressions: substitute_vec(&left.expressions, &substitutions),
-                        },
-                        SelectedExpressions {
-                            selector: right
-                                .selector
-                                .as_ref()
-                                .map(|s| substitute(s, &substitutions)),
-                            expressions: substitute_vec(&right.expressions, &substitutions),
-                        },
-                    ));
+                    let left = SelectedExpressions {
+                        selector: Some(direct_reference(&instruction_flag)),
+                        expressions: substitute_vec(&left.expressions, &substitutions),
+                    };
+                    let right = substitute_selected_exprs(right, &substitutions);
+                    self.pil.push(match op {
+                        PlookupOperator::In => Statement::PlookupIdentity(*start, left, right),
+                        PlookupOperator::Is => Statement::PermutationIdentity(*start, left, right),
+                    })
                 }
             }
         }
@@ -674,6 +669,16 @@ fn substitute(input: &Expression, substitution: &HashMap<String, String>) -> Exp
         | Expression::Number(_)
         | Expression::String(_)
         | Expression::FreeInput(_) => input.clone(),
+    }
+}
+
+fn substitute_selected_exprs(
+    input: &SelectedExpressions,
+    substitution: &HashMap<String, String>,
+) -> SelectedExpressions {
+    SelectedExpressions {
+        selector: input.selector.as_ref().map(|s| substitute(s, substitution)),
+        expressions: substitute_vec(&input.expressions, substitution),
     }
 }
 

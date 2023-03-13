@@ -167,7 +167,16 @@ InstructionBodyElements: Vec<InstructionBodyElement> = {
 
 InstructionBodyElement: InstructionBodyElement = {
     <l:BoxedExpression> "=" <r:BoxedExpression> => InstructionBodyElement::Expression(Expression::BinaryOperation(l, BinaryOperator::Sub, r)),
-    <SelectedExpressions> "in" <SelectedExpressions> => InstructionBodyElement::PlookupIdentity(<>),
+    <SelectedExpressions> <PlookupOperator> <SelectedExpressions> => InstructionBodyElement::PlookupIdentity(<>),
+}
+
+// This is only valid in instructions, not in PIL in general.
+// "connect" is not supported because it does not support selectors
+// and we need that for the instruction.
+
+PlookupOperator: PlookupOperator = {
+    "in" => PlookupOperator::In,
+    "is" => PlookupOperator::Is,
 }
 
 InstructionParamList: Vec<InstructionParam> = {

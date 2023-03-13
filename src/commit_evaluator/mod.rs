@@ -7,6 +7,7 @@ use self::eval_error::EvalError;
 use self::util::WitnessColumnNamer;
 
 mod affine_expression;
+mod double_sorted_witness_machine;
 mod eval_error;
 mod evaluator;
 mod expression_evaluator;

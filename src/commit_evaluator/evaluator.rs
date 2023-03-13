@@ -83,7 +83,9 @@ where
                     IdentityKind::Polynomial => {
                         self.process_polynomial_identity(identity.left.selector.as_ref().unwrap())
                     }
-                    IdentityKind::Plookup => self.process_plookup(identity),
+                    IdentityKind::Plookup | IdentityKind::Permutation => {
+                        self.process_plookup(identity)
+                    }
                     _ => Err("Unsupported lookup type".to_string().into()),
                 }
                 .map_err(|err| {
@@ -260,9 +262,6 @@ where
                 }
             };
         }
-        if identity.right.selector.is_some() {
-            return Err("Selectors at the RHS not yet supported.".to_string().into());
-        }
 
         let left = identity
             .left
@@ -278,7 +277,7 @@ where
         for m in &mut self.machines {
             // TODO also consider the reasons above.
             if let LookupReturn::Assignments(assignments) =
-                m.process_plookup(self.fixed_data, &left, &identity.right)?
+                m.process_plookup(self.fixed_data, identity.kind, &left, &identity.right)?
             {
                 return Ok(assignments);
             }

@@ -120,10 +120,13 @@ impl Machine for SortedWitnesses {
     fn process_plookup(
         &mut self,
         fixed_data: &FixedData,
+        kind: IdentityKind,
         left: &[Result<AffineExpression, EvalError>],
         right: &SelectedExpressions,
     ) -> LookupResult {
-        assert!(right.selector.is_none());
+        if kind != IdentityKind::Plookup || right.selector.is_some() {
+            return Ok(LookupReturn::NotApplicable);
+        }
         let rhs = right
             .expressions
             .iter()
