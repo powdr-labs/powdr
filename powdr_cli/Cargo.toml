@@ -11,6 +11,7 @@ compiler = { path = "../compiler" }
 parser = { path = "../parser" }
 riscv = { path = "../riscv" }
 number = { path = "../number" }
+halo2 = { path = "../halo2" }
 
 [[bin]]
 name = "powdr"

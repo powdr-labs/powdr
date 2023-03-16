@@ -3,7 +3,7 @@
 use clap::{Parser, Subcommand};
 use env_logger::{Builder, Target};
 use log::LevelFilter;
-use number::{FieldElement, GoldilocksField};
+use number::{Bn254Field, FieldElement, GoldilocksField};
 use std::{fs, io::Write, path::Path};
 
 #[derive(Parser)]
@@ -83,6 +83,18 @@ enum Commands {
         force: bool,
     },
 
+    /// Apply the Halo2 workflow on an input file and prover values.
+    /// That means parsing, analysis, witness generation,
+    /// and Halo2 mock proving.
+    Halo2MockProver {
+        /// Input file
+        file: String,
+
+        /// Comma-separated list of free inputs (numbers).
+        #[arg(short, long)]
+        inputs: String,
+    },
+
     /// Parses and prints the PIL file on stdout.
     Reformat {
         /// Input file
@@ -156,6 +168,16 @@ fn main() {
                 Path::new(&output_directory),
                 force,
             );
+        }
+        Commands::Halo2MockProver { file, inputs } => {
+            let inputs: Vec<_> = inputs
+                .split(',')
+                .map(|x| x.trim())
+                .filter(|x| !x.is_empty())
+                .map(Bn254Field::from_str)
+                .collect();
+
+            halo2::mock_prove_asm(&file, &inputs);
         }
     }
 }

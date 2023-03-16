@@ -18,12 +18,14 @@ pub fn analyze_string<T: FieldElement>(contents: &str) -> Analyzed<T> {
     pil_analyzer::process_pil_file_contents(contents)
 }
 
+#[derive(Debug)]
 pub enum StatementIdentifier {
     Definition(String),
     PublicDeclaration(String),
     Identity(usize),
 }
 
+#[derive(Debug)]
 pub struct Analyzed<T> {
     /// Constants are not namespaced!
     pub constants: HashMap<String, T>,
@@ -109,6 +111,7 @@ impl Polynomial {
     }
 }
 
+#[derive(Debug)]
 pub enum FunctionValueDefinition<T> {
     Mapping(Expression<T>),
     Array(Vec<RepeatedArray<T>>),
@@ -116,6 +119,7 @@ pub enum FunctionValueDefinition<T> {
 }
 
 /// An array of elements that might be repeated (the whole list is repeated).
+#[derive(Debug)]
 pub struct RepeatedArray<T> {
     pub values: Vec<Expression<T>>,
     pub repetitions: DegreeType,
@@ -134,6 +138,7 @@ impl<T> RepeatedArray<T> {
     }
 }
 
+#[derive(Debug)]
 pub struct PublicDeclaration {
     pub id: u64,
     pub source: SourceRef,
