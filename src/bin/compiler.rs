@@ -1,6 +1,7 @@
 use clap::{Parser, Subcommand};
-use powdr::compiler::no_callback;
+use powdr::compiler;
 use powdr::number::AbstractNumberType;
+use powdr::{compiler::no_callback, halo2_backend};
 use std::{fs, path::Path};
 
 #[derive(Parser)]
@@ -30,6 +31,20 @@ enum Commands {
         #[arg(short, long)]
         #[arg(default_value_t = false)]
         force: bool,
+
+        /// Verbose output (provides a full execution trace).
+        #[arg(short, long)]
+        #[arg(default_value_t = false)]
+        verbose: bool,
+    },
+
+    Nark {
+        /// Input file
+        file: String,
+
+        /// Comma-separated list of free inputs (numbers).
+        #[arg(short, long)]
+        inputs: String,
 
         /// Verbose output (provides a full execution trace).
         #[arg(short, long)]
@@ -69,13 +84,8 @@ fn main() {
                 .filter(|x| !x.is_empty())
                 .map(|x| x.parse().unwrap())
                 .collect::<Vec<AbstractNumberType>>();
-            powdr::compiler::compile_asm(
-                &file,
-                inputs,
-                Path::new(&output_directory),
-                force,
-                verbose,
-            );
+
+            compiler::compile_asm(&file, inputs, Path::new(&output_directory), force, verbose);
         }
         Commands::Reformat { file } => {
             let contents = fs::read_to_string(&file).unwrap();
@@ -93,6 +103,20 @@ fn main() {
                 Path::new(&output_directory),
                 no_callback(),
             );
+        }
+        Commands::Nark {
+            file,
+            inputs,
+            verbose,
+        } => {
+            let inputs = inputs
+                .split(',')
+                .map(|x| x.trim())
+                .filter(|x| !x.is_empty())
+                .map(|x| x.parse().unwrap())
+                .collect::<Vec<AbstractNumberType>>();
+
+            halo2_backend::prove_asm(&file, inputs, verbose);
         }
     }
 }

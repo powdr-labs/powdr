@@ -12,6 +12,19 @@ json = "^0.12"
 lalrpop-util = {version = "^0.19", features = ["lexer"]}
 mktemp = "0.5.0"
 num-bigint = "^0.4"
+polyexen = { path = "../polyexen" }
+halo2_proofs = "0.2"
+lazy_static = "1.4.0"
+prettytable = "0.10.0"
 
 [build-dependencies]
 lalrpop = "^0.19"
+
+[patch."https://github.com/privacy-scaling-explorations/halo2.git"]
+halo2_proofs = { path = "../halo2/halo2_proofs" }
+
+[patch."https://github.com/privacy-scaling-explorations/halo2wrong.git"]
+halo2wrong = { path = "../halo2wrong/halo2wrong" }
+
+[patch.crates-io]
+halo2_proofs = { path = "../halo2/halo2_proofs" }

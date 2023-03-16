@@ -15,12 +15,14 @@ pub fn analyze_string(contents: &str) -> Analyzed {
     pil_analyzer::process_pil_file_contents(contents)
 }
 
+#[derive(Debug)]
 pub enum StatementIdentifier {
     Definition(String),
     PublicDeclaration(String),
     Identity(usize),
 }
 
+#[derive(Debug)]
 pub struct Analyzed {
     /// Constants are not namespaced!
     pub constants: HashMap<String, AbstractNumberType>,
@@ -90,6 +92,7 @@ impl Analyzed {
     }
 }
 
+#[derive(Debug)]
 pub struct Polynomial {
     pub id: u64,
     pub source: SourceRef,
@@ -105,12 +108,14 @@ impl Polynomial {
     }
 }
 
+#[derive(Debug)]
 pub enum FunctionValueDefinition {
     Mapping(Expression),
     Array(Vec<Expression>),
     Query(Expression),
 }
 
+#[derive(Debug)]
 pub struct PublicDeclaration {
     pub id: u64,
     pub source: SourceRef,
