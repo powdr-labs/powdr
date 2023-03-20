@@ -12,7 +12,8 @@ use num_bigint::{BigInt, BigUint, Sign};
 use polyexen::expr::{Column, ColumnKind, Expr, PlonkVar};
 use polyexen::plaf::backends::halo2::PlafH2Circuit;
 use polyexen::plaf::{
-    ColumnFixed, ColumnWitness, Columns, Info, Lookup, Plaf, PlafDisplayBaseTOML, Poly, Witness,
+    ColumnFixed, ColumnPublic, ColumnPublicValue, ColumnWitness, Columns, Info, Lookup, Plaf,
+    PlafDisplayBaseTOML, Poly, Witness,
 };
 use prettytable::{Row, Table};
 
@@ -30,31 +31,16 @@ use num_traits::{One, Zero};
 
 // Follow dependency installation instrucions from https://github.com/ed255/polyexen-demo
 
+const MAX_PUBLIC_INPUTS: usize = 12;
+
 fn modinv(n: &BigInt, mut p: &BigInt) -> BigInt {
-    let mut n = n.clone();
-
-    if p.is_one() {
-        return BigInt::one();
-    }
-    if n < BigInt::zero() {
-        n = p - -n;
-    }
-
-    let (mut a, mut m, mut x, mut inv) = (n.clone(), p.clone(), BigInt::zero(), BigInt::one());
-
-    while a > BigInt::one() {
-        let (div, rem) = a.div_rem(&m);
-        inv -= div * &x;
-        a = rem;
-        std::mem::swap(&mut a, &mut m);
-        std::mem::swap(&mut x, &mut inv);
-    }
+    let inv = n.extended_gcd(&p).x;
 
     if inv < BigInt::zero() {
-        inv += p
+        inv + p
+    } else {
+        inv
     }
-
-    inv
 }
 
 fn print_table(data: &[(&str, Vec<BigInt>)]) {
@@ -470,6 +456,13 @@ fn analyzed_to_circuit(
 
     // build Plaf columns. -------------
 
+    let exports = (0..MAX_PUBLIC_INPUTS)
+        .map(|offset| ColumnPublicValue {
+            witness_column: input_value_col,
+            offset,
+        })
+        .collect();
+
     let columns = Columns {
         fixed: constants
             .iter()
@@ -479,7 +472,7 @@ fn analyzed_to_circuit(
             .iter()
             .map(|(name, _)| ColumnWitness::new(name.to_string(), 0))
             .collect(),
-        public: vec![],
+        public: vec![ColumnPublic::new(String::from("instance")).export(exports)],
     };
 
     // build Plaf info. -------------
@@ -640,7 +633,27 @@ pub fn prove_asm(file_name: &str, inputs: Vec<AbstractNumberType>, verbose: bool
 
     println!("{}", PlafDisplayBaseTOML(&circuit.plaf));
 
-    let mock_prover = MockProver::<Fr>::run(k, &circuit, vec![]).unwrap();
+    let inputs: Vec<_> = inputs
+        .iter()
+        .map(|n| {
+            Fr::from_bytes(
+                &n.to_biguint()
+                    .unwrap()
+                    .to_bytes_le()
+                    .into_iter()
+                    .chain(std::iter::repeat(0))
+                    .take(32)
+                    .collect::<Vec<_>>()
+                    .try_into()
+                    .unwrap(),
+            )
+            .unwrap()
+        })
+        .chain(std::iter::repeat(Fr::zero()))
+        .take(MAX_PUBLIC_INPUTS)
+        .collect();
+
+    let mock_prover = MockProver::<Fr>::run(k, &circuit, vec![inputs]).unwrap();
     mock_prover.assert_satisfied();
 
     println!("cool, works");
