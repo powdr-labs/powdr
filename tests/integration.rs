@@ -167,3 +167,12 @@ fn test_bit_access() {
         Some(0x20000),
     );
 }
+
+#[test]
+fn functional_instructions() {
+    verify_asm(
+        "functional_instructions.asm",
+        [20].iter().map(|&x| x.into()).collect(),
+        None,
+    );
+}

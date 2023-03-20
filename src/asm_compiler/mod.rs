@@ -55,7 +55,19 @@ impl ASMPILConverter {
                 }
                 ASMStatement::InlinePil(_start, statements) => self.pil.extend(statements.clone()),
                 ASMStatement::Assignment(start, write_regs, assign_reg, value) => {
-                    self.handle_assignment(*start, write_regs, assign_reg, value.as_ref())
+                    match value.as_ref() {
+                        Expression::FunctionCall(function_name, args) => {
+                            self.handle_functional_instruction(
+                                write_regs,
+                                assign_reg,
+                                function_name,
+                                args,
+                            );
+                        }
+                        _ => {
+                            self.handle_assignment(*start, write_regs, assign_reg, value.as_ref());
+                        }
+                    }
                 }
                 ASMStatement::Instruction(_start, instr_name, args) => {
                     self.handle_instruction(instr_name, args)
@@ -248,6 +260,27 @@ impl ASMPILConverter {
             value: [(assign_reg, value)].into(),
             ..Default::default()
         })
+    }
+
+    fn handle_functional_instruction(
+        &mut self,
+        write_regs: &Vec<String>,
+        assign_reg: &Option<String>,
+        instr_name: &str,
+        args: &Vec<Expression>,
+    ) {
+        assert!(write_regs.len() == 1);
+        assert!(assign_reg.is_some());
+        let instr = &self.instructions[instr_name];
+        assert_eq!(instr.params.len(), args.len() + 1);
+        let last_param = instr.params.last().unwrap();
+        assert!(last_param.param_type.is_none());
+        assert!(last_param.assignment_reg.0.is_none());
+        assert!(last_param.assignment_reg.1 == Some(assign_reg.clone()));
+
+        let mut args = args.clone();
+        args.push(direct_reference(write_regs.first().unwrap()));
+        self.handle_instruction(instr_name, &args);
     }
 
     fn handle_instruction(&mut self, instr_name: &str, args: &Vec<Expression>) {
