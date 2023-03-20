@@ -16,6 +16,8 @@ polyexen = { path = "../polyexen" }
 halo2_proofs = "0.2"
 lazy_static = "1.4.0"
 prettytable = "0.10.0"
+num-traits = "0.2.15"
+num-integer = "0.1.45"
 
 [build-dependencies]
 lalrpop = "^0.19"
