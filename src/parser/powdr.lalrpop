@@ -154,7 +154,7 @@ RegisterDeclaration: ASMStatement = {
 
 RegisterFlag: RegisterFlag = {
     "@pc" => RegisterFlag::IsPC,
-    "<=" => RegisterFlag::IsDefaultAssignment
+    "<=" => RegisterFlag::IsAssignment
 }
 
 InstructionDeclaration: ASMStatement = {

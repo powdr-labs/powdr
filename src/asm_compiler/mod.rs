@@ -6,6 +6,7 @@ use crate::parser::ast::*;
 use crate::parser::{self, ParseError};
 
 pub fn compile<'a>(file_name: Option<&str>, input: &'a str) -> Result<PILFile, ParseError<'a>> {
+    // TODO configure the degree
     let max_steps = 1024;
     parser::parse_asm(file_name, input).map(|ast| ASMPILConverter::new().convert(ast, max_steps))
 }
@@ -14,7 +15,6 @@ pub fn compile<'a>(file_name: Option<&str>, input: &'a str) -> Result<PILFile, P
 struct ASMPILConverter {
     pil: Vec<Statement>,
     pc_name: Option<String>,
-    default_assignment: Option<String>,
     registers: BTreeMap<String, Register>,
     instructions: BTreeMap<String, Instruction>,
     code_lines: Vec<CodeLine>,
@@ -30,7 +30,6 @@ impl ASMPILConverter {
     }
 
     fn convert(&mut self, input: ASMFile, max_steps: usize) -> PILFile {
-        // TODO configure the degree
         self.pil.push(Statement::Namespace(
             0,
             "Assembly".to_string(),
@@ -63,7 +62,10 @@ impl ASMPILConverter {
                 }),
             }
         }
-        self.create_constraints_for_assignment_reg();
+        let assignment_registers = self.assignment_registers().cloned().collect::<Vec<_>>();
+        for reg in assignment_registers {
+            self.create_constraints_for_assignment_reg(&reg);
+        }
 
         self.pil.extend(
             self.registers
@@ -124,13 +126,10 @@ impl ASMPILConverter {
                 conditioned_updates.push((next_reference("first_step"), build_number(0.into())));
                 default_update = Some(build_add(direct_reference(name), build_number(1.into())));
             }
-            Some(RegisterFlag::IsDefaultAssignment) => {
-                assert_eq!(self.default_assignment, None);
-                self.default_assignment = Some(name.to_string());
+            Some(RegisterFlag::IsAssignment) => {
+                // no updates
             }
             None => {
-                let write_flag = format!("reg_write_{name}");
-                self.create_witness_fixed_pair(*start, &write_flag);
                 // This might be superfluous but makes it easier to determine that the register needs to
                 // be zero in the first row.
                 self.pil.push(Statement::PolynomialIdentity(
@@ -141,11 +140,15 @@ impl ASMPILConverter {
                     // The value here is actually irrelevant, it is only important
                     // that "first_step'" is included to compute the "default condition"
                     (next_reference("first_step"), build_number(0.into())),
-                    (
-                        direct_reference(&write_flag),
-                        direct_reference(self.default_assignment_reg()),
-                    ),
                 ];
+                let assignment_regs = self.assignment_registers().cloned().collect::<Vec<_>>();
+                // TODO do this at the same place where we set up the read flags.
+                for reg in assignment_regs {
+                    let write_flag = format!("reg_write_{reg}_{name}");
+                    self.create_witness_fixed_pair(*start, &write_flag);
+                    conditioned_updates
+                        .push((direct_reference(&write_flag), direct_reference(&reg)));
+                }
                 default_update = Some(direct_reference(name));
             }
         };
@@ -154,6 +157,7 @@ impl ASMPILConverter {
             Register {
                 conditioned_updates,
                 default_update,
+                is_assignment: *flags == Some(RegisterFlag::IsAssignment),
             },
         );
         self.pil.push(witness_column(*start, name, None));
@@ -223,15 +227,21 @@ impl ASMPILConverter {
         &mut self,
         _start: usize,
         write_regs: &Vec<String>,
-        _assign_reg: &Option<String>,
+        assign_reg: &Option<String>,
         value: &Expression,
     ) {
         assert!(write_regs.len() <= 1);
+        assert!(
+            assign_reg.is_some(),
+            "Implicit assign register not yet supported."
+        );
+        let assign_reg = assign_reg.clone().unwrap();
         let value = self.process_assignment_value(value);
-        // TODO handle assign register
         self.code_lines.push(CodeLine {
-            write_reg: write_regs.first().cloned(),
-            value,
+            write_regs: [(assign_reg.clone(), write_regs.clone())]
+                .into_iter()
+                .collect(),
+            value: [(assign_reg, value)].into(),
             ..Default::default()
         })
     }
@@ -239,26 +249,27 @@ impl ASMPILConverter {
     fn handle_instruction(&mut self, instr_name: &str, args: &Vec<Expression>) {
         let instr = &self.instructions[instr_name];
         assert_eq!(instr.params.len(), args.len());
-        let mut value = vec![];
+        let mut value = BTreeMap::new();
         let mut instruction_literal_args = vec![];
-        let mut write_reg = None;
+        let mut write_regs = BTreeMap::new();
         for (p, a) in instr.params.iter().zip(args) {
             // TODO literal arguments can actually only be passed in.
             if p.assignment_reg.0.is_some() {
-                // TODO this ignores which param it is, but it's ok
-                // TODO if we have  more than one assignment op, we cannot just use
-                // value here anymore. But I guess the same is for assignment.
-                // TODO check that we do not use the same assignment var twice
-                assert!(value.is_empty());
-                value = self.process_assignment_value(a);
+                // We read a value into the assignment register "reg".
+                let reg = p.assignment_reg.0.as_ref().unwrap().as_ref();
+                assert!(reg.is_some());
+                assert!(!value.contains_key(reg.unwrap()));
+                value.insert(reg.unwrap().clone(), self.process_assignment_value(a));
                 instruction_literal_args.push(None);
             } else if p.assignment_reg.1.is_some() {
-                // TODO this ignores which param it is, but it's ok
-                // TODO if we have  more than one assignment op, we cannot just use
-                // value here anymore. But I guess the same is for assignment.
+                // Output a value trough assignment register "reg"
+                let reg = p.assignment_reg.1.as_ref().unwrap().as_ref();
+                assert!(reg.is_some());
                 if let Expression::PolynomialReference(r) = a {
-                    assert!(write_reg.is_none());
-                    write_reg = Some(r.name.clone());
+                    assert!(!r.next);
+                    assert!(r.index.is_none());
+                    assert!(!write_regs.contains_key(&r.name));
+                    write_regs.insert(reg.unwrap().clone(), vec![r.name.clone()]);
                 } else {
                     panic!("Expected direct register to assign to in instruction call.");
                 }
@@ -275,7 +286,7 @@ impl ASMPILConverter {
         }
         assert_eq!(instruction_literal_args.len(), instr.params.len());
         self.code_lines.push(CodeLine {
-            write_reg,
+            write_regs,
             instruction: Some(instr_name.to_string()),
             value,
             instruction_literal_args,
@@ -352,22 +363,17 @@ impl ASMPILConverter {
         expr.into_iter().map(|(v, c)| (-v, c)).collect()
     }
 
-    fn create_constraints_for_assignment_reg(&mut self) {
-        let assign_const = format!("{}_const", self.default_assignment_reg());
+    fn create_constraints_for_assignment_reg(&mut self, register: &str) {
+        let assign_const = format!("{register}_const");
         self.create_witness_fixed_pair(0, &assign_const);
-        let read_free = format!("{}_read_free", self.default_assignment_reg());
+        let read_free = format!("{register}_read_free");
         self.create_witness_fixed_pair(0, &read_free);
-        let free_value = format!("{}_free_value", self.default_assignment_reg());
-        let registers = self
-            .registers
-            .keys()
-            .filter(|name| **name != self.default_assignment_reg())
-            .cloned()
-            .collect::<Vec<_>>();
-        let assign_constraint = registers
+        let free_value = format!("{register}_free_value");
+        let regular_registers = self.regular_registers().cloned().collect::<Vec<_>>();
+        let assign_constraint = regular_registers
             .iter()
             .map(|name| {
-                let read_coefficient = format!("read_{}_{name}", self.default_assignment_reg());
+                let read_coefficient = format!("read_{register}_{name}");
                 self.create_witness_fixed_pair(0, &read_coefficient);
                 build_mul(direct_reference(&read_coefficient), direct_reference(name))
             })
@@ -378,10 +384,7 @@ impl ASMPILConverter {
             .reduce(build_add);
         self.pil.push(Statement::PolynomialIdentity(
             0,
-            build_sub(
-                direct_reference(self.default_assignment_reg()),
-                assign_constraint.unwrap(),
-            ),
+            build_sub(direct_reference(register), assign_constraint.unwrap()),
         ));
     }
 
@@ -400,53 +403,66 @@ impl ASMPILConverter {
             .iter()
             .map(|n| (n, vec![AbstractNumberType::from(0); self.code_lines.len()]))
             .collect::<BTreeMap<_, _>>();
-        let mut free_value_queries = vec![
-            direct_reference("i"),
-            direct_reference(self.pc_name.as_ref().unwrap()),
-        ];
+        let mut free_value_queries = self
+            .assignment_registers()
+            .map(|r| {
+                (
+                    r.clone(),
+                    vec![
+                        direct_reference("i"),
+                        direct_reference(self.pc_name.as_ref().unwrap()),
+                    ],
+                )
+            })
+            .collect::<BTreeMap<_, _>>();
 
         let label_positions = self.compute_label_positions();
         for (i, line) in self.code_lines.iter().enumerate() {
-            if let Some(reg) = &line.write_reg {
-                program_constants
-                    .get_mut(&format!("p_reg_write_{reg}"))
-                    .unwrap()[i] = 1.into();
+            for (assign_reg, writes) in &line.write_regs {
+                for reg in writes {
+                    program_constants
+                        .get_mut(&format!("p_reg_write_{assign_reg}_{reg}"))
+                        .unwrap()[i] = 1.into();
+                }
             }
-            for (coeff, item) in &line.value {
-                match item {
-                    AffineExpressionComponent::Register(reg) => {
-                        program_constants
-                            .get_mut(&format!("p_read_{}_{reg}", self.default_assignment_reg()))
-                            .unwrap()[i] = coeff.clone();
-                    }
-                    AffineExpressionComponent::Constant => {
-                        program_constants
-                            .get_mut(&format!("p_{}_const", self.default_assignment_reg()))
-                            .unwrap()[i] = coeff.clone()
-                    }
-                    AffineExpressionComponent::FreeInput(expr) => {
-                        // The program just stores that we read a free input, the actual value
-                        // is part of the execution trace that generates the witness.
-                        program_constants
-                            .get_mut(&format!("p_{}_read_free", self.default_assignment_reg()))
-                            .unwrap()[i] = coeff.clone();
-                        free_value_queries.push(Expression::Tuple(vec![
-                            build_number(i.into()),
-                            expr.clone(),
-                        ]));
+            for (assign_reg, value) in &line.value {
+                for (coeff, item) in value {
+                    match item {
+                        AffineExpressionComponent::Register(reg) => {
+                            program_constants
+                                .get_mut(&format!("p_read_{assign_reg}_{reg}"))
+                                .unwrap()[i] = coeff.clone();
+                        }
+                        AffineExpressionComponent::Constant => {
+                            program_constants
+                                .get_mut(&format!("p_{assign_reg}_const"))
+                                .unwrap()[i] = coeff.clone()
+                        }
+                        AffineExpressionComponent::FreeInput(expr) => {
+                            // The program just stores that we read a free input, the actual value
+                            // is part of the execution trace that generates the witness.
+                            program_constants
+                                .get_mut(&format!("p_{assign_reg}_read_free"))
+                                .unwrap()[i] = coeff.clone();
+                            free_value_queries.get_mut(assign_reg).unwrap().push(
+                                Expression::Tuple(vec![build_number(i.into()), expr.clone()]),
+                            );
+                        }
                     }
                 }
             }
             if let Some(instr) = &line.instruction {
-                if line.write_reg.is_some() {
-                    // If an instruction stores a value, we need to "read" it from the free input
-                    // because we assume that the assignment register is assigned in inline
-                    // pil. TODO This is horrible and needs to be fixed by a proper mechanism
-                    // that enforces that the assignment register is actually properly constrained.
-                    assert!(line.value.is_empty());
-                    program_constants
-                        .get_mut(&format!("p_{}_read_free", self.default_assignment_reg()))
-                        .unwrap()[i] = 1.into();
+                for (reg, writes) in &line.write_regs {
+                    if !writes.is_empty() {
+                        // If an instruction stores a value, assume that the assignment register is
+                        // assigned in inline pil. We need to allow for "wiggle room" by setting
+                        // the free input to 1.
+                        // TODO This is horrible and needs to be fixed by a proper mechanism
+                        // that enforces that the assignment register is actually properly constrained.
+                        program_constants
+                            .get_mut(&format!("p_{reg}_read_free"))
+                            .unwrap()[i] = 1.into();
+                    }
                 }
                 program_constants
                     .get_mut(&format!("p_instr_{instr}"))
@@ -467,15 +483,21 @@ impl ASMPILConverter {
                 assert!(line.instruction_literal_args.is_empty());
             }
         }
-        let free_value = format!("{}_free_value", self.default_assignment_reg());
-        self.pil.push(witness_column(
-            0,
-            &free_value,
-            Some(FunctionDefinition::Query(
-                vec!["i".to_string()],
-                Expression::Tuple(free_value_queries),
-            )),
-        ));
+        let free_value_pil = self
+            .assignment_registers()
+            .map(|reg| {
+                let free_value = format!("{reg}_free_value");
+                witness_column(
+                    0,
+                    &free_value,
+                    Some(FunctionDefinition::Query(
+                        vec!["i".to_string()],
+                        Expression::Tuple(free_value_queries[reg].clone()),
+                    )),
+                )
+            })
+            .collect::<Vec<_>>();
+        self.pil.extend(free_value_pil);
         for (name, values) in program_constants {
             self.pil.push(Statement::PolynomialConstantDefinition(
                 0,
@@ -502,8 +524,17 @@ impl ASMPILConverter {
         self.program_constant_names.push(fixed_name);
     }
 
-    fn default_assignment_reg(&self) -> &str {
-        self.default_assignment.as_ref().unwrap()
+    fn assignment_registers(&self) -> impl Iterator<Item = &String> {
+        self.registers
+            .iter()
+            .filter_map(|(n, r)| if r.is_assignment { Some(n) } else { None })
+    }
+
+    fn regular_registers(&self) -> impl Iterator<Item = &String> {
+        // TODO shouldn't we also filter out the PC?
+        self.registers
+            .iter()
+            .filter_map(|(n, r)| if r.is_assignment { None } else { Some(n) })
     }
 }
 
@@ -513,6 +544,7 @@ struct Register {
     /// TODO check that condition is bool
     conditioned_updates: Vec<(Expression, Expression)>,
     default_update: Option<Expression>,
+    is_assignment: bool,
 }
 
 impl Register {
@@ -552,10 +584,15 @@ struct Instruction {
     params: Vec<InstructionParam>,
 }
 
+// TODO turn this into an enum, split into
+// label, assignment, instruction.
 #[derive(Default)]
 struct CodeLine {
-    write_reg: Option<String>,
-    value: Vec<(AbstractNumberType, AffineExpressionComponent)>,
+    /// Which regular registers to assign to, from which assignment register
+    /// Maps assignment register to a vector of regular registers.
+    write_regs: BTreeMap<String, Vec<String>>,
+    /// The value on the right-hand-side, per assignment register
+    value: BTreeMap<String, Vec<(AbstractNumberType, AffineExpressionComponent)>>,
     label: Option<String>,
     instruction: Option<String>,
     // TODO we only support labels for now.
@@ -707,11 +744,11 @@ pol constant first_step = [1];
 (first_step * pc) = 0;
 pol commit pc;
 pol commit X;
-pol commit reg_write_A;
 (first_step * A) = 0;
+pol commit reg_write_X_A;
 pol commit A;
-pol commit reg_write_CNT;
 (first_step * CNT) = 0;
+pol commit reg_write_X_CNT;
 pol commit CNT;
 pol commit XInv;
 pol commit XIsZero;
@@ -731,8 +768,8 @@ pol commit read_X_A;
 pol commit read_X_CNT;
 pol commit read_X_pc;
 X = (((((read_X_A * A) + (read_X_CNT * CNT)) + (read_X_pc * pc)) + X_const) + (X_read_free * X_free_value));
-A' = (((first_step' * 0) + (reg_write_A * X)) + ((1 - (first_step' + reg_write_A)) * A));
-CNT' = ((((first_step' * 0) + (reg_write_CNT * X)) + (instr_dec_CNT * (CNT - 1))) + ((1 - ((first_step' + reg_write_CNT) + instr_dec_CNT)) * CNT));
+A' = (((first_step' * 0) + (reg_write_X_A * X)) + ((1 - (first_step' + reg_write_X_A)) * A));
+CNT' = ((((first_step' * 0) + (reg_write_X_CNT * X)) + (instr_dec_CNT * (CNT - 1))) + ((1 - ((first_step' + reg_write_X_CNT) + instr_dec_CNT)) * CNT));
 pc' = ((((first_step' * 0) + (instr_jmpz * ((XIsZero * instr_jmpz_param_l) + ((1 - XIsZero) * (pc + 1))))) + (instr_jmp * instr_jmp_param_l)) + ((1 - ((first_step' + instr_jmpz) + instr_jmp)) * (pc + 1)));
 pol constant line(i) { i };
 pol commit X_free_value(i) query (i, pc, (0, ("input", 1)), (3, ("input", (CNT + 1))), (7, ("input", 0)));
@@ -747,9 +784,10 @@ pol constant p_instr_jmpz_param_l = [0, 0, 6, 0, 0, 0, 0, 0, 0];
 pol constant p_read_X_A = [0, 0, 0, 1, 0, 0, 0, 1, 1];
 pol constant p_read_X_CNT = [0, 0, 1, 0, 0, 0, 0, 0, 0];
 pol constant p_read_X_pc = [0, 0, 0, 0, 0, 0, 0, 0, 0];
-pol constant p_reg_write_A = [0, 0, 0, 1, 0, 0, 0, 1, 0];
-pol constant p_reg_write_CNT = [1, 0, 0, 0, 0, 0, 0, 0, 0];
-{ pc, reg_write_A, reg_write_CNT, instr_jmpz, instr_jmpz_param_l, instr_jmp, instr_jmp_param_l, instr_dec_CNT, instr_assert_zero, X_const, X_read_free, read_X_A, read_X_CNT, read_X_pc } in { line, p_reg_write_A, p_reg_write_CNT, p_instr_jmpz, p_instr_jmpz_param_l, p_instr_jmp, p_instr_jmp_param_l, p_instr_dec_CNT, p_instr_assert_zero, p_X_const, p_X_read_free, p_read_X_A, p_read_X_CNT, p_read_X_pc };
+pol constant p_reg_write_X_A = [0, 0, 0, 1, 0, 0, 0, 1, 0];
+pol constant p_reg_write_X_CNT = [1, 0, 0, 0, 0, 0, 0, 0, 0];
+{ pc, reg_write_X_A, reg_write_X_CNT, instr_jmpz, instr_jmpz_param_l, instr_jmp, instr_jmp_param_l, instr_dec_CNT, instr_assert_zero, X_const, X_read_free, read_X_A, read_X_CNT, read_X_pc } in { line, p_reg_write_X_A, p_reg_write_X_CNT, p_instr_jmpz, p_instr_jmpz_param_l, p_instr_jmp, p_instr_jmp_param_l, p_instr_dec_CNT, p_instr_assert_zero, p_X_const, p_X_read_free, p_read_X_A, p_read_X_CNT, p_read_X_pc };
+
 "#;
         let file_name = "tests/simple_sum.asm";
         let contents = fs::read_to_string(file_name).unwrap();

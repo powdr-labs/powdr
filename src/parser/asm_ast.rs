@@ -21,7 +21,7 @@ pub enum ASMStatement {
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum RegisterFlag {
     IsPC,
-    IsDefaultAssignment,
+    IsAssignment,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
