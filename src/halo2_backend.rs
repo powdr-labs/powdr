@@ -32,7 +32,7 @@ use num_traits::{One, Zero};
 
 fn modinv(n: &BigInt, mut p: &BigInt) -> BigInt {
     let mut n = n.clone();
-    
+
     if p.is_one() {
         return BigInt::one();
     }
@@ -383,18 +383,20 @@ fn analyzed_to_circuit(
     });
 
     // b) that the column input_value_index is correctly computed  from query expressions, the constrain is as follows:
-    //    sum( for each (pc, query_expr) if pc_col == pc then query_expr is satisfied )
+    //    sum( for each (pc, query_expr) if pc_col == pc then col(input_index) == query_expr  )
 
     let mut correct_input_value_per_pc_and_query = Expr::Const(BigUint::zero());
-    
-    println!("pcs => {:?}",inputs_by_pc.keys().collect::<Vec<_>>());
 
-    //inputs_by_pc.retain(|k,_| k == &BigInt::from(0));
-    println!("pcs => {:?}",inputs_by_pc.keys().collect::<Vec<_>>());
+    println!("pcs => {:?}", inputs_by_pc.keys().collect::<Vec<_>>());
+
+    // inputs_by_pc.retain(|k,_| k == &BigInt::from(3));
+    println!("pcs => {:?}", inputs_by_pc.keys().collect::<Vec<_>>());
 
     for (n, (pc, query_expr)) in inputs_by_pc.iter().enumerate() {
-        // witness for is_zero_inv
-        let value_inv_col_values: Vec<_> = (0..num_rows)
+        // witness & constrain for is_zero_inv for col(pc)-pc --------------------------------------------------------------
+        // -----------------------------------------------------------------------------------------------------------------
+
+        let pc_diff_value_inv_col_values: Vec<_> = (0..num_rows)
             .map(|row_no| {
                 let pc_row_value = commits.get(*pc_column).unwrap().1.get(row_no).unwrap();
                 let diff = pc_row_value - pc;
@@ -406,7 +408,7 @@ fn analyzed_to_circuit(
             })
             .collect();
 
-        commits.push(("value_inv", value_inv_col_values));
+        commits.push(("pc_diff_value_inv_col_values", pc_diff_value_inv_col_values));
 
         let value_inv_col = commits.len() - 1;
 
@@ -426,30 +428,31 @@ fn analyzed_to_circuit(
             },
             rotation: 0,
         }) - Expr::Const(pc.to_biguint().unwrap());
-        
+
         let is_zero_expression = Expr::Const(BigUint::one()) - value.clone() * value_inv;
 
-         polys.push(Poly { name : "is_zero".to_string(), exp: q_enable_cur.clone() * value * is_zero_expression.clone()});
+        polys.push(Poly {
+            name: "pc_diff_is_zero".to_string(),
+            exp: q_enable_cur.clone() * value * is_zero_expression.clone(),
+        });
 
-/* 
-
-        EXP   pc_col  pc   IsZeroExpr             1-ZeroIf...  Expected EXP * ( 1-ZeroIf )
-        ----- ------  ---  ---------------------  ------------ -------- --------------------
-        0     3  ==   3    1                      1            ok       0
-        2     3  ==   3    1                      1            fail     2
-  
-        0     3  !=   4    0                      0            ok       0 
-        2     3  !=   4    0                      0            ok       0
-
-        is_zero_expr * exp
-
-*/  
-        let (query_expr,_) = expression_2_expr(&cols, query_expr, int_to_field);
-        correct_input_value_per_pc_and_query = correct_input_value_per_pc_and_query + (is_zero_expression * query_expr);
-
+        let query_expr = expression_2_expr(&cols, query_expr, int_to_field).0
+            - Expr::Var(PlonkVar::ColumnQuery {
+                column: Column {
+                    kind: ColumnKind::Witness,
+                    index: input_index_col,
+                },
+                rotation: 0,
+            });
+        correct_input_value_per_pc_and_query =
+            correct_input_value_per_pc_and_query + is_zero_expression * query_expr;
     }
 
-    // polys.push(Poly { name : "correct_input_value_per_pc_and_query".to_string(), exp: q_enable_cur.clone() * correct_input_value_per_pc_and_query});
+    polys.push(Poly {
+        name: "correct_input_value_per_pc_and_query".to_string(),
+        exp: q_enable_cur.clone() * correct_input_value_per_pc_and_query,
+    });
+
     // get columns names and offset. -------------
 
     let const_cols = constants
@@ -635,7 +638,7 @@ pub fn prove_asm(file_name: &str, inputs: Vec<AbstractNumberType>, verbose: bool
     );
     let k = 1 + f32::log2(circuit.plaf.info.num_rows as f32).ceil() as u32;
 
-    // println!("{}", PlafDisplayBaseTOML(&circuit.plaf));
+    println!("{}", PlafDisplayBaseTOML(&circuit.plaf));
 
     let mock_prover = MockProver::<Fr>::run(k, &circuit, vec![]).unwrap();
     mock_prover.assert_satisfied();
