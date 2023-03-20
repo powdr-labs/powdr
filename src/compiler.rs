@@ -59,7 +59,27 @@ pub fn compile_asm(
     verbose: bool,
 ) {
     let contents = fs::read_to_string(file_name).unwrap();
-    let pil = asm_compiler::compile(Some(file_name), &contents).unwrap_or_else(|err| {
+    compile_asm_string(
+        file_name,
+        &contents,
+        inputs,
+        output_dir,
+        force_overwrite,
+        verbose,
+    )
+}
+
+/// Compiles the contents of a .asm file, outputs the PIL on stdout and tries to generate
+/// fixed and witness columns.
+pub fn compile_asm_string(
+    file_name: &str,
+    contents: &str,
+    inputs: Vec<AbstractNumberType>,
+    output_dir: &Path,
+    force_overwrite: bool,
+    verbose: bool,
+) {
+    let pil = asm_compiler::compile(Some(file_name), contents).unwrap_or_else(|err| {
         eprintln!("Error parsing .asm file:");
         err.output_to_stderr();
         panic!();
