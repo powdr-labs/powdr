@@ -116,7 +116,7 @@ fn main() {
                 .map(|x| x.parse().unwrap())
                 .collect::<Vec<AbstractNumberType>>();
 
-            halo2_backend::prove_asm(&file, inputs, verbose);
+            halo2_backend::mock_prove_asm(&file, inputs, verbose);
         }
     }
 }
