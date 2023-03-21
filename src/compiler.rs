@@ -54,6 +54,7 @@ pub fn compile_pil_ast(
 pub fn compile_asm(
     file_name: &str,
     inputs: Vec<AbstractNumberType>,
+    rows: u64,
     output_dir: &Path,
     force_overwrite: bool,
     verbose: bool,
@@ -63,6 +64,7 @@ pub fn compile_asm(
         file_name,
         &contents,
         inputs,
+        rows,
         output_dir,
         force_overwrite,
         verbose,
@@ -75,11 +77,12 @@ pub fn compile_asm_string(
     file_name: &str,
     contents: &str,
     inputs: Vec<AbstractNumberType>,
+    rows: u64,
     output_dir: &Path,
     force_overwrite: bool,
     verbose: bool,
 ) {
-    let pil = asm_compiler::compile(Some(file_name), contents).unwrap_or_else(|err| {
+    let pil = asm_compiler::compile(Some(file_name), contents, rows).unwrap_or_else(|err| {
         eprintln!("Error parsing .asm file:");
         err.output_to_stderr();
         panic!();
@@ -129,6 +132,7 @@ fn compile(
     verbose: bool,
 ) -> bool {
     let mut success = true;
+    println!("Evaluating fixed columns...");
     let (constants, degree) = constant_evaluator::generate(analyzed);
     if analyzed.constant_count() == constants.len() {
         write_polys_file(
@@ -137,6 +141,7 @@ fn compile(
             &constants,
         );
         println!("Wrote constants.bin.");
+        println!("Deducing witness columns...");
         let commits =
             commit_evaluator::generate(analyzed, degree, &constants, query_callback, verbose);
         write_polys_file(

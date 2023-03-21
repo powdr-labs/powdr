@@ -1,14 +1,18 @@
 use std::collections::{BTreeMap, HashMap};
 
 use crate::number::AbstractNumberType;
+use crate::number::DegreeType;
 use crate::parser::asm_ast::*;
 use crate::parser::ast::*;
 use crate::parser::{self, ParseError};
 
-pub fn compile<'a>(file_name: Option<&str>, input: &'a str) -> Result<PILFile, ParseError<'a>> {
-    // TODO configure the degree
-    let max_steps = 1024;
-    parser::parse_asm(file_name, input).map(|ast| ASMPILConverter::new().convert(ast, max_steps))
+pub fn compile<'a>(
+    file_name: Option<&str>,
+    input: &'a str,
+    row_count: DegreeType,
+) -> Result<PILFile, ParseError<'a>> {
+    // TODO define the row count / poly degree in the assembly file.
+    parser::parse_asm(file_name, input).map(|ast| ASMPILConverter::new().convert(ast, row_count))
 }
 
 #[derive(Default)]
@@ -29,7 +33,7 @@ impl ASMPILConverter {
         Default::default()
     }
 
-    fn convert(&mut self, input: ASMFile, max_steps: usize) -> PILFile {
+    fn convert(&mut self, input: ASMFile, max_steps: DegreeType) -> PILFile {
         self.pil.push(Statement::Namespace(
             0,
             "Assembly".to_string(),
@@ -791,7 +795,7 @@ pol constant p_reg_write_X_CNT = [1, 0, 0, 0, 0, 0, 0, 0, 0];
 "#;
         let file_name = "tests/simple_sum.asm";
         let contents = fs::read_to_string(file_name).unwrap();
-        let pil = compile(Some(file_name), &contents).unwrap();
+        let pil = compile(Some(file_name), &contents, 1024).unwrap();
         assert_eq!(format!("{pil}").trim(), expectation.trim());
     }
 }

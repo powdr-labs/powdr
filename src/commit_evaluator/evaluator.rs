@@ -6,11 +6,12 @@ use std::collections::{BTreeMap, HashMap};
 use crate::number::{AbstractNumberType, DegreeType};
 
 use super::affine_expression::AffineExpression;
+use super::bit_constraints::{BitConstraint, BitConstraintSet};
 use super::eval_error::EvalError;
 use super::expression_evaluator::{ExpressionEvaluator, SymbolicVariables};
-use super::machine::{LookupReturn, Machine};
+use super::machine::Machine;
 use super::util::contains_next_ref;
-use super::{EvalResult, FixedData, WitnessColumn};
+use super::{Constraint, EvalResult, FixedData, WitnessColumn};
 
 pub struct Evaluator<'a, QueryCallback>
 where
@@ -20,15 +21,19 @@ where
     identities: Vec<&'a Identity>,
     machines: Vec<Box<dyn Machine>>,
     query_callback: Option<QueryCallback>,
+    global_bit_constraints: BTreeMap<&'a str, BitConstraint>,
     /// Maps the witness polynomial names to optional parameter and query string.
     witness_cols: BTreeMap<&'a str, &'a WitnessColumn<'a>>,
     /// Values of the witness polynomials
     current: Vec<Option<AbstractNumberType>>,
     /// Values of the witness polynomials in the next row
     next: Vec<Option<AbstractNumberType>>,
+    /// Bit constraints on the witness polynomials in the next row.
+    next_bit_constraints: Vec<Option<BitConstraint>>,
     next_row: DegreeType,
     failure_reasons: Vec<String>,
     progress: bool,
+    last_report: DegreeType,
 }
 
 #[derive(PartialEq, Eq, Clone, Copy)]
@@ -46,6 +51,7 @@ where
     pub fn new(
         fixed_data: &'a FixedData<'a>,
         identities: Vec<&'a Identity>,
+        global_bit_constraints: BTreeMap<&'a str, BitConstraint>,
         machines: Vec<Box<dyn Machine>>,
         query_callback: Option<QueryCallback>,
     ) -> Self {
@@ -56,16 +62,27 @@ where
             identities,
             machines,
             query_callback,
+            global_bit_constraints,
             witness_cols: witness_cols.iter().map(|p| (p.name, p)).collect(),
             current: vec![None; witness_cols.len()],
             next: vec![None; witness_cols.len()],
+            next_bit_constraints: vec![None; witness_cols.len()],
             next_row: 0,
             failure_reasons: vec![],
             progress: true,
+            last_report: 0,
         }
     }
 
     pub fn compute_next_row(&mut self, next_row: DegreeType) -> Vec<AbstractNumberType> {
+        if next_row >= self.last_report + 1000 {
+            println!(
+                "{next_row} of {} rows ({} %)",
+                self.fixed_data.degree,
+                next_row * 100 / self.fixed_data.degree
+            );
+            self.last_report = next_row;
+        }
         self.next_row = next_row;
 
         // TODO maybe better to generate a dependency graph than looping multiple times.
@@ -135,6 +152,18 @@ where
                     .join(", ")
             );
             eprintln!("Reasons:\n{}\n", self.failure_reasons.join("\n\n"));
+            eprintln!("Known bit constraints:");
+            eprintln!("Global:");
+            for (name, cons) in &self.global_bit_constraints {
+                eprintln!("  {name}: {cons}");
+            }
+            eprintln!("For this row:");
+            for (id, cons) in self.next_bit_constraints.iter().enumerate() {
+                if let Some(cons) = cons {
+                    eprintln!("  {}: {cons}", self.fixed_data.witness_cols[id].name);
+                }
+            }
+            eprintln!();
             eprintln!(
                 "Current values:\n{}",
                 indent(&self.format_next_values().join("\n"), "    ")
@@ -149,6 +178,7 @@ where
             }
             std::mem::swap(&mut self.next, &mut self.current);
             self.next = vec![None; self.current.len()];
+            self.next_bit_constraints = vec![None; self.current.len()];
             // TODO check a bit better that "None" values do not
             // violate constraints.
             self.current
@@ -182,13 +212,10 @@ where
             .collect()
     }
 
-    fn process_witness_query(
-        &mut self,
-        column: &&WitnessColumn,
-    ) -> Result<Vec<(usize, AbstractNumberType)>, EvalError> {
+    fn process_witness_query(&mut self, column: &&WitnessColumn) -> EvalResult {
         let query = self.interpolate_query(column.query.unwrap())?;
         if let Some(value) = self.query_callback.as_mut().and_then(|c| (c)(&query)) {
-            Ok(vec![(column.id, value)])
+            Ok(vec![(column.id, Constraint::Assignment(value))])
         } else {
             Err(format!("No query answer for {} query: {query}.", column.name).into())
         }
@@ -231,17 +258,16 @@ where
         if evaluated.constant_value() == Some(0.into()) {
             Ok(vec![])
         } else {
-            match evaluated.solve() {
-                Some((id, value)) => Ok(vec![(id, value)]),
-                None => {
+            evaluated
+                .solve_with_bit_constraints(&self.bit_constraint_set())
+                .map_err(|_| {
                     let formatted = evaluated.format(self.fixed_data);
-                    Err(if evaluated.is_invalid() {
+                    if evaluated.is_invalid() {
                         format!("Constraint is invalid ({formatted} != 0).").into()
                     } else {
                         format!("Could not solve expression {formatted} = 0.").into()
-                    })
-                }
-            }
+                    }
+                })
         }
     }
 
@@ -276,10 +302,10 @@ where
         // TODO could it be that multiple machines match?
         for m in &mut self.machines {
             // TODO also consider the reasons above.
-            if let LookupReturn::Assignments(assignments) =
-                m.process_plookup(self.fixed_data, identity.kind, &left, &identity.right)?
+            if let Some(result) =
+                m.process_plookup(self.fixed_data, identity.kind, &left, &identity.right)
             {
-                return Ok(assignments);
+                return result;
             }
         }
 
@@ -290,10 +316,19 @@ where
 
     fn handle_eval_result(&mut self, result: EvalResult) {
         match result {
-            Ok(assignments) => {
-                for (id, value) in assignments {
-                    self.next[id] = Some(value);
+            Ok(constraints) => {
+                if !constraints.is_empty() {
                     self.progress = true;
+                }
+                for (id, c) in constraints {
+                    match c {
+                        Constraint::Assignment(value) => {
+                            self.next[id] = Some(value);
+                        }
+                        Constraint::BitConstraint(cons) => {
+                            self.next_bit_constraints[id] = Some(cons);
+                        }
+                    }
                 }
             }
             Err(reason) => {
@@ -322,6 +357,32 @@ where
             evaluate_row,
         })
         .evaluate(expr)
+    }
+
+    fn bit_constraint_set(&'a self) -> WitnessBitConstraintSet<'a> {
+        WitnessBitConstraintSet {
+            fixed_data: self.fixed_data,
+            global_bit_constraints: &self.global_bit_constraints,
+            next_bit_constraints: &self.next_bit_constraints,
+        }
+    }
+}
+
+struct WitnessBitConstraintSet<'a> {
+    fixed_data: &'a FixedData<'a>,
+    /// Global constraints on witness and fixed polynomials.
+    global_bit_constraints: &'a BTreeMap<&'a str, BitConstraint>,
+    /// Bit constraints on the witness polynomials in the next row.
+    next_bit_constraints: &'a Vec<Option<BitConstraint>>,
+}
+
+impl<'a> BitConstraintSet for WitnessBitConstraintSet<'a> {
+    fn bit_constraint(&self, id: usize) -> Option<BitConstraint> {
+        let name = self.fixed_data.witness_cols[id].name;
+        self.global_bit_constraints
+            .get(name)
+            .or_else(|| self.next_bit_constraints[id].as_ref())
+            .cloned()
     }
 }
 

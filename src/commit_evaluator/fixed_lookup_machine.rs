@@ -3,14 +3,13 @@ use std::collections::{HashMap, HashSet};
 use crate::analyzer::{Expression, Identity, IdentityKind, SelectedExpressions};
 use crate::commit_evaluator::eval_error;
 use crate::commit_evaluator::expression_evaluator::ExpressionEvaluator;
-use crate::commit_evaluator::machine::LookupReturn;
 use crate::commit_evaluator::util::contains_witness_ref;
 use crate::number::{AbstractNumberType, DegreeType};
 
 use super::affine_expression::AffineExpression;
 use super::eval_error::EvalError;
 use super::expression_evaluator::SymbolicVariables;
-use super::machine::{LookupResult, Machine};
+use super::machine::Machine;
 use super::{EvalResult, FixedData};
 
 /// Machine to perform a lookup in fixed columns only.
@@ -38,7 +37,7 @@ impl Machine for FixedLookup {
         kind: IdentityKind,
         left: &[Result<AffineExpression, EvalError>],
         right: &SelectedExpressions,
-    ) -> LookupResult {
+    ) -> Option<EvalResult> {
         // This is a matching machine if it is a plookup and the RHS is fully constant.
         if kind != IdentityKind::Plookup
             || right.selector.is_some()
@@ -47,7 +46,7 @@ impl Machine for FixedLookup {
                 .iter()
                 .any(|e| contains_witness_ref(e, fixed_data))
         {
-            return Ok(LookupReturn::NotApplicable);
+            return None;
         }
 
         // If we already know the LHS, skip it.
@@ -55,9 +54,27 @@ impl Machine for FixedLookup {
             .iter()
             .all(|v| v.is_ok() && v.as_ref().unwrap().is_constant())
         {
-            return Ok(LookupReturn::Assignments(vec![]));
+            return Some(Ok(vec![]));
         }
 
+        Some(self.process_plookup_internal(fixed_data, left, right))
+    }
+
+    fn witness_col_values(
+        &mut self,
+        _fixed_data: &FixedData,
+    ) -> HashMap<String, Vec<AbstractNumberType>> {
+        Default::default()
+    }
+}
+
+impl FixedLookup {
+    fn process_plookup_internal(
+        &mut self,
+        fixed_data: &FixedData,
+        left: &[Result<AffineExpression, EvalError>],
+        right: &SelectedExpressions,
+    ) -> EvalResult {
         let left_key = match left[0].clone() {
             Ok(v) => match v.constant_value() {
                 Some(v) => Ok(v),
@@ -90,12 +107,14 @@ impl Machine for FixedLookup {
         // - The first component on the RHS has to be a direct fixed column reference
         // - The first match of those uniquely determines the rest of the RHS.
 
+        // TODO in the other cases, we could at least return some improved bit constraints.
+
         let mut reasons = vec![];
         let mut result = vec![];
         for (l, r) in left.iter().zip(right.expressions.iter()).skip(1) {
             match l {
                 Ok(l) => match self.equate_to_constant_rhs(l, r, fixed_data, rhs_row) {
-                    Ok(assignments) => result.extend(assignments),
+                    Ok(constraints) => result.extend(constraints),
                     Err(err) => reasons.push(err),
                 },
                 Err(err) => {
@@ -106,18 +125,9 @@ impl Machine for FixedLookup {
         if result.is_empty() {
             Err(reasons.into_iter().reduce(eval_error::combine).unwrap())
         } else {
-            Ok(LookupReturn::Assignments(result))
+            Ok(result)
         }
     }
-    fn witness_col_values(
-        &mut self,
-        _fixed_data: &FixedData,
-    ) -> HashMap<String, Vec<AbstractNumberType>> {
-        Default::default()
-    }
-}
-
-impl FixedLookup {
     fn equate_to_constant_rhs(
         &self,
         l: &AffineExpression,
@@ -138,17 +148,15 @@ impl FixedLookup {
         })?;
 
         let evaluated = l.clone() - r.clone().into();
-        match evaluated.solve() {
-            Some((id, value)) => Ok(vec![(id, value)]),
-            None => {
-                let formatted = l.format(fixed_data);
-                Err(if evaluated.is_invalid() {
-                    format!("Constraint is invalid ({formatted} != {r}).",).into()
-                } else {
-                    format!("Could not solve expression {formatted} = {r}.",).into()
-                })
+        // TODO we could use bit constraints here
+        evaluated.solve().map_err(|_| {
+            let formatted = l.format(fixed_data);
+            if evaluated.is_invalid() {
+                format!("Constraint is invalid ({formatted} != {r}).",).into()
+            } else {
+                format!("Could not solve expression {formatted} = {r}.",).into()
             }
-        }
+        })
     }
 }
 

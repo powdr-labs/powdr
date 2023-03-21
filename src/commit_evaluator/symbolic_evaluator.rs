@@ -1,21 +1,39 @@
+use std::collections::{BTreeSet, HashMap};
+
 use super::affine_expression::AffineExpression;
 use super::eval_error::EvalError;
 use super::expression_evaluator::SymbolicVariables;
 use super::util::WitnessColumnNamer;
 use super::FixedData;
 
-/// A purely symbolic evaluator. It wil fail on fixed columns.
+/// A purely symbolic evaluator.
 /// Note: The affine expressions it returns will contain variables
-/// for both the "current" and the "next" row, and they are different!
+/// for both the "current" and the "next" row, and for fixed columns as well,
+/// and they are all different!
 /// This means these AffineExpressions should not be confused with those
 /// returned by the EvaluationData struct.
+/// The only IDs are allocated in the following order:
+/// witness columns, next witness columns, fixed columns, next fixed columns.
 pub struct SymbolicEvaluator<'a> {
     fixed_data: &'a FixedData<'a>,
+    fixed_columns: HashMap<&'a str, usize>,
 }
 
 impl<'a> SymbolicEvaluator<'a> {
     pub fn new(fixed_data: &'a FixedData<'a>) -> Self {
-        SymbolicEvaluator { fixed_data }
+        let fixed_columns = fixed_data
+            .fixed_cols
+            .keys()
+            .cloned()
+            .collect::<BTreeSet<&str>>()
+            .into_iter()
+            .enumerate()
+            .map(|(i, n)| (n, i))
+            .collect();
+        SymbolicEvaluator {
+            fixed_data,
+            fixed_columns,
+        }
     }
 }
 
@@ -25,16 +43,18 @@ impl<'a> SymbolicVariables for SymbolicEvaluator<'a> {
     }
 
     fn value(&self, name: &str, next: bool) -> Result<AffineExpression, EvalError> {
+        let witness_count = self.fixed_data.witness_ids.len();
         // TODO arrays
         if let Some(id) = self.fixed_data.witness_ids.get(name) {
-            let witness_count = self.fixed_data.witness_ids.len();
             Ok(AffineExpression::from_witness_poly_value(
                 *id + if next { witness_count } else { 0 },
             ))
         } else {
-            Err("Cannot access fixed columns in the symoblic evaluator."
-                .to_string()
-                .into())
+            let id = self.fixed_columns[name];
+            let fixed_count = self.fixed_data.fixed_cols.len();
+            Ok(AffineExpression::from_witness_poly_value(
+                id + witness_count + if next { fixed_count } else { 0 },
+            ))
         }
     }
 
