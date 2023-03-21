@@ -28,7 +28,7 @@ impl<'a> SymbolicVariables for SymbolicEvaluator<'a> {
         // TODO arrays
         if let Some(id) = self.fixed_data.witness_ids.get(name) {
             let witness_count = self.fixed_data.witness_ids.len();
-            Ok(AffineExpression::from_wittness_poly_value(
+            Ok(AffineExpression::from_witness_poly_value(
                 *id + if next { witness_count } else { 0 },
             ))
         } else {

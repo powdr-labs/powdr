@@ -107,8 +107,8 @@ fn check_constraint<'a>(fixed_data: &'a FixedData, constraint: &Expression) -> O
         _ => return None,
     };
     let witness_count = fixed_data.witness_cols.len();
-    let pattern = AffineExpression::from_wittness_poly_value(key_column_id + witness_count)
-        - AffineExpression::from_wittness_poly_value(key_column_id);
+    let pattern = AffineExpression::from_witness_poly_value(key_column_id + witness_count)
+        - AffineExpression::from_witness_poly_value(key_column_id);
     if sort_constraint != pattern {
         return None;
     }

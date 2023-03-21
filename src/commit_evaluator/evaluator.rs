@@ -173,7 +173,7 @@ where
             .map(|(i, v)| {
                 format!(
                     "{} = {}",
-                    AffineExpression::from_wittness_poly_value(i).format(self.fixed_data),
+                    AffineExpression::from_witness_poly_value(i).format(self.fixed_data),
                     v.as_ref()
                         .map(format_number)
                         .unwrap_or("<unknown>".to_string())
@@ -360,7 +360,7 @@ impl<'a> SymbolicVariables for EvaluationData<'a> {
                         value.clone().into()
                     } else {
                         // We continue with a symbolic value
-                        AffineExpression::from_wittness_poly_value(*id)
+                        AffineExpression::from_witness_poly_value(*id)
                     })
                 }
                 (true, EvaluationRow::Next) => {
