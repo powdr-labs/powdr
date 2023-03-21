@@ -43,6 +43,20 @@ fn modinv(n: &BigInt, mut p: &BigInt) -> BigInt {
     }
 }
 
+fn print_cols(c: &[(&str, Vec<BigInt>)], w: &[(&str, Vec<BigInt>)], cols: &[&str]) {
+    let all: HashMap<_, _> = c.iter().chain(w.iter()).cloned().collect();
+    let table: Vec<_> = cols
+        .iter()
+        .map(|col| {
+            (
+                *col,
+                all.get(col).expect(&format!("{} not found", col)).clone(),
+            )
+        })
+        .collect();
+    print_table(&table);
+}
+
 fn print_table(data: &[(&str, Vec<BigInt>)]) {
     use prettytable::Cell as PCell;
 
@@ -73,7 +87,7 @@ fn print_table(data: &[(&str, Vec<BigInt>)]) {
 }
 
 fn expression_2_expr(
-    cols: &HashMap<String, (ColumnKind, usize)>,
+    cols: &HashMap<String, Column>,
     expr: &Expression,
     int_to_field: &dyn Fn(&BigInt) -> BigUint,
 ) -> (Expr<PlonkVar>, i32) {
@@ -81,13 +95,14 @@ fn expression_2_expr(
         Expression::Number(n) => (Expr::Const(int_to_field(&n)), 0),
         Expression::PolynomialReference(polyref) => {
             assert_eq!(polyref.index, None);
-            let (kind, index) = *cols.get(&polyref.name).unwrap();
+            
             let rotation = if polyref.next { 1 } else { 0 };
 
             let plonkvar = PlonkVar::ColumnQuery {
-                column: Column { kind, index },
+                column: *cols.get(&polyref.name).unwrap(),
                 rotation,
             };
+
             (Expr::Var(plonkvar), rotation)
         }
         Expression::BinaryOperation(lhe, op, rhe) => {
@@ -109,7 +124,7 @@ fn expression_2_expr(
 fn eval_expression_at_row(
     expr: &Expression,
     at_row: usize,
-    cols: &HashMap<String, (ColumnKind, usize)>,
+    cols: &HashMap<String, Column>,
     constants: &Vec<(&str, Vec<AbstractNumberType>)>,
     commits: &Vec<(&str, Vec<AbstractNumberType>)>,
     inputs: &[BigInt],
@@ -119,12 +134,12 @@ fn eval_expression_at_row(
         Expression::Number(n) => n.clone(),
         Expression::PolynomialReference(polyref) => {
             assert_eq!(polyref.index, None);
-            let (kind, index) = *cols.get(&polyref.name).unwrap();
+            let column = *cols.get(&polyref.name).unwrap();
             let rotation = if polyref.next { 1 } else { 0 };
 
-            let value = match kind {
-                ColumnKind::Fixed => constants.get(index).unwrap().1.get(at_row).unwrap(),
-                ColumnKind::Witness => commits.get(index).unwrap().1.get(at_row).unwrap(),
+            let value = match column.kind {
+                ColumnKind::Fixed => constants.get(column.index).unwrap().1.get(at_row).unwrap(),
+                ColumnKind::Witness => commits.get(column.index).unwrap().1.get(at_row).unwrap(),
                 _ => unimplemented!(),
             };
 
@@ -165,6 +180,21 @@ fn eval_expression_at_row(
     }
 }
 
+fn build_cols_info(constants: &[(&str, Vec<BigInt>)], witness: &[(&str, Vec<BigInt>)]) -> HashMap<String, Column> {
+    let const_cols = constants
+    .iter()
+    .enumerate()
+    .map(|(index, (name, _))| (name.to_string(), Column { kind : ColumnKind::Fixed, index }));
+
+    let witness_cols = witness
+    .iter()
+    .enumerate()
+    .map(|(index, (name, _))| (name.to_string(), Column { kind : ColumnKind::Witness, index }));
+
+    const_cols.chain(witness_cols).collect()
+}
+
+
 fn analyzed_to_circuit(
     analyzed: &analyzer::Analyzed,
     query_callback: Option<impl FnMut(&str) -> Option<AbstractNumberType>>,
@@ -194,8 +224,6 @@ fn analyzed_to_circuit(
         constants.get(0).unwrap().1.len(),
         commits.get(0).unwrap().1.len()
     );
-    // print_table(&constants);
-    // print_table(&commits);
 
     // get number of rows, we assume that data is defined by all rows and all columns.
 
@@ -237,18 +265,7 @@ fn analyzed_to_circuit(
 
     // get current columns names with their offset.
 
-    let const_cols = constants
-        .iter()
-        .enumerate()
-        .map(|(n, (name, _))| (name.to_string(), (ColumnKind::Fixed, n)));
-
-    let witness_cols = commits
-        .iter()
-        .enumerate()
-        .map(|(n, (name, _))| (name.to_string(), (ColumnKind::Witness, n)));
-
-    let cols: HashMap<String, (ColumnKind, usize)> =
-        const_cols.clone().chain(witness_cols.clone()).collect();
+    let cols = build_cols_info(&constants, &commits);
 
     // collect all inputs-by-pc defined in queries
 
@@ -279,6 +296,10 @@ fn analyzed_to_circuit(
         }
     }
 
+    // println!("{:#?}",inputs_by_pc);
+    // let all = constants.iter().chain(commits.iter()).cloned().collect::<Vec<_>>();
+    // print_table(&constants);
+
     // add new columns with inputs
     //    fixed   input_count
     //    witness input_value will contains a copy constrain of the inputs of the value
@@ -292,10 +313,10 @@ fn analyzed_to_circuit(
         .take(num_rows)
         .collect();
 
-    let (_, pc_column) = cols.get("Assembly.pc").unwrap();
+    let pc_column = cols.get("Assembly.pc").unwrap();
     let input_index_col_values: Vec<BigInt> = (0..num_rows)
         .map(|row_no| {
-            let pc = commits.get(*pc_column).unwrap().1.get(row_no).unwrap();
+            let pc = commits.get(pc_column.index).unwrap().1.get(row_no).unwrap();
             if let Some(expr) = inputs_by_pc.get(pc) {
                 eval_expression_at_row(
                     expr,
@@ -328,26 +349,31 @@ fn analyzed_to_circuit(
     let mut lookups = vec![];
     let mut polys = vec![];
 
-    let (_, x_free_value_col) = cols.get("Assembly.X_free_value").unwrap();
+    let x_free_value_col = cols.get("Assembly.X_free_value").unwrap();
+    let x_read_free_col = cols.get("Assembly.p_X_read_free").unwrap();
+
+    let p_x_read_free = Expr::Var(PlonkVar::ColumnQuery {
+        column: x_read_free_col.clone(),
+        rotation: 0,
+    });
 
     lookups.push(Lookup {
-        name: "fee_value is a valid input".to_string(),
+        name: "fee_value is a valid input when reading inputs".to_string(),
         exps: (
             vec![
-                Expr::Var(PlonkVar::ColumnQuery {
-                    column: Column {
-                        kind: ColumnKind::Witness,
-                        index: input_index_col,
-                    },
-                    rotation: 0,
-                }),
-                Expr::Var(PlonkVar::ColumnQuery {
-                    column: Column {
-                        kind: ColumnKind::Witness,
-                        index: *x_free_value_col,
-                    },
-                    rotation: 0,
-                }),
+                p_x_read_free.clone()
+                    * Expr::Var(PlonkVar::ColumnQuery {
+                        column: Column {
+                            kind: ColumnKind::Witness,
+                            index: input_index_col,
+                        },
+                        rotation: 0,
+                    }),
+                p_x_read_free.clone()
+                    * Expr::Var(PlonkVar::ColumnQuery {
+                        column: *x_free_value_col,
+                        rotation: 0,
+                    }),
             ],
             vec![
                 Expr::Var(PlonkVar::ColumnQuery {
@@ -373,18 +399,13 @@ fn analyzed_to_circuit(
 
     let mut correct_input_value_per_pc_and_query = Expr::Const(BigUint::zero());
 
-    println!("pcs => {:?}", inputs_by_pc.keys().collect::<Vec<_>>());
-
-    // inputs_by_pc.retain(|k,_| k == &BigInt::from(3));
-    println!("pcs => {:?}", inputs_by_pc.keys().collect::<Vec<_>>());
-
     for (n, (pc, query_expr)) in inputs_by_pc.iter().enumerate() {
         // witness & constrain for is_zero_inv for col(pc)-pc --------------------------------------------------------------
         // -----------------------------------------------------------------------------------------------------------------
 
         let pc_diff_value_inv_col_values: Vec<_> = (0..num_rows)
             .map(|row_no| {
-                let pc_row_value = commits.get(*pc_column).unwrap().1.get(row_no).unwrap();
+                let pc_row_value = commits.get(pc_column.index).unwrap().1.get(row_no).unwrap();
                 let diff = pc_row_value - pc;
                 if diff.is_zero() {
                     BigInt::zero()
@@ -408,10 +429,7 @@ fn analyzed_to_circuit(
 
         // query(pc) == pc constrain
         let value = Expr::Var(PlonkVar::ColumnQuery {
-            column: Column {
-                kind: ColumnKind::Witness,
-                index: *pc_column,
-            },
+            column: *pc_column,
             rotation: 0,
         }) - Expr::Const(pc.to_biguint().unwrap());
 
@@ -441,18 +459,7 @@ fn analyzed_to_circuit(
 
     // get columns names and offset. -------------
 
-    let const_cols = constants
-        .iter()
-        .enumerate()
-        .map(|(n, (name, _))| (name.to_string(), (ColumnKind::Fixed, n)));
-
-    let witness_cols = commits
-        .iter()
-        .enumerate()
-        .map(|(n, (name, _))| (name.to_string(), (ColumnKind::Witness, n)));
-
-    let cols: HashMap<String, (ColumnKind, usize)> =
-        const_cols.clone().chain(witness_cols.clone()).collect();
+    let cols = build_cols_info(&constants, &commits);
 
     // build Plaf columns. -------------
 
@@ -510,14 +517,21 @@ fn analyzed_to_circuit(
         } else if id.kind == IdentityKind::Plookup {
             // lookups.
 
-            assert_eq!(id.left.selector, None);
             assert_eq!(id.right.selector, None);
+
+            let left_selector = id
+                .left
+                .selector
+                .clone()
+                .map_or(Expr::Const(BigUint::zero()), |expr| {
+                    expression_2_expr(&cols, &expr, int_to_field).0
+                });
 
             let left = id
                 .left
                 .expressions
                 .iter()
-                .map(|expr| expression_2_expr(&cols, expr, int_to_field).0)
+                .map(|expr| left_selector.clone() * expression_2_expr(&cols, expr, int_to_field).0)
                 .collect();
 
             let right = id
@@ -568,6 +582,12 @@ fn analyzed_to_circuit(
                 .collect()
         })
         .collect();
+
+        let witness_cols = commits
+        .iter()
+        .enumerate()
+        .map(|(n, (name, _))| (name.to_string(), (ColumnKind::Fixed, n)));
+
 
     let wit = Witness {
         num_rows: commits.len(),
@@ -631,7 +651,7 @@ pub fn prove_asm(file_name: &str, inputs: Vec<AbstractNumberType>, verbose: bool
     );
     let k = 1 + f32::log2(circuit.plaf.info.num_rows as f32).ceil() as u32;
 
-    println!("{}", PlafDisplayBaseTOML(&circuit.plaf));
+    // println!("{}", PlafDisplayBaseTOML(&circuit.plaf));
 
     let inputs: Vec<_> = inputs
         .iter()
