@@ -32,7 +32,7 @@ fn expression_2_expr(
     int_to_field: &dyn Fn(&BigInt) -> BigUint,
 ) -> (Expr<PlonkVar>, i32) {
     match expr {
-        Expression::Number(n) => (Expr::Const(int_to_field(&n)), 0),
+        Expression::Number(n) => (Expr::Const(int_to_field(n)), 0),
         Expression::PolynomialReference(polyref) => {
             assert_eq!(polyref.index, None);
 
@@ -66,7 +66,6 @@ fn eval_expression_at_row(
     at_row: usize,
     cd: &CircuitData,
     inputs: &[BigInt],
-    int_to_field: &dyn Fn(&BigInt) -> BigUint,
 ) -> AbstractNumberType {
     match expr {
         Expression::Number(n) => n.clone(),
@@ -77,8 +76,8 @@ fn eval_expression_at_row(
             cd.val(&column, at_row + rotation).clone()
         }
         Expression::BinaryOperation(lhe, op, rhe) => {
-            let lhe = eval_expression_at_row(lhe, at_row, cd, inputs, int_to_field);
-            let rhe = eval_expression_at_row(rhe, at_row, cd, inputs, int_to_field);
+            let lhe = eval_expression_at_row(lhe, at_row, cd, inputs);
+            let rhe = eval_expression_at_row(rhe, at_row, cd, inputs);
             let value = match op {
                 BinaryOperator::Add => lhe + rhe,
                 BinaryOperator::Sub => lhe - rhe,
@@ -94,7 +93,7 @@ fn eval_expression_at_row(
                 unimplemented!();
             }
             let index =
-                eval_expression_at_row(exprs.get(1).unwrap(), at_row, cd, inputs, int_to_field);
+                eval_expression_at_row(exprs.get(1).unwrap(), at_row, cd, inputs);
             let index: u64 = index.try_into().unwrap();
             inputs[index as usize].clone()
         }
@@ -115,7 +114,7 @@ pub(crate) fn analyzed_to_circuit(
     //
     // | constant columns | __enable_cur | __enable_next |  witness columns | \
     // |  bla_bla_bla     |    1         |       1       |   bla_bla_bla    |  |
-    // |  bla_bla_bla     |    1         |       1       |   bla_bla_bla    |  |>  witness + constants  2^(k-1)
+    // |  bla_bla_bla     |    1         |       1       |   bla_bla_bla    |  |>  witness + fixed  2^(k-1)
     // |  ...             |   ...        |      ...      |   ...            |  |
     // |  bla_bla_bla     |    1         |       0       |   bla_bla_bla    | /     <- __enable_next ==0 since there's no state transition
     // |  0               |    0         |       0       |   0              | \
@@ -124,14 +123,14 @@ pub(crate) fn analyzed_to_circuit(
     // |  0               |    0         |       0       |   <unusable>     |  |
     // |  0               |    0         |       0       |   <unusable>     | /
 
-    // generate constants and commits (witness).
+    // generate fixed and witness (witness).
 
     let query = |column, rotation| Expr::Var(PlonkVar::ColumnQuery { column, rotation });
 
-    let (constants, degree) = constant_evaluator::generate(analyzed);
-    let commits = commit_evaluator::generate(analyzed, degree, &constants, query_callback, verbose);
+    let (fixed, degree) = constant_evaluator::generate(analyzed);
+    let witness = commit_evaluator::generate(analyzed, degree, &fixed, query_callback, verbose);
 
-    let mut cd = CircuitData::from(constants, commits);
+    let mut cd = CircuitData::from(fixed, witness);
 
     // append to fixed columns, one that enables constrains that does not have rotations
     // and another that enables contraints that have a rotation ( not this is not activated )
@@ -152,13 +151,13 @@ pub(crate) fn analyzed_to_circuit(
         0,
     );
 
-    // build public input columns and constraints  -------------
+    // build public input columns and constraints  -------------------------------------------------------------------------
 
     // collect all inputs-by-pc defined in queries
 
     let mut inputs_by_pc = HashMap::new();
 
-    for (_, (_, def)) in &analyzed.definitions {
+    for (_, def) in analyzed.definitions.values() {
         let Some(FunctionValueDefinition::Query(Expression::Tuple(query))) = def else {
             continue;
         };
@@ -196,14 +195,14 @@ pub(crate) fn analyzed_to_circuit(
     let input_index_col_values: Vec<BigInt> = (0..num_rows)
         .map(|row_no| {
             let pc = cd
-                .commits
+                .witness
                 .get(pc_column.index)
                 .unwrap()
                 .1
                 .get(row_no)
                 .unwrap();
             if let Some(expr) = inputs_by_pc.get(pc) {
-                eval_expression_at_row(expr, row_no, &cd, inputs, int_to_field)
+                eval_expression_at_row(expr, row_no, &cd, inputs)
             } else {
                 BigInt::zero()
             }
@@ -248,7 +247,7 @@ pub(crate) fn analyzed_to_circuit(
         let pc_diff_value_inv_col_values: Vec<_> = (0..num_rows)
             .map(|row_no| {
                 let pc_row_value = cd
-                    .commits
+                    .witness
                     .get(pc_column.index)
                     .unwrap()
                     .1
@@ -264,7 +263,7 @@ pub(crate) fn analyzed_to_circuit(
             .collect();
 
         let value_inv_col =
-            cd.insert_commit("__pc_diff_value_inv_col_values", pc_diff_value_inv_col_values);
+            cd.insert_commit("pc_diff_value_inv_col_values", pc_diff_value_inv_col_values);
         let value_inv = query(value_inv_col, 0);
 
         // query(pc) == pc constrain
@@ -289,7 +288,7 @@ pub(crate) fn analyzed_to_circuit(
         exp: q_enable_cur.clone() * correct_input_value_per_pc_and_query,
     });
 
-    // build Plaf columns. -------------
+    // build Plaf columns. -------------------------------------------------------------------------
 
     let exports = (0..max_public_inputs)
         .map(|offset| ColumnPublicValue {
@@ -300,19 +299,19 @@ pub(crate) fn analyzed_to_circuit(
 
     let columns = Columns {
         fixed: cd
-            .constants
+            .fixed
             .iter()
             .map(|(name, _)| ColumnFixed::new(name.to_string()))
             .collect(),
         witness: cd
-            .commits
+            .witness
             .iter()
             .map(|(name, _)| ColumnWitness::new(name.to_string(), 0))
             .collect(),
         public: vec![ColumnPublic::new(String::from("instance")).export(exports)],
     };
 
-    // build Plaf info. -------------
+    // build Plaf info. -------------------------------------------------------------------------
 
     let info = Info {
         p: field_mod,
@@ -320,7 +319,7 @@ pub(crate) fn analyzed_to_circuit(
         challenges: vec![],
     };
 
-    // build Plaf polys. -------------
+    // build Plaf polys. -------------------------------------------------------------------------
 
     for id in &analyzed.identities {
         if id.kind == IdentityKind::Polynomial {
@@ -331,7 +330,7 @@ pub(crate) fn analyzed_to_circuit(
             assert_eq!(id.left.expressions.len(), 0);
 
             let (exp, rotation) =
-                expression_2_expr(&cd, &id.left.selector.as_ref().unwrap(), int_to_field);
+                expression_2_expr(&cd, id.left.selector.as_ref().unwrap(), int_to_field);
 
             // depending if this polinomial contains a rotation, enable for all rows or all unless last one.
 
@@ -380,10 +379,10 @@ pub(crate) fn analyzed_to_circuit(
         }
     }
 
-    // build Plaf fixeds. -------------
+    // build Plaf fixeds. -------------------------------------------------------------------------
 
     let fixed: Vec<Vec<_>> = cd
-        .constants
+        .fixed
         .iter()
         .map(|(_, row)| {
             row.iter()
@@ -392,21 +391,10 @@ pub(crate) fn analyzed_to_circuit(
         })
         .collect();
 
-    // build plaf. -------------
-
-    let plaf = Plaf {
-        info,
-        columns,
-        polys,
-        lookups,
-        copys: vec![],
-        fixed,
-    };
-
-    // build witness. -------------
+    // build witness. -------------------------------------------------------------------------
 
     let witness: Vec<Vec<_>> = cd
-        .commits
+        .witness
         .iter()
         .map(|(_, row)| {
             row.iter()
@@ -416,17 +404,28 @@ pub(crate) fn analyzed_to_circuit(
         .collect();
 
     let witness_cols = cd
-        .commits
+        .witness
         .iter()
         .enumerate()
         .map(|(n, (name, _))| (name.to_string(), (ColumnKind::Fixed, n)));
 
     let wit = Witness {
-        num_rows: cd.commits.len(),
+        num_rows: cd.witness.len(),
         columns: witness_cols
             .map(|(name, _)| ColumnWitness::new(name, 0))
             .collect(),
         witness,
+    };
+
+    // build plaf. -------------------------------------------------------------------------
+
+    let plaf = Plaf {
+        info,
+        columns,
+        polys,
+        lookups,
+        copys: vec![],
+        fixed,
     };
 
     // return circuit description + witness. -------------

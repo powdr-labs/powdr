@@ -7,22 +7,22 @@ use prettytable::Cell as PCell;
 use prettytable::{Row, Table};
 
 pub(crate) struct CircuitData<'a> {
-    pub(crate) constants: Vec<(&'a str, Vec<AbstractNumberType>)>,
-    pub(crate) commits: Vec<(&'a str, Vec<AbstractNumberType>)>,
+    pub(crate) fixed: Vec<(&'a str, Vec<AbstractNumberType>)>,
+    pub(crate) witness: Vec<(&'a str, Vec<AbstractNumberType>)>,
     columns: HashMap<String, Column>,
 }
 
 impl<'a> CircuitData<'a> {
     pub fn from(
-        constants: Vec<(&'a str, Vec<AbstractNumberType>)>,
-        commits: Vec<(&'a str, Vec<AbstractNumberType>)>,
+        fixed: Vec<(&'a str, Vec<AbstractNumberType>)>,
+        witness: Vec<(&'a str, Vec<AbstractNumberType>)>,
     ) -> Self {
         assert_eq!(
-            constants.get(0).unwrap().1.len(),
-            commits.get(0).unwrap().1.len()
+            fixed.get(0).unwrap().1.len(),
+            witness.get(0).unwrap().1.len()
         );
 
-        let const_cols = constants.iter().enumerate().map(|(index, (name, _))| {
+        let const_cols = fixed.iter().enumerate().map(|(index, (name, _))| {
             (
                 name.to_string(),
                 Column {
@@ -32,7 +32,7 @@ impl<'a> CircuitData<'a> {
             )
         });
 
-        let witness_cols = commits.iter().enumerate().map(|(index, (name, _))| {
+        let witness_cols = witness.iter().enumerate().map(|(index, (name, _))| {
             (
                 name.to_string(),
                 Column {
@@ -45,8 +45,8 @@ impl<'a> CircuitData<'a> {
         let columns = const_cols.chain(witness_cols).collect();
 
         Self {
-            constants,
-            commits,
+            fixed,
+            witness,
             columns,
         }
     }
@@ -59,14 +59,14 @@ impl<'a> CircuitData<'a> {
     pub fn val(&self, column: &Column, offset: usize) -> &BigInt {
         match column.kind {
             ColumnKind::Fixed => self
-                .constants
+                .fixed
                 .get(column.index)
                 .unwrap()
                 .1
                 .get(offset)
                 .unwrap(),
             ColumnKind::Witness => self
-                .commits
+                .witness
                 .get(column.index)
                 .unwrap()
                 .1
@@ -76,7 +76,7 @@ impl<'a> CircuitData<'a> {
         }
     }
     pub fn len(&self) -> usize {
-        self.constants.get(0).unwrap().1.len()
+        self.fixed.get(0).unwrap().1.len()
     }
     pub fn insert_constant<IT: IntoIterator<Item = BigInt>>(
         &mut self,
@@ -85,10 +85,10 @@ impl<'a> CircuitData<'a> {
     ) -> Column {
         let values = values.into_iter().collect::<Vec<_>>();
         assert_eq!(values.len(), self.len());
-        self.constants.push((name, values));
+        self.fixed.push((name, values));
         let column = Column {
             kind: ColumnKind::Fixed,
-            index: self.constants.len() - 1,
+            index: self.fixed.len() - 1,
         };
         self.columns.insert(name.to_string(), column);
         column
@@ -100,10 +100,10 @@ impl<'a> CircuitData<'a> {
     ) -> Column {
         let values = values.into_iter().collect::<Vec<_>>();
         assert_eq!(values.len(), self.len());
-        self.commits.push((name, values));
+        self.witness.push((name, values));
         let column = Column {
             kind: ColumnKind::Witness,
-            index: self.commits.len() - 1,
+            index: self.witness.len() - 1,
         };
         self.columns.insert(name.to_string(), column);
         column
@@ -112,9 +112,9 @@ impl<'a> CircuitData<'a> {
     #[allow(unused)]
     pub fn printstd(&self, cols: Option<&[&str]>) {
         let mut data: HashMap<_, _> = self
-            .constants
+            .fixed
             .iter()
-            .chain(self.commits.iter())
+            .chain(self.witness.iter())
             .cloned()
             .collect();
         if let Some(cols) = cols {
