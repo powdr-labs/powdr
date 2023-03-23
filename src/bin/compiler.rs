@@ -20,6 +20,7 @@ enum Commands {
 
         /// Comma-separated list of free inputs (numbers).
         #[arg(short, long)]
+        #[arg(default_value_t = String::new())]
         inputs: String,
 
         /// Output directory for PIL file, json file and fixed and witness column data.

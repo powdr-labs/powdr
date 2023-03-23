@@ -29,7 +29,7 @@ impl From<u32> for AffineExpression {
 }
 
 impl AffineExpression {
-    pub fn from_wittness_poly_value(poly_id: usize) -> AffineExpression {
+    pub fn from_witness_poly_value(poly_id: usize) -> AffineExpression {
         AffineExpression {
             coefficients: [vec![0.into(); poly_id], vec![1.into()]].concat(),
             offset: 0.into(),

@@ -141,3 +141,13 @@ fn palindrome() {
         [7, 1, 7, 3, 9, 3, 7, 1].iter().map(|&x| x.into()).collect(),
     );
 }
+
+#[test]
+fn test_mem_read_write() {
+    verify_asm("mem_read_write.asm", Default::default());
+}
+
+#[test]
+fn test_multi_assign() {
+    verify_asm("multi_assign.asm", [7].iter().map(|&x| x.into()).collect());
+}
