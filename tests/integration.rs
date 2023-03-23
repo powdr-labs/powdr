@@ -164,6 +164,6 @@ fn test_bit_access() {
     verify_asm(
         "bit_access.asm",
         [20].iter().map(|&x| x.into()).collect(),
-        Some(0x20000),
+        None,
     );
 }
