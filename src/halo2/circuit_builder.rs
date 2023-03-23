@@ -1,15 +1,15 @@
 use std::collections::HashMap;
 
 use num_bigint::{BigInt, BigUint, ToBigInt};
-use polyexen::expr::{ColumnKind, Expr, PlonkVar};
+use polyexen::expr::{Column, ColumnKind, Expr, PlonkVar};
 use polyexen::plaf::backends::halo2::PlafH2Circuit;
 use polyexen::plaf::{
-    ColumnFixed, ColumnPublic, ColumnPublicValue, ColumnWitness, Columns, Info, Lookup, Plaf, Poly,
-    Witness,
+    ColumnFixed, ColumnPublic, ColumnWitness, Columns, CopyC, Info, Lookup,
+    Plaf, Poly, Witness,
 };
 
 use crate::analyzer::{BinaryOperator, Expression, FunctionValueDefinition, IdentityKind};
-use crate::number::{AbstractNumberType, FIELD_MOD};
+use crate::number::{get_field_mod, AbstractNumberType};
 use crate::{analyzer, commit_evaluator, constant_evaluator};
 use num_integer::Integer;
 use num_traits::{One, Zero};
@@ -85,15 +85,14 @@ fn eval_expression_at_row(
                 _ => unimplemented!("{:?}", expr),
             };
 
-            &value % &*FIELD_MOD
+            &value % get_field_mod()
         }
         Expression::Tuple(exprs) => {
             if exprs.len() != 2 || exprs.get(0) != Some(&Expression::String(String::from("input")))
             {
                 unimplemented!();
             }
-            let index =
-                eval_expression_at_row(exprs.get(1).unwrap(), at_row, cd, inputs);
+            let index = eval_expression_at_row(exprs.get(1).unwrap(), at_row, cd, inputs);
             let index: u64 = index.try_into().unwrap();
             inputs[index as usize].clone()
         }
@@ -288,14 +287,21 @@ pub(crate) fn analyzed_to_circuit(
         exp: q_enable_cur.clone() * correct_input_value_per_pc_and_query,
     });
 
-    // build Plaf columns. -------------------------------------------------------------------------
+    // build Plaf copies (for public inputs ) -------------------------------------------------
 
-    let exports = (0..max_public_inputs)
-        .map(|offset| ColumnPublicValue {
-            witness_column: input_value_col.index,
-            offset,
-        })
-        .collect();
+    let copy_from_public_input_to_input_value = CopyC {
+        columns: (
+            Column {
+                kind: ColumnKind::Public,
+                index: 0,
+            },
+            input_value_col,
+        ),
+        offsets: (0..max_public_inputs).map(|n| (n, n)).collect(),
+    };
+    let copys = vec![copy_from_public_input_to_input_value];
+
+  // build Plaf columns (for public inputs ) -------------------------------------------------
 
     let columns = Columns {
         fixed: cd
@@ -308,7 +314,7 @@ pub(crate) fn analyzed_to_circuit(
             .iter()
             .map(|(name, _)| ColumnWitness::new(name.to_string(), 0))
             .collect(),
-        public: vec![ColumnPublic::new(String::from("instance")).export(exports)],
+        public: vec![ColumnPublic::new(String::from("instance"))],
     };
 
     // build Plaf info. -------------------------------------------------------------------------
@@ -384,11 +390,7 @@ pub(crate) fn analyzed_to_circuit(
     let fixed: Vec<Vec<_>> = cd
         .fixed
         .iter()
-        .map(|(_, row)| {
-            row.iter()
-                .map(|value| Some(int_to_field(value)))
-                .collect()
-        })
+        .map(|(_, row)| row.iter().map(|value| Some(int_to_field(value))).collect())
         .collect();
 
     // build witness. -------------------------------------------------------------------------
@@ -417,6 +419,7 @@ pub(crate) fn analyzed_to_circuit(
         witness,
     };
 
+
     // build plaf. -------------------------------------------------------------------------
 
     let plaf = Plaf {
@@ -424,7 +427,7 @@ pub(crate) fn analyzed_to_circuit(
         columns,
         polys,
         lookups,
-        copys: vec![],
+        copys,
         fixed,
     };
 

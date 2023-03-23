@@ -1,4 +1,5 @@
-use num_bigint::{BigInt, Sign, ToBigInt};
+use std::sync::Mutex;
+use num_bigint::{BigInt, Sign};
 
 /// The abstract type of numbers to be computed with.
 /// They have arbitrary precision, but need to be converted
@@ -20,13 +21,21 @@ pub fn is_zero(x: &AbstractNumberType) -> bool {
 }
 
 lazy_static! {
-    //pub static ref FIELD_MOD : BigInt = BigInt::parse_bytes(b"FFFFFFFF00000001", 16).unwrap();
-    pub static ref FIELD_MOD : BigInt = polyexen::expr::get_field_p::<halo2_proofs::halo2curves::bn256::Fr>().to_bigint().unwrap();
+    // default field modulus is goldilocks
+    static ref FIELD_MOD : Mutex<BigInt> = Mutex::new(BigInt::parse_bytes(b"FFFFFFFF00000001", 16).unwrap());
+}
+
+pub fn get_field_mod() -> BigInt {
+    FIELD_MOD.lock().unwrap().clone()
+}
+
+pub fn set_field_mod(n: BigInt) {
+    *FIELD_MOD.lock().unwrap() = n;
 }
 
 pub fn format_number(x: &AbstractNumberType) -> String {
-    if *x > (FIELD_MOD.clone() / BigInt::from(2)).into() {
-        format!("{}", &*FIELD_MOD - x)
+    if *x > (get_field_mod() / BigInt::from(2)).into() {
+        format!("{}", get_field_mod()  - x)
     } else {
         format!("{x}")
     }

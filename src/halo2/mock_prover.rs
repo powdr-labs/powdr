@@ -1,7 +1,7 @@
 use std::fs;
 
 use itertools::Itertools;
-use num_bigint::BigInt;
+use num_bigint::{BigInt, ToBigInt};
 use polyexen::plaf::PlafDisplayBaseTOML;
 
 use super::circuit_builder::analyzed_to_circuit;
@@ -13,7 +13,11 @@ use halo2_proofs::{dev::MockProver, halo2curves::bn256::Fr};
 
 const MAX_PUBLIC_INPUTS: usize = 12;
 
-pub fn mock_prove_asm(file_name: &str, inputs: Vec<AbstractNumberType>, verbose: bool) {
+pub fn mock_prove_asm(file_name: &str, inputs: &[AbstractNumberType], verbose: bool) {
+    
+    // set field to BN254
+    crate::number::set_field_mod(polyexen::expr::get_field_p::<Fr>().to_bigint().unwrap());
+    
     // read and compile PIL.
 
     let contents = fs::read_to_string(file_name).unwrap();
@@ -92,6 +96,21 @@ pub fn mock_prove_asm(file_name: &str, inputs: Vec<AbstractNumberType>, verbose:
 
     let mock_prover = MockProver::<Fr>::run(k, &circuit, vec![inputs]).unwrap();
     mock_prover.assert_satisfied();
+}
 
-    println!("cool, works");
+#[cfg(test)]
+mod test {
+    use num_bigint::BigInt;
+
+    #[test]
+    fn fibonacci() {
+        let inputs = [165,5,11,22,33,44,55].map(BigInt::from);
+        super::mock_prove_asm("tests/simple_sum.asm",&inputs,false);
+    }
+    #[test]
+    fn palindrome() {
+        let inputs = [3,11,22,11].map(BigInt::from);
+        super::mock_prove_asm("tests/palindrome.asm",&inputs,false);
+    }
+
 }

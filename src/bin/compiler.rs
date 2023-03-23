@@ -1,7 +1,7 @@
 use clap::{Parser, Subcommand};
 use powdr::compiler;
 use powdr::number::AbstractNumberType;
-use powdr::{compiler::no_callback, halo2_backend};
+use powdr::{compiler::no_callback, halo2};
 use std::{fs, path::Path};
 
 #[derive(Parser)]
@@ -38,7 +38,7 @@ enum Commands {
         verbose: bool,
     },
 
-    Nark {
+    Halo2MockProver {
         /// Input file
         file: String,
 
@@ -104,7 +104,7 @@ fn main() {
                 no_callback(),
             );
         }
-        Commands::Nark {
+        Commands::Halo2MockProver {
             file,
             inputs,
             verbose,
@@ -116,7 +116,7 @@ fn main() {
                 .map(|x| x.parse().unwrap())
                 .collect::<Vec<AbstractNumberType>>();
 
-            halo2_backend::mock_prove_asm(&file, inputs, verbose);
+            halo2::mock_prove_asm(&file, &inputs, verbose);
         }
     }
 }
