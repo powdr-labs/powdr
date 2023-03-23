@@ -16,13 +16,17 @@ pil{
 // Requires 0 <= Y < 2**33
 // TODO we need better syntax for defining instructions that are functions.
 // Maybe like instr wrap <=Y= v -> X { Y = X + wrap_bit * 2**32, X = Xhi * 2**16 + Xlo }
-instr wrap <=Y= v, x <=X= { Y = X + wrap_bit * 2**32, X = Xhi * 2**16 + Xlo }
+instr wrap <=Y= v, x <=X= { Y = X + wrap_bit * 2**32, X = XB1 + 0x100 * XB2 + 0x10000 * XB3 + 0x1000000 * XB4 }
 pil{
-    col fixed BYTES2(i) { i & 0xffff };
-    col witness Xlo;
-    col witness Xhi;
-    { Xlo } in { BYTES2 };
-    { Xhi } in { BYTES2 };
+    col fixed BYTE(i) { i & 0xff };
+    col witness XB1;
+    col witness XB2;
+    col witness XB3;
+    col witness XB4;
+    { XB1 } in { BYTE };
+    { XB2 } in { BYTE };
+    { XB3 } in { BYTE };
+    { XB4 } in { BYTE };
     col commit wrap_bit;
     wrap_bit * (1 - wrap_bit) = 0;
 }
