@@ -2,6 +2,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::{Display, Formatter};
 
 use crate::analyzer::{BinaryOperator, Expression, Identity, IdentityKind, PolynomialReference};
+use crate::commit_evaluator::util::{contains_next_ref, WitnessColumnNamer};
 use crate::number::{AbstractNumberType, GOLDILOCKS_MOD};
 
 use super::expression_evaluator::ExpressionEvaluator;
@@ -79,6 +80,19 @@ pub trait BitConstraintSet {
     fn bit_constraint(&self, id: usize) -> Option<BitConstraint>;
 }
 
+pub struct SimpleBitConstraintSet<'a, Namer: WitnessColumnNamer> {
+    bit_constraints: &'a BTreeMap<&'a str, BitConstraint>,
+    names: &'a Namer,
+}
+
+impl<'a, Namer: WitnessColumnNamer> BitConstraintSet for SimpleBitConstraintSet<'a, Namer> {
+    fn bit_constraint(&self, id: usize) -> Option<BitConstraint> {
+        self.bit_constraints
+            .get(self.names.name(id).as_str())
+            .cloned()
+    }
+}
+
 /// Determines global constraints on witness and fixed columns.
 /// Removes identities that only serve to create bit constraints from
 /// the identities vector.
@@ -107,19 +121,6 @@ pub fn determine_global_constraints<'a>(
             reduced_identities.push(identity)
         }
     }
-
-    // TODO this does not yet transfer constraitns of the form
-    // col fixed BYTE(i) { i & 0xff };
-    // col witness A;
-    // A * (A - 1) = 0;
-    // col witness B;
-    // { B } in { BYTE };
-    // col witness C;
-    // C = A * 2**8 + B;
-    // -> C is constrained.
-    //
-    // We can implement that in try_transfer_constraints but for that, we need a symbolic
-    // evaluator that handles both fixed and witness columns
 
     (known_constraints, reduced_identities)
 }
@@ -165,6 +166,7 @@ fn propagate_constraints<'a>(
                     .is_none());
                 remove = true;
             } else if let Some((p, c)) = try_transfer_constraints(
+                fixed_data,
                 identity.left.selector.as_ref().unwrap(),
                 &known_constraints,
             ) {
@@ -212,27 +214,27 @@ fn is_binary_constraint<'a>(fixed_data: &'a FixedData, expr: &Expression) -> Opt
             }
         }
     } else if let Expression::BinaryOperation(left, BinaryOperator::Mul, right) = expr {
-        let symbolic_ev = ExpressionEvaluator::new(SymbolicEvaluator::new(fixed_data));
-        let left_root = symbolic_ev
+        let symbolic_ev = SymbolicEvaluator::new(fixed_data);
+        let left_root = ExpressionEvaluator::new(symbolic_ev.clone())
             .evaluate(left)
             .ok()
             .and_then(|l| l.solve().ok())?;
-        let right_root = symbolic_ev
+        let right_root = ExpressionEvaluator::new(symbolic_ev.clone())
             .evaluate(right)
             .ok()
             .and_then(|r| r.solve().ok())?;
-        if let (
-            [(var1, Constraint::Assignment(value1))],
-            [(var2, Constraint::Assignment(value2))],
-        ) = (&left_root[..], &right_root[..])
+        if let ([(id1, Constraint::Assignment(value1))], [(id2, Constraint::Assignment(value2))]) =
+            (&left_root[..], &right_root[..])
         {
-            if var1 != var2 || *var1 >= fixed_data.witness_cols.len() {
+            let poly1 = symbolic_ev.poly_from_id(*id1);
+            let poly2 = symbolic_ev.poly_from_id(*id2);
+            if poly1 != poly2 || !fixed_data.witness_ids.contains_key(poly1.0) {
                 return None;
             }
             if (*value1 == 0.into() && *value2 == 1.into())
                 || (*value1 == 1.into() && *value2 == 0.into())
             {
-                return Some(fixed_data.witness_cols[*var1].name);
+                return Some(poly1.0);
             }
         }
     }
@@ -241,12 +243,35 @@ fn is_binary_constraint<'a>(fixed_data: &'a FixedData, expr: &Expression) -> Opt
 
 /// Tries to transfer constraints in a linear expression.
 fn try_transfer_constraints<'a>(
-    _expr: &'a Expression,
-    _known_constraints: &BTreeMap<&str, BitConstraint>,
+    fixed_data: &'a FixedData,
+    expr: &'a Expression,
+    known_constraints: &BTreeMap<&str, BitConstraint>,
 ) -> Option<(&'a str, BitConstraint)> {
-    None
-    // TODO we do some of this for each row, but we could also do it globally here.
-    //todo!();
+    if contains_next_ref(expr) {
+        return None;
+    }
+
+    let symbolic_ev = SymbolicEvaluator::new(fixed_data);
+    let aff_expr = ExpressionEvaluator::new(symbolic_ev.clone())
+        .evaluate(expr)
+        .ok()?;
+
+    let result = aff_expr
+        .solve_with_bit_constraints(&SimpleBitConstraintSet {
+            bit_constraints: known_constraints,
+            names: &symbolic_ev,
+        })
+        .ok()?;
+    assert!(result.len() <= 1);
+    result.get(0).map(|(id, cons)| {
+        if let Constraint::BitConstraint(cons) = cons {
+            let (poly, next) = symbolic_ev.poly_from_id(*id);
+            assert!(!next);
+            (poly, cons.clone())
+        } else {
+            panic!();
+        }
+    })
 }
 
 fn is_simple_poly(expr: &Expression) -> Option<&str> {
@@ -325,9 +350,8 @@ namespace Global(2**20);
     (1 - A + 0) * (A + 1 - 1) = 0;
     col witness B;
     { B } in { BYTE };
-    // TODO we could infer constraints here in the future.
-    //col witness C;
-    //C = A * 2**8 + B;
+    col witness C;
+    C = A * 2**8 + B;
 ";
         let analyzed = crate::analyzer::analyze_string(pil_source);
         let (constants, degree) = crate::constant_evaluator::generate(&analyzed);
@@ -379,7 +403,7 @@ namespace Global(2**20);
             vec![
                 ("Global.A", BitConstraint::from_max(0)),
                 ("Global.B", BitConstraint::from_max(7)),
-                //("Global.C", BitConstraint::from_max(8)),
+                ("Global.C", BitConstraint::from_max(8)),
                 ("Global.BYTE", BitConstraint::from_max(7)),
                 ("Global.BYTE2", BitConstraint::from_max(15)),
             ]

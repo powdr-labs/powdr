@@ -256,7 +256,7 @@ impl AffineExpression {
                 let name = namer.name(i);
                 if *c == 1.into() {
                     name
-                } else if *c == (-1).into() {
+                } else if *c == clamp((-1).into()) {
                     format!("-{name}")
                 } else {
                     format!("{} * {name}", format_number(c))
@@ -327,9 +327,9 @@ impl std::ops::Neg for AffineExpression {
     type Output = AffineExpression;
 
     fn neg(mut self) -> Self::Output {
-        self.coefficients
-            .iter_mut()
-            .for_each(|v| *v = clamp(-v.clone()));
+        self.coefficients.iter_mut().for_each(|v| {
+            *v = clamp(-v.clone());
+        });
         self.offset = clamp(-self.offset);
         self
     }

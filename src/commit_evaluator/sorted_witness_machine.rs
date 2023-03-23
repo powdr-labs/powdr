@@ -96,8 +96,8 @@ fn check_identity<'a>(fixed_data: &'a FixedData, id: &Identity) -> Option<&'a st
 /// Checks that the identity has a constraint of the form `a' - a` as the first expression
 /// on the left hand side and returns the name of the witness column.
 fn check_constraint<'a>(fixed_data: &'a FixedData, constraint: &Expression) -> Option<&'a str> {
-    let symbolic_ev = ExpressionEvaluator::new(SymbolicEvaluator::new(fixed_data));
-    let sort_constraint = match symbolic_ev.evaluate(constraint) {
+    let symbolic_ev = SymbolicEvaluator::new(fixed_data);
+    let sort_constraint = match ExpressionEvaluator::new(symbolic_ev.clone()).evaluate(constraint) {
         Ok(c) => c,
         Err(_) => return None,
     };
@@ -105,18 +105,21 @@ fn check_constraint<'a>(fixed_data: &'a FixedData, constraint: &Expression) -> O
         [key, _] => *key,
         _ => return None,
     };
-    let witness_count = fixed_data.witness_cols.len();
-    if key_column_id >= witness_count {
+    let (poly, next) = symbolic_ev.poly_from_id(key_column_id);
+    if next || fixed_data.witness_ids.get(poly).is_none() {
         // Either next-witness or fixed column.
         return None;
     }
-    let pattern = AffineExpression::from_witness_poly_value(key_column_id + witness_count)
-        - AffineExpression::from_witness_poly_value(key_column_id);
+    let pattern =
+        AffineExpression::from_witness_poly_value(symbolic_ev.id_for_witness_poly(poly, true))
+            - AffineExpression::from_witness_poly_value(
+                symbolic_ev.id_for_witness_poly(poly, false),
+            );
     if sort_constraint != pattern {
         return None;
     }
 
-    Some(fixed_data.witness_cols[key_column_id].name)
+    Some(poly)
 }
 
 impl Machine for SortedWitnesses {

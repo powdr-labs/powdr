@@ -10,7 +10,7 @@ use super::bit_constraints::{BitConstraint, BitConstraintSet};
 use super::eval_error::EvalError;
 use super::expression_evaluator::{ExpressionEvaluator, SymbolicVariables};
 use super::machine::Machine;
-use super::util::contains_next_ref;
+use super::util::contains_next_witness_ref;
 use super::{Constraint, EvalResult, FixedData, WitnessColumn};
 
 pub struct Evaluator<'a, QueryCallback>
@@ -249,7 +249,7 @@ where
     fn process_polynomial_identity(&self, identity: &Expression) -> EvalResult {
         // If there is no "next" reference in the expression,
         // we just evaluate it directly on the "next" row.
-        let row = if contains_next_ref(identity, self.fixed_data) {
+        let row = if contains_next_witness_ref(identity, self.fixed_data) {
             EvaluationRow::Current
         } else {
             EvaluationRow::Next

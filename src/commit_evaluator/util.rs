@@ -6,8 +6,17 @@ pub trait WitnessColumnNamer {
     fn name(&self, i: usize) -> String;
 }
 
+/// @returns true if the expression contains a reference to a next value of a
+/// (witness or fixed) column
+pub fn contains_next_ref(expr: &Expression) -> bool {
+    expr_any(expr, &mut |e| match e {
+        Expression::PolynomialReference(poly) => poly.next,
+        _ => false,
+    })
+}
+
 /// @returns true if the expression contains a reference to a next value of a witness column.
-pub fn contains_next_ref(expr: &Expression, fixed_data: &FixedData) -> bool {
+pub fn contains_next_witness_ref(expr: &Expression, fixed_data: &FixedData) -> bool {
     expr_any(expr, &mut |e| match e {
         Expression::PolynomialReference(poly) => {
             poly.next && fixed_data.witness_ids.contains_key(poly.name.as_str())
