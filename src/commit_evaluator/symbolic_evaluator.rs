@@ -1,21 +1,68 @@
+use std::collections::HashMap;
+
 use super::affine_expression::AffineExpression;
 use super::eval_error::EvalError;
 use super::expression_evaluator::SymbolicVariables;
 use super::util::WitnessColumnNamer;
 use super::FixedData;
 
-/// A purely symbolic evaluator. It wil fail on fixed columns.
+/// A purely symbolic evaluator.
 /// Note: The affine expressions it returns will contain variables
-/// for both the "current" and the "next" row, and they are different!
+/// for both the "current" and the "next" row, and for fixed columns as well,
+/// and they are all different!
 /// This means these AffineExpressions should not be confused with those
 /// returned by the EvaluationData struct.
+/// The only IDs are allocated in the following order:
+/// witness columns, next witness columns, fixed columns, next fixed columns.
+#[derive(Clone)]
 pub struct SymbolicEvaluator<'a> {
     fixed_data: &'a FixedData<'a>,
+    fixed_ids: HashMap<&'a str, usize>,
+    fixed_names: Vec<&'a str>,
 }
 
 impl<'a> SymbolicEvaluator<'a> {
     pub fn new(fixed_data: &'a FixedData<'a>) -> Self {
-        SymbolicEvaluator { fixed_data }
+        let mut fixed_names = fixed_data.fixed_cols.keys().cloned().collect::<Vec<_>>();
+        fixed_names.sort();
+        let fixed_ids = fixed_names
+            .iter()
+            .enumerate()
+            .map(|(i, n)| (*n, i))
+            .collect();
+        SymbolicEvaluator {
+            fixed_data,
+            fixed_ids,
+            fixed_names,
+        }
+    }
+
+    pub fn poly_from_id(&self, id: usize) -> (&'a str, bool) {
+        let witness_count = self.fixed_data.witness_ids.len();
+        if id < 2 * witness_count {
+            (
+                self.fixed_data.witness_cols[id % witness_count].name,
+                id >= witness_count,
+            )
+        } else {
+            let fixed_count = self.fixed_ids.len();
+            let fixed_id = id - 2 * witness_count;
+            (
+                self.fixed_names[fixed_id % fixed_count],
+                fixed_id >= fixed_count,
+            )
+        }
+    }
+
+    pub fn id_for_fixed_poly(&self, name: &str, next: bool) -> usize {
+        let witness_count = self.fixed_data.witness_ids.len();
+        let fixed_count = self.fixed_ids.len();
+
+        2 * witness_count + self.fixed_ids[name] + if next { fixed_count } else { 0 }
+    }
+    pub fn id_for_witness_poly(&self, name: &str, next: bool) -> usize {
+        let witness_count = self.fixed_data.witness_ids.len();
+        self.fixed_data.witness_ids[name] + if next { witness_count } else { 0 }
     }
 }
 
@@ -26,15 +73,14 @@ impl<'a> SymbolicVariables for SymbolicEvaluator<'a> {
 
     fn value(&self, name: &str, next: bool) -> Result<AffineExpression, EvalError> {
         // TODO arrays
-        if let Some(id) = self.fixed_data.witness_ids.get(name) {
-            let witness_count = self.fixed_data.witness_ids.len();
+        if self.fixed_data.witness_ids.get(name).is_some() {
             Ok(AffineExpression::from_witness_poly_value(
-                *id + if next { witness_count } else { 0 },
+                self.id_for_witness_poly(name, next),
             ))
         } else {
-            Err("Cannot access fixed columns in the symoblic evaluator."
-                .to_string()
-                .into())
+            Ok(AffineExpression::from_witness_poly_value(
+                self.id_for_fixed_poly(name, next),
+            ))
         }
     }
 
@@ -44,12 +90,12 @@ impl<'a> SymbolicVariables for SymbolicEvaluator<'a> {
 }
 
 impl<'a> WitnessColumnNamer for SymbolicEvaluator<'a> {
-    fn name(&self, i: usize) -> String {
-        let witness_count = self.fixed_data.witness_ids.len();
-        if i < witness_count {
-            self.fixed_data.name(i)
+    fn name(&self, id: usize) -> String {
+        let (name, next) = self.poly_from_id(id);
+        if next {
+            format!("{name}'")
         } else {
-            format!("{}'", self.fixed_data.name(i - witness_count))
+            name.to_string()
         }
     }
 }

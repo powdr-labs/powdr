@@ -2,7 +2,7 @@ use std::{fs, path::Path, process::Command};
 
 use itertools::Itertools;
 use powdr::compiler;
-use powdr::number::AbstractNumberType;
+use powdr::number::{AbstractNumberType, DegreeType};
 
 fn verify_pil(file_name: &str, query_callback: Option<fn(&str) -> Option<AbstractNumberType>>) {
     let input_file = Path::new(&format!("./tests/{file_name}"))
@@ -18,9 +18,10 @@ fn verify_pil(file_name: &str, query_callback: Option<fn(&str) -> Option<Abstrac
     verify(file_name, &temp_dir);
 }
 
-fn verify_asm(file_name: &str, inputs: Vec<AbstractNumberType>) {
+fn verify_asm(file_name: &str, inputs: Vec<AbstractNumberType>, row_count: Option<DegreeType>) {
     let contents = fs::read_to_string(format!("./tests/{file_name}")).unwrap();
-    let pil = powdr::asm_compiler::compile(Some(file_name), &contents).unwrap();
+    let pil = powdr::asm_compiler::compile(Some(file_name), &contents, row_count.unwrap_or(1024))
+        .unwrap();
     let pil_file_name = "asm.pil";
     let temp_dir = mktemp::Temp::new_dir().unwrap();
     assert!(compiler::compile_pil_ast(
@@ -131,6 +132,7 @@ fn simple_sum_asm() {
     verify_asm(
         "simple_sum.asm",
         [16, 4, 1, 2, 8, 5].iter().map(|&x| x.into()).collect(),
+        None,
     );
 }
 
@@ -139,15 +141,29 @@ fn palindrome() {
     verify_asm(
         "palindrome.asm",
         [7, 1, 7, 3, 9, 3, 7, 1].iter().map(|&x| x.into()).collect(),
+        None,
     );
 }
 
 #[test]
 fn test_mem_read_write() {
-    verify_asm("mem_read_write.asm", Default::default());
+    verify_asm("mem_read_write.asm", Default::default(), None);
 }
 
 #[test]
 fn test_multi_assign() {
-    verify_asm("multi_assign.asm", [7].iter().map(|&x| x.into()).collect());
+    verify_asm(
+        "multi_assign.asm",
+        [7].iter().map(|&x| x.into()).collect(),
+        None,
+    );
+}
+
+#[test]
+fn test_bit_access() {
+    verify_asm(
+        "bit_access.asm",
+        [20].iter().map(|&x| x.into()).collect(),
+        Some(0x20000),
+    );
 }

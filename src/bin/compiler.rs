@@ -22,6 +22,11 @@ enum Commands {
         #[arg(default_value_t = String::new())]
         inputs: String,
 
+        /// Number of rows (degree of the polynomials).
+        #[arg(short, long)]
+        #[arg(default_value_t = 1024)]
+        rows: u64,
+
         /// Output directory for PIL file, json file and fixed and witness column data.
         #[arg(short, long)]
         #[arg(default_value_t = String::from("."))]
@@ -60,6 +65,7 @@ fn main() {
         Commands::Asm {
             file,
             inputs,
+            rows,
             output_directory,
             force,
             verbose,
@@ -73,6 +79,7 @@ fn main() {
             powdr::compiler::compile_asm(
                 &file,
                 inputs,
+                rows,
                 Path::new(&output_directory),
                 force,
                 verbose,

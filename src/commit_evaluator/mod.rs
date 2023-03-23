@@ -3,10 +3,12 @@ use std::collections::HashMap;
 use crate::analyzer::{Analyzed, Expression, FunctionValueDefinition};
 use crate::number::{AbstractNumberType, DegreeType};
 
+use self::bit_constraints::BitConstraint;
 use self::eval_error::EvalError;
 use self::util::WitnessColumnNamer;
 
 mod affine_expression;
+mod bit_constraints;
 mod double_sorted_witness_machine;
 mod eval_error;
 mod evaluator;
@@ -49,7 +51,15 @@ pub fn generate<'a>(
     };
     let (machines, identities) =
         machine_extractor::split_out_machines(&fixed, &analyzed.identities, &witness_cols);
-    let mut evaluator = evaluator::Evaluator::new(&fixed, identities, machines, query_callback);
+    let (global_bit_constraints, identities) =
+        bit_constraints::determine_global_constraints(&fixed, identities);
+    let mut evaluator = evaluator::Evaluator::new(
+        &fixed,
+        identities,
+        global_bit_constraints,
+        machines,
+        query_callback,
+    );
 
     let mut values: Vec<(&str, Vec<AbstractNumberType>)> =
         witness_cols.iter().map(|p| (p.name, Vec::new())).collect();
@@ -72,9 +82,15 @@ pub fn generate<'a>(
     values
 }
 
-/// Result of evaluating an expression / lookup:
-/// A new assignment to a witness column identified by an ID or an error.
-type EvalResult = Result<Vec<(usize, AbstractNumberType)>, EvalError>;
+/// Result of evaluating an expression / lookup.
+/// New assignments or constraints for witness columns identified by an ID.
+type EvalResult = Result<Vec<(usize, Constraint)>, EvalError>;
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum Constraint {
+    Assignment(AbstractNumberType),
+    BitConstraint(BitConstraint),
+}
 
 /// Data that is fixed for witness generation.
 pub struct FixedData<'a> {
