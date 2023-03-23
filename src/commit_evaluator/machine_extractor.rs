@@ -51,10 +51,16 @@ pub fn split_out_machines<'a>(
 
     if let Some(machine) = SortedWitnesses::try_new(fixed, &machine_identities, &machine_witnesses)
     {
+        if fixed.verbose {
+            println!("Detected machine: sorted witnesses / write-once memory");
+        }
         machines.push(machine);
     } else if let Some(machine) =
         DoubleSortedWitnesses::try_new(fixed, &machine_identities, &machine_witnesses)
     {
+        if fixed.verbose {
+            println!("Detected machine: memory");
+        }
         machines.push(machine);
     }
     (machines, base_identities)

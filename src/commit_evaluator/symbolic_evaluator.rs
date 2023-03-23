@@ -58,7 +58,11 @@ impl<'a> SymbolicEvaluator<'a> {
         let witness_count = self.fixed_data.witness_ids.len();
         let fixed_count = self.fixed_ids.len();
 
-        2 * witness_count + self.fixed_ids[name] + if next { fixed_count } else { 0 }
+        let id = self
+            .fixed_ids
+            .get(name)
+            .unwrap_or_else(|| panic!("fixed poly {name} not found"));
+        2 * witness_count + id + if next { fixed_count } else { 0 }
     }
     pub fn id_for_witness_poly(&self, name: &str, next: bool) -> usize {
         let witness_count = self.fixed_data.witness_ids.len();

@@ -1,0 +1,113 @@
+use std::str::FromStr;
+use crate::riscv::parser::*;
+
+grammar;
+
+match {
+    r"\s*" => { },
+    r"#[^\n\r]*[\n\r]*" => { }, // Skip `# comments`
+    r"x[0-9]",
+    r"x1[0-9]",
+    r"x2[0-9]",
+    r"x3[0-1]",
+    r"a[0-7]",
+    r"s[0-1]",
+    r"s[2-9]",
+    r"s1[0-1]",
+    r"t[0-2]",
+    r"t[3-6]",
+    _,
+}
+
+pub MaybeStatement: Option<Statement> = { Statement? }
+
+Statement: Statement = {
+    Label,
+    Directive,
+    Instruction,
+}
+
+Label: Statement = {
+    <Symbol> ":" => Statement::Label(<>)
+}
+
+Directive: Statement = {
+    <DottedSymbol> <Arguments> => Statement::Directive(<>)
+}
+
+Instruction: Statement = {
+    <DotlessSymbol> <Arguments> => Statement::Instruction(<>)
+}
+
+Arguments: Vec<Argument> = {
+    => vec![],
+    <mut list:( <Argument> "," )*> <end:Argument>  => { list.push(end); list }
+}
+
+Argument: Argument = {
+    Register => Argument::Register(<>),
+    OffsetRegister,
+    StringLiteral => Argument::StringLiteral(<>),
+    Symbol => Argument::Symbol(<>),
+    Number => Argument::Number(<>),
+    HiDataRef,
+    LoDataRef,
+    Difference,
+}
+
+Register: Register = {
+    r"x[0-9]" => Register(<>[1..].parse().unwrap()),
+    r"x1[0-9]" => Register(<>[1..].parse().unwrap()),
+    r"x2[0-9]" => Register(<>[1..].parse().unwrap()),
+    r"x3[0-1]" => Register(<>[1..].parse().unwrap()),
+    "zero" => Register(0),
+    "ra" => Register(1),
+    "sp" => Register(2),
+    "gp" => Register(3),
+    "tp" => Register(4),
+    r"a[0-7]" => Register(10 + <>[1..].parse::<u8>().unwrap()),
+    "fp" => Register(8),
+    r"s[0-1]" => Register(8 + <>[1..].parse::<u8>().unwrap()),
+    r"s[2-9]" => Register(16 + <>[1..].parse::<u8>().unwrap()),
+    r"s1[0-1]" => Register(16 + <>[1..].parse::<u8>().unwrap()),
+    r"t[0-2]" => Register(5 + <>[1..].parse::<u8>().unwrap()),
+    r"t[3-6]" => Register(28 + <>[1..].parse::<u8>().unwrap()),
+}
+
+OffsetRegister: Argument = {
+    <n:Number> "(" <r:Register> ")" => Argument::RegOffset(r, n),
+}
+
+HiDataRef: Argument = {
+    "%hi(" <Symbol> ")" => Argument::HiDataRef(<>),
+}
+
+LoDataRef: Argument = {
+    "%lo(" <Symbol> ")" => Argument::LoDataRef(<>),
+}
+
+Difference: Argument = {
+    <Symbol> "-" <Symbol> => Argument::Difference(<>)
+}
+
+StringLiteral: String = {
+    r#""[^"]*""# => <>[1..<>.len() - 1].to_string()
+}
+
+DotlessSymbol: String = {
+    r"[a-zA-Z_@][a-zA-Z$_0-9.@]*" => <>.to_string()
+}
+
+DottedSymbol: String = {
+    r"\.[a-zA-Z_@.][a-zA-Z$_0-9.@]*" => <>.to_string()
+}
+
+Symbol: String = {
+    DotlessSymbol,
+    DottedSymbol,
+}
+
+Number: i64 = {
+    r"-?[0-9][0-9_]*" => i64::from_str(<>).unwrap().into(),
+
+}

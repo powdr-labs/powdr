@@ -56,8 +56,14 @@ impl<SV: SymbolicVariables> ExpressionEvaluator<SV> {
         op: &BinaryOperator,
         right: &Expression,
     ) -> Result<AffineExpression, EvalError> {
-        match (self.evaluate(left), self.evaluate(right)) {
-            (Ok(left), Ok(right)) => match op {
+        match (self.evaluate(left), op, self.evaluate(right)) {
+            // Special case for multiplication: It is enough for one to be known zero.
+            (Ok(zero), BinaryOperator::Mul, _) | (_, BinaryOperator::Mul, Ok(zero))
+                if zero.constant_value() == Some(0.into()) =>
+            {
+                Ok(zero)
+            }
+            (Ok(left), op, Ok(right)) => match op {
                 BinaryOperator::Add => Ok(left + right),
                 BinaryOperator::Sub => Ok(left - right),
                 BinaryOperator::Mul => {
@@ -126,8 +132,8 @@ impl<SV: SymbolicVariables> ExpressionEvaluator<SV> {
                     }
                 }
             },
-            (Ok(_), Err(reason)) | (Err(reason), Ok(_)) => Err(reason),
-            (Err(r1), Err(r2)) => Err(eval_error::combine(r1, r2)),
+            (Ok(_), _, Err(reason)) | (Err(reason), _, Ok(_)) => Err(reason),
+            (Err(r1), _, Err(r2)) => Err(eval_error::combine(r1, r2)),
         }
     }
 

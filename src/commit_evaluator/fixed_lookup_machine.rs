@@ -109,14 +109,48 @@ impl FixedLookup {
 
         // TODO in the other cases, we could at least return some improved bit constraints.
 
+        let rhs_evaluator = ExpressionEvaluator::new(EvaluateFixedOnRow {
+            fixed_data,
+            row: rhs_row,
+        });
+
         let mut reasons = vec![];
         let mut result = vec![];
         for (l, r) in left.iter().zip(right.expressions.iter()).skip(1) {
             match l {
-                Ok(l) => match self.equate_to_constant_rhs(l, r, fixed_data, rhs_row) {
-                    Ok(constraints) => result.extend(constraints),
-                    Err(err) => reasons.push(err),
-                },
+                Ok(l) => {
+                    // This needs to be a costant because symbolic variables
+                    // would reference a different row!
+                    let r = rhs_evaluator.evaluate(r).and_then(|r| {
+                        r.constant_value().ok_or_else(|| {
+                            format!("Constant value required: {}", r.format(fixed_data)).into()
+                        })
+                    });
+                    if let Err(err) = r {
+                        reasons.push(err);
+                        continue;
+                    }
+                    let r = r.unwrap();
+                    let evaluated = l.clone() - r.clone().into();
+                    // TODO we could use bit constraints here
+                    match evaluated.solve() {
+                        Ok(constraints) => result.extend(constraints),
+                        Err(_) => {
+                            let formatted = l.format(fixed_data);
+                            if evaluated.is_invalid() {
+                                // Fail the whole lookup
+                                return Err(
+                                    format!("Constraint is invalid ({formatted} != {r}).",).into(),
+                                );
+                            } else {
+                                reasons.push(
+                                    format!("Could not solve expression {formatted} = {r}.",)
+                                        .into(),
+                                )
+                            }
+                        }
+                    }
+                }
                 Err(err) => {
                     reasons.push(format!("Value of LHS component too complex: {err}").into());
                 }
@@ -127,36 +161,6 @@ impl FixedLookup {
         } else {
             Ok(result)
         }
-    }
-    fn equate_to_constant_rhs(
-        &self,
-        l: &AffineExpression,
-        r: &Expression,
-        fixed_data: &FixedData,
-        rhs_row: DegreeType,
-    ) -> EvalResult {
-        let rhs_evaluator = ExpressionEvaluator::new(EvaluateFixedOnRow {
-            fixed_data,
-            row: rhs_row,
-        });
-
-        // This needs to be a costant because symbolic variables
-        // would reference a different row!
-        let r = rhs_evaluator.evaluate(r).and_then(|r| {
-            r.constant_value()
-                .ok_or_else(|| format!("Constant value required: {}", r.format(fixed_data)).into())
-        })?;
-
-        let evaluated = l.clone() - r.clone().into();
-        // TODO we could use bit constraints here
-        evaluated.solve().map_err(|_| {
-            let formatted = l.format(fixed_data);
-            if evaluated.is_invalid() {
-                format!("Constraint is invalid ({formatted} != {r}).",).into()
-            } else {
-                format!("Could not solve expression {formatted} = {r}.",).into()
-            }
-        })
     }
 }
 

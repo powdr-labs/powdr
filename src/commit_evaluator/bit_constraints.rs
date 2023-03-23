@@ -47,7 +47,7 @@ impl BitConstraint {
     /// The bit constraint of an integer multiple of an expression.
     /// TODO this assumes goldilocks
     pub fn multiple(&self, factor: AbstractNumberType) -> Option<BitConstraint> {
-        if factor.clone() * (1 << self.max_bit) >= GOLDILOCKS_MOD.into() {
+        if factor.clone() * (1u64 << self.max_bit) >= GOLDILOCKS_MOD.into() {
             None
         } else {
             // TODO use binary logarithm
@@ -112,17 +112,35 @@ pub fn determine_global_constraints<'a>(
     // but also have one row for each possible value.
     let full_span = known_constraints.keys().copied().collect::<BTreeSet<_>>();
 
-    let mut reduced_identities = vec![];
+    if fixed_data.verbose {
+        println!("Determined the following bit constraints on fixed columns:");
+        for (name, con) in &known_constraints {
+            println!("  {name}: {con}");
+        }
+    }
+
+    let mut retained_identities = vec![];
+    let mut removed_identities = vec![];
     for identity in identities {
         let remove;
         (known_constraints, remove) =
             propagate_constraints(fixed_data, known_constraints, identity, &full_span);
-        if !remove {
-            reduced_identities.push(identity)
+        (if remove {
+            &mut removed_identities
+        } else {
+            &mut retained_identities
+        })
+        .push(identity);
+    }
+
+    if fixed_data.verbose {
+        println!("Determined the following identities to be bit/range constraints:");
+        for id in removed_identities {
+            println!("  {id}");
         }
     }
 
-    (known_constraints, reduced_identities)
+    (known_constraints, retained_identities)
 }
 
 /// Analyzes a fixed column and checks if its values correspond exactly
@@ -130,7 +148,7 @@ pub fn determine_global_constraints<'a>(
 /// TODO do this on the symbolic definition instead of the values.
 fn process_fixed_column(fixed: &[AbstractNumberType]) -> Option<BitConstraint> {
     if let Some(bit) = smallest_period_candidate(fixed) {
-        let mask: u64 = (1 << bit) - 1;
+        let mask: u64 = (1u64 << bit) - 1;
         for (i, v) in fixed.iter().enumerate() {
             if *v != (i as u64 & mask).into() {
                 return None;
@@ -263,13 +281,13 @@ fn try_transfer_constraints<'a>(
         })
         .ok()?;
     assert!(result.len() <= 1);
-    result.get(0).map(|(id, cons)| {
+    result.get(0).and_then(|(id, cons)| {
         if let Constraint::BitConstraint(cons) = cons {
             let (poly, next) = symbolic_ev.poly_from_id(*id);
             assert!(!next);
-            (poly, cons.clone())
+            Some((poly, cons.clone()))
         } else {
-            panic!();
+            None
         }
     })
 }
@@ -291,7 +309,7 @@ fn smallest_period_candidate(fixed: &[AbstractNumberType]) -> Option<u64> {
     if fixed.first() != Some(&0.into()) {
         return None;
     }
-    (1..63).find(|bit| fixed.get(1 << bit) == Some(&0.into()))
+    (1..63).find(|bit| fixed.get(1usize << bit) == Some(&0.into()))
 }
 
 #[cfg(test)]
