@@ -229,6 +229,6 @@ mod test {
 
     #[test]
     fn parse_example_asm_files() {
-        parse_asm_file("tests/simple_sum.asm");
+        parse_asm_file("tests/asm_data/simple_sum.asm");
     }
 }

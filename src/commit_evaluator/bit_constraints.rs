@@ -112,17 +112,35 @@ pub fn determine_global_constraints<'a>(
     // but also have one row for each possible value.
     let full_span = known_constraints.keys().copied().collect::<BTreeSet<_>>();
 
-    let mut reduced_identities = vec![];
+    if fixed_data.verbose {
+        println!("Determined the following bit constraints on fixed columns:");
+        for (name, con) in &known_constraints {
+            println!("  {name}: {con}");
+        }
+    }
+
+    let mut retained_identities = vec![];
+    let mut removed_identities = vec![];
     for identity in identities {
         let remove;
         (known_constraints, remove) =
             propagate_constraints(fixed_data, known_constraints, identity, &full_span);
-        if !remove {
-            reduced_identities.push(identity)
+        (if remove {
+            &mut removed_identities
+        } else {
+            &mut retained_identities
+        })
+        .push(identity);
+    }
+
+    if fixed_data.verbose {
+        println!("Determined the following identities to be bit/range constraints:");
+        for id in removed_identities {
+            println!("  {id}");
         }
     }
 
-    (known_constraints, reduced_identities)
+    (known_constraints, retained_identities)
 }
 
 /// Analyzes a fixed column and checks if its values correspond exactly
@@ -263,13 +281,13 @@ fn try_transfer_constraints<'a>(
         })
         .ok()?;
     assert!(result.len() <= 1);
-    result.get(0).map(|(id, cons)| {
+    result.get(0).and_then(|(id, cons)| {
         if let Constraint::BitConstraint(cons) = cons {
             let (poly, next) = symbolic_ev.poly_from_id(*id);
             assert!(!next);
-            (poly, cons.clone())
+            Some((poly, cons.clone()))
         } else {
-            panic!();
+            None
         }
     })
 }

@@ -367,7 +367,24 @@ impl ASMPILConverter {
                     self.process_assignment_value(left),
                     self.negate_assignment_value(self.process_assignment_value(right)),
                 ),
-                BinaryOperator::Mul => todo!(),
+                BinaryOperator::Mul => {
+                    let left = self.process_assignment_value(left);
+                    let right = self.process_assignment_value(right);
+                    if let [(f, AffineExpressionComponent::Constant)] = &left[..] {
+                        // TODO overflow?
+                        right
+                            .into_iter()
+                            .map(|(coeff, comp)| (f * coeff, comp))
+                            .collect()
+                    } else if let [(f, AffineExpressionComponent::Constant)] = &right[..] {
+                        // TODO overflow?
+                        left.into_iter()
+                            .map(|(coeff, comp)| (f * coeff, comp))
+                            .collect()
+                    } else {
+                        panic!("Multiplication by non-constant.");
+                    }
+                }
                 BinaryOperator::Div => panic!(),
                 BinaryOperator::Mod => panic!(),
                 BinaryOperator::Pow => panic!(),
@@ -459,7 +476,9 @@ impl ASMPILConverter {
                 for reg in writes {
                     program_constants
                         .get_mut(&format!("p_reg_write_{assign_reg}_{reg}"))
-                        .unwrap()[i] = 1.into();
+                        .unwrap_or_else(|| {
+                            panic!("Register combination {reg} <={assign_reg}= not found.")
+                        })[i] = 1.into();
                 }
             }
             for (assign_reg, value) in &line.value {
@@ -468,7 +487,9 @@ impl ASMPILConverter {
                         AffineExpressionComponent::Register(reg) => {
                             program_constants
                                 .get_mut(&format!("p_read_{assign_reg}_{reg}"))
-                                .unwrap()[i] = coeff.clone();
+                                .unwrap_or_else(|| {
+                                    panic!("Register combination <={assign_reg}= {reg} not found.")
+                                })[i] = coeff.clone();
                         }
                         AffineExpressionComponent::Constant => {
                             program_constants
@@ -826,7 +847,7 @@ pol constant p_reg_write_X_CNT = [1, 0, 0, 0, 0, 0, 0, 0, 0];
 { pc, reg_write_X_A, reg_write_X_CNT, instr_jmpz, instr_jmpz_param_l, instr_jmp, instr_jmp_param_l, instr_dec_CNT, instr_assert_zero, X_const, X_read_free, read_X_A, read_X_CNT, read_X_pc } in { line, p_reg_write_X_A, p_reg_write_X_CNT, p_instr_jmpz, p_instr_jmpz_param_l, p_instr_jmp, p_instr_jmp_param_l, p_instr_dec_CNT, p_instr_assert_zero, p_X_const, p_X_read_free, p_read_X_A, p_read_X_CNT, p_read_X_pc };
 
 "#;
-        let file_name = "tests/simple_sum.asm";
+        let file_name = "tests/asm_data/simple_sum.asm";
         let contents = fs::read_to_string(file_name).unwrap();
         let pil = compile(Some(file_name), &contents, 1024).unwrap();
         assert_eq!(format!("{pil}").trim(), expectation.trim());

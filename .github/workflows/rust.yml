@@ -31,6 +31,8 @@ jobs:
         path: |
           ~/pilcom/node_modules
         key: ${{ runner.os }}-pilcom-node-modules
+    - name: Install riscv target
+      run: rustup target add riscv32imc-unknown-none-elf
     - name: Build
       run: cargo build --verbose
     - name: Install pilcom
