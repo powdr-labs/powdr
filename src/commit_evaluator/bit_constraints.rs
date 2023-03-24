@@ -47,7 +47,7 @@ impl BitConstraint {
     /// The bit constraint of an integer multiple of an expression.
     /// TODO this assumes goldilocks
     pub fn multiple(&self, factor: AbstractNumberType) -> Option<BitConstraint> {
-        if factor.clone() * (1 << self.max_bit) >= GOLDILOCKS_MOD.into() {
+        if factor.clone() * (1u64 << self.max_bit) >= GOLDILOCKS_MOD.into() {
             None
         } else {
             // TODO use binary logarithm
@@ -130,7 +130,7 @@ pub fn determine_global_constraints<'a>(
 /// TODO do this on the symbolic definition instead of the values.
 fn process_fixed_column(fixed: &[AbstractNumberType]) -> Option<BitConstraint> {
     if let Some(bit) = smallest_period_candidate(fixed) {
-        let mask: u64 = (1 << bit) - 1;
+        let mask: u64 = (1u64 << bit) - 1;
         for (i, v) in fixed.iter().enumerate() {
             if *v != (i as u64 & mask).into() {
                 return None;
@@ -291,7 +291,7 @@ fn smallest_period_candidate(fixed: &[AbstractNumberType]) -> Option<u64> {
     if fixed.first() != Some(&0.into()) {
         return None;
     }
-    (1..63).find(|bit| fixed.get(1 << bit) == Some(&0.into()))
+    (1..63).find(|bit| fixed.get(1usize << bit) == Some(&0.into()))
 }
 
 #[cfg(test)]
