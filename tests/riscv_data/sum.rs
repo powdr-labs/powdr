@@ -7,16 +7,12 @@ pub extern "C" fn main() -> ! {
     let mut buffer = [0u32; 100];
     let proposed_sum = get_prover_input(0);
     let len = get_prover_input(1) as usize;
-    if len == 0 || len >= 100 {
-        panic!();
-    }
+    assert!(len > 0 && len < 100);
     for i in 0..len {
         buffer[i] = get_prover_input(2 + i as u32);
     }
-    let sum = buffer[..len].iter().cloned().reduce(|x, y| x + y).unwrap();
-    if sum != proposed_sum {
-        panic!()
-    }
+    let sum: u32 = buffer[..len].iter().sum();
+    assert!(sum == proposed_sum);
     loop {}
 }
 
