@@ -5,6 +5,8 @@ use regex::Regex;
 
 use crate::riscv::parser::{self, Argument, Register, Statement};
 
+use super::parser::Constant;
+
 /// Compiles riscv assembly file to POWDR assembly. Adds required library routines.
 pub fn compile_file(file: &Path) {
     let output = compile_riscv_asm(&fs::read_to_string(file).unwrap());
@@ -243,19 +245,25 @@ fn escape_label(l: &str) -> String {
     l.replace('.', "_dot_")
 }
 
-fn to_number(x: &Argument) -> u32 {
-    match x {
-        Argument::Number(n) => *n as u32,
-        Argument::HiDataRef(_) => 0, // TODO
-        Argument::LoDataRef(_) => 0, // TODO
-        Argument::Difference(_, _) => todo!(),
-        _ => panic!(),
+fn argument_to_number(x: &Argument) -> u32 {
+    if let Argument::Constant(c) = x {
+        constant_to_number(c)
+    } else {
+        panic!()
+    }
+}
+
+fn constant_to_number(c: &Constant) -> u32 {
+    match c {
+        Constant::Number(n) => *n as u32,
+        Constant::HiDataRef(_) => 0, // TODO
+        Constant::LoDataRef(_) => 0, // TODO
     }
 }
 
 fn rri(args: &[Argument]) -> (Register, Register, u32) {
     match args {
-        [Argument::Register(r1), Argument::Register(r2), n] => (*r1, *r2, to_number(n)),
+        [Argument::Register(r1), Argument::Register(r2), n] => (*r1, *r2, argument_to_number(n)),
         _ => panic!(),
     }
 }
@@ -269,7 +277,7 @@ fn rrr(args: &[Argument]) -> (Register, Register, Register) {
 
 fn ri(args: &[Argument]) -> (Register, u32) {
     match args {
-        [Argument::Register(r1), n] => (*r1, to_number(n)),
+        [Argument::Register(r1), n] => (*r1, argument_to_number(n)),
         _ => panic!(),
     }
 }
@@ -299,7 +307,9 @@ fn rl(args: &[Argument]) -> (Register, String) {
 
 fn rro(args: &[Argument]) -> (Register, Register, u32) {
     match args {
-        [Argument::Register(r1), Argument::RegOffset(r2, off)] => (*r1, *r2, *off as u32),
+        [Argument::Register(r1), Argument::RegOffset(r2, off)] => {
+            (*r1, *r2, constant_to_number(off))
+        }
         _ => panic!(),
     }
 }
