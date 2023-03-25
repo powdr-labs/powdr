@@ -2,9 +2,10 @@ use std::collections::{BTreeMap, HashMap};
 
 use crate::number::AbstractNumberType;
 use crate::number::DegreeType;
+use crate::parser;
 use crate::parser::asm_ast::*;
 use crate::parser::ast::*;
-use crate::parser::{self, ParseError};
+use crate::utils::ParseError;
 
 pub fn compile<'a>(
     file_name: Option<&str>,

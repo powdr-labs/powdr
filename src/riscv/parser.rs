@@ -3,6 +3,8 @@ use std::fmt::{self, Display};
 
 use lalrpop_util::*;
 
+use crate::utils::handle_parse_error;
+
 lalrpop_mod!(
     #[allow(clippy::all)]
     riscv_asm,
@@ -72,8 +74,13 @@ pub fn parse_asm(input: &str) -> Vec<Statement> {
         .map(|l| l.trim())
         .filter(|l| !l.is_empty())
         .flat_map(|line| {
-            riscv_asm::MaybeStatementParser::new().parse(line).unwrap()
-            //.map_err(|err| handle_error(err, file_name, input))
+            riscv_asm::MaybeStatementParser::new()
+                .parse(line)
+                .map_err(|err| {
+                    handle_parse_error(err, None, line).output_to_stderr();
+                    panic!("RISCV assembly parse error");
+                })
+                .unwrap()
         })
         .collect()
 }
