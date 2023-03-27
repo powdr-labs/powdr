@@ -2,7 +2,7 @@
 
 ## Simplified Example
 
-field: `2**64 - 2**23 + 1`
+field: `2**64 - 2**32 + 1`
 
 ```
 // The "@line" means that the register pc is matched with "line" in the lookup.
@@ -146,7 +146,9 @@ state machine called `Binary`. The state machine needs explicitly defined
 latching flag polynomial and public input/output polynomials.
 The generated lookup looks as follows:
 
+```
 plookup ROM.is_binary {op, X, Y, Z} in Binary.latch {Binary.op, Binary.X, Binary.Y, Binary.Z}
+```
 
 You see that it just uses the assignment registers in the lookup. The assignments in the
 chain of function calls is combined as follows:
