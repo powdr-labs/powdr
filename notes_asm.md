@@ -2,8 +2,9 @@
 
 ## Simplified Example
 
-field: 2**64 - 2**23 + 1
+field: `2**64 - 2**23 + 1`
 
+```
 // The "@line" means that the register pc is matched with "line" in the lookup.
 // The "pc' = pc + 1" is the default assignment if it is not changed by an instruction.
 reg pc(@line): pc' = pc + 1
@@ -38,6 +39,7 @@ repeat:
   B <= sub(B, 1)
   jmp repeat
 out:
+```
 
 ------------------------------------------
 
@@ -55,11 +57,15 @@ Labels are just representatives for their line numbers.
 Each instruction has a flag (constant poly) that is set to true in the line (it can be bits all in the same column).
 This flag is used with the assignments in the definition of the instruction.
 
+```
 instr jmpi c: bool, l: label { pc' = c * l + (1 - c) * pc }
+```
 
 All instructions that assign to `pc'` get combined to a single constraint, together with these flags:
 
+```
 pc' = jmp * jmp_arg1 + jmpi * (c * jmpi_arg2 + (1 - jmpi_arg1) * pc) + regular * (pc + 1);
+```
 
 The "_arg" expressions are further costant polynomials that contain the arguments
 per line. An optimizer might combine them if possible.
@@ -93,11 +99,15 @@ for a line of the form `A <=X= 2*B`.
 
 For each such assignment register, a constraint of the following form is created:
 
+```
 X = read_X_A * A + read_X_B * B + ... + const_X;
+```
 
 And for every register on the LHS of a X-assigment, we have:
 
+```
 A' = write_A * X
+```
 
 in addition to the update-constraints we already have for A. Of course, if A is on the LHS
 of an assignment, any other update to A conflicts and is reported by the compiler.
@@ -109,6 +119,7 @@ Warn about: This is finite field arithmetic and does component-wise multiplicati
 
 Functions can be defined using the `fun` keyword:
 
+```
 fun eq(a, b) -> c { c <=Z= binary(0, a, b) }
 fun add(a, b) -> c { c <=Z= binary(1, a, b) }
 fun sub(a, b) -> c { c <=Z= binary(2, a, b) }
@@ -116,10 +127,13 @@ fun mul(a, b) -> c { c <=Z= binary(3, a, b) }
 fun binary(op, a, c) -> c {
   Binary(op, <=X= a, <=Y= b, c <=Z=)
 }
+```
 
 This looks a bit intimidating, but their use is actually much easier:
 
+```
 A <=Z= add(B, B + 3)
+```
 
 This specific example is complicated, because we want the opcodes
 to be as flexible as possible and thus each of the parameters and return values
@@ -137,23 +151,29 @@ plookup ROM.is_binary {op, X, Y, Z} in Binary.latch {Binary.op, Binary.X, Binary
 You see that it just uses the assignment registers in the lookup. The assignments in the
 chain of function calls is combined as follows:
 
+```
 A <=Z= add(B, B + 3)
+```
 
 is resolved to
 
+```
 A <=Z= <=Z= <=Z= 
 <=X= B
 <=Y= B + 3
 op = 0
 Binary(op, X, Y, Z)
+```
 
 The multiple assignments through Z are simplified:
 
+```
 A <=Z=
 <=X= B
 <=Y= B + 3
 op = 0
 Binary(op, X, Y, Z)
+```
 
 And this is of course all done in a single step.
 
@@ -161,20 +181,24 @@ It goes without saying that this way to do it is extremely expensive
 because it uses three assignment registers. It might be better to use
 fixed registers to read from, as follows:
 
+```
 fun add_A_B -> c { c <=X= binary_A_B(0) }
 fun sub_A_B -> c { c <=X= binary_A_B(1) }
 ...
 fun binary_A_B(op) -> c {
   Binary(op, A, B, c <=X=)
 }
+```
 
 ### Memory
 
 Memory access is usually done as follows:
 
 There are two kinds of instructions:
+```
 value = read addr
 write addr value
+```
 
 The trace generates two tables that are permutations of each other that contain the following columns:
 step, op, addr, value
@@ -189,7 +213,6 @@ It has the following constraints:
 - check that it is properly sorted
 - value can only change if address changes or op is "write"
 
-
 The constraints, the sorting and the permutation check can be expressed in a pil file.
 
 The main features we need to generate the first table are:
@@ -201,6 +224,7 @@ We need to make sure that this value is only used for committed values.
 
 An example of memory instructions would be as follows:
 
+```
 reg X implicit;
 
 A <=X= B + 2
@@ -253,3 +277,4 @@ namespace ROM:
 
   // compiled from instr jmp l: label { pc' = l }
   pc' = isJMP ? jmp_l : pc + 1;
+```
