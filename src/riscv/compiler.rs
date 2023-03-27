@@ -180,6 +180,7 @@ pil{
 // set the stack pointer.
 // TODO other things to initialize?
 x2 <=X= 0x10000;
+jump main;
     "#
 }
 
@@ -199,11 +200,43 @@ lazy_static! {
             "unimp"
         ),
         (
+            Regex::new(r"^_ZN5alloc5alloc18handle_alloc_error17h[0-9a-f]{16}E$").unwrap(),
+            "unimp"
+        ),
+        (
+            Regex::new(r"^_ZN5alloc7raw_vec17capacity_overflow17h[0-9a-f]{16}E$").unwrap(),
+            "unimp"
+        ),
+        (
+            Regex::new(r"^_ZN5alloc7raw_vec17capacity_overflow17h[0-9a-f]{16}E$").unwrap(),
+            "unimp"
+        ),
+        // TODO rust alloc calls the global allocator - not sure why this is not automatic.
+        (Regex::new(r"^__rust_alloc$").unwrap(), "jmp __rg_alloc"),
+        (Regex::new(r"^__rust_realloc$").unwrap(), "jmp __rg_realloc"),
+        (Regex::new(r"^__rust_dealloc$").unwrap(), "jmp __rg_dealloc"),
+        (
             Regex::new(r"^memset@plt$").unwrap(),
             r#"
 # a4: number of bytes
 # a0: memory location
 # a1: value
+# We assume the value is zero and a4 is a multiple of 4
+# TODO this is of course not always true
+    beqz a4, ___end_memset
+    sw a1, 0(a0)
+    addi a4, a4, -4
+    j memset@plt
+___end_memset:
+    ret
+"#
+        ),
+        (
+            Regex::new(r"^memcpy@plt$").unwrap(),
+            r#"
+# a4: number of bytes
+# a0: memory location
+# a2: number of bytes
 # We assume the value is zero and a4 is a multiple of 4
 # TODO this is of course not always true
     beqz a4, ___end_memset
@@ -256,8 +289,14 @@ fn argument_to_number(x: &Argument) -> u32 {
 fn constant_to_number(c: &Constant) -> u32 {
     match c {
         Constant::Number(n) => *n as u32,
-        Constant::HiDataRef(_) => 0, // TODO
-        Constant::LoDataRef(_) => 0, // TODO
+        Constant::HiDataRef(s) => {
+            println!("Hi data ref to {s}");
+            0
+        } // TODO
+        Constant::LoDataRef(s) => {
+            println!("Lo data ref to {s}");
+            0
+        } // TODO
     }
 }
 
@@ -316,6 +355,21 @@ fn rro(args: &[Argument]) -> (Register, Register, u32) {
 
 fn process_instruction(instr: &str, args: &[Argument]) -> String {
     match instr {
+        // load/store registers
+        "li" => {
+            let (rd, imm) = ri(args);
+            format!("{rd} <=X= {imm};\n")
+        }
+        "lui" => {
+            let (rd, imm) = ri(args);
+            format!("{rd} <=X= {};\n", imm << 12)
+        }
+        "mv" => {
+            let (rd, rs) = rr(args);
+            format!("{rd} <=X= {rs};\n")
+        }
+
+        // Arithmetic
         "add" => {
             let (rd, r1, r2) = rrr(args);
             format!("{rd} <=X= wrap({r1} + {r2});\n")
@@ -324,6 +378,55 @@ fn process_instruction(instr: &str, args: &[Argument]) -> String {
             let (rd, rs, imm) = rri(args);
             format!("{rd} <=X= wrap({rs} + {imm});\n")
         }
+        "sub" => {
+            let (rd, r1, r2) = rrr(args);
+            format!("{rd} <=X= wrap({r1} - {r2});\n")
+        }
+        "neg" => {
+            let (rd, r1) = rr(args);
+            format!("{rd} <=X= wrap(0 - {r1});\n")
+        }
+
+        // bitwise
+        "xor" => {
+            // TODO
+            format!("fail;\n")
+            // let (rd, r1, r2) = rrr(args);
+            // format!("{rd} <=X= xor {r1}, {r2};\n")
+        }
+        "and" => {
+            // TODO
+            format!("fail;\n")
+            // let (rd, r1, r2) = rrr(args);
+            // format!("{rd} <=X= xor {r1}, {r2};\n")
+        }
+
+        // shift
+        "slli" => {
+            let (rd, rs, amount) = rri(args);
+            assert!(amount <= 31);
+            if amount <= 16 {
+                format!("{rd} <=X= wrap16({rs} * {});\n", 1 << amount)
+            } else {
+                todo!();
+            }
+        }
+        "srli" => {
+            // logical shift right
+            let (rd, rs, amount) = rri(args);
+            assert!(amount <= 31);
+
+            // X * (1 << amount) = rs + spill, spill & mask = 0
+            format!("fail;\n")
+        }
+
+        // comparison
+        "seqz" => {
+            let (rd, rs) = rr(args);
+            format!("{rd} <=Y= is_equal_zero({rs});\n")
+        }
+
+        // branching
         "beq" => {
             let (r1, r2, label) = rrl(args);
             format!("branch_if_zero {r1} - {r2}, {label};\n")
@@ -340,6 +443,24 @@ fn process_instruction(instr: &str, args: &[Argument]) -> String {
             let (r1, r2, label) = rrl(args);
             format!("branch_if_positive {r2} - {r1}, {label};\n")
         }
+        "bltz" => {
+            // branch if 2**31 <= r1 < 2**32
+            let (r1, label) = rl(args);
+            format!("branch_if_positive {r1} - 2**31 + 1, {label};\n")
+        }
+        "blez" => {
+            // branch less or equal zero
+            // branch if 2**31 - 1 <= r1 < 2**32
+            let (r1, label) = rl(args);
+            format!("branch_if_positive {r1} - 2**31, {label};\n")
+        }
+        "bgtz" => {
+            // branch if 0 < r1 < 2**31
+            // TODO this is wrong
+            // TODO we might need a new instrution here.
+            let (r1, label) = rl(args);
+            format!("branch_if_positive 2**31 - 1 - {r1}, {label};\n")
+        }
         "bne" => {
             let (r1, r2, label) = rrl(args);
             format!("branch_if_nonzero {r1} - {r2}, {label};\n")
@@ -348,12 +469,17 @@ fn process_instruction(instr: &str, args: &[Argument]) -> String {
             let (r1, label) = rl(args);
             format!("branch_if_nonzero {r1}, {label};\n")
         }
-        "j" => {
+
+        // jump and call
+        "jmp" | "j" => {
             if let [Argument::Symbol(label)] = args {
                 format!("jump {};\n", escape_label(label))
             } else {
                 panic!()
             }
+        }
+        "jal" => {
+            todo!();
         }
         "call" => {
             if let [Argument::Symbol(label)] = args {
@@ -366,49 +492,39 @@ fn process_instruction(instr: &str, args: &[Argument]) -> String {
             assert!(args.is_empty());
             "x10 <=X= ${ (\"input\", x10) };\n".to_string()
         }
-        "li" => {
-            let (rd, imm) = ri(args);
-            format!("{rd} <=X= {imm};\n")
+        "ret" => {
+            assert!(args.is_empty());
+            "ret;\n".to_string()
         }
-        "lui" => {
-            let (rd, imm) = ri(args);
-            format!("{rd} <=X= {};\n", imm << 12)
-        }
+
+        // memory access
         "lw" => {
             let (rd, rs, off) = rro(args);
+            // TODO we need to consider misaligned loads / stores
             format!("addr <=X= wrap({rs} + {off});\n") + &format!("{rd} <=X= mload();\n")
+        }
+        "lb" => {
+            // load byte and sign-extend. the memory is little-endian.
+            todo!();
+        }
+        "lbu" => {
+            // load byte and zero-extend. the memory is little-endian.
+            todo!();
         }
         "sw" => {
             let (r1, r2, off) = rro(args);
             format!("addr <=X= wrap({r2} + {off});\n") + &format!("mstore {r1};\n")
         }
-        "mv" => {
-            let (rd, rs) = rr(args);
-            format!("{rd} <=X= {rs};\n")
-        }
-        "ret" => {
-            assert!(args.is_empty());
-            "ret;\n".to_string()
-        }
-        "seqz" => {
-            let (rd, rs) = rr(args);
-            format!("{rd} <=Y= is_equal_zero {rs};\n")
-        }
-        "slli" => {
-            let (rd, rs, amount) = rri(args);
-            assert!(amount <= 31);
-            if amount <= 16 {
-                format!("{rd} <=X= wrap16({rs} * {});\n", 1 << amount)
-            } else {
-                todo!();
-            }
+        "sb" => {
+            // store byte
+            // TODO
+            todo!();
         }
         "unimp" => "fail;\n".to_string(),
-        "xor" => {
-            todo!();
-            // let (rd, r1, r2) = rrr(args);
-            // format!("{rd} <=X= xor {r1}, {r2};\n")
+
+        _ => {
+            println!("Unknown instruction: {instr}");
+            format!("fail;\n")
         }
-        _ => todo!("Unknown instruction: {instr}"),
     }
 }
