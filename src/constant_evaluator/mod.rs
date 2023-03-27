@@ -55,7 +55,7 @@ fn generate_values(
                 other_constants,
             };
             let mut values: Vec<_> = values.iter().map(|v| evaluator.evaluate(v)).collect();
-            // TODO we fill with zeros - should we warn? should we repeat?
+            // TODO we fill with zeros - should we warn? Should we repeat?
             if degree as usize > values.len() {
                 values.resize(degree as usize, 0.into())
             }

@@ -46,7 +46,7 @@ pub fn split_out_machines<'a>(
         !mw.is_empty() && all_witnesses.in_identity(i).is_subset(&mw)
     });
 
-    // TODO we probably nede to check that machine witnesses do not appear
+    // TODO we probably need to check that machine witnesses do not appear
     // in any identity among `identities` except on the RHS.
 
     if let Some(machine) = SortedWitnesses::try_new(fixed, &machine_identities, &machine_witnesses)

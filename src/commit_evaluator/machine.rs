@@ -7,7 +7,7 @@ use super::EvalResult;
 use super::{affine_expression::AffineExpression, eval_error::EvalError, FixedData};
 
 /// A machine is a set of witness columns and identities where the columns
-/// are used on the righ-hand-side of lookups. It can process plookups.
+/// are used on the right-hand-side of lookups. It can process plookups.
 pub trait Machine {
     // /// Tries to construct a new machine with the given subset of
     // /// witness columns and identities. If the identities do not
