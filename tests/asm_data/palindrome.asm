@@ -1,6 +1,8 @@
 // Verfies that the input is a palindrome.
 // Input: length, x_1, x_2, ..., x_length
 
+degree 1024;
+
 reg pc[@pc];
 reg X[<=];
 reg A;

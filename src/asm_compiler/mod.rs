@@ -7,17 +7,13 @@ use crate::parser::asm_ast::*;
 use crate::parser::ast::*;
 use crate::utils::ParseError;
 
-pub fn compile<'a>(
-    file_name: Option<&str>,
-    input: &'a str,
-    row_count: DegreeType,
-) -> Result<PILFile, ParseError<'a>> {
-    // TODO define the row count / poly degree in the assembly file.
-    parser::parse_asm(file_name, input).map(|ast| ASMPILConverter::new().convert(ast, row_count))
+pub fn compile<'a>(file_name: Option<&str>, input: &'a str) -> Result<PILFile, ParseError<'a>> {
+    parser::parse_asm(file_name, input).map(|ast| ASMPILConverter::new().convert(ast))
 }
 
 #[derive(Default)]
 struct ASMPILConverter {
+    degree_exponent: u32,
     pil: Vec<Statement>,
     pc_name: Option<String>,
     registers: BTreeMap<String, Register>,
@@ -34,11 +30,34 @@ impl ASMPILConverter {
         Default::default()
     }
 
-    fn convert(&mut self, input: ASMFile, max_steps: DegreeType) -> PILFile {
+    fn set_degree(&mut self, degree: DegreeType) {
+        // check the degree is a power of 2
+        assert!(
+            degree.is_power_of_two(),
+            "Degree should be a power of two, found {}",
+            degree
+        );
+        self.degree_exponent = degree.ilog2();
+    }
+
+    fn degree(&self) -> DegreeType {
+        1 << self.degree_exponent
+    }
+
+    fn convert(&mut self, input: ASMFile) -> PILFile {
+        self.set_degree(1024);
+
+        let mut statements = input.0.iter().peekable();
+
+        if let Some(ASMStatement::Degree(_, degree)) = statements.peek() {
+            self.set_degree(crate::number::abstract_to_degree(degree));
+            statements.next();
+        }
+
         self.pil.push(Statement::Namespace(
             0,
             "Assembly".to_string(),
-            Expression::Number(AbstractNumberType::from(max_steps)),
+            Expression::Number(AbstractNumberType::from(self.degree())),
         ));
         self.pil.push(Statement::PolynomialConstantDefinition(
             0,
@@ -46,8 +65,11 @@ impl ASMPILConverter {
             FunctionDefinition::Array(vec![build_number(1.into())]),
         ));
 
-        for statement in &input.0 {
+        for statement in statements {
             match statement {
+                ASMStatement::Degree(..) => {
+                    panic!("The degree statement is only supported at the start of the asm source");
+                }
                 ASMStatement::RegisterDeclaration(start, name, flags) => {
                     self.handle_register_declaration(flags, name, start);
                 }
@@ -850,7 +872,7 @@ pol constant p_reg_write_X_CNT = [1, 0, 0, 0, 0, 0, 0, 0, 0];
 "#;
         let file_name = "tests/asm_data/simple_sum.asm";
         let contents = fs::read_to_string(file_name).unwrap();
-        let pil = compile(Some(file_name), &contents, 1024).unwrap();
+        let pil = compile(Some(file_name), &contents).unwrap();
         assert_eq!(format!("{pil}").trim(), expectation.trim());
     }
 }

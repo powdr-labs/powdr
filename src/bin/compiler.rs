@@ -24,11 +24,6 @@ enum Commands {
         #[arg(default_value_t = String::new())]
         inputs: String,
 
-        /// Number of rows (degree of the polynomials).
-        #[arg(short, long)]
-        #[arg(default_value_t = 1024)]
-        rows: u64,
-
         /// Directory for  output files.
         #[arg(short, long)]
         #[arg(default_value_t = String::from("."))]
@@ -56,11 +51,6 @@ enum Commands {
         #[arg(default_value_t = String::new())]
         inputs: String,
 
-        /// Number of rows (degree of the polynomials).
-        #[arg(short, long)]
-        #[arg(default_value_t = 1024)]
-        rows: u64,
-
         /// Directory for  output files.
         #[arg(short, long)]
         #[arg(default_value_t = String::from("."))]
@@ -86,11 +76,6 @@ enum Commands {
         #[arg(short, long)]
         #[arg(default_value_t = String::new())]
         inputs: String,
-
-        /// Number of rows (degree of the polynomials).
-        #[arg(short, long)]
-        #[arg(default_value_t = 1024)]
-        rows: u64,
 
         /// Output directory for PIL file, json file and fixed and witness column data.
         #[arg(short, long)]
@@ -140,7 +125,6 @@ fn main() {
         Commands::Rust {
             file,
             inputs,
-            rows,
             output_directory,
             force,
             verbose,
@@ -148,7 +132,6 @@ fn main() {
             powdr::riscv::compile_rust(
                 &file,
                 split_inputs(&inputs),
-                rows,
                 Path::new(&output_directory),
                 force,
                 verbose,
@@ -157,7 +140,6 @@ fn main() {
         Commands::RiscvAsm {
             file,
             inputs,
-            rows,
             output_directory,
             force,
             verbose,
@@ -166,7 +148,6 @@ fn main() {
                 &file,
                 &file,
                 split_inputs(&inputs),
-                rows,
                 Path::new(&output_directory),
                 force,
                 verbose,
@@ -175,7 +156,6 @@ fn main() {
         Commands::Asm {
             file,
             inputs,
-            rows,
             output_directory,
             force,
             verbose,
@@ -183,7 +163,6 @@ fn main() {
             powdr::compiler::compile_asm(
                 &file,
                 split_inputs(&inputs),
-                rows,
                 Path::new(&output_directory),
                 force,
                 verbose,

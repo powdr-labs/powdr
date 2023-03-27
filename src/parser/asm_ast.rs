@@ -1,3 +1,5 @@
+use crate::number::AbstractNumberType;
+
 use super::ast::{Expression, SelectedExpressions, Statement};
 
 #[derive(Debug, PartialEq, Eq)]
@@ -5,6 +7,7 @@ pub struct ASMFile(pub Vec<ASMStatement>);
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum ASMStatement {
+    Degree(usize, AbstractNumberType),
     RegisterDeclaration(usize, String, Option<RegisterFlag>),
     InstructionDeclaration(
         usize,
