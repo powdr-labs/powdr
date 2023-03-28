@@ -8,7 +8,7 @@ use crate::witness_generator::util::contains_witness_ref;
 
 use super::affine_expression::AffineExpression;
 use super::eval_error::EvalError;
-use super::expression_evaluator::SymbolicVariables;
+use super::fixed_evaluator::FixedEvaluator;
 use super::machine::Machine;
 use super::{EvalResult, FixedData};
 
@@ -109,10 +109,8 @@ impl FixedLookup {
 
         // TODO in the other cases, we could at least return some improved bit constraints.
 
-        let rhs_evaluator = ExpressionEvaluator::new(EvaluateFixedOnRow {
-            fixed_data,
-            row: rhs_row,
-        });
+        let rhs_evaluator =
+            ExpressionEvaluator::new(FixedEvaluator::new(fixed_data, rhs_row as usize));
 
         let mut reasons = vec![];
         let mut result = vec![];
@@ -161,33 +159,5 @@ impl FixedLookup {
         } else {
             Ok(result)
         }
-    }
-}
-
-/// Evaluates references to fixed columns on a specific row.
-struct EvaluateFixedOnRow<'a> {
-    pub fixed_data: &'a FixedData<'a>,
-    pub row: DegreeType,
-}
-
-impl<'a> SymbolicVariables for EvaluateFixedOnRow<'a> {
-    fn constant(&self, name: &str) -> Result<AffineExpression, EvalError> {
-        Ok(self.fixed_data.constants[name].clone().into())
-    }
-
-    fn value(&self, name: &str, next: bool) -> Result<AffineExpression, EvalError> {
-        // TODO arrays
-        let values = self.fixed_data.fixed_cols[name];
-        let degree = values.len() as DegreeType;
-        let row = if next {
-            (self.row + 1) % degree
-        } else {
-            self.row
-        };
-        Ok(values[row as usize].clone().into())
-    }
-
-    fn format(&self, expr: AffineExpression) -> String {
-        expr.format(self.fixed_data)
     }
 }
