@@ -138,12 +138,17 @@ ConstantFixed = {
 
 
 ASMStatement: ASMStatement = {
+    Degree,
     RegisterDeclaration,
     InstructionDeclaration,
     InlinePil,
     Assignment,
     Instruction,
     Label,
+}
+
+Degree: ASMStatement = {
+    <@L> "degree" <Number> ";" => ASMStatement::Degree(<>)
 }
 
 RegisterDeclaration: ASMStatement = {
