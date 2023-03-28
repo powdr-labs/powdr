@@ -1,9 +1,9 @@
-use std::{collections::HashSet, ops::Not};
+use std::ops::Not;
 
 // TODO this should probably rather be a finite field element.
 use crate::number::{format_number, is_zero, AbstractNumberType, GOLDILOCKS_MOD};
 
-use super::bit_constraints::{BitConstraint, BitConstraintSet};
+use super::bit_constraints::BitConstraintSet;
 use super::eval_error::EvalError::ConflictingBitConstraints;
 use super::util::WitnessColumnNamer;
 use super::Constraint;
@@ -186,7 +186,7 @@ impl AffineExpression {
 
         parts
             .reduce(|c1, c2| match (c1, c2) {
-                (Some(c1), Some(c2)) => c1.try_combine(&c2),
+                (Some(c1), Some(c2)) => c1.try_combine_sum(&c2),
                 _ => None,
             })
             .flatten()
@@ -206,6 +206,7 @@ impl AffineExpression {
             .map(|(i, coeff)| {
                 (
                     i,
+                    coeff,
                     known_constraints
                         .bit_constraint(i)
                         .unwrap()
@@ -213,25 +214,24 @@ impl AffineExpression {
                 )
             })
             .collect::<Vec<_>>();
-        if parts.iter().any(|(_i, con)| con.is_none()) {
+        if parts.iter().any(|(_i, _coeff, con)| con.is_none()) {
             return Ok(vec![]);
         }
         // Check if they are mutually exclusive and compute assignments.
-        let mut covered_bits = HashSet::<u64>::new();
+        let mut covered_bits: AbstractNumberType = 0.into();
         let mut assignments = vec![];
         let mut offset = clamp(-self.offset.clone());
-        for (i, con) in parts {
-            let con = con.clone().unwrap();
-            let BitConstraint { min_bit, max_bit } = con;
-            for bit in min_bit..=max_bit {
-                if !covered_bits.insert(bit) {
-                    return Ok(vec![]);
-                }
+        for (i, coeff, constraint) in parts {
+            let constraint = constraint.clone().unwrap();
+            let mask = constraint.mask();
+            if mask.clone() & covered_bits.clone() != 0.into() {
+                return Ok(vec![]);
+            } else {
+                covered_bits |= mask.clone();
             }
-            let mask: AbstractNumberType = con.mask();
             assignments.push((
                 i,
-                Constraint::Assignment((offset.clone() & mask.clone()) >> min_bit),
+                Constraint::Assignment((offset.clone() & mask.clone()) / coeff.clone()),
             ));
             offset &= mask.not();
         }
@@ -429,28 +429,40 @@ mod test {
             - AffineExpression::from_witness_poly_value(3);
         let known_constraints = TestBitConstraints(
             vec![
-                (2, BitConstraint::from_max(7)),
-                (3, BitConstraint::from_max(3)),
+                (2, BitConstraint::from_max_bit(7)),
+                (3, BitConstraint::from_max_bit(3)),
             ]
             .into_iter()
             .collect(),
         );
         assert_eq!(
             expr.solve_with_bit_constraints(&known_constraints).unwrap(),
-            vec![(1, Constraint::BitConstraint(BitConstraint::from_max(11)))]
+            vec![(
+                1,
+                Constraint::BitConstraint(BitConstraint::from_max_bit(11))
+            )]
         );
         assert_eq!(
             (-expr)
                 .solve_with_bit_constraints(&known_constraints)
                 .unwrap(),
-            vec![(1, Constraint::BitConstraint(BitConstraint::from_max(11)))]
+            vec![(
+                1,
+                Constraint::BitConstraint(BitConstraint::from_max_bit(11))
+            )]
         );
 
         // Replace factor 16 by 32.
         let expr = AffineExpression::from_witness_poly_value(1)
             - AffineExpression::from_witness_poly_value(2).mul(32.into())
             - AffineExpression::from_witness_poly_value(3);
-        assert!(expr.solve_with_bit_constraints(&known_constraints).is_err());
+        assert_eq!(
+            expr.solve_with_bit_constraints(&known_constraints).unwrap(),
+            vec![(
+                1,
+                Constraint::BitConstraint(BitConstraint::from_mask(0x1fef.into()))
+            )]
+        );
 
         // Replace factor 16 by 8.
         let expr = AffineExpression::from_witness_poly_value(1)
@@ -467,8 +479,8 @@ mod test {
             - AffineExpression::from_witness_poly_value(3);
         let known_constraints = TestBitConstraints(
             vec![
-                (2, BitConstraint::from_max(7)),
-                (3, BitConstraint::from_max(3)),
+                (2, BitConstraint::from_max_bit(7)),
+                (3, BitConstraint::from_max_bit(3)),
             ]
             .into_iter()
             .collect(),
@@ -491,8 +503,8 @@ mod test {
             - AffineExpression::from_witness_poly_value(3);
         let known_constraints = TestBitConstraints(
             vec![
-                (2, BitConstraint::from_max(7)),
-                (3, BitConstraint::from_max(3)),
+                (2, BitConstraint::from_max_bit(7)),
+                (3, BitConstraint::from_max_bit(3)),
             ]
             .into_iter()
             .collect(),
