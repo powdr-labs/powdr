@@ -8,6 +8,7 @@ pub use self::fixed_lookup_machine::FixedLookup;
 use super::EvalResult;
 use super::{affine_expression::AffineExpression, eval_error::EvalError, FixedData};
 
+mod block_machine;
 mod double_sorted_witness_machine;
 mod fixed_lookup_machine;
 pub mod machine_extractor;

@@ -119,19 +119,12 @@ pub fn determine_global_constraints<'a>(
     // It allows us to completely remove some lookups.
     let mut full_span = BTreeSet::new();
     for (&name, &values) in &fixed_data.fixed_cols {
-        println!("constr for {name}");
         if let Some((cons, full)) = process_fixed_column(values) {
             assert!(known_constraints.insert(name, cons).is_none());
             if full {
                 full_span.insert(name);
             }
         }
-    }
-
-    //if fixed_data.verbose {
-    println!("Determined the following bit constraints on fixed columns:");
-    for (name, con) in &known_constraints {
-        println!("  {name}: {con}");
     }
 
     let mut retained_identities = vec![];
@@ -149,7 +142,11 @@ pub fn determine_global_constraints<'a>(
     }
 
     if fixed_data.verbose {
-        println!("Determined the following identities to be bit/range constraints:");
+        println!("Determined the following global bit constraints:");
+        for (name, con) in &known_constraints {
+            println!("  {name}: {con}");
+        }
+        println!("Determined the following identities to be purely bit/range constraints:");
         for id in removed_identities {
             println!("  {id}");
         }
