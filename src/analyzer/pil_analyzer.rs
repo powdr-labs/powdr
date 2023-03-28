@@ -3,7 +3,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::number::{abstract_to_degree, DegreeType};
-use crate::parser::ast::{self, Repetition};
+use crate::parser::ast::{self, ArrayExpression, Repetition};
 pub use crate::parser::ast::{BinaryOperator, UnaryOperator};
 use crate::{parser, utils};
 
@@ -341,13 +341,12 @@ impl PILContext {
                     _ => panic!(),
                 }
             }
-            ast::FunctionDefinition::Array(value) => match value {
-                ast::ArrayExpression::RepeatedValue(value, Repetition::Concrete(1)) => {
-                    FunctionValueDefinition::Array(self.process_expressions(value))
-                }
-                ast::ArrayExpression::RepeatedValue(_, _) => todo!(),
-                ast::ArrayExpression::Concat(_, _) => todo!(),
-            },
+            ast::FunctionDefinition::Array(value) => {
+                let expressions = self
+                    .process_array_expression(&value.clone().concretize(self.polynomial_degree));
+                assert_eq!(expressions.len() as u64, self.polynomial_degree);
+                FunctionValueDefinition::Array(expressions)
+            }
         });
         let is_new = self
             .definitions
@@ -436,6 +435,20 @@ impl PILContext {
         SelectedExpressions {
             selector: expr.selector.as_ref().map(|e| self.process_expression(e)),
             expressions: self.process_expressions(&expr.expressions),
+        }
+    }
+
+    fn process_array_expression(&mut self, array_expression: &ArrayExpression) -> Vec<Expression> {
+        match array_expression {
+            ArrayExpression::RepeatedValue(expressions, Repetition::Concrete(times)) => (0..*times)
+                .flat_map(|_| self.process_expressions(expressions))
+                .collect(),
+            ArrayExpression::Concat(left, right) => self
+                .process_array_expression(left)
+                .into_iter()
+                .chain(self.process_array_expression(right))
+                .collect(),
+            _ => unreachable!("The repetitions should have a concrete value, found *"),
         }
     }
 

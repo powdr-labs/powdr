@@ -264,9 +264,9 @@ mod test {
         let src = r#"
             constant %N = 10;
             namespace F(%N);
-            col fixed alt = [0, 1, 0, 1, 0, 1];
-            col fixed empty = [];
-            col fixed ref_other = [%N-1, alt(1), 8];
+            col fixed alt = ([0, 1, 0, 1, 0, 1] + [0]*);
+            col fixed empty = ([] + [0]*);
+            col fixed ref_other = ([%N-1, alt(1), 8] + [0]*);
         "#;
         let analyzed = analyze_string(src);
         let (constants, degree) = generate(&analyzed);

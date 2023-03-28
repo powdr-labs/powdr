@@ -62,10 +62,9 @@ impl ASMPILConverter {
         self.pil.push(Statement::PolynomialConstantDefinition(
             0,
             "first_step".to_string(),
-            FunctionDefinition::Array(ArrayExpression::concat(
-                ArrayExpression::value(vec![build_number(1.into())]),
-                ArrayExpression::repeated_value(vec![build_number(0.into())], Repetition::Star),
-            )),
+            FunctionDefinition::Array(
+                ArrayExpression::value(vec![build_number(1.into())]).pad_with_zeroes(),
+            ),
         ));
 
         for statement in statements {
@@ -586,9 +585,10 @@ impl ASMPILConverter {
             self.pil.push(Statement::PolynomialConstantDefinition(
                 0,
                 name.clone(),
-                FunctionDefinition::Array(ArrayExpression::value(
-                    values.into_iter().map(build_number).collect(),
-                )),
+                FunctionDefinition::Array(
+                    ArrayExpression::value(values.into_iter().map(build_number).collect())
+                        .pad_with_zeroes(),
+                ),
             ));
         }
     }
@@ -826,7 +826,7 @@ mod test {
     pub fn compile_simple_sum() {
         let expectation = r#"
 namespace Assembly(1024);
-pol constant first_step = [1] + [0]*;
+pol constant first_step = ([1] + [0]*);
 (first_step * pc) = 0;
 pol commit pc;
 pol commit X;
@@ -859,19 +859,19 @@ CNT' = ((((first_step' * 0) + (reg_write_X_CNT * X)) + (instr_dec_CNT * (CNT - 1
 pc' = ((((first_step' * 0) + (instr_jmpz * ((XIsZero * instr_jmpz_param_l) + ((1 - XIsZero) * (pc + 1))))) + (instr_jmp * instr_jmp_param_l)) + ((1 - ((first_step' + instr_jmpz) + instr_jmp)) * (pc + 1)));
 pol constant line(i) { i };
 pol commit X_free_value(i) query (i, pc, (0, ("input", 1)), (3, ("input", (CNT + 1))), (7, ("input", 0)));
-pol constant p_X_const = [0, 0, 0, 0, 0, 0, 0, 0, 0];
-pol constant p_X_read_free = [1, 0, 0, 1, 0, 0, 0, -1, 0];
-pol constant p_instr_assert_zero = [0, 0, 0, 0, 0, 0, 0, 0, 1];
-pol constant p_instr_dec_CNT = [0, 0, 0, 0, 1, 0, 0, 0, 0];
-pol constant p_instr_jmp = [0, 0, 0, 0, 0, 1, 0, 0, 0];
-pol constant p_instr_jmp_param_l = [0, 0, 0, 0, 0, 1, 0, 0, 0];
-pol constant p_instr_jmpz = [0, 0, 1, 0, 0, 0, 0, 0, 0];
-pol constant p_instr_jmpz_param_l = [0, 0, 6, 0, 0, 0, 0, 0, 0];
-pol constant p_read_X_A = [0, 0, 0, 1, 0, 0, 0, 1, 1];
-pol constant p_read_X_CNT = [0, 0, 1, 0, 0, 0, 0, 0, 0];
-pol constant p_read_X_pc = [0, 0, 0, 0, 0, 0, 0, 0, 0];
-pol constant p_reg_write_X_A = [0, 0, 0, 1, 0, 0, 0, 1, 0];
-pol constant p_reg_write_X_CNT = [1, 0, 0, 0, 0, 0, 0, 0, 0];
+pol constant p_X_const = ([0, 0, 0, 0, 0, 0, 0, 0, 0] + [0]*);
+pol constant p_X_read_free = ([1, 0, 0, 1, 0, 0, 0, -1, 0] + [0]*);
+pol constant p_instr_assert_zero = ([0, 0, 0, 0, 0, 0, 0, 0, 1] + [0]*);
+pol constant p_instr_dec_CNT = ([0, 0, 0, 0, 1, 0, 0, 0, 0] + [0]*);
+pol constant p_instr_jmp = ([0, 0, 0, 0, 0, 1, 0, 0, 0] + [0]*);
+pol constant p_instr_jmp_param_l = ([0, 0, 0, 0, 0, 1, 0, 0, 0] + [0]*);
+pol constant p_instr_jmpz = ([0, 0, 1, 0, 0, 0, 0, 0, 0] + [0]*);
+pol constant p_instr_jmpz_param_l = ([0, 0, 6, 0, 0, 0, 0, 0, 0] + [0]*);
+pol constant p_read_X_A = ([0, 0, 0, 1, 0, 0, 0, 1, 1] + [0]*);
+pol constant p_read_X_CNT = ([0, 0, 1, 0, 0, 0, 0, 0, 0] + [0]*);
+pol constant p_read_X_pc = ([0, 0, 0, 0, 0, 0, 0, 0, 0] + [0]*);
+pol constant p_reg_write_X_A = ([0, 0, 0, 1, 0, 0, 0, 1, 0] + [0]*);
+pol constant p_reg_write_X_CNT = ([1, 0, 0, 0, 0, 0, 0, 0, 0] + [0]*);
 { pc, reg_write_X_A, reg_write_X_CNT, instr_jmpz, instr_jmpz_param_l, instr_jmp, instr_jmp_param_l, instr_dec_CNT, instr_assert_zero, X_const, X_read_free, read_X_A, read_X_CNT, read_X_pc } in { line, p_reg_write_X_A, p_reg_write_X_CNT, p_instr_jmpz, p_instr_jmpz_param_l, p_instr_jmp, p_instr_jmp_param_l, p_instr_dec_CNT, p_instr_assert_zero, p_X_const, p_X_read_free, p_read_X_A, p_read_X_CNT, p_read_X_pc };
 
 "#;
