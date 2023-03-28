@@ -1,5 +1,5 @@
 use std::str::FromStr;
-use crate::riscv::parser::*;
+use crate::riscv::parser::{Statement, Argument, Register, Constant, unescape_string};
 
 grammar;
 
@@ -49,9 +49,7 @@ Argument: Argument = {
     OffsetRegister,
     StringLiteral => Argument::StringLiteral(<>),
     Symbol => Argument::Symbol(<>),
-    Number => Argument::Number(<>),
-    HiDataRef,
-    LoDataRef,
+    Constant => Argument::Constant(<>),
     Difference,
 }
 
@@ -75,15 +73,13 @@ Register: Register = {
 }
 
 OffsetRegister: Argument = {
-    <n:Number> "(" <r:Register> ")" => Argument::RegOffset(r, n),
+    <c:Constant> "(" <r:Register> ")" => Argument::RegOffset(r, c),
 }
 
-HiDataRef: Argument = {
-    "%hi(" <Symbol> ")" => Argument::HiDataRef(<>),
-}
-
-LoDataRef: Argument = {
-    "%lo(" <Symbol> ")" => Argument::LoDataRef(<>),
+Constant: Constant = {
+    Number => Constant::Number(<>),
+    "%hi(" <Symbol> ")" => Constant::HiDataRef(<>),
+    "%lo(" <Symbol> ")" => Constant::LoDataRef(<>),
 }
 
 Difference: Argument = {
@@ -91,7 +87,7 @@ Difference: Argument = {
 }
 
 StringLiteral: String = {
-    r#""[^"]*""# => <>[1..<>.len() - 1].to_string()
+    r#""[^\\"\n\r]*(\\[tnfbrx'"\\0-9][^\\"\n\r]*)*""# => unescape_string(<>)
 }
 
 DotlessSymbol: String = {

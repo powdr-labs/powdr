@@ -18,17 +18,21 @@ pub enum Statement {
 }
 pub enum Argument {
     Register(Register),
-    Number(i64),
-    RegOffset(Register, i64),
+    RegOffset(Register, Constant),
     StringLiteral(String),
+    Constant(Constant),
     Symbol(String),
-    HiDataRef(String),
-    LoDataRef(String),
     Difference(String, String),
 }
 
 #[derive(Clone, Copy)]
 pub struct Register(u8);
+
+pub enum Constant {
+    Number(i64),
+    HiDataRef(String),
+    LoDataRef(String),
+}
 
 impl Display for Statement {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -44,13 +48,21 @@ impl Display for Argument {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Argument::Register(r) => write!(f, "{r}"),
-            Argument::Number(n) => write!(f, "{n}"),
+            Argument::Constant(c) => write!(f, "{c}"),
             Argument::RegOffset(reg, off) => write!(f, "{off}({reg})"),
             Argument::StringLiteral(lit) => write!(f, "\"{lit}\""),
             Argument::Symbol(s) => write!(f, "{s}"),
-            Argument::HiDataRef(sym) => write!(f, "%hi({sym})"),
-            Argument::LoDataRef(sym) => write!(f, "%lo({sym})"),
             Argument::Difference(left, right) => write!(f, "{left} - {right}"),
+        }
+    }
+}
+
+impl Display for Constant {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Constant::Number(n) => write!(f, "{n}"),
+            Constant::HiDataRef(sym) => write!(f, "%hi({sym})"),
+            Constant::LoDataRef(sym) => write!(f, "%lo({sym})"),
         }
     }
 }
@@ -69,12 +81,13 @@ impl Display for Register {
 }
 
 pub fn parse_asm(input: &str) -> Vec<Statement> {
+    let parser = riscv_asm::MaybeStatementParser::new();
     input
         .split('\n')
         .map(|l| l.trim())
         .filter(|l| !l.is_empty())
         .flat_map(|line| {
-            riscv_asm::MaybeStatementParser::new()
+            parser
                 .parse(line)
                 .map_err(|err| {
                     handle_parse_error(err, None, line).output_to_stderr();
@@ -101,16 +114,49 @@ pub fn extract_label_references(statements: &[Statement]) -> BTreeSet<&str> {
         .flat_map(|s| match s {
             Statement::Label(_) | Statement::Directive(_, _) => None,
             Statement::Instruction(_, args) => Some(args.iter().filter_map(|arg| match arg {
-                Argument::Register(_)
-                | Argument::Number(_)
-                | Argument::RegOffset(_, _)
-                | Argument::StringLiteral(_) => None,
-                Argument::Symbol(s) | Argument::HiDataRef(s) | Argument::LoDataRef(s) => {
-                    Some(s.as_str())
-                }
+                Argument::Register(_) | Argument::StringLiteral(_) => None,
+                Argument::Symbol(s) => Some(s.as_str()),
+                Argument::RegOffset(_, c) | Argument::Constant(c) => match c {
+                    Constant::Number(_) => None,
+                    Constant::HiDataRef(s) | Constant::LoDataRef(s) => Some(s.as_str()),
+                },
                 Argument::Difference(_, _) => todo!(),
             })),
         })
         .flatten()
         .collect()
+}
+
+// TODO it actually parses to a byte array...
+pub fn unescape_string(s: &str) -> String {
+    assert!(s.len() >= 2);
+    assert!(s.starts_with('"') && s.ends_with('"'));
+    let mut chars = s[1..s.len() - 1].chars();
+    let mut result = String::new();
+    while let Some(c) = chars.next() {
+        result.push(if c == '\\' {
+            let next = chars.next().unwrap();
+            if next.is_ascii_digit() {
+                // octal number.
+                let n = next as u8 - b'0';
+                let nn = chars.next().unwrap() as u8 - b'0';
+                let nnn = chars.next().unwrap() as u8 - b'0';
+                (nnn + nn * 8 + n * 64) as char
+            } else if next == 'x' {
+                todo!("Parse hex digit");
+            } else {
+                match next {
+                    'n' => '\n',
+                    'r' => '\r',
+                    't' => '\t',
+                    'b' => 8 as char,
+                    'f' => 12 as char,
+                    other => other,
+                }
+            }
+        } else {
+            c
+        })
+    }
+    result
 }
