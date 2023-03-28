@@ -98,17 +98,18 @@ pub enum FunctionDefinition {
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum ArrayExpression {
-    RepeatedValue(Vec<Expression>, Repetition),
+    Value(Vec<Expression>),
+    RepeatedValue(Vec<Expression>),
     Concat(Box<ArrayExpression>, Box<ArrayExpression>),
 }
 
 impl ArrayExpression {
     pub fn value(v: Vec<Expression>) -> Self {
-        Self::RepeatedValue(v, Repetition::Concrete(1))
+        Self::Value(v)
     }
 
     pub fn repeated_value(v: Vec<Expression>) -> Self {
-        Self::RepeatedValue(v, Repetition::Star)
+        Self::RepeatedValue(v)
     }
 
     pub fn concat(self, other: Self) -> Self {
@@ -125,7 +126,7 @@ impl ArrayExpression {
 
 impl ArrayExpression {
     /// solve for `*`
-    fn solve(&self, degree: DegreeType) -> Option<DegreeType> {
+    pub fn solve(&self, degree: DegreeType) -> Option<DegreeType> {
         // the length of this expression is `a + b*x`
         let (a, b) = self.len();
         // it must match `degree`, and we solve for `x`
@@ -140,8 +141,8 @@ impl ArrayExpression {
     /// find the total length of an array expression as an affine expression: `a + b*x`
     fn len(&self) -> (DegreeType, DegreeType) {
         match self {
-            ArrayExpression::RepeatedValue(e, Repetition::Star) => (0, e.len() as u64),
-            ArrayExpression::RepeatedValue(e, Repetition::Concrete(r)) => (e.len() as u64 * r, 0),
+            ArrayExpression::RepeatedValue(e) => (0, e.len() as u64),
+            ArrayExpression::Value(e) => (e.len() as u64, 0),
             ArrayExpression::Concat(left, right) => {
                 let (a0, b0) = left.len();
                 let (a1, b1) = right.len();
@@ -153,40 +154,6 @@ impl ArrayExpression {
 
                 (a0 + a1, b0 + b1)
             }
-        }
-    }
-
-    // replace `*` by a concrete value `star_value`
-    fn concretize_aux(self, star_value: DegreeType) -> Self {
-        match self {
-            ArrayExpression::RepeatedValue(value, repetition) => {
-                Self::RepeatedValue(value, repetition.concretize(star_value))
-            }
-            ArrayExpression::Concat(left, right) => left
-                .concretize(star_value)
-                .concat(right.concretize(star_value)),
-        }
-    }
-
-    pub fn concretize(self, degree: DegreeType) -> Self {
-        match self.solve(degree) {
-            Some(star_value) => self.concretize_aux(star_value),
-            None => self,
-        }
-    }
-}
-
-#[derive(Debug, PartialEq, Eq, Clone)]
-pub enum Repetition {
-    Concrete(u64),
-    Star,
-}
-
-impl Repetition {
-    fn concretize(self, star_value: DegreeType) -> Self {
-        match self {
-            Repetition::Star => Repetition::Concrete(star_value),
-            r => r,
         }
     }
 }

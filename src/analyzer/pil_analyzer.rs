@@ -3,7 +3,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::number::{abstract_to_degree, DegreeType};
-use crate::parser::ast::{self, ArrayExpression, Repetition};
+use crate::parser::ast::{self, ArrayExpression};
 pub use crate::parser::ast::{BinaryOperator, UnaryOperator};
 use crate::{parser, utils};
 
@@ -342,8 +342,8 @@ impl PILContext {
                 }
             }
             ast::FunctionDefinition::Array(value) => {
-                let expressions = self
-                    .process_array_expression(&value.clone().concretize(self.polynomial_degree));
+                let star_value = value.solve(self.polynomial_degree);
+                let expressions = self.process_array_expression(value, star_value);
                 assert_eq!(expressions.len() as u64, self.polynomial_degree);
                 FunctionValueDefinition::Array(expressions)
             }
@@ -438,17 +438,21 @@ impl PILContext {
         }
     }
 
-    fn process_array_expression(&mut self, array_expression: &ArrayExpression) -> Vec<Expression> {
+    fn process_array_expression(
+        &mut self,
+        array_expression: &ArrayExpression,
+        star_value: Option<DegreeType>,
+    ) -> Vec<Expression> {
         match array_expression {
-            ArrayExpression::RepeatedValue(expressions, Repetition::Concrete(times)) => (0..*times)
+            ArrayExpression::Value(expressions) => self.process_expressions(expressions),
+            ArrayExpression::RepeatedValue(expressions) => (0..star_value.unwrap())
                 .flat_map(|_| self.process_expressions(expressions))
                 .collect(),
             ArrayExpression::Concat(left, right) => self
-                .process_array_expression(left)
+                .process_array_expression(left, star_value)
                 .into_iter()
-                .chain(self.process_array_expression(right))
+                .chain(self.process_array_expression(right, star_value))
                 .collect(),
-            _ => unreachable!("The repetitions should have a concrete value, found *"),
         }
     }
 

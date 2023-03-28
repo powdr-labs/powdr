@@ -91,22 +91,13 @@ fn format_names(names: &[PolynomialName]) -> String {
 impl Display for ArrayExpression {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
-            ArrayExpression::RepeatedValue(expressions, Repetition::Concrete(1)) => {
+            ArrayExpression::Value(expressions) => {
                 write!(f, "[{}]", format_expressions(expressions))
             }
-            ArrayExpression::RepeatedValue(expressions, r) => {
-                write!(f, "[{}]{}", format_expressions(expressions), r)
+            ArrayExpression::RepeatedValue(expressions) => {
+                write!(f, "[{}]*", format_expressions(expressions))
             }
             ArrayExpression::Concat(left, right) => write!(f, "({} + {})", left, right),
-        }
-    }
-}
-
-impl Display for Repetition {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        match self {
-            Repetition::Concrete(v) => write!(f, "*{{{}}}", v),
-            Repetition::Star => write!(f, "*"),
         }
     }
 }

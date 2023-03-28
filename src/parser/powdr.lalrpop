@@ -330,8 +330,8 @@ PublicReference: String = {
 }
 
 ArrayExpression: ArrayExpression = {
-    "[" <ExpressionList> "]" => ArrayExpression::RepeatedValue(<>, Repetition::Concrete(1)),
-    "[" <ExpressionList> "]" "*" => ArrayExpression::RepeatedValue(<>, Repetition::Star),
+    "[" <ExpressionList> "]" => ArrayExpression::value(<>),
+    "[" <ExpressionList> "]" "*" => ArrayExpression::repeated_value(<>),
     "(" <ArrayExpression> "+" <ArrayExpression> ")" => ArrayExpression::concat(<>),
 }
 
