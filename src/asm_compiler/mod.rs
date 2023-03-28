@@ -34,8 +34,7 @@ impl ASMPILConverter {
         // check the degree is a power of 2
         assert!(
             degree.is_power_of_two(),
-            "Degree should be a power of two, found {}",
-            degree
+            "Degree should be a power of two, found {degree}",
         );
         self.degree_exponent = degree.ilog2();
     }
