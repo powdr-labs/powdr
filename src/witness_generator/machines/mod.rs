@@ -6,6 +6,11 @@ use crate::number::AbstractNumberType;
 use super::EvalResult;
 use super::{affine_expression::AffineExpression, eval_error::EvalError, FixedData};
 
+mod double_sorted_witness_machine;
+mod fixed_lookup_machine;
+pub mod machine_extractor;
+mod sorted_witness_machine;
+
 /// A machine is a set of witness columns and identities where the columns
 /// are used on the right-hand-side of lookups. It can process plookups.
 pub trait Machine {

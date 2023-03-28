@@ -2,17 +2,17 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 
 use itertools::{Either, Itertools};
 
+use super::super::affine_expression::AffineExpression;
+use super::Machine;
+use super::{EvalResult, FixedData};
 use crate::analyzer::{Expression, Identity, IdentityKind, SelectedExpressions};
 use crate::number::AbstractNumberType;
-use crate::witness_generator::eval_error;
-
-use super::affine_expression::AffineExpression;
-use super::eval_error::EvalError;
-use super::expression_evaluator::ExpressionEvaluator;
-use super::fixed_evaluator::FixedEvaluator;
-use super::machine::Machine;
-use super::symbolic_evaluator::SymbolicEvaluator;
-use super::{EvalResult, FixedData};
+use crate::witness_generator::{
+    eval_error::{self, EvalError},
+    expression_evaluator::ExpressionEvaluator,
+    fixed_evaluator::FixedEvaluator,
+    symbolic_evaluator::SymbolicEvaluator,
+};
 
 /// A machine that can support a lookup in a set of columns that are sorted
 /// by one specific column and values in that column have to be unique.

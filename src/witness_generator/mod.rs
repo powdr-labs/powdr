@@ -9,15 +9,11 @@ use self::util::WitnessColumnNamer;
 
 mod affine_expression;
 mod bit_constraints;
-mod double_sorted_witness_machine;
 mod eval_error;
 mod expression_evaluator;
 pub mod fixed_evaluator;
-mod fixed_lookup_machine;
 mod generator;
-mod machine;
-mod machine_extractor;
-mod sorted_witness_machine;
+mod machines;
 pub mod symbolic_evaluator;
 mod util;
 
@@ -49,8 +45,11 @@ pub fn generate<'a>(
         witness_ids: witness_cols.iter().map(|w| (w.name, w.id)).collect(),
         verbose,
     };
-    let (machines, identities) =
-        machine_extractor::split_out_machines(&fixed, &analyzed.identities, &witness_cols);
+    let (machines, identities) = machines::machine_extractor::split_out_machines(
+        &fixed,
+        &analyzed.identities,
+        &witness_cols,
+    );
     let (global_bit_constraints, identities) =
         bit_constraints::determine_global_constraints(&fixed, identities);
     let mut generator = generator::Generator::new(

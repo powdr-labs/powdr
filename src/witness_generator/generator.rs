@@ -9,7 +9,7 @@ use super::affine_expression::AffineExpression;
 use super::bit_constraints::{BitConstraint, BitConstraintSet};
 use super::eval_error::EvalError;
 use super::expression_evaluator::{ExpressionEvaluator, SymbolicVariables};
-use super::machine::Machine;
+use super::machines::Machine;
 use super::util::contains_next_witness_ref;
 use super::{Constraint, EvalResult, FixedData, WitnessColumn};
 
