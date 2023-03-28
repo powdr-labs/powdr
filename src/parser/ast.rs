@@ -1,4 +1,4 @@
-use crate::number::AbstractNumberType;
+use crate::number::{AbstractNumberType, DegreeType};
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct PILFile(pub Vec<Statement>);
@@ -85,13 +85,74 @@ pub enum BinaryOperator {
 }
 
 /// The definition of a function (excluding its name):
-/// Either a param-value mapping or an array of values.
+/// Either a param-value mapping or an array expression.
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum FunctionDefinition {
     /// Parameter-value-mapping.
     Mapping(Vec<String>, Expression),
-    /// Array of values.
-    Array(Vec<Expression>),
+    /// Array expression.
+    Array(ArrayExpression),
     /// Prover query.
     Query(Vec<String>, Expression),
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub enum ArrayExpression {
+    RepeatedValue(Vec<Expression>, Repetition),
+    Concat(Box<ArrayExpression>, Box<ArrayExpression>),
+}
+
+impl ArrayExpression {
+    pub fn value(v: Vec<Expression>) -> Self {
+        Self::RepeatedValue(v, Repetition::Concrete(1))
+    }
+
+    pub fn repeated_value(v: Vec<Expression>, repetition: Repetition) -> Self {
+        Self::RepeatedValue(v, repetition)
+    }
+
+    pub fn concat(self, other: Self) -> Self {
+        Self::Concat(Box::new(self), Box::new(other))
+    }
+}
+
+impl ArrayExpression {
+    /// solve for `*`
+    pub fn solve(&self, degree: DegreeType) -> Option<DegreeType> {
+        None
+    }
+
+    // replace `*` by a concrete value `star_value`
+    pub fn concretize_aux(self, star_value: DegreeType) -> Self {
+        match self {
+            ArrayExpression::RepeatedValue(value, repetition) => {
+                Self::RepeatedValue(value, repetition.concretize(star_value))
+            }
+            ArrayExpression::Concat(left, right) => left
+                .concretize(star_value)
+                .concat(right.concretize(star_value)),
+        }
+    }
+
+    pub fn concretize(self, degree: DegreeType) -> Self {
+        match self.solve(degree) {
+            Some(star_value) => self.concretize_aux(star_value),
+            None => self,
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub enum Repetition {
+    Concrete(u64),
+    Star,
+}
+
+impl Repetition {
+    fn concretize(self, star_value: DegreeType) -> Self {
+        match self {
+            Repetition::Star => Repetition::Concrete(star_value),
+            r => r,
+        }
+    }
 }

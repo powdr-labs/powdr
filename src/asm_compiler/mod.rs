@@ -62,7 +62,10 @@ impl ASMPILConverter {
         self.pil.push(Statement::PolynomialConstantDefinition(
             0,
             "first_step".to_string(),
-            FunctionDefinition::Array(vec![build_number(1.into())]),
+            FunctionDefinition::Array(ArrayExpression::concat(
+                ArrayExpression::value(vec![build_number(1.into())]),
+                ArrayExpression::repeated_value(vec![build_number(0.into())], Repetition::Star),
+            )),
         ));
 
         for statement in statements {
@@ -583,7 +586,9 @@ impl ASMPILConverter {
             self.pil.push(Statement::PolynomialConstantDefinition(
                 0,
                 name.clone(),
-                FunctionDefinition::Array(values.into_iter().map(build_number).collect()),
+                FunctionDefinition::Array(ArrayExpression::value(
+                    values.into_iter().map(build_number).collect(),
+                )),
             ));
         }
     }
@@ -821,7 +826,7 @@ mod test {
     pub fn compile_simple_sum() {
         let expectation = r#"
 namespace Assembly(1024);
-pol constant first_step = [1];
+pol constant first_step = [1] + [0]*;
 (first_step * pc) = 0;
 pol commit pc;
 pol commit X;

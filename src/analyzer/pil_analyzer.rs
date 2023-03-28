@@ -3,7 +3,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::number::{abstract_to_degree, DegreeType};
-use crate::parser::ast;
+use crate::parser::ast::{self, Repetition};
 pub use crate::parser::ast::{BinaryOperator, UnaryOperator};
 use crate::{parser, utils};
 
@@ -341,9 +341,13 @@ impl PILContext {
                     _ => panic!(),
                 }
             }
-            ast::FunctionDefinition::Array(value) => {
-                FunctionValueDefinition::Array(self.process_expressions(value))
-            }
+            ast::FunctionDefinition::Array(value) => match value {
+                ast::ArrayExpression::RepeatedValue(value, Repetition::Concrete(1)) => {
+                    FunctionValueDefinition::Array(self.process_expressions(value))
+                }
+                ast::ArrayExpression::RepeatedValue(_, _) => todo!(),
+                ast::ArrayExpression::Concat(_, _) => todo!(),
+            },
         });
         let is_new = self
             .definitions

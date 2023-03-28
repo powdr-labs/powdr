@@ -71,7 +71,7 @@ PolynomialConstantDefinition: Statement = {
 
 FunctionDefinition: FunctionDefinition = {
     "(" <ParameterList> ")" "{" <Expression> "}" => FunctionDefinition::Mapping(<>),
-    "=" "[" <ExpressionList> "]" => FunctionDefinition::Array(<>),
+    "=" <ArrayExpression> => FunctionDefinition::Array(<>),
 }
 
 ParameterList: Vec<String> = {
@@ -327,6 +327,12 @@ PolynomialReference: PolynomialReference = {
 
 PublicReference: String = {
     ":" <Identifier>
+}
+
+ArrayExpression: ArrayExpression = {
+    "[" <ExpressionList> "]" => ArrayExpression::RepeatedValue(<>, Repetition::Concrete(1)),
+    "[" <ExpressionList> "]" "*" => ArrayExpression::RepeatedValue(<>, Repetition::Star),
+    "(" <ArrayExpression> "+" <ArrayExpression> ")" => ArrayExpression::concat(<>),
 }
 
 // ---------------------------- Terminals -----------------------------
