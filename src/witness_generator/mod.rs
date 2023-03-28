@@ -15,6 +15,7 @@ pub mod fixed_evaluator;
 mod generator;
 mod machines;
 pub mod symbolic_evaluator;
+mod symbolic_witness_evaluator;
 mod util;
 
 /// Generates the committed polynomial values
