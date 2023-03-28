@@ -101,10 +101,12 @@ impl Machine for FixedLookup {
     fn process_plookup(
         &mut self,
         fixed_data: &FixedData,
+        fixed_lookup: &mut Option<&mut dyn Machine>,
         kind: IdentityKind,
         left: &[Result<AffineExpression, EvalError>],
         right: &SelectedExpressions,
     ) -> Option<EvalResult> {
+        assert!(fixed_lookup.is_none());
         // This is a matching machine if it is a plookup and the RHS is fully constant.
         if kind != IdentityKind::Plookup
             || right.selector.is_some()

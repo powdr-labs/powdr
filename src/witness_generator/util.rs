@@ -35,24 +35,6 @@ pub fn contains_witness_ref(expr: &Expression, fixed_data: &FixedData) -> bool {
     })
 }
 
-/// Checks if an expression is
-/// - a polynomial
-/// - not part of a polynomial array
-/// - not shifted with `'`
-/// and return the polynomial's name if so
-pub fn is_simple_poly(expr: &Expression) -> Option<&str> {
-    if let Expression::PolynomialReference(PolynomialReference {
-        name,
-        index: None,
-        next: false,
-    }) = expr
-    {
-        Some(name)
-    } else {
-        None
-    }
-}
-
 pub fn expr_any(expr: &Expression, f: &mut impl FnMut(&Expression) -> bool) -> bool {
     if f(expr) {
         true
@@ -69,5 +51,20 @@ pub fn expr_any(expr: &Expression, f: &mut impl FnMut(&Expression) -> bool) -> b
             | Expression::Number(_)
             | Expression::String(_) => false,
         }
+    }
+}
+
+/// Returns the name of the polynomial if the expression is just a polynomial
+/// reference (without next).
+pub fn is_simple_poly(expr: &Expression) -> Option<&str> {
+    if let Expression::PolynomialReference(PolynomialReference {
+        name,
+        index: None,
+        next: false,
+    }) = expr
+    {
+        Some(name)
+    } else {
+        None
     }
 }

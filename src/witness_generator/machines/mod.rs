@@ -6,6 +6,7 @@ use crate::number::AbstractNumberType;
 use super::EvalResult;
 use super::{affine_expression::AffineExpression, eval_error::EvalError, FixedData};
 
+mod block_machine;
 mod double_sorted_witness_machine;
 mod fixed_lookup_machine;
 pub mod machine_extractor;
@@ -31,6 +32,7 @@ pub trait Machine {
     fn process_plookup(
         &mut self,
         fixed_data: &FixedData,
+        fixed_lookup: &mut Option<&mut dyn Machine>,
         kind: IdentityKind,
         left: &[Result<AffineExpression, EvalError>],
         right: &SelectedExpressions,

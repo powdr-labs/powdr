@@ -111,7 +111,7 @@ impl<'a, Namer: WitnessColumnNamer> BitConstraintSet for SimpleBitConstraintSet<
 /// TODO at some point, we should check that they still hold.
 pub fn determine_global_constraints<'a>(
     fixed_data: &'a FixedData,
-    identities: Vec<&'a Identity>,
+    identities: &[&'a Identity],
 ) -> (BTreeMap<&'a str, BitConstraint>, Vec<&'a Identity>) {
     let mut known_constraints = BTreeMap::new();
     // For these columns, we know that they are not only constrained to those bits
@@ -119,7 +119,6 @@ pub fn determine_global_constraints<'a>(
     // It allows us to completely remove some lookups.
     let mut full_span = BTreeSet::new();
     for (&name, &values) in &fixed_data.fixed_cols {
-        println!("constr for {name}");
         if let Some((cons, full)) = process_fixed_column(values) {
             assert!(known_constraints.insert(name, cons).is_none());
             if full {
@@ -128,15 +127,9 @@ pub fn determine_global_constraints<'a>(
         }
     }
 
-    //if fixed_data.verbose {
-    println!("Determined the following bit constraints on fixed columns:");
-    for (name, con) in &known_constraints {
-        println!("  {name}: {con}");
-    }
-
     let mut retained_identities = vec![];
     let mut removed_identities = vec![];
-    for identity in identities {
+    for &identity in identities {
         let remove;
         (known_constraints, remove) =
             propagate_constraints(fixed_data, known_constraints, identity, &full_span);
@@ -149,7 +142,11 @@ pub fn determine_global_constraints<'a>(
     }
 
     if fixed_data.verbose {
-        println!("Determined the following identities to be bit/range constraints:");
+        println!("Determined the following global bit constraints:");
+        for (name, con) in &known_constraints {
+            println!("  {name}: {con}");
+        }
+        println!("Determined the following identities to be purely bit/range constraints:");
         for id in removed_identities {
             println!("  {id}");
         }

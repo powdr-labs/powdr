@@ -1,7 +1,10 @@
+use std::collections::BTreeMap;
 use std::collections::HashSet;
 
 use crate::analyzer::{Expression, Identity, SelectedExpressions};
+use crate::witness_generator::bit_constraints::BitConstraint;
 
+use super::block_machine::BlockMachine;
 use super::double_sorted_witness_machine::DoubleSortedWitnesses;
 use super::fixed_lookup_machine::FixedLookup;
 use super::sorted_witness_machine::SortedWitnesses;
@@ -14,8 +17,9 @@ use crate::witness_generator::WitnessColumn;
 /// that are not "internal" to the machines.
 pub fn split_out_machines<'a>(
     fixed: &'a FixedData<'a>,
-    identities: &'a [Identity],
+    identities: &[&'a Identity],
     witness_cols: &'a [WitnessColumn],
+    global_bit_constraints: &BTreeMap<&'a str, BitConstraint>,
 ) -> (Vec<Box<dyn Machine>>, Vec<&'a Identity>) {
     // TODO we only split out one machine for now.
     // We could also split the machine into independent sub-machines.
@@ -39,12 +43,19 @@ pub fn split_out_machines<'a>(
 
     // Split identities into those that only concern the machine
     // witnesses and those that concern any other witness.
-    let (machine_identities, base_identities): (Vec<_>, _) = identities.iter().partition(|i| {
-        // The identity has at least one machine witness, but
-        // all referenced witnesses are machine witnesses.
-        let mw = machine_witness_extractor.in_identity(i);
-        !mw.is_empty() && all_witnesses.in_identity(i).is_subset(&mw)
-    });
+    let (machine_identities, base_identities): (Vec<_>, _) =
+        identities.iter().cloned().partition(|i| {
+            // The identity has at least one machine witness, but
+            // all referenced witnesses are machine witnesses.
+            let mw = machine_witness_extractor.in_identity(i);
+            !mw.is_empty() && all_witnesses.in_identity(i).is_subset(&mw)
+        });
+
+    let connecting_identities = base_identities
+        .iter()
+        .cloned()
+        .filter(|i| !machine_witness_extractor.in_identity(i).is_empty())
+        .collect::<Vec<_>>();
 
     // TODO we probably need to check that machine witnesses do not appear
     // in any identity among `identities` except on the RHS.
@@ -62,6 +73,17 @@ pub fn split_out_machines<'a>(
             println!("Detected machine: memory");
         }
         machines.push(machine);
+    } else if let Some(machine) = BlockMachine::try_new(
+        fixed,
+        &connecting_identities,
+        &machine_identities,
+        &machine_witnesses,
+        global_bit_constraints,
+    ) {
+        if fixed.verbose {
+            println!("Detected machine: block");
+        }
+        machines.push(machine);
     }
     (machines, base_identities)
 }
@@ -69,7 +91,7 @@ pub fn split_out_machines<'a>(
 fn all_connected_witnesses<'a>(
     all_witnesses: &'a ReferenceExtractor,
     mut witnesses: HashSet<&'a str>,
-    identities: &'a [Identity],
+    identities: &[&'a Identity],
 ) -> HashSet<&'a str> {
     let mut count = witnesses.len();
     loop {

@@ -305,12 +305,20 @@ where
         // Note that we should always query all machines that match, because they might
         // update their internal data, even if all values are already known.
         // TODO could it be that multiple machines match?
+        let mut fixed_lookup = None;
         for m in &mut self.machines {
             // TODO also consider the reasons above.
-            if let Some(result) =
-                m.process_plookup(self.fixed_data, identity.kind, &left, &identity.right)
-            {
+            if let Some(result) = m.process_plookup(
+                self.fixed_data,
+                &mut fixed_lookup,
+                identity.kind,
+                &left,
+                &identity.right,
+            ) {
                 return result;
+            }
+            if fixed_lookup.is_none() {
+                fixed_lookup = Some(m.as_mut());
             }
         }
 

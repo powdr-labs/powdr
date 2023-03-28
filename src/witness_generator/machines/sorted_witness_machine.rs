@@ -126,6 +126,7 @@ impl Machine for SortedWitnesses {
     fn process_plookup(
         &mut self,
         fixed_data: &FixedData,
+        _fixed_lookup: &mut Option<&mut dyn Machine>,
         kind: IdentityKind,
         left: &[Result<AffineExpression, EvalError>],
         right: &SelectedExpressions,
