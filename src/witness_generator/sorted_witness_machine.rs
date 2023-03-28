@@ -3,8 +3,8 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use itertools::{Either, Itertools};
 
 use crate::analyzer::{Expression, Identity, IdentityKind, SelectedExpressions};
-use crate::commit_evaluator::eval_error;
 use crate::number::AbstractNumberType;
+use crate::witness_generator::eval_error;
 
 use super::affine_expression::AffineExpression;
 use super::eval_error::EvalError;

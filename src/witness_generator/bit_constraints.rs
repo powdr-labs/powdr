@@ -2,8 +2,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::{Display, Formatter};
 
 use crate::analyzer::{BinaryOperator, Expression, Identity, IdentityKind, PolynomialReference};
-use crate::commit_evaluator::util::{contains_next_ref, WitnessColumnNamer};
 use crate::number::{AbstractNumberType, GOLDILOCKS_MOD};
+use crate::witness_generator::util::{contains_next_ref, WitnessColumnNamer};
 
 use super::expression_evaluator::ExpressionEvaluator;
 use super::symbolic_evaluator::SymbolicEvaluator;
@@ -316,8 +316,8 @@ fn smallest_period_candidate(fixed: &[AbstractNumberType]) -> Option<u64> {
 mod test {
     use std::collections::BTreeMap;
 
-    use crate::commit_evaluator::bit_constraints::{propagate_constraints, BitConstraint};
-    use crate::commit_evaluator::{FixedData, WitnessColumn};
+    use crate::witness_generator::bit_constraints::{propagate_constraints, BitConstraint};
+    use crate::witness_generator::{FixedData, WitnessColumn};
 
     use super::process_fixed_column;
 

@@ -1,10 +1,10 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::analyzer::{Expression, Identity, IdentityKind, SelectedExpressions};
-use crate::commit_evaluator::eval_error;
-use crate::commit_evaluator::expression_evaluator::ExpressionEvaluator;
-use crate::commit_evaluator::util::contains_witness_ref;
 use crate::number::{AbstractNumberType, DegreeType};
+use crate::witness_generator::eval_error;
+use crate::witness_generator::expression_evaluator::ExpressionEvaluator;
+use crate::witness_generator::util::contains_witness_ref;
 
 use super::affine_expression::AffineExpression;
 use super::eval_error::EvalError;

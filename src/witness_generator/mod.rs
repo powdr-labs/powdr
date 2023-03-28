@@ -11,10 +11,10 @@ mod affine_expression;
 mod bit_constraints;
 mod double_sorted_witness_machine;
 mod eval_error;
-mod evaluator;
 mod expression_evaluator;
 pub mod fixed_evaluator;
 mod fixed_lookup_machine;
+mod generator;
 mod machine;
 mod machine_extractor;
 mod sorted_witness_machine;
@@ -53,7 +53,7 @@ pub fn generate<'a>(
         machine_extractor::split_out_machines(&fixed, &analyzed.identities, &witness_cols);
     let (global_bit_constraints, identities) =
         bit_constraints::determine_global_constraints(&fixed, identities);
-    let mut evaluator = evaluator::Evaluator::new(
+    let mut generator = generator::Generator::new(
         &fixed,
         identities,
         global_bit_constraints,
@@ -64,18 +64,18 @@ pub fn generate<'a>(
     let mut values: Vec<(&str, Vec<AbstractNumberType>)> =
         witness_cols.iter().map(|p| (p.name, Vec::new())).collect();
     for row in 0..degree as DegreeType {
-        let row_values = evaluator.compute_next_row(row);
+        let row_values = generator.compute_next_row(row);
         for (col, v) in row_values.into_iter().enumerate() {
             values[col].1.push(v);
         }
     }
-    for (col, v) in evaluator.compute_next_row(0).into_iter().enumerate() {
+    for (col, v) in generator.compute_next_row(0).into_iter().enumerate() {
         if v != values[col].1[0] {
             eprintln!("Wrap-around value for column {} does not match: {} (wrap-around) vs. {} (first row).",
             witness_cols[col].name, v, values[col].1[0]);
         }
     }
-    for (name, data) in evaluator.machine_witness_col_values() {
+    for (name, data) in generator.machine_witness_col_values() {
         let (_, col) = values.iter_mut().find(|(n, _)| *n == name).unwrap();
         *col = data;
     }

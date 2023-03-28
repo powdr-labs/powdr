@@ -7,7 +7,7 @@ use num_bigint::Sign;
 
 use crate::number::{abstract_to_degree, AbstractNumberType, DegreeType};
 use crate::parser::ast::PILFile;
-use crate::{analyzer, asm_compiler, commit_evaluator, constant_evaluator, json_exporter};
+use crate::{analyzer, asm_compiler, constant_evaluator, json_exporter, witness_generator};
 
 pub fn no_callback() -> Option<fn(&str) -> Option<AbstractNumberType>> {
     None
@@ -140,7 +140,7 @@ fn compile(
         println!("Wrote constants.bin.");
         println!("Deducing witness columns...");
         let commits =
-            commit_evaluator::generate(analyzed, degree, &constants, query_callback, verbose);
+            witness_generator::generate(analyzed, degree, &constants, query_callback, verbose);
         write_polys_file(
             &mut BufWriter::new(&mut fs::File::create(output_dir.join("commits.bin")).unwrap()),
             degree,
