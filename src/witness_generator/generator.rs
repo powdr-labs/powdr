@@ -8,9 +8,10 @@ use crate::number::{AbstractNumberType, DegreeType};
 use super::affine_expression::AffineExpression;
 use super::bit_constraints::{BitConstraint, BitConstraintSet};
 use super::eval_error::EvalError;
-use super::expression_evaluator::{ExpressionEvaluator, SymbolicVariables};
+use super::expression_evaluator::ExpressionEvaluator;
 use super::machines::Machine;
-use super::util::contains_next_witness_ref;
+use super::symbolic_witness_evaluator::{SymoblicWitnessEvaluator, WitnessColumnEvaluator};
+use super::util::{contains_next_witness_ref, WitnessColumnNamer};
 use super::{Constraint, EvalResult, FixedData, WitnessColumn};
 
 pub struct Generator<'a, QueryCallback>
@@ -250,6 +251,8 @@ where
         // If there is no "next" reference in the expression,
         // we just evaluate it directly on the "next" row.
         let row = if contains_next_witness_ref(identity, self.fixed_data) {
+            // TODO this is the only situation where we use "current"
+            // TODO this is the only that actually uses a window.
             EvaluationRow::Current
         } else {
             EvaluationRow::Next
@@ -349,13 +352,22 @@ where
         expr: &Expression,
         evaluate_row: EvaluationRow,
     ) -> Result<AffineExpression, EvalError> {
-        ExpressionEvaluator::new(EvaluationData {
-            fixed_data: self.fixed_data,
-            current_witnesses: &self.current,
-            next_witnesses: &self.next,
-            next_row: self.next_row,
-            evaluate_row,
-        })
+        let degree = self.fixed_data.degree;
+        let fixed_row = match evaluate_row {
+            EvaluationRow::Current => (self.next_row + degree - 1) % degree,
+            EvaluationRow::Next => self.next_row,
+        };
+
+        ExpressionEvaluator::new(SymoblicWitnessEvaluator::new(
+            self.fixed_data,
+            fixed_row,
+            EvaluationData {
+                fixed_data: self.fixed_data,
+                current_witnesses: &self.current,
+                next_witnesses: &self.next,
+                evaluate_row,
+            },
+        ))
         .evaluate(expr)
     }
 
@@ -392,62 +404,43 @@ struct EvaluationData<'a> {
     pub current_witnesses: &'a Vec<Option<AbstractNumberType>>,
     /// Values of the witness polynomials in the next row
     pub next_witnesses: &'a Vec<Option<AbstractNumberType>>,
-    pub next_row: DegreeType,
     pub evaluate_row: EvaluationRow,
 }
 
-impl<'a> SymbolicVariables for EvaluationData<'a> {
-    fn constant(&self, name: &str) -> Result<AffineExpression, EvalError> {
-        Ok(self.fixed_data.constants[name].clone().into())
-    }
-
+impl<'a> WitnessColumnEvaluator for EvaluationData<'a> {
     fn value(&self, name: &str, next: bool) -> Result<AffineExpression, EvalError> {
-        // TODO arrays
-        if let Some(id) = self.fixed_data.witness_ids.get(name) {
-            // TODO we could also work with both p and p' as symbolic variables and only eliminate them at the end.
-
-            match (next, self.evaluate_row) {
-                (false, EvaluationRow::Current) => {
-                    // All values in the "current" row should usually be known.
-                    // The exception is when we start the analysis on the first row.
-                    self.current_witnesses[*id]
-                        .as_ref()
-                        .map(|value| value.clone().into())
-                        .ok_or_else(|| EvalError::PreviousValueUnknown(name.to_string()))
-                }
-                (false, EvaluationRow::Next) | (true, EvaluationRow::Current) => {
-                    Ok(if let Some(value) = &self.next_witnesses[*id] {
-                        // We already computed the concrete value
-                        value.clone().into()
-                    } else {
-                        // We continue with a symbolic value
-                        AffineExpression::from_witness_poly_value(*id)
-                    })
-                }
-                (true, EvaluationRow::Next) => {
-                    // "double next" or evaluation of a witness on a specific row
-                    Err(format!(
-                        "{name}' references the next-next row when evaluating on the current row.",
-                    )
-                    .into())
-                }
+        let id = self.fixed_data.witness_ids[name];
+        match (next, self.evaluate_row) {
+            (false, EvaluationRow::Current) => {
+                // All values in the "current" row should usually be known.
+                // The exception is when we start the analysis on the first row.
+                self.current_witnesses[id]
+                    .as_ref()
+                    .map(|value| value.clone().into())
+                    .ok_or_else(|| EvalError::PreviousValueUnknown(name.to_string()))
             }
-        } else {
-            // Constant polynomial (or something else)
-            let values = self.fixed_data.fixed_cols[name];
-            let degree = values.len() as DegreeType;
-            let mut row = match self.evaluate_row {
-                EvaluationRow::Current => (self.next_row + degree - 1) % degree,
-                EvaluationRow::Next => self.next_row,
-            };
-            if next {
-                row = (row + 1) % degree;
+            (false, EvaluationRow::Next) | (true, EvaluationRow::Current) => {
+                Ok(if let Some(value) = &self.next_witnesses[id] {
+                    // We already computed the concrete value
+                    value.clone().into()
+                } else {
+                    // We continue with a symbolic value
+                    AffineExpression::from_witness_poly_value(id)
+                })
             }
-            Ok(values[row as usize].clone().into())
+            (true, EvaluationRow::Next) => {
+                // "double next" or evaluation of a witness on a specific row
+                Err(format!(
+                    "{name}' references the next-next row when evaluating on the current row.",
+                )
+                .into())
+            }
         }
     }
+}
 
-    fn format(&self, expr: AffineExpression) -> String {
-        expr.format(self.fixed_data)
+impl<'a> WitnessColumnNamer for EvaluationData<'a> {
+    fn name(&self, i: usize) -> String {
+        self.fixed_data.name(i)
     }
 }
