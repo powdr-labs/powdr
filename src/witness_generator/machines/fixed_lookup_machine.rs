@@ -1,16 +1,17 @@
 use std::collections::{HashMap, HashSet};
 
+use super::Machine;
 use crate::analyzer::{Expression, Identity, IdentityKind, SelectedExpressions};
 use crate::number::{AbstractNumberType, DegreeType};
-use crate::witness_generator::eval_error;
-use crate::witness_generator::expression_evaluator::ExpressionEvaluator;
-use crate::witness_generator::util::contains_witness_ref;
 
-use super::affine_expression::AffineExpression;
-use super::eval_error::EvalError;
-use super::fixed_evaluator::FixedEvaluator;
-use super::machine::Machine;
-use super::{EvalResult, FixedData};
+use crate::witness_generator::{
+    affine_expression::AffineExpression,
+    eval_error::{self, EvalError},
+    expression_evaluator::ExpressionEvaluator,
+    fixed_evaluator::FixedEvaluator,
+    util::contains_witness_ref,
+    EvalResult, FixedData,
+};
 
 /// Machine to perform a lookup in fixed columns only.
 /// It only supports lookup in the first column of the query and will use the first match.

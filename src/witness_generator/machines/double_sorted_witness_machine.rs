@@ -3,15 +3,15 @@ use std::iter::once;
 
 use itertools::{Either, Itertools};
 
+use super::Machine;
 use crate::analyzer::PolynomialReference;
 use crate::analyzer::{Expression, Identity, IdentityKind, SelectedExpressions};
 use crate::number::AbstractNumberType;
-use crate::witness_generator::eval_error;
-
-use super::affine_expression::AffineExpression;
-use super::eval_error::EvalError;
-use super::machine::Machine;
-use super::{EvalResult, FixedData};
+use crate::witness_generator::{
+    affine_expression::AffineExpression,
+    eval_error::{self, EvalError},
+    EvalResult, FixedData,
+};
 
 /// TODO make this generic
 

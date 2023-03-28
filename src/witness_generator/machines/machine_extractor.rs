@@ -4,10 +4,10 @@ use crate::analyzer::{Expression, Identity, SelectedExpressions};
 
 use super::double_sorted_witness_machine::DoubleSortedWitnesses;
 use super::fixed_lookup_machine::FixedLookup;
-use super::machine::Machine;
-
 use super::sorted_witness_machine::SortedWitnesses;
-use super::{FixedData, WitnessColumn};
+use super::FixedData;
+use super::Machine;
+use crate::witness_generator::WitnessColumn;
 
 /// Finds machines in the witness columns and identities
 /// and returns a list of machines and the identities
