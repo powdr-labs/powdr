@@ -120,7 +120,7 @@ where
             if self.query_callback.is_some() {
                 // TODO avoid clone
                 for column in self.witness_cols.clone().values() {
-                    // TOOD we should acutally query even if it is already known, to check
+                    // TODO we should actually query even if it is already known, to check
                     // if the value would be different.
                     if !self.has_known_next_value(column.id) && column.query.is_some() {
                         let result = self.process_witness_query(column);
@@ -139,7 +139,7 @@ where
         // "unknown", report zero and re-check the wrap-around against the zero values at the end.
         if identity_failed && next_row != 0 {
             eprintln!(
-                "\nError: Row {next_row}: Identity check failer or unable to derive values for witness polynomials: {}\n",
+                "\nError: Row {next_row}: Identity check failed or unable to derive values for witness polynomials: {}\n",
                 self.next
                     .iter()
                     .enumerate()
@@ -404,7 +404,7 @@ impl<'a> SymbolicVariables for EvaluationData<'a> {
     fn value(&self, name: &str, next: bool) -> Result<AffineExpression, EvalError> {
         // TODO arrays
         if let Some(id) = self.fixed_data.witness_ids.get(name) {
-            // TODO we could also work with both p and p' as symoblic variables and only eliminate them at the end.
+            // TODO we could also work with both p and p' as symbolic variables and only eliminate them at the end.
 
             match (next, self.evaluate_row) {
                 (false, EvaluationRow::Current) => {

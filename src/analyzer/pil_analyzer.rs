@@ -99,7 +99,7 @@ impl PILContext {
         let old_current_file = std::mem::take(&mut self.current_file);
         let old_line_starts = std::mem::take(&mut self.line_starts);
 
-        // TOOD make this work for other line endings
+        // TODO make this work for other line endings
         self.line_starts = utils::compute_line_starts(contents);
         self.current_file = path.to_path_buf();
         let pil_file =

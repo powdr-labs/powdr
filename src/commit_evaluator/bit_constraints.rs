@@ -164,7 +164,7 @@ fn process_fixed_column(fixed: &[AbstractNumberType]) -> Option<BitConstraint> {
 }
 
 /// Deduces new bit constraints on witness columns from constraints on fixed columns
-/// and identities. Note that these constraints hold globaly, i.e. for all rows.
+/// and identities. Note that these constraints hold globally, i.e. for all rows.
 /// If the returned flag is true, the identity can be removed, because it contains
 /// no further information than the bit constraint.
 fn propagate_constraints<'a>(

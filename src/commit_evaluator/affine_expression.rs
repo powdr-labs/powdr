@@ -141,7 +141,7 @@ impl AffineExpression {
                 Some(result)
             }
         } else if self.offset == 0.into() {
-            // We might be able to deduce bit constraints on one varaible.
+            // We might be able to deduce bit constraints on one variable.
             self.try_transfer_constraints(known_constraints)
         } else {
             None
@@ -194,7 +194,7 @@ impl AffineExpression {
     }
 
     /// Tries to assign values to all variables through their bit constraints.
-    /// This can also determine if the equation is not satsifiable,
+    /// This can also determine if the equation is not satisfiable,
     /// if the bit-constraints do not cover all the bits of the offset.
     /// Returns an empty vector if it is not able to solve the equation.
     fn try_solve_through_constraints(
@@ -246,7 +246,7 @@ impl AffineExpression {
 
     /// Returns true if it can be determined that this expression can never be zero.
     pub fn is_invalid(&self) -> bool {
-        // TODO add constraint invalidness.
+        // TODO add constraint validity.
         self.constant_value().map(|v| v != 0.into()) == Some(true)
     }
 

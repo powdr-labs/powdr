@@ -141,7 +141,7 @@ fn polynomial_reference_type_to_type(t: &str) -> &'static str {
         "cm" => "cmP",
         "const" => "constP",
         "exp" => "imP",
-        _ => panic!("Invalid polynomial referenc etype {t}"),
+        _ => panic!("Invalid polynomial reference type {t}"),
     }
 }
 
@@ -212,7 +212,7 @@ impl<'a> Exporter<'a> {
             .collect()
     }
 
-    /// returns the degree, the json value and the dependencies (intermediate polynomial IDs)
+    /// returns the degree, the JSON value and the dependencies (intermediate polynomial IDs)
     fn expression_to_json(&self, expr: &Expression) -> (u32, JsonValue, Vec<u64>) {
         match expr {
             Expression::Constant(name) => (
