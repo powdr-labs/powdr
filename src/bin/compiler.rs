@@ -107,6 +107,10 @@ enum Commands {
         #[arg(short, long)]
         #[arg(default_value_t = String::from("."))]
         output_directory: String,
+        /// Verbose output (provides a full execution trace).
+        #[arg(short, long)]
+        #[arg(default_value_t = false)]
+        verbose: bool,
     },
 }
 
@@ -178,11 +182,13 @@ fn main() {
         Commands::Compile {
             file,
             output_directory,
+            verbose,
         } => {
             powdr::compiler::compile_pil(
                 Path::new(&file),
                 Path::new(&output_directory),
                 no_callback(),
+                verbose,
             );
         }
     }

@@ -21,13 +21,14 @@ pub fn compile_pil(
     pil_file: &Path,
     output_dir: &Path,
     query_callback: Option<impl FnMut(&str) -> Option<AbstractNumberType>>,
+    verbose: bool,
 ) -> bool {
     compile(
         &analyzer::analyze(pil_file),
         pil_file.file_name().unwrap().to_str().unwrap(),
         output_dir,
         query_callback,
-        false,
+        verbose,
     )
 }
 
