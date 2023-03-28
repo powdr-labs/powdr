@@ -195,7 +195,7 @@ InstructionParam: InstructionParam = {
 }
 
 InlinePil: ASMStatement = {
-    <@L> "pil{" <(<Statement> ";")*> "}" => ASMStatement::InlinePil(<>)
+    <@L> "pil" "{" <(<Statement> ";")*> "}" => ASMStatement::InlinePil(<>)
 }
 
 Assignment: ASMStatement = {
