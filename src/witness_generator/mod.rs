@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::fmt::Display;
 
 use crate::analyzer::{Analyzed, Expression, FunctionValueDefinition};
 use crate::number::{AbstractNumberType, DegreeType};
@@ -46,13 +47,14 @@ pub fn generate<'a>(
         witness_cols.iter().map(|w| (w.name, w.id)).collect(),
         verbose,
     );
+    let (global_bit_constraints, identities) =
+        bit_constraints::determine_global_constraints(&fixed, analyzed.identities.iter().collect());
     let (mut fixed_lookup, machines, identities) = machines::machine_extractor::split_out_machines(
         &fixed,
-        &analyzed.identities,
+        identities,
         &witness_cols,
+        &global_bit_constraints,
     );
-    let (global_bit_constraints, identities) =
-        bit_constraints::determine_global_constraints(&fixed, identities);
     let mut generator = generator::Generator::new(
         &fixed,
         &mut fixed_lookup,
@@ -91,6 +93,15 @@ type EvalResult = Result<Vec<(usize, Constraint)>, EvalError>;
 pub enum Constraint {
     Assignment(AbstractNumberType),
     BitConstraint(BitConstraint),
+}
+
+impl Display for Constraint {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Constraint::Assignment(a) => write!(f, " = {a}"),
+            Constraint::BitConstraint(bc) => write!(f, ":& {bc}"),
+        }
+    }
 }
 
 /// Data that is fixed for witness generation.

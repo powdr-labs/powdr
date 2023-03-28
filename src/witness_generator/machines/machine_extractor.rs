@@ -1,11 +1,14 @@
+use std::collections::BTreeMap;
 use std::collections::HashSet;
 
+use super::block_machine::BlockMachine;
 use super::double_sorted_witness_machine::DoubleSortedWitnesses;
 use super::fixed_lookup_machine::FixedLookup;
 use super::sorted_witness_machine::SortedWitnesses;
 use super::FixedData;
 use super::Machine;
 use crate::analyzer::{Expression, Identity, SelectedExpressions};
+use crate::witness_generator::bit_constraints::BitConstraint;
 use crate::witness_generator::WitnessColumn;
 
 /// Finds machines in the witness columns and identities
@@ -13,8 +16,9 @@ use crate::witness_generator::WitnessColumn;
 /// that are not "internal" to the machines.
 pub fn split_out_machines<'a>(
     fixed: &'a FixedData<'a>,
-    identities: &'a [Identity],
+    identities: Vec<&'a Identity>,
     witness_cols: &'a [WitnessColumn],
+    global_bit_constraints: &BTreeMap<&'a str, BitConstraint>,
 ) -> (FixedLookup, Vec<Box<dyn Machine>>, Vec<&'a Identity>) {
     let fixed_lookup = FixedLookup::try_new(fixed, &[], &Default::default()).unwrap();
 
@@ -22,8 +26,8 @@ pub fn split_out_machines<'a>(
 
     let all_witnesses = witness_cols.iter().map(|c| c.name).collect::<HashSet<_>>();
     let mut remaining_witnesses = all_witnesses.clone();
-    let mut base_identities = identities.iter().collect::<Vec<_>>();
-    for id in identities {
+    let mut base_identities = identities.clone();
+    for id in &identities {
         // Extract all witness columns in the RHS of the lookup.
         let lookup_witnesses = &refs_in_selected_expressions(&id.right) & (&remaining_witnesses);
         if lookup_witnesses.is_empty() {
@@ -33,12 +37,12 @@ pub fn split_out_machines<'a>(
         // Recursively extend the set to all witnesses connected through identities that preserve
         // a fixed row relation.
         let machine_witnesses =
-            all_row_connected_witnesses(lookup_witnesses, &remaining_witnesses, identities);
+            all_row_connected_witnesses(lookup_witnesses, &remaining_witnesses, &identities);
 
         // Split identities into those that only concern the machine
         // witnesses and those that concern any other witness.
         let (machine_identities, remaining_identities): (Vec<_>, _) =
-            base_identities.iter().partition(|i| {
+            base_identities.iter().cloned().partition(|i| {
                 // The identity has at least one machine witness, but
                 // all referenced witnesses are machine witnesses.
                 let all_refs = &refs_in_identity(i) & (&all_witnesses);
@@ -46,6 +50,17 @@ pub fn split_out_machines<'a>(
             });
         base_identities = remaining_identities;
         remaining_witnesses = &remaining_witnesses - &machine_witnesses;
+
+        let connecting_identities = base_identities
+            .iter()
+            .cloned()
+            .filter(|i| {
+                refs_in_identity(i)
+                    .intersection(&machine_witnesses)
+                    .next()
+                    .is_some()
+            })
+            .collect::<Vec<_>>();
 
         if fixed.verbose {
             println!(
@@ -77,6 +92,17 @@ pub fn split_out_machines<'a>(
                 println!("Detected machine: memory");
             }
             machines.push(machine);
+        } else if let Some(machine) = BlockMachine::try_new(
+            fixed,
+            &connecting_identities,
+            &machine_identities,
+            &machine_witnesses,
+            global_bit_constraints,
+        ) {
+            if fixed.verbose {
+                println!("Detected machine: block");
+            }
+            machines.push(machine);
         } else {
             println!(
                 "Could not find a matching machine to handle a query to the following witness set:\n{}",
@@ -100,7 +126,7 @@ pub fn split_out_machines<'a>(
 fn all_row_connected_witnesses<'a>(
     mut witnesses: HashSet<&'a str>,
     all_witnesses: &HashSet<&'a str>,
-    identities: &'a [Identity],
+    identities: &'a [&'a Identity],
 ) -> HashSet<&'a str> {
     loop {
         let count = witnesses.len();
