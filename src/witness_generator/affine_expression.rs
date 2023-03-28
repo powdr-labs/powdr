@@ -349,8 +349,8 @@ mod test {
 
     use super::*;
     use crate::{
-        commit_evaluator::{bit_constraints::BitConstraint, eval_error::EvalError},
         number::AbstractNumberType,
+        witness_generator::{bit_constraints::BitConstraint, eval_error::EvalError},
     };
 
     use super::{AffineExpression, GOLDILOCKS_MOD};
