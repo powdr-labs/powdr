@@ -13,7 +13,7 @@ use super::machine::Machine;
 use super::util::contains_next_witness_ref;
 use super::{Constraint, EvalResult, FixedData, WitnessColumn};
 
-pub struct Evaluator<'a, QueryCallback>
+pub struct Generator<'a, QueryCallback>
 where
     QueryCallback: FnMut(&'a str) -> Option<AbstractNumberType>,
 {
@@ -44,7 +44,7 @@ enum EvaluationRow {
     Next,
 }
 
-impl<'a, QueryCallback> Evaluator<'a, QueryCallback>
+impl<'a, QueryCallback> Generator<'a, QueryCallback>
 where
     QueryCallback: FnMut(&str) -> Option<AbstractNumberType>,
 {
@@ -57,7 +57,7 @@ where
     ) -> Self {
         let witness_cols = fixed_data.witness_cols;
 
-        Evaluator {
+        Generator {
             fixed_data,
             identities,
             machines,
