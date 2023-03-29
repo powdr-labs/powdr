@@ -16,7 +16,7 @@ namespace Global(%N);
     macro ite(C, A, B) { is_nonzero(C) * A + is_zero(C) * B};
     macro one_hot(i, index) { ite(is_equal(i, index), 1, 0) };
 
-    col fixed L1 = ([1] + [0]*); // will be filled with zeros
+    col fixed L1 = [1] + [0]*;
     col fixed LLAST(i) { one_hot(i, %N - 1) };
     col fixed BYTE(i) { i & 0xff };
     col fixed BYTE2(i) { i & 0xffff };

@@ -71,11 +71,21 @@ PolynomialConstantDefinition: Statement = {
 
 FunctionDefinition: FunctionDefinition = {
     "(" <ParameterList> ")" "{" <Expression> "}" => FunctionDefinition::Mapping(<>),
-    "=" <ArrayExpression> => FunctionDefinition::Array(<>),
+    "=" <ArrayLiteralExpression> => FunctionDefinition::Array(<>),
 }
 
 ParameterList: Vec<String> = {
     <mut list:( <Identifier> "," )*> <end:Identifier>  => { list.push(end); list }
+}
+
+ArrayLiteralExpression: ArrayExpression = {
+    <ArrayLiteralExpression> "+" <ArrayLiteralTerm> => ArrayExpression::concat(<>),
+    ArrayLiteralTerm,
+}
+
+ArrayLiteralTerm: ArrayExpression = {
+    "[" <ExpressionList> "]" => ArrayExpression::value(<>),
+    "[" <ExpressionList> "]" "*" => ArrayExpression::repeated_value(<>),
 }
 
 PolynomialCommitDeclaration: Statement = {
@@ -327,12 +337,6 @@ PolynomialReference: PolynomialReference = {
 
 PublicReference: String = {
     ":" <Identifier>
-}
-
-ArrayExpression: ArrayExpression = {
-    "[" <ExpressionList> "]" => ArrayExpression::value(<>),
-    "[" <ExpressionList> "]" "*" => ArrayExpression::repeated_value(<>),
-    "(" <ArrayExpression> "+" <ArrayExpression> ")" => ArrayExpression::concat(<>),
 }
 
 // ---------------------------- Terminals -----------------------------

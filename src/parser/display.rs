@@ -97,7 +97,7 @@ impl Display for ArrayExpression {
             ArrayExpression::RepeatedValue(expressions) => {
                 write!(f, "[{}]*", format_expressions(expressions))
             }
-            ArrayExpression::Concat(left, right) => write!(f, "({} + {})", left, right),
+            ArrayExpression::Concat(left, right) => write!(f, "{} + {}", left, right),
         }
     }
 }
