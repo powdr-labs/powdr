@@ -3,6 +3,7 @@ use std::ops::Not;
 // TODO this should probably rather be a finite field element.
 use crate::number::{format_number, is_zero, AbstractNumberType, GOLDILOCKS_MOD};
 
+use super::bit_constraints::BitConstraint;
 use super::bit_constraints::BitConstraintSet;
 use super::eval_error::EvalError::ConflictingBitConstraints;
 use super::util::WitnessColumnNamer;
@@ -102,6 +103,30 @@ impl AffineExpression {
                 }
             })
             .ok_or_else(|| "Cannot solve affine expression.".to_string().into())
+    }
+
+    pub fn generate_bit_constraint_from_mask(
+        &self,
+        mask: AbstractNumberType,
+    ) -> Option<(usize, Constraint)> {
+        if self.offset != 0.into() {
+            None
+        } else {
+            let mut non_zero_coefficients = self.nonzero_coefficients();
+            let first = non_zero_coefficients.next();
+            let second = non_zero_coefficients.next();
+            match (first, second) {
+                (Some((variable, coefficient)), None)
+                    if coefficient == &AbstractNumberType::from(1) =>
+                {
+                    Some((
+                        variable,
+                        Constraint::BitConstraint(BitConstraint::from_mask(mask)),
+                    ))
+                }
+                _ => None,
+            }
+        }
     }
 
     /// Tries to solve "self = 0", or at least propagate a bit constraint:

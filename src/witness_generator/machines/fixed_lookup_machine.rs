@@ -96,7 +96,7 @@ impl FixedLookup {
 
         let len = columns[0].len();
 
-        let res = (0..len)
+        let right_values = (0..len)
             // get all lookup rows which match the lhs
             .filter_map(|row| {
                 left.iter()
@@ -115,57 +115,48 @@ impl FixedLookup {
                         }
                     })
                     .collect::<Option<Vec<_>>>()
-                    .map(|values| (row, values))
             })
             // deduplicate values
-            .fold(None, |acc, (new_row, new_value)| {
+            .fold(None, |acc, new_value| {
                 match acc {
-                    None => Some(Ok((new_row, new_value))),
-                    Some(Ok((row, value))) => {
-                        // if a second row matches
-                        if value == new_value {
-                            // if it has the same value, we keep the first one we found
-                            Some(Ok((row, value)))
-                        } else {
-                            // otherwise we can in the best case learn some bit constraints: the lhs is smaller than the max of all the matching cells
-                            // TODO: if some of the new value coincides with the existing one, use that partial knowledge
-                            // For this, the state here should be more granular to cover each column separately
-                            let max: Vec<_> = value
-                                .into_iter()
-                                .zip(new_value)
-                                .map(|(v0, v1)| std::cmp::max(v0, v1))
-                                .collect();
-                            Some(Err(max))
-                        }
-                    }
-                    Some(Err(max)) => {
-                        let max: Vec<_> = new_value
+                    // the first match gives a precise value for all columns
+                    None => Some(new_value.into_iter().map(Result::Ok).collect::<Vec<_>>()),
+                    // subsequent matches possibly degrade the knowledge we have of each column
+                    Some(value) => Some(
+                        value
                             .into_iter()
-                            .zip(max)
-                            .map(|(v0, v1)| std::cmp::max(v0, v1))
-                            .collect();
-                        Some(Err(max))
-                    }
+                            .zip(new_value)
+                            .map(|(value, new_value)| {
+                                match value {
+                                    // we have a precise value for this column
+                                    Ok(value) => {
+                                        // if another row matches
+                                        if value == new_value {
+                                            // if it has the same value, we didn't lose anything
+                                            Ok(value)
+                                        } else {
+                                            // otherwise we degrade to a bit constraint
+                                            Err(value | new_value)
+                                        }
+                                    }
+                                    // if we already start with a mask, we update it with the new value
+                                    Err(value) => Err(value | new_value),
+                                }
+                            })
+                            .collect(),
+                    ),
                 }
             })
             // if the accumulator is None, no row matched, which is an error
             .ok_or_else(|| EvalError::Generic("Plookup is not satisfied".to_string()))?;
 
-        let (_, right_values) = match res {
-            Ok(res) => res,
-            Err(_) => {
-                // TODO: create bit constraints from the max
-                return Ok(vec![]);
-            }
-        };
-
         let mut reasons = vec![];
         let mut result = vec![];
         for (l, r) in left.iter().zip(right_values) {
-            match l {
-                Ok(l) => {
+            match (l, r) {
+                // we have a precise value
+                (Ok(l), Ok(r)) => {
                     let evaluated = l.clone() - r.clone().into();
-                    // TODO we could use bit constraints here
                     match evaluated.solve() {
                         Ok(constraints) => result.extend(constraints),
                         Err(_) => {
@@ -184,7 +175,12 @@ impl FixedLookup {
                         }
                     }
                 }
-                Err(err) => {
+                // we have a bitmask, we may be able to get a bit constraint if the lhs is `1 * x`
+                (Ok(l), Err(mask)) => {
+                    let constraint = l.generate_bit_constraint_from_mask(mask);
+                    result.extend(constraint);
+                }
+                (Err(err), _) => {
                     reasons.push(format!("Value of LHS component too complex: {err}").into());
                 }
             }
