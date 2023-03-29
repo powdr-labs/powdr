@@ -1,16 +1,12 @@
 use std::collections::{HashMap, HashSet};
 
-
 use super::Machine;
 use crate::analyzer::{Expression, Identity, IdentityKind, SelectedExpressions};
-use crate::number::{AbstractNumberType};
-
+use crate::number::AbstractNumberType;
 
 use crate::witness_generator::{
     affine_expression::AffineExpression,
     eval_error::{self, EvalError},
-    expression_evaluator::ExpressionEvaluator,
-    fixed_evaluator::FixedEvaluator,
     util::contains_witness_ref,
     EvalResult, FixedData,
 };
@@ -132,7 +128,7 @@ impl FixedLookup {
                             Some(Ok((row, value)))
                         } else {
                             // otherwise we can in the best case learn some bit constraints: the lhs is smaller than the max of all the matching cells
-                            // TODO: if some of the new value coincides with the existing one, use that partial knowledge 
+                            // TODO: if some of the new value coincides with the existing one, use that partial knowledge
                             // For this, the state here should be more granular to cover each column separately
                             let max: Vec<_> = value
                                 .into_iter()
@@ -155,7 +151,7 @@ impl FixedLookup {
             // if the accumulator is None, no row matched, which is an error
             .ok_or_else(|| EvalError::Generic("Plookup is not satisfied".to_string()))?;
 
-        let (rhs_row, _) = match res {
+        let (_, right_values) = match res {
             Ok(res) => res,
             Err(_) => {
                 // TODO: create bit constraints from the max
@@ -163,26 +159,11 @@ impl FixedLookup {
             }
         };
 
-        let rhs_evaluator =
-            ExpressionEvaluator::new(FixedEvaluator::new(fixed_data, rhs_row));
-
         let mut reasons = vec![];
         let mut result = vec![];
-        for (l, r) in left.iter().zip(right.expressions.iter()) {
+        for (l, r) in left.iter().zip(right_values) {
             match l {
                 Ok(l) => {
-                    // This needs to be a constant because symbolic variables
-                    // would reference a different row!
-                    let r = rhs_evaluator.evaluate(r).and_then(|r| {
-                        r.constant_value().ok_or_else(|| {
-                            format!("Constant value required: {}", r.format(fixed_data)).into()
-                        })
-                    });
-                    if let Err(err) = r {
-                        reasons.push(err);
-                        continue;
-                    }
-                    let r = r.unwrap();
                     let evaluated = l.clone() - r.clone().into();
                     // TODO we could use bit constraints here
                     match evaluated.solve() {
