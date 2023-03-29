@@ -1,8 +1,10 @@
 use std::collections::{HashMap, HashSet};
 
+
 use super::Machine;
 use crate::analyzer::{Expression, Identity, IdentityKind, SelectedExpressions};
-use crate::number::{AbstractNumberType, DegreeType};
+use crate::number::{AbstractNumberType};
+
 
 use crate::witness_generator::{
     affine_expression::AffineExpression,
@@ -76,49 +78,100 @@ impl FixedLookup {
         left: &[Result<AffineExpression, EvalError>],
         right: &SelectedExpressions,
     ) -> EvalResult {
-        let left_key = match left[0].clone() {
-            Ok(v) => match v.constant_value() {
-                Some(v) => Ok(v),
-                None => Err(format!(
-                    "First expression needs to be constant but is not: {}.",
-                    v.format(fixed_data)
-                )),
-            },
-            Err(err) => Err(format!("First expression on the LHS is unknown: {err}")),
-        }?;
+        let columns = right
+            .expressions
+            .iter()
+            .map(|right_key| {
+                if let Expression::PolynomialReference(poly) = right_key {
+                    fixed_data
+                        .fixed_cols
+                        .get(poly.name.as_str())
+                        .ok_or_else(|| {
+                            format!(
+                                "Unable to find a fixed column for the fixed lookup: {}",
+                                poly.name
+                            )
+                        })
+                } else {
+                    Err("RHS must be a polynomial reference.".to_string())
+                }
+            })
+            .collect::<Result<Vec<_>, _>>()?;
 
-        let right_key = right.expressions.first().unwrap();
-        let rhs_row = if let Expression::PolynomialReference(poly) = right_key {
-            // TODO we really need a search index on this.
-            fixed_data.fixed_cols
-                .get(poly.name.as_str())
-                .and_then(|values| values.iter().position(|v| *v == left_key))
-                .ok_or_else(|| {
-                    format!(
-                        "Unable to find matching row on the RHS where the first element is {left_key} - only fixed columns supported there."
-                    )
-                })
-                .map(|i| i as DegreeType)
-        } else {
-            Err("First item on the RHS must be a polynomial reference.".to_string())
-        }?;
+        let len = columns[0].len();
 
-        // TODO we only support the following case:
-        // - The first component on the LHS has to be known
-        // - The first component on the RHS has to be a direct fixed column reference
-        // - The first match of those uniquely determines the rest of the RHS.
+        let res = (0..len)
+            // get all lookup rows which match the lhs
+            .filter_map(|row| {
+                left.iter()
+                    .zip(columns.iter())
+                    .map(|(left, right)| {
+                        let right = &right[row];
+                        match left {
+                            Ok(left) => left
+                                .constant_value()
+                                // if the lhs is constant, it's a match iff the values match
+                                .map(|left| (left == *right).then_some(right))
+                                // if it's not constant, it's a match
+                                .unwrap_or_else(|| Some(right)),
+                            // if we do not know the lhs, it's a match
+                            Err(_) => Some(right),
+                        }
+                    })
+                    .collect::<Option<Vec<_>>>()
+                    .map(|values| (row, values))
+            })
+            // deduplicate values
+            .fold(None, |acc, (new_row, new_value)| {
+                match acc {
+                    None => Some(Ok((new_row, new_value))),
+                    Some(Ok((row, value))) => {
+                        // if a second row matches
+                        if value == new_value {
+                            // if it has the same value, we keep the first one we found
+                            Some(Ok((row, value)))
+                        } else {
+                            // otherwise we can in the best case learn some bit constraints: the lhs is smaller than the max of all the matching cells
+                            // TODO: if some of the new value coincides with the existing one, use that partial knowledge 
+                            // For this, the state here should be more granular to cover each column separately
+                            let max: Vec<_> = value
+                                .into_iter()
+                                .zip(new_value)
+                                .map(|(v0, v1)| std::cmp::max(v0, v1))
+                                .collect();
+                            Some(Err(max))
+                        }
+                    }
+                    Some(Err(max)) => {
+                        let max: Vec<_> = new_value
+                            .into_iter()
+                            .zip(max)
+                            .map(|(v0, v1)| std::cmp::max(v0, v1))
+                            .collect();
+                        Some(Err(max))
+                    }
+                }
+            })
+            // if the accumulator is None, no row matched, which is an error
+            .ok_or_else(|| EvalError::Generic("Plookup is not satisfied".to_string()))?;
 
-        // TODO in the other cases, we could at least return some improved bit constraints.
+        let (rhs_row, _) = match res {
+            Ok(res) => res,
+            Err(_) => {
+                // TODO: create bit constraints from the max
+                return Ok(vec![]);
+            }
+        };
 
         let rhs_evaluator =
-            ExpressionEvaluator::new(FixedEvaluator::new(fixed_data, rhs_row as usize));
+            ExpressionEvaluator::new(FixedEvaluator::new(fixed_data, rhs_row));
 
         let mut reasons = vec![];
         let mut result = vec![];
-        for (l, r) in left.iter().zip(right.expressions.iter()).skip(1) {
+        for (l, r) in left.iter().zip(right.expressions.iter()) {
             match l {
                 Ok(l) => {
-                    // This needs to be a costant because symbolic variables
+                    // This needs to be a constant because symbolic variables
                     // would reference a different row!
                     let r = rhs_evaluator.evaluate(r).and_then(|r| {
                         r.constant_value().ok_or_else(|| {
