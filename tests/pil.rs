@@ -16,7 +16,8 @@ pub fn verify_pil(file_name: &str, query_callback: Option<fn(&str) -> Option<Abs
     assert!(compiler::compile_pil(
         &input_file,
         &temp_dir,
-        query_callback
+        query_callback,
+        false
     ));
     verify(file_name, &temp_dir);
 }
