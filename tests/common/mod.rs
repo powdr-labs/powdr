@@ -9,7 +9,6 @@ pub fn verify_asm_string(file_name: &str, contents: &str, inputs: Vec<AbstractNu
     let pil = powdr::asm_compiler::compile(Some(file_name), contents).unwrap();
     let pil_file_name = "asm.pil";
     let temp_dir = mktemp::Temp::new_dir().unwrap();
-
     assert!(compiler::compile_pil_ast(
         &pil,
         pil_file_name,
