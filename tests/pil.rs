@@ -65,3 +65,8 @@ fn test_witness_lookup() {
         }),
     );
 }
+
+#[test]
+fn test_pair_lookup() {
+    verify_pil("pair_lookup.pil", None);
+}
