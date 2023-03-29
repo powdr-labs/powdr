@@ -47,3 +47,8 @@ fn functional_instructions() {
         [20].iter().map(|&x| x.into()).collect(),
     );
 }
+
+#[test]
+fn full_pil_column() {
+    verify_asm("full_pil_constant.asm", Default::default());
+}

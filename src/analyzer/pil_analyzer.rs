@@ -3,7 +3,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::number::{abstract_to_degree, DegreeType};
-use crate::parser::ast;
+use crate::parser::ast::{self, ArrayExpression};
 pub use crate::parser::ast::{BinaryOperator, UnaryOperator};
 use crate::{parser, utils};
 
@@ -342,7 +342,10 @@ impl PILContext {
                 }
             }
             ast::FunctionDefinition::Array(value) => {
-                FunctionValueDefinition::Array(self.process_expressions(value))
+                let star_value = value.solve(self.polynomial_degree);
+                let expressions = self.process_array_expression(value, star_value);
+                assert_eq!(expressions.len() as u64, self.polynomial_degree);
+                FunctionValueDefinition::Array(expressions)
             }
         });
         let is_new = self
@@ -432,6 +435,24 @@ impl PILContext {
         SelectedExpressions {
             selector: expr.selector.as_ref().map(|e| self.process_expression(e)),
             expressions: self.process_expressions(&expr.expressions),
+        }
+    }
+
+    fn process_array_expression(
+        &mut self,
+        array_expression: &ArrayExpression,
+        star_value: Option<DegreeType>,
+    ) -> Vec<Expression> {
+        match array_expression {
+            ArrayExpression::Value(expressions) => self.process_expressions(expressions),
+            ArrayExpression::RepeatedValue(expressions) => (0..star_value.unwrap())
+                .flat_map(|_| self.process_expressions(expressions))
+                .collect(),
+            ArrayExpression::Concat(left, right) => self
+                .process_array_expression(left, star_value)
+                .into_iter()
+                .chain(self.process_array_expression(right, star_value))
+                .collect(),
         }
     }
 
