@@ -5,6 +5,7 @@ use crate::number::{format_number, is_zero, AbstractNumberType, GOLDILOCKS_MOD};
 
 use super::bit_constraints::BitConstraintSet;
 use super::eval_error::EvalError::ConflictingBitConstraints;
+use super::eval_error::EvalError::ConstraintUnsatisfiable;
 use super::util::WitnessColumnNamer;
 use super::Constraint;
 use super::EvalResult;
@@ -80,28 +81,36 @@ impl AffineExpression {
     /// affine expression to zero.
     pub fn solve(&self) -> EvalResult {
         let mut nonzero = self.nonzero_coefficients();
-        nonzero
-            .next()
-            .and_then(|(i, c)| {
-                if nonzero.next().is_none() {
-                    // c * a + o = 0 <=> a = -o/c
-                    Some(vec![(
-                        i,
-                        Constraint::Assignment(if *c == 1.into() {
-                            clamp(-self.offset.clone())
-                        } else if *c == (-1).into() || *c == (GOLDILOCKS_MOD - 1).into() {
-                            self.offset.clone()
-                        } else {
-                            clamp(-clamp(
-                                self.offset.clone() * inv(c.clone(), GOLDILOCKS_MOD.into()),
-                            ))
-                        }),
-                    )])
+        let first = nonzero.next();
+        let second = nonzero.next();
+        match (first, second) {
+            (Some((i, c)), None) => {
+                // c * a + o = 0 <=> a = -o/c
+                Ok(vec![(
+                    i,
+                    Constraint::Assignment(if *c == 1.into() {
+                        clamp(-self.offset.clone())
+                    } else if *c == (-1).into() || *c == (GOLDILOCKS_MOD - 1).into() {
+                        self.offset.clone()
+                    } else {
+                        clamp(-clamp(
+                            self.offset.clone() * inv(c.clone(), GOLDILOCKS_MOD.into()),
+                        ))
+                    }),
+                )])
+            }
+            (Some(_), Some(_)) => Err("Too many variables in linear constraint."
+                .to_string()
+                .into()),
+            (None, None) => {
+                if self.offset == 0.into() {
+                    Ok(vec![])
                 } else {
-                    None
+                    Err(ConstraintUnsatisfiable(String::new()))
                 }
-            })
-            .ok_or_else(|| "Cannot solve affine expression.".to_string().into())
+            }
+            (None, Some(_)) => panic!(),
+        }
     }
 
     /// Tries to solve "self = 0", or at least propagate a bit constraint:
@@ -114,8 +123,10 @@ impl AffineExpression {
         known_constraints: &impl BitConstraintSet,
     ) -> EvalResult {
         // Try to solve directly.
-        if let Ok(result) = self.solve() {
-            return Ok(result);
+        match self.solve() {
+            Ok(result) => return Ok(result),
+            Err(ConstraintUnsatisfiable(e)) => return Err(ConstraintUnsatisfiable(e)),
+            Err(_) => {}
         }
         let new_constraints: Option<_> = if self
             .nonzero_coefficients()
@@ -242,12 +253,6 @@ impl AffineExpression {
         } else {
             Ok(assignments)
         }
-    }
-
-    /// Returns true if it can be determined that this expression can never be zero.
-    pub fn is_invalid(&self) -> bool {
-        // TODO add constraint validity.
-        self.constant_value().map(|v| v != 0.into()) == Some(true)
     }
 
     pub fn format(&self, namer: &impl WitnessColumnNamer) -> String {

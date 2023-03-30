@@ -263,10 +263,12 @@ where
         } else {
             evaluated
                 .solve_with_bit_constraints(&self.bit_constraint_set())
-                .map_err(|_| {
+                .map_err(|e| {
                     let formatted = evaluated.format(self.fixed_data);
-                    if evaluated.is_invalid() {
-                        format!("Constraint is invalid ({formatted} != 0).").into()
+                    if let EvalError::ConstraintUnsatisfiable(_) = e {
+                        EvalError::ConstraintUnsatisfiable(format!(
+                            "Constraint is invalid ({formatted} != 0)."
+                        ))
                     } else {
                         format!("Could not solve expression {formatted} = 0.").into()
                     }
