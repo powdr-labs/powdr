@@ -1,4 +1,4 @@
-use crate::analyzer::Expression;
+use crate::analyzer::{Expression, PolynomialReference};
 
 use super::FixedData;
 
@@ -33,6 +33,24 @@ pub fn contains_witness_ref(expr: &Expression, fixed_data: &FixedData) -> bool {
         }
         _ => false,
     })
+}
+
+/// Checks if an expression is
+/// - a polynomial
+/// - not part of a polynomial array
+/// - not shifted with `'`
+/// and return the polynomial's name if so
+pub fn is_simple_poly(expr: &Expression) -> Option<&str> {
+    if let Expression::PolynomialReference(PolynomialReference {
+        name,
+        index: None,
+        next: false,
+    }) = expr
+    {
+        Some(name)
+    } else {
+        None
+    }
 }
 
 pub fn expr_any(expr: &Expression, f: &mut impl FnMut(&Expression) -> bool) -> bool {
