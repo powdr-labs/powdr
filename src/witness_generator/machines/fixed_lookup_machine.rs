@@ -1,9 +1,12 @@
 use std::collections::{HashMap, HashSet};
 
+use num_bigint::BigInt;
+
 use super::Machine;
-use crate::analyzer::{Expression, Identity, IdentityKind, SelectedExpressions};
+use crate::analyzer::{Identity, IdentityKind, SelectedExpressions};
 use crate::number::AbstractNumberType;
 
+use crate::witness_generator::util::is_simple_poly;
 use crate::witness_generator::{
     affine_expression::AffineExpression,
     eval_error::{self, EvalError},
@@ -48,6 +51,15 @@ impl Machine for FixedLookup {
             return None;
         }
 
+        // get the values of the fixed columns
+        let right = right
+            .expressions
+            .iter()
+            .map(|right_key| {
+                is_simple_poly(right_key).and_then(|name| fixed_data.fixed_cols.get(name))
+            })
+            .collect::<Option<_>>()?;
+
         // If we already know the LHS, skip it.
         if left
             .iter()
@@ -72,35 +84,13 @@ impl FixedLookup {
         &mut self,
         fixed_data: &FixedData,
         left: &[Result<AffineExpression, EvalError>],
-        right: &SelectedExpressions,
+        right: Vec<&&Vec<BigInt>>,
     ) -> EvalResult {
-        let columns = right
-            .expressions
-            .iter()
-            .map(|right_key| {
-                if let Expression::PolynomialReference(poly) = right_key {
-                    fixed_data
-                        .fixed_cols
-                        .get(poly.name.as_str())
-                        .ok_or_else(|| {
-                            format!(
-                                "Unable to find a fixed column for the fixed lookup: {}",
-                                poly.name
-                            )
-                        })
-                } else {
-                    Err("RHS must be a polynomial reference.".to_string())
-                }
-            })
-            .collect::<Result<Vec<_>, _>>()?;
-
-        let len = columns[0].len();
-
-        let right_values = (0..len)
+        let matches = (0..fixed_data.degree as usize)
             // get all lookup rows which match the lhs
             .filter_map(|row| {
                 left.iter()
-                    .zip(columns.iter())
+                    .zip(right.iter())
                     .map(|(left, right)| {
                         let right = &right[row];
                         match left {
@@ -115,13 +105,15 @@ impl FixedLookup {
                         }
                     })
                     .collect::<Option<Vec<_>>>()
-            })
-            // deduplicate values
+            });
+
+        // fold the set of values for the individual columns into precise values and masks
+        let right_values = matches
             .fold(None, |acc, new_value| {
                 match acc {
                     // the first match gives a precise value for all columns
                     None => Some(new_value.into_iter().map(Result::Ok).collect::<Vec<_>>()),
-                    // subsequent matches possibly degrade the knowledge we have of each column
+                    // subsequent matches degrade the knowledge we have of each column
                     Some(value) => Some(
                         value
                             .into_iter()

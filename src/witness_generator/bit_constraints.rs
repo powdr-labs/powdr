@@ -1,12 +1,13 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::{Display, Formatter};
 
-use crate::analyzer::{BinaryOperator, Expression, Identity, IdentityKind, PolynomialReference};
+use crate::analyzer::{BinaryOperator, Expression, Identity, IdentityKind};
 use crate::number::{AbstractNumberType, GOLDILOCKS_MOD};
 use crate::witness_generator::util::{contains_next_ref, WitnessColumnNamer};
 
 use super::expression_evaluator::ExpressionEvaluator;
 use super::symbolic_evaluator::SymbolicEvaluator;
+use super::util::is_simple_poly;
 use super::{Constraint, FixedData};
 
 /// Constraint on the bit values of a variable X.
@@ -318,19 +319,6 @@ fn try_transfer_constraints<'a>(
             None
         }
     })
-}
-
-fn is_simple_poly(expr: &Expression) -> Option<&str> {
-    if let Expression::PolynomialReference(PolynomialReference {
-        name,
-        index: None,
-        next: false,
-    }) = expr
-    {
-        Some(name)
-    } else {
-        None
-    }
 }
 
 fn smallest_period_candidate(fixed: &[AbstractNumberType]) -> Option<u64> {
