@@ -97,7 +97,7 @@ impl Display for ArrayExpression {
             ArrayExpression::RepeatedValue(expressions) => {
                 write!(f, "[{}]*", format_expressions(expressions))
             }
-            ArrayExpression::Concat(left, right) => write!(f, "{} + {}", left, right),
+            ArrayExpression::Concat(left, right) => write!(f, "{left} + {right}"),
         }
     }
 }
@@ -109,7 +109,7 @@ impl Display for FunctionDefinition {
                 write!(f, "({}) {{ {body} }}", params.join(", "))
             }
             FunctionDefinition::Array(array_expression) => {
-                write!(f, " = {}", array_expression)
+                write!(f, " = {array_expression}")
             }
             FunctionDefinition::Query(params, value) => {
                 write!(f, "({}) query {value}", params.join(", "),)
