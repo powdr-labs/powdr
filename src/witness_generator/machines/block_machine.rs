@@ -37,6 +37,9 @@ pub struct BlockMachine {
     witness_count: usize,
     /// Poly degree / absolute number of rows
     degree: DegreeType,
+    /// Cache that states the order in which to evaluate identities
+    /// to make progress most quickly.
+    processing_sequence_cache: ProcessingSequenceCache,
 }
 
 impl BlockMachine {
@@ -69,6 +72,10 @@ impl BlockMachine {
                             .collect(),
                         witness_count: fixed_data.witness_cols.len(),
                         degree: fixed_data.degree,
+                        processing_sequence_cache: ProcessingSequenceCache::new(
+                            period,
+                            identities.len(),
+                        ),
                     };
                     // Append a block so that we do not have to deal with wrap-around
                     // when storing machine witness data.
@@ -186,66 +193,35 @@ impl BlockMachine {
             return Err("Rows in block machine exhausted.".to_string().into());
         }
         self.append_new_block();
-        let block_size = self.block_size as i64;
         let mut outer_assignments = vec![];
+
+        // TODO this assumes we are always using the same lookup for this machine.
+        let sequence = self.processing_sequence_cache.get_processing_sequence(left);
 
         let mut errors = vec![];
         // TODO The error handling currently does not handle contradictions properly.
         // If we can find an assignment of all LHS variables at the end, we do not return an error,
         // even if there is a conflict.
 
-        for delta in (-1..=block_size)
-            .chain((-1..block_size).rev())
-            .chain(-1..=block_size)
-        {
-            let mut errors_in_row = vec![];
+        // Record the steps where we made progress, so we can report this to the
+        // cache later on.
+        let mut progress_steps = vec![];
+        for step in sequence {
+            let SequenceStep {
+                row_delta,
+                identity_index,
+            } = step;
             self.row =
-                (old_len as i64 + delta + fixed_data.degree as i64) as u64 % fixed_data.degree;
-            if delta == 3 {
-                // Query row
-                for (l, r) in left.iter().zip(right.expressions.iter()) {
-                    match (l, self.evaluate(fixed_data, r)) {
-                        (Ok(l), Ok(r)) => match (l.clone() - r).solve_with_bit_constraints(self) {
-                            Ok(result) => {
-                                if !result.is_empty() {
-                                    errors.clear();
-                                    errors_in_row.clear();
-                                    outer_assignments.extend(self.handle_eval_result(result));
-                                }
-                            }
-                            Err(e) => errors_in_row.push(e),
-                        },
-                        (Err(e), Ok(_)) => errors_in_row.push(e.clone()),
-                        (Ok(_), Err(e)) => errors_in_row.push(e),
-                        (Err(e1), Err(e2)) => errors_in_row.extend([e1.clone(), e2]),
+                (old_len as i64 + row_delta + fixed_data.degree as i64) as u64 % fixed_data.degree;
+            match self.process_identity(fixed_data, fixed_lookup, left, right, identity_index) {
+                Ok(result) => {
+                    if !result.is_empty() {
+                        progress_steps.push(step);
+                        errors.clear();
+                        outer_assignments.extend(self.handle_eval_result(result))
                     }
                 }
-            }
-
-            for id in self.identities.clone() {
-                let result = match id.kind {
-                    IdentityKind::Polynomial => self.process_polynomial_identity(
-                        fixed_data,
-                        id.left.selector.as_ref().unwrap(),
-                    ),
-                    IdentityKind::Plookup | IdentityKind::Permutation => {
-                        self.process_plookup(fixed_data, fixed_lookup, &id)
-                    }
-                    _ => Err("Unsupported lookup type".to_string().into()),
-                };
-                match result {
-                    Ok(result) => {
-                        if !result.is_empty() {
-                            errors.clear();
-                            errors_in_row.clear();
-                            outer_assignments.extend(self.handle_eval_result(result))
-                        }
-                    }
-                    Err(e) => errors_in_row.push(e),
-                }
-            }
-            for e in errors_in_row {
-                errors.push(format!("In row {}: {e}", self.row).into())
+                Err(e) => errors.push(format!("In row {}: {e}", self.row).into()),
             }
         }
         // Only succeed if we can assign everything.
@@ -265,6 +241,9 @@ impl BlockMachine {
             })
             .collect::<HashSet<_>>();
         if unknown_variables.is_subset(&value_assignments) {
+            // We solved the query, so report it to the cache.
+            self.processing_sequence_cache
+                .report_processing_sequence(left, progress_steps);
             Ok(outer_assignments)
         } else if !errors.is_empty() {
             Err(errors.into_iter().reduce(eval_error::combine).unwrap())
@@ -303,6 +282,65 @@ impl BlockMachine {
             .collect()
     }
 
+    /// Processes an identity which is either the query (identity_index is None) or
+    /// an identity in the vector of identities.
+    fn process_identity(
+        &self,
+        fixed_data: &FixedData,
+        fixed_lookup: &mut Option<&mut dyn Machine>,
+        left: &[Result<AffineExpression, EvalError>],
+        right: &SelectedExpressions,
+        identity_index: Option<usize>,
+    ) -> EvalResult {
+        if let Some(index) = identity_index {
+            let id = &self.identities[index];
+            match id.kind {
+                IdentityKind::Polynomial => {
+                    self.process_polynomial_identity(fixed_data, id.left.selector.as_ref().unwrap())
+                }
+                IdentityKind::Plookup | IdentityKind::Permutation => {
+                    self.process_plookup(fixed_data, fixed_lookup, id)
+                }
+                _ => Err("Unsupported lookup type".to_string().into()),
+            }
+        } else {
+            self.process_outer_query(fixed_data, left, right)
+        }
+    }
+
+    /// Processes the outer query / the plookup. This function should only be called
+    /// on the acutal query row (the last one of the block).
+    fn process_outer_query(
+        &self,
+        fixed_data: &FixedData,
+        left: &[Result<AffineExpression, EvalError>],
+        right: &SelectedExpressions,
+    ) -> EvalResult {
+        assert!(self.row as usize % self.block_size == self.block_size - 1);
+        let mut errors = vec![];
+        let mut results = vec![];
+
+        // TODO how to properly hanlde the errors here?
+        // We only return them if we do not make any progress.
+
+        for (l, r) in left.iter().zip(right.expressions.iter()) {
+            match (l, self.evaluate(fixed_data, r)) {
+                (Ok(l), Ok(r)) => match (l.clone() - r).solve_with_bit_constraints(self) {
+                    Ok(result) => results.extend(result),
+                    Err(e) => errors.push(e),
+                },
+                (Err(e), Ok(_)) => errors.push(e.clone()),
+                (Ok(_), Err(e)) => errors.push(e),
+                (Err(e1), Err(e2)) => errors.extend([e1.clone(), e2]),
+            }
+        }
+        if results.is_empty() && !errors.is_empty() {
+            Err(errors.into_iter().reduce(eval_error::combine).unwrap())
+        } else {
+            Ok(results)
+        }
+    }
+
     fn process_polynomial_identity(
         &self,
         fixed_data: &FixedData,
@@ -327,7 +365,7 @@ impl BlockMachine {
     }
 
     fn process_plookup(
-        &mut self,
+        &self,
         fixed_data: &FixedData,
         fixed_lookup: &mut Option<&mut dyn Machine>,
         identity: &Identity,
@@ -435,5 +473,80 @@ fn convert_next_to_offset(witness_count: usize, id: usize) -> (usize, u64) {
         (id, 0)
     } else {
         (id - witness_count, 1)
+    }
+}
+
+struct ProcessingSequenceCache {
+    block_size: usize,
+    identities_count: usize,
+    cache: BTreeMap<SequenceCacheKey, Vec<SequenceStep>>,
+}
+
+#[derive(Clone)]
+struct SequenceStep {
+    row_delta: i64,
+    identity_index: Option<usize>,
+}
+
+#[derive(PartialOrd, Ord, PartialEq, Eq, Debug)]
+struct SequenceCacheKey {
+    known_columns: Vec<bool>,
+}
+
+impl From<&[Result<AffineExpression, EvalError>]> for SequenceCacheKey {
+    fn from(value: &[Result<AffineExpression, EvalError>]) -> Self {
+        SequenceCacheKey {
+            known_columns: value
+                .iter()
+                .map(|v| {
+                    v.as_ref()
+                        .ok()
+                        .and_then(|ex| ex.is_constant().then_some(true))
+                        .is_some()
+                })
+                .collect(),
+        }
+    }
+}
+
+impl ProcessingSequenceCache {
+    pub fn new(block_size: usize, identities_count: usize) -> Self {
+        ProcessingSequenceCache {
+            block_size,
+            identities_count,
+            cache: Default::default(),
+        }
+    }
+
+    pub fn get_processing_sequence(
+        &self,
+        left: &[Result<AffineExpression, EvalError>],
+    ) -> Vec<SequenceStep> {
+        self.cache.get(&left.into()).cloned().unwrap_or_else(|| {
+            let block_size = self.block_size as i64;
+            (-1..=block_size)
+                .chain((-1..block_size).rev())
+                .chain(-1..=block_size)
+                .flat_map(|row_delta| {
+                    let mut indices = (0..self.identities_count).map(Some).collect::<Vec<_>>();
+                    if row_delta + 1 == self.block_size as i64 {
+                        // Process the query on the query row.
+                        indices.push(None);
+                    }
+                    indices.into_iter().map(move |identity_index| SequenceStep {
+                        row_delta,
+                        identity_index,
+                    })
+                })
+                .collect()
+        })
+    }
+
+    pub fn report_processing_sequence(
+        &mut self,
+        left: &[Result<AffineExpression, EvalError>],
+        sequence: Vec<SequenceStep>,
+    ) {
+        self.cache.entry(left.into()).or_insert(sequence);
     }
 }
