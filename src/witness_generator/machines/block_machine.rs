@@ -188,6 +188,15 @@ impl BlockMachine {
         left: &[Result<AffineExpression, EvalError>],
         right: &SelectedExpressions,
     ) -> EvalResult {
+        // First check if we already store the value.
+        if left
+            .iter()
+            .all(|v| v.as_ref().ok().map(|v| v.is_constant()) == Some(true))
+        {
+            return Ok(vec![]);
+            // TOOD check that they really exist (maybe just check the last row)
+        }
+
         let old_len = self.rows();
         if old_len + self.block_size as u64 >= fixed_data.degree {
             return Err("Rows in block machine exhausted.".to_string().into());
