@@ -1,6 +1,6 @@
 constant %N = 256;
 
-// XORs two 32-bit numbers, byte-by-byte.
+// ORs two 32-bit numbers, byte-by-byte.
 namespace Or(%N);
 	macro is_nonzero(X) { X / X }; // 0 / 0 == 0 makes this work...
 	macro is_zero(X) { 1 - is_nonzero(X) };

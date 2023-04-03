@@ -94,7 +94,7 @@ impl BlockMachine {
 /// f(i) { if (i + 1) % k == 0 { 1 } else { 0 } }
 /// for some k >= 2
 /// TODO we could make this more generic and only detect the period
-/// but do not enforce the offset.
+/// but not enforce the offset.
 fn is_boolean_periodic_selector(
     expr: &Expression,
     fixed_data: &FixedData,
