@@ -225,31 +225,27 @@ impl SortedWitnesses {
             match stored_value {
                 // There is a stored value
                 Some(v) => {
-                    let constraint = l.clone() - (*v).clone().into();
-                    if constraint.is_invalid() {
-                        // The LHS value is known and it is differetn from the stored one.
-                        return Err(format!(
-                            "Lookup mismatch: There is already a unique row with {} = \
+                    match (l.clone() - (*v).clone().into()).solve() {
+                        Err(EvalError::ConstraintUnsatisfiable(_)) => {
+                            // The LHS value is known and it is differetn from the stored one.
+                            return Err(format!(
+                                "Lookup mismatch: There is already a unique row with {} = \
                             {key_value} and {r} = {v}, but wanted to store {r} = {}",
-                            self.key_col,
-                            l.format(fixed_data),
-                        )
-                        .into());
-                    } else if constraint.constant_value() == Some(0.into()) {
-                        // Just a repeated lookup.
-                    } else {
-                        match constraint.solve() {
-                            Ok(ass) => {
-                                if fixed_data.verbose {
-                                    println!("Read {} = {key_value} -> {r} = {v}", self.key_col);
-                                }
-                                assignments.extend(ass);
+                                self.key_col,
+                                l.format(fixed_data),
+                            )
+                            .into());
+                        }
+                        Err(_) => {
+                            return Err(
+                                format!("Cannot solve {} = {v}", l.format(fixed_data)).into()
+                            )
+                        }
+                        Ok(ass) => {
+                            if !ass.is_empty() && fixed_data.verbose {
+                                println!("Read {} = {key_value} -> {r} = {v}", self.key_col);
                             }
-                            Err(_) => {
-                                return Err(
-                                    format!("Cannot solve {} = {v}", l.format(fixed_data)).into()
-                                )
-                            }
+                            assignments.extend(ass);
                         }
                     }
                 }

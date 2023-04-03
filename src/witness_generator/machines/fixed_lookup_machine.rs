@@ -129,20 +129,20 @@ impl FixedLookup {
                     // TODO we could use bit constraints here
                     match evaluated.solve() {
                         Ok(constraints) => result.extend(constraints),
-                        Err(_) => {
-                            let formatted = l.format(fixed_data);
-                            if evaluated.is_invalid() {
-                                // Fail the whole lookup
-                                return Err(
-                                    format!("Constraint is invalid ({formatted} != {r}).",).into(),
-                                );
-                            } else {
-                                reasons.push(
-                                    format!("Could not solve expression {formatted} = {r}.",)
-                                        .into(),
-                                )
-                            }
+                        Err(EvalError::ConstraintUnsatisfiable(_)) => {
+                            // Fail the whole lookup
+                            return Err(EvalError::ConstraintUnsatisfiable(format!(
+                                "Constraint is invalid ({} != {r}).",
+                                l.format(fixed_data)
+                            )));
                         }
+                        Err(err) => reasons.push(
+                            format!(
+                                "Could not solve expression {} = {r}: {err}",
+                                l.format(fixed_data)
+                            )
+                            .into(),
+                        ),
                     }
                 }
                 Err(err) => {
