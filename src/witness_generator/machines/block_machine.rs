@@ -107,19 +107,18 @@ fn is_boolean_periodic_selector(
     if period == 1 {
         return None;
     }
-    for (i, v) in values.iter().enumerate() {
-        if *v
-            != if (i + 1) % period == 0 {
+    values
+        .iter()
+        .enumerate()
+        .all(|(i, v)| {
+            let expected = if (i + 1) % period == 0 {
                 1.into()
             } else {
                 0.into()
-            }
-        {
-            return None;
-        }
-    }
-
-    Some((poly.to_string(), period))
+            };
+            *v == expected
+        })
+        .then_some((poly.to_string(), period))
 }
 
 impl Machine for BlockMachine {
