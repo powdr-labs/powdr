@@ -3,16 +3,15 @@ use std::iter::once;
 
 use itertools::{Either, Itertools};
 
+use super::Machine;
 use crate::analyzer::PolynomialReference;
 use crate::analyzer::{Expression, Identity, IdentityKind, SelectedExpressions};
-use crate::commit_evaluator::eval_error;
-use crate::commit_evaluator::machine::LookupReturn;
 use crate::number::AbstractNumberType;
-
-use super::affine_expression::AffineExpression;
-use super::eval_error::EvalError;
-use super::machine::{LookupResult, Machine};
-use super::FixedData;
+use crate::witness_generator::{
+    affine_expression::AffineExpression,
+    eval_error::{self, EvalError},
+    EvalResult, FixedData,
+};
 
 /// TODO make this generic
 
@@ -69,7 +68,7 @@ impl Machine for DoubleSortedWitnesses {
         kind: IdentityKind,
         left: &[Result<AffineExpression, EvalError>],
         right: &SelectedExpressions,
-    ) -> LookupResult {
+    ) -> Option<EvalResult> {
         if kind != IdentityKind::Permutation
             || (right.selector
                 != Some(Expression::PolynomialReference(PolynomialReference {
@@ -84,82 +83,10 @@ impl Machine for DoubleSortedWitnesses {
                         next: false,
                     })))
         {
-            return Ok(LookupReturn::NotApplicable);
+            return None;
         }
 
-        // We blindly assume the lookup is of the form
-        // OP { ADDR, STEP, X } is m_is_write { m_addr, m_step, m_value }
-        // or
-        // OP { ADDR, STEP, X } is m_is_read { m_addr, m_step, m_value }
-
-        // Fail if the LHS has an error.
-        let (left, errors): (Vec<_>, Vec<_>) = left.iter().partition_map(|x| match x {
-            Ok(x) => Either::Left(x),
-            Err(x) => Either::Right(x),
-        });
-        if !errors.is_empty() {
-            return Err(errors
-                .into_iter()
-                .cloned()
-                .reduce(eval_error::combine)
-                .unwrap());
-        }
-
-        let is_write = match &right.selector {
-            Some(Expression::PolynomialReference(p)) => p.name == "Assembly.m_is_write",
-            _ => panic!(),
-        };
-        let addr = left[0].constant_value().ok_or_else(|| {
-            format!(
-                "Address must be known: {} = {}",
-                left[0].format(fixed_data),
-                right.expressions[0]
-            )
-        })?;
-        let step = left[1].constant_value().ok_or_else(|| {
-            format!(
-                "Step must be known: {} = {}",
-                left[1].format(fixed_data),
-                right.expressions[1]
-            )
-        })?;
-
-        println!(
-            "Query addr={addr}, step={step}, write: {is_write}, left: {}",
-            left[2].format(fixed_data)
-        );
-
-        // TODO this does not check any of the failure modes
-        let mut assignments = vec![];
-        if is_write {
-            let value = match left[2].constant_value() {
-                Some(v) => v,
-                None => return Ok(LookupReturn::Assignments(vec![])),
-            };
-            if fixed_data.verbose {
-                println!("Memory write: addr={addr}, step={step}, value={value}");
-            }
-            self.data.insert(addr.clone(), value.clone());
-            self.trace
-                .insert((addr, step), Operation { is_write, value });
-        } else {
-            let value = self.data.entry(addr.clone()).or_default();
-            self.trace.insert(
-                (addr.clone(), step.clone()),
-                Operation {
-                    is_write,
-                    value: value.clone(),
-                },
-            );
-            if fixed_data.verbose {
-                println!("Memory read: addr={addr}, step={step}, value={value}");
-            }
-            assignments.push(match (left[2].clone() - value.clone().into()).solve() {
-                Some(ass) => ass,
-                None => return Ok(LookupReturn::Assignments(vec![])),
-            });
-        }
-        Ok(LookupReturn::Assignments(assignments))
+        Some(self.process_plookup_internal(fixed_data, left, right))
     }
 
     fn witness_col_values(
@@ -214,5 +141,88 @@ impl Machine for DoubleSortedWitnesses {
         .into_iter()
         .map(|(n, v)| (n.to_string(), v))
         .collect()
+    }
+}
+
+impl DoubleSortedWitnesses {
+    fn process_plookup_internal(
+        &mut self,
+        fixed_data: &FixedData,
+        left: &[Result<AffineExpression, EvalError>],
+        right: &SelectedExpressions,
+    ) -> EvalResult {
+        // We blindly assume the lookup is of the form
+        // OP { ADDR, STEP, X } is m_is_write { m_addr, m_step, m_value }
+        // or
+        // OP { ADDR, STEP, X } is m_is_read { m_addr, m_step, m_value }
+
+        // Fail if the LHS has an error.
+        let (left, errors): (Vec<_>, Vec<_>) = left.iter().partition_map(|x| match x {
+            Ok(x) => Either::Left(x),
+            Err(x) => Either::Right(x),
+        });
+        if !errors.is_empty() {
+            return Err(errors
+                .into_iter()
+                .cloned()
+                .reduce(eval_error::combine)
+                .unwrap());
+        }
+
+        let is_write = match &right.selector {
+            Some(Expression::PolynomialReference(p)) => p.name == "Assembly.m_is_write",
+            _ => panic!(),
+        };
+        let addr = left[0].constant_value().ok_or_else(|| {
+            format!(
+                "Address must be known: {} = {}",
+                left[0].format(fixed_data),
+                right.expressions[0]
+            )
+        })?;
+        let step = left[1].constant_value().ok_or_else(|| {
+            format!(
+                "Step must be known: {} = {}",
+                left[1].format(fixed_data),
+                right.expressions[1]
+            )
+        })?;
+
+        println!(
+            "Query addr={addr}, step={step}, write: {is_write}, left: {}",
+            left[2].format(fixed_data)
+        );
+
+        // TODO this does not check any of the failure modes
+        let mut assignments = vec![];
+        if is_write {
+            let value = match left[2].constant_value() {
+                Some(v) => v,
+                None => return Ok(vec![]),
+            };
+            if fixed_data.verbose {
+                println!("Memory write: addr={addr}, step={step}, value={value}");
+            }
+            self.data.insert(addr.clone(), value.clone());
+            self.trace
+                .insert((addr, step), Operation { is_write, value });
+        } else {
+            let value = self.data.entry(addr.clone()).or_default();
+            self.trace.insert(
+                (addr.clone(), step.clone()),
+                Operation {
+                    is_write,
+                    value: value.clone(),
+                },
+            );
+            if fixed_data.verbose {
+                println!("Memory read: addr={addr}, step={step}, value={value}");
+            }
+            assignments.extend(match (left[2].clone() - value.clone().into()).solve() {
+                Ok(ass) => ass,
+                Err(_) => return Ok(vec![]),
+            });
+        }
+        Ok(assignments)
     }
 }

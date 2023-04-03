@@ -2,18 +2,17 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 
 use itertools::{Either, Itertools};
 
+use super::super::affine_expression::AffineExpression;
+use super::Machine;
+use super::{EvalResult, FixedData};
 use crate::analyzer::{Expression, Identity, IdentityKind, SelectedExpressions};
-use crate::commit_evaluator::eval_error;
-use crate::commit_evaluator::machine::LookupReturn;
 use crate::number::AbstractNumberType;
-
-use super::affine_expression::AffineExpression;
-use super::eval_error::EvalError;
-use super::expression_evaluator::ExpressionEvaluator;
-use super::fixed_evaluator::FixedEvaluator;
-use super::machine::{LookupResult, Machine};
-use super::symbolic_evaluator::SymbolicEvaluator;
-use super::FixedData;
+use crate::witness_generator::{
+    eval_error::{self, EvalError},
+    expression_evaluator::ExpressionEvaluator,
+    fixed_evaluator::FixedEvaluator,
+    symbolic_evaluator::SymbolicEvaluator,
+};
 
 /// A machine that can support a lookup in a set of columns that are sorted
 /// by one specific column and values in that column have to be unique.
@@ -97,8 +96,8 @@ fn check_identity<'a>(fixed_data: &'a FixedData, id: &Identity) -> Option<&'a st
 /// Checks that the identity has a constraint of the form `a' - a` as the first expression
 /// on the left hand side and returns the name of the witness column.
 fn check_constraint<'a>(fixed_data: &'a FixedData, constraint: &Expression) -> Option<&'a str> {
-    let symbolic_ev = ExpressionEvaluator::new(SymbolicEvaluator::new(fixed_data));
-    let sort_constraint = match symbolic_ev.evaluate(constraint) {
+    let symbolic_ev = SymbolicEvaluator::new(fixed_data);
+    let sort_constraint = match ExpressionEvaluator::new(symbolic_ev.clone()).evaluate(constraint) {
         Ok(c) => c,
         Err(_) => return None,
     };
@@ -106,14 +105,21 @@ fn check_constraint<'a>(fixed_data: &'a FixedData, constraint: &Expression) -> O
         [key, _] => *key,
         _ => return None,
     };
-    let witness_count = fixed_data.witness_cols.len();
-    let pattern = AffineExpression::from_witness_poly_value(key_column_id + witness_count)
-        - AffineExpression::from_witness_poly_value(key_column_id);
+    let (poly, next) = symbolic_ev.poly_from_id(key_column_id);
+    if next || fixed_data.witness_ids.get(poly).is_none() {
+        // Either next-witness or fixed column.
+        return None;
+    }
+    let pattern =
+        AffineExpression::from_witness_poly_value(symbolic_ev.id_for_witness_poly(poly, true))
+            - AffineExpression::from_witness_poly_value(
+                symbolic_ev.id_for_witness_poly(poly, false),
+            );
     if sort_constraint != pattern {
         return None;
     }
 
-    Some(fixed_data.witness_cols[key_column_id].name)
+    Some(poly)
 }
 
 impl Machine for SortedWitnesses {
@@ -123,9 +129,9 @@ impl Machine for SortedWitnesses {
         kind: IdentityKind,
         left: &[Result<AffineExpression, EvalError>],
         right: &SelectedExpressions,
-    ) -> LookupResult {
+    ) -> Option<EvalResult> {
         if kind != IdentityKind::Plookup || right.selector.is_some() {
-            return Ok(LookupReturn::NotApplicable);
+            return None;
         }
         let rhs = right
             .expressions
@@ -143,10 +149,49 @@ impl Machine for SortedWitnesses {
             })
             .collect::<Vec<_>>();
         if rhs.iter().any(|e| e.is_none()) {
-            return Ok(LookupReturn::NotApplicable);
+            return None;
         }
         let rhs = rhs.iter().map(|x| x.unwrap()).collect::<Vec<_>>();
 
+        Some(self.process_plookup_internal(fixed_data, left, right, rhs))
+    }
+    fn witness_col_values(
+        &mut self,
+        fixed_data: &FixedData,
+    ) -> HashMap<String, Vec<AbstractNumberType>> {
+        let mut result = HashMap::new();
+
+        let (mut keys, mut values): (Vec<_>, Vec<_>) =
+            std::mem::take(&mut self.data).into_iter().unzip();
+
+        let mut last_key = keys.last().cloned().unwrap_or_default();
+        while keys.len() < fixed_data.degree as usize {
+            last_key += 1;
+            keys.push(last_key.clone());
+        }
+        result.insert(self.key_col.clone(), keys);
+
+        for (col_name, &i) in &self.witness_positions {
+            let mut col_values = values
+                .iter_mut()
+                .map(|row| std::mem::take(&mut row[i]).unwrap_or_default())
+                .collect::<Vec<_>>();
+            col_values.resize(fixed_data.degree as usize, 0.into());
+            result.insert(col_name.clone(), col_values);
+        }
+
+        result
+    }
+}
+
+impl SortedWitnesses {
+    fn process_plookup_internal(
+        &mut self,
+        fixed_data: &FixedData,
+        left: &[Result<AffineExpression, EvalError>],
+        right: &SelectedExpressions,
+        rhs: Vec<&String>,
+    ) -> EvalResult {
         // Fail if the LHS has an error.
         let (left, errors): (Vec<_>, Vec<_>) = left.iter().partition_map(|x| match x {
             Ok(x) => Either::Left(x),
@@ -194,13 +239,13 @@ impl Machine for SortedWitnesses {
                         // Just a repeated lookup.
                     } else {
                         match constraint.solve() {
-                            Some(assignment) => {
+                            Ok(ass) => {
                                 if fixed_data.verbose {
                                     println!("Read {} = {key_value} -> {r} = {v}", self.key_col);
                                 }
-                                assignments.push(assignment);
+                                assignments.extend(ass);
                             }
-                            None => {
+                            Err(_) => {
                                 return Err(
                                     format!("Cannot solve {} = {v}", l.format(fixed_data)).into()
                                 )
@@ -226,34 +271,6 @@ impl Machine for SortedWitnesses {
                 },
             }
         }
-        Ok(LookupReturn::Assignments(assignments))
-    }
-
-    fn witness_col_values(
-        &mut self,
-        fixed_data: &FixedData,
-    ) -> HashMap<String, Vec<AbstractNumberType>> {
-        let mut result = HashMap::new();
-
-        let (mut keys, mut values): (Vec<_>, Vec<_>) =
-            std::mem::take(&mut self.data).into_iter().unzip();
-
-        let mut last_key = keys.last().cloned().unwrap_or_default();
-        while keys.len() < fixed_data.degree as usize {
-            last_key += 1;
-            keys.push(last_key.clone());
-        }
-        result.insert(self.key_col.clone(), keys);
-
-        for (col_name, &i) in &self.witness_positions {
-            let mut col_values = values
-                .iter_mut()
-                .map(|row| std::mem::take(&mut row[i]).unwrap_or_default())
-                .collect::<Vec<_>>();
-            col_values.resize(fixed_data.degree as usize, 0.into());
-            result.insert(col_name.clone(), col_values);
-        }
-
-        result
+        Ok(assignments)
     }
 }

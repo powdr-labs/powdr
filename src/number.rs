@@ -22,7 +22,12 @@ pub fn is_zero(x: &AbstractNumberType) -> bool {
 
 lazy_static! {
     // default field modulus is goldilocks
+    static ref GOLDILOCKS_MOD : BigInt = BigInt::parse_bytes(b"FFFFFFFF00000001", 16).unwrap();
     static ref FIELD_MOD : Mutex<BigInt> = Mutex::new(BigInt::parse_bytes(b"FFFFFFFF00000001", 16).unwrap());
+}
+
+pub fn get_goldilocks_mod() -> BigInt {
+    GOLDILOCKS_MOD.clone()
 }
 
 pub fn get_field_mod() -> BigInt {
@@ -35,7 +40,7 @@ pub fn set_field_mod(n: BigInt) {
 
 pub fn format_number(x: &AbstractNumberType) -> String {
     if *x > (get_field_mod() / BigInt::from(2)).into() {
-        format!("{}", get_field_mod()  - x)
+        format!("-{}", get_field_mod()  - x)
     } else {
         format!("{x}")
     }

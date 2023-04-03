@@ -4,23 +4,9 @@ use itertools::Itertools;
 use powdr::compiler;
 use powdr::number::AbstractNumberType;
 
-fn verify_pil(file_name: &str, query_callback: Option<fn(&str) -> Option<AbstractNumberType>>) {
-    let input_file = Path::new(&format!("./tests/{file_name}"))
-        .canonicalize()
-        .unwrap();
-
-    let temp_dir = mktemp::Temp::new_dir().unwrap();
-    assert!(compiler::compile_pil(
-        &input_file,
-        &temp_dir,
-        query_callback
-    ));
-    verify(file_name, &temp_dir);
-}
-
-fn verify_asm(file_name: &str, inputs: Vec<AbstractNumberType>) {
-    let contents = fs::read_to_string(format!("./tests/{file_name}")).unwrap();
-    let pil = powdr::asm_compiler::compile(Some(file_name), &contents).unwrap();
+#[allow(unused)]
+pub fn verify_asm_string(file_name: &str, contents: &str, inputs: Vec<AbstractNumberType>) {
+    let pil = powdr::asm_compiler::compile(Some(file_name), contents).unwrap();
     let pil_file_name = "asm.pil";
     let temp_dir = mktemp::Temp::new_dir().unwrap();
     assert!(compiler::compile_pil_ast(
@@ -47,7 +33,7 @@ fn verify_asm(file_name: &str, inputs: Vec<AbstractNumberType>) {
     verify(pil_file_name, &temp_dir);
 }
 
-fn verify(file_name: &str, temp_dir: &Path) {
+pub fn verify(file_name: &str, temp_dir: &Path) {
     let pilcom = std::env::var("PILCOM")
         .expect("Please set the PILCOM environment variable to the path to the pilcom repository.");
     let constants_file = format!("{}/constants.bin", temp_dir.to_string_lossy());
@@ -80,74 +66,4 @@ fn verify(file_name: &str, temp_dir: &Path) {
             panic!("Verified did not say 'PIL OK': {output}");
         }
     }
-}
-
-#[test]
-fn test_fibonacci() {
-    verify_pil("fibonacci.pil", None);
-}
-
-#[test]
-fn test_fibonacci_macro() {
-    verify_pil("fib_macro.pil", None);
-}
-
-#[test]
-fn test_global() {
-    verify_pil("global.pil", None);
-}
-
-#[test]
-fn test_sum_via_witness_query() {
-    verify_pil(
-        "sum_via_witness_query.pil",
-        Some(|q| {
-            match q {
-                "\"in\", 0" => Some(7.into()),
-                "\"in\", 1" => Some(8.into()),
-                "\"in\", 2" => Some(2.into()),
-                "\"in\", 3" => None, // This line checks that if we return "None", the system still tries to figure it out on its own.
-                _ => None,
-            }
-        }),
-    );
-}
-
-#[test]
-fn test_witness_lookup() {
-    verify_pil(
-        "witness_lookup.pil",
-        Some(|q| match q {
-            "\"input\", 0" => Some(3.into()),
-            "\"input\", 1" => Some(5.into()),
-            "\"input\", 2" => Some(2.into()),
-            _ => Some(7.into()),
-        }),
-    );
-}
-
-#[test]
-fn simple_sum_asm() {
-    verify_asm(
-        "simple_sum.asm",
-        [16, 4, 1, 2, 8, 5].iter().map(|&x| x.into()).collect(),
-    );
-}
-
-#[test]
-fn palindrome() {
-    verify_asm(
-        "palindrome.asm",
-        [7, 1, 7, 3, 9, 3, 7, 1].iter().map(|&x| x.into()).collect(),
-    );
-}
-
-#[test]
-fn test_mem_read_write() {
-    verify_asm("mem_read_write.asm", Default::default());
-}
-
-#[test]
-fn test_multi_assign() {
-    verify_asm("multi_assign.asm", [7].iter().map(|&x| x.into()).collect());
 }

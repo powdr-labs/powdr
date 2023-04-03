@@ -31,7 +31,7 @@ impl<'a> SymbolicVariables for FixedEvaluator<'a> {
             };
             Ok(col_data[row].clone().into())
         } else {
-            Err("Can only accesss fixed columns in the fixed evaluator."
+            Err("Can only access fixed columns in the fixed evaluator."
                 .to_string()
                 .into())
         }

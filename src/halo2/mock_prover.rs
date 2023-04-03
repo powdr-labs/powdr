@@ -9,15 +9,14 @@ use crate::number::AbstractNumberType;
 use crate::{analyzer, asm_compiler};
 use halo2_proofs::{dev::MockProver, halo2curves::bn256::Fr};
 
-// Follow dependency installation instrucions from https://github.com/ed255/polyexen-demo
-
-const MAX_PUBLIC_INPUTS: usize = 12;
+// Follow dependency installation instructions from https://github.com/ed255/polyexen-demo
 
 pub fn mock_prove_asm(file_name: &str, inputs: &[AbstractNumberType], verbose: bool) {
     
     // set field to BN254
     crate::number::set_field_mod(polyexen::expr::get_field_p::<Fr>().to_bigint().unwrap());
-    
+    let original_field_mod = crate::number::get_field_mod();
+
     // read and compile PIL.
 
     let contents = fs::read_to_string(file_name).unwrap();
@@ -73,6 +72,7 @@ pub fn mock_prove_asm(file_name: &str, inputs: &[AbstractNumberType], verbose: b
     }
     
 /* 
+    const MAX_PUBLIC_INPUTS: usize = 12;
     let inputs: Vec<_> = inputs
         .iter()
         .map(|n| {
@@ -96,6 +96,10 @@ pub fn mock_prove_asm(file_name: &str, inputs: &[AbstractNumberType], verbose: b
 */
 
     let mock_prover = MockProver::<Fr>::run(k, &circuit, vec![]).unwrap();
+
+    // set field back to original value
+    crate::number::set_field_mod(original_field_mod);
+
     mock_prover.assert_satisfied();
 }
 
@@ -106,12 +110,12 @@ mod test {
     #[test]
     fn fibonacci() {
         let inputs = [165,5,11,22,33,44,55].map(BigInt::from);
-        super::mock_prove_asm("tests/simple_sum.asm",&inputs,false);
+        super::mock_prove_asm("tests/asm_data/simple_sum.asm",&inputs,false);
     }
     #[test]
     fn palindrome() {
         let inputs = [3,11,22,11].map(BigInt::from);
-        super::mock_prove_asm("tests/palindrome.asm",&inputs,false);
+        super::mock_prove_asm("tests/asm_data/palindrome.asm",&inputs,false);
     }
 
 }

@@ -1,5 +1,4 @@
 use clap::{Parser, Subcommand};
-use powdr::compiler;
 use powdr::number::AbstractNumberType;
 use powdr::{compiler::no_callback, halo2};
 use std::{fs, path::Path};
@@ -13,6 +12,61 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
+    /// Compiles (no-std) rust code to riscv assembly, then to powdr assembly
+    /// and finally to PIL and generates fixed and witness columns.
+    /// Needs `rustup target add riscv32imc-unknown-none-elf`.
+    Rust {
+        /// Input file
+        file: String,
+
+        /// Comma-separated list of free inputs (numbers).
+        #[arg(short, long)]
+        #[arg(default_value_t = String::new())]
+        inputs: String,
+
+        /// Directory for  output files.
+        #[arg(short, long)]
+        #[arg(default_value_t = String::from("."))]
+        output_directory: String,
+
+        /// Force overwriting of files in output directory.
+        #[arg(short, long)]
+        #[arg(default_value_t = false)]
+        force: bool,
+
+        /// Verbose output (provides a full execution trace).
+        #[arg(short, long)]
+        #[arg(default_value_t = false)]
+        verbose: bool,
+    },
+
+    /// Compiles riscv assembly to powdr assembly and then to PIL
+    /// and generates fixed and witness columns.
+    RiscvAsm {
+        /// Input file
+        file: String,
+
+        /// Comma-separated list of free inputs (numbers).
+        #[arg(short, long)]
+        #[arg(default_value_t = String::new())]
+        inputs: String,
+
+        /// Directory for  output files.
+        #[arg(short, long)]
+        #[arg(default_value_t = String::from("."))]
+        output_directory: String,
+
+        /// Force overwriting of files in output directory.
+        #[arg(short, long)]
+        #[arg(default_value_t = false)]
+        force: bool,
+
+        /// Verbose output (provides a full execution trace).
+        #[arg(short, long)]
+        #[arg(default_value_t = false)]
+        verbose: bool,
+    },
+
     /// Compiles assembly to PIL and generates fixed and witness columns.
     Asm {
         /// Input file
@@ -67,11 +121,56 @@ enum Commands {
         #[arg(short, long)]
         #[arg(default_value_t = String::from("."))]
         output_directory: String,
+        /// Verbose output (provides a full execution trace).
+        #[arg(short, long)]
+        #[arg(default_value_t = false)]
+        verbose: bool,
     },
 }
 
+fn split_inputs(inputs: &str) -> Vec<AbstractNumberType> {
+    inputs
+        .split(',')
+        .map(|x| x.trim())
+        .filter(|x| !x.is_empty())
+        .map(|x| x.parse().unwrap())
+        .collect::<Vec<AbstractNumberType>>()
+}
+
 fn main() {
-    match Cli::parse().command {
+    let command = Cli::parse().command;
+    match command {
+        Commands::Rust {
+            file,
+            inputs,
+            output_directory,
+            force,
+            verbose,
+        } => {
+            powdr::riscv::compile_rust(
+                &file,
+                split_inputs(&inputs),
+                Path::new(&output_directory),
+                force,
+                verbose,
+            );
+        }
+        Commands::RiscvAsm {
+            file,
+            inputs,
+            output_directory,
+            force,
+            verbose,
+        } => {
+            powdr::riscv::compile_riscv_asm(
+                &file,
+                &file,
+                split_inputs(&inputs),
+                Path::new(&output_directory),
+                force,
+                verbose,
+            );
+        }
         Commands::Asm {
             file,
             inputs,
@@ -79,14 +178,13 @@ fn main() {
             force,
             verbose,
         } => {
-            let inputs = inputs
-                .split(',')
-                .map(|x| x.trim())
-                .filter(|x| !x.is_empty())
-                .map(|x| x.parse().unwrap())
-                .collect::<Vec<AbstractNumberType>>();
-
-            compiler::compile_asm(&file, inputs, Path::new(&output_directory), force, verbose);
+            powdr::compiler::compile_asm(
+                &file,
+                split_inputs(&inputs),
+                Path::new(&output_directory),
+                force,
+                verbose,
+            );
         }
         Commands::Reformat { file } => {
             let contents = fs::read_to_string(&file).unwrap();
@@ -98,11 +196,13 @@ fn main() {
         Commands::Compile {
             file,
             output_directory,
+            verbose,
         } => {
             powdr::compiler::compile_pil(
                 Path::new(&file),
                 Path::new(&output_directory),
                 no_callback(),
+                verbose,
             );
         }
         Commands::Halo2MockProver {

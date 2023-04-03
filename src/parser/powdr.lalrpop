@@ -71,11 +71,21 @@ PolynomialConstantDefinition: Statement = {
 
 FunctionDefinition: FunctionDefinition = {
     "(" <ParameterList> ")" "{" <Expression> "}" => FunctionDefinition::Mapping(<>),
-    "=" "[" <ExpressionList> "]" => FunctionDefinition::Array(<>),
+    "=" <ArrayLiteralExpression> => FunctionDefinition::Array(<>),
 }
 
 ParameterList: Vec<String> = {
     <mut list:( <Identifier> "," )*> <end:Identifier>  => { list.push(end); list }
+}
+
+ArrayLiteralExpression: ArrayExpression = {
+    <ArrayLiteralExpression> "+" <ArrayLiteralTerm> => ArrayExpression::concat(<>),
+    ArrayLiteralTerm,
+}
+
+ArrayLiteralTerm: ArrayExpression = {
+    "[" <ExpressionList> "]" => ArrayExpression::value(<>),
+    "[" <ExpressionList> "]" "*" => ArrayExpression::repeated_value(<>),
 }
 
 PolynomialCommitDeclaration: Statement = {
@@ -138,12 +148,17 @@ ConstantFixed = {
 
 
 ASMStatement: ASMStatement = {
+    Degree,
     RegisterDeclaration,
     InstructionDeclaration,
     InlinePil,
     Assignment,
     Instruction,
     Label,
+}
+
+Degree: ASMStatement = {
+    <@L> "degree" <Number> ";" => ASMStatement::Degree(<>)
 }
 
 RegisterDeclaration: ASMStatement = {
@@ -190,7 +205,7 @@ InstructionParam: InstructionParam = {
 }
 
 InlinePil: ASMStatement = {
-    <@L> "pil{" <(<Statement> ";")*> "}" => ASMStatement::InlinePil(<>)
+    <@L> "pil" "{" <(<Statement> ";")*> "}" => ASMStatement::InlinePil(<>)
 }
 
 Assignment: ASMStatement = {
@@ -332,13 +347,13 @@ StringLiteral: String = {
 }
 
 Identifier: String = {
-    r"[a-zA-Z_][a-zA-Z$_0-9]*" => <>.to_string()
+    r"[a-zA-Z_][a-zA-Z$_0-9@]*" => <>.to_string()
 }
 
 ConstantIdentifier: String = {
     // TODO it seems the lexer splits the token after %
     "%N" => <>.to_string(),
-    r"%[a-zA-Z_][a-zA-Z$_0-9]*" => <>.to_string(),
+    r"%[a-zA-Z_][a-zA-Z$_0-9@]*" => <>.to_string(),
 }
 
 Number: AbstractNumberType = {

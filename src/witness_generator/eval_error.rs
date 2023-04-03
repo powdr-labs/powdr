@@ -4,6 +4,8 @@ use std::fmt::{Display, Formatter, Result};
 pub enum EvalError {
     /// Previous value of witness column not known when trying to derive a value in the next row.
     PreviousValueUnknown(String),
+    /// Conflicting bit-constraints in an equation, i.e. for X = 0x100, where X is known to be at most 0xff.
+    ConflictingBitConstraints,
     Generic(String),
     Multiple(Vec<EvalError>),
 }
@@ -34,6 +36,9 @@ impl Display for EvalError {
                 f,
                 "Previous value of the following column(s) is not (yet) known: {names}.",
             ),
+            EvalError::ConflictingBitConstraints => {
+                write!(f, "Bit constraints in the expression are conflicting or do not match the constant / offset.",)
+            }
             EvalError::Multiple(errors) => {
                 let (previous_unknown, mut others) = errors.iter().fold(
                     (vec![], vec![]),

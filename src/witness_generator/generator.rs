@@ -6,13 +6,15 @@ use std::collections::{BTreeMap, HashMap};
 use crate::number::{AbstractNumberType, DegreeType};
 
 use super::affine_expression::AffineExpression;
+use super::bit_constraints::{BitConstraint, BitConstraintSet};
 use super::eval_error::EvalError;
-use super::expression_evaluator::{ExpressionEvaluator, SymbolicVariables};
-use super::machine::{LookupReturn, Machine};
-use super::util::contains_next_ref;
-use super::{EvalResult, FixedData, WitnessColumn};
+use super::expression_evaluator::ExpressionEvaluator;
+use super::machines::Machine;
+use super::symbolic_witness_evaluator::{SymoblicWitnessEvaluator, WitnessColumnEvaluator};
+use super::util::{contains_next_witness_ref, WitnessColumnNamer};
+use super::{Constraint, EvalResult, FixedData, WitnessColumn};
 
-pub struct Evaluator<'a, QueryCallback>
+pub struct Generator<'a, QueryCallback>
 where
     QueryCallback: FnMut(&'a str) -> Option<AbstractNumberType>,
 {
@@ -20,15 +22,19 @@ where
     identities: Vec<&'a Identity>,
     machines: Vec<Box<dyn Machine>>,
     query_callback: Option<QueryCallback>,
+    global_bit_constraints: BTreeMap<&'a str, BitConstraint>,
     /// Maps the witness polynomial names to optional parameter and query string.
     witness_cols: BTreeMap<&'a str, &'a WitnessColumn<'a>>,
     /// Values of the witness polynomials
     current: Vec<Option<AbstractNumberType>>,
     /// Values of the witness polynomials in the next row
     next: Vec<Option<AbstractNumberType>>,
+    /// Bit constraints on the witness polynomials in the next row.
+    next_bit_constraints: Vec<Option<BitConstraint>>,
     next_row: DegreeType,
     failure_reasons: Vec<String>,
     progress: bool,
+    last_report: DegreeType,
 }
 
 #[derive(PartialEq, Eq, Clone, Copy)]
@@ -39,33 +45,45 @@ enum EvaluationRow {
     Next,
 }
 
-impl<'a, QueryCallback> Evaluator<'a, QueryCallback>
+impl<'a, QueryCallback> Generator<'a, QueryCallback>
 where
     QueryCallback: FnMut(&str) -> Option<AbstractNumberType>,
 {
     pub fn new(
         fixed_data: &'a FixedData<'a>,
         identities: Vec<&'a Identity>,
+        global_bit_constraints: BTreeMap<&'a str, BitConstraint>,
         machines: Vec<Box<dyn Machine>>,
         query_callback: Option<QueryCallback>,
     ) -> Self {
         let witness_cols = fixed_data.witness_cols;
 
-        Evaluator {
+        Generator {
             fixed_data,
             identities,
             machines,
             query_callback,
+            global_bit_constraints,
             witness_cols: witness_cols.iter().map(|p| (p.name, p)).collect(),
             current: vec![None; witness_cols.len()],
             next: vec![None; witness_cols.len()],
+            next_bit_constraints: vec![None; witness_cols.len()],
             next_row: 0,
             failure_reasons: vec![],
             progress: true,
+            last_report: 0,
         }
     }
 
     pub fn compute_next_row(&mut self, next_row: DegreeType) -> Vec<AbstractNumberType> {
+        if next_row >= self.last_report + 1000 {
+            println!(
+                "{next_row} of {} rows ({} %)",
+                self.fixed_data.degree,
+                next_row * 100 / self.fixed_data.degree
+            );
+            self.last_report = next_row;
+        }
         self.next_row = next_row;
 
         // TODO maybe better to generate a dependency graph than looping multiple times.
@@ -103,7 +121,7 @@ where
             if self.query_callback.is_some() {
                 // TODO avoid clone
                 for column in self.witness_cols.clone().values() {
-                    // TOOD we should acutally query even if it is already known, to check
+                    // TODO we should actually query even if it is already known, to check
                     // if the value would be different.
                     if !self.has_known_next_value(column.id) && column.query.is_some() {
                         let result = self.process_witness_query(column);
@@ -122,7 +140,7 @@ where
         // "unknown", report zero and re-check the wrap-around against the zero values at the end.
         if identity_failed && next_row != 0 {
             eprintln!(
-                "\nError: Row {next_row}: Identity check failer or unable to derive values for witness polynomials: {}\n",
+                "\nError: Row {next_row}: Identity check failed or unable to derive values for witness polynomials: {}\n",
                 self.next
                     .iter()
                     .enumerate()
@@ -135,6 +153,18 @@ where
                     .join(", ")
             );
             eprintln!("Reasons:\n{}\n", self.failure_reasons.join("\n\n"));
+            eprintln!("Known bit constraints:");
+            eprintln!("Global:");
+            for (name, cons) in &self.global_bit_constraints {
+                eprintln!("  {name}: {cons}");
+            }
+            eprintln!("For this row:");
+            for (id, cons) in self.next_bit_constraints.iter().enumerate() {
+                if let Some(cons) = cons {
+                    eprintln!("  {}: {cons}", self.fixed_data.witness_cols[id].name);
+                }
+            }
+            eprintln!();
             eprintln!(
                 "Current values:\n{}",
                 indent(&self.format_next_values().join("\n"), "    ")
@@ -149,6 +179,7 @@ where
             }
             std::mem::swap(&mut self.next, &mut self.current);
             self.next = vec![None; self.current.len()];
+            self.next_bit_constraints = vec![None; self.current.len()];
             // TODO check a bit better that "None" values do not
             // violate constraints.
             self.current
@@ -182,13 +213,10 @@ where
             .collect()
     }
 
-    fn process_witness_query(
-        &mut self,
-        column: &&WitnessColumn,
-    ) -> Result<Vec<(usize, AbstractNumberType)>, EvalError> {
+    fn process_witness_query(&mut self, column: &&WitnessColumn) -> EvalResult {
         let query = self.interpolate_query(column.query.unwrap())?;
         if let Some(value) = self.query_callback.as_mut().and_then(|c| (c)(&query)) {
-            Ok(vec![(column.id, value)])
+            Ok(vec![(column.id, Constraint::Assignment(value))])
         } else {
             Err(format!("No query answer for {} query: {query}.", column.name).into())
         }
@@ -222,7 +250,9 @@ where
     fn process_polynomial_identity(&self, identity: &Expression) -> EvalResult {
         // If there is no "next" reference in the expression,
         // we just evaluate it directly on the "next" row.
-        let row = if contains_next_ref(identity, self.fixed_data) {
+        let row = if contains_next_witness_ref(identity, self.fixed_data) {
+            // TODO this is the only situation where we use "current"
+            // TODO this is the only that actually uses a window.
             EvaluationRow::Current
         } else {
             EvaluationRow::Next
@@ -231,17 +261,16 @@ where
         if evaluated.constant_value() == Some(0.into()) {
             Ok(vec![])
         } else {
-            match evaluated.solve() {
-                Some((id, value)) => Ok(vec![(id, value)]),
-                None => {
+            evaluated
+                .solve_with_bit_constraints(&self.bit_constraint_set())
+                .map_err(|_| {
                     let formatted = evaluated.format(self.fixed_data);
-                    Err(if evaluated.is_invalid() {
+                    if evaluated.is_invalid() {
                         format!("Constraint is invalid ({formatted} != 0).").into()
                     } else {
                         format!("Could not solve expression {formatted} = 0.").into()
-                    })
-                }
-            }
+                    }
+                })
         }
     }
 
@@ -276,10 +305,10 @@ where
         // TODO could it be that multiple machines match?
         for m in &mut self.machines {
             // TODO also consider the reasons above.
-            if let LookupReturn::Assignments(assignments) =
-                m.process_plookup(self.fixed_data, identity.kind, &left, &identity.right)?
+            if let Some(result) =
+                m.process_plookup(self.fixed_data, identity.kind, &left, &identity.right)
             {
-                return Ok(assignments);
+                return result;
             }
         }
 
@@ -290,10 +319,19 @@ where
 
     fn handle_eval_result(&mut self, result: EvalResult) {
         match result {
-            Ok(assignments) => {
-                for (id, value) in assignments {
-                    self.next[id] = Some(value);
+            Ok(constraints) => {
+                if !constraints.is_empty() {
                     self.progress = true;
+                }
+                for (id, c) in constraints {
+                    match c {
+                        Constraint::Assignment(value) => {
+                            self.next[id] = Some(value);
+                        }
+                        Constraint::BitConstraint(cons) => {
+                            self.next_bit_constraints[id] = Some(cons);
+                        }
+                    }
                 }
             }
             Err(reason) => {
@@ -314,14 +352,49 @@ where
         expr: &Expression,
         evaluate_row: EvaluationRow,
     ) -> Result<AffineExpression, EvalError> {
-        ExpressionEvaluator::new(EvaluationData {
-            fixed_data: self.fixed_data,
-            current_witnesses: &self.current,
-            next_witnesses: &self.next,
-            next_row: self.next_row,
-            evaluate_row,
-        })
+        let degree = self.fixed_data.degree;
+        let fixed_row = match evaluate_row {
+            EvaluationRow::Current => (self.next_row + degree - 1) % degree,
+            EvaluationRow::Next => self.next_row,
+        };
+
+        ExpressionEvaluator::new(SymoblicWitnessEvaluator::new(
+            self.fixed_data,
+            fixed_row,
+            EvaluationData {
+                fixed_data: self.fixed_data,
+                current_witnesses: &self.current,
+                next_witnesses: &self.next,
+                evaluate_row,
+            },
+        ))
         .evaluate(expr)
+    }
+
+    fn bit_constraint_set(&'a self) -> WitnessBitConstraintSet<'a> {
+        WitnessBitConstraintSet {
+            fixed_data: self.fixed_data,
+            global_bit_constraints: &self.global_bit_constraints,
+            next_bit_constraints: &self.next_bit_constraints,
+        }
+    }
+}
+
+struct WitnessBitConstraintSet<'a> {
+    fixed_data: &'a FixedData<'a>,
+    /// Global constraints on witness and fixed polynomials.
+    global_bit_constraints: &'a BTreeMap<&'a str, BitConstraint>,
+    /// Bit constraints on the witness polynomials in the next row.
+    next_bit_constraints: &'a Vec<Option<BitConstraint>>,
+}
+
+impl<'a> BitConstraintSet for WitnessBitConstraintSet<'a> {
+    fn bit_constraint(&self, id: usize) -> Option<BitConstraint> {
+        let name = self.fixed_data.witness_cols[id].name;
+        self.global_bit_constraints
+            .get(name)
+            .or_else(|| self.next_bit_constraints[id].as_ref())
+            .cloned()
     }
 }
 
@@ -331,62 +404,43 @@ struct EvaluationData<'a> {
     pub current_witnesses: &'a Vec<Option<AbstractNumberType>>,
     /// Values of the witness polynomials in the next row
     pub next_witnesses: &'a Vec<Option<AbstractNumberType>>,
-    pub next_row: DegreeType,
     pub evaluate_row: EvaluationRow,
 }
 
-impl<'a> SymbolicVariables for EvaluationData<'a> {
-    fn constant(&self, name: &str) -> Result<AffineExpression, EvalError> {
-        Ok(self.fixed_data.constants[name].clone().into())
-    }
-
+impl<'a> WitnessColumnEvaluator for EvaluationData<'a> {
     fn value(&self, name: &str, next: bool) -> Result<AffineExpression, EvalError> {
-        // TODO arrays
-        if let Some(id) = self.fixed_data.witness_ids.get(name) {
-            // TODO we could also work with both p and p' as symoblic variables and only eliminate them at the end.
-
-            match (next, self.evaluate_row) {
-                (false, EvaluationRow::Current) => {
-                    // All values in the "current" row should usually be known.
-                    // The exception is when we start the analysis on the first row.
-                    self.current_witnesses[*id]
-                        .as_ref()
-                        .map(|value| value.clone().into())
-                        .ok_or_else(|| EvalError::PreviousValueUnknown(name.to_string()))
-                }
-                (false, EvaluationRow::Next) | (true, EvaluationRow::Current) => {
-                    Ok(if let Some(value) = &self.next_witnesses[*id] {
-                        // We already computed the concrete value
-                        value.clone().into()
-                    } else {
-                        // We continue with a symbolic value
-                        AffineExpression::from_witness_poly_value(*id)
-                    })
-                }
-                (true, EvaluationRow::Next) => {
-                    // "double next" or evaluation of a witness on a specific row
-                    Err(format!(
-                        "{name}' references the next-next row when evaluating on the current row.",
-                    )
-                    .into())
-                }
+        let id = self.fixed_data.witness_ids[name];
+        match (next, self.evaluate_row) {
+            (false, EvaluationRow::Current) => {
+                // All values in the "current" row should usually be known.
+                // The exception is when we start the analysis on the first row.
+                self.current_witnesses[id]
+                    .as_ref()
+                    .map(|value| value.clone().into())
+                    .ok_or_else(|| EvalError::PreviousValueUnknown(name.to_string()))
             }
-        } else {
-            // Constant polynomial (or something else)
-            let values = self.fixed_data.fixed_cols[name];
-            let degree = values.len() as DegreeType;
-            let mut row = match self.evaluate_row {
-                EvaluationRow::Current => (self.next_row + degree - 1) % degree,
-                EvaluationRow::Next => self.next_row,
-            };
-            if next {
-                row = (row + 1) % degree;
+            (false, EvaluationRow::Next) | (true, EvaluationRow::Current) => {
+                Ok(if let Some(value) = &self.next_witnesses[id] {
+                    // We already computed the concrete value
+                    value.clone().into()
+                } else {
+                    // We continue with a symbolic value
+                    AffineExpression::from_witness_poly_value(id)
+                })
             }
-            Ok(values[row as usize].clone().into())
+            (true, EvaluationRow::Next) => {
+                // "double next" or evaluation of a witness on a specific row
+                Err(format!(
+                    "{name}' references the next-next row when evaluating on the current row.",
+                )
+                .into())
+            }
         }
     }
+}
 
-    fn format(&self, expr: AffineExpression) -> String {
-        expr.format(self.fixed_data)
+impl<'a> WitnessColumnNamer for EvaluationData<'a> {
+    fn name(&self, i: usize) -> String {
+        self.fixed_data.name(i)
     }
 }

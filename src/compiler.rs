@@ -7,7 +7,7 @@ use num_bigint::Sign;
 
 use crate::number::{abstract_to_degree, AbstractNumberType, DegreeType};
 use crate::parser::ast::PILFile;
-use crate::{analyzer, asm_compiler, commit_evaluator, constant_evaluator, json_exporter};
+use crate::{analyzer, asm_compiler, constant_evaluator, json_exporter, witness_generator};
 
 pub fn no_callback() -> Option<fn(&str) -> Option<AbstractNumberType>> {
     None
@@ -21,13 +21,14 @@ pub fn compile_pil(
     pil_file: &Path,
     output_dir: &Path,
     query_callback: Option<impl FnMut(&str) -> Option<AbstractNumberType>>,
+    verbose: bool,
 ) -> bool {
     compile(
         &analyzer::analyze(pil_file),
         pil_file.file_name().unwrap().to_str().unwrap(),
         output_dir,
         query_callback,
-        false,
+        verbose,
     )
 }
 
@@ -129,6 +130,7 @@ fn compile(
     verbose: bool,
 ) -> bool {
     let mut success = true;
+    println!("Evaluating fixed columns...");
     let (constants, degree) = constant_evaluator::generate(analyzed);
     if analyzed.constant_count() == constants.len() {
         write_polys_file(
@@ -137,8 +139,9 @@ fn compile(
             &constants,
         );
         println!("Wrote constants.bin.");
+        println!("Deducing witness columns...");
         let commits =
-            commit_evaluator::generate(analyzed, degree, &constants, query_callback, verbose);
+            witness_generator::generate(analyzed, degree, &constants, query_callback, verbose);
         write_polys_file(
             &mut BufWriter::new(&mut fs::File::create(output_dir.join("commits.bin")).unwrap()),
             degree,

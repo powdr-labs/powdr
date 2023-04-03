@@ -1,4 +1,4 @@
-use crate::analyzer::Expression;
+use crate::analyzer::{Expression, PolynomialReference};
 
 use super::FixedData;
 
@@ -6,8 +6,17 @@ pub trait WitnessColumnNamer {
     fn name(&self, i: usize) -> String;
 }
 
+/// @returns true if the expression contains a reference to a next value of a
+/// (witness or fixed) column
+pub fn contains_next_ref(expr: &Expression) -> bool {
+    expr_any(expr, &mut |e| match e {
+        Expression::PolynomialReference(poly) => poly.next,
+        _ => false,
+    })
+}
+
 /// @returns true if the expression contains a reference to a next value of a witness column.
-pub fn contains_next_ref(expr: &Expression, fixed_data: &FixedData) -> bool {
+pub fn contains_next_witness_ref(expr: &Expression, fixed_data: &FixedData) -> bool {
     expr_any(expr, &mut |e| match e {
         Expression::PolynomialReference(poly) => {
             poly.next && fixed_data.witness_ids.contains_key(poly.name.as_str())
@@ -24,6 +33,24 @@ pub fn contains_witness_ref(expr: &Expression, fixed_data: &FixedData) -> bool {
         }
         _ => false,
     })
+}
+
+/// Checks if an expression is
+/// - a polynomial
+/// - not part of a polynomial array
+/// - not shifted with `'`
+/// and return the polynomial's name if so
+pub fn is_simple_poly(expr: &Expression) -> Option<&str> {
+    if let Expression::PolynomialReference(PolynomialReference {
+        name,
+        index: None,
+        next: false,
+    }) = expr
+    {
+        Some(name)
+    } else {
+        None
+    }
 }
 
 pub fn expr_any(expr: &Expression, f: &mut impl FnMut(&Expression) -> bool) -> bool {

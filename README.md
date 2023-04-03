@@ -1,7 +1,89 @@
 # powdr
-an extended polynomial identity language (PIL) in rust
+an extended polynomial identity language (PIL) and zk-focused assembly in Rust.
 
 WARNING: This is a proof-of concept implementation. It is missing many internal checks. DO NOT USE FOR PRODUCTION!
+
+## Basic Concept
+
+powdr is a toolkit that helps build zkVMs and similar proof systems.
+
+It has two main components:
+
+- A polynomial identity language that allows you to define polynomial constraints, lookups, etc.
+- An extensible assembly language to perform dynamic executions.
+  
+Both frontend and backend are highly flexible.
+
+As an example, powdr contains a frontend that enables you to write code in (no-std) Rust,
+which gets compiled to RISCV, then to powdr-assembly and finally to PIL.
+
+All stages of this execution are fully automatic, which means you do not need to write
+additional code for witness generation. All witnesses are automatically inferred from the constraints.
+Since the witnesses are inferred, powdr can ensure that the system is not underconstrained,
+i.e. there are no additional unwanted witnesses.
+
+All artifacts during this compilation process are human-readable. This means you can take a look at
+the RISCV assembly file, the powdr assembly file and the PIL file.
+
+The assembly language is designed to be extensible. This means that it does not have a single
+native instruction. Instead, all instructions are user-defined and because of that,
+it is easy to adapt powdr assembly to a different kind of VM.
+
+
+### How to run the Rust-RISCV example
+
+```sh
+# Install the riscv target for the rust compiler
+rustup target add riscv32imc-unknown-none-elf
+# Run the compiler. It will generate files in /tmp/.
+# -i specifies the prover witness input (see below)
+cargo run --release rust tests/riscv_data/sum.rs -o /tmp -f -i 10,2,4,6 
+```
+
+The following example Rust file verifies that a supplied list of integers sums up to a specified value.
+Note that this is the full and only input file you need for the whole process!
+```rust
+#![no_std]
+
+use core::arch::asm;
+
+#[no_mangle]
+pub extern "C" fn main() -> ! {
+    let mut buffer = [0u32; 100];
+    let proposed_sum = get_prover_input(0);
+    let len = get_prover_input(1) as usize;
+    assert!(len > 0 && len < 100);
+    for i in 0..len {
+        buffer[i] = get_prover_input(2 + i as u32);
+    }
+    let sum: u32 = buffer[..len].iter().sum();
+    assert!(sum == proposed_sum);
+    loop {}
+}
+
+#[inline]
+fn get_prover_input(index: u32) -> u32 {
+    let mut value: u32;
+    unsafe {
+        asm!("ecall", lateout("a0") value, in("a0") index);
+    }
+    value
+}
+```
+
+The function `get_prover_inputs` reads a number from the list supplied with `-i`.
+
+This is just a first mechanism to provide access to the outside world.
+The plan is to be able to call arbitrary user-defined ffi functions that will translate to prover queries,
+and can then ask for e.g. the value of a storage slot at a certain address or the
+root hash of a merkle tree.
+
+### Notes on Efficiency
+
+Currently, the code is extremely wasteful. It generates many unnecessary columns.
+The idea is to first see if automatic witness generation is possible in general.
+If this is confirmed, various optimizer stages will be built to reduce the
+column (and row) count automatically.
 
 ## Ideas
 

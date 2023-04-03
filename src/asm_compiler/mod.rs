@@ -1,18 +1,19 @@
 use std::collections::{BTreeMap, HashMap};
 
 use crate::number::AbstractNumberType;
+use crate::number::DegreeType;
+use crate::parser;
 use crate::parser::asm_ast::*;
 use crate::parser::ast::*;
-use crate::parser::{self, ParseError};
+use crate::utils::ParseError;
 
 pub fn compile<'a>(file_name: Option<&str>, input: &'a str) -> Result<PILFile, ParseError<'a>> {
-    // TODO configure the degree
-    let max_steps = 1024;
-    parser::parse_asm(file_name, input).map(|ast| ASMPILConverter::new().convert(ast, max_steps))
+    parser::parse_asm(file_name, input).map(|ast| ASMPILConverter::new().convert(ast))
 }
 
 #[derive(Default)]
 struct ASMPILConverter {
+    degree_exponent: u32,
     pil: Vec<Statement>,
     pc_name: Option<String>,
     registers: BTreeMap<String, Register>,
@@ -29,20 +30,47 @@ impl ASMPILConverter {
         Default::default()
     }
 
-    fn convert(&mut self, input: ASMFile, max_steps: usize) -> PILFile {
+    fn set_degree(&mut self, degree: DegreeType) {
+        // check the degree is a power of 2
+        assert!(
+            degree.is_power_of_two(),
+            "Degree should be a power of two, found {degree}",
+        );
+        self.degree_exponent = degree.ilog2();
+    }
+
+    fn degree(&self) -> DegreeType {
+        1 << self.degree_exponent
+    }
+
+    fn convert(&mut self, input: ASMFile) -> PILFile {
+        self.set_degree(1024);
+
+        let mut statements = input.0.iter().peekable();
+
+        if let Some(ASMStatement::Degree(_, degree)) = statements.peek() {
+            self.set_degree(crate::number::abstract_to_degree(degree));
+            statements.next();
+        }
+
         self.pil.push(Statement::Namespace(
             0,
             "Assembly".to_string(),
-            Expression::Number(AbstractNumberType::from(max_steps)),
+            Expression::Number(AbstractNumberType::from(self.degree())),
         ));
         self.pil.push(Statement::PolynomialConstantDefinition(
             0,
             "first_step".to_string(),
-            FunctionDefinition::Array(vec![build_number(1.into())]),
+            FunctionDefinition::Array(
+                ArrayExpression::value(vec![build_number(1.into())]).pad_with_zeroes(),
+            ),
         ));
 
-        for statement in &input.0 {
+        for statement in statements {
             match statement {
+                ASMStatement::Degree(..) => {
+                    panic!("The degree statement is only supported at the start of the asm source");
+                }
                 ASMStatement::RegisterDeclaration(start, name, flags) => {
                     self.handle_register_declaration(flags, name, start);
                 }
@@ -51,7 +79,19 @@ impl ASMPILConverter {
                 }
                 ASMStatement::InlinePil(_start, statements) => self.pil.extend(statements.clone()),
                 ASMStatement::Assignment(start, write_regs, assign_reg, value) => {
-                    self.handle_assignment(*start, write_regs, assign_reg, value.as_ref())
+                    match value.as_ref() {
+                        Expression::FunctionCall(function_name, args) => {
+                            self.handle_functional_instruction(
+                                write_regs,
+                                assign_reg,
+                                function_name,
+                                args,
+                            );
+                        }
+                        _ => {
+                            self.handle_assignment(*start, write_regs, assign_reg, value.as_ref());
+                        }
+                    }
                 }
                 ASMStatement::Instruction(_start, instr_name, args) => {
                     self.handle_instruction(instr_name, args)
@@ -246,6 +286,27 @@ impl ASMPILConverter {
         })
     }
 
+    fn handle_functional_instruction(
+        &mut self,
+        write_regs: &Vec<String>,
+        assign_reg: &Option<String>,
+        instr_name: &str,
+        args: &Vec<Expression>,
+    ) {
+        assert!(write_regs.len() == 1);
+        assert!(assign_reg.is_some());
+        let instr = &self.instructions[instr_name];
+        assert_eq!(instr.params.len(), args.len() + 1);
+        let last_param = instr.params.last().unwrap();
+        assert!(last_param.param_type.is_none());
+        assert!(last_param.assignment_reg.0.is_none());
+        assert!(last_param.assignment_reg.1 == Some(assign_reg.clone()));
+
+        let mut args = args.clone();
+        args.push(direct_reference(write_regs.first().unwrap()));
+        self.handle_instruction(instr_name, &args);
+    }
+
     fn handle_instruction(&mut self, instr_name: &str, args: &Vec<Expression>) {
         let instr = &self.instructions[instr_name];
         assert_eq!(instr.params.len(), args.len());
@@ -330,7 +391,24 @@ impl ASMPILConverter {
                     self.process_assignment_value(left),
                     self.negate_assignment_value(self.process_assignment_value(right)),
                 ),
-                BinaryOperator::Mul => todo!(),
+                BinaryOperator::Mul => {
+                    let left = self.process_assignment_value(left);
+                    let right = self.process_assignment_value(right);
+                    if let [(f, AffineExpressionComponent::Constant)] = &left[..] {
+                        // TODO overflow?
+                        right
+                            .into_iter()
+                            .map(|(coeff, comp)| (f * coeff, comp))
+                            .collect()
+                    } else if let [(f, AffineExpressionComponent::Constant)] = &right[..] {
+                        // TODO overflow?
+                        left.into_iter()
+                            .map(|(coeff, comp)| (f * coeff, comp))
+                            .collect()
+                    } else {
+                        panic!("Multiplication by non-constant.");
+                    }
+                }
                 BinaryOperator::Div => panic!(),
                 BinaryOperator::Mod => panic!(),
                 BinaryOperator::Pow => panic!(),
@@ -422,7 +500,9 @@ impl ASMPILConverter {
                 for reg in writes {
                     program_constants
                         .get_mut(&format!("p_reg_write_{assign_reg}_{reg}"))
-                        .unwrap()[i] = 1.into();
+                        .unwrap_or_else(|| {
+                            panic!("Register combination {reg} <={assign_reg}= not found.")
+                        })[i] = 1.into();
                 }
             }
             for (assign_reg, value) in &line.value {
@@ -431,7 +511,9 @@ impl ASMPILConverter {
                         AffineExpressionComponent::Register(reg) => {
                             program_constants
                                 .get_mut(&format!("p_read_{assign_reg}_{reg}"))
-                                .unwrap()[i] = coeff.clone();
+                                .unwrap_or_else(|| {
+                                    panic!("Register combination <={assign_reg}= {reg} not found.")
+                                })[i] = coeff.clone();
                         }
                         AffineExpressionComponent::Constant => {
                             program_constants
@@ -502,7 +584,10 @@ impl ASMPILConverter {
             self.pil.push(Statement::PolynomialConstantDefinition(
                 0,
                 name.clone(),
-                FunctionDefinition::Array(values.into_iter().map(build_number).collect()),
+                FunctionDefinition::Array(
+                    ArrayExpression::value(values.into_iter().map(build_number).collect())
+                        .pad_with_zeroes(),
+                ),
             ));
         }
     }
@@ -740,7 +825,7 @@ mod test {
     pub fn compile_simple_sum() {
         let expectation = r#"
 namespace Assembly(1024);
-pol constant first_step = [1];
+pol constant first_step = [1] + [0]*;
 (first_step * pc) = 0;
 pol commit pc;
 pol commit X;
@@ -773,23 +858,23 @@ CNT' = ((((first_step' * 0) + (reg_write_X_CNT * X)) + (instr_dec_CNT * (CNT - 1
 pc' = ((((first_step' * 0) + (instr_jmpz * ((XIsZero * instr_jmpz_param_l) + ((1 - XIsZero) * (pc + 1))))) + (instr_jmp * instr_jmp_param_l)) + ((1 - ((first_step' + instr_jmpz) + instr_jmp)) * (pc + 1)));
 pol constant line(i) { i };
 pol commit X_free_value(i) query (i, pc, (0, ("input", 1)), (3, ("input", (CNT + 1))), (7, ("input", 0)));
-pol constant p_X_const = [0, 0, 0, 0, 0, 0, 0, 0, 0];
-pol constant p_X_read_free = [1, 0, 0, 1, 0, 0, 0, -1, 0];
-pol constant p_instr_assert_zero = [0, 0, 0, 0, 0, 0, 0, 0, 1];
-pol constant p_instr_dec_CNT = [0, 0, 0, 0, 1, 0, 0, 0, 0];
-pol constant p_instr_jmp = [0, 0, 0, 0, 0, 1, 0, 0, 0];
-pol constant p_instr_jmp_param_l = [0, 0, 0, 0, 0, 1, 0, 0, 0];
-pol constant p_instr_jmpz = [0, 0, 1, 0, 0, 0, 0, 0, 0];
-pol constant p_instr_jmpz_param_l = [0, 0, 6, 0, 0, 0, 0, 0, 0];
-pol constant p_read_X_A = [0, 0, 0, 1, 0, 0, 0, 1, 1];
-pol constant p_read_X_CNT = [0, 0, 1, 0, 0, 0, 0, 0, 0];
-pol constant p_read_X_pc = [0, 0, 0, 0, 0, 0, 0, 0, 0];
-pol constant p_reg_write_X_A = [0, 0, 0, 1, 0, 0, 0, 1, 0];
-pol constant p_reg_write_X_CNT = [1, 0, 0, 0, 0, 0, 0, 0, 0];
+pol constant p_X_const = [0, 0, 0, 0, 0, 0, 0, 0, 0] + [0]*;
+pol constant p_X_read_free = [1, 0, 0, 1, 0, 0, 0, -1, 0] + [0]*;
+pol constant p_instr_assert_zero = [0, 0, 0, 0, 0, 0, 0, 0, 1] + [0]*;
+pol constant p_instr_dec_CNT = [0, 0, 0, 0, 1, 0, 0, 0, 0] + [0]*;
+pol constant p_instr_jmp = [0, 0, 0, 0, 0, 1, 0, 0, 0] + [0]*;
+pol constant p_instr_jmp_param_l = [0, 0, 0, 0, 0, 1, 0, 0, 0] + [0]*;
+pol constant p_instr_jmpz = [0, 0, 1, 0, 0, 0, 0, 0, 0] + [0]*;
+pol constant p_instr_jmpz_param_l = [0, 0, 6, 0, 0, 0, 0, 0, 0] + [0]*;
+pol constant p_read_X_A = [0, 0, 0, 1, 0, 0, 0, 1, 1] + [0]*;
+pol constant p_read_X_CNT = [0, 0, 1, 0, 0, 0, 0, 0, 0] + [0]*;
+pol constant p_read_X_pc = [0, 0, 0, 0, 0, 0, 0, 0, 0] + [0]*;
+pol constant p_reg_write_X_A = [0, 0, 0, 1, 0, 0, 0, 1, 0] + [0]*;
+pol constant p_reg_write_X_CNT = [1, 0, 0, 0, 0, 0, 0, 0, 0] + [0]*;
 { pc, reg_write_X_A, reg_write_X_CNT, instr_jmpz, instr_jmpz_param_l, instr_jmp, instr_jmp_param_l, instr_dec_CNT, instr_assert_zero, X_const, X_read_free, read_X_A, read_X_CNT, read_X_pc } in { line, p_reg_write_X_A, p_reg_write_X_CNT, p_instr_jmpz, p_instr_jmpz_param_l, p_instr_jmp, p_instr_jmp_param_l, p_instr_dec_CNT, p_instr_assert_zero, p_X_const, p_X_read_free, p_read_X_A, p_read_X_CNT, p_read_X_pc };
 
 "#;
-        let file_name = "tests/simple_sum.asm";
+        let file_name = "tests/asm_data/simple_sum.asm";
         let contents = fs::read_to_string(file_name).unwrap();
         let pil = compile(Some(file_name), &contents).unwrap();
         assert_eq!(format!("{pil}").trim(), expectation.trim());

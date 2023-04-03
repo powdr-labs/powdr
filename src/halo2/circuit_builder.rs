@@ -9,7 +9,7 @@ use polyexen::plaf::{
 
 use crate::analyzer::{BinaryOperator, Expression, IdentityKind};
 use crate::number::AbstractNumberType;
-use crate::{analyzer, commit_evaluator, constant_evaluator};
+use crate::{analyzer, witness_generator, constant_evaluator};
 use num_traits::{One, Zero};
 
 use super::circuit_data::CircuitData;
@@ -77,7 +77,7 @@ pub(crate) fn analyzed_to_circuit(
     let query = |column, rotation| Expr::Var(PlonkVar::ColumnQuery { column, rotation });
 
     let (fixed, degree) = constant_evaluator::generate(analyzed);
-    let witness = commit_evaluator::generate(analyzed, degree, &fixed, query_callback, verbose);
+    let witness = witness_generator::generate(analyzed, degree, &fixed, query_callback, verbose);
 
     let mut cd = CircuitData::from(fixed, witness);
 

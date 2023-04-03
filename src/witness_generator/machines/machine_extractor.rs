@@ -4,10 +4,10 @@ use crate::analyzer::{Expression, Identity, SelectedExpressions};
 
 use super::double_sorted_witness_machine::DoubleSortedWitnesses;
 use super::fixed_lookup_machine::FixedLookup;
-use super::machine::Machine;
-
 use super::sorted_witness_machine::SortedWitnesses;
-use super::{FixedData, WitnessColumn};
+use super::FixedData;
+use super::Machine;
+use crate::witness_generator::WitnessColumn;
 
 /// Finds machines in the witness columns and identities
 /// and returns a list of machines and the identities
@@ -46,15 +46,21 @@ pub fn split_out_machines<'a>(
         !mw.is_empty() && all_witnesses.in_identity(i).is_subset(&mw)
     });
 
-    // TODO we probably nede to check that machine witnesses do not appear
+    // TODO we probably need to check that machine witnesses do not appear
     // in any identity among `identities` except on the RHS.
 
     if let Some(machine) = SortedWitnesses::try_new(fixed, &machine_identities, &machine_witnesses)
     {
+        if fixed.verbose {
+            println!("Detected machine: sorted witnesses / write-once memory");
+        }
         machines.push(machine);
     } else if let Some(machine) =
         DoubleSortedWitnesses::try_new(fixed, &machine_identities, &machine_witnesses)
     {
+        if fixed.verbose {
+            println!("Detected machine: memory");
+        }
         machines.push(machine);
     }
     (machines, base_identities)

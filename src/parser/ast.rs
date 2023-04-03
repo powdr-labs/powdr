@@ -1,4 +1,4 @@
-use crate::number::AbstractNumberType;
+use crate::number::{AbstractNumberType, DegreeType};
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct PILFile(pub Vec<Statement>);
@@ -85,13 +85,75 @@ pub enum BinaryOperator {
 }
 
 /// The definition of a function (excluding its name):
-/// Either a param-value mapping or an array of values.
+/// Either a param-value mapping or an array expression.
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum FunctionDefinition {
     /// Parameter-value-mapping.
     Mapping(Vec<String>, Expression),
-    /// Array of values.
-    Array(Vec<Expression>),
+    /// Array expression.
+    Array(ArrayExpression),
     /// Prover query.
     Query(Vec<String>, Expression),
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub enum ArrayExpression {
+    Value(Vec<Expression>),
+    RepeatedValue(Vec<Expression>),
+    Concat(Box<ArrayExpression>, Box<ArrayExpression>),
+}
+
+impl ArrayExpression {
+    pub fn value(v: Vec<Expression>) -> Self {
+        Self::Value(v)
+    }
+
+    pub fn repeated_value(v: Vec<Expression>) -> Self {
+        Self::RepeatedValue(v)
+    }
+
+    pub fn concat(self, other: Self) -> Self {
+        Self::Concat(Box::new(self), Box::new(other))
+    }
+
+    pub fn pad_with_zeroes(self) -> Self {
+        Self::concat(
+            self,
+            Self::repeated_value(vec![Expression::Number(0.into())]),
+        )
+    }
+}
+
+impl ArrayExpression {
+    /// solve for `*`
+    pub fn solve(&self, degree: DegreeType) -> Option<DegreeType> {
+        // the length of this expression is `a + b*x`
+        let (a, b) = self.len();
+        // it must match `degree`, and we solve for `x`
+        if b == 0 {
+            None
+        } else {
+            assert_eq!((degree - a) % b, 0, "Cannot find a suitable value for `*`");
+            Some((degree - a) / b)
+        }
+    }
+
+    /// find the total length of an array expression as an affine expression: `a + b*x`
+    fn len(&self) -> (DegreeType, DegreeType) {
+        match self {
+            ArrayExpression::RepeatedValue(e) => (0, e.len() as u64),
+            ArrayExpression::Value(e) => (e.len() as u64, 0),
+            ArrayExpression::Concat(left, right) => {
+                let (a0, b0) = left.len();
+                let (a1, b1) = right.len();
+
+                assert!(
+                    b0 == 0 || b1 == 0,
+                    "`*` can be used only once in rhs of array definition"
+                );
+
+                (a0 + a1, b0 + b1)
+            }
+        }
+    }
 }

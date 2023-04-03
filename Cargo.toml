@@ -10,14 +10,15 @@ codespan-reporting = "^0.11"
 itertools = "^0.10"
 json = "^0.12"
 lalrpop-util = {version = "^0.19", features = ["lexer"]}
+lazy_static = "^1.4.0"
 mktemp = "0.5.0"
 num-bigint = "^0.4"
 polyexen = { git = "https://github.com/Dhole/polyexen", rev="c4864d2debf9ae21138c9d67a99c93c3362df19b"}
 halo2_proofs = "0.2"
-lazy_static = "1.4.0"
 prettytable = "0.10.0"
 num-traits = "0.2.15"
 num-integer = "0.1.45"
+regex = "^1.7.0"
 
 [build-dependencies]
 lalrpop = "^0.19"
