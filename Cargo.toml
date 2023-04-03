@@ -12,7 +12,7 @@ json = "^0.12"
 lalrpop-util = {version = "^0.19", features = ["lexer"]}
 mktemp = "0.5.0"
 num-bigint = "^0.4"
-polyexen = { git = "https://github.com/adria0/polyexen", rev="3bfdf21bb7fc7ee65e315d55d59b64deee35343f" }
+polyexen = { git = "https://github.com/Dhole/polyexen", rev="c4864d2debf9ae21138c9d67a99c93c3362df19b"}
 halo2_proofs = "0.2"
 lazy_static = "1.4.0"
 prettytable = "0.10.0"

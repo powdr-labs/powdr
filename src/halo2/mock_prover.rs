@@ -61,9 +61,7 @@ pub fn mock_prove_asm(file_name: &str, inputs: &[AbstractNumberType], verbose: b
     let circuit = analyzed_to_circuit(
         analyzed,
         Some(query_callback),
-        &inputs,
         polyexen::expr::get_field_p::<Fr>(),
-        MAX_PUBLIC_INPUTS,
         verbose,
         &int_to_field,
     );
@@ -74,6 +72,7 @@ pub fn mock_prove_asm(file_name: &str, inputs: &[AbstractNumberType], verbose: b
         println!("{}", PlafDisplayBaseTOML(&circuit.plaf));
     }
     
+/* 
     let inputs: Vec<_> = inputs
         .iter()
         .map(|n| {
@@ -94,7 +93,9 @@ pub fn mock_prove_asm(file_name: &str, inputs: &[AbstractNumberType], verbose: b
         .take(MAX_PUBLIC_INPUTS)
         .collect();
 
-    let mock_prover = MockProver::<Fr>::run(k, &circuit, vec![inputs]).unwrap();
+*/
+
+    let mock_prover = MockProver::<Fr>::run(k, &circuit, vec![]).unwrap();
     mock_prover.assert_satisfied();
 }
 

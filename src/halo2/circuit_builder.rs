@@ -1,30 +1,19 @@
-use std::collections::HashMap;
 
-use num_bigint::{BigInt, BigUint, ToBigInt};
-use polyexen::expr::{Column, ColumnKind, Expr, PlonkVar};
+use num_bigint::{BigInt, BigUint};
+use polyexen::expr::{ColumnKind, Expr, PlonkVar};
 use polyexen::plaf::backends::halo2::PlafH2Circuit;
 use polyexen::plaf::{
-    ColumnFixed, ColumnPublic, ColumnWitness, Columns, CopyC, Info, Lookup,
+    ColumnFixed, ColumnWitness, Columns, Info, Lookup,
     Plaf, Poly, Witness,
 };
 
-use crate::analyzer::{BinaryOperator, Expression, FunctionValueDefinition, IdentityKind};
-use crate::number::{get_field_mod, AbstractNumberType};
+use crate::analyzer::{BinaryOperator, Expression, IdentityKind};
+use crate::number::AbstractNumberType;
 use crate::{analyzer, commit_evaluator, constant_evaluator};
-use num_integer::Integer;
 use num_traits::{One, Zero};
 
 use super::circuit_data::CircuitData;
 
-fn modinv(n: &BigInt, p: &BigInt) -> BigInt {
-    let inv = n.extended_gcd(p).x;
-
-    if inv < BigInt::zero() {
-        inv + p
-    } else {
-        inv
-    }
-}
 
 fn expression_2_expr(
     cd: &CircuitData,
@@ -61,46 +50,210 @@ fn expression_2_expr(
     }
 }
 
-fn eval_expression_at_row(
-    expr: &Expression,
-    at_row: usize,
-    cd: &CircuitData,
-    inputs: &[BigInt],
-) -> AbstractNumberType {
-    match expr {
-        Expression::Number(n) => n.clone(),
-        Expression::PolynomialReference(polyref) => {
-            assert_eq!(polyref.index, None);
-            let column = cd.col(&polyref.name);
-            let rotation = if polyref.next { 1 } else { 0 };
-            cd.val(&column, at_row + rotation).clone()
-        }
-        Expression::BinaryOperation(lhe, op, rhe) => {
-            let lhe = eval_expression_at_row(lhe, at_row, cd, inputs);
-            let rhe = eval_expression_at_row(rhe, at_row, cd, inputs);
-            let value = match op {
-                BinaryOperator::Add => lhe + rhe,
-                BinaryOperator::Sub => lhe - rhe,
-                BinaryOperator::Mul => lhe * rhe,
-                _ => unimplemented!("{:?}", expr),
-            };
 
-            &value % get_field_mod()
+
+pub(crate) fn analyzed_to_circuit(
+    analyzed: &analyzer::Analyzed,
+    query_callback: Option<impl FnMut(&str) -> Option<AbstractNumberType>>,
+    field_mod: BigUint,
+    verbose: bool,
+    int_to_field: &dyn Fn(&BigInt) -> BigUint,
+) -> PlafH2Circuit {
+    // The stucture of the table is as following
+    //
+    // | constant columns | __enable_cur | __enable_next |  witness columns | \
+    // |  bla_bla_bla     |    1         |       1       |   bla_bla_bla    |  |
+    // |  bla_bla_bla     |    1         |       1       |   bla_bla_bla    |  |>  witness + fixed  2^(k-1)
+    // |  ...             |   ...        |      ...      |   ...            |  |
+    // |  bla_bla_bla     |    1         |       0       |   bla_bla_bla    | /     <- __enable_next ==0 since there's no state transition
+    // |  0               |    0         |       0       |   0              | \
+    // |  0               |    0         |       0       |   0              |  |
+    // |  ...             |   ...        |      ...      |   ...            |  |> 2^2-1
+    // |  0               |    0         |       0       |   <unusable>     |  |
+    // |  0               |    0         |       0       |   <unusable>     | /
+
+    // generate fixed and witness (witness).
+
+    let query = |column, rotation| Expr::Var(PlonkVar::ColumnQuery { column, rotation });
+
+    let (fixed, degree) = constant_evaluator::generate(analyzed);
+    let witness = commit_evaluator::generate(analyzed, degree, &fixed, query_callback, verbose);
+
+    let mut cd = CircuitData::from(fixed, witness);
+
+    // append to fixed columns, one that enables constrains that does not have rotations
+    // and another that enables contraints that have a rotation ( not this is not activated )
+    // in last row.
+
+    let num_rows = cd.len();
+
+    let q_enable_cur = query(
+        cd.insert_constant("__enable_cur", itertools::repeat_n(BigInt::one(), num_rows)),
+        0,
+    );
+
+    let q_enable_next = query(
+        cd.insert_constant(
+            "__enable_next",
+            itertools::repeat_n(BigInt::one(), num_rows - 1).chain(std::iter::once(BigInt::zero())),
+        ),
+        0,
+    );
+
+    let mut lookups = vec![];
+    let mut polys = vec![];
+
+  // build Plaf columns -------------------------------------------------
+
+    let columns = Columns {
+        fixed: cd
+            .fixed
+            .iter()
+            .map(|(name, _)| ColumnFixed::new(name.to_string()))
+            .collect(),
+        witness: cd
+            .witness
+            .iter()
+            .map(|(name, _)| ColumnWitness::new(name.to_string(), 0))
+            .collect(),
+        public: vec![],
+    };
+
+    // build Plaf info. -------------------------------------------------------------------------
+
+    let info = Info {
+        p: field_mod,
+        num_rows: cd.len(),
+        challenges: vec![],
+    };
+
+    // build Plaf polys. -------------------------------------------------------------------------
+
+    for id in &analyzed.identities {
+        if id.kind == IdentityKind::Polynomial {
+            // polinomial identities.
+
+            assert_eq!(id.right.expressions.len(), 0);
+            assert_eq!(id.right.selector, None);
+            assert_eq!(id.left.expressions.len(), 0);
+
+            let (exp, rotation) =
+                expression_2_expr(&cd, id.left.selector.as_ref().unwrap(), int_to_field);
+
+            // depending if this polinomial contains a rotation, enable for all rows or all unless last one.
+
+            let exp = if rotation == 0 {
+                Expr::Mul(vec![exp, q_enable_cur.clone()])
+            } else {
+                Expr::Mul(vec![exp, q_enable_next.clone()])
+            };
+            polys.push(Poly {
+                name: "".to_string(),
+                exp,
+            });
+        } else if id.kind == IdentityKind::Plookup {
+            // lookups.
+
+            assert_eq!(id.right.selector, None);
+
+            let left_selector = id
+                .left
+                .selector
+                .clone()
+                .map_or(Expr::Const(BigUint::one()), |expr| {
+                    expression_2_expr(&cd, &expr, int_to_field).0
+                });
+
+            let left = id
+                .left
+                .expressions
+                .iter()
+                .map(|expr| left_selector.clone() * expression_2_expr(&cd, expr, int_to_field).0)
+                .collect();
+
+            let right = id
+                .right
+                .expressions
+                .iter()
+                .map(|expr| expression_2_expr(&cd, expr, int_to_field).0)
+                .collect();
+
+            lookups.push(Lookup {
+                name: "".to_string(),
+                exps: (left, right),
+            });
+        } else {
+            unimplemented!()
         }
-        Expression::Tuple(exprs) => {
-            if exprs.len() != 2 || exprs.get(0) != Some(&Expression::String(String::from("input")))
-            {
-                unimplemented!();
-            }
-            let index = eval_expression_at_row(exprs.get(1).unwrap(), at_row, cd, inputs);
-            let index: u64 = index.try_into().unwrap();
-            inputs[index as usize].clone()
-        }
-        _ => unimplemented!("{:?}", expr),
+    }
+
+    // build Plaf fixeds. -------------------------------------------------------------------------
+
+    let fixed: Vec<Vec<_>> = cd
+        .fixed
+        .iter()
+        .map(|(_, row)| row.iter().map(|value| Some(int_to_field(value))).collect())
+        .collect();
+
+    // build witness. -------------------------------------------------------------------------
+
+    let witness: Vec<Vec<_>> = cd
+        .witness
+        .iter()
+        .map(|(_, row)| {
+            row.iter()
+                .map(|value| Some(value.to_biguint().unwrap()))
+                .collect()
+        })
+        .collect();
+
+    let witness_cols = cd
+        .witness
+        .iter()
+        .enumerate()
+        .map(|(n, (name, _))| (name.to_string(), (ColumnKind::Fixed, n)));
+
+    let wit = Witness {
+        num_rows: cd.witness.len(),
+        columns: witness_cols
+            .map(|(name, _)| ColumnWitness::new(name, 0))
+            .collect(),
+        witness,
+    };
+
+    let copys = vec![];
+
+    // build plaf. -------------------------------------------------------------------------
+
+    let plaf = Plaf {
+        info,
+        columns,
+        polys,
+        lookups,
+        copys,
+        fixed,
+    };
+
+    // return circuit description + witness. -------------
+
+    PlafH2Circuit { plaf, wit }
+}
+
+/*
+
+fn modinv(n: &bigint, p: &bigint) -> bigint {
+    let inv = n.extended_gcd(p).x;
+
+    if inv < BigInt::zero() {
+        inv + p
+    } else {
+        inv
     }
 }
 
-pub(crate) fn analyzed_to_circuit(
+This version is with publishing public inputs.
+
+pub(crate) fn analyzed_to_circuit_with_public_inputs(
     analyzed: &analyzer::Analyzed,
     query_callback: Option<impl FnMut(&str) -> Option<AbstractNumberType>>,
     inputs: &[BigInt],
@@ -435,3 +588,44 @@ pub(crate) fn analyzed_to_circuit(
 
     PlafH2Circuit { plaf, wit }
 }
+
+fn eval_expression_at_row(
+    expr: &Expression,
+    at_row: usize,
+    cd: &CircuitData,
+    inputs: &[BigInt],
+) -> AbstractNumberType {
+    match expr {
+        Expression::Number(n) => n.clone(),
+        Expression::PolynomialReference(polyref) => {
+            assert_eq!(polyref.index, None);
+            let column = cd.col(&polyref.name);
+            let rotation = if polyref.next { 1 } else { 0 };
+            cd.val(&column, at_row + rotation).clone()
+        }
+        Expression::BinaryOperation(lhe, op, rhe) => {
+            let lhe = eval_expression_at_row(lhe, at_row, cd, inputs);
+            let rhe = eval_expression_at_row(rhe, at_row, cd, inputs);
+            let value = match op {
+                BinaryOperator::Add => lhe + rhe,
+                BinaryOperator::Sub => lhe - rhe,
+                BinaryOperator::Mul => lhe * rhe,
+                _ => unimplemented!("{:?}", expr),
+            };
+
+            &value % get_field_mod()
+        }
+        Expression::Tuple(exprs) => {
+            if exprs.len() != 2 || exprs.get(0) != Some(&Expression::String(String::from("input")))
+            {
+                unimplemented!();
+            }
+            let index = eval_expression_at_row(exprs.get(1).unwrap(), at_row, cd, inputs);
+            let index: u64 = index.try_into().unwrap();
+            inputs[index as usize].clone()
+        }
+        _ => unimplemented!("{:?}", expr),
+    }
+}
+
+ */
