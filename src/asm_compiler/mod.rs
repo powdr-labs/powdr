@@ -314,7 +314,10 @@ impl ASMPILConverter {
         args: Vec<Expression>,
     ) {
         assert!(write_regs.len() == 1);
-        let instr = &self.instructions[&instr_name];
+        let instr = &self
+            .instructions
+            .get(&instr_name)
+            .unwrap_or_else(|| panic!("Intruction not found: {instr_name}"));
         assert_eq!(instr.outputs.len(), 1);
         let output = instr.outputs[0].clone();
         assert!(
@@ -331,7 +334,10 @@ impl ASMPILConverter {
     }
 
     fn handle_instruction(&mut self, instr_name: String, args: Vec<Expression>) {
-        let instr = &self.instructions[&instr_name];
+        let instr = &self
+            .instructions
+            .get(&instr_name)
+            .unwrap_or_else(|| panic!("Instruction not found: {instr_name}"));
         assert_eq!(instr.inputs.len() + instr.outputs.len(), args.len());
 
         let mut args = args.into_iter();

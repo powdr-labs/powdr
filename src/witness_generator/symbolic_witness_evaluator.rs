@@ -51,7 +51,11 @@ where
             self.witness_access.value(name, next)
         } else {
             // Constant polynomial (or something else)
-            let values = self.fixed_data.fixed_cols[name];
+            let values = self
+                .fixed_data
+                .fixed_cols
+                .get(name)
+                .unwrap_or_else(|| panic!("unknown col: {name}"));
             let row = if next {
                 let degree = values.len() as DegreeType;
                 (self.row + 1) % degree

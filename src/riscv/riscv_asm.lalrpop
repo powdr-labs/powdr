@@ -86,7 +86,7 @@ Difference: Argument = {
     <Symbol> "-" <Symbol> => Argument::Difference(<>)
 }
 
-StringLiteral: String = {
+StringLiteral: Vec<u8> = {
     r#""[^\\"\n\r]*(\\[tnfbrx'"\\0-9][^\\"\n\r]*)*""# => unescape_string(<>)
 }
 
