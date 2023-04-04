@@ -38,14 +38,14 @@ pub fn generate<'a>(
             WitnessColumn::new(i, &poly.absolute_name, value)
         })
         .collect();
-    let fixed = FixedData {
+    let fixed = FixedData::new(
         degree,
-        constants: &analyzed.constants,
-        fixed_cols: fixed_cols.iter().map(|(n, v)| (*n, v)).collect(),
-        witness_cols: &witness_cols,
-        witness_ids: witness_cols.iter().map(|w| (w.name, w.id)).collect(),
+        &analyzed.constants,
+        fixed_cols.iter().map(|(n, v)| (*n, v)).collect(),
+        &witness_cols,
+        witness_cols.iter().map(|w| (w.name, w.id)).collect(),
         verbose,
-    };
+    );
     let (machines, identities) = machines::machine_extractor::split_out_machines(
         &fixed,
         &analyzed.identities,

@@ -1,13 +1,14 @@
-constant %N = 256;
+constant %N = 65536;
 
 namespace Main(%N);
-	col fixed A(i) { i % 16 };
-	col fixed B(i) { (i >> 4) % 16 };
-	col fixed C(i) { (A(i) + B(i)) & 0xf };
+	col fixed A(i) { i % 256 };
+	col fixed B(i) { (i >> 8) % 256 };
+	col fixed C(i) { (A(i) + B(i)) & 0xff };
 
 
-	col fixed a(i) { (i + 13) * 29 & 0xf };
-	col fixed b(i) { (i * 17 + 3) & 0xf };
+	col fixed a(i) { (i + 13) * 29 & 0xff };
+	col fixed b(i) { (i * 17 + 3) & 0xff };
 	col witness c;
 
 	{a, b, c} in {Main.A, Main.B, Main.C};
+	{b, a, c} in {Main.A, Main.B, Main.C};
