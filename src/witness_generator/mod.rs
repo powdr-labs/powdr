@@ -46,7 +46,7 @@ pub fn generate<'a>(
         witness_cols.iter().map(|w| (w.name, w.id)).collect(),
         verbose,
     );
-    let (machines, identities) = machines::machine_extractor::split_out_machines(
+    let (mut fixed_lookup, machines, identities) = machines::machine_extractor::split_out_machines(
         &fixed,
         &analyzed.identities,
         &witness_cols,
@@ -55,6 +55,7 @@ pub fn generate<'a>(
         bit_constraints::determine_global_constraints(&fixed, identities);
     let mut generator = generator::Generator::new(
         &fixed,
+        &mut fixed_lookup,
         identities,
         global_bit_constraints,
         machines,

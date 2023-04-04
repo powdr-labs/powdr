@@ -2,7 +2,6 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 
 use num_bigint::BigInt;
 
-use super::Machine;
 use crate::analyzer::{Identity, IdentityKind, SelectedExpressions};
 use crate::number::{AbstractNumberType, DegreeType};
 
@@ -95,10 +94,8 @@ impl FixedLookup {
             None
         }
     }
-}
 
-impl Machine for FixedLookup {
-    fn process_plookup(
+    pub fn process_plookup(
         &mut self,
         fixed_data: &FixedData,
         kind: IdentityKind,
@@ -134,15 +131,6 @@ impl Machine for FixedLookup {
         Some(self.process_plookup_internal(fixed_data, left, right))
     }
 
-    fn witness_col_values(
-        &mut self,
-        _fixed_data: &FixedData,
-    ) -> HashMap<String, Vec<AbstractNumberType>> {
-        Default::default()
-    }
-}
-
-impl FixedLookup {
     fn process_plookup_internal(
         &mut self,
         fixed_data: &FixedData,
