@@ -1,4 +1,4 @@
-constant %N = 256;
+constant %N = 65536;
 
 // ORs two 32-bit numbers, byte-by-byte.
 namespace Or(%N);
@@ -6,11 +6,11 @@ namespace Or(%N);
 	macro is_zero(X) { 1 - is_nonzero(X) };
 
 	col fixed RESET(i) { is_zero((i % 4) - 3) };
-	col fixed FACTOR(i) { 1 << (((i + 1) % 4) * 4) };
+	col fixed FACTOR(i) { 1 << (((i + 1) % 4) * 8) };
 
-	col fixed P_A(i) { i % 16 };
-	col fixed P_B(i) { (i >> 4) % 16 };
-	col fixed P_C(i) { (P_A(i) | P_B(i)) & 0xf };
+	col fixed P_A(i) { i % 256 };
+	col fixed P_B(i) { (i >> 8) % 256 };
+	col fixed P_C(i) { (P_A(i) | P_B(i)) & 0xff };
 
 // ROW RESET  FACTOR
 //   0   0    1 << 4  
