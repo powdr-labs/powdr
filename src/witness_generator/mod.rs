@@ -51,7 +51,7 @@ pub fn generate<'a>(
         &fixed,
         &analyzed.identities.iter().collect::<Vec<_>>(),
     );
-    let (machines, identities) = machines::machine_extractor::split_out_machines(
+    let (mut fixed_lookup, machines, identities) = machines::machine_extractor::split_out_machines(
         &fixed,
         &identities,
         &witness_cols,
@@ -59,6 +59,7 @@ pub fn generate<'a>(
     );
     let mut generator = generator::Generator::new(
         &fixed,
+        &mut fixed_lookup,
         identities,
         global_bit_constraints,
         machines,

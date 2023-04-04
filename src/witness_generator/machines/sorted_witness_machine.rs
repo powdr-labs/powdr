@@ -4,6 +4,7 @@ use itertools::{Either, Itertools};
 
 use super::super::affine_expression::AffineExpression;
 use super::Machine;
+use super::fixed_lookup_machine::FixedLookup;
 use super::{EvalResult, FixedData};
 use crate::analyzer::{Expression, Identity, IdentityKind, SelectedExpressions};
 use crate::number::AbstractNumberType;
@@ -126,7 +127,7 @@ impl Machine for SortedWitnesses {
     fn process_plookup(
         &mut self,
         fixed_data: &FixedData,
-        _fixed_lookup: &mut Option<&mut dyn Machine>,
+        _fixed_lookup: &mut FixedLookup,
         kind: IdentityKind,
         left: &[Result<AffineExpression, EvalError>],
         right: &SelectedExpressions,

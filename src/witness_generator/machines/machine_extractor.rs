@@ -20,13 +20,15 @@ pub fn split_out_machines<'a>(
     identities: &[&'a Identity],
     witness_cols: &'a [WitnessColumn],
     global_bit_constraints: &BTreeMap<&'a str, BitConstraint>,
-) -> (Vec<Box<dyn Machine>>, Vec<&'a Identity>) {
+) -> (FixedLookup, Vec<Box<dyn Machine>>, Vec<&'a Identity>) {
     // TODO we only split out one machine for now.
     // We could also split the machine into independent sub-machines.
 
+    let fixed_lookup = FixedLookup::try_new(fixed, &[], &Default::default()).unwrap();
+
     // The lookup-in-fixed-columns machine, it always exists with an empty set of witnesses.
     let mut machines: Vec<Box<dyn Machine>> =
-        vec![FixedLookup::try_new(fixed, &[], &Default::default()).unwrap()];
+        vec![];
 
     let witness_names = witness_cols.iter().map(|c| c.name).collect::<HashSet<_>>();
     let all_witnesses = ReferenceExtractor::new(witness_names.clone());
@@ -85,7 +87,7 @@ pub fn split_out_machines<'a>(
         }
         machines.push(machine);
     }
-    (machines, base_identities)
+    (*fixed_lookup, machines, base_identities)
 }
 
 fn all_connected_witnesses<'a>(

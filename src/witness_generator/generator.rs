@@ -9,7 +9,7 @@ use super::affine_expression::AffineExpression;
 use super::bit_constraints::{BitConstraint, BitConstraintSet};
 use super::eval_error::EvalError;
 use super::expression_evaluator::ExpressionEvaluator;
-use super::machines::Machine;
+use super::machines::{Machine, FixedLookup};
 use super::symbolic_witness_evaluator::{SymoblicWitnessEvaluator, WitnessColumnEvaluator};
 use super::util::{contains_next_witness_ref, WitnessColumnNamer};
 use super::{Constraint, EvalResult, FixedData, WitnessColumn};
@@ -19,6 +19,7 @@ where
     QueryCallback: FnMut(&'a str) -> Option<AbstractNumberType>,
 {
     fixed_data: &'a FixedData<'a>,
+    fixed_lookup: &'a mut FixedLookup,
     identities: Vec<&'a Identity>,
     machines: Vec<Box<dyn Machine>>,
     query_callback: Option<QueryCallback>,
@@ -51,6 +52,7 @@ where
 {
     pub fn new(
         fixed_data: &'a FixedData<'a>,
+        fixed_lookup: &'a mut FixedLookup,
         identities: Vec<&'a Identity>,
         global_bit_constraints: BTreeMap<&'a str, BitConstraint>,
         machines: Vec<Box<dyn Machine>>,
@@ -60,6 +62,7 @@ where
 
         Generator {
             fixed_data,
+            fixed_lookup,
             identities,
             machines,
             query_callback,
@@ -305,20 +308,27 @@ where
         // Note that we should always query all machines that match, because they might
         // update their internal data, even if all values are already known.
         // TODO could it be that multiple machines match?
-        let mut fixed_lookup = None;
+
+        // query the fixed lookup "machine"
+        if let Some(result) = self.fixed_lookup.process_plookup(
+            self.fixed_data,
+            identity.kind,
+            &left,
+            &identity.right,
+        ) {
+            return result;
+        }
+
         for m in &mut self.machines {
             // TODO also consider the reasons above.
             if let Some(result) = m.process_plookup(
                 self.fixed_data,
-                &mut fixed_lookup,
+                self.fixed_lookup,
                 identity.kind,
                 &left,
                 &identity.right,
             ) {
                 return result;
-            }
-            if fixed_lookup.is_none() {
-                fixed_lookup = Some(m.as_mut());
             }
         }
 

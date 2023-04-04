@@ -2,6 +2,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 
 use itertools::Itertools;
 
+use super::fixed_lookup_machine::FixedLookup;
 use super::{EvalResult, FixedData};
 use crate::analyzer::{Expression, Identity, IdentityKind, SelectedExpressions};
 use crate::number::{AbstractNumberType, DegreeType};
@@ -125,7 +126,7 @@ impl Machine for BlockMachine {
     fn process_plookup(
         &mut self,
         fixed_data: &FixedData,
-        fixed_lookup: &mut Option<&mut dyn Machine>,
+        fixed_lookup: &mut FixedLookup,
         kind: IdentityKind,
         left: &[Result<AffineExpression, EvalError>],
         right: &SelectedExpressions,
@@ -183,7 +184,7 @@ impl BlockMachine {
     fn process_plookup_internal(
         &mut self,
         fixed_data: &FixedData,
-        fixed_lookup: &mut Option<&mut dyn Machine>,
+        fixed_lookup: &mut FixedLookup,
         left: &[Result<AffineExpression, EvalError>],
         right: &SelectedExpressions,
     ) -> EvalResult {
@@ -295,7 +296,7 @@ impl BlockMachine {
     fn process_identity(
         &self,
         fixed_data: &FixedData,
-        fixed_lookup: &mut Option<&mut dyn Machine>,
+        fixed_lookup: &mut FixedLookup,
         left: &[Result<AffineExpression, EvalError>],
         right: &SelectedExpressions,
         identity_index: Option<usize>,
@@ -375,7 +376,7 @@ impl BlockMachine {
     fn process_plookup(
         &self,
         fixed_data: &FixedData,
-        fixed_lookup: &mut Option<&mut dyn Machine>,
+        fixed_lookup: &mut FixedLookup,
         identity: &Identity,
     ) -> EvalResult {
         if identity.left.selector.is_some() || identity.right.selector.is_some() {
@@ -387,9 +388,8 @@ impl BlockMachine {
             .iter()
             .map(|e| self.evaluate(fixed_data, e))
             .collect::<Vec<_>>();
-        if let Some(result) = fixed_lookup.as_mut().unwrap().process_plookup(
+        if let Some(result) = fixed_lookup.process_plookup(
             fixed_data,
-            &mut None,
             identity.kind,
             &left,
             &identity.right,

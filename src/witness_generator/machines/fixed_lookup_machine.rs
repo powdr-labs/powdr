@@ -2,7 +2,6 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 
 use num_bigint::BigInt;
 
-use super::Machine;
 use crate::analyzer::{Identity, IdentityKind, SelectedExpressions};
 use crate::number::{AbstractNumberType, DegreeType};
 
@@ -95,18 +94,14 @@ impl FixedLookup {
             None
         }
     }
-}
 
-impl Machine for FixedLookup {
-    fn process_plookup(
+    pub fn process_plookup(
         &mut self,
         fixed_data: &FixedData,
-        fixed_lookup: &mut Option<&mut dyn Machine>,
         kind: IdentityKind,
         left: &[Result<AffineExpression, EvalError>],
         right: &SelectedExpressions,
     ) -> Option<EvalResult> {
-        assert!(fixed_lookup.is_none());
         // This is a matching machine if it is a plookup and the RHS is fully constant.
         if kind != IdentityKind::Plookup
             || right.selector.is_some()
@@ -134,13 +129,6 @@ impl Machine for FixedLookup {
         }
 
         Some(self.process_plookup_internal(fixed_data, left, right))
-    }
-
-    fn witness_col_values(
-        &mut self,
-        _fixed_data: &FixedData,
-    ) -> HashMap<String, Vec<AbstractNumberType>> {
-        Default::default()
     }
 }
 
