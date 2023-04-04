@@ -430,14 +430,14 @@ namespace Global(2**20);
                 WitnessColumn::new(i, &poly.absolute_name, value)
             })
             .collect();
-        let fixed_data = FixedData {
+        let fixed_data = FixedData::new(
             degree,
-            constants: &analyzed.constants,
-            fixed_cols: constants.iter().map(|(n, v)| (*n, v)).collect(),
-            witness_cols: &witness_cols,
-            witness_ids: witness_cols.iter().map(|w| (w.name, w.id)).collect(),
-            verbose: false,
-        };
+            &analyzed.constants,
+            constants.iter().map(|(n, v)| (*n, v)).collect(),
+            &witness_cols,
+            witness_cols.iter().map(|w| (w.name, w.id)).collect(),
+            false,
+        );
         for identity in &analyzed.identities {
             (known_constraints, _) = propagate_constraints(
                 &fixed_data,
