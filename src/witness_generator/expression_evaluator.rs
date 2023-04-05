@@ -47,6 +47,9 @@ impl<SV: SymbolicVariables> ExpressionEvaluator<SV> {
             Expression::FunctionCall(_, _) => {
                 Err("Function calls not implemented.".to_string().into())
             }
+            Expression::MatchExpression(_, _) => {
+                Err("Match expressions not implemented.".to_string().into())
+            }
         }
     }
 

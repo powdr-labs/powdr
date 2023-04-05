@@ -306,6 +306,9 @@ impl<'a> Exporter<'a> {
             }
             Expression::String(_) => panic!("Strings not allowed here."),
             Expression::Tuple(_) => panic!("Tuples not allowed here"),
+            Expression::MatchExpression(_, _) => {
+                panic!("No match expressions allowed here.")
+            }
         }
     }
 
