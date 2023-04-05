@@ -409,13 +409,14 @@ impl ASMPILConverter {
                         panic!("Multiplication by non-constant.");
                     }
                 }
-                BinaryOperator::Div => panic!(),
-                BinaryOperator::Mod => panic!(),
-                BinaryOperator::Pow => panic!(),
-                BinaryOperator::BinaryAnd => panic!(),
-                BinaryOperator::BinaryOr => panic!(),
-                BinaryOperator::ShiftLeft => panic!(),
-                BinaryOperator::ShiftRight => panic!(),
+                BinaryOperator::Div
+                | BinaryOperator::Mod
+                | BinaryOperator::Pow
+                | BinaryOperator::BinaryAnd
+                | BinaryOperator::BinaryXor
+                | BinaryOperator::BinaryOr
+                | BinaryOperator::ShiftLeft
+                | BinaryOperator::ShiftRight => panic!(),
             },
             Expression::UnaryOperation(op, expr) => {
                 assert!(*op == UnaryOperator::Minus);

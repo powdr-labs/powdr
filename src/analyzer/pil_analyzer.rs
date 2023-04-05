@@ -600,6 +600,7 @@ impl PILContext {
                 }
                 BinaryOperator::Mod => left % right,
                 BinaryOperator::BinaryAnd => left & right,
+                BinaryOperator::BinaryXor => left ^ right,
                 BinaryOperator::BinaryOr => left | right,
                 BinaryOperator::ShiftLeft => left << abstract_to_degree(&right),
                 BinaryOperator::ShiftRight => left >> abstract_to_degree(&right),
