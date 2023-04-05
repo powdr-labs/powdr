@@ -127,12 +127,17 @@ impl ArrayExpression {
 impl ArrayExpression {
     /// solve for `*`
     pub fn solve(&self, degree: DegreeType) -> Option<DegreeType> {
+        assert!(degree > 0, "Degree cannot be zero.");
         // the length of this expression is `a + b*x`
         let (a, b) = self.len();
         // it must match `degree`, and we solve for `x`
         if b == 0 {
             None
         } else {
+            assert!(
+                a <= degree,
+                "Array literal is too large ({a}) for degree ({degree})."
+            );
             assert_eq!((degree - a) % b, 0, "Cannot find a suitable value for `*`");
             Some((degree - a) / b)
         }
