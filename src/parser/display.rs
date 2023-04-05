@@ -203,6 +203,7 @@ impl Display for BinaryOperator {
                 BinaryOperator::Mod => "%",
                 BinaryOperator::Pow => "**",
                 BinaryOperator::BinaryAnd => "&",
+                BinaryOperator::BinaryXor => "^",
                 BinaryOperator::BinaryOr => "|",
                 BinaryOperator::ShiftLeft => "<<",
                 BinaryOperator::ShiftRight => ">>",

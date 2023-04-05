@@ -270,6 +270,7 @@ impl<'a> Exporter<'a> {
                     BinaryOperator::Mod
                     | BinaryOperator::BinaryAnd
                     | BinaryOperator::BinaryOr
+                    | BinaryOperator::BinaryXor
                     | BinaryOperator::ShiftLeft
                     | BinaryOperator::ShiftRight => {
                         panic!("Operator {op:?} not supported on polynomials.")
