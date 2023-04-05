@@ -82,7 +82,7 @@ impl ASMPILConverter {
                     Expression::FunctionCall(function_name, args) => {
                         self.handle_functional_instruction(
                             write_regs,
-                            assign_reg,
+                            assign_reg.unwrap(),
                             function_name,
                             args,
                         );
@@ -206,22 +206,49 @@ impl ASMPILConverter {
         start: usize,
         body: Vec<InstructionBodyElement>,
         name: String,
-        params: Vec<InstructionParam>,
+        params: InstructionParams,
     ) {
         let instruction_flag = format!("instr_{name}");
         self.create_witness_fixed_pair(start, &instruction_flag);
         // it's part of the lookup!
         //self.pil.push(constrain_zero_one(&col_name));
 
-        let mut substitutions = HashMap::new();
-        for p in &params {
-            if p.assignment_reg.0.is_none() && p.assignment_reg.1.is_none() {
-                // literal argument
-                let param_col_name = format!("instr_{name}_param_{}", p.name);
+        let inputs: Vec<_> = params
+            .inputs
+            .params
+            .into_iter()
+            .map(|param| match param.ty {
+                Some(ty) if ty == "label" => Input::Label(param.name),
+                None => Input::Register(param.name),
+                Some(ty) => panic!("param type must be nothing or label, found `{}`", ty),
+            })
+            .collect();
+
+        let outputs = params
+            .outputs
+            .map(|outputs| {
+                outputs
+                    .params
+                    .into_iter()
+                    .map(|param| {
+                        assert!(param.ty.is_none(), "output must be a register");
+                        param.name
+                    })
+                    .collect()
+            })
+            .unwrap_or(vec![]);
+
+        let instr = Instruction { inputs, outputs };
+
+        let substitutions = instr
+            .labels()
+            .map(|label| {
+                // label
+                let param_col_name = format!("instr_{name}_param_{}", label);
                 self.create_witness_fixed_pair(start, &param_col_name);
-                substitutions.insert(p.name.clone(), param_col_name);
-            }
-        }
+                (label.clone(), param_col_name)
+            })
+            .collect();
 
         for expr in body {
             match expr {
@@ -255,7 +282,6 @@ impl ASMPILConverter {
                 }
             }
         }
-        let instr = Instruction { params };
         self.instructions.insert(name, instr);
     }
 
@@ -283,18 +309,21 @@ impl ASMPILConverter {
     fn handle_functional_instruction(
         &mut self,
         write_regs: Vec<String>,
-        assign_reg: Option<String>,
+        assign_reg: String,
         instr_name: String,
         args: Vec<Expression>,
     ) {
         assert!(write_regs.len() == 1);
-        assert!(assign_reg.is_some());
         let instr = &self.instructions[&instr_name];
-        assert_eq!(instr.params.len(), args.len() + 1);
-        let last_param = instr.params.last().unwrap();
-        assert!(last_param.param_type.is_none());
-        assert!(last_param.assignment_reg.0.is_none());
-        assert!(last_param.assignment_reg.1 == Some(assign_reg));
+        assert_eq!(instr.outputs.len(), 1);
+        let output = instr.outputs[0].clone();
+        assert!(
+            output == assign_reg,
+            "{} vs {} in {}",
+            output,
+            assign_reg,
+            instr_name
+        );
 
         let mut args = args;
         args.push(direct_reference(write_regs.first().unwrap().clone()));
@@ -303,43 +332,50 @@ impl ASMPILConverter {
 
     fn handle_instruction(&mut self, instr_name: String, args: Vec<Expression>) {
         let instr = &self.instructions[&instr_name];
-        assert_eq!(instr.params.len(), args.len());
-        let mut value = BTreeMap::new();
-        let mut instruction_literal_args = vec![];
-        let mut write_regs = BTreeMap::new();
-        for (p, a) in instr.params.iter().zip(args) {
-            // TODO literal arguments can actually only be passed in.
-            if p.assignment_reg.0.is_some() {
-                // We read a value into the assignment register "reg".
-                let reg = p.assignment_reg.0.as_ref().unwrap().as_ref();
-                assert!(reg.is_some());
-                assert!(!value.contains_key(reg.unwrap()));
-                value.insert(reg.unwrap().clone(), self.process_assignment_value(a));
-                instruction_literal_args.push(None);
-            } else if p.assignment_reg.1.is_some() {
+        assert_eq!(instr.inputs.len() + instr.outputs.len(), args.len());
+
+        let mut args = args.into_iter();
+
+        let (value, instruction_literal_args): (BTreeMap<_, _>, Vec<_>) =
+            instr.inputs.iter().zip(&mut args).fold(
+                Default::default(),
+                |(mut value, mut instruction_literal_arg), (input, a)| {
+                    match input {
+                        Input::Register(reg) => {
+                            // We read a value into the assignment register "reg".
+                            assert!(!value.contains_key(reg));
+                            value.insert(reg.clone(), self.process_assignment_value(a));
+                        }
+                        Input::Label(_) => {
+                            if let Expression::PolynomialReference(r) = a {
+                                instruction_literal_arg.push(r.name);
+                            } else {
+                                panic!();
+                            }
+                        }
+                    };
+                    (value, instruction_literal_arg)
+                },
+            );
+
+        let write_regs: BTreeMap<_, _> = instr
+            .outputs
+            .iter()
+            .zip(&mut args)
+            .map(|(reg, a)| {
                 // Output a value trough assignment register "reg"
-                let reg = p.assignment_reg.1.as_ref().unwrap().as_ref();
-                assert!(reg.is_some());
                 if let Expression::PolynomialReference(r) = a {
                     assert!(!r.next);
                     assert!(r.index.is_none());
-                    assert!(!write_regs.contains_key(&r.name));
-                    write_regs.insert(reg.unwrap().clone(), vec![r.name.clone()]);
+                    (reg.clone(), vec![r.name])
                 } else {
                     panic!("Expected direct register to assign to in instruction call.");
                 }
-                instruction_literal_args.push(None);
-            } else if p.param_type == Some("label".to_string()) {
-                if let Expression::PolynomialReference(r) = a {
-                    instruction_literal_args.push(Some(r.name.clone()))
-                } else {
-                    panic!();
-                }
-            } else {
-                todo!("Param type not supported.");
-            }
-        }
-        assert_eq!(instruction_literal_args.len(), instr.params.len());
+            })
+            .collect();
+
+        assert_eq!(write_regs.len(), instr.outputs.len());
+
         self.code_lines.push(CodeLine {
             write_regs,
             instruction: Some(instr_name.to_string()),
@@ -548,14 +584,11 @@ impl ASMPILConverter {
                 for (arg, param) in line
                     .instruction_literal_args
                     .iter()
-                    .zip(&self.instructions[instr].params)
+                    .zip(self.instructions[instr].labels())
                 {
-                    if let Some(arg) = arg {
-                        // TODO has to be label for now
-                        program_constants
-                            .get_mut(&format!("p_instr_{instr}_param_{}", param.name))
-                            .unwrap()[i] = (label_positions[arg] as i64).into();
-                    }
+                    program_constants
+                        .get_mut(&format!("p_instr_{instr}_param_{}", param.clone()))
+                        .unwrap()[i] = (label_positions[arg] as i64).into();
                 }
             } else {
                 assert!(line.instruction_literal_args.is_empty());
@@ -661,8 +694,23 @@ impl Register {
     }
 }
 
+enum Input {
+    Register(String),
+    Label(String),
+}
+
 struct Instruction {
-    params: Vec<InstructionParam>,
+    inputs: Vec<Input>,
+    outputs: Vec<String>,
+}
+
+impl Instruction {
+    fn labels(&self) -> impl Iterator<Item = &String> {
+        self.inputs.iter().filter_map(|input| match input {
+            Input::Label(label) => Some(label),
+            _ => None,
+        })
+    }
 }
 
 // TODO turn this into an enum, split into
@@ -677,7 +725,7 @@ struct CodeLine {
     label: Option<String>,
     instruction: Option<String>,
     // TODO we only support labels for now.
-    instruction_literal_args: Vec<Option<String>>,
+    instruction_literal_args: Vec<String>,
 }
 
 enum AffineExpressionComponent {

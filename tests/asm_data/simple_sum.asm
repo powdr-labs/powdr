@@ -25,10 +25,10 @@ pil{
     XIsZero * (1 - XIsZero) = 0;
 }
 
-instr jmpz <=X= c, l: label { pc' = XIsZero * l + (1 - XIsZero) * (pc + 1) }
+instr jmpz X, l: label { pc' = XIsZero * l + (1 - XIsZero) * (pc + 1) }
 instr jmp l: label { pc' = l }
 instr dec_CNT { CNT' = CNT - 1 }
-instr assert_zero <=X= a { XIsZero = 1 }
+instr assert_zero X { XIsZero = 1 }
 
 CNT <=X= ${ ("input", 1) };
 

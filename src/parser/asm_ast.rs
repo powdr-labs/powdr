@@ -6,13 +6,36 @@ use super::ast::{Expression, SelectedExpressions, Statement};
 pub struct ASMFile(pub Vec<ASMStatement>);
 
 #[derive(Debug, PartialEq, Eq, Clone)]
+pub struct InstructionParamList {
+    pub params: Vec<InstructionParam>,
+}
+
+impl InstructionParamList {
+    pub fn new(params: Vec<InstructionParam>) -> Self {
+        Self { params }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct InstructionParams {
+    pub inputs: InstructionParamList,
+    pub outputs: Option<InstructionParamList>,
+}
+
+impl InstructionParams {
+    pub fn new(inputs: InstructionParamList, outputs: Option<InstructionParamList>) -> Self {
+        Self { inputs, outputs }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum ASMStatement {
     Degree(usize, AbstractNumberType),
     RegisterDeclaration(usize, String, Option<RegisterFlag>),
     InstructionDeclaration(
         usize,
         String,
-        Vec<InstructionParam>,
+        InstructionParams,
         Vec<InstructionBodyElement>,
     ),
     InlinePil(usize, Vec<Statement>),
@@ -30,11 +53,7 @@ pub enum RegisterFlag {
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct InstructionParam {
     pub name: String,
-    pub param_type: Option<String>,
-    /// Which register this parameter is passed in (first) and out (second).
-    /// It is a double option, because the arrow can be optional and the
-    /// assign register inside the arrow is optional as well.
-    pub assignment_reg: (Option<Option<String>>, Option<Option<String>>),
+    pub ty: Option<String>,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]

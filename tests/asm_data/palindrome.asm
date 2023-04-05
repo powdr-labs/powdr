@@ -32,13 +32,13 @@ pil{
     NOTLAST { m_addr' - m_addr } in POSITIVE;
 }
 
-instr jmpz <=X= c, l: label { pc' = XIsZero * l + (1 - XIsZero) * (pc + 1) }
+instr jmpz X, l: label { pc' = XIsZero * l + (1 - XIsZero) * (pc + 1) }
 instr jmp l: label { pc' = l }
-instr assert_zero <=X= a { XIsZero = 1 }
-instr mstore <=X= val { { ADDR, X } in { m_addr, m_value } }
+instr assert_zero X { XIsZero = 1 }
+instr mstore X { { ADDR, X } in { m_addr, m_value } }
 // TODO instructions that return values are currently rather clumsy.
 // We should replace them by some function notion instead.
-instr mload r <=X= { { ADDR, X } in { m_addr, m_value } }
+instr mload -> X { { ADDR, X } in { m_addr, m_value } }
 
 CNT <=X= ${ ("input", 0) };
 ADDR <=X= 0;

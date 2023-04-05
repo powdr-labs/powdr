@@ -11,7 +11,7 @@ pil{
     XIsZero * (1 - XIsZero) = 0;
 }
 
-instr assert_zero <=X= a { XIsZero = 1 }
+instr assert_zero X { XIsZero = 1 }
 
 A <=X= ${ ("input", 0) };
 A <=Y= A - 7;
