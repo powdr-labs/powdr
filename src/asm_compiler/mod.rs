@@ -376,6 +376,7 @@ impl ASMPILConverter {
             Expression::Number(value) => vec![(value.clone(), AffineExpressionComponent::Constant)],
             Expression::String(_) => panic!(),
             Expression::Tuple(_) => panic!(),
+            Expression::MatchExpression(_, _) => panic!(),
             Expression::FreeInput(expr) => {
                 vec![(
                     1.into(),
@@ -792,6 +793,12 @@ fn substitute(input: &Expression, substitution: &HashMap<String, String>) -> Exp
         | Expression::Number(_)
         | Expression::String(_)
         | Expression::FreeInput(_) => input.clone(),
+        Expression::MatchExpression(scrutinee, arms) => Expression::MatchExpression(
+            Box::new(substitute(scrutinee, substitution)),
+            arms.iter()
+                .map(|(n, e)| (n.clone(), substitute(e, substitution)))
+                .collect(),
+        ),
     }
 }
 

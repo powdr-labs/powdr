@@ -48,6 +48,10 @@ pub enum Expression {
     UnaryOperation(UnaryOperator, Box<Expression>),
     FunctionCall(String, Vec<Expression>),
     FreeInput(Box<Expression>),
+    MatchExpression(
+        Box<Expression>,
+        Vec<(Option<AbstractNumberType>, Expression)>,
+    ),
 }
 
 #[derive(Debug, PartialEq, Eq, Default, Clone)]

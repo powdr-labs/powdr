@@ -508,6 +508,12 @@ impl PILContext {
             ast::Expression::FunctionCall(name, arguments) => {
                 Expression::FunctionCall(self.namespaced(name), self.process_expressions(arguments))
             }
+            ast::Expression::MatchExpression(scrutinee, arms) => Expression::MatchExpression(
+                Box::new(self.process_expression(scrutinee)),
+                arms.iter()
+                    .map(|(n, e)| (n.clone(), self.process_expression(e)))
+                    .collect(),
+            ),
             ast::Expression::FreeInput(_) => panic!(),
         }
     }
@@ -576,6 +582,7 @@ impl PILContext {
             ast::Expression::UnaryOperation(op, value) => self.evaluate_unary_operation(op, value),
             ast::Expression::FunctionCall(_, _) => None,
             ast::Expression::FreeInput(_) => panic!(),
+            ast::Expression::MatchExpression(_, _) => None,
         }
     }
 
