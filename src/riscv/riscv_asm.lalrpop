@@ -69,7 +69,7 @@ Register: Register = {
     r"s[2-9]" => Register(16 + <>[1..].parse::<u8>().unwrap()),
     r"s1[0-1]" => Register(16 + <>[1..].parse::<u8>().unwrap()),
     r"t[0-2]" => Register(5 + <>[1..].parse::<u8>().unwrap()),
-    r"t[3-6]" => Register(28 + <>[1..].parse::<u8>().unwrap()),
+    r"t[3-6]" => Register(25 + <>[1..].parse::<u8>().unwrap()),
 }
 
 OffsetRegister: Argument = {
