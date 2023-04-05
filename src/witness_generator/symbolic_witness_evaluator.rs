@@ -51,14 +51,14 @@ where
             self.witness_access.value(name, next)
         } else {
             // Constant polynomial (or something else)
-            let values = self.fixed_data.fixed_cols[name];
+            let column = &self.fixed_data.fixed_cols[name];
             let row = if next {
-                let degree = values.len() as DegreeType;
+                let degree = column.values.len() as DegreeType;
                 (self.row + 1) % degree
             } else {
                 self.row
             };
-            Ok(values[row as usize].clone().into())
+            Ok(column.values[row as usize].clone().into())
         }
     }
 

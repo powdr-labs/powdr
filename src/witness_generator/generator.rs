@@ -18,8 +18,7 @@ pub struct Generator<'a, QueryCallback>
 where
     QueryCallback: FnMut(&'a str) -> Option<AbstractNumberType>,
 {
-    fixed_data: &'a FixedData<'a>,
-    fixed_lookup: &'a mut FixedLookup,
+    fixed_lookup: &'a mut FixedLookup<'a>,
     identities: Vec<&'a Identity>,
     machines: Vec<Box<dyn Machine>>,
     query_callback: Option<QueryCallback>,
@@ -51,17 +50,15 @@ where
     QueryCallback: FnMut(&str) -> Option<AbstractNumberType>,
 {
     pub fn new(
-        fixed_data: &'a FixedData<'a>,
-        fixed_lookup: &'a mut FixedLookup,
+        fixed_lookup: &'a mut FixedLookup<'a>,
         identities: Vec<&'a Identity>,
         global_bit_constraints: BTreeMap<&'a str, BitConstraint>,
         machines: Vec<Box<dyn Machine>>,
         query_callback: Option<QueryCallback>,
     ) -> Self {
-        let witness_cols = fixed_data.witness_cols;
+        let witness_cols = fixed_lookup.data.witness_cols;
 
         Generator {
-            fixed_data,
             fixed_lookup,
             identities,
             machines,
@@ -82,8 +79,8 @@ where
         if next_row >= self.last_report + 1000 {
             println!(
                 "{next_row} of {} rows ({} %)",
-                self.fixed_data.degree,
-                next_row * 100 / self.fixed_data.degree
+                self.fixed_lookup.data.degree,
+                next_row * 100 / self.fixed_lookup.data.degree
             );
             self.last_report = next_row;
         }
@@ -148,7 +145,7 @@ where
                     .iter()
                     .enumerate()
                     .filter_map(|(i, v)| if v.is_none() {
-                        Some(self.fixed_data.witness_cols[i].name.to_string())
+                        Some(self.fixed_lookup.data.witness_cols[i].name.to_string())
                     } else {
                         None
                     })
@@ -164,7 +161,7 @@ where
             eprintln!("For this row:");
             for (id, cons) in self.next_bit_constraints.iter().enumerate() {
                 if let Some(cons) = cons {
-                    eprintln!("  {}: {cons}", self.fixed_data.witness_cols[id].name);
+                    eprintln!("  {}: {cons}", self.fixed_lookup.data.witness_cols[id].name);
                 }
             }
             eprintln!();
@@ -174,7 +171,7 @@ where
             );
             panic!();
         } else {
-            if self.fixed_data.verbose {
+            if self.fixed_lookup.data.verbose {
                 println!(
                     "===== Row {next_row}:\n{}",
                     indent(&self.format_next_values().join("\n"), "    ")
@@ -195,7 +192,7 @@ where
     pub fn machine_witness_col_values(&mut self) -> HashMap<String, Vec<AbstractNumberType>> {
         let mut result: HashMap<_, _> = Default::default();
         for m in &mut self.machines {
-            result.extend(m.witness_col_values(self.fixed_data));
+            result.extend(m.witness_col_values(self.fixed_lookup.data));
         }
         result
     }
@@ -207,7 +204,7 @@ where
             .map(|(i, v)| {
                 format!(
                     "{} = {}",
-                    AffineExpression::from_witness_poly_value(i).format(self.fixed_data),
+                    AffineExpression::from_witness_poly_value(i).format(self.fixed_lookup.data),
                     v.as_ref()
                         .map(format_number)
                         .unwrap_or("<unknown>".to_string())
@@ -228,7 +225,7 @@ where
     fn interpolate_query(&self, query: &Expression) -> Result<String, String> {
         if let Ok(v) = self.evaluate(query, EvaluationRow::Next) {
             if v.is_constant() {
-                return Ok(v.format(self.fixed_data));
+                return Ok(v.format(self.fixed_lookup.data));
             }
         }
         // TODO combine that with the constant evaluator and the commit evaluator...
@@ -253,7 +250,7 @@ where
     fn process_polynomial_identity(&self, identity: &Expression) -> EvalResult {
         // If there is no "next" reference in the expression,
         // we just evaluate it directly on the "next" row.
-        let row = if contains_next_witness_ref(identity, self.fixed_data) {
+        let row = if contains_next_witness_ref(identity, self.fixed_lookup.data) {
             // TODO this is the only situation where we use "current"
             // TODO this is the only that actually uses a window.
             EvaluationRow::Current
@@ -267,7 +264,7 @@ where
             evaluated
                 .solve_with_bit_constraints(&self.bit_constraint_set())
                 .map_err(|e| {
-                    let formatted = evaluated.format(self.fixed_data);
+                    let formatted = evaluated.format(self.fixed_lookup.data);
                     if let EvalError::ConstraintUnsatisfiable(_) = e {
                         EvalError::ConstraintUnsatisfiable(format!(
                             "Constraint is invalid ({formatted} != 0)."
@@ -290,7 +287,7 @@ where
                 _ => {
                     return Err(format!(
                         "Value of the selector on the left hand side unknown or not boolean: {}",
-                        value.format(self.fixed_data)
+                        value.format(self.fixed_lookup.data)
                     )
                     .into())
                 }
@@ -310,24 +307,18 @@ where
         // TODO could it be that multiple machines match?
 
         // query the fixed lookup "machine"
-        if let Some(result) = self.fixed_lookup.process_plookup(
-            self.fixed_data,
-            identity.kind,
-            &left,
-            &identity.right,
-        ) {
+        if let Some(result) =
+            self.fixed_lookup
+                .process_plookup(identity.kind, &left, &identity.right)
+        {
             return result;
         }
 
         for m in &mut self.machines {
             // TODO also consider the reasons above.
-            if let Some(result) = m.process_plookup(
-                self.fixed_data,
-                self.fixed_lookup,
-                identity.kind,
-                &left,
-                &identity.right,
-            ) {
+            if let Some(result) =
+                m.process_plookup(self.fixed_lookup, identity.kind, &left, &identity.right)
+            {
                 return result;
             }
         }
@@ -372,17 +363,17 @@ where
         expr: &Expression,
         evaluate_row: EvaluationRow,
     ) -> Result<AffineExpression, EvalError> {
-        let degree = self.fixed_data.degree;
+        let degree = self.fixed_lookup.data.degree;
         let fixed_row = match evaluate_row {
             EvaluationRow::Current => (self.next_row + degree - 1) % degree,
             EvaluationRow::Next => self.next_row,
         };
 
         ExpressionEvaluator::new(SymoblicWitnessEvaluator::new(
-            self.fixed_data,
+            self.fixed_lookup.data,
             fixed_row,
             EvaluationData {
-                fixed_data: self.fixed_data,
+                fixed_data: self.fixed_lookup.data,
                 current_witnesses: &self.current,
                 next_witnesses: &self.next,
                 evaluate_row,
@@ -391,9 +382,9 @@ where
         .evaluate(expr)
     }
 
-    fn bit_constraint_set(&'a self) -> WitnessBitConstraintSet<'a> {
+    fn bit_constraint_set(&self) -> WitnessBitConstraintSet {
         WitnessBitConstraintSet {
-            fixed_data: self.fixed_data,
+            fixed_data: self.fixed_lookup.data,
             global_bit_constraints: &self.global_bit_constraints,
             next_bit_constraints: &self.next_bit_constraints,
         }

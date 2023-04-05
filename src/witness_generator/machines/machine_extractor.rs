@@ -19,7 +19,7 @@ pub fn split_out_machines<'a>(
     identities: Vec<&'a Identity>,
     witness_cols: &'a [WitnessColumn],
     global_bit_constraints: &BTreeMap<&'a str, BitConstraint>,
-) -> (FixedLookup, Vec<Box<dyn Machine>>, Vec<&'a Identity>) {
+) -> (FixedLookup<'a>, Vec<Box<dyn Machine>>, Vec<&'a Identity>) {
     let fixed_lookup = FixedLookup::try_new(fixed, &[], &Default::default()).unwrap();
 
     let mut machines: Vec<Box<dyn Machine>> = vec![];

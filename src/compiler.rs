@@ -1,3 +1,4 @@
+use std::collections::{BTreeSet, HashMap};
 use std::fs;
 use std::io::{BufWriter, Write};
 use std::path::Path;
@@ -8,6 +9,30 @@ use num_bigint::Sign;
 use crate::number::{abstract_to_degree, AbstractNumberType, DegreeType};
 use crate::parser::ast::PILFile;
 use crate::{analyzer, asm_compiler, constant_evaluator, json_exporter, witness_generator};
+
+#[derive(Hash, PartialEq, Eq, Debug)]
+pub struct ConcreteColumn {
+    pub values: Vec<AbstractNumberType>,
+    index: usize,
+}
+
+impl PartialOrd for ConcreteColumn {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        self.index.partial_cmp(&other.index)
+    }
+}
+
+impl Ord for ConcreteColumn {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.partial_cmp(other).unwrap()
+    }
+}
+
+impl ConcreteColumn {
+    pub fn new(index: usize, values: Vec<AbstractNumberType>) -> Self {
+        Self { index, values }
+    }
+}
 
 pub fn no_callback() -> Option<fn(&str) -> Option<AbstractNumberType>> {
     None
@@ -164,11 +189,11 @@ fn compile(
 fn write_polys_file(
     file: &mut impl Write,
     degree: DegreeType,
-    polys: &Vec<(&str, Vec<AbstractNumberType>)>,
+    polys: &HashMap<&str, ConcreteColumn>,
 ) {
     for i in 0..degree as usize {
-        for (_name, constant) in polys {
-            let mut v = constant[i].clone();
+        for constant in polys.values().collect::<BTreeSet<_>>().iter() {
+            let mut v = constant.values[i].clone();
             if v.sign() == Sign::Minus {
                 // This hardcodes the goldilocks field
                 v += 0xffffffff00000001u64;

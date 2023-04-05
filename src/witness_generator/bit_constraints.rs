@@ -110,7 +110,7 @@ impl<'a, Namer: WitnessColumnNamer> BitConstraintSet for SimpleBitConstraintSet<
 /// the identities vector.
 /// TODO at some point, we should check that they still hold.
 pub fn determine_global_constraints<'a>(
-    fixed_data: &'a FixedData,
+    fixed_data: &'a FixedData<'a>,
     identities: Vec<&'a Identity>,
 ) -> (BTreeMap<&'a str, BitConstraint>, Vec<&'a Identity>) {
     let mut known_constraints = BTreeMap::new();
@@ -118,8 +118,8 @@ pub fn determine_global_constraints<'a>(
     // but also have one row for each possible value.
     // It allows us to completely remove some lookups.
     let mut full_span = BTreeSet::new();
-    for (&name, &values) in &fixed_data.fixed_cols {
-        if let Some((cons, full)) = process_fixed_column(values) {
+    for (&name, column) in fixed_data.fixed_cols.iter() {
+        if let Some((cons, full)) = process_fixed_column(&column.values) {
             assert!(known_constraints.insert(name, cons).is_none());
             if full {
                 full_span.insert(name);
@@ -401,8 +401,8 @@ namespace Global(2**20);
         let (constants, degree) = crate::constant_evaluator::generate(&analyzed);
         let mut known_constraints = constants
             .iter()
-            .filter_map(|(name, values)| {
-                process_fixed_column(values).map(|(constraint, _full)| (*name, constraint))
+            .filter_map(|(name, column)| {
+                process_fixed_column(&column.values).map(|(constraint, _full)| (*name, constraint))
             })
             .collect::<BTreeMap<_, _>>();
         assert_eq!(
@@ -430,7 +430,7 @@ namespace Global(2**20);
         let fixed_data = FixedData::new(
             degree,
             &analyzed.constants,
-            constants.iter().map(|(n, v)| (*n, v)).collect(),
+            &constants,
             &witness_cols,
             witness_cols.iter().map(|w| (w.name, w.id)).collect(),
             false,

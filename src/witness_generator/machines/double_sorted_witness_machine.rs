@@ -64,8 +64,7 @@ impl DoubleSortedWitnesses {
 impl Machine for DoubleSortedWitnesses {
     fn process_plookup(
         &mut self,
-        fixed_data: &FixedData,
-        _fixed_lookup: &mut FixedLookup,
+        fixed_lookup: &mut FixedLookup,
         kind: IdentityKind,
         left: &[Result<AffineExpression, EvalError>],
         right: &SelectedExpressions,
@@ -87,7 +86,7 @@ impl Machine for DoubleSortedWitnesses {
             return None;
         }
 
-        Some(self.process_plookup_internal(fixed_data, left, right))
+        Some(self.process_plookup_internal(fixed_lookup.data, left, right))
     }
 
     fn witness_col_values(

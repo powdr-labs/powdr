@@ -62,7 +62,7 @@ impl IndexedColumns {
                 acc.entry(
                     column_values
                         .iter()
-                        .map(|column| column[row].clone())
+                        .map(|column| column.values[row].clone())
                         .collect(),
                 )
                 .or_default()
@@ -77,19 +77,22 @@ impl IndexedColumns {
 }
 
 /// Machine to perform a lookup in fixed columns only.
-#[derive(Default)]
-pub struct FixedLookup {
-    indices: IndexedColumns,
+pub struct FixedLookup<'a> {
+    pub data: &'a FixedData<'a>,
+    pub indices: IndexedColumns,
 }
 
-impl FixedLookup {
+impl<'a> FixedLookup<'a> {
     pub fn try_new(
-        _fixed_data: &FixedData,
+        fixed_data: &'a FixedData<'a>,
         identities: &[&Identity],
         witness_names: &HashSet<&str>,
     ) -> Option<Box<Self>> {
         if identities.is_empty() && witness_names.is_empty() {
-            Some(Box::default())
+            Some(Box::new(FixedLookup {
+                data: fixed_data,
+                indices: Default::default(),
+            }))
         } else {
             None
         }
@@ -97,7 +100,6 @@ impl FixedLookup {
 
     pub fn process_plookup(
         &mut self,
-        fixed_data: &FixedData,
         kind: IdentityKind,
         left: &[Result<AffineExpression, EvalError>],
         right: &SelectedExpressions,
@@ -108,7 +110,7 @@ impl FixedLookup {
             || right
                 .expressions
                 .iter()
-                .any(|e| contains_witness_ref(e, fixed_data))
+                .any(|e| contains_witness_ref(e, self.data))
         {
             return None;
         }
@@ -128,12 +130,11 @@ impl FixedLookup {
             return Some(Ok(vec![]));
         }
 
-        Some(self.process_plookup_internal(fixed_data, left, right))
+        Some(self.process_plookup_internal(left, right))
     }
 
     fn process_plookup_internal(
         &mut self,
-        fixed_data: &FixedData,
         left: &[Result<AffineExpression, EvalError>],
         right: Vec<String>,
     ) -> EvalResult {
@@ -160,7 +161,7 @@ impl FixedLookup {
             }
         });
 
-        let rows = self.indices.get_matches(fixed_data, input_assignment);
+        let rows = self.indices.get_matches(self.data, input_assignment);
 
         // get the output values at these rows, deduplicated
         let mut matches = rows
@@ -170,11 +171,12 @@ impl FixedLookup {
                 output_assignment
                     .iter()
                     .map(|(column, _)| {
-                        fixed_data
+                        self.data
                             .fixed_cols
                             .get(&column.as_ref())
                             .as_ref()
-                            .unwrap()[*row as usize]
+                            .unwrap()
+                            .values[*row as usize]
                             .clone()
                     })
                     .collect()
@@ -205,13 +207,13 @@ impl FixedLookup {
                             // Fail the whole lookup
                             return Err(EvalError::ConstraintUnsatisfiable(format!(
                                 "Constraint is invalid ({} != {r}).",
-                                l.format(fixed_data)
+                                l.format(self.data)
                             )));
                         }
                         Err(err) => reasons.push(
                             format!(
                                 "Could not solve expression {} = {r}: {err}",
-                                l.format(fixed_data)
+                                l.format(self.data)
                             )
                             .into(),
                         ),

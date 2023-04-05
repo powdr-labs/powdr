@@ -101,13 +101,14 @@ fn is_boolean_periodic_selector(
 ) -> Option<(String, usize)> {
     let poly = is_simple_poly(expr)?;
 
-    let values = fixed_data.fixed_cols.get(poly)?;
+    let column = fixed_data.fixed_cols.get(poly)?;
 
-    let period = 1 + values.iter().position(|v| *v == 1.into())?;
+    let period = 1 + column.values.iter().position(|v| *v == 1.into())?;
     if period == 1 {
         return None;
     }
-    values
+    column
+        .values
         .iter()
         .enumerate()
         .all(|(i, v)| {
@@ -124,7 +125,6 @@ fn is_boolean_periodic_selector(
 impl Machine for BlockMachine {
     fn process_plookup(
         &mut self,
-        fixed_data: &FixedData,
         fixed_lookup: &mut FixedLookup,
         kind: IdentityKind,
         left: &[Result<AffineExpression, EvalError>],
@@ -137,7 +137,7 @@ impl Machine for BlockMachine {
         }
         let previous_len = self.rows() as usize;
         Some({
-            let result = self.process_plookup_internal(fixed_data, fixed_lookup, left, right);
+            let result = self.process_plookup_internal(fixed_lookup, left, right);
             self.bit_constraints.clear();
             result.map_err(|e| {
                 // rollback the changes.
@@ -182,7 +182,6 @@ impl BlockMachine {
 
     fn process_plookup_internal(
         &mut self,
-        fixed_data: &FixedData,
         fixed_lookup: &mut FixedLookup,
         left: &[Result<AffineExpression, EvalError>],
         right: &SelectedExpressions,
@@ -197,7 +196,7 @@ impl BlockMachine {
         }
 
         let old_len = self.rows();
-        if old_len + self.block_size as u64 >= fixed_data.degree {
+        if old_len + self.block_size as u64 >= fixed_lookup.data.degree {
             return Err("Rows in block machine exhausted.".to_string().into());
         }
         self.append_new_block();
@@ -219,9 +218,9 @@ impl BlockMachine {
                 row_delta,
                 identity_index,
             } = step;
-            self.row =
-                (old_len as i64 + row_delta + fixed_data.degree as i64) as u64 % fixed_data.degree;
-            match self.process_identity(fixed_data, fixed_lookup, left, right, identity_index) {
+            self.row = (old_len as i64 + row_delta + fixed_lookup.data.degree as i64) as u64
+                % fixed_lookup.data.degree;
+            match self.process_identity(fixed_lookup, left, right, identity_index) {
                 Ok(result) => {
                     if !result.is_empty() {
                         progress_steps.push(step);
@@ -294,7 +293,6 @@ impl BlockMachine {
     /// an identity in the vector of identities.
     fn process_identity(
         &self,
-        fixed_data: &FixedData,
         fixed_lookup: &mut FixedLookup,
         left: &[Result<AffineExpression, EvalError>],
         right: &SelectedExpressions,
@@ -303,16 +301,17 @@ impl BlockMachine {
         if let Some(index) = identity_index {
             let id = &self.identities[index];
             match id.kind {
-                IdentityKind::Polynomial => {
-                    self.process_polynomial_identity(fixed_data, id.left.selector.as_ref().unwrap())
-                }
+                IdentityKind::Polynomial => self.process_polynomial_identity(
+                    fixed_lookup.data,
+                    id.left.selector.as_ref().unwrap(),
+                ),
                 IdentityKind::Plookup | IdentityKind::Permutation => {
-                    self.process_plookup(fixed_data, fixed_lookup, id)
+                    self.process_plookup(fixed_lookup, id)
                 }
                 _ => Err("Unsupported lookup type".to_string().into()),
             }
         } else {
-            self.process_outer_query(fixed_data, left, right)
+            self.process_outer_query(fixed_lookup.data, left, right)
         }
     }
 
@@ -372,12 +371,7 @@ impl BlockMachine {
         })
     }
 
-    fn process_plookup(
-        &self,
-        fixed_data: &FixedData,
-        fixed_lookup: &mut FixedLookup,
-        identity: &Identity,
-    ) -> EvalResult {
+    fn process_plookup(&self, fixed_lookup: &mut FixedLookup, identity: &Identity) -> EvalResult {
         if identity.left.selector.is_some() || identity.right.selector.is_some() {
             unimplemented!("Selectors not yet implemented.");
         }
@@ -385,11 +379,9 @@ impl BlockMachine {
             .left
             .expressions
             .iter()
-            .map(|e| self.evaluate(fixed_data, e))
+            .map(|e| self.evaluate(fixed_lookup.data, e))
             .collect::<Vec<_>>();
-        if let Some(result) =
-            fixed_lookup.process_plookup(fixed_data, identity.kind, &left, &identity.right)
-        {
+        if let Some(result) = fixed_lookup.process_plookup(identity.kind, &left, &identity.right) {
             result
         } else {
             Err("Could not find a matching machine for the lookup."

@@ -126,8 +126,7 @@ fn check_constraint<'a>(fixed_data: &'a FixedData, constraint: &Expression) -> O
 impl Machine for SortedWitnesses {
     fn process_plookup(
         &mut self,
-        fixed_data: &FixedData,
-        _fixed_lookup: &mut FixedLookup,
+        fixed_lookup: &mut FixedLookup,
         kind: IdentityKind,
         left: &[Result<AffineExpression, EvalError>],
         right: &SelectedExpressions,
@@ -155,7 +154,7 @@ impl Machine for SortedWitnesses {
         }
         let rhs = rhs.iter().map(|x| x.unwrap()).collect::<Vec<_>>();
 
-        Some(self.process_plookup_internal(fixed_data, left, right, rhs))
+        Some(self.process_plookup_internal(fixed_lookup.data, left, right, rhs))
     }
     fn witness_col_values(
         &mut self,

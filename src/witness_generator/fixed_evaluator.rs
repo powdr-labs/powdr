@@ -23,13 +23,13 @@ impl<'a> SymbolicVariables for FixedEvaluator<'a> {
     fn value(&self, name: &str, next: bool) -> Result<AffineExpression, EvalError> {
         // TODO arrays
         if let Some(col_data) = self.fixed_data.fixed_cols.get(name) {
-            let degree = col_data.len();
+            let degree = col_data.values.len();
             let row = if next {
                 (self.row + 1) % degree
             } else {
                 self.row
             };
-            Ok(col_data[row].clone().into())
+            Ok(col_data.values[row].clone().into())
         } else {
             Err("Can only access fixed columns in the fixed evaluator."
                 .to_string()

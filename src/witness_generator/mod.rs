@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::fmt::Display;
 
 use crate::analyzer::{Analyzed, Expression, FunctionValueDefinition};
+use crate::compiler::ConcreteColumn;
 use crate::number::{AbstractNumberType, DegreeType};
 
 use self::bit_constraints::BitConstraint;
@@ -24,10 +25,10 @@ mod util;
 pub fn generate<'a>(
     analyzed: &'a Analyzed,
     degree: DegreeType,
-    fixed_cols: &[(&str, Vec<AbstractNumberType>)],
+    fixed_cols: &'a HashMap<&'a str, ConcreteColumn>,
     query_callback: Option<impl FnMut(&str) -> Option<AbstractNumberType>>,
     verbose: bool,
-) -> Vec<(&'a str, Vec<AbstractNumberType>)> {
+) -> HashMap<&'a str, ConcreteColumn> {
     let witness_cols: Vec<WitnessColumn> = analyzed
         .committed_polys_in_source_order()
         .iter()
@@ -42,7 +43,7 @@ pub fn generate<'a>(
     let fixed = FixedData::new(
         degree,
         &analyzed.constants,
-        fixed_cols.iter().map(|(n, v)| (*n, v)).collect(),
+        fixed_cols,
         &witness_cols,
         witness_cols.iter().map(|w| (w.name, w.id)).collect(),
         verbose,
@@ -56,7 +57,6 @@ pub fn generate<'a>(
         &global_bit_constraints,
     );
     let mut generator = generator::Generator::new(
-        &fixed,
         &mut fixed_lookup,
         identities,
         global_bit_constraints,
@@ -83,6 +83,10 @@ pub fn generate<'a>(
         *col = data;
     }
     values
+        .into_iter()
+        .enumerate()
+        .map(|(index, (name, values))| (name, ConcreteColumn::new(index, values)))
+        .collect()
 }
 
 /// Result of evaluating an expression / lookup.
@@ -108,7 +112,7 @@ impl Display for Constraint {
 pub struct FixedData<'a> {
     degree: DegreeType,
     constants: &'a HashMap<String, AbstractNumberType>,
-    fixed_cols: HashMap<&'a str, &'a Vec<AbstractNumberType>>,
+    fixed_cols: &'a HashMap<&'a str, ConcreteColumn>,
     witness_cols: &'a Vec<WitnessColumn<'a>>,
     witness_ids: HashMap<&'a str, usize>,
     verbose: bool,
@@ -118,7 +122,7 @@ impl<'a> FixedData<'a> {
     pub fn new(
         degree: DegreeType,
         constants: &'a HashMap<String, AbstractNumberType>,
-        fixed_cols: HashMap<&'a str, &'a Vec<AbstractNumberType>>,
+        fixed_cols: &'a HashMap<&'a str, ConcreteColumn>,
         witness_cols: &'a Vec<WitnessColumn<'a>>,
         witness_ids: HashMap<&'a str, usize>,
         verbose: bool,

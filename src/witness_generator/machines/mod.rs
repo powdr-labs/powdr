@@ -33,7 +33,6 @@ pub trait Machine {
     /// If this is not the right machine for the query, return `None`.
     fn process_plookup(
         &mut self,
-        fixed_data: &FixedData,
         fixed_lookup: &mut FixedLookup,
         kind: IdentityKind,
         left: &[Result<AffineExpression, EvalError>],
