@@ -159,6 +159,10 @@ pub enum Expression {
     UnaryOperation(UnaryOperator, Box<Expression>),
     /// Call to a non-macro function (like a constant polynomial)
     FunctionCall(String, Vec<Expression>),
+    MatchExpression(
+        Box<Expression>,
+        Vec<(Option<AbstractNumberType>, Expression)>,
+    ),
 }
 
 #[derive(Debug, PartialEq, Eq, Default, Clone)]

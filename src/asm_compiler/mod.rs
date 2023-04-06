@@ -46,7 +46,7 @@ impl ASMPILConverter {
     fn convert(&mut self, input: ASMFile) -> PILFile {
         self.set_degree(1024);
 
-        let mut statements = input.0.iter().peekable();
+        let mut statements = input.0.into_iter().peekable();
 
         if let Some(ASMStatement::Degree(_, degree)) = statements.peek() {
             self.set_degree(crate::number::abstract_to_degree(degree));
@@ -72,27 +72,25 @@ impl ASMPILConverter {
                     panic!("The degree statement is only supported at the start of the asm source");
                 }
                 ASMStatement::RegisterDeclaration(start, name, flags) => {
-                    self.handle_register_declaration(flags, name, start);
+                    self.handle_register_declaration(flags, &name, start);
                 }
                 ASMStatement::InstructionDeclaration(start, name, params, body) => {
                     self.handle_instruction_def(start, body, name, params);
                 }
                 ASMStatement::InlinePil(_start, statements) => self.pil.extend(statements.clone()),
-                ASMStatement::Assignment(start, write_regs, assign_reg, value) => {
-                    match value.as_ref() {
-                        Expression::FunctionCall(function_name, args) => {
-                            self.handle_functional_instruction(
-                                write_regs,
-                                assign_reg,
-                                function_name,
-                                args,
-                            );
-                        }
-                        _ => {
-                            self.handle_assignment(*start, write_regs, assign_reg, value.as_ref());
-                        }
+                ASMStatement::Assignment(start, write_regs, assign_reg, value) => match *value {
+                    Expression::FunctionCall(function_name, args) => {
+                        self.handle_functional_instruction(
+                            write_regs,
+                            assign_reg,
+                            function_name,
+                            args,
+                        );
                     }
-                }
+                    _ => {
+                        self.handle_assignment(start, write_regs, assign_reg, *value);
+                    }
+                },
                 ASMStatement::Instruction(_start, instr_name, args) => {
                     self.handle_instruction(instr_name, args)
                 }
@@ -104,7 +102,7 @@ impl ASMPILConverter {
         }
         let assignment_registers = self.assignment_registers().cloned().collect::<Vec<_>>();
         for reg in assignment_registers {
-            self.create_constraints_for_assignment_reg(&reg);
+            self.create_constraints_for_assignment_reg(reg);
         }
 
         self.pil.extend(
@@ -143,9 +141,9 @@ impl ASMPILConverter {
 
     fn handle_register_declaration(
         &mut self,
-        flags: &Option<RegisterFlag>,
+        flags: Option<RegisterFlag>,
         name: &str,
-        start: &usize,
+        start: usize,
     ) {
         let mut conditioned_updates = vec![];
         let mut default_update = None;
@@ -158,7 +156,7 @@ impl ASMPILConverter {
                 // This might be superfluous but makes it easier to determine that the PC needs to
                 // be zero in the first row.
                 self.pil.push(Statement::PolynomialIdentity(
-                    *start,
+                    start,
                     build_mul(direct_reference("first_step"), direct_reference(name)),
                 ));
                 // The value here is actually irrelevant, it is only important
@@ -173,7 +171,7 @@ impl ASMPILConverter {
                 // This might be superfluous but makes it easier to determine that the register needs to
                 // be zero in the first row.
                 self.pil.push(Statement::PolynomialIdentity(
-                    *start,
+                    start,
                     build_mul(direct_reference("first_step"), direct_reference(name)),
                 ));
                 conditioned_updates = vec![
@@ -185,7 +183,7 @@ impl ASMPILConverter {
                 // TODO do this at the same place where we set up the read flags.
                 for reg in assignment_regs {
                     let write_flag = format!("reg_write_{reg}_{name}");
-                    self.create_witness_fixed_pair(*start, &write_flag);
+                    self.create_witness_fixed_pair(start, &write_flag);
                     conditioned_updates
                         .push((direct_reference(&write_flag), direct_reference(&reg)));
                 }
@@ -197,30 +195,30 @@ impl ASMPILConverter {
             Register {
                 conditioned_updates,
                 default_update,
-                is_assignment: *flags == Some(RegisterFlag::IsAssignment),
+                is_assignment: flags == Some(RegisterFlag::IsAssignment),
             },
         );
-        self.pil.push(witness_column(*start, name, None));
+        self.pil.push(witness_column(start, name, None));
     }
 
     fn handle_instruction_def(
         &mut self,
-        start: &usize,
-        body: &Vec<InstructionBodyElement>,
-        name: &str,
-        params: &Vec<InstructionParam>,
+        start: usize,
+        body: Vec<InstructionBodyElement>,
+        name: String,
+        params: Vec<InstructionParam>,
     ) {
         let instruction_flag = format!("instr_{name}");
-        self.create_witness_fixed_pair(*start, &instruction_flag);
+        self.create_witness_fixed_pair(start, &instruction_flag);
         // it's part of the lookup!
         //self.pil.push(constrain_zero_one(&col_name));
 
         let mut substitutions = HashMap::new();
-        for p in params {
+        for p in &params {
             if p.assignment_reg.0.is_none() && p.assignment_reg.1.is_none() {
                 // literal argument
                 let param_col_name = format!("instr_{name}_param_{}", p.name);
-                self.create_witness_fixed_pair(*start, &param_col_name);
+                self.create_witness_fixed_pair(start, &param_col_name);
                 substitutions.insert(p.name.clone(), param_col_name);
             }
         }
@@ -247,40 +245,36 @@ impl ASMPILConverter {
                     assert!(left.selector.is_none(), "LHS selector not supported, could and-combine with instruction flag later.");
                     let left = SelectedExpressions {
                         selector: Some(direct_reference(&instruction_flag)),
-                        expressions: substitute_vec(&left.expressions, &substitutions),
+                        expressions: substitute_vec(left.expressions, &substitutions),
                     };
                     let right = substitute_selected_exprs(right, &substitutions);
                     self.pil.push(match op {
-                        PlookupOperator::In => Statement::PlookupIdentity(*start, left, right),
-                        PlookupOperator::Is => Statement::PermutationIdentity(*start, left, right),
+                        PlookupOperator::In => Statement::PlookupIdentity(start, left, right),
+                        PlookupOperator::Is => Statement::PermutationIdentity(start, left, right),
                     })
                 }
             }
         }
-        let instr = Instruction {
-            params: params.clone(),
-        };
-        self.instructions.insert(name.to_string(), instr);
+        let instr = Instruction { params };
+        self.instructions.insert(name, instr);
     }
 
     fn handle_assignment(
         &mut self,
         _start: usize,
-        write_regs: &Vec<String>,
-        assign_reg: &Option<String>,
-        value: &Expression,
+        write_regs: Vec<String>,
+        assign_reg: Option<String>,
+        value: Expression,
     ) {
         assert!(write_regs.len() <= 1);
         assert!(
             assign_reg.is_some(),
             "Implicit assign register not yet supported."
         );
-        let assign_reg = assign_reg.clone().unwrap();
+        let assign_reg = assign_reg.unwrap();
         let value = self.process_assignment_value(value);
         self.code_lines.push(CodeLine {
-            write_regs: [(assign_reg.clone(), write_regs.clone())]
-                .into_iter()
-                .collect(),
+            write_regs: [(assign_reg.clone(), write_regs)].into_iter().collect(),
             value: [(assign_reg, value)].into(),
             ..Default::default()
         })
@@ -288,27 +282,27 @@ impl ASMPILConverter {
 
     fn handle_functional_instruction(
         &mut self,
-        write_regs: &Vec<String>,
-        assign_reg: &Option<String>,
-        instr_name: &str,
-        args: &Vec<Expression>,
+        write_regs: Vec<String>,
+        assign_reg: Option<String>,
+        instr_name: String,
+        args: Vec<Expression>,
     ) {
         assert!(write_regs.len() == 1);
         assert!(assign_reg.is_some());
-        let instr = &self.instructions[instr_name];
+        let instr = &self.instructions[&instr_name];
         assert_eq!(instr.params.len(), args.len() + 1);
         let last_param = instr.params.last().unwrap();
         assert!(last_param.param_type.is_none());
         assert!(last_param.assignment_reg.0.is_none());
-        assert!(last_param.assignment_reg.1 == Some(assign_reg.clone()));
+        assert!(last_param.assignment_reg.1 == Some(assign_reg));
 
-        let mut args = args.clone();
-        args.push(direct_reference(write_regs.first().unwrap()));
-        self.handle_instruction(instr_name, &args);
+        let mut args = args;
+        args.push(direct_reference(write_regs.first().unwrap().clone()));
+        self.handle_instruction(instr_name, args);
     }
 
-    fn handle_instruction(&mut self, instr_name: &str, args: &Vec<Expression>) {
-        let instr = &self.instructions[instr_name];
+    fn handle_instruction(&mut self, instr_name: String, args: Vec<Expression>) {
+        let instr = &self.instructions[&instr_name];
         assert_eq!(instr.params.len(), args.len());
         let mut value = BTreeMap::new();
         let mut instruction_literal_args = vec![];
@@ -357,7 +351,7 @@ impl ASMPILConverter {
 
     fn process_assignment_value(
         &self,
-        value: &Expression,
+        value: Expression,
     ) -> Vec<(AbstractNumberType, AffineExpressionComponent)> {
         match value {
             Expression::Constant(_) => panic!(),
@@ -370,30 +364,28 @@ impl ASMPILConverter {
                 // TODO check it actually is a register
                 vec![(
                     1.into(),
-                    AffineExpressionComponent::Register(reference.name.clone()),
+                    AffineExpressionComponent::Register(reference.name),
                 )]
             }
-            Expression::Number(value) => vec![(value.clone(), AffineExpressionComponent::Constant)],
+            Expression::Number(value) => vec![(value, AffineExpressionComponent::Constant)],
             Expression::String(_) => panic!(),
             Expression::Tuple(_) => panic!(),
+            Expression::MatchExpression(_, _) => panic!(),
             Expression::FreeInput(expr) => {
-                vec![(
-                    1.into(),
-                    AffineExpressionComponent::FreeInput(*expr.clone()),
-                )]
+                vec![(1.into(), AffineExpressionComponent::FreeInput(*expr))]
             }
             Expression::BinaryOperation(left, op, right) => match op {
                 BinaryOperator::Add => self.add_assignment_value(
-                    self.process_assignment_value(left),
-                    self.process_assignment_value(right),
+                    self.process_assignment_value(*left),
+                    self.process_assignment_value(*right),
                 ),
                 BinaryOperator::Sub => self.add_assignment_value(
-                    self.process_assignment_value(left),
-                    self.negate_assignment_value(self.process_assignment_value(right)),
+                    self.process_assignment_value(*left),
+                    self.negate_assignment_value(self.process_assignment_value(*right)),
                 ),
                 BinaryOperator::Mul => {
-                    let left = self.process_assignment_value(left);
-                    let right = self.process_assignment_value(right);
+                    let left = self.process_assignment_value(*left);
+                    let right = self.process_assignment_value(*right);
                     if let [(f, AffineExpressionComponent::Constant)] = &left[..] {
                         // TODO overflow?
                         right
@@ -409,17 +401,18 @@ impl ASMPILConverter {
                         panic!("Multiplication by non-constant.");
                     }
                 }
-                BinaryOperator::Div => panic!(),
-                BinaryOperator::Mod => panic!(),
-                BinaryOperator::Pow => panic!(),
-                BinaryOperator::BinaryAnd => panic!(),
-                BinaryOperator::BinaryOr => panic!(),
-                BinaryOperator::ShiftLeft => panic!(),
-                BinaryOperator::ShiftRight => panic!(),
+                BinaryOperator::Div
+                | BinaryOperator::Mod
+                | BinaryOperator::Pow
+                | BinaryOperator::BinaryAnd
+                | BinaryOperator::BinaryXor
+                | BinaryOperator::BinaryOr
+                | BinaryOperator::ShiftLeft
+                | BinaryOperator::ShiftRight => panic!(),
             },
             Expression::UnaryOperation(op, expr) => {
-                assert!(*op == UnaryOperator::Minus);
-                self.negate_assignment_value(self.process_assignment_value(expr))
+                assert!(op == UnaryOperator::Minus);
+                self.negate_assignment_value(self.process_assignment_value(*expr))
             }
         }
     }
@@ -441,7 +434,7 @@ impl ASMPILConverter {
         expr.into_iter().map(|(v, c)| (-v, c)).collect()
     }
 
-    fn create_constraints_for_assignment_reg(&mut self, register: &str) {
+    fn create_constraints_for_assignment_reg(&mut self, register: String) {
         let assign_const = format!("{register}_const");
         self.create_witness_fixed_pair(0, &assign_const);
         let read_free = format!("{register}_read_free");
@@ -453,11 +446,14 @@ impl ASMPILConverter {
             .map(|name| {
                 let read_coefficient = format!("read_{register}_{name}");
                 self.create_witness_fixed_pair(0, &read_coefficient);
-                build_mul(direct_reference(&read_coefficient), direct_reference(name))
+                build_mul(
+                    direct_reference(read_coefficient),
+                    direct_reference(name.clone()),
+                )
             })
             .chain([
-                direct_reference(&assign_const),
-                build_mul(direct_reference(&read_free), direct_reference(&free_value)),
+                direct_reference(assign_const),
+                build_mul(direct_reference(read_free), direct_reference(free_value)),
             ])
             .reduce(build_add);
         self.pil.push(Statement::PolynomialIdentity(
@@ -571,7 +567,7 @@ impl ASMPILConverter {
                 let free_value = format!("{reg}_free_value");
                 witness_column(
                     0,
-                    &free_value,
+                    free_value,
                     Some(FunctionDefinition::Query(
                         vec!["i".to_string()],
                         Expression::Tuple(free_value_queries[reg].clone()),
@@ -690,21 +686,25 @@ enum AffineExpressionComponent {
     FreeInput(Expression),
 }
 
-fn witness_column(start: usize, name: &str, def: Option<FunctionDefinition>) -> Statement {
+fn witness_column<S: Into<String>>(
+    start: usize,
+    name: S,
+    def: Option<FunctionDefinition>,
+) -> Statement {
     Statement::PolynomialCommitDeclaration(
         start,
         vec![PolynomialName {
-            name: name.to_string(),
+            name: name.into(),
             array_size: None,
         }],
         def,
     )
 }
 
-fn direct_reference(name: &str) -> Expression {
+fn direct_reference<S: Into<String>>(name: S) -> Expression {
     Expression::PolynomialReference(PolynomialReference {
         namespace: None,
-        name: name.to_owned(),
+        name: name.into(),
         index: None,
         next: false,
     })
@@ -764,7 +764,7 @@ fn extract_update(expr: Expression) -> (Option<String>, Expression) {
     }
 }
 
-fn substitute(input: &Expression, substitution: &HashMap<String, String>) -> Expression {
+fn substitute(input: Expression, substitution: &HashMap<String, String>) -> Expression {
     match input {
         // TODO namespace
         Expression::PolynomialReference(r) => {
@@ -774,38 +774,55 @@ fn substitute(input: &Expression, substitution: &HashMap<String, String>) -> Exp
             })
         }
         Expression::BinaryOperation(left, op, right) => build_binary_expr(
-            substitute(left, substitution),
-            *op,
-            substitute(right, substitution),
+            substitute(*left, substitution),
+            op,
+            substitute(*right, substitution),
         ),
-        Expression::UnaryOperation(op, exp) => build_unary_expr(*op, substitute(exp, substitution)),
+        Expression::UnaryOperation(op, exp) => build_unary_expr(op, substitute(*exp, substitution)),
         Expression::FunctionCall(name, args) => Expression::FunctionCall(
-            name.clone(),
-            args.iter().map(|e| substitute(e, substitution)).collect(),
+            name,
+            args.into_iter()
+                .map(|e| substitute(e, substitution))
+                .collect(),
         ),
-        Expression::Tuple(items) => {
-            Expression::Tuple(items.iter().map(|e| substitute(e, substitution)).collect())
-        }
+        Expression::Tuple(items) => Expression::Tuple(
+            items
+                .into_iter()
+                .map(|e| substitute(e, substitution))
+                .collect(),
+        ),
         Expression::Constant(_)
         | Expression::PublicReference(_)
         | Expression::Number(_)
         | Expression::String(_)
         | Expression::FreeInput(_) => input.clone(),
+        Expression::MatchExpression(scrutinee, arms) => Expression::MatchExpression(
+            Box::new(substitute(*scrutinee, substitution)),
+            arms.into_iter()
+                .map(|(n, e)| (n, substitute(e, substitution)))
+                .collect(),
+        ),
     }
 }
 
 fn substitute_selected_exprs(
-    input: &SelectedExpressions,
+    input: SelectedExpressions,
     substitution: &HashMap<String, String>,
 ) -> SelectedExpressions {
     SelectedExpressions {
-        selector: input.selector.as_ref().map(|s| substitute(s, substitution)),
-        expressions: substitute_vec(&input.expressions, substitution),
+        selector: input.selector.map(|s| substitute(s, substitution)),
+        expressions: substitute_vec(input.expressions, substitution),
     }
 }
 
-fn substitute_vec(input: &[Expression], substitution: &HashMap<String, String>) -> Vec<Expression> {
-    input.iter().map(|e| substitute(e, substitution)).collect()
+fn substitute_vec(
+    input: Vec<Expression>,
+    substitution: &HashMap<String, String>,
+) -> Vec<Expression> {
+    input
+        .into_iter()
+        .map(|e| substitute(e, substitution))
+        .collect()
 }
 
 fn substitute_string(input: &str, substitution: &HashMap<String, String>) -> String {

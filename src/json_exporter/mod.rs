@@ -270,6 +270,7 @@ impl<'a> Exporter<'a> {
                     BinaryOperator::Mod
                     | BinaryOperator::BinaryAnd
                     | BinaryOperator::BinaryOr
+                    | BinaryOperator::BinaryXor
                     | BinaryOperator::ShiftLeft
                     | BinaryOperator::ShiftRight => {
                         panic!("Operator {op:?} not supported on polynomials.")
@@ -305,6 +306,9 @@ impl<'a> Exporter<'a> {
             }
             Expression::String(_) => panic!("Strings not allowed here."),
             Expression::Tuple(_) => panic!("Tuples not allowed here"),
+            Expression::MatchExpression(_, _) => {
+                panic!("No match expressions allowed here.")
+            }
         }
     }
 

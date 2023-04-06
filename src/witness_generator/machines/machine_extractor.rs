@@ -141,6 +141,14 @@ impl<'a> ReferenceExtractor<'a> {
             Expression::BinaryOperation(l, _, r) => &self.in_expression(l) | &self.in_expression(r),
             Expression::UnaryOperation(_, e) => self.in_expression(e),
             Expression::FunctionCall(_, args) => self.in_expressions(args),
+            Expression::MatchExpression(scrutinee, arms) => {
+                &self.in_expression(scrutinee)
+                    | &arms
+                        .iter()
+                        .map(|(_, e)| self.in_expression(e))
+                        .reduce(|a, b| &a | &b)
+                        .unwrap_or_default()
+            }
             Expression::LocalVariableReference(_)
             | Expression::PublicReference(_)
             | Expression::Number(_)

@@ -47,6 +47,9 @@ impl<SV: SymbolicVariables> ExpressionEvaluator<SV> {
             Expression::FunctionCall(_, _) => {
                 Err("Function calls not implemented.".to_string().into())
             }
+            Expression::MatchExpression(_, _) => {
+                Err("Match expressions not implemented.".to_string().into())
+            }
         }
     }
 
@@ -112,6 +115,7 @@ impl<SV: SymbolicVariables> ExpressionEvaluator<SV> {
                 }
                 BinaryOperator::Mod
                 | BinaryOperator::BinaryAnd
+                | BinaryOperator::BinaryXor
                 | BinaryOperator::BinaryOr
                 | BinaryOperator::ShiftLeft
                 | BinaryOperator::ShiftRight => {
@@ -121,6 +125,7 @@ impl<SV: SymbolicVariables> ExpressionEvaluator<SV> {
                         let result = match op {
                             BinaryOperator::Mod => left % right,
                             BinaryOperator::BinaryAnd => left & right,
+                            BinaryOperator::BinaryXor => left ^ right,
                             BinaryOperator::BinaryOr => left | right,
                             BinaryOperator::ShiftLeft => left << abstract_to_degree(&right),
                             BinaryOperator::ShiftRight => left >> abstract_to_degree(&right),
