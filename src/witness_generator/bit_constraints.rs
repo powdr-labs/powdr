@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::{Display, Formatter};
 
 use crate::analyzer::{BinaryOperator, Expression, Identity, IdentityKind};
-use crate::number::{AbstractNumberType, GOLDILOCKS_MOD};
+use crate::number::{get_field_mod, AbstractNumberType};
 use crate::witness_generator::util::{contains_next_ref, WitnessColumnNamer};
 
 use super::expression_evaluator::ExpressionEvaluator;
@@ -52,7 +52,7 @@ impl BitConstraint {
     /// The bit constraint of an integer multiple of an expression.
     /// TODO this assumes goldilocks
     pub fn multiple(&self, factor: AbstractNumberType) -> Option<BitConstraint> {
-        if factor.clone() * self.mask.clone() >= GOLDILOCKS_MOD.into() {
+        if factor.clone() * self.mask.clone() >= get_field_mod() {
             None
         } else {
             // TODO use binary logarithm
