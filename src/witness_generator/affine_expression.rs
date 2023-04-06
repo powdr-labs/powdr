@@ -21,7 +21,7 @@ impl From<AbstractNumberType> for AffineExpression {
     fn from(value: AbstractNumberType) -> Self {
         AffineExpression {
             coefficients: Vec::new(),
-            offset: clamp(value),
+            offset: wrap(value),
         }
     }
 }
@@ -30,7 +30,7 @@ impl From<u32> for AffineExpression {
     fn from(value: u32) -> Self {
         AffineExpression {
             coefficients: Vec::new(),
-            offset: clamp(value.into()),
+            offset: wrap(value.into()),
         }
     }
 }
@@ -68,11 +68,11 @@ impl AffineExpression {
     }
 
     pub fn mul(mut self, factor: AbstractNumberType) -> AffineExpression {
-        let fac = clamp(factor);
+        let fac = wrap(factor);
         for f in &mut self.coefficients {
-            *f = clamp(f.clone() * fac.clone());
+            *f = wrap(f.clone() * fac.clone());
         }
-        self.offset = clamp(self.offset.clone() * fac);
+        self.offset = wrap(self.offset.clone() * fac);
         self
     }
 
@@ -89,13 +89,11 @@ impl AffineExpression {
                 Ok(vec![(
                     i,
                     Constraint::Assignment(if *c == 1.into() {
-                        clamp(-self.offset.clone())
+                        wrap(-self.offset.clone())
                     } else if *c == (-1).into() || *c == (get_field_mod() - 1u64) {
                         self.offset.clone()
                     } else {
-                        clamp(-clamp(
-                            self.offset.clone() * inv(c.clone(), get_field_mod()),
-                        ))
+                        wrap(-wrap(self.offset.clone() * inv(c.clone(), get_field_mod())))
                     }),
                 )])
             }
@@ -179,7 +177,7 @@ impl AffineExpression {
         }
         if *solve_for.1 == 1.into() {
             return (-self.clone()).try_transfer_constraints(known_constraints);
-        } else if *solve_for.1 != clamp((-1).into()) {
+        } else if *solve_for.1 != wrap((-1).into()) {
             // We could try to divide by this in the future.
             return None;
         }
@@ -231,7 +229,7 @@ impl AffineExpression {
         // Check if they are mutually exclusive and compute assignments.
         let mut covered_bits: AbstractNumberType = 0.into();
         let mut assignments = vec![];
-        let mut offset = clamp(-self.offset.clone());
+        let mut offset = wrap(-self.offset.clone());
         for (i, coeff, constraint) in parts {
             let constraint = constraint.clone().unwrap();
             let mask = constraint.mask();
@@ -261,7 +259,7 @@ impl AffineExpression {
                 let name = namer.name(i);
                 if *c == 1.into() {
                     name
-                } else if *c == clamp((-1).into()) {
+                } else if *c == wrap((-1).into()) {
                     format!("-{name}")
                 } else {
                     format!("{} * {name}", format_number(c))
@@ -273,7 +271,7 @@ impl AffineExpression {
     }
 }
 
-fn clamp(mut x: AbstractNumberType) -> AbstractNumberType {
+fn wrap(mut x: AbstractNumberType) -> AbstractNumberType {
     while x < 0.into() {
         x += get_field_mod()
     }
@@ -319,11 +317,11 @@ impl std::ops::Add for AffineExpression {
             coefficients.resize(self.coefficients.len(), 0.into());
         }
         for (i, v) in self.coefficients.iter().enumerate() {
-            coefficients[i] = clamp(coefficients[i].clone() + v);
+            coefficients[i] = wrap(coefficients[i].clone() + v);
         }
         AffineExpression {
             coefficients,
-            offset: clamp(self.offset + rhs.offset),
+            offset: wrap(self.offset + rhs.offset),
         }
     }
 }
@@ -334,8 +332,8 @@ impl std::ops::Neg for AffineExpression {
     fn neg(mut self) -> Self::Output {
         self.coefficients
             .iter_mut()
-            .for_each(|v| *v = clamp(-v.clone()));
-        self.offset = clamp(-self.offset);
+            .for_each(|v| *v = wrap(-v.clone()));
+        self.offset = wrap(-self.offset);
         self
     }
 }
