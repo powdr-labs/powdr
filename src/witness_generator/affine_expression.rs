@@ -1,7 +1,7 @@
 use std::ops::Not;
 
 // TODO this should probably rather be a finite field element.
-use crate::number::{format_number, is_zero, AbstractNumberType, GOLDILOCKS_MOD};
+use crate::number::{format_number, get_field_mod, is_zero, AbstractNumberType};
 
 use super::bit_constraints::BitConstraintSet;
 use super::eval_error::EvalError::ConflictingBitConstraints;
@@ -90,11 +90,11 @@ impl AffineExpression {
                     i,
                     Constraint::Assignment(if *c == 1.into() {
                         clamp(-self.offset.clone())
-                    } else if *c == (-1).into() || *c == (GOLDILOCKS_MOD - 1).into() {
+                    } else if *c == (-1).into() || *c == (get_field_mod() - 1u64) {
                         self.offset.clone()
                     } else {
                         clamp(-clamp(
-                            self.offset.clone() * inv(c.clone(), GOLDILOCKS_MOD.into()),
+                            self.offset.clone() * inv(c.clone(), get_field_mod()),
                         ))
                     }),
                 )])
@@ -275,9 +275,9 @@ impl AffineExpression {
 
 fn clamp(mut x: AbstractNumberType) -> AbstractNumberType {
     while x < 0.into() {
-        x += GOLDILOCKS_MOD
+        x += get_field_mod()
     }
-    x % GOLDILOCKS_MOD
+    x % get_field_mod()
 }
 
 fn pow(
@@ -354,11 +354,9 @@ mod test {
 
     use super::*;
     use crate::{
-        number::AbstractNumberType,
+        number::{get_goldilocks_mod, AbstractNumberType},
         witness_generator::{bit_constraints::BitConstraint, eval_error::EvalError},
     };
-
-    use super::{AffineExpression, GOLDILOCKS_MOD};
 
     fn convert(input: Vec<i32>) -> Vec<AbstractNumberType> {
         input.into_iter().map(|x| x.into()).collect()
@@ -374,11 +372,11 @@ mod test {
             -a,
             AffineExpression {
                 coefficients: vec![
-                    (GOLDILOCKS_MOD - 1).into(),
+                    (get_field_mod() - 1u64).into(),
                     0.into(),
-                    (GOLDILOCKS_MOD - 2).into()
+                    (get_field_mod() - 2u64).into()
                 ],
-                offset: (GOLDILOCKS_MOD - 9).into(),
+                offset: (get_field_mod() - 9u64).into(),
             },
         );
     }
@@ -405,19 +403,31 @@ mod test {
 
     #[test]
     pub fn mod_arith() {
-        assert_eq!(pow(7.into(), 0.into(), GOLDILOCKS_MOD.into()), 1.into());
-        assert_eq!(pow(7.into(), 1.into(), GOLDILOCKS_MOD.into()), 7.into());
         assert_eq!(
-            pow(7.into(), 2.into(), GOLDILOCKS_MOD.into()),
-            (7 * 7).into()
+            pow(7.into(), 0.into(), get_goldilocks_mod().into()),
+            1.into()
         );
-        assert_eq!(inv(1.into(), GOLDILOCKS_MOD.into()), 1.into());
-        let inverse_of_four = 13835058052060938241u64;
-        assert_eq!(inv(4.into(), GOLDILOCKS_MOD.into()), inverse_of_four.into());
         assert_eq!(
-            (4u128 * inverse_of_four as u128) % GOLDILOCKS_MOD as u128,
-            1
+            pow(7.into(), 1.into(), get_goldilocks_mod().into()),
+            7.into()
         );
+        assert_eq!(pow(7.into(), 0.into(), get_field_mod()), 1.into());
+        assert_eq!(pow(7.into(), 1.into(), get_field_mod()), 7.into());
+        assert_eq!(pow(7.into(), 2.into(), get_field_mod()), (7 * 7).into());
+        assert_eq!(inv(1.into(), get_field_mod().into()), 1.into());
+
+        if get_field_mod() == get_goldilocks_mod() {
+            let inverse_of_four = 13835058052060938241u64;
+            assert_eq!(
+                inv(4.into(), get_field_mod().into()),
+                inverse_of_four.into()
+            );
+            assert_eq!(
+                (4u128 * inverse_of_four as u128)
+                    % (get_field_mod().iter_u64_digits().next().unwrap() as u128),
+                1
+            );
+        }
     }
 
     struct TestBitConstraints(BTreeMap<usize, BitConstraint>);
