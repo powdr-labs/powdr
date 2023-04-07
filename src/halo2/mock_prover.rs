@@ -12,11 +12,12 @@ use halo2_proofs::{dev::MockProver, halo2curves::bn256::Fr};
 // Follow dependency installation instructions from https://github.com/ed255/polyexen-demo
 
 pub fn mock_prove_asm(file_name: &str, inputs: &[AbstractNumberType], verbose: bool) {
-    
-    // set field to BN254
-    crate::number::set_field_mod(polyexen::expr::get_field_p::<Fr>().to_bigint().unwrap());
-    let original_field_mod = crate::number::get_field_mod();
+    let p = polyexen::expr::get_field_p::<Fr>().to_bigint().unwrap();
+    crate::number::with_field_mod(p, || do_mock_prove_asm(file_name, inputs, verbose));
+}
 
+pub fn do_mock_prove_asm(file_name: &str, inputs: &[AbstractNumberType], verbose: bool) {
+    
     // read and compile PIL.
 
     let contents = fs::read_to_string(file_name).unwrap();
@@ -96,9 +97,6 @@ pub fn mock_prove_asm(file_name: &str, inputs: &[AbstractNumberType], verbose: b
 */
 
     let mock_prover = MockProver::<Fr>::run(k, &circuit, vec![]).unwrap();
-
-    // set field back to original value
-    crate::number::set_field_mod(original_field_mod);
 
     mock_prover.assert_satisfied();
 }

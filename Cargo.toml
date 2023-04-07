@@ -19,6 +19,7 @@ prettytable = "0.10.0"
 num-traits = "0.2.15"
 num-integer = "0.1.45"
 regex = "^1.7.0"
+parking_lot = "0.12"
 
 [build-dependencies]
 lalrpop = "^0.19"
