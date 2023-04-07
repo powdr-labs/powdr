@@ -371,12 +371,8 @@ mod test {
         assert_eq!(
             -a,
             AffineExpression {
-                coefficients: vec![
-                    (get_field_mod() - 1u64).into(),
-                    0.into(),
-                    (get_field_mod() - 2u64).into()
-                ],
-                offset: (get_field_mod() - 9u64).into(),
+                coefficients: vec![get_field_mod() - 1u64, 0.into(), get_field_mod() - 2u64,],
+                offset: get_field_mod() - 9u64,
             },
         );
     }
@@ -403,25 +399,16 @@ mod test {
 
     #[test]
     pub fn mod_arith() {
-        assert_eq!(
-            pow(7.into(), 0.into(), get_goldilocks_mod().into()),
-            1.into()
-        );
-        assert_eq!(
-            pow(7.into(), 1.into(), get_goldilocks_mod().into()),
-            7.into()
-        );
+        assert_eq!(pow(7.into(), 0.into(), get_goldilocks_mod()), 1.into());
+        assert_eq!(pow(7.into(), 1.into(), get_goldilocks_mod()), 7.into());
         assert_eq!(pow(7.into(), 0.into(), get_field_mod()), 1.into());
         assert_eq!(pow(7.into(), 1.into(), get_field_mod()), 7.into());
         assert_eq!(pow(7.into(), 2.into(), get_field_mod()), (7 * 7).into());
-        assert_eq!(inv(1.into(), get_field_mod().into()), 1.into());
+        assert_eq!(inv(1.into(), get_field_mod()), 1.into());
 
         if get_field_mod() == get_goldilocks_mod() {
             let inverse_of_four = 13835058052060938241u64;
-            assert_eq!(
-                inv(4.into(), get_field_mod().into()),
-                inverse_of_four.into()
-            );
+            assert_eq!(inv(4.into(), get_field_mod()), inverse_of_four.into());
             assert_eq!(
                 (4u128 * inverse_of_four as u128)
                     % (get_field_mod().iter_u64_digits().next().unwrap() as u128),
