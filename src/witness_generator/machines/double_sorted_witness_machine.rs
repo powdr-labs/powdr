@@ -3,7 +3,7 @@ use std::iter::once;
 
 use itertools::{Either, Itertools};
 
-use super::Machine;
+use super::{FixedLookup, Machine};
 use crate::analyzer::PolynomialReference;
 use crate::analyzer::{Expression, Identity, IdentityKind, SelectedExpressions};
 use crate::number::AbstractNumberType;
@@ -65,6 +65,7 @@ impl Machine for DoubleSortedWitnesses {
     fn process_plookup(
         &mut self,
         fixed_data: &FixedData,
+        _fixed_lookup: &mut FixedLookup,
         kind: IdentityKind,
         left: &[Result<AffineExpression, EvalError>],
         right: &SelectedExpressions,

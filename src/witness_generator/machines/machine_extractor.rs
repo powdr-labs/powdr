@@ -15,10 +15,10 @@ pub fn split_out_machines<'a>(
     fixed: &'a FixedData<'a>,
     identities: &'a [Identity],
     witness_cols: &'a [WitnessColumn],
-) -> (Vec<Box<dyn Machine>>, Vec<&'a Identity>) {
-    // The lookup-in-fixed-columns machine, it always exists with an empty set of witnesses.
-    let mut machines: Vec<Box<dyn Machine>> =
-        vec![FixedLookup::try_new(fixed, &[], &Default::default()).unwrap()];
+) -> (FixedLookup, Vec<Box<dyn Machine>>, Vec<&'a Identity>) {
+    let fixed_lookup = FixedLookup::try_new(fixed, &[], &Default::default()).unwrap();
+
+    let mut machines: Vec<Box<dyn Machine>> = vec![];
 
     let all_witnesses = witness_cols.iter().map(|c| c.name).collect::<HashSet<_>>();
     let mut remaining_witnesses = all_witnesses.clone();
@@ -91,7 +91,7 @@ pub fn split_out_machines<'a>(
             println!("Will try to continue as is, but this probably requires a specialized machine implementation.");
         }
     }
-    (machines, base_identities)
+    (*fixed_lookup, machines, base_identities)
 }
 
 /// Extends a set of witnesses to the full set of row-connected witnesses.

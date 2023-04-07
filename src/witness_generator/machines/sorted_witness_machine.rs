@@ -3,6 +3,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use itertools::{Either, Itertools};
 
 use super::super::affine_expression::AffineExpression;
+use super::fixed_lookup_machine::FixedLookup;
 use super::Machine;
 use super::{EvalResult, FixedData};
 use crate::analyzer::{Expression, Identity, IdentityKind, SelectedExpressions};
@@ -126,6 +127,7 @@ impl Machine for SortedWitnesses {
     fn process_plookup(
         &mut self,
         fixed_data: &FixedData,
+        _fixed_lookup: &mut FixedLookup,
         kind: IdentityKind,
         left: &[Result<AffineExpression, EvalError>],
         right: &SelectedExpressions,
