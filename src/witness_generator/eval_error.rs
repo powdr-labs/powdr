@@ -6,6 +6,8 @@ pub enum EvalError {
     PreviousValueUnknown(String),
     /// Conflicting bit-constraints in an equation, i.e. for X = 0x100, where X is known to be at most 0xff.
     ConflictingBitConstraints,
+    /// A constraint that cannot be satisfied (i.e. 2 = 1).
+    ConstraintUnsatisfiable(String),
     Generic(String),
     Multiple(Vec<EvalError>),
 }
@@ -36,6 +38,9 @@ impl Display for EvalError {
                 f,
                 "Previous value of the following column(s) is not (yet) known: {names}.",
             ),
+            EvalError::ConstraintUnsatisfiable(e) => {
+                write!(f, "Linear constraint is not satisfiable: {e}",)
+            }
             EvalError::ConflictingBitConstraints => {
                 write!(f, "Bit constraints in the expression are conflicting or do not match the constant / offset.",)
             }

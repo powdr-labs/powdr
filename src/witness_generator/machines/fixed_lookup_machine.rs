@@ -1,10 +1,10 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 use num_bigint::BigInt;
 
 use super::Machine;
 use crate::analyzer::{Identity, IdentityKind, SelectedExpressions};
-use crate::number::AbstractNumberType;
+use crate::number::{AbstractNumberType, DegreeType};
 
 use crate::witness_generator::util::is_simple_poly;
 use crate::witness_generator::{
@@ -14,9 +14,74 @@ use crate::witness_generator::{
     EvalResult, FixedData,
 };
 
+/// Indices for sets of fixed columns. For each set `COLUMNS`, stores `(V, rows)` iff every `row` in `rows` satisfies `COLUMNS[row] == V`
+#[derive(Default)]
+pub struct IndexedColumns {
+    indices: HashMap<Vec<String>, BTreeMap<Vec<AbstractNumberType>, Vec<DegreeType>>>,
+}
+
+impl IndexedColumns {
+    /// get the rows at which the assignment is satisfied
+    /// Warning: in particular, an empty assignment will return all rows
+    fn get_matches(
+        &mut self,
+        fixed_data: &FixedData,
+        mut assignment: Vec<(String, AbstractNumberType)>,
+    ) -> Option<&Vec<DegreeType>> {
+        // sort in order to have a single index for [X, Y] and for [Y, X]
+        assignment.sort_by(|(name0, _), (name1, _)| name0.cmp(name1));
+        let (input_fixed_columns, values): (Vec<_>, Vec<_>) = assignment.into_iter().unzip();
+
+        self.ensure_index(fixed_data, &input_fixed_columns);
+
+        // get the rows at which the input matches
+        self.indices
+            .get(&input_fixed_columns)
+            .as_ref()
+            .unwrap()
+            .get(&values)
+    }
+
+    /// Create an index for a set of columns to be queried, if does not exist already
+    /// `input_fixed_columns` is assumed to be sorted
+    fn ensure_index(&mut self, fixed_data: &FixedData, sorted_input_fixed_columns: &Vec<String>) {
+        // we do not use the Entry API here because we want to clone `sorted_input_fixed_columns` only on index creation
+        if self.indices.get(sorted_input_fixed_columns).is_some() {
+            return;
+        }
+
+        // create index for this lookup
+
+        // get all values for the columns to be indexed
+        let column_values = sorted_input_fixed_columns
+            .iter()
+            .map(|name| fixed_data.fixed_cols.get(name.as_str()).unwrap())
+            .collect::<Vec<_>>();
+
+        let index: BTreeMap<Vec<BigInt>, Vec<u64>> =
+            (0..fixed_data.degree as usize).fold(BTreeMap::default(), |mut acc, row| {
+                acc.entry(
+                    column_values
+                        .iter()
+                        .map(|column| column[row].clone())
+                        .collect(),
+                )
+                .or_default()
+                .push(row as u64);
+
+                acc
+            });
+
+        self.indices
+            .insert(sorted_input_fixed_columns.clone(), index);
+    }
+}
+
 /// Machine to perform a lookup in fixed columns only.
-/// It only supports lookup in the first column of the query and will use the first match.
-pub struct FixedLookup {}
+#[derive(Default)]
+pub struct FixedLookup {
+    indices: IndexedColumns,
+}
 
 impl FixedLookup {
     pub fn try_new(
@@ -25,7 +90,7 @@ impl FixedLookup {
         witness_names: &HashSet<&str>,
     ) -> Option<Box<Self>> {
         if identities.is_empty() && witness_names.is_empty() {
-            Some(Box::new(FixedLookup {}))
+            Some(Box::default())
         } else {
             None
         }
@@ -55,9 +120,7 @@ impl Machine for FixedLookup {
         let right = right
             .expressions
             .iter()
-            .map(|right_key| {
-                is_simple_poly(right_key).and_then(|name| fixed_data.fixed_cols.get(name))
-            })
+            .map(|right_key| is_simple_poly(right_key).map(From::from))
             .collect::<Option<_>>()?;
 
         // If we already know the LHS, skip it.
@@ -84,32 +147,53 @@ impl FixedLookup {
         &mut self,
         fixed_data: &FixedData,
         left: &[Result<AffineExpression, EvalError>],
-        right: Vec<&&Vec<BigInt>>,
+        right: Vec<String>,
     ) -> EvalResult {
-        let mut matches = (0..fixed_data.degree as usize)
-            // get all lookup rows which match the lhs
-            .filter_map(|row| {
-                left.iter()
-                    .zip(right.iter())
-                    .map(|(left, right)| {
-                        let right = &right[row];
-                        match left {
-                            Ok(left) => left
-                                .constant_value()
-                                // if the lhs is constant, it's a match iff the values match
-                                .map(|left| (left == *right).then_some(right))
-                                // if it's not constant, it's a match
-                                .unwrap_or_else(|| Some(right)),
-                            // if we do not know the lhs, it's a match
-                            Err(_) => Some(right),
-                        }
-                    })
-                    .collect::<Option<Vec<_>>>()
-            })
-            // deduplicate values
-            .collect::<HashSet<_>>();
+        // split the fixed columns depending on whether their associated lookup variable is constant or not. Preserve the value of the constant arguments.
+        // {1, 2, x} in {A, B, C} -> [[(A, 1), (B, 2)], [C, x]]
 
-        let right_values = match matches.len() {
+        let mut input_assignment = vec![];
+        let mut output_assignment = vec![];
+
+        left.iter().zip(right).for_each(|(l, r)| {
+            match l
+                .as_ref()
+                .ok()
+                .and_then(|l| l.constant_value())
+                .map(|v| (r.clone(), v))
+                .ok_or((r, l))
+            {
+                Ok(assignment) => {
+                    input_assignment.push(assignment);
+                }
+                Err(assignment) => {
+                    output_assignment.push(assignment);
+                }
+            }
+        });
+
+        let rows = self.indices.get_matches(fixed_data, input_assignment);
+
+        // get the output values at these rows, deduplicated
+        let mut matches = rows
+            .into_iter()
+            .flatten()
+            .map(|row| {
+                output_assignment
+                    .iter()
+                    .map(|(column, _)| {
+                        fixed_data
+                            .fixed_cols
+                            .get(&column.as_ref())
+                            .as_ref()
+                            .unwrap()[*row as usize]
+                            .clone()
+                    })
+                    .collect()
+            })
+            .collect::<HashSet<Vec<_>>>();
+
+        let output = match matches.len() {
             // no match, we error out
             0 => {
                 return Err(EvalError::Generic("Plookup is not satisfied".to_string()));
@@ -122,27 +206,27 @@ impl FixedLookup {
 
         let mut reasons = vec![];
         let mut result = vec![];
-        for (l, r) in left.iter().zip(right_values) {
+        for (l, r) in output_assignment.iter().map(|(_, l)| l).zip(output) {
             match l {
                 Ok(l) => {
                     let evaluated = l.clone() - r.clone().into();
                     // TODO we could use bit constraints here
                     match evaluated.solve() {
                         Ok(constraints) => result.extend(constraints),
-                        Err(_) => {
-                            let formatted = l.format(fixed_data);
-                            if evaluated.is_invalid() {
-                                // Fail the whole lookup
-                                return Err(
-                                    format!("Constraint is invalid ({formatted} != {r}).",).into(),
-                                );
-                            } else {
-                                reasons.push(
-                                    format!("Could not solve expression {formatted} = {r}.",)
-                                        .into(),
-                                )
-                            }
+                        Err(EvalError::ConstraintUnsatisfiable(_)) => {
+                            // Fail the whole lookup
+                            return Err(EvalError::ConstraintUnsatisfiable(format!(
+                                "Constraint is invalid ({} != {r}).",
+                                l.format(fixed_data)
+                            )));
                         }
+                        Err(err) => reasons.push(
+                            format!(
+                                "Could not solve expression {} = {r}: {err}",
+                                l.format(fixed_data)
+                            )
+                            .into(),
+                        ),
                     }
                 }
                 Err(err) => {

@@ -1,3 +1,5 @@
+use std::iter::once;
+
 use crate::analyzer::{Expression, PolynomialReference};
 
 use super::FixedData;
@@ -62,6 +64,9 @@ pub fn expr_any(expr: &Expression, f: &mut impl FnMut(&Expression) -> bool) -> b
             Expression::BinaryOperation(l, _, r) => expr_any(l, f) || expr_any(r, f),
             Expression::UnaryOperation(_, e) => expr_any(e, f),
             Expression::FunctionCall(_, args) => args.iter().any(|e| expr_any(e, f)),
+            Expression::MatchExpression(scrutinee, arms) => once(scrutinee.as_ref())
+                .chain(arms.iter().map(|(_n, e)| e))
+                .any(|e| expr_any(e, f)),
             Expression::Constant(_)
             | Expression::PolynomialReference(_)
             | Expression::LocalVariableReference(_)

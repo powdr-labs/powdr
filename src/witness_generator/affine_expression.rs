@@ -1,10 +1,11 @@
 use std::ops::Not;
 
 // TODO this should probably rather be a finite field element.
-use crate::number::{format_number, is_zero, AbstractNumberType, get_field_mod};
+use crate::number::{format_number, get_field_mod, is_zero, AbstractNumberType};
 
 use super::bit_constraints::BitConstraintSet;
 use super::eval_error::EvalError::ConflictingBitConstraints;
+use super::eval_error::EvalError::ConstraintUnsatisfiable;
 use super::util::WitnessColumnNamer;
 use super::Constraint;
 use super::EvalResult;
@@ -20,7 +21,7 @@ impl From<AbstractNumberType> for AffineExpression {
     fn from(value: AbstractNumberType) -> Self {
         AffineExpression {
             coefficients: Vec::new(),
-            offset: clamp(value),
+            offset: wrap(value),
         }
     }
 }
@@ -29,7 +30,7 @@ impl From<u32> for AffineExpression {
     fn from(value: u32) -> Self {
         AffineExpression {
             coefficients: Vec::new(),
-            offset: clamp(value.into()),
+            offset: wrap(value.into()),
         }
     }
 }
@@ -67,11 +68,11 @@ impl AffineExpression {
     }
 
     pub fn mul(mut self, factor: AbstractNumberType) -> AffineExpression {
-        let fac = clamp(factor);
+        let fac = wrap(factor);
         for f in &mut self.coefficients {
-            *f = clamp(f.clone() * fac.clone());
+            *f = wrap(f.clone() * fac.clone());
         }
-        self.offset = clamp(self.offset.clone() * fac);
+        self.offset = wrap(self.offset.clone() * fac);
         self
     }
 
@@ -80,28 +81,34 @@ impl AffineExpression {
     /// affine expression to zero.
     pub fn solve(&self) -> EvalResult {
         let mut nonzero = self.nonzero_coefficients();
-        nonzero
-            .next()
-            .and_then(|(i, c)| {
-                if nonzero.next().is_none() {
-                    // c * a + o = 0 <=> a = -o/c
-                    Some(vec![(
-                        i,
-                        Constraint::Assignment(if *c == 1.into() {
-                            clamp(-self.offset.clone())
-                        } else if *c == (-1).into() || *c == (get_field_mod() - 1u64).into() {
-                            self.offset.clone()
-                        } else {
-                            clamp(-clamp(
-                                self.offset.clone() * inv(c.clone(), get_field_mod().into()),
-                            ))
-                        }),
-                    )])
+        let first = nonzero.next();
+        let second = nonzero.next();
+        match (first, second) {
+            (Some((i, c)), None) => {
+                // c * a + o = 0 <=> a = -o/c
+                Ok(vec![(
+                    i,
+                    Constraint::Assignment(if *c == 1.into() {
+                        wrap(-self.offset.clone())
+                    } else if *c == (-1).into() || *c == (get_field_mod() - 1u64) {
+                        self.offset.clone()
+                    } else {
+                        wrap(-wrap(self.offset.clone() * inv(c.clone(), get_field_mod())))
+                    }),
+                )])
+            }
+            (Some(_), Some(_)) => Err("Too many variables in linear constraint."
+                .to_string()
+                .into()),
+            (None, None) => {
+                if self.offset == 0.into() {
+                    Ok(vec![])
                 } else {
-                    None
+                    Err(ConstraintUnsatisfiable(String::new()))
                 }
-            })
-            .ok_or_else(|| "Cannot solve affine expression.".to_string().into())
+            }
+            (None, Some(_)) => panic!(),
+        }
     }
 
     /// Tries to solve "self = 0", or at least propagate a bit constraint:
@@ -114,8 +121,10 @@ impl AffineExpression {
         known_constraints: &impl BitConstraintSet,
     ) -> EvalResult {
         // Try to solve directly.
-        if let Ok(result) = self.solve() {
-            return Ok(result);
+        match self.solve() {
+            Ok(result) => return Ok(result),
+            Err(ConstraintUnsatisfiable(e)) => return Err(ConstraintUnsatisfiable(e)),
+            Err(_) => {}
         }
         let new_constraints: Option<_> = if self
             .nonzero_coefficients()
@@ -168,7 +177,7 @@ impl AffineExpression {
         }
         if *solve_for.1 == 1.into() {
             return (-self.clone()).try_transfer_constraints(known_constraints);
-        } else if *solve_for.1 != clamp((-1).into()) {
+        } else if *solve_for.1 != wrap((-1).into()) {
             // We could try to divide by this in the future.
             return None;
         }
@@ -220,7 +229,7 @@ impl AffineExpression {
         // Check if they are mutually exclusive and compute assignments.
         let mut covered_bits: AbstractNumberType = 0.into();
         let mut assignments = vec![];
-        let mut offset = clamp(-self.offset.clone());
+        let mut offset = wrap(-self.offset.clone());
         for (i, coeff, constraint) in parts {
             let constraint = constraint.clone().unwrap();
             let mask = constraint.mask();
@@ -244,19 +253,13 @@ impl AffineExpression {
         }
     }
 
-    /// Returns true if it can be determined that this expression can never be zero.
-    pub fn is_invalid(&self) -> bool {
-        // TODO add constraint validity.
-        self.constant_value().map(|v| v != 0.into()) == Some(true)
-    }
-
     pub fn format(&self, namer: &impl WitnessColumnNamer) -> String {
         self.nonzero_coefficients()
             .map(|(i, c)| {
                 let name = namer.name(i);
                 if *c == 1.into() {
                     name
-                } else if *c == clamp((-1).into()) {
+                } else if *c == wrap((-1).into()) {
                     format!("-{name}")
                 } else {
                     format!("{} * {name}", format_number(c))
@@ -268,7 +271,7 @@ impl AffineExpression {
     }
 }
 
-fn clamp(mut x: AbstractNumberType) -> AbstractNumberType {
+fn wrap(mut x: AbstractNumberType) -> AbstractNumberType {
     while x < 0.into() {
         x += get_field_mod()
     }
@@ -315,11 +318,11 @@ impl std::ops::Add for AffineExpression {
             coefficients.resize(self.coefficients.len(), 0.into());
         }
         for (i, v) in self.coefficients.iter().enumerate() {
-            coefficients[i] = clamp(coefficients[i].clone() + v);
+            coefficients[i] = wrap(coefficients[i].clone() + v);
         }
         AffineExpression {
             coefficients,
-            offset: clamp(self.offset + rhs.offset),
+            offset: wrap(self.offset + rhs.offset),
         }
     }
 }
@@ -330,8 +333,8 @@ impl std::ops::Neg for AffineExpression {
     fn neg(mut self) -> Self::Output {
         self.coefficients
             .iter_mut()
-            .for_each(|v| *v = clamp(-v.clone()));
-        self.offset = clamp(-self.offset);
+            .for_each(|v| *v = wrap(-v.clone()));
+        self.offset = wrap(-self.offset);
         self
     }
 }
@@ -350,12 +353,9 @@ mod test {
 
     use super::*;
     use crate::{
-        number::AbstractNumberType,
+        number::{get_goldilocks_mod, AbstractNumberType},
         witness_generator::{bit_constraints::BitConstraint, eval_error::EvalError},
     };
-
-    use super::{AffineExpression, get_field_mod};
-    use crate::number::get_goldilocks_mod;
 
     fn convert(input: Vec<i32>) -> Vec<AbstractNumberType> {
         input.into_iter().map(|x| x.into()).collect()
@@ -403,26 +403,27 @@ mod test {
     #[test]
     pub fn mod_arith() {
         assert_eq!(
-            pow(7.into(), 0.into(), get_field_mod()),
+            pow(7.into(), 0.into(), get_goldilocks_mod().into()),
             1.into()
         );
         assert_eq!(
-            pow(7.into(), 1.into(), get_field_mod()),
+            pow(7.into(), 1.into(), get_goldilocks_mod().into()),
             7.into()
         );
-        assert_eq!(
-            pow(7.into(), 2.into(), get_field_mod()),
-            (7 * 7).into()
-        );
-        println!("field_mod {}", get_field_mod());
-        assert_eq!(inv(1.into(), get_field_mod()), 1.into());
-        
+        assert_eq!(pow(7.into(), 0.into(), get_field_mod()), 1.into());
+        assert_eq!(pow(7.into(), 1.into(), get_field_mod()), 7.into());
+        assert_eq!(pow(7.into(), 2.into(), get_field_mod()), (7 * 7).into());
+        assert_eq!(inv(1.into(), get_field_mod().into()), 1.into());
+
         if get_field_mod() == get_goldilocks_mod() {
             let inverse_of_four = 13835058052060938241u64;
-            assert_eq!(inv(4.into(), (get_field_mod()).into()), inverse_of_four.into());
-
             assert_eq!(
-                (4u128 * inverse_of_four as u128) % (get_field_mod().iter_u64_digits().next().unwrap() as u128),
+                inv(4.into(), get_field_mod().into()),
+                inverse_of_four.into()
+            );
+            assert_eq!(
+                (4u128 * inverse_of_four as u128)
+                    % (get_field_mod().iter_u64_digits().next().unwrap() as u128),
                 1
             );
         }

@@ -1,5 +1,5 @@
-use std::sync::Mutex;
 use num_bigint::{BigInt, Sign};
+use std::sync::Mutex;
 
 /// The abstract type of numbers to be computed with.
 /// They have arbitrary precision, but need to be converted
@@ -39,8 +39,8 @@ pub fn set_field_mod(n: BigInt) {
 }
 
 pub fn format_number(x: &AbstractNumberType) -> String {
-    if *x > (get_field_mod() / BigInt::from(2)).into() {
-        format!("-{}", get_field_mod()  - x)
+    if *x > (get_field_mod() / BigInt::from(2)) {
+        format!("-{}", get_field_mod() - x)
     } else {
         format!("{x}")
     }

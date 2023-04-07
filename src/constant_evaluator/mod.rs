@@ -91,6 +91,13 @@ impl<'a> Evaluator<'a> {
                 let values = &self.other_constants[name.as_str()];
                 values[abstract_to_degree(&arg_values[0]) as usize % values.len()].clone()
             }
+            Expression::MatchExpression(scrutinee, arms) => {
+                let v = self.evaluate(scrutinee);
+                arms.iter()
+                    .find(|(n, _)| n.is_none() || n.as_ref() == Some(&v))
+                    .map(|(_, e)| self.evaluate(e))
+                    .expect("No arm matched the value {v}")
+            }
         }
     }
 
@@ -116,6 +123,7 @@ impl<'a> Evaluator<'a> {
             BinaryOperator::Pow => left.pow(abstract_to_degree(&right) as u32),
             BinaryOperator::Mod => left % right,
             BinaryOperator::BinaryAnd => left & right,
+            BinaryOperator::BinaryXor => left ^ right,
             BinaryOperator::BinaryOr => left | right,
             BinaryOperator::ShiftLeft => left << abstract_to_degree(&right),
             BinaryOperator::ShiftRight => left >> abstract_to_degree(&right),
@@ -174,6 +182,43 @@ mod test {
         assert_eq!(
             constants,
             vec![("F.EVEN", convert(vec![-2, 0, 2, 4, 6, 8, 10, 12]))]
+        );
+    }
+
+    #[test]
+    pub fn test_xor() {
+        let src = r#"
+            constant %N = 8;
+            namespace F(%N);
+            pol constant X(i) { i ^ (i + 17) | 3 };
+        "#;
+        let analyzed = analyze_string(src);
+        let (constants, degree) = generate(&analyzed);
+        assert_eq!(degree, 8);
+        assert_eq!(
+            constants,
+            vec![("F.X", convert((0..8).map(|i| i ^ (i + 17) | 3).collect()))]
+        );
+    }
+
+    #[test]
+    pub fn test_match() {
+        let src = r#"
+            constant %N = 8;
+            namespace F(%N);
+            pol constant X(i) { match i {
+                0 => 7,
+                3 => 9,
+                5 => 2,
+                _ => 4,
+            } + 1 };
+        "#;
+        let analyzed = analyze_string(src);
+        let (constants, degree) = generate(&analyzed);
+        assert_eq!(degree, 8);
+        assert_eq!(
+            constants,
+            vec![("F.X", convert(vec![8, 5, 5, 10, 5, 3, 5, 5]))]
         );
     }
 

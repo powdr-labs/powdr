@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::{Display, Formatter};
 
 use crate::analyzer::{BinaryOperator, Expression, Identity, IdentityKind};
-use crate::number::{AbstractNumberType, get_field_mod};
+use crate::number::{get_field_mod, AbstractNumberType};
 use crate::witness_generator::util::{contains_next_ref, WitnessColumnNamer};
 
 use super::expression_evaluator::ExpressionEvaluator;
@@ -430,14 +430,14 @@ namespace Global(2**20);
                 WitnessColumn::new(i, &poly.absolute_name, value)
             })
             .collect();
-        let fixed_data = FixedData {
+        let fixed_data = FixedData::new(
             degree,
-            constants: &analyzed.constants,
-            fixed_cols: constants.iter().map(|(n, v)| (*n, v)).collect(),
-            witness_cols: &witness_cols,
-            witness_ids: witness_cols.iter().map(|w| (w.name, w.id)).collect(),
-            verbose: false,
-        };
+            &analyzed.constants,
+            constants.iter().map(|(n, v)| (*n, v)).collect(),
+            &witness_cols,
+            witness_cols.iter().map(|w| (w.name, w.id)).collect(),
+            false,
+        );
         for identity in &analyzed.identities {
             (known_constraints, _) = propagate_constraints(
                 &fixed_data,

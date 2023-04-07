@@ -47,6 +47,19 @@ impl Display for Expression {
             Expression::UnaryOperation(op, exp) => write!(f, "{op}{exp}"),
             Expression::FunctionCall(fun, args) => write!(f, "{fun}({})", format_expressions(args)),
             Expression::LocalVariableReference(index) => write!(f, "${index}"),
+            Expression::MatchExpression(scrutinee, arms) => write!(
+                f,
+                "match {scrutinee} {{ {} }}",
+                arms.iter()
+                    .map(|(n, e)| format!(
+                        "{} => {e},",
+                        n.as_ref()
+                            .map(|n| n.to_string())
+                            .unwrap_or_else(|| "_".to_string())
+                    ))
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            ),
         }
     }
 }

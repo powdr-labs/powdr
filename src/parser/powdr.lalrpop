@@ -241,16 +241,25 @@ Expression: Expression = {
 }
 
 BoxedExpression: Box<Expression> = {
-    BinaryOr
+    BinaryOr,
 }
 
 BinaryOr: Box<Expression> = {
     BinaryOr BinaryOrOp BinaryAnd => Box::new(Expression::BinaryOperation(<>)),
-    BinaryAnd,
+    BinaryXor,
 }
 
 BinaryOrOp: BinaryOperator = {
     "|" => BinaryOperator::BinaryOr,
+}
+
+BinaryXor: Box<Expression> = {
+    BinaryXor BinaryXorOp BinaryAnd => Box::new(Expression::BinaryOperation(<>)),
+    BinaryAnd,
+}
+
+BinaryXorOp: BinaryOperator = {
+    "^" => BinaryOperator::BinaryXor,
 }
 
 BinaryAnd: Box<Expression> = {
@@ -319,6 +328,7 @@ Term: Box<Expression> = {
     PublicReference => Box::new(Expression::PublicReference(<>)),
     Number => Box::new(Expression::Number(<>)),
     StringLiteral => Box::new(Expression::String(<>)),
+    MatchExpression,
     "(" <head:Expression> "," <tail:ExpressionList> ")" => { let mut list = vec![head]; list.extend(tail); Box::new(Expression::Tuple(list)) },
     "(" <BoxedExpression> ")",
     "${" <BoxedExpression> "}" => Box::new(Expression::FreeInput(<>))
@@ -337,6 +347,15 @@ PolynomialReference: PolynomialReference = {
 
 PublicReference: String = {
     ":" <Identifier>
+}
+
+MatchExpression: Box<Expression> = {
+    "match" <BoxedExpression> "{" <(<MatchArm> ",")*> "}" => Box::new(Expression::MatchExpression(<>))
+}
+
+MatchArm: (Option<AbstractNumberType>, Expression) = {
+    <n:Number> "=>" <e:Expression> => (Some(n), e),
+    <n:"_"> "=>" <e:Expression> => (None, e),
 }
 
 // ---------------------------- Terminals -----------------------------
