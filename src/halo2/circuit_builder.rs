@@ -68,7 +68,7 @@ pub(crate) fn analyzed_to_circuit(
     // |  bla_bla_bla     |    1         |       0       |   bla_bla_bla    | /     <- __enable_next ==0 since there's no state transition
     // |  0               |    0         |       0       |   0              | \
     // |  0               |    0         |       0       |   0              |  |
-    // |  ...             |   ...        |      ...      |   ...            |  |> 2^2-1
+    // |  ...             |   ...        |      ...      |   ...            |  |> 2^(k-1)
     // |  0               |    0         |       0       |   <unusable>     |  |
     // |  0               |    0         |       0       |   <unusable>     | /
 
@@ -81,9 +81,8 @@ pub(crate) fn analyzed_to_circuit(
 
     let mut cd = CircuitData::from(fixed, witness);
 
-    // append to fixed columns, one that enables constrains that does not have rotations
-    // and another that enables contraints that have a rotation ( not this is not activated )
-    // in last row.
+    // append two fixed columns, one that enables constrains that does not have rotations
+    // and another that enables contraints that have a rotation
 
     let num_rows = cd.len();
 
