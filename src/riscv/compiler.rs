@@ -352,6 +352,19 @@ pil{
     { Y_b5 } in { bytes };
     { Y_b6 } in { bytes };
 }
+
+// Removes up to 32 bits beyond 32
+// TODO is this really safe?
+instr mul <=Y= u, <=Z= v, t <=X= {
+    Y * Z = X + Y_b5 * 2**32 + Y_b6 * 2**40 + Y_b7 * 2**48 + Y_b8 * 2**56,
+    X = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000
+}
+pil{
+    col witness Y_b7;
+    col witness Y_b8;
+    { Y_b7 } in { bytes };
+    { Y_b8 } in { bytes };
+}
     "#
 }
 
@@ -392,9 +405,9 @@ lazy_static! {
             "unimp"
         ),
         // TODO rust alloc calls the global allocator - not sure why this is not automatic.
-        (Regex::new(r"^__rust_alloc$").unwrap(), "jmp __rg_alloc"),
-        (Regex::new(r"^__rust_realloc$").unwrap(), "jmp __rg_realloc"),
-        (Regex::new(r"^__rust_dealloc$").unwrap(), "jmp __rg_dealloc"),
+        (Regex::new(r"^__rust_alloc$").unwrap(), "j __rg_alloc"),
+        (Regex::new(r"^__rust_realloc$").unwrap(), "j __rg_realloc"),
+        (Regex::new(r"^__rust_dealloc$").unwrap(), "j __rg_dealloc"),
         (
             Regex::new(r"^memset@plt$").unwrap(),
             r#"
@@ -600,6 +613,10 @@ fn process_instruction(instr: &str, args: &[Argument]) -> String {
         "neg" => {
             let (rd, r1) = rr(args);
             format!("{rd} <=X= wrap(0 - {r1});\n")
+        }
+        "mul" => {
+            let (rd, r1, r2) = rrr(args);
+            format!("{rd} <=X= mul({r1}, {r2});\n")
         }
 
         // bitwise

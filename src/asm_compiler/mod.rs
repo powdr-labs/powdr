@@ -1,5 +1,6 @@
 use std::collections::{BTreeMap, HashMap};
 
+use crate::number::abstract_to_degree;
 use crate::number::AbstractNumberType;
 use crate::number::DegreeType;
 use crate::parser;
@@ -443,14 +444,35 @@ impl ASMPILConverter {
                         panic!("Multiplication by non-constant.");
                     }
                 }
+                BinaryOperator::Pow => {
+                    let left = self.process_assignment_value(*left);
+                    let right = self.process_assignment_value(*right);
+                    if let (
+                        [(l, AffineExpressionComponent::Constant)],
+                        [(r, AffineExpressionComponent::Constant)],
+                    ) = (&left[..], &right[..])
+                    {
+                        // TODO overflow?
+                        if *r > (u32::MAX).into() {
+                            panic!("Exponent too large");
+                        }
+                        vec![(
+                            l.pow(abstract_to_degree(r) as u32),
+                            AffineExpressionComponent::Constant,
+                        )]
+                    } else {
+                        panic!("Exponentiation of non-constants.");
+                    }
+                }
                 BinaryOperator::Div
                 | BinaryOperator::Mod
-                | BinaryOperator::Pow
                 | BinaryOperator::BinaryAnd
                 | BinaryOperator::BinaryXor
                 | BinaryOperator::BinaryOr
                 | BinaryOperator::ShiftLeft
-                | BinaryOperator::ShiftRight => panic!(),
+                | BinaryOperator::ShiftRight => {
+                    panic!("Invalid operation in expression {left} {op} {right}")
+                }
             },
             Expression::UnaryOperation(op, expr) => {
                 assert!(op == UnaryOperator::Minus);
