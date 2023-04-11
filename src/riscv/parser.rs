@@ -144,8 +144,34 @@ pub fn extract_data_objects(statements: &[Statement]) -> BTreeMap<String, Vec<u8
                 }
                 (".ascii" | ".asciz", [Argument::StringLiteral(data)]) => {
                     if let Some(entry) = objects.get_mut(current_label.unwrap()) {
+                        if let Some(d) = entry {
+                            d.extend(data);
+                        } else {
+                            *entry = Some(data.clone());
+                        }
+                    }
+                }
+                (".word", data) => {
+                    if let Some(entry) = objects.get_mut(current_label.unwrap()) {
                         assert!(entry.is_none());
-                        *entry = Some(data.clone());
+                        *entry = Some(
+                            data.iter()
+                                .flat_map(|x| {
+                                    if let Argument::Constant(Constant::Number(n)) = x {
+                                        let n = *n as u32;
+                                        [
+                                            (n & 0xff) as u8,
+                                            (n >> 8 & 0xff) as u8,
+                                            (n >> 16 & 0xff) as u8,
+                                            (n >> 24 & 0xff) as u8,
+                                        ]
+                                    } else {
+                                        // TODO we should handle indirect references at some point.
+                                        [0, 0, 0, 0]
+                                    }
+                                })
+                                .collect::<Vec<u8>>(),
+                        );
                     }
                 }
                 _ => {}
