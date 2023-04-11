@@ -13,29 +13,38 @@ use crate::witness_generator::{
     EvalResult, FixedData,
 };
 
-/// Indices for sets of fixed columns. For each set `COLUMNS`, stores `(V, rows)` iff every `row` in `rows` satisfies `COLUMNS[row] == V`
+type Application = (Vec<String>, Vec<String>);
+type Index = BTreeMap<Vec<AbstractNumberType>, Option<DegreeType>>;
+
+/// Indices for applications of fixed columns. For each application `(INPUT_COLS, OUTPUT_COLS)`, stores
+/// - `(V, None)` if there exists two different rows where `INPUT_COLS == V` match but `OUTPUT_COLS` differ. TODO: store bitmasks of all possible outputs instead.
+/// - `(V, Some(row)` if the value of `OUTPUT_COLS` is unique when `INPUT_COLS == V`, and `row` is the first row where `INPUT_COLS ==V`
 #[derive(Default)]
 pub struct IndexedColumns {
-    indices: HashMap<Vec<String>, BTreeMap<Vec<AbstractNumberType>, Vec<DegreeType>>>,
+    indices: HashMap<Application, Index>,
 }
 
 impl IndexedColumns {
-    /// get the rows at which the assignment is satisfied
-    /// Warning: in particular, an empty assignment will return all rows
-    fn get_matches(
+    /// get the row at which the assignment is satisfied uniquely
+    fn get_match(
         &mut self,
         fixed_data: &FixedData,
         mut assignment: Vec<(String, AbstractNumberType)>,
-    ) -> Option<&Vec<DegreeType>> {
+        mut output_fixed_columns: Vec<String>,
+    ) -> Option<&Option<DegreeType>> {
         // sort in order to have a single index for [X, Y] and for [Y, X]
         assignment.sort_by(|(name0, _), (name1, _)| name0.cmp(name1));
         let (input_fixed_columns, values): (Vec<_>, Vec<_>) = assignment.into_iter().unzip();
+        // sort the output as well
+        output_fixed_columns.sort();
 
-        self.ensure_index(fixed_data, &input_fixed_columns);
+        let fixed_columns = (input_fixed_columns, output_fixed_columns);
+
+        self.ensure_index(fixed_data, &fixed_columns);
 
         // get the rows at which the input matches
         self.indices
-            .get(&input_fixed_columns)
+            .get(&fixed_columns)
             .as_ref()
             .unwrap()
             .get(&values)
@@ -43,36 +52,87 @@ impl IndexedColumns {
 
     /// Create an index for a set of columns to be queried, if does not exist already
     /// `input_fixed_columns` is assumed to be sorted
-    fn ensure_index(&mut self, fixed_data: &FixedData, sorted_input_fixed_columns: &Vec<String>) {
+    fn ensure_index(
+        &mut self,
+        fixed_data: &FixedData,
+        sorted_fixed_columns: &(Vec<String>, Vec<String>),
+    ) {
         // we do not use the Entry API here because we want to clone `sorted_input_fixed_columns` only on index creation
-        if self.indices.get(sorted_input_fixed_columns).is_some() {
+        if self.indices.get(sorted_fixed_columns).is_some() {
             return;
         }
 
+        let (sorted_input_fixed_columns, sorted_output_fixed_columns) = &sorted_fixed_columns;
+
         // create index for this lookup
+        if fixed_data.verbose {
+            println!(
+                "Generating index for lookup in columns (in: {}, out: {})",
+                sorted_input_fixed_columns.join(", "),
+                sorted_output_fixed_columns.join(", ")
+            );
+        }
 
         // get all values for the columns to be indexed
-        let column_values = sorted_input_fixed_columns
+        let input_column_values = sorted_input_fixed_columns
             .iter()
             .map(|name| fixed_data.fixed_cols.get(name.as_str()).unwrap())
             .collect::<Vec<_>>();
 
-        let index: BTreeMap<Vec<BigInt>, Vec<u64>> =
-            (0..fixed_data.degree as usize).fold(BTreeMap::default(), |mut acc, row| {
-                acc.entry(
-                    column_values
+        let output_column_values = sorted_output_fixed_columns
+            .iter()
+            .map(|name| fixed_data.fixed_cols.get(name.as_str()).unwrap())
+            .collect::<Vec<_>>();
+
+        let index: BTreeMap<Vec<BigInt>, Option<u64>> = (0..fixed_data.degree as usize)
+            .fold(
+                (
+                    BTreeMap::<Vec<AbstractNumberType>, Option<DegreeType>>::default(),
+                    HashSet::<(Vec<AbstractNumberType>, Vec<AbstractNumberType>)>::default(),
+                ),
+                |(mut acc, mut set), row| {
+                    let input: Vec<_> = input_column_values
                         .iter()
                         .map(|column| column[row].clone())
-                        .collect(),
-                )
-                .or_default()
-                .push(row as u64);
+                        .collect();
 
-                acc
-            });
+                    let output: Vec<_> = output_column_values
+                        .iter()
+                        .map(|column| column[row].clone())
+                        .collect();
 
-        self.indices
-            .insert(sorted_input_fixed_columns.clone(), index);
+                    let input_output = (input, output);
+
+                    if set.contains(&input_output) {
+                        (acc, set)
+                    } else {
+                        set.insert(input_output.clone());
+
+                        let (input, _) = input_output;
+
+                        acc.entry(input)
+                            // we have a new, different output, so we lose knowledge
+                            .and_modify(|value| {
+                                *value = None;
+                            })
+                            .or_insert(Some(row as u64));
+
+                        (acc, set)
+                    }
+                },
+            )
+            .0;
+
+        self.indices.insert(
+            (
+                sorted_input_fixed_columns.clone(),
+                sorted_output_fixed_columns.clone(),
+            ),
+            index,
+        );
+        if fixed_data.verbose {
+            println!("Done creating index.");
+        }
     }
 }
 
@@ -141,7 +201,8 @@ impl FixedLookup {
         // {1, 2, x} in {A, B, C} -> [[(A, 1), (B, 2)], [C, x]]
 
         let mut input_assignment = vec![];
-        let mut output_assignment = vec![];
+        let mut output_columns = vec![];
+        let mut output_expressions = vec![];
 
         left.iter().zip(right).for_each(|(l, r)| {
             match l
@@ -154,47 +215,36 @@ impl FixedLookup {
                 Ok(assignment) => {
                     input_assignment.push(assignment);
                 }
-                Err(assignment) => {
-                    output_assignment.push(assignment);
+                Err((column, expression)) => {
+                    output_columns.push(column);
+                    output_expressions.push(expression);
                 }
             }
         });
 
-        let rows = self.indices.get_matches(fixed_data, input_assignment);
+        let row = self
+            .indices
+            .get_match(fixed_data, input_assignment, output_columns.clone())
+            .ok_or(EvalError::Generic("Plookup is not satisfied".to_string()))?;
 
-        // get the output values at these rows, deduplicated
-        let mut matches = rows
-            .into_iter()
-            .flatten()
-            .map(|row| {
-                output_assignment
-                    .iter()
-                    .map(|(column, _)| {
-                        fixed_data
-                            .fixed_cols
-                            .get(&column.as_ref())
-                            .as_ref()
-                            .unwrap()[*row as usize]
-                            .clone()
-                    })
-                    .collect()
-            })
-            .collect::<HashSet<Vec<_>>>();
-
-        let output = match matches.len() {
-            // no match, we error out
-            0 => {
-                return Err(EvalError::Generic("Plookup is not satisfied".to_string()));
-            }
+        let row = match row {
             // a single match, we continue
-            1 => matches.drain().next().unwrap(),
+            Some(row) => row,
             // multiple matches, we stop and learnt nothing
-            _ => return Ok(vec![]),
+            None => return Ok(vec![]),
         };
+
+        let output = output_columns.iter().map(|column| {
+            &fixed_data
+                .fixed_cols
+                .get(&column.as_ref())
+                .as_ref()
+                .unwrap_or_else(|| panic!("Uknown column {column}"))[*row as usize]
+        });
 
         let mut reasons = vec![];
         let mut result = vec![];
-        for (l, r) in output_assignment.iter().map(|(_, l)| l).zip(output) {
+        for (l, r) in output_expressions.iter().zip(output) {
             match l {
                 Ok(l) => {
                     let evaluated = l.clone() - r.clone().into();
