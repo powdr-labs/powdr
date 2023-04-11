@@ -65,13 +65,11 @@ impl IndexedColumns {
         let (sorted_input_fixed_columns, sorted_output_fixed_columns) = &sorted_fixed_columns;
 
         // create index for this lookup
-        if fixed_data.verbose {
-            println!(
-                "Generating index for lookup in columns (in: {}, out: {})",
-                sorted_input_fixed_columns.join(", "),
-                sorted_output_fixed_columns.join(", ")
-            );
-        }
+        log::trace!(
+            "Generating index for lookup in columns (in: {}, out: {})",
+            sorted_input_fixed_columns.join(", "),
+            sorted_output_fixed_columns.join(", ")
+        );
 
         // get all values for the columns to be indexed
         let input_column_values = sorted_input_fixed_columns
@@ -130,9 +128,7 @@ impl IndexedColumns {
             ),
             index,
         );
-        if fixed_data.verbose {
-            println!("Done creating index.");
-        }
+        log::trace!("Done creating index.");
     }
 }
 

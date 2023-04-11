@@ -244,8 +244,8 @@ impl SortedWitnesses {
                             )
                         }
                         Ok(ass) => {
-                            if !ass.is_empty() && fixed_data.verbose {
-                                println!("Read {} = {key_value} -> {r} = {v}", self.key_col);
+                            if !ass.is_empty() {
+                                log::trace!("Read {} = {key_value} -> {r} = {v}", self.key_col);
                             }
                             assignments.extend(ass);
                         }
@@ -254,9 +254,7 @@ impl SortedWitnesses {
                 // There is no value stored yet.
                 None => match l.constant_value() {
                     Some(v) => {
-                        if fixed_data.verbose {
-                            println!("Stored {} = {key_value} -> {r} = {v}", self.key_col);
-                        }
+                        log::trace!("Stored {} = {key_value} -> {r} = {v}", self.key_col);
                         *stored_value = Some(v);
                     }
                     None => {

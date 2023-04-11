@@ -15,7 +15,6 @@ pub fn compile_rust(
     inputs: Vec<AbstractNumberType>,
     output_dir: &Path,
     force_overwrite: bool,
-    verbose: bool,
 ) {
     let riscv_asm = compile_rust_to_riscv_asm(file_name);
     let riscv_asm_file_name = output_dir.join(format!(
@@ -30,7 +29,7 @@ pub fn compile_rust(
         return;
     }
     fs::write(riscv_asm_file_name.clone(), riscv_asm).unwrap();
-    println!("Wrote {}", riscv_asm_file_name.to_str().unwrap());
+    log::debug!("Wrote {}", riscv_asm_file_name.to_str().unwrap());
 
     compile_riscv_asm(
         file_name,
@@ -38,7 +37,6 @@ pub fn compile_rust(
         inputs,
         output_dir,
         force_overwrite,
-        verbose,
     )
 }
 
@@ -51,7 +49,6 @@ pub fn compile_riscv_asm(
     inputs: Vec<AbstractNumberType>,
     output_dir: &Path,
     force_overwrite: bool,
-    verbose: bool,
 ) {
     let contents = fs::read_to_string(file_name).unwrap();
     let powdr_asm = compiler::compile_riscv_asm(&contents);
@@ -71,7 +68,7 @@ pub fn compile_riscv_asm(
         return;
     }
     fs::write(powdr_asm_file_name.clone(), &powdr_asm).unwrap();
-    println!("Wrote {}", powdr_asm_file_name.to_str().unwrap());
+    log::debug!("Wrote {}", powdr_asm_file_name.to_str().unwrap());
 
     crate::compiler::compile_asm_string(
         powdr_asm_file_name.to_str().unwrap(),
@@ -79,7 +76,6 @@ pub fn compile_riscv_asm(
         inputs,
         output_dir,
         force_overwrite,
-        verbose,
     )
 }
 

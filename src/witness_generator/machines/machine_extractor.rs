@@ -62,35 +62,29 @@ pub fn split_out_machines<'a>(
             })
             .collect::<Vec<_>>();
 
-        if fixed.verbose {
-            println!(
-                "Extracted a machine with the following witnesses and identities:\n{}\n{}",
-                machine_witnesses
-                    .iter()
-                    .map(|s| s.to_string())
-                    .collect::<Vec<_>>()
-                    .join(", "),
-                machine_identities
-                    .iter()
-                    .map(|id| id.to_string())
-                    .collect::<Vec<_>>()
-                    .join("\n")
-            );
-        }
+        log::trace!(
+            "Extracted a machine with the following witnesses and identities:\n{}\n{}",
+            machine_witnesses
+                .iter()
+                .map(|s| s.to_string())
+                .collect::<Vec<_>>()
+                .join(", "),
+            machine_identities
+                .iter()
+                .map(|id| id.to_string())
+                .collect::<Vec<_>>()
+                .join("\n")
+        );
 
         if let Some(machine) =
             SortedWitnesses::try_new(fixed, &machine_identities, &machine_witnesses)
         {
-            if fixed.verbose {
-                println!("Detected machine: sorted witnesses / write-once memory");
-            }
+            log::trace!("Detected machine: sorted witnesses / write-once memory");
             machines.push(machine);
         } else if let Some(machine) =
             DoubleSortedWitnesses::try_new(fixed, &machine_identities, &machine_witnesses)
         {
-            if fixed.verbose {
-                println!("Detected machine: memory");
-            }
+            log::trace!("Detected machine: memory");
             machines.push(machine);
         } else if let Some(machine) = BlockMachine::try_new(
             fixed,
@@ -99,12 +93,10 @@ pub fn split_out_machines<'a>(
             &machine_witnesses,
             global_bit_constraints,
         ) {
-            if fixed.verbose {
-                println!("Detected machine: block");
-            }
+            log::trace!("Detected machine: block");
             machines.push(machine);
         } else {
-            println!(
+            log::debug!(
                 "Could not find a matching machine to handle a query to the following witness set:\n{}",
                 machine_witnesses
                     .iter()
@@ -114,7 +106,7 @@ pub fn split_out_machines<'a>(
             );
             remaining_witnesses = &remaining_witnesses | &machine_witnesses;
             base_identities.extend(machine_identities);
-            println!("Will try to continue as is, but this probably requires a specialized machine implementation.");
+            log::debug!("Will try to continue as is, but this probably requires a specialized machine implementation.");
         }
     }
     (*fixed_lookup, machines, base_identities)

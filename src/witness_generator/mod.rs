@@ -26,7 +26,6 @@ pub fn generate<'a>(
     degree: DegreeType,
     fixed_cols: &[(&str, Vec<AbstractNumberType>)],
     query_callback: Option<impl FnMut(&str) -> Option<AbstractNumberType>>,
-    verbose: bool,
 ) -> Vec<(&'a str, Vec<AbstractNumberType>)> {
     let witness_cols: Vec<WitnessColumn> = analyzed
         .committed_polys_in_source_order()
@@ -45,7 +44,6 @@ pub fn generate<'a>(
         fixed_cols.iter().map(|(n, v)| (*n, v)).collect(),
         &witness_cols,
         witness_cols.iter().map(|w| (w.name, w.id)).collect(),
-        verbose,
     );
     let (global_bit_constraints, identities) =
         bit_constraints::determine_global_constraints(&fixed, analyzed.identities.iter().collect());
@@ -111,7 +109,6 @@ pub struct FixedData<'a> {
     fixed_cols: HashMap<&'a str, &'a Vec<AbstractNumberType>>,
     witness_cols: &'a Vec<WitnessColumn<'a>>,
     witness_ids: HashMap<&'a str, usize>,
-    verbose: bool,
 }
 
 impl<'a> FixedData<'a> {
@@ -121,7 +118,6 @@ impl<'a> FixedData<'a> {
         fixed_cols: HashMap<&'a str, &'a Vec<AbstractNumberType>>,
         witness_cols: &'a Vec<WitnessColumn<'a>>,
         witness_ids: HashMap<&'a str, usize>,
-        verbose: bool,
     ) -> Self {
         FixedData {
             degree,
@@ -129,7 +125,6 @@ impl<'a> FixedData<'a> {
             fixed_cols,
             witness_cols,
             witness_ids,
-            verbose,
         }
     }
 }

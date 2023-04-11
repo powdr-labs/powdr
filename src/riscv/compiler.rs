@@ -10,7 +10,7 @@ use super::parser::Constant;
 /// Compiles riscv assembly file to POWDR assembly. Adds required library routines.
 pub fn compile_file(file: &Path) {
     let output = compile_riscv_asm(&fs::read_to_string(file).unwrap());
-    println!("{output}");
+    log::debug!("{output}");
 }
 
 /// Compiles riscv assembly to POWDR assembly. Adds required library routines.
@@ -31,7 +31,6 @@ pub fn compile_riscv_asm(data: &str) -> String {
     for s in parser::parse_asm(&data) {
         output += &process_statement(s);
     }
-    //println!("{output}");
     output
 }
 

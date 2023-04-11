@@ -17,7 +17,6 @@ pub fn verify_pil(file_name: &str, query_callback: Option<fn(&str) -> Option<Abs
         &input_file,
         &temp_dir,
         query_callback,
-        false
     ));
     verify(file_name, &temp_dir);
 }
