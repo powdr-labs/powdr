@@ -70,3 +70,8 @@ fn test_witness_lookup() {
 fn test_pair_lookup() {
     verify_pil("pair_lookup.pil", None);
 }
+
+#[test]
+fn test_block_lookup_or() {
+    verify_pil("block_lookup_or.pil", None);
+}
