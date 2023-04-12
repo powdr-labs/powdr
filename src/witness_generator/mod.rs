@@ -58,7 +58,7 @@ pub fn generate<'a>(
     let mut generator = generator::Generator::new(
         &fixed,
         &mut fixed_lookup,
-        identities,
+        &identities,
         global_bit_constraints,
         machines,
         query_callback,
