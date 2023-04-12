@@ -410,19 +410,62 @@ lazy_static! {
         (Regex::new(r"^__rust_dealloc$").unwrap(), "j __rg_dealloc"),
         (
             Regex::new(r"^memset@plt$").unwrap(),
+/* Source cod efor memset:
+// TODO c is ussualy a "c int"
+pub unsafe extern "C" fn memset(s: *mut u8, c: u8, n: usize) -> *mut u8 {
+    // We only access u32 because then we do not have to deal with
+    // un-aligned memory access.
+    // TODO this does not really enforce that the pointers are u32-aligned.
+    let mut value = c as u32;
+    value = value | (value << 8) | (value << 16) | (value << 24);
+    let mut i: isize = 0;
+    while i + 3 < n as isize {
+        *((s.offset(i)) as *mut u32) = value;
+        i += 4;
+    }
+    if i < n {
+        let dest_value = (s.offset(i)) as *mut u32;
+        let mask = (1 << ((((n as isize) - i) * 8) as u32)) - 1;
+        *dest_value = (*dest_value & !mask) | (value & mask);
+    }
+    s
+}
+*/
             r#"
-# a4: number of bytes
-# a0: memory location
-# a1: value
-# We assume the value is zero and a4 is a multiple of 4
-# TODO this is of course not always true
-    beqz a4, ___end_memset
-    sw a1, 0(a0)
-    addi a4, a4, -4
-    j memset@plt
-___end_memset:
-    ret
-"#
+	li	a3, 4
+	blt	a2, a3, __memset_LBB5_5
+	li	a5, 0
+	lui	a3, 4112
+	addi	a3, a3, 257
+	mul	a6, a1, a3
+__memset_LBB5_2:
+	add	a7, a0, a5
+	addi	a3, a5, 4
+	addi	a4, a5, 7
+	sw	a6, 0(a7)
+	mv	a5, a3
+	blt	a4, a2, __memset_LBB5_2
+	bge	a3, a2, __memset_LBB5_6
+__memset_LBB5_4:
+	lui	a4, 16
+	addi	a4, a4, 257
+	mul	a1, a1, a4
+	add	a3, a3, a0
+	slli	a2, a2, 3
+	lw	a4, 0(a3)
+	li	a5, -1
+	sll	a2, a5, a2
+	not	a5, a2
+	and	a2, a2, a4
+	and	a1, a1, a5
+	or	a1, a1, a2
+	sw	a1, 0(a3)
+	ret
+__memset_LBB5_5:
+	li	a3, 0
+	blt	a3, a2, __memset_LBB5_4
+__memset_LBB5_6:
+	ret"#
         ),
         (
             Regex::new(r"^memcpy@plt$").unwrap(),

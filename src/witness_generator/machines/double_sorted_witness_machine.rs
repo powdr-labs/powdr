@@ -193,6 +193,9 @@ impl DoubleSortedWitnesses {
             "Query addr={addr:x}, step={step}, write: {is_write}, left: {}",
             left[2].format(fixed_data)
         );
+        if addr.clone() % 4 != 0.into() {
+            panic!("UNALIGNED");
+        }
 
         // TODO this does not check any of the failure modes
         let mut assignments = vec![];
