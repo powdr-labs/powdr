@@ -20,7 +20,7 @@ where
 {
     fixed_data: &'a FixedData<'a>,
     fixed_lookup: &'a mut FixedLookup,
-    identities: Vec<&'a Identity>,
+    identities: &'a [&'a Identity],
     machines: Vec<Box<dyn Machine>>,
     query_callback: Option<QueryCallback>,
     global_bit_constraints: BTreeMap<&'a str, BitConstraint>,
@@ -53,7 +53,7 @@ where
     pub fn new(
         fixed_data: &'a FixedData<'a>,
         fixed_lookup: &'a mut FixedLookup,
-        identities: Vec<&'a Identity>,
+        identities: &'a [&'a Identity],
         global_bit_constraints: BTreeMap<&'a str, BitConstraint>,
         machines: Vec<Box<dyn Machine>>,
         query_callback: Option<QueryCallback>,
@@ -98,8 +98,7 @@ where
             self.progress = false;
             self.failure_reasons.clear();
 
-            // TODO avoid clone
-            for identity in &self.identities.clone() {
+            for identity in self.identities {
                 let result = match identity.kind {
                     IdentityKind::Polynomial => {
                         self.process_polynomial_identity(identity.left.selector.as_ref().unwrap())
