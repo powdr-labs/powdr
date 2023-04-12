@@ -105,5 +105,6 @@ Symbol: String = {
 
 Number: i64 = {
     r"-?[0-9][0-9_]*" => i64::from_str(<>).unwrap().into(),
+    r"0x[0-9A-Fa-f][0-9A-Fa-f_]*" => i64::from_str_radix(&<>[2..].replace('_', ""), 16).unwrap().into(),
 
 }
