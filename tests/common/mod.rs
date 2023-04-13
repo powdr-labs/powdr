@@ -28,7 +28,6 @@ pub fn verify_asm_string(file_name: &str, contents: &str, inputs: Vec<AbstractNu
             }
             None
         }),
-        false
     ));
     verify(pil_file_name, &temp_dir);
 }

@@ -141,15 +141,13 @@ pub fn determine_global_constraints<'a>(
         .push(identity);
     }
 
-    if fixed_data.verbose {
-        println!("Determined the following global bit constraints:");
-        for (name, con) in &known_constraints {
-            println!("  {name}: {con}");
-        }
-        println!("Determined the following identities to be purely bit/range constraints:");
-        for id in removed_identities {
-            println!("  {id}");
-        }
+    log::debug!("Determined the following global bit constraints:");
+    for (name, con) in &known_constraints {
+        log::debug!("  {name}: {con}");
+    }
+    log::debug!("Determined the following identities to be purely bit/range constraints:");
+    for id in removed_identities {
+        log::debug!("  {id}");
     }
 
     (known_constraints, retained_identities)
@@ -433,7 +431,6 @@ namespace Global(2**20);
             constants.iter().map(|(n, v)| (*n, v)).collect(),
             &witness_cols,
             witness_cols.iter().map(|w| (w.name, w.id)).collect(),
-            false,
         );
         for identity in &analyzed.identities {
             (known_constraints, _) = propagate_constraints(

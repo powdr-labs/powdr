@@ -80,7 +80,7 @@ where
 
     pub fn compute_next_row(&mut self, next_row: DegreeType) -> Vec<AbstractNumberType> {
         if next_row >= self.last_report + 1000 {
-            println!(
+            log::info!(
                 "{next_row} of {} rows ({} %)",
                 self.fixed_data.degree,
                 next_row * 100 / self.fixed_data.degree
@@ -173,12 +173,10 @@ where
             );
             panic!();
         } else {
-            if self.fixed_data.verbose {
-                println!(
-                    "===== Row {next_row}:\n{}",
-                    indent(&self.format_next_values().join("\n"), "    ")
-                );
-            }
+            log::trace!(
+                "===== Row {next_row}:\n{}",
+                indent(&self.format_next_values().join("\n"), "    ")
+            );
             std::mem::swap(&mut self.next, &mut self.current);
             self.next = vec![None; self.current.len()];
             self.next_bit_constraints = vec![None; self.current.len()];

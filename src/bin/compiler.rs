@@ -1,7 +1,8 @@
 use clap::{Parser, Subcommand};
+use env_logger::{Builder, Target};
 use powdr::compiler::no_callback;
 use powdr::number::AbstractNumberType;
-use std::{fs, path::Path};
+use std::{fs, io::Write, path::Path};
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
@@ -33,11 +34,6 @@ enum Commands {
         #[arg(short, long)]
         #[arg(default_value_t = false)]
         force: bool,
-
-        /// Verbose output (provides a full execution trace).
-        #[arg(short, long)]
-        #[arg(default_value_t = false)]
-        verbose: bool,
     },
 
     /// Compiles riscv assembly to powdr assembly and then to PIL
@@ -60,11 +56,6 @@ enum Commands {
         #[arg(short, long)]
         #[arg(default_value_t = false)]
         force: bool,
-
-        /// Verbose output (provides a full execution trace).
-        #[arg(short, long)]
-        #[arg(default_value_t = false)]
-        verbose: bool,
     },
 
     /// Compiles assembly to PIL and generates fixed and witness columns.
@@ -86,11 +77,6 @@ enum Commands {
         #[arg(short, long)]
         #[arg(default_value_t = false)]
         force: bool,
-
-        /// Verbose output (provides a full execution trace).
-        #[arg(short, long)]
-        #[arg(default_value_t = false)]
-        verbose: bool,
     },
 
     /// Parses and prints the PIL file on stdout.
@@ -107,10 +93,6 @@ enum Commands {
         #[arg(short, long)]
         #[arg(default_value_t = String::from("."))]
         output_directory: String,
-        /// Verbose output (provides a full execution trace).
-        #[arg(short, long)]
-        #[arg(default_value_t = false)]
-        verbose: bool,
     },
 }
 
@@ -124,6 +106,13 @@ fn split_inputs(inputs: &str) -> Vec<AbstractNumberType> {
 }
 
 fn main() {
+    let mut builder = Builder::from_default_env();
+
+    builder
+        .target(Target::Stdout)
+        .format(|buf, record| writeln!(buf, "{}", record.args()))
+        .init();
+
     let command = Cli::parse().command;
     match command {
         Commands::Rust {
@@ -131,14 +120,12 @@ fn main() {
             inputs,
             output_directory,
             force,
-            verbose,
         } => {
             powdr::riscv::compile_rust(
                 &file,
                 split_inputs(&inputs),
                 Path::new(&output_directory),
                 force,
-                verbose,
             );
         }
         Commands::RiscvAsm {
@@ -146,7 +133,6 @@ fn main() {
             inputs,
             output_directory,
             force,
-            verbose,
         } => {
             powdr::riscv::compile_riscv_asm(
                 &file,
@@ -154,7 +140,6 @@ fn main() {
                 split_inputs(&inputs),
                 Path::new(&output_directory),
                 force,
-                verbose,
             );
         }
         Commands::Asm {
@@ -162,14 +147,12 @@ fn main() {
             inputs,
             output_directory,
             force,
-            verbose,
         } => {
             powdr::compiler::compile_asm(
                 &file,
                 split_inputs(&inputs),
                 Path::new(&output_directory),
                 force,
-                verbose,
             );
         }
         Commands::Reformat { file } => {
@@ -182,13 +165,11 @@ fn main() {
         Commands::Compile {
             file,
             output_directory,
-            verbose,
         } => {
             powdr::compiler::compile_pil(
                 Path::new(&file),
                 Path::new(&output_directory),
                 no_callback(),
-                verbose,
             );
         }
     }
