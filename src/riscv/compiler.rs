@@ -210,15 +210,15 @@ instr is_equal_zero X -> Y { Y = XIsZero }
 
 // ================= binary/bitwise instructions =================
 
-instr and <=Y= a, <=Z= b, c <=X= {
+instr and Y, Z -> X {
     {Y, Z, X, 0} in binary_RESET { binary_A, binary_B, binary_C, binary_operation }
 }
 
-instr or <=Y= a, <=Z= b, c <=X= {
+instr or Y, Z -> X {
     {Y, Z, X, 1} in binary_RESET { binary_A, binary_B, binary_C, binary_operation }
 }
 
-instr xor <=Y= a, <=Z= b, c <=X= {
+instr xor Y, Z -> X {
     {Y, Z, X, 2} in binary_RESET { binary_A, binary_B, binary_C, binary_operation }
 }
 
@@ -259,11 +259,11 @@ pil{
 
 // ================= shift instructions =================
 
-instr shl <=Y= a, <=Z= b, c <=X= {
+instr shl Y, Z -> X {
     {Y, Z, X, 0} in shift_RESET { shift_A, shift_B, shift_C, shift_operation }
 }
 
-instr shr <=Y= a, <=Z= b, c <=X= {
+instr shr Y, Z -> X {
     {Y, Z, X, 1} in shift_RESET { shift_A, shift_B, shift_C, shift_operation }
 }
 
@@ -320,7 +320,7 @@ pil{
 }
 
 // Input is a 32 bit unsigned number. We check the 7th bit and set all higher bits to that value.
-instr sign_extend_byte <=Y= v, x <=X= {
+instr sign_extend_byte Y -> X {
     // wrap_bit is used as sign_bit here.
     Y = Y_7bit + wrap_bit * 0x80 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000,
     X = Y_7bit + wrap_bit * 0xffffff80
@@ -333,7 +333,7 @@ pil{
 
 // Input is a 32 but unsined number (0 <= Y < 2**32) interpreted as a two's complement numbers.
 // Returns a signed number (-2**31 <= X < 2**31).
-instr to_signed <=Y= v, x <=X= {
+instr to_signed Y -> X {
     // wrap_bit is used as sign_bit here.
     Y = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + Y_7bit * 0x1000000 + wrap_bit * 0x80000000,
     X = Y - wrap_bit * 2**31
@@ -355,7 +355,7 @@ pil{
 
 // Removes up to 32 bits beyond 32
 // TODO is this really safe?
-instr mul <=Y= u, <=Z= v, t <=X= {
+instr mul Y, Z -> X {
     Y * Z = X + Y_b5 * 2**32 + Y_b6 * 2**40 + Y_b7 * 2**48 + Y_b8 * 2**56,
     X = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000
 }
