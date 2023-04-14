@@ -173,7 +173,7 @@ RegisterFlag: RegisterFlag = {
 }
 
 InstructionDeclaration: ASMStatement = {
-    <@L> "instr" <Identifier> <InstructionParamList> "{" <InstructionBodyElements> "}" => ASMStatement::InstructionDeclaration(<>)
+    <@L> "instr" <Identifier> <InstructionParams> "{" <InstructionBodyElements> "}" => ASMStatement::InstructionDeclaration(<>)
 }
 
 InstructionBodyElements: Vec<InstructionBodyElement> = {
@@ -194,14 +194,21 @@ PlookupOperator: PlookupOperator = {
     "is" => PlookupOperator::Is,
 }
 
-InstructionParamList: Vec<InstructionParam> = {
-    => vec![],
-    <mut list:( <InstructionParam> "," )*> <end:InstructionParam>  => { list.push(end); list }
+InstructionParams: InstructionParams = {
+    <_input: InstructionParamList> "->" <output: InstructionParamList> => InstructionParams::new(_input, Some(output)),
+    // we can ommit the arrow if there are no outputs
+    <_input: InstructionParamList> => InstructionParams::new(_input, None)
+
+}
+
+InstructionParamList: InstructionParamList = {
+    => InstructionParamList::new(vec![]),
+    <mut list:( <InstructionParam> "," )*> <end:InstructionParam>  => { list.push(end); InstructionParamList::new(list) }
 }
 
 InstructionParam: InstructionParam = {
-    <assign_read:AssignOperator?> <name: Identifier> <param_type:(":" <Identifier>)?> <assign_write:AssignOperator?> =>
-        InstructionParam{name, param_type, assignment_reg: (assign_read, assign_write)}
+    <name: Identifier> <ty:(":" <Identifier>)?> =>
+        InstructionParam{name, ty}
 }
 
 InlinePil: ASMStatement = {

@@ -110,8 +110,8 @@ pil{
 
 // ============== memory instructions ==============
 
-instr mstore <=X= val { { addr, STEP, X } is m_is_write { m_addr, m_step, m_value } }
-instr mload r <=X= { { addr, STEP, X } is m_is_read { m_addr, m_step, m_value } }
+instr mstore X { { addr, STEP, X } is m_is_write { m_addr, m_step, m_value } }
+instr mload -> X { { addr, STEP, X } is m_is_read { m_addr, m_step, m_value } }
 
 // ============== control-flow instructions ==============
 
@@ -119,23 +119,23 @@ instr jump l: label { pc' = l }
 instr call l: label { pc' = l, x1' = pc + 1, x6' = l }
 instr ret { pc' = x1 }
 
-instr branch_if_nonzero <=X= c, l: label { pc' = (1 - XIsZero) * l + XIsZero * (pc + 1) }
-instr branch_if_zero <=X= c, l: label { pc' = XIsZero * l + (1 - XIsZero) * (pc + 1) }
+instr branch_if_nonzero X, l: label { pc' = (1 - XIsZero) * l + XIsZero * (pc + 1) }
+instr branch_if_zero X, l: label { pc' = XIsZero * l + (1 - XIsZero) * (pc + 1) }
 
 // input X is required to be the difference of two 32-bit unsigend values.
 // i.e. -2**32 < X < 2**32
-instr branch_if_positive <=X= c, l: label {
+instr branch_if_positive X, l: label {
     X + 2**32 - 1 = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000 + wrap_bit * 2**32,
     pc' = wrap_bit * l + (1 - wrap_bit) * (pc + 1)
 }
 
 // ================= logical instructions =================
 
-instr is_equal_zero <=X= v, t <=Y= { Y = XIsZero }
+instr is_equal_zero X -> Y { Y = XIsZero }
 
 // ================= arith/bitwise instructions =================
 
-// instr xor <=X= a, <=Y= b, c <=Z= {
+// instr xor X, Y, Z {
 //     {X, Y, Z} in 1 { binary.X, binary.Y, binary.RESULT, 1 }
 // }
 // we wanted better synatx: { binary(X, Y, Z) }
@@ -145,9 +145,7 @@ instr is_equal_zero <=X= v, t <=Y= { Y = XIsZero }
 
 // Wraps a value in Y to 32 bits.
 // Requires 0 <= Y < 2**33
-// TODO we need better syntax for defining instructions that are functions.
-// Maybe like instr wrap <=Y= v -> X { Y = X + wrap_bit * 2**32, X = Xhi * 2**16 + Xlo }
-instr wrap <=Y= v, x <=X= { Y = X + wrap_bit * 2**32, X = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000 }
+instr wrap Y -> X { Y = X + wrap_bit * 2**32, X = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000 }
 pil{
     col fixed bytes(i) { i & 0xff };
     col witness X_b1;
@@ -168,7 +166,7 @@ instr fail { 1 = 0 }
 
 // Removes up to 16 bits beyond 32
 // TODO is this really safe?
-instr wrap16 <=Y= v, t <=X= { Y = Y_b5 * 2**32 + Y_b6 * 2**40 + X, X = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000 }
+instr wrap16 Y -> X { Y = Y_b5 * 2**32 + Y_b6 * 2**40 + X, X = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000 }
 pil{
     col witness Y_b5;
     col witness Y_b6;

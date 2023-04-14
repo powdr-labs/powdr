@@ -60,9 +60,9 @@ pil{
 
 }
 
-instr assert_zero <=X= a { XIsZero = 1 }
-instr mstore <=X= val { { ADDR, STEP, X } is m_is_write { m_addr, m_step, m_value } }
-instr mload r <=X= { { ADDR, STEP, X } is m_is_read { m_addr, m_step, m_value } }
+instr assert_zero X { XIsZero = 1 }
+instr mstore X { { ADDR, STEP, X } is m_is_write { m_addr, m_step, m_value } }
+instr mload -> X { { ADDR, STEP, X } is m_is_read { m_addr, m_step, m_value } }
 
 
 ADDR <=X= 3;
