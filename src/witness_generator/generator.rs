@@ -24,8 +24,6 @@ where
     machines: Vec<Box<dyn Machine>>,
     query_callback: Option<QueryCallback>,
     global_bit_constraints: BTreeMap<&'a str, BitConstraint>,
-    /// Maps the witness polynomial names to optional parameter and query string.
-    witness_cols: BTreeMap<&'a str, &'a WitnessColumn<'a>>,
     /// Values of the witness polynomials
     current: Vec<Option<AbstractNumberType>>,
     /// Values of the witness polynomials in the next row
@@ -58,7 +56,7 @@ where
         machines: Vec<Box<dyn Machine>>,
         query_callback: Option<QueryCallback>,
     ) -> Self {
-        let witness_cols = fixed_data.witness_cols;
+        let witness_cols_len = fixed_data.witness_cols.len();
 
         Generator {
             fixed_data,
@@ -67,10 +65,9 @@ where
             machines,
             query_callback,
             global_bit_constraints,
-            witness_cols: witness_cols.iter().map(|p| (p.name, p)).collect(),
-            current: vec![None; witness_cols.len()],
-            next: vec![None; witness_cols.len()],
-            next_bit_constraints: vec![None; witness_cols.len()],
+            current: vec![None; witness_cols_len],
+            next: vec![None; witness_cols_len],
+            next_bit_constraints: vec![None; witness_cols_len],
             next_row: 0,
             failure_reasons: vec![],
             progress: true,
@@ -121,12 +118,11 @@ where
                 self.handle_eval_result(result);
             }
             if self.query_callback.is_some() {
-                // TODO avoid clone
-                for column in self.witness_cols.clone().values() {
+                for column in self.fixed_data.witness_cols() {
                     // TODO we should actually query even if it is already known, to check
                     // if the value would be different.
                     if !self.has_known_next_value(column.id) && column.query.is_some() {
-                        let result = self.process_witness_query(column);
+                        let result = self.process_witness_query(&column);
                         self.handle_eval_result(result)
                     }
                 }
