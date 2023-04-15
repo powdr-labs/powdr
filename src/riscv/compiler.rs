@@ -305,6 +305,8 @@ pil{
 // Wraps a value in Y to 32 bits.
 // Requires 0 <= Y < 2**33
 instr wrap Y -> X { Y = X + wrap_bit * 2**32, X = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000 }
+// Requires -2**32 <= Y < 2**32
+instr wrap_signed Y -> X { Y = X - wrap_bit * 2**32, X = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000 }
 pil{
     col fixed bytes(i) { i & 0xff };
     col witness X_b1;
@@ -657,13 +659,11 @@ fn process_instruction(instr: &str, args: &[Argument]) -> String {
         }
         "sub" => {
             let (rd, r1, r2) = rrr(args);
-            // TODO this cannot use wrap (in case of underflow)
-            format!("{rd} <=X= wrap({r1} - {r2});\n")
+            format!("{rd} <=X= wrap_signed({r1} - {r2});\n")
         }
         "neg" => {
             let (rd, r1) = rr(args);
-            // TODO this cannot use wrap (in case of underflow)
-            format!("{rd} <=X= wrap(0 - {r1});\n")
+            format!("{rd} <=X= wrap_signed(0 - {r1});\n")
         }
         "mul" => {
             let (rd, r1, r2) = rrr(args);
