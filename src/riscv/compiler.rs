@@ -336,7 +336,7 @@ pil{
 instr to_signed Y -> X {
     // wrap_bit is used as sign_bit here.
     Y = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + Y_7bit * 0x1000000 + wrap_bit * 0x80000000,
-    X = Y - wrap_bit * 2**31
+    X = Y - wrap_bit * 2**32
 }
 
 // ======================= assertions =========================
@@ -631,6 +631,7 @@ fn process_instruction(instr: &str, args: &[Argument]) -> String {
             let (rd, imm) = ri(args);
             format!("{rd} <=X= {imm};\n")
         }
+        // TODO check if it is OK to clear the lower order bits
         "lui" => {
             let (rd, imm) = ri(args);
             format!("{rd} <=X= {};\n", imm << 12)
@@ -675,9 +676,17 @@ fn process_instruction(instr: &str, args: &[Argument]) -> String {
             let (rd, r1, r2) = rrr(args);
             format!("{rd} <=X= and({r1}, {r2});\n")
         }
+        "andi" => {
+            let (rd, r1, imm) = rri(args);
+            format!("{rd} <=X= and({r1}, {imm});\n")
+        }
         "or" => {
             let (rd, r1, r2) = rrr(args);
             format!("{rd} <=X= or({r1}, {r2});\n")
+        }
+        "ori" => {
+            let (rd, r1, imm) = rri(args);
+            format!("{rd} <=X= or({r1}, {imm});\n")
         }
         "not" => {
             let (rd, rs) = rr(args);
