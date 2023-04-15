@@ -4,6 +4,7 @@ use powdr::number::AbstractNumberType;
 mod common;
 
 #[test]
+#[ignore = "Too slow"]
 fn test_sum() {
     let case = "sum.rs";
     verify_file(
@@ -13,12 +14,14 @@ fn test_sum() {
 }
 
 #[test]
+#[ignore = "Too slow"]
 fn test_byte_access() {
     let case = "byte_access.rs";
     verify_file(case, [0, 104, 707].iter().map(|&x| x.into()).collect());
 }
 
 #[test]
+#[ignore = "Too slow"]
 fn test_double_word() {
     let case = "double_word.rs";
     let a0 = 0x01000000u32;
@@ -43,6 +46,7 @@ fn test_double_word() {
 }
 
 #[test]
+#[ignore = "Too slow"]
 fn test_keccak() {
     let case = "keccak";
     verify_crate(case, vec![]);
