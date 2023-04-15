@@ -359,6 +359,11 @@ instr mul Y, Z -> X {
     Y * Z = X + Y_b5 * 2**32 + Y_b6 * 2**40 + Y_b7 * 2**48 + Y_b8 * 2**56,
     X = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000
 }
+// implements (Y * Z) >> 32
+instr mulhu Y, Z -> X {
+    Y * Z = X * 2**32 + Y_b5 + Y_b6 * 0x100 + Y_b7 * 0x10000 + Y_b8 * 0x1000000,
+    X = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000
+}
 pil{
     col witness Y_b7;
     col witness Y_b8;
@@ -652,15 +657,21 @@ fn process_instruction(instr: &str, args: &[Argument]) -> String {
         }
         "sub" => {
             let (rd, r1, r2) = rrr(args);
+            // TODO this cannot use wrap (in case of underflow)
             format!("{rd} <=X= wrap({r1} - {r2});\n")
         }
         "neg" => {
             let (rd, r1) = rr(args);
+            // TODO this cannot use wrap (in case of underflow)
             format!("{rd} <=X= wrap(0 - {r1});\n")
         }
         "mul" => {
             let (rd, r1, r2) = rrr(args);
             format!("{rd} <=X= mul({r1}, {r2});\n")
+        }
+        "mulhu" => {
+            let (rd, r1, r2) = rrr(args);
+            format!("{rd} <=X= mulhu({r1}, {r2});\n")
         }
 
         // bitwise

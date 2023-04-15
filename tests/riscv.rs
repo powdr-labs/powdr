@@ -19,6 +19,30 @@ fn test_byte_access() {
 }
 
 #[test]
+fn test_double_word() {
+    let case = "double_word.rs";
+    let a0 = 0x01000000u32;
+    let a1 = 0x010000ffu32;
+    let b0 = 0xf100b00fu32;
+    let b1 = 0x0100f0f0u32;
+    let c = ((a0 as u64) | ((a1 as u64) << 32)).wrapping_mul((b0 as u64) | ((b1 as u64) << 32));
+    verify_file(
+        case,
+        [
+            a0,
+            a1,
+            b0,
+            b1,
+            (c & 0xffffffff) as u32,
+            ((c >> 32) & 0xffffffff) as u32,
+        ]
+        .iter()
+        .map(|&x| x.into())
+        .collect(),
+    );
+}
+
+#[test]
 fn test_keccak() {
     let case = "keccak";
     verify_crate(case, vec![]);
