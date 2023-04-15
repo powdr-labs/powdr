@@ -127,6 +127,10 @@ impl<'a> FixedData<'a> {
             witness_ids,
         }
     }
+
+    fn witness_cols(&self) -> impl Iterator<Item = &WitnessColumn> {
+        self.witness_cols.iter()
+    }
 }
 
 impl<'a> WitnessColumnNamer for FixedData<'a> {
