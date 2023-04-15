@@ -1,4 +1,4 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::{self, Display};
 
 use lalrpop_util::*;
@@ -19,7 +19,7 @@ pub enum Statement {
 pub enum Argument {
     Register(Register),
     RegOffset(Register, Constant),
-    StringLiteral(String),
+    StringLiteral(Vec<u8>),
     Constant(Constant),
     Symbol(String),
     Difference(String, String),
@@ -50,7 +50,7 @@ impl Display for Argument {
             Argument::Register(r) => write!(f, "{r}"),
             Argument::Constant(c) => write!(f, "{c}"),
             Argument::RegOffset(reg, off) => write!(f, "{off}({reg})"),
-            Argument::StringLiteral(lit) => write!(f, "\"{lit}\""),
+            Argument::StringLiteral(lit) => write!(f, "\"{}\"", String::from_utf8_lossy(lit)),
             Argument::Symbol(s) => write!(f, "{s}"),
             Argument::Difference(left, right) => write!(f, "{left} - {right}"),
         }
@@ -127,12 +127,74 @@ pub fn extract_label_references(statements: &[Statement]) -> BTreeSet<&str> {
         .collect()
 }
 
-// TODO it actually parses to a byte array...
-pub fn unescape_string(s: &str) -> String {
+pub fn extract_data_objects(statements: &[Statement]) -> BTreeMap<String, Vec<u8>> {
+    let mut current_label = None;
+    let mut objects = BTreeMap::<String, Option<Vec<u8>>>::new();
+    for s in statements {
+        match s {
+            Statement::Label(l) => {
+                current_label = Some(l.as_str());
+            }
+            // TODO We ignore size and alignment directives.
+            Statement::Directive(dir, args) => match (dir.as_str(), &args[..]) {
+                (".type", [Argument::Symbol(name), Argument::Symbol(kind)])
+                    if kind.as_str() == "@object" =>
+                {
+                    objects.insert(name.clone(), None);
+                }
+                (".ascii" | ".asciz", [Argument::StringLiteral(data)]) => {
+                    if let Some(entry) = objects.get_mut(current_label.unwrap()) {
+                        if let Some(d) = entry {
+                            d.extend(data);
+                        } else {
+                            *entry = Some(data.clone());
+                        }
+                    }
+                }
+                (".word", data) => {
+                    if let Some(entry) = objects.get_mut(current_label.unwrap()) {
+                        assert!(entry.is_none());
+                        *entry = Some(
+                            data.iter()
+                                .flat_map(|x| {
+                                    if let Argument::Constant(Constant::Number(n)) = x {
+                                        let n = *n as u32;
+                                        [
+                                            (n & 0xff) as u8,
+                                            (n >> 8 & 0xff) as u8,
+                                            (n >> 16 & 0xff) as u8,
+                                            (n >> 24 & 0xff) as u8,
+                                        ]
+                                    } else {
+                                        // TODO we should handle indirect references at some point.
+                                        [0, 0, 0, 0]
+                                    }
+                                })
+                                .collect::<Vec<u8>>(),
+                        );
+                    }
+                }
+                _ => {}
+            },
+            _ => {}
+        }
+    }
+    objects
+        .into_iter()
+        .map(|(k, v)| {
+            (
+                k.clone(),
+                v.unwrap_or_else(|| panic!("Label for announced object {k} not found.")),
+            )
+        })
+        .collect()
+}
+
+pub fn unescape_string(s: &str) -> Vec<u8> {
     assert!(s.len() >= 2);
     assert!(s.starts_with('"') && s.ends_with('"'));
     let mut chars = s[1..s.len() - 1].chars();
-    let mut result = String::new();
+    let mut result = vec![];
     while let Some(c) = chars.next() {
         result.push(if c == '\\' {
             let next = chars.next().unwrap();
@@ -141,21 +203,21 @@ pub fn unescape_string(s: &str) -> String {
                 let n = next as u8 - b'0';
                 let nn = chars.next().unwrap() as u8 - b'0';
                 let nnn = chars.next().unwrap() as u8 - b'0';
-                (nnn + nn * 8 + n * 64) as char
+                nnn + nn * 8 + n * 64
             } else if next == 'x' {
                 todo!("Parse hex digit");
             } else {
-                match next {
+                (match next {
                     'n' => '\n',
                     'r' => '\r',
                     't' => '\t',
                     'b' => 8 as char,
                     'f' => 12 as char,
                     other => other,
-                }
+                }) as u8
             }
         } else {
-            c
+            c as u8
         })
     }
     result

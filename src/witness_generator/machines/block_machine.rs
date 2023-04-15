@@ -276,7 +276,7 @@ impl BlockMachine {
                     match constraint {
                         Constraint::Assignment(a) => {
                             let values = self.data.get_mut(&poly).unwrap();
-                            if r as usize <= values.len() {
+                            if (r as usize) < values.len() {
                                 // do not write to other rows for now
                                 values[r as usize] = Some(a);
                             }
