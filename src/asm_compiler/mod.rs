@@ -221,7 +221,7 @@ impl ASMPILConverter {
             .map(|param| match param.ty {
                 Some(ty) if ty == "label" => Input::Label(param.name),
                 None => Input::Register(param.name),
-                Some(ty) => panic!("param type must be nothing or label, found `{}`", ty),
+                Some(ty) => panic!("param type must be nothing or label, found `{ty}`"),
             })
             .collect();
 
@@ -245,7 +245,7 @@ impl ASMPILConverter {
             .labels()
             .map(|label| {
                 // label
-                let param_col_name = format!("instr_{name}_param_{}", label);
+                let param_col_name = format!("instr_{name}_param_{label}");
                 self.create_witness_fixed_pair(start, &param_col_name);
                 (label.clone(), param_col_name)
             })
@@ -323,10 +323,7 @@ impl ASMPILConverter {
         let output = instr.outputs[0].clone();
         assert!(
             output == assign_reg,
-            "{} vs {} in {}",
-            output,
-            assign_reg,
-            instr_name
+            "{output} vs {assign_reg} in {instr_name}",
         );
 
         let mut args = args;
