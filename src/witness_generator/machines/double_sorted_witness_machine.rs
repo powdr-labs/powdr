@@ -189,7 +189,7 @@ impl DoubleSortedWitnesses {
             )
         })?;
 
-        log::debug!(
+        log::trace!(
             "Query addr={addr:x}, step={step}, write: {is_write}, left: {}",
             left[2].format(fixed_data)
         );
@@ -204,7 +204,7 @@ impl DoubleSortedWitnesses {
                 Some(v) => v,
                 None => return Ok(vec![]),
             };
-            log::trace!("Memory write: addr={addr:x}, step={step}, value={value:x}");
+            log::debug!("Memory write: addr={addr:x}, step={step}, value={value:x}");
             self.data.insert(addr.clone(), value.clone());
             self.trace
                 .insert((addr, step), Operation { is_write, value });
@@ -217,7 +217,7 @@ impl DoubleSortedWitnesses {
                     value: value.clone(),
                 },
             );
-            log::trace!("Memory read: addr={addr:x}, step={step}, value={value:x}");
+            log::debug!("Memory read: addr={addr:x}, step={step}, value={value:x}");
             assignments.extend(match (left[2].clone() - value.clone().into()).solve() {
                 Ok(ass) => ass,
                 Err(_) => return Ok(vec![]),

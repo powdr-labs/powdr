@@ -1,5 +1,6 @@
 use clap::{Parser, Subcommand};
 use env_logger::{Builder, Target};
+use log::LevelFilter;
 use powdr::compiler::no_callback;
 use powdr::number::AbstractNumberType;
 use std::{fs, io::Write, path::Path};
@@ -111,9 +112,10 @@ fn split_inputs(inputs: &str) -> Vec<AbstractNumberType> {
 }
 
 fn main() {
-    let mut builder = Builder::from_default_env();
-
+    let mut builder = Builder::new();
     builder
+        .filter_level(LevelFilter::Info)
+        .parse_default_env()
         .target(Target::Stdout)
         .format(|buf, record| writeln!(buf, "{}", record.args()))
         .init();

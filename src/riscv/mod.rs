@@ -40,7 +40,7 @@ pub fn compile_rust(
         return;
     }
     fs::write(riscv_asm_file_name.clone(), riscv_asm).unwrap();
-    log::debug!("Wrote {}", riscv_asm_file_name.to_str().unwrap());
+    log::info!("Wrote {}", riscv_asm_file_name.to_str().unwrap());
 
     compile_riscv_asm(
         file_name,
@@ -79,7 +79,7 @@ pub fn compile_riscv_asm(
         return;
     }
     fs::write(powdr_asm_file_name.clone(), &powdr_asm).unwrap();
-    log::debug!("Wrote {}", powdr_asm_file_name.to_str().unwrap());
+    log::info!("Wrote {}", powdr_asm_file_name.to_str().unwrap());
 
     crate::compiler::compile_asm_string(
         powdr_asm_file_name.to_str().unwrap(),

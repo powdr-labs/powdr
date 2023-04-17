@@ -62,7 +62,7 @@ pub fn split_out_machines<'a>(
             })
             .collect::<Vec<_>>();
 
-        log::trace!(
+        log::debug!(
             "Extracted a machine with the following witnesses and identities:\n{}\n{}",
             machine_witnesses
                 .iter()
@@ -79,12 +79,12 @@ pub fn split_out_machines<'a>(
         if let Some(machine) =
             SortedWitnesses::try_new(fixed, &machine_identities, &machine_witnesses)
         {
-            log::trace!("Detected machine: sorted witnesses / write-once memory");
+            log::info!("Detected machine: sorted witnesses / write-once memory");
             machines.push(machine);
         } else if let Some(machine) =
             DoubleSortedWitnesses::try_new(fixed, &machine_identities, &machine_witnesses)
         {
-            log::trace!("Detected machine: memory");
+            log::info!("Detected machine: memory");
             machines.push(machine);
         } else if let Some(machine) = BlockMachine::try_new(
             fixed,
@@ -93,10 +93,10 @@ pub fn split_out_machines<'a>(
             &machine_witnesses,
             global_bit_constraints,
         ) {
-            log::trace!("Detected machine: block");
+            log::info!("Detected machine: block");
             machines.push(machine);
         } else {
-            log::debug!(
+            log::warn!(
                 "Could not find a matching machine to handle a query to the following witness set:\n{}",
                 machine_witnesses
                     .iter()
@@ -106,7 +106,7 @@ pub fn split_out_machines<'a>(
             );
             remaining_witnesses = &remaining_witnesses | &machine_witnesses;
             base_identities.extend(machine_identities);
-            log::debug!("Will try to continue as is, but this probably requires a specialized machine implementation.");
+            log::warn!("Will try to continue as is, but this probably requires a specialized machine implementation.");
         }
     }
     (*fixed_lookup, machines, base_identities)

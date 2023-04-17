@@ -115,7 +115,7 @@ fn compile(
     query_callback: Option<impl FnMut(&str) -> Option<AbstractNumberType>>,
 ) -> bool {
     let mut success = true;
-    log::debug!("Evaluating fixed columns...");
+    log::info!("Evaluating fixed columns...");
     let (constants, degree) = constant_evaluator::generate(analyzed);
     if analyzed.constant_count() == constants.len() {
         write_polys_file(
@@ -123,17 +123,17 @@ fn compile(
             degree,
             &constants,
         );
-        log::debug!("Wrote constants.bin.");
-        log::debug!("Deducing witness columns...");
+        log::info!("Wrote constants.bin.");
+        log::info!("Deducing witness columns...");
         let commits = witness_generator::generate(analyzed, degree, &constants, query_callback);
         write_polys_file(
             &mut BufWriter::new(&mut fs::File::create(output_dir.join("commits.bin")).unwrap()),
             degree,
             &commits,
         );
-        log::debug!("Wrote commits.bin.");
+        log::info!("Wrote commits.bin.");
     } else {
-        log::debug!("Not writing constants.bin because not all declared constants are defined (or there are none).");
+        log::warn!("Not writing constants.bin because not all declared constants are defined (or there are none).");
         success = false;
     }
     let json_out = json_exporter::export(analyzed);
@@ -141,7 +141,7 @@ fn compile(
     json_out
         .write(&mut fs::File::create(output_dir.join(&json_file)).unwrap())
         .unwrap();
-    log::debug!("Wrote {json_file}.");
+    log::info!("Wrote {json_file}.");
     success
 }
 
