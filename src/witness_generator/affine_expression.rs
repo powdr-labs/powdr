@@ -260,7 +260,7 @@ impl AffineExpression {
                 } else if *c == (-1).into() {
                     format!("-{name}")
                 } else {
-                    format!("{} * {name}", c)
+                    format!("{c} * {name}")
                 }
             })
             .chain(self.constant_value().map(|v| format!("{v}")))

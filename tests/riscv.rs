@@ -5,6 +5,13 @@ mod common;
 
 #[test]
 #[ignore = "Too slow"]
+fn test_trivial() {
+    let case = "trivial.rs";
+    verify_file(case, vec![]);
+}
+
+#[test]
+#[ignore = "Too slow"]
 fn test_sum() {
     let case = "sum.rs";
     verify_file(

@@ -64,9 +64,33 @@ pub fn generate<'a>(
 
     let mut values: Vec<(&str, Vec<FieldElement>)> =
         witness_cols.iter().map(|p| (p.name, Vec::new())).collect();
+    // Are we in an infinite loop and can just re-use the old values?
+    let mut looping_period = None;
     for row in 0..degree as DegreeType {
-        let row_values = generator.compute_next_row(row);
-        for (col, v) in row_values.into_iter().enumerate() {
+        // Check if we are in a loop.
+        if looping_period.is_none() && row % 100 == 0 && row > 0 {
+            looping_period = rows_are_repeating(&values);
+            if let Some(p) = looping_period {
+                log::info!("Found loop with period {p} starting at row {row}")
+            }
+        }
+        let mut row_values = None;
+        if let Some(period) = looping_period {
+            let values = values
+                .iter()
+                .map(|(_, v)| v[v.len() - period])
+                .collect::<Vec<_>>();
+            if generator.propose_next_row(row, &values) {
+                row_values = Some(values);
+            } else {
+                log::info!("Using loop failed. Trying to generate regularly again.");
+                looping_period = None;
+            }
+        }
+        if row_values.is_none() {
+            row_values = Some(generator.compute_next_row(row));
+        };
+        for (col, v) in row_values.unwrap().into_iter().enumerate() {
             values[col].1.push(v);
         }
     }
@@ -81,6 +105,22 @@ pub fn generate<'a>(
         *col = data;
     }
     values
+}
+
+/// Checks if the last rows are repeating and returns the period.
+/// Only checks for periods of 1, 2, 3 and 4.
+fn rows_are_repeating(values: &[(&str, Vec<FieldElement>)]) -> Option<usize> {
+    if values.is_empty() {
+        return Some(1);
+    } else if values[0].1.len() < 4 {
+        return None;
+    }
+    (1..=3).find(|&period| {
+        values.iter().all(|(_name, value)| {
+            let len = value.len();
+            (1..=period).all(|i| value[len - i - period] == value[len - i])
+        })
+    })
 }
 
 /// Result of evaluating an expression / lookup.

@@ -75,15 +75,7 @@ where
     }
 
     pub fn compute_next_row(&mut self, next_row: DegreeType) -> Vec<FieldElement> {
-        if next_row >= self.last_report + 1000 {
-            log::info!(
-                "{next_row} of {} rows ({} %)",
-                self.fixed_data.degree,
-                next_row * 100 / self.fixed_data.degree
-            );
-            self.last_report = next_row;
-        }
-        self.next_row = next_row;
+        self.set_next_row_and_log(next_row);
 
         // TODO maybe better to generate a dependency graph than looping multiple times.
         // TODO at least we could cache the affine expressions between loops.
@@ -184,12 +176,55 @@ where
         }
     }
 
+    /// Verifies the proposed values for the next row.
+    /// TODO this is bad for machines because we might introduce rows in the machine that are then
+    /// not used.
+    pub fn propose_next_row(
+        &mut self,
+        next_row: DegreeType,
+        values: &[FieldElement],
+    ) -> bool {
+        self.set_next_row_and_log(next_row);
+        self.next = values.iter().cloned().map(Some).collect();
+
+        for identity in self.identities {
+            let result = match identity.kind {
+                IdentityKind::Polynomial => {
+                    self.process_polynomial_identity(identity.left.selector.as_ref().unwrap())
+                }
+                IdentityKind::Plookup | IdentityKind::Permutation => self.process_plookup(identity),
+                _ => Err("Unsupported lookup type".to_string().into()),
+            };
+            if result.is_err() {
+                self.next = vec![None; self.current.len()];
+                self.next_bit_constraints = vec![None; self.current.len()];
+                return false;
+            }
+        }
+        std::mem::swap(&mut self.next, &mut self.current);
+        self.next = vec![None; self.current.len()];
+        self.next_bit_constraints = vec![None; self.current.len()];
+        true
+    }
+
     pub fn machine_witness_col_values(&mut self) -> HashMap<String, Vec<FieldElement>> {
         let mut result: HashMap<_, _> = Default::default();
         for m in &mut self.machines {
             result.extend(m.witness_col_values(self.fixed_data));
         }
         result
+    }
+
+    fn set_next_row_and_log(&mut self, next_row: DegreeType) {
+        if next_row >= self.last_report + 1000 {
+            log::info!(
+                "{next_row} of {} rows ({} %)",
+                self.fixed_data.degree,
+                next_row * 100 / self.fixed_data.degree
+            );
+            self.last_report = next_row;
+        }
+        self.next_row = next_row;
     }
 
     fn format_next_values(&self) -> Vec<String> {
