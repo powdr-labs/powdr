@@ -192,9 +192,18 @@ impl BlockMachine {
         if left
             .iter()
             .all(|v| v.as_ref().ok().map(|v| v.is_constant()) == Some(true))
+            && self.rows() > 0
         {
-            return Ok(vec![]);
-            // TOOD check that they really exist (maybe just check the last row)
+            // All values on the left hand side are known, check if this is a query
+            // to the last row.
+            self.row = self.rows() - 1;
+            if self.process_outer_query(fixed_data, left, right).is_ok() {
+                return Ok(vec![]);
+            } else {
+                return Err("Lookup of constant values in block machine failed."
+                    .to_string()
+                    .into());
+            }
         }
 
         let old_len = self.rows();

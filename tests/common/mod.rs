@@ -44,6 +44,7 @@ pub fn verify(file_name: &str, temp_dir: &Path) {
 
     let verifier_output = Command::new("node")
         .args([
+            "--max-old-space-size=8000".to_string(), // 8GB of memory
             format!("{pilcom}/src/main_pilverifier.js"),
             commits_file,
             "-j".to_string(),
