@@ -3,13 +3,12 @@ use std::io::{BufWriter, Write};
 use std::path::Path;
 
 use itertools::Itertools;
-use num_bigint::Sign;
 
-use crate::number::{abstract_to_degree, AbstractNumberType, DegreeType};
+use crate::number::{DegreeType, FieldElement};
 use crate::parser::ast::PILFile;
 use crate::{analyzer, asm_compiler, constant_evaluator, json_exporter, witness_generator};
 
-pub fn no_callback() -> Option<fn(&str) -> Option<AbstractNumberType>> {
+pub fn no_callback() -> Option<fn(&str) -> Option<FieldElement>> {
     None
 }
 
@@ -20,7 +19,7 @@ pub fn no_callback() -> Option<fn(&str) -> Option<AbstractNumberType>> {
 pub fn compile_pil(
     pil_file: &Path,
     output_dir: &Path,
-    query_callback: Option<impl FnMut(&str) -> Option<AbstractNumberType>>,
+    query_callback: Option<impl FnMut(&str) -> Option<FieldElement>>,
 ) -> bool {
     compile(
         &analyzer::analyze(pil_file),
@@ -34,7 +33,7 @@ pub fn compile_pil_ast(
     pil: &PILFile,
     file_name: &str,
     output_dir: &Path,
-    query_callback: Option<impl FnMut(&str) -> Option<AbstractNumberType>>,
+    query_callback: Option<impl FnMut(&str) -> Option<FieldElement>>,
 ) -> bool {
     // TODO exporting this to string as a hack because the parser
     // is tied into the analyzer due to imports.
@@ -50,7 +49,7 @@ pub fn compile_pil_ast(
 /// fixed and witness columns.
 pub fn compile_asm(
     file_name: &str,
-    inputs: Vec<AbstractNumberType>,
+    inputs: Vec<FieldElement>,
     output_dir: &Path,
     force_overwrite: bool,
 ) {
@@ -63,7 +62,7 @@ pub fn compile_asm(
 pub fn compile_asm_string(
     file_name: &str,
     contents: &str,
-    inputs: Vec<AbstractNumberType>,
+    inputs: Vec<FieldElement>,
     output_dir: &Path,
     force_overwrite: bool,
 ) {
@@ -85,7 +84,7 @@ pub fn compile_asm_string(
     }
     fs::write(pil_file_name.clone(), format!("{pil}")).unwrap();
 
-    let query_callback = |query: &str| -> Option<AbstractNumberType> {
+    let query_callback = |query: &str| -> Option<FieldElement> {
         let items = query.split(',').map(|s| s.trim()).collect::<Vec<_>>();
         let mut it = items.iter();
         let _current_step = it.next().unwrap();
@@ -112,7 +111,7 @@ fn compile(
     analyzed: &analyzer::Analyzed,
     file_name: &str,
     output_dir: &Path,
-    query_callback: Option<impl FnMut(&str) -> Option<AbstractNumberType>>,
+    query_callback: Option<impl FnMut(&str) -> Option<FieldElement>>,
 ) -> bool {
     let mut success = true;
     log::info!("Evaluating fixed columns...");
@@ -148,17 +147,13 @@ fn compile(
 fn write_polys_file(
     file: &mut impl Write,
     degree: DegreeType,
-    polys: &Vec<(&str, Vec<AbstractNumberType>)>,
+    polys: &Vec<(&str, Vec<FieldElement>)>,
 ) {
     for i in 0..degree as usize {
         for (_name, constant) in polys {
-            let mut v = constant[i].clone();
-            if v.sign() == Sign::Minus {
-                // This hardcodes the goldilocks field
-                v += 0xffffffff00000001u64;
-            }
-            file.write_all(&abstract_to_degree(&v).to_le_bytes())
-                .unwrap();
+            let bytes = constant[i].to_bytes_le();
+            assert_eq!(bytes.len(), 8);
+            file.write_all(&bytes).unwrap();
         }
     }
 }

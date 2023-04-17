@@ -7,7 +7,7 @@ use super::fixed_lookup_machine::FixedLookup;
 use super::Machine;
 use super::{EvalResult, FixedData};
 use crate::analyzer::{Expression, Identity, IdentityKind, SelectedExpressions};
-use crate::number::AbstractNumberType;
+use crate::number::FieldElement;
 use crate::witness_generator::{
     eval_error::{self, EvalError},
     expression_evaluator::ExpressionEvaluator,
@@ -27,7 +27,7 @@ pub struct SortedWitnesses {
     /// Position of the witness columns in the data.
     /// The key column has a position of usize::max
     witness_positions: HashMap<String, usize>,
-    data: BTreeMap<AbstractNumberType, Vec<Option<AbstractNumberType>>>,
+    data: BTreeMap<FieldElement, Vec<Option<FieldElement>>>,
 }
 
 impl SortedWitnesses {
@@ -87,7 +87,7 @@ fn check_identity<'a>(fixed_data: &'a FixedData, id: &Identity) -> Option<&'a st
             return None;
         }
         let pos = ev.evaluate(positive).ok()?.constant_value()?;
-        if pos != (row + 1).into() {
+        if pos != (row as u64 + 1).into() {
             return None;
         }
     }
@@ -157,10 +157,7 @@ impl Machine for SortedWitnesses {
 
         Some(self.process_plookup_internal(fixed_data, left, right, rhs))
     }
-    fn witness_col_values(
-        &mut self,
-        fixed_data: &FixedData,
-    ) -> HashMap<String, Vec<AbstractNumberType>> {
+    fn witness_col_values(&mut self, fixed_data: &FixedData) -> HashMap<String, Vec<FieldElement>> {
         let mut result = HashMap::new();
 
         let (mut keys, mut values): (Vec<_>, Vec<_>) =
@@ -168,8 +165,8 @@ impl Machine for SortedWitnesses {
 
         let mut last_key = keys.last().cloned().unwrap_or_default();
         while keys.len() < fixed_data.degree as usize {
-            last_key += 1;
-            keys.push(last_key.clone());
+            last_key += 1u64.into();
+            keys.push(last_key);
         }
         result.insert(self.key_col.clone(), keys);
 
@@ -220,14 +217,14 @@ impl SortedWitnesses {
         let mut assignments = vec![];
         let stored_values = self
             .data
-            .entry(key_value.clone())
+            .entry(key_value)
             .or_insert_with(|| vec![None; self.witness_positions.len()]);
         for (&l, &r) in left.iter().zip(rhs.iter()).skip(1) {
             let stored_value = &mut stored_values[self.witness_positions[r]];
             match stored_value {
                 // There is a stored value
                 Some(v) => {
-                    match (l.clone() - (*v).clone().into()).solve() {
+                    match (l.clone() - (*v).into()).solve() {
                         Err(EvalError::ConstraintUnsatisfiable(_)) => {
                             // The LHS value is known and it is differetn from the stored one.
                             return Err(format!(

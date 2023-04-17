@@ -1,4 +1,4 @@
-use crate::number::{AbstractNumberType, DegreeType};
+use crate::number::{DegreeType, FieldElement};
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct PILFile(pub Vec<Statement>);
@@ -41,17 +41,14 @@ pub enum Expression {
     Constant(String),
     PolynomialReference(PolynomialReference),
     PublicReference(String),
-    Number(AbstractNumberType),
+    Number(FieldElement),
     String(String),
     Tuple(Vec<Expression>),
     BinaryOperation(Box<Expression>, BinaryOperator, Box<Expression>),
     UnaryOperation(UnaryOperator, Box<Expression>),
     FunctionCall(String, Vec<Expression>),
     FreeInput(Box<Expression>),
-    MatchExpression(
-        Box<Expression>,
-        Vec<(Option<AbstractNumberType>, Expression)>,
-    ),
+    MatchExpression(Box<Expression>, Vec<(Option<FieldElement>, Expression)>),
 }
 
 #[derive(Debug, PartialEq, Eq, Default, Clone)]
@@ -151,8 +148,8 @@ impl ArrayExpression {
     /// find the total length of an array expression as an affine expression: `a + b*x`
     fn len(&self) -> (DegreeType, DegreeType) {
         match self {
-            ArrayExpression::RepeatedValue(e) => (0, e.len() as u64),
-            ArrayExpression::Value(e) => (e.len() as u64, 0),
+            ArrayExpression::RepeatedValue(e) => (0, e.len() as DegreeType),
+            ArrayExpression::Value(e) => (e.len() as DegreeType, 0),
             ArrayExpression::Concat(left, right) => {
                 let (a0, b0) = left.len();
                 let (a1, b1) = right.len();

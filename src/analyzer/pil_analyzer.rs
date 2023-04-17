@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use crate::number::{abstract_to_degree, DegreeType};
+use crate::number::DegreeType;
 use crate::parser::ast::{self, ArrayExpression};
 pub use crate::parser::ast::{BinaryOperator, UnaryOperator};
 use crate::{parser, utils};
@@ -26,7 +26,7 @@ struct PILContext {
     namespace: String,
     polynomial_degree: DegreeType,
     /// Constants are not namespaced!
-    constants: HashMap<String, AbstractNumberType>,
+    constants: HashMap<String, FieldElement>,
     definitions: HashMap<String, (Polynomial, Option<FunctionValueDefinition>)>,
     public_declarations: HashMap<String, PublicDeclaration>,
     macros: HashMap<String, MacroDefinition>,
@@ -260,7 +260,8 @@ impl PILContext {
     }
 
     fn handle_namespace(&mut self, name: &str, degree: &ast::Expression) {
-        self.polynomial_degree = abstract_to_degree(&self.evaluate_expression(degree).unwrap());
+        // TODO: the polynomial degree should be handled without going through a field element. This requires having types in Expression
+        self.polynomial_degree = self.evaluate_expression(degree).unwrap().to_degree();
         self.namespace = name.to_owned();
     }
 
@@ -292,7 +293,7 @@ impl PILContext {
         let length = array_size
             .as_ref()
             .map(|l| self.evaluate_expression(l).unwrap())
-            .map(|l| abstract_to_degree(&l));
+            .map(|l| l.to_degree());
         if length.is_some() {
             assert!(value.is_none());
         }
@@ -344,7 +345,7 @@ impl PILContext {
             ast::FunctionDefinition::Array(value) => {
                 let star_value = value.solve(self.polynomial_degree);
                 let expressions = self.process_array_expression(value, star_value);
-                assert_eq!(expressions.len() as u64, self.polynomial_degree);
+                assert_eq!(expressions.len() as DegreeType, self.polynomial_degree);
                 FunctionValueDefinition::Array(expressions)
             }
         });
@@ -373,7 +374,7 @@ impl PILContext {
                 source,
                 name: name.to_string(),
                 polynomial: self.process_polynomial_reference(poly),
-                index: abstract_to_degree(&self.evaluate_expression(index).unwrap()),
+                index: self.evaluate_expression(index).unwrap().to_degree(),
             },
         );
         self.source_order
@@ -480,7 +481,7 @@ impl PILContext {
                 }
             }
             ast::Expression::PublicReference(name) => Expression::PublicReference(name.clone()),
-            ast::Expression::Number(n) => Expression::Number(n.clone()),
+            ast::Expression::Number(n) => Expression::Number(*n),
             ast::Expression::String(value) => Expression::String(value.clone()),
             ast::Expression::Tuple(items) => Expression::Tuple(self.process_expressions(items)),
             ast::Expression::BinaryOperation(left, op, right) => {
@@ -511,7 +512,7 @@ impl PILContext {
             ast::Expression::MatchExpression(scrutinee, arms) => Expression::MatchExpression(
                 Box::new(self.process_expression(scrutinee)),
                 arms.iter()
-                    .map(|(n, e)| (n.clone(), self.process_expression(e)))
+                    .map(|(n, e)| (*n, self.process_expression(e)))
                     .collect(),
             ),
             ast::Expression::FreeInput(_) => panic!(),
@@ -555,7 +556,7 @@ impl PILContext {
             .index
             .as_ref()
             .map(|i| self.evaluate_expression(i).unwrap())
-            .map(|i| abstract_to_degree(&i));
+            .map(|i| i.to_degree());
         PolynomialReference {
             name: self.namespaced_ref(&poly.namespace, &poly.name),
             index,
@@ -563,17 +564,17 @@ impl PILContext {
         }
     }
 
-    fn evaluate_expression(&self, expr: &ast::Expression) -> Option<AbstractNumberType> {
+    fn evaluate_expression(&self, expr: &ast::Expression) -> Option<FieldElement> {
         match expr {
             ast::Expression::Constant(name) => Some(
-                self.constants
+                *self
+                    .constants
                     .get(name)
-                    .unwrap_or_else(|| panic!("Constant {name} not found."))
-                    .clone(),
+                    .unwrap_or_else(|| panic!("Constant {name} not found.")),
             ),
             ast::Expression::PolynomialReference(_) => None,
             ast::Expression::PublicReference(_) => None,
-            ast::Expression::Number(n) => Some(n.clone()),
+            ast::Expression::Number(n) => Some(*n),
             ast::Expression::String(_) => None,
             ast::Expression::Tuple(_) => None,
             ast::Expression::BinaryOperation(left, op, right) => {
@@ -591,7 +592,7 @@ impl PILContext {
         left: &ast::Expression,
         op: &BinaryOperator,
         right: &ast::Expression,
-    ) -> Option<AbstractNumberType> {
+    ) -> Option<FieldElement> {
         if let (Some(left), Some(right)) = (
             self.evaluate_expression(left),
             self.evaluate_expression(right),
@@ -600,17 +601,18 @@ impl PILContext {
                 BinaryOperator::Add => left + right,
                 BinaryOperator::Sub => left - right,
                 BinaryOperator::Mul => left * right,
-                BinaryOperator::Div => left / right,
+                BinaryOperator::Div => left.integer_div(right),
                 BinaryOperator::Pow => {
-                    assert!(AbstractNumberType::from(0) <= right && right <= u32::MAX.into());
-                    left.pow(abstract_to_degree(&right) as u32)
+                    let right_int = right.to_integer();
+                    assert!(right_int <= u32::MAX.into());
+                    left.pow(right_int)
                 }
-                BinaryOperator::Mod => left % right,
-                BinaryOperator::BinaryAnd => left & right,
-                BinaryOperator::BinaryXor => left ^ right,
-                BinaryOperator::BinaryOr => left | right,
-                BinaryOperator::ShiftLeft => left << abstract_to_degree(&right),
-                BinaryOperator::ShiftRight => left >> abstract_to_degree(&right),
+                BinaryOperator::Mod => (left.to_integer() % right.to_integer()).into(),
+                BinaryOperator::BinaryAnd => (left.to_integer() & right.to_integer()).into(),
+                BinaryOperator::BinaryXor => (left.to_integer() ^ right.to_integer()).into(),
+                BinaryOperator::BinaryOr => (left.to_integer() | right.to_integer()).into(),
+                BinaryOperator::ShiftLeft => (left.to_integer() << right.to_integer()).into(),
+                BinaryOperator::ShiftRight => (left.to_integer() >> right.to_integer()).into(),
             })
         } else {
             None
@@ -621,7 +623,7 @@ impl PILContext {
         &self,
         op: &UnaryOperator,
         value: &ast::Expression,
-    ) -> Option<AbstractNumberType> {
+    ) -> Option<FieldElement> {
         self.evaluate_expression(value).map(|v| match op {
             UnaryOperator::Plus => v,
             UnaryOperator::Minus => -v,

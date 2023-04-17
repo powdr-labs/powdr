@@ -72,7 +72,7 @@ impl<'a> SymbolicEvaluator<'a> {
 
 impl<'a> SymbolicVariables for SymbolicEvaluator<'a> {
     fn constant(&self, name: &str) -> Result<AffineExpression, EvalError> {
-        Ok(self.fixed_data.constants[name].clone().into())
+        Ok(self.fixed_data.constants[name].into())
     }
 
     fn value(&self, name: &str, next: bool) -> Result<AffineExpression, EvalError> {

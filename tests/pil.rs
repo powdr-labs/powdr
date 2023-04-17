@@ -1,13 +1,13 @@
 use std::path::Path;
 
 use powdr::compiler;
-use powdr::number::AbstractNumberType;
+use powdr::number::FieldElement;
 
 use crate::common::verify;
 
 mod common;
 
-pub fn verify_pil(file_name: &str, query_callback: Option<fn(&str) -> Option<AbstractNumberType>>) {
+pub fn verify_pil(file_name: &str, query_callback: Option<fn(&str) -> Option<FieldElement>>) {
     let input_file = Path::new(&format!("./tests/pil_data/{file_name}"))
         .canonicalize()
         .unwrap();

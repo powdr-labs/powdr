@@ -1,9 +1,7 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 
-use num_bigint::BigInt;
-
 use crate::analyzer::{Identity, IdentityKind, SelectedExpressions};
-use crate::number::{AbstractNumberType, DegreeType};
+use crate::number::{DegreeType, FieldElement};
 
 use crate::witness_generator::util::is_simple_poly;
 use crate::witness_generator::{
@@ -14,7 +12,7 @@ use crate::witness_generator::{
 };
 
 type Application = (Vec<String>, Vec<String>);
-type Index = BTreeMap<Vec<AbstractNumberType>, Option<DegreeType>>;
+type Index = BTreeMap<Vec<FieldElement>, Option<DegreeType>>;
 
 /// Indices for applications of fixed columns. For each application `(INPUT_COLS, OUTPUT_COLS)`, stores
 /// - `(V, None)` if there exists two different rows where `INPUT_COLS == V` match but `OUTPUT_COLS` differ. TODO: store bitmasks of all possible outputs instead.
@@ -29,7 +27,7 @@ impl IndexedColumns {
     fn get_match(
         &mut self,
         fixed_data: &FixedData,
-        mut assignment: Vec<(String, AbstractNumberType)>,
+        mut assignment: Vec<(String, FieldElement)>,
         mut output_fixed_columns: Vec<String>,
     ) -> Option<&Option<DegreeType>> {
         // sort in order to have a single index for [X, Y] and for [Y, X]
@@ -82,21 +80,22 @@ impl IndexedColumns {
             .map(|name| fixed_data.fixed_cols.get(name.as_str()).unwrap())
             .collect::<Vec<_>>();
 
-        let index: BTreeMap<Vec<BigInt>, Option<u64>> = (0..fixed_data.degree as usize)
+        let index: BTreeMap<Vec<FieldElement>, Option<DegreeType>> = (0..fixed_data.degree
+            as usize)
             .fold(
                 (
-                    BTreeMap::<Vec<AbstractNumberType>, Option<DegreeType>>::default(),
-                    HashSet::<(Vec<AbstractNumberType>, Vec<AbstractNumberType>)>::default(),
+                    BTreeMap::<Vec<FieldElement>, Option<DegreeType>>::default(),
+                    HashSet::<(Vec<FieldElement>, Vec<FieldElement>)>::default(),
                 ),
                 |(mut acc, mut set), row| {
                     let input: Vec<_> = input_column_values
                         .iter()
-                        .map(|column| column[row].clone())
+                        .map(|column| column[row])
                         .collect();
 
                     let output: Vec<_> = output_column_values
                         .iter()
-                        .map(|column| column[row].clone())
+                        .map(|column| column[row])
                         .collect();
 
                     let input_output = (input, output);
@@ -113,7 +112,7 @@ impl IndexedColumns {
                             .and_modify(|value| {
                                 *value = None;
                             })
-                            .or_insert(Some(row as u64));
+                            .or_insert(Some(row as DegreeType));
 
                         (acc, set)
                     }
@@ -243,7 +242,7 @@ impl FixedLookup {
         for (l, r) in output_expressions.iter().zip(output) {
             match l {
                 Ok(l) => {
-                    let evaluated = l.clone() - r.clone().into();
+                    let evaluated = l.clone() - (*r).into();
                     // TODO we could use bit constraints here
                     match evaluated.solve() {
                         Ok(constraints) => result.extend(constraints),

@@ -42,7 +42,7 @@ where
     WA: WitnessColumnEvaluator + WitnessColumnNamer,
 {
     fn constant(&self, name: &str) -> Result<AffineExpression, EvalError> {
-        Ok(self.fixed_data.constants[name].clone().into())
+        Ok(self.fixed_data.constants[name].into())
     }
 
     fn value(&self, name: &str, next: bool) -> Result<AffineExpression, EvalError> {
@@ -62,7 +62,7 @@ where
             } else {
                 self.row
             };
-            Ok(values[row as usize].clone().into())
+            Ok(values[row as usize].into())
         }
     }
 

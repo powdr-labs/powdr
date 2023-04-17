@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::fmt::Display;
 
 use crate::analyzer::{Analyzed, Expression, FunctionValueDefinition};
-use crate::number::{AbstractNumberType, DegreeType};
+use crate::number::{DegreeType, FieldElement};
 
 use self::bit_constraints::BitConstraint;
 use self::eval_error::EvalError;
@@ -24,9 +24,9 @@ mod util;
 pub fn generate<'a>(
     analyzed: &'a Analyzed,
     degree: DegreeType,
-    fixed_cols: &[(&str, Vec<AbstractNumberType>)],
-    query_callback: Option<impl FnMut(&str) -> Option<AbstractNumberType>>,
-) -> Vec<(&'a str, Vec<AbstractNumberType>)> {
+    fixed_cols: &[(&str, Vec<FieldElement>)],
+    query_callback: Option<impl FnMut(&str) -> Option<FieldElement>>,
+) -> Vec<(&'a str, Vec<FieldElement>)> {
     let witness_cols: Vec<WitnessColumn> = analyzed
         .committed_polys_in_source_order()
         .iter()
@@ -62,7 +62,7 @@ pub fn generate<'a>(
         query_callback,
     );
 
-    let mut values: Vec<(&str, Vec<AbstractNumberType>)> =
+    let mut values: Vec<(&str, Vec<FieldElement>)> =
         witness_cols.iter().map(|p| (p.name, Vec::new())).collect();
     for row in 0..degree as DegreeType {
         let row_values = generator.compute_next_row(row);
@@ -89,7 +89,7 @@ type EvalResult = Result<Vec<(usize, Constraint)>, EvalError>;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Constraint {
-    Assignment(AbstractNumberType),
+    Assignment(FieldElement),
     BitConstraint(BitConstraint),
 }
 
@@ -105,8 +105,8 @@ impl Display for Constraint {
 /// Data that is fixed for witness generation.
 pub struct FixedData<'a> {
     degree: DegreeType,
-    constants: &'a HashMap<String, AbstractNumberType>,
-    fixed_cols: HashMap<&'a str, &'a Vec<AbstractNumberType>>,
+    constants: &'a HashMap<String, FieldElement>,
+    fixed_cols: HashMap<&'a str, &'a Vec<FieldElement>>,
     witness_cols: &'a Vec<WitnessColumn<'a>>,
     witness_ids: HashMap<&'a str, usize>,
 }
@@ -114,8 +114,8 @@ pub struct FixedData<'a> {
 impl<'a> FixedData<'a> {
     pub fn new(
         degree: DegreeType,
-        constants: &'a HashMap<String, AbstractNumberType>,
-        fixed_cols: HashMap<&'a str, &'a Vec<AbstractNumberType>>,
+        constants: &'a HashMap<String, FieldElement>,
+        fixed_cols: HashMap<&'a str, &'a Vec<FieldElement>>,
         witness_cols: &'a Vec<WitnessColumn<'a>>,
         witness_ids: HashMap<&'a str, usize>,
     ) -> Self {

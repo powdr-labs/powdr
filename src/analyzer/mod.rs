@@ -4,7 +4,7 @@ pub mod pil_analyzer;
 use std::collections::HashMap;
 use std::path::Path;
 
-use crate::number::{AbstractNumberType, DegreeType};
+use crate::number::{DegreeType, FieldElement};
 pub use crate::parser::ast::{BinaryOperator, UnaryOperator};
 
 pub fn analyze(path: &Path) -> Analyzed {
@@ -23,7 +23,7 @@ pub enum StatementIdentifier {
 
 pub struct Analyzed {
     /// Constants are not namespaced!
-    pub constants: HashMap<String, AbstractNumberType>,
+    pub constants: HashMap<String, FieldElement>,
     pub definitions: HashMap<String, (Polynomial, Option<FunctionValueDefinition>)>,
     pub public_declarations: HashMap<String, PublicDeclaration>,
     pub identities: Vec<Identity>,
@@ -152,17 +152,14 @@ pub enum Expression {
     PolynomialReference(PolynomialReference),
     LocalVariableReference(u64),
     PublicReference(String),
-    Number(AbstractNumberType),
+    Number(FieldElement),
     String(String),
     Tuple(Vec<Expression>),
     BinaryOperation(Box<Expression>, BinaryOperator, Box<Expression>),
     UnaryOperation(UnaryOperator, Box<Expression>),
     /// Call to a non-macro function (like a constant polynomial)
     FunctionCall(String, Vec<Expression>),
-    MatchExpression(
-        Box<Expression>,
-        Vec<(Option<AbstractNumberType>, Expression)>,
-    ),
+    MatchExpression(Box<Expression>, Vec<(Option<FieldElement>, Expression)>),
 }
 
 #[derive(Debug, PartialEq, Eq, Default, Clone)]

@@ -4,7 +4,7 @@ use mktemp::Temp;
 use std::fs;
 use walkdir::WalkDir;
 
-use crate::number::AbstractNumberType;
+use crate::number::FieldElement;
 
 pub mod compiler;
 pub mod parser;
@@ -14,7 +14,7 @@ pub mod parser;
 pub fn compile_rust(
     file_name: &str,
     full_crate: bool,
-    inputs: Vec<AbstractNumberType>,
+    inputs: Vec<FieldElement>,
     output_dir: &Path,
     force_overwrite: bool,
 ) {
@@ -57,7 +57,7 @@ pub fn compile_rust(
 pub fn compile_riscv_asm(
     original_file_name: &str,
     file_name: &str,
-    inputs: Vec<AbstractNumberType>,
+    inputs: Vec<FieldElement>,
     output_dir: &Path,
     force_overwrite: bool,
 ) {

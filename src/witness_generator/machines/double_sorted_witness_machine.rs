@@ -6,7 +6,7 @@ use itertools::{Either, Itertools};
 use super::{FixedLookup, Machine};
 use crate::analyzer::PolynomialReference;
 use crate::analyzer::{Expression, Identity, IdentityKind, SelectedExpressions};
-use crate::number::AbstractNumberType;
+use crate::number::FieldElement;
 use crate::witness_generator::{
     affine_expression::AffineExpression,
     eval_error::{self, EvalError},
@@ -22,13 +22,13 @@ pub struct DoubleSortedWitnesses {
     /// The key column has a position of usize::max
     //witness_positions: HashMap<String, usize>,
     /// (addr, step) -> value
-    trace: BTreeMap<(AbstractNumberType, AbstractNumberType), Operation>,
-    data: BTreeMap<AbstractNumberType, AbstractNumberType>,
+    trace: BTreeMap<(FieldElement, FieldElement), Operation>,
+    data: BTreeMap<FieldElement, FieldElement>,
 }
 
 struct Operation {
     pub is_write: bool,
-    pub value: AbstractNumberType,
+    pub value: FieldElement,
 }
 
 impl DoubleSortedWitnesses {
@@ -90,10 +90,7 @@ impl Machine for DoubleSortedWitnesses {
         Some(self.process_plookup_internal(fixed_data, left, right))
     }
 
-    fn witness_col_values(
-        &mut self,
-        fixed_data: &FixedData,
-    ) -> HashMap<String, Vec<AbstractNumberType>> {
+    fn witness_col_values(&mut self, fixed_data: &FixedData) -> HashMap<String, Vec<FieldElement>> {
         let mut addr = vec![];
         let mut step = vec![];
         let mut value = vec![];
@@ -102,8 +99,8 @@ impl Machine for DoubleSortedWitnesses {
         let mut is_read = vec![];
 
         for ((a, s), o) in std::mem::take(&mut self.trace) {
-            addr.push(a.clone());
-            step.push(s.clone());
+            addr.push(a);
+            step.push(s);
             value.push(o.value);
             op.push(1.into());
 
@@ -120,9 +117,9 @@ impl Machine for DoubleSortedWitnesses {
             is_read.push(0.into());
         }
         while addr.len() < fixed_data.degree as usize {
-            addr.push(addr.last().unwrap().clone());
-            step.push(step.last().unwrap().clone() + 1);
-            value.push(value.last().unwrap().clone());
+            addr.push(*addr.last().unwrap());
+            step.push(*step.last().unwrap() + FieldElement::from(1));
+            value.push(*value.last().unwrap());
             op.push(0.into());
             is_write.push(0.into());
             is_read.push(0.into());
@@ -196,10 +193,11 @@ impl DoubleSortedWitnesses {
         })?;
 
         log::trace!(
-            "Query addr={addr:x}, step={step}, write: {is_write}, left: {}",
+            "Query addr={:x}, step={step}, write: {is_write}, left: {}",
+            addr.to_integer(),
             left[2].format(fixed_data)
         );
-        if addr.clone() % 4 != 0.into() {
+        if addr.clone().to_integer() % 4 != 0 {
             panic!("UNALIGNED");
         }
 
@@ -210,21 +208,30 @@ impl DoubleSortedWitnesses {
                 Some(v) => v,
                 None => return Ok(vec![]),
             };
-            log::debug!("Memory write: addr={addr:x}, step={step}, value={value:x}");
-            self.data.insert(addr.clone(), value.clone());
+
+            log::debug!(
+                "Memory write: addr={:x}, step={step}, value={:x}",
+                addr.to_integer(),
+                value.to_integer()
+            );
+            self.data.insert(addr, value);
             self.trace
                 .insert((addr, step), Operation { is_write, value });
         } else {
-            let value = self.data.entry(addr.clone()).or_default();
+            let value = self.data.entry(addr).or_default();
             self.trace.insert(
-                (addr.clone(), step.clone()),
+                (addr, step),
                 Operation {
                     is_write,
-                    value: value.clone(),
+                    value: *value,
                 },
             );
-            log::debug!("Memory read: addr={addr:x}, step={step}, value={value:x}");
-            assignments.extend(match (left[2].clone() - value.clone().into()).solve() {
+            log::debug!(
+                "Memory read: addr={:x}, step={step}, value={:x}",
+                addr.to_integer(),
+                value.to_integer()
+            );
+            assignments.extend(match (left[2].clone() - (*value).into()).solve() {
                 Ok(ass) => ass,
                 Err(_) => return Ok(vec![]),
             });

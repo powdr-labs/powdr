@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use crate::analyzer::{IdentityKind, SelectedExpressions};
-use crate::number::AbstractNumberType;
+use crate::number::FieldElement;
 
 pub use self::fixed_lookup_machine::FixedLookup;
 
@@ -41,8 +41,5 @@ pub trait Machine {
     ) -> Option<EvalResult>;
 
     /// Returns the final values of the witness columns.
-    fn witness_col_values(
-        &mut self,
-        fixed_data: &FixedData,
-    ) -> HashMap<String, Vec<AbstractNumberType>>;
+    fn witness_col_values(&mut self, fixed_data: &FixedData) -> HashMap<String, Vec<FieldElement>>;
 }
