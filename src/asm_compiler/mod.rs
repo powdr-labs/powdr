@@ -109,7 +109,19 @@ impl ASMPILConverter {
         self.pil.extend(
             self.registers
                 .iter()
-                .filter_map(|(name, reg)| reg.update_expression().map(|update| (name, update)))
+                .filter_map(|(name, reg)| {
+                    reg.update_expression().map(|mut update| {
+                        if Some(name) == self.pc_name.as_ref() {
+                            // Force pc to zero on first row.
+                            update = build_mul(
+                                build_sub(build_number(1.into()), next_reference("first_step")),
+                                update,
+                            )
+                        }
+
+                        (name, update)
+                    })
+                })
                 .map(|(name, update)| {
                     Statement::PolynomialIdentity(0, build_sub(next_reference(name), update))
                 }),
@@ -154,15 +166,6 @@ impl ASMPILConverter {
                 self.pc_name = Some(name.to_string());
                 self.line_lookup
                     .push((name.to_string(), "line".to_string()));
-                // This might be superfluous but makes it easier to determine that the PC needs to
-                // be zero in the first row.
-                self.pil.push(Statement::PolynomialIdentity(
-                    start,
-                    build_mul(direct_reference("first_step"), direct_reference(name)),
-                ));
-                // The value here is actually irrelevant, it is only important
-                // that "first_step'" is included to compute the "default condition"
-                conditioned_updates.push((next_reference("first_step"), build_number(0.into())));
                 default_update = Some(build_add(direct_reference(name), build_number(1.into())));
             }
             Some(RegisterFlag::IsAssignment) => {
@@ -916,7 +919,6 @@ mod test {
         let expectation = r#"
 namespace Assembly(1024);
 pol constant first_step = [1] + [0]*;
-(first_step * pc) = 0;
 pol commit pc;
 pol commit X;
 (first_step * A) = 0;
@@ -945,7 +947,7 @@ pol commit read_X_pc;
 X = (((((read_X_A * A) + (read_X_CNT * CNT)) + (read_X_pc * pc)) + X_const) + (X_read_free * X_free_value));
 A' = (((first_step' * 0) + (reg_write_X_A * X)) + ((1 - (first_step' + reg_write_X_A)) * A));
 CNT' = ((((first_step' * 0) + (reg_write_X_CNT * X)) + (instr_dec_CNT * (CNT - 1))) + ((1 - ((first_step' + reg_write_X_CNT) + instr_dec_CNT)) * CNT));
-pc' = ((((first_step' * 0) + (instr_jmpz * ((XIsZero * instr_jmpz_param_l) + ((1 - XIsZero) * (pc + 1))))) + (instr_jmp * instr_jmp_param_l)) + ((1 - ((first_step' + instr_jmpz) + instr_jmp)) * (pc + 1)));
+pc' = ((1 - first_step') * (((instr_jmpz * ((XIsZero * instr_jmpz_param_l) + ((1 - XIsZero) * (pc + 1)))) + (instr_jmp * instr_jmp_param_l)) + ((1 - (instr_jmpz + instr_jmp)) * (pc + 1))));
 pol constant line(i) { i };
 pol commit X_free_value(i) query (i, pc, (0, ("input", 1)), (3, ("input", (CNT + 1))), (7, ("input", 0)));
 pol constant p_X_const = [0, 0, 0, 0, 0, 0, 0, 0, 0] + [0]*;
