@@ -1,6 +1,5 @@
 use std::{fs, path::Path, process::Command};
 
-use itertools::Itertools;
 use number::FieldElement;
 
 #[allow(unused)]
@@ -12,20 +11,20 @@ pub fn verify_asm_string(file_name: &str, contents: &str, inputs: Vec<FieldEleme
         &pil,
         pil_file_name,
         &temp_dir,
-        Some(|input: &str| {
-            let items = input.split(',').map(|s| s.trim()).collect::<Vec<_>>();
-            let mut it = items.iter();
-            let _current_step = it.next().unwrap();
-            let current_pc = it.next().unwrap();
-            assert!(it.clone().len() % 3 == 0);
-            for (pc_check, input, index) in it.tuples() {
-                if pc_check == current_pc {
-                    assert_eq!(*input, "\"input\"");
-                    let index: usize = index.parse().unwrap();
-                    return inputs.get(index).cloned();
+        Some(|query: &str| {
+            let items = query.split(',').map(|s| s.trim()).collect::<Vec<_>>();
+            assert_eq!(items.len(), 2);
+            match items[0] {
+                "\"input\"" => {
+                    let index = items[1].parse::<usize>().unwrap();
+                    let value = inputs.get(index).cloned();
+                    if let Some(value) = value {
+                        log::trace!("Input query: Index {index} -> {value}");
+                    }
+                    value
                 }
+                _ => None,
             }
-            None
         }),
     ));
     verify(pil_file_name, &temp_dir);
