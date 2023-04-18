@@ -300,7 +300,7 @@ pil{
 // Requires 0 <= Y < 2**33
 instr wrap Y -> X { Y = X + wrap_bit * 2**32, X = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000 }
 // Requires -2**32 <= Y < 2**32
-instr wrap_signed Y -> X { Y = X - wrap_bit * 2**32, X = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000 }
+instr wrap_signed Y -> X { Y + 2**32 = X + wrap_bit * 2**32, X = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000 }
 pil{
     col fixed bytes(i) { i & 0xff };
     col witness X_b1;
