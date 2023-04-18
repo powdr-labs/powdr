@@ -111,7 +111,13 @@ impl Machine for DoubleSortedWitnesses {
             is_read.push((if o.is_write { 0 } else { 1 }).into());
         }
         if addr.is_empty() {
-            todo!();
+            // No memory access at all - fill a first row with something.
+            addr.push(0.into());
+            step.push(0.into());
+            value.push(0.into());
+            op.push(0.into());
+            is_write.push(0.into());
+            is_read.push(0.into());
         }
         while addr.len() < fixed_data.degree as usize {
             addr.push(addr.last().unwrap().clone());
