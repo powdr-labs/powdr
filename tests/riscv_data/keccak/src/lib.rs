@@ -15,6 +15,7 @@ pub extern "C" fn main() -> ! {
     let mut hasher = Keccak::v256();
     //hasher.update(input);
     hasher.finalize(&mut output);
+    assert!(output[0] == 0xc5);
     //    println!("{output:x?}");
     loop {}
 }
