@@ -1,10 +1,10 @@
 use common::verify_asm_string;
-use powdr::number::AbstractNumberType;
+use powdr::number::FieldElement;
 use std::fs;
 
 mod common;
 
-fn verify_asm(file_name: &str, inputs: Vec<AbstractNumberType>) {
+fn verify_asm(file_name: &str, inputs: Vec<FieldElement>) {
     let contents = fs::read_to_string(format!("./tests/asm_data/{file_name}")).unwrap();
     verify_asm_string(file_name, &contents, inputs)
 }

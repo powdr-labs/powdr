@@ -1,9 +1,8 @@
 use crate::analyzer::{Expression, Identity, IdentityKind};
-use crate::number::format_number;
 use crate::utils::indent;
 use std::collections::{BTreeMap, HashMap};
 // TODO should use finite field instead of abstract number
-use crate::number::{AbstractNumberType, DegreeType};
+use crate::number::{DegreeType, FieldElement};
 
 use super::affine_expression::AffineExpression;
 use super::bit_constraints::{BitConstraint, BitConstraintSet};
@@ -16,7 +15,7 @@ use super::{Constraint, EvalResult, FixedData, WitnessColumn};
 
 pub struct Generator<'a, QueryCallback>
 where
-    QueryCallback: FnMut(&'a str) -> Option<AbstractNumberType>,
+    QueryCallback: FnMut(&'a str) -> Option<FieldElement>,
 {
     fixed_data: &'a FixedData<'a>,
     fixed_lookup: &'a mut FixedLookup,
@@ -25,9 +24,9 @@ where
     query_callback: Option<QueryCallback>,
     global_bit_constraints: BTreeMap<&'a str, BitConstraint>,
     /// Values of the witness polynomials
-    current: Vec<Option<AbstractNumberType>>,
+    current: Vec<Option<FieldElement>>,
     /// Values of the witness polynomials in the next row
-    next: Vec<Option<AbstractNumberType>>,
+    next: Vec<Option<FieldElement>>,
     /// Bit constraints on the witness polynomials in the next row.
     next_bit_constraints: Vec<Option<BitConstraint>>,
     next_row: DegreeType,
@@ -46,7 +45,7 @@ enum EvaluationRow {
 
 impl<'a, QueryCallback> Generator<'a, QueryCallback>
 where
-    QueryCallback: FnMut(&str) -> Option<AbstractNumberType>,
+    QueryCallback: FnMut(&str) -> Option<FieldElement>,
 {
     pub fn new(
         fixed_data: &'a FixedData<'a>,
@@ -75,7 +74,7 @@ where
         }
     }
 
-    pub fn compute_next_row(&mut self, next_row: DegreeType) -> Vec<AbstractNumberType> {
+    pub fn compute_next_row(&mut self, next_row: DegreeType) -> Vec<FieldElement> {
         if next_row >= self.last_report + 1000 {
             log::info!(
                 "{next_row} of {} rows ({} %)",
@@ -180,12 +179,12 @@ where
             // violate constraints.
             self.current
                 .iter()
-                .map(|v| v.clone().unwrap_or_default())
+                .map(|v| (*v).unwrap_or_default())
                 .collect()
         }
     }
 
-    pub fn machine_witness_col_values(&mut self) -> HashMap<String, Vec<AbstractNumberType>> {
+    pub fn machine_witness_col_values(&mut self) -> HashMap<String, Vec<FieldElement>> {
         let mut result: HashMap<_, _> = Default::default();
         for m in &mut self.machines {
             result.extend(m.witness_col_values(self.fixed_data));
@@ -212,7 +211,7 @@ where
                     "{} = {}",
                     AffineExpression::from_witness_poly_value(i).format(self.fixed_data),
                     v.as_ref()
-                        .map(format_number)
+                        .map(ToString::to_string)
                         .unwrap_or("<unknown>".to_string())
                 )
             })
@@ -424,9 +423,9 @@ impl<'a> BitConstraintSet for WitnessBitConstraintSet<'a> {
 struct EvaluationData<'a> {
     pub fixed_data: &'a FixedData<'a>,
     /// Values of the witness polynomials in the current / last row
-    pub current_witnesses: &'a Vec<Option<AbstractNumberType>>,
+    pub current_witnesses: &'a Vec<Option<FieldElement>>,
     /// Values of the witness polynomials in the next row
-    pub next_witnesses: &'a Vec<Option<AbstractNumberType>>,
+    pub next_witnesses: &'a Vec<Option<FieldElement>>,
     pub evaluate_row: EvaluationRow,
 }
 
@@ -439,13 +438,13 @@ impl<'a> WitnessColumnEvaluator for EvaluationData<'a> {
                 // The exception is when we start the analysis on the first row.
                 self.current_witnesses[id]
                     .as_ref()
-                    .map(|value| value.clone().into())
+                    .map(|value| (*value).into())
                     .ok_or_else(|| EvalError::PreviousValueUnknown(name.to_string()))
             }
             (false, EvaluationRow::Next) | (true, EvaluationRow::Current) => {
                 Ok(if let Some(value) = &self.next_witnesses[id] {
                     // We already computed the concrete value
-                    value.clone().into()
+                    (*value).into()
                 } else {
                     // We continue with a symbolic value
                     AffineExpression::from_witness_poly_value(id)

@@ -3,12 +3,12 @@ use std::collections::HashMap;
 use crate::analyzer::{
     Analyzed, BinaryOperator, Expression, FunctionValueDefinition, UnaryOperator,
 };
-use crate::number::{abstract_to_degree, AbstractNumberType, DegreeType};
+use crate::number::{DegreeType, FieldElement};
 
 /// Generates the constant polynomial values for all constant polynomials
 /// that are defined (and not just declared).
 /// @returns the values (in source order) and the degree of the polynomials.
-pub fn generate(analyzed: &Analyzed) -> (Vec<(&str, Vec<AbstractNumberType>)>, DegreeType) {
+pub fn generate(analyzed: &Analyzed) -> (Vec<(&str, Vec<FieldElement>)>, DegreeType) {
     let mut degree = None;
     let mut other_constants = HashMap::new();
     for (poly, value) in analyzed.constant_polys_in_source_order() {
@@ -35,8 +35,8 @@ fn generate_values(
     analyzed: &Analyzed,
     degree: DegreeType,
     body: &FunctionValueDefinition,
-    other_constants: &HashMap<&str, Vec<AbstractNumberType>>,
-) -> Vec<AbstractNumberType> {
+    other_constants: &HashMap<&str, Vec<FieldElement>>,
+) -> Vec<FieldElement> {
     match body {
         FunctionValueDefinition::Mapping(body) => (0..degree)
             .map(|i| {
@@ -67,18 +67,18 @@ fn generate_values(
 
 struct Evaluator<'a> {
     analyzed: &'a Analyzed,
-    other_constants: &'a HashMap<&'a str, Vec<AbstractNumberType>>,
-    variables: &'a [AbstractNumberType],
+    other_constants: &'a HashMap<&'a str, Vec<FieldElement>>,
+    variables: &'a [FieldElement],
 }
 
 impl<'a> Evaluator<'a> {
-    fn evaluate(&self, expr: &Expression) -> AbstractNumberType {
+    fn evaluate(&self, expr: &Expression) -> FieldElement {
         match expr {
-            Expression::Constant(name) => self.analyzed.constants[name].clone(),
+            Expression::Constant(name) => self.analyzed.constants[name],
             Expression::PolynomialReference(_) => todo!(),
-            Expression::LocalVariableReference(i) => self.variables[*i as usize].clone(),
+            Expression::LocalVariableReference(i) => self.variables[*i as usize],
             Expression::PublicReference(_) => todo!(),
-            Expression::Number(n) => n.clone(),
+            Expression::Number(n) => *n,
             Expression::String(_) => panic!(),
             Expression::Tuple(_) => panic!(),
             Expression::BinaryOperation(left, op, right) => {
@@ -89,7 +89,7 @@ impl<'a> Evaluator<'a> {
                 let arg_values = args.iter().map(|a| self.evaluate(a)).collect::<Vec<_>>();
                 assert!(arg_values.len() == 1);
                 let values = &self.other_constants[name.as_str()];
-                values[abstract_to_degree(&arg_values[0]) as usize % values.len()].clone()
+                values[arg_values[0].to_degree() as usize % values.len()]
             }
             Expression::MatchExpression(scrutinee, arms) => {
                 let v = self.evaluate(scrutinee);
@@ -106,7 +106,7 @@ impl<'a> Evaluator<'a> {
         left: &Expression,
         op: &BinaryOperator,
         right: &Expression,
-    ) -> AbstractNumberType {
+    ) -> FieldElement {
         let left = self.evaluate(left);
         let right = self.evaluate(right);
         match op {
@@ -117,24 +117,20 @@ impl<'a> Evaluator<'a> {
                 if left == 0.into() {
                     0.into()
                 } else {
-                    left / right
+                    left.integer_div(right)
                 }
             }
-            BinaryOperator::Pow => left.pow(abstract_to_degree(&right) as u32),
-            BinaryOperator::Mod => left % right,
-            BinaryOperator::BinaryAnd => left & right,
-            BinaryOperator::BinaryXor => left ^ right,
-            BinaryOperator::BinaryOr => left | right,
-            BinaryOperator::ShiftLeft => left << abstract_to_degree(&right),
-            BinaryOperator::ShiftRight => left >> abstract_to_degree(&right),
+            BinaryOperator::Pow => left.pow(right.to_integer()),
+            BinaryOperator::Mod => (left.to_integer() % right.to_integer()).into(),
+            BinaryOperator::BinaryAnd => (left.to_integer() & right.to_integer()).into(),
+            BinaryOperator::BinaryXor => (left.to_integer() ^ right.to_integer()).into(),
+            BinaryOperator::BinaryOr => (left.to_integer() | right.to_integer()).into(),
+            BinaryOperator::ShiftLeft => (left.to_integer() << right.to_integer()).into(),
+            BinaryOperator::ShiftRight => (left.to_integer() >> right.to_integer()).into(),
         }
     }
 
-    fn evaluate_unary_operation(
-        &self,
-        op: &UnaryOperator,
-        expr: &Expression,
-    ) -> AbstractNumberType {
+    fn evaluate_unary_operation(&self, op: &UnaryOperator, expr: &Expression) -> FieldElement {
         let v = self.evaluate(expr);
         match op {
             UnaryOperator::Plus => v,
@@ -149,7 +145,7 @@ mod test {
 
     use super::*;
 
-    fn convert(input: Vec<i32>) -> Vec<AbstractNumberType> {
+    fn convert(input: Vec<i32>) -> Vec<FieldElement> {
         input.into_iter().map(|x| x.into()).collect()
     }
 

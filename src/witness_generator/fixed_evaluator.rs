@@ -17,7 +17,7 @@ impl<'a> FixedEvaluator<'a> {
 
 impl<'a> SymbolicVariables for FixedEvaluator<'a> {
     fn constant(&self, name: &str) -> Result<AffineExpression, EvalError> {
-        Ok(self.fixed_data.constants[name].clone().into())
+        Ok(self.fixed_data.constants[name].into())
     }
 
     fn value(&self, name: &str, next: bool) -> Result<AffineExpression, EvalError> {
@@ -29,7 +29,7 @@ impl<'a> SymbolicVariables for FixedEvaluator<'a> {
             } else {
                 self.row
             };
-            Ok(col_data[row].clone().into())
+            Ok(col_data[row].into())
         } else {
             Err("Can only access fixed columns in the fixed evaluator."
                 .to_string()

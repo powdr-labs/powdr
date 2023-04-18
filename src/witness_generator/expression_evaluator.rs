@@ -1,5 +1,5 @@
 use crate::analyzer::{BinaryOperator, Expression, UnaryOperator};
-use crate::number::abstract_to_degree;
+use crate::number::FieldElement;
 
 use super::affine_expression::AffineExpression;
 use super::eval_error::{self, EvalError};
@@ -29,7 +29,7 @@ impl<SV: SymbolicVariables> ExpressionEvaluator<SV> {
         match expr {
             Expression::Constant(name) => self.variables.constant(name),
             Expression::PolynomialReference(poly) => self.variables.value(&poly.name, poly.next),
-            Expression::Number(n) => Ok(n.clone().into()),
+            Expression::Number(n) => Ok((*n).into()),
             Expression::BinaryOperation(left, op, right) => {
                 self.evaluate_binary_operation(left, op, right)
             }
@@ -103,7 +103,7 @@ impl<SV: SymbolicVariables> ExpressionEvaluator<SV> {
                 }
                 BinaryOperator::Pow => {
                     if let (Some(l), Some(r)) = (left.constant_value(), right.constant_value()) {
-                        Ok(l.pow(abstract_to_degree(&r) as u32).into())
+                        Ok(l.pow(r.to_integer()).into())
                     } else {
                         Err(format!(
                             "Pow of two non-constants: ({}) ** ({})",
@@ -122,13 +122,23 @@ impl<SV: SymbolicVariables> ExpressionEvaluator<SV> {
                     if let (Some(left), Some(right)) =
                         (left.constant_value(), right.constant_value())
                     {
-                        let result = match op {
-                            BinaryOperator::Mod => left % right,
-                            BinaryOperator::BinaryAnd => left & right,
-                            BinaryOperator::BinaryXor => left ^ right,
-                            BinaryOperator::BinaryOr => left | right,
-                            BinaryOperator::ShiftLeft => left << abstract_to_degree(&right),
-                            BinaryOperator::ShiftRight => left >> abstract_to_degree(&right),
+                        let result: FieldElement = match op {
+                            BinaryOperator::Mod => (left.to_integer() % right.to_integer()).into(),
+                            BinaryOperator::BinaryAnd => {
+                                (left.to_integer() & right.to_integer()).into()
+                            }
+                            BinaryOperator::BinaryXor => {
+                                (left.to_integer() ^ right.to_integer()).into()
+                            }
+                            BinaryOperator::BinaryOr => {
+                                (left.to_integer() | right.to_integer()).into()
+                            }
+                            BinaryOperator::ShiftLeft => {
+                                (left.to_integer() << right.to_integer()).into()
+                            }
+                            BinaryOperator::ShiftRight => {
+                                (left.to_integer() >> right.to_integer()).into()
+                            }
                             _ => panic!(),
                         };
                         Ok(result.into())

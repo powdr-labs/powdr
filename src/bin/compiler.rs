@@ -2,7 +2,7 @@ use clap::{Parser, Subcommand};
 use env_logger::{Builder, Target};
 use log::LevelFilter;
 use powdr::compiler::no_callback;
-use powdr::number::AbstractNumberType;
+use powdr::number::FieldElement;
 use std::{fs, io::Write, path::Path};
 
 #[derive(Parser)]
@@ -102,13 +102,13 @@ enum Commands {
     },
 }
 
-fn split_inputs(inputs: &str) -> Vec<AbstractNumberType> {
+fn split_inputs(inputs: &str) -> Vec<FieldElement> {
     inputs
         .split(',')
         .map(|x| x.trim())
         .filter(|x| !x.is_empty())
-        .map(|x| x.parse().unwrap())
-        .collect::<Vec<AbstractNumberType>>()
+        .map(|x| x.parse::<u64>().unwrap().into())
+        .collect::<Vec<FieldElement>>()
 }
 
 fn main() {

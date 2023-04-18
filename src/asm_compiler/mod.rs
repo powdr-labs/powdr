@@ -1,8 +1,7 @@
 use std::collections::{BTreeMap, HashMap};
 
-use crate::number::abstract_to_degree;
-use crate::number::AbstractNumberType;
 use crate::number::DegreeType;
+use crate::number::FieldElement;
 use crate::parser;
 use crate::parser::asm_ast::*;
 use crate::parser::ast::*;
@@ -50,20 +49,20 @@ impl ASMPILConverter {
         let mut statements = input.0.into_iter().peekable();
 
         if let Some(ASMStatement::Degree(_, degree)) = statements.peek() {
-            self.set_degree(crate::number::abstract_to_degree(degree));
+            self.set_degree(*degree as DegreeType);
             statements.next();
         }
 
         self.pil.push(Statement::Namespace(
             0,
             "Assembly".to_string(),
-            Expression::Number(AbstractNumberType::from(self.degree())),
+            Expression::Number(self.degree().into()),
         ));
         self.pil.push(Statement::PolynomialConstantDefinition(
             0,
             "first_step".to_string(),
             FunctionDefinition::Array(
-                ArrayExpression::value(vec![build_number(1.into())]).pad_with_zeroes(),
+                ArrayExpression::value(vec![build_number(1u64)]).pad_with_zeroes(),
             ),
         ));
 
@@ -114,7 +113,7 @@ impl ASMPILConverter {
                         if Some(name) == self.pc_name.as_ref() {
                             // Force pc to zero on first row.
                             update = build_mul(
-                                build_sub(build_number(1.into()), next_reference("first_step")),
+                                build_sub(build_number(1u64), next_reference("first_step")),
                                 update,
                             )
                         }
@@ -166,7 +165,7 @@ impl ASMPILConverter {
                 self.pc_name = Some(name.to_string());
                 self.line_lookup
                     .push((name.to_string(), "line".to_string()));
-                default_update = Some(build_add(direct_reference(name), build_number(1.into())));
+                default_update = Some(build_add(direct_reference(name), build_number(1u64)));
             }
             Some(RegisterFlag::IsAssignment) => {
                 // no updates
@@ -181,7 +180,7 @@ impl ASMPILConverter {
                 conditioned_updates = vec![
                     // The value here is actually irrelevant, it is only important
                     // that "first_step'" is included to compute the "default condition"
-                    (next_reference("first_step"), build_number(0.into())),
+                    (next_reference("first_step"), build_number(0u64)),
                 ];
                 let assignment_regs = self.assignment_registers().cloned().collect::<Vec<_>>();
                 // TODO do this at the same place where we set up the read flags.
@@ -395,7 +394,7 @@ impl ASMPILConverter {
     fn process_assignment_value(
         &self,
         value: Expression,
-    ) -> Vec<(AbstractNumberType, AffineExpressionComponent)> {
+    ) -> Vec<(FieldElement, AffineExpressionComponent)> {
         match value {
             Expression::Constant(_) => panic!(),
             Expression::PublicReference(_) => panic!(),
@@ -453,13 +452,10 @@ impl ASMPILConverter {
                     ) = (&left[..], &right[..])
                     {
                         // TODO overflow?
-                        if *r > (u32::MAX).into() {
+                        if r.to_integer() > (u32::MAX).into() {
                             panic!("Exponent too large");
                         }
-                        vec![(
-                            l.pow(abstract_to_degree(r) as u32),
-                            AffineExpressionComponent::Constant,
-                        )]
+                        vec![(l.pow(r.to_integer()), AffineExpressionComponent::Constant)]
                     } else {
                         panic!("Exponentiation of non-constants.");
                     }
@@ -483,9 +479,9 @@ impl ASMPILConverter {
 
     fn add_assignment_value(
         &self,
-        mut left: Vec<(AbstractNumberType, AffineExpressionComponent)>,
-        right: Vec<(AbstractNumberType, AffineExpressionComponent)>,
-    ) -> Vec<(AbstractNumberType, AffineExpressionComponent)> {
+        mut left: Vec<(FieldElement, AffineExpressionComponent)>,
+        right: Vec<(FieldElement, AffineExpressionComponent)>,
+    ) -> Vec<(FieldElement, AffineExpressionComponent)> {
         // TODO combine (or at leats check for) same components.
         left.extend(right);
         left
@@ -493,8 +489,8 @@ impl ASMPILConverter {
 
     fn negate_assignment_value(
         &self,
-        expr: Vec<(AbstractNumberType, AffineExpressionComponent)>,
-    ) -> Vec<(AbstractNumberType, AffineExpressionComponent)> {
+        expr: Vec<(FieldElement, AffineExpressionComponent)>,
+    ) -> Vec<(FieldElement, AffineExpressionComponent)> {
         expr.into_iter().map(|(v, c)| (-v, c)).collect()
     }
 
@@ -539,7 +535,7 @@ impl ASMPILConverter {
         let mut program_constants = self
             .program_constant_names
             .iter()
-            .map(|n| (n, vec![AbstractNumberType::from(0); self.code_lines.len()]))
+            .map(|n| (n, vec![FieldElement::from(0); self.code_lines.len()]))
             .collect::<BTreeMap<_, _>>();
         let mut free_value_queries = self
             .assignment_registers()
@@ -573,21 +569,21 @@ impl ASMPILConverter {
                                 .get_mut(&format!("p_read_{assign_reg}_{reg}"))
                                 .unwrap_or_else(|| {
                                     panic!("Register combination <={assign_reg}= {reg} not found.")
-                                })[i] = coeff.clone();
+                                })[i] = *coeff;
                         }
                         AffineExpressionComponent::Constant => {
                             program_constants
                                 .get_mut(&format!("p_{assign_reg}_const"))
-                                .unwrap()[i] = coeff.clone()
+                                .unwrap()[i] = *coeff
                         }
                         AffineExpressionComponent::FreeInput(expr) => {
                             // The program just stores that we read a free input, the actual value
                             // is part of the execution trace that generates the witness.
                             program_constants
                                 .get_mut(&format!("p_{assign_reg}_read_free"))
-                                .unwrap()[i] = coeff.clone();
+                                .unwrap()[i] = *coeff;
                             free_value_queries.get_mut(assign_reg).unwrap().push(
-                                Expression::Tuple(vec![build_number(i.into()), expr.clone()]),
+                                Expression::Tuple(vec![build_number(i as u64), expr.clone()]),
                             );
                         }
                     }
@@ -706,7 +702,7 @@ impl Register {
             (_, None) => Some(updates.unwrap()),
             (_, Some(def)) => {
                 let default_condition = build_sub(
-                    build_number(1.into()),
+                    build_number(1u64),
                     self.conditioned_updates
                         .iter()
                         .map(|(cond, _value)| cond.clone())
@@ -749,7 +745,7 @@ struct CodeLine {
     /// Maps assignment register to a vector of regular registers.
     write_regs: BTreeMap<String, Vec<String>>,
     /// The value on the right-hand-side, per assignment register
-    value: BTreeMap<String, Vec<(AbstractNumberType, AffineExpressionComponent)>>,
+    value: BTreeMap<String, Vec<(FieldElement, AffineExpressionComponent)>>,
     label: Option<String>,
     instruction: Option<String>,
     // TODO we only support labels for now.
@@ -815,8 +811,8 @@ fn build_unary_expr(op: UnaryOperator, exp: Expression) -> Expression {
     Expression::UnaryOperation(op, Box::new(exp))
 }
 
-fn build_number(value: AbstractNumberType) -> Expression {
-    Expression::Number(value)
+fn build_number<V: Into<FieldElement>>(value: V) -> Expression {
+    Expression::Number(value.into())
 }
 
 fn extract_update(expr: Expression) -> (Option<String>, Expression) {

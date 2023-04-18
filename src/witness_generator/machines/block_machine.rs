@@ -4,7 +4,7 @@ use itertools::Itertools;
 
 use super::{EvalResult, FixedData, FixedLookup};
 use crate::analyzer::{Expression, Identity, IdentityKind, SelectedExpressions};
-use crate::number::{AbstractNumberType, DegreeType};
+use crate::number::{DegreeType, FieldElement};
 use crate::witness_generator::eval_error;
 use crate::witness_generator::{
     affine_expression::AffineExpression,
@@ -26,7 +26,7 @@ pub struct BlockMachine {
     selector: String,
     identities: Vec<Identity>,
     /// One column of values for each witness.
-    data: HashMap<usize, Vec<Option<AbstractNumberType>>>,
+    data: HashMap<usize, Vec<Option<FieldElement>>>,
     /// Current row in the machine
     row: DegreeType,
     /// Bit constraints, are deleted outside the current block.
@@ -149,10 +149,7 @@ impl Machine for BlockMachine {
         })
     }
 
-    fn witness_col_values(
-        &mut self,
-        fixed_data: &FixedData,
-    ) -> HashMap<String, Vec<AbstractNumberType>> {
+    fn witness_col_values(&mut self, fixed_data: &FixedData) -> HashMap<String, Vec<FieldElement>> {
         std::mem::take(&mut self.data)
             .into_iter()
             .map(|(id, values)| {
@@ -220,8 +217,8 @@ impl BlockMachine {
                 row_delta,
                 identity,
             } = step;
-            self.row =
-                (old_len as i64 + row_delta + fixed_data.degree as i64) as u64 % fixed_data.degree;
+            self.row = (old_len as i64 + row_delta + fixed_data.degree as i64) as DegreeType
+                % fixed_data.degree;
             match self.process_identity(fixed_data, fixed_lookup, left, right, identity) {
                 Ok(result) => {
                     if !result.is_empty() {
@@ -266,7 +263,7 @@ impl BlockMachine {
             .into_iter()
             .filter_map(|(poly, constraint)| {
                 let (poly, next) = self.extract_next(poly);
-                let r = (self.row + next as u64) % self.degree;
+                let r = (self.row + next as DegreeType) % self.degree;
                 let is_outside_poly = !self.data.contains_key(&poly);
                 if is_outside_poly {
                     assert!(!next);
@@ -431,7 +428,7 @@ impl BitConstraintSet for BlockMachine {
     fn bit_constraint(&self, id: usize) -> Option<BitConstraint> {
         let (poly, next) = self.extract_next(id);
         self.global_bit_constraints.get(&poly).cloned().or_else(|| {
-            let row = (self.row + next as u64) % self.degree;
+            let row = (self.row + next as DegreeType) % self.degree;
             self.bit_constraints.get(&poly)?.get(&row).cloned()
         })
     }
@@ -440,7 +437,7 @@ impl BitConstraintSet for BlockMachine {
 #[derive(Clone)]
 struct WitnessData<'a> {
     pub fixed_data: &'a FixedData<'a>,
-    pub data: &'a HashMap<usize, Vec<Option<AbstractNumberType>>>,
+    pub data: &'a HashMap<usize, Vec<Option<FieldElement>>>,
     pub row: DegreeType,
 }
 
