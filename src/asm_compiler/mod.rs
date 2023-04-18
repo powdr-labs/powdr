@@ -1,5 +1,6 @@
 use std::collections::{BTreeMap, HashMap};
 
+use crate::number::AbstractNumberType;
 use crate::number::DegreeType;
 use crate::number::FieldElement;
 use crate::parser;
@@ -537,17 +538,9 @@ impl ASMPILConverter {
             .iter()
             .map(|n| (n, vec![FieldElement::from(0); self.code_lines.len()]))
             .collect::<BTreeMap<_, _>>();
-        let mut free_value_queries = self
+        let mut free_value_query_arms = self
             .assignment_registers()
-            .map(|r| {
-                (
-                    r.clone(),
-                    vec![
-                        direct_reference("i"),
-                        direct_reference(self.pc_name.as_ref().unwrap()),
-                    ],
-                )
-            })
+            .map(|r| (r.clone(), vec![]))
             .collect::<BTreeMap<_, _>>();
 
         let label_positions = self.compute_label_positions();
@@ -582,9 +575,10 @@ impl ASMPILConverter {
                             program_constants
                                 .get_mut(&format!("p_{assign_reg}_read_free"))
                                 .unwrap()[i] = *coeff;
-                            free_value_queries.get_mut(assign_reg).unwrap().push(
-                                Expression::Tuple(vec![build_number(i as u64), expr.clone()]),
-                            );
+                            free_value_query_arms.get_mut(assign_reg).unwrap().push((
+                                Some(FieldElement::from(i as AbstractNumberType)),
+                                expr.clone(),
+                            ));
                         }
                     }
                 }
@@ -618,6 +612,7 @@ impl ASMPILConverter {
                 assert!(line.instruction_literal_args.is_empty());
             }
         }
+        let pc_name = self.pc_name.clone().unwrap();
         let free_value_pil = self
             .assignment_registers()
             .map(|reg| {
@@ -627,7 +622,10 @@ impl ASMPILConverter {
                     free_value,
                     Some(FunctionDefinition::Query(
                         vec!["i".to_string()],
-                        Expression::Tuple(free_value_queries[reg].clone()),
+                        Expression::MatchExpression(
+                            Box::new(direct_reference(&pc_name)),
+                            free_value_query_arms[reg].clone(),
+                        ),
                     )),
                 )
             })
@@ -945,7 +943,7 @@ A' = (((first_step' * 0) + (reg_write_X_A * X)) + ((1 - (first_step' + reg_write
 CNT' = ((((first_step' * 0) + (reg_write_X_CNT * X)) + (instr_dec_CNT * (CNT - 1))) + ((1 - ((first_step' + reg_write_X_CNT) + instr_dec_CNT)) * CNT));
 pc' = ((1 - first_step') * (((instr_jmpz * ((XIsZero * instr_jmpz_param_l) + ((1 - XIsZero) * (pc + 1)))) + (instr_jmp * instr_jmp_param_l)) + ((1 - (instr_jmpz + instr_jmp)) * (pc + 1))));
 pol constant line(i) { i };
-pol commit X_free_value(i) query (i, pc, (0, ("input", 1)), (3, ("input", (CNT + 1))), (7, ("input", 0)));
+pol commit X_free_value(i) query match pc { 0 => ("input", 1), 3 => ("input", (CNT + 1)), 7 => ("input", 0), };
 pol constant p_X_const = [0, 0, 0, 0, 0, 0, 0, 0, 0] + [0]*;
 pol constant p_X_read_free = [1, 0, 0, 1, 0, 0, 0, -1, 0] + [0]*;
 pol constant p_instr_assert_zero = [0, 0, 0, 0, 0, 0, 0, 0, 1] + [0]*;

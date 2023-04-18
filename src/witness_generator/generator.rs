@@ -279,8 +279,27 @@ where
                 "\"{}\"",
                 s.replace('\\', "\\\\").replace('"', "\\\"")
             )),
+            Expression::MatchExpression(scrutinee, arms) => self
+                .interpolate_match_expression_for_query(scrutinee.as_ref(), arms)
+                .map_err(|e| format!("Cannot handle / evaluate {query}: {e}")),
             _ => Err(format!("Cannot handle / evaluate {query}")),
         }
+    }
+
+    fn interpolate_match_expression_for_query(
+        &self,
+        scrutinee: &Expression,
+        arms: &[(Option<FieldElement>, Expression)],
+    ) -> Result<String, EvalError> {
+        let v = self
+            .evaluate(scrutinee, EvaluationRow::Next)?
+            .constant_value()
+            .ok_or_else(|| "Match scrutinee not constant".to_string())?;
+        let (_, expr) = arms
+            .iter()
+            .find(|(n, _)| n.is_none() || n.as_ref() == Some(&v))
+            .ok_or_else(|| format!("Match arm not found for value {v}"))?;
+        self.interpolate_query(expr).map_err(|e| e.into())
     }
 
     fn process_polynomial_identity(&self, identity: &Expression) -> EvalResult {
