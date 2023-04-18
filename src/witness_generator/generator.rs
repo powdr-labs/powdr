@@ -164,7 +164,7 @@ where
             }
             eprintln!();
             eprintln!(
-                "Current values:\n{}",
+                "Current values (known nonzero first, then zero, then unknown):\n{}",
                 indent(&self.format_next_values().join("\n"), "    ")
             );
             panic!();
@@ -194,9 +194,19 @@ where
     }
 
     fn format_next_values(&self) -> Vec<String> {
-        self.next
-            .iter()
-            .enumerate()
+        let mut values = self.next.iter().enumerate().collect::<Vec<_>>();
+        values.sort_by_key(|(i, v1)| {
+            (
+                match v1 {
+                    Some(v) if *v == 0.into() => 1,
+                    Some(_) => 0,
+                    None => 2,
+                },
+                *i,
+            )
+        });
+        values
+            .into_iter()
             .map(|(i, v)| {
                 format!(
                     "{} = {}",
