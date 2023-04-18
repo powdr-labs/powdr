@@ -113,13 +113,7 @@ impl<'a> Evaluator<'a> {
             BinaryOperator::Add => left + right,
             BinaryOperator::Sub => left - right,
             BinaryOperator::Mul => left * right,
-            BinaryOperator::Div => {
-                if left == 0.into() {
-                    0.into()
-                } else {
-                    left.integer_div(right)
-                }
-            }
+            BinaryOperator::Div => left.integer_div(right),
             BinaryOperator::Pow => left.pow(right.to_integer()),
             BinaryOperator::Mod => (left.to_integer() % right.to_integer()).into(),
             BinaryOperator::BinaryAnd => (left.to_integer() & right.to_integer()).into(),
@@ -154,7 +148,10 @@ mod test {
         let src = r#"
             constant %N = 8;
             namespace F(%N);
-            pol constant LAST(i) { 1 - (i - (%N - 1)) / (i - (%N - 1)) };
+            pol constant LAST(i) { match i {
+                %N - 1 => 1,
+                _ => 0,
+            } };
         "#;
         let analyzed = analyze_string(src);
         let (constants, degree) = generate(&analyzed);
@@ -240,7 +237,7 @@ mod test {
         let src = r#"
             constant %N = 12;
             namespace F(%N);
-            macro is_nonzero(X) { X / X };
+            macro is_nonzero(X) { match X { 0 => 0, _ => 1, } };
             macro is_zero(X) { 1 - is_nonzero(X) };
             macro is_one(X) { is_zero(1 - X) };
             macro is_equal(A, B) { is_zero(A - B) };

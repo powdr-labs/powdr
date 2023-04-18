@@ -512,7 +512,16 @@ impl PILContext {
             ast::Expression::MatchExpression(scrutinee, arms) => Expression::MatchExpression(
                 Box::new(self.process_expression(scrutinee)),
                 arms.iter()
-                    .map(|(n, e)| (*n, self.process_expression(e)))
+                    .map(|(n, e)| {
+                        (
+                            n.as_ref().map(|n| {
+                                self.evaluate_expression(n).unwrap_or_else(|| {
+                                    panic!("Left side of match arm must be a constant, found {}", n)
+                                })
+                            }),
+                            self.process_expression(e),
+                        )
+                    })
                     .collect(),
             ),
             ast::Expression::FreeInput(_) => panic!(),
