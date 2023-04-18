@@ -84,15 +84,19 @@ pub fn compile_asm_string(
 
     let query_callback = |query: &str| -> Option<FieldElement> {
         let items = query.split(',').map(|s| s.trim()).collect::<Vec<_>>();
-        assert_eq!(items.len(), 2);
         match items[0] {
             "\"input\"" => {
+                assert_eq!(items.len(), 2);
                 let index = items[1].parse::<usize>().unwrap();
                 let value = inputs.get(index).cloned();
                 if let Some(value) = value {
                     log::trace!("Input query: Index {index} -> {value}");
                 }
                 value
+            }
+            "\"print\"" => {
+                log::info!("Print: {}", items[1..].join(", "));
+                Some(0.into())
             }
             _ => None,
         }
