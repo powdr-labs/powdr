@@ -1,7 +1,4 @@
-use std::collections::BTreeMap;
-
-use lazy_static::lazy_static;
-use regex::Regex;
+use std::collections::{BTreeMap, BTreeSet};
 
 use crate::riscv::parser::{self, Argument, Register, Statement};
 
@@ -14,22 +11,11 @@ pub fn compile_riscv_asm(data: &str) -> String {
     // data grows away from zero
     let data_start = 0x20000;
 
-    let statements = parser::parse_asm(data);
-    let labels = parser::extract_labels(&statements);
-    let label_references = parser::extract_label_references(&statements);
-    let missing_labels = label_references.difference(&labels);
-
-    let data = data.to_string()
-        + &missing_labels
-            .into_iter()
-            .map(|label| library_routine(label))
-            .collect::<Vec<_>>()
-            .join("\n");
-    let statements = parser::parse_asm(&data);
-    let (data_code, data_positions) = store_data_objects(
-        parser::extract_data_objects(&statements).into_iter(),
-        data_start,
-    );
+    let data = data.to_string() + library_routines();
+    let mut statements = parser::parse_asm(&data);
+    let mut objects = parser::extract_data_objects(&statements);
+    filter_reachable_from("main", &mut statements, &mut objects);
+    let (data_code, data_positions) = store_data_objects(objects.into_iter(), data_start);
     let mut output = preamble()
         + &data_code
         + &format!("// Set stack pointer\nx2 <=X= {stack_start};\n")
@@ -41,6 +27,62 @@ pub fn compile_riscv_asm(data: &str) -> String {
         output += &process_statement(s);
     }
     output
+}
+
+fn filter_reachable_from(
+    label: &str,
+    statements: &mut Vec<Statement>,
+    objects: &mut BTreeMap<String, Vec<u8>>,
+) {
+    let label_offsets = parser::extract_label_offsets(statements);
+    let mut code: Vec<Statement> = vec![];
+    let mut queued_labels: BTreeSet<&str> = vec![label].into_iter().collect();
+    let mut referenced_labels: BTreeSet<&str> = vec![label].into_iter().collect();
+    let mut processed_labels = BTreeSet::<&str>::new();
+    let mut label_queue = vec![label];
+    while let Some(l) = label_queue.pop() {
+        if processed_labels.contains(l) {
+            continue;
+        }
+        let offset = *label_offsets.get(l).unwrap_or_else(|| {
+            eprintln!("The RISCV assembly code references an external routine / label that is not available:");
+            eprintln!("{l}");
+            panic!();
+        });
+        let (code_in_block, referenced_labels_in_block, seen_labels_in_block) =
+            basic_block_starting_from(&statements[offset..]);
+        processed_labels.extend(seen_labels_in_block);
+
+        code.extend(code_in_block);
+
+        for referenced in &referenced_labels_in_block {
+            if !queued_labels.contains(referenced) && !processed_labels.contains(referenced) {
+                label_queue.push(referenced);
+                queued_labels.insert(referenced);
+            }
+        }
+        referenced_labels.extend(referenced_labels_in_block);
+    }
+    objects.retain(|name, _value| referenced_labels.contains(name.as_str()));
+    *statements = code;
+}
+
+fn basic_block_starting_from(statements: &[Statement]) -> (Vec<Statement>, Vec<&str>, Vec<&str>) {
+    let mut seen_labels = vec![];
+    let mut referenced_labels = BTreeSet::<&str>::new();
+    let mut code: Vec<Statement> = vec![];
+    for s in statements {
+        if let Statement::Label(l) = s {
+            seen_labels.push(l.as_str());
+        } else {
+            referenced_labels.extend(parser::referenced_labels(s))
+        }
+        code.push(s.clone());
+        if parser::ends_control_flow(s) {
+            break;
+        }
+    }
+    (code, referenced_labels.into_iter().collect(), seen_labels)
 }
 
 fn store_data_objects(
@@ -89,10 +131,16 @@ fn replace_data_reference(constant: &mut Constant, data_positions: &BTreeMap<Str
     match constant {
         Constant::Number(_) => {}
         Constant::HiDataRef(data) => {
-            *constant = Constant::Number((data_positions[data] >> 16) as i64)
+            if let Some(pos) = data_positions.get(data) {
+                *constant = Constant::Number((pos >> 16) as i64)
+            }
+            // Otherwise, it references a code label
         }
         Constant::LoDataRef(data) => {
-            *constant = Constant::Number((data_positions[data] & 0xffff) as i64)
+            if let Some(pos) = data_positions.get(data) {
+                *constant = Constant::Number((pos & 0xffff) as i64)
+            }
+            // Otherwise, it references a code label
         }
     }
 }
@@ -183,6 +231,8 @@ instr mload -> X { { addr, STEP, X } is m_is_read { m_addr, m_step, m_value } }
 // ============== control-flow instructions ==============
 
 instr jump l: label { pc' = l }
+instr jump_dyn X { pc' = X }
+instr jump_and_link_dyn X { pc' = X, x1' = pc + 1 }
 instr call l: label { pc' = l, x1' = pc + 1 }
 // TODO x6 actually stores some relative address, but only part of it.
 instr tail l: label { pc' = l, x6' = l }
@@ -197,10 +247,17 @@ instr branch_if_positive X, l: label {
     X + 2**32 - 1 = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000 + wrap_bit * 2**32,
     pc' = wrap_bit * l + (1 - wrap_bit) * (pc + 1)
 }
+// input X is required to be the difference of two 32-bit unsigend values.
+// i.e. -2**32 < X < 2**32
+instr is_positive X -> Y {
+    X + 2**32 - 1 = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000 + wrap_bit * 2**32,
+    Y = wrap_bit
+}
 
 // ================= logical instructions =================
 
 instr is_equal_zero X -> Y { Y = XIsZero }
+instr is_not_equal_zero X -> Y { Y = 1 - XIsZero }
 
 // ================= binary/bitwise instructions =================
 
@@ -369,127 +426,94 @@ pil{
     "#
 }
 
-lazy_static! {
-    static ref LIBRARY_ROUTINES: Vec<(Regex, &'static str)> = vec![
-        (
-            Regex::new(r"^_ZN4core9panicking18panic_bounds_check17h[0-9a-f]{16}E$").unwrap(),
-            "unimp"
-        ),
-        (
-            Regex::new(r"^_ZN4core9panicking5panic17h[0-9a-f]{16}E$").unwrap(),
-            "unimp"
-        ),
-        (
-            Regex::new(r"^_ZN4core5slice5index24slice_end_index_len_fail17h[0-9a-f]{16}E$")
-                .unwrap(),
-            "unimp"
-        ),
-        (
-            Regex::new(r"^_ZN5alloc5alloc18handle_alloc_error17h[0-9a-f]{16}E$").unwrap(),
-            "unimp"
-        ),
-        (
-            Regex::new(r"^_ZN5alloc7raw_vec17capacity_overflow17h[0-9a-f]{16}E$").unwrap(),
-            "unimp"
-        ),
-        (
-            Regex::new(r"^_ZN5alloc7raw_vec17capacity_overflow17h[0-9a-f]{16}E$").unwrap(),
-            "unimp"
-        ),
-        (
-            Regex::new(r"^_ZN5alloc5alloc18handle_alloc_error17h[0-9a-f]{16}E$").unwrap(),
-            "unimp"
-        ),
-        (
-            Regex::new(r"^_ZN4core5slice5index26slice_start_index_len_fail17h[0-9a-f]{16}E$")
-                .unwrap(),
-            "unimp"
-        ),
-        // TODO rust alloc calls the global allocator - not sure why this is not automatic.
-        (Regex::new(r"^__rust_alloc$").unwrap(), "j __rg_alloc"),
-        (Regex::new(r"^__rust_realloc$").unwrap(), "j __rg_realloc"),
-        (Regex::new(r"^__rust_dealloc$").unwrap(), "j __rg_dealloc"),
-        (
-            Regex::new(r"^memset@plt$").unwrap(),
-/* Source cod efor memset:
-// TODO c is ussualy a "c int"
-pub unsafe extern "C" fn memset(s: *mut u8, c: u8, n: usize) -> *mut u8 {
-    // We only access u32 because then we do not have to deal with
-    // un-aligned memory access.
-    // TODO this does not really enforce that the pointers are u32-aligned.
-    let mut value = c as u32;
-    value = value | (value << 8) | (value << 16) | (value << 24);
-    let mut i: isize = 0;
-    while i + 3 < n as isize {
-        *((s.offset(i)) as *mut u32) = value;
-        i += 4;
+fn library_routines() -> &'static str {
+    // // TODO rust alloc calls the global allocator - not sure why this is not automatic.
+    // (Regex::new(r"^__rust_alloc$").unwrap(), "j __rg_alloc"),
+    // (Regex::new(r"^__rust_realloc$").unwrap(), "j __rg_realloc"),
+    // (Regex::new(r"^__rust_dealloc$").unwrap(), "j __rg_dealloc"),
+    // (
+
+    /* Source code:
+    // TODO c is usually a "c int"
+    pub unsafe extern "C" fn memset(s: *mut u8, c: u8, n: usize) -> *mut u8 {
+        // We only access u32 because then we do not have to deal with
+        // un-aligned memory access.
+        // TODO this does not really enforce that the pointers are u32-aligned.
+        let mut value = c as u32;
+        value = value | (value << 8) | (value << 16) | (value << 24);
+        let mut i: isize = 0;
+        while i + 3 < n as isize {
+            *((s.offset(i)) as *mut u32) = value;
+            i += 4;
+        }
+        if i < n {
+            let dest_value = (s.offset(i)) as *mut u32;
+            let mask = (1 << ((((n as isize) - i) * 8) as u32)) - 1;
+            *dest_value = (*dest_value & !mask) | (value & mask);
+        }
+        s
     }
-    if i < n {
-        let dest_value = (s.offset(i)) as *mut u32;
-        let mask = (1 << ((((n as isize) - i) * 8) as u32)) - 1;
-        *dest_value = (*dest_value & !mask) | (value & mask);
+
+    pub unsafe extern "C" fn memcpy(dest: *mut u8, src: *const u8, n: usize) -> *mut u8 {
+        // We only access u32 because then we do not have to deal with
+        // un-aligned memory access.
+        // TODO this does not really enforce that the pointers are u32-aligned.
+        let mut i: isize = 0;
+        while i + 3 < n as isize {
+            *((dest.offset(i)) as *mut u32) = *((src.offset(i)) as *mut u32);
+            i += 4;
+        }
+        if i < n as isize {
+            let value = *((src.offset(i)) as *mut u32);
+            let dest_value = (dest.offset(i)) as *mut u32;
+            let mask = (1 << (((n as isize - i) * 8) as u32)) - 1;
+            *dest_value = (*dest_value & !mask) | (value & mask);
+        }
+        dest
     }
-    s
-}
-*/
-            r#"
-	li	a3, 4
-	blt	a2, a3, __memset_LBB5_5
-	li	a5, 0
-	lui	a3, 4112
-	addi	a3, a3, 257
-	mul	a6, a1, a3
+    */
+
+    r#"
+rust_begin_unwind:
+    unimp
+
+memset@plt:
+    li	a3, 4
+    blt	a2, a3, __memset_LBB5_5
+    li	a5, 0
+    lui	a3, 4112
+    addi	a3, a3, 257
+    mul	a6, a1, a3
 __memset_LBB5_2:
-	add	a7, a0, a5
-	addi	a3, a5, 4
-	addi	a4, a5, 7
-	sw	a6, 0(a7)
-	mv	a5, a3
-	blt	a4, a2, __memset_LBB5_2
-	bge	a3, a2, __memset_LBB5_6
+    add	a7, a0, a5
+    addi	a3, a5, 4
+    addi	a4, a5, 7
+    sw	a6, 0(a7)
+    mv	a5, a3
+    blt	a4, a2, __memset_LBB5_2
+    bge	a3, a2, __memset_LBB5_6
 __memset_LBB5_4:
-	lui	a4, 16
-	addi	a4, a4, 257
-	mul	a1, a1, a4
-	add	a3, a3, a0
-	slli	a2, a2, 3
-	lw	a4, 0(a3)
-	li	a5, -1
-	sll	a2, a5, a2
-	not	a5, a2
-	and	a2, a2, a4
-	and	a1, a1, a5
-	or	a1, a1, a2
-	sw	a1, 0(a3)
-	ret
+    lui	a4, 16
+    addi	a4, a4, 257
+    mul	a1, a1, a4
+    add	a3, a3, a0
+    slli	a2, a2, 3
+    lw	a4, 0(a3)
+    li	a5, -1
+    sll	a2, a5, a2
+    not	a5, a2
+    and	a2, a2, a4
+    and	a1, a1, a5
+    or	a1, a1, a2
+    sw	a1, 0(a3)
+    ret
 __memset_LBB5_5:
-	li	a3, 0
-	blt	a3, a2, __memset_LBB5_4
+    li	a3, 0
+    blt	a3, a2, __memset_LBB5_4
 __memset_LBB5_6:
-	ret"#
-        ),
-        (
-            Regex::new(r"^memcpy@plt$").unwrap(),
-/* Source code for memcpy:
-pub unsafe extern "C" fn memcpy(dest: *mut u8, src: *const u8, n: usize) -> *mut u8 {
-    // We only access u32 because then we do not have to deal with
-    // un-aligned memory access.
-    // TODO this does not really enforce that the pointers are u32-aligned.
-    let mut i: isize = 0;
-    while i + 3 < n as isize {
-        *((dest.offset(i)) as *mut u32) = *((src.offset(i)) as *mut u32);
-        i += 4;
-    }
-    if i < n as isize {
-        let value = *((src.offset(i)) as *mut u32);
-        let dest_value = (dest.offset(i)) as *mut u32;
-        let mask = (1 << (((n as isize - i) * 8) as u32)) - 1;
-        *dest_value = (*dest_value & !mask) | (value & mask);
-    }
-    dest
-}
-*/
-            r#"
+    ret
+
+memcpy@plt:
     li	a3, 4
     blt	a2, a3, __memcpy_LBB2_5
     li	a4, 0
@@ -523,19 +547,6 @@ __memcpy_LBB2_5:
 __memcpy_LBB2_6:
     ret
 "#
-        ),
-    ];
-}
-
-fn library_routine(label: &str) -> String {
-    for (pattern, routine) in LIBRARY_ROUTINES.iter() {
-        if pattern.is_match(label) {
-            return format!("{label}:\n{routine}");
-        }
-    }
-    eprintln!("The RISCV assembly code references an external routine / label that has not been implemented yet:");
-    eprintln!("{label}");
-    panic!();
 }
 
 fn process_statement(s: Statement) -> String {
@@ -566,9 +577,19 @@ fn argument_to_number(x: &Argument) -> u32 {
 fn constant_to_number(c: &Constant) -> u32 {
     match c {
         Constant::Number(n) => *n as u32,
-        Constant::HiDataRef(n) | Constant::LoDataRef(n) => {
-            panic!("Data reference should have been replaced by number: {n}")
+        Constant::HiDataRef(_n) | Constant::LoDataRef(_n) => {
+            0xff0f0f
+            // TODO this is a code label reference. We have to replace it by the PC
+            // or even add this as a feature, because then we can still relocate code
+            // in the optimizer.
         }
+    }
+}
+
+fn r(args: &[Argument]) -> Register {
+    match args {
+        [Argument::Register(r1)] => *r1,
+        _ => panic!(),
     }
 }
 
@@ -730,6 +751,23 @@ fn process_instruction(instr: &str, args: &[Argument]) -> String {
             let (rd, rs) = rr(args);
             format!("{rd} <=Y= is_equal_zero({rs});\n")
         }
+        "snez" => {
+            let (rd, rs) = rr(args);
+            format!("{rd} <=Y= is_not_equal_zero({rs});\n")
+        }
+        "slti" => {
+            let (rd, rs, imm) = rri(args);
+            format!("tmp1 <=X= to_signed({rs});\n")
+                + &format!("{rd} <=Y= is_positive({imm} - tmp1);\n")
+        }
+        "sltiu" => {
+            let (rd, rs, imm) = rri(args);
+            format!("{rd} <=Y= is_positive({imm} - {rs});\n")
+        }
+        "sltu" => {
+            let (rd, r1, r2) = rrr(args);
+            format!("{rd} <=Y= is_positive({r2} - {r1});\n")
+        }
 
         // branching
         "beq" => {
@@ -744,6 +782,11 @@ fn process_instruction(instr: &str, args: &[Argument]) -> String {
             let (r1, r2, label) = rrl(args);
             // TODO does this fulfill the input requirements for branch_if_positive?
             format!("branch_if_positive {r1} - {r2} + 1, {label};\n")
+        }
+        "bgez" => {
+            let (r1, label) = rl(args);
+            format!("tmp1 <=X= to_signed({r1});\n")
+                + &format!("branch_if_positive {r1} + 1, {label};\n")
         }
         "bltu" => {
             let (r1, r2, label) = rrl(args);
@@ -800,9 +843,19 @@ fn process_instruction(instr: &str, args: &[Argument]) -> String {
                 panic!()
             }
         }
+        "jr" => {
+            let rs = r(args);
+            format!("jump_dyn {rs};\n")
+        }
         "jal" => {
             let (_rd, _label) = rl(args);
-            todo!();
+            let rs = r(args);
+            format!("jump {rs};\n")
+        }
+        "jalr" => {
+            // TODO there is also a form that takes more arguments
+            let rs = r(args);
+            format!("jump_and_link_dyn {rs};\n")
         }
         "call" => {
             if let [Argument::Symbol(label)] = args {
