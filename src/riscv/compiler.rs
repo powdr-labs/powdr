@@ -817,7 +817,7 @@ fn process_instruction(instr: &str, args: &[Argument]) -> String {
         }
         "ebreak" => {
             assert!(args.is_empty());
-            "x10 <=X= ${ (\"print\", x10) };\n".to_string()
+            "x10 <=X= ${ (\"print_ch\", x10) };\n".to_string()
         }
         "tail" => {
             if let [Argument::Symbol(label)] = args {

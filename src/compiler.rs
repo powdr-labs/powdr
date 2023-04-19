@@ -98,6 +98,10 @@ pub fn compile_asm_string(
                 log::info!("Print: {}", items[1..].join(", "));
                 Some(0.into())
             }
+            "\"print_ch\"" => {
+                print!("{}", items[1].parse::<u8>().unwrap() as char);
+                Some(0.into())
+            }
             _ => None,
         }
     };
