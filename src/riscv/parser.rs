@@ -11,11 +11,13 @@ lalrpop_mod!(
     "/riscv/riscv_asm.rs"
 );
 
+#[derive(Clone)]
 pub enum Statement {
     Label(String),
     Directive(String, Vec<Argument>),
     Instruction(String, Vec<Argument>),
 }
+#[derive(Clone)]
 pub enum Argument {
     Register(Register),
     RegOffset(Register, Constant),
@@ -28,6 +30,7 @@ pub enum Argument {
 #[derive(Clone, Copy)]
 pub struct Register(u8);
 
+#[derive(Clone)]
 pub enum Constant {
     Number(i64),
     HiDataRef(String),
@@ -98,22 +101,23 @@ pub fn parse_asm(input: &str) -> Vec<Statement> {
         .collect()
 }
 
-pub fn extract_labels(statements: &[Statement]) -> BTreeSet<&str> {
+pub fn extract_label_offsets(statements: &[Statement]) -> BTreeMap<&str, usize> {
     statements
         .iter()
-        .filter_map(|s| match s {
-            Statement::Label(l) => Some(l.as_str()),
+        .enumerate()
+        .filter_map(|(i, s)| match s {
+            Statement::Label(l) => Some((l.as_str(), i)),
             Statement::Directive(_, _) | Statement::Instruction(_, _) => None,
         })
         .collect()
 }
 
-pub fn extract_label_references(statements: &[Statement]) -> BTreeSet<&str> {
-    statements
-        .iter()
-        .flat_map(|s| match s {
-            Statement::Label(_) | Statement::Directive(_, _) => None,
-            Statement::Instruction(_, args) => Some(args.iter().filter_map(|arg| match arg {
+pub fn referenced_labels(statement: &Statement) -> BTreeSet<&str> {
+    match statement {
+        Statement::Label(_) | Statement::Directive(_, _) => Default::default(),
+        Statement::Instruction(_, args) => args
+            .iter()
+            .filter_map(|arg| match arg {
                 Argument::Register(_) | Argument::StringLiteral(_) => None,
                 Argument::Symbol(s) => Some(s.as_str()),
                 Argument::RegOffset(_, c) | Argument::Constant(c) => match c {
@@ -121,10 +125,26 @@ pub fn extract_label_references(statements: &[Statement]) -> BTreeSet<&str> {
                     Constant::HiDataRef(s) | Constant::LoDataRef(s) => Some(s.as_str()),
                 },
                 Argument::Difference(_, _) => todo!(),
-            })),
-        })
-        .flatten()
-        .collect()
+            })
+            .collect(),
+    }
+}
+
+pub fn ends_control_flow(s: &Statement) -> bool {
+    match s {
+        Statement::Instruction(instruction, _) => match instruction.as_str() {
+            "li" | "lui" | "mv" | "add" | "addi" | "sub" | "neg" | "mul" | "mulhu" | "xor"
+            | "xori" | "and" | "andi" | "or" | "ori" | "not" | "slli" | "sll" | "srli" | "srl"
+            | "seqz" | "snez" | "slti" | "sltu" | "sltiu" | "beq" | "beqz" | "bgeu" | "bltu"
+            | "blt" | "bge" | "bltz" | "blez" | "bgtz" | "bgez" | "bne" | "bnez" | "jal"
+            | "jalr" | "call" | "ecall" | "lw" | "lb" | "lbu" | "sw" | "sh" | "sb" => false,
+            "j" | "jr" | "tail" | "ret" | "unimp" => true,
+            _ => {
+                panic!("Unknown instruction: {instruction}");
+            }
+        },
+        _ => false,
+    }
 }
 
 pub fn extract_data_objects(statements: &[Statement]) -> BTreeMap<String, Vec<u8>> {
@@ -136,11 +156,30 @@ pub fn extract_data_objects(statements: &[Statement]) -> BTreeMap<String, Vec<u8
                 current_label = Some(l.as_str());
             }
             // TODO We ignore size and alignment directives.
+            // TODO this might all be totally wrong
             Statement::Directive(dir, args) => match (dir.as_str(), &args[..]) {
                 (".type", [Argument::Symbol(name), Argument::Symbol(kind)])
                     if kind.as_str() == "@object" =>
                 {
-                    objects.insert(name.clone(), None);
+                    // TODO do we need to consider name clashes?
+                    if !objects.contains_key(name) {
+                        objects.insert(name.clone(), None);
+                    }
+                }
+                (
+                    ".zero",
+                    [Argument::Constant(Constant::Number(n))]
+                    // TODO not clear what the second argument is
+                    | [Argument::Constant(Constant::Number(n)), _],
+                ) => {
+                    if let Some(entry) = objects.get_mut(current_label.unwrap()) {
+                        let data = vec![0; *n as usize];
+                        if let Some(d) = entry {
+                            d.extend(data);
+                        } else {
+                            *entry = Some(data.clone());
+                        }
+                    }
                 }
                 (".ascii" | ".asciz", [Argument::StringLiteral(data)]) => {
                     if let Some(entry) = objects.get_mut(current_label.unwrap()) {
@@ -153,27 +192,57 @@ pub fn extract_data_objects(statements: &[Statement]) -> BTreeMap<String, Vec<u8
                 }
                 (".word", data) => {
                     if let Some(entry) = objects.get_mut(current_label.unwrap()) {
-                        assert!(entry.is_none());
-                        *entry = Some(
-                            data.iter()
-                                .flat_map(|x| {
-                                    if let Argument::Constant(Constant::Number(n)) = x {
-                                        let n = *n as u32;
-                                        [
-                                            (n & 0xff) as u8,
-                                            (n >> 8 & 0xff) as u8,
-                                            (n >> 16 & 0xff) as u8,
-                                            (n >> 24 & 0xff) as u8,
-                                        ]
-                                    } else {
-                                        // TODO we should handle indirect references at some point.
-                                        [0, 0, 0, 0]
-                                    }
-                                })
-                                .collect::<Vec<u8>>(),
-                        );
+                        let data = data
+                            .iter()
+                            .flat_map(|x| {
+                                if let Argument::Constant(Constant::Number(n)) = x {
+                                    let n = *n as u32;
+                                    [
+                                        (n & 0xff) as u8,
+                                        (n >> 8 & 0xff) as u8,
+                                        (n >> 16 & 0xff) as u8,
+                                        (n >> 24 & 0xff) as u8,
+                                    ]
+                                } else {
+                                    // TODO we should handle indirect references at some point.
+                                    [0, 0, 0, 0]
+                                }
+                            })
+                            .collect::<Vec<u8>>();
+                        if let Some(d) = entry {
+                            d.extend(data);
+                        } else {
+                            *entry = Some(data.clone());
+                        }
                     }
                 }
+                (".byte", data) => {
+                    // TODO alignment?
+                    if let Some(entry) = objects.get_mut(current_label.unwrap()) {
+                        let data = data
+                            .iter()
+                            .flat_map(|x| {
+                                if let Argument::Constant(Constant::Number(n)) = x {
+                                    [*n as u8]
+                                } else {
+                                    // TODO we should handle indirect references at some point.
+                                    [0]
+                                }
+                            })
+                            .collect::<Vec<u8>>();
+                        if let Some(d) = entry {
+                            d.extend(data);
+                        } else {
+                            *entry = Some(data.clone());
+                        }
+                    }
+                }
+                (".size", [Argument::Symbol(name), Argument::Constant(Constant::Number(n))])
+                        if *n == 0 && Some(name.as_str()) == current_label => {
+                    if let Some(entry) = objects.get_mut(current_label.unwrap()) {
+                        *entry =Some(vec![]);
+                    }
+                },
                 _ => {}
             },
             _ => {}

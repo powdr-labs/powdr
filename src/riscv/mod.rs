@@ -91,24 +91,31 @@ pub fn compile_riscv_asm(
 }
 
 pub fn compile_rust_to_riscv_asm(input_file: &str) -> String {
-    let temp_file = Temp::new_file().unwrap();
-    let rustc_status = Command::new("rustc")
-        .args([
-            "--target",
-            "riscv32imc-unknown-none-elf",
-            "--crate-type",
-            "lib",
-            "--emit=asm",
-            "-C",
-            "opt-level=3",
-            "-o",
-            temp_file.to_str().unwrap(),
-            input_file,
-        ])
-        .status()
-        .unwrap();
-    assert!(rustc_status.success());
-    fs::read_to_string(temp_file.to_str().unwrap()).unwrap()
+    let crate_dir = Temp::new_dir().unwrap();
+    // TODO is there no easier way?
+    let mut cargo_file = crate_dir.clone();
+    cargo_file.push("Cargo.toml");
+
+    fs::write(
+        &cargo_file,
+        format!(
+            r#"[package]
+name = "{}"
+version = "0.1.0"
+edition = "2021"
+            "#,
+            Path::new(input_file).file_stem().unwrap().to_str().unwrap()
+        ),
+    )
+    .unwrap();
+
+    let mut src_file = crate_dir.clone();
+    src_file.push("src");
+    fs::create_dir(&src_file).unwrap();
+    src_file.push("lib.rs");
+    fs::write(src_file, fs::read_to_string(input_file).unwrap()).unwrap();
+
+    compile_rust_crate_to_riscv_asm(cargo_file.to_str().unwrap())
 }
 
 pub fn compile_rust_crate_to_riscv_asm(input_dir: &str) -> String {
@@ -119,6 +126,8 @@ pub fn compile_rust_crate_to_riscv_asm(input_dir: &str) -> String {
         .args([
             "build",
             "--release",
+            "-Z",
+            "build-std=core",
             "--target",
             "riscv32imc-unknown-none-elf",
             "--lib",

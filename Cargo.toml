@@ -15,7 +15,6 @@ lalrpop-util = {version = "^0.19", features = ["lexer"]}
 lazy_static = "^1.4.0"
 log = "0.4.17"
 mktemp = "0.5.0"
-regex = "^1.7.0"
 walkdir = "2.3.3"
 
 [build-dependencies]
