@@ -137,7 +137,9 @@ pub fn ends_control_flow(s: &Statement) -> bool {
             | "xori" | "and" | "andi" | "or" | "ori" | "not" | "slli" | "sll" | "srli" | "srl"
             | "seqz" | "snez" | "slti" | "sltu" | "sltiu" | "beq" | "beqz" | "bgeu" | "bltu"
             | "blt" | "bge" | "bltz" | "blez" | "bgtz" | "bgez" | "bne" | "bnez" | "jal"
-            | "jalr" | "call" | "ecall" | "lw" | "lb" | "lbu" | "sw" | "sh" | "sb" => false,
+            | "jalr" | "call" | "ecall" | "ebreak" | "lw" | "lb" | "lbu" | "sw" | "sh" | "sb" => {
+                false
+            }
             "j" | "jr" | "tail" | "ret" | "unimp" => true,
             _ => {
                 panic!("Unknown instruction: {instruction}");
