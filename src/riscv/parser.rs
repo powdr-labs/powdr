@@ -41,7 +41,7 @@ impl Display for Statement {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Statement::Label(l) => writeln!(f, "{l}:"),
-            Statement::Directive(d, args) => writeln!(f, "  .{d} {}", format_arguments(args)),
+            Statement::Directive(d, args) => writeln!(f, "  {d} {}", format_arguments(args)),
             Statement::Instruction(i, args) => writeln!(f, "  {i} {}", format_arguments(args)),
         }
     }
