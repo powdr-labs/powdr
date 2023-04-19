@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, BTreeSet, HashSet};
+use std::collections::{BTreeMap, BTreeSet};
 
 use crate::riscv::parser::{self, Argument, Register, Statement};
 
@@ -93,6 +93,7 @@ fn basic_block_starting_from(statements: &[Statement]) -> (Vec<Statement>, Vec<&
 }
 
 fn replace_dynamic_label_references(statements: &mut Vec<Statement>) {
+    let mut replacement = vec![];
     /*
     Find patterns of the form
     lui	a0, %hi(LABEL)
@@ -105,28 +106,37 @@ fn replace_dynamic_label_references(statements: &mut Vec<Statement>) {
     s10 <=X= load_label(LABEL)
     */
     // TODO This is really hacky, should be rustified
-    let mut to_delete = HashSet::<usize>::new();
-    for i in 0..(statements.len() - 1) {
-        let Statement::Instruction(instr1, args1) = &statements[i] else {continue};
-        let Statement::Instruction(instr2, args2) = &statements[i + 1] else {continue};
-        if instr1.as_str() != "lui" || instr2.as_str() != "addi" {
-            continue;
-        };
-        let [Argument::Register(r1), Argument::Constant(Constant::HiDataRef(label1))] = &args1[..] else {continue};
-        let [Argument::Register(r2), Argument::Register(r3), Argument::Constant(Constant::LoDataRef(label2))] = &args2[..] else {continue};
-        if r1 != r3 || label1 != label2 {
-            continue;
+    let mut i = 0;
+    while i < statements.len() - 1 {
+        let s1 = &statements[i];
+        let s2 = &statements[i + 1];
+        if let Some(r) = replace_dynamic_label_reference(s1, s2) {
+            replacement.push(r);
+            i += 2;
+        } else {
+            // TODO avoid clone
+            replacement.push(s1.clone());
+            i += 1;
         }
-        statements[i] = Statement::Instruction(
-            "load_dynamic".to_string(),
-            vec![Argument::Register(*r2), Argument::Symbol(label1.clone())],
-        );
-        to_delete.insert(i + 1);
     }
-    // TODO this should be done in one pass
-    for i in to_delete {
-        statements.remove(i);
+    *statements = replacement;
+}
+
+fn replace_dynamic_label_reference(s1: &Statement, s2: &Statement) -> Option<Statement> {
+    let Statement::Instruction(instr1, args1) = s1 else { return None; };
+    let Statement::Instruction(instr2, args2) = s2 else { return None; };
+    if instr1.as_str() != "lui" || instr2.as_str() != "addi" {
+        return None;
+    };
+    let [Argument::Register(r1), Argument::Constant(Constant::HiDataRef(label1))] = &args1[..] else { return None; };
+    let [Argument::Register(r2), Argument::Register(r3), Argument::Constant(Constant::LoDataRef(label2))] = &args2[..] else { return None; };
+    if r1 != r3 || label1 != label2 {
+        return None;
     }
+    Some(Statement::Instruction(
+        "load_dynamic".to_string(),
+        vec![Argument::Register(*r2), Argument::Symbol(label1.clone())],
+    ))
 }
 
 fn store_data_objects(
