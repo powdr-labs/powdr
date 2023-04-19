@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashSet};
 
 use crate::riscv::parser::{self, Argument, Register, Statement};
 
@@ -14,7 +14,14 @@ pub fn compile_riscv_asm(data: &str) -> String {
     let data = data.to_string() + library_routines();
     let mut statements = parser::parse_asm(&data);
     let mut objects = parser::extract_data_objects(&statements);
+
+    // Reduce to the code that is actually reachable from main
+    // (and the objects that are referred from there)
     filter_reachable_from("main", &mut statements, &mut objects);
+
+    // Replace dynamic references to labels
+    replace_dynamic_label_references(&mut statements);
+
     let (data_code, data_positions) = store_data_objects(objects.into_iter(), data_start);
     let mut output = preamble()
         + &data_code
@@ -83,6 +90,43 @@ fn basic_block_starting_from(statements: &[Statement]) -> (Vec<Statement>, Vec<&
         }
     }
     (code, referenced_labels.into_iter().collect(), seen_labels)
+}
+
+fn replace_dynamic_label_references(statements: &mut Vec<Statement>) {
+    /*
+    Find patterns of the form
+    lui	a0, %hi(LABEL)
+    addi	s10, a0, %lo(LABEL)
+    -
+    turn this into the pseudo-riscv-instruction
+    load_dynamic s10, LABEL
+    which is then turned into
+
+    s10 <=X= load_label(LABEL)
+    */
+    // TODO This is really hacky, should be rustified
+    let mut to_delete = HashSet::<usize>::new();
+    for i in 0..(statements.len() - 1) {
+        let Statement::Instruction(instr1, args1) = &statements[i] else {continue};
+        let Statement::Instruction(instr2, args2) = &statements[i + 1] else {continue};
+        if instr1.as_str() != "lui" || instr2.as_str() != "addi" {
+            continue;
+        };
+        let [Argument::Register(r1), Argument::Constant(Constant::HiDataRef(label1))] = &args1[..] else {continue};
+        let [Argument::Register(r2), Argument::Register(r3), Argument::Constant(Constant::LoDataRef(label2))] = &args2[..] else {continue};
+        if r1 != r3 || label1 != label2 {
+            continue;
+        }
+        statements[i] = Statement::Instruction(
+            "load_dynamic".to_string(),
+            vec![Argument::Register(*r2), Argument::Symbol(label1.clone())],
+        );
+        to_delete.insert(i + 1);
+    }
+    // TODO this should be done in one pass
+    for i in to_delete {
+        statements.remove(i);
+    }
 }
 
 fn store_data_objects(
@@ -231,6 +275,7 @@ instr mload -> X { { addr, STEP, X } is m_is_read { m_addr, m_step, m_value } }
 // ============== control-flow instructions ==============
 
 instr jump l: label { pc' = l }
+instr load_label l: label -> X { X = l }
 instr jump_dyn X { pc' = X }
 instr jump_and_link_dyn X { pc' = X, x1' = pc + 1 }
 instr call l: label { pc' = l, x1' = pc + 1 }
@@ -577,11 +622,8 @@ fn argument_to_number(x: &Argument) -> u32 {
 fn constant_to_number(c: &Constant) -> u32 {
     match c {
         Constant::Number(n) => *n as u32,
-        Constant::HiDataRef(_n) | Constant::LoDataRef(_n) => {
-            0xff0f0f
-            // TODO this is a code label reference. We have to replace it by the PC
-            // or even add this as a feature, because then we can still relocate code
-            // in the optimizer.
+        Constant::HiDataRef(n) | Constant::LoDataRef(n) => {
+            panic!("Data reference was not erased during preprocessing: {n}");
         }
     }
 }
@@ -948,6 +990,12 @@ fn process_instruction(instr: &str, args: &[Argument]) -> String {
                 + "mstore tmp1;\n"
         }
         "unimp" => "fail;\n".to_string(),
+
+        // Special instruction that is inserted to allow dynamic label references
+        "load_dynamic" => {
+            let (r1, label) = rl(args);
+            format!("{r1} <=X= load_label({label});\n")
+        }
 
         _ => {
             panic!("Unknown instruction: {instr}");

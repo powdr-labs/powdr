@@ -27,7 +27,7 @@ pub enum Argument {
     Difference(String, String),
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub struct Register(u8);
 
 #[derive(Clone)]
