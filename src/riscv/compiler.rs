@@ -17,9 +17,17 @@ pub fn compile_riscv_asm(mut assemblies: BTreeMap<String, String>) -> String {
         .insert("__runtime".to_string(), runtime().to_string())
         .is_none());
 
-    let mut statements = assemblies
+    let parsed_assemblies = assemblies
+        .into_iter()
+        .map(|(name, contents)| (name, parser::parse_asm(&contents)))
+        .collect::<Vec<_>>();
+    let globals = parsed_assemblies
         .iter()
-        .map(|(name, contents)| parse_and_disambiguate(name, contents))
+        .flat_map(|(_, statements)| extract_globals(statements))
+        .collect::<HashSet<_>>();
+    let mut statements = parsed_assemblies
+        .into_iter()
+        .map(|(name, statements)| disambiguate(&name, statements, &globals))
         .concat();
     let mut objects = parser::extract_data_objects(&statements);
 
@@ -44,23 +52,25 @@ pub fn compile_riscv_asm(mut assemblies: BTreeMap<String, String>) -> String {
     output
 }
 
-fn parse_and_disambiguate(file_name: &str, contents: &str) -> Vec<Statement> {
+fn disambiguate(
+    file_name: &str,
+    statements: Vec<Statement>,
+    globals: &HashSet<String>,
+) -> Vec<Statement> {
     let prefix = file_name.replace('-', "_dash_");
-    let statements = parser::parse_asm(contents);
-    let globals = extract_globals(&statements);
     statements
         .into_iter()
         .map(|s| match s {
             Statement::Label(l) => {
-                Statement::Label(disambiguate_symbol_if_needed(l, &prefix, &globals))
+                Statement::Label(disambiguate_symbol_if_needed(l, &prefix, globals))
             }
             Statement::Directive(dir, args) => Statement::Directive(
                 dir,
-                disambiguate_arguments_if_needed(args, &prefix, &globals),
+                disambiguate_arguments_if_needed(args, &prefix, globals),
             ),
             Statement::Instruction(instr, args) => Statement::Instruction(
                 instr,
-                disambiguate_arguments_if_needed(args, &prefix, &globals),
+                disambiguate_arguments_if_needed(args, &prefix, globals),
             ),
         })
         .collect()
