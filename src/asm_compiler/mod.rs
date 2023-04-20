@@ -649,8 +649,11 @@ impl ASMPILConverter {
         self.code_lines
             .iter()
             .enumerate()
-            .filter_map(|(i, line)| line.label.as_ref().map(|l| (l.clone(), i)))
-            .collect()
+            .filter_map(|(i, line)| line.label.as_ref().map(|l| (l, i)))
+            .fold(HashMap::new(), |mut r, (l, i)| {
+                assert!(r.insert(l.clone(), i).is_none(), "Duplicate label: {l}");
+                r
+            })
     }
 
     /// Creates a pair of witness and fixed column and matches them in the lookup.
