@@ -110,7 +110,12 @@ pub fn extract_label_offsets(statements: &[Statement]) -> BTreeMap<&str, usize> 
             Statement::Label(l) => Some((l.as_str(), i)),
             Statement::Directive(_, _) | Statement::Instruction(_, _) => None,
         })
-        .collect()
+        .fold(BTreeMap::new(), |mut acc, (n, i)| {
+            if acc.insert(n, i).is_some() {
+                panic!("Duplicate label: {n}")
+            }
+            acc
+        })
 }
 
 pub fn referenced_labels(statement: &Statement) -> BTreeSet<&str> {
