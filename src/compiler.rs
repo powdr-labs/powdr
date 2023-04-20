@@ -99,7 +99,7 @@ pub fn compile_asm_string(
                 Some(0.into())
             }
             "\"print_ch\"" => {
-                print!("{}", items[1].parse::<u8>().unwrap() as char);
+                eprint!("{}", items[1].parse::<u8>().unwrap() as char);
                 Some(0.into())
             }
             _ => None,

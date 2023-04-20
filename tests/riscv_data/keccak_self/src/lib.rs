@@ -460,8 +460,9 @@ pub fn run(output: &mut [u8; 32], mut print: impl FnMut(&[u8])) {
 #[cfg(not(target_os = "linux"))]
 #[no_mangle]
 pub extern "C" fn main() -> ! {
+    print_prover_data(&[1, 2, 3]);
     let mut output = [0u8; 32];
-    run(&mut output);
+    run(&mut output, print_prover_data);
     loop {}
 }
 
@@ -473,4 +474,37 @@ fn get_prover_input(index: u32) -> u32 {
         asm!("ecall", lateout("a0") value, in("a0") index);
     }
     value
+}
+
+#[cfg(not(target_os = "linux"))]
+#[inline]
+fn print_prover_data(data: &[u8]) {
+    print_prover_char('[');
+    for b in data {
+        let mut x = *b;
+        // if x >= 200 {
+        //     print_prover_char('2');
+        //     x -= 200;
+        // } else if x >= 100 {
+        //     print_prover_char('1');
+        //     x -= 100;
+        // }
+        if x > 10 {
+            print_prover_char(('0' as u8 + (x / 10) % 10) as char);
+        }
+        print_prover_char(('0' as u8 + x % 10) as char);
+        print_prover_char(',');
+        print_prover_char(' ');
+    }
+    print_prover_char(']');
+    print_prover_char('\n');
+}
+
+#[cfg(not(target_os = "linux"))]
+#[inline]
+fn print_prover_char(c: char) {
+    let mut value = c as u32;
+    unsafe {
+        asm!("ebreak", lateout("a0") value, in("a0") value);
+    }
 }
