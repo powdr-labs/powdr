@@ -61,7 +61,7 @@ fn test_keccak() {
 
 fn verify_file(case: &str, inputs: Vec<FieldElement>) {
     let riscv_asm = powdr::riscv::compile_rust_to_riscv_asm(&format!("tests/riscv_data/{case}"));
-    let powdr_asm = powdr::riscv::compiler::compile_riscv_asm(&riscv_asm);
+    let powdr_asm = powdr::riscv::compiler::compile_riscv_asm(riscv_asm);
 
     verify_asm_string(&format!("{case}.asm"), &powdr_asm, inputs);
 }
@@ -70,7 +70,7 @@ fn verify_crate(case: &str, inputs: Vec<FieldElement>) {
     let riscv_asm = powdr::riscv::compile_rust_crate_to_riscv_asm(&format!(
         "tests/riscv_data/{case}/Cargo.toml"
     ));
-    let powdr_asm = powdr::riscv::compiler::compile_riscv_asm(&riscv_asm);
+    let powdr_asm = powdr::riscv::compiler::compile_riscv_asm(riscv_asm);
 
     verify_asm_string(&format!("{case}.asm"), &powdr_asm, inputs);
 }

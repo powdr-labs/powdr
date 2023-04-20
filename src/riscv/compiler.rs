@@ -1,32 +1,39 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet, HashSet};
 
-use lazy_static::lazy_static;
-use regex::Regex;
+use itertools::Itertools;
 
 use crate::riscv::parser::{self, Argument, Register, Statement};
 
 use super::parser::Constant;
 
 /// Compiles riscv assembly to POWDR assembly. Adds required library routines.
-pub fn compile_riscv_asm(data: &str) -> String {
+pub fn compile_riscv_asm(mut assemblies: BTreeMap<String, String>) -> String {
     // stack grows towards zero
     let stack_start = 0x10000;
     // data grows away from zero
     let data_start = 0x20000;
 
-    let statements = parser::parse_asm(data);
-    let labels = parser::extract_labels(&statements);
-    let label_references = parser::extract_label_references(&statements);
-    let missing_labels = label_references.difference(&labels);
+    assert!(assemblies
+        .insert("__runtime".to_string(), runtime().to_string())
+        .is_none());
 
-    let data = data.to_string()
-        + &missing_labels
-            .into_iter()
-            .map(|label| library_routine(label))
-            .collect::<Vec<_>>()
-            .join("\n");
-    let mut statements = parser::parse_asm(&data);
-    let objects = parser::extract_data_objects(&statements);
+    let parsed_assemblies = assemblies
+        .into_iter()
+        .map(|(name, contents)| (name, parser::parse_asm(&contents)))
+        .collect::<Vec<_>>();
+    let globals = parsed_assemblies
+        .iter()
+        .flat_map(|(_, statements)| extract_globals(statements))
+        .collect::<HashSet<_>>();
+    let mut statements = parsed_assemblies
+        .into_iter()
+        .map(|(name, statements)| disambiguate(&name, statements, &globals))
+        .concat();
+    let mut objects = parser::extract_data_objects(&statements);
+
+    // Reduce to the code that is actually reachable from main
+    // (and the objects that are referred from there)
+    filter_reachable_from("main", &mut statements, &mut objects);
 
     // Replace dynamic references to code labels
     replace_dynamic_label_references(&mut statements, &objects);
@@ -43,6 +50,191 @@ pub fn compile_riscv_asm(data: &str) -> String {
         output += &process_statement(s);
     }
     output
+}
+
+fn disambiguate(
+    file_name: &str,
+    statements: Vec<Statement>,
+    globals: &HashSet<String>,
+) -> Vec<Statement> {
+    let prefix = file_name.replace('-', "_dash_");
+    statements
+        .into_iter()
+        .map(|s| match s {
+            Statement::Label(l) => {
+                Statement::Label(disambiguate_symbol_if_needed(l, &prefix, globals))
+            }
+            Statement::Directive(dir, args) => Statement::Directive(
+                dir,
+                disambiguate_arguments_if_needed(args, &prefix, globals),
+            ),
+            Statement::Instruction(instr, args) => Statement::Instruction(
+                instr,
+                disambiguate_arguments_if_needed(args, &prefix, globals),
+            ),
+        })
+        .collect()
+}
+
+fn disambiguate_arguments_if_needed(
+    args: Vec<Argument>,
+    prefix: &str,
+    globals: &HashSet<String>,
+) -> Vec<Argument> {
+    args.into_iter()
+        .map(|a| disambiguate_argument_if_needed(a, prefix, globals))
+        .collect()
+}
+
+fn disambiguate_argument_if_needed(
+    arg: Argument,
+    prefix: &str,
+    globals: &HashSet<String>,
+) -> Argument {
+    match arg {
+        Argument::Register(_) | Argument::StringLiteral(_) => arg,
+        Argument::RegOffset(reg, constant) => Argument::RegOffset(
+            reg,
+            disambiguate_constant_if_needed(constant, prefix, globals),
+        ),
+        Argument::Constant(c) => {
+            Argument::Constant(disambiguate_constant_if_needed(c, prefix, globals))
+        }
+        Argument::Symbol(s) => Argument::Symbol(disambiguate_symbol_if_needed(s, prefix, globals)),
+        Argument::Difference(l, r) => Argument::Difference(
+            disambiguate_symbol_if_needed(l, prefix, globals),
+            disambiguate_symbol_if_needed(r, prefix, globals),
+        ),
+    }
+}
+
+fn disambiguate_constant_if_needed(
+    c: Constant,
+    prefix: &str,
+    globals: &HashSet<String>,
+) -> Constant {
+    match c {
+        Constant::Number(_) => c,
+        Constant::HiDataRef(s) => {
+            Constant::HiDataRef(disambiguate_symbol_if_needed(s, prefix, globals))
+        }
+        Constant::LoDataRef(s) => {
+            Constant::LoDataRef(disambiguate_symbol_if_needed(s, prefix, globals))
+        }
+    }
+}
+
+fn disambiguate_symbol_if_needed(s: String, prefix: &str, globals: &HashSet<String>) -> String {
+    if globals.contains(s.as_str()) || s.starts_with('@') {
+        s
+    } else {
+        format!("{prefix}__{s}")
+    }
+}
+
+fn extract_globals(statements: &[Statement]) -> HashSet<String> {
+    statements
+        .iter()
+        .flat_map(|s| {
+            if let Statement::Directive(name, args) = s {
+                if name == ".globl" {
+                    return args
+                        .iter()
+                        .map(|a| {
+                            if let Argument::Symbol(s) = a {
+                                s.clone()
+                            } else {
+                                panic!("Invalid .globl directive: {s}");
+                            }
+                        })
+                        // TODO possible wihtout collect?
+                        .collect();
+                }
+            }
+            vec![]
+        })
+        .collect()
+}
+
+fn filter_reachable_from(
+    label: &str,
+    statements: &mut Vec<Statement>,
+    objects: &mut BTreeMap<String, Vec<u8>>,
+) {
+    let label_offsets = parser::extract_label_offsets(statements);
+    let mut queued_labels: BTreeSet<&str> = vec![label].into_iter().collect();
+    let mut referenced_labels: BTreeSet<&str> = vec![label].into_iter().collect();
+    let mut processed_labels = BTreeSet::<&str>::new();
+    // Labels that are included in a basic block that starts with a different label.
+    let mut secondary_labels = BTreeSet::<&str>::new();
+    let mut label_queue = vec![label];
+    while let Some(l) = label_queue.pop() {
+        if objects.contains_key(l) {
+            // We record but do not process references to objects
+            continue;
+        }
+        if !processed_labels.insert(l) {
+            continue;
+        }
+        let offset = *label_offsets.get(l).unwrap_or_else(|| {
+            eprintln!("The RISCV assembly code references an external routine / label that is not available:");
+            eprintln!("{l}");
+            panic!();
+        });
+        let (referenced_labels_in_block, seen_labels_in_block) =
+            basic_block_references_starting_from(&statements[offset..]);
+        assert!(!secondary_labels.contains(l));
+        secondary_labels.extend(seen_labels_in_block.clone());
+        secondary_labels.remove(l);
+        processed_labels.extend(seen_labels_in_block);
+
+        for referenced in &referenced_labels_in_block {
+            if !queued_labels.contains(referenced) && !processed_labels.contains(referenced) {
+                label_queue.push(referenced);
+                queued_labels.insert(referenced);
+            }
+        }
+        referenced_labels.extend(referenced_labels_in_block);
+    }
+    objects.retain(|name, _value| referenced_labels.contains(name.as_str()));
+    let code = processed_labels
+        .difference(&secondary_labels)
+        .flat_map(|l| {
+            let offset = *label_offsets.get(l).unwrap();
+            basic_block_code_starting_from(&statements[offset..])
+        })
+        .collect();
+    *statements = code;
+}
+
+fn basic_block_references_starting_from(statements: &[Statement]) -> (Vec<&str>, Vec<&str>) {
+    let mut seen_labels = vec![];
+    let mut referenced_labels = BTreeSet::<&str>::new();
+    for s in statements {
+        if let Statement::Label(l) = s {
+            seen_labels.push(l.as_str());
+        } else {
+            referenced_labels.extend(parser::referenced_labels(s))
+        }
+        if parser::ends_control_flow(s) {
+            break;
+        }
+    }
+    (referenced_labels.into_iter().collect(), seen_labels)
+}
+
+fn basic_block_code_starting_from(statements: &[Statement]) -> Vec<Statement> {
+    let mut code = vec![];
+    for s in statements {
+        if let Statement::Directive(_, _) = s {
+            panic!("Included directive in code block: {s}");
+        }
+        code.push(s.clone());
+        if parser::ends_control_flow(s) {
+            break;
+        }
+    }
+    code
 }
 
 /// Replace certain patterns of references to code labels by
@@ -448,127 +640,96 @@ pil{
     "#
 }
 
-lazy_static! {
-    static ref LIBRARY_ROUTINES: Vec<(Regex, &'static str)> = vec![
-        (
-            Regex::new(r"^_ZN4core9panicking18panic_bounds_check17h[0-9a-f]{16}E$").unwrap(),
-            "unimp"
-        ),
-        (
-            Regex::new(r"^_ZN4core9panicking5panic17h[0-9a-f]{16}E$").unwrap(),
-            "unimp"
-        ),
-        (
-            Regex::new(r"^_ZN4core5slice5index24slice_end_index_len_fail17h[0-9a-f]{16}E$")
-                .unwrap(),
-            "unimp"
-        ),
-        (
-            Regex::new(r"^_ZN5alloc5alloc18handle_alloc_error17h[0-9a-f]{16}E$").unwrap(),
-            "unimp"
-        ),
-        (
-            Regex::new(r"^_ZN5alloc7raw_vec17capacity_overflow17h[0-9a-f]{16}E$").unwrap(),
-            "unimp"
-        ),
-        (
-            Regex::new(r"^_ZN5alloc7raw_vec17capacity_overflow17h[0-9a-f]{16}E$").unwrap(),
-            "unimp"
-        ),
-        (
-            Regex::new(r"^_ZN5alloc5alloc18handle_alloc_error17h[0-9a-f]{16}E$").unwrap(),
-            "unimp"
-        ),
-        (
-            Regex::new(r"^_ZN4core5slice5index26slice_start_index_len_fail17h[0-9a-f]{16}E$")
-                .unwrap(),
-            "unimp"
-        ),
-        // TODO rust alloc calls the global allocator - not sure why this is not automatic.
-        (Regex::new(r"^__rust_alloc$").unwrap(), "j __rg_alloc"),
-        (Regex::new(r"^__rust_realloc$").unwrap(), "j __rg_realloc"),
-        (Regex::new(r"^__rust_dealloc$").unwrap(), "j __rg_dealloc"),
-        (
-            Regex::new(r"^memset@plt$").unwrap(),
-/* Source cod efor memset:
-// TODO c is ussualy a "c int"
-pub unsafe extern "C" fn memset(s: *mut u8, c: u8, n: usize) -> *mut u8 {
-    // We only access u32 because then we do not have to deal with
-    // un-aligned memory access.
-    // TODO this does not really enforce that the pointers are u32-aligned.
-    let mut value = c as u32;
-    value = value | (value << 8) | (value << 16) | (value << 24);
-    let mut i: isize = 0;
-    while i + 3 < n as isize {
-        *((s.offset(i)) as *mut u32) = value;
-        i += 4;
+fn runtime() -> &'static str {
+    // // TODO rust alloc calls the global allocator - not sure why this is not automatic.
+    // (Regex::new(r"^__rust_alloc$").unwrap(), "j __rg_alloc"),
+    // (Regex::new(r"^__rust_realloc$").unwrap(), "j __rg_realloc"),
+    // (Regex::new(r"^__rust_dealloc$").unwrap(), "j __rg_dealloc"),
+    // (
+
+    /* Source code:
+    // TODO c is usually a "c int"
+    pub unsafe extern "C" fn memset(s: *mut u8, c: u8, n: usize) -> *mut u8 {
+        // We only access u32 because then we do not have to deal with
+        // un-aligned memory access.
+        // TODO this does not really enforce that the pointers are u32-aligned.
+        let mut value = c as u32;
+        value = value | (value << 8) | (value << 16) | (value << 24);
+        let mut i: isize = 0;
+        while i + 3 < n as isize {
+            *((s.offset(i)) as *mut u32) = value;
+            i += 4;
+        }
+        if i < n {
+            let dest_value = (s.offset(i)) as *mut u32;
+            let mask = (1 << ((((n as isize) - i) * 8) as u32)) - 1;
+            *dest_value = (*dest_value & !mask) | (value & mask);
+        }
+        s
     }
-    if i < n {
-        let dest_value = (s.offset(i)) as *mut u32;
-        let mask = (1 << ((((n as isize) - i) * 8) as u32)) - 1;
-        *dest_value = (*dest_value & !mask) | (value & mask);
+
+    pub unsafe extern "C" fn memcpy(dest: *mut u8, src: *const u8, n: usize) -> *mut u8 {
+        // We only access u32 because then we do not have to deal with
+        // un-aligned memory access.
+        // TODO this does not really enforce that the pointers are u32-aligned.
+        let mut i: isize = 0;
+        while i + 3 < n as isize {
+            *((dest.offset(i)) as *mut u32) = *((src.offset(i)) as *mut u32);
+            i += 4;
+        }
+        if i < n as isize {
+            let value = *((src.offset(i)) as *mut u32);
+            let dest_value = (dest.offset(i)) as *mut u32;
+            let mask = (1 << (((n as isize - i) * 8) as u32)) - 1;
+            *dest_value = (*dest_value & !mask) | (value & mask);
+        }
+        dest
     }
-    s
-}
-*/
-            r#"
-	li	a3, 4
-	blt	a2, a3, __memset_LBB5_5
-	li	a5, 0
-	lui	a3, 4112
-	addi	a3, a3, 257
-	mul	a6, a1, a3
+    */
+    r#"
+.globl rust_begin_unwind
+rust_begin_unwind:
+    unimp
+
+.globl memset@plt
+memset@plt:
+    li	a3, 4
+    blt	a2, a3, __memset_LBB5_5
+    li	a5, 0
+    lui	a3, 4112
+    addi	a3, a3, 257
+    mul	a6, a1, a3
 __memset_LBB5_2:
-	add	a7, a0, a5
-	addi	a3, a5, 4
-	addi	a4, a5, 7
-	sw	a6, 0(a7)
-	mv	a5, a3
-	blt	a4, a2, __memset_LBB5_2
-	bge	a3, a2, __memset_LBB5_6
+    add	a7, a0, a5
+    addi	a3, a5, 4
+    addi	a4, a5, 7
+    sw	a6, 0(a7)
+    mv	a5, a3
+    blt	a4, a2, __memset_LBB5_2
+    bge	a3, a2, __memset_LBB5_6
 __memset_LBB5_4:
-	lui	a4, 16
-	addi	a4, a4, 257
-	mul	a1, a1, a4
-	add	a3, a3, a0
-	slli	a2, a2, 3
-	lw	a4, 0(a3)
-	li	a5, -1
-	sll	a2, a5, a2
-	not	a5, a2
-	and	a2, a2, a4
-	and	a1, a1, a5
-	or	a1, a1, a2
-	sw	a1, 0(a3)
-	ret
+    lui	a4, 16
+    addi	a4, a4, 257
+    mul	a1, a1, a4
+    add	a3, a3, a0
+    slli	a2, a2, 3
+    lw	a4, 0(a3)
+    li	a5, -1
+    sll	a2, a5, a2
+    not	a5, a2
+    and	a2, a2, a4
+    and	a1, a1, a5
+    or	a1, a1, a2
+    sw	a1, 0(a3)
+    ret
 __memset_LBB5_5:
-	li	a3, 0
-	blt	a3, a2, __memset_LBB5_4
+    li	a3, 0
+    blt	a3, a2, __memset_LBB5_4
 __memset_LBB5_6:
-	ret"#
-        ),
-        (
-            Regex::new(r"^memcpy@plt$").unwrap(),
-/* Source code for memcpy:
-pub unsafe extern "C" fn memcpy(dest: *mut u8, src: *const u8, n: usize) -> *mut u8 {
-    // We only access u32 because then we do not have to deal with
-    // un-aligned memory access.
-    // TODO this does not really enforce that the pointers are u32-aligned.
-    let mut i: isize = 0;
-    while i + 3 < n as isize {
-        *((dest.offset(i)) as *mut u32) = *((src.offset(i)) as *mut u32);
-        i += 4;
-    }
-    if i < n as isize {
-        let value = *((src.offset(i)) as *mut u32);
-        let dest_value = (dest.offset(i)) as *mut u32;
-        let mask = (1 << (((n as isize - i) * 8) as u32)) - 1;
-        *dest_value = (*dest_value & !mask) | (value & mask);
-    }
-    dest
-}
-*/
-            r#"
+    ret
+
+.globl memcpy@plt
+memcpy@plt:
     li	a3, 4
     blt	a2, a3, __memcpy_LBB2_5
     li	a4, 0
@@ -601,20 +762,26 @@ __memcpy_LBB2_5:
     blt	a3, a2, __memcpy_LBB2_4
 __memcpy_LBB2_6:
     ret
-"#
-        ),
-    ];
-}
 
-fn library_routine(label: &str) -> String {
-    for (pattern, routine) in LIBRARY_ROUTINES.iter() {
-        if pattern.is_match(label) {
-            return format!("{label}:\n{routine}");
-        }
-    }
-    eprintln!("The RISCV assembly code references an external routine / label that has not been implemented yet:");
-    eprintln!("{label}");
-    panic!();
+.globl memcmp@plt
+memcmp@plt:
+	beqz	a2, .LBB270_3
+.LBB270_1:
+	lbu	a3, 0(a0)
+	lbu	a4, 0(a1)
+	bne	a3, a4, .LBB270_4
+	addi	a1, a1, 1
+	addi	a2, a2, -1
+	addi	a0, a0, 1
+	bnez	a2, .LBB270_1
+.LBB270_3:
+	li	a0, 0
+	ret
+.LBB270_4:
+	sub	a0, a3, a4
+	ret
+
+"#
 }
 
 fn process_statement(s: Statement) -> String {

@@ -42,7 +42,7 @@ impl Display for Statement {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Statement::Label(l) => writeln!(f, "{l}:"),
-            Statement::Directive(d, args) => writeln!(f, "  .{d} {}", format_arguments(args)),
+            Statement::Directive(d, args) => writeln!(f, "  {d} {}", format_arguments(args)),
             Statement::Instruction(i, args) => writeln!(f, "  {i} {}", format_arguments(args)),
         }
     }
@@ -102,22 +102,28 @@ pub fn parse_asm(input: &str) -> Vec<Statement> {
         .collect()
 }
 
-pub fn extract_labels(statements: &[Statement]) -> BTreeSet<&str> {
+pub fn extract_label_offsets(statements: &[Statement]) -> BTreeMap<&str, usize> {
     statements
         .iter()
-        .filter_map(|s| match s {
-            Statement::Label(l) => Some(l.as_str()),
+        .enumerate()
+        .filter_map(|(i, s)| match s {
+            Statement::Label(l) => Some((l.as_str(), i)),
             Statement::Directive(_, _) | Statement::Instruction(_, _) => None,
         })
-        .collect()
+        .fold(BTreeMap::new(), |mut acc, (n, i)| {
+            if acc.insert(n, i).is_some() {
+                panic!("Duplicate label: {n}")
+            }
+            acc
+        })
 }
 
-pub fn extract_label_references(statements: &[Statement]) -> BTreeSet<&str> {
-    statements
-        .iter()
-        .flat_map(|s| match s {
-            Statement::Label(_) | Statement::Directive(_, _) => None,
-            Statement::Instruction(_, args) => Some(args.iter().filter_map(|arg| match arg {
+pub fn referenced_labels(statement: &Statement) -> BTreeSet<&str> {
+    match statement {
+        Statement::Label(_) | Statement::Directive(_, _) => Default::default(),
+        Statement::Instruction(_, args) => args
+            .iter()
+            .filter_map(|arg| match arg {
                 Argument::Register(_) | Argument::StringLiteral(_) => None,
                 Argument::Symbol(s) => Some(s.as_str()),
                 Argument::RegOffset(_, c) | Argument::Constant(c) => match c {
@@ -125,10 +131,28 @@ pub fn extract_label_references(statements: &[Statement]) -> BTreeSet<&str> {
                     Constant::HiDataRef(s) | Constant::LoDataRef(s) => Some(s.as_str()),
                 },
                 Argument::Difference(_, _) => todo!(),
-            })),
-        })
-        .flatten()
-        .collect()
+            })
+            .collect(),
+    }
+}
+
+pub fn ends_control_flow(s: &Statement) -> bool {
+    match s {
+        Statement::Instruction(instruction, _) => match instruction.as_str() {
+            "li" | "lui" | "mv" | "add" | "addi" | "sub" | "neg" | "mul" | "mulhu" | "xor"
+            | "xori" | "and" | "andi" | "or" | "ori" | "not" | "slli" | "sll" | "srli" | "srl"
+            | "seqz" | "snez" | "slti" | "sltu" | "sltiu" | "beq" | "beqz" | "bgeu" | "bltu"
+            | "blt" | "bge" | "bltz" | "blez" | "bgtz" | "bgez" | "bne" | "bnez" | "jal"
+            | "jalr" | "call" | "ecall" | "ebreak" | "lw" | "lb" | "lbu" | "sw" | "sh" | "sb" => {
+                false
+            }
+            "j" | "jr" | "tail" | "ret" | "unimp" => true,
+            _ => {
+                panic!("Unknown instruction: {instruction}");
+            }
+        },
+        _ => false,
+    }
 }
 
 pub fn extract_data_objects(statements: &[Statement]) -> BTreeMap<String, Vec<u8>> {
