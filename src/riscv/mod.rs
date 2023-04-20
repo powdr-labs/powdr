@@ -1,4 +1,4 @@
-use std::{path::Path, process::Command};
+use std::{collections::BTreeMap, path::Path, process::Command};
 
 use mktemp::Temp;
 use std::fs;
@@ -118,7 +118,7 @@ edition = "2021"
     compile_rust_crate_to_riscv_asm(cargo_file.to_str().unwrap())
 }
 
-pub fn compile_rust_crate_to_riscv_asm(input_dir: &str) -> String {
+pub fn compile_rust_crate_to_riscv_asm(input_dir: &str) -> BTreeMap<String, String> {
     let temp_dir = Temp::new_dir().unwrap();
 
     let cargo_status = Command::new("cargo")
@@ -140,13 +140,19 @@ pub fn compile_rust_crate_to_riscv_asm(input_dir: &str) -> String {
         .unwrap();
     assert!(cargo_status.success());
 
-    let mut combined_assembly = String::new();
+    let mut assemblies = BTreeMap::new();
     for entry in WalkDir::new(&temp_dir) {
         let entry = entry.unwrap();
         // TODO search only in certain subdir?
-        if entry.file_name().to_str().unwrap().ends_with(".s") {
-            combined_assembly += &fs::read_to_string(entry.path()).unwrap();
+        let file_name = entry.file_name().to_str().unwrap();
+        if let Some(name) = file_name.strip_suffix(".s") {
+            assert!(
+                assemblies
+                    .insert(name.to_string(), fs::read_to_string(entry.path()).unwrap())
+                    .is_none(),
+                "Duplicate assembly file name: {name}"
+            );
         }
     }
-    combined_assembly
+    assemblies
 }
