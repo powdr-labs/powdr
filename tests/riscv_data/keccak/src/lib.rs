@@ -1,12 +1,6 @@
 #![no_std]
-use core::panic::PanicInfo;
 
 use tiny_keccak::{Hasher, Keccak};
-
-#[panic_handler]
-fn panic(_info: &PanicInfo) -> ! {
-    loop {}
-}
 
 #[no_mangle]
 pub extern "C" fn main() -> ! {
