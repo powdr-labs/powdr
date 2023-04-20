@@ -52,7 +52,7 @@ pub fn compile_rust(
 
 pub fn compile_riscv_asm_bundle(
     original_file_name: &str,
-    files: BTreeMap<String, String>,
+    riscv_asm_files: BTreeMap<String, String>,
     inputs: Vec<FieldElement>,
     output_dir: &Path,
     force_overwrite: bool,
@@ -73,9 +73,7 @@ pub fn compile_riscv_asm_bundle(
         return;
     }
 
-    let powdr_asm = files.iter().fold(String::new(), |acc, file| {
-        format!("{acc}\n\n{}", compiler::compile_riscv_asm(&file.0, &file.1))
-    });
+    let powdr_asm = compiler::compile_riscv_asm(riscv_asm_files);
 
     fs::write(powdr_asm_file_name.clone(), &powdr_asm).unwrap();
     log::info!("Wrote {}", powdr_asm_file_name.to_str().unwrap());
@@ -91,7 +89,6 @@ pub fn compile_riscv_asm_bundle(
 
 /// Compiles a riscv asm file all the way down to PIL and generates
 /// fixed and witness columns.
-/// Adds required library routines automatically.
 pub fn compile_riscv_asm(
     original_file_name: &str,
     file_name: &str,
@@ -100,28 +97,11 @@ pub fn compile_riscv_asm(
     force_overwrite: bool,
 ) {
     let contents = fs::read_to_string(file_name).unwrap();
-    let powdr_asm = compiler::compile_riscv_asm(&original_file_name, &contents);
-    let powdr_asm_file_name = output_dir.join(format!(
-        "{}.asm",
-        Path::new(original_file_name)
-            .file_stem()
-            .unwrap()
-            .to_str()
-            .unwrap()
-    ));
-    if powdr_asm_file_name.exists() && !force_overwrite {
-        eprint!(
-            "Target file {} already exists. Not overwriting.",
-            powdr_asm_file_name.to_str().unwrap()
-        );
-        return;
-    }
-    fs::write(powdr_asm_file_name.clone(), &powdr_asm).unwrap();
-    log::info!("Wrote {}", powdr_asm_file_name.to_str().unwrap());
-
-    crate::compiler::compile_asm_string(
-        powdr_asm_file_name.to_str().unwrap(),
-        &powdr_asm,
+    compile_riscv_asm_bundle(
+        original_file_name,
+        vec![(file_name.to_string(), contents)]
+            .into_iter()
+            .collect(),
         inputs,
         output_dir,
         force_overwrite,

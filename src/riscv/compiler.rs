@@ -1,18 +1,26 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashSet};
+
+use itertools::Itertools;
 
 use crate::riscv::parser::{self, Argument, Register, Statement};
 
 use super::parser::Constant;
 
 /// Compiles riscv assembly to POWDR assembly. Adds required library routines.
-pub fn compile_riscv_asm(_filename: &str, data: &str) -> String {
+pub fn compile_riscv_asm(mut assemblies: BTreeMap<String, String>) -> String {
     // stack grows towards zero
     let stack_start = 0x10000;
     // data grows away from zero
     let data_start = 0x20000;
 
-    let data = data.to_string() + library_routines();
-    let mut statements = parser::parse_asm(&data);
+    assert!(assemblies
+        .insert("__runtime".to_string(), runtime().to_string())
+        .is_none());
+
+    let mut statements = assemblies
+        .iter()
+        .map(|(name, contents)| parse_and_disambiguate(name, contents))
+        .concat();
     let mut objects = parser::extract_data_objects(&statements);
 
     // Reduce to the code that is actually reachable from main
@@ -34,6 +42,109 @@ pub fn compile_riscv_asm(_filename: &str, data: &str) -> String {
         output += &process_statement(s);
     }
     output
+}
+
+fn parse_and_disambiguate(file_name: &str, contents: &str) -> Vec<Statement> {
+    let prefix = file_name.replace('-', "_dash_");
+    let statements = parser::parse_asm(contents);
+    let globals = extract_globals(&statements);
+    println!("globals: {globals:?}");
+    statements
+        .into_iter()
+        .map(|s| match s {
+            Statement::Label(l) => {
+                Statement::Label(disambiguate_symbol_if_needed(l, &prefix, &globals))
+            }
+            Statement::Directive(dir, args) => Statement::Directive(
+                dir,
+                disambiguate_arguments_if_needed(args, &prefix, &globals),
+            ),
+            Statement::Instruction(instr, args) => Statement::Instruction(
+                instr,
+                disambiguate_arguments_if_needed(args, &prefix, &globals),
+            ),
+        })
+        .collect()
+}
+
+fn disambiguate_arguments_if_needed(
+    args: Vec<Argument>,
+    prefix: &str,
+    globals: &HashSet<String>,
+) -> Vec<Argument> {
+    args.into_iter()
+        .map(|a| disambiguate_argument_if_needed(a, prefix, globals))
+        .collect()
+}
+
+fn disambiguate_argument_if_needed(
+    arg: Argument,
+    prefix: &str,
+    globals: &HashSet<String>,
+) -> Argument {
+    match arg {
+        Argument::Register(_) | Argument::StringLiteral(_) => arg,
+        Argument::RegOffset(reg, constant) => Argument::RegOffset(
+            reg,
+            disambiguate_constant_if_needed(constant, prefix, globals),
+        ),
+        Argument::Constant(c) => {
+            Argument::Constant(disambiguate_constant_if_needed(c, prefix, globals))
+        }
+        Argument::Symbol(s) => Argument::Symbol(disambiguate_symbol_if_needed(s, prefix, globals)),
+        Argument::Difference(l, r) => Argument::Difference(
+            disambiguate_symbol_if_needed(l, prefix, globals),
+            disambiguate_symbol_if_needed(r, prefix, globals),
+        ),
+    }
+}
+
+fn disambiguate_constant_if_needed(
+    c: Constant,
+    prefix: &str,
+    globals: &HashSet<String>,
+) -> Constant {
+    match c {
+        Constant::Number(_) => c,
+        Constant::HiDataRef(s) => {
+            Constant::HiDataRef(disambiguate_symbol_if_needed(s, prefix, globals))
+        }
+        Constant::LoDataRef(s) => {
+            Constant::LoDataRef(disambiguate_symbol_if_needed(s, prefix, globals))
+        }
+    }
+}
+
+fn disambiguate_symbol_if_needed(s: String, prefix: &str, globals: &HashSet<String>) -> String {
+    if globals.contains(s.as_str()) {
+        s
+    } else {
+        format!("{prefix}__{s}")
+    }
+}
+
+fn extract_globals(statements: &[Statement]) -> HashSet<String> {
+    statements
+        .iter()
+        .flat_map(|s| {
+            if let Statement::Directive(name, args) = s {
+                if name == ".globl" {
+                    return args
+                        .iter()
+                        .map(|a| {
+                            if let Argument::Symbol(s) = a {
+                                s.clone()
+                            } else {
+                                panic!("Invalid .globl directive: {s}");
+                            }
+                        })
+                        // TODO possible wihtout collect?
+                        .collect();
+                }
+            }
+            vec![]
+        })
+        .collect()
 }
 
 fn filter_reachable_from(
@@ -491,7 +602,7 @@ pil{
     "#
 }
 
-fn library_routines() -> &'static str {
+fn runtime() -> &'static str {
     // // TODO rust alloc calls the global allocator - not sure why this is not automatic.
     // (Regex::new(r"^__rust_alloc$").unwrap(), "j __rg_alloc"),
     // (Regex::new(r"^__rust_realloc$").unwrap(), "j __rg_realloc"),
