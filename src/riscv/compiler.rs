@@ -5,7 +5,7 @@ use crate::riscv::parser::{self, Argument, Register, Statement};
 use super::parser::Constant;
 
 /// Compiles riscv assembly to POWDR assembly. Adds required library routines.
-pub fn compile_riscv_asm(data: &str) -> String {
+pub fn compile_riscv_asm(_filename: &str, data: &str) -> String {
     // stack grows towards zero
     let stack_start = 0x10000;
     // data grows away from zero
