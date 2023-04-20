@@ -445,33 +445,24 @@ impl Hasher for Keccak {
 }
 
 pub fn run(output: &mut [u8; 32], mut print: impl FnMut(&[u8])) {
-    let mut hasher = Keccak::new();
-    unsafe {
-        let bytes_ptr = (&hasher as *const Keccak) as *const u8;
-        let size_of_example = mem::size_of::<Keccak>();
-        let byte_slice = unsafe { slice::from_raw_parts(bytes_ptr, size_of_example) };
-        print(byte_slice);
-    }
+    let hasher = Keccak::new();
+    // unsafe {
+    //     let bytes_ptr = (&hasher as *const Keccak) as *const u8;
+    //     let size_of_example = mem::size_of::<Keccak>();
+    //     let byte_slice = unsafe { slice::from_raw_parts(bytes_ptr, size_of_example) };
+    //     print(byte_slice);
+    // }
     //hasher.update(input);
     hasher.finalize(output);
+    print(output);
     //    println!("{output:x?}");
 }
 
 #[cfg(not(target_os = "linux"))]
 #[no_mangle]
 pub extern "C" fn main() -> ! {
-    print_prover_data(&[
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 136, 0,
-        0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0,
-    ]);
-    //let mut output = [0u8; 32];
-    //run(&mut output, print_prover_data);
+    let mut output = [0u8; 32];
+    run(&mut output, print_prover_data);
     loop {}
 }
 
@@ -491,14 +482,17 @@ fn print_prover_data(data: &[u8]) {
     print_prover_char('[');
     for b in data {
         let mut x = *b;
-        // if x >= 200 {
-        //     print_prover_char('2');
-        //     x -= 200;
-        // } else if x >= 100 {
-        //     print_prover_char('1');
-        //     x -= 100;
-        // }
-        if x > 10 {
+        let mut big = false;
+        if x >= 200 {
+            print_prover_char('2');
+            big = true;
+            x -= 200;
+        } else if x >= 100 {
+            print_prover_char('1');
+            big = true;
+            x -= 100;
+        }
+        if big || x > 10 {
             print_prover_char(('0' as u8 + (x / 10) % 10) as char);
         }
         print_prover_char(('0' as u8 + x % 10) as char);
