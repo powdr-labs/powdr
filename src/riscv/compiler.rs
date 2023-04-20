@@ -702,7 +702,7 @@ fn process_instruction(instr: &str, args: &[Argument]) -> String {
         }
         "not" => {
             let (rd, rs) = rr(args);
-            format!("{rd} <=X= xor({rs}, 0xffffffff);\n")
+            format!("{rd} <=X= wrap_signed(-{rs} - 1);\n")
         }
 
         // shift
