@@ -140,11 +140,29 @@ pub fn extract_data_objects(statements: &[Statement]) -> BTreeMap<String, Vec<u8
                 current_label = Some(l.as_str());
             }
             // TODO We ignore size and alignment directives.
+            // TODO this might all be totally wrong
             Statement::Directive(dir, args) => match (dir.as_str(), &args[..]) {
                 (".type", [Argument::Symbol(name), Argument::Symbol(kind)])
                     if kind.as_str() == "@object" =>
                 {
-                    objects.insert(name.clone(), None);
+                    if !objects.contains_key(name) {
+                        objects.insert(name.clone(), None);
+                    }
+                }
+                (
+                    ".zero",
+                    [Argument::Constant(Constant::Number(n))]
+                    // TODO not clear what the second argument is
+                    | [Argument::Constant(Constant::Number(n)), _],
+                ) => {
+                    if let Some(entry) = objects.get_mut(current_label.unwrap()) {
+                        let data = vec![0; *n as usize];
+                        if let Some(d) = entry {
+                            d.extend(data);
+                        } else {
+                            *entry = Some(data.clone());
+                        }
+                    }
                 }
                 (".ascii" | ".asciz", [Argument::StringLiteral(data)]) => {
                     if let Some(entry) = objects.get_mut(current_label.unwrap()) {
@@ -157,27 +175,57 @@ pub fn extract_data_objects(statements: &[Statement]) -> BTreeMap<String, Vec<u8
                 }
                 (".word", data) => {
                     if let Some(entry) = objects.get_mut(current_label.unwrap()) {
-                        assert!(entry.is_none());
-                        *entry = Some(
-                            data.iter()
-                                .flat_map(|x| {
-                                    if let Argument::Constant(Constant::Number(n)) = x {
-                                        let n = *n as u32;
-                                        [
-                                            (n & 0xff) as u8,
-                                            (n >> 8 & 0xff) as u8,
-                                            (n >> 16 & 0xff) as u8,
-                                            (n >> 24 & 0xff) as u8,
-                                        ]
-                                    } else {
-                                        // TODO we should handle indirect references at some point.
-                                        [0, 0, 0, 0]
-                                    }
-                                })
-                                .collect::<Vec<u8>>(),
-                        );
+                        let data = data
+                            .iter()
+                            .flat_map(|x| {
+                                if let Argument::Constant(Constant::Number(n)) = x {
+                                    let n = *n as u32;
+                                    [
+                                        (n & 0xff) as u8,
+                                        (n >> 8 & 0xff) as u8,
+                                        (n >> 16 & 0xff) as u8,
+                                        (n >> 24 & 0xff) as u8,
+                                    ]
+                                } else {
+                                    // TODO we should handle indirect references at some point.
+                                    [0, 0, 0, 0]
+                                }
+                            })
+                            .collect::<Vec<u8>>();
+                        if let Some(d) = entry {
+                            d.extend(data);
+                        } else {
+                            *entry = Some(data.clone());
+                        }
                     }
                 }
+                (".byte", data) => {
+                    // TODO alignment?
+                    if let Some(entry) = objects.get_mut(current_label.unwrap()) {
+                        let data = data
+                            .iter()
+                            .flat_map(|x| {
+                                if let Argument::Constant(Constant::Number(n)) = x {
+                                    [*n as u8]
+                                } else {
+                                    // TODO we should handle indirect references at some point.
+                                    [0]
+                                }
+                            })
+                            .collect::<Vec<u8>>();
+                        if let Some(d) = entry {
+                            d.extend(data);
+                        } else {
+                            *entry = Some(data.clone());
+                        }
+                    }
+                }
+                (".size", [Argument::Symbol(name), Argument::Constant(Constant::Number(n))])
+                        if *n == 0 && Some(name.as_str()) == current_label => {
+                    if let Some(entry) = objects.get_mut(current_label.unwrap()) {
+                        *entry =Some(vec![]);
+                    }
+                },
                 _ => {}
             },
             _ => {}
