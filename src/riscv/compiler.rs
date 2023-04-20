@@ -89,10 +89,10 @@ fn replace_data_reference(constant: &mut Constant, data_positions: &BTreeMap<Str
     match constant {
         Constant::Number(_) => {}
         Constant::HiDataRef(data) => {
-            *constant = Constant::Number((data_positions[data] >> 16) as i64)
+            *constant = Constant::Number((data_positions[data] >> 12) as i64)
         }
         Constant::LoDataRef(data) => {
-            *constant = Constant::Number((data_positions[data] & 0xffff) as i64)
+            *constant = Constant::Number((data_positions[data] & 0xfff) as i64)
         }
     }
 }
