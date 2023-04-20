@@ -678,9 +678,11 @@ fn runtime() -> &'static str {
     */
 
     r#"
+.globl rust_begin_unwind
 rust_begin_unwind:
     unimp
 
+.globl memset@plt
 memset@plt:
     li	a3, 4
     blt	a2, a3, __memset_LBB5_5
@@ -717,6 +719,7 @@ __memset_LBB5_5:
 __memset_LBB5_6:
     ret
 
+.globl memcpy@plt
 memcpy@plt:
     li	a3, 4
     blt	a2, a3, __memcpy_LBB2_5
