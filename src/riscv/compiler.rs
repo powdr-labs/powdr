@@ -48,7 +48,6 @@ fn parse_and_disambiguate(file_name: &str, contents: &str) -> Vec<Statement> {
     let prefix = file_name.replace('-', "_dash_");
     let statements = parser::parse_asm(contents);
     let globals = extract_globals(&statements);
-    println!("globals: {globals:?}");
     statements
         .into_iter()
         .map(|s| match s {
@@ -160,11 +159,11 @@ fn filter_reachable_from(
     let mut secondary_labels = BTreeSet::<&str>::new();
     let mut label_queue = vec![label];
     while let Some(l) = label_queue.pop() {
-        if !processed_labels.insert(l) {
-            continue;
-        }
         if objects.contains_key(l) {
             // We record but do not process references to objects
+            continue;
+        }
+        if !processed_labels.insert(l) {
             continue;
         }
         let offset = *label_offsets.get(l).unwrap_or_else(|| {
@@ -217,6 +216,9 @@ fn basic_block_references_starting_from(statements: &[Statement]) -> (Vec<&str>,
 fn basic_block_code_starting_from(statements: &[Statement]) -> Vec<Statement> {
     let mut code = vec![];
     for s in statements {
+        if let Statement::Directive(_, _) = s {
+            panic!("Included directive in code block: {s}");
+        }
         code.push(s.clone());
         if parser::ends_control_flow(s) {
             break;
@@ -246,10 +248,13 @@ fn replace_dynamic_label_references(
     */
     // TODO This is really hacky, should be rustified
     let mut i = 0;
-    while i < statements.len() - 1 {
+    while i < statements.len() {
         let s1 = &statements[i];
-        let s2 = &statements[i + 1];
-        if let Some(r) = replace_dynamic_label_reference(s1, s2, data_objects) {
+        let s2 = &statements.get(i + 1);
+        if s2.is_none() {
+            replacement.push(s1.clone());
+            i += 1;
+        } else if let Some(r) = replace_dynamic_label_reference(s1, s2.unwrap(), data_objects) {
             replacement.push(r);
             i += 2;
         } else {
@@ -258,6 +263,7 @@ fn replace_dynamic_label_references(
             i += 1;
         }
     }
+
     *statements = replacement;
 }
 
