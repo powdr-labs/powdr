@@ -945,7 +945,7 @@ fn process_instruction(instr: &str, args: &[Argument]) -> String {
         }
         "sll" => {
             let (rd, r1, r2) = rrr(args);
-            format!("{rd} <=X= shl({r1}, {r2});\n")
+            format!("tmp1 <=X= and({r2}, 0x1f);\n{rd} <=X= shl({r1}, tmp1);\n")
         }
         "srli" => {
             // logical shift right
@@ -956,7 +956,7 @@ fn process_instruction(instr: &str, args: &[Argument]) -> String {
         "srl" => {
             // logical shift right
             let (rd, r1, r2) = rrr(args);
-            format!("{rd} <=X= shr({r1}, {r2});\n")
+            format!("tmp1 <=X= and({r2}, 0x1f);\n{rd} <=X= shr({r1}, tmp1);\n")
         }
 
         // comparison
