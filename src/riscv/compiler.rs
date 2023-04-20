@@ -25,11 +25,13 @@ pub fn compile_riscv_asm(data: &str) -> String {
             .map(|label| library_routine(label))
             .collect::<Vec<_>>()
             .join("\n");
-    let statements = parser::parse_asm(&data);
-    let (data_code, data_positions) = store_data_objects(
-        parser::extract_data_objects(&statements).into_iter(),
-        data_start,
-    );
+    let mut statements = parser::parse_asm(&data);
+    let objects = parser::extract_data_objects(&statements);
+
+    // Replace dynamic references to code labels
+    replace_dynamic_label_references(&mut statements, &objects);
+
+    let (data_code, data_positions) = store_data_objects(objects.into_iter(), data_start);
     let mut output = preamble()
         + &data_code
         + &format!("// Set stack pointer\nx2 <=X= {stack_start};\n")
@@ -41,6 +43,67 @@ pub fn compile_riscv_asm(data: &str) -> String {
         output += &process_statement(s);
     }
     output
+}
+
+/// Replace certain patterns of references to code labels by
+/// special instructions. We ignore any references to data objects
+/// because they will be handled differently.
+fn replace_dynamic_label_references(
+    statements: &mut Vec<Statement>,
+    data_objects: &BTreeMap<String, Vec<u8>>,
+) {
+    let mut replacement = vec![];
+    /*
+    Find patterns of the form
+    lui	a0, %hi(LABEL)
+    addi	s10, a0, %lo(LABEL)
+    -
+    turn this into the pseudo-riscv-instruction
+    load_dynamic s10, LABEL
+    which is then turned into
+
+    s10 <=X= load_label(LABEL)
+    */
+    // TODO This is really hacky, should be rustified
+    let mut i = 0;
+    while i < statements.len() {
+        let s1 = &statements[i];
+        let s2 = &statements.get(i + 1);
+        if s2.is_none() {
+            replacement.push(s1.clone());
+            i += 1;
+        } else if let Some(r) = replace_dynamic_label_reference(s1, s2.unwrap(), data_objects) {
+            replacement.push(r);
+            i += 2;
+        } else {
+            // TODO avoid clone
+            replacement.push(s1.clone());
+            i += 1;
+        }
+    }
+
+    *statements = replacement;
+}
+
+fn replace_dynamic_label_reference(
+    s1: &Statement,
+    s2: &Statement,
+    data_objects: &BTreeMap<String, Vec<u8>>,
+) -> Option<Statement> {
+    let Statement::Instruction(instr1, args1) = s1 else { return None; };
+    let Statement::Instruction(instr2, args2) = s2 else { return None; };
+    if instr1.as_str() != "lui" || instr2.as_str() != "addi" {
+        return None;
+    };
+    let [Argument::Register(r1), Argument::Constant(Constant::HiDataRef(label1))] = &args1[..] else { return None; };
+    let [Argument::Register(r2), Argument::Register(r3), Argument::Constant(Constant::LoDataRef(label2))] = &args2[..] else { return None; };
+    if r1 != r3 || label1 != label2 || data_objects.contains_key(label1) {
+        return None;
+    }
+    Some(Statement::Instruction(
+        "load_dynamic".to_string(),
+        vec![Argument::Register(*r2), Argument::Symbol(label1.clone())],
+    ))
 }
 
 fn store_data_objects(
@@ -89,10 +152,16 @@ fn replace_data_reference(constant: &mut Constant, data_positions: &BTreeMap<Str
     match constant {
         Constant::Number(_) => {}
         Constant::HiDataRef(data) => {
-            *constant = Constant::Number((data_positions[data] >> 12) as i64)
+            if let Some(pos) = data_positions.get(data) {
+                *constant = Constant::Number((pos >> 12) as i64)
+            }
+            // Otherwise, it references a code label
         }
         Constant::LoDataRef(data) => {
-            *constant = Constant::Number((data_positions[data] & 0xfff) as i64)
+            if let Some(pos) = data_positions.get(data) {
+                *constant = Constant::Number((pos & 0xfff) as i64)
+            }
+            // Otherwise, it references a code label
         }
     }
 }
@@ -183,6 +252,9 @@ instr mload -> X { { addr, STEP, X } is m_is_read { m_addr, m_step, m_value } }
 // ============== control-flow instructions ==============
 
 instr jump l: label { pc' = l }
+instr load_label l: label -> X { X = l }
+instr jump_dyn X { pc' = X }
+instr jump_and_link_dyn X { pc' = X, x1' = pc + 1 }
 instr call l: label { pc' = l, x1' = pc + 1 }
 // TODO x6 actually stores some relative address, but only part of it.
 instr tail l: label { pc' = l, x6' = l }
@@ -574,8 +646,15 @@ fn constant_to_number(c: &Constant) -> u32 {
     match c {
         Constant::Number(n) => *n as u32,
         Constant::HiDataRef(n) | Constant::LoDataRef(n) => {
-            panic!("Data reference should have been replaced by number: {n}")
+            panic!("Data reference was not erased during preprocessing: {n}");
         }
+    }
+}
+
+fn r(args: &[Argument]) -> Register {
+    match args {
+        [Argument::Register(r1)] => *r1,
+        _ => panic!(),
     }
 }
 
@@ -829,9 +908,18 @@ fn process_instruction(instr: &str, args: &[Argument]) -> String {
                 panic!()
             }
         }
+        "jr" => {
+            let rs = r(args);
+            format!("jump_dyn {rs};\n")
+        }
         "jal" => {
             let (_rd, _label) = rl(args);
             todo!();
+        }
+        "jalr" => {
+            // TODO there is also a form that takes more arguments
+            let rs = r(args);
+            format!("jump_and_link_dyn {rs};\n")
         }
         "call" => {
             if let [Argument::Symbol(label)] = args {
@@ -920,6 +1008,12 @@ fn process_instruction(instr: &str, args: &[Argument]) -> String {
                 + "mstore tmp1;\n"
         }
         "unimp" => "fail;\n".to_string(),
+
+        // Special instruction that is inserted to allow dynamic label references
+        "load_dynamic" => {
+            let (r1, label) = rl(args);
+            format!("{r1} <=X= load_label({label});\n")
+        }
 
         _ => {
             panic!("Unknown instruction: {instr}");
