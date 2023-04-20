@@ -197,10 +197,17 @@ instr branch_if_positive X, l: label {
     X + 2**32 - 1 = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000 + wrap_bit * 2**32,
     pc' = wrap_bit * l + (1 - wrap_bit) * (pc + 1)
 }
+// input X is required to be the difference of two 32-bit unsigend values.
+// i.e. -2**32 < X < 2**32
+instr is_positive X -> Y {
+    X + 2**32 - 1 = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000 + wrap_bit * 2**32,
+    Y = wrap_bit
+}
 
 // ================= logical instructions =================
 
 instr is_equal_zero X -> Y { Y = XIsZero }
+instr is_not_equal_zero X -> Y { Y = 1 - XIsZero }
 
 // ================= binary/bitwise instructions =================
 
@@ -730,6 +737,23 @@ fn process_instruction(instr: &str, args: &[Argument]) -> String {
             let (rd, rs) = rr(args);
             format!("{rd} <=Y= is_equal_zero({rs});\n")
         }
+        "snez" => {
+            let (rd, rs) = rr(args);
+            format!("{rd} <=Y= is_not_equal_zero({rs});\n")
+        }
+        "slti" => {
+            let (rd, rs, imm) = rri(args);
+            format!("tmp1 <=X= to_signed({rs});\n")
+                + &format!("{rd} <=Y= is_positive({imm} - tmp1);\n")
+        }
+        "sltiu" => {
+            let (rd, rs, imm) = rri(args);
+            format!("{rd} <=Y= is_positive({imm} - {rs});\n")
+        }
+        "sltu" => {
+            let (rd, r1, r2) = rrr(args);
+            format!("{rd} <=Y= is_positive({r2} - {r1});\n")
+        }
 
         // branching
         "beq" => {
@@ -744,6 +768,11 @@ fn process_instruction(instr: &str, args: &[Argument]) -> String {
             let (r1, r2, label) = rrl(args);
             // TODO does this fulfill the input requirements for branch_if_positive?
             format!("branch_if_positive {r1} - {r2} + 1, {label};\n")
+        }
+        "bgez" => {
+            let (r1, label) = rl(args);
+            format!("tmp1 <=X= to_signed({r1});\n")
+                + &format!("branch_if_positive {r1} + 1, {label};\n")
         }
         "bltu" => {
             let (r1, r2, label) = rrl(args);
