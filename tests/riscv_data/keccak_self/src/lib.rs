@@ -445,14 +445,14 @@ impl Hasher for Keccak {
 }
 
 pub fn run(output: &mut [u8; 32], mut print: impl FnMut(&[u8])) {
-    let hasher = Keccak::new();
+    let mut hasher = Keccak::new();
     // unsafe {
     //     let bytes_ptr = (&hasher as *const Keccak) as *const u8;
     //     let size_of_example = mem::size_of::<Keccak>();
     //     let byte_slice = unsafe { slice::from_raw_parts(bytes_ptr, size_of_example) };
     //     print(byte_slice);
     // }
-    //hasher.update(input);
+    hasher.update("Solidity".as_bytes());
     hasher.finalize(output);
     print(output);
     //    println!("{output:x?}");
