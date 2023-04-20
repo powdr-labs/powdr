@@ -28,24 +28,22 @@ pub fn compile_rust(
     } else {
         compile_rust_to_riscv_asm(file_name)
     };
-    let riscv_asm_file_name = output_dir.join(format!(
-        "{}_riscv.asm",
-        Path::new(file_name).file_stem().unwrap().to_str().unwrap()
-    ));
-    if riscv_asm_file_name.exists() && !force_overwrite {
-        eprint!(
-            "Target file {} already exists. Not overwriting.",
-            riscv_asm_file_name.to_str().unwrap()
-        );
-        return;
+    for (asm_file_name, contents) in &riscv_asm {
+        let riscv_asm_file_name = output_dir.join(format!(
+            "{}_riscv_{asm_file_name}.asm",
+            Path::new(file_name).file_stem().unwrap().to_str().unwrap(),
+        ));
+        if riscv_asm_file_name.exists() && !force_overwrite {
+            eprint!(
+                "Target file {} already exists. Not overwriting.",
+                riscv_asm_file_name.to_str().unwrap()
+            );
+            return;
+        }
+
+        fs::write(riscv_asm_file_name.clone(), contents).unwrap();
+        log::info!("Wrote {}", riscv_asm_file_name.to_str().unwrap());
     }
-
-    let merged = riscv_asm
-        .iter()
-        .fold(String::default(), |acc, v| format!("{acc}\n{}", v.1));
-
-    fs::write(riscv_asm_file_name.clone(), merged).unwrap();
-    log::info!("Wrote {}", riscv_asm_file_name.to_str().unwrap());
 
     compile_riscv_asm_bundle(file_name, riscv_asm, inputs, output_dir, force_overwrite)
 }

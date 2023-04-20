@@ -116,7 +116,7 @@ fn disambiguate_constant_if_needed(
 }
 
 fn disambiguate_symbol_if_needed(s: String, prefix: &str, globals: &HashSet<String>) -> String {
-    if globals.contains(s.as_str()) {
+    if globals.contains(s.as_str()) || s.starts_with('@') {
         s
     } else {
         format!("{prefix}__{s}")
@@ -159,7 +159,11 @@ fn filter_reachable_from(
     let mut processed_labels = BTreeSet::<&str>::new();
     let mut label_queue = vec![label];
     while let Some(l) = label_queue.pop() {
-        if processed_labels.contains(l) {
+        if !processed_labels.insert(l) {
+            continue;
+        }
+        if objects.contains_key(l) {
+            // We record but do not process references to objects
             continue;
         }
         let offset = *label_offsets.get(l).unwrap_or_else(|| {
