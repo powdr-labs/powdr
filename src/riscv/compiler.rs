@@ -19,8 +19,8 @@ pub fn compile_riscv_asm(data: &str) -> String {
     // (and the objects that are referred from there)
     filter_reachable_from("main", &mut statements, &mut objects);
 
-    // Replace dynamic references to labels
-    replace_dynamic_label_references(&mut statements);
+    // Replace dynamic references to code labels
+    replace_dynamic_label_references(&mut statements, &objects);
 
     let (data_code, data_positions) = store_data_objects(objects.into_iter(), data_start);
     let mut output = preamble()
@@ -92,7 +92,13 @@ fn basic_block_starting_from(statements: &[Statement]) -> (Vec<Statement>, Vec<&
     (code, referenced_labels.into_iter().collect(), seen_labels)
 }
 
-fn replace_dynamic_label_references(statements: &mut Vec<Statement>) {
+/// Replace certain patterns of references to code labels by
+/// special instructions. We ignore any references to data objects
+/// because they will be handled differently.
+fn replace_dynamic_label_references(
+    statements: &mut Vec<Statement>,
+    data_objects: &BTreeMap<String, Vec<u8>>,
+) {
     let mut replacement = vec![];
     /*
     Find patterns of the form
@@ -110,7 +116,7 @@ fn replace_dynamic_label_references(statements: &mut Vec<Statement>) {
     while i < statements.len() - 1 {
         let s1 = &statements[i];
         let s2 = &statements[i + 1];
-        if let Some(r) = replace_dynamic_label_reference(s1, s2) {
+        if let Some(r) = replace_dynamic_label_reference(s1, s2, data_objects) {
             replacement.push(r);
             i += 2;
         } else {
@@ -122,7 +128,11 @@ fn replace_dynamic_label_references(statements: &mut Vec<Statement>) {
     *statements = replacement;
 }
 
-fn replace_dynamic_label_reference(s1: &Statement, s2: &Statement) -> Option<Statement> {
+fn replace_dynamic_label_reference(
+    s1: &Statement,
+    s2: &Statement,
+    data_objects: &BTreeMap<String, Vec<u8>>,
+) -> Option<Statement> {
     let Statement::Instruction(instr1, args1) = s1 else { return None; };
     let Statement::Instruction(instr2, args2) = s2 else { return None; };
     if instr1.as_str() != "lui" || instr2.as_str() != "addi" {
@@ -130,7 +140,7 @@ fn replace_dynamic_label_reference(s1: &Statement, s2: &Statement) -> Option<Sta
     };
     let [Argument::Register(r1), Argument::Constant(Constant::HiDataRef(label1))] = &args1[..] else { return None; };
     let [Argument::Register(r2), Argument::Register(r3), Argument::Constant(Constant::LoDataRef(label2))] = &args2[..] else { return None; };
-    if r1 != r3 || label1 != label2 {
+    if r1 != r3 || label1 != label2 || data_objects.contains_key(label1) {
         return None;
     }
     Some(Statement::Instruction(
