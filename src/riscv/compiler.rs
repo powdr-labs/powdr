@@ -345,13 +345,13 @@ fn replace_data_reference(constant: &mut Constant, data_positions: &BTreeMap<Str
         Constant::Number(_) => {}
         Constant::HiDataRef(data) => {
             if let Some(pos) = data_positions.get(data) {
-                *constant = Constant::Number((pos >> 16) as i64)
+                *constant = Constant::Number((pos >> 12) as i64)
             }
             // Otherwise, it references a code label
         }
         Constant::LoDataRef(data) => {
             if let Some(pos) = data_positions.get(data) {
-                *constant = Constant::Number((pos & 0xffff) as i64)
+                *constant = Constant::Number((pos & 0xfff) as i64)
             }
             // Otherwise, it references a code label
         }
@@ -867,7 +867,6 @@ fn process_instruction(instr: &str, args: &[Argument]) -> String {
             let (rd, imm) = ri(args);
             format!("{rd} <=X= {imm};\n")
         }
-        // TODO check if it is OK to clear the lower order bits
         "lui" => {
             let (rd, imm) = ri(args);
             format!("{rd} <=X= {};\n", imm << 12)
