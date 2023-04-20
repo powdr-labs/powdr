@@ -762,6 +762,25 @@ __memcpy_LBB2_5:
     blt	a3, a2, __memcpy_LBB2_4
 __memcpy_LBB2_6:
     ret
+
+.globl memcmp@plt
+memcmp@plt:
+	beqz	a2, .LBB270_3
+.LBB270_1:
+	lbu	a3, 0(a0)
+	lbu	a4, 0(a1)
+	bne	a3, a4, .LBB270_4
+	addi	a1, a1, 1
+	addi	a2, a2, -1
+	addi	a0, a0, 1
+	bnez	a2, .LBB270_1
+.LBB270_3:
+	li	a0, 0
+	ret
+.LBB270_4:
+	sub	a0, a3, a4
+	ret
+
 "#
 }
 
