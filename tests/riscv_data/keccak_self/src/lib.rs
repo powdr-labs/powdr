@@ -1,29 +1,6 @@
 #![no_std]
 
-use core::arch::asm;
-
-const PI: [usize; 24] = [
-    10, 7, 11, 17, 18, 3, 5, 16, 8, 21, 24, 4, 15, 23, 19, 13, 12, 2, 20, 14, 22, 9, 6, 1,
-];
-
-#[derive(Clone)]
-pub struct Keccak {
-    state: KeccakState<KeccakF>,
-}
-
-fn bits_to_rate(bits: usize) -> usize {
-    200 - bits / 4
-}
-
-impl Keccak {
-    const DELIM: u8 = 0x01;
-
-    pub fn new() -> Keccak {
-        Keccak {
-            state: KeccakState::new(bits_to_rate(bits), Self::DELIM),
-        }
-    }
-}
+use core::{arch::asm, mem, slice};
 
 const RHO: [u32; 24] = [
     1, 3, 6, 10, 15, 21, 28, 36, 45, 55, 2, 14, 27, 41, 56, 8, 25, 43, 62, 18, 39, 61, 20, 44,
@@ -41,15 +18,17 @@ macro_rules! keccak_function {
         #[allow(unused_assignments)]
         #[allow(non_upper_case_globals)]
         pub fn $name(a: &mut [u64; $crate::WORDS]) {
-            use crunchy::unroll;
+            //use crunchy::unroll;
 
             for i in 0..$rounds {
                 let mut array: [u64; 5] = [0; 5];
 
                 // Theta
-                unroll! {
+                /*unroll!*/
+                {
                     for x in 0..5 {
-                        unroll! {
+                        /*unroll!*/
+                        {
                             for y_count in 0..5 {
                                 let y = y_count * 5;
                                 array[x] ^= a[x + y];
@@ -58,9 +37,11 @@ macro_rules! keccak_function {
                     }
                 }
 
-                unroll! {
+                /*unroll!*/
+                {
                     for x in 0..5 {
-                        unroll! {
+                        /*unroll!*/
+                        {
                             for y_count in 0..5 {
                                 let y = y_count * 5;
                                 a[y + x] ^= array[(x + 4) % 5] ^ array[(x + 1) % 5].rotate_left(1);
@@ -71,7 +52,8 @@ macro_rules! keccak_function {
 
                 // Rho and pi
                 let mut last = a[1];
-                unroll! {
+                /*unroll!*/
+                {
                     for x in 0..24 {
                         array[0] = a[$crate::PI[x]];
                         a[$crate::PI[x]] = last.rotate_left($crate::RHO[x]);
@@ -80,19 +62,23 @@ macro_rules! keccak_function {
                 }
 
                 // Chi
-                unroll! {
+                /*unroll!*/
+                {
                     for y_step in 0..5 {
                         let y = y_step * 5;
 
-                        unroll! {
+                        /*unroll!*/
+                        {
                             for x in 0..5 {
                                 array[x] = a[y + x];
                             }
                         }
 
-                        unroll! {
+                        /*unroll!*/
+                        {
                             for x in 0..5 {
-                                a[y + x] = array[x] ^ ((!array[(x + 1) % 5]) & (array[(x + 2) % 5]));
+                                a[y + x] =
+                                    array[x] ^ ((!array[(x + 1) % 5]) & (array[(x + 2) % 5]));
                             }
                         }
                     }
@@ -101,6 +87,64 @@ macro_rules! keccak_function {
                 // Iota
                 a[0] ^= $rc[i];
             }
+        }
+    };
+}
+
+const ROUNDS: usize = 24;
+
+const RC: [u64; ROUNDS] = [
+    1u64,
+    0x8082u64,
+    0x800000000000808au64,
+    0x8000000080008000u64,
+    0x808bu64,
+    0x80000001u64,
+    0x8000000080008081u64,
+    0x8000000000008009u64,
+    0x8au64,
+    0x88u64,
+    0x80008009u64,
+    0x8000000au64,
+    0x8000808bu64,
+    0x800000000000008bu64,
+    0x8000000000008089u64,
+    0x8000000000008003u64,
+    0x8000000000008002u64,
+    0x8000000000000080u64,
+    0x800au64,
+    0x800000008000000au64,
+    0x8000000080008081u64,
+    0x8000000000008080u64,
+    0x80000001u64,
+    0x8000000080008008u64,
+];
+
+keccak_function!("`keccak-f[1600, 24]`", keccakf, ROUNDS, RC);
+
+pub struct KeccakF;
+
+impl Permutation for KeccakF {
+    fn execute(buffer: &mut Buffer) {
+        keccakf(buffer.words());
+    }
+}
+
+#[derive(Clone)]
+pub struct Keccak {
+    state: KeccakState<KeccakF>,
+}
+
+fn bits_to_rate(bits: usize) -> usize {
+    200 - bits / 4
+}
+
+impl Keccak {
+    const DELIM: u8 = 0x01;
+
+    pub fn new() -> Keccak {
+        Keccak {
+            state: KeccakState::new(bits_to_rate(256), Self::DELIM),
         }
     }
 }
@@ -363,19 +407,65 @@ impl<P: Permutation> KeccakState<P> {
     }
 }
 
-fn bits_to_rate(bits: usize) -> usize {
-    200 - bits / 4
+impl Hasher for Keccak {
+    /// Absorb additional input. Can be called multiple times.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use tiny_keccak::{Hasher, Keccak};
+    /// #
+    /// # fn main() {
+    /// # let mut keccak = Keccak::v256();
+    /// keccak.update(b"hello");
+    /// keccak.update(b" world");
+    /// # }
+    /// ```
+    fn update(&mut self, input: &[u8]) {
+        self.state.update(input);
+    }
+
+    /// Pad and squeeze the state to the output.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use tiny_keccak::{Hasher, Keccak};
+    /// #
+    /// # fn main() {
+    /// # let keccak = Keccak::v256();
+    /// # let mut output = [0u8; 32];
+    /// keccak.finalize(&mut output);
+    /// # }
+    /// #
+    /// ```
+    fn finalize(self, output: &mut [u8]) {
+        self.state.finalize(output);
+    }
 }
 
+pub fn run(output: &mut [u8; 32], mut print: impl FnMut(&[u8])) {
+    let mut hasher = Keccak::new();
+    unsafe {
+        let bytes_ptr = (&hasher as *const Keccak) as *const u8;
+        let size_of_example = mem::size_of::<Keccak>();
+        let byte_slice = unsafe { slice::from_raw_parts(bytes_ptr, size_of_example) };
+        print(byte_slice);
+    }
+    //hasher.update(input);
+    hasher.finalize(output);
+    //    println!("{output:x?}");
+}
+
+#[cfg(not(target_os = "linux"))]
 #[no_mangle]
 pub extern "C" fn main() -> ! {
-    assert!(PI[get_prover_input(2) as usize] == 18);
-    let mut x = [1u8, 2, 3, 4, 5];
-    x.rotate_left(get_prover_input(0) as usize);
-    assert!(x[0] == get_prover_input(1) as u8);
+    let mut output = [0u8; 32];
+    run(&mut output);
     loop {}
 }
 
+#[cfg(not(target_os = "linux"))]
 #[inline]
 fn get_prover_input(index: u32) -> u32 {
     let mut value: u32;

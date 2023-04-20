@@ -198,7 +198,11 @@ impl DoubleSortedWitnesses {
             left[2].format(fixed_data)
         );
         if addr.clone().to_integer() % 4 != 0 {
-            panic!("UNALIGNED");
+            panic!(
+                "UNALIGNED: addr={:x}, step={step}, write: {is_write}, left: {}",
+                addr.to_integer(),
+                left[2].format(fixed_data)
+            );
         }
 
         // TODO this does not check any of the failure modes
