@@ -11,11 +11,14 @@ lalrpop_mod!(
     "/riscv/riscv_asm.rs"
 );
 
+#[derive(Clone)]
 pub enum Statement {
     Label(String),
     Directive(String, Vec<Argument>),
     Instruction(String, Vec<Argument>),
 }
+
+#[derive(Clone)]
 pub enum Argument {
     Register(Register),
     RegOffset(Register, Constant),
@@ -25,9 +28,10 @@ pub enum Argument {
     Difference(String, String),
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub struct Register(u8);
 
+#[derive(Clone)]
 pub enum Constant {
     Number(i64),
     HiDataRef(String),
