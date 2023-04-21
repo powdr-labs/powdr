@@ -155,9 +155,24 @@ pub fn ends_control_flow(s: &Statement) -> bool {
     }
 }
 
-pub fn extract_data_objects(statements: &[Statement]) -> BTreeMap<String, Vec<u8>> {
+pub enum DataValue {
+    Direct(Vec<u8>),
+    Reference(String),
+}
+
+impl DataValue {
+    /// Returns the size of the value in bytes.
+    pub fn size(&self) -> usize {
+        match self {
+            DataValue::Direct(data) => data.len(),
+            DataValue::Reference(_) => 4,
+        }
+    }
+}
+
+pub fn extract_data_objects(statements: &[Statement]) -> BTreeMap<String, Vec<DataValue>> {
     let mut current_label = None;
-    let mut objects = BTreeMap::<String, Option<Vec<u8>>>::new();
+    let mut objects = BTreeMap::<String, Option<Vec<DataValue>>>::new();
     for s in statements {
         match s {
             Statement::Label(l) => {
@@ -173,83 +188,23 @@ pub fn extract_data_objects(statements: &[Statement]) -> BTreeMap<String, Vec<u8
                         objects.insert(name.clone(), None);
                     }
                 }
-                (
-                    ".zero",
-                    [Argument::Constant(Constant::Number(n))]
-                    // TODO not clear what the second argument is
-                    | [Argument::Constant(Constant::Number(n)), _],
-                ) => {
+                (".zero" | ".ascii" | ".asciz" | ".word" | ".byte", args) => {
                     if let Some(entry) = objects.get_mut(current_label.unwrap()) {
-                        let data = vec![0; *n as usize];
+                        let data = extract_data_value(dir.as_str(), args);
                         if let Some(d) = entry {
                             d.extend(data);
                         } else {
-                            *entry = Some(data.clone());
-                        }
-                    }
-                }
-                (".ascii" | ".asciz", [Argument::StringLiteral(data)]) => {
-                    if let Some(entry) = objects.get_mut(current_label.unwrap()) {
-                        if let Some(d) = entry {
-                            d.extend(data);
-                        } else {
-                            *entry = Some(data.clone());
-                        }
-                    }
-                }
-                (".word", data) => {
-                    if let Some(entry) = objects.get_mut(current_label.unwrap()) {
-                        let data = data
-                            .iter()
-                            .flat_map(|x| {
-                                if let Argument::Constant(Constant::Number(n)) = x {
-                                    let n = *n as u32;
-                                    [
-                                        (n & 0xff) as u8,
-                                        (n >> 8 & 0xff) as u8,
-                                        (n >> 16 & 0xff) as u8,
-                                        (n >> 24 & 0xff) as u8,
-                                    ]
-                                } else {
-                                    // TODO we should handle indirect references at some point.
-                                    [0, 0, 0, 0]
-                                }
-                            })
-                            .collect::<Vec<u8>>();
-                        if let Some(d) = entry {
-                            d.extend(data);
-                        } else {
-                            *entry = Some(data.clone());
-                        }
-                    }
-                }
-                (".byte", data) => {
-                    // TODO alignment?
-                    if let Some(entry) = objects.get_mut(current_label.unwrap()) {
-                        let data = data
-                            .iter()
-                            .flat_map(|x| {
-                                if let Argument::Constant(Constant::Number(n)) = x {
-                                    [*n as u8]
-                                } else {
-                                    // TODO we should handle indirect references at some point.
-                                    [0]
-                                }
-                            })
-                            .collect::<Vec<u8>>();
-                        if let Some(d) = entry {
-                            d.extend(data);
-                        } else {
-                            *entry = Some(data.clone());
+                            *entry = Some(data);
                         }
                     }
                 }
                 (".size", [Argument::Symbol(name), Argument::Constant(Constant::Number(n))])
-                        if *n == 0 && Some(name.as_str()) == current_label => {
+                    if *n == 0 && Some(name.as_str()) == current_label =>
+                {
                     if let Some(entry) = objects.get_mut(current_label.unwrap()) {
-                        *entry =Some(vec![]);
+                        *entry = Some(vec![]);
                     }
-                },
+                }
                 _ => {}
             },
             _ => {}
@@ -264,6 +219,63 @@ pub fn extract_data_objects(statements: &[Statement]) -> BTreeMap<String, Vec<u8
             )
         })
         .collect()
+}
+
+fn extract_data_value(directive: &str, arguments: &[Argument]) -> Vec<DataValue> {
+    match (directive, arguments) {
+        (
+            ".zero",
+            [Argument::Constant(Constant::Number(n))]
+            // TODO not clear what the second argument is
+            | [Argument::Constant(Constant::Number(n)), _],
+        ) => {
+            vec![DataValue::Direct(vec![0; *n as usize])]
+        }
+        (".ascii", [Argument::StringLiteral(data)]) => {
+            vec![DataValue::Direct(data.clone())]
+        }
+        (".asciz", [Argument::StringLiteral(data)]) => {
+            let mut data = data.clone();
+            data.push(0);
+            vec![DataValue::Direct(data)]
+        }
+        (".word", data) => {
+            data
+                    .iter()
+                    .map(|x| {
+                        match x {
+                            Argument::Constant(Constant::Number(n)) =>{
+                                let n = *n as u32;
+                                DataValue::Direct(vec![
+                                    (n & 0xff) as u8,
+                                    (n >> 8 & 0xff) as u8,
+                                    (n >> 16 & 0xff) as u8,
+                                    (n >> 24 & 0xff) as u8,
+                                ])
+                            }
+                            Argument::Symbol(sym) => {
+                                DataValue::Reference(sym.clone())
+                            }
+                            _ => panic!("Invalid .word directive")
+                        }
+                    })
+                    .collect::<Vec<DataValue>>()
+        }
+        (".byte", data) => {
+            // TODO alignment?
+                vec![DataValue::Direct(data
+                    .iter()
+                    .map(|x| {
+                        if let Argument::Constant(Constant::Number(n)) = x {
+                            *n as u8
+                        } else {
+                            panic!("Invalid argument to .byte directive")
+                        }
+                    })
+                    .collect::<Vec<u8>>())]
+        }
+        _ => panic!()
+    }
 }
 
 pub fn unescape_string(s: &str) -> Vec<u8> {
