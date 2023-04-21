@@ -1,0 +1,14 @@
+[package]
+name = "compiler"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+itertools = "^0.10"
+log = "0.4.17"
+mktemp = "0.5.0"
+number = { path = "../number" }
+parser_util = { path = "../parser_util" }
+parser = { path = "../parser" }
+executor = { path = "../executor" }
+pilgen = { path = "../pilgen" }

@@ -352,3 +352,9 @@ to at least relieve the user from having to assign registers, jump labels and so
 It might be possible to define interlieve assembly code like we do with Solidity/Yul and then provide a set of simplification
 rules specific to an instruction set.
 
+### Project structure
+
+For an overview of the project structure, run:
+```
+cargo doc --workspace --no-deps --open
+```

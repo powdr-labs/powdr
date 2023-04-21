@@ -1,22 +1,12 @@
-[package]
-name = "powdr"
-version = "0.1.0"
-edition = "2021"
-build = "build.rs"
+[workspace]
 
-[dependencies]
-ark-ff = "0.4.2"
-clap = { version = "^4.1", features = ["derive"] }
-codespan-reporting = "^0.11"
-env_logger = "0.10.0"
-itertools = "^0.10"
-json = "^0.12"
-lalrpop-util = {version = "^0.19", features = ["lexer"]}
-lazy_static = "^1.4.0"
-log = "0.4.17"
-mktemp = "0.5.0"
-regex = "^1.7.0"
-walkdir = "2.3.3"
-
-[build-dependencies]
-lalrpop = "^0.19"
+members = [
+    "number",
+    "parser",
+    "cli",
+    "executor",
+    "riscv",
+    "parser_util",
+    "compiler",
+    "pilgen",
+]

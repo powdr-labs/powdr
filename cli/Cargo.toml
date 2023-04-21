@@ -1,0 +1,13 @@
+[package]
+name = "cli"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+clap = { version = "^4.1", features = ["derive"] }
+env_logger = "0.10.0"
+log = "0.4.17"
+compiler = { path = "../compiler" }
+parser = { path = "../parser" }
+riscv = { path = "../riscv" }
+number = { path = "../number" }

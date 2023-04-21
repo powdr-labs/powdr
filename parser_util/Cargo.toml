@@ -1,0 +1,8 @@
+[package]
+name = "parser_util"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+lalrpop-util = {version = "^0.19", features = ["lexer"]}
+codespan-reporting = "^0.11"
