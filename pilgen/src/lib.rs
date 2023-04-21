@@ -967,7 +967,7 @@ pol constant p_reg_write_X_CNT = [1, 0, 0, 0, 0, 0, 0, 0, 0] + [0]*;
 { pc, reg_write_X_A, reg_write_X_CNT, instr_jmpz, instr_jmpz_param_l, instr_jmp, instr_jmp_param_l, instr_dec_CNT, instr_assert_zero, X_const, X_read_free, read_X_A, read_X_CNT, read_X_pc } in { line, p_reg_write_X_A, p_reg_write_X_CNT, p_instr_jmpz, p_instr_jmpz_param_l, p_instr_jmp, p_instr_jmp_param_l, p_instr_dec_CNT, p_instr_assert_zero, p_X_const, p_X_read_free, p_read_X_A, p_read_X_CNT, p_read_X_pc };
 
 "#;
-        let file_name = "../data/asm_data/simple_sum.asm";
+        let file_name = "../test_data/asm/simple_sum.asm";
         let contents = fs::read_to_string(file_name).unwrap();
         let pil = compile(Some(file_name), &contents).unwrap();
         assert_eq!(format!("{pil}").trim(), expectation.trim());

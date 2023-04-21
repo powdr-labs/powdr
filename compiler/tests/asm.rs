@@ -3,7 +3,7 @@ use number::FieldElement;
 use std::fs;
 
 fn verify_asm(file_name: &str, inputs: Vec<FieldElement>) {
-    let contents = fs::read_to_string(format!("../data/asm_data/{file_name}")).unwrap();
+    let contents = fs::read_to_string(format!("../test_data/asm/{file_name}")).unwrap();
     verify_asm_string(file_name, &contents, inputs)
 }
 

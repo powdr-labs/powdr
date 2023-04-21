@@ -98,7 +98,7 @@ mod test {
 
     fn parse_file(name: &str) -> PILFile {
 
-        let file = std::path::PathBuf::from("../data/").join(name);
+        let file = std::path::PathBuf::from("../test_data/").join(name);
 
         let input = fs::read_to_string(file).unwrap();
         parse(Some(name), &input).unwrap_or_else(|err| {
@@ -110,7 +110,7 @@ mod test {
 
     fn parse_asm_file(name: &str) -> ASMFile {
 
-        let file = std::path::PathBuf::from("../data/").join(name);
+        let file = std::path::PathBuf::from("../test_data/").join(name);
 
         let input = fs::read_to_string(file).unwrap();
         parse_asm(Some(name), &input).unwrap_or_else(|err| {
@@ -184,6 +184,6 @@ mod test {
 
     #[test]
     fn parse_example_asm_files() {
-        parse_asm_file("asm_data/simple_sum.asm");
+        parse_asm_file("asm/simple_sum.asm");
     }
 }

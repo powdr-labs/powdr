@@ -351,7 +351,7 @@ mod test {
         let temp_dir = mktemp::Temp::new_dir().unwrap();
         let output_file = temp_dir.join("out.json");
 
-        let file = std::path::PathBuf::from("../data/polygon-hermez/").join(file);
+        let file = std::path::PathBuf::from("../test_data/polygon-hermez/").join(file);
 
         let analyzed = analyzer::analyze(&file);
         let json_out = export(&analyzed);
