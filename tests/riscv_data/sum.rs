@@ -4,15 +4,7 @@ use core::arch::asm;
 
 #[no_mangle]
 pub extern "C" fn main() -> ! {
-    let sum = 1u32;
-    //    let proposed_sum = get_prover_input(0);
-
-    let mut buf = [0u8; 10];
-    let _s: &str = write_to::show(
-        &mut buf,
-        format_args!("X"), //: {sum}, proposed: {proposed_sum}"),
-    )
-    .unwrap();
+    let _s: &str = write_to::show(format_args!("X")).unwrap();
     print_prover(_s);
     loop {}
 }
@@ -22,15 +14,7 @@ pub mod write_to {
     use core::cmp::min;
     use core::fmt;
 
-    pub struct WriteTo {
-        used: usize,
-    }
-
-    impl WriteTo {
-        pub fn new() -> Self {
-            WriteTo { used: 0 }
-        }
-    }
+    pub struct WriteTo {}
 
     impl fmt::Write for WriteTo {
         fn write_str(&mut self, s: &str) -> fmt::Result {
@@ -38,11 +22,11 @@ pub mod write_to {
         }
     }
 
-    pub fn show<'a>(buffer: &'a mut [u8], args: fmt::Arguments) -> Result<&'a str, fmt::Error> {
-        let mut w = WriteTo::new();
+    pub fn show(args: fmt::Arguments) -> Result<&'static str, fmt::Error> {
+        let mut w = WriteTo {};
         print_prover("Created");
-        fmt::write(&mut w, args)?;
-        Ok("")
+        fmt::write(&mut w, args).unwrap();
+        loop {}
     }
 }
 
