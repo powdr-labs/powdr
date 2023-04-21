@@ -165,7 +165,8 @@ fn filter_reachable_from(
     let mut queued_labels: BTreeSet<&str> = vec![label].into_iter().collect();
     let mut referenced_labels: BTreeSet<&str> = vec![label].into_iter().collect();
     let mut processed_labels = BTreeSet::<&str>::new();
-    // Labels that are included in a basic block that starts with a different label.
+    // Labels that are included in a basic block that starts with a different label,
+    // or object labels.
     let mut secondary_labels = BTreeSet::<&str>::new();
     let mut label_queue = vec![label];
     while let Some(l) = label_queue.pop() {
@@ -173,43 +174,44 @@ fn filter_reachable_from(
             continue;
         }
 
-        referenced_labels.extend(
-            if let Some(data_values) = objects.get(l) {
-                data_values.iter().filter_map(|v| {
+        let new_references = if let Some(data_values) = objects.get(l) {
+            secondary_labels.insert(l);
+            data_values
+                .iter()
+                .filter_map(|v| {
                     if let DataValue::Reference(sym) = v {
                         Some(sym.as_str())
                     } else {
                         None
                     }
-                }).collect()
-            } else {
-                let offset = *label_offsets.get(l).unwrap_or_else(|| {
+                })
+                .collect()
+        } else {
+            let offset = *label_offsets.get(l).unwrap_or_else(|| {
                     eprintln!("The RISCV assembly code references an external routine / label that is not available:");
                     eprintln!("{l}");
                     panic!();
                 });
-                let (referenced_labels_in_block, seen_labels_in_block) =
-                    basic_block_references_starting_from(&statements[offset..]);
-                assert!(!secondary_labels.contains(l));
-                secondary_labels.extend(seen_labels_in_block.clone());
-                secondary_labels.remove(l);
-                processed_labels.extend(seen_labels_in_block);
-
-                for referenced in &referenced_labels_in_block {
-                    if !queued_labels.contains(referenced) && !processed_labels.contains(referenced) {
-                        label_queue.push(referenced);
-                        queued_labels.insert(referenced);
-                    }
-                }
-                referenced_labels_in_block
+            let (referenced_labels_in_block, seen_labels_in_block) =
+                basic_block_references_starting_from(&statements[offset..]);
+            assert!(!secondary_labels.contains(l));
+            secondary_labels.extend(seen_labels_in_block.clone());
+            secondary_labels.remove(l);
+            processed_labels.extend(seen_labels_in_block);
+            referenced_labels_in_block
+        };
+        for referenced in &new_references {
+            if !queued_labels.contains(referenced) && !processed_labels.contains(referenced) {
+                label_queue.push(referenced);
+                queued_labels.insert(referenced);
             }
-        )
+        }
+        referenced_labels.extend(new_references);
     }
     let referenced_labels = referenced_labels
         .into_iter()
         .map(|x| x.to_owned())
         .collect::<Vec<_>>();
-    objects.retain(|name, _value| referenced_labels.contains(name));
     let code = processed_labels
         .difference(&secondary_labels)
         .flat_map(|l| {
@@ -217,6 +219,7 @@ fn filter_reachable_from(
             basic_block_code_starting_from(&statements[offset..])
         })
         .collect();
+    objects.retain(|name, _value| referenced_labels.contains(name));
     *statements = code;
 }
 
