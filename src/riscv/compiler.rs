@@ -156,10 +156,10 @@ fn extract_globals(statements: &[Statement]) -> HashSet<String> {
         .collect()
 }
 
-fn filter_reachable_from<T>(
+fn filter_reachable_from(
     label: &str,
     statements: &mut Vec<Statement>,
-    objects: &mut BTreeMap<String, T>,
+    objects: &mut BTreeMap<String, Vec<DataValue>>,
 ) {
     let label_offsets = parser::extract_label_offsets(statements);
     let mut queued_labels: BTreeSet<&str> = vec![label].into_iter().collect();
@@ -169,34 +169,47 @@ fn filter_reachable_from<T>(
     let mut secondary_labels = BTreeSet::<&str>::new();
     let mut label_queue = vec![label];
     while let Some(l) = label_queue.pop() {
-        if objects.contains_key(l) {
-            // We record but do not process references to objects
-            continue;
-        }
         if !processed_labels.insert(l) {
             continue;
         }
-        let offset = *label_offsets.get(l).unwrap_or_else(|| {
-            eprintln!("The RISCV assembly code references an external routine / label that is not available:");
-            eprintln!("{l}");
-            panic!();
-        });
-        let (referenced_labels_in_block, seen_labels_in_block) =
-            basic_block_references_starting_from(&statements[offset..]);
-        assert!(!secondary_labels.contains(l));
-        secondary_labels.extend(seen_labels_in_block.clone());
-        secondary_labels.remove(l);
-        processed_labels.extend(seen_labels_in_block);
 
-        for referenced in &referenced_labels_in_block {
-            if !queued_labels.contains(referenced) && !processed_labels.contains(referenced) {
-                label_queue.push(referenced);
-                queued_labels.insert(referenced);
+        referenced_labels.extend(
+            if let Some(data_values) = objects.get(l) {
+                data_values.iter().filter_map(|v| {
+                    if let DataValue::Reference(sym) = v {
+                        Some(sym.as_str())
+                    } else {
+                        None
+                    }
+                }).collect()
+            } else {
+                let offset = *label_offsets.get(l).unwrap_or_else(|| {
+                    eprintln!("The RISCV assembly code references an external routine / label that is not available:");
+                    eprintln!("{l}");
+                    panic!();
+                });
+                let (referenced_labels_in_block, seen_labels_in_block) =
+                    basic_block_references_starting_from(&statements[offset..]);
+                assert!(!secondary_labels.contains(l));
+                secondary_labels.extend(seen_labels_in_block.clone());
+                secondary_labels.remove(l);
+                processed_labels.extend(seen_labels_in_block);
+
+                for referenced in &referenced_labels_in_block {
+                    if !queued_labels.contains(referenced) && !processed_labels.contains(referenced) {
+                        label_queue.push(referenced);
+                        queued_labels.insert(referenced);
+                    }
+                }
+                referenced_labels_in_block
             }
-        }
-        referenced_labels.extend(referenced_labels_in_block);
+        )
     }
-    objects.retain(|name, _value| referenced_labels.contains(name.as_str()));
+    let referenced_labels = referenced_labels
+        .into_iter()
+        .map(|x| x.to_owned())
+        .collect::<Vec<_>>();
+    objects.retain(|name, _value| referenced_labels.contains(name));
     let code = processed_labels
         .difference(&secondary_labels)
         .flat_map(|l| {
