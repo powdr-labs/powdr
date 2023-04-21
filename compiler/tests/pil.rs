@@ -1,5 +1,5 @@
-use std::path::Path;
 use number::FieldElement;
+use std::path::Path;
 
 pub fn verify_pil(file_name: &str, query_callback: Option<fn(&str) -> Option<FieldElement>>) {
     let input_file = Path::new(&format!("../test_data/pil/{file_name}"))

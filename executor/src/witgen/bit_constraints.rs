@@ -2,8 +2,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::{Display, Formatter};
 
 use crate::analyzer::{BinaryOperator, Expression, Identity, IdentityKind};
-use number::{AbstractNumberType, FieldElement};
 use crate::witgen::util::{contains_next_ref, WitnessColumnNamer};
+use number::{AbstractNumberType, FieldElement};
 
 use super::expression_evaluator::ExpressionEvaluator;
 use super::symbolic_evaluator::SymbolicEvaluator;

@@ -1,9 +1,9 @@
 //! The powdr CLI tool
 
 use clap::{Parser, Subcommand};
+use compiler::no_callback;
 use env_logger::{Builder, Target};
 use log::LevelFilter;
-use compiler::no_callback;
 use number::FieldElement;
 use std::{fs, io::Write, path::Path};
 

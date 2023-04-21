@@ -316,8 +316,8 @@ mod test {
     use std::collections::BTreeMap;
 
     use super::*;
-    use number::FieldElement;
     use crate::witgen::{bit_constraints::BitConstraint, eval_error::EvalError};
+    use number::FieldElement;
 
     fn convert(input: Vec<i32>) -> Vec<FieldElement> {
         input.into_iter().map(|x| x.into()).collect()

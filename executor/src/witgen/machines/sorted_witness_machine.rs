@@ -6,14 +6,14 @@ use super::super::affine_expression::AffineExpression;
 use super::fixed_lookup_machine::FixedLookup;
 use super::Machine;
 use super::{EvalResult, FixedData};
-use crate::analyzer::{Expression, Identity, IdentityKind, SelectedExpressions, self};
-use number::FieldElement;
+use crate::analyzer::{self, Expression, Identity, IdentityKind, SelectedExpressions};
 use crate::witgen::{
     eval_error::{self, EvalError},
     expression_evaluator::ExpressionEvaluator,
     fixed_evaluator::FixedEvaluator,
     symbolic_evaluator::SymbolicEvaluator,
 };
+use number::FieldElement;
 
 /// A machine that can support a lookup in a set of columns that are sorted
 /// by one specific column and values in that column have to be unique.

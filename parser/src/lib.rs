@@ -97,7 +97,6 @@ mod test {
     }
 
     fn parse_file(name: &str) -> PILFile {
-
         let file = std::path::PathBuf::from("../test_data/").join(name);
 
         let input = fs::read_to_string(file).unwrap();
@@ -109,7 +108,6 @@ mod test {
     }
 
     fn parse_asm_file(name: &str) -> ASMFile {
-
         let file = std::path::PathBuf::from("../test_data/").join(name);
 
         let input = fs::read_to_string(file).unwrap();

@@ -4,7 +4,6 @@ use itertools::Itertools;
 
 use super::{EvalResult, FixedData, FixedLookup};
 use crate::analyzer::{Expression, Identity, IdentityKind, SelectedExpressions};
-use number::{DegreeType, FieldElement};
 use crate::witgen::eval_error;
 use crate::witgen::{
     affine_expression::AffineExpression,
@@ -16,6 +15,7 @@ use crate::witgen::{
     util::{is_simple_poly, WitnessColumnNamer},
     Constraint,
 };
+use number::{DegreeType, FieldElement};
 
 /// A machine that produces multiple rows (one block) per query.
 /// TODO we do not actually "detect" the machine yet, we just check if

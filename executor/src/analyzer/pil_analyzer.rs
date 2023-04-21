@@ -2,10 +2,10 @@ use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use crate::utils;
 use number::DegreeType;
 use parser::ast::{self, ArrayExpression};
 pub use parser::ast::{BinaryOperator, UnaryOperator};
-use crate::utils;
 
 use super::*;
 

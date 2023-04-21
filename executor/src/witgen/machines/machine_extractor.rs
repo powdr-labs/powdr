@@ -1,6 +1,6 @@
+use crate::analyzer;
 use std::collections::BTreeMap;
 use std::collections::HashSet;
-use crate::analyzer;
 
 use super::block_machine::BlockMachine;
 use super::double_sorted_witness_machine::DoubleSortedWitnesses;
@@ -8,9 +8,9 @@ use super::fixed_lookup_machine::FixedLookup;
 use super::sorted_witness_machine::SortedWitnesses;
 use super::FixedData;
 use super::Machine;
-use analyzer::{Expression, Identity, SelectedExpressions};
 use crate::witgen::bit_constraints::BitConstraint;
 use crate::witgen::WitnessColumn;
+use analyzer::{Expression, Identity, SelectedExpressions};
 
 /// Finds machines in the witness columns and identities
 /// and returns a list of machines and the identities

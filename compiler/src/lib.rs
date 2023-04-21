@@ -9,9 +9,9 @@ pub use verify::{verify, verify_asm_string};
 
 use itertools::Itertools;
 
+use executor::{analyzer, constant_evaluator, json_exporter};
 use number::{DegreeType, FieldElement};
 use parser::ast::PILFile;
-use executor::{analyzer, constant_evaluator, json_exporter};
 
 pub fn no_callback() -> Option<fn(&str) -> Option<FieldElement>> {
     None

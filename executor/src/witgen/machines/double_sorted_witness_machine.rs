@@ -6,12 +6,12 @@ use itertools::{Either, Itertools};
 use super::{FixedLookup, Machine};
 use crate::analyzer::PolynomialReference;
 use crate::analyzer::{Expression, Identity, IdentityKind, SelectedExpressions};
-use number::FieldElement;
 use crate::witgen::{
     affine_expression::AffineExpression,
     eval_error::{self, EvalError},
     EvalResult, FixedData,
 };
+use number::FieldElement;
 
 /// TODO make this generic
 
