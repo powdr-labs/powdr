@@ -4,8 +4,7 @@ use core::arch::asm;
 
 #[no_mangle]
 pub extern "C" fn main() -> ! {
-    let _s: &str = write_to::show(format_args!("X")).unwrap();
-    print_prover(_s);
+    write_to::show(format_args!("X"));
     loop {}
 }
 
@@ -22,7 +21,7 @@ pub mod write_to {
         }
     }
 
-    pub fn show(args: fmt::Arguments) -> Result<&'static str, fmt::Error> {
+    pub fn show(args: fmt::Arguments) {
         let mut w = WriteTo {};
         print_prover("Created");
         fmt::write(&mut w, args).unwrap();
