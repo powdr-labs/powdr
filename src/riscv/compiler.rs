@@ -693,40 +693,46 @@ rust_begin_unwind:
 
 .globl memset@plt
 memset@plt:
-    li	a3, 4
-    blt	a2, a3, __memset_LBB5_5
-    li	a5, 0
-    lui	a3, 4112
-    addi	a3, a3, 257
-    mul	a6, a1, a3
-__memset_LBB5_2:
-    add	a7, a0, a5
-    addi	a3, a5, 4
-    addi	a4, a5, 7
-    sw	a6, 0(a7)
-    mv	a5, a3
-    blt	a4, a2, __memset_LBB5_2
-    bge	a3, a2, __memset_LBB5_6
-__memset_LBB5_4:
-    lui	a4, 16
-    addi	a4, a4, 257
-    mul	a1, a1, a4
-    add	a3, a3, a0
-    slli	a2, a2, 3
-    lw	a4, 0(a3)
-    li	a5, -1
-    sll	a2, a5, a2
-    not	a5, a2
-    and	a2, a2, a4
-    and	a1, a1, a5
-    or	a1, a1, a2
-    sw	a1, 0(a3)
-    ret
-__memset_LBB5_5:
-    li	a3, 0
-    blt	a3, a2, __memset_LBB5_4
-__memset_LBB5_6:
-    ret
+	li	a3, 15
+	bgeu	a3, a2, .LBB268_8
+	neg	a3, a0
+	andi	a3, a3, 3
+	add	a4, a0, a3
+	beqz	a3, .LBB268_4
+	mv	a5, a0
+.LBB268_3:
+	sb	a1, 0(a5)
+	addi	a5, a5, 1
+	bltu	a5, a4, .LBB268_3
+.LBB268_4:
+	sub	a6, a2, a3
+	andi	a5, a6, -4
+	add	a3, a4, a5
+	blez	a5, .LBB268_7
+	andi	a5, a1, 255
+	slli	a2, a5, 8
+	or	a2, a2, a5
+	slli	a5, a2, 16
+	or	a5, a5, a2
+.LBB268_6:
+	sw	a5, 0(a4)
+	addi	a4, a4, 4
+	bltu	a4, a3, .LBB268_6
+.LBB268_7:
+	andi	a2, a6, 3
+	bnez	a2, .LBB268_9
+	j	.LBB268_11
+.LBB268_8:
+	mv	a3, a0
+	beqz	a2, .LBB268_11
+.LBB268_9:
+	add	a2, a2, a3
+.LBB268_10:
+	sb	a1, 0(a3)
+	addi	a3, a3, 1
+	bltu	a3, a2, .LBB268_10
+.LBB268_11:
+	ret
 
 .globl memcpy@plt
 memcpy@plt:

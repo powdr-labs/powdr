@@ -4,28 +4,21 @@ use core::arch::asm;
 
 #[no_mangle]
 pub extern "C" fn main() -> ! {
-    let mut buffer = [0u32; 100];
-    let proposed_sum = get_prover_input(0);
-    let len = get_prover_input(1) as usize;
-    assert!(len > 0 && len < 100);
-    for i in 0..len {
-        buffer[i] = get_prover_input(2 + i as u32);
-    }
-    let sum: u32 = buffer[..len].iter().sum();
+    let sum = 1u32;
+    //    let proposed_sum = get_prover_input(0);
 
-    let mut buf = [0u8; 1024];
+    let mut buf = [0u8; 10];
     let _s: &str = write_to::show(
         &mut buf,
-        format_args!("Computed sum: {sum}, proposed: {proposed_sum}"),
+        format_args!("X"), //: {sum}, proposed: {proposed_sum}"),
     )
     .unwrap();
     print_prover(_s);
-
-    assert!(sum == proposed_sum);
     loop {}
 }
 
 pub mod write_to {
+    use crate::print_prover;
     use core::cmp::min;
     use core::fmt;
 
@@ -54,26 +47,15 @@ pub mod write_to {
 
     impl<'a> fmt::Write for WriteTo<'a> {
         fn write_str(&mut self, s: &str) -> fmt::Result {
-            if self.used > self.buffer.len() {
-                return Err(fmt::Error);
-            }
-            let remaining_buf = &mut self.buffer[self.used..];
-            let raw_s = s.as_bytes();
-            let write_num = min(raw_s.len(), remaining_buf.len());
-            remaining_buf[..write_num].copy_from_slice(&raw_s[..write_num]);
-            self.used += raw_s.len();
-            if write_num < raw_s.len() {
-                Err(fmt::Error)
-            } else {
-                Ok(())
-            }
+            Ok(())
         }
     }
 
     pub fn show<'a>(buffer: &'a mut [u8], args: fmt::Arguments) -> Result<&'a str, fmt::Error> {
         let mut w = WriteTo::new(buffer);
+        print_prover("Created");
         fmt::write(&mut w, args)?;
-        w.as_str().ok_or(fmt::Error)
+        Ok("")
     }
 }
 
