@@ -1,8 +1,9 @@
-use std::collections::{BTreeMap, BTreeSet, HashSet};
+use std::collections::{BTreeMap, BTreeSet};
 
-use itertools::Itertools;
-
-use crate::parser::{self, Argument, Register, Statement};
+use crate::{
+    disambiguator,
+    parser::{self, Argument, Register, Statement},
+};
 
 use super::parser::Constant;
 
@@ -17,18 +18,12 @@ pub fn compile_riscv_asm(mut assemblies: BTreeMap<String, String>) -> String {
         .insert("__runtime".to_string(), runtime().to_string())
         .is_none());
 
-    let parsed_assemblies = assemblies
-        .into_iter()
-        .map(|(name, contents)| (name, parser::parse_asm(&contents)))
-        .collect::<Vec<_>>();
-    let globals = parsed_assemblies
-        .iter()
-        .flat_map(|(_, statements)| extract_globals(statements))
-        .collect::<HashSet<_>>();
-    let mut statements = parsed_assemblies
-        .into_iter()
-        .map(|(name, statements)| disambiguate(&name, statements, &globals))
-        .concat();
+    let mut statements = disambiguator::disambiguate(
+        assemblies
+            .into_iter()
+            .map(|(name, contents)| (name, parser::parse_asm(&contents)))
+            .collect(),
+    );
     let mut objects = parser::extract_data_objects(&statements);
 
     // Reduce to the code that is actually reachable from main
@@ -50,110 +45,6 @@ pub fn compile_riscv_asm(mut assemblies: BTreeMap<String, String>) -> String {
         output += &process_statement(s);
     }
     output
-}
-
-fn disambiguate(
-    file_name: &str,
-    statements: Vec<Statement>,
-    globals: &HashSet<String>,
-) -> Vec<Statement> {
-    let prefix = file_name.replace('-', "_dash_");
-    statements
-        .into_iter()
-        .map(|s| match s {
-            Statement::Label(l) => {
-                Statement::Label(disambiguate_symbol_if_needed(l, &prefix, globals))
-            }
-            Statement::Directive(dir, args) => Statement::Directive(
-                dir,
-                disambiguate_arguments_if_needed(args, &prefix, globals),
-            ),
-            Statement::Instruction(instr, args) => Statement::Instruction(
-                instr,
-                disambiguate_arguments_if_needed(args, &prefix, globals),
-            ),
-        })
-        .collect()
-}
-
-fn disambiguate_arguments_if_needed(
-    args: Vec<Argument>,
-    prefix: &str,
-    globals: &HashSet<String>,
-) -> Vec<Argument> {
-    args.into_iter()
-        .map(|a| disambiguate_argument_if_needed(a, prefix, globals))
-        .collect()
-}
-
-fn disambiguate_argument_if_needed(
-    arg: Argument,
-    prefix: &str,
-    globals: &HashSet<String>,
-) -> Argument {
-    match arg {
-        Argument::Register(_) | Argument::StringLiteral(_) => arg,
-        Argument::RegOffset(reg, constant) => Argument::RegOffset(
-            reg,
-            disambiguate_constant_if_needed(constant, prefix, globals),
-        ),
-        Argument::Constant(c) => {
-            Argument::Constant(disambiguate_constant_if_needed(c, prefix, globals))
-        }
-        Argument::Symbol(s) => Argument::Symbol(disambiguate_symbol_if_needed(s, prefix, globals)),
-        Argument::Difference(l, r) => Argument::Difference(
-            disambiguate_symbol_if_needed(l, prefix, globals),
-            disambiguate_symbol_if_needed(r, prefix, globals),
-        ),
-    }
-}
-
-fn disambiguate_constant_if_needed(
-    c: Constant,
-    prefix: &str,
-    globals: &HashSet<String>,
-) -> Constant {
-    match c {
-        Constant::Number(_) => c,
-        Constant::HiDataRef(s) => {
-            Constant::HiDataRef(disambiguate_symbol_if_needed(s, prefix, globals))
-        }
-        Constant::LoDataRef(s) => {
-            Constant::LoDataRef(disambiguate_symbol_if_needed(s, prefix, globals))
-        }
-    }
-}
-
-fn disambiguate_symbol_if_needed(s: String, prefix: &str, globals: &HashSet<String>) -> String {
-    if globals.contains(s.as_str()) || s.starts_with('@') {
-        s
-    } else {
-        format!("{prefix}__{s}")
-    }
-}
-
-fn extract_globals(statements: &[Statement]) -> HashSet<String> {
-    statements
-        .iter()
-        .flat_map(|s| {
-            if let Statement::Directive(name, args) = s {
-                if name == ".globl" {
-                    return args
-                        .iter()
-                        .map(|a| {
-                            if let Argument::Symbol(s) = a {
-                                s.clone()
-                            } else {
-                                panic!("Invalid .globl directive: {s}");
-                            }
-                        })
-                        // TODO possible wihtout collect?
-                        .collect();
-                }
-            }
-            vec![]
-        })
-        .collect()
 }
 
 fn filter_reachable_from(
