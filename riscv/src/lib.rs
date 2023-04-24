@@ -10,6 +10,7 @@ use walkdir::WalkDir;
 use number::FieldElement;
 
 pub mod compiler;
+mod disambiguator;
 pub mod parser;
 
 /// Compiles a rust file all the way down to PIL and generates
