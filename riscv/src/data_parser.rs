@@ -18,65 +18,61 @@ impl DataValue {
 }
 
 pub fn extract_data_objects(statements: &[Statement]) -> BTreeMap<String, Vec<DataValue>> {
-    let mut current_label = None;
-    let mut objects = BTreeMap::<String, Option<Vec<DataValue>>>::new();
-    for s in statements {
-        match s {
-            Statement::Label(l) => {
-                current_label = Some(l.as_str());
-            }
-            // TODO We ignore size and alignment directives.
-            // TODO this might all be totally wrong
-            Statement::Directive(dir, args) => match (dir.as_str(), &args[..]) {
-                (".type", [Argument::Symbol(name), Argument::Symbol(kind)])
-                    if kind.as_str() == "@object" =>
-                {
-                    if !objects.contains_key(name) {
-                        objects.insert(name.clone(), None);
-                    }
+    let objects = statements.iter().fold(
+        (None, BTreeMap::default()),
+        |(mut current_label, mut objects) : (_, BTreeMap<String, Vec<DataValue>>), s| {
+            match s {
+                Statement::Label(l) => {
+                    current_label = Some(l.as_str());
                 }
-                (".zero" | ".ascii" | ".asciz" | ".word" | ".byte", args) => {
-                    if let Some(entry) = objects.get_mut(current_label.unwrap()) {
-                        let data = extract_data_value(dir.as_str(), args);
-                        if let Some(d) = entry {
-                            d.extend(data);
-                        } else {
-                            *entry = Some(data);
-                        }
+                // TODO We ignore size and alignment directives.
+                // TODO this might all be totally wrong
+                Statement::Directive(dir, args) => match (dir.as_str(), &args[..]) {
+                    (".zero" | ".ascii" | ".asciz" | ".word" | ".byte", args) => {
+                        objects.entry(current_label.unwrap().into()).and_modify(|entry: &mut Vec<DataValue>| {
+                            let data = extract_data_value(dir.as_str(), args);
+                            entry.extend(data);
+                        });
                     }
-                }
-                (".size", [Argument::Symbol(name), Argument::Constant(Constant::Number(n))])
-                    if Some(name.as_str()) == current_label =>
-                {
-                    if let Some(entry) = objects.get_mut(current_label.unwrap()) {
-                        if entry.is_none() && *n == 0 {
-                            *entry = Some(vec![]);
-                        } else if entry.is_none() {
-                            panic!("Nonzero size for object without elements: {name}");
-                        } else {
+                    (".type", [Argument::Symbol(name), Argument::Symbol(kind)])
+                        if kind.as_str() == "@object" =>
+                    {
+                        objects.entry(name.clone()).or_default();
+                    }
+                    (".size", [Argument::Symbol(name), Argument::Constant(Constant::Number(n))])
+                        if Some(name.as_str()) == current_label =>
+                    {
+                        objects.entry(current_label.unwrap().into()).and_modify(|entry: &mut Vec<DataValue>| {
                             let size: usize =
-                                entry.as_ref().unwrap().iter().map(|v| v.size()).sum();
+                                entry.iter().map(|v| v.size()).sum();
                             assert!(
                                 size as i64 == *n,
                                 "Invalid size for data object {name}: computed: {size} vs. specified: {n}"
                             );
-                        }
+                        }).or_insert_with(|| {
+                            assert!(*n != 0, "Nonzero size for object without elements: {name}");
+                            Default::default()
+                        });
                     }
-                }
+                    (
+                        ".size",
+                        [Argument::Symbol(name), Argument::Constant(Constant::Number(n))],
+                    ) if *n == 0 && Some(name.as_str()) == current_label => {
+                        objects.entry(current_label.unwrap().into()).or_default();
+                    }
+                    _ => {}
+                },
                 _ => {}
-            },
-            _ => {}
-        }
+            };
+            (current_label, objects)
+        },
+    ).1;
+
+    for (k, v) in &objects {
+        assert!(!v.is_empty(), "Label for announced object {k} not found.")
     }
+
     objects
-        .into_iter()
-        .map(|(k, v)| {
-            (
-                k.clone(),
-                v.unwrap_or_else(|| panic!("Label for announced object {k} not found.")),
-            )
-        })
-        .collect()
 }
 
 fn extract_data_value(directive: &str, arguments: &[Argument]) -> Vec<DataValue> {
