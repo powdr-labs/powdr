@@ -17,21 +17,20 @@ pub mod parser;
 /// fixed and witness columns.
 pub fn compile_rust(
     file_name: &str,
-    full_crate: bool,
     inputs: Vec<FieldElement>,
     output_dir: &Path,
     force_overwrite: bool,
 ) {
-    let riscv_asm = if full_crate {
-        let cargo_toml = if file_name.ends_with("Cargo.toml") {
-            file_name.to_string()
-        } else {
-            format!("{file_name}/Cargo.toml")
-        };
-        compile_rust_crate_to_riscv_asm(&cargo_toml)
+    let riscv_asm = if file_name.ends_with("Cargo.toml") {
+        compile_rust_crate_to_riscv_asm(file_name)
+    } else if fs::metadata(file_name).unwrap().is_dir() {
+        compile_rust_crate_to_riscv_asm(&format!("{file_name}/Cargo.toml"))
     } else {
         compile_rust_to_riscv_asm(file_name)
     };
+    if !output_dir.exists() {
+        fs::create_dir_all(output_dir).unwrap()
+    }
     for (asm_file_name, contents) in &riscv_asm {
         let riscv_asm_file_name = output_dir.join(format!(
             "{}_riscv_{asm_file_name}.asm",
