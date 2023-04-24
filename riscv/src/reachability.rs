@@ -71,6 +71,9 @@ pub fn filter_reachable_from(
         .collect::<HashSet<_>>();
     // TODO also apply replacements to objects
     objects.retain(|name, _value| referenced_labels.contains(name.as_str()));
+    for (_name, value) in objects.iter_mut() {
+        apply_replacement_to_object(value, &replacements)
+    }
     *statements = code;
 }
 
@@ -214,6 +217,16 @@ fn apply_replacement_to_constant(c: Constant, replacements: &BTreeMap<&str, &str
         Constant::Number(_) => c,
         Constant::HiDataRef(s) => Constant::HiDataRef(replace(s, replacements)),
         Constant::LoDataRef(s) => Constant::LoDataRef(replace(s, replacements)),
+    }
+}
+
+fn apply_replacement_to_object(object: &mut Vec<DataValue>, replacements: &BTreeMap<&str, &str>) {
+    for value in object {
+        if let DataValue::Reference(reference) = value {
+            if let Some(replacement) = replacements.get(reference.as_str()) {
+                *value = DataValue::Reference(replacement.to_string())
+            }
+        }
     }
 }
 
