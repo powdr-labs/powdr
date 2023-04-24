@@ -28,6 +28,9 @@ pub fn compile_rust(
     } else {
         compile_rust_to_riscv_asm(file_name)
     };
+    if !output_dir.exists() {
+        fs::create_dir_all(output_dir).unwrap()
+    }
     for (asm_file_name, contents) in &riscv_asm {
         let riscv_asm_file_name = output_dir.join(format!(
             "{}_riscv_{asm_file_name}.asm",
