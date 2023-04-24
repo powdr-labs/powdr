@@ -488,7 +488,7 @@ instr xor Y, Z -> X {
 }
 
 pil{
-	macro is_nonzero(X) { match X { 0 => 1, _ => 0 } };
+	macro is_nonzero(X) { match X { 0 => 0, _ => 1, } };
 	macro is_zero(X) { 1 - is_nonzero(X) };
 
 	col fixed binary_RESET(i) { is_zero((i % 4) - 3) };
