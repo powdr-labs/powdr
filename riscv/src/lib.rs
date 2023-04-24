@@ -10,6 +10,7 @@ use walkdir::WalkDir;
 use number::FieldElement;
 
 pub mod compiler;
+mod data_parser;
 mod disambiguator;
 pub mod parser;
 

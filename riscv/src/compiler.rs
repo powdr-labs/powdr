@@ -1,6 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::{
+    data_parser::{self, DataValue},
     disambiguator,
     parser::{self, Argument, Register, Statement},
 };
@@ -24,7 +25,7 @@ pub fn compile_riscv_asm(mut assemblies: BTreeMap<String, String>) -> String {
             .map(|(name, contents)| (name, parser::parse_asm(&contents)))
             .collect(),
     );
-    let mut objects = parser::extract_data_objects(&statements);
+    let mut objects = data_parser::extract_data_objects(&statements);
 
     // Reduce to the code that is actually reachable from main
     // (and the objects that are referred from there)
@@ -33,7 +34,7 @@ pub fn compile_riscv_asm(mut assemblies: BTreeMap<String, String>) -> String {
     // Replace dynamic references to code labels
     replace_dynamic_label_references(&mut statements, &objects);
 
-    let (data_code, data_positions) = store_data_objects(objects.into_iter(), data_start);
+    let (data_code, data_positions) = store_data_objects(objects, data_start);
     let mut output = preamble()
         + &data_code
         + &format!("// Set stack pointer\nx2 <=X= {stack_start};\n")
@@ -50,7 +51,7 @@ pub fn compile_riscv_asm(mut assemblies: BTreeMap<String, String>) -> String {
 fn filter_reachable_from(
     label: &str,
     statements: &mut Vec<Statement>,
-    objects: &mut BTreeMap<String, Vec<u8>>,
+    objects: &mut BTreeMap<String, Vec<DataValue>>,
 ) {
     let label_offsets = parser::extract_label_offsets(statements);
     let mut queued_labels: BTreeSet<&str> = vec![label].into_iter().collect();
@@ -133,7 +134,7 @@ fn basic_block_code_starting_from(statements: &[Statement]) -> Vec<Statement> {
 /// because they will be handled differently.
 fn replace_dynamic_label_references(
     statements: &mut Vec<Statement>,
-    data_objects: &BTreeMap<String, Vec<u8>>,
+    data_objects: &BTreeMap<String, Vec<DataValue>>,
 ) {
     let mut replacement = vec![];
     /*
@@ -171,7 +172,7 @@ fn replace_dynamic_label_references(
 fn replace_dynamic_label_reference(
     s1: &Statement,
     s2: &Statement,
-    data_objects: &BTreeMap<String, Vec<u8>>,
+    data_objects: &BTreeMap<String, Vec<DataValue>>,
 ) -> Option<Statement> {
     let Statement::Instruction(instr1, args1) = s1 else { return None; };
     let Statement::Instruction(instr2, args2) = s2 else { return None; };
@@ -190,28 +191,62 @@ fn replace_dynamic_label_reference(
 }
 
 fn store_data_objects(
-    objects: impl Iterator<Item = (String, Vec<u8>)>,
+    objects: BTreeMap<String, Vec<DataValue>>,
     mut memory_start: u32,
 ) -> (String, BTreeMap<String, u32>) {
     memory_start = ((memory_start + 7) / 8) * 8;
-    let mut code = String::new();
+    let mut current_pos = memory_start;
     let mut positions = BTreeMap::new();
+    for (name, data) in &objects {
+        // TODO check if we need to use multiples of four.
+        let size: u32 = data
+            .iter()
+            .map(|d| next_multiple_of_four(d.size()) as u32)
+            .sum();
+        positions.insert(name.clone(), current_pos);
+        current_pos += size;
+    }
+
+    let mut code = String::new();
     for (name, data) in objects {
         code += &format!("// data {name}\n");
-        positions.insert(name, memory_start);
-        for i in 0..((data.len() + 3) / 4) {
-            let v = (0..4)
-                .map(|j| (data.get(i * 4 + j).cloned().unwrap_or_default() as u32) << (j * 8))
-                .reduce(|a, b| a | b)
-                .unwrap();
-            code += &format!(
-                "addr <=X= 0x{:x};\nmstore 0x{v:x};\n",
-                memory_start + (i * 4) as u32
-            );
+        let mut pos = positions[&name];
+        for item in data {
+            match &item {
+                DataValue::Direct(bytes) => {
+                    for i in 0..((bytes.len() + 3) / 4) {
+                        let v = (0..4)
+                            .map(|j| {
+                                (bytes.get(i * 4 + j).cloned().unwrap_or_default() as u32)
+                                    << (j * 8)
+                            })
+                            .reduce(|a, b| a | b)
+                            .unwrap();
+                        code += &format!("addr <=X= 0x{pos:x};\nmstore 0x{v:x};\n");
+                    }
+                }
+                DataValue::Reference(sym) => {
+                    code += &format!("addr <=X= 0x{pos:x};\n");
+                    if let Some(p) = positions.get(sym) {
+                        code += &format!("mstore 0x{p:x};\n");
+                    } else {
+                        // code reference
+                        // TODO should be possible without temporary
+                        code += &format!(
+                            "tmp1 <=X= load_label({});\nmstore tmp1;\n",
+                            escape_label(sym)
+                        );
+                    }
+                }
+            }
+            pos += next_multiple_of_four(item.size()) as u32;
         }
-        memory_start += (((data.len() + 7) / 8) * 8) as u32;
     }
     (code, positions)
+}
+
+fn next_multiple_of_four(x: usize) -> usize {
+    ((x + 3) / 4) * 4
 }
 
 fn insert_data_positions(
