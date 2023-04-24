@@ -20,13 +20,8 @@ enum Commands {
     /// and finally to PIL and generates fixed and witness columns.
     /// Needs `rustup target add riscv32imc-unknown-none-elf`.
     Rust {
-        /// Input file or directory.
+        /// Input file (rust source file) or directory (containing a crate).
         file: String,
-
-        /// Compile a full cargo crate with dependencies.
-        #[arg(long)]
-        #[arg(default_value_t = false)]
-        cargo: bool,
 
         /// Comma-separated list of free inputs (numbers).
         #[arg(short, long)]
@@ -126,14 +121,12 @@ fn main() {
     match command {
         Commands::Rust {
             file,
-            cargo,
             inputs,
             output_directory,
             force,
         } => {
             riscv::compile_rust(
                 &file,
-                cargo,
                 split_inputs(&inputs),
                 Path::new(&output_directory),
                 force,
