@@ -357,7 +357,12 @@ PublicReference: String = {
 }
 
 MatchExpression: Box<Expression> = {
-    "match" <BoxedExpression> "{" <(<MatchArm> ",")*> "}" => Box::new(Expression::MatchExpression(<>))
+    "match" <BoxedExpression> "{" <MatchArms> "}" => Box::new(Expression::MatchExpression(<>))
+}
+
+MatchArms: Vec<(Option<Expression>, Expression)> = {
+    => vec![],
+    <mut list:( <MatchArm> "," )*> <end:MatchArm> ","?  => { list.push(end); list }
 }
 
 MatchArm: (Option<Expression>, Expression) = {
