@@ -1,10 +1,8 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 
-use crate::{
-    data_parser::{self, DataValue},
-    disambiguator,
-    parser::{self, Argument, Register, Statement},
-};
+use crate::data_parser::{self, DataValue};
+use crate::parser::{self, Argument, Register, Statement};
+use crate::{disambiguator, reachability};
 
 use super::parser::Constant;
 
@@ -29,7 +27,7 @@ pub fn compile_riscv_asm(mut assemblies: BTreeMap<String, String>) -> String {
 
     // Reduce to the code that is actually reachable from main
     // (and the objects that are referred from there)
-    filter_reachable_from("main", &mut statements, &mut objects);
+    reachability::filter_reachable_from("main", &mut statements, &mut objects);
 
     // Replace dynamic references to code labels
     replace_dynamic_label_references(&mut statements, &objects);
@@ -46,87 +44,6 @@ pub fn compile_riscv_asm(mut assemblies: BTreeMap<String, String>) -> String {
         output += &process_statement(s);
     }
     output
-}
-
-fn filter_reachable_from(
-    label: &str,
-    statements: &mut Vec<Statement>,
-    objects: &mut BTreeMap<String, Vec<DataValue>>,
-) {
-    let label_offsets = parser::extract_label_offsets(statements);
-    let mut queued_labels: BTreeSet<&str> = vec![label].into_iter().collect();
-    let mut referenced_labels: BTreeSet<&str> = vec![label].into_iter().collect();
-    let mut processed_labels = BTreeSet::<&str>::new();
-    // Labels that are included in a basic block that starts with a different label.
-    let mut secondary_labels = BTreeSet::<&str>::new();
-    let mut label_queue = vec![label];
-    while let Some(l) = label_queue.pop() {
-        if objects.contains_key(l) {
-            // We record but do not process references to objects
-            continue;
-        }
-        if !processed_labels.insert(l) {
-            continue;
-        }
-        let offset = *label_offsets.get(l).unwrap_or_else(|| {
-            eprintln!("The RISCV assembly code references an external routine / label that is not available:");
-            eprintln!("{l}");
-            panic!();
-        });
-        let (referenced_labels_in_block, seen_labels_in_block) =
-            basic_block_references_starting_from(&statements[offset..]);
-        assert!(!secondary_labels.contains(l));
-        secondary_labels.extend(seen_labels_in_block.clone());
-        secondary_labels.remove(l);
-        processed_labels.extend(seen_labels_in_block);
-
-        for referenced in &referenced_labels_in_block {
-            if !queued_labels.contains(referenced) && !processed_labels.contains(referenced) {
-                label_queue.push(referenced);
-                queued_labels.insert(referenced);
-            }
-        }
-        referenced_labels.extend(referenced_labels_in_block);
-    }
-    objects.retain(|name, _value| referenced_labels.contains(name.as_str()));
-    let code = processed_labels
-        .difference(&secondary_labels)
-        .flat_map(|l| {
-            let offset = *label_offsets.get(l).unwrap();
-            basic_block_code_starting_from(&statements[offset..])
-        })
-        .collect();
-    *statements = code;
-}
-
-fn basic_block_references_starting_from(statements: &[Statement]) -> (Vec<&str>, Vec<&str>) {
-    let mut seen_labels = vec![];
-    let mut referenced_labels = BTreeSet::<&str>::new();
-    for s in statements {
-        if let Statement::Label(l) = s {
-            seen_labels.push(l.as_str());
-        } else {
-            referenced_labels.extend(parser::referenced_labels(s))
-        }
-        if parser::ends_control_flow(s) {
-            break;
-        }
-    }
-    (referenced_labels.into_iter().collect(), seen_labels)
-}
-
-fn basic_block_code_starting_from(statements: &[Statement]) -> Vec<Statement> {
-    let mut code = vec![];
-    for s in statements {
-        if let Statement::Directive(_, _) = s {
-            panic!("Included directive in code block: {s}");
-        }
-        code.push(s.clone());
-        if parser::ends_control_flow(s) {
-            break;
-        }
-    }
-    code
 }
 
 /// Replace certain patterns of references to code labels by
