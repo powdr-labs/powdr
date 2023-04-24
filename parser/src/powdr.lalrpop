@@ -360,8 +360,8 @@ MatchExpression: Box<Expression> = {
     "match" <BoxedExpression> "{" <(<MatchArm> ",")*> "}" => Box::new(Expression::MatchExpression(<>))
 }
 
-MatchArm: (Option<FieldElement>, Expression) = {
-    <n:FieldElement> "=>" <e:Expression> => (Some(n), e),
+MatchArm: (Option<Expression>, Expression) = {
+    <n:Expression> "=>" <e:Expression> => (Some(n), e),
     <n:"_"> "=>" <e:Expression> => (None, e),
 }
 

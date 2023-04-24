@@ -3,7 +3,10 @@ constant %N = 16;
 // This uses the alternative nomenclature as well.
 
 namespace Fibonacci(%N);
-    col fixed ISLAST(i) { 1 - (i - (%N - 1)) / (i - (%N - 1)) }; // 0 / 0 == 0 makes this work...
+    col fixed ISLAST(i) { match i {
+        %N - 1 => 1,
+        _ => 0,
+    } };
     col witness x, y;
 
     ISLAST * (y' - 1) = 0;

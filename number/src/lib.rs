@@ -262,3 +262,20 @@ impl fmt::Display for FieldElement {
         }
     }
 }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    #[should_panic]
+    fn integer_div_by_zero() {
+        let _ = FieldElement::from(1).to_integer() / FieldElement::from(0).to_integer();
+    }
+
+    #[test]
+    #[should_panic]
+    fn div_by_zero() {
+        let _ = FieldElement::from(1) / FieldElement::from(0);
+    }
+}

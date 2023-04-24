@@ -249,7 +249,7 @@ constant %N = 16;
 namespace Fibonacci(%N);
 constant %last_row = (%N - 1);
 macro bool(X) { (X * (1 - X)) = 0; };
-macro is_nonzero(X) { (X / X) };
+macro is_nonzero(X) { match X { 0 => 0, _ => 1, } };
 macro is_zero(X) { (1 - is_nonzero(X)) };
 macro is_equal(A, B) { is_zero((A - B)) };
 macro is_one(X) { is_equal(X, 1) };
