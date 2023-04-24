@@ -516,7 +516,7 @@ impl PILContext {
                         (
                             n.as_ref().map(|n| {
                                 self.evaluate_expression(n).unwrap_or_else(|| {
-                                    panic!("Left side of match arm must be a constant, found {}", n)
+                                    panic!("Left side of match arm must be a constant, found {n}")
                                 })
                             }),
                             self.process_expression(e),
