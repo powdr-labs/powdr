@@ -3,7 +3,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use number::DegreeType;
-use parser::ast::{self, ArrayExpression};
+use parser::ast;
 pub use parser::ast::{BinaryOperator, UnaryOperator};
 
 use super::*;
@@ -343,9 +343,12 @@ impl PILContext {
             }
             ast::FunctionDefinition::Array(value) => {
                 let star_value = value.solve(self.polynomial_degree);
-                let expressions = self.process_array_expression(value, star_value);
-                assert_eq!(expressions.len() as DegreeType, self.polynomial_degree);
-                FunctionValueDefinition::Array(expressions)
+                let expression = self.process_array_expression(value, star_value);
+                assert_eq!(
+                    expression.iter().map(|e| e.size()).sum::<DegreeType>(),
+                    self.polynomial_degree
+                );
+                FunctionValueDefinition::Array(expression)
             }
         });
         let is_new = self
@@ -440,15 +443,25 @@ impl PILContext {
 
     fn process_array_expression(
         &mut self,
-        array_expression: &ArrayExpression,
+        array_expression: &ast::ArrayExpression,
         star_value: Option<DegreeType>,
-    ) -> Vec<Expression> {
+    ) -> Vec<RepeatedArray> {
         match array_expression {
-            ArrayExpression::Value(expressions) => self.process_expressions(expressions),
-            ArrayExpression::RepeatedValue(expressions) => (0..star_value.unwrap())
-                .flat_map(|_| self.process_expressions(expressions))
-                .collect(),
-            ArrayExpression::Concat(left, right) => self
+            ast::ArrayExpression::Value(expressions) => vec![RepeatedArray {
+                values: self.process_expressions(expressions),
+                repetitions: 1,
+            }],
+            ast::ArrayExpression::RepeatedValue(expressions) => {
+                if star_value.unwrap() == 0 {
+                    vec![]
+                } else {
+                    vec![RepeatedArray {
+                        values: self.process_expressions(expressions),
+                        repetitions: star_value.unwrap(),
+                    }]
+                }
+            }
+            ast::ArrayExpression::Concat(left, right) => self
                 .process_array_expression(left, star_value)
                 .into_iter()
                 .chain(self.process_array_expression(right, star_value))
