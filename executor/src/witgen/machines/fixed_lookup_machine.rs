@@ -1,4 +1,5 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
+use std::mem;
 
 use crate::analyzer::{Identity, IdentityKind, SelectedExpressions};
 use number::{DegreeType, FieldElement};
@@ -120,6 +121,14 @@ impl IndexedColumns {
             )
             .0;
 
+        log::trace!(
+            "Done creating index. Size (as flat list): entries * (num_inputs * input_size + row_pointer_size) = {} * ({} * {} bytes + {} bytes) = {} bytes",
+            index.len(),
+            input_column_values.len(),
+            mem::size_of::<FieldElement>(),
+            mem::size_of::<Option<DegreeType>>(),
+            index.len() * (input_column_values.len() * mem::size_of::<FieldElement>() + mem::size_of::<Option<DegreeType>>())
+        );
         self.indices.insert(
             (
                 sorted_input_fixed_columns.clone(),
@@ -127,7 +136,6 @@ impl IndexedColumns {
             ),
             index,
         );
-        log::trace!("Done creating index.");
     }
 }
 
