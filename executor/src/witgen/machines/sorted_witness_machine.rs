@@ -6,7 +6,6 @@ use super::super::affine_expression::AffineExpression;
 use super::fixed_lookup_machine::FixedLookup;
 use super::Machine;
 use super::{EvalResult, FixedData};
-use crate::analyzer::{self, Expression, Identity, IdentityKind, SelectedExpressions};
 use crate::witgen::{
     eval_error::{self, EvalError},
     expression_evaluator::ExpressionEvaluator,
@@ -14,6 +13,7 @@ use crate::witgen::{
     symbolic_evaluator::SymbolicEvaluator,
 };
 use number::FieldElement;
+use pil_analyzer::{self, Expression, Identity, IdentityKind, SelectedExpressions};
 
 /// A machine that can support a lookup in a set of columns that are sorted
 /// by one specific column and values in that column have to be unique.
@@ -139,7 +139,7 @@ impl Machine for SortedWitnesses {
             .expressions
             .iter()
             .map(|e| match e {
-                analyzer::Expression::PolynomialReference(p) => {
+                pil_analyzer::Expression::PolynomialReference(p) => {
                     assert!(!p.next);
                     if p.name == self.key_col || self.witness_positions.contains_key(&p.name) {
                         Some(&p.name)

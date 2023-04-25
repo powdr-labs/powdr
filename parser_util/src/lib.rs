@@ -1,5 +1,7 @@
 //! Utils used with different lalrpop parsers
 
+pub mod lines;
+
 pub fn quote(input: &str) -> String {
     format!("\"{}\"", input.replace('\\', "\\\\").replace('"', "\\\""))
 }

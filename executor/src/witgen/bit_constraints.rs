@@ -1,9 +1,9 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::{Display, Formatter};
 
-use crate::analyzer::{BinaryOperator, Expression, Identity, IdentityKind};
 use crate::witgen::util::{contains_next_ref, WitnessColumnNamer};
 use number::{AbstractNumberType, FieldElement};
+use pil_analyzer::{BinaryOperator, Expression, Identity, IdentityKind};
 
 use super::expression_evaluator::ExpressionEvaluator;
 use super::symbolic_evaluator::SymbolicEvaluator;
@@ -391,7 +391,7 @@ namespace Global(2**20);
     { D } in { BYTE };
     { D } in { SHIFTED };
 ";
-        let analyzed = crate::analyzer::analyze_string(pil_source);
+        let analyzed = pil_analyzer::analyze_string(pil_source);
         let (constants, degree) = crate::constant_evaluator::generate(&analyzed);
         let mut known_constraints = constants
             .iter()

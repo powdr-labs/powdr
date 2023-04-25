@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 
-use crate::analyzer::{Identity, IdentityKind, SelectedExpressions};
 use number::{DegreeType, FieldElement};
+use pil_analyzer::{Identity, IdentityKind, SelectedExpressions};
 
 use crate::witgen::util::is_simple_poly;
 use crate::witgen::{

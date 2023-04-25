@@ -1,4 +1,3 @@
-use crate::analyzer;
 use std::collections::BTreeMap;
 use std::collections::HashSet;
 
@@ -10,7 +9,8 @@ use super::FixedData;
 use super::Machine;
 use crate::witgen::bit_constraints::BitConstraint;
 use crate::witgen::WitnessColumn;
-use analyzer::{Expression, Identity, SelectedExpressions};
+use pil_analyzer::IdentityKind;
+use pil_analyzer::{Expression, Identity, SelectedExpressions};
 
 /// Finds machines in the witness columns and identities
 /// and returns a list of machines and the identities
@@ -125,16 +125,14 @@ fn all_row_connected_witnesses<'a>(
         let count = witnesses.len();
         for i in identities {
             match i.kind {
-                analyzer::IdentityKind::Polynomial => {
+                IdentityKind::Polynomial => {
                     // Any current witness in the identity adds all other witnesses.
                     let in_identity = &refs_in_identity(i) & all_witnesses;
                     if in_identity.intersection(&witnesses).next().is_some() {
                         witnesses.extend(in_identity);
                     }
                 }
-                analyzer::IdentityKind::Plookup
-                | analyzer::IdentityKind::Permutation
-                | analyzer::IdentityKind::Connect => {
+                IdentityKind::Plookup | IdentityKind::Permutation | IdentityKind::Connect => {
                     // If we already have witnesses on the LHS, include the LHS,
                     // and vice-versa, but not across the "sides".
                     let in_lhs = &refs_in_selected_expressions(&i.left) & all_witnesses;

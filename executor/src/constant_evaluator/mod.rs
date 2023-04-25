@@ -1,9 +1,7 @@
 use std::collections::HashMap;
 
-use crate::analyzer::{
-    Analyzed, BinaryOperator, Expression, FunctionValueDefinition, UnaryOperator,
-};
 use number::{DegreeType, FieldElement};
+use pil_analyzer::{Analyzed, BinaryOperator, Expression, FunctionValueDefinition, UnaryOperator};
 
 /// Generates the constant polynomial values for all constant polynomials
 /// that are defined (and not just declared).
@@ -135,7 +133,7 @@ impl<'a> Evaluator<'a> {
 
 #[cfg(test)]
 mod test {
-    use crate::analyzer::analyze_string;
+    use pil_analyzer::analyze_string;
 
     use super::*;
 

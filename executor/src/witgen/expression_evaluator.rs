@@ -1,5 +1,5 @@
-use crate::analyzer::{BinaryOperator, Expression, UnaryOperator};
 use number::FieldElement;
+use pil_analyzer::{BinaryOperator, Expression, UnaryOperator};
 
 use super::affine_expression::AffineExpression;
 use super::eval_error::{self, EvalError};

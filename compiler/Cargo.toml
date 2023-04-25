@@ -12,3 +12,4 @@ parser_util = { path = "../parser_util" }
 parser = { path = "../parser" }
 executor = { path = "../executor" }
 pilgen = { path = "../pilgen" }
+pil_analyzer = { path = "../pil_analyzer" }
