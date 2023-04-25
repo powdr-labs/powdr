@@ -1,7 +1,8 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::mem;
+use std::num::NonZeroUsize;
 
-use number::{DegreeType, FieldElement};
+use number::FieldElement;
 use pil_analyzer::{Identity, IdentityKind, SelectedExpressions};
 
 use crate::witgen::util::is_simple_poly;
@@ -13,7 +14,23 @@ use crate::witgen::{
 };
 
 type Application = (Vec<String>, Vec<String>);
-type Index = BTreeMap<Vec<FieldElement>, Option<DegreeType>>;
+type Index = BTreeMap<Vec<FieldElement>, IndexValue>;
+
+struct IndexValue(Option<NonZeroUsize>);
+
+impl IndexValue {
+    pub fn multiple_matches() -> Self {
+        Self(None)
+    }
+    pub fn single_row(row: usize) -> Self {
+        // TODO check how expensive the cehck is
+        // We negate to make it actually nonzero.
+        Self(Some(NonZeroUsize::new(!row)).unwrap())
+    }
+    fn row(&self) -> Option<usize> {
+        self.0.map(|row| (!row.get()))
+    }
+}
 
 /// Indices for applications of fixed columns. For each application `(INPUT_COLS, OUTPUT_COLS)`, stores
 /// - `(V, None)` if there exists two different rows where `INPUT_COLS == V` match but `OUTPUT_COLS` differ. TODO: store bitmasks of all possible outputs instead.
@@ -30,7 +47,7 @@ impl IndexedColumns {
         fixed_data: &FixedData,
         mut assignment: Vec<(String, FieldElement)>,
         mut output_fixed_columns: Vec<String>,
-    ) -> Option<&Option<DegreeType>> {
+    ) -> Option<&IndexValue> {
         // sort in order to have a single index for [X, Y] and for [Y, X]
         assignment.sort_by(|(name0, _), (name1, _)| name0.cmp(name1));
         let (input_fixed_columns, values): (Vec<_>, Vec<_>) = assignment.into_iter().unzip();
@@ -81,11 +98,10 @@ impl IndexedColumns {
             .map(|name| fixed_data.fixed_cols.get(name.as_str()).unwrap())
             .collect::<Vec<_>>();
 
-        let index: BTreeMap<Vec<FieldElement>, Option<DegreeType>> = (0..fixed_data.degree
-            as usize)
+        let index: BTreeMap<Vec<FieldElement>, IndexValue> = (0..fixed_data.degree as usize)
             .fold(
                 (
-                    BTreeMap::<Vec<FieldElement>, Option<DegreeType>>::default(),
+                    BTreeMap::<Vec<FieldElement>, IndexValue>::default(),
                     HashSet::<(Vec<FieldElement>, Vec<FieldElement>)>::default(),
                 ),
                 |(mut acc, mut set), row| {
@@ -101,9 +117,7 @@ impl IndexedColumns {
 
                     let input_output = (input, output);
 
-                    if set.contains(&input_output) {
-                        (acc, set)
-                    } else {
+                    if !set.contains(&input_output) {
                         set.insert(input_output.clone());
 
                         let (input, _) = input_output;
@@ -111,12 +125,11 @@ impl IndexedColumns {
                         acc.entry(input)
                             // we have a new, different output, so we lose knowledge
                             .and_modify(|value| {
-                                *value = None;
+                                *value = IndexValue::multiple_matches();
                             })
-                            .or_insert(Some(row as DegreeType));
-
-                        (acc, set)
+                            .or_insert(IndexValue::single_row(row));
                     }
+                    (acc, set)
                 },
             )
             .0;
@@ -126,8 +139,8 @@ impl IndexedColumns {
             index.len(),
             input_column_values.len(),
             mem::size_of::<FieldElement>(),
-            mem::size_of::<Option<DegreeType>>(),
-            index.len() * (input_column_values.len() * mem::size_of::<FieldElement>() + mem::size_of::<Option<DegreeType>>())
+            mem::size_of::<IndexValue>(),
+            index.len() * (input_column_values.len() * mem::size_of::<FieldElement>() + mem::size_of::<IndexValue>())
         );
         self.indices.insert(
             (
@@ -225,12 +238,12 @@ impl FixedLookup {
             }
         });
 
-        let row = self
+        let index_value = self
             .indices
             .get_match(fixed_data, input_assignment, output_columns.clone())
             .ok_or(EvalError::Generic("Plookup is not satisfied".to_string()))?;
 
-        let row = match row {
+        let row = match index_value.row() {
             // a single match, we continue
             Some(row) => row,
             // multiple matches, we stop and learnt nothing
@@ -242,7 +255,7 @@ impl FixedLookup {
                 .fixed_cols
                 .get(&column.as_ref())
                 .as_ref()
-                .unwrap_or_else(|| panic!("Uknown column {column}"))[*row as usize]
+                .unwrap_or_else(|| panic!("Uknown column {column}"))[row]
         });
 
         let mut reasons = vec![];
