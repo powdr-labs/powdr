@@ -6,7 +6,7 @@ use std::path::Path;
 
 mod verify;
 use pil_analyzer::json_exporter;
-pub use verify::{verify, verify_asm_string};
+pub use verify::{compile_asm_string_temp, verify, verify_asm_string};
 
 use executor::constant_evaluator;
 use number::{DegreeType, FieldElement};

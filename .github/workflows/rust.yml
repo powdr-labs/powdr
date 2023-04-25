@@ -9,7 +9,7 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  build:
+  test_debug:
 
     runs-on: ubuntu-latest
 
@@ -31,8 +31,6 @@ jobs:
         path: |
           ~/pilcom/node_modules
         key: ${{ runner.os }}-pilcom-node-modules
-    - name: Install riscv target
-      run: rustup target add riscv32imc-unknown-none-elf
     - name: Build
       run: cargo build --verbose
     - name: Install pilcom
@@ -44,3 +42,31 @@ jobs:
       run: cargo clippy --all --all-features -- -D warnings
     - name: Format
       run: cargo fmt --check --verbose
+
+  test_release:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3
+      with:
+        submodules: recursive
+    - name: ⚡ Cache rust
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+        key: ${{ runner.os }}-cargo-release-${{ hashFiles('**/Cargo.toml') }}
+    # we need nightly for the `-Z compile-std=core` option for riscv
+    - name: Install nightly cargo
+      run: rustup default nightly
+    - name: Install riscv target
+      run: rustup target add riscv32imc-unknown-none-elf
+    - name: Install stdlib
+      run: rustup component add rust-src --toolchain nightly-x86_64-unknown-linux-gnu
+    - name: Build
+      run: cargo build --release --verbose
+    - name: Run tests
+      run: cargo test -r --verbose -- --ignored
