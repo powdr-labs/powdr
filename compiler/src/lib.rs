@@ -66,7 +66,7 @@ where
     QueryCallback: FnMut(&str) -> Option<T> + Sync + Send,
 {
     compile(
-        &pil_analyzer::analyze(pil_file),
+        pil_analyzer::analyze(pil_file),
         pil_file.file_name().unwrap(),
         output_dir,
         query_callback,
@@ -87,7 +87,7 @@ where
     // TODO exporting this to string as a hack because the parser
     // is tied into the analyzer due to imports.
     compile(
-        &pil_analyzer::analyze_string(&format!("{pil}")),
+        pil_analyzer::analyze_string(&format!("{pil}")),
         file_name,
         output_dir,
         query_callback,
@@ -161,7 +161,7 @@ pub fn compile_asm_string<T: FieldElement>(
 }
 
 fn compile<T: FieldElement, QueryCallback>(
-    analyzed: &Analyzed<T>,
+    analyzed: Analyzed<T>,
     file_name: &OsStr,
     output_dir: &Path,
     query_callback: Option<QueryCallback>,
@@ -170,17 +170,25 @@ fn compile<T: FieldElement, QueryCallback>(
 where
     QueryCallback: FnMut(&str) -> Option<T> + Send + Sync,
 {
+    log::info!("Optimizing pil...");
+    let analyzed = pilopt::optimize(analyzed);
+    let optimized_pil_file_name = output_dir.join(format!(
+        "{}_opt.pil",
+        Path::new(file_name).file_stem().unwrap().to_str().unwrap()
+    ));
+    fs::write(optimized_pil_file_name.clone(), format!("{analyzed}")).unwrap();
+    log::info!("Wrote {}.", optimized_pil_file_name.to_str().unwrap());
     let mut success = true;
     let start = Instant::now();
     log::info!("Evaluating fixed columns...");
-    let (constants, degree) = constant_evaluator::generate(analyzed);
+    let (constants, degree) = constant_evaluator::generate(&analyzed);
     log::info!("Took {}", start.elapsed().as_secs_f32());
     if analyzed.constant_count() == constants.len() {
         write_constants_to_fs(&constants, output_dir, degree);
         log::info!("Generated constants.");
 
         log::info!("Deducing witness columns...");
-        let commits = executor::witgen::generate(analyzed, degree, &constants, query_callback);
+        let commits = executor::witgen::generate(&analyzed, degree, &constants, query_callback);
         write_commits_to_fs(&commits, output_dir, degree);
         log::info!("Generated witness.");
 
@@ -188,7 +196,7 @@ where
         if let Some(Backend::Halo2) = prove_with {
             let degree = usize::BITS - degree.leading_zeros() + 1;
             let params = halo2::kzg_params(degree as usize);
-            let proof = halo2::prove_ast(analyzed, constants, commits, params);
+            let proof = halo2::prove_ast(&analyzed, constants, commits, params);
             write_proof_to_fs(&proof, output_dir);
             log::info!("Generated proof.");
         }
@@ -196,7 +204,7 @@ where
         log::warn!("Not writing constants.bin because not all declared constants are defined (or there are none).");
         success = false;
     }
-    let json_out = json_exporter::export(analyzed);
+    let json_out = json_exporter::export(&analyzed);
     write_compiled_json_to_fs(&json_out, file_name, output_dir);
     log::info!("Compiled PIL source code.");
 

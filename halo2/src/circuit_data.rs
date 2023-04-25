@@ -14,10 +14,12 @@ pub(crate) struct CircuitData<'a, T> {
 
 impl<'a, T: FieldElement> CircuitData<'a, T> {
     pub fn from(fixed: Vec<(&'a str, Vec<T>)>, witness: Vec<(&'a str, Vec<T>)>) -> Self {
-        assert_eq!(
-            fixed.get(0).unwrap().1.len(),
-            witness.get(0).unwrap().1.len()
-        );
+        if !fixed.is_empty() && !witness.is_empty() {
+            assert_eq!(
+                fixed.get(0).unwrap().1.len(),
+                witness.get(0).unwrap().1.len()
+            );
+        }
 
         let const_cols = fixed.iter().enumerate().map(|(index, (name, _))| {
             (

@@ -1,6 +1,7 @@
 use ast::analyzed::{
     Analyzed, Expression, FunctionValueDefinition, PolyID, PolynomialReference, PolynomialType,
 };
+use num_traits::Zero;
 use number::{DegreeType, FieldElement};
 
 pub use self::eval_result::{
@@ -31,6 +32,9 @@ pub fn generate<'a, T: FieldElement, QueryCallback>(
 where
     QueryCallback: FnMut(&str) -> Option<T> + Send + Sync,
 {
+    if degree.is_zero() {
+        panic!("Resulting degree is zero. Please ensure that there is at least one non-constant fixed column to set the degree.");
+    }
     let witness_cols: Vec<_> = analyzed
         .committed_polys_in_source_order()
         .iter()

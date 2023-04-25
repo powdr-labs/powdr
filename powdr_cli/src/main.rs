@@ -199,6 +199,18 @@ enum Commands {
         file: String,
     },
 
+    /// Optimizes the PIL file and outputs it on stdout.
+    OptimizePIL {
+        /// Input file
+        file: String,
+
+        /// The field to use
+        #[arg(long)]
+        #[arg(default_value_t = FieldArgument::Gl)]
+        #[arg(value_parser = clap_enum_variants!(FieldArgument))]
+        field: FieldArgument,
+    },
+
     /// Exports witness and fixed columns to a csv file.
     ExportCsv {
         /// Input PIL file
@@ -287,6 +299,9 @@ fn main() {
                 Ok(ast) => println!("{ast}"),
                 Err(err) => err.output_to_stderr(),
             }
+        }
+        Commands::OptimizePIL { file, field } => {
+            call_with_field!(optimize_and_output::<field>(&file))
         }
         Commands::Pil {
             file,
@@ -459,4 +474,11 @@ fn read_and_prove<T: FieldElement>(
             ))
         }
     }
+}
+
+fn optimize_and_output<T: FieldElement>(file: &str) {
+    println!(
+        "{}",
+        pilopt::optimize(compiler::analyze_pil::<T>(Path::new(file)))
+    );
 }
