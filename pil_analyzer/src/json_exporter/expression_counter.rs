@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use pil_analyzer::{
+use crate::{
     Analyzed, Expression, Identity, Polynomial, PolynomialType, PublicDeclaration,
     SelectedExpressions, StatementIdentifier,
 };

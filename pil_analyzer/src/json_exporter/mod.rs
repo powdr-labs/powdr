@@ -3,7 +3,7 @@ use std::collections::{BTreeMap, HashMap};
 
 use json::{object, JsonValue};
 
-use pil_analyzer::{
+use crate::{
     Analyzed, BinaryOperator, Expression, FunctionValueDefinition, IdentityKind,
     PolynomialReference, PolynomialType, StatementIdentifier, UnaryOperator,
 };
@@ -343,8 +343,6 @@ mod test {
     use std::fs;
     use std::process::Command;
 
-    use pil_analyzer;
-
     use super::*;
 
     fn generate_json_pair(file: &str) -> (JsonValue, JsonValue) {
@@ -353,7 +351,7 @@ mod test {
 
         let file = std::path::PathBuf::from("../test_data/polygon-hermez/").join(file);
 
-        let analyzed = pil_analyzer::analyze(&file);
+        let analyzed = crate::analyze(&file);
         let json_out = export(&analyzed);
 
         let pilcom = std::env::var("PILCOM").expect(

@@ -5,9 +5,10 @@ use std::io::{BufWriter, Write};
 use std::path::Path;
 
 mod verify;
+use pil_analyzer::json_exporter;
 pub use verify::{verify, verify_asm_string};
 
-use executor::{constant_evaluator, json_exporter};
+use executor::constant_evaluator;
 use number::{DegreeType, FieldElement};
 use parser::ast::PILFile;
 
