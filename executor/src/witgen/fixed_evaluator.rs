@@ -1,5 +1,5 @@
-use super::affine_expression::AffineExpression;
-use super::eval_error::EvalError;
+use super::affine_expression::{AffineExpression, AffineResult};
+
 use super::expression_evaluator::SymbolicVariables;
 use super::FixedData;
 
@@ -16,11 +16,11 @@ impl<'a> FixedEvaluator<'a> {
 }
 
 impl<'a> SymbolicVariables for FixedEvaluator<'a> {
-    fn constant(&self, name: &str) -> Result<AffineExpression, EvalError> {
+    fn constant(&self, name: &str) -> AffineResult {
         Ok(self.fixed_data.constants[name].into())
     }
 
-    fn value(&self, name: &str, next: bool) -> Result<AffineExpression, EvalError> {
+    fn value(&self, name: &str, next: bool) -> AffineResult {
         // TODO arrays
         if let Some(col_data) = self.fixed_data.fixed_cols.get(name) {
             let degree = col_data.len();
@@ -31,9 +31,7 @@ impl<'a> SymbolicVariables for FixedEvaluator<'a> {
             };
             Ok(col_data[row].into())
         } else {
-            Err("Can only access fixed columns in the fixed evaluator."
-                .to_string()
-                .into())
+            panic!("only fixed columns can be accessed in the fixed evaluator.")
         }
     }
 

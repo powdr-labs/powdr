@@ -4,11 +4,9 @@ use std::iter::once;
 use itertools::{Either, Itertools};
 
 use super::{FixedLookup, Machine};
-use crate::witgen::{
-    affine_expression::AffineExpression,
-    eval_error::{self, EvalError},
-    EvalResult, FixedData,
-};
+use crate::witgen::affine_expression::AffineResult;
+use crate::witgen::{EvalError, EvalResult, FixedData};
+use crate::witgen::{EvalValue, IncompleteCause};
 use number::FieldElement;
 use pil_analyzer::PolynomialReference;
 use pil_analyzer::{Expression, Identity, IdentityKind, SelectedExpressions};
@@ -67,7 +65,7 @@ impl Machine for DoubleSortedWitnesses {
         fixed_data: &FixedData,
         _fixed_lookup: &mut FixedLookup,
         kind: IdentityKind,
-        left: &[Result<AffineExpression, EvalError>],
+        left: &[AffineResult],
         right: &SelectedExpressions,
     ) -> Option<EvalResult> {
         if kind != IdentityKind::Permutation
@@ -152,7 +150,7 @@ impl DoubleSortedWitnesses {
     fn process_plookup_internal(
         &mut self,
         fixed_data: &FixedData,
-        left: &[Result<AffineExpression, EvalError>],
+        left: &[AffineResult],
         right: &SelectedExpressions,
     ) -> EvalResult {
         // We blindly assume the lookup is of the form
@@ -166,11 +164,13 @@ impl DoubleSortedWitnesses {
             Err(x) => Either::Right(x),
         });
         if !errors.is_empty() {
-            return Err(errors
-                .into_iter()
-                .cloned()
-                .reduce(eval_error::combine)
-                .unwrap());
+            return Ok(EvalValue::incomplete(
+                errors
+                    .into_iter()
+                    .cloned()
+                    .reduce(|x, y| x.combine(y))
+                    .unwrap(),
+            ));
         }
 
         let is_write = match &right.selector {
@@ -202,11 +202,15 @@ impl DoubleSortedWitnesses {
         }
 
         // TODO this does not check any of the failure modes
-        let mut assignments = vec![];
+        let mut assignments = EvalValue::complete(vec![]);
         if is_write {
             let value = match left[2].constant_value() {
                 Some(v) => v,
-                None => return Ok(vec![]),
+                None => {
+                    return Ok(EvalValue::incomplete(
+                        IncompleteCause::NonConstantWriteValue,
+                    ))
+                }
             };
 
             log::debug!(
@@ -231,10 +235,10 @@ impl DoubleSortedWitnesses {
                 addr.to_integer(),
                 value.to_integer()
             );
-            assignments.extend(match (left[2].clone() - (*value).into()).solve() {
-                Ok(ass) => ass,
-                Err(_) => return Ok(vec![]),
-            });
+            let ass = (left[2].clone() - (*value).into())
+                .solve()
+                .map_err(|()| EvalError::ConstraintUnsatisfiable(String::new()))?;
+            assignments.combine(ass);
         }
         Ok(assignments)
     }

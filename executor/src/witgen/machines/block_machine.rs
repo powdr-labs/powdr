@@ -3,16 +3,15 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use itertools::Itertools;
 
 use super::{EvalResult, FixedData, FixedLookup};
-use crate::witgen::eval_error;
+use crate::witgen::EvalValue;
 use crate::witgen::{
-    affine_expression::AffineExpression,
+    affine_expression::{AffineExpression, AffineResult},
     bit_constraints::{BitConstraint, BitConstraintSet},
-    eval_error::EvalError,
     expression_evaluator::ExpressionEvaluator,
     machines::Machine,
     symbolic_witness_evaluator::{SymoblicWitnessEvaluator, WitnessColumnEvaluator},
     util::{is_simple_poly, WitnessColumnNamer},
-    Constraint,
+    Constraint, EvalError,
 };
 use number::{DegreeType, FieldElement};
 use pil_analyzer::{Expression, Identity, IdentityKind, SelectedExpressions};
@@ -127,7 +126,7 @@ impl Machine for BlockMachine {
         fixed_data: &FixedData,
         fixed_lookup: &mut FixedLookup,
         kind: IdentityKind,
-        left: &[Result<AffineExpression, EvalError>],
+        left: &[AffineResult],
         right: &SelectedExpressions,
     ) -> Option<EvalResult> {
         if is_simple_poly(right.selector.as_ref()?)? != self.selector
@@ -169,7 +168,7 @@ impl BlockMachine {
     /// Extends the data with a new block.
     fn append_new_block(&mut self, max_len: DegreeType) -> Result<(), EvalError> {
         if self.rows() + self.block_size as DegreeType >= max_len {
-            return Err("Rows in block machine exhausted.".to_string().into());
+            return Err(EvalError::RowsExhausted);
         }
         for col in self.data.values_mut() {
             col.resize_with(col.len() + self.block_size, || None);
@@ -185,7 +184,7 @@ impl BlockMachine {
         &mut self,
         fixed_data: &FixedData,
         fixed_lookup: &mut FixedLookup,
-        left: &[Result<AffineExpression, EvalError>],
+        left: &[AffineResult],
         right: &SelectedExpressions,
     ) -> EvalResult {
         // First check if we already store the value.
@@ -197,18 +196,18 @@ impl BlockMachine {
             // All values on the left hand side are known, check if this is a query
             // to the last row.
             self.row = self.rows() - 1;
-            if self.process_outer_query(fixed_data, left, right).is_ok() {
-                return Ok(vec![]);
-            } else {
-                return Err("Lookup of constant values in block machine failed."
-                    .to_string()
-                    .into());
-            }
+            return self
+                .process_outer_query(fixed_data, left, right)
+                .map(|value| {
+                    assert!(value.constraints.is_empty());
+                    assert!(value.is_complete());
+                    EvalValue::complete(vec![])
+                });
         }
 
         let old_len = self.rows();
         self.append_new_block(fixed_data.degree)?;
-        let mut outer_assignments = vec![];
+        let mut outer_assignments = EvalValue::complete(vec![]);
 
         // TODO this assumes we are always using the same lookup for this machine.
         let sequence = self.processing_sequence_cache.get_processing_sequence(left);
@@ -229,11 +228,12 @@ impl BlockMachine {
             self.row = (old_len as i64 + row_delta + fixed_data.degree as i64) as DegreeType
                 % fixed_data.degree;
             match self.process_identity(fixed_data, fixed_lookup, left, right, identity) {
-                Ok(result) => {
-                    if !result.is_empty() {
+                Ok(value) => {
+                    if !value.is_empty() {
                         progress_steps.push(step);
                         errors.clear();
-                        outer_assignments.extend(self.handle_eval_result(result))
+                        let value = self.handle_eval_result(value);
+                        outer_assignments.combine(value);
                     }
                 }
                 Err(e) => errors.push(format!("In row {}: {e}", self.row).into()),
@@ -249,6 +249,7 @@ impl BlockMachine {
             .cloned()
             .collect::<HashSet<_>>();
         let value_assignments = outer_assignments
+            .constraints
             .iter()
             .filter_map(|(var, con)| match con {
                 Constraint::Assignment(_) => Some(*var),
@@ -261,40 +262,47 @@ impl BlockMachine {
                 .report_processing_sequence(left, progress_steps);
             Ok(outer_assignments)
         } else if !errors.is_empty() {
-            Err(errors.into_iter().reduce(eval_error::combine).unwrap())
+            Err(errors
+                .into_iter()
+                .reduce(|x: EvalError, y| x.combine(y))
+                .unwrap())
         } else {
             Err("Could not assign all variables in the query - maybe the machine does not have enough constraints?".to_string().into())
         }
     }
 
-    fn handle_eval_result(&mut self, result: Vec<(usize, Constraint)>) -> Vec<(usize, Constraint)> {
-        result
-            .into_iter()
-            .filter_map(|(poly, constraint)| {
-                let (poly, next) = self.extract_next(poly);
-                let r = (self.row + next as DegreeType) % self.degree;
-                let is_outside_poly = !self.data.contains_key(&poly);
-                if is_outside_poly {
-                    assert!(!next);
+    fn handle_eval_result(&mut self, value: EvalValue) -> EvalValue {
+        EvalValue {
+            constraints: value
+                .constraints
+                .into_iter()
+                .filter_map(|(poly, constraint)| {
+                    let (poly, next) = self.extract_next(poly);
+                    let r = (self.row + next as DegreeType) % self.degree;
+                    let is_outside_poly = !self.data.contains_key(&poly);
+                    if is_outside_poly {
+                        assert!(!next);
 
-                    Some((poly, constraint))
-                } else {
-                    match constraint {
-                        Constraint::Assignment(a) => {
-                            let values = self.data.get_mut(&poly).unwrap();
-                            if (r as usize) < values.len() {
-                                // do not write to other rows for now
-                                values[r as usize] = Some(a);
+                        Some((poly, constraint))
+                    } else {
+                        match constraint {
+                            Constraint::Assignment(a) => {
+                                let values = self.data.get_mut(&poly).unwrap();
+                                if (r as usize) < values.len() {
+                                    // do not write to other rows for now
+                                    values[r as usize] = Some(a);
+                                }
+                            }
+                            Constraint::BitConstraint(bc) => {
+                                self.bit_constraints.entry(poly).or_default().insert(r, bc);
                             }
                         }
-                        Constraint::BitConstraint(bc) => {
-                            self.bit_constraints.entry(poly).or_default().insert(r, bc);
-                        }
+                        None
                     }
-                    None
-                }
-            })
-            .collect()
+                })
+                .collect(),
+            ..value
+        }
     }
 
     /// Processes an identity which is either the query or
@@ -303,7 +311,7 @@ impl BlockMachine {
         &self,
         fixed_data: &FixedData,
         fixed_lookup: &mut FixedLookup,
-        left: &[Result<AffineExpression, EvalError>],
+        left: &[AffineResult],
         right: &SelectedExpressions,
         identity: IdentityInSequence,
     ) -> EvalResult {
@@ -330,32 +338,32 @@ impl BlockMachine {
     fn process_outer_query(
         &self,
         fixed_data: &FixedData,
-        left: &[Result<AffineExpression, EvalError>],
+        left: &[AffineResult],
         right: &SelectedExpressions,
     ) -> EvalResult {
         assert!(self.row as usize % self.block_size == self.block_size - 1);
-        let mut errors = vec![];
-        let mut results = vec![];
-
-        // TODO how to properly hanlde the errors here?
-        // We only return them if we do not make any progress.
+        let mut results = EvalValue::complete(vec![]);
 
         for (l, r) in left.iter().zip(right.expressions.iter()) {
             match (l, self.evaluate(fixed_data, r)) {
-                (Ok(l), Ok(r)) => match (l.clone() - r).solve_with_bit_constraints(self) {
-                    Ok(result) => results.extend(result),
-                    Err(e) => errors.push(e),
-                },
-                (Err(e), Ok(_)) => errors.push(e.clone()),
-                (Ok(_), Err(e)) => errors.push(e),
-                (Err(e1), Err(e2)) => errors.extend([e1.clone(), e2]),
+                (Ok(l), Ok(r)) => {
+                    let result = (l.clone() - r).solve_with_bit_constraints(self)?;
+                    results.combine(result);
+                }
+                (Err(e), Ok(_)) => {
+                    results.status = results.status.combine(e.clone());
+                }
+                (Ok(_), Err(e)) => {
+                    results.status = results.status.combine(e);
+                }
+                (Err(e1), Err(e2)) => {
+                    results.status = results.status.combine(e1.clone());
+                    results.status = results.status.combine(e2);
+                }
             }
         }
-        if results.is_empty() && !errors.is_empty() {
-            Err(errors.into_iter().reduce(eval_error::combine).unwrap())
-        } else {
-            Ok(results)
-        }
+
+        Ok(results)
     }
 
     /// Process a polynomial identity internal no the machine.
@@ -364,7 +372,10 @@ impl BlockMachine {
         fixed_data: &FixedData,
         identity: &Expression,
     ) -> EvalResult {
-        let evaluated = self.evaluate(fixed_data, identity)?;
+        let evaluated = match self.evaluate(fixed_data, identity) {
+            Ok(evaluated) => evaluated,
+            Err(cause) => return Ok(EvalValue::incomplete(cause)),
+        };
         evaluated.solve_with_bit_constraints(self).map_err(|e| {
             let witness_data = WitnessData {
                 fixed_data,
@@ -409,11 +420,7 @@ impl BlockMachine {
         }
     }
 
-    fn evaluate(
-        &self,
-        fixed_data: &FixedData,
-        expression: &Expression,
-    ) -> Result<AffineExpression, EvalError> {
+    fn evaluate(&self, fixed_data: &FixedData, expression: &Expression) -> AffineResult {
         ExpressionEvaluator::new(SymoblicWitnessEvaluator::new(
             fixed_data,
             self.row,
@@ -451,7 +458,7 @@ struct WitnessData<'a> {
 }
 
 impl<'a> WitnessColumnEvaluator for WitnessData<'a> {
-    fn value(&self, name: &str, next: bool) -> Result<AffineExpression, EvalError> {
+    fn value(&self, name: &str, next: bool) -> AffineResult {
         let id = self.fixed_data.witness_ids[name];
         let row = if next {
             (self.row + 1) % self.fixed_data.degree
@@ -511,8 +518,8 @@ struct SequenceCacheKey {
     known_columns: Vec<bool>,
 }
 
-impl From<&[Result<AffineExpression, EvalError>]> for SequenceCacheKey {
-    fn from(value: &[Result<AffineExpression, EvalError>]) -> Self {
+impl From<&[AffineResult]> for SequenceCacheKey {
+    fn from(value: &[AffineResult]) -> Self {
         SequenceCacheKey {
             known_columns: value
                 .iter()
@@ -536,10 +543,7 @@ impl ProcessingSequenceCache {
         }
     }
 
-    pub fn get_processing_sequence(
-        &self,
-        left: &[Result<AffineExpression, EvalError>],
-    ) -> Vec<SequenceStep> {
+    pub fn get_processing_sequence(&self, left: &[AffineResult]) -> Vec<SequenceStep> {
         self.cache.get(&left.into()).cloned().unwrap_or_else(|| {
             let block_size = self.block_size as i64;
             (-1..=block_size)
@@ -564,7 +568,7 @@ impl ProcessingSequenceCache {
 
     pub fn report_processing_sequence(
         &mut self,
-        left: &[Result<AffineExpression, EvalError>],
+        left: &[AffineResult],
         sequence: Vec<SequenceStep>,
     ) {
         self.cache.entry(left.into()).or_insert(sequence);

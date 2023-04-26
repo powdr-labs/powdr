@@ -5,8 +5,9 @@ use pil_analyzer::{IdentityKind, SelectedExpressions};
 
 pub use self::fixed_lookup_machine::FixedLookup;
 
+use super::affine_expression::AffineResult;
 use super::EvalResult;
-use super::{affine_expression::AffineExpression, eval_error::EvalError, FixedData};
+use super::FixedData;
 
 mod block_machine;
 mod double_sorted_witness_machine;
@@ -36,7 +37,7 @@ pub trait Machine {
         fixed_data: &FixedData,
         fixed_lookup: &mut FixedLookup,
         kind: IdentityKind,
-        left: &[Result<AffineExpression, EvalError>],
+        left: &[AffineResult],
         right: &SelectedExpressions,
     ) -> Option<EvalResult>;
 

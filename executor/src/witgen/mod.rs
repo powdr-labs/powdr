@@ -1,16 +1,16 @@
 use std::collections::HashMap;
-use std::fmt::Display;
 
 use number::{DegreeType, FieldElement};
 use pil_analyzer::{Analyzed, Expression, FunctionValueDefinition};
 
-use self::bit_constraints::BitConstraint;
-use self::eval_error::EvalError;
+pub use self::eval_result::{
+    Constraint, Constraints, EvalError, EvalResult, EvalStatus, EvalValue, IncompleteCause,
+};
 use self::util::WitnessColumnNamer;
 
 mod affine_expression;
 mod bit_constraints;
-mod eval_error;
+mod eval_result;
 mod expression_evaluator;
 pub mod fixed_evaluator;
 mod generator;
@@ -121,25 +121,6 @@ fn rows_are_repeating(values: &[(&str, Vec<FieldElement>)]) -> Option<usize> {
             (1..=period).all(|i| value[len - i - period] == value[len - i])
         })
     })
-}
-
-/// Result of evaluating an expression / lookup.
-/// New assignments or constraints for witness columns identified by an ID.
-type EvalResult = Result<Vec<(usize, Constraint)>, EvalError>;
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Constraint {
-    Assignment(FieldElement),
-    BitConstraint(BitConstraint),
-}
-
-impl Display for Constraint {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Constraint::Assignment(a) => write!(f, " = {a}"),
-            Constraint::BitConstraint(bc) => write!(f, ":& {bc}"),
-        }
-    }
 }
 
 /// Data that is fixed for witness generation.

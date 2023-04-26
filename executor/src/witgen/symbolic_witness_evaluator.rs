@@ -1,15 +1,17 @@
 use number::DegreeType;
 
 use super::{
-    affine_expression::AffineExpression, eval_error::EvalError,
-    expression_evaluator::SymbolicVariables, util::WitnessColumnNamer, FixedData,
+    affine_expression::{AffineExpression, AffineResult},
+    expression_evaluator::SymbolicVariables,
+    util::WitnessColumnNamer,
+    FixedData,
 };
 
 pub trait WitnessColumnEvaluator {
     /// Returns a symbolic or concrete value for the given witness column and next flag.
     /// This function defines the mapping to IDs.
     /// It should be used together with a matching reverse mapping in WitnessColumnNamer.
-    fn value(&self, name: &str, next: bool) -> Result<AffineExpression, EvalError>;
+    fn value(&self, name: &str, next: bool) -> AffineResult;
 }
 
 /// An evaluator (to be used together with ExpressionEvaluator) that performs concrete
@@ -41,11 +43,11 @@ impl<'a, WA> SymbolicVariables for SymoblicWitnessEvaluator<'a, WA>
 where
     WA: WitnessColumnEvaluator + WitnessColumnNamer,
 {
-    fn constant(&self, name: &str) -> Result<AffineExpression, EvalError> {
+    fn constant(&self, name: &str) -> AffineResult {
         Ok(self.fixed_data.constants[name].into())
     }
 
-    fn value(&self, name: &str, next: bool) -> Result<AffineExpression, EvalError> {
+    fn value(&self, name: &str, next: bool) -> AffineResult {
         // TODO arrays
         if self.fixed_data.witness_ids.contains_key(name) {
             self.witness_access.value(name, next)
