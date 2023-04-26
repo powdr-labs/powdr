@@ -1,9 +1,8 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 
-use crate::{
-    disambiguator,
-    parser::{self, Argument, Register, Statement},
-};
+use crate::data_parser::{self, DataValue};
+use crate::parser::{self, Argument, Register, Statement};
+use crate::{disambiguator, reachability};
 
 use super::parser::Constant;
 
@@ -24,16 +23,16 @@ pub fn compile_riscv_asm(mut assemblies: BTreeMap<String, String>) -> String {
             .map(|(name, contents)| (name, parser::parse_asm(&contents)))
             .collect(),
     );
-    let mut objects = parser::extract_data_objects(&statements);
+    let mut objects = data_parser::extract_data_objects(&statements);
 
     // Reduce to the code that is actually reachable from main
     // (and the objects that are referred from there)
-    filter_reachable_from("main", &mut statements, &mut objects);
+    reachability::filter_reachable_from("main", &mut statements, &mut objects);
 
     // Replace dynamic references to code labels
     replace_dynamic_label_references(&mut statements, &objects);
 
-    let (data_code, data_positions) = store_data_objects(objects.into_iter(), data_start);
+    let (data_code, data_positions) = store_data_objects(&objects, data_start);
     let mut output = preamble()
         + &data_code
         + &format!("// Set stack pointer\nx2 <=X= {stack_start};\n")
@@ -47,93 +46,12 @@ pub fn compile_riscv_asm(mut assemblies: BTreeMap<String, String>) -> String {
     output
 }
 
-fn filter_reachable_from(
-    label: &str,
-    statements: &mut Vec<Statement>,
-    objects: &mut BTreeMap<String, Vec<u8>>,
-) {
-    let label_offsets = parser::extract_label_offsets(statements);
-    let mut queued_labels: BTreeSet<&str> = vec![label].into_iter().collect();
-    let mut referenced_labels: BTreeSet<&str> = vec![label].into_iter().collect();
-    let mut processed_labels = BTreeSet::<&str>::new();
-    // Labels that are included in a basic block that starts with a different label.
-    let mut secondary_labels = BTreeSet::<&str>::new();
-    let mut label_queue = vec![label];
-    while let Some(l) = label_queue.pop() {
-        if objects.contains_key(l) {
-            // We record but do not process references to objects
-            continue;
-        }
-        if !processed_labels.insert(l) {
-            continue;
-        }
-        let offset = *label_offsets.get(l).unwrap_or_else(|| {
-            eprintln!("The RISCV assembly code references an external routine / label that is not available:");
-            eprintln!("{l}");
-            panic!();
-        });
-        let (referenced_labels_in_block, seen_labels_in_block) =
-            basic_block_references_starting_from(&statements[offset..]);
-        assert!(!secondary_labels.contains(l));
-        secondary_labels.extend(seen_labels_in_block.clone());
-        secondary_labels.remove(l);
-        processed_labels.extend(seen_labels_in_block);
-
-        for referenced in &referenced_labels_in_block {
-            if !queued_labels.contains(referenced) && !processed_labels.contains(referenced) {
-                label_queue.push(referenced);
-                queued_labels.insert(referenced);
-            }
-        }
-        referenced_labels.extend(referenced_labels_in_block);
-    }
-    objects.retain(|name, _value| referenced_labels.contains(name.as_str()));
-    let code = processed_labels
-        .difference(&secondary_labels)
-        .flat_map(|l| {
-            let offset = *label_offsets.get(l).unwrap();
-            basic_block_code_starting_from(&statements[offset..])
-        })
-        .collect();
-    *statements = code;
-}
-
-fn basic_block_references_starting_from(statements: &[Statement]) -> (Vec<&str>, Vec<&str>) {
-    let mut seen_labels = vec![];
-    let mut referenced_labels = BTreeSet::<&str>::new();
-    for s in statements {
-        if let Statement::Label(l) = s {
-            seen_labels.push(l.as_str());
-        } else {
-            referenced_labels.extend(parser::referenced_labels(s))
-        }
-        if parser::ends_control_flow(s) {
-            break;
-        }
-    }
-    (referenced_labels.into_iter().collect(), seen_labels)
-}
-
-fn basic_block_code_starting_from(statements: &[Statement]) -> Vec<Statement> {
-    let mut code = vec![];
-    for s in statements {
-        if let Statement::Directive(_, _) = s {
-            panic!("Included directive in code block: {s}");
-        }
-        code.push(s.clone());
-        if parser::ends_control_flow(s) {
-            break;
-        }
-    }
-    code
-}
-
 /// Replace certain patterns of references to code labels by
 /// special instructions. We ignore any references to data objects
 /// because they will be handled differently.
 fn replace_dynamic_label_references(
     statements: &mut Vec<Statement>,
-    data_objects: &BTreeMap<String, Vec<u8>>,
+    data_objects: &BTreeMap<String, Vec<DataValue>>,
 ) {
     let mut replacement = vec![];
     /*
@@ -171,7 +89,7 @@ fn replace_dynamic_label_references(
 fn replace_dynamic_label_reference(
     s1: &Statement,
     s2: &Statement,
-    data_objects: &BTreeMap<String, Vec<u8>>,
+    data_objects: &BTreeMap<String, Vec<DataValue>>,
 ) -> Option<Statement> {
     let Statement::Instruction(instr1, args1) = s1 else { return None; };
     let Statement::Instruction(instr2, args2) = s2 else { return None; };
@@ -189,29 +107,62 @@ fn replace_dynamic_label_reference(
     ))
 }
 
-fn store_data_objects(
-    objects: impl Iterator<Item = (String, Vec<u8>)>,
+fn store_data_objects<'a>(
+    objects: impl IntoIterator<Item = (&'a String, &'a Vec<DataValue>)> + Copy,
     mut memory_start: u32,
 ) -> (String, BTreeMap<String, u32>) {
     memory_start = ((memory_start + 7) / 8) * 8;
-    let mut code = String::new();
+    let mut current_pos = memory_start;
     let mut positions = BTreeMap::new();
+    for (name, data) in objects.into_iter() {
+        // TODO check if we need to use multiples of four.
+        let size: u32 = data
+            .iter()
+            .map(|d| next_multiple_of_four(d.size()) as u32)
+            .sum();
+        positions.insert(name.clone(), current_pos);
+        current_pos += size;
+    }
+
+    let mut code = String::new();
     for (name, data) in objects {
         code += &format!("// data {name}\n");
-        positions.insert(name, memory_start);
-        for i in 0..((data.len() + 3) / 4) {
-            let v = (0..4)
-                .map(|j| (data.get(i * 4 + j).cloned().unwrap_or_default() as u32) << (j * 8))
-                .reduce(|a, b| a | b)
-                .unwrap();
-            code += &format!(
-                "addr <=X= 0x{:x};\nmstore 0x{v:x};\n",
-                memory_start + (i * 4) as u32
-            );
+        let mut pos = positions[name];
+        for item in data {
+            match &item {
+                DataValue::Direct(bytes) => {
+                    for i in (0..bytes.len()).step_by(4) {
+                        let v = (0..4)
+                            .map(|j| {
+                                (bytes.get(i + j).cloned().unwrap_or_default() as u32) << (j * 8)
+                            })
+                            .reduce(|a, b| a | b)
+                            .unwrap();
+                        code += &format!("addr <=X= 0x{:x};\nmstore 0x{v:x};\n", pos + i as u32);
+                    }
+                }
+                DataValue::Reference(sym) => {
+                    code += &format!("addr <=X= 0x{pos:x};\n");
+                    if let Some(p) = positions.get(sym) {
+                        code += &format!("mstore 0x{p:x};\n");
+                    } else {
+                        // code reference
+                        // TODO should be possible without temporary
+                        code += &format!(
+                            "tmp1 <=X= load_label({});\nmstore tmp1;\n",
+                            escape_label(sym)
+                        );
+                    }
+                }
+            }
+            pos += item.size() as u32;
         }
-        memory_start += (((data.len() + 7) / 8) * 8) as u32;
     }
     (code, positions)
+}
+
+fn next_multiple_of_four(x: usize) -> usize {
+    ((x + 3) / 4) * 4
 }
 
 fn insert_data_positions(

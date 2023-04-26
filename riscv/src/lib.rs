@@ -10,8 +10,10 @@ use walkdir::WalkDir;
 use number::FieldElement;
 
 pub mod compiler;
+mod data_parser;
 mod disambiguator;
 pub mod parser;
+mod reachability;
 
 /// Compiles a rust file all the way down to PIL and generates
 /// fixed and witness columns.
