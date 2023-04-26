@@ -39,10 +39,12 @@ start::
  dec_CNT;
  jmp start;
 
-end::
+check::
  A <=X= A - ${ ("input", 0) };
  assert_zero A;
 
+end::
+ jmp end;
  
 /// -------------------------- compiled into the following pil file -------------------------------
 

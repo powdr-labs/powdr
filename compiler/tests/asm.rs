@@ -47,6 +47,6 @@ fn functional_instructions() {
 }
 
 #[test]
-fn full_pil_column() {
+fn full_pil_constant() {
     verify_asm("full_pil_constant.asm", Default::default());
 }

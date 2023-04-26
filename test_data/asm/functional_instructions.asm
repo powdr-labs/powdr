@@ -31,7 +31,9 @@ pil{
 }
 
 instr assert_zero X { XIsZero = 1 }
+instr loop { pc' = pc }
 
 B <=X= ${ ("input", 0) };
 A <=X= wrap(B + 0xffffffec);
 assert_zero A;
+loop;

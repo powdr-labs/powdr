@@ -2,6 +2,7 @@
 
 use std::collections::{BTreeMap, HashMap};
 
+use number::AbstractNumberType;
 use number::DegreeType;
 use number::FieldElement;
 
@@ -166,7 +167,7 @@ impl ASMPILConverter {
                 assert_eq!(self.pc_name, None);
                 self.pc_name = Some(name.to_string());
                 self.line_lookup
-                    .push((name.to_string(), "line".to_string()));
+                    .push((name.to_string(), "p_line".to_string()));
                 default_update = Some(build_add(direct_reference(name), build_number(1u64)));
             }
             Some(RegisterFlag::IsAssignment) => {
@@ -530,8 +531,16 @@ impl ASMPILConverter {
         // TODO this should loop with the number of lines in the program, as should all the other program constants!
         self.pil.push(Statement::PolynomialConstantDefinition(
             0,
-            "line".to_string(),
-            FunctionDefinition::Mapping(vec!["i".to_string()], direct_reference("i")),
+            "p_line".to_string(),
+            FunctionDefinition::Array(
+                ArrayExpression::Value(
+                    (0..self.code_lines.len())
+                        .map(|i| build_number(i as AbstractNumberType))
+                        .collect(),
+                )
+                .pad_with_last()
+                .unwrap_or_else(|| ArrayExpression::RepeatedValue(vec![build_number(0)])),
+            ),
         ));
         // TODO check that all of them are matched against execution trace witnesses.
         let mut program_constants = self
@@ -638,7 +647,8 @@ impl ASMPILConverter {
                 name.clone(),
                 FunctionDefinition::Array(
                     ArrayExpression::value(values.into_iter().map(build_number).collect())
-                        .pad_with_zeroes(),
+                        .pad_with_last()
+                        .unwrap_or_else(|| ArrayExpression::RepeatedValue(vec![build_number(0)])),
                 ),
             ));
         }
@@ -946,22 +956,22 @@ X = (((((read_X_A * A) + (read_X_CNT * CNT)) + (read_X_pc * pc)) + X_const) + (X
 A' = (((first_step' * 0) + (reg_write_X_A * X)) + ((1 - (first_step' + reg_write_X_A)) * A));
 CNT' = ((((first_step' * 0) + (reg_write_X_CNT * X)) + (instr_dec_CNT * (CNT - 1))) + ((1 - ((first_step' + reg_write_X_CNT) + instr_dec_CNT)) * CNT));
 pc' = ((1 - first_step') * (((instr_jmpz * ((XIsZero * instr_jmpz_param_l) + ((1 - XIsZero) * (pc + 1)))) + (instr_jmp * instr_jmp_param_l)) + ((1 - (instr_jmpz + instr_jmp)) * (pc + 1))));
-pol constant line(i) { i };
+pol constant p_line = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10] + [10]*;
 pol commit X_free_value(i) query match pc { 0 => ("input", 1), 3 => ("input", (CNT + 1)), 7 => ("input", 0), };
-pol constant p_X_const = [0, 0, 0, 0, 0, 0, 0, 0, 0] + [0]*;
-pol constant p_X_read_free = [1, 0, 0, 1, 0, 0, 0, -1, 0] + [0]*;
-pol constant p_instr_assert_zero = [0, 0, 0, 0, 0, 0, 0, 0, 1] + [0]*;
-pol constant p_instr_dec_CNT = [0, 0, 0, 0, 1, 0, 0, 0, 0] + [0]*;
-pol constant p_instr_jmp = [0, 0, 0, 0, 0, 1, 0, 0, 0] + [0]*;
-pol constant p_instr_jmp_param_l = [0, 0, 0, 0, 0, 1, 0, 0, 0] + [0]*;
-pol constant p_instr_jmpz = [0, 0, 1, 0, 0, 0, 0, 0, 0] + [0]*;
-pol constant p_instr_jmpz_param_l = [0, 0, 6, 0, 0, 0, 0, 0, 0] + [0]*;
-pol constant p_read_X_A = [0, 0, 0, 1, 0, 0, 0, 1, 1] + [0]*;
-pol constant p_read_X_CNT = [0, 0, 1, 0, 0, 0, 0, 0, 0] + [0]*;
-pol constant p_read_X_pc = [0, 0, 0, 0, 0, 0, 0, 0, 0] + [0]*;
-pol constant p_reg_write_X_A = [0, 0, 0, 1, 0, 0, 0, 1, 0] + [0]*;
-pol constant p_reg_write_X_CNT = [1, 0, 0, 0, 0, 0, 0, 0, 0] + [0]*;
-{ pc, reg_write_X_A, reg_write_X_CNT, instr_jmpz, instr_jmpz_param_l, instr_jmp, instr_jmp_param_l, instr_dec_CNT, instr_assert_zero, X_const, X_read_free, read_X_A, read_X_CNT, read_X_pc } in { line, p_reg_write_X_A, p_reg_write_X_CNT, p_instr_jmpz, p_instr_jmpz_param_l, p_instr_jmp, p_instr_jmp_param_l, p_instr_dec_CNT, p_instr_assert_zero, p_X_const, p_X_read_free, p_read_X_A, p_read_X_CNT, p_read_X_pc };
+pol constant p_X_const = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0] + [0]*;
+pol constant p_X_read_free = [1, 0, 0, 1, 0, 0, 0, -1, 0, 0, 0] + [0]*;
+pol constant p_instr_assert_zero = [0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0] + [0]*;
+pol constant p_instr_dec_CNT = [0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0] + [0]*;
+pol constant p_instr_jmp = [0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1] + [1]*;
+pol constant p_instr_jmp_param_l = [0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 9] + [9]*;
+pol constant p_instr_jmpz = [0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0] + [0]*;
+pol constant p_instr_jmpz_param_l = [0, 0, 9, 0, 0, 0, 0, 0, 0, 0, 0] + [0]*;
+pol constant p_read_X_A = [0, 0, 0, 1, 0, 0, 0, 1, 1, 0, 0] + [0]*;
+pol constant p_read_X_CNT = [0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0] + [0]*;
+pol constant p_read_X_pc = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0] + [0]*;
+pol constant p_reg_write_X_A = [0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0] + [0]*;
+pol constant p_reg_write_X_CNT = [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0] + [0]*;
+{ pc, reg_write_X_A, reg_write_X_CNT, instr_jmpz, instr_jmpz_param_l, instr_jmp, instr_jmp_param_l, instr_dec_CNT, instr_assert_zero, X_const, X_read_free, read_X_A, read_X_CNT, read_X_pc } in { p_line, p_reg_write_X_A, p_reg_write_X_CNT, p_instr_jmpz, p_instr_jmpz_param_l, p_instr_jmp, p_instr_jmp_param_l, p_instr_dec_CNT, p_instr_assert_zero, p_X_const, p_X_read_free, p_read_X_A, p_read_X_CNT, p_read_X_pc };
 
 "#;
         let file_name = "../test_data/asm/simple_sum.asm";

@@ -15,6 +15,7 @@ pil{
 // Wraps a value in Y to 32 bits.
 // Requires 0 <= Y < 2**33
 instr wrap Y -> X { Y = X + wrap_bit * 2**32, X = XB1 + 0x100 * XB2 + 0x10000 * XB3 + 0x1000000 * XB4 }
+instr loop { pc' = pc }
 pil{
     col fixed BYTE(i) { i & 0xff };
     col witness XB1;
@@ -34,3 +35,4 @@ instr assert_zero X { XIsZero = 1 }
 B <=X= ${ ("input", 0) };
 wrap B + 0xffffffec, A;
 assert_zero A;
+loop;

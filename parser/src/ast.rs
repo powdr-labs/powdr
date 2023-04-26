@@ -118,11 +118,25 @@ impl ArrayExpression {
         Self::Concat(Box::new(self), Box::new(other))
     }
 
+    fn pad_with(self, pad: Expression) -> Self {
+        Self::concat(self, Self::repeated_value(vec![pad]))
+    }
+
     pub fn pad_with_zeroes(self) -> Self {
-        Self::concat(
-            self,
-            Self::repeated_value(vec![Expression::Number(0.into())]),
-        )
+        self.pad_with(Expression::Number(0.into()))
+    }
+
+    fn last(&self) -> Option<&Expression> {
+        match self {
+            ArrayExpression::Value(v) => v.last(),
+            ArrayExpression::RepeatedValue(v) => v.last(),
+            ArrayExpression::Concat(_, right) => right.last(),
+        }
+    }
+
+    // return None if `self` is empty
+    pub fn pad_with_last(self) -> Option<Self> {
+        self.last().cloned().map(|last| self.pad_with(last))
     }
 }
 

@@ -63,6 +63,7 @@ pil{
 instr assert_zero X { XIsZero = 1 }
 instr mstore X { { ADDR, STEP, X } is m_is_write { m_addr, m_step, m_value } }
 instr mload -> X { { ADDR, STEP, X } is m_is_read { m_addr, m_step, m_value } }
+instr loop { pc' = pc }
 
 
 ADDR <=X= 4;
@@ -74,3 +75,4 @@ assert_zero A - 4;
 ADDR <=X= 4;
 mload A;
 assert_zero A - 1;
+loop;
