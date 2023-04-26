@@ -4,7 +4,6 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-log = "0.4.17"
 json = "^0.12"
 mktemp = "0.5.0"
 number = { path = "../number" }
