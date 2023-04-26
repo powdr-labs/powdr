@@ -108,8 +108,27 @@ impl Polynomial {
 
 pub enum FunctionValueDefinition {
     Mapping(Expression),
-    Array(Vec<Expression>),
+    Array(Vec<RepeatedArray>),
     Query(Expression),
+}
+
+/// An array of elements that might be repeated (the whole list is repeated).
+pub struct RepeatedArray {
+    pub values: Vec<Expression>,
+    pub repetitions: DegreeType,
+}
+
+impl RepeatedArray {
+    /// Returns the number of elements in this array (including repetitions).
+    pub fn size(&self) -> DegreeType {
+        if self.repetitions == 0 {
+            assert!(self.values.is_empty());
+        }
+        if self.values.is_empty() {
+            assert!(self.repetitions <= 1)
+        }
+        self.values.len() as DegreeType * self.repetitions
+    }
 }
 
 pub struct PublicDeclaration {

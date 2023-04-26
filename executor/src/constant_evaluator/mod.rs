@@ -52,11 +52,23 @@ fn generate_values(
                 variables: &[],
                 other_constants,
             };
-            let mut values: Vec<_> = values.iter().map(|v| evaluator.evaluate(v)).collect();
-            // TODO we fill with zeros - should we warn? Should we repeat?
-            if degree as usize > values.len() {
-                values.resize(degree as usize, 0.into())
-            }
+            let values: Vec<_> = values
+                .iter()
+                .flat_map(|elements| {
+                    assert!(elements.repetitions >= 1);
+                    let mut items = elements
+                        .values
+                        .iter()
+                        .map(|v| evaluator.evaluate(v))
+                        .collect::<Vec<_>>();
+                    let original_len = items.len();
+                    for _ in 1..elements.repetitions {
+                        items.extend(&items[..original_len].to_vec());
+                    }
+                    items
+                })
+                .collect();
+            assert_eq!(values.len(), degree as usize);
             values
         }
         FunctionValueDefinition::Query(_) => panic!("Query used for fixed column."),
@@ -319,6 +331,23 @@ mod test {
                 "F.ref_other",
                 convert([9i32, 1, 8, 0, 0, 0, 0, 0, 0, 0].to_vec())
             )
+        );
+    }
+
+    #[test]
+    pub fn repetition_front() {
+        let src = r#"
+            constant %N = 10;
+            namespace F(%N);
+            col fixed arr = [0, 1, 2]* + [7];
+        "#;
+        let analyzed = analyze_string(src);
+        let (constants, degree) = generate(&analyzed);
+        assert_eq!(degree, 10);
+        assert_eq!(constants.len(), 1);
+        assert_eq!(
+            constants[0],
+            ("F.arr", convert([0i32, 1, 2, 0, 1, 2, 0, 1, 2, 7].to_vec()))
         );
     }
 }
