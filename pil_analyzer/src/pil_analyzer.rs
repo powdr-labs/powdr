@@ -2,7 +2,6 @@ use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use crate::utils;
 use number::DegreeType;
 use parser::ast::{self, ArrayExpression};
 pub use parser::ast::{BinaryOperator, UnaryOperator};
@@ -100,7 +99,7 @@ impl PILContext {
         let old_line_starts = std::mem::take(&mut self.line_starts);
 
         // TODO make this work for other line endings
-        self.line_starts = utils::compute_line_starts(contents);
+        self.line_starts = parser_util::lines::compute_line_starts(contents);
         self.current_file = path.to_path_buf();
         let pil_file =
             parser::parse(Some(path.to_str().unwrap()), contents).unwrap_or_else(|err| {
@@ -181,7 +180,7 @@ impl PILContext {
     fn to_source_ref(&self, start: usize) -> SourceRef {
         let file = self.current_file.file_name().unwrap().to_str().unwrap();
         SourceRef {
-            line: utils::offset_to_line(start, &self.line_starts),
+            line: parser_util::lines::offset_to_line(start, &self.line_starts),
             file: file.to_string(),
         }
     }

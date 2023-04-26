@@ -3,7 +3,6 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use itertools::Itertools;
 
 use super::{EvalResult, FixedData, FixedLookup};
-use crate::analyzer::{Expression, Identity, IdentityKind, SelectedExpressions};
 use crate::witgen::eval_error;
 use crate::witgen::{
     affine_expression::AffineExpression,
@@ -16,6 +15,7 @@ use crate::witgen::{
     Constraint,
 };
 use number::{DegreeType, FieldElement};
+use pil_analyzer::{Expression, Identity, IdentityKind, SelectedExpressions};
 
 /// A machine that produces multiple rows (one block) per query.
 /// TODO we do not actually "detect" the machine yet, we just check if

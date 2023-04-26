@@ -5,9 +5,10 @@ use std::io::{BufWriter, Write};
 use std::path::Path;
 
 mod verify;
+use pil_analyzer::json_exporter;
 pub use verify::{verify, verify_asm_string};
 
-use executor::{analyzer, constant_evaluator, json_exporter};
+use executor::constant_evaluator;
 use number::{DegreeType, FieldElement};
 use parser::ast::PILFile;
 
@@ -25,7 +26,7 @@ pub fn compile_pil(
     query_callback: Option<impl FnMut(&str) -> Option<FieldElement>>,
 ) -> bool {
     compile(
-        &analyzer::analyze(pil_file),
+        &pil_analyzer::analyze(pil_file),
         pil_file.file_name().unwrap().to_str().unwrap(),
         output_dir,
         query_callback,
@@ -41,7 +42,7 @@ pub fn compile_pil_ast(
     // TODO exporting this to string as a hack because the parser
     // is tied into the analyzer due to imports.
     compile(
-        &analyzer::analyze_string(&format!("{pil}")),
+        &pil_analyzer::analyze_string(&format!("{pil}")),
         file_name,
         output_dir,
         query_callback,
@@ -111,7 +112,7 @@ pub fn compile_asm_string(
 }
 
 fn compile(
-    analyzed: &analyzer::Analyzed,
+    analyzed: &pil_analyzer::Analyzed,
     file_name: &str,
     output_dir: &Path,
     query_callback: Option<impl FnMut(&str) -> Option<FieldElement>>,

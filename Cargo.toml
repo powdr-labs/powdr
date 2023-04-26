@@ -7,6 +7,7 @@ members = [
     "executor",
     "riscv",
     "parser_util",
+    "pil_analyzer",
     "compiler",
     "pilgen",
 ]

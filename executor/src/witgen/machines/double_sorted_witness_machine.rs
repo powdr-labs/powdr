@@ -4,14 +4,14 @@ use std::iter::once;
 use itertools::{Either, Itertools};
 
 use super::{FixedLookup, Machine};
-use crate::analyzer::PolynomialReference;
-use crate::analyzer::{Expression, Identity, IdentityKind, SelectedExpressions};
 use crate::witgen::{
     affine_expression::AffineExpression,
     eval_error::{self, EvalError},
     EvalResult, FixedData,
 };
 use number::FieldElement;
+use pil_analyzer::PolynomialReference;
+use pil_analyzer::{Expression, Identity, IdentityKind, SelectedExpressions};
 
 /// TODO make this generic
 

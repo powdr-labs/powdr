@@ -1,5 +1,5 @@
-use crate::analyzer::{Expression, Identity, IdentityKind};
-use crate::utils::indent;
+use parser_util::lines::indent;
+use pil_analyzer::{Expression, Identity, IdentityKind};
 use std::collections::{BTreeMap, HashMap};
 // TODO should use finite field instead of abstract number
 use number::{DegreeType, FieldElement};

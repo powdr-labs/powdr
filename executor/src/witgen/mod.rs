@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 use std::fmt::Display;
 
-use crate::analyzer::{Analyzed, Expression, FunctionValueDefinition};
 use number::{DegreeType, FieldElement};
+use pil_analyzer::{Analyzed, Expression, FunctionValueDefinition};
 
 use self::bit_constraints::BitConstraint;
 use self::eval_error::EvalError;

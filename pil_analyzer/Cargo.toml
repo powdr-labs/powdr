@@ -1,15 +1,11 @@
 [package]
-name = "executor"
+name = "pil_analyzer"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-itertools = "^0.10"
-log = "0.4.17"
+json = "^0.12"
+mktemp = "0.5.0"
 number = { path = "../number" }
 parser_util = { path = "../parser_util" }
 parser = { path = "../parser" }
-pil_analyzer = { path = "../pil_analyzer" }
-
-[dev-dependencies]
-mktemp = "0.5.0"

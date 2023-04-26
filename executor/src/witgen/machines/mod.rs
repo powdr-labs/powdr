@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
-use crate::analyzer::{IdentityKind, SelectedExpressions};
 use number::FieldElement;
+use pil_analyzer::{IdentityKind, SelectedExpressions};
 
 pub use self::fixed_lookup_machine::FixedLookup;
 

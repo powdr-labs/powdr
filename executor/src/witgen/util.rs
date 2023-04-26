@@ -1,6 +1,6 @@
 use std::iter::once;
 
-use crate::analyzer::{Expression, PolynomialReference};
+use pil_analyzer::{Expression, PolynomialReference};
 
 use super::FixedData;
 
