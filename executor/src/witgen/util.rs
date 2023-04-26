@@ -1,4 +1,11 @@
-use pil_analyzer::{util::expr_any, Expression, PolyID, PolynomialReference};
+use std::{collections::HashSet, ops::ControlFlow};
+
+use pil_analyzer::{
+    util::{expr_any, previsit_expression},
+    Expression, Identity, IdentityKind, PolynomialReference,
+};
+
+use super::FixedData;
 
 pub trait WitnessColumnNamer {
     fn name(&self, i: usize) -> String;
@@ -27,6 +34,31 @@ pub fn contains_witness_ref(expr: &Expression) -> bool {
         Expression::PolynomialReference(poly) => poly.is_witness(),
         _ => false,
     })
+}
+
+pub fn all_witness_refs<'a>(
+    expr: &'a Expression,
+    fixed_data: &FixedData,
+) -> HashSet<&'a PolynomialReference> {
+    let mut references: HashSet<&'a PolynomialReference> = Default::default();
+    previsit_expression(expr, &mut |e| {
+        if let Expression::PolynomialReference(poly) = e {
+            if fixed_data.witness_ids.contains_key(poly.name.as_str()) {
+                references.insert(poly);
+            }
+        };
+        ControlFlow::Continue::<()>(())
+    });
+    references
+}
+
+/// Checks if the identity is a polynomial identity with exactly one "next" reference.
+pub fn is_propagating_identity(identity: &Identity, fixed_data: &FixedData) -> bool {
+    if identity.kind != IdentityKind::Polynomial {
+        return false;
+    }
+    let refs = all_witness_refs(identity.left.selector.as_ref().unwrap(), fixed_data);
+    refs.iter().filter(|r| r.next).count() == 1
 }
 
 /// Checks if an expression is

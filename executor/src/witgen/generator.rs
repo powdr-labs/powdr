@@ -11,13 +11,14 @@ use super::bit_constraints::{BitConstraint, BitConstraintSet};
 use super::expression_evaluator::ExpressionEvaluator;
 use super::machines::{FixedLookup, Machine};
 use super::symbolic_witness_evaluator::{SymoblicWitnessEvaluator, WitnessColumnEvaluator};
-use super::util::{contains_next_witness_ref, WitnessColumnNamer};
+use super::util::{contains_next_witness_ref, is_propagating_identity, WitnessColumnNamer};
 use super::{Constraint, EvalResult, EvalValue, FixedData, IncompleteCause, WitnessColumn};
 
 pub struct Generator<'a, QueryCallback> {
     fixed_data: &'a FixedData<'a>,
     fixed_lookup: &'a mut FixedLookup,
     identities: &'a [&'a Identity],
+    propagating_identities: Vec<usize>,
     machines: Vec<Box<dyn Machine>>,
     query_callback: Option<QueryCallback>,
     global_bit_constraints: BTreeMap<&'a str, BitConstraint>,
@@ -56,10 +57,17 @@ where
     ) -> Self {
         let witness_cols_len = fixed_data.witness_cols.len();
 
+        let propagating_identities = identities
+            .iter()
+            .enumerate()
+            .filter_map(|(i, id)| is_propagating_identity(id, fixed_data).then_some(i))
+            .collect::<Vec<_>>();
+
         Generator {
             fixed_data,
             fixed_lookup,
             identities,
+            propagating_identities,
             machines,
             query_callback,
             global_bit_constraints,
@@ -77,8 +85,7 @@ where
     pub fn compute_next_row(&mut self, next_row: DegreeType) -> Vec<FieldElement> {
         self.set_next_row_and_log(next_row);
 
-        // TODO maybe better to generate a dependency graph than looping multiple times.
-        // TODO at least we could cache the affine expressions between loops.
+        //println!("==== row {next_row}");
 
         let mut complete_identities = vec![false; self.identities.len()];
 
