@@ -67,3 +67,4 @@ check::
  jmp check;
 
 end::
+ jmp end;
