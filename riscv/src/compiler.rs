@@ -1,5 +1,7 @@
 use std::collections::BTreeMap;
 
+use itertools::Itertools;
+
 use crate::data_parser::{self, DataValue};
 use crate::parser::{self, Argument, Register, Statement};
 use crate::{disambiguator, reachability};
@@ -33,17 +35,28 @@ pub fn compile_riscv_asm(mut assemblies: BTreeMap<String, String>) -> String {
     replace_dynamic_label_references(&mut statements, &objects);
 
     let (data_code, data_positions) = store_data_objects(&objects, data_start);
-    let mut output = preamble()
+
+    preamble()
         + &data_code
-        + &format!("// Set stack pointer\nx2 <=X= {stack_start};\n")
-        + "jump main;\n";
-
-    let statements = insert_data_positions(statements, &data_positions);
-
-    for s in statements {
-        output += &process_statement(s);
-    }
-    output
+            .into_iter()
+            .chain([
+                format!("// Set stack pointer\nx2 <=X= {stack_start};"),
+                "jump main;".to_string(),
+            ])
+            .chain(
+                insert_data_positions(statements, &data_positions)
+                    .into_iter()
+                    .flat_map(process_statement),
+            )
+            .enumerate()
+            .map(|(i, line)| {
+                if i % 10 == 0 {
+                    format!("// PC: {i}\n{line}")
+                } else {
+                    line
+                }
+            })
+            .join("\n")
 }
 
 /// Replace certain patterns of references to code labels by
@@ -110,7 +123,7 @@ fn replace_dynamic_label_reference(
 fn store_data_objects<'a>(
     objects: impl IntoIterator<Item = (&'a String, &'a Vec<DataValue>)> + Copy,
     mut memory_start: u32,
-) -> (String, BTreeMap<String, u32>) {
+) -> (Vec<String>, BTreeMap<String, u32>) {
     memory_start = ((memory_start + 7) / 8) * 8;
     let mut current_pos = memory_start;
     let mut positions = BTreeMap::new();
@@ -124,40 +137,50 @@ fn store_data_objects<'a>(
         current_pos += size;
     }
 
-    let mut code = String::new();
-    for (name, data) in objects {
-        code += &format!("// data {name}\n");
-        let mut pos = positions[name];
-        for item in data {
-            match &item {
-                DataValue::Direct(bytes) => {
-                    for i in (0..bytes.len()).step_by(4) {
-                        let v = (0..4)
-                            .map(|j| {
-                                (bytes.get(i + j).cloned().unwrap_or_default() as u32) << (j * 8)
-                            })
-                            .reduce(|a, b| a | b)
-                            .unwrap();
-                        code += &format!("addr <=X= 0x{:x};\nmstore 0x{v:x};\n", pos + i as u32);
+    let code = objects
+        .into_iter()
+        .filter(|(_, data)| !data.is_empty())
+        .flat_map(|(name, data)| {
+            let mut object_code = vec![];
+            let mut pos = positions[name];
+            for item in data {
+                match &item {
+                    DataValue::Direct(bytes) => {
+                        for i in (0..bytes.len()).step_by(4) {
+                            let v = (0..4)
+                                .map(|j| {
+                                    (bytes.get(i + j).cloned().unwrap_or_default() as u32)
+                                        << (j * 8)
+                                })
+                                .reduce(|a, b| a | b)
+                                .unwrap();
+                            object_code.extend([
+                                format!("addr <=X= 0x{:x};", pos + i as u32),
+                                format!("mstore 0x{v:x};"),
+                            ]);
+                        }
+                    }
+                    DataValue::Reference(sym) => {
+                        object_code.push(format!("addr <=X= 0x{pos:x};"));
+                        if let Some(p) = positions.get(sym) {
+                            object_code.push(format!("mstore 0x{p:x};"));
+                        } else {
+                            // code reference
+                            // TODO should be possible without temporary
+                            object_code.extend([
+                                format!("tmp1 <=X= load_label({});", escape_label(sym)),
+                                "mstore tmp1;".to_string(),
+                            ]);
+                        }
                     }
                 }
-                DataValue::Reference(sym) => {
-                    code += &format!("addr <=X= 0x{pos:x};\n");
-                    if let Some(p) = positions.get(sym) {
-                        code += &format!("mstore 0x{p:x};\n");
-                    } else {
-                        // code reference
-                        // TODO should be possible without temporary
-                        code += &format!(
-                            "tmp1 <=X= load_label({});\nmstore tmp1;\n",
-                            escape_label(sym)
-                        );
-                    }
-                }
+                pos += item.size() as u32;
             }
-            pos += item.size() as u32;
-        }
-    }
+            let first_line = object_code.first_mut().unwrap();
+            *first_line = format!("// data {name}\n") + first_line;
+            object_code
+        })
+        .collect();
     (code, positions)
 }
 
@@ -626,15 +649,14 @@ memcmp@plt:
 "#
 }
 
-fn process_statement(s: Statement) -> String {
+fn process_statement(s: Statement) -> Vec<String> {
     match &s {
-        Statement::Label(l) => format!("{}::\n", escape_label(l)),
-        Statement::Directive(_, _) => String::new(), // ignore
-        Statement::Instruction(instr, args) => {
-            let s = process_instruction(instr, args);
-            assert!(s.ends_with('\n'));
-            "  ".to_string() + &s[..s.len() - 1].replace('\n', "\n  ") + "\n"
-        }
+        Statement::Label(l) => vec![format!("{}::", escape_label(l))],
+        Statement::Directive(_, _) => panic!(""),
+        Statement::Instruction(instr, args) => process_instruction(instr, args)
+            .into_iter()
+            .map(|s| "  ".to_string() + &s)
+            .collect(),
     }
 }
 
@@ -720,77 +742,77 @@ fn rro(args: &[Argument]) -> (Register, Register, u32) {
     }
 }
 
-fn process_instruction(instr: &str, args: &[Argument]) -> String {
+fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
     match instr {
         // load/store registers
         "li" => {
             let (rd, imm) = ri(args);
-            format!("{rd} <=X= {imm};\n")
+            vec![format!("{rd} <=X= {imm};")]
         }
         // TODO check if it is OK to clear the lower order bits
         "lui" => {
             let (rd, imm) = ri(args);
-            format!("{rd} <=X= {};\n", imm << 12)
+            vec![format!("{rd} <=X= {};", imm << 12)]
         }
         "mv" => {
             let (rd, rs) = rr(args);
-            format!("{rd} <=X= {rs};\n")
+            vec![format!("{rd} <=X= {rs};")]
         }
 
         // Arithmetic
         "add" => {
             let (rd, r1, r2) = rrr(args);
-            format!("{rd} <=X= wrap({r1} + {r2});\n")
+            vec![format!("{rd} <=X= wrap({r1} + {r2});")]
         }
         "addi" => {
             let (rd, rs, imm) = rri(args);
-            format!("{rd} <=X= wrap({rs} + {imm});\n")
+            vec![format!("{rd} <=X= wrap({rs} + {imm});")]
         }
         "sub" => {
             let (rd, r1, r2) = rrr(args);
-            format!("{rd} <=X= wrap_signed({r1} - {r2});\n")
+            vec![format!("{rd} <=X= wrap_signed({r1} - {r2});")]
         }
         "neg" => {
             let (rd, r1) = rr(args);
-            format!("{rd} <=X= wrap_signed(0 - {r1});\n")
+            vec![format!("{rd} <=X= wrap_signed(0 - {r1});")]
         }
         "mul" => {
             let (rd, r1, r2) = rrr(args);
-            format!("{rd} <=X= mul({r1}, {r2});\n")
+            vec![format!("{rd} <=X= mul({r1}, {r2});")]
         }
         "mulhu" => {
             let (rd, r1, r2) = rrr(args);
-            format!("{rd} <=X= mulhu({r1}, {r2});\n")
+            vec![format!("{rd} <=X= mulhu({r1}, {r2});")]
         }
 
         // bitwise
         "xor" => {
             let (rd, r1, r2) = rrr(args);
-            format!("{rd} <=X= xor({r1}, {r2});\n")
+            vec![format!("{rd} <=X= xor({r1}, {r2});")]
         }
         "xori" => {
             let (rd, r1, imm) = rri(args);
-            format!("{rd} <=X= xor({r1}, {imm});\n")
+            vec![format!("{rd} <=X= xor({r1}, {imm});")]
         }
         "and" => {
             let (rd, r1, r2) = rrr(args);
-            format!("{rd} <=X= and({r1}, {r2});\n")
+            vec![format!("{rd} <=X= and({r1}, {r2});")]
         }
         "andi" => {
             let (rd, r1, imm) = rri(args);
-            format!("{rd} <=X= and({r1}, {imm});\n")
+            vec![format!("{rd} <=X= and({r1}, {imm});")]
         }
         "or" => {
             let (rd, r1, r2) = rrr(args);
-            format!("{rd} <=X= or({r1}, {r2});\n")
+            vec![format!("{rd} <=X= or({r1}, {r2});")]
         }
         "ori" => {
             let (rd, r1, imm) = rri(args);
-            format!("{rd} <=X= or({r1}, {imm});\n")
+            vec![format!("{rd} <=X= or({r1}, {imm});")]
         }
         "not" => {
             let (rd, rs) = rr(args);
-            format!("{rd} <=X= wrap_signed(-{rs} - 1);\n")
+            vec![format!("{rd} <=X= wrap_signed(-{rs} - 1);")]
         }
 
         // shift
@@ -798,128 +820,148 @@ fn process_instruction(instr: &str, args: &[Argument]) -> String {
             let (rd, rs, amount) = rri(args);
             assert!(amount <= 31);
             if amount <= 16 {
-                format!("{rd} <=X= wrap16({rs} * {});\n", 1 << amount)
+                vec![format!("{rd} <=X= wrap16({rs} * {});", 1 << amount)]
             } else {
-                format!("tmp1 <=X= wrap16({rs} * {});\n", 1 << 16)
-                    + &format!("{rd} <=X= wrap16(tmp1 * {});\n", 1 << (amount - 16))
+                vec![
+                    format!("tmp1 <=X= wrap16({rs} * {});", 1 << 16),
+                    format!("{rd} <=X= wrap16(tmp1 * {});", 1 << (amount - 16)),
+                ]
             }
         }
         "sll" => {
             let (rd, r1, r2) = rrr(args);
-            format!("tmp1 <=X= and({r2}, 0x1f);\n{rd} <=X= shl({r1}, tmp1);\n")
+            vec![
+                format!("tmp1 <=X= and({r2}, 0x1f);"),
+                format!("{rd} <=X= shl({r1}, tmp1);"),
+            ]
         }
         "srli" => {
             // logical shift right
             let (rd, rs, amount) = rri(args);
             assert!(amount <= 31);
-            format!("{rd} <=X= shr({rs}, {amount});\n")
+            vec![format!("{rd} <=X= shr({rs}, {amount});")]
         }
         "srl" => {
             // logical shift right
             let (rd, r1, r2) = rrr(args);
-            format!("tmp1 <=X= and({r2}, 0x1f);\n{rd} <=X= shr({r1}, tmp1);\n")
+            vec![
+                format!("tmp1 <=X= and({r2}, 0x1f);"),
+                format!("{rd} <=X= shr({r1}, tmp1);"),
+            ]
         }
 
         // comparison
         "seqz" => {
             let (rd, rs) = rr(args);
-            format!("{rd} <=Y= is_equal_zero({rs});\n")
+            vec![format!("{rd} <=Y= is_equal_zero({rs});")]
         }
         "snez" => {
             let (rd, rs) = rr(args);
-            format!("{rd} <=Y= is_not_equal_zero({rs});\n")
+            vec![format!("{rd} <=Y= is_not_equal_zero({rs});")]
         }
         "slti" => {
             let (rd, rs, imm) = rri(args);
-            format!("tmp1 <=X= to_signed({rs});\n")
-                + &format!("{rd} <=Y= is_positive({imm} - tmp1);\n")
+            vec![
+                format!("tmp1 <=X= to_signed({rs});"),
+                format!("{rd} <=Y= is_positive({imm} - tmp1);"),
+            ]
         }
         "sltiu" => {
             let (rd, rs, imm) = rri(args);
-            format!("{rd} <=Y= is_positive({imm} - {rs});\n")
+            vec![format!("{rd} <=Y= is_positive({imm} - {rs});")]
         }
         "sltu" => {
             let (rd, r1, r2) = rrr(args);
-            format!("{rd} <=Y= is_positive({r2} - {r1});\n")
+            vec![format!("{rd} <=Y= is_positive({r2} - {r1});")]
         }
 
         // branching
         "beq" => {
             let (r1, r2, label) = rrl(args);
-            format!("branch_if_zero {r1} - {r2}, {label};\n")
+            vec![format!("branch_if_zero {r1} - {r2}, {label};")]
         }
         "beqz" => {
             let (r1, label) = rl(args);
-            format!("branch_if_zero {r1}, {label};\n")
+            vec![format!("branch_if_zero {r1}, {label};")]
         }
         "bgeu" => {
             let (r1, r2, label) = rrl(args);
             // TODO does this fulfill the input requirements for branch_if_positive?
-            format!("branch_if_positive {r1} - {r2} + 1, {label};\n")
+            vec![format!("branch_if_positive {r1} - {r2} + 1, {label};")]
         }
         "bgez" => {
             let (r1, label) = rl(args);
-            format!("tmp1 <=X= to_signed({r1});\n")
-                + &format!("branch_if_positive {r1} + 1, {label};\n")
+            vec![
+                format!("tmp1 <=X= to_signed({r1});"),
+                format!("branch_if_positive {r1} + 1, {label};"),
+            ]
         }
         "bltu" => {
             let (r1, r2, label) = rrl(args);
-            format!("branch_if_positive {r2} - {r1}, {label};\n")
+            vec![format!("branch_if_positive {r2} - {r1}, {label};")]
         }
         "blt" => {
             let (r1, r2, label) = rrl(args);
             // Branch if r1 < r2 (signed).
             // TODO does this fulfill the input requirements for branch_if_positive?
-            format!("tmp1 <=X= to_signed({r1});\n")
-                + &format!("tmp2 <=X= to_signed({r2});\n")
-                + &format!("branch_if_positive tmp2 - tmp1, {label};\n")
+            vec![
+                format!("tmp1 <=X= to_signed({r1});"),
+                format!("tmp2 <=X= to_signed({r2});"),
+                format!("branch_if_positive tmp2 - tmp1, {label};"),
+            ]
         }
         "bge" => {
             let (r1, r2, label) = rrl(args);
             // Branch if r1 >= r2 (signed).
             // TODO does this fulfill the input requirements for branch_if_positive?
-            format!("tmp1 <=X= to_signed({r1});\n")
-                + &format!("tmp2 <=X= to_signed({r2});\n")
-                + &format!("branch_if_positive tmp1 - tmp2 + 1, {label};\n")
+            vec![
+                format!("tmp1 <=X= to_signed({r1});"),
+                format!("tmp2 <=X= to_signed({r2});"),
+                format!("branch_if_positive tmp1 - tmp2 + 1, {label};"),
+            ]
         }
         "bltz" => {
             // branch if 2**31 <= r1 < 2**32
             let (r1, label) = rl(args);
-            format!("branch_if_positive {r1} - 2**31 + 1, {label};\n")
+            vec![format!("branch_if_positive {r1} - 2**31 + 1, {label};")]
         }
 
         "blez" => {
             // branch less or equal zero
             let (r1, label) = rl(args);
-            format!("tmp1 <=X= to_signed({r1});\n")
-                + &format!("branch_if_positive -tmp1 + 1, {label};\n")
+            vec![
+                format!("tmp1 <=X= to_signed({r1});"),
+                format!("branch_if_positive -tmp1 + 1, {label};"),
+            ]
         }
         "bgtz" => {
             // branch if 0 < r1 < 2**31
             let (r1, label) = rl(args);
-            format!("tmp1 <=X= to_signed({r1});\n")
-                + &format!("branch_if_positive tmp1, {label};\n")
+            vec![
+                format!("tmp1 <=X= to_signed({r1});"),
+                format!("branch_if_positive tmp1, {label};"),
+            ]
         }
         "bne" => {
             let (r1, r2, label) = rrl(args);
-            format!("branch_if_nonzero {r1} - {r2}, {label};\n")
+            vec![format!("branch_if_nonzero {r1} - {r2}, {label};")]
         }
         "bnez" => {
             let (r1, label) = rl(args);
-            format!("branch_if_nonzero {r1}, {label};\n")
+            vec![format!("branch_if_nonzero {r1}, {label};")]
         }
 
         // jump and call
         "j" => {
             if let [Argument::Symbol(label)] = args {
-                format!("jump {};\n", escape_label(label))
+                vec![format!("jump {};", escape_label(label))]
             } else {
                 panic!()
             }
         }
         "jr" => {
             let rs = r(args);
-            format!("jump_dyn {rs};\n")
+            vec![format!("jump_dyn {rs};")]
         }
         "jal" => {
             let (_rd, _label) = rl(args);
@@ -928,60 +970,70 @@ fn process_instruction(instr: &str, args: &[Argument]) -> String {
         "jalr" => {
             // TODO there is also a form that takes more arguments
             let rs = r(args);
-            format!("jump_and_link_dyn {rs};\n")
+            vec![format!("jump_and_link_dyn {rs};")]
         }
         "call" => {
             if let [Argument::Symbol(label)] = args {
-                format!("call {};\n", escape_label(label))
+                vec![format!("call {};", escape_label(label))]
             } else {
                 panic!()
             }
         }
         "ecall" => {
             assert!(args.is_empty());
-            "x10 <=X= ${ (\"input\", x10) };\n".to_string()
+            vec!["x10 <=X= ${ (\"input\", x10) };".to_string()]
         }
         "tail" => {
             if let [Argument::Symbol(label)] = args {
-                format!("tail {};\n", escape_label(label))
+                vec![format!("tail {};", escape_label(label))]
             } else {
                 panic!()
             }
         }
         "ret" => {
             assert!(args.is_empty());
-            "ret;\n".to_string()
+            vec!["ret;".to_string()]
         }
 
         // memory access
         "lw" => {
             let (rd, rs, off) = rro(args);
             // TODO we need to consider misaligned loads / stores
-            format!("addr <=X= wrap({rs} + {off});\n") + &format!("{rd} <=X= mload();\n")
+            vec![
+                format!("addr <=X= wrap({rs} + {off});"),
+                format!("{rd} <=X= mload();"),
+            ]
         }
         "lb" => {
             // load byte and sign-extend. the memory is little-endian.
             let (rd, rs, off) = rro(args);
-            format!("tmp1 <=X= wrap({rs} + {off});\n")
-                + "addr <=X= and(tmp1, 0xfffffffc);\n"
-                + "tmp2 <=X= and(tmp1, 0x3);\n"
-                + &format!("{rd} <=X= mload();\n")
-                + &format!("{rd} <=X= shr({rd}, 8 * tmp2);\n")
-                + &format!("{rd} <=X= sign_extend_byte({rd});\n")
+            vec![
+                format!("tmp1 <=X= wrap({rs} + {off});"),
+                "addr <=X= and(tmp1, 0xfffffffc);".to_string(),
+                "tmp2 <=X= and(tmp1, 0x3);".to_string(),
+                format!("{rd} <=X= mload();"),
+                format!("{rd} <=X= shr({rd}, 8 * tmp2);"),
+                format!("{rd} <=X= sign_extend_byte({rd});"),
+            ]
         }
         "lbu" => {
             // load byte and zero-extend. the memory is little-endian.
             let (rd, rs, off) = rro(args);
-            format!("tmp1 <=X= wrap({rs} + {off});\n")
-                + "addr <=X= and(tmp1, 0xfffffffc);\n"
-                + "tmp2 <=X= and(tmp1, 0x3);\n"
-                + &format!("{rd} <=X= mload();\n")
-                + &format!("{rd} <=X= shr({rd}, 8 * tmp2);\n")
-                + &format!("{rd} <=X= and({rd}, 0xff);\n")
+            vec![
+                format!("tmp1 <=X= wrap({rs} + {off});"),
+                "addr <=X= and(tmp1, 0xfffffffc);".to_string(),
+                "tmp2 <=X= and(tmp1, 0x3);".to_string(),
+                format!("{rd} <=X= mload();"),
+                format!("{rd} <=X= shr({rd}, 8 * tmp2);"),
+                format!("{rd} <=X= and({rd}, 0xff);"),
+            ]
         }
         "sw" => {
             let (r1, r2, off) = rro(args);
-            format!("addr <=X= wrap({r2} + {off});\n") + &format!("mstore {r1};\n")
+            vec![
+                format!("addr <=X= wrap({r2} + {off});"),
+                format!("mstore {r1};"),
+            ]
         }
         "sh" => {
             // store half word (two bytes)
@@ -989,39 +1041,43 @@ fn process_instruction(instr: &str, args: &[Argument]) -> String {
             // a two-byte boundary
 
             let (rs, rd, off) = rro(args);
-            format!("tmp1 <=X= wrap({rd} + {off});\n")
-                + "addr <=X= and(tmp1, 0xfffffffc);\n"
-                + "tmp2 <=X= and(tmp1, 0x3);\n"
-                + "tmp1 <=X= mload();\n"
-                + "tmp3 <=X= shl(0xffff, 8 * tmp2);\n"
-                + "tmp3 <=X= xor(tmp3, 0xffffffff);\n"
-                + "tmp1 <=X= and(tmp1, tmp3);\n"
-                + &format!("tmp3 <=X= and({rs}, 0xffff);\n")
-                + "tmp3 <=X= shl(tmp3, 8 * tmp2);\n"
-                + "tmp1 <=X= or(tmp1, tmp3);\n"
-                + "mstore tmp1;\n"
+            vec![
+                format!("tmp1 <=X= wrap({rd} + {off});"),
+                "addr <=X= and(tmp1, 0xfffffffc);".to_string(),
+                "tmp2 <=X= and(tmp1, 0x3);".to_string(),
+                "tmp1 <=X= mload();".to_string(),
+                "tmp3 <=X= shl(0xffff, 8 * tmp2);".to_string(),
+                "tmp3 <=X= xor(tmp3, 0xffffffff);".to_string(),
+                "tmp1 <=X= and(tmp1, tmp3);".to_string(),
+                format!("tmp3 <=X= and({rs}, 0xffff);"),
+                "tmp3 <=X= shl(tmp3, 8 * tmp2);".to_string(),
+                "tmp1 <=X= or(tmp1, tmp3);".to_string(),
+                "mstore tmp1;".to_string(),
+            ]
         }
         "sb" => {
             // store byte
             let (rs, rd, off) = rro(args);
-            format!("tmp1 <=X= wrap({rd} + {off});\n")
-                + "addr <=X= and(tmp1, 0xfffffffc);\n"
-                + "tmp2 <=X= and(tmp1, 0x3);\n"
-                + "tmp1 <=X= mload();\n"
-                + "tmp3 <=X= shl(0xff, 8 * tmp2);\n"
-                + "tmp3 <=X= xor(tmp3, 0xffffffff);\n"
-                + "tmp1 <=X= and(tmp1, tmp3);\n"
-                + &format!("tmp3 <=X= and({rs}, 0xff);\n")
-                + "tmp3 <=X= shl(tmp3, 8 * tmp2);\n"
-                + "tmp1 <=X= or(tmp1, tmp3);\n"
-                + "mstore tmp1;\n"
+            vec![
+                format!("tmp1 <=X= wrap({rd} + {off});"),
+                "addr <=X= and(tmp1, 0xfffffffc);".to_string(),
+                "tmp2 <=X= and(tmp1, 0x3);".to_string(),
+                "tmp1 <=X= mload();".to_string(),
+                "tmp3 <=X= shl(0xff, 8 * tmp2);".to_string(),
+                "tmp3 <=X= xor(tmp3, 0xffffffff);".to_string(),
+                "tmp1 <=X= and(tmp1, tmp3);".to_string(),
+                format!("tmp3 <=X= and({rs}, 0xff);"),
+                "tmp3 <=X= shl(tmp3, 8 * tmp2);".to_string(),
+                "tmp1 <=X= or(tmp1, tmp3);".to_string(),
+                "mstore tmp1;".to_string(),
+            ]
         }
-        "unimp" => "fail;\n".to_string(),
+        "unimp" => vec!["fail;".to_string()],
 
         // Special instruction that is inserted to allow dynamic label references
         "load_dynamic" => {
             let (r1, label) = rl(args);
-            format!("{r1} <=X= load_label({label});\n")
+            vec![format!("{r1} <=X= load_label({label});")]
         }
 
         _ => {
