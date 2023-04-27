@@ -3,7 +3,6 @@
 
 use core::alloc::{GlobalAlloc, Layout};
 use core::cell::UnsafeCell;
-use core::panic::PanicInfo;
 use core::ptr;
 
 extern crate alloc;
@@ -67,26 +66,6 @@ pub unsafe extern "C" fn memmove(dest: *mut u8, src: *const u8, n: usize) -> *mu
     memcpy(dest, src, n)
 }
 
-// TODO c is ussualy a "c int"
-pub unsafe extern "C" fn memset(s: *mut u8, c: u8, n: usize) -> *mut u8 {
-    // We only access u32 because then we do not have to deal with
-    // un-aligned memory access.
-    // TODO this does not really enforce that the pointers are u32-aligned.
-    let mut value = c as u32;
-    value = value | (value << 8) | (value << 16) | (value << 24);
-    let mut i: isize = 0;
-    while i + 3 < n as isize {
-        *((s.offset(i)) as *mut u32) = value;
-        i += 4;
-    }
-    if i < n as isize {
-        let dest_value = (s.offset(i)) as *mut u32;
-        let mask = (1 << (((n as isize - i) * 8) as u32)) - 1;
-        *dest_value = (*dest_value & !mask) | (value & mask);
-    }
-    s
-}
-
 // pub unsafe extern "C" fn memcmp(s1: *const u8, s2: *const u8, n: usize) -> i32 {
 //     for i in 0..n as isize {
 //         let a = *s1.offset(i);
@@ -106,11 +85,6 @@ pub unsafe extern "C" fn memset(s: *mut u8, c: u8, n: usize) -> *mut u8 {
 //     i as usize
 // }
 
-#[panic_handler]
-fn panic(info: &PanicInfo) -> ! {
-    loop {}
-}
-
 // Declaration of the global memory allocator
 // NOTE the user must ensure that the memory region `[0x2000_0100, 0x2000_0200]`
 // is not used by other parts of the program
@@ -123,7 +97,7 @@ static HEAP: BumpPointerAlloc = BumpPointerAlloc {
 static LONG_STR: &str = "aoeueeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
 
 #[no_mangle]
-pub extern "C" fn main() -> ! {
+pub fn main() -> ! {
     let mut xs = Vec::new();
 
     xs.push(42);
