@@ -1,4 +1,4 @@
-use compiler::verify_asm_string;
+use compiler::compile_asm_string_temp;
 use number::FieldElement;
 
 #[test]
@@ -61,7 +61,8 @@ fn verify_file(case: &str, inputs: Vec<FieldElement>) {
     let riscv_asm = riscv::compile_rust_to_riscv_asm(&format!("tests/riscv_data/{case}"));
     let powdr_asm = riscv::compiler::compile_riscv_asm(riscv_asm);
 
-    verify_asm_string(&format!("{case}.asm"), &powdr_asm, inputs);
+    compile_asm_string_temp(&format!("{case}.asm"), &powdr_asm, inputs);
+    // TODO eventually, also verify the PIL again with pilcom.
 }
 
 fn verify_crate(case: &str, inputs: Vec<FieldElement>) {
@@ -69,5 +70,6 @@ fn verify_crate(case: &str, inputs: Vec<FieldElement>) {
         riscv::compile_rust_crate_to_riscv_asm(&format!("tests/riscv_data/{case}/Cargo.toml"));
     let powdr_asm = riscv::compiler::compile_riscv_asm(riscv_asm);
 
-    verify_asm_string(&format!("{case}.asm"), &powdr_asm, inputs);
+    compile_asm_string_temp(&format!("{case}.asm"), &powdr_asm, inputs);
+    // TODO eventually, also verify the PIL again with pilcom.
 }

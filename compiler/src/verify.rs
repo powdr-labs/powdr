@@ -1,9 +1,19 @@
 use std::{fs, path::Path, process::Command};
 
+use mktemp::Temp;
 use number::FieldElement;
 
-#[allow(unused)]
 pub fn verify_asm_string(file_name: &str, contents: &str, inputs: Vec<FieldElement>) {
+    let (pil_file_name, temp_dir) = compile_asm_string_temp(file_name, contents, inputs);
+    verify(&pil_file_name, &temp_dir);
+}
+
+#[allow(unused)]
+pub fn compile_asm_string_temp(
+    file_name: &str,
+    contents: &str,
+    inputs: Vec<FieldElement>,
+) -> (String, Temp) {
     let pil = pilgen::compile(Some(file_name), contents).unwrap();
     let pil_file_name = "asm.pil";
     let temp_dir = mktemp::Temp::new_dir().unwrap();
@@ -27,7 +37,7 @@ pub fn verify_asm_string(file_name: &str, contents: &str, inputs: Vec<FieldEleme
             }
         }),
     ));
-    verify(pil_file_name, &temp_dir);
+    (pil_file_name.to_string(), temp_dir)
 }
 
 pub fn verify(file_name: &str, temp_dir: &Path) {
