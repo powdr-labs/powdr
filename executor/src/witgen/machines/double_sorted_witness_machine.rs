@@ -104,8 +104,8 @@ impl Machine for DoubleSortedWitnesses {
             value.push(o.value);
             op.push(1.into());
 
-            is_write.push((if o.is_write { 1 } else { 0 }).into());
-            is_read.push((if o.is_write { 0 } else { 1 }).into());
+            is_write.push(o.is_write.into());
+            is_read.push((!o.is_write).into());
         }
         if addr.is_empty() {
             // No memory access at all - fill a first row with something.

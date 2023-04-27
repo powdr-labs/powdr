@@ -141,7 +141,7 @@ pub struct PublicDeclaration {
     pub index: DegreeType,
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Identity {
     /// The ID is specific to the kind.
     pub id: u64,
@@ -192,13 +192,13 @@ pub struct PolynomialReference {
     pub next: bool,
 }
 
-#[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum PolynomialType {
     Committed,
     Constant,
     Intermediate,
 }
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SourceRef {
     pub file: String, // TODO should maybe be a shared pointer
     pub line: usize,

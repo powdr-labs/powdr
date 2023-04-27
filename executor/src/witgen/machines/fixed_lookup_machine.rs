@@ -127,7 +127,7 @@ impl IndexedColumns {
                             .and_modify(|value| {
                                 *value = IndexValue::multiple_matches();
                             })
-                            .or_insert(IndexValue::single_row(row));
+                            .or_insert_with(|| IndexValue::single_row(row));
                     }
                     (acc, set)
                 },
@@ -241,7 +241,7 @@ impl FixedLookup {
         let index_value = self
             .indices
             .get_match(fixed_data, input_assignment, output_columns.clone())
-            .ok_or(EvalError::Generic("Plookup is not satisfied".to_string()))?;
+            .ok_or_else(|| EvalError::Generic("Plookup is not satisfied".to_string()))?;
 
         let row = match index_value.row() {
             // a single match, we continue
