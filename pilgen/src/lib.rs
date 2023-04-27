@@ -16,7 +16,7 @@ pub fn compile<'a>(file_name: Option<&str>, input: &'a str) -> Result<PILFile, P
 
 #[derive(Default)]
 struct ASMPILConverter {
-    degree_exponent: u32,
+    degree: DegreeType,
     pil: Vec<Statement>,
     pc_name: Option<String>,
     registers: BTreeMap<String, Register>,
@@ -39,11 +39,7 @@ impl ASMPILConverter {
             degree.is_power_of_two(),
             "Degree should be a power of two, found {degree}",
         );
-        self.degree_exponent = degree.ilog2();
-    }
-
-    fn degree(&self) -> DegreeType {
-        1 << self.degree_exponent
+        self.degree = degree;
     }
 
     fn convert(&mut self, input: ASMFile) -> PILFile {
@@ -59,7 +55,7 @@ impl ASMPILConverter {
         self.pil.push(Statement::Namespace(
             0,
             "Assembly".to_string(),
-            Expression::Number(self.degree().into()),
+            Expression::Number(self.degree.into()),
         ));
         self.pil.push(Statement::PolynomialConstantDefinition(
             0,
