@@ -1,6 +1,7 @@
 use parser_util::lines::indent;
 use pil_analyzer::{Expression, Identity, IdentityKind};
 use std::collections::{BTreeMap, HashMap};
+use std::time::Instant;
 // TODO should use finite field instead of abstract number
 use number::{DegreeType, FieldElement};
 
@@ -33,6 +34,7 @@ where
     failure_reasons: Vec<String>,
     progress: bool,
     last_report: DegreeType,
+    last_report_time: Instant,
 }
 
 #[derive(PartialEq, Eq, Clone, Copy)]
@@ -71,6 +73,7 @@ where
             failure_reasons: vec![],
             progress: true,
             last_report: 0,
+            last_report_time: Instant::now(),
         }
     }
 
@@ -213,10 +216,14 @@ where
 
     fn set_next_row_and_log(&mut self, next_row: DegreeType) {
         if next_row >= self.last_report + 1000 {
+            let duration = self.last_report_time.elapsed();
+            self.last_report_time = Instant::now();
+
             log::info!(
-                "{next_row} of {} rows ({} %)",
+                "{next_row} of {} rows ({} %, {} rows per second)",
                 self.fixed_data.degree,
-                next_row * 100 / self.fixed_data.degree
+                next_row * 100 / self.fixed_data.degree,
+                1000000 / duration.as_millis()
             );
             self.last_report = next_row;
         }
