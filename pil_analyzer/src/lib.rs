@@ -1,6 +1,7 @@
 pub mod display;
 pub mod json_exporter;
 pub mod pil_analyzer;
+pub mod util;
 
 use std::collections::HashMap;
 use std::path::Path;
