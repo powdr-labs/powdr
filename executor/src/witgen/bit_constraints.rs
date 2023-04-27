@@ -14,7 +14,7 @@ use super::{Constraint, FixedData};
 /// All bits smaller than min_bit have to be zero
 /// and all bits larger than max_bit have to be zero.
 /// The least significant bit is bit zero.
-#[derive(PartialEq, Clone)]
+#[derive(PartialEq, Eq, Clone)]
 pub struct BitConstraint {
     mask: AbstractNumberType,
 }

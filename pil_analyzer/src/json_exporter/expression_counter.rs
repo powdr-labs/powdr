@@ -40,11 +40,7 @@ impl ExpressionCounter for Identity {
 
 impl ExpressionCounter for Polynomial {
     fn expression_count(&self) -> usize {
-        if self.poly_type == PolynomialType::Intermediate {
-            1
-        } else {
-            0
-        }
+        (self.poly_type == PolynomialType::Intermediate).into()
     }
 }
 
@@ -68,10 +64,6 @@ impl ExpressionCounter for Vec<Expression> {
 
 impl ExpressionCounter for Option<Expression> {
     fn expression_count(&self) -> usize {
-        if self.is_some() {
-            1
-        } else {
-            0
-        }
+        (self.is_some()).into()
     }
 }

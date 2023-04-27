@@ -250,7 +250,7 @@ where
                     AffineExpression::from_witness_poly_value(i).format(self.fixed_data),
                     v.as_ref()
                         .map(ToString::to_string)
-                        .unwrap_or("<unknown>".to_string())
+                        .unwrap_or_else(|| "<unknown>".to_string())
                 )
             })
             .collect()

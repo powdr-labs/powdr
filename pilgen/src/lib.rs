@@ -238,7 +238,7 @@ impl ASMPILConverter {
                     })
                     .collect()
             })
-            .unwrap_or(vec![]);
+            .unwrap_or_default();
 
         let instr = Instruction { inputs, outputs };
 
