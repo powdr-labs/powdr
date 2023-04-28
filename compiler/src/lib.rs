@@ -3,6 +3,7 @@
 use std::fs;
 use std::io::{BufWriter, Write};
 use std::path::Path;
+use std::time::Instant;
 
 mod verify;
 use pil_analyzer::json_exporter;
@@ -118,8 +119,10 @@ fn compile(
     query_callback: Option<impl FnMut(&str) -> Option<FieldElement>>,
 ) -> bool {
     let mut success = true;
+    let start = Instant::now();
     log::info!("Evaluating fixed columns...");
     let (constants, degree) = constant_evaluator::generate(analyzed);
+    println!("Took {}", start.elapsed().as_secs_f32());
     if analyzed.constant_count() == constants.len() {
         write_polys_file(
             &mut BufWriter::new(&mut fs::File::create(output_dir.join("constants.bin")).unwrap()),
