@@ -10,6 +10,7 @@ number = { path = "../number" }
 parser_util = { path = "../parser_util" }
 parser = { path = "../parser" }
 pil_analyzer = { path = "../pil_analyzer" }
+rayon = "1.7.0"
 
 [dev-dependencies]
 mktemp = "0.5.0"
