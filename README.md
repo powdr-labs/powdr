@@ -37,7 +37,7 @@ it is easy to adapt powdr assembly to a different kind of VM.
 rustup target add riscv32imc-unknown-none-elf
 # Run the compiler. It will generate files in /tmp/.
 # -i specifies the prover witness input (see below)
-cargo run --release rust tests/riscv_data/sum.rs -o /tmp -f -i 10,2,4,6 
+cargo run --release rust riscv/tests/riscv_data/sum.rs -o /tmp -f -i 10,2,4,6 
 ```
 
 The following example Rust file verifies that a supplied list of integers sums up to a specified value.
