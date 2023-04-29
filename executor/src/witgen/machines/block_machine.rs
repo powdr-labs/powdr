@@ -433,7 +433,7 @@ impl BlockMachine {
     }
 }
 
-impl BitConstraintSet for BlockMachine {
+impl BitConstraintSet<usize> for BlockMachine {
     fn bit_constraint(&self, id: usize) -> Option<BitConstraint> {
         let (poly, next) = self.extract_next(id);
         self.global_bit_constraints.get(&poly).cloned().or_else(|| {
@@ -465,7 +465,7 @@ impl<'a> WitnessColumnEvaluator for WitnessData<'a> {
             None => {
                 let witness_count = self.fixed_data.witness_cols.len();
                 let symbolic_id = if next { id + witness_count } else { id };
-                Ok(AffineExpression::from_witness_poly_value(symbolic_id))
+                Ok(AffineExpression::from_poly_id(symbolic_id))
             }
         }
     }

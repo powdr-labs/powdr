@@ -1,7 +1,6 @@
 use std::collections::BTreeMap;
 
 use number::AbstractNumberType;
-// TODO this should probably rather be a finite field element.
 use number::FieldElement;
 
 use super::bit_constraints::BitConstraintSet;
@@ -13,8 +12,8 @@ use super::EvalResult;
 
 /// An expression affine in the committed polynomials.
 #[derive(Debug, Clone)]
-pub struct AffineExpression {
-    pub coefficients: BTreeMap<usize, FieldElement>,
+pub struct AffineExpression<K = usize> {
+    pub coefficients: BTreeMap<K, FieldElement>,
     pub offset: FieldElement,
 }
 
@@ -36,9 +35,12 @@ impl From<u32> for AffineExpression {
     }
 }
 
-impl AffineExpression {
-    pub fn from_witness_poly_value(poly_id: usize) -> AffineExpression {
-        AffineExpression {
+impl<K> AffineExpression<K>
+where
+    K: std::cmp::Ord + Copy,
+{
+    pub fn from_poly_id(poly_id: K) -> Self {
+        AffineExpression::<K> {
             coefficients: BTreeMap::from([(poly_id, 1.into())]),
             offset: 0.into(),
         }
@@ -56,18 +58,18 @@ impl AffineExpression {
         }
     }
 
-    pub fn nonzero_variables(&self) -> Vec<usize> {
+    pub fn nonzero_variables(&self) -> Vec<K> {
         self.nonzero_coefficients().map(|(i, _)| i).collect()
     }
 
     /// @returns an iterator of the nonzero coefficients and their variable IDs (but not the offset).
-    pub fn nonzero_coefficients(&self) -> impl Iterator<Item = (usize, &FieldElement)> {
+    pub fn nonzero_coefficients(&self) -> impl Iterator<Item = (K, &FieldElement)> {
         self.coefficients
             .iter()
             .filter_map(|(i, c)| (!c.is_zero()).then_some((*i, c)))
     }
 
-    pub fn mul(mut self, factor: FieldElement) -> AffineExpression {
+    pub fn mul(mut self, factor: FieldElement) -> Self {
         for f in self.coefficients.values_mut() {
             *f = *f * factor;
         }
@@ -78,7 +80,7 @@ impl AffineExpression {
     /// If the affine expression has only a single variable (with nonzero coefficient),
     /// returns the index of the variable and the assignment that evaluates the
     /// affine expression to zero.
-    pub fn solve(&self) -> EvalResult {
+    pub fn solve(&self) -> EvalResult<K> {
         let mut nonzero = self.nonzero_coefficients();
         let first = nonzero.next();
         let second = nonzero.next();
@@ -117,8 +119,8 @@ impl AffineExpression {
     /// we can deduce the values of all components from the offset part.
     pub fn solve_with_bit_constraints(
         &self,
-        known_constraints: &impl BitConstraintSet,
-    ) -> EvalResult {
+        known_constraints: &impl BitConstraintSet<K>,
+    ) -> EvalResult<K> {
         // Try to solve directly.
         match self.solve() {
             Ok(result) => return Ok(result),
@@ -163,8 +165,8 @@ impl AffineExpression {
 
     fn try_transfer_constraints(
         &self,
-        known_constraints: &impl BitConstraintSet,
-    ) -> Option<Vec<(usize, Constraint)>> {
+        known_constraints: &impl BitConstraintSet<K>,
+    ) -> Option<Vec<(K, Constraint)>> {
         // We need the form X = a * Y + b * Z + ...
         // where X is unconstrained and all others are bit-constrained.
         let mut unconstrained = self
@@ -207,8 +209,8 @@ impl AffineExpression {
     /// Returns an empty vector if it is not able to solve the equation.
     fn try_solve_through_constraints(
         &self,
-        known_constraints: &impl BitConstraintSet,
-    ) -> EvalResult {
+        known_constraints: &impl BitConstraintSet<K>,
+    ) -> EvalResult<K> {
         let parts = self
             .nonzero_coefficients()
             .map(|(i, coeff)| {
@@ -252,7 +254,7 @@ impl AffineExpression {
         }
     }
 
-    pub fn format(&self, namer: &impl WitnessColumnNamer) -> String {
+    pub fn format(&self, namer: &impl WitnessColumnNamer<K>) -> String {
         self.nonzero_coefficients()
             .map(|(i, c)| {
                 let name = namer.name(i);
@@ -270,14 +272,20 @@ impl AffineExpression {
     }
 }
 
-impl PartialEq for AffineExpression {
+impl<K> PartialEq for AffineExpression<K>
+where
+    K: Ord + Copy,
+{
     fn eq(&self, other: &Self) -> bool {
         self.offset == other.offset && self.nonzero_coefficients().eq(other.nonzero_coefficients())
     }
 }
 
-impl std::ops::Add for AffineExpression {
-    type Output = AffineExpression;
+impl<K> std::ops::Add for AffineExpression<K>
+where
+    K: Ord,
+{
+    type Output = Self;
 
     fn add(self, rhs: Self) -> Self::Output {
         let mut coefficients = rhs.coefficients;
@@ -294,8 +302,8 @@ impl std::ops::Add for AffineExpression {
     }
 }
 
-impl std::ops::Neg for AffineExpression {
-    type Output = AffineExpression;
+impl<K> std::ops::Neg for AffineExpression<K> {
+    type Output = Self;
 
     fn neg(mut self) -> Self::Output {
         self.coefficients.values_mut().for_each(|v| *v = -*v);
@@ -304,8 +312,11 @@ impl std::ops::Neg for AffineExpression {
     }
 }
 
-impl std::ops::Sub for AffineExpression {
-    type Output = AffineExpression;
+impl<K> std::ops::Sub for AffineExpression<K>
+where
+    K: Ord,
+{
+    type Output = Self;
 
     fn sub(self, rhs: Self) -> Self::Output {
         self + -rhs
@@ -367,7 +378,7 @@ mod test {
     }
 
     struct TestBitConstraints(BTreeMap<usize, BitConstraint>);
-    impl BitConstraintSet for TestBitConstraints {
+    impl BitConstraintSet<usize> for TestBitConstraints {
         fn bit_constraint(&self, id: usize) -> Option<BitConstraint> {
             self.0.get(&id).cloned()
         }
@@ -375,9 +386,9 @@ mod test {
 
     #[test]
     pub fn derive_constraints() {
-        let expr = AffineExpression::from_witness_poly_value(1)
-            - AffineExpression::from_witness_poly_value(2).mul(16.into())
-            - AffineExpression::from_witness_poly_value(3);
+        let expr = AffineExpression::from_poly_id(1)
+            - AffineExpression::from_poly_id(2).mul(16.into())
+            - AffineExpression::from_poly_id(3);
         let known_constraints = TestBitConstraints(
             vec![
                 (2, BitConstraint::from_max_bit(7)),
@@ -404,9 +415,9 @@ mod test {
         );
 
         // Replace factor 16 by 32.
-        let expr = AffineExpression::from_witness_poly_value(1)
-            - AffineExpression::from_witness_poly_value(2).mul(32.into())
-            - AffineExpression::from_witness_poly_value(3);
+        let expr = AffineExpression::from_poly_id(1)
+            - AffineExpression::from_poly_id(2).mul(32.into())
+            - AffineExpression::from_poly_id(3);
         assert_eq!(
             expr.solve_with_bit_constraints(&known_constraints).unwrap(),
             vec![(
@@ -416,9 +427,9 @@ mod test {
         );
 
         // Replace factor 16 by 8.
-        let expr = AffineExpression::from_witness_poly_value(1)
-            - AffineExpression::from_witness_poly_value(2).mul(8.into())
-            - AffineExpression::from_witness_poly_value(3);
+        let expr = AffineExpression::from_poly_id(1)
+            - AffineExpression::from_poly_id(2).mul(8.into())
+            - AffineExpression::from_poly_id(3);
         assert!(expr.solve_with_bit_constraints(&known_constraints).is_err());
     }
 
@@ -426,8 +437,8 @@ mod test {
     pub fn solve_through_constraints_success() {
         let value = 0x1504u32;
         let expr = AffineExpression::from(value)
-            - AffineExpression::from_witness_poly_value(2).mul(256.into())
-            - AffineExpression::from_witness_poly_value(3);
+            - AffineExpression::from_poly_id(2).mul(256.into())
+            - AffineExpression::from_poly_id(3);
         let known_constraints = TestBitConstraints(
             vec![
                 (2, BitConstraint::from_max_bit(7)),
@@ -450,8 +461,8 @@ mod test {
     pub fn solve_through_constraints_conflict() {
         let value = 0x1554u32;
         let expr = AffineExpression::from(value)
-            - AffineExpression::from_witness_poly_value(2).mul(256.into())
-            - AffineExpression::from_witness_poly_value(3);
+            - AffineExpression::from_poly_id(2).mul(256.into())
+            - AffineExpression::from_poly_id(3);
         let known_constraints = TestBitConstraints(
             vec![
                 (2, BitConstraint::from_max_bit(7)),
