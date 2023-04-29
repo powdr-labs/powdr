@@ -247,7 +247,7 @@ where
             .map(|(i, v)| {
                 format!(
                     "{} = {}",
-                    AffineExpression::from_witness_poly_value(i).format(self.fixed_data),
+                    AffineExpression::from_poly_id(i).format(self.fixed_data),
                     v.as_ref()
                         .map(ToString::to_string)
                         .unwrap_or_else(|| "<unknown>".to_string())
@@ -467,7 +467,7 @@ struct WitnessBitConstraintSet<'a> {
     next_bit_constraints: &'a Vec<Option<BitConstraint>>,
 }
 
-impl<'a> BitConstraintSet for WitnessBitConstraintSet<'a> {
+impl<'a> BitConstraintSet<usize> for WitnessBitConstraintSet<'a> {
     fn bit_constraint(&self, id: usize) -> Option<BitConstraint> {
         let name = self.fixed_data.witness_cols[id].name;
         self.global_bit_constraints
@@ -504,7 +504,7 @@ impl<'a> WitnessColumnEvaluator for EvaluationData<'a> {
                     (*value).into()
                 } else {
                     // We continue with a symbolic value
-                    AffineExpression::from_witness_poly_value(id)
+                    AffineExpression::from_poly_id(id)
                 })
             }
             (true, EvaluationRow::Next) => {

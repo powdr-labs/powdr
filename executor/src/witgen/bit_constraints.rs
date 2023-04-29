@@ -88,17 +88,20 @@ impl core::fmt::Debug for BitConstraint {
 }
 
 /// Trait that provides a bit constraint on a symbolic variable if given by ID.
-pub trait BitConstraintSet {
-    fn bit_constraint(&self, id: usize) -> Option<BitConstraint>;
+pub trait BitConstraintSet<K> {
+    fn bit_constraint(&self, id: K) -> Option<BitConstraint>;
 }
 
-pub struct SimpleBitConstraintSet<'a, Namer: WitnessColumnNamer> {
+pub struct SimpleBitConstraintSet<'a, Namer> {
     bit_constraints: &'a BTreeMap<&'a str, BitConstraint>,
     names: &'a Namer,
 }
 
-impl<'a, Namer: WitnessColumnNamer> BitConstraintSet for SimpleBitConstraintSet<'a, Namer> {
-    fn bit_constraint(&self, id: usize) -> Option<BitConstraint> {
+impl<'a, Namer, K> BitConstraintSet<K> for SimpleBitConstraintSet<'a, Namer>
+where
+    Namer: WitnessColumnNamer<K>,
+{
+    fn bit_constraint(&self, id: K) -> Option<BitConstraint> {
         self.bit_constraints
             .get(self.names.name(id).as_str())
             .cloned()

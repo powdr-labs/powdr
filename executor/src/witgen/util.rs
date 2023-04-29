@@ -2,8 +2,8 @@ use pil_analyzer::{util::expr_any, Expression, PolynomialReference};
 
 use super::FixedData;
 
-pub trait WitnessColumnNamer {
-    fn name(&self, i: usize) -> String;
+pub trait WitnessColumnNamer<K = usize> {
+    fn name(&self, i: K) -> String;
 }
 
 /// @returns true if the expression contains a reference to a next value of a

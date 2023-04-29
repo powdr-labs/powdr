@@ -125,7 +125,7 @@ fn rows_are_repeating(values: &[(&str, Vec<FieldElement>)]) -> Option<usize> {
 
 /// Result of evaluating an expression / lookup.
 /// New assignments or constraints for witness columns identified by an ID.
-type EvalResult = Result<Vec<(usize, Constraint)>, EvalError>;
+type EvalResult<K = usize> = Result<Vec<(K, Constraint)>, EvalError>;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Constraint {
