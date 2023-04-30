@@ -1,15 +1,17 @@
 use number::FieldElement;
-use pil_analyzer::{BinaryOperator, Expression, UnaryOperator};
+use pil_analyzer::{BinaryOperator, Expression, PolynomialReference, UnaryOperator};
 
 use super::affine_expression::AffineExpression;
 use super::eval_error::{self, EvalError};
 
 pub trait SymbolicVariables {
     /// Acutal constant, not fixed polynomial
-    fn constant(&self, name: &str) -> Result<AffineExpression, EvalError>;
+    fn constant(&self, name: &str) -> Result<AffineExpression<&PolynomialReference>, EvalError>;
     /// Value of a polynomial (fixed or witness).
-    fn value(&self, name: &str, next: bool) -> Result<AffineExpression, EvalError>;
-    fn format(&self, expr: AffineExpression) -> String;
+    fn value(
+        &self,
+        poly: &PolynomialReference,
+    ) -> Result<AffineExpression<&PolynomialReference>, EvalError>;
 }
 
 pub struct ExpressionEvaluator<SV: SymbolicVariables> {
@@ -23,12 +25,15 @@ impl<SV: SymbolicVariables> ExpressionEvaluator<SV> {
     /// Tries to evaluate the expression to an expression affine in the witness polynomials,
     /// taking current values of polynomials into account.
     /// @returns an expression affine in the witness polynomials
-    pub fn evaluate(&self, expr: &Expression) -> Result<AffineExpression, EvalError> {
+    pub fn evaluate(
+        &self,
+        expr: &Expression,
+    ) -> Result<AffineExpression<&PolynomialReference>, EvalError> {
         // @TODO if we iterate on processing the constraints in the same row,
         // we could store the simplified values.
         match expr {
             Expression::Constant(name) => self.variables.constant(name),
-            Expression::PolynomialReference(poly) => self.variables.value(&poly.name, poly.next),
+            Expression::PolynomialReference(poly) => self.variables.value(&poly),
             Expression::Number(n) => Ok((*n).into()),
             Expression::BinaryOperation(left, op, right) => {
                 self.evaluate_binary_operation(left, op, right)
@@ -58,7 +63,7 @@ impl<SV: SymbolicVariables> ExpressionEvaluator<SV> {
         left: &Expression,
         op: &BinaryOperator,
         right: &Expression,
-    ) -> Result<AffineExpression, EvalError> {
+    ) -> Result<AffineExpression<&PolynomialReference>, EvalError> {
         match (self.evaluate(left), op, self.evaluate(right)) {
             // Special case for multiplication: It is enough for one to be known zero.
             (Ok(zero), BinaryOperator::Mul, _) | (_, BinaryOperator::Mul, Ok(zero))
@@ -75,12 +80,10 @@ impl<SV: SymbolicVariables> ExpressionEvaluator<SV> {
                     } else if let Some(f) = right.constant_value() {
                         Ok(left.mul(f))
                     } else {
-                        Err(format!(
-                            "Multiplication of two non-constants: ({}) * ({})",
-                            self.variables.format(left),
-                            self.variables.format(right),
+                        Err(
+                            format!("Multiplication of two non-constants: ({left}) * ({right})",)
+                                .into(),
                         )
-                        .into())
                     }
                 }
                 BinaryOperator::Div => {
@@ -93,24 +96,14 @@ impl<SV: SymbolicVariables> ExpressionEvaluator<SV> {
                             Ok((l / r).into())
                         }
                     } else {
-                        Err(format!(
-                            "Division of two non-constants: ({}) / ({})",
-                            self.variables.format(left),
-                            self.variables.format(right),
-                        )
-                        .into())
+                        Err(format!("Division of two non-constants: ({left}) / ({right})",).into())
                     }
                 }
                 BinaryOperator::Pow => {
                     if let (Some(l), Some(r)) = (left.constant_value(), right.constant_value()) {
                         Ok(l.pow(r.to_integer()).into())
                     } else {
-                        Err(format!(
-                            "Pow of two non-constants: ({}) ** ({})",
-                            self.variables.format(left),
-                            self.variables.format(right),
-                        )
-                        .into())
+                        Err(format!("Pow of two non-constants: ({left}) ** ({right})",).into())
                     }
                 }
                 BinaryOperator::Mod
@@ -156,7 +149,7 @@ impl<SV: SymbolicVariables> ExpressionEvaluator<SV> {
         &self,
         op: &UnaryOperator,
         expr: &Expression,
-    ) -> Result<AffineExpression, EvalError> {
+    ) -> Result<AffineExpression<&PolynomialReference>, EvalError> {
         self.evaluate(expr).map(|v| match op {
             UnaryOperator::Plus => v,
             UnaryOperator::Minus => -v,

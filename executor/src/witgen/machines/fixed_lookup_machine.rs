@@ -3,7 +3,7 @@ use std::mem;
 use std::num::NonZeroUsize;
 
 use number::FieldElement;
-use pil_analyzer::{Identity, IdentityKind, SelectedExpressions};
+use pil_analyzer::{Identity, IdentityKind, PolynomialReference, SelectedExpressions};
 
 use crate::witgen::util::is_simple_poly;
 use crate::witgen::{
@@ -175,9 +175,9 @@ impl FixedLookup {
         &mut self,
         fixed_data: &FixedData,
         kind: IdentityKind,
-        left: &[Result<AffineExpression, EvalError>],
+        left: &[Result<AffineExpression<&PolynomialReference>, EvalError>],
         right: &SelectedExpressions,
-    ) -> Option<EvalResult> {
+    ) -> Option<EvalResult<&PolynomialReference>> {
         // This is a matching machine if it is a plookup and the RHS is fully constant.
         if kind != IdentityKind::Plookup
             || right.selector.is_some()
@@ -210,9 +210,9 @@ impl FixedLookup {
     fn process_plookup_internal(
         &mut self,
         fixed_data: &FixedData,
-        left: &[Result<AffineExpression, EvalError>],
+        left: &[Result<AffineExpression<&PolynomialReference>, EvalError>],
         right: Vec<String>,
-    ) -> EvalResult {
+    ) -> EvalResult<&PolynomialReference> {
         // split the fixed columns depending on whether their associated lookup variable is constant or not. Preserve the value of the constant arguments.
         // {1, 2, x} in {A, B, C} -> [[(A, 1), (B, 2)], [C, x]]
 

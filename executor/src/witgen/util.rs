@@ -2,10 +2,6 @@ use pil_analyzer::{util::expr_any, Expression, PolynomialReference};
 
 use super::FixedData;
 
-pub trait WitnessColumnNamer<K = usize> {
-    fn name(&self, i: K) -> String;
-}
-
 /// @returns true if the expression contains a reference to a next value of a
 /// (witness or fixed) column
 pub fn contains_next_ref(expr: &Expression) -> bool {
@@ -40,19 +36,14 @@ pub fn contains_witness_ref(expr: &Expression, fixed_data: &FixedData) -> bool {
 /// - not part of a polynomial array
 /// - not shifted with `'`
 /// and return the polynomial's name if so
-pub fn is_simple_poly(expr: &Expression) -> Option<&str> {
+pub fn is_simple_poly(expr: &Expression) -> Option<&PolynomialReference> {
     // TODO return the ID and not the str
-    if let Expression::PolynomialReference(PolynomialReference {
-        name,
-        index: None,
-        next: false,
-        ..
-    }) = expr
-    {
-        Some(name)
-    } else {
-        None
+    if let Expression::PolynomialReference(poly_ref) = expr {
+        if poly_ref.index.is_none() && !poly_ref.next {
+            return Some(poly_ref);
+        }
     }
+    None
 }
 
 pub fn is_simple_poly_of_name(expr: &Expression, poly_name: &str) -> bool {

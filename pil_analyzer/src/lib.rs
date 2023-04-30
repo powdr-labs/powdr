@@ -197,21 +197,27 @@ pub struct PolynomialReference {
     pub next: bool,
 }
 
-impl PartialOrd for PolynomialReference {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+impl Ord for PolynomialReference {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        assert!(self.index.is_none() && other.index == None);
         // TODO for efficiency reasons, we should avoid the unwrap check here somehow.
-        match self.poly_id.unwrap().partial_cmp(&other.poly_id.unwrap()) {
-            Some(core::cmp::Ordering::Equal) => {}
+        match self.poly_id.unwrap().cmp(&other.poly_id.unwrap()) {
+            core::cmp::Ordering::Equal => {}
             ord => return ord,
         }
-        assert!(self.index.is_none() && other.index == None);
-        self.next.partial_cmp(&other.next)
+        self.next.cmp(&other.next)
+    }
+}
+
+impl PartialOrd for PolynomialReference {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
     }
 }
 
 impl PartialEq for PolynomialReference {
     fn eq(&self, other: &Self) -> bool {
-        assert!(self.index == None && other.index == None);
+        assert!(self.index.is_none() && other.index == None);
         // TODO for efficiency reasons, we should avoid the unwrap check here somehow.
         self.poly_id.unwrap() == other.poly_id.unwrap() && self.next == other.next
     }

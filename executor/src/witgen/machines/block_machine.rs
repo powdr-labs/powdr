@@ -11,11 +11,14 @@ use crate::witgen::{
     expression_evaluator::ExpressionEvaluator,
     machines::Machine,
     symbolic_witness_evaluator::{SymoblicWitnessEvaluator, WitnessColumnEvaluator},
-    util::{is_simple_poly, WitnessColumnNamer},
+    util::is_simple_poly,
     Constraint,
 };
 use number::{DegreeType, FieldElement};
-use pil_analyzer::{Expression, Identity, IdentityKind, SelectedExpressions};
+use pil_analyzer::{
+    Expression, Identity, IdentityKind, Polynomial, PolynomialReference, PolynomialType,
+    SelectedExpressions,
+};
 
 /// A machine that produces multiple rows (one block) per query.
 /// TODO we do not actually "detect" the machine yet, we just check if
@@ -23,16 +26,16 @@ use pil_analyzer::{Expression, Identity, IdentityKind, SelectedExpressions};
 pub struct BlockMachine {
     /// Block size, the period of the selector.
     block_size: usize,
-    selector: String,
+    selector: PolynomialReference,
     identities: Vec<Identity>,
     /// One column of values for each witness.
-    data: HashMap<usize, Vec<Option<FieldElement>>>,
+    data: BTreeMap<PolynomialReference, Vec<Option<FieldElement>>>,
     /// Current row in the machine
     row: DegreeType,
     /// Bit constraints, are deleted outside the current block.
-    bit_constraints: HashMap<usize, HashMap<DegreeType, BitConstraint>>,
+    bit_constraints: HashMap<PolynomialReference, HashMap<DegreeType, BitConstraint>>,
     /// Global bit constraints on witness columns.
-    global_bit_constraints: HashMap<usize, BitConstraint>,
+    global_bit_constraints: BTreeMap<PolynomialReference, BitConstraint>,
     /// Number of witnesses (in general, not in this machine).
     witness_count: usize,
     /// Poly degree / absolute number of rows
@@ -47,8 +50,8 @@ impl BlockMachine {
         fixed_data: &FixedData,
         connecting_identities: &[&Identity],
         identities: &[&Identity],
-        witness_names: &HashSet<&str>,
-        global_bit_constraints: &BTreeMap<&str, BitConstraint>,
+        witness_names: &HashSet<&PolynomialReference>,
+        global_bit_constraints: &BTreeMap<&PolynomialReference, BitConstraint>,
     ) -> Option<Box<Self>> {
         for id in connecting_identities {
             if let Some(sel) = &id.right.selector {
@@ -60,15 +63,13 @@ impl BlockMachine {
                         identities: identities.iter().map(|&i| i.clone()).collect(),
                         data: witness_names
                             .iter()
-                            .map(|n| (fixed_data.witness_ids[n], vec![]))
+                            .map(|n| ((*n).clone(), vec![]))
                             .collect(),
                         row: 0,
                         bit_constraints: Default::default(),
                         global_bit_constraints: global_bit_constraints
                             .iter()
-                            .filter_map(|(n, c)| {
-                                fixed_data.witness_ids.get(n).map(|n| (*n, c.clone()))
-                            })
+                            .map(|(n, c)| ((*n).clone(), (*c).clone()))
                             .collect(),
                         witness_count: fixed_data.witness_cols.len(),
                         degree: fixed_data.degree,
@@ -98,10 +99,14 @@ impl BlockMachine {
 fn is_boolean_periodic_selector(
     expr: &Expression,
     fixed_data: &FixedData,
-) -> Option<(String, usize)> {
+) -> Option<(PolynomialReference, usize)> {
     let poly = is_simple_poly(expr)?;
+    let (id, poly_type) = poly.poly_id.unwrap();
+    if poly_type != PolynomialType::Constant {
+        return None;
+    }
 
-    let values = fixed_data.fixed_cols.get(poly)?;
+    let values = fixed_data.fixed_values[id as usize];
 
     let period = 1 + values.iter().position(|v| *v == 1.into())?;
     if period == 1 {
@@ -118,7 +123,7 @@ fn is_boolean_periodic_selector(
             };
             *v == expected
         })
-        .then_some((poly.to_string(), period))
+        .then_some((poly.clone(), period))
 }
 
 impl Machine for BlockMachine {
@@ -127,10 +132,10 @@ impl Machine for BlockMachine {
         fixed_data: &FixedData,
         fixed_lookup: &mut FixedLookup,
         kind: IdentityKind,
-        left: &[Result<AffineExpression, EvalError>],
+        left: &[Result<AffineExpression<&PolynomialReference>, EvalError>],
         right: &SelectedExpressions,
-    ) -> Option<EvalResult> {
-        if is_simple_poly(right.selector.as_ref()?)? != self.selector
+    ) -> Option<EvalResult<&PolynomialReference>> {
+        if is_simple_poly(right.selector.as_ref()?)? != &self.selector
             || kind != IdentityKind::Plookup
         {
             return None;
@@ -159,7 +164,7 @@ impl Machine for BlockMachine {
                     .collect::<Vec<_>>();
 
                 values.resize(fixed_data.degree as usize, 0.into());
-                (fixed_data.name(id), values)
+                (id.to_string(), values)
             })
             .collect()
     }
@@ -185,9 +190,9 @@ impl BlockMachine {
         &mut self,
         fixed_data: &FixedData,
         fixed_lookup: &mut FixedLookup,
-        left: &[Result<AffineExpression, EvalError>],
+        left: &[Result<AffineExpression<&PolynomialReference>, EvalError>],
         right: &SelectedExpressions,
-    ) -> EvalResult {
+    ) -> EvalResult<&PolynomialReference> {
         // First check if we already store the value.
         if left
             .iter()
@@ -303,10 +308,10 @@ impl BlockMachine {
         &self,
         fixed_data: &FixedData,
         fixed_lookup: &mut FixedLookup,
-        left: &[Result<AffineExpression, EvalError>],
+        left: &[Result<AffineExpression<&PolynomialReference>, EvalError>],
         right: &SelectedExpressions,
         identity: IdentityInSequence,
-    ) -> EvalResult {
+    ) -> EvalResult<&PolynomialReference> {
         match identity {
             IdentityInSequence::Internal(index) => {
                 let id = &self.identities[index];
@@ -330,9 +335,9 @@ impl BlockMachine {
     fn process_outer_query(
         &self,
         fixed_data: &FixedData,
-        left: &[Result<AffineExpression, EvalError>],
+        left: &[Result<AffineExpression<&PolynomialReference>, EvalError>],
         right: &SelectedExpressions,
-    ) -> EvalResult {
+    ) -> EvalResult<&PolynomialReference> {
         assert!(self.row as usize % self.block_size == self.block_size - 1);
         let mut errors = vec![];
         let mut results = vec![];
@@ -363,7 +368,7 @@ impl BlockMachine {
         &self,
         fixed_data: &FixedData,
         identity: &Expression,
-    ) -> EvalResult {
+    ) -> EvalResult<&PolynomialReference> {
         let evaluated = self.evaluate(fixed_data, identity)?;
         evaluated.solve_with_bit_constraints(self).map_err(|e| {
             let witness_data = WitnessData {
@@ -388,7 +393,7 @@ impl BlockMachine {
         fixed_data: &FixedData,
         fixed_lookup: &mut FixedLookup,
         identity: &Identity,
-    ) -> EvalResult {
+    ) -> EvalResult<&PolynomialReference> {
         if identity.left.selector.is_some() || identity.right.selector.is_some() {
             unimplemented!("Selectors not yet implemented.");
         }
@@ -471,13 +476,6 @@ impl<'a> WitnessColumnEvaluator for WitnessData<'a> {
     }
 }
 
-impl<'a> WitnessColumnNamer for WitnessData<'a> {
-    fn name(&self, i: usize) -> String {
-        let (id, next) = extract_next(self.fixed_data.witness_cols.len(), i);
-        self.fixed_data.name(id) + if next { "\'" } else { "" }
-    }
-}
-
 /// Converts a poly ID that might contain a next offset
 /// to a regular poly ID plus a boolean signifying "next".
 fn extract_next(witness_count: usize, id: usize) -> (usize, bool) {
@@ -538,7 +536,7 @@ impl ProcessingSequenceCache {
 
     pub fn get_processing_sequence(
         &self,
-        left: &[Result<AffineExpression, EvalError>],
+        left: &[Result<AffineExpression<&PolynomialReference>, EvalError>],
     ) -> Vec<SequenceStep> {
         self.cache.get(&left.into()).cloned().unwrap_or_else(|| {
             let block_size = self.block_size as i64;

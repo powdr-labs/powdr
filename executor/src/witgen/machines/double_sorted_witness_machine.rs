@@ -68,9 +68,9 @@ impl Machine for DoubleSortedWitnesses {
         fixed_data: &FixedData,
         _fixed_lookup: &mut FixedLookup,
         kind: IdentityKind,
-        left: &[Result<AffineExpression, EvalError>],
+        left: &[Result<AffineExpression<&PolynomialReference>, EvalError>],
         right: &SelectedExpressions,
-    ) -> Option<EvalResult> {
+    ) -> Option<EvalResult<&PolynomialReference>> {
         if kind != IdentityKind::Permutation
             || !(is_simple_poly_of_name(right.selector.as_ref()?, "Assembly.m_is_read")
                 || is_simple_poly_of_name(right.selector.as_ref()?, "Assembly.m_is_write"))
@@ -143,9 +143,9 @@ impl DoubleSortedWitnesses {
     fn process_plookup_internal(
         &mut self,
         fixed_data: &FixedData,
-        left: &[Result<AffineExpression, EvalError>],
+        left: &[Result<AffineExpression<&PolynomialReference>, EvalError>],
         right: &SelectedExpressions,
-    ) -> EvalResult {
+    ) -> EvalResult<&PolynomialReference> {
         // We blindly assume the lookup is of the form
         // OP { ADDR, STEP, X } is m_is_write { m_addr, m_step, m_value }
         // or

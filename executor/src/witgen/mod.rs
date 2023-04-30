@@ -2,11 +2,12 @@ use std::collections::HashMap;
 use std::fmt::Display;
 
 use number::{DegreeType, FieldElement};
-use pil_analyzer::{Analyzed, Expression, FunctionValueDefinition};
+use pil_analyzer::{
+    Analyzed, Expression, FunctionValueDefinition, Polynomial, PolynomialReference, PolynomialType,
+};
 
 use self::bit_constraints::BitConstraint;
 use self::eval_error::EvalError;
-use self::util::WitnessColumnNamer;
 
 mod affine_expression;
 mod bit_constraints;
@@ -41,7 +42,17 @@ pub fn generate<'a>(
     let fixed = FixedData::new(
         degree,
         &analyzed.constants,
-        fixed_cols.iter().map(|(n, v)| (*n, v)).collect(),
+        fixed_cols.iter().map(|(_n, v)| v).collect(),
+        fixed_cols
+            .iter()
+            .enumerate()
+            .map(|(poly_id, (n, _v))| PolynomialReference {
+                name: n.to_string(),
+                poly_id: Some((poly_id, PolynomialType::Constant)),
+                index: None,
+                next: false,
+            })
+            .collect(),
         &witness_cols,
         witness_cols.iter().map(|w| (w.name, w.id)).collect(),
     );
@@ -125,7 +136,7 @@ fn rows_are_repeating(values: &[(&str, Vec<FieldElement>)]) -> Option<usize> {
 
 /// Result of evaluating an expression / lookup.
 /// New assignments or constraints for witness columns identified by an ID.
-type EvalResult<K = usize> = Result<Vec<(K, Constraint)>, EvalError>;
+type EvalResult<K> = Result<Vec<(K, Constraint)>, EvalError>;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Constraint {
@@ -146,7 +157,8 @@ impl Display for Constraint {
 pub struct FixedData<'a> {
     degree: DegreeType,
     constants: &'a HashMap<String, FieldElement>,
-    fixed_cols: HashMap<&'a str, &'a Vec<FieldElement>>,
+    fixed_values: Vec<&'a Vec<FieldElement>>,
+    fixed_names: Vec<PolynomialReference>,
     witness_cols: &'a Vec<WitnessColumn<'a>>,
     witness_ids: HashMap<&'a str, usize>,
 }
@@ -155,14 +167,16 @@ impl<'a> FixedData<'a> {
     pub fn new(
         degree: DegreeType,
         constants: &'a HashMap<String, FieldElement>,
-        fixed_cols: HashMap<&'a str, &'a Vec<FieldElement>>,
+        fixed_values: Vec<&'a Vec<FieldElement>>,
+        fixed_names: Vec<PolynomialReference>,
         witness_cols: &'a Vec<WitnessColumn<'a>>,
         witness_ids: HashMap<&'a str, usize>,
     ) -> Self {
         FixedData {
             degree,
             constants,
-            fixed_cols,
+            fixed_values,
+            fixed_names,
             witness_cols,
             witness_ids,
         }
@@ -173,15 +187,8 @@ impl<'a> FixedData<'a> {
     }
 }
 
-impl<'a> WitnessColumnNamer for FixedData<'a> {
-    fn name(&self, i: usize) -> String {
-        self.witness_cols[i].name.to_string()
-    }
-}
-
 pub struct WitnessColumn<'a> {
-    id: usize,
-    name: &'a str,
+    id: PolynomialReference,
     query: Option<&'a Expression>,
 }
 

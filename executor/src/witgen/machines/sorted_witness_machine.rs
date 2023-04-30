@@ -13,7 +13,9 @@ use crate::witgen::{
     symbolic_evaluator::SymbolicEvaluator,
 };
 use number::FieldElement;
-use pil_analyzer::{self, Expression, Identity, IdentityKind, SelectedExpressions};
+use pil_analyzer::{
+    self, Expression, Identity, IdentityKind, PolynomialReference, SelectedExpressions,
+};
 
 /// A machine that can support a lookup in a set of columns that are sorted
 /// by one specific column and values in that column have to be unique.
@@ -126,9 +128,9 @@ impl Machine for SortedWitnesses {
         fixed_data: &FixedData,
         _fixed_lookup: &mut FixedLookup,
         kind: IdentityKind,
-        left: &[Result<AffineExpression, EvalError>],
+        left: &[Result<AffineExpression<&PolynomialReference>, EvalError>],
         right: &SelectedExpressions,
-    ) -> Option<EvalResult> {
+    ) -> Option<EvalResult<&PolynomialReference>> {
         if kind != IdentityKind::Plookup || right.selector.is_some() {
             return None;
         }
@@ -184,10 +186,10 @@ impl SortedWitnesses {
     fn process_plookup_internal(
         &mut self,
         fixed_data: &FixedData,
-        left: &[Result<AffineExpression, EvalError>],
+        left: &[Result<AffineExpression<&PolynomialReference>, EvalError>],
         right: &SelectedExpressions,
         rhs: Vec<&String>,
-    ) -> EvalResult {
+    ) -> EvalResult<&PolynomialReference> {
         // Fail if the LHS has an error.
         let (left, errors): (Vec<_>, Vec<_>) = left.iter().partition_map(|x| match x {
             Ok(x) => Either::Left(x),

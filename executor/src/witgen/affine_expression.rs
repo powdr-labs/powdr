@@ -1,12 +1,13 @@
 use std::collections::BTreeMap;
+use std::fmt::Display;
 
+use itertools::Itertools;
 use number::AbstractNumberType;
 use number::FieldElement;
 
 use super::bit_constraints::BitConstraintSet;
 use super::eval_error::EvalError::ConflictingBitConstraints;
 use super::eval_error::EvalError::ConstraintUnsatisfiable;
-use super::util::WitnessColumnNamer;
 use super::Constraint;
 use super::EvalResult;
 
@@ -17,7 +18,7 @@ pub struct AffineExpression<K = usize> {
     pub offset: FieldElement,
 }
 
-impl From<FieldElement> for AffineExpression {
+impl<K> From<FieldElement> for AffineExpression<K> {
     fn from(value: FieldElement) -> Self {
         AffineExpression {
             coefficients: Default::default(),
@@ -26,7 +27,7 @@ impl From<FieldElement> for AffineExpression {
     }
 }
 
-impl From<u32> for AffineExpression {
+impl<K> From<u32> for AffineExpression<K> {
     fn from(value: u32) -> Self {
         AffineExpression {
             coefficients: Default::default(),
@@ -253,22 +254,29 @@ where
             Ok(assignments)
         }
     }
+}
 
-    pub fn format(&self, namer: &impl WitnessColumnNamer<K>) -> String {
-        self.nonzero_coefficients()
-            .map(|(i, c)| {
-                let name = namer.name(i);
-                if *c == 1.into() {
-                    name
-                } else if *c == (-1).into() {
-                    format!("-{name}")
-                } else {
-                    format!("{c} * {name}")
-                }
-            })
-            .chain(self.constant_value().map(|v| format!("{v}")))
-            .collect::<Vec<_>>()
-            .join(" + ")
+impl<K> Display for AffineExpression<K>
+where
+    K: Display + Ord + Copy,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}",
+            self.nonzero_coefficients()
+                .map(|(key, coeff)| {
+                    if *coeff == 1.into() {
+                        format!("{key}")
+                    } else if *coeff == (-1).into() {
+                        format!("-{key}")
+                    } else {
+                        format!("{coeff} * {key}")
+                    }
+                })
+                .chain(self.constant_value().map(|v| format!("{v}")))
+                .join(" + ")
+        )
     }
 }
 

@@ -1,9 +1,12 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::{Display, Formatter};
 
-use crate::witgen::util::{contains_next_ref, WitnessColumnNamer};
+use crate::witgen::util::contains_next_ref;
 use number::{AbstractNumberType, FieldElement};
-use pil_analyzer::{BinaryOperator, Expression, Identity, IdentityKind};
+use pil_analyzer::{
+    BinaryOperator, Expression, Identity, IdentityKind, Polynomial, PolynomialReference,
+    PolynomialType,
+};
 
 use super::expression_evaluator::ExpressionEvaluator;
 use super::symbolic_evaluator::SymbolicEvaluator;
@@ -92,19 +95,16 @@ pub trait BitConstraintSet<K> {
     fn bit_constraint(&self, id: K) -> Option<BitConstraint>;
 }
 
-pub struct SimpleBitConstraintSet<'a, Namer> {
-    bit_constraints: &'a BTreeMap<&'a str, BitConstraint>,
-    names: &'a Namer,
+pub struct SimpleBitConstraintSet<'a, K> {
+    bit_constraints: &'a BTreeMap<K, BitConstraint>,
 }
 
-impl<'a, Namer, K> BitConstraintSet<K> for SimpleBitConstraintSet<'a, Namer>
+impl<'a, K> BitConstraintSet<K> for SimpleBitConstraintSet<'a, K>
 where
-    Namer: WitnessColumnNamer<K>,
+    K: Ord,
 {
     fn bit_constraint(&self, id: K) -> Option<BitConstraint> {
-        self.bit_constraints
-            .get(self.names.name(id).as_str())
-            .cloned()
+        self.bit_constraints.get(&id).cloned()
     }
 }
 
@@ -115,13 +115,16 @@ where
 pub fn determine_global_constraints<'a>(
     fixed_data: &'a FixedData,
     identities: Vec<&'a Identity>,
-) -> (BTreeMap<&'a str, BitConstraint>, Vec<&'a Identity>) {
+) -> (
+    BTreeMap<&'a PolynomialReference, BitConstraint>,
+    Vec<&'a Identity>,
+) {
     let mut known_constraints = BTreeMap::new();
     // For these columns, we know that they are not only constrained to those bits
     // but also have one row for each possible value.
     // It allows us to completely remove some lookups.
     let mut full_span = BTreeSet::new();
-    for (&name, &values) in &fixed_data.fixed_cols {
+    for (name, values) in fixed_data.fixed_names.iter().zip(fixed_data.fixed_values) {
         if let Some((cons, full)) = process_fixed_column(values) {
             assert!(known_constraints.insert(name, cons).is_none());
             if full {
@@ -184,10 +187,10 @@ fn process_fixed_column(fixed: &[FieldElement]) -> Option<(BitConstraint, bool)>
 /// no further information than the bit constraint.
 fn propagate_constraints<'a>(
     fixed_data: &'a FixedData,
-    mut known_constraints: BTreeMap<&'a str, BitConstraint>,
+    mut known_constraints: BTreeMap<&'a PolynomialReference, BitConstraint>,
     identity: &'a Identity,
-    full_span: &BTreeSet<&'a str>,
-) -> (BTreeMap<&'a str, BitConstraint>, bool) {
+    full_span: &BTreeSet<&'a PolynomialReference>,
+) -> (BTreeMap<&'a PolynomialReference, BitConstraint>, bool) {
     let mut remove = false;
     match identity.kind {
         IdentityKind::Polynomial => {
@@ -246,7 +249,10 @@ fn propagate_constraints<'a>(
 }
 
 /// Tries to find "X * (1 - X) = 0"
-fn is_binary_constraint<'a>(fixed_data: &'a FixedData, expr: &Expression) -> Option<&'a str> {
+fn is_binary_constraint<'a>(
+    fixed_data: &'a FixedData,
+    expr: &Expression,
+) -> Option<&'a PolynomialReference> {
     // TODO Write a proper pattern matching engine.
     if let Expression::BinaryOperation(left, BinaryOperator::Sub, right) = expr {
         if let Expression::Number(n) = right.as_ref() {
@@ -267,15 +273,13 @@ fn is_binary_constraint<'a>(fixed_data: &'a FixedData, expr: &Expression) -> Opt
         if let ([(id1, Constraint::Assignment(value1))], [(id2, Constraint::Assignment(value2))]) =
             (&left_root[..], &right_root[..])
         {
-            let poly1 = symbolic_ev.poly_from_id(*id1);
-            let poly2 = symbolic_ev.poly_from_id(*id2);
-            if poly1 != poly2 || !fixed_data.witness_ids.contains_key(poly1.0) {
+            if id1 != id2 || id1.poly_id.unwrap().1 != PolynomialType::Committed {
                 return None;
             }
             if (*value1 == 0.into() && *value2 == 1.into())
                 || (*value1 == 1.into() && *value2 == 0.into())
             {
-                return Some(poly1.0);
+                return Some(id1);
             }
         }
     }
@@ -286,8 +290,8 @@ fn is_binary_constraint<'a>(fixed_data: &'a FixedData, expr: &Expression) -> Opt
 fn try_transfer_constraints<'a>(
     fixed_data: &'a FixedData,
     expr: &'a Expression,
-    known_constraints: &BTreeMap<&str, BitConstraint>,
-) -> Option<(&'a str, BitConstraint)> {
+    known_constraints: &BTreeMap<&PolynomialReference, BitConstraint>,
+) -> Option<(&'a PolynomialReference, BitConstraint)> {
     if contains_next_ref(expr) {
         return None;
     }
@@ -298,9 +302,8 @@ fn try_transfer_constraints<'a>(
         .ok()?;
 
     let result = aff_expr
-        .solve_with_bit_constraints(&SimpleBitConstraintSet {
+        .solve_with_bit_constraints(&SimpleBitConstraintSet::<&PolynomialReference> {
             bit_constraints: known_constraints,
-            names: &symbolic_ev,
         })
         .ok()?;
     assert!(result.len() <= 1);
@@ -325,6 +328,8 @@ fn smallest_period_candidate(fixed: &[FieldElement]) -> Option<u64> {
 #[cfg(test)]
 mod test {
     use std::collections::BTreeMap;
+
+    use parser::ast::PolynomialReference;
 
     use crate::witgen::bit_constraints::{propagate_constraints, BitConstraint};
     use crate::witgen::{FixedData, WitnessColumn};
@@ -428,6 +433,18 @@ namespace Global(2**20);
             degree,
             &analyzed.constants,
             constants.iter().map(|(n, v)| (*n, v)).collect(),
+            constants
+                .iter()
+                .enumerate()
+                .map(|(i, (n, v))| {
+                    PolynomialReference {
+                        namespace: todo!(),
+                        name: todo!(),
+                        index: todo!(),
+                        next: todo!(),
+                    }(*n, v)
+                })
+                .collect(),
             &witness_cols,
             witness_cols.iter().map(|w| (w.name, w.id)).collect(),
         );

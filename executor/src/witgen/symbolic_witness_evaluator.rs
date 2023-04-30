@@ -1,21 +1,25 @@
 use number::DegreeType;
+use pil_analyzer::{PolynomialReference, PolynomialType};
 
 use super::{
     affine_expression::AffineExpression, eval_error::EvalError,
-    expression_evaluator::SymbolicVariables, util::WitnessColumnNamer, FixedData,
+    expression_evaluator::SymbolicVariables, FixedData,
 };
 
 pub trait WitnessColumnEvaluator {
     /// Returns a symbolic or concrete value for the given witness column and next flag.
     /// This function defines the mapping to IDs.
     /// It should be used together with a matching reverse mapping in WitnessColumnNamer.
-    fn value(&self, name: &str, next: bool) -> Result<AffineExpression, EvalError>;
+    fn value(
+        &self,
+        poly: &PolynomialReference,
+    ) -> Result<AffineExpression<&PolynomialReference>, EvalError>;
 }
 
 /// An evaluator (to be used together with ExpressionEvaluator) that performs concrete
 /// evaluation of all fixed columns but falls back to a generic WitnessColumnEvaluator
 /// to evaluate the witness columns either symbolically or concretely.
-pub struct SymoblicWitnessEvaluator<'a, WA: WitnessColumnEvaluator + WitnessColumnNamer> {
+pub struct SymoblicWitnessEvaluator<'a, WA: WitnessColumnEvaluator> {
     fixed_data: &'a FixedData<'a>,
     row: DegreeType,
     witness_access: WA,
@@ -23,7 +27,7 @@ pub struct SymoblicWitnessEvaluator<'a, WA: WitnessColumnEvaluator + WitnessColu
 
 impl<'a, WA> SymoblicWitnessEvaluator<'a, WA>
 where
-    WA: WitnessColumnEvaluator + WitnessColumnNamer,
+    WA: WitnessColumnEvaluator,
 {
     /// Constructs a new SymbolicWitnessEvaluator
     /// @param row the row on which to evaluate plain fixed
@@ -39,24 +43,24 @@ where
 
 impl<'a, WA> SymbolicVariables for SymoblicWitnessEvaluator<'a, WA>
 where
-    WA: WitnessColumnEvaluator + WitnessColumnNamer,
+    WA: WitnessColumnEvaluator,
 {
-    fn constant(&self, name: &str) -> Result<AffineExpression, EvalError> {
+    fn constant(&self, name: &str) -> Result<AffineExpression<&PolynomialReference>, EvalError> {
         Ok(self.fixed_data.constants[name].into())
     }
 
-    fn value(&self, name: &str, next: bool) -> Result<AffineExpression, EvalError> {
+    fn value(
+        &self,
+        poly: &PolynomialReference,
+    ) -> Result<AffineExpression<&PolynomialReference>, EvalError> {
         // TODO arrays
-        if self.fixed_data.witness_ids.contains_key(name) {
-            self.witness_access.value(name, next)
+        let (id, poly_type) = poly.poly_id.unwrap();
+        if poly_type == PolynomialType::Committed {
+            self.witness_access.value(poly)
         } else {
             // Constant polynomial (or something else)
-            let values = self
-                .fixed_data
-                .fixed_cols
-                .get(name)
-                .unwrap_or_else(|| panic!("unknown col: {name}"));
-            let row = if next {
+            let values = self.fixed_data.fixed_values[id as usize];
+            let row = if poly.next {
                 let degree = values.len() as DegreeType;
                 (self.row + 1) % degree
             } else {
@@ -64,9 +68,5 @@ where
             };
             Ok(values[row as usize].into())
         }
-    }
-
-    fn format(&self, expr: AffineExpression) -> String {
-        expr.format(&self.witness_access)
     }
 }
