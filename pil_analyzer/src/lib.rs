@@ -92,6 +92,7 @@ impl Analyzed {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct Polynomial {
     pub id: u64,
     pub source: SourceRef,
@@ -188,19 +189,18 @@ pub struct PolynomialReference {
     /// Name of the polynomial - just for informational purposes.
     /// Comparisons are based on polynomial ID.
     pub name: String,
-    pub poly_id: u64,
-    pub poly_type: PolynomialType,
+    /// Identifier for a polynomial reference.
+    /// Optional because it is filled in in a second stage of analysis.
+    /// TODO make this non-optional
+    pub poly_id: Option<(u64, PolynomialType)>,
     pub index: Option<u64>,
     pub next: bool,
 }
 
 impl PartialOrd for PolynomialReference {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        match self.poly_id.partial_cmp(&other.poly_id) {
-            Some(core::cmp::Ordering::Equal) => {}
-            ord => return ord,
-        }
-        match self.poly_type.partial_cmp(&other.poly_type) {
+        // TODO for efficiency reasons, we should avoid the unwrap check here somehow.
+        match self.poly_id.unwrap().partial_cmp(&other.poly_id.unwrap()) {
             Some(core::cmp::Ordering::Equal) => {}
             ord => return ord,
         }
@@ -212,9 +212,8 @@ impl PartialOrd for PolynomialReference {
 impl PartialEq for PolynomialReference {
     fn eq(&self, other: &Self) -> bool {
         assert!(self.index.is_none() && other.index.is_none());
-        self.poly_id == other.poly_id
-            && self.poly_type == other.poly_type
-            && self.next == other.next
+        // TODO for efficiency reasons, we should avoid the unwrap check here somehow.
+        self.poly_id.unwrap() == other.poly_id.unwrap() && self.next == other.next
     }
 }
 
