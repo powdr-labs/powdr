@@ -41,14 +41,30 @@ pub fn contains_witness_ref(expr: &Expression, fixed_data: &FixedData) -> bool {
 /// - not shifted with `'`
 /// and return the polynomial's name if so
 pub fn is_simple_poly(expr: &Expression) -> Option<&str> {
+    // TODO return the ID and not the str
     if let Expression::PolynomialReference(PolynomialReference {
         name,
         index: None,
         next: false,
+        ..
     }) = expr
     {
         Some(name)
     } else {
         None
+    }
+}
+
+pub fn is_simple_poly_of_name(expr: &Expression, poly_name: &str) -> bool {
+    if let Expression::PolynomialReference(PolynomialReference {
+        name,
+        index: None,
+        next: false,
+        ..
+    }) = expr
+    {
+        name == poly_name
+    } else {
+        false
     }
 }

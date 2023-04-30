@@ -183,16 +183,42 @@ pub enum Expression {
     MatchExpression(Box<Expression>, Vec<(Option<FieldElement>, Expression)>),
 }
 
-#[derive(Debug, PartialEq, Eq, Default, Clone)]
+#[derive(Debug, Clone, Eq)]
 pub struct PolynomialReference {
-    // TODO would be better to use numeric IDs instead of names,
-    // but the IDs as they are overlap. Maybe we can change that.
+    /// Name of the polynomial - just for informational purposes.
+    /// Comparisons are based on polynomial ID.
     pub name: String,
+    pub poly_id: u64,
+    pub poly_type: PolynomialType,
     pub index: Option<u64>,
     pub next: bool,
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+impl PartialOrd for PolynomialReference {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        match self.poly_id.partial_cmp(&other.poly_id) {
+            Some(core::cmp::Ordering::Equal) => {}
+            ord => return ord,
+        }
+        match self.poly_type.partial_cmp(&other.poly_type) {
+            Some(core::cmp::Ordering::Equal) => {}
+            ord => return ord,
+        }
+        assert!(self.index.is_none() && other.index == None);
+        self.next.partial_cmp(&other.next)
+    }
+}
+
+impl PartialEq for PolynomialReference {
+    fn eq(&self, other: &Self) -> bool {
+        assert!(self.index == None && other.index == None);
+        self.poly_id == other.poly_id
+            && self.poly_type == other.poly_type
+            && self.next == other.next
+    }
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum PolynomialType {
     Committed,
     Constant,
