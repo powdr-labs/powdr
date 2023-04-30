@@ -5,6 +5,7 @@ use itertools::{Either, Itertools};
 
 use super::{FixedLookup, Machine};
 use crate::witgen::affine_expression::AffineResult;
+use crate::witgen::util::is_simple_poly_of_name;
 use crate::witgen::{EvalError, EvalResult, FixedData};
 use crate::witgen::{EvalValue, IncompleteCause};
 use number::FieldElement;
