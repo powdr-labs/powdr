@@ -6,6 +6,8 @@ use number::DegreeType;
 use parser::ast;
 pub use parser::ast::{BinaryOperator, UnaryOperator};
 
+use crate::util::{previsit_expression_mut, previsit_expressions_in_pil_file_mut};
+
 use super::*;
 
 pub fn process_pil_file(path: &Path) -> Analyzed {
@@ -65,13 +67,34 @@ impl From<PILContext> for Analyzed {
             ..
         }: PILContext,
     ) -> Self {
-        Self {
+        let ids = definitions
+            .iter()
+            .map(|(name, (poly, _))| (name.clone(), poly.clone()))
+            .collect::<HashMap<_, _>>();
+        let mut result = Self {
             constants,
             definitions,
             public_declarations,
             identities,
             source_order,
-        }
+        };
+        let assign_id = |reference: &mut PolynomialReference| {
+            let poly = ids
+                .get(&reference.name)
+                .unwrap_or_else(|| panic!("Column {} not found.", reference.name));
+            reference.poly_id = Some((poly.id, poly.poly_type));
+        };
+        previsit_expressions_in_pil_file_mut(&mut result, &mut |e| {
+            if let Expression::PolynomialReference(reference) = e {
+                assign_id(reference);
+            }
+            std::ops::ControlFlow::Continue::<()>(())
+        });
+        result
+            .public_declarations
+            .values_mut()
+            .for_each(|public_decl| assign_id(&mut public_decl.polynomial));
+        result
     }
 }
 
@@ -578,18 +601,10 @@ impl PILContext {
             .as_ref()
             .map(|i| self.evaluate_expression(i).unwrap())
             .map(|i| i.to_degree());
-        // TODO currently, forward references are not possible with this way.
-        // Do a two-pass visit to allow forward references.
         let name = self.namespaced_ref(&poly.namespace, &poly.name);
-        let (definition, _) = self.definitions.get(&name).unwrap_or_else(|| {
-            panic!(
-                "Reference not found: {name} - note that forward references are not yet possible."
-            )
-        });
         PolynomialReference {
             name,
-            poly_id: definition.id,
-            poly_type: definition.poly_type,
+            poly_id: None,
             index,
             next: poly.next,
         }
