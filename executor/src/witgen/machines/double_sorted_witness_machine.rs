@@ -8,7 +8,7 @@ use crate::witgen::affine_expression::AffineResult;
 use crate::witgen::{EvalError, EvalResult, FixedData};
 use crate::witgen::{EvalValue, IncompleteCause};
 use number::FieldElement;
-use pil_analyzer::PolynomialReference;
+
 use pil_analyzer::{Expression, Identity, IdentityKind, SelectedExpressions};
 
 /// TODO make this generic
@@ -69,18 +69,8 @@ impl Machine for DoubleSortedWitnesses {
         right: &SelectedExpressions,
     ) -> Option<EvalResult> {
         if kind != IdentityKind::Permutation
-            || (right.selector
-                != Some(Expression::PolynomialReference(PolynomialReference {
-                    name: "Assembly.m_is_read".to_owned(),
-                    index: None,
-                    next: false,
-                }))
-                && right.selector
-                    != Some(Expression::PolynomialReference(PolynomialReference {
-                        name: "Assembly.m_is_write".to_owned(),
-                        index: None,
-                        next: false,
-                    })))
+            || !(is_simple_poly_of_name(right.selector.as_ref()?, "Assembly.m_is_read")
+                || is_simple_poly_of_name(right.selector.as_ref()?, "Assembly.m_is_write"))
         {
             return None;
         }

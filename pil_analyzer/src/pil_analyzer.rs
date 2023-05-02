@@ -578,8 +578,18 @@ impl PILContext {
             .as_ref()
             .map(|i| self.evaluate_expression(i).unwrap())
             .map(|i| i.to_degree());
+        // TODO currently, forward references are not possible with this way.
+        // Do a two-pass visit to allow forward references.
+        let name = self.namespaced_ref(&poly.namespace, &poly.name);
+        let (definition, _) = self.definitions.get(&name).unwrap_or_else(|| {
+            panic!(
+                "Reference not found: {name} - note that forward references are not yet possible."
+            )
+        });
         PolynomialReference {
-            name: self.namespaced_ref(&poly.namespace, &poly.name),
+            name,
+            poly_id: definition.id,
+            poly_type: definition.poly_type,
             index,
             next: poly.next,
         }
