@@ -333,7 +333,7 @@ where
     fn process_polynomial_identity(&self, identity: &Expression) -> EvalResult {
         // If there is no "next" reference in the expression,
         // we just evaluate it directly on the "next" row.
-        let row = if contains_next_witness_ref(identity, self.fixed_data) {
+        let row = if contains_next_witness_ref(identity) {
             // TODO this is the only situation where we use "current"
             // TODO this is the only that actually uses a window.
             EvaluationRow::Current
