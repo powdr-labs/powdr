@@ -1,6 +1,6 @@
 use parser_util::lines::indent;
 use pil_analyzer::{Expression, Identity, IdentityKind, PolynomialReference};
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::time::Instant;
 // TODO should use finite field instead of abstract number
 use number::{DegreeType, FieldElement};
@@ -18,7 +18,7 @@ pub struct Generator<'a, QueryCallback> {
     fixed_data: &'a FixedData<'a>,
     fixed_lookup: &'a mut FixedLookup,
     identities: &'a [&'a Identity],
-    propagating_identities: Vec<usize>,
+    propagating_identities: BTreeSet<usize>,
     machines: Vec<Box<dyn Machine>>,
     query_callback: Option<QueryCallback>,
     global_bit_constraints: BTreeMap<&'a str, BitConstraint>,
@@ -61,7 +61,7 @@ where
             .iter()
             .enumerate()
             .filter_map(|(i, id)| is_propagating_identity(id, fixed_data).then_some(i))
-            .collect::<Vec<_>>();
+            .collect::<BTreeSet<_>>();
 
         Generator {
             fixed_data,
@@ -87,7 +87,7 @@ where
 
         //println!("==== row {next_row}");
 
-        let mut complete_identities = vec![false; self.identities.len()];
+        let mut complete_identities = BTreeSet::new();
 
         let mut identity_failed;
         loop {
@@ -95,12 +95,13 @@ where
             self.progress = false;
             self.failure_reasons.clear();
 
-            for (identity, complete) in self
-                .identities
-                .iter()
-                .zip(complete_identities.iter_mut())
-                .filter(|(_, complete)| !**complete)
-            {
+            let prop = self
+                .propagating_identities
+                .difference(&complete_identities)
+                .cloned()
+                .collect::<Vec<_>>();
+            for identity_id in prop {
+                let identity = self.identities[identity_id];
                 let result = match identity.kind {
                     IdentityKind::Polynomial => {
                         self.process_polynomial_identity(identity.left.selector.as_ref().unwrap())
@@ -117,12 +118,41 @@ where
                     identity_failed = true;
                 }
 
-                match &result {
-                    Ok(e) if e.is_complete() => {
-                        *complete = true;
+                if let Ok(e) = &result {
+                    if e.is_complete() {
+                        complete_identities.insert(identity_id);
                     }
-                    _ => {}
+                }
+
+                self.handle_eval_result(result);
+            }
+            let identity_count = self.identities.len();
+            for identity_id in 0..identity_count {
+                if complete_identities.contains(&identity_id) {
+                    continue;
+                }
+                let identity = self.identities[identity_id];
+                let result = match identity.kind {
+                    IdentityKind::Polynomial => {
+                        self.process_polynomial_identity(identity.left.selector.as_ref().unwrap())
+                    }
+                    IdentityKind::Plookup | IdentityKind::Permutation => {
+                        self.process_plookup(identity)
+                    }
+                    kind => {
+                        unimplemented!("Identity of kind {kind:?} is not supported in the executor")
+                    }
                 };
+
+                if result.is_err() {
+                    identity_failed = true;
+                }
+
+                if let Ok(e) = &result {
+                    if e.is_complete() {
+                        complete_identities.insert(identity_id);
+                    }
+                }
 
                 self.handle_eval_result(result);
             }
