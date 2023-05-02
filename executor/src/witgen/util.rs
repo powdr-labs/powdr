@@ -1,4 +1,4 @@
-use pil_analyzer::{util::expr_any, Expression, PolynomialReference};
+use pil_analyzer::{util::expr_any, Expression, PolynomialReference, PolynomialType};
 
 use super::FixedData;
 
@@ -19,7 +19,7 @@ pub fn contains_next_ref(expr: &Expression) -> bool {
 pub fn contains_next_witness_ref(expr: &Expression, fixed_data: &FixedData) -> bool {
     expr_any(expr, |e| match e {
         Expression::PolynomialReference(poly) => {
-            poly.next && fixed_data.witness_ids.contains_key(poly.name.as_str())
+            poly.next && poly.poly_id.unwrap().1 == PolynomialType::Committed
         }
         _ => false,
     })
@@ -29,7 +29,7 @@ pub fn contains_next_witness_ref(expr: &Expression, fixed_data: &FixedData) -> b
 pub fn contains_witness_ref(expr: &Expression, fixed_data: &FixedData) -> bool {
     expr_any(expr, |e| match e {
         Expression::PolynomialReference(poly) => {
-            fixed_data.witness_ids.contains_key(poly.name.as_str())
+            poly.poly_id.unwrap().1 == PolynomialType::Committed
         }
         _ => false,
     })
