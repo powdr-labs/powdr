@@ -259,7 +259,7 @@ where
             .map(|(i, v)| {
                 format!(
                     "{} = {}",
-                    AffineExpression::from_witness_poly_value(i).format(self.fixed_data),
+                    AffineExpression::from_variable_id(i).format(self.fixed_data),
                     v.as_ref()
                         .map(ToString::to_string)
                         .unwrap_or_else(|| "<unknown>".to_string())
@@ -512,7 +512,7 @@ impl<'a> WitnessColumnEvaluator for EvaluationData<'a> {
                     (*value).into()
                 } else {
                     // We continue with a symbolic value
-                    AffineExpression::from_witness_poly_value(id)
+                    AffineExpression::from_variable_id(id)
                 })
             }
             (true, EvaluationRow::Next) => {

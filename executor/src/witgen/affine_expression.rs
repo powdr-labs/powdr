@@ -9,7 +9,7 @@ use super::util::WitnessColumnNamer;
 use super::Constraint;
 use super::{EvalError::*, EvalResult, EvalValue, IncompleteCause};
 
-/// An expression affine in the committed polynomials.
+/// An expression affine in the committed polynomials (or symbolic variables in general).
 #[derive(Debug, Clone)]
 pub struct AffineExpression {
     pub coefficients: BTreeMap<usize, FieldElement>,
@@ -37,9 +37,9 @@ impl From<u32> for AffineExpression {
 }
 
 impl AffineExpression {
-    pub fn from_witness_poly_value(poly_id: usize) -> AffineExpression {
+    pub fn from_variable_id(var_id: usize) -> AffineExpression {
         AffineExpression {
-            coefficients: BTreeMap::from([(poly_id, 1.into())]),
+            coefficients: BTreeMap::from([(var_id, 1.into())]),
             offset: 0.into(),
         }
     }
@@ -389,9 +389,9 @@ mod test {
 
     #[test]
     pub fn derive_constraints() {
-        let expr = AffineExpression::from_witness_poly_value(1)
-            - AffineExpression::from_witness_poly_value(2).mul(16.into())
-            - AffineExpression::from_witness_poly_value(3);
+        let expr = AffineExpression::from_variable_id(1)
+            - AffineExpression::from_variable_id(2).mul(16.into())
+            - AffineExpression::from_variable_id(3);
         let known_constraints = TestBitConstraints(
             vec![
                 (2, BitConstraint::from_max_bit(7)),
@@ -424,9 +424,9 @@ mod test {
         );
 
         // Replace factor 16 by 32.
-        let expr = AffineExpression::from_witness_poly_value(1)
-            - AffineExpression::from_witness_poly_value(2).mul(32.into())
-            - AffineExpression::from_witness_poly_value(3);
+        let expr = AffineExpression::from_variable_id(1)
+            - AffineExpression::from_variable_id(2).mul(32.into())
+            - AffineExpression::from_variable_id(3);
         assert_eq!(
             expr.solve_with_bit_constraints(&known_constraints).unwrap(),
             EvalValue::incomplete_with_constraints(
@@ -439,9 +439,9 @@ mod test {
         );
 
         // Replace factor 16 by 8.
-        let expr = AffineExpression::from_witness_poly_value(1)
-            - AffineExpression::from_witness_poly_value(2).mul(8.into())
-            - AffineExpression::from_witness_poly_value(3);
+        let expr = AffineExpression::from_variable_id(1)
+            - AffineExpression::from_variable_id(2).mul(8.into())
+            - AffineExpression::from_variable_id(3);
         assert_eq!(
             expr.solve_with_bit_constraints(&known_constraints),
             Ok(EvalValue::incomplete(
@@ -454,8 +454,8 @@ mod test {
     pub fn solve_through_constraints_success() {
         let value = 0x1504u32;
         let expr = AffineExpression::from(value)
-            - AffineExpression::from_witness_poly_value(2).mul(256.into())
-            - AffineExpression::from_witness_poly_value(3);
+            - AffineExpression::from_variable_id(2).mul(256.into())
+            - AffineExpression::from_variable_id(3);
         let known_constraints = TestBitConstraints(
             vec![
                 (2, BitConstraint::from_max_bit(7)),
@@ -478,8 +478,8 @@ mod test {
     pub fn solve_through_constraints_conflict() {
         let value = 0x1554u32;
         let expr = AffineExpression::from(value)
-            - AffineExpression::from_witness_poly_value(2).mul(256.into())
-            - AffineExpression::from_witness_poly_value(3);
+            - AffineExpression::from_variable_id(2).mul(256.into())
+            - AffineExpression::from_variable_id(3);
         let known_constraints = TestBitConstraints(
             vec![
                 (2, BitConstraint::from_max_bit(7)),

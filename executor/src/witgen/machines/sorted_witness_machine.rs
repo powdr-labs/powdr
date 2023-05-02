@@ -111,11 +111,8 @@ fn check_constraint<'a>(fixed_data: &'a FixedData, constraint: &Expression) -> O
         // Either next-witness or fixed column.
         return None;
     }
-    let pattern =
-        AffineExpression::from_witness_poly_value(symbolic_ev.id_for_witness_poly(poly, true))
-            - AffineExpression::from_witness_poly_value(
-                symbolic_ev.id_for_witness_poly(poly, false),
-            );
+    let pattern = AffineExpression::from_variable_id(symbolic_ev.id_for_witness_poly(poly, true))
+        - AffineExpression::from_variable_id(symbolic_ev.id_for_witness_poly(poly, false));
     if sort_constraint != pattern {
         return None;
     }

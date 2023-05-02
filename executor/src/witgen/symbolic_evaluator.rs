@@ -78,11 +78,11 @@ impl<'a> SymbolicVariables for SymbolicEvaluator<'a> {
     fn value(&self, name: &str, next: bool) -> AffineResult {
         // TODO arrays
         if self.fixed_data.witness_ids.get(name).is_some() {
-            Ok(AffineExpression::from_witness_poly_value(
+            Ok(AffineExpression::from_variable_id(
                 self.id_for_witness_poly(name, next),
             ))
         } else {
-            Ok(AffineExpression::from_witness_poly_value(
+            Ok(AffineExpression::from_variable_id(
                 self.id_for_fixed_poly(name, next),
             ))
         }
