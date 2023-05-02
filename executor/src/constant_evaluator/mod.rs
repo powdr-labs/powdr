@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use number::{DegreeType, FieldElement};
 use pil_analyzer::{Analyzed, BinaryOperator, Expression, FunctionValueDefinition, UnaryOperator};
+use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 
 /// Generates the constant polynomial values for all constant polynomials
 /// that are defined (and not just declared).
@@ -37,6 +38,7 @@ fn generate_values(
 ) -> Vec<FieldElement> {
     match body {
         FunctionValueDefinition::Mapping(body) => (0..degree)
+            .into_par_iter()
             .map(|i| {
                 Evaluator {
                     analyzed,
