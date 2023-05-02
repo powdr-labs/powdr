@@ -472,7 +472,7 @@ impl<'a> WitnessColumnEvaluator for WitnessData<'a> {
             None => {
                 let witness_count = self.fixed_data.witness_cols.len();
                 let symbolic_id = if next { id + witness_count } else { id };
-                Ok(AffineExpression::from_witness_poly_value(symbolic_id))
+                Ok(AffineExpression::from_variable_id(symbolic_id))
             }
         }
     }
