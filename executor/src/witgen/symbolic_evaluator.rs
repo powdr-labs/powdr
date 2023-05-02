@@ -1,10 +1,8 @@
-use std::collections::HashMap;
-
 use super::affine_expression::{AffineExpression, AffineResult};
 use super::expression_evaluator::SymbolicVariables;
 use super::util::WitnessColumnNamer;
 use super::FixedData;
-use pil_analyzer::PolynomialReference;
+use pil_analyzer::{PolynomialReference, PolynomialType};
 
 /// A purely symbolic evaluator.
 /// Note: The affine expressions it returns will contain variables
@@ -17,56 +15,48 @@ use pil_analyzer::PolynomialReference;
 #[derive(Clone)]
 pub struct SymbolicEvaluator<'a> {
     fixed_data: &'a FixedData<'a>,
-    fixed_ids: HashMap<&'a str, usize>,
-    fixed_names: Vec<&'a str>,
 }
 
 impl<'a> SymbolicEvaluator<'a> {
     pub fn new(fixed_data: &'a FixedData<'a>) -> Self {
-        let mut fixed_names = fixed_data.fixed_cols.keys().cloned().collect::<Vec<_>>();
-        fixed_names.sort();
-        let fixed_ids = fixed_names
-            .iter()
-            .enumerate()
-            .map(|(i, n)| (*n, i))
-            .collect();
-        SymbolicEvaluator {
-            fixed_data,
-            fixed_ids,
-            fixed_names,
-        }
+        SymbolicEvaluator { fixed_data }
     }
 
-    pub fn poly_from_id(&self, id: usize) -> (&'a str, bool) {
+    /// Turns the ID into a polynomial reference (with empty name, though).
+    pub fn poly_from_id(&self, id: usize) -> PolynomialReference {
         let witness_count = self.fixed_data.witness_ids.len();
+        let poly_id;
+        let next;
+        let poly_type;
         if id < 2 * witness_count {
-            (
-                self.fixed_data.witness_cols[id % witness_count].name,
-                id >= witness_count,
-            )
+            poly_type = PolynomialType::Committed;
+            poly_id = (id % witness_count) as u64;
+            next = id >= witness_count;
         } else {
-            let fixed_count = self.fixed_ids.len();
+            poly_type = PolynomialType::Constant;
+            let fixed_count = self.fixed_data.fixed_col_values.len();
             let fixed_id = id - 2 * witness_count;
-            (
-                self.fixed_names[fixed_id % fixed_count],
-                fixed_id >= fixed_count,
-            )
+            poly_id = (fixed_id % fixed_count) as u64;
+            next = fixed_id >= fixed_count;
+        }
+        PolynomialReference {
+            name: Default::default(),
+            poly_id: Some((poly_id, poly_type)),
+            index: None,
+            next,
         }
     }
 
-    pub fn id_for_fixed_poly(&self, name: &str, next: bool) -> usize {
+    pub fn id_for_fixed_poly(&self, poly: &PolynomialReference) -> usize {
         let witness_count = self.fixed_data.witness_ids.len();
-        let fixed_count = self.fixed_ids.len();
+        let fixed_count = self.fixed_data.fixed_col_values.len();
 
-        let id = self
-            .fixed_ids
-            .get(name)
-            .unwrap_or_else(|| panic!("fixed poly {name} not found"));
-        2 * witness_count + id + if next { fixed_count } else { 0 }
+        let id = poly.poly_id.unwrap().0 as usize;
+        2 * witness_count + id + if poly.next { fixed_count } else { 0 }
     }
-    pub fn id_for_witness_poly(&self, name: &str, next: bool) -> usize {
+    pub fn id_for_witness_poly(&self, poly: &PolynomialReference) -> usize {
         let witness_count = self.fixed_data.witness_ids.len();
-        self.fixed_data.witness_ids[name] + if next { witness_count } else { 0 }
+        poly.poly_id.unwrap().0 as usize + if poly.next { witness_count } else { 0 }
     }
 }
 
@@ -77,20 +67,13 @@ impl<'a> SymbolicVariables for SymbolicEvaluator<'a> {
 
     fn value(&self, poly: &PolynomialReference) -> AffineResult {
         // TODO arrays
-        if self
-            .fixed_data
-            .witness_ids
-            .get(poly.name.as_str())
-            .is_some()
-        {
-            Ok(AffineExpression::from_variable_id(
-                self.id_for_witness_poly(&poly.name, poly.next),
-            ))
-        } else {
-            Ok(AffineExpression::from_variable_id(
-                self.id_for_fixed_poly(&poly.name, poly.next),
-            ))
-        }
+        Ok(AffineExpression::from_variable_id(
+            match poly.poly_id.unwrap().1 {
+                PolynomialType::Committed => self.id_for_witness_poly(poly),
+                PolynomialType::Constant => self.id_for_fixed_poly(poly),
+                PolynomialType::Intermediate => panic!(),
+            },
+        ))
     }
 
     fn format(&self, expr: AffineExpression) -> String {
@@ -100,11 +83,13 @@ impl<'a> SymbolicVariables for SymbolicEvaluator<'a> {
 
 impl<'a> WitnessColumnNamer for SymbolicEvaluator<'a> {
     fn name(&self, id: usize) -> String {
-        let (name, next) = self.poly_from_id(id);
-        if next {
-            format!("{name}'")
-        } else {
-            name.to_string()
-        }
+        format!("Poly with id: {id}")
+        //todo!();
+        // let (name, next) = self.poly_from_id(id);
+        // if next {
+        //     format!("{name}'")
+        // } else {
+        //     name.to_string()
+        // }
     }
 }
