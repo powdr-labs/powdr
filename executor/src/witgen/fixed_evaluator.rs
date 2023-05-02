@@ -1,7 +1,7 @@
 use super::affine_expression::{AffineExpression, AffineResult};
-
 use super::expression_evaluator::SymbolicVariables;
 use super::FixedData;
+use pil_analyzer::PolynomialReference;
 
 /// Evaluates only fixed columns on a specific row.
 pub struct FixedEvaluator<'a> {
@@ -20,11 +20,11 @@ impl<'a> SymbolicVariables for FixedEvaluator<'a> {
         Ok(self.fixed_data.constants[name].into())
     }
 
-    fn value(&self, name: &str, next: bool) -> AffineResult {
+    fn value(&self, poly: &PolynomialReference) -> AffineResult {
         // TODO arrays
-        if let Some(col_data) = self.fixed_data.fixed_cols.get(name) {
+        if let Some(col_data) = self.fixed_data.fixed_cols.get(poly.name.as_str()) {
             let degree = col_data.len();
-            let row = if next {
+            let row = if poly.next {
                 (self.row + 1) % degree
             } else {
                 self.row

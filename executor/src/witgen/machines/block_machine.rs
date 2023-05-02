@@ -14,7 +14,7 @@ use crate::witgen::{
     Constraint, EvalError,
 };
 use number::{DegreeType, FieldElement};
-use pil_analyzer::{Expression, Identity, IdentityKind, SelectedExpressions};
+use pil_analyzer::{Expression, Identity, IdentityKind, PolynomialReference, SelectedExpressions};
 
 /// A machine that produces multiple rows (one block) per query.
 /// TODO we do not actually "detect" the machine yet, we just check if
@@ -458,9 +458,9 @@ struct WitnessData<'a> {
 }
 
 impl<'a> WitnessColumnEvaluator for WitnessData<'a> {
-    fn value(&self, name: &str, next: bool) -> AffineResult {
-        let id = self.fixed_data.witness_ids[name];
-        let row = if next {
+    fn value(&self, poly: &PolynomialReference) -> AffineResult {
+        let id = poly.poly_id() as usize;
+        let row = if poly.next {
             (self.row + 1) % self.fixed_data.degree
         } else {
             self.row
@@ -471,7 +471,7 @@ impl<'a> WitnessColumnEvaluator for WitnessData<'a> {
             Some(value) => Ok(value.into()),
             None => {
                 let witness_count = self.fixed_data.witness_cols.len();
-                let symbolic_id = if next { id + witness_count } else { id };
+                let symbolic_id = if poly.next { id + witness_count } else { id };
                 Ok(AffineExpression::from_variable_id(symbolic_id))
             }
         }
