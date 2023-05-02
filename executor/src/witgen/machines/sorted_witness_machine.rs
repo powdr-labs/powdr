@@ -6,10 +6,10 @@ use super::super::affine_expression::AffineExpression;
 use super::fixed_lookup_machine::FixedLookup;
 use super::Machine;
 use super::{EvalResult, FixedData};
+use crate::witgen::affine_expression::AffineResult;
+use crate::witgen::EvalValue;
 use crate::witgen::{
-    eval_error::{self, EvalError},
-    expression_evaluator::ExpressionEvaluator,
-    fixed_evaluator::FixedEvaluator,
+    expression_evaluator::ExpressionEvaluator, fixed_evaluator::FixedEvaluator,
     symbolic_evaluator::SymbolicEvaluator,
 };
 use number::FieldElement;
@@ -129,7 +129,7 @@ impl Machine for SortedWitnesses {
         fixed_data: &FixedData,
         _fixed_lookup: &mut FixedLookup,
         kind: IdentityKind,
-        left: &[Result<AffineExpression, EvalError>],
+        left: &[AffineResult],
         right: &SelectedExpressions,
     ) -> Option<EvalResult> {
         if kind != IdentityKind::Plookup || right.selector.is_some() {
@@ -187,7 +187,7 @@ impl SortedWitnesses {
     fn process_plookup_internal(
         &mut self,
         fixed_data: &FixedData,
-        left: &[Result<AffineExpression, EvalError>],
+        left: &[AffineResult],
         right: &SelectedExpressions,
         rhs: Vec<&String>,
     ) -> EvalResult {
@@ -197,11 +197,13 @@ impl SortedWitnesses {
             Err(x) => Either::Right(x),
         });
         if !errors.is_empty() {
-            return Err(errors
-                .into_iter()
-                .cloned()
-                .reduce(eval_error::combine)
-                .unwrap());
+            return Ok(EvalValue::incomplete(
+                errors
+                    .into_iter()
+                    .cloned()
+                    .reduce(|x, y| x.combine(y))
+                    .unwrap(),
+            ));
         }
 
         let key_index = rhs.iter().position(|&x| x == &self.key_col).unwrap();
@@ -214,7 +216,7 @@ impl SortedWitnesses {
             )
         })?;
 
-        let mut assignments = vec![];
+        let mut assignments = EvalValue::complete(vec![]);
         let stored_values = self
             .data
             .entry(key_value)
@@ -225,7 +227,7 @@ impl SortedWitnesses {
                 // There is a stored value
                 Some(v) => {
                     match (l.clone() - (*v).into()).solve() {
-                        Err(EvalError::ConstraintUnsatisfiable(_)) => {
+                        Err(()) => {
                             // The LHS value is known and it is differetn from the stored one.
                             return Err(format!(
                                 "Lookup mismatch: There is already a unique row with {} = \
@@ -235,16 +237,11 @@ impl SortedWitnesses {
                             )
                             .into());
                         }
-                        Err(_) => {
-                            return Err(
-                                format!("Cannot solve {} = {v}", l.format(fixed_data)).into()
-                            )
-                        }
                         Ok(ass) => {
                             if !ass.is_empty() {
                                 log::trace!("Read {} = {key_value} -> {r} = {v}", self.key_col);
                             }
-                            assignments.extend(ass);
+                            assignments.combine(ass);
                         }
                     }
                 }

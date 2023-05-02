@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
-use super::affine_expression::AffineExpression;
-use super::eval_error::EvalError;
+use super::affine_expression::{AffineExpression, AffineResult};
+
 use super::expression_evaluator::SymbolicVariables;
 use super::util::WitnessColumnNamer;
 use super::FixedData;
@@ -71,11 +71,11 @@ impl<'a> SymbolicEvaluator<'a> {
 }
 
 impl<'a> SymbolicVariables for SymbolicEvaluator<'a> {
-    fn constant(&self, name: &str) -> Result<AffineExpression, EvalError> {
+    fn constant(&self, name: &str) -> AffineResult {
         Ok(self.fixed_data.constants[name].into())
     }
 
-    fn value(&self, name: &str, next: bool) -> Result<AffineExpression, EvalError> {
+    fn value(&self, name: &str, next: bool) -> AffineResult {
         // TODO arrays
         if self.fixed_data.witness_ids.get(name).is_some() {
             Ok(AffineExpression::from_witness_poly_value(

@@ -5,11 +5,9 @@ use number::AbstractNumberType;
 use number::FieldElement;
 
 use super::bit_constraints::BitConstraintSet;
-use super::eval_error::EvalError::ConflictingBitConstraints;
-use super::eval_error::EvalError::ConstraintUnsatisfiable;
 use super::util::WitnessColumnNamer;
 use super::Constraint;
-use super::EvalResult;
+use super::{EvalError::*, EvalResult, EvalValue, IncompleteCause};
 
 /// An expression affine in the committed polynomials.
 #[derive(Debug, Clone)]
@@ -17,6 +15,8 @@ pub struct AffineExpression {
     pub coefficients: BTreeMap<usize, FieldElement>,
     pub offset: FieldElement,
 }
+
+pub type AffineResult = Result<AffineExpression, IncompleteCause>;
 
 impl From<FieldElement> for AffineExpression {
     fn from(value: FieldElement) -> Self {
@@ -78,14 +78,15 @@ impl AffineExpression {
     /// If the affine expression has only a single variable (with nonzero coefficient),
     /// returns the index of the variable and the assignment that evaluates the
     /// affine expression to zero.
-    pub fn solve(&self) -> EvalResult {
+    /// Returns an error if the constraint is unsat
+    pub fn solve(&self) -> Result<EvalValue, ()> {
         let mut nonzero = self.nonzero_coefficients();
         let first = nonzero.next();
         let second = nonzero.next();
         match (first, second) {
             (Some((i, c)), None) => {
                 // c * a + o = 0 <=> a = -o/c
-                Ok(vec![(
+                Ok(EvalValue::complete(vec![(
                     i,
                     Constraint::Assignment(if *c == 1.into() {
                         -self.offset
@@ -94,16 +95,16 @@ impl AffineExpression {
                     } else {
                         -self.offset / *c
                     }),
-                )])
+                )]))
             }
-            (Some(_), Some(_)) => Err("Too many variables in linear constraint."
-                .to_string()
-                .into()),
+            (Some(_), Some(_)) => Ok(EvalValue::incomplete(
+                IncompleteCause::MultipleLinearSolutions,
+            )),
             (None, None) => {
                 if self.offset == 0.into() {
-                    Ok(vec![])
+                    Ok(EvalValue::complete(vec![]))
                 } else {
-                    Err(ConstraintUnsatisfiable(String::new()))
+                    Err(())
                 }
             }
             (None, Some(_)) => panic!(),
@@ -121,50 +122,47 @@ impl AffineExpression {
     ) -> EvalResult {
         // Try to solve directly.
         match self.solve() {
-            Ok(result) => return Ok(result),
-            Err(ConstraintUnsatisfiable(e)) => return Err(ConstraintUnsatisfiable(e)),
-            Err(_) => {}
-        }
-        let new_constraints: Option<_> = if self
-            .nonzero_coefficients()
-            .all(|(i, _coeff)| known_constraints.bit_constraint(i).is_some())
-        {
-            // We might be able to solve for one or more variables, if all
-            // bit constraints are disjoint.
-
-            // Try positive and negative. We might also experiment with other strategies.
-
-            let result = self
-                .try_solve_through_constraints(known_constraints)
-                .and_then(|new_constraints| {
-                    if new_constraints.is_empty() {
-                        (-self.clone()).try_solve_through_constraints(known_constraints)
-                    } else {
-                        Ok(new_constraints)
-                    }
-                })?;
-            if result.is_empty() {
-                None
-            } else {
-                Some(result)
+            Ok(value) if value.is_complete() => return Ok(value),
+            Err(()) => return Err(ConstraintUnsatisfiable(String::new())),
+            Ok(value) => {
+                // sanity check that we are not ignoring anything useful here
+                assert!(value.constraints.is_empty());
             }
-        } else if self.offset == 0.into() {
-            // We might be able to deduce bit constraints on one variable.
-            self.try_transfer_constraints(known_constraints)
-        } else {
-            None
         };
-        new_constraints.ok_or_else(|| {
-            "Unable to solve or determine constraints."
-                .to_string()
-                .into()
-        })
+        Ok(
+            if self
+                .nonzero_coefficients()
+                .all(|(i, _coeff)| known_constraints.bit_constraint(i).is_some())
+            {
+                // We might be able to solve for one or more variables, if all
+                // bit constraints are disjoint.
+
+                // Try positive and negative. We might also experiment with other strategies.
+
+                self.try_solve_through_constraints(known_constraints)
+                    .and_then(|new_constraints| {
+                        if !new_constraints.is_complete() {
+                            (-self.clone()).try_solve_through_constraints(known_constraints)
+                        } else {
+                            Ok(new_constraints)
+                        }
+                    })?
+            } else if self.offset == 0.into() {
+                // We might be able to deduce bit constraints on one variable.
+                self.try_transfer_constraints(known_constraints)
+                    .unwrap_or_else(|| {
+                        EvalValue::incomplete(IncompleteCause::NoProgressTransferring)
+                    })
+            } else {
+                EvalValue::incomplete(IncompleteCause::SolvingFailed)
+            },
+        )
     }
 
     fn try_transfer_constraints(
         &self,
         known_constraints: &impl BitConstraintSet,
-    ) -> Option<Vec<(usize, Constraint)>> {
+    ) -> Option<EvalValue> {
         // We need the form X = a * Y + b * Z + ...
         // where X is unconstrained and all others are bit-constrained.
         let mut unconstrained = self
@@ -198,7 +196,12 @@ impl AffineExpression {
                 _ => None,
             })
             .flatten()
-            .map(|con| vec![(solve_for.0, Constraint::BitConstraint(con))])
+            .map(|con| {
+                EvalValue::incomplete_with_constraints(
+                    vec![(solve_for.0, Constraint::BitConstraint(con))],
+                    IncompleteCause::NotConcrete,
+                )
+            })
     }
 
     /// Tries to assign values to all variables through their bit constraints.
@@ -222,25 +225,36 @@ impl AffineExpression {
                 )
             })
             .collect::<Vec<_>>();
-        if parts.iter().any(|(_i, _coeff, con)| con.is_none()) {
-            return Ok(vec![]);
+
+        let unconstrained: Vec<usize> = parts
+            .iter()
+            .filter_map(|(i, _, con)| con.is_none().then_some(*i))
+            .collect();
+
+        if !unconstrained.is_empty() {
+            return Ok(EvalValue::incomplete(IncompleteCause::BitUnconstrained(
+                unconstrained,
+            )));
         }
+
         // Check if they are mutually exclusive and compute assignments.
         let mut covered_bits: AbstractNumberType = 0;
-        let mut assignments = vec![];
+        let mut assignments = EvalValue::complete(vec![]);
         let mut offset = (-self.offset).to_integer();
         for (i, coeff, constraint) in parts {
             let constraint = constraint.clone().unwrap();
             let mask = constraint.mask();
             if mask & covered_bits != 0 {
-                return Ok(vec![]);
+                return Ok(EvalValue::incomplete(
+                    IncompleteCause::OverlappingBitConstraints,
+                ));
             } else {
                 covered_bits |= mask;
             }
-            assignments.push((
+            assignments.combine(EvalValue::complete(vec![(
                 i,
                 Constraint::Assignment(((offset & mask) / coeff.to_integer()).into()),
-            ));
+            )]));
             offset &= !mask;
         }
 
@@ -317,7 +331,7 @@ mod test {
     use std::collections::BTreeMap;
 
     use super::*;
-    use crate::witgen::{bit_constraints::BitConstraint, eval_error::EvalError};
+    use crate::witgen::{bit_constraints::BitConstraint, EvalError};
     use number::FieldElement;
 
     fn convert<T>(input: Vec<T>) -> BTreeMap<usize, FieldElement>
@@ -388,19 +402,25 @@ mod test {
         );
         assert_eq!(
             expr.solve_with_bit_constraints(&known_constraints).unwrap(),
-            vec![(
-                1,
-                Constraint::BitConstraint(BitConstraint::from_max_bit(11))
-            )]
+            EvalValue::incomplete_with_constraints(
+                vec![(
+                    1,
+                    Constraint::BitConstraint(BitConstraint::from_max_bit(11))
+                )],
+                IncompleteCause::NotConcrete
+            )
         );
         assert_eq!(
             (-expr)
                 .solve_with_bit_constraints(&known_constraints)
                 .unwrap(),
-            vec![(
-                1,
-                Constraint::BitConstraint(BitConstraint::from_max_bit(11))
-            )]
+            EvalValue::incomplete_with_constraints(
+                vec![(
+                    1,
+                    Constraint::BitConstraint(BitConstraint::from_max_bit(11))
+                )],
+                IncompleteCause::NotConcrete
+            )
         );
 
         // Replace factor 16 by 32.
@@ -409,17 +429,25 @@ mod test {
             - AffineExpression::from_witness_poly_value(3);
         assert_eq!(
             expr.solve_with_bit_constraints(&known_constraints).unwrap(),
-            vec![(
-                1,
-                Constraint::BitConstraint(BitConstraint::from_mask(0x1fef))
-            )]
+            EvalValue::incomplete_with_constraints(
+                vec![(
+                    1,
+                    Constraint::BitConstraint(BitConstraint::from_mask(0x1fef))
+                )],
+                IncompleteCause::NotConcrete
+            )
         );
 
         // Replace factor 16 by 8.
         let expr = AffineExpression::from_witness_poly_value(1)
             - AffineExpression::from_witness_poly_value(2).mul(8.into())
             - AffineExpression::from_witness_poly_value(3);
-        assert!(expr.solve_with_bit_constraints(&known_constraints).is_err());
+        assert_eq!(
+            expr.solve_with_bit_constraints(&known_constraints),
+            Ok(EvalValue::incomplete(
+                IncompleteCause::NoProgressTransferring
+            ))
+        );
     }
 
     #[test]
@@ -439,10 +467,10 @@ mod test {
         assert_eq!(value, 0x15 * 256 + 0x4);
         assert_eq!(
             expr.solve_with_bit_constraints(&known_constraints).unwrap(),
-            vec![
+            EvalValue::complete(vec![
                 (2, Constraint::Assignment(0x15.into())),
                 (3, Constraint::Assignment(0x4.into()))
-            ]
+            ],)
         );
     }
 

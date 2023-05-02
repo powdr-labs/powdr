@@ -5,13 +5,10 @@ use std::num::NonZeroUsize;
 use number::FieldElement;
 use pil_analyzer::{Identity, IdentityKind, SelectedExpressions};
 
+use crate::witgen::affine_expression::AffineResult;
 use crate::witgen::util::is_simple_poly;
-use crate::witgen::{
-    affine_expression::AffineExpression,
-    eval_error::{self, EvalError},
-    util::contains_witness_ref,
-    EvalResult, FixedData,
-};
+use crate::witgen::{util::contains_witness_ref, EvalResult, FixedData};
+use crate::witgen::{EvalError, EvalValue, IncompleteCause};
 
 type Application = (Vec<String>, Vec<String>);
 type Index = BTreeMap<Vec<FieldElement>, IndexValue>;
@@ -175,7 +172,7 @@ impl FixedLookup {
         &mut self,
         fixed_data: &FixedData,
         kind: IdentityKind,
-        left: &[Result<AffineExpression, EvalError>],
+        left: &[AffineResult],
         right: &SelectedExpressions,
     ) -> Option<EvalResult> {
         // This is a matching machine if it is a plookup and the RHS is fully constant.
@@ -190,19 +187,11 @@ impl FixedLookup {
         }
 
         // get the values of the fixed columns
-        let right = right
+        let right: Vec<_> = right
             .expressions
             .iter()
             .map(|right_key| is_simple_poly(right_key).map(From::from))
             .collect::<Option<_>>()?;
-
-        // If we already know the LHS, skip it.
-        if left
-            .iter()
-            .all(|v| v.is_ok() && v.as_ref().unwrap().is_constant())
-        {
-            return Some(Ok(vec![]));
-        }
 
         Some(self.process_plookup_internal(fixed_data, left, right))
     }
@@ -210,7 +199,7 @@ impl FixedLookup {
     fn process_plookup_internal(
         &mut self,
         fixed_data: &FixedData,
-        left: &[Result<AffineExpression, EvalError>],
+        left: &[AffineResult],
         right: Vec<String>,
     ) -> EvalResult {
         // split the fixed columns depending on whether their associated lookup variable is constant or not. Preserve the value of the constant arguments.
@@ -226,12 +215,12 @@ impl FixedLookup {
                 .ok()
                 .and_then(|l| l.constant_value())
                 .map(|v| (r.clone(), v))
-                .ok_or((r, l))
+                .ok_or((l, r))
             {
                 Ok(assignment) => {
                     input_assignment.push(assignment);
                 }
-                Err((column, expression)) => {
+                Err((expression, column)) => {
                     output_columns.push(column);
                     output_expressions.push(expression);
                 }
@@ -241,13 +230,17 @@ impl FixedLookup {
         let index_value = self
             .indices
             .get_match(fixed_data, input_assignment, output_columns.clone())
-            .ok_or_else(|| EvalError::Generic("Plookup is not satisfied".to_string()))?;
+            .ok_or(EvalError::FixedLookupFailed)?;
 
         let row = match index_value.row() {
             // a single match, we continue
             Some(row) => row,
             // multiple matches, we stop and learnt nothing
-            None => return Ok(vec![]),
+            None => {
+                return Ok(EvalValue::incomplete(
+                    IncompleteCause::MultipleLookupMatches,
+                ))
+            }
         };
 
         let output = output_columns.iter().map(|column| {
@@ -258,40 +251,31 @@ impl FixedLookup {
                 .unwrap_or_else(|| panic!("Uknown column {column}"))[row]
         });
 
-        let mut reasons = vec![];
-        let mut result = vec![];
-        for (l, r) in output_expressions.iter().zip(output) {
+        let mut result = EvalValue::complete(vec![]);
+        for (l, r) in output_expressions.into_iter().zip(output) {
             match l {
                 Ok(l) => {
                     let evaluated = l.clone() - (*r).into();
                     // TODO we could use bit constraints here
                     match evaluated.solve() {
-                        Ok(constraints) => result.extend(constraints),
-                        Err(EvalError::ConstraintUnsatisfiable(_)) => {
+                        Ok(constraints) => {
+                            result.combine(constraints);
+                        }
+                        Err(()) => {
                             // Fail the whole lookup
                             return Err(EvalError::ConstraintUnsatisfiable(format!(
                                 "Constraint is invalid ({} != {r}).",
                                 l.format(fixed_data)
                             )));
                         }
-                        Err(err) => reasons.push(
-                            format!(
-                                "Could not solve expression {} = {r}: {err}",
-                                l.format(fixed_data)
-                            )
-                            .into(),
-                        ),
                     }
                 }
                 Err(err) => {
-                    reasons.push(format!("Value of LHS component too complex: {err}").into());
+                    result.status = result.status.combine(err.clone());
                 }
             }
         }
-        if result.is_empty() {
-            Err(reasons.into_iter().reduce(eval_error::combine).unwrap())
-        } else {
-            Ok(result)
-        }
+
+        Ok(result)
     }
 }

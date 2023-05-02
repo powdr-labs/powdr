@@ -262,7 +262,7 @@ fn is_binary_constraint<'a>(fixed_data: &'a FixedData, expr: &Expression) -> Opt
             .ok()
             .and_then(|r| r.solve().ok())?;
         if let ([(id1, Constraint::Assignment(value1))], [(id2, Constraint::Assignment(value2))]) =
-            (&left_root[..], &right_root[..])
+            (&left_root.constraints[..], &right_root.constraints[..])
         {
             let poly1 = symbolic_ev.poly_from_id(*id1);
             let poly2 = symbolic_ev.poly_from_id(*id2);
@@ -300,8 +300,8 @@ fn try_transfer_constraints<'a>(
             names: &symbolic_ev,
         })
         .ok()?;
-    assert!(result.len() <= 1);
-    result.get(0).and_then(|(id, cons)| {
+    assert!(result.constraints.len() <= 1);
+    result.constraints.get(0).and_then(|(id, cons)| {
         if let Constraint::BitConstraint(cons) = cons {
             let (poly, next) = symbolic_ev.poly_from_id(*id);
             assert!(!next);

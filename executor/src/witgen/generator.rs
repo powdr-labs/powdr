@@ -5,19 +5,16 @@ use std::time::Instant;
 // TODO should use finite field instead of abstract number
 use number::{DegreeType, FieldElement};
 
-use super::affine_expression::AffineExpression;
+use super::affine_expression::{AffineExpression, AffineResult};
 use super::bit_constraints::{BitConstraint, BitConstraintSet};
-use super::eval_error::EvalError;
+
 use super::expression_evaluator::ExpressionEvaluator;
 use super::machines::{FixedLookup, Machine};
 use super::symbolic_witness_evaluator::{SymoblicWitnessEvaluator, WitnessColumnEvaluator};
 use super::util::{contains_next_witness_ref, WitnessColumnNamer};
-use super::{Constraint, EvalResult, FixedData, WitnessColumn};
+use super::{Constraint, EvalResult, EvalValue, FixedData, IncompleteCause, WitnessColumn};
 
-pub struct Generator<'a, QueryCallback>
-where
-    QueryCallback: FnMut(&'a str) -> Option<FieldElement>,
-{
+pub struct Generator<'a, QueryCallback> {
     fixed_data: &'a FixedData<'a>,
     fixed_lookup: &'a mut FixedLookup,
     identities: &'a [&'a Identity],
@@ -83,13 +80,20 @@ where
         // TODO maybe better to generate a dependency graph than looping multiple times.
         // TODO at least we could cache the affine expressions between loops.
 
+        let mut complete_identities = vec![false; self.identities.len()];
+
         let mut identity_failed;
         loop {
             identity_failed = false;
             self.progress = false;
             self.failure_reasons.clear();
 
-            for identity in self.identities {
+            for (identity, complete) in self
+                .identities
+                .iter()
+                .zip(complete_identities.iter_mut())
+                .filter(|(_, complete)| !**complete)
+            {
                 let result = match identity.kind {
                     IdentityKind::Polynomial => {
                         self.process_polynomial_identity(identity.left.selector.as_ref().unwrap())
@@ -97,20 +101,25 @@ where
                     IdentityKind::Plookup | IdentityKind::Permutation => {
                         self.process_plookup(identity)
                     }
-                    _ => Err("Unsupported lookup type".to_string().into()),
-                }
-                .map_err(|err| {
-                    format!(
-                        "No progress on {identity}:\n{}",
-                        indent(&format!("{err}"), "    ")
-                    )
-                    .into()
-                });
+                    kind => {
+                        unimplemented!("Identity of kind {kind:?} is not supported in the executor")
+                    }
+                };
+
                 if result.is_err() {
                     identity_failed = true;
                 }
+
+                match &result {
+                    Ok(e) if e.is_complete() => {
+                        *complete = true;
+                    }
+                    _ => {}
+                };
+
                 self.handle_eval_result(result);
             }
+
             if self.query_callback.is_some() {
                 for column in self.fixed_data.witness_cols() {
                     // TODO we should actually query even if it is already known, to check
@@ -121,6 +130,7 @@ where
                     }
                 }
             }
+
             if !self.progress {
                 break;
             }
@@ -192,7 +202,9 @@ where
                     self.process_polynomial_identity(identity.left.selector.as_ref().unwrap())
                 }
                 IdentityKind::Plookup | IdentityKind::Permutation => self.process_plookup(identity),
-                _ => Err("Unsupported lookup type".to_string().into()),
+                kind => {
+                    unimplemented!("Identity of kind {kind:?} is not supported in the executor")
+                }
             };
             if result.is_err() {
                 self.next = vec![None; self.current.len()];
@@ -257,15 +269,24 @@ where
     }
 
     fn process_witness_query(&mut self, column: &&WitnessColumn) -> EvalResult {
-        let query = self.interpolate_query(column.query.unwrap())?;
+        let query = match self.interpolate_query(column.query.unwrap()) {
+            Ok(query) => query,
+            Err(incomplete) => return Ok(EvalValue::incomplete(incomplete)),
+        };
         if let Some(value) = self.query_callback.as_mut().and_then(|c| (c)(&query)) {
-            Ok(vec![(column.id, Constraint::Assignment(value))])
+            Ok(EvalValue::complete(vec![(
+                column.id,
+                Constraint::Assignment(value),
+            )]))
         } else {
-            Err(format!("No query answer for {} query: {query}.", column.name).into())
+            Ok(EvalValue::incomplete(IncompleteCause::NoQueryAnswer(
+                query,
+                column.name.to_string(),
+            )))
         }
     }
 
-    fn interpolate_query(&self, query: &Expression) -> Result<String, String> {
+    fn interpolate_query(&self, query: &Expression) -> Result<String, IncompleteCause> {
         if let Ok(v) = self.evaluate(query, EvaluationRow::Next) {
             if v.is_constant() {
                 return Ok(v.format(self.fixed_data));
@@ -286,10 +307,10 @@ where
                 "\"{}\"",
                 s.replace('\\', "\\\\").replace('"', "\\\"")
             )),
-            Expression::MatchExpression(scrutinee, arms) => self
-                .interpolate_match_expression_for_query(scrutinee.as_ref(), arms)
-                .map_err(|e| format!("Cannot handle / evaluate {query}: {e}")),
-            _ => Err(format!("Cannot handle / evaluate {query}")),
+            Expression::MatchExpression(scrutinee, arms) => {
+                self.interpolate_match_expression_for_query(scrutinee.as_ref(), arms)
+            }
+            query => unimplemented!("Cannot handle / evaluate {query}"),
         }
     }
 
@@ -297,16 +318,16 @@ where
         &self,
         scrutinee: &Expression,
         arms: &[(Option<FieldElement>, Expression)],
-    ) -> Result<String, EvalError> {
+    ) -> Result<String, IncompleteCause> {
         let v = self
             .evaluate(scrutinee, EvaluationRow::Next)?
             .constant_value()
-            .ok_or_else(|| "Match scrutinee not constant".to_string())?;
+            .ok_or(IncompleteCause::NonConstantQueryMatchScrutinee)?;
         let (_, expr) = arms
             .iter()
             .find(|(n, _)| n.is_none() || n.as_ref() == Some(&v))
-            .ok_or_else(|| format!("Match arm not found for value {v}"))?;
-        self.interpolate_query(expr).map_err(|e| e.into())
+            .ok_or(IncompleteCause::NoMatchArmFound)?;
+        self.interpolate_query(expr)
     }
 
     fn process_polynomial_identity(&self, identity: &Expression) -> EvalResult {
@@ -319,39 +340,32 @@ where
         } else {
             EvaluationRow::Next
         };
-        let evaluated = self.evaluate(identity, row)?;
+        let evaluated = match self.evaluate(identity, row) {
+            Ok(evaluated) => evaluated,
+            Err(cause) => return Ok(EvalValue::incomplete(cause)),
+        };
         if evaluated.constant_value() == Some(0.into()) {
-            Ok(vec![])
+            Ok(EvalValue::complete(vec![]))
         } else {
-            evaluated
-                .solve_with_bit_constraints(&self.bit_constraint_set())
-                .map_err(|e| {
-                    let formatted = evaluated.format(self.fixed_data);
-                    if let EvalError::ConstraintUnsatisfiable(_) = e {
-                        EvalError::ConstraintUnsatisfiable(format!(
-                            "Constraint is invalid ({formatted} != 0)."
-                        ))
-                    } else {
-                        format!("Could not solve expression {formatted} = 0.").into()
-                    }
-                })
+            evaluated.solve_with_bit_constraints(&self.bit_constraint_set())
         }
     }
 
     fn process_plookup(&mut self, identity: &Identity) -> EvalResult {
         if let Some(left_selector) = &identity.left.selector {
-            let value = self.evaluate(left_selector, EvaluationRow::Next)?;
+            let value = match self.evaluate(left_selector, EvaluationRow::Next) {
+                Ok(value) => value,
+                Err(cause) => return Ok(EvalValue::incomplete(cause)),
+            };
             match value.constant_value() {
                 Some(v) if v == 0.into() => {
-                    return Ok(vec![]);
+                    return Ok(EvalValue::complete(vec![]));
                 }
                 Some(v) if v == 1.into() => {}
                 _ => {
-                    return Err(format!(
-                        "Value of the selector on the left hand side unknown or not boolean: {}",
-                        value.format(self.fixed_data)
-                    )
-                    .into())
+                    return Ok(EvalValue::incomplete(
+                        IncompleteCause::NonConstantLeftSelector,
+                    ))
                 }
             };
         }
@@ -391,9 +405,7 @@ where
             }
         }
 
-        Err("Could not find a matching machine for the lookup."
-            .to_string()
-            .into())
+        unimplemented!("No executor machine matched identity `{identity}`")
     }
 
     fn handle_eval_result(&mut self, result: EvalResult) {
@@ -402,7 +414,7 @@ where
                 if !constraints.is_empty() {
                     self.progress = true;
                 }
-                for (id, c) in constraints {
+                for (id, c) in constraints.constraints {
                     match c {
                         Constraint::Assignment(value) => {
                             self.next[id] = Some(value);
@@ -426,11 +438,7 @@ where
     /// Tries to evaluate the expression to an expression affine in the witness polynomials,
     /// taking current values of polynomials into account.
     /// @returns an expression affine in the witness polynomials
-    fn evaluate(
-        &self,
-        expr: &Expression,
-        evaluate_row: EvaluationRow,
-    ) -> Result<AffineExpression, EvalError> {
+    fn evaluate(&self, expr: &Expression, evaluate_row: EvaluationRow) -> AffineResult {
         let degree = self.fixed_data.degree;
         let fixed_row = match evaluate_row {
             EvaluationRow::Current => (self.next_row + degree - 1) % degree,
@@ -487,7 +495,7 @@ struct EvaluationData<'a> {
 }
 
 impl<'a> WitnessColumnEvaluator for EvaluationData<'a> {
-    fn value(&self, name: &str, next: bool) -> Result<AffineExpression, EvalError> {
+    fn value(&self, name: &str, next: bool) -> AffineResult {
         let id = self.fixed_data.witness_ids[name];
         match (next, self.evaluate_row) {
             (false, EvaluationRow::Current) => {
@@ -496,7 +504,7 @@ impl<'a> WitnessColumnEvaluator for EvaluationData<'a> {
                 self.current_witnesses[id]
                     .as_ref()
                     .map(|value| (*value).into())
-                    .ok_or_else(|| EvalError::PreviousValueUnknown(name.to_string()))
+                    .ok_or_else(|| IncompleteCause::PreviousValueUnknown(name.to_string()))
             }
             (false, EvaluationRow::Next) | (true, EvaluationRow::Current) => {
                 Ok(if let Some(value) = &self.next_witnesses[id] {
@@ -508,11 +516,9 @@ impl<'a> WitnessColumnEvaluator for EvaluationData<'a> {
                 })
             }
             (true, EvaluationRow::Next) => {
-                // "double next" or evaluation of a witness on a specific row
-                Err(format!(
-                    "{name}' references the next-next row when evaluating on the current row.",
-                )
-                .into())
+                unimplemented!(
+                    "{name}' references the next-next row when evaluating on the current row."
+                );
             }
         }
     }

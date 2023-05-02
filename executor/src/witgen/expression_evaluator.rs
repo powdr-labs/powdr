@@ -1,14 +1,16 @@
 use number::FieldElement;
 use pil_analyzer::{BinaryOperator, Expression, UnaryOperator};
 
-use super::affine_expression::AffineExpression;
-use super::eval_error::{self, EvalError};
+use super::{
+    affine_expression::{AffineExpression, AffineResult},
+    IncompleteCause,
+};
 
 pub trait SymbolicVariables {
     /// Acutal constant, not fixed polynomial
-    fn constant(&self, name: &str) -> Result<AffineExpression, EvalError>;
+    fn constant(&self, name: &str) -> AffineResult;
     /// Value of a polynomial (fixed or witness).
-    fn value(&self, name: &str, next: bool) -> Result<AffineExpression, EvalError>;
+    fn value(&self, name: &str, next: bool) -> AffineResult;
     fn format(&self, expr: AffineExpression) -> String;
 }
 
@@ -23,7 +25,7 @@ impl<SV: SymbolicVariables> ExpressionEvaluator<SV> {
     /// Tries to evaluate the expression to an expression affine in the witness polynomials,
     /// taking current values of polynomials into account.
     /// @returns an expression affine in the witness polynomials
-    pub fn evaluate(&self, expr: &Expression) -> Result<AffineExpression, EvalError> {
+    pub fn evaluate(&self, expr: &Expression) -> AffineResult {
         // @TODO if we iterate on processing the constraints in the same row,
         // we could store the simplified values.
         match expr {
@@ -34,22 +36,9 @@ impl<SV: SymbolicVariables> ExpressionEvaluator<SV> {
                 self.evaluate_binary_operation(left, op, right)
             }
             Expression::UnaryOperation(op, expr) => self.evaluate_unary_operation(op, expr),
-            Expression::Tuple(_) => Err("Tuple not implemented.".to_string().into()),
-            Expression::String(_) => Err("String not implemented.".to_string().into()),
-            Expression::LocalVariableReference(_) => {
-                Err("Local variable references not implemented."
-                    .to_string()
-                    .into())
-            }
-            Expression::PublicReference(_) => {
-                Err("Public references not implemented.".to_string().into())
-            }
-            Expression::FunctionCall(_, _) => {
-                Err("Function calls not implemented.".to_string().into())
-            }
-            Expression::MatchExpression(_, _) => {
-                Err("Match expressions not implemented.".to_string().into())
-            }
+            e => Err(IncompleteCause::ExpressionEvaluationUnimplemented(
+                e.to_string(),
+            )),
         }
     }
 
@@ -58,7 +47,7 @@ impl<SV: SymbolicVariables> ExpressionEvaluator<SV> {
         left: &Expression,
         op: &BinaryOperator,
         right: &Expression,
-    ) -> Result<AffineExpression, EvalError> {
+    ) -> AffineResult {
         match (self.evaluate(left), op, self.evaluate(right)) {
             // Special case for multiplication: It is enough for one to be known zero.
             (Ok(zero), BinaryOperator::Mul, _) | (_, BinaryOperator::Mul, Ok(zero))
@@ -75,12 +64,7 @@ impl<SV: SymbolicVariables> ExpressionEvaluator<SV> {
                     } else if let Some(f) = right.constant_value() {
                         Ok(left.mul(f))
                     } else {
-                        Err(format!(
-                            "Multiplication of two non-constants: ({}) * ({})",
-                            self.variables.format(left),
-                            self.variables.format(right),
-                        )
-                        .into())
+                        Err(IncompleteCause::QuadraticTerm)
                     }
                 }
                 BinaryOperator::Div => {
@@ -93,24 +77,14 @@ impl<SV: SymbolicVariables> ExpressionEvaluator<SV> {
                             Ok((l / r).into())
                         }
                     } else {
-                        Err(format!(
-                            "Division of two non-constants: ({}) / ({})",
-                            self.variables.format(left),
-                            self.variables.format(right),
-                        )
-                        .into())
+                        Err(IncompleteCause::DivisionTerm)
                     }
                 }
                 BinaryOperator::Pow => {
                     if let (Some(l), Some(r)) = (left.constant_value(), right.constant_value()) {
                         Ok(l.pow(r.to_integer()).into())
                     } else {
-                        Err(format!(
-                            "Pow of two non-constants: ({}) ** ({})",
-                            self.variables.format(left),
-                            self.variables.format(right),
-                        )
-                        .into())
+                        Err(IncompleteCause::ExponentiationTerm)
                     }
                 }
                 BinaryOperator::Mod
@@ -148,15 +122,11 @@ impl<SV: SymbolicVariables> ExpressionEvaluator<SV> {
                 }
             },
             (Ok(_), _, Err(reason)) | (Err(reason), _, Ok(_)) => Err(reason),
-            (Err(r1), _, Err(r2)) => Err(eval_error::combine(r1, r2)),
+            (Err(r1), _, Err(r2)) => Err(r1.combine(r2)),
         }
     }
 
-    fn evaluate_unary_operation(
-        &self,
-        op: &UnaryOperator,
-        expr: &Expression,
-    ) -> Result<AffineExpression, EvalError> {
+    fn evaluate_unary_operation(&self, op: &UnaryOperator, expr: &Expression) -> AffineResult {
         self.evaluate(expr).map(|v| match op {
             UnaryOperator::Plus => v,
             UnaryOperator::Minus => -v,
