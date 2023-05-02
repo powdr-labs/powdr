@@ -3,7 +3,7 @@ use std::fmt::{Display, Formatter};
 
 use crate::witgen::util::{contains_next_ref, WitnessColumnNamer};
 use number::{AbstractNumberType, FieldElement};
-use pil_analyzer::{BinaryOperator, Expression, Identity, IdentityKind};
+use pil_analyzer::{BinaryOperator, Expression, Identity, IdentityKind, PolynomialType};
 
 use super::expression_evaluator::ExpressionEvaluator;
 use super::symbolic_evaluator::SymbolicEvaluator;
@@ -121,7 +121,11 @@ pub fn determine_global_constraints<'a>(
     // but also have one row for each possible value.
     // It allows us to completely remove some lookups.
     let mut full_span = BTreeSet::new();
-    for (&name, &values) in &fixed_data.fixed_cols {
+    for (&name, &values) in fixed_data
+        .fixed_col_names
+        .iter()
+        .zip(fixed_data.fixed_col_values.iter())
+    {
         if let Some((cons, full)) = process_fixed_column(values) {
             assert!(known_constraints.insert(name, cons).is_none());
             if full {
@@ -269,13 +273,13 @@ fn is_binary_constraint<'a>(fixed_data: &'a FixedData, expr: &Expression) -> Opt
         {
             let poly1 = symbolic_ev.poly_from_id(*id1);
             let poly2 = symbolic_ev.poly_from_id(*id2);
-            if poly1 != poly2 || !fixed_data.witness_ids.contains_key(poly1.0) {
+            if poly1 != poly2 || poly1.0 .1 != PolynomialType::Committed {
                 return None;
             }
             if (*value1 == 0.into() && *value2 == 1.into())
                 || (*value1 == 1.into() && *value2 == 0.into())
             {
-                return Some(poly1.0);
+                return Some(fixed_data.witness_cols[poly1.0 .0 as usize].name);
             }
         }
     }
@@ -306,9 +310,14 @@ fn try_transfer_constraints<'a>(
     assert!(result.len() <= 1);
     result.get(0).and_then(|(id, cons)| {
         if let Constraint::BitConstraint(cons) = cons {
-            let (poly, next) = symbolic_ev.poly_from_id(*id);
+            let ((poly, ptype), next) = symbolic_ev.poly_from_id(*id);
             assert!(!next);
-            Some((poly, cons.clone()))
+            let name = if ptype == PolynomialType::Committed {
+                fixed_data.witness_cols[poly as usize].name
+            } else {
+                fixed_data.fixed_col_names[poly as usize]
+            };
+            Some((name, cons.clone()))
         } else {
             None
         }
@@ -427,7 +436,8 @@ namespace Global(2**20);
         let fixed_data = FixedData::new(
             degree,
             &analyzed.constants,
-            constants.iter().map(|(n, v)| (*n, v)).collect(),
+            constants.iter().map(|(n, v)| v).collect(),
+            constants.iter().map(|(n, v)| *n).collect(),
             &witness_cols,
             witness_cols.iter().map(|w| (w.name, w.id)).collect(),
         );

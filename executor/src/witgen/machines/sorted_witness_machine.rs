@@ -13,7 +13,10 @@ use crate::witgen::{
     symbolic_evaluator::SymbolicEvaluator,
 };
 use number::FieldElement;
-use pil_analyzer::{self, Expression, Identity, IdentityKind, SelectedExpressions};
+use pil_analyzer::{
+    self, Expression, Identity, IdentityKind, PolynomialReference, PolynomialType,
+    SelectedExpressions,
+};
 
 /// A machine that can support a lookup in a set of columns that are sorted
 /// by one specific column and values in that column have to be unique.
@@ -106,18 +109,30 @@ fn check_constraint<'a>(fixed_data: &'a FixedData, constraint: &Expression) -> O
         [key, _] => *key,
         _ => return None,
     };
-    let (poly, next) = symbolic_ev.poly_from_id(key_column_id);
-    if next || fixed_data.witness_ids.get(poly).is_none() {
+    let ((poly, ptype), next) = symbolic_ev.poly_from_id(key_column_id);
+    if next || ptype == PolynomialType::Constant {
         // Either next-witness or fixed column.
         return None;
     }
-    let pattern = AffineExpression::from_poly_id(symbolic_ev.id_for_witness_poly(poly, true))
-        - AffineExpression::from_poly_id(symbolic_ev.id_for_witness_poly(poly, false));
+    let pattern =
+        AffineExpression::from_poly_id(symbolic_ev.id_for_witness_poly(&PolynomialReference {
+            name: Default::default(),
+            poly_id: Some((poly, ptype)),
+            index: None,
+            next: true,
+        })) - AffineExpression::from_poly_id(symbolic_ev.id_for_witness_poly(
+            &PolynomialReference {
+                name: Default::default(),
+                poly_id: Some((poly, ptype)),
+                index: None,
+                next: false,
+            },
+        ));
     if sort_constraint != pattern {
         return None;
     }
 
-    Some(poly)
+    Some(fixed_data.witness_cols[poly as usize].name)
 }
 
 impl Machine for SortedWitnesses {

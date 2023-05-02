@@ -1,4 +1,4 @@
-use pil_analyzer::PolynomialReference;
+use pil_analyzer::{PolynomialReference, PolynomialType};
 
 use super::affine_expression::AffineExpression;
 use super::eval_error::EvalError;
@@ -24,19 +24,18 @@ impl<'a> SymbolicVariables for FixedEvaluator<'a> {
 
     fn value(&self, poly: &PolynomialReference) -> Result<AffineExpression, EvalError> {
         // TODO arrays
-        if let Some(col_data) = self.fixed_data.fixed_cols.get(poly.name.as_str()) {
-            let degree = col_data.len();
-            let row = if poly.next {
-                (self.row + 1) % degree
-            } else {
-                self.row
-            };
-            Ok(col_data[row].into())
+        assert!(
+            poly.poly_id.unwrap().1 == PolynomialType::Constant,
+            "Can only access fixed columns in the fixed evaluator."
+        );
+        let col_data = self.fixed_data.fixed_col_values[poly.poly_id.unwrap().0 as usize];
+        let degree = col_data.len();
+        let row = if poly.next {
+            (self.row + 1) % degree
         } else {
-            Err("Can only access fixed columns in the fixed evaluator."
-                .to_string()
-                .into())
-        }
+            self.row
+        };
+        Ok(col_data[row].into())
     }
 
     fn format(&self, expr: AffineExpression) -> String {

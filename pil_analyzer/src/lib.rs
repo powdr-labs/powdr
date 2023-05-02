@@ -3,8 +3,8 @@ pub mod json_exporter;
 pub mod pil_analyzer;
 pub mod util;
 
-use std::collections::HashMap;
 use std::path::Path;
+use std::{collections::HashMap, fmt::Display};
 
 use number::{DegreeType, FieldElement};
 pub use parser::ast::{BinaryOperator, UnaryOperator};
@@ -192,10 +192,12 @@ pub struct PolynomialReference {
     /// Identifier for a polynomial reference.
     /// Optional because it is filled in in a second stage of analysis.
     /// TODO make this non-optional
-    pub poly_id: Option<(u64, PolynomialType)>,
+    pub poly_id: Option<PolyID>,
     pub index: Option<u64>,
     pub next: bool,
 }
+
+pub type PolyID = (u64, PolynomialType);
 
 impl PartialOrd for PolynomialReference {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
@@ -217,12 +219,27 @@ impl PartialEq for PolynomialReference {
     }
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum PolynomialType {
     Committed,
     Constant,
     Intermediate,
 }
+
+impl Display for PolynomialType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                PolynomialType::Committed => "witness",
+                PolynomialType::Constant => "fixed",
+                PolynomialType::Intermediate => "intermediate",
+            }
+        )
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SourceRef {
     pub file: String, // TODO should maybe be a shared pointer

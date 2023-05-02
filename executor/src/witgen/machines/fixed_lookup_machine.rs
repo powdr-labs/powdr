@@ -2,10 +2,11 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::mem;
 use std::num::NonZeroUsize;
 
+use itertools::Itertools;
 use number::FieldElement;
-use pil_analyzer::{Identity, IdentityKind, SelectedExpressions};
+use pil_analyzer::{Identity, IdentityKind, PolyID, SelectedExpressions};
 
-use crate::witgen::util::is_simple_poly;
+use crate::witgen::util::{is_simple_poly, is_simple_poly_ref};
 use crate::witgen::{
     affine_expression::AffineExpression,
     eval_error::{self, EvalError},
@@ -13,7 +14,7 @@ use crate::witgen::{
     EvalResult, FixedData,
 };
 
-type Application = (Vec<String>, Vec<String>);
+type Application = (Vec<u64>, Vec<u64>);
 type Index = BTreeMap<Vec<FieldElement>, IndexValue>;
 
 struct IndexValue(Option<NonZeroUsize>);
@@ -45,8 +46,8 @@ impl IndexedColumns {
     fn get_match(
         &mut self,
         fixed_data: &FixedData,
-        mut assignment: Vec<(String, FieldElement)>,
-        mut output_fixed_columns: Vec<String>,
+        mut assignment: Vec<(u64, FieldElement)>,
+        mut output_fixed_columns: Vec<u64>,
     ) -> Option<&IndexValue> {
         // sort in order to have a single index for [X, Y] and for [Y, X]
         assignment.sort_by(|(name0, _), (name1, _)| name0.cmp(name1));
@@ -71,7 +72,7 @@ impl IndexedColumns {
     fn ensure_index(
         &mut self,
         fixed_data: &FixedData,
-        sorted_fixed_columns: &(Vec<String>, Vec<String>),
+        sorted_fixed_columns: &(Vec<u64>, Vec<u64>),
     ) {
         // we do not use the Entry API here because we want to clone `sorted_input_fixed_columns` only on index creation
         if self.indices.get(sorted_fixed_columns).is_some() {
@@ -83,19 +84,25 @@ impl IndexedColumns {
         // create index for this lookup
         log::trace!(
             "Generating index for lookup in columns (in: {}, out: {})",
-            sorted_input_fixed_columns.join(", "),
-            sorted_output_fixed_columns.join(", ")
+            sorted_input_fixed_columns
+                .iter()
+                .map(|c| format!("{c:?}"))
+                .join(", "),
+            sorted_output_fixed_columns
+                .iter()
+                .map(|c| format!("{c:?}"))
+                .join(", ")
         );
 
         // get all values for the columns to be indexed
         let input_column_values = sorted_input_fixed_columns
             .iter()
-            .map(|name| fixed_data.fixed_cols.get(name.as_str()).unwrap())
+            .map(|id| fixed_data.fixed_col_values[*id as usize])
             .collect::<Vec<_>>();
 
         let output_column_values = sorted_output_fixed_columns
             .iter()
-            .map(|name| fixed_data.fixed_cols.get(name.as_str()).unwrap())
+            .map(|id| fixed_data.fixed_col_values[*id as usize])
             .collect::<Vec<_>>();
 
         let index: BTreeMap<Vec<FieldElement>, IndexValue> = (0..fixed_data.degree as usize)
@@ -193,7 +200,7 @@ impl FixedLookup {
         let right = right
             .expressions
             .iter()
-            .map(|right_key| is_simple_poly(right_key).map(From::from))
+            .map(|right_key| is_simple_poly_ref(right_key).map(|(id, ptype)| id))
             .collect::<Option<_>>()?;
 
         // If we already know the LHS, skip it.
@@ -211,7 +218,7 @@ impl FixedLookup {
         &mut self,
         fixed_data: &FixedData,
         left: &[Result<AffineExpression, EvalError>],
-        right: Vec<String>,
+        right: Vec<u64>,
     ) -> EvalResult {
         // split the fixed columns depending on whether their associated lookup variable is constant or not. Preserve the value of the constant arguments.
         // {1, 2, x} in {A, B, C} -> [[(A, 1), (B, 2)], [C, x]]
@@ -250,20 +257,16 @@ impl FixedLookup {
             None => return Ok(vec![]),
         };
 
-        let output = output_columns.iter().map(|column| {
-            &fixed_data
-                .fixed_cols
-                .get(&column.as_ref())
-                .as_ref()
-                .unwrap_or_else(|| panic!("Uknown column {column}"))[row]
-        });
+        let output = output_columns
+            .iter()
+            .map(|column| fixed_data.fixed_col_values[*column as usize][row]);
 
         let mut reasons = vec![];
         let mut result = vec![];
         for (l, r) in output_expressions.iter().zip(output) {
             match l {
                 Ok(l) => {
-                    let evaluated = l.clone() - (*r).into();
+                    let evaluated = l.clone() - r.into();
                     // TODO we could use bit constraints here
                     match evaluated.solve() {
                         Ok(constraints) => result.extend(constraints),

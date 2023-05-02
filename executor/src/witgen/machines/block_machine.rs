@@ -4,6 +4,7 @@ use itertools::Itertools;
 
 use super::{EvalResult, FixedData, FixedLookup};
 use crate::witgen::eval_error;
+use crate::witgen::util::is_simple_poly_ref;
 use crate::witgen::{
     affine_expression::AffineExpression,
     bit_constraints::{BitConstraint, BitConstraintSet},
@@ -15,7 +16,9 @@ use crate::witgen::{
     Constraint,
 };
 use number::{DegreeType, FieldElement};
-use pil_analyzer::{Expression, Identity, IdentityKind, PolynomialReference, SelectedExpressions};
+use pil_analyzer::{
+    Expression, Identity, IdentityKind, PolynomialReference, PolynomialType, SelectedExpressions,
+};
 
 /// A machine that produces multiple rows (one block) per query.
 /// TODO we do not actually "detect" the machine yet, we just check if
@@ -23,7 +26,7 @@ use pil_analyzer::{Expression, Identity, IdentityKind, PolynomialReference, Sele
 pub struct BlockMachine {
     /// Block size, the period of the selector.
     block_size: usize,
-    selector: String,
+    selector: (u64, PolynomialType),
     identities: Vec<Identity>,
     /// One column of values for each witness.
     data: HashMap<usize, Vec<Option<FieldElement>>>,
@@ -98,10 +101,13 @@ impl BlockMachine {
 fn is_boolean_periodic_selector(
     expr: &Expression,
     fixed_data: &FixedData,
-) -> Option<(String, usize)> {
-    let poly = is_simple_poly(expr)?;
+) -> Option<((u64, PolynomialType), usize)> {
+    let (id, ptype) = is_simple_poly_ref(expr)?;
+    if ptype != PolynomialType::Constant {
+        return None;
+    }
 
-    let values = fixed_data.fixed_cols.get(poly)?;
+    let values = fixed_data.fixed_col_values[id as usize];
 
     let period = 1 + values.iter().position(|v| *v == 1.into())?;
     if period == 1 {
@@ -118,7 +124,7 @@ fn is_boolean_periodic_selector(
             };
             *v == expected
         })
-        .then_some((poly.to_string(), period))
+        .then_some(((id, ptype), period))
 }
 
 impl Machine for BlockMachine {
@@ -130,7 +136,7 @@ impl Machine for BlockMachine {
         left: &[Result<AffineExpression, EvalError>],
         right: &SelectedExpressions,
     ) -> Option<EvalResult> {
-        if is_simple_poly(right.selector.as_ref()?)? != self.selector
+        if is_simple_poly_ref(right.selector.as_ref()?)? != self.selector
             || kind != IdentityKind::Plookup
         {
             return None;

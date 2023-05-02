@@ -53,11 +53,7 @@ where
             self.witness_access.value(poly)
         } else {
             // Constant polynomial (or something else)
-            let values = self
-                .fixed_data
-                .fixed_cols
-                .get(poly.name.as_str()) // TODO we need those accessible by ID instead of by name.
-                .unwrap_or_else(|| panic!("unknown col: {}", poly.name));
+            let values = self.fixed_data.fixed_col_values[id as usize];
             let row = if poly.next {
                 let degree = values.len() as DegreeType;
                 (self.row + 1) % degree
