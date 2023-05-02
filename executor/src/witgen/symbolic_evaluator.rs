@@ -1,5 +1,7 @@
 use std::collections::HashMap;
 
+use pil_analyzer::PolynomialReference;
+
 use super::affine_expression::AffineExpression;
 use super::eval_error::EvalError;
 use super::expression_evaluator::SymbolicVariables;
@@ -75,15 +77,20 @@ impl<'a> SymbolicVariables for SymbolicEvaluator<'a> {
         Ok(self.fixed_data.constants[name].into())
     }
 
-    fn value(&self, name: &str, next: bool) -> Result<AffineExpression, EvalError> {
+    fn value(&self, poly: &PolynomialReference) -> Result<AffineExpression, EvalError> {
         // TODO arrays
-        if self.fixed_data.witness_ids.get(name).is_some() {
+        if self
+            .fixed_data
+            .witness_ids
+            .get(poly.name.as_str())
+            .is_some()
+        {
             Ok(AffineExpression::from_poly_id(
-                self.id_for_witness_poly(name, next),
+                self.id_for_witness_poly(&poly.name, poly.next),
             ))
         } else {
             Ok(AffineExpression::from_poly_id(
-                self.id_for_fixed_poly(name, next),
+                self.id_for_fixed_poly(&poly.name, poly.next),
             ))
         }
     }

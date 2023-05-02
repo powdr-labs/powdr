@@ -1,5 +1,5 @@
 use parser_util::lines::indent;
-use pil_analyzer::{Expression, Identity, IdentityKind};
+use pil_analyzer::{Expression, Identity, IdentityKind, PolynomialReference};
 use std::collections::{BTreeMap, HashMap};
 use std::time::Instant;
 // TODO should use finite field instead of abstract number
@@ -487,16 +487,16 @@ struct EvaluationData<'a> {
 }
 
 impl<'a> WitnessColumnEvaluator for EvaluationData<'a> {
-    fn value(&self, name: &str, next: bool) -> Result<AffineExpression, EvalError> {
-        let id = self.fixed_data.witness_ids[name];
-        match (next, self.evaluate_row) {
+    fn value(&self, poly: &PolynomialReference) -> Result<AffineExpression, EvalError> {
+        let id = poly.poly_id.unwrap().0 as usize;
+        match (poly.next, self.evaluate_row) {
             (false, EvaluationRow::Current) => {
                 // All values in the "current" row should usually be known.
                 // The exception is when we start the analysis on the first row.
                 self.current_witnesses[id]
                     .as_ref()
                     .map(|value| (*value).into())
-                    .ok_or_else(|| EvalError::PreviousValueUnknown(name.to_string()))
+                    .ok_or_else(|| EvalError::PreviousValueUnknown(poly.name.to_string()))
             }
             (false, EvaluationRow::Next) | (true, EvaluationRow::Current) => {
                 Ok(if let Some(value) = &self.next_witnesses[id] {
@@ -510,7 +510,7 @@ impl<'a> WitnessColumnEvaluator for EvaluationData<'a> {
             (true, EvaluationRow::Next) => {
                 // "double next" or evaluation of a witness on a specific row
                 Err(format!(
-                    "{name}' references the next-next row when evaluating on the current row.",
+                    "{poly} references the next-next row when evaluating on the current row.",
                 )
                 .into())
             }

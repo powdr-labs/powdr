@@ -1,4 +1,5 @@
 use number::DegreeType;
+use pil_analyzer::{PolynomialReference, PolynomialType};
 
 use super::{
     affine_expression::AffineExpression, eval_error::EvalError,
@@ -9,7 +10,7 @@ pub trait WitnessColumnEvaluator {
     /// Returns a symbolic or concrete value for the given witness column and next flag.
     /// This function defines the mapping to IDs.
     /// It should be used together with a matching reverse mapping in WitnessColumnNamer.
-    fn value(&self, name: &str, next: bool) -> Result<AffineExpression, EvalError>;
+    fn value(&self, poly: &PolynomialReference) -> Result<AffineExpression, EvalError>;
 }
 
 /// An evaluator (to be used together with ExpressionEvaluator) that performs concrete
@@ -45,18 +46,19 @@ where
         Ok(self.fixed_data.constants[name].into())
     }
 
-    fn value(&self, name: &str, next: bool) -> Result<AffineExpression, EvalError> {
+    fn value(&self, poly: &PolynomialReference) -> Result<AffineExpression, EvalError> {
         // TODO arrays
-        if self.fixed_data.witness_ids.contains_key(name) {
-            self.witness_access.value(name, next)
+        let (id, ptype) = poly.poly_id.unwrap();
+        if ptype == PolynomialType::Committed {
+            self.witness_access.value(poly)
         } else {
             // Constant polynomial (or something else)
             let values = self
                 .fixed_data
                 .fixed_cols
-                .get(name)
-                .unwrap_or_else(|| panic!("unknown col: {name}"));
-            let row = if next {
+                .get(poly.name.as_str()) // TODO we need those accessible by ID instead of by name.
+                .unwrap_or_else(|| panic!("unknown col: {}", poly.name));
+            let row = if poly.next {
                 let degree = values.len() as DegreeType;
                 (self.row + 1) % degree
             } else {

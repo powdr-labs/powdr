@@ -11,7 +11,6 @@ use crate::witgen::{
     EvalResult, FixedData,
 };
 use number::FieldElement;
-use pil_analyzer::PolynomialReference;
 use pil_analyzer::{Expression, Identity, IdentityKind, SelectedExpressions};
 
 /// TODO make this generic

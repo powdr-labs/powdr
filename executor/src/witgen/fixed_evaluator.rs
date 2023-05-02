@@ -1,3 +1,5 @@
+use pil_analyzer::PolynomialReference;
+
 use super::affine_expression::AffineExpression;
 use super::eval_error::EvalError;
 use super::expression_evaluator::SymbolicVariables;
@@ -20,11 +22,11 @@ impl<'a> SymbolicVariables for FixedEvaluator<'a> {
         Ok(self.fixed_data.constants[name].into())
     }
 
-    fn value(&self, name: &str, next: bool) -> Result<AffineExpression, EvalError> {
+    fn value(&self, poly: &PolynomialReference) -> Result<AffineExpression, EvalError> {
         // TODO arrays
-        if let Some(col_data) = self.fixed_data.fixed_cols.get(name) {
+        if let Some(col_data) = self.fixed_data.fixed_cols.get(poly.name.as_str()) {
             let degree = col_data.len();
-            let row = if next {
+            let row = if poly.next {
                 (self.row + 1) % degree
             } else {
                 self.row
