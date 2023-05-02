@@ -18,7 +18,7 @@ pub struct Generator<'a, QueryCallback> {
     fixed_data: &'a FixedData<'a>,
     fixed_lookup: &'a mut FixedLookup,
     identities: &'a [&'a Identity],
-    propagating_identities: BTreeSet<usize>,
+    propagating_identities: Vec<usize>,
     machines: Vec<Box<dyn Machine>>,
     query_callback: Option<QueryCallback>,
     global_bit_constraints: BTreeMap<&'a str, BitConstraint>,
@@ -61,7 +61,7 @@ where
             .iter()
             .enumerate()
             .filter_map(|(i, id)| is_propagating_identity(id, fixed_data).then_some(i))
-            .collect::<BTreeSet<_>>();
+            .collect::<Vec<_>>();
 
         Generator {
             fixed_data,
@@ -87,7 +87,7 @@ where
 
         //println!("==== row {next_row}");
 
-        let mut complete_identities = BTreeSet::new();
+        let mut complete_identities = vec![false; self.identities.len()];
 
         let mut identity_failed;
         loop {
@@ -95,12 +95,11 @@ where
             self.progress = false;
             self.failure_reasons.clear();
 
-            let prop = self
-                .propagating_identities
-                .difference(&complete_identities)
-                .cloned()
-                .collect::<Vec<_>>();
+            let prop = self.propagating_identities.clone();
             for identity_id in prop {
+                if complete_identities[identity_id] {
+                    continue;
+                };
                 let identity = self.identities[identity_id];
                 let result = match identity.kind {
                     IdentityKind::Polynomial => {
@@ -120,18 +119,18 @@ where
 
                 if let Ok(e) = &result {
                     if e.is_complete() {
-                        complete_identities.insert(identity_id);
+                        complete_identities[identity_id] = true;
                     }
                 }
 
                 self.handle_eval_result(result);
             }
-            let identity_count = self.identities.len();
-            for identity_id in 0..identity_count {
-                if complete_identities.contains(&identity_id) {
-                    continue;
-                }
-                let identity = self.identities[identity_id];
+            for (identity, complete) in self
+                .identities
+                .iter()
+                .zip(complete_identities.iter_mut())
+                .filter(|(_, complete)| !**complete)
+            {
                 let result = match identity.kind {
                     IdentityKind::Polynomial => {
                         self.process_polynomial_identity(identity.left.selector.as_ref().unwrap())
@@ -150,7 +149,7 @@ where
 
                 if let Ok(e) = &result {
                     if e.is_complete() {
-                        complete_identities.insert(identity_id);
+                        *complete = true;
                     }
                 }
 

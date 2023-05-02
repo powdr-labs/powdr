@@ -184,7 +184,7 @@ pub enum Expression {
     MatchExpression(Box<Expression>, Vec<(Option<FieldElement>, Expression)>),
 }
 
-#[derive(Debug, PartialEq, Eq, Default, Clone, Hash)]
+#[derive(Debug, Eq, Default, Clone, Hash)]
 pub struct PolynomialReference {
     /// Name of the polynomial - just for informational purposes.
     /// Comparisons are based on polynomial ID.
