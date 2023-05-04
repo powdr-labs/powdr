@@ -1,4 +1,4 @@
-use super::affine_expression::{AffineExpression, AffineResult};
+use super::affine_expression::AffineResult;
 use super::expression_evaluator::SymbolicVariables;
 use super::FixedData;
 use pil_analyzer::PolynomialReference;
@@ -16,7 +16,7 @@ impl<'a> FixedEvaluator<'a> {
 }
 
 impl<'a> SymbolicVariables for FixedEvaluator<'a> {
-    fn value(&self, poly: &PolynomialReference) -> AffineResult {
+    fn value<'b>(&self, poly: &'b PolynomialReference) -> AffineResult<&'b PolynomialReference> {
         // TODO arrays
         assert!(
             poly.is_fixed(),
@@ -30,9 +30,5 @@ impl<'a> SymbolicVariables for FixedEvaluator<'a> {
             self.row
         };
         Ok(col_data[row].into())
-    }
-
-    fn format(&self, expr: AffineExpression) -> String {
-        expr.format(self.fixed_data)
     }
 }

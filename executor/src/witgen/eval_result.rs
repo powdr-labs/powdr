@@ -1,15 +1,16 @@
 use std::fmt;
 
 use number::FieldElement;
+use pil_analyzer::PolynomialReference;
 
 use super::bit_constraints::BitConstraint;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum IncompleteCause {
+pub enum IncompleteCause<K = usize> {
     /// Previous value of witness column not known when trying to derive a value in the next row. Example: `x' = x` where `x` is unknown
-    PreviousValueUnknown(u64),
+    PreviousValueUnknown(K),
     /// Some parts of an expression are not bit constrained. Example: `x + y == 0x3` with `x | 0x1`. Arguments: the indices of the unconstrained variables.
-    BitUnconstrained(Vec<usize>),
+    BitUnconstrained(Vec<K>),
     /// Some bit constraints are overlapping. Example: `x + y == 0x3` with `x | 0x3` and `y | 0x3`
     OverlappingBitConstraints,
     /// Multiple rows match a lookup query. Example: `{x, 1} in [{1, 1}, {2, 1}]`
@@ -40,11 +41,11 @@ pub enum IncompleteCause {
     SolvingFailed,
     /// Some knowledge was learnt, but not a concrete value. Example: `Y = X` if we know that `Y` is boolean. We learn that `X` is boolean, but not its exact value.
     NotConcrete,
-    Multiple(Vec<IncompleteCause>),
+    Multiple(Vec<IncompleteCause<K>>),
 }
 
-impl IncompleteCause {
-    pub fn combine(self, right: IncompleteCause) -> IncompleteCause {
+impl<K> IncompleteCause<K> {
+    pub fn combine(self, right: IncompleteCause<K>) -> IncompleteCause<K> {
         match (self, right) {
             (IncompleteCause::Multiple(l), IncompleteCause::Multiple(r)) => {
                 IncompleteCause::Multiple(l.into_iter().chain(r).collect())
@@ -58,22 +59,22 @@ impl IncompleteCause {
     }
 }
 
-pub type Constraints = Vec<(usize, Constraint)>;
+pub type Constraints<K = usize> = Vec<(K, Constraint)>;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum EvalStatus {
+pub enum EvalStatus<K = usize> {
     Complete,
-    Incomplete(IncompleteCause),
+    Incomplete(IncompleteCause<K>),
 }
 
-impl From<IncompleteCause> for EvalStatus {
-    fn from(value: IncompleteCause) -> Self {
+impl<K> From<IncompleteCause<K>> for EvalStatus<K> {
+    fn from(value: IncompleteCause<K>) -> Self {
         Self::Incomplete(value)
     }
 }
 
-impl EvalStatus {
-    pub fn combine<C: Into<EvalStatus>>(self, other: C) -> Self {
+impl<K> EvalStatus<K> {
+    pub fn combine<C: Into<EvalStatus<K>>>(self, other: C) -> Self {
         use self::EvalStatus::*;
         let other = other.into();
         match (self, other) {
@@ -85,45 +86,53 @@ impl EvalStatus {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct EvalValue {
-    pub constraints: Constraints,
-    pub status: EvalStatus,
+pub struct EvalValue<K> {
+    pub constraints: Constraints<K>,
+    pub status: EvalStatus<K>,
 }
 
-impl EvalValue {
+impl<K> EvalValue<K> {
     pub fn is_complete(&self) -> bool {
-        self.status == EvalStatus::Complete
+        match self.status {
+            EvalStatus::Complete => true,
+            EvalStatus::Incomplete(_) => false,
+        }
     }
 
     pub fn is_empty(&self) -> bool {
         self.constraints.is_empty()
     }
 
-    pub fn incomplete(cause: IncompleteCause) -> Self {
+    pub fn incomplete(cause: IncompleteCause<K>) -> Self {
         Self::new(vec![], EvalStatus::Incomplete(cause))
     }
 
     pub fn incomplete_with_constraints(
-        constraints: impl IntoIterator<Item = (usize, Constraint)>,
-        cause: IncompleteCause,
+        constraints: impl IntoIterator<Item = (K, Constraint)>,
+        cause: IncompleteCause<K>,
     ) -> Self {
         Self::new(constraints, EvalStatus::Incomplete(cause))
     }
 
-    pub fn complete(constraints: impl IntoIterator<Item = (usize, Constraint)>) -> Self {
+    pub fn complete(constraints: impl IntoIterator<Item = (K, Constraint)>) -> Self {
         Self::new(constraints, EvalStatus::Complete)
     }
 
     fn new(
-        constraints: impl IntoIterator<Item = (usize, Constraint)>,
-        complete: EvalStatus,
+        constraints: impl IntoIterator<Item = (K, Constraint)>,
+        complete: EvalStatus<K>,
     ) -> Self {
         Self {
             constraints: constraints.into_iter().collect(),
             status: complete,
         }
     }
+}
 
+impl<K> EvalValue<K>
+where
+    K: Clone,
+{
     pub fn combine(&mut self, other: Self) {
         self.constraints.extend(other.constraints);
         self.status = self.status.clone().combine(other.status);
@@ -132,7 +141,7 @@ impl EvalValue {
 
 /// Result of evaluating an expression / lookup.
 /// New assignments or constraints for witness columns identified by an ID.
-pub type EvalResult = Result<EvalValue, EvalError>;
+pub type EvalResult<'a, K = &'a PolynomialReference> = Result<EvalValue<K>, EvalError>;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum EvalError {

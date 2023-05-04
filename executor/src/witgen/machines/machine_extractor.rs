@@ -11,6 +11,7 @@ use crate::witgen::bit_constraints::BitConstraint;
 use crate::witgen::WitnessColumn;
 use itertools::Itertools;
 use pil_analyzer::IdentityKind;
+use pil_analyzer::PolynomialReference;
 use pil_analyzer::{Expression, Identity, SelectedExpressions};
 
 /// Finds machines in the witness columns and identities
@@ -20,13 +21,13 @@ pub fn split_out_machines<'a>(
     fixed: &'a FixedData<'a>,
     identities: Vec<&'a Identity>,
     witness_cols: &'a [WitnessColumn],
-    global_bit_constraints: &BTreeMap<&'a str, BitConstraint>,
+    global_bit_constraints: &BTreeMap<&'a PolynomialReference, BitConstraint>,
 ) -> (FixedLookup, Vec<Box<dyn Machine>>, Vec<&'a Identity>) {
     let fixed_lookup = FixedLookup::try_new(fixed, &[], &Default::default()).unwrap();
 
     let mut machines: Vec<Box<dyn Machine>> = vec![];
 
-    let all_witnesses = witness_cols.iter().map(|c| c.name).collect::<HashSet<_>>();
+    let all_witnesses = witness_cols.iter().map(|c| &c.poly).collect::<HashSet<_>>();
     let mut remaining_witnesses = all_witnesses.clone();
     let mut base_identities = identities.clone();
     for id in &identities {
@@ -119,10 +120,10 @@ pub fn split_out_machines<'a>(
 /// Two witnesses are row-connected if they are part of a polynomial identity
 /// or part of the same side of a lookup.
 fn all_row_connected_witnesses<'a>(
-    mut witnesses: HashSet<&'a str>,
-    all_witnesses: &HashSet<&'a str>,
+    mut witnesses: HashSet<&'a PolynomialReference>,
+    all_witnesses: &HashSet<&'a PolynomialReference>,
     identities: &'a [&'a Identity],
-) -> HashSet<&'a str> {
+) -> HashSet<&'a PolynomialReference> {
     loop {
         let count = witnesses.len();
         for i in identities {
@@ -154,12 +155,14 @@ fn all_row_connected_witnesses<'a>(
 }
 
 /// Extracts all references to names from an identity.
-pub fn refs_in_identity(identity: &Identity) -> HashSet<&str> {
+pub fn refs_in_identity(identity: &Identity) -> HashSet<&PolynomialReference> {
     &refs_in_selected_expressions(&identity.left) | &refs_in_selected_expressions(&identity.right)
 }
 
 /// Extracts all references to names from selected expressions.
-pub fn refs_in_selected_expressions(selexpr: &SelectedExpressions) -> HashSet<&str> {
+pub fn refs_in_selected_expressions(
+    selexpr: &SelectedExpressions,
+) -> HashSet<&PolynomialReference> {
     selexpr
         .expressions
         .iter()
@@ -170,10 +173,10 @@ pub fn refs_in_selected_expressions(selexpr: &SelectedExpressions) -> HashSet<&s
 }
 
 /// Extracts all references to names from an expression
-pub fn refs_in_expression(expr: &Expression) -> HashSet<&str> {
+pub fn refs_in_expression(expr: &Expression) -> HashSet<&PolynomialReference> {
     match expr {
         Expression::Constant(_) => todo!(),
-        Expression::PolynomialReference(p) => [p.name.as_str()].into(),
+        Expression::PolynomialReference(p) => [p].into(),
         Expression::Tuple(items) => refs_in_expressions(items),
         Expression::BinaryOperation(l, _, r) => &refs_in_expression(l) | &refs_in_expression(r),
         Expression::UnaryOperation(_, e) => refs_in_expression(e),
@@ -194,7 +197,7 @@ pub fn refs_in_expression(expr: &Expression) -> HashSet<&str> {
 }
 
 /// Extracts all references to names from expressions.
-pub fn refs_in_expressions(exprs: &[Expression]) -> HashSet<&str> {
+pub fn refs_in_expressions(exprs: &[Expression]) -> HashSet<&PolynomialReference> {
     exprs
         .iter()
         .map(refs_in_expression)

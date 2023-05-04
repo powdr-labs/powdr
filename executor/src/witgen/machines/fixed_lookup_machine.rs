@@ -4,7 +4,7 @@ use std::num::NonZeroUsize;
 
 use itertools::Itertools;
 use number::FieldElement;
-use pil_analyzer::{Identity, IdentityKind, PolyID, SelectedExpressions};
+use pil_analyzer::{Identity, IdentityKind, PolyID, PolynomialReference, SelectedExpressions};
 
 use crate::witgen::affine_expression::AffineResult;
 use crate::witgen::util::try_to_simple_poly_ref;
@@ -175,13 +175,13 @@ impl FixedLookup {
         }
     }
 
-    pub fn process_plookup(
+    pub fn process_plookup<'b>(
         &mut self,
         fixed_data: &FixedData,
         kind: IdentityKind,
-        left: &[AffineResult],
-        right: &SelectedExpressions,
-    ) -> Option<EvalResult> {
+        left: &[AffineResult<&'b PolynomialReference>],
+        right: &'b SelectedExpressions,
+    ) -> Option<EvalResult<&'b PolynomialReference>> {
         // This is a matching machine if it is a plookup and the RHS is fully constant.
         if kind != IdentityKind::Plookup
             || right.selector.is_some()
@@ -200,12 +200,12 @@ impl FixedLookup {
         Some(self.process_plookup_internal(fixed_data, left, right))
     }
 
-    fn process_plookup_internal(
+    fn process_plookup_internal<'b>(
         &mut self,
         fixed_data: &FixedData,
-        left: &[AffineResult],
+        left: &[AffineResult<&'b PolynomialReference>],
         right: Vec<u64>,
-    ) -> EvalResult {
+    ) -> EvalResult<&'b PolynomialReference> {
         // split the fixed columns depending on whether their associated lookup variable is constant or not. Preserve the value of the constant arguments.
         // {1, 2, x} in {A, B, C} -> [[(A, 1), (B, 2)], [C, x]]
 
@@ -264,8 +264,7 @@ impl FixedLookup {
                         Err(()) => {
                             // Fail the whole lookup
                             return Err(EvalError::ConstraintUnsatisfiable(format!(
-                                "Constraint is invalid ({} != {r}).",
-                                l.format(fixed_data)
+                                "Constraint is invalid ({l} != {r}).",
                             )));
                         }
                     }

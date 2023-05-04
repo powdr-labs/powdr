@@ -11,7 +11,7 @@ use super::bit_constraints::{BitConstraint, BitConstraintSet};
 use super::expression_evaluator::ExpressionEvaluator;
 use super::machines::{FixedLookup, Machine};
 use super::symbolic_witness_evaluator::{SymoblicWitnessEvaluator, WitnessColumnEvaluator};
-use super::util::{contains_next_witness_ref, WitnessColumnNamer};
+use super::util::contains_next_witness_ref;
 use super::{Constraint, EvalResult, EvalValue, FixedData, IncompleteCause, WitnessColumn};
 
 pub struct Generator<'a, QueryCallback> {
@@ -20,7 +20,7 @@ pub struct Generator<'a, QueryCallback> {
     identities: &'a [&'a Identity],
     machines: Vec<Box<dyn Machine>>,
     query_callback: Option<QueryCallback>,
-    global_bit_constraints: BTreeMap<&'a str, BitConstraint>,
+    global_bit_constraints: BTreeMap<&'a PolynomialReference, BitConstraint>,
     /// Values of the witness polynomials
     current: Vec<Option<FieldElement>>,
     /// Values of the witness polynomials in the next row
@@ -50,7 +50,7 @@ where
         fixed_data: &'a FixedData<'a>,
         fixed_lookup: &'a mut FixedLookup,
         identities: &'a [&'a Identity],
-        global_bit_constraints: BTreeMap<&'a str, BitConstraint>,
+        global_bit_constraints: BTreeMap<&'a PolynomialReference, BitConstraint>,
         machines: Vec<Box<dyn Machine>>,
         query_callback: Option<QueryCallback>,
     ) -> Self {
@@ -124,7 +124,9 @@ where
                 for column in self.fixed_data.witness_cols() {
                     // TODO we should actually query even if it is already known, to check
                     // if the value would be different.
-                    if !self.has_known_next_value(column.id) && column.query.is_some() {
+                    if !self.has_known_next_value(column.poly.poly_id() as usize)
+                        && column.query.is_some()
+                    {
                         let result = self.process_witness_query(&column);
                         self.handle_eval_result(result)
                     }
@@ -147,7 +149,7 @@ where
                     .iter()
                     .enumerate()
                     .filter_map(|(i, v)| if v.is_none() {
-                        Some(self.fixed_data.witness_cols[i].name.to_string())
+                        Some(self.fixed_data.witness_cols[i].poly.name.to_string())
                     } else {
                         None
                     })
@@ -163,7 +165,7 @@ where
             eprintln!("For this row:");
             for (id, cons) in self.next_bit_constraints.iter().enumerate() {
                 if let Some(cons) = cons {
-                    eprintln!("  {}: {cons}", self.fixed_data.witness_cols[id].name);
+                    eprintln!("  {}: {cons}", self.fixed_data.witness_cols[id].poly);
                 }
             }
             eprintln!();
@@ -259,7 +261,7 @@ where
             .map(|(i, v)| {
                 format!(
                     "{} = {}",
-                    AffineExpression::from_variable_id(i).format(self.fixed_data),
+                    AffineExpression::from_variable_id(i),
                     v.as_ref()
                         .map(ToString::to_string)
                         .unwrap_or_else(|| "<unknown>".to_string())
@@ -268,28 +270,34 @@ where
             .collect()
     }
 
-    fn process_witness_query(&mut self, column: &&WitnessColumn) -> EvalResult {
+    fn process_witness_query(
+        &mut self,
+        column: &&'a WitnessColumn,
+    ) -> EvalResult<&'a PolynomialReference> {
         let query = match self.interpolate_query(column.query.unwrap()) {
             Ok(query) => query,
             Err(incomplete) => return Ok(EvalValue::incomplete(incomplete)),
         };
         if let Some(value) = self.query_callback.as_mut().and_then(|c| (c)(&query)) {
             Ok(EvalValue::complete(vec![(
-                column.id,
+                &column.poly,
                 Constraint::Assignment(value),
             )]))
         } else {
             Ok(EvalValue::incomplete(IncompleteCause::NoQueryAnswer(
                 query,
-                column.name.to_string(),
+                column.poly.name.to_string(),
             )))
         }
     }
 
-    fn interpolate_query(&self, query: &Expression) -> Result<String, IncompleteCause> {
+    fn interpolate_query<'b>(
+        &self,
+        query: &'b Expression,
+    ) -> Result<String, IncompleteCause<&'b PolynomialReference>> {
         if let Ok(v) = self.evaluate(query, EvaluationRow::Next) {
             if v.is_constant() {
-                return Ok(v.format(self.fixed_data));
+                return Ok(v.to_string());
             }
         }
         // TODO combine that with the constant evaluator and the commit evaluator...
@@ -314,11 +322,11 @@ where
         }
     }
 
-    fn interpolate_match_expression_for_query(
+    fn interpolate_match_expression_for_query<'b>(
         &self,
-        scrutinee: &Expression,
-        arms: &[(Option<FieldElement>, Expression)],
-    ) -> Result<String, IncompleteCause> {
+        scrutinee: &'b Expression,
+        arms: &'b [(Option<FieldElement>, Expression)],
+    ) -> Result<String, IncompleteCause<&'b PolynomialReference>> {
         let v = self
             .evaluate(scrutinee, EvaluationRow::Next)?
             .constant_value()
@@ -330,7 +338,10 @@ where
         self.interpolate_query(expr)
     }
 
-    fn process_polynomial_identity(&self, identity: &Expression) -> EvalResult {
+    fn process_polynomial_identity<'b>(
+        &self,
+        identity: &'b Expression,
+    ) -> EvalResult<&'b PolynomialReference> {
         // If there is no "next" reference in the expression,
         // we just evaluate it directly on the "next" row.
         let row = if contains_next_witness_ref(identity) {
@@ -351,7 +362,10 @@ where
         }
     }
 
-    fn process_plookup(&mut self, identity: &Identity) -> EvalResult {
+    fn process_plookup<'b>(
+        &mut self,
+        identity: &'b Identity,
+    ) -> EvalResult<&'b PolynomialReference> {
         if let Some(left_selector) = &identity.left.selector {
             let value = match self.evaluate(left_selector, EvaluationRow::Next) {
                 Ok(value) => value,
@@ -417,10 +431,10 @@ where
                 for (id, c) in constraints.constraints {
                     match c {
                         Constraint::Assignment(value) => {
-                            self.next[id] = Some(value);
+                            self.next[id.poly_id() as usize] = Some(value);
                         }
                         Constraint::BitConstraint(cons) => {
-                            self.next_bit_constraints[id] = Some(cons);
+                            self.next_bit_constraints[id.poly_id() as usize] = Some(cons);
                         }
                     }
                 }
@@ -438,7 +452,11 @@ where
     /// Tries to evaluate the expression to an expression affine in the witness polynomials,
     /// taking current values of polynomials into account.
     /// @returns an expression affine in the witness polynomials
-    fn evaluate(&self, expr: &Expression, evaluate_row: EvaluationRow) -> AffineResult {
+    fn evaluate<'b>(
+        &self,
+        expr: &'b Expression,
+        evaluate_row: EvaluationRow,
+    ) -> AffineResult<&'b PolynomialReference> {
         let degree = self.fixed_data.degree;
         let fixed_row = match evaluate_row {
             EvaluationRow::Current => (self.next_row + degree - 1) % degree,
@@ -449,7 +467,6 @@ where
             self.fixed_data,
             fixed_row,
             EvaluationData {
-                fixed_data: self.fixed_data,
                 current_witnesses: &self.current,
                 next_witnesses: &self.next,
                 evaluate_row,
@@ -460,7 +477,6 @@ where
 
     fn bit_constraint_set(&'a self) -> WitnessBitConstraintSet<'a> {
         WitnessBitConstraintSet {
-            fixed_data: self.fixed_data,
             global_bit_constraints: &self.global_bit_constraints,
             next_bit_constraints: &self.next_bit_constraints,
         }
@@ -468,25 +484,26 @@ where
 }
 
 struct WitnessBitConstraintSet<'a> {
-    fixed_data: &'a FixedData<'a>,
     /// Global constraints on witness and fixed polynomials.
-    global_bit_constraints: &'a BTreeMap<&'a str, BitConstraint>,
+    global_bit_constraints: &'a BTreeMap<&'a PolynomialReference, BitConstraint>,
     /// Bit constraints on the witness polynomials in the next row.
     next_bit_constraints: &'a Vec<Option<BitConstraint>>,
 }
 
-impl<'a> BitConstraintSet for WitnessBitConstraintSet<'a> {
-    fn bit_constraint(&self, id: usize) -> Option<BitConstraint> {
-        let name = self.fixed_data.witness_cols[id].name;
+impl<'a> BitConstraintSet<&PolynomialReference> for WitnessBitConstraintSet<'a> {
+    fn bit_constraint(&self, poly: &PolynomialReference) -> Option<BitConstraint> {
         self.global_bit_constraints
-            .get(name)
-            .or_else(|| self.next_bit_constraints[id].as_ref())
+            .get(poly)
+            .or_else(|| {
+                poly.is_witness()
+                    .then(|| self.next_bit_constraints[poly.poly_id() as usize].as_ref())
+                    .flatten()
+            })
             .cloned()
     }
 }
 
 struct EvaluationData<'a> {
-    pub fixed_data: &'a FixedData<'a>,
     /// Values of the witness polynomials in the current / last row
     pub current_witnesses: &'a Vec<Option<FieldElement>>,
     /// Values of the witness polynomials in the next row
@@ -495,7 +512,7 @@ struct EvaluationData<'a> {
 }
 
 impl<'a> WitnessColumnEvaluator for EvaluationData<'a> {
-    fn value(&self, poly: &PolynomialReference) -> AffineResult {
+    fn value<'b>(&self, poly: &'b PolynomialReference) -> AffineResult<&'b PolynomialReference> {
         let id = poly.poly_id() as usize;
         match (poly.next, self.evaluate_row) {
             (false, EvaluationRow::Current) => {
@@ -504,7 +521,7 @@ impl<'a> WitnessColumnEvaluator for EvaluationData<'a> {
                 self.current_witnesses[id]
                     .as_ref()
                     .map(|value| (*value).into())
-                    .ok_or(IncompleteCause::PreviousValueUnknown(id as u64))
+                    .ok_or(IncompleteCause::PreviousValueUnknown(poly))
             }
             (false, EvaluationRow::Next) | (true, EvaluationRow::Current) => {
                 Ok(if let Some(value) = &self.next_witnesses[id] {
@@ -512,7 +529,7 @@ impl<'a> WitnessColumnEvaluator for EvaluationData<'a> {
                     (*value).into()
                 } else {
                     // We continue with a symbolic value
-                    AffineExpression::from_variable_id(id)
+                    AffineExpression::from_variable_id(poly)
                 })
             }
             (true, EvaluationRow::Next) => {
@@ -521,11 +538,5 @@ impl<'a> WitnessColumnEvaluator for EvaluationData<'a> {
                 );
             }
         }
-    }
-}
-
-impl<'a> WitnessColumnNamer for EvaluationData<'a> {
-    fn name(&self, i: usize) -> String {
-        self.fixed_data.name(i)
     }
 }

@@ -3,6 +3,7 @@ pub mod json_exporter;
 pub mod pil_analyzer;
 pub mod util;
 
+use std::hash::Hash;
 use std::path::Path;
 use std::{collections::HashMap, fmt::Display};
 
@@ -197,7 +198,7 @@ pub struct PolynomialReference {
     pub next: bool,
 }
 
-#[derive(Debug, Copy, Clone, PartialOrd, Ord, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialOrd, Ord, PartialEq, Eq, Hash)]
 pub struct PolyID {
     pub id: u64,
     pub ptype: PolynomialType,
@@ -229,13 +230,19 @@ impl PolynomialReference {
 
 impl PartialOrd for PolynomialReference {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for PolynomialReference {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         // TODO for efficiency reasons, we should avoid the unwrap check here somehow.
-        match self.poly_id.unwrap().partial_cmp(&other.poly_id.unwrap()) {
-            Some(core::cmp::Ordering::Equal) => {}
+        match self.poly_id.unwrap().cmp(&other.poly_id.unwrap()) {
+            core::cmp::Ordering::Equal => {}
             ord => return ord,
         }
         assert!(self.index.is_none() && other.index.is_none());
-        self.next.partial_cmp(&other.next)
+        self.next.cmp(&other.next)
     }
 }
 
@@ -244,6 +251,14 @@ impl PartialEq for PolynomialReference {
         assert!(self.index.is_none() && other.index.is_none());
         // TODO for efficiency reasons, we should avoid the unwrap check here somehow.
         self.poly_id.unwrap() == other.poly_id.unwrap() && self.next == other.next
+    }
+}
+
+impl Hash for PolynomialReference {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.poly_id.hash(state);
+        self.index.hash(state);
+        self.next.hash(state);
     }
 }
 
