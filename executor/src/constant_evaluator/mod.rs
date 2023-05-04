@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use itertools::Itertools;
 use number::{DegreeType, FieldElement};
 use pil_analyzer::{Analyzed, BinaryOperator, Expression, FunctionValueDefinition, UnaryOperator};
 use rayon::prelude::{IntoParallelIterator, ParallelIterator};
@@ -21,12 +22,10 @@ pub fn generate(analyzed: &Analyzed) -> (Vec<(&str, Vec<FieldElement>)>, DegreeT
             other_constants.insert(&poly.absolute_name, values);
         }
     }
-    let mut values = Vec::new();
-    for (poly, _) in analyzed.constant_polys_in_source_order() {
-        if let Some(v) = other_constants.get_mut(poly.absolute_name.as_str()) {
-            values.push((poly.absolute_name.as_str(), std::mem::take(v)));
-        };
-    }
+    let values = other_constants
+        .into_iter()
+        .sorted_by_key(|(name, _)| analyzed.definitions[&name.to_string()].0.id)
+        .collect::<Vec<_>>();
     (values, degree.unwrap_or_default())
 }
 
@@ -58,16 +57,24 @@ fn generate_values(
                 .iter()
                 .flat_map(|elements| {
                     assert!(elements.repetitions >= 1);
-                    let mut items = elements
+                    let items = elements
                         .values
                         .iter()
                         .map(|v| evaluator.evaluate(v))
                         .collect::<Vec<_>>();
+
                     let original_len = items.len();
-                    for _ in 1..elements.repetitions {
-                        items.extend(&items[..original_len].to_vec());
+                    if elements.repetitions == 1 {
+                        items
+                    } else if original_len == 1 {
+                        vec![items[0]; elements.repetitions as usize]
+                    } else {
+                        items
+                            .into_iter()
+                            .cycle()
+                            .take(original_len * elements.repetitions as usize)
+                            .collect()
                     }
-                    items
                 })
                 .collect();
             assert_eq!(values.len(), degree as usize);
