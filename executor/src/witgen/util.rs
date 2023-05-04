@@ -49,7 +49,7 @@ pub fn is_simple_poly(expr: &Expression) -> Option<&str> {
     }
 }
 
-pub fn is_simple_poly_ref(expr: &Expression) -> Option<PolyID> {
+pub fn try_to_simple_poly_ref(expr: &Expression) -> Option<PolyID> {
     if let Expression::PolynomialReference(PolynomialReference {
         poly_id,
         index: None,

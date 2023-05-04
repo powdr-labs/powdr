@@ -3,7 +3,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use itertools::Itertools;
 
 use super::{EvalResult, FixedData, FixedLookup};
-use crate::witgen::util::is_simple_poly_ref;
+use crate::witgen::util::try_to_simple_poly_ref;
 use crate::witgen::EvalValue;
 use crate::witgen::{
     affine_expression::{AffineExpression, AffineResult},
@@ -56,7 +56,8 @@ impl BlockMachine {
         for id in connecting_identities {
             if let Some(sel) = &id.right.selector {
                 // TODO we should check that the other constraints/fixed columns are also periodic.
-                if let Some((selector, period)) = is_boolean_periodic_selector(sel, fixed_data) {
+                if let Some((selector, period)) = try_to_boolean_periodic_selector(sel, fixed_data)
+                {
                     let mut machine = BlockMachine {
                         block_size: period,
                         selector,
@@ -98,11 +99,11 @@ impl BlockMachine {
 /// for some k >= 2
 /// TODO we could make this more generic and only detect the period
 /// but not enforce the offset.
-fn is_boolean_periodic_selector(
+fn try_to_boolean_periodic_selector(
     expr: &Expression,
     fixed_data: &FixedData,
 ) -> Option<(PolyID, usize)> {
-    let poly = is_simple_poly_ref(expr)?;
+    let poly = try_to_simple_poly_ref(expr)?;
     if poly.ptype != PolynomialType::Constant {
         return None;
     }
@@ -136,7 +137,7 @@ impl Machine for BlockMachine {
         left: &[AffineResult],
         right: &SelectedExpressions,
     ) -> Option<EvalResult> {
-        if is_simple_poly_ref(right.selector.as_ref()?)? != self.selector
+        if try_to_simple_poly_ref(right.selector.as_ref()?)? != self.selector
             || kind != IdentityKind::Plookup
         {
             return None;

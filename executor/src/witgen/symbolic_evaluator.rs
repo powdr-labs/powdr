@@ -25,26 +25,24 @@ impl<'a> SymbolicEvaluator<'a> {
     /// Turns the ID into a polynomial reference (with empty name, though).
     pub fn poly_from_id(&self, id: usize) -> PolynomialReference {
         let witness_count = self.fixed_data.witness_ids.len();
-        let poly_id;
-        let next;
-        let poly_type;
-        if id < 2 * witness_count {
-            poly_type = PolynomialType::Committed;
-            poly_id = (id % witness_count) as u64;
-            next = id >= witness_count;
+        let (poly_id, ptype, next) = if id < 2 * witness_count {
+            (
+                (id % witness_count) as u64,
+                PolynomialType::Committed,
+                id >= witness_count,
+            )
         } else {
-            poly_type = PolynomialType::Constant;
             let fixed_count = self.fixed_data.fixed_col_values.len();
             let fixed_id = id - 2 * witness_count;
-            poly_id = (fixed_id % fixed_count) as u64;
-            next = fixed_id >= fixed_count;
-        }
+            (
+                (fixed_id % fixed_count) as u64,
+                PolynomialType::Constant,
+                fixed_id >= fixed_count,
+            )
+        };
         PolynomialReference {
             name: Default::default(),
-            poly_id: Some(PolyID {
-                id: poly_id,
-                ptype: poly_type,
-            }),
+            poly_id: Some(PolyID { id: poly_id, ptype }),
             index: None,
             next,
         }
