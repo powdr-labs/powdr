@@ -178,10 +178,7 @@ impl FixedLookup {
         // This is a matching machine if it is a plookup and the RHS is fully constant.
         if kind != IdentityKind::Plookup
             || right.selector.is_some()
-            || right
-                .expressions
-                .iter()
-                .any(|e| contains_witness_ref(e, fixed_data))
+            || right.expressions.iter().any(contains_witness_ref)
         {
             return None;
         }

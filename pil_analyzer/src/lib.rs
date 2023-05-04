@@ -197,6 +197,21 @@ pub struct PolynomialReference {
     pub next: bool,
 }
 
+impl PolynomialReference {
+    #[inline]
+    pub fn poly_id(&self) -> u64 {
+        self.poly_id.unwrap().0
+    }
+    #[inline]
+    pub fn is_witness(&self) -> bool {
+        self.poly_id.unwrap().1 == PolynomialType::Committed
+    }
+    #[inline]
+    pub fn is_fixed(&self) -> bool {
+        self.poly_id.unwrap().1 == PolynomialType::Constant
+    }
+}
+
 impl PartialOrd for PolynomialReference {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         // TODO for efficiency reasons, we should avoid the unwrap check here somehow.
