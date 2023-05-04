@@ -3,11 +3,11 @@ use std::fmt::{Display, Formatter};
 
 use crate::witgen::util::{contains_next_ref, WitnessColumnNamer};
 use number::{AbstractNumberType, FieldElement};
-use pil_analyzer::{BinaryOperator, Expression, Identity, IdentityKind};
+use pil_analyzer::{BinaryOperator, Expression, Identity, IdentityKind, PolyID, PolynomialType};
 
 use super::expression_evaluator::ExpressionEvaluator;
 use super::symbolic_evaluator::SymbolicEvaluator;
-use super::util::is_simple_poly;
+use super::util::{is_simple_poly, is_simple_poly_ref};
 use super::{Constraint, FixedData};
 
 /// Constraint on the bit values of a variable X.
@@ -89,19 +89,16 @@ impl core::fmt::Debug for BitConstraint {
 
 /// Trait that provides a bit constraint on a symbolic variable if given by ID.
 pub trait BitConstraintSet {
-    fn bit_constraint(&self, id: usize) -> Option<BitConstraint>;
+    fn bit_constraint(&self, id: PolyID) -> Option<BitConstraint>;
 }
 
-pub struct SimpleBitConstraintSet<'a, Namer: WitnessColumnNamer> {
-    bit_constraints: &'a BTreeMap<&'a str, BitConstraint>,
-    names: &'a Namer,
+pub struct SimpleBitConstraintSet<'a> {
+    bit_constraints: &'a BTreeMap<PolyID, BitConstraint>,
 }
 
-impl<'a, Namer: WitnessColumnNamer> BitConstraintSet for SimpleBitConstraintSet<'a, Namer> {
-    fn bit_constraint(&self, id: usize) -> Option<BitConstraint> {
-        self.bit_constraints
-            .get(self.names.name(id).as_str())
-            .cloned()
+impl<'a> BitConstraintSet for SimpleBitConstraintSet<'a> {
+    fn bit_constraint(&self, poly_id: PolyID) -> Option<BitConstraint> {
+        self.bit_constraints.get(&poly_id).cloned()
     }
 }
 
@@ -112,21 +109,18 @@ impl<'a, Namer: WitnessColumnNamer> BitConstraintSet for SimpleBitConstraintSet<
 pub fn determine_global_constraints<'a>(
     fixed_data: &'a FixedData,
     identities: Vec<&'a Identity>,
-) -> (BTreeMap<&'a str, BitConstraint>, Vec<&'a Identity>) {
+) -> (BTreeMap<PolyID, BitConstraint>, Vec<&'a Identity>) {
     let mut known_constraints = BTreeMap::new();
     // For these columns, we know that they are not only constrained to those bits
     // but also have one row for each possible value.
     // It allows us to completely remove some lookups.
     let mut full_span = BTreeSet::new();
-    for (&name, &values) in fixed_data
-        .fixed_col_names
-        .iter()
-        .zip(fixed_data.fixed_col_values.iter())
-    {
+    for (id, &values) in fixed_data.fixed_col_values.iter().enumerate() {
         if let Some((cons, full)) = process_fixed_column(values) {
-            assert!(known_constraints.insert(name, cons).is_none());
+            let poly = (id as u64, PolynomialType::Constant);
+            assert!(known_constraints.insert(poly, cons).is_none());
             if full {
-                full_span.insert(name);
+                full_span.insert(poly);
             }
         }
     }
@@ -146,8 +140,11 @@ pub fn determine_global_constraints<'a>(
     }
 
     log::debug!("Determined the following global bit constraints:");
-    for (name, con) in &known_constraints {
-        log::debug!("  {name}: {con}");
+    for (poly_id, con) in &known_constraints {
+        log::debug!(
+            "  {}: {con}",
+            fixed_data.reference_from_poly_id(*poly_id).name
+        );
     }
     log::debug!("Determined the following identities to be purely bit/range constraints:");
     for id in removed_identities {
@@ -185,10 +182,10 @@ fn process_fixed_column(fixed: &[FieldElement]) -> Option<(BitConstraint, bool)>
 /// no further information than the bit constraint.
 fn propagate_constraints<'a>(
     fixed_data: &'a FixedData,
-    mut known_constraints: BTreeMap<&'a str, BitConstraint>,
+    mut known_constraints: BTreeMap<PolyID, BitConstraint>,
     identity: &'a Identity,
-    full_span: &BTreeSet<&'a str>,
-) -> (BTreeMap<&'a str, BitConstraint>, bool) {
+    full_span: &BTreeSet<PolyID>,
+) -> (BTreeMap<PolyID, BitConstraint>, bool) {
     let mut remove = false;
     match identity.kind {
         IdentityKind::Polynomial => {
@@ -220,8 +217,10 @@ fn propagate_constraints<'a>(
                 .iter()
                 .zip(identity.right.expressions.iter())
             {
-                if let (Some(left), Some(right)) = (is_simple_poly(left), is_simple_poly(right)) {
-                    if let Some(constraint) = known_constraints.get(right).cloned() {
+                if let (Some(left), Some(right)) =
+                    (is_simple_poly_ref(left), is_simple_poly_ref(right))
+                {
+                    if let Some(constraint) = known_constraints.get(&right).cloned() {
                         known_constraints
                             .entry(left)
                             .and_modify(|existing| {
@@ -234,8 +233,8 @@ fn propagate_constraints<'a>(
             if identity.kind == IdentityKind::Plookup && identity.right.expressions.len() == 1 {
                 // We can only remove the lookup if the RHS is a fixed polynomial that
                 // provides all values in the span.
-                if let Some(name) = is_simple_poly(&identity.right.expressions[0]) {
-                    if full_span.contains(name) {
+                if let Some(poly) = is_simple_poly_ref(&identity.right.expressions[0]) {
+                    if full_span.contains(&poly) {
                         remove = true;
                     }
                 }
@@ -247,7 +246,7 @@ fn propagate_constraints<'a>(
 }
 
 /// Tries to find "X * (1 - X) = 0"
-fn is_binary_constraint<'a>(fixed_data: &'a FixedData, expr: &Expression) -> Option<&'a str> {
+fn is_binary_constraint<'a>(fixed_data: &'a FixedData, expr: &Expression) -> Option<PolyID> {
     // TODO Write a proper pattern matching engine.
     if let Expression::BinaryOperation(left, BinaryOperator::Sub, right) = expr {
         if let Expression::Number(n) = right.as_ref() {
@@ -276,7 +275,7 @@ fn is_binary_constraint<'a>(fixed_data: &'a FixedData, expr: &Expression) -> Opt
             if (*value1 == 0.into() && *value2 == 1.into())
                 || (*value1 == 1.into() && *value2 == 0.into())
             {
-                return Some(fixed_data.witness_cols[poly1.poly_id() as usize].name);
+                return Some(poly1.poly_id_and_type());
             }
         }
     }
@@ -287,8 +286,8 @@ fn is_binary_constraint<'a>(fixed_data: &'a FixedData, expr: &Expression) -> Opt
 fn try_transfer_constraints<'a>(
     fixed_data: &'a FixedData,
     expr: &'a Expression,
-    known_constraints: &BTreeMap<&str, BitConstraint>,
-) -> Option<(&'a str, BitConstraint)> {
+    known_constraints: &BTreeMap<PolyID, BitConstraint>,
+) -> Option<(PolyID, BitConstraint)> {
     if contains_next_ref(expr) {
         return None;
     }
@@ -301,7 +300,6 @@ fn try_transfer_constraints<'a>(
     let result = aff_expr
         .solve_with_bit_constraints(&SimpleBitConstraintSet {
             bit_constraints: known_constraints,
-            names: &symbolic_ev,
         })
         .ok()?;
     assert!(result.constraints.len() <= 1);
@@ -309,12 +307,7 @@ fn try_transfer_constraints<'a>(
         if let Constraint::BitConstraint(cons) = cons {
             let poly = symbolic_ev.poly_from_id(*id);
             assert!(!poly.next);
-            let name = if poly.is_witness() {
-                fixed_data.witness_cols[poly.poly_id() as usize].name
-            } else {
-                fixed_data.fixed_col_names[poly.poly_id() as usize]
-            };
-            Some((name, cons.clone()))
+            Some((poly.poly_id_and_type(), cons.clone()))
         } else {
             None
         }
@@ -330,7 +323,9 @@ fn smallest_period_candidate(fixed: &[FieldElement]) -> Option<u64> {
 
 #[cfg(test)]
 mod test {
-    use std::collections::BTreeMap;
+    use std::collections::{BTreeMap, HashMap};
+
+    use pil_analyzer::PolynomialType;
 
     use crate::witgen::bit_constraints::{propagate_constraints, BitConstraint};
     use crate::witgen::{FixedData, WitnessColumn};
@@ -404,12 +399,22 @@ namespace Global(2**20);
         let (constants, degree) = crate::constant_evaluator::generate(&analyzed);
         let mut known_constraints = constants
             .iter()
-            .filter_map(|(name, values)| {
-                process_fixed_column(values).map(|(constraint, _full)| (*name, constraint))
+            .enumerate()
+            .filter_map(|(id, (name, values))| {
+                process_fixed_column(values)
+                    .map(|(constraint, _full)| ((id as u64, PolynomialType::Constant), constraint))
             })
             .collect::<BTreeMap<_, _>>();
+        let constant_names = constants
+            .iter()
+            .enumerate()
+            .map(|(id, (name, _))| (id as u64, *name))
+            .collect::<BTreeMap<_, _>>();
         assert_eq!(
-            known_constraints,
+            known_constraints
+                .iter()
+                .map(|((id, ptype), con)| (constant_names[id], con.clone()))
+                .collect::<BTreeMap<_, _>>(),
             vec![
                 ("Global.BYTE", BitConstraint::from_max_bit(7)),
                 ("Global.BYTE2", BitConstraint::from_max_bit(15)),
@@ -447,7 +452,13 @@ namespace Global(2**20);
             );
         }
         assert_eq!(
-            known_constraints,
+            known_constraints
+                .iter()
+                .map(|(poly_id, con)| (
+                    fixed_data.reference_from_poly_id(poly_id.clone()).name,
+                    *con
+                ))
+                .collect::<BTreeMap<_, _>>(),
             vec![
                 ("Global.A", BitConstraint::from_max_bit(0)),
                 ("Global.B", BitConstraint::from_max_bit(7)),
@@ -458,6 +469,7 @@ namespace Global(2**20);
                 ("Global.SHIFTED", BitConstraint::from_mask(0xff0)),
             ]
             .into_iter()
+            .map(|(name, c)| (name.to_string(), c))
             .collect()
         );
     }

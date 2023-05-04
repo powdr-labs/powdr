@@ -1,5 +1,7 @@
 use parser_util::lines::indent;
-use pil_analyzer::{Expression, Identity, IdentityKind, PolynomialReference};
+use pil_analyzer::{
+    Expression, Identity, IdentityKind, PolyID, PolynomialReference, PolynomialType,
+};
 use std::collections::{BTreeMap, HashMap};
 use std::time::Instant;
 // TODO should use finite field instead of abstract number
@@ -470,18 +472,32 @@ where
 struct WitnessBitConstraintSet<'a> {
     fixed_data: &'a FixedData<'a>,
     /// Global constraints on witness and fixed polynomials.
-    global_bit_constraints: &'a BTreeMap<&'a str, BitConstraint>,
+    global_bit_constraints: &'a BTreeMap<PolyID, BitConstraint>,
     /// Bit constraints on the witness polynomials in the next row.
     next_bit_constraints: &'a Vec<Option<BitConstraint>>,
 }
 
 impl<'a> BitConstraintSet for WitnessBitConstraintSet<'a> {
-    fn bit_constraint(&self, id: usize) -> Option<BitConstraint> {
-        let name = self.fixed_data.witness_cols[id].name;
-        self.global_bit_constraints
-            .get(name)
-            .or_else(|| self.next_bit_constraints[id].as_ref())
-            .cloned()
+    fn bit_constraint(&self, poly_id: PolyID) -> Option<BitConstraint> {
+        match (
+            self.global_bit_constraints.get(&poly_id),
+            self.witness_bit_constraint(poly_id),
+        ) {
+            (None, None) => None,
+            (None, Some(c)) | (Some(c), None) => Some(c),
+            // TODO Maybe just returning c2 (and only querying witness bit constraint) is enough.
+            (Some(c1), Some(c2)) => Some(c1.conjunction(c2)),
+        }
+    }
+}
+
+impl<'a> WitnessBitConstraintSet<'a> {
+    fn witness_bit_constraint(&self, poly_id: PolyID) -> Option<&BitConstraint> {
+        if poly_id.1 == PolynomialType::Committed {
+            self.next_bit_constraints[poly_id.0 as usize].as_ref()
+        } else {
+            None
+        }
     }
 }
 

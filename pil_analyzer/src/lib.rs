@@ -205,6 +205,10 @@ impl PolynomialReference {
         self.poly_id.unwrap().0
     }
     #[inline]
+    pub fn poly_id_and_type(&self) -> PolyID {
+        self.poly_id.unwrap()
+    }
+    #[inline]
     pub fn is_witness(&self) -> bool {
         self.poly_id.unwrap().1 == PolynomialType::Committed
     }

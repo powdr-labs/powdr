@@ -1,7 +1,10 @@
 use std::collections::HashMap;
 
 use number::{DegreeType, FieldElement};
-use pil_analyzer::{Analyzed, Expression, FunctionValueDefinition};
+
+use pil_analyzer::{
+    Analyzed, Expression, FunctionValueDefinition, PolyID, PolynomialReference, PolynomialType,
+};
 
 pub use self::eval_result::{
     Constraint, Constraints, EvalError, EvalResult, EvalStatus, EvalValue, IncompleteCause,
@@ -155,6 +158,20 @@ impl<'a> FixedData<'a> {
 
     fn witness_cols(&self) -> impl Iterator<Item = &WitnessColumn> {
         self.witness_cols.iter()
+    }
+
+    fn reference_from_poly_id(&self, poly_id: PolyID) -> PolynomialReference {
+        let name = match poly_id.1 {
+            PolynomialType::Committed => self.witness_cols[poly_id.0 as usize].name.to_string(),
+            PolynomialType::Constant => self.fixed_col_names[poly_id.0 as usize].to_string(),
+            PolynomialType::Intermediate => todo!(),
+        };
+        PolynomialReference {
+            name,
+            poly_id: Some(poly_id),
+            index: None,
+            next: false,
+        }
     }
 }
 
