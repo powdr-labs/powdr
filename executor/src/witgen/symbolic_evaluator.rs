@@ -1,10 +1,10 @@
 use std::collections::HashMap;
 
 use super::affine_expression::{AffineExpression, AffineResult};
-
 use super::expression_evaluator::SymbolicVariables;
 use super::util::WitnessColumnNamer;
 use super::FixedData;
+use pil_analyzer::PolynomialReference;
 
 /// A purely symbolic evaluator.
 /// Note: The affine expressions it returns will contain variables
@@ -75,15 +75,20 @@ impl<'a> SymbolicVariables for SymbolicEvaluator<'a> {
         Ok(self.fixed_data.constants[name].into())
     }
 
-    fn value(&self, name: &str, next: bool) -> AffineResult {
+    fn value(&self, poly: &PolynomialReference) -> AffineResult {
         // TODO arrays
-        if self.fixed_data.witness_ids.get(name).is_some() {
+        if self
+            .fixed_data
+            .witness_ids
+            .get(poly.name.as_str())
+            .is_some()
+        {
             Ok(AffineExpression::from_variable_id(
-                self.id_for_witness_poly(name, next),
+                self.id_for_witness_poly(&poly.name, poly.next),
             ))
         } else {
             Ok(AffineExpression::from_variable_id(
-                self.id_for_fixed_poly(name, next),
+                self.id_for_fixed_poly(&poly.name, poly.next),
             ))
         }
     }

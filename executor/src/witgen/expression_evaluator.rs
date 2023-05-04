@@ -1,5 +1,5 @@
 use number::FieldElement;
-use pil_analyzer::{BinaryOperator, Expression, UnaryOperator};
+use pil_analyzer::{BinaryOperator, Expression, PolynomialReference, UnaryOperator};
 
 use super::{
     affine_expression::{AffineExpression, AffineResult},
@@ -10,7 +10,7 @@ pub trait SymbolicVariables {
     /// Acutal constant, not fixed polynomial
     fn constant(&self, name: &str) -> AffineResult;
     /// Value of a polynomial (fixed or witness).
-    fn value(&self, name: &str, next: bool) -> AffineResult;
+    fn value(&self, poly: &PolynomialReference) -> AffineResult;
     fn format(&self, expr: AffineExpression) -> String;
 }
 
@@ -30,7 +30,7 @@ impl<SV: SymbolicVariables> ExpressionEvaluator<SV> {
         // we could store the simplified values.
         match expr {
             Expression::Constant(name) => self.variables.constant(name),
-            Expression::PolynomialReference(poly) => self.variables.value(&poly.name, poly.next),
+            Expression::PolynomialReference(poly) => self.variables.value(poly),
             Expression::Number(n) => Ok((*n).into()),
             Expression::BinaryOperation(left, op, right) => {
                 self.evaluate_binary_operation(left, op, right)
