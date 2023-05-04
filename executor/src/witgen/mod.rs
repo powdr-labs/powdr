@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use number::{DegreeType, FieldElement};
-use pil_analyzer::{Analyzed, Expression, FunctionValueDefinition};
+use pil_analyzer::{Analyzed, Expression, FunctionValueDefinition, PolyID, PolynomialType};
 
 pub use self::eval_result::{
     Constraint, Constraints, EvalError, EvalResult, EvalStatus, EvalValue, IncompleteCause,
@@ -156,6 +156,14 @@ impl<'a> FixedData<'a> {
 
     fn witness_cols(&self) -> impl Iterator<Item = &WitnessColumn> {
         self.witness_cols.iter()
+    }
+
+    pub fn poly_name(&self, poly: PolyID) -> &str {
+        match poly.ptype {
+            PolynomialType::Committed => self.witness_cols[poly.id as usize].name,
+            PolynomialType::Constant => self.fixed_col_names[poly.id as usize],
+            PolynomialType::Intermediate => panic!(),
+        }
     }
 }
 

@@ -2,7 +2,7 @@ use super::affine_expression::{AffineExpression, AffineResult};
 use super::expression_evaluator::SymbolicVariables;
 use super::util::WitnessColumnNamer;
 use super::FixedData;
-use pil_analyzer::{PolynomialReference, PolynomialType};
+use pil_analyzer::{PolyID, PolynomialReference, PolynomialType};
 
 /// A purely symbolic evaluator.
 /// Note: The affine expressions it returns will contain variables
@@ -41,7 +41,10 @@ impl<'a> SymbolicEvaluator<'a> {
         }
         PolynomialReference {
             name: Default::default(),
-            poly_id: Some((poly_id, poly_type)),
+            poly_id: Some(PolyID {
+                id: poly_id,
+                ptype: poly_type,
+            }),
             index: None,
             next,
         }
@@ -51,12 +54,12 @@ impl<'a> SymbolicEvaluator<'a> {
         let witness_count = self.fixed_data.witness_ids.len();
         let fixed_count = self.fixed_data.fixed_col_values.len();
 
-        let id = poly.poly_id.unwrap().0 as usize;
+        let id = poly.poly_id() as usize;
         2 * witness_count + id + if poly.next { fixed_count } else { 0 }
     }
     pub fn id_for_witness_poly(&self, poly: &PolynomialReference) -> usize {
         let witness_count = self.fixed_data.witness_ids.len();
-        poly.poly_id.unwrap().0 as usize + if poly.next { witness_count } else { 0 }
+        poly.poly_id() as usize + if poly.next { witness_count } else { 0 }
     }
 }
 
@@ -68,7 +71,7 @@ impl<'a> SymbolicVariables for SymbolicEvaluator<'a> {
     fn value(&self, poly: &PolynomialReference) -> AffineResult {
         // TODO arrays
         Ok(AffineExpression::from_variable_id(
-            match poly.poly_id.unwrap().1 {
+            match poly.poly_id.unwrap().ptype {
                 PolynomialType::Committed => self.id_for_witness_poly(poly),
                 PolynomialType::Constant => self.id_for_fixed_poly(poly),
                 PolynomialType::Intermediate => panic!(),
@@ -85,15 +88,7 @@ impl<'a> WitnessColumnNamer for SymbolicEvaluator<'a> {
     fn name(&self, id: usize) -> String {
         // This is still needed for the BitConstraint solving.
         let mut poly = self.poly_from_id(id);
-        poly.name = match poly.poly_id.unwrap() {
-            (id, PolynomialType::Committed) => {
-                self.fixed_data.witness_cols[id as usize].name.to_string()
-            }
-            (id, PolynomialType::Constant) => {
-                self.fixed_data.fixed_col_names[id as usize].to_string()
-            }
-            _ => panic!(),
-        };
+        poly.name = self.fixed_data.poly_name(poly.poly_id.unwrap()).to_string();
         poly.to_string()
     }
 }

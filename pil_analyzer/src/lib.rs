@@ -197,20 +197,33 @@ pub struct PolynomialReference {
     pub next: bool,
 }
 
-pub type PolyID = (u64, PolynomialType);
+#[derive(Debug, Copy, Clone, PartialOrd, Ord, PartialEq, Eq)]
+pub struct PolyID {
+    pub id: u64,
+    pub ptype: PolynomialType,
+}
+
+impl From<&Polynomial> for PolyID {
+    fn from(poly: &Polynomial) -> Self {
+        PolyID {
+            id: poly.id,
+            ptype: poly.poly_type,
+        }
+    }
+}
 
 impl PolynomialReference {
     #[inline]
     pub fn poly_id(&self) -> u64 {
-        self.poly_id.unwrap().0
+        self.poly_id.unwrap().id
     }
     #[inline]
     pub fn is_witness(&self) -> bool {
-        self.poly_id.unwrap().1 == PolynomialType::Committed
+        self.poly_id.unwrap().ptype == PolynomialType::Committed
     }
     #[inline]
     pub fn is_fixed(&self) -> bool {
-        self.poly_id.unwrap().1 == PolynomialType::Constant
+        self.poly_id.unwrap().ptype == PolynomialType::Constant
     }
 }
 

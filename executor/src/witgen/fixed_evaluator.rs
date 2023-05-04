@@ -26,7 +26,7 @@ impl<'a> SymbolicVariables for FixedEvaluator<'a> {
             poly.is_fixed(),
             "Can only access fixed columns in the fixed evaluator."
         );
-        let col_data = self.fixed_data.fixed_col_values[poly.poly_id.unwrap().0 as usize];
+        let col_data = self.fixed_data.fixed_col_values[poly.poly_id() as usize];
         let degree = col_data.len();
         let row = if poly.next {
             (self.row + 1) % degree

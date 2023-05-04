@@ -4,7 +4,7 @@ use std::num::NonZeroUsize;
 
 use itertools::Itertools;
 use number::FieldElement;
-use pil_analyzer::{Identity, IdentityKind, SelectedExpressions};
+use pil_analyzer::{Identity, IdentityKind, PolyID, SelectedExpressions};
 
 use crate::witgen::affine_expression::AffineResult;
 use crate::witgen::util::is_simple_poly_ref;
@@ -194,7 +194,7 @@ impl FixedLookup {
         let right: Vec<_> = right
             .expressions
             .iter()
-            .map(|right_key| is_simple_poly_ref(right_key).map(|(id, _ptype)| id))
+            .map(|right_key| is_simple_poly_ref(right_key).map(|PolyID { id, .. }| id))
             .collect::<Option<_>>()?;
 
         Some(self.process_plookup_internal(fixed_data, left, right))

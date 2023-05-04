@@ -122,7 +122,7 @@ fn check_constraint<'a>(fixed_data: &'a FixedData, constraint: &Expression) -> O
         return None;
     }
 
-    Some(fixed_data.witness_cols[poly.poly_id() as usize].name)
+    Some(fixed_data.poly_name(poly.poly_id.unwrap()))
 }
 
 impl Machine for SortedWitnesses {

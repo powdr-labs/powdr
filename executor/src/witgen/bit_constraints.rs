@@ -276,7 +276,7 @@ fn is_binary_constraint<'a>(fixed_data: &'a FixedData, expr: &Expression) -> Opt
             if (*value1 == 0.into() && *value2 == 1.into())
                 || (*value1 == 1.into() && *value2 == 0.into())
             {
-                return Some(fixed_data.witness_cols[poly1.poly_id() as usize].name);
+                return Some(fixed_data.poly_name(poly1.poly_id.unwrap()));
             }
         }
     }
@@ -309,12 +309,7 @@ fn try_transfer_constraints<'a>(
         if let Constraint::BitConstraint(cons) = cons {
             let poly = symbolic_ev.poly_from_id(*id);
             assert!(!poly.next);
-            let name = if poly.is_witness() {
-                fixed_data.witness_cols[poly.poly_id() as usize].name
-            } else {
-                fixed_data.fixed_col_names[poly.poly_id() as usize]
-            };
-            Some((name, cons.clone()))
+            Some((fixed_data.poly_name(poly.poly_id.unwrap()), cons.clone()))
         } else {
             None
         }

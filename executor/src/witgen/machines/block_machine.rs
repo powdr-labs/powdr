@@ -16,7 +16,8 @@ use crate::witgen::{
 };
 use number::{DegreeType, FieldElement};
 use pil_analyzer::{
-    Expression, Identity, IdentityKind, PolynomialReference, PolynomialType, SelectedExpressions,
+    Expression, Identity, IdentityKind, PolyID, PolynomialReference, PolynomialType,
+    SelectedExpressions,
 };
 
 /// A machine that produces multiple rows (one block) per query.
@@ -25,7 +26,7 @@ use pil_analyzer::{
 pub struct BlockMachine {
     /// Block size, the period of the selector.
     block_size: usize,
-    selector: (u64, PolynomialType),
+    selector: PolyID,
     identities: Vec<Identity>,
     /// One column of values for each witness.
     data: HashMap<usize, Vec<Option<FieldElement>>>,
@@ -100,13 +101,13 @@ impl BlockMachine {
 fn is_boolean_periodic_selector(
     expr: &Expression,
     fixed_data: &FixedData,
-) -> Option<((u64, PolynomialType), usize)> {
-    let (id, ptype) = is_simple_poly_ref(expr)?;
-    if ptype != PolynomialType::Constant {
+) -> Option<(PolyID, usize)> {
+    let poly = is_simple_poly_ref(expr)?;
+    if poly.ptype != PolynomialType::Constant {
         return None;
     }
 
-    let values = fixed_data.fixed_col_values[id as usize];
+    let values = fixed_data.fixed_col_values[poly.id as usize];
 
     let period = 1 + values.iter().position(|v| *v == 1.into())?;
     if period == 1 {
@@ -123,7 +124,7 @@ fn is_boolean_periodic_selector(
             };
             *v == expected
         })
-        .then_some(((id, ptype), period))
+        .then_some((poly, period))
 }
 
 impl Machine for BlockMachine {
