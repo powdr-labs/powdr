@@ -314,22 +314,27 @@ impl<'a> Exporter<'a> {
 
     fn polynomial_reference_to_json(
         &self,
-        PolynomialReference { name, index, next }: &PolynomialReference,
+        PolynomialReference {
+            name: _,
+            index,
+            poly_id,
+            next,
+        }: &PolynomialReference,
     ) -> (u32, JsonValue, Vec<u64>) {
-        let poly = &self.analyzed.definitions[name].0;
-        let id = if poly.poly_type == PolynomialType::Intermediate {
+        let (id, poly_type) = poly_id.unwrap();
+        let id = if poly_type == PolynomialType::Intermediate {
             assert!(index.is_none());
-            self.intermediate_poly_expression_ids[&poly.id]
+            self.intermediate_poly_expression_ids[&id]
         } else {
-            poly.id + index.unwrap_or_default()
+            id + index.unwrap_or_default()
         };
         let poly_json = object! {
             id: id,
-            op: polynomial_reference_type_to_json_string(poly.poly_type),
+            op: polynomial_reference_type_to_json_string(poly_type),
             deg: 1,
             next: *next,
         };
-        let dependencies = if poly.poly_type == PolynomialType::Intermediate {
+        let dependencies = if poly_type == PolynomialType::Intermediate {
             vec![id]
         } else {
             Vec::new()

@@ -1,6 +1,89 @@
+use crate::{Analyzed, Expression, FunctionValueDefinition, Identity};
 use std::{iter::once, ops::ControlFlow};
 
-use crate::Expression;
+/// Calls `f` on each expression in the pil file and then descends into the
+/// (potentially modified) expression.
+pub fn previsit_expressions_in_pil_file_mut<F, B>(
+    pil_file: &mut Analyzed,
+    f: &mut F,
+) -> ControlFlow<B>
+where
+    F: FnMut(&mut Expression) -> ControlFlow<B>,
+{
+    pil_file
+        .definitions
+        .values_mut()
+        .try_for_each(|(_poly, definition)| match definition {
+            Some(FunctionValueDefinition::Mapping(e)) | Some(FunctionValueDefinition::Query(e)) => {
+                previsit_expression_mut(e, f)
+            }
+            Some(FunctionValueDefinition::Array(elements)) => elements
+                .iter_mut()
+                .flat_map(|e| e.values.iter_mut())
+                .try_for_each(|e| previsit_expression_mut(e, f)),
+            None => ControlFlow::Continue(()),
+        })?;
+
+    pil_file
+        .identities
+        .iter_mut()
+        .try_for_each(|i| previsit_expressions_in_identity_mut(i, f))
+}
+
+pub fn postvisit_expressions_in_identity_mut<F, B>(i: &mut Identity, f: &mut F) -> ControlFlow<B>
+where
+    F: FnMut(&mut Expression) -> ControlFlow<B>,
+{
+    i.left
+        .selector
+        .as_mut()
+        .into_iter()
+        .chain(i.right.selector.as_mut())
+        .try_for_each(move |item| postvisit_expression_mut(item, f))
+}
+
+/// Calls `f` on each expression in the pil file and then descends into the
+/// (potentially modified) expression.
+pub fn postvisit_expressions_in_pil_file_mut<F, B>(
+    pil_file: &mut Analyzed,
+    f: &mut F,
+) -> ControlFlow<B>
+where
+    F: FnMut(&mut Expression) -> ControlFlow<B>,
+{
+    pil_file
+        .definitions
+        .values_mut()
+        .try_for_each(|(_poly, definition)| match definition {
+            Some(FunctionValueDefinition::Mapping(e)) | Some(FunctionValueDefinition::Query(e)) => {
+                postvisit_expression_mut(e, f)
+            }
+            Some(FunctionValueDefinition::Array(elements)) => elements
+                .iter_mut()
+                .flat_map(|e| e.values.iter_mut())
+                .try_for_each(|e| postvisit_expression_mut(e, f)),
+            None => ControlFlow::Continue(()),
+        })?;
+
+    pil_file
+        .identities
+        .iter_mut()
+        .try_for_each(|i| postvisit_expressions_in_identity_mut(i, f))
+}
+
+pub fn previsit_expressions_in_identity_mut<F, B>(i: &mut Identity, f: &mut F) -> ControlFlow<B>
+where
+    F: FnMut(&mut Expression) -> ControlFlow<B>,
+{
+    i.left
+        .selector
+        .as_mut()
+        .into_iter()
+        .chain(i.left.expressions.iter_mut())
+        .chain(i.right.selector.as_mut())
+        .chain(i.right.expressions.iter_mut())
+        .try_for_each(move |item| previsit_expression_mut(item, f))
+}
 
 /// Visits `expr` and all of its sub-expressions and returns true if `f` returns true on any of them.
 pub fn expr_any(expr: &Expression, mut f: impl FnMut(&Expression) -> bool) -> bool {
@@ -74,4 +157,33 @@ where
         }
     };
     ControlFlow::Continue(())
+}
+
+/// Traverses the expression tree and calls `f` in post-order.
+pub fn postvisit_expression_mut<F, B>(e: &mut Expression, f: &mut F) -> ControlFlow<B>
+where
+    F: FnMut(&mut Expression) -> ControlFlow<B>,
+{
+    match e {
+        Expression::PolynomialReference(_)
+        | Expression::Constant(_)
+        | Expression::LocalVariableReference(_)
+        | Expression::PublicReference(_)
+        | Expression::Number(_)
+        | Expression::String(_) => {}
+        Expression::BinaryOperation(left, _, right) => {
+            postvisit_expression_mut(left, f)?;
+            postvisit_expression_mut(right, f)?;
+        }
+        Expression::UnaryOperation(_, e) => postvisit_expression_mut(e.as_mut(), f)?,
+        Expression::Tuple(items) | Expression::FunctionCall(_, items) => items
+            .iter_mut()
+            .try_for_each(|item| postvisit_expression_mut(item, f))?,
+        Expression::MatchExpression(scrutinee, arms) => {
+            once(scrutinee.as_mut())
+                .chain(arms.iter_mut().map(|(_n, e)| e))
+                .try_for_each(|item| postvisit_expression_mut(item, f))?;
+        }
+    };
+    f(e)
 }

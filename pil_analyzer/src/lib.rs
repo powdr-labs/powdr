@@ -92,6 +92,7 @@ impl Analyzed {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct Polynomial {
     pub id: u64,
     pub source: SourceRef,
@@ -183,16 +184,40 @@ pub enum Expression {
     MatchExpression(Box<Expression>, Vec<(Option<FieldElement>, Expression)>),
 }
 
-#[derive(Debug, PartialEq, Eq, Default, Clone)]
+#[derive(Debug, Clone, Eq)]
 pub struct PolynomialReference {
-    // TODO would be better to use numeric IDs instead of names,
-    // but the IDs as they are overlap. Maybe we can change that.
+    /// Name of the polynomial - just for informational purposes.
+    /// Comparisons are based on polynomial ID.
     pub name: String,
+    /// Identifier for a polynomial reference.
+    /// Optional because it is filled in in a second stage of analysis.
+    /// TODO make this non-optional
+    pub poly_id: Option<(u64, PolynomialType)>,
     pub index: Option<u64>,
     pub next: bool,
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+impl PartialOrd for PolynomialReference {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        // TODO for efficiency reasons, we should avoid the unwrap check here somehow.
+        match self.poly_id.unwrap().partial_cmp(&other.poly_id.unwrap()) {
+            Some(core::cmp::Ordering::Equal) => {}
+            ord => return ord,
+        }
+        assert!(self.index.is_none() && other.index.is_none());
+        self.next.partial_cmp(&other.next)
+    }
+}
+
+impl PartialEq for PolynomialReference {
+    fn eq(&self, other: &Self) -> bool {
+        assert!(self.index.is_none() && other.index.is_none());
+        // TODO for efficiency reasons, we should avoid the unwrap check here somehow.
+        self.poly_id.unwrap() == other.poly_id.unwrap() && self.next == other.next
+    }
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum PolynomialType {
     Committed,
     Constant,
