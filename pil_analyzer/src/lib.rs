@@ -184,7 +184,7 @@ pub enum Expression {
     MatchExpression(Box<Expression>, Vec<(Option<FieldElement>, Expression)>),
 }
 
-#[derive(Debug, Eq, Default, Clone, Hash)]
+#[derive(Debug, Eq, Default, Clone)]
 pub struct PolynomialReference {
     /// Name of the polynomial - just for informational purposes.
     /// Comparisons are based on polynomial ID.
@@ -223,6 +223,12 @@ impl PartialOrd for PolynomialReference {
         }
         assert!(self.index.is_none() && other.index.is_none());
         self.next.partial_cmp(&other.next)
+    }
+}
+
+impl Ord for PolynomialReference {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.partial_cmp(other).unwrap()
     }
 }
 

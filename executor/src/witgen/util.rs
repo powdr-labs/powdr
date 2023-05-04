@@ -1,8 +1,11 @@
-use std::{collections::HashSet, ops::ControlFlow};
+use std::{
+    collections::{BTreeSet, HashSet},
+    ops::ControlFlow,
+};
 
 use pil_analyzer::{
     util::{expr_any, previsit_expression},
-    Expression, Identity, IdentityKind, PolynomialReference,
+    Expression, Identity, IdentityKind, PolyID, PolynomialReference,
 };
 
 use super::FixedData;
@@ -39,8 +42,8 @@ pub fn contains_witness_ref(expr: &Expression) -> bool {
 pub fn all_witness_refs<'a>(
     expr: &'a Expression,
     fixed_data: &FixedData,
-) -> HashSet<&'a PolynomialReference> {
-    let mut references: HashSet<&'a PolynomialReference> = Default::default();
+) -> BTreeSet<&'a PolynomialReference> {
+    let mut references: BTreeSet<&'a PolynomialReference> = Default::default();
     previsit_expression(expr, &mut |e| {
         if let Expression::PolynomialReference(poly) = e {
             if fixed_data.witness_ids.contains_key(poly.name.as_str()) {
