@@ -1,4 +1,4 @@
-use pil_analyzer::{util::expr_any, Expression, PolynomialReference};
+use pil_analyzer::{util::expr_any, Expression, PolyID, PolynomialReference};
 
 pub trait WitnessColumnNamer {
     fn name(&self, i: usize) -> String;
@@ -44,6 +44,20 @@ pub fn is_simple_poly(expr: &Expression) -> Option<&str> {
     }) = expr
     {
         Some(name)
+    } else {
+        None
+    }
+}
+
+pub fn try_to_simple_poly_ref(expr: &Expression) -> Option<PolyID> {
+    if let Expression::PolynomialReference(PolynomialReference {
+        poly_id,
+        index: None,
+        next: false,
+        ..
+    }) = expr
+    {
+        Some(poly_id.unwrap())
     } else {
         None
     }

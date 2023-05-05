@@ -3,8 +3,8 @@ pub mod json_exporter;
 pub mod pil_analyzer;
 pub mod util;
 
-use std::collections::HashMap;
 use std::path::Path;
+use std::{collections::HashMap, fmt::Display};
 
 use number::{DegreeType, FieldElement};
 pub use parser::ast::{BinaryOperator, UnaryOperator};
@@ -192,23 +192,38 @@ pub struct PolynomialReference {
     /// Identifier for a polynomial reference.
     /// Optional because it is filled in in a second stage of analysis.
     /// TODO make this non-optional
-    pub poly_id: Option<(u64, PolynomialType)>,
+    pub poly_id: Option<PolyID>,
     pub index: Option<u64>,
     pub next: bool,
+}
+
+#[derive(Debug, Copy, Clone, PartialOrd, Ord, PartialEq, Eq)]
+pub struct PolyID {
+    pub id: u64,
+    pub ptype: PolynomialType,
+}
+
+impl From<&Polynomial> for PolyID {
+    fn from(poly: &Polynomial) -> Self {
+        PolyID {
+            id: poly.id,
+            ptype: poly.poly_type,
+        }
+    }
 }
 
 impl PolynomialReference {
     #[inline]
     pub fn poly_id(&self) -> u64 {
-        self.poly_id.unwrap().0
+        self.poly_id.unwrap().id
     }
     #[inline]
     pub fn is_witness(&self) -> bool {
-        self.poly_id.unwrap().1 == PolynomialType::Committed
+        self.poly_id.unwrap().ptype == PolynomialType::Committed
     }
     #[inline]
     pub fn is_fixed(&self) -> bool {
-        self.poly_id.unwrap().1 == PolynomialType::Constant
+        self.poly_id.unwrap().ptype == PolynomialType::Constant
     }
 }
 
@@ -232,12 +247,27 @@ impl PartialEq for PolynomialReference {
     }
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum PolynomialType {
     Committed,
     Constant,
     Intermediate,
 }
+
+impl Display for PolynomialType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                PolynomialType::Committed => "witness",
+                PolynomialType::Constant => "fixed",
+                PolynomialType::Intermediate => "intermediate",
+            }
+        )
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SourceRef {
     pub file: String, // TODO should maybe be a shared pointer

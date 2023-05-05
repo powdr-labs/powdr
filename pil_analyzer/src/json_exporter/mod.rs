@@ -4,7 +4,7 @@ use std::collections::{BTreeMap, HashMap};
 use json::{object, JsonValue};
 
 use crate::{
-    Analyzed, BinaryOperator, Expression, FunctionValueDefinition, IdentityKind,
+    Analyzed, BinaryOperator, Expression, FunctionValueDefinition, IdentityKind, PolyID,
     PolynomialReference, PolynomialType, StatementIdentifier, UnaryOperator,
 };
 
@@ -321,8 +321,8 @@ impl<'a> Exporter<'a> {
             next,
         }: &PolynomialReference,
     ) -> (u32, JsonValue, Vec<u64>) {
-        let (id, poly_type) = poly_id.unwrap();
-        let id = if poly_type == PolynomialType::Intermediate {
+        let PolyID { id, ptype } = poly_id.unwrap();
+        let id = if ptype == PolynomialType::Intermediate {
             assert!(index.is_none());
             self.intermediate_poly_expression_ids[&id]
         } else {
@@ -330,11 +330,11 @@ impl<'a> Exporter<'a> {
         };
         let poly_json = object! {
             id: id,
-            op: polynomial_reference_type_to_json_string(poly_type),
+            op: polynomial_reference_type_to_json_string(ptype),
             deg: 1,
             next: *next,
         };
-        let dependencies = if poly_type == PolynomialType::Intermediate {
+        let dependencies = if ptype == PolynomialType::Intermediate {
             vec![id]
         } else {
             Vec::new()

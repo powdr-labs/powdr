@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use number::{DegreeType, FieldElement};
-use pil_analyzer::{Analyzed, Expression, FunctionValueDefinition};
+use pil_analyzer::{Analyzed, Expression, FunctionValueDefinition, PolyID, PolynomialType};
 
 pub use self::eval_result::{
     Constraint, Constraints, EvalError, EvalResult, EvalStatus, EvalValue, IncompleteCause,
@@ -35,13 +35,15 @@ pub fn generate<'a>(
             if poly.length.is_some() {
                 unimplemented!("Committed arrays not implemented.")
             }
+            assert_eq!(i as u64, poly.id);
             WitnessColumn::new(i, &poly.absolute_name, value)
         })
         .collect();
     let fixed = FixedData::new(
         degree,
         &analyzed.constants,
-        fixed_cols.iter().map(|(n, v)| (*n, v)).collect(),
+        fixed_cols.iter().map(|(_, v)| v).collect(),
+        fixed_cols.iter().map(|(n, _)| *n).collect(),
         &witness_cols,
         witness_cols.iter().map(|w| (w.name, w.id)).collect(),
     );
@@ -127,7 +129,8 @@ fn rows_are_repeating(values: &[(&str, Vec<FieldElement>)]) -> Option<usize> {
 pub struct FixedData<'a> {
     degree: DegreeType,
     constants: &'a HashMap<String, FieldElement>,
-    fixed_cols: HashMap<&'a str, &'a Vec<FieldElement>>,
+    fixed_col_values: Vec<&'a Vec<FieldElement>>,
+    fixed_col_names: Vec<&'a str>,
     witness_cols: &'a Vec<WitnessColumn<'a>>,
     witness_ids: HashMap<&'a str, usize>,
 }
@@ -136,14 +139,16 @@ impl<'a> FixedData<'a> {
     pub fn new(
         degree: DegreeType,
         constants: &'a HashMap<String, FieldElement>,
-        fixed_cols: HashMap<&'a str, &'a Vec<FieldElement>>,
+        fixed_col_values: Vec<&'a Vec<FieldElement>>,
+        fixed_col_names: Vec<&'a str>,
         witness_cols: &'a Vec<WitnessColumn<'a>>,
         witness_ids: HashMap<&'a str, usize>,
     ) -> Self {
         FixedData {
             degree,
             constants,
-            fixed_cols,
+            fixed_col_values,
+            fixed_col_names,
             witness_cols,
             witness_ids,
         }
@@ -151,6 +156,14 @@ impl<'a> FixedData<'a> {
 
     fn witness_cols(&self) -> impl Iterator<Item = &WitnessColumn> {
         self.witness_cols.iter()
+    }
+
+    pub fn poly_name(&self, poly: PolyID) -> &str {
+        match poly.ptype {
+            PolynomialType::Committed => self.witness_cols[poly.id as usize].name,
+            PolynomialType::Constant => self.fixed_col_names[poly.id as usize],
+            PolynomialType::Intermediate => panic!(),
+        }
     }
 }
 

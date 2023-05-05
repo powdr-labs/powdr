@@ -3,6 +3,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use itertools::Itertools;
 
 use super::{EvalResult, FixedData, FixedLookup};
+use crate::witgen::util::try_to_simple_poly_ref;
 use crate::witgen::EvalValue;
 use crate::witgen::{
     affine_expression::{AffineExpression, AffineResult},
@@ -10,11 +11,14 @@ use crate::witgen::{
     expression_evaluator::ExpressionEvaluator,
     machines::Machine,
     symbolic_witness_evaluator::{SymoblicWitnessEvaluator, WitnessColumnEvaluator},
-    util::{is_simple_poly, WitnessColumnNamer},
+    util::WitnessColumnNamer,
     Constraint, EvalError,
 };
 use number::{DegreeType, FieldElement};
-use pil_analyzer::{Expression, Identity, IdentityKind, PolynomialReference, SelectedExpressions};
+use pil_analyzer::{
+    Expression, Identity, IdentityKind, PolyID, PolynomialReference, PolynomialType,
+    SelectedExpressions,
+};
 
 /// A machine that produces multiple rows (one block) per query.
 /// TODO we do not actually "detect" the machine yet, we just check if
@@ -22,7 +26,7 @@ use pil_analyzer::{Expression, Identity, IdentityKind, PolynomialReference, Sele
 pub struct BlockMachine {
     /// Block size, the period of the selector.
     block_size: usize,
-    selector: String,
+    selector: PolyID,
     identities: Vec<Identity>,
     /// One column of values for each witness.
     data: HashMap<usize, Vec<Option<FieldElement>>>,
@@ -52,7 +56,8 @@ impl BlockMachine {
         for id in connecting_identities {
             if let Some(sel) = &id.right.selector {
                 // TODO we should check that the other constraints/fixed columns are also periodic.
-                if let Some((selector, period)) = is_boolean_periodic_selector(sel, fixed_data) {
+                if let Some((selector, period)) = try_to_boolean_periodic_selector(sel, fixed_data)
+                {
                     let mut machine = BlockMachine {
                         block_size: period,
                         selector,
@@ -94,13 +99,16 @@ impl BlockMachine {
 /// for some k >= 2
 /// TODO we could make this more generic and only detect the period
 /// but not enforce the offset.
-fn is_boolean_periodic_selector(
+fn try_to_boolean_periodic_selector(
     expr: &Expression,
     fixed_data: &FixedData,
-) -> Option<(String, usize)> {
-    let poly = is_simple_poly(expr)?;
+) -> Option<(PolyID, usize)> {
+    let poly = try_to_simple_poly_ref(expr)?;
+    if poly.ptype != PolynomialType::Constant {
+        return None;
+    }
 
-    let values = fixed_data.fixed_cols.get(poly)?;
+    let values = fixed_data.fixed_col_values[poly.id as usize];
 
     let period = 1 + values.iter().position(|v| *v == 1.into())?;
     if period == 1 {
@@ -117,7 +125,7 @@ fn is_boolean_periodic_selector(
             };
             *v == expected
         })
-        .then_some((poly.to_string(), period))
+        .then_some((poly, period))
 }
 
 impl Machine for BlockMachine {
@@ -129,7 +137,7 @@ impl Machine for BlockMachine {
         left: &[AffineResult],
         right: &SelectedExpressions,
     ) -> Option<EvalResult> {
-        if is_simple_poly(right.selector.as_ref()?)? != self.selector
+        if try_to_simple_poly_ref(right.selector.as_ref()?)? != self.selector
             || kind != IdentityKind::Plookup
         {
             return None;

@@ -118,7 +118,11 @@ pub fn determine_global_constraints<'a>(
     // but also have one row for each possible value.
     // It allows us to completely remove some lookups.
     let mut full_span = BTreeSet::new();
-    for (&name, &values) in &fixed_data.fixed_cols {
+    for (&name, &values) in fixed_data
+        .fixed_col_names
+        .iter()
+        .zip(fixed_data.fixed_col_values.iter())
+    {
         if let Some((cons, full)) = process_fixed_column(values) {
             assert!(known_constraints.insert(name, cons).is_none());
             if full {
@@ -266,13 +270,13 @@ fn is_binary_constraint<'a>(fixed_data: &'a FixedData, expr: &Expression) -> Opt
         {
             let poly1 = symbolic_ev.poly_from_id(*id1);
             let poly2 = symbolic_ev.poly_from_id(*id2);
-            if poly1 != poly2 || !fixed_data.witness_ids.contains_key(poly1.0) {
+            if poly1 != poly2 || !poly1.is_witness() {
                 return None;
             }
             if (*value1 == 0.into() && *value2 == 1.into())
                 || (*value1 == 1.into() && *value2 == 0.into())
             {
-                return Some(poly1.0);
+                return Some(fixed_data.poly_name(poly1.poly_id.unwrap()));
             }
         }
     }
@@ -303,9 +307,9 @@ fn try_transfer_constraints<'a>(
     assert!(result.constraints.len() <= 1);
     result.constraints.get(0).and_then(|(id, cons)| {
         if let Constraint::BitConstraint(cons) = cons {
-            let (poly, next) = symbolic_ev.poly_from_id(*id);
-            assert!(!next);
-            Some((poly, cons.clone()))
+            let poly = symbolic_ev.poly_from_id(*id);
+            assert!(!poly.next);
+            Some((fixed_data.poly_name(poly.poly_id.unwrap()), cons.clone()))
         } else {
             None
         }
@@ -418,13 +422,15 @@ namespace Global(2**20);
                 if poly.length.is_some() {
                     unimplemented!("Committed arrays not implemented.")
                 }
+                assert_eq!(i as u64, poly.id);
                 WitnessColumn::new(i, &poly.absolute_name, value)
             })
             .collect();
         let fixed_data = FixedData::new(
             degree,
             &analyzed.constants,
-            constants.iter().map(|(n, v)| (*n, v)).collect(),
+            constants.iter().map(|(_n, v)| v).collect(),
+            constants.iter().map(|(n, _v)| *n).collect(),
             &witness_cols,
             witness_cols.iter().map(|w| (w.name, w.id)).collect(),
         );

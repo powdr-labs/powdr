@@ -22,17 +22,18 @@ impl<'a> SymbolicVariables for FixedEvaluator<'a> {
 
     fn value(&self, poly: &PolynomialReference) -> AffineResult {
         // TODO arrays
-        if let Some(col_data) = self.fixed_data.fixed_cols.get(poly.name.as_str()) {
-            let degree = col_data.len();
-            let row = if poly.next {
-                (self.row + 1) % degree
-            } else {
-                self.row
-            };
-            Ok(col_data[row].into())
+        assert!(
+            poly.is_fixed(),
+            "Can only access fixed columns in the fixed evaluator."
+        );
+        let col_data = self.fixed_data.fixed_col_values[poly.poly_id() as usize];
+        let degree = col_data.len();
+        let row = if poly.next {
+            (self.row + 1) % degree
         } else {
-            panic!("only fixed columns can be accessed in the fixed evaluator.")
-        }
+            self.row
+        };
+        Ok(col_data[row].into())
     }
 
     fn format(&self, expr: AffineExpression) -> String {

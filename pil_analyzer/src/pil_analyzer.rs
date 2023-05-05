@@ -82,7 +82,7 @@ impl From<PILContext> for Analyzed {
             let poly = ids
                 .get(&reference.name)
                 .unwrap_or_else(|| panic!("Column {} not found.", reference.name));
-            reference.poly_id = Some((poly.id, poly.poly_type));
+            reference.poly_id = Some(poly.into());
         };
         previsit_expressions_in_pil_file_mut(&mut result, &mut |e| {
             if let Expression::PolynomialReference(reference) = e {
