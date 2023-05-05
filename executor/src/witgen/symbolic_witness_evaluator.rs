@@ -44,10 +44,6 @@ impl<'a, WA> SymbolicVariables for SymoblicWitnessEvaluator<'a, WA>
 where
     WA: WitnessColumnEvaluator + WitnessColumnNamer,
 {
-    fn constant(&self, name: &str) -> AffineResult {
-        Ok(self.fixed_data.constants[name].into())
-    }
-
     fn value(&self, poly: &PolynomialReference) -> AffineResult {
         // TODO arrays
         if poly.is_witness() {

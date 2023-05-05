@@ -62,10 +62,6 @@ impl<'a> SymbolicEvaluator<'a> {
 }
 
 impl<'a> SymbolicVariables for SymbolicEvaluator<'a> {
-    fn constant(&self, name: &str) -> AffineResult {
-        Ok(self.fixed_data.constants[name].into())
-    }
-
     fn value(&self, poly: &PolynomialReference) -> AffineResult {
         // TODO arrays
         Ok(AffineExpression::from_variable_id(

@@ -16,10 +16,6 @@ impl<'a> FixedEvaluator<'a> {
 }
 
 impl<'a> SymbolicVariables for FixedEvaluator<'a> {
-    fn constant(&self, name: &str) -> AffineResult {
-        Ok(self.fixed_data.constants[name].into())
-    }
-
     fn value(&self, poly: &PolynomialReference) -> AffineResult {
         // TODO arrays
         assert!(
