@@ -2,10 +2,10 @@
 
 use std::collections::{BTreeMap, HashMap};
 
-use number::AbstractNumberType;
 use number::DegreeType;
 use number::FieldElement;
 
+use number::FieldElementTrait;
 use parser::asm_ast::*;
 use parser::ast::*;
 use parser_util::ParseError;
@@ -48,7 +48,7 @@ impl ASMPILConverter {
         let mut statements = input.0.into_iter().peekable();
 
         if let Some(ASMStatement::Degree(_, degree)) = statements.peek() {
-            self.set_degree(*degree as DegreeType);
+            self.set_degree(FieldElement::from(degree.clone()).to_degree());
             statements.next();
         }
 
@@ -531,7 +531,7 @@ impl ASMPILConverter {
             FunctionDefinition::Array(
                 ArrayExpression::Value(
                     (0..self.code_lines.len())
-                        .map(|i| build_number(i as AbstractNumberType))
+                        .map(|i| build_number(i as u32))
                         .collect(),
                 )
                 .pad_with_last()

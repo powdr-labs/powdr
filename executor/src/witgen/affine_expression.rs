@@ -2,8 +2,10 @@ use std::collections::BTreeMap;
 use std::fmt::Display;
 
 use itertools::Itertools;
+use num_traits::Zero;
 use number::AbstractNumberType;
 use number::FieldElement;
+use number::FieldElementTrait;
 
 use super::bit_constraints::BitConstraintSet;
 use super::Constraint;
@@ -235,13 +237,13 @@ where
         }
 
         // Check if they are mutually exclusive and compute assignments.
-        let mut covered_bits: AbstractNumberType = 0;
+        let mut covered_bits: AbstractNumberType = 0u32.into();
         let mut assignments = EvalValue::complete(vec![]);
         let mut offset = (-self.offset).to_integer();
         for (i, coeff, constraint) in parts {
             let constraint = constraint.clone().unwrap();
             let mask = constraint.mask();
-            if mask & covered_bits != 0 {
+            if !(mask & &covered_bits).is_zero() {
                 return Ok(EvalValue::incomplete(
                     IncompleteCause::OverlappingBitConstraints,
                 ));
@@ -250,12 +252,13 @@ where
             }
             assignments.combine(EvalValue::complete(vec![(
                 i,
-                Constraint::Assignment(((offset & mask) / coeff.to_integer()).into()),
+                Constraint::Assignment(((&offset & mask) / coeff.to_integer()).into()),
             )]));
-            offset &= !mask;
+            offset &=
+                AbstractNumberType::new(mask.to_u32_digits().into_iter().map(|d| !d).collect());
         }
 
-        if offset != 0 {
+        if !offset.is_zero() {
             // We were not able to cover all of the offset, so this equation cannot be solved.
             Err(ConflictingBitConstraints)
         } else {
@@ -482,7 +485,7 @@ mod test {
             EvalValue::incomplete_with_constraints(
                 vec![(
                     1,
-                    Constraint::BitConstraint(BitConstraint::from_mask(0x1fef))
+                    Constraint::BitConstraint(BitConstraint::from_mask(0x1fef as u32))
                 )],
                 IncompleteCause::NotConcrete
             )

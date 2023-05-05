@@ -1,4 +1,4 @@
-use number::FieldElement;
+use number::{FieldElement, FieldElementTrait};
 use pil_analyzer::{BinaryOperator, Expression, PolynomialReference, UnaryOperator};
 
 use super::{affine_expression::AffineResult, IncompleteCause};
@@ -105,10 +105,10 @@ where
                                 (left.to_integer() | right.to_integer()).into()
                             }
                             BinaryOperator::ShiftLeft => {
-                                (left.to_integer() << right.to_integer()).into()
+                                (left.to_integer() << right.to_degree()).into()
                             }
                             BinaryOperator::ShiftRight => {
-                                (left.to_integer() >> right.to_integer()).into()
+                                (left.to_integer() >> right.to_degree()).into()
                             }
                             _ => panic!(),
                         };

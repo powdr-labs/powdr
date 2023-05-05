@@ -11,7 +11,7 @@ use pil_analyzer::json_exporter;
 pub use verify::{compile_asm_string_temp, verify, verify_asm_string};
 
 use executor::constant_evaluator;
-use number::{DegreeType, FieldElement};
+use number::{DegreeType, FieldElement, FieldElementTrait};
 use parser::ast::PILFile;
 
 pub fn no_callback() -> Option<fn(&str) -> Option<FieldElement>> {

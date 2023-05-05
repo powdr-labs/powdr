@@ -2,13 +2,14 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::iter::once;
 
 use itertools::{Either, Itertools};
+use num_traits::Zero;
 
 use super::{FixedLookup, Machine};
 use crate::witgen::affine_expression::AffineResult;
 use crate::witgen::util::is_simple_poly_of_name;
 use crate::witgen::{EvalError, EvalResult, FixedData};
 use crate::witgen::{EvalValue, IncompleteCause};
-use number::FieldElement;
+use number::{FieldElement, FieldElementTrait};
 
 use pil_analyzer::{Expression, Identity, IdentityKind, PolynomialReference, SelectedExpressions};
 
@@ -182,7 +183,7 @@ impl DoubleSortedWitnesses {
             addr.to_integer(),
             left[2]
         );
-        if addr.clone().to_integer() % 4 != 0 {
+        if !(addr.clone().to_integer() % 4u32).is_zero() {
             panic!("UNALIGNED");
         }
 
