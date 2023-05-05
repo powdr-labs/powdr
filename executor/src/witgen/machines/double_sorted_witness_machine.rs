@@ -1,6 +1,7 @@
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::BTreeMap;
 use std::iter::once;
 
+use deterministic_collections::{DetHashMap, DetHashSet};
 use itertools::{Either, Itertools};
 
 use super::{FixedLookup, Machine};
@@ -34,10 +35,10 @@ impl DoubleSortedWitnesses {
     pub fn try_new(
         _fixed_data: &FixedData,
         _identities: &[&Identity],
-        witness_names: &HashSet<&str>,
+        witness_names: &DetHashSet<&str>,
     ) -> Option<Box<Self>> {
         // TODO check the identities.
-        let expected_witnesses: HashSet<_> = [
+        let expected_witnesses: DetHashSet<_> = [
             "Assembly.m_value",
             "Assembly.m_addr",
             "Assembly.m_step",
@@ -79,7 +80,10 @@ impl Machine for DoubleSortedWitnesses {
         Some(self.process_plookup_internal(fixed_data, left, right))
     }
 
-    fn witness_col_values(&mut self, fixed_data: &FixedData) -> HashMap<String, Vec<FieldElement>> {
+    fn witness_col_values(
+        &mut self,
+        fixed_data: &FixedData,
+    ) -> DetHashMap<String, Vec<FieldElement>> {
         let mut addr = vec![];
         let mut step = vec![];
         let mut value = vec![];

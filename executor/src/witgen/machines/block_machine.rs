@@ -1,5 +1,6 @@
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::BTreeMap;
 
+use deterministic_collections::{DetHashMap, DetHashSet};
 use itertools::Itertools;
 
 use super::{EvalResult, FixedData, FixedLookup};
@@ -29,13 +30,13 @@ pub struct BlockMachine {
     selector: PolyID,
     identities: Vec<Identity>,
     /// One column of values for each witness.
-    data: HashMap<usize, Vec<Option<FieldElement>>>,
+    data: DetHashMap<usize, Vec<Option<FieldElement>>>,
     /// Current row in the machine
     row: DegreeType,
     /// Bit constraints, are deleted outside the current block.
-    bit_constraints: HashMap<usize, HashMap<DegreeType, BitConstraint>>,
+    bit_constraints: DetHashMap<usize, DetHashMap<DegreeType, BitConstraint>>,
     /// Global bit constraints on witness columns.
-    global_bit_constraints: HashMap<usize, BitConstraint>,
+    global_bit_constraints: DetHashMap<usize, BitConstraint>,
     /// Number of witnesses (in general, not in this machine).
     witness_count: usize,
     /// Poly degree / absolute number of rows
@@ -50,7 +51,7 @@ impl BlockMachine {
         fixed_data: &FixedData,
         connecting_identities: &[&Identity],
         identities: &[&Identity],
-        witness_names: &HashSet<&str>,
+        witness_names: &DetHashSet<&str>,
         global_bit_constraints: &BTreeMap<&str, BitConstraint>,
     ) -> Option<Box<Self>> {
         for id in connecting_identities {
@@ -156,7 +157,10 @@ impl Machine for BlockMachine {
         })
     }
 
-    fn witness_col_values(&mut self, fixed_data: &FixedData) -> HashMap<String, Vec<FieldElement>> {
+    fn witness_col_values(
+        &mut self,
+        fixed_data: &FixedData,
+    ) -> DetHashMap<String, Vec<FieldElement>> {
         std::mem::take(&mut self.data)
             .into_iter()
             .map(|(id, values)| {
@@ -255,7 +259,7 @@ impl BlockMachine {
             .concat()
             .iter()
             .cloned()
-            .collect::<HashSet<_>>();
+            .collect::<DetHashSet<_>>();
         let value_assignments = outer_assignments
             .constraints
             .iter()
@@ -263,7 +267,7 @@ impl BlockMachine {
                 Constraint::Assignment(_) => Some(*var),
                 Constraint::BitConstraint(_) => None,
             })
-            .collect::<HashSet<_>>();
+            .collect::<DetHashSet<_>>();
         if unknown_variables.is_subset(&value_assignments) {
             // We solved the query, so report it to the cache.
             self.processing_sequence_cache
@@ -461,7 +465,7 @@ impl BitConstraintSet for BlockMachine {
 #[derive(Clone)]
 struct WitnessData<'a> {
     pub fixed_data: &'a FixedData<'a>,
-    pub data: &'a HashMap<usize, Vec<Option<FieldElement>>>,
+    pub data: &'a DetHashMap<usize, Vec<Option<FieldElement>>>,
     pub row: DegreeType,
 }
 

@@ -1,5 +1,4 @@
-use std::collections::HashMap;
-
+use deterministic_collections::DetHashMap;
 use number::FieldElement;
 use pil_analyzer::{IdentityKind, SelectedExpressions};
 
@@ -42,5 +41,8 @@ pub trait Machine {
     ) -> Option<EvalResult>;
 
     /// Returns the final values of the witness columns.
-    fn witness_col_values(&mut self, fixed_data: &FixedData) -> HashMap<String, Vec<FieldElement>>;
+    fn witness_col_values(
+        &mut self,
+        fixed_data: &FixedData,
+    ) -> DetHashMap<String, Vec<FieldElement>>;
 }

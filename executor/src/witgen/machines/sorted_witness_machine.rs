@@ -1,5 +1,6 @@
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::BTreeMap;
 
+use deterministic_collections::{DetHashMap, DetHashSet};
 use itertools::{Either, Itertools};
 
 use super::super::affine_expression::AffineExpression;
@@ -28,7 +29,7 @@ pub struct SortedWitnesses {
     key_col: String,
     /// Position of the witness columns in the data.
     /// The key column has a position of usize::max
-    witness_positions: HashMap<String, usize>,
+    witness_positions: DetHashMap<String, usize>,
     data: BTreeMap<FieldElement, Vec<Option<FieldElement>>>,
 }
 
@@ -36,7 +37,7 @@ impl SortedWitnesses {
     pub fn try_new(
         fixed_data: &FixedData,
         identities: &[&Identity],
-        witness_names: &HashSet<&str>,
+        witness_names: &DetHashSet<&str>,
     ) -> Option<Box<Self>> {
         if identities.len() != 1 {
             return None;
@@ -159,8 +160,12 @@ impl Machine for SortedWitnesses {
 
         Some(self.process_plookup_internal(fixed_data, left, right, rhs))
     }
-    fn witness_col_values(&mut self, fixed_data: &FixedData) -> HashMap<String, Vec<FieldElement>> {
-        let mut result = HashMap::new();
+
+    fn witness_col_values(
+        &mut self,
+        fixed_data: &FixedData,
+    ) -> DetHashMap<String, Vec<FieldElement>> {
+        let mut result = DetHashMap::default();
 
         let (mut keys, mut values): (Vec<_>, Vec<_>) =
             std::mem::take(&mut self.data).into_iter().unzip();

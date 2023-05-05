@@ -10,6 +10,7 @@ number = { path = "../number" }
 parser_util = { path = "../parser_util" }
 parser = { path = "../parser" }
 pil_analyzer = { path = "../pil_analyzer" }
+deterministic_collections = { path = "../deterministic_collections" }
 rayon = "1.7.0"
 
 [dev-dependencies]

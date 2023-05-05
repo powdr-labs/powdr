@@ -1,7 +1,8 @@
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::BTreeMap;
 use std::mem;
 use std::num::NonZeroUsize;
 
+use deterministic_collections::{DetHashMap, DetHashSet};
 use itertools::Itertools;
 use number::FieldElement;
 use pil_analyzer::{Identity, IdentityKind, PolyID, SelectedExpressions};
@@ -35,7 +36,7 @@ impl IndexValue {
 /// - `(V, Some(row)` if the value of `OUTPUT_COLS` is unique when `INPUT_COLS == V`, and `row` is the first row where `INPUT_COLS ==V`
 #[derive(Default)]
 pub struct IndexedColumns {
-    indices: HashMap<Application, Index>,
+    indices: DetHashMap<Application, Index>,
 }
 
 impl IndexedColumns {
@@ -106,7 +107,7 @@ impl IndexedColumns {
             .fold(
                 (
                     BTreeMap::<Vec<FieldElement>, IndexValue>::default(),
-                    HashSet::<(Vec<FieldElement>, Vec<FieldElement>)>::default(),
+                    DetHashSet::<(Vec<FieldElement>, Vec<FieldElement>)>::default(),
                 ),
                 |(mut acc, mut set), row| {
                     let input: Vec<_> = input_column_values
@@ -166,7 +167,7 @@ impl FixedLookup {
     pub fn try_new(
         _fixed_data: &FixedData,
         identities: &[&Identity],
-        witness_names: &HashSet<&str>,
+        witness_names: &DetHashSet<&str>,
     ) -> Option<Box<Self>> {
         if identities.is_empty() && witness_names.is_empty() {
             Some(Box::default())

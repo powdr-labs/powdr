@@ -1,5 +1,5 @@
+use deterministic_collections::DetHashSet;
 use std::collections::BTreeMap;
-use std::collections::HashSet;
 
 use super::block_machine::BlockMachine;
 use super::double_sorted_witness_machine::DoubleSortedWitnesses;
@@ -25,7 +25,10 @@ pub fn split_out_machines<'a>(
 
     let mut machines: Vec<Box<dyn Machine>> = vec![];
 
-    let all_witnesses = witness_cols.iter().map(|c| c.name).collect::<HashSet<_>>();
+    let all_witnesses = witness_cols
+        .iter()
+        .map(|c| c.name)
+        .collect::<DetHashSet<_>>();
     let mut remaining_witnesses = all_witnesses.clone();
     let mut base_identities = identities.clone();
     for id in &identities {
@@ -117,10 +120,10 @@ pub fn split_out_machines<'a>(
 /// Two witnesses are row-connected if they are part of a polynomial identity
 /// or part of the same side of a lookup.
 fn all_row_connected_witnesses<'a>(
-    mut witnesses: HashSet<&'a str>,
-    all_witnesses: &HashSet<&'a str>,
+    mut witnesses: DetHashSet<&'a str>,
+    all_witnesses: &DetHashSet<&'a str>,
     identities: &'a [&'a Identity],
-) -> HashSet<&'a str> {
+) -> DetHashSet<&'a str> {
     loop {
         let count = witnesses.len();
         for i in identities {
@@ -152,12 +155,12 @@ fn all_row_connected_witnesses<'a>(
 }
 
 /// Extracts all references to names from an identity.
-pub fn refs_in_identity(identity: &Identity) -> HashSet<&str> {
+pub fn refs_in_identity(identity: &Identity) -> DetHashSet<&str> {
     &refs_in_selected_expressions(&identity.left) | &refs_in_selected_expressions(&identity.right)
 }
 
 /// Extracts all references to names from selected expressions.
-pub fn refs_in_selected_expressions(selexpr: &SelectedExpressions) -> HashSet<&str> {
+pub fn refs_in_selected_expressions(selexpr: &SelectedExpressions) -> DetHashSet<&str> {
     selexpr
         .expressions
         .iter()
@@ -168,10 +171,10 @@ pub fn refs_in_selected_expressions(selexpr: &SelectedExpressions) -> HashSet<&s
 }
 
 /// Extracts all references to names from an expression
-pub fn refs_in_expression(expr: &Expression) -> HashSet<&str> {
+pub fn refs_in_expression(expr: &Expression) -> DetHashSet<&str> {
     match expr {
         Expression::Constant(_) => todo!(),
-        Expression::PolynomialReference(p) => [p.name.as_str()].into(),
+        Expression::PolynomialReference(p) => DetHashSet::from_iter([p.name.as_str()]),
         Expression::Tuple(items) => refs_in_expressions(items),
         Expression::BinaryOperation(l, _, r) => &refs_in_expression(l) | &refs_in_expression(r),
         Expression::UnaryOperation(_, e) => refs_in_expression(e),
@@ -187,12 +190,12 @@ pub fn refs_in_expression(expr: &Expression) -> HashSet<&str> {
         Expression::LocalVariableReference(_)
         | Expression::PublicReference(_)
         | Expression::Number(_)
-        | Expression::String(_) => HashSet::default(),
+        | Expression::String(_) => DetHashSet::default(),
     }
 }
 
 /// Extracts all references to names from expressions.
-pub fn refs_in_expressions(exprs: &[Expression]) -> HashSet<&str> {
+pub fn refs_in_expressions(exprs: &[Expression]) -> DetHashSet<&str> {
     exprs
         .iter()
         .map(refs_in_expression)

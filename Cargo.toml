@@ -10,4 +10,5 @@ members = [
     "pil_analyzer",
     "compiler",
     "pilgen",
+    "deterministic_collections"
 ]
