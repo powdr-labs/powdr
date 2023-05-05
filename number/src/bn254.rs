@@ -6,7 +6,7 @@ mod tests {
     use std::ops::*;
 
     use super::Bn254Field;
-    use crate::{traits::int_from_hex_str, FieldElementTrait};
+    use crate::{traits::int_from_hex_str, FieldElement};
     use num_bigint::BigUint;
     use num_traits::Num;
 

@@ -1,8 +1,8 @@
 use std::collections::{BTreeMap, BTreeSet};
-use std::fmt::{Display, Formatter};
+use std::fmt::{Debug, Display, Formatter};
 
 use crate::witgen::util::contains_next_ref;
-use number::{BigInt, FieldElement, FieldElementTrait};
+use number::{BigInt, FieldElement};
 use pil_analyzer::{BinaryOperator, Expression, Identity, IdentityKind, PolynomialReference};
 
 use super::expression_evaluator::ExpressionEvaluator;
@@ -14,27 +14,31 @@ use super::{Constraint, FixedData};
 /// All bits smaller than min_bit have to be zero
 /// and all bits larger than max_bit have to be zero.
 /// The least significant bit is bit zero.
-#[derive(PartialEq, Eq, Clone)]
-pub struct BitConstraint {
-    mask: <FieldElement as FieldElementTrait>::Integer,
+#[derive(Clone, PartialEq, Eq)]
+pub struct BitConstraint<T: FieldElement> {
+    mask: T::Integer,
 }
 
-impl BitConstraint {
+impl<T: FieldElement> BitConstraint<T> {
+    pub fn mask(&self) -> &T::Integer {
+        &self.mask
+    }
+}
+
+impl<T: FieldElement> BitConstraint<T> {
     pub fn from_max_bit(max_bit: u64) -> Self {
         assert!(max_bit < 1024);
         BitConstraint {
-            mask: <FieldElement as FieldElementTrait>::Integer::from(
-                ((1 << (max_bit + 1)) - 1) as u32,
-            ),
+            mask: T::Integer::from(((1 << (max_bit + 1)) - 1) as u32),
         }
     }
 
-    pub fn from_mask<M: Into<<FieldElement as FieldElementTrait>::Integer>>(mask: M) -> Self {
+    pub fn from_mask<M: Into<T::Integer>>(mask: M) -> Self {
         BitConstraint { mask: mask.into() }
     }
 
     /// The bit constraint of the sum of two expressions.
-    pub fn try_combine_sum(&self, other: &BitConstraint) -> Option<BitConstraint> {
+    pub fn try_combine_sum(&self, other: &BitConstraint<T>) -> Option<BitConstraint<T>> {
         if self.mask & other.mask == 0u32.into() {
             Some(BitConstraint {
                 mask: self.mask | other.mask,
@@ -45,7 +49,7 @@ impl BitConstraint {
     }
 
     /// Returns the conjunction of this constraint and the other.
-    pub fn conjunction(self, other: &BitConstraint) -> BitConstraint {
+    pub fn conjunction(self, other: &BitConstraint<T>) -> BitConstraint<T> {
         BitConstraint {
             mask: self.mask & other.mask,
         }
@@ -53,9 +57,9 @@ impl BitConstraint {
 
     /// The bit constraint of an integer multiple of an expression.
     /// TODO this assumes goldilocks
-    pub fn multiple(&self, factor: FieldElement) -> Option<BitConstraint> {
+    pub fn multiple(&self, factor: T) -> Option<BitConstraint<T>> {
         if factor.to_arbitrary_integer() * self.mask.to_arbitrary_integer()
-            >= FieldElement::modulus().to_arbitrary_integer()
+            >= T::modulus().to_arbitrary_integer()
         {
             None
         } else {
@@ -71,19 +75,15 @@ impl BitConstraint {
             })
         }
     }
-
-    pub fn mask(&self) -> &<FieldElement as FieldElementTrait>::Integer {
-        &self.mask
-    }
 }
 
-impl Display for BitConstraint {
+impl<T: FieldElement> Display for BitConstraint<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "0x{:x}", self.mask().to_arbitrary_integer())
+        write!(f, "0x{:x}", self.mask)
     }
 }
 
-impl core::fmt::Debug for BitConstraint {
+impl<T: FieldElement> Debug for BitConstraint<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("BitConstraint")
             .field("mask", &format!("0x{:x}", self.mask))
@@ -92,32 +92,36 @@ impl core::fmt::Debug for BitConstraint {
 }
 
 /// Trait that provides a bit constraint on a symbolic variable if given by ID.
-pub trait BitConstraintSet<K> {
-    fn bit_constraint(&self, id: K) -> Option<BitConstraint>;
+pub trait BitConstraintSet<K, T: FieldElement> {
+    fn bit_constraint(&self, id: K) -> Option<BitConstraint<T>>;
 }
 
-pub struct SimpleBitConstraintSet<'a> {
-    bit_constraints: &'a BTreeMap<&'a PolynomialReference, BitConstraint>,
+pub struct SimpleBitConstraintSet<'a, T: FieldElement> {
+    bit_constraints: &'a BTreeMap<&'a PolynomialReference, BitConstraint<T>>,
 }
 
-impl<'a> BitConstraintSet<&PolynomialReference> for SimpleBitConstraintSet<'a> {
-    fn bit_constraint(&self, id: &PolynomialReference) -> Option<BitConstraint> {
+impl<'a, T: FieldElement> BitConstraintSet<&PolynomialReference, T>
+    for SimpleBitConstraintSet<'a, T>
+{
+    fn bit_constraint(&self, id: &PolynomialReference) -> Option<BitConstraint<T>> {
         assert!(!id.next);
         self.bit_constraints.get(id).cloned()
     }
+}
+
+pub struct GlobalConstraints<'a, T: FieldElement> {
+    pub known_constraints: BTreeMap<&'a PolynomialReference, BitConstraint<T>>,
+    pub retained_identities: Vec<&'a Identity<T>>,
 }
 
 /// Determines global constraints on witness and fixed columns.
 /// Removes identities that only serve to create bit constraints from
 /// the identities vector.
 /// TODO at some point, we should check that they still hold.
-pub fn determine_global_constraints<'a>(
-    fixed_data: &'a FixedData,
-    identities: Vec<&'a Identity>,
-) -> (
-    BTreeMap<&'a PolynomialReference, BitConstraint>,
-    Vec<&'a Identity>,
-) {
+pub fn determine_global_constraints<'a, T: FieldElement>(
+    fixed_data: &'a FixedData<T>,
+    identities: Vec<&'a Identity<T>>,
+) -> GlobalConstraints<'a, T> {
     let mut known_constraints = BTreeMap::new();
     // For these columns, we know that they are not only constrained to those bits
     // but also have one row for each possible value.
@@ -159,22 +163,27 @@ pub fn determine_global_constraints<'a>(
         log::debug!("  {id}");
     }
 
-    (known_constraints, retained_identities)
+    GlobalConstraints {
+        known_constraints,
+        retained_identities,
+    }
 }
 
 /// Analyzes a fixed column and checks if its values correspond exactly
 /// to a certain bit pattern.
 /// TODO do this on the symbolic definition instead of the values.
-fn process_fixed_column(fixed: &[FieldElement]) -> Option<(BitConstraint, bool)> {
+fn process_fixed_column<T: FieldElement>(fixed: &[T]) -> Option<(BitConstraint<T>, bool)> {
     if let Some(bit) = smallest_period_candidate(fixed) {
-        let mask = <FieldElement as FieldElementTrait>::Integer::from(((1 << bit) - 1) as u32);
-        if fixed.iter().enumerate().all(|(i, v)| {
-            v.to_integer() == <FieldElement as FieldElementTrait>::Integer::from(i as u32) & mask
-        }) {
+        let mask = T::Integer::from(((1 << bit) - 1) as u32);
+        if fixed
+            .iter()
+            .enumerate()
+            .all(|(i, v)| v.to_integer() == T::Integer::from(i as u32) & mask)
+        {
             return Some((BitConstraint::from_mask(mask), true));
         }
     }
-    let mut mask = <FieldElement as FieldElementTrait>::Integer::from(0u32);
+    let mut mask = T::Integer::from(0u32);
     for v in fixed.iter() {
         mask |= v.to_integer();
     }
@@ -186,11 +195,11 @@ fn process_fixed_column(fixed: &[FieldElement]) -> Option<(BitConstraint, bool)>
 /// and identities. Note that these constraints hold globally, i.e. for all rows.
 /// If the returned flag is true, the identity can be removed, because it contains
 /// no further information than the bit constraint.
-fn propagate_constraints<'a>(
-    mut known_constraints: BTreeMap<&'a PolynomialReference, BitConstraint>,
-    identity: &'a Identity,
+fn propagate_constraints<'a, T: FieldElement>(
+    mut known_constraints: BTreeMap<&'a PolynomialReference, BitConstraint<T>>,
+    identity: &'a Identity<T>,
     full_span: &BTreeSet<&'a PolynomialReference>,
-) -> (BTreeMap<&'a PolynomialReference, BitConstraint>, bool) {
+) -> (BTreeMap<&'a PolynomialReference, BitConstraint<T>>, bool) {
     let mut remove = false;
     match identity.kind {
         IdentityKind::Polynomial => {
@@ -248,7 +257,7 @@ fn propagate_constraints<'a>(
 }
 
 /// Tries to find "X * (1 - X) = 0"
-fn is_binary_constraint(expr: &Expression) -> Option<&PolynomialReference> {
+fn is_binary_constraint<T: FieldElement>(expr: &Expression<T>) -> Option<&PolynomialReference> {
     // TODO Write a proper pattern matching engine.
     if let Expression::BinaryOperation(left, BinaryOperator::Sub, right) = expr {
         if let Expression::Number(n) = right.as_ref() {
@@ -283,10 +292,10 @@ fn is_binary_constraint(expr: &Expression) -> Option<&PolynomialReference> {
 }
 
 /// Tries to transfer constraints in a linear expression.
-fn try_transfer_constraints<'a, 'b>(
-    expr: &'a Expression,
-    known_constraints: &'b BTreeMap<&'b PolynomialReference, BitConstraint>,
-) -> Option<(&'a PolynomialReference, BitConstraint)> {
+fn try_transfer_constraints<'a, 'b, T: FieldElement>(
+    expr: &'a Expression<T>,
+    known_constraints: &'b BTreeMap<&'b PolynomialReference, BitConstraint<T>>,
+) -> Option<(&'a PolynomialReference, BitConstraint<T>)> {
     if contains_next_ref(expr) {
         return None;
     }
@@ -309,7 +318,7 @@ fn try_transfer_constraints<'a, 'b>(
     })
 }
 
-fn smallest_period_candidate(fixed: &[FieldElement]) -> Option<u64> {
+fn smallest_period_candidate<T: FieldElement>(fixed: &[T]) -> Option<u64> {
     if fixed.first() != Some(&0.into()) {
         return None;
     }
@@ -320,6 +329,7 @@ fn smallest_period_candidate(fixed: &[FieldElement]) -> Option<u64> {
 mod test {
     use std::collections::BTreeMap;
 
+    use number::GoldilocksField;
     use pil_analyzer::{PolyID, PolynomialReference};
 
     use crate::witgen::bit_constraints::{propagate_constraints, BitConstraint};
@@ -330,7 +340,7 @@ mod test {
     fn all_zeros() {
         let fixed = [0, 0, 0, 0].iter().map(|v| (*v).into()).collect::<Vec<_>>();
         assert_eq!(
-            process_fixed_column(&fixed),
+            process_fixed_column::<GoldilocksField>(&fixed),
             Some((BitConstraint::from_mask(0_u32), false))
         );
     }
@@ -342,7 +352,7 @@ mod test {
             .map(|v| (*v).into())
             .collect::<Vec<_>>();
         assert_eq!(
-            process_fixed_column(&fixed),
+            process_fixed_column::<GoldilocksField>(&fixed),
             Some((BitConstraint::from_mask(1_u32), true))
         );
     }
@@ -354,7 +364,7 @@ mod test {
             .map(|v| (*v).into())
             .collect::<Vec<_>>();
         assert_eq!(
-            process_fixed_column(&fixed),
+            process_fixed_column::<GoldilocksField>(&fixed),
             Some((BitConstraint::from_mask(3_u32), true))
         );
     }
@@ -366,14 +376,14 @@ mod test {
             .map(|v| (*v).into())
             .collect::<Vec<_>>();
         assert_eq!(
-            process_fixed_column(&fixed),
+            process_fixed_column::<GoldilocksField>(&fixed),
             Some((BitConstraint::from_mask(0x1106_u32), false))
         );
     }
 
     fn convert_constraints<'a>(
-        (poly, constr): (&&'a PolynomialReference, &BitConstraint),
-    ) -> (&'a str, BitConstraint) {
+        (poly, constr): (&&'a PolynomialReference, &BitConstraint<GoldilocksField>),
+    ) -> (&'a str, BitConstraint<GoldilocksField>) {
         (poly.name.as_str(), constr.clone())
     }
 
@@ -395,7 +405,7 @@ namespace Global(2**20);
     { D } in { BYTE };
     { D } in { SHIFTED };
 ";
-        let analyzed = pil_analyzer::analyze_string(pil_source);
+        let analyzed = pil_analyzer::analyze_string::<GoldilocksField>(pil_source);
         let (constants, _) = crate::constant_evaluator::generate(&analyzed);
         let fixed_polys = constants
             .iter()
@@ -428,7 +438,7 @@ namespace Global(2**20);
                 ("Global.SHIFTED", BitConstraint::from_mask(0xff0_u32)),
             ]
             .into_iter()
-            .collect::<BTreeMap<_, _>>()
+            .collect()
         );
         for identity in &analyzed.identities {
             (known_constraints, _) =
@@ -455,7 +465,7 @@ namespace Global(2**20);
 
     #[test]
     fn combinations() {
-        let a = BitConstraint::from_max_bit(7);
+        let a: BitConstraint<GoldilocksField> = BitConstraint::from_max_bit(7);
         assert_eq!(a, BitConstraint::from_mask(0xff_u32));
         let b = a.multiple(256.into()).unwrap();
         assert_eq!(b, BitConstraint::from_mask(0xff00_u32));
@@ -467,7 +477,7 @@ namespace Global(2**20);
 
     #[test]
     fn weird_combinations() {
-        let a = BitConstraint::from_mask(0xf00f_u32);
+        let a: BitConstraint<GoldilocksField> = BitConstraint::from_mask(0xf00f_u32);
         let b = a.multiple(256.into()).unwrap();
         assert_eq!(b, BitConstraint::from_mask(0xf00f00_u32));
         assert_eq!(

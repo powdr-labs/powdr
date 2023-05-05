@@ -15,19 +15,19 @@ use super::symbolic_witness_evaluator::{SymoblicWitnessEvaluator, WitnessColumnE
 use super::util::contains_next_witness_ref;
 use super::{Constraint, EvalResult, EvalValue, FixedData, IncompleteCause, WitnessColumn};
 
-pub struct Generator<'a, QueryCallback> {
-    fixed_data: &'a FixedData<'a>,
-    fixed_lookup: &'a mut FixedLookup,
-    identities: &'a [&'a Identity],
-    machines: Vec<Box<dyn Machine>>,
+pub struct Generator<'a, T: FieldElement, QueryCallback> {
+    fixed_data: &'a FixedData<'a, T>,
+    fixed_lookup: &'a mut FixedLookup<T>,
+    identities: &'a [&'a Identity<T>],
+    machines: Vec<Box<dyn Machine<T>>>,
     query_callback: Option<QueryCallback>,
-    global_bit_constraints: BTreeMap<&'a PolynomialReference, BitConstraint>,
+    global_bit_constraints: BTreeMap<&'a PolynomialReference, BitConstraint<T>>,
     /// Values of the witness polynomials
-    current: Vec<Option<FieldElement>>,
+    current: Vec<Option<T>>,
     /// Values of the witness polynomials in the next row
-    next: Vec<Option<FieldElement>>,
+    next: Vec<Option<T>>,
     /// Bit constraints on the witness polynomials in the next row.
-    next_bit_constraints: Vec<Option<BitConstraint>>,
+    next_bit_constraints: Vec<Option<BitConstraint<T>>>,
     next_row: DegreeType,
     failure_reasons: Vec<String>,
     progress: bool,
@@ -43,16 +43,16 @@ enum EvaluationRow {
     Next,
 }
 
-impl<'a, QueryCallback> Generator<'a, QueryCallback>
+impl<'a, T: FieldElement, QueryCallback> Generator<'a, T, QueryCallback>
 where
-    QueryCallback: FnMut(&str) -> Option<FieldElement>,
+    QueryCallback: FnMut(&str) -> Option<T>,
 {
     pub fn new(
-        fixed_data: &'a FixedData<'a>,
-        fixed_lookup: &'a mut FixedLookup,
-        identities: &'a [&'a Identity],
-        global_bit_constraints: BTreeMap<&'a PolynomialReference, BitConstraint>,
-        machines: Vec<Box<dyn Machine>>,
+        fixed_data: &'a FixedData<'a, T>,
+        fixed_lookup: &'a mut FixedLookup<T>,
+        identities: &'a [&'a Identity<T>],
+        global_bit_constraints: BTreeMap<&'a PolynomialReference, BitConstraint<T>>,
+        machines: Vec<Box<dyn Machine<T>>>,
         query_callback: Option<QueryCallback>,
     ) -> Self {
         let witness_cols_len = fixed_data.witness_cols.len();
@@ -75,7 +75,7 @@ where
         }
     }
 
-    pub fn compute_next_row(&mut self, next_row: DegreeType) -> Vec<FieldElement> {
+    pub fn compute_next_row(&mut self, next_row: DegreeType) -> Vec<T> {
         self.set_next_row_and_log(next_row);
 
         // TODO maybe better to generate a dependency graph than looping multiple times.
@@ -204,7 +204,7 @@ where
     /// Verifies the proposed values for the next row.
     /// TODO this is bad for machines because we might introduce rows in the machine that are then
     /// not used.
-    pub fn propose_next_row(&mut self, next_row: DegreeType, values: &[FieldElement]) -> bool {
+    pub fn propose_next_row(&mut self, next_row: DegreeType, values: &[T]) -> bool {
         self.set_next_row_and_log(next_row);
         self.next = values.iter().cloned().map(Some).collect();
 
@@ -230,7 +230,7 @@ where
         true
     }
 
-    pub fn machine_witness_col_values(&mut self) -> HashMap<String, Vec<FieldElement>> {
+    pub fn machine_witness_col_values(&mut self) -> HashMap<String, Vec<T>> {
         let mut result: HashMap<_, _> = Default::default();
         for m in &mut self.machines {
             result.extend(m.witness_col_values(self.fixed_data));
@@ -264,7 +264,7 @@ where
 
     fn format_next_values_iter<'b>(
         &self,
-        values: impl IntoIterator<Item = (usize, &'b Option<FieldElement>)>,
+        values: impl IntoIterator<Item = (usize, &'b Option<T>)>,
     ) -> Vec<String> {
         let mut values = values.into_iter().collect::<Vec<_>>();
         values.sort_by_key(|(i, v1)| {
@@ -291,10 +291,7 @@ where
             .collect()
     }
 
-    fn process_witness_query(
-        &mut self,
-        column: &&'a WitnessColumn,
-    ) -> EvalResult<&'a PolynomialReference> {
+    fn process_witness_query(&mut self, column: &&'a WitnessColumn<T>) -> EvalResult<'a, T> {
         let query = match self.interpolate_query(column.query.unwrap()) {
             Ok(query) => query,
             Err(incomplete) => return Ok(EvalValue::incomplete(incomplete)),
@@ -314,7 +311,7 @@ where
 
     fn interpolate_query<'b>(
         &self,
-        query: &'b Expression,
+        query: &'b Expression<T>,
     ) -> Result<String, IncompleteCause<&'b PolynomialReference>> {
         if let Ok(v) = self.evaluate(query, EvaluationRow::Next) {
             if v.is_constant() {
@@ -345,8 +342,8 @@ where
 
     fn interpolate_match_expression_for_query<'b>(
         &self,
-        scrutinee: &'b Expression,
-        arms: &'b [(Option<FieldElement>, Expression)],
+        scrutinee: &'b Expression<T>,
+        arms: &'b [(Option<T>, Expression<T>)],
     ) -> Result<String, IncompleteCause<&'b PolynomialReference>> {
         let v = self
             .evaluate(scrutinee, EvaluationRow::Next)?
@@ -359,10 +356,7 @@ where
         self.interpolate_query(expr)
     }
 
-    fn process_polynomial_identity<'b>(
-        &self,
-        identity: &'b Expression,
-    ) -> EvalResult<&'b PolynomialReference> {
+    fn process_polynomial_identity<'b>(&self, identity: &'b Expression<T>) -> EvalResult<'b, T> {
         // If there is no "next" reference in the expression,
         // we just evaluate it directly on the "next" row.
         let row = if contains_next_witness_ref(identity) {
@@ -383,10 +377,7 @@ where
         }
     }
 
-    fn process_plookup<'b>(
-        &mut self,
-        identity: &'b Identity,
-    ) -> EvalResult<&'b PolynomialReference> {
+    fn process_plookup<'b>(&mut self, identity: &'b Identity<T>) -> EvalResult<'b, T> {
         if let Some(left_selector) = &identity.left.selector {
             let value = match self.evaluate(left_selector, EvaluationRow::Next) {
                 Ok(value) => value,
@@ -443,7 +434,7 @@ where
         unimplemented!("No executor machine matched identity `{identity}`")
     }
 
-    fn handle_eval_result(&mut self, result: EvalResult) {
+    fn handle_eval_result(&mut self, result: EvalResult<T>) {
         match result {
             Ok(constraints) => {
                 if !constraints.is_empty() {
@@ -475,9 +466,9 @@ where
     /// @returns an expression affine in the witness polynomials
     fn evaluate<'b>(
         &self,
-        expr: &'b Expression,
+        expr: &'b Expression<T>,
         evaluate_row: EvaluationRow,
-    ) -> AffineResult<&'b PolynomialReference> {
+    ) -> AffineResult<&'b PolynomialReference, T> {
         let degree = self.fixed_data.degree;
         let fixed_row = match evaluate_row {
             EvaluationRow::Current => (self.next_row + degree - 1) % degree,
@@ -496,7 +487,7 @@ where
         .evaluate(expr)
     }
 
-    fn bit_constraint_set(&'a self) -> WitnessBitConstraintSet<'a> {
+    fn bit_constraint_set(&'a self) -> WitnessBitConstraintSet<'a, T> {
         WitnessBitConstraintSet {
             global_bit_constraints: &self.global_bit_constraints,
             next_bit_constraints: &self.next_bit_constraints,
@@ -504,15 +495,17 @@ where
     }
 }
 
-struct WitnessBitConstraintSet<'a> {
+struct WitnessBitConstraintSet<'a, T: FieldElement> {
     /// Global constraints on witness and fixed polynomials.
-    global_bit_constraints: &'a BTreeMap<&'a PolynomialReference, BitConstraint>,
+    global_bit_constraints: &'a BTreeMap<&'a PolynomialReference, BitConstraint<T>>,
     /// Bit constraints on the witness polynomials in the next row.
-    next_bit_constraints: &'a Vec<Option<BitConstraint>>,
+    next_bit_constraints: &'a Vec<Option<BitConstraint<T>>>,
 }
 
-impl<'a> BitConstraintSet<&PolynomialReference> for WitnessBitConstraintSet<'a> {
-    fn bit_constraint(&self, poly: &PolynomialReference) -> Option<BitConstraint> {
+impl<'a, T: FieldElement> BitConstraintSet<&PolynomialReference, T>
+    for WitnessBitConstraintSet<'a, T>
+{
+    fn bit_constraint(&self, poly: &PolynomialReference) -> Option<BitConstraint<T>> {
         self.global_bit_constraints
             .get(poly)
             .or_else(|| {
@@ -524,16 +517,16 @@ impl<'a> BitConstraintSet<&PolynomialReference> for WitnessBitConstraintSet<'a> 
     }
 }
 
-struct EvaluationData<'a> {
+struct EvaluationData<'a, T> {
     /// Values of the witness polynomials in the current / last row
-    pub current_witnesses: &'a Vec<Option<FieldElement>>,
+    pub current_witnesses: &'a Vec<Option<T>>,
     /// Values of the witness polynomials in the next row
-    pub next_witnesses: &'a Vec<Option<FieldElement>>,
+    pub next_witnesses: &'a Vec<Option<T>>,
     pub evaluate_row: EvaluationRow,
 }
 
-impl<'a> WitnessColumnEvaluator for EvaluationData<'a> {
-    fn value<'b>(&self, poly: &'b PolynomialReference) -> AffineResult<&'b PolynomialReference> {
+impl<'a, T: FieldElement> WitnessColumnEvaluator<T> for EvaluationData<'a, T> {
+    fn value<'b>(&self, poly: &'b PolynomialReference) -> AffineResult<&'b PolynomialReference, T> {
         let id = poly.poly_id() as usize;
         match (poly.next, self.evaluate_row) {
             (false, EvaluationRow::Current) => {

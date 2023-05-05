@@ -1,22 +1,23 @@
 use super::affine_expression::AffineResult;
 use super::expression_evaluator::SymbolicVariables;
 use super::FixedData;
+use number::FieldElement;
 use pil_analyzer::PolynomialReference;
 
 /// Evaluates only fixed columns on a specific row.
-pub struct FixedEvaluator<'a> {
-    fixed_data: &'a FixedData<'a>,
+pub struct FixedEvaluator<'a, T> {
+    fixed_data: &'a FixedData<'a, T>,
     row: usize,
 }
 
-impl<'a> FixedEvaluator<'a> {
-    pub fn new(fixed_data: &'a FixedData<'a>, row: usize) -> Self {
+impl<'a, T> FixedEvaluator<'a, T> {
+    pub fn new(fixed_data: &'a FixedData<'a, T>, row: usize) -> Self {
         FixedEvaluator { fixed_data, row }
     }
 }
 
-impl<'a> SymbolicVariables for FixedEvaluator<'a> {
-    fn value<'b>(&self, poly: &'b PolynomialReference) -> AffineResult<&'b PolynomialReference> {
+impl<'a, T: FieldElement> SymbolicVariables<T> for FixedEvaluator<'a, T> {
+    fn value<'b>(&self, poly: &'b PolynomialReference) -> AffineResult<&'b PolynomialReference, T> {
         // TODO arrays
         assert!(
             poly.is_fixed(),

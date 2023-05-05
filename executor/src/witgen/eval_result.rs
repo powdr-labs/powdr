@@ -59,7 +59,7 @@ impl<K> IncompleteCause<K> {
     }
 }
 
-pub type Constraints<K = usize> = Vec<(K, Constraint)>;
+pub type Constraints<K, T> = Vec<(K, Constraint<T>)>;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum EvalStatus<K = usize> {
@@ -86,12 +86,12 @@ impl<K> EvalStatus<K> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct EvalValue<K> {
-    pub constraints: Constraints<K>,
+pub struct EvalValue<K, T: FieldElement> {
+    pub constraints: Constraints<K, T>,
     pub status: EvalStatus<K>,
 }
 
-impl<K> EvalValue<K> {
+impl<K, T: FieldElement> EvalValue<K, T> {
     pub fn is_complete(&self) -> bool {
         match self.status {
             EvalStatus::Complete => true,
@@ -108,18 +108,18 @@ impl<K> EvalValue<K> {
     }
 
     pub fn incomplete_with_constraints(
-        constraints: impl IntoIterator<Item = (K, Constraint)>,
+        constraints: impl IntoIterator<Item = (K, Constraint<T>)>,
         cause: IncompleteCause<K>,
     ) -> Self {
         Self::new(constraints, EvalStatus::Incomplete(cause))
     }
 
-    pub fn complete(constraints: impl IntoIterator<Item = (K, Constraint)>) -> Self {
+    pub fn complete(constraints: impl IntoIterator<Item = (K, Constraint<T>)>) -> Self {
         Self::new(constraints, EvalStatus::Complete)
     }
 
     fn new(
-        constraints: impl IntoIterator<Item = (K, Constraint)>,
+        constraints: impl IntoIterator<Item = (K, Constraint<T>)>,
         complete: EvalStatus<K>,
     ) -> Self {
         Self {
@@ -129,9 +129,10 @@ impl<K> EvalValue<K> {
     }
 }
 
-impl<K> EvalValue<K>
+impl<K, T> EvalValue<K, T>
 where
     K: Clone,
+    T: FieldElement,
 {
     pub fn combine(&mut self, other: Self) {
         self.constraints.extend(other.constraints);
@@ -141,7 +142,7 @@ where
 
 /// Result of evaluating an expression / lookup.
 /// New assignments or constraints for witness columns identified by an ID.
-pub type EvalResult<'a, K = &'a PolynomialReference> = Result<EvalValue<K>, EvalError>;
+pub type EvalResult<'a, T, K = &'a PolynomialReference> = Result<EvalValue<K, T>, EvalError>;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum EvalError {
@@ -200,12 +201,12 @@ impl fmt::Display for EvalError {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Constraint {
-    Assignment(FieldElement),
-    BitConstraint(BitConstraint),
+pub enum Constraint<T: FieldElement> {
+    Assignment(T),
+    BitConstraint(BitConstraint<T>),
 }
 
-impl fmt::Display for Constraint {
+impl<T: FieldElement> fmt::Display for Constraint<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Constraint::Assignment(a) => write!(f, " = {a}"),

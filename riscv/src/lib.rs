@@ -17,9 +17,9 @@ mod reachability;
 
 /// Compiles a rust file all the way down to PIL and generates
 /// fixed and witness columns.
-pub fn compile_rust(
+pub fn compile_rust<T: FieldElement>(
     file_name: &str,
-    inputs: Vec<FieldElement>,
+    inputs: Vec<T>,
     output_dir: &Path,
     force_overwrite: bool,
 ) {
@@ -53,10 +53,10 @@ pub fn compile_rust(
     compile_riscv_asm_bundle(file_name, riscv_asm, inputs, output_dir, force_overwrite)
 }
 
-pub fn compile_riscv_asm_bundle(
+pub fn compile_riscv_asm_bundle<T: FieldElement>(
     original_file_name: &str,
     riscv_asm_files: BTreeMap<String, String>,
-    inputs: Vec<FieldElement>,
+    inputs: Vec<T>,
     output_dir: &Path,
     force_overwrite: bool,
 ) {
@@ -92,10 +92,10 @@ pub fn compile_riscv_asm_bundle(
 
 /// Compiles a riscv asm file all the way down to PIL and generates
 /// fixed and witness columns.
-pub fn compile_riscv_asm(
+pub fn compile_riscv_asm<T: FieldElement>(
     original_file_name: &str,
     file_name: &str,
-    inputs: Vec<FieldElement>,
+    inputs: Vec<T>,
     output_dir: &Path,
     force_overwrite: bool,
 ) {

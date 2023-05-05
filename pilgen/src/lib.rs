@@ -5,30 +5,32 @@ use std::collections::{BTreeMap, HashMap};
 use number::DegreeType;
 use number::FieldElement;
 
-use number::FieldElementTrait;
 use parser::asm_ast::*;
 use parser::ast::*;
 use parser_util::ParseError;
 
-pub fn compile<'a>(file_name: Option<&str>, input: &'a str) -> Result<PILFile, ParseError<'a>> {
+pub fn compile<'a, T: FieldElement>(
+    file_name: Option<&str>,
+    input: &'a str,
+) -> Result<PILFile<T>, ParseError<'a>> {
     parser::parse_asm(file_name, input).map(|ast| ASMPILConverter::new().convert(ast))
 }
 
 #[derive(Default)]
-struct ASMPILConverter {
+struct ASMPILConverter<T> {
     degree: DegreeType,
-    pil: Vec<Statement>,
+    pil: Vec<Statement<T>>,
     pc_name: Option<String>,
-    registers: BTreeMap<String, Register>,
+    registers: BTreeMap<String, Register<T>>,
     instructions: BTreeMap<String, Instruction>,
-    code_lines: Vec<CodeLine>,
+    code_lines: Vec<CodeLine<T>>,
     /// Pairs of columns that are used in the connecting plookup
     line_lookup: Vec<(String, String)>,
     /// Names of fixed columns that contain the program.
     program_constant_names: Vec<String>,
 }
 
-impl ASMPILConverter {
+impl<T: FieldElement> ASMPILConverter<T> {
     fn new() -> Self {
         Default::default()
     }
@@ -42,13 +44,13 @@ impl ASMPILConverter {
         self.degree = degree;
     }
 
-    fn convert(&mut self, input: ASMFile) -> PILFile {
+    fn convert(&mut self, input: ASMFile<T>) -> PILFile<T> {
         self.set_degree(1024);
 
         let mut statements = input.0.into_iter().peekable();
 
         if let Some(ASMStatement::Degree(_, degree)) = statements.peek() {
-            self.set_degree(FieldElement::from(degree.clone()).to_degree());
+            self.set_degree(T::from(degree.clone()).to_degree());
             statements.next();
         }
 
@@ -206,7 +208,7 @@ impl ASMPILConverter {
     fn handle_instruction_def(
         &mut self,
         start: usize,
-        body: Vec<InstructionBodyElement>,
+        body: Vec<InstructionBodyElement<T>>,
         name: String,
         params: InstructionParams,
     ) {
@@ -292,7 +294,7 @@ impl ASMPILConverter {
         _start: usize,
         write_regs: Vec<String>,
         assign_reg: Option<String>,
-        value: Expression,
+        value: Expression<T>,
     ) {
         assert!(write_regs.len() <= 1);
         assert!(
@@ -313,7 +315,7 @@ impl ASMPILConverter {
         write_regs: Vec<String>,
         assign_reg: String,
         instr_name: String,
-        args: Vec<Expression>,
+        args: Vec<Expression<T>>,
     ) {
         assert!(write_regs.len() == 1);
         let instr = &self
@@ -332,7 +334,7 @@ impl ASMPILConverter {
         self.handle_instruction(instr_name, args);
     }
 
-    fn handle_instruction(&mut self, instr_name: String, args: Vec<Expression>) {
+    fn handle_instruction(&mut self, instr_name: String, args: Vec<Expression<T>>) {
         let instr = &self
             .instructions
             .get(&instr_name)
@@ -392,8 +394,8 @@ impl ASMPILConverter {
 
     fn process_assignment_value(
         &self,
-        value: Expression,
-    ) -> Vec<(FieldElement, AffineExpressionComponent)> {
+        value: Expression<T>,
+    ) -> Vec<(T, AffineExpressionComponent<T>)> {
         match value {
             Expression::Constant(_) => panic!(),
             Expression::PublicReference(_) => panic!(),
@@ -478,9 +480,9 @@ impl ASMPILConverter {
 
     fn add_assignment_value(
         &self,
-        mut left: Vec<(FieldElement, AffineExpressionComponent)>,
-        right: Vec<(FieldElement, AffineExpressionComponent)>,
-    ) -> Vec<(FieldElement, AffineExpressionComponent)> {
+        mut left: Vec<(T, AffineExpressionComponent<T>)>,
+        right: Vec<(T, AffineExpressionComponent<T>)>,
+    ) -> Vec<(T, AffineExpressionComponent<T>)> {
         // TODO combine (or at leats check for) same components.
         left.extend(right);
         left
@@ -488,8 +490,8 @@ impl ASMPILConverter {
 
     fn negate_assignment_value(
         &self,
-        expr: Vec<(FieldElement, AffineExpressionComponent)>,
-    ) -> Vec<(FieldElement, AffineExpressionComponent)> {
+        expr: Vec<(T, AffineExpressionComponent<T>)>,
+    ) -> Vec<(T, AffineExpressionComponent<T>)> {
         expr.into_iter().map(|(v, c)| (-v, c)).collect()
     }
 
@@ -542,7 +544,7 @@ impl ASMPILConverter {
         let mut program_constants = self
             .program_constant_names
             .iter()
-            .map(|n| (n, vec![FieldElement::from(0); self.code_lines.len()]))
+            .map(|n| (n, vec![T::from(0); self.code_lines.len()]))
             .collect::<BTreeMap<_, _>>();
         let mut free_value_query_arms = self
             .assignment_registers()
@@ -684,18 +686,18 @@ impl ASMPILConverter {
     }
 }
 
-struct Register {
+struct Register<T> {
     /// Constraints to update this register, first item being the
     /// condition, second item the value.
     /// TODO check that condition is bool
-    conditioned_updates: Vec<(Expression, Expression)>,
-    default_update: Option<Expression>,
+    conditioned_updates: Vec<(Expression<T>, Expression<T>)>,
+    default_update: Option<Expression<T>>,
     is_assignment: bool,
 }
 
-impl Register {
+impl<T: FieldElement> Register<T> {
     /// Returns the expression assigned to this register in the next row.
-    pub fn update_expression(&self) -> Option<Expression> {
+    pub fn update_expression(&self) -> Option<Expression<T>> {
         // TODO conditions need to be all boolean
         let updates = self
             .conditioned_updates
@@ -748,29 +750,29 @@ impl Instruction {
 // TODO turn this into an enum, split into
 // label, assignment, instruction.
 #[derive(Default)]
-struct CodeLine {
+struct CodeLine<T> {
     /// Which regular registers to assign to, from which assignment register
     /// Maps assignment register to a vector of regular registers.
     write_regs: BTreeMap<String, Vec<String>>,
     /// The value on the right-hand-side, per assignment register
-    value: BTreeMap<String, Vec<(FieldElement, AffineExpressionComponent)>>,
+    value: BTreeMap<String, Vec<(T, AffineExpressionComponent<T>)>>,
     label: Option<String>,
     instruction: Option<String>,
     // TODO we only support labels for now.
     instruction_literal_args: Vec<String>,
 }
 
-enum AffineExpressionComponent {
+enum AffineExpressionComponent<T> {
     Register(String),
     Constant,
-    FreeInput(Expression),
+    FreeInput(Expression<T>),
 }
 
-fn witness_column<S: Into<String>>(
+fn witness_column<S: Into<String>, T>(
     start: usize,
     name: S,
-    def: Option<FunctionDefinition>,
-) -> Statement {
+    def: Option<FunctionDefinition<T>>,
+) -> Statement<T> {
     Statement::PolynomialCommitDeclaration(
         start,
         vec![PolynomialName {
@@ -781,7 +783,7 @@ fn witness_column<S: Into<String>>(
     )
 }
 
-fn direct_reference<S: Into<String>>(name: S) -> Expression {
+fn direct_reference<S: Into<String>, T>(name: S) -> Expression<T> {
     Expression::PolynomialReference(PolynomialReference {
         namespace: None,
         name: name.into(),
@@ -790,7 +792,7 @@ fn direct_reference<S: Into<String>>(name: S) -> Expression {
     })
 }
 
-fn next_reference(name: &str) -> Expression {
+fn next_reference<T>(name: &str) -> Expression<T> {
     Expression::PolynomialReference(PolynomialReference {
         namespace: None,
         name: name.to_owned(),
@@ -799,31 +801,35 @@ fn next_reference(name: &str) -> Expression {
     })
 }
 
-fn build_mul(left: Expression, right: Expression) -> Expression {
+fn build_mul<T>(left: Expression<T>, right: Expression<T>) -> Expression<T> {
     build_binary_expr(left, BinaryOperator::Mul, right)
 }
 
-fn build_sub(left: Expression, right: Expression) -> Expression {
+fn build_sub<T>(left: Expression<T>, right: Expression<T>) -> Expression<T> {
     build_binary_expr(left, BinaryOperator::Sub, right)
 }
 
-fn build_add(left: Expression, right: Expression) -> Expression {
+fn build_add<T>(left: Expression<T>, right: Expression<T>) -> Expression<T> {
     build_binary_expr(left, BinaryOperator::Add, right)
 }
 
-fn build_binary_expr(left: Expression, op: BinaryOperator, right: Expression) -> Expression {
+fn build_binary_expr<T>(
+    left: Expression<T>,
+    op: BinaryOperator,
+    right: Expression<T>,
+) -> Expression<T> {
     Expression::BinaryOperation(Box::new(left), op, Box::new(right))
 }
 
-fn build_unary_expr(op: UnaryOperator, exp: Expression) -> Expression {
+fn build_unary_expr<T>(op: UnaryOperator, exp: Expression<T>) -> Expression<T> {
     Expression::UnaryOperation(op, Box::new(exp))
 }
 
-fn build_number<V: Into<FieldElement>>(value: V) -> Expression {
+fn build_number<T: FieldElement, V: Into<T>>(value: V) -> Expression<T> {
     Expression::Number(value.into())
 }
 
-fn extract_update(expr: Expression) -> (Option<String>, Expression) {
+fn extract_update<T: FieldElement>(expr: Expression<T>) -> (Option<String>, Expression<T>) {
     // TODO check that there are no other "next" references in the expression
     if let Expression::BinaryOperation(left, BinaryOperator::Sub, right) = expr {
         if let Expression::PolynomialReference(PolynomialReference {
@@ -844,7 +850,10 @@ fn extract_update(expr: Expression) -> (Option<String>, Expression) {
     }
 }
 
-fn substitute(input: Expression, substitution: &HashMap<String, String>) -> Expression {
+fn substitute<T: FieldElement>(
+    input: Expression<T>,
+    substitution: &HashMap<String, String>,
+) -> Expression<T> {
     match input {
         // TODO namespace
         Expression::PolynomialReference(r) => {
@@ -885,20 +894,20 @@ fn substitute(input: Expression, substitution: &HashMap<String, String>) -> Expr
     }
 }
 
-fn substitute_selected_exprs(
-    input: SelectedExpressions,
+fn substitute_selected_exprs<T: FieldElement>(
+    input: SelectedExpressions<T>,
     substitution: &HashMap<String, String>,
-) -> SelectedExpressions {
+) -> SelectedExpressions<T> {
     SelectedExpressions {
         selector: input.selector.map(|s| substitute(s, substitution)),
         expressions: substitute_vec(input.expressions, substitution),
     }
 }
 
-fn substitute_vec(
-    input: Vec<Expression>,
+fn substitute_vec<T: FieldElement>(
+    input: Vec<Expression<T>>,
     substitution: &HashMap<String, String>,
-) -> Vec<Expression> {
+) -> Vec<Expression<T>> {
     input
         .into_iter()
         .map(|e| substitute(e, substitution))
@@ -915,6 +924,8 @@ fn substitute_string(input: &str, substitution: &HashMap<String, String>) -> Str
 #[cfg(test)]
 mod test {
     use std::fs;
+
+    use number::GoldilocksField;
 
     use super::compile;
 
@@ -972,7 +983,7 @@ pol constant p_reg_write_X_CNT = [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0] + [0]*;
 "#;
         let file_name = "../test_data/asm/simple_sum.asm";
         let contents = fs::read_to_string(file_name).unwrap();
-        let pil = compile(Some(file_name), &contents).unwrap();
+        let pil = compile::<GoldilocksField>(Some(file_name), &contents).unwrap();
         assert_eq!(format!("{pil}").trim(), expectation.trim());
     }
 }

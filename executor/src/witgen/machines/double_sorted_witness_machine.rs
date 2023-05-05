@@ -9,32 +9,32 @@ use crate::witgen::affine_expression::AffineResult;
 use crate::witgen::util::is_simple_poly_of_name;
 use crate::witgen::{EvalError, EvalResult, FixedData};
 use crate::witgen::{EvalValue, IncompleteCause};
-use number::{FieldElement, FieldElementTrait};
+use number::FieldElement;
 
 use pil_analyzer::{Expression, Identity, IdentityKind, PolynomialReference, SelectedExpressions};
 
 /// TODO make this generic
 
 #[derive(Default)]
-pub struct DoubleSortedWitnesses {
+pub struct DoubleSortedWitnesses<T> {
     //key_col: String,
     /// Position of the witness columns in the data.
     /// The key column has a position of usize::max
     //witness_positions: HashMap<String, usize>,
     /// (addr, step) -> value
-    trace: BTreeMap<(FieldElement, FieldElement), Operation>,
-    data: BTreeMap<FieldElement, FieldElement>,
+    trace: BTreeMap<(T, T), Operation<T>>,
+    data: BTreeMap<T, T>,
 }
 
-struct Operation {
+struct Operation<T> {
     pub is_write: bool,
-    pub value: FieldElement,
+    pub value: T,
 }
 
-impl DoubleSortedWitnesses {
+impl<T: FieldElement> DoubleSortedWitnesses<T> {
     pub fn try_new(
-        _fixed_data: &FixedData,
-        _identities: &[&Identity],
+        _fixed_data: &FixedData<T>,
+        _identities: &[&Identity<T>],
         witness_cols: &HashSet<&PolynomialReference>,
     ) -> Option<Box<Self>> {
         // TODO check the identities.
@@ -61,15 +61,15 @@ impl DoubleSortedWitnesses {
     }
 }
 
-impl Machine for DoubleSortedWitnesses {
+impl<T: FieldElement> Machine<T> for DoubleSortedWitnesses<T> {
     fn process_plookup<'a>(
         &mut self,
-        _fixed_data: &FixedData,
-        _fixed_lookup: &mut FixedLookup,
+        _fixed_data: &FixedData<T>,
+        _fixed_lookup: &mut FixedLookup<T>,
         kind: IdentityKind,
-        left: &[AffineResult<&'a PolynomialReference>],
-        right: &SelectedExpressions,
-    ) -> Option<EvalResult<&'a PolynomialReference>> {
+        left: &[AffineResult<&'a PolynomialReference, T>],
+        right: &SelectedExpressions<T>,
+    ) -> Option<EvalResult<'a, T>> {
         if kind != IdentityKind::Permutation
             || !(is_simple_poly_of_name(right.selector.as_ref()?, "Assembly.m_is_read")
                 || is_simple_poly_of_name(right.selector.as_ref()?, "Assembly.m_is_write"))
@@ -80,7 +80,7 @@ impl Machine for DoubleSortedWitnesses {
         Some(self.process_plookup_internal(left, right))
     }
 
-    fn witness_col_values(&mut self, fixed_data: &FixedData) -> HashMap<String, Vec<FieldElement>> {
+    fn witness_col_values(&mut self, fixed_data: &FixedData<T>) -> HashMap<String, Vec<T>> {
         let mut addr = vec![];
         let mut step = vec![];
         let mut value = vec![];
@@ -108,7 +108,7 @@ impl Machine for DoubleSortedWitnesses {
         }
         while addr.len() < fixed_data.degree as usize {
             addr.push(*addr.last().unwrap());
-            step.push(*step.last().unwrap() + FieldElement::from(1));
+            step.push(*step.last().unwrap() + T::from(1));
             value.push(*value.last().unwrap());
             op.push(0.into());
             is_write.push(0.into());
@@ -138,12 +138,12 @@ impl Machine for DoubleSortedWitnesses {
     }
 }
 
-impl DoubleSortedWitnesses {
+impl<T: FieldElement> DoubleSortedWitnesses<T> {
     fn process_plookup_internal<'a>(
         &mut self,
-        left: &[AffineResult<&'a PolynomialReference>],
-        right: &SelectedExpressions,
-    ) -> EvalResult<&'a PolynomialReference> {
+        left: &[AffineResult<&'a PolynomialReference, T>],
+        right: &SelectedExpressions<T>,
+    ) -> EvalResult<'a, T> {
         // We blindly assume the lookup is of the form
         // OP { ADDR, STEP, X } is m_is_write { m_addr, m_step, m_value }
         // or

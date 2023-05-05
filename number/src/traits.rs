@@ -1,19 +1,24 @@
-use std::{fmt, ops::*};
+use std::{fmt, hash::Hash, ops::*};
 
 use crate::{AbstractNumberType, DegreeType};
 
 /// A fixed-width integer type
 pub trait BigInt:
-    From<u32>
-    + BitAnd
-    + BitOr
+    Copy
+    + PartialEq
+    + Eq
+    + From<u32>
+    + BitAnd<Output = Self>
+    + BitOr<Output = Self>
     + BitOrAssign
     + BitAndAssign
+    + fmt::Display
+    + fmt::Debug
     + Copy
-    + Not
-    + Shl<u64>
-    + Shr<u64>
-    + BitXor
+    + Not<Output = Self>
+    + Shl<u64, Output = Self>
+    + Shr<u64, Output = Self>
+    + BitXor<Output = Self>
     + fmt::LowerHex
     + TryFrom<num_bigint::BigUint, Error = ()>
 {
@@ -21,13 +26,25 @@ pub trait BigInt:
 }
 
 /// A field element
-pub trait FieldElementTrait:
-    Add
-    + Sub
-    + Mul
-    + Div
-    + Neg
+pub trait FieldElement:
+    'static
+    + Default
+    + Copy
+    + PartialEq
+    + Eq
+    + Send
+    + Sync
+    + PartialOrd
+    + Ord
+    + Hash
+    + Add<Output = Self>
+    + AddAssign
+    + Sub<Output = Self>
+    + Mul<Output = Self>
+    + Div<Output = Self>
+    + Neg<Output = Self>
     + fmt::Display
+    + fmt::Debug
     + From<Self::Integer>
     + From<num_bigint::BigUint>
     + From<u32>
@@ -54,6 +71,8 @@ pub trait FieldElementTrait:
 
     fn integer_div(self, other: Self) -> Self;
 
+    fn integer_mod(self, other: Self) -> Self;
+
     fn to_bytes_le(&self) -> Vec<u8>;
 
     fn from_str(s: &str) -> Self;
@@ -62,7 +81,7 @@ pub trait FieldElementTrait:
 }
 
 #[cfg(test)]
-pub fn int_from_hex_str<T: FieldElementTrait>(s: &str) -> T::Integer {
+pub fn int_from_hex_str<T: FieldElement>(s: &str) -> T::Integer {
     use num_traits::Num;
     T::Integer::try_from(AbstractNumberType::from_str_radix(s, 16).unwrap()).unwrap()
 }

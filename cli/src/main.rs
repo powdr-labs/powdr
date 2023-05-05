@@ -4,7 +4,7 @@ use clap::{Parser, Subcommand};
 use compiler::no_callback;
 use env_logger::{Builder, Target};
 use log::LevelFilter;
-use number::FieldElement;
+use number::{FieldElement, GoldilocksField};
 use std::{fs, io::Write, path::Path};
 
 #[derive(Parser)]
@@ -99,13 +99,13 @@ enum Commands {
     },
 }
 
-fn split_inputs(inputs: &str) -> Vec<FieldElement> {
+fn split_inputs<T: FieldElement>(inputs: &str) -> Vec<T> {
     inputs
         .split(',')
         .map(|x| x.trim())
         .filter(|x| !x.is_empty())
         .map(|x| x.parse::<u64>().unwrap().into())
-        .collect::<Vec<FieldElement>>()
+        .collect()
 }
 
 fn main() {
@@ -125,7 +125,7 @@ fn main() {
             output_directory,
             force,
         } => {
-            riscv::compile_rust(
+            riscv::compile_rust::<GoldilocksField>(
                 &file,
                 split_inputs(&inputs),
                 Path::new(&output_directory),
@@ -138,7 +138,7 @@ fn main() {
             output_directory,
             force,
         } => {
-            riscv::compile_riscv_asm(
+            riscv::compile_riscv_asm::<GoldilocksField>(
                 &file,
                 &file,
                 split_inputs(&inputs),
@@ -152,7 +152,7 @@ fn main() {
             output_directory,
             force,
         } => {
-            compiler::compile_asm(
+            compiler::compile_asm::<GoldilocksField>(
                 &file,
                 split_inputs(&inputs),
                 Path::new(&output_directory),
@@ -161,7 +161,7 @@ fn main() {
         }
         Commands::Reformat { file } => {
             let contents = fs::read_to_string(&file).unwrap();
-            match parser::parse(Some(&file), &contents) {
+            match parser::parse::<GoldilocksField>(Some(&file), &contents) {
                 Ok(ast) => println!("{ast}"),
                 Err(err) => err.output_to_stderr(),
             }
@@ -170,7 +170,7 @@ fn main() {
             file,
             output_directory,
         } => {
-            compiler::compile_pil(
+            compiler::compile_pil::<GoldilocksField>(
                 Path::new(&file),
                 Path::new(&output_directory),
                 no_callback(),

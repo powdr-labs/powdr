@@ -9,7 +9,7 @@ use itertools::Itertools;
 
 use super::*;
 
-impl Display for Analyzed {
+impl<T: Display> Display for Analyzed<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         for (name, value) in &self.constants {
             writeln!(f, "constant {name} = {value};")?;
@@ -63,7 +63,7 @@ impl Display for Analyzed {
     }
 }
 
-impl Display for FunctionValueDefinition {
+impl<T: Display> Display for FunctionValueDefinition<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
             FunctionValueDefinition::Mapping(e) => write!(f, "(i) {{ {e} }}"),
@@ -75,7 +75,7 @@ impl Display for FunctionValueDefinition {
     }
 }
 
-impl Display for RepeatedArray {
+impl<T: Display> Display for RepeatedArray<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         if self.repetitions == 0 {
             return Ok(());
@@ -92,7 +92,7 @@ impl Display for RepeatedArray {
     }
 }
 
-impl Display for Identity {
+impl<T: Display> Display for Identity<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self.kind {
             IdentityKind::Polynomial => {
@@ -110,7 +110,7 @@ impl Display for Identity {
     }
 }
 
-impl Display for SelectedExpressions {
+impl<T: Display> Display for SelectedExpressions<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(
             f,
@@ -124,7 +124,7 @@ impl Display for SelectedExpressions {
     }
 }
 
-impl Display for Expression {
+impl<T: Display> Display for Expression<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
             Expression::Constant(name) => write!(f, "{name}"),
@@ -162,7 +162,7 @@ impl Display for Expression {
     }
 }
 
-fn format_expressions(expressions: &[Expression]) -> String {
+fn format_expressions<T: Display>(expressions: &[Expression<T>]) -> String {
     expressions
         .iter()
         .map(|e| format!("{e}"))
@@ -187,6 +187,8 @@ impl Display for PolynomialReference {
 
 #[cfg(test)]
 mod test {
+    use number::GoldilocksField;
+
     use crate::pil_analyzer::process_pil_file_contents;
 
     #[test]
@@ -233,7 +235,7 @@ namespace T(65536);
     col fixed p_reg_write_X_CNT = [1, 0, 0, 0, 0, 0, 0, 0, 0] + [0]*;
     { T.pc, T.reg_write_X_A, T.reg_write_X_CNT } in (1 - T.first_step) { T.line, T.p_reg_write_X_A, T.p_reg_write_X_CNT };
 "#;
-        let formatted = process_pil_file_contents(input).to_string();
+        let formatted = process_pil_file_contents::<GoldilocksField>(input).to_string();
         if input != formatted {
             for (i, f) in input.split('\n').zip(formatted.split('\n')) {
                 assert_eq!(i, f);

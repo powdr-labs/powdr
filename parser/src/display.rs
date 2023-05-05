@@ -6,7 +6,7 @@ use super::ast::*;
 
 // TODO indentation
 
-impl Display for PILFile {
+impl<T: Display> Display for PILFile<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         for s in &self.0 {
             writeln!(f, "{s}")?;
@@ -15,7 +15,7 @@ impl Display for PILFile {
     }
 }
 
-impl Display for Statement {
+impl<T: Display> Display for Statement<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
             Statement::Include(_, path) => write!(f, "include {};", quote(path)),
@@ -80,7 +80,7 @@ impl Display for Statement {
     }
 }
 
-fn format_names(names: &[PolynomialName]) -> String {
+fn format_names<T: Display>(names: &[PolynomialName<T>]) -> String {
     names
         .iter()
         .map(|n| format!("{n}"))
@@ -88,7 +88,7 @@ fn format_names(names: &[PolynomialName]) -> String {
         .join(", ")
 }
 
-impl Display for ArrayExpression {
+impl<T: Display> Display for ArrayExpression<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
             ArrayExpression::Value(expressions) => {
@@ -102,7 +102,7 @@ impl Display for ArrayExpression {
     }
 }
 
-impl Display for FunctionDefinition {
+impl<T: Display> Display for FunctionDefinition<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
             FunctionDefinition::Mapping(params, body) => {
@@ -118,7 +118,7 @@ impl Display for FunctionDefinition {
     }
 }
 
-impl Display for SelectedExpressions {
+impl<T: Display> Display for SelectedExpressions<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(
             f,
@@ -132,7 +132,7 @@ impl Display for SelectedExpressions {
     }
 }
 
-fn format_expressions(expressions: &[Expression]) -> String {
+fn format_expressions<T: Display>(expressions: &[Expression<T>]) -> String {
     expressions
         .iter()
         .map(|e| format!("{e}"))
@@ -140,7 +140,7 @@ fn format_expressions(expressions: &[Expression]) -> String {
         .join(", ")
 }
 
-impl Display for Expression {
+impl<T: Display> Display for Expression<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
             Expression::Constant(name) => write!(f, "{name}"),
@@ -170,7 +170,7 @@ impl Display for Expression {
     }
 }
 
-impl Display for PolynomialName {
+impl<T: Display> Display for PolynomialName<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(
             f,
@@ -184,7 +184,7 @@ impl Display for PolynomialName {
     }
 }
 
-impl Display for PolynomialReference {
+impl<T: Display> Display for PolynomialReference<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(
             f,
@@ -240,6 +240,8 @@ impl Display for UnaryOperator {
 
 #[cfg(test)]
 mod test {
+    use number::GoldilocksField;
+
     use crate::parse;
 
     #[test]
@@ -265,21 +267,30 @@ macro on_regular_row(cond) { ((1 - ISLAST) * cond) = 0; };
 on_regular_row(constrain_equal_expr(x', y));
 on_regular_row(constrain_equal_expr(y', (x + y)));
 public out = y(%last_row);"#;
-        let printed = format!("{}", parse(Some("input"), input).unwrap());
+        let printed = format!(
+            "{}",
+            parse::<GoldilocksField>(Some("input"), input).unwrap()
+        );
         assert_eq!(input.trim(), printed.trim());
     }
 
     #[test]
     fn reparse_witness_query() {
         let input = r#"pol commit wit(i) query (x(i), y(i));"#;
-        let printed = format!("{}", parse(Some("input"), input).unwrap());
+        let printed = format!(
+            "{}",
+            parse::<GoldilocksField>(Some("input"), input).unwrap()
+        );
         assert_eq!(input.trim(), printed.trim());
     }
 
     #[test]
     fn reparse_strings_and_tuples() {
         let input = r#"constant %N = ("abc", 3);"#;
-        let printed = format!("{}", parse(Some("input"), input).unwrap());
+        let printed = format!(
+            "{}",
+            parse::<GoldilocksField>(Some("input"), input).unwrap()
+        );
         assert_eq!(input.trim(), printed.trim());
     }
 }

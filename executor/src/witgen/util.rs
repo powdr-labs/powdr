@@ -1,12 +1,11 @@
 use std::collections::HashMap;
 
-use number::FieldElement;
 use pil_analyzer::util::{expr_any, previsit_expressions_in_identity_mut};
 use pil_analyzer::{Expression, Identity, PolyID, PolynomialReference};
 
 /// @returns true if the expression contains a reference to a next value of a
 /// (witness or fixed) column
-pub fn contains_next_ref(expr: &Expression) -> bool {
+pub fn contains_next_ref<T>(expr: &Expression<T>) -> bool {
     expr_any(expr, |e| match e {
         Expression::PolynomialReference(poly) => poly.next,
         _ => false,
@@ -14,7 +13,7 @@ pub fn contains_next_ref(expr: &Expression) -> bool {
 }
 
 /// @returns true if the expression contains a reference to a next value of a witness column.
-pub fn contains_next_witness_ref(expr: &Expression) -> bool {
+pub fn contains_next_witness_ref<T>(expr: &Expression<T>) -> bool {
     expr_any(expr, |e| match e {
         Expression::PolynomialReference(poly) => poly.next && poly.is_witness(),
         _ => false,
@@ -22,7 +21,7 @@ pub fn contains_next_witness_ref(expr: &Expression) -> bool {
 }
 
 /// @returns true if the expression contains a reference to a witness column.
-pub fn contains_witness_ref(expr: &Expression) -> bool {
+pub fn contains_witness_ref<T>(expr: &Expression<T>) -> bool {
     expr_any(expr, |e| match e {
         Expression::PolynomialReference(poly) => poly.is_witness(),
         _ => false,
@@ -34,7 +33,7 @@ pub fn contains_witness_ref(expr: &Expression) -> bool {
 /// - not part of a polynomial array
 /// - not shifted with `'`
 /// and return the polynomial if so
-pub fn try_to_simple_poly(expr: &Expression) -> Option<&PolynomialReference> {
+pub fn try_to_simple_poly<T>(expr: &Expression<T>) -> Option<&PolynomialReference> {
     if let Expression::PolynomialReference(
         p @ PolynomialReference {
             index: None,
@@ -49,7 +48,7 @@ pub fn try_to_simple_poly(expr: &Expression) -> Option<&PolynomialReference> {
     }
 }
 
-pub fn try_to_simple_poly_ref(expr: &Expression) -> Option<PolyID> {
+pub fn try_to_simple_poly_ref<T>(expr: &Expression<T>) -> Option<PolyID> {
     if let Expression::PolynomialReference(PolynomialReference {
         poly_id,
         index: None,
@@ -63,7 +62,7 @@ pub fn try_to_simple_poly_ref(expr: &Expression) -> Option<PolyID> {
     }
 }
 
-pub fn is_simple_poly_of_name(expr: &Expression, poly_name: &str) -> bool {
+pub fn is_simple_poly_of_name<T>(expr: &Expression<T>, poly_name: &str) -> bool {
     if let Expression::PolynomialReference(PolynomialReference {
         name,
         index: None,
@@ -77,10 +76,10 @@ pub fn is_simple_poly_of_name(expr: &Expression, poly_name: &str) -> bool {
     }
 }
 
-pub fn substitute_constants(
-    identities: &[Identity],
-    constants: &HashMap<String, FieldElement>,
-) -> Vec<Identity> {
+pub fn substitute_constants<T: Copy>(
+    identities: &[Identity<T>],
+    constants: &HashMap<String, T>,
+) -> Vec<Identity<T>> {
     identities
         .iter()
         .cloned()

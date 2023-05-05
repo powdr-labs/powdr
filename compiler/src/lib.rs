@@ -11,10 +11,10 @@ use pil_analyzer::json_exporter;
 pub use verify::{compile_asm_string_temp, verify, verify_asm_string};
 
 use executor::constant_evaluator;
-use number::{DegreeType, FieldElement, FieldElementTrait};
+use number::{DegreeType, FieldElement};
 use parser::ast::PILFile;
 
-pub fn no_callback() -> Option<fn(&str) -> Option<FieldElement>> {
+pub fn no_callback<T>() -> Option<fn(&str) -> Option<T>> {
     None
 }
 
@@ -22,10 +22,10 @@ pub fn no_callback() -> Option<fn(&str) -> Option<FieldElement>> {
 /// constants and committed polynomials.
 /// @returns true if all committed/witness and constant/fixed polynomials
 /// could be generated.
-pub fn compile_pil(
+pub fn compile_pil<T: FieldElement>(
     pil_file: &Path,
     output_dir: &Path,
-    query_callback: Option<impl FnMut(&str) -> Option<FieldElement>>,
+    query_callback: Option<impl FnMut(&str) -> Option<T>>,
 ) -> bool {
     compile(
         &pil_analyzer::analyze(pil_file),
@@ -35,11 +35,11 @@ pub fn compile_pil(
     )
 }
 
-pub fn compile_pil_ast(
-    pil: &PILFile,
+pub fn compile_pil_ast<T: FieldElement>(
+    pil: &PILFile<T>,
     file_name: &OsStr,
     output_dir: &Path,
-    query_callback: Option<impl FnMut(&str) -> Option<FieldElement>>,
+    query_callback: Option<impl FnMut(&str) -> Option<T>>,
 ) -> bool {
     // TODO exporting this to string as a hack because the parser
     // is tied into the analyzer due to imports.
@@ -53,9 +53,9 @@ pub fn compile_pil_ast(
 
 /// Compiles a .asm file, outputs the PIL on stdout and tries to generate
 /// fixed and witness columns.
-pub fn compile_asm(
+pub fn compile_asm<T: FieldElement>(
     file_name: &str,
-    inputs: Vec<FieldElement>,
+    inputs: Vec<T>,
     output_dir: &Path,
     force_overwrite: bool,
 ) {
@@ -65,10 +65,10 @@ pub fn compile_asm(
 
 /// Compiles the contents of a .asm file, outputs the PIL on stdout and tries to generate
 /// fixed and witness columns.
-pub fn compile_asm_string(
+pub fn compile_asm_string<T: FieldElement>(
     file_name: &str,
     contents: &str,
-    inputs: Vec<FieldElement>,
+    inputs: Vec<T>,
     output_dir: &Path,
     force_overwrite: bool,
 ) {
@@ -90,7 +90,7 @@ pub fn compile_asm_string(
     }
     fs::write(pil_file_name.clone(), format!("{pil}")).unwrap();
 
-    let query_callback = |query: &str| -> Option<FieldElement> {
+    let query_callback = |query: &str| -> Option<T> {
         let items = query.split(',').map(|s| s.trim()).collect::<Vec<_>>();
         match items[0] {
             "\"input\"" => {
@@ -121,11 +121,11 @@ pub fn compile_asm_string(
     );
 }
 
-fn compile(
-    analyzed: &pil_analyzer::Analyzed,
+fn compile<T: FieldElement>(
+    analyzed: &pil_analyzer::Analyzed<T>,
     file_name: &OsStr,
     output_dir: &Path,
-    query_callback: Option<impl FnMut(&str) -> Option<FieldElement>>,
+    query_callback: Option<impl FnMut(&str) -> Option<T>>,
 ) -> bool {
     let mut success = true;
     let start = Instant::now();
@@ -164,10 +164,10 @@ fn compile(
     success
 }
 
-fn write_polys_file(
+fn write_polys_file<T: FieldElement>(
     file: &mut impl Write,
     degree: DegreeType,
-    polys: &Vec<(&str, Vec<FieldElement>)>,
+    polys: &Vec<(&str, Vec<T>)>,
 ) {
     for i in 0..degree as usize {
         for (_name, constant) in polys {

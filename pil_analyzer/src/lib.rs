@@ -10,11 +10,11 @@ use std::{collections::HashMap, fmt::Display};
 use number::{DegreeType, FieldElement};
 pub use parser::ast::{BinaryOperator, UnaryOperator};
 
-pub fn analyze(path: &Path) -> Analyzed {
+pub fn analyze<T: FieldElement>(path: &Path) -> Analyzed<T> {
     pil_analyzer::process_pil_file(path)
 }
 
-pub fn analyze_string(contents: &str) -> Analyzed {
+pub fn analyze_string<T: FieldElement>(contents: &str) -> Analyzed<T> {
     pil_analyzer::process_pil_file_contents(contents)
 }
 
@@ -24,18 +24,18 @@ pub enum StatementIdentifier {
     Identity(usize),
 }
 
-pub struct Analyzed {
+pub struct Analyzed<T> {
     /// Constants are not namespaced!
-    pub constants: HashMap<String, FieldElement>,
-    pub definitions: HashMap<String, (Polynomial, Option<FunctionValueDefinition>)>,
+    pub constants: HashMap<String, T>,
+    pub definitions: HashMap<String, (Polynomial, Option<FunctionValueDefinition<T>>)>,
     pub public_declarations: HashMap<String, PublicDeclaration>,
-    pub identities: Vec<Identity>,
+    pub identities: Vec<Identity<T>>,
     /// The order in which definitions and identities
     /// appear in the source.
     pub source_order: Vec<StatementIdentifier>,
 }
 
-impl Analyzed {
+impl<T> Analyzed<T> {
     /// @returns the number of committed polynomials (with multiplicities for arrays)
     pub fn commitment_count(&self) -> usize {
         self.declaration_type_count(PolynomialType::Committed)
@@ -51,20 +51,20 @@ impl Analyzed {
 
     pub fn constant_polys_in_source_order(
         &self,
-    ) -> Vec<&(Polynomial, Option<FunctionValueDefinition>)> {
+    ) -> Vec<&(Polynomial, Option<FunctionValueDefinition<T>>)> {
         self.definitions_in_source_order(PolynomialType::Constant)
     }
 
     pub fn committed_polys_in_source_order(
         &self,
-    ) -> Vec<&(Polynomial, Option<FunctionValueDefinition>)> {
+    ) -> Vec<&(Polynomial, Option<FunctionValueDefinition<T>>)> {
         self.definitions_in_source_order(PolynomialType::Committed)
     }
 
     pub fn definitions_in_source_order(
         &self,
         poly_type: PolynomialType,
-    ) -> Vec<&(Polynomial, Option<FunctionValueDefinition>)> {
+    ) -> Vec<&(Polynomial, Option<FunctionValueDefinition<T>>)> {
         self.source_order
             .iter()
             .filter_map(move |statement| {
@@ -109,19 +109,19 @@ impl Polynomial {
     }
 }
 
-pub enum FunctionValueDefinition {
-    Mapping(Expression),
-    Array(Vec<RepeatedArray>),
-    Query(Expression),
+pub enum FunctionValueDefinition<T> {
+    Mapping(Expression<T>),
+    Array(Vec<RepeatedArray<T>>),
+    Query(Expression<T>),
 }
 
 /// An array of elements that might be repeated (the whole list is repeated).
-pub struct RepeatedArray {
-    pub values: Vec<Expression>,
+pub struct RepeatedArray<T> {
+    pub values: Vec<Expression<T>>,
     pub repetitions: DegreeType,
 }
 
-impl RepeatedArray {
+impl<T> RepeatedArray<T> {
     /// Returns the number of elements in this array (including repetitions).
     pub fn size(&self) -> DegreeType {
         if self.repetitions == 0 {
@@ -144,15 +144,15 @@ pub struct PublicDeclaration {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
-pub struct Identity {
+pub struct Identity<T> {
     /// The ID is specific to the kind.
     pub id: u64,
     pub kind: IdentityKind,
     pub source: SourceRef,
     /// For a simple polynomial identity, the selector contains
     /// the actual expression.
-    pub left: SelectedExpressions,
-    pub right: SelectedExpressions,
+    pub left: SelectedExpressions<T>,
+    pub right: SelectedExpressions<T>,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
@@ -164,25 +164,25 @@ pub enum IdentityKind {
 }
 
 #[derive(Debug, Default, PartialEq, Eq, Clone)]
-pub struct SelectedExpressions {
-    pub selector: Option<Expression>,
-    pub expressions: Vec<Expression>,
+pub struct SelectedExpressions<T> {
+    pub selector: Option<Expression<T>>,
+    pub expressions: Vec<Expression<T>>,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
-pub enum Expression {
+pub enum Expression<T> {
     Constant(String),
     PolynomialReference(PolynomialReference),
     LocalVariableReference(u64),
     PublicReference(String),
-    Number(FieldElement),
+    Number(T),
     String(String),
-    Tuple(Vec<Expression>),
-    BinaryOperation(Box<Expression>, BinaryOperator, Box<Expression>),
-    UnaryOperation(UnaryOperator, Box<Expression>),
+    Tuple(Vec<Expression<T>>),
+    BinaryOperation(Box<Expression<T>>, BinaryOperator, Box<Expression<T>>),
+    UnaryOperation(UnaryOperator, Box<Expression<T>>),
     /// Call to a non-macro function (like a constant polynomial)
-    FunctionCall(String, Vec<Expression>),
-    MatchExpression(Box<Expression>, Vec<(Option<FieldElement>, Expression)>),
+    FunctionCall(String, Vec<Expression<T>>),
+    MatchExpression(Box<Expression<T>>, Vec<(Option<T>, Expression<T>)>),
 }
 
 #[derive(Debug, Clone, Eq)]

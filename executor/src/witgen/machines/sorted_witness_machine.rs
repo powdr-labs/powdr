@@ -24,18 +24,18 @@ use pil_analyzer::{
 /// Where
 ///  - NOTLAST is zero only on the last row
 ///  - POSITIVE has all values from 1 to half of the field size.
-pub struct SortedWitnesses {
+pub struct SortedWitnesses<T> {
     key_col: PolynomialReference,
     /// Position of the witness columns in the data.
     /// The key column has a position of usize::max
     witness_positions: HashMap<PolynomialReference, usize>,
-    data: BTreeMap<FieldElement, Vec<Option<FieldElement>>>,
+    data: BTreeMap<T, Vec<Option<T>>>,
 }
 
-impl SortedWitnesses {
+impl<T: FieldElement> SortedWitnesses<T> {
     pub fn try_new(
-        fixed_data: &FixedData,
-        identities: &[&Identity],
+        fixed_data: &FixedData<T>,
+        identities: &[&Identity<T>],
         witness_names: &HashSet<&PolynomialReference>,
     ) -> Option<Box<Self>> {
         if identities.len() != 1 {
@@ -59,7 +59,10 @@ impl SortedWitnesses {
     }
 }
 
-fn check_identity<'a>(fixed_data: &FixedData, id: &'a Identity) -> Option<&'a PolynomialReference> {
+fn check_identity<'a, T: FieldElement>(
+    fixed_data: &FixedData<T>,
+    id: &'a Identity<T>,
+) -> Option<&'a PolynomialReference> {
     // Looking for NOTLAST { A' - A } in { POSITIVE }
     if id.kind != IdentityKind::Plookup
         || id.right.selector.is_some()
@@ -93,7 +96,7 @@ fn check_identity<'a>(fixed_data: &FixedData, id: &'a Identity) -> Option<&'a Po
 
 /// Checks that the identity has a constraint of the form `a' - a` as the first expression
 /// on the left hand side and returns the name of the witness column.
-fn check_constraint(constraint: &Expression) -> Option<&PolynomialReference> {
+fn check_constraint<T: FieldElement>(constraint: &Expression<T>) -> Option<&PolynomialReference> {
     let symbolic_ev = SymbolicEvaluator;
     let sort_constraint = match ExpressionEvaluator::new(symbolic_ev).evaluate(constraint) {
         Ok(c) => c,
@@ -119,15 +122,15 @@ fn check_constraint(constraint: &Expression) -> Option<&PolynomialReference> {
     Some(key_column_id)
 }
 
-impl Machine for SortedWitnesses {
+impl<T: FieldElement> Machine<T> for SortedWitnesses<T> {
     fn process_plookup<'a>(
         &mut self,
-        _fixed_data: &FixedData,
-        _fixed_lookup: &mut FixedLookup,
+        _fixed_data: &FixedData<T>,
+        _fixed_lookup: &mut FixedLookup<T>,
         kind: IdentityKind,
-        left: &[AffineResult<&'a PolynomialReference>],
-        right: &SelectedExpressions,
-    ) -> Option<EvalResult<&'a PolynomialReference>> {
+        left: &[AffineResult<&'a PolynomialReference, T>],
+        right: &SelectedExpressions<T>,
+    ) -> Option<EvalResult<'a, T>> {
         if kind != IdentityKind::Plookup || right.selector.is_some() {
             return None;
         }
@@ -149,7 +152,7 @@ impl Machine for SortedWitnesses {
 
         Some(self.process_plookup_internal(left, right, rhs))
     }
-    fn witness_col_values(&mut self, fixed_data: &FixedData) -> HashMap<String, Vec<FieldElement>> {
+    fn witness_col_values(&mut self, fixed_data: &FixedData<T>) -> HashMap<String, Vec<T>> {
         let mut result = HashMap::new();
 
         let (mut keys, mut values): (Vec<_>, Vec<_>) =
@@ -175,13 +178,13 @@ impl Machine for SortedWitnesses {
     }
 }
 
-impl SortedWitnesses {
+impl<T: FieldElement> SortedWitnesses<T> {
     fn process_plookup_internal<'a>(
         &mut self,
-        left: &[AffineResult<&'a PolynomialReference>],
-        right: &SelectedExpressions,
+        left: &[AffineResult<&'a PolynomialReference, T>],
+        right: &SelectedExpressions<T>,
         rhs: Vec<&PolynomialReference>,
-    ) -> EvalResult<&'a PolynomialReference> {
+    ) -> EvalResult<'a, T> {
         // Fail if the LHS has an error.
         let (left, errors): (Vec<_>, Vec<_>) = left.iter().partition_map(|x| match x {
             Ok(x) => Either::Left(x),

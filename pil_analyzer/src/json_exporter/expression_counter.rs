@@ -6,7 +6,7 @@ use crate::{
 };
 
 /// Computes expression IDs for each intermediate polynomial.
-pub fn compute_intermediate_expression_ids(analyzed: &Analyzed) -> HashMap<u64, u64> {
+pub fn compute_intermediate_expression_ids<T>(analyzed: &Analyzed<T>) -> HashMap<u64, u64> {
     let mut expression_counter: usize = 0;
     let mut ids = HashMap::new();
     for item in &analyzed.source_order {
@@ -32,7 +32,7 @@ trait ExpressionCounter {
     fn expression_count(&self) -> usize;
 }
 
-impl ExpressionCounter for Identity {
+impl<T> ExpressionCounter for Identity<T> {
     fn expression_count(&self) -> usize {
         self.left.expression_count() + self.right.expression_count()
     }
@@ -50,19 +50,19 @@ impl ExpressionCounter for PublicDeclaration {
     }
 }
 
-impl ExpressionCounter for SelectedExpressions {
+impl<T> ExpressionCounter for SelectedExpressions<T> {
     fn expression_count(&self) -> usize {
         self.selector.expression_count() + self.expressions.expression_count()
     }
 }
 
-impl ExpressionCounter for Vec<Expression> {
+impl<T> ExpressionCounter for Vec<Expression<T>> {
     fn expression_count(&self) -> usize {
         self.len()
     }
 }
 
-impl ExpressionCounter for Option<Expression> {
+impl<T> ExpressionCounter for Option<Expression<T>> {
     fn expression_count(&self) -> usize {
         (self.is_some()).into()
     }

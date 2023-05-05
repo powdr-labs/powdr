@@ -1,28 +1,38 @@
-use number::{FieldElement, FieldElementTrait};
+use std::marker::PhantomData;
+
+use number::FieldElement;
 use pil_analyzer::{BinaryOperator, Expression, PolynomialReference, UnaryOperator};
 
 use super::{affine_expression::AffineResult, IncompleteCause};
 
-pub trait SymbolicVariables {
+pub trait SymbolicVariables<T> {
     /// Value of a polynomial (fixed or witness).
-    fn value<'a>(&self, poly: &'a PolynomialReference) -> AffineResult<&'a PolynomialReference>;
+    fn value<'a>(&self, poly: &'a PolynomialReference) -> AffineResult<&'a PolynomialReference, T>;
 }
 
-pub struct ExpressionEvaluator<SV> {
+pub struct ExpressionEvaluator<T, SV> {
     variables: SV,
+    marker: PhantomData<T>,
 }
 
-impl<SV> ExpressionEvaluator<SV>
+impl<T, SV> ExpressionEvaluator<T, SV>
 where
-    SV: SymbolicVariables,
+    SV: SymbolicVariables<T>,
+    T: FieldElement,
 {
     pub fn new(variables: SV) -> Self {
-        Self { variables }
+        Self {
+            variables,
+            marker: PhantomData,
+        }
     }
     /// Tries to evaluate the expression to an expression affine in the witness polynomials,
     /// taking current values of polynomials into account.
     /// @returns an expression affine in the witness polynomials
-    pub fn evaluate<'a>(&self, expr: &'a Expression) -> AffineResult<&'a PolynomialReference> {
+    pub fn evaluate<'a>(
+        &self,
+        expr: &'a Expression<T>,
+    ) -> AffineResult<&'a PolynomialReference, T> {
         // @TODO if we iterate on processing the constraints in the same row,
         // we could store the simplified values.
         match expr {
@@ -41,10 +51,10 @@ where
 
     fn evaluate_binary_operation<'a>(
         &self,
-        left: &'a Expression,
+        left: &'a Expression<T>,
         op: &BinaryOperator,
-        right: &'a Expression,
-    ) -> AffineResult<&'a PolynomialReference> {
+        right: &'a Expression<T>,
+    ) -> AffineResult<&'a PolynomialReference, T> {
         match (self.evaluate(left), op, self.evaluate(right)) {
             // Special case for multiplication: It is enough for one to be known zero.
             (Ok(zero), BinaryOperator::Mul, _) | (_, BinaryOperator::Mul, Ok(zero))
@@ -68,7 +78,7 @@ where
                     if let (Some(l), Some(r)) = (left.constant_value(), right.constant_value()) {
                         // TODO Maybe warn about division by zero here.
                         if l == 0.into() {
-                            Ok(0.into())
+                            Ok(T::from(0).into())
                         } else {
                             // TODO We have to do division in the proper field.
                             Ok((l / r).into())
@@ -93,10 +103,8 @@ where
                     if let (Some(left), Some(right)) =
                         (left.constant_value(), right.constant_value())
                     {
-                        let result: FieldElement = match op {
-                            BinaryOperator::Mod => {
-                                (left.to_arbitrary_integer() % right.to_arbitrary_integer()).into()
-                            }
+                        let result: T = match op {
+                            BinaryOperator::Mod => left.integer_mod(right),
                             BinaryOperator::BinaryAnd => {
                                 (left.to_integer() & right.to_integer()).into()
                             }
@@ -128,8 +136,8 @@ where
     fn evaluate_unary_operation<'a>(
         &self,
         op: &UnaryOperator,
-        expr: &'a Expression,
-    ) -> AffineResult<&'a PolynomialReference> {
+        expr: &'a Expression<T>,
+    ) -> AffineResult<&'a PolynomialReference, T> {
         self.evaluate(expr).map(|v| match op {
             UnaryOperator::Plus => v,
             UnaryOperator::Minus => -v,

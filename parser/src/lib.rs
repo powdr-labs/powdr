@@ -2,6 +2,7 @@
 
 use lalrpop_util::*;
 
+use number::FieldElement;
 use parser_util::{handle_parse_error, ParseError};
 
 pub mod asm_ast;
@@ -14,16 +15,19 @@ lalrpop_mod!(
     "/powdr.rs"
 );
 
-pub fn parse<'a>(file_name: Option<&str>, input: &'a str) -> Result<ast::PILFile, ParseError<'a>> {
+pub fn parse<'a, T: FieldElement>(
+    file_name: Option<&str>,
+    input: &'a str,
+) -> Result<ast::PILFile<T>, ParseError<'a>> {
     powdr::PILFileParser::new()
         .parse(input)
         .map_err(|err| handle_parse_error(err, file_name, input))
 }
 
-pub fn parse_asm<'a>(
+pub fn parse_asm<'a, T: FieldElement>(
     file_name: Option<&str>,
     input: &'a str,
-) -> Result<asm_ast::ASMFile, ParseError<'a>> {
+) -> Result<asm_ast::ASMFile<T>, ParseError<'a>> {
     powdr::ASMFileParser::new()
         .parse(input)
         .map_err(|err| handle_parse_error(err, file_name, input))
@@ -35,15 +39,20 @@ mod test {
 
     use super::{asm_ast::ASMFile, *};
     use ast::*;
+    use number::GoldilocksField;
 
     #[test]
     fn empty() {
-        assert!(powdr::PILFileParser::new().parse("").is_ok());
+        assert!(powdr::PILFileParser::new()
+            .parse::<GoldilocksField>("")
+            .is_ok());
     }
 
     #[test]
     fn simple_include() {
-        let parsed = powdr::PILFileParser::new().parse("include \"x\";").unwrap();
+        let parsed = powdr::PILFileParser::new()
+            .parse::<GoldilocksField>("include \"x\";")
+            .unwrap();
         assert_eq!(
             parsed,
             PILFile(vec![Statement::Include(0, "x".to_string())])
@@ -53,7 +62,7 @@ mod test {
     #[test]
     fn start_offsets() {
         let parsed = powdr::PILFileParser::new()
-            .parse("include \"x\"; pol commit t;")
+            .parse::<GoldilocksField>("include \"x\"; pol commit t;")
             .unwrap();
         assert_eq!(
             parsed,
@@ -73,7 +82,9 @@ mod test {
 
     #[test]
     fn simple_plookup() {
-        let parsed = powdr::PILFileParser::new().parse("f in g;").unwrap();
+        let parsed = powdr::PILFileParser::new()
+            .parse::<GoldilocksField>("f in g;")
+            .unwrap();
         assert_eq!(
             parsed,
             PILFile(vec![Statement::PlookupIdentity(
@@ -96,7 +107,7 @@ mod test {
         );
     }
 
-    fn parse_file(name: &str) -> PILFile {
+    fn parse_file(name: &str) -> PILFile<GoldilocksField> {
         let file = std::path::PathBuf::from("../test_data/").join(name);
 
         let input = fs::read_to_string(file).unwrap();
@@ -107,7 +118,7 @@ mod test {
         })
     }
 
-    fn parse_asm_file(name: &str) -> ASMFile {
+    fn parse_asm_file(name: &str) -> ASMFile<GoldilocksField> {
         let file = std::path::PathBuf::from("../test_data/").join(name);
 
         let input = fs::read_to_string(file).unwrap();
@@ -141,7 +152,7 @@ mod test {
     #[test]
     fn simple_macro() {
         let parsed = powdr::PILFileParser::new()
-            .parse("macro f(x) { x in g; x + 1 };")
+            .parse::<GoldilocksField>("macro f(x) { x in g; x + 1 };")
             .unwrap();
         assert_eq!(
             parsed,
