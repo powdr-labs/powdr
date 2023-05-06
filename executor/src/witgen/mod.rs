@@ -6,7 +6,7 @@ use pil_analyzer::{Analyzed, Expression, FunctionValueDefinition, PolyID, Polyno
 pub use self::eval_result::{
     Constraint, Constraints, EvalError, EvalResult, EvalStatus, EvalValue, IncompleteCause,
 };
-use self::util::WitnessColumnNamer;
+use self::util::{substitute_constants, WitnessColumnNamer};
 
 mod affine_expression;
 mod bit_constraints;
@@ -41,14 +41,14 @@ pub fn generate<'a>(
         .collect();
     let fixed = FixedData::new(
         degree,
-        &analyzed.constants,
         fixed_cols.iter().map(|(_, v)| v).collect(),
         fixed_cols.iter().map(|(n, _)| *n).collect(),
         &witness_cols,
         witness_cols.iter().map(|w| (w.name, w.id)).collect(),
     );
+    let identities = substitute_constants(&analyzed.identities, &analyzed.constants);
     let (global_bit_constraints, identities) =
-        bit_constraints::determine_global_constraints(&fixed, analyzed.identities.iter().collect());
+        bit_constraints::determine_global_constraints(&fixed, identities.iter().collect());
     let (mut fixed_lookup, machines, identities) = machines::machine_extractor::split_out_machines(
         &fixed,
         identities,
@@ -128,7 +128,6 @@ fn rows_are_repeating(values: &[(&str, Vec<FieldElement>)]) -> Option<usize> {
 /// Data that is fixed for witness generation.
 pub struct FixedData<'a> {
     degree: DegreeType,
-    constants: &'a HashMap<String, FieldElement>,
     fixed_col_values: Vec<&'a Vec<FieldElement>>,
     fixed_col_names: Vec<&'a str>,
     witness_cols: &'a Vec<WitnessColumn<'a>>,
@@ -138,7 +137,6 @@ pub struct FixedData<'a> {
 impl<'a> FixedData<'a> {
     pub fn new(
         degree: DegreeType,
-        constants: &'a HashMap<String, FieldElement>,
         fixed_col_values: Vec<&'a Vec<FieldElement>>,
         fixed_col_names: Vec<&'a str>,
         witness_cols: &'a Vec<WitnessColumn<'a>>,
@@ -146,7 +144,6 @@ impl<'a> FixedData<'a> {
     ) -> Self {
         FixedData {
             degree,
-            constants,
             fixed_col_values,
             fixed_col_names,
             witness_cols,

@@ -1,4 +1,8 @@
-use pil_analyzer::{util::expr_any, Expression, PolyID, PolynomialReference};
+use std::collections::HashMap;
+
+use number::FieldElement;
+use pil_analyzer::util::{expr_any, previsit_expressions_in_identity_mut};
+use pil_analyzer::{Expression, Identity, PolyID, PolynomialReference};
 
 pub trait WitnessColumnNamer {
     fn name(&self, i: usize) -> String;
@@ -75,4 +79,23 @@ pub fn is_simple_poly_of_name(expr: &Expression, poly_name: &str) -> bool {
     } else {
         false
     }
+}
+
+pub fn substitute_constants(
+    identities: &[Identity],
+    constants: &HashMap<String, FieldElement>,
+) -> Vec<Identity> {
+    identities
+        .iter()
+        .cloned()
+        .map(|mut identity| {
+            previsit_expressions_in_identity_mut(&mut identity, &mut |e| {
+                if let Expression::Constant(name) = e {
+                    *e = Expression::Number(constants[name])
+                }
+                std::ops::ControlFlow::Continue::<()>(())
+            });
+            identity
+        })
+        .collect()
 }

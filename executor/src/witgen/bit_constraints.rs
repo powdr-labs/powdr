@@ -428,7 +428,6 @@ namespace Global(2**20);
             .collect();
         let fixed_data = FixedData::new(
             degree,
-            &analyzed.constants,
             constants.iter().map(|(_n, v)| v).collect(),
             constants.iter().map(|(n, _v)| *n).collect(),
             &witness_cols,

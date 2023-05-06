@@ -7,8 +7,6 @@ use super::{
 };
 
 pub trait SymbolicVariables {
-    /// Acutal constant, not fixed polynomial
-    fn constant(&self, name: &str) -> AffineResult;
     /// Value of a polynomial (fixed or witness).
     fn value(&self, poly: &PolynomialReference) -> AffineResult;
     fn format(&self, expr: AffineExpression) -> String;
@@ -29,7 +27,7 @@ impl<SV: SymbolicVariables> ExpressionEvaluator<SV> {
         // @TODO if we iterate on processing the constraints in the same row,
         // we could store the simplified values.
         match expr {
-            Expression::Constant(name) => self.variables.constant(name),
+            Expression::Constant(_) => panic!("Constants should have been replaced."),
             Expression::PolynomialReference(poly) => self.variables.value(poly),
             Expression::Number(n) => Ok((*n).into()),
             Expression::BinaryOperation(left, op, right) => {
