@@ -431,12 +431,12 @@ impl ASMPILConverter {
                         // TODO overflow?
                         right
                             .into_iter()
-                            .map(|(coeff, comp)| (f * coeff, comp))
+                            .map(|(coeff, comp)| (*f * coeff, comp))
                             .collect()
                     } else if let [(f, AffineExpressionComponent::Constant)] = &right[..] {
                         // TODO overflow?
                         left.into_iter()
-                            .map(|(coeff, comp)| (f * coeff, comp))
+                            .map(|(coeff, comp)| (*f * coeff, comp))
                             .collect()
                     } else {
                         panic!("Multiplication by non-constant.");
@@ -451,7 +451,7 @@ impl ASMPILConverter {
                     ) = (&left[..], &right[..])
                     {
                         // TODO overflow?
-                        if r.to_integer() > (u32::MAX).into() {
+                        if r.to_arbitrary_integer() > (u32::MAX).into() {
                             panic!("Exponent too large");
                         }
                         vec![(l.pow(r.to_integer()), AffineExpressionComponent::Constant)]
@@ -581,10 +581,10 @@ impl ASMPILConverter {
                             program_constants
                                 .get_mut(&format!("p_{assign_reg}_read_free"))
                                 .unwrap()[i] += *coeff;
-                            free_value_query_arms.get_mut(assign_reg).unwrap().push((
-                                Some(build_number(FieldElement::from(i as u64))),
-                                expr.clone(),
-                            ));
+                            free_value_query_arms
+                                .get_mut(assign_reg)
+                                .unwrap()
+                                .push((Some(build_number(i as u64)), expr.clone()));
                         }
                     }
                 }
@@ -612,7 +612,7 @@ impl ASMPILConverter {
                 {
                     program_constants
                         .get_mut(&format!("p_instr_{instr}_param_{}", param.clone()))
-                        .unwrap()[i] = (label_positions[arg] as i64).into();
+                        .unwrap()[i] = (label_positions[arg] as u64).into();
                 }
             } else {
                 assert!(line.instruction_literal_args.is_empty());

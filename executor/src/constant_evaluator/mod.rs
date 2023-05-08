@@ -134,7 +134,9 @@ impl<'a> Evaluator<'a> {
             BinaryOperator::Mul => left * right,
             BinaryOperator::Div => left.integer_div(right),
             BinaryOperator::Pow => left.pow(right.to_integer()),
-            BinaryOperator::Mod => (left.to_integer() % right.to_integer()).into(),
+            BinaryOperator::Mod => {
+                (left.to_arbitrary_integer() % right.to_arbitrary_integer()).into()
+            }
             BinaryOperator::BinaryAnd => (left.to_integer() & right.to_integer()).into(),
             BinaryOperator::BinaryXor => (left.to_integer() ^ right.to_integer()).into(),
             BinaryOperator::BinaryOr => (left.to_integer() | right.to_integer()).into(),

@@ -2,8 +2,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::{Display, Formatter};
 
 use crate::witgen::util::contains_next_ref;
-use num_traits::Zero;
-use number::{AbstractNumberType, FieldElement, FieldElementTrait};
+use number::{BigInt, FieldElement, FieldElementTrait};
 use pil_analyzer::{BinaryOperator, Expression, Identity, IdentityKind, PolynomialReference};
 
 use super::expression_evaluator::ExpressionEvaluator;
@@ -17,26 +16,28 @@ use super::{Constraint, FixedData};
 /// The least significant bit is bit zero.
 #[derive(PartialEq, Eq, Clone)]
 pub struct BitConstraint {
-    mask: AbstractNumberType,
+    mask: <FieldElement as FieldElementTrait>::Integer,
 }
 
 impl BitConstraint {
     pub fn from_max_bit(max_bit: u64) -> Self {
         assert!(max_bit < 1024);
         BitConstraint {
-            mask: AbstractNumberType::from(((1 << (max_bit + 1)) - 1) as u32),
+            mask: <FieldElement as FieldElementTrait>::Integer::from(
+                ((1 << (max_bit + 1)) - 1) as u32,
+            ),
         }
     }
 
-    pub fn from_mask<M: Into<AbstractNumberType>>(mask: M) -> Self {
+    pub fn from_mask<M: Into<<FieldElement as FieldElementTrait>::Integer>>(mask: M) -> Self {
         BitConstraint { mask: mask.into() }
     }
 
     /// The bit constraint of the sum of two expressions.
     pub fn try_combine_sum(&self, other: &BitConstraint) -> Option<BitConstraint> {
-        if (&self.mask & &other.mask).is_zero() {
+        if self.mask & other.mask == 0u32.into() {
             Some(BitConstraint {
-                mask: &self.mask | &other.mask,
+                mask: self.mask | other.mask,
             })
         } else {
             None
@@ -46,21 +47,23 @@ impl BitConstraint {
     /// Returns the conjunction of this constraint and the other.
     pub fn conjunction(self, other: &BitConstraint) -> BitConstraint {
         BitConstraint {
-            mask: self.mask & &other.mask,
+            mask: self.mask & other.mask,
         }
     }
 
     /// The bit constraint of an integer multiple of an expression.
     /// TODO this assumes goldilocks
     pub fn multiple(&self, factor: FieldElement) -> Option<BitConstraint> {
-        if factor.to_integer() * &self.mask >= FieldElement::modulus() {
+        if factor.to_arbitrary_integer() * self.mask.into_biguint()
+            >= FieldElement::modulus().into_biguint()
+        {
             None
         } else {
             // TODO use binary logarithm
             (0..64).find_map(|i| {
                 if factor == (1u64 << i).into() {
                     Some(BitConstraint {
-                        mask: &self.mask << i,
+                        mask: self.mask << i,
                     })
                 } else {
                     None
@@ -69,21 +72,21 @@ impl BitConstraint {
         }
     }
 
-    pub fn mask(&self) -> &AbstractNumberType {
+    pub fn mask(&self) -> &<FieldElement as FieldElementTrait>::Integer {
         &self.mask
     }
 }
 
 impl Display for BitConstraint {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "0x{:x}", self.mask())
+        write!(f, "0x{:x}", self.mask().into_biguint())
     }
 }
 
 impl core::fmt::Debug for BitConstraint {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("BitConstraint")
-            .field("mask", &format!("0x{:x}", &self.mask))
+            .field("mask", &format!("0x{:x}", self.mask))
             .finish()
     }
 }
@@ -164,16 +167,14 @@ pub fn determine_global_constraints<'a>(
 /// TODO do this on the symbolic definition instead of the values.
 fn process_fixed_column(fixed: &[FieldElement]) -> Option<(BitConstraint, bool)> {
     if let Some(bit) = smallest_period_candidate(fixed) {
-        let mask: AbstractNumberType = AbstractNumberType::from(((1 << bit) - 1) as u32);
-        if fixed
-            .iter()
-            .enumerate()
-            .all(|(i, v)| v.to_integer() == AbstractNumberType::from(i) & &mask)
-        {
+        let mask = <FieldElement as FieldElementTrait>::Integer::from(((1 << bit) - 1) as u32);
+        if fixed.iter().enumerate().all(|(i, v)| {
+            v.to_integer() == <FieldElement as FieldElementTrait>::Integer::from(i as u32) & mask
+        }) {
             return Some((BitConstraint::from_mask(mask), true));
         }
     }
-    let mut mask = AbstractNumberType::zero();
+    let mut mask = <FieldElement as FieldElementTrait>::Integer::from(0u32);
     for v in fixed.iter() {
         mask |= v.to_integer();
     }
@@ -330,7 +331,7 @@ mod test {
         let fixed = [0, 0, 0, 0].iter().map(|v| (*v).into()).collect::<Vec<_>>();
         assert_eq!(
             process_fixed_column(&fixed),
-            Some((BitConstraint::from_mask(0 as u32), false))
+            Some((BitConstraint::from_mask(0_u32), false))
         );
     }
 
@@ -342,7 +343,7 @@ mod test {
             .collect::<Vec<_>>();
         assert_eq!(
             process_fixed_column(&fixed),
-            Some((BitConstraint::from_mask(1 as u32), true))
+            Some((BitConstraint::from_mask(1_u32), true))
         );
     }
 
@@ -354,7 +355,7 @@ mod test {
             .collect::<Vec<_>>();
         assert_eq!(
             process_fixed_column(&fixed),
-            Some((BitConstraint::from_mask(3 as u32), true))
+            Some((BitConstraint::from_mask(3_u32), true))
         );
     }
 
@@ -366,7 +367,7 @@ mod test {
             .collect::<Vec<_>>();
         assert_eq!(
             process_fixed_column(&fixed),
-            Some((BitConstraint::from_mask(0x1106 as u32), false))
+            Some((BitConstraint::from_mask(0x1106_u32), false))
         );
     }
 
@@ -424,7 +425,7 @@ namespace Global(2**20);
             vec![
                 ("Global.BYTE", BitConstraint::from_max_bit(7)),
                 ("Global.BYTE2", BitConstraint::from_max_bit(15)),
-                ("Global.SHIFTED", BitConstraint::from_mask(0xff0 as u32)),
+                ("Global.SHIFTED", BitConstraint::from_mask(0xff0_u32)),
             ]
             .into_iter()
             .collect::<BTreeMap<_, _>>()
@@ -441,11 +442,11 @@ namespace Global(2**20);
             vec![
                 ("Global.A", BitConstraint::from_max_bit(0)),
                 ("Global.B", BitConstraint::from_max_bit(7)),
-                ("Global.C", BitConstraint::from_mask(0x2ff as u32)),
-                ("Global.D", BitConstraint::from_mask(0xf0 as u32)),
+                ("Global.C", BitConstraint::from_mask(0x2ff_u32)),
+                ("Global.D", BitConstraint::from_mask(0xf0_u32)),
                 ("Global.BYTE", BitConstraint::from_max_bit(7)),
                 ("Global.BYTE2", BitConstraint::from_max_bit(15)),
-                ("Global.SHIFTED", BitConstraint::from_mask(0xff0 as u32)),
+                ("Global.SHIFTED", BitConstraint::from_mask(0xff0_u32)),
             ]
             .into_iter()
             .collect::<BTreeMap<_, _>>()
@@ -455,23 +456,23 @@ namespace Global(2**20);
     #[test]
     fn combinations() {
         let a = BitConstraint::from_max_bit(7);
-        assert_eq!(a, BitConstraint::from_mask(0xff as u32));
+        assert_eq!(a, BitConstraint::from_mask(0xff_u32));
         let b = a.multiple(256.into()).unwrap();
-        assert_eq!(b, BitConstraint::from_mask(0xff00 as u32));
+        assert_eq!(b, BitConstraint::from_mask(0xff00_u32));
         assert_eq!(
             b.try_combine_sum(&a).unwrap(),
-            BitConstraint::from_mask(0xffff as u32)
+            BitConstraint::from_mask(0xffff_u32)
         );
     }
 
     #[test]
     fn weird_combinations() {
-        let a = BitConstraint::from_mask(0xf00f as u32);
+        let a = BitConstraint::from_mask(0xf00f_u32);
         let b = a.multiple(256.into()).unwrap();
-        assert_eq!(b, BitConstraint::from_mask(0xf00f00 as u32));
+        assert_eq!(b, BitConstraint::from_mask(0xf00f00_u32));
         assert_eq!(
             b.try_combine_sum(&a).unwrap(),
-            BitConstraint::from_mask(0xf0ff0f as u32)
+            BitConstraint::from_mask(0xf0ff0f_u32)
         );
     }
 }

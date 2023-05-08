@@ -123,7 +123,7 @@ impl ArrayExpression {
     }
 
     pub fn pad_with_zeroes(self) -> Self {
-        self.pad_with(Expression::Number(0.into()))
+        self.pad_with(Expression::Number(0u32.into()))
     }
 
     fn last(&self) -> Option<&Expression> {

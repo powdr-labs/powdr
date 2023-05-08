@@ -653,12 +653,27 @@ impl PILContext {
                     assert!(right_int <= u32::MAX.into());
                     left.pow(right_int)
                 }
-                BinaryOperator::Mod => (left.to_integer() % right.to_integer()).into(),
-                BinaryOperator::BinaryAnd => (left.to_integer() & right.to_integer()).into(),
-                BinaryOperator::BinaryXor => (left.to_integer() ^ right.to_integer()).into(),
-                BinaryOperator::BinaryOr => (left.to_integer() | right.to_integer()).into(),
-                BinaryOperator::ShiftLeft => (left.to_integer() << right.to_degree()).into(),
-                BinaryOperator::ShiftRight => (left.to_integer() >> right.to_degree()).into(),
+                BinaryOperator::Mod => (left.to_arbitrary_integer() % right.to_arbitrary_integer())
+                    .try_into()
+                    .unwrap(),
+                BinaryOperator::BinaryAnd => (left.to_arbitrary_integer()
+                    & right.to_arbitrary_integer())
+                .try_into()
+                .unwrap(),
+                BinaryOperator::BinaryXor => (left.to_arbitrary_integer()
+                    ^ right.to_arbitrary_integer())
+                .try_into()
+                .unwrap(),
+                BinaryOperator::BinaryOr => (left.to_arbitrary_integer()
+                    | right.to_arbitrary_integer())
+                .try_into()
+                .unwrap(),
+                BinaryOperator::ShiftLeft => (left.to_arbitrary_integer() << right.to_degree())
+                    .try_into()
+                    .unwrap(),
+                BinaryOperator::ShiftRight => (left.to_arbitrary_integer() >> right.to_degree())
+                    .try_into()
+                    .unwrap(),
             })
         } else {
             None

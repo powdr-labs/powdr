@@ -15,7 +15,8 @@ mod test {
     #[test]
     #[should_panic]
     fn integer_div_by_zero() {
-        let _ = GoldilocksField::from(1).to_integer() / GoldilocksField::from(0).to_integer();
+        let _ = GoldilocksField::from(1).to_arbitrary_integer()
+            / GoldilocksField::from(0).to_arbitrary_integer();
     }
 
     #[test]

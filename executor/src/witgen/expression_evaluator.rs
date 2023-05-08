@@ -94,7 +94,9 @@ where
                         (left.constant_value(), right.constant_value())
                     {
                         let result: FieldElement = match op {
-                            BinaryOperator::Mod => (left.to_integer() % right.to_integer()).into(),
+                            BinaryOperator::Mod => {
+                                (left.to_arbitrary_integer() % right.to_arbitrary_integer()).into()
+                            }
                             BinaryOperator::BinaryAnd => {
                                 (left.to_integer() & right.to_integer()).into()
                             }
