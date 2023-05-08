@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
 
+use itertools::Itertools;
 use number::AbstractNumberType;
 // TODO this should probably rather be a finite field element.
 use number::FieldElement;
@@ -267,20 +268,23 @@ impl AffineExpression {
     }
 
     pub fn format(&self, namer: &impl WitnessColumnNamer) -> String {
-        self.nonzero_coefficients()
-            .map(|(i, c)| {
-                let name = namer.name(i);
-                if *c == 1.into() {
-                    name
-                } else if *c == (-1).into() {
-                    format!("-{name}")
-                } else {
-                    format!("{c} * {name}")
-                }
-            })
-            .chain(self.constant_value().map(|v| format!("{v}")))
-            .collect::<Vec<_>>()
-            .join(" + ")
+        if self.is_constant() {
+            self.offset.to_string()
+        } else {
+            self.nonzero_coefficients()
+                .map(|(i, c)| {
+                    let name = namer.name(i);
+                    if *c == 1.into() {
+                        name
+                    } else if *c == (-1).into() {
+                        format!("-{name}")
+                    } else {
+                        format!("{c} * {name}")
+                    }
+                })
+                .chain((self.offset != 0.into()).then_some(self.offset.to_string()))
+                .join(" + ")
+        }
     }
 }
 
