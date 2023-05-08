@@ -3,9 +3,10 @@ use std::fmt::Display;
 
 use itertools::Itertools;
 use num_traits::Zero;
-use number::AbstractNumberType;
+
 use number::FieldElement;
 use number::FieldElementTrait;
+use number::{not, AbstractNumberType};
 
 use super::bit_constraints::BitConstraintSet;
 use super::Constraint;
@@ -254,8 +255,7 @@ where
                 i,
                 Constraint::Assignment(((&offset & mask) / coeff.to_integer()).into()),
             )]));
-            offset &=
-                AbstractNumberType::new(mask.to_u32_digits().into_iter().map(|d| !d).collect());
+            offset &= not(mask.clone())
         }
 
         if !offset.is_zero() {

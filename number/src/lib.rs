@@ -14,3 +14,10 @@ pub type AbstractNumberType = BigUint;
 
 /// The type of polynomial degrees and indices into columns.
 pub type DegreeType = u64;
+
+pub fn not(mut n: AbstractNumberType) -> AbstractNumberType {
+    let len = 256;
+    let ones = BigUint::new(vec![u32::MAX; len as usize / 32]);
+    n ^= ones;
+    n
+}
