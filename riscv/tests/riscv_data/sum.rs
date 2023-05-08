@@ -1,9 +1,9 @@
 #![no_std]
 
-use core::arch::asm;
+use runtime::get_prover_input;
 
 #[no_mangle]
-pub extern "C" fn main() -> ! {
+pub fn main() {
     let mut buffer = [0u32; 100];
     let proposed_sum = get_prover_input(0);
     let len = get_prover_input(1) as usize;
@@ -13,14 +13,4 @@ pub extern "C" fn main() -> ! {
     }
     let sum: u32 = buffer[..len].iter().sum();
     assert!(sum == proposed_sum);
-    loop {}
-}
-
-#[inline]
-fn get_prover_input(index: u32) -> u32 {
-    let mut value: u32;
-    unsafe {
-        asm!("ecall", lateout("a0") value, in("a0") index);
-    }
-    value
 }

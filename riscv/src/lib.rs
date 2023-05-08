@@ -124,6 +124,9 @@ pub fn compile_rust_to_riscv_asm(input_file: &str) -> BTreeMap<String, String> {
 name = "{}"
 version = "0.1.0"
 edition = "2021"
+
+[dependencies]
+runtime = {{ path = "./runtime" }}
             "#,
             Path::new(input_file).file_stem().unwrap().to_str().unwrap()
         ),
@@ -135,6 +138,21 @@ edition = "2021"
     fs::create_dir(&src_file).unwrap();
     src_file.push("lib.rs");
     fs::write(src_file, fs::read_to_string(input_file).unwrap()).unwrap();
+
+    let mut runtime_file = crate_dir.clone();
+    runtime_file.push("runtime");
+    fs::create_dir_all(&runtime_file).unwrap();
+    let mut cargo_file_runtime = runtime_file.clone();
+    cargo_file_runtime.push("Cargo.toml");
+    fs::write(
+        cargo_file_runtime.clone(),
+        include_bytes!("../runtime/Cargo.toml"),
+    )
+    .unwrap();
+    runtime_file.push("src");
+    fs::create_dir(&runtime_file).unwrap();
+    runtime_file.push("lib.rs");
+    fs::write(runtime_file, include_bytes!("../runtime/src/lib.rs")).unwrap();
 
     compile_rust_crate_to_riscv_asm(cargo_file.to_str().unwrap())
 }

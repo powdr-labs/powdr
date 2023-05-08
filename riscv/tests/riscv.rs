@@ -52,6 +52,13 @@ fn test_double_word() {
 
 #[test]
 #[ignore = "Too slow"]
+fn test_memfuncs() {
+    let case = "memfuncs";
+    verify_crate(case, vec![]);
+}
+
+#[test]
+#[ignore = "Too slow"]
 fn test_keccak() {
     let case = "keccak";
     verify_crate(case, vec![]);

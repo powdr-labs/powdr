@@ -29,7 +29,7 @@ pub fn compile_riscv_asm(mut assemblies: BTreeMap<String, String>) -> String {
 
     // Reduce to the code that is actually reachable from main
     // (and the objects that are referred from there)
-    reachability::filter_reachable_from("main", &mut statements, &mut objects);
+    reachability::filter_reachable_from("__runtime_start", &mut statements, &mut objects);
 
     // Replace dynamic references to code labels
     replace_dynamic_label_references(&mut statements, &objects);
@@ -41,7 +41,7 @@ pub fn compile_riscv_asm(mut assemblies: BTreeMap<String, String>) -> String {
             .into_iter()
             .chain([
                 format!("// Set stack pointer\nx2 <=X= {stack_start};"),
-                "jump main;".to_string(),
+                "jump __runtime_start;".to_string(),
             ])
             .chain(
                 insert_data_positions(statements, &data_positions)
@@ -552,100 +552,17 @@ fn runtime() -> &'static str {
     }
     */
     r#"
-.globl rust_begin_unwind
-rust_begin_unwind:
-    unimp
-
 .globl memset@plt
 memset@plt:
-    li	a3, 4
-    blt	a2, a3, __memset_LBB5_5
-    li	a5, 0
-    lui	a3, 4112
-    addi	a3, a3, 257
-    mul	a6, a1, a3
-__memset_LBB5_2:
-    add	a7, a0, a5
-    addi	a3, a5, 4
-    addi	a4, a5, 7
-    sw	a6, 0(a7)
-    mv	a5, a3
-    blt	a4, a2, __memset_LBB5_2
-    bge	a3, a2, __memset_LBB5_6
-__memset_LBB5_4:
-    lui	a4, 16
-    addi	a4, a4, 257
-    mul	a1, a1, a4
-    add	a3, a3, a0
-    slli	a2, a2, 3
-    lw	a4, 0(a3)
-    li	a5, -1
-    sll	a2, a5, a2
-    not	a5, a2
-    and	a2, a2, a4
-    and	a1, a1, a5
-    or	a1, a1, a2
-    sw	a1, 0(a3)
-    ret
-__memset_LBB5_5:
-    li	a3, 0
-    blt	a3, a2, __memset_LBB5_4
-__memset_LBB5_6:
-    ret
+    tail __runtime_memset
 
 .globl memcpy@plt
 memcpy@plt:
-    li	a3, 4
-    blt	a2, a3, __memcpy_LBB2_5
-    li	a4, 0
-__memcpy_LBB2_2:
-    add	a3, a1, a4
-    lw	a6, 0(a3)
-    add	a7, a0, a4
-    addi	a3, a4, 4
-    addi	a5, a4, 7
-    sw	a6, 0(a7)
-    mv	a4, a3
-    blt	a5, a2, __memcpy_LBB2_2
-    bge	a3, a2, __memcpy_LBB2_6
-__memcpy_LBB2_4:
-    add	a1, a1, a3
-    lw	a1, 0(a1)
-    add	a3, a3, a0
-    slli	a2, a2, 3
-    lw	a4, 0(a3)
-    li	a5, -1
-    sll	a2, a5, a2
-    not	a5, a2
-    and	a2, a2, a4
-    and	a1, a1, a5
-    or	a1, a1, a2
-    sw	a1, 0(a3)
-    ret
-__memcpy_LBB2_5:
-    li	a3, 0
-    blt	a3, a2, __memcpy_LBB2_4
-__memcpy_LBB2_6:
-    ret
+    tail __runtime_memcpy
 
 .globl memcmp@plt
 memcmp@plt:
-	beqz	a2, .LBB270_3
-.LBB270_1:
-	lbu	a3, 0(a0)
-	lbu	a4, 0(a1)
-	bne	a3, a4, .LBB270_4
-	addi	a1, a1, 1
-	addi	a2, a2, -1
-	addi	a0, a0, 1
-	bnez	a2, .LBB270_1
-.LBB270_3:
-	li	a0, 0
-	ret
-.LBB270_4:
-	sub	a0, a3, a4
-	ret
-
+	tail __runtime_memcmp
 "#
 }
 

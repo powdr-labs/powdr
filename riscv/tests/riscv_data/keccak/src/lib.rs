@@ -3,7 +3,7 @@
 use tiny_keccak::{Hasher, Keccak};
 
 #[no_mangle]
-pub extern "C" fn main() -> ! {
+pub fn main() {
     let input = b"Solidity";
     let mut output = [0u8; 32];
     let mut hasher = Keccak::v256();
@@ -16,5 +16,4 @@ pub extern "C" fn main() -> ! {
             111, 47, 142, 70, 161, 157, 188, 119, 124, 54, 251, 12, 0,
         ],
     );
-    loop {}
 }
