@@ -51,6 +51,7 @@ impl SortedWitnesses {
                         Some(w.to_string())
                     }
                 })
+                .sorted()
                 .enumerate()
                 .map(|(i, x)| (x, i))
                 .collect();

@@ -9,6 +9,7 @@ use super::FixedData;
 use super::Machine;
 use crate::witgen::bit_constraints::BitConstraint;
 use crate::witgen::WitnessColumn;
+use itertools::Itertools;
 use pil_analyzer::IdentityKind;
 use pil_analyzer::{Expression, Identity, SelectedExpressions};
 
@@ -68,6 +69,7 @@ pub fn split_out_machines<'a>(
             machine_witnesses
                 .iter()
                 .map(|s| s.to_string())
+                .sorted()
                 .collect::<Vec<_>>()
                 .join(", "),
             machine_identities
