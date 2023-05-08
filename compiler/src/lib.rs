@@ -122,7 +122,7 @@ fn compile(
     let start = Instant::now();
     log::info!("Evaluating fixed columns...");
     let (constants, degree) = constant_evaluator::generate(analyzed);
-    println!("Took {}", start.elapsed().as_secs_f32());
+    log::info!("Took {}", start.elapsed().as_secs_f32());
     if analyzed.constant_count() == constants.len() {
         write_polys_file(
             &mut BufWriter::new(&mut fs::File::create(output_dir.join("constants.bin")).unwrap()),
