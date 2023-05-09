@@ -66,7 +66,12 @@ where
             .iter()
             .filter_map(|(i, c)| (!c.is_zero()).then_some((*i, c)))
     }
+}
 
+impl<'x, K> AffineExpression<K>
+where
+    K: Copy + Ord + Display + 'x,
+{
     /// If the affine expression has only a single variable (with nonzero coefficient),
     /// returns the index of the variable and the assignment that evaluates the
     /// affine expression to zero.
@@ -115,7 +120,7 @@ where
         // Try to solve directly.
         match self.solve() {
             Ok(value) if value.is_complete() => return Ok(value),
-            Err(()) => return Err(ConstraintUnsatisfiable(String::new())),
+            Err(()) => return Err(ConstraintUnsatisfiable(self.to_string())),
             Ok(value) => {
                 // sanity check that we are not ignoring anything useful here
                 assert!(value.constraints.is_empty());
