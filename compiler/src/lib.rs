@@ -1,5 +1,6 @@
 //! The main powdr lib, used to compile from assembly to PIL
 
+use std::ffi::OsStr;
 use std::fs;
 use std::io::{BufWriter, Write};
 use std::path::Path;
@@ -28,7 +29,7 @@ pub fn compile_pil(
 ) -> bool {
     compile(
         &pil_analyzer::analyze(pil_file),
-        pil_file.file_name().unwrap().to_str().unwrap(),
+        pil_file.file_name().unwrap(),
         output_dir,
         query_callback,
     )
@@ -36,7 +37,7 @@ pub fn compile_pil(
 
 pub fn compile_pil_ast(
     pil: &PILFile,
-    file_name: &str,
+    file_name: &OsStr,
     output_dir: &Path,
     query_callback: Option<impl FnMut(&str) -> Option<FieldElement>>,
 ) -> bool {
@@ -106,7 +107,7 @@ pub fn compile_asm_string(
     };
     compile_pil_ast(
         &pil,
-        pil_file_name.to_str().unwrap(),
+        pil_file_name.file_name().unwrap(),
         output_dir,
         Some(query_callback),
     );
@@ -114,7 +115,7 @@ pub fn compile_asm_string(
 
 fn compile(
     analyzed: &pil_analyzer::Analyzed,
-    file_name: &str,
+    file_name: &OsStr,
     output_dir: &Path,
     query_callback: Option<impl FnMut(&str) -> Option<FieldElement>>,
 ) -> bool {
@@ -143,11 +144,15 @@ fn compile(
         success = false;
     }
     let json_out = json_exporter::export(analyzed);
-    let json_file = format!("{file_name}.json");
+    let json_file = {
+        let mut file = file_name.to_os_string();
+        file.push(".json");
+        file
+    };
     json_out
         .write(&mut fs::File::create(output_dir.join(&json_file)).unwrap())
         .unwrap();
-    log::info!("Wrote {json_file}.");
+    log::info!("Wrote {}.", json_file.to_string_lossy());
     success
 }
 
