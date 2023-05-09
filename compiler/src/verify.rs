@@ -19,7 +19,7 @@ pub fn compile_asm_string_temp(
     let temp_dir = mktemp::Temp::new_dir().unwrap();
     assert!(crate::compile_pil_ast(
         &pil,
-        pil_file_name,
+        pil_file_name.as_ref(),
         &temp_dir,
         Some(|query: &str| {
             let items = query.split(',').map(|s| s.trim()).collect::<Vec<_>>();
