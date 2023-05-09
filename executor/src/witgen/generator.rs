@@ -261,7 +261,7 @@ where
             .map(|(i, v)| {
                 format!(
                     "{} = {}",
-                    AffineExpression::from_variable_id(i),
+                    self.fixed_data.witness_cols[i].poly,
                     v.as_ref()
                         .map(ToString::to_string)
                         .unwrap_or_else(|| "<unknown>".to_string())
