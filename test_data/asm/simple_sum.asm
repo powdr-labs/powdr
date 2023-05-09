@@ -33,7 +33,7 @@ instr assert_zero X { XIsZero = 1 }
 CNT <=X= ${ ("input", 1) };
 
 start::
- jmpz CNT, end;
+ jmpz CNT, check;
  A <=X= A + ${ ("input", CNT + 1) };
  // Could use "CNT <=X= CNT - 1", but that would need X.
  dec_CNT;
