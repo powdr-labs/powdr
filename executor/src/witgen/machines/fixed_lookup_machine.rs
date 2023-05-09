@@ -83,11 +83,11 @@ impl IndexedColumns {
             "Generating index for lookup in columns (in: {}, out: {})",
             sorted_input_fixed_columns
                 .iter()
-                .map(|c| format!("{c:?}"))
+                .map(|c| format!("{}", fixed_data.fixed_cols[*c as usize]))
                 .join(", "),
             sorted_output_fixed_columns
                 .iter()
-                .map(|c| format!("{c:?}"))
+                .map(|c| format!("{}", fixed_data.fixed_cols[*c as usize]))
                 .join(", ")
         );
 
