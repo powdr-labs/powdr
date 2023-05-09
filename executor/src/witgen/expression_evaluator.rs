@@ -1,29 +1,28 @@
 use number::FieldElement;
 use pil_analyzer::{BinaryOperator, Expression, PolynomialReference, UnaryOperator};
 
-use super::{
-    affine_expression::{AffineExpression, AffineResult},
-    IncompleteCause,
-};
+use super::{affine_expression::AffineResult, IncompleteCause};
 
 pub trait SymbolicVariables {
     /// Value of a polynomial (fixed or witness).
-    fn value(&self, poly: &PolynomialReference) -> AffineResult;
-    fn format(&self, expr: AffineExpression) -> String;
+    fn value<'a>(&self, poly: &'a PolynomialReference) -> AffineResult<&'a PolynomialReference>;
 }
 
-pub struct ExpressionEvaluator<SV: SymbolicVariables> {
+pub struct ExpressionEvaluator<SV> {
     variables: SV,
 }
 
-impl<SV: SymbolicVariables> ExpressionEvaluator<SV> {
+impl<SV> ExpressionEvaluator<SV>
+where
+    SV: SymbolicVariables,
+{
     pub fn new(variables: SV) -> Self {
         Self { variables }
     }
     /// Tries to evaluate the expression to an expression affine in the witness polynomials,
     /// taking current values of polynomials into account.
     /// @returns an expression affine in the witness polynomials
-    pub fn evaluate(&self, expr: &Expression) -> AffineResult {
+    pub fn evaluate<'a>(&self, expr: &'a Expression) -> AffineResult<&'a PolynomialReference> {
         // @TODO if we iterate on processing the constraints in the same row,
         // we could store the simplified values.
         match expr {
@@ -40,12 +39,12 @@ impl<SV: SymbolicVariables> ExpressionEvaluator<SV> {
         }
     }
 
-    fn evaluate_binary_operation(
+    fn evaluate_binary_operation<'a>(
         &self,
-        left: &Expression,
+        left: &'a Expression,
         op: &BinaryOperator,
-        right: &Expression,
-    ) -> AffineResult {
+        right: &'a Expression,
+    ) -> AffineResult<&'a PolynomialReference> {
         match (self.evaluate(left), op, self.evaluate(right)) {
             // Special case for multiplication: It is enough for one to be known zero.
             (Ok(zero), BinaryOperator::Mul, _) | (_, BinaryOperator::Mul, Ok(zero))
@@ -58,9 +57,9 @@ impl<SV: SymbolicVariables> ExpressionEvaluator<SV> {
                 BinaryOperator::Sub => Ok(left - right),
                 BinaryOperator::Mul => {
                     if let Some(f) = left.constant_value() {
-                        Ok(right.mul(f))
+                        Ok(right * f)
                     } else if let Some(f) = right.constant_value() {
-                        Ok(left.mul(f))
+                        Ok(left * f)
                     } else {
                         Err(IncompleteCause::QuadraticTerm)
                     }
@@ -124,7 +123,11 @@ impl<SV: SymbolicVariables> ExpressionEvaluator<SV> {
         }
     }
 
-    fn evaluate_unary_operation(&self, op: &UnaryOperator, expr: &Expression) -> AffineResult {
+    fn evaluate_unary_operation<'a>(
+        &self,
+        op: &UnaryOperator,
+        expr: &'a Expression,
+    ) -> AffineResult<&'a PolynomialReference> {
         self.evaluate(expr).map(|v| match op {
             UnaryOperator::Plus => v,
             UnaryOperator::Minus => -v,

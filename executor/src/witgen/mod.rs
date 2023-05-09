@@ -1,12 +1,12 @@
-use std::collections::HashMap;
-
 use number::{DegreeType, FieldElement};
-use pil_analyzer::{Analyzed, Expression, FunctionValueDefinition, PolyID, PolynomialType};
+use pil_analyzer::{
+    Analyzed, Expression, FunctionValueDefinition, PolyID, PolynomialReference, PolynomialType,
+};
 
 pub use self::eval_result::{
     Constraint, Constraints, EvalError, EvalResult, EvalStatus, EvalValue, IncompleteCause,
 };
-use self::util::{substitute_constants, WitnessColumnNamer};
+use self::util::substitute_constants;
 
 mod affine_expression;
 mod bit_constraints;
@@ -24,7 +24,7 @@ mod util;
 pub fn generate<'a>(
     analyzed: &'a Analyzed,
     degree: DegreeType,
-    fixed_cols: &[(&str, Vec<FieldElement>)],
+    fixed_col_values: &[(&str, Vec<FieldElement>)],
     query_callback: Option<impl FnMut(&str) -> Option<FieldElement>>,
 ) -> Vec<(&'a str, Vec<FieldElement>)> {
     let witness_cols: Vec<WitnessColumn> = analyzed
@@ -39,12 +39,24 @@ pub fn generate<'a>(
             WitnessColumn::new(i, &poly.absolute_name, value)
         })
         .collect();
+    let fixed_cols = fixed_col_values
+        .iter()
+        .enumerate()
+        .map(|(i, (n, _))| PolynomialReference {
+            name: n.to_string(),
+            poly_id: Some(PolyID {
+                id: i as u64,
+                ptype: PolynomialType::Constant,
+            }),
+            index: None,
+            next: false,
+        })
+        .collect::<Vec<_>>();
     let fixed = FixedData::new(
         degree,
-        fixed_cols.iter().map(|(_, v)| v).collect(),
-        fixed_cols.iter().map(|(n, _)| *n).collect(),
+        fixed_col_values.iter().map(|(_, v)| v).collect(),
+        fixed_cols.iter().collect::<Vec<_>>(),
         &witness_cols,
-        witness_cols.iter().map(|w| (w.name, w.id)).collect(),
     );
     let identities = substitute_constants(&analyzed.identities, &analyzed.constants);
     let (global_bit_constraints, identities) =
@@ -64,8 +76,11 @@ pub fn generate<'a>(
         query_callback,
     );
 
-    let mut values: Vec<(&str, Vec<FieldElement>)> =
-        witness_cols.iter().map(|p| (p.name, Vec::new())).collect();
+    let mut values: Vec<(&str, Vec<FieldElement>)> = analyzed
+        .committed_polys_in_source_order()
+        .iter()
+        .map(|(p, _)| (p.absolute_name.as_str(), vec![]))
+        .collect();
     // Are we in an infinite loop and can just re-use the old values?
     let mut looping_period = None;
     for row in 0..degree as DegreeType {
@@ -99,7 +114,7 @@ pub fn generate<'a>(
     for (col, v) in generator.compute_next_row(0).into_iter().enumerate() {
         if v != values[col].1[0] {
             eprintln!("Wrap-around value for column {} does not match: {} (wrap-around) vs. {} (first row).",
-            witness_cols[col].name, v, values[col].1[0]);
+            witness_cols[col].poly, v, values[col].1[0]);
         }
     }
     for (name, data) in generator.machine_witness_col_values() {
@@ -129,50 +144,32 @@ fn rows_are_repeating(values: &[(&str, Vec<FieldElement>)]) -> Option<usize> {
 pub struct FixedData<'a> {
     degree: DegreeType,
     fixed_col_values: Vec<&'a Vec<FieldElement>>,
-    fixed_col_names: Vec<&'a str>,
+    fixed_cols: Vec<&'a PolynomialReference>,
     witness_cols: &'a Vec<WitnessColumn<'a>>,
-    witness_ids: HashMap<&'a str, usize>,
 }
 
 impl<'a> FixedData<'a> {
     pub fn new(
         degree: DegreeType,
         fixed_col_values: Vec<&'a Vec<FieldElement>>,
-        fixed_col_names: Vec<&'a str>,
+        fixed_cols: Vec<&'a PolynomialReference>,
         witness_cols: &'a Vec<WitnessColumn<'a>>,
-        witness_ids: HashMap<&'a str, usize>,
     ) -> Self {
         FixedData {
             degree,
             fixed_col_values,
-            fixed_col_names,
+            fixed_cols,
             witness_cols,
-            witness_ids,
         }
     }
 
     fn witness_cols(&self) -> impl Iterator<Item = &WitnessColumn> {
         self.witness_cols.iter()
     }
-
-    pub fn poly_name(&self, poly: PolyID) -> &str {
-        match poly.ptype {
-            PolynomialType::Committed => self.witness_cols[poly.id as usize].name,
-            PolynomialType::Constant => self.fixed_col_names[poly.id as usize],
-            PolynomialType::Intermediate => panic!(),
-        }
-    }
-}
-
-impl<'a> WitnessColumnNamer for FixedData<'a> {
-    fn name(&self, i: usize) -> String {
-        self.witness_cols[i].name.to_string()
-    }
 }
 
 pub struct WitnessColumn<'a> {
-    id: usize,
-    name: &'a str,
+    poly: PolynomialReference,
     query: Option<&'a Expression>,
 }
 
@@ -187,6 +184,15 @@ impl<'a> WitnessColumn<'a> {
         } else {
             None
         };
-        WitnessColumn { id, name, query }
+        let poly = PolynomialReference {
+            name: name.to_string(),
+            index: None,
+            next: false,
+            poly_id: Some(PolyID {
+                id: id as u64,
+                ptype: PolynomialType::Committed,
+            }),
+        };
+        WitnessColumn { poly, query }
     }
 }

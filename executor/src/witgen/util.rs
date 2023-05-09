@@ -4,10 +4,6 @@ use number::FieldElement;
 use pil_analyzer::util::{expr_any, previsit_expressions_in_identity_mut};
 use pil_analyzer::{Expression, Identity, PolyID, PolynomialReference};
 
-pub trait WitnessColumnNamer {
-    fn name(&self, i: usize) -> String;
-}
-
 /// @returns true if the expression contains a reference to a next value of a
 /// (witness or fixed) column
 pub fn contains_next_ref(expr: &Expression) -> bool {
@@ -37,17 +33,17 @@ pub fn contains_witness_ref(expr: &Expression) -> bool {
 /// - a polynomial
 /// - not part of a polynomial array
 /// - not shifted with `'`
-/// and return the polynomial's name if so
-pub fn is_simple_poly(expr: &Expression) -> Option<&str> {
-    // TODO return the ID and not the str
-    if let Expression::PolynomialReference(PolynomialReference {
-        name,
-        index: None,
-        next: false,
-        ..
-    }) = expr
+/// and return the polynomial if so
+pub fn try_to_simple_poly(expr: &Expression) -> Option<&PolynomialReference> {
+    if let Expression::PolynomialReference(
+        p @ PolynomialReference {
+            index: None,
+            next: false,
+            ..
+        },
+    ) = expr
     {
-        Some(name)
+        Some(p)
     } else {
         None
     }

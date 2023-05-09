@@ -1,24 +1,20 @@
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 use itertools::Itertools;
 
 use super::{EvalResult, FixedData, FixedLookup};
-use crate::witgen::util::try_to_simple_poly_ref;
-use crate::witgen::EvalValue;
+use crate::witgen::util::try_to_simple_poly;
 use crate::witgen::{
     affine_expression::{AffineExpression, AffineResult},
     bit_constraints::{BitConstraint, BitConstraintSet},
     expression_evaluator::ExpressionEvaluator,
     machines::Machine,
     symbolic_witness_evaluator::{SymoblicWitnessEvaluator, WitnessColumnEvaluator},
-    util::WitnessColumnNamer,
     Constraint, EvalError,
 };
+use crate::witgen::{Constraints, EvalValue};
 use number::{DegreeType, FieldElement};
-use pil_analyzer::{
-    Expression, Identity, IdentityKind, PolyID, PolynomialReference, PolynomialType,
-    SelectedExpressions,
-};
+use pil_analyzer::{Expression, Identity, IdentityKind, PolynomialReference, SelectedExpressions};
 
 /// A machine that produces multiple rows (one block) per query.
 /// TODO we do not actually "detect" the machine yet, we just check if
@@ -26,7 +22,7 @@ use pil_analyzer::{
 pub struct BlockMachine {
     /// Block size, the period of the selector.
     block_size: usize,
-    selector: PolyID,
+    selector: PolynomialReference,
     identities: Vec<Identity>,
     /// One column of values for each witness.
     data: HashMap<usize, Vec<Option<FieldElement>>>,
@@ -36,8 +32,6 @@ pub struct BlockMachine {
     bit_constraints: HashMap<usize, HashMap<DegreeType, BitConstraint>>,
     /// Global bit constraints on witness columns.
     global_bit_constraints: HashMap<usize, BitConstraint>,
-    /// Number of witnesses (in general, not in this machine).
-    witness_count: usize,
     /// Poly degree / absolute number of rows
     degree: DegreeType,
     /// Cache that states the order in which to evaluate identities
@@ -50,8 +44,8 @@ impl BlockMachine {
         fixed_data: &FixedData,
         connecting_identities: &[&Identity],
         identities: &[&Identity],
-        witness_names: &HashSet<&str>,
-        global_bit_constraints: &BTreeMap<&str, BitConstraint>,
+        witness_cols: &HashSet<&PolynomialReference>,
+        global_bit_constraints: &BTreeMap<&PolynomialReference, BitConstraint>,
     ) -> Option<Box<Self>> {
         for id in connecting_identities {
             if let Some(sel) = &id.right.selector {
@@ -60,21 +54,20 @@ impl BlockMachine {
                 {
                     let mut machine = BlockMachine {
                         block_size: period,
-                        selector,
+                        selector: selector.clone(),
                         identities: identities.iter().map(|&i| i.clone()).collect(),
-                        data: witness_names
+                        data: witness_cols
                             .iter()
-                            .map(|n| (fixed_data.witness_ids[n], vec![]))
+                            .map(|n| (n.poly_id() as usize, vec![]))
                             .collect(),
                         row: 0,
                         bit_constraints: Default::default(),
                         global_bit_constraints: global_bit_constraints
                             .iter()
                             .filter_map(|(n, c)| {
-                                fixed_data.witness_ids.get(n).map(|n| (*n, c.clone()))
+                                n.is_witness().then_some((n.poly_id() as usize, c.clone()))
                             })
                             .collect(),
-                        witness_count: fixed_data.witness_cols.len(),
                         degree: fixed_data.degree,
                         processing_sequence_cache: ProcessingSequenceCache::new(
                             period,
@@ -99,16 +92,16 @@ impl BlockMachine {
 /// for some k >= 2
 /// TODO we could make this more generic and only detect the period
 /// but not enforce the offset.
-fn try_to_boolean_periodic_selector(
-    expr: &Expression,
+fn try_to_boolean_periodic_selector<'a>(
+    expr: &'a Expression,
     fixed_data: &FixedData,
-) -> Option<(PolyID, usize)> {
-    let poly = try_to_simple_poly_ref(expr)?;
-    if poly.ptype != PolynomialType::Constant {
+) -> Option<(&'a PolynomialReference, usize)> {
+    let poly = try_to_simple_poly(expr)?;
+    if !poly.is_fixed() {
         return None;
     }
 
-    let values = fixed_data.fixed_col_values[poly.id as usize];
+    let values = fixed_data.fixed_col_values[poly.poly_id() as usize];
 
     let period = 1 + values.iter().position(|v| *v == 1.into())?;
     if period == 1 {
@@ -129,15 +122,15 @@ fn try_to_boolean_periodic_selector(
 }
 
 impl Machine for BlockMachine {
-    fn process_plookup(
+    fn process_plookup<'a>(
         &mut self,
         fixed_data: &FixedData,
         fixed_lookup: &mut FixedLookup,
         kind: IdentityKind,
-        left: &[AffineResult],
+        left: &[AffineResult<&'a PolynomialReference>],
         right: &SelectedExpressions,
-    ) -> Option<EvalResult> {
-        if try_to_simple_poly_ref(right.selector.as_ref()?)? != self.selector
+    ) -> Option<EvalResult<&'a PolynomialReference>> {
+        if *try_to_simple_poly(right.selector.as_ref()?)? != self.selector
             || kind != IdentityKind::Plookup
         {
             return None;
@@ -166,7 +159,7 @@ impl Machine for BlockMachine {
                     .collect::<Vec<_>>();
 
                 values.resize(fixed_data.degree as usize, 0.into());
-                (fixed_data.name(id), values)
+                (fixed_data.witness_cols[id].poly.name.clone(), values)
             })
             .collect()
     }
@@ -188,13 +181,13 @@ impl BlockMachine {
         self.data.values().next().unwrap().len() as DegreeType
     }
 
-    fn process_plookup_internal(
+    fn process_plookup_internal<'b>(
         &mut self,
         fixed_data: &FixedData,
         fixed_lookup: &mut FixedLookup,
-        left: &[AffineResult],
+        left: &[AffineResult<&'b PolynomialReference>],
         right: &SelectedExpressions,
-    ) -> EvalResult {
+    ) -> EvalResult<&'b PolynomialReference> {
         // First check if we already store the value.
         if left
             .iter()
@@ -212,6 +205,15 @@ impl BlockMachine {
                     EvalValue::complete(vec![])
                 });
         }
+        let outer_polys = left
+            .iter()
+            .flat_map(|r| {
+                r.as_ref()
+                    .ok()
+                    .map(|e| e.nonzero_coefficients().map(|(i, _)| i))
+            })
+            .flatten()
+            .collect::<BTreeSet<_>>();
 
         let old_len = self.rows();
         self.append_new_block(fixed_data.degree)?;
@@ -240,8 +242,17 @@ impl BlockMachine {
                     if !value.is_empty() {
                         progress_steps.push(step);
                         errors.clear();
-                        let value = self.handle_eval_result(value);
-                        outer_assignments.combine(value);
+                        let (outer_constraints, inner_value) =
+                            self.split_result(value, &outer_polys);
+                        outer_assignments.constraints.extend(outer_constraints);
+                        for (poly_id, next, constraint) in inner_value
+                            .constraints
+                            .into_iter()
+                            .map(|(poly, constraint)| (poly.poly_id(), poly.next, constraint))
+                            .collect::<Vec<_>>()
+                        {
+                            self.handle_constraint(poly_id as usize, next, constraint);
+                        }
                     }
                 }
                 Err(e) => errors.push(format!("In row {}: {e}", self.row).into()),
@@ -255,7 +266,7 @@ impl BlockMachine {
             .concat()
             .iter()
             .cloned()
-            .collect::<HashSet<_>>();
+            .collect::<BTreeSet<_>>();
         let value_assignments = outer_assignments
             .constraints
             .iter()
@@ -263,7 +274,7 @@ impl BlockMachine {
                 Constraint::Assignment(_) => Some(*var),
                 Constraint::BitConstraint(_) => None,
             })
-            .collect::<HashSet<_>>();
+            .collect::<BTreeSet<_>>();
         if unknown_variables.is_subset(&value_assignments) {
             // We solved the query, so report it to the cache.
             self.processing_sequence_cache
@@ -279,50 +290,59 @@ impl BlockMachine {
         }
     }
 
-    fn handle_eval_result(&mut self, value: EvalValue) -> EvalValue {
-        EvalValue {
+    fn split_result<'b, 'outer>(
+        &self,
+        value: EvalValue<&'b PolynomialReference>,
+        outer_polys: &BTreeSet<&'outer PolynomialReference>,
+    ) -> (
+        Constraints<&'outer PolynomialReference>,
+        EvalValue<&'b PolynomialReference>,
+    ) {
+        let mut outer_constraints = vec![];
+        let value = EvalValue {
             constraints: value
                 .constraints
                 .into_iter()
                 .filter_map(|(poly, constraint)| {
-                    let (poly, next) = self.extract_next(poly);
-                    let r = (self.row + next as DegreeType) % self.degree;
-                    let is_outside_poly = !self.data.contains_key(&poly);
-                    if is_outside_poly {
-                        assert!(!next);
-
-                        Some((poly, constraint))
-                    } else {
-                        match constraint {
-                            Constraint::Assignment(a) => {
-                                let values = self.data.get_mut(&poly).unwrap();
-                                if (r as usize) < values.len() {
-                                    // do not write to other rows for now
-                                    values[r as usize] = Some(a);
-                                }
-                            }
-                            Constraint::BitConstraint(bc) => {
-                                self.bit_constraints.entry(poly).or_default().insert(r, bc);
-                            }
-                        }
+                    if let Some(outer) = outer_polys.get(poly) {
+                        outer_constraints.push((*outer, constraint));
                         None
+                    } else {
+                        Some((poly, constraint))
                     }
                 })
                 .collect(),
             ..value
+        };
+        (outer_constraints, value)
+    }
+
+    fn handle_constraint(&mut self, poly: usize, next: bool, constraint: Constraint) {
+        let r = (self.row + next as DegreeType) % self.degree;
+        match constraint {
+            Constraint::Assignment(a) => {
+                let values = self.data.get_mut(&poly).unwrap();
+                if (r as usize) < values.len() {
+                    // do not write to other rows for now
+                    values[r as usize] = Some(a);
+                }
+            }
+            Constraint::BitConstraint(bc) => {
+                self.bit_constraints.entry(poly).or_default().insert(r, bc);
+            }
         }
     }
 
     /// Processes an identity which is either the query or
     /// an identity in the vector of identities.
-    fn process_identity(
-        &self,
+    fn process_identity<'b>(
+        &'b self,
         fixed_data: &FixedData,
         fixed_lookup: &mut FixedLookup,
-        left: &[AffineResult],
-        right: &SelectedExpressions,
+        left: &[AffineResult<&'b PolynomialReference>],
+        right: &'b SelectedExpressions,
         identity: IdentityInSequence,
-    ) -> EvalResult {
+    ) -> EvalResult<&'b PolynomialReference> {
         match identity {
             IdentityInSequence::Internal(index) => {
                 let id = &self.identities[index];
@@ -343,12 +363,12 @@ impl BlockMachine {
 
     /// Processes the outer query / the plookup. This function should only be called
     /// on the acutal query row (the last one of the block).
-    fn process_outer_query(
+    fn process_outer_query<'b>(
         &self,
         fixed_data: &FixedData,
-        left: &[AffineResult],
-        right: &SelectedExpressions,
-    ) -> EvalResult {
+        left: &[AffineResult<&'b PolynomialReference>],
+        right: &'b SelectedExpressions,
+    ) -> EvalResult<&'b PolynomialReference> {
         assert!(self.row as usize % self.block_size == self.block_size - 1);
         let mut results = EvalValue::complete(vec![]);
 
@@ -375,22 +395,17 @@ impl BlockMachine {
     }
 
     /// Process a polynomial identity internal no the machine.
-    fn process_polynomial_identity(
+    fn process_polynomial_identity<'b>(
         &self,
         fixed_data: &FixedData,
-        identity: &Expression,
-    ) -> EvalResult {
+        identity: &'b Expression,
+    ) -> EvalResult<&'b PolynomialReference> {
         let evaluated = match self.evaluate(fixed_data, identity) {
             Ok(evaluated) => evaluated,
             Err(cause) => return Ok(EvalValue::incomplete(cause)),
         };
         evaluated.solve_with_bit_constraints(self).map_err(|e| {
-            let witness_data = WitnessData {
-                fixed_data,
-                data: &self.data,
-                row: self.row,
-            };
-            let formatted = evaluated.format(&witness_data);
+            let formatted = evaluated.to_string();
             if let EvalError::ConstraintUnsatisfiable(_) = e {
                 EvalError::ConstraintUnsatisfiable(format!(
                     "Constraint is invalid ({formatted} != 0)."
@@ -402,12 +417,12 @@ impl BlockMachine {
     }
 
     /// Process a plookup internal to the machine against a set of fixed columns.
-    fn process_plookup(
+    fn process_plookup<'b>(
         &self,
         fixed_data: &FixedData,
         fixed_lookup: &mut FixedLookup,
-        identity: &Identity,
-    ) -> EvalResult {
+        identity: &'b Identity,
+    ) -> EvalResult<&'b PolynomialReference> {
         if identity.left.selector.is_some() || identity.right.selector.is_some() {
             unimplemented!("Selectors not yet implemented.");
         }
@@ -428,7 +443,11 @@ impl BlockMachine {
         }
     }
 
-    fn evaluate(&self, fixed_data: &FixedData, expression: &Expression) -> AffineResult {
+    fn evaluate<'b>(
+        &self,
+        fixed_data: &FixedData,
+        expression: &'b Expression,
+    ) -> AffineResult<&'b PolynomialReference> {
         ExpressionEvaluator::new(SymoblicWitnessEvaluator::new(
             fixed_data,
             self.row,
@@ -440,21 +459,21 @@ impl BlockMachine {
         ))
         .evaluate(expression)
     }
-
-    /// Converts a poly ID that might contain a next offset
-    /// to a regular poly ID plus a boolean signifying "next".
-    fn extract_next(&self, id: usize) -> (usize, bool) {
-        extract_next(self.witness_count, id)
-    }
 }
 
-impl BitConstraintSet for BlockMachine {
-    fn bit_constraint(&self, id: usize) -> Option<BitConstraint> {
-        let (poly, next) = self.extract_next(id);
-        self.global_bit_constraints.get(&poly).cloned().or_else(|| {
-            let row = (self.row + next as DegreeType) % self.degree;
-            self.bit_constraints.get(&poly)?.get(&row).cloned()
-        })
+impl BitConstraintSet<&PolynomialReference> for BlockMachine {
+    fn bit_constraint(&self, poly: &PolynomialReference) -> Option<BitConstraint> {
+        assert!(poly.is_witness());
+        self.global_bit_constraints
+            .get(&(poly.poly_id() as usize))
+            .cloned()
+            .or_else(|| {
+                let row = (self.row + poly.next as DegreeType) % self.degree;
+                self.bit_constraints
+                    .get(&(poly.poly_id() as usize))?
+                    .get(&row)
+                    .cloned()
+            })
     }
 }
 
@@ -466,7 +485,7 @@ struct WitnessData<'a> {
 }
 
 impl<'a> WitnessColumnEvaluator for WitnessData<'a> {
-    fn value(&self, poly: &PolynomialReference) -> AffineResult {
+    fn value<'b>(&self, poly: &'b PolynomialReference) -> AffineResult<&'b PolynomialReference> {
         let id = poly.poly_id() as usize;
         let row = if poly.next {
             (self.row + 1) % self.fixed_data.degree
@@ -477,29 +496,8 @@ impl<'a> WitnessColumnEvaluator for WitnessData<'a> {
         // We just return a symbolic ID for those.
         match self.data[&id].get(row as usize).cloned().flatten() {
             Some(value) => Ok(value.into()),
-            None => {
-                let witness_count = self.fixed_data.witness_cols.len();
-                let symbolic_id = if poly.next { id + witness_count } else { id };
-                Ok(AffineExpression::from_variable_id(symbolic_id))
-            }
+            None => Ok(AffineExpression::from_variable_id(poly)),
         }
-    }
-}
-
-impl<'a> WitnessColumnNamer for WitnessData<'a> {
-    fn name(&self, i: usize) -> String {
-        let (id, next) = extract_next(self.fixed_data.witness_cols.len(), i);
-        self.fixed_data.name(id) + if next { "\'" } else { "" }
-    }
-}
-
-/// Converts a poly ID that might contain a next offset
-/// to a regular poly ID plus a boolean signifying "next".
-fn extract_next(witness_count: usize, id: usize) -> (usize, bool) {
-    if id < witness_count {
-        (id, false)
-    } else {
-        (id - witness_count, true)
     }
 }
 
@@ -526,8 +524,11 @@ struct SequenceCacheKey {
     known_columns: Vec<bool>,
 }
 
-impl From<&[AffineResult]> for SequenceCacheKey {
-    fn from(value: &[AffineResult]) -> Self {
+impl<K> From<&[AffineResult<K>]> for SequenceCacheKey
+where
+    K: Copy + Ord,
+{
+    fn from(value: &[AffineResult<K>]) -> Self {
         SequenceCacheKey {
             known_columns: value
                 .iter()
@@ -551,7 +552,10 @@ impl ProcessingSequenceCache {
         }
     }
 
-    pub fn get_processing_sequence(&self, left: &[AffineResult]) -> Vec<SequenceStep> {
+    pub fn get_processing_sequence<K>(&self, left: &[AffineResult<K>]) -> Vec<SequenceStep>
+    where
+        K: Copy + Ord,
+    {
         self.cache.get(&left.into()).cloned().unwrap_or_else(|| {
             let block_size = self.block_size as i64;
             (-1..=block_size)
@@ -574,11 +578,13 @@ impl ProcessingSequenceCache {
         })
     }
 
-    pub fn report_processing_sequence(
+    pub fn report_processing_sequence<K>(
         &mut self,
-        left: &[AffineResult],
+        left: &[AffineResult<K>],
         sequence: Vec<SequenceStep>,
-    ) {
+    ) where
+        K: Copy + Ord,
+    {
         self.cache.entry(left.into()).or_insert(sequence);
     }
 }

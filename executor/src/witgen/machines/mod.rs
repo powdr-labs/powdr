@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use number::FieldElement;
+use pil_analyzer::PolynomialReference;
 use pil_analyzer::{IdentityKind, SelectedExpressions};
 
 pub use self::fixed_lookup_machine::FixedLookup;
@@ -32,14 +33,14 @@ pub trait Machine {
     /// Only return an error if this machine is able to handle the query and
     /// it results in a constraint failure.
     /// If this is not the right machine for the query, return `None`.
-    fn process_plookup(
+    fn process_plookup<'a>(
         &mut self,
         fixed_data: &FixedData,
         fixed_lookup: &mut FixedLookup,
         kind: IdentityKind,
-        left: &[AffineResult],
+        left: &[AffineResult<&'a PolynomialReference>],
         right: &SelectedExpressions,
-    ) -> Option<EvalResult>;
+    ) -> Option<EvalResult<&'a PolynomialReference>>;
 
     /// Returns the final values of the witness columns.
     fn witness_col_values(&mut self, fixed_data: &FixedData) -> HashMap<String, Vec<FieldElement>>;

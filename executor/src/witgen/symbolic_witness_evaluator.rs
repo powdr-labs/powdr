@@ -1,24 +1,19 @@
 use number::DegreeType;
 use pil_analyzer::PolynomialReference;
 
-use super::{
-    affine_expression::{AffineExpression, AffineResult},
-    expression_evaluator::SymbolicVariables,
-    util::WitnessColumnNamer,
-    FixedData,
-};
+use super::{affine_expression::AffineResult, expression_evaluator::SymbolicVariables, FixedData};
 
 pub trait WitnessColumnEvaluator {
     /// Returns a symbolic or concrete value for the given witness column and next flag.
     /// This function defines the mapping to IDs.
     /// It should be used together with a matching reverse mapping in WitnessColumnNamer.
-    fn value(&self, poly: &PolynomialReference) -> AffineResult;
+    fn value<'b>(&self, poly: &'b PolynomialReference) -> AffineResult<&'b PolynomialReference>;
 }
 
 /// An evaluator (to be used together with ExpressionEvaluator) that performs concrete
 /// evaluation of all fixed columns but falls back to a generic WitnessColumnEvaluator
 /// to evaluate the witness columns either symbolically or concretely.
-pub struct SymoblicWitnessEvaluator<'a, WA: WitnessColumnEvaluator + WitnessColumnNamer> {
+pub struct SymoblicWitnessEvaluator<'a, WA: WitnessColumnEvaluator> {
     fixed_data: &'a FixedData<'a>,
     row: DegreeType,
     witness_access: WA,
@@ -26,7 +21,7 @@ pub struct SymoblicWitnessEvaluator<'a, WA: WitnessColumnEvaluator + WitnessColu
 
 impl<'a, WA> SymoblicWitnessEvaluator<'a, WA>
 where
-    WA: WitnessColumnEvaluator + WitnessColumnNamer,
+    WA: WitnessColumnEvaluator,
 {
     /// Constructs a new SymbolicWitnessEvaluator
     /// @param row the row on which to evaluate plain fixed
@@ -42,9 +37,9 @@ where
 
 impl<'a, WA> SymbolicVariables for SymoblicWitnessEvaluator<'a, WA>
 where
-    WA: WitnessColumnEvaluator + WitnessColumnNamer,
+    WA: WitnessColumnEvaluator,
 {
-    fn value(&self, poly: &PolynomialReference) -> AffineResult {
+    fn value<'b>(&self, poly: &'b PolynomialReference) -> AffineResult<&'b PolynomialReference> {
         // TODO arrays
         if poly.is_witness() {
             self.witness_access.value(poly)
@@ -59,9 +54,5 @@ where
             };
             Ok(values[row as usize].into())
         }
-    }
-
-    fn format(&self, expr: AffineExpression) -> String {
-        expr.format(&self.witness_access)
     }
 }

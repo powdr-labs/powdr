@@ -25,10 +25,10 @@ use pil_analyzer::{
 ///  - NOTLAST is zero only on the last row
 ///  - POSITIVE has all values from 1 to half of the field size.
 pub struct SortedWitnesses {
-    key_col: String,
+    key_col: PolynomialReference,
     /// Position of the witness columns in the data.
     /// The key column has a position of usize::max
-    witness_positions: HashMap<String, usize>,
+    witness_positions: HashMap<PolynomialReference, usize>,
     data: BTreeMap<FieldElement, Vec<Option<FieldElement>>>,
 }
 
@@ -36,7 +36,7 @@ impl SortedWitnesses {
     pub fn try_new(
         fixed_data: &FixedData,
         identities: &[&Identity],
-        witness_names: &HashSet<&str>,
+        witness_names: &HashSet<&PolynomialReference>,
     ) -> Option<Box<Self>> {
         if identities.len() != 1 {
             return None;
@@ -44,20 +44,14 @@ impl SortedWitnesses {
         check_identity(fixed_data, identities.first().unwrap()).map(|key_col| {
             let witness_positions = witness_names
                 .iter()
-                .filter_map(|&w| {
-                    if w == key_col {
-                        None
-                    } else {
-                        Some(w.to_string())
-                    }
-                })
+                .filter(|&w| *w != key_col)
                 .sorted()
                 .enumerate()
-                .map(|(i, x)| (x, i))
+                .map(|(i, &x)| (x.clone(), i))
                 .collect();
 
             Box::new(SortedWitnesses {
-                key_col: key_col.to_string(),
+                key_col: key_col.clone(),
                 witness_positions,
                 data: Default::default(),
             })
@@ -65,7 +59,7 @@ impl SortedWitnesses {
     }
 }
 
-fn check_identity<'a>(fixed_data: &'a FixedData, id: &Identity) -> Option<&'a str> {
+fn check_identity<'a>(fixed_data: &FixedData, id: &'a Identity) -> Option<&'a PolynomialReference> {
     // Looking for NOTLAST { A' - A } in { POSITIVE }
     if id.kind != IdentityKind::Plookup
         || id.right.selector.is_some()
@@ -75,7 +69,7 @@ fn check_identity<'a>(fixed_data: &'a FixedData, id: &Identity) -> Option<&'a st
     }
 
     // Check for A' - A in the LHS
-    let key_column = check_constraint(fixed_data, id.left.expressions.first().unwrap())?;
+    let key_column = check_constraint(id.left.expressions.first().unwrap())?;
 
     let notlast = id.left.selector.as_ref()?;
     let positive = id.right.expressions.first().unwrap();
@@ -99,9 +93,9 @@ fn check_identity<'a>(fixed_data: &'a FixedData, id: &Identity) -> Option<&'a st
 
 /// Checks that the identity has a constraint of the form `a' - a` as the first expression
 /// on the left hand side and returns the name of the witness column.
-fn check_constraint<'a>(fixed_data: &'a FixedData, constraint: &Expression) -> Option<&'a str> {
-    let symbolic_ev = SymbolicEvaluator::new(fixed_data);
-    let sort_constraint = match ExpressionEvaluator::new(symbolic_ev.clone()).evaluate(constraint) {
+fn check_constraint(constraint: &Expression) -> Option<&PolynomialReference> {
+    let symbolic_ev = SymbolicEvaluator;
+    let sort_constraint = match ExpressionEvaluator::new(symbolic_ev).evaluate(constraint) {
         Ok(c) => c,
         Err(_) => return None,
     };
@@ -109,32 +103,31 @@ fn check_constraint<'a>(fixed_data: &'a FixedData, constraint: &Expression) -> O
         [key, _] => *key,
         _ => return None,
     };
-    let poly = symbolic_ev.poly_from_id(key_column_id);
-    if poly.next || poly.is_fixed() {
+    if key_column_id.next || key_column_id.is_fixed() {
         return None;
     }
     let poly_next = PolynomialReference {
         next: true,
-        ..poly.clone()
+        ..key_column_id.clone()
     };
-    let pattern = AffineExpression::from_variable_id(symbolic_ev.id_for_witness_poly(&poly_next))
-        - AffineExpression::from_variable_id(symbolic_ev.id_for_witness_poly(&poly));
+    let pattern = AffineExpression::from_variable_id(&poly_next)
+        - AffineExpression::from_variable_id(key_column_id);
     if sort_constraint != pattern {
         return None;
     }
 
-    Some(fixed_data.poly_name(poly.poly_id.unwrap()))
+    Some(key_column_id)
 }
 
 impl Machine for SortedWitnesses {
-    fn process_plookup(
+    fn process_plookup<'a>(
         &mut self,
-        fixed_data: &FixedData,
+        _fixed_data: &FixedData,
         _fixed_lookup: &mut FixedLookup,
         kind: IdentityKind,
-        left: &[AffineResult],
+        left: &[AffineResult<&'a PolynomialReference>],
         right: &SelectedExpressions,
-    ) -> Option<EvalResult> {
+    ) -> Option<EvalResult<&'a PolynomialReference>> {
         if kind != IdentityKind::Plookup || right.selector.is_some() {
             return None;
         }
@@ -144,21 +137,17 @@ impl Machine for SortedWitnesses {
             .map(|e| match e {
                 pil_analyzer::Expression::PolynomialReference(p) => {
                     assert!(!p.next);
-                    if p.name == self.key_col || self.witness_positions.contains_key(&p.name) {
-                        Some(&p.name)
+                    if *p == self.key_col || self.witness_positions.contains_key(p) {
+                        Some(p)
                     } else {
                         None
                     }
                 }
                 _ => None,
             })
-            .collect::<Vec<_>>();
-        if rhs.iter().any(|e| e.is_none()) {
-            return None;
-        }
-        let rhs = rhs.iter().map(|x| x.unwrap()).collect::<Vec<_>>();
+            .collect::<Option<Vec<_>>>()?;
 
-        Some(self.process_plookup_internal(fixed_data, left, right, rhs))
+        Some(self.process_plookup_internal(left, right, rhs))
     }
     fn witness_col_values(&mut self, fixed_data: &FixedData) -> HashMap<String, Vec<FieldElement>> {
         let mut result = HashMap::new();
@@ -171,15 +160,15 @@ impl Machine for SortedWitnesses {
             last_key += 1u64.into();
             keys.push(last_key);
         }
-        result.insert(self.key_col.clone(), keys);
+        result.insert(self.key_col.name.clone(), keys);
 
-        for (col_name, &i) in &self.witness_positions {
+        for (col, &i) in &self.witness_positions {
             let mut col_values = values
                 .iter_mut()
                 .map(|row| std::mem::take(&mut row[i]).unwrap_or_default())
                 .collect::<Vec<_>>();
             col_values.resize(fixed_data.degree as usize, 0.into());
-            result.insert(col_name.clone(), col_values);
+            result.insert(col.name.clone(), col_values);
         }
 
         result
@@ -187,13 +176,12 @@ impl Machine for SortedWitnesses {
 }
 
 impl SortedWitnesses {
-    fn process_plookup_internal(
+    fn process_plookup_internal<'a>(
         &mut self,
-        fixed_data: &FixedData,
-        left: &[AffineResult],
+        left: &[AffineResult<&'a PolynomialReference>],
         right: &SelectedExpressions,
-        rhs: Vec<&String>,
-    ) -> EvalResult {
+        rhs: Vec<&PolynomialReference>,
+    ) -> EvalResult<&'a PolynomialReference> {
         // Fail if the LHS has an error.
         let (left, errors): (Vec<_>, Vec<_>) = left.iter().partition_map(|x| match x {
             Ok(x) => Either::Left(x),
@@ -214,8 +202,7 @@ impl SortedWitnesses {
         let key_value = left[key_index].constant_value().ok_or_else(|| {
             format!(
                 "Value of unique key must be known: {} = {}",
-                left[key_index].format(fixed_data),
-                right.expressions[key_index]
+                left[key_index], right.expressions[key_index]
             )
         })?;
 
@@ -234,9 +221,8 @@ impl SortedWitnesses {
                             // The LHS value is known and it is differetn from the stored one.
                             return Err(format!(
                                 "Lookup mismatch: There is already a unique row with {} = \
-                            {key_value} and {r} = {v}, but wanted to store {r} = {}",
+                            {key_value} and {r} = {v}, but wanted to store {r} = {l}",
                                 self.key_col,
-                                l.format(fixed_data),
                             )
                             .into());
                         }

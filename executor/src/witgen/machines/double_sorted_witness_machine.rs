@@ -10,7 +10,7 @@ use crate::witgen::{EvalError, EvalResult, FixedData};
 use crate::witgen::{EvalValue, IncompleteCause};
 use number::FieldElement;
 
-use pil_analyzer::{Expression, Identity, IdentityKind, SelectedExpressions};
+use pil_analyzer::{Expression, Identity, IdentityKind, PolynomialReference, SelectedExpressions};
 
 /// TODO make this generic
 
@@ -34,7 +34,7 @@ impl DoubleSortedWitnesses {
     pub fn try_new(
         _fixed_data: &FixedData,
         _identities: &[&Identity],
-        witness_names: &HashSet<&str>,
+        witness_cols: &HashSet<&PolynomialReference>,
     ) -> Option<Box<Self>> {
         // TODO check the identities.
         let expected_witnesses: HashSet<_> = [
@@ -49,7 +49,7 @@ impl DoubleSortedWitnesses {
         .into_iter()
         .collect();
         if expected_witnesses
-            .symmetric_difference(witness_names)
+            .symmetric_difference(&witness_cols.iter().map(|c| c.name.as_str()).collect())
             .next()
             .is_none()
         {
@@ -61,14 +61,14 @@ impl DoubleSortedWitnesses {
 }
 
 impl Machine for DoubleSortedWitnesses {
-    fn process_plookup(
+    fn process_plookup<'a>(
         &mut self,
-        fixed_data: &FixedData,
+        _fixed_data: &FixedData,
         _fixed_lookup: &mut FixedLookup,
         kind: IdentityKind,
-        left: &[AffineResult],
+        left: &[AffineResult<&'a PolynomialReference>],
         right: &SelectedExpressions,
-    ) -> Option<EvalResult> {
+    ) -> Option<EvalResult<&'a PolynomialReference>> {
         if kind != IdentityKind::Permutation
             || !(is_simple_poly_of_name(right.selector.as_ref()?, "Assembly.m_is_read")
                 || is_simple_poly_of_name(right.selector.as_ref()?, "Assembly.m_is_write"))
@@ -76,7 +76,7 @@ impl Machine for DoubleSortedWitnesses {
             return None;
         }
 
-        Some(self.process_plookup_internal(fixed_data, left, right))
+        Some(self.process_plookup_internal(left, right))
     }
 
     fn witness_col_values(&mut self, fixed_data: &FixedData) -> HashMap<String, Vec<FieldElement>> {
@@ -138,12 +138,11 @@ impl Machine for DoubleSortedWitnesses {
 }
 
 impl DoubleSortedWitnesses {
-    fn process_plookup_internal(
+    fn process_plookup_internal<'a>(
         &mut self,
-        fixed_data: &FixedData,
-        left: &[AffineResult],
+        left: &[AffineResult<&'a PolynomialReference>],
         right: &SelectedExpressions,
-    ) -> EvalResult {
+    ) -> EvalResult<&'a PolynomialReference> {
         // We blindly assume the lookup is of the form
         // OP { ADDR, STEP, X } is m_is_write { m_addr, m_step, m_value }
         // or
@@ -171,22 +170,17 @@ impl DoubleSortedWitnesses {
         let addr = left[0].constant_value().ok_or_else(|| {
             format!(
                 "Address must be known: {} = {}",
-                left[0].format(fixed_data),
-                right.expressions[0]
+                left[0], right.expressions[0]
             )
         })?;
-        let step = left[1].constant_value().ok_or_else(|| {
-            format!(
-                "Step must be known: {} = {}",
-                left[1].format(fixed_data),
-                right.expressions[1]
-            )
-        })?;
+        let step = left[1]
+            .constant_value()
+            .ok_or_else(|| format!("Step must be known: {} = {}", left[1], right.expressions[1]))?;
 
         log::trace!(
             "Query addr={:x}, step={step}, write: {is_write}, left: {}",
             addr.to_integer(),
-            left[2].format(fixed_data)
+            left[2]
         );
         if addr.clone().to_integer() % 4 != 0 {
             panic!("UNALIGNED");
