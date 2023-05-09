@@ -787,6 +787,27 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
                 rd,
             )
         }
+        "srai" => {
+            // arithmetic shift right
+            // TODO see if we can implement this directly with a machine.
+            // Now we are using the equivalence
+            // a >>> b = (a >= 0 ? a >> b : ~(~a >> b))
+            let (rd, rs, amount) = rri(args);
+            assert!(amount <= 31);
+            only_if_no_write_to_zero_vec(
+                vec![
+                    format!("tmp1 <=X= to_signed({rs});"),
+                    format!("tmp1 <=Y= is_positive(0 - tmp1);"),
+                    format!("tmp1 <=X= tmp1 * 0xffffffff;"),
+                    // Here, tmp1 is the full bit mask if rs is negative
+                    // and zero otherwise.
+                    format!("{rd} <=X= xor(tmp1, {rs});"),
+                    format!("{rd} <=X= shr({rd}, {amount});"),
+                    format!("{rd} <=X= xor(tmp1, {rd});"),
+                ],
+                rd,
+            )
+        }
 
         // comparison
         "seqz" => {
