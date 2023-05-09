@@ -104,7 +104,14 @@ where
                     kind => {
                         unimplemented!("Identity of kind {kind:?} is not supported in the executor")
                     }
-                };
+                }
+                .map_err(|err| {
+                    format!(
+                        "No progress on {identity}:\n{}",
+                        indent(&format!("{err}"), "    ")
+                    )
+                    .into()
+                });
 
                 if result.is_err() {
                     identity_failed = true;

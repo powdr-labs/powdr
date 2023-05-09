@@ -181,7 +181,7 @@ impl fmt::Display for EvalError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             EvalError::ConstraintUnsatisfiable(e) => {
-                write!(f, "Linear constraint is not satisfiable: {e}",)
+                write!(f, "Linear constraint is not satisfiable: {e} != 0",)
             }
             EvalError::Multiple(errors) => {
                 for e in errors {

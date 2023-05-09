@@ -406,13 +406,7 @@ impl BlockMachine {
         };
         evaluated.solve_with_bit_constraints(self).map_err(|e| {
             let formatted = evaluated.to_string();
-            if let EvalError::ConstraintUnsatisfiable(_) = e {
-                EvalError::ConstraintUnsatisfiable(format!(
-                    "Constraint is invalid ({formatted} != 0)."
-                ))
-            } else {
-                format!("Could not solve expression {formatted} = 0: {e}").into()
-            }
+            format!("Could not solve expression {formatted} = 0: {e}").into()
         })
     }
 
