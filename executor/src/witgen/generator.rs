@@ -1,3 +1,4 @@
+use itertools::Itertools;
 use parser_util::lines::indent;
 use pil_analyzer::{Expression, Identity, IdentityKind, PolynomialReference};
 use std::collections::{BTreeMap, HashMap};
@@ -150,35 +151,37 @@ where
         // Identity check failure on the first row is not fatal. We will proceed with
         // "unknown", report zero and re-check the wrap-around against the zero values at the end.
         if identity_failed && next_row != 0 {
-            eprintln!(
-                "\nError: Row {next_row}: Identity check failed or unable to derive values for witness polynomials: {}\n",
+            log::error!(
+                "\nError: Row {next_row}: Identity check failed or unable to derive values for some witness columns.");
+            log::debug!(
+                "The following columns are still undetermined: {}",
                 self.next
                     .iter()
                     .enumerate()
                     .filter_map(|(i, v)| if v.is_none() {
-                        Some(self.fixed_data.witness_cols[i].poly.name.to_string())
+                        Some(self.fixed_data.witness_cols[i].poly.to_string())
                     } else {
                         None
                     })
                     .collect::<Vec<String>>()
                     .join(", ")
             );
-            eprintln!("Reasons:\n{}\n", self.failure_reasons.join("\n\n"));
-            eprintln!("Known bit constraints:");
-            eprintln!("Global:");
-            for (name, cons) in &self.global_bit_constraints {
-                eprintln!("  {name}: {cons}");
-            }
-            eprintln!("For this row:");
-            for (id, cons) in self.next_bit_constraints.iter().enumerate() {
-                if let Some(cons) = cons {
-                    eprintln!("  {}: {cons}", self.fixed_data.witness_cols[id].poly);
-                }
-            }
-            eprintln!();
-            eprintln!(
-                "Current values (known nonzero first, then zero, then unknown):\n{}",
-                indent(&self.format_next_values().join("\n"), "    ")
+            log::info!("Reasons:\n{}\n", self.failure_reasons.join("\n\n"));
+            log::debug!(
+                "Determind bit constraints for this row:\n{}",
+                self.next_bit_constraints
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(id, cons)| {
+                        cons.as_ref().map(|cons| {
+                            format!("  {}: {cons}", self.fixed_data.witness_cols[id].poly)
+                        })
+                    })
+                    .join("\n")
+            );
+            log::info!(
+                "Current values (known nonzero first, then zero, unknown omitted):\n{}",
+                indent(&self.format_next_known_values().join("\n"), "    ")
             );
             panic!();
         } else {
@@ -252,7 +255,18 @@ where
     }
 
     fn format_next_values(&self) -> Vec<String> {
-        let mut values = self.next.iter().enumerate().collect::<Vec<_>>();
+        self.format_next_values_iter(self.next.iter().enumerate())
+    }
+
+    fn format_next_known_values(&self) -> Vec<String> {
+        self.format_next_values_iter(self.next.iter().enumerate().filter(|(_, v)| v.is_some()))
+    }
+
+    fn format_next_values_iter<'b>(
+        &self,
+        values: impl IntoIterator<Item = (usize, &'b Option<FieldElement>)>,
+    ) -> Vec<String> {
+        let mut values = values.into_iter().collect::<Vec<_>>();
         values.sort_by_key(|(i, v1)| {
             (
                 match v1 {
