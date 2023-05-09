@@ -1,6 +1,6 @@
 //! A RISC-V frontend for powdr
 
-use std::{collections::BTreeMap, path::Path, process::Command};
+use std::{collections::BTreeMap, path::Path, process::Command, str::from_utf8};
 
 use ::compiler::compile_asm_string;
 use mktemp::Temp;
@@ -160,25 +160,29 @@ runtime = {{ path = "./runtime" }}
 pub fn compile_rust_crate_to_riscv_asm(input_dir: &str) -> BTreeMap<String, String> {
     let temp_dir = Temp::new_dir().unwrap();
 
-    let cargo_status = Command::new("cargo")
-        .env("RUSTFLAGS", "--emit=asm")
-        .args([
-            "+nightly-2023-01-03",
-            "build",
-            "--release",
-            "-Z",
-            "build-std=core",
-            "--target",
-            "riscv32imc-unknown-none-elf",
-            "--lib",
-            "--target-dir",
-            temp_dir.to_str().unwrap(),
-            "--manifest-path",
-            input_dir,
-        ])
-        .status()
-        .unwrap();
-    assert!(cargo_status.success());
+    let mut cargo_process = Command::new("cargo");
+    cargo_process.env("RUSTFLAGS", "--emit=asm").args([
+        "+nightly-2023-01-03",
+        "build",
+        "--release",
+        "-Z",
+        "build-std=core",
+        "--target",
+        "riscv32imc-unknown-none-elf",
+        "--lib",
+        "--target-dir",
+        temp_dir.to_str().unwrap(),
+        "--manifest-path",
+        input_dir,
+    ]);
+    if !cargo_process.status().unwrap().success() {
+        log::error!(
+            "Error running cargo to compile to riscv:\n{}\n{}",
+            from_utf8(&cargo_process.output().unwrap().stdout).unwrap(),
+            from_utf8(&cargo_process.output().unwrap().stderr).unwrap()
+        );
+        panic!();
+    }
 
     let mut assemblies = BTreeMap::new();
     for entry in WalkDir::new(&temp_dir) {
