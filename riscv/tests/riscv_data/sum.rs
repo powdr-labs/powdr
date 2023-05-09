@@ -12,5 +12,5 @@ pub fn main() {
         buffer[i] = get_prover_input(2 + i as u32);
     }
     let sum: u32 = buffer[..len].iter().sum();
-    assert!(sum == proposed_sum);
+    assert_eq!(sum, proposed_sum);
 }

@@ -64,6 +64,15 @@ fn test_keccak() {
     verify_crate(case, vec![]);
 }
 
+#[test]
+#[ignore = "Too slow"]
+// TODO: instead of just checking for panic, we could check the stdout for the actual message.
+#[should_panic]
+fn test_print() {
+    let case = "print";
+    verify_crate(case, vec![]);
+}
+
 fn verify_file(case: &str, inputs: Vec<FieldElement>) {
     let riscv_asm = riscv::compile_rust_to_riscv_asm(&format!("tests/riscv_data/{case}"));
     let powdr_asm = riscv::compiler::compile_riscv_asm(riscv_asm);
