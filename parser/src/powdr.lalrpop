@@ -252,7 +252,7 @@ BoxedExpression: Box<Expression> = {
 }
 
 BinaryOr: Box<Expression> = {
-    BinaryOr BinaryOrOp BinaryAnd => Box::new(Expression::BinaryOperation(<>)),
+    BinaryOr BinaryOrOp BinaryXor => Box::new(Expression::BinaryOperation(<>)),
     BinaryXor,
 }
 
