@@ -579,7 +579,7 @@ fn process_statement(s: Statement) -> Vec<String> {
 
 fn escape_label(l: &str) -> String {
     // TODO make this proper
-    l.replace('.', "_dot_")
+    l.replace('.', "_dot_").replace('/', "_slash_")
 }
 
 fn argument_to_number(x: &Argument) -> u32 {
