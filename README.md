@@ -124,7 +124,7 @@ LEFT in RIGHT where FUN;
 Where `LEFT` is a tuple of committed polynomials, `RIGHT` is an `x`-product of tuples of constant polynomials, expressions or variable declarations
 and `FUN` is a function of the variables that returns `bool`.
 
-The semantics is as follows: If there is more than one factor, then all factors has to have finite size such that
+The semantics is as follows: If there is more than one factor, then all factors have to have finite size such that
 the product of the sizes is less than the maximal polynomials size. New constant polynomials are constructed,
 so that there is at least one row for all combinations of rows in the factor (cross product).
 If `FUN` is present, then all rows where the function returns `false` are removed.
@@ -230,7 +230,7 @@ The optimizer will of course ensure that redundant constraints are removed
 
 ### Instruction / Assembly language
 
-The second layer of this langauge is to define an assembly-like language that helps in defining complex constants.
+The second layer of this language is to define an assembly-like language that helps in defining complex constants.
 
 A more detailed description of the current plans can be found in [notes_asm.md](notes_asm.md).
 
