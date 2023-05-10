@@ -995,6 +995,7 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
                 "mstore tmp1;".to_string(),
             ]
         }
+        "nop" => vec![],
         "unimp" => vec!["fail;".to_string()],
 
         // Special instruction that is inserted to allow dynamic label references
