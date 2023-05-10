@@ -151,8 +151,14 @@ runtime = {{ path = "./runtime" }}
     .unwrap();
     runtime_file.push("src");
     fs::create_dir(&runtime_file).unwrap();
-    runtime_file.push("lib.rs");
-    fs::write(runtime_file, include_bytes!("../runtime/src/lib.rs")).unwrap();
+
+    let mut lib_file = runtime_file.clone();
+    lib_file.push("lib.rs");
+    fs::write(lib_file, include_bytes!("../runtime/src/lib.rs")).unwrap();
+
+    let mut print_file = runtime_file.clone();
+    print_file.push("print.rs");
+    fs::write(print_file, include_bytes!("../runtime/src/print.rs")).unwrap();
 
     compile_rust_crate_to_riscv_asm(cargo_file.to_str().unwrap())
 }

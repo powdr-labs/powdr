@@ -4,10 +4,12 @@
 use core::arch::asm;
 use core::panic::PanicInfo;
 
+mod print;
+pub use print::print;
+
 #[panic_handler]
-fn panic(_panic: &PanicInfo<'_>) -> ! {
-    // activate after #176 has been printed
-    // print(format!("panic at line {} in file {}\n", panic.location().line(), panic.location().file()));
+fn panic(panic: &PanicInfo<'_>) -> ! {
+    print(format_args!("{panic}"));
     unsafe {
         asm!("unimp");
     }

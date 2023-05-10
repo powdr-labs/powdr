@@ -900,6 +900,12 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
             assert!(args.is_empty());
             vec!["x10 <=X= ${ (\"input\", x10) };".to_string()]
         }
+        "ebreak" => {
+            assert!(args.is_empty());
+            // This is using x0 on purpose, because we do not want to introduce
+            // nondeterminism with this.
+            vec!["x0 <=X= ${ (\"print_ch\", x10) };\n".to_string()]
+        }
         "tail" => {
             if let [Argument::Symbol(label)] = args {
                 vec![format!("tail {};", escape_label(label))]
