@@ -659,137 +659,161 @@ fn rro(args: &[Argument]) -> (Register, Register, u32) {
     }
 }
 
+fn only_if_no_write_to_zero(statement: String, reg: Register) -> Vec<String> {
+    only_if_no_write_to_zero_vec(vec![statement], reg)
+}
+
+fn only_if_no_write_to_zero_vec(statements: Vec<String>, reg: Register) -> Vec<String> {
+    if reg.is_zero() {
+        vec![]
+    } else {
+        statements
+    }
+}
+
 fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
     match instr {
         // load/store registers
         "li" => {
             let (rd, imm) = ri(args);
-            vec![format!("{rd} <=X= {imm};")]
+            only_if_no_write_to_zero(format!("{rd} <=X= {imm};"), rd)
         }
         // TODO check if it is OK to clear the lower order bits
         "lui" => {
             let (rd, imm) = ri(args);
-            vec![format!("{rd} <=X= {};", imm << 12)]
+            only_if_no_write_to_zero(format!("{rd} <=X= {};", imm << 12), rd)
         }
         "mv" => {
             let (rd, rs) = rr(args);
-            vec![format!("{rd} <=X= {rs};")]
+            only_if_no_write_to_zero(format!("{rd} <=X= {rs};"), rd)
         }
 
         // Arithmetic
         "add" => {
             let (rd, r1, r2) = rrr(args);
-            vec![format!("{rd} <=X= wrap({r1} + {r2});")]
+            only_if_no_write_to_zero(format!("{rd} <=X= wrap({r1} + {r2});"), rd)
         }
         "addi" => {
             let (rd, rs, imm) = rri(args);
-            vec![format!("{rd} <=X= wrap({rs} + {imm});")]
+            only_if_no_write_to_zero(format!("{rd} <=X= wrap({rs} + {imm});"), rd)
         }
         "sub" => {
             let (rd, r1, r2) = rrr(args);
-            vec![format!("{rd} <=X= wrap_signed({r1} - {r2});")]
+            only_if_no_write_to_zero(format!("{rd} <=X= wrap_signed({r1} - {r2});"), rd)
         }
         "neg" => {
             let (rd, r1) = rr(args);
-            vec![format!("{rd} <=X= wrap_signed(0 - {r1});")]
+            only_if_no_write_to_zero(format!("{rd} <=X= wrap_signed(0 - {r1});"), rd)
         }
         "mul" => {
             let (rd, r1, r2) = rrr(args);
-            vec![format!("{rd} <=X= mul({r1}, {r2});")]
+            only_if_no_write_to_zero(format!("{rd} <=X= mul({r1}, {r2});"), rd)
         }
         "mulhu" => {
             let (rd, r1, r2) = rrr(args);
-            vec![format!("{rd} <=X= mulhu({r1}, {r2});")]
+            only_if_no_write_to_zero(format!("{rd} <=X= mulhu({r1}, {r2});"), rd)
         }
 
         // bitwise
         "xor" => {
             let (rd, r1, r2) = rrr(args);
-            vec![format!("{rd} <=X= xor({r1}, {r2});")]
+            only_if_no_write_to_zero(format!("{rd} <=X= xor({r1}, {r2});"), rd)
         }
         "xori" => {
             let (rd, r1, imm) = rri(args);
-            vec![format!("{rd} <=X= xor({r1}, {imm});")]
+            only_if_no_write_to_zero(format!("{rd} <=X= xor({r1}, {imm});"), rd)
         }
         "and" => {
             let (rd, r1, r2) = rrr(args);
-            vec![format!("{rd} <=X= and({r1}, {r2});")]
+            only_if_no_write_to_zero(format!("{rd} <=X= and({r1}, {r2});"), rd)
         }
         "andi" => {
             let (rd, r1, imm) = rri(args);
-            vec![format!("{rd} <=X= and({r1}, {imm});")]
+            only_if_no_write_to_zero(format!("{rd} <=X= and({r1}, {imm});"), rd)
         }
         "or" => {
             let (rd, r1, r2) = rrr(args);
-            vec![format!("{rd} <=X= or({r1}, {r2});")]
+            only_if_no_write_to_zero(format!("{rd} <=X= or({r1}, {r2});"), rd)
         }
         "ori" => {
             let (rd, r1, imm) = rri(args);
-            vec![format!("{rd} <=X= or({r1}, {imm});")]
+            only_if_no_write_to_zero(format!("{rd} <=X= or({r1}, {imm});"), rd)
         }
         "not" => {
             let (rd, rs) = rr(args);
-            vec![format!("{rd} <=X= wrap_signed(-{rs} - 1);")]
+            only_if_no_write_to_zero(format!("{rd} <=X= wrap_signed(-{rs} - 1);"), rd)
         }
 
         // shift
         "slli" => {
             let (rd, rs, amount) = rri(args);
             assert!(amount <= 31);
-            if amount <= 16 {
-                vec![format!("{rd} <=X= wrap16({rs} * {});", 1 << amount)]
-            } else {
-                vec![
-                    format!("tmp1 <=X= wrap16({rs} * {});", 1 << 16),
-                    format!("{rd} <=X= wrap16(tmp1 * {});", 1 << (amount - 16)),
-                ]
-            }
+            only_if_no_write_to_zero_vec(
+                if amount <= 16 {
+                    vec![format!("{rd} <=X= wrap16({rs} * {});", 1 << amount)]
+                } else {
+                    vec![
+                        format!("tmp1 <=X= wrap16({rs} * {});", 1 << 16),
+                        format!("{rd} <=X= wrap16(tmp1 * {});", 1 << (amount - 16)),
+                    ]
+                },
+                rd,
+            )
         }
         "sll" => {
             let (rd, r1, r2) = rrr(args);
-            vec![
-                format!("tmp1 <=X= and({r2}, 0x1f);"),
-                format!("{rd} <=X= shl({r1}, tmp1);"),
-            ]
+            only_if_no_write_to_zero_vec(
+                vec![
+                    format!("tmp1 <=X= and({r2}, 0x1f);"),
+                    format!("{rd} <=X= shl({r1}, tmp1);"),
+                ],
+                rd,
+            )
         }
         "srli" => {
             // logical shift right
             let (rd, rs, amount) = rri(args);
             assert!(amount <= 31);
-            vec![format!("{rd} <=X= shr({rs}, {amount});")]
+            only_if_no_write_to_zero(format!("{rd} <=X= shr({rs}, {amount});"), rd)
         }
         "srl" => {
             // logical shift right
             let (rd, r1, r2) = rrr(args);
-            vec![
-                format!("tmp1 <=X= and({r2}, 0x1f);"),
-                format!("{rd} <=X= shr({r1}, tmp1);"),
-            ]
+            only_if_no_write_to_zero_vec(
+                vec![
+                    format!("tmp1 <=X= and({r2}, 0x1f);"),
+                    format!("{rd} <=X= shr({r1}, tmp1);"),
+                ],
+                rd,
+            )
         }
 
         // comparison
         "seqz" => {
             let (rd, rs) = rr(args);
-            vec![format!("{rd} <=Y= is_equal_zero({rs});")]
+            only_if_no_write_to_zero(format!("{rd} <=Y= is_equal_zero({rs});"), rd)
         }
         "snez" => {
             let (rd, rs) = rr(args);
-            vec![format!("{rd} <=Y= is_not_equal_zero({rs});")]
+            only_if_no_write_to_zero(format!("{rd} <=Y= is_not_equal_zero({rs});"), rd)
         }
         "slti" => {
             let (rd, rs, imm) = rri(args);
-            vec![
-                format!("tmp1 <=X= to_signed({rs});"),
-                format!("{rd} <=Y= is_positive({} - tmp1);", imm as i32),
-            ]
+            only_if_no_write_to_zero_vec(
+                vec![
+                    format!("tmp1 <=X= to_signed({rs});"),
+                    format!("{rd} <=Y= is_positive({} - tmp1);", imm as i32),
+                ],
+                rd,
+            )
         }
         "sltiu" => {
             let (rd, rs, imm) = rri(args);
-            vec![format!("{rd} <=Y= is_positive({imm} - {rs});")]
+            only_if_no_write_to_zero(format!("{rd} <=Y= is_positive({imm} - {rs});"), rd)
         }
         "sltu" => {
             let (rd, r1, r2) = rrr(args);
-            vec![format!("{rd} <=Y= is_positive({r2} - {r1});")]
+            only_if_no_write_to_zero(format!("{rd} <=Y= is_positive({r2} - {r1});"), rd)
         }
 
         // branching
@@ -922,34 +946,43 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
         "lw" => {
             let (rd, rs, off) = rro(args);
             // TODO we need to consider misaligned loads / stores
-            vec![
-                format!("addr <=X= wrap({rs} + {off});"),
-                format!("{rd} <=X= mload();"),
-            ]
+            only_if_no_write_to_zero_vec(
+                vec![
+                    format!("addr <=X= wrap({rs} + {off});"),
+                    format!("{rd} <=X= mload();"),
+                ],
+                rd,
+            )
         }
         "lb" => {
             // load byte and sign-extend. the memory is little-endian.
             let (rd, rs, off) = rro(args);
-            vec![
-                format!("tmp1 <=X= wrap({rs} + {off});"),
-                "addr <=X= and(tmp1, 0xfffffffc);".to_string(),
-                "tmp2 <=X= and(tmp1, 0x3);".to_string(),
-                format!("{rd} <=X= mload();"),
-                format!("{rd} <=X= shr({rd}, 8 * tmp2);"),
-                format!("{rd} <=X= sign_extend_byte({rd});"),
-            ]
+            only_if_no_write_to_zero_vec(
+                vec![
+                    format!("tmp1 <=X= wrap({rs} + {off});"),
+                    "addr <=X= and(tmp1, 0xfffffffc);".to_string(),
+                    "tmp2 <=X= and(tmp1, 0x3);".to_string(),
+                    format!("{rd} <=X= mload();"),
+                    format!("{rd} <=X= shr({rd}, 8 * tmp2);"),
+                    format!("{rd} <=X= sign_extend_byte({rd});"),
+                ],
+                rd,
+            )
         }
         "lbu" => {
             // load byte and zero-extend. the memory is little-endian.
             let (rd, rs, off) = rro(args);
-            vec![
-                format!("tmp1 <=X= wrap({rs} + {off});"),
-                "addr <=X= and(tmp1, 0xfffffffc);".to_string(),
-                "tmp2 <=X= and(tmp1, 0x3);".to_string(),
-                format!("{rd} <=X= mload();"),
-                format!("{rd} <=X= shr({rd}, 8 * tmp2);"),
-                format!("{rd} <=X= and({rd}, 0xff);"),
-            ]
+            only_if_no_write_to_zero_vec(
+                vec![
+                    format!("tmp1 <=X= wrap({rs} + {off});"),
+                    "addr <=X= and(tmp1, 0xfffffffc);".to_string(),
+                    "tmp2 <=X= and(tmp1, 0x3);".to_string(),
+                    format!("{rd} <=X= mload();"),
+                    format!("{rd} <=X= shr({rd}, 8 * tmp2);"),
+                    format!("{rd} <=X= and({rd}, 0xff);"),
+                ],
+                rd,
+            )
         }
         "sw" => {
             let (r1, r2, off) = rro(args);
@@ -1000,8 +1033,8 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
 
         // Special instruction that is inserted to allow dynamic label references
         "load_dynamic" => {
-            let (r1, label) = rl(args);
-            vec![format!("{r1} <=X= load_label({label});")]
+            let (rd, label) = rl(args);
+            only_if_no_write_to_zero(format!("{rd} <=X= load_label({label});"), rd)
         }
 
         _ => {

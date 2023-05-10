@@ -30,6 +30,12 @@ pub enum Argument {
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub struct Register(u8);
 
+impl Register {
+    pub fn is_zero(&self) -> bool {
+        self.0 == 0
+    }
+}
+
 #[derive(Clone)]
 pub enum Constant {
     Number(i64),
