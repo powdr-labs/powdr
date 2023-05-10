@@ -19,16 +19,22 @@ match {
     _,
 }
 
-pub MaybeStatement: Option<Statement> = { Statement? }
+pub Statements: Vec<Statement> = {
+    <ls:LabelOrStatement*> <s:Statement?> => ls.into_iter().flatten().chain(s.into_iter()).collect(),
+}
 
-Statement: Statement = {
-    Label,
-    Directive,
-    Instruction,
+LabelOrStatement: Option<Statement> = {
+    Label => Some(<>),
+    <Statement?> ";" => <>
 }
 
 Label: Statement = {
     <Symbol> ":" => Statement::Label(<>)
+}
+
+Statement: Statement = {
+    Directive,
+    Instruction,
 }
 
 Directive: Statement = {
