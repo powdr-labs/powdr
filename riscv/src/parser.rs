@@ -84,7 +84,7 @@ impl Display for Register {
 }
 
 pub fn parse_asm(input: &str) -> Vec<Statement> {
-    let parser = riscv_asm::MaybeStatementParser::new();
+    let parser = riscv_asm::StatementsParser::new();
     input
         .split('\n')
         .map(|l| l.trim())
