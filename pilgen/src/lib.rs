@@ -568,19 +568,19 @@ impl ASMPILConverter {
                                 .get_mut(&format!("p_read_{assign_reg}_{reg}"))
                                 .unwrap_or_else(|| {
                                     panic!("Register combination <={assign_reg}= {reg} not found.")
-                                })[i] = *coeff;
+                                })[i] += *coeff;
                         }
                         AffineExpressionComponent::Constant => {
                             program_constants
                                 .get_mut(&format!("p_{assign_reg}_const"))
-                                .unwrap()[i] = *coeff
+                                .unwrap()[i] += *coeff
                         }
                         AffineExpressionComponent::FreeInput(expr) => {
                             // The program just stores that we read a free input, the actual value
                             // is part of the execution trace that generates the witness.
                             program_constants
                                 .get_mut(&format!("p_{assign_reg}_read_free"))
-                                .unwrap()[i] = *coeff;
+                                .unwrap()[i] += *coeff;
                             free_value_query_arms.get_mut(assign_reg).unwrap().push((
                                 Some(build_number(FieldElement::from(i as u64))),
                                 expr.clone(),
