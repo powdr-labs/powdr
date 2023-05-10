@@ -1,9 +1,10 @@
 #![no_std]
-#![feature(start)]
+#![feature(start, alloc_error_handler)]
 
 use core::arch::asm;
 use core::panic::PanicInfo;
 
+mod allocator;
 mod print;
 pub use print::print;
 

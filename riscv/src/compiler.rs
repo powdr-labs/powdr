@@ -568,16 +568,32 @@ fn runtime() -> &'static str {
     */
     r#"
 .globl memset@plt
-memset@plt:
-    tail __runtime_memset
+.set memset@plt, __runtime_memset
 
 .globl memcpy@plt
-memcpy@plt:
-    tail __runtime_memcpy
+.set memcpy@plt, __runtime_memcpy
 
 .globl memcmp@plt
-memcmp@plt:
-	tail __runtime_memcmp
+.set memcmp@plt, __runtime_memcmp
+
+.globl memmove@plt
+.globl memmove
+.set memmove@plt, memmove
+
+.globl __rust_alloc
+.set __rust_alloc, __rg_alloc
+
+.globl __rust_dealloc
+.set __rust_dealloc, __rg_dealloc
+
+.globl __rust_realloc
+.set __rust_realloc, __rg_realloc
+
+.globl __rust_alloc_zeroed
+.set __rust_alloc_zeroed, __rg_alloc_zeroed
+
+.globl __rust_alloc_error_handler
+.set __rust_alloc_error_handler, __rg_oom
 "#
 }
 
@@ -843,6 +859,14 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
                 rd,
             )
         }
+        "slt" => {
+            let (rd, r1, r2) = rrr(args);
+            vec![
+                format!("tmp1 <=X= to_signed({r1});"),
+                format!("tmp2 <=X= to_signed({r2});"),
+                format!("{rd} <=Y= is_positive(tmp2 - tmp1);"),
+            ]
+        }
         "sltiu" => {
             let (rd, rs, imm) = rri(args);
             only_if_no_write_to_zero(format!("{rd} <=Y= is_positive({imm} - {rs});"), rd)
@@ -850,6 +874,13 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
         "sltu" => {
             let (rd, r1, r2) = rrr(args);
             only_if_no_write_to_zero(format!("{rd} <=Y= is_positive({r2} - {r1});"), rd)
+        }
+        "sgtz" => {
+            let (rd, rs) = rr(args);
+            vec![
+                format!("tmp1 <=X= to_signed({rs});"),
+                format!("{rd} <=Y= is_positive(tmp1);"),
+            ]
         }
 
         // branching

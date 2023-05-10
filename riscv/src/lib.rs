@@ -156,6 +156,14 @@ runtime = {{ path = "./runtime" }}
     lib_file.push("lib.rs");
     fs::write(lib_file, include_bytes!("../runtime/src/lib.rs")).unwrap();
 
+    let mut allocator_file = runtime_file.clone();
+    allocator_file.push("allocator.rs");
+    fs::write(
+        allocator_file,
+        include_bytes!("../runtime/src/allocator.rs"),
+    )
+    .unwrap();
+
     let mut print_file = runtime_file.clone();
     print_file.push("print.rs");
     fs::write(print_file, include_bytes!("../runtime/src/print.rs")).unwrap();
@@ -173,7 +181,7 @@ pub fn compile_rust_crate_to_riscv_asm(input_dir: &str) -> BTreeMap<String, Stri
             "build",
             "--release",
             "-Z",
-            "build-std=core",
+            "build-std=core,alloc",
             "--target",
             "riscv32imc-unknown-none-elf",
             "--lib",

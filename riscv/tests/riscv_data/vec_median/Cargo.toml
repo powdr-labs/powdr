@@ -1,0 +1,9 @@
+[package]
+name = "vec_median"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+runtime = { path = "../../../runtime" }
+
+[workspace]

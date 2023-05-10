@@ -66,6 +66,19 @@ fn test_keccak() {
 
 #[test]
 #[ignore = "Too slow"]
+fn test_vec_median() {
+    let case = "vec_median";
+    verify_crate(
+        case,
+        [5, 11, 15, 75, 6, 5, 1, 4, 7, 3, 2, 9, 2]
+            .into_iter()
+            .map(|x| x.into())
+            .collect(),
+    );
+}
+
+#[test]
+#[ignore = "Too slow"]
 fn test_password() {
     let case = "password_checker";
     verify_crate(case, vec![]);
