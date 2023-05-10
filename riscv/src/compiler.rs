@@ -586,7 +586,7 @@ fn argument_to_number(x: &Argument) -> u32 {
     if let Argument::Constant(c) = x {
         constant_to_number(c)
     } else {
-        panic!()
+        panic!("Expected number, got {x}")
     }
 }
 
