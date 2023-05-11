@@ -10,7 +10,29 @@ powdr_field!(GoldilocksField, GoldilocksBaseField);
 
 #[cfg(test)]
 mod test {
+    use crate::traits::int_from_hex_str;
+
     use super::*;
+
+    #[test]
+    fn bitwise() {
+        let n = int_from_hex_str::<GoldilocksField>("00ff00ff00ff00ff");
+        let p = int_from_hex_str::<GoldilocksField>("000ff00ff00ff00f");
+        let not_n = int_from_hex_str::<GoldilocksField>("ff00ff00ff00ff00");
+        let n_shr_4 = int_from_hex_str::<GoldilocksField>("000ff00ff00ff00f");
+        let n_shl_4 = int_from_hex_str::<GoldilocksField>("0ff00ff00ff00ff0");
+        let n_or_p = int_from_hex_str::<GoldilocksField>("00fff0fff0fff0ff");
+        let n_and_p = int_from_hex_str::<GoldilocksField>("000f000f000f000f");
+        let n_xor_p = int_from_hex_str::<GoldilocksField>("00f0f0f0f0f0f0f0");
+
+        assert_eq!(n.not().not(), n);
+        assert_eq!(n.not(), not_n);
+        assert_eq!(n >> 4, n_shr_4);
+        assert_eq!(n << 4, n_shl_4);
+        assert_eq!(n & p, n_and_p);
+        assert_eq!(n | p, n_or_p);
+        assert_eq!(n ^ p, n_xor_p);
+    }
 
     #[test]
     #[should_panic]

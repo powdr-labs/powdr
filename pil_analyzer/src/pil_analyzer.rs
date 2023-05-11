@@ -656,24 +656,21 @@ impl PILContext {
                 BinaryOperator::Mod => (left.to_arbitrary_integer() % right.to_arbitrary_integer())
                     .try_into()
                     .unwrap(),
-                BinaryOperator::BinaryAnd => (left.to_arbitrary_integer()
-                    & right.to_arbitrary_integer())
-                .try_into()
-                .unwrap(),
-                BinaryOperator::BinaryXor => (left.to_arbitrary_integer()
-                    ^ right.to_arbitrary_integer())
-                .try_into()
-                .unwrap(),
-                BinaryOperator::BinaryOr => (left.to_arbitrary_integer()
-                    | right.to_arbitrary_integer())
-                .try_into()
-                .unwrap(),
-                BinaryOperator::ShiftLeft => (left.to_arbitrary_integer() << right.to_degree())
-                    .try_into()
-                    .unwrap(),
-                BinaryOperator::ShiftRight => (left.to_arbitrary_integer() >> right.to_degree())
-                    .try_into()
-                    .unwrap(),
+                BinaryOperator::BinaryAnd => {
+                    (left.to_integer() & right.to_integer()).try_into().unwrap()
+                }
+                BinaryOperator::BinaryXor => {
+                    (left.to_integer() ^ right.to_integer()).try_into().unwrap()
+                }
+                BinaryOperator::BinaryOr => {
+                    (left.to_integer() | right.to_integer()).try_into().unwrap()
+                }
+                BinaryOperator::ShiftLeft => {
+                    (left.to_integer() << right.to_degree()).try_into().unwrap()
+                }
+                BinaryOperator::ShiftRight => {
+                    (left.to_integer() >> right.to_degree()).try_into().unwrap()
+                }
             })
         } else {
             None

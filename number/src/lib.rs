@@ -9,7 +9,7 @@ mod traits;
 pub use goldilocks::GoldilocksField as FieldElement;
 use num_bigint::BigUint;
 pub use traits::{BigInt, FieldElementTrait};
-/// The abstract type of numbers to be computed with.
+/// An arbitrary precision big integer, to be used as a last recourse
 pub type AbstractNumberType = BigUint;
 
 /// The type of polynomial degrees and indices into columns.

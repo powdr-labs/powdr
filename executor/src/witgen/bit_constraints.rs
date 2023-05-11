@@ -54,8 +54,8 @@ impl BitConstraint {
     /// The bit constraint of an integer multiple of an expression.
     /// TODO this assumes goldilocks
     pub fn multiple(&self, factor: FieldElement) -> Option<BitConstraint> {
-        if factor.to_arbitrary_integer() * self.mask.into_biguint()
-            >= FieldElement::modulus().into_biguint()
+        if factor.to_arbitrary_integer() * self.mask.to_arbitrary_integer()
+            >= FieldElement::modulus().to_arbitrary_integer()
         {
             None
         } else {
@@ -79,7 +79,7 @@ impl BitConstraint {
 
 impl Display for BitConstraint {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "0x{:x}", self.mask().into_biguint())
+        write!(f, "0x{:x}", self.mask().to_arbitrary_integer())
     }
 }
 

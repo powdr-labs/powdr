@@ -1,8 +1,8 @@
-use num_bigint::BigUint;
 use std::{fmt, ops::*};
 
 use crate::{AbstractNumberType, DegreeType};
 
+/// A fixed-width integer type
 pub trait BigInt:
     From<u32>
     + BitAnd
@@ -15,9 +15,12 @@ pub trait BigInt:
     + Shr<u64>
     + BitXor
     + fmt::LowerHex
+    + TryFrom<num_bigint::BigUint, Error = ()>
 {
-    fn into_biguint(self) -> BigUint;
+    fn to_arbitrary_integer(self) -> AbstractNumberType;
 }
+
+/// A field element
 pub trait FieldElementTrait:
     Add
     + Sub
@@ -34,6 +37,7 @@ pub trait FieldElementTrait:
     + From<bool>
     + fmt::LowerHex
 {
+    /// The underlying fixed-width integer type
     type Integer: BigInt;
 
     fn to_degree(&self) -> DegreeType;
@@ -41,7 +45,7 @@ pub trait FieldElementTrait:
     fn to_integer(&self) -> Self::Integer;
 
     fn to_arbitrary_integer(&self) -> AbstractNumberType {
-        self.to_integer().into_biguint()
+        self.to_integer().to_arbitrary_integer()
     }
 
     fn modulus() -> Self::Integer;
@@ -55,4 +59,10 @@ pub trait FieldElementTrait:
     fn from_str(s: &str) -> Self;
 
     fn from_str_radix(s: &str, radix: u32) -> Result<Self, String>;
+}
+
+#[cfg(test)]
+pub fn int_from_hex_str<T: FieldElementTrait>(s: &str) -> T::Integer {
+    use num_traits::Num;
+    T::Integer::try_from(AbstractNumberType::from_str_radix(s, 16).unwrap()).unwrap()
 }

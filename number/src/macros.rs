@@ -29,7 +29,7 @@ macro_rules! powdr_field {
 
         impl fmt::LowerHex for BigIntImpl {
             fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-                let val = self.into_biguint();
+                let val = self.to_arbitrary_integer();
 
                 fmt::LowerHex::fmt(&val, f)
             }
@@ -160,8 +160,18 @@ macro_rules! powdr_field {
             }
         }
 
+        impl TryFrom<BigUint> for BigIntImpl {
+            type Error = ();
+
+            fn try_from(n: BigUint) -> Result<Self, ()> {
+                Ok(Self {
+                    value: <$ark_type as PrimeField>::BigInt::try_from(n)?,
+                })
+            }
+        }
+
         impl BigInt for BigIntImpl {
-            fn into_biguint(self) -> BigUint {
+            fn to_arbitrary_integer(self) -> BigUint {
                 self.value.into()
             }
         }
@@ -232,7 +242,7 @@ macro_rules! powdr_field {
             }
 
             fn to_degree(&self) -> DegreeType {
-                let degree: BigUint = self.to_integer().into_biguint();
+                let degree: BigUint = self.to_integer().to_arbitrary_integer();
                 degree.try_into().unwrap()
             }
 

@@ -251,12 +251,12 @@ where
             assignments.combine(EvalValue::complete(vec![(
                 i,
                 Constraint::Assignment(
-                    ((offset & *mask).into_biguint() / coeff.to_arbitrary_integer())
+                    ((offset & *mask).to_arbitrary_integer() / coeff.to_arbitrary_integer())
                         .try_into()
                         .unwrap(),
                 ),
             )]));
-            offset &= !*mask
+            offset &= !*mask;
         }
 
         if offset != 0u32.into() {
