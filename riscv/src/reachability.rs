@@ -10,14 +10,13 @@ pub fn filter_reachable_from(
 ) {
     let replacements = extract_replacements(statements);
     let label_offsets = extract_label_offsets(statements);
-    let mut queued_labels: BTreeSet<&str> = vec![label].into_iter().collect();
-    let mut referenced_labels: BTreeSet<&str> = vec![label].into_iter().collect();
+    let mut queued_labels = BTreeSet::from([label]);
+    let mut referenced_labels = BTreeSet::from([label]);
     let mut processed_labels = BTreeSet::<&str>::new();
     // Labels that are included in a basic block that starts with a different label,
     // or object labels.
     let mut secondary_labels = BTreeSet::<&str>::new();
-    let mut label_queue = vec![label];
-    while let Some(l) = label_queue.pop() {
+    while let Some(l) = queued_labels.pop_first() {
         let l = *replacements.get(l).unwrap_or(&l);
         if !processed_labels.insert(l) {
             continue;
@@ -49,8 +48,7 @@ pub fn filter_reachable_from(
             panic!();
         };
         for referenced in &new_references {
-            if !queued_labels.contains(referenced) && !processed_labels.contains(referenced) {
-                label_queue.push(referenced);
+            if !processed_labels.contains(referenced) {
                 queued_labels.insert(referenced);
             }
         }
