@@ -3,7 +3,7 @@ use std::fmt::Display;
 
 use itertools::Itertools;
 
-use number::{BigInt, FieldElement, FieldElementTrait};
+use number::{BigInt, FieldElement};
 
 use super::bit_constraints::BitConstraintSet;
 use super::Constraint;
@@ -11,15 +11,15 @@ use super::{EvalError::*, EvalResult, EvalValue, IncompleteCause};
 
 /// An expression affine in the committed polynomials (or symbolic variables in general).
 #[derive(Debug, Clone)]
-pub struct AffineExpression<K> {
-    pub coefficients: BTreeMap<K, FieldElement>,
-    pub offset: FieldElement,
+pub struct AffineExpression<K, T> {
+    pub coefficients: BTreeMap<K, T>,
+    pub offset: T,
 }
 
-pub type AffineResult<K> = Result<AffineExpression<K>, IncompleteCause<K>>;
+pub type AffineResult<K, T> = Result<AffineExpression<K, T>, IncompleteCause<K>>;
 
-impl<K> From<FieldElement> for AffineExpression<K> {
-    fn from(value: FieldElement) -> Self {
+impl<K, T> From<T> for AffineExpression<K, T> {
+    fn from(value: T) -> Self {
         Self {
             coefficients: Default::default(),
             offset: value,
@@ -27,17 +27,12 @@ impl<K> From<FieldElement> for AffineExpression<K> {
     }
 }
 
-impl<K> From<u32> for AffineExpression<K> {
-    fn from(value: u32) -> Self {
-        FieldElement::from(value).into()
-    }
-}
-
-impl<'x, K> AffineExpression<K>
+impl<'x, K, T> AffineExpression<K, T>
 where
     K: Copy + Ord + 'x,
+    T: FieldElement,
 {
-    pub fn from_variable_id(var_id: K) -> AffineExpression<K> {
+    pub fn from_variable_id(var_id: K) -> AffineExpression<K, T> {
         Self {
             coefficients: BTreeMap::from([(var_id, 1.into())]),
             offset: 0.into(),
@@ -48,7 +43,7 @@ where
         self.nonzero_coefficients().next().is_none()
     }
 
-    pub fn constant_value(&self) -> Option<FieldElement> {
+    pub fn constant_value(&self) -> Option<T> {
         if self.is_constant() {
             Some(self.offset)
         } else {
@@ -61,22 +56,23 @@ where
     }
 
     /// @returns an iterator of the nonzero coefficients and their variable IDs (but not the offset).
-    pub fn nonzero_coefficients(&self) -> impl Iterator<Item = (K, &FieldElement)> {
+    pub fn nonzero_coefficients(&self) -> impl Iterator<Item = (K, &T)> {
         self.coefficients
             .iter()
-            .filter_map(|(i, c)| (c != &FieldElement::from(0)).then_some((*i, c)))
+            .filter_map(|(i, c)| (c != &T::from(0)).then_some((*i, c)))
     }
 }
 
-impl<'x, K> AffineExpression<K>
+impl<'x, K, T> AffineExpression<K, T>
 where
     K: Copy + Ord + Display + 'x,
+    T: FieldElement,
 {
     /// If the affine expression has only a single variable (with nonzero coefficient),
     /// returns the index of the variable and the assignment that evaluates the
     /// affine expression to zero.
     /// Returns an error if the constraint is unsat
-    pub fn solve(&self) -> Result<EvalValue<K>, ()> {
+    pub fn solve(&self) -> Result<EvalValue<K, T>, ()> {
         let mut nonzero = self.nonzero_coefficients();
         let first = nonzero.next();
         let second = nonzero.next();
@@ -115,8 +111,8 @@ where
     /// we can deduce the values of all components from the offset part.
     pub fn solve_with_bit_constraints(
         &self,
-        known_constraints: &impl BitConstraintSet<K>,
-    ) -> EvalResult<K> {
+        known_constraints: &impl BitConstraintSet<K, T>,
+    ) -> EvalResult<T, K> {
         // Try to solve directly.
         match self.solve() {
             Ok(value) if value.is_complete() => return Ok(value),
@@ -158,8 +154,8 @@ where
 
     fn try_transfer_constraints(
         &self,
-        known_constraints: &impl BitConstraintSet<K>,
-    ) -> Option<EvalValue<K>> {
+        known_constraints: &impl BitConstraintSet<K, T>,
+    ) -> Option<EvalValue<K, T>> {
         // We need the form X = a * Y + b * Z + ...
         // where X is unconstrained and all others are bit-constrained.
         let mut unconstrained = self
@@ -207,8 +203,8 @@ where
     /// Returns an empty vector if it is not able to solve the equation.
     fn try_solve_through_constraints(
         &self,
-        known_constraints: &impl BitConstraintSet<K>,
-    ) -> EvalResult<K> {
+        known_constraints: &impl BitConstraintSet<K, T>,
+    ) -> EvalResult<T, K> {
         let parts = self
             .nonzero_coefficients()
             .map(|(i, coeff)| {
@@ -235,7 +231,7 @@ where
         }
 
         // Check if they are mutually exclusive and compute assignments.
-        let mut covered_bits: <FieldElement as FieldElementTrait>::Integer = 0u32.into();
+        let mut covered_bits: <T as FieldElement>::Integer = 0u32.into();
         let mut assignments = EvalValue::complete(vec![]);
         let mut offset = (-self.offset).to_integer();
         for (i, coeff, constraint) in parts {
@@ -268,18 +264,20 @@ where
     }
 }
 
-impl<K> PartialEq for AffineExpression<K>
+impl<K, T> PartialEq for AffineExpression<K, T>
 where
     K: Copy + Ord,
+    T: FieldElement,
 {
     fn eq(&self, other: &Self) -> bool {
         self.offset == other.offset && self.nonzero_coefficients().eq(other.nonzero_coefficients())
     }
 }
 
-impl<K> std::ops::Add for AffineExpression<K>
+impl<K, T> std::ops::Add for AffineExpression<K, T>
 where
     K: Copy + Ord,
+    T: FieldElement,
 {
     type Output = Self;
 
@@ -298,9 +296,10 @@ where
     }
 }
 
-impl<K> std::ops::Neg for AffineExpression<K>
+impl<K, T> std::ops::Neg for AffineExpression<K, T>
 where
     K: Copy + Ord,
+    T: FieldElement,
 {
     type Output = Self;
 
@@ -311,9 +310,10 @@ where
     }
 }
 
-impl<K> std::ops::Sub for AffineExpression<K>
+impl<K, T> std::ops::Sub for AffineExpression<K, T>
 where
     K: Copy + Ord,
+    T: FieldElement,
 {
     type Output = Self;
 
@@ -322,9 +322,9 @@ where
     }
 }
 
-impl<K> std::ops::Mul<FieldElement> for AffineExpression<K> {
+impl<K, T: FieldElement> std::ops::Mul<T> for AffineExpression<K, T> {
     type Output = Self;
-    fn mul(mut self, factor: FieldElement) -> Self {
+    fn mul(mut self, factor: T) -> Self {
         for f in self.coefficients.values_mut() {
             *f = *f * factor;
         }
@@ -333,14 +333,7 @@ impl<K> std::ops::Mul<FieldElement> for AffineExpression<K> {
     }
 }
 
-impl<K> std::ops::Mul<AffineExpression<K>> for FieldElement {
-    type Output = AffineExpression<K>;
-    fn mul(self, expr: AffineExpression<K>) -> AffineExpression<K> {
-        expr * self
-    }
-}
-
-impl<K> Display for AffineExpression<K>
+impl<K, T: FieldElement> Display for AffineExpression<K, T>
 where
     K: Copy + Ord + Display,
 {
@@ -374,11 +367,22 @@ mod test {
 
     use super::*;
     use crate::witgen::{bit_constraints::BitConstraint, EvalError};
-    use number::FieldElement;
+    use number::{FieldElement, GoldilocksField};
 
-    fn convert<T>(input: Vec<T>) -> BTreeMap<usize, FieldElement>
+    impl<K> std::ops::Mul<AffineExpression<K, GoldilocksField>> for GoldilocksField {
+        type Output = AffineExpression<K, GoldilocksField>;
+        fn mul(
+            self,
+            expr: AffineExpression<K, GoldilocksField>,
+        ) -> AffineExpression<K, GoldilocksField> {
+            expr * self
+        }
+    }
+
+    fn convert<U, T>(input: Vec<U>) -> BTreeMap<usize, T>
     where
-        T: Into<FieldElement> + Copy,
+        U: Copy + Into<T>,
+        T: FieldElement,
     {
         input.iter().map(|x| (*x).into()).enumerate().collect()
     }
@@ -393,18 +397,18 @@ mod test {
             -a,
             AffineExpression {
                 coefficients: convert(vec![
-                    FieldElement::from(0) - FieldElement::from(1u64),
+                    GoldilocksField::from(0) - GoldilocksField::from(1u64),
                     0.into(),
-                    FieldElement::from(0) - FieldElement::from(2u64),
+                    GoldilocksField::from(0) - GoldilocksField::from(2u64),
                 ]),
-                offset: FieldElement::from(0) - FieldElement::from(9u64),
+                offset: GoldilocksField::from(0) - GoldilocksField::from(9u64),
             },
         );
     }
 
     #[test]
     pub fn test_affine_add() {
-        let a = AffineExpression {
+        let a = AffineExpression::<_, GoldilocksField> {
             coefficients: convert(vec![1, 2]),
             offset: 3.into(),
         };
@@ -425,18 +429,18 @@ mod test {
     #[test]
     pub fn test_affine_add_with_ref_key() {
         let names = ["abc", "def", "ghi"];
-        let a = AffineExpression::<&str>::from_variable_id(names[0])
-            + FieldElement::from(2) * AffineExpression::<&str>::from_variable_id(names[1])
-            + 3.into();
-        let b = AffineExpression::<&str>::from_variable_id(names[0]) * 11.into() + 13.into();
+        let a = AffineExpression::from_variable_id(names[0])
+            + GoldilocksField::from(2) * AffineExpression::from_variable_id(names[1])
+            + GoldilocksField::from(3).into();
+        let b = AffineExpression::from_variable_id(names[0]) * GoldilocksField::from(11).into()
+            + GoldilocksField::from(13).into();
         let result = a.clone() + b.clone();
         assert_eq!(&result.to_string(), "12 * abc + 2 * def + 16");
         assert_eq!(b.clone() + a.clone(), a + b,);
     }
-
-    struct TestBitConstraints(BTreeMap<usize, BitConstraint>);
-    impl BitConstraintSet<usize> for TestBitConstraints {
-        fn bit_constraint(&self, id: usize) -> Option<BitConstraint> {
+    struct TestBitConstraints<T: FieldElement>(BTreeMap<usize, BitConstraint<T>>);
+    impl<T: FieldElement> BitConstraintSet<usize, T> for TestBitConstraints<T> {
+        fn bit_constraint(&self, id: usize) -> Option<BitConstraint<T>> {
             self.0.get(&id).cloned()
         }
     }
@@ -446,7 +450,7 @@ mod test {
         let expr = AffineExpression::from_variable_id(1)
             - AffineExpression::from_variable_id(2) * 16.into()
             - AffineExpression::from_variable_id(3);
-        let known_constraints = TestBitConstraints(
+        let known_constraints: TestBitConstraints<GoldilocksField> = TestBitConstraints(
             vec![
                 (2, BitConstraint::from_max_bit(7)),
                 (3, BitConstraint::from_max_bit(3)),
@@ -486,7 +490,7 @@ mod test {
             EvalValue::incomplete_with_constraints(
                 vec![(
                     1,
-                    Constraint::BitConstraint(BitConstraint::from_mask(0x1fef as u32))
+                    Constraint::BitConstraint(BitConstraint::from_mask(0x1fef_u32))
                 )],
                 IncompleteCause::NotConcrete
             )
@@ -506,11 +510,11 @@ mod test {
 
     #[test]
     pub fn solve_through_constraints_success() {
-        let value = 0x1504u32;
+        let value: GoldilocksField = 0x1504u32.into();
         let expr = AffineExpression::from(value)
             - AffineExpression::from_variable_id(2) * 256.into()
             - AffineExpression::from_variable_id(3);
-        let known_constraints = TestBitConstraints(
+        let known_constraints: TestBitConstraints<GoldilocksField> = TestBitConstraints(
             vec![
                 (2, BitConstraint::from_max_bit(7)),
                 (3, BitConstraint::from_max_bit(3)),
@@ -518,7 +522,7 @@ mod test {
             .into_iter()
             .collect(),
         );
-        assert_eq!(value, 0x15 * 256 + 0x4);
+        assert_eq!(value, GoldilocksField::from(0x15 * 256 + 0x4));
         assert_eq!(
             expr.solve_with_bit_constraints(&known_constraints).unwrap(),
             EvalValue::complete(vec![
@@ -530,11 +534,11 @@ mod test {
 
     #[test]
     pub fn solve_through_constraints_conflict() {
-        let value = 0x1554u32;
+        let value: GoldilocksField = 0x1554u32.into();
         let expr = AffineExpression::from(value)
             - AffineExpression::from_variable_id(2) * 256.into()
             - AffineExpression::from_variable_id(3);
-        let known_constraints = TestBitConstraints(
+        let known_constraints: TestBitConstraints<GoldilocksField> = TestBitConstraints(
             vec![
                 (2, BitConstraint::from_max_bit(7)),
                 (3, BitConstraint::from_max_bit(3)),

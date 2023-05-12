@@ -1,67 +1,70 @@
 use number::{DegreeType, FieldElement};
 
 #[derive(Debug, PartialEq, Eq)]
-pub struct PILFile(pub Vec<Statement>);
+pub struct PILFile<T>(pub Vec<Statement<T>>);
 
 #[derive(Debug, PartialEq, Eq, Clone)]
-pub enum Statement {
+pub enum Statement<T> {
     /// File name
     Include(usize, String),
     /// Name of namespace and polynomial degree (constant)
-    Namespace(usize, String, Expression),
-    PolynomialDefinition(usize, String, Expression),
-    PublicDeclaration(usize, String, PolynomialReference, Expression),
-    PolynomialConstantDeclaration(usize, Vec<PolynomialName>),
-    PolynomialConstantDefinition(usize, String, FunctionDefinition),
-    PolynomialCommitDeclaration(usize, Vec<PolynomialName>, Option<FunctionDefinition>),
-    PolynomialIdentity(usize, Expression),
-    PlookupIdentity(usize, SelectedExpressions, SelectedExpressions),
-    PermutationIdentity(usize, SelectedExpressions, SelectedExpressions),
-    ConnectIdentity(usize, Vec<Expression>, Vec<Expression>),
-    ConstantDefinition(usize, String, Expression),
+    Namespace(usize, String, Expression<T>),
+    PolynomialDefinition(usize, String, Expression<T>),
+    PublicDeclaration(usize, String, PolynomialReference<T>, Expression<T>),
+    PolynomialConstantDeclaration(usize, Vec<PolynomialName<T>>),
+    PolynomialConstantDefinition(usize, String, FunctionDefinition<T>),
+    PolynomialCommitDeclaration(usize, Vec<PolynomialName<T>>, Option<FunctionDefinition<T>>),
+    PolynomialIdentity(usize, Expression<T>),
+    PlookupIdentity(usize, SelectedExpressions<T>, SelectedExpressions<T>),
+    PermutationIdentity(usize, SelectedExpressions<T>, SelectedExpressions<T>),
+    ConnectIdentity(usize, Vec<Expression<T>>, Vec<Expression<T>>),
+    ConstantDefinition(usize, String, Expression<T>),
     MacroDefinition(
         usize,
         String,
         Vec<String>,
-        Vec<Statement>,
-        Option<Expression>,
+        Vec<Statement<T>>,
+        Option<Expression<T>>,
     ),
-    FunctionCall(usize, String, Vec<Expression>),
+    FunctionCall(usize, String, Vec<Expression<T>>),
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
-pub struct SelectedExpressions {
-    pub selector: Option<Expression>,
-    pub expressions: Vec<Expression>,
+pub struct SelectedExpressions<T> {
+    pub selector: Option<Expression<T>>,
+    pub expressions: Vec<Expression<T>>,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
-pub enum Expression {
+pub enum Expression<T> {
     /// Reference to a constant, "%ConstantName"
     Constant(String),
-    PolynomialReference(PolynomialReference),
+    PolynomialReference(PolynomialReference<T>),
     PublicReference(String),
-    Number(FieldElement),
+    Number(T),
     String(String),
-    Tuple(Vec<Expression>),
-    BinaryOperation(Box<Expression>, BinaryOperator, Box<Expression>),
-    UnaryOperation(UnaryOperator, Box<Expression>),
-    FunctionCall(String, Vec<Expression>),
-    FreeInput(Box<Expression>),
-    MatchExpression(Box<Expression>, Vec<(Option<Expression>, Expression)>),
+    Tuple(Vec<Expression<T>>),
+    BinaryOperation(Box<Expression<T>>, BinaryOperator, Box<Expression<T>>),
+    UnaryOperation(UnaryOperator, Box<Expression<T>>),
+    FunctionCall(String, Vec<Expression<T>>),
+    FreeInput(Box<Expression<T>>),
+    MatchExpression(
+        Box<Expression<T>>,
+        Vec<(Option<Expression<T>>, Expression<T>)>,
+    ),
 }
 
 #[derive(Debug, PartialEq, Eq, Default, Clone)]
-pub struct PolynomialName {
+pub struct PolynomialName<T> {
     pub name: String,
-    pub array_size: Option<Expression>,
+    pub array_size: Option<Expression<T>>,
 }
 
 #[derive(Debug, PartialEq, Eq, Default, Clone)]
-pub struct PolynomialReference {
+pub struct PolynomialReference<T> {
     pub namespace: Option<String>,
     pub name: String,
-    pub index: Option<Box<Expression>>,
+    pub index: Option<Box<Expression<T>>>,
     pub next: bool,
 }
 
@@ -89,28 +92,28 @@ pub enum BinaryOperator {
 /// The definition of a function (excluding its name):
 /// Either a param-value mapping or an array expression.
 #[derive(Debug, PartialEq, Eq, Clone)]
-pub enum FunctionDefinition {
+pub enum FunctionDefinition<T> {
     /// Parameter-value-mapping.
-    Mapping(Vec<String>, Expression),
+    Mapping(Vec<String>, Expression<T>),
     /// Array expression.
-    Array(ArrayExpression),
+    Array(ArrayExpression<T>),
     /// Prover query.
-    Query(Vec<String>, Expression),
+    Query(Vec<String>, Expression<T>),
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
-pub enum ArrayExpression {
-    Value(Vec<Expression>),
-    RepeatedValue(Vec<Expression>),
-    Concat(Box<ArrayExpression>, Box<ArrayExpression>),
+pub enum ArrayExpression<T> {
+    Value(Vec<Expression<T>>),
+    RepeatedValue(Vec<Expression<T>>),
+    Concat(Box<ArrayExpression<T>>, Box<ArrayExpression<T>>),
 }
 
-impl ArrayExpression {
-    pub fn value(v: Vec<Expression>) -> Self {
+impl<T: FieldElement> ArrayExpression<T> {
+    pub fn value(v: Vec<Expression<T>>) -> Self {
         Self::Value(v)
     }
 
-    pub fn repeated_value(v: Vec<Expression>) -> Self {
+    pub fn repeated_value(v: Vec<Expression<T>>) -> Self {
         Self::RepeatedValue(v)
     }
 
@@ -118,15 +121,15 @@ impl ArrayExpression {
         Self::Concat(Box::new(self), Box::new(other))
     }
 
-    fn pad_with(self, pad: Expression) -> Self {
+    fn pad_with(self, pad: Expression<T>) -> Self {
         Self::concat(self, Self::repeated_value(vec![pad]))
     }
 
     pub fn pad_with_zeroes(self) -> Self {
-        self.pad_with(Expression::Number(0u32.into()))
+        self.pad_with(Expression::Number(0.into()))
     }
 
-    fn last(&self) -> Option<&Expression> {
+    fn last(&self) -> Option<&Expression<T>> {
         match self {
             ArrayExpression::Value(v) => v.last(),
             ArrayExpression::RepeatedValue(v) => v.last(),
@@ -140,7 +143,7 @@ impl ArrayExpression {
     }
 }
 
-impl ArrayExpression {
+impl<T> ArrayExpression<T> {
     /// solve for `*`
     pub fn solve(&self, degree: DegreeType) -> Option<DegreeType> {
         assert!(degree > 0, "Degree cannot be zero.");

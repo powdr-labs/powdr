@@ -1,14 +1,14 @@
 use std::collections::HashMap;
 
 use itertools::Itertools;
-use number::{DegreeType, FieldElement, FieldElementTrait};
+use number::{DegreeType, FieldElement};
 use pil_analyzer::{Analyzed, BinaryOperator, Expression, FunctionValueDefinition, UnaryOperator};
 use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 
 /// Generates the constant polynomial values for all constant polynomials
 /// that are defined (and not just declared).
 /// @returns the values (in source order) and the degree of the polynomials.
-pub fn generate(analyzed: &Analyzed) -> (Vec<(&str, Vec<FieldElement>)>, DegreeType) {
+pub fn generate<T: FieldElement>(analyzed: &Analyzed<T>) -> (Vec<(&str, Vec<T>)>, DegreeType) {
     let mut degree = None;
     let mut other_constants = HashMap::new();
     for (poly, value) in analyzed.constant_polys_in_source_order() {
@@ -29,12 +29,12 @@ pub fn generate(analyzed: &Analyzed) -> (Vec<(&str, Vec<FieldElement>)>, DegreeT
     (values, degree.unwrap_or_default())
 }
 
-fn generate_values(
-    analyzed: &Analyzed,
+fn generate_values<T: FieldElement>(
+    analyzed: &Analyzed<T>,
     degree: DegreeType,
-    body: &FunctionValueDefinition,
-    other_constants: &HashMap<&str, Vec<FieldElement>>,
-) -> Vec<FieldElement> {
+    body: &FunctionValueDefinition<T>,
+    other_constants: &HashMap<&str, Vec<T>>,
+) -> Vec<T> {
     match body {
         FunctionValueDefinition::Mapping(body) => (0..degree)
             .into_par_iter()
@@ -84,14 +84,14 @@ fn generate_values(
     }
 }
 
-struct Evaluator<'a> {
-    analyzed: &'a Analyzed,
-    other_constants: &'a HashMap<&'a str, Vec<FieldElement>>,
-    variables: &'a [FieldElement],
+struct Evaluator<'a, T> {
+    analyzed: &'a Analyzed<T>,
+    other_constants: &'a HashMap<&'a str, Vec<T>>,
+    variables: &'a [T],
 }
 
-impl<'a> Evaluator<'a> {
-    fn evaluate(&self, expr: &Expression) -> FieldElement {
+impl<'a, T: FieldElement> Evaluator<'a, T> {
+    fn evaluate(&self, expr: &Expression<T>) -> T {
         match expr {
             Expression::Constant(name) => self.analyzed.constants[name],
             Expression::PolynomialReference(_) => todo!(),
@@ -122,10 +122,10 @@ impl<'a> Evaluator<'a> {
 
     fn evaluate_binary_operation(
         &self,
-        left: &Expression,
+        left: &Expression<T>,
         op: &BinaryOperator,
-        right: &Expression,
-    ) -> FieldElement {
+        right: &Expression<T>,
+    ) -> T {
         let left = self.evaluate(left);
         let right = self.evaluate(right);
         match op {
@@ -145,7 +145,7 @@ impl<'a> Evaluator<'a> {
         }
     }
 
-    fn evaluate_unary_operation(&self, op: &UnaryOperator, expr: &Expression) -> FieldElement {
+    fn evaluate_unary_operation(&self, op: &UnaryOperator, expr: &Expression<T>) -> T {
         let v = self.evaluate(expr);
         match op {
             UnaryOperator::Plus => v,
@@ -156,11 +156,12 @@ impl<'a> Evaluator<'a> {
 
 #[cfg(test)]
 mod test {
+    use number::GoldilocksField;
     use pil_analyzer::analyze_string;
 
     use super::*;
 
-    fn convert(input: Vec<i32>) -> Vec<FieldElement> {
+    fn convert(input: Vec<i32>) -> Vec<GoldilocksField> {
         input.into_iter().map(|x| x.into()).collect()
     }
 

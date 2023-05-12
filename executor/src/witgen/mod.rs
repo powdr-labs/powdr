@@ -7,6 +7,7 @@ pub use self::eval_result::{
     Constraint, Constraints, EvalError, EvalResult, EvalStatus, EvalValue, IncompleteCause,
 };
 use self::util::substitute_constants;
+use self::{bit_constraints::GlobalConstraints, machines::machine_extractor::ExtractionOutput};
 
 mod affine_expression;
 mod bit_constraints;
@@ -21,13 +22,13 @@ mod util;
 
 /// Generates the committed polynomial values
 /// @returns the values (in source order) and the degree of the polynomials.
-pub fn generate<'a>(
-    analyzed: &'a Analyzed,
+pub fn generate<'a, T: FieldElement>(
+    analyzed: &'a Analyzed<T>,
     degree: DegreeType,
-    fixed_col_values: &[(&str, Vec<FieldElement>)],
-    query_callback: Option<impl FnMut(&str) -> Option<FieldElement>>,
-) -> Vec<(&'a str, Vec<FieldElement>)> {
-    let witness_cols: Vec<WitnessColumn> = analyzed
+    fixed_col_values: &[(&str, Vec<T>)],
+    query_callback: Option<impl FnMut(&str) -> Option<T>>,
+) -> Vec<(&'a str, Vec<T>)> {
+    let witness_cols: Vec<_> = analyzed
         .committed_polys_in_source_order()
         .iter()
         .enumerate()
@@ -59,24 +60,30 @@ pub fn generate<'a>(
         &witness_cols,
     );
     let identities = substitute_constants(&analyzed.identities, &analyzed.constants);
-    let (global_bit_constraints, identities) =
-        bit_constraints::determine_global_constraints(&fixed, identities.iter().collect());
-    let (mut fixed_lookup, machines, identities) = machines::machine_extractor::split_out_machines(
+    let GlobalConstraints {
+        known_constraints,
+        retained_identities,
+    } = bit_constraints::determine_global_constraints(&fixed, identities.iter().collect());
+    let ExtractionOutput {
+        mut fixed_lookup,
+        machines,
+        base_identities,
+    } = machines::machine_extractor::split_out_machines(
         &fixed,
-        identities,
+        retained_identities,
         &witness_cols,
-        &global_bit_constraints,
+        &known_constraints,
     );
     let mut generator = generator::Generator::new(
         &fixed,
         &mut fixed_lookup,
-        &identities,
-        global_bit_constraints,
+        &base_identities,
+        known_constraints,
         machines,
         query_callback,
     );
 
-    let mut values: Vec<(&str, Vec<FieldElement>)> = analyzed
+    let mut values: Vec<(&str, Vec<T>)> = analyzed
         .committed_polys_in_source_order()
         .iter()
         .map(|(p, _)| (p.absolute_name.as_str(), vec![]))
@@ -126,7 +133,7 @@ pub fn generate<'a>(
 
 /// Checks if the last rows are repeating and returns the period.
 /// Only checks for periods of 1, 2, 3 and 4.
-fn rows_are_repeating(values: &[(&str, Vec<FieldElement>)]) -> Option<usize> {
+fn rows_are_repeating<T: PartialEq>(values: &[(&str, Vec<T>)]) -> Option<usize> {
     if values.is_empty() {
         return Some(1);
     } else if values[0].1.len() < 4 {
@@ -141,19 +148,19 @@ fn rows_are_repeating(values: &[(&str, Vec<FieldElement>)]) -> Option<usize> {
 }
 
 /// Data that is fixed for witness generation.
-pub struct FixedData<'a> {
+pub struct FixedData<'a, T> {
     degree: DegreeType,
-    fixed_col_values: Vec<&'a Vec<FieldElement>>,
+    fixed_col_values: Vec<&'a Vec<T>>,
     fixed_cols: Vec<&'a PolynomialReference>,
-    witness_cols: &'a Vec<WitnessColumn<'a>>,
+    witness_cols: &'a Vec<WitnessColumn<'a, T>>,
 }
 
-impl<'a> FixedData<'a> {
+impl<'a, T> FixedData<'a, T> {
     pub fn new(
         degree: DegreeType,
-        fixed_col_values: Vec<&'a Vec<FieldElement>>,
+        fixed_col_values: Vec<&'a Vec<T>>,
         fixed_cols: Vec<&'a PolynomialReference>,
-        witness_cols: &'a Vec<WitnessColumn<'a>>,
+        witness_cols: &'a Vec<WitnessColumn<'a, T>>,
     ) -> Self {
         FixedData {
             degree,
@@ -163,22 +170,22 @@ impl<'a> FixedData<'a> {
         }
     }
 
-    fn witness_cols(&self) -> impl Iterator<Item = &WitnessColumn> {
+    fn witness_cols(&self) -> impl Iterator<Item = &WitnessColumn<T>> {
         self.witness_cols.iter()
     }
 }
 
-pub struct WitnessColumn<'a> {
+pub struct WitnessColumn<'a, T> {
     poly: PolynomialReference,
-    query: Option<&'a Expression>,
+    query: Option<&'a Expression<T>>,
 }
 
-impl<'a> WitnessColumn<'a> {
+impl<'a, T> WitnessColumn<'a, T> {
     pub fn new(
         id: usize,
         name: &'a str,
-        value: &'a Option<FunctionValueDefinition>,
-    ) -> WitnessColumn<'a> {
+        value: &'a Option<FunctionValueDefinition<T>>,
+    ) -> WitnessColumn<'a, T> {
         let query = if let Some(FunctionValueDefinition::Query(query)) = value {
             Some(query)
         } else {

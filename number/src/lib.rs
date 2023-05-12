@@ -6,9 +6,11 @@ mod bn254;
 mod goldilocks;
 mod traits;
 
-pub use goldilocks::GoldilocksField as FieldElement;
+pub use bn254::Bn254Field;
+pub use goldilocks::GoldilocksField;
+
 use num_bigint::BigUint;
-pub use traits::{BigInt, FieldElementTrait};
+pub use traits::{BigInt, FieldElement};
 /// An arbitrary precision big integer, to be used as a last recourse
 pub type AbstractNumberType = BigUint;
 

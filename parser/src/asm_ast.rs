@@ -3,7 +3,7 @@ use number::AbstractNumberType;
 use super::ast::{Expression, SelectedExpressions, Statement};
 
 #[derive(Debug, PartialEq, Eq)]
-pub struct ASMFile(pub Vec<ASMStatement>);
+pub struct ASMFile<T>(pub Vec<ASMStatement<T>>);
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct InstructionParamList {
@@ -29,18 +29,18 @@ impl InstructionParams {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
-pub enum ASMStatement {
+pub enum ASMStatement<T> {
     Degree(usize, AbstractNumberType),
     RegisterDeclaration(usize, String, Option<RegisterFlag>),
     InstructionDeclaration(
         usize,
         String,
         InstructionParams,
-        Vec<InstructionBodyElement>,
+        Vec<InstructionBodyElement<T>>,
     ),
-    InlinePil(usize, Vec<Statement>),
-    Assignment(usize, Vec<String>, Option<String>, Box<Expression>),
-    Instruction(usize, String, Vec<Expression>),
+    InlinePil(usize, Vec<Statement<T>>),
+    Assignment(usize, Vec<String>, Option<String>, Box<Expression<T>>),
+    Instruction(usize, String, Vec<Expression<T>>),
     Label(usize, String),
 }
 
@@ -57,9 +57,13 @@ pub struct InstructionParam {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
-pub enum InstructionBodyElement {
-    Expression(Expression),
-    PlookupIdentity(SelectedExpressions, PlookupOperator, SelectedExpressions),
+pub enum InstructionBodyElement<T> {
+    Expression(Expression<T>),
+    PlookupIdentity(
+        SelectedExpressions<T>,
+        PlookupOperator,
+        SelectedExpressions<T>,
+    ),
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]

@@ -1,7 +1,8 @@
-use number::FieldElement;
 use std::path::Path;
 
-pub fn verify_pil(file_name: &str, query_callback: Option<fn(&str) -> Option<FieldElement>>) {
+use number::GoldilocksField;
+
+pub fn verify_pil(file_name: &str, query_callback: Option<fn(&str) -> Option<GoldilocksField>>) {
     let input_file = Path::new(&format!("../test_data/pil/{file_name}"))
         .canonicalize()
         .unwrap();

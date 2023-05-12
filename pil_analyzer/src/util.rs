@@ -3,12 +3,12 @@ use std::{iter::once, ops::ControlFlow};
 
 /// Calls `f` on each expression in the pil file and then descends into the
 /// (potentially modified) expression.
-pub fn previsit_expressions_in_pil_file_mut<F, B>(
-    pil_file: &mut Analyzed,
+pub fn previsit_expressions_in_pil_file_mut<T, F, B>(
+    pil_file: &mut Analyzed<T>,
     f: &mut F,
 ) -> ControlFlow<B>
 where
-    F: FnMut(&mut Expression) -> ControlFlow<B>,
+    F: FnMut(&mut Expression<T>) -> ControlFlow<B>,
 {
     pil_file
         .definitions
@@ -30,9 +30,12 @@ where
         .try_for_each(|i| previsit_expressions_in_identity_mut(i, f))
 }
 
-pub fn postvisit_expressions_in_identity_mut<F, B>(i: &mut Identity, f: &mut F) -> ControlFlow<B>
+pub fn postvisit_expressions_in_identity_mut<T, F, B>(
+    i: &mut Identity<T>,
+    f: &mut F,
+) -> ControlFlow<B>
 where
-    F: FnMut(&mut Expression) -> ControlFlow<B>,
+    F: FnMut(&mut Expression<T>) -> ControlFlow<B>,
 {
     i.left
         .selector
@@ -44,12 +47,12 @@ where
 
 /// Calls `f` on each expression in the pil file and then descends into the
 /// (potentially modified) expression.
-pub fn postvisit_expressions_in_pil_file_mut<F, B>(
-    pil_file: &mut Analyzed,
+pub fn postvisit_expressions_in_pil_file_mut<T, F, B>(
+    pil_file: &mut Analyzed<T>,
     f: &mut F,
 ) -> ControlFlow<B>
 where
-    F: FnMut(&mut Expression) -> ControlFlow<B>,
+    F: FnMut(&mut Expression<T>) -> ControlFlow<B>,
 {
     pil_file
         .definitions
@@ -71,9 +74,12 @@ where
         .try_for_each(|i| postvisit_expressions_in_identity_mut(i, f))
 }
 
-pub fn previsit_expressions_in_identity_mut<F, B>(i: &mut Identity, f: &mut F) -> ControlFlow<B>
+pub fn previsit_expressions_in_identity_mut<T, F, B>(
+    i: &mut Identity<T>,
+    f: &mut F,
+) -> ControlFlow<B>
 where
-    F: FnMut(&mut Expression) -> ControlFlow<B>,
+    F: FnMut(&mut Expression<T>) -> ControlFlow<B>,
 {
     i.left
         .selector
@@ -86,7 +92,7 @@ where
 }
 
 /// Visits `expr` and all of its sub-expressions and returns true if `f` returns true on any of them.
-pub fn expr_any(expr: &Expression, mut f: impl FnMut(&Expression) -> bool) -> bool {
+pub fn expr_any<T>(expr: &Expression<T>, mut f: impl FnMut(&Expression<T>) -> bool) -> bool {
     previsit_expression(expr, &mut |e| {
         if f(e) {
             ControlFlow::Break(())
@@ -98,9 +104,9 @@ pub fn expr_any(expr: &Expression, mut f: impl FnMut(&Expression) -> bool) -> bo
 }
 
 /// Traverses the expression tree and calls `f` in pre-order.
-pub fn previsit_expression<'a, F, B>(e: &'a Expression, f: &mut F) -> ControlFlow<B>
+pub fn previsit_expression<'a, T, F, B>(e: &'a Expression<T>, f: &mut F) -> ControlFlow<B>
 where
-    F: FnMut(&'a Expression) -> ControlFlow<B>,
+    F: FnMut(&'a Expression<T>) -> ControlFlow<B>,
 {
     f(e)?;
 
@@ -129,9 +135,9 @@ where
 }
 
 /// Traverses the expression tree and calls `f` in pre-order.
-pub fn previsit_expression_mut<F, B>(e: &mut Expression, f: &mut F) -> ControlFlow<B>
+pub fn previsit_expression_mut<T, F, B>(e: &mut Expression<T>, f: &mut F) -> ControlFlow<B>
 where
-    F: FnMut(&mut Expression) -> ControlFlow<B>,
+    F: FnMut(&mut Expression<T>) -> ControlFlow<B>,
 {
     f(e)?;
 
@@ -160,9 +166,9 @@ where
 }
 
 /// Traverses the expression tree and calls `f` in post-order.
-pub fn postvisit_expression_mut<F, B>(e: &mut Expression, f: &mut F) -> ControlFlow<B>
+pub fn postvisit_expression_mut<T, F, B>(e: &mut Expression<T>, f: &mut F) -> ControlFlow<B>
 where
-    F: FnMut(&mut Expression) -> ControlFlow<B>,
+    F: FnMut(&mut Expression<T>) -> ControlFlow<B>,
 {
     match e {
         Expression::PolynomialReference(_)

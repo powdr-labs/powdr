@@ -1,7 +1,7 @@
 macro_rules! powdr_field {
     ($name:ident, $ark_type:ty) => {
         use crate::{
-            traits::{BigInt, FieldElementTrait},
+            traits::{BigInt, FieldElement},
             DegreeType,
         };
         use ark_ff::{BigInteger, Field, PrimeField};
@@ -226,7 +226,7 @@ macro_rules! powdr_field {
             }
         }
 
-        impl FieldElementTrait for $name {
+        impl FieldElement for $name {
             type Integer = BigIntImpl;
 
             fn from_str(s: &str) -> Self {
@@ -261,10 +261,15 @@ macro_rules! powdr_field {
             }
 
             fn integer_div(self, other: Self) -> Self {
-                (BigUint::from(self.to_arbitrary_integer())
-                    / BigUint::from(other.to_arbitrary_integer()))
-                .try_into()
-                .unwrap()
+                (self.to_arbitrary_integer() / other.to_arbitrary_integer())
+                    .try_into()
+                    .unwrap()
+            }
+
+            fn integer_mod(self, other: Self) -> Self {
+                (self.to_arbitrary_integer() % other.to_arbitrary_integer())
+                    .try_into()
+                    .unwrap()
             }
 
             fn to_bytes_le(&self) -> Vec<u8> {

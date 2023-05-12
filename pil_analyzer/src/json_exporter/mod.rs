@@ -2,6 +2,7 @@ use std::cmp;
 use std::collections::{BTreeMap, HashMap};
 
 use json::{object, JsonValue};
+use number::FieldElement;
 
 use crate::{
     Analyzed, BinaryOperator, Expression, FunctionValueDefinition, IdentityKind, PolyID,
@@ -12,8 +13,8 @@ use self::expression_counter::compute_intermediate_expression_ids;
 
 mod expression_counter;
 
-struct Exporter<'a> {
-    analyzed: &'a Analyzed,
+struct Exporter<'a, T> {
+    analyzed: &'a Analyzed<T>,
     expressions: Vec<JsonValue>,
     /// Translates from polynomial IDs to expression IDs for intermediate
     /// polynomials.
@@ -21,7 +22,7 @@ struct Exporter<'a> {
     number_q: u64,
 }
 
-pub fn export(analyzed: &Analyzed) -> JsonValue {
+pub fn export<T: FieldElement>(analyzed: &Analyzed<T>) -> JsonValue {
     let mut exporter = Exporter::new(analyzed);
     let mut publics = Vec::new();
     let mut pol_identities = Vec::new();
@@ -145,8 +146,8 @@ fn polynomial_reference_type_to_type(t: &str) -> &'static str {
     }
 }
 
-impl<'a> Exporter<'a> {
-    fn new(analyzed: &'a Analyzed) -> Self {
+impl<'a, T: FieldElement> Exporter<'a, T> {
+    fn new(analyzed: &'a Analyzed<T>) -> Self {
         Self {
             analyzed,
             expressions: vec![],
@@ -182,7 +183,7 @@ impl<'a> Exporter<'a> {
 
     /// Processes the given expression
     /// @returns the expression ID
-    fn extract_expression(&mut self, expr: &Expression, max_degree: u32) -> usize {
+    fn extract_expression(&mut self, expr: &Expression<T>, max_degree: u32) -> usize {
         let id = self.expressions.len();
         let (degree, mut json, dependencies) = self.expression_to_json(expr);
         if degree > max_degree {
@@ -199,21 +200,21 @@ impl<'a> Exporter<'a> {
 
     fn extract_expression_opt(
         &mut self,
-        expr: &Option<Expression>,
+        expr: &Option<Expression<T>>,
         max_degree: u32,
     ) -> Option<usize> {
         expr.as_ref()
             .map(|e| self.extract_expression(e, max_degree))
     }
 
-    fn extract_expression_vec(&mut self, expr: &[Expression], max_degree: u32) -> Vec<usize> {
+    fn extract_expression_vec(&mut self, expr: &[Expression<T>], max_degree: u32) -> Vec<usize> {
         expr.iter()
             .map(|e| self.extract_expression(e, max_degree))
             .collect()
     }
 
     /// returns the degree, the JSON value and the dependencies (intermediate polynomial IDs)
-    fn expression_to_json(&self, expr: &Expression) -> (u32, JsonValue, Vec<u64>) {
+    fn expression_to_json(&self, expr: &Expression<T>) -> (u32, JsonValue, Vec<u64>) {
         match expr {
             Expression::Constant(name) => (
                 1,
@@ -348,6 +349,8 @@ mod test {
     use std::fs;
     use std::process::Command;
 
+    use number::GoldilocksField;
+
     use super::*;
 
     fn generate_json_pair(file: &str) -> (JsonValue, JsonValue) {
@@ -356,7 +359,7 @@ mod test {
 
         let file = std::path::PathBuf::from("../test_data/polygon-hermez/").join(file);
 
-        let analyzed = crate::analyze(&file);
+        let analyzed = crate::analyze::<GoldilocksField>(&file);
         let json_out = export(&analyzed);
 
         let pilcom = std::env::var("PILCOM").expect(

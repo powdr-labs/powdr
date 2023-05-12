@@ -1,10 +1,10 @@
 use std::str::FromStr;
 use crate::ast::*;
 use crate::asm_ast::*;
-use number::{AbstractNumberType, FieldElement, FieldElementTrait};
+use number::{AbstractNumberType, FieldElement};
 use num_traits::Num;
 
-grammar;
+grammar<T> where T: FieldElement;
 
 match {
     r"\s*" => { },
@@ -13,12 +13,12 @@ match {
     _,
 }
 
-pub PILFile: PILFile = {
+pub PILFile: PILFile<T> = {
     (<Statement> ";")* => PILFile(<>)
 
 };
 
-pub ASMFile: ASMFile = {
+pub ASMFile: ASMFile<T> = {
     (<ASMStatement>)* => ASMFile(<>)
 };
 
@@ -41,36 +41,36 @@ Statement = {
     FunctionCallStatement
 };
 
-Include: Statement = {
+Include: Statement<T> = {
     <start:@L> "include" <file:StringLiteral> => Statement::Include(<>)
 };
 
-Namespace: Statement = {
+Namespace: Statement<T> = {
     <start:@L> "namespace" <name:Identifier> "(" <pol_degree:Expression> ")" => Statement::Namespace(<>)
 }
 
-ConstantDefinition: Statement = {
+ConstantDefinition: Statement<T> = {
     <@L> "constant" <ConstantIdentifier> "=" <Expression> => Statement::ConstantDefinition(<>)
 }
 
-PolynomialDefinition: Statement = {
+PolynomialDefinition: Statement<T> = {
     <@L> PolCol <Identifier> "=" <Expression> => Statement::PolynomialDefinition(<>)
 }
 
-PublicDeclaration: Statement = {
+PublicDeclaration: Statement<T> = {
     <@L> "public" <Identifier> "=" <PolynomialReference> "(" <Expression> ")" => Statement::PublicDeclaration(<>)
 }
 
-PolynomialConstantDeclaration: Statement = {
+PolynomialConstantDeclaration: Statement<T> = {
     <@L> PolCol ConstantFixed <PolynomialNameList> => Statement::PolynomialConstantDeclaration(<>)
 }
 
-PolynomialConstantDefinition: Statement = {
+PolynomialConstantDefinition: Statement<T> = {
     <@L> PolCol ConstantFixed <Identifier> <FunctionDefinition>
         => Statement::PolynomialConstantDefinition(<>)
 }
 
-FunctionDefinition: FunctionDefinition = {
+FunctionDefinition: FunctionDefinition<T> = {
     "(" <ParameterList> ")" "{" <Expression> "}" => FunctionDefinition::Mapping(<>),
     "=" <ArrayLiteralExpression> => FunctionDefinition::Array(<>),
 }
@@ -79,57 +79,57 @@ ParameterList: Vec<String> = {
     <mut list:( <Identifier> "," )*> <end:Identifier>  => { list.push(end); list }
 }
 
-ArrayLiteralExpression: ArrayExpression = {
+ArrayLiteralExpression: ArrayExpression<T> = {
     <ArrayLiteralExpression> "+" <ArrayLiteralTerm> => ArrayExpression::concat(<>),
     ArrayLiteralTerm,
 }
 
-ArrayLiteralTerm: ArrayExpression = {
+ArrayLiteralTerm: ArrayExpression<T> = {
     "[" <ExpressionList> "]" => ArrayExpression::value(<>),
     "[" <ExpressionList> "]" "*" => ArrayExpression::repeated_value(<>),
 }
 
-PolynomialCommitDeclaration: Statement = {
+PolynomialCommitDeclaration: Statement<T> = {
     <@L> PolCol CommitWitness <PolynomialNameList> => Statement::PolynomialCommitDeclaration(<>, None),
     <start:@L> PolCol CommitWitness <name:PolynomialName> "(" <param:ParameterList> ")" "query" <value:Expression>
      => Statement::PolynomialCommitDeclaration(start, vec![name], Some(FunctionDefinition::Query(param, value)))
 }
 
-PolynomialIdentity: Statement = {
+PolynomialIdentity: Statement<T> = {
     <start:@L> <l:BoxedExpression> "=" <r:BoxedExpression> => Statement::PolynomialIdentity(start, Expression::BinaryOperation(l, BinaryOperator::Sub, r))
 }
 
-PolynomialNameList: Vec<PolynomialName> = {
+PolynomialNameList: Vec<PolynomialName<T>> = {
     <mut list:( <PolynomialName> "," )*> <end:PolynomialName>  => { list.push(end); list }
 }
 
-PolynomialName: PolynomialName = {
+PolynomialName: PolynomialName<T> = {
     <name:Identifier> <array_size:( "[" <Expression> "]" )?> => PolynomialName{<>}
 }
 
-PlookupIdentity: Statement = {
+PlookupIdentity: Statement<T> = {
     <@L> <SelectedExpressions> "in" <SelectedExpressions> => Statement::PlookupIdentity(<>)
 }
 
-SelectedExpressions: SelectedExpressions = {
+SelectedExpressions: SelectedExpressions<T> = {
     <selector:Expression?> "{" <expressions:ExpressionList> "}" => SelectedExpressions{<>},
     Expression => SelectedExpressions{selector: None, expressions: vec![<>]},
 }
 
-PermutationIdentity: Statement = {
+PermutationIdentity: Statement<T> = {
     <@L> <SelectedExpressions> "is" <SelectedExpressions> => Statement::PermutationIdentity(<>)
 }
 
-ConnectIdentity: Statement = {
+ConnectIdentity: Statement<T> = {
     <@L> "{" <ExpressionList> "}" "connect" "{" <ExpressionList> "}" => Statement::ConnectIdentity(<>)
 }
 
-MacroDefinition: Statement = {
+MacroDefinition: Statement<T> = {
     <@L> "macro" <Identifier> "(" <ParameterList> ")" "{" <( <Statement> ";")*> <Expression?> "}"
         => Statement::MacroDefinition(<>)
 }
 
-FunctionCallStatement: Statement = {
+FunctionCallStatement: Statement<T> = {
     <@L> <Identifier> "(" <ExpressionList> ")" => Statement::FunctionCall(<>)
 }
 
@@ -148,7 +148,7 @@ ConstantFixed = {
 // ---------------------------- ASM part -----------------------------
 
 
-ASMStatement: ASMStatement = {
+ASMStatement: ASMStatement<T> = {
     Degree,
     RegisterDeclaration,
     InstructionDeclaration,
@@ -158,11 +158,11 @@ ASMStatement: ASMStatement = {
     Label,
 }
 
-Degree: ASMStatement = {
+Degree: ASMStatement<T> = {
     <@L> "degree" <Integer> ";" => ASMStatement::Degree(<>)
 }
 
-RegisterDeclaration: ASMStatement = {
+RegisterDeclaration: ASMStatement<T> = {
     // TODO default update
     <@L> "reg" <Identifier> <( "[" <RegisterFlag> "]" )?> ";" => ASMStatement::RegisterDeclaration(<>)
 
@@ -173,15 +173,15 @@ RegisterFlag: RegisterFlag = {
     "<=" => RegisterFlag::IsAssignment
 }
 
-InstructionDeclaration: ASMStatement = {
+InstructionDeclaration: ASMStatement<T> = {
     <@L> "instr" <Identifier> <InstructionParams> "{" <InstructionBodyElements> "}" => ASMStatement::InstructionDeclaration(<>)
 }
 
-InstructionBodyElements: Vec<InstructionBodyElement> = {
+InstructionBodyElements: Vec<InstructionBodyElement<T>> = {
     <mut list:( <InstructionBodyElement> "," )*> <end:InstructionBodyElement>  => { list.push(end); list }
 }
 
-InstructionBodyElement: InstructionBodyElement = {
+InstructionBodyElement: InstructionBodyElement<T> = {
     <l:BoxedExpression> "=" <r:BoxedExpression> => InstructionBodyElement::Expression(Expression::BinaryOperation(l, BinaryOperator::Sub, r)),
     <SelectedExpressions> <PlookupOperator> <SelectedExpressions> => InstructionBodyElement::PlookupIdentity(<>),
 }
@@ -212,11 +212,11 @@ InstructionParam: InstructionParam = {
         InstructionParam{name, ty}
 }
 
-InlinePil: ASMStatement = {
+InlinePil: ASMStatement<T> = {
     <@L> "pil" "{" <(<Statement> ";")*> "}" => ASMStatement::InlinePil(<>)
 }
 
-Assignment: ASMStatement = {
+Assignment: ASMStatement<T> = {
     <@L> <IdentifierList> <AssignOperator> <BoxedExpression> ";" => ASMStatement::Assignment(<>)
 
 }
@@ -229,30 +229,30 @@ AssignOperator: Option<String> = {
     "<=" <Identifier?> "="
 }
 
-Instruction: ASMStatement = {
+Instruction: ASMStatement<T> = {
     <@L> <Identifier> <ExpressionList> ";" => ASMStatement::Instruction(<>)
 }
 
-Label: ASMStatement = {
+Label: ASMStatement<T> = {
     <@L> <Identifier> "::" => ASMStatement::Label(<>)
 }
 
 // ---------------------------- Expressions -----------------------------
 
-ExpressionList: Vec<Expression> = {
+ExpressionList: Vec<Expression<T>> = {
     => vec![],
     <mut list:( <Expression> "," )*> <end:Expression>  => { list.push(end); list }
 }
 
-Expression: Expression = {
+Expression: Expression<T> = {
     BoxedExpression => *<>,
 }
 
-BoxedExpression: Box<Expression> = {
+BoxedExpression: Box<Expression<T>> = {
     BinaryOr,
 }
 
-BinaryOr: Box<Expression> = {
+BinaryOr: Box<Expression<T>> = {
     BinaryOr BinaryOrOp BinaryXor => Box::new(Expression::BinaryOperation(<>)),
     BinaryXor,
 }
@@ -261,7 +261,7 @@ BinaryOrOp: BinaryOperator = {
     "|" => BinaryOperator::BinaryOr,
 }
 
-BinaryXor: Box<Expression> = {
+BinaryXor: Box<Expression<T>> = {
     BinaryXor BinaryXorOp BinaryAnd => Box::new(Expression::BinaryOperation(<>)),
     BinaryAnd,
 }
@@ -270,7 +270,7 @@ BinaryXorOp: BinaryOperator = {
     "^" => BinaryOperator::BinaryXor,
 }
 
-BinaryAnd: Box<Expression> = {
+BinaryAnd: Box<Expression<T>> = {
     BinaryAnd BinaryAndOp BitShift => Box::new(Expression::BinaryOperation(<>)),
     BitShift,
 }
@@ -279,7 +279,7 @@ BinaryAndOp: BinaryOperator = {
     "&" => BinaryOperator::BinaryAnd,
 }
 
-BitShift: Box<Expression> = {
+BitShift: Box<Expression<T>> = {
     BitShift BitShiftOp Sum => Box::new(Expression::BinaryOperation(<>)),
     Sum,
 }
@@ -289,7 +289,7 @@ BitShiftOp: BinaryOperator = {
     ">>" => BinaryOperator::ShiftRight,
 }
 
-Sum: Box<Expression> = {
+Sum: Box<Expression<T>> = {
     Sum SumOp Product => Box::new(Expression::BinaryOperation(<>)),
     Product,
 }
@@ -299,7 +299,7 @@ SumOp: BinaryOperator = {
     "-" => BinaryOperator::Sub,
 }
 
-Product: Box<Expression> = {
+Product: Box<Expression<T>> = {
     Product ProductOp Power => Box::new(Expression::BinaryOperation(<>)),
     Power,
 }
@@ -310,7 +310,7 @@ ProductOp: BinaryOperator = {
     "%" => BinaryOperator::Mod,
 }
 
-Power: Box<Expression> = {
+Power: Box<Expression<T>> = {
     <Power> <PowOp> <Term> => Box::new(Expression::BinaryOperation(<>)),
     Unary,
 }
@@ -319,7 +319,7 @@ PowOp: BinaryOperator = {
     "**" => BinaryOperator::Pow,
 }
 
-Unary: Box<Expression> = {
+Unary: Box<Expression<T>> = {
     UnaryOp Term => Box::new(Expression::UnaryOperation(<>)),
     Term,
 }
@@ -329,7 +329,7 @@ UnaryOp: UnaryOperator = {
     "-" => UnaryOperator::Minus,
 }
 
-Term: Box<Expression> = {
+Term: Box<Expression<T>> = {
     FunctionCall => Box::new(<>),
     ConstantIdentifier => Box::new(Expression::Constant(<>)),
     PolynomialReference => Box::new(Expression::PolynomialReference(<>)),
@@ -342,11 +342,11 @@ Term: Box<Expression> = {
     "${" <BoxedExpression> "}" => Box::new(Expression::FreeInput(<>))
 }
 
-FunctionCall: Expression = {
+FunctionCall: Expression<T> = {
     <Identifier> "(" <ExpressionList> ")" => Expression::FunctionCall(<>)
 }
 
-PolynomialReference: PolynomialReference = {
+PolynomialReference: PolynomialReference<T> = {
     <namespace:( <Identifier> "." )?>
     <name:Identifier>
     <index:( "[" <BoxedExpression> "]" )?>
@@ -357,16 +357,16 @@ PublicReference: String = {
     ":" <Identifier>
 }
 
-MatchExpression: Box<Expression> = {
+MatchExpression: Box<Expression<T>> = {
     "match" <BoxedExpression> "{" <MatchArms> "}" => Box::new(Expression::MatchExpression(<>))
 }
 
-MatchArms: Vec<(Option<Expression>, Expression)> = {
+MatchArms: Vec<(Option<Expression<T>>, Expression<T>)> = {
     => vec![],
     <mut list:( <MatchArm> "," )*> <end:MatchArm> ","?  => { list.push(end); list }
 }
 
-MatchArm: (Option<Expression>, Expression) = {
+MatchArm: (Option<Expression<T>>, Expression<T>) = {
     <n:Expression> "=>" <e:Expression> => (Some(n), e),
     <n:"_"> "=>" <e:Expression> => (None, e),
 }
@@ -388,9 +388,9 @@ ConstantIdentifier: String = {
     r"%[a-zA-Z_][a-zA-Z$_0-9@]*" => <>.to_string(),
 }
 
-FieldElement: FieldElement = {
-    r"[0-9][0-9_]*" => FieldElement::from_str(&<>.replace('_', "")),
-    r"0x[0-9A-Fa-f][0-9A-Fa-f_]*" => FieldElement::from_str_radix(&<>[2..].replace('_', ""), 16).unwrap(),
+FieldElement: T = {
+    r"[0-9][0-9_]*" => T::from_str(&<>.replace('_', "")),
+    r"0x[0-9A-Fa-f][0-9A-Fa-f_]*" => T::from_str_radix(&<>[2..].replace('_', ""), 16).unwrap(),
 }
 
 Integer: AbstractNumberType = {

@@ -12,7 +12,7 @@ use crate::witgen::{util::contains_witness_ref, EvalResult, FixedData};
 use crate::witgen::{EvalError, EvalValue, IncompleteCause};
 
 type Application = (Vec<u64>, Vec<u64>);
-type Index = BTreeMap<Vec<FieldElement>, IndexValue>;
+type Index<T> = BTreeMap<Vec<T>, IndexValue>;
 
 struct IndexValue(Option<NonZeroUsize>);
 
@@ -34,16 +34,16 @@ impl IndexValue {
 /// - `(V, None)` if there exists two different rows where `INPUT_COLS == V` match but `OUTPUT_COLS` differ. TODO: store bitmasks of all possible outputs instead.
 /// - `(V, Some(row)` if the value of `OUTPUT_COLS` is unique when `INPUT_COLS == V`, and `row` is the first row where `INPUT_COLS ==V`
 #[derive(Default)]
-pub struct IndexedColumns {
-    indices: HashMap<Application, Index>,
+pub struct IndexedColumns<T> {
+    indices: HashMap<Application, Index<T>>,
 }
 
-impl IndexedColumns {
+impl<T: FieldElement> IndexedColumns<T> {
     /// get the row at which the assignment is satisfied uniquely
     fn get_match(
         &mut self,
-        fixed_data: &FixedData,
-        mut assignment: Vec<(u64, FieldElement)>,
+        fixed_data: &FixedData<T>,
+        mut assignment: Vec<(u64, T)>,
         mut output_fixed_columns: Vec<u64>,
     ) -> Option<&IndexValue> {
         // sort in order to have a single index for [X, Y] and for [Y, X]
@@ -68,7 +68,7 @@ impl IndexedColumns {
     /// `input_fixed_columns` is assumed to be sorted
     fn ensure_index(
         &mut self,
-        fixed_data: &FixedData,
+        fixed_data: &FixedData<T>,
         sorted_fixed_columns: &(Vec<u64>, Vec<u64>),
     ) {
         // we do not use the Entry API here because we want to clone `sorted_input_fixed_columns` only on index creation
@@ -102,11 +102,11 @@ impl IndexedColumns {
             .map(|id| fixed_data.fixed_col_values[*id as usize])
             .collect::<Vec<_>>();
 
-        let index: BTreeMap<Vec<FieldElement>, IndexValue> = (0..fixed_data.degree as usize)
+        let index: BTreeMap<Vec<T>, IndexValue> = (0..fixed_data.degree as usize)
             .fold(
                 (
-                    BTreeMap::<Vec<FieldElement>, IndexValue>::default(),
-                    HashSet::<(Vec<FieldElement>, Vec<FieldElement>)>::default(),
+                    BTreeMap::<Vec<T>, IndexValue>::default(),
+                    HashSet::<(Vec<T>, Vec<T>)>::default(),
                 ),
                 |(mut acc, mut set), row| {
                     let input: Vec<_> = input_column_values
@@ -142,9 +142,9 @@ impl IndexedColumns {
             "Done creating index. Size (as flat list): entries * (num_inputs * input_size + row_pointer_size) = {} * ({} * {} bytes + {} bytes) = {} bytes",
             index.len(),
             input_column_values.len(),
-            mem::size_of::<FieldElement>(),
+            mem::size_of::<T>(),
             mem::size_of::<IndexValue>(),
-            index.len() * (input_column_values.len() * mem::size_of::<FieldElement>() + mem::size_of::<IndexValue>())
+            index.len() * (input_column_values.len() * mem::size_of::<T>() + mem::size_of::<IndexValue>())
         );
         self.indices.insert(
             (
@@ -158,14 +158,14 @@ impl IndexedColumns {
 
 /// Machine to perform a lookup in fixed columns only.
 #[derive(Default)]
-pub struct FixedLookup {
-    indices: IndexedColumns,
+pub struct FixedLookup<T> {
+    indices: IndexedColumns<T>,
 }
 
-impl FixedLookup {
+impl<T: FieldElement> FixedLookup<T> {
     pub fn try_new(
-        _fixed_data: &FixedData,
-        identities: &[&Identity],
+        _fixed_data: &FixedData<T>,
+        identities: &[&Identity<T>],
         witness_names: &HashSet<&str>,
     ) -> Option<Box<Self>> {
         if identities.is_empty() && witness_names.is_empty() {
@@ -177,11 +177,11 @@ impl FixedLookup {
 
     pub fn process_plookup<'b>(
         &mut self,
-        fixed_data: &FixedData,
+        fixed_data: &FixedData<T>,
         kind: IdentityKind,
-        left: &[AffineResult<&'b PolynomialReference>],
-        right: &'b SelectedExpressions,
-    ) -> Option<EvalResult<&'b PolynomialReference>> {
+        left: &[AffineResult<&'b PolynomialReference, T>],
+        right: &'b SelectedExpressions<T>,
+    ) -> Option<EvalResult<'b, T>> {
         // This is a matching machine if it is a plookup and the RHS is fully constant.
         if kind != IdentityKind::Plookup
             || right.selector.is_some()
@@ -202,10 +202,10 @@ impl FixedLookup {
 
     fn process_plookup_internal<'b>(
         &mut self,
-        fixed_data: &FixedData,
-        left: &[AffineResult<&'b PolynomialReference>],
+        fixed_data: &FixedData<T>,
+        left: &[AffineResult<&'b PolynomialReference, T>],
         right: Vec<u64>,
-    ) -> EvalResult<&'b PolynomialReference> {
+    ) -> EvalResult<'b, T> {
         // split the fixed columns depending on whether their associated lookup variable is constant or not. Preserve the value of the constant arguments.
         // {1, 2, x} in {A, B, C} -> [[(A, 1), (B, 2)], [C, x]]
 

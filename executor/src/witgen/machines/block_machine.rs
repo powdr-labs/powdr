@@ -19,19 +19,19 @@ use pil_analyzer::{Expression, Identity, IdentityKind, PolynomialReference, Sele
 /// A machine that produces multiple rows (one block) per query.
 /// TODO we do not actually "detect" the machine yet, we just check if
 /// the lookup has a binary selector that is 1 every k rows for some k > 1
-pub struct BlockMachine {
+pub struct BlockMachine<T: FieldElement> {
     /// Block size, the period of the selector.
     block_size: usize,
     selector: PolynomialReference,
-    identities: Vec<Identity>,
+    identities: Vec<Identity<T>>,
     /// One column of values for each witness.
-    data: HashMap<usize, Vec<Option<FieldElement>>>,
+    data: HashMap<usize, Vec<Option<T>>>,
     /// Current row in the machine
     row: DegreeType,
     /// Bit constraints, are deleted outside the current block.
-    bit_constraints: HashMap<usize, HashMap<DegreeType, BitConstraint>>,
+    bit_constraints: HashMap<usize, HashMap<DegreeType, BitConstraint<T>>>,
     /// Global bit constraints on witness columns.
-    global_bit_constraints: HashMap<usize, BitConstraint>,
+    global_bit_constraints: HashMap<usize, BitConstraint<T>>,
     /// Poly degree / absolute number of rows
     degree: DegreeType,
     /// Cache that states the order in which to evaluate identities
@@ -39,13 +39,13 @@ pub struct BlockMachine {
     processing_sequence_cache: ProcessingSequenceCache,
 }
 
-impl BlockMachine {
+impl<T: FieldElement> BlockMachine<T> {
     pub fn try_new(
-        fixed_data: &FixedData,
-        connecting_identities: &[&Identity],
-        identities: &[&Identity],
+        fixed_data: &FixedData<T>,
+        connecting_identities: &[&Identity<T>],
+        identities: &[&Identity<T>],
         witness_cols: &HashSet<&PolynomialReference>,
-        global_bit_constraints: &BTreeMap<&PolynomialReference, BitConstraint>,
+        global_bit_constraints: &BTreeMap<&PolynomialReference, BitConstraint<T>>,
     ) -> Option<Box<Self>> {
         for id in connecting_identities {
             if let Some(sel) = &id.right.selector {
@@ -92,9 +92,9 @@ impl BlockMachine {
 /// for some k >= 2
 /// TODO we could make this more generic and only detect the period
 /// but not enforce the offset.
-fn try_to_boolean_periodic_selector<'a>(
-    expr: &'a Expression,
-    fixed_data: &FixedData,
+fn try_to_boolean_periodic_selector<'a, T: FieldElement>(
+    expr: &'a Expression<T>,
+    fixed_data: &FixedData<T>,
 ) -> Option<(&'a PolynomialReference, usize)> {
     let poly = try_to_simple_poly(expr)?;
     if !poly.is_fixed() {
@@ -121,15 +121,15 @@ fn try_to_boolean_periodic_selector<'a>(
         .then_some((poly, period))
 }
 
-impl Machine for BlockMachine {
+impl<T: FieldElement> Machine<T> for BlockMachine<T> {
     fn process_plookup<'a>(
         &mut self,
-        fixed_data: &FixedData,
-        fixed_lookup: &mut FixedLookup,
+        fixed_data: &FixedData<T>,
+        fixed_lookup: &mut FixedLookup<T>,
         kind: IdentityKind,
-        left: &[AffineResult<&'a PolynomialReference>],
-        right: &SelectedExpressions,
-    ) -> Option<EvalResult<&'a PolynomialReference>> {
+        left: &[AffineResult<&'a PolynomialReference, T>],
+        right: &SelectedExpressions<T>,
+    ) -> Option<EvalResult<'a, T>> {
         if *try_to_simple_poly(right.selector.as_ref()?)? != self.selector
             || kind != IdentityKind::Plookup
         {
@@ -149,7 +149,7 @@ impl Machine for BlockMachine {
         })
     }
 
-    fn witness_col_values(&mut self, fixed_data: &FixedData) -> HashMap<String, Vec<FieldElement>> {
+    fn witness_col_values(&mut self, fixed_data: &FixedData<T>) -> HashMap<String, Vec<T>> {
         std::mem::take(&mut self.data)
             .into_iter()
             .map(|(id, values)| {
@@ -165,7 +165,7 @@ impl Machine for BlockMachine {
     }
 }
 
-impl BlockMachine {
+impl<T: FieldElement> BlockMachine<T> {
     /// Extends the data with a new block.
     fn append_new_block(&mut self, max_len: DegreeType) -> Result<(), EvalError> {
         if self.rows() + self.block_size as DegreeType >= max_len {
@@ -183,11 +183,11 @@ impl BlockMachine {
 
     fn process_plookup_internal<'b>(
         &mut self,
-        fixed_data: &FixedData,
-        fixed_lookup: &mut FixedLookup,
-        left: &[AffineResult<&'b PolynomialReference>],
-        right: &SelectedExpressions,
-    ) -> EvalResult<&'b PolynomialReference> {
+        fixed_data: &FixedData<T>,
+        fixed_lookup: &mut FixedLookup<T>,
+        left: &[AffineResult<&'b PolynomialReference, T>],
+        right: &SelectedExpressions<T>,
+    ) -> EvalResult<'b, T> {
         // First check if we already store the value.
         if left
             .iter()
@@ -290,13 +290,15 @@ impl BlockMachine {
         }
     }
 
+    // TODO: remove once cleaned up
+    #[allow(clippy::type_complexity)]
     fn split_result<'b, 'outer>(
         &self,
-        value: EvalValue<&'b PolynomialReference>,
+        value: EvalValue<&'b PolynomialReference, T>,
         outer_polys: &BTreeSet<&'outer PolynomialReference>,
     ) -> (
-        Constraints<&'outer PolynomialReference>,
-        EvalValue<&'b PolynomialReference>,
+        Constraints<&'outer PolynomialReference, T>,
+        EvalValue<&'b PolynomialReference, T>,
     ) {
         let mut outer_constraints = vec![];
         let value = EvalValue {
@@ -317,7 +319,7 @@ impl BlockMachine {
         (outer_constraints, value)
     }
 
-    fn handle_constraint(&mut self, poly: usize, next: bool, constraint: Constraint) {
+    fn handle_constraint(&mut self, poly: usize, next: bool, constraint: Constraint<T>) {
         let r = (self.row + next as DegreeType) % self.degree;
         match constraint {
             Constraint::Assignment(a) => {
@@ -337,12 +339,12 @@ impl BlockMachine {
     /// an identity in the vector of identities.
     fn process_identity<'b>(
         &'b self,
-        fixed_data: &FixedData,
-        fixed_lookup: &mut FixedLookup,
-        left: &[AffineResult<&'b PolynomialReference>],
-        right: &'b SelectedExpressions,
+        fixed_data: &FixedData<T>,
+        fixed_lookup: &mut FixedLookup<T>,
+        left: &[AffineResult<&'b PolynomialReference, T>],
+        right: &'b SelectedExpressions<T>,
         identity: IdentityInSequence,
-    ) -> EvalResult<&'b PolynomialReference> {
+    ) -> EvalResult<'b, T> {
         match identity {
             IdentityInSequence::Internal(index) => {
                 let id = &self.identities[index];
@@ -365,10 +367,10 @@ impl BlockMachine {
     /// on the acutal query row (the last one of the block).
     fn process_outer_query<'b>(
         &self,
-        fixed_data: &FixedData,
-        left: &[AffineResult<&'b PolynomialReference>],
-        right: &'b SelectedExpressions,
-    ) -> EvalResult<&'b PolynomialReference> {
+        fixed_data: &FixedData<T>,
+        left: &[AffineResult<&'b PolynomialReference, T>],
+        right: &'b SelectedExpressions<T>,
+    ) -> EvalResult<'b, T> {
         assert!(self.row as usize % self.block_size == self.block_size - 1);
         let mut results = EvalValue::complete(vec![]);
 
@@ -397,9 +399,9 @@ impl BlockMachine {
     /// Process a polynomial identity internal no the machine.
     fn process_polynomial_identity<'b>(
         &self,
-        fixed_data: &FixedData,
-        identity: &'b Expression,
-    ) -> EvalResult<&'b PolynomialReference> {
+        fixed_data: &FixedData<T>,
+        identity: &'b Expression<T>,
+    ) -> EvalResult<'b, T> {
         let evaluated = match self.evaluate(fixed_data, identity) {
             Ok(evaluated) => evaluated,
             Err(cause) => return Ok(EvalValue::incomplete(cause)),
@@ -413,10 +415,10 @@ impl BlockMachine {
     /// Process a plookup internal to the machine against a set of fixed columns.
     fn process_plookup<'b>(
         &self,
-        fixed_data: &FixedData,
-        fixed_lookup: &mut FixedLookup,
-        identity: &'b Identity,
-    ) -> EvalResult<&'b PolynomialReference> {
+        fixed_data: &FixedData<T>,
+        fixed_lookup: &mut FixedLookup<T>,
+        identity: &'b Identity<T>,
+    ) -> EvalResult<'b, T> {
         if identity.left.selector.is_some() || identity.right.selector.is_some() {
             unimplemented!("Selectors not yet implemented.");
         }
@@ -439,9 +441,9 @@ impl BlockMachine {
 
     fn evaluate<'b>(
         &self,
-        fixed_data: &FixedData,
-        expression: &'b Expression,
-    ) -> AffineResult<&'b PolynomialReference> {
+        fixed_data: &FixedData<T>,
+        expression: &'b Expression<T>,
+    ) -> AffineResult<&'b PolynomialReference, T> {
         ExpressionEvaluator::new(SymoblicWitnessEvaluator::new(
             fixed_data,
             self.row,
@@ -455,8 +457,8 @@ impl BlockMachine {
     }
 }
 
-impl BitConstraintSet<&PolynomialReference> for BlockMachine {
-    fn bit_constraint(&self, poly: &PolynomialReference) -> Option<BitConstraint> {
+impl<T: FieldElement> BitConstraintSet<&PolynomialReference, T> for BlockMachine<T> {
+    fn bit_constraint(&self, poly: &PolynomialReference) -> Option<BitConstraint<T>> {
         assert!(poly.is_witness());
         self.global_bit_constraints
             .get(&(poly.poly_id() as usize))
@@ -472,14 +474,14 @@ impl BitConstraintSet<&PolynomialReference> for BlockMachine {
 }
 
 #[derive(Clone)]
-struct WitnessData<'a> {
-    pub fixed_data: &'a FixedData<'a>,
-    pub data: &'a HashMap<usize, Vec<Option<FieldElement>>>,
+struct WitnessData<'a, T> {
+    pub fixed_data: &'a FixedData<'a, T>,
+    pub data: &'a HashMap<usize, Vec<Option<T>>>,
     pub row: DegreeType,
 }
 
-impl<'a> WitnessColumnEvaluator for WitnessData<'a> {
-    fn value<'b>(&self, poly: &'b PolynomialReference) -> AffineResult<&'b PolynomialReference> {
+impl<'a, T: FieldElement> WitnessColumnEvaluator<T> for WitnessData<'a, T> {
+    fn value<'b>(&self, poly: &'b PolynomialReference) -> AffineResult<&'b PolynomialReference, T> {
         let id = poly.poly_id() as usize;
         let row = if poly.next {
             (self.row + 1) % self.fixed_data.degree
@@ -518,11 +520,12 @@ struct SequenceCacheKey {
     known_columns: Vec<bool>,
 }
 
-impl<K> From<&[AffineResult<K>]> for SequenceCacheKey
+impl<K, T> From<&[AffineResult<K, T>]> for SequenceCacheKey
 where
     K: Copy + Ord,
+    T: FieldElement,
 {
-    fn from(value: &[AffineResult<K>]) -> Self {
+    fn from(value: &[AffineResult<K, T>]) -> Self {
         SequenceCacheKey {
             known_columns: value
                 .iter()
@@ -546,9 +549,10 @@ impl ProcessingSequenceCache {
         }
     }
 
-    pub fn get_processing_sequence<K>(&self, left: &[AffineResult<K>]) -> Vec<SequenceStep>
+    pub fn get_processing_sequence<K, T>(&self, left: &[AffineResult<K, T>]) -> Vec<SequenceStep>
     where
         K: Copy + Ord,
+        T: FieldElement,
     {
         self.cache.get(&left.into()).cloned().unwrap_or_else(|| {
             let block_size = self.block_size as i64;
@@ -572,12 +576,13 @@ impl ProcessingSequenceCache {
         })
     }
 
-    pub fn report_processing_sequence<K>(
+    pub fn report_processing_sequence<K, T>(
         &mut self,
-        left: &[AffineResult<K>],
+        left: &[AffineResult<K, T>],
         sequence: Vec<SequenceStep>,
     ) where
         K: Copy + Ord,
+        T: FieldElement,
     {
         self.cache.entry(left.into()).or_insert(sequence);
     }

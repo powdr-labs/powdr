@@ -18,7 +18,7 @@ mod sorted_witness_machine;
 
 /// A machine is a set of witness columns and identities where the columns
 /// are used on the right-hand-side of lookups. It can process plookups.
-pub trait Machine {
+pub trait Machine<T: FieldElement> {
     // /// Tries to construct a new machine with the given subset of
     // /// witness columns and identities. If the identities do not
     // /// fit the pattern of the machine type, it can return None.
@@ -35,13 +35,13 @@ pub trait Machine {
     /// If this is not the right machine for the query, return `None`.
     fn process_plookup<'a>(
         &mut self,
-        fixed_data: &FixedData,
-        fixed_lookup: &mut FixedLookup,
+        fixed_data: &FixedData<T>,
+        fixed_lookup: &mut FixedLookup<T>,
         kind: IdentityKind,
-        left: &[AffineResult<&'a PolynomialReference>],
-        right: &SelectedExpressions,
-    ) -> Option<EvalResult<&'a PolynomialReference>>;
+        left: &[AffineResult<&'a PolynomialReference, T>],
+        right: &SelectedExpressions<T>,
+    ) -> Option<EvalResult<'a, T>>;
 
     /// Returns the final values of the witness columns.
-    fn witness_col_values(&mut self, fixed_data: &FixedData) -> HashMap<String, Vec<FieldElement>>;
+    fn witness_col_values(&mut self, fixed_data: &FixedData<T>) -> HashMap<String, Vec<T>>;
 }
