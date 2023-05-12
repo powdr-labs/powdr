@@ -2,13 +2,14 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::iter::once;
 
 use itertools::{Either, Itertools};
+use num_traits::Zero;
 
 use super::{FixedLookup, Machine};
 use crate::witgen::affine_expression::AffineResult;
 use crate::witgen::util::is_simple_poly_of_name;
 use crate::witgen::{EvalError, EvalResult, FixedData};
 use crate::witgen::{EvalValue, IncompleteCause};
-use number::FieldElement;
+use number::{FieldElement, FieldElementTrait};
 
 use pil_analyzer::{Expression, Identity, IdentityKind, PolynomialReference, SelectedExpressions};
 
@@ -179,10 +180,10 @@ impl DoubleSortedWitnesses {
 
         log::trace!(
             "Query addr={:x}, step={step}, write: {is_write}, left: {}",
-            addr.to_integer(),
+            addr.to_arbitrary_integer(),
             left[2]
         );
-        if addr.clone().to_integer() % 4 != 0 {
+        if !(addr.clone().to_arbitrary_integer() % 4u32).is_zero() {
             panic!("UNALIGNED");
         }
 
@@ -200,8 +201,8 @@ impl DoubleSortedWitnesses {
 
             log::debug!(
                 "Memory write: addr={:x}, step={step}, value={:x}",
-                addr.to_integer(),
-                value.to_integer()
+                addr,
+                value
             );
             self.data.insert(addr, value);
             self.trace
@@ -217,8 +218,8 @@ impl DoubleSortedWitnesses {
             );
             log::debug!(
                 "Memory read: addr={:x}, step={step}, value={:x}",
-                addr.to_integer(),
-                value.to_integer()
+                addr,
+                value
             );
             let ass = (left[2].clone() - (*value).into())
                 .solve()

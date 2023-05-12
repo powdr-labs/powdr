@@ -2,8 +2,8 @@ use std::collections::BTreeMap;
 use std::fmt::Display;
 
 use itertools::Itertools;
-use number::AbstractNumberType;
-use number::FieldElement;
+
+use number::{BigInt, FieldElement, FieldElementTrait};
 
 use super::bit_constraints::BitConstraintSet;
 use super::Constraint;
@@ -64,7 +64,7 @@ where
     pub fn nonzero_coefficients(&self) -> impl Iterator<Item = (K, &FieldElement)> {
         self.coefficients
             .iter()
-            .filter_map(|(i, c)| (!c.is_zero()).then_some((*i, c)))
+            .filter_map(|(i, c)| (c != &FieldElement::from(0)).then_some((*i, c)))
     }
 }
 
@@ -235,27 +235,31 @@ where
         }
 
         // Check if they are mutually exclusive and compute assignments.
-        let mut covered_bits: AbstractNumberType = 0;
+        let mut covered_bits: <FieldElement as FieldElementTrait>::Integer = 0u32.into();
         let mut assignments = EvalValue::complete(vec![]);
         let mut offset = (-self.offset).to_integer();
         for (i, coeff, constraint) in parts {
             let constraint = constraint.clone().unwrap();
             let mask = constraint.mask();
-            if mask & covered_bits != 0 {
+            if *mask & covered_bits != 0u32.into() {
                 return Ok(EvalValue::incomplete(
                     IncompleteCause::OverlappingBitConstraints,
                 ));
             } else {
-                covered_bits |= mask;
+                covered_bits |= *mask;
             }
             assignments.combine(EvalValue::complete(vec![(
                 i,
-                Constraint::Assignment(((offset & mask) / coeff.to_integer()).into()),
+                Constraint::Assignment(
+                    ((offset & *mask).to_arbitrary_integer() / coeff.to_arbitrary_integer())
+                        .try_into()
+                        .unwrap(),
+                ),
             )]));
-            offset &= !mask;
+            offset &= !*mask;
         }
 
-        if offset != 0 {
+        if offset != 0u32.into() {
             // We were not able to cover all of the offset, so this equation cannot be solved.
             Err(ConflictingBitConstraints)
         } else {
@@ -482,7 +486,7 @@ mod test {
             EvalValue::incomplete_with_constraints(
                 vec![(
                     1,
-                    Constraint::BitConstraint(BitConstraint::from_mask(0x1fef))
+                    Constraint::BitConstraint(BitConstraint::from_mask(0x1fef as u32))
                 )],
                 IncompleteCause::NotConcrete
             )

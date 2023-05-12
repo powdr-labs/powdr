@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use itertools::Itertools;
-use number::{DegreeType, FieldElement};
+use number::{DegreeType, FieldElement, FieldElementTrait};
 use pil_analyzer::{Analyzed, BinaryOperator, Expression, FunctionValueDefinition, UnaryOperator};
 use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 
@@ -134,12 +134,14 @@ impl<'a> Evaluator<'a> {
             BinaryOperator::Mul => left * right,
             BinaryOperator::Div => left.integer_div(right),
             BinaryOperator::Pow => left.pow(right.to_integer()),
-            BinaryOperator::Mod => (left.to_integer() % right.to_integer()).into(),
+            BinaryOperator::Mod => {
+                (left.to_arbitrary_integer() % right.to_arbitrary_integer()).into()
+            }
             BinaryOperator::BinaryAnd => (left.to_integer() & right.to_integer()).into(),
             BinaryOperator::BinaryXor => (left.to_integer() ^ right.to_integer()).into(),
             BinaryOperator::BinaryOr => (left.to_integer() | right.to_integer()).into(),
-            BinaryOperator::ShiftLeft => (left.to_integer() << right.to_integer()).into(),
-            BinaryOperator::ShiftRight => (left.to_integer() >> right.to_integer()).into(),
+            BinaryOperator::ShiftLeft => (left.to_integer() << right.to_degree()).into(),
+            BinaryOperator::ShiftRight => (left.to_integer() >> right.to_degree()).into(),
         }
     }
 

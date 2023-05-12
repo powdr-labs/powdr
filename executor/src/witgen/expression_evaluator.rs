@@ -1,4 +1,4 @@
-use number::FieldElement;
+use number::{FieldElement, FieldElementTrait};
 use pil_analyzer::{BinaryOperator, Expression, PolynomialReference, UnaryOperator};
 
 use super::{affine_expression::AffineResult, IncompleteCause};
@@ -94,7 +94,9 @@ where
                         (left.constant_value(), right.constant_value())
                     {
                         let result: FieldElement = match op {
-                            BinaryOperator::Mod => (left.to_integer() % right.to_integer()).into(),
+                            BinaryOperator::Mod => {
+                                (left.to_arbitrary_integer() % right.to_arbitrary_integer()).into()
+                            }
                             BinaryOperator::BinaryAnd => {
                                 (left.to_integer() & right.to_integer()).into()
                             }
@@ -105,10 +107,10 @@ where
                                 (left.to_integer() | right.to_integer()).into()
                             }
                             BinaryOperator::ShiftLeft => {
-                                (left.to_integer() << right.to_integer()).into()
+                                (left.to_integer() << right.to_degree()).into()
                             }
                             BinaryOperator::ShiftRight => {
-                                (left.to_integer() >> right.to_integer()).into()
+                                (left.to_integer() >> right.to_degree()).into()
                             }
                             _ => panic!(),
                         };
