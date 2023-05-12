@@ -463,7 +463,7 @@ pil{
     { Y_7bit } in { seven_bit };
 }
 
-// Input is a 32 but unsined number (0 <= Y < 2**32) interpreted as a two's complement numbers.
+// Input is a 32 but unsigned number (0 <= Y < 2**32) interpreted as a two's complement numbers.
 // Returns a signed number (-2**31 <= X < 2**31).
 instr to_signed Y -> X {
     // wrap_bit is used as sign_bit here.
@@ -780,7 +780,7 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
             let (rd, rs, imm) = rri(args);
             vec![
                 format!("tmp1 <=X= to_signed({rs});"),
-                format!("{rd} <=Y= is_positive({imm} - tmp1);"),
+                format!("{rd} <=Y= is_positive({} - tmp1);", imm as i32),
             ]
         }
         "sltiu" => {
@@ -810,7 +810,7 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
             let (r1, label) = rl(args);
             vec![
                 format!("tmp1 <=X= to_signed({r1});"),
-                format!("branch_if_positive {r1} + 1, {label};"),
+                format!("branch_if_positive tmp1 + 1, {label};"),
             ]
         }
         "bltu" => {
