@@ -67,7 +67,7 @@ pub fn filter_reachable_from(
         .into_iter()
         .map(|s| s.to_owned())
         .collect::<HashSet<_>>();
-    // TODO also apply replacements to objects
+
     objects.retain(|name, _value| referenced_labels.contains(name.as_str()));
     for (_name, value) in objects.iter_mut() {
         apply_replacement_to_object(value, &replacements)

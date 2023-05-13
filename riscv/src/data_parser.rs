@@ -19,7 +19,13 @@ impl DataValue {
     }
 }
 
-pub fn extract_data_objects(statements: &[Statement]) -> BTreeMap<String, Vec<DataValue>> {
+/// Extract all data objects from the list of statements.
+/// Returns the named data objects themselves and a vector of the names
+/// in the order in which they occur in the statements.
+pub fn extract_data_objects(
+    statements: &[Statement],
+) -> (BTreeMap<String, Vec<DataValue>>, Vec<String>) {
+    let mut object_order = vec![];
     let mut current_label = None;
     let mut objects = BTreeMap::new();
     for s in statements {
@@ -31,6 +37,7 @@ pub fn extract_data_objects(statements: &[Statement]) -> BTreeMap<String, Vec<Da
                 (".type", [Argument::Symbol(name), Argument::Symbol(kind)])
                     if kind.as_str() == "@object" =>
                 {
+                    object_order.push(name.clone());
                     assert!(objects.insert(name.clone(), vec![]).is_none());
                 }
                 (".zero" | ".ascii" | ".asciz" | ".word" | ".byte", args) => {
@@ -62,7 +69,7 @@ pub fn extract_data_objects(statements: &[Statement]) -> BTreeMap<String, Vec<Da
             _ => {}
         }
     }
-    objects
+    (objects, object_order)
 }
 
 fn extract_data_value(directive: &str, arguments: &[Argument]) -> Vec<DataValue> {
