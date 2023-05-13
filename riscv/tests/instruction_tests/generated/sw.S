@@ -141,12 +141,19 @@
 
 .type tdat,@object
 tdat:
+.type tdat1,@object
 tdat1: .word 0xdeadbeef
+.type tdat2,@object
 tdat2: .word 0xdeadbeef
+.type tdat3,@object
 tdat3: .word 0xdeadbeef
+.type tdat4,@object
 tdat4: .word 0xdeadbeef
+.type tdat5,@object
 tdat5: .word 0xdeadbeef
+.type tdat6,@object
 tdat6: .word 0xdeadbeef
+.type tdat7,@object
 tdat7: .word 0xdeadbeef
 .type tdat8,@object
 tdat8: .word 0xdeadbeef

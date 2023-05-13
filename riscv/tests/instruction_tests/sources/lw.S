@@ -83,10 +83,15 @@ RVTEST_DATA_BEGIN
 
   TEST_DATA
 
+.type	tdat,@object
 tdat:
+.type	tdat1,@object
 tdat1:  .word 0x00ff00ff
+.type	tdat2,@object
 tdat2:  .word 0xff00ff00
+.type	tdat3,@object
 tdat3:  .word 0x0ff00ff0
+.type	tdat4,@object
 tdat4:  .word 0xf00ff00f
 
 RVTEST_DATA_END

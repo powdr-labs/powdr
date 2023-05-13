@@ -83,10 +83,15 @@ RVTEST_DATA_BEGIN
 
   TEST_DATA
 
+.type	tdat,@object
 tdat:
+.type	tdat1,@object
 tdat1:  .half 0x00ff
+.type	tdat2,@object
 tdat2:  .half 0xff00
+.type	tdat3,@object
 tdat3:  .half 0x0ff0
+.type	tdat4,@object
 tdat4:  .half 0xf00f
 
 RVTEST_DATA_END
