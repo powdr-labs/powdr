@@ -168,12 +168,12 @@ fn iterate_basic_block<'a>(statements: &'a [Statement], mut fun: impl FnMut(&'a 
 fn ends_control_flow(s: &Statement) -> bool {
     match s {
         Statement::Instruction(instruction, _) => match instruction.as_str() {
-            "li" | "lui" | "mv" | "add" | "addi" | "sub" | "neg" | "mul" | "mulhu" | "xor"
-            | "xori" | "and" | "andi" | "or" | "ori" | "not" | "slli" | "sll" | "srli" | "srl"
-            | "srai" | "seqz" | "snez" | "slt" | "slti" | "sltu" | "sltiu" | "sgtz" | "beq"
-            | "beqz" | "bgeu" | "bltu" | "blt" | "bge" | "bltz" | "blez" | "bgtz" | "bgez"
-            | "bne" | "bnez" | "jal" | "jalr" | "call" | "ecall" | "ebreak" | "lw" | "lb"
-            | "lbu" | "sw" | "sh" | "sb" | "nop" => false,
+            "li" | "lui" | "la" | "mv" | "add" | "addi" | "sub" | "neg" | "mul" | "mulhu"
+            | "xor" | "xori" | "and" | "andi" | "or" | "ori" | "not" | "slli" | "sll" | "srli"
+            | "srl" | "srai" | "seqz" | "snez" | "slt" | "slti" | "sltu" | "sltiu" | "sgtz"
+            | "beq" | "beqz" | "bgeu" | "bltu" | "blt" | "bge" | "bltz" | "blez" | "bgtz"
+            | "bgez" | "bne" | "bnez" | "jal" | "jalr" | "call" | "ecall" | "ebreak" | "lw"
+            | "lb" | "lbu" | "sw" | "sh" | "sb" | "nop" => false,
             "j" | "jr" | "tail" | "ret" | "unimp" => true,
             _ => {
                 panic!("Unknown instruction: {instruction}");

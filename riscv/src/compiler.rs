@@ -211,6 +211,11 @@ fn insert_data_positions(
             match arg {
                 Argument::RegOffset(_, offset) => replace_data_reference(offset, data_positions),
                 Argument::Constant(c) => replace_data_reference(c, data_positions),
+                Argument::Symbol(symb) => {
+                    if let Some(pos) = data_positions.get(symb) {
+                        *arg = Argument::Constant(Constant::Number(*pos as i64))
+                    }
+                }
                 _ => {}
             }
         }
@@ -713,6 +718,10 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
         "lui" => {
             let (rd, imm) = ri(args);
             only_if_no_write_to_zero(format!("{rd} <=X= {};", imm << 12), rd)
+        }
+        "la" => {
+            let (rd, addr) = ri(args);
+            only_if_no_write_to_zero(format!("{rd} <=X= {};", addr), rd)
         }
         "mv" => {
             let (rd, rs) = rr(args);
