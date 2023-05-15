@@ -109,9 +109,14 @@ fn replace_dynamic_label_reference(
     if instr1.as_str() != "lui" || instr2.as_str() != "addi" {
         return None;
     };
-    let [Argument::Register(r1), Argument::Constant(Constant::HiDataRef(label1))] = &args1[..] else { return None; };
-    let [Argument::Register(r2), Argument::Register(r3), Argument::Constant(Constant::LoDataRef(label2))] = &args2[..] else { return None; };
-    if r1 != r3 || label1 != label2 || data_objects.contains_key(label1) {
+    let [Argument::Register(r1), Argument::Constant(Constant::HiDataRef(label1, offset1))] = &args1[..] else { return None; };
+    let [Argument::Register(r2), Argument::Register(r3), Argument::Constant(Constant::LoDataRef(label2, offset2))] = &args2[..] else { return None; };
+    if r1 != r3
+        || label1 != label2
+        || *offset1 != 0
+        || *offset2 != 0
+        || data_objects.contains_key(label1)
+    {
         return None;
     }
     Some(Statement::Instruction(
@@ -208,14 +213,16 @@ fn insert_data_positions(
 fn replace_data_reference(constant: &mut Constant, data_positions: &BTreeMap<String, u32>) {
     match constant {
         Constant::Number(_) => {}
-        Constant::HiDataRef(data) => {
+        Constant::HiDataRef(data, offset) => {
             if let Some(pos) = data_positions.get(data) {
+                let pos: u32 = pos + *offset as u32;
                 *constant = Constant::Number((pos >> 12) as i64)
             }
             // Otherwise, it references a code label
         }
-        Constant::LoDataRef(data) => {
+        Constant::LoDataRef(data, offset) => {
             if let Some(pos) = data_positions.get(data) {
+                let pos: u32 = pos + *offset as u32;
                 *constant = Constant::Number((pos & 0xfff) as i64)
             }
             // Otherwise, it references a code label
@@ -593,8 +600,8 @@ fn argument_to_number(x: &Argument) -> u32 {
 fn constant_to_number(c: &Constant) -> u32 {
     match c {
         Constant::Number(n) => *n as u32,
-        Constant::HiDataRef(n) | Constant::LoDataRef(n) => {
-            panic!("Data reference was not erased during preprocessing: {n}");
+        Constant::HiDataRef(n, off) | Constant::LoDataRef(n, off) => {
+            panic!("Data reference was not erased during preprocessing: {n} + {off}");
         }
     }
 }

@@ -122,7 +122,9 @@ pub fn references_in_statement(statement: &Statement) -> BTreeSet<&str> {
                 Argument::Symbol(s) => Some(s.as_str()),
                 Argument::RegOffset(_, c) | Argument::Constant(c) => match c {
                     Constant::Number(_) => None,
-                    Constant::HiDataRef(s) | Constant::LoDataRef(s) => Some(s.as_str()),
+                    Constant::HiDataRef(s, _offset) | Constant::LoDataRef(s, _offset) => {
+                        Some(s.as_str())
+                    }
                 },
                 Argument::Difference(_, _) => todo!(),
             })
@@ -212,8 +214,8 @@ fn apply_replacement_to_instruction(
 fn apply_replacement_to_constant(c: Constant, replacements: &BTreeMap<&str, &str>) -> Constant {
     match c {
         Constant::Number(_) => c,
-        Constant::HiDataRef(s) => Constant::HiDataRef(replace(s, replacements)),
-        Constant::LoDataRef(s) => Constant::LoDataRef(replace(s, replacements)),
+        Constant::HiDataRef(s, off) => Constant::HiDataRef(replace(s, replacements), off),
+        Constant::LoDataRef(s, off) => Constant::LoDataRef(replace(s, replacements), off),
     }
 }
 

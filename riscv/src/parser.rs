@@ -39,8 +39,8 @@ impl Register {
 #[derive(Clone)]
 pub enum Constant {
     Number(i64),
-    HiDataRef(String),
-    LoDataRef(String),
+    HiDataRef(String, i64),
+    LoDataRef(String, i64),
 }
 
 impl Display for Statement {
@@ -70,9 +70,21 @@ impl Display for Constant {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Constant::Number(n) => write!(f, "{n}"),
-            Constant::HiDataRef(sym) => write!(f, "%hi({sym})"),
-            Constant::LoDataRef(sym) => write!(f, "%lo({sym})"),
+            Constant::HiDataRef(sym, offset) => {
+                write!(f, "%hi({sym}{})", format_hi_lo_offset(*offset))
+            }
+            Constant::LoDataRef(sym, offset) => {
+                write!(f, "%lo({sym}{})", format_hi_lo_offset(*offset))
+            }
         }
+    }
+}
+
+fn format_hi_lo_offset(offset: i64) -> String {
+    match offset {
+        0 => String::new(),
+        1.. => format!(" + {offset}"),
+        ..=-1 => format!(" - {}", -offset),
     }
 }
 
