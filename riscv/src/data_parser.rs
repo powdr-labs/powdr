@@ -4,6 +4,7 @@ use crate::parser::{Argument, Constant, Statement};
 
 pub enum DataValue {
     Direct(Vec<u8>),
+    Zero(usize),
     Reference(String),
 }
 
@@ -12,6 +13,7 @@ impl DataValue {
     pub fn size(&self) -> usize {
         match self {
             DataValue::Direct(data) => data.len(),
+            DataValue::Zero(length) => *length,
             DataValue::Reference(_) => 4,
         }
     }
@@ -71,7 +73,7 @@ fn extract_data_value(directive: &str, arguments: &[Argument]) -> Vec<DataValue>
             // TODO not clear what the second argument is
             | [Argument::Constant(Constant::Number(n)), _],
         ) => {
-            vec![DataValue::Direct(vec![0; *n as usize])]
+            vec![DataValue::Zero(*n as usize)]
         }
         (".ascii", [Argument::StringLiteral(data)]) => {
             vec![DataValue::Direct(data.clone())]
