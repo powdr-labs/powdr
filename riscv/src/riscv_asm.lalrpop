@@ -29,7 +29,8 @@ LabelOrStatement: Option<Statement> = {
 }
 
 Label: Statement = {
-    <Symbol> ":" => Statement::Label(<>)
+    <Symbol> ":" => Statement::Label(<>),
+    <Number> ":" => Statement::Label(<>.to_string())
 }
 
 Statement: Statement = {
