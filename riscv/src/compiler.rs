@@ -145,6 +145,10 @@ fn store_data_objects<'a>(
             let mut pos = positions[name];
             for item in data {
                 match &item {
+                    DataValue::Zero(_length) => {
+                        // We can assume memory to be zero-initialized,
+                        // so we do nothing.
+                    }
                     DataValue::Direct(bytes) => {
                         for i in (0..bytes.len()).step_by(4) {
                             let v = (0..4)
@@ -154,10 +158,13 @@ fn store_data_objects<'a>(
                                 })
                                 .reduce(|a, b| a | b)
                                 .unwrap();
-                            object_code.extend([
-                                format!("addr <=X= 0x{:x};", pos + i as u32),
-                                format!("mstore 0x{v:x};"),
-                            ]);
+                            // We can assume memory to be zero-initialized.
+                            if v != 0 {
+                                object_code.extend([
+                                    format!("addr <=X= 0x{:x};", pos + i as u32),
+                                    format!("mstore 0x{v:x};"),
+                                ]);
+                            }
                         }
                     }
                     DataValue::Reference(sym) => {
@@ -176,8 +183,9 @@ fn store_data_objects<'a>(
                 }
                 pos += item.size() as u32;
             }
-            let first_line = object_code.first_mut().unwrap();
-            *first_line = format!("// data {name}\n") + first_line;
+            if let Some(first_line) = object_code.first_mut() {
+                *first_line = format!("// data {name}\n") + first_line;
+            }
             object_code
         })
         .collect();
