@@ -102,11 +102,8 @@ pub fn compile_asm_string<T: FieldElement>(
                 }
                 value
             }
-            "\"print\"" => {
-                log::info!("Print: {}", items[1..].join(", "));
-                Some(0.into())
-            }
-            "\"print_ch\"" => {
+            "\"print_char\"" => {
+                assert_eq!(items.len(), 2);
                 print!("{}", items[1].parse::<u8>().unwrap() as char);
                 Some(0.into())
             }
