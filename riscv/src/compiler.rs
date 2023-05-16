@@ -567,18 +567,29 @@ fn runtime() -> &'static str {
     }
     */
     r#"
-.globl memset@plt
-.set memset@plt, __runtime_memset
-
 .globl memcpy@plt
-.set memcpy@plt, __runtime_memcpy
-
-.globl memcmp@plt
-.set memcmp@plt, __runtime_memcmp
+.globl memcpy
+.set memcpy@plt, memcpy
 
 .globl memmove@plt
 .globl memmove
 .set memmove@plt, memmove
+
+.globl memset@plt
+.globl memset
+.set memset@plt, memset
+
+.globl memcmp@plt
+.globl memcmp
+.set memcmp@plt, memcmp
+
+.globl bcmp@plt
+.globl bcmp
+.set bcmp@plt, bcmp
+
+.globl strlen@plt
+.globl strlen
+.set strlen@plt, strlen
 
 .globl __rust_alloc
 .set __rust_alloc, __rg_alloc

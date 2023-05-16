@@ -1,5 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 
+use itertools::Itertools;
+
 use crate::data_parser::DataValue;
 use crate::parser::{Argument, Constant, Statement};
 
@@ -76,7 +78,7 @@ pub fn filter_reachable_from(
 }
 
 fn extract_replacements(statements: &[Statement]) -> BTreeMap<&str, &str> {
-    statements
+    let mut replacements = statements
         .iter()
         .filter_map(|s| match s {
             Statement::Directive(dir, args) if dir.as_str() == ".set" => {
@@ -93,7 +95,29 @@ fn extract_replacements(statements: &[Statement]) -> BTreeMap<&str, &str> {
                 panic!("Duplicate .set directive: {from}")
             }
             acc
-        })
+        });
+
+    // Replacements might have multiple indirections. Resolve to the last
+    // indirection name:
+    let keys = replacements.keys().cloned().collect::<Vec<_>>();
+    for mut curr in keys {
+        let mut seen = BTreeSet::new();
+        while let Some(to) = replacements.get(curr) {
+            if !seen.insert(curr) {
+                panic!(
+                    "Cycle detected among .set directives involving:\n  {}",
+                    seen.into_iter().format("\n  ")
+                )
+            }
+            curr = *to;
+        }
+
+        for key in seen {
+            replacements.insert(key, curr);
+        }
+    }
+
+    replacements
 }
 
 pub fn extract_label_offsets(statements: &[Statement]) -> BTreeMap<&str, usize> {
