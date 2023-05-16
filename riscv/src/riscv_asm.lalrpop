@@ -85,8 +85,14 @@ OffsetRegister: Argument = {
 
 Constant: Constant = {
     ConstantExpression => Constant::Number(<>),
-    "%hi(" <Symbol> ")" => Constant::HiDataRef(<>),
-    "%lo(" <Symbol> ")" => Constant::LoDataRef(<>),
+    "%hi(" <arg:HiLowArgument> ")" => Constant::HiDataRef(arg.0, arg.1),
+    "%lo(" <arg:HiLowArgument> ")" => Constant::LoDataRef(arg.0, arg.1),
+}
+
+HiLowArgument: (String, i64) = {
+    <Symbol> => (<>, 0),
+    <Symbol> "+" <ConstantExpression> => (<>),
+    <n: Symbol> "-" <o: ConstantExpression> => (n, -o),
 }
 
 ConstantExpression: i64 = {

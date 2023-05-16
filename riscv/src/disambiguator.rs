@@ -103,11 +103,11 @@ fn disambiguate_constant_if_needed(
 ) -> Constant {
     match c {
         Constant::Number(_) => c,
-        Constant::HiDataRef(s) => {
-            Constant::HiDataRef(disambiguate_symbol_if_needed(s, prefix, globals))
+        Constant::HiDataRef(s, offset) => {
+            Constant::HiDataRef(disambiguate_symbol_if_needed(s, prefix, globals), offset)
         }
-        Constant::LoDataRef(s) => {
-            Constant::LoDataRef(disambiguate_symbol_if_needed(s, prefix, globals))
+        Constant::LoDataRef(s, offset) => {
+            Constant::LoDataRef(disambiguate_symbol_if_needed(s, prefix, globals), offset)
         }
     }
 }
