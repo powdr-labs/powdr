@@ -25,7 +25,7 @@ pub fn compile_riscv_asm(mut assemblies: BTreeMap<String, String>) -> String {
             .map(|(name, contents)| (name, parser::parse_asm(&contents)))
             .collect(),
     );
-    let mut objects = data_parser::extract_data_objects(&statements);
+    let (mut objects, object_order) = data_parser::extract_data_objects(&statements);
 
     // Reduce to the code that is actually reachable from main
     // (and the objects that are referred from there)
@@ -34,7 +34,15 @@ pub fn compile_riscv_asm(mut assemblies: BTreeMap<String, String>) -> String {
     // Replace dynamic references to code labels
     replace_dynamic_label_references(&mut statements, &objects);
 
-    let (data_code, data_positions) = store_data_objects(&objects, data_start);
+    // Sort the objects according to the order of the names in object_order.
+    let sorted_objects = object_order
+        .into_iter()
+        .filter_map(|n| {
+            let value = objects.get_mut(&n).map(std::mem::take);
+            value.map(|v| (n, v))
+        })
+        .collect::<Vec<_>>();
+    let (data_code, data_positions) = store_data_objects(&sorted_objects, data_start);
 
     preamble()
         + &data_code
@@ -126,7 +134,7 @@ fn replace_dynamic_label_reference(
 }
 
 fn store_data_objects<'a>(
-    objects: impl IntoIterator<Item = (&'a String, &'a Vec<DataValue>)> + Copy,
+    objects: impl IntoIterator<Item = &'a (String, Vec<DataValue>)> + Copy,
     mut memory_start: u32,
 ) -> (Vec<String>, BTreeMap<String, u32>) {
     memory_start = ((memory_start + 7) / 8) * 8;
@@ -211,6 +219,11 @@ fn insert_data_positions(
             match arg {
                 Argument::RegOffset(_, offset) => replace_data_reference(offset, data_positions),
                 Argument::Constant(c) => replace_data_reference(c, data_positions),
+                Argument::Symbol(symb) => {
+                    if let Some(pos) = data_positions.get(symb) {
+                        *arg = Argument::Constant(Constant::Number(*pos as i64))
+                    }
+                }
                 _ => {}
             }
         }
@@ -713,6 +726,10 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
         "lui" => {
             let (rd, imm) = ri(args);
             only_if_no_write_to_zero(format!("{rd} <=X= {};", imm << 12), rd)
+        }
+        "la" => {
+            let (rd, addr) = ri(args);
+            only_if_no_write_to_zero(format!("{rd} <=X= {};", addr), rd)
         }
         "mv" => {
             let (rd, rs) = rr(args);
