@@ -326,7 +326,7 @@ impl<T: FieldElement> ASMPILConverter<T> {
         let output = instr.outputs[0].clone();
         assert!(
             output == assign_reg,
-            "{output} vs {assign_reg} in {instr_name}",
+            "The instruction {instr_name} uses the assignment register {output}, but the caller uses {assign_reg} to further process the value.",
         );
 
         let mut args = args;
