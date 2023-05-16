@@ -66,6 +66,13 @@ fn test_keccak() {
 
 #[test]
 #[ignore = "Too slow"]
+fn test_password() {
+    let case = "password_checker";
+    verify_crate(case, vec![]);
+}
+
+#[test]
+#[ignore = "Too slow"]
 // TODO: instead of just checking for panic, we could check the stdout for the actual message.
 #[should_panic]
 fn test_print() {
