@@ -69,8 +69,8 @@ fn test_keccak() {
 // TODO: instead of just checking for panic, we could check the stdout for the actual message.
 #[should_panic]
 fn test_print() {
-    let case = "print";
-    verify_crate(case, vec![]);
+    let case = "print.rs";
+    verify_file(case, vec![]);
 }
 
 fn verify_file(case: &str, inputs: Vec<GoldilocksField>) {
