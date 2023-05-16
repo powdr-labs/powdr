@@ -168,10 +168,10 @@ fn ends_control_flow(s: &Statement) -> bool {
         Statement::Instruction(instruction, _) => match instruction.as_str() {
             "li" | "lui" | "mv" | "add" | "addi" | "sub" | "neg" | "mul" | "mulhu" | "xor"
             | "xori" | "and" | "andi" | "or" | "ori" | "not" | "slli" | "sll" | "srli" | "srl"
-            | "seqz" | "snez" | "slti" | "sltu" | "sltiu" | "beq" | "beqz" | "bgeu" | "bltu"
-            | "blt" | "bge" | "bltz" | "blez" | "bgtz" | "bgez" | "bne" | "bnez" | "jal"
-            | "jalr" | "call" | "ecall" | "ebreak" | "lw" | "lb" | "lbu" | "sw" | "sh" | "sb"
-            | "nop" => false,
+            | "srai" | "seqz" | "snez" | "slti" | "sltu" | "sltiu" | "beq" | "beqz" | "bgeu"
+            | "bltu" | "blt" | "bge" | "bltz" | "blez" | "bgtz" | "bgez" | "bne" | "bnez"
+            | "jal" | "jalr" | "call" | "ecall" | "ebreak" | "lw" | "lb" | "lbu" | "sw" | "sh"
+            | "sb" | "nop" => false,
             "j" | "jr" | "tail" | "ret" | "unimp" => true,
             _ => {
                 panic!("Unknown instruction: {instruction}");

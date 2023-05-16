@@ -54,20 +54,18 @@ pub fn main() {
     }
 
     // Check memcmp accross boundaries
-    // This doesn't work because it compiles to the unsupported
-    // assembly instruction "srai".
-    // unsafe {
-    //     assert_eq!(
-    //         __runtime_memcmp(output.as_ptr().offset(5), input.as_ptr().offset(5), 32),
-    //         0,
-    //     );
-    //     assert_eq!(
-    //         __runtime_memcmp(output.as_ptr().offset(5), input.as_ptr().offset(6), 32),
-    //         -1,
-    //     );
-    //     assert_eq!(
-    //         __runtime_memcmp(output.as_ptr().offset(6), input.as_ptr().offset(5), 32),
-    //         1,
-    //     );
-    // }
+    unsafe {
+        assert_eq!(
+            __runtime_memcmp(output.as_ptr().offset(5), input.as_ptr().offset(5), 32),
+            0,
+        );
+        assert_eq!(
+            __runtime_memcmp(output.as_ptr().offset(6), input.as_ptr().offset(5), 32),
+            -1,
+        );
+        assert_eq!(
+            __runtime_memcmp(input.as_ptr().offset(5), output.as_ptr().offset(6), 32),
+            1,
+        );
+    }
 }
