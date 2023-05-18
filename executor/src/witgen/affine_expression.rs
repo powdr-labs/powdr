@@ -432,7 +432,7 @@ mod test {
         let a = AffineExpression::from_variable_id(names[0])
             + GoldilocksField::from(2) * AffineExpression::from_variable_id(names[1])
             + GoldilocksField::from(3).into();
-        let b = AffineExpression::from_variable_id(names[0]) * GoldilocksField::from(11).into()
+        let b = AffineExpression::from_variable_id(names[0]) * GoldilocksField::from(11)
             + GoldilocksField::from(13).into();
         let result = a.clone() + b.clone();
         assert_eq!(&result.to_string(), "12 * abc + 2 * def + 16");
