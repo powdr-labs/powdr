@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::{Debug, Display, Formatter};
 
 use crate::witgen::util::contains_next_ref;
-use number::{BigInt, FieldElement};
+use number::{log2_exact, BigInt, FieldElement};
 use pil_analyzer::{BinaryOperator, Expression, Identity, IdentityKind, PolynomialReference};
 
 use super::expression_evaluator::ExpressionEvaluator;
@@ -56,23 +56,13 @@ impl<T: FieldElement> BitConstraint<T> {
     }
 
     /// The bit constraint of an integer multiple of an expression.
-    /// TODO this assumes goldilocks
     pub fn multiple(&self, factor: T) -> Option<BitConstraint<T>> {
-        if factor.to_arbitrary_integer() * self.mask.to_arbitrary_integer()
-            >= T::modulus().to_arbitrary_integer()
-        {
-            None
+        let exponent = log2_exact(factor.to_arbitrary_integer())?;
+        let mask = self.mask << exponent;
+        if mask.to_arbitrary_integer() < T::modulus().to_arbitrary_integer() {
+            Some(BitConstraint { mask })
         } else {
-            // TODO use binary logarithm
-            (0..64).find_map(|i| {
-                if factor == (1u64 << i).into() {
-                    Some(BitConstraint {
-                        mask: self.mask << i,
-                    })
-                } else {
-                    None
-                }
-            })
+            None
         }
     }
 }
