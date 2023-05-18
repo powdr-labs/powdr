@@ -3,7 +3,7 @@
 members = [
     "number",
     "parser",
-    "cli",
+    "powdr_cli",
     "executor",
     "riscv",
     "parser_util",

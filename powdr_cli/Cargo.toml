@@ -1,5 +1,5 @@
 [package]
-name = "cli"
+name = "powdr_cli"
 version = "0.1.0"
 edition = "2021"
 
@@ -11,3 +11,7 @@ compiler = { path = "../compiler" }
 parser = { path = "../parser" }
 riscv = { path = "../riscv" }
 number = { path = "../number" }
+
+[[bin]]
+name = "powdr"
+path = "src/main.rs"
