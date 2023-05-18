@@ -114,15 +114,13 @@ where
                     .into()
                 });
 
-                if result.is_err() {
-                    identity_failed = true;
-                }
-
                 match &result {
-                    Ok(e) if e.is_complete() => {
-                        *complete = true;
+                    Ok(e) => {
+                        *complete = e.is_complete();
                     }
-                    _ => {}
+                    Err(_) => {
+                        identity_failed = true;
+                    }
                 };
 
                 self.handle_eval_result(result);
@@ -150,7 +148,7 @@ where
         }
         // Identity check failure on the first row is not fatal. We will proceed with
         // "unknown", report zero and re-check the wrap-around against the zero values at the end.
-        if identity_failed && next_row != 0 {
+        if identity_failed {
             log::error!(
                 "\nError: Row {next_row}: Identity check failed or unable to derive values for some witness columns.\nSet RUST_LOG=debug for more information.");
             log::debug!(
