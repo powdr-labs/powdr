@@ -1,5 +1,7 @@
 use number::{DegreeType, FieldElement};
 
+use crate::asm_ast::ASMStatement;
+
 #[derive(Debug, PartialEq, Eq)]
 pub struct PILFile<T>(pub Vec<Statement<T>>);
 
@@ -27,6 +29,7 @@ pub enum Statement<T> {
         Option<Expression<T>>,
     ),
     FunctionCall(usize, String, Vec<Expression<T>>),
+    ASMBlock(usize, Vec<ASMStatement<T>>),
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]

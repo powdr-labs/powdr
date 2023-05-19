@@ -2,23 +2,37 @@
 
 use std::collections::{BTreeMap, HashMap};
 
-use number::DegreeType;
 use number::FieldElement;
 
 use parser::asm_ast::*;
 use parser::ast::*;
 use parser_util::ParseError;
 
+/// Compiles a stand-alone assembly file to PIL.
 pub fn compile<'a, T: FieldElement>(
     file_name: Option<&str>,
     input: &'a str,
 ) -> Result<PILFile<T>, ParseError<'a>> {
-    parser::parse_asm(file_name, input).map(|ast| ASMPILConverter::new().convert(ast))
+    let statements = parser::parse_asm(file_name, input)
+        .map(|ast| ASMPILConverter::new().convert(ast.0, ASMKind::StandAlone))?;
+    Ok(PILFile(statements))
+}
+
+/// Compiles inline assembly to PIL.
+pub fn asm_to_pil<T: FieldElement>(
+    statements: impl IntoIterator<Item = ASMStatement<T>>,
+) -> Vec<Statement<T>> {
+    ASMPILConverter::new().convert(statements, ASMKind::Inline)
+}
+
+#[derive(PartialEq)]
+enum ASMKind {
+    Inline,
+    StandAlone,
 }
 
 #[derive(Default)]
 struct ASMPILConverter<T> {
-    degree: DegreeType,
     pil: Vec<Statement<T>>,
     pc_name: Option<String>,
     registers: BTreeMap<String, Register<T>>,
@@ -35,30 +49,33 @@ impl<T: FieldElement> ASMPILConverter<T> {
         Default::default()
     }
 
-    fn set_degree(&mut self, degree: DegreeType) {
-        // check the degree is a power of 2
-        assert!(
-            degree.is_power_of_two(),
-            "Degree should be a power of two, found {degree}",
-        );
-        self.degree = degree;
-    }
+    fn convert(
+        &mut self,
+        input: impl IntoIterator<Item = ASMStatement<T>>,
+        asm_kind: ASMKind,
+    ) -> Vec<Statement<T>> {
+        let mut statements = input.into_iter().peekable();
 
-    fn convert(&mut self, input: ASMFile<T>) -> PILFile<T> {
-        self.set_degree(1024);
+        if asm_kind == ASMKind::StandAlone {
+            let degree = if let Some(ASMStatement::Degree(_, deg)) = statements.peek() {
+                let deg = T::from(deg.clone()).to_degree();
+                statements.next();
+                deg
+            } else {
+                1024
+            };
 
-        let mut statements = input.0.into_iter().peekable();
-
-        if let Some(ASMStatement::Degree(_, degree)) = statements.peek() {
-            self.set_degree(T::from(degree.clone()).to_degree());
-            statements.next();
+            assert!(
+                degree.is_power_of_two(),
+                "Degree should be a power of two, found {degree}",
+            );
+            self.pil.push(Statement::Namespace(
+                0,
+                "Assembly".to_string(),
+                Expression::Number(degree.into()),
+            ));
         }
 
-        self.pil.push(Statement::Namespace(
-            0,
-            "Assembly".to_string(),
-            Expression::Number(self.degree.into()),
-        ));
         self.pil.push(Statement::PolynomialConstantDefinition(
             0,
             "first_step".to_string(),
@@ -149,7 +166,7 @@ impl<T: FieldElement> ASMPILConverter<T> {
             },
         ));
 
-        PILFile(std::mem::take(&mut self.pil))
+        std::mem::take(&mut self.pil)
     }
 
     fn handle_register_declaration(
