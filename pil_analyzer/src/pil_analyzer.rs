@@ -3,6 +3,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use number::{BigInt, DegreeType, FieldElement};
+use parser::asm_ast::ASMStatement;
 use parser::ast;
 pub use parser::ast::{BinaryOperator, UnaryOperator};
 
@@ -132,76 +133,81 @@ impl<T: FieldElement> PILContext<T> {
             });
 
         for statement in pil_file.0 {
-            use ast::Statement;
-            match statement {
-                Statement::Include(_, include) => self.handle_include(include),
-                Statement::Namespace(_, name, degree) => self.handle_namespace(name, degree),
-                Statement::PolynomialDefinition(start, name, value) => {
-                    self.handle_polynomial_definition(
-                        self.to_source_ref(start),
-                        name,
-                        None,
-                        PolynomialType::Intermediate,
-                        Some(ast::FunctionDefinition::Mapping(vec![], value.clone())),
-                    );
-                }
-                Statement::PublicDeclaration(start, name, polynomial, index) => self
-                    .handle_public_declaration(self.to_source_ref(start), name, polynomial, index),
-                Statement::PolynomialConstantDeclaration(start, polynomials) => self
-                    .handle_polynomial_declarations(
-                        self.to_source_ref(start),
-                        polynomials,
-                        PolynomialType::Constant,
-                    ),
-                Statement::PolynomialConstantDefinition(start, name, definition) => {
-                    self.handle_polynomial_definition(
-                        self.to_source_ref(start),
-                        name,
-                        None,
-                        PolynomialType::Constant,
-                        Some(definition),
-                    );
-                }
-                Statement::PolynomialCommitDeclaration(start, polynomials, None) => self
-                    .handle_polynomial_declarations(
-                        self.to_source_ref(start),
-                        polynomials,
-                        PolynomialType::Committed,
-                    ),
-                Statement::PolynomialCommitDeclaration(
-                    start,
-                    mut polynomials,
-                    Some(definition),
-                ) => {
-                    assert!(polynomials.len() == 1);
-                    let name = polynomials.pop().unwrap();
-                    self.handle_polynomial_definition(
-                        self.to_source_ref(start),
-                        name.name,
-                        name.array_size,
-                        PolynomialType::Committed,
-                        Some(definition),
-                    );
-                }
-                Statement::ConstantDefinition(_, name, value) => {
-                    self.handle_constant_definition(name, value)
-                }
-                Statement::MacroDefinition(start, name, params, statments, expression) => self
-                    .handle_macro_definition(
-                        self.to_source_ref(start),
-                        name,
-                        params,
-                        statments,
-                        expression,
-                    ),
-                _ => {
-                    self.handle_identity_statement(statement);
-                }
-            }
+            self.handle_statement(statement);
         }
 
         self.current_file = old_current_file;
         self.line_starts = old_line_starts;
+    }
+
+    fn handle_statement(&mut self, statement: ast::Statement<T>) {
+        use ast::Statement;
+        match statement {
+            Statement::Include(_, include) => self.handle_include(include),
+            Statement::Namespace(_, name, degree) => self.handle_namespace(name, degree),
+            Statement::PolynomialDefinition(start, name, value) => {
+                self.handle_polynomial_definition(
+                    self.to_source_ref(start),
+                    name,
+                    None,
+                    PolynomialType::Intermediate,
+                    Some(ast::FunctionDefinition::Mapping(vec![], value)),
+                );
+            }
+            Statement::PublicDeclaration(start, name, polynomial, index) => {
+                self.handle_public_declaration(self.to_source_ref(start), name, polynomial, index)
+            }
+            Statement::PolynomialConstantDeclaration(start, polynomials) => self
+                .handle_polynomial_declarations(
+                    self.to_source_ref(start),
+                    polynomials,
+                    PolynomialType::Constant,
+                ),
+            Statement::PolynomialConstantDefinition(start, name, definition) => {
+                self.handle_polynomial_definition(
+                    self.to_source_ref(start),
+                    name,
+                    None,
+                    PolynomialType::Constant,
+                    Some(definition),
+                );
+            }
+            Statement::PolynomialCommitDeclaration(start, polynomials, None) => self
+                .handle_polynomial_declarations(
+                    self.to_source_ref(start),
+                    polynomials,
+                    PolynomialType::Committed,
+                ),
+            Statement::PolynomialCommitDeclaration(start, mut polynomials, Some(definition)) => {
+                assert!(polynomials.len() == 1);
+                let name = polynomials.pop().unwrap();
+                self.handle_polynomial_definition(
+                    self.to_source_ref(start),
+                    name.name,
+                    name.array_size,
+                    PolynomialType::Committed,
+                    Some(definition),
+                );
+            }
+            Statement::ConstantDefinition(_, name, value) => {
+                self.handle_constant_definition(name, value)
+            }
+            Statement::MacroDefinition(start, name, params, statments, expression) => self
+                .handle_macro_definition(
+                    self.to_source_ref(start),
+                    name,
+                    params,
+                    statments,
+                    expression,
+                ),
+
+            Statement::ASMBlock(start, asm_statements) => {
+                self.handle_assembly(self.to_source_ref(start), asm_statements)
+            }
+            _ => {
+                self.handle_identity_statement(statement);
+            }
+        }
     }
 
     fn to_source_ref(&self, start: usize) -> SourceRef {
@@ -452,6 +458,13 @@ impl<T: FieldElement> PILContext<T> {
             )
             .is_none();
         assert!(is_new);
+    }
+
+    fn handle_assembly(&mut self, _source: SourceRef, asm_statements: Vec<ASMStatement<T>>) {
+        let statements = pilgen::asm_to_pil(asm_statements.into_iter());
+        for s in statements {
+            self.handle_statement(s)
+        }
     }
 
     fn namespaced(&self, name: &str) -> String {

@@ -195,4 +195,9 @@ mod test {
     fn parse_example_asm_files() {
         parse_asm_file("asm/simple_sum.asm");
     }
+
+    #[test]
+    fn parse_mixed_pil_asm_files() {
+        parse_file("pil/simple_sum_asm.pil");
+    }
 }
