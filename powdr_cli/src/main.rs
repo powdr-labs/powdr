@@ -1,7 +1,6 @@
 //! The powdr CLI tool
 
 use clap::{Parser, Subcommand};
-use compiler::no_callback;
 use env_logger::{Builder, Target};
 use log::LevelFilter;
 use number::{FieldElement, GoldilocksField};
@@ -16,6 +15,29 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
+    /// Runs compilation and witness generation for .pil and .asm files.
+    /// First converts .asm files to .pil, if needed.
+    /// Then converts the .pil file to json and generates fixed and witness column data files.
+    Pil {
+        /// Input file
+        file: String,
+
+        /// Output directory for the PIL file, json file and fixed and witness column data.
+        #[arg(short, long)]
+        #[arg(default_value_t = String::from("."))]
+        output_directory: String,
+
+        /// Comma-separated list of free inputs (numbers). Assumes queries to have the form
+        /// ("input", <index>).
+        #[arg(short, long)]
+        #[arg(default_value_t = String::new())]
+        inputs: String,
+
+        /// Force overwriting of PIL output file.
+        #[arg(short, long)]
+        #[arg(default_value_t = false)]
+        force: bool,
+    },
     /// Compiles (no-std) rust code to riscv assembly, then to powdr assembly
     /// and finally to PIL and generates fixed and witness columns.
     /// Needs `rustup target add riscv32imc-unknown-none-elf`.
@@ -61,41 +83,10 @@ enum Commands {
         force: bool,
     },
 
-    /// Compiles assembly to PIL and generates fixed and witness columns.
-    Asm {
-        /// Input file
-        file: String,
-
-        /// Comma-separated list of free inputs (numbers).
-        #[arg(short, long)]
-        #[arg(default_value_t = String::new())]
-        inputs: String,
-
-        /// Output directory for PIL file, json file and fixed and witness column data.
-        #[arg(short, long)]
-        #[arg(default_value_t = String::from("."))]
-        output_directory: String,
-
-        /// Force overwriting of PIL output file.
-        #[arg(short, long)]
-        #[arg(default_value_t = false)]
-        force: bool,
-    },
-
     /// Parses and prints the PIL file on stdout.
     Reformat {
         /// Input file
         file: String,
-    },
-
-    /// Compiles the PIL file to json and generates fixed and witness columns.
-    Compile {
-        /// Input file
-        file: String,
-        /// Output directory for json file and fixed and witness column data.
-        #[arg(short, long)]
-        #[arg(default_value_t = String::from("."))]
-        output_directory: String,
     },
 }
 
@@ -146,19 +137,6 @@ fn main() {
                 force,
             );
         }
-        Commands::Asm {
-            file,
-            inputs,
-            output_directory,
-            force,
-        } => {
-            compiler::compile_asm::<GoldilocksField>(
-                &file,
-                split_inputs(&inputs),
-                Path::new(&output_directory),
-                force,
-            );
-        }
         Commands::Reformat { file } => {
             let contents = fs::read_to_string(&file).unwrap();
             match parser::parse::<GoldilocksField>(Some(&file), &contents) {
@@ -166,14 +144,17 @@ fn main() {
                 Err(err) => err.output_to_stderr(),
             }
         }
-        Commands::Compile {
+        Commands::Pil {
             file,
             output_directory,
+            inputs,
+            force,
         } => {
-            compiler::compile_pil::<GoldilocksField>(
-                Path::new(&file),
+            compiler::compile_pil_or_asm::<GoldilocksField>(
+                &file,
+                split_inputs(&inputs),
                 Path::new(&output_directory),
-                no_callback(),
+                force,
             );
         }
     }
