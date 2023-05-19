@@ -11,18 +11,21 @@ use super::circuit_data::CircuitData;
 
 pub(crate) fn analyzed_to_circuit<T: FieldElement>(
     analyzed: &pil_analyzer::Analyzed<T>,
-    query_callback: Option<impl FnMut(&str) -> Option<T>>,
+    fixed: Vec<(&str, Vec<T>)>,
+    witness: Vec<(&str, Vec<T>)>,
 ) -> PlafH2Circuit {
     // The structure of the table is as following
     //
     // | constant columns | __enable_cur | __enable_next |  witness columns | \
-    // |  bla_bla_bla     |    1         |       1       |   bla_bla_bla    |  |
-    // |  bla_bla_bla     |    1         |       1       |   bla_bla_bla    |  |>  witness + fixed  2^(k-1)
+    // |  c[0]            |    1         |       1       |   w[0]           |  |
+    // |  c[1]            |    1         |       1       |   w[1]           |  |>  N actual circuit rows
     // |  ...             |   ...        |      ...      |   ...            |  |
-    // |  bla_bla_bla     |    1         |       0       |   bla_bla_bla    | /     <- __enable_next == 0 since there's no state transition
+    // |  c[N - 2]        |    1         |       1       |   w[N - 2]       |  |
+    // |  c[N - 1]        |    1         |       0       |   w[N - 1]       | /     <- __enable_next == 0 since there's no state transition
     // |  0               |    0         |       0       |   0              | \
     // |  0               |    0         |       0       |   0              |  |
-    // |  ...             |   ...        |      ...      |   ...            |  |> 2^2-1
+    // |  ...             |   ...        |      ...      |   ...            |  |>  (2**(ceil(log2(N)) + 1) - N) padding rows to fit the halo2 unusable rows
+    // |  0               |    0         |       0       |   0              |  |
     // |  0               |    0         |       0       |   <unusable>     |  |
     // |  0               |    0         |       0       |   <unusable>     | /
 
@@ -30,15 +33,11 @@ pub(crate) fn analyzed_to_circuit<T: FieldElement>(
 
     let query = |column, rotation| Expr::Var(PlonkVar::ColumnQuery { column, rotation });
 
-    let (fixed, degree) = executor::constant_evaluator::generate(analyzed);
-    let witness = executor::witgen::generate(analyzed, degree, &fixed, query_callback);
-
     let mut cd = CircuitData::from(fixed, witness);
 
-    // append to fixed columns:
-    // - one that enables constraints that do not have rotations
-    // - and another that enables constraints that have a rotation
-    // (note this is not activated) in last row.
+    // append two fixed columns:
+    // - one that enables constraints that do not have rotations (__enable_cur) in the actual circuit
+    // - and another that enables constraints that have a rotation (__enable_next) in the actual circuit except in the last actual row
 
     let num_rows = cd.len();
 
@@ -92,14 +91,17 @@ pub(crate) fn analyzed_to_circuit<T: FieldElement>(
             assert_eq!(id.right.selector, None);
             assert_eq!(id.left.expressions.len(), 0);
 
-            let (exp, is_next) = expression_2_expr(&cd, id.left.selector.as_ref().unwrap());
+            let exp = id.left.selector.as_ref().unwrap();
+            let contains_next_ref = exp.contains_next_ref();
+
+            let exp = expression_2_expr(&cd, exp);
 
             // depending whether this polynomial contains a rotation,
             // enable for all rows or all except the last one.
 
             let exp = Expr::Mul(vec![
                 exp,
-                if is_next {
+                if contains_next_ref {
                     q_enable_next.clone()
                 } else {
                     q_enable_cur.clone()
@@ -119,21 +121,21 @@ pub(crate) fn analyzed_to_circuit<T: FieldElement>(
                 .selector
                 .clone()
                 .map_or(Expr::Const(BigUint::one()), |expr| {
-                    expression_2_expr(&cd, &expr).0
+                    expression_2_expr(&cd, &expr)
                 });
 
             let left = id
                 .left
                 .expressions
                 .iter()
-                .map(|expr| left_selector.clone() * expression_2_expr(&cd, expr).0)
+                .map(|expr| left_selector.clone() * expression_2_expr(&cd, expr))
                 .collect();
 
             let right = id
                 .right
                 .expressions
                 .iter()
-                .map(|expr| expression_2_expr(&cd, expr).0)
+                .map(|expr| expression_2_expr(&cd, expr))
                 .collect();
 
             lookups.push(Lookup {
@@ -201,12 +203,9 @@ pub(crate) fn analyzed_to_circuit<T: FieldElement>(
     PlafH2Circuit { plaf, wit }
 }
 
-fn expression_2_expr<T: FieldElement>(
-    cd: &CircuitData<T>,
-    expr: &Expression<T>,
-) -> (Expr<PlonkVar>, bool) {
+fn expression_2_expr<T: FieldElement>(cd: &CircuitData<T>, expr: &Expression<T>) -> Expr<PlonkVar> {
     match expr {
-        Expression::Number(n) => (Expr::Const(n.to_arbitrary_integer()), false),
+        Expression::Number(n) => Expr::Const(n.to_arbitrary_integer()),
         Expression::PolynomialReference(polyref) => {
             assert_eq!(polyref.index, None);
 
@@ -215,18 +214,17 @@ fn expression_2_expr<T: FieldElement>(
                 rotation: polyref.next as i32,
             };
 
-            (Expr::Var(plonkvar), polyref.next)
+            Expr::Var(plonkvar)
         }
         Expression::BinaryOperation(lhe, op, rhe) => {
-            let (lhe, lhe_rot) = expression_2_expr(cd, lhe);
-            let (rhe, rhe_rot) = expression_2_expr(cd, rhe);
-            let res = match op {
+            let lhe = expression_2_expr(cd, lhe);
+            let rhe = expression_2_expr(cd, rhe);
+            match op {
                 BinaryOperator::Add => Expr::Sum(vec![lhe, rhe]),
                 BinaryOperator::Sub => Expr::Sum(vec![lhe, Expr::Neg(Box::new(rhe))]),
                 BinaryOperator::Mul => Expr::Mul(vec![lhe, rhe]),
                 _ => unimplemented!("{:?}", expr),
-            };
-            (res, std::cmp::max(lhe_rot, rhe_rot))
+            }
         }
 
         _ => unimplemented!("{:?}", expr),

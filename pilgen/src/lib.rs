@@ -65,10 +65,6 @@ impl<T: FieldElement> ASMPILConverter<T> {
                 1024
             };
 
-            assert!(
-                degree.is_power_of_two(),
-                "Degree should be a power of two, found {degree}",
-            );
             self.pil.push(Statement::Namespace(
                 0,
                 "Assembly".to_string(),

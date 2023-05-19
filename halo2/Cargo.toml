@@ -6,16 +6,18 @@ edition = "2021"
 [dependencies]
 number = { path = "../number" }
 pil_analyzer = { path = "../pil_analyzer" }
-executor = { path = "../executor" }
-pilgen = { path = "../pilgen" }
 polyexen = { git = "https://github.com/Dhole/polyexen", rev="c4864d2debf9ae21138c9d67a99c93c3362df19b"}
 halo2_proofs = "0.2"
-prettytable = "0.10.0"
 num-traits = "0.2.15"
 num-integer = "0.1.45"
 itertools = "0.10.5"
 num-bigint = "^0.4"
 log = "0.4.17"
+rand = "0.8.5"
+
+[dev-dependencies]
+executor = { path = "../executor" }
+pilgen = { path = "../pilgen" }
 
 [build-dependencies]
 lalrpop = "^0.19"

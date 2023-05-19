@@ -8,8 +8,8 @@ use pil_analyzer::{Identity, IdentityKind, PolyID, PolynomialReference, Selected
 
 use crate::witgen::affine_expression::AffineResult;
 use crate::witgen::util::try_to_simple_poly_ref;
-use crate::witgen::{util::contains_witness_ref, EvalResult, FixedData};
 use crate::witgen::{EvalError, EvalValue, IncompleteCause};
+use crate::witgen::{EvalResult, FixedData};
 
 type Application = (Vec<u64>, Vec<u64>);
 type Index<T> = BTreeMap<Vec<T>, IndexValue>;
@@ -185,7 +185,7 @@ impl<T: FieldElement> FixedLookup<T> {
         // This is a matching machine if it is a plookup and the RHS is fully constant.
         if kind != IdentityKind::Plookup
             || right.selector.is_some()
-            || right.expressions.iter().any(contains_witness_ref)
+            || right.expressions.iter().any(|e| e.contains_witness_ref())
         {
             return None;
         }

@@ -2,16 +2,17 @@
 
 use std::ffi::OsStr;
 use std::fs;
-use std::io::{BufWriter, Write};
+use std::io::BufWriter;
 use std::path::Path;
 use std::time::Instant;
 
 mod verify;
+use number::write_polys_file;
 use pil_analyzer::json_exporter;
 pub use verify::{compile_asm_string_temp, verify, verify_asm_string};
 
 use executor::constant_evaluator;
-use number::{DegreeType, FieldElement};
+use number::FieldElement;
 use parser::ast::PILFile;
 
 pub fn no_callback<T>() -> Option<fn(&str) -> Option<T>> {
@@ -158,20 +159,6 @@ fn compile<T: FieldElement>(
         .unwrap();
     log::info!("Wrote {}.", json_file.to_string_lossy());
     success
-}
-
-fn write_polys_file<T: FieldElement>(
-    file: &mut impl Write,
-    degree: DegreeType,
-    polys: &Vec<(&str, Vec<T>)>,
-) {
-    for i in 0..degree as usize {
-        for (_name, constant) in polys {
-            let bytes = constant[i].to_bytes_le();
-            assert_eq!(bytes.len(), 8);
-            file.write_all(&bytes).unwrap();
-        }
-    }
 }
 
 fn inputs_to_query_callback<T: FieldElement>(inputs: Vec<T>) -> impl Fn(&str) -> Option<T> {

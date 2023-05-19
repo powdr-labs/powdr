@@ -1,32 +1,7 @@
 use std::collections::HashMap;
 
-use pil_analyzer::util::{expr_any, previsit_expressions_in_identity_mut};
+use pil_analyzer::util::previsit_expressions_in_identity_mut;
 use pil_analyzer::{Expression, Identity, PolyID, PolynomialReference};
-
-/// @returns true if the expression contains a reference to a next value of a
-/// (witness or fixed) column
-pub fn contains_next_ref<T>(expr: &Expression<T>) -> bool {
-    expr_any(expr, |e| match e {
-        Expression::PolynomialReference(poly) => poly.next,
-        _ => false,
-    })
-}
-
-/// @returns true if the expression contains a reference to a next value of a witness column.
-pub fn contains_next_witness_ref<T>(expr: &Expression<T>) -> bool {
-    expr_any(expr, |e| match e {
-        Expression::PolynomialReference(poly) => poly.next && poly.is_witness(),
-        _ => false,
-    })
-}
-
-/// @returns true if the expression contains a reference to a witness column.
-pub fn contains_witness_ref<T>(expr: &Expression<T>) -> bool {
-    expr_any(expr, |e| match e {
-        Expression::PolynomialReference(poly) => poly.is_witness(),
-        _ => false,
-    })
-}
 
 /// Checks if an expression is
 /// - a polynomial
