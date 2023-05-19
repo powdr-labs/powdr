@@ -197,5 +197,18 @@ fn main() {
         Commands::Halo2MockProver { file, dir } => {
             halo2::mock_prove(Path::new(&file), Path::new(&dir));
         }
+        Commands::Stark {
+            file,
+            degree,
+            output_directory,
+        } => {
+            estark::prove(
+                &file,
+                degree,
+                "constants.bin",
+                "commits.bin",
+                &output_directory,
+            );
+        }
     }
 }

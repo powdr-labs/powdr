@@ -10,7 +10,8 @@ members = [
     "pil_analyzer",
     "compiler",
     "pilgen",
-    "halo2"
+    "halo2",
+	"estark"
 ]
 
 [patch."https://github.com/privacy-scaling-explorations/halo2.git"]
