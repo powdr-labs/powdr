@@ -131,50 +131,54 @@ impl<T: FieldElement> PILContext<T> {
                 panic!();
             });
 
-        for statement in &pil_file.0 {
+        for statement in pil_file.0 {
             use ast::Statement;
             match statement {
                 Statement::Include(_, include) => self.handle_include(include),
                 Statement::Namespace(_, name, degree) => self.handle_namespace(name, degree),
                 Statement::PolynomialDefinition(start, name, value) => {
                     self.handle_polynomial_definition(
-                        self.to_source_ref(*start),
+                        self.to_source_ref(start),
                         name,
-                        &None,
+                        None,
                         PolynomialType::Intermediate,
-                        Some(&ast::FunctionDefinition::Mapping(vec![], value.clone())),
+                        Some(ast::FunctionDefinition::Mapping(vec![], value.clone())),
                     );
                 }
                 Statement::PublicDeclaration(start, name, polynomial, index) => self
-                    .handle_public_declaration(self.to_source_ref(*start), name, polynomial, index),
+                    .handle_public_declaration(self.to_source_ref(start), name, polynomial, index),
                 Statement::PolynomialConstantDeclaration(start, polynomials) => self
                     .handle_polynomial_declarations(
-                        self.to_source_ref(*start),
+                        self.to_source_ref(start),
                         polynomials,
                         PolynomialType::Constant,
                     ),
                 Statement::PolynomialConstantDefinition(start, name, definition) => {
                     self.handle_polynomial_definition(
-                        self.to_source_ref(*start),
+                        self.to_source_ref(start),
                         name,
-                        &None,
+                        None,
                         PolynomialType::Constant,
                         Some(definition),
                     );
                 }
                 Statement::PolynomialCommitDeclaration(start, polynomials, None) => self
                     .handle_polynomial_declarations(
-                        self.to_source_ref(*start),
+                        self.to_source_ref(start),
                         polynomials,
                         PolynomialType::Committed,
                     ),
-                Statement::PolynomialCommitDeclaration(start, polynomials, Some(definition)) => {
+                Statement::PolynomialCommitDeclaration(
+                    start,
+                    mut polynomials,
+                    Some(definition),
+                ) => {
                     assert!(polynomials.len() == 1);
-                    let name = polynomials.first().unwrap();
+                    let name = polynomials.pop().unwrap();
                     self.handle_polynomial_definition(
-                        self.to_source_ref(*start),
-                        &name.name,
-                        &name.array_size,
+                        self.to_source_ref(start),
+                        name.name,
+                        name.array_size,
                         PolynomialType::Committed,
                         Some(definition),
                     );
@@ -184,7 +188,7 @@ impl<T: FieldElement> PILContext<T> {
                 }
                 Statement::MacroDefinition(start, name, params, statments, expression) => self
                     .handle_macro_definition(
-                        self.to_source_ref(*start),
+                        self.to_source_ref(start),
                         name,
                         params,
                         statments,
@@ -208,9 +212,9 @@ impl<T: FieldElement> PILContext<T> {
         }
     }
 
-    fn handle_identity_statement(&mut self, statement: &ast::Statement<T>) {
+    fn handle_identity_statement(&mut self, statement: ast::Statement<T>) {
         if let ast::Statement::FunctionCall(_start, name, arguments) = statement {
-            if !self.macros.contains_key(name) {
+            if !self.macros.contains_key(&name) {
                 panic!(
                     "Macro {name} not found - only macros allowed at this point, no fixed columns."
                 );
@@ -266,7 +270,7 @@ impl<T: FieldElement> PILContext<T> {
         let identity = Identity {
             id,
             kind,
-            source: self.to_source_ref(*start),
+            source: self.to_source_ref(start),
             left,
             right,
         };
@@ -275,22 +279,22 @@ impl<T: FieldElement> PILContext<T> {
         self.source_order.push(StatementIdentifier::Identity(id));
     }
 
-    fn handle_include(&mut self, path: &str) {
+    fn handle_include(&mut self, path: String) {
         let mut dir = self.current_file.parent().unwrap().to_owned();
         dir.push(path);
         self.process_file(&dir);
     }
 
-    fn handle_namespace(&mut self, name: &str, degree: &ast::Expression<T>) {
+    fn handle_namespace(&mut self, name: String, degree: ast::Expression<T>) {
         // TODO: the polynomial degree should be handled without going through a field element. This requires having types in Expression
-        self.polynomial_degree = self.evaluate_expression(degree).unwrap().to_degree();
-        self.namespace = name.to_owned();
+        self.polynomial_degree = self.evaluate_expression(&degree).unwrap().to_degree();
+        self.namespace = name;
     }
 
     fn handle_polynomial_declarations(
         &mut self,
         source: SourceRef,
-        polynomials: &[ast::PolynomialName<T>],
+        polynomials: Vec<ast::PolynomialName<T>>,
         polynomial_type: PolynomialType,
     ) {
         for ast::PolynomialName { name, array_size } in polynomials {
@@ -307,14 +311,14 @@ impl<T: FieldElement> PILContext<T> {
     fn handle_polynomial_definition(
         &mut self,
         source: SourceRef,
-        name: &str,
-        array_size: &Option<ast::Expression<T>>,
+        name: String,
+        array_size: Option<ast::Expression<T>>,
         polynomial_type: PolynomialType,
-        value: Option<&ast::FunctionDefinition<T>>,
+        value: Option<ast::FunctionDefinition<T>>,
     ) -> u64 {
+        let have_array_size = array_size.is_some();
         let length = array_size
-            .as_ref()
-            .map(|l| self.evaluate_expression(l).unwrap())
+            .map(|l| self.evaluate_expression(&l).unwrap())
             .map(|l| l.to_degree());
         if length.is_some() {
             assert!(value.is_none());
@@ -326,43 +330,30 @@ impl<T: FieldElement> PILContext<T> {
         };
         let id = *counter;
         *counter += length.unwrap_or(1);
+        let absolute_name = self.namespaced(&name);
         let poly = Polynomial {
             id,
             source,
-            absolute_name: self.namespaced(name),
+            absolute_name,
             degree: self.polynomial_degree,
             poly_type: polynomial_type,
             length,
         };
         let name = poly.absolute_name.clone();
-        let value = value.map(|v| match v {
-            ast::FunctionDefinition::Mapping(params, expr)
-            | ast::FunctionDefinition::Query(params, expr) => {
-                assert!(array_size.is_none());
-                if !params.is_empty() {
-                    assert!(
-                        polynomial_type == PolynomialType::Constant
-                            || polynomial_type == PolynomialType::Committed
-                    );
-                }
 
-                assert!(self.local_variables.is_empty());
-                self.local_variables = params
-                    .iter()
-                    .enumerate()
-                    .map(|(i, p)| (p.clone(), i as u64))
-                    .collect();
-                let processed_value = self.process_expression(expr);
-                self.local_variables.clear();
-                match v {
-                    ast::FunctionDefinition::Mapping(_, _) => {
-                        FunctionValueDefinition::Mapping(processed_value)
-                    }
-                    ast::FunctionDefinition::Query(_, _) => {
-                        FunctionValueDefinition::Query(processed_value)
-                    }
-                    _ => panic!(),
-                }
+        let value = value.map(|v| match v {
+            ast::FunctionDefinition::Mapping(params, expr) => {
+                assert!(!have_array_size);
+                assert!(
+                    poly.poly_type == PolynomialType::Constant
+                        || poly.poly_type == PolynomialType::Intermediate
+                );
+                FunctionValueDefinition::Mapping(self.process_function(params, expr))
+            }
+            ast::FunctionDefinition::Query(params, expr) => {
+                assert!(!have_array_size);
+                assert_eq!(poly.poly_type, PolynomialType::Committed);
+                FunctionValueDefinition::Query(self.process_function(params, expr))
             }
             ast::FunctionDefinition::Array(value) => {
                 let star_value = value.solve(self.polynomial_degree);
@@ -384,12 +375,28 @@ impl<T: FieldElement> PILContext<T> {
         id
     }
 
+    fn process_function(
+        &mut self,
+        params: Vec<String>,
+        expression: ast::Expression<T>,
+    ) -> Expression<T> {
+        assert!(self.local_variables.is_empty());
+        self.local_variables = params
+            .iter()
+            .enumerate()
+            .map(|(i, p)| (p.clone(), i as u64))
+            .collect();
+        let processed_value = self.process_expression(expression);
+        self.local_variables.clear();
+        processed_value
+    }
+
     fn handle_public_declaration(
         &mut self,
         source: SourceRef,
-        name: &str,
-        poly: &ast::PolynomialReference<T>,
-        index: &ast::Expression<T>,
+        name: String,
+        poly: ast::PolynomialReference<T>,
+        index: ast::Expression<T>,
     ) {
         let id = self.public_declarations.len() as u64;
         self.public_declarations.insert(
@@ -399,18 +406,18 @@ impl<T: FieldElement> PILContext<T> {
                 source,
                 name: name.to_string(),
                 polynomial: self.process_polynomial_reference(poly),
-                index: self.evaluate_expression(index).unwrap().to_degree(),
+                index: self.evaluate_expression(&index).unwrap().to_degree(),
             },
         );
         self.source_order
-            .push(StatementIdentifier::PublicDeclaration(name.to_string()));
+            .push(StatementIdentifier::PublicDeclaration(name));
     }
 
-    fn handle_constant_definition(&mut self, name: &str, value: &ast::Expression<T>) {
+    fn handle_constant_definition(&mut self, name: String, value: ast::Expression<T>) {
         // TODO does the order matter here?
         let is_new = self
             .constants
-            .insert(name.to_string(), self.evaluate_expression(value).unwrap())
+            .insert(name.to_string(), self.evaluate_expression(&value).unwrap())
             .is_none();
         assert!(is_new, "Constant {name} was defined twice.");
     }
@@ -425,21 +432,22 @@ impl<T: FieldElement> PILContext<T> {
     fn handle_macro_definition(
         &mut self,
         source: SourceRef,
-        name: &str,
-        params: &[String],
-        statements: &[ast::Statement<T>],
-        expression: &Option<ast::Expression<T>>,
+        name: String,
+        params: Vec<String>,
+        statements: Vec<ast::Statement<T>>,
+        expression: Option<ast::Expression<T>>,
     ) {
+        let absolute_name = self.namespaced(&name);
         let is_new = self
             .macros
             .insert(
-                name.to_string(),
+                name,
                 MacroDefinition {
                     source,
-                    absolute_name: self.namespaced(name),
+                    absolute_name,
                     parameters: params.to_vec(),
                     identities: statements.to_vec(),
-                    expression: expression.clone(),
+                    expression,
                 },
             )
             .is_none();
@@ -456,17 +464,17 @@ impl<T: FieldElement> PILContext<T> {
 
     fn process_selected_expression(
         &mut self,
-        expr: &ast::SelectedExpressions<T>,
+        expr: ast::SelectedExpressions<T>,
     ) -> SelectedExpressions<T> {
         SelectedExpressions {
-            selector: expr.selector.as_ref().map(|e| self.process_expression(e)),
-            expressions: self.process_expressions(&expr.expressions),
+            selector: expr.selector.map(|e| self.process_expression(e)),
+            expressions: self.process_expressions(expr.expressions),
         }
     }
 
     fn process_array_expression(
         &mut self,
-        array_expression: &ast::ArrayExpression<T>,
+        array_expression: ast::ArrayExpression<T>,
         star_value: Option<DegreeType>,
     ) -> Vec<RepeatedArray<T>> {
         match array_expression {
@@ -485,20 +493,23 @@ impl<T: FieldElement> PILContext<T> {
                 }
             }
             ast::ArrayExpression::Concat(left, right) => self
-                .process_array_expression(left, star_value)
+                .process_array_expression(*left, star_value)
                 .into_iter()
-                .chain(self.process_array_expression(right, star_value))
+                .chain(self.process_array_expression(*right, star_value))
                 .collect(),
         }
     }
 
-    fn process_expressions(&mut self, exprs: &[ast::Expression<T>]) -> Vec<Expression<T>> {
-        exprs.iter().map(|e| self.process_expression(e)).collect()
+    fn process_expressions(&mut self, exprs: Vec<ast::Expression<T>>) -> Vec<Expression<T>> {
+        exprs
+            .into_iter()
+            .map(|e| self.process_expression(e))
+            .collect()
     }
 
-    fn process_expression(&mut self, expr: &ast::Expression<T>) -> Expression<T> {
+    fn process_expression(&mut self, expr: ast::Expression<T>) -> Expression<T> {
         match expr {
-            ast::Expression::Constant(name) => Expression::Constant(name.clone()),
+            ast::Expression::Constant(name) => Expression::Constant(name),
             ast::Expression::PolynomialReference(poly) => {
                 if poly.namespace.is_none() && self.local_variables.contains_key(&poly.name) {
                     let id = self.local_variables[&poly.name];
@@ -515,42 +526,43 @@ impl<T: FieldElement> PILContext<T> {
                     Expression::PolynomialReference(self.process_polynomial_reference(poly))
                 }
             }
-            ast::Expression::PublicReference(name) => Expression::PublicReference(name.clone()),
-            ast::Expression::Number(n) => Expression::Number(*n),
-            ast::Expression::String(value) => Expression::String(value.clone()),
+            ast::Expression::PublicReference(name) => Expression::PublicReference(name),
+            ast::Expression::Number(n) => Expression::Number(n),
+            ast::Expression::String(value) => Expression::String(value),
             ast::Expression::Tuple(items) => Expression::Tuple(self.process_expressions(items)),
             ast::Expression::BinaryOperation(left, op, right) => {
-                if let Some(value) = self.evaluate_binary_operation(left, op, right) {
+                if let Some(value) = self.evaluate_binary_operation(&left, op, &right) {
                     Expression::Number(value)
                 } else {
                     Expression::BinaryOperation(
-                        Box::new(self.process_expression(left)),
-                        *op,
-                        Box::new(self.process_expression(right)),
+                        Box::new(self.process_expression(*left)),
+                        op,
+                        Box::new(self.process_expression(*right)),
                     )
                 }
             }
             ast::Expression::UnaryOperation(op, value) => {
-                if let Some(value) = self.evaluate_unary_operation(op, value) {
+                if let Some(value) = self.evaluate_unary_operation(op, &value) {
                     Expression::Number(value)
                 } else {
-                    Expression::UnaryOperation(*op, Box::new(self.process_expression(value)))
+                    Expression::UnaryOperation(op, Box::new(self.process_expression(*value)))
                 }
             }
-            ast::Expression::FunctionCall(name, arguments) if self.macros.contains_key(name) => {
+            ast::Expression::FunctionCall(name, arguments) if self.macros.contains_key(&name) => {
                 self.process_macro_call(name, arguments)
                     .expect("Invoked a macro in expression context with empty expression.")
             }
-            ast::Expression::FunctionCall(name, arguments) => {
-                Expression::FunctionCall(self.namespaced(name), self.process_expressions(arguments))
-            }
+            ast::Expression::FunctionCall(name, arguments) => Expression::FunctionCall(
+                self.namespaced(&name),
+                self.process_expressions(arguments),
+            ),
             ast::Expression::MatchExpression(scrutinee, arms) => Expression::MatchExpression(
-                Box::new(self.process_expression(scrutinee)),
-                arms.iter()
+                Box::new(self.process_expression(*scrutinee)),
+                arms.into_iter()
                     .map(|(n, e)| {
                         (
-                            n.as_ref().map(|n| {
-                                self.evaluate_expression(n).unwrap_or_else(|| {
+                            n.map(|n| {
+                                self.evaluate_expression(&n).unwrap_or_else(|| {
                                     panic!("Left side of match arm must be a constant, found {n}")
                                 })
                             }),
@@ -565,8 +577,8 @@ impl<T: FieldElement> PILContext<T> {
 
     fn process_macro_call(
         &mut self,
-        name: &str,
-        arguments: &[ast::Expression<T>],
+        name: String,
+        arguments: Vec<ast::Expression<T>>,
     ) -> Option<Expression<T>> {
         let arguments = Some(self.process_expressions(arguments));
         let old_arguments = std::mem::replace(&mut self.macro_arguments, arguments);
@@ -575,7 +587,7 @@ impl<T: FieldElement> PILContext<T> {
 
         let mac = &self
             .macros
-            .get(name)
+            .get(&name)
             .unwrap_or_else(|| panic!("Macro {name} not found."));
         self.local_variables = mac
             .parameters
@@ -586,10 +598,10 @@ impl<T: FieldElement> PILContext<T> {
         // TODO avoid clones
         let expression = mac.expression.clone();
         let identities = mac.identities.clone();
-        for identity in &identities {
+        for identity in identities {
             self.handle_identity_statement(identity);
         }
-        let result = expression.map(|expr| self.process_expression(&expr));
+        let result = expression.map(|expr| self.process_expression(expr));
         self.macro_arguments = old_arguments;
         self.local_variables = old_locals;
         result
@@ -597,12 +609,11 @@ impl<T: FieldElement> PILContext<T> {
 
     fn process_polynomial_reference(
         &self,
-        poly: &ast::PolynomialReference<T>,
+        poly: ast::PolynomialReference<T>,
     ) -> PolynomialReference {
         let index = poly
             .index
-            .as_ref()
-            .map(|i| self.evaluate_expression(i).unwrap())
+            .map(|i| self.evaluate_expression(&i).unwrap())
             .map(|i| i.to_degree());
         let name = self.namespaced_ref(&poly.namespace, &poly.name);
         PolynomialReference {
@@ -627,9 +638,9 @@ impl<T: FieldElement> PILContext<T> {
             ast::Expression::String(_) => None,
             ast::Expression::Tuple(_) => None,
             ast::Expression::BinaryOperation(left, op, right) => {
-                self.evaluate_binary_operation(left, op, right)
+                self.evaluate_binary_operation(left, *op, right)
             }
-            ast::Expression::UnaryOperation(op, value) => self.evaluate_unary_operation(op, value),
+            ast::Expression::UnaryOperation(op, value) => self.evaluate_unary_operation(*op, value),
             ast::Expression::FunctionCall(_, _) => None,
             ast::Expression::FreeInput(_) => panic!(),
             ast::Expression::MatchExpression(_, _) => None,
@@ -639,7 +650,7 @@ impl<T: FieldElement> PILContext<T> {
     fn evaluate_binary_operation(
         &self,
         left: &ast::Expression<T>,
-        op: &BinaryOperator,
+        op: BinaryOperator,
         right: &ast::Expression<T>,
     ) -> Option<T> {
         if let (Some(left), Some(right)) = (
@@ -678,11 +689,7 @@ impl<T: FieldElement> PILContext<T> {
         }
     }
 
-    fn evaluate_unary_operation(
-        &self,
-        op: &UnaryOperator,
-        value: &ast::Expression<T>,
-    ) -> Option<T> {
+    fn evaluate_unary_operation(&self, op: UnaryOperator, value: &ast::Expression<T>) -> Option<T> {
         self.evaluate_expression(value).map(|v| match op {
             UnaryOperator::Plus => v,
             UnaryOperator::Minus => -v,
