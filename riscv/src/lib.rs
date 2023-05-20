@@ -164,9 +164,9 @@ runtime = {{ path = "./runtime" }}
     )
     .unwrap();
 
-    let mut print_file = runtime_file.clone();
-    print_file.push("print.rs");
-    fs::write(print_file, include_bytes!("../runtime/src/print.rs")).unwrap();
+    let mut fmt_file = runtime_file.clone();
+    fmt_file.push("fmt.rs");
+    fs::write(fmt_file, include_bytes!("../runtime/src/fmt.rs")).unwrap();
 
     compile_rust_crate_to_riscv_asm(cargo_file.to_str().unwrap())
 }

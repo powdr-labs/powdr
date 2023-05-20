@@ -16,7 +16,7 @@
 extern crate alloc;
 
 use alloc::vec::Vec;
-use runtime::get_prover_input;
+use runtime::{get_prover_input, print};
 
 #[no_mangle]
 fn main() {
@@ -33,5 +33,6 @@ fn main() {
         (vec[half - 1] + vec[half]) / 2
     };
 
+    print!("Found median of {median}\n");
     assert_eq!(median, expected);
 }

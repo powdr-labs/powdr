@@ -1,19 +1,32 @@
 #![no_std]
-#![feature(start, alloc_error_handler)]
+#![feature(
+    start,
+    alloc_error_handler,
+    maybe_uninit_write_slice,
+    round_char_boundary
+)]
 
 use core::arch::asm;
 use core::panic::PanicInfo;
 
+use crate::fmt::print_str;
+
 mod allocator;
-mod print;
-pub use print::print;
+pub mod fmt;
 
 #[panic_handler]
-fn panic(panic: &PanicInfo<'_>) -> ! {
-    print(format_args!("{panic}"));
-    unsafe {
-        asm!("unimp");
+unsafe fn panic(panic: &PanicInfo<'_>) -> ! {
+    static mut IS_PANICKING: bool = false;
+
+    if !IS_PANICKING {
+        IS_PANICKING = true;
+
+        print!("{panic}\n");
+    } else {
+        print_str("Panic handler has panicked! Things are very dire indeed...\n");
     }
+
+    asm!("unimp");
     loop {}
 }
 
