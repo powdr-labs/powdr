@@ -9,7 +9,7 @@ use core::str;
 
 use runtime::print;
 
-type Clause = Vec<i64>;
+type Clause = Vec<i32>;
 
 const uuf_30_1_cnf: &'static [u8] = include_bytes!("../uuf-30-1.cnf");
 const uuf_30_1_lrat: &'static [u8] = include_bytes!("../uuf-30-1.lrat");
@@ -32,7 +32,7 @@ fn read_dimacs_file(/*path: &str*/) -> Vec<Clause> {
     items.next();
     items.next();
 
-    let mut items = items.map(|s| s.parse::<i64>().unwrap());
+    let mut items = items.map(|s| s.parse::<i32>().unwrap());
 
     let mut clauses = vec![];
     while let Some(clause) = read_dimacs_clause(&mut items) {
@@ -42,7 +42,7 @@ fn read_dimacs_file(/*path: &str*/) -> Vec<Clause> {
     clauses
 }
 
-fn read_dimacs_clause(iter: &mut impl Iterator<Item = i64>) -> Option<Clause> {
+fn read_dimacs_clause(iter: &mut impl Iterator<Item = i32>) -> Option<Clause> {
     let mut clause = vec![];
     loop {
         let lit = iter.next()?;
@@ -56,12 +56,12 @@ fn read_dimacs_clause(iter: &mut impl Iterator<Item = i64>) -> Option<Clause> {
 
 #[derive(Debug)]
 struct LratItem {
-    id: u64,
+    id: u32,
     clause: Clause,
     /// Clauses to run unit propagation on.
-    direct_hints: Vec<u64>,
+    direct_hints: Vec<u32>,
     /// RAT checks and following clauses for unit propagation.
-    rat_hints: Vec<(u64, Vec<u64>)>,
+    rat_hints: Vec<(u32, Vec<u32>)>,
 }
 
 fn read_lrat_file(/*path: &str*/) -> Vec<LratItem> {
@@ -77,18 +77,18 @@ fn read_lrat_file(/*path: &str*/) -> Vec<LratItem> {
 }
 
 fn read_rat_item<'a>(iter: &mut impl Iterator<Item = &'a str>) -> Option<LratItem> {
-    let id = iter.next()?.parse::<u64>().unwrap();
+    let id = iter.next()?.parse::<u32>().unwrap();
 
     let token = iter.next()?;
     if token == "d" {
-        while iter.next()?.parse::<u64>().unwrap() != 0 {}
+        while iter.next()?.parse::<u32>().unwrap() != 0 {}
         read_rat_item(iter)
     } else {
         let mut clause = vec![];
-        let mut lit = token.parse::<i64>().unwrap();
+        let mut lit = token.parse::<i32>().unwrap();
         while lit != 0 {
             clause.push(lit);
-            lit = iter.next()?.parse::<i64>().unwrap();
+            lit = iter.next()?.parse::<i32>().unwrap();
         }
 
         let (direct_hints, mut rat_hint_clause) = read_positive_numbers(iter)?;
@@ -108,14 +108,14 @@ fn read_rat_item<'a>(iter: &mut impl Iterator<Item = &'a str>) -> Option<LratIte
 }
 
 /// Reads a sequence of positive numbers followed by a zero or a negative number
-fn read_positive_numbers<'a>(iter: &mut impl Iterator<Item = &'a str>) -> Option<(Vec<u64>, i64)> {
+fn read_positive_numbers<'a>(iter: &mut impl Iterator<Item = &'a str>) -> Option<(Vec<u32>, i32)> {
     let mut numbers = vec![];
     loop {
-        let n = iter.next()?.parse::<i64>().unwrap();
+        let n = iter.next()?.parse::<i32>().unwrap();
         if n <= 0 {
             return Some((numbers, n));
         }
-        numbers.push(n as u64)
+        numbers.push(n as u32)
     }
 }
 
@@ -123,7 +123,7 @@ fn check_lrat(clauses: Vec<Clause>, rats: Vec<LratItem>) {
     let mut clauses = clauses
         .into_iter()
         .enumerate()
-        .map(|(i, c)| ((i + 1) as u64, c))
+        .map(|(i, c)| ((i + 1) as u32, c))
         .collect::<BTreeMap<_, _>>();
     assert!(rats.last().unwrap().clause.is_empty());
     for rat in rats {
@@ -132,7 +132,7 @@ fn check_lrat(clauses: Vec<Clause>, rats: Vec<LratItem>) {
     }
 }
 
-fn verify_rat(clauses: &BTreeMap<u64, Clause>, rat: &LratItem) {
+fn verify_rat(clauses: &BTreeMap<u32, Clause>, rat: &LratItem) {
     // println!("Verifying {:?}", rat.clause);
     let pivot = rat.clause.first().cloned();
     let assignments = rat.clause.iter().cloned().collect::<BTreeSet<_>>();
@@ -166,10 +166,10 @@ fn verify_rat(clauses: &BTreeMap<u64, Clause>, rat: &LratItem) {
 }
 
 fn unit_propagate(
-    clauses: &BTreeMap<u64, Clause>,
-    mut assignments: BTreeSet<i64>,
-    hints: &[u64],
-) -> (bool, BTreeSet<i64>) {
+    clauses: &BTreeMap<u32, Clause>,
+    mut assignments: BTreeSet<i32>,
+    hints: &[u32],
+) -> (bool, BTreeSet<i32>) {
     let mut derived_empty_clause = false;
     for hint in hints.iter().map(|h| &clauses[h]) {
         // println!("Propagating {hint:?}");
