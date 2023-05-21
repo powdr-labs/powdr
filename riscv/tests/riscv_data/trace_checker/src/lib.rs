@@ -1,20 +1,31 @@
-use std::{
-    collections::{BTreeMap, BTreeSet},
-    fs,
-};
+#![no_std]
+
+extern crate alloc;
+
+use alloc::collections::{BTreeMap, BTreeSet};
+use alloc::vec;
+use alloc::vec::Vec;
+use core::str;
+
+use runtime::print;
 
 type Clause = Vec<i64>;
 
+const uuf_30_1_cnf: &'static [u8] = include_bytes!("../uuf-30-1.cnf");
+const uuf_30_1_lrat: &'static [u8] = include_bytes!("../uuf-30-1.lrat");
+
+#[no_mangle]
 fn main() {
-    let clauses = read_dimacs_file(&std::env::args().nth(1).unwrap());
-    let lrat_proof = read_lrat_file(&std::env::args().nth(2).unwrap());
+    let clauses = read_dimacs_file(); //&std::env::args().nth(1).unwrap());
+    let lrat_proof = read_lrat_file(); //&std::env::args().nth(2).unwrap());
     check_lrat(clauses, lrat_proof);
 }
 
-fn read_dimacs_file(path: &str) -> Vec<Clause> {
+fn read_dimacs_file(/*path: &str*/) -> Vec<Clause> {
     // println!("{path}");
-    let data = fs::read_to_string(path).unwrap();
-    let mut items = data.split_whitespace();
+    //let data = fs::read_to_string(path).unwrap();
+    let data = unsafe { str::from_utf8_unchecked(uuf_30_1_cnf) };
+    let mut items = data.split_ascii_whitespace();
 
     assert_eq!(items.next(), Some("p"));
     assert_eq!(items.next(), Some("cnf"));
@@ -25,6 +36,7 @@ fn read_dimacs_file(path: &str) -> Vec<Clause> {
 
     let mut clauses = vec![];
     while let Some(clause) = read_dimacs_clause(&mut items) {
+        print(format_args!("Clause: {clause:?}"));
         clauses.push(clause);
     }
     clauses
@@ -52,9 +64,10 @@ struct LratItem {
     rat_hints: Vec<(u64, Vec<u64>)>,
 }
 
-fn read_lrat_file(path: &str) -> Vec<LratItem> {
-    let data = fs::read_to_string(path).unwrap();
-    let mut items = data.split_whitespace();
+fn read_lrat_file(/*path: &str*/) -> Vec<LratItem> {
+    //let data = fs::read_to_string(path).unwrap();
+    let data = unsafe { str::from_utf8_unchecked(uuf_30_1_lrat) };
+    let mut items = data.split_ascii_whitespace();
 
     let mut rats = vec![];
     while let Some(item) = read_rat_item(&mut items) {
