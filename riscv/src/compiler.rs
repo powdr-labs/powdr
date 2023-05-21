@@ -772,6 +772,16 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
             let (rd, r1, r2) = rrr(args);
             only_if_no_write_to_zero(format!("{rd} <=X= mulhu({r1}, {r2});"), rd)
         }
+        "mulh" => {
+            let (rd, r1, r2) = rrr(args);
+            // TODO r1 and r2 are actually signed
+            only_if_no_write_to_zero(format!("{rd} <=X= mulhu({r1}, {r2});"), rd)
+        }
+        "mulhsu" => {
+            let (rd, r1, r2) = rrr(args);
+            // TODO r1 is signed, r2 is unsigned.
+            only_if_no_write_to_zero(format!("{rd} <=X= mulhu({r1}, {r2});"), rd)
+        }
 
         // bitwise
         "xor" => {
@@ -1045,6 +1055,18 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
                 vec![
                     format!("addr <=X= wrap({rs} + {off});"),
                     format!("{rd} <=X= mload();"),
+                ],
+                rd,
+            )
+        }
+        "lhu" => {
+            let (rd, rs, off) = rro(args);
+            // TODO we need to consider misaligned loads / stores
+            only_if_no_write_to_zero_vec(
+                vec![
+                    format!("addr <=X= wrap({rs} + {off});"),
+                    format!("{rd} <=X= mload();"),
+                    format!("{rd} <=X= and({rd}, 0xffff);"),
                 ],
                 rd,
             )
