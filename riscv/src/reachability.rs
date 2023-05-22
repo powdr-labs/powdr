@@ -173,9 +173,6 @@ fn basic_block_references_starting_from(statements: &[Statement]) -> (Vec<&str>,
 fn basic_block_code_starting_from(statements: &[Statement]) -> Vec<Statement> {
     let mut code = vec![];
     iterate_basic_block(statements, |s| {
-        if let Statement::Directive(_, _) = s {
-            panic!("Included directive in code block: {s}");
-        }
         code.push(s.clone());
     });
     code
