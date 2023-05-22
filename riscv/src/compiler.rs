@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use itertools::Itertools;
 
@@ -74,7 +74,6 @@ fn replace_dynamic_label_references(
     statements: &mut Vec<Statement>,
     data_objects: &BTreeMap<String, Vec<DataValue>>,
 ) {
-    let mut replacement = vec![];
     /*
     Find patterns of the form
     lui	a0, %hi(LABEL)
@@ -85,26 +84,32 @@ fn replace_dynamic_label_references(
     which is then turned into
 
     s10 <=X= load_label(LABEL)
+
+    It gets more complicated by the fact that sometimes, labels
+    and debugging directives occur between the two statements
+    matching that pattern...
     */
-    // TODO This is really hacky, should be rustified
-    let mut i = 0;
-    while i < statements.len() {
-        let s1 = &statements[i];
-        let s2 = &statements.get(i + 1);
-        if s2.is_none() {
-            replacement.push(s1.clone());
-            i += 1;
-        } else if let Some(r) = replace_dynamic_label_reference(s1, s2.unwrap(), data_objects) {
-            replacement.push(r);
-            i += 2;
-        } else {
-            // TODO avoid clone
-            replacement.push(s1.clone());
-            i += 1;
+    let instruction_indices = statements
+        .iter()
+        .enumerate()
+        .filter_map(|(i, s)| match s {
+            Statement::Instruction(_, _) => Some(i),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+
+    let mut to_delete = BTreeSet::default();
+    for (i1, i2) in instruction_indices.into_iter().tuple_windows() {
+        if let Some(r) =
+            replace_dynamic_label_reference(&statements[i1], &statements[i2], data_objects)
+        {
+            to_delete.insert(i1);
+            statements[i2] = r;
         }
     }
 
-    *statements = replacement;
+    let mut i = 0;
+    statements.retain(|_| (!to_delete.contains(&i), i += 1).0);
 }
 
 fn replace_dynamic_label_reference(
