@@ -172,9 +172,6 @@ fn basic_block_references_starting_from(statements: &[Statement]) -> (Vec<&str>,
 fn basic_block_code_starting_from(statements: &[Statement]) -> Vec<Statement> {
     let mut code = vec![];
     iterate_basic_block(statements, |s| {
-        if let Statement::Directive(_, _) = s {
-            panic!("Included directive in code block: {s}");
-        }
         code.push(s.clone());
     });
     code
@@ -212,7 +209,7 @@ fn apply_replacement_to_instruction(
     replacements: &BTreeMap<&str, &str>,
 ) -> Statement {
     match statement {
-        Statement::Label(_) => statement,
+        Statement::Label(_) | Statement::Directive(_, _) => statement,
         Statement::Instruction(instr, args) => Statement::Instruction(
             instr,
             args.into_iter()
@@ -231,7 +228,6 @@ fn apply_replacement_to_instruction(
                 })
                 .collect(),
         ),
-        _ => panic!("Expected instruction but got: {statement}"),
     }
 }
 

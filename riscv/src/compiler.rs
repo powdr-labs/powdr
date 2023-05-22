@@ -629,7 +629,19 @@ fn runtime() -> &'static str {
 fn process_statement(s: Statement) -> Vec<String> {
     match &s {
         Statement::Label(l) => vec![format!("{}::", escape_label(l))],
-        Statement::Directive(_, _) => panic!(""),
+        Statement::Directive(directive, args) => match directive.as_str() {
+            ".loc" => {
+                vec![]
+            }
+            ".file" => {
+                vec![]
+            }
+            _ if directive.starts_with(".cfi_") => vec![],
+            _ => panic!(
+                "Leftover directive in code: {directive} {}",
+                args.iter().map(|s| s.to_string()).join(", ")
+            ),
+        },
         Statement::Instruction(instr, args) => process_instruction(instr, args)
             .into_iter()
             .map(|s| "  ".to_string() + &s)
@@ -654,7 +666,7 @@ fn constant_to_number(c: &Constant) -> u32 {
     match c {
         Constant::Number(n) => *n as u32,
         Constant::HiDataRef(n, off) | Constant::LoDataRef(n, off) => {
-            panic!("Data reference was not erased during preprocessing: {n} + {off}");
+            panic!("Data reference was not erased using the pattern matching in \"replace_dynamic_label_references\" during preprocessing: {n} + {off}");
         }
     }
 }
