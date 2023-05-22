@@ -152,7 +152,7 @@ where
         // "unknown", report zero and re-check the wrap-around against the zero values at the end.
         if identity_failed && next_row != 0 {
             log::error!(
-                "\nError: Row {next_row}: Identity check failed or unable to derive values for some witness columns.");
+                "\nError: Row {next_row}: Identity check failed or unable to derive values for some witness columns.\nSet RUST_LOG=debug for more information.");
             log::debug!(
                 "The following columns are still undetermined: {}",
                 self.next
@@ -166,7 +166,7 @@ where
                     .collect::<Vec<String>>()
                     .join(", ")
             );
-            log::info!("Reasons:\n{}\n", self.failure_reasons.join("\n\n"));
+            log::debug!("Reasons:\n{}\n", self.failure_reasons.join("\n\n"));
             log::debug!(
                 "Determind bit constraints for this row:\n{}",
                 self.next_bit_constraints
@@ -179,7 +179,7 @@ where
                     })
                     .join("\n")
             );
-            log::info!(
+            log::debug!(
                 "Current values (known nonzero first, then zero, unknown omitted):\n{}",
                 indent(&self.format_next_known_values().join("\n"), "    ")
             );
