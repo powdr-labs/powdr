@@ -34,8 +34,18 @@ Label: Statement = {
 }
 
 Statement: Statement = {
+    SimpleDirective,
     Directive,
     Instruction,
+}
+
+SimpleDirective: Statement = {
+    SimpleDirectiveName SimpleArgument* => Statement::Directive(<>),
+}
+
+SimpleDirectiveName: String = {
+    ".file" => <>.to_string(),
+    ".loc" => <>.to_string(),
 }
 
 Directive: Statement = {
@@ -49,6 +59,12 @@ Instruction: Statement = {
 Arguments: Vec<Argument> = {
     => vec![],
     <mut list:( <Argument> "," )*> <end:Argument>  => { list.push(end); list }
+}
+
+SimpleArgument: Argument = {
+    StringLiteral => Argument::StringLiteral(<>),
+    Symbol => Argument::Symbol(<>),
+    Number => Argument::Constant(Constant::Number(<>)),
 }
 
 Argument: Argument = {

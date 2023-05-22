@@ -175,7 +175,7 @@ pub fn compile_rust_crate_to_riscv_asm(input_dir: &str) -> BTreeMap<String, Stri
     let temp_dir = Temp::new_dir().unwrap();
 
     let cargo_status = Command::new("cargo")
-        .env("RUSTFLAGS", "--emit=asm")
+        .env("RUSTFLAGS", "--emit=asm -g")
         .args([
             "+nightly-2023-01-03",
             "build",
