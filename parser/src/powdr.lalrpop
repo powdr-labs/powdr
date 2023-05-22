@@ -38,7 +38,8 @@ Statement = {
     PermutationIdentity,
     ConnectIdentity,
     MacroDefinition,
-    FunctionCallStatement
+    FunctionCallStatement,
+    ASMBlock,
 };
 
 Include: Statement<T> = {
@@ -133,6 +134,10 @@ FunctionCallStatement: Statement<T> = {
     <@L> <Identifier> "(" <ExpressionList> ")" => Statement::FunctionCall(<>)
 }
 
+ASMBlock: Statement<T> = {
+    <@L> "assembly" "{" <(ASMStatement)*> "}" => Statement::ASMBlock(<>)
+}
+
 PolCol = {
     "pol", "col"
 } 
@@ -146,7 +151,6 @@ ConstantFixed = {
 } 
 
 // ---------------------------- ASM part -----------------------------
-
 
 ASMStatement: ASMStatement<T> = {
     Degree,

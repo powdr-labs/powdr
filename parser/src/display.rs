@@ -76,6 +76,14 @@ impl<T: Display> Display for Statement<T> {
             Statement::FunctionCall(_, name, args) => {
                 write!(f, "{name}({});", format_expressions(args))
             }
+            Statement::ASMBlock(_, statements) => {
+                writeln!(f, "assembly {{")?;
+                for _s in statements {
+                    // TODO display for asm statements
+                    //writeln!(f, "{s}")?;
+                }
+                writeln!(f, "}}")
+            }
         }
     }
 }

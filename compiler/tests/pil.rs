@@ -69,3 +69,17 @@ fn test_pair_lookup() {
 fn test_block_lookup_or() {
     verify_pil("block_lookup_or.pil", None);
 }
+
+#[test]
+fn test_simple_sum_asm_pil() {
+    verify_pil(
+        "simple_sum_asm.pil",
+        Some(|q| match q {
+            "\"input\", 0" => Some(13.into()),
+            "\"input\", 1" => Some(2.into()),
+            "\"input\", 2" => Some(11.into()),
+            "\"input\", 3" => Some(2.into()),
+            _ => Some(7.into()),
+        }),
+    )
+}
