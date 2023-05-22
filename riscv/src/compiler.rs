@@ -629,12 +629,22 @@ fn runtime() -> &'static str {
 fn process_statement(s: Statement) -> Vec<String> {
     match &s {
         Statement::Label(l) => vec![format!("{}::", escape_label(l))],
-        Statement::Directive(directive, args) => match directive.as_str() {
-            ".loc" => {
-                vec![]
+        Statement::Directive(directive, args) => match (directive.as_str(), &args[..]) {
+            (
+                ".loc",
+                [Argument::Constant(Constant::Number(file)), Argument::Constant(Constant::Number(line)), Argument::Constant(Constant::Number(column)), ..],
+            ) => {
+                vec![format!("debug loc {file}, {line}, {column};")]
             }
-            ".file" => {
-                vec![]
+            (
+                ".file",
+                [Argument::Constant(Constant::Number(file_nr)), Argument::StringLiteral(directory), Argument::StringLiteral(file)],
+            ) => {
+                vec![format!(
+                    "debug file {file_nr}, {}, {};",
+                    quote(std::str::from_utf8(directory).unwrap()),
+                    quote(std::str::from_utf8(file).unwrap())
+                )]
             }
             _ if directive.starts_with(".cfi_") => vec![],
             _ => panic!(
@@ -647,6 +657,11 @@ fn process_statement(s: Statement) -> Vec<String> {
             .map(|s| "  ".to_string() + &s)
             .collect(),
     }
+}
+
+fn quote(s: &str) -> String {
+    // TODO more things to quote
+    format!("\"{}\"", s.replace('\\', "\\\\").replace('\"', "\\\""))
 }
 
 fn escape_label(l: &str) -> String {
