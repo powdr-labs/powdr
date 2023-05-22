@@ -56,28 +56,30 @@ Note that this is the full and only input file you need for the whole process!
 ```rust
 #![no_std]
 
+extern crate alloc;
+use alloc::vec::Vec;
+
 use runtime::get_prover_input;
 
 #[no_mangle]
 pub fn main() {
-    let mut buffer = [0u32; 100];
-    // Private result.
+    // This is the sum claimed by the prover.
     let proposed_sum = get_prover_input(0);
-    // Length of the list of numbers.
+    // The number of integers we want to sum.
     let len = get_prover_input(1) as usize;
-    assert!(len > 0 && len < 100);
-    // Read the list of numbers.
-    for i in 0..len {
-        buffer[i] = get_prover_input(2 + i as u32);
-    }
+    // Read the numbers from the prover and store them
+    // in a vector.
+    let data: Vec<_> = (2..(len + 2))
+        .map(|idx| get_prover_input(idx as u32))
+        .collect();
     // Compute the sum.
-    let sum: u32 = buffer[..len].iter().sum();
-    // Must be the same as the private result!
-    assert!(sum == proposed_sum);
+    let sum: u32 = data.iter().sum();
+    // Check that our sum matches the prover's.
+    assert_eq!(sum, proposed_sum);
 }
 ```
 
-The function `get_prover_inputs` reads a number from the list supplied with `-i`.
+The function `get_prover_input` reads a number from the list supplied with `-i`.
 
 This is just a first mechanism to provide access to the outside world.
 The plan is to be able to call arbitrary user-defined `ffi` functions that will translate to prover queries,
