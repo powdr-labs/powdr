@@ -56,7 +56,6 @@ pub fn compile_riscv_asm(mut assemblies: BTreeMap<String, String>) -> String {
         .collect::<Vec<_>>();
     let (data_code, data_positions) = store_data_objects(&sorted_objects, data_start);
 
-    // TODO debug directives increase the PC counter below - this is not what we want, right?
     preamble()
         + &file_ids
             .into_iter()
@@ -74,14 +73,6 @@ pub fn compile_riscv_asm(mut assemblies: BTreeMap<String, String>) -> String {
             .chain(["// This is the data initialization routine.\n__data_init::".to_string()])
             .chain(data_code)
             .chain(["// This is the end of the data initialization routine.\nret;".to_string()])
-            .enumerate()
-            .map(|(i, line)| {
-                if i % 10 == 0 {
-                    format!("// PC: {i}\n{line}")
-                } else {
-                    line
-                }
-            })
             .join("\n")
 }
 
