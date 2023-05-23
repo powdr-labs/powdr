@@ -116,6 +116,8 @@ impl<T: FieldElement> ASMPILConverter<T> {
                     label: Some(name.clone()),
                     ..Default::default()
                 }),
+                ASMStatement::DebugDirective(_start, DebugDirective::File(nr, path, file)) => {} // TODO
+                ASMStatement::DebugDirective(_start, DebugDirective::Loc(file, line, col)) => {} // TODO
             }
         }
         let assignment_registers = self.assignment_registers().cloned().collect::<Vec<_>>();

@@ -42,6 +42,13 @@ pub enum ASMStatement<T> {
     Assignment(usize, Vec<String>, Option<String>, Box<Expression<T>>),
     Instruction(usize, String, Vec<Expression<T>>),
     Label(usize, String),
+    DebugDirective(usize, DebugDirective),
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub enum DebugDirective {
+    File(usize, String, String),
+    Loc(usize, usize, usize),
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
