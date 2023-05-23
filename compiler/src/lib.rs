@@ -18,6 +18,25 @@ pub fn no_callback<T>() -> Option<fn(&str) -> Option<T>> {
     None
 }
 
+/// Compiles a .pil or .asm file and runs witness generation.
+/// If the file ends in .asm, converts it to .pil first.
+pub fn compile_pil_or_asm<T: FieldElement>(
+    file_name: &str,
+    inputs: Vec<T>,
+    output_dir: &Path,
+    force_overwrite: bool,
+) {
+    if file_name.ends_with(".asm") {
+        compile_asm(file_name, inputs, output_dir, force_overwrite)
+    } else {
+        compile_pil(
+            Path::new(file_name),
+            output_dir,
+            Some(inputs_to_query_callback(inputs)),
+        );
+    }
+}
+
 /// Compiles a .pil file to its json form and also tries to generate
 /// constants and committed polynomials.
 /// @returns true if all committed/witness and constant/fixed polynomials
@@ -90,31 +109,11 @@ pub fn compile_asm_string<T: FieldElement>(
     }
     fs::write(pil_file_name.clone(), format!("{pil}")).unwrap();
 
-    let query_callback = |query: &str| -> Option<T> {
-        let items = query.split(',').map(|s| s.trim()).collect::<Vec<_>>();
-        match items[0] {
-            "\"input\"" => {
-                assert_eq!(items.len(), 2);
-                let index = items[1].parse::<usize>().unwrap();
-                let value = inputs.get(index).cloned();
-                if let Some(value) = value {
-                    log::trace!("Input query: Index {index} -> {value}");
-                }
-                value
-            }
-            "\"print_char\"" => {
-                assert_eq!(items.len(), 2);
-                print!("{}", items[1].parse::<u8>().unwrap() as char);
-                Some(0.into())
-            }
-            _ => None,
-        }
-    };
     compile_pil_ast(
         &pil,
         pil_file_name.file_name().unwrap(),
         output_dir,
-        Some(query_callback),
+        Some(inputs_to_query_callback(inputs)),
     );
 }
 
@@ -171,6 +170,29 @@ fn write_polys_file<T: FieldElement>(
             let bytes = constant[i].to_bytes_le();
             assert_eq!(bytes.len(), 8);
             file.write_all(&bytes).unwrap();
+        }
+    }
+}
+
+fn inputs_to_query_callback<T: FieldElement>(inputs: Vec<T>) -> impl Fn(&str) -> Option<T> {
+    move |query: &str| -> Option<T> {
+        let items = query.split(',').map(|s| s.trim()).collect::<Vec<_>>();
+        match items[0] {
+            "\"input\"" => {
+                assert_eq!(items.len(), 2);
+                let index = items[1].parse::<usize>().unwrap();
+                let value = inputs.get(index).cloned();
+                if let Some(value) = value {
+                    log::trace!("Input query: Index {index} -> {value}");
+                }
+                value
+            }
+            "\"print_char\"" => {
+                assert_eq!(items.len(), 2);
+                print!("{}", items[1].parse::<u8>().unwrap() as char);
+                Some(0.into())
+            }
+            _ => None,
         }
     }
 }
