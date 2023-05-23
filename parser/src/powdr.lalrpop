@@ -239,9 +239,9 @@ Instruction: ASMStatement<T> = {
 }
 
 DebugDirective: ASMStatement<T> = {
-    <l:@L> "debug" "file" <n:Integer> "," <d:StringLiteral> "," <f:StringLiteral> ";"
+    <l:@L> "debug" "file" <n:Integer> <d:StringLiteral> <f:StringLiteral> ";"
         => ASMStatement::DebugDirective(l, DebugDirective::File(n.try_into().unwrap(), d, f)),
-    <l:@L> "debug" "loc" <f:Integer> "," <line:Integer> "," <col:Integer> ";"
+    <l:@L> "debug" "loc" <f:Integer> <line:Integer> <col:Integer> ";"
         => ASMStatement::DebugDirective(l, DebugDirective::Loc(f.try_into().unwrap(), line.try_into().unwrap(), col.try_into().unwrap())),
 }
 
