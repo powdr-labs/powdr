@@ -19,7 +19,8 @@ pub fn compile_riscv_asm(mut assemblies: BTreeMap<String, String>) -> String {
         .insert("__runtime".to_string(), runtime().to_string())
         .is_none());
 
-    let mut statements = disambiguator::disambiguate(
+    // TODO remove unreferenced files.
+    let (mut statements, file_ids) = disambiguator::disambiguate(
         assemblies
             .into_iter()
             .map(|(name, contents)| (name, parser::parse_asm(&contents)))
@@ -55,9 +56,12 @@ pub fn compile_riscv_asm(mut assemblies: BTreeMap<String, String>) -> String {
         .collect::<Vec<_>>();
     let (data_code, data_positions) = store_data_objects(&sorted_objects, data_start);
 
+    // TODO debug directives increase the PC counter below - this is not what we want, right?
     preamble()
-        + &vec!["call __data_init;".to_string()]
+        + &file_ids
             .into_iter()
+            .map(|(id, dir, file)| format!("debug file {id} {} {};", quote(&dir), quote(&file)))
+            .chain(["call __data_init;".to_string()])
             .chain([
                 format!("// Set stack pointer\nx2 <=X= {stack_start};"),
                 "jump __runtime_start;".to_string(),
@@ -613,15 +617,9 @@ fn process_statement(s: Statement) -> Vec<String> {
             ) => {
                 vec![format!("  debug loc {file} {line} {column};")]
             }
-            (
-                ".file",
-                [Argument::Expression(Expression::Number(file_nr)), Argument::StringLiteral(directory), Argument::StringLiteral(file)],
-            ) => {
-                vec![format!(
-                    "  debug file {file_nr} {} {};",
-                    quote(std::str::from_utf8(directory).unwrap()),
-                    quote(std::str::from_utf8(file).unwrap())
-                )]
+            (".file", _) => {
+                // We ignore ".file" directives because they have been extracted to the top.
+                vec![]
             }
             _ if directive.starts_with(".cfi_") => vec![],
             _ => panic!(
