@@ -634,14 +634,14 @@ fn process_statement(s: Statement) -> Vec<String> {
                 ".loc",
                 [Argument::Constant(Constant::Number(file)), Argument::Constant(Constant::Number(line)), Argument::Constant(Constant::Number(column)), ..],
             ) => {
-                vec![format!("debug loc {file} {line} {column};")]
+                vec![format!("  debug loc {file} {line} {column};")]
             }
             (
                 ".file",
                 [Argument::Constant(Constant::Number(file_nr)), Argument::StringLiteral(directory), Argument::StringLiteral(file)],
             ) => {
                 vec![format!(
-                    "debug file {file_nr} {} {};",
+                    "  debug file {file_nr} {} {};",
                     quote(std::str::from_utf8(directory).unwrap()),
                     quote(std::str::from_utf8(file).unwrap())
                 )]
