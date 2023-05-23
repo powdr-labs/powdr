@@ -4,19 +4,27 @@ use itertools::Itertools;
 
 use crate::parser::{Argument, Constant, Statement};
 
-pub fn disambiguate(mut assemblies: Vec<(String, Vec<Statement>)>) -> Vec<Statement> {
+/// Disambiguates the collection of assembly files and concatenates it to a single list of statements.
+/// Also disambiguates file ids (debugging information) and returns a list of all files with new IDs.
+pub fn disambiguate(
+    mut assemblies: Vec<(String, Vec<Statement>)>,
+) -> (Vec<Statement>, Vec<(i64, String, String)>) {
     let globals = assemblies
         .iter()
         .flat_map(|(_, statements)| extract_globals(statements))
         .collect::<HashSet<_>>();
 
     // Disambiguates the debug file references.
-    disambiguate_file_ids(&mut assemblies);
+    let file_ids = disambiguate_file_ids(&mut assemblies);
+    // TODO have to pull out the file declarations and put them at the beginning, remove those that are unused.
 
-    assemblies
-        .into_iter()
-        .map(|(name, statements)| disambiguate_file(&name, statements, &globals))
-        .concat()
+    (
+        assemblies
+            .into_iter()
+            .map(|(name, statements)| disambiguate_file(&name, statements, &globals))
+            .concat(),
+        file_ids,
+    )
 }
 
 fn extract_globals(statements: &[Statement]) -> HashSet<String> {
@@ -123,7 +131,9 @@ fn disambiguate_symbol_if_needed(s: String, prefix: &str, globals: &HashSet<Stri
     }
 }
 
-fn disambiguate_file_ids(assemblies: &mut [(String, Vec<Statement>)]) {
+fn disambiguate_file_ids(
+    assemblies: &mut [(String, Vec<Statement>)],
+) -> Vec<(i64, String, String)> {
     let debug_file_ids = assemblies
         .iter()
         .flat_map(|(name, statements)| extract_file_ids(name, statements))
@@ -131,23 +141,41 @@ fn disambiguate_file_ids(assemblies: &mut [(String, Vec<Statement>)]) {
     let debug_file_id_mapping = debug_file_ids
         .iter()
         .enumerate()
-        .map(|(i, (name, file_id))| ((name.to_string(), *file_id), i as i64 + 1))
+        .map(|(i, (asm_name, file_id, ..))| ((asm_name.to_string(), *file_id), i as i64 + 1))
         .collect::<HashMap<_, _>>();
+    let new_debug_file_ids = debug_file_ids
+        .into_iter()
+        .map(|(asm_file, id, dir, file)| {
+            (
+                debug_file_id_mapping[&(asm_file.to_string(), id)],
+                dir,
+                file,
+            )
+        })
+        .collect();
     assemblies.iter_mut().for_each(|(n, statements)| {
         statements
             .iter_mut()
             .for_each(|s| replace_file_refs(n, s, &debug_file_id_mapping))
-    })
+    });
+    new_debug_file_ids
 }
 
 /// Extracts all debug file IDs from the list of statements in the given assembly file.
-fn extract_file_ids<'a>(name: &'a str, statements: &[Statement]) -> Vec<(&'a str, i64)> {
+fn extract_file_ids<'a>(
+    name: &'a str,
+    statements: &[Statement],
+) -> Vec<(&'a str, i64, String, String)> {
     statements
         .iter()
         .filter_map(|s| match s {
             Statement::Directive(directive, args) if directive == ".file" => {
-                if let Argument::Constant(Constant::Number(file_nr)) = args[0] {
-                    Some((name, file_nr))
+                if let [
+                    Argument::Constant(Constant::Number(file_nr)),
+                    Argument::StringLiteral(dir),
+                    Argument::StringLiteral(file),
+                 ] = &args[..] {
+                    Some((name, *file_nr, std::str::from_utf8(dir).unwrap().to_string(), std::str::from_utf8(file).unwrap().to_string()))
                 } else {
                     None
                 }
