@@ -25,7 +25,7 @@ pil{
     // positive numbers (assumed to be less than half the field order)
     col fixed POSITIVE(i) { i + 1 };
     col fixed FIRST = [1] + [0]*;
-    col fixed NOTLAST(i) { 1 - FIRST(i + 1) };
+    col fixed NOTLAST = [1]* + [0];
 
     // This enforces that addresses are stored in an ascending order
     // (and in particular, are unique).

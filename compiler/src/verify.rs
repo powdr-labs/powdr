@@ -36,6 +36,7 @@ pub fn compile_asm_string_temp<T: FieldElement>(
                 _ => None,
             }
         }),
+        None,
     ));
     (pil_file_name.to_string(), temp_dir)
 }

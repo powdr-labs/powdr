@@ -1,11 +1,11 @@
 use num_bigint::BigUint;
-use polyexen::expr::{ColumnKind, Expr, PlonkVar};
+use polyexen::expr::{ColumnKind, ColumnQuery, Expr, PlonkVar};
 use polyexen::plaf::backends::halo2::PlafH2Circuit;
 use polyexen::plaf::{ColumnFixed, ColumnWitness, Columns, Info, Lookup, Plaf, Poly, Witness};
 
 use num_traits::One;
 use number::{BigInt, FieldElement};
-use pil_analyzer::{self, BinaryOperator, Expression, IdentityKind};
+use pil_analyzer::{self, BinaryOperator, Expression, IdentityKind, SelectedExpressions};
 
 use super::circuit_data::CircuitData;
 
@@ -31,7 +31,7 @@ pub(crate) fn analyzed_to_circuit<T: FieldElement>(
 
     // generate fixed and witness (witness).
 
-    let query = |column, rotation| Expr::Var(PlonkVar::ColumnQuery { column, rotation });
+    let query = |column, rotation| Expr::Var(PlonkVar::Query(ColumnQuery { column, rotation }));
 
     let mut cd = CircuitData::from(fixed, witness);
 
@@ -84,66 +84,77 @@ pub(crate) fn analyzed_to_circuit<T: FieldElement>(
     // build Plaf polys. -------------------------------------------------------------------------
 
     for id in &analyzed.identities {
-        if id.kind == IdentityKind::Polynomial {
-            // polynomial identities.
+        match id.kind {
+            IdentityKind::Polynomial => {
+                // polynomial identities.
 
-            assert_eq!(id.right.expressions.len(), 0);
-            assert_eq!(id.right.selector, None);
-            assert_eq!(id.left.expressions.len(), 0);
+                assert_eq!(id.right.expressions.len(), 0);
+                assert_eq!(id.right.selector, None);
+                assert_eq!(id.left.expressions.len(), 0);
 
-            let exp = id.left.selector.as_ref().unwrap();
-            let contains_next_ref = exp.contains_next_ref();
+                let exp = id.left.selector.as_ref().unwrap();
+                let contains_next_ref = exp.contains_next_ref();
 
-            let exp = expression_2_expr(&cd, exp);
+                let exp = expression_2_expr(&cd, exp);
 
-            // depending whether this polynomial contains a rotation,
-            // enable for all rows or all except the last one.
+                // depending whether this polynomial contains a rotation,
+                // enable for all rows or all except the last one.
 
-            let exp = Expr::Mul(vec![
-                exp,
-                if contains_next_ref {
-                    q_enable_next.clone()
-                } else {
-                    q_enable_cur.clone()
-                },
-            ]);
-            polys.push(Poly {
-                name: "".to_string(),
-                exp,
-            });
-        } else if id.kind == IdentityKind::Plookup {
-            // lookups.
-
-            assert_eq!(id.right.selector, None);
-
-            let left_selector = id
-                .left
-                .selector
-                .clone()
-                .map_or(Expr::Const(BigUint::one()), |expr| {
-                    expression_2_expr(&cd, &expr)
+                let exp = Expr::Mul(vec![
+                    exp,
+                    if contains_next_ref {
+                        q_enable_next.clone()
+                    } else {
+                        q_enable_cur.clone()
+                    },
+                ]);
+                polys.push(Poly {
+                    name: "".to_string(),
+                    exp,
                 });
+            }
+            IdentityKind::Plookup => {
+                // lookups.
 
-            let left = id
-                .left
-                .expressions
-                .iter()
-                .map(|expr| left_selector.clone() * expression_2_expr(&cd, expr))
-                .collect();
+                let wrap_lookup = |side: &SelectedExpressions<T>| {
+                    let selector = side
+                        .selector
+                        .clone()
+                        .map_or(Expr::Const(BigUint::one()), |expr| {
+                            expression_2_expr(&cd, &expr)
+                        });
 
-            let right = id
-                .right
-                .expressions
-                .iter()
-                .map(|expr| expression_2_expr(&cd, expr))
-                .collect();
+                    let contains_next_ref =
+                        side.expressions.iter().any(|exp| exp.contains_next_ref());
 
-            lookups.push(Lookup {
-                name: "".to_string(),
-                exps: (left, right),
-            });
-        } else {
-            unimplemented!()
+                    let selector = Expr::Mul(vec![
+                        selector,
+                        if contains_next_ref {
+                            q_enable_next.clone()
+                        } else {
+                            q_enable_cur.clone()
+                        },
+                    ]);
+
+                    side.expressions
+                        .iter()
+                        .map(|expr| selector.clone() * expression_2_expr(&cd, expr))
+                        .collect()
+                };
+
+                let left = wrap_lookup(&id.left);
+                let right = wrap_lookup(&id.right);
+
+                lookups.push(Lookup {
+                    name: "".to_string(),
+                    exps: (left, right),
+                });
+            }
+            IdentityKind::Permutation => {
+                // TODO anything that uses permutations is
+                // fully unconstrained right now!!!
+            }
+            _ => unimplemented!(),
         }
     }
 
@@ -193,6 +204,7 @@ pub(crate) fn analyzed_to_circuit<T: FieldElement>(
         info,
         columns,
         polys,
+        metadata: Default::default(),
         lookups,
         copys,
         fixed,
@@ -209,10 +221,10 @@ fn expression_2_expr<T: FieldElement>(cd: &CircuitData<T>, expr: &Expression<T>)
         Expression::PolynomialReference(polyref) => {
             assert_eq!(polyref.index, None);
 
-            let plonkvar = PlonkVar::ColumnQuery {
+            let plonkvar = PlonkVar::Query(ColumnQuery {
                 column: cd.col(&polyref.name),
                 rotation: polyref.next as i32,
-            };
+            });
 
             Expr::Var(plonkvar)
         }

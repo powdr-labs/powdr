@@ -2,7 +2,7 @@
 
 use std::{collections::BTreeMap, path::Path, process::Command};
 
-use ::compiler::compile_asm_string;
+use ::compiler::{compile_asm_string, Backend};
 use mktemp::Temp;
 use std::fs;
 use walkdir::WalkDir;
@@ -22,6 +22,7 @@ pub fn compile_rust<T: FieldElement>(
     inputs: Vec<T>,
     output_dir: &Path,
     force_overwrite: bool,
+    prove_with: Option<Backend>,
 ) {
     let riscv_asm = if file_name.ends_with("Cargo.toml") {
         compile_rust_crate_to_riscv_asm(file_name)
@@ -50,7 +51,14 @@ pub fn compile_rust<T: FieldElement>(
         log::info!("Wrote {}", riscv_asm_file_name.to_str().unwrap());
     }
 
-    compile_riscv_asm_bundle(file_name, riscv_asm, inputs, output_dir, force_overwrite)
+    compile_riscv_asm_bundle(
+        file_name,
+        riscv_asm,
+        inputs,
+        output_dir,
+        force_overwrite,
+        prove_with,
+    )
 }
 
 pub fn compile_riscv_asm_bundle<T: FieldElement>(
@@ -59,6 +67,7 @@ pub fn compile_riscv_asm_bundle<T: FieldElement>(
     inputs: Vec<T>,
     output_dir: &Path,
     force_overwrite: bool,
+    prove_with: Option<Backend>,
 ) {
     let powdr_asm_file_name = output_dir.join(format!(
         "{}.asm",
@@ -87,6 +96,7 @@ pub fn compile_riscv_asm_bundle<T: FieldElement>(
         inputs,
         output_dir,
         force_overwrite,
+        prove_with,
     )
 }
 
@@ -98,6 +108,7 @@ pub fn compile_riscv_asm<T: FieldElement>(
     inputs: Vec<T>,
     output_dir: &Path,
     force_overwrite: bool,
+    prove_with: Option<Backend>,
 ) {
     let contents = fs::read_to_string(file_name).unwrap();
     compile_riscv_asm_bundle(
@@ -108,6 +119,7 @@ pub fn compile_riscv_asm<T: FieldElement>(
         inputs,
         output_dir,
         force_overwrite,
+        prove_with,
     )
 }
 

@@ -29,7 +29,7 @@ pil{
     // positive numbers (assumed to be much smaller than the field order)
     col fixed POSITIVE(i) { i + 1 };
     col fixed FIRST = [1] + [0]*;
-    col fixed LAST(i) { FIRST(i + 1) };
+    col fixed LAST  = [0]* + [1];
     col fixed STEP(i) { i };
 
     m_change * (1 - m_change) = 0;

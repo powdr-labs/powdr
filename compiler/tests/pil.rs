@@ -12,6 +12,7 @@ pub fn verify_pil(file_name: &str, query_callback: Option<fn(&str) -> Option<Gol
         &input_file,
         &temp_dir,
         query_callback,
+        None,
     ));
     compiler::verify(file_name, &temp_dir);
 }
