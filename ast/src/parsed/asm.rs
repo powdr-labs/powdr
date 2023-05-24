@@ -1,6 +1,6 @@
 use number::AbstractNumberType;
 
-use super::ast::{Expression, SelectedExpressions, Statement};
+use super::{Expression, SelectedExpressions, Statement};
 
 pub mod batched {
     use std::collections::BTreeSet;

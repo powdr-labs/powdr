@@ -1,8 +1,8 @@
+pub mod asm;
+pub mod display;
 use std::{iter::once, ops::ControlFlow};
 
 use number::{DegreeType, FieldElement};
-
-use crate::asm_ast::ASMStatement;
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct PILFile<T>(pub Vec<Statement<T>>);
@@ -31,7 +31,6 @@ pub enum Statement<T> {
         Option<Expression<T>>,
     ),
     FunctionCall(usize, String, Vec<Expression<T>>),
-    ASMBlock(usize, Vec<ASMStatement<T>>),
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -217,7 +216,7 @@ where
 }
 
 /// Traverses the expression trees of the statement and calls `f` in post-order.
-/// Does not enter ASMBlocks or macro definitions.
+/// Does not enter macro definitions.
 pub fn postvisit_expression_in_statement_mut<T, F, B>(
     statement: &mut Statement<T>,
     f: &mut F,
@@ -258,8 +257,7 @@ where
         Statement::PolynomialCommitDeclaration(_, _, None)
         | Statement::Include(_, _)
         | Statement::PolynomialConstantDeclaration(_, _)
-        | Statement::MacroDefinition(_, _, _, _, _)
-        | Statement::ASMBlock(_, _) => ControlFlow::Continue(()),
+        | Statement::MacroDefinition(_, _, _, _, _) => ControlFlow::Continue(()),
     }
 }
 

@@ -1,8 +1,9 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::{Debug, Display, Formatter};
 
+use ast::parsed::BinaryOperator;
 use number::{log2_exact, BigInt, FieldElement};
-use pil_analyzer::{BinaryOperator, Expression, Identity, IdentityKind, PolynomialReference};
+use pil_analyzer::{Expression, Identity, IdentityKind, PolynomialReference};
 
 use super::expression_evaluator::ExpressionEvaluator;
 use super::symbolic_evaluator::SymbolicEvaluator;

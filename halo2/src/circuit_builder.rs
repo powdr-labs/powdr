@@ -1,3 +1,4 @@
+use ast::parsed::BinaryOperator;
 use num_bigint::BigUint;
 use polyexen::expr::{ColumnKind, ColumnQuery, Expr, PlonkVar};
 use polyexen::plaf::backends::halo2::PlafH2Circuit;
@@ -7,7 +8,7 @@ use polyexen::plaf::{
 
 use num_traits::One;
 use number::{BigInt, FieldElement};
-use pil_analyzer::{self, BinaryOperator, Expression, IdentityKind, SelectedExpressions};
+use pil_analyzer::{self, Expression, IdentityKind, SelectedExpressions};
 
 use super::circuit_data::CircuitData;
 

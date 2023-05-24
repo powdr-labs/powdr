@@ -8,7 +8,7 @@ itertools = "^0.10"
 log = "0.4.17"
 number = { path = "../number" }
 parser_util = { path = "../parser_util" }
-parser = { path = "../parser" }
 pil_analyzer = { path = "../pil_analyzer" }
 rayon = "1.7.0"
 num-traits = "0.2.15"
+ast = { version = "0.1.0", path = "../ast" }

@@ -1,0 +1,16 @@
+[package]
+name = "analysis"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+ast = { path = "../ast" }
+itertools = "0.10.5"
+log = "0.4.18"
+number = { version = "0.1.0", path = "../number" }
+
+[dev-dependencies]
+parser = { path = "../parser" }
+pretty_assertions = "1.3.0"

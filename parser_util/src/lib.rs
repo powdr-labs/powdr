@@ -2,10 +2,6 @@
 
 pub mod lines;
 
-pub fn quote(input: &str) -> String {
-    format!("\"{}\"", input.replace('\\', "\\\\").replace('"', "\\\""))
-}
-
 #[derive(Debug)]
 pub struct ParseError<'a> {
     start: usize,

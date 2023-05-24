@@ -7,8 +7,9 @@ use std::hash::Hash;
 use std::path::Path;
 use std::{collections::HashMap, fmt::Display};
 
+use ast::parsed::{BinaryOperator, UnaryOperator};
 use number::{DegreeType, FieldElement};
-pub use parser::ast::{BinaryOperator, UnaryOperator};
+
 use util::expr_any;
 
 pub fn analyze<T: FieldElement>(path: &Path) -> Analyzed<T> {

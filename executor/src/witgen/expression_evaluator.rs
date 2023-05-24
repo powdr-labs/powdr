@@ -1,7 +1,8 @@
 use std::marker::PhantomData;
 
+use ast::parsed::{BinaryOperator, UnaryOperator};
 use number::FieldElement;
-use pil_analyzer::{BinaryOperator, Expression, PolynomialReference, UnaryOperator};
+use pil_analyzer::{Expression, PolynomialReference};
 
 use super::{affine_expression::AffineResult, IncompleteCause};
 
