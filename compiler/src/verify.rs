@@ -15,7 +15,7 @@ pub fn compile_asm_string_temp<T: FieldElement>(
     contents: &str,
     inputs: Vec<T>,
 ) -> (String, Temp) {
-    let pil = pilgen::compile(Some(file_name), contents).unwrap();
+    let pil = pilgen::compile(Some(file_name), contents).unwrap().0;
     let pil_file_name = "asm.pil";
     let temp_dir = mktemp::Temp::new_dir().unwrap();
     assert!(crate::compile_pil_ast(

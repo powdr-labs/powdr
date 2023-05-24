@@ -203,6 +203,10 @@ impl<T: FieldElement> ASMPILConverter<T> {
             Some(RegisterFlag::IsPC) => {
                 assert_eq!(self.pc_name, None);
                 self.pc_name = Some(name.to_string());
+                // TODO we need the global name here, not the namespcae-local
+                // Hacking the namespace into this here.
+                self.profiler_builder
+                    .set_pc_name(&format!("Assembly.{name}"));
                 self.line_lookup
                     .push((name.to_string(), "p_line".to_string()));
                 default_update = Some(build_add(direct_reference(name), build_number(1u64)));

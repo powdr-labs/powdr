@@ -217,9 +217,46 @@ fn inputs_to_query_callback<T: FieldElement>(inputs: Vec<T>) -> impl Fn(&str) ->
     }
 }
 
+struct RowCallbackForProfiler {
+    profiler: AsmProfiler,
+    active: bool,
+    pc_index: Option<usize>,
+}
+
+impl RowCallbackForProfiler {
+    fn new(profiler: AsmProfiler, active: bool) -> Self {
+        Self {
+            profiler,
+            active,
+            pc_index: None,
+        }
+    }
+}
+
+impl<T> RowCallback<T> for RowCallbackForProfiler
+where
+    T: FieldElement,
+{
+    fn row_generated(
+        &mut self,
+        _fixed: &executor::witgen::FixedData<T>,
+        _row: DegreeType,
+        values: &[(&str, Vec<T>)],
+    ) {
+        if self.active {
+            if self.pc_index.is_none() {
+                let pc_name = self.profiler.pc_name();
+                self.pc_index = Some(values.iter().position(|(n, _)| *n == pc_name).unwrap())
+            };
+            self.profiler
+                .called_pc(values[self.pc_index.unwrap()].1.last().unwrap().to_degree())
+        }
+    }
+}
+
 fn to_row_callback<T>(profiler: AsmProfiler, activate: bool) -> impl RowCallback<T>
 where
     T: FieldElement,
 {
-    todo!();
+    RowCallbackForProfiler::new(profiler, activate)
 }
