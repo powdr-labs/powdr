@@ -7,22 +7,29 @@ use number::FieldElement;
 use parser::asm_ast::*;
 use parser::ast::*;
 use parser_util::ParseError;
+pub use profiler::AsmProfiler;
+use profiler::ProfilerBuilder;
+
+pub mod profiler;
 
 /// Compiles a stand-alone assembly file to PIL.
+/// @param profile Whether or not to generate a profiler callback.
 pub fn compile<'a, T: FieldElement>(
     file_name: Option<&str>,
     input: &'a str,
-) -> Result<PILFile<T>, ParseError<'a>> {
-    let statements = parser::parse_asm(file_name, input)
+) -> Result<(PILFile<T>, AsmProfiler), ParseError<'a>> {
+    let (statements, asm_profiler) = parser::parse_asm(file_name, input)
         .map(|ast| ASMPILConverter::new().convert(ast.0, ASMKind::StandAlone))?;
-    Ok(PILFile(statements))
+    Ok((PILFile(statements), asm_profiler))
 }
 
 /// Compiles inline assembly to PIL.
 pub fn asm_to_pil<T: FieldElement>(
     statements: impl IntoIterator<Item = ASMStatement<T>>,
 ) -> Vec<Statement<T>> {
-    ASMPILConverter::new().convert(statements, ASMKind::Inline)
+    ASMPILConverter::new()
+        .convert(statements, ASMKind::Inline)
+        .0
 }
 
 #[derive(PartialEq)]
@@ -42,6 +49,7 @@ struct ASMPILConverter<T> {
     line_lookup: Vec<(String, String)>,
     /// Names of fixed columns that contain the program.
     program_constant_names: Vec<String>,
+    profiler_builder: ProfilerBuilder,
 }
 
 impl<T: FieldElement> ASMPILConverter<T> {
@@ -53,7 +61,7 @@ impl<T: FieldElement> ASMPILConverter<T> {
         &mut self,
         input: impl IntoIterator<Item = ASMStatement<T>>,
         asm_kind: ASMKind,
-    ) -> Vec<Statement<T>> {
+    ) -> (Vec<Statement<T>>, AsmProfiler) {
         let mut statements = input.into_iter().peekable();
 
         if asm_kind == ASMKind::StandAlone {
@@ -116,8 +124,17 @@ impl<T: FieldElement> ASMPILConverter<T> {
                     label: Some(name.clone()),
                     ..Default::default()
                 }),
-                ASMStatement::DebugDirective(_start, DebugDirective::File(nr, path, file)) => {} // TODO
-                ASMStatement::DebugDirective(_start, DebugDirective::Loc(file, line, col)) => {} // TODO
+                ASMStatement::DebugDirective(_start, DebugDirective::File(nr, path, file)) => {
+                    self.profiler_builder.add_file(nr, path, file);
+                }
+                ASMStatement::DebugDirective(_start, DebugDirective::Loc(file, line, col)) => {
+                    self.profiler_builder.set_source_location(
+                        self.code_lines.len(),
+                        file,
+                        line,
+                        col,
+                    );
+                }
             }
         }
         let assignment_registers = self.assignment_registers().cloned().collect::<Vec<_>>();
@@ -168,7 +185,10 @@ impl<T: FieldElement> ASMPILConverter<T> {
             },
         ));
 
-        std::mem::take(&mut self.pil)
+        (
+            std::mem::take(&mut self.pil),
+            std::mem::take(&mut self.profiler_builder).to_profiler(),
+        )
     }
 
     fn handle_register_declaration(
@@ -1002,7 +1022,9 @@ pol constant p_reg_write_X_CNT = [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0] + [0]*;
 "#;
         let file_name = "../test_data/asm/simple_sum.asm";
         let contents = fs::read_to_string(file_name).unwrap();
-        let pil = compile::<GoldilocksField>(Some(file_name), &contents).unwrap();
+        let pil = compile::<GoldilocksField>(Some(file_name), &contents)
+            .unwrap()
+            .0;
         assert_eq!(format!("{pil}").trim(), expectation.trim());
     }
 }

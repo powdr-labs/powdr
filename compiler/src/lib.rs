@@ -9,6 +9,7 @@ use std::time::Instant;
 mod verify;
 use executor::witgen::{NoRowCallback, RowCallback};
 use pil_analyzer::json_exporter;
+use pilgen::AsmProfiler;
 pub use verify::{compile_asm_string_temp, verify, verify_asm_string};
 
 use executor::constant_evaluator;
@@ -28,7 +29,7 @@ pub fn compile_pil_or_asm<T: FieldElement>(
     force_overwrite: bool,
 ) {
     if file_name.ends_with(".asm") {
-        compile_asm(file_name, inputs, output_dir, force_overwrite)
+        compile_asm(file_name, inputs, output_dir, force_overwrite, false)
     } else {
         compile_pil(
             Path::new(file_name),
@@ -83,9 +84,17 @@ pub fn compile_asm<T: FieldElement>(
     inputs: Vec<T>,
     output_dir: &Path,
     force_overwrite: bool,
+    profile: bool,
 ) {
     let contents = fs::read_to_string(file_name).unwrap();
-    compile_asm_string(file_name, &contents, inputs, output_dir, force_overwrite)
+    compile_asm_string(
+        file_name,
+        &contents,
+        inputs,
+        output_dir,
+        force_overwrite,
+        profile,
+    )
 }
 
 /// Compiles the contents of a .asm file, outputs the PIL on stdout and tries to generate
@@ -96,12 +105,14 @@ pub fn compile_asm_string<T: FieldElement>(
     inputs: Vec<T>,
     output_dir: &Path,
     force_overwrite: bool,
+    profile: bool,
 ) {
-    let pil = pilgen::compile(Some(file_name), contents).unwrap_or_else(|err| {
+    let (pil, mut profiler) = pilgen::compile(Some(file_name), contents).unwrap_or_else(|err| {
         eprintln!("Error parsing .asm file:");
         err.output_to_stderr();
         panic!();
     });
+    profiler.set_output_dir(output_dir);
     let pil_file_name = output_dir.join(format!(
         "{}.pil",
         Path::new(file_name).file_stem().unwrap().to_str().unwrap()
@@ -120,7 +131,7 @@ pub fn compile_asm_string<T: FieldElement>(
         pil_file_name.file_name().unwrap(),
         output_dir,
         Some(inputs_to_query_callback(inputs)),
-        NoRowCallback,
+        to_row_callback(profiler, profile),
     );
 }
 
@@ -204,4 +215,11 @@ fn inputs_to_query_callback<T: FieldElement>(inputs: Vec<T>) -> impl Fn(&str) ->
             _ => None,
         }
     }
+}
+
+fn to_row_callback<T>(profiler: AsmProfiler, activate: bool) -> impl RowCallback<T>
+where
+    T: FieldElement,
+{
+    todo!();
 }

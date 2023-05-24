@@ -59,6 +59,11 @@ enum Commands {
         #[arg(short, long)]
         #[arg(default_value_t = false)]
         force: bool,
+
+        /// Generate callgrind-compatible profiling data during witness generation.
+        #[arg(short, long)]
+        #[arg(default_value_t = false)]
+        profile: bool,
     },
 
     /// Compiles riscv assembly to powdr assembly and then to PIL
@@ -81,6 +86,11 @@ enum Commands {
         #[arg(short, long)]
         #[arg(default_value_t = false)]
         force: bool,
+
+        /// Generate callgrind-compatible profiling data during witness generation.
+        #[arg(short, long)]
+        #[arg(default_value_t = false)]
+        profile: bool,
     },
 
     /// Parses and prints the PIL file on stdout.
@@ -115,12 +125,14 @@ fn main() {
             inputs,
             output_directory,
             force,
+            profile,
         } => {
             riscv::compile_rust::<GoldilocksField>(
                 &file,
                 split_inputs(&inputs),
                 Path::new(&output_directory),
                 force,
+                profile,
             );
         }
         Commands::RiscvAsm {
@@ -128,6 +140,7 @@ fn main() {
             inputs,
             output_directory,
             force,
+            profile,
         } => {
             riscv::compile_riscv_asm::<GoldilocksField>(
                 &file,
@@ -135,6 +148,7 @@ fn main() {
                 split_inputs(&inputs),
                 Path::new(&output_directory),
                 force,
+                profile,
             );
         }
         Commands::Reformat { file } => {
