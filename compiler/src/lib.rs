@@ -252,6 +252,12 @@ where
                 .called_pc(values[self.pc_index.unwrap()].1.last().unwrap().to_degree())
         }
     }
+
+    fn execution_finished(&mut self) {
+        if self.active {
+            self.profiler.execution_finished();
+        }
+    }
 }
 
 fn to_row_callback<T>(profiler: AsmProfiler, activate: bool) -> impl RowCallback<T>

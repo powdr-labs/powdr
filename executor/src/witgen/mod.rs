@@ -26,6 +26,8 @@ pub trait RowCallback<T: FieldElement> {
     /// @param row the index of the new row
     /// @prama values all values of all witness columns so far.
     fn row_generated(&mut self, fixed: &FixedData<T>, row: DegreeType, values: &[(&str, Vec<T>)]);
+
+    fn execution_finished(&mut self);
 }
 
 pub struct NoRowCallback;
@@ -40,6 +42,8 @@ where
         _values: &[(&str, Vec<T>)],
     ) {
     }
+
+    fn execution_finished(&mut self) {}
 }
 
 /// Generates the committed polynomial values
@@ -152,6 +156,7 @@ pub fn generate<'a, T: FieldElement>(
         let (_, col) = values.iter_mut().find(|(n, _)| *n == name).unwrap();
         *col = data;
     }
+    row_callback.execution_finished();
     values
 }
 

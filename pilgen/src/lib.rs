@@ -120,10 +120,14 @@ impl<T: FieldElement> ASMPILConverter<T> {
                 ASMStatement::Instruction(_start, instr_name, args) => {
                     self.handle_instruction(instr_name, args)
                 }
-                ASMStatement::Label(_start, name) => self.code_lines.push(CodeLine {
-                    label: Some(name.clone()),
-                    ..Default::default()
-                }),
+                ASMStatement::Label(_start, name) => {
+                    self.profiler_builder
+                        .set_label(self.code_lines.len(), &name);
+                    self.code_lines.push(CodeLine {
+                        label: Some(name.clone()),
+                        ..Default::default()
+                    })
+                }
                 ASMStatement::DebugDirective(_start, DebugDirective::File(nr, path, file)) => {
                     self.profiler_builder.add_file(nr, path, file);
                 }
