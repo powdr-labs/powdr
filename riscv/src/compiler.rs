@@ -336,8 +336,8 @@ pil{
 
 // ============== memory instructions ==============
 
-instr mstore X { { addr, STEP, X } is m_is_write { m_addr, m_step, m_value } }
-instr mload -> X { { addr, STEP, X } is m_is_read { m_addr, m_step, m_value } }
+instr mstore Y { { addr, STEP, Y } is m_is_write { m_addr, m_step, m_value } }
+instr mload -> Z { { addr, STEP, Z } is m_is_read { m_addr, m_step, m_value } }
 
 // ============== control-flow instructions ==============
 
@@ -1004,7 +1004,7 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
             only_if_no_write_to_zero_vec(
                 vec![
                     format!("addr <=X= wrap({rs} + {off});"),
-                    format!("{rd} <=X= mload();"),
+                    format!("{rd} <=Z= mload();"),
                 ],
                 rd,
             )
@@ -1017,7 +1017,7 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
                     format!("tmp1 <=X= wrap({rs} + {off});"),
                     "addr <=X= and(tmp1, 0xfffffffc);".to_string(),
                     "tmp2 <=X= and(tmp1, 0x3);".to_string(),
-                    format!("{rd} <=X= mload();"),
+                    format!("{rd} <=Z= mload();"),
                     format!("{rd} <=X= shr({rd}, 8 * tmp2);"),
                     format!("{rd} <=X= sign_extend_byte({rd});"),
                 ],
@@ -1032,7 +1032,7 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
                     format!("tmp1 <=X= wrap({rs} + {off});"),
                     "addr <=X= and(tmp1, 0xfffffffc);".to_string(),
                     "tmp2 <=X= and(tmp1, 0x3);".to_string(),
-                    format!("{rd} <=X= mload();"),
+                    format!("{rd} <=Z= mload();"),
                     format!("{rd} <=X= shr({rd}, 8 * tmp2);"),
                     format!("{rd} <=X= and({rd}, 0xff);"),
                 ],
@@ -1056,7 +1056,7 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
                 format!("tmp1 <=X= wrap({rd} + {off});"),
                 "addr <=X= and(tmp1, 0xfffffffc);".to_string(),
                 "tmp2 <=X= and(tmp1, 0x3);".to_string(),
-                "tmp1 <=X= mload();".to_string(),
+                "tmp1 <=Z= mload();".to_string(),
                 "tmp3 <=X= shl(0xffff, 8 * tmp2);".to_string(),
                 "tmp3 <=X= xor(tmp3, 0xffffffff);".to_string(),
                 "tmp1 <=X= and(tmp1, tmp3);".to_string(),
@@ -1073,7 +1073,7 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
                 format!("tmp1 <=X= wrap({rd} + {off});"),
                 "addr <=X= and(tmp1, 0xfffffffc);".to_string(),
                 "tmp2 <=X= and(tmp1, 0x3);".to_string(),
-                "tmp1 <=X= mload();".to_string(),
+                "tmp1 <=Z= mload();".to_string(),
                 "tmp3 <=X= shl(0xff, 8 * tmp2);".to_string(),
                 "tmp3 <=X= xor(tmp3, 0xffffffff);".to_string(),
                 "tmp1 <=X= and(tmp1, tmp3);".to_string(),

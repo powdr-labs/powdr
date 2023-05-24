@@ -2,6 +2,57 @@ use number::AbstractNumberType;
 
 use super::ast::{Expression, SelectedExpressions, Statement};
 
+pub mod batched {
+    use std::collections::BTreeSet;
+
+    use super::*;
+
+    #[derive(Default, Debug, PartialEq, Eq)]
+    pub struct ASMStatementBatch<T> {
+        // the set of compatible statements
+        pub statements: Vec<ASMStatement<T>>,
+        // the reason why this batch ended (for debugging purposes), None if we ran out of statements to batch
+        pub reason: Option<IncompatibleSet>,
+    }
+
+    impl<T> ASMStatementBatch<T> {
+        pub fn into_statements(self) -> impl Iterator<Item = ASMStatement<T>> {
+            self.statements.into_iter()
+        }
+
+        pub fn statements(&self) -> impl Iterator<Item = &ASMStatement<T>> {
+            self.statements.iter()
+        }
+
+        pub fn size(&self) -> usize {
+            self.statements.len()
+        }
+
+        pub fn insert(&mut self, s: ASMStatement<T>) {
+            self.statements.push(s)
+        }
+    }
+
+    #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+    pub enum Incompatible {
+        BusyWriteRegister,
+        BusyAssignmentRegister,
+        Label,
+        ReadAfterWrite,
+        Jump,
+        Unimplemented,
+    }
+
+    #[derive(Debug, PartialEq, Eq, Default)]
+    pub struct IncompatibleSet(pub BTreeSet<Incompatible>);
+
+    #[derive(Debug, PartialEq, Eq)]
+    pub struct BatchedASMFile<T> {
+        pub declarations: Vec<ASMStatement<T>>,
+        pub batches: Vec<ASMStatementBatch<T>>,
+    }
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub struct ASMFile<T>(pub Vec<ASMStatement<T>>);
 

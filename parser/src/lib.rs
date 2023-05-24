@@ -8,6 +8,9 @@ use parser_util::{handle_parse_error, ParseError};
 pub mod asm_ast;
 pub mod ast;
 pub mod display;
+mod utils;
+
+pub use utils::expr_any;
 
 lalrpop_mod!(
     #[allow(clippy::all)]
