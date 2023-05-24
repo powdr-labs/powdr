@@ -1,5 +1,6 @@
 use std::{fs, path::Path, process::Command};
 
+use executor::witgen::NoRowCallback;
 use mktemp::Temp;
 use number::FieldElement;
 
@@ -36,6 +37,7 @@ pub fn compile_asm_string_temp<T: FieldElement>(
                 _ => None,
             }
         }),
+        NoRowCallback
     ));
     (pil_file_name.to_string(), temp_dir)
 }

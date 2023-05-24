@@ -7,6 +7,7 @@ use std::path::Path;
 use std::time::Instant;
 
 mod verify;
+use executor::witgen::{NoRowCallback, RowCallback};
 use pil_analyzer::json_exporter;
 pub use verify::{compile_asm_string_temp, verify, verify_asm_string};
 
@@ -33,6 +34,7 @@ pub fn compile_pil_or_asm<T: FieldElement>(
             Path::new(file_name),
             output_dir,
             Some(inputs_to_query_callback(inputs)),
+            NoRowCallback,
         );
     }
 }
@@ -45,12 +47,14 @@ pub fn compile_pil<T: FieldElement>(
     pil_file: &Path,
     output_dir: &Path,
     query_callback: Option<impl FnMut(&str) -> Option<T>>,
+    row_callback: impl RowCallback<T>,
 ) -> bool {
     compile(
         &pil_analyzer::analyze(pil_file),
         pil_file.file_name().unwrap(),
         output_dir,
         query_callback,
+        row_callback,
     )
 }
 
@@ -59,6 +63,7 @@ pub fn compile_pil_ast<T: FieldElement>(
     file_name: &OsStr,
     output_dir: &Path,
     query_callback: Option<impl FnMut(&str) -> Option<T>>,
+    row_callback: impl RowCallback<T>,
 ) -> bool {
     // TODO exporting this to string as a hack because the parser
     // is tied into the analyzer due to imports.
@@ -67,6 +72,7 @@ pub fn compile_pil_ast<T: FieldElement>(
         file_name,
         output_dir,
         query_callback,
+        row_callback,
     )
 }
 
@@ -114,6 +120,7 @@ pub fn compile_asm_string<T: FieldElement>(
         pil_file_name.file_name().unwrap(),
         output_dir,
         Some(inputs_to_query_callback(inputs)),
+        NoRowCallback,
     );
 }
 
@@ -122,6 +129,7 @@ fn compile<T: FieldElement>(
     file_name: &OsStr,
     output_dir: &Path,
     query_callback: Option<impl FnMut(&str) -> Option<T>>,
+    row_callback: impl RowCallback<T>,
 ) -> bool {
     let mut success = true;
     let start = Instant::now();
@@ -136,7 +144,8 @@ fn compile<T: FieldElement>(
         );
         log::info!("Wrote constants.bin.");
         log::info!("Deducing witness columns...");
-        let commits = executor::witgen::generate(analyzed, degree, &constants, query_callback);
+        let commits =
+            executor::witgen::generate(analyzed, degree, &constants, query_callback, row_callback);
         write_polys_file(
             &mut BufWriter::new(&mut fs::File::create(output_dir.join("commits.bin")).unwrap()),
             degree,

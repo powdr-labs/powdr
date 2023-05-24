@@ -20,6 +20,28 @@ pub mod symbolic_evaluator;
 mod symbolic_witness_evaluator;
 mod util;
 
+pub trait RowCallback<T: FieldElement> {
+    /// Is called for each new generated row (in the main machine).
+    /// @param fixed fixed data.
+    /// @param row the index of the new row
+    /// @prama values all values of all witness columns so far.
+    fn row_generated(&mut self, fixed: &FixedData<T>, row: DegreeType, values: &[(&str, Vec<T>)]);
+}
+
+pub struct NoRowCallback;
+impl<T> RowCallback<T> for NoRowCallback
+where
+    T: FieldElement,
+{
+    fn row_generated(
+        &mut self,
+        _fixed: &FixedData<T>,
+        _row: DegreeType,
+        _values: &[(&str, Vec<T>)],
+    ) {
+    }
+}
+
 /// Generates the committed polynomial values
 /// @returns the values (in source order) and the degree of the polynomials.
 pub fn generate<'a, T: FieldElement>(
@@ -27,6 +49,7 @@ pub fn generate<'a, T: FieldElement>(
     degree: DegreeType,
     fixed_col_values: &[(&str, Vec<T>)],
     query_callback: Option<impl FnMut(&str) -> Option<T>>,
+    mut row_callback: impl RowCallback<T>,
 ) -> Vec<(&'a str, Vec<T>)> {
     let witness_cols: Vec<_> = analyzed
         .committed_polys_in_source_order()
@@ -117,6 +140,7 @@ pub fn generate<'a, T: FieldElement>(
         for (col, v) in row_values.unwrap().into_iter().enumerate() {
             values[col].1.push(v);
         }
+        row_callback.row_generated(&fixed, row, &values);
     }
     for (col, v) in generator.compute_next_row(0).into_iter().enumerate() {
         if v != values[col].1[0] {

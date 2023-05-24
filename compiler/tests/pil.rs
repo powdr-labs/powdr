@@ -1,5 +1,6 @@
 use std::path::Path;
 
+use executor::witgen::NoRowCallback;
 use number::GoldilocksField;
 
 pub fn verify_pil(file_name: &str, query_callback: Option<fn(&str) -> Option<GoldilocksField>>) {
@@ -12,6 +13,7 @@ pub fn verify_pil(file_name: &str, query_callback: Option<fn(&str) -> Option<Gol
         &input_file,
         &temp_dir,
         query_callback,
+        NoRowCallback
     ));
     compiler::verify(file_name, &temp_dir);
 }
