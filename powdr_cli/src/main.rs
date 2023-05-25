@@ -7,9 +7,8 @@ use compiler::{compile_pil_or_asm, Backend};
 use env_logger::{Builder, Target};
 use log::LevelFilter;
 use number::{Bn254Field, FieldElement, GoldilocksField};
-use std::{borrow::Cow, fs, io::Write, path::Path};
 use riscv::{compile_riscv_asm, compile_rust};
-use std::{fs, io::Write, path::Path};
+use std::{borrow::Cow, fs, io::Write, path::Path};
 use strum::{Display, EnumString, EnumVariantNames};
 
 #[derive(Clone, EnumString, EnumVariantNames, Display)]
@@ -202,16 +201,17 @@ fn main() {
                 Cow::Borrowed("output")
             };
 
-call_with_field!(
-            compile_riscv_asm,
-            field,
-            &name,
-            files.into_iter(),
-            split_inputs(&inputs),
-            Path::new(&output_directory),
-            force,
-            prove_with
-        );},
+            call_with_field!(
+                compile_riscv_asm,
+                field,
+                &name,
+                files.into_iter(),
+                split_inputs(&inputs),
+                Path::new(&output_directory),
+                force,
+                prove_with
+            );
+        }
         Commands::Reformat { file } => {
             let contents = fs::read_to_string(&file).unwrap();
             match parser::parse::<GoldilocksField>(Some(&file), &contents) {
