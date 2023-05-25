@@ -12,7 +12,6 @@ use super::bit_constraints::{BitConstraint, BitConstraintSet};
 use super::expression_evaluator::ExpressionEvaluator;
 use super::machines::{FixedLookup, Machine};
 use super::symbolic_witness_evaluator::{SymoblicWitnessEvaluator, WitnessColumnEvaluator};
-use super::util::contains_next_witness_ref;
 use super::{Constraint, EvalResult, EvalValue, FixedData, IncompleteCause, WitnessColumn};
 
 pub struct Generator<'a, T: FieldElement, QueryCallback> {
@@ -114,15 +113,13 @@ where
                     .into()
                 });
 
-                if result.is_err() {
-                    identity_failed = true;
-                }
-
                 match &result {
-                    Ok(e) if e.is_complete() => {
-                        *complete = true;
+                    Ok(e) => {
+                        *complete = e.is_complete();
                     }
-                    _ => {}
+                    Err(_) => {
+                        identity_failed = true;
+                    }
                 };
 
                 self.handle_eval_result(result);
@@ -148,9 +145,7 @@ where
                 break;
             }
         }
-        // Identity check failure on the first row is not fatal. We will proceed with
-        // "unknown", report zero and re-check the wrap-around against the zero values at the end.
-        if identity_failed && next_row != 0 {
+        if identity_failed {
             log::error!(
                 "\nError: Row {next_row}: Identity check failed or unable to derive values for some witness columns.\nSet RUST_LOG=debug for more information.");
             log::debug!(
@@ -359,7 +354,7 @@ where
     fn process_polynomial_identity<'b>(&self, identity: &'b Expression<T>) -> EvalResult<'b, T> {
         // If there is no "next" reference in the expression,
         // we just evaluate it directly on the "next" row.
-        let row = if contains_next_witness_ref(identity) {
+        let row = if identity.contains_next_witness_ref() {
             // TODO this is the only situation where we use "current"
             // TODO this is the only that actually uses a window.
             EvaluationRow::Current

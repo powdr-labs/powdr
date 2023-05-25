@@ -1,10 +1,21 @@
 //! The powdr CLI tool
 
+mod util;
+
 use clap::{Parser, Subcommand};
 use env_logger::{Builder, Target};
 use log::LevelFilter;
-use number::{FieldElement, GoldilocksField};
+use number::{Bn254Field, FieldElement, GoldilocksField};
 use std::{fs, io::Write, path::Path};
+use strum::{Display, EnumString, EnumVariantNames};
+
+#[derive(Clone, EnumString, EnumVariantNames, Display)]
+pub enum FieldArgument {
+    #[strum(serialize = "gl")]
+    Gl,
+    #[strum(serialize = "bn254")]
+    Bn254,
+}
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
@@ -21,6 +32,12 @@ enum Commands {
     Pil {
         /// Input file
         file: String,
+
+        /// The field to use
+        #[arg(long)]
+        #[arg(default_value_t = FieldArgument::Gl)]
+        #[arg(value_parser = clap_enum_variants!(FieldArgument))]
+        field: FieldArgument,
 
         /// Output directory for the PIL file, json file and fixed and witness column data.
         #[arg(short, long)]
@@ -81,6 +98,19 @@ enum Commands {
         #[arg(short, long)]
         #[arg(default_value_t = false)]
         force: bool,
+    },
+
+    /// Apply the Halo2 workflow on an input file and prover values.
+    /// That means parsing, analysis, witness generation,
+    /// and Halo2 mock proving.
+    Halo2MockProver {
+        /// Input PIL file
+        file: String,
+
+        /// Directory to find the committed and fixed values
+        #[arg(short, long)]
+        #[arg(default_value_t = String::from("."))]
+        dir: String,
     },
 
     /// Parses and prints the PIL file on stdout.
@@ -146,16 +176,26 @@ fn main() {
         }
         Commands::Pil {
             file,
+            field,
             output_directory,
             inputs,
             force,
-        } => {
-            compiler::compile_pil_or_asm::<GoldilocksField>(
+        } => match field {
+            FieldArgument::Gl => compiler::compile_pil_or_asm::<GoldilocksField>(
                 &file,
                 split_inputs(&inputs),
                 Path::new(&output_directory),
                 force,
-            );
+            ),
+            FieldArgument::Bn254 => compiler::compile_pil_or_asm::<Bn254Field>(
+                &file,
+                split_inputs(&inputs),
+                Path::new(&output_directory),
+                force,
+            ),
+        },
+        Commands::Halo2MockProver { file, dir } => {
+            halo2::mock_prove(Path::new(&file), Path::new(&dir));
         }
     }
 }

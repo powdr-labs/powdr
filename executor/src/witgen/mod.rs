@@ -118,12 +118,6 @@ pub fn generate<'a, T: FieldElement>(
             values[col].1.push(v);
         }
     }
-    for (col, v) in generator.compute_next_row(0).into_iter().enumerate() {
-        if v != values[col].1[0] {
-            eprintln!("Wrap-around value for column {} does not match: {} (wrap-around) vs. {} (first row).",
-            witness_cols[col].poly, v, values[col].1[0]);
-        }
-    }
     for (name, data) in generator.machine_witness_col_values() {
         let (_, col) = values.iter_mut().find(|(n, _)| *n == name).unwrap();
         *col = data;

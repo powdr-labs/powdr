@@ -10,4 +10,11 @@ members = [
     "pil_analyzer",
     "compiler",
     "pilgen",
+    "halo2"
 ]
+
+[patch."https://github.com/privacy-scaling-explorations/halo2.git"]
+halo2_proofs = { git ="https://github.com/ed255/halo2", rev = "63e969673de83a410f21553fabec8f4b35bda1a5" }
+
+[patch.crates-io]
+halo2_proofs = { git ="https://github.com/ed255/halo2", rev = "63e969673de83a410f21553fabec8f4b35bda1a5" }

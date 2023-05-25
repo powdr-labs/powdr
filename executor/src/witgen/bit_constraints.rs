@@ -1,7 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::{Debug, Display, Formatter};
 
-use crate::witgen::util::contains_next_ref;
 use number::{log2_exact, BigInt, FieldElement};
 use pil_analyzer::{BinaryOperator, Expression, Identity, IdentityKind, PolynomialReference};
 
@@ -286,7 +285,7 @@ fn try_transfer_constraints<'a, 'b, T: FieldElement>(
     expr: &'a Expression<T>,
     known_constraints: &'b BTreeMap<&'b PolynomialReference, BitConstraint<T>>,
 ) -> Option<(&'a PolynomialReference, BitConstraint<T>)> {
-    if contains_next_ref(expr) {
+    if expr.contains_next_ref() {
         return None;
     }
 

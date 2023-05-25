@@ -275,6 +275,16 @@ macro_rules! powdr_field {
             fn to_bytes_le(&self) -> Vec<u8> {
                 self.value.into_bigint().to_bytes_le()
             }
+
+            fn from_bytes_le(bytes: &[u8]) -> Self {
+                Self {
+                    value: <$ark_type as PrimeField>::BigInt::try_from(BigUint::from_bytes_le(
+                        bytes,
+                    ))
+                    .unwrap()
+                    .into(),
+                }
+            }
         }
 
         impl From<$ark_type> for $name {

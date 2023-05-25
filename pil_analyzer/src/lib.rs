@@ -9,6 +9,7 @@ use std::{collections::HashMap, fmt::Display};
 
 use number::{DegreeType, FieldElement};
 pub use parser::ast::{BinaryOperator, UnaryOperator};
+use util::expr_any;
 
 pub fn analyze<T: FieldElement>(path: &Path) -> Analyzed<T> {
     pil_analyzer::process_pil_file(path)
@@ -18,12 +19,14 @@ pub fn analyze_string<T: FieldElement>(contents: &str) -> Analyzed<T> {
     pil_analyzer::process_pil_file_contents(contents)
 }
 
+#[derive(Debug)]
 pub enum StatementIdentifier {
     Definition(String),
     PublicDeclaration(String),
     Identity(usize),
 }
 
+#[derive(Debug)]
 pub struct Analyzed<T> {
     /// Constants are not namespaced!
     pub constants: HashMap<String, T>,
@@ -109,6 +112,7 @@ impl Polynomial {
     }
 }
 
+#[derive(Debug)]
 pub enum FunctionValueDefinition<T> {
     Mapping(Expression<T>),
     Array(Vec<RepeatedArray<T>>),
@@ -116,6 +120,7 @@ pub enum FunctionValueDefinition<T> {
 }
 
 /// An array of elements that might be repeated (the whole list is repeated).
+#[derive(Debug)]
 pub struct RepeatedArray<T> {
     pub values: Vec<Expression<T>>,
     pub repetitions: DegreeType,
@@ -134,6 +139,7 @@ impl<T> RepeatedArray<T> {
     }
 }
 
+#[derive(Debug)]
 pub struct PublicDeclaration {
     pub id: u64,
     pub source: SourceRef,
@@ -183,6 +189,33 @@ pub enum Expression<T> {
     /// Call to a non-macro function (like a constant polynomial)
     FunctionCall(String, Vec<Expression<T>>),
     MatchExpression(Box<Expression<T>>, Vec<(Option<T>, Expression<T>)>),
+}
+
+impl<T> Expression<T> {
+    /// @returns true if the expression contains a reference to a next value of a
+    /// (witness or fixed) column
+    pub fn contains_next_ref(&self) -> bool {
+        expr_any(self, |e| match e {
+            Expression::PolynomialReference(poly) => poly.next,
+            _ => false,
+        })
+    }
+
+    /// @returns true if the expression contains a reference to a next value of a witness column.
+    pub fn contains_next_witness_ref(&self) -> bool {
+        expr_any(self, |e| match e {
+            Expression::PolynomialReference(poly) => poly.next && poly.is_witness(),
+            _ => false,
+        })
+    }
+
+    /// @returns true if the expression contains a reference to a witness column.
+    pub fn contains_witness_ref(&self) -> bool {
+        expr_any(self, |e| match e {
+            Expression::PolynomialReference(poly) => poly.is_witness(),
+            _ => false,
+        })
+    }
 }
 
 #[derive(Debug, Clone, Eq)]

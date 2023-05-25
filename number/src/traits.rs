@@ -75,6 +75,8 @@ pub trait FieldElement:
 
     fn to_bytes_le(&self) -> Vec<u8>;
 
+    fn from_bytes_le(bytes: &[u8]) -> Self;
+
     fn from_str(s: &str) -> Self;
 
     fn from_str_radix(s: &str, radix: u32) -> Result<Self, String>;
