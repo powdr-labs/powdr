@@ -9,6 +9,7 @@ use std::time::Instant;
 
 mod verify;
 use executor::witgen::{NoRowCallback, RowCallback};
+use itertools::Itertools;
 use pil_analyzer::json_exporter;
 use pilgen::profiler::InstrKind;
 use pilgen::AsmProfiler;

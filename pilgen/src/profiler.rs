@@ -15,6 +15,8 @@ pub struct AsmProfiler {
     output: Option<File>,
     instruction_counts: BTreeMap<Location, usize>,
     previous_pc: usize,
+    call_stack: Vec<CallStackItem>,
+    calls: BTreeMap<(Location, Location), (usize, usize)>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -28,7 +30,7 @@ pub enum InstrKind {
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 struct CallStackItem {
     source: Location,
-    dest: Location,
+    dest: Option<Location>,
     instructions: usize,
 }
 
@@ -53,31 +55,83 @@ impl AsmProfiler {
         write!(self.output.as_mut().unwrap(), "events: Instructions\n\n").unwrap();
     }
 
-    // If we get a call, we push something to the stack and we start a counter from zero.
-    // If we return, we pop it from the stack and store a "call"
-    // At call: Store function, line to a stack.
-    // At first instruction of call: add destination to that stack item
-
-    // at ret: just record "ret"
-    // at first instruction after ret: find function, check with stack (do this multiple times in case of tail call)
-    // and store "cal"
-    //
     pub fn called_pc(&mut self, pc: usize, instr_kind: InstrKind) {
         let Some(location) = self.location(pc) else { return; };
-        *self.instruction_counts.entry(location).or_default() += 1;
+
+        // Did we return from a tail call?
+        while !self.last_call_stack_is_here(&location) {
+            self.pop_call_stack();
+        }
+
+        // First instruction after a call.
+        if let Some(CallStackItem { dest: d @ None, .. }) = self.call_stack.last_mut() {
+            *d = Some(location.clone());
+        }
+
+        *self.instruction_counts.entry(location.clone()).or_default() += 1;
+        if let Some(CallStackItem { instructions, .. }) = self.call_stack.last_mut() {
+            *instructions += 1;
+        }
+
+        match instr_kind {
+            InstrKind::Call => self.call_stack.push(CallStackItem {
+                source: location,
+                dest: None,
+                instructions: 0,
+            }),
+            InstrKind::Return => self.pop_call_stack(),
+            InstrKind::Regular => {}
+        }
 
         self.previous_pc = pc;
     }
 
+    /// Returns true if the last call stack item is complete but not pointing to
+    /// the same function as `location`.
+    fn last_call_stack_is_here(&self, location: &Location) -> bool {
+        match self.call_stack.last() {
+            Some(CallStackItem {
+                dest: Some(dest), ..
+            }) => (dest.file_nr, &dest.function) == (location.file_nr, &location.function),
+            _ => true,
+        }
+    }
+
+    /// Removes the last item from the call stack and stores it in the call statistic.
+    /// Also adds the instructions to the counter one level up in the call stack.
+    fn pop_call_stack(&mut self) {
+        let Some(item) = self.call_stack.pop() else { return; };
+        assert!(item.dest.is_some());
+        let (count, instr) = self
+            .calls
+            .entry((item.source, item.dest.unwrap()))
+            .or_default();
+        *count += 1;
+        *instr += item.instructions;
+        if let Some(prev_item) = self.call_stack.last_mut() {
+            prev_item.instructions += item.instructions;
+        }
+    }
+
     pub fn execution_finished(&mut self) {
         let out = self.output.as_mut().unwrap();
-        let mut data: BTreeMap<(usize, String), Vec<(usize, usize)>> = BTreeMap::default();
+        let mut data: BTreeMap<
+            (usize, String),
+            (Vec<(usize, usize)>, Vec<(Location, Location, usize, usize)>),
+        > = BTreeMap::default();
         for (loc, cnt) in &self.instruction_counts {
             data.entry((loc.file_nr, loc.function.clone()))
                 .or_default()
+                .0
                 .push((loc.line, *cnt));
         }
-        for ((file_nr, function), items) in data {
+        for ((source, dest), (count, instructions)) in &self.calls {
+            data.entry((source.file_nr, source.function.clone()))
+                .or_default()
+                .1
+                .push((source.clone(), dest.clone(), *count, *instructions));
+        }
+        for ((file_nr, function), (lines, calls)) in data {
             writeln!(
                 out,
                 "fl={}/{}",
@@ -85,11 +139,26 @@ impl AsmProfiler {
             )
             .unwrap();
             writeln!(out, "fn={:#}", demangle(&function)).unwrap();
-            for (line, count) in items {
+            for (line, count) in lines {
                 writeln!(out, "{line} {count}").unwrap();
+            }
+            for (source, dest, count, instructions) in calls {
+                if dest.file_nr != file_nr {
+                    writeln!(
+                        out,
+                        "cfi={}/{}",
+                        self.file_nrs[&dest.file_nr].0, self.file_nrs[&dest.file_nr].1
+                    )
+                    .unwrap();
+                }
+                writeln!(out, "cfn={:#}", demangle(&dest.function)).unwrap();
+                writeln!(out, "calls={count} {}", dest.line).unwrap();
+                // TODO this division is a bit weird, but OK...
+                writeln!(out, "{} {}", source.line, instructions / count).unwrap();
             }
             writeln!(out).unwrap();
         }
+
         // for
         // # callgrind format
         // events: Instructions
@@ -118,7 +187,7 @@ impl AsmProfiler {
     }
 
     fn location(&self, pc: usize) -> Option<Location> {
-        let (file, line, column) = self.source_location(pc)?;
+        let (file, line, _column) = self.source_location(pc)?;
         let function = self.function(pc)?;
         Some(Location {
             file_nr: *file,
@@ -166,6 +235,8 @@ impl ProfilerBuilder {
             output: None,
             instruction_counts: Default::default(),
             previous_pc: 0,
+            call_stack: vec![],
+            calls: Default::default(),
         }
     }
 }

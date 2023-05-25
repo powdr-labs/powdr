@@ -103,13 +103,16 @@ impl<T: FieldElement> ASMPILConverter<T> {
                 }
                 ASMStatement::InstructionDeclaration(start, name, params, body) => {
                     // TODO actually detect them from their structure
+                    // TODO we need the global name here, not the namespcae-local
+                    // Hacking the namespace into this here.
+
                     match name.as_str() {
                         "call" | "tail" | "jump_and_link_dyn" => self
                             .profiler_builder
-                            .add_instruction(&name, InstrKind::Call),
+                            .add_instruction(&format!("Assembly.instr_{name}"), InstrKind::Call),
                         "ret" => self
                             .profiler_builder
-                            .add_instruction(&name, InstrKind::Return),
+                            .add_instruction(&format!("Assembly.instr_{name}"), InstrKind::Return),
                         _ => {}
                     }
 
@@ -671,7 +674,6 @@ impl<T: FieldElement> ASMPILConverter<T> {
                     .iter()
                     .zip(self.instructions[instr].labels())
                 {
-                    println!("{arg}");
                     program_constants
                         .get_mut(&format!("p_instr_{instr}_param_{}", param.clone()))
                         .unwrap()[i] = (label_positions[arg] as u64).into();
