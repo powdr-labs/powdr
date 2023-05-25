@@ -659,6 +659,7 @@ impl<T: FieldElement> ASMPILConverter<T> {
                     .iter()
                     .zip(self.instructions[instr].labels())
                 {
+                    println!("{arg}");
                     program_constants
                         .get_mut(&format!("p_instr_{instr}_param_{}", param.clone()))
                         .unwrap()[i] = (label_positions[arg] as u64).into();
