@@ -8,6 +8,7 @@ use parser::asm_ast::*;
 use parser::ast::*;
 use parser_util::ParseError;
 pub use profiler::AsmProfiler;
+use profiler::InstrKind;
 use profiler::ProfilerBuilder;
 
 pub mod profiler;
@@ -101,6 +102,17 @@ impl<T: FieldElement> ASMPILConverter<T> {
                     self.handle_register_declaration(flags, &name, start);
                 }
                 ASMStatement::InstructionDeclaration(start, name, params, body) => {
+                    // TODO actually detect them from their structure
+                    match name.as_str() {
+                        "call" | "tail" | "jump_and_link_dyn" => self
+                            .profiler_builder
+                            .add_instruction(&name, InstrKind::Call),
+                        "ret" => self
+                            .profiler_builder
+                            .add_instruction(&name, InstrKind::Return),
+                        _ => {}
+                    }
+
                     self.handle_instruction_def(start, body, name, params);
                 }
                 ASMStatement::InlinePil(_start, statements) => self.pil.extend(statements.clone()),

@@ -1,5 +1,6 @@
 //! The main powdr lib, used to compile from assembly to PIL
 
+use std::collections::BTreeMap;
 use std::ffi::OsStr;
 use std::fs;
 use std::io::{BufWriter, Write};
@@ -9,6 +10,7 @@ use std::time::Instant;
 mod verify;
 use executor::witgen::{NoRowCallback, RowCallback};
 use pil_analyzer::json_exporter;
+use pilgen::profiler::InstrKind;
 use pilgen::AsmProfiler;
 pub use verify::{compile_asm_string_temp, verify, verify_asm_string};
 
@@ -221,6 +223,7 @@ struct RowCallbackForProfiler {
     profiler: AsmProfiler,
     active: bool,
     pc_index: Option<usize>,
+    instr_indices: BTreeMap<usize, InstrKind>,
 }
 
 impl RowCallbackForProfiler {
@@ -229,6 +232,7 @@ impl RowCallbackForProfiler {
             profiler,
             active,
             pc_index: None,
+            instr_indices: Default::default(),
         }
     }
 }
@@ -248,8 +252,26 @@ where
                 let pc_name = self.profiler.pc_name();
                 self.pc_index = Some(values.iter().position(|(n, _)| *n == pc_name).unwrap())
             };
-            self.profiler
-                .called_pc(values[self.pc_index.unwrap()].1.last().unwrap().to_degree())
+            // TODO this is not the right check
+            if self.instr_indices.is_empty() {
+                for (instr, kind) in self.profiler.instructions() {
+                    values
+                        .iter()
+                        .position(|(i, _v)| i == instr)
+                        .and_then(|i| self.instr_indices.insert(i, *kind));
+                }
+            }
+
+            let kind = self
+                .instr_indices
+                .iter()
+                .find_map(|(i, kind)| (*values[*i].1.last().unwrap() != 0.into()).then_some(*kind))
+                .unwrap_or(InstrKind::Regular);
+
+            self.profiler.called_pc(
+                values[self.pc_index.unwrap()].1.last().unwrap().to_degree() as usize,
+                kind,
+            )
         }
     }
 
