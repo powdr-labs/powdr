@@ -7,3 +7,4 @@ edition = "2021"
 number = { path = "../number" }
 parser_util = { path = "../parser_util" }
 parser = { path = "../parser" }
+rustc-demangle = "0.1.23"

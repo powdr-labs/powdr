@@ -3,6 +3,8 @@ use std::fs::File;
 use std::io::Write;
 use std::path::Path;
 
+use rustc_demangle::demangle;
+
 pub struct AsmProfiler {
     pc_name: String,
     file_nrs: HashMap<usize, (String, String)>,
@@ -50,8 +52,7 @@ impl AsmProfiler {
                 self.file_nrs[file_nr].0, self.file_nrs[file_nr].1
             )
             .unwrap();
-            // TODO C++filt
-            writeln!(out, "fn={function}").unwrap();
+            writeln!(out, "fn={:#}", demangle(function)).unwrap();
             for (line, count) in data {
                 writeln!(out, "{line} {count}").unwrap();
             }
