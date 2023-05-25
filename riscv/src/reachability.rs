@@ -5,19 +5,63 @@ use itertools::Itertools;
 use crate::data_parser::DataValue;
 use crate::parser::{Argument, Expression, Statement};
 
+/// Processes the statements and removes all statements and objects that are
+/// not reachable from the label `label`.
+/// Keeps the order of the statements.
 pub fn filter_reachable_from(
     label: &str,
     statements: &mut Vec<Statement>,
     objects: &mut BTreeMap<String, Vec<DataValue>>,
 ) {
     let replacements = extract_replacements(statements);
+    let replacement_refs = replacements
+        .iter()
+        .map(|(k, v)| (k.as_str(), v.as_str()))
+        .collect();
+    let referenced_labels = find_reachable_labels(label, statements, objects, &replacement_refs)
+        .into_iter()
+        .map(|s| s.to_owned())
+        .collect::<HashSet<_>>();
+
+    objects.retain(|name, _value| referenced_labels.contains(name));
+    for (_name, value) in objects.iter_mut() {
+        apply_replacement_to_object(value, &replacement_refs)
+    }
+
+    let mut active = false;
+    *statements = std::mem::take(statements)
+        .into_iter()
+        .filter_map(|mut s| {
+            let include = if active {
+                if ends_control_flow(&s) {
+                    active = false;
+                }
+                true
+            } else {
+                if let Statement::Label(l) = &s {
+                    active = referenced_labels.contains(l) && !objects.contains_key(l);
+                }
+                active
+            };
+            if include {
+                apply_replacement_to_instruction(&mut s, &replacement_refs);
+                Some(s)
+            } else {
+                None
+            }
+        })
+        .collect();
+}
+
+pub fn find_reachable_labels<'a>(
+    label: &'a str,
+    statements: &'a [Statement],
+    objects: &'a mut BTreeMap<String, Vec<DataValue>>,
+    replacements: &BTreeMap<&str, &'a str>,
+) -> BTreeSet<&'a str> {
     let label_offsets = extract_label_offsets(statements);
     let mut queued_labels = BTreeSet::from([label]);
-    let mut referenced_labels = BTreeSet::from([label]);
     let mut processed_labels = BTreeSet::<&str>::new();
-    // Labels that are included in a basic block that starts with a different label,
-    // or object labels.
-    let mut secondary_labels = BTreeSet::<&str>::new();
     while let Some(l) = queued_labels.pop_first() {
         let l = *replacements.get(l).unwrap_or(&l);
         if !processed_labels.insert(l) {
@@ -25,7 +69,6 @@ pub fn filter_reachable_from(
         }
 
         let new_references = if let Some(data_values) = objects.get(l) {
-            secondary_labels.insert(l);
             data_values
                 .iter()
                 .filter_map(|v| {
@@ -39,9 +82,6 @@ pub fn filter_reachable_from(
         } else if let Some(offset) = label_offsets.get(l) {
             let (referenced_labels_in_block, seen_labels_in_block) =
                 basic_block_references_starting_from(&statements[*offset..]);
-            assert!(!secondary_labels.contains(l));
-            secondary_labels.extend(seen_labels_in_block.iter());
-            secondary_labels.remove(l);
             processed_labels.extend(seen_labels_in_block);
             referenced_labels_in_block
         } else {
@@ -49,45 +89,24 @@ pub fn filter_reachable_from(
             eprintln!("{l}");
             panic!();
         };
-        for referenced in &new_references {
+        for referenced in new_references {
             if !processed_labels.contains(referenced) {
                 queued_labels.insert(referenced);
             }
         }
-        referenced_labels.extend(new_references);
     }
-    let code = processed_labels
-        .difference(&secondary_labels)
-        .flat_map(|l| {
-            let offset = *label_offsets.get(l).unwrap();
-            basic_block_code_starting_from(&statements[offset..])
-                .into_iter()
-                .map(|mut s| {
-                    apply_replacement_to_instruction(&mut s, &replacements);
-                    s
-                })
-        })
-        .collect();
-    let referenced_labels = referenced_labels
-        .into_iter()
-        .map(|s| s.to_owned())
-        .collect::<HashSet<_>>();
 
-    objects.retain(|name, _value| referenced_labels.contains(name.as_str()));
-    for (_name, value) in objects.iter_mut() {
-        apply_replacement_to_object(value, &replacements)
-    }
-    *statements = code;
+    processed_labels
 }
 
-fn extract_replacements(statements: &[Statement]) -> BTreeMap<&str, &str> {
+fn extract_replacements(statements: &[Statement]) -> BTreeMap<String, String> {
     let mut replacements = statements
         .iter()
         .filter_map(|s| match s {
             Statement::Directive(dir, args) if dir.as_str() == ".set" => {
                 if let [Argument::Expression(Expression::Symbol(from)), Argument::Expression(Expression::Symbol(to))] = &args[..]
                 {
-                    Some((from.as_str(), to.as_str()))
+                    Some((from.to_string(), to.to_string()))
                 } else {
                     panic!();
                 }
@@ -95,7 +114,7 @@ fn extract_replacements(statements: &[Statement]) -> BTreeMap<&str, &str> {
             _ => None,
         })
         .fold(BTreeMap::new(), |mut acc, (from, to)| {
-            if acc.insert(from, to).is_some() {
+            if acc.insert(from.to_string(), to).is_some() {
                 panic!("Duplicate .set directive: {from}")
             }
             acc
@@ -106,18 +125,18 @@ fn extract_replacements(statements: &[Statement]) -> BTreeMap<&str, &str> {
     let keys = replacements.keys().cloned().collect::<Vec<_>>();
     for mut curr in keys {
         let mut seen = BTreeSet::new();
-        while let Some(to) = replacements.get(curr) {
+        while let Some(to) = replacements.get(&curr) {
             if !seen.insert(curr) {
                 panic!(
                     "Cycle detected among .set directives involving:\n  {}",
                     seen.into_iter().format("\n  ")
                 )
             }
-            curr = *to;
+            curr = to.to_string();
         }
 
         for key in seen {
-            replacements.insert(key, curr);
+            replacements.insert(key, curr.to_string());
         }
     }
 
@@ -170,14 +189,6 @@ fn basic_block_references_starting_from(statements: &[Statement]) -> (Vec<&str>,
     (referenced_labels.into_iter().collect(), seen_labels)
 }
 
-fn basic_block_code_starting_from(statements: &[Statement]) -> Vec<Statement> {
-    let mut code = vec![];
-    iterate_basic_block(statements, |s| {
-        code.push(s.clone());
-    });
-    code
-}
-
 fn iterate_basic_block<'a>(statements: &'a [Statement], mut fun: impl FnMut(&'a Statement)) {
     for s in statements {
         fun(s);
@@ -210,7 +221,7 @@ fn apply_replacement_to_instruction(
     replacements: &BTreeMap<&str, &str>,
 ) {
     match statement {
-        Statement::Label(_) => (),
+        Statement::Label(_) | Statement::Directive(_, _) => (),
         Statement::Instruction(_, args) => {
             for a in args {
                 a.post_visit_expressions_mut(&mut |expr| {
@@ -220,7 +231,6 @@ fn apply_replacement_to_instruction(
                 });
             }
         }
-        _ => panic!("Expected instruction but got: {statement}"),
     }
 }
 
