@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fs::File;
 use std::io::Write;
 use std::path::Path;
@@ -204,6 +204,7 @@ pub struct ProfilerBuilder {
     function_starts: BTreeMap<usize, String>,
     pc_name: String,
     instructions: HashMap<String, InstrKind>,
+    labels: HashSet<usize>,
 }
 
 impl ProfilerBuilder {
@@ -221,8 +222,13 @@ impl ProfilerBuilder {
         if !label.contains("___dot_L") {
             self.function_starts.insert(pc, label.to_string());
         }
+        self.labels.insert(pc);
     }
-    pub fn set_source_location(&mut self, pc: usize, file: usize, line: usize, col: usize) {
+    pub fn set_source_location(&mut self, mut pc: usize, file: usize, line: usize, col: usize) {
+        // Pull the source location up as long as there are labels.
+        while pc > 0 && self.labels.contains(&(pc - 1)) {
+            pc -= 1
+        }
         self.source_locations.insert(pc, (file, line, col));
     }
     pub fn to_profiler(self) -> AsmProfiler {

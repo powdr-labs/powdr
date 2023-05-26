@@ -45,6 +45,7 @@ pub fn compile_riscv_asm(mut assemblies: BTreeMap<String, String>) -> String {
         .collect::<Vec<_>>();
     let (data_code, data_positions) = store_data_objects(&sorted_objects, data_start);
 
+    // TODO add source locations for object storage.
     preamble()
         + &file_ids
             .into_iter()
