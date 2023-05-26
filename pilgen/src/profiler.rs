@@ -14,7 +14,7 @@ pub struct AsmProfiler {
     function_starts: BTreeMap<usize, String>,
     output: Option<File>,
     instruction_counts: BTreeMap<Location, usize>,
-    previous_pc: usize,
+    previous_location: Option<Location>,
     call_stack: Vec<CallStackItem>,
     calls: BTreeMap<(Location, Location), (usize, usize)>,
 }
@@ -82,8 +82,6 @@ impl AsmProfiler {
             InstrKind::Return => self.pop_call_stack(),
             InstrKind::Regular => {}
         }
-
-        self.previous_pc = pc;
     }
 
     /// Returns true if the last call stack item is complete but not pointing to
@@ -114,6 +112,10 @@ impl AsmProfiler {
     }
 
     pub fn execution_finished(&mut self) {
+        while !self.call_stack.is_empty() {
+            self.pop_call_stack()
+        }
+
         let out = self.output.as_mut().unwrap();
         let mut data: BTreeMap<
             (usize, String),
@@ -132,13 +134,15 @@ impl AsmProfiler {
                 .push((source.clone(), dest.clone(), *count, *instructions));
         }
         for ((file_nr, function), (lines, calls)) in data {
+            // Why does reserve_for_push appear multiple tiems in the list?
+            println!("File: {file_nr} - function :{function}");
             writeln!(
                 out,
                 "fl={}/{}",
                 self.file_nrs[&file_nr].0, self.file_nrs[&file_nr].1
             )
             .unwrap();
-            writeln!(out, "fn={:#}", demangle(&function)).unwrap();
+            writeln!(out, "fn={}", format_function_name(&function)).unwrap();
             for (line, count) in lines {
                 writeln!(out, "{line} {count}").unwrap();
             }
@@ -151,10 +155,11 @@ impl AsmProfiler {
                     )
                     .unwrap();
                 }
-                writeln!(out, "cfn={:#}", demangle(&dest.function)).unwrap();
+                writeln!(out, "cfn={}", format_function_name(&dest.function)).unwrap();
                 writeln!(out, "calls={count} {}", dest.line).unwrap();
                 // TODO this division is a bit weird, but OK...
-                writeln!(out, "{} {}", source.line, instructions / count).unwrap();
+                // writeln!(out, "{} {}", source.line, instructions / count).unwrap();
+                writeln!(out, "{} {}", source.line, instructions).unwrap();
             }
             writeln!(out).unwrap();
         }
@@ -182,18 +187,44 @@ impl AsmProfiler {
             .map(|(_, loc)| loc)
     }
 
-    fn function(&self, pc: usize) -> Option<&String> {
-        self.function_starts.range(..=pc).last().map(|(_, fun)| fun)
-    }
-
-    fn location(&self, pc: usize) -> Option<Location> {
+    fn location(&mut self, pc: usize) -> Option<Location> {
         let (file, line, _column) = self.source_location(pc)?;
-        let function = self.function(pc)?;
-        Some(Location {
-            file_nr: *file,
-            function: function.to_string(),
-            line: *line,
-        })
+        let (function_start, function_name) = self.function_starts.range(..=pc).last()?;
+        let (file_at_fun_start, line_at_fun_start, _) = self.source_location(*function_start)?;
+        let loc = if file_at_fun_start != file {
+            // Something got inlined, rather use the function itself.
+            let line = if let Some(previous) = &self.previous_location {
+                if previous.file_nr == *file_at_fun_start && previous.function == *function_name {
+                    previous.line
+                } else {
+                    *line_at_fun_start
+                }
+            } else {
+                *line_at_fun_start
+            };
+
+            Location {
+                file_nr: *file_at_fun_start,
+                function: function_name.to_string(),
+                line,
+            }
+        } else {
+            Location {
+                file_nr: *file,
+                function: function_name.to_string(),
+                line: *line,
+            }
+        };
+        self.previous_location = Some(loc.clone());
+        Some(loc)
+    }
+}
+
+fn format_function_name(name: &str) -> String {
+    if let Some(prefix) = name.find("___ZN") {
+        format!("{}_{}", &name[0..4], demangle(&name[prefix + 2..]))
+    } else {
+        format!("{}", demangle(name))
     }
 }
 
@@ -240,7 +271,7 @@ impl ProfilerBuilder {
             function_starts: self.function_starts,
             output: None,
             instruction_counts: Default::default(),
-            previous_pc: 0,
+            previous_location: None,
             call_stack: vec![],
             calls: Default::default(),
         }
