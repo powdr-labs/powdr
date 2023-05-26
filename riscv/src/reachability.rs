@@ -3,7 +3,7 @@ use std::collections::{BTreeMap, BTreeSet, HashSet};
 use itertools::Itertools;
 
 use crate::data_parser::DataValue;
-use crate::parser::{Argument, Constant, Statement};
+use crate::parser::{Argument, Expression, Statement};
 
 pub fn filter_reachable_from(
     label: &str,
@@ -62,7 +62,10 @@ pub fn filter_reachable_from(
             let offset = *label_offsets.get(l).unwrap();
             basic_block_code_starting_from(&statements[offset..])
                 .into_iter()
-                .map(|s| apply_replacement_to_instruction(s, &replacements))
+                .map(|mut s| {
+                    apply_replacement_to_instruction(&mut s, &replacements);
+                    s
+                })
         })
         .collect();
     let referenced_labels = referenced_labels
@@ -82,7 +85,8 @@ fn extract_replacements(statements: &[Statement]) -> BTreeMap<&str, &str> {
         .iter()
         .filter_map(|s| match s {
             Statement::Directive(dir, args) if dir.as_str() == ".set" => {
-                if let [Argument::Symbol(from), Argument::Symbol(to)] = &args[..] {
+                if let [Argument::Expression(Expression::Symbol(from)), Argument::Expression(Expression::Symbol(to))] = &args[..]
+                {
                     Some((from.as_str(), to.as_str()))
                 } else {
                     panic!();
@@ -137,23 +141,20 @@ pub fn extract_label_offsets(statements: &[Statement]) -> BTreeMap<&str, usize> 
 }
 
 pub fn references_in_statement(statement: &Statement) -> BTreeSet<&str> {
+    let mut ret = BTreeSet::new();
     match statement {
-        Statement::Label(_) | Statement::Directive(_, _) => Default::default(),
-        Statement::Instruction(_, args) => args
-            .iter()
-            .filter_map(|arg| match arg {
-                Argument::Register(_) | Argument::StringLiteral(_) => None,
-                Argument::Symbol(s) => Some(s.as_str()),
-                Argument::RegOffset(_, c) | Argument::Constant(c) => match c {
-                    Constant::Number(_) => None,
-                    Constant::HiDataRef(s, _offset) | Constant::LoDataRef(s, _offset) => {
-                        Some(s.as_str())
+        Statement::Label(_) | Statement::Directive(_, _) => (),
+        Statement::Instruction(_, args) => {
+            for arg in args {
+                arg.post_visit_expressions(&mut |expr| {
+                    if let Expression::Symbol(sym) = expr {
+                        ret.insert(sym.as_str());
                     }
-                },
-                Argument::Difference(_, _) => todo!(),
-            })
-            .collect(),
-    }
+                });
+            }
+        }
+    };
+    ret
 }
 
 fn basic_block_references_starting_from(statements: &[Statement]) -> (Vec<&str>, Vec<&str>) {
@@ -208,38 +209,21 @@ fn ends_control_flow(s: &Statement) -> bool {
 }
 
 fn apply_replacement_to_instruction(
-    statement: Statement,
+    statement: &mut Statement,
     replacements: &BTreeMap<&str, &str>,
-) -> Statement {
+) {
     match statement {
-        Statement::Label(_) => statement,
-        Statement::Instruction(instr, args) => Statement::Instruction(
-            instr,
-            args.into_iter()
-                .map(|a| match a {
-                    Argument::Register(_) | Argument::StringLiteral(_) => a,
-                    Argument::Symbol(s) => Argument::Symbol(replace(s, replacements)),
-                    Argument::RegOffset(reg, c) => {
-                        Argument::RegOffset(reg, apply_replacement_to_constant(c, replacements))
+        Statement::Label(_) => (),
+        Statement::Instruction(_, args) => {
+            for a in args {
+                a.post_visit_expressions_mut(&mut |expr| {
+                    if let Expression::Symbol(s) = expr {
+                        replace(s, replacements);
                     }
-                    Argument::Constant(c) => {
-                        Argument::Constant(apply_replacement_to_constant(c, replacements))
-                    }
-                    Argument::Difference(l, r) => {
-                        Argument::Difference(replace(l, replacements), replace(r, replacements))
-                    }
-                })
-                .collect(),
-        ),
+                });
+            }
+        }
         _ => panic!("Expected instruction but got: {statement}"),
-    }
-}
-
-fn apply_replacement_to_constant(c: Constant, replacements: &BTreeMap<&str, &str>) -> Constant {
-    match c {
-        Constant::Number(_) => c,
-        Constant::HiDataRef(s, off) => Constant::HiDataRef(replace(s, replacements), off),
-        Constant::LoDataRef(s, off) => Constant::LoDataRef(replace(s, replacements), off),
     }
 }
 
@@ -253,9 +237,8 @@ fn apply_replacement_to_object(object: &mut Vec<DataValue>, replacements: &BTree
     }
 }
 
-fn replace(s: String, replacements: &BTreeMap<&str, &str>) -> String {
-    match replacements.get(s.as_str()) {
-        Some(r) => r.to_string(),
-        None => s,
+fn replace(s: &mut String, replacements: &BTreeMap<&str, &str>) {
+    if let Some(r) = replacements.get(s.as_str()) {
+        *s = r.to_string();
     }
 }
