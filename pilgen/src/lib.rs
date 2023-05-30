@@ -382,7 +382,7 @@ impl<T: FieldElement> ASMPILConverter<T> {
                         Input::Literal(_, LiteralKind::UnsignedConstant) => {
                             // TODO evaluate expression
                             if let Expression::Number(n) = a {
-                                // TODO check that it is not too large.
+                                assert!(n.is_in_lower_half(), "Number passed to unsigned parameter is negative or too large: {n}");
                                 instruction_literal_arg.push(InstructionLiteralArg::Number(n));
                             } else {
                                 panic!();
@@ -1081,5 +1081,19 @@ pol constant p_instr_inc_fp_param_amount = [7, 0, 0] + [0]*;
 "#;
         let pil = compile::<GoldilocksField>(None, source).unwrap();
         assert_eq!(format!("{pil}").trim(), expectation.trim());
+    }
+
+    #[test]
+    #[should_panic]
+    pub fn negative_for_unsigned() {
+        let source = r#"
+reg pc[@pc];
+reg fp;
+
+instr instro x: unsigned { pc' = pc + x }
+
+instro 9223372034707292161;
+"#;
+        compile::<GoldilocksField>(None, source).unwrap();
     }
 }

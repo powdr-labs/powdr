@@ -35,6 +35,17 @@ mod test {
     }
 
     #[test]
+    fn lower_half() {
+        let x = GoldilocksField::from(0);
+        assert!(x.is_in_lower_half());
+        assert!(!(x - 1.into()).is_in_lower_half());
+
+        let y = GoldilocksField::from_str_radix("7fffffff80000000", 16).unwrap();
+        assert!(y.is_in_lower_half());
+        assert!(!(y + 1.into()).is_in_lower_half());
+    }
+
+    #[test]
     #[should_panic]
     fn integer_div_by_zero() {
         let _ = GoldilocksField::from(1).to_arbitrary_integer()

@@ -285,6 +285,10 @@ macro_rules! powdr_field {
                     .into(),
                 }
             }
+
+            fn is_in_lower_half(&self) -> bool {
+                self.to_integer().value <= <$ark_type>::MODULUS_MINUS_ONE_DIV_TWO
+            }
         }
 
         impl From<$ark_type> for $name {
@@ -351,12 +355,12 @@ macro_rules! powdr_field {
         impl fmt::Display for $name {
             fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
                 let value = self.to_integer().value;
-                if value > <$ark_type>::MODULUS_MINUS_ONE_DIV_TWO {
+                if self.is_in_lower_half() {
+                    write!(f, "{value}")
+                } else {
                     let mut res = Self::modulus();
                     assert!(!res.value.sub_with_borrow(&value));
                     write!(f, "-{}", res)
-                } else {
-                    write!(f, "{value}")
                 }
             }
         }
