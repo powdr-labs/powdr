@@ -1,0 +1,130 @@
+// This is an example .pil file containing powdr asm
+// that could be generated from the following valida program:
+//
+//   imm32 4(fp), 100
+//   jal 0(fp), main, 4
+// loop:
+//   beq loop, 0(fp), 0(fp) // there is no unconditional jump... We shold probabyl add it to improve prover loop
+// main:
+//   beqi exit, 0(fp), 0
+//   add 4(fp), 0(fp), 0(fp)
+//   subi 0(fp), 0(fp), 1
+//   beq main, 0(fp), 0(fp)
+// exit:
+//   jalv 4(fp), 0(fp), 0
+//
+//
+// The purpose is to check if it is easily possible to generate
+// a compiler from valida assembly to powdr.
+
+namespace Main(262144);
+
+macro memory_write(address, value) {
+    { address, STEP, value }
+    in
+    Memory.is_write { Memory.addr, Memory.step, Memory.value };
+};
+
+macro memory_load_to_tmp1(address) {
+    { address, STEP, tmp1 }
+    in
+    Memory.is_load1 { Memory.addr, Memory.step, Memory.value };
+};
+
+macro memory_load_to_tmp2(address) {
+    { address, STEP, tmp2 }
+    in
+    Memory.is_load2 { Memory.addr, Memory.step, Memory.value };
+};
+
+macro branch_if(condition, target) {
+    pc' = condition * target + (1 - condition) * (pc + 1);
+};
+
+macro is_u32(x) {
+    x = b1 + b2 * 0x100 + b3 * 0x10000 + b4 * 0x1000000;
+};
+
+col fixed STEP(i) { i };
+col fixed FIRST = [1] + [0]*;
+
+col witness tmp1;
+col witness tmp2;
+col witness tmp3;
+col witness tmp3_inv;
+col witness tmp3_is_zero;
+
+tmp3_is_zero = 1 - tmp3 * tmp3_inv;
+tmp3_is_zero * tmp3 = 0;
+tmp3_is_zero * (1 - tmp3_is_zero) = 0;
+
+col witness b1;
+col witness b2;
+col witness b3;
+col witness b4;
+col fixed BYTE(i) { i & 0xff };
+{ b1 } in { BYTE };
+{ b2 } in { BYTE };
+{ b3 } in { BYTE };
+{ b4 } in { BYTE };
+col witness sign_bit;
+sign_bit * (1 - sign_bit) = 0;
+
+col witness fp;
+
+FIRST * (fp - 0x1000) = 0;
+
+assembly {
+    reg pc[@pc];
+
+    instr imm32 fp_delta: signed, v: unsigned {
+        memory_write(fp + fp_delta, v)
+    }
+    instr jal fp_delta: signed, target: label, shift: signed {
+        memory_write(fp + fp_delta, pc + 1),
+        pc' = target,
+        fp' = fp + shift
+    }
+    instr jalv fp_delta: signed, target_delta: signed, shift: signed {
+        memory_load_to_tmp1(fp + target_delta),
+        memory_write(fp + fp_delta, pc + 1),
+        pc' = tmp1,
+        fp' = fp + shift
+    }
+    instr beq target: label, a: signed, b: signed {
+        memory_load_to_tmp1(fp + a),
+        memory_load_to_tmp2(fp + b),
+        tmp3 = tmp1 - tmp2,
+        branch_if(tmp3_is_zero, target)
+    }
+    instr beqi target: label, fb_delta: signed, c: unsigned {
+        memory_load_to_tmp1(fp + fp_delta),
+        tmp3 = tmp1 - c,
+        branch_if(tmp3_is_zero, target)
+    }
+    instr add dest_delta: signed, a_delta: signed, b_delta: signed {
+        memory_load_to_tmp1(fp + a_delta),
+        memory_load_to_tmp2(fp + b_delta),
+        tmp3 = tmp1 + tmp2 - sign_bit * 2**32,
+        is_u32(tmp3),
+        memory_write(fp + dest_delta, tmp3)
+    }
+    instr subi dest_delta: signed, b_delta: signed, c: unsigned {
+        memory_load_to_tmp1(fp + b_delta),
+        tmp3 = tmp1 - c + sign_bit * 2**32,
+        is_u32(tmp3),
+        memory_write(fp + dest_delta, tmp3)
+    }
+
+    // This was "fp + 4", but it's always relative to fp, so we don't need it.
+    imm32 4, 0, 0, 0, 100;
+    jal 0, main, 4;
+  loop::
+    beq loop, 0, 0;
+    beqi exit, 0, 0;
+    add 4, 0, 0;
+    subi 0, 0, 1;
+    beq main, 0, 0;
+  exit::
+    jalv 4, 0, 0;
+};
