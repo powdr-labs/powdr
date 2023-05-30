@@ -26,13 +26,15 @@ where
         Default::default()
     }
 
-    /// Expands all macro references inside the statement and also adds
+    /// Expands all macro references inside the statements and also adds
     /// any macros defined therein to the list of macros.
     ///
     /// Note that macros are not namespaced!
-    pub fn expand_macros(&mut self, statement: Statement<T>) -> Vec<Statement<T>> {
+    pub fn expand_macros(&mut self, statements: Vec<Statement<T>>) -> Vec<Statement<T>> {
         assert!(self.statements.is_empty());
-        self.handle_statement(statement);
+        for statement in statements {
+            self.handle_statement(statement);
+        }
         std::mem::take(&mut self.statements)
     }
 

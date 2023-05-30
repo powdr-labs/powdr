@@ -123,7 +123,7 @@ impl<T: FieldElement> PILContext<T> {
             });
 
         for statement in pil_file.0 {
-            for statement in self.macro_expander.expand_macros(statement) {
+            for statement in self.macro_expander.expand_macros(vec![statement]) {
                 self.handle_statement(statement);
             }
         }
@@ -408,7 +408,7 @@ impl<T: FieldElement> PILContext<T> {
     }
 
     fn handle_assembly(&mut self, _source: SourceRef, asm_statements: Vec<ASMStatement<T>>) {
-        let statements = pilgen::asm_to_pil(asm_statements.into_iter());
+        let statements = pilgen::asm_to_pil(asm_statements.into_iter(), &mut self.macro_expander);
         for s in statements {
             self.handle_statement(s)
         }
