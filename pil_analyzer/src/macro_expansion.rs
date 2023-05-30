@@ -3,38 +3,41 @@ use std::{collections::HashMap, ops::ControlFlow};
 use number::FieldElement;
 use parser::ast::*;
 
-use crate::pil_analyzer::MacroDefinition;
-
 //TODO this could also go into the parser.
 
-pub fn expand_macros<T>(
-    macros: &HashMap<String, MacroDefinition<T>>,
-    statement: Statement<T>,
-) -> Vec<Statement<T>>
-where
-    T: FieldElement,
-{
-    let mut expander = MacroExpander {
-        macros,
-        arguments: vec![],
-        parameter_names: Default::default(),
-        statements: vec![],
-    };
-    expander.handle_statement(statement);
-    std::mem::take(&mut expander.statements)
-}
-
-struct MacroExpander<'a, T> {
-    macros: &'a HashMap<String, MacroDefinition<T>>,
+#[derive(Debug, Default)]
+pub struct MacroExpander<T> {
+    macros: HashMap<String, MacroDefinition<T>>,
     arguments: Vec<Expression<T>>,
     parameter_names: HashMap<String, usize>,
     statements: Vec<Statement<T>>,
 }
 
-impl<'a, T> MacroExpander<'a, T>
+#[derive(Debug)]
+struct MacroDefinition<T> {
+    pub parameters: Vec<String>,
+    pub identities: Vec<Statement<T>>,
+    pub expression: Option<Expression<T>>,
+}
+
+impl<T> MacroExpander<T>
 where
     T: FieldElement,
 {
+    pub fn new() -> Self {
+        Default::default()
+    }
+
+    /// Expands all macro references inside the statement and also adds
+    /// any macros defined therein to the list of macros.
+    ///
+    /// Note that macros are not namespaced!
+    pub fn expand_macros(&mut self, statement: Statement<T>) -> Vec<Statement<T>> {
+        assert!(self.statements.is_empty());
+        self.handle_statement(statement);
+        std::mem::take(&mut self.statements)
+    }
+
     pub fn handle_statement(&mut self, mut statement: Statement<T>) {
         match &mut statement {
             Statement::FunctionCall(_start, name, arguments) => {
@@ -79,7 +82,23 @@ where
             | Statement::PolynomialCommitDeclaration(_, _, Some(f)) => {
                 self.process_function_definition(f)
             }
-            Statement::MacroDefinition(_, _, _, _, _) => {} // We expand lazily. Is that a mistake?
+            Statement::MacroDefinition(_start, name, parameters, statements, expression) => {
+                // We expand lazily. Is that a mistake?
+                // TODO source ref?
+                let is_new = self
+                    .macros
+                    .insert(
+                        std::mem::take(name),
+                        MacroDefinition {
+                            parameters: std::mem::take(parameters),
+                            identities: std::mem::take(statements),
+                            expression: std::mem::take(expression),
+                        },
+                    )
+                    .is_none();
+                assert!(is_new);
+                return;
+            }
             Statement::ASMBlock(_, _) => {}
         };
         self.statements.push(statement);
