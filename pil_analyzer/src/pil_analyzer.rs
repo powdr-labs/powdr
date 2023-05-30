@@ -6,6 +6,7 @@ use number::{BigInt, DegreeType, FieldElement};
 use parser::asm_ast::ASMStatement;
 use parser::ast;
 pub use parser::ast::{BinaryOperator, UnaryOperator};
+use parser::macro_expansion::MacroExpander;
 
 use crate::util::previsit_expressions_in_pil_file_mut;
 
@@ -31,7 +32,6 @@ struct PILContext<T> {
     constants: HashMap<String, T>,
     definitions: HashMap<String, (Polynomial, Option<FunctionValueDefinition<T>>)>,
     public_declarations: HashMap<String, PublicDeclaration>,
-    macros: HashMap<String, MacroDefinition<T>>,
     identities: Vec<Identity<T>>,
     /// The order in which definitions and identities
     /// appear in the source.
@@ -44,17 +44,7 @@ struct PILContext<T> {
     intermediate_poly_counter: u64,
     identity_counter: HashMap<IdentityKind, u64>,
     local_variables: HashMap<String, u64>,
-    /// If we are evaluating a macro, this holds the arguments.
-    macro_arguments: Option<Vec<Expression<T>>>,
-}
-
-#[derive(Debug)]
-pub struct MacroDefinition<T> {
-    pub source: SourceRef,
-    pub absolute_name: String,
-    pub parameters: Vec<String>,
-    pub identities: Vec<ast::Statement<T>>,
-    pub expression: Option<ast::Expression<T>>,
+    macro_expander: MacroExpander<T>,
 }
 
 impl<T> From<PILContext<T>> for Analyzed<T> {
@@ -133,7 +123,9 @@ impl<T: FieldElement> PILContext<T> {
             });
 
         for statement in pil_file.0 {
-            self.handle_statement(statement);
+            for statement in self.macro_expander.expand_macros(vec![statement]) {
+                self.handle_statement(statement);
+            }
         }
 
         self.current_file = old_current_file;
@@ -192,15 +184,9 @@ impl<T: FieldElement> PILContext<T> {
             Statement::ConstantDefinition(_, name, value) => {
                 self.handle_constant_definition(name, value)
             }
-            Statement::MacroDefinition(start, name, params, statments, expression) => self
-                .handle_macro_definition(
-                    self.to_source_ref(start),
-                    name,
-                    params,
-                    statments,
-                    expression,
-                ),
-
+            Statement::MacroDefinition(_, _, _, _, _) => {
+                panic!("Macros should have been eliminated.");
+            }
             Statement::ASMBlock(start, asm_statements) => {
                 self.handle_assembly(self.to_source_ref(start), asm_statements)
             }
@@ -219,20 +205,6 @@ impl<T: FieldElement> PILContext<T> {
     }
 
     fn handle_identity_statement(&mut self, statement: ast::Statement<T>) {
-        if let ast::Statement::FunctionCall(_start, name, arguments) = statement {
-            if !self.macros.contains_key(&name) {
-                panic!(
-                    "Macro {name} not found - only macros allowed at this point, no fixed columns."
-                );
-            }
-            // TODO check that it does not contain local variable references.
-            // But we also need to do some other well-formedness checks.
-            if self.process_macro_call(name, arguments).is_some() {
-                panic!("Invoked a macro in statement context with non-empty expression.");
-            }
-            return;
-        }
-
         let (start, kind, left, right) = match statement {
             ast::Statement::PolynomialIdentity(start, expression) => (
                 start,
@@ -435,33 +407,8 @@ impl<T: FieldElement> PILContext<T> {
         id
     }
 
-    fn handle_macro_definition(
-        &mut self,
-        source: SourceRef,
-        name: String,
-        params: Vec<String>,
-        statements: Vec<ast::Statement<T>>,
-        expression: Option<ast::Expression<T>>,
-    ) {
-        let absolute_name = self.namespaced(&name);
-        let is_new = self
-            .macros
-            .insert(
-                name,
-                MacroDefinition {
-                    source,
-                    absolute_name,
-                    parameters: params.to_vec(),
-                    identities: statements.to_vec(),
-                    expression,
-                },
-            )
-            .is_none();
-        assert!(is_new);
-    }
-
     fn handle_assembly(&mut self, _source: SourceRef, asm_statements: Vec<ASMStatement<T>>) {
-        let statements = pilgen::asm_to_pil(asm_statements.into_iter());
+        let statements = pilgen::asm_to_pil(asm_statements.into_iter(), &mut self.macro_expander);
         for s in statements {
             self.handle_statement(s)
         }
@@ -526,15 +473,9 @@ impl<T: FieldElement> PILContext<T> {
             ast::Expression::PolynomialReference(poly) => {
                 if poly.namespace.is_none() && self.local_variables.contains_key(&poly.name) {
                     let id = self.local_variables[&poly.name];
-                    // TODO to make this work inside macros, "next" and "index" need to be
-                    // their own ast nodes / operators.
                     assert!(!poly.next);
                     assert!(poly.index.is_none());
-                    if let Some(arguments) = &self.macro_arguments {
-                        arguments[id as usize].clone()
-                    } else {
-                        Expression::LocalVariableReference(id)
-                    }
+                    Expression::LocalVariableReference(id)
                 } else {
                     Expression::PolynomialReference(self.process_polynomial_reference(poly))
                 }
@@ -561,10 +502,6 @@ impl<T: FieldElement> PILContext<T> {
                     Expression::UnaryOperation(op, Box::new(self.process_expression(*value)))
                 }
             }
-            ast::Expression::FunctionCall(name, arguments) if self.macros.contains_key(&name) => {
-                self.process_macro_call(name, arguments)
-                    .expect("Invoked a macro in expression context with empty expression.")
-            }
             ast::Expression::FunctionCall(name, arguments) => Expression::FunctionCall(
                 self.namespaced(&name),
                 self.process_expressions(arguments),
@@ -586,38 +523,6 @@ impl<T: FieldElement> PILContext<T> {
             ),
             ast::Expression::FreeInput(_) => panic!(),
         }
-    }
-
-    fn process_macro_call(
-        &mut self,
-        name: String,
-        arguments: Vec<ast::Expression<T>>,
-    ) -> Option<Expression<T>> {
-        let arguments = Some(self.process_expressions(arguments));
-        let old_arguments = std::mem::replace(&mut self.macro_arguments, arguments);
-
-        let old_locals = std::mem::take(&mut self.local_variables);
-
-        let mac = &self
-            .macros
-            .get(&name)
-            .unwrap_or_else(|| panic!("Macro {name} not found."));
-        self.local_variables = mac
-            .parameters
-            .iter()
-            .enumerate()
-            .map(|(i, n)| (n.clone(), i as u64))
-            .collect();
-        // TODO avoid clones
-        let expression = mac.expression.clone();
-        let identities = mac.identities.clone();
-        for identity in identities {
-            self.handle_identity_statement(identity);
-        }
-        let result = expression.map(|expr| self.process_expression(expr));
-        self.macro_arguments = old_arguments;
-        self.local_variables = old_locals;
-        result
     }
 
     fn process_polynomial_reference(

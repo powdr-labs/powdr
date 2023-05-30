@@ -64,6 +64,7 @@ pub enum InstructionBodyElement<T> {
         PlookupOperator,
         SelectedExpressions<T>,
     ),
+    FunctionCall(String, Vec<Expression<T>>),
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]

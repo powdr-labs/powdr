@@ -1,3 +1,5 @@
+use std::{iter::once, ops::ControlFlow};
+
 use number::{DegreeType, FieldElement};
 
 use crate::asm_ast::ASMStatement;
@@ -183,4 +185,33 @@ impl<T> ArrayExpression<T> {
             }
         }
     }
+}
+
+/// Traverses the expression tree and calls `f` in post-order.
+pub fn postvisit_expression_mut<T, F, B>(e: &mut Expression<T>, f: &mut F) -> ControlFlow<B>
+where
+    F: FnMut(&mut Expression<T>) -> ControlFlow<B>,
+{
+    match e {
+        Expression::PolynomialReference(_)
+        | Expression::Constant(_)
+        | Expression::PublicReference(_)
+        | Expression::Number(_)
+        | Expression::String(_) => {}
+        Expression::BinaryOperation(left, _, right) => {
+            postvisit_expression_mut(left, f)?;
+            postvisit_expression_mut(right, f)?;
+        }
+        Expression::UnaryOperation(_, e) => postvisit_expression_mut(e.as_mut(), f)?,
+        Expression::Tuple(items) | Expression::FunctionCall(_, items) => items
+            .iter_mut()
+            .try_for_each(|item| postvisit_expression_mut(item, f))?,
+        Expression::FreeInput(query) => postvisit_expression_mut(query.as_mut(), f)?,
+        Expression::MatchExpression(scrutinee, arms) => {
+            once(scrutinee.as_mut())
+                .chain(arms.iter_mut().map(|(_n, e)| e))
+                .try_for_each(|item| postvisit_expression_mut(item, f))?;
+        }
+    };
+    f(e)
 }

@@ -6,6 +6,7 @@ use number::FieldElement;
 
 use parser::asm_ast::*;
 use parser::ast::*;
+use parser::macro_expansion::MacroExpander;
 use parser_util::ParseError;
 
 /// Compiles a stand-alone assembly file to PIL.
@@ -13,16 +14,19 @@ pub fn compile<'a, T: FieldElement>(
     file_name: Option<&str>,
     input: &'a str,
 ) -> Result<PILFile<T>, ParseError<'a>> {
-    let statements = parser::parse_asm(file_name, input)
-        .map(|ast| ASMPILConverter::new().convert(ast.0, ASMKind::StandAlone))?;
+    let statements = parser::parse_asm(file_name, input).map(|ast| {
+        let mut macro_expander = MacroExpander::new();
+        ASMPILConverter::new(&mut macro_expander).convert(ast.0, ASMKind::StandAlone)
+    })?;
     Ok(PILFile(statements))
 }
 
 /// Compiles inline assembly to PIL.
 pub fn asm_to_pil<T: FieldElement>(
     statements: impl IntoIterator<Item = ASMStatement<T>>,
+    macro_expander: &mut MacroExpander<T>,
 ) -> Vec<Statement<T>> {
-    ASMPILConverter::new().convert(statements, ASMKind::Inline)
+    ASMPILConverter::new(macro_expander).convert(statements, ASMKind::Inline)
 }
 
 #[derive(PartialEq)]
@@ -31,8 +35,8 @@ enum ASMKind {
     StandAlone,
 }
 
-#[derive(Default)]
-struct ASMPILConverter<T> {
+struct ASMPILConverter<'a, T> {
+    macro_expander: &'a mut MacroExpander<T>,
     pil: Vec<Statement<T>>,
     pc_name: Option<String>,
     registers: BTreeMap<String, Register<T>>,
@@ -44,9 +48,18 @@ struct ASMPILConverter<T> {
     program_constant_names: Vec<String>,
 }
 
-impl<T: FieldElement> ASMPILConverter<T> {
-    fn new() -> Self {
-        Default::default()
+impl<'a, T: FieldElement> ASMPILConverter<'a, T> {
+    fn new(macro_expander: &'a mut MacroExpander<T>) -> Self {
+        Self {
+            macro_expander,
+            pil: Default::default(),
+            pc_name: None,
+            registers: Default::default(),
+            instructions: Default::default(),
+            code_lines: Default::default(),
+            line_lookup: Default::default(),
+            program_constant_names: Default::default(),
+        }
     }
 
     fn convert(
@@ -91,7 +104,9 @@ impl<T: FieldElement> ASMPILConverter<T> {
                 ASMStatement::InstructionDeclaration(start, name, params, body) => {
                     self.handle_instruction_def(start, body, name, params);
                 }
-                ASMStatement::InlinePil(_start, statements) => self.pil.extend(statements.clone()),
+                ASMStatement::InlinePil(_start, statements) => self
+                    .pil
+                    .extend(self.macro_expander.expand_macros(statements)),
                 ASMStatement::Assignment(start, write_regs, assign_reg, value) => match *value {
                     Expression::FunctionCall(function_name, args) => {
                         self.handle_functional_instruction(
@@ -272,38 +287,65 @@ impl<T: FieldElement> ASMPILConverter<T> {
             })
             .collect();
 
-        for expr in body {
-            match expr {
+        // First transform into PIL so that we can apply macro expansion.
+        let statements = body
+            .into_iter()
+            .map(|el| match el {
                 InstructionBodyElement::Expression(expr) => {
-                    let expr = substitute(expr, &substitutions);
-                    match extract_update(expr) {
-                        (Some(var), expr) => {
-                            self.registers
-                                .get_mut(&var)
-                                .unwrap()
-                                .conditioned_updates
-                                .push((direct_reference(&instruction_flag), expr));
-                        }
-                        (None, expr) => self.pil.push(Statement::PolynomialIdentity(
-                            0,
-                            build_mul(direct_reference(&instruction_flag), expr.clone()),
-                        )),
-                    }
+                    Statement::PolynomialIdentity(start, substitute(expr, &substitutions))
                 }
                 InstructionBodyElement::PlookupIdentity(left, op, right) => {
-                    assert!(left.selector.is_none(), "LHS selector not supported, could and-combine with instruction flag later.");
-                    let left = SelectedExpressions {
-                        selector: Some(direct_reference(&instruction_flag)),
-                        expressions: substitute_vec(left.expressions, &substitutions),
-                    };
+                    assert!(
+                    left.selector.is_none(),
+                    "LHS selector not supported, could and-combine with instruction flag later."
+                );
+                    let left = substitute_selected_exprs(left, &substitutions);
                     let right = substitute_selected_exprs(right, &substitutions);
-                    self.pil.push(match op {
+                    match op {
                         PlookupOperator::In => Statement::PlookupIdentity(start, left, right),
                         PlookupOperator::Is => Statement::PermutationIdentity(start, left, right),
-                    })
+                    }
+                }
+                InstructionBodyElement::FunctionCall(name, arguments) => {
+                    Statement::FunctionCall(start, name, substitute_vec(arguments, &substitutions))
+                }
+            })
+            .collect();
+
+        // Expand macros and analyze resulting statements.
+        for mut statement in self.macro_expander.expand_macros(statements) {
+            if let Statement::PolynomialIdentity(_start, expr) = statement {
+                match extract_update(expr) {
+                    (Some(var), expr) => {
+                        self.registers
+                            .get_mut(&var)
+                            .unwrap()
+                            .conditioned_updates
+                            .push((direct_reference(&instruction_flag), expr));
+                    }
+                    (None, expr) => self.pil.push(Statement::PolynomialIdentity(
+                        0,
+                        build_mul(direct_reference(&instruction_flag), expr.clone()),
+                    )),
+                }
+            } else {
+                match &mut statement {
+                    Statement::PermutationIdentity(_, left, _)
+                    | Statement::PlookupIdentity(_, left, _) => {
+                        assert!(
+                        left.selector.is_none(),
+                        "LHS selector not supported, could and-combine with instruction flag later."
+                    );
+                        left.selector = Some(direct_reference(&instruction_flag));
+                        self.pil.push(statement)
+                    }
+                    _ => {
+                        panic!("Invalid statement for instruction body: {statement}");
+                    }
                 }
             }
         }
+
         self.instructions.insert(name, instr);
     }
 
@@ -908,6 +950,7 @@ fn extract_update<T: FieldElement>(expr: Expression<T>) -> (Option<String>, Expr
     }
 }
 
+// TODO rewrite this with visitor
 fn substitute<T: FieldElement>(
     input: Expression<T>,
     substitution: &HashMap<String, String>,
