@@ -6,8 +6,8 @@ use number::{BigInt, DegreeType, FieldElement};
 use parser::asm_ast::ASMStatement;
 use parser::ast;
 pub use parser::ast::{BinaryOperator, UnaryOperator};
+use parser::macro_expansion::MacroExpander;
 
-use crate::macro_expansion::MacroExpander;
 use crate::util::previsit_expressions_in_pil_file_mut;
 
 use super::*;

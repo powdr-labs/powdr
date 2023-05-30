@@ -1,6 +1,5 @@
 pub mod display;
 pub mod json_exporter;
-pub mod macro_expansion;
 pub mod pil_analyzer;
 pub mod util;
 

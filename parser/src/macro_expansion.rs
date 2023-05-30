@@ -1,9 +1,7 @@
 use std::{collections::HashMap, ops::ControlFlow};
 
+use crate::ast::*;
 use number::FieldElement;
-use parser::ast::*;
-
-//TODO this could also go into the parser.
 
 #[derive(Debug, Default)]
 pub struct MacroExpander<T> {
