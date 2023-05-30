@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, ops::ControlFlow};
 
 use number::FieldElement;
 use parser::ast::*;
@@ -18,6 +18,7 @@ where
     let mut expander = MacroExpander {
         macros,
         arguments: vec![],
+        parameter_names: Default::default(),
         statements: vec![],
     };
     let expression = expander.expand_macro(name, arguments);
@@ -27,6 +28,7 @@ where
 struct MacroExpander<'a, T> {
     macros: &'a HashMap<String, MacroDefinition<T>>,
     arguments: Vec<Expression<T>>,
+    parameter_names: HashMap<String, usize>,
     statements: Vec<Statement<T>>,
 }
 
@@ -39,8 +41,9 @@ where
         name: &str,
         arguments: Vec<Expression<T>>,
     ) -> Option<Expression<T>> {
-        let mut old_arguments = arguments;
-        std::mem::swap(&mut self.arguments, &mut old_arguments);
+        let old_arguments = std::mem::replace(&mut self.arguments, arguments);
+        let old_parameters = std::mem::take(&mut self.parameter_names);
+
         let mac = &self
             .macros
             .get(name)
@@ -52,6 +55,7 @@ where
         }
         let result = expression.map(|expr| self.process_expression(expr));
         self.arguments = old_arguments;
+        self.parameter_names = old_parameters;
         result
     }
 
@@ -96,18 +100,27 @@ where
         self.statements.push(statement);
     }
 
-    fn process_expression(&mut self, expression: Expression<T>) -> Expression<T> {
-        match expression {
-            Expression::Constant(_) | Expression::Number(_) | Expression::String(_) => expression,
-            Expression::PolynomialReference(_) => todo!(),
-            Expression::PublicReference(_) => todo!(),
-            Expression::Tuple(_) => todo!(),
-            Expression::BinaryOperation(_, _, _) => todo!(),
-            Expression::UnaryOperation(_, _) => todo!(),
-            Expression::FunctionCall(_, _) => todo!(),
-            Expression::FreeInput(_) => todo!(),
-            Expression::MatchExpression(_, _) => todo!(),
-        }
+    fn process_expression(&mut self, mut expression: Expression<T>) -> Expression<T> {
+        postvisit_expression_mut(&mut expression, &mut |e| {
+            if let Expression::PolynomialReference(poly) = e {
+                if poly.namespace.is_none() && self.parameter_names.contains_key(&poly.name) {
+                    // TODO to make this work inside macros, "next" and "index" need to be
+                    // their own ast nodes / operators.
+                    assert!(!poly.next);
+                    assert!(poly.index.is_none());
+                    *e = self.arguments[self.parameter_names[&poly.name]].clone()
+                }
+            } else if let Expression::FunctionCall(name, arguments) = e {
+                if self.macros.contains_key(name.as_str()) {
+                    *e = self
+                        .expand_macro(name, std::mem::take(arguments))
+                        .expect("Invoked a macro in expression context with empty expression.")
+                }
+            }
+
+            ControlFlow::<()>::Continue(())
+        });
+        expression
     }
 
     fn process_expressions(&mut self, exprs: Vec<Expression<T>>) -> Vec<Expression<T>> {
@@ -121,6 +134,9 @@ where
         &mut self,
         exprs: SelectedExpressions<T>,
     ) -> SelectedExpressions<T> {
-        todo!();
+        SelectedExpressions {
+            selector: exprs.selector.map(|e| self.process_expression(e)),
+            expressions: self.process_expressions(exprs.expressions),
+        }
     }
 }
