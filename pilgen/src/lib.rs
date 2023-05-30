@@ -269,6 +269,7 @@ impl<T: FieldElement> ASMPILConverter<T> {
 
         for expr in body {
             match expr {
+                InstructionBodyElement::FunctionCall(_, _) => todo!(),
                 InstructionBodyElement::Expression(expr) => {
                     let expr = substitute(expr, &substitutions);
                     match extract_update(expr) {

@@ -188,6 +188,7 @@ InstructionBodyElements: Vec<InstructionBodyElement<T>> = {
 InstructionBodyElement: InstructionBodyElement<T> = {
     <l:BoxedExpression> "=" <r:BoxedExpression> => InstructionBodyElement::Expression(Expression::BinaryOperation(l, BinaryOperator::Sub, r)),
     <SelectedExpressions> <PlookupOperator> <SelectedExpressions> => InstructionBodyElement::PlookupIdentity(<>),
+    <Identifier> "(" <ExpressionList> ")" => InstructionBodyElement::FunctionCall(<>)
 }
 
 // This is only valid in instructions, not in PIL in general.
