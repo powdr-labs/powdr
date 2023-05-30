@@ -7,6 +7,7 @@ use parser::asm_ast::ASMStatement;
 use parser::ast;
 pub use parser::ast::{BinaryOperator, UnaryOperator};
 
+use crate::macro_expansion::expand_macros;
 use crate::util::previsit_expressions_in_pil_file_mut;
 
 use super::*;
@@ -133,7 +134,13 @@ impl<T: FieldElement> PILContext<T> {
             });
 
         for statement in pil_file.0 {
-            self.handle_statement(statement);
+            if let ast::Statement::FunctionCall(_start, _, _) = &statement {
+                for statement in expand_macros(&self.macros, statement) {
+                    self.handle_statement(statement);
+                }
+            } else {
+                self.handle_statement(statement);
+            }
         }
 
         self.current_file = old_current_file;

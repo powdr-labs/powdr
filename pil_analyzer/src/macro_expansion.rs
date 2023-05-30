@@ -7,11 +7,10 @@ use crate::pil_analyzer::MacroDefinition;
 
 //TODO this could also go into the parser.
 
-fn expand_macro<T>(
+pub fn expand_macros<T>(
     macros: &HashMap<String, MacroDefinition<T>>,
-    name: &str,
-    arguments: Vec<Expression<T>>,
-) -> (Vec<Statement<T>>, Option<Expression<T>>)
+    statement: Statement<T>,
+) -> Vec<Statement<T>>
 where
     T: FieldElement,
 {
@@ -21,8 +20,8 @@ where
         parameter_names: Default::default(),
         statements: vec![],
     };
-    let expression = expander.expand_macro(name, arguments);
-    (std::mem::take(&mut expander.statements), expression)
+    expander.handle_statement(statement);
+    std::mem::take(&mut expander.statements)
 }
 
 struct MacroExpander<'a, T> {
@@ -59,7 +58,7 @@ where
         result
     }
 
-    fn handle_statement(&mut self, statement: Statement<T>) {
+    pub fn handle_statement(&mut self, statement: Statement<T>) {
         if let Statement::FunctionCall(_start, name, arguments) = statement {
             if !self.macros.contains_key(&name) {
                 panic!(
