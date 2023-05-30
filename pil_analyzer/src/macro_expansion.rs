@@ -35,38 +35,6 @@ impl<'a, T> MacroExpander<'a, T>
 where
     T: FieldElement,
 {
-    pub fn expand_macro(
-        &mut self,
-        name: &str,
-        arguments: Vec<Expression<T>>,
-    ) -> Option<Expression<T>> {
-        let old_arguments = std::mem::replace(&mut self.arguments, arguments);
-
-        let mac = &self
-            .macros
-            .get(name)
-            .unwrap_or_else(|| panic!("Macro {name} not found."));
-        let parameters = mac
-            .parameters
-            .iter()
-            .enumerate()
-            .map(|(i, n)| (n.clone(), i))
-            .collect();
-        let old_parameters = std::mem::replace(&mut self.parameter_names, parameters);
-
-        let mut expression = mac.expression.clone();
-        let identities = mac.identities.clone();
-        for identity in identities {
-            self.handle_statement(identity)
-        }
-        expression
-            .iter_mut()
-            .for_each(|expr| self.process_expression(expr));
-        self.arguments = old_arguments;
-        self.parameter_names = old_parameters;
-        expression
-    }
-
     pub fn handle_statement(&mut self, mut statement: Statement<T>) {
         match &mut statement {
             Statement::FunctionCall(_start, name, arguments) => {
@@ -77,7 +45,9 @@ where
                 }
                 // TODO check that it does not contain local variable references.
                 // But we also need to do some other well-formedness checks.
-                if self.expand_macro(name, std::mem::take(arguments)).is_some() {
+                let mut arguments = std::mem::take(arguments);
+                self.process_expressions(&mut arguments);
+                if self.expand_macro(name, arguments).is_some() {
                     panic!("Invoked a macro in statement context with non-empty expression.");
                 }
                 return;
@@ -113,6 +83,35 @@ where
             Statement::ASMBlock(_, _) => {}
         };
         self.statements.push(statement);
+    }
+
+    fn expand_macro(&mut self, name: &str, arguments: Vec<Expression<T>>) -> Option<Expression<T>> {
+        println!("Expanding {name}");
+        let old_arguments = std::mem::replace(&mut self.arguments, arguments);
+
+        let mac = &self
+            .macros
+            .get(name)
+            .unwrap_or_else(|| panic!("Macro {name} not found."));
+        let parameters = mac
+            .parameters
+            .iter()
+            .enumerate()
+            .map(|(i, n)| (n.clone(), i))
+            .collect();
+        let old_parameters = std::mem::replace(&mut self.parameter_names, parameters);
+
+        let mut expression = mac.expression.clone();
+        let identities = mac.identities.clone();
+        for identity in identities {
+            self.handle_statement(identity)
+        }
+        expression
+            .iter_mut()
+            .for_each(|expr| self.process_expression(expr));
+        self.arguments = old_arguments;
+        self.parameter_names = old_parameters;
+        expression
     }
 
     fn process_function_definition(&mut self, fun: &mut FunctionDefinition<T>) {
