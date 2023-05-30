@@ -52,7 +52,6 @@ struct PILContext<T> {
 #[derive(Debug)]
 pub struct MacroDefinition<T> {
     pub source: SourceRef,
-    pub absolute_name: String,
     pub parameters: Vec<String>,
     pub identities: Vec<ast::Statement<T>>,
     pub expression: Option<ast::Expression<T>>,
@@ -134,11 +133,7 @@ impl<T: FieldElement> PILContext<T> {
             });
 
         for statement in pil_file.0 {
-            if let ast::Statement::FunctionCall(_start, _, _) = &statement {
-                for statement in expand_macros(&self.macros, statement) {
-                    self.handle_statement(statement);
-                }
-            } else {
+            for statement in expand_macros(&self.macros, statement) {
                 self.handle_statement(statement);
             }
         }
@@ -450,14 +445,12 @@ impl<T: FieldElement> PILContext<T> {
         statements: Vec<ast::Statement<T>>,
         expression: Option<ast::Expression<T>>,
     ) {
-        let absolute_name = self.namespaced(&name);
         let is_new = self
             .macros
             .insert(
                 name,
                 MacroDefinition {
                     source,
-                    absolute_name,
                     parameters: params.to_vec(),
                     identities: statements.to_vec(),
                     expression,

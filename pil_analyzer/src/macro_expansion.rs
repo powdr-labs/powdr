@@ -54,60 +54,91 @@ where
             .collect();
         let old_parameters = std::mem::replace(&mut self.parameter_names, parameters);
 
-        let expression = mac.expression.clone();
+        let mut expression = mac.expression.clone();
         let identities = mac.identities.clone();
         for identity in identities {
             self.handle_statement(identity)
         }
-        let result = expression.map(|expr| self.process_expression(expr));
+        expression
+            .iter_mut()
+            .for_each(|expr| self.process_expression(expr));
         self.arguments = old_arguments;
         self.parameter_names = old_parameters;
-        result
+        expression
     }
 
-    pub fn handle_statement(&mut self, statement: Statement<T>) {
-        if let Statement::FunctionCall(_start, name, arguments) = statement {
-            if !self.macros.contains_key(&name) {
-                panic!(
-                    "Macro {name} not found - only macros allowed at this point, no fixed columns."
-                );
+    pub fn handle_statement(&mut self, mut statement: Statement<T>) {
+        match &mut statement {
+            Statement::FunctionCall(_start, name, arguments) => {
+                if !self.macros.contains_key(name) {
+                    panic!(
+                        "Macro {name} not found - only macros allowed at this point, no fixed columns."
+                    );
+                }
+                // TODO check that it does not contain local variable references.
+                // But we also need to do some other well-formedness checks.
+                if self.expand_macro(name, std::mem::take(arguments)).is_some() {
+                    panic!("Invoked a macro in statement context with non-empty expression.");
+                }
+                return;
             }
-            // TODO check that it does not contain local variable references.
-            // But we also need to do some other well-formedness checks.
-            if self.expand_macro(&name, arguments).is_some() {
-                panic!("Invoked a macro in statement context with non-empty expression.");
+
+            Statement::PlookupIdentity(_start, key, haystack) => {
+                self.process_selected_expressions(key);
+                self.process_selected_expressions(haystack);
             }
-            return;
-        }
-        let statement = match statement {
-            Statement::PolynomialIdentity(start, expression) => {
-                Statement::PolynomialIdentity(start, self.process_expression(expression))
+            Statement::PermutationIdentity(_start, left, right) => {
+                self.process_selected_expressions(left);
+                self.process_selected_expressions(right);
             }
-            Statement::PlookupIdentity(start, key, haystack) => Statement::PlookupIdentity(
-                start,
-                self.process_selected_expressions(key),
-                self.process_selected_expressions(haystack),
-            ),
-            Statement::PermutationIdentity(start, left, right) => Statement::PermutationIdentity(
-                start,
-                self.process_selected_expressions(left),
-                self.process_selected_expressions(right),
-            ),
-            Statement::ConnectIdentity(start, left, right) => Statement::ConnectIdentity(
-                start,
-                self.process_expressions(left),
-                self.process_expressions(right),
-            ),
-            // TODO at some point, these should all be caught by the type checker.
-            _ => {
-                panic!("Only identities allowed inside macros.")
+            Statement::ConnectIdentity(_start, left, right) => {
+                self.process_expressions(left);
+                self.process_expressions(right);
             }
+            Statement::Include(_, _)
+            | Statement::PolynomialConstantDeclaration(_, _)
+            | Statement::PolynomialCommitDeclaration(_, _, None) => {}
+
+            Statement::Namespace(_, _, e)
+            | Statement::PolynomialDefinition(_, _, e)
+            | Statement::PolynomialIdentity(_, e)
+            | Statement::PublicDeclaration(_, _, _, e)
+            | Statement::ConstantDefinition(_, _, e) => self.process_expression(e),
+
+            Statement::PolynomialConstantDefinition(_, _, f)
+            | Statement::PolynomialCommitDeclaration(_, _, Some(f)) => {
+                self.process_function_definition(f)
+            }
+            Statement::MacroDefinition(_, _, _, _, _) => {} // We expand lazily. Is that a mistake?
+            Statement::ASMBlock(_, _) => {}
         };
         self.statements.push(statement);
     }
 
-    fn process_expression(&mut self, mut expression: Expression<T>) -> Expression<T> {
-        postvisit_expression_mut(&mut expression, &mut |e| {
+    fn process_function_definition(&mut self, fun: &mut FunctionDefinition<T>) {
+        // TODO the local parameters here should shield / shadow the macros.
+        match fun {
+            FunctionDefinition::Mapping(_, e) | FunctionDefinition::Query(_, e) => {
+                self.process_expression(e)
+            }
+            FunctionDefinition::Array(ae) => self.process_array_expression(ae),
+        }
+    }
+
+    fn process_array_expression(&mut self, ae: &mut ArrayExpression<T>) {
+        match ae {
+            ArrayExpression::Value(expressions) | ArrayExpression::RepeatedValue(expressions) => {
+                self.process_expressions(expressions)
+            }
+            ArrayExpression::Concat(ae1, ae2) => {
+                self.process_array_expression(ae1);
+                self.process_array_expression(ae2)
+            }
+        }
+    }
+
+    fn process_expression(&mut self, expression: &mut Expression<T>) {
+        postvisit_expression_mut(expression, &mut |e| {
             if let Expression::PolynomialReference(poly) = e {
                 if poly.namespace.is_none() && self.parameter_names.contains_key(&poly.name) {
                     // TODO to make this work inside macros, "next" and "index" need to be
@@ -126,23 +157,16 @@ where
 
             ControlFlow::<()>::Continue(())
         });
-        expression
     }
 
-    fn process_expressions(&mut self, exprs: Vec<Expression<T>>) -> Vec<Expression<T>> {
-        exprs
-            .into_iter()
-            .map(|e| self.process_expression(e))
-            .collect()
+    fn process_expressions(&mut self, exprs: &mut [Expression<T>]) {
+        exprs.iter_mut().for_each(|e| self.process_expression(e))
     }
 
-    fn process_selected_expressions(
-        &mut self,
-        exprs: SelectedExpressions<T>,
-    ) -> SelectedExpressions<T> {
-        SelectedExpressions {
-            selector: exprs.selector.map(|e| self.process_expression(e)),
-            expressions: self.process_expressions(exprs.expressions),
-        }
+    fn process_selected_expressions(&mut self, exprs: &mut SelectedExpressions<T>) {
+        if let Some(e) = &mut exprs.selector {
+            self.process_expression(e)
+        };
+        self.process_expressions(&mut exprs.expressions);
     }
 }
