@@ -221,20 +221,6 @@ impl<T: FieldElement> PILContext<T> {
     }
 
     fn handle_identity_statement(&mut self, statement: ast::Statement<T>) {
-        if let ast::Statement::FunctionCall(_start, name, arguments) = statement {
-            if !self.macros.contains_key(&name) {
-                panic!(
-                    "Macro {name} not found - only macros allowed at this point, no fixed columns."
-                );
-            }
-            // TODO check that it does not contain local variable references.
-            // But we also need to do some other well-formedness checks.
-            if self.process_macro_call(name, arguments).is_some() {
-                panic!("Invoked a macro in statement context with non-empty expression.");
-            }
-            return;
-        }
-
         let (start, kind, left, right) = match statement {
             ast::Statement::PolynomialIdentity(start, expression) => (
                 start,
@@ -561,10 +547,6 @@ impl<T: FieldElement> PILContext<T> {
                     Expression::UnaryOperation(op, Box::new(self.process_expression(*value)))
                 }
             }
-            ast::Expression::FunctionCall(name, arguments) if self.macros.contains_key(&name) => {
-                self.process_macro_call(name, arguments)
-                    .expect("Invoked a macro in expression context with empty expression.")
-            }
             ast::Expression::FunctionCall(name, arguments) => Expression::FunctionCall(
                 self.namespaced(&name),
                 self.process_expressions(arguments),
@@ -586,38 +568,6 @@ impl<T: FieldElement> PILContext<T> {
             ),
             ast::Expression::FreeInput(_) => panic!(),
         }
-    }
-
-    fn process_macro_call(
-        &mut self,
-        name: String,
-        arguments: Vec<ast::Expression<T>>,
-    ) -> Option<Expression<T>> {
-        let arguments = Some(self.process_expressions(arguments));
-        let old_arguments = std::mem::replace(&mut self.macro_arguments, arguments);
-
-        let old_locals = std::mem::take(&mut self.local_variables);
-
-        let mac = &self
-            .macros
-            .get(&name)
-            .unwrap_or_else(|| panic!("Macro {name} not found."));
-        self.local_variables = mac
-            .parameters
-            .iter()
-            .enumerate()
-            .map(|(i, n)| (n.clone(), i as u64))
-            .collect();
-        // TODO avoid clones
-        let expression = mac.expression.clone();
-        let identities = mac.identities.clone();
-        for identity in identities {
-            self.handle_identity_statement(identity);
-        }
-        let result = expression.map(|expr| self.process_expression(expr));
-        self.macro_arguments = old_arguments;
-        self.local_variables = old_locals;
-        result
     }
 
     fn process_polynomial_reference(

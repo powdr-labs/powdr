@@ -86,7 +86,6 @@ where
     }
 
     fn expand_macro(&mut self, name: &str, arguments: Vec<Expression<T>>) -> Option<Expression<T>> {
-        println!("Expanding {name}");
         let old_arguments = std::mem::replace(&mut self.arguments, arguments);
 
         let mac = &self
