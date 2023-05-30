@@ -41,12 +41,19 @@ where
         arguments: Vec<Expression<T>>,
     ) -> Option<Expression<T>> {
         let old_arguments = std::mem::replace(&mut self.arguments, arguments);
-        let old_parameters = std::mem::take(&mut self.parameter_names);
 
         let mac = &self
             .macros
             .get(name)
             .unwrap_or_else(|| panic!("Macro {name} not found."));
+        let parameters = mac
+            .parameters
+            .iter()
+            .enumerate()
+            .map(|(i, n)| (n.clone(), i))
+            .collect();
+        let old_parameters = std::mem::replace(&mut self.parameter_names, parameters);
+
         let expression = mac.expression.clone();
         let identities = mac.identities.clone();
         for identity in identities {
