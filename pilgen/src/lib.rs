@@ -278,6 +278,30 @@ impl<'a, T: FieldElement> ASMPILConverter<'a, T> {
 
         let instr = Instruction { inputs, outputs };
 
+        // First transform into PIL so that we can apply macro expansion.
+        let mut statements = body
+            .into_iter()
+            .map(|el| match el {
+                InstructionBodyElement::Expression(expr) => {
+                    Statement::PolynomialIdentity(start, expr)
+                }
+                InstructionBodyElement::PlookupIdentity(left, op, right) => {
+                    assert!(
+                    left.selector.is_none(),
+                    "LHS selector not supported, could and-combine with instruction flag later."
+                );
+                    match op {
+                        PlookupOperator::In => Statement::PlookupIdentity(start, left, right),
+                        PlookupOperator::Is => Statement::PermutationIdentity(start, left, right),
+                    }
+                }
+                InstructionBodyElement::FunctionCall(name, arguments) => {
+                    Statement::FunctionCall(start, name, arguments)
+                }
+            })
+            .collect::<Vec<_>>();
+
+        // Substitute parameter references by the column names
         let substitutions = instr
             .literal_arg_names()
             .map(|arg_name| {
@@ -285,32 +309,17 @@ impl<'a, T: FieldElement> ASMPILConverter<'a, T> {
                 self.create_witness_fixed_pair(start, &param_col_name);
                 (arg_name.clone(), param_col_name)
             })
-            .collect();
-
-        // First transform into PIL so that we can apply macro expansion.
-        let statements = body
-            .into_iter()
-            .map(|el| match el {
-                InstructionBodyElement::Expression(expr) => {
-                    Statement::PolynomialIdentity(start, substitute(expr, &substitutions))
-                }
-                InstructionBodyElement::PlookupIdentity(left, op, right) => {
-                    assert!(
-                    left.selector.is_none(),
-                    "LHS selector not supported, could and-combine with instruction flag later."
-                );
-                    let left = substitute_selected_exprs(left, &substitutions);
-                    let right = substitute_selected_exprs(right, &substitutions);
-                    match op {
-                        PlookupOperator::In => Statement::PlookupIdentity(start, left, right),
-                        PlookupOperator::Is => Statement::PermutationIdentity(start, left, right),
+            .collect::<HashMap<_, _>>();
+        statements.iter_mut().for_each(|s| {
+            postvisit_expression_in_statement_mut(s, &mut |e| {
+                if let Expression::PolynomialReference(r) = e {
+                    if let Some(sub) = substitutions.get(&r.name) {
+                        r.name = sub.clone();
                     }
                 }
-                InstructionBodyElement::FunctionCall(name, arguments) => {
-                    Statement::FunctionCall(start, name, substitute_vec(arguments, &substitutions))
-                }
-            })
-            .collect();
+                std::ops::ControlFlow::Continue::<()>(())
+            });
+        });
 
         // Expand macros and analyze resulting statements.
         for mut statement in self.macro_expander.expand_macros(statements) {
@@ -921,10 +930,6 @@ fn build_binary_expr<T>(
     Expression::BinaryOperation(Box::new(left), op, Box::new(right))
 }
 
-fn build_unary_expr<T>(op: UnaryOperator, exp: Expression<T>) -> Expression<T> {
-    Expression::UnaryOperation(op, Box::new(exp))
-}
-
 fn build_number<T: FieldElement, V: Into<T>>(value: V) -> Expression<T> {
     Expression::Number(value.into())
 }
@@ -948,78 +953,6 @@ fn extract_update<T: FieldElement>(expr: Expression<T>) -> (Option<String>, Expr
     } else {
         (None, expr)
     }
-}
-
-// TODO rewrite this with visitor
-fn substitute<T: FieldElement>(
-    input: Expression<T>,
-    substitution: &HashMap<String, String>,
-) -> Expression<T> {
-    match input {
-        // TODO namespace
-        Expression::PolynomialReference(r) => {
-            Expression::PolynomialReference(PolynomialReference {
-                name: substitute_string(&r.name, substitution),
-                ..r.clone()
-            })
-        }
-        Expression::BinaryOperation(left, op, right) => build_binary_expr(
-            substitute(*left, substitution),
-            op,
-            substitute(*right, substitution),
-        ),
-        Expression::UnaryOperation(op, exp) => build_unary_expr(op, substitute(*exp, substitution)),
-        Expression::FunctionCall(name, args) => Expression::FunctionCall(
-            name,
-            args.into_iter()
-                .map(|e| substitute(e, substitution))
-                .collect(),
-        ),
-        Expression::Tuple(items) => Expression::Tuple(
-            items
-                .into_iter()
-                .map(|e| substitute(e, substitution))
-                .collect(),
-        ),
-        Expression::Constant(_)
-        | Expression::PublicReference(_)
-        | Expression::Number(_)
-        | Expression::String(_)
-        | Expression::FreeInput(_) => input.clone(),
-        Expression::MatchExpression(scrutinee, arms) => Expression::MatchExpression(
-            Box::new(substitute(*scrutinee, substitution)),
-            arms.into_iter()
-                .map(|(n, e)| (n, substitute(e, substitution)))
-                .collect(),
-        ),
-    }
-}
-
-fn substitute_selected_exprs<T: FieldElement>(
-    input: SelectedExpressions<T>,
-    substitution: &HashMap<String, String>,
-) -> SelectedExpressions<T> {
-    SelectedExpressions {
-        selector: input.selector.map(|s| substitute(s, substitution)),
-        expressions: substitute_vec(input.expressions, substitution),
-    }
-}
-
-fn substitute_vec<T: FieldElement>(
-    input: Vec<Expression<T>>,
-    substitution: &HashMap<String, String>,
-) -> Vec<Expression<T>> {
-    input
-        .into_iter()
-        .map(|e| substitute(e, substitution))
-        .collect()
-}
-
-fn substitute_string(input: &str, substitution: &HashMap<String, String>) -> String {
-    substitution
-        .get(input)
-        .cloned()
-        .unwrap_or_else(|| input.to_string())
 }
 
 #[cfg(test)]
