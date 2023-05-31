@@ -215,3 +215,69 @@ where
     };
     f(e)
 }
+
+/// Traverses the expression trees of the statement and calls `f` in post-order.
+/// Does not enter ASMBlocks or macro definitions.
+pub fn postvisit_expression_in_statement_mut<T, F, B>(
+    statement: &mut Statement<T>,
+    f: &mut F,
+) -> ControlFlow<B>
+where
+    F: FnMut(&mut Expression<T>) -> ControlFlow<B>,
+{
+    match statement {
+        Statement::FunctionCall(_, _, arguments) => arguments
+            .iter_mut()
+            .try_for_each(|e| postvisit_expression_mut(e, f)),
+        Statement::PlookupIdentity(_, left, right)
+        | Statement::PermutationIdentity(_, left, right) => left
+            .selector
+            .iter_mut()
+            .chain(left.expressions.iter_mut())
+            .chain(right.selector.iter_mut())
+            .chain(right.expressions.iter_mut())
+            .try_for_each(|e| postvisit_expression_mut(e, f)),
+        Statement::ConnectIdentity(_start, left, right) => left
+            .iter_mut()
+            .chain(right.iter_mut())
+            .try_for_each(|e| postvisit_expression_mut(e, f)),
+
+        Statement::Namespace(_, _, e)
+        | Statement::PolynomialDefinition(_, _, e)
+        | Statement::PolynomialIdentity(_, e)
+        | Statement::PublicDeclaration(_, _, _, e)
+        | Statement::ConstantDefinition(_, _, e) => postvisit_expression_mut(e, f),
+
+        Statement::PolynomialConstantDefinition(_, _, fundef)
+        | Statement::PolynomialCommitDeclaration(_, _, Some(fundef)) => match fundef {
+            FunctionDefinition::Query(_, e) | FunctionDefinition::Mapping(_, e) => {
+                postvisit_expression_mut(e, f)
+            }
+            FunctionDefinition::Array(ae) => postvisit_expression_in_array_expression_mut(ae, f),
+        },
+        Statement::PolynomialCommitDeclaration(_, _, None)
+        | Statement::Include(_, _)
+        | Statement::PolynomialConstantDeclaration(_, _)
+        | Statement::MacroDefinition(_, _, _, _, _)
+        | Statement::ASMBlock(_, _) => ControlFlow::Continue(()),
+    }
+}
+
+fn postvisit_expression_in_array_expression_mut<T, F, B>(
+    ae: &mut ArrayExpression<T>,
+    f: &mut F,
+) -> ControlFlow<B>
+where
+    F: FnMut(&mut Expression<T>) -> ControlFlow<B>,
+{
+    match ae {
+        ArrayExpression::Value(expressions) | ArrayExpression::RepeatedValue(expressions) => {
+            expressions
+                .iter_mut()
+                .try_for_each(|e| postvisit_expression_mut(e, f))
+        }
+        ArrayExpression::Concat(a1, a2) => [a1, a2]
+            .iter_mut()
+            .try_for_each(|e| postvisit_expression_in_array_expression_mut(e, f)),
+    }
+}
