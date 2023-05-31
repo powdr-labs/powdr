@@ -84,3 +84,17 @@ fn test_simple_sum_asm_pil() {
         }),
     )
 }
+
+#[test]
+fn test_simple_sum_asm_macro_pil() {
+    verify_pil(
+        "simple_sum_asm_macro.pil",
+        Some(|q| match q {
+            "\"input\", 0" => Some(13.into()),
+            "\"input\", 1" => Some(2.into()),
+            "\"input\", 2" => Some(11.into()),
+            "\"input\", 3" => Some(2.into()),
+            _ => Some(7.into()),
+        }),
+    )
+}

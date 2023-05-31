@@ -1,0 +1,42 @@
+namespace Main(2**10);
+    col witness XInv;
+    col witness XIsZero;
+    XIsZero * (1 - XIsZero) = 0;
+
+    macro if_then_else(condition, true_value, false_value) { condition * true_value + (1 - condition) * false_value };
+    macro jump_to(target) { pc' = target; };
+    macro jump_to_if(condition, target) { jump_to(if_then_else(condition, target, pc + 1)); };
+
+assembly {
+    reg pc[@pc];
+    reg X[<=];
+    reg A;
+    reg CNT;
+
+    pil {
+        // Just to test if pil-inside-assembly-inside-pil works.
+        XIsZero  = 1 - X * XInv;
+        XIsZero * X = 0;
+    }
+
+    instr jmpz X, l: label { jump_to_if(XIsZero, l) }
+    instr jmp l: label { jump_to(l) }
+    instr dec_CNT { CNT' = CNT - 1 }
+    instr assert_zero X { XIsZero = 1 }
+
+    CNT <=X= ${ ("input", 1) };
+
+    start::
+    jmpz CNT, check;
+    A <=X= A + ${ ("input", CNT + 1) };
+    // Could use "CNT <=X= CNT - 1", but that would need X.
+    dec_CNT;
+    jmp start;
+
+    check::
+    A <=X= A - ${ ("input", 0) };
+    assert_zero A;
+
+    end::
+    jmp end;
+};
