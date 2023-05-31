@@ -80,6 +80,10 @@ pub trait FieldElement:
     fn from_str(s: &str) -> Self;
 
     fn from_str_radix(s: &str, radix: u32) -> Result<Self, String>;
+
+    /// Returns true if the value is in the "lower half" of the field,
+    /// i.e. the value <= (modulus() - 1) / 2
+    fn is_in_lower_half(&self) -> bool;
 }
 
 #[cfg(test)]

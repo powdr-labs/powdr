@@ -235,7 +235,13 @@ impl<T: FieldElement> ASMPILConverter<T> {
             .params
             .into_iter()
             .map(|param| match param.ty {
-                Some(ty) if ty == "label" => Input::Label(param.name),
+                Some(ty) if ty == "label" => Input::Literal(param.name, LiteralKind::Label),
+                Some(ty) if ty == "signed" => {
+                    Input::Literal(param.name, LiteralKind::SignedConstant)
+                }
+                Some(ty) if ty == "unsigned" => {
+                    Input::Literal(param.name, LiteralKind::UnsignedConstant)
+                }
                 None => Input::Register(param.name),
                 Some(ty) => panic!("param type must be nothing or label, found `{ty}`"),
             })
@@ -258,12 +264,11 @@ impl<T: FieldElement> ASMPILConverter<T> {
         let instr = Instruction { inputs, outputs };
 
         let substitutions = instr
-            .labels()
-            .map(|label| {
-                // label
-                let param_col_name = format!("instr_{name}_param_{label}");
+            .literal_arg_names()
+            .map(|arg_name| {
+                let param_col_name = format!("instr_{name}_param_{arg_name}");
                 self.create_witness_fixed_pair(start, &param_col_name);
-                (label.clone(), param_col_name)
+                (arg_name.clone(), param_col_name)
             })
             .collect();
 
@@ -366,9 +371,34 @@ impl<T: FieldElement> ASMPILConverter<T> {
                             assert!(!value.contains_key(reg));
                             value.insert(reg.clone(), self.process_assignment_value(a));
                         }
-                        Input::Label(_) => {
+                        Input::Literal(_, LiteralKind::Label) => {
                             if let Expression::PolynomialReference(r) = a {
-                                instruction_literal_arg.push(r.name);
+                                instruction_literal_arg
+                                    .push(InstructionLiteralArg::LabelRef(r.name));
+                            } else {
+                                panic!();
+                            }
+                        }
+                        Input::Literal(_, LiteralKind::UnsignedConstant) => {
+                            // TODO evaluate expression
+                            if let Expression::Number(n) = a {
+                                assert!(n.is_in_lower_half(), "Number passed to unsigned parameter is negative or too large: {n}");
+                                instruction_literal_arg.push(InstructionLiteralArg::Number(n));
+                            } else {
+                                panic!();
+                            }
+                        }
+                        Input::Literal(_, LiteralKind::SignedConstant) => {
+                            // TODO evaluate expression
+                            if let Expression::Number(n) = a {
+                                instruction_literal_arg.push(InstructionLiteralArg::Number(n));
+                            } else if let Expression::UnaryOperation(UnaryOperator::Minus, expr) = a
+                            {
+                                if let Expression::Number(n) = *expr {
+                                    instruction_literal_arg.push(InstructionLiteralArg::Number(-n));
+                                } else {
+                                    panic!();
+                                }
                             } else {
                                 panic!();
                             }
@@ -623,11 +653,16 @@ impl<T: FieldElement> ASMPILConverter<T> {
                 for (arg, param) in line
                     .instruction_literal_args
                     .iter()
-                    .zip(self.instructions[instr].labels())
+                    .zip(self.instructions[instr].literal_arg_names())
                 {
                     program_constants
                         .get_mut(&format!("p_instr_{instr}_param_{}", param.clone()))
-                        .unwrap()[i] = (label_positions[arg] as u64).into();
+                        .unwrap()[i] = match arg {
+                        InstructionLiteralArg::LabelRef(name) => {
+                            (label_positions[name] as u64).into()
+                        }
+                        InstructionLiteralArg::Number(n) => *n,
+                    };
                 }
             } else {
                 assert!(line.instruction_literal_args.is_empty());
@@ -743,7 +778,13 @@ impl<T: FieldElement> Register<T> {
 
 enum Input {
     Register(String),
-    Label(String),
+    Literal(String, LiteralKind),
+}
+
+enum LiteralKind {
+    Label,
+    SignedConstant,
+    UnsignedConstant,
 }
 
 struct Instruction {
@@ -752,9 +793,9 @@ struct Instruction {
 }
 
 impl Instruction {
-    fn labels(&self) -> impl Iterator<Item = &String> {
+    fn literal_arg_names(&self) -> impl Iterator<Item = &String> {
         self.inputs.iter().filter_map(|input| match input {
-            Input::Label(label) => Some(label),
+            Input::Literal(name, _) => Some(name),
             _ => None,
         })
     }
@@ -771,14 +812,18 @@ struct CodeLine<T> {
     value: BTreeMap<String, Vec<(T, AffineExpressionComponent<T>)>>,
     label: Option<String>,
     instruction: Option<String>,
-    // TODO we only support labels for now.
-    instruction_literal_args: Vec<String>,
+    instruction_literal_args: Vec<InstructionLiteralArg<T>>,
 }
 
 enum AffineExpressionComponent<T> {
     Register(String),
     Constant,
     FreeInput(Expression<T>),
+}
+
+enum InstructionLiteralArg<T> {
+    LabelRef(String),
+    Number(T),
 }
 
 fn witness_column<S: Into<String>, T>(
@@ -998,5 +1043,57 @@ pol constant p_reg_write_X_CNT = [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0] + [0]*;
         let contents = fs::read_to_string(file_name).unwrap();
         let pil = compile::<GoldilocksField>(Some(file_name), &contents).unwrap();
         assert_eq!(format!("{pil}").trim(), expectation.trim());
+    }
+
+    #[test]
+    pub fn compile_literal_number_args() {
+        let source = r#"
+reg pc[@pc];
+reg fp;
+
+instr inc_fp amount: unsigned { fp' = fp + amount }
+instr adjust_fp amount: signed, t: label { fp' = fp + amount, pc' = label }
+
+inc_fp 7;
+loop::
+adjust_fp -2, loop;
+"#;
+        let expectation = r#"
+namespace Assembly(1024);
+pol constant first_step = [1] + [0]*;
+pol commit pc;
+(first_step * fp) = 0;
+pol commit fp;
+pol commit instr_inc_fp;
+pol commit instr_inc_fp_param_amount;
+pol commit instr_adjust_fp;
+pol commit instr_adjust_fp_param_amount;
+pol commit instr_adjust_fp_param_t;
+fp' = ((((first_step' * 0) + (instr_inc_fp * (fp + instr_inc_fp_param_amount))) + (instr_adjust_fp * (fp + instr_adjust_fp_param_amount))) + ((1 - ((first_step' + instr_inc_fp) + instr_adjust_fp)) * fp));
+pc' = ((1 - first_step') * ((instr_adjust_fp * label) + ((1 - instr_adjust_fp) * (pc + 1))));
+pol constant p_line = [0, 1, 2] + [2]*;
+pol constant p_instr_adjust_fp = [0, 0, 1] + [1]*;
+pol constant p_instr_adjust_fp_param_amount = [0, 0, -2] + [-2]*;
+pol constant p_instr_adjust_fp_param_t = [0, 0, 1] + [1]*;
+pol constant p_instr_inc_fp = [1, 0, 0] + [0]*;
+pol constant p_instr_inc_fp_param_amount = [7, 0, 0] + [0]*;
+{ pc, instr_inc_fp, instr_inc_fp_param_amount, instr_adjust_fp, instr_adjust_fp_param_amount, instr_adjust_fp_param_t } in { p_line, p_instr_inc_fp, p_instr_inc_fp_param_amount, p_instr_adjust_fp, p_instr_adjust_fp_param_amount, p_instr_adjust_fp_param_t };
+"#;
+        let pil = compile::<GoldilocksField>(None, source).unwrap();
+        assert_eq!(format!("{pil}").trim(), expectation.trim());
+    }
+
+    #[test]
+    #[should_panic]
+    pub fn negative_for_unsigned() {
+        let source = r#"
+reg pc[@pc];
+reg fp;
+
+instr instro x: unsigned { pc' = pc + x }
+
+instro 9223372034707292161;
+"#;
+        compile::<GoldilocksField>(None, source).unwrap();
     }
 }
