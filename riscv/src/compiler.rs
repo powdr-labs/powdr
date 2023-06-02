@@ -539,51 +539,6 @@ pil{
 }
 
 fn runtime() -> &'static str {
-    // // TODO rust alloc calls the global allocator - not sure why this is not automatic.
-    // (Regex::new(r"^__rust_alloc$").unwrap(), "j __rg_alloc"),
-    // (Regex::new(r"^__rust_realloc$").unwrap(), "j __rg_realloc"),
-    // (Regex::new(r"^__rust_dealloc$").unwrap(), "j __rg_dealloc"),
-    // (
-
-    /* Source code:
-    // TODO c is usually a "c int"
-    pub unsafe extern "C" fn memset(s: *mut u8, c: u8, n: usize) -> *mut u8 {
-        // We only access u32 because then we do not have to deal with
-        // un-aligned memory access.
-        // TODO this does not really enforce that the pointers are u32-aligned.
-        let mut value = c as u32;
-        value = value | (value << 8) | (value << 16) | (value << 24);
-        let mut i: isize = 0;
-        while i + 3 < n as isize {
-            *((s.offset(i)) as *mut u32) = value;
-            i += 4;
-        }
-        if i < n {
-            let dest_value = (s.offset(i)) as *mut u32;
-            let mask = (1 << ((((n as isize) - i) * 8) as u32)) - 1;
-            *dest_value = (*dest_value & !mask) | (value & mask);
-        }
-        s
-    }
-
-    pub unsafe extern "C" fn memcpy(dest: *mut u8, src: *const u8, n: usize) -> *mut u8 {
-        // We only access u32 because then we do not have to deal with
-        // un-aligned memory access.
-        // TODO this does not really enforce that the pointers are u32-aligned.
-        let mut i: isize = 0;
-        while i + 3 < n as isize {
-            *((dest.offset(i)) as *mut u32) = *((src.offset(i)) as *mut u32);
-            i += 4;
-        }
-        if i < n as isize {
-            let value = *((src.offset(i)) as *mut u32);
-            let dest_value = (dest.offset(i)) as *mut u32;
-            let mask = (1 << (((n as isize - i) * 8) as u32)) - 1;
-            *dest_value = (*dest_value & !mask) | (value & mask);
-        }
-        dest
-    }
-    */
     r#"
 .globl memcpy@plt
 .globl memcpy
