@@ -21,9 +21,9 @@ which is compiled to RISCV, then to powdr-asm and finally to PIL.
 
 *powdr*-PIL can be used to generate proofs using multiple backends, such as:
 
+- Halo2
 - eSTARKs: *powdr*-PIL is fully compatible with the eSTARKS backend from Polygon Hermez,
   although not yet fully integrated in an automatic way.
-- Halo2: ongoing work, should be ready soon.
 - Nova: ongoing work, should be ready after soon.
 - other STARKs: maybe?
 

@@ -6,7 +6,10 @@ use std::io::BufWriter;
 use std::path::Path;
 use std::time::Instant;
 
+mod backends;
 mod verify;
+
+pub use backends::Backend;
 use number::write_polys_file;
 use pil_analyzer::json_exporter;
 pub use verify::{compile_asm_string_temp, verify, verify_asm_string};
@@ -26,16 +29,18 @@ pub fn compile_pil_or_asm<T: FieldElement>(
     inputs: Vec<T>,
     output_dir: &Path,
     force_overwrite: bool,
+    prove_with: Option<Backend>,
 ) {
     if file_name.ends_with(".asm") {
-        compile_asm(file_name, inputs, output_dir, force_overwrite)
+        compile_asm(file_name, inputs, output_dir, force_overwrite, prove_with)
     } else {
         compile_pil(
             Path::new(file_name),
             output_dir,
             Some(inputs_to_query_callback(inputs)),
+            prove_with,
         );
-    }
+    };
 }
 
 /// Compiles a .pil file to its json form and also tries to generate
@@ -46,12 +51,14 @@ pub fn compile_pil<T: FieldElement>(
     pil_file: &Path,
     output_dir: &Path,
     query_callback: Option<impl FnMut(&str) -> Option<T>>,
+    prove_with: Option<Backend>,
 ) -> bool {
     compile(
         &pil_analyzer::analyze(pil_file),
         pil_file.file_name().unwrap(),
         output_dir,
         query_callback,
+        prove_with,
     )
 }
 
@@ -60,6 +67,7 @@ pub fn compile_pil_ast<T: FieldElement>(
     file_name: &OsStr,
     output_dir: &Path,
     query_callback: Option<impl FnMut(&str) -> Option<T>>,
+    prove_with: Option<Backend>,
 ) -> bool {
     // TODO exporting this to string as a hack because the parser
     // is tied into the analyzer due to imports.
@@ -68,6 +76,7 @@ pub fn compile_pil_ast<T: FieldElement>(
         file_name,
         output_dir,
         query_callback,
+        prove_with,
     )
 }
 
@@ -78,9 +87,17 @@ pub fn compile_asm<T: FieldElement>(
     inputs: Vec<T>,
     output_dir: &Path,
     force_overwrite: bool,
+    prove_with: Option<Backend>,
 ) {
     let contents = fs::read_to_string(file_name).unwrap();
-    compile_asm_string(file_name, &contents, inputs, output_dir, force_overwrite)
+    compile_asm_string(
+        file_name,
+        &contents,
+        inputs,
+        output_dir,
+        force_overwrite,
+        prove_with,
+    )
 }
 
 /// Compiles the contents of a .asm file, outputs the PIL on stdout and tries to generate
@@ -91,6 +108,7 @@ pub fn compile_asm_string<T: FieldElement>(
     inputs: Vec<T>,
     output_dir: &Path,
     force_overwrite: bool,
+    prove_with: Option<Backend>,
 ) {
     let pil = pilgen::compile(Some(file_name), contents).unwrap_or_else(|err| {
         eprintln!("Error parsing .asm file:");
@@ -115,6 +133,7 @@ pub fn compile_asm_string<T: FieldElement>(
         pil_file_name.file_name().unwrap(),
         output_dir,
         Some(inputs_to_query_callback(inputs)),
+        prove_with,
     );
 }
 
@@ -123,6 +142,7 @@ fn compile<T: FieldElement>(
     file_name: &OsStr,
     output_dir: &Path,
     query_callback: Option<impl FnMut(&str) -> Option<T>>,
+    prove_with: Option<Backend>,
 ) -> bool {
     let mut success = true;
     let start = Instant::now();
@@ -144,6 +164,15 @@ fn compile<T: FieldElement>(
             &commits,
         );
         log::info!("Wrote commits.bin.");
+        if let Some(Backend::Halo2) = prove_with {
+            use std::io::Write;
+            let proof = halo2::prove_ast(analyzed, constants, commits);
+            let mut proof_file = fs::File::create(output_dir.join("proof.bin")).unwrap();
+            let mut proof_writer = BufWriter::new(&mut proof_file);
+            proof_writer.write_all(&proof).unwrap();
+            proof_writer.flush().unwrap();
+            log::info!("Wrote proof.bin.");
+        }
     } else {
         log::warn!("Not writing constants.bin because not all declared constants are defined (or there are none).");
         success = false;
@@ -158,6 +187,7 @@ fn compile<T: FieldElement>(
         .write(&mut fs::File::create(output_dir.join(&json_file)).unwrap())
         .unwrap();
     log::info!("Wrote {}.", json_file.to_string_lossy());
+
     success
 }
 

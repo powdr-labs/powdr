@@ -7,3 +7,14 @@ macro_rules! clap_enum_variants {
         clap::builder::PossibleValuesParser::new(<$e>::VARIANTS).map(|s| s.parse::<$e>().unwrap())
     }};
 }
+
+/// Call a function using a given field generic
+#[macro_export]
+macro_rules! call_with_field {
+    ($function:ident, $case:expr, $($args:expr),*) => {
+        match $case {
+            FieldArgument::Gl => $function::<GoldilocksField>($($args),*),
+            FieldArgument::Bn254 => $function::<Bn254Field>($($args),*),
+        }
+    };
+}

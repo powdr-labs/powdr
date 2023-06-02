@@ -6,16 +6,14 @@ use polyexen::plaf::PlafDisplayBaseTOML;
 
 use super::circuit_builder::analyzed_to_circuit;
 use halo2_proofs::{dev::MockProver, halo2curves::bn256::Fr};
-use number::{BigInt, Bn254Field, FieldElement};
+use number::{BigInt, FieldElement};
 
-pub fn mock_prove(file: &Path, dir: &Path) {
-    let analyzed: Analyzed<Bn254Field> = pil_analyzer::analyze(file);
+pub fn mock_prove<T: FieldElement>(file: &Path, dir: &Path) {
+    let analyzed: Analyzed<T> = pil_analyzer::analyze(file);
 
-    assert_eq!(
-        polyexen::expr::get_field_p::<Fr>(),
-        Bn254Field::modulus().to_arbitrary_integer(),
-        "powdr modulus doesn't match halo2 modulus"
-    );
+    if polyexen::expr::get_field_p::<Fr>() != T::modulus().to_arbitrary_integer() {
+        panic!("powdr modulus doesn't match halo2 modulus. Make sure you are using Bn254");
+    }
 
     let fixed_columns: Vec<&str> = analyzed
         .constant_polys_in_source_order()
@@ -68,6 +66,8 @@ fn mock_prove_ast<T: FieldElement>(
 #[cfg(test)]
 mod test {
     use std::fs;
+
+    use number::Bn254Field;
 
     use super::*;
 

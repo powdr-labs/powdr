@@ -3,9 +3,11 @@
 mod util;
 
 use clap::{Parser, Subcommand};
+use compiler::{compile_pil_or_asm, Backend};
 use env_logger::{Builder, Target};
 use log::LevelFilter;
 use number::{Bn254Field, FieldElement, GoldilocksField};
+use riscv::{compile_riscv_asm, compile_rust};
 use std::{fs, io::Write, path::Path};
 use strum::{Display, EnumString, EnumVariantNames};
 
@@ -54,6 +56,11 @@ enum Commands {
         #[arg(short, long)]
         #[arg(default_value_t = false)]
         force: bool,
+
+        /// Generate a proof with a given backend
+        #[arg(short, long)]
+        #[arg(value_parser = clap_enum_variants!(Backend))]
+        prove_with: Option<Backend>,
     },
     /// Compiles (no-std) rust code to riscv assembly, then to powdr assembly
     /// and finally to PIL and generates fixed and witness columns.
@@ -62,6 +69,12 @@ enum Commands {
         /// Input file (rust source file) or directory (containing a crate).
         file: String,
 
+        /// The field to use
+        #[arg(long)]
+        #[arg(default_value_t = FieldArgument::Gl)]
+        #[arg(value_parser = clap_enum_variants!(FieldArgument))]
+        field: FieldArgument,
+
         /// Comma-separated list of free inputs (numbers).
         #[arg(short, long)]
         #[arg(default_value_t = String::new())]
@@ -76,6 +89,11 @@ enum Commands {
         #[arg(short, long)]
         #[arg(default_value_t = false)]
         force: bool,
+
+        /// Generate a proof with a given backend
+        #[arg(short, long)]
+        #[arg(value_parser = clap_enum_variants!(Backend))]
+        prove_with: Option<Backend>,
     },
 
     /// Compiles riscv assembly to powdr assembly and then to PIL
@@ -84,6 +102,12 @@ enum Commands {
         /// Input file
         file: String,
 
+        /// The field to use
+        #[arg(long)]
+        #[arg(default_value_t = FieldArgument::Gl)]
+        #[arg(value_parser = clap_enum_variants!(FieldArgument))]
+        field: FieldArgument,
+
         /// Comma-separated list of free inputs (numbers).
         #[arg(short, long)]
         #[arg(default_value_t = String::new())]
@@ -98,9 +122,14 @@ enum Commands {
         #[arg(short, long)]
         #[arg(default_value_t = false)]
         force: bool,
+
+        /// Generate a proof with a given backend.
+        #[arg(short, long)]
+        #[arg(value_parser = clap_enum_variants!(Backend))]
+        prove_with: Option<Backend>,
     },
 
-    /// Apply the Halo2 workflow on an input file and prover values.
+    /// Apply the Halo2 workflow on an input file and prover values over the Bn254 field
     /// That means parsing, analysis, witness generation,
     /// and Halo2 mock proving.
     Halo2MockProver {
@@ -142,31 +171,37 @@ fn main() {
     match command {
         Commands::Rust {
             file,
+            field,
             inputs,
             output_directory,
             force,
-        } => {
-            riscv::compile_rust::<GoldilocksField>(
-                &file,
-                split_inputs(&inputs),
-                Path::new(&output_directory),
-                force,
-            );
-        }
+            prove_with,
+        } => call_with_field!(
+            compile_rust,
+            field,
+            &file,
+            split_inputs(&inputs),
+            Path::new(&output_directory),
+            force,
+            prove_with
+        ),
         Commands::RiscvAsm {
             file,
+            field,
             inputs,
             output_directory,
             force,
-        } => {
-            riscv::compile_riscv_asm::<GoldilocksField>(
-                &file,
-                &file,
-                split_inputs(&inputs),
-                Path::new(&output_directory),
-                force,
-            );
-        }
+            prove_with,
+        } => call_with_field!(
+            compile_riscv_asm,
+            field,
+            &file,
+            &file,
+            split_inputs(&inputs),
+            Path::new(&output_directory),
+            force,
+            prove_with
+        ),
         Commands::Reformat { file } => {
             let contents = fs::read_to_string(&file).unwrap();
             match parser::parse::<GoldilocksField>(Some(&file), &contents) {
@@ -180,22 +215,18 @@ fn main() {
             output_directory,
             inputs,
             force,
-        } => match field {
-            FieldArgument::Gl => compiler::compile_pil_or_asm::<GoldilocksField>(
-                &file,
-                split_inputs(&inputs),
-                Path::new(&output_directory),
-                force,
-            ),
-            FieldArgument::Bn254 => compiler::compile_pil_or_asm::<Bn254Field>(
-                &file,
-                split_inputs(&inputs),
-                Path::new(&output_directory),
-                force,
-            ),
-        },
+            prove_with,
+        } => call_with_field!(
+            compile_pil_or_asm,
+            field,
+            &file,
+            split_inputs(&inputs),
+            Path::new(&output_directory),
+            force,
+            prove_with
+        ),
         Commands::Halo2MockProver { file, dir } => {
-            halo2::mock_prove(Path::new(&file), Path::new(&dir));
+            halo2::mock_prove::<Bn254Field>(Path::new(&file), Path::new(&dir));
         }
     }
 }

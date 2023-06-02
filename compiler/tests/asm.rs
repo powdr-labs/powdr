@@ -1,5 +1,5 @@
-use compiler::verify_asm_string;
-use number::{FieldElement, GoldilocksField};
+use compiler::{compile_pil_or_asm, verify_asm_string, Backend};
+use number::{Bn254Field, FieldElement, GoldilocksField};
 use std::fs;
 
 fn verify_asm<T: FieldElement>(file_name: &str, inputs: Vec<T>) {
@@ -7,46 +7,70 @@ fn verify_asm<T: FieldElement>(file_name: &str, inputs: Vec<T>) {
     verify_asm_string(file_name, &contents, inputs)
 }
 
+fn halo2_proof(file_name: &str, inputs: Vec<Bn254Field>) {
+    compile_pil_or_asm(
+        format!("../test_data/asm/{file_name}").as_str(),
+        inputs,
+        &mktemp::Temp::new_dir().unwrap(),
+        true,
+        Some(Backend::Halo2),
+    );
+}
+
+fn slice_to_vec<T: FieldElement>(arr: &[i32]) -> Vec<T> {
+    arr.iter().cloned().map(|x| x.into()).collect()
+}
+
 #[test]
 fn simple_sum_asm() {
-    verify_asm::<GoldilocksField>(
-        "simple_sum.asm",
-        [16, 4, 1, 2, 8, 5].iter().map(|&x| x.into()).collect(),
-    );
+    let f = "simple_sum.asm";
+    let i = [16, 4, 1, 2, 8, 5];
+    verify_asm::<GoldilocksField>(f, slice_to_vec(&i));
+    halo2_proof(f, slice_to_vec(&i));
 }
 
 #[test]
 fn palindrome() {
-    verify_asm::<GoldilocksField>(
-        "palindrome.asm",
-        [7, 1, 7, 3, 9, 3, 7, 1].iter().map(|&x| x.into()).collect(),
-    );
+    let f = "palindrome.asm";
+    let i = [7, 1, 7, 3, 9, 3, 7, 1];
+    verify_asm::<GoldilocksField>(f, slice_to_vec(&i));
+    halo2_proof(f, slice_to_vec(&i));
 }
 
 #[test]
 fn test_mem_read_write() {
-    verify_asm::<GoldilocksField>("mem_read_write.asm", Default::default());
+    let f = "mem_read_write.asm";
+    verify_asm::<GoldilocksField>(f, Default::default());
+    halo2_proof(f, Default::default());
 }
 
 #[test]
 fn test_multi_assign() {
-    verify_asm::<GoldilocksField>("multi_assign.asm", [7].iter().map(|&x| x.into()).collect());
+    let f = "multi_assign.asm";
+    let i = [7];
+    verify_asm::<GoldilocksField>(f, slice_to_vec(&i));
+    halo2_proof(f, slice_to_vec(&i));
 }
 
 #[test]
 fn test_bit_access() {
-    verify_asm::<GoldilocksField>("bit_access.asm", [20].iter().map(|&x| x.into()).collect());
+    let f = "bit_access.asm";
+    let i = [20];
+    verify_asm::<GoldilocksField>(f, slice_to_vec(&i));
+    halo2_proof(f, slice_to_vec(&i));
 }
 
 #[test]
 fn functional_instructions() {
-    verify_asm::<GoldilocksField>(
-        "functional_instructions.asm",
-        [20].iter().map(|&x| x.into()).collect(),
-    );
+    let f = "functional_instructions.asm";
+    let i = [20];
+    verify_asm::<GoldilocksField>(f, slice_to_vec(&i));
+    halo2_proof(f, slice_to_vec(&i));
 }
 
 #[test]
 fn full_pil_constant() {
-    verify_asm::<GoldilocksField>("full_pil_constant.asm", Default::default());
+    let f = "full_pil_constant.asm";
+    verify_asm::<GoldilocksField>(f, Default::default());
+    halo2_proof(f, Default::default());
 }
