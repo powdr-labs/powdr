@@ -120,12 +120,9 @@ col fixed BYTE(i) { i & 0xff };
 col witness sign_bit;
 sign_bit * (1 - sign_bit) = 0;
 
-col witness fp;
-
-FIRST * (fp - 0x1000) = 0;
-
 assembly {
     reg pc[@pc];
+    reg fp;
 
     instr imm32 fp_delta: signed, v: unsigned {
         memory_write(fp + fp_delta, v)
@@ -165,6 +162,9 @@ assembly {
         is_u32(tmp3),
         memory_write(fp + dest_delta, tmp3)
     }
+
+    // fp is zero in the beginning. We can use `jal` to set it to a higher value,
+    // but jal will always write to memory as well.
 
     // This was "fp + 4", but it's always relative to fp, so we don't need it.
     imm32 4, 100;
