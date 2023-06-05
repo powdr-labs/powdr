@@ -547,8 +547,14 @@ fn preamble() -> String {
     constraints {
         col witness Y_b5;
         col witness Y_b6;
+        col witness Y_b7;
+        col witness Y_b8;
         { Y_b5 } in { bytes };
         { Y_b6 } in { bytes };
+        { Y_b7 } in { bytes };
+        { Y_b8 } in { bytes };
+
+        col witness remainder; 
 
         col witness REM_b1;
         col witness REM_b2;
@@ -559,16 +565,30 @@ fn preamble() -> String {
         { REM_b3 } in { bytes };
         { REM_b4 } in { bytes };
 
-        col witness remainder;
+        col witness INV_Z;
     }
 
     // implements X = Y / Z, stores remainder in `remainder`.
     instr divu Y, Z -> X {
-        // X * <known1> + remainder = <known2>
-        X * Z + remainder = Y,
-        // (<known1> - remainder - 1) is u32
-        Z - remainder - 1 = Y_b5 + Y_b6 * 0x100 + Y_b7 * 0x10000 + Y_b8 * 0x1000000,
+        // Y is the known dividend
+        // Z is the known divisor
+        // X is the unknown quotient
+        // if Z is zero, remainder is set to dividend, as per RISC-V specification:
+        X * Z + remainder - Y = 0,
+
+        // either divisor is zero, or INV_Z*Z is one:
+        Z * (Z*INV_Z - 1) = 0,
+
+        // remainder < divisor, conditioned to Z not being 0:
+        (Z*INV_Z) * (Z - remainder - 1 - Y_b5 - Y_b6 * 0x100 - Y_b7 * 0x10000 - Y_b8 * 0x1000000) = 0,
+
+        // in case Z is zero, we set quotient according to RISC-V specification
+        (1 - Z*INV_Z) * (X - 0xffffffff) = 0,
+
+        // remainder > 0:
         remainder = REM_b1 + REM_b2 * 0x100 + REM_b3 * 0x10000 + REM_b4 * 0x1000000,
+
+        // quotient is 32 bits:
         X = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000
     }
 
@@ -582,12 +602,6 @@ fn preamble() -> String {
     instr mulhu Y, Z -> X {
         Y * Z = X * 2**32 + Y_b5 + Y_b6 * 0x100 + Y_b7 * 0x10000 + Y_b8 * 0x1000000,
         X = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000
-    }
-    constraints{
-        col witness Y_b7;
-        col witness Y_b8;
-        { Y_b7 } in { bytes };
-        { Y_b8 } in { bytes };
     }
 "#
 }
