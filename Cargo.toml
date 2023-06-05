@@ -14,7 +14,11 @@ members = [
 ]
 
 [patch."https://github.com/privacy-scaling-explorations/halo2.git"]
-halo2_proofs = { git = "https://github.com/appliedzkp/halo2.git", rev = "d3746109d7d38be53afc8ddae8fdfaf1f02ad1d7" }
+# TODO change back to this once the PR is merged
+#halo2_proofs = { git = "https://github.com/appliedzkp/halo2.git", rev = "d3746109d7d38be53afc8ddae8fdfaf1f02ad1d7" }
+halo2_proofs = { git = "https://github.com/kilic/halo2", branch = "shuffle" }
 
 [patch.crates-io]
-halo2_proofs = { git = "https://github.com/appliedzkp/halo2.git", rev = "d3746109d7d38be53afc8ddae8fdfaf1f02ad1d7" }
+# TODO change back to this once the PR is merged
+#halo2_proofs = { git = "https://github.com/appliedzkp/halo2.git", rev = "d3746109d7d38be53afc8ddae8fdfaf1f02ad1d7" }
+halo2_proofs = { git = "https://github.com/kilic/halo2", branch = "shuffle" }

@@ -6,7 +6,7 @@ edition = "2021"
 [dependencies]
 number = { path = "../number" }
 pil_analyzer = { path = "../pil_analyzer" }
-polyexen = { git = "https://github.com/Dhole/polyexen", rev="5f1eebd773e0e2ae82b1c8dc15d68f422b87c6e5"}
+polyexen = { git = "https://github.com/Dhole/polyexen", branch = "feature/shuffles" }
 halo2_proofs = "0.2"
 num-traits = "0.2.15"
 num-integer = "0.1.45"
