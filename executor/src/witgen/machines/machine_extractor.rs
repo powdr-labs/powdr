@@ -4,6 +4,7 @@ use super::block_machine::BlockMachine;
 use super::double_sorted_witness_machine::DoubleSortedWitnesses;
 use super::fixed_lookup_machine::FixedLookup;
 use super::sorted_witness_machine::SortedWitnesses;
+use super::triple_sorted_witness_machine::TripleSortedWitnesses;
 use super::FixedData;
 use super::KnownMachine;
 use crate::witgen::column_map::ColumnMap;
@@ -95,6 +96,11 @@ pub fn split_out_machines<'a, T: FieldElement>(
         {
             log::info!("Detected machine: memory");
             machines.push(KnownMachine::DoubleSortedWitnesses(machine));
+        } else if let Some(machine) =
+            TripleSortedWitnesses::try_new(fixed, &machine_identities, &machine_witnesses)
+        {
+            log::info!("Detected machine: triple memory");
+            machines.push(machine);
         } else if let Some(machine) = BlockMachine::try_new(
             fixed,
             &connecting_identities,
