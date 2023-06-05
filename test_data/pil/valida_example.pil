@@ -120,11 +120,12 @@ col fixed BYTE(i) { i & 0xff };
 col witness sign_bit;
 sign_bit * (1 - sign_bit) = 0;
 
+col witness fp;
+
 FIRST * (fp - 0x1000) = 0;
 
 assembly {
     reg pc[@pc];
-    reg fp;
 
     instr imm32 fp_delta: signed, v: unsigned {
         memory_write(fp + fp_delta, v)
