@@ -1,7 +1,9 @@
 use num_bigint::BigUint;
 use polyexen::expr::{ColumnKind, ColumnQuery, Expr, PlonkVar};
 use polyexen::plaf::backends::halo2::PlafH2Circuit;
-use polyexen::plaf::{ColumnFixed, ColumnWitness, Columns, Info, Lookup, Plaf, Poly, Witness};
+use polyexen::plaf::{
+    ColumnFixed, ColumnWitness, Columns, Info, Lookup, Plaf, Poly, Shuffle, Witness,
+};
 
 use num_traits::One;
 use number::{BigInt, FieldElement};
@@ -55,6 +57,7 @@ pub(crate) fn analyzed_to_circuit<T: FieldElement>(
     );
 
     let mut lookups = vec![];
+    let mut shuffles = vec![];
     let mut polys = vec![];
 
     // build Plaf columns -------------------------------------------------
@@ -82,6 +85,31 @@ pub(crate) fn analyzed_to_circuit<T: FieldElement>(
     };
 
     // build Plaf polys. -------------------------------------------------------------------------
+
+    let apply_selectors_to_set = |set: &SelectedExpressions<T>| {
+        let selector = set
+            .selector
+            .clone()
+            .map_or(Expr::Const(BigUint::one()), |expr| {
+                expression_2_expr(&cd, &expr)
+            });
+
+        let contains_next_ref = set.expressions.iter().any(|exp| exp.contains_next_ref());
+
+        let selector = Expr::Mul(vec![
+            selector,
+            if contains_next_ref {
+                q_enable_next.clone()
+            } else {
+                q_enable_cur.clone()
+            },
+        ]);
+
+        set.expressions
+            .iter()
+            .map(|expr| selector.clone() * expression_2_expr(&cd, expr))
+            .collect()
+    };
 
     for id in &analyzed.identities {
         match id.kind {
@@ -114,36 +142,8 @@ pub(crate) fn analyzed_to_circuit<T: FieldElement>(
                 });
             }
             IdentityKind::Plookup => {
-                // lookups.
-
-                let wrap_lookup = |side: &SelectedExpressions<T>| {
-                    let selector = side
-                        .selector
-                        .clone()
-                        .map_or(Expr::Const(BigUint::one()), |expr| {
-                            expression_2_expr(&cd, &expr)
-                        });
-
-                    let contains_next_ref =
-                        side.expressions.iter().any(|exp| exp.contains_next_ref());
-
-                    let selector = Expr::Mul(vec![
-                        selector,
-                        if contains_next_ref {
-                            q_enable_next.clone()
-                        } else {
-                            q_enable_cur.clone()
-                        },
-                    ]);
-
-                    side.expressions
-                        .iter()
-                        .map(|expr| selector.clone() * expression_2_expr(&cd, expr))
-                        .collect()
-                };
-
-                let left = wrap_lookup(&id.left);
-                let right = wrap_lookup(&id.right);
+                let left = apply_selectors_to_set(&id.left);
+                let right = apply_selectors_to_set(&id.right);
 
                 lookups.push(Lookup {
                     name: "".to_string(),
@@ -151,8 +151,13 @@ pub(crate) fn analyzed_to_circuit<T: FieldElement>(
                 });
             }
             IdentityKind::Permutation => {
-                // TODO anything that uses permutations is
-                // fully unconstrained right now!!!
+                let left = apply_selectors_to_set(&id.left);
+                let right = apply_selectors_to_set(&id.right);
+
+                shuffles.push(Shuffle {
+                    name: "".to_string(),
+                    exps: (left, right),
+                });
             }
             _ => unimplemented!(),
         }
@@ -206,6 +211,7 @@ pub(crate) fn analyzed_to_circuit<T: FieldElement>(
         polys,
         metadata: Default::default(),
         lookups,
+        shuffles,
         copys,
         fixed,
     };
