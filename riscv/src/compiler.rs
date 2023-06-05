@@ -551,6 +551,17 @@ fn preamble() -> String {
         { Y_b6 } in { bytes };
     }
 
+    pil { col witness remainder; }
+
+    // implements X = Y / Z, stores remainder in `remainder`.
+    instr divu Y, Z -> X {
+        // X * <known1> + remainder = <known2>
+        X * Z + remainder = Y,
+        // (<known1> - remainder - 1) is u32
+        Z - remainder - 1 = Y_b5 + Y_b6 * 0x100 + Y_b7 * 0x10000 + Y_b8 * 0x1000000,
+        X = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000
+    }
+
     // Removes up to 32 bits beyond 32
     // TODO is this really safe?
     instr mul Y, Z -> X {
@@ -573,6 +584,10 @@ fn preamble() -> String {
 
 fn runtime() -> &'static str {
     r#"
+.globl __udivdi3@plt
+.globl __udivdi3
+.set __udivdi3@plt, __udivdi3
+
 .globl memcpy@plt
 .globl memcpy
 .set memcpy@plt, memcpy
@@ -792,6 +807,10 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
         "mulhu" => {
             let (rd, r1, r2) = rrr(args);
             only_if_no_write_to_zero(format!("{rd} <=X= mulhu({r1}, {r2});"), rd)
+        }
+        "divu" => {
+            let (rd, r1, r2) = rrr(args);
+            only_if_no_write_to_zero(format!("{rd} <=X= divu({r1}, {r2});"), rd)
         }
 
         // bitwise
