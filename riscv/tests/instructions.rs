@@ -1,5 +1,5 @@
 mod instruction_tests {
-    use compiler::compile_asm_string_temp;
+    use compiler::verify_asm_string;
     use number::GoldilocksField;
     use riscv::compiler::compile_riscv_asm;
 
@@ -7,7 +7,7 @@ mod instruction_tests {
         // TODO Should we create one powdr asm from all tests or keep them separate?
         let powdr_asm = compile_riscv_asm([(name.to_string(), assembly.to_string())].into());
 
-        compile_asm_string_temp::<GoldilocksField>(&format!("{name}.asm"), &powdr_asm, vec![]);
+        verify_asm_string::<GoldilocksField>(&format!("{name}.asm"), &powdr_asm, vec![]);
     }
 
     include!(concat!(env!("OUT_DIR"), "/instruction_tests.rs"));
