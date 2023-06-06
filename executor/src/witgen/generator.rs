@@ -29,7 +29,6 @@ pub struct Generator<'a, T: FieldElement, QueryCallback> {
     next_bit_constraints: Vec<Option<BitConstraint<T>>>,
     next_row: DegreeType,
     failure_reasons: Vec<String>,
-    progress: bool,
     last_report: DegreeType,
     last_report_time: Instant,
 }
@@ -68,7 +67,6 @@ where
             next_bit_constraints: vec![None; witness_cols_len],
             next_row: 0,
             failure_reasons: vec![],
-            progress: true,
             last_report: 0,
             last_report_time: Instant::now(),
         }
@@ -82,7 +80,7 @@ where
         let mut identity_failed;
         loop {
             identity_failed = false;
-            self.progress = false;
+            let mut progress = false;
             self.failure_reasons.clear();
 
             for (identity, complete) in self
@@ -108,7 +106,7 @@ where
                     }
                 };
 
-                self.handle_eval_result(result);
+                progress |= self.handle_eval_result(result);
             }
 
             if self.query_callback.is_some() {
@@ -119,12 +117,12 @@ where
                         && column.query.is_some()
                     {
                         let result = self.process_witness_query(&column);
-                        self.handle_eval_result(result)
+                        progress |= self.handle_eval_result(result);
                     }
                 }
             }
 
-            if !self.progress {
+            if !progress {
                 break;
             }
             if self.next.iter().all(|v| v.is_some()) {
@@ -418,12 +416,12 @@ where
         unimplemented!("No executor machine matched identity `{identity}`")
     }
 
-    fn handle_eval_result(&mut self, result: EvalResult<T>) {
+    /// Processes the evaluation result: Stores failure reasons and updates next values.
+    /// Returns true if a new value or constraint was determined.
+    fn handle_eval_result(&mut self, result: EvalResult<T>) -> bool {
         match result {
             Ok(constraints) => {
-                if !constraints.is_empty() {
-                    self.progress = true;
-                }
+                let progress = !constraints.is_empty();
                 for (id, c) in constraints.constraints {
                     match c {
                         Constraint::Assignment(value) => {
@@ -434,9 +432,11 @@ where
                         }
                     }
                 }
+                progress
             }
             Err(reason) => {
                 self.failure_reasons.push(format!("{reason}"));
+                false
             }
         }
     }
