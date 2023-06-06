@@ -183,15 +183,18 @@ impl<T: FieldElement> TripleSortedWitnesses<T> {
             panic!("UNALIGNED");
         }
 
+        // TODO we always have to handle all reads before all writes. enforce that somehow.
+        // Maybe we could also just store the value that was there before the write if we do it on the same step.
         // TODO this does not check any of the failure modes
         let mut assignments = EvalValue::complete(vec![]);
         if is_write {
             let value = match left[2].constant_value() {
                 Some(v) => v,
                 None => {
+                    println!("Nonconst write");
                     return Ok(EvalValue::incomplete(
                         IncompleteCause::NonConstantWriteValue,
-                    ))
+                    ));
                 }
             };
 

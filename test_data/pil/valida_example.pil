@@ -166,6 +166,8 @@ assembly {
     // fp is zero in the beginning. We can use `jal` to set it to a higher value,
     // but jal will always write to memory as well.
 
+    subi 0, 0, 1; // TODO it doesn't actually execute the write.
+
     // This was "fp + 4", but it's always relative to fp, so we don't need it.
     imm32 4, 100;
     jal 0, main, 4;
