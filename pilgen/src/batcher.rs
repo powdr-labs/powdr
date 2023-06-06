@@ -8,10 +8,9 @@ use number::FieldElement;
 use parser::{
     asm_ast::{
         batched::{ASMStatementBatch, BatchedASMFile, Incompatible, IncompatibleSet},
-        ASMFile, ASMStatement, InstructionBodyElement, InstructionParams,
-        RegisterFlag,
+        ASMFile, ASMStatement, InstructionBodyElement, InstructionParams, RegisterFlag,
     },
-    ast::Expression,
+    ast::{Expression, Statement},
     expr_any,
 };
 
@@ -25,33 +24,51 @@ struct Footprint {
     /// the assignment registers used
     assignment: BTreeSet<String>,
     /// whether we write the pc
-    pc_next: bool
+    pc_next: bool,
 }
 
 impl Footprint {
-    fn process<T>(&mut self, e: &Expression<T>, batcher: &ASMBatcher<T>) {
-        expr_any(e, |e| {
-            match e {
-                Expression::PolynomialReference(r) => {
+    fn process<T: FieldElement>(
+        &mut self,
+        e: &Expression<T>,
+        batcher: &ASMBatcher<T>,
+        ignore: &BTreeSet<String>,
+    ) {
+        expr_any(e, |e| match e {
+            Expression::PolynomialReference(r) => {
+                if !ignore.contains(&r.name) {
                     if r.next {
                         self.next.insert(r.name.clone());
                     } else {
                         self.cur.insert(r.name.clone());
                     };
 
-                    if r.next && Some(r.name.clone()) == batcher.pc_name {
+                    if r.next && r.name == *batcher.pc_name.as_ref().unwrap() {
                         self.pc_next = true;
                     }
+                }
 
-                    false
-                },
-                Expression::FunctionCall(instr, _) => {
-                    self.join(batcher.instructions.get(instr).unwrap().clone());
-                    false
-                },
-                _ => false,
+                false
             }
+            Expression::FunctionCall(instr, _) => {
+                let footprint = batcher.instructions.get(instr).unwrap().footprint.clone();
+                self.join(footprint);
+                false
+            }
+            _ => false,
         });
+    }
+
+    // expand a footprint based on connected components in the column graph
+    fn expand(&mut self, columns: &Columns) {
+        let cur: Vec<_> = self.cur.iter().cloned().collect();
+        for c in cur {
+            self.cur.extend(dbg!(columns.get_connected(&c)));
+        }
+        let next: Vec<_> = self.next.iter().cloned().collect();
+        for c in next {
+            self.next.extend(dbg!(columns.get_connected(&c)));
+        }
     }
 
     fn join(&mut self, other: Self) {
@@ -105,13 +122,31 @@ impl<T: FieldElement> Batch<T> {
                 // if the pc is written to, register it
                 footprint.pc_next |= write_to.iter().any(|r| Some(r) == batcher.pc_name.as_ref());
                 // process the value being written
-                footprint.process(value, batcher);
+                footprint.process(value, batcher, &Default::default());
             }
             ASMStatement::Instruction(_, instr, args) => {
+                let mut ignore = BTreeSet::new();
+                let instruction = &batcher.instructions.get(instr).unwrap();
+
+                // ignore the label inputs
+                ignore.extend(
+                    args.iter()
+                        .zip(&instruction.is_label)
+                        .filter(|(_, is_label)| **is_label)
+                        .map(|(arg, _)| match arg {
+                            Expression::PolynomialReference(r) => r.name.clone(),
+                            _ => unreachable!(),
+                        }),
+                );
+
+                // ignore the label names inside the instruction body?
+                ignore.extend(instruction.labels.clone());
+
                 // process the instruction call
                 footprint.process(
                     &Expression::FunctionCall(instr.clone(), args.clone()),
                     batcher,
+                    &ignore,
                 );
             }
             ASMStatement::Label(..) => {
@@ -120,9 +155,11 @@ impl<T: FieldElement> Batch<T> {
             _ => unreachable!(),
         };
 
+        footprint.expand(&batcher.columns);
+
         Batch {
             statements: vec![s],
-            footprint
+            footprint,
         }
     }
 
@@ -138,25 +175,85 @@ impl<T: FieldElement> Batch<T> {
 
     fn try_join(&mut self, other: Self) -> Result<(), (Self, IncompatibleSet)> {
         let mut incompatible_set = BTreeSet::default();
-        if self.statements.len() > 0 && other
-            .statements
-            .iter()
-            .any(|s| matches!(s, ASMStatement::Label(..)))
+        if !self.statements.is_empty()
+            && other
+                .statements
+                .iter()
+                .any(|s| matches!(s, ASMStatement::Label(..)))
         {
             incompatible_set.insert(Incompatible::Label);
             return Err((other, IncompatibleSet(incompatible_set)));
         }
 
-        match self.footprint
-            .try_join(other.footprint) {
-                Ok(()) => {
-                    self.statements.extend(other.statements);
-                    Ok(())
-                }, 
-                Err((footprint, incompatible)) => {
-                    Err((Batch { footprint, ..other }, incompatible))
+        match self.footprint.try_join(other.footprint) {
+            Ok(()) => {
+                self.statements.extend(other.statements);
+                Ok(())
+            }
+            Err((footprint, incompatible)) => Err((Batch { footprint, ..other }, incompatible)),
+        }
+    }
+}
+
+type Components = BTreeMap<String, usize>;
+
+// the columns of the program
+#[derive(Default)]
+struct Columns {
+    edges: BTreeMap<String, BTreeSet<String>>,
+    components: Option<Components>,
+}
+
+impl Columns {
+    fn add_column(&mut self, c: String) {
+        assert!(self.edges.insert(c, Default::default()).is_none());
+    }
+
+    fn set_connected(&mut self, left: String, right: String) {
+        self.edges
+            .entry(left.clone())
+            .or_default()
+            .insert(right.clone());
+        self.edges.entry(right).or_default().insert(left);
+    }
+
+    fn build_components(&mut self) {
+        let mut id = 0;
+        let mut components = BTreeMap::default();
+
+        for node in self.edges.keys() {
+            if !components.contains_key(node) {
+                // we start a new component
+                id += 1;
+
+                let mut to_treat = vec![node.clone()];
+
+                let mut treat_node = |node: &String, to_treat: &mut Vec<String>| {
+                    if !components.contains_key(node) {
+                        components.insert(node.clone(), id);
+                        to_treat.extend(self.edges.get(node).cloned().unwrap());
+                    }
+                };
+
+                while let Some(node) = to_treat.pop() {
+                    treat_node(&node, &mut to_treat);
+                }
             }
         }
+
+        self.components = Some(components);
+    }
+
+    fn get_connected(&self, e: &String) -> BTreeSet<String> {
+        let components: &BTreeMap<String, usize> = self.components.as_ref().unwrap();
+
+        let id = components.get(e).expect(e);
+
+        components
+            .iter()
+            .filter(|(_, i)| *i == id)
+            .map(|(c, _)| c.clone())
+            .collect()
     }
 }
 
@@ -164,9 +261,19 @@ impl<T: FieldElement> Batch<T> {
 pub struct ASMBatcher<T> {
     /// the name of the pc for this program
     pc_name: Option<String>,
+    /// the footprint of each column, built recursively
+    columns: Columns,
     /// the footprint of each instruction
-    instructions: BTreeMap<String, Footprint>,
+    instructions: BTreeMap<String, Instruction>,
     marker: PhantomData<T>,
+}
+
+#[derive(Default, Debug)]
+
+struct Instruction {
+    footprint: Footprint,
+    labels: BTreeSet<String>,
+    is_label: Vec<bool>,
 }
 
 impl<T: FieldElement> ASMBatcher<T> {
@@ -182,7 +289,7 @@ impl<T: FieldElement> ASMBatcher<T> {
                 let mut batch = Batch::default();
                 loop {
                     match it.peek() {
-                        Some(new_s) => match batch.try_absorb(new_s.clone(), &self) {
+                        Some(new_s) => match batch.try_absorb(new_s.clone(), self) {
                             Ok(()) => {
                                 it.next().unwrap();
                             }
@@ -222,9 +329,14 @@ impl<T: FieldElement> ASMBatcher<T> {
                 self.handle_instruction_def(body, name, params);
                 true
             }
-            ASMStatement::InlinePil(_, _) => true,
+            ASMStatement::InlinePil(_, block) => {
+                self.handle_inline_pil(block);
+                true
+            }
             _ => false,
         });
+
+        self.expand();
 
         let batches = self.to_compatible_batches(statements);
 
@@ -242,11 +354,49 @@ impl<T: FieldElement> ASMBatcher<T> {
         }
     }
 
+    fn expand(&mut self) {
+        // build connected components
+        self.columns.build_components();
+        // extend the instruction footprints using the connected components
+        for instruction in self.instructions.values_mut() {
+            instruction.footprint.expand(&self.columns);
+        }
+    }
+
+    fn handle_inline_pil(&mut self, statements: &[Statement<T>]) {
+        for s in statements {
+            let mut pool = BTreeSet::default();
+            match s {
+                Statement::PolynomialConstantDefinition(..) => {}
+                Statement::PolynomialIdentity(_, e) => {
+                    expr_any(e, |e| match e {
+                        Expression::PolynomialReference(r) => {
+                            pool.insert(r.name.clone());
+                            false
+                        }
+                        _ => false,
+                    });
+                }
+                _ => {
+                    unimplemented!("batching not supported for statement {s}")
+                }
+            }
+            for (i, j) in pool
+                .iter()
+                .flat_map(|r| pool.iter().map(|s| (r.clone(), s.clone())))
+            {
+                self.columns.set_connected(i.clone(), j.clone())
+            }
+        }
+    }
+
     fn handle_register_declaration(&mut self, flags: &Option<RegisterFlag>, name: &str) {
         if let Some(RegisterFlag::IsPC) = flags {
             assert_eq!(self.pc_name, None);
             self.pc_name = Some(name.to_string());
         }
+
+        self.columns.add_column(name.into());
     }
 
     fn handle_instruction_def(
@@ -256,6 +406,8 @@ impl<T: FieldElement> ASMBatcher<T> {
         params: &InstructionParams,
     ) {
         let mut footprint = Footprint::default();
+        let mut labels = BTreeSet::default();
+        let mut is_label = vec![];
 
         // get assignment registers
         for param in params
@@ -264,11 +416,16 @@ impl<T: FieldElement> ASMBatcher<T> {
             .iter()
             .chain(params.outputs.iter().flat_map(|o| o.params.iter()))
         {
-            match param.ty {
-                Some(_) => {}
+            match &param.ty {
+                Some(ty) if ty == "label" => {
+                    is_label.push(true);
+                    labels.insert(param.name.clone());
+                }
                 None => {
+                    is_label.push(false);
                     footprint.assignment.insert(param.name.clone());
                 }
+                _ => unreachable!(),
             }
         }
 
@@ -276,7 +433,7 @@ impl<T: FieldElement> ASMBatcher<T> {
         for expr in body {
             match expr {
                 InstructionBodyElement::Expression(expr) => {
-                    footprint.process(expr, &self);
+                    footprint.process(expr, self, &labels);
                 }
                 InstructionBodyElement::PlookupIdentity(left, _op, right) => {
                     for e in left
@@ -284,17 +441,24 @@ impl<T: FieldElement> ASMBatcher<T> {
                         .iter()
                         .chain(left.selector.iter())
                         .chain(right.expressions.iter())
-                        .chain(right.selector.iter()) {
-                            footprint.process(e, &self);
-                        }
-                        
+                        .chain(right.selector.iter())
+                    {
+                        footprint.process(e, self, &labels);
+                    }
                 }
             }
         }
 
         log::debug!("Instruction footprint: {name} {:#?}", footprint);
 
-        self.instructions.insert(name.into(), footprint);
+        self.instructions.insert(
+            name.into(),
+            Instruction {
+                footprint,
+                labels,
+                is_label,
+            },
+        );
     }
 }
 
@@ -318,7 +482,7 @@ mod tests {
         )
         .map(|ast| ASMBatcher::default().convert(ast))
         .unwrap();
-        let mut expected_file_name = file_name.clone();
+        let mut expected_file_name = file_name;
         expected_file_name.set_file_name(format!(
             "{}_batched.asm",
             expected_file_name.file_stem().unwrap().to_str().unwrap()

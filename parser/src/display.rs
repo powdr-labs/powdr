@@ -66,7 +66,7 @@ impl<T: Display> Display for ASMStatement<T> {
             ),
             ASMStatement::InlinePil(_, statements) => write!(
                 f,
-                "pil{{{}}}",
+                "pil{{\n{}\n}}",
                 statements
                     .iter()
                     .map(|s| format!("{}", s))

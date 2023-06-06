@@ -34,7 +34,9 @@ impl<T: FieldElement> ASMPILConverter<T> {
             .filter_map(|s| self.handle_statement(s))
             .reduce(|mut acc, e| {
                 // we write to the union of the target registers.
-                acc.write_regs.extend(e.write_regs);
+                for (key, value) in e.write_regs {
+                    acc.write_regs.entry(key).or_default().extend(value);
+                }
                 // we write the union of the written values.
                 acc.value.extend(e.value);
                 // we use the union of the used instructions. No conflict should happen here, the instructions should be different.
@@ -581,7 +583,6 @@ impl<T: FieldElement> ASMPILConverter<T> {
     /// Translates the code lines to fixed column but also fills
     /// the query hints for the free inputs.
     fn translate_code_lines(&mut self) {
-        // TODO this should loop with the number of lines in the program, as should all the other program constants!
         self.pil.push(Statement::PolynomialConstantDefinition(
             0,
             "p_line".to_string(),
@@ -654,6 +655,9 @@ impl<T: FieldElement> ASMPILConverter<T> {
                         // the free input to 1.
                         // TODO This is horrible and needs to be fixed by a proper mechanism
                         // that enforces that the assignment register is actually properly constrained.
+
+                        // note: this is the part which breaks,
+
                         program_constants
                             .get_mut(&format!("p_{reg}_read_free"))
                             .unwrap()[i] = 1.into();
@@ -801,7 +805,7 @@ impl Instruction {
 
 // TODO turn this into an enum, split into
 // label, assignment, instruction.
-#[derive(Default)]
+#[derive(Default, Debug)]
 struct CodeLine<T> {
     /// Which regular registers to assign to, from which assignment register
     /// Maps assignment register to a vector of regular registers.
@@ -812,12 +816,14 @@ struct CodeLine<T> {
     instructions: Vec<(String, Vec<InstructionLiteralArg<T>>)>,
 }
 
+#[derive(Debug)]
 enum AffineExpressionComponent<T> {
     Register(String),
     Constant,
     FreeInput(Expression<T>),
 }
 
+#[derive(Debug)]
 enum InstructionLiteralArg<T> {
     LabelRef(String),
     Number(T),

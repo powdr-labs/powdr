@@ -55,6 +55,15 @@ jump_last::
  jump jump_last;
  B <=Z= 3;
 
+// in particular, we can write a loop in a single batch
+loop::
+ jump loop;
+
+// if we update a variable before jumping, we can still make a single batch
+loop_with_update::
+ A <=X= 1;
+ jump loop_with_update;
+
 batch_constants::
 addr <=Y= 2;
 // END BATCH ReadAfterWrite
@@ -81,6 +90,24 @@ addr <=Y= wrap(tmp1); // Y -> X -> addr
 // END BATCH BusyAssignmentRegister, ReadAfterWrite
 mstore tmp1; // tmp1 -> X -> ()
 // END BATCH Label
+
+// if we're using inline pil, any column referenced both there and in an expression needs to be added to the footprint (recursively)
+connected_by_inline_pil::
+// C and D are linked in inline PIL
+reg C;
+reg D;
+pil {
+ col fixed FIRST = [1] + [0]*;
+ FIRST * C = 2;
+ FIRST * D = 2;
+ C*D = 4;
+}
+// we change C
+C <=X= 1;
+// C*D should break here, which is why we cannot batch with the next
+// we change D
+D <=Y= 4;
+// C*D is verified again here
 
 end::
  loop;
