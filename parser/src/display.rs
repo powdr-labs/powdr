@@ -2,6 +2,12 @@ use std::fmt::{Display, Formatter, Result};
 
 use parser_util::quote;
 
+use crate::asm_ast::{
+    batched::{ASMStatementBatch, BatchedASMFile, Incompatible, IncompatibleSet},
+    ASMFile, ASMStatement, InstructionBodyElement, InstructionParam, InstructionParamList,
+    InstructionParams, PlookupOperator, RegisterFlag,
+};
+
 use super::ast::*;
 
 // TODO indentation
@@ -12,6 +18,216 @@ impl<T: Display> Display for PILFile<T> {
             writeln!(f, "{s}")?;
         }
         Ok(())
+    }
+}
+
+impl<T: Display> Display for ASMFile<T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        for s in &self.0 {
+            writeln!(f, "{s}")?;
+        }
+        Ok(())
+    }
+}
+
+impl<T: Display> Display for BatchedASMFile<T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        for s in &self.declarations {
+            writeln!(f, "{s}")?;
+        }
+        for s in &self.batches {
+            writeln!(f, "{s}")?;
+        }
+        Ok(())
+    }
+}
+
+impl<T: Display> Display for ASMStatement<T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        match self {
+            ASMStatement::Degree(_, degree) => write!(f, "degree {degree};"),
+            ASMStatement::RegisterDeclaration(_, name, flag) => write!(
+                f,
+                "reg {}{};",
+                name,
+                flag.as_ref()
+                    .map(|flag| format!("[{flag}]"))
+                    .unwrap_or_default()
+            ),
+            ASMStatement::InstructionDeclaration(_, name, params, body) => write!(
+                f,
+                "instr {}{} {{{}}}",
+                name,
+                params,
+                body.iter()
+                    .map(|e| format!("{e}"))
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            ),
+            ASMStatement::InlinePil(_, statements) => write!(
+                f,
+                "pil{{{}}}",
+                statements
+                    .iter()
+                    .map(|s| format!("{}", s))
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            ),
+            ASMStatement::Assignment(_, write_regs, assignment_reg, expression) => write!(
+                f,
+                "{} <={}= {};",
+                write_regs.join(", "),
+                assignment_reg
+                    .as_ref()
+                    .map(ToString::to_string)
+                    .unwrap_or_default(),
+                expression
+            ),
+            ASMStatement::Instruction(_, name, inputs) => write!(
+                f,
+                "{}{};",
+                name,
+                if inputs.is_empty() {
+                    "".to_string()
+                } else {
+                    format!(
+                        " {}",
+                        inputs
+                            .iter()
+                            .map(|i| i.to_string())
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    )
+                }
+            ),
+            ASMStatement::Label(_, name) => write!(f, "{name}::"),
+        }
+    }
+}
+
+impl Display for RegisterFlag {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        match self {
+            RegisterFlag::IsPC => write!(f, "@pc"),
+            RegisterFlag::IsAssignment => write!(f, "<="),
+        }
+    }
+}
+
+impl Display for InstructionParams {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(
+            f,
+            "{}{}{}",
+            if self.inputs.params.len() + self.outputs.as_ref().map(|o| o.params.len()).unwrap_or(0)
+                == 0
+            {
+                ""
+            } else {
+                " "
+            },
+            self.inputs,
+            self.outputs
+                .as_ref()
+                .map(|outputs| format!(" -> {}", outputs))
+                .unwrap_or_default()
+        )
+    }
+}
+
+impl Display for InstructionParamList {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(
+            f,
+            "{}",
+            self.params
+                .iter()
+                .map(|p| p.to_string())
+                .collect::<Vec<_>>()
+                .join(", ")
+        )
+    }
+}
+
+impl<T: Display> Display for InstructionBodyElement<T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        match self {
+            InstructionBodyElement::Expression(e) => write!(f, "{e}"),
+            InstructionBodyElement::PlookupIdentity(left, operator, right) => {
+                write!(f, "{left} {operator} {right}")
+            }
+            InstructionBodyElement::FunctionCall(name, arguments) => {
+                write!(
+                    f,
+                    "{}({})",
+                    name,
+                    arguments
+                        .iter()
+                        .map(|a| a.to_string())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )
+            }
+        }
+    }
+}
+
+impl Display for PlookupOperator {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        match self {
+            PlookupOperator::In => write!(f, "in"),
+            PlookupOperator::Is => write!(f, "is"),
+        }
+    }
+}
+
+impl Display for InstructionParam {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(
+            f,
+            "{}{}",
+            self.name,
+            self.ty
+                .as_ref()
+                .map(|ty| format!(": {}", ty))
+                .unwrap_or_default()
+        )
+    }
+}
+
+impl<T: Display> Display for ASMStatementBatch<T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        for s in &self.statements {
+            writeln!(f, "{s}")?;
+        }
+        write!(
+            f,
+            "// END BATCH{}",
+            self.reason
+                .as_ref()
+                .map(|reason| format!(" {reason}"))
+                .unwrap_or_default()
+        )
+    }
+}
+
+impl Display for Incompatible {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(f, "{:?}", self)
+    }
+}
+
+impl Display for IncompatibleSet {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(
+            f,
+            "{}",
+            self.0
+                .iter()
+                .map(|r| r.to_string())
+                .collect::<Vec<_>>()
+                .join(", ")
+        )
     }
 }
 

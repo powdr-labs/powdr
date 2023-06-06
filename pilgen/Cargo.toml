@@ -4,6 +4,9 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+log = "0.4.17"
 number = { path = "../number" }
 parser_util = { path = "../parser_util" }
 parser = { path = "../parser" }
+itertools = "0.10.5"
+pretty_assertions = "1.3.0"
