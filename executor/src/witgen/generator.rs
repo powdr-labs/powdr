@@ -77,9 +77,6 @@ where
     pub fn compute_next_row(&mut self, next_row: DegreeType) -> Vec<T> {
         self.set_next_row_and_log(next_row);
 
-        // TODO maybe better to generate a dependency graph than looping multiple times.
-        // TODO at least we could cache the affine expressions between loops.
-
         let mut complete_identities = vec![false; self.identities.len()];
 
         let mut identity_failed;
@@ -94,18 +91,7 @@ where
                 .zip(complete_identities.iter_mut())
                 .filter(|(_, complete)| !**complete)
             {
-                let result = match identity.kind {
-                    IdentityKind::Polynomial => {
-                        self.process_polynomial_identity(identity.left.selector.as_ref().unwrap())
-                    }
-                    IdentityKind::Plookup | IdentityKind::Permutation => {
-                        self.process_plookup(identity)
-                    }
-                    kind => {
-                        unimplemented!("Identity of kind {kind:?} is not supported in the executor")
-                    }
-                }
-                .map_err(|err| {
+                let result = self.process_identity(identity).map_err(|err| {
                     format!(
                         "No progress on {identity}:\n{}",
                         indent(&format!("{err}"), "    ")
@@ -179,21 +165,21 @@ where
                 indent(&self.format_next_known_values().join("\n"), "    ")
             );
             panic!();
-        } else {
-            log::trace!(
-                "===== Row {next_row}:\n{}",
-                indent(&self.format_next_values().join("\n"), "    ")
-            );
-            std::mem::swap(&mut self.next, &mut self.current);
-            self.next = vec![None; self.current.len()];
-            self.next_bit_constraints = vec![None; self.current.len()];
-            // TODO check a bit better that "None" values do not
-            // violate constraints.
-            self.current
-                .iter()
-                .map(|v| (*v).unwrap_or_default())
-                .collect()
         }
+
+        log::trace!(
+            "===== Row {next_row}:\n{}",
+            indent(&self.format_next_values().join("\n"), "    ")
+        );
+        std::mem::swap(&mut self.next, &mut self.current);
+        self.next = vec![None; self.current.len()];
+        self.next_bit_constraints = vec![None; self.current.len()];
+        // TODO check a bit better that "None" values do not
+        // violate constraints.
+        self.current
+            .iter()
+            .map(|v| (*v).unwrap_or_default())
+            .collect()
     }
 
     /// Verifies the proposed values for the next row.
@@ -204,16 +190,7 @@ where
         self.next = values.iter().cloned().map(Some).collect();
 
         for identity in self.identities {
-            let result = match identity.kind {
-                IdentityKind::Polynomial => {
-                    self.process_polynomial_identity(identity.left.selector.as_ref().unwrap())
-                }
-                IdentityKind::Plookup | IdentityKind::Permutation => self.process_plookup(identity),
-                kind => {
-                    unimplemented!("Identity of kind {kind:?} is not supported in the executor")
-                }
-            };
-            if result.is_err() {
+            if self.process_identity(identity).is_err() {
                 self.next = vec![None; self.current.len()];
                 self.next_bit_constraints = vec![None; self.current.len()];
                 return false;
@@ -349,6 +326,18 @@ where
             .find(|(n, _)| n.is_none() || n.as_ref() == Some(&v))
             .ok_or(IncompleteCause::NoMatchArmFound)?;
         self.interpolate_query(expr)
+    }
+
+    fn process_identity<'b>(&mut self, identity: &'b Identity<T>) -> EvalResult<'b, T> {
+        match identity.kind {
+            IdentityKind::Polynomial => {
+                self.process_polynomial_identity(identity.left.selector.as_ref().unwrap())
+            }
+            IdentityKind::Plookup | IdentityKind::Permutation => self.process_plookup(identity),
+            kind => {
+                unimplemented!("Identity of kind {kind:?} is not supported in the executor")
+            }
+        }
     }
 
     fn process_polynomial_identity<'b>(&self, identity: &'b Expression<T>) -> EvalResult<'b, T> {
