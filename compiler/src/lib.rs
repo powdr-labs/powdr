@@ -12,7 +12,7 @@ mod verify;
 pub use backends::Backend;
 use number::write_polys_file;
 use pil_analyzer::json_exporter;
-pub use verify::{compile_asm_string_temp, verify, verify_asm_string};
+pub use verify::{verify, verify_asm_string};
 
 use executor::constant_evaluator;
 use number::FieldElement;
@@ -103,11 +103,13 @@ pub fn compile_asm<T: FieldElement>(
         output_dir,
         force_overwrite,
         prove_with,
-    )
+    );
 }
 
 /// Compiles the contents of a .asm file, outputs the PIL on stdout and tries to generate
 /// fixed and witness columns.
+///
+/// Returns the relative pil file name.
 pub fn compile_asm_string<T: FieldElement>(
     file_name: &str,
     contents: &str,
@@ -115,32 +117,37 @@ pub fn compile_asm_string<T: FieldElement>(
     output_dir: &Path,
     force_overwrite: bool,
     prove_with: Option<Backend>,
-) {
+) -> String {
     let pil = pilgen::compile(Some(file_name), contents).unwrap_or_else(|err| {
         eprintln!("Error parsing .asm file:");
         err.output_to_stderr();
         panic!();
     });
-    let pil_file_name = output_dir.join(format!(
+
+    let pil_file_name = format!(
         "{}.pil",
         Path::new(file_name).file_stem().unwrap().to_str().unwrap()
-    ));
-    if pil_file_name.exists() && !force_overwrite {
+    );
+
+    let pil_file_path = output_dir.join(&pil_file_name);
+    if pil_file_path.exists() && !force_overwrite {
         eprint!(
             "Target file {} already exists. Not overwriting.",
-            pil_file_name.to_str().unwrap()
+            pil_file_path.to_str().unwrap()
         );
-        return;
+        return pil_file_name;
     }
-    fs::write(pil_file_name.clone(), format!("{pil}")).unwrap();
+    fs::write(pil_file_path.clone(), format!("{pil}")).unwrap();
 
     compile_pil_ast(
         &pil,
-        pil_file_name.file_name().unwrap(),
+        pil_file_path.file_name().unwrap(),
         output_dir,
         Some(inputs_to_query_callback(inputs)),
         prove_with,
     );
+
+    pil_file_name
 }
 
 fn compile<T: FieldElement, QueryCallback>(

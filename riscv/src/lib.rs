@@ -97,7 +97,7 @@ pub fn compile_riscv_asm_bundle<T: FieldElement>(
         output_dir,
         force_overwrite,
         prove_with,
-    )
+    );
 }
 
 /// Compiles a riscv asm file all the way down to PIL and generates
