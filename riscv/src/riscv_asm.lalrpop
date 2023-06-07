@@ -1,5 +1,5 @@
 use std::str::FromStr;
-use crate::parser::{Statement, Argument, Register, Constant, unescape_string};
+use crate::parser::{Statement, Argument, Register, Expression, unescape_string, BinaryOpKind as BOp, UnaryOpKind as UOp, new_binary_op as bin_op, new_unary_op as un_op};
 
 grammar;
 
@@ -55,9 +55,7 @@ Argument: Argument = {
     Register => Argument::Register(<>),
     OffsetRegister,
     StringLiteral => Argument::StringLiteral(<>),
-    Symbol => Argument::Symbol(<>),
-    Constant => Argument::Constant(<>),
-    Difference,
+    Expression => Argument::Expression(<>),
 }
 
 Register: Register = {
@@ -80,68 +78,59 @@ Register: Register = {
 }
 
 OffsetRegister: Argument = {
-    <c:Constant> "(" <r:Register> ")" => Argument::RegOffset(r, c),
+    <c:Expression> "(" <r:Register> ")" => Argument::RegOffset(r, c),
 }
 
-Constant: Constant = {
-    ConstantExpression => Constant::Number(<>),
-    "%hi(" <arg:HiLowArgument> ")" => Constant::HiDataRef(arg.0, arg.1),
-    "%lo(" <arg:HiLowArgument> ")" => Constant::LoDataRef(arg.0, arg.1),
+Expression: Expression = {
+    ExprBinaryOr,
 }
 
-HiLowArgument: (String, i64) = {
-    <Symbol> => (<>, 0),
-    <Symbol> "+" <ConstantExpression> => (<>),
-    <n: Symbol> "-" <o: ConstantExpression> => (n, -o),
+ExprBinaryOr: Expression = {
+    <l:ExprBinaryOr> "|" <r:ExprBinaryXor> => bin_op(BOp::Or, l, r),
+    ExprBinaryXor,
 }
 
-ConstantExpression: i64 = {
-    <l:ConstantExpression> "|" <r:ConstantBinaryXor> => l | r,
-    ConstantBinaryXor,
+ExprBinaryXor: Expression = {
+    <l:ExprBinaryXor> "^" <r:ExprBinaryAnd> => bin_op(BOp::Xor, l, r),
+    ExprBinaryAnd,
 }
 
-ConstantBinaryXor: i64 = {
-    <l:ConstantBinaryXor> "^" <r:ConstantBinaryAnd> => l ^ r,
-    ConstantBinaryAnd,
+ExprBinaryAnd: Expression = {
+    <l:ExprBinaryAnd> "&" <r:ExprBitShift> => bin_op(BOp::And, l, r),
+    ExprBitShift,
 }
 
-ConstantBinaryAnd: i64 = {
-    <l:ConstantBinaryAnd> "&" <r:ConstantBitShift> => l & r,
-    ConstantBitShift,
+ExprBitShift: Expression = {
+    <l:ExprBitShift> "<<" <r:ExprSum> => bin_op(BOp::LeftShift, l, r),
+    <l:ExprBitShift> ">>" <r:ExprSum> => bin_op(BOp::RightShift, l, r),
+    ExprSum,
 }
 
-ConstantBitShift: i64 = {
-    <l:ConstantBitShift> "<<" <r:ConstantSum> => l << r,
-    <l:ConstantBitShift> ">>" <r:ConstantSum> => l >> r,
-    ConstantSum,
+ExprSum: Expression = {
+    <l:ExprSum> "+" <r:ExprProduct> => bin_op(BOp::Add, l, r),
+    <l:ExprSum> "-" <r:ExprProduct> => bin_op(BOp::Sub, l, r),
+    ExprProduct,
 }
 
-ConstantSum: i64 = {
-    <l:ConstantSum> "+" <r:ConstantProduct> => l + r,
-    <l:ConstantSum> "-" <r:ConstantProduct> => l - r,
-    ConstantProduct,
+ExprProduct: Expression = {
+    <l:ExprProduct> "*" <r:ExprUnary> => bin_op(BOp::Mul, l, r),
+    <l:ExprProduct> "/" <r:ExprUnary> => bin_op(BOp::Div, l, r),
+    <l:ExprProduct> "%" <r:ExprUnary> => bin_op(BOp::Mod, l, r),
+    ExprUnary,
 }
 
-ConstantProduct: i64 = {
-    <l:ConstantProduct> "*" <r:ConstantUnary> => l * r,
-    <l:ConstantProduct> "/" <r:ConstantUnary> => l / r,
-    <l:ConstantProduct> "%" <r:ConstantUnary> => l % r,
-    ConstantUnary,
+ExprUnary: Expression = {
+    "-" <ExprTerm> => un_op(UOp::Negation, <>),
+    "+" <ExprTerm>,
+    ExprTerm,
 }
 
-ConstantUnary: i64 = {
-    "-" <ConstantTerm> => -<>,
-    "+" <ConstantTerm> => <>,
-    ConstantTerm,
-}
-
-ConstantTerm: i64 = {
-    Number,
-    "(" <ConstantExpression> ")",
-}
-
-Difference: Argument = {
-    <Symbol> "-" <Symbol> => Argument::Difference(<>)
+ExprTerm: Expression = {
+    Number => Expression::Number(<>),
+    "(" <Expression> ")" => <>,
+    "%hi(" <Expression> ")" => un_op(UOp::HiDataRef, <>),
+    "%lo(" <Expression> ")" => un_op(UOp::LoDataRef, <>),
+    Symbol => Expression::Symbol(<>)
 }
 
 StringLiteral: Vec<u8> = {
@@ -164,5 +153,4 @@ Symbol: String = {
 Number: i64 = {
     r"-?[0-9][0-9_]*" => i64::from_str(<>).unwrap().into(),
     r"0x[0-9A-Fa-f][0-9A-Fa-f_]*" => i64::from_str_radix(&<>[2..].replace('_', ""), 16).unwrap().into(),
-
 }

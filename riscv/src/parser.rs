@@ -20,11 +20,29 @@ pub enum Statement {
 #[derive(Clone)]
 pub enum Argument {
     Register(Register),
-    RegOffset(Register, Constant),
+    RegOffset(Register, Expression),
     StringLiteral(Vec<u8>),
-    Constant(Constant),
-    Symbol(String),
-    Difference(String, String),
+    Expression(Expression),
+}
+
+impl Argument {
+    pub(crate) fn post_visit_expressions_mut(&mut self, f: &mut impl FnMut(&mut Expression)) {
+        match self {
+            Argument::Register(_) | Argument::StringLiteral(_) => (),
+            Argument::RegOffset(_, expr) | Argument::Expression(expr) => {
+                expr.post_visit_mut(f);
+            }
+        }
+    }
+
+    pub(crate) fn post_visit_expressions<'a>(&'a self, f: &mut impl FnMut(&'a Expression)) {
+        match self {
+            Argument::Register(_) | Argument::StringLiteral(_) => (),
+            Argument::RegOffset(_, expr) | Argument::Expression(expr) => {
+                expr.post_visit(f);
+            }
+        }
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -36,11 +54,67 @@ impl Register {
     }
 }
 
+#[derive(Clone, Copy)]
+pub enum UnaryOpKind {
+    HiDataRef,
+    LoDataRef,
+    Negation,
+}
+
+#[derive(Clone, Copy)]
+pub enum BinaryOpKind {
+    Or,
+    Xor,
+    And,
+    LeftShift,
+    RightShift,
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Mod,
+}
+
 #[derive(Clone)]
-pub enum Constant {
+pub enum Expression {
     Number(i64),
-    HiDataRef(String, i64),
-    LoDataRef(String, i64),
+    Symbol(String),
+    UnaryOp(UnaryOpKind, Box<[Expression]>),
+    BinaryOp(BinaryOpKind, Box<[Expression; 2]>),
+}
+
+impl Expression {
+    fn post_visit<'a>(&'a self, f: &mut impl FnMut(&'a Expression)) {
+        match self {
+            Expression::UnaryOp(_, subexpr) => subexpr.iter(),
+            Expression::BinaryOp(_, subexprs) => subexprs.iter(),
+            _ => [].iter(),
+        }
+        .for_each(|subexpr| {
+            Self::post_visit(subexpr, f);
+        });
+        f(self);
+    }
+
+    fn post_visit_mut(&mut self, f: &mut impl FnMut(&mut Expression)) {
+        match self {
+            Expression::UnaryOp(_, subexpr) => subexpr.iter_mut(),
+            Expression::BinaryOp(_, subexprs) => subexprs.iter_mut(),
+            _ => [].iter_mut(),
+        }
+        .for_each(|subexpr| {
+            Self::post_visit_mut(subexpr, f);
+        });
+        f(self);
+    }
+}
+
+fn new_unary_op(op: UnaryOpKind, v: Expression) -> Expression {
+    Expression::UnaryOp(op, Box::new([v]))
+}
+
+fn new_binary_op(op: BinaryOpKind, l: Expression, r: Expression) -> Expression {
+    Expression::BinaryOp(op, Box::new([l, r]))
 }
 
 impl Display for Statement {
@@ -57,34 +131,37 @@ impl Display for Argument {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Argument::Register(r) => write!(f, "{r}"),
-            Argument::Constant(c) => write!(f, "{c}"),
             Argument::RegOffset(reg, off) => write!(f, "{off}({reg})"),
             Argument::StringLiteral(lit) => write!(f, "\"{}\"", String::from_utf8_lossy(lit)),
-            Argument::Symbol(s) => write!(f, "{s}"),
-            Argument::Difference(left, right) => write!(f, "{left} - {right}"),
+            Argument::Expression(expr) => write!(f, "{expr}"),
         }
     }
 }
 
-impl Display for Constant {
+impl Display for Expression {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Constant::Number(n) => write!(f, "{n}"),
-            Constant::HiDataRef(sym, offset) => {
-                write!(f, "%hi({sym}{})", format_hi_lo_offset(*offset))
-            }
-            Constant::LoDataRef(sym, offset) => {
-                write!(f, "%lo({sym}{})", format_hi_lo_offset(*offset))
+            Expression::Number(n) => write!(f, "{n}"),
+            Expression::Symbol(sym) => write!(f, "{sym}"),
+            Expression::UnaryOp(UnaryOpKind::Negation, expr) => write!(f, "(-{})", expr[0]),
+            Expression::UnaryOp(UnaryOpKind::HiDataRef, expr) => write!(f, "%hi({})", expr[0]),
+            Expression::UnaryOp(UnaryOpKind::LoDataRef, expr) => write!(f, "%lo({})", expr[0]),
+            Expression::BinaryOp(op, args) => {
+                let symbol = match op {
+                    BinaryOpKind::Or => "|",
+                    BinaryOpKind::Xor => "^",
+                    BinaryOpKind::And => "&",
+                    BinaryOpKind::LeftShift => "<<",
+                    BinaryOpKind::RightShift => ">>",
+                    BinaryOpKind::Add => "+",
+                    BinaryOpKind::Sub => "-",
+                    BinaryOpKind::Mul => "*",
+                    BinaryOpKind::Div => "/",
+                    BinaryOpKind::Mod => "%",
+                };
+                write!(f, "({} {symbol} {})", args[0], args[1])
             }
         }
-    }
-}
-
-fn format_hi_lo_offset(offset: i64) -> String {
-    match offset {
-        0 => String::new(),
-        1.. => format!(" + {offset}"),
-        ..=-1 => format!(" - {}", -offset),
     }
 }
 

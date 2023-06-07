@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use crate::parser::{Argument, Constant, Statement};
+use crate::parser::{Argument, Expression, Statement};
 
 pub enum DataValue {
     Direct(Vec<u8>),
@@ -34,9 +34,10 @@ pub fn extract_data_objects(
                 current_label = Some(l.as_str());
             }
             Statement::Directive(dir, args) => match (dir.as_str(), &args[..]) {
-                (".type", [Argument::Symbol(name), Argument::Symbol(kind)])
-                    if kind.as_str() == "@object" =>
-                {
+                (
+                    ".type",
+                    [Argument::Expression(Expression::Symbol(name)), Argument::Expression(Expression::Symbol(kind))],
+                ) if kind.as_str() == "@object" => {
                     object_order.push(name.clone());
                     assert!(objects.insert(name.clone(), vec![]).is_none());
                 }
@@ -47,9 +48,10 @@ pub fn extract_data_objects(
                             entry.extend(extract_data_value(dir.as_str(), args));
                         });
                 }
-                (".size", [Argument::Symbol(name), Argument::Constant(Constant::Number(n))])
-                    if Some(name.as_str()) == current_label =>
-                {
+                (
+                    ".size",
+                    [Argument::Expression(Expression::Symbol(name)), Argument::Expression(Expression::Number(n))],
+                ) if Some(name.as_str()) == current_label => {
                     objects
                         .entry(current_label.unwrap().into())
                         .and_modify(|entry| {
@@ -76,9 +78,9 @@ fn extract_data_value(directive: &str, arguments: &[Argument]) -> Vec<DataValue>
     match (directive, arguments) {
         (
             ".zero",
-            [Argument::Constant(Constant::Number(n))]
+            [Argument::Expression(Expression::Number(n))]
             // TODO not clear what the second argument is
-            | [Argument::Constant(Constant::Number(n)), _],
+            | [Argument::Expression(Expression::Number(n)), _],
         ) => {
             vec![DataValue::Zero(*n as usize)]
         }
@@ -95,7 +97,7 @@ fn extract_data_value(directive: &str, arguments: &[Argument]) -> Vec<DataValue>
                     .iter()
                     .map(|x| {
                         match x {
-                            Argument::Constant(Constant::Number(n)) =>{
+                            Argument::Expression(Expression::Number(n)) =>{
                                 let n = *n as u32;
                                 DataValue::Direct(vec![
                                     (n & 0xff) as u8,
@@ -104,7 +106,7 @@ fn extract_data_value(directive: &str, arguments: &[Argument]) -> Vec<DataValue>
                                     (n >> 24 & 0xff) as u8,
                                 ])
                             }
-                            Argument::Symbol(sym) => {
+                            Argument::Expression(Expression::Symbol(sym)) => {
                                 DataValue::Reference(sym.clone())
                             }
                             _ => panic!("Invalid .word directive")
@@ -117,7 +119,7 @@ fn extract_data_value(directive: &str, arguments: &[Argument]) -> Vec<DataValue>
                 vec![DataValue::Direct(data
                     .iter()
                     .map(|x| {
-                        if let Argument::Constant(Constant::Number(n)) = x {
+                        if let Argument::Expression(Expression::Number(n)) = x {
                             *n as u8
                         } else {
                             panic!("Invalid argument to .byte directive")

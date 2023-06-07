@@ -3,10 +3,10 @@ use std::collections::{BTreeMap, BTreeSet};
 use itertools::Itertools;
 
 use crate::data_parser::{self, DataValue};
-use crate::parser::{self, Argument, Register, Statement};
+use crate::parser::{self, Argument, Register, Statement, UnaryOpKind};
 use crate::{disambiguator, reachability};
 
-use super::parser::Constant;
+use super::parser::Expression;
 
 /// Compiles riscv assembly to POWDR assembly. Adds required library routines.
 pub fn compile_riscv_asm(mut assemblies: BTreeMap<String, String>) -> String {
@@ -52,7 +52,7 @@ pub fn compile_riscv_asm(mut assemblies: BTreeMap<String, String>) -> String {
                 "jump __runtime_start;".to_string(),
             ])
             .chain(
-                insert_data_positions(statements, &data_positions)
+                substitute_symbols_with_values(statements, &data_positions)
                     .into_iter()
                     .flat_map(process_statement),
             )
@@ -125,19 +125,20 @@ fn replace_dynamic_label_reference(
     if instr1.as_str() != "lui" || instr2.as_str() != "addi" {
         return None;
     };
-    let [Argument::Register(r1), Argument::Constant(Constant::HiDataRef(label1, offset1))] = &args1[..] else { return None; };
-    let [Argument::Register(r2), Argument::Register(r3), Argument::Constant(Constant::LoDataRef(label2, offset2))] = &args2[..] else { return None; };
-    if r1 != r3
-        || label1 != label2
-        || *offset1 != 0
-        || *offset2 != 0
-        || data_objects.contains_key(label1)
-    {
+    let [Argument::Register(r1), Argument::Expression(Expression::UnaryOp(UnaryOpKind::HiDataRef, expr1))] = &args1[..] else { return None; };
+    // Maybe should try to reduce expr1 and expr2 before comparing deciding it is a pure symbol?
+    let Expression::Symbol(label1) = &expr1[0] else { return None; };
+    let [Argument::Register(r2), Argument::Register(r3), Argument::Expression(Expression::UnaryOp(UnaryOpKind::LoDataRef, expr2))] = &args2[..] else { return None; };
+    let Expression::Symbol(label2) = &expr2[0] else { return None; };
+    if r1 != r3 || label1 != label2 || data_objects.contains_key(label1) {
         return None;
     }
     Some(Statement::Instruction(
         "load_dynamic".to_string(),
-        vec![Argument::Register(*r2), Argument::Symbol(label1.clone())],
+        vec![
+            Argument::Register(*r2),
+            Argument::Expression(Expression::Symbol(label1.clone())),
+        ],
     ))
 }
 
@@ -217,46 +218,53 @@ fn next_multiple_of_four(x: usize) -> usize {
     ((x + 3) / 4) * 4
 }
 
-fn insert_data_positions(
+fn substitute_symbols_with_values(
     mut statements: Vec<Statement>,
     data_positions: &BTreeMap<String, u32>,
 ) -> Vec<Statement> {
     for s in &mut statements {
         let Statement::Instruction(_name, args) = s else { continue; };
         for arg in args {
-            match arg {
-                Argument::RegOffset(_, offset) => replace_data_reference(offset, data_positions),
-                Argument::Constant(c) => replace_data_reference(c, data_positions),
-                Argument::Symbol(symb) => {
+            arg.post_visit_expressions_mut(&mut |expression| match expression {
+                Expression::Number(_) => {}
+                Expression::Symbol(symb) => {
                     if let Some(pos) = data_positions.get(symb) {
-                        *arg = Argument::Constant(Constant::Number(*pos as i64))
+                        *expression = Expression::Number(*pos as i64)
                     }
                 }
-                _ => {}
-            }
+                Expression::UnaryOp(op, subexpr) => {
+                    if let Expression::Number(num) = subexpr[0] {
+                        let result = match op {
+                            UnaryOpKind::HiDataRef => num >> 12,
+                            UnaryOpKind::LoDataRef => num & 0xfff,
+                            UnaryOpKind::Negation => -num,
+                        };
+                        *expression = Expression::Number(result);
+                    };
+                }
+                Expression::BinaryOp(op, subexprs) => {
+                    if let (Expression::Number(a), Expression::Number(b)) =
+                        (&subexprs[0], &subexprs[1])
+                    {
+                        let result = match op {
+                            parser::BinaryOpKind::Or => a | b,
+                            parser::BinaryOpKind::Xor => a ^ b,
+                            parser::BinaryOpKind::And => a & b,
+                            parser::BinaryOpKind::LeftShift => a << b,
+                            parser::BinaryOpKind::RightShift => a >> b,
+                            parser::BinaryOpKind::Add => a + b,
+                            parser::BinaryOpKind::Sub => a - b,
+                            parser::BinaryOpKind::Mul => a * b,
+                            parser::BinaryOpKind::Div => a / b,
+                            parser::BinaryOpKind::Mod => a % b,
+                        };
+                        *expression = Expression::Number(result);
+                    }
+                }
+            });
         }
     }
     statements
-}
-
-fn replace_data_reference(constant: &mut Constant, data_positions: &BTreeMap<String, u32>) {
-    match constant {
-        Constant::Number(_) => {}
-        Constant::HiDataRef(data, offset) => {
-            if let Some(pos) = data_positions.get(data) {
-                let pos: u32 = pos + *offset as u32;
-                *constant = Constant::Number((pos >> 12) as i64)
-            }
-            // Otherwise, it references a code label
-        }
-        Constant::LoDataRef(data, offset) => {
-            if let Some(pos) = data_positions.get(data) {
-                let pos: u32 = pos + *offset as u32;
-                *constant = Constant::Number((pos & 0xfff) as i64)
-            }
-            // Otherwise, it references a code label
-        }
-    }
 }
 
 fn preamble() -> String {
@@ -601,19 +609,26 @@ fn escape_label(l: &str) -> String {
 }
 
 fn argument_to_number(x: &Argument) -> u32 {
-    if let Argument::Constant(c) = x {
-        constant_to_number(c)
+    if let Argument::Expression(expr) = x {
+        expression_to_number(expr)
     } else {
-        panic!("Expected number, got {x}")
+        panic!("Expected numeric expression, got {x}")
     }
 }
 
-fn constant_to_number(c: &Constant) -> u32 {
-    match c {
-        Constant::Number(n) => *n as u32,
-        Constant::HiDataRef(n, off) | Constant::LoDataRef(n, off) => {
-            panic!("Data reference was not erased during preprocessing: {n} + {off}");
-        }
+fn expression_to_number(expr: &Expression) -> u32 {
+    if let Expression::Number(n) = expr {
+        *n as u32
+    } else {
+        panic!("Constant expression could not be fully resolved to a number during preprocessing: {expr}");
+    }
+}
+
+fn argument_to_escaped_symbol(x: &Argument) -> String {
+    if let Argument::Expression(Expression::Symbol(symb)) = x {
+        escape_label(symb)
+    } else {
+        panic!("Expected a symbol, got {x}");
     }
 }
 
@@ -654,8 +669,8 @@ fn rr(args: &[Argument]) -> (Register, Register) {
 
 fn rrl(args: &[Argument]) -> (Register, Register, String) {
     match args {
-        [Argument::Register(r1), Argument::Register(r2), Argument::Symbol(l)] => {
-            (*r1, *r2, escape_label(l))
+        [Argument::Register(r1), Argument::Register(r2), l] => {
+            (*r1, *r2, argument_to_escaped_symbol(l))
         }
         _ => panic!(),
     }
@@ -663,7 +678,7 @@ fn rrl(args: &[Argument]) -> (Register, Register, String) {
 
 fn rl(args: &[Argument]) -> (Register, String) {
     match args {
-        [Argument::Register(r1), Argument::Symbol(l)] => (*r1, escape_label(l)),
+        [Argument::Register(r1), l] => (*r1, argument_to_escaped_symbol(l)),
         _ => panic!(),
     }
 }
@@ -671,7 +686,7 @@ fn rl(args: &[Argument]) -> (Register, String) {
 fn rro(args: &[Argument]) -> (Register, Register, u32) {
     match args {
         [Argument::Register(r1), Argument::RegOffset(r2, off)] => {
-            (*r1, *r2, constant_to_number(off))
+            (*r1, *r2, expression_to_number(off))
         }
         _ => panic!(),
     }
@@ -952,8 +967,8 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
 
         // jump and call
         "j" => {
-            if let [Argument::Symbol(label)] = args {
-                vec![format!("jump {};", escape_label(label))]
+            if let [label] = args {
+                vec![format!("jump {};", argument_to_escaped_symbol(label))]
             } else {
                 panic!()
             }
@@ -972,8 +987,8 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
             vec![format!("jump_and_link_dyn {rs};")]
         }
         "call" => {
-            if let [Argument::Symbol(label)] = args {
-                vec![format!("call {};", escape_label(label))]
+            if let [label] = args {
+                vec![format!("call {};", argument_to_escaped_symbol(label))]
             } else {
                 panic!()
             }
@@ -989,8 +1004,8 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
             vec!["x0 <=X= ${ (\"print_char\", x10) };\n".to_string()]
         }
         "tail" => {
-            if let [Argument::Symbol(label)] = args {
-                vec![format!("tail {};", escape_label(label))]
+            if let [label] = args {
+                vec![format!("tail {};", argument_to_escaped_symbol(label))]
             } else {
                 panic!()
             }
