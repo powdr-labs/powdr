@@ -32,11 +32,18 @@ pub struct Generator<'a, T: FieldElement, QueryCallback> {
     progress: bool,
     last_report: DegreeType,
     last_report_time: Instant,
+    identity_performance_data: Vec<IdentityPerformanceData>,
 }
 
 pub struct IdentityData<'a, T> {
     identity: &'a Identity<T>,
     contains_next_witness_ref: bool,
+}
+
+#[derive(Default, Clone)]
+struct IdentityPerformanceData {
+    calls: u64,
+    total_time: u128,
 }
 
 impl<'a, T> From<&'a Identity<T>> for IdentityData<'a, T> {
@@ -94,6 +101,7 @@ where
             progress: true,
             last_report: 0,
             last_report_time: Instant::now(),
+            identity_performance_data: vec![Default::default(); identities.len()],
         }
     }
 
@@ -104,6 +112,7 @@ where
         // TODO at least we could cache the affine expressions between loops.
 
         let mut complete_identities = vec![false; self.identities.len()];
+        let mut performance_data = std::mem::take(&mut self.identity_performance_data);
 
         let mut identity_failed;
         loop {
@@ -111,12 +120,15 @@ where
             self.progress = false;
             self.failure_reasons.clear();
 
-            for (identity, complete) in self
+            for ((identity, performance), complete) in self
                 .identities
                 .iter()
+                .zip(performance_data.iter_mut())
                 .zip(complete_identities.iter_mut())
                 .filter(|(_, complete)| !**complete)
             {
+                performance.calls += 1;
+                let start = Instant::now();
                 let IdentityData {
                     identity,
                     contains_next_witness_ref,
@@ -151,6 +163,8 @@ where
                 };
 
                 self.handle_eval_result(result);
+                let taken = start.elapsed().as_nanos();
+                performance.total_time += taken;
             }
 
             if self.query_callback.is_some() {
@@ -173,6 +187,8 @@ where
                 break;
             }
         }
+        self.identity_performance_data = performance_data;
+
         if identity_failed {
             log::error!(
                 "\nError: Row {next_row}: Identity check failed or unable to derive values for some witness columns.\nSet RUST_LOG=debug for more information.");
