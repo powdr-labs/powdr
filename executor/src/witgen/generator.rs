@@ -2,7 +2,7 @@ use itertools::Itertools;
 use parser_util::lines::indent;
 use pil_analyzer::{Expression, Identity, IdentityKind, PolynomialReference};
 use std::collections::{BTreeMap, HashMap};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 // TODO should use finite field instead of abstract number
 use number::{DegreeType, FieldElement};
 
@@ -17,7 +17,7 @@ use super::{Constraint, EvalResult, EvalValue, FixedData, IncompleteCause, Witne
 pub struct Generator<'a, T: FieldElement, QueryCallback> {
     fixed_data: &'a FixedData<'a, T>,
     fixed_lookup: &'a mut FixedLookup<T>,
-    identities: &'a [&'a Identity<T>],
+    identities: &'a [IdentityData<'a, T>],
     machines: Vec<Box<dyn Machine<T>>>,
     query_callback: Option<QueryCallback>,
     global_bit_constraints: BTreeMap<&'a PolynomialReference, BitConstraint<T>>,
@@ -32,6 +32,29 @@ pub struct Generator<'a, T: FieldElement, QueryCallback> {
     progress: bool,
     last_report: DegreeType,
     last_report_time: Instant,
+}
+
+pub struct IdentityData<'a, T> {
+    identity: &'a Identity<T>,
+    contains_next_witness_ref: bool,
+}
+
+impl<'a, T> From<&'a Identity<T>> for IdentityData<'a, T> {
+    fn from(identity: &'a Identity<T>) -> Self {
+        let contains_next_witness_ref = match identity.kind {
+            IdentityKind::Polynomial => identity
+                .left
+                .selector
+                .as_ref()
+                .unwrap()
+                .contains_next_witness_ref(),
+            IdentityKind::Plookup | IdentityKind::Permutation | IdentityKind::Connect => false,
+        };
+        IdentityData {
+            identity,
+            contains_next_witness_ref,
+        }
+    }
 }
 
 #[derive(PartialEq, Eq, Clone, Copy)]
@@ -49,7 +72,7 @@ where
     pub fn new(
         fixed_data: &'a FixedData<'a, T>,
         fixed_lookup: &'a mut FixedLookup<T>,
-        identities: &'a [&'a Identity<T>],
+        identities: &'a [IdentityData<'a, T>],
         global_bit_constraints: BTreeMap<&'a PolynomialReference, BitConstraint<T>>,
         machines: Vec<Box<dyn Machine<T>>>,
         query_callback: Option<QueryCallback>,
@@ -94,10 +117,15 @@ where
                 .zip(complete_identities.iter_mut())
                 .filter(|(_, complete)| !**complete)
             {
+                let IdentityData {
+                    identity,
+                    contains_next_witness_ref,
+                } = identity;
                 let result = match identity.kind {
-                    IdentityKind::Polynomial => {
-                        self.process_polynomial_identity(identity.left.selector.as_ref().unwrap())
-                    }
+                    IdentityKind::Polynomial => self.process_polynomial_identity(
+                        identity.left.selector.as_ref().unwrap(),
+                        *contains_next_witness_ref,
+                    ),
                     IdentityKind::Plookup | IdentityKind::Permutation => {
                         self.process_plookup(identity)
                     }
@@ -203,11 +231,16 @@ where
         self.set_next_row_and_log(next_row);
         self.next = values.iter().cloned().map(Some).collect();
 
-        for identity in self.identities {
+        for IdentityData {
+            identity,
+            contains_next_witness_ref,
+        } in self.identities
+        {
             let result = match identity.kind {
-                IdentityKind::Polynomial => {
-                    self.process_polynomial_identity(identity.left.selector.as_ref().unwrap())
-                }
+                IdentityKind::Polynomial => self.process_polynomial_identity(
+                    identity.left.selector.as_ref().unwrap(),
+                    *contains_next_witness_ref,
+                ),
                 IdentityKind::Plookup | IdentityKind::Permutation => self.process_plookup(identity),
                 kind => {
                     unimplemented!("Identity of kind {kind:?} is not supported in the executor")
@@ -351,10 +384,14 @@ where
         self.interpolate_query(expr)
     }
 
-    fn process_polynomial_identity<'b>(&self, identity: &'b Expression<T>) -> EvalResult<'b, T> {
+    fn process_polynomial_identity<'b>(
+        &self,
+        identity: &'b Expression<T>,
+        contains_next_witness_ref: bool,
+    ) -> EvalResult<'b, T> {
         // If there is no "next" reference in the expression,
         // we just evaluate it directly on the "next" row.
-        let row = if identity.contains_next_witness_ref() {
+        let row = if contains_next_witness_ref {
             // TODO this is the only situation where we use "current"
             // TODO this is the only that actually uses a window.
             EvaluationRow::Current

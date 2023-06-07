@@ -74,6 +74,10 @@ pub fn generate<'a, T: FieldElement>(
         &witness_cols,
         &known_constraints,
     );
+    let base_identities = base_identities
+        .iter()
+        .map(|&i| i.into())
+        .collect::<Vec<_>>();
     let mut generator = generator::Generator::new(
         &fixed,
         &mut fixed_lookup,
