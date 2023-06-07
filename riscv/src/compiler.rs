@@ -45,7 +45,7 @@ pub fn compile_riscv_asm(mut assemblies: BTreeMap<String, String>) -> String {
     let (data_code, data_positions) = store_data_objects(&sorted_objects, data_start);
 
     preamble()
-        + &data_code
+        + &vec!["call __data_init;".to_string()]
             .into_iter()
             .chain([
                 format!("// Set stack pointer\nx2 <=X= {stack_start};"),
@@ -56,6 +56,9 @@ pub fn compile_riscv_asm(mut assemblies: BTreeMap<String, String>) -> String {
                     .into_iter()
                     .flat_map(process_statement),
             )
+            .chain(["// This is the data initialization routine.\n__data_init::".to_string()])
+            .chain(data_code)
+            .chain(["// This is the end of the data initialization routine.\nret;".to_string()])
             .enumerate()
             .map(|(i, line)| {
                 if i % 10 == 0 {
