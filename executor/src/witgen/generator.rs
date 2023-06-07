@@ -274,6 +274,25 @@ where
         true
     }
 
+    pub fn output_performance_data(&self) {
+        println!("\nPerformance data:");
+        for (id, p) in self
+            .identities
+            .iter()
+            .zip(&self.identity_performance_data)
+            .sorted_by_key(|(_, p)| p.total_time)
+            .rev()
+            .take(10)
+        {
+            println!(
+                "{} calls, {} ms per call",
+                p.calls,
+                (p.total_time / p.calls as u128) as f64 / 1000.0
+            );
+            println!("    {}", id.identity);
+        }
+    }
+
     pub fn machine_witness_col_values(&mut self) -> HashMap<String, Vec<T>> {
         let mut result: HashMap<_, _> = Default::default();
         for m in &mut self.machines {

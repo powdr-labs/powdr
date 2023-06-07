@@ -122,6 +122,7 @@ pub fn generate<'a, T: FieldElement>(
             values[col].1.push(v);
         }
     }
+    generator.output_performance_data();
     for (name, data) in generator.machine_witness_col_values() {
         let (_, col) = values.iter_mut().find(|(n, _)| *n == name).unwrap();
         *col = data;
