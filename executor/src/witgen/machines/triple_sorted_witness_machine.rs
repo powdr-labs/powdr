@@ -204,6 +204,7 @@ impl<T: FieldElement> TripleSortedWitnesses<T> {
                 value
             );
             self.data.insert(addr, value);
+            // TODO Also insert read1/read2/write
             self.trace
                 .insert((addr, step), Operation { is_write, value });
         } else {
