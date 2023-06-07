@@ -250,15 +250,14 @@ where
 
         if !self
             .identities
-            .par_iter()
+            .iter()
             .filter(|id| id.identity.kind == IdentityKind::Polynomial)
             .all(|id| {
-                !self
-                    .process_polynomial_identity(
-                        id.identity.left.selector.as_ref().unwrap(),
-                        id.contains_next_witness_ref,
-                    )
-                    .is_err()
+                self.process_polynomial_identity(
+                    id.identity.left.selector.as_ref().unwrap(),
+                    id.contains_next_witness_ref,
+                )
+                .is_ok()
             })
         {
             self.next = vec![None; self.current.len()];

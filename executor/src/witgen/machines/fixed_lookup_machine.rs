@@ -12,7 +12,7 @@ use crate::witgen::{EvalError, EvalValue, IncompleteCause};
 use crate::witgen::{EvalResult, FixedData};
 
 type Application = (Vec<u64>, Vec<u64>);
-type Index<T> = BTreeMap<Vec<T>, IndexValue>;
+type Index<T> = HashMap<Vec<T>, IndexValue>;
 
 struct IndexValue(Option<NonZeroUsize>);
 
@@ -102,10 +102,10 @@ impl<T: FieldElement> IndexedColumns<T> {
             .map(|id| fixed_data.fixed_col_values[*id as usize])
             .collect::<Vec<_>>();
 
-        let index: BTreeMap<Vec<T>, IndexValue> = (0..fixed_data.degree as usize)
+        let index: HashMap<Vec<T>, IndexValue> = (0..fixed_data.degree as usize)
             .fold(
                 (
-                    BTreeMap::<Vec<T>, IndexValue>::default(),
+                    HashMap::<Vec<T>, IndexValue>::default(),
                     HashSet::<(Vec<T>, Vec<T>)>::default(),
                 ),
                 |(mut acc, mut set), row| {
