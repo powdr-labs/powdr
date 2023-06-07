@@ -150,20 +150,28 @@ fn rows_are_repeating<T: PartialEq>(values: &[(&str, Vec<T>)]) -> Option<usize> 
 pub struct FixedData<'a, T> {
     degree: DegreeType,
     fixed_col_values: Vec<&'a Vec<T>>,
+    fixed_col_values_by_row: Vec<Vec<T>>,
     fixed_cols: Vec<&'a PolynomialReference>,
     witness_cols: &'a Vec<WitnessColumn<'a, T>>,
 }
 
-impl<'a, T> FixedData<'a, T> {
+impl<'a, T> FixedData<'a, T>
+where
+    T: FieldElement,
+{
     pub fn new(
         degree: DegreeType,
         fixed_col_values: Vec<&'a Vec<T>>,
         fixed_cols: Vec<&'a PolynomialReference>,
         witness_cols: &'a Vec<WitnessColumn<'a, T>>,
     ) -> Self {
+        let fixed_col_values_by_row = (0..degree as usize)
+            .map(|row| fixed_col_values.iter().map(|values| values[row]).collect())
+            .collect();
         FixedData {
             degree,
             fixed_col_values,
+            fixed_col_values_by_row,
             fixed_cols,
             witness_cols,
         }

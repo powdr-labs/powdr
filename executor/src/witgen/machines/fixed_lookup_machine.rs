@@ -247,9 +247,10 @@ impl<T: FieldElement> FixedLookup<T> {
             }
         };
 
+        let row_data = &fixed_data.fixed_col_values_by_row[row];
         let output = output_columns
             .iter()
-            .map(|column| fixed_data.fixed_col_values[*column as usize][row]);
+            .map(|column| row_data[*column as usize]);
 
         let mut result = EvalValue::complete(vec![]);
         for (l, r) in output_expressions.into_iter().zip(output) {
