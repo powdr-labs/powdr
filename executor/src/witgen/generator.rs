@@ -1,6 +1,7 @@
 use itertools::Itertools;
 use parser_util::lines::indent;
 use pil_analyzer::{Expression, Identity, IdentityKind, PolynomialReference};
+use rayon::prelude::*;
 use std::collections::{BTreeMap, HashMap};
 use std::time::{Duration, Instant};
 // TODO should use finite field instead of abstract number
@@ -14,7 +15,7 @@ use super::machines::{FixedLookup, Machine};
 use super::symbolic_witness_evaluator::{SymoblicWitnessEvaluator, WitnessColumnEvaluator};
 use super::{Constraint, EvalResult, EvalValue, FixedData, IncompleteCause, WitnessColumn};
 
-pub struct Generator<'a, T: FieldElement, QueryCallback> {
+pub struct Generator<'a, T: FieldElement, QueryCallback: Send + Sync> {
     fixed_data: &'a FixedData<'a, T>,
     fixed_lookup: &'a mut FixedLookup<T>,
     identities: &'a [IdentityData<'a, T>],
@@ -74,7 +75,7 @@ enum EvaluationRow {
 
 impl<'a, T: FieldElement, QueryCallback> Generator<'a, T, QueryCallback>
 where
-    QueryCallback: FnMut(&str) -> Option<T>,
+    QueryCallback: FnMut(&str) -> Option<T> + Send + Sync,
 {
     pub fn new(
         fixed_data: &'a FixedData<'a, T>,
@@ -247,26 +248,42 @@ where
         self.set_next_row_and_log(next_row);
         self.next = values.iter().cloned().map(Some).collect();
 
+        if !self
+            .identities
+            .par_iter()
+            .filter(|id| id.identity.kind == IdentityKind::Polynomial)
+            .all(|id| {
+                !self
+                    .process_polynomial_identity(
+                        id.identity.left.selector.as_ref().unwrap(),
+                        id.contains_next_witness_ref,
+                    )
+                    .is_err()
+            })
+        {
+            self.next = vec![None; self.current.len()];
+            self.next_bit_constraints = vec![None; self.current.len()];
+            return false;
+        }
         for IdentityData {
             identity,
             contains_next_witness_ref,
         } in self.identities
         {
-            let result = match identity.kind {
-                IdentityKind::Polynomial => self.process_polynomial_identity(
-                    identity.left.selector.as_ref().unwrap(),
-                    *contains_next_witness_ref,
-                ),
-                IdentityKind::Plookup | IdentityKind::Permutation => self.process_plookup(identity),
+            match identity.kind {
+                IdentityKind::Polynomial => {}
+                IdentityKind::Plookup | IdentityKind::Permutation => {
+                    let result = self.process_plookup(identity);
+                    if result.is_err() {
+                        self.next = vec![None; self.current.len()];
+                        self.next_bit_constraints = vec![None; self.current.len()];
+                        return false;
+                    }
+                }
                 kind => {
                     unimplemented!("Identity of kind {kind:?} is not supported in the executor")
                 }
             };
-            if result.is_err() {
-                self.next = vec![None; self.current.len()];
-                self.next_bit_constraints = vec![None; self.current.len()];
-                return false;
-            }
         }
         std::mem::swap(&mut self.next, &mut self.current);
         self.next = vec![None; self.current.len()];

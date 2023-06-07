@@ -22,12 +22,15 @@ mod util;
 
 /// Generates the committed polynomial values
 /// @returns the values (in source order) and the degree of the polynomials.
-pub fn generate<'a, T: FieldElement>(
+pub fn generate<'a, T: FieldElement, QueryCallback>(
     analyzed: &'a Analyzed<T>,
     degree: DegreeType,
     fixed_col_values: &[(&str, Vec<T>)],
-    query_callback: Option<impl FnMut(&str) -> Option<T>>,
-) -> Vec<(&'a str, Vec<T>)> {
+    query_callback: Option<QueryCallback>,
+) -> Vec<(&'a str, Vec<T>)>
+where
+    QueryCallback: FnMut(&str) -> Option<T> + Send + Sync,
+{
     let witness_cols: Vec<_> = analyzed
         .committed_polys_in_source_order()
         .iter()

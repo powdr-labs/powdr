@@ -5,6 +5,8 @@ use crate::{AbstractNumberType, DegreeType};
 /// A fixed-width integer type
 pub trait BigInt:
     Copy
+    + Send
+    + Sync
     + PartialEq
     + Eq
     + From<u32>
@@ -28,6 +30,8 @@ pub trait BigInt:
 /// A field element
 pub trait FieldElement:
     'static
+    + Sync
+    + Send
     + Default
     + Copy
     + PartialEq

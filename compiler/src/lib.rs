@@ -47,12 +47,15 @@ pub fn compile_pil_or_asm<T: FieldElement>(
 /// constants and committed polynomials.
 /// @returns true if all committed/witness and constant/fixed polynomials
 /// could be generated.
-pub fn compile_pil<T: FieldElement>(
+pub fn compile_pil<T: FieldElement, QueryCallback>(
     pil_file: &Path,
     output_dir: &Path,
-    query_callback: Option<impl FnMut(&str) -> Option<T>>,
+    query_callback: Option<QueryCallback>,
     prove_with: Option<Backend>,
-) -> bool {
+) -> bool
+where
+    QueryCallback: FnMut(&str) -> Option<T> + Sync + Send,
+{
     compile(
         &pil_analyzer::analyze(pil_file),
         pil_file.file_name().unwrap(),
@@ -62,13 +65,16 @@ pub fn compile_pil<T: FieldElement>(
     )
 }
 
-pub fn compile_pil_ast<T: FieldElement>(
+pub fn compile_pil_ast<T: FieldElement, QueryCallback>(
     pil: &PILFile<T>,
     file_name: &OsStr,
     output_dir: &Path,
-    query_callback: Option<impl FnMut(&str) -> Option<T>>,
+    query_callback: Option<QueryCallback>,
     prove_with: Option<Backend>,
-) -> bool {
+) -> bool
+where
+    QueryCallback: FnMut(&str) -> Option<T> + Sync + Send,
+{
     // TODO exporting this to string as a hack because the parser
     // is tied into the analyzer due to imports.
     compile(
@@ -137,13 +143,16 @@ pub fn compile_asm_string<T: FieldElement>(
     );
 }
 
-fn compile<T: FieldElement>(
+fn compile<T: FieldElement, QueryCallback>(
     analyzed: &pil_analyzer::Analyzed<T>,
     file_name: &OsStr,
     output_dir: &Path,
-    query_callback: Option<impl FnMut(&str) -> Option<T>>,
+    query_callback: Option<QueryCallback>,
     prove_with: Option<Backend>,
-) -> bool {
+) -> bool
+where
+    QueryCallback: FnMut(&str) -> Option<T> + Send + Sync,
+{
     let mut success = true;
     let start = Instant::now();
     log::info!("Evaluating fixed columns...");
