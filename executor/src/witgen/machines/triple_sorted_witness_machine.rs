@@ -140,6 +140,10 @@ impl<T: FieldElement> Machine<T> for TripleSortedWitnesses<T> {
             .collect::<Vec<_>>();
         assert_eq!(step_change.len(), step.len());
 
+        for (((s, c), v), op) in addr.iter().zip(&step).zip(&value).zip(&is_write) {
+            println!("{s} {c} {v} {op}");
+        }
+
         vec![
             ("Memory.value", value),
             ("Memory.addr", addr),

@@ -28,6 +28,13 @@ namespace Memory(1024);
   col witness is_load2;
   col witness is_write;
 
+  // TODO we probably have to re-design the memory machine:
+  // It is not unlikely that we do at least two if not three
+  // memory operations on every instruction.
+  // If we take one row per operation, the table will be exhausted
+  // too quickly. Instead, we need to put all three operations in
+  // one row.
+
   // columns are sorted by addr, then by step and then in the order
   // load1, load2, write.
 
@@ -129,6 +136,11 @@ assembly {
     reg tmp3[<=];
     reg null;
 
+    // This is not a valida instruction, but we use it to improve performance.
+    instr jump target: label {
+        pc' = target
+    }
+
     instr imm32 fp_delta: signed, v: unsigned {
         memory_write(fp + fp_delta, v)
     }
@@ -173,9 +185,9 @@ assembly {
 
     // This was "fp + 4", but it's always relative to fp, so we don't need it.
     imm32 4, 100;
-    jal 0, main, 4;
+    //jal 0, main, 4;
   loop::
-    null <=tmp3= beq (loop, 0, 0);
+    jump loop;
 main::
     null <=tmp3= beqi( exit, 0, 0);
     null <=tmp3= add (4, 0, 0);
