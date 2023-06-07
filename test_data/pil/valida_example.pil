@@ -158,7 +158,7 @@ assembly {
     }
     instr subi dest_delta: signed, b_delta: signed, c: unsigned {
         memory_load_to_tmp1(fp + b_delta),
-        tmp3 = tmp1 - c + sign_bit * 2**32,
+        tmp3 + sign_bit * 2**32 = tmp1 + 2**32 - c,
         is_u32(tmp3),
         memory_write(fp + dest_delta, tmp3)
     }
