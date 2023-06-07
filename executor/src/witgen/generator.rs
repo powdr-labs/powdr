@@ -1,10 +1,9 @@
 use itertools::Itertools;
+use number::{DegreeType, FieldElement};
 use parser_util::lines::indent;
 use pil_analyzer::{Expression, Identity, IdentityKind, PolynomialReference};
 use std::collections::{BTreeMap, HashMap};
 use std::time::Instant;
-// TODO should use finite field instead of abstract number
-use number::{DegreeType, FieldElement};
 
 use super::affine_expression::{AffineExpression, AffineResult};
 use super::bit_constraints::{BitConstraint, BitConstraintSet};
@@ -14,7 +13,7 @@ use super::machines::{FixedLookup, Machine};
 use super::symbolic_witness_evaluator::{SymoblicWitnessEvaluator, WitnessColumnEvaluator};
 use super::{Constraint, EvalResult, EvalValue, FixedData, IncompleteCause, WitnessColumn};
 
-pub struct Generator<'a, T: FieldElement, QueryCallback> {
+pub struct Generator<'a, T: FieldElement, QueryCallback: Send + Sync> {
     fixed_data: &'a FixedData<'a, T>,
     fixed_lookup: &'a mut FixedLookup<T>,
     identities: &'a [&'a Identity<T>],
@@ -43,7 +42,7 @@ enum EvaluationRow {
 
 impl<'a, T: FieldElement, QueryCallback> Generator<'a, T, QueryCallback>
 where
-    QueryCallback: FnMut(&str) -> Option<T>,
+    QueryCallback: FnMut(&str) -> Option<T> + Send + Sync,
 {
     pub fn new(
         fixed_data: &'a FixedData<'a, T>,
