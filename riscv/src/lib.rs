@@ -104,17 +104,19 @@ pub fn compile_riscv_asm_bundle<T: FieldElement>(
 /// fixed and witness columns.
 pub fn compile_riscv_asm<T: FieldElement>(
     original_file_name: &str,
-    file_name: &str,
+    file_names: impl Iterator<Item = String>,
     inputs: Vec<T>,
     output_dir: &Path,
     force_overwrite: bool,
     prove_with: Option<Backend>,
 ) {
-    let contents = fs::read_to_string(file_name).unwrap();
     compile_riscv_asm_bundle(
         original_file_name,
-        vec![(file_name.to_string(), contents)]
-            .into_iter()
+        file_names
+            .map(|name| {
+                let contents = fs::read_to_string(&name).unwrap();
+                (name, contents)
+            })
             .collect(),
         inputs,
         output_dir,
