@@ -1,6 +1,5 @@
 use std::str::FromStr;
-use crate::ast::*;
-use crate::asm_ast::*;
+use ast::parsed::{*, asm::*};
 use number::{AbstractNumberType, FieldElement};
 use num_traits::Num;
 

@@ -11,6 +11,8 @@ members = [
     "compiler",
     "pilgen",
     "halo2",
+    "ast",
+    "analysis",
 ]
 
 [patch."https://github.com/privacy-scaling-explorations/halo2.git"]

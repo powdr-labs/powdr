@@ -15,3 +15,5 @@ pilgen = { path = "../pilgen" }
 pil_analyzer = { path = "../pil_analyzer" }
 halo2 = { path = "../halo2" }
 strum = { version = "0.24.1", features = ["derive"] }
+ast = { version = "0.1.0", path = "../ast" }
+analysis = { version = "0.1.0", path = "../analysis" }

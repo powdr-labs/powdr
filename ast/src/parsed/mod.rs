@@ -1,6 +1,10 @@
+pub mod asm;
+pub mod display;
+pub mod utils;
+
 use number::{DegreeType, FieldElement};
 
-use crate::asm_ast::ASMStatement;
+use asm::ASMStatement;
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct PILFile<T>(pub Vec<Statement<T>>);

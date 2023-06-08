@@ -11,3 +11,4 @@ parser_util = { path = "../parser_util" }
 parser = { path = "../parser" }
 pilgen = { path = "../pilgen" }
 itertools = "^0.10"
+ast = { version = "0.1.0", path = "../ast" }

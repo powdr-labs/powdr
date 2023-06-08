@@ -9,14 +9,16 @@ use std::time::Instant;
 mod backends;
 mod verify;
 
+use analysis::analyse;
 pub use backends::Backend;
 use number::write_polys_file;
 use pil_analyzer::json_exporter;
+use pilgen::convert;
 pub use verify::{compile_asm_string_temp, verify, verify_asm_string};
 
 use executor::constant_evaluator;
 use number::FieldElement;
-use parser::ast::PILFile;
+use ast::parsed::PILFile;
 
 pub fn no_callback<T>() -> Option<fn(&str) -> Option<T>> {
     None
@@ -110,11 +112,13 @@ pub fn compile_asm_string<T: FieldElement>(
     force_overwrite: bool,
     prove_with: Option<Backend>,
 ) {
-    let pil = pilgen::compile(Some(file_name), contents).unwrap_or_else(|err| {
+    let parsed = parser::parse_asm(Some(file_name), contents).unwrap_or_else(|err| {
         eprintln!("Error parsing .asm file:");
         err.output_to_stderr();
         panic!();
     });
+    let analysed = analyse(parsed);
+    let pil = convert(analysed);
     let pil_file_name = output_dir.join(format!(
         "{}.pil",
         Path::new(file_name).file_stem().unwrap().to_str().unwrap()

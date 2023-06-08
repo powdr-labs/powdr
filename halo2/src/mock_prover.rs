@@ -67,7 +67,9 @@ fn mock_prove_ast<T: FieldElement>(
 mod test {
     use std::fs;
 
+    use analysis::analyse;
     use number::Bn254Field;
+    use parser::parse_asm;
 
     use super::*;
 
@@ -75,11 +77,9 @@ mod test {
         // read and compile PIL.
 
         let contents = fs::read_to_string(file_name).unwrap();
-        let pil = pilgen::compile::<Bn254Field>(Some(file_name), &contents).unwrap_or_else(|err| {
-            eprintln!("Error parsing .asm file:");
-            err.output_to_stderr();
-            panic!();
-        });
+        let parsed = parse_asm::<Bn254Field>(Some(file_name), &contents).unwrap();
+        let analysed = analyse(parsed);
+        let pil = pilgen::convert(analysed);
 
         let query_callback = |query: &str| -> Option<Bn254Field> {
             let items = query.split(',').map(|s| s.trim()).collect::<Vec<_>>();

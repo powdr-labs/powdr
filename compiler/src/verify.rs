@@ -1,7 +1,9 @@
 use std::{fs, path::Path, process::Command};
 
+use analysis::analyse;
 use mktemp::Temp;
 use number::FieldElement;
+use pilgen::convert;
 
 pub fn verify_asm_string<T: FieldElement>(file_name: &str, contents: &str, inputs: Vec<T>) {
     let (pil_file_name, temp_dir) = compile_asm_string_temp(file_name, contents, inputs);
@@ -14,7 +16,13 @@ pub fn compile_asm_string_temp<T: FieldElement>(
     contents: &str,
     inputs: Vec<T>,
 ) -> (String, Temp) {
-    let pil = pilgen::compile(Some(file_name), contents).unwrap();
+    let parsed = parser::parse_asm(Some(file_name), contents).unwrap_or_else(|err| {
+        eprintln!("Error parsing .asm file:");
+        err.output_to_stderr();
+        panic!();
+    });
+    let analysed = analyse(parsed);
+    let pil = convert(analysed);
     let pil_file_name = "asm.pil";
     let temp_dir = mktemp::Temp::new_dir().unwrap();
     assert!(crate::compile_pil_ast(

@@ -4,15 +4,19 @@ use std::{
 };
 
 use itertools::Itertools;
-use number::FieldElement;
-use parser::{
-    asm_ast::{
-        batched::{ASMStatementBatch, BatchedASMFile, Incompatible, IncompatibleSet},
-        ASMFile, ASMStatement, InstructionBodyElement, InstructionParams, RegisterFlag,
+
+use ast::{
+    asm::{
+        AnalysisASMFile, BatchMetadata, Incompatible, IncompatibleSet,
+        InstructionDefinitionStatement, PilBlock, RegisterDeclarationStatement,
     },
-    ast::{Expression, Statement},
-    expr_any,
+    parsed::{
+        asm::{ASMStatement, InstructionBodyElement, RegisterFlag},
+        utils::expr_any,
+        Expression, Statement,
+    },
 };
+use number::FieldElement;
 
 /// A map of which cells are accessed by a given construct
 #[derive(Default, Clone, Debug)]
@@ -43,7 +47,7 @@ impl Footprint {
                         self.cur.insert(r.name.clone());
                     };
 
-                    if r.next && r.name == *batcher.pc_name.as_ref().unwrap() {
+                    if r.next && r.name == *batcher.pc.as_ref().unwrap() {
                         self.pc_next = true;
                     }
                 }
@@ -120,7 +124,7 @@ impl<T: FieldElement> Batch<T> {
                 // register the registers written to as accessed on the next row
                 footprint.next.extend(write_to.clone());
                 // if the pc is written to, register it
-                footprint.pc_next |= write_to.iter().any(|r| Some(r) == batcher.pc_name.as_ref());
+                footprint.pc_next |= write_to.iter().any(|r| Some(r) == batcher.pc.as_ref());
                 // process the value being written
                 footprint.process(value, batcher, &Default::default());
             }
@@ -165,10 +169,10 @@ impl<T: FieldElement> Batch<T> {
 
     fn try_absorb(
         &mut self,
-        s: ASMStatement<T>,
+        s: &ASMStatement<T>,
         batcher: &ASMBatcher<T>,
     ) -> Result<(), (ASMStatement<T>, IncompatibleSet)> {
-        let batch = Self::from_statement(s, batcher);
+        let batch = Self::from_statement(s.clone(), batcher);
         self.try_join(batch)
             .map_err(|(b, incompatible)| (b.statements.into_iter().next().unwrap(), incompatible))
     }
@@ -259,8 +263,12 @@ impl Columns {
 
 #[derive(Default)]
 pub struct ASMBatcher<T> {
-    /// the name of the pc for this program
-    pc_name: Option<String>,
+    /// the pil columns introduced in pil blocks
+    pil_columns: BTreeSet<String>,
+    /// the registers (excluding the pc). Runtime assumption: none of the has IsPC set
+    registers: BTreeMap<String, Option<RegisterFlag>>,
+    /// the pc
+    pc: Option<String>,
     /// the footprint of each column, built recursively
     columns: Columns,
     /// the footprint of each instruction
@@ -277,11 +285,25 @@ struct Instruction {
 }
 
 impl<T: FieldElement> ASMBatcher<T> {
+    fn write_registers(&self) -> impl Iterator<Item = &String> {
+        self.registers
+            .iter()
+            .filter(|(_, flag)| flag.is_none())
+            .map(|(name, _)| name)
+    }
+
+    fn assignment_registers(&self) -> impl Iterator<Item = &String> {
+        self.registers
+            .iter()
+            .filter(|(_, flag)| **flag == Some(RegisterFlag::IsAssignment))
+            .map(|(name, _)| name)
+    }
+
     /// split a list of statements into compatible batches
-    fn to_compatible_batches(
-        &self,
-        statements: impl IntoIterator<Item = ASMStatement<T>>,
-    ) -> Vec<ASMStatementBatch<T>> {
+    fn to_compatible_batches<'a>(
+        &'a self,
+        statements: impl IntoIterator<Item = &'a ASMStatement<T>>,
+    ) -> Vec<BatchMetadata> {
         statements
             .into_iter()
             .peekable()
@@ -289,13 +311,13 @@ impl<T: FieldElement> ASMBatcher<T> {
                 let mut batch = Batch::default();
                 loop {
                     match it.peek() {
-                        Some(new_s) => match batch.try_absorb(new_s.clone(), self) {
+                        Some(new_s) => match batch.try_absorb(new_s, self) {
                             Ok(()) => {
                                 it.next().unwrap();
                             }
                             Err((_, reason)) => {
-                                let res = ASMStatementBatch {
-                                    statements: batch.statements,
+                                let res = BatchMetadata {
+                                    size: batch.statements.len(),
                                     reason: Some(reason),
                                 };
                                 break Some(res);
@@ -304,8 +326,8 @@ impl<T: FieldElement> ASMBatcher<T> {
                         None => {
                             break match batch.statements.len() {
                                 0 => None,
-                                _ => Some(ASMStatementBatch {
-                                    statements: batch.statements,
+                                _ => Some(BatchMetadata {
+                                    size: batch.statements.len(),
                                     reason: None,
                                 }),
                             }
@@ -316,31 +338,28 @@ impl<T: FieldElement> ASMBatcher<T> {
             .collect()
     }
 
-    pub fn convert(&mut self, asm_file: ASMFile<T>) -> BatchedASMFile<T> {
-        let statements = asm_file.0.into_iter().peekable();
+    pub fn convert(&mut self, asm_file: AnalysisASMFile<T>) -> AnalysisASMFile<T> {
+        let file = asm_file;
 
-        let (declarations, statements) = statements.into_iter().partition(|s| match s {
-            ASMStatement::Degree(..) => true,
-            ASMStatement::RegisterDeclaration(_, name, flags) => {
-                self.handle_register_declaration(flags, name);
-                true
-            }
-            ASMStatement::InstructionDeclaration(_, name, params, body) => {
-                self.handle_instruction_def(body, name, params);
-                true
-            }
-            ASMStatement::InlinePil(_, block) => {
-                self.handle_inline_pil(block);
-                true
-            }
-            _ => false,
-        });
+        for register in &file.registers {
+            self.handle_register_declaration(register);
+        }
+
+        for s in &file.pil {
+            self.handle_inline_pil(s);
+        }
+
+        for i in &file.instructions {
+            self.handle_instruction_def(i);
+        }
+
+        let statements = file.statements.iter().peekable();
 
         self.expand();
 
         let batches = self.to_compatible_batches(statements);
 
-        let lines_before = batches.iter().map(ASMStatementBatch::size).sum::<usize>() as f32;
+        let lines_before = batches.iter().map(BatchMetadata::get_size).sum::<usize>() as f32;
         let lines_after = batches.len() as f32;
 
         log::debug!(
@@ -348,9 +367,9 @@ impl<T: FieldElement> ASMBatcher<T> {
             (1. - lines_after / lines_before) * 100.
         );
 
-        BatchedASMFile {
-            declarations,
-            batches,
+        AnalysisASMFile {
+            batches: Some(batches),
+            ..file
         }
     }
 
@@ -363,8 +382,8 @@ impl<T: FieldElement> ASMBatcher<T> {
         }
     }
 
-    fn handle_inline_pil(&mut self, statements: &[Statement<T>]) {
-        for s in statements {
+    fn handle_inline_pil(&mut self, block: &PilBlock<T>) {
+        for s in &block.statements {
             let mut pool = BTreeSet::default();
             match s {
                 Statement::PolynomialConstantDefinition(..) => {}
@@ -376,6 +395,11 @@ impl<T: FieldElement> ASMBatcher<T> {
                         }
                         _ => false,
                     });
+                }
+                Statement::PolynomialCommitDeclaration(_start, names, expression) => {
+                    assert!(expression.is_none(), "unimplemented");
+                    self.pil_columns
+                        .extend(names.iter().map(|name| name.name.clone()));
                 }
                 _ => {
                     unimplemented!("batching not supported for statement {s}")
@@ -390,31 +414,27 @@ impl<T: FieldElement> ASMBatcher<T> {
         }
     }
 
-    fn handle_register_declaration(&mut self, flags: &Option<RegisterFlag>, name: &str) {
-        if let Some(RegisterFlag::IsPC) = flags {
-            assert_eq!(self.pc_name, None);
-            self.pc_name = Some(name.to_string());
+    fn handle_register_declaration(&mut self, r: &RegisterDeclarationStatement) {
+        if let Some(RegisterFlag::IsPC) = r.flag {
+            assert_eq!(self.pc, None);
+            self.pc = Some(r.name.to_string());
         }
 
-        self.columns.add_column(name.into());
+        self.columns.add_column(r.name.clone());
     }
 
-    fn handle_instruction_def(
-        &mut self,
-        body: &[InstructionBodyElement<T>],
-        name: &str,
-        params: &InstructionParams,
-    ) {
+    fn handle_instruction_def(&mut self, i: &InstructionDefinitionStatement<T>) {
         let mut footprint = Footprint::default();
         let mut labels = BTreeSet::default();
         let mut is_label = vec![];
 
         // get assignment registers
-        for param in params
+        for param in i
+            .params
             .inputs
             .params
             .iter()
-            .chain(params.outputs.iter().flat_map(|o| o.params.iter()))
+            .chain(i.params.outputs.iter().flat_map(|o| o.params.iter()))
         {
             match &param.ty {
                 Some(ty) if ty == "label" => {
@@ -430,7 +450,7 @@ impl<T: FieldElement> ASMBatcher<T> {
         }
 
         // get accessed registers
-        for expr in body {
+        for expr in &i.body {
             match expr {
                 InstructionBodyElement::Expression(expr) => {
                     footprint.process(expr, self, &labels);
@@ -449,10 +469,10 @@ impl<T: FieldElement> ASMBatcher<T> {
             }
         }
 
-        log::debug!("Instruction footprint: {name} {:#?}", footprint);
+        log::debug!("Instruction footprint: {} {:#?}", i.name, footprint);
 
         self.instructions.insert(
-            name.into(),
+            i.name.clone(),
             Instruction {
                 footprint,
                 labels,
@@ -480,7 +500,7 @@ mod tests {
             Some(file_name.as_os_str().to_str().unwrap()),
             &contents,
         )
-        .map(|ast| ASMBatcher::default().convert(ast))
+        .map(|ast| ASMBatcher::default().convert(ast.into()))
         .unwrap();
         let mut expected_file_name = file_name;
         expected_file_name.set_file_name(format!(
@@ -498,5 +518,10 @@ mod tests {
     #[test]
     fn disjoint_assignments() {
         test_batching("disjoint_assignment_reg.asm")
+    }
+
+    #[test]
+    fn instructions() {
+        test_batching("instructions.asm")
     }
 }

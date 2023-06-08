@@ -1,6 +1,6 @@
 use std::{iter::once, ops::ControlFlow};
 
-use crate::ast::Expression;
+use super::Expression;
 
 /// Visits `expr` and all of its sub-expressions and returns true if `f` returns true on any of them.
 pub fn expr_any<T>(expr: &Expression<T>, mut f: impl FnMut(&Expression<T>) -> bool) -> bool {

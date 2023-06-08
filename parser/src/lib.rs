@@ -5,13 +5,6 @@ use lalrpop_util::*;
 use number::FieldElement;
 use parser_util::{handle_parse_error, ParseError};
 
-pub mod asm_ast;
-pub mod ast;
-pub mod display;
-mod utils;
-
-pub use utils::expr_any;
-
 lalrpop_mod!(
     #[allow(clippy::all)]
     powdr,
@@ -21,7 +14,7 @@ lalrpop_mod!(
 pub fn parse<'a, T: FieldElement>(
     file_name: Option<&str>,
     input: &'a str,
-) -> Result<ast::PILFile<T>, ParseError<'a>> {
+) -> Result<ast::parsed::PILFile<T>, ParseError<'a>> {
     powdr::PILFileParser::new()
         .parse(input)
         .map_err(|err| handle_parse_error(err, file_name, input))
@@ -30,7 +23,7 @@ pub fn parse<'a, T: FieldElement>(
 pub fn parse_asm<'a, T: FieldElement>(
     file_name: Option<&str>,
     input: &'a str,
-) -> Result<asm_ast::ASMFile<T>, ParseError<'a>> {
+) -> Result<ast::parsed::asm::ASMFile<T>, ParseError<'a>> {
     powdr::ASMFileParser::new()
         .parse(input)
         .map_err(|err| handle_parse_error(err, file_name, input))
@@ -38,11 +31,13 @@ pub fn parse_asm<'a, T: FieldElement>(
 
 #[cfg(test)]
 mod test {
-    use std::fs;
-
-    use super::{asm_ast::ASMFile, *};
-    use ast::*;
+    use super::*;
+    use ast::parsed::{
+        asm::ASMFile, BinaryOperator, Expression, PILFile, PolynomialName, PolynomialReference,
+        SelectedExpressions, Statement,
+    };
     use number::GoldilocksField;
+    use std::fs;
 
     #[test]
     fn empty() {

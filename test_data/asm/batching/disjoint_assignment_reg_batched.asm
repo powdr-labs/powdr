@@ -13,15 +13,6 @@ instr loop {(pc' - pc)}
 instr mstore X {(addr - X)}
 instr wrap Z -> Y {(Z - Y)}
 
-reg C;
-reg D;
-pil{
-pol constant FIRST = [1] + [0]*;
-(FIRST * C) = 2;
-(FIRST * D) = 2;
-(C * D) = 4;
-}
-
 same_reg_same_assignment_reg::
 A <=X= ${ ("input", 0) };
 // END BATCH BusyWriteRegister, BusyAssignmentRegister
@@ -101,12 +92,6 @@ mstore tmp1;
 addr <=Y= wrap(tmp1);
 // END BATCH BusyAssignmentRegister, ReadAfterWrite
 mstore tmp1;
-// END BATCH Label
-
-connected_by_inline_pil::
-C <=X= 1;
-// END BATCH BusyWriteRegister
-D <=Y= 4;
 // END BATCH Label
 
 end::

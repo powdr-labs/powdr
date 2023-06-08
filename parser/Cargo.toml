@@ -6,8 +6,10 @@ build = "build.rs"
 
 [dependencies]
 lalrpop-util = {version = "^0.19", features = ["lexer"]}
+num-bigint = "0.4.3"
 num-traits = "0.2.15"
 number = { path = "../number" }
+ast = { path = "../ast" }
 parser_util = { path = "../parser_util" }
 # This is only here to work around https://github.com/lalrpop/lalrpop/issues/750
 # It should be removed once that workaround is no longer needed.
