@@ -3,15 +3,18 @@
 use std::ffi::OsStr;
 use std::fs;
 use std::io::BufWriter;
+use std::io::Write;
 use std::path::Path;
 use std::time::Instant;
 
-mod backends;
+use json::JsonValue;
+
+pub mod util;
 mod verify;
 
-pub use backends::Backend;
+pub use backend::{Backend, Proof};
 use number::write_polys_file;
-use pil_analyzer::json_exporter;
+use pil_analyzer::{json_exporter, Analyzed};
 pub use verify::{compile_asm_string_temp, verify, verify_asm_string};
 
 use executor::constant_evaluator;
@@ -32,7 +35,7 @@ pub fn compile_pil_or_asm<T: FieldElement>(
     prove_with: Option<Backend>,
 ) {
     if file_name.ends_with(".asm") {
-        compile_asm(file_name, inputs, output_dir, force_overwrite, prove_with)
+        compile_asm(file_name, inputs, output_dir, force_overwrite, prove_with);
     } else {
         compile_pil(
             Path::new(file_name),
@@ -40,7 +43,11 @@ pub fn compile_pil_or_asm<T: FieldElement>(
             Some(inputs_to_query_callback(inputs)),
             prove_with,
         );
-    };
+    }
+}
+
+pub fn analyze_pil<T: FieldElement>(pil_file: &Path) -> Analyzed<T> {
+    pil_analyzer::analyze(pil_file)
 }
 
 /// Compiles a .pil file to its json form and also tries to generate
@@ -159,43 +166,29 @@ where
     let (constants, degree) = constant_evaluator::generate(analyzed);
     log::info!("Took {}", start.elapsed().as_secs_f32());
     if analyzed.constant_count() == constants.len() {
-        write_polys_file(
-            &mut BufWriter::new(&mut fs::File::create(output_dir.join("constants.bin")).unwrap()),
-            degree,
-            &constants,
-        );
-        log::info!("Wrote constants.bin.");
+        write_constants_to_fs(&constants, output_dir, degree);
+        log::info!("Generated constants.");
+
         log::info!("Deducing witness columns...");
         let commits = executor::witgen::generate(analyzed, degree, &constants, query_callback);
-        write_polys_file(
-            &mut BufWriter::new(&mut fs::File::create(output_dir.join("commits.bin")).unwrap()),
-            degree,
-            &commits,
-        );
-        log::info!("Wrote commits.bin.");
+        write_commits_to_fs(&commits, output_dir, degree);
+        log::info!("Generated witness.");
+
+        // TODO the fs and params stuff needs to be refactored out of here
         if let Some(Backend::Halo2) = prove_with {
-            use std::io::Write;
-            let proof = halo2::prove_ast(analyzed, constants, commits);
-            let mut proof_file = fs::File::create(output_dir.join("proof.bin")).unwrap();
-            let mut proof_writer = BufWriter::new(&mut proof_file);
-            proof_writer.write_all(&proof).unwrap();
-            proof_writer.flush().unwrap();
-            log::info!("Wrote proof.bin.");
+            let degree = usize::BITS - degree.leading_zeros() + 1;
+            let params = halo2::kzg_params(degree as usize);
+            let proof = halo2::prove_ast(analyzed, constants, commits, params);
+            write_proof_to_fs(&proof, output_dir);
+            log::info!("Generated proof.");
         }
     } else {
         log::warn!("Not writing constants.bin because not all declared constants are defined (or there are none).");
         success = false;
     }
     let json_out = json_exporter::export(analyzed);
-    let json_file = {
-        let mut file = file_name.to_os_string();
-        file.push(".json");
-        file
-    };
-    json_out
-        .write(&mut fs::File::create(output_dir.join(&json_file)).unwrap())
-        .unwrap();
-    log::info!("Wrote {}.", json_file.to_string_lossy());
+    write_compiled_json_to_fs(&json_out, file_name, output_dir);
+    log::info!("Compiled PIL source code.");
 
     success
 }
@@ -221,4 +214,50 @@ pub fn inputs_to_query_callback<T: FieldElement>(inputs: Vec<T>) -> impl Fn(&str
             _ => None,
         }
     }
+}
+
+fn write_constants_to_fs<T: FieldElement>(
+    commits: &Vec<(&str, Vec<T>)>,
+    output_dir: &Path,
+    degree: u64,
+) {
+    write_polys_file(
+        &mut BufWriter::new(&mut fs::File::create(output_dir.join("constants.bin")).unwrap()),
+        degree,
+        commits,
+    );
+    log::info!("Wrote constants.bin.");
+}
+
+fn write_commits_to_fs<T: FieldElement>(
+    commits: &Vec<(&str, Vec<T>)>,
+    output_dir: &Path,
+    degree: u64,
+) {
+    write_polys_file(
+        &mut BufWriter::new(&mut fs::File::create(output_dir.join("commits.bin")).unwrap()),
+        degree,
+        commits,
+    );
+    log::info!("Wrote commits.bin.");
+}
+
+fn write_proof_to_fs(proof: &Proof, output_dir: &Path) {
+    let mut proof_file = fs::File::create(output_dir.join("proof.bin")).unwrap();
+    let mut proof_writer = BufWriter::new(&mut proof_file);
+    proof_writer.write_all(proof).unwrap();
+    proof_writer.flush().unwrap();
+    log::info!("Wrote proof.bin.");
+}
+
+fn write_compiled_json_to_fs(json_out: &JsonValue, file_name: &OsStr, output_dir: &Path) {
+    let json_file = {
+        let mut file = file_name.to_os_string();
+        file.push(".json");
+        file
+    };
+    json_out
+        .write(&mut fs::File::create(output_dir.join(&json_file)).unwrap())
+        .unwrap();
+    log::info!("Wrote {}.", json_file.to_string_lossy());
 }

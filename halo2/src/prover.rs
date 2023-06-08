@@ -2,7 +2,7 @@ use halo2_proofs::{
     halo2curves::bn256::{Bn256, Fr, G1Affine},
     plonk::{create_proof, keygen_pk, keygen_vk, verify_proof},
     poly::{
-        commitment::ParamsProver,
+        commitment::{Params, ParamsProver},
         kzg::{
             commitment::{KZGCommitmentScheme, ParamsKZG},
             multiopen::{ProverGWC, VerifierGWC},
@@ -17,13 +17,34 @@ use polyexen::plaf::PlafDisplayBaseTOML;
 use rand::{rngs::StdRng, SeedableRng};
 
 use crate::circuit_builder::analyzed_to_circuit;
+use std::io;
 
 /// Create a halo2 proof for a given PIL, fixed column values and witness column values
 /// We use KZG ([GWC variant](https://eprint.iacr.org/2019/953)) and Keccak256
+
+pub fn prove_ast_read_params<T: FieldElement, R: io::Read>(
+    pil: &Analyzed<T>,
+    fixed: Vec<(&str, Vec<T>)>,
+    witness: Vec<(&str, Vec<T>)>,
+    mut params: R,
+) -> Vec<u8> {
+    if polyexen::expr::get_field_p::<Fr>() != T::modulus().to_arbitrary_integer() {
+        panic!("powdr modulus doesn't match halo2 modulus. Make sure you are using Bn254");
+    }
+
+    prove_ast(
+        pil,
+        fixed,
+        witness,
+        ParamsKZG::<Bn256>::read(&mut params).unwrap(),
+    )
+}
+
 pub fn prove_ast<T: FieldElement>(
     pil: &Analyzed<T>,
     fixed: Vec<(&str, Vec<T>)>,
     witness: Vec<(&str, Vec<T>)>,
+    params: ParamsKZG<Bn256>,
 ) -> Vec<u8> {
     if polyexen::expr::get_field_p::<Fr>() != T::modulus().to_arbitrary_integer() {
         panic!("powdr modulus doesn't match halo2 modulus. Make sure you are using Bn254");
@@ -31,15 +52,10 @@ pub fn prove_ast<T: FieldElement>(
 
     let circuit = analyzed_to_circuit(pil, fixed, witness);
 
-    let circuit_row_count_log = usize::BITS - circuit.plaf.info.num_rows.leading_zeros();
-
-    let expanded_row_count_log = circuit_row_count_log + 1;
-
     log::debug!("{}", PlafDisplayBaseTOML(&circuit.plaf));
 
     let inputs = vec![];
 
-    let params = ParamsKZG::<Bn256>::new(expanded_row_count_log);
     let vk = keygen_vk(&params, &circuit).unwrap();
     let pk = keygen_pk(&params, vk.clone(), &circuit).unwrap();
     let mut transcript: Keccak256Write<
@@ -72,4 +88,20 @@ pub fn prove_ast<T: FieldElement>(
     .is_ok());
 
     proof
+}
+
+pub fn kzg_params(size: usize) -> ParamsKZG<Bn256> {
+    ParamsKZG::<Bn256>::new(size as u32)
+}
+
+pub fn generate_params<T: FieldElement>(size: usize) -> Vec<u8> {
+    if polyexen::expr::get_field_p::<Fr>() != T::modulus().to_arbitrary_integer() {
+        panic!("powdr modulus doesn't match halo2 modulus. Make sure you are using Bn254");
+    }
+
+    let params = kzg_params(size);
+    let mut data = vec![];
+    ParamsKZG::<Bn256>::write(&params, &mut data).unwrap();
+
+    data
 }
