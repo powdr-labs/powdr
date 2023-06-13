@@ -29,7 +29,6 @@ pub struct Generator<'a, T: FieldElement, QueryCallback> {
     next_bit_constraints: Vec<Option<BitConstraint<T>>>,
     next_row: DegreeType,
     failure_reasons: Vec<String>,
-    progress: bool,
     last_report: DegreeType,
     last_report_time: Instant,
 }
@@ -68,7 +67,6 @@ where
             next_bit_constraints: vec![None; witness_cols_len],
             next_row: 0,
             failure_reasons: vec![],
-            progress: true,
             last_report: 0,
             last_report_time: Instant::now(),
         }
@@ -77,15 +75,12 @@ where
     pub fn compute_next_row(&mut self, next_row: DegreeType) -> Vec<T> {
         self.set_next_row_and_log(next_row);
 
-        // TODO maybe better to generate a dependency graph than looping multiple times.
-        // TODO at least we could cache the affine expressions between loops.
-
         let mut complete_identities = vec![false; self.identities.len()];
 
         let mut identity_failed;
         loop {
             identity_failed = false;
-            self.progress = false;
+            let mut progress = false;
             self.failure_reasons.clear();
 
             for (identity, complete) in self
@@ -94,18 +89,7 @@ where
                 .zip(complete_identities.iter_mut())
                 .filter(|(_, complete)| !**complete)
             {
-                let result = match identity.kind {
-                    IdentityKind::Polynomial => {
-                        self.process_polynomial_identity(identity.left.selector.as_ref().unwrap())
-                    }
-                    IdentityKind::Plookup | IdentityKind::Permutation => {
-                        self.process_plookup(identity)
-                    }
-                    kind => {
-                        unimplemented!("Identity of kind {kind:?} is not supported in the executor")
-                    }
-                }
-                .map_err(|err| {
+                let result = self.process_identity(identity).map_err(|err| {
                     format!(
                         "No progress on {identity}:\n{}",
                         indent(&format!("{err}"), "    ")
@@ -122,7 +106,7 @@ where
                     }
                 };
 
-                self.handle_eval_result(result);
+                progress |= self.handle_eval_result(result);
             }
 
             if self.query_callback.is_some() {
@@ -133,12 +117,12 @@ where
                         && column.query.is_some()
                     {
                         let result = self.process_witness_query(&column);
-                        self.handle_eval_result(result)
+                        progress |= self.handle_eval_result(result);
                     }
                 }
             }
 
-            if !self.progress {
+            if !progress {
                 break;
             }
             if self.next.iter().all(|v| v.is_some()) {
@@ -179,21 +163,21 @@ where
                 indent(&self.format_next_known_values().join("\n"), "    ")
             );
             panic!();
-        } else {
-            log::trace!(
-                "===== Row {next_row}:\n{}",
-                indent(&self.format_next_values().join("\n"), "    ")
-            );
-            std::mem::swap(&mut self.next, &mut self.current);
-            self.next = vec![None; self.current.len()];
-            self.next_bit_constraints = vec![None; self.current.len()];
-            // TODO check a bit better that "None" values do not
-            // violate constraints.
-            self.current
-                .iter()
-                .map(|v| (*v).unwrap_or_default())
-                .collect()
         }
+
+        log::trace!(
+            "===== Row {next_row}:\n{}",
+            indent(&self.format_next_values().join("\n"), "    ")
+        );
+        std::mem::swap(&mut self.next, &mut self.current);
+        self.next = vec![None; self.current.len()];
+        self.next_bit_constraints = vec![None; self.current.len()];
+        // TODO check a bit better that "None" values do not
+        // violate constraints.
+        self.current
+            .iter()
+            .map(|v| (*v).unwrap_or_default())
+            .collect()
     }
 
     /// Verifies the proposed values for the next row.
@@ -204,16 +188,7 @@ where
         self.next = values.iter().cloned().map(Some).collect();
 
         for identity in self.identities {
-            let result = match identity.kind {
-                IdentityKind::Polynomial => {
-                    self.process_polynomial_identity(identity.left.selector.as_ref().unwrap())
-                }
-                IdentityKind::Plookup | IdentityKind::Permutation => self.process_plookup(identity),
-                kind => {
-                    unimplemented!("Identity of kind {kind:?} is not supported in the executor")
-                }
-            };
-            if result.is_err() {
+            if self.process_identity(identity).is_err() {
                 self.next = vec![None; self.current.len()];
                 self.next_bit_constraints = vec![None; self.current.len()];
                 return false;
@@ -351,6 +326,18 @@ where
         self.interpolate_query(expr)
     }
 
+    fn process_identity<'b>(&mut self, identity: &'b Identity<T>) -> EvalResult<'b, T> {
+        match identity.kind {
+            IdentityKind::Polynomial => {
+                self.process_polynomial_identity(identity.left.selector.as_ref().unwrap())
+            }
+            IdentityKind::Plookup | IdentityKind::Permutation => self.process_plookup(identity),
+            kind => {
+                unimplemented!("Identity of kind {kind:?} is not supported in the executor")
+            }
+        }
+    }
+
     fn process_polynomial_identity<'b>(&self, identity: &'b Expression<T>) -> EvalResult<'b, T> {
         // If there is no "next" reference in the expression,
         // we just evaluate it directly on the "next" row.
@@ -429,12 +416,12 @@ where
         unimplemented!("No executor machine matched identity `{identity}`")
     }
 
-    fn handle_eval_result(&mut self, result: EvalResult<T>) {
+    /// Processes the evaluation result: Stores failure reasons and updates next values.
+    /// Returns true if a new value or constraint was determined.
+    fn handle_eval_result(&mut self, result: EvalResult<T>) -> bool {
         match result {
             Ok(constraints) => {
-                if !constraints.is_empty() {
-                    self.progress = true;
-                }
+                let progress = !constraints.is_empty();
                 for (id, c) in constraints.constraints {
                     match c {
                         Constraint::Assignment(value) => {
@@ -445,9 +432,11 @@ where
                         }
                     }
                 }
+                progress
             }
             Err(reason) => {
                 self.failure_reasons.push(format!("{reason}"));
+                false
             }
         }
     }
