@@ -191,7 +191,7 @@ fn compile<T: FieldElement>(
     success
 }
 
-fn inputs_to_query_callback<T: FieldElement>(inputs: Vec<T>) -> impl Fn(&str) -> Option<T> {
+pub fn inputs_to_query_callback<T: FieldElement>(inputs: Vec<T>) -> impl Fn(&str) -> Option<T> {
     move |query: &str| -> Option<T> {
         let items = query.split(',').map(|s| s.trim()).collect::<Vec<_>>();
         match items[0] {

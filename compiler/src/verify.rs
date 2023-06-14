@@ -3,6 +3,8 @@ use std::{fs, path::Path, process::Command};
 use mktemp::Temp;
 use number::FieldElement;
 
+use crate::inputs_to_query_callback;
+
 pub fn verify_asm_string<T: FieldElement>(file_name: &str, contents: &str, inputs: Vec<T>) {
     let (pil_file_name, temp_dir) = compile_asm_string_temp(file_name, contents, inputs);
     verify(&pil_file_name, &temp_dir);
@@ -21,21 +23,7 @@ pub fn compile_asm_string_temp<T: FieldElement>(
         &pil,
         pil_file_name.as_ref(),
         &temp_dir,
-        Some(|query: &str| {
-            let items = query.split(',').map(|s| s.trim()).collect::<Vec<_>>();
-            assert_eq!(items.len(), 2);
-            match items[0] {
-                "\"input\"" => {
-                    let index = items[1].parse::<usize>().unwrap();
-                    let value = inputs.get(index).cloned();
-                    if let Some(value) = value {
-                        log::trace!("Input query: Index {index} -> {value}");
-                    }
-                    value
-                }
-                _ => None,
-            }
-        }),
+        Some(inputs_to_query_callback(inputs)),
         None,
     ));
     (pil_file_name.to_string(), temp_dir)
