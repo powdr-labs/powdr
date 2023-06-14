@@ -53,7 +53,7 @@ unsafe impl<const SIZE: usize> GlobalAlloc for FixedMemoryAllocator<SIZE> {
 }
 
 #[global_allocator]
-static mut GLOBAL: FixedMemoryAllocator<{ 1024 * 1024 * 1024 }> = FixedMemoryAllocator::new();
+static mut GLOBAL: FixedMemoryAllocator<{ 0x2000 }> = FixedMemoryAllocator::new();
 
 #[alloc_error_handler]
 fn alloc_error(layout: Layout) -> ! {

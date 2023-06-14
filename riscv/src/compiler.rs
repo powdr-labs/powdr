@@ -13,7 +13,7 @@ pub fn compile_riscv_asm(mut assemblies: BTreeMap<String, String>) -> String {
     // stack grows towards zero
     let stack_start = 0x10000;
     // data grows away from zero
-    let data_start = 0x20000;
+    let data_start = 0x10100;
 
     assert!(assemblies
         .insert("__runtime".to_string(), runtime().to_string())
