@@ -25,7 +25,7 @@ pub fn compile_riscv_asm(mut assemblies: BTreeMap<String, String>) -> String {
             .map(|(name, contents)| (name, parser::parse_asm(&contents)))
             .collect(),
     );
-    let (mut objects, object_order) = data_parser::extract_data_objects(&statements);
+    let (mut objects, mut object_order) = data_parser::extract_data_objects(&statements);
 
     // Reduce to the code that is actually reachable from main
     // (and the objects that are referred from there)
@@ -35,6 +35,17 @@ pub fn compile_riscv_asm(mut assemblies: BTreeMap<String, String>) -> String {
     replace_dynamic_label_references(&mut statements, &objects);
 
     // Sort the objects according to the order of the names in object_order.
+    // With the single exception: If there is large object, put that at the end.
+    // The idea behind this is that there might be a single gigantic object representing the heap
+    // and putting that at the end should keep memory addresses small.
+    let mut large_objects = objects
+        .iter()
+        .filter(|(_name, data)| data.iter().map(|d| d.size()).sum::<usize>() > 0x2000);
+    if let (Some((heap, _)), None) = (large_objects.next(), large_objects.next()) {
+        let heap_pos = object_order.iter().position(|o| o == heap).unwrap();
+        object_order.remove(heap_pos);
+        object_order.push(heap.clone());
+    };
     let sorted_objects = object_order
         .into_iter()
         .filter_map(|n| {
