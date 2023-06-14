@@ -86,8 +86,7 @@ fn test_password() {
 
 #[test]
 #[ignore = "Too slow"]
-// TODO: instead of just checking for panic, we could check the stdout for the actual message.
-#[should_panic]
+#[should_panic(expected = "Witness generation failed.")]
 fn test_print() {
     let case = "print.rs";
     verify_file(case, vec![]);
