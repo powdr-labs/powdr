@@ -1097,7 +1097,7 @@ pol constant p_instr_inc_fp_param_amount = [7, 0] + [0]*;
     }
 
     #[test]
-    #[should_panic]
+    #[should_panic(expected = "Number passed to unsigned parameter is negative or too large")]
     pub fn negative_for_unsigned() {
         let source = r#"
 reg pc[@pc];

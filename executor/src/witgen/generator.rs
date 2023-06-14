@@ -162,7 +162,7 @@ where
                 "Current values (known nonzero first, then zero, unknown omitted):\n{}",
                 indent(&self.format_next_known_values().join("\n"), "    ")
             );
-            panic!();
+            panic!("Witness generation failed.");
         }
 
         log::trace!(
