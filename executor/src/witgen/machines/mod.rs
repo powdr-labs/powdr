@@ -18,7 +18,7 @@ mod sorted_witness_machine;
 
 /// A machine is a set of witness columns and identities where the columns
 /// are used on the right-hand-side of lookups. It can process plookups.
-pub trait Machine<T: FieldElement> {
+pub trait Machine<T: FieldElement>: Send + Sync {
     // /// Tries to construct a new machine with the given subset of
     // /// witness columns and identities. If the identities do not
     // /// fit the pattern of the machine type, it can return None.
