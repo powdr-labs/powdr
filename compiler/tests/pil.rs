@@ -62,6 +62,12 @@ fn test_witness_lookup() {
 }
 
 #[test]
+#[should_panic(expected = "Witness generation failed.")]
+fn test_underdetermined_zero_no_solution() {
+    verify_pil("underdetermined_zero_no_solution.pil", None);
+}
+
+#[test]
 fn test_pair_lookup() {
     verify_pil("pair_lookup.pil", None);
 }

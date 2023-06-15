@@ -40,6 +40,22 @@ enum EvaluationRow {
     Next,
 }
 
+#[derive(PartialEq, Eq, Clone, Copy)]
+enum SolvingStrategy {
+    /// Only solve expressions that are affine in a single variable
+    /// (and use bit constraints).
+    SingleVariableAffine,
+    /// Assume that all unknown values are zero and check that this does not generate
+    /// a conflict (but do not store the values as fixed zero to avoid relying on nondeterminism).
+    AssumeZero,
+}
+
+#[derive(PartialEq, Eq, Clone, Copy)]
+enum EvaluateUnknown {
+    Symbolic,
+    AssumeZero,
+}
+
 impl<'a, T: FieldElement, QueryCallback> Generator<'a, T, QueryCallback>
 where
     QueryCallback: FnMut(&str) -> Option<T> + Send + Sync,
@@ -76,56 +92,60 @@ where
 
         let mut complete_identities = vec![false; self.identities.len()];
 
-        let mut identity_failed;
-        loop {
-            identity_failed = false;
-            let mut progress = false;
-            self.failure_reasons.clear();
+        let mut identity_failed = false;
+        for strategy in [
+            SolvingStrategy::SingleVariableAffine,
+            SolvingStrategy::AssumeZero,
+        ] {
+            loop {
+                identity_failed = false;
+                let mut progress = false;
+                self.failure_reasons.clear();
 
-            for (identity, complete) in self
-                .identities
-                .iter()
-                .zip(complete_identities.iter_mut())
-                .filter(|(_, complete)| !**complete)
-            {
-                let result = self.process_identity(identity).map_err(|err| {
-                    format!(
-                        "No progress on {identity}:\n{}",
-                        indent(&format!("{err}"), "    ")
-                    )
-                    .into()
-                });
+                for (identity, complete) in self
+                    .identities
+                    .iter()
+                    .zip(complete_identities.iter_mut())
+                    .filter(|(_, complete)| !**complete)
+                {
+                    let result = self.process_identity(identity, strategy).map_err(|err| {
+                        let msg = match strategy {
+                            SolvingStrategy::SingleVariableAffine => "No progress on",
+                            SolvingStrategy::AssumeZero => {
+                                "Assuming zero for unknown columns failed in"
+                            }
+                        };
+                        format!("{msg} {identity}:\n{}", indent(&format!("{err}"), "    ")).into()
+                    });
 
-                match &result {
-                    Ok(e) => {
-                        *complete = e.is_complete();
-                    }
-                    Err(_) => {
-                        identity_failed = true;
-                    }
-                };
+                    match &result {
+                        Ok(e) => {
+                            *complete = e.is_complete();
+                        }
+                        Err(_) => {
+                            identity_failed = true;
+                        }
+                    };
 
-                progress |= self.handle_eval_result(result);
-            }
+                    progress |= self.handle_eval_result(result, strategy);
+                }
 
-            if self.query_callback.is_some() {
-                for column in self.fixed_data.witness_cols() {
-                    // TODO we should actually query even if it is already known, to check
-                    // if the value would be different.
-                    if !self.has_known_next_value(column.poly.poly_id() as usize)
-                        && column.query.is_some()
-                    {
-                        let result = self.process_witness_query(&column);
-                        progress |= self.handle_eval_result(result);
+                if self.query_callback.is_some()
+                    && strategy == SolvingStrategy::SingleVariableAffine
+                {
+                    for column in self.fixed_data.witness_cols() {
+                        if !self.has_known_next_value(column.poly.poly_id() as usize)
+                            && column.query.is_some()
+                        {
+                            let result = self.process_witness_query(&column);
+                            progress |= self.handle_eval_result(result, strategy);
+                        }
                     }
                 }
-            }
 
-            if !progress {
-                break;
-            }
-            if self.next.iter().all(|v| v.is_some()) {
-                break;
+                if !progress {
+                    break;
+                }
             }
         }
         if identity_failed {
@@ -171,8 +191,7 @@ where
         std::mem::swap(&mut self.next, &mut self.current);
         self.next = vec![None; self.current.len()];
         self.next_bit_constraints = vec![None; self.current.len()];
-        // TODO check a bit better that "None" values do not
-        // violate constraints.
+
         self.current
             .iter()
             .map(|v| (*v).unwrap_or_default())
@@ -187,7 +206,10 @@ where
         self.next = values.iter().cloned().map(Some).collect();
 
         for identity in self.identities {
-            if self.process_identity(identity).is_err() {
+            if self
+                .process_identity(identity, SolvingStrategy::AssumeZero)
+                .is_err()
+            {
                 self.next = vec![None; self.current.len()];
                 self.next_bit_constraints = vec![None; self.current.len()];
                 return false;
@@ -282,7 +304,7 @@ where
         &self,
         query: &'b Expression<T>,
     ) -> Result<String, IncompleteCause<&'b PolynomialReference>> {
-        if let Ok(v) = self.evaluate(query, EvaluationRow::Next) {
+        if let Ok(v) = self.evaluate(query, EvaluationRow::Next, EvaluateUnknown::Symbolic) {
             if v.is_constant() {
                 return Ok(v.to_string());
             }
@@ -315,7 +337,7 @@ where
         arms: &'b [(Option<T>, Expression<T>)],
     ) -> Result<String, IncompleteCause<&'b PolynomialReference>> {
         let v = self
-            .evaluate(scrutinee, EvaluationRow::Next)?
+            .evaluate(scrutinee, EvaluationRow::Next, EvaluateUnknown::Symbolic)?
             .constant_value()
             .ok_or(IncompleteCause::NonConstantQueryMatchScrutinee)?;
         let (_, expr) = arms
@@ -325,19 +347,29 @@ where
         self.interpolate_query(expr)
     }
 
-    fn process_identity<'b>(&mut self, identity: &'b Identity<T>) -> EvalResult<'b, T> {
+    fn process_identity<'b>(
+        &mut self,
+        identity: &'b Identity<T>,
+        strategy: SolvingStrategy,
+    ) -> EvalResult<'b, T> {
         match identity.kind {
             IdentityKind::Polynomial => {
-                self.process_polynomial_identity(identity.left.selector.as_ref().unwrap())
+                self.process_polynomial_identity(identity.left.selector.as_ref().unwrap(), strategy)
             }
-            IdentityKind::Plookup | IdentityKind::Permutation => self.process_plookup(identity),
+            IdentityKind::Plookup | IdentityKind::Permutation => {
+                self.process_plookup(identity, strategy)
+            }
             kind => {
                 unimplemented!("Identity of kind {kind:?} is not supported in the executor")
             }
         }
     }
 
-    fn process_polynomial_identity<'b>(&self, identity: &'b Expression<T>) -> EvalResult<'b, T> {
+    fn process_polynomial_identity<'b>(
+        &self,
+        identity: &'b Expression<T>,
+        strategy: SolvingStrategy,
+    ) -> EvalResult<'b, T> {
         // If there is no "next" reference in the expression,
         // we just evaluate it directly on the "next" row.
         let row = if identity.contains_next_witness_ref() {
@@ -347,9 +379,16 @@ where
         } else {
             EvaluationRow::Next
         };
-        let evaluated = match self.evaluate(identity, row) {
+        let evaluate_unknown = if strategy == SolvingStrategy::AssumeZero {
+            EvaluateUnknown::AssumeZero
+        } else {
+            EvaluateUnknown::Symbolic
+        };
+        let evaluated = match self.evaluate(identity, row, evaluate_unknown) {
             Ok(evaluated) => evaluated,
-            Err(cause) => return Ok(EvalValue::incomplete(cause)),
+            Err(cause) => {
+                return Ok(EvalValue::incomplete(cause));
+            }
         };
         if evaluated.constant_value() == Some(0.into()) {
             Ok(EvalValue::complete(vec![]))
@@ -358,9 +397,18 @@ where
         }
     }
 
-    fn process_plookup<'b>(&mut self, identity: &'b Identity<T>) -> EvalResult<'b, T> {
+    fn process_plookup<'b>(
+        &mut self,
+        identity: &'b Identity<T>,
+        strategy: SolvingStrategy,
+    ) -> EvalResult<'b, T> {
+        let evaluate_unknown = if strategy == SolvingStrategy::AssumeZero {
+            EvaluateUnknown::AssumeZero
+        } else {
+            EvaluateUnknown::Symbolic
+        };
         if let Some(left_selector) = &identity.left.selector {
-            let value = match self.evaluate(left_selector, EvaluationRow::Next) {
+            let value = match self.evaluate(left_selector, EvaluationRow::Next, evaluate_unknown) {
                 Ok(value) => value,
                 Err(cause) => return Ok(EvalValue::incomplete(cause)),
             };
@@ -381,7 +429,7 @@ where
             .left
             .expressions
             .iter()
-            .map(|e| self.evaluate(e, EvaluationRow::Next))
+            .map(|e| self.evaluate(e, EvaluationRow::Next, evaluate_unknown))
             .collect::<Vec<_>>();
 
         // Now query the machines.
@@ -417,10 +465,14 @@ where
 
     /// Processes the evaluation result: Stores failure reasons and updates next values.
     /// Returns true if a new value or constraint was determined.
-    fn handle_eval_result(&mut self, result: EvalResult<T>) -> bool {
+    fn handle_eval_result(&mut self, result: EvalResult<T>, strategy: SolvingStrategy) -> bool {
         match result {
             Ok(constraints) => {
                 let progress = !constraints.is_empty();
+                // If we assume unknown variables to be zero, we cannot learn anything new.
+                if strategy == SolvingStrategy::AssumeZero {
+                    assert!(!progress);
+                }
                 for (id, c) in constraints.constraints {
                     match c {
                         Constraint::Assignment(value) => {
@@ -451,6 +503,7 @@ where
         &self,
         expr: &'b Expression<T>,
         evaluate_row: EvaluationRow,
+        evaluate_unknown: EvaluateUnknown,
     ) -> AffineResult<&'b PolynomialReference, T> {
         let degree = self.fixed_data.degree;
         let fixed_row = match evaluate_row {
@@ -465,6 +518,7 @@ where
                 current_witnesses: &self.current,
                 next_witnesses: &self.next,
                 evaluate_row,
+                evaluate_unknown,
             },
         ))
         .evaluate(expr)
@@ -506,6 +560,7 @@ struct EvaluationData<'a, T> {
     /// Values of the witness polynomials in the next row
     pub next_witnesses: &'a Vec<Option<T>>,
     pub evaluate_row: EvaluationRow,
+    pub evaluate_unknown: EvaluateUnknown,
 }
 
 impl<'a, T: FieldElement> WitnessColumnEvaluator<T> for EvaluationData<'a, T> {
@@ -524,6 +579,8 @@ impl<'a, T: FieldElement> WitnessColumnEvaluator<T> for EvaluationData<'a, T> {
                 Ok(if let Some(value) = &self.next_witnesses[id] {
                     // We already computed the concrete value
                     (*value).into()
+                } else if self.evaluate_unknown == EvaluateUnknown::AssumeZero {
+                    T::from(0).into()
                 } else {
                     // We continue with a symbolic value
                     AffineExpression::from_variable_id(poly)
