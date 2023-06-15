@@ -2,36 +2,54 @@ use std::fmt::{Display, Formatter, Result};
 
 use super::{
     AnalysisASMFile, AssignmentStatement, DegreeStatement, Incompatible, IncompatibleSet,
-    InstructionDefinitionStatement, InstructionStatement, LabelStatement, PilBlock,
-    ProgramStatement, RegisterDeclarationStatement,
+    InstructionDefinitionStatement, InstructionStatement, LabelStatement, Machine, PilBlock,
+    Program, ProgramStatement, RegisterDeclarationStatement,
 };
 
 impl<T: Display> Display for AnalysisASMFile<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        for (name, machine) in &self.machines {
+            writeln!(f, "machine {name} {{")?;
+            writeln!(f, "{}", machine)?;
+            writeln!(f, "}}")?;
+            writeln!(f)?;
+        }
+        Ok(())
+    }
+}
+
+impl<T: Display> Display for Machine<T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         for s in &self.degree {
-            writeln!(f, "{s}")?;
+            writeln!(f, "\t{s}")?;
         }
         for s in &self.registers {
-            writeln!(f, "{s}")?;
+            writeln!(f, "\t{s}")?;
         }
-        for s in &self.pil {
-            writeln!(f, "{s}")?;
+        for s in &self.constraints {
+            writeln!(f, "\t{s}")?;
         }
         for i in &self.instructions {
-            writeln!(f, "{i}")?;
+            writeln!(f, "\t{i}")?;
         }
+        writeln!(f, "{}", self.program)?;
+        Ok(())
+    }
+}
 
-        let mut statements = self.program.iter();
-
-        match self.batches.as_ref() {
+impl<T: Display> Display for Program<T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        writeln!(f, "\tprogram {{")?;
+        let statements = &mut self.statements.iter();
+        match &self.batches {
             Some(batches) => {
                 for batch in batches {
-                    for s in (&mut statements).take(batch.size) {
-                        writeln!(f, "{s}")?;
+                    for statement in statements.take(batch.size) {
+                        writeln!(f, "\t\t{}", statement)?;
                     }
                     writeln!(
                         f,
-                        "// END BATCH{}",
+                        "\t\t// END BATCH{}",
                         batch
                             .reason
                             .as_ref()
@@ -41,12 +59,12 @@ impl<T: Display> Display for AnalysisASMFile<T> {
                 }
             }
             None => {
-                for s in statements {
-                    writeln!(f, "{s}")?;
+                for statement in statements {
+                    writeln!(f, "\t\t{}", statement)?;
                 }
             }
         }
-        Ok(())
+        write!(f, "\t}}")
     }
 }
 
@@ -140,17 +158,7 @@ impl Display for RegisterDeclarationStatement {
 
 impl<T: Display> Display for InstructionDefinitionStatement<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write!(
-            f,
-            "instr {}{} {{{}}}",
-            self.name,
-            self.params,
-            self.body
-                .iter()
-                .map(|e| format!("{e}"))
-                .collect::<Vec<_>>()
-                .join(" ")
-        )
+        write!(f, "instr {}{} {{{}}}", self.name, self.params, self.body)
     }
 }
 

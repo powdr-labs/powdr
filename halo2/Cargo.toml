@@ -21,6 +21,7 @@ ast = { version = "0.1.0", path = "../ast" }
 [dev-dependencies]
 analysis = { path = "../analysis" }
 executor = { path = "../executor" }
+linker = { path = "../linker" }
 parser = { path = "../parser" }
 asm_to_pil = { path = "../asm_to_pil" }
 test-log = "0.2.12"

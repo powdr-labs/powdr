@@ -70,6 +70,14 @@ fn functional_instructions() {
 }
 
 #[test]
+fn simple_machines() {
+    let f = "simple_machines.asm";
+    let i = [];
+    verify_asm::<GoldilocksField>(f, slice_to_vec(&i));
+    halo2_proof(f, slice_to_vec(&i));
+}
+
+#[test]
 fn full_pil_constant() {
     let f = "full_pil_constant.asm";
     verify_asm::<GoldilocksField>(f, Default::default());

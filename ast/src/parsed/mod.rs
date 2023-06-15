@@ -5,11 +5,13 @@ use std::{iter::once, ops::ControlFlow};
 
 use number::{DegreeType, FieldElement};
 
+use self::asm::FunctionCall;
+
 #[derive(Debug, PartialEq, Eq)]
-pub struct PILFile<T>(pub Vec<Statement<T>>);
+pub struct PILFile<T>(pub Vec<PilStatement<T>>);
 
 #[derive(Debug, PartialEq, Eq, Clone)]
-pub enum Statement<T> {
+pub enum PilStatement<T> {
     /// File name
     Include(usize, String),
     /// Name of namespace and polynomial degree (constant)
@@ -28,7 +30,7 @@ pub enum Statement<T> {
         usize,
         String,
         Vec<String>,
-        Vec<Statement<T>>,
+        Vec<PilStatement<T>>,
         Option<Expression<T>>,
     ),
     FunctionCall(usize, String, Vec<Expression<T>>),
@@ -38,6 +40,12 @@ pub enum Statement<T> {
 pub struct SelectedExpressions<T> {
     pub selector: Option<Expression<T>>,
     pub expressions: Vec<Expression<T>>,
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub enum FunctionId {
+    Literal(String),
+    Member(String, String),
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -51,12 +59,39 @@ pub enum Expression<T> {
     Tuple(Vec<Expression<T>>),
     BinaryOperation(Box<Expression<T>>, BinaryOperator, Box<Expression<T>>),
     UnaryOperation(UnaryOperator, Box<Expression<T>>),
-    FunctionCall(String, Vec<Expression<T>>),
+    FunctionCall(FunctionCall<T>),
     FreeInput(Box<Expression<T>>),
     MatchExpression(
         Box<Expression<T>>,
         Vec<(Option<Expression<T>>, Expression<T>)>,
     ),
+}
+
+pub fn direct_reference<S: Into<String>, T>(name: S) -> Expression<T> {
+    Expression::PolynomialReference(PolynomialReference {
+        namespace: None,
+        name: name.into(),
+        index: None,
+        next: false,
+    })
+}
+
+pub fn namespaced_reference<S: Into<String>, T>(namespace: String, name: S) -> Expression<T> {
+    Expression::PolynomialReference(PolynomialReference {
+        namespace: Some(namespace),
+        name: name.into(),
+        index: None,
+        next: false,
+    })
+}
+
+pub fn next_reference<T>(name: &str) -> Expression<T> {
+    Expression::PolynomialReference(PolynomialReference {
+        namespace: None,
+        name: name.to_owned(),
+        index: None,
+        next: true,
+    })
 }
 
 #[derive(Debug, PartialEq, Eq, Default, Clone)]
@@ -203,7 +238,10 @@ where
             postvisit_expression_mut(right, f)?;
         }
         Expression::UnaryOperation(_, e) => postvisit_expression_mut(e.as_mut(), f)?,
-        Expression::Tuple(items) | Expression::FunctionCall(_, items) => items
+        Expression::Tuple(items)
+        | Expression::FunctionCall(FunctionCall {
+            arguments: items, ..
+        }) => items
             .iter_mut()
             .try_for_each(|item| postvisit_expression_mut(item, f))?,
         Expression::FreeInput(query) => postvisit_expression_mut(query.as_mut(), f)?,
@@ -219,46 +257,46 @@ where
 /// Traverses the expression trees of the statement and calls `f` in post-order.
 /// Does not enter macro definitions.
 pub fn postvisit_expression_in_statement_mut<T, F, B>(
-    statement: &mut Statement<T>,
+    statement: &mut PilStatement<T>,
     f: &mut F,
 ) -> ControlFlow<B>
 where
     F: FnMut(&mut Expression<T>) -> ControlFlow<B>,
 {
     match statement {
-        Statement::FunctionCall(_, _, arguments) => arguments
+        PilStatement::FunctionCall(_, _, arguments) => arguments
             .iter_mut()
             .try_for_each(|e| postvisit_expression_mut(e, f)),
-        Statement::PlookupIdentity(_, left, right)
-        | Statement::PermutationIdentity(_, left, right) => left
+        PilStatement::PlookupIdentity(_, left, right)
+        | PilStatement::PermutationIdentity(_, left, right) => left
             .selector
             .iter_mut()
             .chain(left.expressions.iter_mut())
             .chain(right.selector.iter_mut())
             .chain(right.expressions.iter_mut())
             .try_for_each(|e| postvisit_expression_mut(e, f)),
-        Statement::ConnectIdentity(_start, left, right) => left
+        PilStatement::ConnectIdentity(_start, left, right) => left
             .iter_mut()
             .chain(right.iter_mut())
             .try_for_each(|e| postvisit_expression_mut(e, f)),
 
-        Statement::Namespace(_, _, e)
-        | Statement::PolynomialDefinition(_, _, e)
-        | Statement::PolynomialIdentity(_, e)
-        | Statement::PublicDeclaration(_, _, _, e)
-        | Statement::ConstantDefinition(_, _, e) => postvisit_expression_mut(e, f),
+        PilStatement::Namespace(_, _, e)
+        | PilStatement::PolynomialDefinition(_, _, e)
+        | PilStatement::PolynomialIdentity(_, e)
+        | PilStatement::PublicDeclaration(_, _, _, e)
+        | PilStatement::ConstantDefinition(_, _, e) => postvisit_expression_mut(e, f),
 
-        Statement::PolynomialConstantDefinition(_, _, fundef)
-        | Statement::PolynomialCommitDeclaration(_, _, Some(fundef)) => match fundef {
+        PilStatement::PolynomialConstantDefinition(_, _, fundef)
+        | PilStatement::PolynomialCommitDeclaration(_, _, Some(fundef)) => match fundef {
             FunctionDefinition::Query(_, e) | FunctionDefinition::Mapping(_, e) => {
                 postvisit_expression_mut(e, f)
             }
             FunctionDefinition::Array(ae) => postvisit_expression_in_array_expression_mut(ae, f),
         },
-        Statement::PolynomialCommitDeclaration(_, _, None)
-        | Statement::Include(_, _)
-        | Statement::PolynomialConstantDeclaration(_, _)
-        | Statement::MacroDefinition(_, _, _, _, _) => ControlFlow::Continue(()),
+        PilStatement::PolynomialCommitDeclaration(_, _, None)
+        | PilStatement::Include(_, _)
+        | PilStatement::PolynomialConstantDeclaration(_, _)
+        | PilStatement::MacroDefinition(_, _, _, _, _) => ControlFlow::Continue(()),
     }
 }
 

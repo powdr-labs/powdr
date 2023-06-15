@@ -33,8 +33,8 @@ pub fn parse_asm<'a, T: FieldElement>(
 mod test {
     use super::*;
     use ast::parsed::{
-        asm::ASMFile, BinaryOperator, Expression, PILFile, PolynomialName, PolynomialReference,
-        SelectedExpressions, Statement,
+        asm::ASMFile, BinaryOperator, Expression, PILFile, PilStatement, PolynomialName,
+        PolynomialReference, SelectedExpressions,
     };
     use number::GoldilocksField;
     use std::fs;
@@ -54,7 +54,7 @@ mod test {
             .unwrap();
         assert_eq!(
             parsed,
-            PILFile(vec![Statement::Include(0, "x".to_string())])
+            PILFile(vec![PilStatement::Include(0, "x".to_string())])
         );
     }
 
@@ -66,8 +66,8 @@ mod test {
         assert_eq!(
             parsed,
             PILFile(vec![
-                Statement::Include(0, "x".to_string()),
-                Statement::PolynomialCommitDeclaration(
+                PilStatement::Include(0, "x".to_string()),
+                PilStatement::PolynomialCommitDeclaration(
                     13,
                     vec![PolynomialName {
                         name: "t".to_string(),
@@ -86,7 +86,7 @@ mod test {
             .unwrap();
         assert_eq!(
             parsed,
-            PILFile(vec![Statement::PlookupIdentity(
+            PILFile(vec![PilStatement::PlookupIdentity(
                 0,
                 SelectedExpressions {
                     selector: None,
@@ -155,11 +155,11 @@ mod test {
             .unwrap();
         assert_eq!(
             parsed,
-            PILFile(vec![Statement::MacroDefinition(
+            PILFile(vec![PilStatement::MacroDefinition(
                 0,
                 "f".to_string(),
                 vec!["x".to_string()],
-                vec![Statement::PlookupIdentity(
+                vec![PilStatement::PlookupIdentity(
                     13,
                     SelectedExpressions {
                         selector: None,
@@ -251,5 +251,10 @@ public out = y(%last_row);"#;
             );
             assert_eq!(input.trim(), printed.trim());
         }
+    }
+
+    #[test]
+    fn simple_machines() {
+        parse_asm_file("asm/simple_machines.asm");
     }
 }

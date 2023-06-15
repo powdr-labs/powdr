@@ -1,56 +1,18 @@
 use number::AbstractNumberType;
 
-use super::{Expression, SelectedExpressions, Statement};
+use super::{Expression, PilStatement, SelectedExpressions};
 
-pub mod batched {
-    use std::collections::BTreeSet;
-
-    use super::*;
-
-    #[derive(Default, Debug, PartialEq, Eq)]
-    pub struct ASMStatementBatch<T> {
-        // the set of compatible statements
-        pub statements: Vec<ASMStatement<T>>,
-        // the reason why this batch ended (for debugging purposes), None if we ran out of statements to batch
-        pub reason: Option<IncompatibleSet>,
-    }
-
-    impl<T> ASMStatementBatch<T> {
-        pub fn into_statements(self) -> impl Iterator<Item = ASMStatement<T>> {
-            self.statements.into_iter()
-        }
-
-        pub fn statements(&self) -> impl Iterator<Item = &ASMStatement<T>> {
-            self.statements.iter()
-        }
-
-        pub fn size(&self) -> usize {
-            self.statements.len()
-        }
-
-        pub fn insert(&mut self, s: ASMStatement<T>) {
-            self.statements.push(s)
-        }
-    }
-
-    #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
-    pub enum Incompatible {
-        Label,
-        Unimplemented,
-    }
-
-    #[derive(Debug, PartialEq, Eq, Default)]
-    pub struct IncompatibleSet(pub BTreeSet<Incompatible>);
-
-    #[derive(Debug, PartialEq, Eq)]
-    pub struct BatchedASMFile<T> {
-        pub declarations: Vec<ASMStatement<T>>,
-        pub batches: Vec<ASMStatementBatch<T>>,
-    }
+#[derive(Debug, PartialEq, Eq)]
+pub struct ASMFile<T> {
+    pub machines: Vec<Machine<T>>,
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub struct ASMFile<T>(pub Vec<ASMStatement<T>>);
+pub struct Machine<T> {
+    pub start: usize,
+    pub name: String,
+    pub statements: Vec<MachineStatement<T>>,
+}
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct InstructionParamList {
@@ -76,16 +38,23 @@ impl InstructionParams {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
-pub enum ASMStatement<T> {
+pub enum MachineStatement<T> {
     Degree(usize, AbstractNumberType),
+    Submachine(usize, String, String),
     RegisterDeclaration(usize, String, Option<RegisterFlag>),
-    InstructionDeclaration(
-        usize,
-        String,
-        InstructionParams,
-        Vec<InstructionBodyElement<T>>,
-    ),
-    InlinePil(usize, Vec<Statement<T>>),
+    InstructionDeclaration(usize, String, InstructionParams, InstructionBody<T>),
+    InlinePil(usize, Vec<PilStatement<T>>),
+    Program(usize, Vec<ProgramStatement<T>>),
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub enum InstructionBody<T> {
+    Local(Vec<InstructionBodyElement<T>>),
+    External(String, String),
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub enum ProgramStatement<T> {
     Assignment(usize, Vec<String>, Option<String>, Box<Expression<T>>),
     Instruction(usize, String, Vec<Expression<T>>),
     Label(usize, String),
@@ -118,7 +87,13 @@ pub enum InstructionBodyElement<T> {
         PlookupOperator,
         SelectedExpressions<T>,
     ),
-    FunctionCall(String, Vec<Expression<T>>),
+    FunctionCall(FunctionCall<T>),
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct FunctionCall<T> {
+    pub id: String,
+    pub arguments: Vec<Expression<T>>,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]

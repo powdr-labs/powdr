@@ -1,7 +1,7 @@
 use std::marker::PhantomData;
 
 use ast::asm_analysis::{
-    AnalysisASMFile, BatchMetadata, Incompatible, IncompatibleSet, ProgramStatement,
+    AnalysisASMFile, BatchMetadata, Incompatible, IncompatibleSet, Machine, ProgramStatement,
 };
 use itertools::Itertools;
 use number::FieldElement;
@@ -67,12 +67,11 @@ struct ProgramBatcher<T> {
 
 impl<T: FieldElement> ProgramBatcher<T> {
     /// split a list of statements into compatible batches
-    fn extract_batches<'a>(
-        &self,
-        statements: impl IntoIterator<Item = &'a ProgramStatement<T>>,
-    ) -> Vec<BatchMetadata> {
-        statements
-            .into_iter()
+    fn extract_batches(&self, machine_name: &str, machine: &mut Machine<T>) {
+        let batches: Vec<_> = machine
+            .program
+            .statements
+            .iter()
             .peekable()
             .batching(|it| {
                 let mut batch = Batch::default();
@@ -104,21 +103,24 @@ impl<T: FieldElement> ProgramBatcher<T> {
                     }
                 }
             })
-            .collect()
-    }
-
-    pub fn batch(&mut self, mut asm_file: AnalysisASMFile<T>) -> AnalysisASMFile<T> {
-        let batches = self.extract_batches(&asm_file.program);
+            .collect();
 
         let lines_before = batches.iter().map(BatchMetadata::size).sum::<usize>() as f32;
         let lines_after = batches.len() as f32;
 
         log::debug!(
-            "Batching complete with savings of {}% in execution trace lines",
+            "Batching complete for machine {} with savings of {}% in execution trace lines",
+            machine_name,
             (1. - lines_after / lines_before) * 100.
         );
 
-        asm_file.batches = Some(batches);
+        machine.program.batches = Some(batches);
+    }
+
+    pub fn batch(&mut self, mut asm_file: AnalysisASMFile<T>) -> AnalysisASMFile<T> {
+        for (name, machine) in asm_file.machines.iter_mut() {
+            self.extract_batches(name, machine);
+        }
 
         asm_file
     }
@@ -155,8 +157,10 @@ mod tests {
         let expected = fs::read_to_string(expected_file_name).unwrap();
 
         assert_eq!(
-            format!("{batched}").replace("\n\n", "\n"),
-            expected.replace("\n\n", "\n")
+            format!("{batched}")
+                .replace("\n\n", "\n")
+                .replace('\t', "    "),
+            expected.replace("\n\n", "\n").replace('\t', "    ")
         );
     }
 

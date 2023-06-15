@@ -15,6 +15,7 @@ mod verify;
 
 use analysis::analyze;
 pub use backend::{Backend, Proof};
+use linker::link;
 use number::write_polys_file;
 use pil_analyzer::json_exporter;
 pub use verify::{verify, verify_asm_string};
@@ -133,7 +134,8 @@ pub fn compile_asm_string<T: FieldElement>(
         panic!();
     });
     let analysed = analyze(parsed).unwrap();
-    let pil = asm_to_pil::compile(analysed);
+    let graph = asm_to_pil::compile(analysed);
+    let pil = link(graph);
     let pil_file_name = format!(
         "{}.pil",
         Path::new(file_name).file_stem().unwrap().to_str().unwrap()
