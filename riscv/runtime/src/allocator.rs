@@ -8,9 +8,12 @@ use core::{
     ptr::{self, addr_of},
 };
 
+// Force C representation so that the large buffer is at the end.
+// This might avoid access to memory with large gaps.
+#[repr(C)]
 struct FixedMemoryAllocator<const SIZE: usize> {
-    mem_buffer: [u8; SIZE],
     next_available: Cell<usize>,
+    mem_buffer: [u8; SIZE],
 }
 
 impl<const SIZE: usize> FixedMemoryAllocator<SIZE> {

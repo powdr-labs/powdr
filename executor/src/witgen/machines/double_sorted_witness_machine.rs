@@ -9,7 +9,7 @@ use crate::witgen::affine_expression::AffineResult;
 use crate::witgen::util::is_simple_poly_of_name;
 use crate::witgen::{EvalError, EvalResult, FixedData};
 use crate::witgen::{EvalValue, IncompleteCause};
-use number::FieldElement;
+use number::{DegreeType, FieldElement};
 
 use pil_analyzer::{Expression, Identity, IdentityKind, PolynomialReference, SelectedExpressions};
 
@@ -17,6 +17,7 @@ use pil_analyzer::{Expression, Identity, IdentityKind, PolynomialReference, Sele
 
 #[derive(Default)]
 pub struct DoubleSortedWitnesses<T> {
+    degree: DegreeType,
     //key_col: String,
     /// Position of the witness columns in the data.
     /// The key column has a position of usize::max
@@ -33,7 +34,7 @@ struct Operation<T> {
 
 impl<T: FieldElement> DoubleSortedWitnesses<T> {
     pub fn try_new(
-        _fixed_data: &FixedData<T>,
+        fixed_data: &FixedData<T>,
         _identities: &[&Identity<T>],
         witness_cols: &HashSet<&PolynomialReference>,
     ) -> Option<Box<Self>> {
@@ -54,7 +55,10 @@ impl<T: FieldElement> DoubleSortedWitnesses<T> {
             .next()
             .is_none()
         {
-            Some(Box::default())
+            Some(Box::new(Self {
+                degree: fixed_data.degree,
+                ..Default::default()
+            }))
         } else {
             None
         }
@@ -174,6 +178,13 @@ impl<T: FieldElement> DoubleSortedWitnesses<T> {
                 left[0], right.expressions[0]
             )
         })?;
+        if addr.to_degree() >= self.degree {
+            return Err(format!(
+                "Memory access to too large address: 0x{addr:x} (must be less than 0x{:x})",
+                self.degree
+            )
+            .into());
+        }
         let step = left[1]
             .constant_value()
             .ok_or_else(|| format!("Step must be known: {} = {}", left[1], right.expressions[1]))?;
