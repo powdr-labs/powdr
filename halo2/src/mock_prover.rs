@@ -1,6 +1,3 @@
-use std::{fs::File, path::Path};
-
-use number::read_polys_file;
 use pil_analyzer::Analyzed;
 use polyexen::plaf::PlafDisplayBaseTOML;
 
@@ -8,44 +5,15 @@ use super::circuit_builder::analyzed_to_circuit;
 use halo2_proofs::{dev::MockProver, halo2curves::bn256::Fr};
 use number::{BigInt, FieldElement};
 
-pub fn mock_prove<T: FieldElement>(file: &Path, dir: &Path) {
-    let analyzed: Analyzed<T> = pil_analyzer::analyze(file);
-
-    if polyexen::expr::get_field_p::<Fr>() != T::modulus().to_arbitrary_integer() {
-        panic!("powdr modulus doesn't match halo2 modulus. Make sure you are using Bn254");
-    }
-
-    let fixed_columns: Vec<&str> = analyzed
-        .constant_polys_in_source_order()
-        .iter()
-        .map(|(poly, _)| poly.absolute_name.as_str())
-        .collect();
-
-    let witness_columns: Vec<&str> = analyzed
-        .committed_polys_in_source_order()
-        .iter()
-        .map(|(poly, _)| poly.absolute_name.as_str())
-        .collect();
-
-    let (fixed, fixed_degree) = read_polys_file(
-        &mut File::open(dir.join("constants").with_extension("bin")).unwrap(),
-        &fixed_columns,
-    );
-    let (witness, witness_degree) = read_polys_file(
-        &mut File::open(dir.join("commits").with_extension("bin")).unwrap(),
-        &witness_columns,
-    );
-
-    assert_eq!(fixed_degree, witness_degree);
-
-    mock_prove_ast(&analyzed, fixed, witness)
-}
-
-fn mock_prove_ast<T: FieldElement>(
+pub fn mock_prove<T: FieldElement>(
     pil: &Analyzed<T>,
     fixed: Vec<(&str, Vec<T>)>,
     witness: Vec<(&str, Vec<T>)>,
 ) {
+    if polyexen::expr::get_field_p::<Fr>() != T::modulus().to_arbitrary_integer() {
+        panic!("powdr modulus doesn't match halo2 modulus. Make sure you are using Bn254");
+    }
+
     let circuit = analyzed_to_circuit(pil, fixed, witness);
 
     // double the row count in order to make space for the cells introduced by the backend
@@ -110,7 +78,7 @@ mod test {
         let (fixed, degree) = executor::constant_evaluator::generate(&analyzed);
         let witness = executor::witgen::generate(&analyzed, degree, &fixed, Some(query_callback));
 
-        mock_prove_ast(&analyzed, fixed, witness);
+        mock_prove(&analyzed, fixed, witness);
     }
 
     #[test]
@@ -122,7 +90,7 @@ mod test {
         let query_callback = |_: &str| -> Option<Bn254Field> { None };
 
         let witness = executor::witgen::generate(&analyzed, degree, &fixed, Some(query_callback));
-        mock_prove_ast(&analyzed, fixed, witness);
+        mock_prove(&analyzed, fixed, witness);
     }
 
     #[test]

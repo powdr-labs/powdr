@@ -2,6 +2,7 @@
 
 mod util;
 
+use backend::{self, ProverWithParams, ProverWithoutParams, *};
 use clap::{Parser, Subcommand};
 use compiler::{compile_pil_or_asm, Backend};
 use env_logger::{Builder, Target};
@@ -10,6 +11,8 @@ use number::{Bn254Field, FieldElement, GoldilocksField};
 use riscv::{compile_riscv_asm, compile_rust};
 use std::{borrow::Cow, fs, io::Write, path::Path};
 use strum::{Display, EnumString, EnumVariantNames};
+
+use std::io::{BufWriter, Cursor};
 
 #[derive(Clone, EnumString, EnumVariantNames, Display)]
 pub enum FieldArgument {
@@ -130,10 +133,7 @@ enum Commands {
         prove_with: Option<Backend>,
     },
 
-    /// Apply the Halo2 workflow on an input file and prover values over the Bn254 field
-    /// That means parsing, analysis, witness generation,
-    /// and Halo2 mock proving.
-    Halo2MockProver {
+    Prove {
         /// Input PIL file
         file: String,
 
@@ -141,6 +141,42 @@ enum Commands {
         #[arg(short, long)]
         #[arg(default_value_t = String::from("."))]
         dir: String,
+
+        /// The field to use
+        #[arg(long)]
+        #[arg(default_value_t = FieldArgument::Gl)]
+        #[arg(value_parser = clap_enum_variants!(FieldArgument))]
+        field: FieldArgument,
+
+        /// Generate a proof with a given backend.
+        #[arg(short, long)]
+        #[arg(value_parser = clap_enum_variants!(Backend))]
+        backend: Backend,
+
+        /// File containing previously generated setup parameters.
+        #[arg(short, long)]
+        params: Option<String>,
+    },
+
+    Setup {
+        /// Size of the parameters
+        size: usize,
+
+        /// Directory to output the generated parameters
+        #[arg(short, long)]
+        #[arg(default_value_t = String::from("."))]
+        dir: String,
+
+        /// The field to use
+        #[arg(long)]
+        #[arg(default_value_t = FieldArgument::Gl)]
+        #[arg(value_parser = clap_enum_variants!(FieldArgument))]
+        field: FieldArgument,
+
+        /// Generate a proof with a given backend.
+        #[arg(short, long)]
+        #[arg(value_parser = clap_enum_variants!(Backend))]
+        backend: Backend,
     },
 
     /// Parses and prints the PIL file on stdout.
@@ -235,8 +271,79 @@ fn main() {
             force,
             prove_with
         ),
-        Commands::Halo2MockProver { file, dir } => {
-            halo2::mock_prove::<Bn254Field>(Path::new(&file), Path::new(&dir));
+        Commands::Prove {
+            file,
+            dir,
+            field,
+            backend,
+            params,
+        } => {
+            let pil = Path::new(&file);
+            let dir = Path::new(&dir);
+
+            let proof = call_with_field!(read_and_prove, field, pil, dir, backend, params);
+
+            if let Some(proof) = proof {
+                let mut proof_file = fs::File::create(dir.join("proof.bin")).unwrap();
+                let mut proof_writer = BufWriter::new(&mut proof_file);
+                proof_writer.write_all(&proof).unwrap();
+                proof_writer.flush().unwrap();
+                log::info!("Wrote proof.bin.");
+            }
         }
+        Commands::Setup {
+            size,
+            dir,
+            field,
+            backend,
+        } => {
+            setup(size, dir, field, backend);
+        }
+    }
+}
+
+fn setup(size: usize, dir: String, field: FieldArgument, backend: Backend) {
+    let dir = Path::new(&dir);
+    let params = match (field, &backend) {
+        (FieldArgument::Bn254, Backend::Halo2) => Halo2Backend::generate_params::<Bn254Field>(size),
+        (_, Backend::Halo2) => panic!("Backend halo2 requires field Bn254"),
+        _ => panic!("Backend {} does not accept params.", backend),
+    };
+    write_params_to_fs(&params, dir);
+}
+
+fn write_params_to_fs(params: &[u8], output_dir: &Path) {
+    let mut params_file = fs::File::create(output_dir.join("params.bin")).unwrap();
+    let mut params_writer = BufWriter::new(&mut params_file);
+    params_writer.write_all(params).unwrap();
+    params_writer.flush().unwrap();
+    log::info!("Wrote params.bin.");
+}
+
+fn read_and_prove<T: FieldElement>(
+    file: &Path,
+    dir: &Path,
+    backend: Backend,
+    params: Option<String>,
+) -> Option<Vec<u8>> {
+    let pil = compiler::analyze_pil::<T>(file);
+    let fixed = compiler::util::read_fixed(&pil, dir);
+    let witness = compiler::util::read_witness(&pil, dir);
+
+    assert_eq!(fixed.1, witness.1);
+
+    match (backend, params) {
+        (Backend::Halo2, Some(params)) => {
+            let params = fs::File::open(dir.join(params)).unwrap();
+            Halo2Backend::prove(&pil, fixed.0, witness.0, params)
+        }
+        (Backend::Halo2, None) => {
+            let degree = usize::BITS - fixed.1.leading_zeros() + 1;
+            let params = Halo2Backend::generate_params::<Bn254Field>(degree as usize);
+            write_params_to_fs(&params, dir);
+            Halo2Backend::prove(&pil, fixed.0, witness.0, Cursor::new(params))
+        }
+        (Backend::Halo2Mock, Some(_)) => panic!("Backend Halo2Mock does not accept params"),
+        (Backend::Halo2Mock, None) => Halo2MockBackend::prove(&pil, fixed.0, witness.0),
     }
 }

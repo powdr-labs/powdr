@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+backend = { path = "../backend" }
 itertools = "^0.10"
 log = "0.4.17"
 mktemp = "0.5.0"
@@ -14,4 +15,4 @@ executor = { path = "../executor" }
 pilgen = { path = "../pilgen" }
 pil_analyzer = { path = "../pil_analyzer" }
 halo2 = { path = "../halo2" }
-strum = { version = "0.24.1", features = ["derive"] }
+json = "^0.12"
