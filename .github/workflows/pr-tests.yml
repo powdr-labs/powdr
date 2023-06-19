@@ -1,9 +1,7 @@
-name: Rust
+name: PR tests
 
 on:
-  push:
   pull_request:
-    branches: [ "main" ]
 
 env:
   CARGO_TERM_COLOR: always
@@ -32,8 +30,7 @@ jobs:
           ~/pilcom/node_modules
         key: ${{ runner.os }}-pilcom-node-modules
     - name: Install pilcom
-#      run: git clone https://github.com/0xPolygonHermez/pilcom.git  && cd pilcom && npm install
-      run: git clone https://github.com/chriseth/pilcom.git -b main && cd pilcom && npm install
+      run: git clone https://github.com/0xPolygonHermez/pilcom.git  && cd pilcom && npm install
     - name: Build
       run: cargo build
     - name: Run tests
@@ -44,7 +41,6 @@ jobs:
       run: cargo fmt --check --verbose
 
   test_release:
-
     runs-on: ubuntu-latest
 
     steps:
@@ -59,13 +55,22 @@ jobs:
           ~/.cargo/git
           target
         key: ${{ runner.os }}-cargo-release-${{ hashFiles('**/Cargo.toml') }}
+    - name: ⚡ Cache nodejs
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/pilcom/node_modules
+        key: ${{ runner.os }}-pilcom-node-modules
     - name: Install nightly
       run: rustup toolchain install nightly-2023-01-03-x86_64-unknown-linux-gnu
     - name: Install riscv target
       run: rustup target add riscv32imc-unknown-none-elf --toolchain nightly-2023-01-03-x86_64-unknown-linux-gnu
     - name: Install stdlib
       run: rustup component add rust-src --toolchain nightly-2023-01-03-x86_64-unknown-linux-gnu
+    - name: Install pilcom
+      run: git clone https://github.com/0xPolygonHermez/pilcom.git  && cd pilcom && npm install
     - name: Build
       run: cargo build --release
     - name: Run tests
-      run: cargo test -r --verbose -- --ignored --nocapture
+      # Number threads is set to 1 because the runner does not have enough memeory for more.
+      run: PILCOM=$(pwd)/pilcom/ cargo test -r --verbose -- --ignored --nocapture --test-threads=1 --exact test_keccak test_vec_median

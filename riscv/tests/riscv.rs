@@ -1,4 +1,4 @@
-use compiler::compile_asm_string_temp;
+use compiler::verify_asm_string;
 use number::GoldilocksField;
 
 #[test]
@@ -96,8 +96,7 @@ fn verify_file(case: &str, inputs: Vec<GoldilocksField>) {
     let riscv_asm = riscv::compile_rust_to_riscv_asm(&format!("tests/riscv_data/{case}"));
     let powdr_asm = riscv::compiler::compile_riscv_asm(riscv_asm);
 
-    compile_asm_string_temp(&format!("{case}.asm"), &powdr_asm, inputs);
-    // TODO eventually, also verify the PIL again with pilcom.
+    verify_asm_string(&format!("{case}.asm"), &powdr_asm, inputs);
 }
 
 fn verify_crate(case: &str, inputs: Vec<GoldilocksField>) {
@@ -105,6 +104,5 @@ fn verify_crate(case: &str, inputs: Vec<GoldilocksField>) {
         riscv::compile_rust_crate_to_riscv_asm(&format!("tests/riscv_data/{case}/Cargo.toml"));
     let powdr_asm = riscv::compiler::compile_riscv_asm(riscv_asm);
 
-    compile_asm_string_temp(&format!("{case}.asm"), &powdr_asm, inputs);
-    // TODO eventually, also verify the PIL again with pilcom.
+    verify_asm_string(&format!("{case}.asm"), &powdr_asm, inputs);
 }

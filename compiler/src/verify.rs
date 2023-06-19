@@ -1,32 +1,12 @@
+use number::FieldElement;
 use std::{fs, path::Path, process::Command};
 
-use mktemp::Temp;
-use number::FieldElement;
-
-use crate::inputs_to_query_callback;
+use crate::compile_asm_string;
 
 pub fn verify_asm_string<T: FieldElement>(file_name: &str, contents: &str, inputs: Vec<T>) {
-    let (pil_file_name, temp_dir) = compile_asm_string_temp(file_name, contents, inputs);
-    verify(&pil_file_name, &temp_dir);
-}
-
-#[allow(unused)]
-pub fn compile_asm_string_temp<T: FieldElement>(
-    file_name: &str,
-    contents: &str,
-    inputs: Vec<T>,
-) -> (String, Temp) {
-    let pil = pilgen::compile(Some(file_name), contents).unwrap();
-    let pil_file_name = "asm.pil";
     let temp_dir = mktemp::Temp::new_dir().unwrap();
-    assert!(crate::compile_pil_ast(
-        &pil,
-        pil_file_name.as_ref(),
-        &temp_dir,
-        Some(inputs_to_query_callback(inputs)),
-        None,
-    ));
-    (pil_file_name.to_string(), temp_dir)
+    let pil_file_name = compile_asm_string(file_name, contents, inputs, &temp_dir, true, None);
+    verify(&pil_file_name, &temp_dir);
 }
 
 pub fn verify(file_name: &str, temp_dir: &Path) {
