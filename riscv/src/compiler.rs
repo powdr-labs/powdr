@@ -56,8 +56,9 @@ pub fn compile_riscv_asm(mut assemblies: BTreeMap<String, String>) -> String {
         .collect::<Vec<_>>();
     let (data_code, data_positions) = store_data_objects(&sorted_objects, data_start);
 
-    preamble()
-        + &file_ids
+    risv_machine(
+        &preamble(),
+        &file_ids
             .into_iter()
             .map(|(id, dir, file)| format!("debug file {id} {} {};", quote(&dir), quote(&file)))
             .chain(["call __data_init;".to_string()])
@@ -73,7 +74,8 @@ pub fn compile_riscv_asm(mut assemblies: BTreeMap<String, String>) -> String {
             .chain(["// This is the data initialization routine.\n__data_init::".to_string()])
             .chain(data_code)
             .chain(["// This is the end of the data initialization routine.\nret;".to_string()])
-            .join("\n")
+            .join("\n"),
+    )
 }
 
 /// Replace certain patterns of references to code labels by
@@ -273,286 +275,300 @@ fn substitute_symbols_with_values(
     statements
 }
 
+fn risv_machine(preamble: &str, program: &str) -> String {
+    format!(
+        r#"
+machine RiscV {{
+    {}
+    program {{
+        {}
+    }}
+}}    
+"#,
+        preamble, program
+    )
+}
+
 fn preamble() -> String {
     r#"
-degree 262144;
-reg pc[@pc];
-reg X[<=];
-reg Y[<=];
-reg Z[<=];
-reg tmp1;
-reg tmp2;
-reg tmp3;
+    degree 262144;
+    reg pc[@pc];
+    reg X[<=];
+    reg Y[<=];
+    reg Z[<=];
+    reg tmp1;
+    reg tmp2;
+    reg tmp3;
 "#
     .to_string()
         + &(0..32)
-            .map(|i| format!("reg x{i};\n"))
+            .map(|i| format!("\treg x{i};\n"))
             .collect::<Vec<_>>()
             .concat()
         + r#"
-reg addr;
+    reg addr;
 
-pil{
-    x0 = 0;
-}
+    constraints {
+        x0 = 0;
+    }
 
-pil{
-// ============== iszero check for X =======================
-    col witness XInv;
-    col witness XIsZero;
-    XIsZero = 1 - X * XInv;
-    XIsZero * X = 0;
-    XIsZero * (1 - XIsZero) = 0;
+    constraints{
+    // ============== iszero check for X =======================
+        col witness XInv;
+        col witness XIsZero;
+        XIsZero = 1 - X * XInv;
+        XIsZero * X = 0;
+        XIsZero * (1 - XIsZero) = 0;
 
-// =============== read-write memory =======================
-    // Read-write memory. Columns are sorted by m_addr and
-    // then by m_step. m_change is 1 if and only if m_addr changes
-    // in the next row.
-    col witness m_addr;
-    col witness m_step;
-    col witness m_change;
-    col witness m_value;
-    // If we have an operation at all (needed because this needs to be a permutation)
-    col witness m_op;
-    // If the operation is a write operation.
-    col witness m_is_write;
-    col witness m_is_read;
+    // =============== read-write memory =======================
+        // Read-write memory. Columns are sorted by m_addr and
+        // then by m_step. m_change is 1 if and only if m_addr changes
+        // in the next row.
+        col witness m_addr;
+        col witness m_step;
+        col witness m_change;
+        col witness m_value;
+        // If we have an operation at all (needed because this needs to be a permutation)
+        col witness m_op;
+        // If the operation is a write operation.
+        col witness m_is_write;
+        col witness m_is_read;
 
-    // positive numbers (assumed to be much smaller than the field order)
-    col fixed POSITIVE(i) { i + 1 };
-    col fixed FIRST = [1] + [0]*;
-    col fixed LAST(i) { FIRST(i + 1) };
-    col fixed STEP(i) { i };
+        // positive numbers (assumed to be much smaller than the field order)
+        col fixed POSITIVE(i) { i + 1 };
+        col fixed FIRST = [1] + [0]*;
+        col fixed LAST(i) { FIRST(i + 1) };
+        col fixed STEP(i) { i };
 
-    m_change * (1 - m_change) = 0;
+        m_change * (1 - m_change) = 0;
 
-    // if m_change is zero, m_addr has to stay the same.
-    (m_addr' - m_addr) * (1 - m_change) = 0;
+        // if m_change is zero, m_addr has to stay the same.
+        (m_addr' - m_addr) * (1 - m_change) = 0;
 
-    // Except for the last row, if m_change is 1, then m_addr has to increase,
-    // if it is zero, m_step has to increase.
-    (1 - LAST) { m_change * (m_addr' - m_addr) + (1 - m_change) * (m_step' - m_step) } in POSITIVE;
+        // Except for the last row, if m_change is 1, then m_addr has to increase,
+        // if it is zero, m_step has to increase.
+        (1 - LAST) { m_change * (m_addr' - m_addr) + (1 - m_change) * (m_step' - m_step) } in POSITIVE;
 
-    m_op * (1 - m_op) = 0;
-    m_is_write * (1 - m_is_write) = 0;
-    m_is_read * (1 - m_is_read) = 0;
-    // m_is_write can only be 1 if m_op is 1.
-    m_is_write * (1 - m_op) = 0;
-    m_is_read * (1 - m_op) = 0;
-    m_is_read * m_is_write = 0;
+        m_op * (1 - m_op) = 0;
+        m_is_write * (1 - m_is_write) = 0;
+        m_is_read * (1 - m_is_read) = 0;
+        // m_is_write can only be 1 if m_op is 1.
+        m_is_write * (1 - m_op) = 0;
+        m_is_read * (1 - m_op) = 0;
+        m_is_read * m_is_write = 0;
 
 
-    // If the next line is a read and we stay at the same address, then the
-    // value cannot change.
-    (1 - m_is_write') * (1 - m_change) * (m_value' - m_value) = 0;
+        // If the next line is a read and we stay at the same address, then the
+        // value cannot change.
+        (1 - m_is_write') * (1 - m_change) * (m_value' - m_value) = 0;
 
-    // If the next line is a read and we have an address change,
-    // then the value is zero.
-    (1 - m_is_write') * m_change * m_value' = 0;
-}
+        // If the next line is a read and we have an address change,
+        // then the value is zero.
+        (1 - m_is_write') * m_change * m_value' = 0;
+    }
 
-// ============== memory instructions ==============
+    // ============== memory instructions ==============
 
-instr mstore X { { addr, STEP, X } is m_is_write { m_addr, m_step, m_value } }
-instr mload -> X { { addr, STEP, X } is m_is_read { m_addr, m_step, m_value } }
+    instr mstore X { { addr, STEP, X } is m_is_write { m_addr, m_step, m_value } }
+    instr mload -> X { { addr, STEP, X } is m_is_read { m_addr, m_step, m_value } }
 
-// ============== control-flow instructions ==============
+    // ============== control-flow instructions ==============
 
-instr jump l: label { pc' = l }
-instr load_label l: label -> X { X = l }
-instr jump_dyn X { pc' = X }
-instr jump_and_link_dyn X { pc' = X, x1' = pc + 1 }
-instr call l: label { pc' = l, x1' = pc + 1 }
-// TODO x6 actually stores some relative address, but only part of it.
-instr tail l: label { pc' = l, x6' = l }
-instr ret { pc' = x1 }
+    instr jump l: label { pc' = l }
+    instr load_label l: label -> X { X = l }
+    instr jump_dyn X { pc' = X }
+    instr jump_and_link_dyn X { pc' = X, x1' = pc + 1 }
+    instr call l: label { pc' = l, x1' = pc + 1 }
+    // TODO x6 actually stores some relative address, but only part of it.
+    instr tail l: label { pc' = l, x6' = l }
+    instr ret { pc' = x1 }
 
-instr branch_if_nonzero X, l: label { pc' = (1 - XIsZero) * l + XIsZero * (pc + 1) }
-instr branch_if_zero X, l: label { pc' = XIsZero * l + (1 - XIsZero) * (pc + 1) }
+    instr branch_if_nonzero X, l: label { pc' = (1 - XIsZero) * l + XIsZero * (pc + 1) }
+    instr branch_if_zero X, l: label { pc' = XIsZero * l + (1 - XIsZero) * (pc + 1) }
 
-// input X is required to be the difference of two 32-bit unsigend values.
-// i.e. -2**32 < X < 2**32
-instr branch_if_positive X, l: label {
-    X + 2**32 - 1 = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000 + wrap_bit * 2**32,
-    pc' = wrap_bit * l + (1 - wrap_bit) * (pc + 1)
-}
-// input X is required to be the difference of two 32-bit unsigend values.
-// i.e. -2**32 < X < 2**32
-instr is_positive X -> Y {
-    X + 2**32 - 1 = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000 + wrap_bit * 2**32,
-    Y = wrap_bit
-}
+    // input X is required to be the difference of two 32-bit unsigend values.
+    // i.e. -2**32 < X < 2**32
+    instr branch_if_positive X, l: label {
+        X + 2**32 - 1 = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000 + wrap_bit * 2**32,
+        pc' = wrap_bit * l + (1 - wrap_bit) * (pc + 1)
+    }
+    // input X is required to be the difference of two 32-bit unsigend values.
+    // i.e. -2**32 < X < 2**32
+    instr is_positive X -> Y {
+        X + 2**32 - 1 = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000 + wrap_bit * 2**32,
+        Y = wrap_bit
+    }
 
-// ================= logical instructions =================
+    // ================= logical instructions =================
 
-instr is_equal_zero X -> Y { Y = XIsZero }
-instr is_not_equal_zero X -> Y { Y = 1 - XIsZero }
+    instr is_equal_zero X -> Y { Y = XIsZero }
+    instr is_not_equal_zero X -> Y { Y = 1 - XIsZero }
 
-// ================= binary/bitwise instructions =================
+    // ================= binary/bitwise instructions =================
 
-instr and Y, Z -> X {
-    {Y, Z, X, 0} in binary_RESET { binary_A, binary_B, binary_C, binary_operation }
-}
+    instr and Y, Z -> X {
+        {Y, Z, X, 0} in binary_RESET { binary_A, binary_B, binary_C, binary_operation }
+    }
 
-instr or Y, Z -> X {
-    {Y, Z, X, 1} in binary_RESET { binary_A, binary_B, binary_C, binary_operation }
-}
+    instr or Y, Z -> X {
+        {Y, Z, X, 1} in binary_RESET { binary_A, binary_B, binary_C, binary_operation }
+    }
 
-instr xor Y, Z -> X {
-    {Y, Z, X, 2} in binary_RESET { binary_A, binary_B, binary_C, binary_operation }
-}
+    instr xor Y, Z -> X {
+        {Y, Z, X, 2} in binary_RESET { binary_A, binary_B, binary_C, binary_operation }
+    }
 
-pil{
-	macro is_nonzero(X) { match X { 0 => 0, _ => 1, } };
-	macro is_zero(X) { 1 - is_nonzero(X) };
+    constraints{
+        macro is_nonzero(X) { match X { 0 => 0, _ => 1, } };
+        macro is_zero(X) { 1 - is_nonzero(X) };
 
-	col fixed binary_RESET(i) { is_zero((i % 4) - 3) };
-	col fixed binary_FACTOR(i) { 1 << (((i + 1) % 4) * 8) };
+        col fixed binary_RESET(i) { is_zero((i % 4) - 3) };
+        col fixed binary_FACTOR(i) { 1 << (((i + 1) % 4) * 8) };
 
-	col fixed binary_P_A(i) { i % 256 };
-	col fixed binary_P_B(i) { (i >> 8) % 256 };
-    col fixed binary_P_operation(i) { (i / (256 * 256)) % 3 };
-	col fixed binary_P_C(i) {
-        match binary_P_operation(i) {
-            0 => binary_P_A(i) & binary_P_B(i),
-            1 => binary_P_A(i) | binary_P_B(i),
-            2 => binary_P_A(i) ^ binary_P_B(i),
-        } & 0xff
-    };
+        col fixed binary_P_A(i) { i % 256 };
+        col fixed binary_P_B(i) { (i >> 8) % 256 };
+        col fixed binary_P_operation(i) { (i / (256 * 256)) % 3 };
+        col fixed binary_P_C(i) {
+            match binary_P_operation(i) {
+                0 => binary_P_A(i) & binary_P_B(i),
+                1 => binary_P_A(i) | binary_P_B(i),
+                2 => binary_P_A(i) ^ binary_P_B(i),
+            } & 0xff
+        };
 
-	col witness binary_A_byte;
-	col witness binary_B_byte;
-	col witness binary_C_byte;
+        col witness binary_A_byte;
+        col witness binary_B_byte;
+        col witness binary_C_byte;
 
-	col witness binary_A;
-	col witness binary_B;
-	col witness binary_C;
-    col witness binary_operation;
+        col witness binary_A;
+        col witness binary_B;
+        col witness binary_C;
+        col witness binary_operation;
 
-	binary_A' = binary_A * (1 - binary_RESET) + binary_A_byte * binary_FACTOR;
-	binary_B' = binary_B * (1 - binary_RESET) + binary_B_byte * binary_FACTOR;
-	binary_C' = binary_C * (1 - binary_RESET) + binary_C_byte * binary_FACTOR;
-	(binary_operation' - binary_operation) * (1 - binary_RESET) = 0;
+        binary_A' = binary_A * (1 - binary_RESET) + binary_A_byte * binary_FACTOR;
+        binary_B' = binary_B * (1 - binary_RESET) + binary_B_byte * binary_FACTOR;
+        binary_C' = binary_C * (1 - binary_RESET) + binary_C_byte * binary_FACTOR;
+        (binary_operation' - binary_operation) * (1 - binary_RESET) = 0;
 
-	{binary_operation', binary_A_byte, binary_B_byte, binary_C_byte} in {binary_P_operation, binary_P_A, binary_P_B, binary_P_C};
-}
+        {binary_operation', binary_A_byte, binary_B_byte, binary_C_byte} in {binary_P_operation, binary_P_A, binary_P_B, binary_P_C};
+    }
 
-// ================= shift instructions =================
+    // ================= shift instructions =================
 
-instr shl Y, Z -> X {
-    {Y, Z, X, 0} in shift_RESET { shift_A, shift_B, shift_C, shift_operation }
-}
+    instr shl Y, Z -> X {
+        {Y, Z, X, 0} in shift_RESET { shift_A, shift_B, shift_C, shift_operation }
+    }
 
-instr shr Y, Z -> X {
-    {Y, Z, X, 1} in shift_RESET { shift_A, shift_B, shift_C, shift_operation }
-}
+    instr shr Y, Z -> X {
+        {Y, Z, X, 1} in shift_RESET { shift_A, shift_B, shift_C, shift_operation }
+    }
 
-pil{
-	col fixed shift_RESET(i) { is_zero((i % 4) - 3) };
-	col fixed shift_FACTOR_ROW(i) { (i + 1) % 4 };
-	col fixed shift_FACTOR(i) { 1 << (((i + 1) % 4) * 8) };
+    constraints{
+        col fixed shift_RESET(i) { is_zero((i % 4) - 3) };
+        col fixed shift_FACTOR_ROW(i) { (i + 1) % 4 };
+        col fixed shift_FACTOR(i) { 1 << (((i + 1) % 4) * 8) };
 
-	col fixed shift_P_A(i) { i % 256 };
-	col fixed shift_P_B(i) { (i / 256) % 32 };
-    col fixed shift_P_ROW(i) { (i / (256 * 32)) % 4 };
-    col fixed shift_P_operation(i) { (i / (256 * 32 * 4)) % 2 };
-	col fixed shift_P_C(i) {
-        match shift_P_operation(i) {
-            0 => (shift_P_A(i) << (shift_P_B(i) + (shift_P_ROW(i) * 8))),
-            1 => (shift_P_A(i) << (shift_P_ROW(i) * 8)) >> shift_P_B(i),
-        } & 0xffffffff
-    };
+        col fixed shift_P_A(i) { i % 256 };
+        col fixed shift_P_B(i) { (i / 256) % 32 };
+        col fixed shift_P_ROW(i) { (i / (256 * 32)) % 4 };
+        col fixed shift_P_operation(i) { (i / (256 * 32 * 4)) % 2 };
+        col fixed shift_P_C(i) {
+            match shift_P_operation(i) {
+                0 => (shift_P_A(i) << (shift_P_B(i) + (shift_P_ROW(i) * 8))),
+                1 => (shift_P_A(i) << (shift_P_ROW(i) * 8)) >> shift_P_B(i),
+            } & 0xffffffff
+        };
 
-	col witness shift_A_byte;
-	col witness shift_C_part;
+        col witness shift_A_byte;
+        col witness shift_C_part;
 
-	col witness shift_A;
-	col witness shift_B;
-	col witness shift_C;
-    col witness shift_operation;
+        col witness shift_A;
+        col witness shift_B;
+        col witness shift_C;
+        col witness shift_operation;
 
-	shift_A' = shift_A * (1 - shift_RESET) + shift_A_byte * shift_FACTOR;
-	(shift_B' - shift_B) * (1 - shift_RESET) = 0;
-	shift_C' = shift_C * (1 - shift_RESET) + shift_C_part;
-	(shift_operation' - shift_operation) * (1 - shift_RESET) = 0;
+        shift_A' = shift_A * (1 - shift_RESET) + shift_A_byte * shift_FACTOR;
+        (shift_B' - shift_B) * (1 - shift_RESET) = 0;
+        shift_C' = shift_C * (1 - shift_RESET) + shift_C_part;
+        (shift_operation' - shift_operation) * (1 - shift_RESET) = 0;
 
-    // TODO this way, we cannot prove anything that shifts by more than 31 bits.
-	{shift_operation', shift_A_byte, shift_B', shift_FACTOR_ROW, shift_C_part} in {shift_P_operation, shift_P_A, shift_P_B, shift_P_ROW, shift_P_C};
-}
+        // TODO this way, we cannot prove anything that shifts by more than 31 bits.
+        {shift_operation', shift_A_byte, shift_B', shift_FACTOR_ROW, shift_C_part} in {shift_P_operation, shift_P_A, shift_P_B, shift_P_ROW, shift_P_C};
+    }
 
-// ================== wrapping instructions ==============
+    // ================== wrapping instructions ==============
 
-// Wraps a value in Y to 32 bits.
-// Requires 0 <= Y < 2**33
-instr wrap Y -> X { Y = X + wrap_bit * 2**32, X = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000 }
-// Requires -2**32 <= Y < 2**32
-instr wrap_signed Y -> X { Y + 2**32 = X + wrap_bit * 2**32, X = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000 }
-pil{
-    col fixed bytes(i) { i & 0xff };
-    col witness X_b1;
-    col witness X_b2;
-    col witness X_b3;
-    col witness X_b4;
-    { X_b1 } in { bytes };
-    { X_b2 } in { bytes };
-    { X_b3 } in { bytes };
-    { X_b4 } in { bytes };
-    col witness wrap_bit;
-    wrap_bit * (1 - wrap_bit) = 0;
-}
+    // Wraps a value in Y to 32 bits.
+    // Requires 0 <= Y < 2**33
+    instr wrap Y -> X { Y = X + wrap_bit * 2**32, X = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000 }
+    // Requires -2**32 <= Y < 2**32
+    instr wrap_signed Y -> X { Y + 2**32 = X + wrap_bit * 2**32, X = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000 }
+    constraints{
+        col fixed bytes(i) { i & 0xff };
+        col witness X_b1;
+        col witness X_b2;
+        col witness X_b3;
+        col witness X_b4;
+        { X_b1 } in { bytes };
+        { X_b2 } in { bytes };
+        { X_b3 } in { bytes };
+        { X_b4 } in { bytes };
+        col witness wrap_bit;
+        wrap_bit * (1 - wrap_bit) = 0;
+    }
 
-// Input is a 32 bit unsigned number. We check the 7th bit and set all higher bits to that value.
-instr sign_extend_byte Y -> X {
-    // wrap_bit is used as sign_bit here.
-    Y = Y_7bit + wrap_bit * 0x80 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000,
-    X = Y_7bit + wrap_bit * 0xffffff80
-}
-pil{
-    col fixed seven_bit(i) { i & 0x7f };
-    col witness Y_7bit;
-    { Y_7bit } in { seven_bit };
-}
+    // Input is a 32 bit unsigned number. We check the 7th bit and set all higher bits to that value.
+    instr sign_extend_byte Y -> X {
+        // wrap_bit is used as sign_bit here.
+        Y = Y_7bit + wrap_bit * 0x80 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000,
+        X = Y_7bit + wrap_bit * 0xffffff80
+    }
+    constraints{
+        col fixed seven_bit(i) { i & 0x7f };
+        col witness Y_7bit;
+        { Y_7bit } in { seven_bit };
+    }
 
-// Input is a 32 but unsigned number (0 <= Y < 2**32) interpreted as a two's complement numbers.
-// Returns a signed number (-2**31 <= X < 2**31).
-instr to_signed Y -> X {
-    // wrap_bit is used as sign_bit here.
-    Y = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + Y_7bit * 0x1000000 + wrap_bit * 0x80000000,
-    X = Y - wrap_bit * 2**32
-}
+    // Input is a 32 but unsigned number (0 <= Y < 2**32) interpreted as a two's complement numbers.
+    // Returns a signed number (-2**31 <= X < 2**31).
+    instr to_signed Y -> X {
+        // wrap_bit is used as sign_bit here.
+        Y = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + Y_7bit * 0x1000000 + wrap_bit * 0x80000000,
+        X = Y - wrap_bit * 2**32
+    }
 
-// ======================= assertions =========================
+    // ======================= assertions =========================
 
-instr fail { 1 = 0 }
+    instr fail { 1 = 0 }
 
-// Removes up to 16 bits beyond 32
-// TODO is this really safe?
-instr wrap16 Y -> X { Y = Y_b5 * 2**32 + Y_b6 * 2**40 + X, X = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000 }
-pil{
-    col witness Y_b5;
-    col witness Y_b6;
-    { Y_b5 } in { bytes };
-    { Y_b6 } in { bytes };
-}
+    // Removes up to 16 bits beyond 32
+    // TODO is this really safe?
+    instr wrap16 Y -> X { Y = Y_b5 * 2**32 + Y_b6 * 2**40 + X, X = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000 }
+    constraints{
+        col witness Y_b5;
+        col witness Y_b6;
+        { Y_b5 } in { bytes };
+        { Y_b6 } in { bytes };
+    }
 
-// Removes up to 32 bits beyond 32
-// TODO is this really safe?
-instr mul Y, Z -> X {
-    Y * Z = X + Y_b5 * 2**32 + Y_b6 * 2**40 + Y_b7 * 2**48 + Y_b8 * 2**56,
-    X = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000
-}
-// implements (Y * Z) >> 32
-instr mulhu Y, Z -> X {
-    Y * Z = X * 2**32 + Y_b5 + Y_b6 * 0x100 + Y_b7 * 0x10000 + Y_b8 * 0x1000000,
-    X = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000
-}
-pil{
-    col witness Y_b7;
-    col witness Y_b8;
-    { Y_b7 } in { bytes };
-    { Y_b8 } in { bytes };
-}
-    "#
+    // Removes up to 32 bits beyond 32
+    // TODO is this really safe?
+    instr mul Y, Z -> X {
+        Y * Z = X + Y_b5 * 2**32 + Y_b6 * 2**40 + Y_b7 * 2**48 + Y_b8 * 2**56,
+        X = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000
+    }
+    // implements (Y * Z) >> 32
+    instr mulhu Y, Z -> X {
+        Y * Z = X * 2**32 + Y_b5 + Y_b6 * 0x100 + Y_b7 * 0x10000 + Y_b8 * 0x1000000,
+        X = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000
+    }
+    constraints{
+        col witness Y_b7;
+        col witness Y_b8;
+        { Y_b7 } in { bytes };
+        { Y_b8 } in { bytes };
+    }
+"#
 }
 
 fn runtime() -> &'static str {
