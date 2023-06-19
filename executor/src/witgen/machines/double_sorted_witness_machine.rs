@@ -25,6 +25,7 @@ pub struct DoubleSortedWitnesses<T> {
     /// (addr, step) -> value
     trace: BTreeMap<(T, T), Operation<T>>,
     data: BTreeMap<T, T>,
+    namespace: String,
 }
 
 struct Operation<T> {
@@ -33,29 +34,53 @@ struct Operation<T> {
 }
 
 impl<T: FieldElement> DoubleSortedWitnesses<T> {
+    fn namespaced(&self, name: &str) -> String {
+        format!("{}.{}", self.namespace, name)
+    }
+
     pub fn try_new(
         fixed_data: &FixedData<T>,
         _identities: &[&Identity<T>],
         witness_cols: &HashSet<&PolynomialReference>,
     ) -> Option<Box<Self>> {
+        // get the namespaces and column names
+        let (mut namespaces, columns): (HashSet<_>, HashSet<_>) = witness_cols
+            .iter()
+            .map(|r| {
+                let mut limbs = r.name.split('.');
+                let namespace = limbs.next().unwrap();
+                let col = limbs.next().unwrap();
+                (namespace, col)
+            })
+            .unzip();
+
+        if namespaces.len() > 1 {
+            // columns are not in the same namespace, fail
+            return None;
+        }
+
+        let namespace = namespaces.drain().next().unwrap().into();
+
         // TODO check the identities.
         let expected_witnesses: HashSet<_> = [
-            "Assembly.m_value",
-            "Assembly.m_addr",
-            "Assembly.m_step",
-            "Assembly.m_change",
-            "Assembly.m_op",
-            "Assembly.m_is_write",
-            "Assembly.m_is_read",
+            "m_value",
+            "m_addr",
+            "m_step",
+            "m_change",
+            "m_op",
+            "m_is_write",
+            "m_is_read",
         ]
         .into_iter()
         .collect();
         if expected_witnesses
-            .symmetric_difference(&witness_cols.iter().map(|c| c.name.as_str()).collect())
+            .symmetric_difference(&columns)
             .next()
             .is_none()
         {
             Some(Box::new(Self {
+                // store the namespace
+                namespace,
                 degree: fixed_data.degree,
                 ..Default::default()
             }))
@@ -75,8 +100,8 @@ impl<T: FieldElement> Machine<T> for DoubleSortedWitnesses<T> {
         right: &SelectedExpressions<T>,
     ) -> Option<EvalResult<'a, T>> {
         if kind != IdentityKind::Permutation
-            || !(is_simple_poly_of_name(right.selector.as_ref()?, "Assembly.m_is_read")
-                || is_simple_poly_of_name(right.selector.as_ref()?, "Assembly.m_is_write"))
+            || !(is_simple_poly_of_name(right.selector.as_ref()?, &self.namespaced("m_is_read"))
+                || is_simple_poly_of_name(right.selector.as_ref()?, &self.namespaced("m_is_write")))
         {
             return None;
         }
@@ -127,17 +152,16 @@ impl<T: FieldElement> Machine<T> for DoubleSortedWitnesses<T> {
             .collect::<Vec<_>>();
         assert_eq!(change.len(), addr.len());
 
-        vec![
-            ("Assembly.m_value", value),
-            ("Assembly.m_addr", addr),
-            ("Assembly.m_step", step),
-            ("Assembly.m_change", change),
-            ("Assembly.m_op", op),
-            ("Assembly.m_is_write", is_write),
-            ("Assembly.m_is_read", is_read),
+        [
+            (self.namespaced("m_value"), value),
+            (self.namespaced("m_addr"), addr),
+            (self.namespaced("m_step"), step),
+            (self.namespaced("m_change"), change),
+            (self.namespaced("m_op"), op),
+            (self.namespaced("m_is_write"), is_write),
+            (self.namespaced("m_is_read"), is_read),
         ]
         .into_iter()
-        .map(|(n, v)| (n.to_string(), v))
         .collect()
     }
 }
@@ -169,7 +193,7 @@ impl<T: FieldElement> DoubleSortedWitnesses<T> {
         }
 
         let is_write = match &right.selector {
-            Some(Expression::PolynomialReference(p)) => p.name == "Assembly.m_is_write",
+            Some(Expression::PolynomialReference(p)) => p.name == self.namespaced("m_is_write"),
             _ => panic!(),
         };
         let addr = left[0].constant_value().ok_or_else(|| {
