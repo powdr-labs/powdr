@@ -153,6 +153,10 @@ enum Commands {
         #[arg(value_parser = clap_enum_variants!(Backend))]
         backend: Backend,
 
+        /// File containing previously generated proof for aggregation.
+        #[arg(short, long)]
+        proof: Option<String>,
+
         /// File containing previously generated setup parameters.
         #[arg(short, long)]
         params: Option<String>,
@@ -276,19 +280,25 @@ fn main() {
             dir,
             field,
             backend,
+            proof,
             params,
         } => {
             let pil = Path::new(&file);
             let dir = Path::new(&dir);
 
-            let proof = call_with_field!(read_and_prove, field, pil, dir, backend, params);
+            let proof = call_with_field!(read_and_prove, field, pil, dir, &backend, proof, params);
 
+            let proof_filename = if let Backend::Halo2Aggr = backend {
+                "proof_aggr.bin"
+            } else {
+                "proof.bin"
+            };
             if let Some(proof) = proof {
-                let mut proof_file = fs::File::create(dir.join("proof.bin")).unwrap();
+                let mut proof_file = fs::File::create(dir.join(proof_filename)).unwrap();
                 let mut proof_writer = BufWriter::new(&mut proof_file);
                 proof_writer.write_all(&proof).unwrap();
                 proof_writer.flush().unwrap();
-                log::info!("Wrote proof.bin.");
+                log::info!("Wrote {proof_filename}.");
             }
         }
         Commands::Setup {
@@ -323,7 +333,8 @@ fn write_params_to_fs(params: &[u8], output_dir: &Path) {
 fn read_and_prove<T: FieldElement>(
     file: &Path,
     dir: &Path,
-    backend: Backend,
+    backend: &Backend,
+    proof: Option<String>,
     params: Option<String>,
 ) -> Option<Vec<u8>> {
     let pil = compiler::analyze_pil::<T>(file);
@@ -345,5 +356,16 @@ fn read_and_prove<T: FieldElement>(
         }
         (Backend::Halo2Mock, Some(_)) => panic!("Backend Halo2Mock does not accept params"),
         (Backend::Halo2Mock, None) => Halo2MockBackend::prove(&pil, fixed.0, witness.0),
+        (Backend::Halo2Aggr, None) => panic!("Backend Halo2Aggr requires params"),
+        (Backend::Halo2Aggr, Some(params)) => {
+            let proof = match proof {
+                Some(proof) => fs::File::open(dir.join(proof)).unwrap(),
+                None => panic!("Backend Halo2aggr requires proof"),
+            };
+            let params = fs::File::open(dir.join(params)).unwrap();
+            Some(Halo2AggregationBackend::prove(
+                &pil, fixed.0, witness.0, proof, params,
+            ))
+        }
     }
 }
