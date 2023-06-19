@@ -1,47 +1,24 @@
 //! Compilation from powdr assembly to PIL
 
-mod batcher;
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 
-use std::collections::BTreeMap;
-use std::collections::BTreeSet;
-use std::collections::HashMap;
-
-use batcher::ASMBatcher;
+use ast::{
+    analysis::{
+        AnalysisASMFile, AssignmentStatement, BatchMetadata, InstructionDefinitionStatement,
+        InstructionStatement, LabelStatement, PilBlock, ProgramStatement,
+        RegisterDeclarationStatement,
+    },
+    parsed::{
+        asm::{InstructionBodyElement, PlookupOperator, RegisterFlag},
+        postvisit_expression_in_statement_mut, ArrayExpression, BinaryOperator, Expression,
+        FunctionDefinition, PILFile, PolynomialName, PolynomialReference, SelectedExpressions,
+        Statement, UnaryOperator,
+    },
+};
 use number::FieldElement;
 
-use parser::asm_ast::batched::{ASMStatementBatch, BatchedASMFile};
-use parser::asm_ast::*;
-use parser::ast::*;
-use parser::macro_expansion::MacroExpander;
-use parser_util::ParseError;
-
-/// Compiles a stand-alone assembly file to PIL.
-pub fn compile<'a, T: FieldElement>(
-    file_name: Option<&str>,
-    input: &'a str,
-) -> Result<PILFile<T>, ParseError<'a>> {
-    let statements = parser::parse_asm(file_name, input)
-        .map(|ast| ASMBatcher::default().convert(ast))
-        .map(|batched_asm| {
-            let mut macro_expander = MacroExpander::new();
-            ASMPILConverter::new(&mut macro_expander).convert(batched_asm, ASMKind::StandAlone)
-        })?;
-    Ok(PILFile(statements))
-}
-
-/// Compiles inline assembly to PIL.
-pub fn asm_to_pil<T: FieldElement>(
-    statements: impl IntoIterator<Item = ASMStatement<T>>,
-    macro_expander: &mut MacroExpander<T>,
-) -> Vec<Statement<T>> {
-    let batched_asm = ASMBatcher::default().convert(ASMFile(statements.into_iter().collect()));
-    ASMPILConverter::new(macro_expander).convert(batched_asm, ASMKind::Inline)
-}
-
-#[derive(PartialEq)]
-pub enum ASMKind {
-    Inline,
-    StandAlone,
+pub fn compile<T: FieldElement>(analysis: AnalysisASMFile<T>) -> PILFile<T> {
+    PILFile(ASMPILConverter::default().compile(analysis))
 }
 
 pub enum Input {
@@ -55,8 +32,8 @@ pub enum LiteralKind {
     UnsignedConstant,
 }
 
-struct ASMPILConverter<'a, T> {
-    macro_expander: &'a mut MacroExpander<T>,
+#[derive(Default)]
+struct ASMPILConverter<T> {
     pil: Vec<Statement<T>>,
     pc_name: Option<String>,
     registers: BTreeMap<String, Register<T>>,
@@ -68,41 +45,27 @@ struct ASMPILConverter<'a, T> {
     program_constant_names: Vec<String>,
 }
 
-impl<'a, T: FieldElement> ASMPILConverter<'a, T> {
-    fn new(macro_expander: &'a mut MacroExpander<T>) -> Self {
-        Self {
-            macro_expander,
-            pil: Default::default(),
-            pc_name: None,
-            registers: Default::default(),
-            instructions: Default::default(),
-            code_lines: Default::default(),
-            line_lookup: Default::default(),
-            program_constant_names: Default::default(),
-        }
+impl<T: FieldElement> ASMPILConverter<T> {
+    fn handle_inline_pil(&mut self, PilBlock { statements, .. }: PilBlock<T>) {
+        self.pil.extend(statements)
     }
-    fn convert(&mut self, batched_asm: BatchedASMFile<T>, asm_kind: ASMKind) -> Vec<Statement<T>> {
-        let mut declarations = batched_asm.declarations.into_iter().peekable();
 
-        if asm_kind == ASMKind::StandAlone {
-            let degree = if let Some(ASMStatement::Degree(_, deg)) = declarations.peek() {
-                let deg = T::from(deg.clone()).to_degree();
-                declarations.next();
-                deg
-            } else {
-                1024
-            };
+    fn compile(&mut self, input: AnalysisASMFile<T>) -> Vec<Statement<T>> {
+        let degree = if let Some(s) = input.degree {
+            T::from(s.degree).to_degree()
+        } else {
+            1024
+        };
 
-            assert!(
-                degree.is_power_of_two(),
-                "Degree should be a power of two, found {degree}",
-            );
-            self.pil.push(Statement::Namespace(
-                0,
-                "Assembly".to_string(),
-                Expression::Number(degree.into()),
-            ));
-        }
+        assert!(
+            degree.is_power_of_two(),
+            "Degree should be a power of two, found {degree}",
+        );
+        self.pil.push(Statement::Namespace(
+            0,
+            "Assembly".to_string(),
+            Expression::Number(degree.into()),
+        ));
 
         self.pil.push(Statement::PolynomialConstantDefinition(
             0,
@@ -112,24 +75,34 @@ impl<'a, T: FieldElement> ASMPILConverter<'a, T> {
             ),
         ));
 
-        for s in declarations {
-            match s {
-                ASMStatement::RegisterDeclaration(start, name, flags) => {
-                    self.handle_register_declaration(flags, &name, start);
-                }
-                ASMStatement::InstructionDeclaration(start, name, params, body) => {
-                    self.handle_instruction_def(start, body, name, params);
-                }
-                ASMStatement::InlinePil(start, statements) => {
-                    self.handle_inline_pil(start, statements);
-                }
-                _ => unreachable!(),
-            }
+        for reg in input.registers {
+            self.handle_register_declaration(reg);
         }
 
-        for batch in batched_asm.batches {
-            self.handle_batch(batch);
+        for block in input.pil {
+            self.handle_inline_pil(block);
         }
+
+        for instr in input.instructions {
+            self.handle_instruction_def(instr);
+        }
+
+        let batches = input.batches.unwrap_or_else(|| {
+            vec![
+                BatchMetadata {
+                    size: 1,
+                    reason: None
+                };
+                input.program.len()
+            ]
+        });
+
+        let mut statements = input.program.into_iter();
+
+        for batch in batches {
+            self.handle_batch(batch, &mut statements);
+        }
+
         let assignment_registers = self.assignment_registers().cloned().collect::<Vec<_>>();
         for reg in assignment_registers {
             self.create_constraints_for_assignment_reg(reg);
@@ -181,9 +154,13 @@ impl<'a, T: FieldElement> ASMPILConverter<'a, T> {
         std::mem::take(&mut self.pil)
     }
 
-    fn handle_batch(&mut self, batch: ASMStatementBatch<T>) {
-        let code_lines = batch
-            .into_statements()
+    fn handle_batch(
+        &mut self,
+        batch: BatchMetadata,
+        statements: &mut impl Iterator<Item = ProgramStatement<T>>,
+    ) {
+        let code_lines = statements
+            .take(batch.size)
             .filter_map(|s| self.handle_statement(s))
             .reduce(|mut acc, e| {
                 // we write to the union of the target registers.
@@ -203,49 +180,44 @@ impl<'a, T: FieldElement> ASMPILConverter<'a, T> {
         self.code_lines.extend(code_lines);
     }
 
-    fn handle_statement(&mut self, statement: ASMStatement<T>) -> Option<CodeLine<T>> {
+    fn handle_statement(&mut self, statement: ProgramStatement<T>) -> Option<CodeLine<T>> {
         match statement {
-            ASMStatement::Assignment(start, write_regs, assign_reg, value) => Some(match *value {
-                Expression::FunctionCall(function_name, args) => self
-                    .handle_functional_instruction(
-                        write_regs,
-                        assign_reg.unwrap(),
-                        function_name,
-                        args,
-                    ),
-                _ => self.handle_assignment(start, write_regs, assign_reg, *value),
+            ProgramStatement::Assignment(AssignmentStatement {
+                start,
+                lhs,
+                using_reg,
+                rhs,
+            }) => Some(match *rhs {
+                Expression::FunctionCall(function_name, args) => {
+                    self.handle_functional_instruction(lhs, using_reg.unwrap(), function_name, args)
+                }
+                _ => self.handle_assignment(start, lhs, using_reg, *rhs),
             }),
-            ASMStatement::Instruction(_start, instr_name, args) => {
-                Some(self.handle_instruction(instr_name, args))
-            }
-            ASMStatement::Label(_start, name) => Some(CodeLine {
+            ProgramStatement::Instruction(InstructionStatement {
+                instruction,
+                inputs,
+                ..
+            }) => Some(self.handle_instruction(instruction, inputs)),
+            ProgramStatement::Label(LabelStatement { name, .. }) => Some(CodeLine {
                 labels: [name].into(),
                 ..Default::default()
             }),
-            s => unreachable!("{:?}", s),
         }
-    }
-
-    fn handle_inline_pil(&mut self, _size: usize, statements: Vec<Statement<T>>) {
-        self.pil
-            .extend(self.macro_expander.expand_macros(statements))
     }
 
     fn handle_register_declaration(
         &mut self,
-        flags: Option<RegisterFlag>,
-        name: &str,
-        start: usize,
+        RegisterDeclarationStatement { start, flag, name }: RegisterDeclarationStatement,
     ) {
         let mut conditioned_updates = vec![];
         let mut default_update = None;
-        match flags {
+        match flag {
             Some(RegisterFlag::IsPC) => {
                 assert_eq!(self.pc_name, None);
                 self.pc_name = Some(name.to_string());
                 self.line_lookup
                     .push((name.to_string(), "p_line".to_string()));
-                default_update = Some(build_add(direct_reference(name), build_number(1u64)));
+                default_update = Some(build_add(direct_reference(&name), build_number(1u64)));
             }
             Some(RegisterFlag::IsAssignment) => {
                 // no updates
@@ -255,7 +227,7 @@ impl<'a, T: FieldElement> ASMPILConverter<'a, T> {
                 // be zero in the first row.
                 self.pil.push(Statement::PolynomialIdentity(
                     start,
-                    build_mul(direct_reference("first_step"), direct_reference(name)),
+                    build_mul(direct_reference("first_step"), direct_reference(&name)),
                 ));
                 conditioned_updates = vec![
                     // The value here is actually irrelevant, it is only important
@@ -270,7 +242,7 @@ impl<'a, T: FieldElement> ASMPILConverter<'a, T> {
                     conditioned_updates
                         .push((direct_reference(&write_flag), direct_reference(&reg)));
                 }
-                default_update = Some(direct_reference(name));
+                default_update = Some(direct_reference(&name));
             }
         };
         self.registers.insert(
@@ -278,7 +250,7 @@ impl<'a, T: FieldElement> ASMPILConverter<'a, T> {
             Register {
                 conditioned_updates,
                 default_update,
-                is_assignment: flags == Some(RegisterFlag::IsAssignment),
+                is_assignment: flag == Some(RegisterFlag::IsAssignment),
             },
         );
         self.pil.push(witness_column(start, name, None));
@@ -286,10 +258,12 @@ impl<'a, T: FieldElement> ASMPILConverter<'a, T> {
 
     fn handle_instruction_def(
         &mut self,
-        start: usize,
-        body: Vec<InstructionBodyElement<T>>,
-        name: String,
-        params: InstructionParams,
+        InstructionDefinitionStatement {
+            start,
+            body,
+            name,
+            params,
+        }: InstructionDefinitionStatement<T>,
     ) {
         let instruction_flag = format!("instr_{name}");
         self.create_witness_fixed_pair(start, &instruction_flag);
@@ -373,7 +347,7 @@ impl<'a, T: FieldElement> ASMPILConverter<'a, T> {
         });
 
         // Expand macros and analyze resulting statements.
-        for mut statement in self.macro_expander.expand_macros(statements) {
+        for mut statement in statements {
             if let Statement::PolynomialIdentity(_start, expr) = statement {
                 match extract_update(expr) {
                     (Some(var), expr) => {
@@ -994,11 +968,20 @@ fn extract_update<T: FieldElement>(expr: Expression<T>) -> (Option<String>, Expr
 mod test {
     use std::fs;
 
-    use pretty_assertions::assert_eq;
+    use ast::analysis::AnalysisASMFile;
+    use number::{FieldElement, GoldilocksField};
 
-    use number::GoldilocksField;
+    use analysis::analyze;
+    use parser::parse_asm;
 
-    use super::compile;
+    use crate::compile;
+
+    fn parse_and_analyse<'a, T: FieldElement>(
+        file_name: Option<&str>,
+        input: &'a str,
+    ) -> AnalysisASMFile<T> {
+        analyze(parse_asm(file_name, input).unwrap()).unwrap()
+    }
 
     #[test]
     pub fn compile_simple_sum() {
@@ -1054,7 +1037,8 @@ pol constant p_reg_write_X_CNT = [1, 0, 0, 0, 0, 0, 0, 0] + [0]*;
 "#;
         let file_name = "../test_data/asm/simple_sum.asm";
         let contents = fs::read_to_string(file_name).unwrap();
-        let pil = compile::<GoldilocksField>(Some(file_name), &contents).unwrap();
+        let analysed = parse_and_analyse::<GoldilocksField>(Some(file_name), &contents);
+        let pil = compile(analysed);
         assert_eq!(format!("{pil}").trim(), expectation.trim());
     }
 
@@ -1092,7 +1076,9 @@ pol constant p_instr_inc_fp = [1, 0] + [0]*;
 pol constant p_instr_inc_fp_param_amount = [7, 0] + [0]*;
 { pc, instr_inc_fp, instr_inc_fp_param_amount, instr_adjust_fp, instr_adjust_fp_param_amount, instr_adjust_fp_param_t } in { p_line, p_instr_inc_fp, p_instr_inc_fp_param_amount, p_instr_adjust_fp, p_instr_adjust_fp_param_amount, p_instr_adjust_fp_param_t };
 "#;
-        let pil = compile::<GoldilocksField>(None, source).unwrap();
+        let parsed = parse_asm::<GoldilocksField>(None, source).unwrap();
+        let analysis = analyze(parsed).unwrap();
+        let pil = compile(analysis);
         assert_eq!(format!("{pil}").trim(), expectation.trim());
     }
 
@@ -1107,6 +1093,8 @@ instr instro x: unsigned { pc' = pc + x }
 
 instro 9223372034707292161;
 "#;
-        compile::<GoldilocksField>(None, source).unwrap();
+        let parsed = parse_asm::<GoldilocksField>(None, source).unwrap();
+        let analysis = analyze(parsed).unwrap();
+        let _ = compile(analysis);
     }
 }

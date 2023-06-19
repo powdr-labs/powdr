@@ -1,14 +1,8 @@
 use std::fmt::{Display, Formatter, Result};
 
-use parser_util::quote;
+use crate::parsed::{BinaryOperator, UnaryOperator};
 
-use crate::asm_ast::{
-    batched::{ASMStatementBatch, BatchedASMFile, Incompatible, IncompatibleSet},
-    ASMFile, ASMStatement, InstructionBodyElement, InstructionParam, InstructionParamList,
-    InstructionParams, PlookupOperator, RegisterFlag,
-};
-
-use super::ast::*;
+use super::{asm::*, *};
 
 // TODO indentation
 
@@ -30,22 +24,10 @@ impl<T: Display> Display for ASMFile<T> {
     }
 }
 
-impl<T: Display> Display for BatchedASMFile<T> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        for s in &self.declarations {
-            writeln!(f, "{s}")?;
-        }
-        for s in &self.batches {
-            writeln!(f, "{s}")?;
-        }
-        Ok(())
-    }
-}
-
 impl<T: Display> Display for ASMStatement<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
-            ASMStatement::Degree(_, degree) => write!(f, "degree {degree};"),
+            ASMStatement::Degree(_, degree) => write!(f, "degree {};", degree),
             ASMStatement::RegisterDeclaration(_, name, flag) => write!(
                 f,
                 "reg {}{};",
@@ -54,25 +36,29 @@ impl<T: Display> Display for ASMStatement<T> {
                     .map(|flag| format!("[{flag}]"))
                     .unwrap_or_default()
             ),
-            ASMStatement::InstructionDeclaration(_, name, params, body) => write!(
-                f,
-                "instr {}{} {{{}}}",
-                name,
-                params,
-                body.iter()
-                    .map(|e| format!("{e}"))
-                    .collect::<Vec<_>>()
-                    .join(" ")
-            ),
-            ASMStatement::InlinePil(_, statements) => write!(
-                f,
-                "pil{{{}}}",
-                statements
-                    .iter()
-                    .map(|s| format!("{}", s))
-                    .collect::<Vec<_>>()
-                    .join("\n")
-            ),
+            ASMStatement::InstructionDeclaration(_, name, params, body) => {
+                write!(
+                    f,
+                    "instr {}{} {{{}}}",
+                    name,
+                    params,
+                    body.iter()
+                        .map(|e| format!("{e}"))
+                        .collect::<Vec<_>>()
+                        .join(" ")
+                )
+            }
+            ASMStatement::InlinePil(_, statements) => {
+                write!(
+                    f,
+                    "pil{{\n{}\n}}",
+                    statements
+                        .iter()
+                        .map(|s| format!("{}", s))
+                        .collect::<Vec<_>>()
+                        .join("\n")
+                )
+            }
             ASMStatement::Assignment(_, write_regs, assignment_reg, expression) => write!(
                 f,
                 "{} <={}= {};",
@@ -195,40 +181,8 @@ impl Display for InstructionParam {
     }
 }
 
-impl<T: Display> Display for ASMStatementBatch<T> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        for s in &self.statements {
-            writeln!(f, "{s}")?;
-        }
-        write!(
-            f,
-            "// END BATCH{}",
-            self.reason
-                .as_ref()
-                .map(|reason| format!(" {reason}"))
-                .unwrap_or_default()
-        )
-    }
-}
-
-impl Display for Incompatible {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write!(f, "{:?}", self)
-    }
-}
-
-impl Display for IncompatibleSet {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write!(
-            f,
-            "{}",
-            self.0
-                .iter()
-                .map(|r| r.to_string())
-                .collect::<Vec<_>>()
-                .join(", ")
-        )
-    }
+pub fn quote(input: &str) -> String {
+    format!("\"{}\"", input.replace('\\', "\\\\").replace('"', "\\\""))
 }
 
 impl<T: Display> Display for Statement<T> {
@@ -291,14 +245,6 @@ impl<T: Display> Display for Statement<T> {
             }
             Statement::FunctionCall(_, name, args) => {
                 write!(f, "{name}({});", format_expressions(args))
-            }
-            Statement::ASMBlock(_, statements) => {
-                writeln!(f, "assembly {{")?;
-                for _s in statements {
-                    // TODO display for asm statements
-                    //writeln!(f, "{s}")?;
-                }
-                writeln!(f, "}}")
             }
         }
     }
@@ -459,62 +405,5 @@ impl Display for UnaryOperator {
                 UnaryOperator::Plus => "+",
             }
         )
-    }
-}
-
-#[cfg(test)]
-mod test {
-    use number::GoldilocksField;
-
-    use crate::parse;
-
-    #[test]
-    fn reparse() {
-        let input = r#"
-constant %N = 16;
-namespace Fibonacci(%N);
-constant %last_row = (%N - 1);
-macro bool(X) { (X * (1 - X)) = 0; };
-macro is_nonzero(X) { match X { 0 => 0, _ => 1, } };
-macro is_zero(X) { (1 - is_nonzero(X)) };
-macro is_equal(A, B) { is_zero((A - B)) };
-macro is_one(X) { is_equal(X, 1) };
-macro ite(C, A, B) { ((is_nonzero(C) * A) + (is_zero(C) * B)) };
-macro one_hot(i, index) { ite(is_equal(i, index), 1, 0) };
-pol constant ISLAST(i) { one_hot(i, %last_row) };
-pol commit x, y;
-macro constrain_equal_expr(A, B) { (A - B) };
-macro force_equal_on_last_row(poly, value) { (ISLAST * constrain_equal_expr(poly, value)) = 0; };
-force_equal_on_last_row(x', 1);
-force_equal_on_last_row(y', 1);
-macro on_regular_row(cond) { ((1 - ISLAST) * cond) = 0; };
-on_regular_row(constrain_equal_expr(x', y));
-on_regular_row(constrain_equal_expr(y', (x + y)));
-public out = y(%last_row);"#;
-        let printed = format!(
-            "{}",
-            parse::<GoldilocksField>(Some("input"), input).unwrap()
-        );
-        assert_eq!(input.trim(), printed.trim());
-    }
-
-    #[test]
-    fn reparse_witness_query() {
-        let input = r#"pol commit wit(i) query (x(i), y(i));"#;
-        let printed = format!(
-            "{}",
-            parse::<GoldilocksField>(Some("input"), input).unwrap()
-        );
-        assert_eq!(input.trim(), printed.trim());
-    }
-
-    #[test]
-    fn reparse_strings_and_tuples() {
-        let input = r#"constant %N = ("abc", 3);"#;
-        let printed = format!(
-            "{}",
-            parse::<GoldilocksField>(Some("input"), input).unwrap()
-        );
-        assert_eq!(input.trim(), printed.trim());
     }
 }

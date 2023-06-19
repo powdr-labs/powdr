@@ -3,8 +3,17 @@ use std::{
     ops::ControlFlow,
 };
 
-use crate::ast::*;
+use ast::parsed::{
+    asm::{ASMFile, ASMStatement, InstructionBodyElement},
+    postvisit_expression_in_statement_mut, postvisit_expression_mut, Expression,
+    FunctionDefinition, SelectedExpressions, Statement,
+};
 use number::FieldElement;
+
+pub fn expand<T: FieldElement>(file: ASMFile<T>) -> ASMFile<T> {
+    let mut expander = MacroExpander::default();
+    expander.expand_asm(file)
+}
 
 #[derive(Debug, Default)]
 pub struct MacroExpander<T> {
@@ -26,8 +35,29 @@ impl<T> MacroExpander<T>
 where
     T: FieldElement,
 {
-    pub fn new() -> Self {
-        Default::default()
+    fn expand_asm(&mut self, mut file: ASMFile<T>) -> ASMFile<T> {
+        let mut expander = MacroExpander::default();
+        file.0.iter_mut().for_each(|s| match s {
+            ASMStatement::InstructionDeclaration(_, _, _, body) => {
+                body.iter_mut().for_each(|e| match e {
+                    InstructionBodyElement::Expression(e) => {
+                        self.process_expression(e);
+                    }
+                    InstructionBodyElement::PlookupIdentity(left, _, right) => {
+                        self.process_selected_expressions(left);
+                        self.process_selected_expressions(right);
+                    }
+                    InstructionBodyElement::FunctionCall(_, inputs) => {
+                        self.process_expressions(inputs);
+                    }
+                });
+            }
+            ASMStatement::InlinePil(_, statements) => {
+                *statements = expander.expand_macros(std::mem::take(statements));
+            }
+            _ => {}
+        });
+        file
     }
 
     /// Expands all macro references inside the statements and also adds
@@ -42,7 +72,7 @@ where
         std::mem::take(&mut self.statements)
     }
 
-    pub fn handle_statement(&mut self, mut statement: Statement<T>) {
+    fn handle_statement(&mut self, mut statement: Statement<T>) {
         let mut added_locals = false;
         if let Statement::PolynomialConstantDefinition(_, _, f)
         | Statement::PolynomialCommitDeclaration(_, _, Some(f)) = &statement
@@ -138,5 +168,22 @@ where
         }
 
         ControlFlow::<()>::Continue(())
+    }
+
+    fn process_expressions(&mut self, exprs: &mut [Expression<T>]) -> ControlFlow<()> {
+        for e in exprs.iter_mut() {
+            self.process_expression(e)?;
+        }
+        ControlFlow::Continue(())
+    }
+
+    fn process_selected_expressions(
+        &mut self,
+        exprs: &mut SelectedExpressions<T>,
+    ) -> ControlFlow<()> {
+        if let Some(e) = &mut exprs.selector {
+            self.process_expression(e)?;
+        };
+        self.process_expressions(&mut exprs.expressions)
     }
 }

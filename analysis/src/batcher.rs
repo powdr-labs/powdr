@@ -1,19 +1,22 @@
 use std::marker::PhantomData;
 
+use ast::analysis::{
+    AnalysisASMFile, BatchMetadata, Incompatible, IncompatibleSet, ProgramStatement,
+};
 use itertools::Itertools;
 use number::FieldElement;
-use parser::asm_ast::{
-    batched::{ASMStatementBatch, BatchedASMFile, Incompatible, IncompatibleSet},
-    ASMFile, ASMStatement,
-};
 
-#[derive(Default)]
-struct Batch<T> {
-    statements: Vec<ASMStatement<T>>,
+pub fn batch<T: FieldElement>(file: AnalysisASMFile<T>) -> AnalysisASMFile<T> {
+    ProgramBatcher::default().batch(file)
 }
 
-impl<T: FieldElement> Batch<T> {
-    fn from_statement(s: ASMStatement<T>) -> Batch<T> {
+#[derive(Default)]
+struct Batch<'a, T> {
+    statements: Vec<&'a ProgramStatement<T>>,
+}
+
+impl<'a, T: FieldElement> Batch<'a, T> {
+    fn from_statement(s: &'a ProgramStatement<T>) -> Batch<T> {
         Batch {
             statements: vec![s],
         }
@@ -23,17 +26,20 @@ impl<T: FieldElement> Batch<T> {
     fn is_only_labels(&self) -> bool {
         self.statements
             .iter()
-            .all(|s| matches!(s, ASMStatement::Label(..)))
+            .all(|s| matches!(s, ProgramStatement::Label(..)))
     }
 
     /// Returns true iff this batch contains at least one label
     fn contains_labels(&self) -> bool {
         self.statements
             .iter()
-            .any(|s| matches!(s, ASMStatement::Label(..)))
+            .any(|s| matches!(s, ProgramStatement::Label(..)))
     }
 
-    fn try_absorb(&mut self, s: ASMStatement<T>) -> Result<(), (ASMStatement<T>, IncompatibleSet)> {
+    fn try_absorb(
+        &mut self,
+        s: &'a ProgramStatement<T>,
+    ) -> Result<(), (&'a ProgramStatement<T>, IncompatibleSet)> {
         let batch = Self::from_statement(s);
         self.try_join(batch)
             .map_err(|(b, incompatible)| (b.statements.into_iter().next().unwrap(), incompatible))
@@ -55,16 +61,16 @@ impl<T: FieldElement> Batch<T> {
 }
 
 #[derive(Default)]
-pub struct ASMBatcher<T> {
+struct ProgramBatcher<T> {
     marker: PhantomData<T>,
 }
 
-impl<T: FieldElement> ASMBatcher<T> {
+impl<T: FieldElement> ProgramBatcher<T> {
     /// split a list of statements into compatible batches
-    fn to_compatible_batches(
+    fn extract_batches<'a>(
         &self,
-        statements: impl IntoIterator<Item = ASMStatement<T>>,
-    ) -> Vec<ASMStatementBatch<T>> {
+        statements: impl IntoIterator<Item = &'a ProgramStatement<T>>,
+    ) -> Vec<BatchMetadata> {
         statements
             .into_iter()
             .peekable()
@@ -74,13 +80,13 @@ impl<T: FieldElement> ASMBatcher<T> {
                     // look at the next statement
                     match it.peek() {
                         // try to add it to this batch
-                        Some(new_s) => match batch.try_absorb(new_s.clone()) {
+                        Some(new_s) => match batch.try_absorb(new_s) {
                             Ok(()) => {
                                 it.next().unwrap();
                             }
                             Err((_, reason)) => {
-                                let res = ASMStatementBatch {
-                                    statements: batch.statements,
+                                let res = BatchMetadata {
+                                    size: batch.statements.len(),
                                     reason: Some(reason),
                                 };
                                 break Some(res);
@@ -89,8 +95,8 @@ impl<T: FieldElement> ASMBatcher<T> {
                         None => {
                             break match batch.statements.len() {
                                 0 => None,
-                                _ => Some(ASMStatementBatch {
-                                    statements: batch.statements,
+                                _ => Some(BatchMetadata {
+                                    size: batch.statements.len(),
                                     reason: None,
                                 }),
                             }
@@ -101,22 +107,10 @@ impl<T: FieldElement> ASMBatcher<T> {
             .collect()
     }
 
-    pub fn convert(&mut self, asm_file: ASMFile<T>) -> BatchedASMFile<T> {
-        let statements = asm_file.0.into_iter().peekable();
+    pub fn batch(&mut self, mut asm_file: AnalysisASMFile<T>) -> AnalysisASMFile<T> {
+        let batches = self.extract_batches(&asm_file.program);
 
-        let (declarations, statements) = statements.into_iter().partition(|s| match s {
-            ASMStatement::Degree(..)
-            | ASMStatement::RegisterDeclaration(..)
-            | ASMStatement::InstructionDeclaration(..)
-            | ASMStatement::InlinePil(..) => true,
-            ASMStatement::Assignment(_, _, _, _)
-            | ASMStatement::Instruction(_, _, _)
-            | ASMStatement::Label(_, _) => false,
-        });
-
-        let batches = self.to_compatible_batches(statements);
-
-        let lines_before = batches.iter().map(ASMStatementBatch::size).sum::<usize>() as f32;
+        let lines_before = batches.iter().map(BatchMetadata::size).sum::<usize>() as f32;
         let lines_after = batches.len() as f32;
 
         log::debug!(
@@ -124,10 +118,9 @@ impl<T: FieldElement> ASMBatcher<T> {
             (1. - lines_after / lines_before) * 100.
         );
 
-        BatchedASMFile {
-            declarations,
-            batches,
-        }
+        asm_file.batches = Some(batches);
+
+        asm_file
     }
 }
 
@@ -139,18 +132,20 @@ mod tests {
     use number::GoldilocksField;
     use pretty_assertions::assert_eq;
 
-    use super::*;
+    use crate::{batcher, macro_expansion, type_check};
 
     fn test_batching(path: &str) {
         let base_path = PathBuf::from("../test_data/asm/batching");
         let file_name = base_path.join(path);
         let contents = fs::read_to_string(&file_name).unwrap();
-        let batched_asm = parser::parse_asm::<GoldilocksField>(
+        let parsed = parser::parse_asm::<GoldilocksField>(
             Some(file_name.as_os_str().to_str().unwrap()),
             &contents,
         )
-        .map(|ast| ASMBatcher::default().convert(ast))
         .unwrap();
+        let expanded = macro_expansion::expand(parsed);
+        let checked = type_check::check(expanded).unwrap();
+        let batched = batcher::batch(checked);
         let mut expected_file_name = file_name;
         expected_file_name.set_file_name(format!(
             "{}_batched.asm",
@@ -159,7 +154,7 @@ mod tests {
         let expected = fs::read_to_string(expected_file_name).unwrap();
 
         assert_eq!(
-            format!("{batched_asm}").replace("\n\n", "\n"),
+            format!("{batched}").replace("\n\n", "\n"),
             expected.replace("\n\n", "\n")
         );
     }

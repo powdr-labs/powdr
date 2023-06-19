@@ -9,5 +9,6 @@ mktemp = "0.5.0"
 number = { path = "../number" }
 parser_util = { path = "../parser_util" }
 parser = { path = "../parser" }
-pilgen = { path = "../pilgen" }
 itertools = "^0.10"
+ast = { version = "0.1.0", path = "../ast" }
+analysis = { version = "0.1", path = "../analysis" }

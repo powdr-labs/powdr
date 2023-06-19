@@ -14,7 +14,10 @@ itertools = "0.10.5"
 num-bigint = "^0.4"
 log = "0.4.17"
 rand = "0.8.5"
+ast = { version = "0.1.0", path = "../ast" }
 
 [dev-dependencies]
+analysis = { path = "../analysis" }
 executor = { path = "../executor" }
+parser = { path = "../parser" }
 pilgen = { path = "../pilgen" }
