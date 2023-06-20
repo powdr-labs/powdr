@@ -105,13 +105,16 @@ impl<T: FieldElement> ProgramBatcher<T> {
             })
             .collect();
 
-        let lines_before = batches.iter().map(BatchMetadata::size).sum::<usize>() as f32;
-        let lines_after = batches.len() as f32;
+        let lines_before = batches.iter().map(BatchMetadata::size).sum::<usize>();
+        let lines_after = batches.len();
 
         log::debug!(
             "Batching complete for machine {} with savings of {}% in execution trace lines",
             machine_name,
-            (1. - lines_after / lines_before) * 100.
+            match lines_before {
+                0 => 0.,
+                lines_before => (1. - lines_after as f32 / lines_before as f32) * 100.,
+            }
         );
 
         machine.program.batches = Some(batches);

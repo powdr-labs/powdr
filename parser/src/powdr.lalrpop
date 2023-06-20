@@ -189,7 +189,8 @@ InstructionBody: InstructionBody<T> = {
 }
 
 InstructionBodyElements: Vec<InstructionBodyElement<T>> = {
-    <mut list:( <InstructionBodyElement> "," )*> <end:InstructionBodyElement>  => { list.push(end); list }
+    <mut list:( <InstructionBodyElement> "," )*> <end:InstructionBodyElement>  => { list.push(end); list },
+    => vec![]
 }
 
 InstructionBodyElement: InstructionBodyElement<T> = {

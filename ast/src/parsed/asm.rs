@@ -42,9 +42,21 @@ pub enum MachineStatement<T> {
     Degree(usize, AbstractNumberType),
     Submachine(usize, String, String),
     RegisterDeclaration(usize, String, Option<RegisterFlag>),
-    InstructionDeclaration(usize, String, InstructionParams, InstructionBody<T>),
+    InstructionDeclaration(
+        usize,
+        Latch<T>,
+        String,
+        InstructionParams,
+        InstructionBody<T>,
+    ),
     InlinePil(usize, Vec<PilStatement<T>>),
     Program(usize, Vec<ProgramStatement<T>>),
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub enum Latch<T> {
+    All,
+    When(Expression<T>),
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]

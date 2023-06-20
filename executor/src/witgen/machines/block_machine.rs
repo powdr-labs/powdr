@@ -18,7 +18,7 @@ use number::{DegreeType, FieldElement};
 
 /// A machine that produces multiple rows (one block) per query.
 /// TODO we do not actually "detect" the machine yet, we just check if
-/// the lookup has a binary selector that is 1 every k rows for some k > 1
+/// the lookup has a binary selector that is 1 every k rows for some k
 pub struct BlockMachine<T: FieldElement> {
     /// Block size, the period of the selector.
     block_size: usize,
@@ -104,9 +104,6 @@ fn try_to_boolean_periodic_selector<'a, T: FieldElement>(
     let values = fixed_data.fixed_col_values[poly.poly_id() as usize];
 
     let period = 1 + values.iter().position(|v| *v == 1.into())?;
-    if period == 1 {
-        return None;
-    }
     values
         .iter()
         .enumerate()

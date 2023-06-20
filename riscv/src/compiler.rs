@@ -18,22 +18,19 @@ machine Binary {
     degree 262144;
 
     instr and A, B -> C {
-        operation = 0
     }
 
     instr or A, B -> C {
-        operation = 1
     }
 
     instr xor A, B -> C {
-        operation = 2
     }
 
     constraints{
         macro is_nonzero(X) { match X { 0 => 0, _ => 1, } };
         macro is_zero(X) { 1 - is_nonzero(X) };
 
-        col fixed RESET(i) { is_zero((i % 4) - 3) };
+        col fixed _latch(i) { is_zero((i % 4) - 3) };
         col fixed FACTOR(i) { 1 << (((i + 1) % 4) * 8) };
 
         col fixed P_A(i) { i % 256 };
@@ -56,12 +53,11 @@ machine Binary {
         col witness C;
         col witness operation;
 
-        A' = A * (1 - RESET) + A_byte * FACTOR;
-        B' = B * (1 - RESET) + B_byte * FACTOR;
-        C' = C * (1 - RESET) + C_byte * FACTOR;
-        (operation' - operation) * (1 - RESET) = 0;
+        A' = A * (1 - _latch) + A_byte * FACTOR;
+        B' = B * (1 - _latch) + B_byte * FACTOR;
+        C' = C * (1 - _latch) + C_byte * FACTOR;
 
-        {operation', A_byte, B_byte, C_byte} in {P_operation, P_A, P_B, P_C};
+        {_operation_id', A_byte, B_byte, C_byte} in {P_operation, P_A, P_B, P_C};
     }
 }
 "#,
@@ -72,15 +68,13 @@ machine Shift {
     degree 262144;
 
     instr shl A, B -> C {
-        operation = 0
     }
 
     instr shr A, B -> C {
-        operation = 1
     }
 
     constraints{
-        col fixed RESET(i) { is_zero((i % 4) - 3) };
+        col fixed _latch(i) { is_zero((i % 4) - 3) };
         col fixed FACTOR_ROW(i) { (i + 1) % 4 };
         col fixed FACTOR(i) { 1 << (((i + 1) % 4) * 8) };
 
@@ -103,13 +97,12 @@ machine Shift {
         col witness C;
         col witness operation;
 
-        A' = A * (1 - RESET) + A_byte * FACTOR;
-        (B' - B) * (1 - RESET) = 0;
-        C' = C * (1 - RESET) + C_part;
-        (operation' - operation) * (1 - RESET) = 0;
+        A' = A * (1 - _latch) + A_byte * FACTOR;
+        (B' - B) * (1 - _latch) = 0;
+        C' = C * (1 - _latch) + C_part;
 
         // TODO this way, we cannot prove anything that shifts by more than 31 bits.
-        {operation', A_byte, B', FACTOR_ROW, C_part} in {P_operation, P_A, P_B, P_ROW, P_C};
+        {_operation_id', A_byte, B', FACTOR_ROW, C_part} in {P_operation, P_A, P_B, P_ROW, P_C};
     }
 }
 "#,
@@ -395,9 +388,9 @@ fn risv_machine(
         r#"
 {}
 machine Main {{
-    {}
+{}
 
-    {}
+{}
 
     program {{
 {}

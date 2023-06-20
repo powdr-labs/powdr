@@ -5,7 +5,7 @@ use std::collections::{BTreeSet, HashMap};
 use num_bigint::BigUint;
 
 use crate::parsed::{
-    asm::{DebugDirective, InstructionBody, InstructionParams, RegisterFlag},
+    asm::{DebugDirective, InstructionBody, InstructionParams, Latch, RegisterFlag},
     Expression, PilStatement,
 };
 
@@ -20,6 +20,7 @@ pub struct RegisterDeclarationStatement {
 pub struct InstructionDefinitionStatement<T> {
     pub start: usize,
     pub name: String,
+    pub latch: Latch<T>,
     pub params: InstructionParams,
     pub body: InstructionBody<T>,
 }

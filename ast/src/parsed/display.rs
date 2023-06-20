@@ -64,8 +64,8 @@ impl<T: Display> Display for MachineStatement<T> {
                     .map(|flag| format!("[{flag}]"))
                     .unwrap_or_default()
             ),
-            MachineStatement::InstructionDeclaration(_, name, params, body) => {
-                write!(f, "instr {}{} {{{}}}", name, params, body,)
+            MachineStatement::InstructionDeclaration(_, name, latch, params, body) => {
+                write!(f, "instr {}{}{} {{{}}}", name, latch, params, body,)
             }
             MachineStatement::InlinePil(_, statements) => {
                 write!(
@@ -87,6 +87,15 @@ impl<T: Display> Display for MachineStatement<T> {
                     .collect::<Vec<_>>()
                     .join("\n")
             ),
+        }
+    }
+}
+
+impl<T: Display> Display for Latch<T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        match self {
+            Latch::All => write!(f, ""),
+            Latch::When(r) => write!(f, "<{}>", r),
         }
     }
 }

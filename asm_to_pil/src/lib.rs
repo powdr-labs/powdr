@@ -38,11 +38,13 @@ fn compile_machine<T: FieldElement>(input: Machine<T>) -> ConversionOutput<T> {
     ASMPILConverter::default().convert_machine(input)
 }
 
+#[derive(Debug)]
 pub enum Input {
     Register(String),
     Literal(String, LiteralKind),
 }
 
+#[derive(Debug)]
 pub enum LiteralKind {
     Label,
     SignedConstant,
@@ -113,15 +115,17 @@ impl<T: FieldElement> ASMPILConverter<T> {
             }));
 
             for link in relative_links.iter_mut() {
-                let instr = context
+                let (index, instr) = context
                     .machine_types
                     .get(&link.to.machine_ty)
                     .unwrap()
                     .instructions
                     .iter()
-                    .find(|d| d.name == link.to.instr.name)
+                    .enumerate()
+                    .find(|(_, d)| d.name == link.to.instr.name)
                     .unwrap();
                 link.to.instr.params = Some(instr.params.clone());
+                link.to.instr.index = Some(index);
             }
 
             let object = Object {
@@ -159,12 +163,63 @@ impl<T: FieldElement> ASMPILConverter<T> {
             self.handle_register_declaration(reg);
         }
 
+        if self.pc_name.is_none() {
+            assert!(
+                self.registers.is_empty(),
+                "pc-less machine cannot have registers, only PIL is allowed"
+            );
+            // the following might make sense to have at some point to feed blocks into a machine, for example for testing
+            assert!(
+                input.program.statements.is_empty(),
+                "pc-less machine cannot have a program"
+            );
+        }
+
         for block in input.constraints {
             self.handle_inline_pil(block);
         }
 
-        for instr in input.instructions {
-            self.handle_instruction_def(instr);
+        if self.pc_name.is_some() {
+            for instr in input.instructions {
+                self.handle_instruction_def(instr);
+            }
+        } else {
+            // in pc-less machines, we only need an instruction_id column and a latch column, with the constraint that the instruction_id can only change when the latch is 1
+            // the latch is currently implemented in the pil
+            self.pil.extend([
+                witness_column(0, "_operation_id".to_string(), None),
+                PilStatement::PolynomialIdentity(
+                    0,
+                    Expression::BinaryOperation(
+                        Box::new(Expression::BinaryOperation(
+                            Box::new(Expression::Number(T::from(1))),
+                            BinaryOperator::Sub,
+                            Box::new(Expression::PolynomialReference(PolynomialReference {
+                                namespace: None,
+                                name: "_latch".into(),
+                                index: None,
+                                next: false,
+                            })),
+                        )),
+                        BinaryOperator::Mul,
+                        Box::new(Expression::BinaryOperation(
+                            Box::new(Expression::PolynomialReference(PolynomialReference {
+                                namespace: None,
+                                name: "_operation_id".into(),
+                                index: None,
+                                next: true,
+                            })),
+                            BinaryOperator::Sub,
+                            Box::new(Expression::PolynomialReference(PolynomialReference {
+                                namespace: None,
+                                name: "_operation_id".into(),
+                                index: None,
+                                next: false,
+                            })),
+                        )),
+                    ),
+                ),
+            ]);
         }
 
         let batches = input.program.batches.unwrap_or_else(|| {
@@ -210,27 +265,29 @@ impl<T: FieldElement> ASMPILConverter<T> {
                 .collect::<Vec<_>>(),
         );
 
-        self.translate_code_lines();
+        if self.pc_name.is_some() {
+            self.translate_code_lines();
 
-        self.pil.push(PilStatement::PlookupIdentity(
-            0,
-            SelectedExpressions {
-                selector: None,
-                expressions: self
-                    .line_lookup
-                    .iter()
-                    .map(|x| direct_reference(&x.0))
-                    .collect(),
-            },
-            SelectedExpressions {
-                selector: None,
-                expressions: self
-                    .line_lookup
-                    .iter()
-                    .map(|x| direct_reference(&x.1))
-                    .collect(),
-            },
-        ));
+            self.pil.push(PilStatement::PlookupIdentity(
+                0,
+                SelectedExpressions {
+                    selector: None,
+                    expressions: self
+                        .line_lookup
+                        .iter()
+                        .map(|x| direct_reference(&x.0))
+                        .collect(),
+                },
+                SelectedExpressions {
+                    selector: None,
+                    expressions: self
+                        .line_lookup
+                        .iter()
+                        .map(|x| direct_reference(&x.1))
+                        .collect(),
+                },
+            ));
+        }
 
         ConversionOutput {
             pil: self.pil,
@@ -490,7 +547,7 @@ impl<T: FieldElement> ASMPILConverter<T> {
                     },
                     to: LinkTo {
                         instr: Instr {
-                            latch: (),
+                            index: None,
                             name: ext_instruction_name,
                             params: None,
                         },
@@ -773,21 +830,19 @@ impl<T: FieldElement> ASMPILConverter<T> {
     /// the query hints for the free inputs.
     fn translate_code_lines(&mut self) {
         // TODO this should loop with the number of lines in the program, as should all the other program constants!
-        if self.pc_name.is_some() {
-            self.pil.push(PilStatement::PolynomialConstantDefinition(
-                0,
-                "p_line".to_string(),
-                FunctionDefinition::Array(
-                    ArrayExpression::Value(
-                        (0..self.code_lines.len())
-                            .map(|i| build_number(i as u32))
-                            .collect(),
-                    )
-                    .pad_with_last()
-                    .unwrap_or_else(|| ArrayExpression::RepeatedValue(vec![build_number(0)])),
-                ),
-            ));
-        }
+        self.pil.push(PilStatement::PolynomialConstantDefinition(
+            0,
+            "p_line".to_string(),
+            FunctionDefinition::Array(
+                ArrayExpression::Value(
+                    (0..self.code_lines.len())
+                        .map(|i| build_number(i as u32))
+                        .collect(),
+                )
+                .pad_with_last()
+                .unwrap_or_else(|| ArrayExpression::RepeatedValue(vec![build_number(0)])),
+            ),
+        ));
         // TODO check that all of them are matched against execution trace witnesses.
         let mut program_constants = self
             .program_constant_names
@@ -806,9 +861,6 @@ impl<T: FieldElement> ASMPILConverter<T> {
                     program_constants
                         .get_mut(&format!("p_reg_write_{assign_reg}_{reg}"))
                         .unwrap_or_else(|| {
-                            for p in &self.pil {
-                                println!("{}", p);
-                            }
                             panic!("Register combination {reg} <={assign_reg}= not found.")
                         })[i] = 1.into();
                 }
@@ -981,6 +1033,7 @@ impl<T: FieldElement> Register<T> {
     }
 }
 
+#[derive(Debug)]
 struct Instruction {
     inputs: Vec<Input>,
     outputs: Vec<String>,

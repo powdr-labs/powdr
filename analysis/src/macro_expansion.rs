@@ -42,7 +42,7 @@ where
             .into_iter()
             .map(|mut m| {
                 m.statements.iter_mut().for_each(|s| match s {
-                    MachineStatement::InstructionDeclaration(_, _, _, body) => match body {
+                    MachineStatement::InstructionDeclaration(_, _, _, _, body) => match body {
                         InstructionBody::Local(body) => {
                             body.iter_mut().for_each(|e| match e {
                                 InstructionBodyElement::Expression(e) => {

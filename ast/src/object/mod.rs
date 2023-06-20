@@ -1,6 +1,9 @@
 use std::collections::BTreeMap;
 
-use crate::parsed::{asm::InstructionParams, PilStatement};
+use crate::parsed::{
+    asm::{InstructionParams, Latch},
+    PilStatement,
+};
 
 mod display;
 
@@ -26,12 +29,12 @@ pub struct Object<T> {
     /// the pil identities for this machine
     pub pil: Vec<PilStatement<T>>,
     /// not sure yet what this is, right now just references to other machines but this is instruction-level stuff, not machine level
-    pub links: Vec<Link>,
+    pub links: Vec<Link<T>>,
 }
 
-pub struct Link {
+pub struct Link<T> {
     pub from: LinkFrom,
-    pub to: LinkTo,
+    pub to: LinkTo<T>,
 }
 
 // todo: deal with reset flag
@@ -40,9 +43,9 @@ pub struct LinkFrom {
     pub instr: ExtInstr,
 }
 
-pub struct LinkTo {
+pub struct LinkTo<T> {
     pub machine_ty: String,
-    pub instr: Instr,
+    pub instr: Instr<T>,
     pub loc: String,
 }
 
@@ -52,8 +55,8 @@ pub struct ExtInstr {
     pub params: InstructionParams,
 }
 
-pub struct Instr {
-    pub latch: (),
+pub struct Instr<T> {
+    pub latch: Option<Latch<T>>,
     pub name: String,
     pub params: Option<InstructionParams>,
 }

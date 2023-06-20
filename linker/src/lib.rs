@@ -1,4 +1,4 @@
-use std::collections::BTreeSet;
+use std::{collections::BTreeSet, iter::once};
 
 use ast::{
     object::{Location, PILGraph},
@@ -30,51 +30,54 @@ pub fn link<T: FieldElement>(mut graph: PILGraph<T>) -> PILFile<T> {
             // add the link to this namespace as a lookup
 
             let from = link.from;
+            let to = link.to;
 
             // the lhs is `instr_flag { inputs, outputs }`
             let lhs = SelectedExpressions {
                 selector: Some(direct_reference(from.instr.flag)),
-                expressions: from
-                    .instr
-                    .params
-                    .inputs
-                    .params
-                    .into_iter()
+                expressions: once(Expression::Number(T::from(to.instr.index.unwrap() as u64)))
                     .chain(
                         from.instr
                             .params
-                            .outputs
+                            .inputs
+                            .params
                             .into_iter()
-                            .flat_map(|o| o.params.into_iter()),
+                            .chain(
+                                from.instr
+                                    .params
+                                    .outputs
+                                    .into_iter()
+                                    .flat_map(|o| o.params.into_iter()),
+                            )
+                            .map(|i| {
+                                assert!(i.ty.is_none());
+                                i.name
+                            })
+                            .map(|i| direct_reference(i)),
                     )
-                    .map(|i| {
-                        assert!(i.ty.is_none());
-                        i.name
-                    })
-                    .map(|i| direct_reference(i))
                     .collect(),
             };
-            // the rhs is `latch { inputs, outputs }`
+            // the rhs is `(instr_flag * latch) { inputs, outputs }`
             // get the instruction in the submachine
-
-            let to = link.to;
 
             let params = to.instr.params.unwrap();
 
+            let to_namespace = location.clone().join(to.loc.clone()).to_string();
+
             let rhs = SelectedExpressions {
-                selector: None, // TODO: implement latch for block machines
-                expressions: params
-                    .inputs
-                    .params
-                    .iter()
-                    .chain(params.outputs.iter().flat_map(|o| o.params.iter()))
-                    .map(|i| {
-                        assert!(i.ty.is_none());
-                        namespaced_reference(
-                            location.clone().join(to.loc.clone()).to_string(),
-                            i.name.clone(),
-                        )
-                    })
+                selector: Some(namespaced_reference(to_namespace.clone(), "_latch")),
+                expressions: once(namespaced_reference(to_namespace.clone(), "_operation_id"))
+                    .chain(
+                        params
+                            .inputs
+                            .params
+                            .iter()
+                            .chain(params.outputs.iter().flat_map(|o| o.params.iter()))
+                            .map(|i| {
+                                assert!(i.ty.is_none());
+                                namespaced_reference(to_namespace.clone(), i.name.clone())
+                            }),
+                    )
                     .collect(),
             };
 

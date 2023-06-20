@@ -33,7 +33,7 @@ impl<T: Display> Display for Object<T> {
     }
 }
 
-impl Display for Link {
+impl<T: Display> Display for Link<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(f, "{} -> {}", self.from, self.to)
     }
@@ -51,13 +51,13 @@ impl Display for ExtInstr {
     }
 }
 
-impl Display for LinkTo {
+impl<T: Display> Display for LinkTo<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(f, "{} in object {}", self.instr, self.loc)
     }
 }
 
-impl Display for Instr {
+impl<T: Display> Display for Instr<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(
             f,
