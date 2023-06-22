@@ -348,6 +348,7 @@ impl<'a, T: FieldElement> Exporter<'a, T> {
 mod test {
     use std::fs;
     use std::process::Command;
+    use test_log::test;
 
     use number::GoldilocksField;
 

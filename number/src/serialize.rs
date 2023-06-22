@@ -51,11 +51,11 @@ pub fn read_polys_file<'a, T: FieldElement>(
 
 #[cfg(test)]
 mod tests {
-
     use crate::Bn254Field;
     use std::io::Cursor;
 
     use super::*;
+    use test_log::test;
 
     #[test]
     fn write_read() {

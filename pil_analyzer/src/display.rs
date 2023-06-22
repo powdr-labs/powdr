@@ -188,6 +188,7 @@ impl Display for PolynomialReference {
 #[cfg(test)]
 mod test {
     use number::GoldilocksField;
+    use test_log::test;
 
     use crate::pil_analyzer::process_pil_file_contents;
 

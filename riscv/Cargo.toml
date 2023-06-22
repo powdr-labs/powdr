@@ -19,3 +19,7 @@ regex-syntax = { version = "0.6", default_features = false, features = ["unicode
 
 [build-dependencies]
 lalrpop = "^0.19"
+
+[dev-dependencies]
+test-log = "0.2.12"
+env_logger = "0.10.0"

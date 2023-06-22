@@ -38,6 +38,7 @@ mod test {
     use analysis::analyze;
     use number::Bn254Field;
     use parser::parse_asm;
+    use test_log::test;
 
     use super::*;
 

@@ -159,6 +159,7 @@ impl<'a, T: FieldElement> Evaluator<'a, T> {
 mod test {
     use number::GoldilocksField;
     use pil_analyzer::analyze_string;
+    use test_log::test;
 
     use super::*;
 

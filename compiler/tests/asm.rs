@@ -1,6 +1,7 @@
 use compiler::{compile_pil_or_asm, verify_asm_string, Backend};
 use number::{Bn254Field, FieldElement, GoldilocksField};
 use std::fs;
+use test_log::test;
 
 fn verify_asm<T: FieldElement>(file_name: &str, inputs: Vec<T>) {
     let contents = fs::read_to_string(format!("../test_data/asm/{file_name}")).unwrap();

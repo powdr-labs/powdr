@@ -34,6 +34,7 @@ pub fn log2_exact(n: AbstractNumberType) -> Option<u64> {
 #[cfg(test)]
 mod test {
     use super::*;
+    use test_log::test;
 
     #[test]
     fn test_log2_exact() {

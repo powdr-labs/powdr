@@ -21,3 +21,5 @@ analysis = { path = "../analysis" }
 executor = { path = "../executor" }
 parser = { path = "../parser" }
 pilgen = { path = "../pilgen" }
+test-log = "0.2.12"
+env_logger = "0.10.0"

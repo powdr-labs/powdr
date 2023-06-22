@@ -131,6 +131,7 @@ mod tests {
 
     use number::GoldilocksField;
     use pretty_assertions::assert_eq;
+    use test_log::test;
 
     use crate::{batcher, macro_expansion, type_check};
 
