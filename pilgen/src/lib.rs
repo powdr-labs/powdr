@@ -967,6 +967,7 @@ fn extract_update<T: FieldElement>(expr: Expression<T>) -> (Option<String>, Expr
 #[cfg(test)]
 mod test {
     use std::fs;
+    use test_log::test;
 
     use ast::analysis::AnalysisASMFile;
     use number::{FieldElement, GoldilocksField};

@@ -14,3 +14,5 @@ ast = { path = "../ast" }
 
 [dev-dependencies]
 analysis = { path = "../analysis" }
+test-log = "0.2.12"
+env_logger = "0.10.0"

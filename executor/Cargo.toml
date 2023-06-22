@@ -12,3 +12,7 @@ pil_analyzer = { path = "../pil_analyzer" }
 rayon = "1.7.0"
 num-traits = "0.2.15"
 ast = { version = "0.1.0", path = "../ast" }
+
+[dev-dependencies]
+test-log = "0.2.12"
+env_logger = "0.10.0"

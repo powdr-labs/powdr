@@ -368,6 +368,7 @@ mod test {
     use super::*;
     use crate::witgen::{bit_constraints::BitConstraint, EvalError};
     use number::{FieldElement, GoldilocksField};
+    use test_log::test;
 
     impl<K> std::ops::Mul<AffineExpression<K, GoldilocksField>> for GoldilocksField {
         type Output = AffineExpression<K, GoldilocksField>;

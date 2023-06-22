@@ -8,3 +8,7 @@ ark-bn254 = { version = "0.4.0", default-features = false, features = ["scalar_f
 ark-ff = "0.4.2"
 num-bigint = "0.4.3"
 num-traits = "0.2.15"
+
+[dev-dependencies]
+test-log = "0.2.12"
+env_logger = "0.10.0"

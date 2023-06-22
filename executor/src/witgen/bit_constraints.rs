@@ -321,6 +321,7 @@ mod test {
 
     use number::GoldilocksField;
     use pil_analyzer::{PolyID, PolynomialReference};
+    use test_log::test;
 
     use crate::witgen::bit_constraints::{propagate_constraints, BitConstraint};
 

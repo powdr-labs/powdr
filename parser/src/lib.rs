@@ -38,6 +38,7 @@ mod test {
     };
     use number::GoldilocksField;
     use std::fs;
+    use test_log::test;
 
     #[test]
     fn empty() {

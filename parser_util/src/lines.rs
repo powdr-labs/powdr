@@ -22,6 +22,7 @@ pub fn indent(input: &str, indentation: &str) -> String {
 #[cfg(test)]
 mod test {
     use super::{compute_line_starts, offset_to_line};
+    use test_log::test;
 
     #[test]
     pub fn line_calc() {

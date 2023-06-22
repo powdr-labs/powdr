@@ -1,5 +1,6 @@
 use compiler::verify_asm_string;
 use number::GoldilocksField;
+use test_log::test;
 
 #[test]
 #[ignore = "Too slow"]

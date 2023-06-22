@@ -18,3 +18,7 @@ halo2 = { path = "../halo2" }
 json = "^0.12"
 ast = { version = "0.1.0", path = "../ast" }
 analysis = { version = "0.1.0", path = "../analysis" }
+
+[dev-dependencies]
+test-log = "0.2.12"
+env_logger = "0.10.0"
