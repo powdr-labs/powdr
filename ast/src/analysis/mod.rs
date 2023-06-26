@@ -5,7 +5,7 @@ use std::collections::BTreeSet;
 use num_bigint::BigUint;
 
 use crate::parsed::{
-    asm::{InstructionBodyElement, InstructionParams, RegisterFlag},
+    asm::{DebugDirective, InstructionBodyElement, InstructionParams, RegisterFlag},
     Expression, Statement,
 };
 
@@ -30,6 +30,7 @@ pub enum ProgramStatement<T> {
     Assignment(AssignmentStatement<T>),
     Instruction(InstructionStatement<T>),
     Label(LabelStatement),
+    DebugDirective(DebugDirective),
 }
 
 impl<T> From<AssignmentStatement<T>> for ProgramStatement<T> {
@@ -47,6 +48,12 @@ impl<T> From<InstructionStatement<T>> for ProgramStatement<T> {
 impl<T> From<LabelStatement> for ProgramStatement<T> {
     fn from(value: LabelStatement) -> Self {
         Self::Label(value)
+    }
+}
+
+impl<T> From<DebugDirective> for ProgramStatement<T> {
+    fn from(value: DebugDirective) -> Self {
+        Self::DebugDirective(value)
     }
 }
 

@@ -19,7 +19,8 @@ pub fn compile_riscv_asm(mut assemblies: BTreeMap<String, String>) -> String {
         .insert("__runtime".to_string(), runtime().to_string())
         .is_none());
 
-    let mut statements = disambiguator::disambiguate(
+    // TODO remove unreferenced files.
+    let (mut statements, file_ids) = disambiguator::disambiguate(
         assemblies
             .into_iter()
             .map(|(name, contents)| (name, parser::parse_asm(&contents)))
@@ -56,8 +57,10 @@ pub fn compile_riscv_asm(mut assemblies: BTreeMap<String, String>) -> String {
     let (data_code, data_positions) = store_data_objects(&sorted_objects, data_start);
 
     preamble()
-        + &vec!["call __data_init;".to_string()]
+        + &file_ids
             .into_iter()
+            .map(|(id, dir, file)| format!("debug file {id} {} {};", quote(&dir), quote(&file)))
+            .chain(["call __data_init;".to_string()])
             .chain([
                 format!("// Set stack pointer\nx2 <=X= {stack_start};"),
                 "jump __runtime_start;".to_string(),
@@ -70,14 +73,6 @@ pub fn compile_riscv_asm(mut assemblies: BTreeMap<String, String>) -> String {
             .chain(["// This is the data initialization routine.\n__data_init::".to_string()])
             .chain(data_code)
             .chain(["// This is the end of the data initialization routine.\nret;".to_string()])
-            .enumerate()
-            .map(|(i, line)| {
-                if i % 10 == 0 {
-                    format!("// PC: {i}\n{line}")
-                } else {
-                    line
-                }
-            })
             .join("\n")
 }
 
@@ -606,12 +601,33 @@ fn runtime() -> &'static str {
 fn process_statement(s: Statement) -> Vec<String> {
     match &s {
         Statement::Label(l) => vec![format!("{}::", escape_label(l))],
-        Statement::Directive(_, _) => panic!(""),
+        Statement::Directive(directive, args) => match (directive.as_str(), &args[..]) {
+            (
+                ".loc",
+                [Argument::Expression(Expression::Number(file)), Argument::Expression(Expression::Number(line)), Argument::Expression(Expression::Number(column)), ..],
+            ) => {
+                vec![format!("  debug loc {file} {line} {column};")]
+            }
+            (".file", _) => {
+                // We ignore ".file" directives because they have been extracted to the top.
+                vec![]
+            }
+            _ if directive.starts_with(".cfi_") => vec![],
+            _ => panic!(
+                "Leftover directive in code: {directive} {}",
+                args.iter().map(|s| s.to_string()).join(", ")
+            ),
+        },
         Statement::Instruction(instr, args) => process_instruction(instr, args)
             .into_iter()
             .map(|s| "  ".to_string() + &s)
             .collect(),
     }
+}
+
+fn quote(s: &str) -> String {
+    // TODO more things to quote
+    format!("\"{}\"", s.replace('\\', "\\\\").replace('\"', "\\\""))
 }
 
 fn escape_label(l: &str) -> String {
