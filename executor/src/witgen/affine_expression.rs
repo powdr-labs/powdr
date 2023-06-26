@@ -5,7 +5,7 @@ use itertools::Itertools;
 
 use number::{BigInt, FieldElement};
 
-use super::bit_constraints::BitConstraintSet;
+use super::range_constraints::RangeConstraintSet;
 use super::Constraint;
 use super::{EvalError::*, EvalResult, EvalValue, IncompleteCause};
 
@@ -104,14 +104,14 @@ where
         }
     }
 
-    /// Tries to solve "self = 0", or at least propagate a bit constraint:
+    /// Tries to solve "self = 0", or at least propagate a bit / range constraint:
     /// If we know that some components can only have certain bits set and the offset is zero,
     /// this property might transfer to another component.
     /// Furthermore, if we know that all components are bit-constrained and do not overlap,
     /// we can deduce the values of all components from the offset part.
-    pub fn solve_with_bit_constraints(
+    pub fn solve_with_range_constraints(
         &self,
-        known_constraints: &impl BitConstraintSet<K, T>,
+        known_constraints: &impl RangeConstraintSet<K, T>,
     ) -> EvalResult<T, K> {
         // Try to solve directly.
         match self.solve() {
@@ -125,7 +125,7 @@ where
         Ok(
             if self
                 .nonzero_coefficients()
-                .all(|(i, _coeff)| known_constraints.bit_constraint(i).is_some())
+                .all(|(i, _coeff)| known_constraints.range_constraint(i).is_some())
             {
                 // We might be able to solve for one or more variables, if all
                 // bit constraints are disjoint.
@@ -154,13 +154,13 @@ where
 
     fn try_transfer_constraints(
         &self,
-        known_constraints: &impl BitConstraintSet<K, T>,
+        known_constraints: &impl RangeConstraintSet<K, T>,
     ) -> Option<EvalValue<K, T>> {
         // We need the form X = a * Y + b * Z + ...
         // where X is unconstrained and all others are bit-constrained.
         let mut unconstrained = self
             .nonzero_coefficients()
-            .filter(|(i, _c)| known_constraints.bit_constraint(*i).is_none());
+            .filter(|(i, _c)| known_constraints.range_constraint(*i).is_none());
         let solve_for = unconstrained.next()?;
         if unconstrained.next().is_some() {
             return None;
@@ -179,7 +179,7 @@ where
             .filter(|(i, _)| *i != solve_for.0)
             .map(|(i, coeff)| {
                 known_constraints
-                    .bit_constraint(i)
+                    .range_constraint(i)
                     .and_then(|con| con.multiple(*coeff))
             });
 
@@ -191,7 +191,7 @@ where
             .flatten()
             .map(|con| {
                 EvalValue::incomplete_with_constraints(
-                    vec![(solve_for.0, Constraint::BitConstraint(con))],
+                    vec![(solve_for.0, Constraint::RangeConstraint(con))],
                     IncompleteCause::NotConcrete,
                 )
             })
@@ -203,7 +203,7 @@ where
     /// Returns an empty vector if it is not able to solve the equation.
     fn try_solve_through_constraints(
         &self,
-        known_constraints: &impl BitConstraintSet<K, T>,
+        known_constraints: &impl RangeConstraintSet<K, T>,
     ) -> EvalResult<T, K> {
         let parts = self
             .nonzero_coefficients()
@@ -212,7 +212,7 @@ where
                     i,
                     *coeff,
                     known_constraints
-                        .bit_constraint(i)
+                        .range_constraint(i)
                         .unwrap()
                         .multiple(*coeff),
                 )
@@ -257,7 +257,7 @@ where
 
         if offset != 0u32.into() {
             // We were not able to cover all of the offset, so this equation cannot be solved.
-            Err(ConflictingBitConstraints)
+            Err(ConflictingRangeConstraints)
         } else {
             Ok(assignments)
         }
@@ -366,7 +366,7 @@ mod test {
     use std::collections::BTreeMap;
 
     use super::*;
-    use crate::witgen::{bit_constraints::BitConstraint, EvalError};
+    use crate::witgen::{range_constraints::RangeConstraint, EvalError};
     use number::{FieldElement, GoldilocksField};
     use test_log::test;
 
@@ -439,9 +439,9 @@ mod test {
         assert_eq!(&result.to_string(), "12 * abc + 2 * def + 16");
         assert_eq!(b.clone() + a.clone(), a + b,);
     }
-    struct TestBitConstraints<T: FieldElement>(BTreeMap<usize, BitConstraint<T>>);
-    impl<T: FieldElement> BitConstraintSet<usize, T> for TestBitConstraints<T> {
-        fn bit_constraint(&self, id: usize) -> Option<BitConstraint<T>> {
+    struct TestRangeConstraints<T: FieldElement>(BTreeMap<usize, RangeConstraint<T>>);
+    impl<T: FieldElement> RangeConstraintSet<usize, T> for TestRangeConstraints<T> {
+        fn range_constraint(&self, id: usize) -> Option<RangeConstraint<T>> {
             self.0.get(&id).cloned()
         }
     }
@@ -451,32 +451,33 @@ mod test {
         let expr = AffineExpression::from_variable_id(1)
             - AffineExpression::from_variable_id(2) * 16.into()
             - AffineExpression::from_variable_id(3);
-        let known_constraints: TestBitConstraints<GoldilocksField> = TestBitConstraints(
+        let known_constraints: TestRangeConstraints<GoldilocksField> = TestRangeConstraints(
             vec![
-                (2, BitConstraint::from_max_bit(7)),
-                (3, BitConstraint::from_max_bit(3)),
+                (2, RangeConstraint::from_max_bit(7)),
+                (3, RangeConstraint::from_max_bit(3)),
             ]
             .into_iter()
             .collect(),
         );
         assert_eq!(
-            expr.solve_with_bit_constraints(&known_constraints).unwrap(),
+            expr.solve_with_range_constraints(&known_constraints)
+                .unwrap(),
             EvalValue::incomplete_with_constraints(
                 vec![(
                     1,
-                    Constraint::BitConstraint(BitConstraint::from_max_bit(11))
+                    Constraint::RangeConstraint(RangeConstraint::from_max_bit(11))
                 )],
                 IncompleteCause::NotConcrete
             )
         );
         assert_eq!(
             (-expr)
-                .solve_with_bit_constraints(&known_constraints)
+                .solve_with_range_constraints(&known_constraints)
                 .unwrap(),
             EvalValue::incomplete_with_constraints(
                 vec![(
                     1,
-                    Constraint::BitConstraint(BitConstraint::from_max_bit(11))
+                    Constraint::RangeConstraint(RangeConstraint::from_max_bit(11))
                 )],
                 IncompleteCause::NotConcrete
             )
@@ -487,11 +488,12 @@ mod test {
             - AffineExpression::from_variable_id(2) * 32.into()
             - AffineExpression::from_variable_id(3);
         assert_eq!(
-            expr.solve_with_bit_constraints(&known_constraints).unwrap(),
+            expr.solve_with_range_constraints(&known_constraints)
+                .unwrap(),
             EvalValue::incomplete_with_constraints(
                 vec![(
                     1,
-                    Constraint::BitConstraint(BitConstraint::from_mask(0x1fef_u32))
+                    Constraint::RangeConstraint(RangeConstraint::from_mask(0x1fef_u32))
                 )],
                 IncompleteCause::NotConcrete
             )
@@ -502,7 +504,7 @@ mod test {
             - AffineExpression::from_variable_id(2) * 8.into()
             - AffineExpression::from_variable_id(3);
         assert_eq!(
-            expr.solve_with_bit_constraints(&known_constraints),
+            expr.solve_with_range_constraints(&known_constraints),
             Ok(EvalValue::incomplete(
                 IncompleteCause::NoProgressTransferring
             ))
@@ -515,17 +517,18 @@ mod test {
         let expr = AffineExpression::from(value)
             - AffineExpression::from_variable_id(2) * 256.into()
             - AffineExpression::from_variable_id(3);
-        let known_constraints: TestBitConstraints<GoldilocksField> = TestBitConstraints(
+        let known_constraints: TestRangeConstraints<GoldilocksField> = TestRangeConstraints(
             vec![
-                (2, BitConstraint::from_max_bit(7)),
-                (3, BitConstraint::from_max_bit(3)),
+                (2, RangeConstraint::from_max_bit(7)),
+                (3, RangeConstraint::from_max_bit(3)),
             ]
             .into_iter()
             .collect(),
         );
         assert_eq!(value, GoldilocksField::from(0x15 * 256 + 0x4));
         assert_eq!(
-            expr.solve_with_bit_constraints(&known_constraints).unwrap(),
+            expr.solve_with_range_constraints(&known_constraints)
+                .unwrap(),
             EvalValue::complete(vec![
                 (2, Constraint::Assignment(0x15.into())),
                 (3, Constraint::Assignment(0x4.into()))
@@ -539,16 +542,16 @@ mod test {
         let expr = AffineExpression::from(value)
             - AffineExpression::from_variable_id(2) * 256.into()
             - AffineExpression::from_variable_id(3);
-        let known_constraints: TestBitConstraints<GoldilocksField> = TestBitConstraints(
+        let known_constraints: TestRangeConstraints<GoldilocksField> = TestRangeConstraints(
             vec![
-                (2, BitConstraint::from_max_bit(7)),
-                (3, BitConstraint::from_max_bit(3)),
+                (2, RangeConstraint::from_max_bit(7)),
+                (3, RangeConstraint::from_max_bit(3)),
             ]
             .into_iter()
             .collect(),
         );
-        match expr.solve_with_bit_constraints(&known_constraints) {
-            Err(EvalError::ConflictingBitConstraints) => {}
+        match expr.solve_with_range_constraints(&known_constraints) {
+            Err(EvalError::ConflictingRangeConstraints) => {}
             _ => panic!(),
         };
     }

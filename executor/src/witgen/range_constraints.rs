@@ -15,32 +15,32 @@ use super::{Constraint, FixedData};
 /// and all bits larger than max_bit have to be zero.
 /// The least significant bit is bit zero.
 #[derive(Clone, PartialEq, Eq)]
-pub struct BitConstraint<T: FieldElement> {
+pub struct RangeConstraint<T: FieldElement> {
     mask: T::Integer,
 }
 
-impl<T: FieldElement> BitConstraint<T> {
+impl<T: FieldElement> RangeConstraint<T> {
     pub fn mask(&self) -> &T::Integer {
         &self.mask
     }
 }
 
-impl<T: FieldElement> BitConstraint<T> {
+impl<T: FieldElement> RangeConstraint<T> {
     pub fn from_max_bit(max_bit: u64) -> Self {
         assert!(max_bit < 1024);
-        BitConstraint {
+        RangeConstraint {
             mask: T::Integer::from(((1 << (max_bit + 1)) - 1) as u32),
         }
     }
 
     pub fn from_mask<M: Into<T::Integer>>(mask: M) -> Self {
-        BitConstraint { mask: mask.into() }
+        RangeConstraint { mask: mask.into() }
     }
 
-    /// The bit constraint of the sum of two expressions.
-    pub fn try_combine_sum(&self, other: &BitConstraint<T>) -> Option<BitConstraint<T>> {
+    /// The range constraint of the sum of two expressions.
+    pub fn try_combine_sum(&self, other: &RangeConstraint<T>) -> Option<RangeConstraint<T>> {
         if self.mask & other.mask == 0u32.into() {
-            Some(BitConstraint {
+            Some(RangeConstraint {
                 mask: self.mask | other.mask,
             })
         } else {
@@ -49,31 +49,31 @@ impl<T: FieldElement> BitConstraint<T> {
     }
 
     /// Returns the conjunction of this constraint and the other.
-    pub fn conjunction(self, other: &BitConstraint<T>) -> BitConstraint<T> {
-        BitConstraint {
+    pub fn conjunction(self, other: &RangeConstraint<T>) -> RangeConstraint<T> {
+        RangeConstraint {
             mask: self.mask & other.mask,
         }
     }
 
     /// The bit constraint of an integer multiple of an expression.
-    pub fn multiple(&self, factor: T) -> Option<BitConstraint<T>> {
+    pub fn multiple(&self, factor: T) -> Option<RangeConstraint<T>> {
         let exponent = log2_exact(factor.to_arbitrary_integer())?;
         let mask = self.mask << exponent;
         if mask.to_arbitrary_integer() < T::modulus().to_arbitrary_integer() {
-            Some(BitConstraint { mask })
+            Some(RangeConstraint { mask })
         } else {
             None
         }
     }
 }
 
-impl<T: FieldElement> Display for BitConstraint<T> {
+impl<T: FieldElement> Display for RangeConstraint<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "0x{:x}", self.mask)
     }
 }
 
-impl<T: FieldElement> Debug for BitConstraint<T> {
+impl<T: FieldElement> Debug for RangeConstraint<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("BitConstraint")
             .field("mask", &format!("0x{:x}", self.mask))
@@ -81,31 +81,31 @@ impl<T: FieldElement> Debug for BitConstraint<T> {
     }
 }
 
-/// Trait that provides a bit constraint on a symbolic variable if given by ID.
-pub trait BitConstraintSet<K, T: FieldElement> {
-    fn bit_constraint(&self, id: K) -> Option<BitConstraint<T>>;
+/// Trait that provides a range constraint on a symbolic variable if given by ID.
+pub trait RangeConstraintSet<K, T: FieldElement> {
+    fn range_constraint(&self, id: K) -> Option<RangeConstraint<T>>;
 }
 
-pub struct SimpleBitConstraintSet<'a, T: FieldElement> {
-    bit_constraints: &'a BTreeMap<&'a PolynomialReference, BitConstraint<T>>,
+pub struct SimpleRangeConstraintSet<'a, T: FieldElement> {
+    range_constraints: &'a BTreeMap<&'a PolynomialReference, RangeConstraint<T>>,
 }
 
-impl<'a, T: FieldElement> BitConstraintSet<&PolynomialReference, T>
-    for SimpleBitConstraintSet<'a, T>
+impl<'a, T: FieldElement> RangeConstraintSet<&PolynomialReference, T>
+    for SimpleRangeConstraintSet<'a, T>
 {
-    fn bit_constraint(&self, id: &PolynomialReference) -> Option<BitConstraint<T>> {
+    fn range_constraint(&self, id: &PolynomialReference) -> Option<RangeConstraint<T>> {
         assert!(!id.next);
-        self.bit_constraints.get(id).cloned()
+        self.range_constraints.get(id).cloned()
     }
 }
 
 pub struct GlobalConstraints<'a, T: FieldElement> {
-    pub known_constraints: BTreeMap<&'a PolynomialReference, BitConstraint<T>>,
+    pub known_constraints: BTreeMap<&'a PolynomialReference, RangeConstraint<T>>,
     pub retained_identities: Vec<&'a Identity<T>>,
 }
 
 /// Determines global constraints on witness and fixed columns.
-/// Removes identities that only serve to create bit constraints from
+/// Removes identities that only serve to create range constraints from
 /// the identities vector.
 /// TODO at some point, we should check that they still hold.
 pub fn determine_global_constraints<'a, T: FieldElement>(
@@ -144,7 +144,7 @@ pub fn determine_global_constraints<'a, T: FieldElement>(
         .push(identity);
     }
 
-    log::debug!("Determined the following global bit constraints:");
+    log::debug!("Determined the following global range constraints:");
     for (name, con) in &known_constraints {
         log::debug!("  {name}: {con}");
     }
@@ -162,7 +162,7 @@ pub fn determine_global_constraints<'a, T: FieldElement>(
 /// Analyzes a fixed column and checks if its values correspond exactly
 /// to a certain bit pattern.
 /// TODO do this on the symbolic definition instead of the values.
-fn process_fixed_column<T: FieldElement>(fixed: &[T]) -> Option<(BitConstraint<T>, bool)> {
+fn process_fixed_column<T: FieldElement>(fixed: &[T]) -> Option<(RangeConstraint<T>, bool)> {
     if let Some(bit) = smallest_period_candidate(fixed) {
         let mask = T::Integer::from(((1 << bit) - 1) as u32);
         if fixed
@@ -170,7 +170,7 @@ fn process_fixed_column<T: FieldElement>(fixed: &[T]) -> Option<(BitConstraint<T
             .enumerate()
             .all(|(i, v)| v.to_integer() == T::Integer::from(i as u32) & mask)
         {
-            return Some((BitConstraint::from_mask(mask), true));
+            return Some((RangeConstraint::from_mask(mask), true));
         }
     }
     let mut mask = T::Integer::from(0u32);
@@ -178,24 +178,24 @@ fn process_fixed_column<T: FieldElement>(fixed: &[T]) -> Option<(BitConstraint<T
         mask |= v.to_integer();
     }
 
-    Some((BitConstraint::from_mask(mask), false))
+    Some((RangeConstraint::from_mask(mask), false))
 }
 
-/// Deduces new bit constraints on witness columns from constraints on fixed columns
+/// Deduces new range constraints on witness columns from constraints on fixed columns
 /// and identities. Note that these constraints hold globally, i.e. for all rows.
 /// If the returned flag is true, the identity can be removed, because it contains
-/// no further information than the bit constraint.
+/// no further information than the range constraint.
 fn propagate_constraints<'a, T: FieldElement>(
-    mut known_constraints: BTreeMap<&'a PolynomialReference, BitConstraint<T>>,
+    mut known_constraints: BTreeMap<&'a PolynomialReference, RangeConstraint<T>>,
     identity: &'a Identity<T>,
     full_span: &BTreeSet<&'a PolynomialReference>,
-) -> (BTreeMap<&'a PolynomialReference, BitConstraint<T>>, bool) {
+) -> (BTreeMap<&'a PolynomialReference, RangeConstraint<T>>, bool) {
     let mut remove = false;
     match identity.kind {
         IdentityKind::Polynomial => {
             if let Some(p) = is_binary_constraint(identity.left.selector.as_ref().unwrap()) {
                 assert!(known_constraints
-                    .insert(p, BitConstraint::from_max_bit(0))
+                    .insert(p, RangeConstraint::from_max_bit(0))
                     .is_none());
                 remove = true;
             } else if let Some((p, c)) = try_transfer_constraints(
@@ -284,8 +284,8 @@ fn is_binary_constraint<T: FieldElement>(expr: &Expression<T>) -> Option<&Polyno
 /// Tries to transfer constraints in a linear expression.
 fn try_transfer_constraints<'a, 'b, T: FieldElement>(
     expr: &'a Expression<T>,
-    known_constraints: &'b BTreeMap<&'b PolynomialReference, BitConstraint<T>>,
-) -> Option<(&'a PolynomialReference, BitConstraint<T>)> {
+    known_constraints: &'b BTreeMap<&'b PolynomialReference, RangeConstraint<T>>,
+) -> Option<(&'a PolynomialReference, RangeConstraint<T>)> {
     if expr.contains_next_ref() {
         return None;
     }
@@ -293,13 +293,15 @@ fn try_transfer_constraints<'a, 'b, T: FieldElement>(
     let symbolic_ev = SymbolicEvaluator;
     let aff_expr = ExpressionEvaluator::new(symbolic_ev).evaluate(expr).ok()?;
 
-    let bit_constraints = SimpleBitConstraintSet {
-        bit_constraints: known_constraints,
+    let range_constraints = SimpleRangeConstraintSet {
+        range_constraints: known_constraints,
     };
-    let result = aff_expr.solve_with_bit_constraints(&bit_constraints).ok()?;
+    let result = aff_expr
+        .solve_with_range_constraints(&range_constraints)
+        .ok()?;
     assert!(result.constraints.len() <= 1);
     result.constraints.get(0).cloned().and_then(|(poly, cons)| {
-        if let Constraint::BitConstraint(cons) = cons {
+        if let Constraint::RangeConstraint(cons) = cons {
             assert!(!poly.next);
             Some((poly, cons))
         } else {
@@ -323,7 +325,7 @@ mod test {
     use pil_analyzer::{PolyID, PolynomialReference};
     use test_log::test;
 
-    use crate::witgen::bit_constraints::{propagate_constraints, BitConstraint};
+    use crate::witgen::range_constraints::{propagate_constraints, RangeConstraint};
 
     use super::process_fixed_column;
 
@@ -332,7 +334,7 @@ mod test {
         let fixed = [0, 0, 0, 0].iter().map(|v| (*v).into()).collect::<Vec<_>>();
         assert_eq!(
             process_fixed_column::<GoldilocksField>(&fixed),
-            Some((BitConstraint::from_mask(0_u32), false))
+            Some((RangeConstraint::from_mask(0_u32), false))
         );
     }
 
@@ -344,7 +346,7 @@ mod test {
             .collect::<Vec<_>>();
         assert_eq!(
             process_fixed_column::<GoldilocksField>(&fixed),
-            Some((BitConstraint::from_mask(1_u32), true))
+            Some((RangeConstraint::from_mask(1_u32), true))
         );
     }
 
@@ -356,7 +358,7 @@ mod test {
             .collect::<Vec<_>>();
         assert_eq!(
             process_fixed_column::<GoldilocksField>(&fixed),
-            Some((BitConstraint::from_mask(3_u32), true))
+            Some((RangeConstraint::from_mask(3_u32), true))
         );
     }
 
@@ -368,13 +370,13 @@ mod test {
             .collect::<Vec<_>>();
         assert_eq!(
             process_fixed_column::<GoldilocksField>(&fixed),
-            Some((BitConstraint::from_mask(0x1106_u32), false))
+            Some((RangeConstraint::from_mask(0x1106_u32), false))
         );
     }
 
     fn convert_constraints<'a>(
-        (poly, constr): (&&'a PolynomialReference, &BitConstraint<GoldilocksField>),
-    ) -> (&'a str, BitConstraint<GoldilocksField>) {
+        (poly, constr): (&&'a PolynomialReference, &RangeConstraint<GoldilocksField>),
+    ) -> (&'a str, RangeConstraint<GoldilocksField>) {
         (poly.name.as_str(), constr.clone())
     }
 
@@ -424,9 +426,9 @@ namespace Global(2**20);
                 .map(convert_constraints)
                 .collect::<BTreeMap<_, _>>(),
             vec![
-                ("Global.BYTE", BitConstraint::from_max_bit(7)),
-                ("Global.BYTE2", BitConstraint::from_max_bit(15)),
-                ("Global.SHIFTED", BitConstraint::from_mask(0xff0_u32)),
+                ("Global.BYTE", RangeConstraint::from_max_bit(7)),
+                ("Global.BYTE2", RangeConstraint::from_max_bit(15)),
+                ("Global.SHIFTED", RangeConstraint::from_mask(0xff0_u32)),
             ]
             .into_iter()
             .collect()
@@ -441,13 +443,13 @@ namespace Global(2**20);
                 .map(convert_constraints)
                 .collect::<BTreeMap<_, _>>(),
             vec![
-                ("Global.A", BitConstraint::from_max_bit(0)),
-                ("Global.B", BitConstraint::from_max_bit(7)),
-                ("Global.C", BitConstraint::from_mask(0x2ff_u32)),
-                ("Global.D", BitConstraint::from_mask(0xf0_u32)),
-                ("Global.BYTE", BitConstraint::from_max_bit(7)),
-                ("Global.BYTE2", BitConstraint::from_max_bit(15)),
-                ("Global.SHIFTED", BitConstraint::from_mask(0xff0_u32)),
+                ("Global.A", RangeConstraint::from_max_bit(0)),
+                ("Global.B", RangeConstraint::from_max_bit(7)),
+                ("Global.C", RangeConstraint::from_mask(0x2ff_u32)),
+                ("Global.D", RangeConstraint::from_mask(0xf0_u32)),
+                ("Global.BYTE", RangeConstraint::from_max_bit(7)),
+                ("Global.BYTE2", RangeConstraint::from_max_bit(15)),
+                ("Global.SHIFTED", RangeConstraint::from_mask(0xff0_u32)),
             ]
             .into_iter()
             .collect::<BTreeMap<_, _>>()
@@ -456,24 +458,24 @@ namespace Global(2**20);
 
     #[test]
     fn combinations() {
-        let a: BitConstraint<GoldilocksField> = BitConstraint::from_max_bit(7);
-        assert_eq!(a, BitConstraint::from_mask(0xff_u32));
+        let a: RangeConstraint<GoldilocksField> = RangeConstraint::from_max_bit(7);
+        assert_eq!(a, RangeConstraint::from_mask(0xff_u32));
         let b = a.multiple(256.into()).unwrap();
-        assert_eq!(b, BitConstraint::from_mask(0xff00_u32));
+        assert_eq!(b, RangeConstraint::from_mask(0xff00_u32));
         assert_eq!(
             b.try_combine_sum(&a).unwrap(),
-            BitConstraint::from_mask(0xffff_u32)
+            RangeConstraint::from_mask(0xffff_u32)
         );
     }
 
     #[test]
     fn weird_combinations() {
-        let a: BitConstraint<GoldilocksField> = BitConstraint::from_mask(0xf00f_u32);
+        let a: RangeConstraint<GoldilocksField> = RangeConstraint::from_mask(0xf00f_u32);
         let b = a.multiple(256.into()).unwrap();
-        assert_eq!(b, BitConstraint::from_mask(0xf00f00_u32));
+        assert_eq!(b, RangeConstraint::from_mask(0xf00f00_u32));
         assert_eq!(
             b.try_combine_sum(&a).unwrap(),
-            BitConstraint::from_mask(0xf0ff0f_u32)
+            RangeConstraint::from_mask(0xf0ff0f_u32)
         );
     }
 }

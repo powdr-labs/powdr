@@ -7,15 +7,15 @@ pub use self::eval_result::{
     Constraint, Constraints, EvalError, EvalResult, EvalStatus, EvalValue, IncompleteCause,
 };
 use self::util::substitute_constants;
-use self::{bit_constraints::GlobalConstraints, machines::machine_extractor::ExtractionOutput};
+use self::{machines::machine_extractor::ExtractionOutput, range_constraints::GlobalConstraints};
 
 mod affine_expression;
-mod bit_constraints;
 mod eval_result;
 mod expression_evaluator;
 pub mod fixed_evaluator;
 mod generator;
 mod machines;
+mod range_constraints;
 pub mod symbolic_evaluator;
 mod symbolic_witness_evaluator;
 mod util;
@@ -66,7 +66,7 @@ where
     let GlobalConstraints {
         known_constraints,
         retained_identities,
-    } = bit_constraints::determine_global_constraints(&fixed, identities.iter().collect());
+    } = range_constraints::determine_global_constraints(&fixed, identities.iter().collect());
     let ExtractionOutput {
         mut fixed_lookup,
         machines,

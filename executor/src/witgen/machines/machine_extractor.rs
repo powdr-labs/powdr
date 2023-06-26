@@ -7,7 +7,7 @@ use super::fixed_lookup_machine::FixedLookup;
 use super::sorted_witness_machine::SortedWitnesses;
 use super::FixedData;
 use super::Machine;
-use crate::witgen::bit_constraints::BitConstraint;
+use crate::witgen::range_constraints::RangeConstraint;
 use crate::witgen::WitnessColumn;
 use itertools::Itertools;
 use number::FieldElement;
@@ -28,7 +28,7 @@ pub fn split_out_machines<'a, T: FieldElement>(
     fixed: &'a FixedData<'a, T>,
     identities: Vec<&'a Identity<T>>,
     witness_cols: &'a [WitnessColumn<T>],
-    global_bit_constraints: &BTreeMap<&'a PolynomialReference, BitConstraint<T>>,
+    global_range_constraints: &BTreeMap<&'a PolynomialReference, RangeConstraint<T>>,
 ) -> ExtractionOutput<'a, T> {
     let fixed_lookup = FixedLookup::try_new(fixed, &[], &Default::default()).unwrap();
 
@@ -102,7 +102,7 @@ pub fn split_out_machines<'a, T: FieldElement>(
             &connecting_identities,
             &machine_identities,
             &machine_witnesses,
-            global_bit_constraints,
+            global_range_constraints,
         ) {
             log::info!("Detected machine: block");
             machines.push(machine);
