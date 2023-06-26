@@ -978,9 +978,9 @@ mod test {
 
     use crate::compile;
 
-    fn parse_and_analyse<'a, T: FieldElement>(
+    fn parse_and_analyse<T: FieldElement>(
         file_name: Option<&str>,
-        input: &'a str,
+        input: &str,
     ) -> AnalysisASMFile<T> {
         analyze(parse_asm(file_name, input).unwrap()).unwrap()
     }
