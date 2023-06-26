@@ -1,5 +1,7 @@
 use std::{fmt, hash::Hash, ops::*};
 
+use num_traits::{One, Zero};
+
 use crate::{AbstractNumberType, DegreeType};
 
 /// A fixed-width integer type
@@ -9,11 +11,15 @@ pub trait BigInt:
     + Sync
     + PartialEq
     + Eq
-    + From<u32>
+    + PartialOrd
+    + Ord
+    + From<u64>
     + BitAnd<Output = Self>
     + BitOr<Output = Self>
     + BitOrAssign
     + BitAndAssign
+    + AddAssign
+    + Add<Output = Self>
     + fmt::Display
     + fmt::Debug
     + Copy
@@ -21,10 +27,23 @@ pub trait BigInt:
     + Shl<u64, Output = Self>
     + Shr<u64, Output = Self>
     + BitXor<Output = Self>
+    + Zero
     + fmt::LowerHex
     + TryFrom<num_bigint::BigUint, Error = ()>
 {
+    /// Number of bits of this base type. Not to be confused with the number of bits
+    /// of the field elements!
+    const NUM_BITS: usize;
     fn to_arbitrary_integer(self) -> AbstractNumberType;
+    /// Number of bits required to encode this particular number.
+    fn num_bits(&self) -> u32;
+
+    /// Returns the constant one.
+    /// We are not implementing num_traits::One because it also requires multiplication.
+    fn one() -> Self;
+
+    /// Checks if the number is one.
+    fn is_one(&self) -> bool;
 }
 
 /// A field element
@@ -47,6 +66,8 @@ pub trait FieldElement:
     + Mul<Output = Self>
     + Div<Output = Self>
     + Neg<Output = Self>
+    + Zero
+    + One
     + fmt::Display
     + fmt::Debug
     + From<Self::Integer>
@@ -60,6 +81,8 @@ pub trait FieldElement:
 {
     /// The underlying fixed-width integer type
     type Integer: BigInt;
+    /// Number of bits required to represent elements of this field.
+    const BITS: u32;
 
     fn to_degree(&self) -> DegreeType;
 

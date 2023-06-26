@@ -1,6 +1,6 @@
 use std::io::{Read, Write};
 
-use crate::{BigInt, DegreeType, FieldElement};
+use crate::{DegreeType, FieldElement};
 
 fn ceil_div(num: usize, div: usize) -> usize {
     (num + div - 1) / div
@@ -11,7 +11,7 @@ pub fn write_polys_file<T: FieldElement>(
     degree: DegreeType,
     polys: &Vec<(&str, Vec<T>)>,
 ) {
-    let width = ceil_div(T::modulus().to_arbitrary_integer().bits() as usize, 64) * 8;
+    let width = ceil_div(T::BITS as usize, 64) * 8;
 
     for i in 0..degree as usize {
         for (_name, constant) in polys {
@@ -26,7 +26,7 @@ pub fn read_polys_file<'a, T: FieldElement>(
     file: &mut impl Read,
     columns: &[&'a str],
 ) -> (Vec<(&'a str, Vec<T>)>, DegreeType) {
-    let width = ceil_div(T::modulus().to_arbitrary_integer().bits() as usize, 64) * 8;
+    let width = ceil_div(T::BITS as usize, 64) * 8;
 
     let bytes_to_read = width * columns.len();
 

@@ -1,6 +1,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::{Debug, Display, Formatter};
 
+use num_traits::Zero;
+
 use ast::analyzed::{Expression, Identity, IdentityKind, PolynomialReference};
 use ast::parsed::BinaryOperator;
 use number::{log2_exact, BigInt, FieldElement};
@@ -29,7 +31,7 @@ impl<T: FieldElement> RangeConstraint<T> {
     pub fn from_max_bit(max_bit: u64) -> Self {
         assert!(max_bit < 1024);
         RangeConstraint {
-            mask: T::Integer::from(((1 << (max_bit + 1)) - 1) as u32),
+            mask: T::Integer::from((1u64 << (max_bit + 1)) - 1),
         }
     }
 
@@ -39,7 +41,7 @@ impl<T: FieldElement> RangeConstraint<T> {
 
     /// The range constraint of the sum of two expressions.
     pub fn try_combine_sum(&self, other: &RangeConstraint<T>) -> Option<RangeConstraint<T>> {
-        if self.mask & other.mask == 0u32.into() {
+        if self.mask & other.mask == 0.into() {
             Some(RangeConstraint {
                 mask: self.mask | other.mask,
             })
@@ -164,16 +166,16 @@ pub fn determine_global_constraints<'a, T: FieldElement>(
 /// TODO do this on the symbolic definition instead of the values.
 fn process_fixed_column<T: FieldElement>(fixed: &[T]) -> Option<(RangeConstraint<T>, bool)> {
     if let Some(bit) = smallest_period_candidate(fixed) {
-        let mask = T::Integer::from(((1 << bit) - 1) as u32);
+        let mask = T::Integer::from((1u64 << bit) - 1);
         if fixed
             .iter()
             .enumerate()
-            .all(|(i, v)| v.to_integer() == T::Integer::from(i as u32) & mask)
+            .all(|(i, v)| v.to_integer() == T::Integer::from(i as u64) & mask)
         {
             return Some((RangeConstraint::from_mask(mask), true));
         }
     }
-    let mut mask = T::Integer::from(0u32);
+    let mut mask = T::Integer::zero();
     for v in fixed.iter() {
         mask |= v.to_integer();
     }
