@@ -202,6 +202,7 @@ impl<T: FieldElement> ASMPILConverter<T> {
                 labels: [name].into(),
                 ..Default::default()
             }),
+            ProgramStatement::DebugDirective(_) => None,
         }
     }
 

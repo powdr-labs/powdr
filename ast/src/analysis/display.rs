@@ -62,6 +62,7 @@ impl<T: Display> Display for ProgramStatement<T> {
             ProgramStatement::Assignment(s) => write!(f, "{s}"),
             ProgramStatement::Instruction(s) => write!(f, "{s}"),
             ProgramStatement::Label(s) => write!(f, "{s}"),
+            ProgramStatement::DebugDirective(d) => write!(f, "{d}"),
         }
     }
 }

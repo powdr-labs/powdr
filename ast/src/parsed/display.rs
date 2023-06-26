@@ -87,6 +87,20 @@ impl<T: Display> Display for ASMStatement<T> {
                 }
             ),
             ASMStatement::Label(_, name) => write!(f, "{name}::"),
+            ASMStatement::DebugDirective(_start, dir) => write!(f, "{dir}"),
+        }
+    }
+}
+
+impl Display for DebugDirective {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        match self {
+            DebugDirective::File(nr, path, file) => {
+                write!(f, "debug file {nr} {} {};", quote(path), quote(file))
+            }
+            DebugDirective::Loc(file, line, col) => {
+                write!(f, "debug loc {file} {line} {col};")
+            }
         }
     }
 }

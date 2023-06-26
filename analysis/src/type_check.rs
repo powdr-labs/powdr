@@ -60,6 +60,7 @@ pub fn check<T: FieldElement>(file: ASMFile<T>) -> Result<AnalysisASMFile<T>, St
             ASMStatement::Label(start, name) => {
                 program.push(LabelStatement { start, name }.into());
             }
+            ASMStatement::DebugDirective(_, _) => {}
         }
     }
 
