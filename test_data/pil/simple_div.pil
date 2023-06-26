@@ -1,0 +1,38 @@
+constant %N = 0x10000;
+
+namespace SimpleDiv(%N);
+    col fixed BYTE(i) { i & 0xff };
+
+    col witness X;
+    col witness Y;
+    col witness Z;
+    col witness R;
+
+    // Compute X = Y / Z, i.e.
+    // X * Z + R = Y, where 0 <= R < Z
+
+    Z = 3;
+    Y = 13;
+
+    X * Z + R = Y;
+    Z - R - 1 = Y_b1 + Y_b2 * 0x100;
+    X = X_b1 + X_b2 * 0x100;
+    R = R_b1 + R_b2 * 0x100;
+
+    col witness Y_b1;
+    col witness Y_b2;
+    col witness X_b1;
+    col witness X_b2;
+    col witness R_b1;
+    col witness R_b2;
+    { Y_b1 } in { BYTE };
+    { Y_b2 } in { BYTE };
+    { X_b1 } in { BYTE };
+    { X_b2 } in { BYTE };
+    { R_b1 } in { BYTE };
+    { R_b2 } in { BYTE };
+
+    // now the check:
+    col fixed CHECK = [0, 0, 0, 0, 0] + [1] + [0]*;
+    CHECK * (X - 4) = 0;
+    CHECK * (R - 1) = 0;

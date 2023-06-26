@@ -16,3 +16,4 @@ ast = { version = "0.1.0", path = "../ast" }
 [dev-dependencies]
 test-log = "0.2.12"
 env_logger = "0.10.0"
+pretty_assertions = "1.3.0"

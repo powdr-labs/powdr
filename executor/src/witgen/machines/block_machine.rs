@@ -3,12 +3,13 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use itertools::Itertools;
 
 use super::{EvalResult, FixedData, FixedLookup};
+use crate::witgen::global_constraints::RangeConstraintSet;
 use crate::witgen::util::try_to_simple_poly;
 use crate::witgen::{
     affine_expression::{AffineExpression, AffineResult},
     expression_evaluator::ExpressionEvaluator,
     machines::Machine,
-    range_constraints::{RangeConstraint, RangeConstraintSet},
+    range_constraints::RangeConstraint,
     symbolic_witness_evaluator::{SymoblicWitnessEvaluator, WitnessColumnEvaluator},
     Constraint, EvalError,
 };

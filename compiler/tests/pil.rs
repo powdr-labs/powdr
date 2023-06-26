@@ -105,3 +105,8 @@ fn test_halo_without_lookup() {
     verify_pil(f, None);
     halo2_proof(f, Default::default());
 }
+
+#[test]
+fn test_simple_div() {
+    verify_pil("simple_div.pil", None);
+}

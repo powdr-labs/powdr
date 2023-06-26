@@ -6,7 +6,8 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::time::Instant;
 
 use super::affine_expression::{AffineExpression, AffineResult};
-use super::range_constraints::{RangeConstraint, RangeConstraintSet};
+use super::global_constraints::RangeConstraintSet;
+use super::range_constraints::RangeConstraint;
 
 use super::expression_evaluator::ExpressionEvaluator;
 use super::machines::{FixedLookup, Machine};
@@ -489,7 +490,11 @@ where
                             self.next[id.poly_id() as usize] = Some(value);
                         }
                         Constraint::RangeConstraint(cons) => {
-                            self.next_range_constraints[id.poly_id() as usize] = Some(cons);
+                            let old = &mut self.next_range_constraints[id.poly_id() as usize];
+                            match old {
+                                Some(c) => *old = Some(cons.conjunction(c)),
+                                None => *old = Some(cons),
+                            };
                         }
                     }
                 }
@@ -559,14 +564,15 @@ impl<'a, T: FieldElement> RangeConstraintSet<&PolynomialReference, T>
     for WitnessRangeConstraintSet<'a, T>
 {
     fn range_constraint(&self, poly: &PolynomialReference) -> Option<RangeConstraint<T>> {
-        self.global_range_constraints
-            .get(poly)
-            .or_else(|| {
-                poly.is_witness()
-                    .then(|| self.next_range_constraints[poly.poly_id() as usize].as_ref())
-                    .flatten()
-            })
-            .cloned()
+        // Combine potential global range constraints with local range constraints.
+        let global = self.global_range_constraints.get(poly);
+        let local = self.next_range_constraints[poly.poly_id() as usize].as_ref();
+
+        match (global, local) {
+            (None, None) => None,
+            (None, Some(con)) | (Some(con), None) => Some(con.clone()),
+            (Some(g), Some(l)) => Some(g.conjunction(l)),
+        }
     }
 }
 
