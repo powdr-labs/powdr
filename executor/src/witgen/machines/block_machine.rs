@@ -6,9 +6,9 @@ use super::{EvalResult, FixedData, FixedLookup};
 use crate::witgen::util::try_to_simple_poly;
 use crate::witgen::{
     affine_expression::{AffineExpression, AffineResult},
-    bit_constraints::{BitConstraint, BitConstraintSet},
     expression_evaluator::ExpressionEvaluator,
     machines::Machine,
+    range_constraints::{RangeConstraint, RangeConstraintSet},
     symbolic_witness_evaluator::{SymoblicWitnessEvaluator, WitnessColumnEvaluator},
     Constraint, EvalError,
 };
@@ -28,10 +28,10 @@ pub struct BlockMachine<T: FieldElement> {
     data: HashMap<usize, Vec<Option<T>>>,
     /// Current row in the machine
     row: DegreeType,
-    /// Bit constraints, are deleted outside the current block.
-    bit_constraints: HashMap<usize, HashMap<DegreeType, BitConstraint<T>>>,
-    /// Global bit constraints on witness columns.
-    global_bit_constraints: HashMap<usize, BitConstraint<T>>,
+    /// Range constraints, are deleted outside the current block.
+    range_constraints: HashMap<usize, HashMap<DegreeType, RangeConstraint<T>>>,
+    /// Global range constraints on witness columns.
+    global_range_constraints: HashMap<usize, RangeConstraint<T>>,
     /// Poly degree / absolute number of rows
     degree: DegreeType,
     /// Cache that states the order in which to evaluate identities
@@ -45,7 +45,7 @@ impl<T: FieldElement> BlockMachine<T> {
         connecting_identities: &[&Identity<T>],
         identities: &[&Identity<T>],
         witness_cols: &HashSet<&PolynomialReference>,
-        global_bit_constraints: &BTreeMap<&PolynomialReference, BitConstraint<T>>,
+        global_range_constraints: &BTreeMap<&PolynomialReference, RangeConstraint<T>>,
     ) -> Option<Box<Self>> {
         for id in connecting_identities {
             if let Some(sel) = &id.right.selector {
@@ -61,8 +61,8 @@ impl<T: FieldElement> BlockMachine<T> {
                             .map(|n| (n.poly_id() as usize, vec![]))
                             .collect(),
                         row: 0,
-                        bit_constraints: Default::default(),
-                        global_bit_constraints: global_bit_constraints
+                        range_constraints: Default::default(),
+                        global_range_constraints: global_range_constraints
                             .iter()
                             .filter_map(|(n, c)| {
                                 n.is_witness().then_some((n.poly_id() as usize, c.clone()))
@@ -138,7 +138,7 @@ impl<T: FieldElement> Machine<T> for BlockMachine<T> {
         let previous_len = self.rows() as usize;
         Some({
             let result = self.process_plookup_internal(fixed_data, fixed_lookup, left, right);
-            self.bit_constraints.clear();
+            self.range_constraints.clear();
             result.map_err(|e| {
                 // rollback the changes.
                 for col in self.data.values_mut() {
@@ -272,7 +272,7 @@ impl<T: FieldElement> BlockMachine<T> {
             .iter()
             .filter_map(|(var, con)| match con {
                 Constraint::Assignment(_) => Some(*var),
-                Constraint::BitConstraint(_) => None,
+                Constraint::RangeConstraint(_) => None,
             })
             .collect::<BTreeSet<_>>();
         if unknown_variables.is_subset(&value_assignments) {
@@ -329,8 +329,11 @@ impl<T: FieldElement> BlockMachine<T> {
                     values[r as usize] = Some(a);
                 }
             }
-            Constraint::BitConstraint(bc) => {
-                self.bit_constraints.entry(poly).or_default().insert(r, bc);
+            Constraint::RangeConstraint(bc) => {
+                self.range_constraints
+                    .entry(poly)
+                    .or_default()
+                    .insert(r, bc);
             }
         }
     }
@@ -377,7 +380,7 @@ impl<T: FieldElement> BlockMachine<T> {
         for (l, r) in left.iter().zip(right.expressions.iter()) {
             match (l, self.evaluate(fixed_data, r)) {
                 (Ok(l), Ok(r)) => {
-                    let result = (l.clone() - r).solve_with_bit_constraints(self)?;
+                    let result = (l.clone() - r).solve_with_range_constraints(self)?;
                     results.combine(result);
                 }
                 (Err(e), Ok(_)) => {
@@ -406,7 +409,7 @@ impl<T: FieldElement> BlockMachine<T> {
             Ok(evaluated) => evaluated,
             Err(cause) => return Ok(EvalValue::incomplete(cause)),
         };
-        evaluated.solve_with_bit_constraints(self).map_err(|e| {
+        evaluated.solve_with_range_constraints(self).map_err(|e| {
             let formatted = evaluated.to_string();
             format!("Could not solve expression {formatted} = 0: {e}").into()
         })
@@ -457,15 +460,15 @@ impl<T: FieldElement> BlockMachine<T> {
     }
 }
 
-impl<T: FieldElement> BitConstraintSet<&PolynomialReference, T> for BlockMachine<T> {
-    fn bit_constraint(&self, poly: &PolynomialReference) -> Option<BitConstraint<T>> {
+impl<T: FieldElement> RangeConstraintSet<&PolynomialReference, T> for BlockMachine<T> {
+    fn range_constraint(&self, poly: &PolynomialReference) -> Option<RangeConstraint<T>> {
         assert!(poly.is_witness());
-        self.global_bit_constraints
+        self.global_range_constraints
             .get(&(poly.poly_id() as usize))
             .cloned()
             .or_else(|| {
                 let row = (self.row + poly.next as DegreeType) % self.degree;
-                self.bit_constraints
+                self.range_constraints
                     .get(&(poly.poly_id() as usize))?
                     .get(&row)
                     .cloned()

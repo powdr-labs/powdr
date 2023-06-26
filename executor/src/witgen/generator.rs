@@ -6,7 +6,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::time::Instant;
 
 use super::affine_expression::{AffineExpression, AffineResult};
-use super::bit_constraints::{BitConstraint, BitConstraintSet};
+use super::range_constraints::{RangeConstraint, RangeConstraintSet};
 
 use super::expression_evaluator::ExpressionEvaluator;
 use super::machines::{FixedLookup, Machine};
@@ -19,13 +19,13 @@ pub struct Generator<'a, T: FieldElement, QueryCallback: Send + Sync> {
     identities: &'a [&'a Identity<T>],
     machines: Vec<Box<dyn Machine<T>>>,
     query_callback: Option<QueryCallback>,
-    global_bit_constraints: BTreeMap<&'a PolynomialReference, BitConstraint<T>>,
+    global_range_constraints: BTreeMap<&'a PolynomialReference, RangeConstraint<T>>,
     /// Values of the witness polynomials
     current: Vec<Option<T>>,
     /// Values of the witness polynomials in the next row
     next: Vec<Option<T>>,
-    /// Bit constraints on the witness polynomials in the next row.
-    next_bit_constraints: Vec<Option<BitConstraint<T>>>,
+    /// Range constraints on the witness polynomials in the next row.
+    next_range_constraints: Vec<Option<RangeConstraint<T>>>,
     next_row: DegreeType,
     failure_reasons: Vec<String>,
     last_report: DegreeType,
@@ -43,7 +43,7 @@ enum EvaluationRow {
 #[derive(PartialEq, Eq, Clone, Copy)]
 enum SolvingStrategy {
     /// Only solve expressions that are affine in a single variable
-    /// (and use bit constraints).
+    /// (and use range constraints).
     SingleVariableAffine,
     /// Assume that all unknown values are zero and check that this does not generate
     /// a conflict (but do not store the values as fixed zero to avoid relying on nondeterminism).
@@ -64,7 +64,7 @@ where
         fixed_data: &'a FixedData<'a, T>,
         fixed_lookup: &'a mut FixedLookup<T>,
         identities: &'a [&'a Identity<T>],
-        global_bit_constraints: BTreeMap<&'a PolynomialReference, BitConstraint<T>>,
+        global_range_constraints: BTreeMap<&'a PolynomialReference, RangeConstraint<T>>,
         machines: Vec<Box<dyn Machine<T>>>,
         query_callback: Option<QueryCallback>,
     ) -> Self {
@@ -76,10 +76,10 @@ where
             identities,
             machines,
             query_callback,
-            global_bit_constraints,
+            global_range_constraints,
             current: vec![None; witness_cols_len],
             next: vec![None; witness_cols_len],
-            next_bit_constraints: vec![None; witness_cols_len],
+            next_range_constraints: vec![None; witness_cols_len],
             next_row: 0,
             failure_reasons: vec![],
             last_report: 0,
@@ -166,8 +166,8 @@ where
             );
             log::debug!("Reasons:\n{}\n", self.failure_reasons.join("\n\n"));
             log::debug!(
-                "Determind bit constraints for this row:\n{}",
-                self.next_bit_constraints
+                "Determind range constraints for this row:\n{}",
+                self.next_range_constraints
                     .iter()
                     .enumerate()
                     .filter_map(|(id, cons)| {
@@ -190,7 +190,7 @@ where
         );
         std::mem::swap(&mut self.next, &mut self.current);
         self.next = vec![None; self.current.len()];
-        self.next_bit_constraints = vec![None; self.current.len()];
+        self.next_range_constraints = vec![None; self.current.len()];
 
         self.current
             .iter()
@@ -211,13 +211,13 @@ where
                 .is_err()
             {
                 self.next = vec![None; self.current.len()];
-                self.next_bit_constraints = vec![None; self.current.len()];
+                self.next_range_constraints = vec![None; self.current.len()];
                 return false;
             }
         }
         std::mem::swap(&mut self.next, &mut self.current);
         self.next = vec![None; self.current.len()];
-        self.next_bit_constraints = vec![None; self.current.len()];
+        self.next_range_constraints = vec![None; self.current.len()];
         true
     }
 
@@ -393,7 +393,7 @@ where
         if evaluated.constant_value() == Some(0.into()) {
             Ok(EvalValue::complete(vec![]))
         } else {
-            evaluated.solve_with_bit_constraints(&self.bit_constraint_set())
+            evaluated.solve_with_range_constraints(&self.range_constraint_set())
         }
     }
 
@@ -478,8 +478,8 @@ where
                         Constraint::Assignment(value) => {
                             self.next[id.poly_id() as usize] = Some(value);
                         }
-                        Constraint::BitConstraint(cons) => {
-                            self.next_bit_constraints[id.poly_id() as usize] = Some(cons);
+                        Constraint::RangeConstraint(cons) => {
+                            self.next_range_constraints[id.poly_id() as usize] = Some(cons);
                         }
                     }
                 }
@@ -524,30 +524,30 @@ where
         .evaluate(expr)
     }
 
-    fn bit_constraint_set(&'a self) -> WitnessBitConstraintSet<'a, T> {
-        WitnessBitConstraintSet {
-            global_bit_constraints: &self.global_bit_constraints,
-            next_bit_constraints: &self.next_bit_constraints,
+    fn range_constraint_set(&'a self) -> WitnessRangeConstraintSet<'a, T> {
+        WitnessRangeConstraintSet {
+            global_range_constraints: &self.global_range_constraints,
+            next_range_constraints: &self.next_range_constraints,
         }
     }
 }
 
-struct WitnessBitConstraintSet<'a, T: FieldElement> {
+struct WitnessRangeConstraintSet<'a, T: FieldElement> {
     /// Global constraints on witness and fixed polynomials.
-    global_bit_constraints: &'a BTreeMap<&'a PolynomialReference, BitConstraint<T>>,
-    /// Bit constraints on the witness polynomials in the next row.
-    next_bit_constraints: &'a Vec<Option<BitConstraint<T>>>,
+    global_range_constraints: &'a BTreeMap<&'a PolynomialReference, RangeConstraint<T>>,
+    /// Range constraints on the witness polynomials in the next row.
+    next_range_constraints: &'a Vec<Option<RangeConstraint<T>>>,
 }
 
-impl<'a, T: FieldElement> BitConstraintSet<&PolynomialReference, T>
-    for WitnessBitConstraintSet<'a, T>
+impl<'a, T: FieldElement> RangeConstraintSet<&PolynomialReference, T>
+    for WitnessRangeConstraintSet<'a, T>
 {
-    fn bit_constraint(&self, poly: &PolynomialReference) -> Option<BitConstraint<T>> {
-        self.global_bit_constraints
+    fn range_constraint(&self, poly: &PolynomialReference) -> Option<RangeConstraint<T>> {
+        self.global_range_constraints
             .get(poly)
             .or_else(|| {
                 poly.is_witness()
-                    .then(|| self.next_bit_constraints[poly.poly_id() as usize].as_ref())
+                    .then(|| self.next_range_constraints[poly.poly_id() as usize].as_ref())
                     .flatten()
             })
             .cloned()

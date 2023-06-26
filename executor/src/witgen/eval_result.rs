@@ -3,7 +3,7 @@ use std::fmt;
 use number::FieldElement;
 use pil_analyzer::PolynomialReference;
 
-use super::bit_constraints::BitConstraint;
+use super::range_constraints::RangeConstraint;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum IncompleteCause<K = usize> {
@@ -150,8 +150,8 @@ pub enum EvalError {
     RowsExhausted,
     /// A constraint that cannot be satisfied (i.e. 2 = 1).
     ConstraintUnsatisfiable(String),
-    /// Conflicting bit-constraints in an equation, i.e. for X = 0x100, where X is known to be at most 0xff.
-    ConflictingBitConstraints,
+    /// Conflicting bit- or range constraints in an equation, i.e. for X = 0x100, where X is known to be at most 0xff.
+    ConflictingRangeConstraints,
     // Fixed lookup failed
     FixedLookupFailed,
     Generic(String),
@@ -190,8 +190,8 @@ impl fmt::Display for EvalError {
                 }
                 write!(f, "")
             }
-            EvalError::ConflictingBitConstraints => {
-                write!(f, "Bit constraints in the expression are conflicting or do not match the constant / offset.",)
+            EvalError::ConflictingRangeConstraints => {
+                write!(f, "Range constraints in the expression are conflicting or do not match the constant / offset.",)
             }
             EvalError::RowsExhausted => write!(f, "Table rows exhausted"),
             EvalError::FixedLookupFailed => write!(f, "Lookup into fixed columns failed: no match"),
@@ -203,14 +203,14 @@ impl fmt::Display for EvalError {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Constraint<T: FieldElement> {
     Assignment(T),
-    BitConstraint(BitConstraint<T>),
+    RangeConstraint(RangeConstraint<T>),
 }
 
 impl<T: FieldElement> fmt::Display for Constraint<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Constraint::Assignment(a) => write!(f, " = {a}"),
-            Constraint::BitConstraint(bc) => write!(f, ":& {bc}"),
+            Constraint::RangeConstraint(bc) => write!(f, ":& {bc}"),
         }
     }
 }
