@@ -43,12 +43,7 @@ pub fn prove_ast_read_params<T: FieldElement, R: io::Read>(
         panic!("powdr modulus doesn't match halo2 modulus. Make sure you are using Bn254");
     }
 
-    println!("Reading params...");
-    let start = Instant::now();
     let params = ParamsKZG::<Bn256>::read(&mut params).unwrap();
-    let duration = start.elapsed();
-    println!("Time taken: {:?}", duration);
-
     prove_ast(pil, fixed, witness, params)
 }
 
@@ -62,27 +57,25 @@ pub fn prove_ast<T: FieldElement>(
         panic!("powdr modulus doesn't match halo2 modulus. Make sure you are using Bn254");
     }
 
-    println!("Generating circuit for app snark...");
-    let start = Instant::now();
+    // TODO this is hacky
+    let degree = usize::BITS - fixed[0].1.len().leading_zeros() + 1;
+    let params = {
+        let mut params = params;
+        params.downsize(degree);
+        params
+    };
+
+    log::info!("Starting proof generation...");
+
     let circuit = analyzed_to_circuit(pil, fixed, witness);
-    let duration = start.elapsed();
-    println!("Time taken: {:?}", duration);
 
     log::debug!("{}", PlafDisplayBaseTOML(&circuit.plaf));
 
-    println!("Generating VK for app snark...");
-    let start = Instant::now();
+    log::info!("Generating VK and PK for snark...");
     let vk = keygen_vk(&params, &circuit).unwrap();
-    let duration = start.elapsed();
-    println!("Time taken: {:?}", duration);
-
-    println!("Generating PK for app snark...");
-    let start = Instant::now();
     let pk = keygen_pk(&params, vk, &circuit).unwrap();
-    let duration = start.elapsed();
-    println!("Time taken: {:?}", duration);
 
-    println!("Generating proof for app snark...");
+    log::info!("Generating proof...");
     let start = Instant::now();
 
     let inputs = vec![];
@@ -94,7 +87,9 @@ pub fn prove_ast<T: FieldElement>(
     >(&params, &pk, circuit, inputs);
 
     let duration = start.elapsed();
-    println!("Time taken: {:?}", duration);
+    log::info!("Time taken: {:?}", duration);
+
+    log::info!("Proof generation done.");
 
     proof
 }
@@ -128,62 +123,50 @@ pub fn prove_aggr<T: FieldElement>(
         panic!("powdr modulus doesn't match halo2 modulus. Make sure you are using Bn254");
     }
 
+    log::info!("Starting proof aggregation...");
+
     // TODO this is hacky
-    /*
     let degree = usize::BITS - fixed[0].1.len().leading_zeros() + 1;
     let params_app = {
         let mut params = params.clone();
         params.downsize(degree);
         params
     };
-    let params_app = params.clone();
-    */
 
-    println!("Generating circuit for app snark...");
-    let start = Instant::now();
-    let circuit = analyzed_to_circuit(pil, fixed, witness);
-    let duration = start.elapsed();
-    println!("Time taken: {:?}", duration);
+    log::info!("Generating circuit for app snark...");
+    let circuit_app = analyzed_to_circuit(pil, fixed, witness);
 
-    log::debug!("{}", PlafDisplayBaseTOML(&circuit.plaf));
+    log::debug!("{}", PlafDisplayBaseTOML(&circuit_app.plaf));
 
-    println!("Generating VK for app snark...");
-    let start = Instant::now();
-    let vk = keygen_vk(&params, &circuit).unwrap();
-    let duration = start.elapsed();
-    println!("Time taken: {:?}", duration);
+    log::info!("Generating VK for app snark...");
+    let vk_app = keygen_vk(&params_app, &circuit_app).unwrap();
 
-    println!("Generating circuit for compression snark...");
-    let start = Instant::now();
-    let protocol_app = compile(&params, &vk, Config::kzg().with_num_instance(vec![]));
+    log::info!("Generating circuit for compression snark...");
+    let protocol_app = compile(
+        &params_app,
+        &vk_app,
+        Config::kzg().with_num_instance(vec![]),
+    );
     let empty_snark = aggregation::Snark::new_without_witness(protocol_app.clone());
-    let agg_circuit = aggregation::AggregationCircuit::new_without_witness(&params, [empty_snark]);
-    let duration = start.elapsed();
-    println!("Time taken: {:?}", duration);
+    let agg_circuit =
+        aggregation::AggregationCircuit::new_without_witness(&params_app, [empty_snark]);
 
-    println!("Generating pk for compression snark...");
-    let start = Instant::now();
+    log::info!("Generating VK and PK for compression snark...");
     let vk_aggr = keygen_vk(&params, &agg_circuit).unwrap();
     let pk_aggr = keygen_pk(&params, vk_aggr, &agg_circuit).unwrap();
-    let duration = start.elapsed();
-    println!("Time taken: {:?}", duration);
 
-    println!("Generating compressed snark verifier...");
-    let start = Instant::now();
+    log::info!("Generating compressed snark verifier...");
     let deployment_code = aggregation::gen_aggregation_evm_verifier(
         &params,
         pk_aggr.get_vk(),
         aggregation::AggregationCircuit::num_instance(),
         aggregation::AggregationCircuit::accumulator_indices(),
     );
-    let duration = start.elapsed();
-    //println!("{:?}", deployment_code);
-    println!("Time taken: {:?}", duration);
 
-    println!("Generating aggregated proof...");
-    let snark = aggregation::Snark::new(protocol_app, vec![], proof);
-    let agg_circuit_with_proof = aggregation::AggregationCircuit::new(&params, [snark]);
+    log::info!("Generating aggregated proof...");
     let start = Instant::now();
+    let snark = aggregation::Snark::new(protocol_app, vec![], proof);
+    let agg_circuit_with_proof = aggregation::AggregationCircuit::new(&params_app, [snark]);
     let proof = gen_proof::<_, _, EvmTranscript<G1Affine, _, _, _>, EvmTranscript<G1Affine, _, _, _>>(
         &params,
         &pk_aggr,
@@ -191,13 +174,12 @@ pub fn prove_aggr<T: FieldElement>(
         agg_circuit_with_proof.instances(),
     );
     let duration = start.elapsed();
-    println!("Time taken: {:?}", duration);
+    log::info!("Time taken: {:?}", duration);
 
-    println!("Verifying aggregated proof in the EVM...");
-    let start = Instant::now();
+    log::info!("Verifying aggregated proof in the EVM...");
     aggregation::evm_verify(deployment_code, agg_circuit_with_proof.instances(), &proof);
-    let duration = start.elapsed();
-    println!("Time taken: {:?}", duration);
+
+    log::info!("Proof aggregation done.");
 
     proof
 }
