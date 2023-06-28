@@ -4,7 +4,14 @@ use std::fs;
 use test_log::test;
 
 fn verify_asm<T: FieldElement>(file_name: &str, inputs: Vec<T>) {
-    let contents = fs::read_to_string(format!("../test_data/asm/{file_name}")).unwrap();
+    let contents = [
+        // Make this work both from the crate and from the workspace.
+        format!("../test_data/asm/{file_name}"),
+        format!("test_data/asm/{file_name}"),
+    ]
+    .iter()
+    .find_map(|p| fs::read_to_string(p).ok())
+    .unwrap();
     verify_asm_string(file_name, &contents, inputs)
 }
 
