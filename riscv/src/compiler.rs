@@ -30,7 +30,7 @@ machine Binary {
         macro is_nonzero(X) { match X { 0 => 0, _ => 1, } };
         macro is_zero(X) { 1 - is_nonzero(X) };
 
-        col fixed _latch(i) { is_zero((i % 4) - 3) };
+        col fixed latch(i) { is_zero((i % 4) - 3) };
         col fixed FACTOR(i) { 1 << (((i + 1) % 4) * 8) };
 
         col fixed P_A(i) { i % 256 };
@@ -52,9 +52,9 @@ machine Binary {
         col witness B;
         col witness C;
 
-        A' = A * (1 - _latch) + A_byte * FACTOR;
-        B' = B * (1 - _latch) + B_byte * FACTOR;
-        C' = C * (1 - _latch) + C_byte * FACTOR;
+        A' = A * (1 - latch) + A_byte * FACTOR;
+        B' = B * (1 - latch) + B_byte * FACTOR;
+        C' = C * (1 - latch) + C_byte * FACTOR;
 
         {_operation_id', A_byte, B_byte, C_byte} in {P_operation, P_A, P_B, P_C};
     }
@@ -73,7 +73,7 @@ machine Shift {
     }
 
     constraints{
-        col fixed _latch(i) { is_zero((i % 4) - 3) };
+        col fixed latch(i) { is_zero((i % 4) - 3) };
         col fixed FACTOR_ROW(i) { (i + 1) % 4 };
         col fixed FACTOR(i) { 1 << (((i + 1) % 4) * 8) };
 
@@ -95,9 +95,9 @@ machine Shift {
         col witness B;
         col witness C;
 
-        A' = A * (1 - _latch) + A_byte * FACTOR;
-        (B' - B) * (1 - _latch) = 0;
-        C' = C * (1 - _latch) + C_part;
+        A' = A * (1 - latch) + A_byte * FACTOR;
+        (B' - B) * (1 - latch) = 0;
+        C' = C * (1 - latch) + C_part;
 
         // TODO this way, we cannot prove anything that shifts by more than 31 bits.
         {_operation_id', A_byte, B', FACTOR_ROW, C_part} in {P_operation, P_A, P_B, P_ROW, P_C};

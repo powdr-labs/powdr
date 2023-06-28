@@ -296,31 +296,6 @@ fn main() {
             // )
             todo!()
         }
-        Commands::RiscvAsm {
-            files: _,
-            field: _,
-            inputs: _,
-            output_directory: _,
-            force: _,
-            prove_with: _,
-        } => {
-            // assert!(!files.is_empty());
-            // let name = if files.len() == 1 {
-            //     Cow::Owned(files[0].clone())
-            // } else {
-            //     Cow::Borrowed("output")
-            // };
-
-            // call_with_field!(compile_riscv_asm::<field>(
-            //     &name,
-            //     files.into_iter(),
-            //     split_inputs(&inputs),
-            //     Path::new(&output_directory),
-            //     force,
-            //     prove_with
-            // ))
-            todo!()
-        }
         Commands::Reformat { file } => {
             let contents = fs::read_to_string(&file).unwrap();
             match parser::parse::<GoldilocksField>(Some(&file), &contents) {

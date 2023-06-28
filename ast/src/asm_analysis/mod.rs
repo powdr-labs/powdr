@@ -158,6 +158,7 @@ impl BatchMetadata {
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub enum Incompatible {
     Label,
+    EmbeddedLabel,
     Unimplemented,
 }
 

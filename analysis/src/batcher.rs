@@ -36,6 +36,13 @@ impl<'a, T: FieldElement> Batch<'a, T> {
             .any(|s| matches!(s, OperationStatement::Label(..)))
     }
 
+    /// Returns true iff this batch contains at least one embedded label
+    fn contains_embedded_labels(&self) -> bool {
+        self.statements
+            .iter()
+            .any(|s| matches!(s, OperationStatement::Label(l) if l.name.starts_with('_')))
+    }
+
     fn try_absorb(
         &mut self,
         s: &'a OperationStatement<T>,
@@ -46,16 +53,23 @@ impl<'a, T: FieldElement> Batch<'a, T> {
     }
 
     fn try_join(&mut self, other: Self) -> Result<(), (Self, IncompatibleSet)> {
-        match (self.is_only_labels(), other.contains_labels()) {
+        match (
+            self.contains_embedded_labels(),
+            self.is_only_labels(),
+            other.contains_labels(),
+        ) {
+            (true, ..) => Err((other, IncompatibleSet([Incompatible::EmbeddedLabel].into()))),
             // we can join any batch full of labels (in particular, an empty batch) with any batch
-            (true, _) => {
+            (_, true, _) => {
                 self.statements.extend(other.statements);
                 Ok(())
             }
             // we cannot join a batch which doesn't only have labels with a batch which contains a label
-            (false, true) => Err((other, IncompatibleSet([Incompatible::Label].into()))),
+            (_, false, true) => Err((other, IncompatibleSet([Incompatible::Label].into()))),
             // other types of batching are unimplemented
-            (false, false) => Err((other, IncompatibleSet([Incompatible::Unimplemented].into()))),
+            (_, false, false) => {
+                Err((other, IncompatibleSet([Incompatible::Unimplemented].into())))
+            }
         }
     }
 }

@@ -181,11 +181,11 @@ impl<T: FieldElement> ASMPILConverter<T> {
 
                 link.to.operation.index = Some(index);
                 link.to.operation.params = Some(params.clone());
-                // for dynamic machines, the latch is the return instruction flag. For static machines, it's the explicit `_latch` column
+                // for dynamic machines, the latch is the return instruction flag. For static machines, it's the explicit `latch` column
                 link.to.latch = Some(if machine_ty.has_pc() {
-                    "instr__return".into()
+                    "instr_return".into()
                 } else {
-                    "_latch".into()
+                    "latch".into()
                 });
             }
 
@@ -294,7 +294,19 @@ impl<T: FieldElement> ASMPILConverter<T> {
                 .filter_map(|(name, reg)| {
                     reg.update_expression().map(|mut update| {
                         if Some(name) == self.pc_name.as_ref() {
-                            // Force pc to zero on first row.
+                            // Force pc to the operation_id on first row.
+                            update = build_add(
+                                build_mul(
+                                    build_sub(build_number(1u64), next_reference("first_step")),
+                                    update,
+                                ),
+                                build_mul(
+                                    next_reference("first_step"),
+                                    next_reference("_operation_id"),
+                                ),
+                            )
+                        } else if !name.starts_with("_input") {
+                            // Force other registers to 0 on the first row
                             update = build_mul(
                                 build_sub(build_number(1u64), next_reference("first_step")),
                                 update,
@@ -410,19 +422,16 @@ impl<T: FieldElement> ASMPILConverter<T> {
                 default_update = Some(build_add(direct_reference(&name), build_number(1u64)));
             }
             Some(RegisterFlag::IsAssignment) => {
-                // no updates
+                // no updates unless this is an output
+                // if name.starts_with("_output") {
+                //     default_update = Some(direct_reference(&name));
+                // }
             }
             None => {
-                // This might be superfluous but makes it easier to determine that the register needs to
-                // be zero in the first row.
-                self.pil.push(PilStatement::PolynomialIdentity(
-                    start,
-                    build_mul(direct_reference("first_step"), direct_reference(&name)),
-                ));
                 conditioned_updates = vec![
                     // The value here is actually irrelevant, it is only important
                     // that "first_step'" is included to compute the "default condition"
-                    (next_reference("first_step"), build_number(0u64)),
+                    (direct_reference("instr_return"), build_number(0u64)),
                 ];
                 let assignment_regs = self.assignment_registers().cloned().collect::<Vec<_>>();
                 // TODO do this at the same place where we set up the read flags.
@@ -945,6 +954,21 @@ impl<T: FieldElement> ASMPILConverter<T> {
                     }
                 }
             }
+
+            // turn on all free input on outputs whenever we're not returning
+            if !line.instructions.iter().any(|(name, _)| name == "return")
+                && !line.labels.iter().any(|l| l == ("__noop"))
+            {
+                for reg in self
+                    .assignment_registers()
+                    .filter(|r| r.starts_with("_output"))
+                {
+                    program_constants
+                        .get_mut(&format!("p_{reg}_read_free"))
+                        .unwrap()[i] = 1.into();
+                }
+            }
+
             for (instr, literal_args) in &line.instructions {
                 for (reg, writes) in &line.write_regs {
                     if !writes.is_empty() {

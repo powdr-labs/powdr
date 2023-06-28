@@ -33,14 +33,10 @@ fn output_at(i: usize) -> String {
 
 fn substitute<T>(mut e: Expression<T>, inputs: &HashMap<String, usize>) -> Expression<T> {
     previsit_expression_mut(&mut e, &mut |e| {
-        match e {
-            Expression::PolynomialReference(r) => match inputs.get(&r.name).map(|i| input_at(*i)) {
-                Some(v) => {
-                    r.name = v;
-                }
-                None => {}
-            },
-            _ => {}
+        if let Expression::PolynomialReference(r) = e {
+            if let Some(v) = inputs.get(&r.name).map(|i| input_at(*i)) {
+                r.name = v;
+            }
         };
         ControlFlow::Continue::<()>(())
     });
@@ -62,7 +58,7 @@ impl<T: FieldElement> RomGenerator<T> {
         let latch = if machine.has_pc() {
             "instr_return"
         } else {
-            "_latch"
+            "latch"
         };
 
         // add the necessary embedded constraints which apply to both static and dynamic machines
@@ -130,15 +126,7 @@ impl<T: FieldElement> RomGenerator<T> {
                 .outputs
                 .iter()
                 .flat_map(|outputs| outputs.params.iter())
-                .flat_map(|param| {
-                    [
-                        parse_pil_statement(&format!("col witness {}", param.name)),
-                        parse_pil_statement(&format!(
-                            "(1 - {}) * ({}' - {}) = 0",
-                            latch, param.name, param.name
-                        )),
-                    ]
-                });
+                .flat_map(|param| [parse_pil_statement(&format!("col witness {}", param.name))]);
 
             machine.constraints.push(PilBlock {
                 start: 0,
@@ -180,6 +168,24 @@ impl<T: FieldElement> RomGenerator<T> {
         let output_assignment_registers_declarations = (0..output_count)
             .map(|i| parse_register_declaration::<T>(&format!("reg {}[<=];", output_at(i))));
 
+        let output_witnesses_constraints = (0..output_count)
+            .flat_map(|i| {
+                [
+                    //parse_pil_statement(&format!("col witness {}", input_at(i))),
+                    parse_pil_statement(&format!(
+                        "(1 - {}) * ({}' - {}) = 0",
+                        latch,
+                        output_at(i),
+                        output_at(i)
+                    )),
+                ]
+            })
+            .collect();
+        machine.constraints.push(PilBlock {
+            start: 0,
+            statements: output_witnesses_constraints,
+        });
+
         machine.registers.extend(
             input_assignment_registers_declarations.chain(output_assignment_registers_declarations),
         );
@@ -187,91 +193,66 @@ impl<T: FieldElement> RomGenerator<T> {
         let pc = machine.pc().unwrap();
 
         // add the necessary embedded instructions
-        let embedded_instructions = [
-            parse_instruction_definition(&format!(
-                "instr return {} {{ {} = 0 }}",
-                (0..output_count)
-                    .map(output_at)
-                    .collect::<Vec<_>>()
-                    .join(", "),
-                pc
-            )),
-            parse_instruction_definition(&format!(
-                "instr _jump_to_operation {{ {}' = _operation_id }}",
-                pc
-            )),
-            parse_instruction_definition(&format!(
-                "instr _reset {{ {} }}",
-                machine
-                    .write_registers()
-                    .map(|r| format!("{} = 0", r.name))
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            )),
-            parse_instruction_definition(&format!("instr _loop {{ {}' = {} }}", pc, pc)),
-        ];
+        let embedded_instructions = [parse_instruction_definition(&format!(
+            "instr return {} {{ {}' = _operation_id' }}",
+            (0..output_count)
+                .map(output_at)
+                .collect::<Vec<_>>()
+                .join(", "),
+            pc
+        ))];
 
         machine.instructions.extend(embedded_instructions);
 
-        let rom = vec![
-            vec![
-                parse_operation_statement("_start::"),
-                parse_operation_statement("_reset;"),
-                // the latch is constrained to start at 0 using _L1
-                parse_operation_statement("_jump_to_operation;"),
-            ],
-            // define one label for each operation
-            machine
-                .operations
-                .iter()
-                .flat_map(|o| {
-                    // create substitution map from declared input to the hidden witness columns
-                    let inputs = o
-                        .params
-                        .inputs
-                        .params
-                        .iter()
-                        .enumerate()
-                        .map(|(index, param)| (param.name.clone(), index))
-                        .collect();
+        // define one label for each operation
+        let rom =
+        // insert an infinite loop at pc 0 which returns zeroes so that all zeroes is a valid block
+        [
+            parse_operation_statement("__noop::"),
+            parse_operation_statement(&format!("return {};", (0..output_count).map(|_| "0".to_string()).collect::<Vec<_>>().join(", "))),
+        ].into_iter().chain(machine
+            .operations
+            .iter()
+            .flat_map(|o| {
+                // create substitution map from declared input to the hidden witness columns
+                let inputs = o
+                    .params
+                    .inputs
+                    .params
+                    .iter()
+                    .enumerate()
+                    .map(|(index, param)| (param.name.clone(), index))
+                    .collect();
 
-                    // substitute the names in the operation body
-                    let body = o.body.clone().into_iter().map(move |s| match s {
-                        OperationStatement::Assignment(assignment) => {
-                            OperationStatement::Assignment(AssignmentStatement {
-                                rhs: Box::new(substitute(*assignment.rhs, &inputs)),
-                                ..assignment
-                            })
-                        }
-                        OperationStatement::Instruction(instruction) => {
-                            OperationStatement::Instruction(InstructionStatement {
-                                inputs: instruction
-                                    .inputs
-                                    .into_iter()
-                                    .map(|i| substitute(i, &inputs))
-                                    .collect(),
-                                ..instruction
-                            })
-                        }
-                        OperationStatement::Label(l) => OperationStatement::Label(l),
-                        OperationStatement::DebugDirective(d) => {
-                            OperationStatement::DebugDirective(d)
-                        }
-                    });
+                // substitute the names in the operation body
+                let body = o.body.clone().into_iter().map(move |s| match s {
+                    OperationStatement::Assignment(assignment) => {
+                        OperationStatement::Assignment(AssignmentStatement {
+                            rhs: Box::new(substitute(*assignment.rhs, &inputs)),
+                            ..assignment
+                        })
+                    }
+                    OperationStatement::Instruction(instruction) => {
+                        OperationStatement::Instruction(InstructionStatement {
+                            inputs: instruction
+                                .inputs
+                                .into_iter()
+                                .map(|i| substitute(i, &inputs))
+                                .collect(),
+                            ..instruction
+                        })
+                    }
+                    OperationStatement::Label(l) => OperationStatement::Label(l),
+                    OperationStatement::DebugDirective(d) => {
+                        OperationStatement::DebugDirective(d)
+                    }
+                });
 
-                    once(parse_operation_statement(&format!("_{}::", o.name)))
-                        // execute the operation after substituting the
-                        .chain(body)
-                })
-                .collect(),
-            vec![
-                parse_operation_statement("_sink::"),
-                parse_operation_statement("_loop;"),
-            ],
-        ]
-        .into_iter()
-        .flatten()
-        .collect();
+                once(parse_operation_statement(&format!("_{}::", o.name)))
+                    // execute the operation after substituting the
+                    .chain(body)
+            }))
+            .collect();
 
         machine.program = Some(Program {
             statements: rom,

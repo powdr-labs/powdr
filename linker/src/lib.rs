@@ -4,7 +4,7 @@ use ast::{
     object::{Location, PILGraph},
     parsed::{
         direct_reference, namespaced_reference, BinaryOperator, Expression, PILFile, PilStatement,
-        PolynomialReference, SelectedExpressions,
+        PolynomialName, PolynomialReference, SelectedExpressions,
     },
 };
 use number::FieldElement;
@@ -12,8 +12,13 @@ use number::FieldElement;
 fn input_at(i: usize) -> String {
     format!("_input_{}", i)
 }
+
 fn output_at(i: usize) -> String {
     format!("_output_{}", i)
+}
+
+fn public_output_at(i: usize) -> String {
+    format!("_public_output_{}", i)
 }
 
 /// a monolithic linker which outputs a single circuit
@@ -100,6 +105,90 @@ pub fn link<T: FieldElement>(mut graph: PILGraph<T>) -> PILFile<T> {
         if is_main {
             let params = graph.entry_point.params.clone().unwrap();
             let entry_point_id = graph.entry_point.index.unwrap() as u64;
+
+            // the output columns are not constant in the whole block, but we want to expose the results on the first row
+            // therefore, create a new column to expose the outputs, which is constant in each block
+
+            pil.extend(params.outputs.iter().flat_map(|o| {
+                o.params.iter().enumerate().flat_map(|(i, _o)| {
+                    [
+                        // declare a column
+                        PilStatement::PolynomialCommitDeclaration(
+                            0,
+                            vec![PolynomialName {
+                                name: format!("_public_output_{}", i),
+                                array_size: None,
+                            }],
+                            None,
+                        ),
+                        // make it equal to the output when we return
+                        PilStatement::PolynomialIdentity(
+                            0,
+                            Expression::BinaryOperation(
+                                Box::new(Expression::PolynomialReference(PolynomialReference {
+                                    namespace: None,
+                                    name: "instr_return".into(),
+                                    index: None,
+                                    next: false,
+                                })),
+                                BinaryOperator::Mul,
+                                Box::new(Expression::BinaryOperation(
+                                    Box::new(Expression::PolynomialReference(
+                                        PolynomialReference {
+                                            namespace: None,
+                                            name: public_output_at(i),
+                                            index: None,
+                                            next: false,
+                                        },
+                                    )),
+                                    BinaryOperator::Sub,
+                                    Box::new(Expression::PolynomialReference(
+                                        PolynomialReference {
+                                            namespace: None,
+                                            name: output_at(i),
+                                            index: None,
+                                            next: false,
+                                        },
+                                    )),
+                                )),
+                            ),
+                        ),
+                        // make it constant in each block
+                        PilStatement::PolynomialIdentity(
+                            0,
+                            Expression::BinaryOperation(
+                                Box::new(Expression::PolynomialReference(PolynomialReference {
+                                    namespace: None,
+                                    name: "instr_return".into(),
+                                    index: None,
+                                    next: false,
+                                })),
+                                BinaryOperator::Mul,
+                                Box::new(Expression::BinaryOperation(
+                                    Box::new(Expression::PolynomialReference(
+                                        PolynomialReference {
+                                            namespace: None,
+                                            name: public_output_at(i),
+                                            index: None,
+                                            next: true,
+                                        },
+                                    )),
+                                    BinaryOperator::Sub,
+                                    Box::new(Expression::PolynomialReference(
+                                        PolynomialReference {
+                                            namespace: None,
+                                            name: public_output_at(i),
+                                            index: None,
+                                            next: false,
+                                        },
+                                    )),
+                                )),
+                            ),
+                        ),
+                    ]
+                })
+            }));
+
             // call the first operation by initialising _operation_id to the first operation
             pil.push(PilStatement::PolynomialIdentity(
                 0,
@@ -151,7 +240,7 @@ pub fn link<T: FieldElement>(mut graph: PILGraph<T>) -> PILFile<T> {
                                 format!("OUTPUT_{}", i),
                                 PolynomialReference {
                                     namespace: None,
-                                    name: output_at(i),
+                                    name: public_output_at(i),
                                     index: None,
                                     next: false,
                                 },

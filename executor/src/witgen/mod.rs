@@ -148,7 +148,38 @@ where
         let (_, col) = values.iter_mut().find(|(n, _)| *n == name).unwrap();
         *col = data;
     }
-    (values, vec![])
+
+    // collect public outputs
+    let public_output_cells: Vec<PublicDeclaration> = analyzed
+        .public_declarations
+        .iter()
+        .filter_map(|(name, declaration)| {
+            if name.starts_with("OUTPUT") {
+                Some(declaration.clone())
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    let public_outputs = public_output_cells
+        .iter()
+        .map(|c| {
+            values
+                .iter()
+                .filter_map(|(name, values)| {
+                    if name == &c.polynomial.name {
+                        Some(values[c.index as usize])
+                    } else {
+                        None
+                    }
+                })
+                .next()
+                .unwrap()
+        })
+        .collect();
+
+    (values, public_outputs)
 }
 
 /// Checks if the last rows are repeating and returns the period.

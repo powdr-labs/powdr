@@ -43,7 +43,7 @@ enum EvaluationRow {
     Next,
 }
 
-#[derive(PartialEq, Eq, Clone, Copy)]
+#[derive(PartialEq, Eq, Clone, Copy, Debug)]
 enum SolvingStrategy {
     /// Only solve expressions that are affine in a single variable
     /// (and use range constraints).

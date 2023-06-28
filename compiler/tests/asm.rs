@@ -80,7 +80,7 @@ fn functional_instructions() {
 fn vm_to_block() {
     let f = "vm_to_block.asm";
     let i = [];
-    verify_asm::<GoldilocksField>(f, slice_to_vec(&i), vec![], vec![]);
+    verify_asm::<GoldilocksField>(f, slice_to_vec(&i), vec![1.into()], vec![]);
     halo2_proof(f, slice_to_vec(&i), vec![]);
 }
 

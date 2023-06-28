@@ -8,27 +8,27 @@ pub fn verify_asm_string<T: FieldElement>(
     contents: &str,
     inputs: Vec<T>,
     public_inputs: Vec<T>,
-) -> Result<(), ()> {
+) -> Result<(), String> {
     let temp_dir = mktemp::Temp::new_dir().unwrap();
-    let (pil_file_name, public_outputs) = compile_asm_string(
+    let pil_file_name = compile_asm_string(
         file_name,
         contents,
         inputs,
-        public_inputs.clone(),
+        public_inputs,
         &temp_dir,
         true,
         None,
     )?;
-    let publics = [public_inputs, public_outputs].concat();
-    verify(&pil_file_name, &temp_dir, publics);
+    verify::<T>(&pil_file_name, &temp_dir);
     Ok(())
 }
 
-pub fn verify<T: FieldElement>(file_name: &str, temp_dir: &Path, publics: Vec<T>) {
+pub fn verify<T: FieldElement>(file_name: &str, temp_dir: &Path) {
     let pilcom = std::env::var("PILCOM")
         .expect("Please set the PILCOM environment variable to the path to the pilcom repository.");
     let constants_file = format!("{}/constants.bin", temp_dir.to_string_lossy());
     let commits_file = format!("{}/commits.bin", temp_dir.to_string_lossy());
+    let public_file = format!("{}/public.json", temp_dir.to_string_lossy());
     assert!(
         fs::metadata(&constants_file).unwrap().len() > 0,
         "Empty constants file"
@@ -44,14 +44,7 @@ pub fn verify<T: FieldElement>(file_name: &str, temp_dir: &Path, publics: Vec<T>
             "-c".to_string(),
             constants_file,
             "-u".to_string(),
-            format!(
-                "[{}]",
-                publics
-                    .iter()
-                    .map(|n| n.to_arbitrary_integer().to_string())
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            ),
+            public_file,
         ])
         .output()
         .expect("failed to run pil verifier");
