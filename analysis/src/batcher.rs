@@ -1,7 +1,7 @@
 use std::marker::PhantomData;
 
 use ast::asm_analysis::{
-    AnalysisASMFile, BatchMetadata, Incompatible, IncompatibleSet, Machine, ProgramStatement,
+    AnalysisASMFile, BatchMetadata, Incompatible, IncompatibleSet, Machine, OperationStatement,
 };
 use itertools::Itertools;
 use number::FieldElement;
@@ -12,11 +12,11 @@ pub fn batch<T: FieldElement>(file: AnalysisASMFile<T>) -> AnalysisASMFile<T> {
 
 #[derive(Default)]
 struct Batch<'a, T> {
-    statements: Vec<&'a ProgramStatement<T>>,
+    statements: Vec<&'a OperationStatement<T>>,
 }
 
 impl<'a, T: FieldElement> Batch<'a, T> {
-    fn from_statement(s: &'a ProgramStatement<T>) -> Batch<T> {
+    fn from_statement(s: &'a OperationStatement<T>) -> Batch<T> {
         Batch {
             statements: vec![s],
         }
@@ -26,20 +26,20 @@ impl<'a, T: FieldElement> Batch<'a, T> {
     fn is_only_labels(&self) -> bool {
         self.statements
             .iter()
-            .all(|s| matches!(s, ProgramStatement::Label(..)))
+            .all(|s| matches!(s, OperationStatement::Label(..)))
     }
 
     /// Returns true iff this batch contains at least one label
     fn contains_labels(&self) -> bool {
         self.statements
             .iter()
-            .any(|s| matches!(s, ProgramStatement::Label(..)))
+            .any(|s| matches!(s, OperationStatement::Label(..)))
     }
 
     fn try_absorb(
         &mut self,
-        s: &'a ProgramStatement<T>,
-    ) -> Result<(), (&'a ProgramStatement<T>, IncompatibleSet)> {
+        s: &'a OperationStatement<T>,
+    ) -> Result<(), (&'a OperationStatement<T>, IncompatibleSet)> {
         let batch = Self::from_statement(s);
         self.try_join(batch)
             .map_err(|(b, incompatible)| (b.statements.into_iter().next().unwrap(), incompatible))
@@ -66,10 +66,11 @@ struct ProgramBatcher<T> {
 }
 
 impl<T: FieldElement> ProgramBatcher<T> {
-    /// split a list of statements into compatible batches
+    // split a list of statements into compatible batches
     fn extract_batches(&self, machine_name: &str, machine: &mut Machine<T>) {
-        let batches: Vec<_> = machine
-            .program
+        let program = &mut machine.program.as_mut().unwrap();
+
+        let batches: Vec<_> = program
             .statements
             .iter()
             .peekable()
@@ -117,7 +118,7 @@ impl<T: FieldElement> ProgramBatcher<T> {
             }
         );
 
-        machine.program.batches = Some(batches);
+        program.batches = Some(batches);
     }
 
     pub fn batch(&mut self, mut asm_file: AnalysisASMFile<T>) -> AnalysisASMFile<T> {

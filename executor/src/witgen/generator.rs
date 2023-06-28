@@ -1,4 +1,4 @@
-use ast::analyzed::{Expression, Identity, IdentityKind, PolynomialReference};
+use ast::analyzed::{Expression, Identity, IdentityKind, PolynomialReference, PublicDeclaration};
 use itertools::Itertools;
 use number::{DegreeType, FieldElement};
 use parser_util::lines::indent;
@@ -14,6 +14,8 @@ use super::symbolic_witness_evaluator::{SymoblicWitnessEvaluator, WitnessColumnE
 use super::{Constraint, EvalResult, EvalValue, FixedData, IncompleteCause, WitnessColumn};
 
 pub struct Generator<'a, T: FieldElement, QueryCallback: Send + Sync> {
+    // the public inputs by row then column then value
+    public_inputs: HashMap<DegreeType, Vec<(PolynomialReference, T)>>,
     fixed_data: &'a FixedData<'a, T>,
     fixed_lookup: &'a mut FixedLookup<T>,
     identities: &'a [&'a Identity<T>],
@@ -69,6 +71,7 @@ where
         global_range_constraints: BTreeMap<&'a PolynomialReference, RangeConstraint<T>>,
         machines: Vec<Box<dyn Machine<T>>>,
         query_callback: Option<QueryCallback>,
+        public_inputs: impl IntoIterator<Item = (PublicDeclaration, T)>,
     ) -> Self {
         let witness_cols_len = fixed_data.witness_cols.len();
 
@@ -87,11 +90,24 @@ where
             failure_reasons: vec![],
             last_report: 0,
             last_report_time: Instant::now(),
+            public_inputs: {
+                let mut res: HashMap<DegreeType, Vec<(PolynomialReference, T)>> =
+                    HashMap::default();
+                for (d, v) in public_inputs.into_iter() {
+                    res.entry(d.index).or_default().push((d.polynomial, v));
+                }
+                res
+            },
         }
     }
 
     pub fn compute_next_row(&mut self, next_row: DegreeType) -> Vec<T> {
         self.set_next_row_and_log(next_row);
+
+        // insert the public inputs
+        for (r, v) in self.public_inputs.get(&next_row).into_iter().flatten() {
+            self.next[r.poly_id() as usize] = Some(*v);
+        }
 
         let mut complete_identities = vec![false; self.identities.len()];
 

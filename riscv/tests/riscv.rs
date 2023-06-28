@@ -1,4 +1,3 @@
-use compiler::verify_asm_string;
 use number::GoldilocksField;
 use test_log::test;
 
@@ -93,17 +92,19 @@ fn test_print() {
     verify_file(case, vec![]);
 }
 
-fn verify_file(case: &str, inputs: Vec<GoldilocksField>) {
+fn verify_file(case: &str, _inputs: Vec<GoldilocksField>) {
     let riscv_asm = riscv::compile_rust_to_riscv_asm(&format!("tests/riscv_data/{case}"));
-    let powdr_asm = riscv::compiler::compile_riscv_asm(riscv_asm);
+    let _powdr_asm = riscv::compiler::compile_riscv_asm(riscv_asm);
 
-    verify_asm_string(&format!("{case}.asm"), &powdr_asm, inputs);
+    // verify_asm_string(&format!("{case}.asm"), &powdr_asm, inputs);
+    unimplemented!()
 }
 
-fn verify_crate(case: &str, inputs: Vec<GoldilocksField>) {
-    let riscv_asm =
-        riscv::compile_rust_crate_to_riscv_asm(&format!("tests/riscv_data/{case}/Cargo.toml"));
-    let powdr_asm = riscv::compiler::compile_riscv_asm(riscv_asm);
+fn verify_crate(_case: &str, _inputs: Vec<GoldilocksField>) {
+    // let riscv_asm =
+    //     riscv::compile_rust_crate_to_riscv_asm(&format!("tests/riscv_data/{case}/Cargo.toml"));
+    // let powdr_asm = riscv::compiler::compile_riscv_asm(riscv_asm);
 
-    verify_asm_string(&format!("{case}.asm"), &powdr_asm, inputs);
+    // verify_asm_string(&format!("{case}.asm"), &powdr_asm, inputs);
+    unimplemented!()
 }

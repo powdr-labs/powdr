@@ -33,17 +33,26 @@ pub fn no_callback<T>() -> Option<fn(&str) -> Option<T>> {
 pub fn compile_pil_or_asm<T: FieldElement>(
     file_name: &str,
     inputs: Vec<T>,
+    public_inputs: Vec<T>,
     output_dir: &Path,
     force_overwrite: bool,
     prove_with: Option<Backend>,
 ) {
     if file_name.ends_with(".asm") {
-        compile_asm(file_name, inputs, output_dir, force_overwrite, prove_with);
+        compile_asm(
+            file_name,
+            inputs,
+            public_inputs,
+            output_dir,
+            force_overwrite,
+            prove_with,
+        );
     } else {
         compile_pil(
             Path::new(file_name),
             output_dir,
             Some(inputs_to_query_callback(inputs)),
+            public_inputs,
             prove_with,
         );
     }
@@ -61,8 +70,9 @@ pub fn compile_pil<T: FieldElement, QueryCallback>(
     pil_file: &Path,
     output_dir: &Path,
     query_callback: Option<QueryCallback>,
+    public_inputs: Vec<T>,
     prove_with: Option<Backend>,
-) -> bool
+) -> Result<Vec<T>, ()>
 where
     QueryCallback: FnMut(&str) -> Option<T> + Sync + Send,
 {
@@ -71,6 +81,7 @@ where
         pil_file.file_name().unwrap(),
         output_dir,
         query_callback,
+        public_inputs,
         prove_with,
     )
 }
@@ -80,8 +91,9 @@ pub fn compile_pil_ast<T: FieldElement, QueryCallback>(
     file_name: &OsStr,
     output_dir: &Path,
     query_callback: Option<QueryCallback>,
+    public_inputs: Vec<T>,
     prove_with: Option<Backend>,
-) -> bool
+) -> Result<Vec<T>, ()>
 where
     QueryCallback: FnMut(&str) -> Option<T> + Sync + Send,
 {
@@ -92,6 +104,7 @@ where
         file_name,
         output_dir,
         query_callback,
+        public_inputs,
         prove_with,
     )
 }
@@ -101,6 +114,7 @@ where
 pub fn compile_asm<T: FieldElement>(
     file_name: &str,
     inputs: Vec<T>,
+    public_inputs: Vec<T>,
     output_dir: &Path,
     force_overwrite: bool,
     prove_with: Option<Backend>,
@@ -110,6 +124,7 @@ pub fn compile_asm<T: FieldElement>(
         file_name,
         &contents,
         inputs,
+        public_inputs,
         output_dir,
         force_overwrite,
         prove_with,
@@ -124,10 +139,11 @@ pub fn compile_asm_string<T: FieldElement>(
     file_name: &str,
     contents: &str,
     inputs: Vec<T>,
+    public_inputs: Vec<T>,
     output_dir: &Path,
     force_overwrite: bool,
     prove_with: Option<Backend>,
-) -> String {
+) -> Result<(String, Vec<T>), ()> {
     let parsed = parser::parse_asm(Some(file_name), contents).unwrap_or_else(|err| {
         eprintln!("Error parsing .asm file:");
         err.output_to_stderr();
@@ -147,19 +163,20 @@ pub fn compile_asm_string<T: FieldElement>(
             "Target file {} already exists. Not overwriting.",
             pil_file_path.to_str().unwrap()
         );
-        return pil_file_name;
+        return Err(());
     }
     fs::write(pil_file_path.clone(), format!("{pil}")).unwrap();
 
-    compile_pil_ast(
+    let public_outputs = compile_pil_ast(
         &pil,
         pil_file_path.file_name().unwrap(),
         output_dir,
         Some(inputs_to_query_callback(inputs)),
+        public_inputs,
         prove_with,
-    );
+    )?;
 
-    pil_file_name
+    Ok((pil_file_name, public_outputs))
 }
 
 fn compile<T: FieldElement, QueryCallback>(
@@ -167,8 +184,9 @@ fn compile<T: FieldElement, QueryCallback>(
     file_name: &OsStr,
     output_dir: &Path,
     query_callback: Option<QueryCallback>,
+    public_inputs: Vec<T>,
     prove_with: Option<Backend>,
-) -> bool
+) -> Result<Vec<T>, ()>
 where
     QueryCallback: FnMut(&str) -> Option<T> + Send + Sync,
 {
@@ -180,17 +198,23 @@ where
     ));
     fs::write(optimized_pil_file_name.clone(), format!("{analyzed}")).unwrap();
     log::info!("Wrote {}.", optimized_pil_file_name.to_str().unwrap());
-    let mut success = true;
+    let _success = true;
     let start = Instant::now();
     log::info!("Evaluating fixed columns...");
     let (constants, degree) = constant_evaluator::generate(&analyzed);
     log::info!("Took {}", start.elapsed().as_secs_f32());
-    if analyzed.constant_count() == constants.len() {
+    let res = if analyzed.constant_count() == constants.len() {
         write_constants_to_fs(&constants, output_dir, degree);
         log::info!("Generated constants.");
 
         log::info!("Deducing witness columns...");
-        let commits = executor::witgen::generate(&analyzed, degree, &constants, query_callback);
+        let (commits, public_outputs) = executor::witgen::generate(
+            &analyzed,
+            degree,
+            &constants,
+            query_callback,
+            public_inputs,
+        );
         write_commits_to_fs(&commits, output_dir, degree);
         log::info!("Generated witness.");
 
@@ -202,15 +226,16 @@ where
             write_proof_to_fs(&proof, output_dir);
             log::info!("Generated proof.");
         }
+        Some(public_outputs)
     } else {
         log::warn!("Not writing constants.bin because not all declared constants are defined (or there are none).");
-        success = false;
-    }
+        None
+    };
     let json_out = json_exporter::export(&analyzed);
     write_compiled_json_to_fs(&json_out, file_name, output_dir);
     log::info!("Compiled PIL source code.");
 
-    success
+    res.ok_or(())
 }
 
 pub fn inputs_to_query_callback<T: FieldElement>(inputs: Vec<T>) -> impl Fn(&str) -> Option<T> {

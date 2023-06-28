@@ -1,6 +1,6 @@
 use std::fmt::{Display, Formatter, Result};
 
-use super::{ExtInstr, Instr, Link, LinkFrom, LinkTo, Location, Object, PILGraph};
+use super::{Instr, Link, LinkFrom, LinkTo, Location, Object, Operation, PILGraph};
 
 impl Display for Location {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
@@ -33,9 +33,9 @@ impl<T: Display> Display for Object<T> {
     }
 }
 
-impl<T: Display> Display for Link<T> {
+impl Display for Link {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write!(f, "{} -> {}", self.from, self.to)
+        write!(f, "{} links to {}", self.from, self.to)
     }
 }
 
@@ -45,24 +45,37 @@ impl Display for LinkFrom {
     }
 }
 
-impl Display for ExtInstr {
+impl Display for Instr {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(f, "instr {} with params {}", self.name, self.params)
     }
 }
 
-impl<T: Display> Display for LinkTo<T> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write!(f, "{} in object {}", self.instr, self.loc)
-    }
-}
-
-impl<T: Display> Display for Instr<T> {
+impl Display for LinkTo {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(
             f,
-            "instr {} with params {}",
+            "{} in object {} with latch {}",
+            self.operation,
+            self.loc,
+            self.latch
+                .as_ref()
+                .map(|i| i.to_string())
+                .unwrap_or("TBD".to_string())
+        )
+    }
+}
+
+impl Display for Operation {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(
+            f,
+            "operation {} with id {} with params {}",
             self.name,
+            self.index
+                .as_ref()
+                .map(|i| i.to_string())
+                .unwrap_or("TBD".to_string()),
             self.params
                 .as_ref()
                 .map(|p| p.to_string())

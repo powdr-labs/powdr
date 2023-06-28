@@ -64,8 +64,8 @@ impl<T: Display> Display for MachineStatement<T> {
                     .map(|flag| format!("[{flag}]"))
                     .unwrap_or_default()
             ),
-            MachineStatement::InstructionDeclaration(_, name, latch, params, body) => {
-                write!(f, "instr {}{}{} {{{}}}", name, latch, params, body,)
+            MachineStatement::InstructionDeclaration(_, name, params, body) => {
+                write!(f, "instr {}{} {{{}}}", name, params, body,)
             }
             MachineStatement::InlinePil(_, statements) => {
                 write!(
@@ -78,9 +78,9 @@ impl<T: Display> Display for MachineStatement<T> {
                         .join("\n")
                 )
             }
-            MachineStatement::Program(_, statements) => write!(
+            MachineStatement::OperationDeclaration(_, name, params, statements) => write!(
                 f,
-                "program {{\n{}\n}}",
+                "operation {name}{params} {{\n{}\n}}",
                 statements
                     .iter()
                     .map(|s| format!("{}", s))
@@ -91,19 +91,10 @@ impl<T: Display> Display for MachineStatement<T> {
     }
 }
 
-impl<T: Display> Display for Latch<T> {
+impl<T: Display> Display for OperationStatement<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
-            Latch::All => write!(f, ""),
-            Latch::When(r) => write!(f, "<{}>", r),
-        }
-    }
-}
-
-impl<T: Display> Display for ProgramStatement<T> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        match self {
-            ProgramStatement::Assignment(_, write_regs, assignment_reg, expression) => write!(
+            OperationStatement::Assignment(_, write_regs, assignment_reg, expression) => write!(
                 f,
                 "{} <={}= {};",
                 write_regs.join(", "),
@@ -113,7 +104,7 @@ impl<T: Display> Display for ProgramStatement<T> {
                     .unwrap_or_default(),
                 expression
             ),
-            ProgramStatement::Instruction(_, name, inputs) => write!(
+            OperationStatement::Instruction(_, name, inputs) => write!(
                 f,
                 "{}{};",
                 name,
@@ -130,8 +121,8 @@ impl<T: Display> Display for ProgramStatement<T> {
                     )
                 }
             ),
-            ProgramStatement::Label(_, name) => write!(f, "{name}::"),
-            ProgramStatement::DebugDirective(_start, dir) => write!(f, "{dir}"),
+            OperationStatement::Label(_, name) => write!(f, "{name}::"),
+            OperationStatement::DebugDirective(_start, dir) => write!(f, "{dir}"),
         }
     }
 }
@@ -158,7 +149,7 @@ impl Display for RegisterFlag {
     }
 }
 
-impl Display for InstructionParams {
+impl Display for Params {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(
             f,
@@ -179,7 +170,7 @@ impl Display for InstructionParams {
     }
 }
 
-impl Display for InstructionParamList {
+impl Display for ParamList {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(
             f,
@@ -222,7 +213,7 @@ impl Display for PlookupOperator {
     }
 }
 
-impl Display for InstructionParam {
+impl Display for Param {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(
             f,

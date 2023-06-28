@@ -14,25 +14,25 @@ pub struct Machine<T> {
     pub statements: Vec<MachineStatement<T>>,
 }
 
-#[derive(Debug, PartialEq, Eq, Clone)]
-pub struct InstructionParamList {
-    pub params: Vec<InstructionParam>,
+#[derive(Debug, PartialEq, Eq, Clone, Default)]
+pub struct ParamList {
+    pub params: Vec<Param>,
 }
 
-impl InstructionParamList {
-    pub fn new(params: Vec<InstructionParam>) -> Self {
+impl ParamList {
+    pub fn new(params: Vec<Param>) -> Self {
         Self { params }
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Clone)]
-pub struct InstructionParams {
-    pub inputs: InstructionParamList,
-    pub outputs: Option<InstructionParamList>,
+#[derive(Debug, PartialEq, Eq, Clone, Default)]
+pub struct Params {
+    pub inputs: ParamList,
+    pub outputs: Option<ParamList>,
 }
 
-impl InstructionParams {
-    pub fn new(inputs: InstructionParamList, outputs: Option<InstructionParamList>) -> Self {
+impl Params {
+    pub fn new(inputs: ParamList, outputs: Option<ParamList>) -> Self {
         Self { inputs, outputs }
     }
 }
@@ -42,21 +42,9 @@ pub enum MachineStatement<T> {
     Degree(usize, AbstractNumberType),
     Submachine(usize, String, String),
     RegisterDeclaration(usize, String, Option<RegisterFlag>),
-    InstructionDeclaration(
-        usize,
-        Latch<T>,
-        String,
-        InstructionParams,
-        InstructionBody<T>,
-    ),
+    InstructionDeclaration(usize, String, Params, InstructionBody<T>),
     InlinePil(usize, Vec<PilStatement<T>>),
-    Program(usize, Vec<ProgramStatement<T>>),
-}
-
-#[derive(Debug, PartialEq, Eq, Clone)]
-pub enum Latch<T> {
-    All,
-    When(Expression<T>),
+    OperationDeclaration(usize, String, Params, Vec<OperationStatement<T>>),
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -66,7 +54,7 @@ pub enum InstructionBody<T> {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
-pub enum ProgramStatement<T> {
+pub enum OperationStatement<T> {
     Assignment(usize, Vec<String>, Option<String>, Box<Expression<T>>),
     Instruction(usize, String, Vec<Expression<T>>),
     Label(usize, String),
@@ -86,7 +74,7 @@ pub enum RegisterFlag {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
-pub struct InstructionParam {
+pub struct Param {
     pub name: String,
     pub ty: Option<String>,
 }

@@ -3,13 +3,28 @@ use std::{fs, path::Path, process::Command};
 
 use crate::compile_asm_string;
 
-pub fn verify_asm_string<T: FieldElement>(file_name: &str, contents: &str, inputs: Vec<T>) {
+pub fn verify_asm_string<T: FieldElement>(
+    file_name: &str,
+    contents: &str,
+    inputs: Vec<T>,
+    public_inputs: Vec<T>,
+) -> Result<(), ()> {
     let temp_dir = mktemp::Temp::new_dir().unwrap();
-    let pil_file_name = compile_asm_string(file_name, contents, inputs, &temp_dir, true, None);
-    verify(&pil_file_name, &temp_dir);
+    let (pil_file_name, public_outputs) = compile_asm_string(
+        file_name,
+        contents,
+        inputs,
+        public_inputs.clone(),
+        &temp_dir,
+        true,
+        None,
+    )?;
+    let publics = [public_inputs, public_outputs].concat();
+    verify(&pil_file_name, &temp_dir, publics);
+    Ok(())
 }
 
-pub fn verify(file_name: &str, temp_dir: &Path) {
+pub fn verify<T: FieldElement>(file_name: &str, temp_dir: &Path, publics: Vec<T>) {
     let pilcom = std::env::var("PILCOM")
         .expect("Please set the PILCOM environment variable to the path to the pilcom repository.");
     let constants_file = format!("{}/constants.bin", temp_dir.to_string_lossy());
@@ -28,6 +43,15 @@ pub fn verify(file_name: &str, temp_dir: &Path) {
             format!("{}/{file_name}.json", temp_dir.to_string_lossy()),
             "-c".to_string(),
             constants_file,
+            "-u".to_string(),
+            format!(
+                "[{}]",
+                publics
+                    .iter()
+                    .map(|n| n.to_arbitrary_integer().to_string())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ),
         ])
         .output()
         .expect("failed to run pil verifier");

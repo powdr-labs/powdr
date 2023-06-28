@@ -3,10 +3,10 @@ use std::{collections::HashMap, marker::PhantomData};
 use ast::{
     asm_analysis::{
         AnalysisASMFile, AssignmentStatement, DegreeStatement, InstructionDefinitionStatement,
-        InstructionStatement, LabelStatement, Machine, PilBlock, Program,
+        InstructionStatement, LabelStatement, Machine, OperationDefinitionStatement, PilBlock,
         RegisterDeclarationStatement,
     },
-    parsed::asm::{ASMFile, MachineStatement, ProgramStatement},
+    parsed::asm::{ASMFile, MachineStatement, OperationStatement, RegisterFlag},
 };
 use number::FieldElement;
 
@@ -38,7 +38,7 @@ impl<T: FieldElement> TypeChecker<T> {
         let mut registers = vec![];
         let mut constraints = vec![];
         let mut instructions = vec![];
-        let mut program = vec![];
+        let mut operations = vec![];
         let mut submachines = vec![];
 
         for s in machine.statements {
@@ -51,10 +51,9 @@ impl<T: FieldElement> TypeChecker<T> {
                 MachineStatement::RegisterDeclaration(start, name, flag) => {
                     registers.push(RegisterDeclarationStatement { start, name, flag });
                 }
-                MachineStatement::InstructionDeclaration(start, latch, name, params, body) => {
+                MachineStatement::InstructionDeclaration(start, name, params, body) => {
                     instructions.push(InstructionDefinitionStatement {
                         start,
-                        latch,
                         name,
                         params,
                         body,
@@ -70,11 +69,12 @@ impl<T: FieldElement> TypeChecker<T> {
                         errors.push(format!("Undeclared machine type {}", ty))
                     }
                 }
-                MachineStatement::Program(_, statements) => {
+                MachineStatement::OperationDeclaration(start, name, params, statements) => {
+                    let mut body = vec![];
                     for s in statements {
                         match s {
-                            ProgramStatement::Assignment(start, lhs, using_reg, rhs) => {
-                                program.push(
+                            OperationStatement::Assignment(start, lhs, using_reg, rhs) => {
+                                body.push(
                                     AssignmentStatement {
                                         start,
                                         lhs,
@@ -84,8 +84,8 @@ impl<T: FieldElement> TypeChecker<T> {
                                     .into(),
                                 );
                             }
-                            ProgramStatement::Instruction(start, instruction, inputs) => {
-                                program.push(
+                            OperationStatement::Instruction(start, instruction, inputs) => {
+                                body.push(
                                     InstructionStatement {
                                         start,
                                         instruction,
@@ -94,28 +94,57 @@ impl<T: FieldElement> TypeChecker<T> {
                                     .into(),
                                 );
                             }
-                            ProgramStatement::Label(start, name) => {
-                                program.push(LabelStatement { start, name }.into());
+                            OperationStatement::Label(start, name) => {
+                                body.push(LabelStatement { start, name }.into());
                             }
-                            ProgramStatement::DebugDirective(_start, _d) => {
+                            OperationStatement::DebugDirective(_start, _d) => {
                                 todo!();
                             }
                         }
                     }
+                    operations.push(OperationDefinitionStatement {
+                        start,
+                        name,
+                        params,
+                        body,
+                    })
                 }
             }
         }
 
+        if !registers.iter().any(|r| r.flag == Some(RegisterFlag::IsPC)) {
+            for o in &operations {
+                if !o.body.is_empty() {
+                    errors.push(format!("Operation {} in machine {} should have an empty body because this machine does not have a pc", o.name, machine.name));
+                }
+            }
+        }
+
+        if registers
+            .iter()
+            .filter(|r| r.flag == Some(RegisterFlag::IsPC))
+            .count()
+            > 1
+        {
+            errors.push(format!(
+                "Machine {} cannot have more than one pc",
+                machine.name
+            ));
+        }
+
         *self.machines_types.get_mut(&machine.name).unwrap() = Some(Machine {
             degree,
+            pc: registers
+                .iter()
+                .enumerate()
+                .filter_map(|(i, r)| (r.flag == Some(RegisterFlag::IsPC)).then_some(i))
+                .next(),
             registers,
             instructions,
             constraints,
-            program: Program {
-                statements: program,
-                ..Default::default()
-            },
+            operations,
             submachines,
+            program: None,
         });
 
         if !errors.is_empty() {

@@ -17,13 +17,13 @@ machine Binary {
 
     degree 262144;
 
-    instr and A, B -> C {
+    operation and A, B -> C {
     }
 
-    instr or A, B -> C {
+    operation or A, B -> C {
     }
 
-    instr xor A, B -> C {
+    operation xor A, B -> C {
     }
 
     constraints{
@@ -51,7 +51,6 @@ machine Binary {
         col witness A;
         col witness B;
         col witness C;
-        col witness operation;
 
         A' = A * (1 - _latch) + A_byte * FACTOR;
         B' = B * (1 - _latch) + B_byte * FACTOR;
@@ -67,10 +66,10 @@ machine Binary {
 machine Shift {
     degree 262144;
 
-    instr shl A, B -> C {
+    operation shl A, B -> C {
     }
 
-    instr shr A, B -> C {
+    operation shr A, B -> C {
     }
 
     constraints{
@@ -95,7 +94,6 @@ machine Shift {
         col witness A;
         col witness B;
         col witness C;
-        col witness operation;
 
         A' = A * (1 - _latch) + A_byte * FACTOR;
         (B' - B) * (1 - _latch) = 0;
@@ -392,7 +390,7 @@ machine Main {{
 
 {}
 
-    program {{
+    operation main {{
 {}
     }}
 }}    

@@ -42,7 +42,7 @@ mod test {
 
     use super::*;
 
-    fn mock_prove_asm(file_name: &str, inputs: &[Bn254Field]) {
+    fn mock_prove_asm(file_name: &str, inputs: &[Bn254Field], public_inputs: &[Bn254Field]) {
         // read and compile PIL.
 
         let contents = fs::read_to_string(file_name).unwrap();
@@ -78,7 +78,13 @@ mod test {
         let analyzed = pil_analyzer::analyze_string(&format!("{pil}"));
 
         let (fixed, degree) = executor::constant_evaluator::generate(&analyzed);
-        let witness = executor::witgen::generate(&analyzed, degree, &fixed, Some(query_callback));
+        let (witness, _public_outputs) = executor::witgen::generate(
+            &analyzed,
+            degree,
+            &fixed,
+            Some(query_callback),
+            public_inputs.to_vec(),
+        );
 
         mock_prove(&analyzed, fixed, witness);
     }
@@ -91,19 +97,20 @@ mod test {
 
         let query_callback = |_: &str| -> Option<Bn254Field> { None };
 
-        let witness = executor::witgen::generate(&analyzed, degree, &fixed, Some(query_callback));
+        let (witness, _) =
+            executor::witgen::generate(&analyzed, degree, &fixed, Some(query_callback), vec![]);
         mock_prove(&analyzed, fixed, witness);
     }
 
     #[test]
     fn fibonacci() {
         let inputs = [165, 5, 11, 22, 33, 44, 55].map(From::from);
-        mock_prove_asm("../test_data/asm/simple_sum.asm", &inputs);
+        mock_prove_asm("../test_data/asm/simple_sum.asm", &inputs, &[]);
     }
 
     #[test]
     fn palindrome() {
         let inputs = [3, 11, 22, 11].map(From::from);
-        mock_prove_asm("../test_data/asm/palindrome.asm", &inputs);
+        mock_prove_asm("../test_data/asm/palindrome.asm", &inputs, &[]);
     }
 }

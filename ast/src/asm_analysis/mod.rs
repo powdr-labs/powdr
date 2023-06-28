@@ -1,11 +1,12 @@
 mod display;
+pub mod utils;
 
 use std::collections::{BTreeSet, HashMap};
 
 use num_bigint::BigUint;
 
 use crate::parsed::{
-    asm::{DebugDirective, InstructionBody, InstructionParams, Latch, RegisterFlag},
+    asm::{DebugDirective, InstructionBody, Params, RegisterFlag},
     Expression, PilStatement,
 };
 
@@ -20,9 +21,16 @@ pub struct RegisterDeclarationStatement {
 pub struct InstructionDefinitionStatement<T> {
     pub start: usize,
     pub name: String,
-    pub latch: Latch<T>,
-    pub params: InstructionParams,
+    pub params: Params,
     pub body: InstructionBody<T>,
+}
+
+#[derive(Clone)]
+pub struct OperationDefinitionStatement<T> {
+    pub start: usize,
+    pub name: String,
+    pub params: Params,
+    pub body: Vec<OperationStatement<T>>,
 }
 
 #[derive(Clone)]
@@ -31,32 +39,32 @@ pub struct DegreeStatement {
 }
 
 #[derive(Clone)]
-pub enum ProgramStatement<T> {
+pub enum OperationStatement<T> {
     Assignment(AssignmentStatement<T>),
     Instruction(InstructionStatement<T>),
     Label(LabelStatement),
     DebugDirective(DebugDirective),
 }
 
-impl<T> From<AssignmentStatement<T>> for ProgramStatement<T> {
+impl<T> From<AssignmentStatement<T>> for OperationStatement<T> {
     fn from(value: AssignmentStatement<T>) -> Self {
         Self::Assignment(value)
     }
 }
 
-impl<T> From<InstructionStatement<T>> for ProgramStatement<T> {
+impl<T> From<InstructionStatement<T>> for OperationStatement<T> {
     fn from(value: InstructionStatement<T>) -> Self {
         Self::Instruction(value)
     }
 }
 
-impl<T> From<LabelStatement> for ProgramStatement<T> {
+impl<T> From<LabelStatement> for OperationStatement<T> {
     fn from(value: LabelStatement) -> Self {
         Self::Label(value)
     }
 }
 
-impl<T> From<DebugDirective> for ProgramStatement<T> {
+impl<T> From<DebugDirective> for OperationStatement<T> {
     fn from(value: DebugDirective) -> Self {
         Self::DebugDirective(value)
     }
@@ -94,14 +102,38 @@ pub struct Machine<T> {
     pub degree: Option<DegreeStatement>,
     pub submachines: Vec<(String, String)>,
     pub registers: Vec<RegisterDeclarationStatement>,
+    // index of the pc in the registers, if any
+    pub pc: Option<usize>,
     pub constraints: Vec<PilBlock<T>>,
     pub instructions: Vec<InstructionDefinitionStatement<T>>,
-    pub program: Program<T>,
+    pub operations: Vec<OperationDefinitionStatement<T>>,
+    /// the program gets generated in romgen
+    pub program: Option<Program<T>>,
+}
+
+impl<T> Machine<T> {
+    pub fn has_pc(&self) -> bool {
+        self.pc.is_some()
+    }
+
+    pub fn pc(&self) -> Option<String> {
+        self.pc.map(|index| self.registers[index].name.clone())
+    }
+
+    pub fn write_registers(&self) -> impl Iterator<Item = &RegisterDeclarationStatement> {
+        self.registers.iter().filter(|r| r.flag.is_none())
+    }
+
+    pub fn assignment_registers(&self) -> impl Iterator<Item = &RegisterDeclarationStatement> {
+        self.registers
+            .iter()
+            .filter(|r| r.flag == Some(RegisterFlag::IsAssignment))
+    }
 }
 
 #[derive(Clone, Default)]
 pub struct Program<T> {
-    pub statements: Vec<ProgramStatement<T>>,
+    pub statements: Vec<OperationStatement<T>>,
     pub batches: Option<Vec<BatchMetadata>>,
 }
 

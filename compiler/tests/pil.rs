@@ -10,19 +10,15 @@ pub fn verify_pil(file_name: &str, query_callback: Option<fn(&str) -> Option<Gol
         .unwrap();
 
     let temp_dir = mktemp::Temp::new_dir().unwrap();
-    assert!(compiler::compile_pil(
-        &input_file,
-        &temp_dir,
-        query_callback,
-        None,
-    ));
-    compiler::verify(file_name, &temp_dir);
+    assert!(compiler::compile_pil(&input_file, &temp_dir, query_callback, vec![], None,).is_ok());
+    compiler::verify::<GoldilocksField>(file_name, &temp_dir, vec![]);
 }
 
 fn halo2_proof(file_name: &str, inputs: Vec<Bn254Field>) {
     compile_pil_or_asm(
         format!("../test_data/pil/{file_name}").as_str(),
         inputs,
+        vec![],
         &mktemp::Temp::new_dir().unwrap(),
         true,
         Some(Backend::Halo2),

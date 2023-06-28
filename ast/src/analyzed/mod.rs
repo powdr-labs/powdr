@@ -261,7 +261,7 @@ impl<T> RepeatedArray<T> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct PublicDeclaration {
     pub id: u64,
     pub source: SourceRef,

@@ -2,8 +2,9 @@ use std::fmt::{Display, Formatter, Result};
 
 use super::{
     AnalysisASMFile, AssignmentStatement, DegreeStatement, Incompatible, IncompatibleSet,
-    InstructionDefinitionStatement, InstructionStatement, LabelStatement, Machine, PilBlock,
-    Program, ProgramStatement, RegisterDeclarationStatement,
+    InstructionDefinitionStatement, InstructionStatement, LabelStatement, Machine,
+    OperationDefinitionStatement, OperationStatement, PilBlock, Program,
+    RegisterDeclarationStatement,
 };
 
 impl<T: Display> Display for AnalysisASMFile<T> {
@@ -32,7 +33,12 @@ impl<T: Display> Display for Machine<T> {
         for i in &self.instructions {
             writeln!(f, "\t{i}")?;
         }
-        writeln!(f, "{}", self.program)?;
+        for o in &self.operations {
+            writeln!(f, "\t{o}")?;
+        }
+        if let Some(program) = &self.program {
+            writeln!(f, "{program}")?;
+        }
         Ok(())
     }
 }
@@ -74,13 +80,13 @@ impl Display for DegreeStatement {
     }
 }
 
-impl<T: Display> Display for ProgramStatement<T> {
+impl<T: Display> Display for OperationStatement<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
-            ProgramStatement::Assignment(s) => write!(f, "{s}"),
-            ProgramStatement::Instruction(s) => write!(f, "{s}"),
-            ProgramStatement::Label(s) => write!(f, "{s}"),
-            ProgramStatement::DebugDirective(d) => write!(f, "{d}"),
+            OperationStatement::Assignment(s) => write!(f, "{s}"),
+            OperationStatement::Instruction(s) => write!(f, "{s}"),
+            OperationStatement::Label(s) => write!(f, "{s}"),
+            OperationStatement::DebugDirective(d) => write!(f, "{d}"),
         }
     }
 }
@@ -132,7 +138,7 @@ impl<T: Display> Display for PilBlock<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(
             f,
-            "pil{{\n{}\n}}",
+            "constraints {{\n{}\n}}",
             self.statements
                 .iter()
                 .map(|s| format!("{}", s))
@@ -159,6 +165,22 @@ impl Display for RegisterDeclarationStatement {
 impl<T: Display> Display for InstructionDefinitionStatement<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(f, "instr {}{} {{{}}}", self.name, self.params, self.body)
+    }
+}
+
+impl<T: Display> Display for OperationDefinitionStatement<T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(
+            f,
+            "operation {}{} {{{}}}",
+            self.name,
+            self.params,
+            self.body
+                .iter()
+                .map(|s| s.to_string())
+                .collect::<Vec<_>>()
+                .join("\n")
+        )
     }
 }
 

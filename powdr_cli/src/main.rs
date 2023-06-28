@@ -8,8 +8,8 @@ use compiler::{compile_pil_or_asm, Backend};
 use env_logger::{Builder, Target};
 use log::LevelFilter;
 use number::{Bn254Field, FieldElement, GoldilocksField};
-use riscv::{compile_riscv_asm, compile_rust};
-use std::{borrow::Cow, fs, io::Write, path::Path};
+
+use std::{fs, io::Write, path::Path};
 use strum::{Display, EnumString, EnumVariantNames};
 
 use std::io::{BufWriter, Cursor};
@@ -64,6 +64,11 @@ enum Commands {
         #[arg(short, long)]
         #[arg(default_value_t = String::new())]
         inputs: String,
+
+        /// Comma-separated list of public inputs (numbers). The public outputs are inferred during the computation
+        #[arg(long)]
+        #[arg(default_value_t = String::new())]
+        public_inputs: String,
 
         /// Force overwriting of PIL output file.
         #[arg(short, long)]
@@ -256,42 +261,65 @@ fn main() {
     let command = Cli::parse().command;
     match command {
         Commands::Rust {
-            file,
-            field,
-            inputs,
-            output_directory,
-            force,
-            prove_with,
-        } => call_with_field!(compile_rust::<field>(
-            &file,
-            split_inputs(&inputs),
-            Path::new(&output_directory),
-            force,
-            prove_with
-        )),
-        Commands::RiscvAsm {
-            files,
-            field,
-            inputs,
-            output_directory,
-            force,
-            prove_with,
+            file: _,
+            field: _,
+            inputs: _,
+            output_directory: _,
+            force: _,
+            prove_with: _,
         } => {
-            assert!(!files.is_empty());
-            let name = if files.len() == 1 {
-                Cow::Owned(files[0].clone())
-            } else {
-                Cow::Borrowed("output")
-            };
+            // call_with_field!(compile_rust::<field>(
+            //     &file,
+            //     split_inputs(&inputs),
+            //     Path::new(&output_directory),
+            //     force,
+            //     prove_with
+            // ))
+            todo!()
+        }
+        Commands::RiscvAsm {
+            files: _,
+            field: _,
+            inputs: _,
+            output_directory: _,
+            force: _,
+            prove_with: _,
+        } => {
+            //     call_with_field!(
+            //     compile_rust,
+            //     field,
+            //     &file,
+            //     split_inputs(&inputs),
+            //     Path::new(&output_directory),
+            //     force,
+            //     prove_with
+            // )
+            todo!()
+        }
+        Commands::RiscvAsm {
+            files: _,
+            field: _,
+            inputs: _,
+            output_directory: _,
+            force: _,
+            prove_with: _,
+        } => {
+            // assert!(!files.is_empty());
+            // let name = if files.len() == 1 {
+            //     Cow::Owned(files[0].clone())
+            // } else {
+            //     Cow::Borrowed("output")
+            // };
 
-            call_with_field!(compile_riscv_asm::<field>(
-                &name,
-                files.into_iter(),
-                split_inputs(&inputs),
-                Path::new(&output_directory),
-                force,
-                prove_with
-            ));
+            // call_with_field!(compile_riscv_asm::<field>(
+            //     &name,
+            //     files.into_iter(),
+            //     split_inputs(&inputs),
+            //     Path::new(&output_directory),
+            //     force,
+            //     prove_with
+            // ))
+            todo!()
         }
         Commands::Reformat { file } => {
             let contents = fs::read_to_string(&file).unwrap();
@@ -308,11 +336,13 @@ fn main() {
             field,
             output_directory,
             inputs,
+            public_inputs,
             force,
             prove_with,
         } => call_with_field!(compile_pil_or_asm::<field>(
             &file,
             split_inputs(&inputs),
+            split_inputs(&public_inputs),
             Path::new(&output_directory),
             force,
             prove_with

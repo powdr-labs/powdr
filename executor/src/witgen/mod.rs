@@ -1,5 +1,6 @@
 use ast::analyzed::{
     Analyzed, Expression, FunctionValueDefinition, PolyID, PolynomialReference, PolynomialType,
+    PublicDeclaration,
 };
 use num_traits::Zero;
 use number::{DegreeType, FieldElement};
@@ -28,7 +29,8 @@ pub fn generate<'a, T: FieldElement, QueryCallback>(
     degree: DegreeType,
     fixed_col_values: &[(&str, Vec<T>)],
     query_callback: Option<QueryCallback>,
-) -> Vec<(&'a str, Vec<T>)>
+    public_inputs: Vec<T>,
+) -> (Vec<(&'a str, Vec<T>)>, Vec<T>)
 where
     QueryCallback: FnMut(&str) -> Option<T> + Send + Sync,
 {
@@ -82,6 +84,20 @@ where
         &witness_cols,
         &known_constraints,
     );
+
+    let public_input_cells: Vec<PublicDeclaration> = analyzed
+        .public_declarations
+        .iter()
+        .filter_map(|(name, declaration)| {
+            if name.starts_with("INPUT") {
+                Some(declaration.clone())
+            } else {
+                None
+            }
+        })
+        .collect();
+    assert_eq!(public_input_cells.len(), public_inputs.len());
+
     let mut generator = generator::Generator::new(
         &fixed,
         &mut fixed_lookup,
@@ -90,13 +106,14 @@ where
         known_constraints,
         machines,
         query_callback,
+        public_input_cells.into_iter().zip(public_inputs),
     );
-
     let mut values: Vec<(&str, Vec<T>)> = analyzed
         .committed_polys_in_source_order()
         .iter()
         .map(|(p, _)| (p.absolute_name.as_str(), vec![]))
         .collect();
+
     // Are we in an infinite loop and can just re-use the old values?
     let mut looping_period = None;
     for row in 0..degree as DegreeType {
@@ -131,7 +148,7 @@ where
         let (_, col) = values.iter_mut().find(|(n, _)| *n == name).unwrap();
         *col = data;
     }
-    values
+    (values, vec![])
 }
 
 /// Checks if the last rows are repeating and returns the period.

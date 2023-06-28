@@ -1,9 +1,6 @@
 use std::collections::BTreeMap;
 
-use crate::parsed::{
-    asm::{InstructionParams, Latch},
-    PilStatement,
-};
+use crate::parsed::{asm::Params, PilStatement};
 
 mod display;
 
@@ -19,8 +16,9 @@ impl Location {
     }
 }
 
-#[derive(Default)]
 pub struct PILGraph<T> {
+    // the main operation in the main state machine
+    pub entry_point: Operation,
     pub objects: BTreeMap<Location, Object<T>>,
 }
 
@@ -28,35 +26,34 @@ pub struct Object<T> {
     pub degree: u64,
     /// the pil identities for this machine
     pub pil: Vec<PilStatement<T>>,
-    /// not sure yet what this is, right now just references to other machines but this is instruction-level stuff, not machine level
-    pub links: Vec<Link<T>>,
+    /// the links from this machine to its children
+    pub links: Vec<Link>,
 }
 
-pub struct Link<T> {
+pub struct Link {
     pub from: LinkFrom,
-    pub to: LinkTo<T>,
+    pub to: LinkTo,
 }
-
-// todo: deal with reset flag
 
 pub struct LinkFrom {
-    pub instr: ExtInstr,
+    pub instr: Instr,
 }
 
-pub struct LinkTo<T> {
+pub struct LinkTo {
     pub machine_ty: String,
-    pub instr: Instr<T>,
+    pub operation: Operation,
     pub loc: String,
+    pub latch: Option<String>,
 }
 
-pub struct ExtInstr {
+pub struct Instr {
     pub flag: String,
     pub name: String,
-    pub params: InstructionParams,
+    pub params: Params,
 }
 
-pub struct Instr<T> {
-    pub latch: Option<Latch<T>>,
+pub struct Operation {
     pub name: String,
-    pub params: Option<InstructionParams>,
+    pub index: Option<usize>,
+    pub params: Option<Params>,
 }

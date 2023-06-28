@@ -3,19 +3,26 @@ use std::{collections::BTreeSet, iter::once};
 use ast::{
     object::{Location, PILGraph},
     parsed::{
-        direct_reference, namespaced_reference, Expression, PILFile, PilStatement,
-        SelectedExpressions,
+        direct_reference, namespaced_reference, BinaryOperator, Expression, PILFile, PilStatement,
+        PolynomialReference, SelectedExpressions,
     },
 };
 use number::FieldElement;
 
+fn input_at(i: usize) -> String {
+    format!("_input_{}", i)
+}
+fn output_at(i: usize) -> String {
+    format!("_output_{}", i)
+}
+
 /// a monolithic linker which outputs a single circuit
 pub fn link<T: FieldElement>(mut graph: PILGraph<T>) -> PILFile<T> {
-    let mut queue = BTreeSet::from([Location::default().join("main")]);
+    let mut queue = BTreeSet::from([(Location::default().join("main"), true)]);
 
     let mut pil = vec![];
 
-    while let Some(location) = queue.pop_first() {
+    while let Some((location, is_main)) = queue.pop_first() {
         let object = graph.objects.remove(&location).unwrap();
         // create a namespace for this object
         pil.push(PilStatement::Namespace(
@@ -26,7 +33,7 @@ pub fn link<T: FieldElement>(mut graph: PILGraph<T>) -> PILFile<T> {
         pil.extend(object.pil);
         for link in object.links {
             // add the target submachine to the queue
-            queue.insert(location.clone().join(link.to.loc.clone()));
+            queue.insert((location.clone().join(link.to.loc.clone()), false));
             // add the link to this namespace as a lookup
 
             let from = link.from;
@@ -35,37 +42,42 @@ pub fn link<T: FieldElement>(mut graph: PILGraph<T>) -> PILFile<T> {
             // the lhs is `instr_flag { inputs, outputs }`
             let lhs = SelectedExpressions {
                 selector: Some(direct_reference(from.instr.flag)),
-                expressions: once(Expression::Number(T::from(to.instr.index.unwrap() as u64)))
-                    .chain(
-                        from.instr
-                            .params
-                            .inputs
-                            .params
-                            .into_iter()
-                            .chain(
-                                from.instr
-                                    .params
-                                    .outputs
-                                    .into_iter()
-                                    .flat_map(|o| o.params.into_iter()),
-                            )
-                            .map(|i| {
-                                assert!(i.ty.is_none());
-                                i.name
-                            })
-                            .map(|i| direct_reference(i)),
-                    )
-                    .collect(),
+                expressions: once(Expression::Number(T::from(
+                    to.operation.index.unwrap() as u64
+                )))
+                .chain(
+                    from.instr
+                        .params
+                        .inputs
+                        .params
+                        .into_iter()
+                        .chain(
+                            from.instr
+                                .params
+                                .outputs
+                                .into_iter()
+                                .flat_map(|o| o.params.into_iter()),
+                        )
+                        .map(|i| {
+                            assert!(i.ty.is_none());
+                            i.name
+                        })
+                        .map(|i| direct_reference(i)),
+                )
+                .collect(),
             };
             // the rhs is `(instr_flag * latch) { inputs, outputs }`
             // get the instruction in the submachine
 
-            let params = to.instr.params.unwrap();
+            let params = to.operation.params.unwrap();
 
             let to_namespace = location.clone().join(to.loc.clone()).to_string();
 
             let rhs = SelectedExpressions {
-                selector: Some(namespaced_reference(to_namespace.clone(), "_latch")),
+                selector: Some(namespaced_reference(
+                    to_namespace.clone(),
+                    to.latch.unwrap(),
+                )),
                 expressions: once(namespaced_reference(to_namespace.clone(), "_operation_id"))
                     .chain(
                         params
@@ -83,6 +95,71 @@ pub fn link<T: FieldElement>(mut graph: PILGraph<T>) -> PILFile<T> {
 
             let lookup = PilStatement::PlookupIdentity(0, lhs, rhs);
             pil.push(lookup);
+        }
+
+        if is_main {
+            let params = graph.entry_point.params.clone().unwrap();
+            let entry_point_id = graph.entry_point.index.unwrap() as u64;
+            // call the first operation by initialising _operation_id to the first operation
+            pil.push(PilStatement::PolynomialIdentity(
+                0,
+                Expression::BinaryOperation(
+                    Box::new(Expression::PolynomialReference(PolynomialReference {
+                        namespace: None,
+                        name: "first_step".into(),
+                        index: None,
+                        next: false,
+                    })),
+                    BinaryOperator::Mul,
+                    Box::new(Expression::BinaryOperation(
+                        Box::new(Expression::PolynomialReference(PolynomialReference {
+                            namespace: None,
+                            name: "_operation_id".into(),
+                            index: None,
+                            next: false,
+                        })),
+                        BinaryOperator::Sub,
+                        Box::new(Expression::Number(T::from(entry_point_id))),
+                    )),
+                ),
+            ));
+
+            // make the inputs and outputs public
+            pil.extend(
+                params
+                    .inputs
+                    .params
+                    .iter()
+                    .enumerate()
+                    .map(|(i, _param)| {
+                        PilStatement::PublicDeclaration(
+                            0,
+                            format!("INPUT_{}", i),
+                            PolynomialReference {
+                                namespace: None,
+                                name: input_at(i),
+                                index: None,
+                                next: false,
+                            },
+                            Expression::Number(T::from(0)),
+                        )
+                    })
+                    .chain(params.outputs.iter().flat_map(|outputs| {
+                        outputs.params.iter().enumerate().map(|(i, _param)| {
+                            PilStatement::PublicDeclaration(
+                                0,
+                                format!("OUTPUT_{}", i),
+                                PolynomialReference {
+                                    namespace: None,
+                                    name: output_at(i),
+                                    index: None,
+                                    next: false,
+                                },
+                                Expression::Number(T::from(0)),
+                            )
+                        })
+                    })),
+            );
         }
     }
 

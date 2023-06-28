@@ -23,7 +23,7 @@ pub fn compile_rust<T: FieldElement>(
     output_dir: &Path,
     force_overwrite: bool,
     prove_with: Option<Backend>,
-) {
+) -> Result<(String, Vec<T>), ()> {
     let riscv_asm = if file_name.ends_with("Cargo.toml") {
         compile_rust_crate_to_riscv_asm(file_name)
     } else if fs::metadata(file_name).unwrap().is_dir() {
@@ -44,7 +44,7 @@ pub fn compile_rust<T: FieldElement>(
                 "Target file {} already exists. Not overwriting.",
                 riscv_asm_file_name.to_str().unwrap()
             );
-            return;
+            return Err(());
         }
 
         fs::write(riscv_asm_file_name.clone(), contents).unwrap();
@@ -68,7 +68,7 @@ pub fn compile_riscv_asm_bundle<T: FieldElement>(
     output_dir: &Path,
     force_overwrite: bool,
     prove_with: Option<Backend>,
-) {
+) -> Result<(String, Vec<T>), ()> {
     let powdr_asm_file_name = output_dir.join(format!(
         "{}.asm",
         Path::new(original_file_name)
@@ -82,7 +82,7 @@ pub fn compile_riscv_asm_bundle<T: FieldElement>(
             "Target file {} already exists. Not overwriting.",
             powdr_asm_file_name.to_str().unwrap()
         );
-        return;
+        return Err(());
     }
 
     let powdr_asm = compiler::compile_riscv_asm(riscv_asm_files);
@@ -94,10 +94,11 @@ pub fn compile_riscv_asm_bundle<T: FieldElement>(
         powdr_asm_file_name.to_str().unwrap(),
         &powdr_asm,
         inputs,
+        vec![],
         output_dir,
         force_overwrite,
         prove_with,
-    );
+    )
 }
 
 /// Compiles a riscv asm file all the way down to PIL and generates
@@ -109,7 +110,7 @@ pub fn compile_riscv_asm<T: FieldElement>(
     output_dir: &Path,
     force_overwrite: bool,
     prove_with: Option<Backend>,
-) {
+) -> Result<(String, Vec<T>), ()> {
     compile_riscv_asm_bundle(
         original_file_name,
         file_names

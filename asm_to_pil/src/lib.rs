@@ -5,12 +5,15 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 use ast::{
     asm_analysis::{
         AnalysisASMFile, AssignmentStatement, BatchMetadata, InstructionDefinitionStatement,
-        InstructionStatement, LabelStatement, Machine, PilBlock, ProgramStatement,
+        InstructionStatement, LabelStatement, Machine, OperationStatement, PilBlock,
         RegisterDeclarationStatement,
     },
-    object::{ExtInstr, Instr, Link, LinkFrom, LinkTo, Location, Object, PILGraph},
+    object::{Instr, Link, LinkFrom, LinkTo, Location, Object, Operation, PILGraph},
     parsed::{
-        asm::{InstructionBody, InstructionBodyElement, PlookupOperator, RegisterFlag},
+        asm::{
+            InstructionBody, InstructionBodyElement, Param, ParamList, Params, PlookupOperator,
+            RegisterFlag,
+        },
         direct_reference, next_reference, postvisit_expression_in_statement_mut, ArrayExpression,
         BinaryOperator, Expression, FunctionDefinition, PilStatement, PolynomialName,
         PolynomialReference, SelectedExpressions, UnaryOperator,
@@ -80,7 +83,7 @@ impl<T: FieldElement> ASMPILConverter<T> {
     }
 
     fn compile(mut input: AnalysisASMFile<T>) -> PILGraph<T> {
-        let mut graph = PILGraph::default();
+        let mut objects = BTreeMap::default();
 
         // we create an instance of the Main state machine
         let main = match input.machines.len() {
@@ -96,7 +99,9 @@ impl<T: FieldElement> ASMPILConverter<T> {
             machine_types: std::mem::take(&mut input.machines),
         };
 
-        let mut queue = vec![(Location::default().join("main"), main)];
+        let main_location = Location::default().join("main");
+
+        let mut queue = vec![(main_location, main)];
 
         while let Some((absolute_name, machine)) = queue.pop() {
             let ConversionOutput {
@@ -115,17 +120,73 @@ impl<T: FieldElement> ASMPILConverter<T> {
             }));
 
             for link in relative_links.iter_mut() {
-                let (index, instr) = context
-                    .machine_types
-                    .get(&link.to.machine_ty)
-                    .unwrap()
-                    .instructions
+                let machine_ty = context.machine_types.get(&link.to.machine_ty).unwrap();
+
+                let (index, operation) = machine_ty
+                    .operations
                     .iter()
                     .enumerate()
-                    .find(|(_, d)| d.name == link.to.instr.name)
+                    .find(|(_, d)| d.name == link.to.operation.name)
                     .unwrap();
-                link.to.instr.params = Some(instr.params.clone());
-                link.to.instr.index = Some(index);
+
+                // if we are calling a dynamic machine, the _operation_id is the location of the associated label
+                let index = machine_ty
+                    .program
+                    .as_ref()
+                    .unwrap()
+                    .statements
+                    .iter()
+                    .enumerate()
+                    .find(|(_, statement)| match statement {
+                        OperationStatement::Label(s) => s.name[1..] == link.to.operation.name,
+                        _ => false,
+                    })
+                    .map(|(i, _)| i)
+                    // otherwise it's just the index of the operation in the state machine
+                    .unwrap_or_else(|| {
+                        assert!(
+                            !machine_ty.has_pc(),
+                            "label not found for operation {} in dynamic machine",
+                            operation
+                        );
+                        index
+                    });
+
+                let input_at = |i| format!("_input_{}", i);
+                let output_at = |i| format!("_output_{}", i);
+
+                let params = Params {
+                    inputs: ParamList {
+                        params: (0..operation.params.inputs.params.len())
+                            .map(|id| Param {
+                                name: input_at(id),
+                                ty: None,
+                            })
+                            .collect(),
+                    },
+                    outputs: Some(ParamList {
+                        params: (0..operation
+                            .params
+                            .outputs
+                            .as_ref()
+                            .map(|o| o.params.len())
+                            .unwrap_or(0))
+                            .map(|id| Param {
+                                name: output_at(id),
+                                ty: None,
+                            })
+                            .collect(),
+                    }),
+                };
+
+                link.to.operation.index = Some(index);
+                link.to.operation.params = Some(params.clone());
+                // for dynamic machines, the latch is the return instruction flag. For static machines, it's the explicit `_latch` column
+                link.to.latch = Some(if machine_ty.has_pc() {
+                    "instr__return".into()
+                } else {
+                    "_latch".into()
+                });
             }
 
             let object = Object {
@@ -133,10 +194,34 @@ impl<T: FieldElement> ASMPILConverter<T> {
                 pil,
                 links: relative_links,
             };
-            graph.objects.insert(absolute_name, object);
+            objects.insert(absolute_name, object);
         }
 
-        graph
+        let main_machine = context.machine_types.get("Main").unwrap();
+        let main_operation = main_machine.operations[0].clone();
+        let main_index = main_machine
+            .program
+            .as_ref()
+            .unwrap()
+            .statements
+            .iter()
+            .enumerate()
+            .find(|(_, statement)| match statement {
+                OperationStatement::Label(s) => &s.name[1..] == "main",
+                _ => false,
+            })
+            .map(|(i, _)| i)
+            // otherwise it's just the index of the operation in the state machine
+            .expect("label not found for main");
+
+        PILGraph {
+            entry_point: Operation {
+                name: "main".to_string(),
+                index: Some(main_index),
+                params: Some(main_operation.params),
+            },
+            objects,
+        }
     }
 
     fn convert_machine(mut self, input: Machine<T>) -> ConversionOutput<T> {
@@ -168,71 +253,31 @@ impl<T: FieldElement> ASMPILConverter<T> {
                 self.registers.is_empty(),
                 "pc-less machine cannot have registers, only PIL is allowed"
             );
-            // the following might make sense to have at some point to feed blocks into a machine, for example for testing
-            assert!(
-                input.program.statements.is_empty(),
-                "pc-less machine cannot have a program"
-            );
         }
 
         for block in input.constraints {
             self.handle_inline_pil(block);
         }
 
-        if self.pc_name.is_some() {
-            for instr in input.instructions {
-                self.handle_instruction_def(instr);
-            }
-        } else {
-            // in pc-less machines, we only need an instruction_id column and a latch column, with the constraint that the instruction_id can only change when the latch is 1
-            // the latch is currently implemented in the pil
-            self.pil.extend([
-                witness_column(0, "_operation_id".to_string(), None),
-                PilStatement::PolynomialIdentity(
-                    0,
-                    Expression::BinaryOperation(
-                        Box::new(Expression::BinaryOperation(
-                            Box::new(Expression::Number(T::from(1))),
-                            BinaryOperator::Sub,
-                            Box::new(Expression::PolynomialReference(PolynomialReference {
-                                namespace: None,
-                                name: "_latch".into(),
-                                index: None,
-                                next: false,
-                            })),
-                        )),
-                        BinaryOperator::Mul,
-                        Box::new(Expression::BinaryOperation(
-                            Box::new(Expression::PolynomialReference(PolynomialReference {
-                                namespace: None,
-                                name: "_operation_id".into(),
-                                index: None,
-                                next: true,
-                            })),
-                            BinaryOperator::Sub,
-                            Box::new(Expression::PolynomialReference(PolynomialReference {
-                                namespace: None,
-                                name: "_operation_id".into(),
-                                index: None,
-                                next: false,
-                            })),
-                        )),
-                    ),
-                ),
-            ]);
+        for instr in input.instructions {
+            self.handle_instruction_def(instr);
         }
 
-        let batches = input.program.batches.unwrap_or_else(|| {
+        let program = input
+            .program
+            .expect("romgen should have created a program!");
+
+        let batches = program.batches.unwrap_or_else(|| {
             vec![
                 BatchMetadata {
                     size: 1,
                     reason: None
                 };
-                input.program.statements.len()
+                program.statements.len()
             ]
         });
 
-        let mut statements = input.program.statements.into_iter();
+        let mut statements = program.statements.into_iter();
 
         for batch in batches {
             self.handle_batch(batch, &mut statements);
@@ -300,7 +345,7 @@ impl<T: FieldElement> ASMPILConverter<T> {
     fn handle_batch(
         &mut self,
         batch: BatchMetadata,
-        statements: &mut impl Iterator<Item = ProgramStatement<T>>,
+        statements: &mut impl Iterator<Item = OperationStatement<T>>,
     ) {
         let code_lines = statements
             .take(batch.size)
@@ -323,9 +368,9 @@ impl<T: FieldElement> ASMPILConverter<T> {
         self.code_lines.extend(code_lines);
     }
 
-    fn handle_statement(&mut self, statement: ProgramStatement<T>) -> Option<CodeLine<T>> {
+    fn handle_statement(&mut self, statement: OperationStatement<T>) -> Option<CodeLine<T>> {
         Some(match statement {
-            ProgramStatement::Assignment(AssignmentStatement {
+            OperationStatement::Assignment(AssignmentStatement {
                 start,
                 lhs,
                 using_reg,
@@ -336,16 +381,16 @@ impl<T: FieldElement> ASMPILConverter<T> {
                 }
                 _ => self.handle_assignment(start, lhs, using_reg, *rhs),
             },
-            ProgramStatement::Instruction(InstructionStatement {
+            OperationStatement::Instruction(InstructionStatement {
                 instruction,
                 inputs,
                 ..
             }) => self.handle_instruction(instruction, inputs),
-            ProgramStatement::Label(LabelStatement { name, .. }) => CodeLine {
+            OperationStatement::Label(LabelStatement { name, .. }) => CodeLine {
                 labels: [name].into(),
                 ..Default::default()
             },
-            ProgramStatement::DebugDirective(_) => return None,
+            OperationStatement::DebugDirective(_) => return None,
         })
     }
 
@@ -536,19 +581,19 @@ impl<T: FieldElement> ASMPILConverter<T> {
                     }
                 }
             }
-            InstructionBody::External(ext_instance_name, ext_instruction_name) => {
+            InstructionBody::External(ext_instance_name, ext_operation_name) => {
                 self.links.push(Link {
                     from: LinkFrom {
-                        instr: ExtInstr {
+                        instr: Instr {
                             flag: instruction_flag,
                             name: name.clone(),
                             params,
                         },
                     },
                     to: LinkTo {
-                        instr: Instr {
+                        operation: Operation {
                             index: None,
-                            name: ext_instruction_name,
+                            name: ext_operation_name,
                             params: None,
                         },
                         machine_ty: self
@@ -559,6 +604,7 @@ impl<T: FieldElement> ASMPILConverter<T> {
                             .1
                             .clone(),
                         loc: ext_instance_name,
+                        latch: None,
                     },
                 });
             }
@@ -616,7 +662,12 @@ impl<T: FieldElement> ASMPILConverter<T> {
             .instructions
             .get(&instr_name)
             .unwrap_or_else(|| panic!("Instruction not found: {instr_name}"));
-        assert_eq!(instr.inputs.len() + instr.outputs.len(), args.len());
+        assert_eq!(
+            instr.inputs.len() + instr.outputs.len(),
+            args.len(),
+            "Called instruction {} with the wrong number of arguments",
+            instr_name
+        );
 
         let mut args = args.into_iter();
 
@@ -644,7 +695,7 @@ impl<T: FieldElement> ASMPILConverter<T> {
                                 assert!(n.is_in_lower_half(), "Number passed to unsigned parameter is negative or too large: {n}");
                                 instruction_literal_arg.push(InstructionLiteralArg::Number(n));
                             } else {
-                                panic!();
+                                panic!("expected unsigned number, received {}", a);
                             }
                         }
                         Input::Literal(_, LiteralKind::SignedConstant) => {
@@ -917,9 +968,11 @@ impl<T: FieldElement> ASMPILConverter<T> {
                     program_constants
                         .get_mut(&format!("p_instr_{instr}_param_{}", param.clone()))
                         .unwrap()[i] = match arg {
-                        InstructionLiteralArg::LabelRef(name) => {
-                            (label_positions[name] as u64).into()
-                        }
+                        InstructionLiteralArg::LabelRef(name) => (*label_positions
+                            .get(name)
+                            .unwrap_or_else(|| panic!("{name} not found in labels"))
+                            as u64)
+                            .into(),
                         InstructionLiteralArg::Number(n) => *n,
                     };
                 }

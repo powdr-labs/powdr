@@ -7,7 +7,7 @@ use parser_util::{handle_parse_error, ParseError};
 
 lalrpop_mod!(
     #[allow(clippy::all)]
-    powdr,
+    pub powdr,
     "/powdr.rs"
 );
 
