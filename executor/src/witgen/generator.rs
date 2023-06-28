@@ -2,7 +2,7 @@ use itertools::Itertools;
 use number::{DegreeType, FieldElement};
 use parser_util::lines::indent;
 use pil_analyzer::{Expression, Identity, IdentityKind, PolynomialReference};
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::time::Instant;
 
 use super::affine_expression::{AffineExpression, AffineResult};
@@ -17,6 +17,7 @@ pub struct Generator<'a, T: FieldElement, QueryCallback: Send + Sync> {
     fixed_data: &'a FixedData<'a, T>,
     fixed_lookup: &'a mut FixedLookup<T>,
     identities: &'a [&'a Identity<T>],
+    witnesses: BTreeSet<&'a PolynomialReference>,
     machines: Vec<Box<dyn Machine<T>>>,
     query_callback: Option<QueryCallback>,
     global_range_constraints: BTreeMap<&'a PolynomialReference, RangeConstraint<T>>,
@@ -64,6 +65,7 @@ where
         fixed_data: &'a FixedData<'a, T>,
         fixed_lookup: &'a mut FixedLookup<T>,
         identities: &'a [&'a Identity<T>],
+        witnesses: BTreeSet<&'a PolynomialReference>,
         global_range_constraints: BTreeMap<&'a PolynomialReference, RangeConstraint<T>>,
         machines: Vec<Box<dyn Machine<T>>>,
         query_callback: Option<QueryCallback>,
@@ -74,6 +76,7 @@ where
             fixed_data,
             fixed_lookup,
             identities,
+            witnesses,
             machines,
             query_callback,
             global_range_constraints,
@@ -156,10 +159,12 @@ where
                 self.next
                     .iter()
                     .enumerate()
-                    .filter_map(|(i, v)| if v.is_none() {
-                        Some(self.fixed_data.witness_cols[i].poly.to_string())
-                    } else {
-                        None
+                    .filter_map(|(i, v)| {
+                        if v.is_none() && self.is_relevant_witness(i) {
+                            Some(self.fixed_data.witness_cols[i].poly.to_string())
+                        } else {
+                            None
+                        }
                     })
                     .collect::<Vec<String>>()
                     .join(", ")
@@ -246,7 +251,12 @@ where
     }
 
     fn format_next_values(&self) -> Vec<String> {
-        self.format_next_values_iter(self.next.iter().enumerate())
+        self.format_next_values_iter(
+            self.next
+                .iter()
+                .enumerate()
+                .filter(|(i, _)| self.is_relevant_witness(*i)),
+        )
     }
 
     fn format_next_known_values(&self) -> Vec<String> {
@@ -494,6 +504,12 @@ where
 
     fn has_known_next_value(&self, id: usize) -> bool {
         self.next[id].is_some()
+    }
+
+    /// Returns true if this is a witness column we care about (instead of a sub-machine witness).
+    fn is_relevant_witness(&self, id: usize) -> bool {
+        self.witnesses
+            .contains(&self.fixed_data.witness_cols[id].poly)
     }
 
     /// Tries to evaluate the expression to an expression affine in the witness polynomials,

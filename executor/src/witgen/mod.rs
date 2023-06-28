@@ -71,6 +71,7 @@ where
         mut fixed_lookup,
         machines,
         base_identities,
+        base_witnesses,
     } = machines::machine_extractor::split_out_machines(
         &fixed,
         retained_identities,
@@ -81,6 +82,7 @@ where
         &fixed,
         &mut fixed_lookup,
         &base_identities,
+        base_witnesses.into_iter().collect(),
         known_constraints,
         machines,
         query_callback,
