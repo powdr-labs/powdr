@@ -19,6 +19,7 @@ pub struct ExtractionOutput<'a, T> {
     pub fixed_lookup: FixedLookup<T>,
     pub machines: Vec<Box<dyn Machine<T>>>,
     pub base_identities: Vec<&'a Identity<T>>,
+    pub base_witnesses: HashSet<&'a PolynomialReference>,
 }
 
 /// Finds machines in the witness columns and identities
@@ -35,7 +36,7 @@ pub fn split_out_machines<'a, T: FieldElement>(
     let mut machines: Vec<Box<dyn Machine<T>>> = vec![];
 
     let all_witnesses = witness_cols.iter().map(|c| &c.poly).collect::<HashSet<_>>();
-    let mut remaining_witnesses = all_witnesses.clone();
+    let mut remaining_witnesses: HashSet<&'a PolynomialReference> = all_witnesses.clone();
     let mut base_identities = identities.clone();
     for id in &identities {
         // Extract all witness columns in the RHS of the lookup.
@@ -124,6 +125,7 @@ pub fn split_out_machines<'a, T: FieldElement>(
         fixed_lookup: *fixed_lookup,
         machines,
         base_identities,
+        base_witnesses: remaining_witnesses,
     }
 }
 
@@ -133,7 +135,7 @@ pub fn split_out_machines<'a, T: FieldElement>(
 fn all_row_connected_witnesses<'a, T>(
     mut witnesses: HashSet<&'a PolynomialReference>,
     all_witnesses: &HashSet<&'a PolynomialReference>,
-    identities: &'a [&'a Identity<T>],
+    identities: &[&'a Identity<T>],
 ) -> HashSet<&'a PolynomialReference> {
     loop {
         let count = witnesses.len();
