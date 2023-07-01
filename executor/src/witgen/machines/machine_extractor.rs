@@ -35,8 +35,8 @@ pub fn split_out_machines<'a, T: FieldElement>(
 
     let mut machines: Vec<Box<dyn Machine<T>>> = vec![];
 
-    let all_witnesses = witness_cols.iter().map(|c| &c.poly).collect::<HashSet<_>>();
-    let mut remaining_witnesses: HashSet<&'a PolynomialReference> = all_witnesses.clone();
+    let all_witnesses: HashSet<&'a _> = witness_cols.iter().map(|c| &c.poly).collect();
+    let mut remaining_witnesses = all_witnesses.clone();
     let mut base_identities = identities.clone();
     for id in &identities {
         // Extract all witness columns in the RHS of the lookup.
