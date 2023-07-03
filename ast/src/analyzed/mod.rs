@@ -2,11 +2,13 @@ mod display;
 pub mod util;
 
 use core::hash::Hash;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fmt::Display;
+use std::ops::ControlFlow;
 
 use number::DegreeType;
 
+use crate::analyzed::util::previsit_expressions_in_pil_file_mut;
 pub use crate::parsed::BinaryOperator;
 pub use crate::parsed::UnaryOperator;
 
@@ -86,6 +88,103 @@ impl<T> Analyzed<T> {
                 }
             })
             .sum()
+    }
+
+    /// Removes the specified polynomials and updates the IDs of the other polynomials
+    /// so that they are contiguous again.
+    /// There must not be any reference to the removed polynomials left.
+    pub fn remove_polynomials(&mut self, to_remove: &BTreeSet<PolyID>) {
+        // TODO intermediate polys
+        let replacements: BTreeMap<PolyID, PolyID> = [
+            // We have to do it separately because we need to re-start the counter
+            // for each kind.
+            self.committed_polys_in_source_order(),
+            self.constant_polys_in_source_order(),
+        ]
+        .map(|polys| {
+            polys
+                .iter()
+                .enumerate()
+                .fold(
+                    (0, BTreeMap::new()),
+                    |(shift, mut replacements), (i, (poly, _def))| {
+                        assert_eq!(i as u64, poly.id);
+                        let poly_id = poly.into();
+                        if to_remove.contains(&poly_id) {
+                            (shift + 1, replacements)
+                        } else {
+                            replacements.insert(
+                                poly_id,
+                                PolyID {
+                                    id: poly_id.id - shift,
+                                    ..poly_id
+                                },
+                            );
+                            (shift, replacements)
+                        }
+                    },
+                )
+                .1
+        })
+        .into_iter()
+        .flatten()
+        .collect();
+
+        let mut names_to_remove: HashSet<String> = Default::default();
+        self.definitions.retain(|name, (poly, _def)| {
+            if to_remove.contains(&(poly as &Polynomial).into()) {
+                names_to_remove.insert(name.clone());
+                false
+            } else {
+                true
+            }
+        });
+        self.source_order.retain(|s| {
+            if let StatementIdentifier::Definition(name) = s {
+                if names_to_remove.contains(name) {
+                    return true;
+                }
+            }
+            false
+        });
+        self.definitions.values_mut().for_each(|(poly, _def)| {
+            let poly_id = PolyID::from(poly as &Polynomial);
+            assert!(!to_remove.contains(&poly_id));
+            poly.id = replacements[&poly_id].id;
+        });
+        previsit_expressions_in_pil_file_mut(self, &mut |expr| {
+            if let Expression::PolynomialReference(poly) = expr {
+                let poly_id = poly.poly_id.unwrap();
+                assert!(!to_remove.contains(&poly_id));
+                poly.poly_id = Some(replacements[&poly_id]);
+            }
+            ControlFlow::Continue::<()>(())
+        });
+    }
+
+    /// Adds a polynomial identity and returns the ID.
+    pub fn append_polynomial_identity(
+        &mut self,
+        identity: Expression<T>,
+        source: SourceRef,
+    ) -> u64 {
+        let id = self.identities.len() as u64;
+        self.identities.push(Identity {
+            id,
+            kind: IdentityKind::Polynomial,
+            source,
+            left: SelectedExpressions {
+                selector: Some(identity),
+                expressions: vec![],
+            },
+            right: SelectedExpressions {
+                selector: None,
+                expressions: vec![],
+            },
+        });
+        self.source_order
+            .push(StatementIdentifier::Identity(id as usize));
+        id
     }
 }
 
