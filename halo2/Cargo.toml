@@ -22,6 +22,6 @@ ast = { version = "0.1.0", path = "../ast" }
 analysis = { path = "../analysis" }
 executor = { path = "../executor" }
 parser = { path = "../parser" }
-pilgen = { path = "../pilgen" }
+asm_to_pil = { path = "../asm_to_pil" }
 test-log = "0.2.12"
 env_logger = "0.10.0"

@@ -133,7 +133,7 @@ pub fn compile_asm_string<T: FieldElement>(
         panic!();
     });
     let analysed = analyze(parsed).unwrap();
-    let pil = pilgen::compile(analysed);
+    let pil = asm_to_pil::compile(analysed);
     let pil_file_name = format!(
         "{}.pil",
         Path::new(file_name).file_stem().unwrap().to_str().unwrap()
