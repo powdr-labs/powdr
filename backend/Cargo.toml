@@ -10,3 +10,4 @@ halo2 = { path = "../halo2" }
 pil_analyzer = { path = "../pil_analyzer" }
 number = { path = "../number" }
 strum = { version = "0.24.1", features = ["derive"] }
+ast = { version = "0.1.0", path = "../ast" }

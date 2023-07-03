@@ -1,4 +1,4 @@
-use pil_analyzer::Analyzed;
+use ast::analyzed::Analyzed;
 use polyexen::plaf::PlafDisplayBaseTOML;
 
 use super::circuit_builder::analyzed_to_circuit;
@@ -48,7 +48,7 @@ mod test {
         let contents = fs::read_to_string(file_name).unwrap();
         let parsed = parse_asm::<Bn254Field>(Some(file_name), &contents).unwrap();
         let analysed = analyze(parsed).unwrap();
-        let pil = pilgen::compile(analysed);
+        let pil = asm_to_pil::compile(analysed);
 
         let query_callback = |query: &str| -> Option<Bn254Field> {
             let items = query.split(',').map(|s| s.trim()).collect::<Vec<_>>();

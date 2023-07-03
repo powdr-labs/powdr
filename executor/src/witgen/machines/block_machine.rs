@@ -13,8 +13,8 @@ use crate::witgen::{
     Constraint, EvalError,
 };
 use crate::witgen::{Constraints, EvalValue};
+use ast::analyzed::{Expression, Identity, IdentityKind, PolynomialReference, SelectedExpressions};
 use number::{DegreeType, FieldElement};
-use pil_analyzer::{Expression, Identity, IdentityKind, PolynomialReference, SelectedExpressions};
 
 /// A machine that produces multiple rows (one block) per query.
 /// TODO we do not actually "detect" the machine yet, we just check if

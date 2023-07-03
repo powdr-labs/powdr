@@ -11,7 +11,7 @@ use crate::witgen::{EvalError, EvalResult, FixedData};
 use crate::witgen::{EvalValue, IncompleteCause};
 use number::{DegreeType, FieldElement};
 
-use pil_analyzer::{Expression, Identity, IdentityKind, PolynomialReference, SelectedExpressions};
+use ast::analyzed::{Expression, Identity, IdentityKind, PolynomialReference, SelectedExpressions};
 
 /// TODO make this generic
 

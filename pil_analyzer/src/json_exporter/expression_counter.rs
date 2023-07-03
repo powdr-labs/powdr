@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::{
+use ast::analyzed::{
     Analyzed, Expression, Identity, Polynomial, PolynomialType, PublicDeclaration,
     SelectedExpressions, StatementIdentifier,
 };

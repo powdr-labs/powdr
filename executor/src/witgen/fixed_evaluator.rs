@@ -1,8 +1,8 @@
 use super::affine_expression::AffineResult;
 use super::expression_evaluator::SymbolicVariables;
 use super::FixedData;
+use ast::analyzed::PolynomialReference;
 use number::FieldElement;
-use pil_analyzer::PolynomialReference;
 
 /// Evaluates only fixed columns on a specific row.
 pub struct FixedEvaluator<'a, T> {

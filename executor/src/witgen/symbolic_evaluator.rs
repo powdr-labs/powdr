@@ -1,8 +1,8 @@
 use super::affine_expression::{AffineExpression, AffineResult};
 use super::expression_evaluator::SymbolicVariables;
 
+use ast::analyzed::PolynomialReference;
 use number::FieldElement;
-use pil_analyzer::PolynomialReference;
 
 /// A purely symbolic evaluator, uses PolynomialReference as keys
 /// and neither resolves fixed columns nor witness columns.

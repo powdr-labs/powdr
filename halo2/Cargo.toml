@@ -12,7 +12,7 @@ halo2_curves = { git = "https://github.com/privacy-scaling-explorations/halo2cur
 snark-verifier = { git = "https://github.com/privacy-scaling-explorations/snark-verifier" }
 num-traits = "0.2.15"
 num-integer = "0.1.45"
-itertools = "0.10.5"
+itertools = "^0.10"
 num-bigint = "^0.4"
 log = "0.4.17"
 rand = "0.8.5"
@@ -22,6 +22,6 @@ ast = { version = "0.1.0", path = "../ast" }
 analysis = { path = "../analysis" }
 executor = { path = "../executor" }
 parser = { path = "../parser" }
-pilgen = { path = "../pilgen" }
+asm_to_pil = { path = "../asm_to_pil" }
 test-log = "0.2.12"
 env_logger = "0.10.0"

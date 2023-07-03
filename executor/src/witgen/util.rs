@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
-use pil_analyzer::util::previsit_expressions_in_identity_mut;
-use pil_analyzer::{Expression, Identity, PolyID, PolynomialReference};
+use ast::analyzed::util::previsit_expressions_in_identity_mut;
+use ast::analyzed::{Expression, Identity, PolyID, PolynomialReference};
 
 /// Checks if an expression is
 /// - a polynomial

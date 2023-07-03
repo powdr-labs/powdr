@@ -4,7 +4,7 @@ use std::collections::{BTreeMap, HashMap};
 use json::{object, JsonValue};
 use number::FieldElement;
 
-use crate::{
+use ast::analyzed::{
     Analyzed, BinaryOperator, Expression, FunctionValueDefinition, IdentityKind, PolyID,
     PolynomialReference, PolynomialType, StatementIdentifier, UnaryOperator,
 };
