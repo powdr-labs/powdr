@@ -188,7 +188,7 @@ where
         if let Some(Backend::Halo2) = prove_with {
             let degree = usize::BITS - degree.leading_zeros() + 1;
             let params = halo2::kzg_params(degree as usize);
-            let proof = halo2::prove_ast(analyzed, constants, commits, params);
+            let proof = halo2::prove_ast(analyzed, &constants, &commits, &params);
             write_proof_to_fs(&proof, output_dir);
             log::info!("Generated proof.");
         }

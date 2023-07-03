@@ -9,6 +9,8 @@ pub enum Backend {
     Halo2,
     #[strum(serialize = "halo2-aggr")]
     Halo2Aggr,
+    #[strum(serialize = "halo2-chunk")]
+    Halo2Chunk,
     #[strum(serialize = "halo2-mock")]
     Halo2Mock,
 }
@@ -48,9 +50,19 @@ pub trait ProverAggregationWithParams {
     ) -> Proof;
 }
 
+pub trait ProverChunkingWithParams {
+    fn prove<T: FieldElement, R: io::Read>(
+        pil: &Analyzed<T>,
+        fixed: Vec<(&str, Vec<T>)>,
+        witness: Vec<Vec<(&str, Vec<T>)>>,
+        params: R,
+    ) -> Proof;
+}
+
 pub struct Halo2Backend;
 pub struct Halo2MockBackend;
 pub struct Halo2AggregationBackend;
+pub struct Halo2ChunkBackend;
 
 impl ProverWithParams for Halo2Backend {
     fn prove<T: FieldElement, R: io::Read>(
@@ -87,5 +99,17 @@ impl ProverAggregationWithParams for Halo2AggregationBackend {
         params: R2,
     ) -> Proof {
         halo2::prove_aggr_read_proof_params(pil, fixed, witness, proof, params)
+    }
+}
+
+impl ProverChunkingWithParams for Halo2ChunkBackend {
+    fn prove<T: FieldElement, R: io::Read>(
+        pil: &Analyzed<T>,
+        fixed: Vec<(&str, Vec<T>)>,
+        witness: Vec<Vec<(&str, Vec<T>)>>,
+        params: R,
+    ) -> Proof {
+        assert_eq!(fixed[0].1.len(), witness[0][0].1.len());
+        halo2::prove_chunk_read_params(pil, fixed, witness, params)
     }
 }

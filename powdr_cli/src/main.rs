@@ -288,11 +288,12 @@ fn main() {
 
             let proof = call_with_field!(read_and_prove, field, pil, dir, &backend, proof, params);
 
-            let proof_filename = if let Backend::Halo2Aggr = backend {
-                "proof_aggr.bin"
-            } else {
-                "proof.bin"
+            let proof_filename = match backend {
+                Backend::Halo2 | Backend::Halo2Mock => "proof.bin",
+                Backend::Halo2Aggr => "proof_aggr.bin",
+                Backend::Halo2Chunk => "proof_chunk.bin",
             };
+
             if let Some(proof) = proof {
                 let mut proof_file = fs::File::create(dir.join(proof_filename)).unwrap();
                 let mut proof_writer = BufWriter::new(&mut proof_file);
@@ -315,7 +316,9 @@ fn main() {
 fn setup(size: usize, dir: String, field: FieldArgument, backend: Backend) {
     let dir = Path::new(&dir);
     let params = match (field, &backend) {
-        (FieldArgument::Bn254, Backend::Halo2) => Halo2Backend::generate_params::<Bn254Field>(size),
+        (FieldArgument::Bn254, Backend::Halo2 | Backend::Halo2Chunk) => {
+            Halo2Backend::generate_params::<Bn254Field>(size)
+        }
         (_, Backend::Halo2) => panic!("Backend halo2 requires field Bn254"),
         _ => panic!("Backend {} does not accept params.", backend),
     };
@@ -367,5 +370,15 @@ fn read_and_prove<T: FieldElement>(
                 &pil, fixed.0, witness.0, proof, params,
             ))
         }
+        (Backend::Halo2Chunk, Some(params)) => {
+            let params = fs::File::open(dir.join(params)).unwrap();
+            Some(Halo2ChunkBackend::prove(
+                &pil,
+                fixed.0,
+                vec![witness.0],
+                params,
+            ))
+        }
+        (Backend::Halo2Chunk, None) => panic!("Backend Halo2Chunk requires params"),
     }
 }

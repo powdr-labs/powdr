@@ -14,8 +14,8 @@ use super::circuit_data::CircuitData;
 
 pub(crate) fn analyzed_to_circuit<T: FieldElement>(
     analyzed: &Analyzed<T>,
-    fixed: Vec<(&str, Vec<T>)>,
-    witness: Vec<(&str, Vec<T>)>,
+    fixed: &[(&str, Vec<T>)],
+    witness: &Vec<(&str, Vec<T>)>,
 ) -> PlafH2Circuit {
     // The structure of the table is as following
     //
@@ -36,7 +36,7 @@ pub(crate) fn analyzed_to_circuit<T: FieldElement>(
 
     let query = |column, rotation| Expr::Var(PlonkVar::Query(ColumnQuery { column, rotation }));
 
-    let mut cd = CircuitData::from(fixed, witness);
+    let mut cd = CircuitData::from(fixed.to_owned(), witness.to_owned());
 
     // append two fixed columns:
     // - one that enables constraints that do not have rotations (__enable_cur) in the actual circuit

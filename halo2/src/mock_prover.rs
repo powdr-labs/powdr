@@ -14,7 +14,7 @@ pub fn mock_prove<T: FieldElement>(
         panic!("powdr modulus doesn't match halo2 modulus. Make sure you are using Bn254");
     }
 
-    let circuit = analyzed_to_circuit(pil, fixed, witness);
+    let circuit = analyzed_to_circuit(pil, &fixed, &witness);
 
     // double the row count in order to make space for the cells introduced by the backend
     // TODO: use a precise count of the extra rows needed to avoid using so many rows

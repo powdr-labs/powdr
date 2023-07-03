@@ -387,6 +387,7 @@ pub fn gen_aggregation_evm_verifier(
     let proof = PlonkVerifier::read_proof(&vk, &protocol, &instances, &mut transcript).unwrap();
     PlonkVerifier::verify(&vk, &protocol, &instances, &proof).unwrap();
 
+    //println!("Yul code:\n{:?}", &loader.yul_code());
     evm::compile_yul(&loader.yul_code())
 }
 

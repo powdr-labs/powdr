@@ -33,6 +33,164 @@ use std::time::Instant;
 /// Create a halo2 proof for a given PIL, fixed column values and witness column values
 /// We use KZG ([GWC variant](https://eprint.iacr.org/2019/953)) and Keccak256
 
+pub fn prove_chunk_read_params<T: FieldElement, R: io::Read>(
+    pil: &Analyzed<T>,
+    fixed: Vec<(&str, Vec<T>)>,
+    witness: Vec<Vec<(&str, Vec<T>)>>,
+    mut params: R,
+) -> Vec<u8> {
+    if polyexen::expr::get_field_p::<Fr>() != T::modulus().to_arbitrary_integer() {
+        panic!("powdr modulus doesn't match halo2 modulus. Make sure you are using Bn254");
+    }
+
+    assert_eq!(fixed[0].1.len(), witness[0][0].1.len());
+
+    let params = ParamsKZG::<Bn256>::read(&mut params).unwrap();
+    prove_chunk(pil, fixed, witness, params)
+}
+
+pub fn prove_chunk<T: FieldElement>(
+    pil: &Analyzed<T>,
+    fixed: Vec<(&str, Vec<T>)>,
+    witness: Vec<Vec<(&str, Vec<T>)>>,
+    params: ParamsKZG<Bn256>,
+) -> Vec<u8> {
+    assert_eq!(fixed[0].1.len(), witness[0][0].1.len());
+
+    log::info!("Starting proof generation for chunks...");
+
+    let degree = usize::BITS - fixed[0].1.len().leading_zeros() + 1;
+    let params_app = {
+        let mut params = params.clone();
+        params.downsize(degree);
+        params
+    };
+
+    // Circuit generation
+
+    log::info!("Generating app circuits and vks...");
+
+    let apps = witness
+        .iter()
+        .map(|w| {
+            let circuit_app = analyzed_to_circuit(pil, &fixed, w);
+            let vk_app = keygen_vk(&params_app, &circuit_app).unwrap();
+            (circuit_app, vk_app)
+        })
+        .collect::<Vec<_>>();
+
+    log::info!("Generating compression circuit and vk...");
+
+    let protocol_app = compile(
+        &params_app,
+        &apps[0].1,
+        Config::kzg().with_num_instance(vec![]),
+    );
+    let empty_snark_app = aggregation::Snark::new_without_witness(protocol_app.clone());
+    let comp_circuit =
+        aggregation::AggregationCircuit::new_without_witness(&params_app, [empty_snark_app]);
+
+    let comp_vk = keygen_vk(&params, &comp_circuit).unwrap();
+
+    log::info!("Generating aggregation circuit and vk...");
+
+    let protocol_comp = compile(&params, &comp_vk, Config::kzg().with_num_instance(vec![]));
+    let empty_snark_comp = aggregation::Snark::new_without_witness(protocol_comp.clone());
+    let aggr_circuit = aggregation::AggregationCircuit::new_without_witness(
+        &params,
+        //[empty_snark_comp.clone(), empty_snark_comp],
+        [empty_snark_comp],
+    );
+
+    let aggr_vk = keygen_vk(&params, &aggr_circuit).unwrap();
+
+    // Proof generation
+
+    log::info!("Generating proofs for chunks...");
+
+    let app_proofs = apps
+        .into_iter()
+        .map(|(circuit, vk)| {
+            let pk = keygen_pk(&params_app, vk.clone(), &circuit).unwrap();
+            let inputs = vec![];
+            let proof = gen_proof::<
+                _,
+                _,
+                aggregation::PoseidonTranscript<NativeLoader, _>,
+                aggregation::PoseidonTranscript<NativeLoader, _>,
+            >(&params_app, &pk, circuit, inputs);
+
+            (proof, vk)
+        })
+        .collect::<Vec<_>>();
+
+    log::info!("Generating compression proofs...");
+
+    let comp_pk = keygen_pk(&params, comp_vk.clone(), &comp_circuit).unwrap();
+    let comp_proofs = app_proofs
+        .into_iter()
+        .map(|(proof_app, vk_app)| {
+            /*
+            let protocol_app = compile(
+                &params_app,
+                &vk_app,
+                Config::kzg().with_num_instance(vec![]),
+            );
+            */
+            let snark_app = aggregation::Snark::new(protocol_app.clone(), vec![], proof_app);
+            let comp_circuit_with_proof =
+                aggregation::AggregationCircuit::new(&params_app, [snark_app]);
+
+            gen_proof::<
+                _,
+                _,
+                aggregation::PoseidonTranscript<NativeLoader, _>,
+                aggregation::PoseidonTranscript<NativeLoader, _>,
+            >(
+                &params,
+                &comp_pk,
+                comp_circuit_with_proof.clone(),
+                comp_circuit_with_proof.instances(),
+            )
+        })
+        .collect::<Vec<_>>();
+
+    log::info!("Generating aggregation circuits with proofs as witnesses...");
+
+    let aggr_pk = keygen_pk(&params, aggr_vk.clone(), &aggr_circuit).unwrap();
+
+    let deployment_code = aggregation::gen_aggregation_evm_verifier(
+        &params,
+        &aggr_vk,
+        aggregation::AggregationCircuit::num_instance(),
+        aggregation::AggregationCircuit::accumulator_indices(),
+    );
+
+    //let protocol_comp = compile(&params, &comp_vk, Config::kzg().with_num_instance(vec![]));
+    let snark_comp_1 =
+        aggregation::Snark::new(protocol_comp.clone(), vec![], comp_proofs[0].clone());
+    //let snark_comp_2 = aggregation::Snark::new(protocol_comp, vec![], comp_proofs[0].clone());
+    let aggr_circuit_with_proof =
+    //    aggregation::AggregationCircuit::new(&params, [snark_comp_1, snark_comp_2]);
+        aggregation::AggregationCircuit::new(&params, [snark_comp_1]);
+
+    log::info!("Generating aggregation proof...");
+
+    let proof = gen_proof::<_, _, EvmTranscript<G1Affine, _, _, _>, EvmTranscript<G1Affine, _, _, _>>(
+        &params,
+        &aggr_pk,
+        aggr_circuit_with_proof.clone(),
+        aggr_circuit_with_proof.instances(),
+    );
+
+    log::info!("Verifying aggregated proof in the EVM...");
+    aggregation::evm_verify(deployment_code, aggr_circuit_with_proof.instances(), &proof);
+
+    log::info!("Proof of chunks => compression => aggregation done.");
+
+    proof
+}
+
 pub fn prove_ast_read_params<T: FieldElement, R: io::Read>(
     pil: &Analyzed<T>,
     fixed: Vec<(&str, Vec<T>)>,
@@ -44,14 +202,14 @@ pub fn prove_ast_read_params<T: FieldElement, R: io::Read>(
     }
 
     let params = ParamsKZG::<Bn256>::read(&mut params).unwrap();
-    prove_ast(pil, fixed, witness, params)
+    prove_ast(pil, &fixed, &witness, &params)
 }
 
 pub fn prove_ast<T: FieldElement>(
     pil: &Analyzed<T>,
-    fixed: Vec<(&str, Vec<T>)>,
-    witness: Vec<(&str, Vec<T>)>,
-    params: ParamsKZG<Bn256>,
+    fixed: &[(&str, Vec<T>)],
+    witness: &Vec<(&str, Vec<T>)>,
+    params: &ParamsKZG<Bn256>,
 ) -> Vec<u8> {
     if polyexen::expr::get_field_p::<Fr>() != T::modulus().to_arbitrary_integer() {
         panic!("powdr modulus doesn't match halo2 modulus. Make sure you are using Bn254");
@@ -60,7 +218,7 @@ pub fn prove_ast<T: FieldElement>(
     // TODO this is hacky
     let degree = usize::BITS - fixed[0].1.len().leading_zeros() + 1;
     let params = {
-        let mut params = params;
+        let mut params = params.clone();
         params.downsize(degree);
         params
     };
@@ -105,19 +263,19 @@ pub fn prove_aggr_read_proof_params<T: FieldElement, R1: io::Read, R2: io::Read>
     proof.read_to_end(&mut proof_vec).unwrap();
     prove_aggr(
         pil,
-        fixed,
-        witness,
+        &fixed,
+        &witness,
         proof_vec,
-        ParamsKZG::<Bn256>::read(&mut params).unwrap(),
+        &ParamsKZG::<Bn256>::read(&mut params).unwrap(),
     )
 }
 
 pub fn prove_aggr<T: FieldElement>(
     pil: &Analyzed<T>,
-    fixed: Vec<(&str, Vec<T>)>,
-    witness: Vec<(&str, Vec<T>)>,
+    fixed: &[(&str, Vec<T>)],
+    witness: &Vec<(&str, Vec<T>)>,
     proof: Vec<u8>,
-    params: ParamsKZG<Bn256>,
+    params: &ParamsKZG<Bn256>,
 ) -> Vec<u8> {
     if polyexen::expr::get_field_p::<Fr>() != T::modulus().to_arbitrary_integer() {
         panic!("powdr modulus doesn't match halo2 modulus. Make sure you are using Bn254");
@@ -152,13 +310,13 @@ pub fn prove_aggr<T: FieldElement>(
         aggregation::AggregationCircuit::new_without_witness(&params_app, [empty_snark]);
 
     log::info!("Generating VK and PK for compression snark...");
-    let vk_aggr = keygen_vk(&params, &agg_circuit).unwrap();
-    let pk_aggr = keygen_pk(&params, vk_aggr, &agg_circuit).unwrap();
+    let vk_aggr = keygen_vk(params, &agg_circuit).unwrap();
+    let pk_aggr = keygen_pk(params, vk_aggr.clone(), &agg_circuit).unwrap();
 
     log::info!("Generating compressed snark verifier...");
     let deployment_code = aggregation::gen_aggregation_evm_verifier(
-        &params,
-        pk_aggr.get_vk(),
+        params,
+        &vk_aggr,
         aggregation::AggregationCircuit::num_instance(),
         aggregation::AggregationCircuit::accumulator_indices(),
     );
@@ -168,7 +326,7 @@ pub fn prove_aggr<T: FieldElement>(
     let snark = aggregation::Snark::new(protocol_app, vec![], proof);
     let agg_circuit_with_proof = aggregation::AggregationCircuit::new(&params_app, [snark]);
     let proof = gen_proof::<_, _, EvmTranscript<G1Affine, _, _, _>, EvmTranscript<G1Affine, _, _, _>>(
-        &params,
+        params,
         &pk_aggr,
         agg_circuit_with_proof.clone(),
         agg_circuit_with_proof.instances(),
