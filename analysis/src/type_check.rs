@@ -1,5 +1,5 @@
 use ast::{
-    analysis::{
+    asm_analysis::{
         AnalysisASMFile, AssignmentStatement, DegreeStatement, InstructionDefinitionStatement,
         InstructionStatement, LabelStatement, PilBlock, RegisterDeclarationStatement,
     },
