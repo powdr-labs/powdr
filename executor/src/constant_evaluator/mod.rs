@@ -1,9 +1,9 @@
 use std::collections::HashMap;
 
+use ast::analyzed::{Analyzed, Expression, FunctionValueDefinition};
 use ast::parsed::{BinaryOperator, UnaryOperator};
 use itertools::Itertools;
 use number::{DegreeType, FieldElement};
-use pil_analyzer::{Analyzed, Expression, FunctionValueDefinition};
 use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 
 /// Generates the constant polynomial values for all constant polynomials

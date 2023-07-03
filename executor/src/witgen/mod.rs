@@ -1,7 +1,7 @@
-use number::{DegreeType, FieldElement};
-use pil_analyzer::{
+use ast::analyzed::{
     Analyzed, Expression, FunctionValueDefinition, PolyID, PolynomialReference, PolynomialType,
 };
+use number::{DegreeType, FieldElement};
 
 pub use self::eval_result::{
     Constraint, Constraints, EvalError, EvalResult, EvalStatus, EvalValue, IncompleteCause,

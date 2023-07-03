@@ -1,5 +1,5 @@
+use ast::analyzed::PolynomialReference;
 use number::{DegreeType, FieldElement};
-use pil_analyzer::PolynomialReference;
 
 use super::{affine_expression::AffineResult, expression_evaluator::SymbolicVariables, FixedData};
 

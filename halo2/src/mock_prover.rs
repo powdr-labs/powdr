@@ -1,4 +1,4 @@
-use pil_analyzer::Analyzed;
+use ast::analyzed::Analyzed;
 use polyexen::plaf::PlafDisplayBaseTOML;
 
 use super::circuit_builder::analyzed_to_circuit;

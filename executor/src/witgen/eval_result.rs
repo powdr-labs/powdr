@@ -1,7 +1,7 @@
 use std::fmt;
 
+use ast::analyzed::PolynomialReference;
 use number::FieldElement;
-use pil_analyzer::PolynomialReference;
 
 use super::range_constraints::RangeConstraint;
 

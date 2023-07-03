@@ -1,5 +1,5 @@
+use ast::analyzed::Analyzed;
 use number::{read_polys_file, DegreeType, FieldElement};
-use pil_analyzer::Analyzed;
 use std::{fs::File, path::Path};
 
 pub fn read_fixed<'a, T: FieldElement>(

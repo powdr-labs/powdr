@@ -8,7 +8,7 @@ log = "0.4.17"
 number = { path = "../number" }
 parser_util = { path = "../parser_util" }
 parser = { path = "../parser" }
-itertools = "0.10.5"
+itertools = "^0.10"
 num-bigint = "0.4.3"
 ast = { path = "../ast" }
 

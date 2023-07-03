@@ -9,11 +9,9 @@ use super::FixedData;
 use super::Machine;
 use crate::witgen::range_constraints::RangeConstraint;
 use crate::witgen::WitnessColumn;
+use ast::analyzed::{Expression, Identity, IdentityKind, PolynomialReference, SelectedExpressions};
 use itertools::Itertools;
 use number::FieldElement;
-use pil_analyzer::IdentityKind;
-use pil_analyzer::PolynomialReference;
-use pil_analyzer::{Expression, Identity, SelectedExpressions};
 
 pub struct ExtractionOutput<'a, T> {
     pub fixed_lookup: FixedLookup<T>,

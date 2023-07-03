@@ -1,9 +1,9 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::{Debug, Display, Formatter};
 
+use ast::analyzed::{Expression, Identity, IdentityKind, PolynomialReference};
 use ast::parsed::BinaryOperator;
 use number::{log2_exact, BigInt, FieldElement};
-use pil_analyzer::{Expression, Identity, IdentityKind, PolynomialReference};
 
 use super::expression_evaluator::ExpressionEvaluator;
 use super::symbolic_evaluator::SymbolicEvaluator;
@@ -321,8 +321,8 @@ fn smallest_period_candidate<T: FieldElement>(fixed: &[T]) -> Option<u64> {
 mod test {
     use std::collections::BTreeMap;
 
+    use ast::analyzed::{PolyID, PolynomialReference, PolynomialType};
     use number::GoldilocksField;
-    use pil_analyzer::{PolyID, PolynomialReference};
     use test_log::test;
 
     use crate::witgen::range_constraints::{propagate_constraints, RangeConstraint};
@@ -407,7 +407,7 @@ namespace Global(2**20);
                 name: name.to_string(),
                 poly_id: Some(PolyID {
                     id: i as u64,
-                    ptype: pil_analyzer::PolynomialType::Constant,
+                    ptype: PolynomialType::Constant,
                 }),
                 index: None,
                 next: false,

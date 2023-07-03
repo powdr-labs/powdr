@@ -1,5 +1,5 @@
+use ast::analyzed::Analyzed;
 use number::FieldElement;
-use pil_analyzer::Analyzed;
 use std::io;
 use strum::{Display, EnumString, EnumVariantNames};
 

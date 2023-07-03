@@ -1,5 +1,6 @@
-use crate::{Analyzed, Expression, FunctionValueDefinition, Identity};
 use std::{iter::once, ops::ControlFlow};
+
+use super::{Analyzed, Expression, FunctionValueDefinition, Identity};
 
 /// Calls `f` on each expression in the pil file and then descends into the
 /// (potentially modified) expression.

@@ -6,14 +6,14 @@ use polyexen::plaf::{
     ColumnFixed, ColumnWitness, Columns, Info, Lookup, Plaf, Poly, Shuffle, Witness,
 };
 
+use ast::analyzed::{Analyzed, Expression, IdentityKind, SelectedExpressions};
 use num_traits::One;
 use number::{BigInt, FieldElement};
-use pil_analyzer::{self, Expression, IdentityKind, SelectedExpressions};
 
 use super::circuit_data::CircuitData;
 
 pub(crate) fn analyzed_to_circuit<T: FieldElement>(
-    analyzed: &pil_analyzer::Analyzed<T>,
+    analyzed: &Analyzed<T>,
     fixed: Vec<(&str, Vec<T>)>,
     witness: Vec<(&str, Vec<T>)>,
 ) -> PlafH2Circuit {
