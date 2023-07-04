@@ -69,7 +69,6 @@ pil {
     
     pol commit in0, in1, in2, in3, in4, in5, in6, in7, hashType, cap1, cap2, cap3;
     pol commit hash0, hash1, hash2, hash3;
-    pol commit result1, result2, result3;
 
     // TODO: All polynomials have to be committed or constant?
     pol commit a0, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11;
@@ -231,14 +230,6 @@ pil {
     (hash1 - hash1')*(1-LAST) = 0;
     (hash2 - hash2')*(1-LAST) = 0;
     (hash3 - hash3')*(1-LAST) = 0;
-
-    result1 * (1 - result1) = 0;
-    result2 * (1 - result2) = 0;
-    result3 * (1 - result3) = 0;
-
-    result1 * (1 - LATCH) = 0;
-    result2 * (1 - LATCH) = 0;
-    result3 * (1 - LATCH) = 0;
 }
 
 
