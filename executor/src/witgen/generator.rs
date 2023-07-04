@@ -1,7 +1,7 @@
+use ast::analyzed::{Expression, Identity, IdentityKind, PolynomialReference};
 use itertools::Itertools;
 use number::{DegreeType, FieldElement};
 use parser_util::lines::indent;
-use pil_analyzer::{Expression, Identity, IdentityKind, PolynomialReference};
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::time::Instant;
 

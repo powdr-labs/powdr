@@ -5,7 +5,7 @@ mod type_check;
 /// expose the macro expander for use in the pil_analyzer
 pub use macro_expansion::MacroExpander;
 
-use ast::{analysis::AnalysisASMFile, parsed::asm::ASMFile};
+use ast::{asm_analysis::AnalysisASMFile, parsed::asm::ASMFile};
 use number::FieldElement;
 
 pub fn analyze<T: FieldElement>(file: ASMFile<T>) -> Result<AnalysisASMFile<T>, String> {

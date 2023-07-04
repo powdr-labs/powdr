@@ -7,7 +7,7 @@ edition = "2021"
 
 [dependencies]
 ast = { path = "../ast" }
-itertools = "0.10.5"
+itertools = "^0.10"
 log = "0.4.18"
 number = { version = "0.1.0", path = "../number" }
 

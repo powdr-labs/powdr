@@ -2,9 +2,9 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::mem;
 use std::num::NonZeroUsize;
 
+use ast::analyzed::{Identity, IdentityKind, PolyID, PolynomialReference, SelectedExpressions};
 use itertools::Itertools;
 use number::FieldElement;
-use pil_analyzer::{Identity, IdentityKind, PolyID, PolynomialReference, SelectedExpressions};
 
 use crate::witgen::affine_expression::AffineResult;
 use crate::witgen::util::try_to_simple_poly_ref;

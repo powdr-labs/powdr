@@ -3,7 +3,7 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use ast::{
-    analysis::{
+    asm_analysis::{
         AnalysisASMFile, AssignmentStatement, BatchMetadata, InstructionDefinitionStatement,
         InstructionStatement, LabelStatement, PilBlock, ProgramStatement,
         RegisterDeclarationStatement,
@@ -970,7 +970,7 @@ mod test {
     use std::fs;
     use test_log::test;
 
-    use ast::analysis::AnalysisASMFile;
+    use ast::asm_analysis::AnalysisASMFile;
     use number::{FieldElement, GoldilocksField};
 
     use analysis::analyze;

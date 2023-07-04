@@ -7,6 +7,7 @@ use std::io::Write;
 use std::path::Path;
 use std::time::Instant;
 
+use ast::analyzed::Analyzed;
 use json::JsonValue;
 
 pub mod util;
@@ -15,7 +16,7 @@ mod verify;
 use analysis::analyze;
 pub use backend::{Backend, Proof};
 use number::write_polys_file;
-use pil_analyzer::{json_exporter, Analyzed};
+use pil_analyzer::json_exporter;
 pub use verify::{verify, verify_asm_string};
 
 use ast::parsed::PILFile;
@@ -132,7 +133,7 @@ pub fn compile_asm_string<T: FieldElement>(
         panic!();
     });
     let analysed = analyze(parsed).unwrap();
-    let pil = pilgen::compile(analysed);
+    let pil = asm_to_pil::compile(analysed);
     let pil_file_name = format!(
         "{}.pil",
         Path::new(file_name).file_stem().unwrap().to_str().unwrap()
@@ -160,7 +161,7 @@ pub fn compile_asm_string<T: FieldElement>(
 }
 
 fn compile<T: FieldElement, QueryCallback>(
-    analyzed: &pil_analyzer::Analyzed<T>,
+    analyzed: &Analyzed<T>,
     file_name: &OsStr,
     output_dir: &Path,
     query_callback: Option<QueryCallback>,

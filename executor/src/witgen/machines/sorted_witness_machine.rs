@@ -12,10 +12,8 @@ use crate::witgen::{
     expression_evaluator::ExpressionEvaluator, fixed_evaluator::FixedEvaluator,
     symbolic_evaluator::SymbolicEvaluator,
 };
+use ast::analyzed::{Expression, Identity, IdentityKind, PolynomialReference, SelectedExpressions};
 use number::FieldElement;
-use pil_analyzer::{
-    self, Expression, Identity, IdentityKind, PolynomialReference, SelectedExpressions,
-};
 
 /// A machine that can support a lookup in a set of columns that are sorted
 /// by one specific column and values in that column have to be unique.
@@ -138,7 +136,7 @@ impl<T: FieldElement> Machine<T> for SortedWitnesses<T> {
             .expressions
             .iter()
             .map(|e| match e {
-                pil_analyzer::Expression::PolynomialReference(p) => {
+                Expression::PolynomialReference(p) => {
                     assert!(!p.next);
                     if *p == self.key_col || self.witness_positions.contains_key(p) {
                         Some(p)

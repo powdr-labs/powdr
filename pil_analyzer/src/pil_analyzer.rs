@@ -8,8 +8,8 @@ use ast::parsed::{
 };
 use number::{BigInt, DegreeType, FieldElement};
 
-use crate::util::previsit_expressions_in_pil_file_mut;
-use crate::{
+use ast::analyzed::util::previsit_expressions_in_pil_file_mut;
+use ast::analyzed::{
     Analyzed, Expression, FunctionValueDefinition, Identity, IdentityKind, Polynomial,
     PolynomialReference, PolynomialType, PublicDeclaration, RepeatedArray, SelectedExpressions,
     SourceRef, StatementIdentifier,
@@ -612,5 +612,67 @@ impl<T: FieldElement> PILContext<T> {
             UnaryOperator::Plus => v,
             UnaryOperator::Minus => -v,
         })
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use number::GoldilocksField;
+    use test_log::test;
+
+    use super::*;
+
+    #[test]
+    fn parse_print_analyzed() {
+        // This is rather a test for the Display trait than for the analyzer.
+        let input = r#"constant %N = 65536;
+    public P = T.pc(2);
+namespace Bin(65536);
+    col witness bla;
+namespace T(65536);
+    col fixed first_step = [1] + [0]*;
+    col fixed line(i) { i };
+    col witness pc;
+    col witness XInv;
+    col witness XIsZero;
+    T.XIsZero = (1 - (T.X * T.XInv));
+    (T.XIsZero * T.X) = 0;
+    (T.XIsZero * (1 - T.XIsZero)) = 0;
+    col witness instr_jmpz;
+    col witness instr_jmpz_param_l;
+    col witness instr_jmp;
+    col witness instr_jmp_param_l;
+    col witness instr_dec_CNT;
+    col witness instr_assert_zero;
+    (T.instr_assert_zero * (T.XIsZero - 1)) = 0;
+    col witness X;
+    col witness X_const;
+    col witness X_read_free;
+    col witness A;
+    col witness CNT;
+    col witness read_X_A;
+    col witness read_X_CNT;
+    col witness reg_write_X_CNT;
+    col witness read_X_pc;
+    col witness reg_write_X_A;
+    T.X = ((((T.read_X_A * T.A) + (T.read_X_CNT * T.CNT)) + T.X_const) + (T.X_read_free * T.X_free_value));
+    T.A' = (((T.first_step' * 0) + (T.reg_write_X_A * T.X)) + ((1 - (T.first_step' + T.reg_write_X_A)) * T.A));
+    col witness X_free_value(i) query match T.pc { 0 => ("input", 1), 3 => ("input", (T.CNT + 1)), 7 => ("input", 0), };
+    col fixed p_X_const = [0, 0, 0, 0, 0, 0, 0, 0, 0] + [0]*;
+    col fixed p_X_read_free = [1, 0, 0, 1, 0, 0, 0, -1, 0] + [0]*;
+    col fixed p_read_X_A = [0, 0, 0, 1, 0, 0, 0, 1, 1] + [0]*;
+    col fixed p_read_X_CNT = [0, 0, 1, 0, 0, 0, 0, 0, 0] + [0]*;
+    col fixed p_read_X_pc = [0, 0, 0, 0, 0, 0, 0, 0, 0] + [0]*;
+    col fixed p_reg_write_X_A = [0, 0, 0, 1, 0, 0, 0, 1, 0] + [0]*;
+    col fixed p_reg_write_X_CNT = [1, 0, 0, 0, 0, 0, 0, 0, 0] + [0]*;
+    { T.pc, T.reg_write_X_A, T.reg_write_X_CNT } in (1 - T.first_step) { T.line, T.p_reg_write_X_A, T.p_reg_write_X_CNT };
+"#;
+        let formatted = process_pil_file_contents::<GoldilocksField>(input).to_string();
+        if input != formatted {
+            for (i, f) in input.split('\n').zip(formatted.split('\n')) {
+                assert_eq!(i, f);
+            }
+        }
+        assert_eq!(input, formatted);
     }
 }

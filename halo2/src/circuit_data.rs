@@ -55,20 +55,6 @@ impl<'a, T: FieldElement> CircuitData<'a, T> {
             .unwrap_or_else(|| panic!("{name} column not found"))
     }
 
-    pub fn val(&self, column: &Column, offset: usize) -> &T {
-        match column.kind {
-            ColumnKind::Fixed => self.fixed.get(column.index).unwrap().1.get(offset).unwrap(),
-            ColumnKind::Witness => self
-                .witness
-                .get(column.index)
-                .unwrap()
-                .1
-                .get(offset)
-                .unwrap(),
-            _ => unimplemented!(),
-        }
-    }
-
     pub fn len(&self) -> usize {
         self.fixed.get(0).unwrap().1.len()
     }
@@ -84,22 +70,6 @@ impl<'a, T: FieldElement> CircuitData<'a, T> {
         let column = Column {
             kind: ColumnKind::Fixed,
             index: self.fixed.len() - 1,
-        };
-        self.columns.insert(name.to_string(), column);
-        column
-    }
-
-    pub fn insert_commit<IT: IntoIterator<Item = T>>(
-        &mut self,
-        name: &'a str,
-        values: IT,
-    ) -> Column {
-        let values = values.into_iter().collect::<Vec<_>>();
-        assert_eq!(values.len(), self.len());
-        self.witness.push((name, values));
-        let column = Column {
-            kind: ColumnKind::Witness,
-            index: self.witness.len() - 1,
         };
         self.columns.insert(name.to_string(), column);
         column

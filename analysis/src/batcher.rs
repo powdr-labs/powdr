@@ -1,6 +1,6 @@
 use std::marker::PhantomData;
 
-use ast::analysis::{
+use ast::asm_analysis::{
     AnalysisASMFile, BatchMetadata, Incompatible, IncompatibleSet, ProgramStatement,
 };
 use itertools::Itertools;
