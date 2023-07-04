@@ -21,7 +21,7 @@ pil {
             _ => 0
         }
     }};
-    // TODO: And i // 65 < maxHashes?
+    // TODO: And i // 66 < maxHashes?
     pol constant LATCH(i) { match i % %rowsPerHash {
         0 => 1,
         _ => 0
@@ -82,6 +82,8 @@ pil {
     c1 = 0x2969f27eed31a480b9c36c764379dbca2cc8fdd1415c3dded62940bcde0bd771 * b0 + 0x2e2419f9ec02ec394c9871c832963dc1b89d743c8c7b964029b2311687b1fe23 * b1 + 0x101071f0032379b697315876690f053d148d4e109f5fb065c8aacc55a0f89bfa * b2;
     c2 = 0x143021ec686a3f330d5f9e654638065ce6cd79e28c5b3753326244ee65a1b1a7 * b0 + 0x176cc029695ad02582a70eff08a6fd99d057e12e58e7d7b6b16cdfabc8ee2911 * b1 + 0x19a3fc0a56702bf417ba7fee3802593fa644470307043f7773279cd71d25d5e0 * b2;
 
+    // Hashing (0, 0, 0) leads to:
+    // ['0x2098f5fb9e239eab3ceac3f27b81e481dc3124d55ffed523a839ee8446b64864', '0x13a545a13f1d91dddb87f46679dfaec0900ce24791a924bee7fa4d69a9569d85', '0x06be479e5fcd717c6c21b32f108033bf1da6cf4d8e3e8c48042c475e0b121480']
     LATCH * in0 = 0;
     LATCH * in1 = 0;
     LATCH * cap = 0;
