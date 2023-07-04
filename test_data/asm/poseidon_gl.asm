@@ -8,9 +8,9 @@ pil {
 
     // TODO: How can I access it?
     constant %N = 1024;
-    // Number of full rounds
+    // Number of full rounds (half of them before and half of them after the partial rounds)
     constant %nRoundsF = 8;
-    // Number of partial rounds (half of them before and half of them after the full rounds)
+    // Number of partial rounds
     constant %nRoundsP = 22;
     constant %rowsPerHash = %nRoundsF + %nRoundsP + 1;
     constant %maxHashes = %N / %rowsPerHash;
@@ -35,11 +35,11 @@ pil {
         _ => 0
     }};
     // [...Array(31).keys()].map((r) => (r>=nRoundsF/2 && r<(nRoundsF/2 + nRoundsP)) ? 1n : 0n)
-    // Hack: The "+ [0]" works because 31 % 1024 == 1
+    // Hack: The "+ [0]" works because 1024 % 31 == 1
     pol constant PARTIAL = [0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0]* + [0];
     // Generated with JS code:
     // [...Array(12).keys()].map((a) => [...Array(31).keys()].map((i) => "0x" + C[i * 12 + a].toString(16)))
-    // Hack: The "+ [0]" works because 31 % 1024 == 1
+    // Hack: The "+ [0]" works because 1024 % 31 == 1
     pol constant C_0 = [0xb585f766f2144405, 0x86287821f722c881, 0xe9fa634a21de0082, 0x92a756e67e2b9413, 0x3cc3f892184df408, 0x7131aa45268d7d8c, 0x99ad1aab0814283b, 0xeb84f608da56ef48, 0x7159cd30c3ac118e, 0xdcef0797c2b69ec7, 0xd0762cbc8ca6570c, 0x30a4680593258387, 0x15a16a8a8322d458, 0x5a3f1bb1c53a9645, 0x775005982d74d7f7, 0xf9cc95c22b4c1fcc, 0xc49366bb25e8513, 0xdd611f1000c17442, 0x2ff876fa5ef97c4, 0x3d06c8bd1514e2d9, 0xe89cd854d5d01d33, 0xece5a71e0cfedc75, 0x90004c1371b893c5, 0xde122bebe9a39368, 0x4d61e56a525d225a, 0x1478d361dbbf9fac, 0x475cd3205a3bdcde, 0xe70201e960cb78b8, 0x7be5b9ffda905e1c, 0xf3c12fe54d5c653b, 0x0]* + [0];
     pol constant C_1 = [0x7746a55f43921ad7, 0x59cd1a8a41c18e55, 0xf56f6d48959a600d, 0x70e741ebfee96586, 0x2e479dc157bf31bb, 0x9351036095630f9f, 0x438a7c91d416ca4d, 0xda608834c40e603d, 0x839b4e8fafead540, 0x3d639263da827b13, 0x34c6efb812b04bf5, 0x337dc00c61bd9ce1, 0x388a128b7fd9a609, 0xdb7f023869fb8d38, 0x86ab99b4dde6c8b0, 0x8d37f755f4ae9f6, 0x784d3d2f1698309, 0xd8185f9adfea4fd0, 0xc5cb72a2a51159b0, 0x9c9c98207cb10767, 0x5cd377dc8bb882a2, 0x5ff98fd5d51fe610, 0xb932b7cf752e5545, 0x4d001fd58f002526, 0x262e963c8da05d3d, 0x6f02dc07d141875c, 0x18a42105c31b7e88, 0x6f90ff3b6a65f108, 0xa3c95eaec244aa30, 0x40b9e922ed9771e2, 0x0]* + [0];
     pol constant C_2 = [0xb2fb0d31cee799b4, 0xc3b919ad495dc574, 0xf7d713e806391165, 0x19d5ee2af82ec1c, 0x6f49de07a6234346, 0xad535b24afc26bfb, 0xb60de3bcc5ea751c, 0x8f97fe408061f183, 0xd3f3e5e82920adc, 0xe273fd971bc8d0e7, 0x40bf0ab5fa14c112, 0xd5eca244c7a4ff1d, 0x2300e5d6baedf0fb, 0xb462065911d4e1fc, 0xb1204f603f51c080, 0xeec49b613478675b, 0x530fb67ea1809a81, 0xef87139ca9a3ab1e, 0x8470f39d2d5c900e, 0x65700b51aedfb5ef, 0xa7b0fb7883eee860, 0x83e8941918964615, 0xa0b1df81b6fe59fc, 0xca6637000eb4a9f8, 0x59e89b094d220ec2, 0x296a202ed8e556a2, 0x23e7414af663068, 0x42747a7245e7fa84, 0x230bca8f4df0544, 0x551f5b0fbe7b1840, 0x0]* + [0];
