@@ -42,13 +42,13 @@ instr loop { pc' = pc }
 
 // Set input
 A0 <=X= 0;
-A1 <=X= 1;
-A2 <=X= 2;
-A3 <=X= 3;
-A4 <=X= 4;
-A5 <=X= 5;
-A6 <=X= 6;
-A7 <=X= 7;
+A1 <=X= 0;
+A2 <=X= 0;
+A3 <=X= 0;
+A4 <=X= 0;
+A5 <=X= 0;
+A6 <=X= 0;
+A7 <=X= 0;
 
 poseidon;
 
