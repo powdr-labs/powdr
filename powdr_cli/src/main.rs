@@ -22,6 +22,16 @@ pub enum FieldArgument {
     Bn254,
 }
 
+#[derive(Clone, EnumString, EnumVariantNames, Display)]
+pub enum CsvRenderMode {
+    #[strum(serialize = "i")]
+    SignedBase10,
+    #[strum(serialize = "ui")]
+    UnsignedBase10,
+    #[strum(serialize = "hex")]
+    Hex,
+}
+
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
 struct Cli {
@@ -189,7 +199,7 @@ enum Commands {
         file: String,
     },
 
-    // Exports witness and fixed columns to a csv file.
+    /// Exports witness and fixed columns to a csv file.
     ExportCsv {
         /// Input PIL file
         file: String,
@@ -204,6 +214,12 @@ enum Commands {
         #[arg(default_value_t = FieldArgument::Gl)]
         #[arg(value_parser = clap_enum_variants!(FieldArgument))]
         field: FieldArgument,
+
+        /// How to render field elements in the csv file
+        #[arg(long)]
+        #[arg(default_value_t = CsvRenderMode::Hex)]
+        #[arg(value_parser = clap_enum_variants!(CsvRenderMode))]
+        render_mode: CsvRenderMode,
     },
 }
 
@@ -319,12 +335,24 @@ fn main() {
             }
         }
 
-        Commands::ExportCsv { file, dir, field } => {
+        Commands::ExportCsv {
+            file,
+            dir,
+            field,
+            render_mode,
+        } => {
             let pil = Path::new(&file);
             let dir = Path::new(&dir);
             let csv_path = dir.join("columns.csv");
 
-            call_with_field!(export_columns_to_csv, field, pil, dir, &csv_path);
+            call_with_field!(
+                export_columns_to_csv,
+                field,
+                pil,
+                dir,
+                &csv_path,
+                render_mode
+            );
         }
         Commands::Setup {
             size,
@@ -355,7 +383,12 @@ fn write_params_to_fs(params: &[u8], output_dir: &Path) {
     log::info!("Wrote params.bin.");
 }
 
-fn export_columns_to_csv<T: FieldElement>(file: &Path, dir: &Path, csv_path: &Path) {
+fn export_columns_to_csv<T: FieldElement>(
+    file: &Path,
+    dir: &Path,
+    csv_path: &Path,
+    render_mode: CsvRenderMode,
+) {
     let pil = compiler::analyze_pil::<T>(file);
     let fixed = compiler::util::read_fixed(&pil, dir);
     let witness = compiler::util::read_witness(&pil, dir);
@@ -382,9 +415,14 @@ fn export_columns_to_csv<T: FieldElement>(file: &Path, dir: &Path, csv_path: &Pa
     // Write the column values
     let row_count = columns[0].1.len();
     for row_index in 0..row_count {
+        // format!("{}", values[row_index].to_integer()
         let row_values: Vec<String> = columns
             .iter()
-            .map(|(_, values)| format!("{}", values[row_index].to_integer()))
+            .map(|(_, values)| match render_mode {
+                CsvRenderMode::SignedBase10 => format!("{}", values[row_index]),
+                CsvRenderMode::UnsignedBase10 => format!("{}", values[row_index].to_integer()),
+                CsvRenderMode::Hex => format!("0x{:x}", values[row_index].to_integer()),
+            })
             .collect();
         writeln!(csv_writer, "{row_index},{}", row_values.join(",")).unwrap();
     }
