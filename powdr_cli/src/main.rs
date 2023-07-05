@@ -164,11 +164,11 @@ enum Commands {
         backend: Backend,
 
         /// File containing previously generated proof for aggregation.
-        #[arg(short, long)]
+        #[arg(long)]
         proof: Option<String>,
 
         /// File containing previously generated setup parameters.
-        #[arg(short, long)]
+        #[arg(long)]
         params: Option<String>,
     },
 
