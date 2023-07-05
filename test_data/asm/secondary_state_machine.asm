@@ -1,5 +1,7 @@
 reg pc[@pc];
 reg X[<=];
+reg Y[<=];
+reg Z[<=];
 reg A;
 reg B;
 reg C;
@@ -45,16 +47,16 @@ pil{
 }
 
 
-instr and {
-    {A, B, C, 0} in binary_RESET { binary_A, binary_B, binary_C, binary_operation }
+instr and Y, Z -> X {
+    {Y, Z, X, 0} in binary_RESET { binary_A, binary_B, binary_C, binary_operation }
 }
 
-instr or {
-    {A, B, C, 1} in binary_RESET { binary_A, binary_B, binary_C, binary_operation }
+instr or Y, Z -> X {
+    {Y, Z, X, 1} in binary_RESET { binary_A, binary_B, binary_C, binary_operation }
 }
 
-instr xor {
-    {A, B, C, 2} in binary_RESET { binary_A, binary_B, binary_C, binary_operation }
+instr xor Y, Z -> X {
+    {Y, Z, X, 2} in binary_RESET { binary_A, binary_B, binary_C, binary_operation }
 }
 instr loop { pc' = pc }
 
@@ -63,8 +65,9 @@ A <=X= 0xf0;
 B <=X= 0x11;
 C <=X= 0;
 
-and; // -> 0x10
-or;  // -> 0xf1
-xor; // -> 0xe1
+C <=X= and(A, B);
+C <=X= and(A, B); // -> 0x10
+C <=X= or(A, B); //or;  // -> 0xf1
+//xor; // -> 0xe1
 
 loop;

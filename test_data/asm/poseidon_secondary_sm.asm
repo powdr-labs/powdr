@@ -1,5 +1,7 @@
 reg pc[@pc];
 reg X[<=];
+reg Y[<=];
+reg Z[<=];
 reg A0;
 reg A1;
 reg A2;
@@ -102,13 +104,11 @@ pil {
 }
 
 
-instr poseidon {
-    {
-        A0, A1, 0, A2
-    }
-    in LATCH {
-        in0, in1, cap, hash
-    }
+instr poseidon Y, Z -> X {
+    { Y, Z, 0, X } in LATCH { in0, in1, cap, hash }
+}
+instr poseidon2 Y, Z -> X {
+    { Y, Z, 2, X } in LATCH { in0, in1, cap, hash }
 }
 
 instr loop { pc' = pc }
@@ -117,10 +117,11 @@ instr loop { pc' = pc }
 A0 <=X= 0;
 A1 <=X= 0;
 
-poseidon;
+A2 <=X= poseidon(A0, A1);
 
 A1 <=X= 1;
-poseidon;
+
+A2 <=X= poseidon2(A0, A1);
 
 
 loop;
