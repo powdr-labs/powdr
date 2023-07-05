@@ -113,7 +113,7 @@ fn try_to_boolean_periodic_selector<'a, T: FieldElement>(
         .iter()
         .enumerate()
         .all(|(i, v)| {
-            let expected = if (i + offset) % period == 0 {
+            let expected = if i % period == offset {
                 1.into()
             } else {
                 0.into()
