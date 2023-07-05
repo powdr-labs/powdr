@@ -88,10 +88,8 @@ impl<T: FieldElement> BlockMachine<T> {
 }
 
 /// Check if `expr` is a reference to a function of the form
-/// f(i) { if (i + 1) % k == 0 { 1 } else { 0 } }
-/// for some k >= 2
-/// TODO we could make this more generic and only detect the period
-/// but not enforce the offset.
+/// f(i) { if (i + offset) % k == 0 { 1 } else { 0 } }
+/// for some k >= 2 and offset >= 0.
 fn try_to_boolean_periodic_selector<'a, T: FieldElement>(
     expr: &'a Expression<T>,
     fixed_data: &FixedData<T>,
@@ -103,7 +101,11 @@ fn try_to_boolean_periodic_selector<'a, T: FieldElement>(
 
     let values = fixed_data.fixed_col_values[poly.poly_id() as usize];
 
-    let period = 1 + values.iter().position(|v| *v == 1.into())?;
+    let offset = values.iter().position(|v| *v == 1.into())?;
+    let period = 1 + values
+        .iter()
+        .skip(offset + 1)
+        .position(|v| *v == 1.into())?;
     if period == 1 {
         return None;
     }
@@ -111,7 +113,7 @@ fn try_to_boolean_periodic_selector<'a, T: FieldElement>(
         .iter()
         .enumerate()
         .all(|(i, v)| {
-            let expected = if (i + 1) % period == 0 {
+            let expected = if (i + offset) % period == 0 {
                 1.into()
             } else {
                 0.into()
