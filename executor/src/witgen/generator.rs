@@ -41,7 +41,7 @@ enum EvaluationRow {
     Next,
 }
 
-#[derive(PartialEq, Eq, Clone, Copy)]
+#[derive(PartialEq, Eq, Clone, Copy, Debug)]
 enum SolvingStrategy {
     /// Only solve expressions that are affine in a single variable
     /// (and use range constraints).
@@ -95,15 +95,22 @@ where
 
         let mut complete_identities = vec![false; self.identities.len()];
 
+        log::trace!("Row: {}", next_row);
+
         let mut identity_failed = false;
         for strategy in [
             SolvingStrategy::SingleVariableAffine,
             SolvingStrategy::AssumeZero,
         ] {
+            log::trace!("  Strategy: {:?}", strategy);
+            let mut i = 0;
             loop {
                 identity_failed = false;
                 let mut progress = false;
                 self.failure_reasons.clear();
+
+                log::trace!("    Pass {i}");
+                i += 1;
 
                 for (identity, complete) in self
                     .identities
@@ -111,6 +118,7 @@ where
                     .zip(complete_identities.iter_mut())
                     .filter(|(_, complete)| !**complete)
                 {
+                    log::trace!("      Checking identity {:?}", identity.source);
                     let result = self.process_identity(identity, strategy).map_err(|err| {
                         let msg = match strategy {
                             SolvingStrategy::SingleVariableAffine => "No progress on",
@@ -486,9 +494,11 @@ where
                 for (id, c) in constraints.constraints {
                     match c {
                         Constraint::Assignment(value) => {
+                            log::trace!("        Setting next value for {id} to {value}");
                             self.next[id.poly_id() as usize] = Some(value);
                         }
                         Constraint::RangeConstraint(cons) => {
+                            log::trace!("        Adding range constraint for {id}: {cons}");
                             self.next_range_constraints[id.poly_id() as usize] = Some(cons);
                         }
                     }

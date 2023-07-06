@@ -10,6 +10,7 @@ use super::symbolic_evaluator::SymbolicEvaluator;
 use super::util::try_to_simple_poly;
 use super::{Constraint, FixedData};
 
+// TODO: This comment is outdated
 /// Constraint on the bit values of a variable X.
 /// All bits smaller than min_bit have to be zero
 /// and all bits larger than max_bit have to be zero.
@@ -247,6 +248,7 @@ fn propagate_constraints<'a, T: FieldElement>(
 }
 
 /// Tries to find "X * (1 - X) = 0"
+/// TODO: This doesn't recognize X * X = X.
 fn is_binary_constraint<T: FieldElement>(expr: &Expression<T>) -> Option<&PolynomialReference> {
     // TODO Write a proper pattern matching engine.
     if let Expression::BinaryOperation(left, BinaryOperator::Sub, right) = expr {

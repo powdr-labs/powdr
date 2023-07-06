@@ -43,6 +43,7 @@ where
             WitnessColumn::new(i, &poly.absolute_name, value)
         })
         .collect();
+
     let fixed_cols = fixed_col_values
         .iter()
         .enumerate()
@@ -63,8 +64,12 @@ where
         &witness_cols,
     );
     let identities = substitute_constants(&analyzed.identities, &analyzed.constants);
+
     let GlobalConstraints {
+        // Maps a polynomial to a mask specifying which bit is possibly set,
         known_constraints,
+        // Removes identities like X * (X - 1) = 0 or { A } in { BYTES }
+        // These are already captured in the range constraints.
         retained_identities,
     } = range_constraints::determine_global_constraints(&fixed, identities.iter().collect());
     let ExtractionOutput {
@@ -75,6 +80,7 @@ where
     } = machines::machine_extractor::split_out_machines(
         &fixed,
         retained_identities,
+        // TODO: This is already part of fixed
         &witness_cols,
         &known_constraints,
     );
@@ -88,6 +94,7 @@ where
         query_callback,
     );
 
+    // Initialize values with empty array
     let mut values: Vec<(&str, Vec<T>)> = analyzed
         .committed_polys_in_source_order()
         .iter()
@@ -97,10 +104,11 @@ where
     let mut looping_period = None;
     for row in 0..degree as DegreeType {
         // Check if we are in a loop.
-        if looping_period.is_none() && row % 100 == 0 && row > 0 {
+        if looping_period.is_none() && row % 2 == 0 && row > 0 {
+            // Note that this checks ALL witness columns, not just those of the main state machine
             looping_period = rows_are_repeating(&values);
             if let Some(p) = looping_period {
-                log::info!("Found loop with period {p} starting at row {row}")
+                log::info!("Found loop with period {p} starting at row {row}");
             }
         }
         let mut row_values = None;
@@ -119,11 +127,14 @@ where
         if row_values.is_none() {
             row_values = Some(generator.compute_next_row(row));
         };
+
         for (col, v) in row_values.unwrap().into_iter().enumerate() {
             values[col].1.push(v);
         }
     }
+    // Overwrite all machine witness columns
     for (name, data) in generator.machine_witness_col_values() {
+        println!("Overwriting column: {}", name);
         let (_, col) = values.iter_mut().find(|(n, _)| *n == name).unwrap();
         *col = data;
     }
@@ -174,6 +185,7 @@ impl<'a, T> FixedData<'a, T> {
     }
 }
 
+#[derive(Debug)]
 pub struct WitnessColumn<'a, T> {
     poly: PolynomialReference,
     query: Option<&'a Expression<T>>,

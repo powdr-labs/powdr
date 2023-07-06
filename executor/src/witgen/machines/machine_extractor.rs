@@ -29,6 +29,7 @@ pub fn split_out_machines<'a, T: FieldElement>(
     witness_cols: &'a [WitnessColumn<T>],
     global_range_constraints: &BTreeMap<&'a PolynomialReference, RangeConstraint<T>>,
 ) -> ExtractionOutput<'a, T> {
+    // "Machine to perform a lookup in fixed columns only."
     let fixed_lookup = FixedLookup::try_new(fixed, &[], &Default::default()).unwrap();
 
     let mut machines: Vec<Box<dyn Machine<T>>> = vec![];

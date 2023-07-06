@@ -35,6 +35,8 @@ impl IndexValue {
 /// - `(V, Some(row)` if the value of `OUTPUT_COLS` is unique when `INPUT_COLS == V`, and `row` is the first row where `INPUT_COLS ==V`
 #[derive(Default)]
 pub struct IndexedColumns<T> {
+    // type Application = (Vec<u64>, Vec<u64>);
+    // type Index<T> = BTreeMap<Vec<T>, IndexValue>;
     indices: HashMap<Application, Index<T>>,
 }
 
