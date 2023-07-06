@@ -250,15 +250,13 @@ fn main() {
             output_directory,
             force,
             prove_with,
-        } => call_with_field!(
-            compile_rust,
-            field,
+        } => call_with_field!(compile_rust::<field>(
             &file,
             split_inputs(&inputs),
             Path::new(&output_directory),
             force,
             prove_with
-        ),
+        )),
         Commands::RiscvAsm {
             files,
             field,
@@ -274,16 +272,14 @@ fn main() {
                 Cow::Borrowed("output")
             };
 
-            call_with_field!(
-                compile_riscv_asm,
-                field,
+            call_with_field!(compile_riscv_asm::<field>(
                 &name,
                 files.into_iter(),
                 split_inputs(&inputs),
                 Path::new(&output_directory),
                 force,
                 prove_with
-            );
+            ));
         }
         Commands::Reformat { file } => {
             let contents = fs::read_to_string(&file).unwrap();
@@ -299,15 +295,13 @@ fn main() {
             inputs,
             force,
             prove_with,
-        } => call_with_field!(
-            compile_pil_or_asm,
-            field,
+        } => call_with_field!(compile_pil_or_asm::<field>(
             &file,
             split_inputs(&inputs),
             Path::new(&output_directory),
             force,
             prove_with
-        ),
+        )),
         Commands::Prove {
             file,
             dir,
@@ -319,7 +313,8 @@ fn main() {
             let pil = Path::new(&file);
             let dir = Path::new(&dir);
 
-            let proof = call_with_field!(read_and_prove, field, pil, dir, &backend, proof, params);
+            let proof =
+                call_with_field!(read_and_prove::<field>(pil, dir, &backend, proof, params));
 
             let proof_filename = if let Backend::Halo2Aggr = backend {
                 "proof_aggr.bin"
@@ -345,14 +340,12 @@ fn main() {
             let dir = Path::new(&dir);
             let csv_path = dir.join("columns.csv");
 
-            call_with_field!(
-                export_columns_to_csv,
-                field,
+            call_with_field!(export_columns_to_csv::<field>(
                 pil,
                 dir,
                 &csv_path,
                 render_mode
-            );
+            ));
         }
         Commands::Setup {
             size,
