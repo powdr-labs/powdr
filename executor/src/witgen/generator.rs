@@ -118,7 +118,7 @@ where
                     .zip(complete_identities.iter_mut())
                     .filter(|(_, complete)| !**complete)
                 {
-                    log::trace!("      Checking identity {:?}", identity.source);
+                    log::trace!("      Checking identity: {}", identity);
                     let result = self.process_identity(identity, strategy).map_err(|err| {
                         let msg = match strategy {
                             SolvingStrategy::SingleVariableAffine => "No progress on",
