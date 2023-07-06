@@ -248,9 +248,17 @@ pub struct Identity<T> {
     pub kind: IdentityKind,
     pub source: SourceRef,
     /// For a simple polynomial identity, the selector contains
-    /// the actual expression.
+    /// the actual expression (see expression_for_poly_id).
     pub left: SelectedExpressions<T>,
     pub right: SelectedExpressions<T>,
+}
+
+impl<T> Identity<T> {
+    /// Returns the expression in case this is a polynomial identity.
+    pub fn expression_for_poly_id(&self) -> &Expression<T> {
+        assert_eq!(self.kind, IdentityKind::Polynomial);
+        self.left.selector.as_ref().unwrap()
+    }
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]

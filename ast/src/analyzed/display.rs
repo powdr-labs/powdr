@@ -96,7 +96,7 @@ impl<T: Display> Display for Identity<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self.kind {
             IdentityKind::Polynomial => {
-                let expression = self.left.selector.as_ref().unwrap();
+                let expression = self.expression_for_poly_id();
                 if let Expression::BinaryOperation(left, BinaryOperator::Sub, right) = expression {
                     write!(f, "{left} = {right};")
                 } else {
