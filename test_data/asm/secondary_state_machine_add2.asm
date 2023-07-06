@@ -21,7 +21,7 @@ pil{
 
     // If RESET is true, the next input is unconstrained
     // If RESET is false, the next input is equal to the current input
-    add_two_input' = (1 - add_two_RESET) * add_two_input;
+    0 = (1 - add_two_RESET) * (add_two_input - add_two_input');
 }
 
 instr add2 Y -> X {
@@ -34,7 +34,9 @@ A <=X= 0;
 B <=X= add2(A);
 
 A <=X= 1;
-// This makes the witness generation fail!
-// B <=X= add2(A);
+B <=X= add2(A);
+
+A <=X= 0xf5;
+B <=X= add2(A);
 
 loop;
