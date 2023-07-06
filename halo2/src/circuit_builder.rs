@@ -163,6 +163,14 @@ pub(crate) fn analyzed_to_circuit<T: FieldElement>(
             _ => unimplemented!(),
         }
     }
+    if lookups.is_empty() {
+        // TODO something inside halo2 breaks (only in debug mode) if lookups is empty,
+        // so just add an empty lookup.
+        lookups.push(Lookup {
+            name: "".to_string(),
+            exps: (vec![], vec![]),
+        });
+    }
 
     // build Plaf fixed. -------------------------------------------------------------------------
 

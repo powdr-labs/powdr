@@ -1,4 +1,6 @@
-use number::GoldilocksField;
+use backend::Backend;
+use compiler::compile_pil_or_asm;
+use number::{Bn254Field, GoldilocksField};
 use std::path::Path;
 use test_log::test;
 
@@ -17,19 +19,34 @@ pub fn verify_pil(file_name: &str, query_callback: Option<fn(&str) -> Option<Gol
     compiler::verify(file_name, &temp_dir);
 }
 
+fn halo2_proof(file_name: &str, inputs: Vec<Bn254Field>) {
+    compile_pil_or_asm(
+        format!("../test_data/pil/{file_name}").as_str(),
+        inputs,
+        &mktemp::Temp::new_dir().unwrap(),
+        true,
+        Some(Backend::Halo2),
+    );
+}
+
 #[test]
 fn test_fibonacci() {
-    verify_pil("fibonacci.pil", None);
+    let f = "fibonacci.pil";
+    verify_pil(f, None);
+    halo2_proof(f, Default::default());
 }
 
 #[test]
 fn test_fibonacci_macro() {
-    verify_pil("fib_macro.pil", None);
+    let f = "fib_macro.pil";
+    verify_pil(f, None);
+    halo2_proof(f, Default::default());
 }
 
 #[test]
 fn test_global() {
     verify_pil("global.pil", None);
+    // Halo2 would take too long for this.
 }
 
 #[test]
@@ -46,6 +63,8 @@ fn test_sum_via_witness_query() {
             }
         }),
     );
+    // prover query string uses a different convention,
+    // so we cannot directly use the halo2_proof function here.
 }
 
 #[test]
@@ -59,6 +78,7 @@ fn test_witness_lookup() {
             _ => Some(7.into()),
         }),
     );
+    // halo2 fails with "gates must contain at least one constraint"
 }
 
 #[test]
@@ -70,9 +90,18 @@ fn test_underdetermined_zero_no_solution() {
 #[test]
 fn test_pair_lookup() {
     verify_pil("pair_lookup.pil", None);
+    // halo2 would take too long for this
 }
 
 #[test]
 fn test_block_lookup_or() {
     verify_pil("block_lookup_or.pil", None);
+    // halo2 would take too long for this
+}
+
+#[test]
+fn test_halo_without_lookup() {
+    let f = "halo_without_lookup.pil";
+    verify_pil(f, None);
+    halo2_proof(f, Default::default());
 }
