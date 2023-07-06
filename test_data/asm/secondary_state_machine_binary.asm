@@ -39,4 +39,7 @@ B <=X= 0xff;
 
 B <=X= add_one_to_each_4bit(A);
 
+A <=X= 0x34;
+B <=X= add_one_to_each_4bit(A);
+
 loop;
