@@ -9,7 +9,7 @@ use env_logger::{Builder, Target};
 use log::LevelFilter;
 use number::{Bn254Field, FieldElement, GoldilocksField};
 use riscv::{compile_riscv_asm, compile_rust};
-use std::{borrow::Cow, fs, io::Write, path::Path};
+use std::{borrow::Cow, collections::HashSet, fs, io::Write, path::Path};
 use strum::{Display, EnumString, EnumVariantNames};
 
 use std::io::{BufWriter, Cursor};
@@ -74,6 +74,17 @@ enum Commands {
         #[arg(short, long)]
         #[arg(value_parser = clap_enum_variants!(Backend))]
         prove_with: Option<Backend>,
+
+        /// Generate a CSV file containing the fixed and witness column values. Useful for debugging purposes.
+        #[arg(long)]
+        #[arg(default_value_t = false)]
+        export_csv: bool,
+
+        /// How to render field elements in the csv file
+        #[arg(long)]
+        #[arg(default_value_t = CsvRenderMode::Hex)]
+        #[arg(value_parser = clap_enum_variants!(CsvRenderMode))]
+        csv_mode: CsvRenderMode,
     },
     /// Compiles (no-std) rust code to riscv assembly, then to powdr assembly
     /// and finally to PIL and generates fixed and witness columns.
@@ -164,11 +175,11 @@ enum Commands {
         backend: Backend,
 
         /// File containing previously generated proof for aggregation.
-        #[arg(short, long)]
+        #[arg(long)]
         proof: Option<String>,
 
         /// File containing previously generated setup parameters.
-        #[arg(short, long)]
+        #[arg(long)]
         params: Option<String>,
     },
 
@@ -197,29 +208,6 @@ enum Commands {
     Reformat {
         /// Input file
         file: String,
-    },
-
-    /// Exports witness and fixed columns to a csv file.
-    ExportCsv {
-        /// Input PIL file
-        file: String,
-
-        /// Directory to find the committed and fixed values
-        #[arg(short, long)]
-        #[arg(default_value_t = String::from("."))]
-        dir: String,
-
-        /// The field to use
-        #[arg(long)]
-        #[arg(default_value_t = FieldArgument::Gl)]
-        #[arg(value_parser = clap_enum_variants!(FieldArgument))]
-        field: FieldArgument,
-
-        /// How to render field elements in the csv file
-        #[arg(long)]
-        #[arg(default_value_t = CsvRenderMode::Hex)]
-        #[arg(value_parser = clap_enum_variants!(CsvRenderMode))]
-        render_mode: CsvRenderMode,
     },
 }
 
@@ -295,13 +283,26 @@ fn main() {
             inputs,
             force,
             prove_with,
-        } => call_with_field!(compile_pil_or_asm::<field>(
-            &file,
-            split_inputs(&inputs),
-            Path::new(&output_directory),
-            force,
-            prove_with
-        )),
+            export_csv,
+            csv_mode,
+        } => {
+            let pil_filename = call_with_field!(compile_pil_or_asm::<field>(
+                &file,
+                split_inputs(&inputs),
+                Path::new(&output_directory),
+                force,
+                prove_with
+            ));
+
+            if export_csv {
+                let pil = Path::new(&pil_filename);
+                let dir = Path::new(&output_directory);
+                let csv_path = dir.join("columns.csv");
+                call_with_field!(export_columns_to_csv::<field>(
+                    pil, dir, &csv_path, csv_mode
+                ));
+            }
+        }
         Commands::Prove {
             file,
             dir,
@@ -328,24 +329,6 @@ fn main() {
                 proof_writer.flush().unwrap();
                 log::info!("Wrote {proof_filename}.");
             }
-        }
-
-        Commands::ExportCsv {
-            file,
-            dir,
-            field,
-            render_mode,
-        } => {
-            let pil = Path::new(&file);
-            let dir = Path::new(&dir);
-            let csv_path = dir.join("columns.csv");
-
-            call_with_field!(export_columns_to_csv::<field>(
-                pil,
-                dir,
-                &csv_path,
-                render_mode
-            ));
         }
         Commands::Setup {
             size,
@@ -398,11 +381,26 @@ fn export_columns_to_csv<T: FieldElement>(
     let mut csv_file = fs::File::create(csv_path).unwrap();
     let mut csv_writer = BufWriter::new(&mut csv_file);
 
-    // Write the column headers
+    // Remove prefixes (e.g. "Assembly.") if column names are still unique after
     let headers = columns
         .iter()
-        .map(|(header, _)| header.clone())
+        .map(|(header, _)| header.to_owned())
         .collect::<Vec<_>>();
+    let headers_without_prefix = headers
+        .iter()
+        .map(|header| {
+            let suffix_start = header.rfind('.').map(|i| i + 1).unwrap_or(0);
+            header[suffix_start..].to_owned()
+        })
+        .collect::<Vec<_>>();
+
+    let unique_elements = headers_without_prefix.iter().collect::<HashSet<_>>();
+    let headers = if unique_elements.len() == headers.len() {
+        headers_without_prefix
+    } else {
+        headers
+    };
+
     writeln!(csv_writer, "Row,{}", headers.join(",")).unwrap();
 
     // Write the column values

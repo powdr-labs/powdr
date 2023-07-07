@@ -5,7 +5,8 @@ use crate::compile_asm_string;
 
 pub fn verify_asm_string<T: FieldElement>(file_name: &str, contents: &str, inputs: Vec<T>) {
     let temp_dir = mktemp::Temp::new_dir().unwrap();
-    let pil_file_name = compile_asm_string(file_name, contents, inputs, &temp_dir, true, None);
+    let pil_file_path = compile_asm_string(file_name, contents, inputs, &temp_dir, true, None);
+    let pil_file_name = pil_file_path.file_name().unwrap().to_string_lossy();
     verify(&pil_file_name, &temp_dir);
 }
 
