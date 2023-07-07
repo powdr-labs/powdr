@@ -75,7 +75,7 @@ enum Commands {
         #[arg(value_parser = clap_enum_variants!(Backend))]
         prove_with: Option<Backend>,
 
-        /// If active, generate a CSV file with the fixed and witness columns. Useful for debugging purposes.
+        /// Generate a CSV file containing the fixed and witness column values. Useful for debugging purposes.
         #[arg(long)]
         #[arg(default_value_t = false)]
         export_csv: bool,
