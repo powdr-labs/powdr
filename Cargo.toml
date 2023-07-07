@@ -9,6 +9,7 @@ members = [
     "parser_util",
     "pil_analyzer",
     "compiler",
+    "pilopt",
     "asm_to_pil",
     "halo2",
     "backend",

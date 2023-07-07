@@ -2,19 +2,18 @@
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
-use ast::{
-    asm_analysis::{
-        AnalysisASMFile, AssignmentStatement, BatchMetadata, InstructionDefinitionStatement,
-        InstructionStatement, LabelStatement, PilBlock, ProgramStatement,
-        RegisterDeclarationStatement,
-    },
-    parsed::{
-        asm::{InstructionBodyElement, PlookupOperator, RegisterFlag},
-        postvisit_expression_in_statement_mut, ArrayExpression, BinaryOperator, Expression,
-        FunctionDefinition, PILFile, PolynomialName, PolynomialReference, SelectedExpressions,
-        Statement, UnaryOperator,
-    },
+use ast::asm_analysis::{
+    AnalysisASMFile, AssignmentStatement, BatchMetadata, InstructionDefinitionStatement,
+    InstructionStatement, LabelStatement, PilBlock, ProgramStatement, RegisterDeclarationStatement,
 };
+use ast::parsed::build::*;
+use ast::parsed::{
+    asm::{InstructionBodyElement, PlookupOperator, RegisterFlag},
+    postvisit_expression_in_statement_mut, ArrayExpression, BinaryOperator, Expression,
+    FunctionDefinition, PILFile, PolynomialName, PolynomialReference, SelectedExpressions,
+    Statement, UnaryOperator,
+};
+
 use number::FieldElement;
 
 pub fn compile<T: FieldElement>(analysis: AnalysisASMFile<T>) -> PILFile<T> {
@@ -900,48 +899,6 @@ fn witness_column<S: Into<String>, T>(
         }],
         def,
     )
-}
-
-fn direct_reference<S: Into<String>, T>(name: S) -> Expression<T> {
-    Expression::PolynomialReference(PolynomialReference {
-        namespace: None,
-        name: name.into(),
-        index: None,
-        next: false,
-    })
-}
-
-fn next_reference<T>(name: &str) -> Expression<T> {
-    Expression::PolynomialReference(PolynomialReference {
-        namespace: None,
-        name: name.to_owned(),
-        index: None,
-        next: true,
-    })
-}
-
-fn build_mul<T>(left: Expression<T>, right: Expression<T>) -> Expression<T> {
-    build_binary_expr(left, BinaryOperator::Mul, right)
-}
-
-fn build_sub<T>(left: Expression<T>, right: Expression<T>) -> Expression<T> {
-    build_binary_expr(left, BinaryOperator::Sub, right)
-}
-
-fn build_add<T>(left: Expression<T>, right: Expression<T>) -> Expression<T> {
-    build_binary_expr(left, BinaryOperator::Add, right)
-}
-
-fn build_binary_expr<T>(
-    left: Expression<T>,
-    op: BinaryOperator,
-    right: Expression<T>,
-) -> Expression<T> {
-    Expression::BinaryOperation(Box::new(left), op, Box::new(right))
-}
-
-fn build_number<T: FieldElement, V: Into<T>>(value: V) -> Expression<T> {
-    Expression::Number(value.into())
 }
 
 fn extract_update<T: FieldElement>(expr: Expression<T>) -> (Option<String>, Expression<T>) {
