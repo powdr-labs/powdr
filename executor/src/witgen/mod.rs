@@ -84,8 +84,6 @@ where
     } = machines::machine_extractor::split_out_machines(
         &fixed,
         retained_identities,
-        // TODO: This is already part of fixed
-        &witness_cols,
         &known_constraints,
     );
     let mut generator = generator::Generator::new(
@@ -98,7 +96,6 @@ where
         query_callback,
     );
 
-    // Initialize values with empty array
     let mut values: Vec<(&str, Vec<T>)> = analyzed
         .committed_polys_in_source_order()
         .iter()
@@ -108,9 +105,19 @@ where
     let mut looping_period = None;
     for row in 0..degree as DegreeType {
         // Check if we are in a loop.
-        if looping_period.is_none() && row % 2 == 0 && row > 0 {
-            // Note that this checks ALL witness columns, not just those of the main state machine
-            looping_period = rows_are_repeating(&values);
+        if looping_period.is_none() && row % 100 == 0 && row > 0 {
+            let relevant_values = values
+                .iter()
+                .enumerate()
+                .filter_map(|(id, values)| {
+                    if generator.is_relevant_witness(id) {
+                        Some(values)
+                    } else {
+                        None
+                    }
+                })
+                .collect::<Vec<_>>();
+            looping_period = rows_are_repeating(&relevant_values);
             if let Some(p) = looping_period {
                 log::info!("Found loop with period {p} starting at row {row}");
             }
@@ -138,7 +145,6 @@ where
     }
     // Overwrite all machine witness columns
     for (name, data) in generator.machine_witness_col_values() {
-        println!("Overwriting column: {}", name);
         let (_, col) = values.iter_mut().find(|(n, _)| *n == name).unwrap();
         *col = data;
     }
@@ -147,7 +153,7 @@ where
 
 /// Checks if the last rows are repeating and returns the period.
 /// Only checks for periods of 1, 2, 3 and 4.
-fn rows_are_repeating<T: PartialEq>(values: &[(&str, Vec<T>)]) -> Option<usize> {
+fn rows_are_repeating<T: PartialEq>(values: &[&(&str, Vec<T>)]) -> Option<usize> {
     if values.is_empty() {
         return Some(1);
     } else if values[0].1.len() < 4 {

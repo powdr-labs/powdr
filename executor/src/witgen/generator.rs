@@ -526,7 +526,7 @@ where
     }
 
     /// Returns true if this is a witness column we care about (instead of a sub-machine witness).
-    fn is_relevant_witness(&self, id: usize) -> bool {
+    pub fn is_relevant_witness(&self, id: usize) -> bool {
         self.witnesses
             .contains(&self.fixed_data.witness_cols[id].poly)
     }
