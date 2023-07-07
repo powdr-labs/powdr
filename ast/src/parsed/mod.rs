@@ -1,4 +1,5 @@
 pub mod asm;
+pub mod build;
 pub mod display;
 use std::{iter::once, ops::ControlFlow};
 

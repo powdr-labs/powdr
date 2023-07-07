@@ -1,3 +1,4 @@
+pub mod build;
 mod display;
 pub mod util;
 
@@ -18,6 +19,7 @@ use util::expr_any;
 pub enum StatementIdentifier {
     Definition(String),
     PublicDeclaration(String),
+    /// Index into the vector of identities.
     Identity(usize),
 }
 
@@ -142,10 +144,10 @@ impl<T> Analyzed<T> {
         self.source_order.retain(|s| {
             if let StatementIdentifier::Definition(name) = s {
                 if names_to_remove.contains(name) {
-                    return true;
+                    return false;
                 }
             }
-            false
+            true
         });
         self.definitions.values_mut().for_each(|(poly, _def)| {
             let poly_id = PolyID::from(poly as &Polynomial);
@@ -168,7 +170,13 @@ impl<T> Analyzed<T> {
         identity: Expression<T>,
         source: SourceRef,
     ) -> u64 {
-        let id = self.identities.len() as u64;
+        let id = self
+            .identities
+            .iter()
+            .map(|identity| identity.id)
+            .max()
+            .unwrap_or_default()
+            + 1;
         self.identities.push(Identity {
             id,
             kind: IdentityKind::Polynomial,
@@ -185,6 +193,28 @@ impl<T> Analyzed<T> {
         self.source_order
             .push(StatementIdentifier::Identity(id as usize));
         id
+    }
+
+    /// Remove some identities by their index (not their ID).
+    /// Does not re-allocate IDs.
+    pub fn remove_identities(&mut self, to_remove: &BTreeSet<usize>) {
+        let mut shift = 0;
+        self.source_order.retain_mut(|s| {
+            if let StatementIdentifier::Identity(index) = s {
+                if to_remove.contains(index) {
+                    shift += 1;
+                    return false;
+                }
+                *index -= shift;
+            }
+            true
+        });
+        let mut index = 0;
+        self.identities.retain(|_| {
+            let retain = !to_remove.contains(&index);
+            index += 1;
+            retain
+        })
     }
 }
 
@@ -243,14 +273,22 @@ pub struct PublicDeclaration {
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Identity<T> {
-    /// The ID is specific to the kind.
+    /// The ID is specific to the identity kind.
     pub id: u64,
     pub kind: IdentityKind,
     pub source: SourceRef,
     /// For a simple polynomial identity, the selector contains
-    /// the actual expression.
+    /// the actual expression (see expression_for_poly_id).
     pub left: SelectedExpressions<T>,
     pub right: SelectedExpressions<T>,
+}
+
+impl<T> Identity<T> {
+    /// Returns the expression in case this is a polynomial identity.
+    pub fn expression_for_poly_id(&self) -> &Expression<T> {
+        assert_eq!(self.kind, IdentityKind::Polynomial);
+        self.left.selector.as_ref().unwrap()
+    }
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]

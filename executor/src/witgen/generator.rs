@@ -381,7 +381,7 @@ where
     ) -> EvalResult<'b, T> {
         match identity.kind {
             IdentityKind::Polynomial => {
-                self.process_polynomial_identity(identity.left.selector.as_ref().unwrap(), strategy)
+                self.process_polynomial_identity(identity.expression_for_poly_id(), strategy)
             }
             IdentityKind::Plookup | IdentityKind::Permutation => {
                 self.process_plookup(identity, strategy)
