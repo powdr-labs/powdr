@@ -9,7 +9,7 @@ use env_logger::{Builder, Target};
 use log::LevelFilter;
 use number::{Bn254Field, FieldElement, GoldilocksField};
 use riscv::{compile_riscv_asm, compile_rust};
-use std::{borrow::Cow, fs, io::Write, path::Path};
+use std::{borrow::Cow, collections::HashSet, fs, io::Write, path::Path};
 use strum::{Display, EnumString, EnumVariantNames};
 
 use std::io::{BufWriter, Cursor};
@@ -381,16 +381,26 @@ fn export_columns_to_csv<T: FieldElement>(
     let mut csv_file = fs::File::create(csv_path).unwrap();
     let mut csv_writer = BufWriter::new(&mut csv_file);
 
-    // Write the column headers
+    // Remove prefixes (e.g. "Assembly.") if column names are still unique after
     let headers = columns
         .iter()
-        .map(|(header, _)| {
-            header
-                .strip_prefix("Assembly.")
-                .unwrap_or(header)
-                .to_owned()
+        .map(|(header, _)| header.to_owned())
+        .collect::<Vec<_>>();
+    let headers_without_prefix = headers
+        .iter()
+        .map(|header| {
+            let suffix_start = header.rfind('.').map(|i| i + 1).unwrap_or(0);
+            header[suffix_start..].to_owned()
         })
         .collect::<Vec<_>>();
+
+    let unique_elements = headers_without_prefix.iter().collect::<HashSet<_>>();
+    let headers = if unique_elements.len() == headers.len() {
+        headers_without_prefix
+    } else {
+        headers
+    };
+
     writeln!(csv_writer, "Row,{}", headers.join(",")).unwrap();
 
     // Write the column values
