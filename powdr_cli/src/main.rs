@@ -384,7 +384,13 @@ fn export_columns_to_csv<T: FieldElement>(
     // Write the column headers
     let headers = columns
         .iter()
-        .map(|(header, _)| header.clone())
+        .map(|(header, _)| {
+            if header.starts_with("Assembly.") {
+                header["Assembly.".len()..].to_owned()
+            } else {
+                header.clone()
+            }
+        })
         .collect::<Vec<_>>();
     writeln!(csv_writer, "Row,{}", headers.join(",")).unwrap();
 
