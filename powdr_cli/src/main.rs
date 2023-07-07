@@ -74,6 +74,17 @@ enum Commands {
         #[arg(short, long)]
         #[arg(value_parser = clap_enum_variants!(Backend))]
         prove_with: Option<Backend>,
+
+        /// If active, generate a CSV file with the fixed and witness columns. Useful for debugging purposes.
+        #[arg(long)]
+        #[arg(default_value_t = false)]
+        export_csv: bool,
+
+        /// How to render field elements in the csv file
+        #[arg(long)]
+        #[arg(default_value_t = CsvRenderMode::Hex)]
+        #[arg(value_parser = clap_enum_variants!(CsvRenderMode))]
+        csv_mode: CsvRenderMode,
     },
     /// Compiles (no-std) rust code to riscv assembly, then to powdr assembly
     /// and finally to PIL and generates fixed and witness columns.
@@ -198,29 +209,6 @@ enum Commands {
         /// Input file
         file: String,
     },
-
-    /// Exports witness and fixed columns to a csv file.
-    ExportCsv {
-        /// Input PIL file
-        file: String,
-
-        /// Directory to find the committed and fixed values
-        #[arg(short, long)]
-        #[arg(default_value_t = String::from("."))]
-        dir: String,
-
-        /// The field to use
-        #[arg(long)]
-        #[arg(default_value_t = FieldArgument::Gl)]
-        #[arg(value_parser = clap_enum_variants!(FieldArgument))]
-        field: FieldArgument,
-
-        /// How to render field elements in the csv file
-        #[arg(long)]
-        #[arg(default_value_t = CsvRenderMode::Hex)]
-        #[arg(value_parser = clap_enum_variants!(CsvRenderMode))]
-        render_mode: CsvRenderMode,
-    },
 }
 
 fn split_inputs<T: FieldElement>(inputs: &str) -> Vec<T> {
@@ -295,13 +283,26 @@ fn main() {
             inputs,
             force,
             prove_with,
-        } => call_with_field!(compile_pil_or_asm::<field>(
-            &file,
-            split_inputs(&inputs),
-            Path::new(&output_directory),
-            force,
-            prove_with
-        )),
+            export_csv,
+            csv_mode,
+        } => {
+            let pil_filename = call_with_field!(compile_pil_or_asm::<field>(
+                &file,
+                split_inputs(&inputs),
+                Path::new(&output_directory),
+                force,
+                prove_with
+            ));
+
+            if export_csv {
+                let pil = Path::new(&pil_filename);
+                let dir = Path::new(&output_directory);
+                let csv_path = dir.join("columns.csv");
+                call_with_field!(export_columns_to_csv::<field>(
+                    pil, dir, &csv_path, csv_mode
+                ));
+            }
+        }
         Commands::Prove {
             file,
             dir,
@@ -328,24 +329,6 @@ fn main() {
                 proof_writer.flush().unwrap();
                 log::info!("Wrote {proof_filename}.");
             }
-        }
-
-        Commands::ExportCsv {
-            file,
-            dir,
-            field,
-            render_mode,
-        } => {
-            let pil = Path::new(&file);
-            let dir = Path::new(&dir);
-            let csv_path = dir.join("columns.csv");
-
-            call_with_field!(export_columns_to_csv::<field>(
-                pil,
-                dir,
-                &csv_path,
-                render_mode
-            ));
         }
         Commands::Setup {
             size,

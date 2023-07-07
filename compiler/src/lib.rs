@@ -35,9 +35,9 @@ pub fn compile_pil_or_asm<T: FieldElement>(
     output_dir: &Path,
     force_overwrite: bool,
     prove_with: Option<Backend>,
-) {
+) -> String {
     if file_name.ends_with(".asm") {
-        compile_asm(file_name, inputs, output_dir, force_overwrite, prove_with);
+        compile_asm(file_name, inputs, output_dir, force_overwrite, prove_with)
     } else {
         compile_pil(
             Path::new(file_name),
@@ -45,6 +45,7 @@ pub fn compile_pil_or_asm<T: FieldElement>(
             Some(inputs_to_query_callback(inputs)),
             prove_with,
         );
+        file_name.to_owned()
     }
 }
 
@@ -103,7 +104,7 @@ pub fn compile_asm<T: FieldElement>(
     output_dir: &Path,
     force_overwrite: bool,
     prove_with: Option<Backend>,
-) {
+) -> String {
     let contents = fs::read_to_string(file_name).unwrap();
     compile_asm_string(
         file_name,
@@ -112,7 +113,7 @@ pub fn compile_asm<T: FieldElement>(
         output_dir,
         force_overwrite,
         prove_with,
-    );
+    )
 }
 
 /// Compiles the contents of a .asm file, outputs the PIL on stdout and tries to generate
