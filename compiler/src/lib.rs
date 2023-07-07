@@ -5,6 +5,7 @@ use std::fs;
 use std::io::BufWriter;
 use std::io::Write;
 use std::path::Path;
+use std::path::PathBuf;
 use std::time::Instant;
 
 use ast::analyzed::Analyzed;
@@ -35,7 +36,7 @@ pub fn compile_pil_or_asm<T: FieldElement>(
     output_dir: &Path,
     force_overwrite: bool,
     prove_with: Option<Backend>,
-) -> String {
+) -> PathBuf {
     if file_name.ends_with(".asm") {
         compile_asm(file_name, inputs, output_dir, force_overwrite, prove_with)
     } else {
@@ -45,7 +46,7 @@ pub fn compile_pil_or_asm<T: FieldElement>(
             Some(inputs_to_query_callback(inputs)),
             prove_with,
         );
-        file_name.to_owned()
+        PathBuf::from(file_name)
     }
 }
 
@@ -104,7 +105,7 @@ pub fn compile_asm<T: FieldElement>(
     output_dir: &Path,
     force_overwrite: bool,
     prove_with: Option<Backend>,
-) -> String {
+) -> PathBuf {
     let contents = fs::read_to_string(file_name).unwrap();
     compile_asm_string(
         file_name,
@@ -127,7 +128,7 @@ pub fn compile_asm_string<T: FieldElement>(
     output_dir: &Path,
     force_overwrite: bool,
     prove_with: Option<Backend>,
-) -> String {
+) -> PathBuf {
     let parsed = parser::parse_asm(Some(file_name), contents).unwrap_or_else(|err| {
         eprintln!("Error parsing .asm file:");
         err.output_to_stderr();
@@ -146,7 +147,7 @@ pub fn compile_asm_string<T: FieldElement>(
             "Target file {} already exists. Not overwriting.",
             pil_file_path.to_str().unwrap()
         );
-        return pil_file_name;
+        return pil_file_path;
     }
     fs::write(pil_file_path.clone(), format!("{pil}")).unwrap();
 
@@ -158,7 +159,7 @@ pub fn compile_asm_string<T: FieldElement>(
         prove_with,
     );
 
-    pil_file_name
+    pil_file_path
 }
 
 fn compile<T: FieldElement, QueryCallback>(
