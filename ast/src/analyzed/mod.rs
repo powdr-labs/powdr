@@ -296,7 +296,9 @@ impl<T> Expression<T> {
     /// @returns true if the expression contains a reference to a next value of a witness column.
     pub fn contains_next_witness_ref(&self) -> bool {
         expr_any(self, |e| match e {
-            Expression::PolynomialReference(poly) => poly.next && poly.is_witness(),
+            Expression::PolynomialReference(poly) => {
+                poly.next && poly.is_witness()
+            },
             _ => false,
         })
     }

@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use ast::analyzed::util::previsit_expressions_in_identity_mut;
-use ast::analyzed::{Expression, Identity, PolyID, PolynomialReference};
+use ast::analyzed::{Expression, Identity, PolynomialReference};
 
 /// Checks if an expression is
 /// - a polynomial
@@ -23,15 +23,12 @@ pub fn try_to_simple_poly<T>(expr: &Expression<T>) -> Option<&PolynomialReferenc
     }
 }
 
-pub fn try_to_simple_poly_ref<T>(expr: &Expression<T>) -> Option<PolyID> {
-    if let Expression::PolynomialReference(PolynomialReference {
-        poly_id,
-        index: None,
-        next: false,
-        ..
-    }) = expr
-    {
-        Some(poly_id.unwrap())
+pub fn try_to_simple_poly_ref<T>(expr: &Expression<T>) -> Option<&PolynomialReference> {
+    if let Expression::PolynomialReference(poly_ref) = expr {
+        if poly_ref.index.is_none() && !poly_ref.next {
+            return Some(poly_ref);
+        }
+        return None;
     } else {
         None
     }

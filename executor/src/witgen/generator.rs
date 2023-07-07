@@ -160,11 +160,8 @@ where
             }
         }
         if identity_failed {
-            log::error!(
-                "\nError: Row {next_row}: Identity check failed or unable to derive values for some witness columns.\nSet RUST_LOG=debug for more information.");
-            log::debug!(
-                "The following columns are still undetermined: {}",
-                self.next
+            let list_undetermined = |values: &Vec<Option<T>>| {
+                values
                     .iter()
                     .enumerate()
                     .filter_map(|(i, v)| {
@@ -176,10 +173,21 @@ where
                     })
                     .collect::<Vec<String>>()
                     .join(", ")
-            );
-            log::debug!("Reasons:\n{}\n", self.failure_reasons.join("\n\n"));
+            };
+
+            log::error!(
+                "\nError: Row {next_row}: Identity check failed or unable to derive values for some witness columns.\nSet RUST_LOG=debug for more information.");
             log::debug!(
-                "Determind range constraints for this row:\n{}",
+                "\nThe following columns were undetermined in the previous row and might have been needed to derive this row's values:\n{}",
+                list_undetermined(&self.current)
+            );
+            log::debug!(
+                "\nThe following columns are still undetermined in the current row:\n{}",
+                list_undetermined(&self.next)
+            );
+            log::debug!("\nReasons:\n{}\n", self.failure_reasons.join("\n\n"));
+            log::debug!(
+                "Determined range constraints for this row:\n{}",
                 self.next_range_constraints
                     .iter()
                     .enumerate()
@@ -305,6 +313,7 @@ where
             Ok(query) => query,
             Err(incomplete) => return Ok(EvalValue::incomplete(incomplete)),
         };
+        log::trace!("      Running query: {}", query);
         if let Some(value) = self.query_callback.as_mut().and_then(|c| (c)(&query)) {
             Ok(EvalValue::complete(vec![(
                 &column.poly,
@@ -532,6 +541,10 @@ where
         evaluate_unknown: EvaluateUnknown,
     ) -> AffineResult<&'b PolynomialReference, T> {
         let degree = self.fixed_data.degree;
+        // - self.next_row is the row we are trying to find values for
+        // - evaluate_row == Current means that the identity contains a reference to the "next" row
+        //   - if that is the case, we set fixed_row to next_row - 1
+        //   - otherwise, fixed_row = next_row
         let fixed_row = match evaluate_row {
             EvaluationRow::Current => (self.next_row + degree - 1) % degree,
             EvaluationRow::Next => self.next_row,

@@ -153,7 +153,7 @@ pub enum EvalError {
     /// Conflicting bit- or range constraints in an equation, i.e. for X = 0x100, where X is known to be at most 0xff.
     ConflictingRangeConstraints,
     // Fixed lookup failed
-    FixedLookupFailed,
+    FixedLookupFailed(String),
     Generic(String),
     Multiple(Vec<EvalError>),
 }
@@ -194,7 +194,10 @@ impl fmt::Display for EvalError {
                 write!(f, "Range constraints in the expression are conflicting or do not match the constant / offset.",)
             }
             EvalError::RowsExhausted => write!(f, "Table rows exhausted"),
-            EvalError::FixedLookupFailed => write!(f, "Lookup into fixed columns failed: no match"),
+            EvalError::FixedLookupFailed(query) => write!(
+                f,
+                "Lookup into fixed columns failed: no match for query: {query}"
+            ),
             EvalError::Generic(s) => write!(f, "{s}"),
         }
     }
