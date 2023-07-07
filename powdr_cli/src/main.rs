@@ -385,11 +385,10 @@ fn export_columns_to_csv<T: FieldElement>(
     let headers = columns
         .iter()
         .map(|(header, _)| {
-            if header.starts_with("Assembly.") {
-                header["Assembly.".len()..].to_owned()
-            } else {
-                header.clone()
-            }
+            header
+                .strip_prefix("Assembly.")
+                .unwrap_or(header)
+                .to_owned()
         })
         .collect::<Vec<_>>();
     writeln!(csv_writer, "Row,{}", headers.join(",")).unwrap();

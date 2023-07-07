@@ -141,7 +141,7 @@ pub fn compile_asm_string<T: FieldElement>(
         Path::new(file_name).file_stem().unwrap().to_str().unwrap()
     );
 
-    let pil_file_path = output_dir.join(&pil_file_name);
+    let pil_file_path = output_dir.join(pil_file_name);
     if pil_file_path.exists() && !force_overwrite {
         eprint!(
             "Target file {} already exists. Not overwriting.",
