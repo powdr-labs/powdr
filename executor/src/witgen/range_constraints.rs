@@ -193,15 +193,14 @@ fn propagate_constraints<'a, T: FieldElement>(
     let mut remove = false;
     match identity.kind {
         IdentityKind::Polynomial => {
-            if let Some(p) = is_binary_constraint(identity.left.selector.as_ref().unwrap()) {
+            if let Some(p) = is_binary_constraint(identity.expression_for_poly_id()) {
                 assert!(known_constraints
                     .insert(p, RangeConstraint::from_max_bit(0))
                     .is_none());
                 remove = true;
-            } else if let Some((p, c)) = try_transfer_constraints(
-                identity.left.selector.as_ref().unwrap(),
-                &known_constraints,
-            ) {
+            } else if let Some((p, c)) =
+                try_transfer_constraints(identity.expression_for_poly_id(), &known_constraints)
+            {
                 known_constraints
                     .entry(p)
                     .and_modify(|existing| *existing = existing.clone().conjunction(&c))

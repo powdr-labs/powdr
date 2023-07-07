@@ -352,10 +352,9 @@ impl<T: FieldElement> BlockMachine<T> {
             IdentityInSequence::Internal(index) => {
                 let id = &self.identities[index];
                 match id.kind {
-                    IdentityKind::Polynomial => self.process_polynomial_identity(
-                        fixed_data,
-                        id.left.selector.as_ref().unwrap(),
-                    ),
+                    IdentityKind::Polynomial => {
+                        self.process_polynomial_identity(fixed_data, id.expression_for_poly_id())
+                    }
                     IdentityKind::Plookup | IdentityKind::Permutation => {
                         self.process_plookup(fixed_data, fixed_lookup, id)
                     }
