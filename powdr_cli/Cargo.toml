@@ -13,6 +13,7 @@ riscv = { path = "../riscv" }
 number = { path = "../number" }
 halo2 = { path = "../halo2" }
 backend = { path = "../backend" }
+pilopt = { path = "../pilopt" }
 strum = { version = "0.24.1", features = ["derive"] }
 
 [[bin]]

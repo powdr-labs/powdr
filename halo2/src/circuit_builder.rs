@@ -121,7 +121,7 @@ pub(crate) fn analyzed_to_circuit<T: FieldElement>(
                 assert_eq!(id.right.selector, None);
                 assert_eq!(id.left.expressions.len(), 0);
 
-                let exp = id.left.selector.as_ref().unwrap();
+                let exp = id.expression_for_poly_id();
                 let contains_next_ref = exp.contains_next_ref();
 
                 let exp = expression_2_expr(&cd, exp);

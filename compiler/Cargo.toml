@@ -12,6 +12,7 @@ number = { path = "../number" }
 parser_util = { path = "../parser_util" }
 parser = { path = "../parser" }
 executor = { path = "../executor" }
+pilopt = { path = "../pilopt" }
 asm_to_pil = { path = "../asm_to_pil" }
 pil_analyzer = { path = "../pil_analyzer" }
 halo2 = { path = "../halo2" }
