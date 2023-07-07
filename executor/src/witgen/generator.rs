@@ -541,10 +541,11 @@ where
         evaluate_unknown: EvaluateUnknown,
     ) -> AffineResult<&'b PolynomialReference, T> {
         let degree = self.fixed_data.degree;
-        // - self.next_row is the row we are trying to find values for
-        // - evaluate_row == Current means that the identity contains a reference to the "next" row
-        //   - if that is the case, we set fixed_row to next_row - 1
-        //   - otherwise, fixed_row = next_row
+
+        // We want to determine the values of next_row, but if the expression contains
+        // references to the next row, we want to evaluate the expression for the current row
+        // in order to determine values for next_row.
+        // Otherwise, we want to evaluate the expression on next_row directly.
         let fixed_row = match evaluate_row {
             EvaluationRow::Current => (self.next_row + degree - 1) % degree,
             EvaluationRow::Next => self.next_row,

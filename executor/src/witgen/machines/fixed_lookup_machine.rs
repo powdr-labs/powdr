@@ -36,8 +36,6 @@ impl IndexValue {
 /// - `(V, Some(row)` if the value of `OUTPUT_COLS` is unique when `INPUT_COLS == V`, and `row` is the first row where `INPUT_COLS ==V`
 #[derive(Default)]
 pub struct IndexedColumns<T> {
-    // type Application = (Vec<u64>, Vec<u64>);
-    // type Index<T> = BTreeMap<Vec<T>, IndexValue>;
     indices: HashMap<Application, Index<T>>,
 }
 
@@ -226,18 +224,24 @@ impl<T: FieldElement> FixedLookup<T> {
             }
         });
 
-        let query_string = input_assignment
+        let input_assignment_with_ids = input_assignment
             .iter()
-            .map(|(poly_ref, v)| format!("{} = {}", poly_ref.name, v))
-            .join(", ");
-        let input_assignment = input_assignment
-            .into_iter()
-            .map(|(poly_ref, v)| (poly_ref.poly_id.unwrap().id, v))
+            .map(|(poly_ref, v)| (poly_ref.poly_id.unwrap().id, *v))
             .collect();
         let index_value = self
             .indices
-            .get_match(fixed_data, input_assignment, output_columns.clone())
-            .ok_or(EvalError::FixedLookupFailed(query_string))?;
+            .get_match(
+                fixed_data,
+                input_assignment_with_ids,
+                output_columns.clone(),
+            )
+            .ok_or_else(|| {
+                let query_string = input_assignment
+                    .iter()
+                    .map(|(poly_ref, v)| format!("{} = {}", poly_ref.name, v))
+                    .join(", ");
+                EvalError::FixedLookupFailed(query_string)
+            })?;
 
         let row = match index_value.row() {
             // a single match, we continue
