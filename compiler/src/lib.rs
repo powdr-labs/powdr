@@ -223,6 +223,8 @@ pub fn inputs_to_query_callback<T: FieldElement>(inputs: Vec<T>) -> impl Fn(&str
                 let value = inputs.get(index).cloned();
                 if let Some(value) = value {
                     log::trace!("Input query: Index {index} -> {value}");
+                } else {
+                    panic!("Not enough inputs provided! Index {index} out of bounds")
                 }
                 value
             }
