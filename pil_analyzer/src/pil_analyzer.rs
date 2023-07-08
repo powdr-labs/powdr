@@ -4,7 +4,8 @@ use std::path::{Path, PathBuf};
 
 use analysis::MacroExpander;
 use ast::parsed::{
-    ArrayExpression, BinaryOperator, FunctionDefinition, PolynomialName, Statement, UnaryOperator,
+    ArrayExpression, BinaryOperator, FunctionDefinition, PilStatement, PolynomialName,
+    UnaryOperator,
 };
 use number::{BigInt, DegreeType, FieldElement};
 
@@ -136,11 +137,11 @@ impl<T: FieldElement> PILContext<T> {
         self.line_starts = old_line_starts;
     }
 
-    fn handle_statement(&mut self, statement: Statement<T>) {
+    fn handle_statement(&mut self, statement: PilStatement<T>) {
         match statement {
-            Statement::Include(_, include) => self.handle_include(include),
-            Statement::Namespace(_, name, degree) => self.handle_namespace(name, degree),
-            Statement::PolynomialDefinition(start, name, value) => {
+            PilStatement::Include(_, include) => self.handle_include(include),
+            PilStatement::Namespace(_, name, degree) => self.handle_namespace(name, degree),
+            PilStatement::PolynomialDefinition(start, name, value) => {
                 self.handle_polynomial_definition(
                     self.to_source_ref(start),
                     name,
@@ -149,16 +150,16 @@ impl<T: FieldElement> PILContext<T> {
                     Some(FunctionDefinition::Mapping(vec![], value)),
                 );
             }
-            Statement::PublicDeclaration(start, name, polynomial, index) => {
+            PilStatement::PublicDeclaration(start, name, polynomial, index) => {
                 self.handle_public_declaration(self.to_source_ref(start), name, polynomial, index)
             }
-            Statement::PolynomialConstantDeclaration(start, polynomials) => self
+            PilStatement::PolynomialConstantDeclaration(start, polynomials) => self
                 .handle_polynomial_declarations(
                     self.to_source_ref(start),
                     polynomials,
                     PolynomialType::Constant,
                 ),
-            Statement::PolynomialConstantDefinition(start, name, definition) => {
+            PilStatement::PolynomialConstantDefinition(start, name, definition) => {
                 self.handle_polynomial_definition(
                     self.to_source_ref(start),
                     name,
@@ -167,13 +168,13 @@ impl<T: FieldElement> PILContext<T> {
                     Some(definition),
                 );
             }
-            Statement::PolynomialCommitDeclaration(start, polynomials, None) => self
+            PilStatement::PolynomialCommitDeclaration(start, polynomials, None) => self
                 .handle_polynomial_declarations(
                     self.to_source_ref(start),
                     polynomials,
                     PolynomialType::Committed,
                 ),
-            Statement::PolynomialCommitDeclaration(start, mut polynomials, Some(definition)) => {
+            PilStatement::PolynomialCommitDeclaration(start, mut polynomials, Some(definition)) => {
                 assert!(polynomials.len() == 1);
                 let name = polynomials.pop().unwrap();
                 self.handle_polynomial_definition(
@@ -184,10 +185,10 @@ impl<T: FieldElement> PILContext<T> {
                     Some(definition),
                 );
             }
-            Statement::ConstantDefinition(_, name, value) => {
+            PilStatement::ConstantDefinition(_, name, value) => {
                 self.handle_constant_definition(name, value)
             }
-            Statement::MacroDefinition(_, _, _, _, _) => {
+            PilStatement::MacroDefinition(_, _, _, _, _) => {
                 panic!("Macros should have been eliminated.");
             }
             _ => {
@@ -204,9 +205,9 @@ impl<T: FieldElement> PILContext<T> {
         }
     }
 
-    fn handle_identity_statement(&mut self, statement: Statement<T>) {
+    fn handle_identity_statement(&mut self, statement: PilStatement<T>) {
         let (start, kind, left, right) = match statement {
-            Statement::PolynomialIdentity(start, expression) => (
+            PilStatement::PolynomialIdentity(start, expression) => (
                 start,
                 IdentityKind::Polynomial,
                 SelectedExpressions {
@@ -215,19 +216,19 @@ impl<T: FieldElement> PILContext<T> {
                 },
                 SelectedExpressions::default(),
             ),
-            Statement::PlookupIdentity(start, key, haystack) => (
+            PilStatement::PlookupIdentity(start, key, haystack) => (
                 start,
                 IdentityKind::Plookup,
                 self.process_selected_expression(key),
                 self.process_selected_expression(haystack),
             ),
-            Statement::PermutationIdentity(start, left, right) => (
+            PilStatement::PermutationIdentity(start, left, right) => (
                 start,
                 IdentityKind::Permutation,
                 self.process_selected_expression(left),
                 self.process_selected_expression(right),
             ),
-            Statement::ConnectIdentity(start, left, right) => (
+            PilStatement::ConnectIdentity(start, left, right) => (
                 start,
                 IdentityKind::Connect,
                 SelectedExpressions {
@@ -499,9 +500,9 @@ impl<T: FieldElement> PILContext<T> {
                     Expression::UnaryOperation(op, Box::new(self.process_expression(*value)))
                 }
             }
-            FunctionCall(name, arguments) => Expression::FunctionCall(
-                self.namespaced(&name),
-                self.process_expressions(arguments),
+            FunctionCall(c) => Expression::FunctionCall(
+                self.namespaced(&c.id),
+                self.process_expressions(c.arguments),
             ),
             MatchExpression(scrutinee, arms) => Expression::MatchExpression(
                 Box::new(self.process_expression(*scrutinee)),
@@ -555,7 +556,7 @@ impl<T: FieldElement> PILContext<T> {
             Tuple(_) => None,
             BinaryOperation(left, op, right) => self.evaluate_binary_operation(left, *op, right),
             UnaryOperation(op, value) => self.evaluate_unary_operation(*op, value),
-            FunctionCall(_, _) => None,
+            FunctionCall(_) => None,
             FreeInput(_) => panic!(),
             MatchExpression(_, _) => None,
         }

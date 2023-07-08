@@ -1,37 +1,62 @@
 use std::fmt::{Display, Formatter, Result};
 
 use super::{
-    AnalysisASMFile, AssignmentStatement, DegreeStatement, Incompatible, IncompatibleSet,
-    InstructionDefinitionStatement, InstructionStatement, LabelStatement, PilBlock,
-    ProgramStatement, RegisterDeclarationStatement,
+    AnalysisASMFile, AssignmentStatement, DebugDirective, DegreeStatement, FunctionBody,
+    FunctionDefinitionStatement, FunctionStatement, Incompatible, IncompatibleSet,
+    InstructionDefinitionStatement, InstructionStatement, LabelStatement, Machine, PilBlock,
+    RegisterDeclarationStatement, Rom,
 };
 
 impl<T: Display> Display for AnalysisASMFile<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        for (name, machine) in &self.machines {
+            writeln!(f, "machine {name} {{")?;
+            writeln!(f, "{}", machine)?;
+            writeln!(f, "}}")?;
+            writeln!(f)?;
+        }
+        Ok(())
+    }
+}
+
+impl<T: Display> Display for Machine<T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        // TODO: implement indentation properly (passing a context to the visitor)
         for s in &self.degree {
-            writeln!(f, "{s}")?;
+            writeln!(f, "\t{s}")?;
         }
         for s in &self.registers {
-            writeln!(f, "{s}")?;
+            writeln!(f, "\t{s}")?;
         }
-        for s in &self.pil {
-            writeln!(f, "{s}")?;
+        for s in &self.constraints {
+            writeln!(f, "\t{s}")?;
         }
         for i in &self.instructions {
-            writeln!(f, "{i}")?;
+            writeln!(f, "\t{i}")?;
         }
+        for o in &self.functions {
+            writeln!(f, "\t{o}")?;
+        }
+        if let Some(rom) = &self.rom {
+            writeln!(f, "{rom}")?;
+        }
+        Ok(())
+    }
+}
 
-        let mut statements = self.program.iter();
-
-        match self.batches.as_ref() {
+impl<T: Display> Display for Rom<T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        writeln!(f, "\t// rom {{")?;
+        let statements = &mut self.statements.iter();
+        match &self.batches {
             Some(batches) => {
                 for batch in batches {
-                    for s in (&mut statements).take(batch.size) {
-                        writeln!(f, "{s}")?;
+                    for statement in statements.take(batch.size) {
+                        writeln!(f, "\t// \t{}", statement)?;
                     }
                     writeln!(
                         f,
-                        "// END BATCH{}",
+                        "\t// \t// END BATCH{}",
                         batch
                             .reason
                             .as_ref()
@@ -41,12 +66,12 @@ impl<T: Display> Display for AnalysisASMFile<T> {
                 }
             }
             None => {
-                for s in statements {
-                    writeln!(f, "{s}")?;
+                for statement in statements {
+                    writeln!(f, "\t// \t {}", statement)?;
                 }
             }
         }
-        Ok(())
+        write!(f, "\t// }}")
     }
 }
 
@@ -56,13 +81,13 @@ impl Display for DegreeStatement {
     }
 }
 
-impl<T: Display> Display for ProgramStatement<T> {
+impl<T: Display> Display for FunctionStatement<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
-            ProgramStatement::Assignment(s) => write!(f, "{s}"),
-            ProgramStatement::Instruction(s) => write!(f, "{s}"),
-            ProgramStatement::Label(s) => write!(f, "{s}"),
-            ProgramStatement::DebugDirective(d) => write!(f, "{d}"),
+            FunctionStatement::Assignment(s) => write!(f, "{s}"),
+            FunctionStatement::Instruction(s) => write!(f, "{s}"),
+            FunctionStatement::Label(s) => write!(f, "{s}"),
+            FunctionStatement::DebugDirective(d) => write!(f, "{d}"),
         }
     }
 }
@@ -79,6 +104,12 @@ impl<T: Display> Display for AssignmentStatement<T> {
                 .unwrap_or_default(),
             self.rhs
         )
+    }
+}
+
+impl Display for DebugDirective {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(f, "{}", self.directive)
     }
 }
 
@@ -114,7 +145,7 @@ impl<T: Display> Display for PilBlock<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(
             f,
-            "pil{{\n{}\n}}",
+            "constraints {{\n{}\n}}",
             self.statements
                 .iter()
                 .map(|s| format!("{}", s))
@@ -140,17 +171,26 @@ impl Display for RegisterDeclarationStatement {
 
 impl<T: Display> Display for InstructionDefinitionStatement<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(f, "instr {}{} {{ {} }}", self.name, self.params, self.body)
+    }
+}
+
+impl<T: Display> Display for FunctionDefinitionStatement<T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(
             f,
-            "instr {}{} {{{}}}",
-            self.name,
-            self.params,
-            self.body
-                .iter()
-                .map(|e| format!("{e}"))
-                .collect::<Vec<_>>()
-                .join(" ")
+            "function {}{} {{\n{}\n\t}}",
+            self.name, self.params, self.body,
         )
+    }
+}
+
+impl<T: Display> Display for FunctionBody<T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        for s in &self.statements {
+            writeln!(f, "\t\t{s}")?;
+        }
+        Ok(())
     }
 }
 

@@ -48,7 +48,8 @@ mod test {
         let contents = fs::read_to_string(file_name).unwrap();
         let parsed = parse_asm::<Bn254Field>(Some(file_name), &contents).unwrap();
         let analysed = analyze(parsed).unwrap();
-        let pil = asm_to_pil::compile(analysed);
+        let graph = asm_to_pil::compile(analysed);
+        let pil = linker::link(graph);
 
         let query_callback = |query: &str| -> Option<Bn254Field> {
             let items = query.split(',').map(|s| s.trim()).collect::<Vec<_>>();
