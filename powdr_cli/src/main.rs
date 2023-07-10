@@ -301,22 +301,15 @@ fn main() {
             export_csv,
             csv_mode,
         } => {
-            let pil_filename = call_with_field!(compile_pil_or_asm::<field>(
-                &file,
-                split_inputs(&inputs),
-                Path::new(&output_directory),
+            call_with_field!(compile_with_csv_export::<field>(
+                file,
+                output_directory,
+                inputs,
                 force,
-                prove_with
+                prove_with,
+                export_csv,
+                csv_mode
             ));
-
-            if export_csv {
-                let pil = Path::new(&pil_filename);
-                let dir = Path::new(&output_directory);
-                let csv_path = dir.join("columns.csv");
-                call_with_field!(export_columns_to_csv::<field>(
-                    pil, dir, &csv_path, csv_mode
-                ));
-            }
         }
         Commands::Prove {
             file,
@@ -374,23 +367,46 @@ fn write_params_to_fs(params: &[u8], output_dir: &Path) {
     log::info!("Wrote params.bin.");
 }
 
+fn compile_with_csv_export<T: FieldElement>(
+    file: String,
+    output_directory: String,
+    inputs: String,
+    force: bool,
+    prove_with: Option<Backend>,
+    export_csv: bool,
+    csv_mode: CsvRenderMode,
+) {
+    let result = compile_pil_or_asm::<T>(
+        &file,
+        split_inputs(&inputs),
+        Path::new(&output_directory),
+        force,
+        prove_with,
+    );
+
+    if export_csv {
+        // Compilation result is None if the ASM file file has been compiled before
+        if let Some(compilation_result) = result {
+            let csv_path = Path::new(&output_directory).join("columns.csv");
+            export_columns_to_csv::<T>(
+                compilation_result.constants,
+                compilation_result.witness,
+                &csv_path,
+                csv_mode,
+            );
+        }
+    }
+}
+
 fn export_columns_to_csv<T: FieldElement>(
-    file: &Path,
-    dir: &Path,
+    fixed: Vec<(String, Vec<T>)>,
+    witness: Option<Vec<(String, Vec<T>)>>,
     csv_path: &Path,
     render_mode: CsvRenderMode,
 ) {
-    let pil = compiler::analyze_pil::<T>(file);
-    let fixed = compiler::util::read_fixed(&pil, dir);
-    let witness = compiler::util::read_witness(&pil, dir);
-
-    assert_eq!(fixed.1, witness.1);
-
     let columns = fixed
-        .0
         .into_iter()
-        .chain(witness.0.into_iter())
-        .map(|(name, values)| (name.to_owned(), values))
+        .chain(witness.unwrap_or(vec![]).into_iter())
         .collect::<Vec<_>>();
 
     let mut csv_file = fs::File::create(csv_path).unwrap();
