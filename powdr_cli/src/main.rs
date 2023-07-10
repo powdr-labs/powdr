@@ -242,6 +242,10 @@ fn main() {
         .init();
 
     let command = Cli::parse().command;
+    run_command(command);
+}
+
+fn run_command(command: Commands) {
     match command {
         Commands::Rust {
             file,
@@ -495,4 +499,45 @@ fn optimize_and_output<T: FieldElement>(file: &str) {
         "{}",
         pilopt::optimize(compiler::analyze_pil::<T>(Path::new(file)))
     );
+}
+
+#[cfg(test)]
+mod test {
+
+    use backend::Backend;
+    use tempfile;
+
+    use crate::{run_command, Commands, CsvRenderMode, FieldArgument};
+    #[test]
+    fn test_simple_sum() {
+        let output_dir = tempfile::tempdir().unwrap();
+        let output_dir_str = output_dir.path().to_string_lossy().to_string();
+
+        let pil_command = Commands::Pil {
+            file: "../test_data/asm/simple_sum.asm".into(),
+            field: FieldArgument::Bn254,
+            output_directory: output_dir_str.clone(),
+            inputs: "3,2,1,2".into(),
+            force: false,
+            prove_with: None,
+            export_csv: true,
+            csv_mode: CsvRenderMode::Hex,
+        };
+        run_command(pil_command);
+
+        let file = output_dir
+            .path()
+            .join("simple_sum_opt.pil")
+            .to_string_lossy()
+            .to_string();
+        let prove_command = Commands::Prove {
+            file,
+            dir: output_dir_str,
+            field: FieldArgument::Bn254,
+            backend: Backend::Halo2Mock,
+            proof: None,
+            params: None,
+        };
+        run_command(prove_command);
+    }
 }
