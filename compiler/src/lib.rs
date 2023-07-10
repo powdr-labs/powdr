@@ -5,6 +5,7 @@ use std::fs;
 use std::io::BufWriter;
 use std::io::Write;
 use std::path::Path;
+use std::path::PathBuf;
 use std::time::Instant;
 
 use ast::analyzed::Analyzed;
@@ -35,9 +36,9 @@ pub fn compile_pil_or_asm<T: FieldElement>(
     output_dir: &Path,
     force_overwrite: bool,
     prove_with: Option<Backend>,
-) {
+) -> PathBuf {
     if file_name.ends_with(".asm") {
-        compile_asm(file_name, inputs, output_dir, force_overwrite, prove_with);
+        compile_asm(file_name, inputs, output_dir, force_overwrite, prove_with)
     } else {
         compile_pil(
             Path::new(file_name),
@@ -45,6 +46,7 @@ pub fn compile_pil_or_asm<T: FieldElement>(
             Some(inputs_to_query_callback(inputs)),
             prove_with,
         );
+        PathBuf::from(file_name)
     }
 }
 
@@ -103,7 +105,7 @@ pub fn compile_asm<T: FieldElement>(
     output_dir: &Path,
     force_overwrite: bool,
     prove_with: Option<Backend>,
-) {
+) -> PathBuf {
     let contents = fs::read_to_string(file_name).unwrap();
     compile_asm_string(
         file_name,
@@ -112,7 +114,7 @@ pub fn compile_asm<T: FieldElement>(
         output_dir,
         force_overwrite,
         prove_with,
-    );
+    )
 }
 
 /// Compiles the contents of a .asm file, outputs the PIL on stdout and tries to generate
@@ -126,7 +128,7 @@ pub fn compile_asm_string<T: FieldElement>(
     output_dir: &Path,
     force_overwrite: bool,
     prove_with: Option<Backend>,
-) -> String {
+) -> PathBuf {
     let parsed = parser::parse_asm(Some(file_name), contents).unwrap_or_else(|err| {
         eprintln!("Error parsing .asm file:");
         err.output_to_stderr();
@@ -139,13 +141,13 @@ pub fn compile_asm_string<T: FieldElement>(
         Path::new(file_name).file_stem().unwrap().to_str().unwrap()
     );
 
-    let pil_file_path = output_dir.join(&pil_file_name);
+    let pil_file_path = output_dir.join(pil_file_name);
     if pil_file_path.exists() && !force_overwrite {
         eprint!(
             "Target file {} already exists. Not overwriting.",
             pil_file_path.to_str().unwrap()
         );
-        return pil_file_name;
+        return pil_file_path;
     }
     fs::write(pil_file_path.clone(), format!("{pil}")).unwrap();
 
@@ -157,7 +159,7 @@ pub fn compile_asm_string<T: FieldElement>(
         prove_with,
     );
 
-    pil_file_name
+    pil_file_path
 }
 
 fn compile<T: FieldElement, QueryCallback>(
