@@ -6,7 +6,8 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::time::Instant;
 
 use super::affine_expression::{AffineExpression, AffineResult};
-use super::range_constraints::{RangeConstraint, RangeConstraintSet};
+use super::global_constraints::RangeConstraintSet;
+use super::range_constraints::RangeConstraint;
 
 use super::expression_evaluator::ExpressionEvaluator;
 use super::machines::{FixedLookup, Machine};

@@ -7,14 +7,16 @@ use number::{DegreeType, FieldElement};
 pub use self::eval_result::{
     Constraint, Constraints, EvalError, EvalResult, EvalStatus, EvalValue, IncompleteCause,
 };
+use self::global_constraints::GlobalConstraints;
+use self::machines::machine_extractor::ExtractionOutput;
 use self::util::substitute_constants;
-use self::{machines::machine_extractor::ExtractionOutput, range_constraints::GlobalConstraints};
 
 mod affine_expression;
 mod eval_result;
 mod expression_evaluator;
 pub mod fixed_evaluator;
 mod generator;
+mod global_constraints;
 mod machines;
 mod range_constraints;
 pub mod symbolic_evaluator;
@@ -70,7 +72,7 @@ where
     let GlobalConstraints {
         known_constraints,
         retained_identities,
-    } = range_constraints::determine_global_constraints(&fixed, identities.iter().collect());
+    } = global_constraints::determine_global_constraints(&fixed, identities.iter().collect());
     let ExtractionOutput {
         mut fixed_lookup,
         machines,

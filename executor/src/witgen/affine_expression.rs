@@ -6,7 +6,8 @@ use itertools::Itertools;
 use num_traits::Zero;
 use number::{BigInt, FieldElement};
 
-use super::range_constraints::{RangeConstraint, RangeConstraintSet};
+use super::global_constraints::RangeConstraintSet;
+use super::range_constraints::RangeConstraint;
 use super::Constraint;
 use super::{EvalError::*, EvalResult, EvalValue, IncompleteCause};
 
