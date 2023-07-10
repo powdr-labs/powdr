@@ -3,6 +3,7 @@ use std::fmt::Display;
 
 use itertools::Itertools;
 
+use num_traits::Zero;
 use number::{BigInt, FieldElement};
 
 use super::range_constraints::RangeConstraintSet;
@@ -34,8 +35,8 @@ where
 {
     pub fn from_variable_id(var_id: K) -> AffineExpression<K, T> {
         Self {
-            coefficients: BTreeMap::from([(var_id, 1.into())]),
-            offset: 0.into(),
+            coefficients: BTreeMap::from([(var_id, T::one())]),
+            offset: T::zero(),
         }
     }
 
@@ -81,9 +82,9 @@ where
                 // c * a + o = 0 <=> a = -o/c
                 Ok(EvalValue::complete(vec![(
                     i,
-                    Constraint::Assignment(if *c == 1.into() {
+                    Constraint::Assignment(if c.is_one() {
                         -self.offset
-                    } else if *c == (-1).into() {
+                    } else if *c == -T::one() {
                         self.offset
                     } else {
                         -self.offset / *c
@@ -94,7 +95,7 @@ where
                 IncompleteCause::MultipleLinearSolutions,
             )),
             (None, None) => {
-                if self.offset == 0.into() {
+                if self.offset.is_zero() {
                     Ok(EvalValue::complete(vec![]))
                 } else {
                     Err(())
@@ -140,7 +141,7 @@ where
                             Ok(new_constraints)
                         }
                     })?
-            } else if self.offset == 0.into() {
+            } else if self.offset.is_zero() {
                 // We might be able to deduce bit constraints on one variable.
                 self.try_transfer_constraints(known_constraints)
                     .unwrap_or_else(|| {
@@ -165,7 +166,7 @@ where
         if unconstrained.next().is_some() {
             return None;
         }
-        if *solve_for.1 == 1.into() {
+        if solve_for.1.is_one() {
             return (-self.clone()).try_transfer_constraints(known_constraints);
         } else if *solve_for.1 != (-1).into() {
             // We could try to divide by this in the future.
@@ -231,13 +232,13 @@ where
         }
 
         // Check if they are mutually exclusive and compute assignments.
-        let mut covered_bits: <T as FieldElement>::Integer = 0u32.into();
+        let mut covered_bits: <T as FieldElement>::Integer = Zero::zero();
         let mut assignments = EvalValue::complete(vec![]);
         let mut offset = (-self.offset).to_integer();
         for (i, coeff, constraint) in parts {
             let constraint = constraint.clone().unwrap();
             let mask = constraint.mask();
-            if *mask & covered_bits != 0u32.into() {
+            if !(*mask & covered_bits).is_zero() {
                 return Ok(EvalValue::incomplete(
                     IncompleteCause::OverlappingBitConstraints,
                 ));
@@ -255,7 +256,7 @@ where
             offset &= !*mask;
         }
 
-        if offset != 0u32.into() {
+        if !offset.is_zero() {
             // We were not able to cover all of the offset, so this equation cannot be solved.
             Err(ConflictingRangeConstraints)
         } else {
@@ -346,15 +347,15 @@ where
                 "{}",
                 self.nonzero_coefficients()
                     .map(|(i, c)| {
-                        if *c == 1.into() {
+                        if c.is_one() {
                             i.to_string()
-                        } else if *c == (-1).into() {
+                        } else if *c == -T::one() {
                             format!("-{i}")
                         } else {
                             format!("{c} * {i}")
                         }
                     })
-                    .chain((self.offset != 0.into()).then_some(self.offset.to_string()))
+                    .chain((!self.offset.is_zero()).then(|| self.offset.to_string()))
                     .join(" + ")
             )
         }

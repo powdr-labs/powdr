@@ -6,7 +6,7 @@ macro_rules! powdr_field {
         };
         use ark_ff::{BigInteger, Field, PrimeField};
         use num_bigint::BigUint;
-        use num_traits::Num;
+        use num_traits::{Num, One, Zero};
         use std::fmt;
         use std::ops::*;
         use std::str::FromStr;
@@ -160,6 +160,29 @@ macro_rules! powdr_field {
             }
         }
 
+        impl AddAssign for BigIntImpl {
+            fn add_assign(&mut self, other: Self) {
+                self.value.add_with_carry(&other.value);
+            }
+        }
+
+        impl Add for BigIntImpl {
+            type Output = Self;
+            fn add(mut self, other: Self) -> Self {
+                self.add_assign(other);
+                self
+            }
+        }
+
+        impl Zero for BigIntImpl {
+            fn zero() -> Self {
+                BigIntImpl::new(<$ark_type as PrimeField>::BigInt::zero())
+            }
+            fn is_zero(&self) -> bool {
+                self.value.is_zero()
+            }
+        }
+
         impl TryFrom<BigUint> for BigIntImpl {
             type Error = ();
 
@@ -171,8 +194,18 @@ macro_rules! powdr_field {
         }
 
         impl BigInt for BigIntImpl {
+            const NUM_BITS: usize = <$ark_type as PrimeField>::BigInt::NUM_LIMBS * 64;
             fn to_arbitrary_integer(self) -> BigUint {
                 self.value.into()
+            }
+            fn num_bits(&self) -> u32 {
+                self.value.num_bits()
+            }
+            fn one() -> Self {
+                BigIntImpl::new(<$ark_type as PrimeField>::BigInt::one())
+            }
+            fn is_one(&self) -> bool {
+                self.value == <$ark_type as PrimeField>::BigInt::one()
             }
         }
 
@@ -228,6 +261,7 @@ macro_rules! powdr_field {
 
         impl FieldElement for $name {
             type Integer = BigIntImpl;
+            const BITS: u32 = <$ark_type>::MODULUS_BIT_SIZE;
 
             fn from_str(s: &str) -> Self {
                 Self {
@@ -349,6 +383,24 @@ macro_rules! powdr_field {
 
             fn neg(self) -> Self::Output {
                 (-self.value).into()
+            }
+        }
+
+        impl Zero for $name {
+            fn zero() -> Self {
+                <$ark_type as Zero>::zero().into()
+            }
+            fn is_zero(&self) -> bool {
+                self.value.is_zero()
+            }
+        }
+
+        impl One for $name {
+            fn one() -> Self {
+                <$ark_type as One>::one().into()
+            }
+            fn is_one(&self) -> bool {
+                self.value.is_one()
             }
         }
 
