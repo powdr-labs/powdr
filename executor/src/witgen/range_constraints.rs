@@ -219,7 +219,7 @@ fn interval_intersection<T: FieldElement>(a: (T, T), b: (T, T)) -> Option<(T, T)
         // The intersection consists of two intervals
         // TODO is this really true?
         // Is the code at least good?
-        if range_width(a.0, a.1) >= range_width(b.0, b.1) {
+        if range_width(a.0, a.1) <= range_width(b.0, b.1) {
             Some(a)
         } else {
             Some(b)
@@ -387,5 +387,94 @@ mod test {
         let b = a.multiple(256.into());
         assert_eq!(b, RangeConstraint::from_mask(0xf00f00_u32));
         assert_eq!(b.combine_sum(&a), RangeConstraint::from_mask(0xf0ff0f_u32));
+    }
+
+    #[test]
+    fn interval_intersections() {
+        type F = GoldilocksField;
+        fn comutativity_test(a: (F, F), b: (F, F)) -> Option<(F, F)> {
+            let direct = interval_intersection(a, b);
+            let inverse = interval_intersection(b, a);
+            assert_eq!(direct, inverse);
+
+            direct
+        }
+
+        // Plain, no wrapping:
+
+        // a is contained in b
+        {
+            let a = (50.into(), 60.into());
+            assert_eq!(comutativity_test(a, (10.into(), 100.into())), Some(a));
+        }
+
+        // a has an intersection with b
+        assert_eq!(
+            comutativity_test((10.into(), 60.into()), (40.into(), 100.into())),
+            Some((40.into(), 60.into()))
+        );
+
+        // a and b does not intersect
+        assert_eq!(
+            comutativity_test((10.into(), 40.into()), (60.into(), 100.into())),
+            None
+        );
+
+        // Wrapping intervals:
+
+        // a intersects with b both at the beginning and at the end
+        // (should return the smallest of the two ranges)
+        {
+            let a = (10.into(), 100.into());
+            assert_eq!(comutativity_test(a, (90.into(), 20.into())), Some(a));
+        }
+
+        // a intersects with the beginning of b, and almost intersects with the end
+        assert_eq!(
+            comutativity_test((21.into(), 100.into()), (90.into(), 20.into())),
+            Some((90.into(), 100.into()))
+        );
+
+        // a intersects with the end of b, and almost intersects with the beginning
+        assert_eq!(
+            comutativity_test((10.into(), 89.into()), (90.into(), 20.into())),
+            Some((10.into(), 20.into()))
+        );
+
+        // an intersection that contains zero
+        assert_eq!(
+            comutativity_test((F::from(-50), 10.into()), (F::from(-10), 50.into())),
+            Some((F::from(-10), 10.into()))
+        );
+
+        // a intersects with b right before zero
+        assert_eq!(
+            comutativity_test((F::from(-50), F::from(-10)), (F::from(-20), 20.into())),
+            Some((F::from(-20), F::from(-10)))
+        );
+
+        // a intersects with b right after zero
+        assert_eq!(
+            comutativity_test((10.into(), 50.into()), (F::from(-20), 20.into())),
+            Some((10.into(), 20.into()))
+        );
+
+        // a is contained in b, both contains 0
+        {
+            let a = (F::from(-20), 20.into());
+            assert_eq!(comutativity_test(a, (F::from(-50), 90.into())), Some(a));
+        }
+
+        // a is contained in b before 0
+        {
+            let a = (F::from(-20), F::from(-10));
+            assert_eq!(comutativity_test(a, (F::from(-50), 90.into())), Some(a));
+        }
+
+        // a is contained in b after 0
+        {
+            let a = (10.into(), 20.into());
+            assert_eq!(comutativity_test(a, (F::from(-50), 90.into())), Some(a));
+        }
     }
 }
