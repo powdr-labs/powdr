@@ -81,7 +81,7 @@ fn check_identity<'a, T: FieldElement>(
     for row in 0..(degree) {
         let ev = ExpressionEvaluator::new(FixedEvaluator::new(fixed_data, row));
         let nl = ev.evaluate(notlast).ok()?.constant_value()?;
-        if (row == degree - 1 && nl != 0.into()) || (row < degree - 1 && nl != 1.into()) {
+        if (row == degree - 1 && !nl.is_zero()) || (row < degree - 1 && !nl.is_one()) {
             return None;
         }
         let pos = ev.evaluate(positive).ok()?.constant_value()?;

@@ -78,8 +78,8 @@ where
                 BinaryOperator::Div => {
                     if let (Some(l), Some(r)) = (left.constant_value(), right.constant_value()) {
                         // TODO Maybe warn about division by zero here.
-                        if l == 0.into() {
-                            Ok(T::from(0).into())
+                        if l.is_zero() {
+                            Ok(T::zero().into())
                         } else {
                             // TODO We have to do division in the proper field.
                             Ok((l / r).into())

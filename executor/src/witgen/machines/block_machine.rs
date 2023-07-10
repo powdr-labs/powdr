@@ -103,7 +103,7 @@ fn try_to_boolean_periodic_selector<'a, T: FieldElement>(
 
     let values = fixed_data.fixed_col_values[poly.poly_id() as usize];
 
-    let period = 1 + values.iter().position(|v| *v == 1.into())?;
+    let period = 1 + values.iter().position(|v| v.is_one())?;
     if period == 1 {
         return None;
     }

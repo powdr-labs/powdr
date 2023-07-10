@@ -287,7 +287,7 @@ where
         values.sort_by_key(|(i, v1)| {
             (
                 match v1 {
-                    Some(v) if *v == 0.into() => 1,
+                    Some(v) if v.is_zero() => 1,
                     Some(_) => 0,
                     None => 2,
                 },
@@ -440,10 +440,10 @@ where
                 Err(cause) => return Ok(EvalValue::incomplete(cause)),
             };
             match value.constant_value() {
-                Some(v) if v == 0.into() => {
+                Some(v) if v.is_zero() => {
                     return Ok(EvalValue::complete(vec![]));
                 }
-                Some(v) if v == 1.into() => {}
+                Some(v) if v.is_one() => {}
                 _ => {
                     return Ok(EvalValue::incomplete(
                         IncompleteCause::NonConstantLeftSelector,

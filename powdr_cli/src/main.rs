@@ -221,7 +221,6 @@ enum Commands {
         #[arg(value_parser = clap_enum_variants!(FieldArgument))]
         field: FieldArgument,
     },
-
 }
 
 fn split_inputs<T: FieldElement>(inputs: &str) -> Vec<T> {
