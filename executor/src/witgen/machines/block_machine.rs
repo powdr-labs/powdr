@@ -188,6 +188,8 @@ impl<T: FieldElement> BlockMachine<T> {
         left: &[AffineResult<&'b PolynomialReference, T>],
         right: &SelectedExpressions<T>,
     ) -> EvalResult<'b, T> {
+        log::trace!("Processing block machine");
+
         // First check if we already store the value.
         if left
             .iter()
@@ -237,6 +239,7 @@ impl<T: FieldElement> BlockMachine<T> {
             } = step;
             self.row = (old_len as i64 + row_delta + fixed_data.degree as i64) as DegreeType
                 % fixed_data.degree;
+
             match self.process_identity(fixed_data, fixed_lookup, left, right, identity) {
                 Ok(value) => {
                     if !value.is_empty() {
@@ -244,14 +247,21 @@ impl<T: FieldElement> BlockMachine<T> {
                         errors.clear();
                         let (outer_constraints, inner_value) =
                             self.split_result(value, &outer_polys);
+                        for (poly, constraint) in &outer_constraints {
+                            if let Constraint::Assignment(value) = constraint {
+                                log::trace!("    New outer assignments: {} = {}", poly.name, value);
+                            }
+                        }
                         outer_assignments.constraints.extend(outer_constraints);
-                        for (poly_id, next, constraint) in inner_value
+                        for (poly_id, name, next, constraint) in inner_value
                             .constraints
                             .into_iter()
-                            .map(|(poly, constraint)| (poly.poly_id(), poly.next, constraint))
+                            .map(|(poly, constraint)| {
+                                (poly.poly_id(), poly.name.clone(), poly.next, constraint)
+                            })
                             .collect::<Vec<_>>()
                         {
-                            self.handle_constraint(poly_id as usize, next, constraint);
+                            self.handle_constraint(poly_id as usize, name, next, constraint);
                         }
                     }
                 }
@@ -319,10 +329,17 @@ impl<T: FieldElement> BlockMachine<T> {
         (outer_constraints, value)
     }
 
-    fn handle_constraint(&mut self, poly: usize, next: bool, constraint: Constraint<T>) {
+    fn handle_constraint(
+        &mut self,
+        poly: usize,
+        name: String,
+        next: bool,
+        constraint: Constraint<T>,
+    ) {
         let r = (self.row + next as DegreeType) % self.degree;
         match constraint {
             Constraint::Assignment(a) => {
+                log::trace!("    New inner assignment: {} = {}", name, a);
                 let values = self.data.get_mut(&poly).unwrap();
                 if (r as usize) < values.len() {
                     // do not write to other rows for now
@@ -351,6 +368,8 @@ impl<T: FieldElement> BlockMachine<T> {
         match identity {
             IdentityInSequence::Internal(index) => {
                 let id = &self.identities[index];
+
+                log::trace!("  At row {}, process identity: {}", self.row, id);
                 match id.kind {
                     IdentityKind::Polynomial => {
                         self.process_polynomial_identity(fixed_data, id.expression_for_poly_id())
@@ -361,7 +380,10 @@ impl<T: FieldElement> BlockMachine<T> {
                     _ => Err("Unsupported lookup type".to_string().into()),
                 }
             }
-            IdentityInSequence::OuterQuery => self.process_outer_query(fixed_data, left, right),
+            IdentityInSequence::OuterQuery => {
+                log::trace!("  At row {}, process outer query", self.row);
+                self.process_outer_query(fixed_data, left, right)
+            }
         }
     }
 
@@ -505,13 +527,13 @@ struct ProcessingSequenceCache {
     cache: BTreeMap<SequenceCacheKey, Vec<SequenceStep>>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 struct SequenceStep {
     row_delta: i64,
     identity: IdentityInSequence,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 enum IdentityInSequence {
     Internal(usize),
     OuterQuery,
@@ -519,6 +541,7 @@ enum IdentityInSequence {
 
 #[derive(PartialOrd, Ord, PartialEq, Eq, Debug)]
 struct SequenceCacheKey {
+    /// For each expression on the left-hand side of the lookup, whether it is a constant.
     known_columns: Vec<bool>,
 }
 
@@ -556,11 +579,12 @@ impl ProcessingSequenceCache {
         K: Copy + Ord,
         T: FieldElement,
     {
-        self.cache.get(&left.into()).cloned().unwrap_or_else(|| {
+        let left = left.into();
+        self.cache.get(&left).cloned().unwrap_or_else(|| {
             let block_size = self.block_size as i64;
             (-1..=block_size)
                 .chain((-1..block_size).rev())
-                .chain(-1..=block_size)
+                .chain(0..=block_size)
                 .flat_map(|row_delta| {
                     let mut identities = (0..self.identities_count)
                         .map(IdentityInSequence::Internal)
