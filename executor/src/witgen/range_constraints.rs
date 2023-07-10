@@ -251,6 +251,63 @@ mod test {
 
     use super::*;
 
+    type RCg = RangeConstraint<GoldilocksField>;
+
+    #[test]
+    fn from_max_bit() {
+        assert_eq!(*RCg::from_max_bit(0).mask(), 1u64.into());
+        assert_eq!(*RCg::from_max_bit(1).mask(), 3u64.into());
+        assert_eq!(*RCg::from_max_bit(63).mask(), (u64::MAX).into());
+    }
+
+    #[test]
+    fn from_value() {
+        assert_eq!(
+            RCg::from_value(9.into()),
+            RCg {
+                min: 9.into(),
+                max: 9.into(),
+                mask: 9u32.into()
+            }
+        );
+    }
+
+    #[test]
+    fn from_range() {
+        assert_eq!(
+            RCg::from_range(3.into(), 9.into()),
+            RCg {
+                min: 3.into(),
+                max: 9.into(),
+                mask: 15u32.into()
+            }
+        );
+        assert_eq!(
+            RCg::from_range(9.into(), 3.into()),
+            RCg {
+                min: 9.into(),
+                max: 3.into(),
+                mask: u64::MAX.into()
+            }
+        );
+    }
+
+    #[test]
+    fn range_width() {
+        assert_eq!(RCg::from_value(7.into()).range_width(), 1u32.into());
+        assert_eq!(
+            RCg::from_range(3.into(), 7.into()).range_width(),
+            5u32.into()
+        );
+        assert_eq!(
+            RCg::from_range(8.into(), 2.into()).range_width(),
+            // This is the range above, just inverted.
+            // So we should have the whole field minus five.
+            GoldilocksField::from(-5).to_integer()
+        );
+        assert_eq!(RCg::from_mask(0xf00fu32).range_width(), 5u32.into());
+    }
+
     #[test]
     fn mul_add() {
         let a = RangeConstraint::<GoldilocksField>::from_mask(0x1u32);
