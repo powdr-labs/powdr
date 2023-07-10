@@ -141,7 +141,7 @@ where
                             Ok(new_constraints)
                         }
                     })?
-            } else if self.offset == 0.into() {
+            } else if self.offset.is_zero() {
                 // We might be able to deduce bit constraints on one variable.
                 self.try_transfer_constraints(known_constraints)
                     .unwrap_or_else(|| {
@@ -166,7 +166,7 @@ where
         if unconstrained.next().is_some() {
             return None;
         }
-        if *solve_for.1 == 1.into() {
+        if solve_for.1.is_one() {
             return (-self.clone()).try_transfer_constraints(known_constraints);
         } else if *solve_for.1 != (-1).into() {
             // We could try to divide by this in the future.
@@ -232,13 +232,13 @@ where
         }
 
         // Check if they are mutually exclusive and compute assignments.
-        let mut covered_bits: <T as FieldElement>::Integer = 0.into();
+        let mut covered_bits: <T as FieldElement>::Integer = Zero::zero();
         let mut assignments = EvalValue::complete(vec![]);
         let mut offset = (-self.offset).to_integer();
         for (i, coeff, constraint) in parts {
             let constraint = constraint.clone().unwrap();
             let mask = constraint.mask();
-            if *mask & covered_bits != 0.into() {
+            if !(*mask & covered_bits).is_zero() {
                 return Ok(EvalValue::incomplete(
                     IncompleteCause::OverlappingBitConstraints,
                 ));

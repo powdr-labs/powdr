@@ -41,7 +41,7 @@ impl<T: FieldElement> RangeConstraint<T> {
 
     /// The range constraint of the sum of two expressions.
     pub fn try_combine_sum(&self, other: &RangeConstraint<T>) -> Option<RangeConstraint<T>> {
-        if self.mask & other.mask == 0.into() {
+        if (self.mask & other.mask).is_zero() {
             Some(RangeConstraint {
                 mask: self.mask | other.mask,
             })
@@ -252,7 +252,7 @@ fn is_binary_constraint<T: FieldElement>(expr: &Expression<T>) -> Option<&Polyno
     // TODO Write a proper pattern matching engine.
     if let Expression::BinaryOperation(left, BinaryOperator::Sub, right) = expr {
         if let Expression::Number(n) = right.as_ref() {
-            if *n == 0.into() {
+            if n.is_zero() {
                 return is_binary_constraint(left.as_ref());
             }
         }
@@ -272,9 +272,7 @@ fn is_binary_constraint<T: FieldElement>(expr: &Expression<T>) -> Option<&Polyno
             if id1 != id2 || !id2.is_witness() {
                 return None;
             }
-            if (*value1 == 0.into() && *value2 == 1.into())
-                || (*value1 == 1.into() && *value2 == 0.into())
-            {
+            if (value1.is_zero() && value2.is_one()) || (value1.is_one() && value2.is_zero()) {
                 return Some(id1);
             }
         }
