@@ -83,11 +83,14 @@ impl<T: FieldElement> RangeConstraint<T> {
 
     /// The range constraint of the sum of two expressions.
     pub fn combine_sum(&self, other: &Self) -> Self {
+        // TODO we could use "add_with_carry" to see if this created an overflow.
+        // it might even be enough to check if certain bits are set in the masks.
         let mask = if self.mask.to_arbitrary_integer() + other.mask.to_arbitrary_integer()
             >= T::modulus().to_arbitrary_integer()
         {
             !T::Integer::from(0)
         } else {
+            // This could be made stricter.
             (self.mask + other.mask) | self.mask | other.mask
         };
 
@@ -306,6 +309,45 @@ mod test {
             GoldilocksField::from(-5).to_integer()
         );
         assert_eq!(RCg::from_mask(0xf00fu32).range_width(), 5u32.into());
+    }
+
+    #[test]
+    fn combine_sum() {
+        assert_eq!(
+            RCg::from_range(3.into(), 7.into())
+                .combine_sum(&RCg::from_range(15.into(), 300.into())),
+            RCg {
+                min: 18.into(),
+                max: 307.into(),
+                mask: 1023u32.into()
+            }
+        );
+        assert_eq!(
+            RCg::from_mask(0x1100u32).combine_sum(&RCg::from_mask(0xffu32)),
+            RCg {
+                min: 0.into(),
+                max: 0x11ffu32.into(),
+                mask: 0x11ffu32.into()
+            }
+        );
+        assert_eq!(
+            RCg::from_mask(0x1110u32).combine_sum(&RCg::from_mask(0xffu32)),
+            RCg {
+                min: 0.into(),
+                max: 0x120fu32.into(),
+                mask: 0x13ffu32.into()
+            }
+        );
+        // Test overflow of masks. Modulus is: 0xffffffff00000001
+        assert_eq!(
+            RCg::from_mask(0xefffffff00000001u64)
+                .combine_sum(&RCg::from_mask(0x7ffffffff0000000u64)),
+            RCg {
+                min: 1.into(),
+                max: 0.into(),
+                mask: u64::MAX.into()
+            }
+        );
     }
 
     #[test]
