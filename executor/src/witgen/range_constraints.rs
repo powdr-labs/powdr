@@ -83,7 +83,13 @@ impl<T: FieldElement> RangeConstraint<T> {
 
     /// The range constraint of the sum of two expressions.
     pub fn combine_sum(&self, other: &Self) -> Self {
-        let mask = (self.mask + other.mask) | self.mask | other.mask;
+        let mask = if self.mask.to_arbitrary_integer() + other.mask.to_arbitrary_integer()
+            >= T::modulus().to_arbitrary_integer()
+        {
+            !T::Integer::from(0)
+        } else {
+            (self.mask + other.mask) | self.mask | other.mask
+        };
 
         // TODO test the case where it is equal to modulus
         let (min, max) = if self.range_width().to_arbitrary_integer()
