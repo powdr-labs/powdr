@@ -152,6 +152,8 @@ pub enum EvalError {
     ConstraintUnsatisfiable(String),
     /// Conflicting bit- or range constraints in an equation, i.e. for X = 0x100, where X is known to be at most 0xff.
     ConflictingRangeConstraints,
+    /// A division pattern was recognized but the solution does not satisfy the range constraints.
+    InvalidDivision,
     // Fixed lookup failed
     FixedLookupFailed,
     Generic(String),
@@ -193,6 +195,9 @@ impl fmt::Display for EvalError {
             EvalError::ConflictingRangeConstraints => {
                 write!(f, "Range constraints in the expression are conflicting or do not match the constant / offset.",)
             }
+            EvalError::InvalidDivision => {
+                write!(f, "A division pattern was recognized but the range constrainst are conflicting with the solution.",)
+            }
             EvalError::RowsExhausted => write!(f, "Table rows exhausted"),
             EvalError::FixedLookupFailed => write!(f, "Lookup into fixed columns failed: no match"),
             EvalError::Generic(s) => write!(f, "{s}"),
@@ -200,7 +205,7 @@ impl fmt::Display for EvalError {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Constraint<T: FieldElement> {
     Assignment(T),
     RangeConstraint(RangeConstraint<T>),
@@ -210,7 +215,7 @@ impl<T: FieldElement> fmt::Display for Constraint<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Constraint::Assignment(a) => write!(f, " = {a}"),
-            Constraint::RangeConstraint(bc) => write!(f, ":& {bc}"),
+            Constraint::RangeConstraint(bc) => write!(f, " : {bc}"),
         }
     }
 }

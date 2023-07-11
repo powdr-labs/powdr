@@ -22,13 +22,8 @@ pub type DegreeType = u64;
 
 /// Returns Some(i) if n == 2**i and None otherwise.
 pub fn log2_exact(n: AbstractNumberType) -> Option<u64> {
-    n.trailing_zeros().and_then(|zeros| {
-        if n == AbstractNumberType::from(1u32) << zeros {
-            Some(zeros)
-        } else {
-            None
-        }
-    })
+    n.trailing_zeros()
+        .filter(|zeros| n == AbstractNumberType::from(1u32) << zeros)
 }
 
 #[cfg(test)]

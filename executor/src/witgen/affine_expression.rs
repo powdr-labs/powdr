@@ -1,12 +1,13 @@
 use std::collections::BTreeMap;
 use std::fmt::Display;
 
-use itertools::Itertools;
+use itertools::{Either, Itertools};
 
 use num_traits::Zero;
 use number::{BigInt, FieldElement};
 
-use super::range_constraints::RangeConstraintSet;
+use super::global_constraints::RangeConstraintSet;
+use super::range_constraints::RangeConstraint;
 use super::Constraint;
 use super::{EvalError::*, EvalResult, EvalValue, IncompleteCause};
 
@@ -80,7 +81,7 @@ where
         match (first, second) {
             (Some((i, c)), None) => {
                 // c * a + o = 0 <=> a = -o/c
-                Ok(EvalValue::complete(vec![(
+                Ok(EvalValue::complete([(
                     i,
                     Constraint::Assignment(if c.is_one() {
                         -self.offset
@@ -96,7 +97,7 @@ where
             )),
             (None, None) => {
                 if self.offset.is_zero() {
-                    Ok(EvalValue::complete(vec![]))
+                    Ok(EvalValue::complete([]))
                 } else {
                     Err(())
                 }
@@ -123,32 +124,114 @@ where
                 assert!(value.constraints.is_empty());
             }
         };
-        Ok(
-            if self
-                .nonzero_coefficients()
-                .all(|(i, _coeff)| known_constraints.range_constraint(i).is_some())
+        let negated = -self.clone();
+
+        // Try to find a division-with-remainder pattern and solve it.
+        if let Some(result) = self.try_solve_division(known_constraints).transpose()? {
+            if !result.is_empty() {
+                return Ok(result);
+            }
+        };
+
+        if let Some(result) = negated.try_solve_division(known_constraints).transpose()? {
+            if !result.is_empty() {
+                return Ok(result);
+            }
+        };
+
+        // If we have bit mask constraints on all variables and they are non-overlapping,
+        // we can deduce values for all of them.
+        let result = self.try_solve_through_constraints(known_constraints)?;
+        if !result.is_empty() {
+            return Ok(result);
+        }
+
+        let result = negated.try_solve_through_constraints(known_constraints)?;
+        if !result.is_empty() {
+            return Ok(result);
+        }
+
+        // Now at least try to propagate constraints to a variable from the other parts of the equation.
+        let constraints = (match (
+            self.try_transfer_constraints(known_constraints),
+            negated.try_transfer_constraints(known_constraints),
+        ) {
+            (None, None) => vec![],
+            (Some((p, c)), None) | (None, Some((p, c))) => vec![(p, c)],
+            (Some((p1, c1)), Some((p2, c2))) => {
+                if p1 == p2 {
+                    vec![(p1, c1.conjunction(&c2))]
+                } else {
+                    vec![(p1, c1), (p2, c2)]
+                }
+            }
+        })
+        .into_iter()
+        .map(|(poly, con)| (poly, Constraint::RangeConstraint(con)))
+        .collect::<Vec<_>>();
+        if constraints.is_empty() {
+            Ok(EvalValue::incomplete(
+                IncompleteCause::NoProgressTransferring,
+            ))
+        } else {
+            Ok(EvalValue::incomplete_with_constraints(
+                constraints,
+                IncompleteCause::NotConcrete,
+            ))
+        }
+    }
+
+    fn try_solve_division(
+        &self,
+        known_constraints: &impl RangeConstraintSet<K, T>,
+    ) -> Option<EvalResult<T, K>> {
+        let mut coeffs = self.nonzero_coefficients();
+        let first = coeffs.next()?;
+        let second = coeffs.next()?;
+        if coeffs.next().is_some() {
+            return None;
+        }
+        if !first.1.is_one() && !second.1.is_one() {
+            return None;
+        }
+        let (dividend, divisor, quotient, remainder) = if first.1.is_one() {
+            (-self.offset, second.1, second.0, first.0)
+        } else {
+            (-self.offset, first.1, first.0, second.0)
+        };
+        // Now we have: dividend = remainder + divisor * quotient
+        let (remainder_lower, remainder_upper) =
+            known_constraints.range_constraint(remainder)?.range();
+        // Check that remainder is in [0, divisor - 1].
+        if remainder_lower > remainder_upper || remainder_upper >= *divisor {
+            return None;
+        }
+        let (quotient_lower, quotient_upper) =
+            known_constraints.range_constraint(quotient)?.range();
+        // Check that divisor * quotient is range-constraint to not overflow.
+        if quotient_lower > quotient_upper
+            || quotient_upper.to_arbitrary_integer() * divisor.to_arbitrary_integer()
+                >= T::modulus().to_arbitrary_integer()
+        {
+            return None;
+        }
+
+        let quotient_value =
+            (dividend.to_arbitrary_integer() / divisor.to_arbitrary_integer()).into();
+        let remainder_value =
+            (dividend.to_arbitrary_integer() % divisor.to_arbitrary_integer()).into();
+        Some(
+            if quotient_value < quotient_lower
+                || quotient_value > quotient_upper
+                || remainder_value < remainder_lower
+                || remainder_value > remainder_upper
             {
-                // We might be able to solve for one or more variables, if all
-                // bit constraints are disjoint.
-
-                // Try positive and negative. We might also experiment with other strategies.
-
-                self.try_solve_through_constraints(known_constraints)
-                    .and_then(|new_constraints| {
-                        if !new_constraints.is_complete() {
-                            (-self.clone()).try_solve_through_constraints(known_constraints)
-                        } else {
-                            Ok(new_constraints)
-                        }
-                    })?
-            } else if self.offset.is_zero() {
-                // We might be able to deduce bit constraints on one variable.
-                self.try_transfer_constraints(known_constraints)
-                    .unwrap_or_else(|| {
-                        EvalValue::incomplete(IncompleteCause::NoProgressTransferring)
-                    })
+                Err(ConflictingRangeConstraints)
             } else {
-                EvalValue::incomplete(IncompleteCause::SolvingFailed)
+                Ok(EvalValue::complete([
+                    (quotient, Constraint::Assignment(quotient_value)),
+                    (remainder, Constraint::Assignment(remainder_value)),
+                ]))
             },
         )
     }
@@ -156,46 +239,43 @@ where
     fn try_transfer_constraints(
         &self,
         known_constraints: &impl RangeConstraintSet<K, T>,
-    ) -> Option<EvalValue<K, T>> {
-        // We need the form X = a * Y + b * Z + ...
-        // where X is unconstrained and all others are bit-constrained.
-        let mut unconstrained = self
-            .nonzero_coefficients()
-            .filter(|(i, _c)| known_constraints.range_constraint(*i).is_none());
-        let solve_for = unconstrained.next()?;
-        if unconstrained.next().is_some() {
-            return None;
-        }
-        if solve_for.1.is_one() {
-            return (-self.clone()).try_transfer_constraints(known_constraints);
-        } else if *solve_for.1 != (-1).into() {
-            // We could try to divide by this in the future.
-            return None;
-        }
+    ) -> Option<(K, RangeConstraint<T>)> {
+        // We are looking for X = a * Y + b * Z + ... or -X = a * Y + b * Z + ...
+        // where X is least constrained.
 
-        // We can assume that nonzero coefficients is not empty, otherwise we could have solved
-        // the affine expression directly.
-        let parts = self
+        let (solve_for, solve_for_coefficient) = self
             .nonzero_coefficients()
-            .filter(|(i, _)| *i != solve_for.0)
+            .filter(|(_i, c)| **c == -T::one() || c.is_one())
+            .max_by_key(|(i, _c)| {
+                // Sort so that we get the least constrained variable.
+                known_constraints
+                    .range_constraint(*i)
+                    .map(|c| c.range_width())
+                    .unwrap_or_else(|| T::modulus())
+            })?;
+
+        let summands = self
+            .nonzero_coefficients()
+            .filter(|(i, _)| *i != solve_for)
             .map(|(i, coeff)| {
                 known_constraints
                     .range_constraint(i)
-                    .and_then(|con| con.multiple(*coeff))
-            });
-
-        parts
-            .reduce(|c1, c2| match (c1, c2) {
-                (Some(c1), Some(c2)) => c1.try_combine_sum(&c2),
-                _ => None,
+                    .map(|con| con.multiple(*coeff))
             })
-            .flatten()
-            .map(|con| {
-                EvalValue::incomplete_with_constraints(
-                    vec![(solve_for.0, Constraint::RangeConstraint(con))],
-                    IncompleteCause::NotConcrete,
-                )
-            })
+            .chain(
+                (!self.offset.is_zero()).then_some(Some(RangeConstraint::from_value(self.offset))),
+            )
+            .collect::<Option<Vec<_>>>()?;
+        let mut constraint = summands.into_iter().reduce(|c1, c2| c1.combine_sum(&c2))?;
+        if solve_for_coefficient.is_one() {
+            constraint = -constraint;
+        }
+        if let Some(previous) = known_constraints.range_constraint(solve_for) {
+            if previous.conjunction(&constraint) == previous {
+                return None;
+            }
+        }
+        Some((solve_for, constraint))
     }
 
     /// Tries to assign values to all variables through their bit constraints.
@@ -206,24 +286,13 @@ where
         &self,
         known_constraints: &impl RangeConstraintSet<K, T>,
     ) -> EvalResult<T, K> {
-        let parts = self
+        // Get constraints from coefficients and also collect unconstrained indices.
+        let (constraints, unconstrained): (Vec<_>, Vec<K>) = self
             .nonzero_coefficients()
-            .map(|(i, coeff)| {
-                (
-                    i,
-                    *coeff,
-                    known_constraints
-                        .range_constraint(i)
-                        .unwrap()
-                        .multiple(*coeff),
-                )
-            })
-            .collect::<Vec<_>>();
-
-        let unconstrained: Vec<K> = parts
-            .iter()
-            .filter_map(|(i, _, con)| con.is_none().then_some(*i))
-            .collect();
+            .partition_map(|(i, coeff)| match known_constraints.range_constraint(i) {
+                None => Either::Right(i),
+                Some(constraint) => Either::Left((i, *coeff, constraint)),
+            });
 
         if !unconstrained.is_empty() {
             return Ok(EvalValue::incomplete(IncompleteCause::BitUnconstrained(
@@ -233,27 +302,26 @@ where
 
         // Check if they are mutually exclusive and compute assignments.
         let mut covered_bits: <T as FieldElement>::Integer = Zero::zero();
-        let mut assignments = EvalValue::complete(vec![]);
+        let mut assignments = EvalValue::complete([]);
         let mut offset = (-self.offset).to_integer();
-        for (i, coeff, constraint) in parts {
-            let constraint = constraint.clone().unwrap();
-            let mask = constraint.mask();
-            if !(*mask & covered_bits).is_zero() {
+        for (i, coeff, constraint) in constraints {
+            let mask = *constraint.multiple(coeff).mask();
+            if !(mask & covered_bits).is_zero() {
                 return Ok(EvalValue::incomplete(
                     IncompleteCause::OverlappingBitConstraints,
                 ));
             } else {
-                covered_bits |= *mask;
+                covered_bits |= mask;
             }
-            assignments.combine(EvalValue::complete(vec![(
+            assignments.combine(EvalValue::complete([(
                 i,
                 Constraint::Assignment(
-                    ((offset & *mask).to_arbitrary_integer() / coeff.to_arbitrary_integer())
+                    ((offset & mask).to_arbitrary_integer() / coeff.to_arbitrary_integer())
                         .try_into()
                         .unwrap(),
                 ),
             )]));
-            offset &= !*mask;
+            offset &= !mask;
         }
 
         if !offset.is_zero() {
@@ -369,6 +437,7 @@ mod test {
     use super::*;
     use crate::witgen::{range_constraints::RangeConstraint, EvalError};
     use number::{FieldElement, GoldilocksField};
+    use pretty_assertions::assert_eq;
     use test_log::test;
 
     impl<K> std::ops::Mul<AffineExpression<K, GoldilocksField>> for GoldilocksField {
@@ -453,7 +522,7 @@ mod test {
             - AffineExpression::from_variable_id(2) * 16.into()
             - AffineExpression::from_variable_id(3);
         let known_constraints: TestRangeConstraints<GoldilocksField> = TestRangeConstraints(
-            vec![
+            [
                 (2, RangeConstraint::from_max_bit(7)),
                 (3, RangeConstraint::from_max_bit(3)),
             ]
@@ -464,7 +533,7 @@ mod test {
             expr.solve_with_range_constraints(&known_constraints)
                 .unwrap(),
             EvalValue::incomplete_with_constraints(
-                vec![(
+                [(
                     1,
                     Constraint::RangeConstraint(RangeConstraint::from_max_bit(11))
                 )],
@@ -476,7 +545,7 @@ mod test {
                 .solve_with_range_constraints(&known_constraints)
                 .unwrap(),
             EvalValue::incomplete_with_constraints(
-                vec![(
+                [(
                     1,
                     Constraint::RangeConstraint(RangeConstraint::from_max_bit(11))
                 )],
@@ -492,7 +561,7 @@ mod test {
             expr.solve_with_range_constraints(&known_constraints)
                 .unwrap(),
             EvalValue::incomplete_with_constraints(
-                vec![(
+                [(
                     1,
                     Constraint::RangeConstraint(RangeConstraint::from_mask(0x1fef_u32))
                 )],
@@ -506,8 +575,15 @@ mod test {
             - AffineExpression::from_variable_id(3);
         assert_eq!(
             expr.solve_with_range_constraints(&known_constraints),
-            Ok(EvalValue::incomplete(
-                IncompleteCause::NoProgressTransferring
+            Ok(EvalValue::incomplete_with_constraints(
+                [(
+                    1,
+                    Constraint::RangeConstraint(RangeConstraint::from_range(
+                        0.into(),
+                        (0xff * 8 + 0xf).into()
+                    ))
+                )],
+                IncompleteCause::NotConcrete
             ))
         );
     }
@@ -519,7 +595,7 @@ mod test {
             - AffineExpression::from_variable_id(2) * 256.into()
             - AffineExpression::from_variable_id(3);
         let known_constraints: TestRangeConstraints<GoldilocksField> = TestRangeConstraints(
-            vec![
+            [
                 (2, RangeConstraint::from_max_bit(7)),
                 (3, RangeConstraint::from_max_bit(3)),
             ]
@@ -530,7 +606,7 @@ mod test {
         assert_eq!(
             expr.solve_with_range_constraints(&known_constraints)
                 .unwrap(),
-            EvalValue::complete(vec![
+            EvalValue::complete([
                 (2, Constraint::Assignment(0x15.into())),
                 (3, Constraint::Assignment(0x4.into()))
             ],)
@@ -544,7 +620,7 @@ mod test {
             - AffineExpression::from_variable_id(2) * 256.into()
             - AffineExpression::from_variable_id(3);
         let known_constraints: TestRangeConstraints<GoldilocksField> = TestRangeConstraints(
-            vec![
+            [
                 (2, RangeConstraint::from_max_bit(7)),
                 (3, RangeConstraint::from_max_bit(3)),
             ]
@@ -555,5 +631,92 @@ mod test {
             Err(EvalError::ConflictingRangeConstraints) => {}
             _ => panic!(),
         };
+    }
+
+    #[test]
+    pub fn transfer_range_constraints() {
+        // x2 * 0x100 + x3 - x1 - 200 = 0,
+        // x2: & 0xff
+        // x3: & 0xf
+        // => x2 * 0x100 + x3: & 0xff0f = [0, 0xff0f]
+        // => x1: [-200, 65095]
+        let expr = AffineExpression::from_variable_id(2) * 256.into()
+            + AffineExpression::from_variable_id(3)
+            - AffineExpression::from_variable_id(1)
+            - AffineExpression::from(GoldilocksField::from(200));
+        let known_constraints: TestRangeConstraints<GoldilocksField> = TestRangeConstraints(
+            [
+                (2, RangeConstraint::from_max_bit(7)),
+                (3, RangeConstraint::from_max_bit(3)),
+            ]
+            .into_iter()
+            .collect(),
+        );
+        let result = expr
+            .solve_with_range_constraints(&known_constraints)
+            .unwrap();
+        assert_eq!(
+            result,
+            EvalValue::incomplete_with_constraints(
+                [(
+                    1,
+                    Constraint::RangeConstraint(
+                        RangeConstraint::from_range(-GoldilocksField::from(200), 65095.into())
+                            .conjunction(&RangeConstraint::from_mask(0xffffffffffffffffu64))
+                    )
+                ),],
+                IncompleteCause::NotConcrete
+            )
+        );
+    }
+
+    #[test]
+    pub fn solve_division() {
+        // 3 * x1 + x2 - 14 = 0
+        let expr = AffineExpression::from_variable_id(1) * 3.into()
+            + AffineExpression::from_variable_id(2)
+            - AffineExpression::from(GoldilocksField::from(14));
+        let known_constraints: TestRangeConstraints<GoldilocksField> = TestRangeConstraints(
+            [
+                (2, RangeConstraint::from_range(0.into(), 2.into())),
+                (1, RangeConstraint::from_range(0.into(), 400.into())),
+            ]
+            .into_iter()
+            .collect(),
+        );
+        let result = expr
+            .solve_with_range_constraints(&known_constraints)
+            .unwrap();
+        assert_eq!(
+            result,
+            EvalValue::complete([
+                (1, Constraint::Assignment(4.into())),
+                (2, Constraint::Assignment(2.into()))
+            ])
+        );
+    }
+
+    #[test]
+    pub fn solve_is_zero() {
+        // 1 - (3 * inv) - is_zero = 0
+        // 1 - (3 * x2) - x1 = 0
+        // x1 in [0, 1]
+        // This is almost suitable for the division pattern, but inv is not properly
+        // constrained. So we should get "no progress" here.
+        let expr = AffineExpression::from(GoldilocksField::from(1))
+            - AffineExpression::from_variable_id(2) * 3.into()
+            - AffineExpression::from_variable_id(1);
+        let known_constraints: TestRangeConstraints<GoldilocksField> = TestRangeConstraints(
+            [(1, RangeConstraint::from_range(0.into(), 1.into()))]
+                .into_iter()
+                .collect(),
+        );
+        let result = expr
+            .solve_with_range_constraints(&known_constraints)
+            .unwrap();
+        assert_eq!(
+            result,
+            EvalValue::incomplete(IncompleteCause::NoProgressTransferring)
+        );
     }
 }
