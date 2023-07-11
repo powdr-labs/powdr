@@ -4,6 +4,7 @@ use std::num::NonZeroUsize;
 
 use ast::analyzed::{Identity, IdentityKind, PolyID, PolynomialReference, SelectedExpressions};
 use itertools::Itertools;
+use num_traits::ToPrimitive;
 use number::FieldElement;
 
 use crate::witgen::affine_expression::AffineExpression;
@@ -12,9 +13,17 @@ use crate::witgen::{EvalError, EvalValue, IncompleteCause};
 use crate::witgen::{EvalResult, FixedData};
 
 type Application = (Vec<PolyID>, Vec<PolyID>);
-type Index<T> = BTreeMap<Vec<T>, IndexValue>;
 
-#[derive(Debug)]
+enum Index<T> {
+    /// Fully-fledged index
+    Complex(BTreeMap<Vec<T>, IndexValue>),
+    /// Index that only supports unique values and the first
+    /// column can be used as a direct index into the vector.
+    /// TODO get rid of the Option.
+    Simple(Vec<Option<usize>>),
+}
+
+#[derive(Debug, Clone)]
 struct IndexValue(Option<NonZeroUsize>);
 
 impl IndexValue {
@@ -46,7 +55,9 @@ impl<T: FieldElement> IndexedColumns<T> {
         fixed_data: &FixedData<T>,
         mut assignment: Vec<(PolyID, T)>,
         mut output_fixed_columns: Vec<PolyID>,
-    ) -> Option<&IndexValue> {
+    ) -> Option<IndexValue> {
+        let simple_lookup_candidate = assignment[0].0;
+
         // sort in order to have a single index for [X, Y] and for [Y, X]
         assignment.sort_by(|(name0, _), (name1, _)| name0.cmp(name1));
         let (input_fixed_columns, values): (Vec<_>, Vec<_>) = assignment.into_iter().unzip();
@@ -55,21 +66,26 @@ impl<T: FieldElement> IndexedColumns<T> {
 
         let fixed_columns = (input_fixed_columns, output_fixed_columns);
 
-        self.ensure_index(fixed_data, &fixed_columns);
+        self.ensure_index(fixed_data, &fixed_columns, simple_lookup_candidate);
 
         // get the rows at which the input matches
-        self.indices
-            .get(&fixed_columns)
-            .as_ref()
-            .unwrap()
-            .get(&values)
+        match self.indices.get(&fixed_columns).as_ref().unwrap() {
+            Index::Complex(i) => i.get(&values).cloned(),
+            Index::Simple(i) => {
+                // TODO don't go through arbitrary integer.
+                i.get(values[0].to_arbitrary_integer().to_usize().unwrap())
+                    .cloned()
+                    .flatten()
+                    .map(IndexValue::single_row)
+            }
+        }
     }
 
     /// Create an index for a set of columns to be queried, if does not exist already
     /// `input_fixed_columns` is assumed to be sorted
-    fn ensure_index(&mut self, fixed_data: &FixedData<T>, sorted_fixed_columns: &Application) {
+    fn ensure_index(&mut self, fixed_data: &FixedData<T>, sorted_fixed_columns: &Application, simple_lookup_candidate: u64) {
         // we do not use the Entry API here because we want to clone `sorted_input_fixed_columns` only on index creation
-        if self.indices.get(sorted_fixed_columns).is_some() {
+        if self.indices.contains_key(sorted_fixed_columns) {
             return;
         }
 
@@ -99,50 +115,15 @@ impl<T: FieldElement> IndexedColumns<T> {
             .map(|id| fixed_data.fixed_cols[id].values)
             .collect::<Vec<_>>();
 
-        let index: BTreeMap<Vec<T>, IndexValue> = (0..fixed_data.degree as usize)
-            .fold(
-                (
-                    BTreeMap::<Vec<T>, IndexValue>::default(),
-                    HashSet::<(Vec<T>, Vec<T>)>::default(),
-                ),
-                |(mut acc, mut set), row| {
-                    let input: Vec<_> = input_column_values
-                        .iter()
-                        .map(|column| column[row])
-                        .collect();
-
-                    let output: Vec<_> = output_column_values
-                        .iter()
-                        .map(|column| column[row])
-                        .collect();
-
-                    let input_output = (input, output);
-
-                    if !set.contains(&input_output) {
-                        set.insert(input_output.clone());
-
-                        let (input, _) = input_output;
-
-                        acc.entry(input)
-                            // we have a new, different output, so we lose knowledge
-                            .and_modify(|value| {
-                                *value = IndexValue::multiple_matches();
-                            })
-                            .or_insert_with(|| IndexValue::single_row(row));
-                    }
-                    (acc, set)
-                },
-            )
-            .0;
-
-        log::trace!(
-            "Done creating index. Size (as flat list): entries * (num_inputs * input_size + row_pointer_size) = {} * ({} * {} bytes + {} bytes) = {} bytes",
-            index.len(),
-            input_column_values.len(),
-            mem::size_of::<T>(),
-            mem::size_of::<IndexValue>(),
-            index.len() * (input_column_values.len() * mem::size_of::<T>() + mem::size_of::<IndexValue>())
-        );
+        let index = try_create_simple_index(
+            fixed_data,
+            simple_lookup_candidate,
+            &input_column_values,
+            &output_column_values,
+        )
+        .unwrap_or_else(|| {
+            create_complex_index(fixed_data, &input_column_values, &output_column_values)
+        });
         self.indices.insert(
             (
                 sorted_input_fixed_columns.clone(),
@@ -151,6 +132,68 @@ impl<T: FieldElement> IndexedColumns<T> {
             index,
         );
     }
+}
+
+fn try_create_simple_index<T: FieldElement>(
+    fixed_data: &FixedData<T>,
+    simple_lookup_candidate: u64,
+    input_column_values: &Vec<&Vec<T>>,
+    output_column_values: &Vec<&Vec<T>>,
+) -> Option<Index<T>> {
+    // TODO
+    None
+}
+
+fn create_complex_index<T: FieldElement>(
+    fixed_data: &FixedData<T>,
+    input_column_values: &Vec<&Vec<T>>,
+    output_column_values: &[&Vec<T>],
+) -> Index<T> {
+    let index: BTreeMap<Vec<T>, IndexValue> = (0..fixed_data.degree as usize)
+        .fold(
+            (
+                BTreeMap::<Vec<T>, IndexValue>::default(),
+                HashSet::<(Vec<T>, Vec<T>)>::default(),
+            ),
+            |(mut acc, mut set), row| {
+                let input: Vec<_> = input_column_values
+                    .iter()
+                    .map(|column| column[row])
+                    .collect();
+
+                let output: Vec<_> = output_column_values
+                    .iter()
+                    .map(|column| column[row])
+                    .collect();
+
+                let input_output = (input, output);
+
+                if !set.contains(&input_output) {
+                    set.insert(input_output.clone());
+
+                    let (input, _) = input_output;
+
+                    acc.entry(input)
+                        // we have a new, different output, so we lose knowledge
+                        .and_modify(|value| {
+                            *value = IndexValue::multiple_matches();
+                        })
+                        .or_insert_with(|| IndexValue::single_row(row));
+                }
+                (acc, set)
+            },
+        )
+        .0;
+
+    log::trace!(
+    "Done creating index. Size (as flat list): entries * (num_inputs * input_size + row_pointer_size) = {} * ({} * {} bytes + {} bytes) = {} bytes",
+    index.len(),
+    input_column_values.len(),
+    mem::size_of::<T>(),
+    mem::size_of::<IndexValue>(),
+    index.len() * (input_column_values.len() * mem::size_of::<T>() + mem::size_of::<IndexValue>())
+);
+    Index::Complex(index)
 }
 
 /// Machine to perform a lookup in fixed columns only.
