@@ -153,13 +153,30 @@ impl<T: FieldElement> Machine<T> for BlockMachine<T> {
     fn witness_col_values(&mut self, fixed_data: &FixedData<T>) -> HashMap<String, Vec<T>> {
         std::mem::take(&mut self.data)
             .into_iter()
-            .map(|(id, values)| {
-                let mut values = values
-                    .into_iter()
+            .map(|(id, mut values)| {
+
+                // For all constraints to be satisfied, all rows have to be filled with valid values.
+                // We do this by repeating the *second* block, because the first is a dummy block.
+
+                if values.len() < 2 * self.block_size {
+                    log::warn!("Block machine was never used. Assuming that filling witness columns with zeros satisfies the constraints.");
+                }
+
+                values.resize(fixed_data.degree as usize, None);
+
+                let second_block_values = values
+                    .iter()
+                    .skip(self.block_size)
+                    .take(self.block_size)
                     .map(|v| v.unwrap_or_default())
                     .collect::<Vec<_>>();
 
-                values.resize(fixed_data.degree as usize, 0.into());
+                let values = values
+                    .into_iter()
+                    .enumerate()
+                    .map(|(i, v)| v.unwrap_or(second_block_values[i % self.block_size]))
+                    .collect::<Vec<_>>();
+
                 (fixed_data.witness_cols[id].poly.name.clone(), values)
             })
             .collect()
