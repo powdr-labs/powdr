@@ -17,18 +17,45 @@ impl<T: Display> Display for PILFile<T> {
 
 impl<T: Display> Display for ASMFile<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        for s in &self.0 {
-            writeln!(f, "{s}")?;
+        for m in &self.machines {
+            writeln!(f, "{m}")?;
         }
         Ok(())
     }
 }
 
-impl<T: Display> Display for ASMStatement<T> {
+impl<T: Display> Display for Machine<T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        writeln!(f, "machine {} {{", self.name)?;
+        for s in &self.statements {
+            writeln!(f, "{s}")?;
+        }
+        writeln!(f, "}}")
+    }
+}
+
+impl<T: Display> Display for InstructionBody<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
-            ASMStatement::Degree(_, degree) => write!(f, "degree {};", degree),
-            ASMStatement::RegisterDeclaration(_, name, flag) => write!(
+            InstructionBody::Local(elements) => write!(
+                f,
+                "{}",
+                elements
+                    .iter()
+                    .map(|e| e.to_string())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ),
+        }
+    }
+}
+
+impl<T: Display> Display for MachineStatement<T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        match self {
+            MachineStatement::Degree(_, degree) => write!(f, "degree {};", degree),
+            MachineStatement::Submachine(_, ty, name) => write!(f, "{ty} {name}"),
+            MachineStatement::RegisterDeclaration(_, name, flag) => write!(
                 f,
                 "reg {}{};",
                 name,
@@ -36,19 +63,10 @@ impl<T: Display> Display for ASMStatement<T> {
                     .map(|flag| format!("[{flag}]"))
                     .unwrap_or_default()
             ),
-            ASMStatement::InstructionDeclaration(_, name, params, body) => {
-                write!(
-                    f,
-                    "instr {}{} {{{}}}",
-                    name,
-                    params,
-                    body.iter()
-                        .map(|e| format!("{e}"))
-                        .collect::<Vec<_>>()
-                        .join(" ")
-                )
+            MachineStatement::InstructionDeclaration(_, name, params, body) => {
+                write!(f, "instr {}{} {{{}}}", name, params, body,)
             }
-            ASMStatement::InlinePil(_, statements) => {
+            MachineStatement::InlinePil(_, statements) => {
                 write!(
                     f,
                     "pil{{\n{}\n}}",
@@ -59,7 +77,23 @@ impl<T: Display> Display for ASMStatement<T> {
                         .join("\n")
                 )
             }
-            ASMStatement::Assignment(_, write_regs, assignment_reg, expression) => write!(
+            MachineStatement::FunctionDeclaration(_, name, params, statements) => write!(
+                f,
+                "function {name}{params} {{\n{}\n}}",
+                statements
+                    .iter()
+                    .map(|s| format!("{}", s))
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            ),
+        }
+    }
+}
+
+impl<T: Display> Display for FunctionStatement<T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        match self {
+            FunctionStatement::Assignment(_, write_regs, assignment_reg, expression) => write!(
                 f,
                 "{} <={}= {};",
                 write_regs.join(", "),
@@ -69,7 +103,7 @@ impl<T: Display> Display for ASMStatement<T> {
                     .unwrap_or_default(),
                 expression
             ),
-            ASMStatement::Instruction(_, name, inputs) => write!(
+            FunctionStatement::Instruction(_, name, inputs) => write!(
                 f,
                 "{}{};",
                 name,
@@ -86,8 +120,8 @@ impl<T: Display> Display for ASMStatement<T> {
                     )
                 }
             ),
-            ASMStatement::Label(_, name) => write!(f, "{name}::"),
-            ASMStatement::DebugDirective(_start, dir) => write!(f, "{dir}"),
+            FunctionStatement::Label(_, name) => write!(f, "{name}::"),
+            FunctionStatement::DebugDirective(_, dir) => write!(f, "{dir}"),
         }
     }
 }
@@ -114,7 +148,7 @@ impl Display for RegisterFlag {
     }
 }
 
-impl Display for InstructionParams {
+impl Display for Params {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(
             f,
@@ -135,7 +169,7 @@ impl Display for InstructionParams {
     }
 }
 
-impl Display for InstructionParamList {
+impl Display for ParamList {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(
             f,
@@ -149,24 +183,23 @@ impl Display for InstructionParamList {
     }
 }
 
+impl<T: Display> Display for FunctionCall<T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(f, "{}({})", self.id, format_expressions(&self.arguments))
+    }
+}
+
 impl<T: Display> Display for InstructionBodyElement<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
-            InstructionBodyElement::Expression(e) => write!(f, "{e}"),
+            InstructionBodyElement::PolynomialIdentity(left, right) => {
+                write!(f, "{left} = {right}")
+            }
             InstructionBodyElement::PlookupIdentity(left, operator, right) => {
                 write!(f, "{left} {operator} {right}")
             }
-            InstructionBodyElement::FunctionCall(name, arguments) => {
-                write!(
-                    f,
-                    "{}({})",
-                    name,
-                    arguments
-                        .iter()
-                        .map(|a| a.to_string())
-                        .collect::<Vec<_>>()
-                        .join(", ")
-                )
+            InstructionBodyElement::FunctionCall(c) => {
+                write!(f, "{c}")
             }
         }
     }
@@ -181,7 +214,7 @@ impl Display for PlookupOperator {
     }
 }
 
-impl Display for InstructionParam {
+impl Display for Param {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(
             f,
@@ -199,26 +232,26 @@ pub fn quote(input: &str) -> String {
     format!("\"{}\"", input.replace('\\', "\\\\").replace('"', "\\\""))
 }
 
-impl<T: Display> Display for Statement<T> {
+impl<T: Display> Display for PilStatement<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
-            Statement::Include(_, path) => write!(f, "include {};", quote(path)),
-            Statement::Namespace(_, name, poly_length) => {
+            PilStatement::Include(_, path) => write!(f, "include {};", quote(path)),
+            PilStatement::Namespace(_, name, poly_length) => {
                 write!(f, "namespace {name}({poly_length});")
             }
-            Statement::PolynomialDefinition(_, name, value) => {
+            PilStatement::PolynomialDefinition(_, name, value) => {
                 write!(f, "pol {name} = {value};")
             }
-            Statement::PublicDeclaration(_, name, poly, index) => {
+            PilStatement::PublicDeclaration(_, name, poly, index) => {
                 write!(f, "public {name} = {poly}({index});")
             }
-            Statement::PolynomialConstantDeclaration(_, names) => {
+            PilStatement::PolynomialConstantDeclaration(_, names) => {
                 write!(f, "pol constant {};", format_names(names))
             }
-            Statement::PolynomialConstantDefinition(_, name, definition) => {
+            PilStatement::PolynomialConstantDefinition(_, name, definition) => {
                 write!(f, "pol constant {name}{definition};")
             }
-            Statement::PolynomialCommitDeclaration(_, names, value) => {
+            PilStatement::PolynomialCommitDeclaration(_, names, value) => {
                 write!(
                     f,
                     "pol commit {}{};",
@@ -226,25 +259,25 @@ impl<T: Display> Display for Statement<T> {
                     value.as_ref().map(|v| format!("{v}")).unwrap_or_default()
                 )
             }
-            Statement::PolynomialIdentity(_, expression) => {
+            PilStatement::PolynomialIdentity(_, expression) => {
                 if let Expression::BinaryOperation(left, BinaryOperator::Sub, right) = expression {
                     write!(f, "{left} = {right};")
                 } else {
                     write!(f, "{expression} = 0;")
                 }
             }
-            Statement::PlookupIdentity(_, left, right) => write!(f, "{left} in {right};"),
-            Statement::PermutationIdentity(_, left, right) => write!(f, "{left} is {right};"),
-            Statement::ConnectIdentity(_, left, right) => write!(
+            PilStatement::PlookupIdentity(_, left, right) => write!(f, "{left} in {right};"),
+            PilStatement::PermutationIdentity(_, left, right) => write!(f, "{left} is {right};"),
+            PilStatement::ConnectIdentity(_, left, right) => write!(
                 f,
                 "{{ {} }} connect {{ {} }};",
                 format_expressions(left),
                 format_expressions(right)
             ),
-            Statement::ConstantDefinition(_, name, value) => {
+            PilStatement::ConstantDefinition(_, name, value) => {
                 write!(f, "constant {name} = {value};")
             }
-            Statement::MacroDefinition(_, name, params, statements, expression) => {
+            PilStatement::MacroDefinition(_, name, params, statements, expression) => {
                 let statements = statements
                     .iter()
                     .map(|s| format!("{s}"))
@@ -257,7 +290,7 @@ impl<T: Display> Display for Statement<T> {
                 };
                 write!(f, "macro {name}({}) {{{body}}};", params.join(", "))
             }
-            Statement::FunctionCall(_, name, args) => {
+            PilStatement::FunctionCall(_, name, args) => {
                 write!(f, "{name}({});", format_expressions(args))
             }
         }
@@ -335,7 +368,7 @@ impl<T: Display> Display for Expression<T> {
             Expression::Tuple(items) => write!(f, "({})", format_expressions(items)),
             Expression::BinaryOperation(left, op, right) => write!(f, "({left} {op} {right})"),
             Expression::UnaryOperation(op, exp) => write!(f, "{op}{exp}"),
-            Expression::FunctionCall(fun, args) => write!(f, "{fun}({})", format_expressions(args)),
+            Expression::FunctionCall(c) => write!(f, "{c}"),
             Expression::FreeInput(input) => write!(f, "${{ {input} }}"),
             Expression::MatchExpression(scrutinee, arms) => write!(
                 f,

@@ -13,17 +13,17 @@ match {
 }
 
 pub PILFile: PILFile<T> = {
-    (<Statement> ";")* => PILFile(<>)
+    (<PilStatement> ";")* => PILFile(<>)
 
 };
 
 pub ASMFile: ASMFile<T> = {
-    (<ASMStatement>)* => ASMFile(<>)
+    (<Machine>)* => ASMFile { machines: <> }
 };
 
 // ---------------------------- PIL part -----------------------------
 
-Statement = {
+pub PilStatement = {
     Include,
     Namespace,
     ConstantDefinition,
@@ -40,33 +40,33 @@ Statement = {
     FunctionCallStatement,
 };
 
-Include: Statement<T> = {
-    <start:@L> "include" <file:StringLiteral> => Statement::Include(<>)
+Include: PilStatement<T> = {
+    <start:@L> "include" <file:StringLiteral> => PilStatement::Include(<>)
 };
 
-Namespace: Statement<T> = {
-    <start:@L> "namespace" <name:Identifier> "(" <pol_degree:Expression> ")" => Statement::Namespace(<>)
+Namespace: PilStatement<T> = {
+    <start:@L> "namespace" <name:Identifier> "(" <pol_degree:Expression> ")" => PilStatement::Namespace(<>)
 }
 
-ConstantDefinition: Statement<T> = {
-    <@L> "constant" <ConstantIdentifier> "=" <Expression> => Statement::ConstantDefinition(<>)
+ConstantDefinition: PilStatement<T> = {
+    <@L> "constant" <ConstantIdentifier> "=" <Expression> => PilStatement::ConstantDefinition(<>)
 }
 
-PolynomialDefinition: Statement<T> = {
-    <@L> PolCol <Identifier> "=" <Expression> => Statement::PolynomialDefinition(<>)
+PolynomialDefinition: PilStatement<T> = {
+    <@L> PolCol <Identifier> "=" <Expression> => PilStatement::PolynomialDefinition(<>)
 }
 
-PublicDeclaration: Statement<T> = {
-    <@L> "public" <Identifier> "=" <PolynomialReference> "(" <Expression> ")" => Statement::PublicDeclaration(<>)
+PublicDeclaration: PilStatement<T> = {
+    <@L> "public" <Identifier> "=" <PolynomialReference> "(" <Expression> ")" => PilStatement::PublicDeclaration(<>)
 }
 
-PolynomialConstantDeclaration: Statement<T> = {
-    <@L> PolCol ConstantFixed <PolynomialNameList> => Statement::PolynomialConstantDeclaration(<>)
+PolynomialConstantDeclaration: PilStatement<T> = {
+    <@L> PolCol ConstantFixed <PolynomialNameList> => PilStatement::PolynomialConstantDeclaration(<>)
 }
 
-PolynomialConstantDefinition: Statement<T> = {
+PolynomialConstantDefinition: PilStatement<T> = {
     <@L> PolCol ConstantFixed <Identifier> <FunctionDefinition>
-        => Statement::PolynomialConstantDefinition(<>)
+        => PilStatement::PolynomialConstantDefinition(<>)
 }
 
 FunctionDefinition: FunctionDefinition<T> = {
@@ -75,7 +75,8 @@ FunctionDefinition: FunctionDefinition<T> = {
 }
 
 ParameterList: Vec<String> = {
-    <mut list:( <Identifier> "," )*> <end:Identifier>  => { list.push(end); list }
+    <mut list:( <Identifier> "," )*> <end:Identifier>  => { list.push(end); list },
+    => vec![]
 }
 
 ArrayLiteralExpression: ArrayExpression<T> = {
@@ -88,14 +89,14 @@ ArrayLiteralTerm: ArrayExpression<T> = {
     "[" <ExpressionList> "]" "*" => ArrayExpression::repeated_value(<>),
 }
 
-PolynomialCommitDeclaration: Statement<T> = {
-    <@L> PolCol CommitWitness <PolynomialNameList> => Statement::PolynomialCommitDeclaration(<>, None),
+PolynomialCommitDeclaration: PilStatement<T> = {
+    <@L> PolCol CommitWitness <PolynomialNameList> => PilStatement::PolynomialCommitDeclaration(<>, None),
     <start:@L> PolCol CommitWitness <name:PolynomialName> "(" <param:ParameterList> ")" "query" <value:Expression>
-     => Statement::PolynomialCommitDeclaration(start, vec![name], Some(FunctionDefinition::Query(param, value)))
+     => PilStatement::PolynomialCommitDeclaration(start, vec![name], Some(FunctionDefinition::Query(param, value)))
 }
 
-PolynomialIdentity: Statement<T> = {
-    <start:@L> <l:BoxedExpression> "=" <r:BoxedExpression> => Statement::PolynomialIdentity(start, Expression::BinaryOperation(l, BinaryOperator::Sub, r))
+PolynomialIdentity: PilStatement<T> = {
+    <start:@L> <l:BoxedExpression> "=" <r:BoxedExpression> => PilStatement::PolynomialIdentity(start, Expression::BinaryOperation(l, BinaryOperator::Sub, r))
 }
 
 PolynomialNameList: Vec<PolynomialName<T>> = {
@@ -106,8 +107,8 @@ PolynomialName: PolynomialName<T> = {
     <name:Identifier> <array_size:( "[" <Expression> "]" )?> => PolynomialName{<>}
 }
 
-PlookupIdentity: Statement<T> = {
-    <@L> <SelectedExpressions> "in" <SelectedExpressions> => Statement::PlookupIdentity(<>)
+PlookupIdentity: PilStatement<T> = {
+    <@L> <SelectedExpressions> "in" <SelectedExpressions> => PilStatement::PlookupIdentity(<>)
 }
 
 SelectedExpressions: SelectedExpressions<T> = {
@@ -115,21 +116,21 @@ SelectedExpressions: SelectedExpressions<T> = {
     Expression => SelectedExpressions{selector: None, expressions: vec![<>]},
 }
 
-PermutationIdentity: Statement<T> = {
-    <@L> <SelectedExpressions> "is" <SelectedExpressions> => Statement::PermutationIdentity(<>)
+PermutationIdentity: PilStatement<T> = {
+    <@L> <SelectedExpressions> "is" <SelectedExpressions> => PilStatement::PermutationIdentity(<>)
 }
 
-ConnectIdentity: Statement<T> = {
-    <@L> "{" <ExpressionList> "}" "connect" "{" <ExpressionList> "}" => Statement::ConnectIdentity(<>)
+ConnectIdentity: PilStatement<T> = {
+    <@L> "{" <ExpressionList> "}" "connect" "{" <ExpressionList> "}" => PilStatement::ConnectIdentity(<>)
 }
 
-MacroDefinition: Statement<T> = {
-    <@L> "macro" <Identifier> "(" <ParameterList> ")" "{" <( <Statement> ";")*> <Expression?> "}"
-        => Statement::MacroDefinition(<>)
+MacroDefinition: PilStatement<T> = {
+    <@L> "macro" <Identifier> "(" <ParameterList> ")" "{" <( <PilStatement> ";")*> <Expression?> "}"
+        => PilStatement::MacroDefinition(<>)
 }
 
-FunctionCallStatement: Statement<T> = {
-    <@L> <Identifier> "(" <ExpressionList> ")" => Statement::FunctionCall(<>)
+FunctionCallStatement: PilStatement<T> = {
+    <@L> <Identifier> "(" <ExpressionList> ")" => PilStatement::FunctionCall(<>)
 }
 
 PolCol = {
@@ -146,24 +147,30 @@ ConstantFixed = {
 
 // ---------------------------- ASM part -----------------------------
 
-ASMStatement: ASMStatement<T> = {
+Machine: Machine<T> = {
+    <start:@L> "machine" <name:Identifier> "{" <statements:(MachineStatement)*> "}" => Machine{<>}
+}
+
+MachineStatement: MachineStatement<T> = {
     Degree,
+    Submachine,
     RegisterDeclaration,
     InstructionDeclaration,
     InlinePil,
-    Assignment,
-    Instruction,
-    Label,
-    DebugDirective,
+    FunctionDeclaration,
 }
 
-Degree: ASMStatement<T> = {
-    <@L> "degree" <Integer> ";" => ASMStatement::Degree(<>)
+Degree: MachineStatement<T> = {
+    <@L> "degree" <Integer> ";" => MachineStatement::Degree(<>)
 }
 
-RegisterDeclaration: ASMStatement<T> = {
+Submachine: MachineStatement<T> = {
+    <@L> <Identifier> <Identifier> ";" => MachineStatement::Submachine(<>)
+}
+
+pub RegisterDeclaration: MachineStatement<T> = {
     // TODO default update
-    <@L> "reg" <Identifier> <( "[" <RegisterFlag> "]" )?> ";" => ASMStatement::RegisterDeclaration(<>)
+    <@L> "reg" <Identifier> <( "[" <RegisterFlag> "]" )?> ";" => MachineStatement::RegisterDeclaration(<>)
 
 }
 
@@ -172,18 +179,24 @@ RegisterFlag: RegisterFlag = {
     "<=" => RegisterFlag::IsAssignment
 }
 
-InstructionDeclaration: ASMStatement<T> = {
-    <@L> "instr" <Identifier> <InstructionParams> "{" <InstructionBodyElements> "}" => ASMStatement::InstructionDeclaration(<>)
+pub InstructionDeclaration: MachineStatement<T> = {
+    <@L> "instr" <Identifier> <Params> <InstructionBody> => MachineStatement::InstructionDeclaration(<>)
+}
+
+InstructionBody: InstructionBody<T> = {
+    "{}" => InstructionBody::Local(vec![]),
+    "{" <InstructionBodyElements> "}" => InstructionBody::Local(<>),
 }
 
 InstructionBodyElements: Vec<InstructionBodyElement<T>> = {
-    <mut list:( <InstructionBodyElement> "," )*> <end:InstructionBodyElement>  => { list.push(end); list }
+    <mut list:( <InstructionBodyElement> "," )*> <end:InstructionBodyElement>  => { list.push(end); list },
+    => vec![]
 }
 
 InstructionBodyElement: InstructionBodyElement<T> = {
-    <l:BoxedExpression> "=" <r:BoxedExpression> => InstructionBodyElement::Expression(Expression::BinaryOperation(l, BinaryOperator::Sub, r)),
+    <l:Expression> "=" <r:Expression> => InstructionBodyElement::PolynomialIdentity(l, r),
     <SelectedExpressions> <PlookupOperator> <SelectedExpressions> => InstructionBodyElement::PlookupIdentity(<>),
-    <Identifier> "(" <ExpressionList> ")" => InstructionBodyElement::FunctionCall(<>)
+    <id:Identifier> "(" <arguments:ExpressionList> ")" => InstructionBodyElement::FunctionCall(FunctionCall {<>})
 }
 
 // This is only valid in instructions, not in PIL in general.
@@ -195,53 +208,65 @@ PlookupOperator: PlookupOperator = {
     "is" => PlookupOperator::Is,
 }
 
-InstructionParams: InstructionParams = {
-    <_input: InstructionParamList> "->" <output: InstructionParamList> => InstructionParams::new(_input, Some(output)),
+Params: Params = {
+    <_input: ParamList> "->" <output: ParamList> => Params::new(_input, Some(output)),
     // we can ommit the arrow if there are no outputs
-    <_input: InstructionParamList> => InstructionParams::new(_input, None)
+    <_input: ParamList> => Params::new(_input, None)
 
 }
 
-InstructionParamList: InstructionParamList = {
-    => InstructionParamList::new(vec![]),
-    <mut list:( <InstructionParam> "," )*> <end:InstructionParam>  => { list.push(end); InstructionParamList::new(list) }
+ParamList: ParamList = {
+    => ParamList::new(vec![]),
+    <mut list:( <Param> "," )*> <end:Param>  => { list.push(end); ParamList::new(list) }
 }
 
-InstructionParam: InstructionParam = {
+Param: Param = {
     <name: Identifier> <ty:(":" <Identifier>)?> =>
-        InstructionParam{name, ty}
+        Param{name, ty}
 }
 
-InlinePil: ASMStatement<T> = {
-    <@L> "pil" "{" <(<Statement> ";")*> "}" => ASMStatement::InlinePil(<>)
+InlinePil: MachineStatement<T> = {
+    <@L> "constraints" "{" <(<PilStatement> ";")*> "}" => MachineStatement::InlinePil(<>)
 }
 
-Assignment: ASMStatement<T> = {
-    <@L> <IdentifierList> <AssignOperator> <BoxedExpression> ";" => ASMStatement::Assignment(<>)
+FunctionDeclaration: MachineStatement<T> = {
+    <@L> "function" <Identifier> <Params> "{" <(<FunctionStatement>)*> "}" => MachineStatement::FunctionDeclaration(<>)
+}
+
+pub FunctionStatement: FunctionStatement<T> = {
+    Assignment,
+    Instruction,
+    Label,
+    DebugDirective,
+}
+
+Assignment: FunctionStatement<T> = {
+    <@L> <IdentifierList> <AssignOperator> <BoxedExpression> ";" => FunctionStatement::Assignment(<>)
 
 }
 
 IdentifierList: Vec<String> = {
-    <mut list:( <Identifier> "," )*> <end:Identifier>  => { list.push(end); list }
+    <mut list:( <Identifier> "," )*> <end:Identifier>  => { list.push(end); list },
+    => vec![]
 }
 
 AssignOperator: Option<String> = {
     "<=" <Identifier?> "="
 }
 
-Instruction: ASMStatement<T> = {
-    <@L> <Identifier> <ExpressionList> ";" => ASMStatement::Instruction(<>)
+Instruction: FunctionStatement<T> = {
+    <@L> <Identifier> <ExpressionList> ";" => FunctionStatement::Instruction(<>)
 }
 
-DebugDirective: ASMStatement<T> = {
+DebugDirective: FunctionStatement<T> = {
     <l:@L> "debug" "file" <n:Integer> <d:StringLiteral> <f:StringLiteral> ";"
-        => ASMStatement::DebugDirective(l, DebugDirective::File(n.try_into().unwrap(), d, f)),
+        => FunctionStatement::DebugDirective(l, DebugDirective::File(n.try_into().unwrap(), d, f)),
     <l:@L> "debug" "loc" <f:Integer> <line:Integer> <col:Integer> ";"
-        => ASMStatement::DebugDirective(l, DebugDirective::Loc(f.try_into().unwrap(), line.try_into().unwrap(), col.try_into().unwrap())),
+        => FunctionStatement::DebugDirective(l, DebugDirective::Loc(f.try_into().unwrap(), line.try_into().unwrap(), col.try_into().unwrap())),
 }
 
-Label: ASMStatement<T> = {
-    <@L> <Identifier> "::" => ASMStatement::Label(<>)
+Label: FunctionStatement<T> = {
+    <@L> <Identifier> "::" => FunctionStatement::Label(<>)
 }
 
 // ---------------------------- Expressions -----------------------------
@@ -337,7 +362,7 @@ UnaryOp: UnaryOperator = {
 }
 
 Term: Box<Expression<T>> = {
-    FunctionCall => Box::new(<>),
+    FunctionCall => Box::new(Expression::FunctionCall(<>)),
     ConstantIdentifier => Box::new(Expression::Constant(<>)),
     PolynomialReference => Box::new(Expression::PolynomialReference(<>)),
     PublicReference => Box::new(Expression::PublicReference(<>)),
@@ -349,8 +374,8 @@ Term: Box<Expression<T>> = {
     "${" <BoxedExpression> "}" => Box::new(Expression::FreeInput(<>))
 }
 
-FunctionCall: Expression<T> = {
-    <Identifier> "(" <ExpressionList> ")" => Expression::FunctionCall(<>)
+FunctionCall: FunctionCall<T> = {
+    <id:Identifier> "(" <arguments:ExpressionList> ")" => FunctionCall {<>},
 }
 
 PolynomialReference: PolynomialReference<T> = {

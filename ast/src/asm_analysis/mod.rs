@@ -1,62 +1,80 @@
 mod display;
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use num_bigint::BigUint;
 
 use crate::parsed::{
-    asm::{DebugDirective, InstructionBodyElement, InstructionParams, RegisterFlag},
-    Expression, Statement,
+    asm::{InstructionBody, Params, RegisterFlag},
+    Expression, PilStatement,
 };
 
+#[derive(Clone)]
 pub struct RegisterDeclarationStatement {
     pub start: usize,
     pub name: String,
     pub flag: Option<RegisterFlag>,
 }
 
+#[derive(Clone)]
 pub struct InstructionDefinitionStatement<T> {
     pub start: usize,
     pub name: String,
-    pub params: InstructionParams,
-    pub body: Vec<InstructionBodyElement<T>>,
+    pub params: Params,
+    pub body: InstructionBody<T>,
 }
 
+#[derive(Clone)]
+pub struct FunctionBody<T> {
+    pub statements: Vec<FunctionStatement<T>>,
+}
+
+#[derive(Clone)]
+pub struct FunctionDefinitionStatement<T> {
+    pub start: usize,
+    pub name: String,
+    pub params: Params,
+    pub body: FunctionBody<T>,
+}
+
+#[derive(Clone)]
 pub struct DegreeStatement {
     pub degree: BigUint,
 }
 
-pub enum ProgramStatement<T> {
+#[derive(Clone)]
+pub enum FunctionStatement<T> {
     Assignment(AssignmentStatement<T>),
     Instruction(InstructionStatement<T>),
     Label(LabelStatement),
     DebugDirective(DebugDirective),
 }
 
-impl<T> From<AssignmentStatement<T>> for ProgramStatement<T> {
+impl<T> From<AssignmentStatement<T>> for FunctionStatement<T> {
     fn from(value: AssignmentStatement<T>) -> Self {
         Self::Assignment(value)
     }
 }
 
-impl<T> From<InstructionStatement<T>> for ProgramStatement<T> {
+impl<T> From<InstructionStatement<T>> for FunctionStatement<T> {
     fn from(value: InstructionStatement<T>) -> Self {
         Self::Instruction(value)
     }
 }
 
-impl<T> From<LabelStatement> for ProgramStatement<T> {
+impl<T> From<LabelStatement> for FunctionStatement<T> {
     fn from(value: LabelStatement) -> Self {
         Self::Label(value)
     }
 }
 
-impl<T> From<DebugDirective> for ProgramStatement<T> {
+impl<T> From<DebugDirective> for FunctionStatement<T> {
     fn from(value: DebugDirective) -> Self {
         Self::DebugDirective(value)
     }
 }
 
+#[derive(Clone)]
 pub struct AssignmentStatement<T> {
     pub start: usize,
     pub lhs: Vec<String>,
@@ -64,29 +82,62 @@ pub struct AssignmentStatement<T> {
     pub rhs: Box<Expression<T>>,
 }
 
+#[derive(Clone)]
 pub struct InstructionStatement<T> {
     pub start: usize,
     pub instruction: String,
     pub inputs: Vec<Expression<T>>,
 }
 
+#[derive(Clone)]
 pub struct LabelStatement {
     pub start: usize,
     pub name: String,
 }
 
+#[derive(Clone)]
+pub struct DebugDirective {
+    pub start: usize,
+    pub directive: crate::parsed::asm::DebugDirective,
+}
+
+#[derive(Clone)]
 pub struct PilBlock<T> {
     pub start: usize,
-    pub statements: Vec<Statement<T>>,
+    pub statements: Vec<PilStatement<T>>,
+}
+
+#[derive(Clone, Default)]
+pub struct Machine<T> {
+    pub degree: Option<DegreeStatement>,
+    pub registers: Vec<RegisterDeclarationStatement>,
+    // index of the pc in the registers, if any
+    pub pc: Option<usize>,
+    pub constraints: Vec<PilBlock<T>>,
+    pub instructions: Vec<InstructionDefinitionStatement<T>>,
+    pub functions: Vec<FunctionDefinitionStatement<T>>,
+    /// the rom gets generated in romgen
+    pub rom: Option<Rom<T>>,
+}
+
+impl<T> Machine<T> {
+    pub fn has_pc(&self) -> bool {
+        self.pc.is_some()
+    }
+
+    pub fn pc(&self) -> Option<String> {
+        self.pc.map(|index| self.registers[index].name.clone())
+    }
+}
+
+#[derive(Clone, Default)]
+pub struct Rom<T> {
+    pub statements: Vec<FunctionStatement<T>>,
+    pub batches: Option<Vec<BatchMetadata>>,
 }
 
 pub struct AnalysisASMFile<T> {
-    pub degree: Option<DegreeStatement>,
-    pub registers: Vec<RegisterDeclarationStatement>,
-    pub pil: Vec<PilBlock<T>>,
-    pub instructions: Vec<InstructionDefinitionStatement<T>>,
-    pub program: Vec<ProgramStatement<T>>,
-    pub batches: Option<Vec<BatchMetadata>>,
+    pub machines: BTreeMap<String, Machine<T>>,
 }
 
 #[derive(Default, Debug, PartialEq, Eq, Clone)]

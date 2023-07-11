@@ -4,9 +4,9 @@ use std::{
 };
 
 use ast::parsed::{
-    asm::{ASMFile, ASMStatement, InstructionBodyElement},
+    asm::{ASMFile, InstructionBody, InstructionBodyElement, MachineStatement},
     postvisit_expression_in_statement_mut, postvisit_expression_mut, Expression,
-    FunctionDefinition, SelectedExpressions, Statement,
+    FunctionDefinition, PilStatement, SelectedExpressions,
 };
 use number::FieldElement;
 
@@ -21,13 +21,13 @@ pub struct MacroExpander<T> {
     arguments: Vec<Expression<T>>,
     parameter_names: HashMap<String, usize>,
     shadowing_locals: HashSet<String>,
-    statements: Vec<Statement<T>>,
+    statements: Vec<PilStatement<T>>,
 }
 
 #[derive(Debug)]
 struct MacroDefinition<T> {
     pub parameters: Vec<String>,
-    pub identities: Vec<Statement<T>>,
+    pub identities: Vec<PilStatement<T>>,
     pub expression: Option<Expression<T>>,
 }
 
@@ -35,36 +35,48 @@ impl<T> MacroExpander<T>
 where
     T: FieldElement,
 {
-    fn expand_asm(&mut self, mut file: ASMFile<T>) -> ASMFile<T> {
+    fn expand_asm(&mut self, file: ASMFile<T>) -> ASMFile<T> {
         let mut expander = MacroExpander::default();
-        file.0.iter_mut().for_each(|s| match s {
-            ASMStatement::InstructionDeclaration(_, _, _, body) => {
-                body.iter_mut().for_each(|e| match e {
-                    InstructionBodyElement::Expression(e) => {
-                        self.process_expression(e);
+        let machines = file
+            .machines
+            .into_iter()
+            .map(|mut m| {
+                m.statements.iter_mut().for_each(|s| match s {
+                    MachineStatement::InstructionDeclaration(_, _, _, body) => match body {
+                        InstructionBody::Local(body) => {
+                            body.iter_mut().for_each(|e| match e {
+                                InstructionBodyElement::PolynomialIdentity(left, right) => {
+                                    self.process_expression(left);
+                                    self.process_expression(right);
+                                }
+                                InstructionBodyElement::PlookupIdentity(left, _, right) => {
+                                    self.process_selected_expressions(left);
+                                    self.process_selected_expressions(right);
+                                }
+                                InstructionBodyElement::FunctionCall(c) => {
+                                    c.arguments.iter_mut().for_each(|i| {
+                                        self.process_expression(i);
+                                    });
+                                }
+                            });
+                        }
+                    },
+                    MachineStatement::InlinePil(_, statements) => {
+                        *statements = expander.expand_macros(std::mem::take(statements));
                     }
-                    InstructionBodyElement::PlookupIdentity(left, _, right) => {
-                        self.process_selected_expressions(left);
-                        self.process_selected_expressions(right);
-                    }
-                    InstructionBodyElement::FunctionCall(_, inputs) => {
-                        self.process_expressions(inputs);
-                    }
+                    _ => {}
                 });
-            }
-            ASMStatement::InlinePil(_, statements) => {
-                *statements = expander.expand_macros(std::mem::take(statements));
-            }
-            _ => {}
-        });
-        file
+                m
+            })
+            .collect();
+        ASMFile { machines }
     }
 
     /// Expands all macro references inside the statements and also adds
     /// any macros defined therein to the list of macros.
     ///
     /// Note that macros are not namespaced!
-    pub fn expand_macros(&mut self, statements: Vec<Statement<T>>) -> Vec<Statement<T>> {
+    pub fn expand_macros(&mut self, statements: Vec<PilStatement<T>>) -> Vec<PilStatement<T>> {
         assert!(self.statements.is_empty());
         for statement in statements {
             self.handle_statement(statement);
@@ -72,10 +84,10 @@ where
         std::mem::take(&mut self.statements)
     }
 
-    fn handle_statement(&mut self, mut statement: Statement<T>) {
+    fn handle_statement(&mut self, mut statement: PilStatement<T>) {
         let mut added_locals = false;
-        if let Statement::PolynomialConstantDefinition(_, _, f)
-        | Statement::PolynomialCommitDeclaration(_, _, Some(f)) = &statement
+        if let PilStatement::PolynomialConstantDefinition(_, _, f)
+        | PilStatement::PolynomialCommitDeclaration(_, _, Some(f)) = &statement
         {
             if let FunctionDefinition::Mapping(params, _) | FunctionDefinition::Query(params, _) = f
             {
@@ -88,7 +100,7 @@ where
         postvisit_expression_in_statement_mut(&mut statement, &mut |e| self.process_expression(e));
 
         match &mut statement {
-            Statement::FunctionCall(_start, name, arguments) => {
+            PilStatement::FunctionCall(_start, name, arguments) => {
                 if !self.macros.contains_key(name) {
                     panic!(
                         "Macro {name} not found - only macros allowed at this point, no fixed columns."
@@ -98,7 +110,7 @@ where
                     panic!("Invoked a macro in statement context with non-empty expression.");
                 }
             }
-            Statement::MacroDefinition(_start, name, parameters, statements, expression) => {
+            PilStatement::MacroDefinition(_start, name, parameters, statements, expression) => {
                 // We expand lazily. Is that a mistake?
                 let is_new = self
                     .macros
@@ -159,10 +171,10 @@ where
                 assert!(poly.index.is_none());
                 *e = self.arguments[self.parameter_names[&poly.name]].clone()
             }
-        } else if let Expression::FunctionCall(name, arguments) = e {
-            if self.macros.contains_key(name.as_str()) {
+        } else if let Expression::FunctionCall(call) = e {
+            if self.macros.contains_key(call.id.as_str()) {
                 *e = self
-                    .expand_macro(name, std::mem::take(arguments))
+                    .expand_macro(call.id.as_str(), std::mem::take(&mut call.arguments))
                     .expect("Invoked a macro in expression context with empty expression.")
             }
         }
