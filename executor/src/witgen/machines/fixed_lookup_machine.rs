@@ -58,6 +58,8 @@ impl<T: FieldElement> IndexedColumns<T> {
     ) -> Option<IndexValue> {
         let simple_lookup_candidate = assignment[0].0;
 
+        // TODO just remove the sorting.
+
         // sort in order to have a single index for [X, Y] and for [Y, X]
         assignment.sort_by(|(name0, _), (name1, _)| name0.cmp(name1));
         let (input_fixed_columns, values): (Vec<_>, Vec<_>) = assignment.into_iter().unzip();
@@ -73,6 +75,7 @@ impl<T: FieldElement> IndexedColumns<T> {
             Index::Complex(i) => i.get(&values).cloned(),
             Index::Simple(i) => {
                 // TODO don't go through arbitrary integer.
+                // TODO still check that the other columns on that row match the inputs (`values`)?
                 i.get(values[0].to_arbitrary_integer().to_usize().unwrap())
                     .cloned()
                     .flatten()
@@ -141,6 +144,9 @@ fn try_create_simple_index<T: FieldElement>(
     output_column_values: &Vec<&Vec<T>>,
 ) -> Option<Index<T>> {
     // TODO
+    // see if the candidate is unique enough and the values are "small".
+    // see if the possible rows are "large" (at least 20)
+    // check that at some point, the rows repeat (the last row always repeats).
     None
 }
 
