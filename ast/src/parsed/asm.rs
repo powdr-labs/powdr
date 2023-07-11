@@ -11,7 +11,14 @@ pub struct ASMFile<T> {
 pub struct Machine<T> {
     pub start: usize,
     pub name: String,
+    pub arguments: MachineArguments,
     pub statements: Vec<MachineStatement<T>>,
+}
+
+#[derive(Debug, PartialEq, Eq, Default)]
+pub struct MachineArguments {
+    pub latch: Option<String>,
+    pub function_id: Option<String>,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Default)]
@@ -38,18 +45,32 @@ impl Params {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
+/// the function id necessary to call this function from the outside
+pub struct FunctionId<T> {
+    pub id: T,
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum MachineStatement<T> {
     Degree(usize, AbstractNumberType),
     Submachine(usize, String, String),
     RegisterDeclaration(usize, String, Option<RegisterFlag>),
     InstructionDeclaration(usize, String, Params, InstructionBody<T>),
     InlinePil(usize, Vec<PilStatement<T>>),
-    FunctionDeclaration(usize, String, Params, Vec<FunctionStatement<T>>),
+    FunctionDeclaration(
+        usize,
+        String,
+        // function id, explicit for static machines
+        Option<FunctionId<T>>,
+        Params,
+        Vec<FunctionStatement<T>>,
+    ),
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum InstructionBody<T> {
     Local(Vec<InstructionBodyElement<T>>),
+    External(String, String),
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]

@@ -26,10 +26,9 @@ Static machines are a lower-level type of machine. They do not have registers, a
 
 They are defined by:
 - a degree, indicating the number of execution steps
-- a latch, used to identify rows at which the machine can be accessed from the outside (where the inputs and outputs are passed)
 - a set of functions
-
-> Currently, the latch must be a fixed column named `latch`
+- a function identifier column, used to make constraints conditional over which function is called
+- a latch column, used to identify rows at which the machine can be accessed from the outside (where the inputs and outputs are passed)
 
 An example of a simple static machine is the following:
 

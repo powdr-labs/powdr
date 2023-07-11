@@ -4,7 +4,7 @@ use ast::{
     asm_analysis::{
         AnalysisASMFile, AssignmentStatement, DebugDirective, DegreeStatement, FunctionBody,
         FunctionDefinitionStatement, InstructionDefinitionStatement, InstructionStatement,
-        LabelStatement, Machine, PilBlock, RegisterDeclarationStatement,
+        LabelStatement, Machine, PilBlock, RegisterDeclarationStatement, SubmachineDeclaration,
     },
     parsed::asm::{ASMFile, FunctionStatement, MachineStatement, RegisterFlag},
 };
@@ -44,6 +44,7 @@ impl<T: FieldElement> TypeChecker<T> {
         let mut constraints = vec![];
         let mut instructions = vec![];
         let mut functions = vec![];
+        let mut submachines = vec![];
 
         for s in machine.statements {
             match s {
@@ -66,11 +67,22 @@ impl<T: FieldElement> TypeChecker<T> {
                 MachineStatement::InlinePil(start, statements) => {
                     constraints.push(PilBlock { start, statements });
                 }
-                MachineStatement::Submachine(..) => {
-                    errors.push("Submachines are not supported yet".into());
+                MachineStatement::Submachine(_, ty, name) => {
+                    if self.machines_types.contains_key(&ty) {
+                        submachines.push(SubmachineDeclaration { name, ty });
+                    } else {
+                        errors.push(format!("Undeclared machine type {}", ty))
+                    }
                 }
-                MachineStatement::FunctionDeclaration(start, name, params, statements) => {
+                MachineStatement::FunctionDeclaration(
+                    start,
+                    name,
+                    function_id,
+                    params,
+                    statements,
+                ) => {
                     let mut body = vec![];
+                    let id = function_id.map(|id| id.id);
                     for s in statements {
                         match s {
                             FunctionStatement::Assignment(start, lhs, using_reg, rhs) => {
@@ -105,6 +117,7 @@ impl<T: FieldElement> TypeChecker<T> {
                     functions.push(FunctionDefinitionStatement {
                         start,
                         name,
+                        id,
                         params,
                         body: FunctionBody { statements: body },
                     })
@@ -112,10 +125,46 @@ impl<T: FieldElement> TypeChecker<T> {
             }
         }
 
+        let latch = machine.arguments.latch;
+        let function_id = machine.arguments.function_id;
+
         if !registers.iter().any(|r| r.flag == Some(RegisterFlag::IsPC)) {
+            if latch.is_none() {
+                errors.push(format!(
+                    "Machine {} should have a latch column because it does not have a pc",
+                    machine.name
+                ));
+            }
+            if function_id.is_none() {
+                errors.push(format!(
+                    "Machine {} should have a function id column because it does not have a pc",
+                    machine.name
+                ));
+            }
             for o in &functions {
+                if o.id.is_none() {
+                    errors.push(format!("Function {} in machine {} should have an id because this machine does not have a pc", o.name, machine.name));
+                }
                 if !o.body.statements.is_empty() {
                     errors.push(format!("Function {} in machine {} should have an empty body because this machine does not have a pc", o.name, machine.name));
+                }
+            }
+        } else {
+            if latch.is_some() {
+                errors.push(format!(
+                    "Machine {} should not have a latch column because it has a pc",
+                    machine.name
+                ));
+            }
+            if function_id.is_some() {
+                errors.push(format!(
+                    "Machine {} should not have a function id column because it has a pc",
+                    machine.name
+                ));
+            }
+            for o in &functions {
+                if o.id.is_some() {
+                    errors.push(format!("Function {} in machine {} should not have an id because this machine has a pc", o.name, machine.name));
                 }
             }
         }
@@ -134,6 +183,8 @@ impl<T: FieldElement> TypeChecker<T> {
 
         *self.machines_types.get_mut(&machine.name).unwrap() = Some(Machine {
             degree,
+            latch,
+            function_id,
             pc: registers
                 .iter()
                 .enumerate()
@@ -143,6 +194,7 @@ impl<T: FieldElement> TypeChecker<T> {
             instructions,
             constraints,
             functions,
+            submachines,
             rom: None,
         });
 

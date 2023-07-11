@@ -20,6 +20,105 @@ pub struct Register {
     value: u8,
 }
 
+pub fn machine_decls() -> Vec<&'static str> {
+    vec![
+        r#"
+// ================= binary/bitwise instructions =================
+
+machine Binary(latch, function_id) {
+
+    degree 262144;
+
+    function and<0> A, B -> C {
+    }
+
+    function or<1> A, B -> C {
+    }
+
+    function xor<2> A, B -> C {
+    }
+
+    constraints{
+        macro is_nonzero(X) { match X { 0 => 0, _ => 1, } };
+        macro is_zero(X) { 1 - is_nonzero(X) };
+
+        col fixed latch(i) { is_zero((i % 4) - 3) };
+        col fixed FACTOR(i) { 1 << (((i + 1) % 4) * 8) };
+
+        col fixed P_A(i) { i % 256 };
+        col fixed P_B(i) { (i >> 8) % 256 };
+        col fixed P_operation(i) { (i / (256 * 256)) % 3 };
+        col fixed P_C(i) {
+            match P_operation(i) {
+                0 => P_A(i) & P_B(i),
+                1 => P_A(i) | P_B(i),
+                2 => P_A(i) ^ P_B(i),
+            } & 0xff
+        };
+
+        col witness A_byte;
+        col witness B_byte;
+        col witness C_byte;
+
+        col witness A;
+        col witness B;
+        col witness C;
+
+        A' = A * (1 - latch) + A_byte * FACTOR;
+        B' = B * (1 - latch) + B_byte * FACTOR;
+        C' = C * (1 - latch) + C_byte * FACTOR;
+
+        {function_id', A_byte, B_byte, C_byte} in {P_operation, P_A, P_B, P_C};
+    }
+}
+"#,
+        r#"
+// ================= shift instructions =================
+
+machine Shift(latch, function_id) {
+    degree 262144;
+
+    function shl<0> A, B -> C {
+    }
+
+    function shr<1> A, B -> C {
+    }
+
+    constraints{
+        col fixed latch(i) { is_zero((i % 4) - 3) };
+        col fixed FACTOR_ROW(i) { (i + 1) % 4 };
+        col fixed FACTOR(i) { 1 << (((i + 1) % 4) * 8) };
+
+        col fixed P_A(i) { i % 256 };
+        col fixed P_B(i) { (i / 256) % 32 };
+        col fixed P_ROW(i) { (i / (256 * 32)) % 4 };
+        col fixed P_operation(i) { (i / (256 * 32 * 4)) % 2 };
+        col fixed P_C(i) {
+            match P_operation(i) {
+                0 => (P_A(i) << (P_B(i) + (P_ROW(i) * 8))),
+                1 => (P_A(i) << (P_ROW(i) * 8)) >> P_B(i),
+            } & 0xffffffff
+        };
+
+        col witness A_byte;
+        col witness C_part;
+
+        col witness A;
+        col witness B;
+        col witness C;
+
+        A' = A * (1 - latch) + A_byte * FACTOR;
+        (B' - B) * (1 - latch) = 0;
+        C' = C * (1 - latch) + C_part;
+
+        // TODO this way, we cannot prove anything that shifts by more than 31 bits.
+        {function_id', A_byte, B', FACTOR_ROW, C_part} in {P_operation, P_A, P_B, P_ROW, P_C};
+    }
+}
+"#,
+    ]
+}
+
 impl Register {
     pub fn new(value: u8) -> Self {
         Self { value }
@@ -111,9 +210,11 @@ impl asm_utils::compiler::Compiler for Risc {
             .collect::<Vec<_>>();
         let (data_code, data_positions) = store_data_objects(&sorted_objects, data_start);
 
-        risv_machine(
+        riscv_machine(
+            &machine_decls(),
             &preamble(),
-            &file_ids
+            &[("binary", "Binary"), ("shift", "Shift")],
+            file_ids
                 .into_iter()
                 .map(|(id, dir, file)| format!("debug file {id} {} {};", quote(&dir), quote(&file)))
                 .chain(["call __data_init;".to_string()])
@@ -129,7 +230,7 @@ impl asm_utils::compiler::Compiler for Risc {
                 .chain(["// This is the data initialization routine.\n__data_init::".to_string()])
                 .chain(data_code)
                 .chain(["// This is the end of the data initialization routine.\nret;".to_string()])
-                .join("\n"),
+                .collect(),
         )
     }
 }
@@ -357,17 +458,37 @@ fn substitute_symbols_with_values(
     statements
 }
 
-fn risv_machine(preamble: &str, main: &str) -> String {
+fn riscv_machine(
+    machines: &[&str],
+    preamble: &str,
+    submachines: &[(&str, &str)],
+    program: Vec<String>,
+) -> String {
     format!(
         r#"
-machine RiscV {{
-    {}
+{}
+machine Main {{
+{}
+
+{}
+
     function main {{
-        {}
+{}
     }}
 }}    
 "#,
-        preamble, main
+        machines.join("\n"),
+        submachines
+            .iter()
+            .map(|(instance, ty)| format!("\t\t{} {};", ty, instance))
+            .collect::<Vec<_>>()
+            .join("\n"),
+        preamble,
+        program
+            .into_iter()
+            .map(|line| format!("\t\t{line}"))
+            .collect::<Vec<_>>()
+            .join("\n")
     )
 }
 
@@ -384,7 +505,7 @@ fn preamble() -> String {
 "#
     .to_string()
         + &(0..32)
-            .map(|i| format!("\treg x{i};\n"))
+            .map(|i| format!("\t\treg x{i};\n"))
             .collect::<Vec<_>>()
             .concat()
         + r#"
@@ -495,95 +616,17 @@ fn preamble() -> String {
 
     // ================= binary/bitwise instructions =================
 
-    instr and Y, Z -> X {
-        {Y, Z, X, 0} in binary_RESET { binary_A, binary_B, binary_C, binary_operation }
-    }
+    instr and Y, Z -> X = binary.and
 
-    instr or Y, Z -> X {
-        {Y, Z, X, 1} in binary_RESET { binary_A, binary_B, binary_C, binary_operation }
-    }
+    instr or Y, Z -> X = binary.or
 
-    instr xor Y, Z -> X {
-        {Y, Z, X, 2} in binary_RESET { binary_A, binary_B, binary_C, binary_operation }
-    }
-
-    constraints{
-        macro is_nonzero(X) { match X { 0 => 0, _ => 1, } };
-        macro is_zero(X) { 1 - is_nonzero(X) };
-
-        col fixed binary_RESET(i) { is_zero((i % 4) - 3) };
-        col fixed binary_FACTOR(i) { 1 << (((i + 1) % 4) * 8) };
-
-        col fixed binary_P_A(i) { i % 256 };
-        col fixed binary_P_B(i) { (i >> 8) % 256 };
-        col fixed binary_P_operation(i) { (i / (256 * 256)) % 3 };
-        col fixed binary_P_C(i) {
-            match binary_P_operation(i) {
-                0 => binary_P_A(i) & binary_P_B(i),
-                1 => binary_P_A(i) | binary_P_B(i),
-                2 => binary_P_A(i) ^ binary_P_B(i),
-            } & 0xff
-        };
-
-        col witness binary_A_byte;
-        col witness binary_B_byte;
-        col witness binary_C_byte;
-
-        col witness binary_A;
-        col witness binary_B;
-        col witness binary_C;
-        col witness binary_operation;
-
-        binary_A' = binary_A * (1 - binary_RESET) + binary_A_byte * binary_FACTOR;
-        binary_B' = binary_B * (1 - binary_RESET) + binary_B_byte * binary_FACTOR;
-        binary_C' = binary_C * (1 - binary_RESET) + binary_C_byte * binary_FACTOR;
-        (binary_operation' - binary_operation) * (1 - binary_RESET) = 0;
-
-        {binary_operation', binary_A_byte, binary_B_byte, binary_C_byte} in {binary_P_operation, binary_P_A, binary_P_B, binary_P_C};
-    }
+    instr xor Y, Z -> X = binary.xor
 
     // ================= shift instructions =================
 
-    instr shl Y, Z -> X {
-        {Y, Z, X, 0} in shift_RESET { shift_A, shift_B, shift_C, shift_operation }
-    }
+    instr shl Y, Z -> X = shift.shl
 
-    instr shr Y, Z -> X {
-        {Y, Z, X, 1} in shift_RESET { shift_A, shift_B, shift_C, shift_operation }
-    }
-
-    constraints{
-        col fixed shift_RESET(i) { is_zero((i % 4) - 3) };
-        col fixed shift_FACTOR_ROW(i) { (i + 1) % 4 };
-        col fixed shift_FACTOR(i) { 1 << (((i + 1) % 4) * 8) };
-
-        col fixed shift_P_A(i) { i % 256 };
-        col fixed shift_P_B(i) { (i / 256) % 32 };
-        col fixed shift_P_ROW(i) { (i / (256 * 32)) % 4 };
-        col fixed shift_P_operation(i) { (i / (256 * 32 * 4)) % 2 };
-        col fixed shift_P_C(i) {
-            match shift_P_operation(i) {
-                0 => (shift_P_A(i) << (shift_P_B(i) + (shift_P_ROW(i) * 8))),
-                1 => (shift_P_A(i) << (shift_P_ROW(i) * 8)) >> shift_P_B(i),
-            } & 0xffffffff
-        };
-
-        col witness shift_A_byte;
-        col witness shift_C_part;
-
-        col witness shift_A;
-        col witness shift_B;
-        col witness shift_C;
-        col witness shift_operation;
-
-        shift_A' = shift_A * (1 - shift_RESET) + shift_A_byte * shift_FACTOR;
-        (shift_B' - shift_B) * (1 - shift_RESET) = 0;
-        shift_C' = shift_C * (1 - shift_RESET) + shift_C_part;
-        (shift_operation' - shift_operation) * (1 - shift_RESET) = 0;
-
-        // TODO this way, we cannot prove anything that shifts by more than 31 bits.
-        {shift_operation', shift_A_byte, shift_B', shift_FACTOR_ROW, shift_C_part} in {shift_P_operation, shift_P_A, shift_P_B, shift_P_ROW, shift_P_C};
-    }
+    instr shr Y, Z -> X = shift.shr
 
     // ================== wrapping instructions ==============
 

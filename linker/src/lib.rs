@@ -1,27 +1,89 @@
+use std::iter::once;
+
 use ast::{
-    object::{Location, PILGraph},
-    parsed::{Expression, PILFile, PilStatement},
+    object::PILGraph,
+    parsed::{
+        build::{direct_reference, namespaced_reference},
+        Expression, PILFile, PilStatement, SelectedExpressions,
+    },
 };
 use number::FieldElement;
 
 /// a monolithic linker which outputs a single AIR
-pub fn link<T: FieldElement>(mut graph: PILGraph<T>) -> PILFile<T> {
-    assert_eq!(graph.objects.len(), 1, "only one machine is supported");
-    let object = graph
+pub fn link<T: FieldElement>(graph: PILGraph<T>) -> PILFile<T> {
+    let pil = graph
         .objects
-        .remove(&Location::default().join("main"))
-        .unwrap();
-    let location = Location::default().join("main");
+        .into_iter()
+        .flat_map(|(location, object)| {
+            let mut pil = vec![];
 
-    let mut pil = vec![];
+            // create a namespace for this object
+            pil.push(PilStatement::Namespace(
+                0,
+                location.to_string(),
+                Expression::Number(T::from(object.degree)),
+            ));
+            pil.extend(object.pil);
+            for link in object.links {
+                // add the link to this namespace as a lookup
 
-    pil.push(PilStatement::Namespace(
-        0,
-        location.to_string(),
-        Expression::Number(T::from(object.degree)),
-    ));
+                let from = link.from;
+                let to = link.to;
 
-    pil.extend(object.pil);
+                // the lhs is `instr_flag { inputs, outputs }`
+                let lhs = SelectedExpressions {
+                    selector: Some(direct_reference(from.instr.flag)),
+                    expressions: once(Expression::Number(to.function.id))
+                        .chain(
+                            from.instr
+                                .params
+                                .inputs
+                                .params
+                                .into_iter()
+                                .chain(
+                                    from.instr
+                                        .params
+                                        .outputs
+                                        .into_iter()
+                                        .flat_map(|o| o.params.into_iter()),
+                                )
+                                .map(|i| {
+                                    assert!(i.ty.is_none());
+                                    i.name
+                                })
+                                .map(|i| direct_reference(i)),
+                        )
+                        .collect(),
+                };
+                // the rhs is `(instr_flag * latch) { inputs, outputs }`
+                // get the instruction in the submachine
+
+                let params = to.function.params;
+
+                let to_namespace = to.loc.clone().to_string();
+
+                let rhs = SelectedExpressions {
+                    selector: Some(namespaced_reference(to_namespace.clone(), to.latch)),
+                    expressions: once(namespaced_reference(to_namespace.clone(), to.function_id))
+                        .chain(
+                            params
+                                .inputs
+                                .params
+                                .iter()
+                                .chain(params.outputs.iter().flat_map(|o| o.params.iter()))
+                                .map(|i| {
+                                    namespaced_reference(to_namespace.clone(), i.name.clone())
+                                }),
+                        )
+                        .collect(),
+                };
+
+                let lookup = PilStatement::PlookupIdentity(0, lhs, rhs);
+                pil.push(lookup);
+            }
+            pil
+        })
+        .collect();
 
     PILFile(pil)
 }

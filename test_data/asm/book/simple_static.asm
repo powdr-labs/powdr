@@ -1,8 +1,8 @@
-machine SimpleStatic {
+machine SimpleStatic(latch, function_id) {
 
     degree 8;
 
-    function power_4 x -> y {        
+    function power_4<0> x -> y {        
     }
 
     constraints {
