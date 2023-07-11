@@ -56,19 +56,17 @@ impl<T: FieldElement> IndexedColumns<T> {
         mut assignment: Vec<(PolyID, T)>,
         mut output_fixed_columns: Vec<PolyID>,
     ) -> Option<IndexValue> {
-        let simple_lookup_candidate = assignment[0].0;
-
         // TODO just remove the sorting.
 
         // sort in order to have a single index for [X, Y] and for [Y, X]
-        assignment.sort_by(|(name0, _), (name1, _)| name0.cmp(name1));
+        //assignment.sort_by(|(name0, _), (name1, _)| name0.cmp(name1));
         let (input_fixed_columns, values): (Vec<_>, Vec<_>) = assignment.into_iter().unzip();
         // sort the output as well
-        output_fixed_columns.sort();
+        //output_fixed_columns.sort();
 
         let fixed_columns = (input_fixed_columns, output_fixed_columns);
 
-        self.ensure_index(fixed_data, &fixed_columns, simple_lookup_candidate);
+        self.ensure_index(fixed_data, &fixed_columns);
 
         // get the rows at which the input matches
         match self.indices.get(&fixed_columns).as_ref().unwrap() {
@@ -86,7 +84,7 @@ impl<T: FieldElement> IndexedColumns<T> {
 
     /// Create an index for a set of columns to be queried, if does not exist already
     /// `input_fixed_columns` is assumed to be sorted
-    fn ensure_index(&mut self, fixed_data: &FixedData<T>, sorted_fixed_columns: &Application, simple_lookup_candidate: u64) {
+    fn ensure_index(&mut self, fixed_data: &FixedData<T>, sorted_fixed_columns: &Application) {
         // we do not use the Entry API here because we want to clone `sorted_input_fixed_columns` only on index creation
         if self.indices.contains_key(sorted_fixed_columns) {
             return;
@@ -118,15 +116,11 @@ impl<T: FieldElement> IndexedColumns<T> {
             .map(|id| fixed_data.fixed_cols[id].values)
             .collect::<Vec<_>>();
 
-        let index = try_create_simple_index(
-            fixed_data,
-            simple_lookup_candidate,
-            &input_column_values,
-            &output_column_values,
-        )
-        .unwrap_or_else(|| {
-            create_complex_index(fixed_data, &input_column_values, &output_column_values)
-        });
+        let index =
+            try_create_simple_index(fixed_data, &input_column_values, &output_column_values)
+                .unwrap_or_else(|| {
+                    create_complex_index(fixed_data, &input_column_values, &output_column_values)
+                });
         self.indices.insert(
             (
                 sorted_input_fixed_columns.clone(),
@@ -139,7 +133,6 @@ impl<T: FieldElement> IndexedColumns<T> {
 
 fn try_create_simple_index<T: FieldElement>(
     fixed_data: &FixedData<T>,
-    simple_lookup_candidate: u64,
     input_column_values: &Vec<&Vec<T>>,
     output_column_values: &Vec<&Vec<T>>,
 ) -> Option<Index<T>> {
