@@ -564,32 +564,28 @@ fn preamble() -> String {
         { REM_b2 } in { bytes };
         { REM_b3 } in { bytes };
         { REM_b4 } in { bytes };
-
-        col witness INV_Z;
     }
 
-    // implements X = Y / Z, stores remainder in `remainder`.
-    instr divu Y, Z -> X {
+    // implements Z = Y / X, stores remainder in `remainder`.
+    instr divu Y, X -> Z {
         // Y is the known dividend
-        // Z is the known divisor
-        // X is the unknown quotient
-        // if Z is zero, remainder is set to dividend, as per RISC-V specification:
+        // X is the known divisor
+        // Z is the unknown quotient
+        // main division algorithm;
+        // if X is zero, remainder is set to dividend, as per RISC-V specification:
         X * Z + remainder - Y = 0,
-
-        // either divisor is zero, or INV_Z*Z is one:
-        Z * (Z*INV_Z - 1) = 0,
 
         // remainder > 0:
         remainder = REM_b1 + REM_b2 * 0x100 + REM_b3 * 0x10000 + REM_b4 * 0x1000000,
 
-        // remainder < divisor, conditioned to Z not being 0:
-        (Z*INV_Z) * (Z - remainder - 1 - Y_b5 - Y_b6 * 0x100 - Y_b7 * 0x10000 - Y_b8 * 0x1000000) = 0,
+        // remainder < divisor, conditioned to X not being 0:
+        (1 - XIsZero) * (X - remainder - 1 - Y_b5 - Y_b6 * 0x100 - Y_b7 * 0x10000 - Y_b8 * 0x1000000) = 0,
 
-        // in case Z is zero, we set quotient according to RISC-V specification
-        (1 - Z*INV_Z) * (X - 0xffffffff) = 0,
+        // in case X is zero, we set quotient according to RISC-V specification
+        XIsZero * (Z - 0xffffffff) = 0,
 
         // quotient is 32 bits:
-        X = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000
+        Z = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000
     }
 
     // Removes up to 32 bits beyond 32
@@ -834,7 +830,7 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
         }
         "divu" => {
             let (rd, r1, r2) = rrr(args);
-            only_if_no_write_to_zero(format!("{rd} <=X= divu({r1}, {r2});"), rd)
+            only_if_no_write_to_zero(format!("{rd} <=Z= divu({r1}, {r2});"), rd)
         }
 
         // bitwise
