@@ -16,6 +16,7 @@ members = [
     "ast",
     "analysis",
     "linker",
+    "asm_utils"
 ]
 
 [patch."https://github.com/privacy-scaling-explorations/halo2.git"]

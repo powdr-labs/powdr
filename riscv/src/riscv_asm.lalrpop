@@ -1,5 +1,7 @@
 use std::str::FromStr;
-use crate::parser::{Statement, Argument, Register, Expression, unescape_string, BinaryOpKind as BOp, UnaryOpKind as UOp, new_binary_op as bin_op, new_unary_op as un_op};
+use asm_utils::ast::{unescape_string, BinaryOpKind as BOp, UnaryOpKind as UOp,
+    new_binary_op as bin_op, new_unary_op as un_op, new_function_op as fn_op};
+use crate::{Argument, Register, Statement, FunctionKind as FOp, Expression};
 
 grammar;
 
@@ -75,22 +77,22 @@ Argument: Argument = {
 }
 
 Register: Register = {
-    r"x[0-9]" => Register(<>[1..].parse().unwrap()),
-    r"x1[0-9]" => Register(<>[1..].parse().unwrap()),
-    r"x2[0-9]" => Register(<>[1..].parse().unwrap()),
-    r"x3[0-1]" => Register(<>[1..].parse().unwrap()),
-    "zero" => Register(0),
-    "ra" => Register(1),
-    "sp" => Register(2),
-    "gp" => Register(3),
-    "tp" => Register(4),
-    r"a[0-7]" => Register(10 + <>[1..].parse::<u8>().unwrap()),
-    "fp" => Register(8),
-    r"s[0-1]" => Register(8 + <>[1..].parse::<u8>().unwrap()),
-    r"s[2-9]" => Register(16 + <>[1..].parse::<u8>().unwrap()),
-    r"s1[0-1]" => Register(16 + <>[1..].parse::<u8>().unwrap()),
-    r"t[0-2]" => Register(5 + <>[1..].parse::<u8>().unwrap()),
-    r"t[3-6]" => Register(25 + <>[1..].parse::<u8>().unwrap()),
+    r"x[0-9]" => Register::new(<>[1..].parse().unwrap()),
+    r"x1[0-9]" => Register::new(<>[1..].parse().unwrap()),
+    r"x2[0-9]" => Register::new(<>[1..].parse().unwrap()),
+    r"x3[0-1]" => Register::new(<>[1..].parse().unwrap()),
+    "zero" => Register::new(0),
+    "ra" => Register::new(1),
+    "sp" => Register::new(2),
+    "gp" => Register::new(3),
+    "tp" => Register::new(4),
+    r"a[0-7]" => Register::new(10 + <>[1..].parse::<u8>().unwrap()),
+    "fp" => Register::new(8),
+    r"s[0-1]" => Register::new(8 + <>[1..].parse::<u8>().unwrap()),
+    r"s[2-9]" => Register::new(16 + <>[1..].parse::<u8>().unwrap()),
+    r"s1[0-1]" => Register::new(16 + <>[1..].parse::<u8>().unwrap()),
+    r"t[0-2]" => Register::new(5 + <>[1..].parse::<u8>().unwrap()),
+    r"t[3-6]" => Register::new(25 + <>[1..].parse::<u8>().unwrap()),
 }
 
 OffsetRegister: Argument = {
@@ -144,8 +146,8 @@ ExprUnary: Expression = {
 ExprTerm: Expression = {
     Number => Expression::Number(<>),
     "(" <Expression> ")" => <>,
-    "%hi(" <Expression> ")" => un_op(UOp::HiDataRef, <>),
-    "%lo(" <Expression> ")" => un_op(UOp::LoDataRef, <>),
+    "%hi(" <Expression> ")" => fn_op(FOp::HiDataRef, <>),
+    "%lo(" <Expression> ")" => fn_op(FOp::LoDataRef, <>),
     Symbol => Expression::Symbol(<>)
 }
 

@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use crate::parser::{Argument, Expression, Statement};
+use crate::ast::{Argument, Expression, FunctionOpKind, Register, Statement};
 
 pub enum DataValue {
     Direct(Vec<u8>),
@@ -22,8 +22,8 @@ impl DataValue {
 /// Extract all data objects from the list of statements.
 /// Returns the named data objects themselves and a vector of the names
 /// in the order in which they occur in the statements.
-pub fn extract_data_objects(
-    statements: &[Statement],
+pub fn extract_data_objects<R: Register, F: FunctionOpKind>(
+    statements: &[Statement<R, F>],
 ) -> (BTreeMap<String, Vec<DataValue>>, Vec<String>) {
     let mut object_order = vec![];
     let mut current_label = None;
@@ -74,7 +74,10 @@ pub fn extract_data_objects(
     (objects, object_order)
 }
 
-fn extract_data_value(directive: &str, arguments: &[Argument]) -> Vec<DataValue> {
+fn extract_data_value<R: Register, F: FunctionOpKind>(
+    directive: &str,
+    arguments: &[Argument<R, F>],
+) -> Vec<DataValue> {
     match (directive, arguments) {
         (
             ".zero",

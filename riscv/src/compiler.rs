@@ -1,81 +1,133 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    fmt,
+};
 
+use asm_utils::{
+    ast::{BinaryOpKind, UnaryOpKind},
+    data_parser::{self, DataValue},
+    parser::parse_asm,
+    reachability,
+};
 use itertools::Itertools;
 
-use crate::data_parser::{self, DataValue};
-use crate::parser::{self, Argument, Register, Statement, UnaryOpKind};
-use crate::{disambiguator, reachability};
+use crate::disambiguator;
+use crate::parser::RiscParser;
+use crate::{Argument, Expression, Statement};
 
-use super::parser::Expression;
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub struct Register {
+    value: u8,
+}
 
-/// Compiles riscv assembly to POWDR assembly. Adds required library routines.
-pub fn compile_riscv_asm(mut assemblies: BTreeMap<String, String>) -> String {
-    // stack grows towards zero
-    let stack_start = 0x10000;
-    // data grows away from zero
-    let data_start = 0x10100;
+impl Register {
+    pub fn new(value: u8) -> Self {
+        Self { value }
+    }
 
-    assert!(assemblies
-        .insert("__runtime".to_string(), runtime().to_string())
-        .is_none());
+    pub fn is_zero(&self) -> bool {
+        self.value == 0
+    }
+}
 
-    // TODO remove unreferenced files.
-    let (mut statements, file_ids) = disambiguator::disambiguate(
-        assemblies
+impl asm_utils::ast::Register for Register {}
+
+impl fmt::Display for Register {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "x{}", self.value)
+    }
+}
+
+#[derive(Clone, Copy)]
+pub enum FunctionKind {
+    HiDataRef,
+    LoDataRef,
+}
+
+impl asm_utils::ast::FunctionOpKind for FunctionKind {}
+
+impl fmt::Display for FunctionKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            FunctionKind::HiDataRef => write!(f, "%hi"),
+            FunctionKind::LoDataRef => write!(f, "%lo"),
+        }
+    }
+}
+
+#[derive(Default)]
+pub struct Risc {}
+
+impl asm_utils::compiler::Compiler for Risc {
+    /// Compiles riscv assembly to POWDR assembly. Adds required library routines.
+    fn compile(mut assemblies: BTreeMap<String, String>) -> String {
+        // stack grows towards zero
+        let stack_start = 0x10000;
+        // data grows away from zero
+        let data_start = 0x10100;
+
+        assert!(assemblies
+            .insert("__runtime".to_string(), runtime().to_string())
+            .is_none());
+
+        // TODO remove unreferenced files.
+        let (mut statements, file_ids) = disambiguator::disambiguate(
+            assemblies
+                .into_iter()
+                .map(|(name, contents)| (name, parse_asm(RiscParser::default(), &contents)))
+                .collect(),
+        );
+        let (mut objects, mut object_order) = data_parser::extract_data_objects(&statements);
+
+        // Reduce to the code that is actually reachable from main
+        // (and the objects that are referred from there)
+        reachability::filter_reachable_from("__runtime_start", &mut statements, &mut objects);
+
+        // Replace dynamic references to code labels
+        replace_dynamic_label_references(&mut statements, &objects);
+
+        // Sort the objects according to the order of the names in object_order.
+        // With the single exception: If there is large object, put that at the end.
+        // The idea behind this is that there might be a single gigantic object representing the heap
+        // and putting that at the end should keep memory addresses small.
+        let mut large_objects = objects
+            .iter()
+            .filter(|(_name, data)| data.iter().map(|d| d.size()).sum::<usize>() > 0x2000);
+        if let (Some((heap, _)), None) = (large_objects.next(), large_objects.next()) {
+            let heap_pos = object_order.iter().position(|o| o == heap).unwrap();
+            object_order.remove(heap_pos);
+            object_order.push(heap.clone());
+        };
+        let sorted_objects = object_order
             .into_iter()
-            .map(|(name, contents)| (name, parser::parse_asm(&contents)))
-            .collect(),
-    );
-    let (mut objects, mut object_order) = data_parser::extract_data_objects(&statements);
+            .filter_map(|n| {
+                let value = objects.get_mut(&n).map(std::mem::take);
+                value.map(|v| (n, v))
+            })
+            .collect::<Vec<_>>();
+        let (data_code, data_positions) = store_data_objects(&sorted_objects, data_start);
 
-    // Reduce to the code that is actually reachable from main
-    // (and the objects that are referred from there)
-    reachability::filter_reachable_from("__runtime_start", &mut statements, &mut objects);
-
-    // Replace dynamic references to code labels
-    replace_dynamic_label_references(&mut statements, &objects);
-
-    // Sort the objects according to the order of the names in object_order.
-    // With the single exception: If there is large object, put that at the end.
-    // The idea behind this is that there might be a single gigantic object representing the heap
-    // and putting that at the end should keep memory addresses small.
-    let mut large_objects = objects
-        .iter()
-        .filter(|(_name, data)| data.iter().map(|d| d.size()).sum::<usize>() > 0x2000);
-    if let (Some((heap, _)), None) = (large_objects.next(), large_objects.next()) {
-        let heap_pos = object_order.iter().position(|o| o == heap).unwrap();
-        object_order.remove(heap_pos);
-        object_order.push(heap.clone());
-    };
-    let sorted_objects = object_order
-        .into_iter()
-        .filter_map(|n| {
-            let value = objects.get_mut(&n).map(std::mem::take);
-            value.map(|v| (n, v))
-        })
-        .collect::<Vec<_>>();
-    let (data_code, data_positions) = store_data_objects(&sorted_objects, data_start);
-
-    risv_machine(
-        &preamble(),
-        &file_ids
-            .into_iter()
-            .map(|(id, dir, file)| format!("debug file {id} {} {};", quote(&dir), quote(&file)))
-            .chain(["call __data_init;".to_string()])
-            .chain([
-                format!("// Set stack pointer\nx2 <=X= {stack_start};"),
-                "jump __runtime_start;".to_string(),
-            ])
-            .chain(
-                substitute_symbols_with_values(statements, &data_positions)
-                    .into_iter()
-                    .flat_map(process_statement),
-            )
-            .chain(["// This is the data initialization routine.\n__data_init::".to_string()])
-            .chain(data_code)
-            .chain(["// This is the end of the data initialization routine.\nret;".to_string()])
-            .join("\n"),
-    )
+        risv_machine(
+            &preamble(),
+            &file_ids
+                .into_iter()
+                .map(|(id, dir, file)| format!("debug file {id} {} {};", quote(&dir), quote(&file)))
+                .chain(["call __data_init;".to_string()])
+                .chain([
+                    format!("// Set stack pointer\nx2 <=X= {stack_start};"),
+                    "jump __runtime_start;".to_string(),
+                ])
+                .chain(
+                    substitute_symbols_with_values(statements, &data_positions)
+                        .into_iter()
+                        .flat_map(process_statement),
+                )
+                .chain(["// This is the data initialization routine.\n__data_init::".to_string()])
+                .chain(data_code)
+                .chain(["// This is the end of the data initialization routine.\nret;".to_string()])
+                .join("\n"),
+        )
+    }
 }
 
 /// Replace certain patterns of references to code labels by
@@ -133,11 +185,11 @@ fn replace_dynamic_label_reference(
     if instr1.as_str() != "lui" || instr2.as_str() != "addi" {
         return None;
     };
-    let [Argument::Register(r1), Argument::Expression(Expression::UnaryOp(UnaryOpKind::HiDataRef, expr1))] = &args1[..] else { return None; };
+    let [Argument::Register(r1), Argument::Expression(Expression::FunctionOp(FunctionKind::HiDataRef, expr1))] = &args1[..] else { return None; };
     // Maybe should try to reduce expr1 and expr2 before comparing deciding it is a pure symbol?
-    let Expression::Symbol(label1) = &expr1[0] else { return None; };
-    let [Argument::Register(r2), Argument::Register(r3), Argument::Expression(Expression::UnaryOp(UnaryOpKind::LoDataRef, expr2))] = &args2[..] else { return None; };
-    let Expression::Symbol(label2) = &expr2[0] else { return None; };
+    let Expression::Symbol(label1) = expr1.as_ref() else { return None; };
+    let [Argument::Register(r2), Argument::Register(r3), Argument::Expression(Expression::FunctionOp(FunctionKind::LoDataRef, expr2))] = &args2[..] else { return None; };
+    let Expression::Symbol(label2) = expr2.as_ref() else { return None; };
     if r1 != r3 || label1 != label2 || data_objects.contains_key(label1) {
         return None;
     }
@@ -241,10 +293,8 @@ fn substitute_symbols_with_values(
                     }
                 }
                 Expression::UnaryOp(op, subexpr) => {
-                    if let Expression::Number(num) = subexpr[0] {
+                    if let Expression::Number(num) = subexpr.as_ref() {
                         let result = match op {
-                            UnaryOpKind::HiDataRef => num >> 12,
-                            UnaryOpKind::LoDataRef => num & 0xfff,
                             UnaryOpKind::Negation => -num,
                         };
                         *expression = Expression::Number(result);
@@ -255,19 +305,28 @@ fn substitute_symbols_with_values(
                         (&subexprs[0], &subexprs[1])
                     {
                         let result = match op {
-                            parser::BinaryOpKind::Or => a | b,
-                            parser::BinaryOpKind::Xor => a ^ b,
-                            parser::BinaryOpKind::And => a & b,
-                            parser::BinaryOpKind::LeftShift => a << b,
-                            parser::BinaryOpKind::RightShift => a >> b,
-                            parser::BinaryOpKind::Add => a + b,
-                            parser::BinaryOpKind::Sub => a - b,
-                            parser::BinaryOpKind::Mul => a * b,
-                            parser::BinaryOpKind::Div => a / b,
-                            parser::BinaryOpKind::Mod => a % b,
+                            BinaryOpKind::Or => a | b,
+                            BinaryOpKind::Xor => a ^ b,
+                            BinaryOpKind::And => a & b,
+                            BinaryOpKind::LeftShift => a << b,
+                            BinaryOpKind::RightShift => a >> b,
+                            BinaryOpKind::Add => a + b,
+                            BinaryOpKind::Sub => a - b,
+                            BinaryOpKind::Mul => a * b,
+                            BinaryOpKind::Div => a / b,
+                            BinaryOpKind::Mod => a % b,
                         };
                         *expression = Expression::Number(result);
                     }
+                }
+                Expression::FunctionOp(op, subexpr) => {
+                    if let Expression::Number(num) = subexpr.as_ref() {
+                        let result = match op {
+                            FunctionKind::HiDataRef => num >> 12,
+                            FunctionKind::LoDataRef => num & 0xfff,
+                        };
+                        *expression = Expression::Number(result);
+                    };
                 }
             });
         }
