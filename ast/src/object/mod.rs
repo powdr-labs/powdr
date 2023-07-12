@@ -22,9 +22,9 @@ impl Location {
     }
 }
 
-#[derive(Default)]
 pub struct PILGraph<T> {
-    pub main: Location,
+    pub main: Machine,
+    pub entry_points: Vec<Function<T>>,
     pub objects: BTreeMap<Location, Object<T>>,
 }
 
@@ -57,14 +57,20 @@ pub struct LinkFrom {
 
 #[derive(Clone)]
 pub struct LinkTo<T> {
-    /// the location of the machine we link to
-    pub loc: Location,
+    /// the machine we link to
+    pub machine: Machine,
+    /// the function we link to
+    pub function: Function<T>,
+}
+
+#[derive(Clone)]
+pub struct Machine {
+    /// the location of this instance
+    pub location: Location,
     /// its latch
     pub latch: String,
     /// its function id
     pub function_id: String,
-    /// the function we link to
-    pub function: Function<T>,
 }
 
 #[derive(Clone)]

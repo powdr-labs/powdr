@@ -17,11 +17,6 @@ machine HelloWorld {
         Y = X - 1
     }
 
-    // an instruction to loop forever, as we must fill the whole execution trace
-    instr loop {
-        pc' = pc
-    }
-
     instr assert_zero X {
         X = 0
     }
@@ -36,6 +31,6 @@ machine HelloWorld {
         A <== incr(A);
         A <== decr(A);
         assert_zero A;
-        loop;
+        return;
     }
 }

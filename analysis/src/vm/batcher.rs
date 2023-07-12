@@ -1,3 +1,5 @@
+//! Batch compatible statements in each function of each machine
+
 use std::marker::PhantomData;
 
 use ast::asm_analysis::{
@@ -68,8 +70,9 @@ struct RomBatcher<T> {
 impl<T: FieldElement> RomBatcher<T> {
     // split a list of statements into compatible batches
     fn extract_batches(&self, machine_name: &str, machine: &mut Machine<T>) {
-        if let Some(rom) = machine.rom.as_mut() {
-            let batches: Vec<_> = rom
+        for function in machine.functions.iter_mut() {
+            let batches: Vec<_> = function
+                .body
                 .statements
                 .iter()
                 .peekable()
@@ -109,7 +112,8 @@ impl<T: FieldElement> RomBatcher<T> {
             let lines_after = batches.len();
 
             log::debug!(
-                "Batching complete for machine {} with savings of {}% in execution trace lines",
+                "Batching complete for function {} in machine {} with savings of {}% in execution trace lines",
+                function.name,
                 machine_name,
                 match lines_before {
                     0 => 0.,
@@ -117,7 +121,7 @@ impl<T: FieldElement> RomBatcher<T> {
                 }
             );
 
-            rom.batches = Some(batches);
+            function.body.statements.set_batches(batches);
         }
     }
 
@@ -135,31 +139,50 @@ mod tests {
 
     use std::{fs, path::PathBuf};
 
-    use number::GoldilocksField;
+    use ast::asm_analysis::AnalysisASMFile;
+    use number::Bn254Field;
     use pretty_assertions::assert_eq;
     use test_log::test;
 
-    use crate::{batcher, macro_expansion, romgen, type_check};
+    use crate::vm::test_utils::batch_str;
 
     fn test_batching(path: &str) {
         let base_path = PathBuf::from("../test_data/asm/batching");
         let file_name = base_path.join(path);
-        let contents = fs::read_to_string(&file_name).unwrap();
-        let parsed = parser::parse_asm::<GoldilocksField>(
-            Some(file_name.as_os_str().to_str().unwrap()),
-            &contents,
-        )
-        .unwrap();
-        let expanded = macro_expansion::expand(parsed);
-        let checked = type_check::check(expanded).unwrap();
-        let rommed = romgen::generate_rom(checked);
-        let batched = batcher::batch(rommed);
+        let expected = fs::read_to_string(&file_name).unwrap();
+
+        // remove the batch comments from the expected output before compiling
+        let input = expected
+            .split('\n')
+            .filter(|line| !line.contains("//"))
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        let batched: AnalysisASMFile<Bn254Field> = batch_str(&input);
+
+        // batching also introduces the return instructions as well as sets the machine latches
+        // make sure these changes are there, and remove them so that we can compare with the expected value
+
+        let batched_str = batched.to_string();
+
+        assert!(batched_str.contains("instr return {  }"));
+        assert!(batched_str.contains("(instr_return, _)"));
+        let batched_str = batched_str.replace("(instr_return, _)", "");
+
+        let batched_str = batched_str
+            .split('\n')
+            .filter_map(|s| match s {
+                s if s.contains("instr return {  }") => None,
+                s => Some(s),
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
 
         assert_eq!(
-            format!("{batched}")
+            format!("{batched_str}")
                 .replace("\n\n", "\n")
                 .replace('\t', "    "),
-            contents.replace("\n\n", "\n").replace('\t', "    "),
+            expected.replace("\n\n", "\n").replace('\t', "    "),
         );
     }
 

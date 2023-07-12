@@ -48,7 +48,7 @@ mod test {
         let contents = fs::read_to_string(file_name).unwrap();
         let parsed = parse_asm::<Bn254Field>(Some(file_name), &contents).unwrap();
         let analysed = analyze(parsed).unwrap();
-        let graph = asm_to_pil::compile(analysed);
+        let graph = airgen::compile(analysed);
         let pil = linker::link(graph).unwrap();
 
         let query_callback = |query: &str| -> Option<Bn254Field> {
@@ -103,7 +103,7 @@ mod test {
 
     #[test]
     fn secondary_block_machine_add2() {
-        mock_prove_asm("../test_data/asm/secondary_block_machine_add2.asm", &vec![]);
+        mock_prove_asm("../test_data/asm/secondary_block_machine_add2.asm", &[]);
     }
 
     #[test]

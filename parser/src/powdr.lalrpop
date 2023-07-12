@@ -152,6 +152,9 @@ Machine: Machine<T> = {
 }
 
 MachineArguments: MachineArguments = {
+    "(" "_" "," "_" ")" => MachineArguments::default(),
+    "(" <latch:Identifier> "," "_" ")" => MachineArguments { latch: Some(latch), function_id: None },
+    "(" "_" "," <function_id:Identifier> ")" => MachineArguments { latch: None, function_id: Some(function_id) },
     "(" <latch:Identifier> "," <function_id:Identifier> ")" => MachineArguments { latch: Some(latch), function_id: Some(function_id) },
     => MachineArguments::default(),
 }
@@ -181,14 +184,15 @@ pub RegisterDeclaration: MachineStatement<T> = {
 
 RegisterFlag: RegisterFlag = {
     "@pc" => RegisterFlag::IsPC,
-    "<=" => RegisterFlag::IsAssignment
+    "<=" => RegisterFlag::IsAssignment,
+    "@r" => RegisterFlag::IsReadOnly,
 }
 
 pub InstructionDeclaration: MachineStatement<T> = {
     <@L> "instr" <Identifier> <Params> <InstructionBody> => MachineStatement::InstructionDeclaration(<>)
 }
 
-InstructionBody: InstructionBody<T> = {
+pub InstructionBody: InstructionBody<T> = {
     "{}" => InstructionBody::Local(vec![]),
     "{" <InstructionBodyElements> "}" => InstructionBody::Local(<>),
     "=" <Identifier> "." <Identifier> => InstructionBody::External(<>),

@@ -4,13 +4,12 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use ast::{
     asm_analysis::{
-        AnalysisASMFile, AssignmentStatement, BatchMetadata, FunctionStatement,
+        AnalysisASMFile, AssignmentStatement, Batch, FunctionStatement,
         InstructionDefinitionStatement, InstructionStatement, LabelStatement, Machine, PilBlock,
-        RegisterDeclarationStatement, SubmachineDeclaration,
+        RegisterDeclarationStatement, RegisterTy,
     },
-    object::{Function, Instr, Link, LinkFrom, LinkTo, Location, Object, PILGraph},
     parsed::{
-        asm::{InstructionBody, InstructionBodyElement, PlookupOperator, RegisterFlag},
+        asm::{InstructionBody, InstructionBodyElement, PlookupOperator},
         build::{
             build_add, build_binary_expr, build_mul, build_number, build_sub, direct_reference,
             next_reference,
@@ -21,76 +20,15 @@ use ast::{
     },
 };
 
-const MAIN: &str = "Main";
-
 use number::FieldElement;
 
-pub fn compile<T: FieldElement>(analysis: AnalysisASMFile<T>) -> PILGraph<T> {
-    Session::default().compile(analysis)
-}
-
-#[derive(Default)]
-/// A compilation session
-struct Session<T> {
-    /// the machine types used in the tree
-    machine_types: BTreeMap<String, Machine<T>>,
-}
-
-impl<T: FieldElement> Session<T> {
-    fn instantiate_machine(&mut self, location: &Location, ty: String) -> Object<T> {
-        ASMPILConverter::new(location, &self.machine_types)
-            .convert_machine(self.machine_types.get(&ty).unwrap().clone())
-    }
-
-    fn compile(&mut self, mut input: AnalysisASMFile<T>) -> PILGraph<T> {
-        let main_location = Location::default().join("main");
-
-        // we start from the main machine
-        let main_ty = match input.machines.len() {
-            // if there is a single machine, treat it as main
-            1 => input.machines.keys().next().unwrap().clone(),
-            // otherwise, use the machine called `MAIN`
-            _ => {
-                assert!(input.machines.contains_key(MAIN));
-                MAIN.into()
-            }
-        };
-
-        self.machine_types = std::mem::take(&mut input.machines);
-
-        // get a list of all machines to instantiate. The order does not matter.
-        let mut queue = vec![(main_location.clone(), main_ty)];
-
-        let mut instances = vec![];
-
-        while let Some((location, ty)) = queue.pop() {
-            let machine = self.machine_types.get(&ty).unwrap();
-
-            queue.extend(machine.submachines.iter().map(|def| {
-                (
-                    // get the absolute name for this submachine
-                    location.clone().join(def.name.clone()),
-                    // get its type
-                    def.ty.clone(),
-                )
-            }));
-
-            instances.push((location, ty));
-        }
-
-        // visit the tree compiling the machines
-        let objects = instances
+pub fn compile<T: FieldElement>(input: AnalysisASMFile<T>) -> AnalysisASMFile<T> {
+    AnalysisASMFile {
+        machines: input
+            .machines
             .into_iter()
-            .map(|(location, ty)| {
-                let object = self.instantiate_machine(&location, ty);
-                (location, object)
-            })
-            .collect();
-
-        PILGraph {
-            main: main_location,
-            objects,
-        }
+            .map(|(name, machine)| (name, ASMPILConverter::default().convert_machine(machine)))
+            .collect(),
     }
 }
 
@@ -105,15 +43,11 @@ pub enum LiteralKind {
     UnsignedConstant,
 }
 
-struct ASMPILConverter<'a, T> {
-    /// Location in the machine tree
-    location: &'a Location,
-    /// Machine types
-    machines: &'a BTreeMap<String, Machine<T>>,
+#[derive(Default)]
+struct ASMPILConverter<T> {
     pil: Vec<PilStatement<T>>,
     pc_name: Option<String>,
     registers: BTreeMap<String, Register<T>>,
-    submachines: Vec<SubmachineDeclaration>,
     instructions: BTreeMap<String, Instruction>,
     code_lines: Vec<CodeLine<T>>,
     /// Pairs of columns that are used in the connecting plookup
@@ -122,43 +56,19 @@ struct ASMPILConverter<'a, T> {
     rom_constant_names: Vec<String>,
 }
 
-impl<'a, T: FieldElement> ASMPILConverter<'a, T> {
-    fn new(location: &'a Location, machines: &'a BTreeMap<String, Machine<T>>) -> Self {
-        Self {
-            location,
-            machines,
-            pil: Default::default(),
-            pc_name: Default::default(),
-            registers: Default::default(),
-            submachines: Default::default(),
-            instructions: Default::default(),
-            code_lines: Default::default(),
-            line_lookup: Default::default(),
-            rom_constant_names: Default::default(),
-        }
-    }
-
-    fn handle_inline_pil(&mut self, PilBlock { statements, .. }: PilBlock<T>) {
-        self.pil.extend(statements)
-    }
-
-    fn convert_machine(mut self, input: Machine<T>) -> Object<T> {
-        let degree = input.degree.map(|s| T::from(s.degree.clone()).to_degree());
-
-        self.submachines = input.submachines;
-
+impl<T: FieldElement> ASMPILConverter<T> {
+    fn convert_machine(mut self, mut input: Machine<T>) -> Machine<T> {
         // convert this machine
-        if !input.registers.is_empty() {
-            self.pil.push(PilStatement::PolynomialConstantDefinition(
-                0,
-                "first_step".to_string(),
-                FunctionDefinition::Array(
-                    ArrayExpression::value(vec![build_number(1u64)]).pad_with_zeroes(),
-                ),
-            ));
-        }
+        self.pil.push(PilStatement::PolynomialConstantDefinition(
+            0,
+            "first_step".to_string(),
+            FunctionDefinition::Array(
+                ArrayExpression::value(vec![build_number(1u64)]).pad_with_zeroes(),
+            ),
+        ));
 
-        for reg in input.registers {
+        // turn registers into constraints
+        for reg in input.registers.drain(..) {
             self.handle_register_declaration(reg);
         }
 
@@ -169,35 +79,24 @@ impl<'a, T: FieldElement> ASMPILConverter<'a, T> {
             );
         }
 
-        for block in input.constraints {
-            self.handle_inline_pil(block);
-        }
-
-        let links = input
+        // turn internal instructions into constraints and only keep external instructions
+        input.instructions = input
             .instructions
-            .into_iter()
+            .drain(..)
             .filter_map(|instr| self.handle_instruction_def(instr))
             .collect();
 
-        if let Some(rom) = input.rom {
-            let batches = rom.batches.unwrap_or_else(|| {
-                vec![
-                    BatchMetadata {
-                        size: 1,
-                        reason: None
-                    };
-                    rom.statements.len()
-                ]
-            });
-
-            let mut statements = rom.statements.into_iter();
-
-            for batch in batches {
-                self.handle_batch(batch, &mut statements);
+        // turn the rom into constant columns
+        if let Some(rom) = input.rom.take() {
+            for batch in rom.statements.into_iter_batches() {
+                self.handle_batch(batch);
             }
         }
 
-        let assignment_registers = self.assignment_registers().cloned().collect::<Vec<_>>();
+        let assignment_registers = self
+            .assignment_register_names()
+            .cloned()
+            .collect::<Vec<_>>();
         for reg in assignment_registers {
             self.create_constraints_for_assignment_reg(reg);
         }
@@ -206,20 +105,30 @@ impl<'a, T: FieldElement> ASMPILConverter<'a, T> {
             self.registers
                 .iter()
                 .filter_map(|(name, reg)| {
-                    reg.update_expression().map(|mut update| {
-                        if Some(name) == self.pc_name.as_ref() {
+                    reg.update_expression().map(|rhs| {
+                        let lhs = next_reference(name);
+                        use RegisterTy::*;
+                        let (lhs, rhs) = match reg.ty {
                             // Force pc to zero on first row.
-                            update = build_mul(
-                                build_sub(build_number(1u64), next_reference("first_step")),
-                                update,
-                            )
-                        }
+                            Pc => (
+                                lhs,
+                                build_mul(
+                                    build_sub(build_number(1u64), next_reference("first_step")),
+                                    rhs,
+                                ),
+                            ),
+                            // Unconstrain read-only registers when calling `_reset`
+                            ReadOnly => {
+                                let not_reset =
+                                    build_sub(build_number(1u64), direct_reference("instr__reset"));
+                                (build_mul(not_reset.clone(), lhs), build_mul(not_reset, rhs))
+                            }
+                            //
+                            _ => (lhs, rhs),
+                        };
 
-                        (name, update)
+                        PilStatement::PolynomialIdentity(0, build_sub(lhs, rhs))
                     })
-                })
-                .map(|(name, update)| {
-                    PilStatement::PolynomialIdentity(0, build_sub(next_reference(name), update))
                 })
                 .collect::<Vec<_>>(),
         );
@@ -248,20 +157,20 @@ impl<'a, T: FieldElement> ASMPILConverter<'a, T> {
             ));
         }
 
-        Object {
-            degree,
-            pil: self.pil,
-            links,
+        if !self.pil.is_empty() {
+            input.constraints.push(PilBlock {
+                start: 0,
+                statements: self.pil,
+            });
         }
+
+        input
     }
 
-    fn handle_batch(
-        &mut self,
-        batch: BatchMetadata,
-        statements: &mut impl Iterator<Item = FunctionStatement<T>>,
-    ) {
-        let code_lines = statements
-            .take(batch.size)
+    fn handle_batch(&mut self, batch: Batch<T>) {
+        let code_lines = batch
+            .statements
+            .into_iter()
             .flat_map(|s| self.handle_statement(s))
             .reduce(|mut acc, e| {
                 // we write to the union of the target registers.
@@ -309,34 +218,30 @@ impl<'a, T: FieldElement> ASMPILConverter<'a, T> {
 
     fn handle_register_declaration(
         &mut self,
-        RegisterDeclarationStatement { start, flag, name }: RegisterDeclarationStatement,
+        RegisterDeclarationStatement { start, ty, name }: RegisterDeclarationStatement,
     ) {
         let mut conditioned_updates = vec![];
         let mut default_update = None;
-        match flag {
-            Some(RegisterFlag::IsPC) => {
+        match ty {
+            RegisterTy::Pc => {
                 assert_eq!(self.pc_name, None);
                 self.pc_name = Some(name.to_string());
                 self.line_lookup
                     .push((name.to_string(), "p_line".to_string()));
                 default_update = Some(build_add(direct_reference(&name), build_number(1u64)));
             }
-            Some(RegisterFlag::IsAssignment) => {
-                // no updates
+            RegisterTy::Assignment => {
+                // no default update as this is transient
             }
-            None => {
-                // This might be superfluous but makes it easier to determine that the register needs to
-                // be zero in the first row.
-                self.pil.push(PilStatement::PolynomialIdentity(
-                    start,
-                    build_mul(direct_reference("first_step"), direct_reference(&name)),
-                ));
-                conditioned_updates = vec![
-                    // The value here is actually irrelevant, it is only important
-                    // that "first_step'" is included to compute the "default condition"
-                    (next_reference("first_step"), build_number(0u64)),
-                ];
-                let assignment_regs = self.assignment_registers().cloned().collect::<Vec<_>>();
+            RegisterTy::ReadOnly => {
+                // default update to be kept constant
+                default_update = Some(direct_reference(&name))
+            }
+            RegisterTy::Write => {
+                let assignment_regs = self
+                    .assignment_register_names()
+                    .cloned()
+                    .collect::<Vec<_>>();
                 // TODO do this at the same place where we set up the read flags.
                 for reg in assignment_regs {
                     let write_flag = format!("reg_write_{reg}_{name}");
@@ -352,7 +257,7 @@ impl<'a, T: FieldElement> ASMPILConverter<'a, T> {
             Register {
                 conditioned_updates,
                 default_update,
-                is_assignment: flag == Some(RegisterFlag::IsAssignment),
+                ty,
             },
         );
         self.pil.push(witness_column(start, name, None));
@@ -360,24 +265,16 @@ impl<'a, T: FieldElement> ASMPILConverter<'a, T> {
 
     fn handle_instruction_def(
         &mut self,
-        InstructionDefinitionStatement {
-            start,
-            body,
-            name,
-            params,
-        }: InstructionDefinitionStatement<T>,
-    ) -> Option<Link<T>> {
-        let instruction_flag = format!("instr_{name}");
-        let instr = Instr {
-            name: name.clone(),
-            params: params.clone(),
-            flag: instruction_flag.clone(),
-        };
-        self.create_witness_fixed_pair(start, &instruction_flag);
+        s: InstructionDefinitionStatement<T>,
+    ) -> Option<InstructionDefinitionStatement<T>> {
+        let instruction_name = s.name.clone();
+        let instruction_flag = format!("instr_{instruction_name}");
+        self.create_witness_fixed_pair(s.start, &instruction_flag);
         // it's part of the lookup!
         //self.pil.push(constrain_zero_one(&col_name));
 
-        let inputs: Vec<_> = params
+        let inputs: Vec<_> = s
+            .params
             .clone()
             .inputs
             .params
@@ -395,7 +292,9 @@ impl<'a, T: FieldElement> ASMPILConverter<'a, T> {
             })
             .collect();
 
-        let outputs = params
+        let outputs = s
+            .params
+            .clone()
             .outputs
             .map(|outputs| {
                 outputs
@@ -413,13 +312,13 @@ impl<'a, T: FieldElement> ASMPILConverter<'a, T> {
 
         // First transform into PIL so that we can apply macro expansion.
 
-        let link = match body {
+        let res = match s.body {
             InstructionBody::Local(body) => {
                 let mut statements = body
                     .into_iter()
                     .map(|el| match el {
                         InstructionBodyElement::PolynomialIdentity(left, right) => {
-                            PilStatement::PolynomialIdentity(start, build_sub(left, right))
+                            PilStatement::PolynomialIdentity(s.start, build_sub(left, right))
                         }
                         InstructionBodyElement::PlookupIdentity(left, op, right) => {
                             assert!(
@@ -428,15 +327,15 @@ impl<'a, T: FieldElement> ASMPILConverter<'a, T> {
                     );
                             match op {
                                 PlookupOperator::In => {
-                                    PilStatement::PlookupIdentity(start, left, right)
+                                    PilStatement::PlookupIdentity(s.start, left, right)
                                 }
                                 PlookupOperator::Is => {
-                                    PilStatement::PermutationIdentity(start, left, right)
+                                    PilStatement::PermutationIdentity(s.start, left, right)
                                 }
                             }
                         }
                         InstructionBodyElement::FunctionCall(c) => {
-                            PilStatement::FunctionCall(start, c.id, c.arguments)
+                            PilStatement::FunctionCall(s.start, c.id, c.arguments)
                         }
                     })
                     .collect::<Vec<_>>();
@@ -445,8 +344,8 @@ impl<'a, T: FieldElement> ASMPILConverter<'a, T> {
                 let substitutions = instruction
                     .literal_arg_names()
                     .map(|arg_name| {
-                        let param_col_name = format!("instr_{name}_param_{arg_name}");
-                        self.create_witness_fixed_pair(start, &param_col_name);
+                        let param_col_name = format!("instr_{instruction_name}_param_{arg_name}");
+                        self.create_witness_fixed_pair(s.start, &param_col_name);
                         (arg_name.clone(), param_col_name)
                     })
                     .collect::<HashMap<_, _>>();
@@ -498,42 +397,10 @@ impl<'a, T: FieldElement> ASMPILConverter<'a, T> {
                 }
                 None
             }
-            InstructionBody::External(instance, function) => {
-                // get the machine type name for this submachine from the submachine delcarations
-                let instance_ty_name = self
-                    .submachines
-                    .iter()
-                    .find(|s| s.name == instance)
-                    .unwrap()
-                    .ty
-                    .clone();
-                // get the machine type from the machine map
-                let instance_ty = self.machines.get(&instance_ty_name).unwrap();
-                // get the instance location from the current location joined with the instance name
-                let instance_location = self.location.clone().join(instance);
-
-                Some(Link {
-                    from: LinkFrom { instr },
-                    to: instance_ty
-                        .functions
-                        .iter()
-                        .find(|f| f.name == function)
-                        .map(|d| LinkTo {
-                            loc: instance_location,
-                            latch: instance_ty.latch.clone().unwrap(),
-                            function_id: instance_ty.function_id.clone().unwrap(),
-                            function: Function {
-                                name: d.name.clone(),
-                                id: d.id.unwrap(),
-                                params: d.params.clone(),
-                            },
-                        })
-                        .unwrap(),
-                })
-            }
+            InstructionBody::External(..) => Some(s),
         };
-        self.instructions.insert(name, instruction);
-        link
+        self.instructions.insert(instruction_name, instruction);
+        res
     }
 
     fn handle_assignment(
@@ -777,8 +644,14 @@ impl<'a, T: FieldElement> ASMPILConverter<'a, T> {
         let read_free = format!("{register}_read_free");
         self.create_witness_fixed_pair(0, &read_free);
         let free_value = format!("{register}_free_value");
-        let regular_registers = self.regular_registers().cloned().collect::<Vec<_>>();
-        let assign_constraint = regular_registers
+        // we can read from write registers, pc and read-only registers
+        let read_registers = self
+            .write_register_names()
+            .chain(self.pc_register_names())
+            .chain(self.read_only_register_names())
+            .cloned()
+            .collect::<Vec<_>>();
+        let assign_constraint = read_registers
             .iter()
             .map(|name| {
                 let read_coefficient = format!("read_{register}_{name}");
@@ -823,7 +696,7 @@ impl<'a, T: FieldElement> ASMPILConverter<'a, T> {
             .map(|n| (n, vec![T::from(0); self.code_lines.len()]))
             .collect::<BTreeMap<_, _>>();
         let mut free_value_query_arms = self
-            .assignment_registers()
+            .assignment_register_names()
             .map(|r| (r.clone(), vec![]))
             .collect::<BTreeMap<_, _>>();
 
@@ -900,7 +773,7 @@ impl<'a, T: FieldElement> ASMPILConverter<'a, T> {
         }
         let pc_name = self.pc_name.clone();
         let free_value_pil = self
-            .assignment_registers()
+            .assignment_register_names()
             .map(|reg| {
                 let free_value = format!("{reg}_free_value");
                 witness_column(
@@ -950,17 +823,28 @@ impl<'a, T: FieldElement> ASMPILConverter<'a, T> {
         self.rom_constant_names.push(fixed_name);
     }
 
-    fn assignment_registers(&self) -> impl Iterator<Item = &String> {
+    fn assignment_register_names(&self) -> impl Iterator<Item = &String> {
         self.registers
             .iter()
-            .filter_map(|(n, r)| if r.is_assignment { Some(n) } else { None })
+            .filter_map(|(n, r)| r.ty.is_assignment().then_some(n))
     }
 
-    fn regular_registers(&self) -> impl Iterator<Item = &String> {
-        // TODO shouldn't we also filter out the PC?
+    fn write_register_names(&self) -> impl Iterator<Item = &String> {
         self.registers
             .iter()
-            .filter_map(|(n, r)| if r.is_assignment { None } else { Some(n) })
+            .filter_map(|(n, r)| r.ty.is_write().then_some(n))
+    }
+
+    fn pc_register_names(&self) -> impl Iterator<Item = &String> {
+        self.registers
+            .iter()
+            .filter_map(|(n, r)| r.ty.is_pc().then_some(n))
+    }
+
+    fn read_only_register_names(&self) -> impl Iterator<Item = &String> {
+        self.registers
+            .iter()
+            .filter_map(|(n, r)| r.ty.is_read_only().then_some(n))
     }
 }
 
@@ -970,7 +854,7 @@ struct Register<T> {
     /// TODO check that condition is bool
     conditioned_updates: Vec<(Expression<T>, Expression<T>)>,
     default_update: Option<Expression<T>>,
-    is_assignment: bool,
+    ty: RegisterTy,
 }
 
 impl<T: FieldElement> Register<T> {

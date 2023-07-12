@@ -1,6 +1,6 @@
 use std::fmt::{Display, Formatter, Result};
 
-use super::{Function, Instr, Link, LinkFrom, LinkTo, Location, Object, PILGraph};
+use super::{Function, Instr, Link, LinkFrom, LinkTo, Location, Machine, Object, PILGraph};
 
 impl Display for Location {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
@@ -57,10 +57,16 @@ impl Display for Instr {
 
 impl<T: Display> Display for LinkTo<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(f, "// {} in {}", self.function, self.machine)
+    }
+}
+
+impl Display for Machine {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(
             f,
-            "// {} in object with latch \"{}\" and function_id \"{}\"",
-            self.function, self.latch, self.function_id
+            "object with latch \"{}\" and function_id \"{}\"",
+            self.latch, self.function_id
         )
     }
 }

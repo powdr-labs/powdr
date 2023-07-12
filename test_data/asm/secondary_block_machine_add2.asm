@@ -35,7 +35,6 @@ machine Main {
     instr add2 Y -> X {
         {Y, X} in add_two_RESET { add_two_input, add_two_state }
     }
-    instr loop { pc' = pc }
 
     function main {
         A <=X= 0;
@@ -47,6 +46,6 @@ machine Main {
         A <=X= 0xf5;
         B <=X= add2(A);
 
-        loop;
+        return;
     }
 }

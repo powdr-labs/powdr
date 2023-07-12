@@ -157,6 +157,7 @@ impl Display for RegisterFlag {
         match self {
             RegisterFlag::IsPC => write!(f, "@pc"),
             RegisterFlag::IsAssignment => write!(f, "<="),
+            RegisterFlag::IsReadOnly => write!(f, "@r"),
         }
     }
 }

@@ -91,6 +91,7 @@ pub enum DebugDirective {
 pub enum RegisterFlag {
     IsPC,
     IsAssignment,
+    IsReadOnly,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]

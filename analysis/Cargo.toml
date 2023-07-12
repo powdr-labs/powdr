@@ -11,6 +11,8 @@ itertools = "^0.10"
 log = "0.4.18"
 number = { version = "0.1.0", path = "../number" }
 parser = { path = "../parser" }
+asm_to_pil = { path = "../asm_to_pil" }
+diff = "0.1"
 
 [dev-dependencies]
 parser = { path = "../parser" }
