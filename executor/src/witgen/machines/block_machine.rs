@@ -613,11 +613,6 @@ impl DefaultSequenceIterator {
     }
 
     fn next(&mut self, progress_in_last_step: bool) -> Option<SequenceStep> {
-        if self.state.cur_row_delta_index == self.row_deltas.len() {
-            // Done!
-            return None;
-        }
-
         let row_delta = self.row_deltas[self.state.cur_row_delta_index];
         let is_last_identity = if row_delta + 1 == self.block_size as i64 {
             self.state.cur_identity_index == self.identities_count
@@ -626,6 +621,12 @@ impl DefaultSequenceIterator {
         };
 
         self.state.update(is_last_identity, progress_in_last_step);
+
+        if self.state.cur_row_delta_index == self.row_deltas.len() {
+            // Done!
+            return None;
+        }
+        let row_delta = self.row_deltas[self.state.cur_row_delta_index];
 
         let identity = if self.state.cur_identity_index < self.identities_count {
             IdentityInSequence::Internal(self.state.cur_identity_index)
