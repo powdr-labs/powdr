@@ -338,7 +338,7 @@ impl<T: FieldElement> BlockMachine<T> {
                         .iter()
                         .map(|identity| SequenceStep {
                             row_delta,
-                            identity: identity.clone(),
+                            identity: *identity,
                         })
                         .collect::<Vec<_>>();
                     self.row = (old_len as i64 + row_delta + fixed_data.degree as i64)
@@ -501,7 +501,7 @@ impl<T: FieldElement> BlockMachine<T> {
             Ok(value) => {
                 if !value.is_empty() {
                     errors.clear();
-                    let (outer_constraints, inner_value) = self.split_result(value, &outer_polys);
+                    let (outer_constraints, inner_value) = self.split_result(value, outer_polys);
                     for (poly, constraint) in &outer_constraints {
                         if let Constraint::Assignment(value) = constraint {
                             change_logger.log(self, &poly.name, value, None);
