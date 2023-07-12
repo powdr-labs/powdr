@@ -30,6 +30,7 @@ pub fn no_callback<T>() -> Option<fn(&str) -> Option<T>> {
 
 /// Compiles a .pil or .asm file and runs witness generation.
 /// If the file ends in .asm, converts it to .pil first.
+/// Retunrs the compilation result if any compilation took place.
 pub fn compile_pil_or_asm<T: FieldElement>(
     file_name: &str,
     inputs: Vec<T>,
@@ -75,6 +76,8 @@ where
     )
 }
 
+/// Compiles a given PIL and tries to generate fixed and witness columns.
+/// @returns a compilation result, containing witness and fixed columns
 pub fn compile_pil_ast<T: FieldElement, QueryCallback>(
     pil: &PILFile<T>,
     file_name: &OsStr,
@@ -98,6 +101,7 @@ where
 
 /// Compiles a .asm file, outputs the PIL on stdout and tries to generate
 /// fixed and witness columns.
+/// @returns a compilation result if any compilationwas done.
 pub fn compile_asm<T: FieldElement>(
     file_name: &str,
     inputs: Vec<T>,
@@ -175,6 +179,8 @@ pub struct CompilationResult<T: FieldElement> {
     pub witness: Option<Vec<(String, Vec<T>)>>,
 }
 
+/// Optimizes a given pil and tries to generate constants and committed polynomials.
+/// @returns a compilation result, containing witness and fixed columns, if successful.
 fn compile<T: FieldElement, QueryCallback>(
     analyzed: Analyzed<T>,
     file_name: &OsStr,
