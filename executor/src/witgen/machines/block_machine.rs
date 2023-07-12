@@ -231,7 +231,7 @@ impl<'a, T: FieldElement> ChangeLogger<'a, T> {
 
 impl<T: FieldElement> BlockMachine<T> {
     /// Extends the data with a new block.
-    fn append_new_block(&mut self, max_len: DegreeType) -> Result<(), EvalError> {
+    fn append_new_block(&mut self, max_len: DegreeType) -> Result<(), EvalError<T>> {
         if self.rows() + self.block_size as DegreeType >= max_len {
             return Err(EvalError::RowsExhausted);
         }
@@ -366,7 +366,7 @@ impl<T: FieldElement> BlockMachine<T> {
         } else if !errors.is_empty() {
             Err(errors
                 .into_iter()
-                .reduce(|x: EvalError, y| x.combine(y))
+                .reduce(|x: EvalError<T>, y| x.combine(y))
                 .unwrap())
         } else {
             Err("Could not assign all variables in the query - maybe the machine does not have enough constraints?".to_string().into())
