@@ -544,11 +544,48 @@ fn preamble() -> String {
     // Removes up to 16 bits beyond 32
     // TODO is this really safe?
     instr wrap16 Y -> X { Y = Y_b5 * 2**32 + Y_b6 * 2**40 + X, X = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000 }
-    constraints{
+    constraints {
         col witness Y_b5;
         col witness Y_b6;
+        col witness Y_b7;
+        col witness Y_b8;
         { Y_b5 } in { bytes };
         { Y_b6 } in { bytes };
+        { Y_b7 } in { bytes };
+        { Y_b8 } in { bytes };
+
+        col witness remainder; 
+
+        col witness REM_b1;
+        col witness REM_b2;
+        col witness REM_b3;
+        col witness REM_b4;
+        { REM_b1 } in { bytes };
+        { REM_b2 } in { bytes };
+        { REM_b3 } in { bytes };
+        { REM_b4 } in { bytes };
+    }
+
+    // implements Z = Y / X, stores remainder in `remainder`.
+    instr divu Y, X -> Z {
+        // Y is the known dividend
+        // X is the known divisor
+        // Z is the unknown quotient
+        // main division algorithm;
+        // if X is zero, remainder is set to dividend, as per RISC-V specification:
+        X * Z + remainder = Y,
+
+        // remainder >= 0:
+        remainder = REM_b1 + REM_b2 * 0x100 + REM_b3 * 0x10000 + REM_b4 * 0x1000000,
+
+        // remainder < divisor, conditioned to X not being 0:
+        (1 - XIsZero) * (X - remainder - 1 - Y_b5 - Y_b6 * 0x100 - Y_b7 * 0x10000 - Y_b8 * 0x1000000) = 0,
+
+        // in case X is zero, we set quotient according to RISC-V specification
+        XIsZero * (Z - 0xffffffff) = 0,
+
+        // quotient is 32 bits:
+        Z = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000
     }
 
     // Removes up to 32 bits beyond 32
@@ -562,17 +599,15 @@ fn preamble() -> String {
         Y * Z = X * 2**32 + Y_b5 + Y_b6 * 0x100 + Y_b7 * 0x10000 + Y_b8 * 0x1000000,
         X = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000
     }
-    constraints{
-        col witness Y_b7;
-        col witness Y_b8;
-        { Y_b7 } in { bytes };
-        { Y_b8 } in { bytes };
-    }
 "#
 }
 
 fn runtime() -> &'static str {
     r#"
+.globl __udivdi3@plt
+.globl __udivdi3
+.set __udivdi3@plt, __udivdi3
+
 .globl memcpy@plt
 .globl memcpy
 .set memcpy@plt, memcpy
@@ -792,6 +827,10 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
         "mulhu" => {
             let (rd, r1, r2) = rrr(args);
             only_if_no_write_to_zero(format!("{rd} <=X= mulhu({r1}, {r2});"), rd)
+        }
+        "divu" => {
+            let (rd, r1, r2) = rrr(args);
+            only_if_no_write_to_zero(format!("{rd} <=Z= divu({r1}, {r2});"), rd)
         }
 
         // bitwise
