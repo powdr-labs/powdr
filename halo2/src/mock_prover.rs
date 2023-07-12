@@ -96,9 +96,14 @@ mod test {
     }
 
     #[test]
-    fn fibonacci() {
+    fn simple_sum() {
         let inputs = [165, 5, 11, 22, 33, 44, 55].map(From::from);
         mock_prove_asm("../test_data/asm/simple_sum.asm", &inputs);
+    }
+
+    #[test]
+    fn secondary_block_machine_add2() {
+        mock_prove_asm("../test_data/asm/secondary_block_machine_add2.asm", &vec![]);
     }
 
     #[test]
