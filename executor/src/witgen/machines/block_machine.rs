@@ -14,7 +14,7 @@ use crate::witgen::{
     symbolic_witness_evaluator::{SymoblicWitnessEvaluator, WitnessColumnEvaluator},
     Constraint, EvalError,
 };
-use crate::witgen::{Constraints, EvalValue};
+use crate::witgen::{Constraints, EvalValue, IncompleteCause};
 use ast::analyzed::{Expression, Identity, IdentityKind, PolynomialReference, SelectedExpressions};
 use number::{DegreeType, FieldElement};
 
@@ -373,7 +373,9 @@ impl<T: FieldElement> BlockMachine<T> {
                 .reduce(|x: EvalError<T>, y| x.combine(y))
                 .unwrap())
         } else {
-            Err("Could not assign all variables in the query - maybe the machine does not have enough constraints?".to_string().into())
+            Ok(EvalValue::incomplete(
+                IncompleteCause::BlockMachineLookupIncomplete,
+            ))
         }
     }
 

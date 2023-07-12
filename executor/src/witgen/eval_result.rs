@@ -29,6 +29,8 @@ pub enum IncompleteCause<K = usize> {
     NoQueryAnswer(String, String),
     /// Query match scrutinee is not constant, so the query fails. Example: evaluate `match x { 1 => 1, _ => 0}` but `x` is not constant.
     NonConstantQueryMatchScrutinee,
+    /// Query element is not constant.
+    NonConstantQueryElement,
     /// The left selector in a lookup is not constant. Example: `x * {1} in [{1}]` where `x` is not constant.
     NonConstantLeftSelector,
     /// A value to be written is not constant. TODO: should this be covered by another case? it's used for memory
@@ -37,6 +39,10 @@ pub enum IncompleteCause<K = usize> {
     ExpressionEvaluationUnimplemented(String),
     /// A value is not found on the left side of a match. Example: `match x {1 => 2, 3 => 4}` where `x == 0`
     NoMatchArmFound,
+    /// A lookup into a block machine was not able to assign all variables in the query. It could be that we just need to re-run it.
+    BlockMachineLookupIncomplete,
+    /// We could not (yet) read some data
+    DataNotYetAvailable,
     /// Last resort error when all possible solving approaches have failed. TODO: make this more precise or use another variant
     SolvingFailed,
     /// Some knowledge was learnt, but not a concrete value. Example: `Y = X` if we know that `Y` is boolean. We learn that `X` is boolean, but not its exact value.
