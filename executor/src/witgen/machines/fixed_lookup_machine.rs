@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::mem;
 use std::num::NonZeroUsize;
 
-use ast::analyzed::{Identity, IdentityKind, PolyID, PolynomialReference, SelectedExpressions};
+use ast::analyzed::{Identity, IdentityKind, PolynomialReference, SelectedExpressions};
 use itertools::Itertools;
 use number::FieldElement;
 
@@ -14,6 +14,7 @@ use crate::witgen::{EvalResult, FixedData};
 type Application = (Vec<u64>, Vec<u64>);
 type Index<T> = BTreeMap<Vec<T>, IndexValue>;
 
+#[derive(Debug)]
 struct IndexValue(Option<NonZeroUsize>);
 
 impl IndexValue {
@@ -191,11 +192,11 @@ impl<T: FieldElement> FixedLookup<T> {
         }
 
         // get the values of the fixed columns
-        let right: Vec<_> = right
+        let right = right
             .expressions
             .iter()
-            .map(|right_key| try_to_simple_poly_ref(right_key).map(|PolyID { id, .. }| id))
-            .collect::<Option<_>>()?;
+            .map(try_to_simple_poly_ref)
+            .collect::<Option<Vec<_>>>()?;
 
         Some(self.process_plookup_internal(fixed_data, left, right))
     }
@@ -204,7 +205,7 @@ impl<T: FieldElement> FixedLookup<T> {
         &mut self,
         fixed_data: &FixedData<T>,
         left: &[AffineResult<&'b PolynomialReference, T>],
-        right: Vec<u64>,
+        right: Vec<&PolynomialReference>,
     ) -> EvalResult<'b, T> {
         // split the fixed columns depending on whether their associated lookup variable is constant or not. Preserve the value of the constant arguments.
         // {1, 2, x} in {A, B, C} -> [[(A, 1), (B, 2)], [C, x]]
@@ -214,27 +215,33 @@ impl<T: FieldElement> FixedLookup<T> {
         let mut output_expressions = vec![];
 
         left.iter().zip(right).for_each(|(l, r)| {
-            match l
-                .as_ref()
-                .ok()
-                .and_then(|l| l.constant_value())
-                .map(|v| (r, v))
-                .ok_or((l, r))
-            {
-                Ok(assignment) => {
-                    input_assignment.push(assignment);
-                }
-                Err((expression, column)) => {
-                    output_columns.push(column);
-                    output_expressions.push(expression);
-                }
+            let left_value = l.as_ref().ok().and_then(|l| l.constant_value());
+            if let Some(value) = left_value {
+                input_assignment.push((r, value));
+            } else {
+                output_columns.push(r.poly_id.unwrap().id);
+                output_expressions.push(l);
             }
         });
 
+        let input_assignment_with_ids = input_assignment
+            .iter()
+            .map(|(poly_ref, v)| (poly_ref.poly_id.unwrap().id, *v))
+            .collect();
         let index_value = self
             .indices
-            .get_match(fixed_data, input_assignment, output_columns.clone())
-            .ok_or(EvalError::FixedLookupFailed)?;
+            .get_match(
+                fixed_data,
+                input_assignment_with_ids,
+                output_columns.clone(),
+            )
+            .ok_or_else(|| {
+                let query_string = input_assignment
+                    .iter()
+                    .map(|(poly_ref, v)| format!("{} = {}", poly_ref.name, v))
+                    .join(", ");
+                EvalError::FixedLookupFailed(query_string)
+            })?;
 
         let row = match index_value.row() {
             // a single match, we continue
