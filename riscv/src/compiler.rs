@@ -1248,6 +1248,10 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
             // has been recognized.
             match args {
                 [label] => match label {
+                    // if we call `call main;`, we replace with `call main; return;`
+                    Argument::Expression(Expression::Symbol(l)) if l == "main" => {
+                        vec!["call main;".into(), "return;".into()]
+                    }
                     Argument::Expression(Expression::Symbol(l)) => {
                         match try_coprocessor_substitution(l) {
                             Some(replacement) => vec![replacement.to_string()],
@@ -1275,6 +1279,10 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
             // has been recognized.
             match args {
                 [label] => match label {
+                    // if we call `tail main;`, we replace with `call main; return;`
+                    Argument::Expression(Expression::Symbol(l)) if l == "main" => {
+                        vec!["call main;".into(), "return;".into()]
+                    }
                     Argument::Expression(Expression::Symbol(l)) => {
                         match try_coprocessor_substitution(l) {
                             Some(replacement) => vec![replacement.to_string()],

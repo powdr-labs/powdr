@@ -66,9 +66,7 @@ impl Display for Machine {
         write!(
             f,
             "object at location {} with latch \"{}\" and function_id \"{}\"",
-            self.location,
-            self.latch.clone().unwrap_or("0".into()),
-            self.function_id.clone().unwrap_or("0".into())
+            self.location, self.latch, self.function_id
         )
     }
 }

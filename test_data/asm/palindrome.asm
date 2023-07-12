@@ -67,6 +67,6 @@ machine Palindrome {
         jmp check;
 
         end::
-        jmp end;
+        return;
     }
 }

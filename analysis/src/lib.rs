@@ -1,22 +1,35 @@
-mod batcher;
-mod inference;
+mod block_enforcer;
 mod macro_expansion;
-mod romgen;
-mod type_check;
+mod vm;
 
 /// expose the macro expander for use in the pil_analyzer
 pub use macro_expansion::MacroExpander;
 
-use ast::{asm_analysis::AnalysisASMFile, parsed::asm::ASMFile};
+use ast::{asm_analysis::AnalysisASMFile, parsed::asm::ASMFile, DiffMonitor};
 use number::FieldElement;
 
 pub fn analyze<T: FieldElement>(file: ASMFile<T>) -> Result<AnalysisASMFile<T>, Vec<String>> {
-    let expanded = macro_expansion::expand(file);
-    let checked = type_check::check(expanded)?;
-    let inferred = inference::infer(checked)?;
-    let rommed = romgen::generate_rom(inferred);
-    let batched = batcher::batch(rommed);
-    Ok(batched)
+    let mut monitor = DiffMonitor::default();
+
+    // expand macros
+    log::debug!("Run expand analysis step");
+    let file = macro_expansion::expand(file);
+    // type check
+    log::debug!("Run type-check analysis step");
+    let file = type_check::check(file)?;
+    monitor.push(&file);
+
+    // run analysis on vm machines, reducing them to block machines
+    log::debug!("Start asm analysis");
+    let file = vm::analyze(file, &mut monitor)?;
+    log::debug!("End asm analysis");
+
+    // enforce blocks using `function_id` and `latch`
+    log::debug!("Run enforce_block analysis step");
+    let file = block_enforcer::enforce(file);
+    monitor.push(&file);
+
+    Ok(file)
 }
 
 pub mod utils {
@@ -36,7 +49,7 @@ mod test_util {
     use number::FieldElement;
     use parser::parse_asm;
 
-    use crate::{inference, macro_expansion, type_check};
+    use crate::macro_expansion;
 
     /// A test utility to process a source file until after macro expansion
     pub fn expand_str<T: FieldElement>(source: &str) -> ASMFile<T> {
@@ -47,10 +60,5 @@ mod test_util {
     /// A test utility to process a source file until after type checking
     pub fn typecheck_str<T: FieldElement>(source: &str) -> Result<AnalysisASMFile<T>, Vec<String>> {
         type_check::check(expand_str(source))
-    }
-
-    /// A test utility to process a source file until after inference
-    pub fn infer_str<T: FieldElement>(source: &str) -> Result<AnalysisASMFile<T>, Vec<String>> {
-        inference::infer(typecheck_str(source).unwrap())
     }
 }

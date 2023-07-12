@@ -35,14 +35,10 @@ machine Main {
     instr sub X, Y -> Z = arith.sub
     instr assert_eq X, Y { X = Y }
 
-    instr loop {
-        pc' = pc
-    }
-
     function main {
-        A <=Z= add(2, 1);
-        A <=Z= sub(A, 1);
+        A <== add(2, 1);
+        A <== sub(A, 1);
         assert_eq A, 2;
-        loop;
+        return;
     }
 }

@@ -68,9 +68,9 @@ pub struct Machine {
     /// the location of this instance
     pub location: Location,
     /// its latch
-    pub latch: Option<String>,
+    pub latch: String,
     /// its function id
-    pub function_id: Option<String>,
+    pub function_id: String,
 }
 
 #[derive(Clone)]

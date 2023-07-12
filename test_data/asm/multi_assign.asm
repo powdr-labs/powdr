@@ -13,12 +13,11 @@ machine MultiAssign {
     }
 
     instr assert_zero X { XIsZero = 1 }
-    instr loop { pc' = pc }
 
     function main {
         A <=X= ${ ("input", 0) };
         A <=Y= A - 7;
         assert_zero A;
-        loop;
+        return;
     }
 }

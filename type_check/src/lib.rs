@@ -3,8 +3,9 @@ use std::collections::BTreeMap;
 use ast::{
     asm_analysis::{
         AnalysisASMFile, AssignmentStatement, DebugDirective, DegreeStatement, FunctionBody,
-        FunctionDefinitionStatement, InstructionDefinitionStatement, InstructionStatement,
-        LabelStatement, Machine, PilBlock, RegisterDeclarationStatement, SubmachineDeclaration,
+        FunctionDefinitionStatement, FunctionStatements, Instruction,
+        InstructionDefinitionStatement, InstructionStatement, LabelStatement, Machine, PilBlock,
+        RegisterDeclarationStatement, RegisterTy, Return, SubmachineDeclaration,
     },
     parsed::asm::{ASMFile, FunctionStatement, MachineStatement, RegisterFlag},
 };
@@ -54,14 +55,22 @@ impl<T: FieldElement> TypeChecker<T> {
                     });
                 }
                 MachineStatement::RegisterDeclaration(start, name, flag) => {
-                    registers.push(RegisterDeclarationStatement { start, name, flag });
+                    let ty = match flag {
+                        Some(RegisterFlag::IsAssignment) => RegisterTy::Assignment,
+                        Some(RegisterFlag::IsPC) => RegisterTy::Pc,
+                        Some(RegisterFlag::IsReadOnly) => RegisterTy::ReadOnly,
+                        None => RegisterTy::Write,
+                    };
+                    registers.push(RegisterDeclarationStatement { start, name, ty });
                 }
                 MachineStatement::InstructionDeclaration(start, name, params, body) => {
+                    if name == "return" {
+                        errors.push("Instruction cannot use reserved name `return`".into());
+                    }
                     instructions.push(InstructionDefinitionStatement {
                         start,
                         name,
-                        params,
-                        body,
+                        instruction: Instruction { params, body },
                     });
                 }
                 MachineStatement::InlinePil(start, statements) => {
@@ -81,12 +90,12 @@ impl<T: FieldElement> TypeChecker<T> {
                     params,
                     statements,
                 ) => {
-                    let mut body = vec![];
+                    let mut function_statements = vec![];
                     let id = function_id.map(|id| id.id);
                     for s in statements {
                         match s {
                             FunctionStatement::Assignment(start, lhs, using_reg, rhs) => {
-                                body.push(
+                                function_statements.push(
                                     AssignmentStatement {
                                         start,
                                         lhs,
@@ -97,7 +106,7 @@ impl<T: FieldElement> TypeChecker<T> {
                                 );
                             }
                             FunctionStatement::Instruction(start, instruction, inputs) => {
-                                body.push(
+                                function_statements.push(
                                     InstructionStatement {
                                         start,
                                         instruction,
@@ -107,10 +116,14 @@ impl<T: FieldElement> TypeChecker<T> {
                                 );
                             }
                             FunctionStatement::Label(start, name) => {
-                                body.push(LabelStatement { start, name }.into());
+                                function_statements.push(LabelStatement { start, name }.into());
                             }
                             FunctionStatement::DebugDirective(start, directive) => {
-                                body.push(DebugDirective { start, directive }.into());
+                                function_statements
+                                    .push(DebugDirective { start, directive }.into());
+                            }
+                            FunctionStatement::Return(start, values) => {
+                                function_statements.push(Return { start, values }.into());
                             }
                         }
                     }
@@ -119,7 +132,9 @@ impl<T: FieldElement> TypeChecker<T> {
                         name,
                         id,
                         params,
-                        body: FunctionBody { statements: body },
+                        body: FunctionBody {
+                            statements: FunctionStatements::new(function_statements),
+                        },
                     })
                 }
             }
@@ -128,7 +143,7 @@ impl<T: FieldElement> TypeChecker<T> {
         let latch = machine.arguments.latch;
         let function_id = machine.arguments.function_id;
 
-        if !registers.iter().any(|r| r.flag == Some(RegisterFlag::IsPC)) {
+        if !registers.iter().any(|r| r.ty.is_pc()) {
             if latch.is_none() {
                 errors.push(format!(
                     "Machine {} should have a latch column because it does not have a pc",
@@ -169,12 +184,7 @@ impl<T: FieldElement> TypeChecker<T> {
             }
         }
 
-        if registers
-            .iter()
-            .filter(|r| r.flag == Some(RegisterFlag::IsPC))
-            .count()
-            > 1
-        {
+        if registers.iter().filter(|r| r.ty.is_pc()).count() > 1 {
             errors.push(format!(
                 "Machine {} cannot have more than one pc",
                 machine.name
@@ -188,14 +198,13 @@ impl<T: FieldElement> TypeChecker<T> {
             pc: registers
                 .iter()
                 .enumerate()
-                .filter_map(|(i, r)| (r.flag == Some(RegisterFlag::IsPC)).then_some(i))
+                .filter_map(|(i, r)| (r.ty.is_pc()).then_some(i))
                 .next(),
             registers,
             instructions,
             constraints,
             functions,
             submachines,
-            rom: None,
         });
 
         if !errors.is_empty() {

@@ -38,3 +38,9 @@ However, if we want the instruction to accept any write register as input, we us
 ```
 {{#include ../../../test_data/asm/book/assert_assignment_register.asm:component}}
 ```
+
+## Read-only registers
+
+Read-only registers are used for function inputs. However, powdr creates them automatically based on functions arguments, so that they do not need to be declared explicitly.
+
+> Read-only registers are only mentioned for completeness here and are currently only used inside the compiler. We advise against using them.

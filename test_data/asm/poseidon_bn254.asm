@@ -148,6 +148,6 @@ machine Main {
         A <== poseidon(A + 1, A + 2, A + 3);
         assert_eq A, 0x188ada144ed909426b0396e967a82e26d739652cff288d13306279d91f29010c;
 
-        loop;
+        return;
     }
 }

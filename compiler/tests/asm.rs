@@ -51,6 +51,26 @@ fn palindrome() {
 }
 
 #[test]
+fn single_function_vm() {
+    let f = "single_function_vm.asm";
+    let i = [];
+    verify_asm::<GoldilocksField>(f, slice_to_vec(&i));
+    gen_halo2_proof(f, slice_to_vec(&i));
+}
+
+#[test]
+#[should_panic = "Witness generation failed."]
+fn empty_vm() {
+    // TODO: an empty vm does not work because witgen does not find the infinite loop
+    // this can be fixed by removing the assumption that we run exactly one block before
+    // hitting the loop
+    let f = "empty_vm.asm";
+    let i = [];
+    verify_asm::<GoldilocksField>(f, slice_to_vec(&i));
+    gen_halo2_proof(f, slice_to_vec(&i));
+}
+
+#[test]
 fn vm_to_block_unique_interface() {
     let f = "vm_to_block_unique_interface.asm";
     let i = [];
@@ -62,6 +82,15 @@ fn vm_to_block_unique_interface() {
 #[should_panic = "not implemented: No executor machine matched identity `main.instr_sub { 1, main.X, main.Y, main.Z } in 1 { main_arith.function_id, main_arith.z, main_arith.x, main_arith.y };`"]
 fn vm_to_block_multiple_interfaces() {
     let f = "vm_to_block_multiple_interfaces.asm";
+    let i = [];
+    verify_asm::<GoldilocksField>(f, slice_to_vec(&i));
+    gen_halo2_proof(f, slice_to_vec(&i));
+}
+
+#[test]
+#[should_panic = "not implemented: No executor machine matched identity `main.instr_add { 2, main.X, main.Y, main.Z } in main_vm.instr_return { main_vm._function_id, main_vm._input_0, main_vm._input_1, main_vm._output_0 };`"]
+fn vm_to_vm() {
+    let f = "vm_to_vm.asm";
     let i = [];
     verify_asm::<GoldilocksField>(f, slice_to_vec(&i));
     gen_halo2_proof(f, slice_to_vec(&i));
@@ -109,12 +138,14 @@ fn full_pil_constant() {
 fn book() {
     for f in fs::read_dir("../test_data/asm/book/").unwrap() {
         let f = f.unwrap().path();
-        let f = f.strip_prefix("../test_data/asm/").unwrap();
-        // passing 0 to all tests currently works as they either take no prover input or 0 works
-        let i = [0];
+        if [".asm", ".pil"].contains(&f.extension().unwrap().to_str().unwrap()) {
+            let f = f.strip_prefix("../test_data/asm/").unwrap();
+            // passing 0 to all tests currently works as they either take no prover input or 0 works
+            let i = [0];
 
-        verify_asm::<GoldilocksField>(f.to_str().unwrap(), slice_to_vec(&i));
-        gen_halo2_proof(f.to_str().unwrap(), slice_to_vec(&i));
+            verify_asm::<GoldilocksField>(f.to_str().unwrap(), slice_to_vec(&i));
+            gen_halo2_proof(f.to_str().unwrap(), slice_to_vec(&i));
+        }
     }
 }
 

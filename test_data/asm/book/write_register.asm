@@ -19,11 +19,6 @@ A <=X= 1;
 B <=X= A;
 // A is still 1
 // ANCHOR_END: component
-
-        loop;
-    }
-
-    instr loop {
-        pc' = pc
+        return;
     }
 }
