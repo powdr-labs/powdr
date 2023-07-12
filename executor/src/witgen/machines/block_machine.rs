@@ -70,10 +70,7 @@ impl<T: FieldElement> BlockMachine<T> {
                             })
                             .collect(),
                         degree: fixed_data.degree,
-                        processing_sequence_cache: ProcessingSequenceCache::new(
-                            period,
-                            identities.len(),
-                        ),
+                        processing_sequence_cache: ProcessingSequenceCache::new(),
                     };
                     // Append a block so that we do not have to deal with wrap-around
                     // when storing machine witness data.
@@ -544,8 +541,6 @@ impl<'a, T: FieldElement> WitnessColumnEvaluator<T> for WitnessData<'a, T> {
 }
 
 struct ProcessingSequenceCache {
-    block_size: usize,
-    identities_count: usize,
     cache: BTreeMap<SequenceCacheKey, Vec<SequenceStep>>,
 }
 
@@ -674,10 +669,8 @@ impl DefaultSequenceIterator {
 }
 
 impl ProcessingSequenceCache {
-    pub fn new(block_size: usize, identities_count: usize) -> Self {
+    pub fn new() -> Self {
         ProcessingSequenceCache {
-            block_size,
-            identities_count,
             cache: Default::default(),
         }
     }
