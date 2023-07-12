@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::mem;
 use std::num::NonZeroUsize;
 
@@ -56,8 +56,6 @@ impl<T: FieldElement> IndexedColumns<T> {
         mut assignment: Vec<(PolyID, T)>,
         mut output_fixed_columns: Vec<PolyID>,
     ) -> Option<IndexValue> {
-        // TODO just remove the sorting.
-
         // sort in order to have a single index for [X, Y] and for [Y, X]
         //assignment.sort_by(|(name0, _), (name1, _)| name0.cmp(name1));
         let (input_fixed_columns, values): (Vec<_>, Vec<_>) = assignment.into_iter().unzip();
@@ -136,11 +134,43 @@ fn try_create_simple_index<T: FieldElement>(
     input_column_values: &Vec<&Vec<T>>,
     output_column_values: &Vec<&Vec<T>>,
 ) -> Option<Index<T>> {
+    if input_column_values.is_empty() {
+        return None;
+    }
+    let mut seen_values = BTreeSet::new();
+    let mut multiples = HashSet::new();
+    for x in input_column_values[0] {
+        // TODO do without arbitrary integer
+        let x = x.to_arbitrary_integer().to_usize()?;
+        if x > 20000 {
+            return None;
+        }
+        if !seen_values.insert(x) {
+            multiples.insert(x);
+        }
+    }
+    if multiples.len() > 1 {
+        return None;
+    }
+
+    let mut index: Vec<Option<usize>> = vec![None; seen_values.last().unwrap() + 1];
+    for (row, x) in input_column_values[0].iter().enumerate() {
+        index[x.to_arbitrary_integer().to_usize().unwrap()] = Some(row);
+    }
+
+    log::trace!(
+        "Done creating simple index. Size: entries * entry_size = {} * {} = {} bytes",
+        index.len(),
+        mem::size_of::<Option<usize>>(),
+        index.len() * mem::size_of::<Option<usize>>()
+    );
+
+    Some(Index::Simple(index))
+
     // TODO
     // see if the candidate is unique enough and the values are "small".
     // see if the possible rows are "large" (at least 20)
     // check that at some point, the rows repeat (the last row always repeats).
-    None
 }
 
 fn create_complex_index<T: FieldElement>(
@@ -185,13 +215,13 @@ fn create_complex_index<T: FieldElement>(
         .0;
 
     log::trace!(
-    "Done creating index. Size (as flat list): entries * (num_inputs * input_size + row_pointer_size) = {} * ({} * {} bytes + {} bytes) = {} bytes",
-    index.len(),
-    input_column_values.len(),
-    mem::size_of::<T>(),
-    mem::size_of::<IndexValue>(),
-    index.len() * (input_column_values.len() * mem::size_of::<T>() + mem::size_of::<IndexValue>())
-);
+        "Done creating index. Size (as flat list): entries * (num_inputs * input_size + row_pointer_size) = {} * ({} * {} bytes + {} bytes) = {} bytes",
+        index.len(),
+        input_column_values.len(),
+        mem::size_of::<T>(),
+        mem::size_of::<IndexValue>(),
+        index.len() * (input_column_values.len() * mem::size_of::<T>() + mem::size_of::<IndexValue>())
+    );
     Index::Complex(index)
 }
 
