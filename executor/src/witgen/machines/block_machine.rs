@@ -247,7 +247,7 @@ impl<T: FieldElement> BlockMachine<T> {
         let mut outer_assignments = EvalValue::complete(vec![]);
 
         // TODO this assumes we are always using the same lookup for this machine.
-        let sequence = self.processing_sequence_cache.get_processing_sequence(left);
+        let cached_sequence = self.processing_sequence_cache.get_processing_sequence(left);
 
         let mut errors = vec![];
         // TODO The error handling currently does not handle contradictions properly.
@@ -257,7 +257,21 @@ impl<T: FieldElement> BlockMachine<T> {
         // Record the steps where we made progress, so we can report this to the
         // cache later on.
         let mut progress_steps = vec![];
-        for step in sequence {
+        let mut cached_sequence_iter = cached_sequence.map(|s| s.into_iter());
+        let mut default_sequence_iter =
+            DefaultSequenceIterator::new(self.block_size, self.identities.len());
+        let mut progress_in_last_step = false;
+        loop {
+            let step = match cached_sequence_iter.as_mut() {
+                Some(iter) => iter.next(),
+                None => default_sequence_iter.next(progress_in_last_step),
+            };
+
+            if step.is_none() {
+                break;
+            }
+            let step = step.unwrap();
+
             let SequenceStep {
                 row_delta,
                 identity,
@@ -267,6 +281,7 @@ impl<T: FieldElement> BlockMachine<T> {
             match self.process_identity(fixed_data, fixed_lookup, left, right, identity) {
                 Ok(value) => {
                     if !value.is_empty() {
+                        progress_in_last_step = true;
                         progress_steps.push(step);
                         errors.clear();
                         let (outer_constraints, inner_value) =
@@ -280,6 +295,8 @@ impl<T: FieldElement> BlockMachine<T> {
                         {
                             self.handle_constraint(poly_id as usize, next, constraint);
                         }
+                    } else {
+                        progress_in_last_step = false;
                     }
                 }
                 Err(e) => errors.push(format!("In row {}: {e}", self.row).into()),
@@ -569,6 +586,93 @@ where
     }
 }
 
+struct DefaultSequenceIteratorState {
+    progress_in_current_round: bool,
+    cur_row_delta_index: usize,
+    cur_identity_index: usize,
+    is_first: bool,
+    current_round_count: usize,
+}
+
+impl DefaultSequenceIteratorState {
+    fn new() -> Self {
+        DefaultSequenceIteratorState {
+            progress_in_current_round: false,
+            cur_row_delta_index: 0,
+            cur_identity_index: 0,
+            is_first: true,
+            current_round_count: 0,
+        }
+    }
+}
+
+struct DefaultSequenceIterator {
+    block_size: usize,
+    identities_count: usize,
+    row_deltas: Vec<i64>,
+    state: DefaultSequenceIteratorState,
+}
+
+impl DefaultSequenceIterator {
+    fn new(block_size: usize, identities_count: usize) -> Self {
+        let block_size_i64 = block_size as i64;
+        DefaultSequenceIterator {
+            block_size,
+            identities_count,
+            row_deltas: (-1..=block_size_i64)
+                .chain((-1..block_size_i64).rev())
+                .chain(0..=block_size_i64)
+                .collect(),
+            state: DefaultSequenceIteratorState::new(),
+        }
+    }
+
+    fn next(&mut self, progress_in_last_step: bool) -> Option<SequenceStep> {
+        if self.state.cur_row_delta_index == self.row_deltas.len() {
+            // Done!
+            return None;
+        }
+
+        let row_delta = self.row_deltas[self.state.cur_row_delta_index];
+        let is_last_identity = if row_delta + 1 == self.block_size as i64 {
+            self.state.cur_identity_index == self.identities_count
+        } else {
+            self.state.cur_identity_index == self.identities_count - 1
+        };
+
+        if !self.state.is_first {
+            // Update state
+            self.state.progress_in_current_round |= progress_in_last_step;
+            if is_last_identity {
+                if !self.state.progress_in_current_round || self.state.current_round_count > 100 {
+                    // Move to next row delta, start with identity 0.
+                    self.state.cur_row_delta_index += 1;
+                    self.state.current_round_count = 0;
+                } else {
+                    self.state.current_round_count += 1;
+                }
+                self.state.cur_identity_index = 0;
+                self.state.progress_in_current_round = false;
+            } else {
+                // Stay at row delta, move to next identity.
+                self.state.cur_identity_index += 1;
+            }
+        }
+        self.state.is_first = false;
+
+        let identity = if self.state.cur_identity_index < self.identities_count {
+            IdentityInSequence::Internal(self.state.cur_identity_index)
+        } else {
+            IdentityInSequence::OuterQuery
+        };
+
+        Some(SequenceStep {
+            row_delta,
+            identity,
+        })
+    }
+}
+
 impl ProcessingSequenceCache {
     pub fn new(block_size: usize, identities_count: usize) -> Self {
         ProcessingSequenceCache {
@@ -578,31 +682,15 @@ impl ProcessingSequenceCache {
         }
     }
 
-    pub fn get_processing_sequence<K, T>(&self, left: &[AffineResult<K, T>]) -> Vec<SequenceStep>
+    pub fn get_processing_sequence<K, T>(
+        &self,
+        left: &[AffineResult<K, T>],
+    ) -> Option<Vec<SequenceStep>>
     where
         K: Copy + Ord,
         T: FieldElement,
     {
-        self.cache.get(&left.into()).cloned().unwrap_or_else(|| {
-            let block_size = self.block_size as i64;
-            (-1..=block_size)
-                .chain((-1..block_size).rev())
-                .chain(-1..=block_size)
-                .flat_map(|row_delta| {
-                    let mut identities = (0..self.identities_count)
-                        .map(IdentityInSequence::Internal)
-                        .collect::<Vec<_>>();
-                    if row_delta + 1 == self.block_size as i64 {
-                        // Process the query on the query row.
-                        identities.push(IdentityInSequence::OuterQuery);
-                    }
-                    identities.into_iter().map(move |identity| SequenceStep {
-                        row_delta,
-                        identity,
-                    })
-                })
-                .collect()
-        })
+        self.cache.get(&left.into()).cloned()
     }
 
     pub fn report_processing_sequence<K, T>(
