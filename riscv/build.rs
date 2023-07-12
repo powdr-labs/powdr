@@ -29,6 +29,7 @@ fn build_instruction_tests() {
             .to_string()
             .strip_suffix(".S")
         {
+            println!("cargo:rerun-if-changed={file_name}.S");
             write!(
                 test_file,
                 r#"

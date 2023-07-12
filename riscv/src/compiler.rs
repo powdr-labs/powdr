@@ -544,14 +544,23 @@ fn preamble() -> String {
     // Removes up to 16 bits beyond 32
     // TODO is this really safe?
     instr wrap16 Y -> X { Y = Y_b5 * 2**32 + Y_b6 * 2**40 + X, X = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000 }
-    constraints{
+    constraints {
         col witness Y_b5;
         col witness Y_b6;
         { Y_b5 } in { bytes };
         { Y_b6 } in { bytes };
-    }
 
-    pil { col witness remainder; }
+        col witness REM_b1;
+        col witness REM_b2;
+        col witness REM_b3;
+        col witness REM_b4;
+        { REM_b1 } in { bytes };
+        { REM_b2 } in { bytes };
+        { REM_b3 } in { bytes };
+        { REM_b4 } in { bytes };
+
+        col witness remainder;
+    }
 
     // implements X = Y / Z, stores remainder in `remainder`.
     instr divu Y, Z -> X {
@@ -559,6 +568,7 @@ fn preamble() -> String {
         X * Z + remainder = Y,
         // (<known1> - remainder - 1) is u32
         Z - remainder - 1 = Y_b5 + Y_b6 * 0x100 + Y_b7 * 0x10000 + Y_b8 * 0x1000000,
+        remainder = REM_b1 + REM_b2 * 0x100 + REM_b3 * 0x10000 + REM_b4 * 0x1000000,
         X = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000
     }
 
