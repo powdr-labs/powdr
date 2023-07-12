@@ -72,7 +72,7 @@ impl<T: FieldElement> IndexedColumns<T> {
             Index::Simple(i) => {
                 // TODO don't go through arbitrary integer.
                 // TODO still check that the other columns on that row match the inputs (`values`)?
-                i.get(values[0].to_arbitrary_integer().to_usize().unwrap())
+                i.get(values[0].to_usize().unwrap())
                     .cloned()
                     .flatten()
                     .map(IndexValue::single_row)
@@ -141,7 +141,7 @@ fn try_create_simple_index<T: FieldElement>(
     let mut multiples = HashSet::new();
     for x in input_column_values[0] {
         // TODO do without arbitrary integer
-        let x = x.to_arbitrary_integer().to_usize()?;
+        let x = x.to_usize()?;
         if x > 20000 {
             return None;
         }
@@ -155,7 +155,7 @@ fn try_create_simple_index<T: FieldElement>(
 
     let mut index: Vec<Option<usize>> = vec![None; seen_values.last().unwrap() + 1];
     for (row, x) in input_column_values[0].iter().enumerate() {
-        index[x.to_arbitrary_integer().to_usize().unwrap()] = Some(row);
+        index[x.to_usize().unwrap()] = Some(row);
     }
 
     log::trace!(

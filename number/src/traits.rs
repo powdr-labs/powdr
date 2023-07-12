@@ -93,6 +93,8 @@ pub trait FieldElement:
         self.to_integer().to_arbitrary_integer()
     }
 
+    fn to_usize(&self) -> Option<usize>;
+
     fn modulus() -> Self::Integer;
 
     fn pow(self, exponent: Self::Integer) -> Self;

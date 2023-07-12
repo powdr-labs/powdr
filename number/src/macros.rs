@@ -284,6 +284,17 @@ macro_rules! powdr_field {
                 Self::Integer::new(self.value.into_bigint())
             }
 
+            fn to_usize(&self) -> Option<usize> {
+                let x = self.value.0 .0;
+                if x[1..].iter().any(|d| *d != 0) {
+                    None
+                } else if x[0] > usize::MAX as u64 {
+                    None
+                } else {
+                    Some(x[0] as usize)
+                }
+            }
+
             fn modulus() -> Self::Integer {
                 Self::Integer::new(<$ark_type>::MODULUS)
             }
