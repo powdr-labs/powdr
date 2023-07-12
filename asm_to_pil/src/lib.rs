@@ -1,6 +1,13 @@
 //! Compilation from powdr assembly to PIL
 
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+// changes:
+// - unconstrain registers on first line, as the ASM takes care of resetting them
+// - unconstrain the inputs when _reset is called
+
+use std::{
+    collections::{BTreeMap, BTreeSet, HashMap},
+    iter::repeat,
+};
 
 use ast::{
     asm_analysis::{
@@ -59,7 +66,7 @@ impl<T: FieldElement> Session<T> {
         self.machine_types = std::mem::take(&mut input.machines);
 
         // get a list of all machines to instantiate. The order does not matter.
-        let mut queue = vec![(main_location, main_ty)];
+        let mut queue = vec![(main_location.clone(), main_ty.clone())];
 
         let mut instances = vec![];
 
@@ -87,7 +94,22 @@ impl<T: FieldElement> Session<T> {
             })
             .collect();
 
-        PILGraph { objects }
+        let main_ty = self.machine_types.get(&main_ty).unwrap();
+        let main_function = &main_ty.functions[0];
+
+        PILGraph {
+            entry_point: LinkTo {
+                loc: main_location,
+                latch: main_ty.latch.clone().unwrap(),
+                function_id: main_ty.function_id.clone().unwrap(),
+                function: Function {
+                    name: "main".to_string(),
+                    id: main_function.id.unwrap(),
+                    params: main_function.params.clone(),
+                },
+            },
+            objects,
+        }
     }
 }
 
@@ -181,15 +203,23 @@ impl<'a, T: FieldElement> ASMPILConverter<'a, T> {
             .collect();
 
         if let Some(rom) = input.rom {
-            let batches = rom.batches.unwrap_or_else(|| {
-                vec![
-                    BatchMetadata {
+            let mut optimised_batches;
+            let mut default_batches;
+
+            let batches: &mut dyn Iterator<Item = BatchMetadata> = match rom.batches {
+                Some(batches) => {
+                    optimised_batches = batches.into_iter();
+                    &mut optimised_batches
+                }
+                None => {
+                    default_batches = repeat(BatchMetadata {
                         size: 1,
-                        reason: None
-                    };
-                    rom.statements.len()
-                ]
-            });
+                        reason: None,
+                    })
+                    .take(rom.statements.len());
+                    &mut default_batches
+                }
+            };
 
             let mut statements = rom.statements.into_iter();
 
@@ -212,6 +242,13 @@ impl<'a, T: FieldElement> ASMPILConverter<'a, T> {
                             // Force pc to zero on first row.
                             update = build_mul(
                                 build_sub(build_number(1u64), next_reference("first_step")),
+                                update,
+                            )
+                        }
+                        // Unconstrain the inputs when calling `_reset`
+                        if name.starts_with("_input") {
+                            update = build_mul(
+                                build_sub(build_number(1u64), next_reference("instr__reset")),
                                 update,
                             )
                         }
@@ -326,17 +363,6 @@ impl<'a, T: FieldElement> ASMPILConverter<'a, T> {
                 // no updates
             }
             None => {
-                // This might be superfluous but makes it easier to determine that the register needs to
-                // be zero in the first row.
-                self.pil.push(PilStatement::PolynomialIdentity(
-                    start,
-                    build_mul(direct_reference("first_step"), direct_reference(&name)),
-                ));
-                conditioned_updates = vec![
-                    // The value here is actually irrelevant, it is only important
-                    // that "first_step'" is included to compute the "default condition"
-                    (next_reference("first_step"), build_number(0u64)),
-                ];
                 let assignment_regs = self.assignment_registers().cloned().collect::<Vec<_>>();
                 // TODO do this at the same place where we set up the read flags.
                 for reg in assignment_regs {

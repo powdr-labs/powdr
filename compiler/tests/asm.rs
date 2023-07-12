@@ -66,6 +66,14 @@ fn vm_to_block_multiple_interfaces() {
 }
 
 #[test]
+fn vm_to_vm() {
+    let f = "vm_to_vm.asm";
+    let i = [];
+    verify_asm::<GoldilocksField>(f, slice_to_vec(&i));
+    gen_proof(f, slice_to_vec(&i));
+}
+
+#[test]
 fn test_mem_read_write() {
     let f = "mem_read_write.asm";
     verify_asm::<GoldilocksField>(f, Default::default());

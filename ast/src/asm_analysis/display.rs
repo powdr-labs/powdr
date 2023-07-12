@@ -38,7 +38,15 @@ impl<T: Display> Display for Machine<T> {
             writeln!(f, "\t{o}")?;
         }
         if let Some(rom) = &self.rom {
-            writeln!(f, "{rom}")?;
+            writeln!(
+                f,
+                "{}",
+                rom.to_string()
+                    .split('\n')
+                    .map(|line| format!("\t //{line}"))
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            )?;
         }
         Ok(())
     }
@@ -46,17 +54,17 @@ impl<T: Display> Display for Machine<T> {
 
 impl<T: Display> Display for Rom<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        writeln!(f, "\t// rom {{")?;
+        writeln!(f, "rom {{")?;
         let statements = &mut self.statements.iter();
         match &self.batches {
             Some(batches) => {
                 for batch in batches {
                     for statement in statements.take(batch.size) {
-                        writeln!(f, "\t// \t{}", statement)?;
+                        writeln!(f, "\t{}", statement)?;
                     }
                     writeln!(
                         f,
-                        "\t// \t// END BATCH{}",
+                        "\t// END BATCH{}",
                         batch
                             .reason
                             .as_ref()
@@ -67,11 +75,11 @@ impl<T: Display> Display for Rom<T> {
             }
             None => {
                 for statement in statements {
-                    writeln!(f, "\t// \t {}", statement)?;
+                    writeln!(f, "\t {}", statement)?;
                 }
             }
         }
-        write!(f, "\t// }}")
+        write!(f, "}}")
     }
 }
 

@@ -1,6 +1,6 @@
 machine Binary(latch, function_id) {
 
-    degree 8;
+    degree 16;
 
     function and<0> x, y -> z {
     }
@@ -23,7 +23,7 @@ machine Binary(latch, function_id) {
 
 machine Arith(latch, function_id) {
 
-    degree 8;
+    degree 16;
 
     function add<0> x, y -> z {
     }
@@ -42,7 +42,7 @@ machine Arith(latch, function_id) {
 
 machine Main {
 
-    degree 8;
+    degree 16;
 
     Arith arith;
     Binary binary;

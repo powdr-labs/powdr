@@ -1,7 +1,8 @@
 use std::iter::once;
 
+use analysis::utils::parse_pil_statement;
 use ast::{
-    object::PILGraph,
+    object::{Location, PILGraph},
     parsed::{
         build::{direct_reference, namespaced_reference},
         Expression, PILFile, PilStatement, SelectedExpressions,
@@ -81,6 +82,16 @@ pub fn link<T: FieldElement>(graph: PILGraph<T>) -> PILFile<T> {
                 let lookup = PilStatement::PlookupIdentity(0, lhs, rhs);
                 pil.push(lookup);
             }
+
+            if location == Location::default().join("main") {
+                let entry_point_id = graph.entry_point.function.id;
+                let function_id = &graph.entry_point.function_id;
+                // call the first operation by initialising `function_id` to the first operation
+                pil.push(parse_pil_statement(&format!(
+                    "first_step * ({function_id} - {entry_point_id}) = 0"
+                )));
+            }
+
             pil
         })
         .collect();

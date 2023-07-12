@@ -1,4 +1,5 @@
 mod display;
+pub mod utils;
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -135,12 +136,31 @@ pub struct Machine<T> {
 }
 
 impl<T> Machine<T> {
+    pub fn latch(&self) -> String {
+        if self.has_pc() {
+            assert!(self.latch.is_none());
+            "instr_return".into()
+        } else {
+            self.latch.clone().unwrap()
+        }
+    }
+
     pub fn has_pc(&self) -> bool {
         self.pc.is_some()
     }
 
     pub fn pc(&self) -> Option<String> {
         self.pc.map(|index| self.registers[index].name.clone())
+    }
+
+    pub fn write_registers(&self) -> impl Iterator<Item = &RegisterDeclarationStatement> {
+        self.registers.iter().filter(|r| r.flag.is_none())
+    }
+
+    pub fn assignment_registers(&self) -> impl Iterator<Item = &RegisterDeclarationStatement> {
+        self.registers
+            .iter()
+            .filter(|r| r.flag == Some(RegisterFlag::IsAssignment))
     }
 }
 

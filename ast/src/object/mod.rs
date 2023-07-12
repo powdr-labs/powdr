@@ -16,8 +16,8 @@ impl Location {
     }
 }
 
-#[derive(Default)]
 pub struct PILGraph<T> {
+    pub entry_point: LinkTo<T>,
     pub objects: BTreeMap<Location, Object<T>>,
 }
 

@@ -1,4 +1,5 @@
 mod batcher;
+mod function_id_setter;
 mod inference;
 mod macro_expansion;
 mod romgen;
@@ -16,17 +17,88 @@ pub fn analyze<T: FieldElement>(file: ASMFile<T>) -> Result<AnalysisASMFile<T>, 
     let inferred = inference::infer(checked)?;
     let rommed = romgen::generate_rom(inferred);
     let batched = batcher::batch(rommed);
-    Ok(batched)
+    let function_ids_set = function_id_setter::set(batched);
+    Ok(function_ids_set)
 }
 
-mod utils {
-    use ast::parsed::PilStatement;
+pub mod utils {
+    use ast::{
+        asm_analysis::{
+            AssignmentStatement, FunctionStatement, InstructionDefinitionStatement,
+            InstructionStatement, LabelStatement, RegisterDeclarationStatement,
+        },
+        parsed::{asm::MachineStatement, PilStatement},
+    };
     use number::FieldElement;
+
+    pub fn parse_instruction_definition<T: FieldElement>(
+        input: &str,
+    ) -> InstructionDefinitionStatement<T> {
+        match parser::powdr::InstructionDeclarationParser::new()
+            .parse(input)
+            .unwrap()
+        {
+            MachineStatement::InstructionDeclaration(start, name, params, body) => {
+                InstructionDefinitionStatement {
+                    start,
+                    name,
+                    params,
+                    body,
+                }
+            }
+            _ => panic!(),
+        }
+    }
+
+    pub fn parse_operation_statement<T: FieldElement>(input: &str) -> FunctionStatement<T> {
+        match parser::powdr::FunctionStatementParser::new()
+            .parse::<T>(input)
+            .unwrap()
+        {
+            ast::parsed::asm::FunctionStatement::Assignment(start, lhs, using_reg, rhs) => {
+                AssignmentStatement {
+                    start,
+                    lhs,
+                    using_reg,
+                    rhs,
+                }
+                .into()
+            }
+            ast::parsed::asm::FunctionStatement::Instruction(start, instruction, inputs) => {
+                InstructionStatement {
+                    start,
+                    instruction,
+                    inputs,
+                }
+                .into()
+            }
+            ast::parsed::asm::FunctionStatement::Label(start, name) => {
+                LabelStatement { start, name }.into()
+            }
+            ast::parsed::asm::FunctionStatement::DebugDirective(_start, _s) => {
+                todo!()
+            }
+        }
+    }
 
     pub fn parse_pil_statement<T: FieldElement>(input: &str) -> PilStatement<T> {
         parser::powdr::PilStatementParser::new()
             .parse(input)
             .unwrap()
+    }
+
+    pub fn parse_register_declaration<T: FieldElement>(
+        input: &str,
+    ) -> RegisterDeclarationStatement {
+        match parser::powdr::RegisterDeclarationParser::new()
+            .parse::<T>(input)
+            .unwrap()
+        {
+            MachineStatement::RegisterDeclaration(start, name, flag) => {
+                RegisterDeclarationStatement { start, name, flag }
+            }
+            _ => unreachable!(),
+        }
     }
 }
 

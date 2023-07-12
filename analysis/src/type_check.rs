@@ -15,14 +15,14 @@ pub fn check<T: FieldElement>(file: ASMFile<T>) -> Result<AnalysisASMFile<T>, Ve
 }
 
 #[derive(Default)]
-struct TypeChecker<T> {
+pub(crate) struct TypeChecker<T> {
     /// The types of the machines. The value is an option, as we do a first pass populating with `None`, so that a machine type can be
     /// declared later in the file than its usage in a submachine
-    machines_types: BTreeMap<String, Option<Machine<T>>>,
+    pub machines_types: BTreeMap<String, Option<Machine<T>>>,
 }
 
 impl<T: FieldElement> TypeChecker<T> {
-    fn check_machine_type(
+    pub fn check_machine_type(
         &mut self,
         machine: ast::parsed::asm::Machine<T>,
     ) -> Result<(), Vec<String>> {

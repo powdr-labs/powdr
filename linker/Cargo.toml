@@ -9,8 +9,8 @@ edition = "2021"
 ast = { version = "0.1.0", path = "../ast" }
 number = { version = "0.1.0", path = "../number" }
 pretty_assertions = "1.3.0"
+analysis = { path = "../analysis" }
 
 [dev-dependencies]
-analysis = { path = "../analysis" }
 parser = { path = "../parser" }
 asm_to_pil = { path = "../asm_to_pil" }
