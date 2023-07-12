@@ -550,37 +550,6 @@ struct SequenceStep {
     identity: IdentityInSequence,
 }
 
-#[derive(Clone, Copy)]
-enum IdentityInSequence {
-    Internal(usize),
-    OuterQuery,
-}
-
-#[derive(PartialOrd, Ord, PartialEq, Eq, Debug)]
-struct SequenceCacheKey {
-    known_columns: Vec<bool>,
-}
-
-impl<K, T> From<&[AffineResult<K, T>]> for SequenceCacheKey
-where
-    K: Copy + Ord,
-    T: FieldElement,
-{
-    fn from(value: &[AffineResult<K, T>]) -> Self {
-        SequenceCacheKey {
-            known_columns: value
-                .iter()
-                .map(|v| {
-                    v.as_ref()
-                        .ok()
-                        .and_then(|ex| ex.is_constant().then_some(true))
-                        .is_some()
-                })
-                .collect(),
-        }
-    }
-}
-
 struct DefaultSequenceIteratorState {
     progress_in_current_round: bool,
     cur_row_delta_index: usize,
@@ -598,6 +567,27 @@ impl DefaultSequenceIteratorState {
             is_first: true,
             current_round_count: 0,
         }
+    }
+
+    fn update(&mut self, is_last_identity: bool, progress_in_last_step: bool) {
+        if !self.is_first {
+            self.progress_in_current_round |= progress_in_last_step;
+            if is_last_identity {
+                if !self.progress_in_current_round || self.current_round_count > 100 {
+                    // Move to next row delta, start with identity 0.
+                    self.cur_row_delta_index += 1;
+                    self.current_round_count = 0;
+                } else {
+                    self.current_round_count += 1;
+                }
+                self.cur_identity_index = 0;
+                self.progress_in_current_round = false;
+            } else {
+                // Stay at row delta, move to next identity.
+                self.cur_identity_index += 1;
+            }
+        }
+        self.is_first = false;
     }
 }
 
@@ -635,25 +625,7 @@ impl DefaultSequenceIterator {
             self.state.cur_identity_index == self.identities_count - 1
         };
 
-        if !self.state.is_first {
-            // Update state
-            self.state.progress_in_current_round |= progress_in_last_step;
-            if is_last_identity {
-                if !self.state.progress_in_current_round || self.state.current_round_count > 100 {
-                    // Move to next row delta, start with identity 0.
-                    self.state.cur_row_delta_index += 1;
-                    self.state.current_round_count = 0;
-                } else {
-                    self.state.current_round_count += 1;
-                }
-                self.state.cur_identity_index = 0;
-                self.state.progress_in_current_round = false;
-            } else {
-                // Stay at row delta, move to next identity.
-                self.state.cur_identity_index += 1;
-            }
-        }
-        self.state.is_first = false;
+        self.state.update(is_last_identity, progress_in_last_step);
 
         let identity = if self.state.cur_identity_index < self.identities_count {
             IdentityInSequence::Internal(self.state.cur_identity_index)
@@ -665,6 +637,37 @@ impl DefaultSequenceIterator {
             row_delta,
             identity,
         })
+    }
+}
+
+#[derive(Clone, Copy)]
+enum IdentityInSequence {
+    Internal(usize),
+    OuterQuery,
+}
+
+#[derive(PartialOrd, Ord, PartialEq, Eq, Debug)]
+struct SequenceCacheKey {
+    known_columns: Vec<bool>,
+}
+
+impl<K, T> From<&[AffineResult<K, T>]> for SequenceCacheKey
+where
+    K: Copy + Ord,
+    T: FieldElement,
+{
+    fn from(value: &[AffineResult<K, T>]) -> Self {
+        SequenceCacheKey {
+            known_columns: value
+                .iter()
+                .map(|v| {
+                    v.as_ref()
+                        .ok()
+                        .and_then(|ex| ex.is_constant().then_some(true))
+                        .is_some()
+                })
+                .collect(),
+        }
     }
 }
 
