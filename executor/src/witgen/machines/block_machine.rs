@@ -483,6 +483,7 @@ impl<T: FieldElement> BlockMachine<T> {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn process_step<'a>(
         &mut self,
         fixed_data: &FixedData<T>,
