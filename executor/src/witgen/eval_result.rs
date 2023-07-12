@@ -155,7 +155,7 @@ pub enum EvalError {
     /// A division pattern was recognized but the solution does not satisfy the range constraints.
     InvalidDivision,
     // Fixed lookup failed
-    FixedLookupFailed,
+    FixedLookupFailed(String),
     Generic(String),
     Multiple(Vec<EvalError>),
 }
@@ -199,7 +199,10 @@ impl fmt::Display for EvalError {
                 write!(f, "A division pattern was recognized but the range constrainst are conflicting with the solution.",)
             }
             EvalError::RowsExhausted => write!(f, "Table rows exhausted"),
-            EvalError::FixedLookupFailed => write!(f, "Lookup into fixed columns failed: no match"),
+            EvalError::FixedLookupFailed(query) => write!(
+                f,
+                "Lookup into fixed columns failed: no match for query: {query}"
+            ),
             EvalError::Generic(s) => write!(f, "{s}"),
         }
     }

@@ -49,6 +49,7 @@ where
             WitnessColumn::new(i, &poly.absolute_name, value)
         })
         .collect();
+
     let fixed_cols = fixed_col_values
         .iter()
         .enumerate()
@@ -69,8 +70,12 @@ where
         &witness_cols,
     );
     let identities = substitute_constants(&analyzed.identities, &analyzed.constants);
+
     let GlobalConstraints {
+        // Maps a polynomial to a mask specifying which bit is possibly set,
         known_constraints,
+        // Removes identities like X * (X - 1) = 0 or { A } in { BYTES }
+        // These are already captured in the range constraints.
         retained_identities,
     } = global_constraints::determine_global_constraints(&fixed, identities.iter().collect());
     let ExtractionOutput {
@@ -81,7 +86,6 @@ where
     } = machines::machine_extractor::split_out_machines(
         &fixed,
         retained_identities,
-        &witness_cols,
         &known_constraints,
     );
     let mut generator = generator::Generator::new(
@@ -104,9 +108,15 @@ where
     for row in 0..degree as DegreeType {
         // Check if we are in a loop.
         if looping_period.is_none() && row % 100 == 0 && row > 0 {
-            looping_period = rows_are_repeating(&values);
+            let relevant_values = values
+                .iter()
+                .enumerate()
+                .filter(|(id, _)| generator.is_relevant_witness(*id))
+                .map(|(_, values)| values)
+                .collect::<Vec<_>>();
+            looping_period = rows_are_repeating(&relevant_values);
             if let Some(p) = looping_period {
-                log::info!("Found loop with period {p} starting at row {row}")
+                log::info!("Found loop with period {p} starting at row {row}");
             }
         }
         let mut row_values = None;
@@ -125,10 +135,12 @@ where
         if row_values.is_none() {
             row_values = Some(generator.compute_next_row(row));
         };
+
         for (col, v) in row_values.unwrap().into_iter().enumerate() {
             values[col].1.push(v);
         }
     }
+    // Overwrite all machine witness columns
     for (name, data) in generator.machine_witness_col_values() {
         let (_, col) = values.iter_mut().find(|(n, _)| *n == name).unwrap();
         *col = data;
@@ -138,7 +150,7 @@ where
 
 /// Checks if the last rows are repeating and returns the period.
 /// Only checks for periods of 1, 2, 3 and 4.
-fn rows_are_repeating<T: PartialEq>(values: &[(&str, Vec<T>)]) -> Option<usize> {
+fn rows_are_repeating<T: PartialEq>(values: &[&(&str, Vec<T>)]) -> Option<usize> {
     if values.is_empty() {
         return Some(1);
     } else if values[0].1.len() < 4 {
@@ -180,6 +192,7 @@ impl<'a, T> FixedData<'a, T> {
     }
 }
 
+#[derive(Debug)]
 pub struct WitnessColumn<'a, T> {
     poly: PolynomialReference,
     query: Option<&'a Expression<T>>,

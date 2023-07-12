@@ -8,7 +8,6 @@ use super::sorted_witness_machine::SortedWitnesses;
 use super::FixedData;
 use super::Machine;
 use crate::witgen::range_constraints::RangeConstraint;
-use crate::witgen::WitnessColumn;
 use ast::analyzed::{Expression, Identity, IdentityKind, PolynomialReference, SelectedExpressions};
 use itertools::Itertools;
 use number::FieldElement;
@@ -26,14 +25,13 @@ pub struct ExtractionOutput<'a, T> {
 pub fn split_out_machines<'a, T: FieldElement>(
     fixed: &'a FixedData<'a, T>,
     identities: Vec<&'a Identity<T>>,
-    witness_cols: &'a [WitnessColumn<T>],
     global_range_constraints: &BTreeMap<&'a PolynomialReference, RangeConstraint<T>>,
 ) -> ExtractionOutput<'a, T> {
     let fixed_lookup = FixedLookup::try_new(fixed, &[], &Default::default()).unwrap();
 
     let mut machines: Vec<Box<dyn Machine<T>>> = vec![];
 
-    let all_witnesses: HashSet<&'a _> = witness_cols.iter().map(|c| &c.poly).collect();
+    let all_witnesses: HashSet<&'a _> = fixed.witness_cols.iter().map(|c| &c.poly).collect();
     let mut remaining_witnesses = all_witnesses.clone();
     let mut base_identities = identities.clone();
     for id in &identities {
