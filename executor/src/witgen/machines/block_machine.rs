@@ -657,7 +657,7 @@ impl ProcessingSequenceCache {
                 .flat_map(|row_delta| {
                     let mut identities = (0..self.identities_count)
                         .map(IdentityInSequence::Internal)
-                        .collect::<Vec<_>>();
+                        .collect::<Vec<_>>().repeat(20);
                     if row_delta + 1 == self.block_size as i64 {
                         // Process the query on the query row.
                         identities.push(IdentityInSequence::OuterQuery);
