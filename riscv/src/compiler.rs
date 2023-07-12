@@ -573,9 +573,9 @@ fn preamble() -> String {
         // Z is the unknown quotient
         // main division algorithm;
         // if X is zero, remainder is set to dividend, as per RISC-V specification:
-        X * Z + remainder - Y = 0,
+        X * Z + remainder = Y,
 
-        // remainder > 0:
+        // remainder >= 0:
         remainder = REM_b1 + REM_b2 * 0x100 + REM_b3 * 0x10000 + REM_b4 * 0x1000000,
 
         // remainder < divisor, conditioned to X not being 0:
