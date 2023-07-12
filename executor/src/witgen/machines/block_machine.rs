@@ -71,10 +71,7 @@ impl<T: FieldElement> BlockMachine<T> {
                             })
                             .collect(),
                         degree: fixed_data.degree,
-                        processing_sequence_cache: ProcessingSequenceCache::new(
-                            period,
-                            identities.len(),
-                        ),
+                        processing_sequence_cache: ProcessingSequenceCache::new(),
                     };
                     // Append a block so that we do not have to deal with wrap-around
                     // when storing machine witness data.
@@ -208,7 +205,7 @@ impl<'a, T: FieldElement> ChangeLogger<'a, T> {
         }
     }
 
-    fn log(&mut self, bm: &BlockMachine<T>, poly_name: &str, value: &T, row: Option<u64>) {
+    fn log(&mut self, bm: &BlockMachine<T>, poly_name: &str, value: &T, row: Option<usize>) {
         if log::STATIC_MAX_LEVEL >= log::Level::Trace {
             if self.first_change {
                 let name = match self.identity {
@@ -286,59 +283,111 @@ impl<T: FieldElement> BlockMachine<T> {
         let mut outer_assignments = EvalValue::complete(vec![]);
 
         // TODO this assumes we are always using the same lookup for this machine.
-        let sequence = self.processing_sequence_cache.get_processing_sequence(left);
+        let cached_sequence = self.processing_sequence_cache.get_processing_sequence(left);
 
         let mut errors = vec![];
         // TODO The error handling currently does not handle contradictions properly.
         // If we can find an assignment of all LHS variables at the end, we do not return an error,
         // even if there is a conflict.
 
-        // Record the steps where we made progress, so we can report this to the
-        // cache later on.
-        let mut progress_steps = vec![];
-        for step in sequence {
-            let SequenceStep {
-                row_delta,
-                identity,
-            } = step;
-            self.row = (old_len as i64 + row_delta + fixed_data.degree as i64) as DegreeType
-                % fixed_data.degree;
+        let progress_steps = match cached_sequence {
+            Some(sequence) => {
+                log::trace!("Using cached sequence");
+                for step in &sequence {
+                    self.row = (old_len as i64 + step.row_delta + fixed_data.degree as i64)
+                        as DegreeType
+                        % fixed_data.degree;
+                    self.process_step(
+                        fixed_data,
+                        fixed_lookup,
+                        left,
+                        right,
+                        step,
+                        &mut errors,
+                        &outer_polys,
+                        &mut outer_assignments,
+                    );
+                }
+                sequence
+            }
+            None => {
+                log::trace!("No cached sequence found");
 
-            let mut change_logger = ChangeLogger::new(&identity);
-            match self.process_identity(fixed_data, fixed_lookup, left, right, identity) {
-                Ok(value) => {
-                    if !value.is_empty() {
-                        progress_steps.push(step);
-                        errors.clear();
-                        let (outer_constraints, inner_value) =
-                            self.split_result(value, &outer_polys);
-                        for (poly, constraint) in &outer_constraints {
-                            if let Constraint::Assignment(value) = constraint {
-                                change_logger.log(self, &poly.name, value, None);
+                // Record the steps where we made progress, so we can report this to the
+                // cache later on.
+                let mut progress_steps = vec![];
+                let block_size = self.block_size as i64;
+                let row_sequence = (-1..=block_size)
+                    .chain((-1..block_size).rev())
+                    .chain(0..=block_size);
+
+                let mut identities = (0..self.identities.len())
+                    .map(IdentityInSequence::Internal)
+                    .collect::<Vec<_>>();
+                identities.push(IdentityInSequence::OuterQuery);
+
+                for row_delta in row_sequence {
+                    let is_last_row = row_delta as usize % self.block_size == self.block_size - 1;
+                    // We want the outer query (the last identity) only in the last row.
+                    let identities = if is_last_row {
+                        &identities
+                    } else {
+                        &identities[..identities.len() - 1]
+                    };
+                    let steps = identities
+                        .iter()
+                        .map(|identity| SequenceStep {
+                            row_delta,
+                            identity: identity.clone(),
+                        })
+                        .collect::<Vec<_>>();
+                    self.row = (old_len as i64 + row_delta + fixed_data.degree as i64)
+                        as DegreeType
+                        % fixed_data.degree;
+
+                    let mut i = 0;
+                    loop {
+                        i += 1;
+                        let mut progress_in_round = false;
+
+                        for step in &steps {
+                            let progress_in_step = self.process_step(
+                                fixed_data,
+                                fixed_lookup,
+                                left,
+                                right,
+                                step,
+                                &mut errors,
+                                &outer_polys,
+                                &mut outer_assignments,
+                            );
+                            progress_in_round |= progress_in_step;
+                            if progress_in_step {
+                                progress_steps.push(step.clone());
                             }
                         }
-                        outer_assignments.constraints.extend(outer_constraints);
-                        for (poly_id, name, next, constraint) in inner_value
-                            .constraints
-                            .into_iter()
-                            .map(|(poly, constraint)| {
-                                (poly.poly_id(), poly.name.clone(), poly.next, constraint)
-                            })
-                            .collect::<Vec<_>>()
-                        {
-                            self.handle_constraint(
-                                poly_id as usize,
-                                name,
-                                next,
-                                constraint,
-                                &mut change_logger,
-                            );
+                        if i > 100 {
+                            log::debug!("100 steps were not enough to complete this row. Is there an infinite loop?");
+                            let last_step = progress_steps.last().unwrap();
+                            match last_step.identity {
+                                IdentityInSequence::Internal(i) => {
+                                    println!("Last step: {}", self.identities[i]);
+                                }
+                                IdentityInSequence::OuterQuery => {
+                                    println!("Last step: Outer query");
+                                }
+                            }
+                            break;
+                        }
+                        if !progress_in_round {
+                            break;
                         }
                     }
                 }
-                Err(e) => errors.push(format!("In row {}: {e}", self.row).into()),
+                progress_steps
             }
-        }
+        };
+
         // Only succeed if we can assign everything.
         // Otherwise it is messy because we have to find the correct block again.
         let unknown_variables = left
@@ -409,24 +458,82 @@ impl<T: FieldElement> BlockMachine<T> {
         next: bool,
         constraint: Constraint<T>,
         change_logger: &mut ChangeLogger<T>,
-    ) {
+    ) -> bool {
         let r = (self.row + next as DegreeType) % self.degree;
         match constraint {
             Constraint::Assignment(a) => {
-                change_logger.log(self, &name, &a, Some(r));
-                let values = self.data.get_mut(&poly).unwrap();
-                if (r as usize) < values.len() {
+                let r = r as usize;
+                let values = self.data.get(&poly).unwrap();
+                if r < values.len() && values[r].is_none() {
+                    change_logger.log(self, &name, &a, Some(r));
                     // do not write to other rows for now
-                    values[r as usize] = Some(a);
+                    let values = self.data.get_mut(&poly).unwrap();
+                    values[r] = Some(a);
+                    true
+                } else {
+                    false
                 }
             }
-            Constraint::RangeConstraint(bc) => {
-                self.range_constraints
-                    .entry(poly)
-                    .or_default()
-                    .insert(r, bc);
-            }
+            Constraint::RangeConstraint(bc) => self
+                .range_constraints
+                .entry(poly)
+                .or_default()
+                .insert(r, bc)
+                .is_none(),
         }
+    }
+
+    fn process_step<'a>(
+        &mut self,
+        fixed_data: &FixedData<T>,
+        fixed_lookup: &mut FixedLookup<T>,
+        left: &[AffineResult<&PolynomialReference, T>],
+        right: &SelectedExpressions<T>,
+        step: &SequenceStep,
+        errors: &mut Vec<EvalError>,
+        outer_polys: &BTreeSet<&'a PolynomialReference>,
+        outer_assignments: &mut EvalValue<&'a PolynomialReference, T>,
+    ) -> bool {
+        let identity = &step.identity;
+        let mut progress = false;
+        let mut change_logger = ChangeLogger::new(identity);
+        match self.process_identity(fixed_data, fixed_lookup, left, right, identity) {
+            Ok(value) => {
+                if !value.is_empty() {
+                    errors.clear();
+                    let (outer_constraints, inner_value) = self.split_result(value, &outer_polys);
+                    for (poly, constraint) in &outer_constraints {
+                        if let Constraint::Assignment(value) = constraint {
+                            change_logger.log(self, &poly.name, value, None);
+                        }
+                    }
+                    for outer_constraint in outer_constraints {
+                        if !outer_assignments.constraints.contains(&outer_constraint) {
+                            progress = true;
+                            outer_assignments.constraints.push(outer_constraint);
+                        }
+                    }
+                    for (poly_id, name, next, constraint) in inner_value
+                        .constraints
+                        .into_iter()
+                        .map(|(poly, constraint)| {
+                            (poly.poly_id(), poly.name.clone(), poly.next, constraint)
+                        })
+                        .collect::<Vec<_>>()
+                    {
+                        progress |= self.handle_constraint(
+                            poly_id as usize,
+                            name,
+                            next,
+                            constraint,
+                            &mut change_logger,
+                        );
+                    }
+                }
+            }
+            Err(e) => errors.push(format!("In row {}: {e}", self.row).into()),
+        }
+        progress
     }
 
     /// Processes an identity which is either the query or
@@ -437,11 +544,11 @@ impl<T: FieldElement> BlockMachine<T> {
         fixed_lookup: &mut FixedLookup<T>,
         left: &[AffineResult<&'b PolynomialReference, T>],
         right: &'b SelectedExpressions<T>,
-        identity: IdentityInSequence,
+        identity: &IdentityInSequence,
     ) -> EvalResult<'b, T> {
         match identity {
             IdentityInSequence::Internal(index) => {
-                let id = &self.identities[index];
+                let id = &self.identities[*index];
 
                 match id.kind {
                     IdentityKind::Polynomial => {
@@ -592,8 +699,6 @@ impl<'a, T: FieldElement> WitnessColumnEvaluator<T> for WitnessData<'a, T> {
 }
 
 struct ProcessingSequenceCache {
-    block_size: usize,
-    identities_count: usize,
     cache: BTreeMap<SequenceCacheKey, Vec<SequenceStep>>,
 }
 
@@ -636,39 +741,21 @@ where
 }
 
 impl ProcessingSequenceCache {
-    pub fn new(block_size: usize, identities_count: usize) -> Self {
+    pub fn new() -> Self {
         ProcessingSequenceCache {
-            block_size,
-            identities_count,
             cache: Default::default(),
         }
     }
 
-    pub fn get_processing_sequence<K, T>(&self, left: &[AffineResult<K, T>]) -> Vec<SequenceStep>
+    pub fn get_processing_sequence<K, T>(
+        &self,
+        left: &[AffineResult<K, T>],
+    ) -> Option<Vec<SequenceStep>>
     where
         K: Copy + Ord,
         T: FieldElement,
     {
-        self.cache.get(&left.into()).cloned().unwrap_or_else(|| {
-            let block_size = self.block_size as i64;
-            (-1..=block_size)
-                .chain((-1..block_size).rev())
-                .chain(-1..=block_size)
-                .flat_map(|row_delta| {
-                    let mut identities = (0..self.identities_count)
-                        .map(IdentityInSequence::Internal)
-                        .collect::<Vec<_>>();
-                    if row_delta + 1 == self.block_size as i64 {
-                        // Process the query on the query row.
-                        identities.push(IdentityInSequence::OuterQuery);
-                    }
-                    identities.into_iter().map(move |identity| SequenceStep {
-                        row_delta,
-                        identity,
-                    })
-                })
-                .collect()
-        })
+        self.cache.get(&left.into()).cloned()
     }
 
     pub fn report_processing_sequence<K, T>(
