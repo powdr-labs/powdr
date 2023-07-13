@@ -110,3 +110,8 @@ fn test_halo_without_lookup() {
 fn test_simple_div() {
     verify_pil("simple_div.pil", None);
 }
+
+#[test]
+fn namespaced_name() {
+    verify_pil("simple_div.pil", None);
+}

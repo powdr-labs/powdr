@@ -1,0 +1,7 @@
+
+namespace Assembly(2);
+    col fixed A = [0]*;
+    col fixed C(i) { Assembly.A(i) };
+    col witness w;
+    
+    w = C;
