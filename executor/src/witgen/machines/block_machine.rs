@@ -71,10 +71,7 @@ impl<T: FieldElement> BlockMachine<T> {
                             })
                             .collect(),
                         degree: fixed_data.degree,
-                        processing_sequence_cache: ProcessingSequenceCache::new(
-                            period,
-                            identities.len(),
-                        ),
+                        processing_sequence_cache: ProcessingSequenceCache::new(),
                     };
                     // Append a block so that we do not have to deal with wrap-around
                     // when storing machine witness data.
@@ -208,6 +205,19 @@ impl<'a, T: FieldElement> ChangeLogger<'a, T> {
         }
     }
 
+    fn log_constraints(
+        &mut self,
+        bm: &BlockMachine<T>,
+        constraints: &Constraints<&PolynomialReference, T>,
+        row: Option<u64>,
+    ) {
+        for (poly, constraint) in constraints {
+            if let Constraint::Assignment(value) = constraint {
+                self.log(bm, &poly.name, value, row);
+            }
+        }
+    }
+
     fn log(&mut self, bm: &BlockMachine<T>, poly_name: &str, value: &T, row: Option<u64>) {
         if log::STATIC_MAX_LEVEL >= log::Level::Trace {
             if self.first_change {
@@ -286,7 +296,12 @@ impl<T: FieldElement> BlockMachine<T> {
         let mut outer_assignments = EvalValue::complete(vec![]);
 
         // TODO this assumes we are always using the same lookup for this machine.
-        let sequence = self.processing_sequence_cache.get_processing_sequence(left);
+        let cached_sequence = self.processing_sequence_cache.get_processing_sequence(left);
+
+        match cached_sequence {
+            Some(_) => log::trace!("Using cached sequence"),
+            None => log::trace!("Using default sequence"),
+        };
 
         let mut errors = vec![];
         // TODO The error handling currently does not handle contradictions properly.
@@ -295,8 +310,28 @@ impl<T: FieldElement> BlockMachine<T> {
 
         // Record the steps where we made progress, so we can report this to the
         // cache later on.
+        let mut progress_in_last_step = false;
         let mut progress_steps = vec![];
-        for step in sequence {
+
+        // We might or might not have a cached sequence. If not, we use the default one, which
+        // iterates over all identities until no more progress is made.
+        let mut cached_sequence_iter = cached_sequence.map(|s| s.into_iter());
+        let mut default_sequence_iter =
+            DefaultSequenceIterator::new(self.block_size, self.identities.len());
+
+        // Can't use a for loop here, because we need to communicate progress_in_last_step to the
+        // default iterator.
+        loop {
+            let step = match cached_sequence_iter.as_mut() {
+                Some(iter) => iter.next(),
+                None => default_sequence_iter.next(progress_in_last_step),
+            };
+
+            if step.is_none() {
+                break;
+            }
+            let step = step.unwrap();
+
             let SequenceStep {
                 row_delta,
                 identity,
@@ -305,19 +340,28 @@ impl<T: FieldElement> BlockMachine<T> {
                 % fixed_data.degree;
 
             let mut change_logger = ChangeLogger::new(&identity);
+            progress_in_last_step = false;
+
             match self.process_identity(fixed_data, fixed_lookup, left, right, identity) {
                 Ok(value) => {
                     if !value.is_empty() {
-                        progress_steps.push(step);
                         errors.clear();
+
                         let (outer_constraints, inner_value) =
                             self.split_result(value, &outer_polys);
-                        for (poly, constraint) in &outer_constraints {
-                            if let Constraint::Assignment(value) = constraint {
-                                change_logger.log(self, &poly.name, value, None);
-                            }
-                        }
+
+                        // Filter out assignments we already have
+                        let outer_constraints = outer_constraints
+                            .into_iter()
+                            .filter(|constraint| {
+                                !outer_assignments.constraints.contains(constraint)
+                            })
+                            .collect::<Vec<_>>();
+
+                        change_logger.log_constraints(self, &outer_constraints, None);
+                        progress_in_last_step |= !outer_constraints.is_empty();
                         outer_assignments.constraints.extend(outer_constraints);
+
                         for (poly_id, name, next, constraint) in inner_value
                             .constraints
                             .into_iter()
@@ -326,13 +370,16 @@ impl<T: FieldElement> BlockMachine<T> {
                             })
                             .collect::<Vec<_>>()
                         {
-                            self.handle_constraint(
+                            progress_in_last_step |= self.handle_constraint(
                                 poly_id as usize,
                                 name,
                                 next,
                                 constraint,
                                 &mut change_logger,
                             );
+                        }
+                        if progress_in_last_step {
+                            progress_steps.push(step);
                         }
                     }
                 }
@@ -409,23 +456,27 @@ impl<T: FieldElement> BlockMachine<T> {
         next: bool,
         constraint: Constraint<T>,
         change_logger: &mut ChangeLogger<T>,
-    ) {
+    ) -> bool {
         let r = (self.row + next as DegreeType) % self.degree;
         match constraint {
             Constraint::Assignment(a) => {
                 change_logger.log(self, &name, &a, Some(r));
+                let r = r as usize;
                 let values = self.data.get_mut(&poly).unwrap();
-                if (r as usize) < values.len() {
+                if r < values.len() && values[r].is_none() {
                     // do not write to other rows for now
-                    values[r as usize] = Some(a);
+                    values[r] = Some(a);
+                    true
+                } else {
+                    false
                 }
             }
-            Constraint::RangeConstraint(bc) => {
-                self.range_constraints
-                    .entry(poly)
-                    .or_default()
-                    .insert(r, bc);
-            }
+            Constraint::RangeConstraint(bc) => self
+                .range_constraints
+                .entry(poly)
+                .or_default()
+                .insert(r, bc)
+                .is_none(),
         }
     }
 
@@ -591,16 +642,112 @@ impl<'a, T: FieldElement> WitnessColumnEvaluator<T> for WitnessData<'a, T> {
     }
 }
 
-struct ProcessingSequenceCache {
-    block_size: usize,
-    identities_count: usize,
-    cache: BTreeMap<SequenceCacheKey, Vec<SequenceStep>>,
-}
-
 #[derive(Clone, Debug)]
 struct SequenceStep {
     row_delta: i64,
     identity: IdentityInSequence,
+}
+
+struct DefaultSequenceIteratorState {
+    progress_in_current_round: bool,
+    cur_row_delta_index: usize,
+    cur_identity_index: usize,
+    is_first: bool,
+    current_round_count: usize,
+}
+
+impl DefaultSequenceIteratorState {
+    fn new() -> Self {
+        DefaultSequenceIteratorState {
+            progress_in_current_round: false,
+            cur_row_delta_index: 0,
+            cur_identity_index: 0,
+            is_first: true,
+            current_round_count: 0,
+        }
+    }
+
+    /// Update the state of the iterator.
+    /// If we're not at the last identity in the current row, just moves to the next.
+    /// Otherwise, starts with identity 0 and moves to the next row if no progress was made.
+    fn update(&mut self, is_last_identity: bool, progress_in_last_step: bool) {
+        if !self.is_first {
+            self.progress_in_current_round |= progress_in_last_step;
+            if is_last_identity {
+                if !self.progress_in_current_round || self.current_round_count > 20 {
+                    if self.current_round_count > 20 {
+                        log::warn!("In witness generation for block machine, we have been stuck in the same row for 20 rounds. \
+                                    This is likely a bug in the witness generation algorithm.");
+                    }
+
+                    // Move to next row delta, start with identity 0.
+                    self.cur_row_delta_index += 1;
+                    self.current_round_count = 0;
+                } else {
+                    self.current_round_count += 1;
+                }
+                self.cur_identity_index = 0;
+                self.progress_in_current_round = false;
+            } else {
+                // Stay at row delta, move to next identity.
+                self.cur_identity_index += 1;
+            }
+        }
+        self.is_first = false;
+    }
+}
+
+/// Goes through all rows of the block machine (plus the once before and after)
+/// forward, backward, and forward again.
+/// In each row, iterates over all identities until no further progress is made.
+struct DefaultSequenceIterator {
+    block_size: usize,
+    identities_count: usize,
+    row_deltas: Vec<i64>,
+    state: DefaultSequenceIteratorState,
+}
+
+impl DefaultSequenceIterator {
+    fn new(block_size: usize, identities_count: usize) -> Self {
+        let block_size_i64 = block_size as i64;
+        DefaultSequenceIterator {
+            block_size,
+            identities_count,
+            row_deltas: (-1..=block_size_i64)
+                .chain((-1..block_size_i64).rev())
+                .chain(0..=block_size_i64)
+                .collect(),
+            state: DefaultSequenceIteratorState::new(),
+        }
+    }
+
+    fn next(&mut self, progress_in_last_step: bool) -> Option<SequenceStep> {
+        let row_delta = self.row_deltas[self.state.cur_row_delta_index];
+        let is_last_identity = if row_delta + 1 == self.block_size as i64 {
+            self.state.cur_identity_index == self.identities_count
+        } else {
+            self.state.cur_identity_index == self.identities_count - 1
+        };
+
+        self.state.update(is_last_identity, progress_in_last_step);
+
+        if self.state.cur_row_delta_index == self.row_deltas.len() {
+            // Done!
+            return None;
+        }
+        let row_delta = self.row_deltas[self.state.cur_row_delta_index];
+
+        let identity = if self.state.cur_identity_index < self.identities_count {
+            IdentityInSequence::Internal(self.state.cur_identity_index)
+        } else {
+            IdentityInSequence::OuterQuery
+        };
+
+        Some(SequenceStep {
+            row_delta,
+            identity,
+        })
+    }
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -635,40 +782,26 @@ where
     }
 }
 
+struct ProcessingSequenceCache {
+    cache: BTreeMap<SequenceCacheKey, Vec<SequenceStep>>,
+}
+
 impl ProcessingSequenceCache {
-    pub fn new(block_size: usize, identities_count: usize) -> Self {
+    pub fn new() -> Self {
         ProcessingSequenceCache {
-            block_size,
-            identities_count,
             cache: Default::default(),
         }
     }
 
-    pub fn get_processing_sequence<K, T>(&self, left: &[AffineResult<K, T>]) -> Vec<SequenceStep>
+    pub fn get_processing_sequence<K, T>(
+        &self,
+        left: &[AffineResult<K, T>],
+    ) -> Option<Vec<SequenceStep>>
     where
         K: Copy + Ord,
         T: FieldElement,
     {
-        self.cache.get(&left.into()).cloned().unwrap_or_else(|| {
-            let block_size = self.block_size as i64;
-            (-1..=block_size)
-                .chain((-1..block_size).rev())
-                .chain(-1..=block_size)
-                .flat_map(|row_delta| {
-                    let mut identities = (0..self.identities_count)
-                        .map(IdentityInSequence::Internal)
-                        .collect::<Vec<_>>();
-                    if row_delta + 1 == self.block_size as i64 {
-                        // Process the query on the query row.
-                        identities.push(IdentityInSequence::OuterQuery);
-                    }
-                    identities.into_iter().map(move |identity| SequenceStep {
-                        row_delta,
-                        identity,
-                    })
-                })
-                .collect()
-        })
+        self.cache.get(&left.into()).cloned()
     }
 
     pub fn report_processing_sequence<K, T>(
