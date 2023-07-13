@@ -4,8 +4,8 @@ use itertools::{Either, Itertools};
 
 use super::super::affine_expression::AffineExpression;
 use super::fixed_lookup_machine::FixedLookup;
-use super::Machine;
 use super::{EvalResult, FixedData};
+use super::{Machine, PlookupResult};
 use crate::witgen::affine_expression::AffineResult;
 use crate::witgen::EvalValue;
 use crate::witgen::{
@@ -128,7 +128,7 @@ impl<T: FieldElement> Machine<T> for SortedWitnesses<T> {
         kind: IdentityKind,
         left: &[AffineResult<&'a PolynomialReference, T>],
         right: &SelectedExpressions<T>,
-    ) -> Option<EvalResult<'a, T>> {
+    ) -> Option<PlookupResult<'a, T>> {
         if kind != IdentityKind::Plookup || right.selector.is_some() {
             return None;
         }
@@ -182,19 +182,22 @@ impl<T: FieldElement> SortedWitnesses<T> {
         left: &[AffineResult<&'a PolynomialReference, T>],
         right: &SelectedExpressions<T>,
         rhs: Vec<&PolynomialReference>,
-    ) -> EvalResult<'a, T> {
+    ) -> PlookupResult<'a, T> {
         // Fail if the LHS has an error.
         let (left, errors): (Vec<_>, Vec<_>) = left.iter().partition_map(|x| match x {
             Ok(x) => Either::Left(x),
             Err(x) => Either::Right(x),
         });
         if !errors.is_empty() {
-            return Ok(EvalValue::incomplete(
-                errors
-                    .into_iter()
-                    .cloned()
-                    .reduce(|x, y| x.combine(y))
-                    .unwrap(),
+            return Ok((
+                EvalValue::incomplete(
+                    errors
+                        .into_iter()
+                        .cloned()
+                        .reduce(|x, y| x.combine(y))
+                        .unwrap(),
+                ),
+                0,
             ));
         }
 
@@ -208,6 +211,7 @@ impl<T: FieldElement> SortedWitnesses<T> {
         })?;
 
         let mut assignments = EvalValue::complete(vec![]);
+        let mut new_rows = 0;
         let stored_values = self
             .data
             .entry(key_value)
@@ -239,6 +243,7 @@ impl<T: FieldElement> SortedWitnesses<T> {
                 None => match l.constant_value() {
                     Some(v) => {
                         log::trace!("Stored {} = {key_value} -> {r} = {v}", self.key_col);
+                        new_rows += 1;
                         *stored_value = Some(v);
                     }
                     None => {
@@ -251,6 +256,6 @@ impl<T: FieldElement> SortedWitnesses<T> {
                 },
             }
         }
-        Ok(assignments)
+        Ok((assignments, new_rows))
     }
 }

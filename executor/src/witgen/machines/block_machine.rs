@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 use itertools::Itertools;
 
-use super::{EvalResult, FixedData, FixedLookup};
+use super::{EvalResult, FixedData, FixedLookup, PlookupResult};
 use crate::witgen::global_constraints::RangeConstraintSet;
 use crate::witgen::util::try_to_simple_poly;
 use crate::witgen::{
@@ -130,7 +130,7 @@ impl<T: FieldElement> Machine<T> for BlockMachine<T> {
         kind: IdentityKind,
         left: &[AffineResult<&'a PolynomialReference, T>],
         right: &SelectedExpressions<T>,
-    ) -> Option<EvalResult<'a, T>> {
+    ) -> Option<PlookupResult<'a, T>> {
         if *try_to_simple_poly(right.selector.as_ref()?)? != self.selector
             || kind != IdentityKind::Plookup
         {
@@ -214,7 +214,7 @@ impl<T: FieldElement> BlockMachine<T> {
         fixed_lookup: &mut FixedLookup<T>,
         left: &[AffineResult<&'b PolynomialReference, T>],
         right: &SelectedExpressions<T>,
-    ) -> EvalResult<'b, T> {
+    ) -> PlookupResult<'b, T> {
         // First check if we already store the value.
         if left
             .iter()

@@ -6,7 +6,9 @@ use number::FieldElement;
 pub use self::fixed_lookup_machine::FixedLookup;
 
 use super::affine_expression::AffineResult;
+use super::EvalError;
 use super::EvalResult;
+use super::EvalValue;
 use super::FixedData;
 
 mod block_machine;
@@ -39,8 +41,12 @@ pub trait Machine<T: FieldElement>: Send + Sync {
         kind: IdentityKind,
         left: &[AffineResult<&'a PolynomialReference, T>],
         right: &SelectedExpressions<T>,
-    ) -> Option<EvalResult<'a, T>>;
+    ) -> Option<PlookupResult<'a, T>>;
 
     /// Returns the final values of the witness columns.
     fn witness_col_values(&mut self, fixed_data: &FixedData<T>) -> HashMap<String, Vec<T>>;
 }
+
+/// Represents an assignment together with a number of new rows generated for performance measurement purposes.
+pub type PlookupResult<'a, T, K = &'a PolynomialReference> =
+    Result<(EvalValue<K, T>, usize), EvalError>;
