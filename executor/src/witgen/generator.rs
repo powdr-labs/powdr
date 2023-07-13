@@ -42,7 +42,7 @@ enum EvaluationRow {
     Next,
 }
 
-#[derive(PartialEq, Eq, Clone, Copy)]
+#[derive(PartialEq, Eq, Clone, Copy, Debug)]
 enum SolvingStrategy {
     /// Only solve expressions that are affine in a single variable
     /// (and use range constraints).
@@ -96,11 +96,14 @@ where
 
         let mut complete_identities = vec![false; self.identities.len()];
 
+        log::trace!("Row: {}", next_row);
+
         let mut identity_failed = false;
         for strategy in [
             SolvingStrategy::SingleVariableAffine,
             SolvingStrategy::AssumeZero,
         ] {
+            log::trace!("  Strategy: {:?}", strategy);
             loop {
                 identity_failed = false;
                 let mut progress = false;
@@ -131,7 +134,8 @@ where
                         }
                     };
 
-                    progress |= self.handle_eval_result(result, strategy);
+                    progress |=
+                        self.handle_eval_result(result, strategy, || format!("{}", identity));
                 }
 
                 if self.query_callback.is_some()
@@ -142,7 +146,8 @@ where
                             && column.query.is_some()
                         {
                             let result = self.process_witness_query(&column);
-                            progress |= self.handle_eval_result(result, strategy);
+                            progress |=
+                                self.handle_eval_result(result, strategy, || "<query>".into());
                         }
                     }
                 }
@@ -153,11 +158,8 @@ where
             }
         }
         if identity_failed {
-            log::error!(
-                "\nError: Row {next_row}: Identity check failed or unable to derive values for some witness columns.\nSet RUST_LOG=debug for more information.");
-            log::debug!(
-                "The following columns are still undetermined: {}",
-                self.next
+            let list_undetermined = |values: &Vec<Option<T>>| {
+                values
                     .iter()
                     .enumerate()
                     .filter_map(|(i, v)| {
@@ -169,10 +171,21 @@ where
                     })
                     .collect::<Vec<String>>()
                     .join(", ")
-            );
-            log::debug!("Reasons:\n{}\n", self.failure_reasons.join("\n\n"));
+            };
+
+            log::error!(
+                "\nError: Row {next_row}: Identity check failed or unable to derive values for some witness columns.\nSet RUST_LOG=debug for more information.");
             log::debug!(
-                "Determind range constraints for this row:\n{}",
+                "\nThe following columns were undetermined in the previous row and might have been needed to derive this row's values:\n{}",
+                list_undetermined(&self.current)
+            );
+            log::debug!(
+                "\nThe following columns are still undetermined in the current row:\n{}",
+                list_undetermined(&self.next)
+            );
+            log::debug!("\nReasons:\n{}\n", self.failure_reasons.join("\n\n"));
+            log::debug!(
+                "Determined range constraints for this row:\n{}",
                 self.next_range_constraints
                     .iter()
                     .enumerate()
@@ -476,7 +489,13 @@ where
 
     /// Processes the evaluation result: Stores failure reasons and updates next values.
     /// Returns true if a new value or constraint was determined.
-    fn handle_eval_result(&mut self, result: EvalResult<T>, strategy: SolvingStrategy) -> bool {
+    fn handle_eval_result(
+        &mut self,
+        result: EvalResult<T>,
+        strategy: SolvingStrategy,
+        source_name: impl Fn() -> String,
+    ) -> bool {
+        let mut first = true;
         match result {
             Ok(constraints) => {
                 let progress = !constraints.is_empty();
@@ -485,16 +504,24 @@ where
                     assert!(!progress);
                 }
                 for (id, c) in constraints.constraints {
+                    if first {
+                        log::trace!("    Processing: {}", source_name());
+                        first = false;
+                    }
                     match c {
                         Constraint::Assignment(value) => {
+                            log::trace!("      => {id} = {value}");
                             self.next[id.poly_id() as usize] = Some(value);
                         }
                         Constraint::RangeConstraint(cons) => {
+                            log::trace!("      => Adding range constraint for {id}: {cons}");
                             let old = &mut self.next_range_constraints[id.poly_id() as usize];
-                            match old {
-                                Some(c) => *old = Some(cons.conjunction(c)),
-                                None => *old = Some(cons),
+                            let new = match old {
+                                Some(c) => Some(cons.conjunction(c)),
+                                None => Some(cons),
                             };
+                            log::trace!("         (the conjunction is {})", new.clone().unwrap());
+                            *old = new;
                         }
                     }
                 }
@@ -512,7 +539,7 @@ where
     }
 
     /// Returns true if this is a witness column we care about (instead of a sub-machine witness).
-    fn is_relevant_witness(&self, id: usize) -> bool {
+    pub fn is_relevant_witness(&self, id: usize) -> bool {
         self.witnesses
             .contains(&self.fixed_data.witness_cols[id].poly)
     }
@@ -527,6 +554,11 @@ where
         evaluate_unknown: EvaluateUnknown,
     ) -> AffineResult<&'b PolynomialReference, T> {
         let degree = self.fixed_data.degree;
+
+        // We want to determine the values of next_row, but if the expression contains
+        // references to the next row, we want to evaluate the expression for the current row
+        // in order to determine values for next_row.
+        // Otherwise, we want to evaluate the expression on next_row directly.
         let fixed_row = match evaluate_row {
             EvaluationRow::Current => (self.next_row + degree - 1) % degree,
             EvaluationRow::Next => self.next_row,

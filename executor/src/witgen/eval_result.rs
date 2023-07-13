@@ -142,10 +142,10 @@ where
 
 /// Result of evaluating an expression / lookup.
 /// New assignments or constraints for witness columns identified by an ID.
-pub type EvalResult<'a, T, K = &'a PolynomialReference> = Result<EvalValue<K, T>, EvalError>;
+pub type EvalResult<'a, T, K = &'a PolynomialReference> = Result<EvalValue<K, T>, EvalError<T>>;
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum EvalError {
+pub enum EvalError<T: FieldElement> {
     /// We ran out of rows
     RowsExhausted,
     /// A constraint that cannot be satisfied (i.e. 2 = 1).
@@ -155,19 +155,19 @@ pub enum EvalError {
     /// A division pattern was recognized but the solution does not satisfy the range constraints.
     InvalidDivision,
     // Fixed lookup failed
-    FixedLookupFailed,
+    FixedLookupFailed(Vec<(String, T)>),
     Generic(String),
-    Multiple(Vec<EvalError>),
+    Multiple(Vec<EvalError<T>>),
 }
 
-impl From<String> for EvalError {
+impl<T: FieldElement> From<String> for EvalError<T> {
     fn from(value: String) -> Self {
         Self::Generic(value)
     }
 }
 
-impl EvalError {
-    pub fn combine(self, other: EvalError) -> EvalError {
+impl<T: FieldElement> EvalError<T> {
+    pub fn combine(self, other: EvalError<T>) -> EvalError<T> {
         match (self, other) {
             (EvalError::Multiple(l), EvalError::Multiple(r)) => {
                 EvalError::Multiple(l.into_iter().chain(r).collect())
@@ -180,7 +180,7 @@ impl EvalError {
     }
 }
 
-impl fmt::Display for EvalError {
+impl<T: FieldElement> fmt::Display for EvalError<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             EvalError::ConstraintUnsatisfiable(e) => {
@@ -199,7 +199,17 @@ impl fmt::Display for EvalError {
                 write!(f, "A division pattern was recognized but the range constrainst are conflicting with the solution.",)
             }
             EvalError::RowsExhausted => write!(f, "Table rows exhausted"),
-            EvalError::FixedLookupFailed => write!(f, "Lookup into fixed columns failed: no match"),
+            EvalError::FixedLookupFailed(input_assignment) => {
+                let query = input_assignment
+                    .iter()
+                    .map(|(poly_name, v)| format!("{} = {}", poly_name, v))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                write!(
+                    f,
+                    "Lookup into fixed columns failed: no match for query: {query}"
+                )
+            }
             EvalError::Generic(s) => write!(f, "{s}"),
         }
     }
