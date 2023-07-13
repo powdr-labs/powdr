@@ -3,14 +3,15 @@ use std::collections::{BTreeMap, BTreeSet, HashSet};
 use itertools::Itertools;
 
 use crate::data_parser::DataValue;
-use crate::parser::{Argument, Expression, Statement};
+
+use crate::ast::{Argument, Expression, FunctionOpKind, Register, Statement};
 
 /// Processes the statements and removes all statements and objects that are
 /// not reachable from the label `label`.
 /// Keeps the order of the statements.
-pub fn filter_reachable_from(
+pub fn filter_reachable_from<R: Register, F: FunctionOpKind>(
     label: &str,
-    statements: &mut Vec<Statement>,
+    statements: &mut Vec<Statement<R, F>>,
     objects: &mut BTreeMap<String, Vec<DataValue>>,
 ) {
     let replacements = extract_replacements(statements);
@@ -53,9 +54,9 @@ pub fn filter_reachable_from(
         .collect();
 }
 
-pub fn find_reachable_labels<'a>(
+pub fn find_reachable_labels<'a, R: Register, F: FunctionOpKind>(
     label: &'a str,
-    statements: &'a [Statement],
+    statements: &'a [Statement<R, F>],
     objects: &'a mut BTreeMap<String, Vec<DataValue>>,
     replacements: &BTreeMap<&str, &'a str>,
 ) -> BTreeSet<&'a str> {
@@ -85,7 +86,9 @@ pub fn find_reachable_labels<'a>(
             processed_labels.extend(seen_labels_in_block);
             referenced_labels_in_block
         } else {
-            eprintln!("The RISCV assembly code references an external routine / label that is not available:");
+            eprintln!(
+                "The assembly code references an external routine / label that is not available:"
+            );
             eprintln!("{l}");
             panic!();
         };
@@ -99,7 +102,9 @@ pub fn find_reachable_labels<'a>(
     processed_labels
 }
 
-fn extract_replacements(statements: &[Statement]) -> BTreeMap<String, String> {
+fn extract_replacements<R: Register, F: FunctionOpKind>(
+    statements: &[Statement<R, F>],
+) -> BTreeMap<String, String> {
     let mut replacements = statements
         .iter()
         .filter_map(|s| match s {
@@ -143,7 +148,9 @@ fn extract_replacements(statements: &[Statement]) -> BTreeMap<String, String> {
     replacements
 }
 
-pub fn extract_label_offsets(statements: &[Statement]) -> BTreeMap<&str, usize> {
+pub fn extract_label_offsets<R: Register, F: FunctionOpKind>(
+    statements: &[Statement<R, F>],
+) -> BTreeMap<&str, usize> {
     statements
         .iter()
         .enumerate()
@@ -159,7 +166,9 @@ pub fn extract_label_offsets(statements: &[Statement]) -> BTreeMap<&str, usize> 
         })
 }
 
-pub fn references_in_statement(statement: &Statement) -> BTreeSet<&str> {
+pub fn references_in_statement<R: Register, F: FunctionOpKind>(
+    statement: &Statement<R, F>,
+) -> BTreeSet<&str> {
     let mut ret = BTreeSet::new();
     match statement {
         Statement::Label(_) | Statement::Directive(_, _) => (),
@@ -176,7 +185,9 @@ pub fn references_in_statement(statement: &Statement) -> BTreeSet<&str> {
     ret
 }
 
-fn basic_block_references_starting_from(statements: &[Statement]) -> (Vec<&str>, Vec<&str>) {
+fn basic_block_references_starting_from<R: Register, F: FunctionOpKind>(
+    statements: &[Statement<R, F>],
+) -> (Vec<&str>, Vec<&str>) {
     let mut seen_labels = vec![];
     let mut referenced_labels = BTreeSet::<&str>::new();
     iterate_basic_block(statements, |s| {
@@ -189,7 +200,10 @@ fn basic_block_references_starting_from(statements: &[Statement]) -> (Vec<&str>,
     (referenced_labels.into_iter().collect(), seen_labels)
 }
 
-fn iterate_basic_block<'a>(statements: &'a [Statement], mut fun: impl FnMut(&'a Statement)) {
+fn iterate_basic_block<'a, R: Register, F: FunctionOpKind>(
+    statements: &'a [Statement<R, F>],
+    mut fun: impl FnMut(&'a Statement<R, F>),
+) {
     for s in statements {
         fun(s);
         if ends_control_flow(s) {
@@ -198,7 +212,7 @@ fn iterate_basic_block<'a>(statements: &'a [Statement], mut fun: impl FnMut(&'a 
     }
 }
 
-fn ends_control_flow(s: &Statement) -> bool {
+fn ends_control_flow<R: Register, F: FunctionOpKind>(s: &Statement<R, F>) -> bool {
     match s {
         Statement::Instruction(instruction, _) => match instruction.as_str() {
             "li" | "lui" | "la" | "mv" | "add" | "addi" | "sub" | "neg" | "mul" | "mulhu"
@@ -216,8 +230,8 @@ fn ends_control_flow(s: &Statement) -> bool {
     }
 }
 
-fn apply_replacement_to_instruction(
-    statement: &mut Statement,
+fn apply_replacement_to_instruction<R: Register, F: FunctionOpKind>(
+    statement: &mut Statement<R, F>,
     replacements: &BTreeMap<&str, &str>,
 ) {
     match statement {
