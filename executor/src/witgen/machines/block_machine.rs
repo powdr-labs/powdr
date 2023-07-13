@@ -273,27 +273,46 @@ impl<T: FieldElement> BlockMachine<T> {
                 row_delta,
                 identity,
             } = step;
+
             self.row = (old_len as i64 + row_delta + fixed_data.degree as i64) as DegreeType
                 % fixed_data.degree;
+
+            progress_in_last_step = false;
+
             match self.process_identity(fixed_data, fixed_lookup, left, right, identity) {
                 Ok(value) => {
                     if !value.is_empty() {
-                        progress_in_last_step = true;
-                        progress_steps.push(step);
+                        match identity {
+                            IdentityInSequence::Internal(index) => {
+                                log::debug!("Row {}: {}", row_delta, self.identities[index])
+                            }
+                            IdentityInSequence::OuterQuery => {
+                                log::debug!("Row {}: Outer query", row_delta)
+                            }
+                        }
+
                         errors.clear();
+
                         let (outer_constraints, inner_value) =
                             self.split_result(value, &outer_polys);
-                        outer_assignments.constraints.extend(outer_constraints);
+                        for outer_constraint in outer_constraints {
+                            if !outer_assignments.constraints.contains(&outer_constraint) {
+                                progress_in_last_step = true;
+                                outer_assignments.constraints.push(outer_constraint);
+                            }
+                        }
                         for (poly_id, next, constraint) in inner_value
                             .constraints
                             .into_iter()
                             .map(|(poly, constraint)| (poly.poly_id(), poly.next, constraint))
                             .collect::<Vec<_>>()
                         {
-                            self.handle_constraint(poly_id as usize, next, constraint);
+                            progress_in_last_step |=
+                                self.handle_constraint(poly_id as usize, next, constraint);
                         }
-                    } else {
-                        progress_in_last_step = false;
+                        if progress_in_last_step {
+                            progress_steps.push(step);
+                        }
                     }
                 }
                 Err(e) => errors.push(format!("In row {}: {e}", self.row).into()),
@@ -360,22 +379,26 @@ impl<T: FieldElement> BlockMachine<T> {
         (outer_constraints, value)
     }
 
-    fn handle_constraint(&mut self, poly: usize, next: bool, constraint: Constraint<T>) {
+    fn handle_constraint(&mut self, poly: usize, next: bool, constraint: Constraint<T>) -> bool {
         let r = (self.row + next as DegreeType) % self.degree;
         match constraint {
             Constraint::Assignment(a) => {
+                let r = r as usize;
                 let values = self.data.get_mut(&poly).unwrap();
-                if (r as usize) < values.len() {
+                if r < values.len() && values[r].is_none() {
                     // do not write to other rows for now
-                    values[r as usize] = Some(a);
+                    values[r] = Some(a);
+                    true
+                } else {
+                    false
                 }
             }
-            Constraint::RangeConstraint(bc) => {
-                self.range_constraints
-                    .entry(poly)
-                    .or_default()
-                    .insert(r, bc);
-            }
+            Constraint::RangeConstraint(bc) => self
+                .range_constraints
+                .entry(poly)
+                .or_default()
+                .insert(r, bc)
+                .is_none(),
         }
     }
 
@@ -573,7 +596,11 @@ impl DefaultSequenceIteratorState {
         if !self.is_first {
             self.progress_in_current_round |= progress_in_last_step;
             if is_last_identity {
-                if !self.progress_in_current_round || self.current_round_count > 100 {
+                if !self.progress_in_current_round || self.current_round_count > 20 {
+                    if self.current_round_count > 20 {
+                        panic!("Too many rounds in sequence!");
+                    }
+
                     // Move to next row delta, start with identity 0.
                     self.cur_row_delta_index += 1;
                     self.current_round_count = 0;
