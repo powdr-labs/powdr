@@ -187,6 +187,10 @@ runtime = {{ path = "./runtime" }}
     fmt_file.push("fmt.rs");
     fs::write(fmt_file, include_bytes!("../runtime/src/fmt.rs")).unwrap();
 
+    let mut coprocessors_file = runtime_file.clone();
+    coprocessors_file.push("coprocessors.rs");
+    fs::write(coprocessors_file, include_bytes!("../runtime/src/coprocessors.rs")).unwrap();
+
     compile_rust_crate_to_riscv_asm(cargo_file.to_str().unwrap())
 }
 

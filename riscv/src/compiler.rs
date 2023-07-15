@@ -463,6 +463,14 @@ fn preamble() -> String {
     instr is_equal_zero X -> Y { Y = XIsZero }
     instr is_not_equal_zero X -> Y { Y = 1 - XIsZero }
 
+    // ================= coprocessor substitution instructions =================
+
+    instr poseidon Y, Z -> X {
+        // Dummy code, to be replaced with actual poseidon code.
+        X = Y,
+        X = Z
+    }
+
     // ================= binary/bitwise instructions =================
 
     instr and Y, Z -> X {
@@ -1128,10 +1136,15 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
             vec![format!("jump_and_link_dyn {rs};")]
         }
         "call" => {
-            if let [label] = args {
-                vec![format!("call {};", argument_to_escaped_symbol(label))]
-            } else {
-                panic!()
+            // Depending on what symbol is called, the call is replaced by a
+            // powdr asm call, or a call to a coprocessor if a special function
+            // has been recognized.
+            match args {
+                [Argument::Expression(Expression::Symbol(label))] if label == "poseidon_hash" => {
+                    vec!["x0 <=X= poseidon(x10, x11);".to_string()]
+                }
+                [label] => vec![format!("call {};", argument_to_escaped_symbol(label))],
+                _ => panic!(),
             }
         }
         "ecall" => {

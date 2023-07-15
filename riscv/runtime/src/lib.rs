@@ -13,6 +13,7 @@ use crate::fmt::print_str;
 
 mod allocator;
 pub mod fmt;
+pub mod coprocessors;
 
 #[panic_handler]
 unsafe fn panic(panic: &PanicInfo<'_>) -> ! {
