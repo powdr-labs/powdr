@@ -152,38 +152,38 @@ impl<T: FieldElement> ArrayExpression<T> {
 
 impl<T> ArrayExpression<T> {
     /// solve for `*`
-    pub fn solve(&self, degree: DegreeType) -> Option<DegreeType> {
-        assert!(degree > 0, "Degree cannot be zero.");
-        // the length of this expression is `a + b*x`
-        let (a, b) = self.len();
-        // it must match `degree`, and we solve for `x`
-        if b == 0 {
-            None
-        } else {
-            assert!(
-                a <= degree,
-                "Array literal is too large ({a}) for degree ({degree})."
-            );
-            assert_eq!((degree - a) % b, 0, "Cannot find a suitable value for `*`");
-            Some((degree - a) / b)
+    pub fn solve(&self, degree: DegreeType) -> DegreeType {
+        assert!(
+            self.number_of_repetitions() <= 1,
+            "`*` can be used only once in rhs of array definition"
+        );
+        let len = self.constant_length();
+        assert!(
+            len <= degree,
+            "Array literal is too large ({len}) for degree ({degree})."
+        );
+        // Fill up the remaining space with the repeated array
+        degree - len
+    }
+
+    /// The number of times the `*` operator is used
+    fn number_of_repetitions(&self) -> usize {
+        match self {
+            ArrayExpression::RepeatedValue(_) => 1,
+            ArrayExpression::Value(_) => 0,
+            ArrayExpression::Concat(left, right) => {
+                left.number_of_repetitions() + right.number_of_repetitions()
+            }
         }
     }
 
-    /// find the total length of an array expression as an affine expression: `a + b*x`
-    fn len(&self) -> (DegreeType, DegreeType) {
+    /// The combined length of the constant-size parts of the array expression.
+    fn constant_length(&self) -> DegreeType {
         match self {
-            ArrayExpression::RepeatedValue(e) => (0, e.len() as DegreeType),
-            ArrayExpression::Value(e) => (e.len() as DegreeType, 0),
+            ArrayExpression::RepeatedValue(_) => 0,
+            ArrayExpression::Value(e) => e.len() as DegreeType,
             ArrayExpression::Concat(left, right) => {
-                let (a0, b0) = left.len();
-                let (a1, b1) = right.len();
-
-                assert!(
-                    b0 == 0 || b1 == 0,
-                    "`*` can be used only once in rhs of array definition"
-                );
-
-                (a0 + a1, b0 + b1)
+                left.constant_length() + right.constant_length()
             }
         }
     }

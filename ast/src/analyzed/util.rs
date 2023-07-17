@@ -20,7 +20,7 @@ where
             }
             Some(FunctionValueDefinition::Array(elements)) => elements
                 .iter_mut()
-                .flat_map(|e| e.values.iter_mut())
+                .flat_map(|e| e.pattern.iter_mut())
                 .try_for_each(|e| previsit_expression_mut(e, f)),
             None => ControlFlow::Continue(()),
         })?;
@@ -64,7 +64,7 @@ where
             }
             Some(FunctionValueDefinition::Array(elements)) => elements
                 .iter_mut()
-                .flat_map(|e| e.values.iter_mut())
+                .flat_map(|e| e.pattern.iter_mut())
                 .try_for_each(|e| postvisit_expression_mut(e, f)),
             None => ControlFlow::Continue(()),
         })?;
