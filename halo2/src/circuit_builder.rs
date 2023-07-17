@@ -36,7 +36,7 @@ pub(crate) fn analyzed_to_circuit<T: FieldElement>(
 
     let query = |column, rotation| Expr::Var(PlonkVar::Query(ColumnQuery { column, rotation }));
 
-    let mut cd = CircuitData::from(fixed, witness);
+    let mut cd = CircuitData::from(fixed, witness, &analyzed.constants);
 
     // append two fixed columns:
     // - one that enables constraints that do not have rotations (__enable_cur) in the actual circuit
@@ -252,6 +252,9 @@ fn expression_2_expr<T: FieldElement>(cd: &CircuitData<T>, expr: &Expression<T>)
                 BinaryOperator::Mul => Expr::Mul(vec![lhe, rhe]),
                 _ => unimplemented!("{:?}", expr),
             }
+        }
+        Expression::Constant(constant_name) => {
+            Expr::Const(cd.constants[constant_name].to_arbitrary_integer())
         }
 
         _ => unimplemented!("{:?}", expr),

@@ -217,14 +217,11 @@ impl<'a, T: FieldElement> Exporter<'a, T> {
     fn expression_to_json(&self, expr: &Expression<T>) -> (u32, JsonValue, Vec<u64>) {
         match expr {
             Expression::Constant(name) => (
-                1,
+                0,
                 object! {
-                    // TODO I think "const" is for constant poly, not a constant value.
-                    op: "const",
-                    deg: 1,
-                    // TODO is it declarations or constants?
-                    id: self.analyzed.definitions[name].0.id,
-                    next: false
+                    op: "number",
+                    deg: 0,
+                    value: format!("{}", self.analyzed.constants[name]),
                 },
                 Vec::new(),
             ),

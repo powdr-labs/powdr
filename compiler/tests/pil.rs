@@ -37,6 +37,13 @@ fn test_fibonacci() {
 }
 
 #[test]
+fn test_constant_in_identity() {
+    let f = "constant_in_identity.pil";
+    verify_pil(f, None);
+    halo2_proof(f, Default::default());
+}
+
+#[test]
 fn test_fibonacci_macro() {
     let f = "fib_macro.pil";
     verify_pil(f, None);
