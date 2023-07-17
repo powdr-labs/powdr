@@ -1,0 +1,16 @@
+constant %N = 16;
+
+namespace ConstantInIdentity(%N);
+    col fixed ISLAST(i) { match i {
+        %N - 1 => 1,
+        _ => 0,
+    } };
+    col witness x;
+
+    constant %offset = 5;
+
+    ISLAST * (x' - 1) = 0;
+
+    (1-ISLAST) * (x' - x - %offset) = 0;
+
+    public out = x(%N-1);
