@@ -241,23 +241,44 @@ pub enum FunctionValueDefinition<T> {
     Query(Expression<T>),
 }
 
-/// An array of elements that might be repeated (the whole list is repeated).
+/// An array of elements that might be repeated.
 #[derive(Debug)]
 pub struct RepeatedArray<T> {
-    pub values: Vec<Expression<T>>,
-    pub repetitions: DegreeType,
+    /// The pattern to be repeated
+    pattern: Vec<Expression<T>>,
+    /// The number of values to be filled by repeating the pattern, possibly truncating it at the end
+    size: DegreeType,
 }
 
 impl<T> RepeatedArray<T> {
+    pub fn new(pattern: Vec<Expression<T>>, size: DegreeType) -> Self {
+        if pattern.is_empty() {
+            assert!(
+                size == 0,
+                "impossible to fill {size} values with an empty pattern"
+            )
+        }
+        Self { pattern, size }
+    }
+
     /// Returns the number of elements in this array (including repetitions).
     pub fn size(&self) -> DegreeType {
-        if self.repetitions == 0 {
-            assert!(self.values.is_empty());
-        }
-        if self.values.is_empty() {
-            assert!(self.repetitions <= 1)
-        }
-        self.values.len() as DegreeType * self.repetitions
+        self.size
+    }
+
+    /// Returns the pattern to be repeated
+    pub fn pattern(&self) -> &[Expression<T>] {
+        &self.pattern
+    }
+
+    /// Returns true iff this array is empty.
+    pub fn is_empty(&self) -> bool {
+        self.size == 0
+    }
+
+    /// Returns whether pattern needs to be repeated (or truncated) in order to match the size.
+    pub fn is_repeated(&self) -> bool {
+        self.size != self.pattern.len() as DegreeType
     }
 }
 

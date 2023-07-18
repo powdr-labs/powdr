@@ -77,15 +77,15 @@ impl<T: Display> Display for FunctionValueDefinition<T> {
 
 impl<T: Display> Display for RepeatedArray<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        if self.repetitions == 0 {
+        if self.is_empty() {
             return Ok(());
         }
         write!(
             f,
             "[{}]",
-            self.values.iter().map(|i| i.to_string()).join(", ")
+            self.pattern.iter().map(|i| i.to_string()).join(", ")
         )?;
-        if self.repetitions > 1 {
+        if self.is_repeated() {
             write!(f, "*")?;
         }
         Ok(())

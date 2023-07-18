@@ -80,8 +80,8 @@ fn constant_value<T: FieldElement>(function: &FunctionValueDefinition<T>) -> Opt
             // combine with constant_evalutaor
             let mut values = expressions
                 .iter()
-                .filter(|e| e.repetitions > 0)
-                .flat_map(|e| e.values.iter())
+                .filter(|e| !e.is_empty())
+                .flat_map(|e| e.pattern().iter())
                 .map(|e| match e {
                     Expression::Number(n) => Some(n),
                     _ => None,

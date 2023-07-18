@@ -335,8 +335,8 @@ impl<T: FieldElement> PILContext<T> {
                 FunctionValueDefinition::Query(self.process_function(params, expr))
             }
             FunctionDefinition::Array(value) => {
-                let star_value = value.solve(self.polynomial_degree);
-                let expression = self.process_array_expression(value, star_value);
+                let size = value.solve(self.polynomial_degree);
+                let expression = self.process_array_expression(value, size);
                 assert_eq!(
                     expression.iter().map(|e| e.size()).sum::<DegreeType>(),
                     self.polynomial_degree
@@ -429,27 +429,28 @@ impl<T: FieldElement> PILContext<T> {
     fn process_array_expression(
         &mut self,
         array_expression: ::ast::parsed::ArrayExpression<T>,
-        star_value: Option<DegreeType>,
+        size: DegreeType,
     ) -> Vec<RepeatedArray<T>> {
         match array_expression {
-            ArrayExpression::Value(expressions) => vec![RepeatedArray {
-                values: self.process_expressions(expressions),
-                repetitions: 1,
-            }],
+            ArrayExpression::Value(expressions) => {
+                let values = self.process_expressions(expressions);
+                let size = values.len() as DegreeType;
+                vec![RepeatedArray::new(values, size)]
+            }
             ArrayExpression::RepeatedValue(expressions) => {
-                if star_value.unwrap() == 0 {
+                if size == 0 {
                     vec![]
                 } else {
-                    vec![RepeatedArray {
-                        values: self.process_expressions(expressions),
-                        repetitions: star_value.unwrap(),
-                    }]
+                    vec![RepeatedArray::new(
+                        self.process_expressions(expressions),
+                        size,
+                    )]
                 }
             }
             ArrayExpression::Concat(left, right) => self
-                .process_array_expression(*left, star_value)
+                .process_array_expression(*left, size)
                 .into_iter()
-                .chain(self.process_array_expression(*right, star_value))
+                .chain(self.process_array_expression(*right, size))
                 .collect(),
         }
     }

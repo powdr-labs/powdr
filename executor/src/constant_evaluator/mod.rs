@@ -57,25 +57,17 @@ fn generate_values<T: FieldElement>(
             let values: Vec<_> = values
                 .iter()
                 .flat_map(|elements| {
-                    assert!(elements.repetitions >= 1);
                     let items = elements
-                        .values
+                        .pattern()
                         .iter()
                         .map(|v| evaluator.evaluate(v))
                         .collect::<Vec<_>>();
 
-                    let original_len = items.len();
-                    if elements.repetitions == 1 {
-                        items
-                    } else if original_len == 1 {
-                        vec![items[0]; elements.repetitions as usize]
-                    } else {
-                        items
-                            .into_iter()
-                            .cycle()
-                            .take(original_len * elements.repetitions as usize)
-                            .collect()
-                    }
+                    items
+                        .into_iter()
+                        .cycle()
+                        .take(elements.size() as usize)
+                        .collect::<Vec<_>>()
                 })
                 .collect();
             assert_eq!(values.len(), degree as usize);
