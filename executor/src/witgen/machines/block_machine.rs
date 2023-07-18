@@ -20,11 +20,11 @@ use number::{DegreeType, FieldElement};
 
 /// A machine that produces multiple rows (one block) per query.
 /// TODO we do not actually "detect" the machine yet, we just check if
-/// the lookup has a binary selector that is 1 every k rows for some k > 1
+/// the lookup has a binary selector that is 1 every k rows for some k
 pub struct BlockMachine<T: FieldElement> {
     /// Block size, the period of the selector.
     block_size: usize,
-    selector: PolynomialReference,
+    selector: Option<Expression<T>>,
     identities: Vec<Identity<T>>,
     /// One column of values for each witness.
     data: HashMap<usize, Vec<Option<T>>>,
@@ -50,38 +50,35 @@ impl<T: FieldElement> BlockMachine<T> {
         global_range_constraints: &BTreeMap<&PolynomialReference, RangeConstraint<T>>,
     ) -> Option<Box<Self>> {
         for id in connecting_identities {
-            if let Some(sel) = &id.right.selector {
-                // TODO we should check that the other constraints/fixed columns are also periodic.
-                if let Some((selector, period)) = try_to_boolean_periodic_selector(sel, fixed_data)
-                {
-                    let mut machine = BlockMachine {
-                        block_size: period,
-                        selector: selector.clone(),
-                        identities: identities.iter().map(|&i| i.clone()).collect(),
-                        data: witness_cols
-                            .iter()
-                            .map(|n| (n.poly_id() as usize, vec![]))
-                            .collect(),
-                        row: 0,
-                        range_constraints: Default::default(),
-                        global_range_constraints: global_range_constraints
-                            .iter()
-                            .filter_map(|(n, c)| {
-                                n.is_witness().then_some((n.poly_id() as usize, c.clone()))
-                            })
-                            .collect(),
-                        degree: fixed_data.degree,
-                        processing_sequence_cache: ProcessingSequenceCache::new(
-                            period,
-                            identities.len(),
-                        ),
-                    };
-                    // Append a block so that we do not have to deal with wrap-around
-                    // when storing machine witness data.
-                    machine.append_new_block(fixed_data.degree).unwrap();
+            // TODO we should check that the other constraints/fixed columns are also periodic.
+            if let Some(period) = try_to_period(&id.right.selector, fixed_data) {
+                let mut machine = BlockMachine {
+                    block_size: period,
+                    selector: id.right.selector.clone(),
+                    identities: identities.iter().map(|&i| i.clone()).collect(),
+                    data: witness_cols
+                        .iter()
+                        .map(|n| (n.poly_id() as usize, vec![]))
+                        .collect(),
+                    row: 0,
+                    range_constraints: Default::default(),
+                    global_range_constraints: global_range_constraints
+                        .iter()
+                        .filter_map(|(n, c)| {
+                            n.is_witness().then_some((n.poly_id() as usize, c.clone()))
+                        })
+                        .collect(),
+                    degree: fixed_data.degree,
+                    processing_sequence_cache: ProcessingSequenceCache::new(
+                        period,
+                        identities.len(),
+                    ),
+                };
+                // Append a block so that we do not have to deal with wrap-around
+                // when storing machine witness data.
+                machine.append_new_block(fixed_data.degree).unwrap();
 
-                    return Some(Box::new(machine));
-                }
+                return Some(Box::new(machine));
             }
         }
 
@@ -91,36 +88,44 @@ impl<T: FieldElement> BlockMachine<T> {
 
 /// Check if `expr` is a reference to a function of the form
 /// f(i) { if (i + 1) % k == 0 { 1 } else { 0 } }
-/// for some k >= 2
+/// for some k
 /// TODO we could make this more generic and only detect the period
 /// but not enforce the offset.
-fn try_to_boolean_periodic_selector<'a, T: FieldElement>(
-    expr: &'a Expression<T>,
+fn try_to_period<T: FieldElement>(
+    expr: &Option<Expression<T>>,
     fixed_data: &FixedData<T>,
-) -> Option<(&'a PolynomialReference, usize)> {
-    let poly = try_to_simple_poly(expr)?;
-    if !poly.is_fixed() {
-        return None;
-    }
+) -> Option<usize> {
+    match expr {
+        Some(expr) => {
+            if let Expression::Number(ref n) = expr {
+                if *n == T::one() {
+                    return Some(1);
+                }
+            }
 
-    let values = fixed_data.fixed_col_values[poly.poly_id() as usize];
+            let poly = try_to_simple_poly(expr)?;
+            if !poly.is_fixed() {
+                return None;
+            }
 
-    let period = 1 + values.iter().position(|v| v.is_one())?;
-    if period == 1 {
-        return None;
+            let values = fixed_data.fixed_col_values[poly.poly_id() as usize];
+
+            let period = 1 + values.iter().position(|v| v.is_one())?;
+            values
+                .iter()
+                .enumerate()
+                .all(|(i, v)| {
+                    let expected = if (i + 1) % period == 0 {
+                        1.into()
+                    } else {
+                        0.into()
+                    };
+                    *v == expected
+                })
+                .then_some(period)
+        }
+        None => Some(1),
     }
-    values
-        .iter()
-        .enumerate()
-        .all(|(i, v)| {
-            let expected = if (i + 1) % period == 0 {
-                1.into()
-            } else {
-                0.into()
-            };
-            *v == expected
-        })
-        .then_some((poly, period))
 }
 
 impl<T: FieldElement> Machine<T> for BlockMachine<T> {
@@ -132,9 +137,7 @@ impl<T: FieldElement> Machine<T> for BlockMachine<T> {
         left: &[AffineResult<&'a PolynomialReference, T>],
         right: &SelectedExpressions<T>,
     ) -> Option<EvalResult<'a, T>> {
-        if *try_to_simple_poly(right.selector.as_ref()?)? != self.selector
-            || kind != IdentityKind::Plookup
-        {
+        if right.selector != self.selector || kind != IdentityKind::Plookup {
             return None;
         }
         let previous_len = self.rows() as usize;
@@ -271,6 +274,7 @@ impl<T: FieldElement> BlockMachine<T> {
                     EvalValue::complete(vec![])
                 });
         }
+
         let outer_polys = left
             .iter()
             .flat_map(|r| {

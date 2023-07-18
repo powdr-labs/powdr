@@ -117,3 +117,8 @@ fn test_halo_without_lookup() {
 fn test_simple_div() {
     verify_pil("simple_div.pil", None);
 }
+
+#[test]
+fn test_single_line_blocks() {
+    verify_pil("single_line_blocks.pil", None);
+}
