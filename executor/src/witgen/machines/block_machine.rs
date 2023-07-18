@@ -24,7 +24,7 @@ use number::{DegreeType, FieldElement};
 pub struct BlockMachine<T: FieldElement> {
     /// Block size, the period of the selector.
     block_size: usize,
-    selector: Option<Expression<T>>,
+    selected_expressions: SelectedExpressions<T>,
     identities: Vec<Identity<T>>,
     /// One column of values for each witness.
     data: HashMap<usize, Vec<Option<T>>>,
@@ -54,7 +54,7 @@ impl<T: FieldElement> BlockMachine<T> {
             if let Some(period) = try_to_period(&id.right.selector, fixed_data) {
                 let mut machine = BlockMachine {
                     block_size: period,
-                    selector: id.right.selector.clone(),
+                    selected_expressions: id.right.clone(),
                     identities: identities.iter().map(|&i| i.clone()).collect(),
                     data: witness_cols
                         .iter()
@@ -137,7 +137,7 @@ impl<T: FieldElement> Machine<T> for BlockMachine<T> {
         left: &[AffineResult<&'a PolynomialReference, T>],
         right: &SelectedExpressions<T>,
     ) -> Option<EvalResult<'a, T>> {
-        if right.selector != self.selector || kind != IdentityKind::Plookup {
+        if *right != self.selected_expressions || kind != IdentityKind::Plookup {
             return None;
         }
         let previous_len = self.rows() as usize;
@@ -258,24 +258,6 @@ impl<T: FieldElement> BlockMachine<T> {
         right: &SelectedExpressions<T>,
     ) -> EvalResult<'b, T> {
         log::trace!("Start processing block machine");
-
-        // First check if we already store the value.
-        if left
-            .iter()
-            .all(|v| v.as_ref().ok().map(|v| v.is_constant()) == Some(true))
-            && self.rows() > 0
-        {
-            // All values on the left hand side are known, check if this is a query
-            // to the last row.
-            self.row = self.rows() - 1;
-            return self
-                .process_outer_query(fixed_data, left, right)
-                .map(|value| {
-                    assert!(value.constraints.is_empty());
-                    assert!(value.is_complete());
-                    EvalValue::complete(vec![])
-                });
-        }
 
         let outer_polys = left
             .iter()
