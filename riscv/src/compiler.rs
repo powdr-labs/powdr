@@ -467,8 +467,7 @@ fn preamble() -> String {
 
     instr poseidon Y, Z -> X {
         // Dummy code, to be replaced with actual poseidon code.
-        X = Y,
-        X = Z
+        X = 0
     }
 
     // ================= binary/bitwise instructions =================
@@ -1141,7 +1140,7 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
             // has been recognized.
             match args {
                 [Argument::Expression(Expression::Symbol(label))] if label == "poseidon_hash" => {
-                    vec!["x0 <=X= poseidon(x10, x11);".to_string()]
+                    vec!["x10 <=X= poseidon(x10, x11);".to_string()]
                 }
                 [label] => vec![format!("call {};", argument_to_escaped_symbol(label))],
                 _ => panic!(),

@@ -5,6 +5,6 @@
 // during the reachability analysis.
 #[no_mangle]
 #[inline(never)]
-pub fn poseidon_hash(_data: &[u8], _size: usize) -> [u8; 32] {
-    return [0; 32];
+pub fn poseidon_hash(_a: u32, _b: u32) -> u32 {
+    0
 }
