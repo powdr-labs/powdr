@@ -5,12 +5,18 @@ use strum::{Display, EnumString, EnumVariantNames};
 
 #[derive(Clone, EnumString, EnumVariantNames, Display)]
 pub enum Backend {
+    #[cfg(feature = "halo2")]
     #[strum(serialize = "halo2")]
     Halo2,
+    #[cfg(feature = "halo2")]
     #[strum(serialize = "halo2-aggr")]
     Halo2Aggr,
+    #[cfg(feature = "halo2")]
     #[strum(serialize = "halo2-mock")]
     Halo2Mock,
+    // At the moment, this crate is empty without halo2, but it is always built
+    // as part of the infrastructure of for eventually supporting other
+    // backends.
 }
 
 /// Create a proof for a given PIL, fixed column values and witness column values
@@ -48,10 +54,16 @@ pub trait ProverAggregationWithParams {
     ) -> Proof;
 }
 
+#[cfg(feature = "halo2")]
 pub struct Halo2Backend;
+
+#[cfg(feature = "halo2")]
 pub struct Halo2MockBackend;
+
+#[cfg(feature = "halo2")]
 pub struct Halo2AggregationBackend;
 
+#[cfg(feature = "halo2")]
 impl ProverWithParams for Halo2Backend {
     fn prove<T: FieldElement, R: io::Read>(
         pil: &Analyzed<T>,
@@ -67,6 +79,7 @@ impl ProverWithParams for Halo2Backend {
     }
 }
 
+#[cfg(feature = "halo2")]
 impl ProverWithoutParams for Halo2MockBackend {
     fn prove<T: FieldElement>(
         pil: &Analyzed<T>,
@@ -78,6 +91,7 @@ impl ProverWithoutParams for Halo2MockBackend {
     }
 }
 
+#[cfg(feature = "halo2")]
 impl ProverAggregationWithParams for Halo2AggregationBackend {
     fn prove<T: FieldElement, R1: io::Read, R2: io::Read>(
         pil: &Analyzed<T>,

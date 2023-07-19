@@ -196,7 +196,13 @@ where
         write_commits_to_fs(&commits, output_dir, degree);
         log::info!("Generated witness.");
 
-        // TODO the fs and params stuff needs to be refactored out of here
+        // TODO: the fs and params stuff needs to be refactored out of here
+        //
+        // second TODO: I think all the backend specific stuff should be
+        // refactored out of here. If there is a backend, the interface should
+        // be the same for all backends, so this crate won't need to depend on
+        // "halo2" or be aware of the "halo2" feature.
+        #[cfg(feature = "halo2")]
         if let Some(Backend::Halo2) = prove_with {
             let degree = usize::BITS - degree.leading_zeros() + 1;
             let params = halo2::kzg_params(degree as usize);

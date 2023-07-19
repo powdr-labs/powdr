@@ -31,10 +31,12 @@ jobs:
         key: ${{ runner.os }}-pilcom-node-modules
     - name: Install pilcom
       run: git clone https://github.com/0xPolygonHermez/pilcom.git  && cd pilcom && npm install
+    - name: Check without Halo2
+      run: cargo check
     - name: Build
-      run: cargo build
+      run: cargo build --all-features
     - name: Run tests
-      run: PILCOM=$(pwd)/pilcom/ cargo test --verbose
+      run: PILCOM=$(pwd)/pilcom/ cargo test --all-features --verbose
     - name: Lint
       run: cargo clippy --all --all-features -- -D warnings
     - name: Format
@@ -70,7 +72,7 @@ jobs:
     - name: Install pilcom
       run: git clone https://github.com/0xPolygonHermez/pilcom.git  && cd pilcom && npm install
     - name: Build
-      run: cargo build --release
+      run: cargo build --all-features --release
     - name: Run tests
       # Number threads is set to 1 because the runner does not have enough memeory for more.
       run: PILCOM=$(pwd)/pilcom/ cargo test -r --verbose -- --ignored --nocapture --test-threads=1 --exact test_keccak test_vec_median

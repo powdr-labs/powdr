@@ -3,10 +3,11 @@ name = "backend"
 version = "0.1.0"
 edition = "2021"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[features]
+halo2 = ["dep:halo2"]
 
 [dependencies]
-halo2 = { path = "../halo2" }
+halo2 = { path = "../halo2", optional = true }
 pil_analyzer = { path = "../pil_analyzer" }
 number = { path = "../number" }
 strum = { version = "0.24.1", features = ["derive"] }

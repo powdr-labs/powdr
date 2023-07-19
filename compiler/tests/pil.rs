@@ -19,13 +19,23 @@ pub fn verify_pil(file_name: &str, query_callback: Option<fn(&str) -> Option<Gol
     compiler::verify(file_name, &temp_dir);
 }
 
-fn halo2_proof(file_name: &str, inputs: Vec<Bn254Field>) {
+#[cfg(feature = "halo2")]
+fn get_prover() -> Option<Backend> {
+    Some(Backend::Halo2)
+}
+
+#[cfg(not(feature = "halo2"))]
+fn get_prover() -> Option<Backend> {
+    None
+}
+
+fn gen_proof(file_name: &str, inputs: Vec<Bn254Field>) {
     compile_pil_or_asm(
         format!("../test_data/pil/{file_name}").as_str(),
         inputs,
         &mktemp::Temp::new_dir().unwrap(),
         true,
-        Some(Backend::Halo2),
+        get_prover(),
     );
 }
 
@@ -33,21 +43,21 @@ fn halo2_proof(file_name: &str, inputs: Vec<Bn254Field>) {
 fn test_fibonacci() {
     let f = "fibonacci.pil";
     verify_pil(f, None);
-    halo2_proof(f, Default::default());
+    gen_proof(f, Default::default());
 }
 
 #[test]
 fn test_constant_in_identity() {
     let f = "constant_in_identity.pil";
     verify_pil(f, None);
-    halo2_proof(f, Default::default());
+    gen_proof(f, Default::default());
 }
 
 #[test]
 fn test_fibonacci_macro() {
     let f = "fib_macro.pil";
     verify_pil(f, None);
-    halo2_proof(f, Default::default());
+    gen_proof(f, Default::default());
 }
 
 #[test]
@@ -110,7 +120,7 @@ fn test_block_lookup_or() {
 fn test_halo_without_lookup() {
     let f = "halo_without_lookup.pil";
     verify_pil(f, None);
-    halo2_proof(f, Default::default());
+    gen_proof(f, Default::default());
 }
 
 #[test]

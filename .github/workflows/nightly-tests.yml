@@ -50,8 +50,10 @@ jobs:
       run: rustup component add rust-src --toolchain nightly-2023-01-03-x86_64-unknown-linux-gnu
     - name: Install pilcom
       run: git clone https://github.com/0xPolygonHermez/pilcom.git  && cd pilcom && npm install
+    - name: Check without Halo2
+      run: cargo check
     - name: Build
-      run: cargo build --release
+      run: cargo build --release --all-features
     - name: Run tests
       # Number threads is set to 1 because the runner does not have enough memeory for more.
-      run: PILCOM=$(pwd)/pilcom/ cargo test -r --verbose -- --include-ignored --nocapture --test-threads=1
+      run: PILCOM=$(pwd)/pilcom/ cargo test -r --verbose --all-features -- --include-ignored --nocapture --test-threads=1
