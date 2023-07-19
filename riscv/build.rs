@@ -20,7 +20,8 @@ fn build_instruction_tests() {
     let destination = Path::new(&out_dir).join("instruction_tests.rs");
     let mut test_file = File::create(&destination).unwrap();
 
-    for file in read_dir("./tests/instruction_tests/generated/").unwrap() {
+    let generated_path = "./tests/instruction_tests/generated/";
+    for file in read_dir(generated_path).unwrap() {
         let file = file.unwrap();
         if let Some(file_name) = file
             .file_name()
@@ -29,7 +30,7 @@ fn build_instruction_tests() {
             .to_string()
             .strip_suffix(".S")
         {
-            println!("cargo:rerun-if-changed={file_name}.S");
+            println!("cargo:rerun-if-changed={generated_path}/{file_name}.S");
             write!(
                 test_file,
                 r#"
