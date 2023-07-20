@@ -14,7 +14,7 @@ use crate::witgen::{
     symbolic_witness_evaluator::{SymoblicWitnessEvaluator, WitnessColumnEvaluator},
     Constraint, EvalError,
 };
-use crate::witgen::{Constraints, EvalValue};
+use crate::witgen::{Constraints, EvalValue, IncompleteCause};
 use ast::analyzed::{Expression, Identity, IdentityKind, PolynomialReference, SelectedExpressions};
 use number::{DegreeType, FieldElement};
 
@@ -144,13 +144,15 @@ impl<T: FieldElement> Machine<T> for BlockMachine<T> {
         Some({
             let result = self.process_plookup_internal(fixed_data, fixed_lookup, left, right);
             self.range_constraints.clear();
-            result.map_err(|e| {
-                // rollback the changes.
-                for col in self.data.values_mut() {
-                    col.truncate(previous_len)
+            if let Ok(assignments) = &result {
+                if !assignments.is_complete() {
+                    // rollback the changes.
+                    for col in self.data.values_mut() {
+                        col.truncate(previous_len)
+                    }
                 }
-                e
-            })
+            }
+            result
         })
     }
 
@@ -373,7 +375,9 @@ impl<T: FieldElement> BlockMachine<T> {
                 .reduce(|x: EvalError<T>, y| x.combine(y))
                 .unwrap())
         } else {
-            Err("Could not assign all variables in the query - maybe the machine does not have enough constraints?".to_string().into())
+            Ok(EvalValue::incomplete(
+                IncompleteCause::BlockMachineLookupIncomplete,
+            ))
         }
     }
 

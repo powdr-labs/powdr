@@ -12,7 +12,9 @@ use super::range_constraints::RangeConstraint;
 use super::expression_evaluator::ExpressionEvaluator;
 use super::machines::{FixedLookup, Machine};
 use super::symbolic_witness_evaluator::{SymoblicWitnessEvaluator, WitnessColumnEvaluator};
-use super::{Constraint, EvalResult, EvalValue, FixedData, IncompleteCause, WitnessColumn};
+use super::{
+    Constraint, EvalError, EvalResult, EvalValue, FixedData, IncompleteCause, WitnessColumn,
+};
 
 pub struct Generator<'a, T: FieldElement, QueryCallback: Send + Sync> {
     fixed_data: &'a FixedData<'a, T>,
@@ -29,7 +31,7 @@ pub struct Generator<'a, T: FieldElement, QueryCallback: Send + Sync> {
     /// Range constraints on the witness polynomials in the next row.
     next_range_constraints: Vec<Option<RangeConstraint<T>>>,
     next_row: DegreeType,
-    failure_reasons: Vec<String>,
+    failure_reasons: Vec<EvalError<T>>,
     last_report: DegreeType,
     last_report_time: Instant,
 }
@@ -103,6 +105,9 @@ where
             SolvingStrategy::SingleVariableAffine,
             SolvingStrategy::AssumeZero,
         ] {
+            if identity_failed {
+                break;
+            }
             log::trace!("  Strategy: {:?}", strategy);
             loop {
                 identity_failed = false;
@@ -117,7 +122,7 @@ where
                 {
                     let result = self.process_identity(identity, strategy).map_err(|err| {
                         let msg = match strategy {
-                            SolvingStrategy::SingleVariableAffine => "No progress on",
+                            SolvingStrategy::SingleVariableAffine => "Solving failed on",
                             SolvingStrategy::AssumeZero => {
                                 "Assuming zero for unknown columns failed in"
                             }
@@ -152,7 +157,7 @@ where
                     }
                 }
 
-                if !progress {
+                if !progress || identity_failed {
                     break;
                 }
             }
@@ -183,7 +188,13 @@ where
                 "\nThe following columns are still undetermined in the current row:\n{}",
                 list_undetermined(&self.next)
             );
-            log::debug!("\nReasons:\n{}\n", self.failure_reasons.join("\n\n"));
+            log::debug!(
+                "\nReasons:\n{}\n",
+                self.failure_reasons
+                    .iter()
+                    .map(|r| r.to_string())
+                    .join("\n\n")
+            );
             log::debug!(
                 "Determined range constraints for this row:\n{}",
                 self.next_range_constraints
@@ -257,7 +268,7 @@ where
                 "{next_row} of {} rows ({} %, {} rows per second)",
                 self.fixed_data.degree,
                 next_row * 100 / self.fixed_data.degree,
-                1000000 / duration.as_millis()
+                1_000_000_000 / duration.as_micros()
             );
             self.last_report = next_row;
         }
@@ -328,11 +339,6 @@ where
         &self,
         query: &'b Expression<T>,
     ) -> Result<String, IncompleteCause<&'b PolynomialReference>> {
-        if let Ok(v) = self.evaluate(query, EvaluationRow::Next, EvaluateUnknown::Symbolic) {
-            if v.is_constant() {
-                return Ok(v.to_string());
-            }
-        }
         // TODO combine that with the constant evaluator and the commit evaluator...
         match query {
             Expression::Tuple(items) => Ok(items
@@ -351,7 +357,11 @@ where
             Expression::MatchExpression(scrutinee, arms) => {
                 self.interpolate_match_expression_for_query(scrutinee.as_ref(), arms)
             }
-            query => unimplemented!("Cannot handle / evaluate {query}"),
+            _ => self
+                .evaluate(query, EvaluationRow::Next, EvaluateUnknown::Symbolic)?
+                .constant_value()
+                .map(|c| c.to_string())
+                .ok_or(IncompleteCause::NonConstantQueryElement),
         }
     }
 
@@ -528,7 +538,7 @@ where
                 progress
             }
             Err(reason) => {
-                self.failure_reasons.push(format!("{reason}"));
+                self.failure_reasons.push(reason);
                 false
             }
         }

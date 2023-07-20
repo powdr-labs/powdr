@@ -7,11 +7,11 @@ use super::fixed_lookup_machine::FixedLookup;
 use super::Machine;
 use super::{EvalResult, FixedData};
 use crate::witgen::affine_expression::AffineResult;
-use crate::witgen::EvalValue;
 use crate::witgen::{
     expression_evaluator::ExpressionEvaluator, fixed_evaluator::FixedEvaluator,
     symbolic_evaluator::SymbolicEvaluator,
 };
+use crate::witgen::{EvalValue, IncompleteCause};
 use ast::analyzed::{Expression, Identity, IdentityKind, PolynomialReference, SelectedExpressions};
 use number::FieldElement;
 
@@ -183,7 +183,7 @@ impl<T: FieldElement> SortedWitnesses<T> {
         right: &SelectedExpressions<T>,
         rhs: Vec<&PolynomialReference>,
     ) -> EvalResult<'a, T> {
-        // Fail if the LHS has an error.
+        // Return "incomplete" if the LHS has an error (we still need more information).
         let (left, errors): (Vec<_>, Vec<_>) = left.iter().partition_map(|x| match x {
             Ok(x) => Either::Left(x),
             Err(x) => Either::Right(x),
@@ -242,11 +242,7 @@ impl<T: FieldElement> SortedWitnesses<T> {
                         *stored_value = Some(v);
                     }
                     None => {
-                        return Err(format!(
-                            "Value {r} for key {} = {key_value} not known",
-                            self.key_col,
-                        )
-                        .into())
+                        return Ok(EvalValue::incomplete(IncompleteCause::DataNotYetAvailable));
                     }
                 },
             }
