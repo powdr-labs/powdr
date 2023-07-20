@@ -32,7 +32,7 @@ jobs:
     - name: Install pilcom
       run: git clone https://github.com/0xPolygonHermez/pilcom.git  && cd pilcom && npm install
     - name: Check without Halo2
-      run: cargo check
+      run: cargo check --no-default-features
     - name: Build
       run: cargo build --all-features
     - name: Run tests

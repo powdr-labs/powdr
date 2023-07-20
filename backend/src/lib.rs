@@ -14,9 +14,8 @@ pub enum Backend {
     #[cfg(feature = "halo2")]
     #[strum(serialize = "halo2-mock")]
     Halo2Mock,
-    // At the moment, this crate is empty without halo2, but it is always built
-    // as part of the infrastructure of for eventually supporting other
-    // backends.
+    // At the moment, this enum is empty without halo2, but it is always built
+    // as part of the infrastructure to eventually support other backends.
 }
 
 /// Create a proof for a given PIL, fixed column values and witness column values

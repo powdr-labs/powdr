@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [features]
+default = ["halo2"]
 halo2 = ["dep:halo2", "backend/halo2", "compiler/halo2"]
 
 [dependencies]
