@@ -242,6 +242,10 @@ fn main() {
         .init();
 
     let command = Cli::parse().command;
+    run_command(command);
+}
+
+fn run_command(command: Commands) {
     match command {
         Commands::Rust {
             file,
@@ -301,22 +305,15 @@ fn main() {
             export_csv,
             csv_mode,
         } => {
-            let pil_filename = call_with_field!(compile_pil_or_asm::<field>(
-                &file,
-                split_inputs(&inputs),
-                Path::new(&output_directory),
+            call_with_field!(compile_with_csv_export::<field>(
+                file,
+                output_directory,
+                inputs,
                 force,
-                prove_with
+                prove_with,
+                export_csv,
+                csv_mode
             ));
-
-            if export_csv {
-                let pil = Path::new(&pil_filename);
-                let dir = Path::new(&output_directory);
-                let csv_path = dir.join("columns.csv");
-                call_with_field!(export_columns_to_csv::<field>(
-                    pil, dir, &csv_path, csv_mode
-                ));
-            }
         }
         Commands::Prove {
             file,
@@ -374,23 +371,47 @@ fn write_params_to_fs(params: &[u8], output_dir: &Path) {
     log::info!("Wrote params.bin.");
 }
 
+fn compile_with_csv_export<T: FieldElement>(
+    file: String,
+    output_directory: String,
+    inputs: String,
+    force: bool,
+    prove_with: Option<Backend>,
+    export_csv: bool,
+    csv_mode: CsvRenderMode,
+) {
+    let result = compile_pil_or_asm::<T>(
+        &file,
+        split_inputs(&inputs),
+        Path::new(&output_directory),
+        force,
+        prove_with,
+    );
+
+    if export_csv {
+        // Compilation result is None if the ASM file has not been compiled
+        // (e.g. it has been compiled before and the force flag is not set)
+        if let Some(compilation_result) = result {
+            let csv_path = Path::new(&output_directory).join("columns.csv");
+            export_columns_to_csv::<T>(
+                compilation_result.constants,
+                compilation_result.witness,
+                &csv_path,
+                csv_mode,
+            );
+        }
+    }
+}
+
 fn export_columns_to_csv<T: FieldElement>(
-    file: &Path,
-    dir: &Path,
+    fixed: Vec<(String, Vec<T>)>,
+    witness: Option<Vec<(String, Vec<T>)>>,
     csv_path: &Path,
     render_mode: CsvRenderMode,
 ) {
-    let pil = compiler::analyze_pil::<T>(file);
-    let fixed = compiler::util::read_fixed(&pil, dir);
-    let witness = compiler::util::read_witness(&pil, dir);
-
-    assert_eq!(fixed.1, witness.1);
-
     let columns = fixed
-        .0
         .into_iter()
-        .chain(witness.0.into_iter())
-        .map(|(name, values)| (name.to_owned(), values))
+        .chain(witness.unwrap_or(vec![]).into_iter())
         .collect::<Vec<_>>();
 
     let mut csv_file = fs::File::create(csv_path).unwrap();
@@ -479,4 +500,45 @@ fn optimize_and_output<T: FieldElement>(file: &str) {
         "{}",
         pilopt::optimize(compiler::analyze_pil::<T>(Path::new(file)))
     );
+}
+
+#[cfg(test)]
+mod test {
+
+    use backend::Backend;
+    use tempfile;
+
+    use crate::{run_command, Commands, CsvRenderMode, FieldArgument};
+    #[test]
+    fn test_simple_sum() {
+        let output_dir = tempfile::tempdir().unwrap();
+        let output_dir_str = output_dir.path().to_string_lossy().to_string();
+
+        let pil_command = Commands::Pil {
+            file: "../test_data/asm/simple_sum.asm".into(),
+            field: FieldArgument::Bn254,
+            output_directory: output_dir_str.clone(),
+            inputs: "3,2,1,2".into(),
+            force: false,
+            prove_with: None,
+            export_csv: true,
+            csv_mode: CsvRenderMode::Hex,
+        };
+        run_command(pil_command);
+
+        let file = output_dir
+            .path()
+            .join("simple_sum_opt.pil")
+            .to_string_lossy()
+            .to_string();
+        let prove_command = Commands::Prove {
+            file,
+            dir: output_dir_str,
+            field: FieldArgument::Bn254,
+            backend: Backend::Halo2Mock,
+            proof: None,
+            params: None,
+        };
+        run_command(prove_command);
+    }
 }

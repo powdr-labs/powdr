@@ -16,6 +16,9 @@ backend = { path = "../backend" }
 pilopt = { path = "../pilopt" }
 strum = { version = "0.24.1", features = ["derive"] }
 
+[dev-dependencies]
+tempfile = "3.6"
+
 [[bin]]
 name = "powdr"
 path = "src/main.rs"

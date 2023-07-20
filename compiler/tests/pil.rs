@@ -10,12 +10,7 @@ pub fn verify_pil(file_name: &str, query_callback: Option<fn(&str) -> Option<Gol
         .unwrap();
 
     let temp_dir = mktemp::Temp::new_dir().unwrap();
-    assert!(compiler::compile_pil(
-        &input_file,
-        &temp_dir,
-        query_callback,
-        None,
-    ));
+    assert!(compiler::compile_pil(&input_file, &temp_dir, query_callback, None,).success);
     compiler::verify(file_name, &temp_dir);
 }
 
