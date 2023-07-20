@@ -20,12 +20,12 @@ pub fn verify_pil(file_name: &str, query_callback: Option<fn(&str) -> Option<Gol
 }
 
 #[cfg(feature = "halo2")]
-fn get_prover() -> Option<Backend> {
+fn prover() -> Option<Backend> {
     Some(Backend::Halo2)
 }
 
 #[cfg(not(feature = "halo2"))]
-fn get_prover() -> Option<Backend> {
+fn prover() -> Option<Backend> {
     None
 }
 
@@ -35,7 +35,7 @@ fn gen_proof(file_name: &str, inputs: Vec<Bn254Field>) {
         inputs,
         &mktemp::Temp::new_dir().unwrap(),
         true,
-        get_prover(),
+        prover(),
     );
 }
 
