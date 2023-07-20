@@ -144,13 +144,15 @@ impl<T: FieldElement> Machine<T> for BlockMachine<T> {
         Some({
             let result = self.process_plookup_internal(fixed_data, fixed_lookup, left, right);
             self.range_constraints.clear();
-            result.map_err(|e| {
-                // rollback the changes.
-                for col in self.data.values_mut() {
-                    col.truncate(previous_len)
+            if let Ok(assignments) = &result {
+                if !assignments.is_complete() {
+                    // rollback the changes.
+                    for col in self.data.values_mut() {
+                        col.truncate(previous_len)
+                    }
                 }
-                e
-            })
+            }
+            result
         })
     }
 
