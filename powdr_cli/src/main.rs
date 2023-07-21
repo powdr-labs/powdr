@@ -2,17 +2,18 @@
 
 mod util;
 
-use backend::{self, ProverWithParams, ProverWithoutParams, *};
 use clap::{Parser, Subcommand};
 use compiler::{compile_pil_or_asm, Backend};
 use env_logger::{Builder, Target};
 use log::LevelFilter;
 use number::{Bn254Field, FieldElement, GoldilocksField};
 use riscv::{compile_riscv_asm, compile_rust};
+use std::io::BufWriter;
 use std::{borrow::Cow, collections::HashSet, fs, io::Write, path::Path};
 use strum::{Display, EnumString, EnumVariantNames};
 
-use std::io::{BufWriter, Cursor};
+#[cfg(feature = "halo2")]
+use backend::{self, ProverWithParams, ProverWithoutParams, *};
 
 #[derive(Clone, EnumString, EnumVariantNames, Display)]
 pub enum FieldArgument {
@@ -315,6 +316,7 @@ fn run_command(command: Commands) {
                 csv_mode
             ));
         }
+        #[cfg(feature = "halo2")]
         Commands::Prove {
             file,
             dir,
@@ -329,6 +331,8 @@ fn run_command(command: Commands) {
             let proof =
                 call_with_field!(read_and_prove::<field>(pil, dir, &backend, proof, params));
 
+            // TODO: this probably should be abstracted alway in a common backends API,
+            // maybe a function "get_file_extension()".
             let proof_filename = if let Backend::Halo2Aggr = backend {
                 "proof_aggr.bin"
             } else {
@@ -342,6 +346,7 @@ fn run_command(command: Commands) {
                 log::info!("Wrote {proof_filename}.");
             }
         }
+        #[cfg(feature = "halo2")]
         Commands::Setup {
             size,
             dir,
@@ -350,11 +355,19 @@ fn run_command(command: Commands) {
         } => {
             setup(size, dir, field, backend);
         }
+
+        #[cfg(not(feature = "halo2"))]
+        _ => unreachable!(),
     }
 }
 
+// Since we only have halo2 backend, if it is disabled, this function is
+// unreachable, and we can disable it.
+#[cfg(feature = "halo2")]
 fn setup(size: usize, dir: String, field: FieldArgument, backend: Backend) {
     let dir = Path::new(&dir);
+
+    // TODO: a backend should be transparent to its user
     let params = match (field, &backend) {
         (FieldArgument::Bn254, Backend::Halo2) => Halo2Backend::generate_params::<Bn254Field>(size),
         (_, Backend::Halo2) => panic!("Backend halo2 requires field Bn254"),
@@ -363,6 +376,7 @@ fn setup(size: usize, dir: String, field: FieldArgument, backend: Backend) {
     write_params_to_fs(&params, dir);
 }
 
+#[cfg(feature = "halo2")]
 fn write_params_to_fs(params: &[u8], output_dir: &Path) {
     let mut params_file = fs::File::create(output_dir.join("params.bin")).unwrap();
     let mut params_writer = BufWriter::new(&mut params_file);
@@ -455,6 +469,9 @@ fn export_columns_to_csv<T: FieldElement>(
     }
 }
 
+// Since we only have halo2 backend, if it is disabled, this function is
+// unreachable, and we can disable it.
+#[cfg(feature = "halo2")]
 fn read_and_prove<T: FieldElement>(
     file: &Path,
     dir: &Path,
@@ -468,6 +485,7 @@ fn read_and_prove<T: FieldElement>(
 
     assert_eq!(fixed.1, witness.1);
 
+    // TODO: a backend should be transparent to its user
     match (backend, params) {
         (Backend::Halo2, Some(params)) => {
             let params = fs::File::open(dir.join(params)).unwrap();
@@ -477,7 +495,7 @@ fn read_and_prove<T: FieldElement>(
             let degree = usize::BITS - fixed.1.leading_zeros() + 1;
             let params = Halo2Backend::generate_params::<Bn254Field>(degree as usize);
             write_params_to_fs(&params, dir);
-            Halo2Backend::prove(&pil, fixed.0, witness.0, Cursor::new(params))
+            Halo2Backend::prove(&pil, fixed.0, witness.0, std::io::Cursor::new(params))
         }
         (Backend::Halo2Mock, Some(_)) => panic!("Backend Halo2Mock does not accept params"),
         (Backend::Halo2Mock, None) => Halo2MockBackend::prove(&pil, fixed.0, witness.0),
