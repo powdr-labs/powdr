@@ -6,6 +6,7 @@
 extern "C" {
     fn poseidon_coprocessor(a: u32, b: u32) -> u32;
 }
+
 pub fn poseidon_hash(a: u32, b: u32) -> u32 {
     unsafe { poseidon_coprocessor(a, b) }
 }

@@ -1,4 +1,5 @@
 //! A RISC-V frontend for powdr
+#![feature(if_let_guard)]
 
 use std::{collections::BTreeMap, path::Path, process::Command};
 

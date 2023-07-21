@@ -852,6 +852,17 @@ fn only_if_no_write_to_zero_vec(statements: Vec<String>, reg: Register) -> Vec<S
     }
 }
 
+// let coprocessor_substitutions = vec![("poseidon_coprocessor", "")];
+static COPROCESSOR_SUBSTITUTIONS: &'static [(&'static str, &'static str)] =
+    &[("poseidon_coprocessor", "x10 <=X= poseidon(x10, x11);")];
+
+fn has_coprocessor_substitution(label: &str) -> Option<&'static str> {
+    COPROCESSOR_SUBSTITUTIONS
+        .iter()
+        .find(|(l, _)| *l == label)
+        .map(|&(_, subst)| subst)
+}
+
 fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
     match instr {
         // load/store registers
@@ -1144,9 +1155,9 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
             // has been recognized.
             match args {
                 [Argument::Expression(Expression::Symbol(label))]
-                    if label == "poseidon_coprocessor" =>
+                    if let Some(replacement) = has_coprocessor_substitution(label) =>
                 {
-                    vec!["x10 <=X= poseidon(x10, x11);".to_string()]
+                    vec![replacement.to_string()]
                 }
                 [label] => vec![format!("call {};", argument_to_escaped_symbol(label))],
                 _ => panic!(),
@@ -1168,9 +1179,9 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
             // has been recognized.
             match args {
                 [Argument::Expression(Expression::Symbol(label))]
-                    if label == "poseidon_coprocessor" =>
+                    if let Some(replacement) = has_coprocessor_substitution(label) =>
                 {
-                    vec!["x10 <=X= poseidon(x10, x11);".to_string()]
+                    vec![replacement.to_string()]
                 }
                 [label] => vec![format!("tail {};", argument_to_escaped_symbol(label))],
                 _ => panic!(),
