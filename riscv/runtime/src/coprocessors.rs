@@ -3,8 +3,9 @@
 // coporocessor during compilation.
 // The function itself will be removed by the compiler
 // during the reachability analysis.
-#[no_mangle]
-#[inline(never)]
-pub fn poseidon_hash(_a: u32, _b: u32) -> u32 {
-    0
+extern "C" {
+    fn poseidon_coprocessor(a: u32, b: u32) -> u32;
+}
+pub fn poseidon_hash(a: u32, b: u32) -> u32 {
+    unsafe { poseidon_coprocessor(a, b) }
 }

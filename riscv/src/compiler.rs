@@ -712,6 +712,10 @@ fn runtime() -> &'static str {
 
 .globl __rust_alloc_error_handler
 .set __rust_alloc_error_handler, __rg_oom
+
+.globl poseidon_coprocessor
+poseidon_coprocessor:
+    ret
 "#
 }
 
@@ -1139,7 +1143,7 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
             // powdr asm call, or a call to a coprocessor if a special function
             // has been recognized.
             match args {
-                [Argument::Expression(Expression::Symbol(label))] if label == "poseidon_hash" => {
+                [Argument::Expression(Expression::Symbol(label))] if label == "poseidon_coprocessor" => {
                     vec!["x10 <=X= poseidon(x10, x11);".to_string()]
                 }
                 [label] => vec![format!("call {};", argument_to_escaped_symbol(label))],
@@ -1157,10 +1161,15 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
             vec!["x0 <=X= ${ (\"print_char\", x10) };\n".to_string()]
         }
         "tail" => {
-            if let [label] = args {
-                vec![format!("tail {};", argument_to_escaped_symbol(label))]
-            } else {
-                panic!()
+            // Depending on what symbol is called, the tail call is replaced by a
+            // powdr asm tail, or a call to a coprocessor if a special function
+            // has been recognized.
+            match args {
+                [Argument::Expression(Expression::Symbol(label))] if label == "poseidon_coprocessor" => {
+                    vec!["x10 <=X= poseidon(x10, x11);".to_string()]
+                }
+                [label] => vec![format!("tail {};", argument_to_escaped_symbol(label))],
+                _ => panic!(),
             }
         }
         "ret" => {
