@@ -1143,7 +1143,9 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
             // powdr asm call, or a call to a coprocessor if a special function
             // has been recognized.
             match args {
-                [Argument::Expression(Expression::Symbol(label))] if label == "poseidon_coprocessor" => {
+                [Argument::Expression(Expression::Symbol(label))]
+                    if label == "poseidon_coprocessor" =>
+                {
                     vec!["x10 <=X= poseidon(x10, x11);".to_string()]
                 }
                 [label] => vec![format!("call {};", argument_to_escaped_symbol(label))],
@@ -1165,7 +1167,9 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
             // powdr asm tail, or a call to a coprocessor if a special function
             // has been recognized.
             match args {
-                [Argument::Expression(Expression::Symbol(label))] if label == "poseidon_coprocessor" => {
+                [Argument::Expression(Expression::Symbol(label))]
+                    if label == "poseidon_coprocessor" =>
+                {
                     vec!["x10 <=X= poseidon(x10, x11);".to_string()]
                 }
                 [label] => vec![format!("tail {};", argument_to_escaped_symbol(label))],
