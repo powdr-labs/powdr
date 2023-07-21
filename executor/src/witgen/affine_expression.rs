@@ -63,6 +63,12 @@ where
             .iter()
             .filter_map(|(i, c)| (c != &T::from(0)).then_some((*i, c)))
     }
+
+    pub fn assign(&mut self, key: K, value: T) {
+        if let Some(coefficient) = self.coefficients.remove(&key) {
+            self.offset -= coefficient * value;
+        }
+    }
 }
 
 impl<'x, K, T> AffineExpression<K, T>
