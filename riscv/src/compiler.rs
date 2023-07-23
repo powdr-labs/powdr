@@ -86,6 +86,10 @@ impl asm_utils::compiler::Compiler for Risc {
         // Replace dynamic references to code labels
         replace_dynamic_label_references(&mut statements, &objects);
 
+        // Remove the riscv asm stub function, which is used
+        // for compilation, and will not be called.
+        replace_coprocessor_stubs(&mut statements);
+
         // Sort the objects according to the order of the names in object_order.
         // With the single exception: If there is large object, put that at the end.
         // The idea behind this is that there might be a single gigantic object representing the heap
@@ -200,6 +204,25 @@ fn replace_dynamic_label_reference(
             Argument::Expression(Expression::Symbol(label1.clone())),
         ],
     ))
+}
+
+fn replace_coprocessor_stubs(statements: &mut Vec<Statement>) {
+    let mut to_delete = BTreeSet::default();
+    for (i, statement) in statements.iter().enumerate() {
+        if let Statement::Label(label) = statement {
+            let stub_names: Vec<&str> = COPROCESSOR_SUBSTITUTIONS
+                .iter()
+                .map(|&(ref name, _)| *name)
+                .collect();
+
+            if stub_names.contains(&label.as_str()) {
+                to_delete.insert(i);        // for the label
+                to_delete.insert(i + 1);    // for the `ret` instruction
+            }
+        }
+    }
+    let mut i = 0;
+    statements.retain(|_| (!to_delete.contains(&i), i += 1).0);
 }
 
 fn store_data_objects<'a>(
