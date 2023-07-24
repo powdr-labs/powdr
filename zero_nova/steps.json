@@ -1,0 +1,209 @@
+[
+	{
+		"X": "0",
+		"reg_write_X_A": "1",
+		"instr_ASSERT_IS_ZERO_A": "0",
+		"X_const": "0",
+		"X_read_free": "0",
+		"read_X_A": "0",
+		"read_X_pc": "0",
+		"X_free_value": "1",
+		"first_step": "1",
+		"first_step_next": "0"
+	}
+	,{
+		"X": "0",
+		"reg_write_X_A": "0",
+		"instr_ASSERT_IS_ZERO_A": "1",
+		"X_const": "0",
+		"X_read_free": "0",
+		"read_X_A": "0",
+		"read_X_pc": "0",
+		"X_free_value": "0",
+		"first_step": "0",
+		"first_step_next": "1"
+	}
+	,{
+		"X": "0",
+		"reg_write_X_A": "0",
+		"instr_ASSERT_IS_ZERO_A": "1",
+		"X_const": "0",
+		"X_read_free": "0",
+		"read_X_A": "0",
+		"read_X_pc": "0",
+		"X_free_value": "0",
+		"first_step": "0",
+		"first_step_next": "1"
+	}
+	,{
+		"X": "0",
+		"reg_write_X_A": "0",
+		"instr_ASSERT_IS_ZERO_A": "1",
+		"X_const": "0",
+		"X_read_free": "0",
+		"read_X_A": "0",
+		"read_X_pc": "0",
+		"X_free_value": "0",
+		"first_step": "0",
+		"first_step_next": "1"
+	}
+	,{
+		"X": "0",
+		"reg_write_X_A": "0",
+		"instr_ASSERT_IS_ZERO_A": "1",
+		"X_const": "0",
+		"X_read_free": "0",
+		"read_X_A": "0",
+		"read_X_pc": "0",
+		"X_free_value": "0",
+		"first_step": "0",
+		"first_step_next": "1"
+	}
+	,{
+		"X": "0",
+		"reg_write_X_A": "0",
+		"instr_ASSERT_IS_ZERO_A": "1",
+		"X_const": "0",
+		"X_read_free": "0",
+		"read_X_A": "0",
+		"read_X_pc": "0",
+		"X_free_value": "0",
+		"first_step": "0",
+		"first_step_next": "1"
+	}
+	,{
+		"X": "0",
+		"reg_write_X_A": "0",
+		"instr_ASSERT_IS_ZERO_A": "1",
+		"X_const": "0",
+		"X_read_free": "0",
+		"read_X_A": "0",
+		"read_X_pc": "0",
+		"X_free_value": "0",
+		"first_step": "0",
+		"first_step_next": "1"
+	}
+	,{
+		"X": "0",
+		"reg_write_X_A": "0",
+		"instr_ASSERT_IS_ZERO_A": "1",
+		"X_const": "0",
+		"X_read_free": "0",
+		"read_X_A": "0",
+		"read_X_pc": "0",
+		"X_free_value": "0",
+		"first_step": "0",
+		"first_step_next": "1"
+	}
+	,{
+		"X": "0",
+		"reg_write_X_A": "0",
+		"instr_ASSERT_IS_ZERO_A": "1",
+		"X_const": "0",
+		"X_read_free": "0",
+		"read_X_A": "0",
+		"read_X_pc": "0",
+		"X_free_value": "0",
+		"first_step": "0",
+		"first_step_next": "1"
+	}
+	,{
+		"X": "0",
+		"reg_write_X_A": "0",
+		"instr_ASSERT_IS_ZERO_A": "1",
+		"X_const": "0",
+		"X_read_free": "0",
+		"read_X_A": "0",
+		"read_X_pc": "0",
+		"X_free_value": "0",
+		"first_step": "0",
+		"first_step_next": "1"
+	}
+	,{
+		"X": "0",
+		"reg_write_X_A": "0",
+		"instr_ASSERT_IS_ZERO_A": "1",
+		"X_const": "0",
+		"X_read_free": "0",
+		"read_X_A": "0",
+		"read_X_pc": "0",
+		"X_free_value": "0",
+		"first_step": "0",
+		"first_step_next": "1"
+	}
+	,{
+		"X": "0",
+		"reg_write_X_A": "0",
+		"instr_ASSERT_IS_ZERO_A": "1",
+		"X_const": "0",
+		"X_read_free": "0",
+		"read_X_A": "0",
+		"read_X_pc": "0",
+		"X_free_value": "0",
+		"first_step": "0",
+		"first_step_next": "1"
+	}
+	,{
+		"X": "0",
+		"reg_write_X_A": "0",
+		"instr_ASSERT_IS_ZERO_A": "1",
+		"X_const": "0",
+		"X_read_free": "0",
+		"read_X_A": "0",
+		"read_X_pc": "0",
+		"X_free_value": "0",
+		"first_step": "0",
+		"first_step_next": "1"
+	}
+	,{
+		"X": "0",
+		"reg_write_X_A": "0",
+		"instr_ASSERT_IS_ZERO_A": "1",
+		"X_const": "0",
+		"X_read_free": "0",
+		"read_X_A": "0",
+		"read_X_pc": "0",
+		"X_free_value": "0",
+		"first_step": "0",
+		"first_step_next": "1"
+	}
+	,{
+		"X": "0",
+		"reg_write_X_A": "0",
+		"instr_ASSERT_IS_ZERO_A": "1",
+		"X_const": "0",
+		"X_read_free": "0",
+		"read_X_A": "0",
+		"read_X_pc": "0",
+		"X_free_value": "0",
+		"first_step": "0",
+		"first_step_next": "1"
+	}
+	,{
+		"X": "0",
+		"reg_write_X_A": "0",
+		"instr_ASSERT_IS_ZERO_A": "1",
+		"X_const": "0",
+		"X_read_free": "0",
+		"read_X_A": "0",
+		"read_X_pc": "0",
+		"X_free_value": "0",
+		"first_step": "0",
+		"first_step_next": "1"
+	}
+	,{
+		"X": "0",
+		"reg_write_X_A": "0",
+		"instr_ASSERT_IS_ZERO_A": "1",
+		"X_const": "0",
+		"X_read_free": "0",
+		"read_X_A": "0",
+		"read_X_pc": "0",
+		"X_free_value": "0",
+		"first_step": "0",
+		"first_step_next": "1"
+	}
+
+
+
+]
