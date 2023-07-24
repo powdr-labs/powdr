@@ -86,6 +86,10 @@ impl asm_utils::compiler::Compiler for Risc {
         // Replace dynamic references to code labels
         replace_dynamic_label_references(&mut statements, &objects);
 
+        // Remove the riscv asm stub function, which is used
+        // for compilation, and will not be called.
+        replace_coprocessor_stubs(&mut statements);
+
         // Sort the objects according to the order of the names in object_order.
         // With the single exception: If there is large object, put that at the end.
         // The idea behind this is that there might be a single gigantic object representing the heap
@@ -200,6 +204,25 @@ fn replace_dynamic_label_reference(
             Argument::Expression(Expression::Symbol(label1.clone())),
         ],
     ))
+}
+
+fn replace_coprocessor_stubs(statements: &mut Vec<Statement>) {
+    let stub_names: Vec<&str> = COPROCESSOR_SUBSTITUTIONS
+        .iter()
+        .map(|(name, _)| *name)
+        .collect();
+
+    let mut to_delete = BTreeSet::default();
+    for (i, statement) in statements.iter().enumerate() {
+        if let Statement::Label(label) = statement {
+            if stub_names.contains(&label.as_str()) {
+                to_delete.insert(i); // for the label
+                to_delete.insert(i + 1); // for the `ret` instruction
+            }
+        }
+    }
+    let mut i = 0;
+    statements.retain(|_| (!to_delete.contains(&i), i += 1).0);
 }
 
 fn store_data_objects<'a>(
@@ -463,6 +486,13 @@ fn preamble() -> String {
     instr is_equal_zero X -> Y { Y = XIsZero }
     instr is_not_equal_zero X -> Y { Y = 1 - XIsZero }
 
+    // ================= coprocessor substitution instructions =================
+
+    instr poseidon Y, Z -> X {
+        // Dummy code, to be replaced with actual poseidon code.
+        X = 0
+    }
+
     // ================= binary/bitwise instructions =================
 
     instr and Y, Z -> X {
@@ -705,6 +735,10 @@ fn runtime() -> &'static str {
 
 .globl __rust_alloc_error_handler
 .set __rust_alloc_error_handler, __rg_oom
+
+.globl poseidon_coprocessor
+poseidon_coprocessor:
+    ret
 "#
 }
 
@@ -839,6 +873,16 @@ fn only_if_no_write_to_zero_vec(statements: Vec<String>, reg: Register) -> Vec<S
     } else {
         statements
     }
+}
+
+static COPROCESSOR_SUBSTITUTIONS: &[(&str, &str)] =
+    &[("poseidon_coprocessor", "x10 <=X= poseidon(x10, x11);")];
+
+fn try_coprocessor_substitution(label: &str) -> Option<&'static str> {
+    COPROCESSOR_SUBSTITUTIONS
+        .iter()
+        .find(|(l, _)| *l == label)
+        .map(|&(_, subst)| subst)
 }
 
 fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
@@ -1128,10 +1172,20 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
             vec![format!("jump_and_link_dyn {rs};")]
         }
         "call" => {
-            if let [label] = args {
-                vec![format!("call {};", argument_to_escaped_symbol(label))]
-            } else {
-                panic!()
+            // Depending on what symbol is called, the call is replaced by a
+            // powdr asm call, or a call to a coprocessor if a special function
+            // has been recognized.
+            match args {
+                [label] => match label {
+                    Argument::Expression(Expression::Symbol(l)) => {
+                        match try_coprocessor_substitution(l) {
+                            Some(replacement) => vec![replacement.to_string()],
+                            _ => vec![format!("call {};", argument_to_escaped_symbol(label))],
+                        }
+                    }
+                    _ => vec![format!("call {};", argument_to_escaped_symbol(label))],
+                },
+                _ => panic!(),
             }
         }
         "ecall" => {
@@ -1145,10 +1199,20 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
             vec!["x0 <=X= ${ (\"print_char\", x10) };\n".to_string()]
         }
         "tail" => {
-            if let [label] = args {
-                vec![format!("tail {};", argument_to_escaped_symbol(label))]
-            } else {
-                panic!()
+            // Depending on what symbol is called, the tail call is replaced by a
+            // powdr asm tail, or a call to a coprocessor if a special function
+            // has been recognized.
+            match args {
+                [label] => match label {
+                    Argument::Expression(Expression::Symbol(l)) => {
+                        match try_coprocessor_substitution(l) {
+                            Some(replacement) => vec![replacement.to_string()],
+                            _ => vec![format!("tail {};", argument_to_escaped_symbol(label))],
+                        }
+                    }
+                    _ => vec![format!("tail {};", argument_to_escaped_symbol(label))],
+                },
+                _ => panic!(),
             }
         }
         "ret" => {
