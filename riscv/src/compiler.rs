@@ -875,7 +875,6 @@ fn only_if_no_write_to_zero_vec(statements: Vec<String>, reg: Register) -> Vec<S
     }
 }
 
-// let coprocessor_substitutions = vec![("poseidon_coprocessor", "")];
 static COPROCESSOR_SUBSTITUTIONS: &'static [(&'static str, &'static str)] =
     &[("poseidon_coprocessor", "x10 <=X= poseidon(x10, x11);")];
 
