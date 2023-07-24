@@ -207,17 +207,17 @@ fn replace_dynamic_label_reference(
 }
 
 fn replace_coprocessor_stubs(statements: &mut Vec<Statement>) {
+    let stub_names: Vec<&str> = COPROCESSOR_SUBSTITUTIONS
+        .iter()
+        .map(|&(ref name, _)| *name)
+        .collect();
+
     let mut to_delete = BTreeSet::default();
     for (i, statement) in statements.iter().enumerate() {
         if let Statement::Label(label) = statement {
-            let stub_names: Vec<&str> = COPROCESSOR_SUBSTITUTIONS
-                .iter()
-                .map(|&(ref name, _)| *name)
-                .collect();
-
             if stub_names.contains(&label.as_str()) {
-                to_delete.insert(i);        // for the label
-                to_delete.insert(i + 1);    // for the `ret` instruction
+                to_delete.insert(i); // for the label
+                to_delete.insert(i + 1); // for the `ret` instruction
             }
         }
     }
