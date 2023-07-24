@@ -209,7 +209,7 @@ fn replace_dynamic_label_reference(
 fn replace_coprocessor_stubs(statements: &mut Vec<Statement>) {
     let stub_names: Vec<&str> = COPROCESSOR_SUBSTITUTIONS
         .iter()
-        .map(|&(ref name, _)| *name)
+        .map(|(name, _)| *name)
         .collect();
 
     let mut to_delete = BTreeSet::default();
@@ -875,7 +875,7 @@ fn only_if_no_write_to_zero_vec(statements: Vec<String>, reg: Register) -> Vec<S
     }
 }
 
-static COPROCESSOR_SUBSTITUTIONS: &'static [(&'static str, &'static str)] =
+static COPROCESSOR_SUBSTITUTIONS: &[(&str, &str)] =
     &[("poseidon_coprocessor", "x10 <=X= poseidon(x10, x11);")];
 
 fn try_coprocessor_substitution(label: &str) -> Option<&'static str> {
