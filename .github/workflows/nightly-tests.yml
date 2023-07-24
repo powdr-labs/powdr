@@ -51,9 +51,9 @@ jobs:
     - name: Install pilcom
       run: git clone https://github.com/0xPolygonHermez/pilcom.git  && cd pilcom && npm install
     - name: Check without Halo2
-      run: cargo check --no-default-features
+      run: cargo check --all --no-default-features
     - name: Build
-      run: cargo build --release --all-features
+      run: cargo build --all --release --all-features
     - name: Run tests
       # Number threads is set to 1 because the runner does not have enough memeory for more.
-      run: PILCOM=$(pwd)/pilcom/ cargo test -r --verbose --all-features -- --include-ignored --nocapture --test-threads=1
+      run: PILCOM=$(pwd)/pilcom/ cargo test --all --release --verbose --all-features -- --include-ignored --nocapture --test-threads=1
