@@ -878,7 +878,7 @@ fn only_if_no_write_to_zero_vec(statements: Vec<String>, reg: Register) -> Vec<S
 static COPROCESSOR_SUBSTITUTIONS: &'static [(&'static str, &'static str)] =
     &[("poseidon_coprocessor", "x10 <=X= poseidon(x10, x11);")];
 
-fn has_coprocessor_substitution(label: &str) -> Option<&'static str> {
+fn try_coprocessor_substitution(label: &str) -> Option<&'static str> {
     COPROCESSOR_SUBSTITUTIONS
         .iter()
         .find(|(l, _)| *l == label)
@@ -1176,12 +1176,15 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
             // powdr asm call, or a call to a coprocessor if a special function
             // has been recognized.
             match args {
-                [Argument::Expression(Expression::Symbol(label))]
-                    if let Some(replacement) = has_coprocessor_substitution(label) =>
-                {
-                    vec![replacement.to_string()]
-                }
-                [label] => vec![format!("call {};", argument_to_escaped_symbol(label))],
+                [label] => match label {
+                    Argument::Expression(Expression::Symbol(l)) => {
+                        match try_coprocessor_substitution(l) {
+                            Some(replacement) => vec![replacement.to_string()],
+                            _ => vec![format!("call {};", argument_to_escaped_symbol(label))],
+                        }
+                    }
+                    _ => vec![format!("call {};", argument_to_escaped_symbol(label))],
+                },
                 _ => panic!(),
             }
         }
@@ -1200,12 +1203,15 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
             // powdr asm tail, or a call to a coprocessor if a special function
             // has been recognized.
             match args {
-                [Argument::Expression(Expression::Symbol(label))]
-                    if let Some(replacement) = has_coprocessor_substitution(label) =>
-                {
-                    vec![replacement.to_string()]
-                }
-                [label] => vec![format!("tail {};", argument_to_escaped_symbol(label))],
+                [label] => match label {
+                    Argument::Expression(Expression::Symbol(l)) => {
+                        match try_coprocessor_substitution(l) {
+                            Some(replacement) => vec![replacement.to_string()],
+                            _ => vec![format!("tail {};", argument_to_escaped_symbol(label))],
+                        }
+                    }
+                    _ => vec![format!("tail {};", argument_to_escaped_symbol(label))],
+                },
                 _ => panic!(),
             }
         }
