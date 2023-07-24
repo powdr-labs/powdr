@@ -32,15 +32,15 @@ jobs:
     - name: Install pilcom
       run: git clone https://github.com/0xPolygonHermez/pilcom.git  && cd pilcom && npm install
     - name: Check without Halo2
-      run: cargo check --no-default-features
+      run: cargo check --all --no-default-features
     - name: Build
-      run: cargo build --all-features
+      run: cargo build --all --all-features
     - name: Run tests
-      run: PILCOM=$(pwd)/pilcom/ cargo test --all-features --verbose
+      run: PILCOM=$(pwd)/pilcom/ cargo test --all --all-features --verbose
     - name: Lint
       run: cargo clippy --all --all-features -- -D warnings
     - name: Format
-      run: cargo fmt --check --verbose
+      run: cargo fmt --all --check --verbose
 
   test_release:
     runs-on: ubuntu-latest
@@ -72,7 +72,7 @@ jobs:
     - name: Install pilcom
       run: git clone https://github.com/0xPolygonHermez/pilcom.git  && cd pilcom && npm install
     - name: Build
-      run: cargo build --all-features --release
+      run: cargo build --all --all-features --release
     - name: Run tests
       # Number threads is set to 1 because the runner does not have enough memeory for more.
-      run: PILCOM=$(pwd)/pilcom/ cargo test -r --verbose -- --ignored --nocapture --test-threads=1 --exact test_keccak test_vec_median
+      run: PILCOM=$(pwd)/pilcom/ cargo test --all --release --verbose -- --ignored --nocapture --test-threads=1 --exact test_keccak test_vec_median
