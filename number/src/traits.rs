@@ -63,6 +63,7 @@ pub trait FieldElement:
     + Add<Output = Self>
     + AddAssign
     + Sub<Output = Self>
+    + SubAssign
     + Mul<Output = Self>
     + Div<Output = Self>
     + Neg<Output = Self>
