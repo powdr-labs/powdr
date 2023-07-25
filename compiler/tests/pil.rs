@@ -132,3 +132,8 @@ fn test_single_line_blocks() {
 fn test_two_block_machine_functions() {
     verify_pil("two_block_machine_functions.pil", None);
 }
+
+#[test]
+fn test_fixed_columns() {
+    verify_pil("fixed_columns.pil", None);
+}
