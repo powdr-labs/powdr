@@ -24,7 +24,7 @@ use number::{DegreeType, FieldElement};
 pub struct BlockMachine<T: FieldElement> {
     /// Block size, the period of the selector.
     block_size: usize,
-    selector: Option<Expression<T>>,
+    selected_expressions: SelectedExpressions<T>,
     identities: Vec<Identity<T>>,
     /// One column of values for each witness.
     data: HashMap<usize, Vec<Option<T>>>,
@@ -54,7 +54,7 @@ impl<T: FieldElement> BlockMachine<T> {
             if let Some(period) = try_to_period(&id.right.selector, fixed_data) {
                 let mut machine = BlockMachine {
                     block_size: period,
-                    selector: id.right.selector.clone(),
+                    selected_expressions: id.right.clone(),
                     identities: identities.iter().map(|&i| i.clone()).collect(),
                     data: witness_cols
                         .iter()
@@ -135,9 +135,9 @@ impl<T: FieldElement> Machine<T> for BlockMachine<T> {
         fixed_lookup: &mut FixedLookup<T>,
         kind: IdentityKind,
         left: &[AffineResult<&'a PolynomialReference, T>],
-        right: &SelectedExpressions<T>,
+        right: &'a SelectedExpressions<T>,
     ) -> Option<EvalResult<'a, T>> {
-        if right.selector != self.selector || kind != IdentityKind::Plookup {
+        if *right != self.selected_expressions || kind != IdentityKind::Plookup {
             return None;
         }
         let previous_len = self.rows() as usize;
@@ -255,11 +255,13 @@ impl<T: FieldElement> BlockMachine<T> {
         fixed_data: &FixedData<T>,
         fixed_lookup: &mut FixedLookup<T>,
         left: &[AffineResult<&'b PolynomialReference, T>],
-        right: &SelectedExpressions<T>,
+        right: &'b SelectedExpressions<T>,
     ) -> EvalResult<'b, T> {
         log::trace!("Start processing block machine");
 
         // First check if we already store the value.
+        // This can happen in the loop detection case, where this function is just called
+        // to validate the constraints.
         if left
             .iter()
             .all(|v| v.as_ref().ok().map(|v| v.is_constant()) == Some(true))
@@ -267,14 +269,26 @@ impl<T: FieldElement> BlockMachine<T> {
         {
             // All values on the left hand side are known, check if this is a query
             // to the last row.
+            let row_before = self.row;
             self.row = self.rows() - 1;
-            return self
-                .process_outer_query(fixed_data, left, right)
-                .map(|value| {
-                    assert!(value.constraints.is_empty());
-                    assert!(value.is_complete());
-                    EvalValue::complete(vec![])
-                });
+            let result = self.process_outer_query(fixed_data, left, right);
+
+            match result {
+                Ok(result) => {
+                    if result.is_complete() {
+                        return Ok(result);
+                    } else {
+                        // If the query is not complete, we roll back the row change and continue.
+                        // This might happen if the block machine just validates some input (rather
+                        // than computing an output) and hasn't been called on that input before.
+                        self.row = row_before;
+                    }
+                }
+                Err(e) => {
+                    // Non-recoverable error
+                    return Err(e);
+                }
+            }
         }
 
         let outer_polys = left
