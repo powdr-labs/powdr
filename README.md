@@ -1,5 +1,8 @@
 # powdr
 
+[![Matrix Chat](https://img.shields.io/badge/Matrix%20-chat-brightgreen?style=plastic&logo=matrix)](https://matrix.to/#/#powdr:matrix.org)
+[![Twitter Follow](https://img.shields.io/twitter/follow/powdr_labs?style=plastic&logo=twitter)](https://twitter.com/powdr_labs)
+
 *powdr* is an extended polynomial identity (PIL) and zk-focused assembly (zkASM)
 language written in Rust, focused on modularity and excellent developer experience.
 
