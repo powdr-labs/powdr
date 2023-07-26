@@ -1,6 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::marker::PhantomData;
 
+use super::machine_extractor::refs_in_selected_expressions;
 use super::{EvalResult, FixedData, FixedLookup};
 use crate::witgen::global_constraints::RangeConstraintSet;
 use crate::witgen::util::try_to_simple_poly;
@@ -49,41 +50,48 @@ impl<T: FieldElement> BlockMachine<T> {
         witness_cols: &HashSet<&PolynomialReference>,
         global_range_constraints: &BTreeMap<&PolynomialReference, RangeConstraint<T>>,
     ) -> Option<Box<Self>> {
-        for id in connecting_identities {
-            // TODO we should check that the other constraints/fixed columns are also periodic.
-            if let Some(period) = try_to_period(&id.right.selector, fixed_data) {
-                let mut machine = BlockMachine {
-                    block_size: period,
-                    selected_expressions: id.right.clone(),
-                    identities: identities.iter().map(|&i| i.clone()).collect(),
-                    data: witness_cols
-                        .iter()
-                        .map(|n| (n.poly_id() as usize, vec![]))
-                        .collect(),
-                    row: 0,
-                    range_constraints: Default::default(),
-                    outer_range_constraints: Default::default(),
-                    global_range_constraints: global_range_constraints
-                        .iter()
-                        .filter_map(|(n, c)| {
-                            n.is_witness().then_some((n.poly_id() as usize, c.clone()))
-                        })
-                        .collect(),
-                    degree: fixed_data.degree,
-                    processing_sequence_cache: ProcessingSequenceCache::new(
-                        period,
-                        identities.len(),
-                    ),
-                };
-                // Append a block so that we do not have to deal with wrap-around
-                // when storing machine witness data.
-                machine.append_new_block(fixed_data.degree).unwrap();
+        // TODO we should check that the other constraints/fixed columns are also periodic.
+        let periods = connecting_identities
+            .iter()
+            .map(|id| try_to_period(&id.right.selector, fixed_data))
+            .collect::<Vec<_>>();
 
-                return Some(Box::new(machine));
+        let period = periods[0].and_then(|first_period| {
+            if periods.iter().all(|p| *p == Some(first_period)) {
+                Some(first_period)
+            } else {
+                None
             }
-        }
+        });
 
-        None
+        period.map(|period| {
+            let mut machine = BlockMachine {
+                block_size: period,
+                // TODO
+                selected_expressions: identities[0].right.clone(),
+                identities: identities.iter().map(|&i| i.clone()).collect(),
+                data: witness_cols
+                    .iter()
+                    .map(|n| (n.poly_id() as usize, vec![]))
+                    .collect(),
+                row: 0,
+                range_constraints: Default::default(),
+                outer_range_constraints: Default::default(),
+                global_range_constraints: global_range_constraints
+                    .iter()
+                    .filter_map(|(n, c)| {
+                        n.is_witness().then_some((n.poly_id() as usize, c.clone()))
+                    })
+                    .collect(),
+                degree: fixed_data.degree,
+                processing_sequence_cache: ProcessingSequenceCache::new(period, identities.len()),
+            };
+            // Append a block so that we do not have to deal with wrap-around
+            // when storing machine witness data.
+            machine.append_new_block(fixed_data.degree).unwrap();
+
+            return Box::new(machine);
+        })
     }
 }
 
@@ -138,6 +146,8 @@ impl<T: FieldElement> Machine<T> for BlockMachine<T> {
         left: &[AffineResult<&'a PolynomialReference, T>],
         right: &'a SelectedExpressions<T>,
     ) -> Option<EvalResult<'a, T>> {
+        let refs = refs_in_selected_expressions(right);
+
         if *right != self.selected_expressions || kind != IdentityKind::Plookup {
             return None;
         }
