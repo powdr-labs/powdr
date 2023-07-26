@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use ast::analyzed::{
     Analyzed, Expression, FunctionValueDefinition, PolyID, PolynomialReference, PolynomialType,
 };
@@ -17,8 +19,11 @@ mod expression_evaluator;
 pub mod fixed_evaluator;
 mod generator;
 mod global_constraints;
+mod identity_processor;
 mod machines;
+mod query_processor;
 mod range_constraints;
+mod rows;
 pub mod symbolic_evaluator;
 mod symbolic_witness_evaluator;
 mod util;
@@ -92,27 +97,23 @@ where
         &fixed,
         &mut fixed_lookup,
         &base_identities,
-        base_witnesses.into_iter().collect(),
         known_constraints,
         machines,
         query_callback,
     );
 
-    let mut values: Vec<(&str, Vec<T>)> = analyzed
-        .committed_polys_in_source_order()
+    let mut values: BTreeMap<usize, Vec<T>> = witness_cols
         .iter()
-        .map(|(p, _)| (p.absolute_name.as_str(), vec![]))
+        .map(|witness_column| (witness_column.poly.poly_id() as usize, vec![]))
         .collect();
     // Are we in an infinite loop and can just re-use the old values?
-    let mut looping_period = None;
+    let mut looping_period: Option<usize> = None;
     for row in 0..degree as DegreeType {
         // Check if we are in a loop.
         if looping_period.is_none() && row % 100 == 0 && row > 0 {
-            let relevant_values = values
+            let relevant_values = base_witnesses
                 .iter()
-                .enumerate()
-                .filter(|(id, _)| generator.is_relevant_witness(*id))
-                .map(|(_, values)| values)
+                .map(|poly| values.get(&(poly.poly_id() as usize)).unwrap())
                 .collect::<Vec<_>>();
             looping_period = rows_are_repeating(&relevant_values);
             if let Some(p) = looping_period {
@@ -123,8 +124,8 @@ where
         if let Some(period) = looping_period {
             let values = values
                 .iter()
-                .map(|(_, v)| v[v.len() - period])
-                .collect::<Vec<_>>();
+                .map(|(poly_id, v)| (*poly_id, v[v.len() - period]))
+                .collect();
             if generator.propose_next_row(row, &values) {
                 row_values = Some(values);
             } else {
@@ -132,32 +133,41 @@ where
                 looping_period = None;
             }
         }
-        if row_values.is_none() {
-            row_values = Some(generator.compute_next_row(row));
-        };
 
-        for (col, v) in row_values.unwrap().into_iter().enumerate() {
-            values[col].1.push(v);
+        let row_values = row_values.unwrap_or_else(|| generator.compute_next_row(row));
+
+        for (col, v) in row_values.into_iter() {
+            values.get_mut(&col).unwrap().push(v);
         }
     }
     // Overwrite all machine witness columns
-    for (name, data) in generator.machine_witness_col_values() {
-        let (_, col) = values.iter_mut().find(|(n, _)| *n == name).unwrap();
-        *col = data;
+    for (col_name, data) in generator.machine_witness_col_values() {
+        values.insert(col_name, data);
     }
+
+    // Map from column id to name
+    let mut col_names = analyzed
+        .committed_polys_in_source_order()
+        .iter()
+        .map(|(p, _)| (p.id as usize, p.absolute_name.as_str()))
+        .collect::<BTreeMap<_, _>>();
+
     values
+        .into_iter()
+        .map(|(id, v)| (col_names.remove(&id).unwrap(), v))
+        .collect()
 }
 
 /// Checks if the last rows are repeating and returns the period.
 /// Only checks for periods of 1, 2, 3 and 4.
-fn rows_are_repeating<T: PartialEq>(values: &[&(&str, Vec<T>)]) -> Option<usize> {
+fn rows_are_repeating<T: PartialEq>(values: &[&Vec<T>]) -> Option<usize> {
     if values.is_empty() {
         return Some(1);
-    } else if values[0].1.len() < 4 {
+    } else if values[0].len() < 4 {
         return None;
     }
     (1..=3).find(|&period| {
-        values.iter().all(|(_name, value)| {
+        values.iter().all(|value| {
             let len = value.len();
             (1..=period).all(|i| value[len - i - period] == value[len - i])
         })

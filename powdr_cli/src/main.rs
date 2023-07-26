@@ -524,7 +524,6 @@ fn optimize_and_output<T: FieldElement>(file: &str) {
 mod test {
 
     use backend::Backend;
-    use tempfile;
 
     use crate::{run_command, Commands, CsvRenderMode, FieldArgument};
     #[test]

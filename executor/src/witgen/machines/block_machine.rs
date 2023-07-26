@@ -598,14 +598,15 @@ impl<T: FieldElement> BlockMachine<T> {
         fixed_data: &FixedData<T>,
         expression: &'b Expression<T>,
     ) -> AffineResult<&'b PolynomialReference, T> {
+        let witness_data = WitnessData {
+            fixed_data,
+            data: &self.data,
+            row: self.row,
+        };
         ExpressionEvaluator::new(SymoblicWitnessEvaluator::new(
             fixed_data,
             self.row,
-            WitnessData {
-                fixed_data,
-                data: &self.data,
-                row: self.row,
-            },
+            &witness_data,
         ))
         .evaluate(expression)
     }
