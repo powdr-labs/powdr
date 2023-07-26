@@ -208,17 +208,17 @@ where
         // Now we have: dividend = remainder + divisor * quotient
         let (remainder_lower, remainder_upper) =
             known_constraints.range_constraint(remainder)?.range();
+
         // Check that remainder is in [0, divisor - 1].
         if remainder_lower > remainder_upper || remainder_upper >= *divisor {
             return None;
         }
         let (quotient_lower, quotient_upper) =
             known_constraints.range_constraint(quotient)?.range();
-        // Check that divisor * quotient is range-constraint to not overflow.
-        if quotient_lower > quotient_upper
-            || quotient_upper.to_arbitrary_integer() * divisor.to_arbitrary_integer()
-                >= T::modulus().to_arbitrary_integer()
-        {
+        // Check that divisor * quotient + remainder is range-constraint to not overflow.
+        let result_upper = quotient_upper.to_arbitrary_integer() * divisor.to_arbitrary_integer()
+            + remainder_upper.to_arbitrary_integer();
+        if quotient_lower > quotient_upper || result_upper >= T::modulus().to_arbitrary_integer() {
             return None;
         }
 
@@ -699,6 +699,39 @@ mod test {
                 (1, Constraint::Assignment(4.into())),
                 (2, Constraint::Assignment(2.into()))
             ])
+        );
+    }
+
+    #[test]
+    pub fn overflowing_division() {
+        // -3 * x1 + x2 - 2 = 0
+        // where x1 in [0, 1] and x2 in [0, 7]
+        // This equation has two solutions: x1 = 0, x2 = 2 and x1 = 1, x2 = 5.
+        // It does fit the division pattern for computing 2 / (p - 3), but because
+        // -3 * x1 + x2 can overflow, it should not be applied.
+        let expr = AffineExpression::from_variable_id(1) * (-3).into()
+            + AffineExpression::from_variable_id(2)
+            - AffineExpression::from(GoldilocksField::from(2));
+        let known_constraints: TestRangeConstraints<GoldilocksField> = TestRangeConstraints(
+            [
+                (1, RangeConstraint::from_range(0.into(), 1.into())),
+                (2, RangeConstraint::from_range(0.into(), 7.into())),
+            ]
+            .into_iter()
+            .collect(),
+        );
+        let result = expr
+            .solve_with_range_constraints(&known_constraints)
+            .unwrap();
+        assert_eq!(
+            result,
+            EvalValue::incomplete_with_constraints(
+                [(
+                    2,
+                    Constraint::RangeConstraint(RangeConstraint::from_range(2.into(), 5.into()))
+                )],
+                IncompleteCause::NotConcrete
+            )
         );
     }
 
