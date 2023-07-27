@@ -1,5 +1,6 @@
 //! The main powdr lib, used to compile from assembly to PIL
 
+use std::collections::BTreeMap;
 use std::ffi::OsStr;
 use std::fs;
 use std::io::BufWriter;
@@ -10,6 +11,9 @@ use std::time::Instant;
 
 use ast::analyzed::Analyzed;
 use json::JsonValue;
+
+use std::fs::File;
+use std::io::BufReader;
 
 pub mod util;
 mod verify;
@@ -34,15 +38,24 @@ pub fn no_callback<T>() -> Option<fn(&str) -> Option<T>> {
 pub fn compile_pil_or_asm<T: FieldElement>(
     file_name: &str,
     inputs: Vec<T>,
+    witness: Option<String>,
     output_dir: &Path,
     force_overwrite: bool,
     prove_with: Option<Backend>,
 ) -> Option<CompilationResult<T>> {
     if file_name.ends_with(".asm") {
-        compile_asm(file_name, inputs, output_dir, force_overwrite, prove_with)
+        compile_asm(
+            file_name,
+            inputs,
+            witness,
+            output_dir,
+            force_overwrite,
+            prove_with,
+        )
     } else {
         Some(compile_pil(
             Path::new(file_name),
+            witness,
             output_dir,
             Some(inputs_to_query_callback(inputs)),
             prove_with,
@@ -60,6 +73,7 @@ pub fn analyze_pil<T: FieldElement>(pil_file: &Path) -> Analyzed<T> {
 /// if they could be successfully generated.
 pub fn compile_pil<T: FieldElement, QueryCallback>(
     pil_file: &Path,
+    witness: Option<String>,
     output_dir: &Path,
     query_callback: Option<QueryCallback>,
     prove_with: Option<Backend>,
@@ -70,6 +84,7 @@ where
     compile(
         pil_analyzer::analyze(pil_file),
         pil_file.file_name().unwrap(),
+        witness,
         output_dir,
         query_callback,
         prove_with,
@@ -81,6 +96,7 @@ where
 pub fn compile_pil_ast<T: FieldElement, QueryCallback>(
     pil: &PILFile<T>,
     file_name: &OsStr,
+    witness: Option<String>,
     output_dir: &Path,
     query_callback: Option<QueryCallback>,
     prove_with: Option<Backend>,
@@ -93,6 +109,7 @@ where
     compile(
         pil_analyzer::analyze_string(&format!("{pil}")),
         file_name,
+        witness,
         output_dir,
         query_callback,
         prove_with,
@@ -105,6 +122,7 @@ where
 pub fn compile_asm<T: FieldElement>(
     file_name: &str,
     inputs: Vec<T>,
+    witness: Option<String>,
     output_dir: &Path,
     force_overwrite: bool,
     prove_with: Option<Backend>,
@@ -114,6 +132,7 @@ pub fn compile_asm<T: FieldElement>(
         file_name,
         &contents,
         inputs,
+        witness,
         output_dir,
         force_overwrite,
         prove_with,
@@ -129,6 +148,7 @@ pub fn compile_asm_string<T: FieldElement>(
     file_name: &str,
     contents: &str,
     inputs: Vec<T>,
+    witness: Option<String>,
     output_dir: &Path,
     force_overwrite: bool,
     prove_with: Option<Backend>,
@@ -163,6 +183,7 @@ pub fn compile_asm_string<T: FieldElement>(
         Some(compile_pil_ast(
             &pil,
             pil_file_name,
+            witness,
             output_dir,
             Some(inputs_to_query_callback(inputs)),
             prove_with,
@@ -184,6 +205,7 @@ pub struct CompilationResult<T: FieldElement> {
 fn compile<T: FieldElement, QueryCallback>(
     analyzed: Analyzed<T>,
     file_name: &OsStr,
+    witness_file: Option<String>,
     output_dir: &Path,
     query_callback: Option<QueryCallback>,
     prove_with: Option<Backend>,
@@ -211,7 +233,28 @@ where
         log::info!("Generated constants.");
 
         log::info!("Deducing witness columns...");
-        let commits = executor::witgen::generate(&analyzed, degree, &constants, query_callback);
+
+        let commits = match witness_file {
+            Some(witness) => {
+                let file = File::open(witness.as_str()).unwrap();
+                let reader = BufReader::new(file);
+                let u: BTreeMap<String, Vec<u64>> = serde_json::from_reader(reader).unwrap();
+                let v: Vec<(&str, Vec<T>)> = u
+                    .iter()
+                    .map(|(name, values)| {
+                        (
+                            name.as_str(),
+                            values.clone().into_iter().map(T::from).collect(),
+                        )
+                    })
+                    .collect();
+                executor::witgen::generate(&analyzed, degree, &constants, &v, query_callback)
+            }
+            None => executor::witgen::generate(&analyzed, degree, &constants, &[], query_callback),
+        };
+
+        //let commits =
+        //    executor::witgen::generate(&analyzed, degree, &constants, &pre_witness, query_callback);
         write_commits_to_fs(&commits, output_dir, degree);
         log::info!("Generated witness.");
 

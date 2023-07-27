@@ -41,6 +41,7 @@ impl<'a, T: FieldElement> Row<'a, T> {
     }
 
     fn get_cell(&self, poly: &PolynomialReference) -> &Cell<'a, T> {
+        println!("get_cell {:?}", poly);
         self.cells.get(&poly.poly_id()).unwrap()
     }
 

@@ -78,7 +78,8 @@ mod test {
         let analyzed = pil_analyzer::analyze_string(&format!("{pil}"));
 
         let (fixed, degree) = executor::constant_evaluator::generate(&analyzed);
-        let witness = executor::witgen::generate(&analyzed, degree, &fixed, Some(query_callback));
+        let witness =
+            executor::witgen::generate(&analyzed, degree, &fixed, &[], Some(query_callback));
 
         mock_prove(&analyzed, fixed, witness);
     }
@@ -91,7 +92,8 @@ mod test {
 
         let query_callback = |_: &str| -> Option<Bn254Field> { None };
 
-        let witness = executor::witgen::generate(&analyzed, degree, &fixed, Some(query_callback));
+        let witness =
+            executor::witgen::generate(&analyzed, degree, &fixed, &[], Some(query_callback));
         mock_prove(&analyzed, fixed, witness);
     }
 

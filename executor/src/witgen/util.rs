@@ -1,7 +1,7 @@
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 use ast::analyzed::util::previsit_expressions_in_identity_mut;
-use ast::analyzed::{Expression, Identity, PolynomialReference};
+use ast::analyzed::{Expression, Identity, PolyID, PolynomialReference, PolynomialType};
 
 /// Checks if an expression is
 /// - a polynomial
@@ -59,6 +59,42 @@ pub fn substitute_constants<T: Copy>(
             previsit_expressions_in_identity_mut(&mut identity, &mut |e| {
                 if let Expression::Constant(name) = e {
                     *e = Expression::Number(constants[name])
+                }
+                std::ops::ControlFlow::Continue::<()>(())
+            });
+            identity
+        })
+        .collect()
+}
+
+pub fn substitute_columns<T: Copy>(
+    identities: &[Identity<T>],
+    constants: &BTreeMap<u64, PolyID>,
+) -> Vec<Identity<T>> {
+    identities
+        .iter()
+        .cloned()
+        .map(|mut identity| {
+            previsit_expressions_in_identity_mut(&mut identity, &mut |e| {
+                if let Expression::PolynomialReference(PolynomialReference {
+                    name,
+                    poly_id:
+                        Some(PolyID {
+                            id,
+                            ptype: PolynomialType::Committed,
+                        }),
+                    index,
+                    next,
+                }) = e
+                {
+                    if let Some(poly_id) = constants.get(id) {
+                        *e = Expression::PolynomialReference(PolynomialReference {
+                            name: name.clone(),
+                            poly_id: Some(*poly_id),
+                            index: *index,
+                            next: *next,
+                        });
+                    }
                 }
                 std::ops::ControlFlow::Continue::<()>(())
             });

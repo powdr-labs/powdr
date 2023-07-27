@@ -34,7 +34,7 @@ impl IndexValue {
 /// Indices for applications of fixed columns. For each application `(INPUT_COLS, OUTPUT_COLS)`, stores
 /// - `(V, None)` if there exists two different rows where `INPUT_COLS == V` match but `OUTPUT_COLS` differ. TODO: store bitmasks of all possible outputs instead.
 /// - `(V, Some(row)` if the value of `OUTPUT_COLS` is unique when `INPUT_COLS == V`, and `row` is the first row where `INPUT_COLS ==V`
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct IndexedColumns<T> {
     indices: HashMap<Application, Index<T>>,
 }
@@ -158,7 +158,7 @@ impl<T: FieldElement> IndexedColumns<T> {
 }
 
 /// Machine to perform a lookup in fixed columns only.
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct FixedLookup<T> {
     indices: IndexedColumns<T>,
 }

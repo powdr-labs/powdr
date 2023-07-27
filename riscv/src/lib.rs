@@ -98,6 +98,7 @@ pub fn compile_riscv_asm_bundle<T: FieldElement>(
         powdr_asm_file_name.to_str().unwrap(),
         &powdr_asm,
         inputs,
+        None,
         output_dir,
         force_overwrite,
         prove_with,

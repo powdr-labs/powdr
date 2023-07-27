@@ -5,13 +5,14 @@ use ast::analyzed::{
 };
 use num_traits::Zero;
 use number::{DegreeType, FieldElement};
+use std::collections::BTreeSet;
 
 pub use self::eval_result::{
     Constraint, Constraints, EvalError, EvalResult, EvalStatus, EvalValue, IncompleteCause,
 };
 use self::global_constraints::GlobalConstraints;
 use self::machines::machine_extractor::ExtractionOutput;
-use self::util::substitute_constants;
+use self::util::{substitute_columns, substitute_constants};
 
 mod affine_expression;
 mod eval_result;
@@ -34,6 +35,7 @@ pub fn generate<'a, T: FieldElement, QueryCallback>(
     analyzed: &'a Analyzed<T>,
     degree: DegreeType,
     fixed_col_values: &[(&str, Vec<T>)],
+    pre_witness_values: &[(&str, Vec<T>)],
     query_callback: Option<QueryCallback>,
 ) -> Vec<(&'a str, Vec<T>)>
 where
@@ -42,21 +44,52 @@ where
     if degree.is_zero() {
         panic!("Resulting degree is zero. Please ensure that there is at least one non-constant fixed column to set the degree.");
     }
-    let witness_cols: Vec<_> = analyzed
+
+    let pre_witness_keys: BTreeSet<&str> = pre_witness_values.iter().map(|(k, _)| *k).collect();
+
+    let mut witness_cols: Vec<_> = analyzed
         .committed_polys_in_source_order()
         .iter()
+        /*
+        .filter(|thing| {
+            println!("testing {}", thing.0.absolute_name);
+            !pre_witness_keys.contains(thing.0.absolute_name.as_str())
+        })
+        */
         .enumerate()
         .map(|(i, (poly, value))| {
             if poly.length.is_some() {
                 unimplemented!("Committed arrays not implemented.")
             }
-            assert_eq!(i as u64, poly.id);
-            WitnessColumn::new(i, &poly.absolute_name, value)
+            //assert_eq!(i as u64, poly.id);
+            assert!((i as u64) <= poly.id);
+            WitnessColumn::new(poly.id as usize, &poly.absolute_name, value)
         })
         .collect();
 
+    let mut fixed_len = fixed_col_values.len() as u64;
+    let mut pre_witness_subs: BTreeMap<u64, PolyID> = Default::default();
+    witness_cols.iter().for_each(|w| {
+        if pre_witness_keys.contains(w.poly.name.as_str()) {
+            if let Some(poly_id) = w.poly.poly_id {
+                pre_witness_subs.insert(
+                    poly_id.id,
+                    PolyID {
+                        id: fixed_len,
+                        ptype: PolynomialType::Constant,
+                    },
+                );
+                fixed_len += 1;
+            }
+        }
+    });
+
+    witness_cols.retain(|w| !pre_witness_keys.contains(w.poly.name.as_str()));
+    println!("witness_cols: {:?}", witness_cols);
+
     let fixed_cols = fixed_col_values
         .iter()
+        .chain(pre_witness_values.iter())
         .enumerate()
         .map(|(i, (n, _))| PolynomialReference {
             name: n.to_string(),
@@ -68,13 +101,17 @@ where
             next: false,
         })
         .collect::<Vec<_>>();
+
+    println!("fixed_cols: {:?}", fixed_cols);
+
     let fixed = FixedData::new(
         degree,
-        fixed_col_values.iter().map(|(_, v)| v).collect(),
+        fixed_col_values.iter().chain(pre_witness_values.iter()).map(|(_, v)| v).collect(),
         fixed_cols.iter().collect::<Vec<_>>(),
         &witness_cols,
     );
     let identities = substitute_constants(&analyzed.identities, &analyzed.constants);
+    let identities = substitute_columns(&identities, &pre_witness_subs);
 
     let GlobalConstraints {
         // Maps a polynomial to a mask specifying which bit is possibly set,
@@ -87,12 +124,16 @@ where
         mut fixed_lookup,
         machines,
         base_identities,
-        base_witnesses,
+        mut base_witnesses,
     } = machines::machine_extractor::split_out_machines(
         &fixed,
         retained_identities,
         &known_constraints,
     );
+    base_witnesses.retain(|thing| !pre_witness_keys.contains(thing.name.as_str()));
+
+    println!("base_witnesses: {:?}", base_witnesses);
+
     let mut generator = generator::Generator::new(
         &fixed,
         &mut fixed_lookup,
@@ -175,6 +216,7 @@ fn rows_are_repeating<T: PartialEq>(values: &[&Vec<T>]) -> Option<usize> {
 }
 
 /// Data that is fixed for witness generation.
+#[derive(Debug)]
 pub struct FixedData<'a, T> {
     degree: DegreeType,
     fixed_col_values: Vec<&'a Vec<T>>,

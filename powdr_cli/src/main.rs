@@ -71,6 +71,10 @@ enum Commands {
         #[arg(default_value_t = false)]
         force: bool,
 
+        /// File containing previously generated witness columns.
+        #[arg(long)]
+        witness: Option<String>,
+
         /// Generate a proof with a given backend
         #[arg(short, long)]
         #[arg(value_parser = clap_enum_variants!(Backend))]
@@ -302,12 +306,14 @@ fn run_command(command: Commands) {
             output_directory,
             inputs,
             force,
+            witness,
             prove_with,
             export_csv,
             csv_mode,
         } => {
             call_with_field!(compile_with_csv_export::<field>(
                 file,
+                witness,
                 output_directory,
                 inputs,
                 force,
@@ -387,6 +393,7 @@ fn write_params_to_fs(params: &[u8], output_dir: &Path) {
 
 fn compile_with_csv_export<T: FieldElement>(
     file: String,
+    witness: Option<String>,
     output_directory: String,
     inputs: String,
     force: bool,
@@ -397,6 +404,7 @@ fn compile_with_csv_export<T: FieldElement>(
     let result = compile_pil_or_asm::<T>(
         &file,
         split_inputs(&inputs),
+        witness,
         Path::new(&output_directory),
         force,
         prove_with,
@@ -534,6 +542,7 @@ mod test {
         let pil_command = Commands::Pil {
             file: "../test_data/asm/simple_sum.asm".into(),
             field: FieldArgument::Bn254,
+            witness: None,
             output_directory: output_dir_str.clone(),
             inputs: "3,2,1,2".into(),
             force: false,
