@@ -4,24 +4,31 @@ namespace Fibonacci(%N);
     constant %last_row = %N - 1;
 
     macro bool(X) { X * (1 - X) = 0; };
-    macro is_nonzero(X) { match X { 0 => 0, _ => 1, } };
-    macro is_zero(X) { 1 - is_nonzero(X) };
-    macro is_equal(A, B) { is_zero(A - B) };
-    macro is_one(X) { is_equal(X, 1) };
-    macro ite(C, A, B) { is_nonzero(C) * A + is_zero(C) * B};
+// ANCHOR: expression_macro_definitions
+macro is_nonzero(X) { match X { 0 => 0, _ => 1, } };
+macro is_zero(X) { 1 - is_nonzero(X) };
+macro is_equal(A, B) { is_zero(A - B) };
+macro is_one(X) { is_equal(X, 1) };
+macro ite(C, A, B) { is_nonzero(C) * A + is_zero(C) * B};
+macro one_hot(i, index) { ite(is_equal(i, index), 1, 0) };
+// ANCHOR_END: expression_macro_definitions
 
-    macro one_hot(i, index) { ite(is_equal(i, index), 1, 0) };
-
-    pol constant ISLAST(i) { one_hot(i, %last_row) };
+// ANCHOR: expression_macro_usage
+pol constant ISLAST(i) { one_hot(i, %last_row) };
+// ANCHOR_END: expression_macro_usage
     pol commit x, y;
 
-    macro constrain_equal_expr(A, B) { A - B };
-    macro force_equal_on_last_row(poly, value) { ISLAST * constrain_equal_expr(poly, value) = 0; };
+// ANCHOR: constraint_macro_definitions
+macro constrain_equal_expr(A, B) { A - B };
+macro force_equal_on_last_row(poly, value) { ISLAST * constrain_equal_expr(poly, value) = 0; };
+// ANCHOR_END: constraint_macro_definitions
 
     // TODO would be easier if we could use "'" as an operator,
     // then we could write a "force_equal_on_first_row" macro,
     // and the macro would add a "'" to the parameter.
-    force_equal_on_last_row(x', 1);
+// ANCHOR: constraint_macro_usage
+force_equal_on_last_row(x', 1);
+// ANCHOR_END: constraint_macro_usage
     force_equal_on_last_row(y', 1);
 
     macro on_regular_row(cond) { (1 - ISLAST) * cond = 0; };

@@ -85,3 +85,24 @@ fn full_pil_constant() {
     verify_asm::<GoldilocksField>(f, Default::default());
     gen_proof(f, Default::default());
 }
+
+#[test]
+fn book() {
+    for f in fs::read_dir("../test_data/asm/book/").unwrap() {
+        let f = f.unwrap().path();
+        let f = f.strip_prefix("../test_data/asm/").unwrap();
+        // passing 0 to all tests currently works as they either take no prover input or 0 works
+        let i = [0];
+
+        verify_asm::<GoldilocksField>(f.to_str().unwrap(), slice_to_vec(&i));
+        gen_proof(f.to_str().unwrap(), slice_to_vec(&i));
+    }
+}
+
+#[test]
+#[should_panic = "Witness generation failed."]
+fn hello_world_asm_fail() {
+    let f = "book/hello_world.asm";
+    let i = [1];
+    verify_asm::<GoldilocksField>(f, slice_to_vec(&i));
+}
