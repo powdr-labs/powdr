@@ -16,7 +16,8 @@ use super::{
 
 /// A single cell, holding an optional value and range constraint.
 #[derive(Clone)]
-struct Cell<T: FieldElement> {
+struct Cell<'a, T: FieldElement> {
+    name: &'a str,
     value: Option<T>,
     /// Should be initialized with global range constraints
     range_constraint: Option<RangeConstraint<T>>,
@@ -25,7 +26,7 @@ struct Cell<T: FieldElement> {
 /// A row of cells, indexed by polynomial ID.
 #[derive(Clone)]
 pub struct Row<'a, T: FieldElement> {
-    cells: BTreeMap<&'a PolynomialReference, Cell<T>>,
+    cells: BTreeMap<u64, Cell<'a, T>>,
 }
 
 impl<T: FieldElement> Debug for Row<'_, T> {
@@ -34,19 +35,19 @@ impl<T: FieldElement> Debug for Row<'_, T> {
     }
 }
 
-impl<T: FieldElement> Row<'_, T> {
-    fn get_cell_mut(&mut self, poly: &PolynomialReference) -> &mut Cell<T> {
-        self.cells.get_mut(poly).unwrap()
+impl<'a, T: FieldElement> Row<'a, T> {
+    fn get_cell_mut(&mut self, poly: &PolynomialReference) -> &mut Cell<'a, T> {
+        self.cells.get_mut(&poly.poly_id()).unwrap()
     }
 
-    fn get_cell(&self, poly: &PolynomialReference) -> &Cell<T> {
-        self.cells.get(poly).unwrap()
+    fn get_cell(&self, poly: &PolynomialReference) -> &Cell<'a, T> {
+        self.cells.get(&poly.poly_id()).unwrap()
     }
 
     pub fn iter_values(&self) -> impl Iterator<Item = (usize, Option<T>)> + '_ {
         self.cells
             .iter()
-            .map(|(poly, cell)| (poly.poly_id() as usize, cell.value))
+            .map(|(poly_id, cell)| (*poly_id as usize, cell.value))
     }
 
     pub fn iter_range_constraints(
@@ -54,7 +55,7 @@ impl<T: FieldElement> Row<'_, T> {
     ) -> impl Iterator<Item = (usize, Option<RangeConstraint<T>>)> + '_ {
         self.cells
             .iter()
-            .map(|(poly, cell)| (poly.poly_id() as usize, cell.range_constraint.clone()))
+            .map(|(poly_id, cell)| (*poly_id as usize, cell.range_constraint.clone()))
     }
 
     pub fn render(&self, title: &str, include_unknown: bool) -> String {
@@ -62,17 +63,16 @@ impl<T: FieldElement> Row<'_, T> {
     }
 
     pub fn render_values(&self, include_unknown: bool) -> String {
-        let mut values = self
+        let mut cells = self
             .cells
             .iter()
             .filter(|(_, cell)| cell.value.is_some() || include_unknown)
-            .map(|(poly, cell)| (poly, cell.value))
             .collect::<Vec<_>>();
 
         // Nonzero first, then zero, then unknown
-        values.sort_by_key(|(i, v1)| {
+        cells.sort_by_key(|(i, cell)| {
             (
-                match v1 {
+                match cell.value {
                     Some(v) if v.is_zero() => 1,
                     Some(_) => 0,
                     None => 2,
@@ -81,14 +81,14 @@ impl<T: FieldElement> Row<'_, T> {
             )
         });
 
-        let render_value = |v: Option<T>| match v {
-            Some(v) => format!("{}", v),
-            None => "<unknown>".to_string(),
+        let render_cell = |cell: &Cell<'_, T>| match cell.value {
+            Some(v) => format!("{} = {}", cell.name, v),
+            None => format!("{} = <unknown>", cell.name),
         };
 
-        values
+        cells
             .into_iter()
-            .map(|(poly, v)| format!("    {} = {}", poly, render_value(v)))
+            .map(|(_, cell)| format!("    {}", render_cell(cell)))
             .join("\n")
     }
 }
@@ -97,7 +97,7 @@ impl<T: FieldElement> From<Row<'_, T>> for BTreeMap<usize, T> {
     fn from(val: Row<T>) -> Self {
         val.cells
             .into_iter()
-            .map(|(poly, cell)| (poly.poly_id() as usize, cell.value.unwrap_or_default()))
+            .map(|(poly_id, cell)| (poly_id as usize, cell.value.unwrap_or_default()))
             .collect()
     }
 }
@@ -128,8 +128,9 @@ impl<'a, T: FieldElement> RowFactory<'a, T> {
             .iter()
             .map(|poly| {
                 (
-                    *poly,
+                    poly.poly_id(),
                     Cell {
+                        name: &poly.name,
                         value: None,
                         range_constraint: self.global_range_constraints.get(poly).cloned(),
                     },
@@ -146,10 +147,11 @@ impl<'a, T: FieldElement> RowFactory<'a, T> {
             .iter()
             .map(|poly| {
                 let cell = Cell {
+                    name: &poly.name,
                     value: Some(*values.get(&(poly.poly_id() as usize)).unwrap()),
                     range_constraint: None,
                 };
-                (*poly, cell)
+                (poly.poly_id(), cell)
             })
             .collect();
         Row { cells }
@@ -207,7 +209,7 @@ impl<'a, 'b, T: FieldElement> RowPair<'a, 'b, T> {
         self.frozen = true;
     }
 
-    fn get_cell_mut<'c>(&'c mut self, poly: &PolynomialReference) -> &'c mut Cell<T> {
+    fn get_cell_mut<'c>(&'c mut self, poly: &PolynomialReference) -> &'c mut Cell<'b, T> {
         if self.frozen {
             panic!("Cannot modify frozen row pair");
         }
