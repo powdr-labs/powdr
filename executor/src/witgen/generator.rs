@@ -21,11 +21,11 @@ pub struct Generator<'a, T: FieldElement, QueryCallback: Send + Sync> {
     query_processor: QueryProcessor<'a, T, QueryCallback>,
     fixed_data: &'a FixedData<'a, T>,
     identities: &'a [&'a Identity<T>],
-    previous: Row<T>,
+    previous: Row<'a, T>,
     /// Values of the witness polynomials
-    current: Row<T>,
+    current: Row<'a, T>,
     /// Values of the witness polynomials in the next row
-    next: Row<T>,
+    next: Row<'a, T>,
     current_row_index: DegreeType,
     failure_reasons: Vec<EvalError<T>>,
     last_report: DegreeType,
@@ -57,7 +57,7 @@ where
         let polys = fixed_data
             .witness_cols
             .iter()
-            .map(|c| c.poly.clone())
+            .map(|c| &c.poly)
             .collect::<Vec<_>>();
         let row_factory = RowFactory::new(polys, global_range_constraints);
         let query_processor = QueryProcessor::new(fixed_data, query_callback);
@@ -265,7 +265,7 @@ where
         constraints_valid
     }
 
-    fn check_row_pair(&mut self, proposed_row: &mut Row<T>, previous: bool) -> bool {
+    fn check_row_pair(&mut self, proposed_row: &mut Row<'a, T>, previous: bool) -> bool {
         let mut row_pair = match previous {
             true => RowPair::new(&mut self.previous, proposed_row, self.current_row_index - 1),
             false => RowPair::new(proposed_row, &mut self.next, self.current_row_index),
@@ -282,14 +282,8 @@ where
                     .process_identity(identity, &mut row_pair)
                     .is_err()
             {
-                log::debug!(
-                    "{}",
-                    self.row_factory.render_row(&self.previous, "Previous row")
-                );
-                log::debug!(
-                    "{}",
-                    self.row_factory.render_row(proposed_row, "Proposed row")
-                );
+                log::debug!("Previous {:?}", self.previous);
+                log::debug!("Proposed {:?}", proposed_row);
                 log::debug!("Failed on identity: {}", identity);
 
                 return false;

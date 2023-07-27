@@ -23,36 +23,39 @@ struct Cell<T: FieldElement> {
 
 /// A row of cells, indexed by polynomial ID.
 #[derive(Clone)]
-pub struct Row<T: FieldElement> {
-    /// Maps from poly ID to cell.
-    cells: BTreeMap<usize, Cell<T>>,
+pub struct Row<'a, T: FieldElement> {
+    cells: BTreeMap<&'a PolynomialReference, Cell<T>>,
 }
 
-impl<T: FieldElement> Debug for Row<T> {
+impl<T: FieldElement> Debug for Row<'_, T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let render_cell = |cell: &Cell<T>| match cell.value {
+            Some(v) => format!("{}", v),
+            None => "?".to_string(),
+        };
         let values_string = self
             .cells
             .iter()
-            .filter_map(|(k, cell)| cell.value.map(|v| format!("{k}: {v}")))
+            .map(|(k, cell)| format!("    {}: {}", k.name, render_cell(cell)))
             .collect::<Vec<_>>()
-            .join(", ");
-        f.write_str(&format!("({})", values_string))
+            .join("\n");
+        f.write_str(&format!("Row:{}", values_string))
     }
 }
 
-impl<T: FieldElement> Row<T> {
-    fn get_cell_mut(&mut self, id: usize) -> &mut Cell<T> {
-        self.cells.get_mut(&id).unwrap()
+impl<T: FieldElement> Row<'_, T> {
+    fn get_cell_mut(&mut self, poly: &PolynomialReference) -> &mut Cell<T> {
+        self.cells.get_mut(poly).unwrap()
     }
 
-    fn get_cell(&self, id: usize) -> &Cell<T> {
-        self.cells.get(&id).unwrap()
+    fn get_cell(&self, poly: &PolynomialReference) -> &Cell<T> {
+        self.cells.get(poly).unwrap()
     }
 
     pub fn iter_values(&self) -> impl Iterator<Item = (usize, Option<T>)> + '_ {
         self.cells
             .iter()
-            .map(|(poly_id, cell)| (*poly_id, cell.value))
+            .map(|(poly, cell)| (poly.poly_id() as usize, cell.value))
     }
 
     pub fn iter_range_constraints(
@@ -60,15 +63,15 @@ impl<T: FieldElement> Row<T> {
     ) -> impl Iterator<Item = (usize, Option<RangeConstraint<T>>)> + '_ {
         self.cells
             .iter()
-            .map(|(poly_id, cell)| (*poly_id, cell.range_constraint.clone()))
+            .map(|(poly, cell)| (poly.poly_id() as usize, cell.range_constraint.clone()))
     }
 }
 
-impl<T: FieldElement> From<Row<T>> for BTreeMap<usize, T> {
+impl<T: FieldElement> From<Row<'_, T>> for BTreeMap<usize, T> {
     fn from(val: Row<T>) -> Self {
         val.cells
             .into_iter()
-            .map(|(poly_id, cell)| (poly_id, cell.value.unwrap_or_default()))
+            .map(|(poly, cell)| (poly.poly_id() as usize, cell.value.unwrap_or_default()))
             .collect()
     }
 }
@@ -76,53 +79,33 @@ impl<T: FieldElement> From<Row<T>> for BTreeMap<usize, T> {
 /// A factory for creating rows.
 pub struct RowFactory<'a, T: FieldElement> {
     /// The list of all available polynomials.
-    polys: Vec<PolynomialReference>,
+    polys: Vec<&'a PolynomialReference>,
     /// Global range constraints.
     global_range_constraints: BTreeMap<&'a PolynomialReference, RangeConstraint<T>>,
-    id_to_name: BTreeMap<usize, String>,
 }
 
 impl<'a, T: FieldElement> RowFactory<'a, T> {
     pub fn new(
-        polys: Vec<PolynomialReference>,
+        polys: Vec<&'a PolynomialReference>,
         global_range_constraints: BTreeMap<&'a PolynomialReference, RangeConstraint<T>>,
     ) -> Self {
-        let id_to_name = polys
-            .iter()
-            .map(|p| (p.poly_id() as usize, p.name.clone()))
-            .collect();
         Self {
             polys,
             global_range_constraints,
-            id_to_name,
         }
     }
 
-    pub fn render_row(&self, row: &Row<T>, title: &str) -> String {
-        let render_cell = |cell: &Cell<T>| match cell.value {
-            Some(v) => format!("{}", v),
-            None => "?".to_string(),
-        };
-        let values_string = row
-            .cells
-            .iter()
-            .map(|(k, cell)| format!("    {}: {}", self.id_to_name[k], render_cell(cell)))
-            .collect::<Vec<_>>()
-            .join("\n");
-        format!("{title}:\n{}", values_string)
-    }
-
     /// Create a new row without values and just the global range constraints.
-    pub fn fresh_row(&self) -> Row<T> {
+    pub fn fresh_row(&self) -> Row<'a, T> {
         let cells = self
             .polys
             .iter()
             .map(|poly| {
                 (
-                    poly.poly_id() as usize,
+                    *poly,
                     Cell {
                         value: None,
-                        range_constraint: self.global_range_constraints.get(&poly).cloned(),
+                        range_constraint: self.global_range_constraints.get(poly).cloned(),
                     },
                 )
             })
@@ -131,17 +114,16 @@ impl<'a, T: FieldElement> RowFactory<'a, T> {
     }
 
     /// Create a new row from known values. Range constraints are left empty.
-    pub fn make_from_known_values(&self, values: &BTreeMap<usize, T>) -> Row<T> {
+    pub fn make_from_known_values(&self, values: &BTreeMap<usize, T>) -> Row<'a, T> {
         let cells = self
             .polys
             .iter()
             .map(|poly| {
-                let poly_id = poly.poly_id() as usize;
                 let cell = Cell {
-                    value: Some(*values.get(&poly_id).unwrap()),
+                    value: Some(*values.get(&(poly.poly_id() as usize)).unwrap()),
                     range_constraint: None,
                 };
-                (poly_id, cell)
+                (*poly, cell)
             })
             .collect();
         Row { cells }
@@ -172,17 +154,17 @@ impl<'a> From<IncompleteCause<&'a PolynomialReference>> for UpdateStatus<'a> {
 }
 
 /// A pair of rows, needed to process a single identity.
-pub struct RowPair<'a, T: FieldElement> {
-    current: &'a mut Row<T>,
-    next: &'a mut Row<T>,
+pub struct RowPair<'a, 'b, T: FieldElement> {
+    current: &'a mut Row<'b, T>,
+    next: &'a mut Row<'b, T>,
     pub current_row_index: DegreeType,
     frozen: bool,
 }
 
-impl<'a, T: FieldElement> RowPair<'a, T> {
+impl<'a, 'b, T: FieldElement> RowPair<'a, 'b, T> {
     pub fn new(
-        current: &'a mut Row<T>,
-        next: &'a mut Row<T>,
+        current: &'a mut Row<'b, T>,
+        next: &'a mut Row<'b, T>,
         current_row_index: DegreeType,
     ) -> Self {
         Self {
@@ -199,23 +181,21 @@ impl<'a, T: FieldElement> RowPair<'a, T> {
         self.frozen = true;
     }
 
-    fn get_cell_mut<'b>(&'b mut self, poly: &'b PolynomialReference) -> &'b mut Cell<T> {
+    fn get_cell_mut<'c>(&'c mut self, poly: &PolynomialReference) -> &'c mut Cell<T> {
         if self.frozen {
             panic!("Cannot modify frozen row pair");
         }
 
-        let id = poly.poly_id() as usize;
         match poly.next {
-            false => self.current.get_cell_mut(id),
-            true => self.next.get_cell_mut(id),
+            false => self.current.get_cell_mut(poly),
+            true => self.next.get_cell_mut(poly),
         }
     }
 
     fn get_cell(&self, poly: &PolynomialReference) -> &Cell<T> {
-        let id = poly.poly_id() as usize;
         match poly.next {
-            false => self.current.get_cell(id),
-            true => self.next.get_cell(id),
+            false => self.current.get_cell(poly),
+            true => self.next.get_cell(poly),
         }
     }
 
@@ -246,11 +226,11 @@ impl<'a, T: FieldElement> RowPair<'a, T> {
         *old = Some(new);
     }
 
-    pub fn process_eval_value<'b>(
+    pub fn process_eval_value<'c>(
         &mut self,
-        evaluation_value: EvalValue<&'b PolynomialReference, T>,
+        evaluation_value: EvalValue<&'c PolynomialReference, T>,
         source_name: impl Fn() -> String,
-    ) -> UpdateStatus<'b> {
+    ) -> UpdateStatus<'c> {
         if evaluation_value.constraints.is_empty() {
             return UpdateStatus {
                 eval_status: evaluation_value.status,
@@ -276,7 +256,7 @@ impl<'a, T: FieldElement> RowPair<'a, T> {
     }
 }
 
-impl<'a, T: FieldElement> WitnessColumnEvaluator<T> for RowPair<'a, T> {
+impl<T: FieldElement> WitnessColumnEvaluator<T> for RowPair<'_, '_, T> {
     fn value<'b>(&self, poly: &'b PolynomialReference) -> AffineResult<&'b PolynomialReference, T> {
         let value =
             self.get_cell(poly)
@@ -290,7 +270,7 @@ impl<'a, T: FieldElement> WitnessColumnEvaluator<T> for RowPair<'a, T> {
     }
 }
 
-impl<'a, T: FieldElement> RangeConstraintSet<&PolynomialReference, T> for RowPair<'a, T> {
+impl<T: FieldElement> RangeConstraintSet<&PolynomialReference, T> for RowPair<'_, '_, T> {
     fn range_constraint(&self, poly: &PolynomialReference) -> Option<RangeConstraint<T>> {
         self.get_cell(poly).range_constraint.clone()
     }
