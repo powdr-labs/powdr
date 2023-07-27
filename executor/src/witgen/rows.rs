@@ -1,6 +1,7 @@
 use std::{collections::BTreeMap, fmt::Debug};
 
 use ast::analyzed::PolynomialReference;
+use itertools::Itertools;
 use number::{DegreeType, FieldElement};
 
 use crate::witgen::Constraint;
@@ -29,17 +30,7 @@ pub struct Row<'a, T: FieldElement> {
 
 impl<T: FieldElement> Debug for Row<'_, T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let render_cell = |cell: &Cell<T>| match cell.value {
-            Some(v) => format!("{}", v),
-            None => "?".to_string(),
-        };
-        let values_string = self
-            .cells
-            .iter()
-            .map(|(k, cell)| format!("    {}: {}", k.name, render_cell(cell)))
-            .collect::<Vec<_>>()
-            .join("\n");
-        f.write_str(&format!("Row:{}", values_string))
+        f.write_str(&self.render("Row:", true))
     }
 }
 
@@ -64,6 +55,41 @@ impl<T: FieldElement> Row<'_, T> {
         self.cells
             .iter()
             .map(|(poly, cell)| (poly.poly_id() as usize, cell.range_constraint.clone()))
+    }
+
+    pub fn render(&self, title: &str, include_unknown: bool) -> String {
+        format!("{}:\n{}", title, self.render_values(include_unknown))
+    }
+
+    pub fn render_values(&self, include_unknown: bool) -> String {
+        let mut values = self
+            .cells
+            .iter()
+            .filter(|(_, cell)| cell.value.is_some() || include_unknown)
+            .map(|(poly, cell)| (poly, cell.value))
+            .collect::<Vec<_>>();
+
+        // Nonzero first, then zero, then unknown
+        values.sort_by_key(|(i, v1)| {
+            (
+                match v1 {
+                    Some(v) if v.is_zero() => 1,
+                    Some(_) => 0,
+                    None => 2,
+                },
+                *i,
+            )
+        });
+
+        let render_value = |v: Option<T>| match v {
+            Some(v) => format!("{}", v),
+            None => "<unknown>".to_string(),
+        };
+
+        values
+            .into_iter()
+            .map(|(poly, v)| format!("    {} = {}", poly, render_value(v)))
+            .join("\n")
     }
 }
 

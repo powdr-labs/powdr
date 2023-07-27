@@ -225,14 +225,14 @@ where
             );
             log::debug!(
                 "Current values (known nonzero first, then zero, unknown omitted):\n{}",
-                indent(&self.format_current_known_values().join("\n"), "    ")
+                self.current.render_values(false)
             );
             panic!("Witness generation failed.");
         }
 
         log::trace!(
-            "===== Row {next_row}:\n{}",
-            indent(&self.format_current_values().join("\n"), "    ")
+            "{}",
+            self.current.render(&format!("===== Row {next_row}"), true)
         );
 
         self.shift_rows();
@@ -323,45 +323,5 @@ where
             self.last_report = next_row;
         }
         self.current_row_index = next_row;
-    }
-
-    fn format_current_values(&self) -> Vec<String> {
-        self.format_next_values_iter(
-            self.current.iter_values(), // TODO
-                                        // .filter(|(i, _)| self.is_relevant_witness(*i)),
-        )
-    }
-
-    fn format_current_known_values(&self) -> Vec<String> {
-        self.format_next_values_iter(self.current.iter_values().filter(|(_, v)| v.is_some()))
-    }
-
-    fn format_next_values_iter(
-        &self,
-        values: impl Iterator<Item = (usize, Option<T>)>,
-    ) -> Vec<String> {
-        let mut values = values.into_iter().collect::<Vec<_>>();
-        values.sort_by_key(|(i, v1)| {
-            (
-                match v1 {
-                    Some(v) if v.is_zero() => 1,
-                    Some(_) => 0,
-                    None => 2,
-                },
-                *i,
-            )
-        });
-        values
-            .into_iter()
-            .map(|(i, v)| {
-                format!(
-                    "{} = {}",
-                    self.fixed_data.witness_cols[i].poly,
-                    v.as_ref()
-                        .map(ToString::to_string)
-                        .unwrap_or_else(|| "<unknown>".to_string())
-                )
-            })
-            .collect()
     }
 }
