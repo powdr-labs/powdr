@@ -6,17 +6,19 @@ use num_bigint::BigUint;
 
 use crate::parsed::{
     asm::{InstructionBody, Params, RegisterFlag},
-    Expression, PilStatement,
+    PilStatement,
 };
 
-#[derive(Clone)]
+pub use crate::parsed::Expression;
+
+#[derive(Clone, Debug)]
 pub struct RegisterDeclarationStatement {
     pub start: usize,
     pub name: String,
     pub flag: Option<RegisterFlag>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct InstructionDefinitionStatement<T> {
     pub start: usize,
     pub name: String,
@@ -24,12 +26,12 @@ pub struct InstructionDefinitionStatement<T> {
     pub body: InstructionBody<T>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct FunctionBody<T> {
     pub statements: Vec<FunctionStatement<T>>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct FunctionDefinitionStatement<T> {
     pub start: usize,
     pub name: String,
@@ -37,12 +39,12 @@ pub struct FunctionDefinitionStatement<T> {
     pub body: FunctionBody<T>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct DegreeStatement {
     pub degree: BigUint,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum FunctionStatement<T> {
     Assignment(AssignmentStatement<T>),
     Instruction(InstructionStatement<T>),
@@ -74,7 +76,7 @@ impl<T> From<DebugDirective> for FunctionStatement<T> {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct AssignmentStatement<T> {
     pub start: usize,
     pub lhs: Vec<String>,
@@ -82,32 +84,32 @@ pub struct AssignmentStatement<T> {
     pub rhs: Box<Expression<T>>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct InstructionStatement<T> {
     pub start: usize,
     pub instruction: String,
     pub inputs: Vec<Expression<T>>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct LabelStatement {
     pub start: usize,
     pub name: String,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct DebugDirective {
     pub start: usize,
     pub directive: crate::parsed::asm::DebugDirective,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct PilBlock<T> {
     pub start: usize,
     pub statements: Vec<PilStatement<T>>,
 }
 
-#[derive(Clone, Default)]
+#[derive(Clone, Default, Debug)]
 pub struct Machine<T> {
     pub degree: Option<DegreeStatement>,
     pub registers: Vec<RegisterDeclarationStatement>,
@@ -130,12 +132,13 @@ impl<T> Machine<T> {
     }
 }
 
-#[derive(Clone, Default)]
+#[derive(Clone, Default, Debug)]
 pub struct Rom<T> {
     pub statements: Vec<FunctionStatement<T>>,
     pub batches: Option<Vec<BatchMetadata>>,
 }
 
+#[derive(Default, Debug)]
 pub struct AnalysisASMFile<T> {
     pub machines: BTreeMap<String, Machine<T>>,
 }

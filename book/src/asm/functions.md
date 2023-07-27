@@ -38,8 +38,6 @@ One important requirement is for the assignment register of the assignment to be
 {{#include ../../../test_data/asm/book/function.asm:square}}
 ```
 
-> Specifying the assignment register of the assignment is currently required even in cases where it could be inferred. That restriction may be lifted in the future.
-
 ### Instructions
 
 Instructions which do not return outputs can be used as statements.

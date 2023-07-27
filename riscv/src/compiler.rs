@@ -150,7 +150,7 @@ fn replace_dynamic_label_references(
     load_dynamic s10, LABEL
     which is then turned into
 
-    s10 <=X= load_label(LABEL)
+    s10 <== load_label(LABEL)
 
     It gets more complicated by the fact that sometimes, labels
     and debugging directives occur between the two statements
@@ -280,7 +280,7 @@ fn store_data_objects<'a>(
                             // code reference
                             // TODO should be possible without temporary
                             object_code.extend([
-                                format!("tmp1 <=X= load_label({});", escape_label(sym)),
+                                format!("tmp1 <== load_label({});", escape_label(sym)),
                                 "mstore tmp1;".to_string(),
                             ]);
                         }
@@ -876,7 +876,7 @@ fn only_if_no_write_to_zero_vec(statements: Vec<String>, reg: Register) -> Vec<S
 }
 
 static COPROCESSOR_SUBSTITUTIONS: &[(&str, &str)] =
-    &[("poseidon_coprocessor", "x10 <=X= poseidon(x10, x11);")];
+    &[("poseidon_coprocessor", "x10 <== poseidon(x10, x11);")];
 
 fn try_coprocessor_substitution(label: &str) -> Option<&'static str> {
     COPROCESSOR_SUBSTITUTIONS
@@ -909,27 +909,27 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
         // Arithmetic
         "add" => {
             let (rd, r1, r2) = rrr(args);
-            only_if_no_write_to_zero(format!("{rd} <=X= wrap({r1} + {r2});"), rd)
+            only_if_no_write_to_zero(format!("{rd} <== wrap({r1} + {r2});"), rd)
         }
         "addi" => {
             let (rd, rs, imm) = rri(args);
-            only_if_no_write_to_zero(format!("{rd} <=X= wrap({rs} + {imm});"), rd)
+            only_if_no_write_to_zero(format!("{rd} <== wrap({rs} + {imm});"), rd)
         }
         "sub" => {
             let (rd, r1, r2) = rrr(args);
-            only_if_no_write_to_zero(format!("{rd} <=X= wrap_signed({r1} - {r2});"), rd)
+            only_if_no_write_to_zero(format!("{rd} <== wrap_signed({r1} - {r2});"), rd)
         }
         "neg" => {
             let (rd, r1) = rr(args);
-            only_if_no_write_to_zero(format!("{rd} <=X= wrap_signed(0 - {r1});"), rd)
+            only_if_no_write_to_zero(format!("{rd} <== wrap_signed(0 - {r1});"), rd)
         }
         "mul" => {
             let (rd, r1, r2) = rrr(args);
-            only_if_no_write_to_zero(format!("{rd} <=X= mul({r1}, {r2});"), rd)
+            only_if_no_write_to_zero(format!("{rd} <== mul({r1}, {r2});"), rd)
         }
         "mulhu" => {
             let (rd, r1, r2) = rrr(args);
-            only_if_no_write_to_zero(format!("{rd} <=X= mulhu({r1}, {r2});"), rd)
+            only_if_no_write_to_zero(format!("{rd} <== mulhu({r1}, {r2});"), rd)
         }
         "divu" => {
             let (rd, r1, r2) = rrr(args);
@@ -939,31 +939,31 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
         // bitwise
         "xor" => {
             let (rd, r1, r2) = rrr(args);
-            only_if_no_write_to_zero(format!("{rd} <=X= xor({r1}, {r2});"), rd)
+            only_if_no_write_to_zero(format!("{rd} <== xor({r1}, {r2});"), rd)
         }
         "xori" => {
             let (rd, r1, imm) = rri(args);
-            only_if_no_write_to_zero(format!("{rd} <=X= xor({r1}, {imm});"), rd)
+            only_if_no_write_to_zero(format!("{rd} <== xor({r1}, {imm});"), rd)
         }
         "and" => {
             let (rd, r1, r2) = rrr(args);
-            only_if_no_write_to_zero(format!("{rd} <=X= and({r1}, {r2});"), rd)
+            only_if_no_write_to_zero(format!("{rd} <== and({r1}, {r2});"), rd)
         }
         "andi" => {
             let (rd, r1, imm) = rri(args);
-            only_if_no_write_to_zero(format!("{rd} <=X= and({r1}, {imm});"), rd)
+            only_if_no_write_to_zero(format!("{rd} <== and({r1}, {imm});"), rd)
         }
         "or" => {
             let (rd, r1, r2) = rrr(args);
-            only_if_no_write_to_zero(format!("{rd} <=X= or({r1}, {r2});"), rd)
+            only_if_no_write_to_zero(format!("{rd} <== or({r1}, {r2});"), rd)
         }
         "ori" => {
             let (rd, r1, imm) = rri(args);
-            only_if_no_write_to_zero(format!("{rd} <=X= or({r1}, {imm});"), rd)
+            only_if_no_write_to_zero(format!("{rd} <== or({r1}, {imm});"), rd)
         }
         "not" => {
             let (rd, rs) = rr(args);
-            only_if_no_write_to_zero(format!("{rd} <=X= wrap_signed(-{rs} - 1);"), rd)
+            only_if_no_write_to_zero(format!("{rd} <== wrap_signed(-{rs} - 1);"), rd)
         }
 
         // shift
@@ -972,11 +972,11 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
             assert!(amount <= 31);
             only_if_no_write_to_zero_vec(
                 if amount <= 16 {
-                    vec![format!("{rd} <=X= wrap16({rs} * {});", 1 << amount)]
+                    vec![format!("{rd} <== wrap16({rs} * {});", 1 << amount)]
                 } else {
                     vec![
-                        format!("tmp1 <=X= wrap16({rs} * {});", 1 << 16),
-                        format!("{rd} <=X= wrap16(tmp1 * {});", 1 << (amount - 16)),
+                        format!("tmp1 <== wrap16({rs} * {});", 1 << 16),
+                        format!("{rd} <== wrap16(tmp1 * {});", 1 << (amount - 16)),
                     ]
                 },
                 rd,
@@ -986,8 +986,8 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
             let (rd, r1, r2) = rrr(args);
             only_if_no_write_to_zero_vec(
                 vec![
-                    format!("tmp1 <=X= and({r2}, 0x1f);"),
-                    format!("{rd} <=X= shl({r1}, tmp1);"),
+                    format!("tmp1 <== and({r2}, 0x1f);"),
+                    format!("{rd} <== shl({r1}, tmp1);"),
                 ],
                 rd,
             )
@@ -996,15 +996,15 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
             // logical shift right
             let (rd, rs, amount) = rri(args);
             assert!(amount <= 31);
-            only_if_no_write_to_zero(format!("{rd} <=X= shr({rs}, {amount});"), rd)
+            only_if_no_write_to_zero(format!("{rd} <== shr({rs}, {amount});"), rd)
         }
         "srl" => {
             // logical shift right
             let (rd, r1, r2) = rrr(args);
             only_if_no_write_to_zero_vec(
                 vec![
-                    format!("tmp1 <=X= and({r2}, 0x1f);"),
-                    format!("{rd} <=X= shr({r1}, tmp1);"),
+                    format!("tmp1 <== and({r2}, 0x1f);"),
+                    format!("{rd} <== shr({r1}, tmp1);"),
                 ],
                 rd,
             )
@@ -1018,14 +1018,14 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
             assert!(amount <= 31);
             only_if_no_write_to_zero_vec(
                 vec![
-                    format!("tmp1 <=X= to_signed({rs});"),
-                    format!("tmp1 <=Y= is_positive(0 - tmp1);"),
+                    format!("tmp1 <== to_signed({rs});"),
+                    format!("tmp1 <== is_positive(0 - tmp1);"),
                     format!("tmp1 <=X= tmp1 * 0xffffffff;"),
                     // Here, tmp1 is the full bit mask if rs is negative
                     // and zero otherwise.
-                    format!("{rd} <=X= xor(tmp1, {rs});"),
-                    format!("{rd} <=X= shr({rd}, {amount});"),
-                    format!("{rd} <=X= xor(tmp1, {rd});"),
+                    format!("{rd} <== xor(tmp1, {rs});"),
+                    format!("{rd} <== shr({rd}, {amount});"),
+                    format!("{rd} <== xor(tmp1, {rd});"),
                 ],
                 rd,
             )
@@ -1044,7 +1044,7 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
             let (rd, rs, imm) = rri(args);
             only_if_no_write_to_zero_vec(
                 vec![
-                    format!("tmp1 <=X= to_signed({rs});"),
+                    format!("tmp1 <== to_signed({rs});"),
                     format!("{rd} <=Y= is_positive({} - tmp1);", imm as i32),
                 ],
                 rd,
@@ -1053,8 +1053,8 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
         "slt" => {
             let (rd, r1, r2) = rrr(args);
             vec![
-                format!("tmp1 <=X= to_signed({r1});"),
-                format!("tmp2 <=X= to_signed({r2});"),
+                format!("tmp1 <== to_signed({r1});"),
+                format!("tmp2 <== to_signed({r2});"),
                 format!("{rd} <=Y= is_positive(tmp2 - tmp1);"),
             ]
         }
@@ -1069,7 +1069,7 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
         "sgtz" => {
             let (rd, rs) = rr(args);
             vec![
-                format!("tmp1 <=X= to_signed({rs});"),
+                format!("tmp1 <== to_signed({rs});"),
                 format!("{rd} <=Y= is_positive(tmp1);"),
             ]
         }
@@ -1091,7 +1091,7 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
         "bgez" => {
             let (r1, label) = rl(args);
             vec![
-                format!("tmp1 <=X= to_signed({r1});"),
+                format!("tmp1 <== to_signed({r1});"),
                 format!("branch_if_positive tmp1 + 1, {label};"),
             ]
         }
@@ -1104,8 +1104,8 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
             // Branch if r1 < r2 (signed).
             // TODO does this fulfill the input requirements for branch_if_positive?
             vec![
-                format!("tmp1 <=X= to_signed({r1});"),
-                format!("tmp2 <=X= to_signed({r2});"),
+                format!("tmp1 <== to_signed({r1});"),
+                format!("tmp2 <== to_signed({r2});"),
                 format!("branch_if_positive tmp2 - tmp1, {label};"),
             ]
         }
@@ -1114,8 +1114,8 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
             // Branch if r1 >= r2 (signed).
             // TODO does this fulfill the input requirements for branch_if_positive?
             vec![
-                format!("tmp1 <=X= to_signed({r1});"),
-                format!("tmp2 <=X= to_signed({r2});"),
+                format!("tmp1 <== to_signed({r1});"),
+                format!("tmp2 <== to_signed({r2});"),
                 format!("branch_if_positive tmp1 - tmp2 + 1, {label};"),
             ]
         }
@@ -1129,7 +1129,7 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
             // branch less or equal zero
             let (r1, label) = rl(args);
             vec![
-                format!("tmp1 <=X= to_signed({r1});"),
+                format!("tmp1 <== to_signed({r1});"),
                 format!("branch_if_positive -tmp1 + 1, {label};"),
             ]
         }
@@ -1137,7 +1137,7 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
             // branch if 0 < r1 < 2**31
             let (r1, label) = rl(args);
             vec![
-                format!("tmp1 <=X= to_signed({r1});"),
+                format!("tmp1 <== to_signed({r1});"),
                 format!("branch_if_positive tmp1, {label};"),
             ]
         }
@@ -1226,8 +1226,8 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
             // TODO we need to consider misaligned loads / stores
             only_if_no_write_to_zero_vec(
                 vec![
-                    format!("addr <=X= wrap({rs} + {off});"),
-                    format!("{rd} <=X= mload();"),
+                    format!("addr <== wrap({rs} + {off});"),
+                    format!("{rd} <== mload();"),
                 ],
                 rd,
             )
@@ -1237,12 +1237,12 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
             let (rd, rs, off) = rro(args);
             only_if_no_write_to_zero_vec(
                 vec![
-                    format!("tmp1 <=X= wrap({rs} + {off});"),
-                    "addr <=X= and(tmp1, 0xfffffffc);".to_string(),
-                    "tmp2 <=X= and(tmp1, 0x3);".to_string(),
-                    format!("{rd} <=X= mload();"),
-                    format!("{rd} <=X= shr({rd}, 8 * tmp2);"),
-                    format!("{rd} <=X= sign_extend_byte({rd});"),
+                    format!("tmp1 <== wrap({rs} + {off});"),
+                    "addr <== and(tmp1, 0xfffffffc);".to_string(),
+                    "tmp2 <== and(tmp1, 0x3);".to_string(),
+                    format!("{rd} <== mload();"),
+                    format!("{rd} <== shr({rd}, 8 * tmp2);"),
+                    format!("{rd} <== sign_extend_byte({rd});"),
                 ],
                 rd,
             )
@@ -1252,12 +1252,12 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
             let (rd, rs, off) = rro(args);
             only_if_no_write_to_zero_vec(
                 vec![
-                    format!("tmp1 <=X= wrap({rs} + {off});"),
-                    "addr <=X= and(tmp1, 0xfffffffc);".to_string(),
-                    "tmp2 <=X= and(tmp1, 0x3);".to_string(),
-                    format!("{rd} <=X= mload();"),
-                    format!("{rd} <=X= shr({rd}, 8 * tmp2);"),
-                    format!("{rd} <=X= and({rd}, 0xff);"),
+                    format!("tmp1 <== wrap({rs} + {off});"),
+                    "addr <== and(tmp1, 0xfffffffc);".to_string(),
+                    "tmp2 <== and(tmp1, 0x3);".to_string(),
+                    format!("{rd} <== mload();"),
+                    format!("{rd} <== shr({rd}, 8 * tmp2);"),
+                    format!("{rd} <== and({rd}, 0xff);"),
                 ],
                 rd,
             )
@@ -1265,7 +1265,7 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
         "sw" => {
             let (r1, r2, off) = rro(args);
             vec![
-                format!("addr <=X= wrap({r2} + {off});"),
+                format!("addr <== wrap({r2} + {off});"),
                 format!("mstore {r1};"),
             ]
         }
@@ -1276,16 +1276,16 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
 
             let (rs, rd, off) = rro(args);
             vec![
-                format!("tmp1 <=X= wrap({rd} + {off});"),
-                "addr <=X= and(tmp1, 0xfffffffc);".to_string(),
-                "tmp2 <=X= and(tmp1, 0x3);".to_string(),
-                "tmp1 <=X= mload();".to_string(),
-                "tmp3 <=X= shl(0xffff, 8 * tmp2);".to_string(),
-                "tmp3 <=X= xor(tmp3, 0xffffffff);".to_string(),
-                "tmp1 <=X= and(tmp1, tmp3);".to_string(),
-                format!("tmp3 <=X= and({rs}, 0xffff);"),
-                "tmp3 <=X= shl(tmp3, 8 * tmp2);".to_string(),
-                "tmp1 <=X= or(tmp1, tmp3);".to_string(),
+                format!("tmp1 <== wrap({rd} + {off});"),
+                "addr <== and(tmp1, 0xfffffffc);".to_string(),
+                "tmp2 <== and(tmp1, 0x3);".to_string(),
+                "tmp1 <== mload();".to_string(),
+                "tmp3 <== shl(0xffff, 8 * tmp2);".to_string(),
+                "tmp3 <== xor(tmp3, 0xffffffff);".to_string(),
+                "tmp1 <== and(tmp1, tmp3);".to_string(),
+                format!("tmp3 <== and({rs}, 0xffff);"),
+                "tmp3 <== shl(tmp3, 8 * tmp2);".to_string(),
+                "tmp1 <== or(tmp1, tmp3);".to_string(),
                 "mstore tmp1;".to_string(),
             ]
         }
@@ -1293,16 +1293,16 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
             // store byte
             let (rs, rd, off) = rro(args);
             vec![
-                format!("tmp1 <=X= wrap({rd} + {off});"),
-                "addr <=X= and(tmp1, 0xfffffffc);".to_string(),
-                "tmp2 <=X= and(tmp1, 0x3);".to_string(),
-                "tmp1 <=X= mload();".to_string(),
-                "tmp3 <=X= shl(0xff, 8 * tmp2);".to_string(),
-                "tmp3 <=X= xor(tmp3, 0xffffffff);".to_string(),
-                "tmp1 <=X= and(tmp1, tmp3);".to_string(),
-                format!("tmp3 <=X= and({rs}, 0xff);"),
-                "tmp3 <=X= shl(tmp3, 8 * tmp2);".to_string(),
-                "tmp1 <=X= or(tmp1, tmp3);".to_string(),
+                format!("tmp1 <== wrap({rd} + {off});"),
+                "addr <== and(tmp1, 0xfffffffc);".to_string(),
+                "tmp2 <== and(tmp1, 0x3);".to_string(),
+                "tmp1 <== mload();".to_string(),
+                "tmp3 <== shl(0xff, 8 * tmp2);".to_string(),
+                "tmp3 <== xor(tmp3, 0xffffffff);".to_string(),
+                "tmp1 <== and(tmp1, tmp3);".to_string(),
+                format!("tmp3 <== and({rs}, 0xff);"),
+                "tmp3 <== shl(tmp3, 8 * tmp2);".to_string(),
+                "tmp1 <== or(tmp1, tmp3);".to_string(),
                 "mstore tmp1;".to_string(),
             ]
         }
@@ -1312,7 +1312,7 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
         // Special instruction that is inserted to allow dynamic label references
         "load_dynamic" => {
             let (rd, label) = rl(args);
-            only_if_no_write_to_zero(format!("{rd} <=X= load_label({label});"), rd)
+            only_if_no_write_to_zero(format!("{rd} <== load_label({label});"), rd)
         }
 
         _ => {
