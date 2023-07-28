@@ -1,4 +1,4 @@
-use backend::Backend;
+use backend::BackendType;
 use compiler::compile_pil_or_asm;
 use number::{Bn254Field, GoldilocksField};
 use std::path::Path;
@@ -10,17 +10,21 @@ pub fn verify_pil(file_name: &str, query_callback: Option<fn(&str) -> Option<Gol
         .unwrap();
 
     let temp_dir = mktemp::Temp::new_dir().unwrap();
-    assert!(compiler::compile_pil(&input_file, &temp_dir, query_callback, None,).success);
+    assert!(
+        compiler::compile_pil(&input_file, &temp_dir, query_callback, None,)
+            .witness
+            .is_some()
+    );
     compiler::verify(file_name, &temp_dir);
 }
 
 #[cfg(feature = "halo2")]
-fn prover() -> Option<Backend> {
-    Some(Backend::Halo2)
+fn prover() -> Option<BackendType> {
+    Some(BackendType::Halo2)
 }
 
 #[cfg(not(feature = "halo2"))]
-fn prover() -> Option<Backend> {
+fn prover() -> Option<BackendType> {
     None
 }
 

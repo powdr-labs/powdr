@@ -2,7 +2,7 @@
 
 use std::{collections::BTreeMap, path::Path, process::Command};
 
-use ::compiler::{compile_asm_string, Backend};
+use ::compiler::{compile_asm_string, BackendType};
 use asm_utils::compiler::Compiler;
 use mktemp::Temp;
 use std::fs;
@@ -27,7 +27,7 @@ pub fn compile_rust<T: FieldElement>(
     inputs: Vec<T>,
     output_dir: &Path,
     force_overwrite: bool,
-    prove_with: Option<Backend>,
+    prove_with: Option<BackendType>,
 ) {
     let riscv_asm = if file_name.ends_with("Cargo.toml") {
         compile_rust_crate_to_riscv_asm(file_name)
@@ -72,7 +72,7 @@ pub fn compile_riscv_asm_bundle<T: FieldElement>(
     inputs: Vec<T>,
     output_dir: &Path,
     force_overwrite: bool,
-    prove_with: Option<Backend>,
+    prove_with: Option<BackendType>,
 ) {
     let powdr_asm_file_name = output_dir.join(format!(
         "{}.asm",
@@ -113,7 +113,7 @@ pub fn compile_riscv_asm<T: FieldElement>(
     inputs: Vec<T>,
     output_dir: &Path,
     force_overwrite: bool,
-    prove_with: Option<Backend>,
+    prove_with: Option<BackendType>,
 ) {
     compile_riscv_asm_bundle(
         original_file_name,

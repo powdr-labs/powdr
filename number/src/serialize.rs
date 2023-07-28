@@ -9,7 +9,7 @@ fn ceil_div(num: usize, div: usize) -> usize {
 pub fn write_polys_file<T: FieldElement>(
     file: &mut impl Write,
     degree: DegreeType,
-    polys: &Vec<(&str, Vec<T>)>,
+    polys: &[(&str, Vec<T>)],
 ) {
     let width = ceil_div(T::BITS as usize, 64) * 8;
 

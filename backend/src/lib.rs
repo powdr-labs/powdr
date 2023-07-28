@@ -1,104 +1,147 @@
+mod pilcom_cli;
+
 use ast::analyzed::Analyzed;
 use number::FieldElement;
-use std::io;
+use std::{
+    fs,
+    io::{self, Write},
+    path::Path,
+};
 use strum::{Display, EnumString, EnumVariantNames};
 
 #[derive(Clone, EnumString, EnumVariantNames, Display)]
-pub enum Backend {
+pub enum BackendType {
     #[cfg(feature = "halo2")]
     #[strum(serialize = "halo2")]
     Halo2,
     #[cfg(feature = "halo2")]
-    #[strum(serialize = "halo2-aggr")]
-    Halo2Aggr,
-    #[cfg(feature = "halo2")]
     #[strum(serialize = "halo2-mock")]
     Halo2Mock,
-    // At the moment, this enum is empty without halo2, but it is always built
-    // as part of the infrastructure to eventually support other backends.
+    #[strum(serialize = "pilcom-cli")]
+    PilcomCli,
 }
 
-/// Create a proof for a given PIL, fixed column values and witness column values
-/// using the chosen backend.
+impl BackendType {
+    pub fn build<T: FieldElement>(&self) -> &'static dyn BackendBuilder<T> {
+        const HALO2_BUILDER: Halo2Builder = Halo2Builder;
+        const HALO2_MOCK_BUILDER: Halo2Builder = Halo2Builder;
+        const PILCOM_CLI_BUILDER: pilcom_cli::PilcomCliBuilder = pilcom_cli::PilcomCliBuilder;
+
+        match self {
+            BackendType::Halo2 => &HALO2_BUILDER,
+            BackendType::Halo2Mock => &HALO2_MOCK_BUILDER,
+            BackendType::PilcomCli => &PILCOM_CLI_BUILDER,
+        }
+    }
+}
 
 pub type Proof = Vec<u8>;
-pub type Params = Vec<u8>;
 
-pub trait ProverWithParams {
-    fn prove<T: FieldElement, R: io::Read>(
-        pil: &Analyzed<T>,
-        fixed: Vec<(&str, Vec<T>)>,
-        witness: Vec<(&str, Vec<T>)>,
-        params: R,
-    ) -> Option<Proof>;
-
-    fn generate_params<T: FieldElement>(size: usize) -> Params;
+pub trait BackendBuilder<T: FieldElement> {
+    fn setup_from_params(&self, size: u64) -> Box<dyn Backend<T>>;
+    fn read(&self, input: &mut dyn io::Read) -> Result<Box<dyn Backend<T>>, io::Error>;
 }
 
-pub trait ProverWithoutParams {
-    fn prove<T: FieldElement>(
+pub trait Backend<T: FieldElement> {
+    // Why this returns Option???
+    fn prove(
+        &self,
         pil: &Analyzed<T>,
-        fixed: Vec<(&str, Vec<T>)>,
-        witness: Vec<(&str, Vec<T>)>,
-    ) -> Option<Proof>;
+        fixed: &[(&str, Vec<T>)],
+        witness: Option<&[(&str, Vec<T>)]>,
+        prev_proof: Option<Proof>,
+        output_dir: &Path,
+    ) -> io::Result<()>;
+
+    fn write(&self, output: &mut dyn io::Write) -> Result<(), io::Error>;
 }
 
-pub trait ProverAggregationWithParams {
-    fn prove<T: FieldElement, R1: io::Read, R2: io::Read>(
-        pil: &Analyzed<T>,
-        fixed: Vec<(&str, Vec<T>)>,
-        witness: Vec<(&str, Vec<T>)>,
-        proof: R1,
-        params: R2,
-    ) -> Proof;
-}
-
-#[cfg(feature = "halo2")]
-pub struct Halo2Backend;
-
-#[cfg(feature = "halo2")]
-pub struct Halo2MockBackend;
-
-#[cfg(feature = "halo2")]
-pub struct Halo2AggregationBackend;
-
-#[cfg(feature = "halo2")]
-impl ProverWithParams for Halo2Backend {
-    fn prove<T: FieldElement, R: io::Read>(
-        pil: &Analyzed<T>,
-        fixed: Vec<(&str, Vec<T>)>,
-        witness: Vec<(&str, Vec<T>)>,
-        params: R,
-    ) -> Option<Proof> {
-        Some(halo2::prove_ast_read_params(pil, fixed, witness, params))
+struct Halo2Builder;
+impl<T: FieldElement> BackendBuilder<T> for Halo2Builder {
+    fn setup_from_params(&self, size: u64) -> Box<dyn Backend<T>> {
+        Box::new(halo2::Halo2::new(size as usize))
     }
 
-    fn generate_params<T: FieldElement>(size: usize) -> Params {
-        halo2::generate_params::<T>(size)
+    fn read(&self, mut input: &mut dyn io::Read) -> Result<Box<dyn Backend<T>>, io::Error> {
+        Ok(Box::new(halo2::Halo2::read(&mut input)?))
     }
 }
 
-#[cfg(feature = "halo2")]
-impl ProverWithoutParams for Halo2MockBackend {
-    fn prove<T: FieldElement>(
+impl<T: FieldElement> Backend<T> for halo2::Halo2<T> {
+    fn prove(
+        &self,
         pil: &Analyzed<T>,
-        fixed: Vec<(&str, Vec<T>)>,
-        witness: Vec<(&str, Vec<T>)>,
-    ) -> Option<Proof> {
+        fixed: &[(&str, Vec<T>)],
+        witness: Option<&[(&str, Vec<T>)]>,
+        prev_proof: Option<Proof>,
+        output_dir: &Path,
+    ) -> io::Result<()> {
+        let Some(witness) = witness else {
+            return Err(io::Error::new(io::ErrorKind::InvalidInput, "witness is missing"));
+        };
+
+        let (proof, fname) = match prev_proof {
+            Some(proof) => (self.prove_aggr(pil, fixed, witness, proof), "proof.bin"),
+            None => (self.prove_ast(pil, fixed, witness), "proof_aggr.bin"),
+        };
+
+        {
+            // No need to bufferize the writing, because we write the whole
+            // proof in one call.
+            let mut proof_file = fs::File::create(output_dir.join(fname))?;
+            proof_file.write_all(&proof)?;
+        }
+        log::info!("Wrote {fname}.");
+
+        Ok(())
+    }
+
+    fn write(&self, mut output: &mut dyn io::Write) -> Result<(), io::Error> {
+        self.write(&mut output)
+    }
+}
+
+struct Halo2MockBuilder;
+impl<T: FieldElement> BackendBuilder<T> for Halo2MockBuilder {
+    fn setup_from_params(&self, _size: u64) -> Box<dyn Backend<T>> {
+        Box::new(Halo2Mock)
+    }
+
+    fn read(&self, _input: &mut dyn io::Read) -> Result<Box<dyn Backend<T>>, io::Error> {
+        panic!("Halo2Mock backend does not support serialization");
+    }
+}
+
+struct Halo2Mock;
+impl<T: FieldElement> Backend<T> for Halo2Mock {
+    fn prove(
+        &self,
+        pil: &Analyzed<T>,
+        fixed: &[(&str, Vec<T>)],
+        witness: Option<&[(&str, Vec<T>)]>,
+        prev_proof: Option<Proof>,
+        _output_dir: &Path,
+    ) -> io::Result<()> {
+        if prev_proof.is_some() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "Halo2Mock backend does not support aggregation",
+            ));
+        }
+
+        let Some(witness) = witness else {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "witness is missing",
+            ));
+        };
+
         halo2::mock_prove(pil, fixed, witness);
-        None
-    }
-}
 
-#[cfg(feature = "halo2")]
-impl ProverAggregationWithParams for Halo2AggregationBackend {
-    fn prove<T: FieldElement, R1: io::Read, R2: io::Read>(
-        pil: &Analyzed<T>,
-        fixed: Vec<(&str, Vec<T>)>,
-        witness: Vec<(&str, Vec<T>)>,
-        proof: R1,
-        params: R2,
-    ) -> Proof {
-        halo2::prove_aggr_read_proof_params(pil, fixed, witness, proof, params)
+        Ok(())
+    }
+
+    fn write(&self, _output: &mut dyn io::Write) -> Result<(), io::Error> {
+        panic!("Halo2Mock backend does not support serialization");
     }
 }

@@ -1,4 +1,4 @@
-use compiler::{compile_pil_or_asm, verify_asm_string, Backend};
+use compiler::{compile_pil_or_asm, verify_asm_string, BackendType};
 use number::{Bn254Field, FieldElement, GoldilocksField};
 use std::fs;
 use test_log::test;
@@ -9,12 +9,12 @@ fn verify_asm<T: FieldElement>(file_name: &str, inputs: Vec<T>) {
 }
 
 #[cfg(feature = "halo2")]
-fn prover() -> Option<Backend> {
-    Some(Backend::Halo2)
+fn prover() -> Option<BackendType> {
+    Some(BackendType::Halo2)
 }
 
 #[cfg(not(feature = "halo2"))]
-fn prover() -> Option<Backend> {
+fn prover() -> Option<BackendType> {
     None
 }
 

@@ -8,7 +8,7 @@ use polyexen::expr::{Column, ColumnKind};
 
 pub(crate) struct CircuitData<'a, T> {
     pub(crate) fixed: Vec<(&'a str, Vec<T>)>,
-    pub(crate) witness: Vec<(&'a str, Vec<T>)>,
+    pub(crate) witness: &'a [(&'a str, Vec<T>)],
     columns: HashMap<String, Column>,
     pub(crate) constants: &'a HashMap<String, T>,
 }
@@ -16,7 +16,7 @@ pub(crate) struct CircuitData<'a, T> {
 impl<'a, T: FieldElement> CircuitData<'a, T> {
     pub fn from(
         fixed: Vec<(&'a str, Vec<T>)>,
-        witness: Vec<(&'a str, Vec<T>)>,
+        witness: &'a [(&'a str, Vec<T>)],
         constants: &'a HashMap<String, T>,
     ) -> Self {
         if !fixed.is_empty() && !witness.is_empty() {

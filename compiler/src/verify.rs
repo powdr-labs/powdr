@@ -1,3 +1,4 @@
+use backend::BackendType;
 use number::FieldElement;
 use std::{fs, path::Path, process::Command};
 
@@ -5,7 +6,15 @@ use crate::compile_asm_string;
 
 pub fn verify_asm_string<T: FieldElement>(file_name: &str, contents: &str, inputs: Vec<T>) {
     let temp_dir = mktemp::Temp::new_dir().unwrap();
-    let pil_file_path = compile_asm_string(file_name, contents, inputs, &temp_dir, true, None).0;
+    let pil_file_path = compile_asm_string(
+        file_name,
+        contents,
+        inputs,
+        &temp_dir,
+        true,
+        Some(BackendType::PilcomCli),
+    )
+    .0;
     let pil_file_name = pil_file_path.file_name().unwrap().to_string_lossy();
     verify(&pil_file_name, &temp_dir);
 }

@@ -3,7 +3,7 @@
 mod util;
 
 use clap::{Parser, Subcommand};
-use compiler::{compile_pil_or_asm, Backend};
+use compiler::{compile_pil_or_asm, BackendType};
 use env_logger::{Builder, Target};
 use log::LevelFilter;
 use number::{Bn254Field, FieldElement, GoldilocksField};
@@ -71,10 +71,10 @@ enum Commands {
         #[arg(default_value_t = false)]
         force: bool,
 
-        /// Generate a proof with a given backend
+        /// Generate a proof with a given backend.
         #[arg(short, long)]
-        #[arg(value_parser = clap_enum_variants!(Backend))]
-        prove_with: Option<Backend>,
+        #[arg(value_parser = clap_enum_variants!(BackendType))]
+        prove_with: Option<BackendType>,
 
         /// Generate a CSV file containing the fixed and witness column values. Useful for debugging purposes.
         #[arg(long)]
@@ -117,8 +117,8 @@ enum Commands {
 
         /// Generate a proof with a given backend
         #[arg(short, long)]
-        #[arg(value_parser = clap_enum_variants!(Backend))]
-        prove_with: Option<Backend>,
+        #[arg(value_parser = clap_enum_variants!(BackendType))]
+        prove_with: Option<BackendType>,
     },
 
     /// Compiles riscv assembly to powdr assembly and then to PIL
@@ -151,8 +151,8 @@ enum Commands {
 
         /// Generate a proof with a given backend.
         #[arg(short, long)]
-        #[arg(value_parser = clap_enum_variants!(Backend))]
-        prove_with: Option<Backend>,
+        #[arg(value_parser = clap_enum_variants!(BackendType))]
+        prove_with: Option<BackendType>,
     },
 
     Prove {
@@ -172,8 +172,8 @@ enum Commands {
 
         /// Generate a proof with a given backend.
         #[arg(short, long)]
-        #[arg(value_parser = clap_enum_variants!(Backend))]
-        backend: Backend,
+        #[arg(value_parser = clap_enum_variants!(BackendType))]
+        backend: BackendType,
 
         /// File containing previously generated proof for aggregation.
         #[arg(long)]
@@ -201,8 +201,8 @@ enum Commands {
 
         /// Generate a proof with a given backend.
         #[arg(short, long)]
-        #[arg(value_parser = clap_enum_variants!(Backend))]
-        backend: Backend,
+        #[arg(value_parser = clap_enum_variants!(BackendType))]
+        backend: BackendType,
     },
 
     /// Parses and prints the PIL file on stdout.
@@ -333,7 +333,7 @@ fn run_command(command: Commands) {
 
             // TODO: this probably should be abstracted alway in a common backends API,
             // maybe a function "get_file_extension()".
-            let proof_filename = if let Backend::Halo2Aggr = backend {
+            let proof_filename = if let BackendType::Halo2Aggr = backend {
                 "proof_aggr.bin"
             } else {
                 "proof.bin"
@@ -364,13 +364,15 @@ fn run_command(command: Commands) {
 // Since we only have halo2 backend, if it is disabled, this function is
 // unreachable, and we can disable it.
 #[cfg(feature = "halo2")]
-fn setup(size: usize, dir: String, field: FieldArgument, backend: Backend) {
+fn setup(size: usize, dir: String, field: FieldArgument, backend: BackendType) {
     let dir = Path::new(&dir);
 
     // TODO: a backend should be transparent to its user
     let params = match (field, &backend) {
-        (FieldArgument::Bn254, Backend::Halo2) => Halo2Backend::generate_params::<Bn254Field>(size),
-        (_, Backend::Halo2) => panic!("Backend halo2 requires field Bn254"),
+        (FieldArgument::Bn254, BackendType::Halo2) => {
+            Halo2Backend::generate_params::<Bn254Field>(size)
+        }
+        (_, BackendType::Halo2) => panic!("Backend halo2 requires field Bn254"),
         _ => panic!("Backend {} does not accept params.", backend),
     };
     write_params_to_fs(&params, dir);
@@ -475,7 +477,7 @@ fn export_columns_to_csv<T: FieldElement>(
 fn read_and_prove<T: FieldElement>(
     file: &Path,
     dir: &Path,
-    backend: &Backend,
+    backend: &BackendType,
     proof: Option<String>,
     params: Option<String>,
 ) -> Option<Vec<u8>> {
@@ -487,20 +489,20 @@ fn read_and_prove<T: FieldElement>(
 
     // TODO: a backend should be transparent to its user
     match (backend, params) {
-        (Backend::Halo2, Some(params)) => {
+        (BackendType::Halo2, Some(params)) => {
             let params = fs::File::open(dir.join(params)).unwrap();
             Halo2Backend::prove(&pil, fixed.0, witness.0, params)
         }
-        (Backend::Halo2, None) => {
+        (BackendType::Halo2, None) => {
             let degree = usize::BITS - fixed.1.leading_zeros() + 1;
             let params = Halo2Backend::generate_params::<Bn254Field>(degree as usize);
             write_params_to_fs(&params, dir);
             Halo2Backend::prove(&pil, fixed.0, witness.0, std::io::Cursor::new(params))
         }
-        (Backend::Halo2Mock, Some(_)) => panic!("Backend Halo2Mock does not accept params"),
-        (Backend::Halo2Mock, None) => Halo2MockBackend::prove(&pil, fixed.0, witness.0),
-        (Backend::Halo2Aggr, None) => panic!("Backend Halo2Aggr requires params"),
-        (Backend::Halo2Aggr, Some(params)) => {
+        (BackendType::Halo2Mock, Some(_)) => panic!("Backend Halo2Mock does not accept params"),
+        (BackendType::Halo2Mock, None) => Halo2MockBackend::prove(&pil, fixed.0, witness.0),
+        (BackendType::Halo2Aggr, None) => panic!("Backend Halo2Aggr requires params"),
+        (BackendType::Halo2Aggr, Some(params)) => {
             let proof = match proof {
                 Some(proof) => fs::File::open(dir.join(proof)).unwrap(),
                 None => panic!("Backend Halo2aggr requires proof"),

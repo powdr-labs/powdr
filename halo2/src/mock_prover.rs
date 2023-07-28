@@ -7,8 +7,8 @@ use number::{BigInt, FieldElement};
 
 pub fn mock_prove<T: FieldElement>(
     pil: &Analyzed<T>,
-    fixed: Vec<(&str, Vec<T>)>,
-    witness: Vec<(&str, Vec<T>)>,
+    fixed: &[(&str, Vec<T>)],
+    witness: &[(&str, Vec<T>)],
 ) {
     if polyexen::expr::get_field_p::<Fr>() != T::modulus().to_arbitrary_integer() {
         panic!("powdr modulus doesn't match halo2 modulus. Make sure you are using Bn254");
@@ -80,7 +80,7 @@ mod test {
         let (fixed, degree) = executor::constant_evaluator::generate(&analyzed);
         let witness = executor::witgen::generate(&analyzed, degree, &fixed, Some(query_callback));
 
-        mock_prove(&analyzed, fixed, witness);
+        mock_prove(&analyzed, &fixed, &witness);
     }
 
     #[test]
@@ -92,7 +92,7 @@ mod test {
         let query_callback = |_: &str| -> Option<Bn254Field> { None };
 
         let witness = executor::witgen::generate(&analyzed, degree, &fixed, Some(query_callback));
-        mock_prove(&analyzed, fixed, witness);
+        mock_prove(&analyzed, &fixed, &witness);
     }
 
     #[test]

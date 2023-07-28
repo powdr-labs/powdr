@@ -2,22 +2,17 @@
 
 use std::ffi::OsStr;
 use std::fs;
-use std::io::BufWriter;
-use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
 use std::time::Instant;
 
 use ast::analyzed::Analyzed;
-use json::JsonValue;
 
 pub mod util;
 mod verify;
 
 use analysis::analyze;
-pub use backend::{Backend, Proof};
-use number::write_polys_file;
-use pil_analyzer::json_exporter;
+pub use backend::{BackendType, Proof};
 pub use verify::{verify, verify_asm_string};
 
 use ast::parsed::PILFile;
@@ -36,7 +31,7 @@ pub fn compile_pil_or_asm<T: FieldElement>(
     inputs: Vec<T>,
     output_dir: &Path,
     force_overwrite: bool,
-    prove_with: Option<Backend>,
+    prove_with: Option<BackendType>,
 ) -> Option<CompilationResult<T>> {
     if file_name.ends_with(".asm") {
         compile_asm(file_name, inputs, output_dir, force_overwrite, prove_with)
@@ -62,7 +57,7 @@ pub fn compile_pil<T: FieldElement, QueryCallback>(
     pil_file: &Path,
     output_dir: &Path,
     query_callback: Option<QueryCallback>,
-    prove_with: Option<Backend>,
+    prove_with: Option<BackendType>,
 ) -> CompilationResult<T>
 where
     QueryCallback: FnMut(&str) -> Option<T> + Sync + Send,
@@ -83,7 +78,7 @@ pub fn compile_pil_ast<T: FieldElement, QueryCallback>(
     file_name: &OsStr,
     output_dir: &Path,
     query_callback: Option<QueryCallback>,
-    prove_with: Option<Backend>,
+    prove_with: Option<BackendType>,
 ) -> CompilationResult<T>
 where
     QueryCallback: FnMut(&str) -> Option<T> + Sync + Send,
@@ -107,7 +102,7 @@ pub fn compile_asm<T: FieldElement>(
     inputs: Vec<T>,
     output_dir: &Path,
     force_overwrite: bool,
-    prove_with: Option<Backend>,
+    prove_with: Option<BackendType>,
 ) -> Option<CompilationResult<T>> {
     let contents = fs::read_to_string(file_name).unwrap();
     compile_asm_string(
@@ -131,7 +126,7 @@ pub fn compile_asm_string<T: FieldElement>(
     inputs: Vec<T>,
     output_dir: &Path,
     force_overwrite: bool,
-    prove_with: Option<Backend>,
+    prove_with: Option<BackendType>,
 ) -> (PathBuf, Option<CompilationResult<T>>) {
     let parsed = parser::parse_asm(Some(file_name), contents).unwrap_or_else(|err| {
         eprintln!("Error parsing .asm file:");
@@ -171,8 +166,6 @@ pub fn compile_asm_string<T: FieldElement>(
 }
 
 pub struct CompilationResult<T: FieldElement> {
-    /// Whether all committed/witness and constant/fixed polynomials could be generated.
-    pub success: bool,
     /// Constant columns, potentially incomplete (if success is false)
     pub constants: Vec<(String, Vec<T>)>,
     /// Witness columns, potentially None (if success is false)
@@ -181,12 +174,12 @@ pub struct CompilationResult<T: FieldElement> {
 
 /// Optimizes a given pil and tries to generate constants and committed polynomials.
 /// @returns a compilation result, containing witness and fixed columns, if successful.
-fn compile<T: FieldElement, QueryCallback>(
+fn compile<'a, T: FieldElement, QueryCallback>(
     analyzed: Analyzed<T>,
     file_name: &OsStr,
     output_dir: &Path,
     query_callback: Option<QueryCallback>,
-    prove_with: Option<Backend>,
+    prove_with: Option<BackendType>,
 ) -> CompilationResult<T>
 where
     QueryCallback: FnMut(&str) -> Option<T> + Send + Sync,
@@ -199,61 +192,49 @@ where
     ));
     fs::write(optimized_pil_file_name.clone(), format!("{analyzed}")).unwrap();
     log::info!("Wrote {}.", optimized_pil_file_name.to_str().unwrap());
-    let mut success = true;
     let start = Instant::now();
     log::info!("Evaluating fixed columns...");
     let (constants, degree) = constant_evaluator::generate(&analyzed);
     log::info!("Took {}", start.elapsed().as_secs_f32());
 
-    let mut witness = None;
-    if analyzed.constant_count() == constants.len() {
-        write_constants_to_fs(&constants, output_dir, degree);
-        log::info!("Generated constants.");
-
+    let witness = (analyzed.constant_count() == constants.len()).then(|| {
         log::info!("Deducing witness columns...");
         let commits = executor::witgen::generate(&analyzed, degree, &constants, query_callback);
-        write_commits_to_fs(&commits, output_dir, degree);
-        log::info!("Generated witness.");
 
-        // TODO: the fs and params stuff needs to be refactored out of here
-        //
-        // second TODO: I think all the backend specific stuff should be
-        // refactored out of here. If there is a backend, the interface should
-        // be the same for all backends, so this crate won't need to depend on
-        // "halo2" or be aware of the "halo2" feature.
-        #[cfg(feature = "halo2")]
-        if let Some(Backend::Halo2) = prove_with {
-            let degree = usize::BITS - degree.leading_zeros() + 1;
-            let params = halo2::kzg_params(degree as usize);
-            let proof = halo2::prove_ast(&analyzed, constants.clone(), commits.clone(), params);
-            write_proof_to_fs(&proof, output_dir);
-            log::info!("Generated proof.");
+        commits
+            .into_iter()
+            .map(|(name, c)| (name, c))
+            .collect::<Vec<_>>()
+    });
+
+    // Even if we don't have all constants and witnesses, some backends will
+    // still output useful stuff.
+    if let Some(backend) = prove_with {
+        let builder = backend.build::<T>();
+        let backend = builder.setup_from_params(degree);
+        if let Err(error) = backend.prove(
+            &analyzed,
+            &constants,
+            witness.as_ref().map(|v| v.as_slice()),
+            None,
+            output_dir,
+        ) {
+            log::warn!("Proof generation failed: {error}");
         }
-
-        witness = Some(
-            commits
-                .into_iter()
-                .map(|(name, c)| (name.to_owned(), c))
-                .collect(),
-        );
-    } else {
-        log::warn!("Not writing constants.bin because not all declared constants are defined (or there are none).");
-        success = false;
     }
-    let json_out = json_exporter::export(&analyzed);
-    write_compiled_json_to_fs(&json_out, file_name, output_dir);
-    log::info!("Compiled PIL source code.");
 
     let constants = constants
         .into_iter()
         .map(|(name, c)| (name.to_owned(), c))
         .collect();
 
-    CompilationResult {
-        success,
-        constants,
-        witness,
-    }
+    let witness = witness.map(|v| {
+        v.into_iter()
+            .map(|(name, c)| (name.to_owned(), c))
+            .collect()
+    });
+
+    CompilationResult { constants, witness }
 }
 
 pub fn inputs_to_query_callback<T: FieldElement>(inputs: Vec<T>) -> impl Fn(&str) -> Option<T> {
@@ -279,50 +260,4 @@ pub fn inputs_to_query_callback<T: FieldElement>(inputs: Vec<T>) -> impl Fn(&str
             _ => None,
         }
     }
-}
-
-fn write_constants_to_fs<T: FieldElement>(
-    commits: &Vec<(&str, Vec<T>)>,
-    output_dir: &Path,
-    degree: u64,
-) {
-    write_polys_file(
-        &mut BufWriter::new(&mut fs::File::create(output_dir.join("constants.bin")).unwrap()),
-        degree,
-        commits,
-    );
-    log::info!("Wrote constants.bin.");
-}
-
-fn write_commits_to_fs<T: FieldElement>(
-    commits: &Vec<(&str, Vec<T>)>,
-    output_dir: &Path,
-    degree: u64,
-) {
-    write_polys_file(
-        &mut BufWriter::new(&mut fs::File::create(output_dir.join("commits.bin")).unwrap()),
-        degree,
-        commits,
-    );
-    log::info!("Wrote commits.bin.");
-}
-
-fn write_proof_to_fs(proof: &Proof, output_dir: &Path) {
-    let mut proof_file = fs::File::create(output_dir.join("proof.bin")).unwrap();
-    let mut proof_writer = BufWriter::new(&mut proof_file);
-    proof_writer.write_all(proof).unwrap();
-    proof_writer.flush().unwrap();
-    log::info!("Wrote proof.bin.");
-}
-
-fn write_compiled_json_to_fs(json_out: &JsonValue, file_name: &OsStr, output_dir: &Path) {
-    let json_file = {
-        let mut file = file_name.to_os_string();
-        file.push(".json");
-        file
-    };
-    json_out
-        .write(&mut fs::File::create(output_dir.join(&json_file)).unwrap())
-        .unwrap();
-    log::info!("Wrote {}.", json_file.to_string_lossy());
 }

@@ -343,6 +343,7 @@ impl<'a, T: FieldElement> Exporter<'a, T> {
 
 #[cfg(test)]
 mod test {
+    use pil_analyzer::analyze;
     use std::fs;
     use std::process::Command;
     use test_log::test;
@@ -357,7 +358,7 @@ mod test {
 
         let file = std::path::PathBuf::from("../test_data/polygon-hermez/").join(file);
 
-        let analyzed = crate::analyze::<GoldilocksField>(&file);
+        let analyzed = analyze::<GoldilocksField>(&file);
         let json_out = export(&analyzed);
 
         let pilcom = std::env::var("PILCOM").expect(
