@@ -87,7 +87,7 @@ fn write_commits_to_fs<T: FieldElement>(
 
 fn write_compiled_json_to_fs(json_out: &JsonValue, output_dir: &Path) {
     json_out
-        .write(&mut fs::File::create(output_dir.join("constraints.pil.json")).unwrap())
+        .write(&mut fs::File::create(output_dir.join("constraints.json")).unwrap())
         .unwrap();
-    log::info!("Wrote constraints.pil.json.");
+    log::info!("Wrote constraints.json.");
 }

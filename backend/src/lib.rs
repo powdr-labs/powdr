@@ -24,7 +24,7 @@ pub enum BackendType {
 impl BackendType {
     pub fn build<T: FieldElement>(&self) -> &'static dyn BackendBuilder<T> {
         const HALO2_BUILDER: Halo2Builder = Halo2Builder;
-        const HALO2_MOCK_BUILDER: Halo2Builder = Halo2Builder;
+        const HALO2_MOCK_BUILDER: Halo2MockBuilder = Halo2MockBuilder;
         const PILCOM_CLI_BUILDER: pilcom_cli::PilcomCliBuilder = pilcom_cli::PilcomCliBuilder;
 
         match self {

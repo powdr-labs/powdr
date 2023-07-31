@@ -179,7 +179,7 @@ impl<F: FieldElement> Halo2<F> {
     }
 
     fn assert_field_is_compatible() {
-        if polyexen::expr::get_field_p::<Fr>() == F::modulus().to_arbitrary_integer() {
+        if polyexen::expr::get_field_p::<Fr>() != F::modulus().to_arbitrary_integer() {
             panic!("powdr modulus doesn't match halo2 modulus. Make sure you are using Bn254");
         }
     }
