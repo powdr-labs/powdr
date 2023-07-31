@@ -43,11 +43,11 @@ pub struct Halo2<F: FieldElement> {
 }
 
 impl<F: FieldElement> Halo2<F> {
-    pub fn new(size: usize) -> Self {
+    pub fn new(size: u32) -> Self {
         Self::assert_field_is_compatible();
 
         Self {
-            params: ParamsKZG::<Bn256>::new(size as u32),
+            params: ParamsKZG::<Bn256>::new(size),
             _field: PhantomData,
         }
     }

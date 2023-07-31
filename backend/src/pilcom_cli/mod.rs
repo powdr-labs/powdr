@@ -3,7 +3,7 @@ mod json_exporter;
 use crate::{Backend, BackendBuilder, Proof};
 use ast::analyzed::Analyzed;
 use json::JsonValue;
-use number::{write_polys_file, FieldElement};
+use number::{write_polys_file, DegreeType, FieldElement};
 use std::{
     fs,
     io::{self, BufWriter},
@@ -13,7 +13,7 @@ use std::{
 pub struct PilcomCliBuilder;
 
 impl<T: FieldElement> BackendBuilder<T> for PilcomCliBuilder {
-    fn setup_from_params(&self, size: u64) -> Box<dyn Backend<T>> {
+    fn setup_from_params(&self, size: DegreeType) -> Box<dyn Backend<T>> {
         Box::new(PilcomCli { degree: size })
     }
 
@@ -23,7 +23,7 @@ impl<T: FieldElement> BackendBuilder<T> for PilcomCliBuilder {
 }
 
 struct PilcomCli {
-    degree: u64,
+    degree: DegreeType,
 }
 impl<T: FieldElement> Backend<T> for PilcomCli {
     fn prove(
@@ -62,7 +62,7 @@ impl<T: FieldElement> Backend<T> for PilcomCli {
 fn write_constants_to_fs<T: FieldElement>(
     commits: &[(&str, Vec<T>)],
     output_dir: &Path,
-    degree: u64,
+    degree: DegreeType,
 ) {
     write_polys_file(
         &mut BufWriter::new(&mut fs::File::create(output_dir.join("constants.bin")).unwrap()),
@@ -75,7 +75,7 @@ fn write_constants_to_fs<T: FieldElement>(
 fn write_commits_to_fs<T: FieldElement>(
     commits: &[(&str, Vec<T>)],
     output_dir: &Path,
-    degree: u64,
+    degree: DegreeType,
 ) {
     write_polys_file(
         &mut BufWriter::new(&mut fs::File::create(output_dir.join("commits.bin")).unwrap()),
