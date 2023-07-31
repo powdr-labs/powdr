@@ -1,4 +1,7 @@
-use ast::asm_analysis::{AnalysisASMFile, Expression, FunctionStatement, Machine};
+use ast::{
+    asm_analysis::{AnalysisASMFile, AssignmentStatement, Expression, FunctionStatement, Machine},
+    parsed::asm::RegisterFlag,
+};
 use number::FieldElement;
 
 pub fn infer<T: FieldElement>(file: AnalysisASMFile<T>) -> Result<AnalysisASMFile<T>, Vec<String>> {
@@ -57,7 +60,19 @@ fn infer_machine<T: FieldElement>(mut machine: Machine<T>) -> Result<Machine<T>,
                         a.using_reg = Some(expr_reg);
                     }
                     (None, None) => {
-                        errors.push(format!("Impossible to infer the assignment register for `{a}`. Try being more explicit."));
+                        let hint = AssignmentStatement {
+                            using_reg: Some(
+                                machine
+                                    .registers
+                                    .iter()
+                                    .find(|r| r.flag == Some(RegisterFlag::IsAssignment))
+                                    .unwrap()
+                                    .name
+                                    .clone(),
+                            ),
+                            ..a.clone()
+                        };
+                        errors.push(format!("Impossible to infer the assignment register for `{a}`. Try using an assignment register like `{hint}`."));
                     }
                 }
             }
@@ -83,7 +98,7 @@ mod tests {
     #[test]
     fn inferred() {
         let file = r#"
-            machine Incompatible {
+            machine Machine {
                 reg pc[@pc];
                 reg X[<=];
                 reg Y[<=];
@@ -100,7 +115,7 @@ mod tests {
         let file = infer_str::<Bn254Field>(file).unwrap();
 
         if let FunctionStatement::Assignment(AssignmentStatement { using_reg, .. }) =
-            &file.machines["Incompatible"].functions[0].body.statements[0]
+            &file.machines["Machine"].functions[0].body.statements[0]
         {
             assert_eq!(*using_reg, Some("X".to_string()));
         } else {
@@ -111,7 +126,7 @@ mod tests {
     #[test]
     fn compatible() {
         let file = r#"
-            machine Incompatible {
+            machine Machine {
                 reg pc[@pc];
                 reg X[<=];
                 reg Y[<=];
@@ -128,7 +143,7 @@ mod tests {
         let file = infer_str::<Bn254Field>(file).unwrap();
 
         if let FunctionStatement::Assignment(AssignmentStatement { using_reg, .. }) =
-            &file.machines["Incompatible"].functions[0].body.statements[0]
+            &file.machines["Machine"].functions[0].body.statements[0]
         {
             assert_eq!(*using_reg, Some("X".to_string()));
         } else {
@@ -139,7 +154,7 @@ mod tests {
     #[test]
     fn incompatible() {
         let file = r#"
-            machine Incompatible {
+            machine Machine {
                 reg pc[@pc];
                 reg X[<=];
                 reg Y[<=];
@@ -159,7 +174,7 @@ mod tests {
     #[test]
     fn unclear() {
         let file = r#"
-            machine Incompatible {
+            machine Machine {
                 reg pc[@pc];
                 reg X[<=];
                 reg Y[<=];
@@ -171,6 +186,6 @@ mod tests {
             }
         "#;
 
-        assert_eq!(infer_str::<Bn254Field>(file).unwrap_err(), vec!["Impossible to infer the assignment register for `A <== 1;`. Try being more explicit.".to_string()]);
+        assert_eq!(infer_str::<Bn254Field>(file).unwrap_err(), vec!["Impossible to infer the assignment register for `A <== 1;`. Try using an assignment register like `A <=X= 1;`.".to_string()]);
     }
 }
