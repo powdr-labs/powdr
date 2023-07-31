@@ -1,4 +1,4 @@
-use ast::analyzed::Analyzed;
+use ast::{analyzed::Analyzed, asm_analysis::Machine};
 use number::FieldElement;
 use std::io;
 use strum::{Display, EnumString, EnumVariantNames};
@@ -62,6 +62,9 @@ pub struct Halo2MockBackend;
 #[cfg(feature = "halo2")]
 pub struct Halo2AggregationBackend;
 
+#[cfg(feature = "nova")]
+pub struct NovaBackend;
+
 #[cfg(feature = "halo2")]
 impl ProverWithParams for Halo2Backend {
     fn prove<T: FieldElement, R: io::Read>(
@@ -100,5 +103,24 @@ impl ProverAggregationWithParams for Halo2AggregationBackend {
         params: R2,
     ) -> Proof {
         halo2::prove_aggr_read_proof_params(pil, fixed, witness, proof, params)
+    }
+}
+
+#[cfg(feature = "nova")]
+// TODO implement ProverWithoutParams, and remove dependent on main_machine
+impl NovaBackend {
+    pub fn prove<T: FieldElement>(
+        pil: &Analyzed<T>,
+        main_machine: &Machine<T>,
+        fixed: Vec<(&str, Vec<T>)>,
+        witness: Vec<(&str, Vec<T>)>,
+    ) -> Option<Proof> {
+        Some(nova::prove_ast_read_params(
+            pil,
+            main_machine,
+            fixed,
+            witness,
+        ));
+        Some(vec![])
     }
 }

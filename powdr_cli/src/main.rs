@@ -3,10 +3,12 @@
 mod util;
 
 use clap::{Parser, Subcommand};
-use compiler::{compile_pil_or_asm, Backend};
+use compiler::util::{read_fixed, read_witness};
+use compiler::{analyze, analyze_pil, compile_pil_or_asm, Backend};
 use env_logger::{Builder, Target};
 use log::LevelFilter;
 use number::{Bn254Field, FieldElement, GoldilocksField};
+use parser::parse_asm;
 use riscv::{compile_riscv_asm, compile_rust};
 use std::io::BufWriter;
 use std::{borrow::Cow, collections::HashSet, fs, io::Write, path::Path};
@@ -184,6 +186,29 @@ enum Commands {
         params: Option<String>,
     },
 
+    ProveNova {
+        /// Input PIL file
+        file: String,
+
+        /// TODO retrive asm info from PIL
+        asm_file: String,
+
+        /// The field to use
+        #[arg(long)]
+        #[arg(default_value_t = FieldArgument::Bn254)]
+        #[arg(value_parser = clap_enum_variants!(FieldArgument))]
+        field: FieldArgument,
+
+        /// Directory to find the committed and fixed values
+        #[arg(short, long)]
+        #[arg(default_value_t = String::from("."))]
+        dir: String,
+
+        /// File containing previously generated setup parameters.
+        #[arg(long)]
+        params: Option<String>,
+    },
+
     Setup {
         /// Size of the parameters
         size: usize,
@@ -354,6 +379,62 @@ fn run_command(command: Commands) {
             backend,
         } => {
             setup(size, dir, field, backend);
+        }
+        #[cfg(feature = "nova")]
+        Commands::ProveNova {
+            file,
+            asm_file,
+            field: _,
+            dir,
+            params: _,
+        } => {
+            // Remove BN254 Hardcode
+            let pil = Path::new(&file);
+            let contents = fs::read_to_string(asm_file.clone()).unwrap();
+
+            let parsed = parse_asm::<Bn254Field>(Some(&asm_file[..]), &contents[..])
+                .unwrap_or_else(|err| {
+                    eprintln!("Error parsing .asm file:");
+                    err.output_to_stderr();
+                    panic!();
+                });
+            let analysed_asm = analyze::<Bn254Field>(parsed).unwrap();
+
+            // retrieve instance of the Main state machine
+            let main = match analysed_asm.machines.len() {
+                // if there is a single machine, treat it as main
+                1 => analysed_asm.machines.values().next().unwrap().clone(),
+                // otherwise, find the machine called "Main"
+                _ => analysed_asm
+                    .machines
+                    .get("Main")
+                    .expect("couldn't find a Main state machine")
+                    .clone(),
+            };
+
+            let dir = Path::new(&dir);
+
+            let pil = analyze_pil::<Bn254Field>(pil);
+            let fixed = read_fixed::<Bn254Field>(&pil, dir);
+            let witness = read_witness::<Bn254Field>(&pil, dir);
+
+            // let params = fs::File::open(dir.join(params.unwrap())).unwrap();
+            NovaBackend::prove::<Bn254Field>(&pil, &main, fixed.0, witness.0);
+
+            // TODO: this probably should be abstracted alway in a common backends API,
+            // // maybe a function "get_file_extension()".
+            // let proof_filename = if let Backend::Halo2Aggr = backend {
+            //     "proof_aggr.bin"
+            // } else {
+            //     "proof.bin"
+            // };
+            // if let Some(proof) = proof {
+            //     let mut proof_file = fs::File::create(dir.join(proof_filename)).unwrap();
+            //     let mut proof_writer = BufWriter::new(&mut proof_file);
+            //     proof_writer.write_all(&proof).unwrap();
+            //     proof_writer.flush().unwrap();
+            //     log::info!("Wrote {proof_filename}.");
+            // }
         }
 
         #[cfg(not(feature = "halo2"))]

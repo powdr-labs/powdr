@@ -42,7 +42,7 @@ pub struct DegreeStatement {
     pub degree: BigUint,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum FunctionStatement<T> {
     Assignment(AssignmentStatement<T>),
     Instruction(InstructionStatement<T>),
@@ -74,7 +74,7 @@ impl<T> From<DebugDirective> for FunctionStatement<T> {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct AssignmentStatement<T> {
     pub start: usize,
     pub lhs: Vec<String>,
@@ -82,20 +82,20 @@ pub struct AssignmentStatement<T> {
     pub rhs: Box<Expression<T>>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct InstructionStatement<T> {
     pub start: usize,
     pub instruction: String,
     pub inputs: Vec<Expression<T>>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct LabelStatement {
     pub start: usize,
     pub name: String,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct DebugDirective {
     pub start: usize,
     pub directive: crate::parsed::asm::DebugDirective,
@@ -130,7 +130,7 @@ impl<T> Machine<T> {
     }
 }
 
-#[derive(Clone, Default)]
+#[derive(Clone, Default, Debug)]
 pub struct Rom<T> {
     pub statements: Vec<FunctionStatement<T>>,
     pub batches: Option<Vec<BatchMetadata>>,

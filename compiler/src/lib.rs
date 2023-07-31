@@ -14,7 +14,8 @@ use json::JsonValue;
 pub mod util;
 mod verify;
 
-use analysis::analyze;
+// TODO should analyze be `pub`?
+pub use analysis::analyze;
 pub use backend::{Backend, Proof};
 use number::write_polys_file;
 use pil_analyzer::json_exporter;

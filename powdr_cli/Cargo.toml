@@ -4,8 +4,9 @@ version = "0.1.0"
 edition = "2021"
 
 [features]
-default = ["halo2"]
+default = ["halo2", "nova"]
 halo2 = ["dep:halo2", "backend/halo2", "compiler/halo2"]
+nova = ["backend/nova", "dep:nova"]
 
 [dependencies]
 clap = { version = "^4.3", features = ["derive"] }
@@ -16,6 +17,7 @@ parser = { path = "../parser" }
 riscv = { path = "../riscv" }
 number = { path = "../number" }
 halo2 = { path = "../halo2", optional = true }
+nova = { path = "../nova", optional = true }
 backend = { path = "../backend" }
 pilopt = { path = "../pilopt" }
 strum = { version = "0.24.1", features = ["derive"] }

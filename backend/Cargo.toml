@@ -5,9 +5,11 @@ edition = "2021"
 
 [features]
 halo2 = ["dep:halo2"]
+nova = ["dep:nova"]
 
 [dependencies]
 halo2 = { path = "../halo2", optional = true }
+nova = { path = "../nova", optional = true }
 pil_analyzer = { path = "../pil_analyzer" }
 number = { path = "../number" }
 strum = { version = "0.24.1", features = ["derive"] }
