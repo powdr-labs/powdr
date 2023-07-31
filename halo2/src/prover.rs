@@ -14,7 +14,7 @@ use halo2_proofs::{
     },
     transcript::{EncodedChallenge, TranscriptReadBuffer, TranscriptWriterBuffer},
 };
-use number::{BigInt, FieldElement};
+use number::{BigInt, DegreeType, FieldElement};
 use polyexen::plaf::PlafDisplayBaseTOML;
 use snark_verifier::{
     loader::native::NativeLoader,
@@ -43,11 +43,12 @@ pub struct Halo2<F: FieldElement> {
 }
 
 impl<F: FieldElement> Halo2<F> {
-    pub fn new(size: u32) -> Self {
+    pub fn new(size: DegreeType) -> Self {
         Self::assert_field_is_compatible();
 
+        let degree = DegreeType::BITS - size.leading_zeros() + 1;
         Self {
-            params: ParamsKZG::<Bn256>::new(size),
+            params: ParamsKZG::<Bn256>::new(degree),
             _field: PhantomData,
         }
     }

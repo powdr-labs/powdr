@@ -20,8 +20,8 @@ pub fn verify_asm_string<T: FieldElement>(file_name: &str, contents: &str, input
 pub fn verify(temp_dir: &Path) {
     let pilcom = std::env::var("PILCOM")
         .expect("Please set the PILCOM environment variable to the path to the pilcom repository.");
-    let constants_file = format!("{}/constants.bin", temp_dir.to_string_lossy());
-    let commits_file = format!("{}/commits.bin", temp_dir.to_string_lossy());
+    let constants_file = format!("{}/constants.bin", temp_dir.to_str().unwrap());
+    let commits_file = format!("{}/commits.bin", temp_dir.to_str().unwrap());
     assert!(
         fs::metadata(&constants_file).unwrap().len() > 0,
         "Empty constants file"
