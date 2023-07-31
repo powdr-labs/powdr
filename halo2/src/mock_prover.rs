@@ -107,6 +107,11 @@ mod test {
     }
 
     #[test]
+    fn poseidon_bn254() {
+        mock_prove_asm("../test_data/asm/poseidon_bn254.asm", &vec![]);
+    }
+
+    #[test]
     fn palindrome() {
         let inputs = [3, 11, 22, 11].map(From::from);
         mock_prove_asm("../test_data/asm/palindrome.asm", &inputs);
