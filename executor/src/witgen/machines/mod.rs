@@ -38,7 +38,7 @@ pub trait Machine<T: FieldElement>: Send + Sync {
         fixed_lookup: &mut FixedLookup<T>,
         kind: IdentityKind,
         left: &[AffineResult<&'a PolynomialReference, T>],
-        right: &SelectedExpressions<T>,
+        right: &'a SelectedExpressions<T>,
     ) -> Option<EvalResult<'a, T>>;
 
     /// Returns the final values of the witness columns.

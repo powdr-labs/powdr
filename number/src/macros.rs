@@ -358,6 +358,12 @@ macro_rules! powdr_field {
             }
         }
 
+        impl SubAssign for $name {
+            fn sub_assign(&mut self, rhs: Self) {
+                self.value.sub_assign(rhs.value);
+            }
+        }
+
         // Mul
 
         impl std::ops::Mul for $name {

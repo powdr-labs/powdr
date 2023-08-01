@@ -43,6 +43,23 @@ fn palindrome() {
 }
 
 #[test]
+fn vm_to_block_unique_interface() {
+    let f = "vm_to_block_unique_interface.asm";
+    let i = [];
+    verify_asm::<GoldilocksField>(f, slice_to_vec(&i));
+    gen_proof(f, slice_to_vec(&i));
+}
+
+#[test]
+#[should_panic = "not implemented: No executor machine matched identity `main.instr_sub { 1, main.X, main.Y, main.Z } in 1 { main_arith.function_id, main_arith.z, main_arith.x, main_arith.y };`"]
+fn vm_to_block_multiple_interfaces() {
+    let f = "vm_to_block_multiple_interfaces.asm";
+    let i = [];
+    verify_asm::<GoldilocksField>(f, slice_to_vec(&i));
+    gen_proof(f, slice_to_vec(&i));
+}
+
+#[test]
 fn test_mem_read_write() {
     let f = "mem_read_write.asm";
     verify_asm::<GoldilocksField>(f, Default::default());
@@ -78,4 +95,25 @@ fn full_pil_constant() {
     let f = "full_pil_constant.asm";
     verify_asm::<GoldilocksField>(f, Default::default());
     gen_halo2_proof(f, Default::default());
+}
+
+#[test]
+fn book() {
+    for f in fs::read_dir("../test_data/asm/book/").unwrap() {
+        let f = f.unwrap().path();
+        let f = f.strip_prefix("../test_data/asm/").unwrap();
+        // passing 0 to all tests currently works as they either take no prover input or 0 works
+        let i = [0];
+
+        verify_asm::<GoldilocksField>(f.to_str().unwrap(), slice_to_vec(&i));
+        gen_proof(f.to_str().unwrap(), slice_to_vec(&i));
+    }
+}
+
+#[test]
+#[should_panic = "Witness generation failed."]
+fn hello_world_asm_fail() {
+    let f = "book/hello_world.asm";
+    let i = [1];
+    verify_asm::<GoldilocksField>(f, slice_to_vec(&i));
 }

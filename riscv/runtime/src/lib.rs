@@ -12,6 +12,7 @@ use core::panic::PanicInfo;
 use crate::fmt::print_str;
 
 mod allocator;
+pub mod coprocessors;
 pub mod fmt;
 
 #[panic_handler]

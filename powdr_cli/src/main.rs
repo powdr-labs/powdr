@@ -2,14 +2,14 @@
 
 mod util;
 
-use backend::Backend;
-use clap::{Parser, Subcommand};
-use compiler::{compile_pil_or_asm, BackendType};
+use backend::{Backend, BackendType};
+use clap::{CommandFactory, Parser, Subcommand};
+use compiler::compile_pil_or_asm;
 use env_logger::{Builder, Target};
 use log::LevelFilter;
 use number::{Bn254Field, FieldElement, GoldilocksField};
 use riscv::{compile_riscv_asm, compile_rust};
-use std::io::{BufWriter, Read};
+use std::io::{self, BufWriter, Read};
 use std::{borrow::Cow, collections::HashSet, fs, io::Write, path::Path};
 use strum::{Display, EnumString, EnumVariantNames};
 
@@ -32,10 +32,13 @@ pub enum CsvRenderMode {
 }
 
 #[derive(Parser)]
-#[command(author, version, about, long_about = None)]
+#[command(name = "powdr", author, version, about, long_about = None)]
 struct Cli {
+    #[arg(long, hide = true)]
+    markdown_help: bool,
+
     #[command(subcommand)]
-    command: Commands,
+    command: Option<Commands>,
 }
 
 #[derive(Subcommand)]
@@ -231,7 +234,7 @@ fn split_inputs<T: FieldElement>(inputs: &str) -> Vec<T> {
         .collect()
 }
 
-fn main() {
+fn main() -> Result<(), io::Error> {
     let mut builder = Builder::new();
     builder
         .filter_level(LevelFilter::Info)
@@ -240,8 +243,17 @@ fn main() {
         .format(|buf, record| writeln!(buf, "{}", record.args()))
         .init();
 
-    let command = Cli::parse().command;
-    run_command(command);
+    let args = Cli::parse();
+
+    if args.markdown_help {
+        clap_markdown::print_help_markdown::<Cli>();
+        Ok(())
+    } else if let Some(command) = args.command {
+        run_command(command);
+        Ok(())
+    } else {
+        Cli::command().print_help()
+    }
 }
 
 fn run_command(command: Commands) {

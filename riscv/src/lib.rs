@@ -1,5 +1,4 @@
 //! A RISC-V frontend for powdr
-
 use std::{collections::BTreeMap, path::Path, process::Command};
 
 use ::compiler::{compile_asm_string, BackendType};
@@ -186,6 +185,14 @@ runtime = {{ path = "./runtime" }}
     let mut fmt_file = runtime_file.clone();
     fmt_file.push("fmt.rs");
     fs::write(fmt_file, include_bytes!("../runtime/src/fmt.rs")).unwrap();
+
+    let mut coprocessors_file = runtime_file.clone();
+    coprocessors_file.push("coprocessors.rs");
+    fs::write(
+        coprocessors_file,
+        include_bytes!("../runtime/src/coprocessors.rs"),
+    )
+    .unwrap();
 
     compile_rust_crate_to_riscv_asm(cargo_file.to_str().unwrap())
 }

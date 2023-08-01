@@ -46,6 +46,7 @@ impl<T: Display> Display for InstructionBody<T> {
                     .collect::<Vec<_>>()
                     .join(", ")
             ),
+            InstructionBody::External(instance, function) => write!(f, "{instance}.{function}",),
         }
     }
 }
@@ -77,16 +78,28 @@ impl<T: Display> Display for MachineStatement<T> {
                         .join("\n")
                 )
             }
-            MachineStatement::FunctionDeclaration(_, name, params, statements) => write!(
-                f,
-                "function {name}{params} {{\n{}\n}}",
-                statements
-                    .iter()
-                    .map(|s| format!("{}", s))
-                    .collect::<Vec<_>>()
-                    .join("\n")
-            ),
+            MachineStatement::FunctionDeclaration(_, name, function_id, params, statements) => {
+                write!(
+                    f,
+                    "function {name}{}{params} {{\n{}\n}}",
+                    function_id
+                        .as_ref()
+                        .map(|id| id.to_string())
+                        .unwrap_or_default(),
+                    statements
+                        .iter()
+                        .map(|s| format!("{}", s))
+                        .collect::<Vec<_>>()
+                        .join("\n")
+                )
+            }
         }
+    }
+}
+
+impl<T: Display> Display for FunctionId<T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(f, "<{}>", self.id)
     }
 }
 

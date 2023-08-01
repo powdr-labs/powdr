@@ -9,6 +9,15 @@ pub fn direct_reference<S: Into<String>, T>(name: S) -> Expression<T> {
     })
 }
 
+pub fn namespaced_reference<S: Into<String>, T>(namespace: String, name: S) -> Expression<T> {
+    Expression::PolynomialReference(PolynomialReference {
+        namespace: Some(namespace),
+        name: name.into(),
+        index: None,
+        next: false,
+    })
+}
+
 pub fn next_reference<T>(name: &str) -> Expression<T> {
     Expression::PolynomialReference(PolynomialReference {
         namespace: None,
