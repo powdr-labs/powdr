@@ -497,7 +497,7 @@ mod test {
             output_directory: output_dir_str.clone(),
             inputs: "3,2,1,2".into(),
             force: false,
-            prove_with: None,
+            prove_with: Some(BackendType::PilcomCli),
             export_csv: true,
             csv_mode: CsvRenderMode::Hex,
         };

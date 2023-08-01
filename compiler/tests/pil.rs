@@ -10,11 +10,14 @@ pub fn verify_pil(file_name: &str, query_callback: Option<fn(&str) -> Option<Gol
         .unwrap();
 
     let temp_dir = mktemp::Temp::new_dir().unwrap();
-    assert!(
-        compiler::compile_pil(&input_file, &temp_dir, query_callback, None,)
-            .witness
-            .is_some()
-    );
+    assert!(compiler::compile_pil(
+        &input_file,
+        &temp_dir,
+        query_callback,
+        Some(BackendType::PilcomCli)
+    )
+    .witness
+    .is_some());
     compiler::verify(&temp_dir);
 }
 
