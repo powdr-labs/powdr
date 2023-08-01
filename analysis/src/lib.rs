@@ -19,6 +19,17 @@ pub fn analyze<T: FieldElement>(file: ASMFile<T>) -> Result<AnalysisASMFile<T>, 
     Ok(batched)
 }
 
+mod utils {
+    use ast::parsed::PilStatement;
+    use number::FieldElement;
+
+    pub fn parse_pil_statement<T: FieldElement>(input: &str) -> PilStatement<T> {
+        parser::powdr::PilStatementParser::new()
+            .parse(input)
+            .unwrap()
+    }
+}
+
 #[cfg(test)]
 mod test_util {
     use ast::{asm_analysis::AnalysisASMFile, parsed::asm::ASMFile};

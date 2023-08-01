@@ -60,6 +60,7 @@ where
                                 }
                             });
                         }
+                        InstructionBody::External(..) => {}
                     },
                     MachineStatement::InlinePil(_, statements) => {
                         *statements = expander.expand_macros(std::mem::take(statements));

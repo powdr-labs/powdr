@@ -148,7 +148,12 @@ ConstantFixed = {
 // ---------------------------- ASM part -----------------------------
 
 Machine: Machine<T> = {
-    <start:@L> "machine" <name:Identifier> "{" <statements:(MachineStatement)*> "}" => Machine{<>}
+    <start:@L> "machine" <name:Identifier> <arguments:MachineArguments> "{" <statements:(MachineStatement)*> "}" => Machine{<>}
+}
+
+MachineArguments: MachineArguments = {
+    "(" <latch:Identifier> "," <function_id:Identifier> ")" => MachineArguments { latch: Some(latch), function_id: Some(function_id) },
+    => MachineArguments::default(),
 }
 
 MachineStatement: MachineStatement<T> = {
@@ -186,6 +191,7 @@ pub InstructionDeclaration: MachineStatement<T> = {
 InstructionBody: InstructionBody<T> = {
     "{}" => InstructionBody::Local(vec![]),
     "{" <InstructionBodyElements> "}" => InstructionBody::Local(<>),
+    "=" <Identifier> "." <Identifier> => InstructionBody::External(<>),
 }
 
 InstructionBodyElements: Vec<InstructionBodyElement<T>> = {
@@ -230,7 +236,12 @@ InlinePil: MachineStatement<T> = {
 }
 
 FunctionDeclaration: MachineStatement<T> = {
-    <@L> "function" <Identifier> <Params> "{" <(<FunctionStatement>)*> "}" => MachineStatement::FunctionDeclaration(<>)
+    <@L> "function" <Identifier> <FunctionId> <Params> "{" <(<FunctionStatement>)*> "}" => MachineStatement::FunctionDeclaration(<>)
+}
+
+FunctionId: Option<FunctionId<T>> = {
+    "<" <id:FieldElement> ">" => Some(FunctionId { id }),
+    => None
 }
 
 pub FunctionStatement: FunctionStatement<T> = {

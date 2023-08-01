@@ -35,6 +35,7 @@ pub struct FunctionBody<T> {
 pub struct FunctionDefinitionStatement<T> {
     pub start: usize,
     pub name: String,
+    pub id: Option<T>,
     pub params: Params,
     pub body: FunctionBody<T>,
 }
@@ -110,14 +111,25 @@ pub struct PilBlock<T> {
 }
 
 #[derive(Clone, Default, Debug)]
+pub struct SubmachineDeclaration {
+    /// the name of this instance
+    pub name: String,
+    /// the type of the submachine
+    pub ty: String,
+}
+
+#[derive(Clone, Default, Debug)]
 pub struct Machine<T> {
     pub degree: Option<DegreeStatement>,
+    pub latch: Option<String>,
+    pub function_id: Option<String>,
     pub registers: Vec<RegisterDeclarationStatement>,
     // index of the pc in the registers, if any
     pub pc: Option<usize>,
     pub constraints: Vec<PilBlock<T>>,
     pub instructions: Vec<InstructionDefinitionStatement<T>>,
     pub functions: Vec<FunctionDefinitionStatement<T>>,
+    pub submachines: Vec<SubmachineDeclaration>,
     /// the rom gets generated in romgen
     pub rom: Option<Rom<T>>,
 }

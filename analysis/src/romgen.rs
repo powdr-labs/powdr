@@ -1,6 +1,8 @@
-use ast::asm_analysis::{AnalysisASMFile, Machine, Rom};
+use ast::asm_analysis::{AnalysisASMFile, Machine, PilBlock, Rom};
 use number::FieldElement;
 use std::marker::PhantomData;
+
+use crate::utils::parse_pil_statement;
 
 /// Generate the ROM for each machine based on its functions
 /// This is very simple at the moment, because we only allow a single function. Therefore, the rom is the body of the function
@@ -26,7 +28,10 @@ impl<T: FieldElement> RomGenerator<T> {
     }
 
     fn generate_machine_rom(&self, mut machine: Machine<T>) -> Machine<T> {
-        machine.rom = machine.has_pc().then(|| {
+        let latch = machine.latch.clone();
+        let function_id = machine.function_id.clone();
+
+        if machine.has_pc() {
             assert_eq!(
                 machine.functions.len(),
                 1,
@@ -53,11 +58,30 @@ impl<T: FieldElement> RomGenerator<T> {
             // the rom is exactly the body of the main function!
             let rom = main.body.clone();
 
-            Rom {
+            machine.rom = Some(Rom {
                 statements: rom.statements,
                 batches: None,
-            }
-        });
+            })
+        } else {
+            let latch = latch.expect("static machine should have a latch as parameter");
+            let function_id =
+                function_id.expect("static machine should have a function id as parameter");
+
+            // add the necessary embedded constraints which apply to both static and dynamic machines
+            let embedded_constraints = [
+                // inject the function_id
+                parse_pil_statement(&format!("pol witness {function_id}")),
+                // the function id must be constant within a block
+                parse_pil_statement(&format!(
+                    "(1 - {latch}) * ({function_id}' - {function_id}) = 0"
+                )),
+            ];
+
+            machine.constraints.push(PilBlock {
+                start: 0,
+                statements: embedded_constraints.into_iter().collect(),
+            });
+        }
         machine
     }
 }
