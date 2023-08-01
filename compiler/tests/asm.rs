@@ -1,4 +1,4 @@
-use compiler::{compile_pil_or_asm, verify_asm_string, BackendType};
+use compiler::verify_asm_string;
 use number::{Bn254Field, FieldElement, GoldilocksField};
 use std::fs;
 use test_log::test;
@@ -10,17 +10,17 @@ fn verify_asm<T: FieldElement>(file_name: &str, inputs: Vec<T>) {
 
 #[cfg(feature = "halo2")]
 fn gen_halo2_proof(file_name: &str, inputs: Vec<Bn254Field>) {
-    compile_pil_or_asm(
+    compiler::compile_pil_or_asm(
         format!("../test_data/asm/{file_name}").as_str(),
         inputs,
         &mktemp::Temp::new_dir().unwrap(),
         true,
-        Some(BackendType::Halo2),
+        Some(backend::BackendType::Halo2),
     );
 }
 
 #[cfg(not(feature = "halo2"))]
-fn gen_halo2_proof(file_name: &str, inputs: Vec<Bn254Field>) {}
+fn gen_halo2_proof(_file_name: &str, _inputs: Vec<Bn254Field>) {}
 
 fn slice_to_vec<T: FieldElement>(arr: &[i32]) -> Vec<T> {
     arr.iter().cloned().map(|x| x.into()).collect()

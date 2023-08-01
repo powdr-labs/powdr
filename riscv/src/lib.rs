@@ -131,7 +131,7 @@ pub fn compile_riscv_asm<T: FieldElement>(
 }
 
 pub fn compile_rust_to_riscv_asm(input_file: &str) -> BTreeMap<String, String> {
-    let crate_dir = Temp::new_dir().unwrap();
+    let crate_dir = Temp::new_dir().unwrap().release();
     // TODO is there no easier way?
     let mut cargo_file = crate_dir.clone();
     cargo_file.push("Cargo.toml");

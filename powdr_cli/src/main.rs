@@ -481,11 +481,10 @@ fn optimize_and_output<T: FieldElement>(file: &str) {
 
 #[cfg(test)]
 mod test {
-
+    use crate::{run_command, Commands, CsvRenderMode, FieldArgument};
     use backend::BackendType;
     use tempfile;
 
-    use crate::{run_command, Commands, CsvRenderMode, FieldArgument};
     #[test]
     fn test_simple_sum() {
         let output_dir = tempfile::tempdir().unwrap();
@@ -503,19 +502,22 @@ mod test {
         };
         run_command(pil_command);
 
-        let file = output_dir
-            .path()
-            .join("simple_sum_opt.pil")
-            .to_string_lossy()
-            .to_string();
-        let prove_command = Commands::Prove {
-            file,
-            dir: output_dir_str,
-            field: FieldArgument::Bn254,
-            backend: BackendType::Halo2Mock,
-            proof: None,
-            params: None,
-        };
-        run_command(prove_command);
+        #[cfg(feature = "halo2")]
+        {
+            let file = output_dir
+                .path()
+                .join("simple_sum_opt.pil")
+                .to_string_lossy()
+                .to_string();
+            let prove_command = Commands::Prove {
+                file,
+                dir: output_dir_str,
+                field: FieldArgument::Bn254,
+                backend: BackendType::Halo2Mock,
+                proof: None,
+                params: None,
+            };
+            run_command(prove_command);
+        }
     }
 }

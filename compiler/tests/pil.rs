@@ -1,5 +1,4 @@
 use backend::BackendType;
-use compiler::compile_pil_or_asm;
 use number::{Bn254Field, GoldilocksField};
 use std::path::Path;
 use test_log::test;
@@ -23,7 +22,7 @@ pub fn verify_pil(file_name: &str, query_callback: Option<fn(&str) -> Option<Gol
 
 #[cfg(feature = "halo2")]
 fn gen_halo2_proof(file_name: &str, inputs: Vec<Bn254Field>) {
-    compile_pil_or_asm(
+    compiler::compile_pil_or_asm(
         format!("../test_data/pil/{file_name}").as_str(),
         inputs,
         &mktemp::Temp::new_dir().unwrap(),
@@ -33,7 +32,7 @@ fn gen_halo2_proof(file_name: &str, inputs: Vec<Bn254Field>) {
 }
 
 #[cfg(not(feature = "halo2"))]
-fn gen_halo2_proof(file_name: &str, inputs: Vec<Bn254Field>) {}
+fn gen_halo2_proof(_file_name: &str, _inputs: Vec<Bn254Field>) {}
 
 #[test]
 fn test_fibonacci() {

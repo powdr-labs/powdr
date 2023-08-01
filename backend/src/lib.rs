@@ -45,7 +45,6 @@ pub trait BackendBuilder<T: FieldElement> {
 }
 
 pub trait Backend<T: FieldElement> {
-    // Why this returns Option???
     fn prove(
         &self,
         pil: &Analyzed<T>,
