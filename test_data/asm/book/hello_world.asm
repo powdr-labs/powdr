@@ -33,8 +33,8 @@ machine HelloWorld {
     // the main function assigns the first prover input to A, increments it, decrements it, and loops forever
     function main {
         A <=X= ${ ("input", 0) };
-        A <=Y= incr(A);
-        A <=Y= decr(A);
+        A <== incr(A);
+        A <== decr(A);
         assert_zero A;
         loop;
     }

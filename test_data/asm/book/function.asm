@@ -50,7 +50,7 @@ machine Machine {
         // ANCHOR_END: read_register
         // square `A`
         // ANCHOR: instruction
-        A <=Y= square(A);
+        A <== square(A);
         // ANCHOR_END: instruction
         // jump back to `start`
         jmp start;
