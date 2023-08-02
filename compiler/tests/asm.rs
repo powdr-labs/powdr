@@ -47,7 +47,7 @@ fn vm_to_block_unique_interface() {
     let f = "vm_to_block_unique_interface.asm";
     let i = [];
     verify_asm::<GoldilocksField>(f, slice_to_vec(&i));
-    gen_proof(f, slice_to_vec(&i));
+    gen_halo2_proof(f, slice_to_vec(&i));
 }
 
 #[test]
@@ -56,7 +56,7 @@ fn vm_to_block_multiple_interfaces() {
     let f = "vm_to_block_multiple_interfaces.asm";
     let i = [];
     verify_asm::<GoldilocksField>(f, slice_to_vec(&i));
-    gen_proof(f, slice_to_vec(&i));
+    gen_halo2_proof(f, slice_to_vec(&i));
 }
 
 #[test]
@@ -106,7 +106,7 @@ fn book() {
         let i = [0];
 
         verify_asm::<GoldilocksField>(f.to_str().unwrap(), slice_to_vec(&i));
-        gen_proof(f.to_str().unwrap(), slice_to_vec(&i));
+        gen_halo2_proof(f.to_str().unwrap(), slice_to_vec(&i));
     }
 }
 
