@@ -174,7 +174,7 @@ pub struct CompilationResult<T: FieldElement> {
 
 /// Optimizes a given pil and tries to generate constants and committed polynomials.
 /// @returns a compilation result, containing witness and fixed columns, if successful.
-fn compile<'a, T: FieldElement, QueryCallback>(
+fn compile<T: FieldElement, QueryCallback>(
     analyzed: Analyzed<T>,
     file_name: &OsStr,
     output_dir: &Path,
@@ -212,13 +212,9 @@ where
     if let Some(backend) = prove_with {
         let builder = backend.build::<T>();
         let backend = builder.setup_from_params(degree);
-        if let Err(error) = backend.prove(
-            &analyzed,
-            &constants,
-            witness.as_ref().map(|v| v.as_slice()),
-            None,
-            output_dir,
-        ) {
+        if let Err(error) =
+            backend.prove(&analyzed, &constants, witness.as_deref(), None, output_dir)
+        {
             log::warn!("Proof generation failed: {error}");
         }
     }
