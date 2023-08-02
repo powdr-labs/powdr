@@ -10,10 +10,7 @@ use super::{
 impl<T: Display> Display for AnalysisASMFile<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         for (name, machine) in &self.machines {
-            writeln!(f, "machine {name} {{")?;
-            writeln!(f, "{}", machine)?;
-            writeln!(f, "}}")?;
-            writeln!(f)?;
+            write!(f, "machine {name}{machine}")?;
         }
         Ok(())
     }
@@ -21,21 +18,29 @@ impl<T: Display> Display for AnalysisASMFile<T> {
 
 impl<T: Display> Display for Machine<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        match (&self.latch, &self.function_id) {
+            (Some(latch), Some(function_id)) => write!(f, "({latch}, {function_id})"),
+            (None, None) => write!(f, ""),
+            _ => unreachable!("latch and function id should be set at the same time"),
+        }?;
+
+        writeln!(f, " {{")?;
+
         // TODO: implement indentation properly (passing a context to the visitor)
         for s in &self.degree {
-            writeln!(f, "\t{s}")?;
+            writeln!(f, "{s}")?;
         }
         for s in &self.registers {
-            writeln!(f, "\t{s}")?;
+            writeln!(f, "{s}")?;
         }
         for s in &self.constraints {
-            writeln!(f, "\t{s}")?;
+            writeln!(f, "{s}")?;
         }
         for i in &self.instructions {
-            writeln!(f, "\t{i}")?;
+            writeln!(f, "{i}")?;
         }
         for o in &self.functions {
-            writeln!(f, "\t{o}")?;
+            writeln!(f, "{o}")?;
         }
         if let Some(rom) = &self.rom {
             writeln!(
@@ -48,7 +53,7 @@ impl<T: Display> Display for Machine<T> {
                     .join("\n")
             )?;
         }
-        Ok(())
+        writeln!(f, "}}")
     }
 }
 
@@ -85,7 +90,7 @@ impl<T: Display> Display for Rom<T> {
 
 impl Display for DegreeStatement {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write!(f, "degree {};", self.degree)
+        write!(f, "\tdegree {};", self.degree)
     }
 }
 
@@ -151,15 +156,11 @@ impl Display for LabelStatement {
 
 impl<T: Display> Display for PilBlock<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write!(
-            f,
-            "constraints {{\n{}\n}}",
-            self.statements
-                .iter()
-                .map(|s| format!("{}", s))
-                .collect::<Vec<_>>()
-                .join("\n")
-        )
+        writeln!(f, "\tconstraints {{")?;
+        for statement in &self.statements {
+            writeln!(f, "\t\t{statement}")?;
+        }
+        writeln!(f, "\t}}")
     }
 }
 
@@ -167,7 +168,7 @@ impl Display for RegisterDeclarationStatement {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(
             f,
-            "reg {}{};",
+            "\treg {}{};",
             self.name,
             self.flag
                 .as_ref()
@@ -179,17 +180,28 @@ impl Display for RegisterDeclarationStatement {
 
 impl<T: Display> Display for InstructionDefinitionStatement<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write!(f, "instr {}{} {{ {} }}", self.name, self.params, self.body)
+        write!(
+            f,
+            "\tinstr {}{} {{ {} }}",
+            self.name, self.params, self.body
+        )
     }
 }
 
 impl<T: Display> Display for FunctionDefinitionStatement<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write!(
+        writeln!(
             f,
-            "function {}{} {{\n{}\n\t}}",
-            self.name, self.params, self.body,
-        )
+            "\tfunction {}{}{} {{",
+            self.name,
+            self.id
+                .as_ref()
+                .map(|id| format!("<{id}>"))
+                .unwrap_or_default(),
+            self.params
+        )?;
+        write!(f, "{}", self.body,)?;
+        writeln!(f, "\t}}")
     }
 }
 
