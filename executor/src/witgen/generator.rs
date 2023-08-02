@@ -1,4 +1,4 @@
-use ast::analyzed::{Expression, Identity, IdentityKind, PolynomialReference};
+use ast::analyzed::{Expression, Identity, IdentityKind, PolyID, PolynomialReference};
 use itertools::Itertools;
 use number::{DegreeType, FieldElement};
 use parser_util::lines::indent;
@@ -23,7 +23,7 @@ pub struct Generator<'a, T: FieldElement, QueryCallback: Send + Sync> {
     witnesses: BTreeSet<&'a PolynomialReference>,
     machines: Vec<Box<dyn Machine<T>>>,
     query_callback: Option<QueryCallback>,
-    global_range_constraints: BTreeMap<&'a PolynomialReference, RangeConstraint<T>>,
+    global_range_constraints: BTreeMap<PolyID, RangeConstraint<T>>,
     /// Values of the witness polynomials
     current: Vec<Option<T>>,
     /// Values of the witness polynomials in the next row
@@ -69,7 +69,7 @@ where
         fixed_lookup: &'a mut FixedLookup<T>,
         identities: &'a [&'a Identity<T>],
         witnesses: BTreeSet<&'a PolynomialReference>,
-        global_range_constraints: BTreeMap<&'a PolynomialReference, RangeConstraint<T>>,
+        global_range_constraints: BTreeMap<PolyID, RangeConstraint<T>>,
         machines: Vec<Box<dyn Machine<T>>>,
         query_callback: Option<QueryCallback>,
     ) -> Self {
@@ -147,7 +147,7 @@ where
                     && strategy == SolvingStrategy::SingleVariableAffine
                 {
                     for column in self.fixed_data.witness_cols() {
-                        if !self.has_known_next_value(column.poly.poly_id() as usize)
+                        if !self.has_known_next_value(column.poly.poly_id_u64() as usize)
                             && column.query.is_some()
                         {
                             let result = self.process_witness_query(&column);
@@ -521,11 +521,11 @@ where
                     match c {
                         Constraint::Assignment(value) => {
                             log::trace!("      => {id} = {value}");
-                            self.next[id.poly_id() as usize] = Some(value);
+                            self.next[id.poly_id_u64() as usize] = Some(value);
                         }
                         Constraint::RangeConstraint(cons) => {
                             log::trace!("      => Adding range constraint for {id}: {cons}");
-                            let old = &mut self.next_range_constraints[id.poly_id() as usize];
+                            let old = &mut self.next_range_constraints[id.poly_id_u64() as usize];
                             let new = match old {
                                 Some(c) => Some(cons.conjunction(c)),
                                 None => Some(cons),
@@ -597,7 +597,7 @@ where
 
 struct WitnessRangeConstraintSet<'a, T: FieldElement> {
     /// Global constraints on witness and fixed polynomials.
-    global_range_constraints: &'a BTreeMap<&'a PolynomialReference, RangeConstraint<T>>,
+    global_range_constraints: &'a BTreeMap<PolyID, RangeConstraint<T>>,
     /// Range constraints on the witness polynomials in the next row.
     next_range_constraints: &'a Vec<Option<RangeConstraint<T>>>,
 }
@@ -607,8 +607,8 @@ impl<'a, T: FieldElement> RangeConstraintSet<&PolynomialReference, T>
 {
     fn range_constraint(&self, poly: &PolynomialReference) -> Option<RangeConstraint<T>> {
         // Combine potential global range constraints with local range constraints.
-        let global = self.global_range_constraints.get(poly);
-        let local = self.next_range_constraints[poly.poly_id() as usize].as_ref();
+        let global = self.global_range_constraints.get(&poly.poly_id());
+        let local = self.next_range_constraints[poly.poly_id_u64() as usize].as_ref();
 
         match (global, local) {
             (None, None) => None,
@@ -629,7 +629,7 @@ struct EvaluationData<'a, T> {
 
 impl<'a, T: FieldElement> WitnessColumnEvaluator<T> for EvaluationData<'a, T> {
     fn value<'b>(&self, poly: &'b PolynomialReference) -> AffineResult<&'b PolynomialReference, T> {
-        let id = poly.poly_id() as usize;
+        let id = poly.poly_id_u64() as usize;
         match (poly.next, self.evaluate_row) {
             (false, EvaluationRow::Current) => {
                 // All values in the "current" row should usually be known.

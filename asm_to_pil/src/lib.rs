@@ -529,8 +529,7 @@ impl<'a, T: FieldElement> ASMPILConverter<'a, T> {
                                 params: d.params.clone(),
                             },
                         })
-                        .unwrap()
-                        .clone(),
+                        .unwrap(),
                 })
             }
         };
