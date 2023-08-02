@@ -73,7 +73,7 @@ where
 
     let GlobalConstraints {
         // Maps a polynomial to a mask specifying which bit is possibly set,
-        known_constraints,
+        known_witness_constraints,
         // Removes identities like X * (X - 1) = 0 or { A } in { BYTES }
         // These are already captured in the range constraints.
         retained_identities,
@@ -86,14 +86,14 @@ where
     } = machines::machine_extractor::split_out_machines(
         &fixed,
         retained_identities,
-        &known_constraints,
+        &known_witness_constraints,
     );
     let mut generator = generator::Generator::new(
         &fixed,
         &mut fixed_lookup,
         &base_identities,
         base_witnesses.into_iter().collect(),
-        known_constraints,
+        known_witness_constraints,
         machines,
         query_callback,
     );

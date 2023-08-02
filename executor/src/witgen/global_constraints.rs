@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use num_traits::Zero;
 
-use ast::analyzed::{Expression, Identity, IdentityKind, PolynomialReference};
+use ast::analyzed::{Expression, Identity, IdentityKind, PolyID, PolynomialReference};
 use ast::parsed::BinaryOperator;
 use number::FieldElement;
 
@@ -31,7 +31,7 @@ impl<'a, T: FieldElement> RangeConstraintSet<&PolynomialReference, T>
 }
 
 pub struct GlobalConstraints<'a, T: FieldElement> {
-    pub known_constraints: BTreeMap<&'a PolynomialReference, RangeConstraint<T>>,
+    pub known_witness_constraints: BTreeMap<PolyID, RangeConstraint<T>>,
     pub retained_identities: Vec<&'a Identity<T>>,
 }
 
@@ -76,16 +76,31 @@ pub fn determine_global_constraints<'a, T: FieldElement>(
     }
 
     log::debug!("Determined the following global range constraints:");
-    for (name, con) in &known_constraints {
-        log::debug!("  {name}: {con}");
+    for (poly, con) in &known_constraints {
+        if poly.is_witness() {
+            log::debug!("  {poly}: {con}");
+        }
     }
+
     log::debug!("Determined the following identities to be purely bit/range constraints:");
     for id in removed_identities {
         log::debug!("  {id}");
     }
 
+    let mut known_witness_constraints: BTreeMap<PolyID, RangeConstraint<T>> = BTreeMap::new();
+    for (poly, con) in known_constraints {
+        if poly.is_witness() {
+            // It's theoretically possible to have a constraint for both X and X'.
+            // In that case, we take the conjunction.
+            known_witness_constraints
+                .entry(poly.poly_id())
+                .and_modify(|existing_con| *existing_con = existing_con.conjunction(&con))
+                .or_insert(con);
+        }
+    }
+
     GlobalConstraints {
-        known_constraints,
+        known_witness_constraints,
         retained_identities,
     }
 }

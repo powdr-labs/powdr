@@ -8,6 +8,7 @@ use super::sorted_witness_machine::SortedWitnesses;
 use super::FixedData;
 use super::Machine;
 use crate::witgen::range_constraints::RangeConstraint;
+use ast::analyzed::PolyID;
 use ast::analyzed::{Expression, Identity, IdentityKind, PolynomialReference, SelectedExpressions};
 use itertools::Itertools;
 use number::FieldElement;
@@ -25,7 +26,7 @@ pub struct ExtractionOutput<'a, T> {
 pub fn split_out_machines<'a, T: FieldElement>(
     fixed: &'a FixedData<'a, T>,
     identities: Vec<&'a Identity<T>>,
-    global_range_constraints: &BTreeMap<&'a PolynomialReference, RangeConstraint<T>>,
+    global_range_constraints: &BTreeMap<PolyID, RangeConstraint<T>>,
 ) -> ExtractionOutput<'a, T> {
     let fixed_lookup = FixedLookup::try_new(fixed, &[], &Default::default()).unwrap();
 
