@@ -81,7 +81,7 @@
 use ast::{
     asm_analysis::{
         utils::previsit_expression_mut, AnalysisASMFile, AssignmentStatement, FunctionStatement,
-        InstructionStatement, Machine, Rom,
+        InstructionStatement, Machine,
     },
     parsed::{
         asm::{Param, ParamList},
@@ -89,19 +89,17 @@ use ast::{
     },
 };
 use number::FieldElement;
-use std::{collections::HashMap, iter::once, marker::PhantomData, ops::ControlFlow};
+use std::{collections::HashMap, marker::PhantomData, ops::ControlFlow};
 
-use crate::utils::{
-    parse_instruction_definition, parse_operation_statement, parse_register_declaration,
-};
+use crate::utils::{parse_instruction_definition, parse_register_declaration};
 
-/// Generate the ROM for each machine based on its functions
-pub fn generate_rom<T: FieldElement>(file: AnalysisASMFile<T>) -> AnalysisASMFile<T> {
-    RomGenerator::default().generate(file)
+/// Desugar VM functions
+pub fn desugar<T: FieldElement>(file: AnalysisASMFile<T>) -> AnalysisASMFile<T> {
+    FunctionDesugar::default().generate(file)
 }
 
 #[derive(Default)]
-struct RomGenerator<T> {
+struct FunctionDesugar<T> {
     marker: PhantomData<T>,
 }
 
@@ -124,7 +122,7 @@ fn substitute<T>(mut e: Expression<T>, inputs: &HashMap<String, usize>) -> Expre
     e
 }
 
-impl<T: FieldElement> RomGenerator<T> {
+impl<T: FieldElement> FunctionDesugar<T> {
     fn generate(&self, file: AnalysisASMFile<T>) -> AnalysisASMFile<T> {
         AnalysisASMFile {
             machines: file
@@ -138,9 +136,6 @@ impl<T: FieldElement> RomGenerator<T> {
     fn generate_machine_rom(&self, mut machine: Machine<T>) -> Machine<T> {
         if machine.has_pc() {
             let latch = "instr_return";
-            let function_id = "_function_id";
-
-            let pc = machine.pc().unwrap();
 
             // the number of inputs is the max of the number of inputs needed in each operation
             let input_count = machine
@@ -162,29 +157,16 @@ impl<T: FieldElement> RomGenerator<T> {
                 .max()
                 .unwrap_or(0);
 
-            // add the necessary embedded instructions
-            let embedded_instructions = [
-                parse_instruction_definition(&format!(
-                    "instr return {} {{ {} = 0 }}",
+            // add the return instruction. its exact implementation is responsibility of romgen
+            machine
+                .instructions
+                .push(parse_instruction_definition(&format!(
+                    "instr return {} {{ }}",
                     (0..output_count)
                         .map(output_at)
                         .collect::<Vec<_>>()
                         .join(", "),
-                    pc
-                )),
-                parse_instruction_definition(&format!(
-                    "instr _jump_to_operation {{ {pc}' = {function_id} }}",
-                )),
-                parse_instruction_definition(&format!(
-                    "instr _reset {{ {} }}",
-                    machine
-                        .write_registers()
-                        .map(|r| format!("{} = 0", r.name))
-                        .collect::<Vec<_>>()
-                        .join(", ")
-                )),
-                parse_instruction_definition(&format!("instr _loop {{ {}' = {} }}", pc, pc)),
-            ];
+                )));
 
             // create one register for each input. They are created after as their reset is different (unconstrained, not 0)
             // todo: make them read-only
@@ -199,8 +181,6 @@ impl<T: FieldElement> RomGenerator<T> {
                 input_assignment_registers_declarations
                     .chain(output_assignment_registers_declarations),
             );
-
-            machine.instructions.extend(embedded_instructions);
 
             // replace the parameters in all functions
             machine.functions = machine
@@ -269,39 +249,7 @@ impl<T: FieldElement> RomGenerator<T> {
                 })
                 .collect();
 
-            let rom = vec![
-                vec![
-                    parse_operation_statement("_start::"),
-                    parse_operation_statement("_reset;"),
-                    // the latch is constrained to start at 0 using _L1
-                    parse_operation_statement("_jump_to_operation;"),
-                ],
-                // define one label for each operation
-                machine
-                    .functions
-                    .iter()
-                    .flat_map(|o| {
-                        once(parse_operation_statement(&format!("_{}::", o.name)))
-                            // execute the operation after substituting the
-                            .chain(o.body.statements.clone().into_iter())
-                    })
-                    .collect(),
-                vec![
-                    parse_operation_statement("_sink::"),
-                    parse_operation_statement("_loop;"),
-                ],
-            ]
-            .into_iter()
-            .flatten()
-            .collect();
-
             machine.latch = Some(latch.into());
-            machine.function_id = Some(function_id.into());
-
-            machine.rom = Some(Rom {
-                statements: rom,
-                batches: None,
-            });
         } else {
             // do nothing for static machines
         };
@@ -311,93 +259,4 @@ impl<T: FieldElement> RomGenerator<T> {
 }
 
 #[cfg(test)]
-mod tests {
-    use number::Bn254Field;
-    use parser::parse_asm;
-    use pretty_assertions::assert_eq;
-
-    use crate::type_check::TypeChecker;
-
-    use super::*;
-
-    fn parse_check_and_romgen<T: FieldElement>(input: &str) -> Machine<T> {
-        let mut checker = TypeChecker::default();
-        checker.machines_types.insert("VM".into(), None);
-        checker
-            .check_machine_type(parse_asm(None, input).unwrap().machines.pop().unwrap())
-            .unwrap();
-        let generator = RomGenerator::default();
-        generator.generate_machine_rom(
-            checker
-                .machines_types
-                .into_iter()
-                .next()
-                .unwrap()
-                .1
-                .unwrap(),
-        )
-    }
-
-    #[test]
-    fn vm() {
-        let vm = r#"
-            machine VM {
-
-                reg pc[@pc];
-                reg X[<=];
-                reg Y[<=];
-                reg Z[<=];
-                reg A;
-                reg B;
-            
-                instr add X, Y -> Z { X + Y = Z }
-            
-                instr sub X, Y -> Z { X - Y = Z }
-            
-                function add x: field, y: field -> field {
-                    A <=Z= add(x, y);
-                    return A;
-                }
-            
-                function sub x: field, y: field -> field {
-                    A <=Z= sub(x, y);
-                    return A;
-                }
-            }
-        "#;
-
-        let machine: Machine<Bn254Field> = parse_check_and_romgen(vm);
-
-        assert_eq!(
-            machine.constraints[0].to_string().trim(),
-            r#"
-constraints {
-pol commit function_id;
-((1 - instr_return) * (function_id' - function_id)) = 0;
-}
-"#
-            .trim()
-            .trim()
-        );
-
-        assert_eq!(
-            machine.rom.unwrap().to_string().replace('\t', "    "),
-            r#"    
-rom {
-     _start::
-     _reset;
-     _jump_to_operation;
-     _add::
-     A <=Z= add(_input_0, _input_1);
-     return A;
-     _sub::
-     A <=Z= sub(_input_0, _input_1);
-     return A;
-     _sink::
-     _loop;
-}
-"#
-            .trim()
-        );
-    }
-}
+mod tests {}

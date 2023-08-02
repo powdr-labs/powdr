@@ -1,10 +1,7 @@
-mod batcher;
 mod block_enforcer;
-mod function_id_setter;
-mod inference;
 mod macro_expansion;
-mod romgen;
 mod type_check;
+mod vm;
 
 /// expose the macro expander for use in the pil_analyzer
 pub use macro_expansion::MacroExpander;
@@ -13,7 +10,7 @@ use ast::{asm_analysis::AnalysisASMFile, parsed::asm::ASMFile};
 use number::FieldElement;
 
 #[derive(Default)]
-struct DiffMonitor {
+pub struct DiffMonitor {
     previous: Option<String>,
     current: Option<String>,
 }
@@ -32,6 +29,7 @@ impl DiffMonitor {
                         diff::Result::Right(r) => log::trace!("+{}", r),
                     }
                 }
+                log::trace!("");
             }
         }
     }
@@ -41,35 +39,21 @@ pub fn analyze<T: FieldElement>(file: ASMFile<T>) -> Result<AnalysisASMFile<T>, 
     let mut monitor = DiffMonitor::default();
 
     // expand macros
-    log::trace!("Run expand analysis step");
+    log::debug!("Run expand analysis step");
     let file = macro_expansion::expand(file);
     // type check
-    log::trace!("Run type-check analysis step");
+    log::debug!("Run type-check analysis step");
     let file = type_check::check(file)?;
     monitor.push(&file);
-    // infer assignment registers (vm)
-    log::trace!("Run inference analysis step");
-    let file = inference::infer(file)?;
-    monitor.push(&file);
-    // generate the rom using a dispatcher (vm)
-    log::trace!("Run generate_rom analysis step");
-    let file = romgen::generate_rom(file);
-    monitor.push(&file);
-    // batch statements (vm)
-    log::trace!("Run batch analysis step");
-    let file = batcher::batch(file);
-    monitor.push(&file);
-    // generate the function ids from the rom (vm)
-    log::trace!("Run function_id_set analysis step");
-    let file = function_id_setter::set(file);
-    monitor.push(&file);
-    // turn asm into pil
-    log::trace!("Run asm_to_pil analysis step");
-    let file = asm_to_pil::compile(file);
-    monitor.push(&file);
+
+    // run analysis on vm machines, reducing them to block machines
+    log::debug!("Start asm analysis");
+    let file = vm::analyze(file, &mut monitor)?;
+    log::debug!("End asm analysis");
+
     // from now on we only have static machines!
     // enforce blocks using function_id and latch
-    log::trace!("Run enforce_block analysis step");
+    log::debug!("Run enforce_block analysis step");
     let file = block_enforcer::enforce(file);
     monitor.push(&file);
 
@@ -82,7 +66,10 @@ pub mod utils {
             AssignmentStatement, FunctionStatement, InstructionDefinitionStatement,
             InstructionStatement, LabelStatement, RegisterDeclarationStatement,
         },
-        parsed::{asm::MachineStatement, PilStatement},
+        parsed::{
+            asm::{InstructionBody, MachineStatement},
+            PilStatement,
+        },
     };
     use number::FieldElement;
 
@@ -103,6 +90,12 @@ pub mod utils {
             }
             _ => panic!(),
         }
+    }
+
+    pub fn parse_instruction_body<T: FieldElement>(input: &str) -> InstructionBody<T> {
+        parser::powdr::InstructionBodyParser::new()
+            .parse(input)
+            .unwrap()
     }
 
     pub fn parse_operation_statement<T: FieldElement>(input: &str) -> FunctionStatement<T> {
@@ -163,7 +156,7 @@ mod test_util {
     use number::FieldElement;
     use parser::parse_asm;
 
-    use crate::{inference, macro_expansion, type_check};
+    use crate::{macro_expansion, type_check, vm::inference};
 
     /// A test utility to process a source file until after macro expansion
     pub fn expand_str<T: FieldElement>(source: &str) -> ASMFile<T> {

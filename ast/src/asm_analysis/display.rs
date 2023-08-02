@@ -21,7 +21,8 @@ impl<T: Display> Display for Machine<T> {
         match (&self.latch, &self.function_id) {
             (Some(latch), Some(function_id)) => write!(f, "({latch}, {function_id})"),
             (None, None) => write!(f, ""),
-            _ => unreachable!("latch and function id should be set at the same time"),
+            (Some(latch), None) => write!(f, "({latch}, ?)"),
+            (None, Some(function_id)) => write!(f, "(?, {function_id})"),
         }?;
 
         writeln!(f, " {{")?;
@@ -80,7 +81,7 @@ impl<T: Display> Display for Rom<T> {
             }
             None => {
                 for statement in statements {
-                    writeln!(f, "\t {}", statement)?;
+                    writeln!(f, "\t{}", statement)?;
                 }
             }
         }

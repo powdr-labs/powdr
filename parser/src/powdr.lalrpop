@@ -188,7 +188,7 @@ pub InstructionDeclaration: MachineStatement<T> = {
     <@L> "instr" <Identifier> <Params> <InstructionBody> => MachineStatement::InstructionDeclaration(<>)
 }
 
-InstructionBody: InstructionBody<T> = {
+pub InstructionBody: InstructionBody<T> = {
     "{}" => InstructionBody::Local(vec![]),
     "{" <InstructionBodyElements> "}" => InstructionBody::Local(<>),
     "=" <Identifier> "." <Identifier> => InstructionBody::External(<>),

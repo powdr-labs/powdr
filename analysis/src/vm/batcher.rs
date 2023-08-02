@@ -139,7 +139,7 @@ mod tests {
     use pretty_assertions::assert_eq;
     use test_log::test;
 
-    use crate::{batcher, macro_expansion, romgen, type_check};
+    use crate::{macro_expansion, type_check, vm::batcher, vm::romgen};
 
     fn test_batching(path: &str) {
         let base_path = PathBuf::from("../test_data/asm/batching");
