@@ -47,7 +47,7 @@ impl<T: FieldElement> Backend<T> for PilcomCli {
         } else {
             log::warn!("Not writing constants.bin and commits.bin because not all declared constants are defined (or there are none).");
         }
-        let json_out = json_exporter::export(&pil);
+        let json_out = json_exporter::export(pil);
         write_compiled_json_to_fs(&json_out, output_dir);
         log::info!("Written compiled PIL in Pilcom json format.");
 

@@ -11,7 +11,7 @@ use number::{DegreeType, FieldElement};
 pub struct Halo2Builder;
 impl<T: FieldElement> BackendBuilder<T> for Halo2Builder {
     fn setup_from_params(&self, size: DegreeType) -> Box<dyn Backend<T>> {
-        Box::new(halo2::Halo2::new(size.try_into().unwrap()))
+        Box::new(halo2::Halo2::new(size))
     }
 
     fn read(&self, mut input: &mut dyn io::Read) -> Result<Box<dyn Backend<T>>, io::Error> {
