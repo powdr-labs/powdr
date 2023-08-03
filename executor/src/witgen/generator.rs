@@ -215,14 +215,7 @@ where
         self.next = self.fixed_data.fresh_row();
         self.next_range_constraints = self.fixed_data.fresh_row();
 
-        Row {
-            values: self
-                .current
-                .values
-                .iter()
-                .map(|&v| v.unwrap_or_default())
-                .collect(),
-        }
+        self.current.unwrap()
     }
 
     /// Verifies the proposed values for the next row.
@@ -230,9 +223,7 @@ where
     /// not used.
     pub fn propose_next_row(&mut self, next_row: DegreeType, values: &Row<T>) -> bool {
         self.set_next_row_and_log(next_row);
-        self.next = Row {
-            values: values.values.iter().map(|&v| Some(v)).collect(),
-        };
+        self.next = values.to_option();
 
         for identity in self.identities {
             if self
@@ -526,16 +517,11 @@ where
                     match c {
                         Constraint::Assignment(value) => {
                             log::trace!("      => {id} = {value}");
-                            // self.next.insert(id.poly_id(), Some(value));
-                            self.next.values[id.poly_id().id as usize] = Some(value);
+                            self.next[&id.poly_id()] = Some(value);
                         }
                         Constraint::RangeConstraint(cons) => {
                             log::trace!("      => Adding range constraint for {id}: {cons}");
-                            let old = self
-                                .next_range_constraints
-                                .values
-                                .get_mut(id.poly_id().id as usize)
-                                .unwrap();
+                            let old = &mut self.next_range_constraints[&id.poly_id()];
                             let new = match old {
                                 Some(c) => Some(cons.conjunction(c)),
                                 None => Some(cons),
@@ -555,7 +541,7 @@ where
     }
 
     fn has_known_next_value(&self, id: &PolyID) -> bool {
-        self.next.values[id.id as usize].is_some()
+        self.next[id].is_some()
     }
 
     /// Returns true if this is a witness column we care about (instead of a sub-machine witness).
@@ -617,7 +603,7 @@ impl<'a, T: FieldElement> RangeConstraintSet<&PolynomialReference, T>
     fn range_constraint(&self, poly: &PolynomialReference) -> Option<RangeConstraint<T>> {
         // Combine potential global range constraints with local range constraints.
         let global = self.global_range_constraints.get(&poly.poly_id());
-        let local = self.next_range_constraints.values[poly.poly_id().id as usize].as_ref();
+        let local = self.next_range_constraints[&poly.poly_id()].as_ref();
 
         match (global, local) {
             (None, None) => None,
@@ -643,23 +629,21 @@ impl<'a, T: FieldElement> WitnessColumnEvaluator<T> for EvaluationData<'a, T> {
             (false, EvaluationRow::Current) => {
                 // All values in the "current" row should usually be known.
                 // The exception is when we start the analysis on the first row.
-                self.current_witnesses.values[id.id as usize]
+                self.current_witnesses[&id]
                     .as_ref()
                     .map(|value| (*value).into())
                     .ok_or(IncompleteCause::PreviousValueUnknown(poly))
             }
             (false, EvaluationRow::Next) | (true, EvaluationRow::Current) => {
-                Ok(
-                    if let Some(value) = &self.next_witnesses.values[id.id as usize] {
-                        // We already computed the concrete value
-                        (*value).into()
-                    } else if self.evaluate_unknown == EvaluateUnknown::AssumeZero {
-                        T::from(0).into()
-                    } else {
-                        // We continue with a symbolic value
-                        AffineExpression::from_variable_id(poly)
-                    },
-                )
+                Ok(if let Some(value) = &self.next_witnesses[&id] {
+                    // We already computed the concrete value
+                    (*value).into()
+                } else if self.evaluate_unknown == EvaluateUnknown::AssumeZero {
+                    T::from(0).into()
+                } else {
+                    // We continue with a symbolic value
+                    AffineExpression::from_variable_id(poly)
+                })
             }
             (true, EvaluationRow::Next) => {
                 unimplemented!(
