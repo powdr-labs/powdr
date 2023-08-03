@@ -11,7 +11,9 @@ use crate::witgen::{EvalError, EvalResult, FixedData};
 use crate::witgen::{EvalValue, IncompleteCause};
 use number::{DegreeType, FieldElement};
 
-use ast::analyzed::{Expression, Identity, IdentityKind, PolynomialReference, SelectedExpressions, PolyID};
+use ast::analyzed::{
+    Expression, Identity, IdentityKind, PolyID, PolynomialReference, SelectedExpressions,
+};
 
 /// TODO make this generic
 
