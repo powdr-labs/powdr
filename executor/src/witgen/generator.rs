@@ -215,7 +215,7 @@ where
         self.next = self.fixed_data.fresh_row();
         self.next_range_constraints = self.fixed_data.fresh_row();
 
-        self.current.unwrap()
+        self.current.unwrap_or_default()
     }
 
     /// Verifies the proposed values for the next row.

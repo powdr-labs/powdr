@@ -301,10 +301,14 @@ pub struct Row<V> {
     values: Vec<V>,
 }
 
-impl<V: Clone> Row<Option<V>> {
-    pub fn unwrap(&self) -> Row<V> {
+impl<V: Clone + Default> Row<Option<V>> {
+    pub fn unwrap_or_default(&self) -> Row<V> {
         Row {
-            values: self.values.iter().map(|v| v.clone().unwrap()).collect(),
+            values: self
+                .values
+                .iter()
+                .map(|v| v.clone().unwrap_or_default())
+                .collect(),
         }
     }
 }
