@@ -93,6 +93,13 @@ where
 
     let mut values: BTreeMap<PolyID, Vec<T>> =
         fixed.witness_cols.keys().map(|&p| (p, vec![])).collect();
+
+    let poly_ids = fixed.witness_cols.keys().copied().collect::<Vec<_>>();
+
+    for (i, p) in poly_ids.iter().enumerate() {
+        assert!(p.id == i as u64);
+    }
+
     // Are we in an infinite loop and can just re-use the old values?
     let mut looping_period = None;
     for row in 0..degree as DegreeType {
@@ -110,10 +117,16 @@ where
         }
         let mut row_values = None;
         if let Some(period) = looping_period {
-            let values = values
-                .iter()
-                .map(|(&p, v)| (p, v[v.len() - period]))
-                .collect();
+            let values = Row {
+                values: values
+                    .iter()
+                    .enumerate()
+                    .map(|(i, (&p, v))| {
+                        assert!(p.id == i as u64);
+                        v[v.len() - period]
+                    })
+                    .collect(),
+            };
             if generator.propose_next_row(row, &values) {
                 row_values = Some(values);
             } else {
@@ -125,8 +138,8 @@ where
             row_values = Some(generator.compute_next_row(row));
         };
 
-        for (col, v) in row_values.unwrap().into_iter() {
-            values.get_mut(&col).unwrap().push(v);
+        for (i, v) in row_values.unwrap().values.into_iter().enumerate() {
+            values.get_mut(&poly_ids[i]).unwrap().push(v);
         }
     }
     // Overwrite all machine witness columns
@@ -174,6 +187,7 @@ pub struct FixedData<'a, T> {
     degree: DegreeType,
     fixed_cols: BTreeMap<PolyID, FixedColumn<'a, T>>,
     witness_cols: BTreeMap<PolyID, WitnessColumn<'a, T>>,
+    capacity: usize,
 }
 
 impl<'a, T> FixedData<'a, T> {
@@ -182,10 +196,18 @@ impl<'a, T> FixedData<'a, T> {
         fixed_cols: BTreeMap<PolyID, FixedColumn<'a, T>>,
         witness_cols: BTreeMap<PolyID, WitnessColumn<'a, T>>,
     ) -> Self {
+        let capacity = witness_cols.keys().map(|p| p.id).max().unwrap_or(0) as usize + 1;
         FixedData {
             degree,
             fixed_cols,
             witness_cols,
+            capacity,
+        }
+    }
+
+    fn fresh_row<V: Clone>(&self) -> Row<Option<V>> {
+        Row {
+            values: vec![None; self.capacity],
         }
     }
 
@@ -272,4 +294,8 @@ impl<'a, T> WitnessColumn<'a, T> {
             query,
         }
     }
+}
+
+pub struct Row<V> {
+    values: Vec<V>,
 }
