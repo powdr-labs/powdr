@@ -12,7 +12,9 @@ use crate::witgen::{
     symbolic_evaluator::SymbolicEvaluator,
 };
 use crate::witgen::{EvalValue, IncompleteCause};
-use ast::analyzed::{Expression, Identity, IdentityKind, PolynomialReference, SelectedExpressions};
+use ast::analyzed::{
+    Expression, Identity, IdentityKind, PolyID, PolynomialReference, SelectedExpressions,
+};
 use number::FieldElement;
 
 /// A machine that can support a lookup in a set of columns that are sorted
@@ -23,10 +25,10 @@ use number::FieldElement;
 ///  - NOTLAST is zero only on the last row
 ///  - POSITIVE has all values from 1 to half of the field size.
 pub struct SortedWitnesses<T> {
-    key_col: PolynomialReference,
+    key_col: PolyID,
     /// Position of the witness columns in the data.
     /// The key column has a position of usize::max
-    witness_positions: HashMap<PolynomialReference, usize>,
+    witness_positions: HashMap<PolyID, usize>,
     data: BTreeMap<T, Vec<Option<T>>>,
 }
 
@@ -34,22 +36,22 @@ impl<T: FieldElement> SortedWitnesses<T> {
     pub fn try_new(
         fixed_data: &FixedData<T>,
         identities: &[&Identity<T>],
-        witness_names: &HashSet<&PolynomialReference>,
+        witnesses: &HashSet<PolyID>,
     ) -> Option<Box<Self>> {
         if identities.len() != 1 {
             return None;
         }
         check_identity(fixed_data, identities.first().unwrap()).map(|key_col| {
-            let witness_positions = witness_names
+            let witness_positions = witnesses
                 .iter()
                 .filter(|&w| *w != key_col)
                 .sorted()
                 .enumerate()
-                .map(|(i, &x)| (x.clone(), i))
+                .map(|(i, &x)| (x, i))
                 .collect();
 
             Box::new(SortedWitnesses {
-                key_col: key_col.clone(),
+                key_col,
                 witness_positions,
                 data: Default::default(),
             })
@@ -57,10 +59,7 @@ impl<T: FieldElement> SortedWitnesses<T> {
     }
 }
 
-fn check_identity<'a, T: FieldElement>(
-    fixed_data: &FixedData<T>,
-    id: &'a Identity<T>,
-) -> Option<&'a PolynomialReference> {
+fn check_identity<T: FieldElement>(fixed_data: &FixedData<T>, id: &Identity<T>) -> Option<PolyID> {
     // Looking for NOTLAST { A' - A } in { POSITIVE }
     if id.kind != IdentityKind::Plookup
         || id.right.selector.is_some()
@@ -93,8 +92,8 @@ fn check_identity<'a, T: FieldElement>(
 }
 
 /// Checks that the identity has a constraint of the form `a' - a` as the first expression
-/// on the left hand side and returns the name of the witness column.
-fn check_constraint<T: FieldElement>(constraint: &Expression<T>) -> Option<&PolynomialReference> {
+/// on the left hand side and returns the ID of the witness column.
+fn check_constraint<T: FieldElement>(constraint: &Expression<T>) -> Option<PolyID> {
     let symbolic_ev = SymbolicEvaluator;
     let sort_constraint = match ExpressionEvaluator::new(symbolic_ev).evaluate(constraint) {
         Ok(c) => c,
@@ -117,13 +116,13 @@ fn check_constraint<T: FieldElement>(constraint: &Expression<T>) -> Option<&Poly
         return None;
     }
 
-    Some(key_column_id)
+    Some(key_column_id.poly_id())
 }
 
 impl<T: FieldElement> Machine<T> for SortedWitnesses<T> {
     fn process_plookup<'a>(
         &mut self,
-        _fixed_data: &FixedData<T>,
+        fixed_data: &FixedData<T>,
         _fixed_lookup: &mut FixedLookup<T>,
         kind: IdentityKind,
         left: &[AffineResult<&'a PolynomialReference, T>],
@@ -138,7 +137,9 @@ impl<T: FieldElement> Machine<T> for SortedWitnesses<T> {
             .map(|e| match e {
                 Expression::PolynomialReference(p) => {
                     assert!(!p.next);
-                    if *p == self.key_col || self.witness_positions.contains_key(p) {
+                    if p.poly_id() == self.key_col
+                        || self.witness_positions.contains_key(&p.poly_id())
+                    {
                         Some(p)
                     } else {
                         None
@@ -148,7 +149,7 @@ impl<T: FieldElement> Machine<T> for SortedWitnesses<T> {
             })
             .collect::<Option<Vec<_>>>()?;
 
-        Some(self.process_plookup_internal(left, right, rhs))
+        Some(self.process_plookup_internal(fixed_data, left, right, rhs))
     }
     fn witness_col_values(&mut self, fixed_data: &FixedData<T>) -> HashMap<String, Vec<T>> {
         let mut result = HashMap::new();
@@ -161,7 +162,7 @@ impl<T: FieldElement> Machine<T> for SortedWitnesses<T> {
             last_key += 1u64.into();
             keys.push(last_key);
         }
-        result.insert(self.key_col.name.clone(), keys);
+        result.insert(fixed_data.column_name(&self.key_col).to_string(), keys);
 
         for (col, &i) in &self.witness_positions {
             let mut col_values = values
@@ -169,7 +170,7 @@ impl<T: FieldElement> Machine<T> for SortedWitnesses<T> {
                 .map(|row| std::mem::take(&mut row[i]).unwrap_or_default())
                 .collect::<Vec<_>>();
             col_values.resize(fixed_data.degree as usize, 0.into());
-            result.insert(col.name.clone(), col_values);
+            result.insert(fixed_data.column_name(col).to_string(), col_values);
         }
 
         result
@@ -179,6 +180,7 @@ impl<T: FieldElement> Machine<T> for SortedWitnesses<T> {
 impl<T: FieldElement> SortedWitnesses<T> {
     fn process_plookup_internal<'a>(
         &mut self,
+        fixed_data: &FixedData<T>,
         left: &[AffineResult<&'a PolynomialReference, T>],
         right: &SelectedExpressions<T>,
         rhs: Vec<&PolynomialReference>,
@@ -198,7 +200,10 @@ impl<T: FieldElement> SortedWitnesses<T> {
             ));
         }
 
-        let key_index = rhs.iter().position(|&x| x == &self.key_col).unwrap();
+        let key_index = rhs
+            .iter()
+            .position(|&x| x.poly_id() == self.key_col)
+            .unwrap();
 
         let key_value = left[key_index].constant_value().ok_or_else(|| {
             format!(
@@ -213,7 +218,7 @@ impl<T: FieldElement> SortedWitnesses<T> {
             .entry(key_value)
             .or_insert_with(|| vec![None; self.witness_positions.len()]);
         for (&l, &r) in left.iter().zip(rhs.iter()).skip(1) {
-            let stored_value = &mut stored_values[self.witness_positions[r]];
+            let stored_value = &mut stored_values[self.witness_positions[&r.poly_id()]];
             match stored_value {
                 // There is a stored value
                 Some(v) => {
@@ -223,13 +228,16 @@ impl<T: FieldElement> SortedWitnesses<T> {
                             return Err(format!(
                                 "Lookup mismatch: There is already a unique row with {} = \
                             {key_value} and {r} = {v}, but wanted to store {r} = {l}",
-                                self.key_col,
+                                fixed_data.column_name(&self.key_col),
                             )
                             .into());
                         }
                         Ok(ass) => {
                             if !ass.is_empty() {
-                                log::trace!("Read {} = {key_value} -> {r} = {v}", self.key_col);
+                                log::trace!(
+                                    "Read {} = {key_value} -> {r} = {v}",
+                                    fixed_data.column_name(&self.key_col)
+                                );
                             }
                             assignments.combine(ass);
                         }
@@ -238,7 +246,10 @@ impl<T: FieldElement> SortedWitnesses<T> {
                 // There is no value stored yet.
                 None => match l.constant_value() {
                     Some(v) => {
-                        log::trace!("Stored {} = {key_value} -> {r} = {v}", self.key_col);
+                        log::trace!(
+                            "Stored {} = {key_value} -> {r} = {v}",
+                            fixed_data.column_name(&self.key_col)
+                        );
                         *stored_value = Some(v);
                     }
                     None => {

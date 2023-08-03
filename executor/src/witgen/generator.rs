@@ -16,20 +16,24 @@ use super::{
     Constraint, EvalError, EvalResult, EvalValue, FixedData, IncompleteCause, WitnessColumn,
 };
 
+fn fresh_row<T, R>(fixed_data: &FixedData<'_, T>) -> BTreeMap<PolyID, Option<R>> {
+    fixed_data.witness_cols.keys().map(|&x| (x, None)).collect()
+}
+
 pub struct Generator<'a, T: FieldElement, QueryCallback: Send + Sync> {
     fixed_data: &'a FixedData<'a, T>,
     fixed_lookup: &'a mut FixedLookup<T>,
     identities: &'a [&'a Identity<T>],
-    witnesses: BTreeSet<&'a PolynomialReference>,
+    witnesses: BTreeSet<PolyID>,
     machines: Vec<Box<dyn Machine<T>>>,
     query_callback: Option<QueryCallback>,
     global_range_constraints: BTreeMap<PolyID, RangeConstraint<T>>,
     /// Values of the witness polynomials
-    current: Vec<Option<T>>,
+    current: BTreeMap<PolyID, Option<T>>,
     /// Values of the witness polynomials in the next row
-    next: Vec<Option<T>>,
+    next: BTreeMap<PolyID, Option<T>>,
     /// Range constraints on the witness polynomials in the next row.
-    next_range_constraints: Vec<Option<RangeConstraint<T>>>,
+    next_range_constraints: BTreeMap<PolyID, Option<RangeConstraint<T>>>,
     next_row: DegreeType,
     failure_reasons: Vec<EvalError<T>>,
     last_report: DegreeType,
@@ -68,13 +72,11 @@ where
         fixed_data: &'a FixedData<'a, T>,
         fixed_lookup: &'a mut FixedLookup<T>,
         identities: &'a [&'a Identity<T>],
-        witnesses: BTreeSet<&'a PolynomialReference>,
+        witnesses: BTreeSet<PolyID>,
         global_range_constraints: BTreeMap<PolyID, RangeConstraint<T>>,
         machines: Vec<Box<dyn Machine<T>>>,
         query_callback: Option<QueryCallback>,
     ) -> Self {
-        let witness_cols_len = fixed_data.witness_cols.len();
-
         Generator {
             fixed_data,
             fixed_lookup,
@@ -83,9 +85,9 @@ where
             machines,
             query_callback,
             global_range_constraints,
-            current: vec![None; witness_cols_len],
-            next: vec![None; witness_cols_len],
-            next_range_constraints: vec![None; witness_cols_len],
+            current: fresh_row(fixed_data),
+            next: fresh_row(fixed_data),
+            next_range_constraints: fresh_row(fixed_data),
             next_row: 0,
             failure_reasons: vec![],
             last_report: 0,
@@ -93,7 +95,11 @@ where
         }
     }
 
-    pub fn compute_next_row(&mut self, next_row: DegreeType) -> Vec<T> {
+    fn fresh_row<R>(&self) -> BTreeMap<PolyID, Option<R>> {
+        fresh_row(self.fixed_data)
+    }
+
+    pub fn compute_next_row(&mut self, next_row: DegreeType) -> BTreeMap<PolyID, T> {
         self.set_next_row_and_log(next_row);
 
         let mut complete_identities = vec![false; self.identities.len()];
@@ -147,9 +153,7 @@ where
                     && strategy == SolvingStrategy::SingleVariableAffine
                 {
                     for column in self.fixed_data.witness_cols() {
-                        if !self.has_known_next_value(column.poly.poly_id_u64() as usize)
-                            && column.query.is_some()
-                        {
+                        if !self.has_known_next_value(&column.poly_id) && column.query.is_some() {
                             let result = self.process_witness_query(&column);
                             progress |=
                                 self.handle_eval_result(result, strategy, || "<query>".into());
@@ -163,13 +167,12 @@ where
             }
         }
         if identity_failed {
-            let list_undetermined = |values: &Vec<Option<T>>| {
+            let list_undetermined = |values: &BTreeMap<PolyID, Option<T>>| {
                 values
                     .iter()
-                    .enumerate()
-                    .filter_map(|(i, v)| {
-                        if v.is_none() && self.is_relevant_witness(i) {
-                            Some(self.fixed_data.witness_cols[i].poly.to_string())
+                    .filter_map(|(p, v)| {
+                        if v.is_none() && self.is_relevant_witness(p) {
+                            Some(self.fixed_data.column_name(p).to_string())
                         } else {
                             None
                         }
@@ -199,11 +202,9 @@ where
                 "Determined range constraints for this row:\n{}",
                 self.next_range_constraints
                     .iter()
-                    .enumerate()
                     .filter_map(|(id, cons)| {
-                        cons.as_ref().map(|cons| {
-                            format!("  {}: {cons}", self.fixed_data.witness_cols[id].poly)
-                        })
+                        cons.as_ref()
+                            .map(|cons| format!("  {}: {cons}", self.fixed_data.column_name(id)))
                     })
                     .join("\n")
             );
@@ -219,35 +220,38 @@ where
             indent(&self.format_next_values().join("\n"), "    ")
         );
         std::mem::swap(&mut self.next, &mut self.current);
-        self.next = vec![None; self.current.len()];
-        self.next_range_constraints = vec![None; self.current.len()];
+        self.next = self.fresh_row();
+        self.next_range_constraints = self.fresh_row();
 
         self.current
             .iter()
-            .map(|v| (*v).unwrap_or_default())
+            .map(|(&p, &v)| (p, v.unwrap_or_default()))
             .collect()
     }
 
     /// Verifies the proposed values for the next row.
     /// TODO this is bad for machines because we might introduce rows in the machine that are then
     /// not used.
-    pub fn propose_next_row(&mut self, next_row: DegreeType, values: &[T]) -> bool {
+    pub fn propose_next_row(&mut self, next_row: DegreeType, values: &BTreeMap<PolyID, T>) -> bool {
         self.set_next_row_and_log(next_row);
-        self.next = values.iter().cloned().map(Some).collect();
+        self.next = values
+            .iter()
+            .map(|(&poly_id, &v)| (poly_id, Some(v)))
+            .collect();
 
         for identity in self.identities {
             if self
                 .process_identity(identity, SolvingStrategy::AssumeZero)
                 .is_err()
             {
-                self.next = vec![None; self.current.len()];
-                self.next_range_constraints = vec![None; self.current.len()];
+                self.next = self.fresh_row();
+                self.next_range_constraints = self.fresh_row();
                 return false;
             }
         }
         std::mem::swap(&mut self.next, &mut self.current);
-        self.next = vec![None; self.current.len()];
-        self.next_range_constraints = vec![None; self.current.len()];
+        self.next = self.fresh_row();
+        self.next_range_constraints = self.fresh_row();
         true
     }
 
@@ -279,18 +283,17 @@ where
         self.format_next_values_iter(
             self.next
                 .iter()
-                .enumerate()
-                .filter(|(i, _)| self.is_relevant_witness(*i)),
+                .filter(|(i, _)| self.is_relevant_witness(i)),
         )
     }
 
     fn format_next_known_values(&self) -> Vec<String> {
-        self.format_next_values_iter(self.next.iter().enumerate().filter(|(_, v)| v.is_some()))
+        self.format_next_values_iter(self.next.iter().filter(|(_, v)| v.is_some()))
     }
 
     fn format_next_values_iter<'b>(
         &self,
-        values: impl IntoIterator<Item = (usize, &'b Option<T>)>,
+        values: impl IntoIterator<Item = (&'b PolyID, &'b Option<T>)>,
     ) -> Vec<String> {
         let mut values = values.into_iter().collect::<Vec<_>>();
         values.sort_by_key(|(i, v1)| {
@@ -308,7 +311,7 @@ where
             .map(|(i, v)| {
                 format!(
                     "{} = {}",
-                    self.fixed_data.witness_cols[i].poly,
+                    self.fixed_data.column_name(i),
                     v.as_ref()
                         .map(ToString::to_string)
                         .unwrap_or_else(|| "<unknown>".to_string())
@@ -330,7 +333,7 @@ where
         } else {
             Ok(EvalValue::incomplete(IncompleteCause::NoQueryAnswer(
                 query,
-                column.poly.name.to_string(),
+                column.name.to_string(),
             )))
         }
     }
@@ -521,11 +524,11 @@ where
                     match c {
                         Constraint::Assignment(value) => {
                             log::trace!("      => {id} = {value}");
-                            self.next[id.poly_id_u64() as usize] = Some(value);
+                            self.next.insert(id.poly_id(), Some(value));
                         }
                         Constraint::RangeConstraint(cons) => {
                             log::trace!("      => Adding range constraint for {id}: {cons}");
-                            let old = &mut self.next_range_constraints[id.poly_id_u64() as usize];
+                            let old = self.next_range_constraints.get_mut(&id.poly_id()).unwrap();
                             let new = match old {
                                 Some(c) => Some(cons.conjunction(c)),
                                 None => Some(cons),
@@ -544,14 +547,13 @@ where
         }
     }
 
-    fn has_known_next_value(&self, id: usize) -> bool {
+    fn has_known_next_value(&self, id: &PolyID) -> bool {
         self.next[id].is_some()
     }
 
     /// Returns true if this is a witness column we care about (instead of a sub-machine witness).
-    pub fn is_relevant_witness(&self, id: usize) -> bool {
-        self.witnesses
-            .contains(&self.fixed_data.witness_cols[id].poly)
+    pub fn is_relevant_witness(&self, id: &PolyID) -> bool {
+        self.witnesses.contains(id)
     }
 
     /// Tries to evaluate the expression to an expression affine in the witness polynomials,
@@ -599,7 +601,7 @@ struct WitnessRangeConstraintSet<'a, T: FieldElement> {
     /// Global constraints on witness and fixed polynomials.
     global_range_constraints: &'a BTreeMap<PolyID, RangeConstraint<T>>,
     /// Range constraints on the witness polynomials in the next row.
-    next_range_constraints: &'a Vec<Option<RangeConstraint<T>>>,
+    next_range_constraints: &'a BTreeMap<PolyID, Option<RangeConstraint<T>>>,
 }
 
 impl<'a, T: FieldElement> RangeConstraintSet<&PolynomialReference, T>
@@ -608,7 +610,7 @@ impl<'a, T: FieldElement> RangeConstraintSet<&PolynomialReference, T>
     fn range_constraint(&self, poly: &PolynomialReference) -> Option<RangeConstraint<T>> {
         // Combine potential global range constraints with local range constraints.
         let global = self.global_range_constraints.get(&poly.poly_id());
-        let local = self.next_range_constraints[poly.poly_id_u64() as usize].as_ref();
+        let local = self.next_range_constraints[&poly.poly_id()].as_ref();
 
         match (global, local) {
             (None, None) => None,
@@ -620,27 +622,27 @@ impl<'a, T: FieldElement> RangeConstraintSet<&PolynomialReference, T>
 
 struct EvaluationData<'a, T> {
     /// Values of the witness polynomials in the current / last row
-    pub current_witnesses: &'a Vec<Option<T>>,
+    pub current_witnesses: &'a BTreeMap<PolyID, Option<T>>,
     /// Values of the witness polynomials in the next row
-    pub next_witnesses: &'a Vec<Option<T>>,
+    pub next_witnesses: &'a BTreeMap<PolyID, Option<T>>,
     pub evaluate_row: EvaluationRow,
     pub evaluate_unknown: EvaluateUnknown,
 }
 
 impl<'a, T: FieldElement> WitnessColumnEvaluator<T> for EvaluationData<'a, T> {
     fn value<'b>(&self, poly: &'b PolynomialReference) -> AffineResult<&'b PolynomialReference, T> {
-        let id = poly.poly_id_u64() as usize;
+        let id = poly.poly_id();
         match (poly.next, self.evaluate_row) {
             (false, EvaluationRow::Current) => {
                 // All values in the "current" row should usually be known.
                 // The exception is when we start the analysis on the first row.
-                self.current_witnesses[id]
+                self.current_witnesses[&id]
                     .as_ref()
                     .map(|value| (*value).into())
                     .ok_or(IncompleteCause::PreviousValueUnknown(poly))
             }
             (false, EvaluationRow::Next) | (true, EvaluationRow::Current) => {
-                Ok(if let Some(value) = &self.next_witnesses[id] {
+                Ok(if let Some(value) = &self.next_witnesses[&id] {
                     // We already computed the concrete value
                     (*value).into()
                 } else if self.evaluate_unknown == EvaluateUnknown::AssumeZero {

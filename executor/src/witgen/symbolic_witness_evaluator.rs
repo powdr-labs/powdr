@@ -45,7 +45,7 @@ where
             self.witness_access.value(poly)
         } else {
             // Constant polynomial (or something else)
-            let values = self.fixed_data.fixed_col_values[poly.poly_id_u64() as usize];
+            let values = self.fixed_data.fixed_cols[&poly.poly_id()].values;
             let row = if poly.next {
                 let degree = values.len() as DegreeType;
                 (self.row + 1) % degree
