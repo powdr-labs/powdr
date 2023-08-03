@@ -3,8 +3,9 @@ use std::collections::BTreeMap;
 use ast::{
     asm_analysis::{
         AnalysisASMFile, AssignmentStatement, DebugDirective, DegreeStatement, FunctionBody,
-        FunctionDefinitionStatement, InstructionDefinitionStatement, InstructionStatement,
-        LabelStatement, Machine, PilBlock, RegisterDeclarationStatement, SubmachineDeclaration,
+        FunctionDefinitionStatement, FunctionStatements, InstructionDefinitionStatement,
+        InstructionStatement, LabelStatement, Machine, PilBlock, RegisterDeclarationStatement,
+        SubmachineDeclaration,
     },
     parsed::asm::{ASMFile, FunctionStatement, MachineStatement, RegisterFlag},
 };
@@ -81,12 +82,12 @@ impl<T: FieldElement> TypeChecker<T> {
                     params,
                     statements,
                 ) => {
-                    let mut body = vec![];
+                    let mut function_statements = vec![];
                     let id = function_id.map(|id| id.id);
                     for s in statements {
                         match s {
                             FunctionStatement::Assignment(start, lhs, using_reg, rhs) => {
-                                body.push(
+                                function_statements.push(
                                     AssignmentStatement {
                                         start,
                                         lhs,
@@ -97,7 +98,7 @@ impl<T: FieldElement> TypeChecker<T> {
                                 );
                             }
                             FunctionStatement::Instruction(start, instruction, inputs) => {
-                                body.push(
+                                function_statements.push(
                                     InstructionStatement {
                                         start,
                                         instruction,
@@ -107,10 +108,11 @@ impl<T: FieldElement> TypeChecker<T> {
                                 );
                             }
                             FunctionStatement::Label(start, name) => {
-                                body.push(LabelStatement { start, name }.into());
+                                function_statements.push(LabelStatement { start, name }.into());
                             }
                             FunctionStatement::DebugDirective(start, directive) => {
-                                body.push(DebugDirective { start, directive }.into());
+                                function_statements
+                                    .push(DebugDirective { start, directive }.into());
                             }
                         }
                     }
@@ -119,7 +121,9 @@ impl<T: FieldElement> TypeChecker<T> {
                         name,
                         id,
                         params,
-                        body: FunctionBody { statements: body },
+                        body: FunctionBody {
+                            statements: FunctionStatements::new(function_statements),
+                        },
                     })
                 }
             }

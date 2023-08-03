@@ -78,9 +78,11 @@
 //         _loop;
 //     }
 // }
-use ast::asm_analysis::{AnalysisASMFile, Machine, Rom};
+use ast::asm_analysis::{
+    AnalysisASMFile, Batch, Incompatible, IncompatibleSet, Machine, Rom,
+};
 use number::FieldElement;
-use std::{iter::once, marker::PhantomData};
+use std::marker::PhantomData;
 
 use crate::utils::{
     parse_instruction_body, parse_instruction_definition, parse_operation_statement,
@@ -138,37 +140,57 @@ impl<T: FieldElement> RomGenerator<T> {
                 .find(|i| i.name == "return")
                 .unwrap()
                 .body = parse_instruction_body(&format!("{{ {} = 0 }}", machine.pc().unwrap()));
-            let rom = vec![
-                vec![
+
+            // generate the rom
+            // the functions are already batched, we just batch the dispatcher manually here
+            // we could also run batching again on the dispatcher
+
+            let mut rom: Vec<Batch<T>> = vec![];
+
+            // add the beginning of the dispatcher
+            rom.extend(vec![
+                Batch::from(vec![
                     parse_operation_statement("_start::"),
                     parse_operation_statement("_reset;"),
-                    // the latch is constrained to start at 0 using _L1
-                    parse_operation_statement("_jump_to_operation;"),
-                ],
-                // define one label for each operation
-                machine
-                    .functions
-                    .iter()
-                    .flat_map(|o| {
-                        once(parse_operation_statement(&format!("_{}::", o.name)))
-                            // execute the operation after substituting the
-                            .chain(o.body.statements.clone().into_iter())
-                    })
-                    .collect(),
-                vec![
-                    parse_operation_statement("_sink::"),
-                    parse_operation_statement("_loop;"),
-                ],
-            ]
-            .into_iter()
-            .flatten()
-            .collect();
+                ])
+                .reason(IncompatibleSet::from(Incompatible::Unimplemented)),
+                // the latch is constrained to start at 0 using _L1
+                Batch::from(vec![parse_operation_statement("_jump_to_operation;")])
+                    .reason(IncompatibleSet::from(Incompatible::Label)),
+            ]);
+
+            // add each function, setting the function_id to the current position in the ROM
+            for function in machine.functions.iter_mut() {
+                function.id = Some(T::from(rom.len() as u64));
+
+                let mut batches: Vec<_> = function
+                    .body
+                    .statements
+                    .clone()
+                    .into_iter_batches()
+                    .collect();
+                // modify the first batch to include the label just for debugging purposes, it's always possible to batch it so it's free
+                batches
+                    .get_mut(0)
+                    .expect("function should have at least one statement as it must return")
+                    .statements
+                    .insert(
+                        0,
+                        parse_operation_statement(&format!("_{}::", function.name)),
+                    );
+
+                rom.extend(batches);
+            }
+
+            rom.extend(vec![Batch::from(vec![
+                parse_operation_statement("_sink::"),
+                parse_operation_statement("_loop;"),
+            ])]);
 
             machine.function_id = Some(function_id.into());
 
             machine.rom = Some(Rom {
-                statements: rom,
-                batches: None,
+                statements: rom.into_iter().collect(),
             });
         } else {
             // do nothing for static machines

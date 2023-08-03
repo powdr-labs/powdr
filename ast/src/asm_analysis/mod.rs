@@ -1,9 +1,14 @@
 mod display;
 pub mod utils;
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    iter::{once, repeat},
+};
 
+use itertools::Either;
 use num_bigint::BigUint;
+use number::FieldElement;
 
 use crate::parsed::{
     asm::{InstructionBody, Params, RegisterFlag},
@@ -27,9 +32,141 @@ pub struct InstructionDefinitionStatement<T> {
     pub body: InstructionBody<T>,
 }
 
+#[derive(Clone, Debug, Default)]
+pub struct FunctionStatements<T> {
+    inner: Vec<FunctionStatement<T>>,
+    batches: Option<Vec<BatchMetadata>>,
+}
+
+pub struct BatchRef<'a, T> {
+    statements: &'a [FunctionStatement<T>],
+    reason: &'a Option<IncompatibleSet>,
+}
+
+pub struct Batch<T> {
+    pub statements: Vec<FunctionStatement<T>>,
+    reason: Option<IncompatibleSet>,
+}
+
+impl<T> From<Vec<FunctionStatement<T>>> for Batch<T> {
+    fn from(statements: Vec<FunctionStatement<T>>) -> Self {
+        Self {
+            statements,
+            reason: None,
+        }
+    }
+}
+
+impl<T> Batch<T> {
+    pub fn reason(mut self, reason: IncompatibleSet) -> Self {
+        self.reason = Some(reason);
+        self
+    }
+}
+
+impl<T> FunctionStatements<T> {
+    /// create with no batch information
+    pub fn new(inner: Vec<FunctionStatement<T>>) -> Self {
+        Self {
+            inner,
+            batches: None,
+        }
+    }
+
+    /// turn into the underlying statements, forgetting batch information
+    pub fn into_inner(self) -> Vec<FunctionStatement<T>> {
+        self.inner
+    }
+
+    /// set the batch information
+    pub fn set_batches(&mut self, batches: Vec<BatchMetadata>) {
+        self.batches = Some(batches);
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.inner.is_empty()
+    }
+
+    /// iterate over the statements by reference
+    pub fn iter(&self) -> impl Iterator<Item = &FunctionStatement<T>> {
+        self.inner.iter()
+    }
+
+    /// iterate over the statements by mutable reference
+    /// Warning: mutation should be checked not to invalidate batch information
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut FunctionStatement<T>> {
+        self.inner.iter_mut()
+    }
+
+    /// iterate over the batches by reference
+    fn iter_batches(&self) -> impl Iterator<Item = BatchRef<T>> {
+        match &self.batches {
+            Some(batches) => Either::Left(batches.iter()),
+            None => Either::Right(
+                repeat(&BatchMetadata {
+                    size: 1,
+                    reason: None,
+                })
+                .take(self.inner.len()),
+            ),
+        }
+        .scan(0, move |start, batch| {
+            let res = BatchRef {
+                reason: &batch.reason,
+                statements: &self.inner[*start..*start + batch.size],
+            };
+            *start += batch.size;
+            Some(res)
+        })
+    }
+}
+
+impl<T: FieldElement> FunctionStatements<T> {
+    /// iterate over the batches by reference
+    pub fn into_iter_batches(self) -> impl Iterator<Item = Batch<T>> {
+        let len = self.inner.len();
+        let mut inner = self.inner.into_iter();
+
+        match self.batches {
+            Some(batches) => Either::Left(batches.into_iter()),
+            None => Either::Right(
+                repeat(BatchMetadata {
+                    size: 1,
+                    reason: None,
+                })
+                .take(len),
+            ),
+        }
+        .map(move |batch| Batch {
+            reason: batch.reason,
+            statements: (&mut inner).take(batch.size).collect(),
+        })
+    }
+}
+
+impl<T> FromIterator<Batch<T>> for FunctionStatements<T> {
+    fn from_iter<I: IntoIterator<Item = Batch<T>>>(iter: I) -> Self {
+        let mut inner = vec![];
+        let mut batches = vec![];
+
+        for batch in iter {
+            batches.push(BatchMetadata {
+                size: batch.statements.len(),
+                reason: batch.reason,
+            });
+            inner.extend(batch.statements);
+        }
+
+        FunctionStatements {
+            inner,
+            batches: Some(batches),
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct FunctionBody<T> {
-    pub statements: Vec<FunctionStatement<T>>,
+    pub statements: FunctionStatements<T>,
 }
 
 #[derive(Clone, Debug)]
@@ -166,8 +303,7 @@ impl<T> Machine<T> {
 
 #[derive(Clone, Default, Debug)]
 pub struct Rom<T> {
-    pub statements: Vec<FunctionStatement<T>>,
-    pub batches: Option<Vec<BatchMetadata>>,
+    pub statements: FunctionStatements<T>,
 }
 
 #[derive(Default, Debug)]
@@ -197,3 +333,9 @@ pub enum Incompatible {
 
 #[derive(Debug, PartialEq, Eq, Default, Clone)]
 pub struct IncompatibleSet(pub BTreeSet<Incompatible>);
+
+impl From<Incompatible> for IncompatibleSet {
+    fn from(value: Incompatible) -> Self {
+        Self(once(value).collect())
+    }
+}

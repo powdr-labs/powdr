@@ -81,7 +81,7 @@
 use ast::{
     asm_analysis::{
         utils::previsit_expression_mut, AnalysisASMFile, AssignmentStatement, FunctionStatement,
-        InstructionStatement, Machine,
+        FunctionStatements, InstructionStatement, Machine,
     },
     parsed::{
         asm::{Param, ParamList},
@@ -218,33 +218,35 @@ impl<T: FieldElement> FunctionDesugar<T> {
                     });
 
                     // substitute the names in the operation body
-                    f.body.statements = f
-                        .body
-                        .statements
-                        .into_iter()
-                        .map(move |s| match s {
-                            FunctionStatement::Assignment(assignment) => {
-                                FunctionStatement::Assignment(AssignmentStatement {
-                                    rhs: Box::new(substitute(*assignment.rhs, &inputs)),
-                                    ..assignment
-                                })
-                            }
-                            FunctionStatement::Instruction(instruction) => {
-                                FunctionStatement::Instruction(InstructionStatement {
-                                    inputs: instruction
-                                        .inputs
-                                        .into_iter()
-                                        .map(|i| substitute(i, &inputs))
-                                        .collect(),
-                                    ..instruction
-                                })
-                            }
-                            FunctionStatement::Label(l) => FunctionStatement::Label(l),
-                            FunctionStatement::DebugDirective(d) => {
-                                FunctionStatement::DebugDirective(d)
-                            }
-                        })
-                        .collect();
+                    f.body.statements = FunctionStatements::new(
+                        f.body
+                            .statements
+                            .into_inner()
+                            .into_iter()
+                            .map(move |s| match s {
+                                FunctionStatement::Assignment(assignment) => {
+                                    FunctionStatement::Assignment(AssignmentStatement {
+                                        rhs: Box::new(substitute(*assignment.rhs, &inputs)),
+                                        ..assignment
+                                    })
+                                }
+                                FunctionStatement::Instruction(instruction) => {
+                                    FunctionStatement::Instruction(InstructionStatement {
+                                        inputs: instruction
+                                            .inputs
+                                            .into_iter()
+                                            .map(|i| substitute(i, &inputs))
+                                            .collect(),
+                                        ..instruction
+                                    })
+                                }
+                                FunctionStatement::Label(l) => FunctionStatement::Label(l),
+                                FunctionStatement::DebugDirective(d) => {
+                                    FunctionStatement::DebugDirective(d)
+                                }
+                            })
+                            .collect(),
+                    );
                     f
                 })
                 .collect();

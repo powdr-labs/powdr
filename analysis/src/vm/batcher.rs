@@ -68,8 +68,9 @@ struct RomBatcher<T> {
 impl<T: FieldElement> RomBatcher<T> {
     // split a list of statements into compatible batches
     fn extract_batches(&self, machine_name: &str, machine: &mut Machine<T>) {
-        if let Some(rom) = machine.rom.as_mut() {
-            let batches: Vec<_> = rom
+        for function in machine.functions.iter_mut() {
+            let batches: Vec<_> = function
+                .body
                 .statements
                 .iter()
                 .peekable()
@@ -109,7 +110,8 @@ impl<T: FieldElement> RomBatcher<T> {
             let lines_after = batches.len();
 
             log::debug!(
-                "Batching complete for machine {} with savings of {}% in execution trace lines",
+                "Batching complete for function {} in machine {} with savings of {}% in execution trace lines",
+                function.name,
                 machine_name,
                 match lines_before {
                     0 => 0.,
@@ -117,7 +119,7 @@ impl<T: FieldElement> RomBatcher<T> {
                 }
             );
 
-            rom.batches = Some(batches);
+            function.body.statements.set_batches(batches);
         }
     }
 

@@ -4,14 +4,11 @@
 // - unconstrain registers on first line, as the ASM takes care of resetting them
 // - unconstrain the inputs when _reset is called
 
-use std::{
-    collections::{BTreeMap, BTreeSet, HashMap},
-    iter::repeat,
-};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use ast::{
     asm_analysis::{
-        AnalysisASMFile, AssignmentStatement, BatchMetadata, FunctionStatement,
+        AnalysisASMFile, AssignmentStatement, Batch, FunctionStatement,
         InstructionDefinitionStatement, InstructionStatement, LabelStatement, Machine, PilBlock,
         RegisterDeclarationStatement,
     },
@@ -92,28 +89,8 @@ impl<T: FieldElement> ASMPILConverter<T> {
         }
 
         if let Some(rom) = input.rom.take() {
-            let mut optimised_batches;
-            let mut default_batches;
-
-            let batches: &mut dyn Iterator<Item = BatchMetadata> = match rom.batches {
-                Some(batches) => {
-                    optimised_batches = batches.into_iter();
-                    &mut optimised_batches
-                }
-                None => {
-                    default_batches = repeat(BatchMetadata {
-                        size: 1,
-                        reason: None,
-                    })
-                    .take(rom.statements.len());
-                    &mut default_batches
-                }
-            };
-
-            let mut statements = rom.statements.into_iter();
-
-            for batch in batches {
-                self.handle_batch(batch, &mut statements);
+            for batch in rom.statements.into_iter_batches() {
+                self.handle_batch(batch);
             }
         }
 
@@ -175,21 +152,20 @@ impl<T: FieldElement> ASMPILConverter<T> {
             ));
         }
 
-        input.constraints.push(PilBlock {
-            start: 0,
-            statements: self.pil,
-        });
+        if !self.pil.is_empty() {
+            input.constraints.push(PilBlock {
+                start: 0,
+                statements: self.pil,
+            });
+        }
 
         input
     }
 
-    fn handle_batch(
-        &mut self,
-        batch: BatchMetadata,
-        statements: &mut impl Iterator<Item = FunctionStatement<T>>,
-    ) {
-        let code_lines = statements
-            .take(batch.size)
+    fn handle_batch(&mut self, batch: Batch<T>) {
+        let code_lines = batch
+            .statements
+            .into_iter()
             .flat_map(|s| self.handle_statement(s))
             .reduce(|mut acc, e| {
                 // we write to the union of the target registers.

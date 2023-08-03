@@ -2,9 +2,9 @@ use std::fmt::{Display, Formatter, Result};
 
 use super::{
     AnalysisASMFile, AssignmentStatement, DebugDirective, DegreeStatement, FunctionBody,
-    FunctionDefinitionStatement, FunctionStatement, Incompatible, IncompatibleSet,
-    InstructionDefinitionStatement, InstructionStatement, LabelStatement, Machine, PilBlock,
-    RegisterDeclarationStatement, Rom,
+    FunctionDefinitionStatement, FunctionStatement, FunctionStatements, Incompatible,
+    IncompatibleSet, InstructionDefinitionStatement, InstructionStatement, LabelStatement, Machine,
+    PilBlock, RegisterDeclarationStatement, Rom,
 };
 
 impl<T: Display> Display for AnalysisASMFile<T> {
@@ -61,30 +61,7 @@ impl<T: Display> Display for Machine<T> {
 impl<T: Display> Display for Rom<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         writeln!(f, "rom {{")?;
-        let statements = &mut self.statements.iter();
-        match &self.batches {
-            Some(batches) => {
-                for batch in batches {
-                    for statement in statements.take(batch.size) {
-                        writeln!(f, "\t{}", statement)?;
-                    }
-                    writeln!(
-                        f,
-                        "\t// END BATCH{}",
-                        batch
-                            .reason
-                            .as_ref()
-                            .map(|reason| format!(" {reason}"))
-                            .unwrap_or_default()
-                    )?;
-                }
-            }
-            None => {
-                for statement in statements {
-                    writeln!(f, "\t{}", statement)?;
-                }
-            }
-        }
+        writeln!(f, "{}", self.statements)?;
         write!(f, "}}")
     }
 }
@@ -206,12 +183,29 @@ impl<T: Display> Display for FunctionDefinitionStatement<T> {
     }
 }
 
-impl<T: Display> Display for FunctionBody<T> {
+impl<T: Display> Display for FunctionStatements<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        for s in &self.statements {
-            writeln!(f, "\t\t{s}")?;
+        for batch in self.iter_batches() {
+            for statement in batch.statements {
+                writeln!(f, "\t{}", statement)?;
+            }
+            writeln!(
+                f,
+                "\t// END BATCH{}",
+                batch
+                    .reason
+                    .as_ref()
+                    .map(|reason| format!(" {reason}"))
+                    .unwrap_or_default()
+            )?;
         }
         Ok(())
+    }
+}
+
+impl<T: Display> Display for FunctionBody<T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        writeln!(f, "{}", self.statements)
     }
 }
 
