@@ -45,7 +45,7 @@ impl<T: FieldElement> SortedWitnesses<T> {
 
             Box::new(SortedWitnesses {
                 key_col,
-                witnesses: witnesses,
+                witnesses,
                 data: Default::default(),
             })
         })

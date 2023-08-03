@@ -140,23 +140,16 @@ where
     }
 
     // Map from column id to name
+    // We can't used `fixed` here, because the name would have the wrong lifetime.
     let mut col_names = analyzed
         .committed_polys_in_source_order()
         .iter()
-        .map(|(p, _)| {
-            (
-                PolyID {
-                    id: p.id,
-                    ptype: PolynomialType::Committed,
-                },
-                p.absolute_name.as_str(),
-            )
-        })
+        .map(|(p, _)| (p.id, p.absolute_name.as_str()))
         .collect::<BTreeMap<_, _>>();
 
     values
         .into_iter()
-        .map(|(id, v)| (col_names.remove(&id).unwrap(), v))
+        .map(|(id, v)| (col_names.remove(&id.id).unwrap(), v))
         .collect()
 }
 
