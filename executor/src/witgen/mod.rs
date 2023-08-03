@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use ast::analyzed::{
     Analyzed, Expression, FunctionValueDefinition, PolyID, PolynomialReference, PolynomialType,
 };
@@ -37,7 +39,7 @@ where
     if degree.is_zero() {
         panic!("Resulting degree is zero. Please ensure that there is at least one non-constant fixed column to set the degree.");
     }
-    let witness_cols: Vec<_> = analyzed
+    let witness_cols = analyzed
         .committed_polys_in_source_order()
         .iter()
         .enumerate()
@@ -46,29 +48,20 @@ where
                 unimplemented!("Committed arrays not implemented.")
             }
             assert_eq!(i as u64, poly.id);
-            WitnessColumn::new(i, &poly.absolute_name, value)
+            let col = WitnessColumn::new(i, &poly.absolute_name, value);
+            (col.poly_id, col)
         })
         .collect();
 
     let fixed_cols = fixed_col_values
         .iter()
         .enumerate()
-        .map(|(i, (n, _))| PolynomialReference {
-            name: n.to_string(),
-            poly_id: Some(PolyID {
-                id: i as u64,
-                ptype: PolynomialType::Constant,
-            }),
-            index: None,
-            next: false,
+        .map(|(i, (n, v))| {
+            let col = FixedColumn::new(i, n, v);
+            (col.poly_id, col)
         })
-        .collect::<Vec<_>>();
-    let fixed = FixedData::new(
-        degree,
-        fixed_col_values.iter().map(|(_, v)| v).collect(),
-        fixed_cols.iter().collect::<Vec<_>>(),
-        &witness_cols,
-    );
+        .collect();
+    let fixed = FixedData::new(degree, fixed_cols, witness_cols);
     let identities = substitute_constants(&analyzed.identities, &analyzed.constants);
 
     let GlobalConstraints {
@@ -98,11 +91,8 @@ where
         query_callback,
     );
 
-    let mut values: Vec<(&str, Vec<T>)> = analyzed
-        .committed_polys_in_source_order()
-        .iter()
-        .map(|(p, _)| (p.absolute_name.as_str(), vec![]))
-        .collect();
+    let mut values: BTreeMap<PolyID, Vec<T>> =
+        fixed.witness_cols.keys().map(|&p| (p, vec![])).collect();
     // Are we in an infinite loop and can just re-use the old values?
     let mut looping_period = None;
     for row in 0..degree as DegreeType {
@@ -110,9 +100,8 @@ where
         if looping_period.is_none() && row % 100 == 0 && row > 0 {
             let relevant_values = values
                 .iter()
-                .enumerate()
-                .filter(|(id, _)| generator.is_relevant_witness(*id))
-                .map(|(_, values)| values)
+                .filter(|(id, _)| generator.is_relevant_witness(id))
+                .map(|(_, v)| v)
                 .collect::<Vec<_>>();
             looping_period = rows_are_repeating(&relevant_values);
             if let Some(p) = looping_period {
@@ -123,8 +112,8 @@ where
         if let Some(period) = looping_period {
             let values = values
                 .iter()
-                .map(|(_, v)| v[v.len() - period])
-                .collect::<Vec<_>>();
+                .map(|(&p, v)| (p, v[v.len() - period]))
+                .collect();
             if generator.propose_next_row(row, &values) {
                 row_values = Some(values);
             } else {
@@ -136,28 +125,51 @@ where
             row_values = Some(generator.compute_next_row(row));
         };
 
-        for (col, v) in row_values.unwrap().into_iter().enumerate() {
-            values[col].1.push(v);
+        for (col, v) in row_values.unwrap().into_iter() {
+            values.get_mut(&col).unwrap().push(v);
         }
     }
     // Overwrite all machine witness columns
     for (name, data) in generator.machine_witness_col_values() {
-        let (_, col) = values.iter_mut().find(|(n, _)| *n == name).unwrap();
+        let poly_id = *values
+            .keys()
+            .find(|&p| fixed.column_name(p) == name)
+            .unwrap();
+        let col = values.get_mut(&poly_id).unwrap();
         *col = data;
     }
+
+    // Map from column id to name
+    let mut col_names = analyzed
+        .committed_polys_in_source_order()
+        .iter()
+        .map(|(p, _)| {
+            (
+                PolyID {
+                    id: p.id,
+                    ptype: PolynomialType::Committed,
+                },
+                p.absolute_name.as_str(),
+            )
+        })
+        .collect::<BTreeMap<_, _>>();
+
     values
+        .into_iter()
+        .map(|(id, v)| (col_names.remove(&id).unwrap(), v))
+        .collect()
 }
 
 /// Checks if the last rows are repeating and returns the period.
 /// Only checks for periods of 1, 2, 3 and 4.
-fn rows_are_repeating<T: PartialEq>(values: &[&(&str, Vec<T>)]) -> Option<usize> {
+fn rows_are_repeating<T: PartialEq>(values: &[&Vec<T>]) -> Option<usize> {
     if values.is_empty() {
         return Some(1);
-    } else if values[0].1.len() < 4 {
+    } else if values[0].len() < 4 {
         return None;
     }
     (1..=3).find(|&period| {
-        values.iter().all(|(_name, value)| {
+        values.iter().all(|value| {
             let len = value.len();
             (1..=period).all(|i| value[len - i - period] == value[len - i])
         })
@@ -167,34 +179,62 @@ fn rows_are_repeating<T: PartialEq>(values: &[&(&str, Vec<T>)]) -> Option<usize>
 /// Data that is fixed for witness generation.
 pub struct FixedData<'a, T> {
     degree: DegreeType,
-    fixed_col_values: Vec<&'a Vec<T>>,
-    fixed_cols: Vec<&'a PolynomialReference>,
-    witness_cols: &'a Vec<WitnessColumn<'a, T>>,
+    fixed_cols: BTreeMap<PolyID, FixedColumn<'a, T>>,
+    witness_cols: BTreeMap<PolyID, WitnessColumn<'a, T>>,
 }
 
 impl<'a, T> FixedData<'a, T> {
     pub fn new(
         degree: DegreeType,
-        fixed_col_values: Vec<&'a Vec<T>>,
-        fixed_cols: Vec<&'a PolynomialReference>,
-        witness_cols: &'a Vec<WitnessColumn<'a, T>>,
+        fixed_cols: BTreeMap<PolyID, FixedColumn<'a, T>>,
+        witness_cols: BTreeMap<PolyID, WitnessColumn<'a, T>>,
     ) -> Self {
         FixedData {
             degree,
-            fixed_col_values,
             fixed_cols,
             witness_cols,
         }
     }
 
+    fn column_name(&self, poly_id: &PolyID) -> &str {
+        match poly_id.ptype {
+            PolynomialType::Committed => &self.witness_cols[poly_id].name,
+            PolynomialType::Constant => &self.fixed_cols[poly_id].name,
+            PolynomialType::Intermediate => unimplemented!(),
+        }
+    }
+
     fn witness_cols(&self) -> impl Iterator<Item = &WitnessColumn<T>> {
-        self.witness_cols.iter()
+        self.witness_cols.values()
+    }
+}
+
+pub struct FixedColumn<'a, T> {
+    poly_id: PolyID,
+    name: String,
+    values: &'a Vec<T>,
+}
+
+impl<'a, T> FixedColumn<'a, T> {
+    pub fn new(id: usize, name: &'a str, values: &'a Vec<T>) -> FixedColumn<'a, T> {
+        let poly_id = PolyID {
+            id: id as u64,
+            ptype: PolynomialType::Constant,
+        };
+        let name = name.to_string();
+        FixedColumn {
+            poly_id,
+            name,
+            values,
+        }
     }
 }
 
 #[derive(Debug)]
 pub struct WitnessColumn<'a, T> {
+    poly_id: PolyID,
     poly: PolynomialReference,
+    name: String,
     query: Option<&'a Expression<T>>,
 }
 
@@ -209,15 +249,23 @@ impl<'a, T> WitnessColumn<'a, T> {
         } else {
             None
         };
-        let poly = PolynomialReference {
-            name: name.to_string(),
-            index: None,
-            next: false,
-            poly_id: Some(PolyID {
-                id: id as u64,
-                ptype: PolynomialType::Committed,
-            }),
+        let poly_id = PolyID {
+            id: id as u64,
+            ptype: PolynomialType::Committed,
         };
-        WitnessColumn { poly, query }
+        let name = name.to_string();
+        let poly = PolynomialReference {
+            poly_id: Some(poly_id),
+            name: name.clone(),
+            next: false,
+            // Todo: Is this used?
+            index: None,
+        };
+        WitnessColumn {
+            poly_id,
+            poly,
+            name,
+            query,
+        }
     }
 }

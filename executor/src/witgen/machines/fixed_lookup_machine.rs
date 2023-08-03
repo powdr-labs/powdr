@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::mem;
 use std::num::NonZeroUsize;
 
-use ast::analyzed::{Identity, IdentityKind, PolynomialReference, SelectedExpressions};
+use ast::analyzed::{Identity, IdentityKind, PolyID, PolynomialReference, SelectedExpressions};
 use itertools::Itertools;
 use number::FieldElement;
 
@@ -11,7 +11,7 @@ use crate::witgen::util::try_to_simple_poly_ref;
 use crate::witgen::{EvalError, EvalValue, IncompleteCause};
 use crate::witgen::{EvalResult, FixedData};
 
-type Application = (Vec<u64>, Vec<u64>);
+type Application = (Vec<PolyID>, Vec<PolyID>);
 type Index<T> = BTreeMap<Vec<T>, IndexValue>;
 
 #[derive(Debug)]
@@ -44,8 +44,8 @@ impl<T: FieldElement> IndexedColumns<T> {
     fn get_match(
         &mut self,
         fixed_data: &FixedData<T>,
-        mut assignment: Vec<(u64, T)>,
-        mut output_fixed_columns: Vec<u64>,
+        mut assignment: Vec<(PolyID, T)>,
+        mut output_fixed_columns: Vec<PolyID>,
     ) -> Option<&IndexValue> {
         // sort in order to have a single index for [X, Y] and for [Y, X]
         assignment.sort_by(|(name0, _), (name1, _)| name0.cmp(name1));
@@ -70,7 +70,7 @@ impl<T: FieldElement> IndexedColumns<T> {
     fn ensure_index(
         &mut self,
         fixed_data: &FixedData<T>,
-        sorted_fixed_columns: &(Vec<u64>, Vec<u64>),
+        sorted_fixed_columns: &(Vec<PolyID>, Vec<PolyID>),
     ) {
         // we do not use the Entry API here because we want to clone `sorted_input_fixed_columns` only on index creation
         if self.indices.get(sorted_fixed_columns).is_some() {
@@ -84,23 +84,23 @@ impl<T: FieldElement> IndexedColumns<T> {
             "Generating index for lookup in columns (in: {}, out: {})",
             sorted_input_fixed_columns
                 .iter()
-                .map(|c| format!("{}", fixed_data.fixed_cols[*c as usize]))
+                .map(|c| fixed_data.column_name(c).to_string())
                 .join(", "),
             sorted_output_fixed_columns
                 .iter()
-                .map(|c| format!("{}", fixed_data.fixed_cols[*c as usize]))
+                .map(|c| fixed_data.column_name(c).to_string())
                 .join(", ")
         );
 
         // get all values for the columns to be indexed
         let input_column_values = sorted_input_fixed_columns
             .iter()
-            .map(|id| fixed_data.fixed_col_values[*id as usize])
+            .map(|id| fixed_data.fixed_cols[id].values)
             .collect::<Vec<_>>();
 
         let output_column_values = sorted_output_fixed_columns
             .iter()
-            .map(|id| fixed_data.fixed_col_values[*id as usize])
+            .map(|id| fixed_data.fixed_cols[id].values)
             .collect::<Vec<_>>();
 
         let index: BTreeMap<Vec<T>, IndexValue> = (0..fixed_data.degree as usize)
@@ -219,14 +219,14 @@ impl<T: FieldElement> FixedLookup<T> {
             if let Some(value) = left_value {
                 input_assignment.push((r, value));
             } else {
-                output_columns.push(r.poly_id.unwrap().id);
+                output_columns.push(r.poly_id());
                 output_expressions.push(l);
             }
         });
 
         let input_assignment_with_ids = input_assignment
             .iter()
-            .map(|(poly_ref, v)| (poly_ref.poly_id.unwrap().id, *v))
+            .map(|(poly_ref, v)| (poly_ref.poly_id(), *v))
             .collect();
         let index_value = self
             .indices
@@ -256,7 +256,7 @@ impl<T: FieldElement> FixedLookup<T> {
 
         let output = output_columns
             .iter()
-            .map(|column| fixed_data.fixed_col_values[*column as usize][row]);
+            .map(|column| fixed_data.fixed_cols[column].values[row]);
 
         let mut result = EvalValue::complete(vec![]);
         for (l, r) in output_expressions.into_iter().zip(output) {
