@@ -92,8 +92,7 @@ where
         query_callback,
     );
 
-    let mut values: BTreeMap<PolyID, Vec<T>> =
-        fixed.witness_cols.keys().map(|&p| (p, vec![])).collect();
+    let mut rows: Vec<Row<T>> = vec![];
 
     let poly_ids = fixed.witness_cols.keys().copied().collect::<Vec<_>>();
 
@@ -106,10 +105,19 @@ where
     for row in 0..degree as DegreeType {
         // Check if we are in a loop.
         if looping_period.is_none() && row % 100 == 0 && row > 0 {
-            let relevant_values = values
+            let relevant_values = rows
                 .iter()
-                .filter(|(id, _)| generator.is_relevant_witness(id))
-                .map(|(_, v)| v)
+                .rev()
+                .take(8)
+                .rev()
+                .map(|row| {
+                    row.values
+                        .iter()
+                        .enumerate()
+                        .filter(|(i, _)| generator.is_relevant_witness(&poly_ids[*i]))
+                        .map(|(_, v)| *v)
+                        .collect()
+                })
                 .collect::<Vec<_>>();
             looping_period = rows_are_repeating(&relevant_values);
             if let Some(p) = looping_period {
@@ -118,18 +126,9 @@ where
         }
         let mut row_values = None;
         if let Some(period) = looping_period {
-            let values = Row {
-                values: values
-                    .iter()
-                    .enumerate()
-                    .map(|(i, (&p, v))| {
-                        assert!(p.id == i as u64);
-                        v[v.len() - period]
-                    })
-                    .collect(),
-            };
+            let values = &rows[rows.len() - period];
             if generator.propose_next_row(row, &values) {
-                row_values = Some(values);
+                row_values = Some(values.clone());
             } else {
                 log::info!("Using loop failed. Trying to generate regularly again.");
                 looping_period = None;
@@ -139,10 +138,17 @@ where
             row_values = Some(generator.compute_next_row(row));
         };
 
-        for (i, v) in row_values.unwrap().values.into_iter().enumerate() {
-            values.get_mut(&poly_ids[i]).unwrap().push(v);
+        rows.push(row_values.unwrap());
+    }
+
+    let mut values: BTreeMap<PolyID, Vec<T>> = BTreeMap::new();
+    for row in rows.into_iter() {
+        for (poly_id, value) in poly_ids.iter().zip(row.values.into_iter()) {
+            let col = values.entry(*poly_id).or_insert_with(|| vec![]);
+            col.push(value);
         }
     }
+
     // Overwrite all machine witness columns
     for (name, data) in generator.machine_witness_col_values() {
         let poly_id = *values
@@ -169,16 +175,16 @@ where
 
 /// Checks if the last rows are repeating and returns the period.
 /// Only checks for periods of 1, 2, 3 and 4.
-fn rows_are_repeating<T: PartialEq>(values: &[&Vec<T>]) -> Option<usize> {
+fn rows_are_repeating<T: PartialEq>(values: &[Vec<T>]) -> Option<usize> {
     if values.is_empty() {
         return Some(1);
-    } else if values[0].len() < 4 {
+    } else if values.len() < 4 {
         return None;
     }
     (1..=3).find(|&period| {
-        values.iter().all(|value| {
-            let len = value.len();
-            (1..=period).all(|i| value[len - i - period] == value[len - i])
+        (0..values[0].len()).all(|col_index| {
+            let len = values.len();
+            (1..=period).all(|i| values[len - i - period][col_index] == values[len - i][col_index])
         })
     })
 }
@@ -297,6 +303,7 @@ impl<'a, T> WitnessColumn<'a, T> {
     }
 }
 
+#[derive(Clone)]
 pub struct Row<V> {
     values: Vec<V>,
 }
