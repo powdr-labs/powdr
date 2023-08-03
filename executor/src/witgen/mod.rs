@@ -1,4 +1,5 @@
 use std::collections::BTreeMap;
+use std::ops::{Index, IndexMut};
 
 use ast::analyzed::{
     Analyzed, Expression, FunctionValueDefinition, PolyID, PolynomialReference, PolynomialType,
@@ -298,4 +299,38 @@ impl<'a, T> WitnessColumn<'a, T> {
 
 pub struct Row<V> {
     values: Vec<V>,
+}
+
+impl<V: Clone> Row<Option<V>> {
+    pub fn unwrap(&self) -> Row<V> {
+        Row {
+            values: self.values.iter().map(|v| v.clone().unwrap()).collect(),
+        }
+    }
+}
+
+impl<V: Clone> Row<V> {
+    pub fn to_option(&self) -> Row<Option<V>> {
+        Row {
+            values: self.values.iter().map(|v| Some(v.clone())).collect(),
+        }
+    }
+}
+
+impl<V> Index<&PolyID> for Row<V> {
+    type Output = V;
+
+    fn index(&self, poly_id: &PolyID) -> &Self::Output {
+        let index = poly_id.id as usize;
+        assert!(index < self.values.len());
+        &self.values[index]
+    }
+}
+
+impl<V> IndexMut<&PolyID> for Row<V> {
+    fn index_mut(&mut self, poly_id: &PolyID) -> &mut Self::Output {
+        let index = poly_id.id as usize;
+        assert!(index < self.values.len());
+        &mut self.values[index]
+    }
 }
