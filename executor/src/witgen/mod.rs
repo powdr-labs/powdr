@@ -231,11 +231,18 @@ impl<'a, T> FixedColumn<'a, T> {
 }
 
 #[derive(Debug)]
+pub struct Query<'a, T> {
+    /// The query expression
+    expr: &'a Expression<T>,
+    /// The polynomial that is referenced by the query
+    poly: PolynomialReference,
+}
+
+#[derive(Debug)]
 pub struct WitnessColumn<'a, T> {
     poly_id: PolyID,
-    poly: PolynomialReference,
     name: String,
-    query: Option<&'a Expression<T>>,
+    query: Option<Query<'a, T>>,
 }
 
 impl<'a, T> WitnessColumn<'a, T> {
@@ -254,16 +261,20 @@ impl<'a, T> WitnessColumn<'a, T> {
             ptype: PolynomialType::Committed,
         };
         let name = name.to_string();
-        let poly = PolynomialReference {
-            poly_id: Some(poly_id),
-            name: name.clone(),
-            next: false,
-            // Todo: Is this used?
-            index: None,
-        };
+        let query = query.as_ref().map(|callback| {
+            let poly = PolynomialReference {
+                poly_id: Some(poly_id),
+                name: name.clone(),
+                next: false,
+                index: None,
+            };
+            Query {
+                poly,
+                expr: callback,
+            }
+        });
         WitnessColumn {
             poly_id,
-            poly,
             name,
             query,
         }
