@@ -321,18 +321,23 @@ where
     }
 
     fn process_witness_query(&mut self, column: &&'a WitnessColumn<T>) -> EvalResult<'a, T> {
-        let query = match self.interpolate_query(column.query.unwrap()) {
+        let query = column.query.as_ref().unwrap();
+        let query_string = match self.interpolate_query(query.expr) {
             Ok(query) => query,
             Err(incomplete) => return Ok(EvalValue::incomplete(incomplete)),
         };
-        if let Some(value) = self.query_callback.as_mut().and_then(|c| (c)(&query)) {
+        if let Some(value) = self
+            .query_callback
+            .as_mut()
+            .and_then(|c| (c)(&query_string))
+        {
             Ok(EvalValue::complete(vec![(
-                &column.poly,
+                &query.poly,
                 Constraint::Assignment(value),
             )]))
         } else {
             Ok(EvalValue::incomplete(IncompleteCause::NoQueryAnswer(
-                query,
+                query_string,
                 column.name.to_string(),
             )))
         }
