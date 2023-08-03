@@ -40,9 +40,12 @@ impl<T: FieldElement> SortedWitnesses<T> {
             return None;
         }
         check_identity(fixed_data, identities.first().unwrap()).map(|key_col| {
+            let mut witnesses = witnesses.clone();
+            witnesses.remove(&key_col);
+
             Box::new(SortedWitnesses {
                 key_col,
-                witnesses: witnesses.clone(),
+                witnesses: witnesses,
                 data: Default::default(),
             })
         })
