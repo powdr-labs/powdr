@@ -352,14 +352,14 @@ fn run_command(command: Commands) {
 fn setup<F: FieldElement>(size: u64, dir: String, backend_type: BackendType) {
     let dir = Path::new(&dir);
 
-    let backend = backend_type.build::<F>().setup_from_params(size);
+    let backend = backend_type.build::<F>().new_from_params(size);
     write_backend_to_fs(backend.as_ref(), dir);
 }
 
 fn write_backend_to_fs<F: FieldElement>(be: &dyn Backend<F>, output_dir: &Path) {
     let mut params_file = fs::File::create(output_dir.join("params.bin")).unwrap();
     let mut params_writer = BufWriter::new(&mut params_file);
-    be.write(&mut params_writer).unwrap();
+    be.write_setup(&mut params_writer).unwrap();
     params_writer.flush().unwrap();
     log::info!("Wrote params.bin.");
 }
@@ -464,10 +464,10 @@ fn read_and_prove<T: FieldElement>(
     let builder = backend_type.build::<T>();
     let backend = if let Some(filename) = params {
         let mut file = fs::File::open(dir.join(filename)).unwrap();
-        builder.read(&mut file).unwrap()
+        builder.load_setup(&mut file).unwrap()
     } else {
         let degree = usize::BITS - fixed.1.leading_zeros() + 1;
-        builder.setup_from_params(degree as u64)
+        builder.new_from_params(degree as u64)
     };
 
     let proof = proof_path.map(|filename| {

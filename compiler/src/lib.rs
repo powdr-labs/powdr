@@ -210,8 +210,8 @@ where
     // Even if we don't have all constants and witnesses, some backends will
     // still output useful stuff.
     if let Some(backend) = prove_with {
-        let builder = backend.build::<T>();
-        let backend = builder.setup_from_params(degree);
+        let factory = backend.build::<T>();
+        let backend = factory.new_from_params(degree);
         if let Err(error) =
             backend.prove(&analyzed, &constants, witness.as_deref(), None, output_dir)
         {

@@ -4,22 +4,12 @@ use std::{
     path::Path,
 };
 
-use crate::{Backend, BackendBuilder, Proof};
+use crate::{BackendImpl, BackendWithSetup, BackendWithoutSetup, Proof};
 use ast::analyzed::Analyzed;
+use halo2::Halo2Prover;
 use number::{DegreeType, FieldElement};
 
-pub struct Halo2Builder;
-impl<T: FieldElement> BackendBuilder<T> for Halo2Builder {
-    fn setup_from_params(&self, size: DegreeType) -> Box<dyn Backend<T>> {
-        Box::new(halo2::Halo2::new(size))
-    }
-
-    fn read(&self, mut input: &mut dyn io::Read) -> Result<Box<dyn Backend<T>>, io::Error> {
-        Ok(Box::new(halo2::Halo2::read(&mut input)?))
-    }
-}
-#[cfg(feature = "halo2")]
-impl<T: FieldElement> Backend<T> for halo2::Halo2<T> {
+impl<T: FieldElement> BackendImpl<T> for Halo2Prover {
     fn prove(
         &self,
         pil: &Analyzed<T>,
@@ -47,25 +37,26 @@ impl<T: FieldElement> Backend<T> for halo2::Halo2<T> {
 
         Ok(())
     }
+}
 
-    fn write(&self, mut output: &mut dyn io::Write) -> Result<(), io::Error> {
+impl<T: FieldElement> BackendWithSetup<T> for halo2::Halo2Prover {
+    fn new_setup_from_params(degree: DegreeType) -> Self {
+        Halo2Prover::assert_field_is_compatible::<T>();
+        Halo2Prover::new(degree)
+    }
+
+    fn load_setup(mut input: &mut dyn io::Read) -> Result<Self, io::Error> {
+        Halo2Prover::assert_field_is_compatible::<T>();
+        Halo2Prover::read(&mut input)
+    }
+
+    fn write_setup(&self, mut output: &mut dyn io::Write) -> Result<(), io::Error> {
         self.write(&mut output)
     }
 }
 
-pub struct Halo2MockBuilder;
-impl<T: FieldElement> BackendBuilder<T> for Halo2MockBuilder {
-    fn setup_from_params(&self, _size: DegreeType) -> Box<dyn Backend<T>> {
-        Box::new(Halo2Mock)
-    }
-
-    fn read(&self, _input: &mut dyn io::Read) -> Result<Box<dyn Backend<T>>, io::Error> {
-        panic!("Halo2Mock backend does not support serialization");
-    }
-}
-
 pub struct Halo2Mock;
-impl<T: FieldElement> Backend<T> for Halo2Mock {
+impl<T: FieldElement> BackendImpl<T> for Halo2Mock {
     fn prove(
         &self,
         pil: &Analyzed<T>,
@@ -92,8 +83,10 @@ impl<T: FieldElement> Backend<T> for Halo2Mock {
 
         Ok(())
     }
+}
 
-    fn write(&self, _output: &mut dyn io::Write) -> Result<(), io::Error> {
-        panic!("Halo2Mock backend does not support serialization");
+impl<T: FieldElement> BackendWithoutSetup<T> for Halo2Mock {
+    fn new(_degree: DegreeType) -> Self {
+        Self
     }
 }

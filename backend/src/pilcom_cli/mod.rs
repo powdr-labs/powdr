@@ -1,6 +1,6 @@
 mod json_exporter;
 
-use crate::{Backend, BackendBuilder, Proof};
+use crate::{BackendImpl, BackendWithoutSetup, Proof};
 use ast::analyzed::Analyzed;
 use json::JsonValue;
 use number::{write_polys_file, DegreeType, FieldElement};
@@ -10,22 +10,17 @@ use std::{
     path::Path,
 };
 
-pub struct PilcomCliBuilder;
-
-impl<T: FieldElement> BackendBuilder<T> for PilcomCliBuilder {
-    fn setup_from_params(&self, size: DegreeType) -> Box<dyn Backend<T>> {
-        Box::new(PilcomCli { degree: size })
-    }
-
-    fn read(&self, _input: &mut dyn io::Read) -> Result<Box<dyn Backend<T>>, io::Error> {
-        panic!("PilcomCli backend does not support serialization");
-    }
-}
-
-struct PilcomCli {
+pub struct PilcomCli {
     degree: DegreeType,
 }
-impl<T: FieldElement> Backend<T> for PilcomCli {
+
+impl<T: FieldElement> BackendWithoutSetup<T> for PilcomCli {
+    fn new(degree: DegreeType) -> Self {
+        Self { degree }
+    }
+}
+
+impl<T: FieldElement> BackendImpl<T> for PilcomCli {
     fn prove(
         &self,
         pil: &Analyzed<T>,
@@ -52,10 +47,6 @@ impl<T: FieldElement> Backend<T> for PilcomCli {
         log::info!("Written compiled PIL in Pilcom json format.");
 
         Ok(())
-    }
-
-    fn write(&self, _output: &mut dyn io::Write) -> Result<(), io::Error> {
-        panic!("Pilcom CLI backend does not support serialization");
     }
 }
 

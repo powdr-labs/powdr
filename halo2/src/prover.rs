@@ -28,7 +28,6 @@ use itertools::Itertools;
 use rand::rngs::OsRng;
 use std::{
     io::{self, Cursor},
-    marker::PhantomData,
     time::Instant,
 };
 
@@ -37,37 +36,29 @@ pub use halo2_proofs::poly::kzg::commitment::ParamsKZG;
 
 /// Create a halo2 proof for a given PIL, fixed column values and witness column values
 /// We use KZG ([GWC variant](https://eprint.iacr.org/2019/953)) and Keccak256
-pub struct Halo2<F: FieldElement> {
+pub struct Halo2Prover {
     params: ParamsKZG<Bn256>,
-    _field: PhantomData<F>,
 }
 
-impl<F: FieldElement> Halo2<F> {
+impl Halo2Prover {
     pub fn new(size: DegreeType) -> Self {
-        Self::assert_field_is_compatible();
-
         let degree = DegreeType::BITS - size.leading_zeros() + 1;
         Self {
             params: ParamsKZG::<Bn256>::new(degree),
-            _field: PhantomData,
         }
     }
 
     pub fn read(input: &mut impl io::Read) -> Result<Self, io::Error> {
-        Self::assert_field_is_compatible();
         let params = ParamsKZG::<Bn256>::read(input)?;
 
-        Ok(Self {
-            params,
-            _field: PhantomData,
-        })
+        Ok(Self { params })
     }
 
     pub fn write(&self, output: &mut impl io::Write) -> Result<(), io::Error> {
         self.params.write(output)
     }
 
-    pub fn prove_ast(
+    pub fn prove_ast<F: FieldElement>(
         &self,
         pil: &Analyzed<F>,
         fixed: &[(&str, Vec<F>)],
@@ -110,7 +101,7 @@ impl<F: FieldElement> Halo2<F> {
         proof
     }
 
-    pub fn prove_aggr(
+    pub fn prove_aggr<F: FieldElement>(
         &self,
         pil: &Analyzed<F>,
         fixed: &[(&str, Vec<F>)],
@@ -179,7 +170,7 @@ impl<F: FieldElement> Halo2<F> {
         proof
     }
 
-    fn assert_field_is_compatible() {
+    pub fn assert_field_is_compatible<F: FieldElement>() {
         if polyexen::expr::get_field_p::<Fr>() != F::modulus().to_arbitrary_integer() {
             panic!("powdr modulus doesn't match halo2 modulus. Make sure you are using Bn254");
         }
