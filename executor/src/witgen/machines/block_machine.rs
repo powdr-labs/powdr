@@ -13,7 +13,9 @@ use crate::witgen::{
     Constraint, EvalError,
 };
 use crate::witgen::{Constraints, EvalValue, IncompleteCause};
-use ast::analyzed::{Expression, Identity, IdentityKind, PolynomialReference, SelectedExpressions};
+use ast::analyzed::{
+    Expression, Identity, IdentityKind, PolyID, PolynomialReference, SelectedExpressions,
+};
 use number::{DegreeType, FieldElement};
 
 /// A machine that produces multiple rows (one block) per query.
@@ -33,7 +35,7 @@ pub struct BlockMachine<T: FieldElement> {
     /// Range constraints of the outer polynomials, for the current block.
     outer_range_constraints: HashMap<usize, RangeConstraint<T>>,
     /// Global range constraints on witness columns.
-    global_range_constraints: HashMap<usize, RangeConstraint<T>>,
+    global_range_constraints: BTreeMap<PolyID, RangeConstraint<T>>,
     /// Poly degree / absolute number of rows
     degree: DegreeType,
     /// Cache that states the order in which to evaluate identities
@@ -47,7 +49,7 @@ impl<T: FieldElement> BlockMachine<T> {
         connecting_identities: &[&Identity<T>],
         identities: &[&Identity<T>],
         witness_cols: &HashSet<&PolynomialReference>,
-        global_range_constraints: &BTreeMap<&PolynomialReference, RangeConstraint<T>>,
+        global_range_constraints: &BTreeMap<PolyID, RangeConstraint<T>>,
     ) -> Option<Box<Self>> {
         for id in connecting_identities {
             // TODO we should check that the other constraints/fixed columns are also periodic.
@@ -58,17 +60,12 @@ impl<T: FieldElement> BlockMachine<T> {
                     identities: identities.iter().map(|&i| i.clone()).collect(),
                     data: witness_cols
                         .iter()
-                        .map(|n| (n.poly_id() as usize, vec![]))
+                        .map(|n| (n.poly_id_u64() as usize, vec![]))
                         .collect(),
                     row: 0,
                     range_constraints: Default::default(),
                     outer_range_constraints: Default::default(),
-                    global_range_constraints: global_range_constraints
-                        .iter()
-                        .filter_map(|(n, c)| {
-                            n.is_witness().then_some((n.poly_id() as usize, c.clone()))
-                        })
-                        .collect(),
+                    global_range_constraints: global_range_constraints.clone(),
                     degree: fixed_data.degree,
                     processing_sequence_cache: ProcessingSequenceCache::new(
                         period,
@@ -109,7 +106,7 @@ fn try_to_period<T: FieldElement>(
                 return None;
             }
 
-            let values = fixed_data.fixed_col_values[poly.poly_id() as usize];
+            let values = fixed_data.fixed_col_values[poly.poly_id_u64() as usize];
 
             let period = 1 + values.iter().position(|v| v.is_one())?;
             values
@@ -360,7 +357,7 @@ impl<T: FieldElement> BlockMachine<T> {
                         for (poly_id, next, constraint) in inner_value
                             .constraints
                             .into_iter()
-                            .map(|(poly, constraint)| (poly.poly_id(), poly.next, constraint))
+                            .map(|(poly, constraint)| (poly.poly_id_u64(), poly.next, constraint))
                             .collect::<Vec<_>>()
                         {
                             progress_in_last_step |=
@@ -477,7 +474,7 @@ impl<T: FieldElement> BlockMachine<T> {
                             Constraint::RangeConstraint(rc) => {
                                 update_range_constraint(
                                     &mut self.outer_range_constraints,
-                                    poly.poly_id() as usize,
+                                    poly.poly_id_u64() as usize,
                                     rc.clone(),
                                 );
                             }
@@ -629,18 +626,18 @@ impl<T: FieldElement> RangeConstraintSet<&PolynomialReference, T> for BlockMachi
     fn range_constraint(&self, poly: &PolynomialReference) -> Option<RangeConstraint<T>> {
         assert!(poly.is_witness());
         self.global_range_constraints
-            .get(&(poly.poly_id() as usize))
+            .get(&poly.poly_id())
             .cloned()
             .or_else(|| {
                 let row = (self.row + poly.next as DegreeType) % self.degree;
                 self.range_constraints
-                    .get(&(poly.poly_id() as usize))?
+                    .get(&(poly.poly_id_u64() as usize))?
                     .get(&row)
                     .cloned()
             })
             .or_else(|| {
                 self.outer_range_constraints
-                    .get(&(poly.poly_id() as usize))
+                    .get(&(poly.poly_id_u64() as usize))
                     .cloned()
             })
     }
@@ -655,7 +652,7 @@ struct WitnessData<'a, T> {
 
 impl<'a, T: FieldElement> WitnessColumnEvaluator<T> for WitnessData<'a, T> {
     fn value<'b>(&self, poly: &'b PolynomialReference) -> AffineResult<&'b PolynomialReference, T> {
-        let id = poly.poly_id() as usize;
+        let id = poly.poly_id_u64() as usize;
         let row = if poly.next {
             (self.row + 1) % self.fixed_data.degree
         } else {

@@ -399,8 +399,12 @@ impl From<&Polynomial> for PolyID {
 
 impl PolynomialReference {
     #[inline]
-    pub fn poly_id(&self) -> u64 {
+    pub fn poly_id_u64(&self) -> u64 {
         self.poly_id.unwrap().id
+    }
+    #[inline]
+    pub fn poly_id(&self) -> PolyID {
+        self.poly_id.unwrap()
     }
     #[inline]
     pub fn is_witness(&self) -> bool {
