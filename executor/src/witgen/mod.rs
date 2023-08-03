@@ -30,7 +30,7 @@ mod util;
 pub fn generate<'a, T: FieldElement, QueryCallback>(
     analyzed: &'a Analyzed<T>,
     degree: DegreeType,
-    fixed_col_values: &'a [(&str, Vec<T>)],
+    fixed_col_values: &[(&str, Vec<T>)],
     query_callback: Option<QueryCallback>,
 ) -> Vec<(&'a str, Vec<T>)>
 where
@@ -139,9 +139,24 @@ where
         *col = data;
     }
 
+    // Map from column id to name
+    let mut col_names = analyzed
+        .committed_polys_in_source_order()
+        .iter()
+        .map(|(p, _)| {
+            (
+                PolyID {
+                    id: p.id,
+                    ptype: PolynomialType::Committed,
+                },
+                p.absolute_name.as_str(),
+            )
+        })
+        .collect::<BTreeMap<_, _>>();
+
     values
         .into_iter()
-        .map(|(id, v)| (fixed.witness_cols[&id].name, v))
+        .map(|(id, v)| (col_names.remove(&id).unwrap(), v))
         .collect()
 }
 
@@ -181,10 +196,10 @@ impl<'a, T> FixedData<'a, T> {
         }
     }
 
-    fn column_name(&self, poly_id: &PolyID) -> &'a str {
+    fn column_name(&self, poly_id: &PolyID) -> &str {
         match poly_id.ptype {
-            PolynomialType::Committed => self.witness_cols[poly_id].name,
-            PolynomialType::Constant => self.fixed_cols[poly_id].name,
+            PolynomialType::Committed => &self.witness_cols[poly_id].name,
+            PolynomialType::Constant => &self.fixed_cols[poly_id].name,
             PolynomialType::Intermediate => unimplemented!(),
         }
     }
@@ -196,7 +211,7 @@ impl<'a, T> FixedData<'a, T> {
 
 pub struct FixedColumn<'a, T> {
     poly_id: PolyID,
-    name: &'a str,
+    name: String,
     values: &'a Vec<T>,
 }
 
@@ -206,6 +221,7 @@ impl<'a, T> FixedColumn<'a, T> {
             id: id as u64,
             ptype: PolynomialType::Constant,
         };
+        let name = name.to_string();
         FixedColumn {
             poly_id,
             name,
@@ -225,7 +241,7 @@ pub struct Query<'a, T> {
 #[derive(Debug)]
 pub struct WitnessColumn<'a, T> {
     poly_id: PolyID,
-    name: &'a str,
+    name: String,
     query: Option<Query<'a, T>>,
 }
 
@@ -244,10 +260,11 @@ impl<'a, T> WitnessColumn<'a, T> {
             id: id as u64,
             ptype: PolynomialType::Committed,
         };
+        let name = name.to_string();
         let query = query.as_ref().map(|callback| {
             let poly = PolynomialReference {
                 poly_id: Some(poly_id),
-                name: name.to_string(),
+                name: name.clone(),
                 next: false,
                 index: None,
             };
