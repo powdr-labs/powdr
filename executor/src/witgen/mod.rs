@@ -108,7 +108,7 @@ where
     let mut looping_period = None;
     for row in 0..degree as DegreeType {
         // Check if we are in a loop.
-        if looping_period.is_none() && row % 1000 == 0 && row > 0 {
+        if looping_period.is_none() && row % 100 == 0 && row > 0 {
             let relevant_values = rows.iter().rev().take(8).rev().collect::<Vec<_>>();
             looping_period = rows_are_repeating(&relevant_values, &relevant_witnesses);
             if let Some(p) = looping_period {
