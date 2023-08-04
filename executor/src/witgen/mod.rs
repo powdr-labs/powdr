@@ -110,8 +110,7 @@ where
     for row in 0..degree as DegreeType {
         // Check if we are in a loop.
         if looping_period.is_none() && row % 100 == 0 && row > 0 {
-            let relevant_values = rows.iter().rev().take(8).rev().collect::<Vec<_>>();
-            looping_period = rows_are_repeating(&relevant_values, &relevant_witnesses);
+            looping_period = rows_are_repeating(&rows, &relevant_witnesses);
             if let Some(p) = looping_period {
                 log::info!("Found loop with period {p} starting at row {row}");
             }
@@ -165,11 +164,13 @@ where
         .collect()
 }
 
-fn iter_relevant<'a, T>(
-    row: &'a ColumnMap<T>,
+fn zip_relevant<'a, T>(
+    row1: &'a ColumnMap<T>,
+    row2: &'a ColumnMap<T>,
     is_relevant: &'a [bool],
-) -> impl Iterator<Item = &'a T> {
-    row.values()
+) -> impl Iterator<Item = (&'a T, &'a T)> {
+    row1.values()
+        .zip(row2.values())
         .zip(is_relevant.iter())
         .filter(|(_, &b)| b)
         .map(|(v, _)| v)
@@ -177,22 +178,17 @@ fn iter_relevant<'a, T>(
 
 /// Checks if the last rows are repeating and returns the period.
 /// Only checks for periods of 1, 2, 3 and 4.
-fn rows_are_repeating<T: PartialEq>(
-    values: &[&ColumnMap<T>],
-    is_relevant: &[bool],
-) -> Option<usize> {
-    if values.is_empty() {
+fn rows_are_repeating<T: PartialEq>(rows: &[ColumnMap<T>], is_relevant: &[bool]) -> Option<usize> {
+    if rows.is_empty() {
         return Some(1);
-    } else if values.len() < 4 {
+    } else if rows.len() < 4 {
         return None;
     }
 
-    let len = values.len();
+    let len = rows.len();
     (1..=3).find(|&period| {
         (1..=period).all(|i| {
-            iter_relevant(values[len - i - period], is_relevant)
-                .zip(iter_relevant(values[len - i], is_relevant))
-                .all(|(a, b)| a == b)
+            zip_relevant(&rows[len - i - period], &rows[len - i], is_relevant).all(|(a, b)| a == b)
         })
     })
 }
