@@ -198,7 +198,6 @@ pub struct FixedData<'a, T> {
     degree: DegreeType,
     fixed_cols: BTreeMap<PolyID, FixedColumn<'a, T>>,
     witness_cols: BTreeMap<PolyID, WitnessColumn<'a, T>>,
-    capacity: usize,
 }
 
 impl<'a, T> FixedData<'a, T> {
@@ -207,17 +206,22 @@ impl<'a, T> FixedData<'a, T> {
         fixed_cols: BTreeMap<PolyID, FixedColumn<'a, T>>,
         witness_cols: BTreeMap<PolyID, WitnessColumn<'a, T>>,
     ) -> Self {
-        let capacity = witness_cols.keys().map(|p| p.id).max().unwrap_or(0) as usize + 1;
+        for (i, poly_id) in witness_cols.keys().enumerate() {
+            assert!(poly_id.id == i as u64);
+        }
         FixedData {
             degree,
             fixed_cols,
             witness_cols,
-            capacity,
         }
     }
 
     fn witness_map<V: Clone>(&self, initial_value: V) -> ColumnMap<V> {
-        ColumnMap::new(initial_value, self.capacity, PolynomialType::Committed)
+        ColumnMap::new(
+            initial_value,
+            self.witness_cols.len(),
+            PolynomialType::Committed,
+        )
     }
 
     fn column_name(&self, poly_id: &PolyID) -> &str {
