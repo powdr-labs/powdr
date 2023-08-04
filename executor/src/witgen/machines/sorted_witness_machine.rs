@@ -7,6 +7,7 @@ use super::fixed_lookup_machine::FixedLookup;
 use super::Machine;
 use super::{EvalResult, FixedData};
 use crate::witgen::affine_expression::AffineResult;
+use crate::witgen::column_map::ColumnMap;
 use crate::witgen::{
     expression_evaluator::ExpressionEvaluator, fixed_evaluator::FixedEvaluator,
     symbolic_evaluator::SymbolicEvaluator,
@@ -27,7 +28,7 @@ use number::FieldElement;
 pub struct SortedWitnesses<T> {
     key_col: PolyID,
     witnesses: HashSet<PolyID>,
-    data: BTreeMap<T, BTreeMap<PolyID, Option<T>>>,
+    data: BTreeMap<T, ColumnMap<Option<T>>>,
 }
 
 impl<T: FieldElement> SortedWitnesses<T> {
@@ -158,7 +159,7 @@ impl<T: FieldElement> Machine<T> for SortedWitnesses<T> {
         for poly_id in &self.witnesses {
             let mut col_values = values
                 .iter_mut()
-                .map(|row| std::mem::take(row.get_mut(poly_id).unwrap()).unwrap_or_default())
+                .map(|row| std::mem::take(&mut row[poly_id]).unwrap_or_default())
                 .collect::<Vec<_>>();
             col_values.resize(fixed_data.degree as usize, 0.into());
             result.insert(fixed_data.column_name(poly_id).to_string(), col_values);
@@ -207,9 +208,9 @@ impl<T: FieldElement> SortedWitnesses<T> {
         let stored_values = self
             .data
             .entry(key_value)
-            .or_insert_with(|| self.witnesses.iter().map(|&p| (p, None)).collect());
+            .or_insert_with(|| fixed_data.witness_map(None));
         for (&l, &r) in left.iter().zip(rhs.iter()).skip(1) {
-            let stored_value = stored_values.get_mut(&r.poly_id()).unwrap();
+            let stored_value = &mut stored_values[&r.poly_id()];
             match stored_value {
                 // There is a stored value
                 Some(v) => {
