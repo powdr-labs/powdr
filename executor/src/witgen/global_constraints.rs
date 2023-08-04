@@ -8,6 +8,7 @@ use ast::analyzed::{
 use ast::parsed::BinaryOperator;
 use number::FieldElement;
 
+use super::column_map::ColumnMap;
 use super::expression_evaluator::ExpressionEvaluator;
 use super::range_constraints::RangeConstraint;
 use super::symbolic_evaluator::SymbolicEvaluator;
@@ -33,7 +34,7 @@ impl<'a, T: FieldElement> RangeConstraintSet<&PolynomialReference, T>
 }
 
 pub struct GlobalConstraints<'a, T: FieldElement> {
-    pub known_witness_constraints: BTreeMap<PolyID, RangeConstraint<T>>,
+    pub known_witness_constraints: ColumnMap<Option<RangeConstraint<T>>>,
     pub retained_identities: Vec<&'a Identity<T>>,
 }
 
@@ -85,15 +86,16 @@ pub fn determine_global_constraints<'a, T: FieldElement>(
         log::debug!("  {id}");
     }
 
-    let mut known_witness_constraints: BTreeMap<PolyID, RangeConstraint<T>> = BTreeMap::new();
+    let mut known_witness_constraints: ColumnMap<Option<RangeConstraint<T>>> =
+        fixed_data.witness_map(None);
     for (poly_id, con) in known_constraints {
         if poly_id.ptype == PolynomialType::Committed {
             // It's theoretically possible to have a constraint for both X and X'.
             // In that case, we take the conjunction.
-            known_witness_constraints
-                .entry(poly_id)
-                .and_modify(|existing_con| *existing_con = existing_con.conjunction(&con))
-                .or_insert(con);
+            let con = known_witness_constraints[&poly_id].as_ref()
+                .map(|existing_con| existing_con.conjunction(&con))
+                .unwrap_or(con);
+            known_witness_constraints[&poly_id] = Some(con);
         }
     }
 

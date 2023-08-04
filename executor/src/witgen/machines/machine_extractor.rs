@@ -1,4 +1,3 @@
-use std::collections::BTreeMap;
 use std::collections::HashSet;
 
 use super::block_machine::BlockMachine;
@@ -7,6 +6,7 @@ use super::fixed_lookup_machine::FixedLookup;
 use super::sorted_witness_machine::SortedWitnesses;
 use super::FixedData;
 use super::Machine;
+use crate::witgen::column_map::ColumnMap;
 use crate::witgen::range_constraints::RangeConstraint;
 use ast::analyzed::PolyID;
 use ast::analyzed::{Expression, Identity, IdentityKind, SelectedExpressions};
@@ -26,7 +26,7 @@ pub struct ExtractionOutput<'a, T> {
 pub fn split_out_machines<'a, T: FieldElement>(
     fixed: &'a FixedData<'a, T>,
     identities: Vec<&'a Identity<T>>,
-    global_range_constraints: &BTreeMap<PolyID, RangeConstraint<T>>,
+    global_range_constraints: &ColumnMap<Option<RangeConstraint<T>>>,
 ) -> ExtractionOutput<'a, T> {
     let fixed_lookup = FixedLookup::try_new(fixed, &[], &Default::default()).unwrap();
 

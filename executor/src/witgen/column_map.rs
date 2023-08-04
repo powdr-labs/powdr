@@ -23,8 +23,10 @@ impl<V: Clone> ColumnMap<V> {
 
 impl<V> ColumnMap<V> {
     pub fn from(values: impl Iterator<Item = V>, ptype: PolynomialType) -> Self {
-        let values: Vec<_> = values.collect();
-        ColumnMap { values, ptype }
+        ColumnMap {
+            values: values.collect(),
+            ptype,
+        }
     }
 }
 
@@ -33,7 +35,7 @@ impl<V> ColumnMap<V> {
         let ptype = self.ptype;
         (0..self.values.len()).map(move |i| PolyID {
             id: i as u64,
-            ptype: ptype,
+            ptype,
         })
     }
 

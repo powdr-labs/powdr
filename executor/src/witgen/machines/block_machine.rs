@@ -2,6 +2,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::marker::PhantomData;
 
 use super::{EvalResult, FixedData, FixedLookup};
+use crate::witgen::column_map::ColumnMap;
 use crate::witgen::global_constraints::RangeConstraintSet;
 use crate::witgen::util::try_to_simple_poly;
 use crate::witgen::{
@@ -35,7 +36,7 @@ pub struct BlockMachine<T: FieldElement> {
     /// Range constraints of the outer polynomials, for the current block.
     outer_range_constraints: HashMap<PolyID, RangeConstraint<T>>,
     /// Global range constraints on witness columns.
-    global_range_constraints: BTreeMap<PolyID, RangeConstraint<T>>,
+    global_range_constraints: ColumnMap<Option<RangeConstraint<T>>>,
     /// Poly degree / absolute number of rows
     degree: DegreeType,
     /// Cache that states the order in which to evaluate identities
@@ -49,7 +50,7 @@ impl<T: FieldElement> BlockMachine<T> {
         connecting_identities: &[&Identity<T>],
         identities: &[&Identity<T>],
         witness_cols: &HashSet<PolyID>,
-        global_range_constraints: &BTreeMap<PolyID, RangeConstraint<T>>,
+        global_range_constraints: &ColumnMap<Option<RangeConstraint<T>>>,
     ) -> Option<Box<Self>> {
         for id in connecting_identities {
             // TODO we should check that the other constraints/fixed columns are also periodic.
@@ -622,9 +623,8 @@ fn update_range_constraint<K: Eq + std::hash::Hash, T: FieldElement>(
 impl<T: FieldElement> RangeConstraintSet<&PolynomialReference, T> for BlockMachine<T> {
     fn range_constraint(&self, poly: &PolynomialReference) -> Option<RangeConstraint<T>> {
         assert!(poly.is_witness());
-        self.global_range_constraints
-            .get(&poly.poly_id())
-            .cloned()
+        self.global_range_constraints[&poly.poly_id()]
+            .clone()
             .or_else(|| {
                 let row = (self.row + poly.next as DegreeType) % self.degree;
                 self.range_constraints

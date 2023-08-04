@@ -2,7 +2,7 @@ use ast::analyzed::{Expression, Identity, IdentityKind, PolyID, PolynomialRefere
 use itertools::Itertools;
 use number::{DegreeType, FieldElement};
 use parser_util::lines::indent;
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeSet, HashMap};
 use std::time::Instant;
 
 use super::affine_expression::{AffineExpression, AffineResult};
@@ -24,7 +24,7 @@ pub struct Generator<'a, T: FieldElement, QueryCallback: Send + Sync> {
     witnesses: BTreeSet<PolyID>,
     machines: Vec<Box<dyn Machine<T>>>,
     query_callback: Option<QueryCallback>,
-    global_range_constraints: BTreeMap<PolyID, RangeConstraint<T>>,
+    global_range_constraints: ColumnMap<Option<RangeConstraint<T>>>,
     /// Values of the witness polynomials
     current: ColumnMap<Option<T>>,
     /// Values of the witness polynomials in the next row
@@ -70,7 +70,7 @@ where
         fixed_lookup: &'a mut FixedLookup<T>,
         identities: &'a [&'a Identity<T>],
         witnesses: BTreeSet<PolyID>,
-        global_range_constraints: BTreeMap<PolyID, RangeConstraint<T>>,
+        global_range_constraints: ColumnMap<Option<RangeConstraint<T>>>,
         machines: Vec<Box<dyn Machine<T>>>,
         query_callback: Option<QueryCallback>,
     ) -> Self {
@@ -591,7 +591,7 @@ where
 
 struct WitnessRangeConstraintSet<'a, T: FieldElement> {
     /// Global constraints on witness and fixed polynomials.
-    global_range_constraints: &'a BTreeMap<PolyID, RangeConstraint<T>>,
+    global_range_constraints: &'a ColumnMap<Option<RangeConstraint<T>>>,
     /// Range constraints on the witness polynomials in the next row.
     next_range_constraints: &'a ColumnMap<Option<RangeConstraint<T>>>,
 }
@@ -601,7 +601,7 @@ impl<'a, T: FieldElement> RangeConstraintSet<&PolynomialReference, T>
 {
     fn range_constraint(&self, poly: &PolynomialReference) -> Option<RangeConstraint<T>> {
         // Combine potential global range constraints with local range constraints.
-        let global = self.global_range_constraints.get(&poly.poly_id());
+        let global = self.global_range_constraints[&poly.poly_id()].as_ref();
         let local = self.next_range_constraints[&poly.poly_id()].as_ref();
 
         match (global, local) {
