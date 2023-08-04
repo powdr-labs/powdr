@@ -13,7 +13,8 @@ use super::expression_evaluator::ExpressionEvaluator;
 use super::machines::{FixedLookup, Machine};
 use super::symbolic_witness_evaluator::{SymoblicWitnessEvaluator, WitnessColumnEvaluator};
 use super::{
-    Constraint, EvalError, EvalResult, EvalValue, FixedData, IncompleteCause, Row, WitnessColumn,
+    ColumnMap, Constraint, EvalError, EvalResult, EvalValue, FixedData, IncompleteCause,
+    WitnessColumn,
 };
 
 pub struct Generator<'a, T: FieldElement, QueryCallback: Send + Sync> {
@@ -25,11 +26,11 @@ pub struct Generator<'a, T: FieldElement, QueryCallback: Send + Sync> {
     query_callback: Option<QueryCallback>,
     global_range_constraints: BTreeMap<PolyID, RangeConstraint<T>>,
     /// Values of the witness polynomials
-    current: Row<Option<T>>,
+    current: ColumnMap<Option<T>>,
     /// Values of the witness polynomials in the next row
-    next: Row<Option<T>>,
+    next: ColumnMap<Option<T>>,
     /// Range constraints on the witness polynomials in the next row.
-    next_range_constraints: Row<Option<RangeConstraint<T>>>,
+    next_range_constraints: ColumnMap<Option<RangeConstraint<T>>>,
     next_row: DegreeType,
     failure_reasons: Vec<EvalError<T>>,
     last_report: DegreeType,
@@ -81,9 +82,9 @@ where
             machines,
             query_callback,
             global_range_constraints,
-            current: fixed_data.fresh_row(),
-            next: fixed_data.fresh_row(),
-            next_range_constraints: fixed_data.fresh_row(),
+            current: fixed_data.witness_map(),
+            next: fixed_data.witness_map(),
+            next_range_constraints: fixed_data.witness_map(),
             next_row: 0,
             failure_reasons: vec![],
             last_report: 0,
@@ -91,7 +92,7 @@ where
         }
     }
 
-    pub fn compute_next_row(&mut self, next_row: DegreeType) -> Row<T> {
+    pub fn compute_next_row(&mut self, next_row: DegreeType) -> ColumnMap<T> {
         self.set_next_row_and_log(next_row);
 
         let mut complete_identities = vec![false; self.identities.len()];
@@ -159,12 +160,12 @@ where
             }
         }
         if identity_failed {
-            let list_undetermined = |values: &BTreeMap<PolyID, Option<T>>| {
+            let list_undetermined = |values: &ColumnMap<Option<T>>| {
                 values
                     .iter()
                     .filter_map(|(p, v)| {
-                        if v.is_none() && self.is_relevant_witness(p) {
-                            Some(self.fixed_data.column_name(p).to_string())
+                        if v.is_none() && self.is_relevant_witness(&p) {
+                            Some(self.fixed_data.column_name(&p).to_string())
                         } else {
                             None
                         }
@@ -175,14 +176,14 @@ where
 
             log::error!(
                 "\nError: Row {next_row}: Identity check failed or unable to derive values for some witness columns.\nSet RUST_LOG=debug for more information.");
-            // log::debug!(
-            //     "\nThe following columns were undetermined in the previous row and might have been needed to derive this row's values:\n{}",
-            //     list_undetermined(&self.current)
-            // );
-            // log::debug!(
-            //     "\nThe following columns are still undetermined in the current row:\n{}",
-            //     list_undetermined(&self.next)
-            // );
+            log::debug!(
+                "\nThe following columns were undetermined in the previous row and might have been needed to derive this row's values:\n{}",
+                list_undetermined(&self.current)
+            );
+            log::debug!(
+                "\nThe following columns are still undetermined in the current row:\n{}",
+                list_undetermined(&self.next)
+            );
             log::debug!(
                 "\nReasons:\n{}\n",
                 self.failure_reasons
@@ -190,16 +191,16 @@ where
                     .map(|r| r.to_string())
                     .join("\n\n")
             );
-            // log::debug!(
-            //     "Determined range constraints for this row:\n{}",
-            //     self.next_range_constraints
-            //         .iter()
-            //         .filter_map(|(id, cons)| {
-            //             cons.as_ref()
-            //                 .map(|cons| format!("  {}: {cons}", self.fixed_data.column_name(id)))
-            //         })
-            //         .join("\n")
-            // );
+            log::debug!(
+                "Determined range constraints for this row:\n{}",
+                self.next_range_constraints
+                    .iter()
+                    .filter_map(|(id, cons)| {
+                        cons.as_ref()
+                            .map(|cons| format!("  {}: {cons}", self.fixed_data.column_name(&id)))
+                    })
+                    .join("\n")
+            );
             log::debug!(
                 "Current values (known nonzero first, then zero, unknown omitted):\n{}",
                 indent(&self.format_next_known_values().join("\n"), "    ")
@@ -212,8 +213,8 @@ where
             indent(&self.format_next_values().join("\n"), "    ")
         );
         std::mem::swap(&mut self.next, &mut self.current);
-        self.next = self.fixed_data.fresh_row();
-        self.next_range_constraints = self.fixed_data.fresh_row();
+        self.next = self.fixed_data.witness_map();
+        self.next_range_constraints = self.fixed_data.witness_map();
 
         self.current.unwrap_or_default()
     }
@@ -221,7 +222,7 @@ where
     /// Verifies the proposed values for the next row.
     /// TODO this is bad for machines because we might introduce rows in the machine that are then
     /// not used.
-    pub fn propose_next_row(&mut self, next_row: DegreeType, values: &Row<T>) -> bool {
+    pub fn propose_next_row(&mut self, next_row: DegreeType, values: &ColumnMap<T>) -> bool {
         self.set_next_row_and_log(next_row);
         self.next = values.to_option();
 
@@ -230,14 +231,14 @@ where
                 .process_identity(identity, SolvingStrategy::AssumeZero)
                 .is_err()
             {
-                self.next = self.fixed_data.fresh_row();
-                self.next_range_constraints = self.fixed_data.fresh_row();
+                self.next = self.fixed_data.witness_map();
+                self.next_range_constraints = self.fixed_data.witness_map();
                 return false;
             }
         }
         std::mem::swap(&mut self.next, &mut self.current);
-        self.next = self.fixed_data.fresh_row();
-        self.next_range_constraints = self.fixed_data.fresh_row();
+        self.next = self.fixed_data.witness_map();
+        self.next_range_constraints = self.fixed_data.witness_map();
         true
     }
 
@@ -266,22 +267,20 @@ where
     }
 
     fn format_next_values(&self) -> Vec<String> {
-        // self.format_next_values_iter(
-        //     self.next
-        //         .iter()
-        //         .filter(|(i, _)| self.is_relevant_witness(i)),
-        // )
-        vec![]
+        self.format_next_values_iter(
+            self.next
+                .iter()
+                .filter(|(i, _)| self.is_relevant_witness(i)),
+        )
     }
 
     fn format_next_known_values(&self) -> Vec<String> {
-        // self.format_next_values_iter(self.next.iter().filter(|(_, v)| v.is_some()))
-        vec![]
+        self.format_next_values_iter(self.next.iter().filter(|(_, v)| v.is_some()))
     }
 
     fn format_next_values_iter<'b>(
         &self,
-        values: impl IntoIterator<Item = (&'b PolyID, &'b Option<T>)>,
+        values: impl IntoIterator<Item = (PolyID, &'b Option<T>)>,
     ) -> Vec<String> {
         let mut values = values.into_iter().collect::<Vec<_>>();
         values.sort_by_key(|(i, v1)| {
@@ -299,7 +298,7 @@ where
             .map(|(i, v)| {
                 format!(
                     "{} = {}",
-                    self.fixed_data.column_name(i),
+                    self.fixed_data.column_name(&i),
                     v.as_ref()
                         .map(ToString::to_string)
                         .unwrap_or_else(|| "<unknown>".to_string())
@@ -594,7 +593,7 @@ struct WitnessRangeConstraintSet<'a, T: FieldElement> {
     /// Global constraints on witness and fixed polynomials.
     global_range_constraints: &'a BTreeMap<PolyID, RangeConstraint<T>>,
     /// Range constraints on the witness polynomials in the next row.
-    next_range_constraints: &'a Row<Option<RangeConstraint<T>>>,
+    next_range_constraints: &'a ColumnMap<Option<RangeConstraint<T>>>,
 }
 
 impl<'a, T: FieldElement> RangeConstraintSet<&PolynomialReference, T>
@@ -615,9 +614,9 @@ impl<'a, T: FieldElement> RangeConstraintSet<&PolynomialReference, T>
 
 struct EvaluationData<'a, T> {
     /// Values of the witness polynomials in the current / last row
-    pub current_witnesses: &'a Row<Option<T>>,
+    pub current_witnesses: &'a ColumnMap<Option<T>>,
     /// Values of the witness polynomials in the next row
-    pub next_witnesses: &'a Row<Option<T>>,
+    pub next_witnesses: &'a ColumnMap<Option<T>>,
     pub evaluate_row: EvaluationRow,
     pub evaluate_unknown: EvaluateUnknown,
 }

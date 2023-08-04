@@ -92,7 +92,7 @@ where
         query_callback,
     );
 
-    let mut rows: Vec<Row<T>> = vec![];
+    let mut rows: Vec<ColumnMap<T>> = vec![];
 
     let poly_ids = fixed.witness_cols.keys().copied().collect::<Vec<_>>();
 
@@ -212,10 +212,8 @@ impl<'a, T> FixedData<'a, T> {
         }
     }
 
-    fn fresh_row<V: Clone>(&self) -> Row<Option<V>> {
-        Row {
-            values: vec![None; self.capacity],
-        }
+    fn witness_map<V: Clone>(&self) -> ColumnMap<Option<V>> {
+        ColumnMap::new(self.capacity, PolynomialType::Committed)
     }
 
     fn column_name(&self, poly_id: &PolyID) -> &str {
@@ -304,44 +302,68 @@ impl<'a, T> WitnessColumn<'a, T> {
 }
 
 #[derive(Clone)]
-pub struct Row<V> {
+pub struct ColumnMap<V> {
     values: Vec<V>,
+    ptype: PolynomialType,
 }
 
-impl<V: Clone + Default> Row<Option<V>> {
-    pub fn unwrap_or_default(&self) -> Row<V> {
-        Row {
+impl<V: Clone> ColumnMap<Option<V>> {
+    fn new(capacity: usize, ptype: PolynomialType) -> Self {
+        ColumnMap {
+            values: vec![None; capacity],
+            ptype,
+        }
+    }
+}
+
+impl<V> ColumnMap<V> {
+    fn iter(&self) -> impl Iterator<Item = (PolyID, &V)> {
+        self.values.iter().enumerate().map(|(i, v)| {
+            (
+                PolyID {
+                    id: i as u64,
+                    ptype: self.ptype,
+                },
+                v,
+            )
+        })
+    }
+}
+
+impl<V: Clone + Default> ColumnMap<Option<V>> {
+    pub fn unwrap_or_default(&self) -> ColumnMap<V> {
+        ColumnMap {
             values: self
                 .values
                 .iter()
                 .map(|v| v.clone().unwrap_or_default())
                 .collect(),
+            ptype: self.ptype,
         }
     }
 }
 
-impl<V: Clone> Row<V> {
-    pub fn to_option(&self) -> Row<Option<V>> {
-        Row {
+impl<V: Clone> ColumnMap<V> {
+    pub fn to_option(&self) -> ColumnMap<Option<V>> {
+        ColumnMap {
             values: self.values.iter().map(|v| Some(v.clone())).collect(),
+            ptype: self.ptype,
         }
     }
 }
 
-impl<V> Index<&PolyID> for Row<V> {
+impl<V> Index<&PolyID> for ColumnMap<V> {
     type Output = V;
 
     fn index(&self, poly_id: &PolyID) -> &Self::Output {
-        let index = poly_id.id as usize;
-        assert!(index < self.values.len());
-        &self.values[index]
+        assert!(poly_id.ptype == self.ptype);
+        &self.values[poly_id.id as usize]
     }
 }
 
-impl<V> IndexMut<&PolyID> for Row<V> {
+impl<V> IndexMut<&PolyID> for ColumnMap<V> {
     fn index_mut(&mut self, poly_id: &PolyID) -> &mut Self::Output {
-        let index = poly_id.id as usize;
-        assert!(index < self.values.len());
-        &mut self.values[index]
+        assert!(poly_id.ptype == self.ptype);
+        &mut self.values[poly_id.id as usize]
     }
 }
