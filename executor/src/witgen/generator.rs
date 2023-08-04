@@ -6,6 +6,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::time::Instant;
 
 use super::affine_expression::{AffineExpression, AffineResult};
+use super::column_map::ColumnMap;
 use super::global_constraints::RangeConstraintSet;
 use super::range_constraints::RangeConstraint;
 
@@ -13,8 +14,7 @@ use super::expression_evaluator::ExpressionEvaluator;
 use super::machines::{FixedLookup, Machine};
 use super::symbolic_witness_evaluator::{SymoblicWitnessEvaluator, WitnessColumnEvaluator};
 use super::{
-    ColumnMap, Constraint, EvalError, EvalResult, EvalValue, FixedData, IncompleteCause,
-    WitnessColumn,
+    Constraint, EvalError, EvalResult, EvalValue, FixedData, IncompleteCause, WitnessColumn,
 };
 
 pub struct Generator<'a, T: FieldElement, QueryCallback: Send + Sync> {
