@@ -40,7 +40,7 @@ impl<T: FieldElement> BackendImpl<T> for Halo2Prover {
 }
 
 impl<T: FieldElement> BackendWithSetup<T> for halo2::Halo2Prover {
-    fn new_setup_from_params(degree: DegreeType) -> Self {
+    fn new_setup(degree: DegreeType) -> Self {
         Halo2Prover::assert_field_is_compatible::<T>();
         Halo2Prover::new(degree)
     }

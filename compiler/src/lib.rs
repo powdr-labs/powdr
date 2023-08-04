@@ -211,7 +211,7 @@ where
     // still output useful stuff.
     if let Some(backend) = prove_with {
         let factory = backend.build::<T>();
-        let backend = factory.new_from_params(degree);
+        let backend = factory.new(degree);
         if let Err(error) =
             backend.prove(&analyzed, &constants, witness.as_deref(), None, output_dir)
         {

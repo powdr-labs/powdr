@@ -46,12 +46,12 @@ struct WithoutSetupFactory<B>(PhantomData<B>);
 impl<F: FieldElement, B: BackendWithoutSetup<F> + 'static> BackendFactory<F>
     for WithoutSetupFactory<B>
 {
-    fn new_from_params(&self, degree: DegreeType) -> Box<dyn Backend<F>> {
+    fn new(&self, degree: DegreeType) -> Box<dyn Backend<F>> {
         Box::new(ConcreteBackendWithoutSetup(B::new(degree)))
     }
 
     fn load_setup(&self, _input: &mut dyn io::Read) -> Result<Box<dyn Backend<F>>, Error> {
-        Err(Error::NotApplicable)
+        Err(Error::NoSetupAvailable)
     }
 }
 
@@ -72,7 +72,7 @@ impl<F: FieldElement, B: BackendWithoutSetup<F>> Backend<F> for ConcreteBackendW
     }
 
     fn write_setup(&self, _output: &mut dyn io::Write) -> Result<(), Error> {
-        Err(Error::NotApplicable)
+        Err(Error::NoSetupAvailable)
     }
 }
 
@@ -81,8 +81,8 @@ struct WithSetupFactory<B>(PhantomData<B>);
 
 /// Factory implementation for backends with setup.
 impl<F: FieldElement, B: BackendWithSetup<F> + 'static> BackendFactory<F> for WithSetupFactory<B> {
-    fn new_from_params(&self, degree: DegreeType) -> Box<dyn Backend<F>> {
-        Box::new(ConcreteBackendWithSetup(B::new_setup_from_params(degree)))
+    fn new(&self, degree: DegreeType) -> Box<dyn Backend<F>> {
+        Box::new(ConcreteBackendWithSetup(B::new_setup(degree)))
     }
 
     fn load_setup(&self, input: &mut dyn io::Read) -> Result<Box<dyn Backend<F>>, Error> {
@@ -115,8 +115,8 @@ impl<F: FieldElement, B: BackendWithSetup<F>> Backend<F> for ConcreteBackendWith
 pub enum Error {
     #[error("input/output error")]
     IO(#[from] std::io::Error),
-    #[error("operation is not applicable to backend type")]
-    NotApplicable,
+    #[error("the backend has not setup operations")]
+    NoSetupAvailable,
 }
 
 pub type Proof = Vec<u8>;
@@ -141,7 +141,7 @@ pub trait Backend<F: FieldElement> {
 /// Dynamic interface for a backend factory.
 pub trait BackendFactory<F: FieldElement> {
     /// Maybe perform the setup, and create a new backend object.
-    fn new_from_params(&self, degree: DegreeType) -> Box<dyn Backend<F>>;
+    fn new(&self, degree: DegreeType) -> Box<dyn Backend<F>>;
 
     /// Create a backend object from a prover setup loaded from a file.
     fn load_setup(&self, input: &mut dyn io::Read) -> Result<Box<dyn Backend<F>>, Error>;
@@ -166,7 +166,7 @@ where
     Self: Sized + BackendImpl<F>,
 {
     /// Perform the setup and create a new backend object.
-    fn new_setup_from_params(degree: DegreeType) -> Self;
+    fn new_setup(degree: DegreeType) -> Self;
 
     /// Create a backend object from a setup loaded from a file.
     fn load_setup(input: &mut dyn io::Read) -> Result<Self, io::Error>;
