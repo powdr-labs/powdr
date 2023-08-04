@@ -212,8 +212,8 @@ impl<'a, T> FixedData<'a, T> {
         }
     }
 
-    fn witness_map<V: Clone>(&self) -> ColumnMap<Option<V>> {
-        ColumnMap::new(self.capacity, PolynomialType::Committed)
+    fn witness_map<V: Clone>(&self, initial_value: V) -> ColumnMap<V> {
+        ColumnMap::new(initial_value, self.capacity, PolynomialType::Committed)
     }
 
     fn column_name(&self, poly_id: &PolyID) -> &str {
@@ -307,10 +307,10 @@ pub struct ColumnMap<V> {
     ptype: PolynomialType,
 }
 
-impl<V: Clone> ColumnMap<Option<V>> {
-    fn new(capacity: usize, ptype: PolynomialType) -> Self {
+impl<V: Clone> ColumnMap<V> {
+    fn new(initial_value: V, capacity: usize, ptype: PolynomialType) -> Self {
         ColumnMap {
-            values: vec![None; capacity],
+            values: vec![initial_value; capacity],
             ptype,
         }
     }
@@ -344,7 +344,7 @@ impl<V: Clone + Default> ColumnMap<Option<V>> {
 }
 
 impl<V: Clone> ColumnMap<V> {
-    pub fn to_option(&self) -> ColumnMap<Option<V>> {
+    pub fn wrap_some(&self) -> ColumnMap<Option<V>> {
         ColumnMap {
             values: self.values.iter().map(|v| Some(v.clone())).collect(),
             ptype: self.ptype,
