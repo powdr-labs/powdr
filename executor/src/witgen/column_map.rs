@@ -2,6 +2,9 @@ use std::ops::{Index, IndexMut};
 
 use ast::analyzed::{PolyID, PolynomialType};
 
+/// A Map indexed by polynomial ID, for a specific polynomial type (e.g. fixed or witness).
+/// For performance reasons, it uses a Vec<V> internally and assumes that the polynomial IDs
+/// are contiguous.
 #[derive(Clone)]
 pub struct ColumnMap<V> {
     values: Vec<V>,
@@ -9,6 +12,7 @@ pub struct ColumnMap<V> {
 }
 
 impl<V: Clone> ColumnMap<V> {
+    /// Create a new ColumnMap with the given initial value and polynomial type.
     pub fn new(initial_value: V, capacity: usize, ptype: PolynomialType) -> Self {
         ColumnMap {
             values: vec![initial_value; capacity],
@@ -45,11 +49,6 @@ impl<V> ColumnMap<V> {
 
     pub fn values(&self) -> impl Iterator<Item = &V> {
         self.values.iter()
-    }
-
-    pub fn get_mut(&mut self, poly_id: &PolyID) -> &mut V {
-        assert!(poly_id.ptype == self.ptype);
-        &mut self.values[poly_id.id as usize]
     }
 }
 

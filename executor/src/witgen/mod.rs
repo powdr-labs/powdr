@@ -100,7 +100,7 @@ where
         assert!(p.id == i as u64);
     }
 
-    let relevant_witnesses = poly_ids
+    let relevant_witnesses_mask = poly_ids
         .iter()
         .map(|p| generator.is_relevant_witness(p))
         .collect::<Vec<_>>();
@@ -110,7 +110,7 @@ where
     for row in 0..degree as DegreeType {
         // Check if we are in a loop.
         if looping_period.is_none() && row % 100 == 0 && row > 0 {
-            looping_period = rows_are_repeating(&rows, &relevant_witnesses);
+            looping_period = rows_are_repeating(&rows, &relevant_witnesses_mask);
             if let Some(p) = looping_period {
                 log::info!("Found loop with period {p} starting at row {row}");
             }
@@ -146,8 +146,7 @@ where
             .iter()
             .find(|&p| fixed.column_name(p) == name)
             .unwrap();
-        let col = columns.get_mut(&poly_id);
-        *col = data;
+        columns[&poly_id] = data;
     }
 
     // Map from column id to name
@@ -167,18 +166,21 @@ where
 fn zip_relevant<'a, T>(
     row1: &'a ColumnMap<T>,
     row2: &'a ColumnMap<T>,
-    is_relevant: &'a [bool],
+    relevant_mask: &'a [bool],
 ) -> impl Iterator<Item = (&'a T, &'a T)> {
     row1.values()
         .zip(row2.values())
-        .zip(is_relevant.iter())
+        .zip(relevant_mask.iter())
         .filter(|(_, &b)| b)
         .map(|(v, _)| v)
 }
 
 /// Checks if the last rows are repeating and returns the period.
 /// Only checks for periods of 1, 2, 3 and 4.
-fn rows_are_repeating<T: PartialEq>(rows: &[ColumnMap<T>], is_relevant: &[bool]) -> Option<usize> {
+fn rows_are_repeating<T: PartialEq>(
+    rows: &[ColumnMap<T>],
+    relevant_mask: &[bool],
+) -> Option<usize> {
     if rows.is_empty() {
         return Some(1);
     } else if rows.len() < 4 {
@@ -188,7 +190,8 @@ fn rows_are_repeating<T: PartialEq>(rows: &[ColumnMap<T>], is_relevant: &[bool])
     let len = rows.len();
     (1..=3).find(|&period| {
         (1..=period).all(|i| {
-            zip_relevant(&rows[len - i - period], &rows[len - i], is_relevant).all(|(a, b)| a == b)
+            zip_relevant(&rows[len - i - period], &rows[len - i], relevant_mask)
+                .all(|(a, b)| a == b)
         })
     })
 }
