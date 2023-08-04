@@ -525,7 +525,7 @@ where
                                 Some(c) => Some(cons.conjunction(c)),
                                 None => Some(cons),
                             };
-                            log::trace!("         (the conjunction is {})", new.clone().unwrap());
+                            log::trace!("         (the conjunction is {})", new.as_ref().unwrap());
                             *old = new;
                         }
                     }

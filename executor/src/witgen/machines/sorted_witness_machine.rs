@@ -45,11 +45,11 @@ impl<T: FieldElement> SortedWitnesses<T> {
                 .filter(|&w| *w != key_col)
                 .sorted()
                 .enumerate()
-                .map(|(i, &x)| (x.clone(), i))
+                .map(|(i, &x)| (x, i))
                 .collect();
 
             Box::new(SortedWitnesses {
-                key_col: key_col.clone(),
+                key_col,
                 witness_positions,
                 data: Default::default(),
             })
