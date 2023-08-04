@@ -7,7 +7,6 @@ use super::fixed_lookup_machine::FixedLookup;
 use super::Machine;
 use super::{EvalResult, FixedData};
 use crate::witgen::affine_expression::AffineResult;
-use crate::witgen::column_map::ColumnMap;
 use crate::witgen::{
     expression_evaluator::ExpressionEvaluator, fixed_evaluator::FixedEvaluator,
     symbolic_evaluator::SymbolicEvaluator,
@@ -27,8 +26,8 @@ use number::FieldElement;
 ///  - POSITIVE has all values from 1 to half of the field size.
 pub struct SortedWitnesses<T> {
     key_col: PolyID,
-    witnesses: HashSet<PolyID>,
-    data: BTreeMap<T, ColumnMap<Option<T>>>,
+    witness_positions: HashMap<PolyID, usize>,
+    data: BTreeMap<T, Vec<Option<T>>>,
 }
 
 impl<T: FieldElement> SortedWitnesses<T> {
@@ -41,12 +40,17 @@ impl<T: FieldElement> SortedWitnesses<T> {
             return None;
         }
         check_identity(fixed_data, identities.first().unwrap()).map(|key_col| {
-            let mut witnesses = witnesses.clone();
-            witnesses.remove(&key_col);
+            let witness_positions = witnesses
+                .iter()
+                .filter(|&w| *w != key_col)
+                .sorted()
+                .enumerate()
+                .map(|(i, &x)| (x.clone(), i))
+                .collect();
 
             Box::new(SortedWitnesses {
-                key_col,
-                witnesses,
+                key_col: key_col.clone(),
+                witness_positions,
                 data: Default::default(),
             })
         })
@@ -131,7 +135,9 @@ impl<T: FieldElement> Machine<T> for SortedWitnesses<T> {
             .map(|e| match e {
                 Expression::PolynomialReference(p) => {
                     assert!(!p.next);
-                    if p.poly_id() == self.key_col || self.witnesses.contains(&p.poly_id()) {
+                    if p.poly_id() == self.key_col
+                        || self.witness_positions.contains_key(&p.poly_id())
+                    {
                         Some(p)
                     } else {
                         None
@@ -156,13 +162,13 @@ impl<T: FieldElement> Machine<T> for SortedWitnesses<T> {
         }
         result.insert(fixed_data.column_name(&self.key_col).to_string(), keys);
 
-        for poly_id in &self.witnesses {
+        for (col, &i) in &self.witness_positions {
             let mut col_values = values
                 .iter_mut()
-                .map(|row| std::mem::take(&mut row[poly_id]).unwrap_or_default())
+                .map(|row| std::mem::take(&mut row[i]).unwrap_or_default())
                 .collect::<Vec<_>>();
             col_values.resize(fixed_data.degree as usize, 0.into());
-            result.insert(fixed_data.column_name(poly_id).to_string(), col_values);
+            result.insert(fixed_data.column_name(col).to_string(), col_values);
         }
 
         result
@@ -208,9 +214,9 @@ impl<T: FieldElement> SortedWitnesses<T> {
         let stored_values = self
             .data
             .entry(key_value)
-            .or_insert_with(|| fixed_data.witness_map(None));
+            .or_insert_with(|| vec![None; self.witness_positions.len()]);
         for (&l, &r) in left.iter().zip(rhs.iter()).skip(1) {
-            let stored_value = &mut stored_values[&r.poly_id()];
+            let stored_value = &mut stored_values[self.witness_positions[&r.poly_id()]];
             match stored_value {
                 // There is a stored value
                 Some(v) => {
