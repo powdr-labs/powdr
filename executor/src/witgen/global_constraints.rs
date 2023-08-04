@@ -92,7 +92,8 @@ pub fn determine_global_constraints<'a, T: FieldElement>(
         if poly_id.ptype == PolynomialType::Committed {
             // It's theoretically possible to have a constraint for both X and X'.
             // In that case, we take the conjunction.
-            let con = known_witness_constraints[&poly_id].as_ref()
+            let con = known_witness_constraints[&poly_id]
+                .as_ref()
                 .map(|existing_con| existing_con.conjunction(&con))
                 .unwrap_or(con);
             known_witness_constraints[&poly_id] = Some(con);
