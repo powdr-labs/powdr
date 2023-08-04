@@ -95,31 +95,22 @@ where
     let mut rows: Vec<ColumnMap<T>> = vec![];
 
     let poly_ids = fixed.witness_cols.keys().copied().collect::<Vec<_>>();
-
     for (i, p) in poly_ids.iter().enumerate() {
         assert!(p.id == i as u64);
     }
+
+    let relevant_witnesses = poly_ids
+        .iter()
+        .map(|p| generator.is_relevant_witness(p))
+        .collect::<Vec<_>>();
 
     // Are we in an infinite loop and can just re-use the old values?
     let mut looping_period = None;
     for row in 0..degree as DegreeType {
         // Check if we are in a loop.
-        if looping_period.is_none() && row % 100 == 0 && row > 0 {
-            let relevant_values = rows
-                .iter()
-                .rev()
-                .take(8)
-                .rev()
-                .map(|row| {
-                    row.values
-                        .iter()
-                        .enumerate()
-                        .filter(|(i, _)| generator.is_relevant_witness(&poly_ids[*i]))
-                        .map(|(_, v)| *v)
-                        .collect()
-                })
-                .collect::<Vec<_>>();
-            looping_period = rows_are_repeating(&relevant_values);
+        if looping_period.is_none() && row % 1000 == 0 && row > 0 {
+            let relevant_values = rows.iter().rev().take(8).rev().collect::<Vec<_>>();
+            looping_period = rows_are_repeating(&relevant_values, &relevant_witnesses);
             if let Some(p) = looping_period {
                 log::info!("Found loop with period {p} starting at row {row}");
             }
@@ -141,21 +132,21 @@ where
         rows.push(row_values.unwrap());
     }
 
-    let mut values: BTreeMap<PolyID, Vec<T>> = BTreeMap::new();
+    // Transpose the rows
+    let mut columns = fixed.witness_map(vec![]);
     for row in rows.into_iter() {
-        for (poly_id, value) in poly_ids.iter().zip(row.values.into_iter()) {
-            let col = values.entry(*poly_id).or_insert_with(|| vec![]);
-            col.push(value);
+        for (col_index, value) in row.values.into_iter().enumerate() {
+            columns.values[col_index].push(value);
         }
     }
 
     // Overwrite all machine witness columns
     for (name, data) in generator.machine_witness_col_values() {
-        let poly_id = *values
-            .keys()
+        let poly_id = *poly_ids
+            .iter()
             .find(|&p| fixed.column_name(p) == name)
             .unwrap();
-        let col = values.get_mut(&poly_id).unwrap();
+        let col = columns.get_mut(&poly_id);
         *col = data;
     }
 
@@ -167,24 +158,40 @@ where
         .map(|(p, _)| (p.id, p.absolute_name.as_str()))
         .collect::<BTreeMap<_, _>>();
 
-    values
+    columns
         .into_iter()
         .map(|(id, v)| (col_names.remove(&id.id).unwrap(), v))
         .collect()
 }
 
+fn iter_relevant<'a, T>(
+    row: &'a ColumnMap<T>,
+    is_relevant: &'a [bool],
+) -> impl Iterator<Item = &'a T> {
+    row.values()
+        .zip(is_relevant.iter())
+        .filter(|(_, &b)| b)
+        .map(|(v, _)| v)
+}
+
 /// Checks if the last rows are repeating and returns the period.
 /// Only checks for periods of 1, 2, 3 and 4.
-fn rows_are_repeating<T: PartialEq>(values: &[Vec<T>]) -> Option<usize> {
+fn rows_are_repeating<T: PartialEq>(
+    values: &[&ColumnMap<T>],
+    is_relevant: &[bool],
+) -> Option<usize> {
     if values.is_empty() {
         return Some(1);
     } else if values.len() < 4 {
         return None;
     }
+
+    let len = values.len();
     (1..=3).find(|&period| {
-        (0..values[0].len()).all(|col_index| {
-            let len = values.len();
-            (1..=period).all(|i| values[len - i - period][col_index] == values[len - i][col_index])
+        (1..=period).all(|i| {
+            iter_relevant(values[len - i - period], is_relevant)
+                .zip(iter_relevant(values[len - i], is_relevant))
+                .all(|(a, b)| a == b)
         })
     })
 }
@@ -327,6 +334,28 @@ impl<V> ColumnMap<V> {
                 v,
             )
         })
+    }
+
+    fn into_iter(self) -> impl Iterator<Item = (PolyID, V)> {
+        let ptype = self.ptype;
+        self.values.into_iter().enumerate().map(move |(i, v)| {
+            (
+                PolyID {
+                    id: i as u64,
+                    ptype: ptype,
+                },
+                v,
+            )
+        })
+    }
+
+    fn values(&self) -> impl Iterator<Item = &V> {
+        self.values.iter()
+    }
+
+    fn get_mut(&mut self, poly_id: &PolyID) -> &mut V {
+        assert!(poly_id.ptype == self.ptype);
+        &mut self.values[poly_id.id as usize]
     }
 }
 
