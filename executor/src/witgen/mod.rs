@@ -1,5 +1,4 @@
 use std::collections::BTreeMap;
-use std::ops::{Index, IndexMut};
 
 use ast::analyzed::{
     Analyzed, Expression, FunctionValueDefinition, PolyID, PolynomialReference, PolynomialType,
@@ -7,6 +6,7 @@ use ast::analyzed::{
 use num_traits::Zero;
 use number::{DegreeType, FieldElement};
 
+use self::column_map::ColumnMap;
 pub use self::eval_result::{
     Constraint, Constraints, EvalError, EvalResult, EvalStatus, EvalValue, IncompleteCause,
 };
@@ -15,6 +15,7 @@ use self::machines::machine_extractor::ExtractionOutput;
 use self::util::substitute_constants;
 
 mod affine_expression;
+mod column_map;
 mod eval_result;
 mod expression_evaluator;
 pub mod fixed_evaluator;
@@ -118,7 +119,7 @@ where
         let mut row_values = None;
         if let Some(period) = looping_period {
             let values = &rows[rows.len() - period];
-            if generator.propose_next_row(row, &values) {
+            if generator.propose_next_row(row, values) {
                 row_values = Some(values.clone());
             } else {
                 log::info!("Using loop failed. Trying to generate regularly again.");
@@ -135,8 +136,8 @@ where
     // Transpose the rows
     let mut columns = fixed.witness_map(vec![]);
     for row in rows.into_iter() {
-        for (col_index, value) in row.values.into_iter().enumerate() {
-            columns.values[col_index].push(value);
+        for (col_index, value) in row.into_iter() {
+            columns[&col_index].push(value);
         }
     }
 
@@ -305,94 +306,5 @@ impl<'a, T> WitnessColumn<'a, T> {
             name,
             query,
         }
-    }
-}
-
-#[derive(Clone)]
-pub struct ColumnMap<V> {
-    values: Vec<V>,
-    ptype: PolynomialType,
-}
-
-impl<V: Clone> ColumnMap<V> {
-    fn new(initial_value: V, capacity: usize, ptype: PolynomialType) -> Self {
-        ColumnMap {
-            values: vec![initial_value; capacity],
-            ptype,
-        }
-    }
-}
-
-impl<V> ColumnMap<V> {
-    fn iter(&self) -> impl Iterator<Item = (PolyID, &V)> {
-        self.values.iter().enumerate().map(|(i, v)| {
-            (
-                PolyID {
-                    id: i as u64,
-                    ptype: self.ptype,
-                },
-                v,
-            )
-        })
-    }
-
-    fn into_iter(self) -> impl Iterator<Item = (PolyID, V)> {
-        let ptype = self.ptype;
-        self.values.into_iter().enumerate().map(move |(i, v)| {
-            (
-                PolyID {
-                    id: i as u64,
-                    ptype: ptype,
-                },
-                v,
-            )
-        })
-    }
-
-    fn values(&self) -> impl Iterator<Item = &V> {
-        self.values.iter()
-    }
-
-    fn get_mut(&mut self, poly_id: &PolyID) -> &mut V {
-        assert!(poly_id.ptype == self.ptype);
-        &mut self.values[poly_id.id as usize]
-    }
-}
-
-impl<V: Clone + Default> ColumnMap<Option<V>> {
-    pub fn unwrap_or_default(&self) -> ColumnMap<V> {
-        ColumnMap {
-            values: self
-                .values
-                .iter()
-                .map(|v| v.clone().unwrap_or_default())
-                .collect(),
-            ptype: self.ptype,
-        }
-    }
-}
-
-impl<V: Clone> ColumnMap<V> {
-    pub fn wrap_some(&self) -> ColumnMap<Option<V>> {
-        ColumnMap {
-            values: self.values.iter().map(|v| Some(v.clone())).collect(),
-            ptype: self.ptype,
-        }
-    }
-}
-
-impl<V> Index<&PolyID> for ColumnMap<V> {
-    type Output = V;
-
-    fn index(&self, poly_id: &PolyID) -> &Self::Output {
-        assert!(poly_id.ptype == self.ptype);
-        &self.values[poly_id.id as usize]
-    }
-}
-
-impl<V> IndexMut<&PolyID> for ColumnMap<V> {
-    fn index_mut(&mut self, poly_id: &PolyID) -> &mut Self::Output {
-        assert!(poly_id.ptype == self.ptype);
-        &mut self.values[poly_id.id as usize]
     }
 }
