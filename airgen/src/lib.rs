@@ -1,10 +1,6 @@
-//! Compilation from powdr assembly to PIL
+//! Compilation from powdr machines to AIRs
 
-// changes:
-// - unconstrain registers on first line, as the ASM takes care of resetting them
-// - unconstrain the inputs when _reset is called
-
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, marker::PhantomData};
 
 use ast::{
     asm_analysis::{
@@ -25,17 +21,21 @@ pub fn compile<T: FieldElement>(analysis: AnalysisASMFile<T>) -> PILGraph<T> {
 #[derive(Default)]
 /// A compilation session
 struct Session<T> {
-    /// the machine types used in the tree
-    machine_types: BTreeMap<String, Machine<T>>,
+    marker: PhantomData<T>,
 }
 
 impl<T: FieldElement> Session<T> {
-    fn instantiate_machine(&mut self, location: &Location, ty: String) -> Object<T> {
-        ASMPILConverter::new(location, &self.machine_types)
-            .convert_machine(self.machine_types.get(&ty).unwrap().clone())
+    fn instantiate_machine(
+        &mut self,
+        location: &Location,
+        ty: String,
+        file: &AnalysisASMFile<T>,
+    ) -> Object<T> {
+        ASMPILConverter::new(location, &file.machines)
+            .convert_machine(file.machines.get(&ty).unwrap().clone())
     }
 
-    fn compile(&mut self, mut input: AnalysisASMFile<T>) -> PILGraph<T> {
+    fn compile(&mut self, input: AnalysisASMFile<T>) -> PILGraph<T> {
         let main_location = Location::default().join("main");
 
         // we start from the main machine
@@ -49,15 +49,13 @@ impl<T: FieldElement> Session<T> {
             }
         };
 
-        self.machine_types = std::mem::take(&mut input.machines);
-
         // get a list of all machines to instantiate. The order does not matter.
         let mut queue = vec![(main_location.clone(), main_ty.clone())];
 
         let mut instances = vec![];
 
         while let Some((location, ty)) = queue.pop() {
-            let machine = self.machine_types.get(&ty).unwrap();
+            let machine = input.machines.get(&ty).unwrap();
 
             queue.extend(machine.submachines.iter().map(|def| {
                 (
@@ -75,12 +73,12 @@ impl<T: FieldElement> Session<T> {
         let objects = instances
             .into_iter()
             .map(|(location, ty)| {
-                let object = self.instantiate_machine(&location, ty);
+                let object = self.instantiate_machine(&location, ty, &input);
                 (location, object)
             })
             .collect();
 
-        let main_ty = self.machine_types.get(&main_ty).unwrap();
+        let main_ty = input.machines.get(&main_ty).unwrap();
 
         PILGraph {
             entry_points: main_ty

@@ -63,15 +63,13 @@ struct ASMPILConverter<T> {
 impl<T: FieldElement> ASMPILConverter<T> {
     fn convert_machine(mut self, mut input: Machine<T>) -> Machine<T> {
         // convert this machine
-        if !input.registers.is_empty() {
-            self.pil.push(PilStatement::PolynomialConstantDefinition(
-                0,
-                "first_step".to_string(),
-                FunctionDefinition::Array(
-                    ArrayExpression::value(vec![build_number(1u64)]).pad_with_zeroes(),
-                ),
-            ));
-        }
+        self.pil.push(PilStatement::PolynomialConstantDefinition(
+            0,
+            "first_step".to_string(),
+            FunctionDefinition::Array(
+                ArrayExpression::value(vec![build_number(1u64)]).pad_with_zeroes(),
+            ),
+        ));
 
         for reg in input.registers.drain(..) {
             self.handle_register_declaration(reg);
@@ -84,9 +82,11 @@ impl<T: FieldElement> ASMPILConverter<T> {
             );
         }
 
-        for instr in input.instructions.drain(..) {
-            self.handle_instruction_def(instr)
-        }
+        input.instructions = input
+            .instructions
+            .drain(..)
+            .filter_map(|instr| self.handle_instruction_def(instr))
+            .collect();
 
         if let Some(rom) = input.rom.take() {
             for batch in rom.statements.into_iter_batches() {
@@ -259,7 +259,7 @@ impl<T: FieldElement> ASMPILConverter<T> {
             name,
             params,
         }: InstructionDefinitionStatement<T>,
-    ) {
+    ) -> Option<InstructionDefinitionStatement<T>> {
         let instruction_flag = format!("instr_{name}");
         self.create_witness_fixed_pair(start, &instruction_flag);
         // it's part of the lookup!
@@ -284,6 +284,7 @@ impl<T: FieldElement> ASMPILConverter<T> {
             .collect();
 
         let outputs = params
+            .clone()
             .outputs
             .map(|outputs| {
                 outputs
@@ -301,7 +302,7 @@ impl<T: FieldElement> ASMPILConverter<T> {
 
         // First transform into PIL so that we can apply macro expansion.
 
-        match body {
+        let res = match body {
             InstructionBody::Local(body) => {
                 let mut statements = body
                     .into_iter()
@@ -384,10 +385,17 @@ impl<T: FieldElement> ASMPILConverter<T> {
                         }
                     }
                 }
+                None
             }
-            InstructionBody::External(..) => {}
-        }
+            InstructionBody::External(..) => Some(InstructionDefinitionStatement {
+                start,
+                body,
+                name: name.clone(),
+                params,
+            }),
+        };
         self.instructions.insert(name, instruction);
+        res
     }
 
     fn handle_assignment(

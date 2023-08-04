@@ -277,15 +277,6 @@ pub struct Machine<T> {
 }
 
 impl<T> Machine<T> {
-    pub fn latch(&self) -> String {
-        if self.has_pc() {
-            assert!(self.latch.is_none());
-            "instr_return".into()
-        } else {
-            self.latch.clone().unwrap()
-        }
-    }
-
     pub fn has_pc(&self) -> bool {
         self.pc.is_some()
     }

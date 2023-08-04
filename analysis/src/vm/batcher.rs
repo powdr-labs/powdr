@@ -1,3 +1,5 @@
+//! Batch compatible statements in each function of each machine
+
 use std::marker::PhantomData;
 
 use ast::asm_analysis::{

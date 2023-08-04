@@ -1,83 +1,6 @@
-/// Generate the rom
-/// If this was written in the language, it would be something like
-// fn romgen(self) -> Self {
-//     self.instructions.extend([
-//         Instruction::with_name("_return"), // etc, could also be a special keyword instead of a function
-//         Instruction::with_name("_reset"), // etc, to reset the registers
-//         Instruction::with_name("_jump_to_operation"), // etc, to jump to the correct operation
-//     ]);
-//
-//     let main = Function::with_name("_main").statements(
-//         [
-//             Statement::Label("_start"),
-//             Statement::Instruction("_reset"),
-//             Statement::Instruction("_jump_to_operation")
-//         ].chain(self.functions.iter().flat_map(|f|
-//                 once(Statement::Label(format!("_{}", f.name))).chain(f.statements),
-//         ))
-//     );
-//
-//     self.functions.push(main); // this could be a special field in the machine also, instead of a function
-//
-//     self
-// }
+//! Desugar asm functions which operate on values to functions which operate on witness columns
+//! TODO: Using the same term "function" for both is a bit awkward
 
-// Alternatively, this could be modelled as a Machine wrapper. It would be inlined, as we need access to the submachine pc, etc
-
-// machine DynLib<Machine> {
-//     // we could indicate that we want this machine to be inlined here, allowing us to add constraints about it
-//     inlined Machine m;
-//
-//     // declare assignment registers for return values
-//     <%
-//     for o in m.outputs {
-//         reg format!("o")[<=];
-//     }
-//     %>
-
-//     constraints {
-//         pol witness function_id;
-//         pol commit function_id;
-//         ((1 - instr_return) * (function_id' - function_id)) = 0;
-//     }
-
-//     // a return instruction which does nothing, we use its flag in constraints
-//     instr return {}
-
-//     // reset registers to 0 and leave inputs free
-//     instr _reset {
-//         <%
-//         for reg in m.write_regs {
-//             reg = 0;
-//         }
-//         for i in m.inputs {
-//             format!("{}_read_free", i) = 1;
-//         }
-//         %>
-//     }
-
-//     instr _jump_to_instruction {
-//         m.pc' = function_id;
-//     }
-
-//     instr _loop {
-//         m.pc' = m.pc;
-//     }
-
-//     function main(<%m.inputs%>) -> <%m.outputs%> {
-//         _start::
-//         _reset::
-//         _jump_to_instruction;
-//         <%
-//         for f in m.functions {
-//             format!("_{}::", f.name);
-//             f.body
-//         }
-//         %>
-//         _sink::
-//         _loop;
-//     }
-// }
 use ast::{
     asm_analysis::{
         utils::previsit_expression_mut, AnalysisASMFile, AssignmentStatement, FunctionStatement,
@@ -259,6 +182,3 @@ impl<T: FieldElement> FunctionDesugar<T> {
         machine
     }
 }
-
-#[cfg(test)]
-mod tests {}

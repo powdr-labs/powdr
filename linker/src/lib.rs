@@ -92,7 +92,7 @@ pub fn link<T: FieldElement>(graph: PILGraph<T>) -> PILFile<T> {
                 if let Some(entry_point) = graph.entry_points.iter().next() {
                     let entry_point_id = entry_point.function.id;
                     let function_id = &entry_point.function_id;
-                    // call the first operation by initialising `function_id` to the first operation
+                    // call the first function by initialising `function_id` to the first function
                     pil.push(parse_pil_statement(&format!(
                         "first_step * ({function_id} - {entry_point_id}) = 0"
                     )));

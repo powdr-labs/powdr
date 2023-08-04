@@ -1,3 +1,5 @@
+//! Generate one ROM per machine from all declared functions
+
 /// Generate the rom
 /// If this was written in the language, it would be something like
 // fn romgen(self) -> Self {
@@ -78,12 +80,15 @@
 //         _loop;
 //     }
 // }
-use ast::asm_analysis::{AnalysisASMFile, Batch, Incompatible, IncompatibleSet, Machine, Rom};
+use ast::asm_analysis::{
+    AnalysisASMFile, Batch, Incompatible, IncompatibleSet, Machine, PilBlock, Rom,
+};
 use number::FieldElement;
 use std::marker::PhantomData;
 
 use crate::utils::{
-    parse_instruction_body, parse_instruction_definition, parse_operation_statement,
+    parse_function_statement, parse_instruction_body, parse_instruction_definition,
+    parse_pil_statement,
 };
 
 /// Generate the ROM for each machine based on its functions
@@ -122,7 +127,7 @@ impl<T: FieldElement> RomGenerator<T> {
                     "instr _reset {{ {} }}",
                     machine
                         .write_registers()
-                        .map(|r| format!("{} = 0", r.name))
+                        .map(|r| format!("{}' = 0", r.name))
                         .collect::<Vec<_>>()
                         .join(", ")
                 )),
@@ -137,7 +142,7 @@ impl<T: FieldElement> RomGenerator<T> {
                 .iter_mut()
                 .find(|i| i.name == "return")
                 .unwrap()
-                .body = parse_instruction_body(&format!("{{ {} = 0 }}", machine.pc().unwrap()));
+                .body = parse_instruction_body(&format!("{{ {}' = 0 }}", machine.pc().unwrap()));
 
             // generate the rom
             // the functions are already batched, we just batch the dispatcher manually here
@@ -148,12 +153,12 @@ impl<T: FieldElement> RomGenerator<T> {
             // add the beginning of the dispatcher
             rom.extend(vec![
                 Batch::from(vec![
-                    parse_operation_statement("_start::"),
-                    parse_operation_statement("_reset;"),
+                    parse_function_statement("_start::"),
+                    parse_function_statement("_reset;"),
                 ])
                 .reason(IncompatibleSet::from(Incompatible::Unimplemented)),
                 // the latch is constrained to start at 0 using _L1
-                Batch::from(vec![parse_operation_statement("_jump_to_operation;")])
+                Batch::from(vec![parse_function_statement("_jump_to_operation;")])
                     .reason(IncompatibleSet::from(Incompatible::Label)),
             ]);
 
@@ -174,7 +179,7 @@ impl<T: FieldElement> RomGenerator<T> {
                     .statements
                     .insert(
                         0,
-                        parse_operation_statement(&format!("_{}::", function.name)),
+                        parse_function_statement(&format!("_{}::", function.name)),
                     );
 
                 // modify the last batch to be caused by the coming label
@@ -186,9 +191,30 @@ impl<T: FieldElement> RomGenerator<T> {
                 rom.extend(batches);
             }
 
+            // THE FOLLOWING IS NECESSARY BECAUSE OF WITGEN, IT COULD BE REMOVED ONCE WITGEN CAN CALL THE INFINITE LOOP ITSELF
+            // we get the location of the sink so that witgen jumps to it after the first call is done
+            // this constrains the VM to being able to execute only one call, which will be fixed in the future
+            let sink_id = T::from(rom.len() as u64);
+            let latch = machine.latch.as_ref().unwrap();
+            let sigma = "_sigma";
+
+            machine.constraints.push(PilBlock {
+                start: 0,
+                statements: vec![
+                    // declare `_sigma` as the sum of the latch, will be 0 and then 1 after the end of the first call
+                    parse_pil_statement(&format!("col witness {sigma}")),
+                    parse_pil_statement(&format!(
+                        "{sigma}' = (1 - first_step') * ({sigma} + {latch})"
+                    )), // HACKY: THIS ASSUMES `first_step` is defined here!!
+                    // once `_sigma` is 1, constrain `_function_id` to the label of the sink
+                    parse_pil_statement(&format!("{sigma} * ({function_id} - {sink_id}) = 0")),
+                ],
+            });
+            ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
             rom.extend(vec![Batch::from(vec![
-                parse_operation_statement("_sink::"),
-                parse_operation_statement("_loop;"),
+                parse_function_statement("_sink::"),
+                parse_function_statement("_loop;"),
             ])]);
 
             machine.function_id = Some(function_id.into());
@@ -242,8 +268,6 @@ mod tests {
         "#;
 
         let file: AnalysisASMFile<Bn254Field> = generate_rom_str(vm);
-
-        println!("{file}");
 
         assert_eq!(
             file.machines

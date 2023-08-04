@@ -1,3 +1,5 @@
+//! Infer assignment registers in asm statements
+
 use ast::{
     asm_analysis::{AnalysisASMFile, AssignmentStatement, Expression, FunctionStatement, Machine},
     parsed::asm::RegisterFlag,

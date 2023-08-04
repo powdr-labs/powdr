@@ -10,12 +10,14 @@ use ast::{asm_analysis::AnalysisASMFile, parsed::asm::ASMFile};
 use number::FieldElement;
 
 #[derive(Default)]
+/// A monitor of the changes applied to the program as we run through the analysis pipeline
 pub struct DiffMonitor {
     previous: Option<String>,
     current: Option<String>,
 }
 
 impl DiffMonitor {
+    /// push a new program and log::trace! how it differs from the previous one, if any
     fn push<S: ToString>(&mut self, s: S) {
         std::mem::swap(&mut self.previous, &mut self.current);
         self.current = Some(s.to_string());
@@ -98,7 +100,7 @@ pub mod utils {
             .unwrap()
     }
 
-    pub fn parse_operation_statement<T: FieldElement>(input: &str) -> FunctionStatement<T> {
+    pub fn parse_function_statement<T: FieldElement>(input: &str) -> FunctionStatement<T> {
         match parser::powdr::FunctionStatementParser::new()
             .parse::<T>(input)
             .unwrap()

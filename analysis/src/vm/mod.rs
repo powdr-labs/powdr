@@ -6,13 +6,9 @@ use number::FieldElement;
 
 use crate::DiffMonitor;
 
-/// Batch compatible ROM statements
 pub mod batcher;
-/// Desugar asm functions using registers and witness columns
 pub mod function_desugar;
-/// Infer assignment registers in asm statements
 pub mod inference;
-/// Generate one ROM per machine from all declared functions
 pub mod romgen;
 
 pub fn analyze<T: FieldElement>(
