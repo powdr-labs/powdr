@@ -82,9 +82,9 @@ where
             machines,
             query_callback,
             global_range_constraints,
-            current: fixed_data.witness_map(),
-            next: fixed_data.witness_map(),
-            next_range_constraints: fixed_data.witness_map(),
+            current: fixed_data.witness_map(None),
+            next: fixed_data.witness_map(None),
+            next_range_constraints: fixed_data.witness_map(None),
             next_row: 0,
             failure_reasons: vec![],
             last_report: 0,
@@ -213,8 +213,8 @@ where
             indent(&self.format_next_values().join("\n"), "    ")
         );
         std::mem::swap(&mut self.next, &mut self.current);
-        self.next = self.fixed_data.witness_map();
-        self.next_range_constraints = self.fixed_data.witness_map();
+        self.next = self.fixed_data.witness_map(None);
+        self.next_range_constraints = self.fixed_data.witness_map(None);
 
         self.current.unwrap_or_default()
     }
@@ -224,21 +224,21 @@ where
     /// not used.
     pub fn propose_next_row(&mut self, next_row: DegreeType, values: &ColumnMap<T>) -> bool {
         self.set_next_row_and_log(next_row);
-        self.next = values.to_option();
+        self.next = values.wrap_some();
 
         for identity in self.identities {
             if self
                 .process_identity(identity, SolvingStrategy::AssumeZero)
                 .is_err()
             {
-                self.next = self.fixed_data.witness_map();
-                self.next_range_constraints = self.fixed_data.witness_map();
+                self.next = self.fixed_data.witness_map(None);
+                self.next_range_constraints = self.fixed_data.witness_map(None);
                 return false;
             }
         }
         std::mem::swap(&mut self.next, &mut self.current);
-        self.next = self.fixed_data.witness_map();
-        self.next_range_constraints = self.fixed_data.witness_map();
+        self.next = self.fixed_data.witness_map(None);
+        self.next_range_constraints = self.fixed_data.witness_map(None);
         true
     }
 
