@@ -26,6 +26,7 @@ use number::FieldElement;
 ///  - POSITIVE has all values from 1 to half of the field size.
 pub struct SortedWitnesses<T> {
     key_col: PolyID,
+    /// Position of the witness columns in the data.
     witness_positions: HashMap<PolyID, usize>,
     data: BTreeMap<T, Vec<Option<T>>>,
 }
