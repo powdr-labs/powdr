@@ -19,14 +19,10 @@ impl<T: FieldElement> BackendImpl<T> for Halo2Prover {
         &self,
         pil: &Analyzed<T>,
         fixed: &[(&str, Vec<T>)],
-        witness: Option<&[(&str, Vec<T>)]>,
+        witness: &[(&str, Vec<T>)],
         prev_proof: Option<Proof>,
         output_dir: &Path,
     ) -> io::Result<()> {
-        let Some(witness) = witness else {
-            return Err(io::Error::new(io::ErrorKind::InvalidInput, "witness is missing"));
-        };
-
         let (proof, fname) = match prev_proof {
             Some(proof) => (self.prove_aggr(pil, fixed, witness, proof), "proof.bin"),
             None => (self.prove_ast(pil, fixed, witness), "proof_aggr.bin"),
@@ -65,7 +61,7 @@ impl<T: FieldElement> BackendImpl<T> for Halo2Mock {
         &self,
         pil: &Analyzed<T>,
         fixed: &[(&str, Vec<T>)],
-        witness: Option<&[(&str, Vec<T>)]>,
+        witness: &[(&str, Vec<T>)],
         prev_proof: Option<Proof>,
         _output_dir: &Path,
     ) -> io::Result<()> {
@@ -75,13 +71,6 @@ impl<T: FieldElement> BackendImpl<T> for Halo2Mock {
                 "Halo2Mock backend does not support aggregation",
             ));
         }
-
-        let Some(witness) = witness else {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                "witness is missing",
-            ));
-        };
 
         halo2::mock_prove(pil, fixed, witness);
 

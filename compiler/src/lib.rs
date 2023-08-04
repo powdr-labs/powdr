@@ -212,9 +212,13 @@ where
     if let Some(backend) = prove_with {
         let factory = backend.build::<T>();
         let backend = factory.new(degree);
-        if let Err(error) =
-            backend.prove(&analyzed, &constants, witness.as_deref(), None, output_dir)
-        {
+        if let Err(error) = backend.prove(
+            &analyzed,
+            &constants,
+            witness.as_deref().unwrap_or_default(),
+            None,
+            output_dir,
+        ) {
             log::warn!("Proof generation failed: {error}");
         }
     }

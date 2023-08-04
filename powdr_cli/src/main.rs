@@ -480,7 +480,7 @@ fn read_and_prove<T: FieldElement>(
     });
 
     backend
-        .prove(&pil, &fixed.0, Some(&witness.0), proof, dir)
+        .prove(&pil, &fixed.0, &witness.0, proof, dir)
         .unwrap();
 }
 

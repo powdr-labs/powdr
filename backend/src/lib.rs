@@ -62,7 +62,7 @@ impl<F: FieldElement, B: BackendImpl<F>> Backend<F> for ConcreteBackendWithoutSe
         &self,
         pil: &Analyzed<F>,
         fixed: &[(&str, Vec<F>)],
-        witness: Option<&[(&str, Vec<F>)]>,
+        witness: &[(&str, Vec<F>)],
         prev_proof: Option<Proof>,
         output_dir: &Path,
     ) -> io::Result<()> {
@@ -99,7 +99,7 @@ impl<F: FieldElement, B: BackendWithSetup<F>> Backend<F> for ConcreteBackendWith
         &self,
         pil: &Analyzed<F>,
         fixed: &[(&str, Vec<F>)],
-        witness: Option<&[(&str, Vec<F>)]>,
+        witness: &[(&str, Vec<F>)],
         prev_proof: Option<Proof>,
         output_dir: &Path,
     ) -> io::Result<()> {
@@ -129,7 +129,7 @@ pub trait Backend<F: FieldElement> {
         &self,
         pil: &Analyzed<F>,
         fixed: &[(&str, Vec<F>)],
-        witness: Option<&[(&str, Vec<F>)]>,
+        witness: &[(&str, Vec<F>)],
         prev_proof: Option<Proof>,
         output_dir: &Path,
     ) -> io::Result<()>;
@@ -156,7 +156,7 @@ trait BackendImpl<F: FieldElement> {
         &self,
         pil: &Analyzed<F>,
         fixed: &[(&str, Vec<F>)],
-        witness: Option<&[(&str, Vec<F>)]>,
+        witness: &[(&str, Vec<F>)],
         prev_proof: Option<Proof>,
         output_dir: &Path,
     ) -> io::Result<()>;
