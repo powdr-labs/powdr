@@ -44,11 +44,11 @@ struct WithoutSetupFactory<B>(PhantomData<B>);
 
 /// Factory implementation for backends without setup.
 impl<F: FieldElement, B: BackendImpl<F> + 'static> BackendFactory<F> for WithoutSetupFactory<B> {
-    fn new(&self, degree: DegreeType) -> Box<dyn Backend<F>> {
+    fn create(&self, degree: DegreeType) -> Box<dyn Backend<F>> {
         Box::new(ConcreteBackendWithoutSetup(B::new(degree)))
     }
 
-    fn new_from_setup(&self, _input: &mut dyn io::Read) -> Result<Box<dyn Backend<F>>, Error> {
+    fn create_from_setup(&self, _input: &mut dyn io::Read) -> Result<Box<dyn Backend<F>>, Error> {
         Err(Error::NoSetupAvailable)
     }
 }
@@ -79,11 +79,11 @@ struct WithSetupFactory<B>(PhantomData<B>);
 
 /// Factory implementation for backends with setup.
 impl<F: FieldElement, B: BackendWithSetup<F> + 'static> BackendFactory<F> for WithSetupFactory<B> {
-    fn new(&self, degree: DegreeType) -> Box<dyn Backend<F>> {
+    fn create(&self, degree: DegreeType) -> Box<dyn Backend<F>> {
         Box::new(ConcreteBackendWithSetup(B::new(degree)))
     }
 
-    fn new_from_setup(&self, input: &mut dyn io::Read) -> Result<Box<dyn Backend<F>>, Error> {
+    fn create_from_setup(&self, input: &mut dyn io::Read) -> Result<Box<dyn Backend<F>>, Error> {
         Ok(Box::new(ConcreteBackendWithSetup(B::new_from_setup(
             input,
         )?)))
@@ -141,10 +141,10 @@ pub trait Backend<F: FieldElement> {
 /// Dynamic interface for a backend factory.
 pub trait BackendFactory<F: FieldElement> {
     /// Maybe perform the setup, and create a new backend object.
-    fn new(&self, degree: DegreeType) -> Box<dyn Backend<F>>;
+    fn create(&self, degree: DegreeType) -> Box<dyn Backend<F>>;
 
     /// Create a backend object from a prover setup loaded from a file.
-    fn new_from_setup(&self, input: &mut dyn io::Read) -> Result<Box<dyn Backend<F>>, Error>;
+    fn create_from_setup(&self, input: &mut dyn io::Read) -> Result<Box<dyn Backend<F>>, Error>;
 }
 
 /// Trait implemented by all backends.
