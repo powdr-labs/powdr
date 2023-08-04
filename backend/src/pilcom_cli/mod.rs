@@ -1,6 +1,6 @@
 mod json_exporter;
 
-use crate::{BackendImpl, BackendWithoutSetup, Proof};
+use crate::{BackendImpl, Proof};
 use ast::analyzed::Analyzed;
 use json::JsonValue;
 use number::{write_polys_file, DegreeType, FieldElement};
@@ -14,13 +14,11 @@ pub struct PilcomCli {
     degree: DegreeType,
 }
 
-impl<T: FieldElement> BackendWithoutSetup<T> for PilcomCli {
+impl<T: FieldElement> BackendImpl<T> for PilcomCli {
     fn new(degree: DegreeType) -> Self {
         Self { degree }
     }
-}
 
-impl<T: FieldElement> BackendImpl<T> for PilcomCli {
     fn prove(
         &self,
         pil: &Analyzed<T>,

@@ -464,7 +464,7 @@ fn read_and_prove<T: FieldElement>(
     let builder = backend_type.build::<T>();
     let backend = if let Some(filename) = params {
         let mut file = fs::File::open(dir.join(filename)).unwrap();
-        builder.load_setup(&mut file).unwrap()
+        builder.new_from_setup(&mut file).unwrap()
     } else {
         let degree = usize::BITS - fixed.1.leading_zeros() + 1;
         builder.new(degree as u64)

@@ -43,14 +43,12 @@ impl BackendType {
 struct WithoutSetupFactory<B>(PhantomData<B>);
 
 /// Factory implementation for backends without setup.
-impl<F: FieldElement, B: BackendWithoutSetup<F> + 'static> BackendFactory<F>
-    for WithoutSetupFactory<B>
-{
+impl<F: FieldElement, B: BackendImpl<F> + 'static> BackendFactory<F> for WithoutSetupFactory<B> {
     fn new(&self, degree: DegreeType) -> Box<dyn Backend<F>> {
         Box::new(ConcreteBackendWithoutSetup(B::new(degree)))
     }
 
-    fn load_setup(&self, _input: &mut dyn io::Read) -> Result<Box<dyn Backend<F>>, Error> {
+    fn new_from_setup(&self, _input: &mut dyn io::Read) -> Result<Box<dyn Backend<F>>, Error> {
         Err(Error::NoSetupAvailable)
     }
 }
@@ -59,7 +57,7 @@ impl<F: FieldElement, B: BackendWithoutSetup<F> + 'static> BackendFactory<F>
 struct ConcreteBackendWithoutSetup<B>(B);
 
 /// Concrete implementation for backends with setup.
-impl<F: FieldElement, B: BackendWithoutSetup<F>> Backend<F> for ConcreteBackendWithoutSetup<B> {
+impl<F: FieldElement, B: BackendImpl<F>> Backend<F> for ConcreteBackendWithoutSetup<B> {
     fn prove(
         &self,
         pil: &Analyzed<F>,
@@ -82,11 +80,13 @@ struct WithSetupFactory<B>(PhantomData<B>);
 /// Factory implementation for backends with setup.
 impl<F: FieldElement, B: BackendWithSetup<F> + 'static> BackendFactory<F> for WithSetupFactory<B> {
     fn new(&self, degree: DegreeType) -> Box<dyn Backend<F>> {
-        Box::new(ConcreteBackendWithSetup(B::new_setup(degree)))
+        Box::new(ConcreteBackendWithSetup(B::new(degree)))
     }
 
-    fn load_setup(&self, input: &mut dyn io::Read) -> Result<Box<dyn Backend<F>>, Error> {
-        Ok(Box::new(ConcreteBackendWithSetup(B::load_setup(input)?)))
+    fn new_from_setup(&self, input: &mut dyn io::Read) -> Result<Box<dyn Backend<F>>, Error> {
+        Ok(Box::new(ConcreteBackendWithSetup(B::new_from_setup(
+            input,
+        )?)))
     }
 }
 
@@ -144,11 +144,14 @@ pub trait BackendFactory<F: FieldElement> {
     fn new(&self, degree: DegreeType) -> Box<dyn Backend<F>>;
 
     /// Create a backend object from a prover setup loaded from a file.
-    fn load_setup(&self, input: &mut dyn io::Read) -> Result<Box<dyn Backend<F>>, Error>;
+    fn new_from_setup(&self, input: &mut dyn io::Read) -> Result<Box<dyn Backend<F>>, Error>;
 }
 
 /// Trait implemented by all backends.
 trait BackendImpl<F: FieldElement> {
+    /// Perform the setup and create a new backend object.
+    fn new(degree: DegreeType) -> Self;
+
     fn prove(
         &self,
         pil: &Analyzed<F>,
@@ -165,22 +168,9 @@ trait BackendWithSetup<F: FieldElement>
 where
     Self: Sized + BackendImpl<F>,
 {
-    /// Perform the setup and create a new backend object.
-    fn new_setup(degree: DegreeType) -> Self;
-
     /// Create a backend object from a setup loaded from a file.
-    fn load_setup(input: &mut dyn io::Read) -> Result<Self, io::Error>;
+    fn new_from_setup(input: &mut dyn io::Read) -> Result<Self, io::Error>;
 
     /// Write the setup to a file.
     fn write_setup(&self, output: &mut dyn io::Write) -> Result<(), io::Error>;
-}
-
-/// Trait implemented by backends with no setup phase, that can be constructed
-/// directly.
-trait BackendWithoutSetup<F: FieldElement>
-where
-    Self: BackendImpl<F>,
-{
-    /// Perform the setup and create a new backend object.
-    fn new(degree: DegreeType) -> Self;
 }
