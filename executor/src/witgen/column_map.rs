@@ -22,33 +22,35 @@ impl<V: Clone> ColumnMap<V> {
 }
 
 impl<V> ColumnMap<V> {
-    pub fn iter(&self) -> impl Iterator<Item = (PolyID, &V)> {
-        self.values.iter().enumerate().map(|(i, v)| {
-            (
-                PolyID {
-                    id: i as u64,
-                    ptype: self.ptype,
-                },
-                v,
-            )
+    pub fn from(values: impl Iterator<Item = V>, ptype: PolynomialType) -> Self {
+        let values: Vec<_> = values.collect();
+        ColumnMap { values, ptype }
+    }
+}
+
+impl<V> ColumnMap<V> {
+    pub fn keys(&self) -> impl Iterator<Item = PolyID> {
+        let ptype = self.ptype;
+        (0..self.values.len()).map(move |i| PolyID {
+            id: i as u64,
+            ptype: ptype,
         })
     }
 
+    pub fn iter(&self) -> impl Iterator<Item = (PolyID, &V)> {
+        self.keys().zip(self.values.iter())
+    }
+
     pub fn into_iter(self) -> impl Iterator<Item = (PolyID, V)> {
-        let ptype = self.ptype;
-        self.values.into_iter().enumerate().map(move |(i, v)| {
-            (
-                PolyID {
-                    id: i as u64,
-                    ptype,
-                },
-                v,
-            )
-        })
+        self.keys().zip(self.values.into_iter())
     }
 
     pub fn values(&self) -> impl Iterator<Item = &V> {
         self.values.iter()
+    }
+
+    pub fn len(&self) -> usize {
+        self.values.len()
     }
 }
 

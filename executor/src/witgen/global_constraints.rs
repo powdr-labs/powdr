@@ -50,7 +50,7 @@ pub fn determine_global_constraints<'a, T: FieldElement>(
     // but also have one row for each possible value.
     // It allows us to completely remove some lookups.
     let mut full_span = BTreeSet::new();
-    for (&poly_id, col) in fixed_data.fixed_cols.iter() {
+    for (poly_id, col) in fixed_data.fixed_cols.iter() {
         if let Some((cons, full)) = process_fixed_column(col.values) {
             assert!(known_constraints.insert(poly_id, cons).is_none());
             if full {

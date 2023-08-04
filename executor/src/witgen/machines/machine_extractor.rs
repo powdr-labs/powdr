@@ -32,7 +32,7 @@ pub fn split_out_machines<'a, T: FieldElement>(
 
     let mut machines: Vec<Box<dyn Machine<T>>> = vec![];
 
-    let all_witnesses = fixed.witness_cols.keys().copied().collect::<HashSet<_>>();
+    let all_witnesses = fixed.witness_cols.keys().collect::<HashSet<_>>();
     let mut remaining_witnesses = all_witnesses.clone();
     let mut base_identities = identities.clone();
     for id in &identities {

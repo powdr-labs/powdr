@@ -41,28 +41,26 @@ where
     if degree.is_zero() {
         panic!("Resulting degree is zero. Please ensure that there is at least one non-constant fixed column to set the degree.");
     }
-    let witness_cols = analyzed
-        .committed_polys_in_source_order()
-        .iter()
-        .enumerate()
-        .map(|(i, (poly, value))| {
-            if poly.length.is_some() {
-                unimplemented!("Committed arrays not implemented.")
-            }
-            assert_eq!(i as u64, poly.id);
-            let col = WitnessColumn::new(i, &poly.absolute_name, value);
-            (col.poly_id, col)
-        })
-        .collect();
+    let witness_cols = ColumnMap::from(
+        analyzed
+            .committed_polys_in_source_order()
+            .iter()
+            .enumerate()
+            .map(|(i, (poly, value))| {
+                if poly.length.is_some() {
+                    unimplemented!("Committed arrays not implemented.")
+                }
+                assert_eq!(i as u64, poly.id);
+                let col = WitnessColumn::new(i, &poly.absolute_name, value);
+                col
+            }),
+        PolynomialType::Committed,
+    );
 
-    let fixed_cols = fixed_col_values
-        .iter()
-        .enumerate()
-        .map(|(i, (n, v))| {
-            let col = FixedColumn::new(i, n, v);
-            (col.poly_id, col)
-        })
-        .collect();
+    let fixed_cols = ColumnMap::from(
+        fixed_col_values.iter().map(|(n, v)| FixedColumn::new(n, v)),
+        PolynomialType::Constant,
+    );
     let fixed = FixedData::new(degree, fixed_cols, witness_cols);
     let identities = substitute_constants(&analyzed.identities, &analyzed.constants);
 
@@ -95,7 +93,7 @@ where
 
     let mut rows: Vec<ColumnMap<T>> = vec![];
 
-    let poly_ids = fixed.witness_cols.keys().copied().collect::<Vec<_>>();
+    let poly_ids = fixed.witness_cols.keys().collect::<Vec<_>>();
     for (i, p) in poly_ids.iter().enumerate() {
         assert!(p.id == i as u64);
     }
@@ -199,19 +197,16 @@ fn rows_are_repeating<T: PartialEq>(
 /// Data that is fixed for witness generation.
 pub struct FixedData<'a, T> {
     degree: DegreeType,
-    fixed_cols: BTreeMap<PolyID, FixedColumn<'a, T>>,
-    witness_cols: BTreeMap<PolyID, WitnessColumn<'a, T>>,
+    fixed_cols: ColumnMap<FixedColumn<'a, T>>,
+    witness_cols: ColumnMap<WitnessColumn<'a, T>>,
 }
 
 impl<'a, T> FixedData<'a, T> {
     pub fn new(
         degree: DegreeType,
-        fixed_cols: BTreeMap<PolyID, FixedColumn<'a, T>>,
-        witness_cols: BTreeMap<PolyID, WitnessColumn<'a, T>>,
+        fixed_cols: ColumnMap<FixedColumn<'a, T>>,
+        witness_cols: ColumnMap<WitnessColumn<'a, T>>,
     ) -> Self {
-        for (i, poly_id) in witness_cols.keys().enumerate() {
-            assert!(poly_id.id == i as u64);
-        }
         FixedData {
             degree,
             fixed_cols,
@@ -234,30 +229,17 @@ impl<'a, T> FixedData<'a, T> {
             PolynomialType::Intermediate => unimplemented!(),
         }
     }
-
-    fn witness_cols(&self) -> impl Iterator<Item = &WitnessColumn<T>> {
-        self.witness_cols.values()
-    }
 }
 
 pub struct FixedColumn<'a, T> {
-    poly_id: PolyID,
     name: String,
     values: &'a Vec<T>,
 }
 
 impl<'a, T> FixedColumn<'a, T> {
-    pub fn new(id: usize, name: &'a str, values: &'a Vec<T>) -> FixedColumn<'a, T> {
-        let poly_id = PolyID {
-            id: id as u64,
-            ptype: PolynomialType::Constant,
-        };
+    pub fn new(name: &'a str, values: &'a Vec<T>) -> FixedColumn<'a, T> {
         let name = name.to_string();
-        FixedColumn {
-            poly_id,
-            name,
-            values,
-        }
+        FixedColumn { name, values }
     }
 }
 
@@ -271,7 +253,6 @@ pub struct Query<'a, T> {
 
 #[derive(Debug)]
 pub struct WitnessColumn<'a, T> {
-    poly_id: PolyID,
     name: String,
     query: Option<Query<'a, T>>,
 }
@@ -287,14 +268,13 @@ impl<'a, T> WitnessColumn<'a, T> {
         } else {
             None
         };
-        let poly_id = PolyID {
-            id: id as u64,
-            ptype: PolynomialType::Committed,
-        };
         let name = name.to_string();
         let query = query.as_ref().map(|callback| {
             let poly = PolynomialReference {
-                poly_id: Some(poly_id),
+                poly_id: Some(PolyID {
+                    id: id as u64,
+                    ptype: PolynomialType::Committed,
+                }),
                 name: name.clone(),
                 next: false,
                 index: None,
@@ -304,10 +284,6 @@ impl<'a, T> WitnessColumn<'a, T> {
                 expr: callback,
             }
         });
-        WitnessColumn {
-            poly_id,
-            name,
-            query,
-        }
+        WitnessColumn { name, query }
     }
 }

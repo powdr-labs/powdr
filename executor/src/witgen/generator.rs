@@ -145,8 +145,8 @@ where
                 if self.query_callback.is_some()
                     && strategy == SolvingStrategy::SingleVariableAffine
                 {
-                    for column in self.fixed_data.witness_cols() {
-                        if !self.has_known_next_value(&column.poly_id) && column.query.is_some() {
+                    for (poly_id, column) in self.fixed_data.witness_cols.iter() {
+                        if !self.has_known_next_value(&poly_id) && column.query.is_some() {
                             let result = self.process_witness_query(&column);
                             progress |=
                                 self.handle_eval_result(result, strategy, || "<query>".into());
