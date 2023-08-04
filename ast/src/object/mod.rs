@@ -17,7 +17,7 @@ impl Location {
 }
 
 pub struct PILGraph<T> {
-    pub entry_point: LinkTo<T>,
+    pub entry_points: Vec<LinkTo<T>>,
     pub objects: BTreeMap<Location, Object<T>>,
 }
 

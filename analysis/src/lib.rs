@@ -156,7 +156,7 @@ mod test_util {
     use number::FieldElement;
     use parser::parse_asm;
 
-    use crate::{macro_expansion, type_check, vm::inference};
+    use crate::{macro_expansion, type_check};
 
     /// A test utility to process a source file until after macro expansion
     pub fn expand_str<T: FieldElement>(source: &str) -> ASMFile<T> {
@@ -167,10 +167,5 @@ mod test_util {
     /// A test utility to process a source file until after type checking
     pub fn typecheck_str<T: FieldElement>(source: &str) -> Result<AnalysisASMFile<T>, Vec<String>> {
         type_check::check(expand_str(source))
-    }
-
-    /// A test utility to process a source file until after inference
-    pub fn infer_str<T: FieldElement>(source: &str) -> Result<AnalysisASMFile<T>, Vec<String>> {
-        inference::infer(typecheck_str(source).unwrap())
     }
 }

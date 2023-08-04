@@ -17,14 +17,14 @@ use crate::parsed::{
 
 pub use crate::parsed::Expression;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct RegisterDeclarationStatement {
     pub start: usize,
     pub name: String,
     pub flag: Option<RegisterFlag>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct InstructionDefinitionStatement<T> {
     pub start: usize,
     pub name: String,
@@ -32,7 +32,7 @@ pub struct InstructionDefinitionStatement<T> {
     pub body: InstructionBody<T>,
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct FunctionStatements<T> {
     inner: Vec<FunctionStatement<T>>,
     batches: Option<Vec<BatchMetadata>>,
@@ -58,6 +58,10 @@ impl<T> From<Vec<FunctionStatement<T>>> for Batch<T> {
 }
 
 impl<T> Batch<T> {
+    pub fn set_reason(&mut self, reason: IncompatibleSet) {
+        self.reason = Some(reason);
+    }
+
     pub fn reason(mut self, reason: IncompatibleSet) -> Self {
         self.reason = Some(reason);
         self
@@ -164,12 +168,12 @@ impl<T> FromIterator<Batch<T>> for FunctionStatements<T> {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct FunctionBody<T> {
     pub statements: FunctionStatements<T>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct FunctionDefinitionStatement<T> {
     pub start: usize,
     pub name: String,
@@ -178,12 +182,12 @@ pub struct FunctionDefinitionStatement<T> {
     pub body: FunctionBody<T>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct DegreeStatement {
     pub degree: BigUint,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum FunctionStatement<T> {
     Assignment(AssignmentStatement<T>),
     Instruction(InstructionStatement<T>),
@@ -215,7 +219,7 @@ impl<T> From<DebugDirective> for FunctionStatement<T> {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct AssignmentStatement<T> {
     pub start: usize,
     pub lhs: Vec<String>,
@@ -223,32 +227,32 @@ pub struct AssignmentStatement<T> {
     pub rhs: Box<Expression<T>>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct InstructionStatement<T> {
     pub start: usize,
     pub instruction: String,
     pub inputs: Vec<Expression<T>>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct LabelStatement {
     pub start: usize,
     pub name: String,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct DebugDirective {
     pub start: usize,
     pub directive: crate::parsed::asm::DebugDirective,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct PilBlock<T> {
     pub start: usize,
     pub statements: Vec<PilStatement<T>>,
 }
 
-#[derive(Clone, Default, Debug)]
+#[derive(Clone, Default, Debug, PartialEq)]
 pub struct SubmachineDeclaration {
     /// the name of this instance
     pub name: String,
@@ -256,7 +260,7 @@ pub struct SubmachineDeclaration {
     pub ty: String,
 }
 
-#[derive(Clone, Default, Debug)]
+#[derive(Clone, Default, PartialEq, Debug)]
 pub struct Machine<T> {
     pub degree: Option<DegreeStatement>,
     pub latch: Option<String>,
@@ -301,12 +305,12 @@ impl<T> Machine<T> {
     }
 }
 
-#[derive(Clone, Default, Debug)]
+#[derive(Clone, Default, Debug, PartialEq)]
 pub struct Rom<T> {
     pub statements: FunctionStatements<T>,
 }
 
-#[derive(Default, Debug)]
+#[derive(Default, Debug, PartialEq)]
 pub struct AnalysisASMFile<T> {
     pub machines: BTreeMap<String, Machine<T>>,
 }

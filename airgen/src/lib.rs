@@ -81,19 +81,22 @@ impl<T: FieldElement> Session<T> {
             .collect();
 
         let main_ty = self.machine_types.get(&main_ty).unwrap();
-        let main_function = &main_ty.functions[0];
 
         PILGraph {
-            entry_point: LinkTo {
-                loc: main_location,
-                latch: main_ty.latch.clone().unwrap(),
-                function_id: main_ty.function_id.clone().unwrap(),
-                function: Function {
-                    name: "main".to_string(),
-                    id: main_function.id.unwrap(),
-                    params: main_function.params.clone(),
-                },
-            },
+            entry_points: main_ty
+                .functions
+                .iter()
+                .map(|f| LinkTo {
+                    loc: main_location.clone(),
+                    latch: main_ty.latch.clone().unwrap(),
+                    function_id: main_ty.function_id.clone().unwrap(),
+                    function: Function {
+                        name: "main".to_string(),
+                        id: f.id.unwrap(),
+                        params: f.params.clone(),
+                    },
+                })
+                .collect(),
             objects,
         }
     }

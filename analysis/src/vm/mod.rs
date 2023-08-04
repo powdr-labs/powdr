@@ -42,3 +42,36 @@ pub fn analyze<T: FieldElement>(
 
     Ok(file)
 }
+
+#[cfg(test)]
+mod test_utils {
+    use crate::test_util::typecheck_str;
+
+    use super::*;
+
+    /// A test utility to process a source file until after inference
+    pub fn infer_str<T: FieldElement>(source: &str) -> Result<AnalysisASMFile<T>, Vec<String>> {
+        inference::infer(typecheck_str(source).unwrap())
+    }
+
+    /// A test utility to process a source file until after function desugar
+    pub fn function_desugar_str<T: FieldElement>(source: &str) -> AnalysisASMFile<T> {
+        function_desugar::desugar(infer_str(source).unwrap())
+    }
+
+    /// A test utility to process a source file until after batching
+    pub fn batch_str<T: FieldElement>(source: &str) -> AnalysisASMFile<T> {
+        batcher::batch(function_desugar_str(source))
+    }
+
+    /// A test utility to process a source file until after batching
+    pub fn generate_rom_str<T: FieldElement>(source: &str) -> AnalysisASMFile<T> {
+        romgen::generate_rom(batch_str(source))
+    }
+
+    /// A test utility to process a source file until after asm to pil reduction
+    #[allow(dead_code)]
+    pub fn asm_to_pil_str<T: FieldElement>(source: &str) -> AnalysisASMFile<T> {
+        asm_to_pil::compile(generate_rom_str(source))
+    }
+}

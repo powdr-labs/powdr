@@ -84,12 +84,19 @@ pub fn link<T: FieldElement>(graph: PILGraph<T>) -> PILFile<T> {
             }
 
             if location == Location::default().join("main") {
-                let entry_point_id = graph.entry_point.function.id;
-                let function_id = &graph.entry_point.function_id;
-                // call the first operation by initialising `function_id` to the first operation
-                pil.push(parse_pil_statement(&format!(
-                    "first_step * ({function_id} - {entry_point_id}) = 0"
-                )));
+                assert!(
+                    graph.entry_points.len() <= 1,
+                    "Program must have at most 1 entry point, found {}",
+                    graph.entry_points.len()
+                );
+                if let Some(entry_point) = graph.entry_points.iter().next() {
+                    let entry_point_id = entry_point.function.id;
+                    let function_id = &entry_point.function_id;
+                    // call the first operation by initialising `function_id` to the first operation
+                    pil.push(parse_pil_statement(&format!(
+                        "first_step * ({function_id} - {entry_point_id}) = 0"
+                    )));
+                }
             }
 
             pil

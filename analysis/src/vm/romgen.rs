@@ -78,9 +78,7 @@
 //         _loop;
 //     }
 // }
-use ast::asm_analysis::{
-    AnalysisASMFile, Batch, Incompatible, IncompatibleSet, Machine, Rom,
-};
+use ast::asm_analysis::{AnalysisASMFile, Batch, Incompatible, IncompatibleSet, Machine, Rom};
 use number::FieldElement;
 use std::marker::PhantomData;
 
@@ -171,13 +169,19 @@ impl<T: FieldElement> RomGenerator<T> {
                     .collect();
                 // modify the first batch to include the label just for debugging purposes, it's always possible to batch it so it's free
                 batches
-                    .get_mut(0)
+                    .first_mut()
                     .expect("function should have at least one statement as it must return")
                     .statements
                     .insert(
                         0,
                         parse_operation_statement(&format!("_{}::", function.name)),
                     );
+
+                // modify the last batch to be caused by the coming label
+                let last = batches
+                    .last_mut()
+                    .expect("function should have at least one statement as it must return");
+                last.set_reason(IncompatibleSet::from(Incompatible::Label));
 
                 rom.extend(batches);
             }
@@ -203,30 +207,11 @@ impl<T: FieldElement> RomGenerator<T> {
 #[cfg(test)]
 mod tests {
     use number::Bn254Field;
-    use parser::parse_asm;
     use pretty_assertions::assert_eq;
 
-    use crate::type_check::TypeChecker;
+    use crate::vm::test_utils::generate_rom_str;
 
     use super::*;
-
-    fn parse_check_and_romgen<T: FieldElement>(input: &str) -> Machine<T> {
-        let mut checker = TypeChecker::default();
-        checker.machines_types.insert("VM".into(), None);
-        checker
-            .check_machine_type(parse_asm(None, input).unwrap().machines.pop().unwrap())
-            .unwrap();
-        let generator = RomGenerator::default();
-        generator.generate_machine_rom(
-            checker
-                .machines_types
-                .into_iter()
-                .next()
-                .unwrap()
-                .1
-                .unwrap(),
-        )
-    }
 
     #[test]
     fn vm() {
@@ -256,37 +241,43 @@ mod tests {
             }
         "#;
 
-        let machine: Machine<Bn254Field> = parse_check_and_romgen(vm);
+        let file: AnalysisASMFile<Bn254Field> = generate_rom_str(vm);
+
+        println!("{file}");
 
         assert_eq!(
-            machine.constraints[0].to_string().trim(),
+            file.machines
+                .iter()
+                .next()
+                .unwrap()
+                .1
+                .rom
+                .as_ref()
+                .unwrap()
+                .statements
+                .to_string()
+                .replace('\t', "    "),
             r#"
-constraints {
-pol commit function_id;
-((1 - instr_return) * (function_id' - function_id)) = 0;
-}
+_start::
+_reset;
+// END BATCH Unimplemented
+_jump_to_operation;
+// END BATCH Label
+_add::
+A <=Z= add(_input_0, _input_1);
+// END BATCH Unimplemented
+return A;
+// END BATCH Label
+_sub::
+A <=Z= sub(_input_0, _input_1);
+// END BATCH Unimplemented
+return A;
+// END BATCH Label
+_sink::
+_loop;
+// END BATCH
 "#
-            .trim()
-            .trim()
-        );
-
-        assert_eq!(
-            machine.rom.unwrap().to_string().replace('\t', "    "),
-            r#"    
-rom {
-     _start::
-     _reset;
-     _jump_to_operation;
-     _add::
-     A <=Z= add(_input_0, _input_1);
-     return A;
-     _sub::
-     A <=Z= sub(_input_0, _input_1);
-     return A;
-     _sink::
-     _loop;
-}
-"#
+            .replace('\t', "    ")
             .trim()
         );
     }

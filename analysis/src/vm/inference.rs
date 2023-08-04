@@ -91,7 +91,7 @@ mod tests {
     use ast::asm_analysis::AssignmentStatement;
     use number::Bn254Field;
 
-    use crate::test_util::infer_str;
+    use crate::vm::test_utils::infer_str;
 
     use super::*;
 
@@ -115,12 +115,17 @@ mod tests {
         let file = infer_str::<Bn254Field>(file).unwrap();
 
         if let FunctionStatement::Assignment(AssignmentStatement { using_reg, .. }) =
-            &file.machines["Machine"].functions[0].body.statements[0]
+            file.machines["Machine"].functions[0]
+                .body
+                .statements
+                .iter()
+                .next()
+                .unwrap()
         {
             assert_eq!(*using_reg, Some("X".to_string()));
         } else {
             panic!()
-        }
+        };
     }
 
     #[test]
@@ -143,12 +148,17 @@ mod tests {
         let file = infer_str::<Bn254Field>(file).unwrap();
 
         if let FunctionStatement::Assignment(AssignmentStatement { using_reg, .. }) =
-            &file.machines["Machine"].functions[0].body.statements[0]
+            &file.machines["Machine"].functions[0]
+                .body
+                .statements
+                .iter()
+                .next()
+                .unwrap()
         {
             assert_eq!(*using_reg, Some("X".to_string()));
         } else {
             panic!()
-        }
+        };
     }
 
     #[test]

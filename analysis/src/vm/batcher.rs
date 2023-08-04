@@ -137,31 +137,50 @@ mod tests {
 
     use std::{fs, path::PathBuf};
 
-    use number::GoldilocksField;
+    use ast::asm_analysis::AnalysisASMFile;
+    use number::Bn254Field;
     use pretty_assertions::assert_eq;
     use test_log::test;
 
-    use crate::{macro_expansion, type_check, vm::batcher, vm::romgen};
+    use crate::vm::test_utils::batch_str;
 
     fn test_batching(path: &str) {
         let base_path = PathBuf::from("../test_data/asm/batching");
         let file_name = base_path.join(path);
-        let contents = fs::read_to_string(&file_name).unwrap();
-        let parsed = parser::parse_asm::<GoldilocksField>(
-            Some(file_name.as_os_str().to_str().unwrap()),
-            &contents,
-        )
-        .unwrap();
-        let expanded = macro_expansion::expand(parsed);
-        let checked = type_check::check(expanded).unwrap();
-        let rommed = romgen::generate_rom(checked);
-        let batched = batcher::batch(rommed);
+        let expected = fs::read_to_string(&file_name).unwrap();
+
+        // remove the batch comments from the expected output before compiling
+        let input = expected
+            .split('\n')
+            .filter(|line| !line.contains("//"))
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        let batched: AnalysisASMFile<Bn254Field> = batch_str(&input);
+
+        // batching also introduces the return instructions as well as sets the machine latches
+        // make sure these changes are there, and remove them so that we can compare with the expected value
+
+        let batched_str = batched.to_string();
+
+        assert!(batched_str.contains("instr return {  }"));
+        assert!(batched_str.contains("(instr_return, ?)"));
+        let batched_str = batched_str.replace("(instr_return, ?)", "");
+
+        let batched_str = batched_str
+            .split('\n')
+            .filter_map(|s| match s {
+                s if s.contains("instr return {  }") => None,
+                s => Some(s),
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
 
         assert_eq!(
-            format!("{batched}")
+            format!("{batched_str}")
                 .replace("\n\n", "\n")
                 .replace('\t', "    "),
-            contents.replace("\n\n", "\n").replace('\t', "    "),
+            expected.replace("\n\n", "\n").replace('\t', "    "),
         );
     }
 
