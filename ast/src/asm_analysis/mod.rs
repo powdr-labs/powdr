@@ -11,7 +11,7 @@ use num_bigint::BigUint;
 use number::FieldElement;
 
 use crate::parsed::{
-    asm::{InstructionBody, Params},
+    asm::{FunctionRef, InstructionBody, Params},
     PilStatement,
 };
 
@@ -56,6 +56,14 @@ pub struct InstructionDefinitionStatement<T> {
     pub name: String,
     pub params: Params,
     pub body: InstructionBody<T>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct LinkDefinitionStatement {
+    pub start: usize,
+    pub flag: String,
+    pub params: Params,
+    pub to: FunctionRef,
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -296,6 +304,7 @@ pub struct Machine<T> {
     pub pc: Option<usize>,
     pub constraints: Vec<PilBlock<T>>,
     pub instructions: Vec<InstructionDefinitionStatement<T>>,
+    pub links: Vec<LinkDefinitionStatement>,
     pub functions: Vec<FunctionDefinitionStatement<T>>,
     pub submachines: Vec<SubmachineDeclaration>,
     /// the rom gets generated in romgen

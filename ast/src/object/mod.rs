@@ -52,7 +52,8 @@ pub struct Link<T> {
 
 #[derive(Clone)]
 pub struct LinkFrom {
-    pub instr: Instr,
+    pub flag: String,
+    pub params: Params,
 }
 
 #[derive(Clone)]
@@ -71,13 +72,6 @@ pub struct Machine {
     pub latch: String,
     /// its function id
     pub function_id: String,
-}
-
-#[derive(Clone)]
-pub struct Instr {
-    pub name: String,
-    pub flag: String,
-    pub params: Params,
 }
 
 #[derive(Clone)]

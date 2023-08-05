@@ -4,10 +4,10 @@ use ast::{
     asm_analysis::{
         AnalysisASMFile, AssignmentStatement, DebugDirective, DegreeStatement, FunctionBody,
         FunctionDefinitionStatement, FunctionStatements, InstructionDefinitionStatement,
-        InstructionStatement, LabelStatement, Machine, PilBlock, RegisterDeclarationStatement,
-        RegisterTy, SubmachineDeclaration,
+        InstructionStatement, LabelStatement, LinkDefinitionStatement, Machine, PilBlock,
+        RegisterDeclarationStatement, RegisterTy, SubmachineDeclaration,
     },
-    parsed::asm::{ASMFile, FunctionStatement, MachineStatement, RegisterFlag},
+    parsed::asm::{ASMFile, FunctionStatement, LinkDeclaration, MachineStatement, RegisterFlag},
 };
 use number::FieldElement;
 
@@ -44,6 +44,7 @@ impl<T: FieldElement> TypeChecker<T> {
         let mut registers = vec![];
         let mut constraints = vec![];
         let mut instructions = vec![];
+        let mut links = vec![];
         let mut functions = vec![];
         let mut submachines = vec![];
 
@@ -69,6 +70,19 @@ impl<T: FieldElement> TypeChecker<T> {
                         name,
                         params,
                         body,
+                    });
+                }
+                MachineStatement::LinkDeclaration(LinkDeclaration {
+                    start,
+                    flag,
+                    params,
+                    to,
+                }) => {
+                    links.push(LinkDefinitionStatement {
+                        start,
+                        flag,
+                        params,
+                        to,
                     });
                 }
                 MachineStatement::InlinePil(start, statements) => {
@@ -196,6 +210,7 @@ impl<T: FieldElement> TypeChecker<T> {
                 .filter_map(|(i, r)| (r.ty.is_pc()).then_some(i))
                 .next(),
             registers,
+            links,
             instructions,
             constraints,
             functions,

@@ -4,10 +4,10 @@ use std::collections::BTreeMap;
 
 use ast::{
     asm_analysis::{
-        AnalysisASMFile, InstructionDefinitionStatement, Machine, PilBlock, SubmachineDeclaration,
+        AnalysisASMFile, LinkDefinitionStatement, Machine, PilBlock, SubmachineDeclaration,
     },
-    object::{Function, Instr, Link, LinkFrom, LinkTo, Location, Object, PILGraph},
-    parsed::{asm::InstructionBody, PilStatement},
+    object::{Function, Link, LinkFrom, LinkTo, Location, Object, PILGraph},
+    parsed::{asm::FunctionRef, PilStatement},
 };
 
 const MAIN: &str = "Main";
@@ -121,9 +121,9 @@ impl<'a, T: FieldElement> ASMPILConverter<'a, T> {
         }
 
         let links = input
-            .instructions
+            .links
             .into_iter()
-            .filter_map(|instr| self.handle_instruction_def(instr))
+            .map(|instr| self.handle_link_def(instr))
             .collect();
 
         Object {
@@ -133,61 +133,53 @@ impl<'a, T: FieldElement> ASMPILConverter<'a, T> {
         }
     }
 
-    fn handle_instruction_def(
+    fn handle_link_def(
         &mut self,
-        InstructionDefinitionStatement {
+        LinkDefinitionStatement {
             start: _,
-            body,
-            name,
+            flag,
             params,
-        }: InstructionDefinitionStatement<T>,
-    ) -> Option<Link<T>> {
-        let instruction_flag = format!("instr_{name}");
-        let instr = Instr {
-            name: name.clone(),
+            to: FunctionRef { instance, function },
+        }: LinkDefinitionStatement,
+    ) -> Link<T> {
+        let from = LinkFrom {
             params: params.clone(),
-            flag: instruction_flag.clone(),
+            flag: flag.clone(),
         };
 
-        let link = match body {
-            InstructionBody::Local(_body) => None,
-            InstructionBody::External(instance, function) => {
-                // get the machine type name for this submachine from the submachine delcarations
-                let instance_ty_name = self
-                    .submachines
-                    .iter()
-                    .find(|s| s.name == instance)
-                    .unwrap()
-                    .ty
-                    .clone();
-                // get the machine type from the machine map
-                let instance_ty = self.machines.get(&instance_ty_name).unwrap();
-                // get the instance location from the current location joined with the instance name
-                let instance_location = self.location.clone().join(instance);
+        // get the machine type name for this submachine from the submachine delcarations
+        let instance_ty_name = self
+            .submachines
+            .iter()
+            .find(|s| s.name == instance)
+            .unwrap()
+            .ty
+            .clone();
+        // get the machine type from the machine map
+        let instance_ty = self.machines.get(&instance_ty_name).unwrap();
+        // get the instance location from the current location joined with the instance name
+        let instance_location = self.location.clone().join(instance);
 
-                Some(Link {
-                    from: LinkFrom { instr },
-                    to: instance_ty
-                        .functions
-                        .iter()
-                        .find(|f| f.name == function)
-                        .map(|d| LinkTo {
-                            machine: ast::object::Machine {
-                                location: instance_location,
-                                latch: instance_ty.latch.clone().unwrap(),
-                                function_id: instance_ty.function_id.clone().unwrap(),
-                            },
-                            function: Function {
-                                name: d.name.clone(),
-                                id: d.id.unwrap(),
-                                params: d.params.clone(),
-                            },
-                        })
-                        .unwrap()
-                        .clone(),
+        Link {
+            from,
+            to: instance_ty
+                .functions
+                .iter()
+                .find(|f| f.name == function)
+                .map(|d| LinkTo {
+                    machine: ast::object::Machine {
+                        location: instance_location,
+                        latch: instance_ty.latch.clone().unwrap(),
+                        function_id: instance_ty.function_id.clone().unwrap(),
+                    },
+                    function: Function {
+                        name: d.name.clone(),
+                        id: d.id.unwrap(),
+                        params: d.params.clone(),
+                    },
                 })
-            }
-        };
-        link
+                .unwrap()
+                .clone(),
+        }
     }
 }

@@ -55,17 +55,15 @@ pub fn link<T: FieldElement>(graph: PILGraph<T>) -> Result<PILFile<T>, Vec<Strin
 
                 // the lhs is `instr_flag { inputs, outputs }`
                 let lhs = SelectedExpressions {
-                    selector: Some(direct_reference(from.instr.flag)),
+                    selector: Some(direct_reference(from.flag)),
                     expressions: once(Expression::Number(to.function.id))
                         .chain(
-                            from.instr
-                                .params
+                            from.params
                                 .inputs
                                 .params
                                 .into_iter()
                                 .chain(
-                                    from.instr
-                                        .params
+                                    from.params
                                         .outputs
                                         .into_iter()
                                         .flat_map(|o| o.params.into_iter()),

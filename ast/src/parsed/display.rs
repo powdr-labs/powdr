@@ -46,8 +46,20 @@ impl<T: Display> Display for InstructionBody<T> {
                     .collect::<Vec<_>>()
                     .join(", ")
             ),
-            InstructionBody::External(instance, function) => write!(f, "{instance}.{function}",),
+            InstructionBody::FunctionRef(r) => write!(f, "{r}"),
         }
+    }
+}
+
+impl Display for LinkDeclaration {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(f, "link {} {} = {}", self.flag, self.params, self.to)
+    }
+}
+
+impl Display for FunctionRef {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(f, "{}.{}", self.instance, self.function)
     }
 }
 
@@ -66,6 +78,9 @@ impl<T: Display> Display for MachineStatement<T> {
             ),
             MachineStatement::InstructionDeclaration(_, name, params, body) => {
                 write!(f, "instr {}{} {{{}}}", name, params, body,)
+            }
+            MachineStatement::LinkDeclaration(link) => {
+                write!(f, "{link}")
             }
             MachineStatement::InlinePil(_, statements) => {
                 write!(
