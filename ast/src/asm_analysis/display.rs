@@ -4,10 +4,11 @@ use std::{
 };
 
 use super::{
-    AnalysisASMFile, AssignmentStatement, DebugDirective, DegreeStatement, FunctionBody,
-    FunctionDefinitionStatement, FunctionStatement, FunctionStatements, Incompatible,
-    IncompatibleSet, Instruction, InstructionDefinitionStatement, InstructionStatement,
-    LabelStatement, Machine, PilBlock, RegisterDeclarationStatement, RegisterTy, Return, Rom,
+    AnalysisASMFile, AssignmentStatement, CallableSymbol, CallableSymbolDefinitionRef,
+    DebugDirective, DegreeStatement, FunctionBody, FunctionStatement, FunctionStatements,
+    Incompatible, IncompatibleSet, Instruction, InstructionDefinitionStatement,
+    InstructionStatement, LabelStatement, LinkDefinitionStatement, Machine, PilBlock,
+    RegisterDeclarationStatement, RegisterTy, Return, Rom,
 };
 
 impl<T: Display> Display for AnalysisASMFile<T> {
@@ -47,20 +48,29 @@ where
 
 impl<T: Display> Display for Machine<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        match (&self.latch, &self.function_id) {
-            (Some(latch), Some(function_id)) => write!(f, "({latch}, {function_id})"),
+        match (&self.latch, &self.operation_id) {
+            (Some(latch), Some(operation_id)) => write!(f, "({latch}, {operation_id})"),
             (None, None) => write!(f, ""),
             (Some(latch), None) => write!(f, "({latch}, _)"),
-            (None, Some(function_id)) => write!(f, "(_, {function_id})"),
+            (None, Some(operation_id)) => write!(f, "(_, {operation_id})"),
         }?;
 
         writeln!(f, " {{")?;
+
         write_indented_items(f, &self.degree)?;
         write_indented_items(f, &self.registers)?;
         write_indented_items(f, &self.instructions)?;
-        write_indented_items(f, &self.functions)?;
+        write_indented_items(f, &self.callable)?;
         write_indented_items(f, &self.constraints)?;
+        write_indented_items(f, &self.links)?;
+
         writeln!(f, "}}")
+    }
+}
+
+impl<T: Display> Display for LinkDefinitionStatement<T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(f, "link {} {} = {};", self.flag, self.params, self.to)
     }
 }
 
@@ -199,20 +209,18 @@ impl<T: Display> Display for Instruction<T> {
     }
 }
 
-impl<T: Display> Display for FunctionDefinitionStatement<T> {
+impl<'a, T: Display> Display for CallableSymbolDefinitionRef<'a, T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        writeln!(
-            f,
-            "function {}{}{} {{",
-            self.name,
-            self.id
-                .as_ref()
-                .map(|id| format!("<{id}>"))
-                .unwrap_or_default(),
-            self.params
-        )?;
-        writeln!(f, "{}", indent(&self.body, 1))?;
-        write!(f, "}}")
+        match &self.symbol {
+            CallableSymbol::Function(s) => {
+                writeln!(f, "function {}{} {{", self.name, s.params)?;
+                writeln!(f, "{}", indent(&s.body, 1))?;
+                write!(f, "}}")
+            }
+            CallableSymbol::Operation(s) => {
+                write!(f, "operation {}{}{};", self.name, s.id, s.params)
+            }
+        }
     }
 }
 

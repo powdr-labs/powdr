@@ -25,21 +25,18 @@ pub fn machine_decls() -> Vec<&'static str> {
         r#"
 // ================= binary/bitwise instructions =================
 
-machine Binary(latch, function_id) {
+machine Binary(latch, operation_id) {
 
     degree 262144;
 
-    function and<0> A, B -> C {
-    }
+    operation and<0> A, B -> C;
 
-    function or<1> A, B -> C {
-    }
+    operation or<1> A, B -> C;
 
-    function xor<2> A, B -> C {
-    }
+    operation xor<2> A, B -> C;
 
     constraints{
-        col witness function_id;
+        col witness operation_id;
 
         macro is_nonzero(X) { match X { 0 => 0, _ => 1, } };
         macro is_zero(X) { 1 - is_nonzero(X) };
@@ -70,24 +67,22 @@ machine Binary(latch, function_id) {
         B' = B * (1 - latch) + B_byte * FACTOR;
         C' = C * (1 - latch) + C_byte * FACTOR;
 
-        {function_id', A_byte, B_byte, C_byte} in {P_operation, P_A, P_B, P_C};
+        {operation_id', A_byte, B_byte, C_byte} in {P_operation, P_A, P_B, P_C};
     }
 }
 "#,
         r#"
 // ================= shift instructions =================
 
-machine Shift(latch, function_id) {
+machine Shift(latch, operation_id) {
     degree 262144;
 
-    function shl<0> A, B -> C {
-    }
+    operation shl<0> A, B -> C;
 
-    function shr<1> A, B -> C {
-    }
+    operation shr<1> A, B -> C;
 
     constraints{
-        col witness function_id;
+        col witness operation_id;
 
         col fixed latch(i) { is_zero((i % 4) - 3) };
         col fixed FACTOR_ROW(i) { (i + 1) % 4 };
@@ -116,7 +111,7 @@ machine Shift(latch, function_id) {
         C' = C * (1 - latch) + C_part;
 
         // TODO this way, we cannot prove anything that shifts by more than 31 bits.
-        {function_id', A_byte, B', FACTOR_ROW, C_part} in {P_operation, P_A, P_B, P_ROW, P_C};
+        {operation_id', A_byte, B', FACTOR_ROW, C_part} in {P_operation, P_A, P_B, P_ROW, P_C};
     }
 }
 "#,

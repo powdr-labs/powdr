@@ -46,9 +46,7 @@ impl<T: Display> Display for InstructionBody<T> {
                     .collect::<Vec<_>>()
                     .join(", ")
             ),
-            InstructionBody::External(instance, function) => {
-                write!(f, " = {instance}.{function};",)
-            }
+            InstructionBody::CallableRef(r) => write!(f, " = {r};"),
         }
     }
 }
@@ -56,6 +54,18 @@ impl<T: Display> Display for InstructionBody<T> {
 impl<T: Display> Display for Instruction<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(f, "{}{}", self.params, self.body)
+    }
+}
+
+impl<T: Display> Display for LinkDeclaration<T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(f, "link {} {} = {};", self.flag, self.params, self.to)
+    }
+}
+
+impl Display for CallableRef {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(f, "{}.{}", self.instance, self.callable)
     }
 }
 
@@ -75,6 +85,9 @@ impl<T: Display> Display for MachineStatement<T> {
             MachineStatement::InstructionDeclaration(_, name, instruction) => {
                 write!(f, "instr {}{}", name, instruction)
             }
+            MachineStatement::LinkDeclaration(link) => {
+                write!(f, "{link}")
+            }
             MachineStatement::InlinePil(_, statements) => {
                 write!(
                     f,
@@ -86,14 +99,10 @@ impl<T: Display> Display for MachineStatement<T> {
                         .join("\n")
                 )
             }
-            MachineStatement::FunctionDeclaration(_, name, function_id, params, statements) => {
+            MachineStatement::FunctionDeclaration(_, name, params, statements) => {
                 write!(
                     f,
-                    "function {name}{}{params} {{\n{}\n}}",
-                    function_id
-                        .as_ref()
-                        .map(|id| id.to_string())
-                        .unwrap_or_default(),
+                    "function {name}{params} {{\n{}\n}}",
                     statements
                         .iter()
                         .map(|s| format!("{}", s))
@@ -101,11 +110,14 @@ impl<T: Display> Display for MachineStatement<T> {
                         .join("\n")
                 )
             }
+            MachineStatement::OperationDeclaration(_, name, operation_id, params) => {
+                write!(f, "operation {name}{operation_id}{params};")
+            }
         }
     }
 }
 
-impl<T: Display> Display for FunctionId<T> {
+impl<T: Display> Display for OperationId<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(f, "<{}>", self.id)
     }

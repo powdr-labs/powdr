@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use crate::parsed::{asm::Params, PilStatement};
+use crate::parsed::{asm::Params, Expression, PilStatement};
 
 mod display;
 
@@ -24,7 +24,7 @@ impl Location {
 
 pub struct PILGraph<T> {
     pub main: Machine,
-    pub entry_points: Vec<Function<T>>,
+    pub entry_points: Vec<Operation<T>>,
     pub objects: BTreeMap<Location, Object<T>>,
 }
 
@@ -45,22 +45,26 @@ impl<T> Object<T> {
 }
 
 #[derive(Clone)]
+/// A link between two machines
 pub struct Link<T> {
-    pub from: LinkFrom,
+    /// the link source, e.g a flag and some arguments
+    pub from: LinkFrom<T>,
+    /// the link target, e.g a callable in some machine
     pub to: LinkTo<T>,
 }
 
 #[derive(Clone)]
-pub struct LinkFrom {
-    pub instr: Instr,
+pub struct LinkFrom<T> {
+    pub flag: Expression<T>,
+    pub params: Params,
 }
 
 #[derive(Clone)]
 pub struct LinkTo<T> {
     /// the machine we link to
     pub machine: Machine,
-    /// the function we link to
-    pub function: Function<T>,
+    /// the operation we link to
+    pub operation: Operation<T>,
 }
 
 #[derive(Clone)]
@@ -69,20 +73,16 @@ pub struct Machine {
     pub location: Location,
     /// its latch
     pub latch: String,
-    /// its function id
-    pub function_id: String,
+    /// its operation id
+    pub operation_id: String,
 }
 
 #[derive(Clone)]
-pub struct Instr {
+pub struct Operation<T> {
+    /// the name of the operation
     pub name: String,
-    pub flag: String,
-    pub params: Params,
-}
-
-#[derive(Clone)]
-pub struct Function<T> {
-    pub name: String,
+    /// the value of the operation id of this machine which activates this operation
     pub id: T,
+    /// the parameters
     pub params: Params,
 }

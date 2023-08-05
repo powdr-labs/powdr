@@ -1,17 +1,15 @@
 // calls two functions in a submachine whose interface is different: one is `x, y, z` while the other one is `z, x, y`
 
-machine Arith(latch, function_id) {
+machine Arith(latch, operation_id) {
 
     degree 8;
 
-    function add<0> x, y -> z {
-    }
+    operation add<0> x, y -> z;
 
-    function sub<1> z, x -> y {
-    }
+    operation sub<1> z, x -> y;
 
     constraints {
-        col witness function_id;
+        col witness operation_id;
         col fixed latch = [1]*;
         col witness x;
         col witness y;
