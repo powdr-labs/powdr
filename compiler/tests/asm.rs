@@ -79,7 +79,16 @@ fn vm_to_block_unique_interface() {
 }
 
 #[test]
-#[should_panic = "not implemented: No executor machine matched identity `main.instr_sub { 1, main.X, main.Y, main.Z } in 1 { main_arith.function_id, main_arith.z, main_arith.x, main_arith.y };`"]
+#[should_panic = "assertion failed: eval_value.constraints.is_empty()"]
+fn block_to_block() {
+    let f = "block_to_block.asm";
+    let i = [];
+    verify_asm::<GoldilocksField>(f, slice_to_vec(&i));
+    gen_halo2_proof(f, slice_to_vec(&i));
+}
+
+#[test]
+#[should_panic = "not implemented: No executor machine matched identity `main.instr_sub { 1, main.X, main.Y, main.Z } in 1 { main_arith.operation_id, main_arith.z, main_arith.x, main_arith.y };`"]
 fn vm_to_block_multiple_interfaces() {
     let f = "vm_to_block_multiple_interfaces.asm";
     let i = [];
@@ -88,7 +97,7 @@ fn vm_to_block_multiple_interfaces() {
 }
 
 #[test]
-#[should_panic = "not implemented: No executor machine matched identity `main.instr_add { 2, main.X, main.Y, main.Z } in main_vm.instr_return { main_vm._function_id, main_vm._input_0, main_vm._input_1, main_vm._output_0 };`"]
+#[should_panic = "not implemented: No executor machine matched identity `main.instr_add { 2, main.X, main.Y, main.Z } in main_vm.instr_return { main_vm._operation_id, main_vm._input_0, main_vm._input_1, main_vm._output_0 };`"]
 fn vm_to_vm() {
     let f = "vm_to_vm.asm";
     let i = [];

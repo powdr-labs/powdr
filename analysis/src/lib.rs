@@ -19,12 +19,12 @@ pub fn analyze<T: FieldElement>(file: ASMFile<T>) -> Result<AnalysisASMFile<T>, 
     let file = type_check::check(file)?;
     monitor.push(&file);
 
-    // run analysis on vm machines, reducing them to block machines
+    // run analysis on virtual machines, reducing them to constrained machines
     log::debug!("Start asm analysis");
     let file = vm::analyze(file, &mut monitor)?;
     log::debug!("End asm analysis");
 
-    // enforce blocks using `function_id` and `latch`
+    // enforce blocks using `operation_id` and `latch`
     log::debug!("Run enforce_block analysis step");
     let file = block_enforcer::enforce(file);
     monitor.push(&file);

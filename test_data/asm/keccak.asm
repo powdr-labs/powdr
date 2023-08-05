@@ -2,7 +2,7 @@
 
 // ================= binary/bitwise instructions =================
 
-machine Binary(latch, function_id) {
+machine Binary(latch, operation_id) {
 
     degree 262144;
 
@@ -45,14 +45,14 @@ machine Binary(latch, function_id) {
         B' = B * (1 - latch) + B_byte * FACTOR;
         C' = C * (1 - latch) + C_byte * FACTOR;
 
-        {function_id', A_byte, B_byte, C_byte} in {P_operation, P_A, P_B, P_C};
+        {operation_id', A_byte, B_byte, C_byte} in {P_operation, P_A, P_B, P_C};
     }
 }
 
 
 // ================= shift instructions =================
 
-machine Shift(latch, function_id) {
+machine Shift(latch, operation_id) {
     degree 262144;
 
     function shl<0> A, B -> C {
@@ -89,7 +89,7 @@ machine Shift(latch, function_id) {
         C' = C * (1 - latch) + C_part;
 
         // TODO this way, we cannot prove anything that shifts by more than 31 bits.
-        {function_id', A_byte, B', FACTOR_ROW, C_part} in {P_operation, P_A, P_B, P_ROW, P_C};
+        {operation_id', A_byte, B', FACTOR_ROW, C_part} in {P_operation, P_A, P_B, P_ROW, P_C};
     }
 }
 

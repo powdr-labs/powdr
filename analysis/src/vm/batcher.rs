@@ -76,8 +76,9 @@ struct RomBatcher<T> {
 impl<T: FieldElement> RomBatcher<T> {
     // split a list of statements into compatible batches
     fn extract_batches(&self, machine_name: &str, machine: &mut Machine<T>) {
-        for function in machine.functions.iter_mut() {
-            let batches: Vec<_> = function
+        for definition in machine.function_definitions_mut() {
+            let batches: Vec<_> = definition
+                .function
                 .body
                 .statements
                 .iter()
@@ -119,7 +120,7 @@ impl<T: FieldElement> RomBatcher<T> {
 
             log::debug!(
                 "Batching complete for function {} in machine {} with savings of {}% in execution trace lines",
-                function.name,
+                definition.name,
                 machine_name,
                 match lines_before {
                     0 => 0.,
@@ -127,7 +128,7 @@ impl<T: FieldElement> RomBatcher<T> {
                 }
             );
 
-            function.body.statements.set_batches(batches);
+            definition.function.body.statements.set_batches(batches);
         }
     }
 
@@ -155,7 +156,7 @@ mod tests {
     fn test_batching(path: &str) {
         let base_path = PathBuf::from("../test_data/asm/batching");
         let file_name = base_path.join(path);
-        let expected = fs::read_to_string(&file_name).unwrap();
+        let expected = fs::read_to_string(file_name).unwrap();
 
         // remove the batch comments from the expected output before compiling
         let input = expected
