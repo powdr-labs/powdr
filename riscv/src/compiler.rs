@@ -333,7 +333,7 @@ fn replace_coprocessor_stubs(
 
             Some((keep_current, statement))
         })
-        .filter_map(|(keep, statement)| keep.then(|| statement))
+        .filter_map(|(keep, statement)| keep.then_some(statement))
 }
 
 fn store_data_objects<'a>(
