@@ -187,7 +187,7 @@ impl asm_utils::compiler::Compiler for Risc {
 
         // Remove the riscv asm stub function, which is used
         // for compilation, and will not be called.
-        replace_coprocessor_stubs(&mut statements);
+        statements = replace_coprocessor_stubs(statements).collect::<Vec<_>>();
 
         // Sort the objects according to the order of the names in object_order.
         // With the single exception: If there is large object, put that at the end.
@@ -307,23 +307,33 @@ fn replace_dynamic_label_reference(
     ))
 }
 
-fn replace_coprocessor_stubs(statements: &mut Vec<Statement>) {
+fn replace_coprocessor_stubs(
+    statements: impl IntoIterator<Item = Statement>,
+) -> impl Iterator<Item = Statement> {
     let stub_names: Vec<&str> = COPROCESSOR_SUBSTITUTIONS
         .iter()
         .map(|(name, _)| *name)
         .collect();
 
-    let mut to_delete = BTreeSet::default();
-    for (i, statement) in statements.iter().enumerate() {
-        if let Statement::Label(label) = statement {
-            if stub_names.contains(&label.as_str()) {
-                to_delete.insert(i); // for the label
-                to_delete.insert(i + 1); // for the `ret` instruction
+    statements
+        .into_iter()
+        .scan(true, move |keep_next, statement| {
+            let mut keep_current = *keep_next;
+
+            // Skip the current statement and the following one if the current
+            // statement is a label that is in the list of stubs to be replaced
+            // by a corpocessor call.
+            if let Statement::Label(label) = &statement {
+                *keep_next = !stub_names.contains(&label.as_str());
+
+                keep_current &= *keep_next;
+            } else {
+                *keep_next = true;
             }
-        }
-    }
-    let mut i = 0;
-    statements.retain(|_| (!to_delete.contains(&i), i += 1).0);
+
+            Some((keep_current, statement))
+        })
+        .filter_map(|(keep, statement)| keep.then(|| statement))
 }
 
 fn store_data_objects<'a>(
