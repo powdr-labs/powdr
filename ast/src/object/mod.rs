@@ -37,7 +37,8 @@ pub struct Link<T> {
 
 #[derive(Clone)]
 pub struct LinkFrom {
-    pub instr: Instr,
+    pub flag: String,
+    pub params: Params,
 }
 
 #[derive(Clone)]
@@ -50,13 +51,6 @@ pub struct LinkTo<T> {
     pub function_id: String,
     /// the function we link to
     pub function: Function<T>,
-}
-
-#[derive(Clone)]
-pub struct Instr {
-    pub name: String,
-    pub flag: String,
-    pub params: Params,
 }
 
 #[derive(Clone)]

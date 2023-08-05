@@ -9,8 +9,8 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 use ast::{
     asm_analysis::{
         AnalysisASMFile, AssignmentStatement, Batch, FunctionStatement,
-        InstructionDefinitionStatement, InstructionStatement, LabelStatement, Machine, PilBlock,
-        RegisterDeclarationStatement,
+        InstructionDefinitionStatement, InstructionStatement, LabelStatement,
+        LinkDefinitionStatement, Machine, PilBlock, RegisterDeclarationStatement,
     },
     parsed::{
         asm::{InstructionBody, InstructionBodyElement, PlookupOperator, RegisterFlag},
@@ -82,11 +82,12 @@ impl<T: FieldElement> ASMPILConverter<T> {
             );
         }
 
-        input.instructions = input
-            .instructions
-            .drain(..)
-            .filter_map(|instr| self.handle_instruction_def(instr))
-            .collect();
+        input.links.extend(
+            input
+                .instructions
+                .drain(..)
+                .filter_map(|instr| self.handle_instruction_def(instr)),
+        );
 
         if let Some(rom) = input.rom.take() {
             for batch in rom.statements.into_iter_batches() {
@@ -259,9 +260,9 @@ impl<T: FieldElement> ASMPILConverter<T> {
             name,
             params,
         }: InstructionDefinitionStatement<T>,
-    ) -> Option<InstructionDefinitionStatement<T>> {
-        let instruction_flag = format!("instr_{name}");
-        self.create_witness_fixed_pair(start, &instruction_flag);
+    ) -> Option<LinkDefinitionStatement> {
+        let flag = format!("instr_{name}");
+        self.create_witness_fixed_pair(start, &flag);
         // it's part of the lookup!
         //self.pil.push(constrain_zero_one(&col_name));
 
@@ -355,7 +356,7 @@ impl<T: FieldElement> ASMPILConverter<T> {
                     if let PilStatement::PolynomialIdentity(_start, expr) = statement {
                         match extract_update(expr) {
                             (Some(var), expr) => {
-                                let reference = direct_reference(&instruction_flag);
+                                let reference = direct_reference(&flag);
 
                                 self.registers
                                     .get_mut(&var)
@@ -365,7 +366,7 @@ impl<T: FieldElement> ASMPILConverter<T> {
                             }
                             (None, expr) => self.pil.push(PilStatement::PolynomialIdentity(
                                 0,
-                                build_mul(direct_reference(&instruction_flag), expr.clone()),
+                                build_mul(direct_reference(&flag), expr.clone()),
                             )),
                         }
                     } else {
@@ -376,7 +377,7 @@ impl<T: FieldElement> ASMPILConverter<T> {
                             left.selector.is_none(),
                             "LHS selector not supported, could and-combine with instruction flag later."
                         );
-                                left.selector = Some(direct_reference(&instruction_flag));
+                                left.selector = Some(direct_reference(&flag));
                                 self.pil.push(statement)
                             }
                             _ => {
@@ -387,11 +388,11 @@ impl<T: FieldElement> ASMPILConverter<T> {
                 }
                 None
             }
-            InstructionBody::External(..) => Some(InstructionDefinitionStatement {
+            InstructionBody::FunctionRef(to) => Some(LinkDefinitionStatement {
                 start,
-                body,
-                name: name.clone(),
+                flag,
                 params,
+                to,
             }),
         };
         self.instructions.insert(name, instruction);

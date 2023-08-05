@@ -56,6 +56,7 @@ pub enum MachineStatement<T> {
     Submachine(usize, String, String),
     RegisterDeclaration(usize, String, Option<RegisterFlag>),
     InstructionDeclaration(usize, String, Params, InstructionBody<T>),
+    LinkDeclaration(LinkDeclaration),
     InlinePil(usize, Vec<PilStatement<T>>),
     FunctionDeclaration(
         usize,
@@ -68,9 +69,23 @@ pub enum MachineStatement<T> {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
+pub struct LinkDeclaration {
+    pub start: usize,
+    pub flag: String,
+    pub params: Params,
+    pub to: FunctionRef,
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct FunctionRef {
+    pub instance: String,
+    pub function: String,
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum InstructionBody<T> {
     Local(Vec<InstructionBodyElement<T>>),
-    External(String, String),
+    FunctionRef(FunctionRef),
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]

@@ -22,7 +22,7 @@ impl<T: Display> Display for AnalysisASMFile<T> {
 /// quick and dirty String to String indentation
 fn indent<S: ToString>(s: S, indentation: usize) -> String {
     s.to_string()
-        .split("\n")
+        .split('\n')
         .map(|line| format!("{}{line}", "\t".repeat(indentation)))
         .collect::<Vec<_>>()
         .join("\n")
@@ -31,7 +31,7 @@ fn indent<S: ToString>(s: S, indentation: usize) -> String {
 /// quick and dirty String to String way to comment out
 fn comment_out<S: ToString>(s: S) -> String {
     s.to_string()
-        .split("\n")
+        .split('\n')
         .map(|line| format!("//{line}"))
         .collect::<Vec<_>>()
         .join("\n")

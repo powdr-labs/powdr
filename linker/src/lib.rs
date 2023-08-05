@@ -33,17 +33,15 @@ pub fn link<T: FieldElement>(graph: PILGraph<T>) -> PILFile<T> {
 
                 // the lhs is `instr_flag { inputs, outputs }`
                 let lhs = SelectedExpressions {
-                    selector: Some(direct_reference(from.instr.flag)),
+                    selector: Some(direct_reference(from.flag)),
                     expressions: once(Expression::Number(to.function.id))
                         .chain(
-                            from.instr
-                                .params
+                            from.params
                                 .inputs
                                 .params
                                 .into_iter()
                                 .chain(
-                                    from.instr
-                                        .params
+                                    from.params
                                         .outputs
                                         .into_iter()
                                         .flat_map(|o| o.params.into_iter()),
@@ -89,7 +87,7 @@ pub fn link<T: FieldElement>(graph: PILGraph<T>) -> PILFile<T> {
                     "Program must have at most 1 entry point, found {}",
                     graph.entry_points.len()
                 );
-                if let Some(entry_point) = graph.entry_points.iter().next() {
+                if let Some(entry_point) = graph.entry_points.first() {
                     let entry_point_id = entry_point.function.id;
                     let function_id = &entry_point.function_id;
                     // call the first function by initialising `function_id` to the first function

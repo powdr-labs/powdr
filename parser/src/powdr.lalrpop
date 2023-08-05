@@ -161,6 +161,7 @@ MachineStatement: MachineStatement<T> = {
     Submachine,
     RegisterDeclaration,
     InstructionDeclaration,
+    LinkDeclaration,
     InlinePil,
     FunctionDeclaration,
 }
@@ -188,10 +189,18 @@ pub InstructionDeclaration: MachineStatement<T> = {
     <@L> "instr" <Identifier> <Params> <InstructionBody> => MachineStatement::InstructionDeclaration(<>)
 }
 
+pub LinkDeclaration: MachineStatement<T> = {
+    <start:@L> "link" <flag:Identifier> <params:Params> "=" <to:FunctionRef> => MachineStatement::LinkDeclaration(LinkDeclaration { start, flag, params, to })
+}
+
 pub InstructionBody: InstructionBody<T> = {
     "{}" => InstructionBody::Local(vec![]),
     "{" <InstructionBodyElements> "}" => InstructionBody::Local(<>),
-    "=" <Identifier> "." <Identifier> => InstructionBody::External(<>),
+    "=" <f_ref:FunctionRef> => InstructionBody::FunctionRef(f_ref),
+}
+
+pub FunctionRef: FunctionRef = {
+    <instance:Identifier> "." <function:Identifier> => FunctionRef { instance, function }
 }
 
 InstructionBodyElements: Vec<InstructionBodyElement<T>> = {

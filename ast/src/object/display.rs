@@ -1,6 +1,6 @@
 use std::fmt::{Display, Formatter, Result};
 
-use super::{Function, Instr, Link, LinkFrom, LinkTo, Location, Object, PILGraph};
+use super::{Function, Link, LinkFrom, LinkTo, Location, Object, PILGraph};
 
 impl Display for Location {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
@@ -43,13 +43,7 @@ impl<T: Display> Display for Link<T> {
 
 impl Display for LinkFrom {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write!(f, "{}", self.instr)
-    }
-}
-
-impl Display for Instr {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write!(f, "// instr {} with params {}", self.name, self.params)
+        write!(f, "{} {}", self.flag, self.params)
     }
 }
 
