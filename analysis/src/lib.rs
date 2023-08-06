@@ -37,6 +37,10 @@ impl DiffMonitor {
     }
 }
 
+/// a pipeline of analysis steps, with the basic principles that each intermediate output should be as close as possible to a valid program as possible
+/// for example, adding PIL constraints should only happen after the columns involved are declared
+/// sometimes elements are introduced and mutated later: for example `return` is introduced first to reduce functions to static operations, but only instanciated as an instruction at ROM creation
+/// we can try to reduce the occurence of such cases, for example by turning `return` into an embeded keyword rather than an instruction
 pub fn analyze<T: FieldElement>(file: ASMFile<T>) -> Result<AnalysisASMFile<T>, Vec<String>> {
     let mut monitor = DiffMonitor::default();
 

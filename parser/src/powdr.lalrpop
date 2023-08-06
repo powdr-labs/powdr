@@ -151,8 +151,8 @@ Machine: Machine<T> = {
     <start:@L> "machine" <name:Identifier> <arguments:MachineArguments> "{" <statements:(MachineStatement)*> "}" => Machine{<>}
 }
 
-MachineArguments: MachineArguments = {
-    "(" <latch:Identifier> "," <function_id:Identifier> ")" => MachineArguments { latch: Some(latch), function_id: Some(function_id) },
+MachineArguments: MachineArguments<T> = {
+    "(" <latch:Expression> "," <function_id:Expression> ")" => MachineArguments { latch: Some(latch), function_id: Some(function_id) },
     => MachineArguments::default(),
 }
 
@@ -190,7 +190,7 @@ pub InstructionDeclaration: MachineStatement<T> = {
 }
 
 pub LinkDeclaration: MachineStatement<T> = {
-    <start:@L> "link" <flag:Identifier> <params:Params> "=" <to:FunctionRef> => MachineStatement::LinkDeclaration(LinkDeclaration { start, flag, params, to })
+    <start:@L> "link" <flag:Expression> <params:Params> "=" <to:FunctionRef> => MachineStatement::LinkDeclaration(LinkDeclaration { start, flag, params, to })
 }
 
 pub InstructionBody: InstructionBody<T> = {

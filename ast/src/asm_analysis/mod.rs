@@ -33,9 +33,9 @@ pub struct InstructionDefinitionStatement<T> {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct LinkDefinitionStatement {
+pub struct LinkDefinitionStatement<T> {
     pub start: usize,
-    pub flag: String,
+    pub flag: Expression<T>,
     pub params: Params,
     pub to: FunctionRef,
 }
@@ -271,15 +271,17 @@ pub struct SubmachineDeclaration {
 #[derive(Clone, Default, PartialEq, Debug)]
 pub struct Machine<T> {
     pub degree: Option<DegreeStatement>,
-    pub latch: Option<String>,
-    pub function_id: Option<String>,
+    pub latch: Option<Expression<T>>,
+    pub function_id: Option<Expression<T>>,
     pub registers: Vec<RegisterDeclarationStatement>,
     // index of the pc in the registers, if any
     pub pc: Option<usize>,
     pub constraints: Vec<PilBlock<T>>,
     pub instructions: Vec<InstructionDefinitionStatement<T>>,
-    pub links: Vec<LinkDefinitionStatement>,
+    pub links: Vec<LinkDefinitionStatement<T>>,
     pub functions: Vec<FunctionDefinitionStatement<T>>,
+    // machine types declared inside this machine and only accessible there. currently not exposed to the user
+    pub machine_types: MachineDeclarations<T>,
     pub submachines: Vec<SubmachineDeclaration>,
     /// the rom gets generated in romgen
     pub rom: Option<Rom<T>>,
@@ -312,8 +314,10 @@ pub struct Rom<T> {
 
 #[derive(Default, Debug, PartialEq)]
 pub struct AnalysisASMFile<T> {
-    pub machines: BTreeMap<String, Machine<T>>,
+    pub machines: MachineDeclarations<T>,
 }
+
+pub type MachineDeclarations<T> = BTreeMap<String, Machine<T>>;
 
 #[derive(Default, Debug, PartialEq, Eq, Clone)]
 pub struct BatchMetadata {

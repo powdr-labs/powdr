@@ -11,14 +11,14 @@ pub struct ASMFile<T> {
 pub struct Machine<T> {
     pub start: usize,
     pub name: String,
-    pub arguments: MachineArguments,
+    pub arguments: MachineArguments<T>,
     pub statements: Vec<MachineStatement<T>>,
 }
 
 #[derive(Debug, PartialEq, Eq, Default)]
-pub struct MachineArguments {
-    pub latch: Option<String>,
-    pub function_id: Option<String>,
+pub struct MachineArguments<T> {
+    pub latch: Option<Expression<T>>,
+    pub function_id: Option<Expression<T>>,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Default)]
@@ -56,7 +56,7 @@ pub enum MachineStatement<T> {
     Submachine(usize, String, String),
     RegisterDeclaration(usize, String, Option<RegisterFlag>),
     InstructionDeclaration(usize, String, Params, InstructionBody<T>),
-    LinkDeclaration(LinkDeclaration),
+    LinkDeclaration(LinkDeclaration<T>),
     InlinePil(usize, Vec<PilStatement<T>>),
     FunctionDeclaration(
         usize,
@@ -69,9 +69,9 @@ pub enum MachineStatement<T> {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
-pub struct LinkDeclaration {
+pub struct LinkDeclaration<T> {
     pub start: usize,
-    pub flag: String,
+    pub flag: Expression<T>,
     pub params: Params,
     pub to: FunctionRef,
 }

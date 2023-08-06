@@ -6,8 +6,9 @@ use std::{
 use super::{
     AnalysisASMFile, AssignmentStatement, DebugDirective, DegreeStatement, FunctionBody,
     FunctionDefinitionStatement, FunctionStatement, FunctionStatements, Incompatible,
-    IncompatibleSet, InstructionDefinitionStatement, InstructionStatement, LabelStatement, Machine,
-    PilBlock, RegisterDeclarationStatement, Rom,
+    IncompatibleSet, InstructionDefinitionStatement, InstructionStatement, LabelStatement,
+    LinkDefinitionStatement, Machine, PilBlock, RegisterDeclarationStatement, Rom,
+    SubmachineDeclaration,
 };
 
 impl<T: Display> Display for AnalysisASMFile<T> {
@@ -48,9 +49,14 @@ impl<T: Display> Display for Machine<T> {
 
         writeln!(f, " {{")?;
 
-        // TODO: implement indentation properly (passing a context to the visitor)
         for s in &self.degree {
             writeln!(f, "{}", indent(s, 1))?;
+        }
+        for (name, ty) in &self.machine_types {
+            writeln!(f, "machine {} {{ {} }}", name, indent(ty, 1))?;
+        }
+        for d in &self.submachines {
+            writeln!(f, "{}", indent(d, 1))?;
         }
         for s in &self.registers {
             writeln!(f, "{}", indent(s, 1))?;
@@ -63,6 +69,9 @@ impl<T: Display> Display for Machine<T> {
         }
         for o in &self.functions {
             writeln!(f, "{}", indent(o, 1))?;
+        }
+        for l in &self.links {
+            writeln!(f, "{}", indent(l, 1))?;
         }
         if let Some(rom) = &self.rom {
             writeln!(f, "{}", indent(comment_out(rom), 1),)?;
@@ -82,6 +91,12 @@ impl<T: Display> Display for Rom<T> {
 impl Display for DegreeStatement {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(f, "degree {};", self.degree)
+    }
+}
+
+impl Display for SubmachineDeclaration {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(f, "{} {};", self.ty, self.name)
     }
 }
 
@@ -136,6 +151,12 @@ impl<T: Display> Display for InstructionStatement<T> {
                 )
             }
         )
+    }
+}
+
+impl<T: Display> Display for LinkDefinitionStatement<T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(f, "link {} {} = {};", self.flag, self.params, self.to)
     }
 }
 

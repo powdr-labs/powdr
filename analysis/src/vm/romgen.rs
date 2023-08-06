@@ -80,8 +80,9 @@
 //         _loop;
 //     }
 // }
-use ast::asm_analysis::{
-    AnalysisASMFile, Batch, Incompatible, IncompatibleSet, Machine, PilBlock, Rom,
+use ast::{
+    asm_analysis::{AnalysisASMFile, Batch, Incompatible, IncompatibleSet, Machine, PilBlock, Rom},
+    parsed::build::direct_reference,
 };
 use number::FieldElement;
 use std::marker::PhantomData;
@@ -114,7 +115,7 @@ impl<T: FieldElement> RomGenerator<T> {
 
     fn generate_machine_rom(&self, mut machine: Machine<T>) -> Machine<T> {
         if machine.has_pc() {
-            let function_id = "_function_id";
+            let function_id = direct_reference("_function_id");
 
             let pc = machine.pc().unwrap();
 
@@ -217,7 +218,7 @@ impl<T: FieldElement> RomGenerator<T> {
                 parse_function_statement("_loop;"),
             ])]);
 
-            machine.function_id = Some(function_id.into());
+            machine.function_id = Some(function_id);
 
             machine.rom = Some(Rom {
                 statements: rom.into_iter().collect(),

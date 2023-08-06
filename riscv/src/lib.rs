@@ -62,7 +62,8 @@ pub fn compile_rust<T: FieldElement>(
         output_dir,
         force_overwrite,
         prove_with,
-    )
+    )?;
+    Ok(())
 }
 
 pub fn compile_riscv_asm_bundle<T: FieldElement>(

@@ -213,6 +213,7 @@ impl<T: FieldElement> TypeChecker<T> {
             instructions,
             constraints,
             functions,
+            machine_types: Default::default(),
             submachines,
             rom: None,
         });

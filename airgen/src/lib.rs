@@ -1,10 +1,11 @@
 //! Compilation from powdr machines to AIRs
 
-use std::{collections::BTreeMap, marker::PhantomData};
+use std::{collections::BTreeMap, iter::once, marker::PhantomData};
 
 use ast::{
     asm_analysis::{
-        AnalysisASMFile, LinkDefinitionStatement, Machine, PilBlock, SubmachineDeclaration,
+        AnalysisASMFile, LinkDefinitionStatement, Machine, MachineDeclarations, PilBlock,
+        SubmachineDeclaration,
     },
     object::{Function, Link, LinkFrom, LinkTo, Location, Object, PILGraph},
     parsed::{asm::FunctionRef, PilStatement},
@@ -24,15 +25,19 @@ struct Session<T> {
     marker: PhantomData<T>,
 }
 
+struct MachinePath {
+    name: String,
+    context: Vec<String>,
+}
+
 impl<T: FieldElement> Session<T> {
     fn instantiate_machine(
         &mut self,
         location: &Location,
-        ty: String,
+        ty: Machine<T>,
         file: &AnalysisASMFile<T>,
     ) -> Object<T> {
-        ASMPILConverter::new(location, &file.machines)
-            .convert_machine(file.machines.get(&ty).unwrap().clone())
+        ASMPILConverter::new(location, &file.machines).convert_machine(ty)
     }
 
     fn compile(&mut self, input: AnalysisASMFile<T>) -> PILGraph<T> {
@@ -50,23 +55,37 @@ impl<T: FieldElement> Session<T> {
         };
 
         // get a list of all machines to instantiate. The order does not matter.
-        let mut queue = vec![(main_location.clone(), main_ty.clone())];
+        let mut queue = vec![(
+            main_location.clone(),
+            MachinePath {
+                name: main_ty.clone(),
+                context: vec![],
+            },
+        )];
 
-        let mut instances = vec![];
+        let mut instances = BTreeMap::default();
 
         while let Some((location, ty)) = queue.pop() {
-            let machine = input.machines.get(&ty).unwrap();
+            let machine = get_machine(&ty.name, &ty.context, &input.machines);
 
             queue.extend(machine.submachines.iter().map(|def| {
                 (
                     // get the absolute name for this submachine
                     location.clone().join(def.name.clone()),
                     // get its type
-                    def.ty.clone(),
+                    MachinePath {
+                        name: def.ty.clone(),
+                        context: ty
+                            .context
+                            .clone()
+                            .into_iter()
+                            .chain(once(ty.name.clone()))
+                            .collect(),
+                    },
                 )
             }));
 
-            instances.push((location, ty));
+            instances.insert(location, machine);
         }
 
         // visit the tree compiling the machines
@@ -98,6 +117,19 @@ impl<T: FieldElement> Session<T> {
             objects,
         }
     }
+}
+
+fn get_machine<T: FieldElement>(
+    name: &str,
+    context: &[String],
+    machines: &BTreeMap<String, Machine<T>>,
+) -> Machine<T> {
+    let ctx = context
+        .iter()
+        .fold(machines, |ctx, limb| &ctx.get(limb).unwrap().machine_types);
+    ctx.get(name)
+        .unwrap_or_else(|| machines.get(name).unwrap())
+        .clone()
 }
 
 struct ASMPILConverter<'a, T> {
@@ -135,7 +167,7 @@ impl<'a, T: FieldElement> ASMPILConverter<'a, T> {
         let links = input
             .links
             .into_iter()
-            .map(|instr| self.handle_link_def(instr))
+            .map(|instr| self.handle_link_def(instr, &input.machine_types))
             .collect();
 
         Object {
@@ -152,7 +184,8 @@ impl<'a, T: FieldElement> ASMPILConverter<'a, T> {
             flag,
             params,
             to: FunctionRef { instance, function },
-        }: LinkDefinitionStatement,
+        }: LinkDefinitionStatement<T>,
+        local_machines: &MachineDeclarations<T>,
     ) -> Link<T> {
         let from = LinkFrom {
             params: params.clone(),
@@ -167,8 +200,10 @@ impl<'a, T: FieldElement> ASMPILConverter<'a, T> {
             .unwrap()
             .ty
             .clone();
-        // get the machine type from the machine map
-        let instance_ty = self.machines.get(&instance_ty_name).unwrap();
+        // get the machine type from the local machine types, if not found from the global machine types
+        let instance_ty = local_machines
+            .get(&instance_ty_name)
+            .unwrap_or_else(|| self.machines.get(&instance_ty_name).unwrap());
         // get the instance location from the current location joined with the instance name
         let instance_location = self.location.clone().join(instance);
 

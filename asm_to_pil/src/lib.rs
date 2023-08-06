@@ -8,21 +8,28 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use ast::{
     asm_analysis::{
-        AnalysisASMFile, AssignmentStatement, Batch, FunctionStatement,
-        InstructionDefinitionStatement, InstructionStatement, LabelStatement,
-        LinkDefinitionStatement, Machine, PilBlock, RegisterDeclarationStatement,
+        AnalysisASMFile, AssignmentStatement, Batch, FunctionBody, FunctionDefinitionStatement,
+        FunctionStatement, FunctionStatements, InstructionDefinitionStatement,
+        InstructionStatement, LabelStatement, LinkDefinitionStatement, Machine, PilBlock,
+        RegisterDeclarationStatement, SubmachineDeclaration,
     },
     parsed::{
-        asm::{InstructionBody, InstructionBodyElement, PlookupOperator, RegisterFlag},
+        asm::{
+            FunctionRef, InstructionBody, InstructionBodyElement, Param, ParamList, Params,
+            PlookupOperator, RegisterFlag,
+        },
         build::{
             build_add, build_binary_expr, build_mul, build_number, build_sub, direct_reference,
             next_reference,
         },
         postvisit_expression_in_statement_mut, ArrayExpression, BinaryOperator, Expression,
-        FunctionDefinition, PilStatement, PolynomialName, PolynomialReference, SelectedExpressions,
-        UnaryOperator,
+        FunctionDefinition, PilStatement, PolynomialName, PolynomialReference, UnaryOperator,
     },
 };
+
+static ROM_MACHINE_TY_NAME: &str = "_ROM";
+static ROM_MACHINE_INSTANCE_NAME: &str = "_rom";
+static ROM_MACHINE_FUNCTION_NAME: &str = "get_program_line";
 
 use number::FieldElement;
 
@@ -130,27 +137,45 @@ impl<T: FieldElement> ASMPILConverter<T> {
         );
 
         if self.pc_name.is_some() {
-            self.translate_code_lines();
+            // introduce a new local machine type for the ROM
+            input
+                .machine_types
+                .insert(ROM_MACHINE_TY_NAME.to_string(), self.generate_rom_machine());
 
-            self.pil.push(PilStatement::PlookupIdentity(
-                0,
-                SelectedExpressions {
-                    selector: None,
-                    expressions: self
-                        .line_lookup
-                        .iter()
-                        .map(|x| direct_reference(&x.0))
-                        .collect(),
+            // introduce an instance of that machine
+            input.submachines.push(SubmachineDeclaration {
+                name: ROM_MACHINE_INSTANCE_NAME.into(),
+                ty: ROM_MACHINE_TY_NAME.into(),
+            });
+
+            // add a link to that instance. it applies at every row.
+            input.links.push(LinkDefinitionStatement {
+                start: 0,
+                flag: Expression::Number(T::from(1)),
+                params: Params {
+                    inputs: ParamList {
+                        params: vec![Param {
+                            name: self.pc_name.as_ref().unwrap().into(),
+                            ty: None,
+                        }],
+                    },
+                    outputs: Some(ParamList {
+                        params: self
+                            .line_lookup
+                            .iter()
+                            .skip(1)
+                            .map(|(name, _)| Param {
+                                name: name.to_string(),
+                                ty: None,
+                            })
+                            .collect(),
+                    }),
                 },
-                SelectedExpressions {
-                    selector: None,
-                    expressions: self
-                        .line_lookup
-                        .iter()
-                        .map(|x| direct_reference(&x.1))
-                        .collect(),
+                to: FunctionRef {
+                    instance: ROM_MACHINE_INSTANCE_NAME.to_string(),
+                    function: ROM_MACHINE_FUNCTION_NAME.to_string(),
                 },
-            ));
+            });
         }
 
         if !self.pil.is_empty() {
@@ -159,6 +184,13 @@ impl<T: FieldElement> ASMPILConverter<T> {
                 statements: self.pil,
             });
         }
+
+        // convert the internal machine types which could have been added here (for example, the ROM machine)
+        input.machine_types = input
+            .machine_types
+            .into_iter()
+            .map(|(name, ty)| (name, Self::default().convert_machine(ty)))
+            .collect();
 
         input
     }
@@ -260,7 +292,7 @@ impl<T: FieldElement> ASMPILConverter<T> {
             name,
             params,
         }: InstructionDefinitionStatement<T>,
-    ) -> Option<LinkDefinitionStatement> {
+    ) -> Option<LinkDefinitionStatement<T>> {
         let flag = format!("instr_{name}");
         self.create_witness_fixed_pair(start, &flag);
         // it's part of the lookup!
@@ -390,7 +422,7 @@ impl<T: FieldElement> ASMPILConverter<T> {
             }
             InstructionBody::FunctionRef(to) => Some(LinkDefinitionStatement {
                 start,
-                flag,
+                flag: direct_reference(flag),
                 params,
                 to,
             }),
@@ -664,9 +696,11 @@ impl<T: FieldElement> ASMPILConverter<T> {
 
     /// Translates the code lines to fixed column but also fills
     /// the query hints for the free inputs.
-    fn translate_code_lines(&mut self) {
+    fn generate_rom_machine(&mut self) -> Machine<T> {
+        let mut rom_pil = vec![];
+
         // TODO this should loop with the number of lines in the rom, as should all the other rom constants!
-        self.pil.push(PilStatement::PolynomialConstantDefinition(
+        rom_pil.push(PilStatement::PolynomialConstantDefinition(
             0,
             "p_line".to_string(),
             FunctionDefinition::Array(
@@ -781,7 +815,7 @@ impl<T: FieldElement> ASMPILConverter<T> {
             .collect::<Vec<_>>();
         self.pil.extend(free_value_pil);
         for (name, values) in rom_constants {
-            self.pil.push(PilStatement::PolynomialConstantDefinition(
+            rom_pil.push(PilStatement::PolynomialConstantDefinition(
                 0,
                 name.clone(),
                 FunctionDefinition::Array(
@@ -790,6 +824,44 @@ impl<T: FieldElement> ASMPILConverter<T> {
                         .unwrap_or_else(|| ArrayExpression::RepeatedValue(vec![build_number(0)])),
                 ),
             ));
+        }
+
+        Machine {
+            // TODO: the degree of the ROM machine can be reduced once the linker supports machines of different sizes
+            // degree: Some(DegreeStatement { degree: T::from(self.code_lines.len().next_power_of_two() as u64).to_arbitrary_integer() }),
+            constraints: vec![PilBlock {
+                start: 0,
+                statements: rom_pil,
+            }],
+            functions: vec![FunctionDefinitionStatement {
+                start: 0,
+                name: "get_program_line".into(),
+                id: Some(T::from(0)),
+                params: Params {
+                    inputs: ParamList {
+                        params: vec![Param {
+                            name: "p_line".into(),
+                            ty: None,
+                        }],
+                    },
+                    outputs: Some(ParamList {
+                        params: self
+                            .rom_constant_names
+                            .iter()
+                            .map(|name| Param {
+                                name: name.into(),
+                                ty: None,
+                            })
+                            .collect(),
+                    }),
+                },
+                body: FunctionBody {
+                    statements: FunctionStatements::default(),
+                },
+            }],
+            latch: Some(Expression::Number(T::from(1))),
+            function_id: Some(Expression::Number(T::from(0))),
+            ..Machine::default()
         }
     }
 

@@ -43,7 +43,7 @@ impl<T: Display> Display for Link<T> {
     }
 }
 
-impl Display for LinkFrom {
+impl<T: Display> Display for LinkFrom<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(f, "{} {}", self.flag, self.params)
     }

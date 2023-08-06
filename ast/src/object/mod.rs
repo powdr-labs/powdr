@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use crate::parsed::{asm::Params, PilStatement};
+use crate::parsed::{asm::Params, Expression, PilStatement};
 
 mod display;
 
@@ -31,13 +31,13 @@ pub struct Object<T> {
 
 #[derive(Clone)]
 pub struct Link<T> {
-    pub from: LinkFrom,
+    pub from: LinkFrom<T>,
     pub to: LinkTo<T>,
 }
 
 #[derive(Clone)]
-pub struct LinkFrom {
-    pub flag: String,
+pub struct LinkFrom<T> {
+    pub flag: Expression<T>,
     pub params: Params,
 }
 
@@ -46,9 +46,9 @@ pub struct LinkTo<T> {
     /// the location of the machine we link to
     pub loc: Location,
     /// its latch
-    pub latch: String,
+    pub latch: Expression<T>,
     /// its function id
-    pub function_id: String,
+    pub function_id: Expression<T>,
     /// the function we link to
     pub function: Function<T>,
 }

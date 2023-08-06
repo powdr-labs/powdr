@@ -51,7 +51,7 @@ impl<T: Display> Display for InstructionBody<T> {
     }
 }
 
-impl Display for LinkDeclaration {
+impl<T: Display> Display for LinkDeclaration<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(f, "link {} {} = {}", self.flag, self.params, self.to)
     }

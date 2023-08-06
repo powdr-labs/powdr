@@ -8,6 +8,7 @@ use ast::{
     },
     parsed::{
         asm::{Param, ParamList},
+        build::direct_reference,
         Expression,
     },
 };
@@ -58,7 +59,7 @@ impl<T: FieldElement> FunctionDesugar<T> {
 
     fn generate_machine_rom(&self, mut machine: Machine<T>) -> Machine<T> {
         if machine.has_pc() {
-            let latch = "instr_return";
+            let latch = direct_reference("instr_return");
 
             // the number of inputs is the max of the number of inputs needed in each operation
             let input_count = machine
@@ -174,7 +175,7 @@ impl<T: FieldElement> FunctionDesugar<T> {
                 })
                 .collect();
 
-            machine.latch = Some(latch.into());
+            machine.latch = Some(latch);
         } else {
             // do nothing for static machines
         };

@@ -1,11 +1,11 @@
-use std::iter::once;
+use std::{iter::once, ops::ControlFlow};
 
 use analysis::utils::parse_pil_statement;
 use ast::{
     object::{Location, PILGraph},
     parsed::{
         build::{direct_reference, namespaced_reference},
-        Expression, PILFile, PilStatement, SelectedExpressions,
+        Expression, PILFile, PilStatement, SelectedExpressions, postvisit_expression_mut,
     },
 };
 use number::FieldElement;
@@ -34,8 +34,7 @@ pub fn link<T: FieldElement>(graph: PILGraph<T>) -> Result<PILFile<T>, Vec<Strin
             if let Some(degree) = object.degree {
                 if degree != main_degree {
                     errors.push(format!(
-                        "Machine {location} should have degree {main_degree}, found {}",
-                        degree
+                        "Machine {location} should have degree {main_degree}, found {degree}"
                     ))
                 }
             }
@@ -55,7 +54,7 @@ pub fn link<T: FieldElement>(graph: PILGraph<T>) -> Result<PILFile<T>, Vec<Strin
 
                 // the lhs is `instr_flag { inputs, outputs }`
                 let lhs = SelectedExpressions {
-                    selector: Some(direct_reference(from.flag)),
+                    selector: Some(from.flag),
                     expressions: once(Expression::Number(to.function.id))
                         .chain(
                             from.params
@@ -84,8 +83,8 @@ pub fn link<T: FieldElement>(graph: PILGraph<T>) -> Result<PILFile<T>, Vec<Strin
                 let to_namespace = to.loc.clone().to_string();
 
                 let rhs = SelectedExpressions {
-                    selector: Some(namespaced_reference(to_namespace.clone(), to.latch)),
-                    expressions: once(namespaced_reference(to_namespace.clone(), to.function_id))
+                    selector: Some(namespaced(&to_namespace, to.latch)),
+                    expressions: once(namespaced(&to_namespace, to.function_id))
                         .chain(
                             params
                                 .inputs
@@ -128,6 +127,18 @@ pub fn link<T: FieldElement>(graph: PILGraph<T>) -> Result<PILFile<T>, Vec<Strin
     } else {
         Ok(PILFile(pil))
     }
+}
+
+fn namespaced<T: FieldElement>(namespace: &str, mut e: Expression<T>) -> Expression<T> {
+    postvisit_expression_mut(&mut e, &mut |e: &mut Expression<T>| match e {
+        Expression::PolynomialReference(r) => {
+            assert!(r.namespace.is_none());
+            r.namespace = Some(namespace.to_string());
+            ControlFlow::Continue::<(), ()>(())
+        }
+        _ => ControlFlow::Continue(()),
+    });
+    e
 }
 
 #[cfg(test)]
