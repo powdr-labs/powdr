@@ -31,7 +31,8 @@ fn gen_proof(file_name: &str, inputs: Vec<Bn254Field>) {
         &mktemp::Temp::new_dir().unwrap(),
         true,
         prover(),
-    );
+    )
+    .unwrap();
 }
 
 #[test]

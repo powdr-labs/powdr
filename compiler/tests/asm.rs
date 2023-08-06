@@ -25,7 +25,8 @@ fn gen_proof(file_name: &str, inputs: Vec<Bn254Field>) {
         &mktemp::Temp::new_dir().unwrap(),
         true,
         prover(),
-    );
+    )
+    .unwrap();
 }
 
 fn slice_to_vec<T: FieldElement>(arr: &[i32]) -> Vec<T> {

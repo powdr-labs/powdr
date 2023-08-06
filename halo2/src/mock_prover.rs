@@ -49,7 +49,7 @@ mod test {
         let parsed = parse_asm::<Bn254Field>(Some(file_name), &contents).unwrap();
         let analysed = analyze(parsed).unwrap();
         let graph = airgen::compile(analysed);
-        let pil = linker::link(graph);
+        let pil = linker::link(graph).unwrap();
 
         let query_callback = |query: &str| -> Option<Bn254Field> {
             let items = query.split(',').map(|s| s.trim()).collect::<Vec<_>>();

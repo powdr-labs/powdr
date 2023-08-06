@@ -37,16 +37,16 @@ pub fn compile_pil_or_asm<T: FieldElement>(
     output_dir: &Path,
     force_overwrite: bool,
     prove_with: Option<Backend>,
-) -> Option<CompilationResult<T>> {
+) -> Result<Option<CompilationResult<T>>, Vec<String>> {
     if file_name.ends_with(".asm") {
         compile_asm(file_name, inputs, output_dir, force_overwrite, prove_with)
     } else {
-        Some(compile_pil(
+        Ok(Some(compile_pil(
             Path::new(file_name),
             output_dir,
             Some(inputs_to_query_callback(inputs)),
             prove_with,
-        ))
+        )))
     }
 }
 
@@ -108,17 +108,17 @@ pub fn compile_asm<T: FieldElement>(
     output_dir: &Path,
     force_overwrite: bool,
     prove_with: Option<Backend>,
-) -> Option<CompilationResult<T>> {
+) -> Result<Option<CompilationResult<T>>, Vec<String>> {
     let contents = fs::read_to_string(file_name).unwrap();
-    compile_asm_string(
+    Ok(compile_asm_string(
         file_name,
         &contents,
         inputs,
         output_dir,
         force_overwrite,
         prove_with,
-    )
-    .1
+    )?
+    .1)
 }
 
 /// Compiles the contents of a .asm file, outputs the PIL on stdout and tries to generate
@@ -132,14 +132,14 @@ pub fn compile_asm_string<T: FieldElement>(
     output_dir: &Path,
     force_overwrite: bool,
     prove_with: Option<Backend>,
-) -> (PathBuf, Option<CompilationResult<T>>) {
+) -> Result<(PathBuf, Option<CompilationResult<T>>), Vec<String>> {
     let parsed = parser::parse_asm(Some(file_name), contents).unwrap_or_else(|err| {
         eprintln!("Error parsing .asm file:");
         err.output_to_stderr();
         panic!();
     });
     log::debug!("Run analysis");
-    let analysed = analyze(parsed).unwrap();
+    let analysed = analyze(parsed)?;
     log::debug!("Analysis done");
     log::trace!("{analysed}");
     log::debug!("Run airgen");
@@ -147,7 +147,7 @@ pub fn compile_asm_string<T: FieldElement>(
     log::debug!("Airgen done");
     log::trace!("{graph}");
     log::debug!("Run linker");
-    let pil = linker::link(graph);
+    let pil = linker::link(graph)?;
     log::debug!("Linker done");
     log::trace!("{pil}");
 
@@ -162,12 +162,12 @@ pub fn compile_asm_string<T: FieldElement>(
             "Target file {} already exists. Not overwriting.",
             pil_file_path.to_str().unwrap()
         );
-        return (pil_file_path, None);
+        return Ok((pil_file_path, None));
     }
     fs::write(pil_file_path.clone(), format!("{pil}")).unwrap();
 
     let pil_file_name = pil_file_path.file_name().unwrap();
-    (
+    Ok((
         pil_file_path.clone(),
         Some(compile_pil_ast(
             &pil,
@@ -176,7 +176,7 @@ pub fn compile_asm_string<T: FieldElement>(
             Some(inputs_to_query_callback(inputs)),
             prove_with,
         )),
-    )
+    ))
 }
 
 pub struct CompilationResult<T: FieldElement> {

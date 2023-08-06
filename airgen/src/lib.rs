@@ -124,11 +124,7 @@ impl<'a, T: FieldElement> ASMPILConverter<'a, T> {
     }
 
     fn convert_machine(mut self, input: Machine<T>) -> Object<T> {
-        let degree = if let Some(s) = &input.degree {
-            T::from(s.degree.clone()).to_degree()
-        } else {
-            1024
-        };
+        let degree = input.degree.map(|s| T::from(s.degree.clone()).to_degree());
 
         self.submachines = input.submachines;
 

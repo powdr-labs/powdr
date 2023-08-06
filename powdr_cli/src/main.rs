@@ -267,13 +267,20 @@ fn run_command(command: Commands) {
             output_directory,
             force,
             prove_with,
-        } => call_with_field!(compile_rust::<field>(
-            &file,
-            split_inputs(&inputs),
-            Path::new(&output_directory),
-            force,
-            prove_with
-        )),
+        } => {
+            if let Err(errors) = call_with_field!(compile_rust::<field>(
+                &file,
+                split_inputs(&inputs),
+                Path::new(&output_directory),
+                force,
+                prove_with
+            )) {
+                eprintln!("Errors:");
+                for e in errors {
+                    eprintln!("{e}");
+                }
+            };
+        }
         Commands::RiscvAsm {
             files,
             field,
@@ -289,14 +296,19 @@ fn run_command(command: Commands) {
                 Cow::Borrowed("output")
             };
 
-            call_with_field!(compile_riscv_asm::<field>(
+            if let Err(errors) = call_with_field!(compile_riscv_asm::<field>(
                 &name,
                 files.into_iter(),
                 split_inputs(&inputs),
                 Path::new(&output_directory),
                 force,
                 prove_with
-            ));
+            )) {
+                eprintln!("Errors:");
+                for e in errors {
+                    eprintln!("{e}");
+                }
+            };
         }
         Commands::Reformat { file } => {
             let contents = fs::read_to_string(&file).unwrap();
@@ -318,7 +330,7 @@ fn run_command(command: Commands) {
             export_csv,
             csv_mode,
         } => {
-            call_with_field!(compile_with_csv_export::<field>(
+            match call_with_field!(compile_with_csv_export::<field>(
                 file,
                 output_directory,
                 inputs,
@@ -326,7 +338,15 @@ fn run_command(command: Commands) {
                 prove_with,
                 export_csv,
                 csv_mode
-            ));
+            )) {
+                Ok(()) => {}
+                Err(errors) => {
+                    eprintln!("Errors:");
+                    for e in errors {
+                        eprintln!("{e}");
+                    }
+                }
+            };
         }
         #[cfg(feature = "halo2")]
         Commands::Prove {
@@ -405,14 +425,14 @@ fn compile_with_csv_export<T: FieldElement>(
     prove_with: Option<Backend>,
     export_csv: bool,
     csv_mode: CsvRenderMode,
-) {
+) -> Result<(), Vec<String>> {
     let result = compile_pil_or_asm::<T>(
         &file,
         split_inputs(&inputs),
         Path::new(&output_directory),
         force,
         prove_with,
-    );
+    )?;
 
     if export_csv {
         // Compilation result is None if the ASM file has not been compiled
@@ -427,6 +447,7 @@ fn compile_with_csv_export<T: FieldElement>(
             );
         }
     }
+    Ok(())
 }
 
 fn export_columns_to_csv<T: FieldElement>(
