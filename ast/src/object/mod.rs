@@ -22,7 +22,7 @@ pub struct PILGraph<T> {
 }
 
 pub struct Object<T> {
-    pub degree: u64,
+    pub degree: Option<u64>,
     /// the pil identities for this machine
     pub pil: Vec<PilStatement<T>>,
     /// the links from this machine to its children

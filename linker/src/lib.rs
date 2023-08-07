@@ -1,7 +1,7 @@
 use std::iter::once;
 
 use ast::{
-    object::PILGraph,
+    object::{Location, PILGraph},
     parsed::{
         build::{direct_reference, namespaced_reference},
         Expression, PILFile, PilStatement, SelectedExpressions,
@@ -9,19 +9,41 @@ use ast::{
 };
 use number::FieldElement;
 
+const DEFAULT_DEGREE: u64 = 1024;
+
 /// a monolithic linker which outputs a single AIR
-pub fn link<T: FieldElement>(graph: PILGraph<T>) -> PILFile<T> {
+/// It sets the degree of submachines to the degree of the main machine, and errors out if a submachine has an explicit degree which doesn't match the main one
+pub fn link<T: FieldElement>(graph: PILGraph<T>) -> Result<PILFile<T>, Vec<String>> {
+    let main_location = Location::default().join("main");
+    let main_degree = graph
+        .objects
+        .get(&main_location)
+        .unwrap()
+        .degree
+        .unwrap_or(DEFAULT_DEGREE);
+
+    let mut errors = vec![];
+
     let pil = graph
         .objects
         .into_iter()
         .flat_map(|(location, object)| {
             let mut pil = vec![];
 
+            if let Some(degree) = object.degree {
+                if degree != main_degree {
+                    errors.push(format!(
+                        "Machine {location} should have degree {main_degree}, found {}",
+                        degree
+                    ))
+                }
+            }
+
             // create a namespace for this object
             pil.push(PilStatement::Namespace(
                 0,
                 location.to_string(),
-                Expression::Number(T::from(object.degree)),
+                Expression::Number(T::from(main_degree)),
             ));
             pil.extend(object.pil);
             for link in object.links {
@@ -85,7 +107,11 @@ pub fn link<T: FieldElement>(graph: PILGraph<T>) -> PILFile<T> {
         })
         .collect();
 
-    PILFile(pil)
+    if !errors.is_empty() {
+        Err(errors)
+    } else {
+        Ok(PILFile(pil))
+    }
 }
 
 #[cfg(test)]
@@ -161,7 +187,7 @@ pol constant p_reg_write_X_CNT = [1, 0, 0, 0, 0, 0, 0, 0] + [0]*;
         let file_name = "../test_data/asm/simple_sum.asm";
         let contents = fs::read_to_string(file_name).unwrap();
         let graph = parse_analyse_and_compile::<GoldilocksField>(&contents);
-        let pil = link(graph);
+        let pil = link(graph).unwrap();
         assert_eq!(format!("{pil}").trim(), expectation.trim());
     }
 
@@ -204,7 +230,7 @@ pol constant p_instr_inc_fp_param_amount = [7, 0] + [0]*;
 { pc, instr_inc_fp, instr_inc_fp_param_amount, instr_adjust_fp, instr_adjust_fp_param_amount, instr_adjust_fp_param_t } in { p_line, p_instr_inc_fp, p_instr_inc_fp_param_amount, p_instr_adjust_fp, p_instr_adjust_fp_param_amount, p_instr_adjust_fp_param_t };
 "#;
         let graph = parse_analyse_and_compile::<GoldilocksField>(source);
-        let pil = link(graph);
+        let pil = link(graph).unwrap();
         assert_eq!(format!("{pil}").trim(), expectation.trim());
     }
 
