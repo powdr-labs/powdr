@@ -16,7 +16,7 @@ pub trait WitnessColumnEvaluator<T> {
 pub struct SymoblicWitnessEvaluator<'a, T, WA: WitnessColumnEvaluator<T>> {
     fixed_data: &'a FixedData<'a, T>,
     row: DegreeType,
-    witness_access: WA,
+    witness_access: &'a WA,
 }
 
 impl<'a, T, WA> SymoblicWitnessEvaluator<'a, T, WA>
@@ -26,7 +26,7 @@ where
     /// Constructs a new SymbolicWitnessEvaluator
     /// @param row the row on which to evaluate plain fixed
     ///            columns ("next columns" - f' - are evaluated on row + 1).
-    pub fn new(fixed_data: &'a FixedData<'a, T>, row: DegreeType, witness_access: WA) -> Self {
+    pub fn new(fixed_data: &'a FixedData<'a, T>, row: DegreeType, witness_access: &'a WA) -> Self {
         Self {
             fixed_data,
             row,
