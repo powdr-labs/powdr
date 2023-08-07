@@ -1,5 +1,5 @@
 #[cfg(feature = "halo2")]
-mod halo2_structs;
+mod halo2_impl;
 mod pilcom_cli;
 
 use ast::analyzed::Analyzed;
@@ -20,11 +20,11 @@ pub enum BackendType {
 }
 
 impl BackendType {
-    pub fn build<T: FieldElement>(&self) -> &'static dyn BackendFactory<T> {
+    pub fn factory<T: FieldElement>(&self) -> &'static dyn BackendFactory<T> {
         #[cfg(feature = "halo2")]
         const HALO2_FACTORY: WithSetupFactory<halo2::Halo2Prover> = WithSetupFactory(PhantomData);
         #[cfg(feature = "halo2")]
-        const HALO2_MOCK_FACTORY: WithoutSetupFactory<halo2_structs::Halo2Mock> =
+        const HALO2_MOCK_FACTORY: WithoutSetupFactory<halo2_impl::Halo2Mock> =
             WithoutSetupFactory(PhantomData);
         const PILCOM_CLI_FACTORY: WithoutSetupFactory<pilcom_cli::PilcomCli> =
             WithoutSetupFactory(PhantomData);
@@ -64,8 +64,8 @@ impl<F: FieldElement, B: BackendImpl<F>> Backend<F> for ConcreteBackendWithoutSe
         fixed: &[(&str, Vec<F>)],
         witness: &[(&str, Vec<F>)],
         prev_proof: Option<Proof>,
-        output_dir: &Path,
-    ) -> io::Result<()> {
+        output_dir: Option<&Path>,
+    ) -> io::Result<Option<Proof>> {
         self.0.prove(pil, fixed, witness, prev_proof, output_dir)
     }
 
@@ -78,7 +78,9 @@ impl<F: FieldElement, B: BackendImpl<F>> Backend<F> for ConcreteBackendWithoutSe
 struct WithSetupFactory<B>(PhantomData<B>);
 
 /// Factory implementation for backends with setup.
-impl<F: FieldElement, B: BackendWithSetup<F> + 'static> BackendFactory<F> for WithSetupFactory<B> {
+impl<F: FieldElement, B: BackendImplWithSetup<F> + 'static> BackendFactory<F>
+    for WithSetupFactory<B>
+{
     fn create(&self, degree: DegreeType) -> Box<dyn Backend<F>> {
         Box::new(ConcreteBackendWithSetup(B::new(degree)))
     }
@@ -94,15 +96,15 @@ impl<F: FieldElement, B: BackendWithSetup<F> + 'static> BackendFactory<F> for Wi
 struct ConcreteBackendWithSetup<B>(B);
 
 /// Concrete implementation for backends with setup.
-impl<F: FieldElement, B: BackendWithSetup<F>> Backend<F> for ConcreteBackendWithSetup<B> {
+impl<F: FieldElement, B: BackendImplWithSetup<F>> Backend<F> for ConcreteBackendWithSetup<B> {
     fn prove(
         &self,
         pil: &Analyzed<F>,
         fixed: &[(&str, Vec<F>)],
         witness: &[(&str, Vec<F>)],
         prev_proof: Option<Proof>,
-        output_dir: &Path,
-    ) -> io::Result<()> {
+        output_dir: Option<&Path>,
+    ) -> io::Result<Option<Proof>> {
         self.0.prove(pil, fixed, witness, prev_proof, output_dir)
     }
 
@@ -121,6 +123,11 @@ pub enum Error {
 
 pub type Proof = Vec<u8>;
 
+/*
+    Bellow are the public interface traits. They are implemented in this
+    module, wrapping the traits implemented by each backend.
+*/
+
 /// Dynamic interface for a backend.
 pub trait Backend<F: FieldElement> {
     /// Perform the backend proving. If prev_proof is provided, proof
@@ -131,8 +138,8 @@ pub trait Backend<F: FieldElement> {
         fixed: &[(&str, Vec<F>)],
         witness: &[(&str, Vec<F>)],
         prev_proof: Option<Proof>,
-        output_dir: &Path,
-    ) -> io::Result<()>;
+        output_dir: Option<&Path>,
+    ) -> io::Result<Option<Proof>>;
 
     /// Write the prover setup to a file, so that it can be loaded later.
     fn write_setup(&self, output: &mut dyn io::Write) -> Result<(), Error>;
@@ -147,9 +154,12 @@ pub trait BackendFactory<F: FieldElement> {
     fn create_from_setup(&self, input: &mut dyn io::Read) -> Result<Box<dyn Backend<F>>, Error>;
 }
 
+/*
+    Below are the traits implemented by the backends.
+*/
+
 /// Trait implemented by all backends.
 trait BackendImpl<F: FieldElement> {
-    /// Perform the setup and create a new backend object.
     fn new(degree: DegreeType) -> Self;
 
     fn prove(
@@ -158,13 +168,13 @@ trait BackendImpl<F: FieldElement> {
         fixed: &[(&str, Vec<F>)],
         witness: &[(&str, Vec<F>)],
         prev_proof: Option<Proof>,
-        output_dir: &Path,
-    ) -> io::Result<()>;
+        output_dir: Option<&Path>,
+    ) -> io::Result<Option<Proof>>;
 }
 
 /// Trait implemented by backends that have a setup phase that must be saved to
 /// a file.
-trait BackendWithSetup<F: FieldElement>
+trait BackendImplWithSetup<F: FieldElement>
 where
     Self: Sized + BackendImpl<F>,
 {

@@ -25,23 +25,28 @@ impl<T: FieldElement> BackendImpl<T> for PilcomCli {
         fixed: &[(&str, Vec<T>)],
         witness: &[(&str, Vec<T>)],
         prev_proof: Option<Proof>,
-        output_dir: &Path,
-    ) -> io::Result<()> {
+        output_dir: Option<&Path>,
+    ) -> io::Result<Option<Proof>> {
         if prev_proof.is_some() {
-            unimplemented!("Aggregration is not implemented for Pilcom CLI backend");
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "Aggregration is not implemented for Pilcom CLI backend",
+            ));
         }
 
-        write_constants_to_fs(fixed, output_dir, self.degree);
-        log::info!("Written constants.");
+        if let Some(output_dir) = output_dir {
+            write_constants_to_fs(fixed, output_dir, self.degree);
+            log::info!("Written constants.");
 
-        write_commits_to_fs(witness, output_dir, self.degree);
-        log::info!("Written witness.");
+            write_commits_to_fs(witness, output_dir, self.degree);
+            log::info!("Written witness.");
 
-        let json_out = json_exporter::export(pil);
-        write_compiled_json_to_fs(&json_out, output_dir);
-        log::info!("Written compiled PIL in Pilcom json format.");
+            let json_out = json_exporter::export(pil);
+            write_compiled_json_to_fs(&json_out, output_dir);
+            log::info!("Written compiled PIL in Pilcom json format.");
+        }
 
-        Ok(())
+        Ok(None)
     }
 }
 

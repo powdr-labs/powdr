@@ -352,7 +352,7 @@ fn run_command(command: Commands) {
 fn setup<F: FieldElement>(size: u64, dir: String, backend_type: BackendType) {
     let dir = Path::new(&dir);
 
-    let backend = backend_type.build::<F>().create(size);
+    let backend = backend_type.factory::<F>().create(size);
     write_backend_to_fs(backend.as_ref(), dir);
 }
 
@@ -461,7 +461,7 @@ fn read_and_prove<T: FieldElement>(
 
     assert_eq!(fixed.1, witness.1);
 
-    let builder = backend_type.build::<T>();
+    let builder = backend_type.factory::<T>();
     let backend = if let Some(filename) = params {
         let mut file = fs::File::open(dir.join(filename)).unwrap();
         builder.create_from_setup(&mut file).unwrap()
@@ -480,7 +480,7 @@ fn read_and_prove<T: FieldElement>(
     });
 
     backend
-        .prove(&pil, &fixed.0, &witness.0, proof, dir)
+        .prove(&pil, &fixed.0, &witness.0, proof, Some(dir))
         .unwrap();
 }
 
