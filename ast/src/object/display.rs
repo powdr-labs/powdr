@@ -21,7 +21,9 @@ impl<T: Display> Display for PILGraph<T> {
 
 impl<T: Display> Display for Object<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        writeln!(f, "// Degree {}", self.degree)?;
+        if let Some(degree) = self.degree {
+            writeln!(f, "// Degree {}", degree)?;
+        }
         for s in &self.pil {
             writeln!(f, "{s}")?;
         }

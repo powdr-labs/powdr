@@ -13,7 +13,8 @@ pub fn verify_asm_string<T: FieldElement>(file_name: &str, contents: &str, input
         &temp_dir,
         true,
         Some(BackendType::PilcomCli),
-    );
+    )
+    .unwrap();
     verify(&temp_dir);
 }
 

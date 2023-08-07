@@ -11,7 +11,9 @@ use crate::witgen::{EvalError, EvalResult, FixedData};
 use crate::witgen::{EvalValue, IncompleteCause};
 use number::{DegreeType, FieldElement};
 
-use ast::analyzed::{Expression, Identity, IdentityKind, PolynomialReference, SelectedExpressions};
+use ast::analyzed::{
+    Expression, Identity, IdentityKind, PolyID, PolynomialReference, SelectedExpressions,
+};
 
 /// TODO make this generic
 
@@ -41,13 +43,13 @@ impl<T: FieldElement> DoubleSortedWitnesses<T> {
     pub fn try_new(
         fixed_data: &FixedData<T>,
         _identities: &[&Identity<T>],
-        witness_cols: &HashSet<&PolynomialReference>,
+        witness_cols: &HashSet<PolyID>,
     ) -> Option<Box<Self>> {
         // get the namespaces and column names
         let (mut namespaces, columns): (HashSet<_>, HashSet<_>) = witness_cols
             .iter()
             .map(|r| {
-                let mut limbs = r.name.split('.');
+                let mut limbs = fixed_data.column_name(r).split('.');
                 let namespace = limbs.next().unwrap();
                 let col = limbs.next().unwrap();
                 (namespace, col)
