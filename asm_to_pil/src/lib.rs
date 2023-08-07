@@ -59,7 +59,7 @@ impl<T: FieldElement> Session<T> {
         self.machine_types = std::mem::take(&mut input.machines);
 
         // get a list of all machines to instantiate. The order does not matter.
-        let mut queue = vec![(main_location, main_ty)];
+        let mut queue = vec![(main_location.clone(), main_ty)];
 
         let mut instances = vec![];
 
@@ -87,7 +87,10 @@ impl<T: FieldElement> Session<T> {
             })
             .collect();
 
-        PILGraph { objects }
+        PILGraph {
+            main: main_location,
+            objects,
+        }
     }
 }
 

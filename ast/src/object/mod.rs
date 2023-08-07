@@ -9,6 +9,12 @@ pub struct Location {
     limbs: Vec<String>,
 }
 
+impl From<String> for Location {
+    fn from(value: String) -> Self {
+        Self::default().join(value)
+    }
+}
+
 impl Location {
     pub fn join<S: Into<String>>(mut self, limb: S) -> Self {
         self.limbs.push(limb.into());
@@ -18,15 +24,24 @@ impl Location {
 
 #[derive(Default)]
 pub struct PILGraph<T> {
+    pub main: Location,
     pub objects: BTreeMap<Location, Object<T>>,
 }
 
+#[derive(Default)]
 pub struct Object<T> {
     pub degree: Option<u64>,
     /// the pil identities for this machine
     pub pil: Vec<PilStatement<T>>,
     /// the links from this machine to its children
     pub links: Vec<Link<T>>,
+}
+
+impl<T> Object<T> {
+    pub fn with_degree(mut self, degree: Option<u64>) -> Self {
+        self.degree = degree;
+        self
+    }
 }
 
 #[derive(Clone)]

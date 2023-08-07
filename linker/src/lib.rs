@@ -1,7 +1,7 @@
 use std::iter::once;
 
 use ast::{
-    object::{Location, PILGraph},
+    object::PILGraph,
     parsed::{
         build::{direct_reference, namespaced_reference},
         Expression, PILFile, PilStatement, SelectedExpressions,
@@ -14,7 +14,7 @@ const DEFAULT_DEGREE: u64 = 1024;
 /// a monolithic linker which outputs a single AIR
 /// It sets the degree of submachines to the degree of the main machine, and errors out if a submachine has an explicit degree which doesn't match the main one
 pub fn link<T: FieldElement>(graph: PILGraph<T>) -> Result<PILFile<T>, Vec<String>> {
-    let main_location = Location::default().join("main");
+    let main_location = graph.main;
     let main_degree = graph
         .objects
         .get(&main_location)
@@ -118,18 +118,67 @@ pub fn link<T: FieldElement>(graph: PILGraph<T>) -> Result<PILFile<T>, Vec<Strin
 mod test {
     use std::fs;
 
-    use ast::object::PILGraph;
-    use number::{FieldElement, GoldilocksField};
+    use ast::{
+        object::{Location, Object, PILGraph},
+        parsed::{Expression, PILFile},
+    };
+    use number::{Bn254Field, FieldElement, GoldilocksField};
 
     use analysis::analyze;
     use parser::parse_asm;
 
     use pretty_assertions::assert_eq;
 
-    use crate::link;
+    use crate::{link, DEFAULT_DEGREE};
 
     fn parse_analyse_and_compile<T: FieldElement>(input: &str) -> PILGraph<T> {
         asm_to_pil::compile(analyze(parse_asm(None, input).unwrap()).unwrap())
+    }
+
+    #[test]
+    fn degree() {
+        // a graph with two objects of degree `main_degree` and `foo_degree`
+        let test_graph = |main_degree, foo_degree| PILGraph {
+            main: Location::from("main".to_string()),
+            objects: [
+                (
+                    Location::from("main".to_string()),
+                    Object::default().with_degree(main_degree),
+                ),
+                (
+                    Location::from("foo".to_string()),
+                    Object::default().with_degree(foo_degree),
+                ),
+            ]
+            .into_iter()
+            .collect(),
+        };
+        // a test over a pil file `f` checking if all namespaces have degree `n`
+        let all_namespaces_have_degree = |f: PILFile<Bn254Field>, n| {
+            f.0.iter().all(|s| match s {
+                ast::parsed::PilStatement::Namespace(_, _, e) => {
+                    *e == Expression::Number(Bn254Field::from(n))
+                }
+                _ => true,
+            })
+        };
+
+        let inferred: PILGraph<Bn254Field> = test_graph(Some(8), None);
+        assert!(all_namespaces_have_degree(link(inferred).unwrap(), 8));
+        let matches: PILGraph<Bn254Field> = test_graph(Some(8), Some(8));
+        assert!(all_namespaces_have_degree(link(matches).unwrap(), 8));
+        let default_infer: PILGraph<Bn254Field> = test_graph(None, Some(DEFAULT_DEGREE));
+        assert!(all_namespaces_have_degree(
+            link(default_infer).unwrap(),
+            1024
+        ));
+        let default_no_match: PILGraph<Bn254Field> = test_graph(None, Some(8));
+        assert_eq!(
+            link(default_no_match),
+            Err(vec![
+                "Machine foo should have degree 1024, found 8".to_string()
+            ])
+        );
     }
 
     #[test]
