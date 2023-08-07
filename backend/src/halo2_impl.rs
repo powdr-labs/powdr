@@ -30,7 +30,7 @@ impl<T: FieldElement> BackendImpl<T> for Halo2Prover {
 impl<T: FieldElement> BackendImplWithSetup<T> for halo2::Halo2Prover {
     fn new_from_setup(mut input: &mut dyn io::Read) -> Result<Self, io::Error> {
         Halo2Prover::assert_field_is_compatible::<T>();
-        Halo2Prover::read(&mut input)
+        Halo2Prover::new_from_setup(&mut input)
     }
 
     fn write_setup(&self, mut output: &mut dyn io::Write) -> Result<(), io::Error> {

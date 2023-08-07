@@ -48,7 +48,7 @@ impl Halo2Prover {
         }
     }
 
-    pub fn read(input: &mut impl io::Read) -> Result<Self, io::Error> {
+    pub fn new_from_setup(input: &mut impl io::Read) -> Result<Self, io::Error> {
         let params = ParamsKZG::<Bn256>::read(input)?;
 
         Ok(Self { params })
