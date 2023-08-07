@@ -318,21 +318,19 @@ fn replace_coprocessor_stubs(
     statements
         .into_iter()
         .scan(true, move |keep_next, statement| {
-            let mut keep_current = *keep_next;
-
             // Skip the current statement and the following one if the current
             // statement is a label that is in the list of stubs to be replaced
             // by a coprocessor call.
-            match &statement {
+            let keep_current = match &statement {
                 Statement::Label(label) if stub_names.contains(&label.as_str()) => {
                     *keep_next = false;
-                    keep_current = false;
+                    false
                 }
                 _ => {
                     *keep_next = true;
-                    keep_current = true;
+                    true
                 }
-            }
+            };
 
             Some((keep_current, statement))
         })
