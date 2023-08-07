@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use ast::analyzed::{
     Analyzed, Expression, FunctionValueDefinition, PolyID, PolynomialReference, PolynomialType,
 };
@@ -17,8 +19,11 @@ mod expression_evaluator;
 pub mod fixed_evaluator;
 mod generator;
 mod global_constraints;
+mod identity_processor;
 mod machines;
+mod query_processor;
 mod range_constraints;
+mod rows;
 pub mod symbolic_evaluator;
 mod symbolic_witness_evaluator;
 mod util;
@@ -37,7 +42,7 @@ where
     if degree.is_zero() {
         panic!("Resulting degree is zero. Please ensure that there is at least one non-constant fixed column to set the degree.");
     }
-    let witness_cols: Vec<_> = analyzed
+    let witness_cols = analyzed
         .committed_polys_in_source_order()
         .iter()
         .enumerate()
@@ -46,29 +51,43 @@ where
                 unimplemented!("Committed arrays not implemented.")
             }
             assert_eq!(i as u64, poly.id);
-            WitnessColumn::new(i, &poly.absolute_name, value)
+            let col = WitnessColumn::new(i, &poly.absolute_name, value);
+            (col.poly.poly_id(), col)
         })
-        .collect();
+        .collect::<BTreeMap<_, _>>();
 
-    let fixed_cols = fixed_col_values
+    let fixed_col_names = fixed_col_values
         .iter()
         .enumerate()
-        .map(|(i, (n, _))| PolynomialReference {
-            name: n.to_string(),
-            poly_id: Some(PolyID {
+        .map(|(i, (name, _))| {
+            (
+                PolyID {
+                    id: i as u64,
+                    ptype: PolynomialType::Constant,
+                },
+                &*Box::leak(String::from(*name).into_boxed_str()),
+            )
+        })
+        .collect::<BTreeMap<_, _>>();
+    let fixed_col_values = fixed_col_values
+        .iter()
+        .enumerate()
+        .map(|(i, (_, v))| {
+            let poly_id = PolyID {
                 id: i as u64,
                 ptype: PolynomialType::Constant,
-            }),
-            index: None,
-            next: false,
+            };
+            (poly_id, v)
         })
-        .collect::<Vec<_>>();
-    let fixed = FixedData::new(
-        degree,
-        fixed_col_values.iter().map(|(_, v)| v).collect(),
-        fixed_cols.iter().collect::<Vec<_>>(),
-        &witness_cols,
-    );
+        .collect::<BTreeMap<_, _>>();
+    let column_names =
+        fixed_col_names
+            .into_iter()
+            .chain(witness_cols.iter().map(|(&poly_id, col)| {
+                (poly_id, &*Box::leak(col.poly.name.clone().into_boxed_str()))
+            }))
+            .collect::<BTreeMap<_, _>>();
+    let fixed = FixedData::new(degree, column_names, fixed_col_values, &witness_cols);
     let identities = substitute_constants(&analyzed.identities, &analyzed.constants);
 
     let GlobalConstraints {
@@ -92,72 +111,82 @@ where
         &fixed,
         &mut fixed_lookup,
         &base_identities,
-        base_witnesses.into_iter().collect(),
+        base_witnesses.clone().into_iter().collect(),
         known_witness_constraints,
         machines,
         query_callback,
     );
 
-    let mut values: Vec<(&str, Vec<T>)> = analyzed
-        .committed_polys_in_source_order()
+    let mut values: BTreeMap<PolyID, Vec<T>> = base_witnesses
         .iter()
-        .map(|(p, _)| (p.absolute_name.as_str(), vec![]))
+        .map(|poly| (poly.poly_id(), vec![]))
         .collect();
     // Are we in an infinite loop and can just re-use the old values?
     let mut looping_period = None;
     for row in 0..degree as DegreeType {
         // Check if we are in a loop.
         if looping_period.is_none() && row % 100 == 0 && row > 0 {
-            let relevant_values = values
-                .iter()
-                .enumerate()
-                .filter(|(id, _)| generator.is_relevant_witness(*id))
-                .map(|(_, values)| values)
-                .collect::<Vec<_>>();
-            looping_period = rows_are_repeating(&relevant_values);
-            if let Some(p) = looping_period {
-                log::info!("Found loop with period {p} starting at row {row}");
+            looping_period = rows_are_repeating(&values.values().collect::<Vec<_>>());
+            if let Some(period) = looping_period {
+                log::info!("Found loop with period {period} starting at row {row}");
             }
         }
         let mut row_values = None;
         if let Some(period) = looping_period {
-            let values = values
+            let proposed_row = values
                 .iter()
-                .map(|(_, v)| v[v.len() - period])
-                .collect::<Vec<_>>();
-            if generator.propose_next_row(row, &values) {
-                row_values = Some(values);
+                .map(|(poly_id, v)| (*poly_id, v[v.len() - period]))
+                .collect();
+            if generator.propose_next_row(row, &proposed_row) {
+                row_values = Some(proposed_row);
             } else {
                 log::info!("Using loop failed. Trying to generate regularly again.");
                 looping_period = None;
             }
         }
-        if row_values.is_none() {
-            row_values = Some(generator.compute_next_row(row));
-        };
 
-        for (col, v) in row_values.unwrap().into_iter().enumerate() {
-            values[col].1.push(v);
+        let row_values = row_values.unwrap_or_else(|| generator.compute_next_row(row));
+
+        for (col, v) in row_values.into_iter() {
+            values.get_mut(&col).unwrap().push(v);
         }
     }
     // Overwrite all machine witness columns
-    for (name, data) in generator.machine_witness_col_values() {
-        let (_, col) = values.iter_mut().find(|(n, _)| *n == name).unwrap();
-        *col = data;
+    for (col_name, data) in generator.machine_witness_col_values() {
+        values.insert(col_name, data);
     }
+
+    // Map from column id to name
+    let mut col_names = analyzed
+        .committed_polys_in_source_order()
+        .iter()
+        .map(|(p, _)| {
+            (
+                PolyID {
+                    id: p.id,
+                    ptype: PolynomialType::Committed,
+                },
+                p.absolute_name.as_str(),
+            )
+        })
+        .collect::<BTreeMap<_, _>>();
+
     values
+        .into_iter()
+        .map(|(id, v)| (col_names.remove(&id).unwrap(), v))
+        .collect()
 }
 
 /// Checks if the last rows are repeating and returns the period.
 /// Only checks for periods of 1, 2, 3 and 4.
-fn rows_are_repeating<T: PartialEq>(values: &[&(&str, Vec<T>)]) -> Option<usize> {
+fn rows_are_repeating<T: PartialEq>(values: &[&Vec<T>]) -> Option<usize> {
     if values.is_empty() {
         return Some(1);
-    } else if values[0].1.len() < 4 {
+    } else if values[0].len() < 4 {
         return None;
     }
     (1..=3).find(|&period| {
-        values.iter().all(|(_name, value)| {
+        values.iter().all(|value| {
             let len = value.len();
             (1..=period).all(|i| value[len - i - period] == value[len - i])
         })
@@ -167,28 +196,28 @@ fn rows_are_repeating<T: PartialEq>(values: &[&(&str, Vec<T>)]) -> Option<usize>
 /// Data that is fixed for witness generation.
 pub struct FixedData<'a, T> {
     degree: DegreeType,
-    fixed_col_values: Vec<&'a Vec<T>>,
-    fixed_cols: Vec<&'a PolynomialReference>,
-    witness_cols: &'a Vec<WitnessColumn<'a, T>>,
+    column_names: BTreeMap<PolyID, &'static str>,
+    fixed_col_values: BTreeMap<PolyID, &'a Vec<T>>,
+    witness_cols: &'a BTreeMap<PolyID, WitnessColumn<'a, T>>,
 }
 
 impl<'a, T> FixedData<'a, T> {
     pub fn new(
         degree: DegreeType,
-        fixed_col_values: Vec<&'a Vec<T>>,
-        fixed_cols: Vec<&'a PolynomialReference>,
-        witness_cols: &'a Vec<WitnessColumn<'a, T>>,
+        column_names: BTreeMap<PolyID, &'static str>,
+        fixed_col_values: BTreeMap<PolyID, &'a Vec<T>>,
+        witness_cols: &'a BTreeMap<PolyID, WitnessColumn<'a, T>>,
     ) -> Self {
         FixedData {
             degree,
+            column_names,
             fixed_col_values,
-            fixed_cols,
             witness_cols,
         }
     }
 
     fn witness_cols(&self) -> impl Iterator<Item = &WitnessColumn<T>> {
-        self.witness_cols.iter()
+        self.witness_cols.values()
     }
 }
 

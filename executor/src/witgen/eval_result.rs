@@ -7,8 +7,6 @@ use super::range_constraints::RangeConstraint;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum IncompleteCause<K = usize> {
-    /// Previous value of witness column not known when trying to derive a value in the next row. Example: `x' = x` where `x` is unknown
-    PreviousValueUnknown(K),
     /// Some parts of an expression are not bit constrained. Example: `x + y == 0x3` with `x | 0x1`. Arguments: the indices of the unconstrained variables.
     BitUnconstrained(Vec<K>),
     /// Some bit constraints are overlapping. Example: `x + y == 0x3` with `x | 0x3` and `y | 0x3`

@@ -27,13 +27,13 @@ pub struct BlockMachine<T: FieldElement> {
     selected_expressions: SelectedExpressions<T>,
     identities: Vec<Identity<T>>,
     /// One column of values for each witness.
-    data: HashMap<usize, Vec<Option<T>>>,
+    data: HashMap<PolyID, Vec<Option<T>>>,
     /// Current row in the machine
     row: DegreeType,
     /// Range constraints, are deleted outside the current block.
-    range_constraints: HashMap<usize, HashMap<DegreeType, RangeConstraint<T>>>,
+    range_constraints: HashMap<PolyID, HashMap<DegreeType, RangeConstraint<T>>>,
     /// Range constraints of the outer polynomials, for the current block.
-    outer_range_constraints: HashMap<usize, RangeConstraint<T>>,
+    outer_range_constraints: HashMap<PolyID, RangeConstraint<T>>,
     /// Global range constraints on witness columns.
     global_range_constraints: BTreeMap<PolyID, RangeConstraint<T>>,
     /// Poly degree / absolute number of rows
@@ -58,10 +58,7 @@ impl<T: FieldElement> BlockMachine<T> {
                     block_size: period,
                     selected_expressions: id.right.clone(),
                     identities: identities.iter().map(|&i| i.clone()).collect(),
-                    data: witness_cols
-                        .iter()
-                        .map(|n| (n.poly_id_u64() as usize, vec![]))
-                        .collect(),
+                    data: witness_cols.iter().map(|n| (n.poly_id(), vec![])).collect(),
                     row: 0,
                     range_constraints: Default::default(),
                     outer_range_constraints: Default::default(),
@@ -106,7 +103,7 @@ fn try_to_period<T: FieldElement>(
                 return None;
             }
 
-            let values = fixed_data.fixed_col_values[poly.poly_id_u64() as usize];
+            let values = fixed_data.fixed_col_values[&poly.poly_id()];
 
             let period = 1 + values.iter().position(|v| v.is_one())?;
             values
@@ -191,7 +188,7 @@ impl<T: FieldElement> Machine<T> for BlockMachine<T> {
                     .map(|(i, v)| v.unwrap_or(default_block[i % self.block_size]))
                     .collect::<Vec<_>>();
 
-                (fixed_data.witness_cols[id].poly.name.clone(), values)
+                (fixed_data.witness_cols[&id].poly.name.clone(), values)
             })
             .collect()
     }
@@ -285,7 +282,7 @@ impl<T: FieldElement> BlockMachine<T> {
             match result {
                 Ok(result) => {
                     if result.is_complete() {
-                        return Ok(result);
+                        return Ok(EvalValue::complete(vec![]));
                     } else {
                         // If the query is not complete, we roll back the row change and continue.
                         // This might happen if the block machine just validates some input (rather
@@ -357,11 +354,11 @@ impl<T: FieldElement> BlockMachine<T> {
                         for (poly_id, next, constraint) in inner_value
                             .constraints
                             .into_iter()
-                            .map(|(poly, constraint)| (poly.poly_id_u64(), poly.next, constraint))
+                            .map(|(poly, constraint)| (poly.poly_id(), poly.next, constraint))
                             .collect::<Vec<_>>()
                         {
                             progress_in_last_step |=
-                                self.handle_constraint(poly_id as usize, next, constraint);
+                                self.handle_constraint(poly_id, next, constraint);
                         }
 
                         change_logger.log_constraints(self, &outer_constraints, false);
@@ -436,7 +433,7 @@ impl<T: FieldElement> BlockMachine<T> {
 
     /// Updates self.data and self.range_constraints for the current constraint.
     /// Returns whether any changed where made.
-    fn handle_constraint(&mut self, poly: usize, next: bool, constraint: Constraint<T>) -> bool {
+    fn handle_constraint(&mut self, poly: PolyID, next: bool, constraint: Constraint<T>) -> bool {
         let r = (self.row + next as DegreeType) % self.degree;
         match constraint {
             Constraint::Assignment(a) => {
@@ -474,7 +471,7 @@ impl<T: FieldElement> BlockMachine<T> {
                             Constraint::RangeConstraint(rc) => {
                                 update_range_constraint(
                                     &mut self.outer_range_constraints,
-                                    poly.poly_id_u64() as usize,
+                                    poly.poly_id(),
                                     rc.clone(),
                                 );
                             }
@@ -595,14 +592,15 @@ impl<T: FieldElement> BlockMachine<T> {
         fixed_data: &FixedData<T>,
         expression: &'b Expression<T>,
     ) -> AffineResult<&'b PolynomialReference, T> {
+        let witness_data = WitnessData {
+            fixed_data,
+            data: &self.data,
+            row: self.row,
+        };
         ExpressionEvaluator::new(SymoblicWitnessEvaluator::new(
             fixed_data,
             self.row,
-            WitnessData {
-                fixed_data,
-                data: &self.data,
-                row: self.row,
-            },
+            &witness_data,
         ))
         .evaluate(expression)
     }
@@ -631,28 +629,24 @@ impl<T: FieldElement> RangeConstraintSet<&PolynomialReference, T> for BlockMachi
             .or_else(|| {
                 let row = (self.row + poly.next as DegreeType) % self.degree;
                 self.range_constraints
-                    .get(&(poly.poly_id_u64() as usize))?
+                    .get(&(poly.poly_id()))?
                     .get(&row)
                     .cloned()
             })
-            .or_else(|| {
-                self.outer_range_constraints
-                    .get(&(poly.poly_id_u64() as usize))
-                    .cloned()
-            })
+            .or_else(|| self.outer_range_constraints.get(&(poly.poly_id())).cloned())
     }
 }
 
 #[derive(Clone)]
 struct WitnessData<'a, T> {
     pub fixed_data: &'a FixedData<'a, T>,
-    pub data: &'a HashMap<usize, Vec<Option<T>>>,
+    pub data: &'a HashMap<PolyID, Vec<Option<T>>>,
     pub row: DegreeType,
 }
 
 impl<'a, T: FieldElement> WitnessColumnEvaluator<T> for WitnessData<'a, T> {
     fn value<'b>(&self, poly: &'b PolynomialReference) -> AffineResult<&'b PolynomialReference, T> {
-        let id = poly.poly_id_u64() as usize;
+        let id = poly.poly_id();
         let row = if poly.next {
             (self.row + 1) % self.fixed_data.degree
         } else {
