@@ -322,7 +322,7 @@ fn replace_coprocessor_stubs(
 
             // Skip the current statement and the following one if the current
             // statement is a label that is in the list of stubs to be replaced
-            // by a corpocessor call.
+            // by a coprocessor call.
             match &statement {
                 Statement::Label(label) if stub_names.contains(&label.as_str()) => {
                     *keep_next = false;
