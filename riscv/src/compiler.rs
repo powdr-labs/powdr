@@ -323,12 +323,15 @@ fn replace_coprocessor_stubs(
             // Skip the current statement and the following one if the current
             // statement is a label that is in the list of stubs to be replaced
             // by a corpocessor call.
-            if let Statement::Label(label) = &statement {
-                *keep_next = !stub_names.contains(&label.as_str());
-
-                keep_current &= *keep_next;
-            } else {
-                *keep_next = true;
+            match &statement {
+                Statement::Label(label) if stub_names.contains(&label.as_str()) => {
+                    *keep_next = false;
+                    keep_current = false;
+                }
+                _ => {
+                    *keep_next = true;
+                    keep_current = true;
+                }
             }
 
             Some((keep_current, statement))
