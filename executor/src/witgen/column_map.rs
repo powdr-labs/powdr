@@ -57,12 +57,12 @@ impl<V> ColumnMap<V> {
 }
 
 impl<V: Clone + Default> ColumnMap<Option<V>> {
-    pub fn unwrap_or_default(&self) -> ColumnMap<V> {
+    pub fn unwrap_or_default(self) -> ColumnMap<V> {
         ColumnMap {
             values: self
                 .values
-                .iter()
-                .map(|v| v.clone().unwrap_or_default())
+                .into_iter()
+                .map(|v| v.unwrap_or_default())
                 .collect(),
             ptype: self.ptype,
         }
@@ -70,9 +70,9 @@ impl<V: Clone + Default> ColumnMap<Option<V>> {
 }
 
 impl<V: Clone> ColumnMap<V> {
-    pub fn wrap_some(&self) -> ColumnMap<Option<V>> {
+    pub fn wrap_some(self) -> ColumnMap<Option<V>> {
         ColumnMap {
-            values: self.values.iter().map(|v| Some(v.clone())).collect(),
+            values: self.values.into_iter().map(|v| Some(v)).collect(),
             ptype: self.ptype,
         }
     }

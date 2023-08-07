@@ -67,11 +67,7 @@ impl<T: FieldElement> IndexedColumns<T> {
 
     /// Create an index for a set of columns to be queried, if does not exist already
     /// `input_fixed_columns` is assumed to be sorted
-    fn ensure_index(
-        &mut self,
-        fixed_data: &FixedData<T>,
-        sorted_fixed_columns: &(Vec<PolyID>, Vec<PolyID>),
-    ) {
+    fn ensure_index(&mut self, fixed_data: &FixedData<T>, sorted_fixed_columns: &Application) {
         // we do not use the Entry API here because we want to clone `sorted_input_fixed_columns` only on index creation
         if self.indices.get(sorted_fixed_columns).is_some() {
             return;

@@ -87,7 +87,7 @@ pub fn determine_global_constraints<'a, T: FieldElement>(
     }
 
     let mut known_witness_constraints: ColumnMap<Option<RangeConstraint<T>>> =
-        fixed_data.witness_map(None);
+        fixed_data.witness_map_with(None);
     for (poly_id, con) in known_constraints {
         if poly_id.ptype == PolynomialType::Committed {
             // It's theoretically possible to have a constraint for both X and X'.

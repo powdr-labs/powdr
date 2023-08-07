@@ -131,7 +131,7 @@ where
     }
 
     // Transpose the rows
-    let mut columns = fixed.witness_map(vec![]);
+    let mut columns = fixed.witness_map_with(vec![]);
     for row in rows.into_iter() {
         for (col_index, value) in row.into_iter() {
             columns[&col_index].push(value);
@@ -214,7 +214,7 @@ impl<'a, T> FixedData<'a, T> {
         }
     }
 
-    fn witness_map<V: Clone>(&self, initial_value: V) -> ColumnMap<V> {
+    fn witness_map_with<V: Clone>(&self, initial_value: V) -> ColumnMap<V> {
         ColumnMap::new(
             initial_value,
             self.witness_cols.len(),
