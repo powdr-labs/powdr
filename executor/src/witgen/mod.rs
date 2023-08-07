@@ -12,6 +12,8 @@ pub use self::eval_result::{
 };
 use self::global_constraints::GlobalConstraints;
 use self::machines::machine_extractor::ExtractionOutput;
+use self::range_constraints::RangeConstraint;
+use self::rows::{Cell, Row};
 use self::util::substitute_constants;
 
 mod affine_expression;
@@ -21,11 +23,18 @@ mod expression_evaluator;
 pub mod fixed_evaluator;
 mod generator;
 mod global_constraints;
+mod identity_processor;
 mod machines;
+mod query_processor;
 mod range_constraints;
+mod rows;
 pub mod symbolic_evaluator;
 mod symbolic_witness_evaluator;
 mod util;
+
+fn leak_string(s: String) -> &'static str {
+    Box::leak(s.into_boxed_str())
+}
 
 /// Generates the committed polynomial values
 /// @returns the values (in source order) and the degree of the polynomials.
@@ -139,11 +148,7 @@ where
     }
 
     // Overwrite all machine witness columns
-    for (name, data) in generator.machine_witness_col_values() {
-        let poly_id = *poly_ids
-            .iter()
-            .find(|&p| fixed.column_name(p) == name)
-            .unwrap();
+    for (poly_id, data) in generator.machine_witness_col_values() {
         columns[&poly_id] = data;
     }
 
@@ -197,20 +202,29 @@ fn rows_are_repeating<T: PartialEq>(
 /// Data that is fixed for witness generation.
 pub struct FixedData<'a, T> {
     degree: DegreeType,
+    witness_column_names: ColumnMap<&'static str>,
     fixed_cols: ColumnMap<FixedColumn<'a, T>>,
     witness_cols: ColumnMap<WitnessColumn<'a, T>>,
 }
 
-impl<'a, T> FixedData<'a, T> {
+impl<'a, T: FieldElement> FixedData<'a, T> {
     pub fn new(
         degree: DegreeType,
         fixed_cols: ColumnMap<FixedColumn<'a, T>>,
         witness_cols: ColumnMap<WitnessColumn<'a, T>>,
     ) -> Self {
+        let witness_column_names = ColumnMap::from(
+            witness_cols
+                .values()
+                .map(|witness_col| leak_string(witness_col.name.clone())),
+            PolynomialType::Committed,
+        );
+
         FixedData {
             degree,
             fixed_cols,
             witness_cols,
+            witness_column_names,
         }
     }
 
@@ -220,6 +234,35 @@ impl<'a, T> FixedData<'a, T> {
             self.witness_cols.len(),
             PolynomialType::Committed,
         )
+    }
+
+    fn fresh_row(
+        &self,
+        global_range_constraints: &ColumnMap<Option<RangeConstraint<T>>>,
+    ) -> Row<T> {
+        let cells = ColumnMap::from(
+            global_range_constraints
+                .iter()
+                .map(|(poly_id, range_constraint)| Cell {
+                    name: self.witness_column_names[&poly_id],
+                    value: None,
+                    range_constraint: range_constraint.clone(),
+                }),
+            PolynomialType::Committed,
+        );
+        Row { cells }
+    }
+
+    fn row_from_known_values(&self, values: &ColumnMap<T>) -> Row<T> {
+        let cells = ColumnMap::from(
+            values.iter().map(|(poly_id, &v)| Cell {
+                name: self.witness_column_names[&poly_id],
+                value: Some(v),
+                range_constraint: None,
+            }),
+            PolynomialType::Committed,
+        );
+        Row { cells }
     }
 
     fn column_name(&self, poly_id: &PolyID) -> &str {

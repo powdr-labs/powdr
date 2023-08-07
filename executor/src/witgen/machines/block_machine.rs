@@ -283,7 +283,7 @@ impl<T: FieldElement> BlockMachine<T> {
             match result {
                 Ok(result) => {
                     if result.is_complete() {
-                        return Ok(result);
+                        return Ok(EvalValue::complete(vec![]));
                     } else {
                         // If the query is not complete, we roll back the row change and continue.
                         // This might happen if the block machine just validates some input (rather
@@ -593,14 +593,15 @@ impl<T: FieldElement> BlockMachine<T> {
         fixed_data: &FixedData<T>,
         expression: &'b Expression<T>,
     ) -> AffineResult<&'b PolynomialReference, T> {
+        let witness_data = WitnessData {
+            fixed_data,
+            data: &self.data,
+            row: self.row,
+        };
         ExpressionEvaluator::new(SymoblicWitnessEvaluator::new(
             fixed_data,
             self.row,
-            WitnessData {
-                fixed_data,
-                data: &self.data,
-                row: self.row,
-            },
+            &witness_data,
         ))
         .evaluate(expression)
     }

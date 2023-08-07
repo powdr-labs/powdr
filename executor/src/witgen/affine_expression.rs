@@ -208,7 +208,6 @@ where
         // Now we have: dividend = remainder + divisor * quotient
         let (remainder_lower, remainder_upper) =
             known_constraints.range_constraint(remainder)?.range();
-
         // Check that remainder is in [0, divisor - 1].
         if remainder_lower > remainder_upper || remainder_upper >= *divisor {
             return None;
