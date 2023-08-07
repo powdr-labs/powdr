@@ -1,8 +1,4 @@
-use std::{
-    fs,
-    io::{self, Write},
-    path::Path,
-};
+use std::io::{self};
 
 use crate::{BackendImpl, BackendImplWithSetup, Proof};
 use ast::analyzed::Analyzed;
@@ -21,25 +17,13 @@ impl<T: FieldElement> BackendImpl<T> for Halo2Prover {
         fixed: &[(&str, Vec<T>)],
         witness: &[(&str, Vec<T>)],
         prev_proof: Option<Proof>,
-        output_dir: Option<&Path>,
-    ) -> io::Result<Option<Proof>> {
-        let (proof, fname) = match prev_proof {
-            Some(proof) => (
-                self.prove_aggr(pil, fixed, witness, proof),
-                "proof_aggr.bin",
-            ),
-            None => (self.prove_ast(pil, fixed, witness), "proof.bin"),
+    ) -> (Option<Proof>, Option<String>) {
+        let proof = match prev_proof {
+            Some(proof) => self.prove_aggr(pil, fixed, witness, proof),
+            None => self.prove_ast(pil, fixed, witness),
         };
 
-        if let Some(output_dir) = output_dir {
-            // No need to bufferize the writing, because we write the whole
-            // proof in one call.
-            let mut proof_file = fs::File::create(output_dir.join(fname))?;
-            proof_file.write_all(&proof)?;
-            log::info!("Wrote {fname}.");
-        }
-
-        Ok(Some(proof))
+        (Some(proof), None)
     }
 }
 
@@ -66,17 +50,13 @@ impl<T: FieldElement> BackendImpl<T> for Halo2Mock {
         fixed: &[(&str, Vec<T>)],
         witness: &[(&str, Vec<T>)],
         prev_proof: Option<Proof>,
-        _output_dir: Option<&Path>,
-    ) -> io::Result<Option<Proof>> {
+    ) -> (Option<Proof>, Option<String>) {
         if prev_proof.is_some() {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                "Halo2Mock backend does not support aggregation",
-            ));
+            unimplemented!("Halo2Mock backend does not support aggregation");
         }
 
         halo2::mock_prove(pil, fixed, witness);
 
-        Ok(None)
+        (None, None)
     }
 }

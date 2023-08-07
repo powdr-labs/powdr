@@ -4,7 +4,7 @@ mod util;
 
 use backend::{Backend, BackendType};
 use clap::{CommandFactory, Parser, Subcommand};
-use compiler::compile_pil_or_asm;
+use compiler::{compile_pil_or_asm, write_proving_results_to_fs};
 use env_logger::{Builder, Target};
 use log::LevelFilter;
 use number::{Bn254Field, FieldElement, GoldilocksField};
@@ -479,9 +479,11 @@ fn read_and_prove<T: FieldElement>(
         buf
     });
 
-    backend
-        .prove(&pil, &fixed.0, &witness.0, proof, Some(dir))
-        .unwrap();
+    write_proving_results_to_fs(
+        proof.is_some(),
+        backend.prove(&pil, &fixed.0, &witness.0, proof),
+        dir,
+    );
 }
 
 fn optimize_and_output<T: FieldElement>(file: &str) {

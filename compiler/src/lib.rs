@@ -2,6 +2,8 @@
 
 use std::ffi::OsStr;
 use std::fs;
+use std::io::BufWriter;
+use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
 use std::time::Instant;
@@ -13,6 +15,8 @@ mod verify;
 
 use analysis::analyze;
 pub use backend::{BackendType, Proof};
+use number::write_polys_file;
+use number::DegreeType;
 pub use verify::{verify, verify_asm_string};
 
 use ast::parsed::PILFile;
@@ -201,26 +205,33 @@ where
         log::info!("Deducing witness columns...");
         let commits = executor::witgen::generate(&analyzed, degree, &constants, query_callback);
 
-        commits
+        let witness = commits
             .into_iter()
             .map(|(name, c)| (name, c))
-            .collect::<Vec<_>>()
+            .collect::<Vec<_>>();
+
+        write_constants_to_fs(&constants, output_dir, degree);
+        write_commits_to_fs(&witness, output_dir, degree);
+
+        witness
     });
 
     // Even if we don't have all constants and witnesses, some backends will
-    // still output useful stuff.
+    // still output the constraint serialization.
     if let Some(backend) = prove_with {
         let factory = backend.factory::<T>();
         let backend = factory.create(degree);
-        if let Err(error) = backend.prove(
-            &analyzed,
-            &constants,
-            witness.as_deref().unwrap_or_default(),
-            None,
-            Some(output_dir),
-        ) {
-            log::warn!("Proof generation failed: {error}");
-        }
+
+        write_proving_results_to_fs(
+            false,
+            backend.prove(
+                &analyzed,
+                &constants,
+                witness.as_deref().unwrap_or_default(),
+                None,
+            ),
+            output_dir,
+        );
     }
 
     let constants = constants
@@ -235,6 +246,65 @@ where
     });
 
     CompilationResult { constants, witness }
+}
+
+pub fn write_proving_results_to_fs(
+    is_aggregation: bool,
+    result: (Option<Proof>, Option<String>),
+    output_dir: &Path,
+) {
+    let (proof, constraints_serialization) = result;
+    match proof {
+        Some(proof) => {
+            let fname = if is_aggregation {
+                "proof.bin"
+            } else {
+                "proof_aggr.bin"
+            };
+
+            // No need to bufferize the writing, because we write the whole
+            // proof in one call.
+            let mut proof_file = fs::File::create(output_dir.join(fname)).unwrap();
+            proof_file.write_all(&proof).unwrap();
+            log::info!("Wrote {fname}.");
+        }
+        None => log::warn!("No proof was generated"),
+    }
+
+    match constraints_serialization {
+        Some(json) => {
+            let mut file = fs::File::create(output_dir.join("constraints.json")).unwrap();
+            file.write_all(json.as_bytes()).unwrap();
+            log::info!("Wrote constraints.json.");
+        }
+        None => log::warn!("Constraints were not JSON serialized"),
+    }
+}
+
+fn write_constants_to_fs<T: FieldElement>(
+    constants: &[(&str, Vec<T>)],
+    output_dir: &Path,
+    degree: DegreeType,
+) {
+    write_polys_file(
+        &mut BufWriter::new(&mut fs::File::create(output_dir.join("constants.bin")).unwrap()),
+        degree,
+        constants,
+    );
+    log::info!("Wrote constants.bin.");
+}
+
+fn write_commits_to_fs<T: FieldElement>(
+    commits: &[(&str, Vec<T>)],
+    output_dir: &Path,
+    degree: DegreeType,
+) {
+    write_polys_file(
+        &mut BufWriter::new(&mut fs::File::create(output_dir.join("commits.bin")).unwrap()),
+        degree,
+        commits,
+    );
+    log::info!("Wrote commits.bin.");
 }
 
 pub fn inputs_to_query_callback<T: FieldElement>(inputs: Vec<T>) -> impl Fn(&str) -> Option<T> {

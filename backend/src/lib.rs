@@ -4,7 +4,7 @@ mod pilcom_cli;
 
 use ast::analyzed::Analyzed;
 use number::{DegreeType, FieldElement};
-use std::{io, marker::PhantomData, path::Path};
+use std::{io, marker::PhantomData};
 use strum::{Display, EnumString, EnumVariantNames};
 
 #[derive(Clone, EnumString, EnumVariantNames, Display)]
@@ -64,9 +64,8 @@ impl<F: FieldElement, B: BackendImpl<F>> Backend<F> for ConcreteBackendWithoutSe
         fixed: &[(&str, Vec<F>)],
         witness: &[(&str, Vec<F>)],
         prev_proof: Option<Proof>,
-        output_dir: Option<&Path>,
-    ) -> io::Result<Option<Proof>> {
-        self.0.prove(pil, fixed, witness, prev_proof, output_dir)
+    ) -> (Option<Proof>, Option<String>) {
+        self.0.prove(pil, fixed, witness, prev_proof)
     }
 
     fn write_setup(&self, _output: &mut dyn io::Write) -> Result<(), Error> {
@@ -103,9 +102,8 @@ impl<F: FieldElement, B: BackendImplWithSetup<F>> Backend<F> for ConcreteBackend
         fixed: &[(&str, Vec<F>)],
         witness: &[(&str, Vec<F>)],
         prev_proof: Option<Proof>,
-        output_dir: Option<&Path>,
-    ) -> io::Result<Option<Proof>> {
-        self.0.prove(pil, fixed, witness, prev_proof, output_dir)
+    ) -> (Option<Proof>, Option<String>) {
+        self.0.prove(pil, fixed, witness, prev_proof)
     }
 
     fn write_setup(&self, output: &mut dyn io::Write) -> Result<(), Error> {
@@ -130,16 +128,19 @@ pub type Proof = Vec<u8>;
 
 /// Dynamic interface for a backend.
 pub trait Backend<F: FieldElement> {
-    /// Perform the backend proving. If prev_proof is provided, proof
-    /// aggregation is performed.
+    /// Perform the proving.
+    ///
+    /// If prev_proof is provided, proof aggregation is performed.
+    ///
+    /// Returns the generated proof, and the string serialization of the
+    /// constraints.
     fn prove(
         &self,
         pil: &Analyzed<F>,
         fixed: &[(&str, Vec<F>)],
         witness: &[(&str, Vec<F>)],
         prev_proof: Option<Proof>,
-        output_dir: Option<&Path>,
-    ) -> io::Result<Option<Proof>>;
+    ) -> (Option<Proof>, Option<String>);
 
     /// Write the prover setup to a file, so that it can be loaded later.
     fn write_setup(&self, output: &mut dyn io::Write) -> Result<(), Error>;
@@ -168,8 +169,7 @@ trait BackendImpl<F: FieldElement> {
         fixed: &[(&str, Vec<F>)],
         witness: &[(&str, Vec<F>)],
         prev_proof: Option<Proof>,
-        output_dir: Option<&Path>,
-    ) -> io::Result<Option<Proof>>;
+    ) -> (Option<Proof>, Option<String>);
 }
 
 /// Trait implemented by backends that have a setup phase that must be saved to
