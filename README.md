@@ -27,7 +27,7 @@ which is compiled to RISCV, then to powdr-asm and finally to PIL.
 - Halo2
 - eSTARKs: *powdr*-PIL is fully compatible with the eSTARKS backend from Polygon Hermez,
   although not yet fully integrated in an automatic way.
-- Nova: ongoing work, should be ready after soon.
+- Nova: ongoing work.
 - other STARKs: maybe?
 
 All stages are fully automatic, which means you do not need to write any
@@ -45,7 +45,7 @@ it is easy to adapt *powdr* assembly to any VM.
 
 ### Notes on Efficiency
 
-Currently, the code is extremely wasteful. It generates many unnecessary columns.
+Currently, the code is quite wasteful. It generates many unnecessary columns.
 The idea is to first see if automatic witness generation is possible in general.
 If this is confirmed, various optimizer stages will be built to reduce the
 column (and row) count automatically.
