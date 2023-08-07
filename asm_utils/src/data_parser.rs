@@ -1,11 +1,15 @@
 use std::collections::BTreeMap;
 
-use crate::ast::{Argument, Expression, FunctionOpKind, Register, Statement};
+use crate::ast::{Argument, BinaryOpKind, Expression, FunctionOpKind, Register, Statement};
 
+#[derive(Debug)]
 pub enum DataValue {
     Direct(Vec<u8>),
     Zero(usize),
     Reference(String),
+    // This is needed for .word diretives such as
+    // .word	.Lfunc_begin0-.Lfunc_begin0
+    Offset(String, String),
 }
 
 impl DataValue {
@@ -15,6 +19,7 @@ impl DataValue {
             DataValue::Direct(data) => data.len(),
             DataValue::Zero(length) => *length,
             DataValue::Reference(_) => 4,
+            DataValue::Offset(..) => 4,
         }
     }
 }
@@ -25,8 +30,10 @@ impl DataValue {
 pub fn extract_data_objects<R: Register, F: FunctionOpKind>(
     statements: &[Statement<R, F>],
 ) -> (BTreeMap<String, Vec<DataValue>>, Vec<String>) {
-    let mut object_order = vec![];
     let mut current_label = None;
+    // TODO the way these collections are used here looks hacky.
+    // It might need a more function reimpl.
+    let mut object_order = vec![];
     let mut objects = BTreeMap::new();
     for s in statements {
         match s {
@@ -42,16 +49,20 @@ pub fn extract_data_objects<R: Register, F: FunctionOpKind>(
                     assert!(objects.insert(name.clone(), vec![]).is_none());
                 }
                 (".zero" | ".ascii" | ".asciz" | ".word" | ".byte", args) => {
+                    let label = current_label.unwrap().to_string();
                     objects
-                        .entry(current_label.unwrap().into())
-                        .and_modify(|entry| {
-                            entry.extend(extract_data_value(dir.as_str(), args));
-                        });
+                        .entry(label.clone())
+                        .or_insert_with(|| {
+                            object_order.push(label);
+                            Default::default()
+                        })
+                        .extend(extract_data_value(dir.as_str(), args));
                 }
                 (
                     ".size",
                     [Argument::Expression(Expression::Symbol(name)), Argument::Expression(Expression::Number(n))],
                 ) if Some(name.as_str()) == current_label => {
+                    let label = current_label.unwrap().to_string();
                     objects
                         .entry(current_label.unwrap().into())
                         .and_modify(|entry| {
@@ -62,6 +73,7 @@ pub fn extract_data_objects<R: Register, F: FunctionOpKind>(
                             );
                         })
                         .or_insert_with(|| {
+                            object_order.push(label);
                             assert!(*n == 0, "Nonzero size for object without elements: {name}");
                             Default::default()
                         });
@@ -111,6 +123,12 @@ fn extract_data_value<R: Register, F: FunctionOpKind>(
                             }
                             Argument::Expression(Expression::Symbol(sym)) => {
                                 DataValue::Reference(sym.clone())
+                            }
+                            Argument::Expression(
+                                Expression::BinaryOp(BinaryOpKind::Sub, args)
+                            ) => match args.as_slice() {
+                                [Expression::Symbol(a), Expression::Symbol(b)] => DataValue::Offset(a.to_string(), b.to_string()),
+                                _ => panic!("Invalid .word directive")
                             }
                             _ => panic!("Invalid .word directive")
                         }
