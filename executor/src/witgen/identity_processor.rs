@@ -7,6 +7,7 @@ use super::{
     EvalResult, EvalValue, FixedData, IncompleteCause,
 };
 
+/// Computes (value or range constraint) updates given a [RowPair] and [Identity].
 pub struct IdentityProcessor<'a, T: FieldElement> {
     fixed_data: &'a FixedData<'a, T>,
     fixed_lookup: &'a mut FixedLookup<T>,
@@ -28,8 +29,8 @@ impl<'a, T: FieldElement> IdentityProcessor<'a, T> {
 
     /// Given an identity and a row pair, tries to figure out additional values / range constraints
     /// for the given cells.
-    /// Fails if any constraint was not satisfied.
-    /// Returns whether any progress was made and the new status of the identity.
+    /// Fails if any constraint was not satisfiable.
+    /// Returns the updates.
     pub fn process_identity<'b>(
         &mut self,
         identity: &'b Identity<T>,
@@ -111,6 +112,7 @@ impl<'a, T: FieldElement> IdentityProcessor<'a, T> {
         unimplemented!("No executor machine matched identity `{identity}`")
     }
 
+    /// Returns updates of the left selector cannot be evaluated to 1, otherwise None.
     fn handle_left_selector<'b>(
         &mut self,
         left_selector: &'b Expression<T>,
