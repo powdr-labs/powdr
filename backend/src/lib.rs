@@ -1,104 +1,186 @@
+#[cfg(feature = "halo2")]
+mod halo2_impl;
+mod pilcom_cli;
+
 use ast::analyzed::Analyzed;
-use number::FieldElement;
-use std::io;
+use number::{DegreeType, FieldElement};
+use std::{io, marker::PhantomData};
 use strum::{Display, EnumString, EnumVariantNames};
 
 #[derive(Clone, EnumString, EnumVariantNames, Display)]
-pub enum Backend {
+pub enum BackendType {
     #[cfg(feature = "halo2")]
     #[strum(serialize = "halo2")]
     Halo2,
     #[cfg(feature = "halo2")]
-    #[strum(serialize = "halo2-aggr")]
-    Halo2Aggr,
-    #[cfg(feature = "halo2")]
     #[strum(serialize = "halo2-mock")]
     Halo2Mock,
-    // At the moment, this enum is empty without halo2, but it is always built
-    // as part of the infrastructure to eventually support other backends.
+    #[strum(serialize = "pilcom-cli")]
+    PilcomCli,
 }
 
-/// Create a proof for a given PIL, fixed column values and witness column values
-/// using the chosen backend.
+impl BackendType {
+    pub fn factory<T: FieldElement>(&self) -> &'static dyn BackendFactory<T> {
+        #[cfg(feature = "halo2")]
+        const HALO2_FACTORY: WithSetupFactory<halo2::Halo2Prover> = WithSetupFactory(PhantomData);
+        #[cfg(feature = "halo2")]
+        const HALO2_MOCK_FACTORY: WithoutSetupFactory<halo2_impl::Halo2Mock> =
+            WithoutSetupFactory(PhantomData);
+        const PILCOM_CLI_FACTORY: WithoutSetupFactory<pilcom_cli::PilcomCli> =
+            WithoutSetupFactory(PhantomData);
+
+        match self {
+            #[cfg(feature = "halo2")]
+            BackendType::Halo2 => &HALO2_FACTORY,
+            #[cfg(feature = "halo2")]
+            BackendType::Halo2Mock => &HALO2_MOCK_FACTORY,
+            BackendType::PilcomCli => &PILCOM_CLI_FACTORY,
+        }
+    }
+}
+
+/// Factory for backends without setup.
+struct WithoutSetupFactory<B>(PhantomData<B>);
+
+/// Factory implementation for backends without setup.
+impl<F: FieldElement, B: BackendImpl<F> + 'static> BackendFactory<F> for WithoutSetupFactory<B> {
+    fn create(&self, degree: DegreeType) -> Box<dyn Backend<F>> {
+        Box::new(ConcreteBackendWithoutSetup(B::new(degree)))
+    }
+
+    fn create_from_setup(&self, _input: &mut dyn io::Read) -> Result<Box<dyn Backend<F>>, Error> {
+        Err(Error::NoSetupAvailable)
+    }
+}
+
+/// Concrete dynamic dispatch Backend object, for backends without setup.
+struct ConcreteBackendWithoutSetup<B>(B);
+
+/// Concrete implementation for backends with setup.
+impl<F: FieldElement, B: BackendImpl<F>> Backend<F> for ConcreteBackendWithoutSetup<B> {
+    fn prove(
+        &self,
+        pil: &Analyzed<F>,
+        fixed: &[(&str, Vec<F>)],
+        witness: &[(&str, Vec<F>)],
+        prev_proof: Option<Proof>,
+    ) -> (Option<Proof>, Option<String>) {
+        self.0.prove(pil, fixed, witness, prev_proof)
+    }
+
+    fn write_setup(&self, _output: &mut dyn io::Write) -> Result<(), Error> {
+        Err(Error::NoSetupAvailable)
+    }
+}
+
+/// Factory for backends with setup.
+struct WithSetupFactory<B>(PhantomData<B>);
+
+/// Factory implementation for backends with setup.
+impl<F: FieldElement, B: BackendImplWithSetup<F> + 'static> BackendFactory<F>
+    for WithSetupFactory<B>
+{
+    fn create(&self, degree: DegreeType) -> Box<dyn Backend<F>> {
+        Box::new(ConcreteBackendWithSetup(B::new(degree)))
+    }
+
+    fn create_from_setup(&self, input: &mut dyn io::Read) -> Result<Box<dyn Backend<F>>, Error> {
+        Ok(Box::new(ConcreteBackendWithSetup(B::new_from_setup(
+            input,
+        )?)))
+    }
+}
+
+/// Concrete dynamic dispatch Backend object, for backends with setup.
+struct ConcreteBackendWithSetup<B>(B);
+
+/// Concrete implementation for backends with setup.
+impl<F: FieldElement, B: BackendImplWithSetup<F>> Backend<F> for ConcreteBackendWithSetup<B> {
+    fn prove(
+        &self,
+        pil: &Analyzed<F>,
+        fixed: &[(&str, Vec<F>)],
+        witness: &[(&str, Vec<F>)],
+        prev_proof: Option<Proof>,
+    ) -> (Option<Proof>, Option<String>) {
+        self.0.prove(pil, fixed, witness, prev_proof)
+    }
+
+    fn write_setup(&self, output: &mut dyn io::Write) -> Result<(), Error> {
+        Ok(self.0.write_setup(output)?)
+    }
+}
+
+#[derive(thiserror::Error, Debug)]
+pub enum Error {
+    #[error("input/output error")]
+    IO(#[from] std::io::Error),
+    #[error("the backend has not setup operations")]
+    NoSetupAvailable,
+}
 
 pub type Proof = Vec<u8>;
-pub type Params = Vec<u8>;
 
-pub trait ProverWithParams {
-    fn prove<T: FieldElement, R: io::Read>(
-        pil: &Analyzed<T>,
-        fixed: Vec<(&str, Vec<T>)>,
-        witness: Vec<(&str, Vec<T>)>,
-        params: R,
-    ) -> Option<Proof>;
+/*
+    Bellow are the public interface traits. They are implemented in this
+    module, wrapping the traits implemented by each backend.
+*/
 
-    fn generate_params<T: FieldElement>(size: usize) -> Params;
+/// Dynamic interface for a backend.
+pub trait Backend<F: FieldElement> {
+    /// Perform the proving.
+    ///
+    /// If prev_proof is provided, proof aggregation is performed.
+    ///
+    /// Returns the generated proof, and the string serialization of the
+    /// constraints.
+    fn prove(
+        &self,
+        pil: &Analyzed<F>,
+        fixed: &[(&str, Vec<F>)],
+        witness: &[(&str, Vec<F>)],
+        prev_proof: Option<Proof>,
+    ) -> (Option<Proof>, Option<String>);
+
+    /// Write the prover setup to a file, so that it can be loaded later.
+    fn write_setup(&self, output: &mut dyn io::Write) -> Result<(), Error>;
 }
 
-pub trait ProverWithoutParams {
-    fn prove<T: FieldElement>(
-        pil: &Analyzed<T>,
-        fixed: Vec<(&str, Vec<T>)>,
-        witness: Vec<(&str, Vec<T>)>,
-    ) -> Option<Proof>;
+/// Dynamic interface for a backend factory.
+pub trait BackendFactory<F: FieldElement> {
+    /// Maybe perform the setup, and create a new backend object.
+    fn create(&self, degree: DegreeType) -> Box<dyn Backend<F>>;
+
+    /// Create a backend object from a prover setup loaded from a file.
+    fn create_from_setup(&self, input: &mut dyn io::Read) -> Result<Box<dyn Backend<F>>, Error>;
 }
 
-pub trait ProverAggregationWithParams {
-    fn prove<T: FieldElement, R1: io::Read, R2: io::Read>(
-        pil: &Analyzed<T>,
-        fixed: Vec<(&str, Vec<T>)>,
-        witness: Vec<(&str, Vec<T>)>,
-        proof: R1,
-        params: R2,
-    ) -> Proof;
+/*
+    Below are the traits implemented by the backends.
+*/
+
+/// Trait implemented by all backends.
+trait BackendImpl<F: FieldElement> {
+    fn new(degree: DegreeType) -> Self;
+
+    fn prove(
+        &self,
+        pil: &Analyzed<F>,
+        fixed: &[(&str, Vec<F>)],
+        witness: &[(&str, Vec<F>)],
+        prev_proof: Option<Proof>,
+    ) -> (Option<Proof>, Option<String>);
 }
 
-#[cfg(feature = "halo2")]
-pub struct Halo2Backend;
+/// Trait implemented by backends that have a setup phase that must be saved to
+/// a file.
+trait BackendImplWithSetup<F: FieldElement>
+where
+    Self: Sized + BackendImpl<F>,
+{
+    /// Create a backend object from a setup loaded from a file.
+    fn new_from_setup(input: &mut dyn io::Read) -> Result<Self, io::Error>;
 
-#[cfg(feature = "halo2")]
-pub struct Halo2MockBackend;
-
-#[cfg(feature = "halo2")]
-pub struct Halo2AggregationBackend;
-
-#[cfg(feature = "halo2")]
-impl ProverWithParams for Halo2Backend {
-    fn prove<T: FieldElement, R: io::Read>(
-        pil: &Analyzed<T>,
-        fixed: Vec<(&str, Vec<T>)>,
-        witness: Vec<(&str, Vec<T>)>,
-        params: R,
-    ) -> Option<Proof> {
-        Some(halo2::prove_ast_read_params(pil, fixed, witness, params))
-    }
-
-    fn generate_params<T: FieldElement>(size: usize) -> Params {
-        halo2::generate_params::<T>(size)
-    }
-}
-
-#[cfg(feature = "halo2")]
-impl ProverWithoutParams for Halo2MockBackend {
-    fn prove<T: FieldElement>(
-        pil: &Analyzed<T>,
-        fixed: Vec<(&str, Vec<T>)>,
-        witness: Vec<(&str, Vec<T>)>,
-    ) -> Option<Proof> {
-        halo2::mock_prove(pil, fixed, witness);
-        None
-    }
-}
-
-#[cfg(feature = "halo2")]
-impl ProverAggregationWithParams for Halo2AggregationBackend {
-    fn prove<T: FieldElement, R1: io::Read, R2: io::Read>(
-        pil: &Analyzed<T>,
-        fixed: Vec<(&str, Vec<T>)>,
-        witness: Vec<(&str, Vec<T>)>,
-        proof: R1,
-        params: R2,
-    ) -> Proof {
-        halo2::prove_aggr_read_proof_params(pil, fixed, witness, proof, params)
-    }
+    /// Write the setup to a file.
+    fn write_setup(&self, output: &mut dyn io::Write) -> Result<(), io::Error>;
 }

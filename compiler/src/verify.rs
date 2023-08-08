@@ -1,3 +1,4 @@
+use backend::BackendType;
 use number::FieldElement;
 use std::{fs, path::Path, process::Command};
 
@@ -5,18 +6,23 @@ use crate::compile_asm_string;
 
 pub fn verify_asm_string<T: FieldElement>(file_name: &str, contents: &str, inputs: Vec<T>) {
     let temp_dir = mktemp::Temp::new_dir().unwrap();
-    let pil_file_path = compile_asm_string(file_name, contents, inputs, &temp_dir, true, None)
-        .unwrap()
-        .0;
-    let pil_file_name = pil_file_path.file_name().unwrap().to_string_lossy();
-    verify(&pil_file_name, &temp_dir);
+    compile_asm_string(
+        file_name,
+        contents,
+        inputs,
+        &temp_dir,
+        true,
+        Some(BackendType::PilcomCli),
+    )
+    .unwrap();
+    verify(&temp_dir);
 }
 
-pub fn verify(file_name: &str, temp_dir: &Path) {
+pub fn verify(temp_dir: &Path) {
     let pilcom = std::env::var("PILCOM")
         .expect("Please set the PILCOM environment variable to the path to the pilcom repository.");
-    let constants_file = format!("{}/constants.bin", temp_dir.to_string_lossy());
-    let commits_file = format!("{}/commits.bin", temp_dir.to_string_lossy());
+    let constants_file = format!("{}/constants.bin", temp_dir.to_str().unwrap());
+    let commits_file = format!("{}/commits.bin", temp_dir.to_str().unwrap());
     assert!(
         fs::metadata(&constants_file).unwrap().len() > 0,
         "Empty constants file"
@@ -28,7 +34,7 @@ pub fn verify(file_name: &str, temp_dir: &Path) {
             format!("{pilcom}/src/main_pilverifier.js"),
             commits_file,
             "-j".to_string(),
-            format!("{}/{file_name}.json", temp_dir.to_string_lossy()),
+            format!("{}/constraints.json", temp_dir.to_str().unwrap()),
             "-c".to_string(),
             constants_file,
         ])

@@ -12,3 +12,11 @@ pil_analyzer = { path = "../pil_analyzer" }
 number = { path = "../number" }
 strum = { version = "0.24.1", features = ["derive"] }
 ast = { version = "0.1.0", path = "../ast" }
+log = "0.4.17"
+json = "^0.12"
+thiserror = "1.0.43"
+
+[dev-dependencies]
+mktemp = "0.5.0"
+test-log = "0.2.12"
+env_logger = "0.10.0"

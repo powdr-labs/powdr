@@ -2,18 +2,16 @@
 
 mod util;
 
+use backend::{Backend, BackendType};
 use clap::{CommandFactory, Parser, Subcommand};
-use compiler::{compile_pil_or_asm, Backend};
+use compiler::{compile_pil_or_asm, write_proving_results_to_fs};
 use env_logger::{Builder, Target};
 use log::LevelFilter;
 use number::{Bn254Field, FieldElement, GoldilocksField};
 use riscv::{compile_riscv_asm, compile_rust};
-use std::io::{self, BufWriter};
+use std::io::{self, BufWriter, Read};
 use std::{borrow::Cow, collections::HashSet, fs, io::Write, path::Path};
 use strum::{Display, EnumString, EnumVariantNames};
-
-#[cfg(feature = "halo2")]
-use backend::{self, ProverWithParams, ProverWithoutParams, *};
 
 #[derive(Clone, EnumString, EnumVariantNames, Display)]
 pub enum FieldArgument {
@@ -74,10 +72,10 @@ enum Commands {
         #[arg(default_value_t = false)]
         force: bool,
 
-        /// Generate a proof with a given backend
+        /// Generate a proof with a given backend.
         #[arg(short, long)]
-        #[arg(value_parser = clap_enum_variants!(Backend))]
-        prove_with: Option<Backend>,
+        #[arg(value_parser = clap_enum_variants!(BackendType))]
+        prove_with: Option<BackendType>,
 
         /// Generate a CSV file containing the fixed and witness column values. Useful for debugging purposes.
         #[arg(long)]
@@ -120,8 +118,8 @@ enum Commands {
 
         /// Generate a proof with a given backend
         #[arg(short, long)]
-        #[arg(value_parser = clap_enum_variants!(Backend))]
-        prove_with: Option<Backend>,
+        #[arg(value_parser = clap_enum_variants!(BackendType))]
+        prove_with: Option<BackendType>,
     },
 
     /// Compiles riscv assembly to powdr assembly and then to PIL
@@ -154,8 +152,8 @@ enum Commands {
 
         /// Generate a proof with a given backend.
         #[arg(short, long)]
-        #[arg(value_parser = clap_enum_variants!(Backend))]
-        prove_with: Option<Backend>,
+        #[arg(value_parser = clap_enum_variants!(BackendType))]
+        prove_with: Option<BackendType>,
     },
 
     Prove {
@@ -175,8 +173,8 @@ enum Commands {
 
         /// Generate a proof with a given backend.
         #[arg(short, long)]
-        #[arg(value_parser = clap_enum_variants!(Backend))]
-        backend: Backend,
+        #[arg(value_parser = clap_enum_variants!(BackendType))]
+        backend: BackendType,
 
         /// File containing previously generated proof for aggregation.
         #[arg(long)]
@@ -189,7 +187,7 @@ enum Commands {
 
     Setup {
         /// Size of the parameters
-        size: usize,
+        size: u64,
 
         /// Directory to output the generated parameters
         #[arg(short, long)]
@@ -204,8 +202,8 @@ enum Commands {
 
         /// Generate a proof with a given backend.
         #[arg(short, long)]
-        #[arg(value_parser = clap_enum_variants!(Backend))]
-        backend: Backend,
+        #[arg(value_parser = clap_enum_variants!(BackendType))]
+        backend: BackendType,
     },
 
     /// Parses and prints the PIL file on stdout.
@@ -348,7 +346,6 @@ fn run_command(command: Commands) {
                 }
             };
         }
-        #[cfg(feature = "halo2")]
         Commands::Prove {
             file,
             dir,
@@ -359,60 +356,30 @@ fn run_command(command: Commands) {
         } => {
             let pil = Path::new(&file);
             let dir = Path::new(&dir);
-
-            let proof =
-                call_with_field!(read_and_prove::<field>(pil, dir, &backend, proof, params));
-
-            // TODO: this probably should be abstracted alway in a common backends API,
-            // maybe a function "get_file_extension()".
-            let proof_filename = if let Backend::Halo2Aggr = backend {
-                "proof_aggr.bin"
-            } else {
-                "proof.bin"
-            };
-            if let Some(proof) = proof {
-                let mut proof_file = fs::File::create(dir.join(proof_filename)).unwrap();
-                let mut proof_writer = BufWriter::new(&mut proof_file);
-                proof_writer.write_all(&proof).unwrap();
-                proof_writer.flush().unwrap();
-                log::info!("Wrote {proof_filename}.");
-            }
+            call_with_field!(read_and_prove::<field>(pil, dir, &backend, proof, params));
         }
-        #[cfg(feature = "halo2")]
         Commands::Setup {
             size,
             dir,
             field,
             backend,
         } => {
-            setup(size, dir, field, backend);
+            call_with_field!(setup::<field>(size, dir, backend));
         }
-
-        #[cfg(not(feature = "halo2"))]
-        _ => unreachable!(),
     }
 }
 
-// Since we only have halo2 backend, if it is disabled, this function is
-// unreachable, and we can disable it.
-#[cfg(feature = "halo2")]
-fn setup(size: usize, dir: String, field: FieldArgument, backend: Backend) {
+fn setup<F: FieldElement>(size: u64, dir: String, backend_type: BackendType) {
     let dir = Path::new(&dir);
 
-    // TODO: a backend should be transparent to its user
-    let params = match (field, &backend) {
-        (FieldArgument::Bn254, Backend::Halo2) => Halo2Backend::generate_params::<Bn254Field>(size),
-        (_, Backend::Halo2) => panic!("Backend halo2 requires field Bn254"),
-        _ => panic!("Backend {} does not accept params.", backend),
-    };
-    write_params_to_fs(&params, dir);
+    let backend = backend_type.factory::<F>().create(size);
+    write_backend_to_fs(backend.as_ref(), dir);
 }
 
-#[cfg(feature = "halo2")]
-fn write_params_to_fs(params: &[u8], output_dir: &Path) {
+fn write_backend_to_fs<F: FieldElement>(be: &dyn Backend<F>, output_dir: &Path) {
     let mut params_file = fs::File::create(output_dir.join("params.bin")).unwrap();
     let mut params_writer = BufWriter::new(&mut params_file);
-    params_writer.write_all(params).unwrap();
+    be.write_setup(&mut params_writer).unwrap();
     params_writer.flush().unwrap();
     log::info!("Wrote params.bin.");
 }
@@ -422,7 +389,7 @@ fn compile_with_csv_export<T: FieldElement>(
     output_directory: String,
     inputs: String,
     force: bool,
-    prove_with: Option<Backend>,
+    prove_with: Option<BackendType>,
     export_csv: bool,
     csv_mode: CsvRenderMode,
 ) -> Result<(), Vec<String>> {
@@ -502,48 +469,42 @@ fn export_columns_to_csv<T: FieldElement>(
     }
 }
 
-// Since we only have halo2 backend, if it is disabled, this function is
-// unreachable, and we can disable it.
-#[cfg(feature = "halo2")]
 fn read_and_prove<T: FieldElement>(
     file: &Path,
     dir: &Path,
-    backend: &Backend,
-    proof: Option<String>,
+    backend_type: &BackendType,
+    proof_path: Option<String>,
     params: Option<String>,
-) -> Option<Vec<u8>> {
+) {
     let pil = compiler::analyze_pil::<T>(file);
     let fixed = compiler::util::read_fixed(&pil, dir);
     let witness = compiler::util::read_witness(&pil, dir);
 
     assert_eq!(fixed.1, witness.1);
 
-    // TODO: a backend should be transparent to its user
-    match (backend, params) {
-        (Backend::Halo2, Some(params)) => {
-            let params = fs::File::open(dir.join(params)).unwrap();
-            Halo2Backend::prove(&pil, fixed.0, witness.0, params)
-        }
-        (Backend::Halo2, None) => {
-            let degree = usize::BITS - fixed.1.leading_zeros() + 1;
-            let params = Halo2Backend::generate_params::<Bn254Field>(degree as usize);
-            write_params_to_fs(&params, dir);
-            Halo2Backend::prove(&pil, fixed.0, witness.0, std::io::Cursor::new(params))
-        }
-        (Backend::Halo2Mock, Some(_)) => panic!("Backend Halo2Mock does not accept params"),
-        (Backend::Halo2Mock, None) => Halo2MockBackend::prove(&pil, fixed.0, witness.0),
-        (Backend::Halo2Aggr, None) => panic!("Backend Halo2Aggr requires params"),
-        (Backend::Halo2Aggr, Some(params)) => {
-            let proof = match proof {
-                Some(proof) => fs::File::open(dir.join(proof)).unwrap(),
-                None => panic!("Backend Halo2aggr requires proof"),
-            };
-            let params = fs::File::open(dir.join(params)).unwrap();
-            Some(Halo2AggregationBackend::prove(
-                &pil, fixed.0, witness.0, proof, params,
-            ))
-        }
-    }
+    let builder = backend_type.factory::<T>();
+    let backend = if let Some(filename) = params {
+        let mut file = fs::File::open(dir.join(filename)).unwrap();
+        builder.create_from_setup(&mut file).unwrap()
+    } else {
+        let degree = usize::BITS - fixed.1.leading_zeros() + 1;
+        builder.create(degree as u64)
+    };
+
+    let proof = proof_path.map(|filename| {
+        let mut buf = Vec::new();
+        fs::File::open(dir.join(filename))
+            .unwrap()
+            .read_to_end(&mut buf)
+            .unwrap();
+        buf
+    });
+
+    write_proving_results_to_fs(
+        proof.is_some(),
+        backend.prove(&pil, &fixed.0, &witness.0, proof),
+        dir,
+    );
 }
 
 fn optimize_and_output<T: FieldElement>(file: &str) {
@@ -555,10 +516,10 @@ fn optimize_and_output<T: FieldElement>(file: &str) {
 
 #[cfg(test)]
 mod test {
-
-    use backend::Backend;
-
     use crate::{run_command, Commands, CsvRenderMode, FieldArgument};
+    use backend::BackendType;
+    use tempfile;
+
     #[test]
     fn test_simple_sum() {
         let output_dir = tempfile::tempdir().unwrap();
@@ -570,25 +531,28 @@ mod test {
             output_directory: output_dir_str.clone(),
             inputs: "3,2,1,2".into(),
             force: false,
-            prove_with: None,
+            prove_with: Some(BackendType::PilcomCli),
             export_csv: true,
             csv_mode: CsvRenderMode::Hex,
         };
         run_command(pil_command);
 
-        let file = output_dir
-            .path()
-            .join("simple_sum_opt.pil")
-            .to_string_lossy()
-            .to_string();
-        let prove_command = Commands::Prove {
-            file,
-            dir: output_dir_str,
-            field: FieldArgument::Bn254,
-            backend: Backend::Halo2Mock,
-            proof: None,
-            params: None,
-        };
-        run_command(prove_command);
+        #[cfg(feature = "halo2")]
+        {
+            let file = output_dir
+                .path()
+                .join("simple_sum_opt.pil")
+                .to_string_lossy()
+                .to_string();
+            let prove_command = Commands::Prove {
+                file,
+                dir: output_dir_str,
+                field: FieldArgument::Bn254,
+                backend: BackendType::Halo2Mock,
+                proof: None,
+                params: None,
+            };
+            run_command(prove_command);
+        }
     }
 }
