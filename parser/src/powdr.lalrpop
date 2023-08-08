@@ -167,6 +167,7 @@ MachineStatement: MachineStatement<T> = {
     LinkDeclaration,
     InlinePil,
     FunctionDeclaration,
+    OperationDeclaration,
 }
 
 Degree: MachineStatement<T> = {
@@ -194,17 +195,17 @@ pub InstructionDeclaration: MachineStatement<T> = {
 }
 
 pub LinkDeclaration: MachineStatement<T> = {
-    <start:@L> "link" <flag:Identifier> <params:Params> "=" <to:FunctionRef> => MachineStatement::LinkDeclaration(LinkDeclaration { start, flag, params, to })
+    <start:@L> "link" <flag:Identifier> <params:Params> "=" <to:CallableRef> => MachineStatement::LinkDeclaration(LinkDeclaration { start, flag, params, to })
 }
 
 pub InstructionBody: InstructionBody<T> = {
     "{}" => InstructionBody::Local(vec![]),
     "{" <InstructionBodyElements> "}" => InstructionBody::Local(<>),
-    "=" <f_ref:FunctionRef> => InstructionBody::FunctionRef(f_ref),
+    "=" <f_ref:CallableRef> => InstructionBody::CallableRef(f_ref),
 }
 
-pub FunctionRef: FunctionRef = {
-    <instance:Identifier> "." <function:Identifier> => FunctionRef { instance, function }
+pub CallableRef: CallableRef = {
+    <instance:Identifier> "." <callable:Identifier> => CallableRef { instance, callable }
 }
 
 InstructionBodyElements: Vec<InstructionBodyElement<T>> = {
@@ -249,12 +250,15 @@ InlinePil: MachineStatement<T> = {
 }
 
 FunctionDeclaration: MachineStatement<T> = {
-    <@L> "function" <Identifier> <FunctionId> <Params> "{" <(<FunctionStatement>)*> "}" => MachineStatement::FunctionDeclaration(<>)
+    <@L> "function" <Identifier> <Params> "{" <(<FunctionStatement>)*> "}" => MachineStatement::FunctionDeclaration(<>)
 }
 
-FunctionId: Option<FunctionId<T>> = {
-    "<" <id:FieldElement> ">" => Some(FunctionId { id }),
-    => None
+OperationDeclaration: MachineStatement<T> = {
+    <@L> "operation" <Identifier> <OperationId> <Params> ";" => MachineStatement::OperationDeclaration(<>)
+}
+
+OperationId: OperationId<T> = {
+    "<" <id:FieldElement> ">" => OperationId { id },
 }
 
 pub FunctionStatement: FunctionStatement<T> = {

@@ -2,8 +2,7 @@ machine SimpleStatic(latch, operation_id) {
 
     degree 8;
 
-    function power_4<0> x -> y {        
-    }
+    operation power_4<0> x -> y;
 
     constraints {
         col fixed latch = [0, 0, 0, 1]*;

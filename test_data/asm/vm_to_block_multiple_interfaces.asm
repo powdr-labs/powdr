@@ -4,11 +4,9 @@ machine Arith(latch, operation_id) {
 
     degree 8;
 
-    function add<0> x, y -> z {
-    }
+    operation add<0> x, y -> z;
 
-    function sub<1> z, x -> y {
-    }
+    operation sub<1> z, x -> y;
 
     constraints {
         col fixed latch = [1]*;

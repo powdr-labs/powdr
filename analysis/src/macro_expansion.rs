@@ -60,7 +60,7 @@ where
                                 }
                             });
                         }
-                        InstructionBody::FunctionRef(..) => {}
+                        InstructionBody::CallableRef(..) => {}
                     },
                     MachineStatement::InlinePil(_, statements) => {
                         *statements = expander.expand_macros(std::mem::take(statements));

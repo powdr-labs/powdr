@@ -2,11 +2,9 @@ machine Binary(latch, operation_id) {
 
     degree 32;
 
-    function and<0> x, y -> z {
-    }
+    operation and<0> x, y -> z;
 
-    function or<1> x, y -> z {
-    }
+    operation or<1> x, y -> z;
 
     constraints {
         col fixed latch = [1]*;
@@ -25,11 +23,9 @@ machine Arith(latch, operation_id) {
 
     degree 32;
 
-    function add<0> x, y -> z {
-    }
+    operation add<0> x, y -> z;
 
-    function sub<1> x, y -> z {
-    }
+    operation sub<1> x, y -> z;
 
     constraints {
         col fixed latch = [1]*;

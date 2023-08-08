@@ -46,7 +46,7 @@ impl<T: Display> Display for InstructionBody<T> {
                     .collect::<Vec<_>>()
                     .join(", ")
             ),
-            InstructionBody::FunctionRef(r) => write!(f, "{r}"),
+            InstructionBody::CallableRef(r) => write!(f, "{r}"),
         }
     }
 }
@@ -57,9 +57,9 @@ impl Display for LinkDeclaration {
     }
 }
 
-impl Display for FunctionRef {
+impl Display for CallableRef {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write!(f, "{}.{}", self.instance, self.function)
+        write!(f, "{}.{}", self.instance, self.callable)
     }
 }
 
@@ -93,14 +93,10 @@ impl<T: Display> Display for MachineStatement<T> {
                         .join("\n")
                 )
             }
-            MachineStatement::FunctionDeclaration(_, name, operation_id, params, statements) => {
+            MachineStatement::FunctionDeclaration(_, name, params, statements) => {
                 write!(
                     f,
-                    "function {name}{}{params} {{\n{}\n}}",
-                    operation_id
-                        .as_ref()
-                        .map(|id| id.to_string())
-                        .unwrap_or_default(),
+                    "function {name}{params} {{\n{}\n}}",
                     statements
                         .iter()
                         .map(|s| format!("{}", s))
@@ -108,11 +104,14 @@ impl<T: Display> Display for MachineStatement<T> {
                         .join("\n")
                 )
             }
+            MachineStatement::OperationDeclaration(_, name, operation_id, params) => {
+                write!(f, "operation {name}{operation_id}{params};")
+            }
         }
     }
 }
 
-impl<T: Display> Display for FunctionId<T> {
+impl<T: Display> Display for OperationId<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(f, "<{}>", self.id)
     }

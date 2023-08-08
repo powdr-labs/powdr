@@ -3,8 +3,9 @@
 
 use ast::{
     asm_analysis::{
-        utils::previsit_expression_mut, AnalysisASMFile, AssignmentStatement, FunctionStatement,
-        FunctionStatements, InstructionStatement, Machine,
+        utils::previsit_expression_mut, AnalysisASMFile, AssignmentStatement, CallableSymbol,
+        CallableSymbolDeclarations, FunctionStatement, FunctionStatements, InstructionStatement,
+        Machine,
     },
     parsed::{
         asm::{Param, ParamList},
@@ -62,16 +63,15 @@ impl<T: FieldElement> FunctionDesugar<T> {
 
             // the number of inputs is the max of the number of inputs needed in each operation
             let input_count = machine
-                .functions
-                .iter()
-                .map(|o| o.params.inputs.params.len())
+                .function_definitions()
+                .map(|f| f.function.params.inputs.params.len())
                 .max()
                 .unwrap_or(0);
             let output_count = machine
-                .functions
-                .iter()
-                .map(|o| {
-                    o.params
+                .function_definitions()
+                .map(|f| {
+                    f.function
+                        .params
                         .outputs
                         .as_ref()
                         .map(|o| o.params.len())
@@ -105,73 +105,90 @@ impl<T: FieldElement> FunctionDesugar<T> {
             );
 
             // replace the parameters in all functions
-            machine.functions = machine
-                .functions
-                .into_iter()
-                .map(|mut f| {
-                    // create substitution map from declared input to the hidden witness columns
-                    let inputs = f
-                        .params
-                        .inputs
-                        .params
-                        .iter()
-                        .enumerate()
-                        .map(|(index, param)| (param.name.clone(), index))
-                        .collect();
+            machine.callable = CallableSymbolDeclarations(
+                machine
+                    .callable
+                    .0
+                    .into_iter()
+                    .map(|(name, symbol)| {
+                        let symbol = match symbol {
+                            CallableSymbol::Function(mut f) => {
+                                // create substitution map from declared input to the hidden witness columns
+                                let inputs = f
+                                    .params
+                                    .inputs
+                                    .params
+                                    .iter()
+                                    .enumerate()
+                                    .map(|(index, param)| (param.name.clone(), index))
+                                    .collect();
 
-                    f.params.inputs.params = (0..f.params.inputs.params.len())
-                        .map(|i| Param {
-                            name: input_at(i),
-                            ty: None,
-                        })
-                        .collect();
-                    f.params.outputs = f.params.outputs.map(|outputs| {
-                        assert_eq!(
-                            outputs.params.len(),
-                            1,
-                            "number of function outputs should be 0 or 1"
-                        );
-                        ParamList {
-                            params: vec![Param {
-                                name: output_at(0),
-                                ty: None,
-                            }],
-                        }
-                    });
+                                f.params.inputs.params = (0..f.params.inputs.params.len())
+                                    .map(|i| Param {
+                                        name: input_at(i),
+                                        ty: None,
+                                    })
+                                    .collect();
+                                f.params.outputs = f.params.outputs.map(|outputs| {
+                                    assert_eq!(
+                                        outputs.params.len(),
+                                        1,
+                                        "number of function outputs should be 0 or 1"
+                                    );
+                                    ParamList {
+                                        params: vec![Param {
+                                            name: output_at(0),
+                                            ty: None,
+                                        }],
+                                    }
+                                });
 
-                    // substitute the names in the operation body
-                    f.body.statements = FunctionStatements::new(
-                        f.body
-                            .statements
-                            .into_inner()
-                            .into_iter()
-                            .map(move |s| match s {
-                                FunctionStatement::Assignment(assignment) => {
-                                    FunctionStatement::Assignment(AssignmentStatement {
-                                        rhs: Box::new(substitute(*assignment.rhs, &inputs)),
-                                        ..assignment
-                                    })
-                                }
-                                FunctionStatement::Instruction(instruction) => {
-                                    FunctionStatement::Instruction(InstructionStatement {
-                                        inputs: instruction
-                                            .inputs
-                                            .into_iter()
-                                            .map(|i| substitute(i, &inputs))
-                                            .collect(),
-                                        ..instruction
-                                    })
-                                }
-                                FunctionStatement::Label(l) => FunctionStatement::Label(l),
-                                FunctionStatement::DebugDirective(d) => {
-                                    FunctionStatement::DebugDirective(d)
-                                }
-                            })
-                            .collect(),
-                    );
-                    f
-                })
-                .collect();
+                                // substitute the names in the operation body
+                                f.body.statements = FunctionStatements::new(
+                                    f.body
+                                        .statements
+                                        .into_inner()
+                                        .into_iter()
+                                        .map(move |s| match s {
+                                            FunctionStatement::Assignment(assignment) => {
+                                                FunctionStatement::Assignment(AssignmentStatement {
+                                                    rhs: Box::new(substitute(
+                                                        *assignment.rhs,
+                                                        &inputs,
+                                                    )),
+                                                    ..assignment
+                                                })
+                                            }
+                                            FunctionStatement::Instruction(instruction) => {
+                                                FunctionStatement::Instruction(
+                                                    InstructionStatement {
+                                                        inputs: instruction
+                                                            .inputs
+                                                            .into_iter()
+                                                            .map(|i| substitute(i, &inputs))
+                                                            .collect(),
+                                                        ..instruction
+                                                    },
+                                                )
+                                            }
+                                            FunctionStatement::Label(l) => {
+                                                FunctionStatement::Label(l)
+                                            }
+                                            FunctionStatement::DebugDirective(d) => {
+                                                FunctionStatement::DebugDirective(d)
+                                            }
+                                        })
+                                        .collect(),
+                                );
+                                f.into()
+                            }
+                            s => s.into(),
+                        };
+
+                        (name, symbol)
+                    })
+                    .collect(),
+            );
 
             machine.latch = Some(latch.into());
         } else {

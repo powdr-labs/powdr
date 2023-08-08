@@ -10,7 +10,7 @@ use self::asm::FunctionCall;
 #[derive(Debug, PartialEq, Eq)]
 pub struct PILFile<T>(pub Vec<PilStatement<T>>);
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub enum PilStatement<T> {
     /// File name
     Include(usize, String),
@@ -36,13 +36,13 @@ pub enum PilStatement<T> {
     FunctionCall(usize, String, Vec<Expression<T>>),
 }
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub struct SelectedExpressions<T> {
     pub selector: Option<Expression<T>>,
     pub expressions: Vec<Expression<T>>,
 }
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub enum Expression<T> {
     /// Reference to a constant, "%ConstantName"
     Constant(String),
@@ -61,13 +61,13 @@ pub enum Expression<T> {
     ),
 }
 
-#[derive(Debug, PartialEq, Eq, Default, Clone)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Default, Clone)]
 pub struct PolynomialName<T> {
     pub name: String,
     pub array_size: Option<Expression<T>>,
 }
 
-#[derive(Debug, PartialEq, Eq, Default, Clone)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Default, Clone)]
 pub struct PolynomialReference<T> {
     pub namespace: Option<String>,
     pub name: String,
@@ -75,13 +75,13 @@ pub struct PolynomialReference<T> {
     pub next: bool,
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
 pub enum UnaryOperator {
     Plus,
     Minus,
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
 pub enum BinaryOperator {
     Add,
     Sub,
@@ -98,7 +98,7 @@ pub enum BinaryOperator {
 
 /// The definition of a function (excluding its name):
 /// Either a param-value mapping or an array expression.
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub enum FunctionDefinition<T> {
     /// Parameter-value-mapping.
     Mapping(Vec<String>, Expression<T>),
@@ -108,7 +108,7 @@ pub enum FunctionDefinition<T> {
     Query(Vec<String>, Expression<T>),
 }
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub enum ArrayExpression<T> {
     Value(Vec<Expression<T>>),
     RepeatedValue(Vec<Expression<T>>),

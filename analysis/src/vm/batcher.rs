@@ -76,8 +76,9 @@ struct RomBatcher<T> {
 impl<T: FieldElement> RomBatcher<T> {
     // split a list of statements into compatible batches
     fn extract_batches(&self, machine_name: &str, machine: &mut Machine<T>) {
-        for function in machine.functions.iter_mut() {
+        for function in machine.function_definitions_mut() {
             let batches: Vec<_> = function
+                .function
                 .body
                 .statements
                 .iter()
@@ -127,7 +128,7 @@ impl<T: FieldElement> RomBatcher<T> {
                 }
             );
 
-            function.body.statements.set_batches(batches);
+            function.function.body.statements.set_batches(batches);
         }
     }
 

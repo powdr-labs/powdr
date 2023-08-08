@@ -1,7 +1,10 @@
 //! Generate one ROM per machine from all declared functions
-
-use ast::asm_analysis::{
-    AnalysisASMFile, Batch, Incompatible, IncompatibleSet, Machine, PilBlock, Rom,
+use ast::{
+    asm_analysis::{
+        AnalysisASMFile, Batch, CallableSymbol, Incompatible, IncompatibleSet, Machine,
+        OperationSymbol, PilBlock, Rom,
+    },
+    parsed::asm::OperationId,
 };
 use number::FieldElement;
 
@@ -74,34 +77,47 @@ fn generate_machine_rom<T: FieldElement>(mut machine: Machine<T>) -> Machine<T> 
                 .reason(IncompatibleSet::from(Incompatible::Label)),
         ]);
 
-        // add each function, setting the operation_id to the current position in the ROM
-        for function in machine.functions.iter_mut() {
-            function.id = Some(T::from(rom.len() as u64));
+        // replace each function by an operation with `operation_id` equal to the current position in the ROM
+        machine.callable.0.iter_mut().for_each(|(name, symbol)| {
+            let operation = match &symbol {
+                CallableSymbol::Function(function) => {
+                    // determine the operation_id
+                    let id = T::from(rom.len() as u64);
 
-            let mut batches: Vec<_> = function
-                .body
-                .statements
-                .clone()
-                .into_iter_batches()
-                .collect();
-            // modify the first batch to include the label just for debugging purposes, it's always possible to batch it so it's free
-            batches
-                .first_mut()
-                .expect("function should have at least one statement as it must return")
-                .statements
-                .insert(
-                    0,
-                    parse_function_statement(&format!("_{}::", function.name)),
-                );
+                    let mut batches: Vec<_> = function
+                        .body
+                        .statements
+                        .clone()
+                        .into_iter_batches()
+                        .collect();
+                    // modify the first batch to include the label just for debugging purposes, it's always possible to batch it so it's free
+                    batches
+                        .first_mut()
+                        .expect("function should have at least one statement as it must return")
+                        .statements
+                        .insert(0, parse_function_statement(&format!("_{}::", name)));
 
-            // modify the last batch to be caused by the coming label
-            let last = batches
-                .last_mut()
-                .expect("function should have at least one statement as it must return");
-            last.set_reason(IncompatibleSet::from(Incompatible::Label));
+                    // modify the last batch to be caused by the coming label
+                    let last = batches
+                        .last_mut()
+                        .expect("function should have at least one statement as it must return");
+                    last.set_reason(IncompatibleSet::from(Incompatible::Label));
 
-            rom.extend(batches);
-        }
+                    rom.extend(batches);
+
+                    Some(OperationSymbol {
+                        start: function.start,
+                        id: OperationId { id },
+                        params: function.params.clone(),
+                    })
+                }
+                CallableSymbol::Operation(_) => None,
+            };
+
+            if let Some(operation) = operation {
+                *symbol = operation.into();
+            }
+        });
 
         // THE FOLLOWING IS NECESSARY BECAUSE OF WITGEN, IT COULD BE REMOVED ONCE WITGEN CAN CALL THE INFINITE LOOP ITSELF
         // we get the location of the sink so that witgen jumps to it after the first call is done

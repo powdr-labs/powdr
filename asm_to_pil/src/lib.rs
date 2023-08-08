@@ -407,7 +407,7 @@ impl<T: FieldElement> ASMPILConverter<T> {
                 }
                 None
             }
-            InstructionBody::FunctionRef(to) => Some(LinkDefinitionStatement {
+            InstructionBody::CallableRef(to) => Some(LinkDefinitionStatement {
                 start,
                 flag,
                 params,

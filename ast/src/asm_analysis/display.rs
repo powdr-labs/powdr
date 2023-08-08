@@ -4,10 +4,10 @@ use std::{
 };
 
 use super::{
-    AnalysisASMFile, AssignmentStatement, DebugDirective, DegreeStatement, FunctionBody,
-    FunctionDefinitionStatement, FunctionStatement, FunctionStatements, Incompatible,
-    IncompatibleSet, InstructionDefinitionStatement, InstructionStatement, LabelStatement, Machine,
-    PilBlock, RegisterDeclarationStatement, RegisterTy, Rom,
+    AnalysisASMFile, AssignmentStatement, CallableSymbol, CallableSymbolDeclarationRef,
+    DebugDirective, DegreeStatement, FunctionBody, FunctionStatement, FunctionStatements,
+    Incompatible, IncompatibleSet, InstructionDefinitionStatement, InstructionStatement,
+    LabelStatement, Machine, PilBlock, RegisterDeclarationStatement, RegisterTy, Rom,
 };
 
 impl<T: Display> Display for AnalysisASMFile<T> {
@@ -52,20 +52,25 @@ impl<T: Display> Display for Machine<T> {
         for s in &self.degree {
             writeln!(f, "{}", indent(s, 1))?;
         }
+        writeln!(f)?;
         for s in &self.registers {
             writeln!(f, "{}", indent(s, 1))?;
         }
-        for s in &self.constraints {
-            writeln!(f, "{}", indent(s, 1))?;
-        }
+        writeln!(f)?;
         for i in &self.instructions {
             writeln!(f, "{}", indent(i, 1))?;
         }
-        for o in &self.functions {
-            writeln!(f, "{}", indent(o, 1))?;
+        writeln!(f)?;
+        for c in self.callable.iter() {
+            writeln!(f, "{}", indent(c, 1))?;
         }
+        writeln!(f)?;
         if let Some(rom) = &self.rom {
             writeln!(f, "{}", indent(comment_out(rom), 1),)?;
+            writeln!(f)?;
+        }
+        for s in &self.constraints {
+            writeln!(f, "{}", indent(s, 1))?;
         }
         writeln!(f, "}}")
     }
@@ -178,20 +183,18 @@ impl<T: Display> Display for InstructionDefinitionStatement<T> {
     }
 }
 
-impl<T: Display> Display for FunctionDefinitionStatement<T> {
+impl<'a, T: Display> Display for CallableSymbolDeclarationRef<'a, T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        writeln!(
-            f,
-            "function {}{}{} {{",
-            self.name,
-            self.id
-                .as_ref()
-                .map(|id| format!("<{id}>"))
-                .unwrap_or_default(),
-            self.params
-        )?;
-        writeln!(f, "{}", indent(&self.body, 1))?;
-        write!(f, "}}")
+        match &self.symbol {
+            CallableSymbol::Function(s) => {
+                writeln!(f, "function {}{} {{", self.name, s.params)?;
+                writeln!(f, "{}", indent(&s.body, 1))?;
+                write!(f, "}}")
+            }
+            CallableSymbol::Operation(s) => {
+                write!(f, "operation {}{}{};", self.name, s.id, s.params)
+            }
+        }
     }
 }
 

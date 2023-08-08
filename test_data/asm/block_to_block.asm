@@ -1,11 +1,10 @@
-// calls two functions in a submachine whose interface is different: one is `x, y, z` while the other one is `z, x, y`
+// calls two operations in a submachine whose interface is different: one is `x, y, z` while the other one is `z, x, y`
 
 machine Arith(latch, operation_id) {
 
     degree 8;
 
-    function add<0> x, y -> z {
-    }
+    operation add<0> x, y -> z;
 
     constraints {
         col fixed latch = [1]*;
@@ -23,8 +22,7 @@ machine Main(latch, operation_id) {
     Arith arith;
 
     // return `4*x + 4*y`, adding twice locally and twice externally
-    function main<0> x, y -> z {
-    }
+    operation main<0> x, y -> z;
 
     link instr_add x, y -> z = arith.add
 

@@ -2,10 +2,11 @@ use std::collections::BTreeMap;
 
 use ast::{
     asm_analysis::{
-        AnalysisASMFile, AssignmentStatement, DebugDirective, DegreeStatement, FunctionBody,
-        FunctionDefinitionStatement, FunctionStatements, InstructionDefinitionStatement,
-        InstructionStatement, LabelStatement, LinkDefinitionStatement, Machine, PilBlock,
-        RegisterDeclarationStatement, RegisterTy, SubmachineDeclaration,
+        AnalysisASMFile, AssignmentStatement, CallableSymbolDeclarations, DebugDirective,
+        DegreeStatement, FunctionBody, FunctionStatements, FunctionSymbol,
+        InstructionDefinitionStatement, InstructionStatement, LabelStatement,
+        LinkDefinitionStatement, Machine, OperationSymbol, PilBlock, RegisterDeclarationStatement,
+        RegisterTy, SubmachineDeclaration,
     },
     parsed::asm::{ASMFile, FunctionStatement, LinkDeclaration, MachineStatement, RegisterFlag},
 };
@@ -45,7 +46,7 @@ impl<T: FieldElement> TypeChecker<T> {
         let mut constraints = vec![];
         let mut instructions = vec![];
         let mut links = vec![];
-        let mut functions = vec![];
+        let mut callable = CallableSymbolDeclarations::default();
         let mut submachines = vec![];
 
         for s in machine.statements {
@@ -95,15 +96,8 @@ impl<T: FieldElement> TypeChecker<T> {
                         errors.push(format!("Undeclared machine type {}", ty))
                     }
                 }
-                MachineStatement::FunctionDeclaration(
-                    start,
-                    name,
-                    operation_id,
-                    params,
-                    statements,
-                ) => {
+                MachineStatement::FunctionDeclaration(start, name, params, statements) => {
                     let mut function_statements = vec![];
-                    let id = operation_id.map(|id| id.id);
                     for s in statements {
                         match s {
                             FunctionStatement::Assignment(start, lhs, using_reg, rhs) => {
@@ -136,15 +130,22 @@ impl<T: FieldElement> TypeChecker<T> {
                             }
                         }
                     }
-                    functions.push(FunctionDefinitionStatement {
-                        start,
+                    callable.0.insert(
                         name,
-                        id,
-                        params,
-                        body: FunctionBody {
-                            statements: FunctionStatements::new(function_statements),
-                        },
-                    })
+                        FunctionSymbol {
+                            start,
+                            params,
+                            body: FunctionBody {
+                                statements: FunctionStatements::new(function_statements),
+                            },
+                        }
+                        .into(),
+                    );
+                }
+                MachineStatement::OperationDeclaration(start, name, id, params) => {
+                    callable
+                        .0
+                        .insert(name, OperationSymbol { start, id, params }.into());
                 }
             }
         }
@@ -165,13 +166,11 @@ impl<T: FieldElement> TypeChecker<T> {
                     machine.name
                 ));
             }
-            for o in &functions {
-                if o.id.is_none() {
-                    errors.push(format!("Function {} in machine {} should have an id because this machine does not have a pc", o.name, machine.name));
-                }
-                if !o.body.statements.is_empty() {
-                    errors.push(format!("Function {} in machine {} should have an empty body because this machine does not have a pc", o.name, machine.name));
-                }
+            for f in callable.function_definitions() {
+                errors.push(format!(
+                    "Machine {} should not have functions as it does not have a pc, found `{}`",
+                    machine.name, f.name
+                ))
             }
         } else {
             if latch.is_some() {
@@ -185,11 +184,6 @@ impl<T: FieldElement> TypeChecker<T> {
                     "Machine {} should not have an operation id column because it has a pc",
                     machine.name
                 ));
-            }
-            for o in &functions {
-                if o.id.is_some() {
-                    errors.push(format!("Function {} in machine {} should not have an id because this machine has a pc", o.name, machine.name));
-                }
             }
         }
 
@@ -213,7 +207,7 @@ impl<T: FieldElement> TypeChecker<T> {
             links,
             instructions,
             constraints,
-            functions,
+            callable,
             submachines,
             rom: None,
         });

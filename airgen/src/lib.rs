@@ -7,7 +7,7 @@ use ast::{
         AnalysisASMFile, LinkDefinitionStatement, Machine, PilBlock, SubmachineDeclaration,
     },
     object::{Link, LinkFrom, LinkTo, Location, Object, Operation, PILGraph},
-    parsed::{asm::FunctionRef, PilStatement},
+    parsed::{asm::CallableRef, PilStatement},
 };
 
 const MAIN: &str = "Main";
@@ -66,12 +66,11 @@ pub fn compile<T: FieldElement>(input: AnalysisASMFile<T>) -> PILGraph<T> {
             operation_id: main_ty.operation_id.clone().unwrap(),
         },
         entry_points: main_ty
-            .functions
-            .iter()
-            .map(|f| Operation {
+            .operations()
+            .map(|o| Operation {
                 name: "main".to_string(),
-                id: f.id.unwrap(),
-                params: f.params.clone(),
+                id: o.id.id,
+                params: o.params.clone(),
             })
             .collect(),
         objects,
@@ -139,7 +138,11 @@ impl<'a, T: FieldElement> ASMPILConverter<'a, T> {
             start: _,
             flag,
             params,
-            to: FunctionRef { instance, function },
+            to:
+                CallableRef {
+                    instance,
+                    callable: operation,
+                },
         }: LinkDefinitionStatement,
     ) -> Link<T> {
         let from = LinkFrom {
@@ -163,9 +166,8 @@ impl<'a, T: FieldElement> ASMPILConverter<'a, T> {
         Link {
             from,
             to: instance_ty
-                .functions
-                .iter()
-                .find(|f| f.name == function)
+                .operation_definitions()
+                .find(|o| o.name == operation)
                 .map(|d| LinkTo {
                     machine: ast::object::Machine {
                         location: instance_location,
@@ -173,9 +175,9 @@ impl<'a, T: FieldElement> ASMPILConverter<'a, T> {
                         operation_id: instance_ty.operation_id.clone().unwrap(),
                     },
                     operation: Operation {
-                        name: d.name.clone(),
-                        id: d.id.unwrap(),
-                        params: d.params.clone(),
+                        name: d.name.to_string(),
+                        id: d.operation.id.id,
+                        params: d.operation.params.clone(),
                     },
                 })
                 .unwrap()
