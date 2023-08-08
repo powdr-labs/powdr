@@ -24,6 +24,8 @@ pub struct Generator<'a, T: FieldElement, QueryCallback: Send + Sync> {
     query_processor: Option<QueryProcessor<'a, T, QueryCallback>>,
     fixed_data: &'a FixedData<'a, T>,
     identities: Vec<&'a Identity<T>>,
+    identities_with_next: Vec<&'a Identity<T>>,
+    identities_without_next: Vec<&'a Identity<T>>,
     /// Values of the witness polynomials in the previous row (needed to check proposed rows)
     previous: Row<T>,
     /// Values of the witness polynomials
@@ -54,6 +56,10 @@ where
         let row_factory = RowFactory::new(fixed_data, global_range_constraints);
         let default_row = row_factory.fresh_row();
 
+        let (identities_with_next, identities_without_next): (Vec<_>, Vec<_>) = identities
+            .iter()
+            .partition(|identity| identity.contains_next_ref());
+
         let mut generator = Generator {
             row_factory,
             witnesses,
@@ -61,6 +67,8 @@ where
             identity_processor,
             fixed_data,
             identities: identities.to_vec(),
+            identities_with_next,
+            identities_without_next,
             previous: default_row.clone(),
             current: default_row.clone(),
             next: default_row,
@@ -297,15 +305,21 @@ where
             ),
         };
 
-        for identity in self.identities.iter() {
-            // Split identities into whether or not they have a reference to the next row:
-            // - Those that do should be checked on the previous and proposed row
-            // - All others should be checked on the proposed row
-            if identity.contains_next_ref() == previous
-                && self
-                    .identity_processor
-                    .process_identity(identity, &row_pair)
-                    .is_err()
+        // Split identities into whether or not they have a reference to the next row:
+        // - Those that do should be checked on the previous and proposed row
+        // - All others should be checked on the proposed row
+
+        let identities = if previous {
+            &self.identities_with_next
+        } else {
+            &self.identities_without_next
+        };
+
+        for identity in identities.iter() {
+            if self
+                .identity_processor
+                .process_identity(identity, &row_pair)
+                .is_err()
             {
                 log::debug!("Previous {:?}", self.previous);
                 log::debug!("Proposed {:?}", proposed_row);
