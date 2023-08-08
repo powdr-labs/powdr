@@ -23,9 +23,14 @@ pub struct Generator<'a, T: FieldElement, QueryCallback: Send + Sync> {
     identity_processor: IdentityProcessor<'a, T>,
     query_processor: Option<QueryProcessor<'a, T, QueryCallback>>,
     fixed_data: &'a FixedData<'a, T>,
+    /// The list of all identities of the current machine
     identities: Vec<&'a Identity<T>>,
-    identities_with_next: Vec<&'a Identity<T>>,
-    identities_without_next: Vec<&'a Identity<T>>,
+    /// The subset of identities that contains a reference to the next row
+    /// (precomputed once for performance reasons)
+    identities_with_next_ref: Vec<&'a Identity<T>>,
+    /// The subset of identities that does not contain a reference to the next row
+    /// (precomputed once for performance reasons)
+    identities_without_next_ref: Vec<&'a Identity<T>>,
     /// Values of the witness polynomials in the previous row (needed to check proposed rows)
     previous: Row<T>,
     /// Values of the witness polynomials
@@ -67,8 +72,8 @@ where
             identity_processor,
             fixed_data,
             identities: identities.to_vec(),
-            identities_with_next,
-            identities_without_next,
+            identities_with_next_ref: identities_with_next,
+            identities_without_next_ref: identities_without_next,
             previous: default_row.clone(),
             current: default_row.clone(),
             next: default_row,
@@ -275,9 +280,13 @@ where
         let constraints_valid =
             self.check_row_pair(&proposed_row, false) && self.check_row_pair(&proposed_row, true);
 
-        if constraints_valid {
-            self.current = proposed_row;
-            self.shift_rows();
+        if !constraints_valid {
+            // Note that we never update `current` if proposing a row succeeds (the happy path).
+            // If it doesn't, we re-run compute_next_row on the previous row in order to
+            // correctly forward-propagate values via next references.
+            std::mem::swap(&mut self.current, &mut self.previous);
+            self.next = self.row_factory.fresh_row();
+            self.compute_next_row(next_row - 1);
         }
         constraints_valid
     }
@@ -308,11 +317,9 @@ where
         // Split identities into whether or not they have a reference to the next row:
         // - Those that do should be checked on the previous and proposed row
         // - All others should be checked on the proposed row
-
-        let identities = if previous {
-            &self.identities_with_next
-        } else {
-            &self.identities_without_next
+        let identities = match previous {
+            true => &self.identities_with_next_ref,
+            false => &self.identities_without_next_ref,
         };
 
         for identity in identities.iter() {
@@ -349,15 +356,15 @@ where
 
     fn set_next_row_and_log(&mut self, next_row: DegreeType) {
         if next_row != self.fixed_data.degree - 1 && next_row >= self.last_report + 1000 {
-            // let duration = self.last_report_time.elapsed();
+            let duration = self.last_report_time.elapsed();
             self.last_report_time = Instant::now();
 
-            // log::info!(
-            //     "{next_row} of {} rows ({} %, {} rows per second)",
-            //     self.fixed_data.degree,
-            //     next_row * 100 / self.fixed_data.degree,
-            //     1_000_000_000 / duration.as_micros()
-            // );
+            log::info!(
+                "{next_row} of {} rows ({} %, {} rows per second)",
+                self.fixed_data.degree,
+                next_row * 100 / self.fixed_data.degree,
+                1_000_000_000 / duration.as_micros()
+            );
             self.last_report = next_row;
         }
         self.current_row_index = next_row;
