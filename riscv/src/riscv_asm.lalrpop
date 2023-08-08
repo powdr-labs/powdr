@@ -1,3 +1,15 @@
+//! Much of this can be reused between front-ends, excluding elements like 
+//! [FunctionKind](crate::FunctionKind) which needs to be parsed in an
+//! front-end specific way.
+//!
+//! However it's currently difficult/impossible to share one larlpop grammar in
+//! multiple places while adding slight tweaks. This requires a change to
+//! larlpop like:
+//! https://github.com/lalrpop/lalrpop/issues/42#issuecomment-288973232
+//!
+//! There are some messier solutions like, appending two larlpop files together
+//! to create the "slightly tweaked" grammar, but this is not ideal.
+
 use std::str::FromStr;
 use asm_utils::ast::{unescape_string, BinaryOpKind as BOp, UnaryOpKind as UOp,
     new_binary_op as bin_op, new_unary_op as un_op, new_function_op as fn_op};
