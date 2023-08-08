@@ -27,3 +27,8 @@ linker = { version = "0.1.0", path = "../linker" }
 [dev-dependencies]
 test-log = "0.2.12"
 env_logger = "0.10.0"
+criterion = { version = "0.4", features = ["html_reports"] }
+
+[[bench]]
+name = "executor_benchmark"
+harness = false
