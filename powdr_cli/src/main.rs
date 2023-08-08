@@ -6,6 +6,7 @@ use backend::{Backend, BackendType};
 use clap::{CommandFactory, Parser, Subcommand};
 use compiler::util::{read_poly_set, FixedPolySet, WitnessPolySet};
 use compiler::{compile_pil_or_asm, write_proving_results_to_fs};
+use env_logger::fmt::Color;
 use env_logger::{Builder, Target};
 use log::LevelFilter;
 use number::{Bn254Field, FieldElement, GoldilocksField};
@@ -241,7 +242,25 @@ fn main() -> Result<(), io::Error> {
         .filter_level(LevelFilter::Info)
         .parse_default_env()
         .target(Target::Stdout)
-        .format(|buf, record| writeln!(buf, "{}", record.args()))
+        .format(|buf, record| {
+            let mut style = buf.style();
+
+            // we allocate as there is no way to look into the message otherwise
+            let msg = record.args().to_string();
+
+            // add colors for the diffs
+            match &msg {
+                s if s.starts_with('+') => {
+                    style.set_color(Color::Green);
+                }
+                s if s.starts_with('-') => {
+                    style.set_color(Color::Red);
+                }
+                _ => {}
+            }
+
+            writeln!(buf, "{}", style.value(msg))
+        })
         .init();
 
     let args = Cli::parse();
