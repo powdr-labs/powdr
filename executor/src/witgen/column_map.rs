@@ -56,28 +56,6 @@ impl<V> ColumnMap<V> {
     }
 }
 
-impl<V: Clone + Default> ColumnMap<Option<V>> {
-    pub fn unwrap_or_default(self) -> ColumnMap<V> {
-        ColumnMap {
-            values: self
-                .values
-                .into_iter()
-                .map(|v| v.unwrap_or_default())
-                .collect(),
-            ptype: self.ptype,
-        }
-    }
-}
-
-impl<V: Clone> ColumnMap<V> {
-    pub fn wrap_some(self) -> ColumnMap<Option<V>> {
-        ColumnMap {
-            values: self.values.into_iter().map(|v| Some(v)).collect(),
-            ptype: self.ptype,
-        }
-    }
-}
-
 impl<V> Index<&PolyID> for ColumnMap<V> {
     type Output = V;
 

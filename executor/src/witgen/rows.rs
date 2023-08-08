@@ -1,9 +1,8 @@
 use std::fmt::Debug;
 
-use ast::analyzed::{Expression, PolyID, PolynomialReference, PolynomialType};
+use ast::analyzed::{Expression, PolynomialReference, PolynomialType};
 use itertools::Itertools;
 use number::{DegreeType, FieldElement};
-use parser_util::lines::indent;
 
 use crate::witgen::Constraint;
 
@@ -28,11 +27,24 @@ pub struct Cell<T: FieldElement> {
     pub range_constraint: Option<RangeConstraint<T>>,
 }
 
-/// A row of cells, indexed by polynomial ID.
-#[derive(Clone)]
-pub struct Row<T: FieldElement> {
-    pub cells: ColumnMap<Cell<T>>,
+impl<T: FieldElement> Debug for Cell<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let debug_str = match self.value {
+            Some(v) => format!("{} = {}", self.name, v),
+            None => {
+                let range_constraint_string = match &self.range_constraint {
+                    Some(range_constraint) => format!("\n  (range constraint: {range_constraint})"),
+                    None => "".to_string(),
+                };
+                format!("{} = <unknown>{range_constraint_string}", self.name)
+            }
+        };
+        f.write_str(&debug_str)
+    }
 }
+
+/// A row of cells, indexed by polynomial ID.
+pub type Row<T> = ColumnMap<Cell<T>>;
 
 impl<T: FieldElement> Debug for Row<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -41,14 +53,6 @@ impl<T: FieldElement> Debug for Row<T> {
 }
 
 impl<T: FieldElement> Row<T> {
-    fn get_cell_mut(&mut self, poly_id: PolyID) -> &mut Cell<T> {
-        &mut self.cells[&poly_id]
-    }
-
-    pub fn get_cell(&self, poly_id: PolyID) -> &Cell<T> {
-        &self.cells[&poly_id]
-    }
-
     /// Builds a string representing the current row
     pub fn render(&self, title: &str, include_unknown: bool) -> String {
         format!("{}:\n{}", title, self.render_values(include_unknown))
@@ -58,7 +62,6 @@ impl<T: FieldElement> Row<T> {
     /// first, then zero, then unknown (if `include_unknown == true`).
     pub fn render_values(&self, include_unknown: bool) -> String {
         let mut cells = self
-            .cells
             .iter()
             .filter(|(_, cell)| cell.value.is_some() || include_unknown)
             .collect::<Vec<_>>();
@@ -75,24 +78,10 @@ impl<T: FieldElement> Row<T> {
             )
         });
 
-        let render_cell = |cell: &Cell<T>| match cell.value {
-            Some(v) => format!("{} = {}", cell.name, v),
-            None => {
-                let range_constraint_string = match &cell.range_constraint {
-                    Some(range_constraint) => format!("\n  (range constraint: {range_constraint})"),
-                    None => "".to_string(),
-                };
-                format!("{} = <unknown>{range_constraint_string}", cell.name)
-            }
-        };
-
-        indent(
-            &cells
-                .into_iter()
-                .map(|(_, cell)| render_cell(cell))
-                .join("\n"),
-            "    ",
-        )
+        cells
+            .into_iter()
+            .map(|(_, cell)| format!("    {:?}", cell))
+            .join("\n")
     }
 }
 
@@ -100,8 +89,7 @@ impl<T: FieldElement> From<Row<T>> for ColumnMap<T> {
     /// Builds a map from polynomial ID to value. Unknown values are set to zero.
     fn from(val: Row<T>) -> Self {
         ColumnMap::from(
-            val.cells
-                .into_iter()
+            val.into_iter()
                 .map(|(_, cell)| cell.value.unwrap_or_default()),
             PolynomialType::Committed,
         )
@@ -159,17 +147,25 @@ impl<'row, T: FieldElement> RowUpdater<'row, T> {
 
     fn get_cell_mut<'b>(&'b mut self, poly: &PolynomialReference) -> &'b mut Cell<T> {
         match poly.next {
-            false => self.current.get_cell_mut(poly.poly_id()),
-            true => self.next.get_cell_mut(poly.poly_id()),
+            false => &mut self.current[&poly.poly_id()],
+            true => &mut self.next[&poly.poly_id()],
+        }
+    }
+
+    fn row_number(&self, poly: &PolynomialReference) -> DegreeType {
+        match poly.next {
+            false => self.current_row_index,
+            true => self.current_row_index + 1,
         }
     }
 
     fn set_value(&mut self, poly: &PolynomialReference, value: T) {
-        let row = match poly.next {
-            false => self.current_row_index,
-            true => self.current_row_index + 1,
-        };
-        log::trace!("      => {} (Row {row}) = {value}", poly.name);
+        log::trace!(
+            "      => {} (Row {}) = {}",
+            poly.name,
+            self.row_number(poly),
+            value
+        );
         let cell = self.get_cell_mut(poly);
         // Note that this is a problem even if the value that was set is the same,
         // because we would return that progress was made when it wasn't.
@@ -182,7 +178,12 @@ impl<'row, T: FieldElement> RowUpdater<'row, T> {
         poly: &PolynomialReference,
         constraint: &RangeConstraint<T>,
     ) {
-        log::trace!("      => Adding range constraint for {poly}: {constraint}");
+        log::trace!(
+            "      => Adding range constraint for {} (Row {}): {}",
+            poly.name,
+            self.row_number(poly),
+            constraint
+        );
         let cell = self.get_cell_mut(poly);
         let old = &mut cell.range_constraint;
         let new = match old {
@@ -225,8 +226,8 @@ impl<'row, 'a, T: FieldElement> RowPair<'row, 'a, T> {
 
     fn get_cell(&self, poly: &PolynomialReference) -> &Cell<T> {
         match poly.next {
-            false => self.current.get_cell(poly.poly_id()),
-            true => self.next.get_cell(poly.poly_id()),
+            false => &self.current[&poly.poly_id()],
+            true => &self.next[&poly.poly_id()],
         }
     }
 
