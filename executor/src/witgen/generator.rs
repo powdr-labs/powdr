@@ -17,12 +17,14 @@ use super::rows::{Row, RowFactory, RowPair};
 use super::{EvalError, EvalResult, FixedData};
 
 pub struct Generator<'a, T: FieldElement, QueryCallback: Send + Sync> {
-    row_factory: RowFactory<'a, T>,
+    /// The witness columns belonging to this machine
     witnesses: BTreeSet<PolyID>,
+    row_factory: RowFactory<'a, T>,
     identity_processor: IdentityProcessor<'a, T>,
     query_processor: Option<QueryProcessor<'a, T, QueryCallback>>,
     fixed_data: &'a FixedData<'a, T>,
     identities: Vec<&'a Identity<T>>,
+    /// Values of the witness polynomials in the previous row (needed to check proposed rows)
     previous: Row<T>,
     /// Values of the witness polynomials
     current: Row<T>,
