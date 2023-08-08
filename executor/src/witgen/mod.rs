@@ -211,6 +211,8 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
         fixed_cols: ColumnMap<FixedColumn<'a, T>>,
         witness_cols: ColumnMap<WitnessColumn<'a, T>>,
     ) -> Self {
+        // Leak the column names once, so that they can be referenced without
+        // having to worry about lifetimes.
         let witness_column_names = ColumnMap::from(
             witness_cols
                 .values()
