@@ -54,7 +54,7 @@ impl Halo2Prover {
         Ok(Self { params })
     }
 
-    pub fn write(&self, output: &mut impl io::Write) -> Result<(), io::Error> {
+    pub fn write_setup(&self, output: &mut impl io::Write) -> Result<(), io::Error> {
         self.params.write(output)
     }
 

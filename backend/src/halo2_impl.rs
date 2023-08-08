@@ -34,7 +34,7 @@ impl<T: FieldElement> BackendImplWithSetup<T> for halo2::Halo2Prover {
     }
 
     fn write_setup(&self, mut output: &mut dyn io::Write) -> Result<(), io::Error> {
-        self.write(&mut output)
+        self.write_setup(&mut output)
     }
 }
 
