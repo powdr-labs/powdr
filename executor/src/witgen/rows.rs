@@ -85,6 +85,48 @@ impl<T: FieldElement> Row<T> {
     }
 }
 
+/// A factory for rows, which knows the global range constraints and has pointers to column names.
+pub struct RowFactory<'a, T: FieldElement> {
+    fixed_data: &'a FixedData<'a, T>,
+    global_range_constraints: ColumnMap<Option<RangeConstraint<T>>>,
+}
+
+impl<'a, T: FieldElement> RowFactory<'a, T> {
+    pub fn new(
+        fixed_data: &'a FixedData<'a, T>,
+        global_range_constraints: ColumnMap<Option<RangeConstraint<T>>>,
+    ) -> Self {
+        Self {
+            fixed_data,
+            global_range_constraints,
+        }
+    }
+
+    pub fn fresh_row(&self) -> Row<T> {
+        ColumnMap::from(
+            self.global_range_constraints
+                .iter()
+                .map(|(poly_id, range_constraint)| Cell {
+                    name: self.fixed_data.witness_column_names[&poly_id],
+                    value: None,
+                    range_constraint: range_constraint.clone(),
+                }),
+            PolynomialType::Committed,
+        )
+    }
+
+    pub fn row_from_known_values(&self, values: &ColumnMap<T>) -> Row<T> {
+        ColumnMap::from(
+            values.iter().map(|(poly_id, &v)| Cell {
+                name: self.fixed_data.witness_column_names[&poly_id],
+                value: Some(v),
+                range_constraint: None,
+            }),
+            PolynomialType::Committed,
+        )
+    }
+}
+
 impl<T: FieldElement> From<Row<T>> for ColumnMap<T> {
     /// Builds a map from polynomial ID to value. Unknown values are set to zero.
     fn from(val: Row<T>) -> Self {

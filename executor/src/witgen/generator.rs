@@ -13,11 +13,11 @@ use super::query_processor::QueryProcessor;
 use super::range_constraints::RangeConstraint;
 
 use super::machines::{FixedLookup, Machine};
-use super::rows::{Row, RowPair};
+use super::rows::{Row, RowFactory, RowPair};
 use super::{EvalError, EvalResult, FixedData};
 
 pub struct Generator<'a, T: FieldElement, QueryCallback: Send + Sync> {
-    global_range_constraints: ColumnMap<Option<RangeConstraint<T>>>,
+    row_factory: RowFactory<'a, T>,
     witnesses: BTreeSet<PolyID>,
     identity_processor: IdentityProcessor<'a, T>,
     query_processor: Option<QueryProcessor<'a, T, QueryCallback>>,
@@ -49,10 +49,11 @@ where
         let query_processor =
             query_callback.map(|query_callback| QueryProcessor::new(fixed_data, query_callback));
         let identity_processor = IdentityProcessor::new(fixed_data, fixed_lookup, machines);
-        let default_row = fixed_data.fresh_row(&global_range_constraints);
+        let row_factory = RowFactory::new(fixed_data, global_range_constraints);
+        let default_row = row_factory.fresh_row();
 
         let mut generator = Generator {
-            global_range_constraints,
+            row_factory,
             witnesses,
             query_processor,
             identity_processor,
@@ -208,7 +209,7 @@ where
 
     /// Shifts rows: fresh row -> next -> current -> previous
     fn shift_rows(&mut self) {
-        let mut fresh_row = self.fixed_data.fresh_row(&self.global_range_constraints);
+        let mut fresh_row = self.row_factory.fresh_row();
         std::mem::swap(&mut self.previous, &mut fresh_row);
         std::mem::swap(&mut self.current, &mut self.previous);
         std::mem::swap(&mut self.next, &mut self.current);
@@ -259,7 +260,7 @@ where
     pub fn propose_next_row(&mut self, next_row: DegreeType, values: &ColumnMap<T>) -> bool {
         self.set_next_row_and_log(next_row);
 
-        let proposed_row = self.fixed_data.row_from_known_values(values);
+        let proposed_row = self.row_factory.row_from_known_values(values);
 
         let constraints_valid =
             self.check_row_pair(&proposed_row, false) && self.check_row_pair(&proposed_row, true);

@@ -12,8 +12,6 @@ pub use self::eval_result::{
 };
 use self::global_constraints::GlobalConstraints;
 use self::machines::machine_extractor::ExtractionOutput;
-use self::range_constraints::RangeConstraint;
-use self::rows::{Cell, Row};
 use self::util::substitute_constants;
 
 mod affine_expression;
@@ -232,33 +230,6 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
         ColumnMap::new(
             initial_value,
             self.witness_cols.len(),
-            PolynomialType::Committed,
-        )
-    }
-
-    fn fresh_row(
-        &self,
-        global_range_constraints: &ColumnMap<Option<RangeConstraint<T>>>,
-    ) -> Row<T> {
-        ColumnMap::from(
-            global_range_constraints
-                .iter()
-                .map(|(poly_id, range_constraint)| Cell {
-                    name: self.witness_column_names[&poly_id],
-                    value: None,
-                    range_constraint: range_constraint.clone(),
-                }),
-            PolynomialType::Committed,
-        )
-    }
-
-    fn row_from_known_values(&self, values: &ColumnMap<T>) -> Row<T> {
-        ColumnMap::from(
-            values.iter().map(|(poly_id, &v)| Cell {
-                name: self.witness_column_names[&poly_id],
-                value: Some(v),
-                range_constraint: None,
-            }),
             PolynomialType::Committed,
         )
     }
