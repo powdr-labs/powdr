@@ -1,8 +1,9 @@
 use ast::analyzed::{Expression, PolynomialReference};
 use number::FieldElement;
 
-use super::{rows::RowPair, Constraint, EvalValue, FixedData, IncompleteCause, WitnessColumn};
+use super::{rows::RowPair, Constraint, EvalValue, FixedData, IncompleteCause, Query};
 
+/// Computes value updates that result from a query.
 pub struct QueryProcessor<'a, T: FieldElement, QueryCallback: Send + Sync> {
     fixed_data: &'a FixedData<'a, T>,
     query_callback: QueryCallback,
@@ -25,16 +26,10 @@ where
     ) -> EvalValue<&'a PolynomialReference, T> {
         let mut eval_value = EvalValue::complete(vec![]);
         for column in self.fixed_data.witness_cols.values() {
-            // TODO: What if the column is not part of the machine?
-            // Do something iff:
-            // 1. This witness column has a query
-            // 2. This witness column has not been set yet
-            if column.query.is_some()
-                && rows
-                    .get_value(&column.query.as_ref().unwrap().poly)
-                    .is_none()
-            {
-                eval_value.combine(self.process_witness_query(column, rows));
+            if let Some(query) = column.query.as_ref() {
+                if rows.get_value(&query.poly).is_none() {
+                    eval_value.combine(self.process_witness_query(query, rows));
+                }
             }
         }
         eval_value
@@ -42,10 +37,9 @@ where
 
     fn process_witness_query(
         &mut self,
-        column: &'a WitnessColumn<T>,
+        query: &'a Query<'_, T>,
         rows: &RowPair<T>,
     ) -> EvalValue<&'a PolynomialReference, T> {
-        let query = column.query.as_ref().unwrap();
         let query_str = match interpolate_query(query.expr, rows) {
             Ok(query) => query,
             Err(incomplete) => return EvalValue::incomplete(incomplete),
