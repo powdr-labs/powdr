@@ -240,7 +240,7 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
         &self,
         global_range_constraints: &ColumnMap<Option<RangeConstraint<T>>>,
     ) -> Row<T> {
-        let cells = ColumnMap::from(
+        ColumnMap::from(
             global_range_constraints
                 .iter()
                 .map(|(poly_id, range_constraint)| Cell {
@@ -249,20 +249,18 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
                     range_constraint: range_constraint.clone(),
                 }),
             PolynomialType::Committed,
-        );
-        Row { cells }
+        )
     }
 
     fn row_from_known_values(&self, values: &ColumnMap<T>) -> Row<T> {
-        let cells = ColumnMap::from(
+        ColumnMap::from(
             values.iter().map(|(poly_id, &v)| Cell {
                 name: self.witness_column_names[&poly_id],
                 value: Some(v),
                 range_constraint: None,
             }),
             PolynomialType::Committed,
-        );
-        Row { cells }
+        )
     }
 
     fn column_name(&self, poly_id: &PolyID) -> &str {
