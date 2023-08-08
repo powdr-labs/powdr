@@ -45,7 +45,6 @@ pub fn generate<'a, T: FieldElement, QueryCallback>(
 where
     QueryCallback: FnMut(&str) -> Option<T> + Send + Sync,
 {
-    let mut start_time = std::time::Instant::now();
     if degree.is_zero() {
         panic!("Resulting degree is zero. Please ensure that there is at least one non-constant fixed column to set the degree.");
     }
@@ -111,9 +110,6 @@ where
         .map(|p| generator.is_relevant_witness(p))
         .collect::<Vec<_>>();
 
-    log::info!("Time to prepare: {:?}", start_time.elapsed());
-    start_time = std::time::Instant::now();
-
     // Are we in an infinite loop and can just re-use the old values?
     let mut looping_period = None;
     for row in 0..degree as DegreeType {
@@ -122,8 +118,6 @@ where
             looping_period = rows_are_repeating(&rows, &relevant_witnesses_mask);
             if let Some(p) = looping_period {
                 log::info!("Found loop with period {p} starting at row {row}");
-                log::info!("Time until loop detected: {:?}", start_time.elapsed());
-                start_time = std::time::Instant::now();
             }
         }
         let mut row_values = None;
@@ -143,9 +137,6 @@ where
         rows.push(row_values.unwrap());
     }
 
-    log::info!("Time to compute rows: {:?}", start_time.elapsed());
-    start_time = std::time::Instant::now();
-
     // Transpose the rows
     let mut columns = fixed.witness_map_with(vec![]);
     for row in rows.into_iter() {
@@ -153,9 +144,6 @@ where
             columns[&col_index].push(value);
         }
     }
-
-    log::info!("Time to transpose: {:?}", start_time.elapsed());
-    start_time = std::time::Instant::now();
 
     // Overwrite all machine witness columns
     for (poly_id, data) in generator.machine_witness_col_values() {
@@ -170,14 +158,10 @@ where
         .map(|(p, _)| (p.id, p.absolute_name.as_str()))
         .collect::<BTreeMap<_, _>>();
 
-    let res = columns
+    columns
         .into_iter()
         .map(|(id, v)| (col_names.remove(&id.id).unwrap(), v))
-        .collect();
-
-    log::info!("Time to compute result: {:?}", start_time.elapsed());
-
-    res
+        .collect()
 }
 
 fn zip_relevant<'a, T>(
