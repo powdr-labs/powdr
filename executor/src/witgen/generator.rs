@@ -280,7 +280,9 @@ where
         let constraints_valid =
             self.check_row_pair(&proposed_row, false) && self.check_row_pair(&proposed_row, true);
 
-        if !constraints_valid {
+        if constraints_valid {
+            self.previous = proposed_row;
+        } else {
             // Note that we never update `current` if proposing a row succeeds (the happy path).
             // If it doesn't, we re-run compute_next_row on the previous row in order to
             // correctly forward-propagate values via next references.
