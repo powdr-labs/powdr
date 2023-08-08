@@ -137,7 +137,7 @@ impl fmt::Display for Register {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq)]
 pub enum FunctionKind {
     HiDataRef,
     LoDataRef,
@@ -188,6 +188,9 @@ impl asm_utils::compiler::Compiler for Risc {
         // Remove the riscv asm stub function, which is used
         // for compilation, and will not be called.
         replace_coprocessor_stubs(&mut statements);
+
+        // Replace the tail call to main by a normal call followed by `return`
+        replace_tail_main_by_call_main_return(&mut statements);
 
         // Sort the objects according to the order of the names in object_order.
         // With the single exception: If there is large object, put that at the end.
@@ -324,6 +327,39 @@ fn replace_coprocessor_stubs(statements: &mut Vec<Statement>) {
     }
     let mut i = 0;
     statements.retain(|_| (!to_delete.contains(&i), i += 1).0);
+}
+
+fn replace_tail_main_by_call_main_return(statements: &mut Vec<Statement>) {
+    /*
+    Find patterns of the form
+    tail main;
+    -
+    turn this into
+    call main;
+    return;
+    */
+    *statements = statements
+        .drain(..)
+        .flat_map(|s| match s {
+            Statement::Instruction(name, args) => {
+                if name == "tail"
+                    && args.len() == 1
+                    && args[0] == Argument::Expression(Expression::Symbol("main".to_string()))
+                {
+                    vec![
+                        Statement::Instruction(
+                            "call".into(),
+                            vec![Argument::Expression(Expression::Symbol("main".to_string()))],
+                        ),
+                        Statement::Instruction("return".into(), vec![]),
+                    ]
+                } else {
+                    vec![Statement::Instruction(name, args)]
+                }
+            }
+            s => vec![s],
+        })
+        .collect();
 }
 
 fn store_data_objects<'a>(
@@ -1356,6 +1392,11 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
         "load_dynamic" => {
             let (rd, label) = rl(args);
             only_if_no_write_to_zero(format!("{rd} <== load_label({label});"), rd)
+        }
+
+        // The powdr embedded `return` instruction
+        "return" => {
+            vec!["return;".to_string()]
         }
 
         _ => {

@@ -4,7 +4,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use ast::{
     asm_analysis::{
-        AnalysisASMFile, AssignmentStatement, Batch, FunctionStatement,
+        AnalysisASMFile, AssignmentStatement, Batch, DebugDirective, FunctionStatement,
         InstructionDefinitionStatement, InstructionStatement, LabelStatement, Machine, PilBlock,
         RegisterDeclarationStatement, RegisterTy,
     },
@@ -168,10 +168,10 @@ impl<T: FieldElement> ASMPILConverter<T> {
     }
 
     fn handle_batch(&mut self, batch: Batch<T>) {
-        let code_lines = batch
+        let code_line = batch
             .statements
             .into_iter()
-            .flat_map(|s| self.handle_statement(s))
+            .map(|s| self.handle_statement(s))
             .reduce(|mut acc, e| {
                 // we write to the union of the target registers.
                 assert!(acc.write_regs.is_empty());
@@ -184,14 +184,17 @@ impl<T: FieldElement> ASMPILConverter<T> {
                 acc.instructions.extend(e.instructions);
                 // we use the union of the labels
                 acc.labels.extend(e.labels);
+                // we use the union of debug directives
+                acc.debug_directives.extend(e.debug_directives);
                 acc
-            });
+            })
+            .expect("unexpected empty batch");
 
-        self.code_lines.extend(code_lines);
+        self.code_lines.push(code_line);
     }
 
-    fn handle_statement(&mut self, statement: FunctionStatement<T>) -> Option<CodeLine<T>> {
-        Some(match statement {
+    fn handle_statement(&mut self, statement: FunctionStatement<T>) -> CodeLine<T> {
+        match statement {
             FunctionStatement::Assignment(AssignmentStatement {
                 start,
                 lhs,
@@ -212,8 +215,11 @@ impl<T: FieldElement> ASMPILConverter<T> {
                 labels: [name].into(),
                 ..Default::default()
             },
-            FunctionStatement::DebugDirective(_) => return None,
-        })
+            FunctionStatement::DebugDirective(d) => CodeLine {
+                debug_directives: vec![d],
+                ..Default::default()
+            },
+        }
     }
 
     fn handle_register_declaration(
@@ -675,7 +681,6 @@ impl<T: FieldElement> ASMPILConverter<T> {
     /// Translates the code lines to fixed column but also fills
     /// the query hints for the free inputs.
     fn translate_code_lines(&mut self) {
-        // TODO this should loop with the number of lines in the rom, as should all the other rom constants!
         self.pil.push(PilStatement::PolynomialConstantDefinition(
             0,
             "p_line".to_string(),
@@ -915,6 +920,7 @@ struct CodeLine<T> {
     value: BTreeMap<String, Vec<(T, AffineExpressionComponent<T>)>>,
     labels: BTreeSet<String>,
     instructions: Vec<(String, Vec<InstructionLiteralArg<T>>)>,
+    debug_directives: Vec<DebugDirective>,
 }
 
 enum AffineExpressionComponent<T> {

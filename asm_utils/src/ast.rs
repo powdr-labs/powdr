@@ -9,7 +9,7 @@ pub enum Statement<R: Register, F: FunctionOpKind> {
     Instruction(String, Vec<Argument<R, F>>),
 }
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
 pub enum Argument<R: Register, F: FunctionOpKind> {
     Register(R),
     RegOffset(R, Expression<F>),
@@ -37,9 +37,9 @@ impl<R: Register, F: FunctionOpKind> Argument<R, F> {
     }
 }
 
-pub trait Register: Display {}
+pub trait Register: Display + PartialEq {}
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq)]
 pub enum UnaryOpKind {
     Negation,
 }
@@ -52,7 +52,7 @@ impl Display for UnaryOpKind {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq)]
 pub enum BinaryOpKind {
     Or,
     Xor,
@@ -66,9 +66,9 @@ pub enum BinaryOpKind {
     Mod,
 }
 
-pub trait FunctionOpKind: Display {}
+pub trait FunctionOpKind: Display + PartialEq {}
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
 pub enum Expression<F> {
     Number(i64),
     Symbol(String),

@@ -45,9 +45,8 @@ extern "Rust" {
 }
 #[no_mangle]
 #[start]
-pub unsafe extern "C" fn __runtime_start() -> ! {
+pub unsafe extern "C" fn __runtime_start() {
     unsafe {
         main();
     }
-    loop {}
 }

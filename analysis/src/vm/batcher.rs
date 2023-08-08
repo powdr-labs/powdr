@@ -25,10 +25,13 @@ impl<'a, T: FieldElement> Batch<'a, T> {
     }
 
     /// Returns true iff this batch consists exclusively of labels
-    fn is_only_labels(&self) -> bool {
-        self.statements
-            .iter()
-            .all(|s| matches!(s, FunctionStatement::Label(..)))
+    fn is_only_labels_and_directives(&self) -> bool {
+        self.statements.iter().all(|s| {
+            matches!(
+                s,
+                FunctionStatement::Label(..) | FunctionStatement::DebugDirective(..)
+            )
+        })
     }
 
     /// Returns true iff this batch contains at least one label
@@ -48,13 +51,16 @@ impl<'a, T: FieldElement> Batch<'a, T> {
     }
 
     fn try_join(&mut self, other: Self) -> Result<(), (Self, IncompatibleSet)> {
-        match (self.is_only_labels(), other.contains_labels()) {
-            // we can join any batch full of labels (in particular, an empty batch) with any batch
+        match (
+            self.is_only_labels_and_directives(),
+            other.contains_labels(),
+        ) {
+            // we can join any batch full of labels and debug directives (in particular, an empty batch) with any batch
             (true, _) => {
                 self.statements.extend(other.statements);
                 Ok(())
             }
-            // we cannot join a batch which doesn't only have labels with a batch which contains a label
+            // we cannot join a batch which doesn't only have labels and debug directives with a batch which contains a label
             (false, true) => Err((other, IncompatibleSet([Incompatible::Label].into()))),
             // other types of batching are unimplemented
             (false, false) => Err((other, IncompatibleSet([Incompatible::Unimplemented].into()))),
