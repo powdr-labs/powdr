@@ -307,6 +307,23 @@ fn replace_dynamic_label_reference(
     ))
 }
 
+fn filter_matching_and_next<I: Iterator, F>(iter: I, predicate: F) -> impl Iterator<Item = I::Item>
+where
+    F: Fn(&I::Item) -> bool,
+{
+    iter.scan(false, move |filter_next, item| {
+        let mut filter_current = *filter_next;
+        *filter_next = predicate(&item);
+        // if the predicate says this line should be filtered, then
+        // the next one should be filtered as well.
+        if *filter_next {
+            filter_current = true;
+        }
+        Some((filter_current, item))
+    })
+    .filter_map(|(filter, statement)| (!filter).then_some(statement))
+}
+
 fn replace_coprocessor_stubs(
     statements: impl IntoIterator<Item = Statement>,
 ) -> impl Iterator<Item = Statement> {
@@ -315,28 +332,12 @@ fn replace_coprocessor_stubs(
         .map(|(name, _)| *name)
         .collect();
 
-    statements
-        .into_iter()
-        .scan(true, move |keep_next, statement| {
-            let mut keep_current = *keep_next;
-
-            // Skip the current statement and the following one if the current
-            // statement is a label that is in the list of stubs to be replaced
-            // by a coprocessor call.
-            keep_current = match &statement {
-                Statement::Label(label) if stub_names.contains(&label.as_str()) => {
-                    *keep_next = false;
-                    false
-                }
-                _ => {
-                    *keep_next = true;
-                    keep_current
-                }
-            };
-
-            Some((keep_current, statement))
-        })
-        .filter_map(|(keep, statement)| keep.then_some(statement))
+    filter_matching_and_next(statements.into_iter(), move |statement| -> bool {
+        match &statement {
+            Statement::Label(label) if stub_names.contains(&label.as_str()) => true,
+            _ => false,
+        }
+    })
 }
 
 fn store_data_objects<'a>(
@@ -1374,5 +1375,40 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
         _ => {
             panic!("Unknown instruction: {instr}");
         }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use env_logger::filter;
+
+    use super::*;
+
+    #[test]
+    fn test_filter_matching_and_next_integers() {
+        assert_eq!(
+            filter_matching_and_next([0, 1, 2, 0, 2, 2, 1].iter(), |&&i| { i == 0 })
+                .map(|i| *i).collect::<Vec<_>>(),
+            vec![2, 2, 1]
+        );
+    }
+
+    #[test]
+    fn test_filter_matching_and_next_strings() {
+        assert_eq!(
+            filter_matching_and_next(
+                [
+                    "croissant",
+                    "pain au chocolat",
+                    "chausson aux pommes",
+                    "croissant" // corner case: if the label is at the end of the program
+                ]
+                .iter(),
+                |&&s| { s == "croissant" }
+            )
+            .map(|s| { *s })
+            .collect::<Vec<_>>(),
+            vec!["chausson aux pommes"]
+        );
     }
 }
