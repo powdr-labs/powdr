@@ -335,15 +335,15 @@ where
 
     fn set_next_row_and_log(&mut self, next_row: DegreeType) {
         if next_row != self.fixed_data.degree - 1 && next_row >= self.last_report + 1000 {
-            let duration = self.last_report_time.elapsed();
+            // let duration = self.last_report_time.elapsed();
             self.last_report_time = Instant::now();
 
-            log::info!(
-                "{next_row} of {} rows ({} %, {} rows per second)",
-                self.fixed_data.degree,
-                next_row * 100 / self.fixed_data.degree,
-                1_000_000_000 / duration.as_micros()
-            );
+            // log::info!(
+            //     "{next_row} of {} rows ({} %, {} rows per second)",
+            //     self.fixed_data.degree,
+            //     next_row * 100 / self.fixed_data.degree,
+            //     1_000_000_000 / duration.as_micros()
+            // );
             self.last_report = next_row;
         }
         self.current_row_index = next_row;
