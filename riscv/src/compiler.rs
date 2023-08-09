@@ -307,7 +307,7 @@ fn replace_dynamic_label_reference(
     ))
 }
 
-fn filter_matching_and_next<I: Iterator, F>(iter: I, predicate: F) -> impl Iterator<Item = I::Item>
+fn remove_matching_and_next<I: Iterator, F>(iter: I, predicate: F) -> impl Iterator<Item = I::Item>
 where
     F: Fn(&I::Item) -> bool,
 {
@@ -330,7 +330,7 @@ fn replace_coprocessor_stubs(
         .map(|(name, _)| *name)
         .collect();
 
-    filter_matching_and_next(statements.into_iter(), move |statement| -> bool {
+    remove_matching_and_next(statements.into_iter(), move |statement| -> bool {
         matches!(&statement, Statement::Label(label) if stub_names.contains(&label.as_str()))
     })
 }
@@ -1380,9 +1380,9 @@ mod test {
     use super::*;
 
     #[test]
-    fn test_filter_matching_and_next_integers() {
+    fn test_remove_matching_and_next_integers() {
         assert_eq!(
-            filter_matching_and_next([0, 1, 2, 0, 2, 0, 0, 3, 2, 1].iter(), |&&i| { i == 0 })
+            remove_matching_and_next([0, 1, 2, 0, 2, 0, 0, 3, 2, 1].iter(), |&&i| { i == 0 })
                 .map(|i| *i)
                 .collect::<Vec<_>>(),
             vec![2, 2, 1]
@@ -1390,9 +1390,9 @@ mod test {
     }
 
     #[test]
-    fn test_filter_matching_and_next_strings() {
+    fn test_remove_matching_and_next_strings() {
         assert_eq!(
-            filter_matching_and_next(
+            remove_matching_and_next(
                 [
                     "croissant",
                     "pain au chocolat",
