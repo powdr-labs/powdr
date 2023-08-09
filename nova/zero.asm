@@ -70,8 +70,7 @@ machine NovaZero {
         x1 <=Y= incr(x0); // x1 = 1
         x0 <=Z= add(x1, x1); // x0 = 1 + 1
         x0 <=Z= addi(x0, 1); // x0 = 2 + 1
-        // x0 <=Z= addi(x0, -1); // TODO need support signed constant in instruction assignment
-        x0 <=Y= decr(x0); // x0 = 2
+        x0 <=Z= addi(x0, -2); // x0 = 3 - 2
         x0 <=Z= sub(x0, x0); // x0 - x0 = 0
         assert_zero x0; // x0 == 0
         loop;

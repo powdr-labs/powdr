@@ -14,8 +14,8 @@ use ast::{
         UnaryOperator,
     },
 };
-use ff::{Field, PrimeField};
-use nova_snark::provider::bn256_grumpkin;
+use ff::PrimeField;
+use nova_snark::provider::bn256_grumpkin::{self};
 use nova_snark::{
     compute_digest,
     supernova::{gen_commitmentkey_by_r1cs, PublicParams, RecursiveSNARK, RunningClaim},
@@ -129,7 +129,7 @@ pub(crate) fn nova_prove<T: FieldElement>(
                             let value = <G1 as Group>::Scalar::from_bytes(&n.to_bytes_le().try_into().unwrap()).unwrap();
                             match ope {
                                 UnaryOperator::Plus => value,
-                                UnaryOperator::Minus => unimplemented!("not support signed constant"),
+                                UnaryOperator::Minus => get_neg_value_within_limbsize(value, LIMB_WIDTH),
                             }
                         },
                         x => unimplemented!("unsupported expression {}", x),
@@ -161,7 +161,7 @@ pub(crate) fn nova_prove<T: FieldElement>(
                         let value = <G1 as Group>::Scalar::from_bytes(&n.to_bytes_le().try_into().unwrap()).unwrap();
                         match ope {
                             UnaryOperator::Plus => value,
-                            UnaryOperator::Minus => value.invert().unwrap(),
+                            UnaryOperator::Minus => get_neg_value_within_limbsize(value, LIMB_WIDTH),
                         }
                     },
                     x => unimplemented!("unsupported expression {:?}", x),
@@ -338,4 +338,33 @@ pub(crate) fn nova_prove<T: FieldElement>(
     // println!("zi_primary: {:?}", zi_primary);
     // println!("zi_secondary: {:?}", zi_secondary);
     // println!("final program_counter: {:?}", program_counter);
+}
+
+/// get additive negative of value within limbsize
+fn get_neg_value_within_limbsize(
+    value: <G1 as Group>::Scalar,
+    nbit: usize,
+) -> <G1 as Group>::Scalar {
+    let value = value.to_bytes();
+    let (lsb, msb) = value.split_at(nbit / 8);
+    assert_eq!(
+        msb.iter().map(|v| *v as usize).sum::<usize>(),
+        0,
+        "value {:?} is overflow",
+        value
+    );
+    let mut lsb = lsb.to_vec();
+    lsb.resize(32, 0);
+    let value = <G1 as Group>::Scalar::from_bytes(lsb[..].try_into().unwrap()).unwrap();
+
+    let mut max_limb_plus_one_bytes = vec![0u8; nbit / 8 + 1];
+    max_limb_plus_one_bytes[nbit / 8] = 1u8;
+    max_limb_plus_one_bytes.resize(32, 0);
+    let max_limb_plus_one =
+        <G1 as Group>::Scalar::from_bytes(max_limb_plus_one_bytes[..].try_into().unwrap()).unwrap();
+
+    let mut value_neg = (max_limb_plus_one - value).to_bytes()[0..nbit / 8].to_vec();
+    value_neg.resize(32, 0);
+
+    <G1 as Group>::Scalar::from_bytes(&value_neg[..].try_into().unwrap()).unwrap()
 }

@@ -5,6 +5,8 @@ use std::{
     sync::{Arc, Mutex},
 };
 
+use crate::nonnative::util::Num;
+
 #[allow(dead_code)]
 use super::nonnative::bignat::{nat_to_limbs, BigNat};
 use ast::{
@@ -98,7 +100,8 @@ pub fn alloc_const<F: PrimeField, CS: ConstraintSystem<F>>(
 ) -> Result<AllocatedNum<F>, SynthesisError> {
     let allocations: Vec<Variable> = value.to_repr().as_bits::<Lsb0>()[0..n_bits]
         .iter()
-        .map(|raw_bit| {
+        .enumerate()
+        .map(|(index, raw_bit)| {
             let bit = cs.alloc(
                 || "boolean",
                 || {
@@ -111,14 +114,14 @@ pub fn alloc_const<F: PrimeField, CS: ConstraintSystem<F>>(
             )?;
             if *raw_bit {
                 cs.enforce(
-                    || format!("bit{raw_bit} == 1"),
+                    || format!("{:?} index {index} true", value),
                     |lc| lc + bit,
                     |lc| lc + CS::one(),
                     |lc| lc + CS::one(),
                 );
             } else {
                 cs.enforce(
-                    || format!("bit{raw_bit} == 0"),
+                    || format!("{:?} index {index} false", value),
                     |lc| lc + bit,
                     |lc| lc + CS::one(),
                     |lc| lc,
@@ -135,15 +138,18 @@ pub fn alloc_const<F: PrimeField, CS: ConstraintSystem<F>>(
             f = f.double();
             l
         });
-    let value = AllocatedNum::alloc(cs.namespace(|| "alloc const"), || Ok(value))?;
-    let sum_lc = LinearCombination::zero() + value.get_variable() - &sum;
+    let value_alloc =
+        AllocatedNum::alloc(cs.namespace(|| format!("{:?} alloc const", value)), || {
+            Ok(value)
+        })?;
+    let sum_lc = LinearCombination::zero() + value_alloc.get_variable() - &sum;
     cs.enforce(
-        || "sum - value = 0",
+        || format!("{:?} sum - value = 0", value),
         |lc| lc + &sum_lc,
         |lc| lc + CS::one(),
         |lc| lc,
     );
-    Ok(value)
+    Ok(value_alloc)
 }
 
 /// Allocate a scalar as a base. Only to be used is the scalar fits in base!
@@ -638,6 +644,66 @@ pub fn get_num_at_index<F: PrimeFieldExt, CS: ConstraintSystem<F>>(
             add_allocated_num(cs.namespace(|| format!("selected_num {}", i)), _num, &agg)
         })?;
     Ok(selected_num)
+}
+
+/// get negative field value from signed limb
+pub fn signed_limb_to_neg<F: PrimeFieldExt, CS: ConstraintSystem<F>>(
+    mut cs: CS,
+    limb: &Num<F>,
+    max_limb_plus_one_const: &AllocatedNum<F>,
+    nbit: usize,
+) -> Result<AllocatedNum<F>, SynthesisError> {
+    let limb_alloc = limb.as_allocated_num(cs.namespace(|| "rom decompose index"))?;
+    let bits = limb.decompose(cs.namespace(|| "index decompose bits"), nbit)?;
+    let signed_bit = &bits.allocations[nbit - 1];
+    let twos_complement = AllocatedNum::alloc(cs.namespace(|| "alloc twos complement"), || {
+        max_limb_plus_one_const
+            .get_value()
+            .zip(limb_alloc.get_value())
+            .map(|(a, b)| a - b)
+            .ok_or(SynthesisError::AssignmentMissing)
+    })?;
+    cs.enforce(
+        || "constraints 2's complement",
+        |lc| lc + twos_complement.get_variable() + limb_alloc.get_variable(),
+        |lc| lc + CS::one(),
+        |lc| lc + max_limb_plus_one_const.get_variable(),
+    );
+    let twos_complement_neg = AllocatedNum::alloc(cs.namespace(|| " 2's complment neg"), || {
+        twos_complement
+            .get_value()
+            .map(|v| v.neg())
+            .ok_or(SynthesisError::AssignmentMissing)
+    })?;
+    cs.enforce(
+        || "constraints 2's complement additive neg",
+        |lc| lc + twos_complement.get_variable() + twos_complement_neg.get_variable(),
+        |lc| lc + CS::one(),
+        |lc| lc,
+    );
+
+    let c = AllocatedNum::alloc(cs.namespace(|| "conditional select"), || {
+        signed_bit
+            .value
+            .map(|signed_bit_value| {
+                if signed_bit_value {
+                    twos_complement_neg.get_value().unwrap()
+                } else {
+                    limb_alloc.get_value().unwrap()
+                }
+            })
+            .ok_or(SynthesisError::AssignmentMissing)
+    })?;
+
+    // twos_complement_neg * condition + limb_alloc*(1-condition) = c ->
+    // twos_complement_neg * condition - limb_alloc*condition = c - limb_alloc
+    cs.enforce(
+        || "index conditional select",
+        |lc| lc + twos_complement_neg.get_variable() - limb_alloc.get_variable(),
+        |_| signed_bit.bit.clone(),
+        |lc| lc + c.get_variable() - limb_alloc.get_variable(),
+    );
+    Ok(c)
 }
 
 // TODO optmize constraints to leverage R1CS cost-free additive

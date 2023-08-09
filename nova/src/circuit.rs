@@ -1,5 +1,6 @@
 use std::{
     collections::BTreeMap,
+    iter,
     marker::PhantomData,
     sync::{Arc, Mutex},
 };
@@ -22,7 +23,7 @@ use crate::{
     nonnative::{bignat::BigNat, util::Num},
     utils::{
         add_allocated_num, alloc_const, alloc_num_equals, alloc_one, conditionally_select,
-        evaluate_expr, find_pc_expression, get_num_at_index, WitnessGen,
+        evaluate_expr, find_pc_expression, get_num_at_index, signed_limb_to_neg, WitnessGen,
     },
     LIMB_WIDTH,
 };
@@ -104,6 +105,19 @@ where
         // add constant 1
         poly_map.insert("ONE".to_string(), alloc_one(cs.namespace(|| "constant 1"))?);
 
+        // add constant 2^(LIMB_WIDTH + 1)
+        let mut max_limb_plus_one = vec![0u8; 64];
+        max_limb_plus_one[LIMB_WIDTH / 8] = 1u8;
+        let max_limb_plus_one = F::from_uniform(&max_limb_plus_one[..]);
+        poly_map.insert(
+            "1 <<(LIMB_WIDTH + 1)".to_string(),
+            alloc_const(
+                cs.namespace(|| "constant 1 <<(LIMB_WIDTH + 1)"),
+                max_limb_plus_one,
+                LIMB_WIDTH + 1,
+            )?,
+        );
+
         // parse inst part to construct step circuit
         // decompose ROM[pc] into linear combination lc(opcode_index, operand_index1, operand_index2, ... operand_output)
         // Noted that here only support single output
@@ -131,11 +145,27 @@ where
         let input_output_params_allocnum = rom_value_bignat
             .as_limbs()
             .iter()
+            .zip_eq(
+                iter::once::<Option<&Param>>(None)
+                    .chain(input_params.iter().map(|param| Some(param)))
+                    .chain(output_params.iter().map(|param| Some(param))),
+            )
             .enumerate()
-            .map(|(limb_index, limb)| {
-                limb.as_allocated_num(
-                    cs.namespace(|| format!("rom decompose index {}", limb_index)),
-                )
+            .map(|(limb_index, (limb, param))| {
+                match param {
+                    // signed handling
+                    Some(Param {
+                        ty: Some(type_str), ..
+                    }) if type_str == "signed" => signed_limb_to_neg(
+                        cs.namespace(|| format!("limb index {}", limb_index)),
+                        limb,
+                        &poly_map["1 <<(LIMB_WIDTH + 1)"],
+                        LIMB_WIDTH,
+                    ),
+                    _ => limb.as_allocated_num(
+                        cs.namespace(|| format!("rom decompose index {}", limb_index)),
+                    ),
+                }
             })
             .collect::<Result<Vec<AllocatedNum<F>>, SynthesisError>>()?;
 
