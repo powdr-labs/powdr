@@ -333,10 +333,7 @@ fn replace_coprocessor_stubs(
         .collect();
 
     filter_matching_and_next(statements.into_iter(), move |statement| -> bool {
-        match &statement {
-            Statement::Label(label) if stub_names.contains(&label.as_str()) => true,
-            _ => false,
-        }
+        matches!(&statement, Statement::Label(label) if stub_names.contains(&label.as_str()))
     })
 }
 
