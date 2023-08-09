@@ -1,11 +1,15 @@
+machine Poseidon(LASTBLOCK, function_id) {
 
-machine Main {
-    reg pc[@pc];
-    reg X0[<=];
-    reg X1[<=];
-    reg X2[<=];
-    reg X3[<=];
-    reg A;
+    degree 1024;
+
+    // Hashes two "rate" elements and one "capacity" element to one field element
+    // by applying the Poseidon permutation and returning the first rate element.
+    // When the hash function is used only once, the capacity element should be
+    // set to a constant, where different constants can be used to define different
+    // hash functions.
+    function poseidon_permutation<0> input_in0, input_in1, input_cap -> in0 {
+    }
+
 
     constraints {
         // Using parameters from https://eprint.iacr.org/2019/458.pdf
@@ -103,15 +107,20 @@ machine Main {
         (1 - LASTBLOCK) * (input_in1 - input_in1') = 0;
         (1 - LASTBLOCK) * (input_cap - input_cap') = 0;
     }
+}
 
-    // Hashes two "rate" elements and one "capacity" element to one field element
-    // by applying the Poseidon permutation and returning the first rate element.
-    // When the hash function is used only once, the capacity element should be
-    // set to a constant, where different constants can be used to define different
-    // hash functions.
-    instr poseidon X0, X1, X2 -> X3 {
-        { X0, X1, X2, X3 } in LASTBLOCK { input_in0, input_in1, input_cap, in0 }
-    }
+
+machine Main {
+    reg pc[@pc];
+    reg X0[<=];
+    reg X1[<=];
+    reg X2[<=];
+    reg X3[<=];
+    reg A;
+
+    Poseidon poseidon;
+
+    instr poseidon X0, X1, X2 -> X3 = poseidon.poseidon_permutation
 
     instr assert_eq X0, X1 {
         X0 = X1
@@ -123,15 +132,15 @@ machine Main {
 
         // Test vector for poseidonperm_x5_254_3 from:
         // https://extgit.iaik.tugraz.at/krypto/hadeshash/-/blob/master/code/test_vectors.txt
-        A <=X3= poseidon(0, 1, 2);
+        A <== poseidon(0, 1, 2);
         assert_eq A, 0x115cc0f5e7d690413df64c6b9662e9cf2a3617f2743245519e19607a4417189a;
 
         // Validated by modifying and running `code/poseidonperm_x5_254_3.sage` from the same repository.
-        A <=X3= poseidon(0, 0, 0);
+        A <== poseidon(0, 0, 0);
         assert_eq A, 0x2098f5fb9e239eab3ceac3f27b81e481dc3124d55ffed523a839ee8446b64864;
-        A <=X3= poseidon(-1, -2, -3);
+        A <== poseidon(-1, -2, -3);
         assert_eq A, 0x15492e60e5ae9f3d254f2d44650795c4cac1c924981fb7ca8645a7790971b70c;
-        A <=X3= poseidon(A + 1, A + 2, A + 3);
+        A <== poseidon(A + 1, A + 2, A + 3);
         assert_eq A, 0x188ada144ed909426b0396e967a82e26d739652cff288d13306279d91f29010c;
 
         loop;
