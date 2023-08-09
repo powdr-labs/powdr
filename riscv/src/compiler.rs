@@ -316,9 +316,7 @@ where
         *filter_next = predicate(&item);
         // if the predicate says this line should be filtered, then
         // the next one should be filtered as well.
-        if *filter_next {
-            filter_current = true;
-        }
+      filter_current |= *filter_next
         Some((filter_current, item))
     })
     .filter_map(|(filter, statement)| (!filter).then_some(statement))
