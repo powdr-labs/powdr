@@ -1,6 +1,8 @@
-machine Poseidon(LASTBLOCK, function_id) {
-
-    degree 1024;
+// Implements the poseidon permutation for the BN254 curve.
+// Note that this relies on the trace table being non-wrapping, so it will
+// only work with the Halo2 backend (which is the only backend that supports
+// the BN254 curve).
+machine PoseidonBN254(LASTBLOCK, function_id) {
 
     // Hashes two "rate" elements and one "capacity" element to one field element
     // by applying the Poseidon permutation and returning the first rate element.
@@ -118,7 +120,7 @@ machine Main {
     reg X3[<=];
     reg A;
 
-    Poseidon poseidon;
+    PoseidonBN254 poseidon;
 
     instr poseidon X0, X1, X2 -> X3 = poseidon.poseidon_permutation
 
