@@ -316,7 +316,7 @@ where
         *filter_next = predicate(&item);
         // if the predicate says this line should be filtered, then
         // the next one should be filtered as well.
-      filter_current |= *filter_next
+        filter_current |= *filter_next;
         Some((filter_current, item))
     })
     .filter_map(|(filter, statement)| (!filter).then_some(statement))
@@ -1383,7 +1383,8 @@ mod test {
     fn test_filter_matching_and_next_integers() {
         assert_eq!(
             filter_matching_and_next([0, 1, 2, 0, 2, 0, 0, 3, 2, 1].iter(), |&&i| { i == 0 })
-                .map(|i| *i).collect::<Vec<_>>(),
+                .map(|i| *i)
+                .collect::<Vec<_>>(),
             vec![2, 2, 1]
         );
     }
