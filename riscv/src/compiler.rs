@@ -1384,7 +1384,7 @@ mod test {
     #[test]
     fn test_filter_matching_and_next_integers() {
         assert_eq!(
-            filter_matching_and_next([0, 1, 2, 0, 2, 2, 1].iter(), |&&i| { i == 0 })
+            filter_matching_and_next([0, 1, 2, 0, 2, 0, 0, 3, 2, 1].iter(), |&&i| { i == 0 })
                 .map(|i| *i).collect::<Vec<_>>(),
             vec![2, 2, 1]
         );
