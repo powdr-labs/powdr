@@ -23,8 +23,6 @@ pub struct Generator<'a, T: FieldElement, QueryCallback: Send + Sync> {
     identity_processor: IdentityProcessor<'a, T>,
     query_processor: Option<QueryProcessor<'a, T, QueryCallback>>,
     fixed_data: &'a FixedData<'a, T>,
-    /// The list of all identities of the current machine
-    identities: Vec<&'a Identity<T>>,
     /// The subset of identities that contains a reference to the next row
     /// (precomputed once for performance reasons)
     identities_with_next_ref: Vec<&'a Identity<T>>,
@@ -71,7 +69,6 @@ where
             query_processor,
             identity_processor,
             fixed_data,
-            identities: identities.to_vec(),
             identities_with_next_ref: identities_with_next,
             identities_without_next_ref: identities_without_next,
             previous: default_row.clone(),
@@ -102,8 +99,16 @@ where
         log::trace!("Row: {}", self.current_row_index);
 
         log::trace!("  Going over all identities until no more progress is made");
+        // First, go over identities that don't reference the next row,
+        // Second, propagate values to the next row by going over identities that do reference the next row.
         let mut incomplete_identities = self
-            .loop_until_no_progress(self.identities.clone())
+            .loop_until_no_progress(self.identities_without_next_ref.clone())
+            .and_then(|mut incomplete_identities| {
+                let more_incomplete_identities =
+                    self.loop_until_no_progress(self.identities_with_next_ref.clone())?;
+                incomplete_identities.extend(more_incomplete_identities);
+                Ok(incomplete_identities)
+            })
             .map_err(|e| self.report_failure_and_panic_unsatisfiable(e))
             .unwrap();
 
