@@ -40,7 +40,7 @@ pub(crate) fn nova_prove<T: FieldElement>(
     main_machine: &Machine<T>,
     _: Vec<(&str, Vec<T>)>,
     witness: Vec<(&str, Vec<T>)>,
-) -> () {
+) {
     if polyexen::expr::get_field_p::<<G1 as Group>::Scalar>() != T::modulus().to_arbitrary_integer()
     {
         panic!("powdr modulus doesn't match nova modulus. Make sure you are using Bn254");
@@ -84,7 +84,7 @@ pub(crate) fn nova_prove<T: FieldElement>(
             let input_index: Vec<Param> = k.params.inputs.params.clone();
             let output_index: Vec<Param> = if let Some(output) = &k.params.outputs {
                 output.params.iter().for_each(|output_param| {
-                    assert_eq!(output_param.ty.is_none(), true); // do not support signature other than register type
+                    assert!(output_param.ty.is_none()); // do not support signature other than register type
                 });
                 output.params.clone()
             } else {
@@ -117,7 +117,7 @@ pub(crate) fn nova_prove<T: FieldElement>(
                 let mut io_params: Vec<<G1 as Group>::Scalar> = match rhs {
                     box ast::parsed::Expression::FunctionCall(FunctionCall{arguments, ..}) => arguments.iter().map(|argument| match argument {
                         ast::parsed::Expression::PolynomialReference(ast::parsed::PolynomialReference{ namespace, name, index, next }) => {
-                            assert_eq!(*next, false);
+                            assert!(!*next);
                             assert_eq!(*namespace, None);
                             assert_eq!(*index, None);
                             <G1 as Group>::Scalar::from(regs_index_mapping[name] as u64)
@@ -142,7 +142,7 @@ pub(crate) fn nova_prove<T: FieldElement>(
 
                 // Now we can do linear combination
                 if let Some(instr_index) = instr_index_mapping.get(instr_name) {
-                    limbs_to_nat(iter::once(<G1 as Group>::Scalar::from(*instr_index as u64)).chain(io_params.into_iter()), LIMB_WIDTH).to_biguint().unwrap()
+                    limbs_to_nat(iter::once(<G1 as Group>::Scalar::from(*instr_index as u64)).chain(io_params), LIMB_WIDTH).to_biguint().unwrap()
                 } else {
                     panic!("instr_name {:?} not found in instr_index_mapping {:?}", instr_name, instr_index_mapping);
                 }
@@ -151,7 +151,7 @@ pub(crate) fn nova_prove<T: FieldElement>(
 
                 let io_params: Vec<<G1 as Group>::Scalar> = inputs.iter().map(|argument| match argument {
                     ast::parsed::Expression::PolynomialReference(ast::parsed::PolynomialReference{ namespace, name, index, next }) => {
-                        assert_eq!(*next, false);
+                        assert!(!*next);
                         assert_eq!(*namespace, None);
                         assert_eq!(*index, None);
                         <G1 as Group>::Scalar::from(regs_index_mapping[name] as u64)
@@ -169,7 +169,7 @@ pub(crate) fn nova_prove<T: FieldElement>(
 
                 // Now we can do linear combination
                 if let Some(instr_index) = instr_index_mapping.get(instruction) {
-                    limbs_to_nat(iter::once(<G1 as Group>::Scalar::from(*instr_index as u64)).chain(io_params.into_iter()), LIMB_WIDTH).to_biguint().unwrap()
+                    limbs_to_nat(iter::once(<G1 as Group>::Scalar::from(*instr_index as u64)).chain(io_params), LIMB_WIDTH).to_biguint().unwrap()
                 } else {
                     panic!("instr_name {} not found in instr_index_mapping {:?}", instruction, instr_index_mapping);
                 }
@@ -239,8 +239,8 @@ pub(crate) fn nova_prove<T: FieldElement>(
     //     .max_by(|(_, circuit_size1), (_, circuit_size2)| circuit_size1.cmp(circuit_size2))
     //     .unwrap();
 
-    let ck_primary = gen_commitmentkey_by_r1cs(&running_claims[0].get_r1cs_shape().0);
-    let ck_secondary = gen_commitmentkey_by_r1cs(&running_claims[0].get_r1cs_shape().1);
+    let ck_primary = gen_commitmentkey_by_r1cs(running_claims[0].get_r1cs_shape().0);
+    let ck_secondary = gen_commitmentkey_by_r1cs(running_claims[0].get_r1cs_shape().1);
 
     // set unified ck_primary, ck_secondary and update digest for all running claim
     running_claims.iter_mut().for_each(|running_claim| {

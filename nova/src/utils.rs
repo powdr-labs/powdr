@@ -7,7 +7,6 @@ use std::{
 
 use crate::nonnative::util::Num;
 
-#[allow(dead_code)]
 use super::nonnative::bignat::{nat_to_limbs, BigNat};
 use ast::{
     analyzed::{Expression, PolynomialReference},
@@ -19,12 +18,9 @@ use bellperson::{
         num::AllocatedNum,
         Assignment,
     },
-    ConstraintSystem, LinearCombination, SynthesisError, Variable,
+    ConstraintSystem, LinearCombination, SynthesisError,
 };
-use ff::{
-    derive::bitvec::{prelude::Lsb0, view::AsBits},
-    Field, PrimeField, PrimeFieldBits,
-};
+use ff::{Field, PrimeField, PrimeFieldBits};
 use nova_snark::traits::{Group, PrimeFieldExt};
 use num_bigint::BigInt;
 use number::FieldElement;
@@ -520,7 +516,6 @@ pub fn add_allocated_num<F: PrimeField, CS: ConstraintSystem<F>>(
     Ok(c)
 }
 
-#[allow(dead_code)]
 /// c = a * b where a, b is AllocatedNum
 pub fn mul_allocated_num<F: PrimeField, CS: ConstraintSystem<F>>(
     mut cs: CS,
@@ -550,7 +545,7 @@ pub struct WitnessGen<'a, T: FieldElement> {
 impl<'a, T: FieldElement> WitnessGen<'a, T> {
     fn gen_current_witness(
         index: usize,
-        data: &Vec<(&'a str, &'a Vec<T>)>,
+        data: &[(&'a str, &'a Vec<T>)],
         prev: &mut BTreeMap<&'a str, &'a T>,
     ) {
         data.iter().for_each(|(k, v)| {
@@ -697,11 +692,11 @@ pub fn signed_limb_to_neg<F: PrimeFieldExt, CS: ConstraintSystem<F>>(
 
 // TODO optmize constraints to leverage R1CS cost-free additive
 // TODO combine FieldElement & PrimeField
-pub fn evaluate_expr<'a, T: FieldElement, F: PrimeFieldExt, CS: ConstraintSystem<F>>(
+pub fn evaluate_expr<T: FieldElement, F: PrimeFieldExt, CS: ConstraintSystem<F>>(
     mut cs: CS,
     poly_map: &mut BTreeMap<String, AllocatedNum<F>>,
     expr: &Expression<T>,
-    witgen: Arc<Mutex<WitnessGen<'a, T>>>,
+    witgen: Arc<Mutex<WitnessGen<T>>>,
 ) -> Result<AllocatedNum<F>, SynthesisError> {
     match expr {
         Expression::Number(n) => {
@@ -718,7 +713,7 @@ pub fn evaluate_expr<'a, T: FieldElement, F: PrimeFieldExt, CS: ConstraintSystem
         }) => {
             let name = name.strip_prefix("main.").unwrap(); // TODO FIXME: trim namespace should be happened in unified place
             assert_eq!(*index, None);
-            assert_eq!(*next, false);
+            assert!(!*next);
 
             Ok(poly_map
                 .entry(name.to_string())

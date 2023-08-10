@@ -105,7 +105,7 @@ where
         poly_map.insert("ONE".to_string(), alloc_one(cs.namespace(|| "constant 1"))?);
 
         // add constant 2^(LIMB_WIDTH + 1)
-        let mut max_limb_plus_one = vec![0u8; 64];
+        let mut max_limb_plus_one = [0u8; 64];
         max_limb_plus_one[LIMB_WIDTH / 8] = 1u8;
         let max_limb_plus_one = F::from_uniform(&max_limb_plus_one[..]);
         poly_map.insert(
@@ -136,7 +136,7 @@ where
         let rom_value_bignat = BigNat::from_num(
             cs.namespace(|| "rom value bignat"),
             &Num::from(rom_value),
-            LIMB_WIDTH as usize,
+            LIMB_WIDTH,
             1 + input_params.len() + output_params.len(), // 1 is opcode_index
         )?;
         let input_output_params_allocnum = rom_value_bignat
@@ -144,8 +144,8 @@ where
             .iter()
             .zip_eq(
                 iter::once::<Option<&Param>>(None)
-                    .chain(input_params.iter().map(|param| Some(param)))
-                    .chain(output_params.iter().map(|param| Some(param))),
+                    .chain(input_params.iter().map(Some))
+                    .chain(output_params.iter().map(Some)),
             )
             .enumerate()
             .map(|(limb_index, (limb, param))| {
@@ -216,7 +216,7 @@ where
                             }
 
                             let contains_next_ref = exp.contains_next_ref();
-                            if contains_next_ref == true {
+                            if contains_next_ref {
                                 unimplemented!("not support column next in folding scheme")
                             }
                             let mut cs = cs.namespace(|| format!("rhs {}", rhs));
@@ -252,7 +252,7 @@ where
                         get_num_at_index(
                             cs.namespace(|| format!("regname {}", name)),
                             index,
-                            &z[..],
+                            z,
                         )?,
                     ),
                     // constant
@@ -299,7 +299,7 @@ where
                         let equal_bit = Boolean::from(alloc_num_equals(
                             cs.namespace(|| format!("check reg {} equal bit", i)),
                             &i_alloc,
-                            &output_index,
+                            output_index,
                         )?);
                         if let Some(output) = poly_map.get(&param.name) {
                             conditionally_select(
@@ -350,7 +350,7 @@ where
                     ) = exp
                     {
                         // lhs is `pc'`
-                        if name == "main.pc" && *next == true {
+                        if name == "main.pc" && *next {
                             let identity_name = format!("main.instr_{}", self.identity_name);
                             let exp = find_pc_expression::<T, F, CS>(rhs, &identity_name);
                             let pc_next = exp

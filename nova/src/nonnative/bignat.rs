@@ -1,4 +1,3 @@
-#[allow(dead_code)]
 use super::{
     util::{
         Bitvector, Num, {f_to_nat, nat_to_f},

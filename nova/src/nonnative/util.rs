@@ -1,4 +1,3 @@
-#[allow(dead_code)]
 use super::{BitAccess, OptionExt};
 use bellperson::{
     gadgets::num::AllocatedNum,
