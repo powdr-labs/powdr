@@ -4,8 +4,6 @@ machine Main {
     reg X[<=];
     reg A;
 
-    instr loop { pc' = pc }
-
     function main {
         label_with_next::
         A <=X= 1;
@@ -19,7 +17,7 @@ machine Main {
         // END BATCH Label
 
         end::
-        loop;
+        return;
         // END BATCH
     }
 }
