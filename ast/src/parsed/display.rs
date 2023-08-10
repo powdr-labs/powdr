@@ -93,11 +93,11 @@ impl<T: Display> Display for MachineStatement<T> {
                         .join("\n")
                 )
             }
-            MachineStatement::FunctionDeclaration(_, name, function_id, params, statements) => {
+            MachineStatement::FunctionDeclaration(_, name, operation_id, params, statements) => {
                 write!(
                     f,
                     "function {name}{}{params} {{\n{}\n}}",
-                    function_id
+                    operation_id
                         .as_ref()
                         .map(|id| id.to_string())
                         .unwrap_or_default(),

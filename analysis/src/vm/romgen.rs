@@ -26,14 +26,14 @@ fn generate_machine_rom<T: FieldElement>(mut machine: Machine<T>) -> Machine<T> 
         // do nothing, there is not rom to be generated
         machine
     } else {
-        let function_id = "_function_id";
+        let operation_id = "_operation_id";
 
         let pc = machine.pc().unwrap();
 
         // add the necessary embedded instructions
         let embedded_instructions = [
             parse_instruction_definition(&format!(
-                "instr _jump_to_operation {{ {pc}' = {function_id} }}",
+                "instr _jump_to_operation {{ {pc}' = {operation_id} }}",
             )),
             parse_instruction_definition(&format!(
                 "instr _reset {{ {} }}",
@@ -74,7 +74,7 @@ fn generate_machine_rom<T: FieldElement>(mut machine: Machine<T>) -> Machine<T> 
                 .reason(IncompatibleSet::from(Incompatible::Label)),
         ]);
 
-        // add each function, setting the function_id to the current position in the ROM
+        // add each function, setting the operation_id to the current position in the ROM
         for function in machine.functions.iter_mut() {
             function.id = Some(T::from(rom.len() as u64));
 
@@ -118,8 +118,8 @@ fn generate_machine_rom<T: FieldElement>(mut machine: Machine<T>) -> Machine<T> 
                 parse_pil_statement(&format!(
                     "{sigma}' = (1 - first_step') * ({sigma} + {latch})"
                 )), // HACKY: THIS ASSUMES `first_step` is defined here!!
-                // once `_sigma` is 1, constrain `_function_id` to the label of the sink
-                parse_pil_statement(&format!("{sigma} * ({function_id} - {sink_id}) = 0")),
+                // once `_sigma` is 1, constrain `_operation_id` to the label of the sink
+                parse_pil_statement(&format!("{sigma} * ({operation_id} - {sink_id}) = 0")),
             ],
         });
         ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -129,7 +129,7 @@ fn generate_machine_rom<T: FieldElement>(mut machine: Machine<T>) -> Machine<T> 
             parse_function_statement("_loop;"),
         ])]);
 
-        machine.function_id = Some(function_id.into());
+        machine.operation_id = Some(operation_id.into());
 
         machine.rom = Some(Rom {
             statements: rom.into_iter().collect(),

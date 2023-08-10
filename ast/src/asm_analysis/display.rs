@@ -39,11 +39,11 @@ fn comment_out<S: ToString>(s: S) -> String {
 
 impl<T: Display> Display for Machine<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        match (&self.latch, &self.function_id) {
-            (Some(latch), Some(function_id)) => write!(f, "({latch}, {function_id})"),
+        match (&self.latch, &self.operation_id) {
+            (Some(latch), Some(operation_id)) => write!(f, "({latch}, {operation_id})"),
             (None, None) => write!(f, ""),
             (Some(latch), None) => write!(f, "({latch}, _)"),
-            (None, Some(function_id)) => write!(f, "(_, {function_id})"),
+            (None, Some(operation_id)) => write!(f, "(_, {operation_id})"),
         }?;
 
         writeln!(f, " {{")?;

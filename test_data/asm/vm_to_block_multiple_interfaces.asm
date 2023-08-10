@@ -1,6 +1,6 @@
 // calls two functions in a submachine whose interface is different: one is `x, y, z` while the other one is `z, x, y`
 
-machine Arith(latch, function_id) {
+machine Arith(latch, operation_id) {
 
     degree 8;
 

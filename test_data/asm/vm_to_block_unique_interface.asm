@@ -1,4 +1,4 @@
-machine Binary(latch, function_id) {
+machine Binary(latch, operation_id) {
 
     degree 32;
 
@@ -17,11 +17,11 @@ machine Binary(latch, function_id) {
         col fixed P_X = [0, 0, 1, 1, 0, 0, 1, 1] + [1]*;
         col fixed P_Y = [0, 1, 0, 1, 0, 1, 0, 1] + [1]*;
         col fixed P_Z = [0, 0, 0, 1, 0, 1, 1, 1] + [1]*;
-        { function_id, x, y, z } in { P_FUNCTION, P_X, P_Y, P_Z };
+        { operation_id, x, y, z } in { P_FUNCTION, P_X, P_Y, P_Z };
     }
 }
 
-machine Arith(latch, function_id) {
+machine Arith(latch, operation_id) {
 
     degree 32;
 
@@ -36,7 +36,7 @@ machine Arith(latch, function_id) {
         col witness x;
         col witness y;
         col witness z;
-        z = (1 - function_id) * (x + y) + function_id * (x - y);
+        z = (1 - operation_id) * (x + y) + operation_id * (x - y);
     }
 }
 

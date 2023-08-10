@@ -298,7 +298,7 @@ pub struct SubmachineDeclaration {
 pub struct Machine<T> {
     pub degree: Option<DegreeStatement>,
     pub latch: Option<String>,
-    pub function_id: Option<String>,
+    pub operation_id: Option<String>,
     pub registers: Vec<RegisterDeclarationStatement>,
     // index of the pc in the registers, if any
     pub pc: Option<usize>,

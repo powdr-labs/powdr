@@ -1,4 +1,4 @@
-machine SimpleStatic(latch, function_id) {
+machine SimpleStatic(latch, operation_id) {
 
     degree 8;
 

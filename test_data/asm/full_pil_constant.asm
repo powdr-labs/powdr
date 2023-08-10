@@ -1,4 +1,4 @@
-machine FullConstant(latch, function_id) {
+machine FullConstant(latch, operation_id) {
 	degree 2;
 
 	constraints {

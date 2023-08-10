@@ -18,7 +18,7 @@ pub struct Machine<T> {
 #[derive(Debug, PartialEq, Eq, Default)]
 pub struct MachineArguments {
     pub latch: Option<String>,
-    pub function_id: Option<String>,
+    pub operation_id: Option<String>,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Default)]
@@ -45,7 +45,7 @@ impl Params {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
-/// the function id necessary to call this function from the outside
+/// the operation id necessary to call this function from the outside
 pub struct FunctionId<T> {
     pub id: T,
 }
@@ -61,7 +61,7 @@ pub enum MachineStatement<T> {
     FunctionDeclaration(
         usize,
         String,
-        // function id, explicit for static machines
+        // operation id, explicit for static machines
         Option<FunctionId<T>>,
         Params,
         Vec<FunctionStatement<T>>,

@@ -6,7 +6,7 @@ use ast::{
     asm_analysis::{
         AnalysisASMFile, LinkDefinitionStatement, Machine, PilBlock, SubmachineDeclaration,
     },
-    object::{Function, Link, LinkFrom, LinkTo, Location, Object, PILGraph},
+    object::{Link, LinkFrom, LinkTo, Location, Object, Operation, PILGraph},
     parsed::{asm::FunctionRef, PilStatement},
 };
 
@@ -63,12 +63,12 @@ pub fn compile<T: FieldElement>(input: AnalysisASMFile<T>) -> PILGraph<T> {
         main: ast::object::Machine {
             location: main_location,
             latch: main_ty.latch.clone().unwrap(),
-            function_id: main_ty.function_id.clone().unwrap(),
+            operation_id: main_ty.operation_id.clone().unwrap(),
         },
         entry_points: main_ty
             .functions
             .iter()
-            .map(|f| Function {
+            .map(|f| Operation {
                 name: "main".to_string(),
                 id: f.id.unwrap(),
                 params: f.params.clone(),
@@ -170,9 +170,9 @@ impl<'a, T: FieldElement> ASMPILConverter<'a, T> {
                     machine: ast::object::Machine {
                         location: instance_location,
                         latch: instance_ty.latch.clone().unwrap(),
-                        function_id: instance_ty.function_id.clone().unwrap(),
+                        operation_id: instance_ty.operation_id.clone().unwrap(),
                     },
-                    function: Function {
+                    operation: Operation {
                         name: d.name.clone(),
                         id: d.id.unwrap(),
                         params: d.params.clone(),

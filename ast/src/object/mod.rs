@@ -24,7 +24,7 @@ impl Location {
 
 pub struct PILGraph<T> {
     pub main: Machine,
-    pub entry_points: Vec<Function<T>>,
+    pub entry_points: Vec<Operation<T>>,
     pub objects: BTreeMap<Location, Object<T>>,
 }
 
@@ -60,8 +60,8 @@ pub struct LinkFrom {
 pub struct LinkTo<T> {
     /// the machine we link to
     pub machine: Machine,
-    /// the function we link to
-    pub function: Function<T>,
+    /// the operation we link to
+    pub operation: Operation<T>,
 }
 
 #[derive(Clone)]
@@ -70,12 +70,12 @@ pub struct Machine {
     pub location: Location,
     /// its latch
     pub latch: String,
-    /// its function id
-    pub function_id: String,
+    /// its operation id
+    pub operation_id: String,
 }
 
 #[derive(Clone)]
-pub struct Function<T> {
+pub struct Operation<T> {
     pub name: String,
     pub id: T,
     pub params: Params,

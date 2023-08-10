@@ -153,9 +153,9 @@ Machine: Machine<T> = {
 
 MachineArguments: MachineArguments = {
     "(" "_" "," "_" ")" => MachineArguments::default(),
-    "(" <latch:Identifier> "," "_" ")" => MachineArguments { latch: Some(latch), function_id: None },
-    "(" "_" "," <function_id:Identifier> ")" => MachineArguments { latch: None, function_id: Some(function_id) },
-    "(" <latch:Identifier> "," <function_id:Identifier> ")" => MachineArguments { latch: Some(latch), function_id: Some(function_id) },
+    "(" <latch:Identifier> "," "_" ")" => MachineArguments { latch: Some(latch), operation_id: None },
+    "(" "_" "," <operation_id:Identifier> ")" => MachineArguments { latch: None, operation_id: Some(operation_id) },
+    "(" <latch:Identifier> "," <operation_id:Identifier> ")" => MachineArguments { latch: Some(latch), operation_id: Some(operation_id) },
     => MachineArguments::default(),
 }
 

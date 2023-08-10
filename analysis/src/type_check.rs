@@ -98,12 +98,12 @@ impl<T: FieldElement> TypeChecker<T> {
                 MachineStatement::FunctionDeclaration(
                     start,
                     name,
-                    function_id,
+                    operation_id,
                     params,
                     statements,
                 ) => {
                     let mut function_statements = vec![];
-                    let id = function_id.map(|id| id.id);
+                    let id = operation_id.map(|id| id.id);
                     for s in statements {
                         match s {
                             FunctionStatement::Assignment(start, lhs, using_reg, rhs) => {
@@ -150,7 +150,7 @@ impl<T: FieldElement> TypeChecker<T> {
         }
 
         let latch = machine.arguments.latch;
-        let function_id = machine.arguments.function_id;
+        let operation_id = machine.arguments.operation_id;
 
         if !registers.iter().any(|r| r.ty.is_pc()) {
             if latch.is_none() {
@@ -159,9 +159,9 @@ impl<T: FieldElement> TypeChecker<T> {
                     machine.name
                 ));
             }
-            if function_id.is_none() {
+            if operation_id.is_none() {
                 errors.push(format!(
-                    "Machine {} should have a function id column because it does not have a pc",
+                    "Machine {} should have an operation id column because it does not have a pc",
                     machine.name
                 ));
             }
@@ -180,9 +180,9 @@ impl<T: FieldElement> TypeChecker<T> {
                     machine.name
                 ));
             }
-            if function_id.is_some() {
+            if operation_id.is_some() {
                 errors.push(format!(
-                    "Machine {} should not have a function id column because it has a pc",
+                    "Machine {} should not have an operation id column because it has a pc",
                     machine.name
                 ));
             }
@@ -203,7 +203,7 @@ impl<T: FieldElement> TypeChecker<T> {
         *self.machines_types.get_mut(&machine.name).unwrap() = Some(Machine {
             degree,
             latch,
-            function_id,
+            operation_id,
             pc: registers
                 .iter()
                 .enumerate()
