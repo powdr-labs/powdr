@@ -15,7 +15,7 @@ use crate::disambiguator;
 use crate::parser::RiscParser;
 use crate::{Argument, Expression, Statement};
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct Register {
     value: u8,
 }
@@ -137,7 +137,7 @@ impl fmt::Display for Register {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub enum FunctionKind {
     HiDataRef,
     LoDataRef,
@@ -177,6 +177,7 @@ impl asm_utils::compiler::Compiler for Risc {
                 .collect(),
         );
         let (mut objects, mut object_order) = data_parser::extract_data_objects(&statements);
+        assert_eq!(objects.keys().len(), object_order.len());
 
         // Reduce to the code that is actually reachable from main
         // (and the objects that are referred from there)
@@ -394,6 +395,23 @@ fn store_data_objects<'a>(
                                 "mstore tmp1;".to_string(),
                             ]);
                         }
+                    }
+                    DataValue::Offset(_, _) => {
+                        unimplemented!()
+
+                        /*
+                        object_code.push(format!("addr <=X= 0x{pos:x};"));
+
+                        I think this solution should be fine but hard to say without
+                        an actual code snippet that uses it.
+
+                        // TODO should be possible without temporary
+                        object_code.extend([
+                            format!("tmp1 <== load_label({});", escape_label(a)),
+                            format!("tmp2 <== load_label({});", escape_label(b)),
+                            "mstore tmp1 - tmp2;".to_string(),
+                        ]);
+                        */
                     }
                 }
                 pos += item.size() as u32;

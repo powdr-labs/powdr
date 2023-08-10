@@ -1,15 +1,15 @@
 //! Common AST for the frontend architecture inputs.
 
-use std::fmt::{self, Display};
+use std::fmt::{self, Debug, Display};
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum Statement<R: Register, F: FunctionOpKind> {
     Label(String),
     Directive(String, Vec<Argument<R, F>>),
     Instruction(String, Vec<Argument<R, F>>),
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum Argument<R: Register, F: FunctionOpKind> {
     Register(R),
     RegOffset(R, Expression<F>),
@@ -37,9 +37,9 @@ impl<R: Register, F: FunctionOpKind> Argument<R, F> {
     }
 }
 
-pub trait Register: Display {}
+pub trait Register: Display + Debug {}
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub enum UnaryOpKind {
     Negation,
 }
@@ -52,7 +52,7 @@ impl Display for UnaryOpKind {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub enum BinaryOpKind {
     Or,
     Xor,
@@ -66,9 +66,9 @@ pub enum BinaryOpKind {
     Mod,
 }
 
-pub trait FunctionOpKind: Display {}
+pub trait FunctionOpKind: Display + Debug {}
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum Expression<F> {
     Number(i64),
     Symbol(String),
