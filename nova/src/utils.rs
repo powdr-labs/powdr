@@ -91,65 +91,56 @@ pub fn alloc_one<F: PrimeField, CS: ConstraintSystem<F>>(
     Ok(one)
 }
 
-/// alloc a field num as a constant
-/// where every bit is deterministic constraint in R1CS
+/// alloc a field as a constant
+/// implemented refer from https://github.com/lurk-lab/lurk-rs/blob/4335fbb3290ed1a1176e29428f7daacb47f8033d/src/circuit/gadgets/data.rs#L387-L402
 pub fn alloc_const<F: PrimeField, CS: ConstraintSystem<F>>(
     mut cs: CS,
-    value: F,
-    n_bits: usize,
+    val: F,
 ) -> Result<AllocatedNum<F>, SynthesisError> {
-    let allocations: Vec<Variable> = value.to_repr().as_bits::<Lsb0>()[0..n_bits]
-        .iter()
-        .enumerate()
-        .map(|(index, raw_bit)| {
-            let bit = cs.alloc(
-                || "boolean",
-                || {
-                    if *raw_bit {
-                        Ok(F::ONE)
-                    } else {
-                        Ok(F::ZERO)
-                    }
-                },
-            )?;
-            if *raw_bit {
-                cs.enforce(
-                    || format!("{:?} index {index} true", value),
-                    |lc| lc + bit,
-                    |lc| lc + CS::one(),
-                    |lc| lc + CS::one(),
-                );
-            } else {
-                cs.enforce(
-                    || format!("{:?} index {index} false", value),
-                    |lc| lc + bit,
-                    |lc| lc + CS::one(),
-                    |lc| lc,
-                );
-            }
-            Ok(bit)
-        })
-        .collect::<Result<Vec<Variable>, SynthesisError>>()?;
-    let mut f = F::ONE;
-    let sum = allocations
-        .iter()
-        .fold(LinearCombination::zero(), |lc, bit| {
-            let l = lc + (f, *bit);
-            f = f.double();
-            l
-        });
-    let value_alloc =
-        AllocatedNum::alloc(cs.namespace(|| format!("{:?} alloc const", value)), || {
-            Ok(value)
-        })?;
-    let sum_lc = LinearCombination::zero() + value_alloc.get_variable() - &sum;
+    let allocated = AllocatedNum::<F>::alloc(cs.namespace(|| "allocate const"), || Ok(val))?;
+
+    // allocated * 1 = val
     cs.enforce(
-        || format!("{:?} sum - value = 0", value),
-        |lc| lc + &sum_lc,
+        || "enforce constant",
+        |lc| lc + allocated.get_variable(),
         |lc| lc + CS::one(),
-        |lc| lc,
+        |_| Boolean::Constant(true).lc(CS::one(), val),
     );
-    Ok(value_alloc)
+
+    Ok(allocated)
+}
+
+/// Allocate incremental integers within range [start, end) as vector of AllocatedNum
+pub fn alloc_incremental_range_index<F: PrimeField, CS: ConstraintSystem<F>>(
+    mut cs: CS,
+    start: usize,
+    len: usize,
+) -> Result<Vec<AllocatedNum<F>>, SynthesisError> {
+    if len == 0 {
+        return Ok(vec![]);
+    }
+
+    let one = alloc_one(cs.namespace(|| "one"))?;
+
+    let mut res_vec = if start == 0 {
+        vec![alloc_zero(cs.namespace(|| "zero"))?]
+    } else {
+        vec![alloc_const(
+            cs.namespace(|| format!("start {}", start)),
+            F::from(start as u64),
+        )?]
+    };
+
+    let _ = (start + 1..len).try_fold(&mut res_vec, |res_vec, i| {
+        let new_acc = add_allocated_num(
+            cs.namespace(|| format!("{}", i)),
+            res_vec.last().unwrap(),
+            &one,
+        )?;
+        res_vec.push(new_acc);
+        Ok::<&mut Vec<AllocatedNum<F>>, SynthesisError>(res_vec)
+    })?;
+    Ok(res_vec)
 }
 
 /// Allocate a scalar as a base. Only to be used is the scalar fits in base!
@@ -605,28 +596,26 @@ impl<'a, T: FieldElement> WitnessGen<'a, T> {
 
 pub fn get_num_at_index<F: PrimeFieldExt, CS: ConstraintSystem<F>>(
     mut cs: CS,
-    index_before_offset: &AllocatedNum<F>,
-    z: &[AllocatedNum<F>],
-    offset: usize,
+    target_index: &AllocatedNum<F>,
+    arr: &[AllocatedNum<F>],
 ) -> Result<AllocatedNum<F>, SynthesisError> {
-    let index = AllocatedNum::alloc(cs.namespace(|| "index"), || {
-        Ok(index_before_offset.get_value().unwrap() + F::from(offset as u64))
-    })?;
+    let indexes_alloc = alloc_incremental_range_index(
+        cs.namespace(|| "augment circuit range index"),
+        0,
+        arr.len(),
+    )?;
 
     // select target when index match or empty
     let zero = alloc_zero(cs.namespace(|| "zero"))?;
-    let _selected_num = z
+    let selected_num = indexes_alloc
         .iter()
+        .zip(arr.iter())
         .enumerate()
-        .map(|(i, z)| {
-            let i_alloc = AllocatedNum::alloc(
-                cs.namespace(|| format!("_selected_circuit_index i{} allocated", i)),
-                || Ok(F::from(i as u64)),
-            )?;
+        .map(|(i, (index_alloc, z))| {
             let equal_bit = Boolean::from(alloc_num_equals(
                 cs.namespace(|| format!("check selected_circuit_index {} equal bit", i)),
-                &i_alloc,
-                &index,
+                target_index,
+                index_alloc,
             )?);
             conditionally_select(
                 cs.namespace(|| format!("select on index namespace {}", i)),
@@ -637,7 +626,7 @@ pub fn get_num_at_index<F: PrimeFieldExt, CS: ConstraintSystem<F>>(
         })
         .collect::<Result<Vec<AllocatedNum<F>>, SynthesisError>>()?;
 
-    let selected_num = _selected_num
+    let selected_num = selected_num
         .iter()
         .enumerate()
         .try_fold(zero, |agg, (i, _num)| {
@@ -716,11 +705,12 @@ pub fn evaluate_expr<'a, T: FieldElement, F: PrimeFieldExt, CS: ConstraintSystem
 ) -> Result<AllocatedNum<F>, SynthesisError> {
     match expr {
         Expression::Number(n) => {
-            AllocatedNum::alloc(cs.namespace(|| format!("{:x?}", n.to_string())), || {
-                let mut n_le = n.to_bytes_le();
-                n_le.resize(64, 0);
-                Ok(F::from_uniform(&n_le[..]))
-            })
+            let mut n_le = n.to_bytes_le();
+            n_le.resize(64, 0);
+            alloc_const(
+                cs.namespace(|| format!("{:x?}", n.to_string())),
+                F::from_uniform(&n_le[..]),
+            )
         }
         // this is refer to another polynomial, in other word, witness
         Expression::PolynomialReference(PolynomialReference {

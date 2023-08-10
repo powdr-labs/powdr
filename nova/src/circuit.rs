@@ -97,7 +97,6 @@ where
             let v = alloc_const(
                 cs.namespace(|| format!("const {:?}", v)),
                 F::from_uniform(&v_le[..]),
-                64,
             )?;
             poly_map.insert(k.clone(), v);
             Ok::<(), SynthesisError>(())
@@ -114,7 +113,6 @@ where
             alloc_const(
                 cs.namespace(|| "constant 1 <<(LIMB_WIDTH + 1)"),
                 max_limb_plus_one,
-                LIMB_WIDTH + 1,
             )?,
         );
 
@@ -131,8 +129,7 @@ where
         let rom_value = get_num_at_index(
             cs.namespace(|| "rom value"),
             _pc_counter,
-            z,
-            self.num_registers,
+            &z[self.num_registers..],
         )?;
         let (input_params, output_params) = self.io_params;
         // -------------
@@ -177,10 +174,10 @@ where
         let output_params_allocnum = // fetch range belongs to output params
             &input_output_params_allocnum[offset..offset + output_params.len()];
 
-        let expected_opcode_index =
-            AllocatedNum::alloc(cs.namespace(|| "expected_opcode_index"), || {
-                Ok(F::from(self.augmented_circuit_index as u64))
-            })?;
+        let expected_opcode_index = alloc_const(
+            cs.namespace(|| "expected_opcode_index"),
+            F::from(self.augmented_circuit_index as u64),
+        )?;
         cs.enforce(
             || "opcode equality",
             |lc| lc + opcode_index_from_rom.get_variable(),
@@ -255,8 +252,7 @@ where
                         get_num_at_index(
                             cs.namespace(|| format!("regname {}", name)),
                             index,
-                            z,
-                            0,
+                            &z[..],
                         )?,
                     ),
                     // constant
@@ -296,9 +292,9 @@ where
                 assert!(param.ty.is_none()); // output only accept register
                 (0..z.len())
                     .map(|i| {
-                        let i_alloc = AllocatedNum::alloc(
+                        let i_alloc = alloc_const(
                             cs.namespace(|| format!("output reg i{} allocated", i)),
-                            || Ok(F::from(i as u64)),
+                            F::from(i as u64),
                         )?;
                         let equal_bit = Boolean::from(alloc_num_equals(
                             cs.namespace(|| format!("check reg {} equal bit", i)),
