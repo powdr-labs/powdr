@@ -188,7 +188,10 @@ where
             |lc| lc + expected_opcode_index.get_variable(),
         );
 
-        for id in &self.analyzed.identities {
+        // process identites
+        // all the shared constraints will be compiled into each augmented circuit
+        // TODO optimized to compile only nessesary shared constraints
+        for (index, id) in self.analyzed.identities.iter().enumerate() {
             match id.kind {
                 IdentityKind::Polynomial => {
                     // everthing should be in left.selector only
@@ -198,22 +201,34 @@ where
 
                     let exp = id.expression_for_poly_id();
 
+                    // identities process as below
+                    // case 1: ((main.instr_XXXX * ) - 0) = 0 => `BinaryOperation(BinaryOperation... `
+                    // case 1.1: (() - 0) = 0 => `BinaryOperation(BinaryOperation... `
+                    // case 2: PolynomialReference - () = 0 => `BinaryOperation(PolynomialReference...`
                     match exp {
+                        // case 1/1.1
                         Expression::BinaryOperation(
                             box Expression::BinaryOperation(
                                 box Expression::PolynomialReference(
-                                    PolynomialReference { name, .. },
+                                    PolynomialReference { name, next, .. },
                                     ..,
                                 ),
-                                BinaryOperator::Mul,
+                                _,
                                 box rhs,
                             ),
                             ..,
                         ) => {
-                            // only build constraints on matched identities
-                            // TODO replace with better regular expression ?
-                            if !(name.starts_with("main.instr")
-                                && name.ends_with(&self.identity_name[..]))
+                            // skip next
+                            if *next {
+                                unimplemented!("not support column next in folding scheme")
+                            }
+                            // skip first_step, for it's not being used in folding scheme
+                            if name == "main.first_step" {
+                                continue;
+                            }
+                            // only skip if constraint is dedicated to other instruction
+                            if name.starts_with("main.instr")
+                                && !name.ends_with(&self.identity_name[..])
                             {
                                 continue;
                             }
@@ -222,21 +237,56 @@ where
                             if contains_next_ref {
                                 unimplemented!("not support column next in folding scheme")
                             }
-                            let mut cs = cs.namespace(|| format!("rhs {}", rhs));
-                            let num_eval = evaluate_expr(
-                                cs.namespace(|| format!("constraint {}", name)),
-                                &mut poly_map,
-                                rhs,
-                                self.witgen.clone(),
-                            )?;
+                            let num_eval = if name.starts_with("main.instr")
+                                && name.ends_with(&self.identity_name[..])
+                            {
+                                evaluate_expr(
+                                    cs.namespace(|| format!("id index {} rhs {}", index, rhs)),
+                                    &mut poly_map,
+                                    rhs,
+                                    self.witgen.clone(),
+                                )?
+                            } else {
+                                evaluate_expr(
+                                    cs.namespace(|| format!("id index {} exp {}", index, exp)),
+                                    &mut poly_map,
+                                    exp,
+                                    self.witgen.clone(),
+                                )?
+                            };
                             cs.enforce(
-                                || format!("constraint {} = 0", name),
+                                || format!("id index {} constraint {} = 0", index, name),
                                 |lc| lc + num_eval.get_variable(),
                                 |lc| lc + CS::one(),
                                 |lc| lc,
                             );
                         }
-                        _ => (), // println!("exp {:?} not support", exp),
+                        // case 2
+                        Expression::BinaryOperation(
+                            box Expression::PolynomialReference(
+                                PolynomialReference { name, next, .. },
+                                ..,
+                            ),
+                            _,
+                            _,
+                        ) => {
+                            if *next {
+                                continue;
+                            }
+                            let num_eval = evaluate_expr(
+                                cs.namespace(|| format!("id index {} exp {}", index, exp)),
+                                &mut poly_map,
+                                exp,
+                                self.witgen.clone(),
+                            )?;
+                            cs.enforce(
+                                || format!("id index {} constraint {} = 0", index, name),
+                                |lc| lc + num_eval.get_variable(),
+                                |lc| lc + CS::one(),
+                                |lc| lc,
+                            );
+                        }
+                        _ => unimplemented!("exp {:?} not support", exp),
                     }
                 }
                 _ => (),

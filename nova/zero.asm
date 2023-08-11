@@ -1,6 +1,6 @@
 machine NovaZero {
 
-    degree 20;
+    degree 32;
 
     // this simple machine does not have submachines
 
@@ -10,6 +10,14 @@ machine NovaZero {
     reg Z[<=];
     reg x0;
     reg x1;
+
+    constraints {
+        col witness XInv;
+        col witness XIsZero;
+        XIsZero = 1 - X * XInv;
+        XIsZero * X = 0;
+        XIsZero * (1 - XIsZero) = 0;
+    }
 
     constraints {
         col witness x_b0;
@@ -27,7 +35,7 @@ machine NovaZero {
 
     instr incr X -> Y {
         Y = X + 1,
-        Y = x_b0 + x_b1 * 2 + x_b2 * 2**2 + x_b3 * 2**3,
+        X = x_b0 + x_b1 * 2 + x_b2 * 2**2 + x_b3 * 2**3,
         pc' = pc + 1
     }
 
@@ -55,6 +63,11 @@ machine NovaZero {
         pc' = pc
     }
 
+    // an instruction only proceed pc + 1 if X = 0
+    instr contz X {
+        pc' = (1 - XIsZero) * (pc - 1) + XIsZero * (pc + 1)
+    }
+
     instr assert_zero X {
         X = 0
     }
@@ -74,7 +87,8 @@ machine NovaZero {
         x0 <=Z= sub(x0, x0); // x0 - x0 = 0
         assert_zero x0; // x0 == 0
         x1 <=X= ${ ("input", 1) };
-        x1 <=Z= sub(x1, x1); // x1 - x1 = 0
+        x1 <=Z= addi(x1, -1);
+        contz x1;
         assert_zero x1; // x1 == 0
         loop;
     }
