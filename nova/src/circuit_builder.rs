@@ -7,7 +7,9 @@ use std::{
 
 use ast::{
     analyzed::Analyzed,
-    asm_analysis::{AssignmentStatement, FunctionStatement, InstructionStatement, Machine},
+    asm_analysis::{
+        AssignmentStatement, FunctionStatement, InstructionStatement, LabelStatement, Machine,
+    },
     parsed::{
         asm::{FunctionCall, Param},
         Expression::Number,
@@ -123,13 +125,22 @@ pub(crate) fn nova_prove<T: FieldElement>(
     // TODO1: move this part to setup stage.
     // TODO2: replace this part with more efficient memory commitment strategy, e.g. folding KZG
 
+    let mut label_pc_mapping = BTreeMap::new();
+    let mut pc = 0u64;
     let rom = main_machine.rom.as_ref().map(|rom| {
-        rom.statements.iter().map(|statement| match statement {
+        rom.statements.iter().flat_map(|statement| {
+
+            match statement {
+            FunctionStatement::Label(LabelStatement{ name, .. }) => {
+                label_pc_mapping.insert(name, pc);
+                None
+            },
             FunctionStatement::Assignment(AssignmentStatement {
                 lhs,
                 rhs,
                 .. // ignore start
             }) => {
+                pc += 1;
                 let instr_name: String = match rhs {
                     box ast::parsed::Expression::FunctionCall(FunctionCall{id, ..}) => {
                         assert!(id != FREE_INPUT_INSTR_NAME, "{} is a reserved instruction name", FREE_INPUT_INSTR_NAME);
@@ -151,7 +162,12 @@ pub(crate) fn nova_prove<T: FieldElement>(
                             assert!(!*next);
                             assert_eq!(*namespace, None);
                             assert_eq!(*index, None);
-                            <G1 as Group>::Scalar::from(regs_index_mapping[name] as u64)
+                            // label or register
+                            if let Some(label_pc) = label_pc_mapping.get(name) {
+                                <G1 as Group>::Scalar::from(*label_pc)
+                            }else {
+                                <G1 as Group>::Scalar::from(regs_index_mapping[name] as u64)
+                            }
                         },
                         Number(n) => {
                             <G1 as Group>::Scalar::from_bytes(&n.to_bytes_le().try_into().unwrap()).unwrap()
@@ -180,20 +196,27 @@ pub(crate) fn nova_prove<T: FieldElement>(
                 io_params.extend(output_params); // append output register to the back of input register
 
                 // Now we can do linear combination
-                if let Some(instr_index) = instr_index_mapping.get(&instr_name) {
+                let rom_value = if let Some(instr_index) = instr_index_mapping.get(&instr_name) {
                     limbs_to_nat(iter::once(<G1 as Group>::Scalar::from(*instr_index as u64)).chain(io_params), LIMB_WIDTH).to_biguint().unwrap()
                 } else {
                     panic!("instr_name {:?} not found in instr_index_mapping {:?}", instr_name, instr_index_mapping);
-                }
+                };
+                Some(rom_value)
             }
             FunctionStatement::Instruction(InstructionStatement{ instruction, inputs, ..}) => {
-
-                let io_params: Vec<<G1 as Group>::Scalar> = inputs.iter().map(|argument| match argument {
+                pc += 1;
+                let io_params: Vec<<G1 as Group>::Scalar> = inputs.iter().map(|argument| {
+                    match argument {
                     ast::parsed::Expression::PolynomialReference(ast::parsed::PolynomialReference{ namespace, name, index, next }) => {
                         assert!(!*next);
                         assert_eq!(*namespace, None);
                         assert_eq!(*index, None);
-                        <G1 as Group>::Scalar::from(regs_index_mapping[name] as u64)
+                        // label or register
+                        if let Some(label_pc) = label_pc_mapping.get(name) {
+                            <G1 as Group>::Scalar::from(*label_pc)
+                        }else {
+                            <G1 as Group>::Scalar::from(regs_index_mapping[name] as u64)
+                        }
                     },
                     Number(n) => <G1 as Group>::Scalar::from_bytes(&n.to_bytes_le().try_into().unwrap()).unwrap(),
                     ast::parsed::Expression::UnaryOperation(ope,box Number(n)) => {
@@ -204,17 +227,18 @@ pub(crate) fn nova_prove<T: FieldElement>(
                         }
                     },
                     x => unimplemented!("unsupported expression {:?}", x),
-                }).collect();
+                }}).collect();
 
                 // Now we can do linear combination
-                if let Some(instr_index) = instr_index_mapping.get(instruction) {
+                let rom_value = if let Some(instr_index) = instr_index_mapping.get(instruction) {
                     limbs_to_nat(iter::once(<G1 as Group>::Scalar::from(*instr_index as u64)).chain(io_params), LIMB_WIDTH).to_biguint().unwrap()
                 } else {
                     panic!("instr_name {} not found in instr_index_mapping {:?}", instruction, instr_index_mapping);
-                }
+                };
+                Some(rom_value)
             }
             s => unimplemented!("unimplemented statement {:?}", s),
-        }).collect::<Vec<BigUint>>()
+        }}).collect::<Vec<BigUint>>()
     }).unwrap();
 
     // rom.iter().for_each(|v| println!("rom value {:#32x}", v));
@@ -317,7 +341,7 @@ pub(crate) fn nova_prove<T: FieldElement>(
     // Have estimate of iteration via length of witness
     let num_steps = witness.lock().unwrap().num_of_iteration();
     for i in 0..num_steps {
-        println!("round i {}, total step {}", i, num_steps);
+        println!("round i {}, total step {}", i, num_steps - 1);
         if i > 0 {
             // iterate through next witness row
             witness.lock().unwrap().next();

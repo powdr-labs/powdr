@@ -320,7 +320,61 @@ where
             );
         }
 
-        // constraint input name to index value
+        // process pc_next
+        // TODO: very inefficient to go through all identities for each folding, need optimisation
+        for id in &self.analyzed.identities {
+            match id.kind {
+                IdentityKind::Polynomial => {
+                    // everthing should be in left.selector only
+                    assert_eq!(id.right.expressions.len(), 0);
+                    assert_eq!(id.right.selector, None);
+                    assert_eq!(id.left.expressions.len(), 0);
+
+                    let exp = id.expression_for_poly_id();
+
+                    if let Expression::BinaryOperation(
+                        box Expression::PolynomialReference(
+                            PolynomialReference { name, next, .. },
+                            ..,
+                        ),
+                        BinaryOperator::Sub,
+                        box rhs,
+                        ..,
+                    ) = exp
+                    {
+                        // lhs is `pc'`
+                        if name == "main.pc" && *next {
+                            let identity_name = format!("main.instr_{}", self.identity_name);
+                            let exp = find_pc_expression::<T, F, CS>(rhs, &identity_name);
+                            let pc_next = exp
+                                .and_then(|expr| {
+                                    evaluate_expr(
+                                        // evaluate rhs pc bumping logic
+                                        cs.namespace(|| format!("pc eval on {}", expr)),
+                                        &mut poly_map,
+                                        &expr,
+                                        self.witgen.clone(),
+                                    )
+                                    .ok()
+                                })
+                                .unwrap_or_else(|| {
+                                    // by default pc + 1
+                                    add_allocated_num(
+                                        cs.namespace(|| format!("instr {} pc + 1", identity_name)),
+                                        &poly_map["pc"],
+                                        &poly_map["ONE"],
+                                    )
+                                    .unwrap()
+                                });
+                            poly_map.insert("pc_next".to_string(), pc_next);
+                        }
+                    }
+                }
+                _ => (),
+            }
+        }
+
+        // constraint input param to assigned reg value
         input_params_allocnum
             .iter()
             .zip_eq(input_params.iter())
@@ -353,13 +407,20 @@ where
                             )?,
                         )
                     },
+                    // label
+                    Param { name, ty: Some(ty) } if ty == "label" => {
+                        (
+                            format!("instr_{}_param_{}", self.identity_name, name),
+                            index.clone(),
+                        )
+                    },
                     s => {
                         unimplemented!("not support {}", s)
                     },
                 };
                 if let Some(reg) = poly_map.get(&name) {
                     cs.enforce(
-                        || format!("{} - reg[{}_index] = 0", params, params),
+                        || format!("input params {} - reg[{}_index] = 0", params, params),
                         |lc| lc + value.get_variable(),
                         |lc| lc + CS::one(),
                         |lc| lc + reg.get_variable(),
@@ -418,59 +479,6 @@ where
             },
         )?;
 
-        // process pc_next
-        // TODO: very inefficient to go through all identities for each folding, need optimisation
-        for id in &self.analyzed.identities {
-            match id.kind {
-                IdentityKind::Polynomial => {
-                    // everthing should be in left.selector only
-                    assert_eq!(id.right.expressions.len(), 0);
-                    assert_eq!(id.right.selector, None);
-                    assert_eq!(id.left.expressions.len(), 0);
-
-                    let exp = id.expression_for_poly_id();
-
-                    if let Expression::BinaryOperation(
-                        box Expression::PolynomialReference(
-                            PolynomialReference { name, next, .. },
-                            ..,
-                        ),
-                        BinaryOperator::Sub,
-                        box rhs,
-                        ..,
-                    ) = exp
-                    {
-                        // lhs is `pc'`
-                        if name == "main.pc" && *next {
-                            let identity_name = format!("main.instr_{}", self.identity_name);
-                            let exp = find_pc_expression::<T, F, CS>(rhs, &identity_name);
-                            let pc_next = exp
-                                .and_then(|expr| {
-                                    evaluate_expr(
-                                        // evaluate rhs pc bumping logic
-                                        cs.namespace(|| format!("pc eval on {}", expr)),
-                                        &mut poly_map,
-                                        &expr,
-                                        self.witgen.clone(),
-                                    )
-                                    .ok()
-                                })
-                                .unwrap_or_else(|| {
-                                    // by default pc + 1
-                                    add_allocated_num(
-                                        cs.namespace(|| format!("instr {} pc + 1", identity_name)),
-                                        &poly_map["pc"],
-                                        &poly_map["ONE"],
-                                    )
-                                    .unwrap()
-                                });
-                            poly_map.insert("pc_next".to_string(), pc_next);
-                        }
-                    }
-                }
-                _ => (),
-            }
-        }
         Ok((poly_map["pc_next"].clone(), zi_next))
     }
 }

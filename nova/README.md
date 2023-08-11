@@ -14,25 +14,26 @@ Each instruction is compiled into a step circuit, following Nova(Supernova) pape
 An augmented circuit := step circuit + nova folding verification circuit.
 Furthermore, an augmented circuit has it own isolated constraints system, means there will be no shared circuit among different augmented circuits. Due to the fact, we can also call it instruction-circuit. There will be `#inst` instruction-circuit (More accurate, `#inst + 1` for 2 cycle curve implementation)
 
+### ROM encoding & label
+For each statement in main.ROM, we will encode it as a linear combination under 2 power of LIMB_SIZE, and the LIMB_SIZE is configurable.
+ROM array are attached at the end of Nova state. For input params in different type, the linear combination strategy will be adjust accordingly.
+
+- `reg index`, i.e. x2. `2` will be treat as unsigned index and put into the value
+- `sign/unsigned` const. For unsigned value will be put in lc directly. While signed part, it will be convert to signed limb, and on circuit side, signed limb will be convert to negative field value accordingly.
+- `label`. i.e. `LOOP_START`, it will be convert to respective pc index.
+
+Since each instruction circuit has it own params type definition, different constraints circuit will be compiled to handle above situation automatically.
+
 ### Nova state & constraints
 Nova state layout as z0 = `(pc, [writable register...] ++ public io ++ ROM)`
 
 - public io := array of public input input from prover/verifier
 - ROM := array `[rom_value_pc1, rom_value_pc2, rom_value_pc3...]`
 Each round an instruction is invoked, and in instruction-circuit it will constraints
-1. sequence constraints => `zi[offset + pc] - linear-combination([opcode_index, input param1, input param2,...output param1, ...], 1 << limb_width) = 0`
+1. sequence constraints => `rom_value_at_current_pc - linear-combination([opcode_index, input param1, input param2,...output param1, ...], 1 << limb_width) = 0`
 2. writable register read/write are value are constraint and match.
 
 > While which instruction-circuit is invoked  determined by prover, an maliculous prover can not invoke arbitrary any instruction-circuit, otherwise sequence constraints will be failed to pass `is_sat` check in the final stage.
-
-### Sequence constraints
-As mentioned, to constraints the sequence, a ROM array is introduced and attach at the end of Nova state. For input params in different type, the linear combination strategy will be adjust accordingly.
-
-- `reg index`, i.e. x2. `2` will be treat as unsigned index and put into the value
-- `sign/unsigned` const. For unsigned value will be put in lc directly. While signed part, it will be convert to signed limb, and on circuit side, signed limb will be convert to negative field value accordingly.
-- `label`. i.e. `loop_start`, label will be convert to integer
-
-Since each instruction circuit has it own params type definition, different constraints circuit will be compiled to handle above situation automatically.
 
 ### Public IO
 In powdr-asm, an example of psuedo instruction to query public input

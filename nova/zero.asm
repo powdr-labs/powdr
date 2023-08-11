@@ -64,8 +64,8 @@ machine NovaZero {
     }
 
     // an instruction only proceed pc + 1 if X = 0
-    instr contz X {
-        pc' = (1 - XIsZero) * (pc - 1) + XIsZero * (pc + 1)
+    instr bnz X, Y: label {
+        pc' = (1 - XIsZero) * (Y) + XIsZero * (pc + 1)
     }
 
     instr assert_zero X {
@@ -87,8 +87,9 @@ machine NovaZero {
         x0 <=Z= sub(x0, x0); // x0 - x0 = 0
         assert_zero x0; // x0 == 0
         x1 <=X= ${ ("input", 1) };
+        LOOP::
         x1 <=Z= addi(x1, -1);
-        contz x1;
+        bnz x1, LOOP;
         assert_zero x1; // x1 == 0
         loop;
     }
