@@ -28,7 +28,7 @@ use crate::{
     circuit::{NovaStepCircuit, SecondaryStepCircuit},
     nonnative::bignat::limbs_to_nat,
     utils::WitnessGen,
-    LIMB_WIDTH,
+    FREE_INPUT_DUMMY_REG, FREE_INPUT_INSTR_NAME, FREE_INPUT_TY, LIMB_WIDTH,
 };
 
 // TODO support other cycling curve
@@ -40,11 +40,14 @@ pub(crate) fn nova_prove<T: FieldElement>(
     main_machine: &Machine<T>,
     _: Vec<(&str, Vec<T>)>,
     witness: Vec<(&str, Vec<T>)>,
+    public_io: Vec<T>,
 ) {
     if polyexen::expr::get_field_p::<<G1 as Group>::Scalar>() != T::modulus().to_arbitrary_integer()
     {
         panic!("powdr modulus doesn't match nova modulus. Make sure you are using Bn254");
     }
+
+    let public_io_len = public_io.len();
 
     // TODO to avoid clone witness object, witness are wrapped by lock so it can be shared below
     // need to refactor this part to support parallel folding
@@ -59,13 +62,16 @@ pub(crate) fn nova_prove<T: FieldElement>(
     )));
 
     // collect all instr from pil file
-    let instr_index_mapping: BTreeMap<String, usize> = main_machine
+    let mut instr_index_mapping: BTreeMap<String, usize> = main_machine
         .instructions
         .iter()
         .flat_map(|k| Some(k.name.clone()))
         .enumerate()
         .map(|(i, v)| (v.clone(), i))
         .collect();
+
+    instr_index_mapping.insert(FREE_INPUT_INSTR_NAME.to_string(), instr_index_mapping.len()); // index start from 0
+
     // collect all register
     let regs_index_mapping: BTreeMap<String, usize> = main_machine
         .registers
@@ -77,7 +83,7 @@ pub(crate) fn nova_prove<T: FieldElement>(
         .map(|(i, reg)| (reg.name.clone(), i))
         .collect();
     // instruction <-> input/output params mapping
-    let instr_io_mapping = main_machine
+    let mut instr_io_mapping = main_machine
         .instructions
         .iter()
         .map(|k| {
@@ -94,6 +100,21 @@ pub(crate) fn nova_prove<T: FieldElement>(
         })
         .collect::<BTreeMap<String, (Vec<Param>, Vec<Param>)>>();
 
+    // NOTE: create and attach free_input "fake" meta
+    instr_io_mapping.insert(
+        FREE_INPUT_INSTR_NAME.to_string(),
+        (
+            vec![Param {
+                name: FREE_INPUT_DUMMY_REG.to_string(),
+                ty: Some(FREE_INPUT_TY.to_string()),
+            }],
+            vec![Param {
+                name: FREE_INPUT_DUMMY_REG.to_string(),
+                ty: None,
+            }],
+        ),
+    );
+
     // firstly, compile pil ROM to simple memory commitment
     // Idea to represent a instruction is by linear combination lc(instruction,input params.., output params..)
     // params can be register or constant. For register, first we translate to register index
@@ -109,8 +130,18 @@ pub(crate) fn nova_prove<T: FieldElement>(
                 rhs,
                 .. // ignore start
             }) => {
-                let instr_name = match rhs {
-                    box ast::parsed::Expression::FunctionCall(FunctionCall{id, ..}) => id,
+                let instr_name: String = match rhs {
+                    box ast::parsed::Expression::FunctionCall(FunctionCall{id, ..}) => {
+                        assert!(id != FREE_INPUT_INSTR_NAME, "{} is a reserved instruction name", FREE_INPUT_INSTR_NAME);
+                        id.to_string()
+                    },
+                    box ast::parsed::Expression::FreeInput(box ast::parsed::Expression::Tuple(vector)) => match &vector[..] {
+                        [ast::parsed::Expression::String(name), ast::parsed::Expression::Number(_)] => {
+                            assert!(name == "input");
+                            FREE_INPUT_INSTR_NAME.to_string()
+                        },
+                        _ => unimplemented!()
+                    },
                     s => unimplemented!("{:?}", s),
                 };
 
@@ -133,15 +164,23 @@ pub(crate) fn nova_prove<T: FieldElement>(
                             }
                         },
                         x => unimplemented!("unsupported expression {}", x),
-                    }),
+                    }).collect(),
+                    box ast::parsed::Expression::FreeInput(box ast::parsed::Expression::Tuple(vector)) => match &vector[..] {
+                        [ast::parsed::Expression::String(name), ast::parsed::Expression::Number(n)] => {
+                            assert!(name == "input");
+                            assert!(n <= &T::from(public_io_len as u64));
+                            vec![<G1 as Group>::Scalar::from_bytes(&n.to_bytes_le().try_into().unwrap()).unwrap()]
+                        },
+                        _ => unimplemented!()
+                    },
                     _ => unimplemented!(),
-                }.collect();
+                };
 
                 let output_params:Vec<<G1 as Group>::Scalar> = lhs.iter().map(|x| <G1 as Group>::Scalar::from(regs_index_mapping[x] as u64)).collect();
                 io_params.extend(output_params); // append output register to the back of input register
 
                 // Now we can do linear combination
-                if let Some(instr_index) = instr_index_mapping.get(instr_name) {
+                if let Some(instr_index) = instr_index_mapping.get(&instr_name) {
                     limbs_to_nat(iter::once(<G1 as Group>::Scalar::from(*instr_index as u64)).chain(io_params), LIMB_WIDTH).to_biguint().unwrap()
                 } else {
                     panic!("instr_name {:?} not found in instr_index_mapping {:?}", instr_name, instr_index_mapping);
@@ -182,7 +221,8 @@ pub(crate) fn nova_prove<T: FieldElement>(
 
     // build step circuit
     // 2 cycles curve, secondary circuit responsible of folding first circuit running instances with new r1cs instance, no application logic
-    let circuit_secondary = SecondaryStepCircuit::new(regs_index_mapping.len() + rom.len());
+    let circuit_secondary =
+        SecondaryStepCircuit::new(regs_index_mapping.len() + public_io_len + rom.len());
     let num_augmented_circuit = instr_index_mapping.len();
 
     // allocated running claims is the list of running instances witness. Number match #instruction
@@ -198,6 +238,7 @@ pub(crate) fn nova_prove<T: FieldElement>(
         .map(|(instr_name, index)| {
             // Structuring running claims
             let test_circuit = NovaStepCircuit::<<G1 as Group>::Scalar, T>::new(
+                public_io_len,
                 rom.len(),
                 *index,
                 instr_name.to_string(),
@@ -255,6 +296,11 @@ pub(crate) fn nova_prove<T: FieldElement>(
     let mut z0_primary: Vec<<G1 as Group>::Scalar> = iter::repeat(<G1 as Group>::Scalar::zero())
         .take(regs_index_mapping.len())
         .collect();
+    z0_primary.extend(public_io.iter().map(|value| {
+        let mut value = value.to_bytes_le();
+        value.resize(32, 0);
+        <G1 as Group>::Scalar::from_bytes(&value.try_into().unwrap()).unwrap()
+    }));
     // extend z0_primary/secondary with rom content
     z0_primary.extend(rom.iter().map(|memory_value| {
         let mut memory_value_bytes = memory_value.to_bytes_le();

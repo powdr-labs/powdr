@@ -204,6 +204,12 @@ enum Commands {
         #[arg(default_value_t = String::from("."))]
         dir: String,
 
+        /// Comma-separated list of free inputs (numbers). Assumes queries to have the form
+        /// ("input", <index>).
+        #[arg(short, long)]
+        #[arg(default_value_t = String::new())]
+        inputs: String,
+
         /// File containing previously generated setup parameters.
         #[arg(long)]
         params: Option<String>,
@@ -385,6 +391,7 @@ fn run_command(command: Commands) {
             file,
             asm_file,
             field: _,
+            inputs,
             dir,
             params: _,
         } => {
@@ -399,6 +406,7 @@ fn run_command(command: Commands) {
                     panic!();
                 });
             let analysed_asm = analyze::<Bn254Field>(parsed).unwrap();
+            let pi_inputs = split_inputs(&inputs);
 
             // retrieve instance of the Main state machine
             let main = match analysed_asm.machines.len() {
@@ -419,7 +427,7 @@ fn run_command(command: Commands) {
             let witness = read_witness::<Bn254Field>(&pil, dir);
 
             // let params = fs::File::open(dir.join(params.unwrap())).unwrap();
-            NovaBackend::prove::<Bn254Field>(&pil, &main, fixed.0, witness.0);
+            NovaBackend::prove::<Bn254Field>(&pil, &main, fixed.0, witness.0, pi_inputs);
 
             // TODO: this probably should be abstracted alway in a common backends API,
             // // maybe a function "get_file_extension()".

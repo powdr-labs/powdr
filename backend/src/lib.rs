@@ -114,12 +114,14 @@ impl NovaBackend {
         main_machine: &Machine<T>,
         fixed: Vec<(&str, Vec<T>)>,
         witness: Vec<(&str, Vec<T>)>,
+        public_io: Vec<T>,
     ) -> Option<Proof> {
         Some(nova::prove_ast_read_params(
             pil,
             main_machine,
             fixed,
             witness,
+            public_io,
         ));
         Some(vec![])
     }

@@ -15,8 +15,10 @@ An augmented circuit := step circuit + nova folding verification circuit.
 Furthermore, an augmented circuit has it own isolated constraints system, means there will be no shared circuit among different augmented circuits. Due to the fact, we can also call it instruction-circuit. There will be `#inst` instruction-circuit (More accurate, `#inst + 1` for 2 cycle curve implementation)
 
 ### Nova state & constraints
-Nova state layout as z0 = `(pc, [writable register...] ++ ROM)`
-where the ROM is defined as an array `[rom_value_pc1, rom_value_pc2, rom_value_pc3...]`
+Nova state layout as z0 = `(pc, [writable register...] ++ public io ++ ROM)`
+
+- public io := array of public input input from prover/verifier
+- ROM := array `[rom_value_pc1, rom_value_pc2, rom_value_pc3...]`
 Each round an instruction is invoked, and in instruction-circuit it will constraints
 1. sequence constraints => `zi[offset + pc] - linear-combination([opcode_index, input param1, input param2,...output param1, ...], 1 << limb_width) = 0`
 2. writable register read/write are value are constraint and match.
@@ -31,6 +33,19 @@ As mentioned, to constraints the sequence, a ROM array is introduced and attach 
 - `label`. i.e. `loop_start`, label will be convert to integer
 
 Since each instruction circuit has it own params type definition, different constraints circuit will be compiled to handle above situation automatically.
+
+### Public IO
+In powdr-asm, an example of psuedo instruction to query public input
+```
+reg <=X= ${ ("input", 0) };
+```
+which means query public input at index `0` and store into reg
+
+In Nova, psuedo instruction is also represented as a individual augmented circuit with below check, similar as other instruction
+- sequence constraints: same as other instruction circuit to check `zi[offset + pc] - linear-combination([opcode_index, input param1, input param2,...output param1, ...], 1 << limb_width) = 0`
+- writable register read/write constraints => `z[public_io_offset] - writable register = 0`
+
+Public-io psuedo instruction is not declared in powdr-asm instruction body. To make the circuit compiler flow similar as other normal instruction, a dummy input/output params will be auto populated, so the constraints for `writable register read/write` will reuse the same flow as others.
 
 ### R1CS constraints
 An augmented circuit can be viewed as a individual constraint system. PIL in powdr-asm instruction definition body will be compile into respective R1CS constraints. More detail, constraints can be categorized into 2 group

@@ -10,3 +10,6 @@ pub use prover::*;
 
 /// LIMB WITHD as base, represent 2^16
 pub(crate) const LIMB_WIDTH: usize = 16;
+pub(crate) const FREE_INPUT_INSTR_NAME: &'static str = "free_input_instr";
+pub(crate) const FREE_INPUT_TY: &'static str = "free_input_ty";
+pub(crate) const FREE_INPUT_DUMMY_REG: &'static str = "free_input_dummy_reg";

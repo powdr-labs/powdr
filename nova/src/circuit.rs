@@ -25,7 +25,7 @@ use crate::{
         add_allocated_num, alloc_const, alloc_num_equals, alloc_one, conditionally_select,
         evaluate_expr, find_pc_expression, get_num_at_index, signed_limb_to_neg, WitnessGen,
     },
-    LIMB_WIDTH,
+    FREE_INPUT_DUMMY_REG, FREE_INPUT_INSTR_NAME, FREE_INPUT_TY, LIMB_WIDTH,
 };
 
 /// this NovaStepCircuit can compile single instruction in PIL into R1CS constraints
@@ -33,6 +33,7 @@ use crate::{
 pub struct NovaStepCircuit<'a, F: PrimeField, T: FieldElement> {
     _p: PhantomData<F>,
     augmented_circuit_index: usize,
+    pi_len: usize,
     rom_len: usize,
     identity_name: String,
     io_params: &'a (Vec<Param>, Vec<Param>), // input,output index
@@ -48,6 +49,7 @@ where
 {
     /// new
     pub fn new(
+        pi_len: usize,
         rom_len: usize,
         augmented_circuit_index: usize,
         identity_name: String,
@@ -58,6 +60,7 @@ where
     ) -> Self {
         NovaStepCircuit {
             rom_len,
+            pi_len,
             augmented_circuit_index,
             identity_name,
             analyzed,
@@ -75,7 +78,7 @@ where
     T: FieldElement,
 {
     fn arity(&self) -> usize {
-        self.num_registers + self.rom_len
+        self.num_registers + self.pi_len + self.rom_len
     }
 
     fn synthesize<CS: ConstraintSystem<F>>(
@@ -129,7 +132,7 @@ where
         let rom_value = get_num_at_index(
             cs.namespace(|| "rom value"),
             _pc_counter,
-            &z[self.num_registers..],
+            &z[self.pi_len + self.num_registers..],
         )?;
         let (input_params, output_params) = self.io_params;
         // -------------
@@ -240,6 +243,33 @@ where
             }
         }
 
+        // special handling for free input
+        if self.identity_name == FREE_INPUT_INSTR_NAME {
+            assert_eq!(
+                input_params_allocnum.len(),
+                1,
+                "free input must have exactly one input param"
+            );
+            let public_input_index = &input_params_allocnum[0];
+            // alloc a intermediate dummy intermediate witness
+            // here just to retrieve it's value
+            // it wont be under-constraints, as intermediate witness be constraints in below input/output parts
+            poly_map.insert(
+                FREE_INPUT_DUMMY_REG.to_string(),
+                AllocatedNum::alloc(cs.namespace(|| "dummy var"), || {
+                    public_input_index
+                        .get_value()
+                        .and_then(|index| {
+                            let repr = &index.to_repr();
+                            let index = u32::from_le_bytes(repr.as_ref()[0..4].try_into().unwrap());
+                            assert!(index < self.pi_len as u32);
+                            z[self.num_registers..][index as usize].get_value()
+                        })
+                        .ok_or(SynthesisError::AssignmentMissing)
+                })?,
+            );
+        }
+
         // constraint input name to index value
         input_params_allocnum
             .iter()
@@ -260,6 +290,17 @@ where
                         (
                             format!("instr_{}_param_{}", self.identity_name, name),
                             index.clone(),
+                        )
+                    },
+                    // public io
+                    Param { name, ty: Some(ty) } if ty == FREE_INPUT_TY => {
+                        (
+                            name.clone(),
+                            get_num_at_index(
+                                cs.namespace(|| format!("regname {}", name)),
+                                index,
+                                &z[self.num_registers..],
+                            )?,
                         )
                     },
                     s => {

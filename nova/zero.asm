@@ -1,6 +1,6 @@
 machine NovaZero {
 
-    degree 12;
+    degree 20;
 
     // this simple machine does not have submachines
 
@@ -64,7 +64,7 @@ machine NovaZero {
 
     // the main function assigns the first prover input to A, increments it, decrements it, and loops forever
     function main {
-        // x0 <=X= ${ ("input", 0) };
+        x0 <=X= ${ ("input", 0) };
         x1 <=Z= addi(x0, 1); // x1 = 1
         x0 <=Y= decr(x1); // x0 = 0
         x1 <=Y= incr(x0); // x1 = 1
@@ -73,6 +73,9 @@ machine NovaZero {
         x0 <=Z= addi(x0, -2); // x0 = 3 - 2
         x0 <=Z= sub(x0, x0); // x0 - x0 = 0
         assert_zero x0; // x0 == 0
+        x1 <=X= ${ ("input", 1) };
+        x1 <=Z= sub(x1, x1); // x1 - x1 = 0
+        assert_zero x1; // x1 == 0
         loop;
     }
 }
