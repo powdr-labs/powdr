@@ -16,6 +16,26 @@ use super::machines::{FixedLookup, Machine};
 use super::rows::{Row, RowFactory, RowPair};
 use super::{EvalError, EvalResult, FixedData};
 
+/// A list of identities with a flag whether it is complete.
+struct CompletableIdentities<'a, T: FieldElement> {
+    identities_with_complete: Vec<(&'a Identity<T>, bool)>,
+}
+
+impl<'a, T: FieldElement> CompletableIdentities<'a, T> {
+    fn new(identities: impl Iterator<Item = &'a Identity<T>>) -> Self {
+        Self {
+            identities_with_complete: identities.map(|identity| (identity, false)).collect(),
+        }
+    }
+
+    /// Yields immutable references to the identity and mutable references to the complete flag.
+    fn iter_mut(&mut self) -> impl Iterator<Item = (&'a Identity<T>, &mut bool)> {
+        self.identities_with_complete
+            .iter_mut()
+            .map(|(identity, complete)| (*identity, complete))
+    }
+}
+
 pub struct Generator<'a, T: FieldElement, QueryCallback: Send + Sync> {
     /// The witness columns belonging to this machine
     witnesses: BTreeSet<PolyID>,
@@ -101,39 +121,23 @@ where
         log::trace!("  Going over all identities until no more progress is made");
         // First, go over identities that don't reference the next row,
         // Second, propagate values to the next row by going over identities that do reference the next row.
-        let mut identity_complete_1 = vec![false; self.identities_without_next_ref.len()];
-        let mut identity_complete_2 = vec![false; self.identities_with_next_ref.len()];
-        self.loop_until_no_progress(
-            &self.identities_without_next_ref.clone(),
-            &mut identity_complete_1,
-        )
-        .map_err(|e| self.report_failure_and_panic_unsatisfiable(e))
-        .unwrap();
-        self.loop_until_no_progress(
-            &self.identities_with_next_ref.clone(),
-            &mut identity_complete_2,
-        )
-        .map_err(|e| self.report_failure_and_panic_unsatisfiable(e))
-        .unwrap();
+        let mut identities_without_next_ref =
+            CompletableIdentities::new(self.identities_without_next_ref.iter().cloned());
+        let mut identities_with_next_ref =
+            CompletableIdentities::new(self.identities_with_next_ref.iter().cloned());
+        self.loop_until_no_progress(&mut identities_without_next_ref)
+            .and_then(|_| self.loop_until_no_progress(&mut identities_with_next_ref))
+            .map_err(|e| self.report_failure_and_panic_unsatisfiable(e))
+            .unwrap();
 
         if with_check {
             log::trace!(
                 "  Checking that remaining identities hold when unknown values are set to 0"
             );
-            self.process_identities(
-                self.identities_without_next_ref.clone().into_iter(),
-                &mut identity_complete_1,
-                true,
-            )
-            .map_err(|e| self.report_failure_and_panic_underconstrained(e))
-            .unwrap();
-            self.process_identities(
-                self.identities_with_next_ref.clone().into_iter(),
-                &mut identity_complete_2,
-                true,
-            )
-            .map_err(|e| self.report_failure_and_panic_underconstrained(e))
-            .unwrap();
+            self.process_identities(&mut identities_without_next_ref, true)
+                .and_then(|_| self.process_identities(&mut identities_with_next_ref, true))
+                .map_err(|e| self.report_failure_and_panic_underconstrained(e))
+                .unwrap();
         }
 
         log::trace!(
@@ -151,12 +155,10 @@ where
     /// @returns the "incomplete" identities, i.e. identities that contain unknown values.
     fn loop_until_no_progress(
         &mut self,
-        identities: &[&'a Identity<T>],
-        identity_complete: &mut Vec<bool>,
+        identities: &mut CompletableIdentities<'a, T>,
     ) -> Result<(), Vec<EvalError<T>>> {
         loop {
-            let mut progress =
-                self.process_identities(identities.iter().cloned(), identity_complete, false)?;
+            let mut progress = self.process_identities(identities, false)?;
             if let Some(ref mut query_processor) = self.query_processor {
                 let row_pair = RowPair::new(
                     &self.current,
@@ -189,14 +191,13 @@ where
     /// * `Err(errors)`: If an error occurred.
     fn process_identities(
         &mut self,
-        identities: impl Iterator<Item = &'a Identity<T>>,
-        identity_complete: &mut Vec<bool>,
+        identities: &mut CompletableIdentities<'a, T>,
         frozen: bool,
     ) -> Result<bool, Vec<EvalError<T>>> {
         let mut progress = false;
         let mut errors = vec![];
 
-        for (identity, is_complete) in identities.zip(identity_complete.iter_mut()) {
+        for (identity, is_complete) in identities.iter_mut() {
             if *is_complete {
                 continue;
             }
