@@ -334,12 +334,10 @@ impl<T> SelectedExpressions<T> {
     /// @returns true if the expression contains a reference to a next value of a
     /// (witness or fixed) column
     pub fn contains_next_ref(&self) -> bool {
-        let next_ref_in_selector = self
-            .selector
-            .as_ref()
-            .map_or(false, |e| e.contains_next_ref());
-        let next_ref_in_expression = self.expressions.iter().any(|e| e.contains_next_ref());
-        next_ref_in_selector || next_ref_in_expression
+        self.selector
+            .iter()
+            .chain(self.expressions.iter())
+            .any(|e| e.contains_next_ref())
     }
 }
 
