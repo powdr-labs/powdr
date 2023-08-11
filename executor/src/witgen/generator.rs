@@ -101,25 +101,39 @@ where
         log::trace!("  Going over all identities until no more progress is made");
         // First, go over identities that don't reference the next row,
         // Second, propagate values to the next row by going over identities that do reference the next row.
-        let mut incomplete_identities = self
-            .loop_until_no_progress(self.identities_without_next_ref.clone())
-            .and_then(|mut incomplete_identities| {
-                let more_incomplete_identities =
-                    self.loop_until_no_progress(self.identities_with_next_ref.clone())?;
-                incomplete_identities.extend(more_incomplete_identities);
-                Ok(incomplete_identities)
-            })
-            .map_err(|e| self.report_failure_and_panic_unsatisfiable(e))
-            .unwrap();
+        let mut identity_complete_1 = vec![false; self.identities_without_next_ref.len()];
+        let mut identity_complete_2 = vec![false; self.identities_with_next_ref.len()];
+        self.loop_until_no_progress(
+            &self.identities_without_next_ref.clone(),
+            &mut identity_complete_1,
+        )
+        .map_err(|e| self.report_failure_and_panic_unsatisfiable(e))
+        .unwrap();
+        self.loop_until_no_progress(
+            &self.identities_with_next_ref.clone(),
+            &mut identity_complete_2,
+        )
+        .map_err(|e| self.report_failure_and_panic_unsatisfiable(e))
+        .unwrap();
 
-        if with_check && !incomplete_identities.is_empty() {
+        if with_check {
             log::trace!(
-                "  Checking that remaining {} identities hold when unknown values are set to 0",
-                incomplete_identities.len()
+                "  Checking that remaining identities hold when unknown values are set to 0"
             );
-            self.process_identities(&mut incomplete_identities, true)
-                .map_err(|e| self.report_failure_and_panic_underconstrained(e))
-                .unwrap();
+            self.process_identities(
+                self.identities_without_next_ref.clone().into_iter(),
+                &mut identity_complete_1,
+                true,
+            )
+            .map_err(|e| self.report_failure_and_panic_underconstrained(e))
+            .unwrap();
+            self.process_identities(
+                self.identities_with_next_ref.clone().into_iter(),
+                &mut identity_complete_2,
+                true,
+            )
+            .map_err(|e| self.report_failure_and_panic_underconstrained(e))
+            .unwrap();
         }
 
         log::trace!(
@@ -137,10 +151,12 @@ where
     /// @returns the "incomplete" identities, i.e. identities that contain unknown values.
     fn loop_until_no_progress(
         &mut self,
-        mut identities: Vec<&'a Identity<T>>,
-    ) -> Result<Vec<&'a Identity<T>>, Vec<EvalError<T>>> {
+        identities: &[&'a Identity<T>],
+        identity_complete: &mut Vec<bool>,
+    ) -> Result<(), Vec<EvalError<T>>> {
         loop {
-            let mut progress = self.process_identities(&mut identities, false)?;
+            let mut progress =
+                self.process_identities(identities.iter().cloned(), identity_complete, false)?;
             if let Some(ref mut query_processor) = self.query_processor {
                 let row_pair = RowPair::new(
                     &self.current,
@@ -159,7 +175,7 @@ where
                 break;
             }
         }
-        Ok(identities)
+        Ok(())
     }
 
     /// Loops over all identities once and updates the current row and next row.
@@ -173,14 +189,18 @@ where
     /// * `Err(errors)`: If an error occurred.
     fn process_identities(
         &mut self,
-        identities: &mut Vec<&'a Identity<T>>,
+        identities: impl Iterator<Item = &'a Identity<T>>,
+        identity_complete: &mut Vec<bool>,
         frozen: bool,
     ) -> Result<bool, Vec<EvalError<T>>> {
         let mut progress = false;
         let mut errors = vec![];
-        let mut incomplete_identities = vec![];
 
-        for identity in identities.iter() {
+        for (identity, is_complete) in identities.zip(identity_complete.iter_mut()) {
+            if *is_complete {
+                continue;
+            }
+
             let row_pair = RowPair::new(
                 &self.current,
                 &self.next,
@@ -190,7 +210,7 @@ where
             );
             let result: EvalResult<'a, T> = self
                 .identity_processor
-                .process_identity(*identity, &row_pair)
+                .process_identity(identity, &row_pair)
                 .map_err(|err| {
                     format!("{identity}:\n{}", indent(&format!("{err}"), "    ")).into()
                 });
@@ -200,9 +220,7 @@ where
                     if frozen {
                         assert!(eval_value.constraints.is_empty())
                     } else {
-                        if !eval_value.is_complete() {
-                            incomplete_identities.push(*identity);
-                        }
+                        *is_complete = eval_value.is_complete();
                         let mut row_updater = RowUpdater::new(
                             &mut self.current,
                             &mut self.next,
@@ -217,8 +235,6 @@ where
                 }
             };
         }
-
-        *identities = incomplete_identities;
 
         if errors.is_empty() {
             Ok(progress)
