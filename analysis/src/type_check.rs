@@ -64,6 +64,9 @@ impl<T: FieldElement> TypeChecker<T> {
                     registers.push(RegisterDeclarationStatement { start, name, ty });
                 }
                 MachineStatement::InstructionDeclaration(start, name, params, body) => {
+                    if name == "return" {
+                        errors.push("Instruction cannot use reserved name `return`".into());
+                    }
                     instructions.push(InstructionDefinitionStatement {
                         start,
                         name,

@@ -12,11 +12,13 @@ machine Main {
     instr sub X, Y -> Z = vm.sub
     instr assert_eq X, Y { X = Y }
 
-    // this should be the identity function: x + 1 - 1 = x
     function main {
-        A <=Z= add(1, 1);
-        A <=Z= sub(A, 1);
-        assert_eq A, 1;
+        A <== add(1, 1);
+        // TODO: uncomment the following two lines once we support having many calls to a machine
+        // A <== add(A, 1);
+        // A <== sub(A, 1);
+        assert_eq A, 2;
+        return;
     }
 }
 
@@ -34,12 +36,12 @@ machine VM {
     instr sub X, Y -> Z { X - Y = Z }
 
     function add x: field, y: field -> field {
-        A <=Z= add(x, y);
+        A <== add(x, y);
         return A;
     }
 
     function sub x: field, y: field -> field {
-        A <=Z= sub(x, y);
+        A <== sub(x, y);
         return A;
     }
 }

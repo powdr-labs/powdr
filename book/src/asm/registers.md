@@ -51,7 +51,7 @@ We apply the following transformation
 
 // After:
 
-{{#include ../../../test_data/asm/book/asm_function_after.asm}}
+{{#include ../../../test_data/asm/book/asm_function_after.asm.ignored}}
 ```
 
 > Read-only registers are only mentioned for completeness here and are currently only used inside the compiler. We advise against using them.

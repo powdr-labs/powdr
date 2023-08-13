@@ -11,6 +11,7 @@ use ast::{
 use number::FieldElement;
 
 const DEFAULT_DEGREE: u64 = 1024;
+const MAIN_FUNCTION_NAME: &str = "main";
 
 /// a monolithic linker which outputs a single AIR
 /// It sets the degree of submachines to the degree of the main machine, and errors out if a submachine has an explicit degree which doesn't match the main one
@@ -107,19 +108,21 @@ pub fn link<T: FieldElement>(graph: PILGraph<T>) -> Result<PILFile<T>, Vec<Strin
             }
 
             if location == Location::default().join("main") {
-                assert!(
-                    graph.entry_points.len() <= 1,
-                    "Program must have at most 1 entry point, found {}",
-                    graph.entry_points.len()
-                );
-                if let Some(entry_point) = graph.entry_points.first() {
-                    let entry_point_id = entry_point.id;
-                    let function_id = main_machine.function_id.clone();
-                    // call the first function by initialising `function_id` to the first function
-                    pil.push(parse_pil_statement(&format!(
-                        "first_step * ({function_id} - {entry_point_id}) = 0"
-                    )));
-                }
+                let entry_point = graph
+                    .entry_points
+                    .iter()
+                    .find(|f| f.name == MAIN_FUNCTION_NAME)
+                    .unwrap();
+                let entry_point_id = entry_point.id;
+                let function_id = main_machine.function_id.clone();
+                // call the main function by initialising `function_id` to that of the main function
+                let linker_first_step = "_linker_first_step";
+                pil.extend([
+                    parse_pil_statement(&format!("col fixed {linker_first_step} = [1] + [0]*")),
+                    parse_pil_statement(&format!(
+                        "{linker_first_step} * ({function_id} - {entry_point_id}) = 0"
+                    )),
+                ]);
             }
 
             pil
@@ -264,12 +267,13 @@ pol constant p_read_X_pc = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0] + [0]*;
 pol constant p_reg_write_X_A = [0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0] + [0]*;
 pol constant p_reg_write_X_CNT = [0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0] + [0]*;
 { pc, reg_write_X_A, reg_write_X_CNT, instr_jmpz, instr_jmpz_param_l, instr_jmp, instr_jmp_param_l, instr_dec_CNT, instr_assert_zero, instr_return, instr__jump_to_operation, instr__reset, instr__loop, X_const, X_read_free, read_X_A, read_X_CNT, read_X_pc } in { p_line, p_reg_write_X_A, p_reg_write_X_CNT, p_instr_jmpz, p_instr_jmpz_param_l, p_instr_jmp, p_instr_jmp_param_l, p_instr_dec_CNT, p_instr_assert_zero, p_instr_return, p_instr__jump_to_operation, p_instr__reset, p_instr__loop, p_X_const, p_X_read_free, p_read_X_A, p_read_X_CNT, p_read_X_pc };
-pol constant _first_step = [1] + [0]*;
+pol constant _block_enforcer_first_step = [1] + [0]*;
 pol commit _function_id;
 pol commit _function_id_no_change;
-_function_id_no_change = ((1 - _first_step') * (1 - instr_return));
+_function_id_no_change = ((1 - _block_enforcer_first_step') * (1 - instr_return));
 (_function_id_no_change * (_function_id' - _function_id)) = 0;
-(first_step * (_function_id - 2)) = 0;
+pol constant _linker_first_step = [1] + [0]*;
+(_linker_first_step * (_function_id - 2)) = 0;
 
 "#;
         let file_name = "../test_data/asm/simple_sum.asm";

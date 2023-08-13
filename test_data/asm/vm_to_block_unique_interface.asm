@@ -1,7 +1,5 @@
 machine Binary(latch, function_id) {
 
-    degree 32;
-
     function and<0> x, y -> z {
     }
 
@@ -22,8 +20,6 @@ machine Binary(latch, function_id) {
 }
 
 machine Arith(latch, function_id) {
-
-    degree 32;
 
     function add<0> x, y -> z {
     }

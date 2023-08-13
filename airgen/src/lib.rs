@@ -116,6 +116,16 @@ impl<'a, T: FieldElement> ASMPILConverter<'a, T> {
 
         self.submachines = input.submachines;
 
+        // machines should only have constraints, functions and external instructions at this point
+        assert!(input
+            .instructions
+            .iter()
+            .all(|i| matches!(i.body, InstructionBody::External(..))));
+        assert!(input.latch.is_some());
+        assert!(input.function_id.is_some());
+        assert!(input.registers.is_empty());
+        assert!(input.rom.is_none());
+
         for block in input.constraints {
             self.handle_inline_pil(block);
         }
