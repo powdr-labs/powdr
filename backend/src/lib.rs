@@ -1,6 +1,6 @@
 #[cfg(feature = "halo2")]
 mod halo2_impl;
-mod pilcom_cli;
+mod pilstark;
 
 use ast::analyzed::Analyzed;
 use number::{DegreeType, FieldElement};
@@ -15,8 +15,10 @@ pub enum BackendType {
     #[cfg(feature = "halo2")]
     #[strum(serialize = "halo2-mock")]
     Halo2Mock,
-    #[strum(serialize = "pilcom-cli")]
-    PilcomCli,
+    #[strum(serialize = "estark")]
+    EStark,
+    #[strum(serialize = "pil-stark-cli")]
+    PilStarkCli,
 }
 
 impl BackendType {
@@ -26,7 +28,7 @@ impl BackendType {
         #[cfg(feature = "halo2")]
         const HALO2_MOCK_FACTORY: WithoutSetupFactory<halo2_impl::Halo2Mock> =
             WithoutSetupFactory(PhantomData);
-        const PILCOM_CLI_FACTORY: WithoutSetupFactory<pilcom_cli::PilcomCli> =
+        const PIL_STARK_CLI_FACTORY: WithoutSetupFactory<pilstark::PilStarkCli> =
             WithoutSetupFactory(PhantomData);
 
         match self {
@@ -34,7 +36,8 @@ impl BackendType {
             BackendType::Halo2 => &HALO2_FACTORY,
             #[cfg(feature = "halo2")]
             BackendType::Halo2Mock => &HALO2_MOCK_FACTORY,
-            BackendType::PilcomCli => &PILCOM_CLI_FACTORY,
+            BackendType::PilStarkCli => &PIL_STARK_CLI_FACTORY,
+            BackendType::EStark => todo!(),
         }
     }
 }

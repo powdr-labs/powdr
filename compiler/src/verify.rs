@@ -12,7 +12,7 @@ pub fn verify_asm_string<T: FieldElement>(file_name: &str, contents: &str, input
         inputs,
         &temp_dir,
         true,
-        Some(BackendType::PilcomCli),
+        Some(BackendType::PilStarkCli),
     )
     .unwrap();
     verify(&temp_dir);
