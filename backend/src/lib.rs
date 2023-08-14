@@ -28,6 +28,8 @@ impl BackendType {
         #[cfg(feature = "halo2")]
         const HALO2_MOCK_FACTORY: WithoutSetupFactory<halo2_impl::Halo2Mock> =
             WithoutSetupFactory(PhantomData);
+        const ESTARK_FACTORY: WithoutSetupFactory<pilstark::estark::EStark> =
+            WithoutSetupFactory(PhantomData);
         const PIL_STARK_CLI_FACTORY: WithoutSetupFactory<pilstark::PilStarkCli> =
             WithoutSetupFactory(PhantomData);
 
@@ -37,7 +39,7 @@ impl BackendType {
             #[cfg(feature = "halo2")]
             BackendType::Halo2Mock => &HALO2_MOCK_FACTORY,
             BackendType::PilStarkCli => &PIL_STARK_CLI_FACTORY,
-            BackendType::EStark => todo!(),
+            BackendType::EStark => &ESTARK_FACTORY,
         }
     }
 }

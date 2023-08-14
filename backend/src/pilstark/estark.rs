@@ -1,57 +1,46 @@
-use std::marker::PhantomData;
-
 use crate::{pilstark, BackendImpl};
 use ast::analyzed::Analyzed;
-use number::{BigInt, Bn254Field, DegreeType, FieldElement};
+use number::{BigInt, DegreeType, FieldElement, GoldilocksField};
 
 use starky::{
-    merklehash_bn128::MerkleTreeBN128,
+    merklehash::MerkleTreeGL,
     polsarray::{PolKind, PolsArray},
     stark_gen::StarkProof,
     stark_setup::StarkSetup,
-    traits::{MerkleTree, Transcript},
-    transcript_bn128::TranscriptBN128,
+    transcript::TranscriptGL,
     types::{StarkStruct, Step, PIL},
 };
 use winter_math::fields::f64::BaseElement;
 
-/// Group together Powdr types with their equivalent Starky types.
-pub trait GroupedTypes {
-    // TODO: maybe this should be a dynamic parameter.
-    const VERIF_HASH_TYPE: &'static str;
-    type PowdrField: FieldElement;
-    type StarkyMerkle: MerkleTree;
-    type StarkyTranscript: Transcript;
-}
-
-pub struct EStark<G: GroupedTypes> {
+pub struct EStark {
     params: StarkStruct,
-    _types: PhantomData<G>,
 }
 
-impl<G: GroupedTypes> BackendImpl<G::PowdrField> for EStark<G> {
+impl<F: FieldElement> BackendImpl<F> for EStark {
     /// Creates our default configuration stark struct.
     fn new(degree: DegreeType) -> Self {
+        if F::modulus().to_arbitrary_integer() != GoldilocksField::modulus().to_arbitrary_integer()
+        {
+            unimplemented!("eSTARK is only implemented for Goldilocks field");
+        }
+
         let degree_bits = (DegreeType::BITS - degree.leading_zeros()) as usize;
         let params = StarkStruct {
             nBits: degree_bits,
             nBitsExt: degree_bits + 1,
             nQueries: 1,
-            verificationHashType: G::VERIF_HASH_TYPE.to_owned(),
+            verificationHashType: "GL".to_owned(),
             steps: vec![Step { nBits: 20 }],
         };
 
-        Self {
-            params,
-            _types: PhantomData,
-        }
+        Self { params }
     }
 
     fn prove(
         &self,
-        pil: &Analyzed<G::PowdrField>,
-        fixed: &[(&str, Vec<G::PowdrField>)],
-        witness: &[(&str, Vec<G::PowdrField>)],
+        pil: &Analyzed<F>,
+        fixed: &[(&str, Vec<F>)],
+        witness: &[(&str, Vec<F>)],
         prev_proof: Option<crate::Proof>,
     ) -> (Option<crate::Proof>, Option<String>) {
         if prev_proof.is_some() {
@@ -60,13 +49,12 @@ impl<G: GroupedTypes> BackendImpl<G::PowdrField> for EStark<G> {
 
         let mut pil: PIL = pilstark::json_exporter::export(pil);
 
-        let const_pols = to_sparky_pols_array::<G>(fixed, &pil, PolKind::Constant);
-        let cm_pols = to_sparky_pols_array::<G>(witness, &pil, PolKind::Commit);
+        let const_pols = to_sparky_pols_array(fixed, &pil, PolKind::Constant);
+        let cm_pols = to_sparky_pols_array(witness, &pil, PolKind::Commit);
 
-        let setup =
-            StarkSetup::<G::StarkyMerkle>::new(&const_pols, &mut pil, &self.params).unwrap();
+        let setup = StarkSetup::<MerkleTreeGL>::new(&const_pols, &mut pil, &self.params).unwrap();
 
-        let starkproof = StarkProof::<G::StarkyMerkle>::stark_gen::<G::StarkyTranscript>(
+        let starkproof = StarkProof::<MerkleTreeGL>::stark_gen::<TranscriptGL>(
             &cm_pols,
             &const_pols,
             &setup.const_tree,
@@ -84,8 +72,8 @@ impl<G: GroupedTypes> BackendImpl<G::PowdrField> for EStark<G> {
     }
 }
 
-fn to_sparky_pols_array<G: GroupedTypes>(
-    array: &[(&str, Vec<G::PowdrField>)],
+fn to_sparky_pols_array<F: FieldElement>(
+    array: &[(&str, Vec<F>)],
     pil: &PIL,
     kind: PolKind,
 ) -> PolsArray {
@@ -100,13 +88,4 @@ fn to_sparky_pols_array<G: GroupedTypes>(
     }
 
     output
-}
-
-pub struct BN128;
-
-impl GroupedTypes for BN128 {
-    const VERIF_HASH_TYPE: &'static str = "BN128";
-    type PowdrField = Bn254Field;
-    type StarkyMerkle = MerkleTreeBN128;
-    type StarkyTranscript = TranscriptBN128;
 }
