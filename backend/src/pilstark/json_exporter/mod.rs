@@ -1,28 +1,42 @@
-use std::cmp;
-use std::collections::{BTreeMap, HashMap};
-
-use json::{object, JsonValue};
 use number::FieldElement;
+use std::cmp;
+use std::collections::HashMap;
 
 use ast::analyzed::{
-    Analyzed, BinaryOperator, Expression, FunctionValueDefinition, IdentityKind, PolyID,
-    PolynomialReference, PolynomialType, Reference, StatementIdentifier, UnaryOperator,
+    self, Analyzed, BinaryOperator, Expression, FunctionValueDefinition, IdentityKind, PolyID,
+    PolynomialReference, PolynomialType, StatementIdentifier, UnaryOperator,
+};
+use starky::types::{
+    ConnectionIdentity, Expression as StarkyExpr, PermutationIdentity, PlookupIdentity,
+    PolIdentity, Reference, PIL,
 };
 
 use self::expression_counter::compute_intermediate_expression_ids;
 
 mod expression_counter;
 
+const DEFAULT_EXPR: StarkyExpr = StarkyExpr {
+    op: String::new(),
+    deg: 0,
+    id: None,
+    next: None,
+    value: None,
+    values: None,
+    keep: None,
+    keep2ns: None,
+    idQ: None,
+    const_: None,
+};
 struct Exporter<'a, T> {
     analyzed: &'a Analyzed<T>,
-    expressions: Vec<JsonValue>,
+    expressions: Vec<StarkyExpr>,
     /// Translates from polynomial IDs to expression IDs for intermediate
     /// polynomials.
     intermediate_poly_expression_ids: HashMap<u64, u64>,
     number_q: u64,
 }
 
-pub fn export<T: FieldElement>(analyzed: &Analyzed<T>) -> JsonValue {
+pub fn export<T: FieldElement>(analyzed: &Analyzed<T>) -> PIL {
     let mut exporter = Exporter::new(analyzed);
     let mut publics = Vec::new();
     let mut pol_identities = Vec::new();
@@ -48,14 +62,14 @@ pub fn export<T: FieldElement>(analyzed: &Analyzed<T>) -> JsonValue {
             }
             StatementIdentifier::PublicDeclaration(name) => {
                 let pub_def = &analyzed.public_declarations[name];
-                let (_, json, _) = exporter.polynomial_reference_to_json(&pub_def.polynomial);
+                let (_, expr) = exporter.polynomial_reference_to_json(&pub_def.polynomial);
                 let id = publics.len();
-                publics.push(object! {
+                publics.push(starky::types::Public {
+                    polType: polynomial_reference_type_to_type(&expr.op).to_string(),
+                    polId: expr.id.unwrap(),
+                    idx: pub_def.index as usize,
+                    id,
                     name: name.clone(),
-                    polId: json["id"].clone(), // This includes the array offset
-                    polType: polynomial_reference_type_to_type(json["op"].as_str().unwrap()),
-                    idx: pub_def.index,
-                    id: id
                 });
             }
             StatementIdentifier::Identity(id) => {
@@ -73,55 +87,57 @@ pub fn export<T: FieldElement>(analyzed: &Analyzed<T>) -> JsonValue {
                 let right = exporter.extract_expression_vec(&identity.right.expressions, 1);
                 let sel_right = exporter.extract_expression_opt(&identity.right.selector, 1);
                 match identity.kind {
-                    IdentityKind::Polynomial => pol_identities.push(object! {
+                    IdentityKind::Polynomial => pol_identities.push(PolIdentity {
                         e: sel_left.unwrap(),
                         fileName: file_name,
-                        line: line
+                        line,
                     }),
                     IdentityKind::Plookup => {
-                        plookup_identities.push(object! {
+                        plookup_identities.push(PlookupIdentity {
                             selF: sel_left,
-                            f: left,
+                            f: Some(left),
                             selT: sel_right,
-                            t: right,
+                            t: Some(right),
                             fileName: file_name,
-                            line: line
+                            line,
                         });
                     }
                     IdentityKind::Permutation => {
-                        permutation_identities.push(object! {
+                        permutation_identities.push(PermutationIdentity {
                             selF: sel_left,
-                            f: left,
+                            f: Some(left),
                             selT: sel_right,
-                            t: right,
+                            t: Some(right),
                             fileName: file_name,
-                            line: line
+                            line,
                         });
                     }
                     IdentityKind::Connect => {
-                        connection_identities.push(object! {
-                            pols: left,
-                            connections: right,
+                        connection_identities.push(ConnectionIdentity {
+                            pols: Some(left),
+                            connections: Some(right),
                             fileName: file_name,
-                            line: line
+                            line,
                         });
                     }
                 }
             }
         }
     }
-    object! {
+    PIL {
         nCommitments: analyzed.commitment_count(),
-        nQ: exporter.number_q,
+        nQ: exporter.number_q as usize,
         nIm: analyzed.intermediate_count(),
         nConstants: analyzed.constant_count(),
-        publics: publics,
+        publics,
         references: exporter.references(),
         expressions: exporter.expressions,
         polIdentities: pol_identities,
         plookupIdentities: plookup_identities,
-        permutationIdentities: permutation_identities,
-        connectionIdentities: connection_identities,
+        permutationIdentities: Some(permutation_identities),
+        connectionIdentities: Some(connection_identities),
+        cm_dims: Vec::new(),
+        q2exp: Vec::new(),
     }
 }
 
@@ -156,7 +172,7 @@ impl<'a, T: FieldElement> Exporter<'a, T> {
         }
     }
 
-    fn references(&self) -> JsonValue {
+    fn references(&self) -> HashMap<String, Reference> {
         self.analyzed
             .definitions
             .iter()
@@ -166,35 +182,31 @@ impl<'a, T: FieldElement> Exporter<'a, T> {
                 } else {
                     poly.id
                 };
-                let mut out = object! {
-                    type: polynomial_type_to_json_string(poly.poly_type),
-                    id: id,
-                    polDeg: poly.degree as i64,
+                let out = Reference {
+                    polType: None,
+                    type_: polynomial_type_to_json_string(poly.poly_type).to_string(),
+                    id: id as usize,
+                    polDeg: poly.degree as usize,
                     isArray: poly.is_array(),
+                    elementType: None,
+                    len: poly.length.map(|l| l as usize),
                 };
-                if poly.is_array() {
-                    out["len"] = JsonValue::from(poly.length.unwrap() as i64);
-                }
                 (name.clone(), out)
             })
-            .collect::<BTreeMap<String, JsonValue>>()
-            .into()
+            .collect::<HashMap<String, Reference>>()
     }
 
     /// Processes the given expression
     /// @returns the expression ID
     fn extract_expression(&mut self, expr: &Expression<T>, max_degree: u32) -> usize {
         let id = self.expressions.len();
-        let (degree, mut json, dependencies) = self.expression_to_json(expr);
+        let (degree, mut expr) = self.expression_to_json(expr);
         if degree > max_degree {
-            json["idQ"] = self.number_q.into();
-            json["deg"] = 1.into();
+            expr.idQ = Some(self.number_q as usize);
+            expr.deg = 1;
             self.number_q += 1;
         }
-        if !dependencies.is_empty() && json["op"] != "exp" {
-            json["deps"] = dependencies.into();
-        }
-        self.expressions.push(json);
+        self.expressions.push(expr);
         id
     }
 
@@ -213,45 +225,45 @@ impl<'a, T: FieldElement> Exporter<'a, T> {
             .collect()
     }
 
-    /// returns the degree, the JSON value and the dependencies (intermediate polynomial IDs)
-    fn expression_to_json(&self, expr: &Expression<T>) -> (u32, JsonValue, Vec<u64>) {
+    /// returns the degree and the JSON value (intermediate polynomial IDs)
+    fn expression_to_json(&self, expr: &Expression<T>) -> (u32, StarkyExpr) {
         match expr {
             Expression::Constant(name) => (
                 0,
-                object! {
-                    op: "number",
+                StarkyExpr {
+                    op: "number".to_string(),
                     deg: 0,
-                    value: format!("{}", self.analyzed.constants[name]),
+                    value: Some(format!("{}", self.analyzed.constants[name])),
+                    ..DEFAULT_EXPR
                 },
-                Vec::new(),
             ),
-            Expression::Reference(Reference::Poly(reference)) => {
+            Expression::Reference(analyzed::Reference::Poly(reference)) => {
                 self.polynomial_reference_to_json(reference)
             }
-            Expression::Reference(Reference::LocalVar(_)) => {
+            Expression::Reference(analyzed::Reference::LocalVar(_)) => {
                 panic!("No local variable references allowed here.")
             }
             Expression::PublicReference(name) => (
                 0,
-                object! {
-                    op: "public",
+                StarkyExpr {
+                    op: "public".to_string(),
                     deg: 0,
-                    id: self.analyzed.public_declarations[name].id,
+                    id: Some(self.analyzed.public_declarations[name].id as usize),
+                    ..DEFAULT_EXPR
                 },
-                Vec::new(),
             ),
             Expression::Number(value) => (
                 0,
-                object! {
-                    op: "number",
+                StarkyExpr {
+                    op: "number".to_string(),
                     deg: 0,
-                    value: format!("{value}"),
+                    value: Some(format!("{value}")),
+                    ..DEFAULT_EXPR
                 },
-                Vec::new(),
             ),
             Expression::BinaryOperation(left, op, right) => {
-                let (deg_left, left, deps_left) = self.expression_to_json(left);
-                let (deg_right, right, deps_right) = self.expression_to_json(right);
+                let (deg_left, left) = self.expression_to_json(left);
+                let (deg_right, right) = self.expression_to_json(right);
                 let (op, degree) = match op {
                     BinaryOperator::Add => ("add", cmp::max(deg_left, deg_right)),
                     BinaryOperator::Sub => ("sub", cmp::max(deg_left, deg_right)),
@@ -284,26 +296,26 @@ impl<'a, T: FieldElement> Exporter<'a, T> {
                 };
                 (
                     degree,
-                    object! {
-                        op: op,
-                        deg: degree,
-                        values: [left, right],
+                    StarkyExpr {
+                        op: op.to_string(),
+                        deg: degree as usize,
+                        values: Some(vec![left, right]),
+                        ..DEFAULT_EXPR
                     },
-                    [deps_left, deps_right].concat(),
                 )
             }
             Expression::UnaryOperation(op, value) => {
-                let (deg, value, deps) = self.expression_to_json(value);
+                let (deg, value) = self.expression_to_json(value);
                 match op {
-                    UnaryOperator::Plus => (deg, value, deps),
+                    UnaryOperator::Plus => (deg, value),
                     UnaryOperator::Minus => (
                         deg,
-                        object! {
-                            op: "neg",
-                            deg: deg,
-                            values: [value],
+                        StarkyExpr {
+                            op: "neg".to_string(),
+                            deg: deg as usize,
+                            values: Some(vec![value]),
+                            ..DEFAULT_EXPR
                         },
-                        deps,
                     ),
                     UnaryOperator::LogicalNot => panic!("Operator {op} not allowed here."),
                 }
@@ -332,7 +344,7 @@ impl<'a, T: FieldElement> Exporter<'a, T> {
             poly_id,
             next,
         }: &PolynomialReference,
-    ) -> (u32, JsonValue, Vec<u64>) {
+    ) -> (u32, StarkyExpr) {
         let PolyID { id, ptype } = poly_id.unwrap();
         let id = if ptype == PolynomialType::Intermediate {
             assert!(index.is_none());
@@ -340,26 +352,22 @@ impl<'a, T: FieldElement> Exporter<'a, T> {
         } else {
             id + index.unwrap_or_default()
         };
-        let poly_json = object! {
-            id: id,
-            op: polynomial_reference_type_to_json_string(ptype),
+        let poly = StarkyExpr {
+            id: Some(id as usize),
+            op: polynomial_reference_type_to_json_string(ptype).to_string(),
             deg: 1,
-            next: *next,
+            next: Some(*next),
+            ..DEFAULT_EXPR
         };
-        let dependencies = if ptype == PolynomialType::Intermediate {
-            vec![id]
-        } else {
-            Vec::new()
-        };
-        (1, poly_json, dependencies)
+        (1, poly)
     }
 }
 
 #[cfg(test)]
 mod test {
     use pil_analyzer::analyze;
-    use std::fs;
-    use std::process::Command;
+    use serde_json::Value as JsonValue;
+    use std::{fs, process::Command};
     use test_log::test;
 
     use number::GoldilocksField;
@@ -377,7 +385,7 @@ mod test {
         .join(file);
 
         let analyzed = analyze::<GoldilocksField>(&file);
-        let json_out = export(&analyzed);
+        let pil_out = export(&analyzed);
 
         let pilcom = std::env::var("PILCOM").expect(
             "Please set the PILCOM environment variable to the path to the pilcom repository.",
@@ -403,8 +411,40 @@ mod test {
             panic!("Pilcom did not generate {output_file:?} at the expected location.")
         });
         drop(temp_dir);
-        let pilcom_parsed = json::parse(&pilcom_out).expect("Invalid json from pilcom.");
+
+        let json_out = serde_json::to_value(pil_out).unwrap();
+
+        let mut pilcom_parsed =
+            serde_json::from_str(&pilcom_out).expect("Invalid json from pilcom.");
+
+        // Filter out expression's "deps" before comparison, since we don't
+        // export them.
+        filter_out_deps(&mut pilcom_parsed);
+
         (json_out, pilcom_parsed)
+    }
+
+    fn filter_out_deps(value: &mut serde_json::Value) {
+        match value {
+            JsonValue::Array(arr) => {
+                for e in arr {
+                    filter_out_deps(e);
+                }
+            }
+            JsonValue::Object(obj) => {
+                match obj.entry("deps") {
+                    serde_json::map::Entry::Occupied(deps) => {
+                        deps.remove();
+                    }
+                    _ => (),
+                }
+
+                for (_, e) in obj.iter_mut() {
+                    filter_out_deps(e);
+                }
+            }
+            _ => (),
+        }
     }
 
     fn compare_export_file(file: &str) {
