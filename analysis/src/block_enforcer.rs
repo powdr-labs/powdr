@@ -18,9 +18,10 @@ pub fn enforce<T: FieldElement>(mut file: AnalysisASMFile<T>) -> AnalysisASMFile
             parse_pil_statement(&format!("col constant {first_step} = [1] + [0]*")),
             // inject the function_id
             parse_pil_statement(&format!("col witness {function_id}")),
-            // the function id must be constant within a block
+            // the function id must be constant within a block. TODO: use an intermediate polynomial, currently it yields an error later in `analyzed`
+            parse_pil_statement(&format!("col witness {f_no_change}")),
             parse_pil_statement(&format!(
-                "col {f_no_change} = (1 - {first_step}') * (1 - {latch})"
+                "{f_no_change} = (1 - {first_step}') * (1 - {latch})"
             )),
             parse_pil_statement(&format!(
                 "{f_no_change} * ({function_id}' - {function_id}) = 0"

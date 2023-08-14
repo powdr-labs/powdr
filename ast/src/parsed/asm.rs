@@ -79,6 +79,7 @@ pub enum FunctionStatement<T> {
     Instruction(usize, String, Vec<Expression<T>>),
     Label(usize, String),
     DebugDirective(usize, DebugDirective),
+    Return(usize, Vec<Expression<T>>),
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]

@@ -7,7 +7,7 @@ use super::{
     AnalysisASMFile, AssignmentStatement, DebugDirective, DegreeStatement, FunctionBody,
     FunctionDefinitionStatement, FunctionStatement, FunctionStatements, Incompatible,
     IncompatibleSet, InstructionDefinitionStatement, InstructionStatement, LabelStatement, Machine,
-    PilBlock, RegisterDeclarationStatement, RegisterTy, Rom,
+    PilBlock, RegisterDeclarationStatement, RegisterTy, Rom, Return, Instruction,
 };
 
 impl<T: Display> Display for AnalysisASMFile<T> {
@@ -92,6 +92,7 @@ impl<T: Display> Display for FunctionStatement<T> {
             FunctionStatement::Instruction(s) => write!(f, "{s}"),
             FunctionStatement::Label(s) => write!(f, "{s}"),
             FunctionStatement::DebugDirective(d) => write!(f, "{d}"),
+            FunctionStatement::Return(r) => write!(f, "{r}"),
         }
     }
 }
@@ -139,6 +140,27 @@ impl<T: Display> Display for InstructionStatement<T> {
     }
 }
 
+impl<T: Display> Display for Return<T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(
+            f,
+            "return{};",
+            if self.values.is_empty() {
+                "".to_string()
+            } else {
+                format!(
+                    " {}",
+                    self.values
+                        .iter()
+                        .map(|i| i.to_string())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )
+            }
+        )
+    }
+}
+
 impl Display for LabelStatement {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(f, "{}::", self.name)
@@ -174,7 +196,13 @@ impl Display for RegisterTy {
 
 impl<T: Display> Display for InstructionDefinitionStatement<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write!(f, "instr {}{} {{ {} }}", self.name, self.params, self.body)
+        write!(f, "instr {}{}", self.name, self.instruction)
+    }
+}
+
+impl<T: Display> Display for Instruction<T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(f, "{} {{ {} }}", self.params, self.body)
     }
 }
 

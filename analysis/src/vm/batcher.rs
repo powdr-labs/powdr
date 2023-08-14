@@ -166,28 +166,8 @@ mod tests {
 
         let batched: AnalysisASMFile<GoldilocksField> = batch_str(&input);
 
-        // batching also introduces the return instructions as well as sets the machine latches
-        // make sure these changes are there, and remove them so that we can compare with the expected value
-
-        let batched_str = batched.to_string();
-
-        // the `return` instruction should be defined
-        assert!(batched_str.contains("instr return {  }"));
-        // the latch of this machine should be the flag of the `return` instruction
-        assert!(batched_str.contains("(instr_return, _)"));
-        let batched_str = batched_str.replace("(instr_return, _)", "");
-
-        let batched_str = batched_str
-            .split('\n')
-            .filter_map(|s| match s {
-                s if s.contains("instr return {  }") => None,
-                s => Some(s),
-            })
-            .collect::<Vec<_>>()
-            .join("\n");
-
         assert_eq!(
-            format!("{batched_str}")
+            format!("{batched}")
                 .replace("\n\n", "\n")
                 .replace('\t', "    "),
             expected.replace("\n\n", "\n").replace('\t', "    "),

@@ -124,9 +124,7 @@ pub mod utils {
             ast::parsed::asm::FunctionStatement::Label(start, name) => {
                 LabelStatement { start, name }.into()
             }
-            ast::parsed::asm::FunctionStatement::DebugDirective(_start, _s) => {
-                todo!()
-            }
+            _ => unimplemented!()
         }
     }
 

@@ -135,6 +135,22 @@ impl<T: Display> Display for FunctionStatement<T> {
             ),
             FunctionStatement::Label(_, name) => write!(f, "{name}::"),
             FunctionStatement::DebugDirective(_, dir) => write!(f, "{dir}"),
+            FunctionStatement::Return(_, values) => write!(
+                f,
+                "return{};",
+                if values.is_empty() {
+                    "".to_string()
+                } else {
+                    format!(
+                        " {}",
+                        values
+                            .iter()
+                            .map(|i| i.to_string())
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    )
+                }
+            ),
         }
     }
 }

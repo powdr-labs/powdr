@@ -4,7 +4,7 @@ use std::collections::BTreeMap;
 
 use ast::{
     asm_analysis::{
-        AnalysisASMFile, InstructionDefinitionStatement, Machine, PilBlock, SubmachineDeclaration,
+        AnalysisASMFile, InstructionDefinitionStatement, Machine, PilBlock, SubmachineDeclaration, Instruction,
     },
     object::{Function, Instr, Link, LinkFrom, LinkTo, Location, Object, PILGraph},
     parsed::{asm::InstructionBody, PilStatement},
@@ -120,7 +120,7 @@ impl<'a, T: FieldElement> ASMPILConverter<'a, T> {
         assert!(input
             .instructions
             .iter()
-            .all(|i| matches!(i.body, InstructionBody::External(..))));
+            .all(|i| matches!(i.instruction.body, InstructionBody::External(..))));
         assert!(input.latch.is_some());
         assert!(input.function_id.is_some());
         assert!(input.registers.is_empty());
@@ -147,9 +147,11 @@ impl<'a, T: FieldElement> ASMPILConverter<'a, T> {
         &mut self,
         InstructionDefinitionStatement {
             start: _,
-            body,
             name,
-            params,
+            instruction: Instruction {
+                params,
+                body,
+            }
         }: InstructionDefinitionStatement<T>,
     ) -> Option<Link<T>> {
         let instruction_flag = format!("instr_{name}");

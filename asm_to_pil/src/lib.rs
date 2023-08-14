@@ -1,12 +1,12 @@
 //! Compilation from powdr assembly to PIL
 
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::{collections::{BTreeMap, BTreeSet, HashMap}, iter::repeat};
 
 use ast::{
     asm_analysis::{
         AnalysisASMFile, AssignmentStatement, Batch, DebugDirective, FunctionStatement,
         InstructionDefinitionStatement, InstructionStatement, LabelStatement, Machine, PilBlock,
-        RegisterDeclarationStatement, RegisterTy,
+        RegisterDeclarationStatement, RegisterTy, Return,
     },
     parsed::{
         asm::{InstructionBody, InstructionBodyElement, PlookupOperator},
@@ -66,6 +66,9 @@ impl<T: FieldElement> ASMPILConverter<T> {
                 ArrayExpression::value(vec![build_number(1u64)]).pad_with_zeroes(),
             ),
         ));
+
+        // introduce `return` based on its implementation in the machine
+        self.handle_return_def(input.ret.unwrap());
 
         // turn registers into constraints
         for reg in input.registers.drain(..) {
@@ -219,6 +222,7 @@ impl<T: FieldElement> ASMPILConverter<T> {
                 debug_directives: vec![d],
                 ..Default::default()
             },
+            FunctionStatement::Return(ret) => self.handle_return(ret),
         }
     }
 
@@ -276,10 +280,21 @@ impl<T: FieldElement> ASMPILConverter<T> {
         let instruction_name = s.name.clone();
         let instruction_flag = format!("instr_{instruction_name}");
         self.create_witness_fixed_pair(s.start, &instruction_flag);
-        // it's part of the lookup!
-        //self.pil.push(constrain_zero_one(&col_name));
 
-        let inputs: Vec<_> = s
+        let (res, instruction) = self.handle_instruction_def_inner(s.start, &instruction_name, &instruction_flag, s.instruction);
+
+        self.instructions.insert(instruction_name, instruction);
+        res
+    }
+
+    fn handle_instruction_def_inner(
+        &mut self,
+        start: usize,
+        name: &str,
+        flag: &str,
+        instruction: ast::asm_analysis::Instruction<T>,
+    ) -> (Option<InstructionDefinitionStatement<T>>, Instruction) {
+        let inputs: Vec<_> = instruction
             .params
             .clone()
             .inputs
@@ -298,7 +313,7 @@ impl<T: FieldElement> ASMPILConverter<T> {
             })
             .collect();
 
-        let outputs = s
+        let outputs = instruction
             .params
             .clone()
             .outputs
@@ -314,17 +329,17 @@ impl<T: FieldElement> ASMPILConverter<T> {
             })
             .unwrap_or_default();
 
-        let instruction = Instruction { inputs, outputs };
+        let i = Instruction { inputs, outputs };
 
         // First transform into PIL so that we can apply macro expansion.
 
-        let res = match s.body {
+        let res = match instruction.body {
             InstructionBody::Local(body) => {
                 let mut statements = body
                     .into_iter()
                     .map(|el| match el {
                         InstructionBodyElement::PolynomialIdentity(left, right) => {
-                            PilStatement::PolynomialIdentity(s.start, build_sub(left, right))
+                            PilStatement::PolynomialIdentity(start, build_sub(left, right))
                         }
                         InstructionBodyElement::PlookupIdentity(left, op, right) => {
                             assert!(
@@ -333,10 +348,10 @@ impl<T: FieldElement> ASMPILConverter<T> {
                     );
                             match op {
                                 PlookupOperator::In => {
-                                    PilStatement::PlookupIdentity(s.start, left, right)
+                                    PilStatement::PlookupIdentity(start, left, right)
                                 }
                                 PlookupOperator::Is => {
-                                    PilStatement::PermutationIdentity(s.start, left, right)
+                                    PilStatement::PermutationIdentity(start, left, right)
                                 }
                             }
                         }
@@ -347,11 +362,11 @@ impl<T: FieldElement> ASMPILConverter<T> {
                     .collect::<Vec<_>>();
 
                 // Substitute parameter references by the column names
-                let substitutions = instruction
+                let substitutions = i
                     .literal_arg_names()
                     .map(|arg_name| {
                         let param_col_name = format!("instr_{instruction_name}_param_{arg_name}");
-                        self.create_witness_fixed_pair(s.start, &param_col_name);
+                        self.create_witness_fixed_pair(start, &param_col_name);
                         (arg_name.clone(), param_col_name)
                     })
                     .collect::<HashMap<_, _>>();
@@ -371,7 +386,7 @@ impl<T: FieldElement> ASMPILConverter<T> {
                     if let PilStatement::PolynomialIdentity(_start, expr) = statement {
                         match extract_update(expr) {
                             (Some(var), expr) => {
-                                let reference = direct_reference(&instruction_flag);
+                                let reference = direct_reference(flag);
 
                                 self.registers
                                     .get_mut(&var)
@@ -381,7 +396,7 @@ impl<T: FieldElement> ASMPILConverter<T> {
                             }
                             (None, expr) => self.pil.push(PilStatement::PolynomialIdentity(
                                 0,
-                                build_mul(direct_reference(&instruction_flag), expr.clone()),
+                                build_mul(direct_reference(flag), expr.clone()),
                             )),
                         }
                     } else {
@@ -392,7 +407,7 @@ impl<T: FieldElement> ASMPILConverter<T> {
                             left.selector.is_none(),
                             "LHS selector not supported, could and-combine with instruction flag later."
                         );
-                                left.selector = Some(direct_reference(&instruction_flag));
+                                left.selector = Some(direct_reference(flag));
                                 self.pil.push(statement)
                             }
                             _ => {
@@ -405,9 +420,111 @@ impl<T: FieldElement> ASMPILConverter<T> {
             }
             InstructionBody::External(..) => Some(s),
         };
-        self.instructions.insert(instruction_name, instruction);
-        res
+        (res, i)
     }
+
+    fn handle_return_def(
+        &mut self,
+        return_instruction: ast::asm_analysis::Instruction<T>
+    ) {
+        let return_name = "return".to_string();
+        let return_flag = "_return".to_string();
+        self.create_witness_fixed_pair(0, &return_flag);
+        // First transform into PIL so that we can apply macro expansion.
+
+        let instruction = Instruction {
+            inputs: return_instruction.params,
+            outputs: todo!(),
+        };
+
+        match return_instruction.body {
+            InstructionBody::Local(body) => {
+                let mut statements = body
+                    .into_iter()
+                    .map(|el| match el {
+                        InstructionBodyElement::PolynomialIdentity(left, right) => {
+                            PilStatement::PolynomialIdentity(0, build_sub(left, right))
+                        }
+                        InstructionBodyElement::PlookupIdentity(left, op, right) => {
+                            assert!(
+                        left.selector.is_none(),
+                        "LHS selector not supported, could and-combine with instruction flag later."
+                    );
+                            match op {
+                                PlookupOperator::In => {
+                                    PilStatement::PlookupIdentity(0, left, right)
+                                }
+                                PlookupOperator::Is => {
+                                    PilStatement::PermutationIdentity(0, left, right)
+                                }
+                            }
+                        }
+                        InstructionBodyElement::FunctionCall(c) => {
+                            PilStatement::FunctionCall(0, c.id, c.arguments)
+                        }
+                    })
+                    .collect::<Vec<_>>();
+
+                // Substitute parameter references by the column names
+                let substitutions = instruction
+                    .literal_arg_names()
+                    .map(|arg_name| {
+                        let param_col_name = format!("return_param_{arg_name}");
+                        self.create_witness_fixed_pair(0, &param_col_name);
+                        (arg_name.clone(), param_col_name)
+                    })
+                    .collect::<HashMap<_, _>>();
+                statements.iter_mut().for_each(|s| {
+                    postvisit_expression_in_statement_mut(s, &mut |e| {
+                        if let Expression::PolynomialReference(r) = e {
+                            if let Some(sub) = substitutions.get(&r.name) {
+                                r.name = sub.clone();
+                            }
+                        }
+                        std::ops::ControlFlow::Continue::<()>(())
+                    });
+                });
+
+                // Expand macros and analyze resulting statements.
+                for mut statement in statements {
+                    if let PilStatement::PolynomialIdentity(_start, expr) = statement {
+                        match extract_update(expr) {
+                            (Some(var), expr) => {
+                                let reference = direct_reference(&return_flag);
+
+                                self.registers
+                                    .get_mut(&var)
+                                    .unwrap()
+                                    .conditioned_updates
+                                    .push((reference, expr));
+                            }
+                            (None, expr) => self.pil.push(PilStatement::PolynomialIdentity(
+                                0,
+                                build_mul(direct_reference(&return_flag), expr.clone()),
+                            )),
+                        }
+                    } else {
+                        match &mut statement {
+                            PilStatement::PermutationIdentity(_, left, _)
+                            | PilStatement::PlookupIdentity(_, left, _) => {
+                                assert!(
+                            left.selector.is_none(),
+                            "LHS selector not supported, could and-combine with instruction flag later."
+                        );
+                                left.selector = Some(direct_reference(&return_flag));
+                                self.pil.push(statement)
+                            }
+                            _ => {
+                                panic!("Invalid statement for instruction body: {statement}");
+                            }
+                        }
+                    }
+                }
+            }
+            InstructionBody::External(..) => unreachable!(),
+        };
+    }
+
 
     fn handle_assignment(
         &mut self,
@@ -745,6 +862,7 @@ impl<T: FieldElement> ASMPILConverter<T> {
                     }
                 }
             }
+            // encode instructions
             for (instr, literal_args) in &line.instructions {
                 for (reg, writes) in &line.write_regs {
                     if !writes.is_empty() {
@@ -765,6 +883,26 @@ impl<T: FieldElement> ASMPILConverter<T> {
                 {
                     rom_constants
                         .get_mut(&format!("p_instr_{instr}_param_{}", param.clone()))
+                        .unwrap()[i] = match arg {
+                        InstructionLiteralArg::LabelRef(name) => (*label_positions
+                            .get(name)
+                            .unwrap_or_else(|| panic!("{name} not found in labels"))
+                            as u64)
+                            .into(),
+                        InstructionLiteralArg::Number(n) => *n,
+                    };
+                }
+            }
+            // encode return
+            if let Some(literal_args) = line.returns {
+                rom_constants.get_mut(&"p_return".to_string()).unwrap()[i] = 1.into();
+                assert_eq!(literal_args.len(), self.read_only_register_names().count());
+                for (arg, param) in literal_args
+                    .iter()
+                    .zip(self.read_only_register_names())
+                {
+                    rom_constants
+                        .get_mut(&format!("p_return_param_{}", param.clone()))
                         .unwrap()[i] = match arg {
                         InstructionLiteralArg::LabelRef(name) => (*label_positions
                             .get(name)
@@ -923,6 +1061,7 @@ struct CodeLine<T> {
     debug_directives: Vec<DebugDirective>,
 }
 
+#[derive(Clone)]
 enum AffineExpressionComponent<T> {
     Register(String),
     Constant,

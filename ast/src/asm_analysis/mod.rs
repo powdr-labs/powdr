@@ -54,6 +54,11 @@ impl RegisterTy {
 pub struct InstructionDefinitionStatement<T> {
     pub start: usize,
     pub name: String,
+    pub instruction: Instruction<T>
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct Instruction<T> {
     pub params: Params,
     pub body: InstructionBody<T>,
 }
@@ -219,6 +224,7 @@ pub enum FunctionStatement<T> {
     Instruction(InstructionStatement<T>),
     Label(LabelStatement),
     DebugDirective(DebugDirective),
+    Return(Return<T>),
 }
 
 impl<T> From<AssignmentStatement<T>> for FunctionStatement<T> {
@@ -242,6 +248,12 @@ impl<T> From<LabelStatement> for FunctionStatement<T> {
 impl<T> From<DebugDirective> for FunctionStatement<T> {
     fn from(value: DebugDirective) -> Self {
         Self::DebugDirective(value)
+    }
+}
+
+impl<T> From<Return<T>> for FunctionStatement<T> {
+    fn from(value: Return<T>) -> Self {
+        Self::Return(value)
     }
 }
 
@@ -273,6 +285,12 @@ pub struct DebugDirective {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+pub struct Return<T> {
+    pub start: usize,
+    pub values: Vec<Expression<T>>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub struct PilBlock<T> {
     pub start: usize,
     pub statements: Vec<PilStatement<T>>,
@@ -298,6 +316,7 @@ pub struct Machine<T> {
     pub instructions: Vec<InstructionDefinitionStatement<T>>,
     pub functions: Vec<FunctionDefinitionStatement<T>>,
     pub submachines: Vec<SubmachineDeclaration>,
+    pub ret: Option<Instruction<T>>,
     /// the rom gets generated in romgen
     pub rom: Option<Rom<T>>,
 }

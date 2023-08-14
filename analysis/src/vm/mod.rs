@@ -1,4 +1,4 @@
-//! Analysis for VM machines, reducing them to PIL
+//! Analysis for VM machines, reducing them to constrained machines
 //! Machines which do not have a pc should be left unchanged by this
 
 use ast::asm_analysis::AnalysisASMFile;

@@ -43,18 +43,13 @@ fn generate_machine_rom<T: FieldElement>(mut machine: Machine<T>) -> Machine<T> 
                     .collect::<Vec<_>>()
                     .join(", ")
             )),
-            parse_instruction_definition(&format!("instr _loop {{ {}' = {} }}", pc, pc)),
+            parse_instruction_definition(&format!("instr _loop {{ {pc}' = {pc} }}")),
         ];
 
         machine.instructions.extend(embedded_instructions);
 
         // implement the return instruction. For this dispatcher, returning jumps to 0
-        machine
-            .instructions
-            .iter_mut()
-            .find(|i| i.name == "return")
-            .unwrap()
-            .body = parse_instruction_body(&format!("{{ {}' = 0 }}", machine.pc().unwrap()));
+        machine.ret = Some(parse_instruction_body(&format!("{{ {}' = 0 }}", machine.pc().unwrap())));
 
         // generate the rom
         // the functions are already batched, we just batch the dispatcher manually here
@@ -103,21 +98,23 @@ fn generate_machine_rom<T: FieldElement>(mut machine: Machine<T>) -> Machine<T> 
             rom.extend(batches);
         }
 
-        // THE FOLLOWING IS NECESSARY BECAUSE OF WITGEN, IT COULD BE REMOVED ONCE WITGEN CAN CALL THE INFINITE LOOP ITSELF
+        // TODO: the following is necessary because of witgen, it can be removed once witgen can call the infinite loop itself
         // we get the location of the sink so that witgen jumps to it after the first call is done
         // this constrains the VM to being able to execute only one call, which will be fixed in the future
         let sink_id = T::from(rom.len() as u64);
         let latch = machine.latch.as_ref().unwrap();
         let sigma = "_sigma";
+        let first_step = "_romgen_first_step";
 
         machine.constraints.push(PilBlock {
             start: 0,
             statements: vec![
                 // declare `_sigma` as the sum of the latch, will be 0 and then 1 after the end of the first call
                 parse_pil_statement(&format!("col witness {sigma}")),
+                parse_pil_statement(&format!("col fixed {first_step} = [1] + [0]*")),
                 parse_pil_statement(&format!(
-                    "{sigma}' = (1 - first_step') * ({sigma} + {latch})"
-                )), // HACKY: THIS ASSUMES `first_step` is defined here!!
+                    "{sigma}' = (1 - {first_step}') * ({sigma} + {latch})"
+                )),
                 // once `_sigma` is 1, constrain `_function_id` to the label of the sink
                 parse_pil_statement(&format!("{sigma} * ({function_id} - {sink_id}) = 0")),
             ],
@@ -164,13 +161,13 @@ mod tests {
             
                 instr sub X, Y -> Z { X - Y = Z }
             
-                function add x: field, y: field -> field {
-                    A <=Z= add(x, y);
+                function f_add x: field, y: field -> field {
+                    A <== add(x, y);
                     return A;
                 }
             
-                function sub x: field, y: field -> field {
-                    A <=Z= sub(x, y);
+                function f_sub x: field, y: field -> field {
+                    A <== sub(x, y);
                     return A;
                 }
             }
@@ -196,12 +193,12 @@ _reset;
 // END BATCH Unimplemented
 _jump_to_operation;
 // END BATCH Label
-_add::
+_f_add::
 A <=Z= add(_input_0, _input_1);
 // END BATCH Unimplemented
 return A;
 // END BATCH Label
-_sub::
+_f_sub::
 A <=Z= sub(_input_0, _input_1);
 // END BATCH Unimplemented
 return A;

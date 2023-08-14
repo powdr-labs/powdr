@@ -1,10 +1,8 @@
-machine Machine(instr_return, _) {
+machine Machine {
     reg pc[@pc];
     reg _input_0[@r];
     reg _input_1[@r];
     reg _output_0[<=];
-
-    instr return _output_0 { }
 
     function foo _input_0, _input_1 -> _output_0 {
         return (_input_0 + _input_1);

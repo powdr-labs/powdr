@@ -5,7 +5,7 @@ use ast::{
         AnalysisASMFile, AssignmentStatement, DebugDirective, DegreeStatement, FunctionBody,
         FunctionDefinitionStatement, FunctionStatements, InstructionDefinitionStatement,
         InstructionStatement, LabelStatement, Machine, PilBlock, RegisterDeclarationStatement,
-        RegisterTy, SubmachineDeclaration,
+        RegisterTy, SubmachineDeclaration, Return,
     },
     parsed::asm::{ASMFile, FunctionStatement, MachineStatement, RegisterFlag},
 };
@@ -123,6 +123,10 @@ impl<T: FieldElement> TypeChecker<T> {
                                 function_statements
                                     .push(DebugDirective { start, directive }.into());
                             }
+                            FunctionStatement::Return(start, values) => {
+                                function_statements
+                                    .push(Return { start, values }.into());
+                            }
                         }
                     }
                     functions.push(FunctionDefinitionStatement {
@@ -203,6 +207,7 @@ impl<T: FieldElement> TypeChecker<T> {
             constraints,
             functions,
             submachines,
+            ret: None,
             rom: None,
         });
 

@@ -108,21 +108,22 @@ pub fn link<T: FieldElement>(graph: PILGraph<T>) -> Result<PILFile<T>, Vec<Strin
             }
 
             if location == Location::default().join("main") {
-                let entry_point = graph
+                if let Some(main_function) = graph
                     .entry_points
                     .iter()
                     .find(|f| f.name == MAIN_FUNCTION_NAME)
-                    .unwrap();
-                let entry_point_id = entry_point.id;
-                let function_id = main_machine.function_id.clone();
-                // call the main function by initialising `function_id` to that of the main function
-                let linker_first_step = "_linker_first_step";
-                pil.extend([
-                    parse_pil_statement(&format!("col fixed {linker_first_step} = [1] + [0]*")),
-                    parse_pil_statement(&format!(
-                        "{linker_first_step} * ({function_id} - {entry_point_id}) = 0"
-                    )),
-                ]);
+                {
+                    let main_function_id = main_function.id;
+                    let function_id = main_machine.function_id.clone();
+                    // call the main function by initialising `function_id` to that of the main function
+                    let linker_first_step = "_linker_first_step";
+                    pil.extend([
+                        parse_pil_statement(&format!("col fixed {linker_first_step} = [1] + [0]*")),
+                        parse_pil_statement(&format!(
+                            "{linker_first_step} * ({function_id} - {main_function_id}) = 0"
+                        )),
+                    ]);
+                }
             }
 
             pil
@@ -218,7 +219,8 @@ XIsZero = (1 - (X * XInv));
 (XIsZero * X) = 0;
 (XIsZero * (1 - XIsZero)) = 0;
 pol commit _sigma;
-_sigma' = ((1 - first_step') * (_sigma + instr_return));
+pol fixed _romgen_first_step = [1] + [0]*;
+_sigma' = ((1 - _romgen_first_step') * (_sigma + instr_return));
 (_sigma * (_function_id - 10)) = 0;
 pol constant first_step = [1] + [0]*;
 pol commit pc;
