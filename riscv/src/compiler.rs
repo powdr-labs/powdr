@@ -1393,8 +1393,6 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
 
 #[cfg(test)]
 mod test {
-    use env_logger::filter;
-
     use super::*;
 
     #[test]
