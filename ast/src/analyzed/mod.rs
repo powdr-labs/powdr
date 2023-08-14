@@ -310,6 +310,10 @@ impl<T> Identity<T> {
         assert_eq!(self.kind, IdentityKind::Polynomial);
         self.left.selector.as_ref().unwrap()
     }
+
+    pub fn contains_next_ref(&self) -> bool {
+        self.left.contains_next_ref() || self.right.contains_next_ref()
+    }
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
@@ -324,6 +328,17 @@ pub enum IdentityKind {
 pub struct SelectedExpressions<T> {
     pub selector: Option<Expression<T>>,
     pub expressions: Vec<Expression<T>>,
+}
+
+impl<T> SelectedExpressions<T> {
+    /// @returns true if the expression contains a reference to a next value of a
+    /// (witness or fixed) column
+    pub fn contains_next_ref(&self) -> bool {
+        self.selector
+            .iter()
+            .chain(self.expressions.iter())
+            .any(|e| e.contains_next_ref())
+    }
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
