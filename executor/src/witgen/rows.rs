@@ -38,13 +38,13 @@ impl<T: FieldElement> CellValue<T> {
 
 /// A single cell, holding an optional value and range constraint.
 #[derive(Clone)]
-pub struct Cell<T: FieldElement> {
+pub struct Cell<'a, T: FieldElement> {
     /// The column name, for debugging purposes.
-    pub name: &'static str,
+    pub name: &'a str,
     value: CellValue<T>,
 }
 
-impl<T: FieldElement> Debug for Cell<T> {
+impl<T: FieldElement> Debug for Cell<'_, T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let debug_str = match &self.value {
             CellValue::Known(v) => format!("{} = {}", self.name, v),
@@ -58,15 +58,15 @@ impl<T: FieldElement> Debug for Cell<T> {
 }
 
 /// A row of cells, indexed by polynomial ID.
-pub type Row<T> = ColumnMap<Cell<T>>;
+pub type Row<'a, T> = ColumnMap<Cell<'a, T>>;
 
-impl<T: FieldElement> Debug for Row<T> {
+impl<T: FieldElement> Debug for Row<'_, T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(&self.render("Row:", true))
     }
 }
 
-impl<T: FieldElement> Row<T> {
+impl<T: FieldElement> Row<'_, T> {
     /// Builds a string representing the current row
     pub fn render(&self, title: &str, include_unknown: bool) -> String {
         format!("{}:\n{}", title, self.render_values(include_unknown))
@@ -116,12 +116,12 @@ impl<'a, T: FieldElement> RowFactory<'a, T> {
         }
     }
 
-    pub fn fresh_row(&self) -> Row<T> {
+    pub fn fresh_row(&self) -> Row<'a, T> {
         ColumnMap::from(
             self.global_range_constraints
                 .iter()
                 .map(|(poly_id, range_constraint)| Cell {
-                    name: self.fixed_data.witness_column_names[&poly_id],
+                    name: self.fixed_data.column_name(&poly_id),
                     value: match range_constraint.as_ref() {
                         Some(rc) => CellValue::RangeConstraint(rc.clone()),
                         None => CellValue::Unknown,
@@ -131,10 +131,10 @@ impl<'a, T: FieldElement> RowFactory<'a, T> {
         )
     }
 
-    pub fn row_from_known_values(&self, values: &ColumnMap<T>) -> Row<T> {
+    pub fn row_from_known_values(&self, values: &ColumnMap<T>) -> Row<'a, T> {
         ColumnMap::from(
             values.iter().map(|(poly_id, &v)| Cell {
-                name: self.fixed_data.witness_column_names[&poly_id],
+                name: self.fixed_data.column_name(&poly_id),
                 value: CellValue::Known(v),
             }),
             PolynomialType::Committed,
@@ -142,7 +142,7 @@ impl<'a, T: FieldElement> RowFactory<'a, T> {
     }
 }
 
-impl<T: FieldElement> From<Row<T>> for ColumnMap<T> {
+impl<T: FieldElement> From<Row<'_, T>> for ColumnMap<T> {
     /// Builds a map from polynomial ID to value. Unknown values are set to zero.
     fn from(val: Row<T>) -> Self {
         ColumnMap::from(
@@ -154,16 +154,16 @@ impl<T: FieldElement> From<Row<T>> for ColumnMap<T> {
 }
 
 /// A pair of mutable row references which knows how to apply updates.
-pub struct RowUpdater<'row, T: FieldElement> {
-    current: &'row mut Row<T>,
-    next: &'row mut Row<T>,
+pub struct RowUpdater<'row, 'a, T: FieldElement> {
+    current: &'row mut Row<'a, T>,
+    next: &'row mut Row<'a, T>,
     current_row_index: DegreeType,
 }
 
-impl<'row, T: FieldElement> RowUpdater<'row, T> {
+impl<'row, 'a, T: FieldElement> RowUpdater<'row, 'a, T> {
     pub fn new(
-        current: &'row mut Row<T>,
-        next: &'row mut Row<T>,
+        current: &'row mut Row<'a, T>,
+        next: &'row mut Row<'a, T>,
         current_row_index: DegreeType,
     ) -> Self {
         Self {
@@ -202,7 +202,7 @@ impl<'row, T: FieldElement> RowUpdater<'row, T> {
         true
     }
 
-    fn get_cell_mut<'b>(&'b mut self, poly: &PolynomialReference) -> &'b mut Cell<T> {
+    fn get_cell_mut<'b>(&'b mut self, poly: &PolynomialReference) -> &'b mut Cell<'a, T> {
         match poly.next {
             false => &mut self.current[&poly.poly_id()],
             true => &mut self.next[&poly.poly_id()],
@@ -261,16 +261,16 @@ impl<'row, T: FieldElement> RowUpdater<'row, T> {
 /// A pair of row references which knows which value / range constraint
 /// to return for a given [PolynomialReference].
 pub struct RowPair<'row, 'a, T: FieldElement> {
-    pub current: &'row Row<T>,
-    pub next: &'row Row<T>,
+    pub current: &'row Row<'a, T>,
+    pub next: &'row Row<'a, T>,
     pub current_row_index: DegreeType,
     fixed_data: &'a FixedData<'a, T>,
     evaluate_unknown_to_zero: bool,
 }
 impl<'row, 'a, T: FieldElement> RowPair<'row, 'a, T> {
     pub fn new(
-        current: &'row Row<T>,
-        next: &'row Row<T>,
+        current: &'row Row<'a, T>,
+        next: &'row Row<'a, T>,
         current_row_index: DegreeType,
         fixed_data: &'a FixedData<'a, T>,
         evaluate_unknown_to_zero: bool,

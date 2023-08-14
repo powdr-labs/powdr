@@ -3,7 +3,10 @@ use std::collections::HashMap;
 use ast::analyzed::{IdentityKind, PolynomialReference, SelectedExpressions};
 use number::FieldElement;
 
+use self::block_machine::BlockMachine;
+use self::double_sorted_witness_machine::DoubleSortedWitnesses;
 pub use self::fixed_lookup_machine::FixedLookup;
+use self::sorted_witness_machine::SortedWitnesses;
 
 use super::affine_expression::AffineResult;
 use super::EvalResult;
@@ -43,4 +46,47 @@ pub trait Machine<T: FieldElement>: Send + Sync {
 
     /// Returns the final values of the witness columns.
     fn witness_col_values(&mut self, fixed_data: &FixedData<T>) -> HashMap<String, Vec<T>>;
+}
+
+/// All known implementations of [Machine].
+/// This allows us to treat machines uniformly without putting them into a `Box`,
+/// which requires that all lifetime parameters are 'static.
+pub enum KnownMachine<T: FieldElement> {
+    SortedWitnesses(SortedWitnesses<T>),
+    DoubleSortedWitnesses(DoubleSortedWitnesses<T>),
+    BlockMachine(BlockMachine<T>),
+}
+
+impl<T: FieldElement> KnownMachine<T> {
+    fn get(&mut self) -> &mut dyn Machine<T> {
+        match self {
+            KnownMachine::SortedWitnesses(m) => m,
+            KnownMachine::DoubleSortedWitnesses(m) => m,
+            KnownMachine::BlockMachine(m) => m,
+        }
+    }
+}
+
+impl<T: FieldElement> Machine<T> for KnownMachine<T> {
+    fn process_plookup<'a>(
+        &mut self,
+        fixed_data: &FixedData<T>,
+        fixed_lookup: &mut FixedLookup<T>,
+        kind: IdentityKind,
+        left: &[crate::witgen::affine_expression::AffineResult<
+            &'a ast::analyzed::PolynomialReference,
+            T,
+        >],
+        right: &'a SelectedExpressions<T>,
+    ) -> Option<crate::witgen::EvalResult<'a, T>> {
+        self.get()
+            .process_plookup(fixed_data, fixed_lookup, kind, left, right)
+    }
+
+    fn witness_col_values(
+        &mut self,
+        fixed_data: &FixedData<T>,
+    ) -> std::collections::HashMap<String, Vec<T>> {
+        self.get().witness_col_values(fixed_data)
+    }
 }
