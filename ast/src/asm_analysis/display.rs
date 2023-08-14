@@ -6,8 +6,8 @@ use std::{
 use super::{
     AnalysisASMFile, AssignmentStatement, DebugDirective, DegreeStatement, FunctionBody,
     FunctionDefinitionStatement, FunctionStatement, FunctionStatements, Incompatible,
-    IncompatibleSet, InstructionDefinitionStatement, InstructionStatement, LabelStatement, Machine,
-    PilBlock, RegisterDeclarationStatement, RegisterTy, Rom, Return, Instruction,
+    IncompatibleSet, Instruction, InstructionDefinitionStatement, InstructionStatement,
+    LabelStatement, Machine, PilBlock, RegisterDeclarationStatement, RegisterTy, Return, Rom,
 };
 
 impl<T: Display> Display for AnalysisASMFile<T> {
@@ -24,15 +24,6 @@ fn indent<S: ToString>(s: S, indentation: usize) -> String {
     s.to_string()
         .split('\n')
         .map(|line| format!("{}{line}", "\t".repeat(indentation)))
-        .collect::<Vec<_>>()
-        .join("\n")
-}
-
-/// quick and dirty String to String way to comment out
-fn comment_out<S: ToString>(s: S) -> String {
-    s.to_string()
-        .split('\n')
-        .map(|line| format!("//{line}"))
         .collect::<Vec<_>>()
         .join("\n")
 }
@@ -63,9 +54,6 @@ impl<T: Display> Display for Machine<T> {
         }
         for o in &self.functions {
             writeln!(f, "{}", indent(o, 1))?;
-        }
-        if let Some(rom) = &self.rom {
-            writeln!(f, "{}", indent(comment_out(rom), 1),)?;
         }
         writeln!(f, "}}")
     }
@@ -144,7 +132,7 @@ impl<T: Display> Display for Return<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(
             f,
-            "return{};",
+            "ret{};",
             if self.values.is_empty() {
                 "".to_string()
             } else {

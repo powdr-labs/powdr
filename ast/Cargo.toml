@@ -9,4 +9,7 @@ edition = "2021"
 itertools = "0.11.0"
 num-bigint = "0.4.3"
 number = { path = "../number" }
+diff = "0.1"
+log = "0.4.18"
+
 

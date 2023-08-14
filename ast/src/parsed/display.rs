@@ -137,7 +137,7 @@ impl<T: Display> Display for FunctionStatement<T> {
             FunctionStatement::DebugDirective(_, dir) => write!(f, "{dir}"),
             FunctionStatement::Return(_, values) => write!(
                 f,
-                "return{};",
+                "ret{};",
                 if values.is_empty() {
                     "".to_string()
                 } else {

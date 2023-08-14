@@ -250,14 +250,14 @@ FunctionId: Option<FunctionId<T>> = {
 
 pub FunctionStatement: FunctionStatement<T> = {
     Assignment,
-    Instruction,
     Label,
     DebugDirective,
+    Return,
+    Instruction,
 }
 
 Assignment: FunctionStatement<T> = {
     <@L> <IdentifierList> <AssignOperator> <BoxedExpression> ";" => FunctionStatement::Assignment(<>)
-
 }
 
 IdentifierList: Vec<String> = {
@@ -267,6 +267,10 @@ IdentifierList: Vec<String> = {
 
 AssignOperator: Option<String> = {
     "<=" <Identifier?> "="
+}
+
+Return: FunctionStatement<T> = {
+    <@L> "ret" <ExpressionList> ";" => FunctionStatement::Return(<>)
 }
 
 Instruction: FunctionStatement<T> = {

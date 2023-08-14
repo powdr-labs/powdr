@@ -54,7 +54,7 @@ impl RegisterTy {
 pub struct InstructionDefinitionStatement<T> {
     pub start: usize,
     pub name: String,
-    pub instruction: Instruction<T>
+    pub instruction: Instruction<T>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -316,9 +316,6 @@ pub struct Machine<T> {
     pub instructions: Vec<InstructionDefinitionStatement<T>>,
     pub functions: Vec<FunctionDefinitionStatement<T>>,
     pub submachines: Vec<SubmachineDeclaration>,
-    pub ret: Option<Instruction<T>>,
-    /// the rom gets generated in romgen
-    pub rom: Option<Rom<T>>,
 }
 
 impl<T> Machine<T> {

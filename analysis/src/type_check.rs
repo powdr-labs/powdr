@@ -3,9 +3,9 @@ use std::collections::BTreeMap;
 use ast::{
     asm_analysis::{
         AnalysisASMFile, AssignmentStatement, DebugDirective, DegreeStatement, FunctionBody,
-        FunctionDefinitionStatement, FunctionStatements, InstructionDefinitionStatement,
-        InstructionStatement, LabelStatement, Machine, PilBlock, RegisterDeclarationStatement,
-        RegisterTy, SubmachineDeclaration, Return,
+        FunctionDefinitionStatement, FunctionStatements, Instruction,
+        InstructionDefinitionStatement, InstructionStatement, LabelStatement, Machine, PilBlock,
+        RegisterDeclarationStatement, RegisterTy, Return, SubmachineDeclaration,
     },
     parsed::asm::{ASMFile, FunctionStatement, MachineStatement, RegisterFlag},
 };
@@ -64,14 +64,13 @@ impl<T: FieldElement> TypeChecker<T> {
                     registers.push(RegisterDeclarationStatement { start, name, ty });
                 }
                 MachineStatement::InstructionDeclaration(start, name, params, body) => {
-                    if name == "return" {
-                        errors.push("Instruction cannot use reserved name `return`".into());
+                    if name == "ret" {
+                        errors.push("Instruction cannot use reserved name `ret`".into());
                     }
                     instructions.push(InstructionDefinitionStatement {
                         start,
                         name,
-                        params,
-                        body,
+                        instruction: Instruction { params, body },
                     });
                 }
                 MachineStatement::InlinePil(start, statements) => {
@@ -124,8 +123,7 @@ impl<T: FieldElement> TypeChecker<T> {
                                     .push(DebugDirective { start, directive }.into());
                             }
                             FunctionStatement::Return(start, values) => {
-                                function_statements
-                                    .push(Return { start, values }.into());
+                                function_statements.push(Return { start, values }.into());
                             }
                         }
                     }
@@ -207,8 +205,6 @@ impl<T: FieldElement> TypeChecker<T> {
             constraints,
             functions,
             submachines,
-            ret: None,
-            rom: None,
         });
 
         if !errors.is_empty() {

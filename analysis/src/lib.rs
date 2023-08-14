@@ -6,36 +6,8 @@ mod vm;
 /// expose the macro expander for use in the pil_analyzer
 pub use macro_expansion::MacroExpander;
 
-use ast::{asm_analysis::AnalysisASMFile, parsed::asm::ASMFile};
+use ast::{asm_analysis::AnalysisASMFile, parsed::asm::ASMFile, DiffMonitor};
 use number::FieldElement;
-
-#[derive(Default)]
-/// A monitor of the changes applied to the program as we run through the analysis pipeline
-pub struct DiffMonitor {
-    previous: Option<String>,
-    current: Option<String>,
-}
-
-impl DiffMonitor {
-    /// push a new program and log::trace! how it differs from the previous one, if any
-    fn push<S: ToString>(&mut self, s: S) {
-        std::mem::swap(&mut self.previous, &mut self.current);
-        self.current = Some(s.to_string());
-
-        if let Some(current) = &self.current {
-            if let Some(previous) = &self.previous {
-                for diff in diff::lines(previous, current) {
-                    match diff {
-                        diff::Result::Left(l) => log::trace!("-{}", l),
-                        diff::Result::Both(..) => {}
-                        diff::Result::Right(r) => log::trace!("+{}", r),
-                    }
-                }
-                log::trace!("");
-            }
-        }
-    }
-}
 
 pub fn analyze<T: FieldElement>(file: ASMFile<T>) -> Result<AnalysisASMFile<T>, Vec<String>> {
     let mut monitor = DiffMonitor::default();
@@ -62,96 +34,13 @@ pub fn analyze<T: FieldElement>(file: ASMFile<T>) -> Result<AnalysisASMFile<T>, 
 }
 
 pub mod utils {
-    use ast::{
-        asm_analysis::{
-            AssignmentStatement, FunctionStatement, InstructionDefinitionStatement,
-            InstructionStatement, LabelStatement, RegisterDeclarationStatement, RegisterTy,
-        },
-        parsed::{
-            asm::{InstructionBody, MachineStatement, RegisterFlag},
-            PilStatement,
-        },
-    };
+    use ast::parsed::PilStatement;
     use number::FieldElement;
-
-    pub fn parse_instruction_definition<T: FieldElement>(
-        input: &str,
-    ) -> InstructionDefinitionStatement<T> {
-        match parser::powdr::InstructionDeclarationParser::new()
-            .parse(input)
-            .unwrap()
-        {
-            MachineStatement::InstructionDeclaration(start, name, params, body) => {
-                InstructionDefinitionStatement {
-                    start,
-                    name,
-                    params,
-                    body,
-                }
-            }
-            _ => panic!(),
-        }
-    }
-
-    pub fn parse_instruction_body<T: FieldElement>(input: &str) -> InstructionBody<T> {
-        parser::powdr::InstructionBodyParser::new()
-            .parse(input)
-            .unwrap()
-    }
-
-    pub fn parse_function_statement<T: FieldElement>(input: &str) -> FunctionStatement<T> {
-        match parser::powdr::FunctionStatementParser::new()
-            .parse::<T>(input)
-            .unwrap()
-        {
-            ast::parsed::asm::FunctionStatement::Assignment(start, lhs, using_reg, rhs) => {
-                AssignmentStatement {
-                    start,
-                    lhs,
-                    using_reg,
-                    rhs,
-                }
-                .into()
-            }
-            ast::parsed::asm::FunctionStatement::Instruction(start, instruction, inputs) => {
-                InstructionStatement {
-                    start,
-                    instruction,
-                    inputs,
-                }
-                .into()
-            }
-            ast::parsed::asm::FunctionStatement::Label(start, name) => {
-                LabelStatement { start, name }.into()
-            }
-            _ => unimplemented!()
-        }
-    }
 
     pub fn parse_pil_statement<T: FieldElement>(input: &str) -> PilStatement<T> {
         parser::powdr::PilStatementParser::new()
             .parse(input)
             .unwrap()
-    }
-
-    pub fn parse_register_declaration<T: FieldElement>(
-        input: &str,
-    ) -> RegisterDeclarationStatement {
-        match parser::powdr::RegisterDeclarationParser::new()
-            .parse::<T>(input)
-            .unwrap()
-        {
-            MachineStatement::RegisterDeclaration(start, name, flag) => {
-                let ty = match flag {
-                    Some(RegisterFlag::IsAssignment) => RegisterTy::Assignment,
-                    Some(RegisterFlag::IsPC) => RegisterTy::Pc,
-                    Some(RegisterFlag::IsReadOnly) => RegisterTy::ReadOnly,
-                    None => RegisterTy::Write,
-                };
-                RegisterDeclarationStatement { start, name, ty }
-            }
-            _ => unreachable!(),
-        }
     }
 }
 

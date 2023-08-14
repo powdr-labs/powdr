@@ -35,13 +35,13 @@ fn infer_machine<T: FieldElement>(mut machine: Machine<T>) -> Result<Machine<T>,
             if let FunctionStatement::Assignment(a) = s {
                 let expr_reg = match &*a.rhs {
                     Expression::FunctionCall(c) => {
-                        let instr = machine
+                        let def = machine
                             .instructions
                             .iter()
                             .find(|i| i.name == c.id)
                             .unwrap();
                         let output = {
-                            let outputs = instr.params.outputs.as_ref().unwrap();
+                            let outputs = def.instruction.params.outputs.as_ref().unwrap();
                             assert!(outputs.params.len() == 1);
                             &outputs.params[0]
                         };
