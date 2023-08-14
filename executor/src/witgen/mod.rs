@@ -30,15 +30,6 @@ pub mod symbolic_evaluator;
 mod symbolic_witness_evaluator;
 mod util;
 
-// TODO: This is done once for the witness column names, so that they can be referenced
-// by the `Cell`. The reason is that we want machines (e.g. `BlockMachine`) to own
-// their rows, but because they live in a `Box`, they can't have a non-static lifetime
-// parameter. #488 prototypes solving this, so this can be removed in the future.
-/// Leaks a string and returns a reference with static lifetime.
-fn leak_string(s: String) -> &'static str {
-    Box::leak(s.into_boxed_str())
-}
-
 /// Generates the committed polynomial values
 /// @returns the values (in source order) and the degree of the polynomials.
 pub fn generate<'a, T: FieldElement, QueryCallback>(
@@ -205,7 +196,6 @@ fn rows_are_repeating<T: PartialEq>(
 /// Data that is fixed for witness generation.
 pub struct FixedData<'a, T> {
     degree: DegreeType,
-    witness_column_names: ColumnMap<&'static str>,
     fixed_cols: ColumnMap<FixedColumn<'a, T>>,
     witness_cols: ColumnMap<WitnessColumn<'a, T>>,
 }
@@ -216,20 +206,10 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
         fixed_cols: ColumnMap<FixedColumn<'a, T>>,
         witness_cols: ColumnMap<WitnessColumn<'a, T>>,
     ) -> Self {
-        // Leak the column names once, so that they can be referenced without
-        // having to worry about lifetimes.
-        let witness_column_names = ColumnMap::from(
-            witness_cols
-                .values()
-                .map(|witness_col| leak_string(witness_col.name.clone())),
-            PolynomialType::Committed,
-        );
-
         FixedData {
             degree,
             fixed_cols,
             witness_cols,
-            witness_column_names,
         }
     }
 

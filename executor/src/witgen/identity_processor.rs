@@ -2,7 +2,7 @@ use ast::analyzed::{Expression, Identity, IdentityKind, PolynomialReference};
 use number::FieldElement;
 
 use super::{
-    machines::{FixedLookup, Machine},
+    machines::{FixedLookup, KnownMachine, Machine},
     rows::RowPair,
     EvalResult, EvalValue, FixedData, IncompleteCause,
 };
@@ -11,14 +11,14 @@ use super::{
 pub struct IdentityProcessor<'a, T: FieldElement> {
     fixed_data: &'a FixedData<'a, T>,
     fixed_lookup: &'a mut FixedLookup<T>,
-    pub machines: Vec<Box<dyn Machine<T>>>,
+    pub machines: Vec<KnownMachine<T>>,
 }
 
 impl<'a, T: FieldElement> IdentityProcessor<'a, T> {
     pub fn new(
         fixed_data: &'a FixedData<'a, T>,
         fixed_lookup: &'a mut FixedLookup<T>,
-        machines: Vec<Box<dyn Machine<T>>>,
+        machines: Vec<KnownMachine<T>>,
     ) -> Self {
         Self {
             fixed_data,

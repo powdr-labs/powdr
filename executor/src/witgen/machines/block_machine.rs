@@ -51,7 +51,7 @@ impl<T: FieldElement> BlockMachine<T> {
         identities: &[&Identity<T>],
         witness_cols: &HashSet<PolyID>,
         global_range_constraints: &ColumnMap<Option<RangeConstraint<T>>>,
-    ) -> Option<Box<Self>> {
+    ) -> Option<Self> {
         for id in connecting_identities {
             // TODO we should check that the other constraints/fixed columns are also periodic.
             if let Some(period) = try_to_period(&id.right.selector, fixed_data) {
@@ -74,7 +74,7 @@ impl<T: FieldElement> BlockMachine<T> {
                 // when storing machine witness data.
                 machine.append_new_block(fixed_data.degree).unwrap();
 
-                return Some(Box::new(machine));
+                return Some(machine);
             }
         }
 

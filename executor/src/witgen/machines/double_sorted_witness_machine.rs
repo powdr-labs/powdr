@@ -44,7 +44,7 @@ impl<T: FieldElement> DoubleSortedWitnesses<T> {
         fixed_data: &FixedData<T>,
         _identities: &[&Identity<T>],
         witness_cols: &HashSet<PolyID>,
-    ) -> Option<Box<Self>> {
+    ) -> Option<Self> {
         // get the namespaces and column names
         let (mut namespaces, columns): (HashSet<_>, HashSet<_>) = witness_cols
             .iter()
@@ -80,12 +80,12 @@ impl<T: FieldElement> DoubleSortedWitnesses<T> {
             .next()
             .is_none()
         {
-            Some(Box::new(Self {
+            Some(Self {
                 // store the namespace
                 namespace,
                 degree: fixed_data.degree,
                 ..Default::default()
-            }))
+            })
         } else {
             None
         }

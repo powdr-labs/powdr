@@ -9,10 +9,11 @@ use crate::witgen::identity_processor::IdentityProcessor;
 use crate::witgen::rows::RowUpdater;
 
 use super::column_map::ColumnMap;
+use super::machines::{KnownMachine, Machine};
 use super::query_processor::QueryProcessor;
 use super::range_constraints::RangeConstraint;
 
-use super::machines::{FixedLookup, Machine};
+use super::machines::FixedLookup;
 use super::rows::{Row, RowFactory, RowPair};
 use super::{EvalError, EvalResult, FixedData};
 
@@ -57,11 +58,11 @@ pub struct Generator<'a, T: FieldElement, QueryCallback: Send + Sync> {
     /// (precomputed once for performance reasons)
     identities_without_next_ref: Vec<&'a Identity<T>>,
     /// Values of the witness polynomials in the previous row (needed to check proposed rows)
-    previous: Row<T>,
+    previous: Row<'a, T>,
     /// Values of the witness polynomials
-    current: Row<T>,
+    current: Row<'a, T>,
     /// Values of the witness polynomials in the next row
-    next: Row<T>,
+    next: Row<'a, T>,
     current_row_index: DegreeType,
     last_report: DegreeType,
     last_report_time: Instant,
@@ -77,7 +78,7 @@ where
         identities: &'a [&'a Identity<T>],
         witnesses: BTreeSet<PolyID>,
         global_range_constraints: ColumnMap<Option<RangeConstraint<T>>>,
-        machines: Vec<Box<dyn Machine<T>>>,
+        machines: Vec<KnownMachine<T>>,
         query_callback: Option<QueryCallback>,
     ) -> Self {
         let query_processor =
@@ -387,9 +388,9 @@ where
         let mut result: HashMap<_, _> = Default::default();
         let name_to_id = self
             .fixed_data
-            .witness_column_names
+            .witness_cols
             .iter()
-            .map(|(poly_id, &name)| (name, poly_id))
+            .map(|(poly_id, col)| (col.name.as_str(), poly_id))
             .collect::<BTreeMap<_, _>>();
         for m in &mut self.identity_processor.machines {
             for (col_name, col) in m.witness_col_values(self.fixed_data) {
