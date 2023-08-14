@@ -409,7 +409,8 @@ fn store_data_objects<'a>(
                         object_code.extend([
                             format!("tmp1 <== load_label({});", escape_label(a)),
                             format!("tmp2 <== load_label({});", escape_label(b)),
-                            "mstore tmp1 - tmp2;".to_string(),
+                            // TODO check if registers match
+                            "mstore wrap(tmp1 - tmp2);".to_string(),
                         ]);
                         */
                     }
@@ -1328,6 +1329,18 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
                     format!("{rd} <== mload();"),
                     format!("{rd} <== shr({rd}, 8 * tmp2);"),
                     format!("{rd} <== and({rd}, 0xff);"),
+                ],
+                rd,
+            )
+        }
+        "lhu" => {
+            let (rd, rs, off) = rro(args);
+            // TODO we need to consider misaligned loads / stores
+            only_if_no_write_to_zero_vec(
+                vec![
+                    format!("addr <== wrap({rs} + {off});"),
+                    format!("{rd} <== mload();"),
+                    format!("{rd} <== and(0x0000ffff, {rd});"),
                 ],
                 rd,
             )
