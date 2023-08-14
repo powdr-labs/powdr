@@ -103,7 +103,7 @@ mod test {
 
     #[test]
     fn secondary_block_machine_add2() {
-        mock_prove_asm("../test_data/asm/secondary_block_machine_add2.asm", &vec![]);
+        mock_prove_asm("../test_data/asm/secondary_block_machine_add2.asm", &[]);
     }
 
     #[test]

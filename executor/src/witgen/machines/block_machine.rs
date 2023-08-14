@@ -596,7 +596,7 @@ impl<T: FieldElement> BlockMachine<T> {
         ExpressionEvaluator::new(SymoblicWitnessEvaluator::new(
             fixed_data,
             self.row,
-            WitnessData {
+            &WitnessData {
                 fixed_data,
                 data: &self.data,
                 row: self.row,
