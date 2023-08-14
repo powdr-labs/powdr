@@ -13,8 +13,10 @@ number = { path = "../number" }
 strum = { version = "0.24.1", features = ["derive"] }
 ast = { version = "0.1.0", path = "../ast" }
 log = "0.4.17"
-json = "^0.12"
+serde_json = "1.0"
 thiserror = "1.0.43"
+starky = { git = "https://github.com/0xEigenLabs/eigen-zkvm.git", branch = "main" }
+winter-math = { version = "0.4", features = ["concurrent"] }
 
 [dev-dependencies]
 mktemp = "0.5.0"
