@@ -10,7 +10,6 @@ use starky::{
     transcript::TranscriptGL,
     types::{StarkStruct, Step, PIL},
 };
-use winter_math::fields::f64::BaseElement;
 
 pub struct EStark {
     params: StarkStruct,
@@ -46,6 +45,8 @@ impl<F: FieldElement> BackendImpl<F> for EStark {
         if prev_proof.is_some() {
             unimplemented!("aggregration is not implemented");
         }
+
+        log::info!("Creating eSTARK proof.");
 
         let mut pil: PIL = pilstark::json_exporter::export(pil);
 
@@ -83,7 +84,9 @@ fn to_sparky_pols_array<F: FieldElement>(
         assert_eq!(from.len(), to.len());
 
         for (f, t) in from.iter().zip(to.iter_mut()) {
-            *t = BaseElement::new(f.to_integer().to_arbitrary_integer().try_into().unwrap());
+            *t = TryInto::<u64>::try_into(f.to_integer().to_arbitrary_integer())
+                .unwrap()
+                .into();
         }
     }
 
