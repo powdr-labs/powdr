@@ -383,7 +383,7 @@ mod test {
         let file = std::path::PathBuf::from("../test_data/polygon-hermez/").join(file);
 
         let analyzed = analyze::<GoldilocksField>(&file);
-        let json_out = export(&analyzed);
+        let pil_out = export(&analyzed);
 
         let pilcom = std::env::var("PILCOM").expect(
             "Please set the PILCOM environment variable to the path to the pilcom repository.",
@@ -410,7 +410,7 @@ mod test {
         });
         drop(temp_dir);
 
-        let json_out = serde_json::to_value(json_out).unwrap();
+        let json_out = serde_json::to_value(pil_out).unwrap();
 
         let pilcom_parsed = serde_json::from_str(&pilcom_out).expect("Invalid json from pilcom.");
         (json_out, pilcom_parsed)
