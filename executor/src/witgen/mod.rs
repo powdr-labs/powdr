@@ -26,6 +26,7 @@ mod machines;
 mod query_processor;
 mod range_constraints;
 mod rows;
+mod solver;
 pub mod symbolic_evaluator;
 mod symbolic_witness_evaluator;
 mod util;

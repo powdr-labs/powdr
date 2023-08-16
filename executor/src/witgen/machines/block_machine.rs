@@ -5,7 +5,8 @@ use super::{EvalResult, FixedData, FixedLookup};
 use crate::witgen::column_map::ColumnMap;
 use crate::witgen::global_constraints::RangeConstraintSet;
 use crate::witgen::identity_processor::IdentityProcessor;
-use crate::witgen::rows::{CellValue, Row, RowFactory, RowPair, RowUpdater};
+use crate::witgen::rows::{CellValue, RowFactory, RowPair};
+use crate::witgen::solver::Solver;
 use crate::witgen::util::try_to_simple_poly;
 use crate::witgen::{
     affine_expression::{AffineExpression, AffineResult},
@@ -289,25 +290,18 @@ impl<T: FieldElement> BlockMachine<T> {
 
         if has_error {
             log::info!("Detected error in last row!");
-            let mut row = row_factory.fresh_row();
+            let row = row_factory.fresh_row();
 
-            let mut solver_loop = |row1: &mut Row<'a, T>, row2: &mut Row<'a, T>| loop {
-                let mut progress = false;
-                for identity in &self.identities {
-                    let row_pair = RowPair::new(row1, row2, last_row - 1, fixed_data, false);
-                    let updates = identity_processor
-                        .process_identity(identity, &row_pair)
-                        .unwrap();
-                    let mut row_updater = RowUpdater::new(row1, row2, last_row - 1);
-                    progress |= row_updater.apply_updates(&updates, || identity.to_string());
-                }
-                if !progress {
-                    break;
-                }
+            let mut solver = Solver {
+                row_offset: last_row - 1,
+                data: vec![row_before, row, row_after],
+                identity_processor,
+                identities: self.identities.clone(),
+                fixed_data,
             };
+            solver.solve();
 
-            solver_loop(&mut row_before, &mut row);
-            solver_loop(&mut row, &mut row_after);
+            let row = solver.data.remove(1);
 
             for (poly_id, values) in data.iter_mut() {
                 values[last_row as usize] = row[poly_id].value.unwrap_or_default();
