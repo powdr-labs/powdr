@@ -393,7 +393,9 @@ where
             .map(|(poly_id, col)| (col.name.as_str(), poly_id))
             .collect::<BTreeMap<_, _>>();
         for m in &mut self.identity_processor.machines {
-            for (col_name, col) in m.witness_col_values(self.fixed_data) {
+            for (col_name, col) in
+                m.witness_col_values(self.fixed_data, self.identity_processor.fixed_lookup)
+            {
                 result.insert(*name_to_id.get(col_name.as_str()).unwrap(), col);
             }
         }

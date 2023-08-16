@@ -4,6 +4,8 @@ use std::marker::PhantomData;
 use super::{EvalResult, FixedData, FixedLookup};
 use crate::witgen::column_map::ColumnMap;
 use crate::witgen::global_constraints::RangeConstraintSet;
+use crate::witgen::identity_processor::IdentityProcessor;
+use crate::witgen::rows::{CellValue, Row, RowFactory, RowPair, RowUpdater};
 use crate::witgen::util::try_to_simple_poly;
 use crate::witgen::{
     affine_expression::{AffineExpression, AffineResult},
@@ -153,8 +155,12 @@ impl<T: FieldElement> Machine<T> for BlockMachine<T> {
         })
     }
 
-    fn witness_col_values(&mut self, fixed_data: &FixedData<T>) -> HashMap<String, Vec<T>> {
-        std::mem::take(&mut self.data)
+    fn witness_col_values(
+        &mut self,
+        fixed_data: &FixedData<T>,
+        fixed_lookup: &mut FixedLookup<T>,
+    ) -> HashMap<String, Vec<T>> {
+        let mut data = std::mem::take(&mut self.data)
             .into_iter()
             .map(|(id, mut values)| {
 
@@ -189,8 +195,12 @@ impl<T: FieldElement> Machine<T> for BlockMachine<T> {
                     .map(|(i, v)| v.unwrap_or(default_block[i % self.block_size]))
                     .collect::<Vec<_>>();
 
-                (fixed_data.column_name(&id).to_string(), values)
+                (id, values)
             })
+            .collect();
+        self.handle_last_row(&mut data, fixed_data, fixed_lookup);
+        data.into_iter()
+            .map(|(id, values)| (fixed_data.column_name(&id).to_string(), values))
             .collect()
     }
 }
@@ -242,6 +252,69 @@ impl<'a, T: FieldElement> ChangeLogger<'a, T> {
 }
 
 impl<T: FieldElement> BlockMachine<T> {
+    fn handle_last_row<'a>(
+        &self,
+        data: &mut HashMap<PolyID, Vec<T>>,
+        fixed_data: &'a FixedData<T>,
+        fixed_lookup: &mut FixedLookup<T>,
+    ) {
+        let row_factory = RowFactory::new(fixed_data, self.global_range_constraints.clone());
+
+        let last_row = fixed_data.degree - 1;
+        let mut row_before = row_factory.fresh_row();
+        let mut row = row_factory.fresh_row();
+        let mut row_after = row_factory.fresh_row();
+
+        for (col, values) in data.iter() {
+            row_before[col].value = CellValue::Known(values[last_row as usize - 1]);
+            row[col].value = CellValue::Known(values[last_row as usize]);
+            row_after[col].value = CellValue::Known(values[0]);
+        }
+
+        let row_pair1 = RowPair::new(&row_before, &row, last_row - 1, fixed_data, true);
+        let row_pair2 = RowPair::new(&row, &row_after, last_row, fixed_data, true);
+
+        let mut identity_processor = IdentityProcessor::new(fixed_data, fixed_lookup, vec![]);
+
+        let mut has_error = false;
+
+        for identity in &self.identities {
+            has_error |= identity_processor
+                .process_identity(identity, &row_pair1)
+                .is_err();
+            has_error |= identity_processor
+                .process_identity(identity, &row_pair2)
+                .is_err();
+        }
+
+        if has_error {
+            log::info!("Detected error in last row!");
+            let mut row = row_factory.fresh_row();
+
+            let mut solver_loop = |row1: &mut Row<'a, T>, row2: &mut Row<'a, T>| loop {
+                let mut progress = false;
+                for identity in &self.identities {
+                    let row_pair = RowPair::new(row1, row2, last_row - 1, fixed_data, false);
+                    let updates = identity_processor
+                        .process_identity(identity, &row_pair)
+                        .unwrap();
+                    let mut row_updater = RowUpdater::new(row1, row2, last_row - 1);
+                    progress |= row_updater.apply_updates(&updates, || identity.to_string());
+                }
+                if !progress {
+                    break;
+                }
+            };
+
+            solver_loop(&mut row_before, &mut row);
+            solver_loop(&mut row, &mut row_after);
+
+            for (poly_id, values) in data.iter_mut() {
+                values[last_row as usize] = row[poly_id].value.unwrap_or_default();
+            }
+        }
+    }
+
     /// Extends the data with a new block.
     fn append_new_block(&mut self, max_len: DegreeType) -> Result<(), EvalError<T>> {
         if self.rows() + self.block_size as DegreeType >= max_len {

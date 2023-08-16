@@ -111,7 +111,11 @@ impl<T: FieldElement> Machine<T> for DoubleSortedWitnesses<T> {
         Some(self.process_plookup_internal(left, right))
     }
 
-    fn witness_col_values(&mut self, fixed_data: &FixedData<T>) -> HashMap<String, Vec<T>> {
+    fn witness_col_values(
+        &mut self,
+        fixed_data: &FixedData<T>,
+        _fixed_lookup: &mut FixedLookup<T>,
+    ) -> HashMap<String, Vec<T>> {
         let mut addr = vec![];
         let mut step = vec![];
         let mut value = vec![];

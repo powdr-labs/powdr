@@ -150,7 +150,11 @@ impl<T: FieldElement> Machine<T> for SortedWitnesses<T> {
 
         Some(self.process_plookup_internal(fixed_data, left, right, rhs))
     }
-    fn witness_col_values(&mut self, fixed_data: &FixedData<T>) -> HashMap<String, Vec<T>> {
+    fn witness_col_values(
+        &mut self,
+        fixed_data: &FixedData<T>,
+        _fixed_lookup: &mut FixedLookup<T>,
+    ) -> HashMap<String, Vec<T>> {
         let mut result = HashMap::new();
 
         let (mut keys, mut values): (Vec<_>, Vec<_>) =

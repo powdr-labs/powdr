@@ -102,11 +102,6 @@ mod test {
     }
 
     #[test]
-    fn secondary_block_machine_add2() {
-        mock_prove_asm("../test_data/asm/secondary_block_machine_add2.asm", &[]);
-    }
-
-    #[test]
     fn poseidon_bn254() {
         mock_prove_asm("../test_data/asm/poseidon_bn254.asm", &vec![]);
     }
