@@ -134,9 +134,8 @@ pub fn export<T: FieldElement>(analyzed: &Analyzed<T>) -> PIL {
         expressions: exporter.expressions,
         polIdentities: pol_identities,
         plookupIdentities: plookup_identities,
-        permutationIdentities: (!permutation_identities.is_empty())
-            .then_some(permutation_identities),
-        connectionIdentities: (!connection_identities.is_empty()).then_some(connection_identities),
+        permutationIdentities: Some(permutation_identities),
+        connectionIdentities: Some(connection_identities),
         cm_dims: Vec::new(),
         q2exp: Vec::new(),
     }
@@ -368,8 +367,7 @@ impl<'a, T: FieldElement> Exporter<'a, T> {
 mod test {
     use pil_analyzer::analyze;
     use serde_json::Value as JsonValue;
-    use std::fs;
-    use std::process::Command;
+    use std::{fs, process::Command};
     use test_log::test;
 
     use number::GoldilocksField;
@@ -412,12 +410,51 @@ mod test {
 
         let json_out = serde_json::to_value(pil_out).unwrap();
 
-        let pilcom_parsed = serde_json::from_str(&pilcom_out).expect("Invalid json from pilcom.");
+        let mut pilcom_parsed =
+            serde_json::from_str(&pilcom_out).expect("Invalid json from pilcom.");
+
+        // TODO: if we ever restore the ability to output expression's "deps",
+        // don't filter them out before comparison.
+        filter_out_deps(&mut pilcom_parsed);
+
         (json_out, pilcom_parsed)
+    }
+
+    fn filter_out_deps(value: &mut serde_json::Value) {
+        match value {
+            JsonValue::Array(arr) => {
+                for e in arr {
+                    filter_out_deps(e);
+                }
+            }
+            JsonValue::Object(obj) => {
+                match obj.entry("deps") {
+                    serde_json::map::Entry::Occupied(deps) => {
+                        deps.remove();
+                    }
+                    _ => (),
+                }
+
+                for (_, e) in obj.iter_mut() {
+                    filter_out_deps(e);
+                }
+            }
+            _ => (),
+        }
     }
 
     fn compare_export_file(file: &str) {
         let (json_out, pilcom_parsed) = generate_json_pair(file);
+        serde_json::to_writer_pretty(
+            std::io::BufWriter::new(fs::File::create("/tmp/ours.json").unwrap()),
+            &json_out,
+        )
+        .unwrap();
+        serde_json::to_writer_pretty(
+            std::io::BufWriter::new(fs::File::create("/tmp/theirs.json").unwrap()),
+            &pilcom_parsed,
+        )
+        .unwrap();
         assert_eq!(json_out, pilcom_parsed);
     }
 
