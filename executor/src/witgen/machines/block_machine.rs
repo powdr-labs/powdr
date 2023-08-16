@@ -287,7 +287,7 @@ impl<T: FieldElement> BlockMachine<T> {
         );
 
         // Check if we can accept the last row as is.
-        if !processor.check_constraints().is_err() {
+        if processor.check_constraints().is_err() {
             log::warn!("Detected error in last row! Will attempt to fix it now.");
 
             // Clear the last row and run the solver
