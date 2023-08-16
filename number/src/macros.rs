@@ -311,12 +311,19 @@ macro_rules! powdr_field {
             }
 
             fn from_bytes_le(bytes: &[u8]) -> Self {
+                assert_eq!(
+                    bytes.len(),
+                    <$ark_type as PrimeField>::BigInt::NUM_LIMBS * 8,
+                    "wrong number of bytes for field type"
+                );
+
+                let mut limbs = [0u64; <$ark_type as PrimeField>::BigInt::NUM_LIMBS];
+                for (from, to) in bytes.chunks(8).zip(limbs.iter_mut()) {
+                    *to = u64::from_le_bytes(from.try_into().unwrap());
+                }
+
                 Self {
-                    value: <$ark_type as PrimeField>::BigInt::try_from(BigUint::from_bytes_le(
-                        bytes,
-                    ))
-                    .unwrap()
-                    .into(),
+                    value: <$ark_type as PrimeField>::BigInt::new(limbs).into(),
                 }
             }
 
