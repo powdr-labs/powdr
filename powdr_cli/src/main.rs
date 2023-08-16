@@ -4,6 +4,7 @@ mod util;
 
 use backend::{Backend, BackendType};
 use clap::{CommandFactory, Parser, Subcommand};
+use compiler::util::{read_poly_set, FixedPolySet, WitnessPolySet};
 use compiler::{compile_pil_or_asm, write_proving_results_to_fs};
 use env_logger::{Builder, Target};
 use log::LevelFilter;
@@ -477,8 +478,8 @@ fn read_and_prove<T: FieldElement>(
     params: Option<String>,
 ) {
     let pil = compiler::analyze_pil::<T>(file);
-    let fixed = compiler::util::read_fixed(&pil, dir);
-    let witness = compiler::util::read_witness(&pil, dir);
+    let fixed = read_poly_set::<FixedPolySet, T>(&pil, dir);
+    let witness = read_poly_set::<WitnessPolySet, T>(&pil, dir);
 
     assert_eq!(fixed.1, witness.1);
 
