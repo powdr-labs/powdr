@@ -131,14 +131,25 @@ impl<'a, T: FieldElement> RowFactory<'a, T> {
         )
     }
 
-    pub fn row_from_known_values(&self, values: impl Iterator<Item = (PolyID, T)>) -> Row<'a, T> {
+    pub fn row_from_known_values_dense(&self, values: &ColumnMap<T>) -> Row<'a, T> {
         ColumnMap::from(
-            values.map(|(poly_id, v)| Cell {
+            values.iter().map(|(poly_id, &v)| Cell {
                 name: self.fixed_data.column_name(&poly_id),
                 value: CellValue::Known(v),
             }),
             PolynomialType::Committed,
         )
+    }
+
+    pub fn row_from_known_values_sparse(
+        &self,
+        values: impl Iterator<Item = (PolyID, T)>,
+    ) -> Row<'a, T> {
+        let mut row = self.fresh_row();
+        for (poly_id, v) in values {
+            row[&poly_id].value = CellValue::Known(v);
+        }
+        row
     }
 }
 

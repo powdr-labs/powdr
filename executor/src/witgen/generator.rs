@@ -319,9 +319,7 @@ where
     pub fn propose_next_row(&mut self, next_row: DegreeType, values: &ColumnMap<T>) -> bool {
         self.set_next_row_and_log(next_row);
 
-        let proposed_row = self
-            .row_factory
-            .row_from_known_values(values.iter().map(|(id, value)| (id, *value)));
+        let proposed_row = self.row_factory.row_from_known_values_dense(values);
 
         let constraints_valid =
             self.check_row_pair(&proposed_row, false) && self.check_row_pair(&proposed_row, true);

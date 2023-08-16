@@ -269,7 +269,7 @@ impl<T: FieldElement> BlockMachine<T> {
         let row_factory = RowFactory::new(fixed_data, self.global_range_constraints.clone());
         let rows = ((fixed_data.degree - 2)..(fixed_data.degree + 1))
             .map(|row| {
-                row_factory.row_from_known_values(
+                row_factory.row_from_known_values_sparse(
                     data.iter()
                         .map(|(col, values)| (*col, values[(row % fixed_data.degree) as usize])),
                 )
@@ -287,9 +287,7 @@ impl<T: FieldElement> BlockMachine<T> {
         );
 
         // Check if we can accept the last row as is.
-        let has_error = processor.check_constraints();
-
-        if has_error {
+        if !processor.check_constraints() {
             log::warn!("Detected error in last row! Will attempt to fix it now.");
 
             // Clear the last row and run the solver
