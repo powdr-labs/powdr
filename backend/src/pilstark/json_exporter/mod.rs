@@ -99,7 +99,7 @@ pub fn export<T: FieldElement>(analyzed: &Analyzed<T>) -> PIL {
                             selT: sel_right,
                             t: Some(right),
                             fileName: file_name,
-                            line: line,
+                            line,
                         });
                     }
                     IdentityKind::Permutation => {
@@ -117,7 +117,7 @@ pub fn export<T: FieldElement>(analyzed: &Analyzed<T>) -> PIL {
                             pols: Some(left),
                             connections: Some(right),
                             fileName: file_name,
-                            line: line,
+                            line,
                         });
                     }
                 }
@@ -129,7 +129,7 @@ pub fn export<T: FieldElement>(analyzed: &Analyzed<T>) -> PIL {
         nQ: exporter.number_q as usize,
         nIm: analyzed.intermediate_count(),
         nConstants: analyzed.constant_count(),
-        publics: publics,
+        publics,
         references: exporter.references(),
         expressions: exporter.expressions,
         polIdentities: pol_identities,

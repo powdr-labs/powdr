@@ -50,8 +50,8 @@ impl<F: FieldElement> BackendImpl<F> for EStark {
 
         let mut pil: PIL = pilstark::json_exporter::export(pil);
 
-        let const_pols = to_sparky_pols_array(fixed, &pil, PolKind::Constant);
-        let cm_pols = to_sparky_pols_array(witness, &pil, PolKind::Commit);
+        let const_pols = to_starky_pols_array(fixed, &pil, PolKind::Constant);
+        let cm_pols = to_starky_pols_array(witness, &pil, PolKind::Commit);
 
         let setup = StarkSetup::<MerkleTreeGL>::new(&const_pols, &mut pil, &self.params).unwrap();
 
@@ -73,7 +73,7 @@ impl<F: FieldElement> BackendImpl<F> for EStark {
     }
 }
 
-fn to_sparky_pols_array<F: FieldElement>(
+fn to_starky_pols_array<F: FieldElement>(
     array: &[(&str, Vec<F>)],
     pil: &PIL,
     kind: PolKind,
