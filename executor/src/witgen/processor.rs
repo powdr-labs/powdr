@@ -46,9 +46,9 @@ impl<'a, T: FieldElement> Processor<'a, T> {
         }
     }
 
-    /// Evaluate all constraints on all *non-wrapping* row pairs, assuming zero for unknown values.
-    /// Returns whether there were any errors.
-    pub fn check_constraints(&mut self) -> bool {
+    /// Evaluate all identities on all *non-wrapping* row pairs, assuming zero for unknown values.
+    /// If any identity was unsatisfied, returns an error.
+    pub fn check_constraints(&mut self) -> Result<(), EvalError<T>> {
         for i in 0..(self.data.len() - 1) {
             let row_pair = RowPair::new(
                 &self.data[i],
@@ -58,16 +58,11 @@ impl<'a, T: FieldElement> Processor<'a, T> {
                 true,
             );
             for identity in &self.identities {
-                if self
-                    .identity_processor
-                    .process_identity(identity, &row_pair)
-                    .is_err()
-                {
-                    return false;
-                }
+                self.identity_processor
+                    .process_identity(identity, &row_pair)?;
             }
         }
-        true
+        Ok(())
     }
 
     /// Reset the row at the given index to a fresh row.
@@ -85,7 +80,7 @@ impl<'a, T: FieldElement> Processor<'a, T> {
         Ok(())
     }
 
-    /// Destroy itself, returns the data.
+    /// Destroys itself, returns the data.
     pub fn finish(self) -> Vec<Row<'a, T>> {
         self.data
     }
