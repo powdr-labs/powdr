@@ -4,8 +4,8 @@ use std::{fs::File, io::BufReader, path::Path};
 
 pub trait PolySet {
     const FILE_NAME: &'static str;
-    fn get_polys<'a, T: FieldElement>(
-        pil: &'a Analyzed<T>,
+    fn get_polys<T: FieldElement>(
+        pil: &Analyzed<T>,
     ) -> Vec<&(Polynomial, Option<FunctionValueDefinition<T>>)>;
 }
 
@@ -13,9 +13,9 @@ pub struct FixedPolySet;
 impl PolySet for FixedPolySet {
     const FILE_NAME: &'static str = "constants.bin";
 
-    fn get_polys<'a, T: FieldElement>(
-        pil: &'a Analyzed<T>,
-    ) -> Vec<&'a (Polynomial, Option<FunctionValueDefinition<T>>)> {
+    fn get_polys<T: FieldElement>(
+        pil: &Analyzed<T>,
+    ) -> Vec<&(Polynomial, Option<FunctionValueDefinition<T>>)> {
         pil.constant_polys_in_source_order()
     }
 }
@@ -24,9 +24,9 @@ pub struct WitnessPolySet;
 impl PolySet for WitnessPolySet {
     const FILE_NAME: &'static str = "commits.bin";
 
-    fn get_polys<'a, T: FieldElement>(
-        pil: &'a Analyzed<T>,
-    ) -> Vec<&'a (Polynomial, Option<FunctionValueDefinition<T>>)> {
+    fn get_polys<T: FieldElement>(
+        pil: &Analyzed<T>,
+    ) -> Vec<&(Polynomial, Option<FunctionValueDefinition<T>>)> {
         pil.committed_polys_in_source_order()
     }
 }
