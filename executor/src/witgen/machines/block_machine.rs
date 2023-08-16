@@ -5,8 +5,8 @@ use super::{EvalResult, FixedData, FixedLookup};
 use crate::witgen::column_map::ColumnMap;
 use crate::witgen::global_constraints::RangeConstraintSet;
 use crate::witgen::identity_processor::IdentityProcessor;
-use crate::witgen::rows::{CellValue, RowFactory, RowPair};
-use crate::witgen::solver::Solver;
+use crate::witgen::processor::Processor;
+use crate::witgen::rows::RowFactory;
 use crate::witgen::util::try_to_simple_poly;
 use crate::witgen::{
     affine_expression::{AffineExpression, AffineResult},
@@ -253,58 +253,56 @@ impl<'a, T: FieldElement> ChangeLogger<'a, T> {
 }
 
 impl<T: FieldElement> BlockMachine<T> {
-    fn handle_last_row<'a>(
+    /// Check if constraints are satisfied on the last row and recompute it if not.
+    /// While the characteristic of a block machine is that that all fixed columns
+    /// should be periodic (and hence all constraints), the last row might be different,
+    /// in order to handle the cyclic nature of the proving system.
+    /// This can lead to an invalid last row when a default block is "copy-pasted" until
+    /// the end of the table. This function corrects it if it is the case.
+    fn handle_last_row(
         &self,
         data: &mut HashMap<PolyID, Vec<T>>,
-        fixed_data: &'a FixedData<T>,
+        fixed_data: &FixedData<T>,
         fixed_lookup: &mut FixedLookup<T>,
     ) {
+        // Build a vector of 3 rows: N -2, N - 1 and 0
         let row_factory = RowFactory::new(fixed_data, self.global_range_constraints.clone());
+        let rows = ((fixed_data.degree - 2)..(fixed_data.degree + 1))
+            .map(|row| {
+                row_factory.row_from_known_values(
+                    data.iter()
+                        .map(|(col, values)| (*col, values[(row % fixed_data.degree) as usize])),
+                )
+            })
+            .collect();
 
-        let last_row = fixed_data.degree - 1;
-        let mut row_before = row_factory.fresh_row();
-        let mut row = row_factory.fresh_row();
-        let mut row_after = row_factory.fresh_row();
+        // Build the processor. This copies the identities, but it's only done once per block machine instance.
+        let mut processor = Processor::new(
+            fixed_data.degree - 2,
+            rows,
+            IdentityProcessor::new(fixed_data, fixed_lookup, vec![]),
+            self.identities.clone(),
+            fixed_data,
+            row_factory,
+        );
 
-        for (col, values) in data.iter() {
-            row_before[col].value = CellValue::Known(values[last_row as usize - 1]);
-            row[col].value = CellValue::Known(values[last_row as usize]);
-            row_after[col].value = CellValue::Known(values[0]);
-        }
-
-        let row_pair1 = RowPair::new(&row_before, &row, last_row - 1, fixed_data, true);
-        let row_pair2 = RowPair::new(&row, &row_after, last_row, fixed_data, true);
-
-        let mut identity_processor = IdentityProcessor::new(fixed_data, fixed_lookup, vec![]);
-
-        let mut has_error = false;
-
-        for identity in &self.identities {
-            has_error |= identity_processor
-                .process_identity(identity, &row_pair1)
-                .is_err();
-            has_error |= identity_processor
-                .process_identity(identity, &row_pair2)
-                .is_err();
-        }
+        // Check if we can accept the last row as is.
+        let has_error = processor.check_constraints();
 
         if has_error {
-            log::info!("Detected error in last row!");
-            let row = row_factory.fresh_row();
+            log::warn!("Detected error in last row! Will attempt to fix it now.");
 
-            let mut solver = Solver {
-                row_offset: last_row - 1,
-                data: vec![row_before, row, row_after],
-                identity_processor,
-                identities: self.identities.clone(),
-                fixed_data,
-            };
-            solver.solve();
+            // Clear the last row and run the solver
+            processor.clear_row(1);
+            processor
+                .solve()
+                .expect("Some constraints were not satisfiable when solving for the last row.");
+            let last_row = processor.finish().remove(1);
 
-            let row = solver.data.remove(1);
-
+            // Copy values into data
             for (poly_id, values) in data.iter_mut() {
-                values[last_row as usize] = row[poly_id].value.unwrap_or_default();
+                values[fixed_data.degree as usize - 1] =
+                    last_row[poly_id].value.unwrap_or_default();
             }
         }
     }

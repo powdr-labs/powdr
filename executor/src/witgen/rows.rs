@@ -1,6 +1,6 @@
 use std::fmt::Debug;
 
-use ast::analyzed::{Expression, PolynomialReference, PolynomialType};
+use ast::analyzed::{Expression, PolyID, PolynomialReference, PolynomialType};
 use itertools::Itertools;
 use number::{DegreeType, FieldElement};
 
@@ -131,9 +131,9 @@ impl<'a, T: FieldElement> RowFactory<'a, T> {
         )
     }
 
-    pub fn row_from_known_values(&self, values: &ColumnMap<T>) -> Row<'a, T> {
+    pub fn row_from_known_values(&self, values: impl Iterator<Item = (PolyID, T)>) -> Row<'a, T> {
         ColumnMap::from(
-            values.iter().map(|(poly_id, &v)| Cell {
+            values.map(|(poly_id, v)| Cell {
                 name: self.fixed_data.column_name(&poly_id),
                 value: CellValue::Known(v),
             }),
