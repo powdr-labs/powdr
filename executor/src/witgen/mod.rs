@@ -21,8 +21,11 @@ mod expression_evaluator;
 pub mod fixed_evaluator;
 mod generator;
 mod global_constraints;
+mod identity_processor;
 mod machines;
+mod query_processor;
 mod range_constraints;
+mod rows;
 pub mod symbolic_evaluator;
 mod symbolic_witness_evaluator;
 mod util;
@@ -139,11 +142,7 @@ where
     }
 
     // Overwrite all machine witness columns
-    for (name, data) in generator.machine_witness_col_values() {
-        let poly_id = *poly_ids
-            .iter()
-            .find(|&p| fixed.column_name(p) == name)
-            .unwrap();
+    for (poly_id, data) in generator.machine_witness_col_values() {
         columns[&poly_id] = data;
     }
 
@@ -201,7 +200,7 @@ pub struct FixedData<'a, T> {
     witness_cols: ColumnMap<WitnessColumn<'a, T>>,
 }
 
-impl<'a, T> FixedData<'a, T> {
+impl<'a, T: FieldElement> FixedData<'a, T> {
     pub fn new(
         degree: DegreeType,
         fixed_cols: ColumnMap<FixedColumn<'a, T>>,

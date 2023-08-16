@@ -220,7 +220,7 @@ fn ends_control_flow<R: Register, F: FunctionOpKind>(s: &Statement<R, F>) -> boo
             | "srli" | "srl" | "srai" | "seqz" | "snez" | "slt" | "slti" | "sltu" | "sltiu"
             | "sgtz" | "beq" | "beqz" | "bgeu" | "bltu" | "blt" | "bge" | "bltz" | "blez"
             | "bgtz" | "bgez" | "bne" | "bnez" | "jal" | "jalr" | "call" | "ecall" | "ebreak"
-            | "lw" | "lb" | "lbu" | "sw" | "sh" | "sb" | "nop" => false,
+            | "lw" | "lb" | "lbu" | "lhu" | "sw" | "sh" | "sb" | "nop" => false,
             "j" | "jr" | "tail" | "ret" | "unimp" => true,
             _ => {
                 panic!("Unknown instruction: {instruction}");

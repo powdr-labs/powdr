@@ -5,7 +5,7 @@ use super::double_sorted_witness_machine::DoubleSortedWitnesses;
 use super::fixed_lookup_machine::FixedLookup;
 use super::sorted_witness_machine::SortedWitnesses;
 use super::FixedData;
-use super::Machine;
+use super::KnownMachine;
 use crate::witgen::column_map::ColumnMap;
 use crate::witgen::range_constraints::RangeConstraint;
 use ast::analyzed::PolyID;
@@ -13,9 +13,9 @@ use ast::analyzed::{Expression, Identity, IdentityKind, SelectedExpressions};
 use itertools::Itertools;
 use number::FieldElement;
 
-pub struct ExtractionOutput<'a, T> {
+pub struct ExtractionOutput<'a, T: FieldElement> {
     pub fixed_lookup: FixedLookup<T>,
-    pub machines: Vec<Box<dyn Machine<T>>>,
+    pub machines: Vec<KnownMachine<T>>,
     pub base_identities: Vec<&'a Identity<T>>,
     pub base_witnesses: HashSet<PolyID>,
 }
@@ -30,7 +30,7 @@ pub fn split_out_machines<'a, T: FieldElement>(
 ) -> ExtractionOutput<'a, T> {
     let fixed_lookup = FixedLookup::try_new(fixed, &[], &Default::default()).unwrap();
 
-    let mut machines: Vec<Box<dyn Machine<T>>> = vec![];
+    let mut machines: Vec<KnownMachine<T>> = vec![];
 
     let all_witnesses = fixed.witness_cols.keys().collect::<HashSet<_>>();
     let mut remaining_witnesses = all_witnesses.clone();
@@ -89,12 +89,12 @@ pub fn split_out_machines<'a, T: FieldElement>(
             SortedWitnesses::try_new(fixed, &machine_identities, &machine_witnesses)
         {
             log::info!("Detected machine: sorted witnesses / write-once memory");
-            machines.push(machine);
+            machines.push(KnownMachine::SortedWitnesses(machine));
         } else if let Some(machine) =
             DoubleSortedWitnesses::try_new(fixed, &machine_identities, &machine_witnesses)
         {
             log::info!("Detected machine: memory");
-            machines.push(machine);
+            machines.push(KnownMachine::DoubleSortedWitnesses(machine));
         } else if let Some(machine) = BlockMachine::try_new(
             fixed,
             &connecting_identities,
@@ -103,7 +103,7 @@ pub fn split_out_machines<'a, T: FieldElement>(
             global_range_constraints,
         ) {
             log::info!("Detected machine: block");
-            machines.push(machine);
+            machines.push(KnownMachine::BlockMachine(machine));
         } else {
             log::warn!(
                 "Could not find a matching machine to handle a query to the following witness set:\n{}",

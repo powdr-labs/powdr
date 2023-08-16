@@ -15,7 +15,7 @@ use crate::disambiguator;
 use crate::parser::RiscParser;
 use crate::{Argument, Expression, Statement};
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct Register {
     value: u8,
 }
@@ -137,7 +137,7 @@ impl fmt::Display for Register {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub enum FunctionKind {
     HiDataRef,
     LoDataRef,
@@ -177,6 +177,7 @@ impl asm_utils::compiler::Compiler for Risc {
                 .collect(),
         );
         let (mut objects, mut object_order) = data_parser::extract_data_objects(&statements);
+        assert_eq!(objects.keys().len(), object_order.len());
 
         // Reduce to the code that is actually reachable from main
         // (and the objects that are referred from there)
@@ -187,7 +188,7 @@ impl asm_utils::compiler::Compiler for Risc {
 
         // Remove the riscv asm stub function, which is used
         // for compilation, and will not be called.
-        replace_coprocessor_stubs(&mut statements);
+        statements = replace_coprocessor_stubs(statements).collect::<Vec<_>>();
 
         // Sort the objects according to the order of the names in object_order.
         // With the single exception: If there is large object, put that at the end.
@@ -307,23 +308,32 @@ fn replace_dynamic_label_reference(
     ))
 }
 
-fn replace_coprocessor_stubs(statements: &mut Vec<Statement>) {
+fn remove_matching_and_next<I: Iterator, F>(iter: I, predicate: F) -> impl Iterator<Item = I::Item>
+where
+    F: Fn(&I::Item) -> bool,
+{
+    iter.scan(false, move |filter_next, item| {
+        let mut filter_current = *filter_next;
+        *filter_next = predicate(&item);
+        // if the predicate says this line should be filtered, then
+        // the next one should be filtered as well.
+        filter_current |= *filter_next;
+        Some((filter_current, item))
+    })
+    .filter_map(|(filter, statement)| (!filter).then_some(statement))
+}
+
+fn replace_coprocessor_stubs(
+    statements: impl IntoIterator<Item = Statement>,
+) -> impl Iterator<Item = Statement> {
     let stub_names: Vec<&str> = COPROCESSOR_SUBSTITUTIONS
         .iter()
         .map(|(name, _)| *name)
         .collect();
 
-    let mut to_delete = BTreeSet::default();
-    for (i, statement) in statements.iter().enumerate() {
-        if let Statement::Label(label) = statement {
-            if stub_names.contains(&label.as_str()) {
-                to_delete.insert(i); // for the label
-                to_delete.insert(i + 1); // for the `ret` instruction
-            }
-        }
-    }
-    let mut i = 0;
-    statements.retain(|_| (!to_delete.contains(&i), i += 1).0);
+    remove_matching_and_next(statements.into_iter(), move |statement| -> bool {
+        matches!(&statement, Statement::Label(label) if stub_names.contains(&label.as_str()))
+    })
 }
 
 fn store_data_objects<'a>(
@@ -385,6 +395,24 @@ fn store_data_objects<'a>(
                                 "mstore tmp1;".to_string(),
                             ]);
                         }
+                    }
+                    DataValue::Offset(_, _) => {
+                        unimplemented!()
+
+                        /*
+                        object_code.push(format!("addr <=X= 0x{pos:x};"));
+
+                        I think this solution should be fine but hard to say without
+                        an actual code snippet that uses it.
+
+                        // TODO should be possible without temporary
+                        object_code.extend([
+                            format!("tmp1 <== load_label({});", escape_label(a)),
+                            format!("tmp2 <== load_label({});", escape_label(b)),
+                            // TODO check if registers match
+                            "mstore wrap(tmp1 - tmp2);".to_string(),
+                        ]);
+                        */
                     }
                 }
                 pos += item.size() as u32;
@@ -1305,6 +1333,18 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
                 rd,
             )
         }
+        "lhu" => {
+            let (rd, rs, off) = rro(args);
+            // TODO we need to consider misaligned loads / stores
+            only_if_no_write_to_zero_vec(
+                vec![
+                    format!("addr <== wrap({rs} + {off});"),
+                    format!("{rd} <== mload();"),
+                    format!("{rd} <== and(0x0000ffff, {rd});"),
+                ],
+                rd,
+            )
+        }
         "sw" => {
             let (r1, r2, off) = rro(args);
             vec![
@@ -1361,5 +1401,39 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
         _ => {
             panic!("Unknown instruction: {instr}");
         }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_remove_matching_and_next_integers() {
+        assert_eq!(
+            remove_matching_and_next([0, 1, 2, 0, 2, 0, 0, 3, 2, 1].iter(), |&&i| { i == 0 })
+                .map(|i| *i)
+                .collect::<Vec<_>>(),
+            vec![2, 2, 1]
+        );
+    }
+
+    #[test]
+    fn test_remove_matching_and_next_strings() {
+        assert_eq!(
+            remove_matching_and_next(
+                [
+                    "croissant",
+                    "pain au chocolat",
+                    "chausson aux pommes",
+                    "croissant" // corner case: if the label is at the end of the program
+                ]
+                .iter(),
+                |&&s| { s == "croissant" }
+            )
+            .map(|s| { *s })
+            .collect::<Vec<_>>(),
+            vec!["chausson aux pommes"]
+        );
     }
 }

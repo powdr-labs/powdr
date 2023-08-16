@@ -36,7 +36,7 @@ impl<T: FieldElement> SortedWitnesses<T> {
         fixed_data: &FixedData<T>,
         identities: &[&Identity<T>],
         witnesses: &HashSet<PolyID>,
-    ) -> Option<Box<Self>> {
+    ) -> Option<Self> {
         if identities.len() != 1 {
             return None;
         }
@@ -49,11 +49,11 @@ impl<T: FieldElement> SortedWitnesses<T> {
                 .map(|(i, &x)| (x, i))
                 .collect();
 
-            Box::new(SortedWitnesses {
+            SortedWitnesses {
                 key_col,
                 witness_positions,
                 data: Default::default(),
-            })
+            }
         })
     }
 }
