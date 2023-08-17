@@ -103,7 +103,11 @@ impl<'a, T: FieldElement> Processor<'a, T> {
                 // Compute updates
                 let updates = self
                     .identity_processor
-                    .process_identity(identity, &row_pair)?;
+                    .process_identity(identity, &row_pair)
+                    .map_err(|e| {
+                        log::warn!("Error in identity: {identity}");
+                        e
+                    })?;
 
                 // Build RowUpdater
                 // (a bit complicated, because we need two mutable
