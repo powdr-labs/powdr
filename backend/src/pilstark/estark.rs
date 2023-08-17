@@ -23,13 +23,14 @@ impl<F: FieldElement> BackendImpl<F> for EStark {
             unimplemented!("eSTARK is only implemented for Goldilocks field");
         }
 
-        let degree_bits = (DegreeType::BITS - degree.leading_zeros()) as usize;
+        assert_ne!(degree, 0);
+        let degree_bits = (DegreeType::BITS - (degree - 1).leading_zeros()) as usize;
         let params = StarkStruct {
             nBits: degree_bits,
             nBitsExt: degree_bits + 1,
-            nQueries: 1,
+            nQueries: 2,
             verificationHashType: "GL".to_owned(),
-            steps: vec![Step { nBits: 20 }],
+            steps: vec![Step { nBits: 19 }, Step { nBits: 17 }, Step { nBits: 7 }],
         };
 
         Self { params }
@@ -53,7 +54,13 @@ impl<F: FieldElement> BackendImpl<F> for EStark {
         let const_pols = to_starky_pols_array(fixed, &pil, PolKind::Constant);
         let cm_pols = to_starky_pols_array(witness, &pil, PolKind::Commit);
 
-        let setup = StarkSetup::<MerkleTreeGL>::new(&const_pols, &mut pil, &self.params).unwrap();
+        let setup = StarkSetup::<MerkleTreeGL>::new(
+            &const_pols,
+            &mut pil,
+            &self.params,
+            Some("main.first_step".to_string()),
+        )
+        .unwrap();
 
         let starkproof = StarkProof::<MerkleTreeGL>::stark_gen::<TranscriptGL>(
             &cm_pols,
