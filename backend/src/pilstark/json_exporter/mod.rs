@@ -62,7 +62,7 @@ pub fn export<T: FieldElement>(analyzed: &Analyzed<T>) -> PIL {
             }
             StatementIdentifier::PublicDeclaration(name) => {
                 let pub_def = &analyzed.public_declarations[name];
-                let (_, expr, _) = exporter.polynomial_reference_to_json(&pub_def.polynomial);
+                let (_, expr) = exporter.polynomial_reference_to_json(&pub_def.polynomial);
                 let id = publics.len();
                 publics.push(starky::types::Public {
                     polType: polynomial_reference_type_to_type(&expr.op).to_string(),
@@ -200,16 +200,12 @@ impl<'a, T: FieldElement> Exporter<'a, T> {
     /// @returns the expression ID
     fn extract_expression(&mut self, expr: &Expression<T>, max_degree: u32) -> usize {
         let id = self.expressions.len();
-        let (degree, mut expr, dependencies) = self.expression_to_json(expr);
+        let (degree, mut expr) = self.expression_to_json(expr);
         if degree > max_degree {
             expr.idQ = Some(self.number_q as usize);
             expr.deg = 1;
             self.number_q += 1;
         }
-        // TODO: decide what to do with dependencies
-        /*if !dependencies.is_empty() && expr.op != "exp" {
-            expr["deps"] = dependencies.into();
-        }*/
         self.expressions.push(expr);
         id
     }
@@ -229,8 +225,8 @@ impl<'a, T: FieldElement> Exporter<'a, T> {
             .collect()
     }
 
-    /// returns the degree, the JSON value and the dependencies (intermediate polynomial IDs)
-    fn expression_to_json(&self, expr: &Expression<T>) -> (u32, StarkyExpr, Vec<u64>) {
+    /// returns the degree and the JSON value (intermediate polynomial IDs)
+    fn expression_to_json(&self, expr: &Expression<T>) -> (u32, StarkyExpr) {
         match expr {
             Expression::Constant(name) => (
                 0,
@@ -240,7 +236,6 @@ impl<'a, T: FieldElement> Exporter<'a, T> {
                     value: Some(format!("{}", self.analyzed.constants[name])),
                     ..DEFAULT_EXPR
                 },
-                Vec::new(),
             ),
             Expression::PolynomialReference(reference) => {
                 self.polynomial_reference_to_json(reference)
@@ -256,7 +251,6 @@ impl<'a, T: FieldElement> Exporter<'a, T> {
                     id: Some(self.analyzed.public_declarations[name].id as usize),
                     ..DEFAULT_EXPR
                 },
-                Vec::new(),
             ),
             Expression::Number(value) => (
                 0,
@@ -266,11 +260,10 @@ impl<'a, T: FieldElement> Exporter<'a, T> {
                     value: Some(format!("{value}")),
                     ..DEFAULT_EXPR
                 },
-                Vec::new(),
             ),
             Expression::BinaryOperation(left, op, right) => {
-                let (deg_left, left, deps_left) = self.expression_to_json(left);
-                let (deg_right, right, deps_right) = self.expression_to_json(right);
+                let (deg_left, left) = self.expression_to_json(left);
+                let (deg_right, right) = self.expression_to_json(right);
                 let (op, degree) = match op {
                     BinaryOperator::Add => ("add", cmp::max(deg_left, deg_right)),
                     BinaryOperator::Sub => ("sub", cmp::max(deg_left, deg_right)),
@@ -301,13 +294,12 @@ impl<'a, T: FieldElement> Exporter<'a, T> {
                         values: Some(vec![left, right]),
                         ..DEFAULT_EXPR
                     },
-                    [deps_left, deps_right].concat(),
                 )
             }
             Expression::UnaryOperation(op, value) => {
-                let (deg, value, deps) = self.expression_to_json(value);
+                let (deg, value) = self.expression_to_json(value);
                 match op {
-                    UnaryOperator::Plus => (deg, value, deps),
+                    UnaryOperator::Plus => (deg, value),
                     UnaryOperator::Minus => (
                         deg,
                         StarkyExpr {
@@ -316,7 +308,6 @@ impl<'a, T: FieldElement> Exporter<'a, T> {
                             values: Some(vec![value]),
                             ..DEFAULT_EXPR
                         },
-                        deps,
                     ),
                 }
             }
@@ -339,7 +330,7 @@ impl<'a, T: FieldElement> Exporter<'a, T> {
             poly_id,
             next,
         }: &PolynomialReference,
-    ) -> (u32, StarkyExpr, Vec<u64>) {
+    ) -> (u32, StarkyExpr) {
         let PolyID { id, ptype } = poly_id.unwrap();
         let id = if ptype == PolynomialType::Intermediate {
             assert!(index.is_none());
@@ -354,12 +345,7 @@ impl<'a, T: FieldElement> Exporter<'a, T> {
             next: Some(*next),
             ..DEFAULT_EXPR
         };
-        let dependencies = if ptype == PolynomialType::Intermediate {
-            vec![id]
-        } else {
-            Vec::new()
-        };
-        (1, poly, dependencies)
+        (1, poly)
     }
 }
 
@@ -413,8 +399,8 @@ mod test {
         let mut pilcom_parsed =
             serde_json::from_str(&pilcom_out).expect("Invalid json from pilcom.");
 
-        // TODO: if we ever restore the ability to output expression's "deps",
-        // don't filter them out before comparison.
+        // Filter out expression's "deps" before comparison, since we don't
+        // export them.
         filter_out_deps(&mut pilcom_parsed);
 
         (json_out, pilcom_parsed)
