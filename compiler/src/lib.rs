@@ -266,9 +266,9 @@ pub fn write_proving_results_to_fs(
     match proof {
         Some(proof) => {
             let fname = if is_aggregation {
-                "proof.bin"
-            } else {
                 "proof_aggr.bin"
+            } else {
+                "proof.bin"
             };
 
             // No need to bufferize the writing, because we write the whole
