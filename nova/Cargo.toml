@@ -15,7 +15,8 @@ rand = "0.8.5"
 pasta_curves = { version = "0.5", features = ["repr-c", "serde"] }
 ast = { version = "0.1.0", path = "../ast" }
 nova-snark = { git = "https://github.com/hero78119/SuperNova.git", branch = "supernova", default-features = false, features = ["supernova"] }
-bellperson = { version = "0.25", default-features = false}
+bellpepper-core = { version="0.2.0", default-features = false }
+bellpepper = { version="0.2.0", default-features = false }
 ff = { version = "0.13.0", features = ["derive"] }
 polyexen = { git = "https://github.com/Dhole/polyexen", branch = "feature/shuffles" }
 

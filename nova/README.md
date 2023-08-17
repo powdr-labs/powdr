@@ -119,6 +119,6 @@ For 2 groups of constraints in a instruction circuit
 - pil constrains
 
 Powdr framework can infer and provide pil constrains, so in witness assigment we just reuse it.
-For sequence constraints, it's infer via bellperson R1CS constraints system automatically, since it's transparent in PIL logic.
+For sequence constraints, it's infer via bellpepper R1CS constraints system automatically, since it's transparent in PIL logic.
 
-> An fact is, there are also constraints related to (Super)Nova verifier circuit. Its also automatically infer via `bellperson R1CS constraints system` automatically, and also encaptulated as blackbox
+> An fact is, there are also constraints related to (Super)Nova verifier circuit. Its also automatically infer via `bellpepper R1CS constraints system` automatically, and also encaptulated as blackbox

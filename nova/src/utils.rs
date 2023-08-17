@@ -12,12 +12,10 @@ use ast::{
     analyzed::{Expression, PolynomialReference},
     parsed::BinaryOperator,
 };
-use bellperson::{
-    gadgets::{
-        boolean::{AllocatedBit, Boolean},
-        num::AllocatedNum,
-        Assignment,
-    },
+use bellpepper::gadgets::Assignment;
+use bellpepper_core::{
+    boolean::{AllocatedBit, Boolean},
+    num::AllocatedNum,
     ConstraintSystem, LinearCombination, SynthesisError,
 };
 use ff::{Field, PrimeField, PrimeFieldBits};

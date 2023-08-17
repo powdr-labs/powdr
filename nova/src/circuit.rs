@@ -9,9 +9,9 @@ use ast::{
     analyzed::{Analyzed, Expression, IdentityKind, PolynomialReference},
     parsed::{asm::Param, BinaryOperator},
 };
-use bellperson::{
-    gadgets::{boolean::Boolean, num::AllocatedNum},
+use bellpepper_core::{
     ConstraintSystem, SynthesisError,
+    {boolean::Boolean, num::AllocatedNum},
 };
 use ff::PrimeField;
 use itertools::Itertools;
