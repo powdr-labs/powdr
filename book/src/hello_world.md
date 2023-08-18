@@ -20,5 +20,3 @@ powdr pil hello_world.asm --field bn254 --force --inputs 1 --prove-with halo2
 ```
 
 We observe that witness generation fails, and no proof is created.
-
-[a dead link](http.//adkjghksjdhfldlkfjslkdfjksd.com)
