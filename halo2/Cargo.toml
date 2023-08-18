@@ -26,3 +26,4 @@ asm_to_pil = { path = "../asm_to_pil" }
 test-log = "0.2.12"
 env_logger = "0.10.0"
 linker = { path = "../linker" }
+airgen = { path = "../airgen" }
