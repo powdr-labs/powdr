@@ -17,7 +17,7 @@ pub fn link<T: FieldElement>(graph: PILGraph<T>) -> Result<PILFile<T>, Vec<Strin
     let main_location = graph.main;
     let main_degree = graph
         .objects
-        .get(&main_location)
+        .get(&main_location.location)
         .unwrap()
         .degree
         .unwrap_or(DEFAULT_DEGREE);
@@ -82,22 +82,32 @@ pub fn link<T: FieldElement>(graph: PILGraph<T>) -> Result<PILFile<T>, Vec<Strin
 
                 let params = to.function.params;
 
-                let to_namespace = to.loc.clone().to_string();
+                let to_namespace = to.machine.location.clone().to_string();
 
                 let rhs = SelectedExpressions {
-                    selector: Some(namespaced_reference(to_namespace.clone(), to.latch)),
-                    expressions: once(namespaced_reference(to_namespace.clone(), to.function_id))
-                        .chain(
-                            params
-                                .inputs
-                                .params
-                                .iter()
-                                .chain(params.outputs.iter().flat_map(|o| o.params.iter()))
-                                .map(|i| {
-                                    namespaced_reference(to_namespace.clone(), i.name.clone())
-                                }),
-                        )
-                        .collect(),
+                    selector: Some(
+                        to.machine
+                            .latch
+                            .map(|latch| namespaced_reference(to_namespace.clone(), latch))
+                            .unwrap_or(Expression::Number(T::from(0))),
+                    ),
+                    expressions: once(
+                        to.machine
+                            .function_id
+                            .map(|function_id| {
+                                namespaced_reference(to_namespace.clone(), function_id)
+                            })
+                            .unwrap_or(Expression::Number(T::from(0))),
+                    )
+                    .chain(
+                        params
+                            .inputs
+                            .params
+                            .iter()
+                            .chain(params.outputs.iter().flat_map(|o| o.params.iter()))
+                            .map(|i| namespaced_reference(to_namespace.clone(), i.name.clone())),
+                    )
+                    .collect(),
                 };
 
                 let lookup = PilStatement::PlookupIdentity(0, lhs, rhs);
@@ -119,7 +129,7 @@ mod test {
     use std::fs;
 
     use ast::{
-        object::{Location, Object, PILGraph},
+        object::{Location, Machine, Object, PILGraph},
         parsed::{Expression, PILFile},
     };
     use number::{Bn254Field, FieldElement, GoldilocksField};
@@ -132,14 +142,20 @@ mod test {
     use crate::{link, DEFAULT_DEGREE};
 
     fn parse_analyse_and_compile<T: FieldElement>(input: &str) -> PILGraph<T> {
-        asm_to_pil::compile(analyze(parse_asm(None, input).unwrap()).unwrap())
+        airgen::compile(asm_to_pil::compile(
+            analyze(parse_asm(None, input).unwrap()).unwrap(),
+        ))
     }
 
     #[test]
     fn degree() {
         // a graph with two objects of degree `main_degree` and `foo_degree`
         let test_graph = |main_degree, foo_degree| PILGraph {
-            main: Location::from("main".to_string()),
+            main: Machine {
+                location: Location::from("main".to_string()),
+                latch: None,
+                function_id: None,
+            },
             objects: [
                 (
                     Location::from("main".to_string()),
@@ -152,6 +168,7 @@ mod test {
             ]
             .into_iter()
             .collect(),
+            entry_points: vec![],
         };
         // a test over a pil file `f` checking if all namespaces have degree `n`
         let all_namespaces_have_degree = |f: PILFile<Bn254Field>, n| {
@@ -185,6 +202,11 @@ mod test {
     pub fn compile_simple_sum() {
         let expectation = r#"
 namespace main(1024);
+pol commit XInv;
+pol commit XIsZero;
+XIsZero = (1 - (X * XInv));
+(XIsZero * X) = 0;
+(XIsZero * (1 - XIsZero)) = 0;
 pol constant first_step = [1] + [0]*;
 pol commit pc;
 pol commit X;
@@ -194,11 +216,6 @@ pol commit A;
 (first_step * CNT) = 0;
 pol commit reg_write_X_CNT;
 pol commit CNT;
-pol commit XInv;
-pol commit XIsZero;
-XIsZero = (1 - (X * XInv));
-(XIsZero * X) = 0;
-(XIsZero * (1 - XIsZero)) = 0;
 pol commit instr_jmpz;
 pol commit instr_jmpz_param_l;
 pol commit instr_jmp;
