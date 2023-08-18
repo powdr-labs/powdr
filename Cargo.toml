@@ -12,6 +12,7 @@ members = [
     "pilopt",
     "asm_to_pil",
     "halo2",
+    "estark",
     "backend",
     "ast",
     "analysis",

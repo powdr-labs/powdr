@@ -1,6 +1,6 @@
+mod estark_impl;
 #[cfg(feature = "halo2")]
 mod halo2_impl;
-mod pilstark;
 
 use ast::analyzed::Analyzed;
 use number::{DegreeType, FieldElement};
@@ -28,9 +28,9 @@ impl BackendType {
         #[cfg(feature = "halo2")]
         const HALO2_MOCK_FACTORY: WithoutSetupFactory<halo2_impl::Halo2Mock> =
             WithoutSetupFactory(PhantomData);
-        const ESTARK_FACTORY: WithoutSetupFactory<pilstark::estark::EStark> =
+        const ESTARK_FACTORY: WithoutSetupFactory<estark_impl::EStark> =
             WithoutSetupFactory(PhantomData);
-        const PIL_STARK_CLI_FACTORY: WithoutSetupFactory<pilstark::PilStarkCli> =
+        const PIL_STARK_CLI_FACTORY: WithoutSetupFactory<estark_impl::PilStarkCli> =
             WithoutSetupFactory(PhantomData);
 
         match self {

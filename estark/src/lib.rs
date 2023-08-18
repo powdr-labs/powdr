@@ -1,4 +1,5 @@
-use crate::{pilstark, BackendImpl};
+mod json_exporter;
+
 use ast::analyzed::Analyzed;
 use number::{BigInt, DegreeType, FieldElement, GoldilocksField};
 
@@ -7,17 +8,25 @@ use starky::{
     polsarray::{PolKind, PolsArray},
     stark_gen::StarkProof,
     stark_setup::StarkSetup,
+    stark_verify::stark_verify,
     transcript::TranscriptGL,
     types::{StarkStruct, Step, PIL},
 };
 
 pub struct EStark {
+    pil: PIL,
+    const_pols: PolsArray,
     params: StarkStruct,
+    setup: StarkSetup<MerkleTreeGL>,
 }
 
-impl<F: FieldElement> BackendImpl<F> for EStark {
+impl EStark {
     /// Creates our default configuration stark struct.
-    fn new(degree: DegreeType) -> Self {
+    pub fn new<F: FieldElement>(
+        pil: &Analyzed<F>,
+        fixed: &[(&str, Vec<F>)],
+        degree: DegreeType,
+    ) -> Self {
         if F::modulus().to_arbitrary_integer() != GoldilocksField::modulus().to_arbitrary_integer()
         {
             unimplemented!("eSTARK is only implemented for Goldilocks field");
@@ -41,50 +50,70 @@ impl<F: FieldElement> BackendImpl<F> for EStark {
             steps,
         };
 
-        Self { params }
-    }
-
-    fn prove(
-        &self,
-        pil: &Analyzed<F>,
-        fixed: &[(&str, Vec<F>)],
-        witness: &[(&str, Vec<F>)],
-        prev_proof: Option<crate::Proof>,
-    ) -> (Option<crate::Proof>, Option<String>) {
-        if prev_proof.is_some() {
-            unimplemented!("aggregration is not implemented");
-        }
-
-        log::info!("Creating eSTARK proof.");
-
-        let mut pil: PIL = pilstark::json_exporter::export(pil);
+        let mut pil: PIL = json_exporter::export(pil);
 
         let const_pols = to_starky_pols_array(fixed, &pil, PolKind::Constant);
-        let cm_pols = to_starky_pols_array(witness, &pil, PolKind::Commit);
 
-        let setup = StarkSetup::<MerkleTreeGL>::new(
+        let setup = StarkSetup::new(
             &const_pols,
             &mut pil,
-            &self.params,
+            &params,
             Some("main.first_step".to_string()),
         )
         .unwrap();
 
-        let starkproof = StarkProof::<MerkleTreeGL>::stark_gen::<TranscriptGL>(
+        Self {
+            params,
+            pil,
+            const_pols,
+            setup,
+        }
+    }
+
+    pub fn prove_and_verify<F: FieldElement>(
+        &mut self,
+        witness: &[(&str, Vec<F>)],
+    ) -> (Vec<u8>, String) {
+        let proof = self.prove(witness);
+
+        let serialized_proof_and_pil = (
+            serde_json::to_vec(&proof).unwrap(),
+            serde_json::to_string(&self.pil).unwrap(),
+        );
+
+        assert!(self.verify(proof));
+
+        serialized_proof_and_pil
+    }
+
+    fn prove<F: FieldElement>(&self, witness: &[(&str, Vec<F>)]) -> StarkProof<MerkleTreeGL> {
+        log::info!("Creating eSTARK proof.");
+
+        let cm_pols = to_starky_pols_array(witness, &self.pil, PolKind::Commit);
+
+        StarkProof::<MerkleTreeGL>::stark_gen::<TranscriptGL>(
             &cm_pols,
-            &const_pols,
-            &setup.const_tree,
-            &setup.starkinfo,
-            &setup.program,
-            &pil,
+            &self.const_pols,
+            &self.setup.const_tree,
+            &self.setup.starkinfo,
+            &self.setup.program,
+            &self.pil,
             &self.params,
         )
-        .unwrap();
+        .unwrap()
+    }
 
-        (
-            Some(serde_json::to_vec(&starkproof).unwrap()),
-            Some(serde_json::to_string(&pil).unwrap()),
+    fn verify(&mut self, proof: StarkProof<MerkleTreeGL>) -> bool {
+        log::info!("Verifying eSTARK proof.");
+
+        stark_verify::<MerkleTreeGL, TranscriptGL>(
+            &proof,
+            &self.setup.const_root,
+            &self.setup.starkinfo,
+            &self.params,
+            &mut self.setup.program,
         )
+        .unwrap()
     }
 }
 
@@ -106,4 +135,8 @@ fn to_starky_pols_array<F: FieldElement>(
     }
 
     output
+}
+
+pub fn pil_to_json<T: FieldElement>(pil: &Analyzed<T>) -> String {
+    serde_json::to_string(&json_exporter::export(pil)).unwrap()
 }
