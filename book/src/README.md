@@ -17,5 +17,5 @@ the [GitHub issue tracker](https://github.com/powdr-labs/powdr/issues).
 
 ## License
 
-The powdr source and documentation are released under
-the [MIT License](https://opensource.org/license/mit/).
+<!-- markdown-link-check-disable-next-line -->
+The powdr source and documentation are released under the [MIT License](https://opensource.org/license/mit/).
