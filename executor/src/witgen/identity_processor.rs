@@ -1,24 +1,25 @@
-use ast::analyzed::{Expression, Identity, IdentityKind, PolynomialReference};
+use ast::analyzed::{Expression, Identity, IdentityKind, PolynomialReference, SelectedExpressions};
 use number::FieldElement;
 
 use super::{
+    affine_expression::AffineResult,
     machines::{FixedLookup, KnownMachine, Machine},
     rows::RowPair,
     EvalResult, EvalValue, FixedData, IncompleteCause,
 };
 
 /// Computes (value or range constraint) updates given a [RowPair] and [Identity].
-pub struct IdentityProcessor<'a, T: FieldElement> {
+pub struct IdentityProcessor<'a, 'b, T: FieldElement> {
     fixed_data: &'a FixedData<'a, T>,
-    fixed_lookup: &'a mut FixedLookup<T>,
-    pub machines: Vec<KnownMachine<T>>,
+    pub fixed_lookup: &'b mut FixedLookup<T>,
+    pub machines: Vec<KnownMachine<'a, T>>,
 }
 
-impl<'a, T: FieldElement> IdentityProcessor<'a, T> {
+impl<'a, 'b, T: FieldElement> IdentityProcessor<'a, 'b, T> {
     pub fn new(
         fixed_data: &'a FixedData<'a, T>,
-        fixed_lookup: &'a mut FixedLookup<T>,
-        machines: Vec<KnownMachine<T>>,
+        fixed_lookup: &'b mut FixedLookup<T>,
+        machines: Vec<KnownMachine<'a, T>>,
     ) -> Self {
         Self {
             fixed_data,
@@ -31,11 +32,11 @@ impl<'a, T: FieldElement> IdentityProcessor<'a, T> {
     /// for the given cells.
     /// Fails if any constraint was not satisfiable.
     /// Returns the updates.
-    pub fn process_identity<'b>(
+    pub fn process_identity(
         &mut self,
-        identity: &'b Identity<T>,
-        rows: &RowPair<T>,
-    ) -> EvalResult<'b, T> {
+        identity: &'a Identity<T>,
+        rows: &RowPair<'_, 'a, T>,
+    ) -> EvalResult<'a, T> {
         match identity.kind {
             IdentityKind::Polynomial => self.process_polynomial_identity(identity, rows),
             IdentityKind::Plookup | IdentityKind::Permutation => {
@@ -49,11 +50,11 @@ impl<'a, T: FieldElement> IdentityProcessor<'a, T> {
         }
     }
 
-    fn process_polynomial_identity<'b>(
+    fn process_polynomial_identity(
         &self,
-        identity: &'b Identity<T>,
+        identity: &'a Identity<T>,
         rows: &RowPair<T>,
-    ) -> EvalResult<'b, T> {
+    ) -> EvalResult<'a, T> {
         let expression = identity.expression_for_poly_id();
         let evaluated = match rows.evaluate(expression) {
             Err(inclomplete_cause) => return Ok(EvalValue::incomplete(inclomplete_cause)),
@@ -63,11 +64,11 @@ impl<'a, T: FieldElement> IdentityProcessor<'a, T> {
         evaluated.solve_with_range_constraints(rows)
     }
 
-    fn process_plookup<'b>(
+    fn process_plookup(
         &mut self,
-        identity: &'b Identity<T>,
-        rows: &RowPair<T>,
-    ) -> EvalResult<'b, T> {
+        identity: &'a Identity<T>,
+        rows: &RowPair<'_, 'a, T>,
+    ) -> EvalResult<'a, T> {
         if let Some(left_selector) = &identity.left.selector {
             if let Some(status) = self.handle_left_selector(left_selector, rows) {
                 return Ok(status);
@@ -112,12 +113,57 @@ impl<'a, T: FieldElement> IdentityProcessor<'a, T> {
         unimplemented!("No executor machine matched identity `{identity}`")
     }
 
-    /// Returns updates of the left selector cannot be evaluated to 1, otherwise None.
-    fn handle_left_selector<'b>(
+    /// Handles the lookup that connects the current machine to the calling machine.
+    /// Arguments:
+    /// - `left`: The evaluation of the left side of the lookup (symbolic for unknown values).
+    /// - `right`: The expressions on the right side of the lookup.
+    /// - `current_rows`: The [RowPair] needed to evaluate the right side of the lookup.
+    /// Returns:
+    /// - `Ok(updates)`: The updates for the lookup.
+    /// - `Err(e)`: If the constraint system is not satisfiable.
+    pub fn process_link(
         &mut self,
-        left_selector: &'b Expression<T>,
+        left: &[AffineResult<&'a PolynomialReference, T>],
+        right: &'a SelectedExpressions<T>,
+        current_rows: &RowPair<'_, 'a, T>,
+    ) -> EvalResult<'a, T> {
+        // sanity check that the right hand side selector is active
+        let selector_value = right
+            .selector
+            .as_ref()
+            .map(|s| current_rows.evaluate(s).unwrap().constant_value().unwrap())
+            .unwrap_or(T::one());
+        assert_eq!(selector_value, T::one());
+
+        let mut updates = EvalValue::complete(vec![]);
+
+        for (l, r) in left.iter().zip(right.expressions.iter()) {
+            match (l, current_rows.evaluate(r)) {
+                (Ok(l), Ok(r)) => {
+                    let result = (l.clone() - r).solve()?;
+                    updates.combine(result);
+                }
+                (Err(e), Ok(_)) => {
+                    updates.status = updates.status.combine(e.clone());
+                }
+                (Ok(_), Err(e)) => {
+                    updates.status = updates.status.combine(e);
+                }
+                (Err(e1), Err(e2)) => {
+                    updates.status = updates.status.combine(e1.clone());
+                    updates.status = updates.status.combine(e2);
+                }
+            }
+        }
+        Ok(updates)
+    }
+
+    /// Returns updates of the left selector cannot be evaluated to 1, otherwise None.
+    fn handle_left_selector(
+        &mut self,
+        left_selector: &'a Expression<T>,
         rows: &RowPair<T>,
-    ) -> Option<EvalValue<&'b PolynomialReference, T>> {
+    ) -> Option<EvalValue<&'a PolynomialReference, T>> {
         let value = match rows.evaluate(left_selector) {
             Err(inclomplete_cause) => return Some(EvalValue::incomplete(inclomplete_cause)),
             Ok(value) => value,

@@ -519,7 +519,6 @@ fn optimize_and_output<T: FieldElement>(file: &str) {
 mod test {
     use crate::{run_command, Commands, CsvRenderMode, FieldArgument};
     use backend::BackendType;
-    use tempfile;
 
     #[test]
     fn test_simple_sum() {

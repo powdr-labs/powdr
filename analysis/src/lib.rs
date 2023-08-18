@@ -19,7 +19,7 @@ pub fn analyze<T: FieldElement>(file: ASMFile<T>) -> Result<AnalysisASMFile<T>, 
     Ok(batched)
 }
 
-mod utils {
+pub mod utils {
     use ast::parsed::PilStatement;
     use number::FieldElement;
 

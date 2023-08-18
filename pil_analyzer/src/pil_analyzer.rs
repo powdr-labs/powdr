@@ -374,7 +374,7 @@ impl<T: FieldElement> PILContext<T> {
         &mut self,
         source: SourceRef,
         name: String,
-        poly: ::ast::parsed::PolynomialReference<T>,
+        poly: ::ast::parsed::NamespacedPolynomialReference<T>,
         index: ::ast::parsed::Expression<T>,
     ) {
         let id = self.public_declarations.len() as u64;
@@ -384,7 +384,7 @@ impl<T: FieldElement> PILContext<T> {
                 id,
                 source,
                 name: name.to_string(),
-                polynomial: self.process_polynomial_reference(poly),
+                polynomial: self.process_namespaced_polynomial_reference(poly),
                 index: self.evaluate_expression(&index).unwrap().to_degree(),
             },
         );
@@ -470,13 +470,13 @@ impl<T: FieldElement> PILContext<T> {
         match expr {
             Constant(name) => Expression::Constant(name),
             PolynomialReference(poly) => {
-                if poly.namespace.is_none() && self.local_variables.contains_key(&poly.name) {
-                    let id = self.local_variables[&poly.name];
-                    assert!(!poly.next);
-                    assert!(poly.index.is_none());
+                if poly.namespace().is_none() && self.local_variables.contains_key(poly.name()) {
+                    let id = self.local_variables[poly.name()];
+                    assert!(!poly.shift());
+                    assert!(poly.index().is_none());
                     Expression::LocalVariableReference(id)
                 } else {
-                    Expression::PolynomialReference(self.process_polynomial_reference(poly))
+                    Expression::PolynomialReference(self.process_shifted_polynomial_reference(poly))
                 }
             }
             PublicReference(name) => Expression::PublicReference(name),
@@ -524,20 +524,31 @@ impl<T: FieldElement> PILContext<T> {
         }
     }
 
-    fn process_polynomial_reference(
+    fn process_namespaced_polynomial_reference(
         &self,
-        poly: ::ast::parsed::PolynomialReference<T>,
+        poly: ::ast::parsed::NamespacedPolynomialReference<T>,
     ) -> PolynomialReference {
         let index = poly
-            .index
-            .map(|i| self.evaluate_expression(&i).unwrap())
+            .index()
+            .as_ref()
+            .map(|i| self.evaluate_expression(i).unwrap())
             .map(|i| i.to_degree());
-        let name = self.namespaced_ref(&poly.namespace, &poly.name);
+        let name = self.namespaced_ref(poly.namespace(), poly.name());
         PolynomialReference {
             name,
             poly_id: None,
             index,
-            next: poly.next,
+            next: false,
+        }
+    }
+
+    fn process_shifted_polynomial_reference(
+        &self,
+        poly: ::ast::parsed::ShiftedPolynomialReference<T>,
+    ) -> PolynomialReference {
+        PolynomialReference {
+            next: poly.shift(),
+            ..self.process_namespaced_polynomial_reference(poly.into_namespaced())
         }
     }
 

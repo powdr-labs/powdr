@@ -15,7 +15,7 @@ use number::FieldElement;
 
 pub struct ExtractionOutput<'a, T: FieldElement> {
     pub fixed_lookup: FixedLookup<T>,
-    pub machines: Vec<KnownMachine<T>>,
+    pub machines: Vec<KnownMachine<'a, T>>,
     pub base_identities: Vec<&'a Identity<T>>,
     pub base_witnesses: HashSet<PolyID>,
 }

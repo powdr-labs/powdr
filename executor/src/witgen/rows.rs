@@ -1,6 +1,6 @@
 use std::fmt::Debug;
 
-use ast::analyzed::{Expression, PolynomialReference, PolynomialType};
+use ast::analyzed::{Expression, PolyID, PolynomialReference, PolynomialType};
 use itertools::Itertools;
 use number::{DegreeType, FieldElement};
 
@@ -17,21 +17,30 @@ use super::{
 };
 
 #[derive(Clone)]
-enum CellValue<T: FieldElement> {
+pub enum CellValue<T: FieldElement> {
     Known(T),
     RangeConstraint(RangeConstraint<T>),
     Unknown,
 }
 
 impl<T: FieldElement> CellValue<T> {
-    fn is_known(&self) -> bool {
+    pub fn is_known(&self) -> bool {
         matches!(self, CellValue::Known(_))
     }
 
-    fn unwrap_or_default(&self) -> T {
+    pub fn unwrap_or_default(&self) -> T {
         match self {
             CellValue::Known(v) => *v,
             _ => Default::default(),
+        }
+    }
+}
+
+impl<T: FieldElement> From<&CellValue<T>> for Option<T> {
+    fn from(val: &CellValue<T>) -> Self {
+        match val {
+            CellValue::Known(v) => Some(*v),
+            _ => None,
         }
     }
 }
@@ -41,7 +50,7 @@ impl<T: FieldElement> CellValue<T> {
 pub struct Cell<'a, T: FieldElement> {
     /// The column name, for debugging purposes.
     pub name: &'a str,
-    value: CellValue<T>,
+    pub value: CellValue<T>,
 }
 
 impl<T: FieldElement> Debug for Cell<'_, T> {
@@ -62,7 +71,7 @@ pub type Row<'a, T> = ColumnMap<Cell<'a, T>>;
 
 impl<T: FieldElement> Debug for Row<'_, T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(&self.render("Row:", true))
+        f.write_str(&self.render("Row", true))
     }
 }
 
@@ -100,6 +109,7 @@ impl<T: FieldElement> Row<'_, T> {
 }
 
 /// A factory for rows, which knows the global range constraints and has pointers to column names.
+#[derive(Clone)]
 pub struct RowFactory<'a, T: FieldElement> {
     fixed_data: &'a FixedData<'a, T>,
     global_range_constraints: ColumnMap<Option<RangeConstraint<T>>>,
@@ -131,7 +141,7 @@ impl<'a, T: FieldElement> RowFactory<'a, T> {
         )
     }
 
-    pub fn row_from_known_values(&self, values: &ColumnMap<T>) -> Row<'a, T> {
+    pub fn row_from_known_values_dense(&self, values: &ColumnMap<T>) -> Row<'a, T> {
         ColumnMap::from(
             values.iter().map(|(poly_id, &v)| Cell {
                 name: self.fixed_data.column_name(&poly_id),
@@ -139,6 +149,17 @@ impl<'a, T: FieldElement> RowFactory<'a, T> {
             }),
             PolynomialType::Committed,
         )
+    }
+
+    pub fn row_from_known_values_sparse(
+        &self,
+        values: impl Iterator<Item = (PolyID, T)>,
+    ) -> Row<'a, T> {
+        let mut row = self.fresh_row();
+        for (poly_id, v) in values {
+            row[&poly_id].value = CellValue::Known(v);
+        }
+        row
     }
 }
 
@@ -173,6 +194,23 @@ impl<'row, 'a, T: FieldElement> RowUpdater<'row, 'a, T> {
         }
     }
 
+    pub fn apply_update(
+        &mut self,
+        poly: &PolynomialReference,
+        c: &Constraint<T>,
+        source_name: &impl Fn() -> String,
+    ) {
+        log::trace!("    Update from: {}", source_name());
+        match c {
+            Constraint::Assignment(value) => {
+                self.set_value(poly, *value);
+            }
+            Constraint::RangeConstraint(constraint) => {
+                self.update_range_constraint(poly, constraint);
+            }
+        }
+    }
+
     /// Applies the updates to the underlying rows. Returns true if any updates
     /// were applied.
     ///
@@ -188,16 +226,8 @@ impl<'row, 'a, T: FieldElement> RowUpdater<'row, 'a, T> {
             return false;
         }
 
-        log::trace!("    Updates from: {}", source_name());
         for (poly, c) in &updates.constraints {
-            match c {
-                Constraint::Assignment(value) => {
-                    self.set_value(poly, *value);
-                }
-                Constraint::RangeConstraint(constraint) => {
-                    self.update_range_constraint(poly, constraint);
-                }
-            }
+            self.apply_update(poly, c, &source_name)
         }
         true
     }
@@ -258,6 +288,14 @@ impl<'row, 'a, T: FieldElement> RowUpdater<'row, 'a, T> {
     }
 }
 
+#[derive(Clone, Copy, PartialEq)]
+pub enum UnknownStrategy {
+    /// If a value is unknown, evaluate it to zero.
+    Zero,
+    /// If a value is unknown, leave it unknown.
+    Unknown,
+}
+
 /// A pair of row references which knows which value / range constraint
 /// to return for a given [PolynomialReference].
 pub struct RowPair<'row, 'a, T: FieldElement> {
@@ -265,7 +303,7 @@ pub struct RowPair<'row, 'a, T: FieldElement> {
     pub next: &'row Row<'a, T>,
     pub current_row_index: DegreeType,
     fixed_data: &'a FixedData<'a, T>,
-    evaluate_unknown_to_zero: bool,
+    unknown_strategy: UnknownStrategy,
 }
 impl<'row, 'a, T: FieldElement> RowPair<'row, 'a, T> {
     pub fn new(
@@ -273,14 +311,14 @@ impl<'row, 'a, T: FieldElement> RowPair<'row, 'a, T> {
         next: &'row Row<'a, T>,
         current_row_index: DegreeType,
         fixed_data: &'a FixedData<'a, T>,
-        evaluate_unknown_to_zero: bool,
+        unknown_strategy: UnknownStrategy,
     ) -> Self {
         Self {
             current,
             next,
             current_row_index,
             fixed_data,
-            evaluate_unknown_to_zero,
+            unknown_strategy,
         }
     }
 
@@ -294,13 +332,10 @@ impl<'row, 'a, T: FieldElement> RowPair<'row, 'a, T> {
     pub fn get_value(&self, poly: &PolynomialReference) -> Option<T> {
         match self.get_cell(poly).value {
             CellValue::Known(value) => Some(value),
-            _ => {
-                if self.evaluate_unknown_to_zero {
-                    Some(T::zero())
-                } else {
-                    None
-                }
-            }
+            _ => match self.unknown_strategy {
+                UnknownStrategy::Zero => Some(T::zero()),
+                UnknownStrategy::Unknown => None,
+            },
         }
     }
 

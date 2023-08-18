@@ -35,6 +35,9 @@ machine PoseidonBN254(LASTBLOCK, function_id) {
             %rowsPerHash - 1 => 1,
             _ => 0
         }};
+        // Like LASTBLOCK, but also 1 in the last row of the table
+        // Specified this way because we can't access the degree in the match statement
+        pol constant LAST = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]* + [1];
 
         // Whether the current round is a partial round
         pol constant PARTIAL = [0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0]*;
@@ -97,17 +100,17 @@ machine PoseidonBN254(LASTBLOCK, function_id) {
         c1 = %m_1_0 * b0 + %m_1_1 * b1 + %m_1_2 * b2;
         c2 = %m_2_0 * b0 + %m_2_1 * b1 + %m_2_2 * b2;
 
-        (in0' - c0) * (1-LASTBLOCK) = 0;
-        (in1' - c1) * (1-LASTBLOCK) = 0;
-        (cap' - c2) * (1-LASTBLOCK) = 0;
+        (in0' - c0) * (1-LAST) = 0;
+        (in1' - c1) * (1-LAST) = 0;
+        (cap' - c2) * (1-LAST) = 0;
 
         FIRSTBLOCK * (input_in0 - in0) = 0;
         FIRSTBLOCK * (input_in1 - in1) = 0;
         FIRSTBLOCK * (input_cap - cap) = 0;
 
-        (1 - LASTBLOCK) * (input_in0 - input_in0') = 0;
-        (1 - LASTBLOCK) * (input_in1 - input_in1') = 0;
-        (1 - LASTBLOCK) * (input_cap - input_cap') = 0;
+        (1 - LAST) * (input_in0 - input_in0') = 0;
+        (1 - LAST) * (input_in1 - input_in1') = 0;
+        (1 - LAST) * (input_cap - input_cap') = 0;
     }
 }
 

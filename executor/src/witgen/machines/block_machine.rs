@@ -1,70 +1,84 @@
-use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
-use std::marker::PhantomData;
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 use super::{EvalResult, FixedData, FixedLookup};
 use crate::witgen::column_map::ColumnMap;
-use crate::witgen::global_constraints::RangeConstraintSet;
+use crate::witgen::identity_processor::IdentityProcessor;
+use crate::witgen::processor::Processor;
+use crate::witgen::rows::{Row, RowFactory, RowPair, RowUpdater, UnknownStrategy};
 use crate::witgen::util::try_to_simple_poly;
 use crate::witgen::{
-    affine_expression::{AffineExpression, AffineResult},
-    expression_evaluator::ExpressionEvaluator,
-    machines::Machine,
-    range_constraints::RangeConstraint,
-    symbolic_witness_evaluator::{SymoblicWitnessEvaluator, WitnessColumnEvaluator},
-    Constraint, EvalError,
+    affine_expression::AffineResult, machines::Machine, range_constraints::RangeConstraint,
+    EvalError,
 };
-use crate::witgen::{Constraints, EvalValue, IncompleteCause};
+use crate::witgen::{Constraint, EvalValue, IncompleteCause};
 use ast::analyzed::{
     Expression, Identity, IdentityKind, PolyID, PolynomialReference, SelectedExpressions,
 };
 use number::{DegreeType, FieldElement};
 
+/// Transposes a list of rows into a map from column to a list of values.
+/// This is done to match the interface of [Machine::take_witness_col_values].
+pub fn transpose_rows<T: FieldElement>(
+    rows: Vec<Row<T>>,
+    column_set: &HashSet<PolyID>,
+) -> BTreeMap<PolyID, Vec<Option<T>>> {
+    let mut result = column_set
+        .iter()
+        .map(|id| (*id, Vec::with_capacity(rows.len())))
+        .collect::<BTreeMap<_, _>>();
+
+    for row in rows.into_iter() {
+        for poly_id in column_set.iter() {
+            result
+                .get_mut(poly_id)
+                .unwrap()
+                .push((&row[poly_id].value).into());
+        }
+    }
+    result
+}
+
 /// A machine that produces multiple rows (one block) per query.
 /// TODO we do not actually "detect" the machine yet, we just check if
 /// the lookup has a binary selector that is 1 every k rows for some k
-pub struct BlockMachine<T: FieldElement> {
+pub struct BlockMachine<'a, T: FieldElement> {
     /// Block size, the period of the selector.
     block_size: usize,
+    /// The right-hand side of the connecting identity, needed to identify
+    /// when this machine is responsible.
     selected_expressions: SelectedExpressions<T>,
-    identities: Vec<Identity<T>>,
-    /// One column of values for each witness.
-    data: HashMap<PolyID, Vec<Option<T>>>,
-    /// Current row in the machine
-    row: DegreeType,
-    /// Range constraints, are deleted outside the current block.
-    range_constraints: HashMap<PolyID, HashMap<DegreeType, RangeConstraint<T>>>,
-    /// Range constraints of the outer polynomials, for the current block.
-    outer_range_constraints: HashMap<PolyID, RangeConstraint<T>>,
-    /// Global range constraints on witness columns.
-    global_range_constraints: ColumnMap<Option<RangeConstraint<T>>>,
-    /// Poly degree / absolute number of rows
-    degree: DegreeType,
+    /// The internal identities
+    identities: Vec<&'a Identity<T>>,
+    /// The row factory
+    row_factory: RowFactory<'a, T>,
+    /// The data of the machine.
+    data: Vec<Row<'a, T>>,
+    /// The set of witness columns that are actually part of this machine.
+    witness_cols: HashSet<PolyID>,
     /// Cache that states the order in which to evaluate identities
     /// to make progress most quickly.
     processing_sequence_cache: ProcessingSequenceCache,
 }
 
-impl<T: FieldElement> BlockMachine<T> {
+impl<'a, T: FieldElement> BlockMachine<'a, T> {
     pub fn try_new(
-        fixed_data: &FixedData<T>,
-        connecting_identities: &[&Identity<T>],
-        identities: &[&Identity<T>],
+        fixed_data: &'a FixedData<T>,
+        connecting_identities: &[&'a Identity<T>],
+        identities: &[&'a Identity<T>],
         witness_cols: &HashSet<PolyID>,
         global_range_constraints: &ColumnMap<Option<RangeConstraint<T>>>,
     ) -> Option<Self> {
         for id in connecting_identities {
             // TODO we should check that the other constraints/fixed columns are also periodic.
             if let Some(period) = try_to_period(&id.right.selector, fixed_data) {
+                let row_factory = RowFactory::new(fixed_data, global_range_constraints.clone());
                 let mut machine = BlockMachine {
                     block_size: period,
                     selected_expressions: id.right.clone(),
-                    identities: identities.iter().map(|&i| i.clone()).collect(),
-                    data: witness_cols.iter().map(|&n| (n, vec![])).collect(),
-                    row: 0,
-                    range_constraints: Default::default(),
-                    outer_range_constraints: Default::default(),
-                    global_range_constraints: global_range_constraints.clone(),
-                    degree: fixed_data.degree,
+                    identities: identities.to_vec(),
+                    data: vec![],
+                    row_factory,
+                    witness_cols: witness_cols.clone(),
                     processing_sequence_cache: ProcessingSequenceCache::new(
                         period,
                         identities.len(),
@@ -124,10 +138,10 @@ fn try_to_period<T: FieldElement>(
     }
 }
 
-impl<T: FieldElement> Machine<T> for BlockMachine<T> {
-    fn process_plookup<'a>(
+impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
+    fn process_plookup(
         &mut self,
-        fixed_data: &FixedData<T>,
+        fixed_data: &'a FixedData<T>,
         fixed_lookup: &mut FixedLookup<T>,
         kind: IdentityKind,
         left: &[AffineResult<&'a PolynomialReference, T>],
@@ -139,22 +153,22 @@ impl<T: FieldElement> Machine<T> for BlockMachine<T> {
         let previous_len = self.rows() as usize;
         Some({
             let result = self.process_plookup_internal(fixed_data, fixed_lookup, left, right);
-            self.range_constraints.clear();
-            self.outer_range_constraints.clear();
             if let Ok(assignments) = &result {
                 if !assignments.is_complete() {
                     // rollback the changes.
-                    for col in self.data.values_mut() {
-                        col.truncate(previous_len)
-                    }
+                    self.data.truncate(previous_len);
                 }
             }
             result
         })
     }
 
-    fn witness_col_values(&mut self, fixed_data: &FixedData<T>) -> HashMap<String, Vec<T>> {
-        std::mem::take(&mut self.data)
+    fn take_witness_col_values(
+        &mut self,
+        fixed_data: &FixedData<T>,
+        fixed_lookup: &mut FixedLookup<T>,
+    ) -> HashMap<String, Vec<T>> {
+        let mut data = transpose_rows(std::mem::take(&mut self.data), &self.witness_cols)
             .into_iter()
             .map(|(id, mut values)| {
 
@@ -189,82 +203,95 @@ impl<T: FieldElement> Machine<T> for BlockMachine<T> {
                     .map(|(i, v)| v.unwrap_or(default_block[i % self.block_size]))
                     .collect::<Vec<_>>();
 
-                (fixed_data.column_name(&id).to_string(), values)
+                (id, values)
             })
+            .collect();
+        self.handle_last_row(&mut data, fixed_data, fixed_lookup);
+        data.into_iter()
+            .map(|(id, values)| (fixed_data.column_name(&id).to_string(), values))
             .collect()
     }
 }
 
-struct ChangeLogger<'a, T: FieldElement> {
-    first_change: bool,
-    identity: &'a IdentityInSequence,
-    _marker: PhantomData<T>,
-}
-
-impl<'a, T: FieldElement> ChangeLogger<'a, T> {
-    fn new(identity: &'a IdentityInSequence) -> Self {
-        Self {
-            first_change: true,
-            identity,
-            _marker: PhantomData,
-        }
-    }
-
-    fn log_constraints(
-        &mut self,
-        bm: &BlockMachine<T>,
-        constraints: &Constraints<&PolynomialReference, T>,
-        include_row: bool,
+impl<'a, T: FieldElement> BlockMachine<'a, T> {
+    /// Check if constraints are satisfied on the last row and recompute it if not.
+    /// While the characteristic of a block machine is that that all fixed columns
+    /// should be periodic (and hence all constraints), the last row might be different,
+    /// in order to handle the cyclic nature of the proving system.
+    /// This can lead to an invalid last row when a default block is "copy-pasted" until
+    /// the end of the table. This function corrects it if it is the case.
+    fn handle_last_row(
+        &self,
+        data: &mut HashMap<PolyID, Vec<T>>,
+        fixed_data: &FixedData<T>,
+        fixed_lookup: &mut FixedLookup<T>,
     ) {
-        if log::STATIC_MAX_LEVEL >= log::Level::Trace {
-            for (poly, constraint) in constraints {
-                let row = (bm.row + poly.next as DegreeType) % bm.degree;
-                if let Constraint::Assignment(value) = constraint {
-                    if self.first_change {
-                        let name = match self.identity {
-                            IdentityInSequence::Internal(index) => {
-                                format!("identity {}", bm.identities[*index])
-                            }
-                            IdentityInSequence::OuterQuery => "outer query".to_string(),
-                        };
-                        log::trace!("  Processing {}", name);
-                        self.first_change = false;
-                    }
-                    let row_string = match include_row {
-                        true => format!(" (Row {})", row),
-                        false => "".to_string(),
-                    };
-                    log::trace!("    => {}{} = {}", poly.name, row_string, value);
-                }
+        // Build a vector of 3 rows: N -2, N - 1 and 0
+        let rows = ((fixed_data.degree - 2)..(fixed_data.degree + 1))
+            .map(|row| {
+                self.row_factory.row_from_known_values_sparse(
+                    data.iter()
+                        .map(|(col, values)| (*col, values[(row % fixed_data.degree) as usize])),
+                )
+            })
+            .collect();
+
+        // Build the processor. This copies the identities, but it's only done once per block machine instance.
+        let mut processor = Processor::new(
+            fixed_data.degree - 2,
+            rows,
+            IdentityProcessor::new(fixed_data, fixed_lookup, vec![]),
+            self.identities.clone(),
+            fixed_data,
+            self.row_factory.clone(),
+        );
+
+        // Check if we can accept the last row as is.
+        if processor.check_constraints().is_err() {
+            log::warn!("Detected error in last row! Will attempt to fix it now.");
+
+            // Clear the last row and run the solver
+            processor.clear_row(1);
+            processor
+                .solve()
+                .expect("Some constraints were not satisfiable when solving for the last row.");
+            let last_row = processor.finish().remove(1);
+
+            // Copy values into data
+            for (poly_id, values) in data.iter_mut() {
+                values[fixed_data.degree as usize - 1] =
+                    last_row[poly_id].value.unwrap_or_default();
             }
         }
     }
-}
 
-impl<T: FieldElement> BlockMachine<T> {
     /// Extends the data with a new block.
     fn append_new_block(&mut self, max_len: DegreeType) -> Result<(), EvalError<T>> {
         if self.rows() + self.block_size as DegreeType >= max_len {
             return Err(EvalError::RowsExhausted);
         }
-        for col in self.data.values_mut() {
-            col.resize_with(col.len() + self.block_size, || None);
-        }
+        self.data
+            .resize_with(self.data.len() + self.block_size, || {
+                self.row_factory.fresh_row()
+            });
         Ok(())
     }
 
     fn rows(&self) -> DegreeType {
-        self.data.values().next().unwrap().len() as DegreeType
+        self.data.len() as DegreeType
     }
 
-    fn process_plookup_internal<'b>(
+    fn process_plookup_internal(
         &mut self,
-        fixed_data: &FixedData<T>,
+        fixed_data: &'a FixedData<T>,
         fixed_lookup: &mut FixedLookup<T>,
-        left: &[AffineResult<&'b PolynomialReference, T>],
-        right: &'b SelectedExpressions<T>,
-    ) -> EvalResult<'b, T> {
+        left: &[AffineResult<&'a PolynomialReference, T>],
+        right: &'a SelectedExpressions<T>,
+    ) -> EvalResult<'a, T> {
         log::trace!("Start processing block machine");
+
+        // TODO: Add possibility for machines to call other machines.
+        let mut identity_processor = IdentityProcessor::new(fixed_data, fixed_lookup, vec![]);
 
         // First check if we already store the value.
         // This can happen in the loop detection case, where this function is just called
@@ -276,41 +303,30 @@ impl<T: FieldElement> BlockMachine<T> {
         {
             // All values on the left hand side are known, check if this is a query
             // to the last row.
-            let row_before = self.row;
-            self.row = self.rows() - 1;
-            let result = self.process_outer_query(fixed_data, left, right);
+            let row = self.rows() - 1;
 
-            match result {
-                Ok(result) => {
-                    if result.is_complete() {
-                        return Ok(result);
-                    } else {
-                        // If the query is not complete, we roll back the row change and continue.
-                        // This might happen if the block machine just validates some input (rather
-                        // than computing an output) and hasn't been called on that input before.
-                        self.row = row_before;
-                    }
-                }
-                Err(e) => {
-                    // Non-recoverable error
-                    return Err(e);
-                }
+            let current = &self.data[row as usize];
+            // We don't have the next row, because it would be the first row of the next block.
+            // We'll use a fresh row instead.
+            let next = self.row_factory.fresh_row();
+            let row_pair = RowPair::new(current, &next, row, fixed_data, UnknownStrategy::Unknown);
+
+            let result = identity_processor.process_link(left, right, &row_pair)?;
+
+            if result.is_complete() {
+                return Ok(result);
             }
         }
-
-        let outer_polys = left
-            .iter()
-            .flat_map(|r| {
-                r.as_ref()
-                    .ok()
-                    .map(|e| e.nonzero_coefficients().map(|(i, _)| i))
-            })
-            .flatten()
-            .collect::<BTreeSet<_>>();
 
         let old_len = self.rows();
         self.append_new_block(fixed_data.degree)?;
         let mut outer_assignments = EvalValue::complete(vec![]);
+
+        // While processing the block, we'll add an additional row which will be
+        // removed once the block is done. This is done to prevent infinite loops:
+        // If we ignored updates to the last row, they would be computed over
+        // and over again.
+        self.data.push(self.row_factory.fresh_row());
 
         // TODO this assumes we are always using the same lookup for this machine.
         let mut processing_sequence_iterator =
@@ -332,51 +348,53 @@ impl<T: FieldElement> BlockMachine<T> {
         // Can't use a for loop here, because we need to communicate progress_in_last_step to the
         // default iterator.
         while let Some(step) = processing_sequence_iterator.next() {
-            let mut progress_in_last_step = false;
-
             let SequenceStep {
                 row_delta,
                 identity,
             } = step;
-            self.row = (old_len as i64 + row_delta + fixed_data.degree as i64) as DegreeType
+            let row = (old_len as i64 + row_delta + fixed_data.degree as i64) as DegreeType
                 % fixed_data.degree;
 
-            let mut change_logger = ChangeLogger::new(&identity);
-
-            match self.process_identity(fixed_data, fixed_lookup, &left_mut, right, identity) {
+            let progress = match self.compute_updates(
+                row,
+                fixed_data,
+                &left_mut,
+                right,
+                identity,
+                &mut identity_processor,
+            ) {
                 Ok(value) => {
                     if !value.is_empty() {
                         errors.clear();
 
-                        let (outer_constraints, inner_value) =
-                            self.split_result(value, &outer_polys);
+                        let progress = self.apply_updates(row, identity, &value, &mut left_mut);
 
-                        change_logger.log_constraints(self, &inner_value.constraints, true);
-                        for (poly_id, next, constraint) in inner_value
-                            .constraints
-                            .into_iter()
-                            .map(|(poly, constraint)| (poly.poly_id(), poly.next, constraint))
-                            .collect::<Vec<_>>()
-                        {
-                            progress_in_last_step |=
-                                self.handle_constraint(&poly_id, next, constraint);
+                        for (poly, constraint) in value.constraints {
+                            if !self.witness_cols.contains(&poly.poly_id()) {
+                                outer_assignments.constraints.push((poly, constraint));
+                            }
                         }
 
-                        change_logger.log_constraints(self, &outer_constraints, false);
-                        self.handle_outer_constraints(&outer_constraints, &mut left_mut);
-
-                        progress_in_last_step |= !outer_constraints.is_empty();
-                        outer_assignments.constraints.extend(outer_constraints);
-
-                        if progress_in_last_step {
-                            progress_steps.push(step);
-                        }
+                        progress
+                    } else {
+                        false
                     }
                 }
-                Err(e) => errors.push(format!("In row {}: {e}", self.row).into()),
+                Err(e) => {
+                    errors.push(format!("In row {}: {e}", row).into());
+                    false
+                }
+            };
+
+            if progress {
+                progress_steps.push(step);
             }
-            processing_sequence_iterator.report_progress(progress_in_last_step);
+
+            processing_sequence_iterator.report_progress(progress);
         }
+
+        // Remove the extra row we added at the beginning.
+        self.data.pop();
 
         log::trace!("End processing block machine");
 
@@ -403,260 +421,77 @@ impl<T: FieldElement> BlockMachine<T> {
         }
     }
 
-    // TODO: remove once cleaned up
-    #[allow(clippy::type_complexity)]
-    fn split_result<'b, 'outer>(
+    fn compute_updates(
         &self,
-        value: EvalValue<&'b PolynomialReference, T>,
-        outer_polys: &BTreeSet<&'outer PolynomialReference>,
-    ) -> (
-        Constraints<&'outer PolynomialReference, T>,
-        EvalValue<&'b PolynomialReference, T>,
-    ) {
-        let mut outer_constraints = vec![];
-        let value = EvalValue {
-            constraints: value
-                .constraints
-                .into_iter()
-                .filter_map(|(poly, constraint)| {
-                    if let Some(outer) = outer_polys.get(poly) {
-                        outer_constraints.push((*outer, constraint));
-                        None
-                    } else {
-                        Some((poly, constraint))
-                    }
-                })
-                .collect(),
-            ..value
-        };
-        (outer_constraints, value)
-    }
-
-    /// Updates self.data and self.range_constraints for the current constraint.
-    /// Returns whether any changed where made.
-    fn handle_constraint(&mut self, poly: &PolyID, next: bool, constraint: Constraint<T>) -> bool {
-        let r = (self.row + next as DegreeType) % self.degree;
-        match constraint {
-            Constraint::Assignment(a) => {
-                let r = r as usize;
-                let values = self.data.get_mut(poly).unwrap();
-                if r < values.len() {
-                    assert!(values[r].is_none(), "Duplicate assignment");
-                    // do not write to other rows for now
-                    values[r] = Some(a);
-                    true
-                } else {
-                    false
-                }
-            }
-            Constraint::RangeConstraint(rc) => {
-                let poly_map = self.range_constraints.entry(*poly).or_default();
-                update_range_constraint(poly_map, r, rc);
-                true
-            }
-        }
-    }
-
-    /// Updates self.outer_range_constraints and left for the list of outer constraints.
-    fn handle_outer_constraints<'a>(
-        &mut self,
-        outer_constraints: &Constraints<&'a PolynomialReference, T>,
-        left: &mut [AffineResult<&'a PolynomialReference, T>],
-    ) {
-        for affine_result in left.iter_mut() {
-            match affine_result {
-                Ok(ref mut affine_expression) => {
-                    for (poly, constraint) in outer_constraints {
-                        match constraint {
-                            Constraint::Assignment(value) => affine_expression.assign(poly, *value),
-                            Constraint::RangeConstraint(rc) => {
-                                update_range_constraint(
-                                    &mut self.outer_range_constraints,
-                                    poly.poly_id(),
-                                    rc.clone(),
-                                );
-                            }
-                        }
-                    }
-                }
-                Err(_) => {}
-            }
-        }
-    }
-
-    /// Processes an identity which is either the query or
-    /// an identity in the vector of identities.
-    fn process_identity<'b>(
-        &'b self,
-        fixed_data: &FixedData<T>,
-        fixed_lookup: &mut FixedLookup<T>,
-        left: &[AffineResult<&'b PolynomialReference, T>],
-        right: &'b SelectedExpressions<T>,
+        row: DegreeType,
+        fixed_data: &'a FixedData<T>,
+        left: &[AffineResult<&'a PolynomialReference, T>],
+        right: &'a SelectedExpressions<T>,
         identity: IdentityInSequence,
-    ) -> EvalResult<'b, T> {
+        identity_processor: &mut IdentityProcessor<'a, '_, T>,
+    ) -> EvalResult<'a, T> {
         match identity {
+            IdentityInSequence::Internal(i) => identity_processor.process_identity(
+                self.identities[i],
+                &self.get_current_row_pair(row, fixed_data),
+            ),
+            IdentityInSequence::OuterQuery => {
+                assert!(row as usize % self.block_size == self.block_size - 1);
+                identity_processor.process_link(
+                    left,
+                    right,
+                    &self.get_current_row_pair(row, fixed_data),
+                )
+            }
+        }
+    }
+
+    fn apply_updates(
+        &mut self,
+        row: DegreeType,
+        identity: IdentityInSequence,
+        updates: &EvalValue<&'a PolynomialReference, T>,
+        left_mut: &mut [AffineResult<&'a PolynomialReference, T>],
+    ) -> bool {
+        let mut progress_in_last_step = false;
+
+        let source_name = || match identity {
             IdentityInSequence::Internal(index) => {
-                let id = &self.identities[index];
-
-                match id.kind {
-                    IdentityKind::Polynomial => {
-                        self.process_polynomial_identity(fixed_data, id.expression_for_poly_id())
-                    }
-                    IdentityKind::Plookup | IdentityKind::Permutation => {
-                        self.process_plookup(fixed_data, fixed_lookup, id)
-                    }
-                    _ => Err("Unsupported lookup type".to_string().into()),
-                }
+                format!("identity {}", self.identities[index])
             }
-            IdentityInSequence::OuterQuery => self.process_outer_query(fixed_data, left, right),
-        }
-    }
-
-    /// Processes the outer query / the plookup. This function should only be called
-    /// on the acutal query row (the last one of the block).
-    fn process_outer_query<'b>(
-        &self,
-        fixed_data: &FixedData<T>,
-        left: &[AffineResult<&'b PolynomialReference, T>],
-        right: &'b SelectedExpressions<T>,
-    ) -> EvalResult<'b, T> {
-        assert!(self.row as usize % self.block_size == self.block_size - 1);
-        let mut results = EvalValue::complete(vec![]);
-
-        for (l, r) in left.iter().zip(right.expressions.iter()) {
-            match (l, self.evaluate(fixed_data, r)) {
-                (Ok(l), Ok(r)) => {
-                    let result = (l.clone() - r).solve_with_range_constraints(self)?;
-                    results.combine(result);
-                }
-                (Err(e), Ok(_)) => {
-                    results.status = results.status.combine(e.clone());
-                }
-                (Ok(_), Err(e)) => {
-                    results.status = results.status.combine(e);
-                }
-                (Err(e1), Err(e2)) => {
-                    results.status = results.status.combine(e1.clone());
-                    results.status = results.status.combine(e2);
-                }
-            }
-        }
-
-        Ok(results)
-    }
-
-    /// Process a polynomial identity internal no the machine.
-    fn process_polynomial_identity<'b>(
-        &self,
-        fixed_data: &FixedData<T>,
-        identity: &'b Expression<T>,
-    ) -> EvalResult<'b, T> {
-        let evaluated = match self.evaluate(fixed_data, identity) {
-            Ok(evaluated) => evaluated,
-            Err(cause) => return Ok(EvalValue::incomplete(cause)),
+            IdentityInSequence::OuterQuery => "outer query".to_string(),
         };
-        evaluated.solve_with_range_constraints(self).map_err(|e| {
-            let formatted = evaluated.to_string();
-            format!("Could not solve expression {formatted} = 0: {e}").into()
-        })
+
+        let (before, after) = self.data.split_at_mut(row as usize + 1);
+        let current = before.last_mut().unwrap();
+        let next = after.first_mut().unwrap();
+
+        let mut row_updater = RowUpdater::new(current, next, row);
+        for (poly, c) in &updates.constraints {
+            if self.witness_cols.contains(&poly.poly_id()) {
+                row_updater.apply_update(poly, c, &source_name);
+            } else if let Constraint::Assignment(v) = c {
+                for l in left_mut.iter_mut() {
+                    if let Ok(l) = l.as_mut() {
+                        l.assign(poly, *v);
+                    }
+                }
+            };
+
+            progress_in_last_step = true;
+        }
+
+        progress_in_last_step
     }
 
-    /// Process a plookup internal to the machine against a set of fixed columns.
-    fn process_plookup<'b>(
+    fn get_current_row_pair(
         &self,
-        fixed_data: &FixedData<T>,
-        fixed_lookup: &mut FixedLookup<T>,
-        identity: &'b Identity<T>,
-    ) -> EvalResult<'b, T> {
-        if identity.left.selector.is_some() || identity.right.selector.is_some() {
-            unimplemented!("Selectors not yet implemented.");
-        }
-        let left = identity
-            .left
-            .expressions
-            .iter()
-            .map(|e| self.evaluate(fixed_data, e))
-            .collect::<Vec<_>>();
-        if let Some(result) =
-            fixed_lookup.process_plookup(fixed_data, identity.kind, &left, &identity.right)
-        {
-            result
-        } else {
-            Err("Could not find a matching machine for the lookup."
-                .to_string()
-                .into())
-        }
-    }
-
-    fn evaluate<'b>(
-        &self,
-        fixed_data: &FixedData<T>,
-        expression: &'b Expression<T>,
-    ) -> AffineResult<&'b PolynomialReference, T> {
-        ExpressionEvaluator::new(SymoblicWitnessEvaluator::new(
-            fixed_data,
-            self.row,
-            &WitnessData {
-                fixed_data,
-                data: &self.data,
-                row: self.row,
-            },
-        ))
-        .evaluate(expression)
-    }
-}
-
-fn update_range_constraint<K: Eq + std::hash::Hash, T: FieldElement>(
-    range_constraints: &mut HashMap<K, RangeConstraint<T>>,
-    key: K,
-    range_constraint: RangeConstraint<T>,
-) {
-    // Combine with existing range constraint if it exists.
-    let range_constraint = range_constraints
-        .get(&key)
-        .map(|existing_rc| existing_rc.conjunction(&range_constraint))
-        .unwrap_or(range_constraint);
-
-    range_constraints.insert(key, range_constraint);
-}
-
-impl<T: FieldElement> RangeConstraintSet<&PolynomialReference, T> for BlockMachine<T> {
-    fn range_constraint(&self, poly: &PolynomialReference) -> Option<RangeConstraint<T>> {
-        assert!(poly.is_witness());
-        self.global_range_constraints[&poly.poly_id()]
-            .clone()
-            .or_else(|| {
-                let row = (self.row + poly.next as DegreeType) % self.degree;
-                self.range_constraints
-                    .get(&(poly.poly_id()))?
-                    .get(&row)
-                    .cloned()
-            })
-            .or_else(|| self.outer_range_constraints.get(&(poly.poly_id())).cloned())
-    }
-}
-
-#[derive(Clone)]
-struct WitnessData<'a, T> {
-    pub fixed_data: &'a FixedData<'a, T>,
-    pub data: &'a HashMap<PolyID, Vec<Option<T>>>,
-    pub row: DegreeType,
-}
-
-impl<'a, T: FieldElement> WitnessColumnEvaluator<T> for WitnessData<'a, T> {
-    fn value<'b>(&self, poly: &'b PolynomialReference) -> AffineResult<&'b PolynomialReference, T> {
-        let id = poly.poly_id();
-        let row = if poly.next {
-            (self.row + 1) % self.fixed_data.degree
-        } else {
-            self.row
-        };
-        // It is not an error to access the rows outside the block.
-        // We just return a symbolic ID for those.
-        match self.data[&id].get(row as usize).cloned().flatten() {
-            Some(value) => Ok(value.into()),
-            None => Ok(AffineExpression::from_variable_id(poly)),
-        }
+        row: DegreeType,
+        fixed_data: &'a FixedData<T>,
+    ) -> RowPair<'_, 'a, T> {
+        let current = &self.data[row as usize];
+        let next = &self.data[row as usize + 1];
+        RowPair::new(current, next, row, fixed_data, UnknownStrategy::Unknown)
     }
 }
 
@@ -687,17 +522,17 @@ struct DefaultSequenceIterator {
     current_round_count: usize,
 }
 
-const MAX_ROUNDS_PER_ROW_DELTA: usize = 20;
+const MAX_ROUNDS_PER_ROW_DELTA: usize = 100;
 
 impl DefaultSequenceIterator {
     fn new(block_size: usize, identities_count: usize) -> Self {
-        let block_size_i64 = block_size as i64;
+        let max_row = block_size as i64 - 1;
         DefaultSequenceIterator {
             block_size,
             identities_count,
-            row_deltas: (-1..=block_size_i64)
-                .chain((-1..block_size_i64).rev())
-                .chain(0..=block_size_i64)
+            row_deltas: (-1..=max_row)
+                .chain((-1..max_row).rev())
+                .chain(0..=max_row)
                 .collect(),
             is_first: true,
             progress_in_current_round: false,
@@ -737,8 +572,8 @@ impl DefaultSequenceIterator {
         if !self.progress_in_current_round || self.current_round_count > MAX_ROUNDS_PER_ROW_DELTA {
             // Move to next row delta, starting with identity 0.
             if self.current_round_count > MAX_ROUNDS_PER_ROW_DELTA {
-                log::warn!("In witness generation for block machine, we have been stuck in the same row for {MAX_ROUNDS_PER_ROW_DELTA} rounds. \
-                            This is likely a bug in the witness generation algorithm.");
+                panic!("In witness generation for block machine, we have been stuck in the same row for {MAX_ROUNDS_PER_ROW_DELTA} rounds. \
+                            This is a bug in the witness generation algorithm.");
             }
 
             self.cur_row_delta_index += 1;

@@ -7,7 +7,7 @@ use num_traits::Zero;
 use super::{FixedLookup, Machine};
 use crate::witgen::affine_expression::AffineResult;
 use crate::witgen::util::is_simple_poly_of_name;
-use crate::witgen::{EvalError, EvalResult, FixedData};
+use crate::witgen::{EvalResult, FixedData};
 use crate::witgen::{EvalValue, IncompleteCause};
 use number::{DegreeType, FieldElement};
 
@@ -92,14 +92,14 @@ impl<T: FieldElement> DoubleSortedWitnesses<T> {
     }
 }
 
-impl<T: FieldElement> Machine<T> for DoubleSortedWitnesses<T> {
-    fn process_plookup<'a>(
+impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses<T> {
+    fn process_plookup(
         &mut self,
         _fixed_data: &FixedData<T>,
         _fixed_lookup: &mut FixedLookup<T>,
         kind: IdentityKind,
         left: &[AffineResult<&'a PolynomialReference, T>],
-        right: &SelectedExpressions<T>,
+        right: &'a SelectedExpressions<T>,
     ) -> Option<EvalResult<'a, T>> {
         if kind != IdentityKind::Permutation
             || !(is_simple_poly_of_name(right.selector.as_ref()?, &self.namespaced("m_is_read"))
@@ -111,7 +111,11 @@ impl<T: FieldElement> Machine<T> for DoubleSortedWitnesses<T> {
         Some(self.process_plookup_internal(left, right))
     }
 
-    fn witness_col_values(&mut self, fixed_data: &FixedData<T>) -> HashMap<String, Vec<T>> {
+    fn take_witness_col_values(
+        &mut self,
+        fixed_data: &FixedData<T>,
+        _fixed_lookup: &mut FixedLookup<T>,
+    ) -> HashMap<String, Vec<T>> {
         let mut addr = vec![];
         let mut step = vec![];
         let mut value = vec![];
@@ -258,9 +262,7 @@ impl<T: FieldElement> DoubleSortedWitnesses<T> {
                 addr,
                 value
             );
-            let ass = (left[2].clone() - (*value).into())
-                .solve()
-                .map_err(|()| EvalError::ConstraintUnsatisfiable(String::new()))?;
+            let ass = (left[2].clone() - (*value).into()).solve()?;
             assignments.combine(ass);
         }
         Ok(assignments)

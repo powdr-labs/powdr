@@ -48,7 +48,8 @@ mod test {
         let contents = fs::read_to_string(file_name).unwrap();
         let parsed = parse_asm::<Bn254Field>(Some(file_name), &contents).unwrap();
         let analysed = analyze(parsed).unwrap();
-        let graph = asm_to_pil::compile(analysed);
+        let compiled = asm_to_pil::compile(analysed);
+        let graph = airgen::compile(compiled);
         let pil = linker::link(graph).unwrap();
 
         let query_callback = |query: &str| -> Option<Bn254Field> {
@@ -99,11 +100,6 @@ mod test {
     fn simple_sum() {
         let inputs = [165, 5, 11, 22, 33, 44, 55].map(From::from);
         mock_prove_asm("../test_data/asm/simple_sum.asm", &inputs);
-    }
-
-    #[test]
-    fn secondary_block_machine_add2() {
-        mock_prove_asm("../test_data/asm/secondary_block_machine_add2.asm", &[]);
     }
 
     #[test]
