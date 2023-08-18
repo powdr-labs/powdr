@@ -80,7 +80,7 @@ where
     /// returns the index of the variable and the assignment that evaluates the
     /// affine expression to zero.
     /// Returns an error if the constraint is unsat
-    pub fn solve(&self) -> Result<EvalValue<K, T>, ()> {
+    pub fn solve(&self) -> EvalResult<T, K> {
         let mut nonzero = self.nonzero_coefficients();
         let first = nonzero.next();
         let second = nonzero.next();
@@ -105,7 +105,7 @@ where
                 if self.offset.is_zero() {
                     Ok(EvalValue::complete([]))
                 } else {
-                    Err(())
+                    Err(ConstraintUnsatisfiable(self.to_string()))
                 }
             }
             (None, Some(_)) => panic!(),
@@ -122,14 +122,14 @@ where
         known_constraints: &impl RangeConstraintSet<K, T>,
     ) -> EvalResult<T, K> {
         // Try to solve directly.
-        match self.solve() {
-            Ok(value) if value.is_complete() => return Ok(value),
-            Err(()) => return Err(ConstraintUnsatisfiable(self.to_string())),
-            Ok(value) => {
-                // sanity check that we are not ignoring anything useful here
-                assert!(value.constraints.is_empty());
-            }
-        };
+        let value = self.solve()?;
+        if value.is_complete() {
+            return Ok(value);
+        }
+
+        // sanity check that we are not ignoring anything useful here
+        assert!(value.constraints.is_empty());
+
         let negated = -self.clone();
 
         // Try to find a division-with-remainder pattern and solve it.

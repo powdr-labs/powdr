@@ -24,7 +24,7 @@ pub enum CellValue<T: FieldElement> {
 }
 
 impl<T: FieldElement> CellValue<T> {
-    fn is_known(&self) -> bool {
+    pub fn is_known(&self) -> bool {
         matches!(self, CellValue::Known(_))
     }
 
@@ -32,6 +32,15 @@ impl<T: FieldElement> CellValue<T> {
         match self {
             CellValue::Known(v) => *v,
             _ => Default::default(),
+        }
+    }
+}
+
+impl<T: FieldElement> From<&CellValue<T>> for Option<T> {
+    fn from(val: &CellValue<T>) -> Self {
+        match val {
+            CellValue::Known(v) => Some(*v),
+            _ => None,
         }
     }
 }
@@ -100,6 +109,7 @@ impl<T: FieldElement> Row<'_, T> {
 }
 
 /// A factory for rows, which knows the global range constraints and has pointers to column names.
+#[derive(Clone)]
 pub struct RowFactory<'a, T: FieldElement> {
     fixed_data: &'a FixedData<'a, T>,
     global_range_constraints: ColumnMap<Option<RangeConstraint<T>>>,
@@ -184,6 +194,23 @@ impl<'row, 'a, T: FieldElement> RowUpdater<'row, 'a, T> {
         }
     }
 
+    pub fn apply_update(
+        &mut self,
+        poly: &PolynomialReference,
+        c: &Constraint<T>,
+        source_name: &impl Fn() -> String,
+    ) {
+        log::trace!("    Update from: {}", source_name());
+        match c {
+            Constraint::Assignment(value) => {
+                self.set_value(poly, *value);
+            }
+            Constraint::RangeConstraint(constraint) => {
+                self.update_range_constraint(poly, constraint);
+            }
+        }
+    }
+
     /// Applies the updates to the underlying rows. Returns true if any updates
     /// were applied.
     ///
@@ -199,16 +226,8 @@ impl<'row, 'a, T: FieldElement> RowUpdater<'row, 'a, T> {
             return false;
         }
 
-        log::trace!("    Updates from: {}", source_name());
         for (poly, c) in &updates.constraints {
-            match c {
-                Constraint::Assignment(value) => {
-                    self.set_value(poly, *value);
-                }
-                Constraint::RangeConstraint(constraint) => {
-                    self.update_range_constraint(poly, constraint);
-                }
-            }
+            self.apply_update(poly, c, &source_name)
         }
         true
     }
@@ -269,6 +288,14 @@ impl<'row, 'a, T: FieldElement> RowUpdater<'row, 'a, T> {
     }
 }
 
+#[derive(Clone, Copy, PartialEq)]
+pub enum UnknownStrategy {
+    /// If a value is unknown, evaluate it to zero.
+    Zero,
+    /// If a value is unknown, leave it unknown.
+    Unknown,
+}
+
 /// A pair of row references which knows which value / range constraint
 /// to return for a given [PolynomialReference].
 pub struct RowPair<'row, 'a, T: FieldElement> {
@@ -276,7 +303,7 @@ pub struct RowPair<'row, 'a, T: FieldElement> {
     pub next: &'row Row<'a, T>,
     pub current_row_index: DegreeType,
     fixed_data: &'a FixedData<'a, T>,
-    evaluate_unknown_to_zero: bool,
+    unknown_strategy: UnknownStrategy,
 }
 impl<'row, 'a, T: FieldElement> RowPair<'row, 'a, T> {
     pub fn new(
@@ -284,14 +311,14 @@ impl<'row, 'a, T: FieldElement> RowPair<'row, 'a, T> {
         next: &'row Row<'a, T>,
         current_row_index: DegreeType,
         fixed_data: &'a FixedData<'a, T>,
-        evaluate_unknown_to_zero: bool,
+        unknown_strategy: UnknownStrategy,
     ) -> Self {
         Self {
             current,
             next,
             current_row_index,
             fixed_data,
-            evaluate_unknown_to_zero,
+            unknown_strategy,
         }
     }
 
@@ -305,13 +332,10 @@ impl<'row, 'a, T: FieldElement> RowPair<'row, 'a, T> {
     pub fn get_value(&self, poly: &PolynomialReference) -> Option<T> {
         match self.get_cell(poly).value {
             CellValue::Known(value) => Some(value),
-            _ => {
-                if self.evaluate_unknown_to_zero {
-                    Some(T::zero())
-                } else {
-                    None
-                }
-            }
+            _ => match self.unknown_strategy {
+                UnknownStrategy::Zero => Some(T::zero()),
+                UnknownStrategy::Unknown => None,
+            },
         }
     }
 

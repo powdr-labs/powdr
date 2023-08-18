@@ -118,14 +118,14 @@ fn check_constraint<T: FieldElement>(constraint: &Expression<T>) -> Option<PolyI
     Some(key_column_id.poly_id())
 }
 
-impl<T: FieldElement> Machine<T> for SortedWitnesses<T> {
-    fn process_plookup<'a>(
+impl<'a, T: FieldElement> Machine<'a, T> for SortedWitnesses<T> {
+    fn process_plookup(
         &mut self,
         fixed_data: &FixedData<T>,
         _fixed_lookup: &mut FixedLookup<T>,
         kind: IdentityKind,
         left: &[AffineResult<&'a PolynomialReference, T>],
-        right: &SelectedExpressions<T>,
+        right: &'a SelectedExpressions<T>,
     ) -> Option<EvalResult<'a, T>> {
         if kind != IdentityKind::Plookup || right.selector.is_some() {
             return None;
@@ -150,7 +150,7 @@ impl<T: FieldElement> Machine<T> for SortedWitnesses<T> {
 
         Some(self.process_plookup_internal(fixed_data, left, right, rhs))
     }
-    fn witness_col_values(
+    fn take_witness_col_values(
         &mut self,
         fixed_data: &FixedData<T>,
         _fixed_lookup: &mut FixedLookup<T>,
@@ -226,7 +226,7 @@ impl<T: FieldElement> SortedWitnesses<T> {
                 // There is a stored value
                 Some(v) => {
                     match (l.clone() - (*v).into()).solve() {
-                        Err(()) => {
+                        Err(_) => {
                             // The LHS value is known and it is differetn from the stored one.
                             return Err(format!(
                                 "Lookup mismatch: There is already a unique row with {} = \
