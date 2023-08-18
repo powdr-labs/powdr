@@ -14,7 +14,7 @@ use super::query_processor::QueryProcessor;
 use super::range_constraints::RangeConstraint;
 
 use super::machines::FixedLookup;
-use super::rows::{Row, RowFactory, RowPair};
+use super::rows::{Row, RowFactory, RowPair, UnknownStrategy};
 use super::{EvalError, EvalResult, FixedData};
 
 /// Phase in which [Generator::compute_next_row_or_initialize] is called.
@@ -44,11 +44,11 @@ impl<'a, T: FieldElement> CompletableIdentities<'a, T> {
     }
 }
 
-pub struct Generator<'a, T: FieldElement, QueryCallback: Send + Sync> {
+pub struct Generator<'a, 'b, T: FieldElement, QueryCallback: Send + Sync> {
     /// The witness columns belonging to this machine
     witnesses: BTreeSet<PolyID>,
     row_factory: RowFactory<'a, T>,
-    identity_processor: IdentityProcessor<'a, T>,
+    identity_processor: IdentityProcessor<'a, 'b, T>,
     query_processor: Option<QueryProcessor<'a, T, QueryCallback>>,
     fixed_data: &'a FixedData<'a, T>,
     /// The subset of identities that contains a reference to the next row
@@ -68,17 +68,17 @@ pub struct Generator<'a, T: FieldElement, QueryCallback: Send + Sync> {
     last_report_time: Instant,
 }
 
-impl<'a, T: FieldElement, QueryCallback> Generator<'a, T, QueryCallback>
+impl<'a, 'b, T: FieldElement, QueryCallback> Generator<'a, 'b, T, QueryCallback>
 where
     QueryCallback: FnMut(&str) -> Option<T> + Send + Sync,
 {
     pub fn new(
         fixed_data: &'a FixedData<'a, T>,
-        fixed_lookup: &'a mut FixedLookup<T>,
+        fixed_lookup: &'b mut FixedLookup<T>,
         identities: &'a [&'a Identity<T>],
         witnesses: BTreeSet<PolyID>,
         global_range_constraints: ColumnMap<Option<RangeConstraint<T>>>,
-        machines: Vec<KnownMachine<T>>,
+        machines: Vec<KnownMachine<'a, T>>,
         query_callback: Option<QueryCallback>,
     ) -> Self {
         let query_processor =
@@ -156,8 +156,10 @@ where
             log::trace!(
                 "  Checking that remaining identities hold when unknown values are set to 0"
             );
-            self.process_identities(&mut identities_without_next_ref, true)
-                .and_then(|_| self.process_identities(&mut identities_with_next_ref, true))
+            self.process_identities(&mut identities_without_next_ref, UnknownStrategy::Zero)
+                .and_then(|_| {
+                    self.process_identities(&mut identities_with_next_ref, UnknownStrategy::Zero)
+                })
                 .map_err(|e| self.report_failure_and_panic_underconstrained(e))
                 .unwrap();
         }
@@ -180,14 +182,14 @@ where
         identities: &mut CompletableIdentities<'a, T>,
     ) -> Result<(), Vec<EvalError<T>>> {
         loop {
-            let mut progress = self.process_identities(identities, false)?;
+            let mut progress = self.process_identities(identities, UnknownStrategy::Unknown)?;
             if let Some(ref mut query_processor) = self.query_processor {
                 let row_pair = RowPair::new(
                     &self.current,
                     &self.next,
                     self.current_row_index,
                     self.fixed_data,
-                    false,
+                    UnknownStrategy::Unknown,
                 );
                 let updates = query_processor.process_queries_on_current_row(&row_pair);
                 let mut row_updater =
@@ -214,7 +216,7 @@ where
     fn process_identities(
         &mut self,
         identities: &mut CompletableIdentities<'a, T>,
-        frozen: bool,
+        unknown_strategy: UnknownStrategy,
     ) -> Result<bool, Vec<EvalError<T>>> {
         let mut progress = false;
         let mut errors = vec![];
@@ -229,7 +231,7 @@ where
                 &self.next,
                 self.current_row_index,
                 self.fixed_data,
-                frozen,
+                unknown_strategy,
             );
             let result: EvalResult<'a, T> = self
                 .identity_processor
@@ -240,7 +242,7 @@ where
 
             match result {
                 Ok(eval_value) => {
-                    if frozen {
+                    if unknown_strategy == UnknownStrategy::Zero {
                         assert!(eval_value.constraints.is_empty())
                     } else {
                         *is_complete = eval_value.is_complete();
@@ -337,7 +339,7 @@ where
         constraints_valid
     }
 
-    fn check_row_pair(&mut self, proposed_row: &Row<T>, previous: bool) -> bool {
+    fn check_row_pair(&mut self, proposed_row: &Row<'a, T>, previous: bool) -> bool {
         let row_pair = match previous {
             // Check whether identities with a reference to the next row are satisfied
             // when applied to the previous row and the proposed row.
@@ -346,7 +348,7 @@ where
                 proposed_row,
                 self.current_row_index - 1,
                 self.fixed_data,
-                true,
+                UnknownStrategy::Zero,
             ),
             // Check whether identities without a reference to the next row are satisfied
             // when applied to the proposed row.
@@ -356,7 +358,7 @@ where
                 &self.next,
                 self.current_row_index,
                 self.fixed_data,
-                true,
+                UnknownStrategy::Zero,
             ),
         };
 
@@ -394,7 +396,7 @@ where
             .collect::<BTreeMap<_, _>>();
         for m in &mut self.identity_processor.machines {
             for (col_name, col) in
-                m.witness_col_values(self.fixed_data, self.identity_processor.fixed_lookup)
+                m.take_witness_col_values(self.fixed_data, self.identity_processor.fixed_lookup)
             {
                 result.insert(*name_to_id.get(col_name.as_str()).unwrap(), col);
             }

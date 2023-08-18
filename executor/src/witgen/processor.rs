@@ -3,7 +3,7 @@ use number::FieldElement;
 
 use super::{
     identity_processor::IdentityProcessor,
-    rows::{Row, RowFactory, RowPair, RowUpdater},
+    rows::{Row, RowFactory, RowPair, RowUpdater, UnknownStrategy},
     EvalError, FixedData,
 };
 
@@ -18,9 +18,9 @@ pub struct Processor<'a, T: FieldElement> {
     /// The rows that are being processed.
     data: Vec<Row<'a, T>>,
     /// The list of identities
-    identities: Vec<Identity<T>>,
+    identities: Vec<&'a Identity<T>>,
     /// The identity processor
-    identity_processor: IdentityProcessor<'a, T>,
+    identity_processor: IdentityProcessor<'a, 'a, T>,
     /// The fixed data (containing information about all columns)
     fixed_data: &'a FixedData<'a, T>,
     /// The row factory
@@ -31,8 +31,8 @@ impl<'a, T: FieldElement> Processor<'a, T> {
     pub fn new(
         row_offset: u64,
         data: Vec<Row<'a, T>>,
-        identity_processor: IdentityProcessor<'a, T>,
-        identities: Vec<Identity<T>>,
+        identity_processor: IdentityProcessor<'a, 'a, T>,
+        identities: Vec<&'a Identity<T>>,
         fixed_data: &'a FixedData<'a, T>,
         row_factory: RowFactory<'a, T>,
     ) -> Self {
@@ -55,7 +55,7 @@ impl<'a, T: FieldElement> Processor<'a, T> {
                 &self.data[i + 1],
                 self.row_offset + i as u64,
                 self.fixed_data,
-                true,
+                UnknownStrategy::Zero,
             );
             for identity in &self.identities {
                 self.identity_processor
@@ -97,7 +97,7 @@ impl<'a, T: FieldElement> Processor<'a, T> {
                     &self.data[i + 1],
                     self.row_offset + i as u64,
                     self.fixed_data,
-                    false,
+                    UnknownStrategy::Unknown,
                 );
 
                 // Compute updates

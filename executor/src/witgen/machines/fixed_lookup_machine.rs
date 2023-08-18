@@ -264,7 +264,7 @@ impl<T: FieldElement> FixedLookup<T> {
                         Ok(constraints) => {
                             result.combine(constraints);
                         }
-                        Err(()) => {
+                        Err(_) => {
                             // Fail the whole lookup
                             return Err(EvalError::ConstraintUnsatisfiable(format!(
                                 "Constraint is invalid ({l} != {r}).",
