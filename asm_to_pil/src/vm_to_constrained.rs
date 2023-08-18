@@ -107,7 +107,7 @@ impl<T: FieldElement> ASMPILConverter<T> {
             .cloned()
             .collect::<Vec<_>>();
         for reg in assignment_registers {
-            self.create_constraints_for_assignment_reg(&reg);
+            self.create_constraints_for_assignment_reg(reg);
         }
 
         // introduce `first_step` which is used for register updates
@@ -155,9 +155,9 @@ impl<T: FieldElement> ASMPILConverter<T> {
             self.handle_batch(batch);
         }
 
-        self.translate_code_lines();
-
         input.latch = Some(instruction_flag(RETURN_NAME));
+
+        self.translate_code_lines();
 
         self.pil.push(PilStatement::PlookupIdentity(
             0,
@@ -384,7 +384,7 @@ impl<T: FieldElement> ASMPILConverter<T> {
                     postvisit_expression_in_statement_mut(s, &mut |e| {
                         if let Expression::PolynomialReference(r) = e {
                             if let Some(sub) = substitutions.get(r.name()) {
-                                *r.name_mut() = sub.clone();
+                                *r.name_mut() = sub.to_string();
                             }
                         }
                         std::ops::ControlFlow::Continue::<()>(())
@@ -669,7 +669,7 @@ impl<T: FieldElement> ASMPILConverter<T> {
         expr.into_iter().map(|(v, c)| (-v, c)).collect()
     }
 
-    fn create_constraints_for_assignment_reg(&mut self, register: &str) {
+    fn create_constraints_for_assignment_reg(&mut self, register: String) {
         let assign_const = format!("{register}_const");
         self.create_witness_fixed_pair(0, &assign_const);
         let read_free = format!("{register}_read_free");
