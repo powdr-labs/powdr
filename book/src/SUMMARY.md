@@ -7,6 +7,7 @@
 - [Hello World](./hello_world.md)
 
 # Reference Guide
+<!-- markdown-link-check-disable-next-line -->
 - [CLI](./cli/README.md)
 - [asm](./asm/README.md)
     - [Machines](./asm/machines.md)
