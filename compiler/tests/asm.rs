@@ -138,14 +138,12 @@ fn full_pil_constant() {
 fn book() {
     for f in fs::read_dir("../test_data/asm/book/").unwrap() {
         let f = f.unwrap().path();
-        if [".asm", ".pil"].contains(&f.extension().unwrap().to_str().unwrap()) {
-            let f = f.strip_prefix("../test_data/asm/").unwrap();
-            // passing 0 to all tests currently works as they either take no prover input or 0 works
-            let i = [0];
+        let f = f.strip_prefix("../test_data/asm/").unwrap();
+        // passing 0 to all tests currently works as they either take no prover input or 0 works
+        let i = [0];
 
-            verify_asm::<GoldilocksField>(f.to_str().unwrap(), slice_to_vec(&i));
-            gen_halo2_proof(f.to_str().unwrap(), slice_to_vec(&i));
-        }
+        verify_asm::<GoldilocksField>(f.to_str().unwrap(), slice_to_vec(&i));
+        gen_halo2_proof(f.to_str().unwrap(), slice_to_vec(&i));
     }
 }
 

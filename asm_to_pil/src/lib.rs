@@ -5,7 +5,7 @@ mod common;
 mod romgen;
 mod vm_to_constrained;
 
-/// Remove all ASM from the machine tree. Takes a tree of virtual of constrained machines and returns a tree of constrained machines
+/// Remove all ASM from the machine tree. Takes a tree of virtual or constrained machines and returns a tree of constrained machines
 pub fn compile<T: FieldElement>(file: AnalysisASMFile<T>) -> AnalysisASMFile<T> {
     AnalysisASMFile {
         machines: file
