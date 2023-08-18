@@ -165,12 +165,12 @@ where
 
     fn process_expression(&mut self, e: &mut Expression<T>) -> ControlFlow<()> {
         if let Expression::PolynomialReference(poly) = e {
-            if poly.namespace.is_none() && self.parameter_names.contains_key(&poly.name) {
+            if poly.namespace().is_none() && self.parameter_names.contains_key(poly.name()) {
                 // TODO to make this work inside macros, "next" and "index" need to be
                 // their own ast nodes / operators.
-                assert!(!poly.next);
-                assert!(poly.index.is_none());
-                *e = self.arguments[self.parameter_names[&poly.name]].clone()
+                assert!(!poly.shift());
+                assert!(poly.index().is_none());
+                *e = self.arguments[self.parameter_names[poly.name()]].clone()
             }
         } else if let Expression::FunctionCall(call) = e {
             if self.macros.contains_key(call.id.as_str()) {

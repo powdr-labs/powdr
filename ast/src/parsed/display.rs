@@ -414,22 +414,43 @@ impl<T: Display> Display for PolynomialName<T> {
     }
 }
 
-impl<T: Display> Display for PolynomialReference<T> {
+impl<T: Display> Display for ShiftedPolynomialReference<T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(f, "{}{}", self.pol, if self.is_next { "'" } else { "" })
+    }
+}
+
+impl<T: Display> Display for NamespacedPolynomialReference<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(
             f,
-            "{}{}{}{}",
+            "{}{}",
             self.namespace
                 .as_ref()
                 .map(|n| format!("{n}."))
                 .unwrap_or_default(),
-            self.name,
+            self.pol
+        )
+    }
+}
+
+impl<T: Display> Display for IndexedPolynomialReference<T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(
+            f,
+            "{}{}",
+            self.pol,
             self.index
                 .as_ref()
                 .map(|s| format!("[{s}]"))
                 .unwrap_or_default(),
-            if self.next { "'" } else { "" }
         )
+    }
+}
+
+impl Display for PolynomialReference {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(f, "{}", self.name)
     }
 }
 
