@@ -1,30 +1,29 @@
-use crate::parsed::{BinaryOperator, Expression, PolynomialReference};
+use crate::parsed::{BinaryOperator, Expression};
+
+use super::PolynomialReference;
 
 pub fn direct_reference<S: Into<String>, T>(name: S) -> Expression<T> {
-    Expression::PolynomialReference(PolynomialReference {
-        namespace: None,
-        name: name.into(),
-        index: None,
-        next: false,
-    })
+    PolynomialReference::new(name)
+        .single()
+        .local()
+        .current()
+        .into()
 }
 
 pub fn namespaced_reference<S: Into<String>, T>(namespace: String, name: S) -> Expression<T> {
-    Expression::PolynomialReference(PolynomialReference {
-        namespace: Some(namespace),
-        name: name.into(),
-        index: None,
-        next: false,
-    })
+    PolynomialReference::new(name)
+        .single()
+        .namespaced(namespace)
+        .current()
+        .into()
 }
 
 pub fn next_reference<T>(name: &str) -> Expression<T> {
-    Expression::PolynomialReference(PolynomialReference {
-        namespace: None,
-        name: name.to_owned(),
-        index: None,
-        next: true,
-    })
+    PolynomialReference::new(name)
+        .single()
+        .local()
+        .next()
+        .into()
 }
 
 pub fn build_mul<T>(left: Expression<T>, right: Expression<T>) -> Expression<T> {

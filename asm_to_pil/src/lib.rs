@@ -15,8 +15,7 @@ use ast::{
             next_reference,
         },
         postvisit_expression_in_statement_mut, ArrayExpression, BinaryOperator, Expression,
-        FunctionDefinition, PilStatement, PolynomialName, PolynomialReference, SelectedExpressions,
-        UnaryOperator,
+        FunctionDefinition, PilStatement, PolynomialName, SelectedExpressions, UnaryOperator,
     },
 };
 
@@ -357,8 +356,8 @@ impl<T: FieldElement> ASMPILConverter<T> {
                 statements.iter_mut().for_each(|s| {
                     postvisit_expression_in_statement_mut(s, &mut |e| {
                         if let Expression::PolynomialReference(r) = e {
-                            if let Some(sub) = substitutions.get(&r.name) {
-                                r.name = sub.clone();
+                            if let Some(sub) = substitutions.get(r.name()) {
+                                *r.name_mut() = sub.to_string();
                             }
                         }
                         std::ops::ControlFlow::Continue::<()>(())
@@ -485,7 +484,7 @@ impl<T: FieldElement> ASMPILConverter<T> {
                         Input::Literal(_, LiteralKind::Label) => {
                             if let Expression::PolynomialReference(r) = a {
                                 instruction_literal_arg
-                                    .push(InstructionLiteralArg::LabelRef(r.name));
+                                    .push(InstructionLiteralArg::LabelRef(r.name().into()));
                             } else {
                                 panic!();
                             }
@@ -526,9 +525,9 @@ impl<T: FieldElement> ASMPILConverter<T> {
             .map(|(reg, a)| {
                 // Output a value trough assignment register "reg"
                 if let Expression::PolynomialReference(r) = a {
-                    assert!(!r.next);
-                    assert!(r.index.is_none());
-                    (reg.clone(), vec![r.name])
+                    assert!(!r.shift());
+                    assert!(r.index().is_none());
+                    (reg.clone(), vec![r.name().into()])
                 } else {
                     panic!("Expected direct register to assign to in instruction call.");
                 }
@@ -554,13 +553,13 @@ impl<T: FieldElement> ASMPILConverter<T> {
             Expression::PublicReference(_) => panic!(),
             Expression::FunctionCall(_) => panic!(),
             Expression::PolynomialReference(reference) => {
-                assert!(reference.namespace.is_none());
-                assert!(reference.index.is_none());
-                assert!(!reference.next);
+                assert!(reference.namespace().is_none());
+                assert!(reference.index().is_none());
+                assert!(!reference.shift());
                 // TODO check it actually is a register
                 vec![(
                     1.into(),
-                    AffineExpressionComponent::Register(reference.name),
+                    AffineExpressionComponent::Register(reference.name().into()),
                 )]
             }
             Expression::Number(value) => vec![(value, AffineExpressionComponent::Constant)],
@@ -939,18 +938,13 @@ fn witness_column<S: Into<String>, T>(
 fn extract_update<T: FieldElement>(expr: Expression<T>) -> (Option<String>, Expression<T>) {
     // TODO check that there are no other "next" references in the expression
     if let Expression::BinaryOperation(left, BinaryOperator::Sub, right) = expr {
-        if let Expression::PolynomialReference(PolynomialReference {
-            namespace,
-            name,
-            index,
-            next: true,
-        }) = *left
-        {
-            assert_eq!(namespace, None);
-            assert_eq!(index, None);
-            (Some(name), *right)
-        } else {
-            (None, build_binary_expr(*left, BinaryOperator::Sub, *right))
+        match *left {
+            Expression::PolynomialReference(r) if r.shift() => {
+                assert!(r.namespace().is_none());
+                assert!(r.index().is_none());
+                (Some(r.name().into()), *right)
+            }
+            _ => (None, build_binary_expr(*left, BinaryOperator::Sub, *right)),
         }
     } else {
         (None, expr)

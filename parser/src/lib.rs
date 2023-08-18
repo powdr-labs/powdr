@@ -33,8 +33,8 @@ pub fn parse_asm<'a, T: FieldElement>(
 mod test {
     use super::*;
     use ast::parsed::{
-        asm::ASMFile, BinaryOperator, Expression, PILFile, PilStatement, PolynomialName,
-        PolynomialReference, SelectedExpressions,
+        asm::ASMFile, build::direct_reference, BinaryOperator, Expression, PILFile, PilStatement,
+        PolynomialName, SelectedExpressions,
     };
     use number::GoldilocksField;
     use std::fs;
@@ -90,17 +90,11 @@ mod test {
                 0,
                 SelectedExpressions {
                     selector: None,
-                    expressions: vec![Expression::PolynomialReference(PolynomialReference {
-                        name: "f".to_string(),
-                        ..Default::default()
-                    })]
+                    expressions: vec![direct_reference("f")]
                 },
                 SelectedExpressions {
                     selector: None,
-                    expressions: vec![Expression::PolynomialReference(PolynomialReference {
-                        name: "g".to_string(),
-                        ..Default::default()
-                    })]
+                    expressions: vec![direct_reference("g")]
                 }
             )])
         );
@@ -163,26 +157,15 @@ mod test {
                     13,
                     SelectedExpressions {
                         selector: None,
-                        expressions: vec![Expression::PolynomialReference(PolynomialReference {
-                            name: "x".to_string(),
-                            ..Default::default()
-                        })]
+                        expressions: vec![direct_reference("x")]
                     },
                     SelectedExpressions {
                         selector: None,
-                        expressions: vec![Expression::PolynomialReference(PolynomialReference {
-                            name: "g".to_string(),
-                            ..Default::default()
-                        })]
+                        expressions: vec![direct_reference("g")]
                     }
                 )],
                 Some(Expression::BinaryOperation(
-                    Box::new(Expression::PolynomialReference(PolynomialReference {
-                        namespace: None,
-                        name: "x".to_string(),
-                        index: None,
-                        next: false
-                    })),
+                    Box::new(direct_reference("x")),
                     BinaryOperator::Add,
                     Box::new(Expression::Number(1.into()))
                 ))
