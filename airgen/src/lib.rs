@@ -10,12 +10,14 @@ use ast::{
     parsed::{asm::InstructionBody, PilStatement},
 };
 
-const MAIN: &str = "Main";
+const MAIN_MACHINE: &str = "Main";
+const MAIN_LOCATION: &str = "main";
+const MAIN_FUNCTION: &str = "main";
 
 use number::FieldElement;
 
 pub fn compile<T: FieldElement>(input: AnalysisASMFile<T>) -> PILGraph<T> {
-    let main_location = Location::default().join("main");
+    let main_location = Location::default().join(MAIN_LOCATION);
 
     // we start from the main machine
     let main_ty = match input.machines.len() {
@@ -23,8 +25,8 @@ pub fn compile<T: FieldElement>(input: AnalysisASMFile<T>) -> PILGraph<T> {
         1 => input.machines.keys().next().unwrap().clone(),
         // otherwise, use the machine called `MAIN`
         _ => {
-            assert!(input.machines.contains_key(MAIN));
-            MAIN.into()
+            assert!(input.machines.contains_key(MAIN_MACHINE));
+            MAIN_MACHINE.into()
         }
     };
 
@@ -69,7 +71,7 @@ pub fn compile<T: FieldElement>(input: AnalysisASMFile<T>) -> PILGraph<T> {
             .functions
             .iter()
             .map(|f| Function {
-                name: "main".to_string(),
+                name: MAIN_FUNCTION.into(),
                 id: f.id.unwrap_or(T::from(0)),
                 params: f.params.clone(),
             })
@@ -142,6 +144,7 @@ impl<'a, T: FieldElement> ASMPILConverter<'a, T> {
             body,
         }: InstructionDefinitionStatement<T>,
     ) -> Option<Link<T>> {
+        // TODO: this relies on `asm_to_pil` calling the instructions flags a certain way. It will go away once external instructions are turned into links earlier
         let instruction_flag = format!("instr_{name}");
         let instr = Instr {
             name: name.clone(),
