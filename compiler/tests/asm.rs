@@ -36,6 +36,13 @@ fn simple_sum_asm() {
 }
 
 #[test]
+fn secondary_block_machine_add2() {
+    let f = "secondary_block_machine_add2.asm";
+    verify_asm::<GoldilocksField>(f, vec![]);
+    gen_halo2_proof(f, vec![]);
+}
+
+#[test]
 fn palindrome() {
     let f = "palindrome.asm";
     let i = [7, 1, 7, 3, 9, 3, 7, 1];

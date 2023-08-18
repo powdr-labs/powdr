@@ -10,7 +10,7 @@ use super::{
 /// Computes (value or range constraint) updates given a [RowPair] and [Identity].
 pub struct IdentityProcessor<'a, T: FieldElement> {
     fixed_data: &'a FixedData<'a, T>,
-    fixed_lookup: &'a mut FixedLookup<T>,
+    pub fixed_lookup: &'a mut FixedLookup<T>,
     pub machines: Vec<KnownMachine<T>>,
 }
 

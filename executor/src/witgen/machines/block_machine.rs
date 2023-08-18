@@ -4,6 +4,9 @@ use std::marker::PhantomData;
 use super::{EvalResult, FixedData, FixedLookup};
 use crate::witgen::column_map::ColumnMap;
 use crate::witgen::global_constraints::RangeConstraintSet;
+use crate::witgen::identity_processor::IdentityProcessor;
+use crate::witgen::processor::Processor;
+use crate::witgen::rows::RowFactory;
 use crate::witgen::util::try_to_simple_poly;
 use crate::witgen::{
     affine_expression::{AffineExpression, AffineResult},
@@ -153,8 +156,12 @@ impl<T: FieldElement> Machine<T> for BlockMachine<T> {
         })
     }
 
-    fn witness_col_values(&mut self, fixed_data: &FixedData<T>) -> HashMap<String, Vec<T>> {
-        std::mem::take(&mut self.data)
+    fn witness_col_values(
+        &mut self,
+        fixed_data: &FixedData<T>,
+        fixed_lookup: &mut FixedLookup<T>,
+    ) -> HashMap<String, Vec<T>> {
+        let mut data = std::mem::take(&mut self.data)
             .into_iter()
             .map(|(id, mut values)| {
 
@@ -189,8 +196,12 @@ impl<T: FieldElement> Machine<T> for BlockMachine<T> {
                     .map(|(i, v)| v.unwrap_or(default_block[i % self.block_size]))
                     .collect::<Vec<_>>();
 
-                (fixed_data.column_name(&id).to_string(), values)
+                (id, values)
             })
+            .collect();
+        self.handle_last_row(&mut data, fixed_data, fixed_lookup);
+        data.into_iter()
+            .map(|(id, values)| (fixed_data.column_name(&id).to_string(), values))
             .collect()
     }
 }
@@ -242,6 +253,58 @@ impl<'a, T: FieldElement> ChangeLogger<'a, T> {
 }
 
 impl<T: FieldElement> BlockMachine<T> {
+    /// Check if constraints are satisfied on the last row and recompute it if not.
+    /// While the characteristic of a block machine is that that all fixed columns
+    /// should be periodic (and hence all constraints), the last row might be different,
+    /// in order to handle the cyclic nature of the proving system.
+    /// This can lead to an invalid last row when a default block is "copy-pasted" until
+    /// the end of the table. This function corrects it if it is the case.
+    fn handle_last_row(
+        &self,
+        data: &mut HashMap<PolyID, Vec<T>>,
+        fixed_data: &FixedData<T>,
+        fixed_lookup: &mut FixedLookup<T>,
+    ) {
+        // Build a vector of 3 rows: N -2, N - 1 and 0
+        let row_factory = RowFactory::new(fixed_data, self.global_range_constraints.clone());
+        let rows = ((fixed_data.degree - 2)..(fixed_data.degree + 1))
+            .map(|row| {
+                row_factory.row_from_known_values_sparse(
+                    data.iter()
+                        .map(|(col, values)| (*col, values[(row % fixed_data.degree) as usize])),
+                )
+            })
+            .collect();
+
+        // Build the processor. This copies the identities, but it's only done once per block machine instance.
+        let mut processor = Processor::new(
+            fixed_data.degree - 2,
+            rows,
+            IdentityProcessor::new(fixed_data, fixed_lookup, vec![]),
+            self.identities.clone(),
+            fixed_data,
+            row_factory,
+        );
+
+        // Check if we can accept the last row as is.
+        if processor.check_constraints().is_err() {
+            log::warn!("Detected error in last row! Will attempt to fix it now.");
+
+            // Clear the last row and run the solver
+            processor.clear_row(1);
+            processor
+                .solve()
+                .expect("Some constraints were not satisfiable when solving for the last row.");
+            let last_row = processor.finish().remove(1);
+
+            // Copy values into data
+            for (poly_id, values) in data.iter_mut() {
+                values[fixed_data.degree as usize - 1] =
+                    last_row[poly_id].value.unwrap_or_default();
+            }
+        }
+    }
+
     /// Extends the data with a new block.
     fn append_new_block(&mut self, max_len: DegreeType) -> Result<(), EvalError<T>> {
         if self.rows() + self.block_size as DegreeType >= max_len {

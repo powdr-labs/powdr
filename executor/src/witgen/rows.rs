@@ -1,6 +1,6 @@
 use std::fmt::Debug;
 
-use ast::analyzed::{Expression, PolynomialReference, PolynomialType};
+use ast::analyzed::{Expression, PolyID, PolynomialReference, PolynomialType};
 use itertools::Itertools;
 use number::{DegreeType, FieldElement};
 
@@ -17,7 +17,7 @@ use super::{
 };
 
 #[derive(Clone)]
-enum CellValue<T: FieldElement> {
+pub enum CellValue<T: FieldElement> {
     Known(T),
     RangeConstraint(RangeConstraint<T>),
     Unknown,
@@ -28,7 +28,7 @@ impl<T: FieldElement> CellValue<T> {
         matches!(self, CellValue::Known(_))
     }
 
-    fn unwrap_or_default(&self) -> T {
+    pub fn unwrap_or_default(&self) -> T {
         match self {
             CellValue::Known(v) => *v,
             _ => Default::default(),
@@ -41,7 +41,7 @@ impl<T: FieldElement> CellValue<T> {
 pub struct Cell<'a, T: FieldElement> {
     /// The column name, for debugging purposes.
     pub name: &'a str,
-    value: CellValue<T>,
+    pub value: CellValue<T>,
 }
 
 impl<T: FieldElement> Debug for Cell<'_, T> {
@@ -62,7 +62,7 @@ pub type Row<'a, T> = ColumnMap<Cell<'a, T>>;
 
 impl<T: FieldElement> Debug for Row<'_, T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(&self.render("Row:", true))
+        f.write_str(&self.render("Row", true))
     }
 }
 
@@ -131,7 +131,7 @@ impl<'a, T: FieldElement> RowFactory<'a, T> {
         )
     }
 
-    pub fn row_from_known_values(&self, values: &ColumnMap<T>) -> Row<'a, T> {
+    pub fn row_from_known_values_dense(&self, values: &ColumnMap<T>) -> Row<'a, T> {
         ColumnMap::from(
             values.iter().map(|(poly_id, &v)| Cell {
                 name: self.fixed_data.column_name(&poly_id),
@@ -139,6 +139,17 @@ impl<'a, T: FieldElement> RowFactory<'a, T> {
             }),
             PolynomialType::Committed,
         )
+    }
+
+    pub fn row_from_known_values_sparse(
+        &self,
+        values: impl Iterator<Item = (PolyID, T)>,
+    ) -> Row<'a, T> {
+        let mut row = self.fresh_row();
+        for (poly_id, v) in values {
+            row[&poly_id].value = CellValue::Known(v);
+        }
+        row
     }
 }
 

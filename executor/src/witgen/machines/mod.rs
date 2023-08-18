@@ -45,7 +45,11 @@ pub trait Machine<T: FieldElement>: Send + Sync {
     ) -> Option<EvalResult<'a, T>>;
 
     /// Returns the final values of the witness columns.
-    fn witness_col_values(&mut self, fixed_data: &FixedData<T>) -> HashMap<String, Vec<T>>;
+    fn witness_col_values(
+        &mut self,
+        fixed_data: &FixedData<T>,
+        fixed_lookup: &mut FixedLookup<T>,
+    ) -> HashMap<String, Vec<T>>;
 }
 
 /// All known implementations of [Machine].
@@ -86,7 +90,8 @@ impl<T: FieldElement> Machine<T> for KnownMachine<T> {
     fn witness_col_values(
         &mut self,
         fixed_data: &FixedData<T>,
+        fixed_lookup: &mut FixedLookup<T>,
     ) -> std::collections::HashMap<String, Vec<T>> {
-        self.get().witness_col_values(fixed_data)
+        self.get().witness_col_values(fixed_data, fixed_lookup)
     }
 }

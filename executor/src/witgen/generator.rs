@@ -319,7 +319,7 @@ where
     pub fn propose_next_row(&mut self, next_row: DegreeType, values: &ColumnMap<T>) -> bool {
         self.set_next_row_and_log(next_row);
 
-        let proposed_row = self.row_factory.row_from_known_values(values);
+        let proposed_row = self.row_factory.row_from_known_values_dense(values);
 
         let constraints_valid =
             self.check_row_pair(&proposed_row, false) && self.check_row_pair(&proposed_row, true);
@@ -393,7 +393,9 @@ where
             .map(|(poly_id, col)| (col.name.as_str(), poly_id))
             .collect::<BTreeMap<_, _>>();
         for m in &mut self.identity_processor.machines {
-            for (col_name, col) in m.witness_col_values(self.fixed_data) {
+            for (col_name, col) in
+                m.witness_col_values(self.fixed_data, self.identity_processor.fixed_lookup)
+            {
                 result.insert(*name_to_id.get(col_name.as_str()).unwrap(), col);
             }
         }
