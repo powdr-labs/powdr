@@ -22,15 +22,23 @@ impl<F: FieldElement> BackendImpl<F> for EStark {
         {
             unimplemented!("eSTARK is only implemented for Goldilocks field");
         }
+        assert!(degree > 1);
 
-        assert_ne!(degree, 0);
-        let degree_bits = (DegreeType::BITS - (degree - 1).leading_zeros()) as usize;
+        let n_bits = (DegreeType::BITS - (degree - 1).leading_zeros()) as usize;
+        let n_bits_ext = n_bits + 1;
+
+        let steps = (2..=n_bits_ext)
+            .rev()
+            .step_by(4)
+            .map(|b| Step { nBits: b })
+            .collect();
+
         let params = StarkStruct {
-            nBits: degree_bits,
-            nBitsExt: degree_bits + 1,
+            nBits: n_bits,
+            nBitsExt: n_bits_ext,
             nQueries: 2,
             verificationHashType: "GL".to_owned(),
-            steps: vec![Step { nBits: 19 }, Step { nBits: 17 }, Step { nBits: 7 }],
+            steps,
         };
 
         Self { params }

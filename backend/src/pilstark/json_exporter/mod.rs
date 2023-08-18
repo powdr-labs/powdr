@@ -431,16 +431,6 @@ mod test {
 
     fn compare_export_file(file: &str) {
         let (json_out, pilcom_parsed) = generate_json_pair(file);
-        serde_json::to_writer_pretty(
-            std::io::BufWriter::new(fs::File::create("/tmp/ours.json").unwrap()),
-            &json_out,
-        )
-        .unwrap();
-        serde_json::to_writer_pretty(
-            std::io::BufWriter::new(fs::File::create("/tmp/theirs.json").unwrap()),
-            &pilcom_parsed,
-        )
-        .unwrap();
         assert_eq!(json_out, pilcom_parsed);
     }
 
