@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 
-use super::{EvalResult, FixedData, FixedLookup};
+use super::{EvalResult, FixedData, FixedLookup, KnownMachine};
 use crate::witgen::column_map::ColumnMap;
 use crate::witgen::identity_processor::IdentityProcessor;
 use crate::witgen::processor::Processor;
@@ -146,13 +146,15 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
         kind: IdentityKind,
         left: &[AffineResult<&'a PolynomialReference, T>],
         right: &'a SelectedExpressions<T>,
+        machines: Vec<&mut KnownMachine<'a, T>>,
     ) -> Option<EvalResult<'a, T>> {
         if *right != self.selected_expressions || kind != IdentityKind::Plookup {
             return None;
         }
         let previous_len = self.rows() as usize;
         Some({
-            let result = self.process_plookup_internal(fixed_data, fixed_lookup, left, right);
+            let result =
+                self.process_plookup_internal(fixed_data, fixed_lookup, left, right, machines);
             if let Ok(assignments) = &result {
                 if !assignments.is_complete() {
                     // rollback the changes.
@@ -287,11 +289,11 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         fixed_lookup: &mut FixedLookup<T>,
         left: &[AffineResult<&'a PolynomialReference, T>],
         right: &'a SelectedExpressions<T>,
+        machines: Vec<&mut KnownMachine<'a, T>>,
     ) -> EvalResult<'a, T> {
         log::trace!("Start processing block machine");
 
-        // TODO: Add possibility for machines to call other machines.
-        let mut identity_processor = IdentityProcessor::new(fixed_data, fixed_lookup, vec![]);
+        let mut identity_processor = IdentityProcessor::new(fixed_data, fixed_lookup, machines);
 
         // First check if we already store the value.
         // This can happen in the loop detection case, where this function is just called

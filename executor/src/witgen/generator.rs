@@ -78,7 +78,7 @@ where
         identities: &'a [&'a Identity<T>],
         witnesses: BTreeSet<PolyID>,
         global_range_constraints: ColumnMap<Option<RangeConstraint<T>>>,
-        machines: Vec<KnownMachine<'a, T>>,
+        machines: Vec<&'b mut KnownMachine<'a, T>>,
         query_callback: Option<QueryCallback>,
     ) -> Self {
         let query_processor =

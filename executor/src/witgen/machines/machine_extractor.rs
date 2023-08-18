@@ -53,25 +53,26 @@ pub fn split_out_machines<'a, T: FieldElement>(
             base_identities.iter().cloned().partition(|i| {
                 // The identity has at least one machine witness, but
                 // all referenced witnesses are machine witnesses.
-                let all_refs = &refs_in_identity(i) & (&all_witnesses);
+                let all_refs = &refs_in_selected_expressions(&i.left) & (&all_witnesses);
                 !all_refs.is_empty() && all_refs.is_subset(&machine_witnesses)
             });
         base_identities = remaining_identities;
         remaining_witnesses = &remaining_witnesses - &machine_witnesses;
 
-        let connecting_identities = base_identities
+        let connecting_identities = identities
             .iter()
             .cloned()
             .filter(|i| {
-                refs_in_identity(i)
+                refs_in_selected_expressions(&i.right)
                     .intersection(&machine_witnesses)
                     .next()
                     .is_some()
             })
             .collect::<Vec<_>>();
+        assert!(connecting_identities.contains(id));
 
         log::debug!(
-            "Extracted a machine with the following witnesses and identities:\n{}\n{}",
+            "\nExtracted a machine with the following witnesses:\n{} \n and identities:\n{} \n and connecting identities:\n{}",
             machine_witnesses
                 .iter()
                 .map(|s| fixed.column_name(s))
@@ -82,7 +83,12 @@ pub fn split_out_machines<'a, T: FieldElement>(
                 .iter()
                 .map(|id| id.to_string())
                 .collect::<Vec<_>>()
-                .join("\n")
+                .join("\n"),
+            connecting_identities
+                .iter()
+                .map(|id| id.to_string())
+                .collect::<Vec<_>>()
+                .join("\n"),
         );
 
         if let Some(machine) =

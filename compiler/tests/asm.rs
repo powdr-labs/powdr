@@ -59,6 +59,14 @@ fn vm_to_block_unique_interface() {
 }
 
 #[test]
+fn vm_to_block_to_block() {
+    let f = "vm_to_block_to_block.asm";
+    let i = [];
+    verify_asm::<GoldilocksField>(f, slice_to_vec(&i));
+    gen_halo2_proof(f, slice_to_vec(&i));
+}
+
+#[test]
 #[should_panic = "not implemented: No executor machine matched identity `main.instr_sub { 1, main.X, main.Y, main.Z } in 1 { main_arith.function_id, main_arith.z, main_arith.x, main_arith.y };`"]
 fn vm_to_block_multiple_interfaces() {
     let f = "vm_to_block_multiple_interfaces.asm";

@@ -4,7 +4,7 @@ use std::iter::once;
 use itertools::{Either, Itertools};
 use num_traits::Zero;
 
-use super::{FixedLookup, Machine};
+use super::{FixedLookup, KnownMachine, Machine};
 use crate::witgen::affine_expression::AffineResult;
 use crate::witgen::util::is_simple_poly_of_name;
 use crate::witgen::{EvalResult, FixedData};
@@ -100,6 +100,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses<T> {
         kind: IdentityKind,
         left: &[AffineResult<&'a PolynomialReference, T>],
         right: &'a SelectedExpressions<T>,
+        _machines: Vec<&mut KnownMachine<'a, T>>,
     ) -> Option<EvalResult<'a, T>> {
         if kind != IdentityKind::Permutation
             || !(is_simple_poly_of_name(right.selector.as_ref()?, &self.namespaced("m_is_read"))

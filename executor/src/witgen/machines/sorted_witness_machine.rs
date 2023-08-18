@@ -4,8 +4,8 @@ use itertools::{Either, Itertools};
 
 use super::super::affine_expression::AffineExpression;
 use super::fixed_lookup_machine::FixedLookup;
-use super::Machine;
 use super::{EvalResult, FixedData};
+use super::{KnownMachine, Machine};
 use crate::witgen::affine_expression::AffineResult;
 use crate::witgen::{
     expression_evaluator::ExpressionEvaluator, fixed_evaluator::FixedEvaluator,
@@ -126,6 +126,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for SortedWitnesses<T> {
         kind: IdentityKind,
         left: &[AffineResult<&'a PolynomialReference, T>],
         right: &'a SelectedExpressions<T>,
+        _machines: Vec<&mut KnownMachine<'a, T>>,
     ) -> Option<EvalResult<'a, T>> {
         if kind != IdentityKind::Plookup || right.selector.is_some() {
             return None;

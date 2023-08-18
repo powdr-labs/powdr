@@ -35,6 +35,7 @@ pub trait Machine<'a, T: FieldElement>: Send + Sync {
         kind: IdentityKind,
         left: &[AffineResult<&'a PolynomialReference, T>],
         right: &'a SelectedExpressions<T>,
+        machines: Vec<&mut KnownMachine<'a, T>>,
     ) -> Option<EvalResult<'a, T>>;
 
     /// Returns the final values of the witness columns.
@@ -72,9 +73,10 @@ impl<'a, T: FieldElement> Machine<'a, T> for KnownMachine<'a, T> {
         kind: IdentityKind,
         left: &[AffineResult<&'a PolynomialReference, T>],
         right: &'a SelectedExpressions<T>,
+        machines: Vec<&mut KnownMachine<'a, T>>,
     ) -> Option<crate::witgen::EvalResult<'a, T>> {
         self.get()
-            .process_plookup(fixed_data, fixed_lookup, kind, left, right)
+            .process_plookup(fixed_data, fixed_lookup, kind, left, right, machines)
     }
 
     fn take_witness_col_values(
