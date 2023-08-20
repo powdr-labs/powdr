@@ -23,7 +23,7 @@ use crate::{
 };
 
 /// Substitute all visited columns inside expressions of `s`
-/// This *only* applies to expressions, so for example identifiers the left hand side of statements is not substituted
+/// This *only* applies to expressions, so for example identifiers in the left hand side of statements are not substituted
 /// This is fine in this case since inputs are only present in expressions
 fn substitute_name_in_statement_expressions<T>(
     s: &mut FunctionStatement<T>,
@@ -217,6 +217,8 @@ pub fn generate_machine_rom<T: FieldElement>(
         machine.constraints.push(PilBlock {
             start: 0,
             statements: vec![
+                // inject the function_id
+                parse_pil_statement(&format!("col witness {function_id}")),
                 // declare `_sigma` as the sum of the latch, will be 0 and then 1 after the end of the first call
                 parse_pil_statement(&format!("col witness {sigma}")),
                 parse_pil_statement(&format!("col fixed {first_step} = [1] + [0]*")),

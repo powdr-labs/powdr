@@ -299,8 +299,6 @@ impl<T: FieldElement> ASMPILConverter<T> {
         let instruction_name = s.name.clone();
         let instruction_flag = format!("instr_{instruction_name}");
         self.create_witness_fixed_pair(s.start, &instruction_flag);
-        // it's part of the lookup!
-        //self.pil.push(constrain_zero_one(&col_name));
 
         let inputs: Vec<_> = s
             .instruction
@@ -318,7 +316,7 @@ impl<T: FieldElement> ASMPILConverter<T> {
                     Input::Literal(param.name, LiteralKind::UnsignedConstant)
                 }
                 None => Input::Register(param.name),
-                Some(ty) => panic!("param type must be nothing or label, found `{ty}`"),
+                Some(_) => unreachable!(),
             })
             .collect();
 

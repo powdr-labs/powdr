@@ -41,11 +41,14 @@ pub mod utils {
             .parse(input)
             .unwrap()
         {
-            MachineStatement::InstructionDeclaration(start, name, params, body) => {
+            MachineStatement::InstructionDeclaration(start, name, instruction) => {
                 InstructionDefinitionStatement {
                     start,
                     name,
-                    instruction: Instruction { params, body },
+                    instruction: Instruction {
+                        params: instruction.params,
+                        body: instruction.body,
+                    },
                 }
             }
             _ => panic!(),
@@ -53,14 +56,12 @@ pub mod utils {
     }
 
     pub fn parse_instruction<T: FieldElement>(input: &str) -> Instruction<T> {
-        match parser::powdr::InstructionDeclarationParser::new()
-            .parse(&format!("instr dummy {input}"))
-            .unwrap()
-        {
-            MachineStatement::InstructionDeclaration(.., params, body) => {
-                Instruction { params, body }
-            }
-            _ => panic!(),
+        let instr = parser::powdr::InstructionParser::new()
+            .parse(&input)
+            .unwrap();
+        Instruction {
+            params: instr.params,
+            body: instr.body,
         }
     }
 

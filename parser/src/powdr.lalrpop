@@ -189,7 +189,11 @@ RegisterFlag: RegisterFlag = {
 }
 
 pub InstructionDeclaration: MachineStatement<T> = {
-    <@L> "instr" <Identifier> <Params> <InstructionBody> => MachineStatement::InstructionDeclaration(<>)
+    <@L> "instr" <Identifier> <Instruction> => MachineStatement::InstructionDeclaration(<>)
+}
+
+pub Instruction: Instruction<T> = {
+    <params:Params> <body:InstructionBody> => Instruction { params, body }
 }
 
 pub InstructionBody: InstructionBody<T> = {
@@ -249,14 +253,14 @@ FunctionId: Option<FunctionId<T>> = {
 }
 
 pub FunctionStatement: FunctionStatement<T> = {
-    Assignment,
-    Label,
-    DebugDirective,
-    Return,
-    Instruction,
+    AssignmentStatement,
+    LabelStatement,
+    DebugDirectiveStatement,
+    ReturnStatement,
+    InstructionStatement,
 }
 
-Assignment: FunctionStatement<T> = {
+AssignmentStatement: FunctionStatement<T> = {
     <@L> <IdentifierList> <AssignOperator> <BoxedExpression> ";" => FunctionStatement::Assignment(<>)
 }
 
@@ -269,22 +273,22 @@ AssignOperator: Option<String> = {
     "<=" <Identifier?> "="
 }
 
-Return: FunctionStatement<T> = {
+ReturnStatement: FunctionStatement<T> = {
     <@L> "return" <ExpressionList> ";" => FunctionStatement::Return(<>)
 }
 
-Instruction: FunctionStatement<T> = {
+InstructionStatement: FunctionStatement<T> = {
     <@L> <Identifier> <ExpressionList> ";" => FunctionStatement::Instruction(<>)
 }
 
-DebugDirective: FunctionStatement<T> = {
+DebugDirectiveStatement: FunctionStatement<T> = {
     <l:@L> "debug" "file" <n:Integer> <d:StringLiteral> <f:StringLiteral> ";"
         => FunctionStatement::DebugDirective(l, DebugDirective::File(n.try_into().unwrap(), d, f)),
     <l:@L> "debug" "loc" <f:Integer> <line:Integer> <col:Integer> ";"
         => FunctionStatement::DebugDirective(l, DebugDirective::Loc(f.try_into().unwrap(), line.try_into().unwrap(), col.try_into().unwrap())),
 }
 
-Label: FunctionStatement<T> = {
+LabelStatement: FunctionStatement<T> = {
     <@L> <Identifier> "::" => FunctionStatement::Label(<>)
 }
 

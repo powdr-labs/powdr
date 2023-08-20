@@ -107,7 +107,7 @@ pub fn link<T: FieldElement>(graph: PILGraph<T>) -> Result<PILFile<T>, Vec<Strin
                 pil.push(lookup);
             }
 
-            if location == Location::default().join("main") {
+            if location == Location::main() {
                 if let Some(main_function) = graph
                     .entry_points
                     .iter()
@@ -163,18 +163,18 @@ mod test {
         // a graph with two objects of degree `main_degree` and `foo_degree`
         let test_graph = |main_degree, foo_degree| PILGraph {
             main: ast::object::Machine {
-                location: Location::from("main".to_string()),
+                location: Location::main(),
                 function_id: "function_id".into(),
                 latch: "latch".into(),
             },
             entry_points: vec![],
             objects: [
                 (
-                    Location::from("main".to_string()),
+                    Location::main(),
                     Object::default().with_degree(main_degree),
                 ),
                 (
-                    Location::from("foo".to_string()),
+                    Location::main().join("foo"),
                     Object::default().with_degree(foo_degree),
                 ),
             ]

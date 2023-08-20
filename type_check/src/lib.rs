@@ -63,14 +63,17 @@ impl<T: FieldElement> TypeChecker<T> {
                     };
                     registers.push(RegisterDeclarationStatement { start, name, ty });
                 }
-                MachineStatement::InstructionDeclaration(start, name, params, body) => {
+                MachineStatement::InstructionDeclaration(start, name, instruction) => {
                     if name == "return" {
                         errors.push("Instruction cannot use reserved name `return`".into());
                     }
                     instructions.push(InstructionDefinitionStatement {
                         start,
                         name,
-                        instruction: Instruction { params, body },
+                        instruction: Instruction {
+                            params: instruction.params,
+                            body: instruction.body,
+                        },
                     });
                 }
                 MachineStatement::InlinePil(start, statements) => {

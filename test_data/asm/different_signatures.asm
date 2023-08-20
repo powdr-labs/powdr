@@ -7,13 +7,15 @@ machine Main {
     reg pc[@pc];
     reg X[<=];
     reg Y[<=];
+    reg A;
 
     instr identity X -> Y = sub.identity
     instr one -> Y = sub.one
     instr nothing = sub.nothing
 
     function main {
-        nothing;
+        start::
+        A <== one();
         return;
     }
 }

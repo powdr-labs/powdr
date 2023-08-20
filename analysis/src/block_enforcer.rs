@@ -16,8 +16,6 @@ pub fn enforce<T: FieldElement>(mut file: AnalysisASMFile<T>) -> AnalysisASMFile
         let embedded_constraints = [
             // inject last step
             parse_pil_statement(&format!("col constant {last_step} = [0]* + [1]")),
-            // inject the function_id
-            parse_pil_statement(&format!("col witness {function_id}")),
             // the function id must be constant within a block.
             // TODO: use an intermediate polynomial, currently it yields an error later in `analyzed`
             parse_pil_statement(&format!("col witness {f_no_change}")),

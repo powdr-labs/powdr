@@ -51,6 +51,12 @@ impl<T: Display> Display for InstructionBody<T> {
     }
 }
 
+impl<T: Display> Display for Instruction<T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(f, "{} {{{}}}", self.params, self.body)
+    }
+}
+
 impl<T: Display> Display for MachineStatement<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
@@ -64,8 +70,8 @@ impl<T: Display> Display for MachineStatement<T> {
                     .map(|flag| format!("[{flag}]"))
                     .unwrap_or_default()
             ),
-            MachineStatement::InstructionDeclaration(_, name, params, body) => {
-                write!(f, "instr {}{} {{{}}}", name, params, body,)
+            MachineStatement::InstructionDeclaration(_, name, instruction) => {
+                write!(f, "instr {}{}", name, instruction)
             }
             MachineStatement::InlinePil(_, statements) => {
                 write!(

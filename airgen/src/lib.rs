@@ -12,13 +12,12 @@ use ast::{
 };
 
 const MAIN_MACHINE: &str = "Main";
-const MAIN_LOCATION: &str = "main";
 const MAIN_FUNCTION: &str = "main";
 
 use number::FieldElement;
 
 pub fn compile<T: FieldElement>(input: AnalysisASMFile<T>) -> PILGraph<T> {
-    let main_location = Location::default().join(MAIN_LOCATION);
+    let main_location = Location::main();
 
     // we start from the main machine
     let main_ty = match input.machines.len() {
