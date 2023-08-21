@@ -11,6 +11,7 @@ machine Arith(latch, function_id) {
     }
 
     constraints {
+        col witness function_id;
         col fixed latch = [1]*;
         col witness x;
         col witness y;

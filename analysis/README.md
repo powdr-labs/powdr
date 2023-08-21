@@ -164,24 +164,35 @@ The diff for our example program is as follows:
 -machine DifferentSignatures {
 // registers are removed and encoded as constraints
 -       reg pc[@pc];
-// functions bodies are removed and the function id is set, see down below
+-
+// the function bodies are removed and functions are assigned their function id. Their inputs and outputs are mapped to the relevant registers
 -       function identity x: field -> field {
 -               return x;
 -               // END BATCH
-// the latch and function id are set for virtual machines
 +machine DifferentSignatures(instr_return, _function_id) {
++       function identity<2> _input_0 -> _output_0 {
++
+// same here
+-       function one  -> field {
+-               return 1;
+-               // END BATCH
++       function one<3>  -> _output_0 {
++
+// same here
+-       function nothing {
+-               return;
+-               // END BATCH
++       function nothing<4> {
++
+// we introduce some constraints to help witness generation: they enforce that the first block is an execution of any function, and the second is the sink (infinite loop) on line `5` in the ROM. These will be removed in the near future.
 +       constraints {
 +               pol commit _function_id;
-// we introduce some constraints to help witness generation: they enforce that the first block is an execution of any function, and the second is the sink (infinite loop) on line `5` in the ROM. These will be removed in the near future.
 +               pol commit _sigma;
 +               pol constant _romgen_first_step = [1] + [0]*;
 +               _sigma' = ((1 - _romgen_first_step') * (_sigma + instr_return));
 +               (_sigma * (_function_id - 5)) = 0;
--       function one  -> field {
--               return 1;
--               // END BATCH
++       }
 +
-// we encode the virtual machine in constraints
 +       constraints {
 +               pol commit pc;
 +               pol commit _input_0;
@@ -209,19 +220,9 @@ The diff for our example program is as follows:
 +               pol constant p_read__output_0__input_0 = [0, 0, 1, 0, 0, 0] + [0]*;
 +               pol constant p_read__output_0_pc = [0, 0, 0, 0, 0, 0] + [0]*;
 +               { pc, instr__jump_to_operation, instr__reset, instr__loop, instr_return, _output_0_const, _output_0_read_free, read__output_0_pc, read__output_0__input_0 } in { p_line, p_instr__jump_to_operation, p_instr__reset, p_instr__loop, p_instr_return, p__output_0_const, p__output_0_read_free, p_read__output_0_pc, p_read__output_0__input_0 };
--       function nothing {
--               return;
--               // END BATCH
-+
-// the function bodies are removed and functions are assigned their function id. Their inputs and outputs are mapped to the relevant registers
-+       function identity<2> _input_0 -> _output_0 {
-+
-+       function one<3>  -> _output_0 {
-+
 +       }
-+       function nothing<4> {
 +
-+       }
++
 // we do the same for the main machine
 -machine Main {
 +machine Main(instr_return, _function_id) {
@@ -229,6 +230,16 @@ The diff for our example program is as follows:
 -       reg X[<=];
 -       reg Y[<=];
 -       reg A;
+-
+-       function main {
+-               start::
+-               A <=Y= one();
+-               // END BATCH Unimplemented
+-               return;
+-               // END BATCH
++       function main<2> {
++
++
 +       constraints {
 +               pol commit _function_id;
 +               pol commit _sigma;
@@ -237,6 +248,7 @@ The diff for our example program is as follows:
 +               (_sigma * (_function_id - 4)) = 0;
 +       }
 +
+// we encode the virtual machine in constraints
 +       constraints {
 +               pol commit pc;
 +               pol commit X;
@@ -286,14 +298,6 @@ The diff for our example program is as follows:
 +               pol constant p_reg_write_Y_A = [0, 0, 1, 0, 0] + [0]*;
 +               { pc, reg_write_X_A, reg_write_Y_A, instr_identity, instr_one, instr_nothing, instr__jump_to_operation, instr__reset, instr__loop, instr_return, X_const, X_read_free, read_X_A, read_X_pc, Y_const, Y_read_free, read_Y_A, read_Y_pc } in { p_line, p_reg_write_X_A, p_reg_write_Y_A, p_instr_identity, p_instr_one, p_instr_nothing, p_instr__jump_to_operation, p_instr__reset, p_instr__loop, p_instr_return, p_X_const, p_X_read_free, p_read_X_A, p_read_X_pc, p_Y_const, p_Y_read_free, p_read_Y_A, p_read_Y_pc };
 +       }
-+
--       function main {
--               start::
--               A <=Y= one();
--               // END BATCH Unimplemented
--               return;
--               // END BATCH
-+       function main<2> {
 +
 ```
 
@@ -518,9 +522,9 @@ pol commit _function_id_no_change;
 _function_id_no_change = ((1 - _block_enforcer_last_step) * (1 - instr_return));
 (_function_id_no_change * (_function_id' - _function_id)) = 0;
 // Links:
-// // // instr identity with params  X -> Y links to // // function identity with id 2 with params  _input_0 -> _output_0 in object at location main_sub with latch "instr_return" and function_id "_function_id"
-// // // instr one with params   -> Y links to // // function one with id 3 with params   -> _output_0 in object at location main_sub with latch "instr_return" and function_id "_function_id"
-// // // instr nothing with params  links to // // function nothing with id 4 with params  in object at location main_sub with latch "instr_return" and function_id "_function_id"
+// instr identity with params  X -> Y links to function "identity" with id 2 with params  _input_0 -> _output_0 in object at location "main_sub" with latch "instr_return" and function_id "_function_id"
+// instr one with params   -> Y links to function "one" with id 3 with params   -> _output_0 in object at location "main_sub" with latch "instr_return" and function_id "_function_id"
+// instr nothing with params  links to function "nothing" with id 4 with params  in object at location "main_sub" with latch "instr_return" and function_id "_function_id"
 
 
 // Object main_sub

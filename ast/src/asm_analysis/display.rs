@@ -1,5 +1,5 @@
 use std::{
-    fmt::{Display, Formatter, Result},
+    fmt::{Display, Formatter, Result, Write},
     iter::once,
 };
 
@@ -28,6 +28,23 @@ fn indent<S: ToString>(s: S, indentation: usize) -> String {
         .join("\n")
 }
 
+fn write_indented_items<S, I, W>(f: &mut W, items: I) -> Result
+where
+    S: Display,
+    I: IntoIterator<Item = S>,
+    W: Write,
+{
+    let mut iter = items.into_iter();
+    if let Some(first_item) = iter.next() {
+        writeln!(f, "{}", indent(first_item, 1))?;
+        for item in iter {
+            writeln!(f, "{}", indent(item, 1))?;
+        }
+        writeln!(f)?;
+    }
+    Ok(())
+}
+
 impl<T: Display> Display for Machine<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match (&self.latch, &self.function_id) {
@@ -38,23 +55,11 @@ impl<T: Display> Display for Machine<T> {
         }?;
 
         writeln!(f, " {{")?;
-
-        // TODO: implement indentation properly (passing a context to the visitor)
-        for s in &self.degree {
-            writeln!(f, "{}", indent(s, 1))?;
-        }
-        for s in &self.registers {
-            writeln!(f, "{}", indent(s, 1))?;
-        }
-        for s in &self.constraints {
-            writeln!(f, "{}", indent(s, 1))?;
-        }
-        for i in &self.instructions {
-            writeln!(f, "{}", indent(i, 1))?;
-        }
-        for o in &self.functions {
-            writeln!(f, "{}", indent(o, 1))?;
-        }
+        write_indented_items(f, &self.degree)?;
+        write_indented_items(f, &self.registers)?;
+        write_indented_items(f, &self.instructions)?;
+        write_indented_items(f, &self.functions)?;
+        write_indented_items(f, &self.constraints)?;
         writeln!(f, "}}")
     }
 }

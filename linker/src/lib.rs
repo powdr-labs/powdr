@@ -201,7 +201,7 @@ mod test {
         assert_eq!(
             link(default_no_match),
             Err(vec![
-                "Machine foo should have degree 1024, found 8".to_string()
+                "Machine main_foo should have degree 1024, found 8".to_string()
             ])
         );
     }
@@ -210,6 +210,7 @@ mod test {
     pub fn compile_empty_vm() {
         let expectation = r#"
         namespace main(8);
+pol commit _function_id;
 pol commit _sigma;
 pol constant _romgen_first_step = [1] + [0]*;
 _sigma' = ((1 - _romgen_first_step') * (_sigma + instr_return));
@@ -228,7 +229,6 @@ pol constant p_instr__reset = [1, 0, 0] + [0]*;
 pol constant p_instr_return = [0, 0, 0] + [0]*;
 { pc, instr__jump_to_operation, instr__reset, instr__loop, instr_return } in { p_line, p_instr__jump_to_operation, p_instr__reset, p_instr__loop, p_instr_return };
 pol constant _block_enforcer_last_step = [0]* + [1];
-pol commit _function_id;
 pol commit _function_id_no_change;
 _function_id_no_change = ((1 - _block_enforcer_last_step) * (1 - instr_return));
 (_function_id_no_change * (_function_id' - _function_id)) = 0;
@@ -245,6 +245,7 @@ _function_id_no_change = ((1 - _block_enforcer_last_step) * (1 - instr_return));
     pub fn compile_different_signatures() {
         let expectation = r#"
         namespace main(16);
+pol commit _function_id;
 pol commit _sigma;
 pol constant _romgen_first_step = [1] + [0]*;
 _sigma' = ((1 - _romgen_first_step') * (_sigma + instr_return));
@@ -252,6 +253,9 @@ _sigma' = ((1 - _romgen_first_step') * (_sigma + instr_return));
 pol commit pc;
 pol commit X;
 pol commit Y;
+pol commit reg_write_X_A;
+pol commit reg_write_Y_A;
+pol commit A;
 pol commit instr_identity;
 pol commit instr_one;
 pol commit instr_nothing;
@@ -261,13 +265,16 @@ pol commit instr__loop;
 pol commit instr_return;
 pol commit X_const;
 pol commit X_read_free;
+pol commit read_X_A;
 pol commit read_X_pc;
-X = (((read_X_pc * pc) + X_const) + (X_read_free * X_free_value));
+X = ((((read_X_A * A) + (read_X_pc * pc)) + X_const) + (X_read_free * X_free_value));
 pol commit Y_const;
 pol commit Y_read_free;
+pol commit read_Y_A;
 pol commit read_Y_pc;
-Y = (((read_Y_pc * pc) + Y_const) + (Y_read_free * Y_free_value));
+Y = ((((read_Y_A * A) + (read_Y_pc * pc)) + Y_const) + (Y_read_free * Y_free_value));
 pol constant first_step = [1] + [0]*;
+A' = ((((reg_write_X_A * X) + (reg_write_Y_A * Y)) + (instr__reset * 0)) + ((1 - ((reg_write_X_A + reg_write_Y_A) + instr__reset)) * A));
 pc' = ((1 - first_step') * ((((instr__jump_to_operation * _function_id) + (instr__loop * pc)) + (instr_return * 0)) + ((1 - ((instr__jump_to_operation + instr__loop) + instr_return)) * (pc + 1))));
 pol constant p_line = [0, 1, 2, 3, 4] + [4]*;
 pol commit X_free_value(i) query match pc {  };
@@ -275,19 +282,22 @@ pol commit Y_free_value(i) query match pc {  };
 pol constant p_X_const = [0, 0, 0, 0, 0] + [0]*;
 pol constant p_X_read_free = [0, 0, 0, 0, 0] + [0]*;
 pol constant p_Y_const = [0, 0, 0, 0, 0] + [0]*;
-pol constant p_Y_read_free = [0, 0, 0, 0, 0] + [0]*;
+pol constant p_Y_read_free = [0, 0, 1, 0, 0] + [0]*;
 pol constant p_instr__jump_to_operation = [0, 1, 0, 0, 0] + [0]*;
 pol constant p_instr__loop = [0, 0, 0, 0, 1] + [1]*;
 pol constant p_instr__reset = [1, 0, 0, 0, 0] + [0]*;
 pol constant p_instr_identity = [0, 0, 0, 0, 0] + [0]*;
-pol constant p_instr_nothing = [0, 0, 1, 0, 0] + [0]*;
-pol constant p_instr_one = [0, 0, 0, 0, 0] + [0]*;
+pol constant p_instr_nothing = [0, 0, 0, 0, 0] + [0]*;
+pol constant p_instr_one = [0, 0, 1, 0, 0] + [0]*;
 pol constant p_instr_return = [0, 0, 0, 1, 0] + [0]*;
+pol constant p_read_X_A = [0, 0, 0, 0, 0] + [0]*;
 pol constant p_read_X_pc = [0, 0, 0, 0, 0] + [0]*;
+pol constant p_read_Y_A = [0, 0, 0, 0, 0] + [0]*;
 pol constant p_read_Y_pc = [0, 0, 0, 0, 0] + [0]*;
-{ pc, instr_identity, instr_one, instr_nothing, instr__jump_to_operation, instr__reset, instr__loop, instr_return, X_const, X_read_free, read_X_pc, Y_const, Y_read_free, read_Y_pc } in { p_line, p_instr_identity, p_instr_one, p_instr_nothing, p_instr__jump_to_operation, p_instr__reset, p_instr__loop, p_instr_return, p_X_const, p_X_read_free, p_read_X_pc, p_Y_const, p_Y_read_free, p_read_Y_pc };
+pol constant p_reg_write_X_A = [0, 0, 0, 0, 0] + [0]*;
+pol constant p_reg_write_Y_A = [0, 0, 1, 0, 0] + [0]*;
+{ pc, reg_write_X_A, reg_write_Y_A, instr_identity, instr_one, instr_nothing, instr__jump_to_operation, instr__reset, instr__loop, instr_return, X_const, X_read_free, read_X_A, read_X_pc, Y_const, Y_read_free, read_Y_A, read_Y_pc } in { p_line, p_reg_write_X_A, p_reg_write_Y_A, p_instr_identity, p_instr_one, p_instr_nothing, p_instr__jump_to_operation, p_instr__reset, p_instr__loop, p_instr_return, p_X_const, p_X_read_free, p_read_X_A, p_read_X_pc, p_Y_const, p_Y_read_free, p_read_Y_A, p_read_Y_pc };
 pol constant _block_enforcer_last_step = [0]* + [1];
-pol commit _function_id;
 pol commit _function_id_no_change;
 _function_id_no_change = ((1 - _block_enforcer_last_step) * (1 - instr_return));
 (_function_id_no_change * (_function_id' - _function_id)) = 0;
@@ -297,6 +307,7 @@ instr_nothing { 4 } in main_sub.instr_return { main_sub._function_id };
 pol constant _linker_first_step = [1] + [0]*;
 (_linker_first_step * (_function_id - 2)) = 0;
 namespace main_sub(16);
+pol commit _function_id;
 pol commit _sigma;
 pol constant _romgen_first_step = [1] + [0]*;
 _sigma' = ((1 - _romgen_first_step') * (_sigma + instr_return));
@@ -328,10 +339,9 @@ pol constant p_read__output_0__input_0 = [0, 0, 1, 0, 0, 0] + [0]*;
 pol constant p_read__output_0_pc = [0, 0, 0, 0, 0, 0] + [0]*;
 { pc, instr__jump_to_operation, instr__reset, instr__loop, instr_return, _output_0_const, _output_0_read_free, read__output_0_pc, read__output_0__input_0 } in { p_line, p_instr__jump_to_operation, p_instr__reset, p_instr__loop, p_instr_return, p__output_0_const, p__output_0_read_free, p_read__output_0_pc, p_read__output_0__input_0 };
 pol constant _block_enforcer_last_step = [0]* + [1];
-pol commit _function_id;
 pol commit _function_id_no_change;
 _function_id_no_change = ((1 - _block_enforcer_last_step) * (1 - instr_return));
-(_function_id_no_change * (_function_id' - _function_id)) = 0;
+(_function_id_no_change * (_function_id' - _function_id)) = 0;        
         "#;
 
         let file_name = "../test_data/asm/different_signatures.asm";
@@ -350,6 +360,7 @@ pol commit XIsZero;
 XIsZero = (1 - (X * XInv));
 (XIsZero * X) = 0;
 (XIsZero * (1 - XIsZero)) = 0;
+pol commit _function_id;
 pol commit _sigma;
 pol constant _romgen_first_step = [1] + [0]*;
 _sigma' = ((1 - _romgen_first_step') * (_sigma + instr_return));
@@ -402,7 +413,6 @@ pol constant p_reg_write_X_A = [0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0] + [0]*;
 pol constant p_reg_write_X_CNT = [0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0] + [0]*;
 { pc, reg_write_X_A, reg_write_X_CNT, instr_jmpz, instr_jmpz_param_l, instr_jmp, instr_jmp_param_l, instr_dec_CNT, instr_assert_zero, instr__jump_to_operation, instr__reset, instr__loop, instr_return, X_const, X_read_free, read_X_A, read_X_CNT, read_X_pc } in { p_line, p_reg_write_X_A, p_reg_write_X_CNT, p_instr_jmpz, p_instr_jmpz_param_l, p_instr_jmp, p_instr_jmp_param_l, p_instr_dec_CNT, p_instr_assert_zero, p_instr__jump_to_operation, p_instr__reset, p_instr__loop, p_instr_return, p_X_const, p_X_read_free, p_read_X_A, p_read_X_CNT, p_read_X_pc };
 pol constant _block_enforcer_last_step = [0]* + [1];
-pol commit _function_id;
 pol commit _function_id_no_change;
 _function_id_no_change = ((1 - _block_enforcer_last_step) * (1 - instr_return));
 (_function_id_no_change * (_function_id' - _function_id)) = 0;
@@ -436,6 +446,7 @@ machine Machine {
 "#;
         let expectation = r#"
 namespace main(1024);
+pol commit _function_id;
 pol commit _sigma;
 pol constant _romgen_first_step = [1] + [0]*;
 _sigma' = ((1 - _romgen_first_step') * (_sigma + instr_return));
@@ -466,7 +477,6 @@ pol constant p_instr_inc_fp_param_amount = [0, 0, 7, 0, 0] + [0]*;
 pol constant p_instr_return = [0, 0, 0, 0, 0] + [0]*;
 { pc, instr_inc_fp, instr_inc_fp_param_amount, instr_adjust_fp, instr_adjust_fp_param_amount, instr_adjust_fp_param_t, instr__jump_to_operation, instr__reset, instr__loop, instr_return } in { p_line, p_instr_inc_fp, p_instr_inc_fp_param_amount, p_instr_adjust_fp, p_instr_adjust_fp_param_amount, p_instr_adjust_fp_param_t, p_instr__jump_to_operation, p_instr__reset, p_instr__loop, p_instr_return };
 pol constant _block_enforcer_last_step = [0]* + [1];
-pol commit _function_id;
 pol commit _function_id_no_change;
 _function_id_no_change = ((1 - _block_enforcer_last_step) * (1 - instr_return));
 (_function_id_no_change * (_function_id' - _function_id)) = 0;

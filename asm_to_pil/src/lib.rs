@@ -14,9 +14,6 @@ pub fn compile<T: FieldElement>(file: AnalysisASMFile<T>) -> AnalysisASMFile<T> 
             .map(|(name, m)| {
                 (name, {
                     let (m, rom) = generate_machine_rom(m);
-                    if let Some(rom) = &rom {
-                        println!("{rom}");
-                    }
                     vm_to_constrained::convert_machine(m, rom)
                 })
             })
@@ -60,7 +57,7 @@ pub mod utils {
 
     pub fn parse_instruction<T: FieldElement>(input: &str) -> Instruction<T> {
         let instr = parser::powdr::InstructionParser::new()
-            .parse(&input)
+            .parse(input)
             .unwrap();
         Instruction {
             params: instr.params,

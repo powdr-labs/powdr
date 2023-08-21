@@ -39,7 +39,7 @@ impl<T: Display> Display for Object<T> {
 
 impl<T: Display> Display for Link<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write!(f, "// {} links to {}", self.from, self.to)
+        write!(f, "{} links to {}", self.from, self.to)
     }
 }
 
@@ -51,13 +51,13 @@ impl Display for LinkFrom {
 
 impl Display for Instr {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write!(f, "// instr {} with params {}", self.name, self.params)
+        write!(f, "instr {} with params {}", self.name, self.params)
     }
 }
 
 impl<T: Display> Display for LinkTo<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write!(f, "// {} in {}", self.function, self.machine)
+        write!(f, "{} in {}", self.function, self.machine)
     }
 }
 
@@ -65,7 +65,7 @@ impl Display for Machine {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(
             f,
-            "object at location {} with latch \"{}\" and function_id \"{}\"",
+            "object at location \"{}\" with latch \"{}\" and function_id \"{}\"",
             self.location, self.latch, self.function_id
         )
     }
@@ -75,7 +75,7 @@ impl<T: Display> Display for Function<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(
             f,
-            "// function {} with id {} with params {}",
+            "function \"{}\" with id {} with params {}",
             self.name, self.id, self.params,
         )
     }
