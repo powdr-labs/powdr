@@ -194,13 +194,7 @@ impl<'row, 'a, T: FieldElement> RowUpdater<'row, 'a, T> {
         }
     }
 
-    pub fn apply_update(
-        &mut self,
-        poly: &PolynomialReference,
-        c: &Constraint<T>,
-        source_name: &impl Fn() -> String,
-    ) {
-        log::trace!("    Update from: {}", source_name());
+    pub fn apply_update(&mut self, poly: &PolynomialReference, c: &Constraint<T>) {
         match c {
             Constraint::Assignment(value) => {
                 self.set_value(poly, *value);
@@ -226,8 +220,9 @@ impl<'row, 'a, T: FieldElement> RowUpdater<'row, 'a, T> {
             return false;
         }
 
+        log::trace!("    Updates from: {}", source_name());
         for (poly, c) in &updates.constraints {
-            self.apply_update(poly, c, &source_name)
+            self.apply_update(poly, c)
         }
         true
     }
