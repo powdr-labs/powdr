@@ -50,13 +50,13 @@ impl EStark {
             steps,
         };
 
-        let mut pil: PIL = json_exporter::export(pil);
+        let pil: PIL = json_exporter::export(pil);
 
         let const_pols = to_starky_pols_array(fixed, &pil, PolKind::Constant);
 
         let setup = StarkSetup::new(
             &const_pols,
-            &mut pil,
+            &mut pil.clone(),
             &params,
             Some("main.first_step".to_string()),
         )
