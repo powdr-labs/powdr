@@ -116,6 +116,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses<T> {
         &mut self,
         fixed_data: &FixedData<T>,
         _fixed_lookup: &mut FixedLookup<T>,
+        _machines: Vec<&mut KnownMachine<'a, T>>,
     ) -> HashMap<String, Vec<T>> {
         let mut addr = vec![];
         let mut step = vec![];

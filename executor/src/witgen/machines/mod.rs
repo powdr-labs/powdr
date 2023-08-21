@@ -41,8 +41,10 @@ pub trait Machine<'a, T: FieldElement>: Send + Sync {
     /// Returns the final values of the witness columns.
     fn take_witness_col_values(
         &mut self,
-        fixed_data: &FixedData<T>,
+        fixed_data: &'a FixedData<T>,
         fixed_lookup: &mut FixedLookup<T>,
+
+        machines: Vec<&mut KnownMachine<'a, T>>,
     ) -> HashMap<String, Vec<T>>;
 }
 
@@ -81,9 +83,11 @@ impl<'a, T: FieldElement> Machine<'a, T> for KnownMachine<'a, T> {
 
     fn take_witness_col_values(
         &mut self,
-        fixed_data: &FixedData<T>,
+        fixed_data: &'a FixedData<T>,
         fixed_lookup: &mut FixedLookup<T>,
+        machines: Vec<&mut KnownMachine<'a, T>>,
     ) -> std::collections::HashMap<String, Vec<T>> {
-        self.get().take_witness_col_values(fixed_data, fixed_lookup)
+        self.get()
+            .take_witness_col_values(fixed_data, fixed_lookup, machines)
     }
 }

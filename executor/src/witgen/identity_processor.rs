@@ -98,20 +98,7 @@ impl<'a, 'b, T: FieldElement> IdentityProcessor<'a, 'b, T> {
         }
 
         for i in 0..self.machines.len() {
-            let (before, after) = self.machines.split_at_mut(i);
-            let (current, after) = after.split_at_mut(1);
-            let current = current.first_mut().unwrap();
-
-            let mut others: Vec<&mut KnownMachine<'_, T>> =
-                Vec::with_capacity(before.len() + after.len());
-
-            for machine in before.iter_mut() {
-                others.push(machine);
-            }
-
-            for machine in after.iter_mut() {
-                others.push(machine);
-            }
+            let (current, others) = Self::split_machines(&mut self.machines, i);
 
             // TODO also consider the reasons above.
             if let Some(result) = current.process_plookup(
@@ -126,12 +113,30 @@ impl<'a, 'b, T: FieldElement> IdentityProcessor<'a, 'b, T> {
             }
         }
 
-        // TODO: Remove this hack to make things work for now
-        if self.machines.is_empty() {
-            return Ok(EvalValue::complete(vec![]));
+        unimplemented!("No executor machine matched identity `{identity}`")
+    }
+
+    pub fn split_machines<'c>(
+        machines: &'c mut [&'b mut KnownMachine<'a, T>],
+        i: usize,
+    ) -> (
+        &'c mut KnownMachine<'a, T>,
+        Vec<&'c mut KnownMachine<'a, T>>,
+    ) {
+        let (before, after) = machines.split_at_mut(i);
+        let (current, after) = after.split_at_mut(1);
+        let current: &'c mut KnownMachine<'a, T> = current.first_mut().unwrap();
+
+        // You'd think this works, but the Rust compile isn't having it...
+        // let others = before.iter_mut().chain(after.iter_mut()).collect();
+
+        let mut others: Vec<&'c mut KnownMachine<'a, T>> =
+            Vec::with_capacity(before.len() + after.len());
+        for machine in before.iter_mut().chain(after.iter_mut()) {
+            others.push(machine);
         }
 
-        unimplemented!("No executor machine matched identity `{identity}`")
+        (current, others)
     }
 
     /// Handles the lookup that connects the current machine to the calling machine.

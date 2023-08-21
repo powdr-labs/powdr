@@ -167,8 +167,9 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
 
     fn take_witness_col_values(
         &mut self,
-        fixed_data: &FixedData<T>,
+        fixed_data: &'a FixedData<T>,
         fixed_lookup: &mut FixedLookup<T>,
+        machines: Vec<&mut KnownMachine<'a, T>>,
     ) -> HashMap<String, Vec<T>> {
         let mut data = transpose_rows(std::mem::take(&mut self.data), &self.witness_cols)
             .into_iter()
@@ -208,7 +209,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
                 (id, values)
             })
             .collect();
-        self.handle_last_row(&mut data, fixed_data, fixed_lookup);
+        self.handle_last_row(&mut data, fixed_data, fixed_lookup, machines);
         data.into_iter()
             .map(|(id, values)| (fixed_data.column_name(&id).to_string(), values))
             .collect()
@@ -225,8 +226,9 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
     fn handle_last_row(
         &self,
         data: &mut HashMap<PolyID, Vec<T>>,
-        fixed_data: &FixedData<T>,
+        fixed_data: &'a FixedData<T>,
         fixed_lookup: &mut FixedLookup<T>,
+        machines: Vec<&mut KnownMachine<'a, T>>,
     ) {
         // Build a vector of 3 rows: N -2, N - 1 and 0
         let rows = ((fixed_data.degree - 2)..(fixed_data.degree + 1))
@@ -242,7 +244,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         let mut processor = Processor::new(
             fixed_data.degree - 2,
             rows,
-            IdentityProcessor::new(fixed_data, fixed_lookup, vec![]),
+            IdentityProcessor::new(fixed_data, fixed_lookup, machines),
             self.identities.clone(),
             fixed_data,
             self.row_factory.clone(),
