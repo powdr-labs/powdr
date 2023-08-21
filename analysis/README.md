@@ -305,7 +305,7 @@ The diff for our example program is as follows:
 
 This step takes constrained machines and enforces that the `function_id` can only change if the `latch` is on. This defines blocks of computation which can be created based on the functions exposed by each machine.
 
-We add an identical block of constraints for each machine type:
+We add an identical block of constraints for each machine type. For example, for the `Main` machine:
 ```diff
 +       constraints {
 +               pol constant _block_enforcer_last_step = [0]* + [1];
@@ -313,14 +313,6 @@ We add an identical block of constraints for each machine type:
 +               _function_id_no_change = ((1 - _block_enforcer_last_step) * (1 - instr_return));
 +               (_function_id_no_change * (_function_id' - _function_id)) = 0;
 +       }
-+
-+       }
-+
-+       constraints {
-+               pol constant _block_enforcer_last_step = [0]* + [1];
-+               pol commit _function_id_no_change;
-+               _function_id_no_change = ((1 - _block_enforcer_last_step) * (1 - instr_return));
-+               (_function_id_no_change * (_function_id' - _function_id)) = 0;
 ```
 
 ### Airgen
