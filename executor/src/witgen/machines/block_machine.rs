@@ -453,13 +453,15 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         updates: &EvalValue<&'a PolynomialReference, T>,
         left_mut: &mut [AffineResult<&'a PolynomialReference, T>],
     ) -> bool {
-        let mut progress_in_last_step = false;
+        if updates.constraints.is_empty() {
+            return false;
+        }
 
-        let source_name = || match identity {
+        match identity {
             IdentityInSequence::Internal(index) => {
-                format!("identity {}", self.identities[index])
+                log::trace!("    Updates from: {}", self.identities[index])
             }
-            IdentityInSequence::OuterQuery => "outer query".to_string(),
+            IdentityInSequence::OuterQuery => log::trace!("    Updates from: outer query"),
         };
 
         let (before, after) = self.data.split_at_mut(row as usize + 1);
@@ -469,19 +471,18 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         let mut row_updater = RowUpdater::new(current, next, row);
         for (poly, c) in &updates.constraints {
             if self.witness_cols.contains(&poly.poly_id()) {
-                row_updater.apply_update(poly, c, &source_name);
+                row_updater.apply_update(poly, c);
             } else if let Constraint::Assignment(v) = c {
                 for l in left_mut.iter_mut() {
                     if let Ok(l) = l.as_mut() {
+                        log::trace!("      => {} (outer) = {}", poly, v);
                         l.assign(poly, *v);
                     }
                 }
             };
-
-            progress_in_last_step = true;
         }
 
-        progress_in_last_step
+        true
     }
 
     fn get_current_row_pair(
