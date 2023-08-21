@@ -9,6 +9,7 @@ use crate::witgen::identity_processor::IdentityProcessor;
 use crate::witgen::rows::RowUpdater;
 
 use super::column_map::ColumnMap;
+use super::identity_processor::map_machines;
 use super::machines::{KnownMachine, Machine};
 use super::query_processor::QueryProcessor;
 use super::range_constraints::RangeConstraint;
@@ -78,7 +79,7 @@ where
         identities: &'a [&'a Identity<T>],
         witnesses: BTreeSet<PolyID>,
         global_range_constraints: ColumnMap<Option<RangeConstraint<T>>>,
-        machines: Vec<&'b mut KnownMachine<'a, T>>,
+        machines: Vec<&'a mut KnownMachine<'a, T>>,
         query_callback: Option<QueryCallback>,
     ) -> Self {
         let query_processor =
@@ -394,17 +395,30 @@ where
             .iter()
             .map(|(poly_id, col)| (col.name.as_str(), poly_id))
             .collect::<BTreeMap<_, _>>();
-        for i in 0..self.identity_processor.machines.len() {
-            let (current, others) =
-                IdentityProcessor::split_machines(&mut self.identity_processor.machines, i);
-            for (col_name, col) in current.take_witness_col_values(
+
+        map_machines(&mut self.identity_processor.machines, |current, others| {
+            let (result2, others) = current.take_witness_col_values(
                 self.fixed_data,
                 self.identity_processor.fixed_lookup,
                 others,
-            ) {
+            );
+            for (col_name, col) in result2 {
                 result.insert(*name_to_id.get(col_name.as_str()).unwrap(), col);
             }
-        }
+            (None::<()>, current, others)
+        });
+
+        // for i in 0..self.identity_processor.machines.len() {
+        //     let (current, others) =
+        //         IdentityProcessor::split_machines(&mut self.identity_processor.machines, i);
+        //     for (col_name, col) in current.take_witness_col_values(
+        //         self.fixed_data,
+        //         self.identity_processor.fixed_lookup,
+        //         others,
+        //     ) {
+        //         result.insert(*name_to_id.get(col_name.as_str()).unwrap(), col);
+        //     }
+        // }
         result
     }
 

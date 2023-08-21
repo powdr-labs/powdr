@@ -147,31 +147,29 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
         kind: IdentityKind,
         left: &[AffineResult<&'a PolynomialReference, T>],
         right: &'a SelectedExpressions<T>,
-        machines: Vec<&mut KnownMachine<'a, T>>,
-    ) -> Option<EvalResult<'a, T>> {
+        machines: Vec<&'a mut KnownMachine<'a, T>>,
+    ) -> (Option<EvalResult<'a, T>>, Vec<&'a mut KnownMachine<'a, T>>) {
         if *right != self.selected_expressions || kind != IdentityKind::Plookup {
-            return None;
+            return (None, machines);
         }
         let previous_len = self.rows() as usize;
-        Some({
-            let result =
-                self.process_plookup_internal(fixed_data, fixed_lookup, left, right, machines);
-            if let Ok(assignments) = &result {
-                if !assignments.is_complete() {
-                    // rollback the changes.
-                    self.data.truncate(previous_len);
-                }
+        let (result, machines) =
+            self.process_plookup_internal(fixed_data, fixed_lookup, left, right, machines);
+        if let Ok(assignments) = &result {
+            if !assignments.is_complete() {
+                // rollback the changes.
+                self.data.truncate(previous_len);
             }
-            result
-        })
+        }
+        (Some(result), machines)
     }
 
     fn take_witness_col_values(
         &mut self,
         fixed_data: &'a FixedData<T>,
         fixed_lookup: &mut FixedLookup<T>,
-        machines: Vec<&mut KnownMachine<'a, T>>,
-    ) -> HashMap<String, Vec<T>> {
+        machines: Vec<&'a mut KnownMachine<'a, T>>,
+    ) -> (HashMap<String, Vec<T>>, Vec<&'a mut KnownMachine<'a, T>>) {
         let mut data = transpose_rows(std::mem::take(&mut self.data), &self.witness_cols)
             .into_iter()
             .map(|(id, mut values)| {
@@ -210,10 +208,13 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
                 (id, values)
             })
             .collect();
-        self.handle_last_row(&mut data, fixed_data, fixed_lookup, machines);
-        data.into_iter()
-            .map(|(id, values)| (fixed_data.column_name(&id).to_string(), values))
-            .collect()
+        let machines = self.handle_last_row(&mut data, fixed_data, fixed_lookup, machines);
+        (
+            data.into_iter()
+                .map(|(id, values)| (fixed_data.column_name(&id).to_string(), values))
+                .collect(),
+            machines,
+        )
     }
 }
 
@@ -229,8 +230,8 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         data: &mut HashMap<PolyID, Vec<T>>,
         fixed_data: &'a FixedData<T>,
         fixed_lookup: &mut FixedLookup<T>,
-        machines: Vec<&mut KnownMachine<'a, T>>,
-    ) {
+        machines: Vec<&'a mut KnownMachine<'a, T>>,
+    ) -> Vec<&'a mut KnownMachine<'a, T>> {
         // Build a vector of 3 rows: N -2, N - 1 and 0
         let rows = ((fixed_data.degree - 2)..(fixed_data.degree + 1))
             .map(|row| {
@@ -260,13 +261,18 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
             processor
                 .solve()
                 .expect("Some constraints were not satisfiable when solving for the last row.");
-            let last_row = processor.finish().remove(1);
+            let (mut processed_data, identity_processor) = processor.finish();
+            let last_row = processed_data.remove(1);
 
             // Copy values into data
             for (poly_id, values) in data.iter_mut() {
                 values[fixed_data.degree as usize - 1] =
                     last_row[poly_id].value.unwrap_or_default();
             }
+
+            identity_processor.destroy()
+        } else {
+            processor.finish().1.destroy()
         }
     }
 
@@ -286,17 +292,18 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         self.data.len() as DegreeType
     }
 
-    fn process_plookup_internal(
+    fn process_plookup_internal<'b>(
         &mut self,
         fixed_data: &'a FixedData<T>,
-        fixed_lookup: &mut FixedLookup<T>,
+        fixed_lookup: &'b mut FixedLookup<T>,
         left: &[AffineResult<&'a PolynomialReference, T>],
         right: &'a SelectedExpressions<T>,
-        machines: Vec<&mut KnownMachine<'a, T>>,
-    ) -> EvalResult<'a, T> {
+        machines: Vec<&'a mut KnownMachine<'a, T>>,
+    ) -> (EvalResult<'a, T>, Vec<&'a mut KnownMachine<'a, T>>) {
         log::trace!("Start processing block machine");
 
-        let mut identity_processor = IdentityProcessor::new(fixed_data, fixed_lookup, machines);
+        let mut identity_processor: IdentityProcessor<'a, 'b, T> =
+            IdentityProcessor::new(fixed_data, fixed_lookup, machines);
 
         // First check if we already store the value.
         // This can happen in the loop detection case, where this function is just called
@@ -316,15 +323,23 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
             let next = self.row_factory.fresh_row();
             let row_pair = RowPair::new(current, &next, row, fixed_data, UnknownStrategy::Unknown);
 
-            let result = identity_processor.process_link(left, right, &row_pair)?;
+            let result = identity_processor.process_link(left, right, &row_pair);
+
+            if let Err(result) = result {
+                let machines: Vec<&'a mut KnownMachine<'a, T>> = identity_processor.destroy();
+                return (Err(result), machines);
+            }
+            let result = result.unwrap();
 
             if result.is_complete() {
-                return Ok(result);
+                return (Ok(result), identity_processor.destroy());
             }
         }
 
         let old_len = self.rows();
-        self.append_new_block(fixed_data.degree)?;
+        if let Err(e) = self.append_new_block(fixed_data.degree) {
+            return (Err(e), identity_processor.destroy());
+        }
         let mut outer_assignments = EvalValue::complete(vec![]);
 
         // While processing the block, we'll add an additional row which will be
@@ -413,16 +428,22 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
             // We solved the query, so report it to the cache.
             self.processing_sequence_cache
                 .report_processing_sequence(left, progress_steps);
-            Ok(outer_assignments)
+            (Ok(outer_assignments), identity_processor.destroy())
         } else if !errors.is_empty() {
-            Err(errors
-                .into_iter()
-                .reduce(|x: EvalError<T>, y| x.combine(y))
-                .unwrap())
+            (
+                Err(errors
+                    .into_iter()
+                    .reduce(|x: EvalError<T>, y| x.combine(y))
+                    .unwrap()),
+                identity_processor.destroy(),
+            )
         } else {
-            Ok(EvalValue::incomplete(
-                IncompleteCause::BlockMachineLookupIncomplete,
-            ))
+            (
+                Ok(EvalValue::incomplete(
+                    IncompleteCause::BlockMachineLookupIncomplete,
+                )),
+                identity_processor.destroy(),
+            )
         }
     }
 

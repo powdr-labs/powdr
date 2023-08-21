@@ -100,24 +100,33 @@ impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses<T> {
         kind: IdentityKind,
         left: &[AffineResult<&'a PolynomialReference, T>],
         right: &'a SelectedExpressions<T>,
-        _machines: Vec<&mut KnownMachine<'a, T>>,
-    ) -> Option<EvalResult<'a, T>> {
+        machines: Vec<&'a mut KnownMachine<'a, T>>,
+    ) -> (
+        Option<crate::witgen::EvalResult<'a, T>>,
+        Vec<&'a mut KnownMachine<'a, T>>,
+    ) {
         if kind != IdentityKind::Permutation
-            || !(is_simple_poly_of_name(right.selector.as_ref()?, &self.namespaced("m_is_read"))
-                || is_simple_poly_of_name(right.selector.as_ref()?, &self.namespaced("m_is_write")))
+            || right.selector.as_ref().is_none()
+            || !(is_simple_poly_of_name(
+                right.selector.as_ref().unwrap(),
+                &self.namespaced("m_is_read"),
+            ) || is_simple_poly_of_name(
+                right.selector.as_ref().unwrap(),
+                &self.namespaced("m_is_write"),
+            ))
         {
-            return None;
+            return (None, machines);
         }
 
-        Some(self.process_plookup_internal(left, right))
+        (Some(self.process_plookup_internal(left, right)), machines)
     }
 
     fn take_witness_col_values(
         &mut self,
         fixed_data: &FixedData<T>,
         _fixed_lookup: &mut FixedLookup<T>,
-        _machines: Vec<&mut KnownMachine<'a, T>>,
-    ) -> HashMap<String, Vec<T>> {
+        machines: Vec<&'a mut KnownMachine<'a, T>>,
+    ) -> (HashMap<String, Vec<T>>, Vec<&'a mut KnownMachine<'a, T>>) {
         let mut addr = vec![];
         let mut step = vec![];
         let mut value = vec![];
@@ -160,17 +169,20 @@ impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses<T> {
             .collect::<Vec<_>>();
         assert_eq!(change.len(), addr.len());
 
-        [
-            (self.namespaced("m_value"), value),
-            (self.namespaced("m_addr"), addr),
-            (self.namespaced("m_step"), step),
-            (self.namespaced("m_change"), change),
-            (self.namespaced("m_op"), op),
-            (self.namespaced("m_is_write"), is_write),
-            (self.namespaced("m_is_read"), is_read),
-        ]
-        .into_iter()
-        .collect()
+        (
+            [
+                (self.namespaced("m_value"), value),
+                (self.namespaced("m_addr"), addr),
+                (self.namespaced("m_step"), step),
+                (self.namespaced("m_change"), change),
+                (self.namespaced("m_op"), op),
+                (self.namespaced("m_is_write"), is_write),
+                (self.namespaced("m_is_read"), is_read),
+            ]
+            .into_iter()
+            .collect(),
+            machines,
+        )
     }
 }
 

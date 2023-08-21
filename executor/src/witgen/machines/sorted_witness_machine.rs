@@ -126,10 +126,10 @@ impl<'a, T: FieldElement> Machine<'a, T> for SortedWitnesses<T> {
         kind: IdentityKind,
         left: &[AffineResult<&'a PolynomialReference, T>],
         right: &'a SelectedExpressions<T>,
-        _machines: Vec<&mut KnownMachine<'a, T>>,
-    ) -> Option<EvalResult<'a, T>> {
+        machines: Vec<&'a mut KnownMachine<'a, T>>,
+    ) -> (Option<EvalResult<'a, T>>, Vec<&'a mut KnownMachine<'a, T>>) {
         if kind != IdentityKind::Plookup || right.selector.is_some() {
-            return None;
+            return (None, machines);
         }
         let rhs = right
             .expressions
@@ -147,16 +147,23 @@ impl<'a, T: FieldElement> Machine<'a, T> for SortedWitnesses<T> {
                 }
                 _ => None,
             })
-            .collect::<Option<Vec<_>>>()?;
+            .collect::<Option<Vec<_>>>();
 
-        Some(self.process_plookup_internal(fixed_data, left, right, rhs))
+        if let Some(rhs) = rhs {
+            (
+                Some(self.process_plookup_internal(fixed_data, left, right, rhs)),
+                machines,
+            )
+        } else {
+            (None, machines)
+        }
     }
     fn take_witness_col_values(
         &mut self,
         fixed_data: &FixedData<T>,
         _fixed_lookup: &mut FixedLookup<T>,
-        _machines: Vec<&mut KnownMachine<'a, T>>,
-    ) -> HashMap<String, Vec<T>> {
+        machines: Vec<&'a mut KnownMachine<'a, T>>,
+    ) -> (HashMap<String, Vec<T>>, Vec<&'a mut KnownMachine<'a, T>>) {
         let mut result = HashMap::new();
 
         let (mut keys, mut values): (Vec<_>, Vec<_>) =
@@ -178,7 +185,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for SortedWitnesses<T> {
             result.insert(fixed_data.column_name(col).to_string(), col_values);
         }
 
-        result
+        (result, machines)
     }
 }
 

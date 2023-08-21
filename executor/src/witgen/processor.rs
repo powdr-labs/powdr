@@ -81,8 +81,8 @@ impl<'a, 'b, T: FieldElement> Processor<'a, 'b, T> {
     }
 
     /// Destroys itself, returns the data.
-    pub fn finish(self) -> Vec<Row<'a, T>> {
-        self.data
+    pub fn finish(self) -> (Vec<Row<'a, T>>, IdentityProcessor<'a, 'b, T>) {
+        (self.data, self.identity_processor)
     }
 
     /// On a row pair of a given index, iterate over all identities until no more progress is made.

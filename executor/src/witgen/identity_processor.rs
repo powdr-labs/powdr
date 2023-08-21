@@ -8,24 +8,73 @@ use super::{
     EvalResult, EvalValue, FixedData, IncompleteCause,
 };
 
+pub fn map_machines<'a, T: FieldElement, R>(
+    machines: &mut Vec<&'a mut KnownMachine<'a, T>>,
+    mut f: impl FnMut(
+        &'a mut KnownMachine<'a, T>,
+        Vec<&'a mut KnownMachine<'a, T>>,
+    ) -> (
+        Option<R>,
+        &'a mut KnownMachine<'a, T>,
+        Vec<&'a mut KnownMachine<'a, T>>,
+    ),
+) -> R {
+    for i in 0..machines.len() {
+        let (current, others) = split_machines2(machines, i);
+        let (result, current, mut others) = f(current, others);
+        others.push(current);
+        *machines = others;
+
+        if let Some(result) = result {
+            return result;
+        }
+    }
+    panic!()
+}
+
+pub fn split_machines2<'a, 'b, T: FieldElement>(
+    machines: &mut Vec<&'b mut KnownMachine<'a, T>>,
+    i: usize,
+) -> (
+    &'b mut KnownMachine<'a, T>,
+    Vec<&'b mut KnownMachine<'a, T>>,
+) {
+    let mut current: Option<&'b mut KnownMachine<'a, T>> = None;
+    let mut others = Vec::with_capacity(machines.len() - 1);
+
+    for (j, machine) in machines.drain(..).enumerate() {
+        if j == i {
+            current = Some(machine);
+        } else {
+            others.push(machine);
+        }
+    }
+
+    (current.unwrap(), others)
+}
+
 /// Computes (value or range constraint) updates given a [RowPair] and [Identity].
 pub struct IdentityProcessor<'a, 'b, T: FieldElement> {
     fixed_data: &'a FixedData<'a, T>,
     pub fixed_lookup: &'b mut FixedLookup<T>,
-    pub machines: Vec<&'b mut KnownMachine<'a, T>>,
+    pub machines: Vec<&'a mut KnownMachine<'a, T>>,
 }
 
 impl<'a, 'b, T: FieldElement> IdentityProcessor<'a, 'b, T> {
     pub fn new(
         fixed_data: &'a FixedData<'a, T>,
         fixed_lookup: &'b mut FixedLookup<T>,
-        machines: Vec<&'b mut KnownMachine<'a, T>>,
+        machines: Vec<&'a mut KnownMachine<'a, T>>,
     ) -> Self {
         Self {
             fixed_data,
             fixed_lookup,
             machines,
         }
+    }
+
+    pub fn destroy(self) -> Vec<&'a mut KnownMachine<'a, T>> {
+        self.machines
     }
 
     /// Given an identity and a row pair, tries to figure out additional values / range constraints
@@ -97,58 +146,22 @@ impl<'a, 'b, T: FieldElement> IdentityProcessor<'a, 'b, T> {
             return result;
         }
 
-        for i in 0..self.machines.len() {
-            let (current, others) = Self::split_machines(&mut self.machines, i);
-
+        map_machines(&mut self.machines, |current, others| {
             // TODO also consider the reasons above.
-            if let Some(result) = current.process_plookup(
+
+            let (machine_updates, others) = current.process_plookup(
                 self.fixed_data,
                 self.fixed_lookup,
                 identity.kind,
                 &left,
                 &identity.right,
                 others,
-            ) {
-                return result;
-            }
-        }
+            );
 
-        unimplemented!("No executor machine matched identity `{identity}`")
-    }
+            (machine_updates, current, others)
+        })
 
-    // This would be convenient, but doesn't compile.
-    // pub fn iter_machines<'c>(
-    //     machines: &'c mut [&'b mut KnownMachine<'a, T>],
-    // ) -> impl Iterator<
-    //     Item = (
-    //         &'c mut KnownMachine<'a, T>,
-    //         Vec<&'c mut KnownMachine<'a, T>>,
-    //     ),
-    // > {
-    //     (0..machines.len()).map(|i| Self::split_machines(machines, i))
-    // }
-
-    pub fn split_machines<'c>(
-        machines: &'c mut [&'b mut KnownMachine<'a, T>],
-        i: usize,
-    ) -> (
-        &'c mut KnownMachine<'a, T>,
-        Vec<&'c mut KnownMachine<'a, T>>,
-    ) {
-        let (before, after) = machines.split_at_mut(i);
-        let (current, after) = after.split_at_mut(1);
-        let current: &'c mut KnownMachine<'a, T> = current.first_mut().unwrap();
-
-        // You'd think this works, but the Rust compile isn't having it...
-        // let others = before.iter_mut().chain(after.iter_mut()).collect();
-
-        let mut others: Vec<&'c mut KnownMachine<'a, T>> =
-            Vec::with_capacity(before.len() + after.len());
-        for machine in before.iter_mut().chain(after.iter_mut()) {
-            others.push(machine);
-        }
-
-        (current, others)
+        // unimplemented!("No executor machine matched identity `{identity}`")
     }
 
     /// Handles the lookup that connects the current machine to the calling machine.
