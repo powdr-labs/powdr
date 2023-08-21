@@ -7,6 +7,7 @@ use starky::{
     polsarray::{PolKind, PolsArray},
     stark_gen::StarkProof,
     stark_setup::StarkSetup,
+    stark_verify::stark_verify,
     transcript::TranscriptGL,
     types::{StarkStruct, Step, PIL},
 };
@@ -62,7 +63,7 @@ impl<F: FieldElement> BackendImpl<F> for EStark {
         let const_pols = to_starky_pols_array(fixed, &pil, PolKind::Constant);
         let cm_pols = to_starky_pols_array(witness, &pil, PolKind::Commit);
 
-        let setup = StarkSetup::<MerkleTreeGL>::new(
+        let mut setup = StarkSetup::<MerkleTreeGL>::new(
             &const_pols,
             &mut pil,
             &self.params,
@@ -80,6 +81,15 @@ impl<F: FieldElement> BackendImpl<F> for EStark {
             &self.params,
         )
         .unwrap();
+
+        assert!(stark_verify::<MerkleTreeGL, TranscriptGL>(
+            &starkproof,
+            &setup.const_root,
+            &setup.starkinfo,
+            &self.params,
+            &mut setup.program,
+        )
+        .unwrap());
 
         (
             Some(serde_json::to_vec(&starkproof).unwrap()),
