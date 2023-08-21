@@ -116,6 +116,18 @@ impl<'a, 'b, T: FieldElement> IdentityProcessor<'a, 'b, T> {
         unimplemented!("No executor machine matched identity `{identity}`")
     }
 
+    // This would be convenient, but doesn't compile.
+    // pub fn iter_machines<'c>(
+    //     machines: &'c mut [&'b mut KnownMachine<'a, T>],
+    // ) -> impl Iterator<
+    //     Item = (
+    //         &'c mut KnownMachine<'a, T>,
+    //         Vec<&'c mut KnownMachine<'a, T>>,
+    //     ),
+    // > {
+    //     (0..machines.len()).map(|i| Self::split_machines(machines, i))
+    // }
+
     pub fn split_machines<'c>(
         machines: &'c mut [&'b mut KnownMachine<'a, T>],
         i: usize,
