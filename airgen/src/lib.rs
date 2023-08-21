@@ -114,7 +114,7 @@ impl<'a, T: FieldElement> ASMPILConverter<'a, T> {
     fn convert_machine_inner(mut self, ty: &str) -> Object<T> {
         let input = self.machines.get(ty).unwrap().clone();
 
-        let degree = input.degree.map(|s| T::from(s.degree.clone()).to_degree());
+        let degree = input.degree.map(|s| T::from(s.degree).to_degree());
 
         self.submachines = input.submachines;
 
@@ -147,9 +147,9 @@ impl<'a, T: FieldElement> ASMPILConverter<'a, T> {
         // TODO: this relies on `asm_to_pil` calling the instructions flags a certain way. It will go away once external instructions are turned into links earlier
         let instruction_flag = format!("instr_{name}");
         let instr = Instr {
-            name: name.clone(),
-            params: params.clone(),
-            flag: instruction_flag.clone(),
+            name,
+            params,
+            flag: instruction_flag,
         };
 
         let link = match body {
@@ -186,8 +186,7 @@ impl<'a, T: FieldElement> ASMPILConverter<'a, T> {
                                 params: d.params.clone(),
                             },
                         })
-                        .unwrap()
-                        .clone(),
+                        .unwrap(),
                 })
             }
         };
