@@ -1,3 +1,5 @@
+//! Batch compatible statements in each function of each machine
+
 use std::marker::PhantomData;
 
 use ast::asm_analysis::{
@@ -22,11 +24,14 @@ impl<'a, T: FieldElement> Batch<'a, T> {
         }
     }
 
-    /// Returns true iff this batch consists exclusively of labels
-    fn is_only_labels(&self) -> bool {
-        self.statements
-            .iter()
-            .all(|s| matches!(s, FunctionStatement::Label(..)))
+    /// Returns true iff this batch consists exclusively of labels and debug directives
+    fn is_only_labels_and_directives(&self) -> bool {
+        self.statements.iter().all(|s| {
+            matches!(
+                s,
+                FunctionStatement::Label(..) | FunctionStatement::DebugDirective(..)
+            )
+        })
     }
 
     /// Returns true iff this batch contains at least one label
@@ -46,13 +51,16 @@ impl<'a, T: FieldElement> Batch<'a, T> {
     }
 
     fn try_join(&mut self, other: Self) -> Result<(), (Self, IncompatibleSet)> {
-        match (self.is_only_labels(), other.contains_labels()) {
-            // we can join any batch full of labels (in particular, an empty batch) with any batch
+        match (
+            self.is_only_labels_and_directives(),
+            other.contains_labels(),
+        ) {
+            // we can join any batch full of labels and debug directives (in particular, an empty batch) with any batch
             (true, _) => {
                 self.statements.extend(other.statements);
                 Ok(())
             }
-            // we cannot join a batch which doesn't only have labels with a batch which contains a label
+            // we cannot join a batch which doesn't only have labels and debug directives with a batch which contains a label
             (false, true) => Err((other, IncompatibleSet([Incompatible::Label].into()))),
             // other types of batching are unimplemented
             (false, false) => Err((other, IncompatibleSet([Incompatible::Unimplemented].into()))),
@@ -68,8 +76,9 @@ struct RomBatcher<T> {
 impl<T: FieldElement> RomBatcher<T> {
     // split a list of statements into compatible batches
     fn extract_batches(&self, machine_name: &str, machine: &mut Machine<T>) {
-        if let Some(rom) = machine.rom.as_mut() {
-            let batches: Vec<_> = rom
+        for function in machine.functions.iter_mut() {
+            let batches: Vec<_> = function
+                .body
                 .statements
                 .iter()
                 .peekable()
@@ -109,7 +118,8 @@ impl<T: FieldElement> RomBatcher<T> {
             let lines_after = batches.len();
 
             log::debug!(
-                "Batching complete for machine {} with savings of {}% in execution trace lines",
+                "Batching complete for function {} in machine {} with savings of {}% in execution trace lines",
+                function.name,
                 machine_name,
                 match lines_before {
                     0 => 0.,
@@ -117,7 +127,7 @@ impl<T: FieldElement> RomBatcher<T> {
                 }
             );
 
-            rom.batches = Some(batches);
+            function.body.statements.set_batches(batches);
         }
     }
 
@@ -135,31 +145,32 @@ mod tests {
 
     use std::{fs, path::PathBuf};
 
+    use ast::asm_analysis::AnalysisASMFile;
     use number::GoldilocksField;
     use pretty_assertions::assert_eq;
     use test_log::test;
 
-    use crate::{batcher, macro_expansion, romgen, type_check};
+    use crate::vm::test_utils::batch_str;
 
     fn test_batching(path: &str) {
         let base_path = PathBuf::from("../test_data/asm/batching");
         let file_name = base_path.join(path);
-        let contents = fs::read_to_string(&file_name).unwrap();
-        let parsed = parser::parse_asm::<GoldilocksField>(
-            Some(file_name.as_os_str().to_str().unwrap()),
-            &contents,
-        )
-        .unwrap();
-        let expanded = macro_expansion::expand(parsed);
-        let checked = type_check::check(expanded).unwrap();
-        let rommed = romgen::generate_rom(checked);
-        let batched = batcher::batch(rommed);
+        let expected = fs::read_to_string(&file_name).unwrap();
+
+        // remove the batch comments from the expected output before compiling
+        let input = expected
+            .split('\n')
+            .filter(|line| !line.contains("//"))
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        let batched: AnalysisASMFile<GoldilocksField> = batch_str(&input);
 
         assert_eq!(
             format!("{batched}")
                 .replace("\n\n", "\n")
                 .replace('\t', "    "),
-            contents.replace("\n\n", "\n").replace('\t', "    "),
+            expected.replace("\n\n", "\n").replace('\t', "    "),
         );
     }
 

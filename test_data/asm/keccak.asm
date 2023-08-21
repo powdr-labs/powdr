@@ -7325,6 +7325,7 @@ x2 <=X= 65536;
 		  addr <== wrap(x2 + 12);
 		  mstore x1;
 		  call main;
+		  return;
 		runtime_dash_d4b06b2e661275e9___dot_LBB12_1::
 		  debug loc 211 52 5;
 		  jump runtime_dash_d4b06b2e661275e9___dot_LBB12_1;

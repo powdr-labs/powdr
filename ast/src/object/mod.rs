@@ -4,18 +4,18 @@ use crate::parsed::{asm::Params, PilStatement};
 
 mod display;
 
-#[derive(Default, Clone, PartialEq, Eq, PartialOrd, Ord, Debug)]
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Debug)]
 pub struct Location {
     limbs: Vec<String>,
 }
 
-impl From<String> for Location {
-    fn from(value: String) -> Self {
-        Self::default().join(value)
-    }
-}
-
 impl Location {
+    pub fn main() -> Self {
+        Self {
+            limbs: vec!["main".into()],
+        }
+    }
+
     pub fn join<S: Into<String>>(mut self, limb: S) -> Self {
         self.limbs.push(limb.into());
         self
@@ -68,9 +68,9 @@ pub struct Machine {
     /// the location of this instance
     pub location: Location,
     /// its latch
-    pub latch: Option<String>,
+    pub latch: String,
     /// its function id
-    pub function_id: Option<String>,
+    pub function_id: String,
 }
 
 #[derive(Clone)]

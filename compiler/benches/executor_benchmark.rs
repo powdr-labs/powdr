@@ -19,7 +19,7 @@ fn asm_to_analyzed(input_file: &Path) -> Analyzed<T> {
     let contents = fs::read_to_string(&input_file).unwrap();
     let parsed = parser::parse_asm::<T>(None, &contents).unwrap();
     let analyzed = analyze(parsed).unwrap();
-    let graph = asm_to_pil::compile(analyzed);
+    let graph = airgen::compile(analyzed);
     let pil = linker::link(graph).unwrap();
 
     pil_analyzer::analyze_string(&format!("{pil}"))

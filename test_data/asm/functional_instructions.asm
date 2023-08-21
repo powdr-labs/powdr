@@ -33,12 +33,11 @@ machine FunctionalInstructions {
     }
 
     instr assert_zero X { XIsZero = 1 }
-    instr loop { pc' = pc }
 
     function main {
         B <=X= ${ ("input", 0) };
         A <=X= wrap(B + 0xffffffec);
         assert_zero A;
-        loop;
+        return;
     }
 }

@@ -14,6 +14,8 @@ machine PoseidonBN254(LASTBLOCK, function_id) {
 
 
     constraints {
+        col witness function_id;
+
         // Using parameters from https://eprint.iacr.org/2019/458.pdf
         // See https://extgit.iaik.tugraz.at/krypto/hadeshash/-/blob/master/code/poseidonperm_x5_254_3.sage
         
@@ -148,6 +150,6 @@ machine Main {
         A <== poseidon(A + 1, A + 2, A + 3);
         assert_eq A, 0x188ada144ed909426b0396e967a82e26d739652cff288d13306279d91f29010c;
 
-        loop;
+        return;
     }
 }

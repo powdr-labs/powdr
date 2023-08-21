@@ -12,11 +12,7 @@ instr assert_A_is_zero {
 
 function main {
     assert_A_is_zero;
-    loop;
+    return;
 }
     // ANCHOR_END: component
-
-    instr loop {
-        pc' = pc
-    }
 }

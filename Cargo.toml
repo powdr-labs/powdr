@@ -18,6 +18,7 @@ members = [
     "linker",
     "asm_utils",
     "airgen",
+    "type_check",
 ]
 
 # Running "cargo build" on root directory will by default build just

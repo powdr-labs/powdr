@@ -44,8 +44,6 @@ machine Main {
         check::
         A <=X= A - ${ ("input", 0) };
         assert_zero A;
-
-        end::
-        jmp end;
+        return;
     }
 }

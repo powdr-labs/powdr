@@ -137,10 +137,18 @@ pub fn compile_asm_string<T: FieldElement>(
         err.output_to_stderr();
         panic!();
     });
+    log::debug!("Run analysis");
     let analysed = analyze(parsed).unwrap();
-    let compiled = asm_to_pil::compile(analysed);
-    let graph = airgen::compile(compiled);
+    log::debug!("Analysis done");
+    log::trace!("{analysed}");
+    log::debug!("Run airgen");
+    let graph = airgen::compile(analysed);
+    log::debug!("Airgen done");
+    log::trace!("{graph}");
+    log::debug!("Run linker");
     let pil = linker::link(graph)?;
+    log::debug!("Linker done");
+    log::trace!("{pil}");
 
     let pil_file_name = format!(
         "{}.pil",

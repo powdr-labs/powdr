@@ -51,11 +51,17 @@ pub struct FunctionId<T> {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
+pub struct Instruction<T> {
+    pub params: Params,
+    pub body: InstructionBody<T>,
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum MachineStatement<T> {
     Degree(usize, AbstractNumberType),
     Submachine(usize, String, String),
     RegisterDeclaration(usize, String, Option<RegisterFlag>),
-    InstructionDeclaration(usize, String, Params, InstructionBody<T>),
+    InstructionDeclaration(usize, String, Instruction<T>),
     InlinePil(usize, Vec<PilStatement<T>>),
     FunctionDeclaration(
         usize,
@@ -79,6 +85,7 @@ pub enum FunctionStatement<T> {
     Instruction(usize, String, Vec<Expression<T>>),
     Label(usize, String),
     DebugDirective(usize, DebugDirective),
+    Return(usize, Vec<Expression<T>>),
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -91,6 +98,7 @@ pub enum DebugDirective {
 pub enum RegisterFlag {
     IsPC,
     IsAssignment,
+    IsReadOnly,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]

@@ -27,6 +27,7 @@ mod processor;
 mod query_processor;
 mod range_constraints;
 mod rows;
+mod sequence_iterator;
 pub mod symbolic_evaluator;
 mod symbolic_witness_evaluator;
 mod util;
