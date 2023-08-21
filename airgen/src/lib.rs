@@ -4,20 +4,20 @@ use std::collections::BTreeMap;
 
 use ast::{
     asm_analysis::{
-        AnalysisASMFile, InstructionDefinitionStatement, Machine, PilBlock, SubmachineDeclaration,
+        AnalysisASMFile, Instruction, InstructionDefinitionStatement, Machine, PilBlock,
+        SubmachineDeclaration,
     },
     object::{Function, Instr, Link, LinkFrom, LinkTo, Location, Object, PILGraph},
     parsed::{asm::InstructionBody, PilStatement},
 };
 
 const MAIN_MACHINE: &str = "Main";
-const MAIN_LOCATION: &str = "main";
 const MAIN_FUNCTION: &str = "main";
 
 use number::FieldElement;
 
 pub fn compile<T: FieldElement>(input: AnalysisASMFile<T>) -> PILGraph<T> {
-    let main_location = Location::default().join(MAIN_LOCATION);
+    let main_location = Location::main();
 
     // we start from the main machine
     let main_ty = match input.machines.len() {
@@ -64,15 +64,15 @@ pub fn compile<T: FieldElement>(input: AnalysisASMFile<T>) -> PILGraph<T> {
     PILGraph {
         main: ast::object::Machine {
             location: main_location,
-            function_id: main_ty.function_id.clone(),
-            latch: main_ty.latch.clone(),
+            function_id: main_ty.function_id.clone().unwrap(),
+            latch: main_ty.latch.clone().unwrap(),
         },
         entry_points: main_ty
             .functions
             .iter()
             .map(|f| Function {
                 name: MAIN_FUNCTION.into(),
-                id: f.id.unwrap_or(T::from(0)),
+                id: f.id.unwrap(),
                 params: f.params.clone(),
             })
             .collect(),
@@ -118,6 +118,15 @@ impl<'a, T: FieldElement> ASMPILConverter<'a, T> {
 
         self.submachines = input.submachines;
 
+        // machines should only have constraints, functions and external instructions at this point
+        assert!(input
+            .instructions
+            .iter()
+            .all(|i| matches!(i.instruction.body, InstructionBody::External(..))));
+        assert!(input.latch.is_some());
+        assert!(input.function_id.is_some());
+        assert!(input.registers.is_empty());
+
         for block in input.constraints {
             self.handle_inline_pil(block);
         }
@@ -140,8 +149,7 @@ impl<'a, T: FieldElement> ASMPILConverter<'a, T> {
         InstructionDefinitionStatement {
             start: _,
             name,
-            params,
-            body,
+            instruction: Instruction { params, body },
         }: InstructionDefinitionStatement<T>,
     ) -> Option<Link<T>> {
         // TODO: this relies on `asm_to_pil` calling the instructions flags a certain way. It will go away once external instructions are turned into links earlier
@@ -177,8 +185,8 @@ impl<'a, T: FieldElement> ASMPILConverter<'a, T> {
                         .map(|d| LinkTo {
                             machine: ast::object::Machine {
                                 location: instance_location,
-                                function_id: instance_ty.function_id.clone(),
-                                latch: instance_ty.latch.clone(),
+                                latch: instance_ty.latch.clone().unwrap(),
+                                function_id: instance_ty.function_id.clone().unwrap(),
                             },
                             function: Function {
                                 name: d.name.clone(),

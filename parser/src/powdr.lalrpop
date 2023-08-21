@@ -152,6 +152,9 @@ Machine: Machine<T> = {
 }
 
 MachineArguments: MachineArguments = {
+    "(" "_" "," "_" ")" => MachineArguments::default(),
+    "(" <latch:Identifier> "," "_" ")" => MachineArguments { latch: Some(latch), function_id: None },
+    "(" "_" "," <function_id:Identifier> ")" => MachineArguments { latch: None, function_id: Some(function_id) },
     "(" <latch:Identifier> "," <function_id:Identifier> ")" => MachineArguments { latch: Some(latch), function_id: Some(function_id) },
     => MachineArguments::default(),
 }
@@ -181,14 +184,19 @@ pub RegisterDeclaration: MachineStatement<T> = {
 
 RegisterFlag: RegisterFlag = {
     "@pc" => RegisterFlag::IsPC,
-    "<=" => RegisterFlag::IsAssignment
+    "<=" => RegisterFlag::IsAssignment,
+    "@r" => RegisterFlag::IsReadOnly,
 }
 
 pub InstructionDeclaration: MachineStatement<T> = {
-    <@L> "instr" <Identifier> <Params> <InstructionBody> => MachineStatement::InstructionDeclaration(<>)
+    <@L> "instr" <Identifier> <Instruction> => MachineStatement::InstructionDeclaration(<>)
 }
 
-InstructionBody: InstructionBody<T> = {
+pub Instruction: Instruction<T> = {
+    <params:Params> <body:InstructionBody> => Instruction { params, body }
+}
+
+pub InstructionBody: InstructionBody<T> = {
     "{}" => InstructionBody::Local(vec![]),
     "{" <InstructionBodyElements> "}" => InstructionBody::Local(<>),
     "=" <Identifier> "." <Identifier> => InstructionBody::External(<>),
@@ -245,15 +253,15 @@ FunctionId: Option<FunctionId<T>> = {
 }
 
 pub FunctionStatement: FunctionStatement<T> = {
-    Assignment,
-    Instruction,
-    Label,
-    DebugDirective,
+    AssignmentStatement,
+    LabelStatement,
+    DebugDirectiveStatement,
+    ReturnStatement,
+    InstructionStatement,
 }
 
-Assignment: FunctionStatement<T> = {
+AssignmentStatement: FunctionStatement<T> = {
     <@L> <IdentifierList> <AssignOperator> <BoxedExpression> ";" => FunctionStatement::Assignment(<>)
-
 }
 
 IdentifierList: Vec<String> = {
@@ -265,18 +273,22 @@ AssignOperator: Option<String> = {
     "<=" <Identifier?> "="
 }
 
-Instruction: FunctionStatement<T> = {
+ReturnStatement: FunctionStatement<T> = {
+    <@L> "return" <ExpressionList> ";" => FunctionStatement::Return(<>)
+}
+
+InstructionStatement: FunctionStatement<T> = {
     <@L> <Identifier> <ExpressionList> ";" => FunctionStatement::Instruction(<>)
 }
 
-DebugDirective: FunctionStatement<T> = {
+DebugDirectiveStatement: FunctionStatement<T> = {
     <l:@L> "debug" "file" <n:Integer> <d:StringLiteral> <f:StringLiteral> ";"
         => FunctionStatement::DebugDirective(l, DebugDirective::File(n.try_into().unwrap(), d, f)),
     <l:@L> "debug" "loc" <f:Integer> <line:Integer> <col:Integer> ";"
         => FunctionStatement::DebugDirective(l, DebugDirective::Loc(f.try_into().unwrap(), line.try_into().unwrap(), col.try_into().unwrap())),
 }
 
-Label: FunctionStatement<T> = {
+LabelStatement: FunctionStatement<T> = {
     <@L> <Identifier> "::" => FunctionStatement::Label(<>)
 }
 

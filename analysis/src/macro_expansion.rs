@@ -4,7 +4,7 @@ use std::{
 };
 
 use ast::parsed::{
-    asm::{ASMFile, InstructionBody, InstructionBodyElement, MachineStatement},
+    asm::{ASMFile, Instruction, InstructionBody, InstructionBodyElement, MachineStatement},
     postvisit_expression_in_statement_mut, postvisit_expression_mut, Expression,
     FunctionDefinition, PilStatement, SelectedExpressions,
 };
@@ -42,26 +42,28 @@ where
             .into_iter()
             .map(|mut m| {
                 m.statements.iter_mut().for_each(|s| match s {
-                    MachineStatement::InstructionDeclaration(_, _, _, body) => match body {
-                        InstructionBody::Local(body) => {
-                            body.iter_mut().for_each(|e| match e {
-                                InstructionBodyElement::PolynomialIdentity(left, right) => {
-                                    self.process_expression(left);
-                                    self.process_expression(right);
-                                }
-                                InstructionBodyElement::PlookupIdentity(left, _, right) => {
-                                    self.process_selected_expressions(left);
-                                    self.process_selected_expressions(right);
-                                }
-                                InstructionBodyElement::FunctionCall(c) => {
-                                    c.arguments.iter_mut().for_each(|i| {
-                                        self.process_expression(i);
-                                    });
-                                }
-                            });
+                    MachineStatement::InstructionDeclaration(_, _, Instruction { body, .. }) => {
+                        match body {
+                            InstructionBody::Local(body) => {
+                                body.iter_mut().for_each(|e| match e {
+                                    InstructionBodyElement::PolynomialIdentity(left, right) => {
+                                        self.process_expression(left);
+                                        self.process_expression(right);
+                                    }
+                                    InstructionBodyElement::PlookupIdentity(left, _, right) => {
+                                        self.process_selected_expressions(left);
+                                        self.process_selected_expressions(right);
+                                    }
+                                    InstructionBodyElement::FunctionCall(c) => {
+                                        c.arguments.iter_mut().for_each(|i| {
+                                            self.process_expression(i);
+                                        });
+                                    }
+                                });
+                            }
+                            InstructionBody::External(..) => {}
                         }
-                        InstructionBody::External(..) => {}
-                    },
+                    }
                     MachineStatement::InlinePil(_, statements) => {
                         *statements = expander.expand_macros(std::mem::take(statements));
                     }

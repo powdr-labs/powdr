@@ -39,15 +39,23 @@ impl<T: Display> Display for InstructionBody<T> {
         match self {
             InstructionBody::Local(elements) => write!(
                 f,
-                "{}",
+                "{{ {} }}",
                 elements
                     .iter()
                     .map(|e| e.to_string())
                     .collect::<Vec<_>>()
                     .join(", ")
             ),
-            InstructionBody::External(instance, function) => write!(f, "{instance}.{function}",),
+            InstructionBody::External(instance, function) => {
+                write!(f, " = {instance}.{function};",)
+            }
         }
+    }
+}
+
+impl<T: Display> Display for Instruction<T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(f, "{}{}", self.params, self.body)
     }
 }
 
@@ -64,8 +72,8 @@ impl<T: Display> Display for MachineStatement<T> {
                     .map(|flag| format!("[{flag}]"))
                     .unwrap_or_default()
             ),
-            MachineStatement::InstructionDeclaration(_, name, params, body) => {
-                write!(f, "instr {}{} {{{}}}", name, params, body,)
+            MachineStatement::InstructionDeclaration(_, name, instruction) => {
+                write!(f, "instr {}{}", name, instruction)
             }
             MachineStatement::InlinePil(_, statements) => {
                 write!(
@@ -135,6 +143,22 @@ impl<T: Display> Display for FunctionStatement<T> {
             ),
             FunctionStatement::Label(_, name) => write!(f, "{name}::"),
             FunctionStatement::DebugDirective(_, dir) => write!(f, "{dir}"),
+            FunctionStatement::Return(_, values) => write!(
+                f,
+                "return{};",
+                if values.is_empty() {
+                    "".to_string()
+                } else {
+                    format!(
+                        " {}",
+                        values
+                            .iter()
+                            .map(|i| i.to_string())
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    )
+                }
+            ),
         }
     }
 }
@@ -157,6 +181,7 @@ impl Display for RegisterFlag {
         match self {
             RegisterFlag::IsPC => write!(f, "@pc"),
             RegisterFlag::IsAssignment => write!(f, "<="),
+            RegisterFlag::IsReadOnly => write!(f, "@r"),
         }
     }
 }

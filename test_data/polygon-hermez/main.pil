@@ -74,7 +74,7 @@ namespace Main(%N);
     pol commit bin;
     pol commit binOpcode;
     pol commit assert;
-    pol commit repeat, call, return;
+    pol commit repeat, call, _return;
 
     ///////  Intermediary commit polynomials
     pol commit isNeg;
@@ -327,7 +327,7 @@ namespace Main(%N);
 
     HASHPOS' = setHASHPOS * (op0 - HASHPOS) + HASHPOS + (hashK + hashP)*D0 + hashK1 + hashP1;
 
-    pol doJMP = JMPN*isNeg + JMP + JMPC*carry + JMPZ*op0IsZero + return + call;
+    pol doJMP = JMPN*isNeg + JMP + JMPC*carry + JMPZ*op0IsZero + _return + call;
     pol elseJMP = JMPN*(1-isNeg) + JMPC*(1-carry) + JMPZ*(1-op0IsZero);
 
     pol commit jmpAddr;
@@ -335,8 +335,8 @@ namespace Main(%N);
     pol commit useJmpAddr;
     pol commit useElseAddr;
 
-    // ROM/Zkasm constraint: useJmpAddr * return = 0
-    pol finalJmpAddr = useJmpAddr * (jmpAddr - addr ) + return * (RR - addr) + addr;
+    // ROM/Zkasm constraint: useJmpAddr * _return = 0
+    pol finalJmpAddr = useJmpAddr * (jmpAddr - addr ) + _return * (RR - addr) + addr;
     pol nextNoJmpZkPC = zkPC + 1 - ((1-RCXIsZero)*repeat);
     pol finalElseAddr = useElseAddr * (elseAddr - nextNoJmpZkPC) + nextNoJmpZkPC;
 
@@ -462,7 +462,7 @@ namespace Main(%N);
 
     /*
        code generated with:
-       node tools/pil_pol_table/bits_compose.js "arithEq0,arithEq1,arithEq2,assert,bin,hashK,hashKDigest,hashKLen,hashP,hashPDigest,hashPLen,ind,indRR,isMem,isStack,JMP,JMPC,JMPN,memAlignRD,memAlignWR,memAlignWR8,mOp,mWR,repeat,setA,setB,setC,setCTX,setD,setE,setGAS,setHASHPOS,setMAXMEM,setPC,setRCX,setRR,setSP,setSR,sRD,sWR,useCTX,useJmpAddr,JMPZ,call,return,hashK1,hashP1,useElseAddr" -b
+       node tools/pil_pol_table/bits_compose.js "arithEq0,arithEq1,arithEq2,assert,bin,hashK,hashKDigest,hashKLen,hashP,hashPDigest,hashPLen,ind,indRR,isMem,isStack,JMP,JMPC,JMPN,memAlignRD,memAlignWR,memAlignWR8,mOp,mWR,repeat,setA,setB,setC,setCTX,setD,setE,setGAS,setHASHPOS,setMAXMEM,setPC,setRCX,setRR,setSP,setSR,sRD,sWR,useCTX,useJmpAddr,JMPZ,call,_return,hashK1,hashP1,useElseAddr" -b
     */
 
     pol operations =
@@ -477,7 +477,7 @@ namespace Main(%N);
         + 2**32 * setMAXMEM     + 2**33 * setPC         + 2**34 * setRCX        + 2**35 * setRR
         + 2**36 * setSP         + 2**37 * setSR         + 2**38 * sRD           + 2**39 * sWR
         + 2**40 * useCTX        + 2**41 * useJmpAddr    + 2**42 * JMPZ          + 2**43 * call
-        + 2**44 * return        + 2**45 * hashK1        + 2**46 * hashP1        + 2**47 * useElseAddr;
+        + 2**44 * _return        + 2**45 * hashK1        + 2**46 * hashP1        + 2**47 * useElseAddr;
 
     (1 - arithEq0) * arithEq0 = 0;
     (1 - arithEq1) * arithEq1 = 0;
@@ -523,7 +523,7 @@ namespace Main(%N);
     (1 - useJmpAddr) * useJmpAddr = 0;
     (1 - JMPZ) * JMPZ = 0;
     (1 - call) * call = 0;
-    (1 - return) * return = 0;
+    (1 - _return) * _return = 0;
     (1 - hashK1) * hashK1 = 0;
     (1 - hashP1) * hashP1 = 0;
     (1 - useElseAddr) * useElseAddr = 0;

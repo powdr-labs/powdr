@@ -1,6 +1,7 @@
-use ast::{
-    asm_analysis::{AnalysisASMFile, AssignmentStatement, Expression, FunctionStatement, Machine},
-    parsed::asm::RegisterFlag,
+//! Infer assignment registers in asm statements
+
+use ast::asm_analysis::{
+    AnalysisASMFile, AssignmentStatement, Expression, FunctionStatement, Machine,
 };
 use number::FieldElement;
 
@@ -34,13 +35,13 @@ fn infer_machine<T: FieldElement>(mut machine: Machine<T>) -> Result<Machine<T>,
             if let FunctionStatement::Assignment(a) = s {
                 let expr_reg = match &*a.rhs {
                     Expression::FunctionCall(c) => {
-                        let instr = machine
+                        let def = machine
                             .instructions
                             .iter()
                             .find(|i| i.name == c.id)
                             .unwrap();
                         let output = {
-                            let outputs = instr.params.outputs.as_ref().unwrap();
+                            let outputs = def.instruction.params.outputs.as_ref().unwrap();
                             assert!(outputs.params.len() == 1);
                             &outputs.params[0]
                         };
@@ -65,7 +66,7 @@ fn infer_machine<T: FieldElement>(mut machine: Machine<T>) -> Result<Machine<T>,
                                 machine
                                     .registers
                                     .iter()
-                                    .find(|r| r.flag == Some(RegisterFlag::IsAssignment))
+                                    .find(|r| r.ty.is_assignment())
                                     .unwrap()
                                     .name
                                     .clone(),
@@ -91,7 +92,7 @@ mod tests {
     use ast::asm_analysis::AssignmentStatement;
     use number::Bn254Field;
 
-    use crate::test_util::infer_str;
+    use crate::vm::test_utils::infer_str;
 
     use super::*;
 
@@ -115,12 +116,17 @@ mod tests {
         let file = infer_str::<Bn254Field>(file).unwrap();
 
         if let FunctionStatement::Assignment(AssignmentStatement { using_reg, .. }) =
-            &file.machines["Machine"].functions[0].body.statements[0]
+            file.machines["Machine"].functions[0]
+                .body
+                .statements
+                .iter()
+                .next()
+                .unwrap()
         {
             assert_eq!(*using_reg, Some("X".to_string()));
         } else {
             panic!()
-        }
+        };
     }
 
     #[test]
@@ -143,12 +149,17 @@ mod tests {
         let file = infer_str::<Bn254Field>(file).unwrap();
 
         if let FunctionStatement::Assignment(AssignmentStatement { using_reg, .. }) =
-            &file.machines["Machine"].functions[0].body.statements[0]
+            &file.machines["Machine"].functions[0]
+                .body
+                .statements
+                .iter()
+                .next()
+                .unwrap()
         {
             assert_eq!(*using_reg, Some("X".to_string()));
         } else {
             panic!()
-        }
+        };
     }
 
     #[test]

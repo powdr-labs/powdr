@@ -59,13 +59,7 @@ machine Machine {
         // ANCHOR: instruction_statement
         assert_zero A - ((2**2)**2)**2;
         // ANCHOR_END: instruction_statement
-        // loop forever
-        loop;
-    }
-
-    // an instruction to loop forever
-    instr loop {
-        pc' = pc
+        return;
     }
 
     // some superpowers on `X` to allow us to check if it's 0

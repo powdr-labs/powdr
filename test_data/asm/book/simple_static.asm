@@ -6,6 +6,7 @@ machine SimpleStatic(latch, function_id) {
     }
 
     constraints {
+        col fixed function_id = [0]*;
         col fixed latch = [0, 0, 0, 1]*;
         col witness x;
         col witness y;

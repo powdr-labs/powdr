@@ -1,7 +1,8 @@
 use std::iter::once;
 
+use analysis::utils::parse_pil_statement;
 use ast::{
-    object::PILGraph,
+    object::{Location, PILGraph},
     parsed::{
         build::{direct_reference, namespaced_reference},
         Expression, PILFile, PilStatement, SelectedExpressions,
@@ -10,14 +11,15 @@ use ast::{
 use number::FieldElement;
 
 const DEFAULT_DEGREE: u64 = 1024;
+const MAIN_FUNCTION_NAME: &str = "main";
 
 /// a monolithic linker which outputs a single AIR
 /// It sets the degree of submachines to the degree of the main machine, and errors out if a submachine has an explicit degree which doesn't match the main one
 pub fn link<T: FieldElement>(graph: PILGraph<T>) -> Result<PILFile<T>, Vec<String>> {
-    let main_location = graph.main;
+    let main_machine = graph.main;
     let main_degree = graph
         .objects
-        .get(&main_location.location)
+        .get(&main_machine.location)
         .unwrap()
         .degree
         .unwrap_or(DEFAULT_DEGREE);
@@ -85,20 +87,11 @@ pub fn link<T: FieldElement>(graph: PILGraph<T>) -> Result<PILFile<T>, Vec<Strin
                 let to_namespace = to.machine.location.clone().to_string();
 
                 let rhs = SelectedExpressions {
-                    selector: Some(
-                        to.machine
-                            .latch
-                            .map(|latch| namespaced_reference(to_namespace.clone(), latch))
-                            .unwrap_or(Expression::Number(T::from(0))),
-                    ),
-                    expressions: once(
-                        to.machine
-                            .function_id
-                            .map(|function_id| {
-                                namespaced_reference(to_namespace.clone(), function_id)
-                            })
-                            .unwrap_or(Expression::Number(T::from(0))),
-                    )
+                    selector: Some(namespaced_reference(to_namespace.clone(), to.machine.latch)),
+                    expressions: once(namespaced_reference(
+                        to_namespace.clone(),
+                        to.machine.function_id,
+                    ))
                     .chain(
                         params
                             .inputs
@@ -113,6 +106,26 @@ pub fn link<T: FieldElement>(graph: PILGraph<T>) -> Result<PILFile<T>, Vec<Strin
                 let lookup = PilStatement::PlookupIdentity(0, lhs, rhs);
                 pil.push(lookup);
             }
+
+            if location == Location::main() {
+                if let Some(main_function) = graph
+                    .entry_points
+                    .iter()
+                    .find(|f| f.name == MAIN_FUNCTION_NAME)
+                {
+                    let main_function_id = main_function.id;
+                    let function_id = main_machine.function_id.clone();
+                    // call the main function by initialising `function_id` to that of the main function
+                    let linker_first_step = "_linker_first_step";
+                    pil.extend([
+                        parse_pil_statement(&format!("col fixed {linker_first_step} = [1] + [0]*")),
+                        parse_pil_statement(&format!(
+                            "{linker_first_step} * ({function_id} - {main_function_id}) = 0"
+                        )),
+                    ]);
+                }
+            }
+
             pil
         })
         .collect();
@@ -129,7 +142,7 @@ mod test {
     use std::fs;
 
     use ast::{
-        object::{Location, Machine, Object, PILGraph},
+        object::{Location, Object, PILGraph},
         parsed::{Expression, PILFile},
     };
     use number::{Bn254Field, FieldElement, GoldilocksField};
@@ -142,33 +155,28 @@ mod test {
     use crate::{link, DEFAULT_DEGREE};
 
     fn parse_analyse_and_compile<T: FieldElement>(input: &str) -> PILGraph<T> {
-        airgen::compile(asm_to_pil::compile(
-            analyze(parse_asm(None, input).unwrap()).unwrap(),
-        ))
+        airgen::compile(analyze(parse_asm(None, input).unwrap()).unwrap())
     }
 
     #[test]
     fn degree() {
         // a graph with two objects of degree `main_degree` and `foo_degree`
         let test_graph = |main_degree, foo_degree| PILGraph {
-            main: Machine {
-                location: Location::from("main".to_string()),
-                latch: None,
-                function_id: None,
+            main: ast::object::Machine {
+                location: Location::main(),
+                function_id: "function_id".into(),
+                latch: "latch".into(),
             },
+            entry_points: vec![],
             objects: [
+                (Location::main(), Object::default().with_degree(main_degree)),
                 (
-                    Location::from("main".to_string()),
-                    Object::default().with_degree(main_degree),
-                ),
-                (
-                    Location::from("foo".to_string()),
+                    Location::main().join("foo"),
                     Object::default().with_degree(foo_degree),
                 ),
             ]
             .into_iter()
             .collect(),
-            entry_points: vec![],
         };
         // a test over a pil file `f` checking if all namespaces have degree `n`
         let all_namespaces_have_degree = |f: PILFile<Bn254Field>, n| {
@@ -193,9 +201,154 @@ mod test {
         assert_eq!(
             link(default_no_match),
             Err(vec![
-                "Machine foo should have degree 1024, found 8".to_string()
+                "Machine main_foo should have degree 1024, found 8".to_string()
             ])
         );
+    }
+
+    #[test]
+    pub fn compile_empty_vm() {
+        let expectation = r#"
+        namespace main(8);
+pol commit _function_id;
+pol commit _sigma;
+pol constant _romgen_first_step = [1] + [0]*;
+_sigma' = ((1 - _romgen_first_step') * (_sigma + instr_return));
+(_sigma * (_function_id - 2)) = 0;
+pol commit pc;
+pol commit instr__jump_to_operation;
+pol commit instr__reset;
+pol commit instr__loop;
+pol commit instr_return;
+pol constant first_step = [1] + [0]*;
+pc' = ((1 - first_step') * ((((instr__jump_to_operation * _function_id) + (instr__loop * pc)) + (instr_return * 0)) + ((1 - ((instr__jump_to_operation + instr__loop) + instr_return)) * (pc + 1))));
+pol constant p_line = [0, 1, 2] + [2]*;
+pol constant p_instr__jump_to_operation = [0, 1, 0] + [0]*;
+pol constant p_instr__loop = [0, 0, 1] + [1]*;
+pol constant p_instr__reset = [1, 0, 0] + [0]*;
+pol constant p_instr_return = [0, 0, 0] + [0]*;
+{ pc, instr__jump_to_operation, instr__reset, instr__loop, instr_return } in { p_line, p_instr__jump_to_operation, p_instr__reset, p_instr__loop, p_instr_return };
+pol constant _block_enforcer_last_step = [0]* + [1];
+pol commit _function_id_no_change;
+_function_id_no_change = ((1 - _block_enforcer_last_step) * (1 - instr_return));
+(_function_id_no_change * (_function_id' - _function_id)) = 0;
+        "#;
+
+        let file_name = "../test_data/asm/empty_vm.asm";
+        let contents = fs::read_to_string(file_name).unwrap();
+        let graph = parse_analyse_and_compile::<GoldilocksField>(&contents);
+        let pil = link(graph).unwrap();
+        assert_eq!(format!("{pil}").trim(), expectation.trim());
+    }
+
+    #[test]
+    pub fn compile_different_signatures() {
+        let expectation = r#"
+        namespace main(16);
+pol commit _function_id;
+pol commit _sigma;
+pol constant _romgen_first_step = [1] + [0]*;
+_sigma' = ((1 - _romgen_first_step') * (_sigma + instr_return));
+(_sigma * (_function_id - 4)) = 0;
+pol commit pc;
+pol commit X;
+pol commit Y;
+pol commit reg_write_X_A;
+pol commit reg_write_Y_A;
+pol commit A;
+pol commit instr_identity;
+pol commit instr_one;
+pol commit instr_nothing;
+pol commit instr__jump_to_operation;
+pol commit instr__reset;
+pol commit instr__loop;
+pol commit instr_return;
+pol commit X_const;
+pol commit X_read_free;
+pol commit read_X_A;
+pol commit read_X_pc;
+X = ((((read_X_A * A) + (read_X_pc * pc)) + X_const) + (X_read_free * X_free_value));
+pol commit Y_const;
+pol commit Y_read_free;
+pol commit read_Y_A;
+pol commit read_Y_pc;
+Y = ((((read_Y_A * A) + (read_Y_pc * pc)) + Y_const) + (Y_read_free * Y_free_value));
+pol constant first_step = [1] + [0]*;
+A' = ((((reg_write_X_A * X) + (reg_write_Y_A * Y)) + (instr__reset * 0)) + ((1 - ((reg_write_X_A + reg_write_Y_A) + instr__reset)) * A));
+pc' = ((1 - first_step') * ((((instr__jump_to_operation * _function_id) + (instr__loop * pc)) + (instr_return * 0)) + ((1 - ((instr__jump_to_operation + instr__loop) + instr_return)) * (pc + 1))));
+pol constant p_line = [0, 1, 2, 3, 4] + [4]*;
+pol commit X_free_value(i) query match pc {  };
+pol commit Y_free_value(i) query match pc {  };
+pol constant p_X_const = [0, 0, 0, 0, 0] + [0]*;
+pol constant p_X_read_free = [0, 0, 0, 0, 0] + [0]*;
+pol constant p_Y_const = [0, 0, 0, 0, 0] + [0]*;
+pol constant p_Y_read_free = [0, 0, 1, 0, 0] + [0]*;
+pol constant p_instr__jump_to_operation = [0, 1, 0, 0, 0] + [0]*;
+pol constant p_instr__loop = [0, 0, 0, 0, 1] + [1]*;
+pol constant p_instr__reset = [1, 0, 0, 0, 0] + [0]*;
+pol constant p_instr_identity = [0, 0, 0, 0, 0] + [0]*;
+pol constant p_instr_nothing = [0, 0, 0, 0, 0] + [0]*;
+pol constant p_instr_one = [0, 0, 1, 0, 0] + [0]*;
+pol constant p_instr_return = [0, 0, 0, 1, 0] + [0]*;
+pol constant p_read_X_A = [0, 0, 0, 0, 0] + [0]*;
+pol constant p_read_X_pc = [0, 0, 0, 0, 0] + [0]*;
+pol constant p_read_Y_A = [0, 0, 0, 0, 0] + [0]*;
+pol constant p_read_Y_pc = [0, 0, 0, 0, 0] + [0]*;
+pol constant p_reg_write_X_A = [0, 0, 0, 0, 0] + [0]*;
+pol constant p_reg_write_Y_A = [0, 0, 1, 0, 0] + [0]*;
+{ pc, reg_write_X_A, reg_write_Y_A, instr_identity, instr_one, instr_nothing, instr__jump_to_operation, instr__reset, instr__loop, instr_return, X_const, X_read_free, read_X_A, read_X_pc, Y_const, Y_read_free, read_Y_A, read_Y_pc } in { p_line, p_reg_write_X_A, p_reg_write_Y_A, p_instr_identity, p_instr_one, p_instr_nothing, p_instr__jump_to_operation, p_instr__reset, p_instr__loop, p_instr_return, p_X_const, p_X_read_free, p_read_X_A, p_read_X_pc, p_Y_const, p_Y_read_free, p_read_Y_A, p_read_Y_pc };
+pol constant _block_enforcer_last_step = [0]* + [1];
+pol commit _function_id_no_change;
+_function_id_no_change = ((1 - _block_enforcer_last_step) * (1 - instr_return));
+(_function_id_no_change * (_function_id' - _function_id)) = 0;
+instr_identity { 2, X, Y } in main_sub.instr_return { main_sub._function_id, main_sub._input_0, main_sub._output_0 };
+instr_one { 3, Y } in main_sub.instr_return { main_sub._function_id, main_sub._output_0 };
+instr_nothing { 4 } in main_sub.instr_return { main_sub._function_id };
+pol constant _linker_first_step = [1] + [0]*;
+(_linker_first_step * (_function_id - 2)) = 0;
+namespace main_sub(16);
+pol commit _function_id;
+pol commit _sigma;
+pol constant _romgen_first_step = [1] + [0]*;
+_sigma' = ((1 - _romgen_first_step') * (_sigma + instr_return));
+(_sigma * (_function_id - 5)) = 0;
+pol commit pc;
+pol commit _input_0;
+pol commit _output_0;
+pol commit instr__jump_to_operation;
+pol commit instr__reset;
+pol commit instr__loop;
+pol commit instr_return;
+pol commit _output_0_const;
+pol commit _output_0_read_free;
+pol commit read__output_0_pc;
+pol commit read__output_0__input_0;
+_output_0 = ((((read__output_0_pc * pc) + (read__output_0__input_0 * _input_0)) + _output_0_const) + (_output_0_read_free * _output_0_free_value));
+pol constant first_step = [1] + [0]*;
+((1 - instr__reset) * _input_0') = ((1 - instr__reset) * _input_0);
+pc' = ((1 - first_step') * ((((instr__jump_to_operation * _function_id) + (instr__loop * pc)) + (instr_return * 0)) + ((1 - ((instr__jump_to_operation + instr__loop) + instr_return)) * (pc + 1))));
+pol constant p_line = [0, 1, 2, 3, 4, 5] + [5]*;
+pol commit _output_0_free_value(i) query match pc {  };
+pol constant p__output_0_const = [0, 0, 0, 1, 0, 0] + [0]*;
+pol constant p__output_0_read_free = [0, 0, 0, 0, 0, 0] + [0]*;
+pol constant p_instr__jump_to_operation = [0, 1, 0, 0, 0, 0] + [0]*;
+pol constant p_instr__loop = [0, 0, 0, 0, 0, 1] + [1]*;
+pol constant p_instr__reset = [1, 0, 0, 0, 0, 0] + [0]*;
+pol constant p_instr_return = [0, 0, 1, 1, 1, 0] + [0]*;
+pol constant p_read__output_0__input_0 = [0, 0, 1, 0, 0, 0] + [0]*;
+pol constant p_read__output_0_pc = [0, 0, 0, 0, 0, 0] + [0]*;
+{ pc, instr__jump_to_operation, instr__reset, instr__loop, instr_return, _output_0_const, _output_0_read_free, read__output_0_pc, read__output_0__input_0 } in { p_line, p_instr__jump_to_operation, p_instr__reset, p_instr__loop, p_instr_return, p__output_0_const, p__output_0_read_free, p_read__output_0_pc, p_read__output_0__input_0 };
+pol constant _block_enforcer_last_step = [0]* + [1];
+pol commit _function_id_no_change;
+_function_id_no_change = ((1 - _block_enforcer_last_step) * (1 - instr_return));
+(_function_id_no_change * (_function_id' - _function_id)) = 0;        
+        "#;
+
+        let file_name = "../test_data/asm/different_signatures.asm";
+        let contents = fs::read_to_string(file_name).unwrap();
+        let graph = parse_analyse_and_compile::<GoldilocksField>(&contents);
+        let pil = link(graph).unwrap();
+        assert_eq!(format!("{pil}").trim(), expectation.trim());
     }
 
     #[test]
@@ -207,13 +360,15 @@ pol commit XIsZero;
 XIsZero = (1 - (X * XInv));
 (XIsZero * X) = 0;
 (XIsZero * (1 - XIsZero)) = 0;
-pol constant first_step = [1] + [0]*;
+pol commit _function_id;
+pol commit _sigma;
+pol constant _romgen_first_step = [1] + [0]*;
+_sigma' = ((1 - _romgen_first_step') * (_sigma + instr_return));
+(_sigma * (_function_id - 10)) = 0;
 pol commit pc;
 pol commit X;
-(first_step * A) = 0;
 pol commit reg_write_X_A;
 pol commit A;
-(first_step * CNT) = 0;
 pol commit reg_write_X_CNT;
 pol commit CNT;
 pol commit instr_jmpz;
@@ -223,31 +378,46 @@ pol commit instr_jmp_param_l;
 pol commit instr_dec_CNT;
 pol commit instr_assert_zero;
 (instr_assert_zero * (XIsZero - 1)) = 0;
+pol commit instr__jump_to_operation;
+pol commit instr__reset;
+pol commit instr__loop;
+pol commit instr_return;
 pol commit X_const;
 pol commit X_read_free;
 pol commit read_X_A;
 pol commit read_X_CNT;
 pol commit read_X_pc;
 X = (((((read_X_A * A) + (read_X_CNT * CNT)) + (read_X_pc * pc)) + X_const) + (X_read_free * X_free_value));
-A' = (((first_step' * 0) + (reg_write_X_A * X)) + ((1 - (first_step' + reg_write_X_A)) * A));
-CNT' = ((((first_step' * 0) + (reg_write_X_CNT * X)) + (instr_dec_CNT * (CNT - 1))) + ((1 - ((first_step' + reg_write_X_CNT) + instr_dec_CNT)) * CNT));
-pc' = ((1 - first_step') * (((instr_jmpz * ((XIsZero * instr_jmpz_param_l) + ((1 - XIsZero) * (pc + 1)))) + (instr_jmp * instr_jmp_param_l)) + ((1 - (instr_jmpz + instr_jmp)) * (pc + 1))));
-pol constant p_line = [0, 1, 2, 3, 4, 5, 6, 7] + [7]*;
-pol commit X_free_value(i) query match pc { 0 => ("input", 1), 2 => ("input", (CNT + 1)), 5 => ("input", 0), };
-pol constant p_X_const = [0, 0, 0, 0, 0, 0, 0, 0] + [0]*;
-pol constant p_X_read_free = [1, 0, 1, 0, 0, -1, 0, 0] + [0]*;
-pol constant p_instr_assert_zero = [0, 0, 0, 0, 0, 0, 1, 0] + [0]*;
-pol constant p_instr_dec_CNT = [0, 0, 0, 1, 0, 0, 0, 0] + [0]*;
-pol constant p_instr_jmp = [0, 0, 0, 0, 1, 0, 0, 1] + [1]*;
-pol constant p_instr_jmp_param_l = [0, 0, 0, 0, 1, 0, 0, 7] + [7]*;
-pol constant p_instr_jmpz = [0, 1, 0, 0, 0, 0, 0, 0] + [0]*;
-pol constant p_instr_jmpz_param_l = [0, 5, 0, 0, 0, 0, 0, 0] + [0]*;
-pol constant p_read_X_A = [0, 0, 1, 0, 0, 1, 1, 0] + [0]*;
-pol constant p_read_X_CNT = [0, 1, 0, 0, 0, 0, 0, 0] + [0]*;
-pol constant p_read_X_pc = [0, 0, 0, 0, 0, 0, 0, 0] + [0]*;
-pol constant p_reg_write_X_A = [0, 0, 1, 0, 0, 1, 0, 0] + [0]*;
-pol constant p_reg_write_X_CNT = [1, 0, 0, 0, 0, 0, 0, 0] + [0]*;
-{ pc, reg_write_X_A, reg_write_X_CNT, instr_jmpz, instr_jmpz_param_l, instr_jmp, instr_jmp_param_l, instr_dec_CNT, instr_assert_zero, X_const, X_read_free, read_X_A, read_X_CNT, read_X_pc } in { p_line, p_reg_write_X_A, p_reg_write_X_CNT, p_instr_jmpz, p_instr_jmpz_param_l, p_instr_jmp, p_instr_jmp_param_l, p_instr_dec_CNT, p_instr_assert_zero, p_X_const, p_X_read_free, p_read_X_A, p_read_X_CNT, p_read_X_pc };
+pol constant first_step = [1] + [0]*;
+A' = (((reg_write_X_A * X) + (instr__reset * 0)) + ((1 - (reg_write_X_A + instr__reset)) * A));
+CNT' = ((((reg_write_X_CNT * X) + (instr_dec_CNT * (CNT - 1))) + (instr__reset * 0)) + ((1 - ((reg_write_X_CNT + instr_dec_CNT) + instr__reset)) * CNT));
+pc' = ((1 - first_step') * ((((((instr_jmpz * ((XIsZero * instr_jmpz_param_l) + ((1 - XIsZero) * (pc + 1)))) + (instr_jmp * instr_jmp_param_l)) + (instr__jump_to_operation * _function_id)) + (instr__loop * pc)) + (instr_return * 0)) + ((1 - ((((instr_jmpz + instr_jmp) + instr__jump_to_operation) + instr__loop) + instr_return)) * (pc + 1))));
+pol constant p_line = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10] + [10]*;
+pol commit X_free_value(i) query match pc { 2 => ("input", 1), 4 => ("input", (CNT + 1)), 7 => ("input", 0), };
+pol constant p_X_const = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0] + [0]*;
+pol constant p_X_read_free = [0, 0, 1, 0, 1, 0, 0, -1, 0, 0, 0] + [0]*;
+pol constant p_instr__jump_to_operation = [0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0] + [0]*;
+pol constant p_instr__loop = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1] + [1]*;
+pol constant p_instr__reset = [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0] + [0]*;
+pol constant p_instr_assert_zero = [0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0] + [0]*;
+pol constant p_instr_dec_CNT = [0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0] + [0]*;
+pol constant p_instr_jmp = [0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0] + [0]*;
+pol constant p_instr_jmp_param_l = [0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0] + [0]*;
+pol constant p_instr_jmpz = [0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0] + [0]*;
+pol constant p_instr_jmpz_param_l = [0, 0, 0, 7, 0, 0, 0, 0, 0, 0, 0] + [0]*;
+pol constant p_instr_return = [0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0] + [0]*;
+pol constant p_read_X_A = [0, 0, 0, 0, 1, 0, 0, 1, 1, 0, 0] + [0]*;
+pol constant p_read_X_CNT = [0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0] + [0]*;
+pol constant p_read_X_pc = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0] + [0]*;
+pol constant p_reg_write_X_A = [0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0] + [0]*;
+pol constant p_reg_write_X_CNT = [0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0] + [0]*;
+{ pc, reg_write_X_A, reg_write_X_CNT, instr_jmpz, instr_jmpz_param_l, instr_jmp, instr_jmp_param_l, instr_dec_CNT, instr_assert_zero, instr__jump_to_operation, instr__reset, instr__loop, instr_return, X_const, X_read_free, read_X_A, read_X_CNT, read_X_pc } in { p_line, p_reg_write_X_A, p_reg_write_X_CNT, p_instr_jmpz, p_instr_jmpz_param_l, p_instr_jmp, p_instr_jmp_param_l, p_instr_dec_CNT, p_instr_assert_zero, p_instr__jump_to_operation, p_instr__reset, p_instr__loop, p_instr_return, p_X_const, p_X_read_free, p_read_X_A, p_read_X_CNT, p_read_X_pc };
+pol constant _block_enforcer_last_step = [0]* + [1];
+pol commit _function_id_no_change;
+_function_id_no_change = ((1 - _block_enforcer_last_step) * (1 - instr_return));
+(_function_id_no_change * (_function_id' - _function_id)) = 0;
+pol constant _linker_first_step = [1] + [0]*;
+(_linker_first_step * (_function_id - 2)) = 0;
 
 "#;
         let file_name = "../test_data/asm/simple_sum.asm";
@@ -276,24 +446,42 @@ machine Machine {
 "#;
         let expectation = r#"
 namespace main(1024);
-pol constant first_step = [1] + [0]*;
+pol commit _function_id;
+pol commit _sigma;
+pol constant _romgen_first_step = [1] + [0]*;
+_sigma' = ((1 - _romgen_first_step') * (_sigma + instr_return));
+(_sigma * (_function_id - 4)) = 0;
 pol commit pc;
-(first_step * fp) = 0;
 pol commit fp;
 pol commit instr_inc_fp;
 pol commit instr_inc_fp_param_amount;
 pol commit instr_adjust_fp;
 pol commit instr_adjust_fp_param_amount;
 pol commit instr_adjust_fp_param_t;
-fp' = ((((first_step' * 0) + (instr_inc_fp * (fp + instr_inc_fp_param_amount))) + (instr_adjust_fp * (fp + instr_adjust_fp_param_amount))) + ((1 - ((first_step' + instr_inc_fp) + instr_adjust_fp)) * fp));
-pc' = ((1 - first_step') * ((instr_adjust_fp * label) + ((1 - instr_adjust_fp) * (pc + 1))));
-pol constant p_line = [0, 1] + [1]*;
-pol constant p_instr_adjust_fp = [0, 1] + [1]*;
-pol constant p_instr_adjust_fp_param_amount = [0, -2] + [-2]*;
-pol constant p_instr_adjust_fp_param_t = [0, 1] + [1]*;
-pol constant p_instr_inc_fp = [1, 0] + [0]*;
-pol constant p_instr_inc_fp_param_amount = [7, 0] + [0]*;
-{ pc, instr_inc_fp, instr_inc_fp_param_amount, instr_adjust_fp, instr_adjust_fp_param_amount, instr_adjust_fp_param_t } in { p_line, p_instr_inc_fp, p_instr_inc_fp_param_amount, p_instr_adjust_fp, p_instr_adjust_fp_param_amount, p_instr_adjust_fp_param_t };
+pol commit instr__jump_to_operation;
+pol commit instr__reset;
+pol commit instr__loop;
+pol commit instr_return;
+pol constant first_step = [1] + [0]*;
+fp' = ((((instr_inc_fp * (fp + instr_inc_fp_param_amount)) + (instr_adjust_fp * (fp + instr_adjust_fp_param_amount))) + (instr__reset * 0)) + ((1 - ((instr_inc_fp + instr_adjust_fp) + instr__reset)) * fp));
+pc' = ((1 - first_step') * (((((instr_adjust_fp * label) + (instr__jump_to_operation * _function_id)) + (instr__loop * pc)) + (instr_return * 0)) + ((1 - (((instr_adjust_fp + instr__jump_to_operation) + instr__loop) + instr_return)) * (pc + 1))));
+pol constant p_line = [0, 1, 2, 3, 4] + [4]*;
+pol constant p_instr__jump_to_operation = [0, 1, 0, 0, 0] + [0]*;
+pol constant p_instr__loop = [0, 0, 0, 0, 1] + [1]*;
+pol constant p_instr__reset = [1, 0, 0, 0, 0] + [0]*;
+pol constant p_instr_adjust_fp = [0, 0, 0, 1, 0] + [0]*;
+pol constant p_instr_adjust_fp_param_amount = [0, 0, 0, -2, 0] + [0]*;
+pol constant p_instr_adjust_fp_param_t = [0, 0, 0, 3, 0] + [0]*;
+pol constant p_instr_inc_fp = [0, 0, 1, 0, 0] + [0]*;
+pol constant p_instr_inc_fp_param_amount = [0, 0, 7, 0, 0] + [0]*;
+pol constant p_instr_return = [0, 0, 0, 0, 0] + [0]*;
+{ pc, instr_inc_fp, instr_inc_fp_param_amount, instr_adjust_fp, instr_adjust_fp_param_amount, instr_adjust_fp_param_t, instr__jump_to_operation, instr__reset, instr__loop, instr_return } in { p_line, p_instr_inc_fp, p_instr_inc_fp_param_amount, p_instr_adjust_fp, p_instr_adjust_fp_param_amount, p_instr_adjust_fp_param_t, p_instr__jump_to_operation, p_instr__reset, p_instr__loop, p_instr_return };
+pol constant _block_enforcer_last_step = [0]* + [1];
+pol commit _function_id_no_change;
+_function_id_no_change = ((1 - _block_enforcer_last_step) * (1 - instr_return));
+(_function_id_no_change * (_function_id' - _function_id)) = 0;
+pol constant _linker_first_step = [1] + [0]*;
+(_linker_first_step * (_function_id - 2)) = 0;
 "#;
         let graph = parse_analyse_and_compile::<GoldilocksField>(source);
         let pil = link(graph).unwrap();
