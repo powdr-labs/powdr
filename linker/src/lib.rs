@@ -169,10 +169,7 @@ mod test {
             },
             entry_points: vec![],
             objects: [
-                (
-                    Location::main(),
-                    Object::default().with_degree(main_degree),
-                ),
+                (Location::main(), Object::default().with_degree(main_degree)),
                 (
                     Location::main().join("foo"),
                     Object::default().with_degree(foo_degree),

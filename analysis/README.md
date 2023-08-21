@@ -30,13 +30,15 @@ machine Main {
     reg pc[@pc];
     reg X[<=];
     reg Y[<=];
+    reg A;
 
     instr identity X -> Y = sub.identity
     instr one -> Y = sub.one
     instr nothing = sub.nothing
 
     function main {
-        nothing;
+        start::
+        A <== one();
         return;
     }
 }
@@ -105,6 +107,50 @@ Rom generation generates a single ROM for each virtual machine using the followi
 
 This process introduces instructions and registers, and returns the modified machine along with the ROM.
 
+For our example, we get one ROM for each virtual machine. For `DifferentSignatures`:
+
+```
+rom {
+        _start::
+        _reset;
+        // END BATCH Unimplemented
+        _jump_to_operation;
+        // END BATCH Label
+        _identity::
+        return _input_0;
+        // END BATCH Label
+        _one::
+        return 1;
+        // END BATCH Label
+        _nothing::
+        return 0;
+        // END BATCH Label
+        _sink::
+        _loop;
+        // END BATCH
+}
+```
+
+For `Main`:
+```
+rom {
+        _start::
+        _reset;
+        // END BATCH Unimplemented
+        _jump_to_operation;
+        // END BATCH Label
+        _main::
+        start::
+        A <=Y= one();
+        // END BATCH Unimplemented
+        return;
+        // END BATCH Label
+        _sink::
+        _loop;
+        // END BATCH
+}
+```
+
 ##### VM to constrained
 
 Once we have the ROM for a machine, we reduce it to constraints. Some parts of this process are specific to our dispatcher implementation:
@@ -167,7 +213,7 @@ The diff for our example program is as follows:
 -               return;
 -               // END BATCH
 +
-// the body of functions is removed and they are assigned their function id. Their inputs and outputs are mapped to the relevant registers
+// the function bodies are removed and functions are assigned their function id. Their inputs and outputs are mapped to the relevant registers
 +       function identity<2> _input_0 -> _output_0 {
 +
 +       function one<3>  -> _output_0 {
@@ -275,7 +321,7 @@ We add an identical block of constraints for each machine type:
 
 ### Airgen
 
-Airgen takes machines which are only left with constraints and external instructions and instanciates them as a tree of AIR objects. Objects can point to each other using links, which encode the interaction between different machines.
+Airgen takes machines which are only left with constraints and external instructions and instantiates them as a tree of AIR objects. Objects can point to each other using links, which encode the interaction between different machines.
 
 The final program after analysis is the following:
 ```
@@ -401,9 +447,9 @@ machine Main(instr_return, _function_id) {
                 (_function_id_no_change * (_function_id' - _function_id)) = 0;
         }
 
-        instr identity X -> Y { sub.identity }
-        instr one  -> Y { sub.one }
-        instr nothing { sub.nothing }
+        instr identity X -> Y = sub.identity;
+        instr one  -> Y = sub.one;
+        instr nothing = sub.nothing;
         function main<2> {
 
         }
@@ -517,7 +563,7 @@ _function_id_no_change = ((1 - _block_enforcer_last_step) * (1 - instr_return));
 
 ### Linker
 
-The linker takes a tree of machines and instanciates specific structures to make proofs about. In our current implementation, it simply collates all AIR objects next to each other in a single table.
+The linker takes a tree of machines and instantiates specific structures to make proofs about. In our current implementation, it simply collates all AIR objects next to each other in a single table.
 
 For our example, it introduces two namespaces (one per machine instance) with the degree of the entry point (16), and turns the links into lookups between the two namespaces.
 

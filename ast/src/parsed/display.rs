@@ -39,21 +39,23 @@ impl<T: Display> Display for InstructionBody<T> {
         match self {
             InstructionBody::Local(elements) => write!(
                 f,
-                "{}",
+                "{{ {} }}",
                 elements
                     .iter()
                     .map(|e| e.to_string())
                     .collect::<Vec<_>>()
                     .join(", ")
             ),
-            InstructionBody::External(instance, function) => write!(f, "{instance}.{function}",),
+            InstructionBody::External(instance, function) => {
+                write!(f, " = {instance}.{function};",)
+            }
         }
     }
 }
 
 impl<T: Display> Display for Instruction<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write!(f, "{} {{{}}}", self.params, self.body)
+        write!(f, "{}{}", self.params, self.body)
     }
 }
 

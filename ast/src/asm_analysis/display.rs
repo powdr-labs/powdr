@@ -190,7 +190,7 @@ impl<T: Display> Display for InstructionDefinitionStatement<T> {
 
 impl<T: Display> Display for Instruction<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write!(f, "{} {{ {} }}", self.params, self.body)
+        write!(f, "{}{}", self.params, self.body)
     }
 }
 

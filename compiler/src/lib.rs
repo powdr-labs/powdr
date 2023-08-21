@@ -150,6 +150,8 @@ pub fn compile_asm_string<T: FieldElement>(
     log::debug!("Linker done");
     log::trace!("{pil}");
 
+    panic!();
+
     let pil_file_name = format!(
         "{}.pil",
         Path::new(file_name).file_stem().unwrap().to_str().unwrap()
