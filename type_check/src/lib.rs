@@ -165,13 +165,13 @@ impl<T: FieldElement> TypeChecker<T> {
         if !registers.iter().any(|r| r.ty.is_pc()) {
             if latch.is_none() {
                 errors.push(format!(
-                    "Machine {} should have a latch column because it does not have a pc",
+                    "Machine {} should have a latch column as it does not have a pc",
                     machine.name
                 ));
             }
             if operation_id.is_none() {
                 errors.push(format!(
-                    "Machine {} should have an operation id column because it does not have a pc",
+                    "Machine {} should have an operation id column as it does not have a pc",
                     machine.name
                 ));
             }
@@ -181,18 +181,30 @@ impl<T: FieldElement> TypeChecker<T> {
                     machine.name, f.name
                 ))
             }
+            for i in &instructions {
+                errors.push(format!(
+                    "Machine {} should not have instructions as it does not have a pc, found `{}`",
+                    machine.name, i.name
+                ))
+            }
         } else {
             if latch.is_some() {
                 errors.push(format!(
-                    "Machine {} should not have a latch column because it has a pc",
+                    "Machine {} should not have a latch column as it has a pc",
                     machine.name
                 ));
             }
             if operation_id.is_some() {
                 errors.push(format!(
-                    "Machine {} should not have an operation id column because it has a pc",
+                    "Machine {} should not have an operation id column as it has a pc",
                     machine.name
                 ));
+            }
+            for f in callable.operation_definitions() {
+                errors.push(format!(
+                    "Machine {} should not have operations as it has a pc, found `{}`",
+                    machine.name, f.name
+                ))
             }
         }
 
