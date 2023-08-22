@@ -448,7 +448,7 @@ machine Main(instr_return, _operation_id) {
 }
 ```
 
-It only contains constraints, external instructions and functions with no body. The result of running airgen is very similar, but contains specific instances of the different machines. External instructions have been turned into links to other instances.
+It only contains constraints, links and operations. The result of running airgen is very similar, but contains specific instances of the different machines.
 
 ```
 // Object main

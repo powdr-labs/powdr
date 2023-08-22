@@ -79,9 +79,17 @@ fn vm_to_block_unique_interface() {
 }
 
 #[test]
-#[should_panic = "assertion failed: eval_value.constraints.is_empty()"]
 fn block_to_block() {
     let f = "block_to_block.asm";
+    let i = [];
+    verify_asm::<GoldilocksField>(f, slice_to_vec(&i));
+    gen_halo2_proof(f, slice_to_vec(&i));
+}
+
+#[test]
+#[ignore = "Too slow"]
+fn keccak() {
+    let f = "keccak.asm";
     let i = [];
     verify_asm::<GoldilocksField>(f, slice_to_vec(&i));
     gen_halo2_proof(f, slice_to_vec(&i));

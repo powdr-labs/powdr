@@ -6,16 +6,15 @@ machine Binary(latch, operation_id) {
 
     degree 262144;
 
-    function and<0> A, B -> C {
-    }
+    operation and<0> A, B -> C;
 
-    function or<1> A, B -> C {
-    }
+    operation or<1> A, B -> C;
 
-    function xor<2> A, B -> C {
-    }
+    operation xor<2> A, B -> C;
 
     constraints{
+		col witness operation_id;
+
         macro is_nonzero(X) { match X { 0 => 0, _ => 1, } };
         macro is_zero(X) { 1 - is_nonzero(X) };
 
@@ -55,13 +54,13 @@ machine Binary(latch, operation_id) {
 machine Shift(latch, operation_id) {
     degree 262144;
 
-    function shl<0> A, B -> C {
-    }
+    operation shl<0> A, B -> C;
 
-    function shr<1> A, B -> C {
-    }
+    operation shr<1> A, B -> C;
 
     constraints{
+		col witness operation_id;
+
         col fixed latch(i) { is_zero((i % 4) - 3) };
         col fixed FACTOR_ROW(i) { (i + 1) % 4 };
         col fixed FACTOR(i) { 1 << (((i + 1) % 4) * 8) };
