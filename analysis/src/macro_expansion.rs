@@ -4,15 +4,20 @@ use std::{
 };
 
 use ast::parsed::{
-    asm::{ASMFile, Instruction, InstructionBody, MachineStatement},
+    asm::{
+        ASMModule, ASMProgram, Instruction, InstructionBody, MachineStatement, ModuleStatement,
+        SymbolDefinition,
+    },
     postvisit_expression_in_statement_mut, postvisit_expression_mut, Expression,
     FunctionDefinition, PilStatement,
 };
 use number::FieldElement;
 
-pub fn expand<T: FieldElement>(file: ASMFile<T>) -> ASMFile<T> {
+pub fn expand<T: FieldElement>(program: ASMProgram<T>) -> ASMProgram<T> {
     let mut expander = MacroExpander::default();
-    expander.expand_asm(file)
+    ASMProgram {
+        main: expander.expand_asm(program.main),
+    }
 }
 
 #[derive(Debug, Default)]
@@ -35,29 +40,57 @@ impl<T> MacroExpander<T>
 where
     T: FieldElement,
 {
-    fn expand_asm(&mut self, file: ASMFile<T>) -> ASMFile<T> {
-        let machines = file
-            .machines
+    fn expand_asm(&mut self, module: ASMModule<T>) -> ASMModule<T> {
+        let statements = module
+            .statements
             .into_iter()
-            .map(|mut m| {
-                m.statements.iter_mut().for_each(|s| match s {
-                    MachineStatement::InstructionDeclaration(_, _, Instruction { body, .. }) => {
-                        match body {
-                            InstructionBody::Local(body) => {
-                                *body = self.expand_macros(std::mem::take(body))
+            .map(|mut s| {
+                match &mut s {
+                    ModuleStatement::SymbolDefinition(SymbolDefinition {
+                        ref mut symbol, ..
+                    }) => {
+                        match symbol {
+                            ast::parsed::asm::Symbol::Machine(m) => {
+                                m.statements.iter_mut().for_each(|s| match s {
+                                    MachineStatement::InstructionDeclaration(
+                                        _,
+                                        _,
+                                        Instruction { body, .. },
+                                    ) => {
+                                        match body {
+                                            InstructionBody::Local(body) => {
+                                                *body = self.expand_macros(std::mem::take(body))
+                                            }
+                                            InstructionBody::CallableRef(..) => {
+                                                // there is nothing to expand in a callable ref
+                                            }
+                                        }
+                                    }
+                                    MachineStatement::InlinePil(_, statements) => {
+                                        *statements =
+                                            self.expand_macros(std::mem::take(statements));
+                                    }
+                                    _ => {}
+                                });
                             }
-                            InstructionBody::CallableRef(..) => {}
+                            ast::parsed::asm::Symbol::Import(_) => {
+                                // there is nothing to expand inside an import statement
+                            }
+                            ast::parsed::asm::Symbol::Module(ref mut m) => {
+                                let m = match m {
+                                    ast::parsed::asm::Module::External(_) => unreachable!(),
+                                    ast::parsed::asm::Module::Local(m) => m,
+                                };
+
+                                *m = self.expand_asm(std::mem::take(m));
+                            }
                         }
                     }
-                    MachineStatement::InlinePil(_, statements) => {
-                        *statements = self.expand_macros(std::mem::take(statements));
-                    }
-                    _ => {}
-                });
-                m
+                };
+                s
             })
             .collect();
-        ASMFile { machines }
+        ASMModule { statements }
     }
 
     /// Expands all macro references inside the statements and also adds

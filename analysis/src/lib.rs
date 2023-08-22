@@ -5,10 +5,10 @@ mod vm;
 /// expose the macro expander for use in the pil_analyzer
 pub use macro_expansion::MacroExpander;
 
-use ast::{asm_analysis::AnalysisASMFile, parsed::asm::ASMFile, DiffMonitor};
+use ast::{asm_analysis::AnalysisASMFile, parsed::asm::ASMProgram, DiffMonitor};
 use number::FieldElement;
 
-pub fn analyze<T: FieldElement>(file: ASMFile<T>) -> Result<AnalysisASMFile<T>, Vec<String>> {
+pub fn analyze<T: FieldElement>(file: ASMProgram<T>) -> Result<AnalysisASMFile<T>, Vec<String>> {
     let mut monitor = DiffMonitor::default();
 
     // expand macros
@@ -45,14 +45,14 @@ pub mod utils {
 
 #[cfg(test)]
 mod test_util {
-    use ast::{asm_analysis::AnalysisASMFile, parsed::asm::ASMFile};
+    use ast::{asm_analysis::AnalysisASMFile, parsed::asm::ASMProgram};
     use number::FieldElement;
     use parser::parse_asm;
 
     use crate::macro_expansion;
 
     /// A test utility to process a source file until after macro expansion
-    pub fn expand_str<T: FieldElement>(source: &str) -> ASMFile<T> {
+    pub fn expand_str<T: FieldElement>(source: &str) -> ASMProgram<T> {
         let file = parse_asm(None, source).unwrap();
         macro_expansion::expand(file)
     }

@@ -265,13 +265,14 @@ pub fn generate_machine_rom<T: FieldElement>(
 mod tests {
     use std::collections::BTreeMap;
 
+    use ast::parsed::asm::AbsoluteSymbolPath;
     use number::Bn254Field;
     use pretty_assertions::assert_eq;
 
     // generate the rom from source. Note that only type checking is applied before this.
     fn generate_rom_str<T: FieldElement>(
         src: &str,
-    ) -> BTreeMap<String, (Machine<T>, Option<Rom<T>>)> {
+    ) -> BTreeMap<AbsoluteSymbolPath, (Machine<T>, Option<Rom<T>>)> {
         let parsed = parser::parse_asm(None, src).unwrap();
         let checked = type_check::check(parsed).unwrap();
         checked
@@ -294,7 +295,7 @@ mod tests {
         let res = generate_rom_str::<Bn254Field>(vm);
 
         assert_eq!(
-            res.get("VM")
+            res.get(&AbsoluteSymbolPath::default().join("VM"))
                 .unwrap()
                 .1
                 .as_ref()
@@ -332,7 +333,7 @@ _loop;
         let res = generate_rom_str::<Bn254Field>(vm);
 
         assert_eq!(
-            res.get("VM")
+            res.get(&AbsoluteSymbolPath::default().join("VM"))
                 .unwrap()
                 .1
                 .as_ref()
@@ -391,7 +392,7 @@ _loop;
         let res = generate_rom_str::<Bn254Field>(vm);
 
         assert_eq!(
-            res.get("VM")
+            res.get(&AbsoluteSymbolPath::default().join("VM"))
                 .unwrap()
                 .1
                 .as_ref()

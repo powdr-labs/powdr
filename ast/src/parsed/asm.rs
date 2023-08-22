@@ -1,21 +1,164 @@
+use std::collections::VecDeque;
+
 use number::AbstractNumberType;
+
+use derive_more::From;
 
 use super::{Expression, PilStatement};
 
-#[derive(Debug, PartialEq, Eq)]
-pub struct ASMFile<T> {
-    pub machines: Vec<Machine<T>>,
+#[derive(Default, Debug, PartialEq, Eq, Clone)]
+pub struct ASMProgram<T> {
+    pub main: ASMModule<T>,
 }
 
-#[derive(Debug, PartialEq, Eq)]
-pub struct Machine<T> {
-    pub start: usize,
+#[derive(Default, Debug, PartialEq, Eq, Clone)]
+pub struct ASMModule<T> {
+    pub statements: Vec<ModuleStatement<T>>,
+}
+
+impl<T> ASMModule<T> {
+    pub fn symbol_definitions(&self) -> impl Iterator<Item = &SymbolDefinition<T>> {
+        self.statements.iter().map(|s| match s {
+            ModuleStatement::SymbolDefinition(d) => d,
+        })
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, Clone, From)]
+pub enum ModuleStatement<T> {
+    SymbolDefinition(SymbolDefinition<T>),
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct SymbolDefinition<T> {
     pub name: String,
+    pub symbol: Symbol<T>,
+}
+
+#[derive(Debug, PartialEq, Eq, From, Clone)]
+pub enum Symbol<T> {
+    Machine(Machine<T>),
+    Import(Import),
+    Module(Module<T>),
+}
+
+#[derive(Debug, PartialEq, Eq, From, Clone)]
+pub enum Module<T> {
+    External(String),
+    Local(ASMModule<T>),
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct Import {
+    // the path imported in the source
+    pub path: SymbolPath,
+}
+
+#[derive(Default, Debug, PartialEq, Eq, Clone, PartialOrd, Ord)]
+pub struct SymbolPath {
+    pub parts: VecDeque<Part>,
+}
+
+#[derive(Default, Debug, PartialEq, Eq, Clone, PartialOrd, Ord)]
+pub struct AbsoluteSymbolPath {
+    pub parts: VecDeque<String>,
+}
+
+impl<S: Into<String>> From<S> for AbsoluteSymbolPath {
+    fn from(name: S) -> Self {
+        Self {
+            parts: [name.into()].into(),
+        }
+    }
+}
+
+impl AbsoluteSymbolPath {
+    pub fn pop_front(&mut self) -> Option<String> {
+        self.parts.pop_front()
+    }
+
+    pub fn pop_back(&mut self) -> Option<String> {
+        self.parts.pop_back()
+    }
+}
+
+impl AbsoluteSymbolPath {
+    pub fn join<P: Into<SymbolPath>>(self, other: P) -> Self {
+        other
+            .into()
+            .parts
+            .into_iter()
+            .fold(self, |mut acc, part| match part {
+                Part::Super => {
+                    acc.pop_back().unwrap();
+                    acc
+                }
+                Part::Named(name) => {
+                    acc.parts.push_back(name);
+                    acc
+                }
+            })
+    }
+}
+
+impl From<AbsoluteSymbolPath> for SymbolPath {
+    fn from(value: AbsoluteSymbolPath) -> Self {
+        Self {
+            parts: value.parts.into_iter().map(Part::Named).collect(),
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, Clone, PartialOrd, Ord)]
+pub enum Part {
+    Super,
+    Named(String),
+}
+
+impl TryInto<String> for Part {
+    type Error = ();
+
+    fn try_into(self) -> Result<String, Self::Error> {
+        if let Part::Named(name) = self {
+            Ok(name)
+        } else {
+            Err(())
+        }
+    }
+}
+
+impl SymbolPath {
+    pub fn pop_front(&mut self) -> Option<Part> {
+        self.parts.pop_front()
+    }
+
+    pub fn pop_back(&mut self) -> Option<Part> {
+        self.parts.pop_back()
+    }
+}
+
+impl<S: Into<String>> From<S> for SymbolPath {
+    fn from(name: S) -> Self {
+        Self {
+            parts: [Part::Named(name.into())].into(),
+        }
+    }
+}
+
+impl SymbolPath {
+    pub fn join<P: Into<Self>>(mut self, other: P) -> Self {
+        self.parts.extend(other.into().parts);
+        self
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct Machine<T> {
     pub arguments: MachineArguments,
     pub statements: Vec<MachineStatement<T>>,
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Default)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Default, Clone)]
 pub struct MachineArguments {
     pub latch: Option<String>,
     pub operation_id: Option<String>,
@@ -76,7 +219,7 @@ pub struct Instruction<T> {
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub enum MachineStatement<T> {
     Degree(usize, AbstractNumberType),
-    Submachine(usize, String, String),
+    Submachine(usize, SymbolPath, String),
     RegisterDeclaration(usize, String, Option<RegisterFlag>),
     InstructionDeclaration(usize, String, Instruction<T>),
     LinkDeclaration(LinkDeclaration<T>),

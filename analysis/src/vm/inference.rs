@@ -89,7 +89,7 @@ fn infer_machine<T: FieldElement>(mut machine: Machine<T>) -> Result<Machine<T>,
 
 #[cfg(test)]
 mod tests {
-    use ast::asm_analysis::AssignmentStatement;
+    use ast::{asm_analysis::AssignmentStatement, parsed::asm::AbsoluteSymbolPath};
     use number::Bn254Field;
 
     use crate::vm::test_utils::infer_str;
@@ -116,7 +116,7 @@ mod tests {
         let file = infer_str::<Bn254Field>(file).unwrap();
 
         if let FunctionStatement::Assignment(AssignmentStatement { using_reg, .. }) = file.machines
-            ["Machine"]
+            [&AbsoluteSymbolPath::default().join("Machine")]
             .functions()
             .next()
             .unwrap()
@@ -152,7 +152,7 @@ mod tests {
         let file = infer_str::<Bn254Field>(file).unwrap();
 
         if let FunctionStatement::Assignment(AssignmentStatement { using_reg, .. }) = &file.machines
-            ["Machine"]
+            [&AbsoluteSymbolPath::default().join("Machine")]
             .functions()
             .next()
             .unwrap()

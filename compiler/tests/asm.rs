@@ -4,13 +4,14 @@ use std::fs;
 use test_log::test;
 
 fn verify_asm<T: FieldElement>(file_name: &str, inputs: Vec<T>) {
-    let contents = fs::read_to_string(format!(
+    let file_name = format!(
         "{}/../test_data/asm/{file_name}",
         env!("CARGO_MANIFEST_DIR")
-    ))
-    .unwrap();
+    );
 
-    verify_asm_string(file_name, &contents, inputs)
+    let contents = fs::read_to_string(&file_name).unwrap();
+
+    verify_asm_string(&file_name, &contents, inputs)
 }
 
 #[cfg(feature = "halo2")]
@@ -180,14 +181,19 @@ fn intermediate_nested() {
 
 #[test]
 fn book() {
-    for f in fs::read_dir("../test_data/asm/book/").unwrap() {
-        let f = f.unwrap().path();
-        let f = f.strip_prefix("../test_data/asm/").unwrap();
-        // passing 0 to all tests currently works as they either take no prover input or 0 works
-        let i = [0];
+    use walkdir::WalkDir;
 
-        verify_asm::<GoldilocksField>(f.to_str().unwrap(), slice_to_vec(&i));
-        gen_halo2_proof(f.to_str().unwrap(), slice_to_vec(&i));
+    for f in WalkDir::new("../test_data/asm/book/") {
+        let f = f.unwrap();
+        if f.metadata().unwrap().is_file() {
+            let f = f.path();
+            let f = f.strip_prefix("../test_data/asm/").unwrap();
+            // passing 0 to all tests currently works as they either take no prover input or 0 works
+            let i = [0];
+
+            verify_asm::<GoldilocksField>(f.to_str().unwrap(), slice_to_vec(&i));
+            gen_halo2_proof(f.to_str().unwrap(), slice_to_vec(&i));
+        }
     }
 }
 

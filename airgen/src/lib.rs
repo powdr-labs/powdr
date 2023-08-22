@@ -7,7 +7,10 @@ use ast::{
         AnalysisASMFile, LinkDefinitionStatement, Machine, PilBlock, SubmachineDeclaration,
     },
     object::{Link, LinkFrom, LinkTo, Location, Object, Operation, PILGraph},
-    parsed::{asm::CallableRef, PilStatement},
+    parsed::{
+        asm::{AbsoluteSymbolPath, CallableRef},
+        PilStatement,
+    },
 };
 
 const MAIN_MACHINE: &str = "Main";
@@ -24,7 +27,9 @@ pub fn compile<T: FieldElement>(input: AnalysisASMFile<T>) -> PILGraph<T> {
         1 => input.machines.keys().next().unwrap().clone(),
         // otherwise, use the machine called `MAIN`
         _ => {
-            assert!(input.machines.contains_key(MAIN_MACHINE));
+            assert!(input
+                .machines
+                .contains_key(&AbsoluteSymbolPath::default().join(MAIN_MACHINE)));
             MAIN_MACHINE.into()
         }
     };
@@ -82,7 +87,7 @@ struct ASMPILConverter<'a, T> {
     /// Location in the machine tree
     location: &'a Location,
     /// Machine types
-    machines: &'a BTreeMap<String, Machine<T>>,
+    machines: &'a BTreeMap<AbsoluteSymbolPath, Machine<T>>,
     pil: Vec<PilStatement<T>>,
     submachines: Vec<SubmachineDeclaration>,
 }
@@ -103,13 +108,13 @@ impl<'a, T: FieldElement> ASMPILConverter<'a, T> {
 
     fn convert_machine(
         location: &'a Location,
-        ty: &'a str,
+        ty: &'a AbsoluteSymbolPath,
         input: &'a AnalysisASMFile<T>,
     ) -> Object<T> {
         Self::new(location, input).convert_machine_inner(ty)
     }
 
-    fn convert_machine_inner(mut self, ty: &str) -> Object<T> {
+    fn convert_machine_inner(mut self, ty: &AbsoluteSymbolPath) -> Object<T> {
         let input = self.machines.get(ty).unwrap().clone();
 
         let degree = input.degree.map(|s| T::from(s.degree).to_degree());

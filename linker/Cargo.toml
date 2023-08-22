@@ -14,3 +14,4 @@ analysis = { path = "../analysis" }
 [dev-dependencies]
 parser = { path = "../parser" }
 airgen = { path = "../airgen" }
+importer = { path = "../importer" }
