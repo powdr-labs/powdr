@@ -221,7 +221,11 @@ impl Display for Params {
                 .as_ref()
                 .map(|outputs| format!(
                     "{}-> {}",
-                    self.inputs.params.is_empty().then(|| "").unwrap_or(" "),
+                    if self.inputs.params.is_empty() {
+                        ""
+                    } else {
+                        " "
+                    },
                     outputs
                 ))
                 .unwrap_or_default()
