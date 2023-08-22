@@ -47,9 +47,9 @@ impl<T> Object<T> {
 #[derive(Clone)]
 /// A link between two machines
 pub struct Link<T> {
-    /// the link source, e.g a flag and some arguments
+    /// the link source, i.e. a flag and some arguments
     pub from: LinkFrom<T>,
-    /// the link target, e.g a callable in some machine
+    /// the link target, i.e. a callable in some machine
     pub to: LinkTo<T>,
 }
 

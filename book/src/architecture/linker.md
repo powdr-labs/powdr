@@ -1,11 +1,6 @@
 # Linker
 
-powdr machine instances are compiled into separate AIRs, where each consists of:
-- an optional degree
-- a list of PIL statements
-- a list of links to other machine instances
-
-A linker is used to turn this tree of AIRs into a structure we can generate proofs about. This currently takes the form of a single PIL file.
+A linker is used to turn an [AIR tree](./compiler.md#air-generation) into a structure that is used to generate proofs. This currently takes the form of a single PIL file.
 The linking process operates in the following way:
 
 1. Create an empty PIL file
@@ -16,6 +11,6 @@ The linking process operates in the following way:
     3. Add the constraints to the namespace
     4. Turn the links into lookups and add them to the namespace
 
-The result is a monolithic AIR where each machine instance is a namespace, where all namespaces have the same degree and links between instances are guaranteed by lookup identities.
+The result is a monolithic AIR where each machine instance is a namespace, all namespaces have the same degree and links between instances are encoded as lookup identities.
 
 > More flexible approaches to the linking process will be explored in the future, such as allowing for machine instances of different degrees.

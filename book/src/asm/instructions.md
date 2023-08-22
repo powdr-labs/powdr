@@ -1,6 +1,6 @@
 # Instructions
 
-Instructions are declared as part of a powdr virtual machine. Their inputs and outputs are [assignment registers](./registers.md) as well as labels. Once defined, they can be called by any function of this machine.
+Instructions are declared as part of a powdr virtual machine. Their inputs and outputs are [assignment registers](./registers.md) as well as labels. Once defined, they can be called by any function in this machine.
 
 # Local instructions
 

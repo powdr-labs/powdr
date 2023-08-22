@@ -5,7 +5,8 @@ machine Main(latch, operation_id) {
     operation main<0> x, y -> z;
 
     // on every row, add in the Adder
-    link 1 x, y -> z = adder.add;
+    // TODO: uncomment this once witness generation supports links
+    // link 1 x, y -> z = adder.add;
 
     constraints {
         col fixed operation_id = [0]*;

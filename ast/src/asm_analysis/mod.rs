@@ -616,11 +616,11 @@ pub struct SubmachineDeclaration {
 
 #[derive(Clone, Default, PartialEq, Eq, PartialOrd, Ord, Debug)]
 pub struct Machine<T> {
-    /// The degree if any, e.g the number of rows in instances of this machine type
+    /// The degree if any, i.e. the number of rows in instances of this machine type
     pub degree: Option<DegreeStatement>,
-    /// The latch, e.g the boolean column whose values must be 1 in order for this machine to be accessed. Must be defined in one of the constraint blocks of this machine.
+    /// The latch, i.e. the boolean column whose values must be 1 in order for this machine to be accessed. Must be defined in one of the constraint blocks of this machine.
     pub latch: Option<String>,
-    /// The operation id, e.g the column whose values determine which operation is being invoked in the current block. Must be defined in one of the constraint blocks of this machine.
+    /// The operation id, i.e. the column whose values determine which operation is being invoked in the current block. Must be defined in one of the constraint blocks of this machine.
     pub operation_id: Option<String>,
     /// The set of registers for this machine
     pub registers: Vec<RegisterDeclarationStatement>,

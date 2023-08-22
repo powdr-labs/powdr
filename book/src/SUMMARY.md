@@ -20,7 +20,6 @@
 - [PIL](./pil/README.md)
     - [Fixed Columns](./pil/fixed_columns.md)
     - [Macros](./pil/macros.md)
-- [Linker](./linker/README.md)
 - [Frontends](./frontends/README.md)
     - [RISCV](./frontends/riscv.md)
     - [Valida](./frontends/valida.md)

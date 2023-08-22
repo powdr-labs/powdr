@@ -165,7 +165,7 @@ The diff for our example program is as follows:
 // registers are removed and encoded as constraints
 -       reg pc[@pc];
 +machine DifferentSignatures(instr_return, _operation_id) {
-// the function are removed and replaced with operations where the `operation_id` is the position of the associated label in the ROM and the inputs and outputs are the relevant input registers and output registers
+// the functions are removed and replaced with operations where the `operation_id` is the position of the associated label in the ROM and the inputs and outputs are the relevant input registers and output registers
 +       operation identity<2> _input_0 -> _output_0;
 +       operation nothing<3>;
 +       operation one<4>  -> _output_0;
