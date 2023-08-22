@@ -53,13 +53,24 @@ impl<T: Display> Display for InstructionBody<T> {
 
 impl<T: Display> Display for Instruction<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write!(f, "{}{}", self.params, self.body)
+        write!(
+            f,
+            "{}{}",
+            self.params.prepend_space_if_non_empty(),
+            self.body
+        )
     }
 }
 
 impl<T: Display> Display for LinkDeclaration<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write!(f, "link {} {} = {};", self.flag, self.params, self.to)
+        write!(
+            f,
+            "link {}{} = {};",
+            self.flag,
+            self.params.prepend_space_if_non_empty(),
+            self.to
+        )
     }
 }
 
@@ -102,7 +113,8 @@ impl<T: Display> Display for MachineStatement<T> {
             MachineStatement::FunctionDeclaration(_, name, params, statements) => {
                 write!(
                     f,
-                    "function {name}{params} {{\n{}\n}}",
+                    "function {name}{} {{\n{}\n}}",
+                    params.prepend_space_if_non_empty(),
                     statements
                         .iter()
                         .map(|s| format!("{}", s))
@@ -111,7 +123,8 @@ impl<T: Display> Display for MachineStatement<T> {
                 )
             }
             MachineStatement::OperationDeclaration(_, name, operation_id, params) => {
-                write!(f, "operation {name}{operation_id}{params};")
+                let params_str = params.prepend_space_if_non_empty();
+                write!(f, "operation {name}{operation_id}{params_str};")
             }
         }
     }
@@ -202,18 +215,15 @@ impl Display for Params {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(
             f,
-            "{}{}{}",
-            if self.inputs.params.len() + self.outputs.as_ref().map(|o| o.params.len()).unwrap_or(0)
-                == 0
-            {
-                ""
-            } else {
-                " "
-            },
+            "{}{}",
             self.inputs,
             self.outputs
                 .as_ref()
-                .map(|outputs| format!(" -> {}", outputs))
+                .map(|outputs| format!(
+                    "{}-> {}",
+                    self.inputs.params.is_empty().then(|| "").unwrap_or(" "),
+                    outputs
+                ))
                 .unwrap_or_default()
         )
     }
@@ -523,5 +533,63 @@ impl Display for UnaryOperator {
                 UnaryOperator::Plus => "+",
             }
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+
+    use super::*;
+
+    #[test]
+    fn params() {
+        let p = Param {
+            name: "abc".into(),
+            ty: Some("ty".into()),
+        };
+        assert_eq!(p.to_string(), "abc: ty");
+        let l = ParamList { params: vec![p] };
+        assert_eq!(l.to_string(), "abc: ty");
+        let empty = Params::default();
+        assert_eq!(empty.to_string(), "");
+        assert_eq!(empty.prepend_space_if_non_empty(), "");
+        let in_out = Params {
+            inputs: ParamList {
+                params: vec![Param {
+                    name: "abc".into(),
+                    ty: Some("ty".into()),
+                }],
+            },
+            outputs: Some(ParamList {
+                params: vec![Param {
+                    name: "abc".into(),
+                    ty: Some("ty".into()),
+                }],
+            }),
+        };
+        assert_eq!(in_out.to_string(), "abc: ty -> abc: ty");
+        assert_eq!(in_out.prepend_space_if_non_empty(), " abc: ty -> abc: ty");
+        let out = Params {
+            inputs: ParamList { params: vec![] },
+            outputs: Some(ParamList {
+                params: vec![Param {
+                    name: "abc".into(),
+                    ty: Some("ty".into()),
+                }],
+            }),
+        };
+        assert_eq!(out.to_string(), "-> abc: ty");
+        assert_eq!(out.prepend_space_if_non_empty(), " -> abc: ty");
+        let _in = Params {
+            inputs: ParamList {
+                params: vec![Param {
+                    name: "abc".into(),
+                    ty: Some("ty".into()),
+                }],
+            },
+            outputs: None,
+        };
+        assert_eq!(_in.to_string(), "abc: ty");
+        assert_eq!(_in.prepend_space_if_non_empty(), " abc: ty");
     }
 }

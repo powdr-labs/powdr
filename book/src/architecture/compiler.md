@@ -24,6 +24,5 @@ At this point, all machines contain only:
 
 Let's define AIR as a data structure with only these elements.
 
-Starting from the main machine type, we instanciate a tree of AIR by walking its tree of submachines, instantiating each machine as an AIR.
-
+Starting from the main machine's type, we create a tree of AIR objects by traversing its submachines, recursively instantiating each machine as an AIR.
 Let's define the AIR tree as the resulting tree.

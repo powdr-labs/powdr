@@ -42,6 +42,23 @@ impl Params {
     pub fn new(inputs: ParamList, outputs: Option<ParamList>) -> Self {
         Self { inputs, outputs }
     }
+
+    fn is_empty(&self) -> bool {
+        self.inputs.params.is_empty()
+            && self
+                .outputs
+                .as_ref()
+                .map(|outputs| outputs.params.is_empty())
+                .unwrap_or(true)
+    }
+
+    pub fn prepend_space_if_non_empty(&self) -> String {
+        let mut params_str = self.to_string();
+        if !self.is_empty() {
+            params_str = format!(" {params_str}");
+        }
+        params_str
+    }
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]

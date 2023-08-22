@@ -70,7 +70,13 @@ impl<T: Display> Display for Machine<T> {
 
 impl<T: Display> Display for LinkDefinitionStatement<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write!(f, "link {} {} = {};", self.flag, self.params, self.to)
+        write!(
+            f,
+            "link {}{} = {};",
+            self.flag,
+            self.params.prepend_space_if_non_empty(),
+            self.to
+        )
     }
 }
 
@@ -205,7 +211,12 @@ impl<T: Display> Display for InstructionDefinitionStatement<T> {
 
 impl<T: Display> Display for Instruction<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write!(f, "{}{}", self.params, self.body)
+        write!(
+            f,
+            "{}{}",
+            self.params.prepend_space_if_non_empty(),
+            self.body
+        )
     }
 }
 
@@ -213,12 +224,23 @@ impl<'a, T: Display> Display for CallableSymbolDefinitionRef<'a, T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match &self.symbol {
             CallableSymbol::Function(s) => {
-                writeln!(f, "function {}{} {{", self.name, s.params)?;
+                writeln!(
+                    f,
+                    "function {}{} {{",
+                    self.name,
+                    s.params.prepend_space_if_non_empty()
+                )?;
                 writeln!(f, "{}", indent(&s.body, 1))?;
                 write!(f, "}}")
             }
             CallableSymbol::Operation(s) => {
-                write!(f, "operation {}{}{};", self.name, s.id, s.params)
+                write!(
+                    f,
+                    "operation {}{}{};",
+                    self.name,
+                    s.id,
+                    s.params.prepend_space_if_non_empty()
+                )
             }
         }
     }
