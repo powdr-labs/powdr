@@ -168,7 +168,7 @@ The diff for our example program is as follows:
 // the functions are removed and replaced with operations where the `operation_id` is the position of the associated label in the ROM and the inputs and outputs are the relevant input registers and output registers
 +       operation identity<2> _input_0 -> _output_0;
 +       operation nothing<3>;
-+       operation one<4>  -> _output_0;
++       operation one<4> -> _output_0;
 -       function identity x: field -> field {
 -               return x;
 -               // END BATCH
@@ -211,7 +211,7 @@ The diff for our example program is as follows:
 +               pol constant p_read__output_0__input_0 = [0, 0, 1, 0, 0, 0] + [0]*;
 +               pol constant p_read__output_0_pc = [0, 0, 0, 0, 0, 0] + [0]*;
 +               { pc, instr__jump_to_operation, instr__reset, instr__loop, instr_return, _output_0_const, _output_0_read_free, read__output_0_pc, read__output_0__input_0 } in { p_line, p_instr__jump_to_operation, p_instr__reset, p_instr__loop, p_instr_return, p__output_0_const, p__output_0_read_free, p_read__output_0_pc, p_read__output_0__input_0 };
--       function one  -> field {
+-       function one -> field {
 -               return 1;
 -               // END BATCH
 -       }
@@ -226,7 +226,7 @@ The diff for our example program is as follows:
 +       operation main<2>;
 // external instructions are removed and replaced with links, see down below
 -       instr identity X -> Y = sub.identity;
--       instr one  -> Y = sub.one;
+-       instr one -> Y = sub.one;
 -       instr nothing = sub.nothing;
 -
 -       function main {
@@ -294,9 +294,9 @@ The diff for our example program is as follows:
 +
 +
 // we use links to encode cross-machine calls
-+       link instr_identity  X -> Y = sub.identity;
-+       link instr_one   -> Y = sub.one;
-+       link instr_nothing  = sub.nothing;
++       link instr_identity X -> Y = sub.identity;
++       link instr_one -> Y = sub.one;
++       link instr_nothing = sub.nothing;
 ```
 
 ### Block enforcer
@@ -441,9 +441,9 @@ machine Main(instr_return, _operation_id) {
         }
 
 
-        link instr_identity  X -> Y = sub.identity;
-        link instr_one   -> Y = sub.one;
-        link instr_nothing  = sub.nothing;
+        link instr_identity X -> Y = sub.identity;
+        link instr_one -> Y = sub.one;
+        link instr_nothing = sub.nothing;
 
 }
 ```

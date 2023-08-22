@@ -4,8 +4,9 @@ machine Main(latch, operation_id) {
 
     operation main<0> x, y -> z;
 
-    // on every row, add in the Adder
-    // TODO: uncomment this once witness generation supports links
+    // - on every row (the boolean flag is `1`)
+    // - constrain the values of `x`, `y`, and `z` so that `z = adder.add(x, y)`
+    // TODO: uncomment the link once witness generation supports it
     // link 1 x, y -> z = adder.add;
 
     constraints {

@@ -9,9 +9,7 @@ machine PoseidonBN254(LASTBLOCK, operation_id) {
     // When the hash function is used only once, the capacity element should be
     // set to a constant, where different constants can be used to define different
     // hash functions.
-    function poseidon_permutation<0> input_in0, input_in1, input_cap -> in0 {
-    }
-
+    operation poseidon_permutation<0> input_in0, input_in1, input_cap -> in0;
 
     constraints {
         col witness operation_id;
