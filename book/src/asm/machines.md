@@ -1,6 +1,6 @@
 # Machines
 
-Machines are the first main concept in powdr asm. They can currently be of two types: dynamic or static.
+Machines are the first main concept in powdr-asm. They can currently be of two types: dynamic or static.
 
 ## Virtual machines
 

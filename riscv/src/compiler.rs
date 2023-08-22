@@ -1243,7 +1243,7 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
         }
         "call" => {
             // Depending on what symbol is called, the call is replaced by a
-            // powdr asm call, or a call to a coprocessor if a special function
+            // powdr-asm call, or a call to a coprocessor if a special function
             // has been recognized.
             match args {
                 [label] => match label {
@@ -1274,7 +1274,7 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
         }
         "tail" => {
             // Depending on what symbol is called, the tail call is replaced by a
-            // powdr asm tail, or a call to a coprocessor if a special function
+            // powdr-asm tail, or a call to a coprocessor if a special function
             // has been recognized.
             match args {
                 [label] => match label {
