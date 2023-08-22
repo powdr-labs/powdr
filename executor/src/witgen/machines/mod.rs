@@ -22,7 +22,7 @@ mod sorted_witness_machine;
 
 /// A machine is a set of witness columns and identities where the columns
 /// are used on the right-hand-side of lookups. It can process plookups.
-pub trait Machine<'a, T: FieldElement>: Send + Sync {
+pub trait Machine<'a, T: FieldElement> {
     /// Process a plookup. Not all values on the LHS need to be available.
     /// Can update internal data.
     /// Only return an error if this machine is able to handle the query and
