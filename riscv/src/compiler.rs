@@ -1275,7 +1275,7 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
         }
         "call" | "tail" => {
             // Depending on what symbol is called, the call is replaced by a
-            // powdr asm call, or a call to a coprocessor if a special function
+            // powdr-asm call, or a call to a coprocessor if a special function
             // has been recognized.
             assert_eq!(args.len(), 1);
             let label = &args[0];
