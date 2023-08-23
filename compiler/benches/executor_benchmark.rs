@@ -16,7 +16,7 @@ fn to_field(arr: &[i32]) -> Vec<T> {
 }
 
 fn asm_to_analyzed(input_file: &Path) -> Analyzed<T> {
-    let contents = fs::read_to_string(&input_file).unwrap();
+    let contents = fs::read_to_string(input_file).unwrap();
     let parsed = parser::parse_asm::<T>(None, &contents).unwrap();
     let analyzed = analyze(parsed).unwrap();
     let graph = airgen::compile(analyzed);
@@ -53,10 +53,10 @@ fn add_benchmark_pil<M: Measurement>(
     group.bench_function(name, |b| b.iter(|| run_witgen(&analyzed, to_field(&input))));
 }
 
-fn run_witgen<'a, T: FieldElement>(analyzed: &'a Analyzed<T>, input: Vec<T>) {
+fn run_witgen<T: FieldElement>(analyzed: &Analyzed<T>, input: Vec<T>) {
     let query_callback = Some(inputs_to_query_callback(input));
-    let (constants, degree) = constant_evaluator::generate(&analyzed);
-    executor::witgen::generate(&analyzed, degree, &constants, query_callback);
+    let (constants, degree) = constant_evaluator::generate(analyzed);
+    executor::witgen::generate(analyzed, degree, &constants, query_callback);
 }
 
 fn criterion_benchmark(c: &mut Criterion) {
