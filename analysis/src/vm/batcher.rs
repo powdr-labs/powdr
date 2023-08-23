@@ -155,7 +155,7 @@ mod tests {
     fn test_batching(path: &str) {
         let base_path = PathBuf::from("../test_data/asm/batching");
         let file_name = base_path.join(path);
-        let expected = fs::read_to_string(&file_name).unwrap();
+        let expected = fs::read_to_string(file_name).unwrap();
 
         // remove the batch comments from the expected output before compiling
         let input = expected

@@ -103,7 +103,7 @@ mod test {
 
     #[test]
     fn poseidon_bn254() {
-        mock_prove_asm("../test_data/asm/poseidon_bn254.asm", &vec![]);
+        mock_prove_asm("../test_data/asm/poseidon_bn254.asm", &[]);
     }
 
     #[test]
