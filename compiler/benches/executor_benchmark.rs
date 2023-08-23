@@ -1,13 +1,13 @@
 use analysis::analyze;
-use asm_utils::compiler::Compiler;
+
+use ::compiler::inputs_to_query_callback;
 use ast::analyzed::Analyzed;
 use criterion::{criterion_group, criterion_main, Criterion};
 
-use compiler::inputs_to_query_callback;
 use executor::constant_evaluator;
 use mktemp::Temp;
 use number::{FieldElement, GoldilocksField};
-use riscv::{compile_rust_crate_to_riscv_asm, compiler::Risc};
+use riscv::{compile_rust_crate_to_riscv_asm, compiler};
 
 type T = GoldilocksField;
 
@@ -15,7 +15,7 @@ fn get_pil() -> Analyzed<GoldilocksField> {
     let tmp_dir = Temp::new_dir().unwrap();
     let riscv_asm_files =
         compile_rust_crate_to_riscv_asm("../riscv/tests/riscv_data/keccak/Cargo.toml", &tmp_dir);
-    let contents = Risc::compile(riscv_asm_files);
+    let contents = compiler::compile(riscv_asm_files);
     let parsed = parser::parse_asm::<T>(None, &contents).unwrap();
     let analyzed = analyze(parsed).unwrap();
     let graph = airgen::compile(analyzed);

@@ -153,88 +153,83 @@ impl fmt::Display for FunctionKind {
     }
 }
 
-#[derive(Default)]
-pub struct Risc {}
+/// Compiles riscv assembly to POWDR assembly. Adds required library routines.
+pub fn compile(mut assemblies: BTreeMap<String, String>) -> String {
+    // stack grows towards zero
+    let stack_start = 0x10000;
+    // data grows away from zero
+    let data_start = 0x10100;
 
-impl asm_utils::compiler::Compiler for Risc {
-    /// Compiles riscv assembly to POWDR assembly. Adds required library routines.
-    fn compile(mut assemblies: BTreeMap<String, String>) -> String {
-        // stack grows towards zero
-        let stack_start = 0x10000;
-        // data grows away from zero
-        let data_start = 0x10100;
+    assert!(assemblies
+        .insert("__runtime".to_string(), runtime().to_string())
+        .is_none());
 
-        assert!(assemblies
-            .insert("__runtime".to_string(), runtime().to_string())
-            .is_none());
-
-        // TODO remove unreferenced files.
-        let (mut statements, file_ids) = disambiguator::disambiguate(
-            assemblies
-                .into_iter()
-                .map(|(name, contents)| (name, parse_asm(RiscParser::default(), &contents)))
-                .collect(),
-        );
-        let (mut objects, mut object_order) = data_parser::extract_data_objects(&statements);
-        assert_eq!(objects.keys().len(), object_order.len());
-
-        // Reduce to the code that is actually reachable from main
-        // (and the objects that are referred from there)
-        reachability::filter_reachable_from("__runtime_start", &mut statements, &mut objects);
-
-        // Replace dynamic references to code labels
-        replace_dynamic_label_references(&mut statements, &objects);
-
-        // Remove the riscv asm stub function, which is used
-        // for compilation, and will not be called.
-        statements = replace_coprocessor_stubs(statements).collect::<Vec<_>>();
-
-        // Sort the objects according to the order of the names in object_order.
-        // With the single exception: If there is large object, put that at the end.
-        // The idea behind this is that there might be a single gigantic object representing the heap
-        // and putting that at the end should keep memory addresses small.
-        let mut large_objects = objects
-            .iter()
-            .filter(|(_name, data)| data.iter().map(|d| d.size()).sum::<usize>() > 0x2000);
-        if let (Some((heap, _)), None) = (large_objects.next(), large_objects.next()) {
-            let heap_pos = object_order.iter().position(|o| o == heap).unwrap();
-            object_order.remove(heap_pos);
-            object_order.push(heap.clone());
-        };
-        let sorted_objects = object_order
+    // TODO remove unreferenced files.
+    let (mut statements, file_ids) = disambiguator::disambiguate(
+        assemblies
             .into_iter()
-            .filter_map(|n| {
-                let value = objects.get_mut(&n).map(std::mem::take);
-                value.map(|v| (n, v))
-            })
-            .collect::<Vec<_>>();
-        let (data_code, data_positions) = store_data_objects(&sorted_objects, data_start);
+            .map(|(name, contents)| (name, parse_asm(RiscParser::default(), &contents)))
+            .collect(),
+    );
+    let (mut objects, mut object_order) = data_parser::extract_data_objects(&statements);
+    assert_eq!(objects.keys().len(), object_order.len());
 
-        riscv_machine(
-            &machine_decls(),
-            &preamble(),
-            &[("binary", "Binary"), ("shift", "Shift")],
-            file_ids
-                .into_iter()
-                .map(|(id, dir, file)| format!("debug file {id} {} {};", quote(&dir), quote(&file)))
-                .chain(["call __data_init;".to_string()])
-                .chain(call_every_submachine())
-                .chain([
-                    format!("// Set stack pointer\nx2 <=X= {stack_start};"),
-                    "call __runtime_start;".to_string(),
-                    "return;".to_string(), // This is not "riscv ret", but "return from powdr asm function".
-                ])
-                .chain(
-                    substitute_symbols_with_values(statements, &data_positions)
-                        .into_iter()
-                        .flat_map(process_statement),
-                )
-                .chain(["// This is the data initialization routine.\n__data_init::".to_string()])
-                .chain(data_code)
-                .chain(["// This is the end of the data initialization routine.\nret;".to_string()])
-                .collect(),
-        )
-    }
+    // Reduce to the code that is actually reachable from main
+    // (and the objects that are referred from there)
+    reachability::filter_reachable_from("__runtime_start", &mut statements, &mut objects);
+
+    // Replace dynamic references to code labels
+    replace_dynamic_label_references(&mut statements, &objects);
+
+    // Remove the riscv asm stub function, which is used
+    // for compilation, and will not be called.
+    statements = replace_coprocessor_stubs(statements).collect::<Vec<_>>();
+
+    // Sort the objects according to the order of the names in object_order.
+    // With the single exception: If there is large object, put that at the end.
+    // The idea behind this is that there might be a single gigantic object representing the heap
+    // and putting that at the end should keep memory addresses small.
+    let mut large_objects = objects
+        .iter()
+        .filter(|(_name, data)| data.iter().map(|d| d.size()).sum::<usize>() > 0x2000);
+    if let (Some((heap, _)), None) = (large_objects.next(), large_objects.next()) {
+        let heap_pos = object_order.iter().position(|o| o == heap).unwrap();
+        object_order.remove(heap_pos);
+        object_order.push(heap.clone());
+    };
+    let sorted_objects = object_order
+        .into_iter()
+        .filter_map(|n| {
+            let value = objects.get_mut(&n).map(std::mem::take);
+            value.map(|v| (n, v))
+        })
+        .collect::<Vec<_>>();
+    let (data_code, data_positions) = store_data_objects(&sorted_objects, data_start);
+
+    riscv_machine(
+        &machine_decls(),
+        &preamble(),
+        &[("binary", "Binary"), ("shift", "Shift")],
+        file_ids
+            .into_iter()
+            .map(|(id, dir, file)| format!("debug file {id} {} {};", quote(&dir), quote(&file)))
+            .chain(["call __data_init;".to_string()])
+            .chain(call_every_submachine())
+            .chain([
+                format!("// Set stack pointer\nx2 <=X= {stack_start};"),
+                "call __runtime_start;".to_string(),
+                "return;".to_string(), // This is not "riscv ret", but "return from powdr asm function".
+            ])
+            .chain(
+                substitute_symbols_with_values(statements, &data_positions)
+                    .into_iter()
+                    .flat_map(process_statement),
+            )
+            .chain(["// This is the data initialization routine.\n__data_init::".to_string()])
+            .chain(data_code)
+            .chain(["// This is the end of the data initialization routine.\nret;".to_string()])
+            .collect(),
+    )
 }
 
 /// Replace certain patterns of references to code labels by
