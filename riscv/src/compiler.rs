@@ -1348,10 +1348,13 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
         "lhu" => {
             let (rd, rs, off) = rro(args);
             // TODO we need to consider misaligned loads / stores
+            // TODO this assumes addr % 4 = 2
             only_if_no_write_to_zero_vec(
                 vec![
                     format!("addr <== wrap({rs} + {off});"),
+                    format!("addr <=X= addr - 2;"),
                     format!("{rd} <== mload();"),
+                    format!("{rd} <== shr({rd}, 16);"),
                     format!("{rd} <== and(0x0000ffff, {rd});"),
                 ],
                 rd,
