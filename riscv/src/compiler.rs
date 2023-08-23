@@ -8,6 +8,9 @@ use asm_utils::{
     data_parser::{self, DataValue},
     parser::parse_asm,
     reachability,
+    utils::{
+        argument_to_escaped_symbol, argument_to_number, escape_label, expression_to_number, quote,
+    },
 };
 use itertools::Itertools;
 
@@ -863,40 +866,6 @@ fn process_statement(s: Statement) -> Vec<String> {
             .into_iter()
             .map(|s| "  ".to_string() + &s)
             .collect(),
-    }
-}
-
-fn quote(s: &str) -> String {
-    // TODO more things to quote
-    format!("\"{}\"", s.replace('\\', "\\\\").replace('\"', "\\\""))
-}
-
-fn escape_label(l: &str) -> String {
-    // TODO make this proper
-    l.replace('.', "_dot_").replace('/', "_slash_")
-}
-
-fn argument_to_number(x: &Argument) -> u32 {
-    if let Argument::Expression(expr) = x {
-        expression_to_number(expr)
-    } else {
-        panic!("Expected numeric expression, got {x}")
-    }
-}
-
-fn expression_to_number(expr: &Expression) -> u32 {
-    if let Expression::Number(n) = expr {
-        *n as u32
-    } else {
-        panic!("Constant expression could not be fully resolved to a number during preprocessing: {expr}");
-    }
-}
-
-fn argument_to_escaped_symbol(x: &Argument) -> String {
-    if let Argument::Expression(Expression::Symbol(symb)) = x {
-        escape_label(symb)
-    } else {
-        panic!("Expected a symbol, got {x}");
     }
 }
 
