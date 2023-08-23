@@ -1346,13 +1346,17 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
             )
         }
         "lhu" => {
+            // Load two bytes and zero-extend.
+            // Assumes the address is a multiple of two.
             let (rd, rs, off) = rro(args);
-            // TODO we need to consider misaligned loads / stores
             only_if_no_write_to_zero_vec(
                 vec![
-                    format!("addr <== wrap({rs} + {off});"),
+                    format!("tmp1 <== wrap({rs} + {off});"),
+                    "addr <== and(tmp1, 0xfffffffc);".to_string(),
+                    "tmp2 <== and(tmp1, 0x3);".to_string(),
                     format!("{rd} <== mload();"),
-                    format!("{rd} <== and(0x0000ffff, {rd});"),
+                    format!("{rd} <== shr({rd}, 8 * tmp2);"),
+                    format!("{rd} <== and({rd}, 0x0000ffff);"),
                 ],
                 rd,
             )
