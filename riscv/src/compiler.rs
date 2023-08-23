@@ -225,7 +225,8 @@ impl asm_utils::compiler::Compiler for Risc {
                 .chain(["call __data_init;".to_string()])
                 .chain([
                     format!("// Set stack pointer\nx2 <=X= {stack_start};"),
-                    "jump __runtime_start;".to_string(),
+                    "call __runtime_start;".to_string(),
+                    "return;".to_string(), // This is not "riscv ret", but "return from powdr asm function".
                 ])
                 .chain(
                     substitute_symbols_with_values(statements, &data_positions)
@@ -953,11 +954,11 @@ fn only_if_no_write_to_zero_vec(statements: Vec<String>, reg: Register) -> Vec<S
 static COPROCESSOR_SUBSTITUTIONS: &[(&str, &str)] =
     &[("poseidon_coprocessor", "x10 <== poseidon(x10, x11);")];
 
-fn try_coprocessor_substitution(label: &str) -> Option<&'static str> {
+fn try_coprocessor_substitution(label: &str) -> Option<String> {
     COPROCESSOR_SUBSTITUTIONS
         .iter()
         .find(|(l, _)| *l == label)
-        .map(|&(_, subst)| subst)
+        .map(|&(_, subst)| subst.to_string())
 }
 
 fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
@@ -1246,25 +1247,21 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
             let rs = r(args);
             vec![format!("jump_and_link_dyn {rs};")]
         }
-        "call" => {
+        "call" | "tail" => {
             // Depending on what symbol is called, the call is replaced by a
             // powdr asm call, or a call to a coprocessor if a special function
             // has been recognized.
-            match args {
-                [label] => match label {
-                    // if we call `call main;`, we replace with `call main; return;`
-                    Argument::Expression(Expression::Symbol(l)) if l == "main" => {
-                        vec!["call main;".into(), "return;".into()]
-                    }
-                    Argument::Expression(Expression::Symbol(l)) => {
-                        match try_coprocessor_substitution(l) {
-                            Some(replacement) => vec![replacement.to_string()],
-                            _ => vec![format!("call {};", argument_to_escaped_symbol(label))],
-                        }
-                    }
-                    _ => vec![format!("call {};", argument_to_escaped_symbol(label))],
-                },
-                _ => panic!(),
+            assert_eq!(args.len(), 1);
+            let label = &args[0];
+            let replacement = match label {
+                Argument::Expression(Expression::Symbol(l)) => try_coprocessor_substitution(l),
+                _ => None,
+            };
+            match (replacement, instr) {
+                (Some(replacement), "call") => vec![replacement],
+                (Some(replacement), "tail") => vec![replacement, "ret".to_string()],
+                (Some(_), _) => panic!(),
+                (None, _) => vec![format!("{instr} {};", argument_to_escaped_symbol(label))],
             }
         }
         "ecall" => {
@@ -1276,27 +1273,6 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
             // This is using x0 on purpose, because we do not want to introduce
             // nondeterminism with this.
             vec!["x0 <=X= ${ (\"print_char\", x10) };\n".to_string()]
-        }
-        "tail" => {
-            // Depending on what symbol is called, the tail call is replaced by a
-            // powdr asm tail, or a call to a coprocessor if a special function
-            // has been recognized.
-            match args {
-                [label] => match label {
-                    // if we call `tail main;`, we replace with `call main; return;`
-                    Argument::Expression(Expression::Symbol(l)) if l == "main" => {
-                        vec!["call main;".into(), "return;".into()]
-                    }
-                    Argument::Expression(Expression::Symbol(l)) => {
-                        match try_coprocessor_substitution(l) {
-                            Some(replacement) => vec![replacement.to_string()],
-                            _ => vec![format!("tail {};", argument_to_escaped_symbol(label))],
-                        }
-                    }
-                    _ => vec![format!("tail {};", argument_to_escaped_symbol(label))],
-                },
-                _ => panic!(),
-            }
         }
         "ret" => {
             assert!(args.is_empty());
