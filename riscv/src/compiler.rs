@@ -6,6 +6,7 @@ use std::{
 use asm_utils::{
     ast::{BinaryOpKind, UnaryOpKind},
     data_parser::{self, DataValue},
+    data_storage::{store_data_objects, SingleDataValue},
     parser::parse_asm,
     reachability,
     utils::{
@@ -207,7 +208,40 @@ pub fn compile(mut assemblies: BTreeMap<String, String>) -> String {
             value.map(|v| (n, v))
         })
         .collect::<Vec<_>>();
-    let (data_code, data_positions) = store_data_objects(&sorted_objects, data_start);
+    let (data_code, data_positions) = store_data_objects(
+        &sorted_objects,
+        data_start,
+        &mut |addr, value| match value {
+            SingleDataValue::Value(v) => {
+                vec![format!("addr <=X= 0x{addr:x};"), format!("mstore 0x{v:x};")]
+            }
+            SingleDataValue::LabelReference(sym) => {
+                // TODO should be possible without temporary
+                vec![
+                    format!("addr <=X= 0x{addr:x};"),
+                    format!("tmp1 <== load_label({});", escape_label(sym)),
+                    "mstore tmp1;".to_string(),
+                ]
+            }
+            SingleDataValue::Offset(_, _) => {
+                unimplemented!();
+                /*
+                object_code.push(format!("addr <=X= 0x{pos:x};"));
+
+                I think this solution should be fine but hard to say without
+                an actual code snippet that uses it.
+
+                // TODO should be possible without temporary
+                object_code.extend([
+                    format!("tmp1 <== load_label({});", escape_label(a)),
+                    format!("tmp2 <== load_label({});", escape_label(b)),
+                    // TODO check if registers match
+                    "mstore wrap(tmp1 - tmp2);".to_string(),
+                ]);
+                */
+            }
+        },
+    );
 
     riscv_machine(
         &machine_decls(),
@@ -351,96 +385,6 @@ fn replace_coprocessor_stubs(
     })
 }
 
-fn store_data_objects<'a>(
-    objects: impl IntoIterator<Item = &'a (String, Vec<DataValue>)> + Copy,
-    mut memory_start: u32,
-) -> (Vec<String>, BTreeMap<String, u32>) {
-    memory_start = ((memory_start + 7) / 8) * 8;
-    let mut current_pos = memory_start;
-    let mut positions = BTreeMap::new();
-    for (name, data) in objects.into_iter() {
-        // TODO check if we need to use multiples of four.
-        let size: u32 = data
-            .iter()
-            .map(|d| next_multiple_of_four(d.size()) as u32)
-            .sum();
-        positions.insert(name.clone(), current_pos);
-        current_pos += size;
-    }
-
-    let code = objects
-        .into_iter()
-        .filter(|(_, data)| !data.is_empty())
-        .flat_map(|(name, data)| {
-            let mut object_code = vec![];
-            let mut pos = positions[name];
-            for item in data {
-                match &item {
-                    DataValue::Zero(_length) => {
-                        // We can assume memory to be zero-initialized,
-                        // so we do nothing.
-                    }
-                    DataValue::Direct(bytes) => {
-                        for i in (0..bytes.len()).step_by(4) {
-                            let v = (0..4)
-                                .map(|j| {
-                                    (bytes.get(i + j).cloned().unwrap_or_default() as u32)
-                                        << (j * 8)
-                                })
-                                .reduce(|a, b| a | b)
-                                .unwrap();
-                            // We can assume memory to be zero-initialized.
-                            if v != 0 {
-                                object_code.extend([
-                                    format!("addr <=X= 0x{:x};", pos + i as u32),
-                                    format!("mstore 0x{v:x};"),
-                                ]);
-                            }
-                        }
-                    }
-                    DataValue::Reference(sym) => {
-                        object_code.push(format!("addr <=X= 0x{pos:x};"));
-                        if let Some(p) = positions.get(sym) {
-                            object_code.push(format!("mstore 0x{p:x};"));
-                        } else {
-                            // code reference
-                            // TODO should be possible without temporary
-                            object_code.extend([
-                                format!("tmp1 <== load_label({});", escape_label(sym)),
-                                "mstore tmp1;".to_string(),
-                            ]);
-                        }
-                    }
-                    DataValue::Offset(_, _) => {
-                        unimplemented!()
-
-                        /*
-                        object_code.push(format!("addr <=X= 0x{pos:x};"));
-
-                        I think this solution should be fine but hard to say without
-                        an actual code snippet that uses it.
-
-                        // TODO should be possible without temporary
-                        object_code.extend([
-                            format!("tmp1 <== load_label({});", escape_label(a)),
-                            format!("tmp2 <== load_label({});", escape_label(b)),
-                            // TODO check if registers match
-                            "mstore wrap(tmp1 - tmp2);".to_string(),
-                        ]);
-                        */
-                    }
-                }
-                pos += item.size() as u32;
-            }
-            if let Some(first_line) = object_code.first_mut() {
-                *first_line = format!("// data {name}\n") + first_line;
-            }
-            object_code
-        })
-        .collect();
-    (code, positions)
-}
-
 fn call_every_submachine() -> Vec<String> {
     // TODO This is a hacky snippet to ensure that every submachine in the RISCV machine
     // is called at least once. This is needed for witgen until it can do default blocks
@@ -451,10 +395,6 @@ fn call_every_submachine() -> Vec<String> {
         "x10 <== shl(x10, x10);".to_string(),
         "x10 <=X= 0;".to_string(),
     ]
-}
-
-fn next_multiple_of_four(x: usize) -> usize {
-    ((x + 3) / 4) * 4
 }
 
 fn substitute_symbols_with_values(
