@@ -1,6 +1,5 @@
-use analysis::analyze;
-
 use ::compiler::inputs_to_query_callback;
+use analysis::analyze;
 use ast::analyzed::Analyzed;
 use criterion::{criterion_group, criterion_main, Criterion};
 

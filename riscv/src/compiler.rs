@@ -12,6 +12,7 @@ use asm_utils::{
     utils::{
         argument_to_escaped_symbol, argument_to_number, escape_label, expression_to_number, quote,
     },
+    Architecture,
 };
 use itertools::Itertools;
 
@@ -22,6 +23,60 @@ use crate::{Argument, Expression, Statement};
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct Register {
     value: u8,
+}
+
+impl Register {
+    pub fn new(value: u8) -> Self {
+        Self { value }
+    }
+
+    pub fn is_zero(&self) -> bool {
+        self.value == 0
+    }
+}
+
+impl asm_utils::ast::Register for Register {}
+
+impl fmt::Display for Register {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "x{}", self.value)
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub enum FunctionKind {
+    HiDataRef,
+    LoDataRef,
+}
+
+impl asm_utils::ast::FunctionOpKind for FunctionKind {}
+
+impl fmt::Display for FunctionKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            FunctionKind::HiDataRef => write!(f, "%hi"),
+            FunctionKind::LoDataRef => write!(f, "%lo"),
+        }
+    }
+}
+
+struct RiscvArchitecture {}
+
+impl Architecture for RiscvArchitecture {
+    fn instruction_ends_control_flow(instr: &str) -> bool {
+        match instr {
+            "li" | "lui" | "la" | "mv" | "add" | "addi" | "sub" | "neg" | "mul" | "mulhu"
+            | "divu" | "xor" | "xori" | "and" | "andi" | "or" | "ori" | "not" | "slli" | "sll"
+            | "srli" | "srl" | "srai" | "seqz" | "snez" | "slt" | "slti" | "sltu" | "sltiu"
+            | "sgtz" | "beq" | "beqz" | "bgeu" | "bltu" | "blt" | "bge" | "bltz" | "blez"
+            | "bgtz" | "bgez" | "bne" | "bnez" | "jal" | "jalr" | "call" | "ecall" | "ebreak"
+            | "lw" | "lb" | "lbu" | "lhu" | "sw" | "sh" | "sb" | "nop" => false,
+            "j" | "jr" | "tail" | "ret" | "unimp" => true,
+            _ => {
+                panic!("Unknown instruction: {instr}");
+            }
+        }
+    }
 }
 
 pub fn machine_decls() -> Vec<&'static str> {
@@ -122,41 +177,6 @@ machine Shift(latch, operation_id) {
     ]
 }
 
-impl Register {
-    pub fn new(value: u8) -> Self {
-        Self { value }
-    }
-
-    pub fn is_zero(&self) -> bool {
-        self.value == 0
-    }
-}
-
-impl asm_utils::ast::Register for Register {}
-
-impl fmt::Display for Register {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "x{}", self.value)
-    }
-}
-
-#[derive(Clone, Copy, Debug)]
-pub enum FunctionKind {
-    HiDataRef,
-    LoDataRef,
-}
-
-impl asm_utils::ast::FunctionOpKind for FunctionKind {}
-
-impl fmt::Display for FunctionKind {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            FunctionKind::HiDataRef => write!(f, "%hi"),
-            FunctionKind::LoDataRef => write!(f, "%lo"),
-        }
-    }
-}
-
 /// Compiles riscv assembly to POWDR assembly. Adds required library routines.
 pub fn compile(mut assemblies: BTreeMap<String, String>) -> String {
     // stack grows towards zero
@@ -180,7 +200,11 @@ pub fn compile(mut assemblies: BTreeMap<String, String>) -> String {
 
     // Reduce to the code that is actually reachable from main
     // (and the objects that are referred from there)
-    reachability::filter_reachable_from("__runtime_start", &mut statements, &mut objects);
+    reachability::filter_reachable_from::<_, _, RiscvArchitecture>(
+        "__runtime_start",
+        &mut statements,
+        &mut objects,
+    );
 
     // Replace dynamic references to code labels
     replace_dynamic_label_references(&mut statements, &objects);
