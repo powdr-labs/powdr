@@ -1,16 +1,14 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 
 use super::{EvalResult, FixedData, FixedLookup};
+use crate::witgen::affine_expression::AffineExpression;
 use crate::witgen::column_map::ColumnMap;
 use crate::witgen::identity_processor::IdentityProcessor;
 use crate::witgen::processor::Processor;
 use crate::witgen::rows::{Row, RowFactory, RowPair, RowUpdater, UnknownStrategy};
 use crate::witgen::sequence_iterator::{IdentityInSequence, ProcessingSequenceCache, SequenceStep};
 use crate::witgen::util::try_to_simple_poly;
-use crate::witgen::{
-    affine_expression::AffineResult, machines::Machine, range_constraints::RangeConstraint,
-    EvalError,
-};
+use crate::witgen::{machines::Machine, range_constraints::RangeConstraint, EvalError};
 use crate::witgen::{Constraint, EvalValue, IncompleteCause};
 use ast::analyzed::{
     Expression, Identity, IdentityKind, PolyID, PolynomialReference, SelectedExpressions,
@@ -145,7 +143,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
         fixed_data: &'a FixedData<T>,
         fixed_lookup: &mut FixedLookup<T>,
         kind: IdentityKind,
-        left: &[AffineResult<&'a PolynomialReference, T>],
+        left: &[AffineExpression<&'a PolynomialReference, T>],
         right: &'a SelectedExpressions<T>,
     ) -> Option<EvalResult<'a, T>> {
         if *right != self.selected_expressions || kind != IdentityKind::Plookup {
@@ -286,7 +284,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         &mut self,
         fixed_data: &'a FixedData<T>,
         fixed_lookup: &mut FixedLookup<T>,
-        left: &[AffineResult<&'a PolynomialReference, T>],
+        left: &[AffineExpression<&'a PolynomialReference, T>],
         right: &'a SelectedExpressions<T>,
     ) -> EvalResult<'a, T> {
         log::trace!("Start processing block machine");
@@ -297,11 +295,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         // First check if we already store the value.
         // This can happen in the loop detection case, where this function is just called
         // to validate the constraints.
-        if left
-            .iter()
-            .all(|v| v.as_ref().ok().map(|v| v.is_constant()) == Some(true))
-            && self.rows() > 0
-        {
+        if left.iter().all(|v| v.is_constant()) && self.rows() > 0 {
             // All values on the left hand side are known, check if this is a query
             // to the last row.
             let row = self.rows() - 1;
@@ -401,9 +395,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
 
         // Only succeed if we can assign everything.
         // Otherwise it is messy because we have to find the correct block again.
-        let success = left_mut
-            .iter()
-            .all(|v| v.as_ref().ok().map(|ae| ae.is_constant()) == Some(true));
+        let success = left_mut.iter().all(|v| v.is_constant());
 
         if success {
             // We solved the query, so report it to the cache.
@@ -426,7 +418,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         &self,
         row: DegreeType,
         fixed_data: &'a FixedData<T>,
-        left: &[AffineResult<&'a PolynomialReference, T>],
+        left: &[AffineExpression<&'a PolynomialReference, T>],
         right: &'a SelectedExpressions<T>,
         identity: IdentityInSequence,
         identity_processor: &mut IdentityProcessor<'a, '_, T>,
@@ -452,7 +444,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         row: DegreeType,
         identity: IdentityInSequence,
         updates: &EvalValue<&'a PolynomialReference, T>,
-        left_mut: &mut [AffineResult<&'a PolynomialReference, T>],
+        left_mut: &mut [AffineExpression<&'a PolynomialReference, T>],
     ) -> bool {
         if updates.constraints.is_empty() {
             return false;
@@ -475,10 +467,8 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
                 row_updater.apply_update(poly, c);
             } else if let Constraint::Assignment(v) = c {
                 for l in left_mut.iter_mut() {
-                    if let Ok(l) = l.as_mut() {
-                        log::trace!("      => {} (outer) = {}", poly, v);
-                        l.assign(poly, *v);
-                    }
+                    log::trace!("      => {} (outer) = {}", poly, v);
+                    l.assign(poly, *v);
                 }
             };
         }

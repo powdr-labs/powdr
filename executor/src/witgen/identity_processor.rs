@@ -1,8 +1,9 @@
 use ast::analyzed::{Expression, Identity, IdentityKind, PolynomialReference, SelectedExpressions};
+use itertools::{Either, Itertools};
 use number::FieldElement;
 
 use super::{
-    affine_expression::AffineResult,
+    affine_expression::AffineExpression,
     machines::{FixedLookup, KnownMachine, Machine},
     rows::RowPair,
     EvalResult, EvalValue, FixedData, IncompleteCause,
@@ -82,6 +83,17 @@ impl<'a, 'b, T: FieldElement> IdentityProcessor<'a, 'b, T> {
             .map(|e| rows.evaluate(e))
             .collect::<Vec<_>>();
 
+        // Fail if the LHS has an error.
+        let (left, errors): (Vec<_>, Vec<_>) = left.into_iter().partition_map(|x| match x {
+            Ok(x) => Either::Left(x),
+            Err(x) => Either::Right(x),
+        });
+        if !errors.is_empty() {
+            return Ok(EvalValue::incomplete(
+                errors.into_iter().reduce(|x, y| x.combine(y)).unwrap(),
+            ));
+        }
+
         // Now query the machines.
         // Note that we should always query all machines that match, because they might
         // update their internal data, even if all values are already known.
@@ -123,7 +135,7 @@ impl<'a, 'b, T: FieldElement> IdentityProcessor<'a, 'b, T> {
     /// - `Err(e)`: If the constraint system is not satisfiable.
     pub fn process_link(
         &mut self,
-        left: &[AffineResult<&'a PolynomialReference, T>],
+        left: &[AffineExpression<&'a PolynomialReference, T>],
         right: &'a SelectedExpressions<T>,
         current_rows: &RowPair<'_, 'a, T>,
     ) -> EvalResult<'a, T> {
@@ -138,20 +150,13 @@ impl<'a, 'b, T: FieldElement> IdentityProcessor<'a, 'b, T> {
         let mut updates = EvalValue::complete(vec![]);
 
         for (l, r) in left.iter().zip(right.expressions.iter()) {
-            match (l, current_rows.evaluate(r)) {
-                (Ok(l), Ok(r)) => {
+            match current_rows.evaluate(r) {
+                Ok(r) => {
                     let result = (l.clone() - r).solve()?;
                     updates.combine(result);
                 }
-                (Err(e), Ok(_)) => {
-                    updates.status = updates.status.combine(e.clone());
-                }
-                (Ok(_), Err(e)) => {
+                Err(e) => {
                     updates.status = updates.status.combine(e);
-                }
-                (Err(e1), Err(e2)) => {
-                    updates.status = updates.status.combine(e1.clone());
-                    updates.status = updates.status.combine(e2);
                 }
             }
         }

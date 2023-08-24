@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use number::FieldElement;
 
-use super::affine_expression::AffineResult;
+use super::affine_expression::AffineExpression;
 
 #[derive(Clone, Debug)]
 pub struct SequenceStep {
@@ -135,22 +135,14 @@ pub struct SequenceCacheKey {
     known_columns: Vec<bool>,
 }
 
-impl<K, T> From<&[AffineResult<K, T>]> for SequenceCacheKey
+impl<K, T> From<&[AffineExpression<K, T>]> for SequenceCacheKey
 where
     K: Copy + Ord,
     T: FieldElement,
 {
-    fn from(value: &[AffineResult<K, T>]) -> Self {
+    fn from(value: &[AffineExpression<K, T>]) -> Self {
         SequenceCacheKey {
-            known_columns: value
-                .iter()
-                .map(|v| {
-                    v.as_ref()
-                        .ok()
-                        .and_then(|ex| ex.is_constant().then_some(true))
-                        .is_some()
-                })
-                .collect(),
+            known_columns: value.iter().map(|v| v.is_constant()).collect(),
         }
     }
 }
@@ -197,7 +189,7 @@ impl ProcessingSequenceCache {
 
     pub fn get_processing_sequence<K, T>(
         &self,
-        left: &[AffineResult<K, T>],
+        left: &[AffineExpression<K, T>],
     ) -> ProcessingSequenceIterator<impl Iterator<Item = SequenceStep>>
     where
         K: Copy + Ord,
@@ -220,7 +212,7 @@ impl ProcessingSequenceCache {
 
     pub fn report_processing_sequence<K, T>(
         &mut self,
-        left: &[AffineResult<K, T>],
+        left: &[AffineExpression<K, T>],
         sequence: Vec<SequenceStep>,
     ) where
         K: Copy + Ord,

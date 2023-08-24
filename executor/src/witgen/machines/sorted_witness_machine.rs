@@ -1,12 +1,11 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 
-use itertools::{Either, Itertools};
+use itertools::Itertools;
 
 use super::super::affine_expression::AffineExpression;
 use super::fixed_lookup_machine::FixedLookup;
 use super::Machine;
 use super::{EvalResult, FixedData};
-use crate::witgen::affine_expression::AffineResult;
 use crate::witgen::{
     expression_evaluator::ExpressionEvaluator, fixed_evaluator::FixedEvaluator,
     symbolic_evaluator::SymbolicEvaluator,
@@ -124,7 +123,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for SortedWitnesses<T> {
         fixed_data: &FixedData<T>,
         _fixed_lookup: &mut FixedLookup<T>,
         kind: IdentityKind,
-        left: &[AffineResult<&'a PolynomialReference, T>],
+        left: &[AffineExpression<&'a PolynomialReference, T>],
         right: &'a SelectedExpressions<T>,
     ) -> Option<EvalResult<'a, T>> {
         if kind != IdentityKind::Plookup || right.selector.is_some() {
@@ -184,25 +183,10 @@ impl<T: FieldElement> SortedWitnesses<T> {
     fn process_plookup_internal<'a>(
         &mut self,
         fixed_data: &FixedData<T>,
-        left: &[AffineResult<&'a PolynomialReference, T>],
+        left: &[AffineExpression<&'a PolynomialReference, T>],
         right: &SelectedExpressions<T>,
         rhs: Vec<&PolynomialReference>,
     ) -> EvalResult<'a, T> {
-        // Return "incomplete" if the LHS has an error (we still need more information).
-        let (left, errors): (Vec<_>, Vec<_>) = left.iter().partition_map(|x| match x {
-            Ok(x) => Either::Left(x),
-            Err(x) => Either::Right(x),
-        });
-        if !errors.is_empty() {
-            return Ok(EvalValue::incomplete(
-                errors
-                    .into_iter()
-                    .cloned()
-                    .reduce(|x, y| x.combine(y))
-                    .unwrap(),
-            ));
-        }
-
         let key_index = rhs
             .iter()
             .position(|&x| x.poly_id() == self.key_col)
@@ -220,7 +204,7 @@ impl<T: FieldElement> SortedWitnesses<T> {
             .data
             .entry(key_value)
             .or_insert_with(|| vec![None; self.witness_positions.len()]);
-        for (&l, &r) in left.iter().zip(rhs.iter()).skip(1) {
+        for (l, &r) in left.iter().zip(rhs.iter()).skip(1) {
             let stored_value = &mut stored_values[self.witness_positions[&r.poly_id()]];
             match stored_value {
                 // There is a stored value

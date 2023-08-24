@@ -10,7 +10,7 @@ use self::double_sorted_witness_machine::DoubleSortedWitnesses;
 pub use self::fixed_lookup_machine::FixedLookup;
 use self::sorted_witness_machine::SortedWitnesses;
 
-use super::affine_expression::AffineResult;
+use super::affine_expression::AffineExpression;
 use super::EvalResult;
 use super::FixedData;
 
@@ -33,7 +33,7 @@ pub trait Machine<'a, T: FieldElement>: Send + Sync {
         fixed_data: &'a FixedData<T>,
         fixed_lookup: &mut FixedLookup<T>,
         kind: IdentityKind,
-        left: &[AffineResult<&'a PolynomialReference, T>],
+        left: &[AffineExpression<&'a PolynomialReference, T>],
         right: &'a SelectedExpressions<T>,
     ) -> Option<EvalResult<'a, T>>;
 
@@ -70,7 +70,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for KnownMachine<'a, T> {
         fixed_data: &'a FixedData<T>,
         fixed_lookup: &mut FixedLookup<T>,
         kind: IdentityKind,
-        left: &[AffineResult<&'a PolynomialReference, T>],
+        left: &[AffineExpression<&'a PolynomialReference, T>],
         right: &'a SelectedExpressions<T>,
     ) -> Option<crate::witgen::EvalResult<'a, T>> {
         self.get()
