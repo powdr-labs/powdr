@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [features]
-default = ["halo2"]
+default = [] # halo2 is disabled by default
 halo2 = ["dep:halo2", "backend/halo2", "compiler/halo2"]
 
 [dependencies]
