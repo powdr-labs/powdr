@@ -4,15 +4,19 @@ use super::{EvalResult, FixedData, FixedLookup};
 use crate::witgen::affine_expression::AffineExpression;
 use crate::witgen::column_map::WitnessColumnMap;
 use crate::witgen::identity_processor::IdentityProcessor;
+use crate::witgen::processor::Calldata;
 use crate::witgen::processor::Processor;
-use crate::witgen::rows::{Row, RowFactory, RowPair, RowUpdater, UnknownStrategy};
-use crate::witgen::sequence_iterator::{IdentityInSequence, ProcessingSequenceCache, SequenceStep};
+use crate::witgen::rows::CellValue;
+use crate::witgen::rows::{Row, RowFactory, RowPair, UnknownStrategy};
+use crate::witgen::sequence_iterator::ProcessingSequenceCache;
 use crate::witgen::util::try_to_simple_poly;
 use crate::witgen::{machines::Machine, range_constraints::RangeConstraint, EvalError};
-use crate::witgen::{Constraint, EvalValue, IncompleteCause};
+use crate::witgen::{EvalValue, IncompleteCause};
 use ast::analyzed::{
     Expression, Identity, IdentityKind, PolyID, PolynomialReference, SelectedExpressions,
 };
+use itertools::Either;
+use itertools::Itertools;
 use number::{DegreeType, FieldElement};
 
 /// Transposes a list of rows into a map from column to a list of values.
@@ -57,11 +61,12 @@ pub struct BlockMachine<'a, T: FieldElement> {
     /// Cache that states the order in which to evaluate identities
     /// to make progress most quickly.
     processing_sequence_cache: ProcessingSequenceCache,
+    fixed_data: &'a FixedData<'a, T>,
 }
 
 impl<'a, T: FieldElement> BlockMachine<'a, T> {
     pub fn try_new(
-        fixed_data: &'a FixedData<T>,
+        fixed_data: &'a FixedData<'a, T>,
         connecting_identities: &[&'a Identity<T>],
         identities: &[&'a Identity<T>],
         witness_cols: &HashSet<PolyID>,
@@ -82,6 +87,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
                         period,
                         identities.len(),
                     ),
+                    fixed_data,
                 };
                 // Append a block so that we do not have to deal with wrap-around
                 // when storing machine witness data.
@@ -140,7 +146,7 @@ fn try_to_period<T: FieldElement>(
 impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
     fn process_plookup(
         &mut self,
-        fixed_data: &'a FixedData<T>,
+        _fixed_data: &'a FixedData<T>,
         fixed_lookup: &mut FixedLookup<T>,
         kind: IdentityKind,
         left: &[AffineExpression<&'a PolynomialReference, T>],
@@ -151,7 +157,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
         }
         let previous_len = self.rows() as usize;
         Some({
-            let result = self.process_plookup_internal(fixed_data, fixed_lookup, left, right);
+            let result = self.process_plookup_internal(fixed_lookup, left, right);
             if let Ok(assignments) = &result {
                 if !assignments.is_complete() {
                     // rollback the changes.
@@ -246,6 +252,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
             &self.identities,
             fixed_data,
             self.row_factory.clone(),
+            &self.witness_cols,
         );
 
         // Check if we can accept the last row as is.
@@ -257,7 +264,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
             processor
                 .solve_with_default_sequence_iterator()
                 .expect("Some constraints were not satisfiable when solving for the last row.");
-            let last_row = processor.finish().remove(1);
+            let last_row = processor.finish().0.remove(1);
 
             // Copy values into data
             for (poly_id, values) in data.iter_mut() {
@@ -285,7 +292,6 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
 
     fn process_plookup_internal(
         &mut self,
-        fixed_data: &'a FixedData<T>,
         fixed_lookup: &mut FixedLookup<T>,
         left: &[AffineExpression<&'a PolynomialReference, T>],
         right: &'a SelectedExpressions<T>,
@@ -295,7 +301,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         // TODO: Add possibility for machines to call other machines.
         let mut machines = vec![];
         let mut identity_processor =
-            IdentityProcessor::new(fixed_data, fixed_lookup, &mut machines);
+            IdentityProcessor::new(self.fixed_data, fixed_lookup, &mut machines);
 
         // First check if we already store the value.
         // This can happen in the loop detection case, where this function is just called
@@ -309,184 +315,86 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
             // We don't have the next row, because it would be the first row of the next block.
             // We'll use a fresh row instead.
             let next = self.row_factory.fresh_row();
-            let row_pair = RowPair::new(current, &next, row, fixed_data, UnknownStrategy::Unknown);
+            let row_pair = RowPair::new(
+                current,
+                &next,
+                row,
+                self.fixed_data,
+                UnknownStrategy::Unknown,
+            );
 
             let result = identity_processor.process_link(left, right, &row_pair)?;
 
             if result.is_complete() {
-                return Ok(result);
+                return Ok(EvalValue::complete(vec![]));
             }
         }
 
         // TODO this assumes we are always using the same lookup for this machine.
-        let mut processing_sequence_iterator =
-            self.processing_sequence_cache.get_processing_sequence(left);
+        let mut sequence_iterator = self.processing_sequence_cache.get_processing_sequence(left);
 
-        if !processing_sequence_iterator.has_steps() {
+        if !sequence_iterator.has_steps() {
             // Shortcut, no need to do anything.
             return Ok(EvalValue::incomplete(
                 IncompleteCause::BlockMachineLookupIncomplete,
             ));
         }
 
-        let old_len = self.rows();
-        self.append_new_block(fixed_data.degree)?;
-        let mut outer_assignments = EvalValue::complete(vec![]);
+        let mut processor = Processor::new(
+            self.block_size as DegreeType - 1,
+            vec![self.row_factory.fresh_row(); self.block_size + 2],
+            identity_processor,
+            &self.identities,
+            self.fixed_data,
+            self.row_factory.clone(),
+            &self.witness_cols,
+        )
+        .with_calldata(Calldata::new(left, right));
 
-        // While processing the block, we'll add an additional row which will be
-        // removed once the block is done. This is done to prevent infinite loops:
-        // If we ignored updates to the last row, they would be computed over
-        // and over again.
-        self.data.push(self.row_factory.fresh_row());
-
-        let mut errors = vec![];
-        // TODO The error handling currently does not handle contradictions properly.
-        // If we can find an assignment of all LHS variables at the end, we do not return an error,
-        // even if there is a conflict.
-
-        // A copy of `left` which is mutated by `handle_outer_constraints()`
-        let mut left_mut = left.to_vec();
-
-        // Can't use a for loop here, because we need to communicate progress_in_last_step to the
-        // default iterator.
-        while let Some(step) = processing_sequence_iterator.next() {
-            let SequenceStep {
-                row_delta,
-                identity,
-            } = step;
-            let row = (old_len as i64 + row_delta + fixed_data.degree as i64) as DegreeType
-                % fixed_data.degree;
-
-            let progress = match self.compute_updates(
-                row,
-                fixed_data,
-                &left_mut,
-                right,
-                identity,
-                &mut identity_processor,
-            ) {
-                Ok(value) => {
-                    if !value.is_empty() {
-                        errors.clear();
-
-                        let progress = self.apply_updates(row, identity, &value, &mut left_mut);
-
-                        for (poly, constraint) in value.constraints {
-                            if !self.witness_cols.contains(&poly.poly_id()) {
-                                outer_assignments.constraints.push((poly, constraint));
-                            }
-                        }
-
-                        progress
-                    } else {
-                        false
-                    }
-                }
-                Err(e) => {
-                    errors.push(format!("In row {}: {e}", row).into());
-                    false
-                }
-            };
-
-            processing_sequence_iterator.report_progress(progress);
-        }
-
-        // Remove the extra row we added at the beginning.
-        self.data.pop();
+        let outer_assignments = processor.solve(&mut sequence_iterator)?;
+        let (mut new_block, left_new) = processor.finish();
+        let left_new = left_new.unwrap();
 
         log::trace!("End processing block machine");
 
         // Only succeed if we can assign everything.
         // Otherwise it is messy because we have to find the correct block again.
-        let success = left_mut.iter().all(|v| v.is_constant());
+        let success = left_new.iter().all(|v| v.is_constant());
 
         if success {
+            // Append new block:
+            // 1. Ignore the first row of the next block:
+            new_block.pop();
+            // 2. Take out the last row from the previous block
+            let (mut last_row, new_block): (Vec<_>, Vec<_>) =
+                new_block.into_iter().enumerate().partition_map(|(i, row)| {
+                    if i == 0 {
+                        Either::Left(row)
+                    } else {
+                        Either::Right(row)
+                    }
+                });
+            let last_row = last_row.pop().unwrap();
+            // 3. Merge the last row of the previous block
+            let last_row_index = self.rows() as usize - 1;
+            let existing_last_row = self.data.get_mut(last_row_index).unwrap();
+            *existing_last_row =
+                WitnessColumnMap::from(last_row.into_iter().map(|(k, v)| match &v.value {
+                    CellValue::Known(_) => v,
+                    _ => existing_last_row[&k].clone(),
+                }));
+            // 4. Append the new block
+            self.data.extend(new_block.into_iter());
+
             // We solved the query, so report it to the cache.
             self.processing_sequence_cache
-                .report_processing_sequence(left, processing_sequence_iterator);
-            Ok(outer_assignments)
-        } else if !errors.is_empty() {
-            Err(errors
-                .into_iter()
-                .reduce(|x: EvalError<T>, y| x.combine(y))
-                .unwrap())
+                .report_processing_sequence(left, sequence_iterator);
+            Ok(EvalValue::complete(outer_assignments))
         } else {
             self.processing_sequence_cache.report_incomplete(left);
             Ok(EvalValue::incomplete(
                 IncompleteCause::BlockMachineLookupIncomplete,
             ))
         }
-    }
-
-    fn compute_updates(
-        &self,
-        row: DegreeType,
-        fixed_data: &'a FixedData<T>,
-        left: &[AffineExpression<&'a PolynomialReference, T>],
-        right: &'a SelectedExpressions<T>,
-        identity: IdentityInSequence,
-        identity_processor: &mut IdentityProcessor<'a, '_, T>,
-    ) -> EvalResult<'a, T> {
-        match identity {
-            IdentityInSequence::Internal(i) => identity_processor.process_identity(
-                self.identities[i],
-                &self.get_current_row_pair(row, fixed_data),
-            ),
-            IdentityInSequence::OuterQuery => {
-                assert!(row as usize % self.block_size == self.block_size - 1);
-                identity_processor.process_link(
-                    left,
-                    right,
-                    &self.get_current_row_pair(row, fixed_data),
-                )
-            }
-        }
-    }
-
-    fn apply_updates(
-        &mut self,
-        row: DegreeType,
-        identity: IdentityInSequence,
-        updates: &EvalValue<&'a PolynomialReference, T>,
-        left_mut: &mut [AffineExpression<&'a PolynomialReference, T>],
-    ) -> bool {
-        if updates.constraints.is_empty() {
-            return false;
-        }
-
-        match identity {
-            IdentityInSequence::Internal(index) => {
-                log::trace!("    Updates from: {}", self.identities[index])
-            }
-            IdentityInSequence::OuterQuery => log::trace!("    Updates from: outer query"),
-        };
-
-        let (before, after) = self.data.split_at_mut(row as usize + 1);
-        let current = before.last_mut().unwrap();
-        let next = after.first_mut().unwrap();
-
-        let mut row_updater = RowUpdater::new(current, next, row);
-        for (poly, c) in &updates.constraints {
-            if self.witness_cols.contains(&poly.poly_id()) {
-                row_updater.apply_update(poly, c);
-            } else if let Constraint::Assignment(v) = c {
-                for l in left_mut.iter_mut() {
-                    log::trace!("      => {} (outer) = {}", poly, v);
-                    l.assign(poly, *v);
-                }
-            };
-        }
-
-        true
-    }
-
-    fn get_current_row_pair(
-        &self,
-        row: DegreeType,
-        fixed_data: &'a FixedData<T>,
-    ) -> RowPair<'_, 'a, T> {
-        let current = &self.data[row as usize];
-        let next = &self.data[row as usize + 1];
-        RowPair::new(current, next, row, fixed_data, UnknownStrategy::Unknown)
     }
 }

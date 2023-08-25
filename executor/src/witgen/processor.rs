@@ -1,14 +1,38 @@
-use ast::analyzed::Identity;
+use std::collections::HashSet;
+
+use ast::analyzed::{Identity, PolyID, PolynomialReference, SelectedExpressions};
 use number::FieldElement;
 
+use crate::witgen::Constraint;
+
 use super::{
+    affine_expression::AffineExpression,
     identity_processor::IdentityProcessor,
     rows::{Row, RowFactory, RowPair, RowUpdater, UnknownStrategy},
     sequence_iterator::{
         DefaultSequenceIterator, IdentityInSequence, ProcessingSequenceIterator, SequenceStep,
     },
-    EvalError, FixedData,
+    Constraints, EvalError, FixedData,
 };
+
+pub struct Calldata<'a, 'b, T: FieldElement> {
+    left: &'b [AffineExpression<&'a PolynomialReference, T>],
+    right: &'a SelectedExpressions<T>,
+    left_mut: Vec<AffineExpression<&'a PolynomialReference, T>>,
+}
+
+impl<'a, 'b, T: FieldElement> Calldata<'a, 'b, T> {
+    pub fn new(
+        left: &'b [AffineExpression<&'a PolynomialReference, T>],
+        right: &'a SelectedExpressions<T>,
+    ) -> Self {
+        Self {
+            left,
+            right,
+            left_mut: left.to_vec(),
+        }
+    }
+}
 
 /// A basic processor that knows how to determine a unique satisfying witness
 /// for a given list of identities.
@@ -28,16 +52,20 @@ pub struct Processor<'a, 'b, T: FieldElement> {
     fixed_data: &'a FixedData<'a, T>,
     /// The row factory
     row_factory: RowFactory<'a, T>,
+    /// The set of witness columns that are actually part of this machine.
+    witness_cols: &'b HashSet<PolyID>,
+    calldata: Option<Calldata<'a, 'b, T>>,
 }
 
 impl<'a, 'b, T: FieldElement> Processor<'a, 'b, T> {
     pub fn new(
         row_offset: u64,
         data: Vec<Row<'a, T>>,
-        identity_processor: IdentityProcessor<'a, 'a, T>,
+        identity_processor: IdentityProcessor<'a, 'b, T>,
         identities: &'b [&'a Identity<T>],
         fixed_data: &'a FixedData<'a, T>,
         row_factory: RowFactory<'a, T>,
+        witness_cols: &'b HashSet<PolyID>,
     ) -> Self {
         Self {
             row_offset,
@@ -46,6 +74,15 @@ impl<'a, 'b, T: FieldElement> Processor<'a, 'b, T> {
             identities,
             fixed_data,
             row_factory,
+            witness_cols,
+            calldata: None,
+        }
+    }
+
+    pub fn with_calldata(self, calldata: Calldata<'a, 'b, T>) -> Self {
+        Self {
+            calldata: Some(calldata),
+            ..self
         }
     }
 
@@ -77,7 +114,9 @@ impl<'a, 'b, T: FieldElement> Processor<'a, 'b, T> {
     /// Since the default sequence iterator looks at the row before and after
     /// the current block, we assume that these lines are already part of [Self::data]
     /// and set the block size to `self.data.len() - 2`.
-    pub fn solve_with_default_sequence_iterator(&mut self) -> Result<(), EvalError<T>> {
+    pub fn solve_with_default_sequence_iterator(
+        &mut self,
+    ) -> Result<Constraints<&'a PolynomialReference, T>, EvalError<T>> {
         assert!(self.data.len() > 2);
         let mut sequence_iterator = ProcessingSequenceIterator::Default(
             DefaultSequenceIterator::new(self.data.len() - 2, self.identities.len(), None),
@@ -89,29 +128,44 @@ impl<'a, 'b, T: FieldElement> Processor<'a, 'b, T> {
     pub fn solve(
         &mut self,
         sequence_iterator: &mut ProcessingSequenceIterator,
-    ) -> Result<(), EvalError<T>> {
+    ) -> Result<Constraints<&'a PolynomialReference, T>, EvalError<T>> {
+        let mut outer_assignments = vec![];
+
         while let Some(SequenceStep {
             row_delta,
             identity,
         }) = sequence_iterator.next()
         {
-            match identity {
+            let row_index = (1 + row_delta) as usize;
+            let progress = match identity {
                 IdentityInSequence::Internal(identity_index) => {
-                    let row_index = (1 + row_delta) as usize;
-                    let progress = self.process_identity(row_index, identity_index)?;
-                    sequence_iterator.report_progress(progress);
+                    self.process_identity(row_index, identity_index)?
                 }
                 IdentityInSequence::OuterQuery => {
-                    unimplemented!("Implement outer query")
+                    // TODO: Fail if not?
+                    if self.calldata.is_some() {
+                        let (progress, new_outer_assignments) =
+                            self.process_outer_query(row_index)?;
+                        outer_assignments.extend(new_outer_assignments);
+                        progress
+                    } else {
+                        false
+                    }
                 }
-            }
+            };
+            sequence_iterator.report_progress(progress);
         }
-        Ok(())
+        Ok(outer_assignments)
     }
 
     /// Destroys itself, returns the data.
-    pub fn finish(self) -> Vec<Row<'a, T>> {
-        self.data
+    pub fn finish(
+        self,
+    ) -> (
+        Vec<Row<'a, T>>,
+        Option<Vec<AffineExpression<&'a PolynomialReference, T>>>,
+    ) {
+        (self.data, self.calldata.map(|c| c.left_mut))
     }
 
     /// Given a row and identity index, computes any updates, applies them and returns
@@ -164,6 +218,67 @@ impl<'a, 'b, T: FieldElement> Processor<'a, 'b, T> {
 
         // Apply the updates, return progress
         Ok(row_updater.apply_updates(&updates, || identity.to_string()))
+    }
+
+    // TODO: Remove code duplication with process_identity
+    fn process_outer_query(
+        &mut self,
+        row_index: usize,
+    ) -> Result<(bool, Constraints<&'a PolynomialReference, T>), EvalError<T>> {
+        let Calldata {
+            left,
+            right,
+            left_mut,
+        } = self.calldata.as_mut().unwrap();
+
+        // Create row pair
+        let row_pair = RowPair::new(
+            &self.data[row_index],
+            &self.data[row_index + 1],
+            self.row_offset + row_index as u64,
+            self.fixed_data,
+            UnknownStrategy::Unknown,
+        );
+
+        let updates = self
+            .identity_processor
+            .process_link(left, right, &row_pair)?;
+
+        if updates.constraints.is_empty() {
+            return Ok((false, vec![]));
+        }
+
+        log::trace!("    Updates from: outer query");
+        // Build RowUpdater
+        // (a bit complicated, because we need two mutable
+        // references to elements of the same vector)
+        let (before, after) = self.data.split_at_mut(row_index + 1);
+        let current = before.last_mut().unwrap();
+        let next = after.first_mut().unwrap();
+        let mut row_updater = RowUpdater::new(current, next, self.row_offset + row_index as u64);
+
+        if updates.constraints.is_empty() {
+            return Ok((false, vec![]));
+        }
+
+        for (poly, c) in &updates.constraints {
+            if self.witness_cols.contains(&poly.poly_id()) {
+                row_updater.apply_update(poly, c);
+            } else if let Constraint::Assignment(v) = c {
+                for l in left_mut.iter_mut() {
+                    log::trace!("      => {} (outer) = {}", poly, v);
+                    l.assign(poly, *v);
+                }
+            };
+        }
+
+        let outer_assignments = updates
+            .constraints
+            .into_iter()
+            .filter(|(poly, _)| !self.witness_cols.contains(&poly.poly_id()))
+            .collect::<Vec<_>>();
+
+        Ok((true, outer_assignments))
     }
 }
 
@@ -218,6 +333,7 @@ mod tests {
             IdentityProcessor::new(&fixed_data, &mut fixed_lookup, &mut machines);
         let row_offset = 0;
         let identities = analyzed.identities.iter().collect::<Vec<_>>();
+        let witness_cols = fixed_data.witness_cols.keys().collect();
 
         let mut processor = Processor::new(
             row_offset,
@@ -226,6 +342,7 @@ mod tests {
             &identities,
             &fixed_data,
             row_factory,
+            &witness_cols,
         );
 
         f(&mut processor, name_to_poly_id(&fixed_data))
