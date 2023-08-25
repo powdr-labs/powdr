@@ -6,7 +6,7 @@ use ast::analyzed::{Identity, IdentityKind, PolyID, PolynomialReference, Selecte
 use itertools::Itertools;
 use number::FieldElement;
 
-use crate::witgen::affine_expression::AffineResult;
+use crate::witgen::affine_expression::AffineExpression;
 use crate::witgen::util::try_to_simple_poly_ref;
 use crate::witgen::{EvalError, EvalValue, IncompleteCause};
 use crate::witgen::{EvalResult, FixedData};
@@ -176,7 +176,7 @@ impl<T: FieldElement> FixedLookup<T> {
         &mut self,
         fixed_data: &FixedData<T>,
         kind: IdentityKind,
-        left: &[AffineResult<&'b PolynomialReference, T>],
+        left: &[AffineExpression<&'b PolynomialReference, T>],
         right: &'b SelectedExpressions<T>,
     ) -> Option<EvalResult<'b, T>> {
         // This is a matching machine if it is a plookup and the RHS is fully constant.
@@ -200,7 +200,7 @@ impl<T: FieldElement> FixedLookup<T> {
     fn process_plookup_internal<'b>(
         &mut self,
         fixed_data: &FixedData<T>,
-        left: &[AffineResult<&'b PolynomialReference, T>],
+        left: &[AffineExpression<&'b PolynomialReference, T>],
         right: Vec<&PolynomialReference>,
     ) -> EvalResult<'b, T> {
         // split the fixed columns depending on whether their associated lookup variable is constant or not. Preserve the value of the constant arguments.
@@ -211,7 +211,7 @@ impl<T: FieldElement> FixedLookup<T> {
         let mut output_expressions = vec![];
 
         left.iter().zip(right).for_each(|(l, r)| {
-            let left_value = l.as_ref().ok().and_then(|l| l.constant_value());
+            let left_value = l.constant_value();
             if let Some(value) = left_value {
                 input_assignment.push((r, value));
             } else {
@@ -256,24 +256,17 @@ impl<T: FieldElement> FixedLookup<T> {
 
         let mut result = EvalValue::complete(vec![]);
         for (l, r) in output_expressions.into_iter().zip(output) {
-            match l {
-                Ok(l) => {
-                    let evaluated = l.clone() - r.into();
-                    // TODO we could use bit constraints here
-                    match evaluated.solve() {
-                        Ok(constraints) => {
-                            result.combine(constraints);
-                        }
-                        Err(_) => {
-                            // Fail the whole lookup
-                            return Err(EvalError::ConstraintUnsatisfiable(format!(
-                                "Constraint is invalid ({l} != {r}).",
-                            )));
-                        }
-                    }
+            let evaluated = l.clone() - r.into();
+            // TODO we could use bit constraints here
+            match evaluated.solve() {
+                Ok(constraints) => {
+                    result.combine(constraints);
                 }
-                Err(err) => {
-                    result.status = result.status.combine(err.clone());
+                Err(_) => {
+                    // Fail the whole lookup
+                    return Err(EvalError::ConstraintUnsatisfiable(format!(
+                        "Constraint is invalid ({l} != {r}).",
+                    )));
                 }
             }
         }

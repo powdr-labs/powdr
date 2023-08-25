@@ -1,11 +1,11 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::iter::once;
 
-use itertools::{Either, Itertools};
+use itertools::Itertools;
 use num_traits::Zero;
 
 use super::{FixedLookup, Machine};
-use crate::witgen::affine_expression::AffineResult;
+use crate::witgen::affine_expression::AffineExpression;
 use crate::witgen::util::is_simple_poly_of_name;
 use crate::witgen::{EvalResult, FixedData};
 use crate::witgen::{EvalValue, IncompleteCause};
@@ -98,7 +98,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses<T> {
         _fixed_data: &FixedData<T>,
         _fixed_lookup: &mut FixedLookup<T>,
         kind: IdentityKind,
-        left: &[AffineResult<&'a PolynomialReference, T>],
+        left: &[AffineExpression<&'a PolynomialReference, T>],
         right: &'a SelectedExpressions<T>,
     ) -> Option<EvalResult<'a, T>> {
         if kind != IdentityKind::Permutation
@@ -175,28 +175,13 @@ impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses<T> {
 impl<T: FieldElement> DoubleSortedWitnesses<T> {
     fn process_plookup_internal<'a>(
         &mut self,
-        left: &[AffineResult<&'a PolynomialReference, T>],
+        left: &[AffineExpression<&'a PolynomialReference, T>],
         right: &SelectedExpressions<T>,
     ) -> EvalResult<'a, T> {
         // We blindly assume the lookup is of the form
         // OP { ADDR, STEP, X } is m_is_write { m_addr, m_step, m_value }
         // or
         // OP { ADDR, STEP, X } is m_is_read { m_addr, m_step, m_value }
-
-        // Fail if the LHS has an error.
-        let (left, errors): (Vec<_>, Vec<_>) = left.iter().partition_map(|x| match x {
-            Ok(x) => Either::Left(x),
-            Err(x) => Either::Right(x),
-        });
-        if !errors.is_empty() {
-            return Ok(EvalValue::incomplete(
-                errors
-                    .into_iter()
-                    .cloned()
-                    .reduce(|x, y| x.combine(y))
-                    .unwrap(),
-            ));
-        }
 
         let is_write = match &right.selector {
             Some(Expression::PolynomialReference(p)) => p.name == self.namespaced("m_is_write"),
