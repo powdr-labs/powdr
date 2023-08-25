@@ -366,7 +366,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
                 row_delta,
                 identity,
             } = step;
-            let row = (old_len + row_delta as DegreeType + fixed_data.degree - 1) as DegreeType
+            let row = (old_len as i64 + row_delta + fixed_data.degree as i64) as DegreeType
                 % fixed_data.degree;
 
             let progress = match self.compute_updates(

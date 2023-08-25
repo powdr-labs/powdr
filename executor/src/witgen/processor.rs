@@ -85,7 +85,8 @@ impl<'a, 'b, T: FieldElement> Processor<'a, 'b, T> {
             } = step;
             match identity {
                 IdentityInSequence::Internal(identity_index) => {
-                    let progress = self.iterate_on_row_pair(row_delta, identity_index)?;
+                    let row_index = (1 + row_delta) as usize;
+                    let progress = self.process_identity(row_index, identity_index)?;
                     self.sequence_iterator.report_progress(progress);
                 }
                 // TODO: Implement outer query
@@ -102,9 +103,9 @@ impl<'a, 'b, T: FieldElement> Processor<'a, 'b, T> {
 
     /// On a row pair of a given index, iterate over all identities until no more progress is made.
     /// For each identity, it tries to figure out unknown values and updates it.
-    fn iterate_on_row_pair(
+    fn process_identity(
         &mut self,
-        row: usize,
+        row_index: usize,
         identity_index: usize,
     ) -> Result<bool, EvalError<T>> {
         let identity = &self.identities[identity_index];
@@ -112,9 +113,9 @@ impl<'a, 'b, T: FieldElement> Processor<'a, 'b, T> {
         // Create row pair
         let global_row_index = self.row_offset + row as u64;
         let row_pair = RowPair::new(
-            &self.data[row],
-            &self.data[row + 1],
-            self.row_offset + row as u64,
+            &self.data[row_index],
+            &self.data[row_index + 1],
+            self.row_offset + row_index as u64,
             self.fixed_data,
             UnknownStrategy::Unknown,
         );
@@ -143,10 +144,10 @@ impl<'a, 'b, T: FieldElement> Processor<'a, 'b, T> {
         // Build RowUpdater
         // (a bit complicated, because we need two mutable
         // references to elements of the same vector)
-        let (before, after) = self.data.split_at_mut(row + 1);
+        let (before, after) = self.data.split_at_mut(row_index + 1);
         let current = before.last_mut().unwrap();
         let next = after.first_mut().unwrap();
-        let mut row_updater = RowUpdater::new(current, next, self.row_offset + row as u64);
+        let mut row_updater = RowUpdater::new(current, next, self.row_offset + row_index as u64);
 
         // Apply the updates, return progress
         Ok(row_updater.apply_updates(&updates, || identity.to_string()))

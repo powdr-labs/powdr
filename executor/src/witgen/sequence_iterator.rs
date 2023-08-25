@@ -6,7 +6,7 @@ use super::affine_expression::AffineExpression;
 
 #[derive(Clone, Debug)]
 pub struct SequenceStep {
-    pub row_delta: usize,
+    pub row_delta: i64,
     pub identity: IdentityInSequence,
 }
 
@@ -16,7 +16,7 @@ pub struct SequenceStep {
 pub struct DefaultSequenceIterator {
     block_size: usize,
     identities_count: usize,
-    row_deltas: Vec<usize>,
+    row_deltas: Vec<i64>,
 
     /// Whether this is the first time the iterator is called.
     is_first: bool,
@@ -35,12 +35,13 @@ const MAX_ROUNDS_PER_ROW_DELTA: usize = 100;
 
 impl DefaultSequenceIterator {
     pub fn new(block_size: usize, identities_count: usize) -> Self {
+        let max_row = block_size as i64 - 1;
         DefaultSequenceIterator {
             block_size,
             identities_count,
-            row_deltas: (0..=block_size)
-                .chain((0..=block_size).rev())
-                .chain(0..=block_size)
+            row_deltas: (-1..=max_row)
+                .chain((-1..max_row).rev())
+                .chain(0..=max_row)
                 .collect(),
             is_first: true,
             progress_in_current_round: false,
@@ -68,7 +69,7 @@ impl DefaultSequenceIterator {
     fn is_last_identity(&self) -> bool {
         let row_delta = self.row_deltas[self.cur_row_delta_index];
 
-        if row_delta == self.block_size {
+        if row_delta + 1 == self.block_size as i64 {
             // In the last row, we want to process one more identity, the outer query.
             self.cur_identity_index == self.identities_count
         } else {
