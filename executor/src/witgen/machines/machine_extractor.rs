@@ -119,7 +119,7 @@ pub fn split_out_machines<'a, T: FieldElement>(
         }
     }
     ExtractionOutput {
-        fixed_lookup: *fixed_lookup,
+        fixed_lookup,
         machines,
         base_identities,
         base_witnesses: remaining_witnesses,
