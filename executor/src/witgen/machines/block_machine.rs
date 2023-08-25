@@ -6,7 +6,10 @@ use crate::witgen::column_map::ColumnMap;
 use crate::witgen::identity_processor::IdentityProcessor;
 use crate::witgen::processor::Processor;
 use crate::witgen::rows::{Row, RowFactory, RowPair, RowUpdater, UnknownStrategy};
-use crate::witgen::sequence_iterator::{IdentityInSequence, ProcessingSequenceCache, SequenceStep};
+use crate::witgen::sequence_iterator::{
+    DefaultSequenceIterator, IdentityInSequence, ProcessingSequenceCache,
+    ProcessingSequenceIterator, SequenceStep,
+};
 use crate::witgen::util::try_to_simple_poly;
 use crate::witgen::{machines::Machine, range_constraints::RangeConstraint, EvalError};
 use crate::witgen::{Constraint, EvalValue, IncompleteCause};
@@ -237,14 +240,18 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
             })
             .collect();
 
-        // Build the processor. This copies the identities, but it's only done once per block machine instance.
+        // Build the processor.
         let mut processor = Processor::new(
             fixed_data.degree - 2,
             rows,
             IdentityProcessor::new(fixed_data, fixed_lookup, vec![]),
-            self.identities.clone(),
+            &self.identities,
             fixed_data,
             self.row_factory.clone(),
+            ProcessingSequenceIterator::Default(DefaultSequenceIterator::new(
+                1,
+                self.identities.len(),
+            )),
         );
 
         // Check if we can accept the last row as is.
@@ -329,6 +336,16 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         let mut processing_sequence_iterator =
             self.processing_sequence_cache.get_processing_sequence(left);
 
+        // let mut processor = Processor::new(
+        //     self.block_size as DegreeType - 1,
+        //     vec![self.row_factory.fresh_row(); self.block_size + 2],
+        //     identity_processor,
+        //     &self.identities,
+        //     fixed_data,
+        //     self.row_factory.clone(),
+        //     processing_sequence_iterator,
+        // );
+
         let mut errors = vec![];
         // TODO The error handling currently does not handle contradictions properly.
         // If we can find an assignment of all LHS variables at the end, we do not return an error,
@@ -349,7 +366,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
                 row_delta,
                 identity,
             } = step;
-            let row = (old_len as i64 + row_delta + fixed_data.degree as i64) as DegreeType
+            let row = (old_len + row_delta as DegreeType + fixed_data.degree - 1) as DegreeType
                 % fixed_data.degree;
 
             let progress = match self.compute_updates(
