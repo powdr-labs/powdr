@@ -335,16 +335,6 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         let mut processing_sequence_iterator =
             self.processing_sequence_cache.get_processing_sequence(left);
 
-        // let mut processor = Processor::new(
-        //     self.block_size as DegreeType - 1,
-        //     vec![self.row_factory.fresh_row(); self.block_size + 2],
-        //     identity_processor,
-        //     &self.identities,
-        //     fixed_data,
-        //     self.row_factory.clone(),
-        //     processing_sequence_iterator,
-        // );
-
         let mut errors = vec![];
         // TODO The error handling currently does not handle contradictions properly.
         // If we can find an assignment of all LHS variables at the end, we do not return an error,
