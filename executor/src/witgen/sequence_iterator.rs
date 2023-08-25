@@ -29,6 +29,9 @@ pub struct DefaultSequenceIterator {
     /// The number of rounds for the current row delta.
     /// If this number gets too large, we will assume that we're in an infinite loop and exit.
     current_round_count: usize,
+
+    /// The steps on which we made progress.
+    progress_steps: Vec<SequenceStep>,
 }
 
 const MAX_ROUNDS_PER_ROW_DELTA: usize = 100;
@@ -48,6 +51,7 @@ impl DefaultSequenceIterator {
             cur_row_delta_index: 0,
             cur_identity_index: 0,
             current_round_count: 0,
+            progress_steps: vec![],
         }
     }
 
@@ -96,9 +100,12 @@ impl DefaultSequenceIterator {
     }
 
     pub fn report_progress(&mut self, progress_in_last_step: bool) {
-        if !self.is_first {
-            self.progress_in_current_round |= progress_in_last_step;
+        assert!(!self.is_first, "Called report_progress() before next()");
+
+        if progress_in_last_step {
+            self.progress_steps.push(self.get_current_step());
         }
+        self.progress_in_current_round |= progress_in_last_step;
     }
 
     pub fn next(&mut self) -> Option<SequenceStep> {
@@ -109,17 +116,18 @@ impl DefaultSequenceIterator {
             return None;
         }
 
-        let row_delta = self.row_deltas[self.cur_row_delta_index];
-        let identity = if self.cur_identity_index < self.identities_count {
-            IdentityInSequence::Internal(self.cur_identity_index)
-        } else {
-            IdentityInSequence::OuterQuery
-        };
+        Some(self.get_current_step())
+    }
 
-        Some(SequenceStep {
-            row_delta,
-            identity,
-        })
+    fn get_current_step(&self) -> SequenceStep {
+        SequenceStep {
+            row_delta: self.row_deltas[self.cur_row_delta_index],
+            identity: if self.cur_identity_index < self.identities_count {
+                IdentityInSequence::Internal(self.cur_identity_index)
+            } else {
+                IdentityInSequence::OuterQuery
+            },
+        }
     }
 }
 
@@ -213,11 +221,16 @@ impl ProcessingSequenceCache {
     pub fn report_processing_sequence<K, T>(
         &mut self,
         left: &[AffineExpression<K, T>],
-        sequence: Vec<SequenceStep>,
+        sequence_iterator: ProcessingSequenceIterator,
     ) where
         K: Copy + Ord,
         T: FieldElement,
     {
-        self.cache.entry(left.into()).or_insert(sequence);
+        match sequence_iterator {
+            ProcessingSequenceIterator::Default(it) => {
+                self.cache.entry(left.into()).or_insert(it.progress_steps);
+            }
+            ProcessingSequenceIterator::Cached(_) => {} // Already cached, do nothing
+        }
     }
 }

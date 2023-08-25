@@ -351,11 +351,6 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         // If we can find an assignment of all LHS variables at the end, we do not return an error,
         // even if there is a conflict.
 
-        // Record the steps where we made progress, so we can report this to the
-        // cache later on.
-        // TODO: Move this into the processing sequence iterator.
-        let mut progress_steps = vec![];
-
         // A copy of `left` which is mutated by `handle_outer_constraints()`
         let mut left_mut = left.to_vec();
 
@@ -400,10 +395,6 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
                 }
             };
 
-            if progress {
-                progress_steps.push(step);
-            }
-
             processing_sequence_iterator.report_progress(progress);
         }
 
@@ -419,7 +410,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         if success {
             // We solved the query, so report it to the cache.
             self.processing_sequence_cache
-                .report_processing_sequence(left, progress_steps);
+                .report_processing_sequence(left, processing_sequence_iterator);
             Ok(outer_assignments)
         } else if !errors.is_empty() {
             Err(errors
