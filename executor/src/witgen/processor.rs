@@ -26,7 +26,6 @@ pub struct Processor<'a, 'b, T: FieldElement> {
     fixed_data: &'a FixedData<'a, T>,
     /// The row factory
     row_factory: RowFactory<'a, T>,
-    sequence_iterator: ProcessingSequenceIterator,
 }
 
 impl<'a, 'b, T: FieldElement> Processor<'a, 'b, T> {
@@ -37,7 +36,6 @@ impl<'a, 'b, T: FieldElement> Processor<'a, 'b, T> {
         identities: &'b [&'a Identity<T>],
         fixed_data: &'a FixedData<'a, T>,
         row_factory: RowFactory<'a, T>,
-        sequence_iterator: ProcessingSequenceIterator,
     ) -> Self {
         Self {
             row_offset,
@@ -46,7 +44,6 @@ impl<'a, 'b, T: FieldElement> Processor<'a, 'b, T> {
             identities,
             fixed_data,
             row_factory,
-            sequence_iterator,
         }
     }
 
@@ -75,10 +72,12 @@ impl<'a, 'b, T: FieldElement> Processor<'a, 'b, T> {
     }
 
     /// Figures out unknown values.
-    /// The current strategy is to go over *non-wrapping* row pairs once,
-    /// but this can be generalized in the future.
-    pub fn solve(&mut self) -> Result<(), EvalError<T>> {
-        while let Some(step) = self.sequence_iterator.next() {
+    pub fn solve(
+        &mut self,
+
+        sequence_iterator: &mut ProcessingSequenceIterator,
+    ) -> Result<(), EvalError<T>> {
+        while let Some(step) = sequence_iterator.next() {
             let SequenceStep {
                 row_delta,
                 identity,
@@ -87,7 +86,7 @@ impl<'a, 'b, T: FieldElement> Processor<'a, 'b, T> {
                 IdentityInSequence::Internal(identity_index) => {
                     let row_index = (1 + row_delta) as usize;
                     let progress = self.process_identity(row_index, identity_index)?;
-                    self.sequence_iterator.report_progress(progress);
+                    sequence_iterator.report_progress(progress);
                 }
                 // TODO: Implement outer query
                 IdentityInSequence::OuterQuery => {}

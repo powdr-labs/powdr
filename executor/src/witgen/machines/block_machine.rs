@@ -248,10 +248,6 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
             &self.identities,
             fixed_data,
             self.row_factory.clone(),
-            ProcessingSequenceIterator::Default(DefaultSequenceIterator::new(
-                1,
-                self.identities.len(),
-            )),
         );
 
         // Check if we can accept the last row as is.
@@ -260,8 +256,11 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
 
             // Clear the last row and run the solver
             processor.clear_row(1);
+            let mut sequence_iterator = ProcessingSequenceIterator::Default(
+                DefaultSequenceIterator::new(1, self.identities.len()),
+            );
             processor
-                .solve()
+                .solve(&mut sequence_iterator)
                 .expect("Some constraints were not satisfiable when solving for the last row.");
             let last_row = processor.finish().remove(1);
 
