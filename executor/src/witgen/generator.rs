@@ -1,22 +1,24 @@
-use ast::analyzed::{Identity, PolyID};
+use ast::analyzed::{Identity, IdentityKind, PolyID, PolynomialReference, SelectedExpressions};
 use itertools::Itertools;
 use number::{DegreeType, FieldElement};
 use parser_util::lines::indent;
 use std::cmp::max;
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::HashSet;
+use std::collections::{BTreeSet, HashMap};
 use std::time::Instant;
 
 use crate::witgen::identity_processor::{self, IdentityProcessor};
 use crate::witgen::rows::RowUpdater;
 
+use super::affine_expression::AffineExpression;
 use super::column_map::WitnessColumnMap;
-use super::machines::{KnownMachine, Machine};
+use super::machines::Machine;
 use super::query_processor::QueryProcessor;
 use super::range_constraints::RangeConstraint;
 
 use super::machines::FixedLookup;
 use super::rows::{Row, RowFactory, RowPair, UnknownStrategy};
-use super::{EvalError, EvalResult, FixedData};
+use super::{EvalError, EvalResult, FixedData, MutableState};
 
 /// Phase in which [Generator::compute_next_row_or_initialize] is called.
 #[derive(Debug, PartialEq)]
@@ -45,12 +47,10 @@ impl<'a, T: FieldElement> CompletableIdentities<'a, T> {
     }
 }
 
-pub struct Generator<'a, 'b, T: FieldElement, QueryCallback: Send + Sync> {
+pub struct Generator<'a, T: FieldElement> {
     /// The witness columns belonging to this machine
     witnesses: BTreeSet<PolyID>,
     row_factory: RowFactory<'a, T>,
-    identity_processor: IdentityProcessor<'a, 'b, T>,
-    query_processor: Option<QueryProcessor<'a, T, QueryCallback>>,
     fixed_data: &'a FixedData<'a, T>,
     /// The subset of identities that contains a reference to the next row
     /// (precomputed once for performance reasons)
@@ -71,34 +71,44 @@ pub struct Generator<'a, 'b, T: FieldElement, QueryCallback: Send + Sync> {
     last_report_time: Instant,
 }
 
-impl<'a, 'b, T: FieldElement, QueryCallback> Generator<'a, 'b, T, QueryCallback>
-where
-    QueryCallback: FnMut(&str) -> Option<T> + Send + Sync,
-{
+impl<'a, T: FieldElement> Machine<'a, T> for Generator<'a, T> {
+    fn process_plookup(
+        &mut self,
+        _fixed_data: &'a FixedData<T>,
+        _fixed_lookup: &mut FixedLookup<T>,
+        _kind: IdentityKind,
+        _left: &[AffineExpression<&'a PolynomialReference, T>],
+        _right: &'a SelectedExpressions<T>,
+    ) -> Option<EvalResult<'a, T>> {
+        unimplemented!()
+    }
+
+    fn take_witness_col_values(
+        &mut self,
+        _fixed_data: &FixedData<T>,
+        _fixed_lookup: &mut FixedLookup<T>,
+    ) -> HashMap<String, Vec<T>> {
+        unimplemented!()
+    }
+}
+
+impl<'a, T: FieldElement> Generator<'a, T> {
     pub fn new(
         fixed_data: &'a FixedData<'a, T>,
-        fixed_lookup: &'b mut FixedLookup<T>,
-        identities: &'a [&'a Identity<T>],
-        witnesses: BTreeSet<PolyID>,
-        global_range_constraints: WitnessColumnMap<Option<RangeConstraint<T>>>,
-        machines: Vec<KnownMachine<'a, T>>,
-        query_callback: Option<QueryCallback>,
+        identities: &[&'a Identity<T>],
+        witnesses: &HashSet<PolyID>,
+        global_range_constraints: &WitnessColumnMap<Option<RangeConstraint<T>>>,
     ) -> Self {
-        let query_processor =
-            query_callback.map(|query_callback| QueryProcessor::new(fixed_data, query_callback));
-        let identity_processor = IdentityProcessor::new(fixed_data, fixed_lookup, machines);
-        let row_factory = RowFactory::new(fixed_data, global_range_constraints);
+        let row_factory = RowFactory::new(fixed_data, global_range_constraints.clone());
         let default_row = row_factory.fresh_row();
 
         let (identities_with_next, identities_without_next): (Vec<_>, Vec<_>) = identities
             .iter()
             .partition(|identity| identity.contains_next_ref());
 
-        let mut generator = Generator {
+        Generator {
             row_factory,
-            witnesses,
-            query_processor,
-            identity_processor,
+            witnesses: witnesses.clone().into_iter().collect(),
             fixed_data,
             identities_with_next_ref: identities_with_next,
             identities_without_next_ref: identities_without_next,
@@ -109,20 +119,31 @@ where
             current_row_index: fixed_data.degree - 1,
             last_report: 0,
             last_report_time: Instant::now(),
-        };
-        // For identities like `pc' = (1 - first_step') * <...>`, we need to process the last
-        // row before processing the first row.
-        generator
-            .compute_next_row_or_initialize(generator.last_row(), ProcessingPhase::Initialization);
-        generator
+        }
     }
 
     fn last_row(&self) -> DegreeType {
         self.fixed_data.degree - 1
     }
 
-    pub fn compute_next_row(&mut self, next_row: DegreeType) -> WitnessColumnMap<T> {
-        self.compute_next_row_or_initialize(next_row, ProcessingPhase::Regular)
+    pub fn compute_next_row<Q>(
+        &mut self,
+        next_row: DegreeType,
+        mutable_state: &mut MutableState<'a, T, Q>,
+    ) -> WitnessColumnMap<T>
+    where
+        Q: FnMut(&str) -> Option<T> + Send + Sync,
+    {
+        if next_row == 0 {
+            // For identities like `pc' = (1 - first_step') * <...>`, we need to process the last
+            // row before processing the first row.
+            self.compute_next_row_or_initialize(
+                self.last_row(),
+                ProcessingPhase::Initialization,
+                mutable_state,
+            );
+        }
+        self.compute_next_row_or_initialize(next_row, ProcessingPhase::Regular, mutable_state)
     }
 
     /// Update the first row for the wrap-around.
@@ -148,11 +169,15 @@ where
         ))
     }
 
-    fn compute_next_row_or_initialize(
+    fn compute_next_row_or_initialize<Q>(
         &mut self,
         next_row: DegreeType,
         phase: ProcessingPhase,
-    ) -> WitnessColumnMap<T> {
+        mutable_state: &mut MutableState<'a, T, Q>,
+    ) -> WitnessColumnMap<T>
+    where
+        Q: FnMut(&str) -> Option<T> + Send + Sync,
+    {
         if phase == ProcessingPhase::Initialization {
             assert_eq!(next_row, self.last_row());
             self.current_row_index = next_row;
@@ -162,6 +187,16 @@ where
 
         log::trace!("Row: {}", self.current_row_index);
 
+        let mut identity_processor = IdentityProcessor::new(
+            self.fixed_data,
+            &mut mutable_state.fixed_lookup,
+            &mut mutable_state.machines,
+        );
+        let mut query_processor = mutable_state
+            .query_callback
+            .as_mut()
+            .map(|query| QueryProcessor::new(self.fixed_data, query));
+
         log::trace!("  Going over all identities until no more progress is made");
         // First, go over identities that don't reference the next row,
         // Second, propagate values to the next row by going over identities that do reference the next row.
@@ -169,10 +204,20 @@ where
             CompletableIdentities::new(self.identities_without_next_ref.iter().cloned());
         let mut identities_with_next_ref =
             CompletableIdentities::new(self.identities_with_next_ref.iter().cloned());
-        self.loop_until_no_progress(&mut identities_without_next_ref)
-            .and_then(|_| self.loop_until_no_progress(&mut identities_with_next_ref))
-            .map_err(|e| self.report_failure_and_panic_unsatisfiable(e))
-            .unwrap();
+        self.loop_until_no_progress(
+            &mut identities_without_next_ref,
+            &mut identity_processor,
+            &mut query_processor,
+        )
+        .and_then(|_| {
+            self.loop_until_no_progress(
+                &mut identities_with_next_ref,
+                &mut identity_processor,
+                &mut query_processor,
+            )
+        })
+        .map_err(|e| self.report_failure_and_panic_unsatisfiable(e))
+        .unwrap();
 
         // Check that the computed row is "final" by asserting that all unknown values can
         // be set to 0.
@@ -183,12 +228,20 @@ where
             log::trace!(
                 "  Checking that remaining identities hold when unknown values are set to 0"
             );
-            self.process_identities(&mut identities_without_next_ref, UnknownStrategy::Zero)
-                .and_then(|_| {
-                    self.process_identities(&mut identities_with_next_ref, UnknownStrategy::Zero)
-                })
-                .map_err(|e| self.report_failure_and_panic_underconstrained(e))
-                .unwrap();
+            self.process_identities(
+                &mut identities_without_next_ref,
+                UnknownStrategy::Zero,
+                &mut identity_processor,
+            )
+            .and_then(|_| {
+                self.process_identities(
+                    &mut identities_with_next_ref,
+                    UnknownStrategy::Zero,
+                    &mut identity_processor,
+                )
+            })
+            .map_err(|e| self.report_failure_and_panic_underconstrained(e))
+            .unwrap();
         }
 
         log::trace!(
@@ -208,13 +261,19 @@ where
 
     /// Loops over all identities and queries, until no further progress is made.
     /// @returns the "incomplete" identities, i.e. identities that contain unknown values.
-    fn loop_until_no_progress(
+    fn loop_until_no_progress<Q>(
         &mut self,
         identities: &mut CompletableIdentities<'a, T>,
-    ) -> Result<(), Vec<EvalError<T>>> {
+        identity_processor: &mut IdentityProcessor<'a, '_, T>,
+        query_processor: &mut Option<QueryProcessor<'a, '_, T, Q>>,
+    ) -> Result<(), Vec<EvalError<T>>>
+    where
+        Q: FnMut(&str) -> Option<T> + Send + Sync,
+    {
         loop {
-            let mut progress = self.process_identities(identities, UnknownStrategy::Unknown)?;
-            if let Some(ref mut query_processor) = self.query_processor {
+            let mut progress =
+                self.process_identities(identities, UnknownStrategy::Unknown, identity_processor)?;
+            if let Some(query_processor) = query_processor.as_mut() {
                 let row_pair = RowPair::new(
                     &self.current,
                     &self.next,
@@ -247,6 +306,7 @@ where
         &mut self,
         identities: &mut CompletableIdentities<'a, T>,
         unknown_strategy: UnknownStrategy,
+        identity_processor: &mut IdentityProcessor<'a, '_, T>,
     ) -> Result<bool, Vec<EvalError<T>>> {
         let mut progress = false;
         let mut errors = vec![];
@@ -263,8 +323,7 @@ where
                 self.fixed_data,
                 unknown_strategy,
             );
-            let result: EvalResult<'a, T> = self
-                .identity_processor
+            let result: EvalResult<'a, T> = identity_processor
                 .process_identity(identity, &row_pair)
                 .map_err(|err| {
                     format!("{identity}:\n{}", indent(&format!("{err}"), "    ")).into()
@@ -348,13 +407,26 @@ where
     /// Verifies the proposed values for the next row.
     /// TODO this is bad for machines because we might introduce rows in the machine that are then
     /// not used.
-    pub fn propose_next_row(&mut self, next_row: DegreeType, values: &WitnessColumnMap<T>) -> bool {
+    pub fn propose_next_row<Q>(
+        &mut self,
+        next_row: DegreeType,
+        values: &WitnessColumnMap<T>,
+        mutable_state: &mut MutableState<'a, T, Q>,
+    ) -> bool
+    where
+        Q: FnMut(&str) -> Option<T> + Send + Sync,
+    {
         self.set_next_row_and_log(next_row);
 
         let proposed_row = self.row_factory.row_from_known_values_dense(values);
 
-        let constraints_valid =
-            self.check_row_pair(&proposed_row, false) && self.check_row_pair(&proposed_row, true);
+        let mut identity_processor = IdentityProcessor::new(
+            self.fixed_data,
+            &mut mutable_state.fixed_lookup,
+            &mut mutable_state.machines,
+        );
+        let constraints_valid = self.check_row_pair(&proposed_row, false, &mut identity_processor)
+            && self.check_row_pair(&proposed_row, true, &mut identity_processor);
 
         if constraints_valid {
             self.previous = proposed_row;
@@ -364,12 +436,17 @@ where
             // correctly forward-propagate values via next references.
             std::mem::swap(&mut self.current, &mut self.previous);
             self.next = self.row_factory.fresh_row();
-            self.compute_next_row(next_row - 1);
+            self.compute_next_row(next_row - 1, mutable_state);
         }
         constraints_valid
     }
 
-    fn check_row_pair(&mut self, proposed_row: &Row<'a, T>, previous: bool) -> bool {
+    fn check_row_pair(
+        &mut self,
+        proposed_row: &Row<'a, T>,
+        previous: bool,
+        identity_processor: &mut IdentityProcessor<'a, '_, T>,
+    ) -> bool {
         let row_pair = match previous {
             // Check whether identities with a reference to the next row are satisfied
             // when applied to the previous row and the proposed row.
@@ -401,8 +478,7 @@ where
         };
 
         for identity in identities.iter() {
-            if self
-                .identity_processor
+            if identity_processor
                 .process_identity(identity, &row_pair)
                 .is_err()
             {
@@ -414,24 +490,6 @@ where
             }
         }
         true
-    }
-
-    pub fn machine_witness_col_values(&mut self) -> HashMap<PolyID, Vec<T>> {
-        let mut result: HashMap<_, _> = Default::default();
-        let name_to_id = self
-            .fixed_data
-            .witness_cols
-            .iter()
-            .map(|(poly_id, col)| (col.name.as_str(), poly_id))
-            .collect::<BTreeMap<_, _>>();
-        for m in &mut self.identity_processor.machines {
-            for (col_name, col) in
-                m.take_witness_col_values(self.fixed_data, self.identity_processor.fixed_lookup)
-            {
-                result.insert(*name_to_id.get(col_name.as_str()).unwrap(), col);
-            }
-        }
-        result
     }
 
     fn set_next_row_and_log(&mut self, next_row: DegreeType) {

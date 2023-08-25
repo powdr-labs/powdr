@@ -107,7 +107,7 @@ fn vm_to_block_multiple_interfaces() {
 }
 
 #[test]
-#[should_panic = "not implemented: No executor machine matched identity `main.instr_add { 2, main.X, main.Y, main.Z } in main_vm.instr_return { main_vm._operation_id, main_vm._input_0, main_vm._input_1, main_vm._output_0 };`"]
+#[should_panic = "not implemented"]
 fn vm_to_vm() {
     let f = "vm_to_vm.asm";
     let i = [];

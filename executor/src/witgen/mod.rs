@@ -10,8 +10,10 @@ use self::column_map::{FixedColumnMap, WitnessColumnMap};
 pub use self::eval_result::{
     Constraint, Constraints, EvalError, EvalResult, EvalStatus, EvalValue, IncompleteCause,
 };
+use self::generator::Generator;
 use self::global_constraints::GlobalConstraints;
 use self::machines::machine_extractor::ExtractionOutput;
+use self::machines::{FixedLookup, KnownMachine, Machine};
 use self::util::substitute_constants;
 
 mod affine_expression;
@@ -31,6 +33,13 @@ mod sequence_iterator;
 pub mod symbolic_evaluator;
 mod symbolic_witness_evaluator;
 mod util;
+
+/// Everything [Generator] needs to mutate in order to compute a new row.
+pub struct MutableState<'a, T: FieldElement, Q: FnMut(&str) -> Option<T> + Send + Sync> {
+    pub fixed_lookup: FixedLookup<T>,
+    pub machines: Vec<KnownMachine<'a, T>>,
+    pub query_callback: Option<Q>,
+}
 
 /// Generates the committed polynomial values
 /// @returns the values (in source order) and the degree of the polynomials.
@@ -57,7 +66,7 @@ where
         retained_identities,
     } = global_constraints::determine_global_constraints(&fixed, identities.iter().collect());
     let ExtractionOutput {
-        mut fixed_lookup,
+        fixed_lookup,
         machines,
         base_identities,
         base_witnesses,
@@ -66,14 +75,16 @@ where
         retained_identities,
         &known_witness_constraints,
     );
-    let mut generator = generator::Generator::new(
-        &fixed,
-        &mut fixed_lookup,
-        &base_identities,
-        base_witnesses.into_iter().collect(),
-        known_witness_constraints,
+    let mut mutable_state = MutableState {
+        fixed_lookup,
         machines,
         query_callback,
+    };
+    let mut generator = Generator::new(
+        &fixed,
+        &base_identities,
+        &base_witnesses,
+        &known_witness_constraints,
     );
 
     let mut rows: Vec<WitnessColumnMap<T>> = vec![];
@@ -101,7 +112,7 @@ where
         let mut row_values = None;
         if let Some(period) = looping_period {
             let values = &rows[rows.len() - period];
-            if generator.propose_next_row(row, values) {
+            if generator.propose_next_row(row, values, &mut mutable_state) {
                 row_values = Some(values.clone());
             } else {
                 log::info!("Using loop failed. Trying to generate regularly again.");
@@ -109,7 +120,7 @@ where
             }
         }
         if row_values.is_none() {
-            row_values = Some(generator.compute_next_row(row));
+            row_values = Some(generator.compute_next_row(row, &mut mutable_state));
         };
 
         rows.push(row_values.unwrap());
@@ -122,29 +133,37 @@ where
     }
 
     // Transpose the rows
-    let mut columns = fixed.witness_map_with(vec![]);
+    let mut columns = base_witnesses
+        .iter()
+        .map(|c| (fixed.column_name(c).to_string(), vec![]))
+        .collect::<BTreeMap<_, _>>();
     for row in rows.into_iter() {
-        for (col_index, value) in row.into_iter() {
-            columns[&col_index].push(value);
+        for poly_id in &base_witnesses {
+            columns
+                .get_mut(fixed.column_name(poly_id))
+                .unwrap()
+                .push(row[poly_id]);
         }
     }
 
-    // Overwrite all machine witness columns
-    for (poly_id, data) in generator.machine_witness_col_values() {
-        columns[&poly_id] = data;
-    }
+    // Add columns from secondary machines
+    columns.extend(mutable_state.machines.iter_mut().flat_map(|m| {
+        m.take_witness_col_values(&fixed, &mut mutable_state.fixed_lookup)
+            .into_iter()
+    }));
 
-    // Map from column id to name
-    // We can't used `fixed` here, because the name would have the wrong lifetime.
-    let mut col_names = analyzed
+    // We can't just do columns.into_iter().collect(), because:
+    // 1. The keys need to be string references of the right lifetime.
+    // 2. The order needs to be the the order of declaration.
+    analyzed
         .committed_polys_in_source_order()
-        .iter()
-        .map(|(p, _)| (p.id, p.absolute_name.as_str()))
-        .collect::<BTreeMap<_, _>>();
-
-    columns
         .into_iter()
-        .map(|(id, v)| (col_names.remove(&id.id).unwrap(), v))
+        .map(|(p, _)| {
+            (
+                p.absolute_name.as_str(),
+                columns.remove(&p.absolute_name).unwrap(),
+            )
+        })
         .collect()
 }
 

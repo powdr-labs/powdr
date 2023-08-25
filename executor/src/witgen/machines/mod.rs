@@ -11,6 +11,7 @@ pub use self::fixed_lookup_machine::FixedLookup;
 use self::sorted_witness_machine::SortedWitnesses;
 
 use super::affine_expression::AffineExpression;
+use super::generator::Generator;
 use super::EvalResult;
 use super::FixedData;
 
@@ -52,6 +53,7 @@ pub enum KnownMachine<'a, T: FieldElement> {
     SortedWitnesses(SortedWitnesses<T>),
     DoubleSortedWitnesses(DoubleSortedWitnesses<T>),
     BlockMachine(BlockMachine<'a, T>),
+    Vm(Generator<'a, T>),
 }
 
 impl<'a, T: FieldElement> KnownMachine<'a, T> {
@@ -60,6 +62,7 @@ impl<'a, T: FieldElement> KnownMachine<'a, T> {
             KnownMachine::SortedWitnesses(m) => m,
             KnownMachine::DoubleSortedWitnesses(m) => m,
             KnownMachine::BlockMachine(m) => m,
+            KnownMachine::Vm(m) => m,
         }
     }
 }

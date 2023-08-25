@@ -4,16 +4,16 @@ use number::FieldElement;
 use super::{rows::RowPair, Constraint, EvalValue, FixedData, IncompleteCause, Query};
 
 /// Computes value updates that result from a query.
-pub struct QueryProcessor<'a, T: FieldElement, QueryCallback: Send + Sync> {
+pub struct QueryProcessor<'a, 'b, T: FieldElement, QueryCallback: Send + Sync> {
     fixed_data: &'a FixedData<'a, T>,
-    query_callback: QueryCallback,
+    query_callback: &'b mut QueryCallback,
 }
 
-impl<'a, T: FieldElement, QueryCallback> QueryProcessor<'a, T, QueryCallback>
+impl<'a, 'b, T: FieldElement, QueryCallback> QueryProcessor<'a, 'b, T, QueryCallback>
 where
     QueryCallback: FnMut(&str) -> Option<T> + Send + Sync,
 {
-    pub fn new(fixed_data: &'a FixedData<'a, T>, query_callback: QueryCallback) -> Self {
+    pub fn new(fixed_data: &'a FixedData<'a, T>, query_callback: &'b mut QueryCallback) -> Self {
         Self {
             fixed_data,
             query_callback,

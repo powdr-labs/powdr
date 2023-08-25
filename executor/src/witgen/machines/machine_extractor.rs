@@ -7,6 +7,7 @@ use super::sorted_witness_machine::SortedWitnesses;
 use super::FixedData;
 use super::KnownMachine;
 use crate::witgen::column_map::WitnessColumnMap;
+use crate::witgen::generator::Generator;
 use crate::witgen::range_constraints::RangeConstraint;
 use ast::analyzed::PolyID;
 use ast::analyzed::{Expression, Identity, IdentityKind, SelectedExpressions};
@@ -105,17 +106,13 @@ pub fn split_out_machines<'a, T: FieldElement>(
             log::info!("Detected machine: block");
             machines.push(KnownMachine::BlockMachine(machine));
         } else {
-            log::warn!(
-                "Could not find a matching machine to handle a query to the following witness set:\n{}",
-                machine_witnesses
-                    .iter()
-                    .map(|s| fixed.column_name(s))
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            );
-            remaining_witnesses = &remaining_witnesses | &machine_witnesses;
-            base_identities.extend(machine_identities);
-            log::warn!("Will try to continue as is, but this probably requires a specialized machine implementation.");
+            log::info!("Detected machine: vm");
+            machines.push(KnownMachine::Vm(Generator::new(
+                fixed,
+                &machine_identities,
+                &machine_witnesses,
+                global_range_constraints,
+            )));
         }
     }
     ExtractionOutput {
