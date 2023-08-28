@@ -6,10 +6,7 @@ use crate::witgen::column_map::ColumnMap;
 use crate::witgen::identity_processor::IdentityProcessor;
 use crate::witgen::processor::Processor;
 use crate::witgen::rows::{Row, RowFactory, RowPair, RowUpdater, UnknownStrategy};
-use crate::witgen::sequence_iterator::{
-    DefaultSequenceIterator, IdentityInSequence, ProcessingSequenceCache,
-    ProcessingSequenceIterator, SequenceStep,
-};
+use crate::witgen::sequence_iterator::{IdentityInSequence, ProcessingSequenceCache, SequenceStep};
 use crate::witgen::util::try_to_simple_poly;
 use crate::witgen::{machines::Machine, range_constraints::RangeConstraint, EvalError};
 use crate::witgen::{Constraint, EvalValue, IncompleteCause};
@@ -256,11 +253,8 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
 
             // Clear the last row and run the solver
             processor.clear_row(1);
-            let mut sequence_iterator = ProcessingSequenceIterator::Default(
-                DefaultSequenceIterator::new(1, self.identities.len()),
-            );
             processor
-                .solve(&mut sequence_iterator)
+                .solve_with_default_sequence_iterator()
                 .expect("Some constraints were not satisfiable when solving for the last row.");
             let last_row = processor.finish().remove(1);
 

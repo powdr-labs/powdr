@@ -4,7 +4,9 @@ use number::FieldElement;
 use super::{
     identity_processor::IdentityProcessor,
     rows::{Row, RowFactory, RowPair, RowUpdater, UnknownStrategy},
-    sequence_iterator::{IdentityInSequence, ProcessingSequenceIterator, SequenceStep},
+    sequence_iterator::{
+        DefaultSequenceIterator, IdentityInSequence, ProcessingSequenceIterator, SequenceStep,
+    },
     EvalError, FixedData,
 };
 
@@ -71,10 +73,20 @@ impl<'a, 'b, T: FieldElement> Processor<'a, 'b, T> {
         self.data[index] = self.row_factory.fresh_row();
     }
 
+    /// Figures out unknown values, using the default sequence iterator.
+    /// Since the default sequence iterator looks at the row before and after
+    /// the current block, we assume that these lines are already part of [Self::data]
+    /// and set the block size to `self.data.len() - 2`.
+    pub fn solve_with_default_sequence_iterator(&mut self) -> Result<(), EvalError<T>> {
+        let mut sequence_iterator = ProcessingSequenceIterator::Default(
+            DefaultSequenceIterator::new(self.data.len() - 2, self.identities.len()),
+        );
+        self.solve(&mut sequence_iterator)
+    }
+
     /// Figures out unknown values.
     pub fn solve(
         &mut self,
-
         sequence_iterator: &mut ProcessingSequenceIterator,
     ) -> Result<(), EvalError<T>> {
         while let Some(step) = sequence_iterator.next() {
@@ -202,13 +214,13 @@ mod tests {
         let data = vec![row_factory.fresh_row(); fixed_data.degree as usize];
         let identity_processor = IdentityProcessor::new(&fixed_data, &mut fixed_lookup, machines);
         let row_offset = 0;
-        let identities = analyzed.identities.iter().collect();
+        let identities = analyzed.identities.iter().collect::<Vec<_>>();
 
         let mut processor = Processor::new(
             row_offset,
             data,
             identity_processor,
-            identities,
+            &identities,
             &fixed_data,
             row_factory,
         );
@@ -218,7 +230,7 @@ mod tests {
 
     fn solve_and_assert<T: FieldElement>(src: &str, asserted_values: &[(usize, &str, u64)]) {
         do_with_processor(src, |processor, poly_ids| {
-            processor.solve().unwrap();
+            processor.solve_with_default_sequence_iterator().unwrap();
 
             // Can't use processor.finish(), because we don't own it...
             let data = processor.data.clone();
