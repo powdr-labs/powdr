@@ -352,9 +352,19 @@ pub enum Expression<T> {
     Tuple(Vec<Expression<T>>),
     BinaryOperation(Box<Expression<T>>, BinaryOperator, Box<Expression<T>>),
     UnaryOperation(UnaryOperator, Box<Expression<T>>),
+    /// Optimized representation: A sum of products plus a sum of expressions.
+    SumOfProducts(Vec<QuadraticTerm<T>>, Vec<Expression<T>>),
     /// Call to a non-macro function (like a constant polynomial)
     FunctionCall(String, Vec<Expression<T>>),
     MatchExpression(Box<Expression<T>>, Vec<(Option<T>, Expression<T>)>),
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub enum QuadraticTerm<T> {
+    Quadratic(T, PolynomialReference, PolynomialReference),
+    // TODO could even distinguish the case where the linear factor is one.
+    Linear(T, PolynomialReference),
+    Constant(T),
 }
 
 impl<T> Expression<T> {

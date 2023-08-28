@@ -7,6 +7,7 @@ use ast::analyzed::util::{
     postvisit_expression_mut, postvisit_expressions_in_pil_file_mut,
     previsit_expressions_in_pil_file_mut,
 };
+use ast::analyzed::QuadraticTerm;
 use ast::analyzed::{
     build::{build_mul, build_number, build_sub},
     Analyzed, BinaryOperator, Expression, FunctionValueDefinition, IdentityKind, PolyID,
@@ -23,6 +24,27 @@ pub fn optimize<T: FieldElement>(mut pil_file: Analyzed<T>) -> Analyzed<T> {
     remove_constant_witness_columns(&mut pil_file);
     simplify_expressions(&mut pil_file);
     remove_trivial_identities(&mut pil_file);
+    println!("Before:");
+    println!(
+        "{}",
+        pil_file
+            .identities
+            .iter()
+            .map(|i| i.to_string())
+            .collect::<Vec<_>>()
+            .join("\n")
+    );
+    introduce_sums_of_products(&mut pil_file);
+    println!("Optimized:\n");
+    println!(
+        "{}",
+        pil_file
+            .identities
+            .iter()
+            .map(|i| i.to_string())
+            .collect::<Vec<_>>()
+            .join("\n")
+    );
     let col_count_post = (pil_file.commitment_count(), pil_file.constant_count());
     log::info!(
         "Removed {} witness and {} fixed columns. Total count now: {} witness and {} fixed columns.",
@@ -348,6 +370,103 @@ fn remove_trivial_identities<T: FieldElement>(pil_file: &mut Analyzed<T>) {
         })
         .collect();
     pil_file.remove_identities(&to_remove);
+}
+
+/// Introduces SumOfProducts expression enum values. Note that this is only
+/// helpful in the internal representation. If printed out to pil, it will
+/// again result in simple binary expressions.
+fn introduce_sums_of_products<T: FieldElement>(pil_file: &mut Analyzed<T>) {
+    postvisit_expressions_in_pil_file_mut(pil_file, &mut |e| -> ControlFlow<()> {
+        if let Some(sop) = try_to_sum_of_products(e) {
+            *e = sop;
+        }
+        ControlFlow::Continue(())
+    });
+}
+
+fn try_to_sum_of_products<T: FieldElement>(e: &Expression<T>) -> Option<Expression<T>> {
+    match e {
+        // TODO multiplication of sumofproducts without expressions by constant should also work
+        Expression::BinaryOperation(l, BinaryOperator::Mul, r) => {
+            if let (Some(l), Some(r)) = (try_to_linear_or_constant(l), try_to_linear_or_constant(r))
+            {
+                let factor = l.0 * r.0;
+                match (l.1, r.1) {
+                    (None, None) => panic!("Should have been caught by the optimizer"),
+                    (None, Some(x)) | (Some(x), None) => Some(Expression::SumOfProducts(
+                        vec![QuadraticTerm::Linear(factor, x)],
+                        vec![],
+                    )),
+                    (Some(x), Some(y)) => Some(Expression::SumOfProducts(
+                        vec![QuadraticTerm::Quadratic(factor, x, y)],
+                        vec![],
+                    )),
+                }
+            } else {
+                None
+            }
+        }
+        Expression::BinaryOperation(l, BinaryOperator::Add, r) => {
+            let (l1, l2) = to_sum_of_products_inner(l);
+            let (r1, r2) = to_sum_of_products_inner(r);
+            Some(Expression::SumOfProducts(
+                [l1, r1].concat(),
+                [l2, r2].concat(),
+            ))
+        }
+        Expression::BinaryOperation(l, BinaryOperator::Sub, r) => {
+            let (mut l1, l2) = to_sum_of_products_inner(l);
+            let (r1, r2) = to_sum_of_products_inner(r);
+            if r2.is_empty() {
+                l1.extend(r1.into_iter().map(|q| match q {
+                    // TODO turn this into an operator
+                    QuadraticTerm::Quadratic(f, x, y) => QuadraticTerm::Quadratic(-f, x, y),
+                    QuadraticTerm::Linear(f, x) => QuadraticTerm::Linear(-f, x),
+                    QuadraticTerm::Constant(f) => QuadraticTerm::Constant(-f),
+                }));
+
+                Some(Expression::SumOfProducts(l1, l2))
+            } else {
+                None
+            }
+        }
+        _ => None,
+    }
+}
+
+/// Tries to return a QuadraticTerm that is Linear or Constant and represents the same expression as e.
+fn try_to_linear_or_constant<T: FieldElement>(
+    e: &Expression<T>,
+) -> Option<(T, Option<PolynomialReference>)> {
+    match e {
+        Expression::Number(x) => Some((*x, None)),
+        Expression::PolynomialReference(x) => Some((1.into(), Some(x.clone()))),
+        Expression::BinaryOperation(l, BinaryOperator::Add, r) => match (l.as_ref(), r.as_ref()) {
+            (Expression::PolynomialReference(x), Expression::Number(c))
+            | (Expression::Number(c), Expression::PolynomialReference(x)) => {
+                Some((*c, Some(x.clone())))
+            }
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+/// Turns the expression into a sum of products, even if it is very small
+/// or a complex expression.
+fn to_sum_of_products_inner<T: FieldElement>(
+    e: &Expression<T>,
+) -> (Vec<QuadraticTerm<T>>, Vec<Expression<T>>) {
+    if let Some((factor, x)) = try_to_linear_or_constant(e) {
+        return match x {
+            Some(x) => (vec![QuadraticTerm::Linear(factor, x)], vec![]),
+            None => (vec![QuadraticTerm::Constant(factor)], vec![]),
+        };
+    }
+    match e {
+        Expression::SumOfProducts(q, e) => (q.clone(), e.clone()),
+        _ => (vec![], vec![e.clone()]),
+    }
 }
 
 #[cfg(test)]

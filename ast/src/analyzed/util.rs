@@ -123,6 +123,7 @@ where
             previsit_expression(right, f)?;
         }
         Expression::UnaryOperation(_, e) => previsit_expression(e, f)?,
+        Expression::SumOfProducts(_, _) => todo!(),
         Expression::Tuple(items) | Expression::FunctionCall(_, items) => items
             .iter()
             .try_for_each(|item| previsit_expression(item, f))?,
@@ -154,6 +155,7 @@ where
             previsit_expression_mut(right, f)?;
         }
         Expression::UnaryOperation(_, e) => previsit_expression_mut(e.as_mut(), f)?,
+        Expression::SumOfProducts(_, _) => todo!(),
         Expression::Tuple(items) | Expression::FunctionCall(_, items) => items
             .iter_mut()
             .try_for_each(|item| previsit_expression_mut(item, f))?,
@@ -183,6 +185,7 @@ where
             postvisit_expression_mut(right, f)?;
         }
         Expression::UnaryOperation(_, e) => postvisit_expression_mut(e.as_mut(), f)?,
+        Expression::SumOfProducts(_, _) => todo!(),
         Expression::Tuple(items) | Expression::FunctionCall(_, items) => items
             .iter_mut()
             .try_for_each(|item| postvisit_expression_mut(item, f))?,

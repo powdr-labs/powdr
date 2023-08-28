@@ -299,6 +299,7 @@ impl<'a, T: FieldElement> Exporter<'a, T> {
                     ),
                 }
             }
+            Expression::SumOfProducts(_, _) => todo!(),
             Expression::FunctionCall(_, _) => {
                 panic!("No function calls allowed here.")
             }

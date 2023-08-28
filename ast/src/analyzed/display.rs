@@ -6,6 +6,7 @@
 use std::fmt::{Display, Formatter, Result};
 
 use itertools::Itertools;
+use number::FieldElement;
 
 use super::*;
 
@@ -135,6 +136,17 @@ impl<T: Display> Display for Expression<T> {
             Expression::Tuple(items) => write!(f, "({})", format_expressions(items)),
             Expression::BinaryOperation(left, op, right) => write!(f, "({left} {op} {right})"),
             Expression::UnaryOperation(op, exp) => write!(f, "{op}{exp}"),
+            Expression::SumOfProducts(quad, expr) => {
+                write!(
+                    f,
+                    "(-- {} --)",
+                    quad.iter()
+                        .map(|q| format!("{q}"))
+                        .chain(expr.iter().map(|e| format!("{e}")))
+                        .collect::<Vec<_>>()
+                        .join(" + ")
+                )
+            }
             Expression::FunctionCall(fun, args) => write!(f, "{fun}({})", format_expressions(args)),
             Expression::LocalVariableReference(index) => {
                 // TODO this is not really reproducing the input, but
@@ -182,5 +194,17 @@ impl Display for PolynomialReference {
                 .unwrap_or_default(),
             if self.next { "'" } else { "" }
         )
+    }
+}
+
+impl<T: Display> Display for QuadraticTerm<T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        match self {
+            //            QuadraticTerm::Quadratic(f, x, y) if *f == 1.into() => write!(f, "{x} * {y}"),
+            QuadraticTerm::Quadratic(fac, x, y) => write!(f, "{fac} * {x} * {y}"),
+            //          QuadraticTerm::Linear(f, x) if *f == 1.into() => write!(f, "{x}"),
+            QuadraticTerm::Linear(fac, x) => write!(f, "{fac} * {x}"),
+            QuadraticTerm::Constant(fac) => write!(f, "{fac}"),
+        }
     }
 }

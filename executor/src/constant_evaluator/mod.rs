@@ -97,6 +97,7 @@ impl<'a, T: FieldElement> Evaluator<'a, T> {
                 self.evaluate_binary_operation(left, op, right)
             }
             Expression::UnaryOperation(op, expr) => self.evaluate_unary_operation(op, expr),
+            Expression::SumOfProducts(_, _) => todo!(),
             Expression::FunctionCall(name, args) => {
                 let arg_values = args.iter().map(|a| self.evaluate(a)).collect::<Vec<_>>();
                 assert!(arg_values.len() == 1);

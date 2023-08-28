@@ -188,6 +188,7 @@ pub fn refs_in_expression<T>(expr: &Expression<T>) -> HashSet<PolyID> {
         Expression::Tuple(items) => refs_in_expressions(items),
         Expression::BinaryOperation(l, _, r) => &refs_in_expression(l) | &refs_in_expression(r),
         Expression::UnaryOperation(_, e) => refs_in_expression(e),
+        Expression::SumOfProducts(_, _) => todo!(),
         Expression::FunctionCall(_, args) => refs_in_expressions(args),
         Expression::MatchExpression(scrutinee, arms) => {
             &refs_in_expression(scrutinee)
