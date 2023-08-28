@@ -154,3 +154,8 @@ fn hello_world_asm_fail() {
     let i = [1];
     verify_asm::<GoldilocksField>(f, slice_to_vec(&i));
 }
+
+#[test]
+fn test_valida() {
+    verify_asm::<GoldilocksField>("valida_example.asm", vec![]);
+}

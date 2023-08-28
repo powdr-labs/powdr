@@ -81,11 +81,6 @@ fn test_sum_via_witness_query() {
 }
 
 #[test]
-fn test_valida() {
-    verify_pil("valida_example.pil", Some(|_| None));
-}
-
-#[test]
 fn test_witness_lookup() {
     verify_pil(
         "witness_lookup.pil",

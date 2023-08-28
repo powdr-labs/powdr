@@ -130,7 +130,7 @@ col fixed BYTE(i) { i & 0xff };
 col witness sign_bit;
 sign_bit * (1 - sign_bit) = 0;
 
-assembly {
+machine Main {
     reg pc[@pc];
     reg fp;
     reg tmp3[<=];
