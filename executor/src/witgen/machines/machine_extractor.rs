@@ -100,7 +100,7 @@ pub fn split_out_machines<'a, T: FieldElement>(
             TripleSortedWitnesses::try_new(fixed, &machine_identities, &machine_witnesses)
         {
             log::info!("Detected machine: triple memory");
-            machines.push(machine);
+            machines.push(KnownMachine::TripleSortedWitnesses(machine));
         } else if let Some(machine) = BlockMachine::try_new(
             fixed,
             &connecting_identities,

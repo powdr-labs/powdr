@@ -1,17 +1,18 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::iter::once;
 
-use itertools::{Either, Itertools};
+use ast::analyzed::{
+    Expression, Identity, IdentityKind, PolyID, PolynomialReference, SelectedExpressions,
+};
+use itertools::Itertools;
 use num_traits::Zero;
 
 use super::{FixedLookup, Machine};
-use crate::witgen::affine_expression::AffineResult;
+use crate::witgen::affine_expression::AffineExpression;
 use crate::witgen::util::is_simple_poly_of_name;
 use crate::witgen::{EvalError, EvalResult, FixedData};
 use crate::witgen::{EvalValue, IncompleteCause};
 use number::FieldElement;
-
-use pil_analyzer::{Expression, Identity, IdentityKind, PolynomialReference, SelectedExpressions};
 
 /// TODO make this generic
 
@@ -43,10 +44,10 @@ impl Operation {
 
 impl<T: FieldElement> TripleSortedWitnesses<T> {
     pub fn try_new(
-        _fixed_data: &FixedData<T>,
+        fixed_data: &FixedData<T>,
         _identities: &[&Identity<T>],
-        witness_cols: &HashSet<&PolynomialReference>,
-    ) -> Option<Box<Self>> {
+        witness_cols: &HashSet<PolyID>,
+    ) -> Option<Self> {
         // TODO check the identities.
         let expected_witnesses: HashSet<_> = [
             "Memory.is_load1",
@@ -62,24 +63,29 @@ impl<T: FieldElement> TripleSortedWitnesses<T> {
         .into_iter()
         .collect();
         if expected_witnesses
-            .symmetric_difference(&witness_cols.iter().map(|c| c.name.as_str()).collect())
+            .symmetric_difference(
+                &witness_cols
+                    .iter()
+                    .map(|c| fixed_data.column_name(c))
+                    .collect(),
+            )
             .next()
             .is_none()
         {
-            Some(Box::default())
+            Some(Default::default())
         } else {
             None
         }
     }
 }
 
-impl<T: FieldElement> Machine<T> for TripleSortedWitnesses<T> {
-    fn process_plookup<'a>(
+impl<'a, T: FieldElement> Machine<'a, T> for TripleSortedWitnesses<T> {
+    fn process_plookup(
         &mut self,
         _fixed_data: &FixedData<T>,
         _fixed_lookup: &mut FixedLookup<T>,
         kind: IdentityKind,
-        left: &[AffineResult<&'a PolynomialReference, T>],
+        left: &[AffineExpression<&'a PolynomialReference, T>],
         right: &SelectedExpressions<T>,
     ) -> Option<EvalResult<'a, T>> {
         if kind != IdentityKind::Permutation
@@ -93,7 +99,11 @@ impl<T: FieldElement> Machine<T> for TripleSortedWitnesses<T> {
         Some(self.process_plookup_internal(left, right))
     }
 
-    fn witness_col_values(&mut self, fixed_data: &FixedData<T>) -> HashMap<String, Vec<T>> {
+    fn take_witness_col_values(
+        &mut self,
+        fixed_data: &FixedData<T>,
+        _fixed_lookup: &mut FixedLookup<T>,
+    ) -> HashMap<String, Vec<T>> {
         let mut addr = vec![];
         let mut step = vec![];
         let mut value = vec![];
@@ -164,26 +174,11 @@ impl<T: FieldElement> Machine<T> for TripleSortedWitnesses<T> {
 impl<T: FieldElement> TripleSortedWitnesses<T> {
     fn process_plookup_internal<'a>(
         &mut self,
-        left: &[AffineResult<&'a PolynomialReference, T>],
+        left: &[AffineExpression<&'a PolynomialReference, T>],
         right: &SelectedExpressions<T>,
     ) -> EvalResult<'a, T> {
         // We blindly assume the lookup is of the form
         // OP { ADDR, STEP, X } is is_load1/is_load2/is_write { addr, step, value }
-
-        // Fail if the LHS has an error.
-        let (left, errors): (Vec<_>, Vec<_>) = left.iter().partition_map(|x| match x {
-            Ok(x) => Either::Left(x),
-            Err(x) => Either::Right(x),
-        });
-        if !errors.is_empty() {
-            return Ok(EvalValue::incomplete(
-                errors
-                    .into_iter()
-                    .cloned()
-                    .reduce(|x, y| x.combine(y))
-                    .unwrap(),
-            ));
-        }
 
         let operation = match &right.selector {
             Some(Expression::PolynomialReference(p)) => match p.name.as_str() {
@@ -249,7 +244,7 @@ impl<T: FieldElement> TripleSortedWitnesses<T> {
             );
             let ass = (left[2].clone() - (*value).into())
                 .solve()
-                .map_err(|()| EvalError::ConstraintUnsatisfiable(String::new()))?;
+                .map_err(|_| EvalError::ConstraintUnsatisfiable(String::new()))?;
             assignments.combine(ass);
         }
         Ok(assignments)
