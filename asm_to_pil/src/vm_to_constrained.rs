@@ -9,7 +9,7 @@ use ast::{
         LinkDefinitionStatement, Machine, PilBlock, RegisterDeclarationStatement, RegisterTy, Rom,
     },
     parsed::{
-        asm::{InstructionBody, InstructionBodyElement, PlookupOperator},
+        asm::InstructionBody,
         build::{
             build_add, build_binary_expr, build_mul, build_number, build_sub, direct_reference,
             next_reference,
@@ -342,33 +342,7 @@ impl<T: FieldElement> ASMPILConverter<T> {
         // First transform into PIL so that we can apply macro expansion.
 
         let res = match s.instruction.body {
-            InstructionBody::Local(body) => {
-                let mut statements = body
-                    .into_iter()
-                    .map(|el| match el {
-                        InstructionBodyElement::PolynomialIdentity(left, right) => {
-                            PilStatement::PolynomialIdentity(s.start, build_sub(left, right))
-                        }
-                        InstructionBodyElement::PlookupIdentity(left, op, right) => {
-                            assert!(
-                                left.selector.is_none(),
-                                "LHS selector not supported, could and-combine with instruction flag later."
-                            );
-                            match op {
-                                PlookupOperator::In => {
-                                    PilStatement::PlookupIdentity(s.start, left, right)
-                                }
-                                PlookupOperator::Is => {
-                                    PilStatement::PermutationIdentity(s.start, left, right)
-                                }
-                            }
-                        }
-                        InstructionBodyElement::FunctionCall(c) => {
-                            PilStatement::FunctionCall(s.start, c.id, c.arguments)
-                        }
-                    })
-                    .collect::<Vec<_>>();
-
+            InstructionBody::Local(mut body) => {
                 // Substitute parameter references by the column names
                 let substitutions = instruction
                     .literal_arg_names()
@@ -378,7 +352,7 @@ impl<T: FieldElement> ASMPILConverter<T> {
                         (arg_name.clone(), param_col_name)
                     })
                     .collect::<HashMap<_, _>>();
-                statements.iter_mut().for_each(|s| {
+                body.iter_mut().for_each(|s| {
                     postvisit_expression_in_statement_mut(s, &mut |e| {
                         if let Expression::PolynomialReference(r) = e {
                             if let Some(sub) = substitutions.get(r.name()) {
@@ -389,8 +363,7 @@ impl<T: FieldElement> ASMPILConverter<T> {
                     });
                 });
 
-                // Expand macros and analyze resulting statements.
-                for mut statement in statements {
+                for mut statement in body {
                     if let PilStatement::PolynomialIdentity(_start, expr) = statement {
                         match extract_update(expr) {
                             (Some(var), expr) => {
@@ -412,9 +385,9 @@ impl<T: FieldElement> ASMPILConverter<T> {
                             PilStatement::PermutationIdentity(_, left, _)
                             | PilStatement::PlookupIdentity(_, left, _) => {
                                 assert!(
-                            left.selector.is_none(),
-                            "LHS selector not supported, could and-combine with instruction flag later."
-                        );
+                                    left.selector.is_none(),
+                                    "LHS selector not supported, could and-combine with instruction flag later."
+                                );
                                 left.selector = Some(direct_reference(&instruction_flag));
                                 self.pil.push(statement)
                             }

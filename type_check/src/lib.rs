@@ -8,7 +8,13 @@ use ast::{
         LinkDefinitionStatement, Machine, OperationSymbol, PilBlock, RegisterDeclarationStatement,
         RegisterTy, Return, SubmachineDeclaration,
     },
-    parsed::asm::{ASMFile, FunctionStatement, LinkDeclaration, MachineStatement, RegisterFlag},
+    parsed::{
+        self,
+        asm::{
+            ASMFile, FunctionStatement, InstructionBody, LinkDeclaration, MachineStatement,
+            RegisterFlag,
+        },
+    },
 };
 use number::FieldElement;
 
@@ -66,17 +72,14 @@ impl<T: FieldElement> TypeChecker<T> {
                     registers.push(RegisterDeclarationStatement { start, name, ty });
                 }
                 MachineStatement::InstructionDeclaration(start, name, instruction) => {
-                    if name == "return" {
-                        errors.push("Instruction cannot use reserved name `return`".into());
+                    match self.check_instruction(&name, instruction) {
+                        Ok(instruction) => instructions.push(InstructionDefinitionStatement {
+                            start,
+                            name,
+                            instruction,
+                        }),
+                        Err(e) => errors.extend(e),
                     }
-                    instructions.push(InstructionDefinitionStatement {
-                        start,
-                        name,
-                        instruction: Instruction {
-                            params: instruction.params,
-                            body: instruction.body,
-                        },
-                    });
                 }
                 MachineStatement::LinkDeclaration(LinkDeclaration {
                     start,
@@ -267,5 +270,37 @@ impl<T: FieldElement> TypeChecker<T> {
                 .collect();
             Ok(AnalysisASMFile { machines })
         }
+    }
+
+    fn check_instruction(
+        &mut self,
+        name: &str,
+        instruction: parsed::asm::Instruction<T>,
+    ) -> Result<Instruction<T>, Vec<String>> {
+        if name == "return" {
+            return Err(vec!["Instruction cannot use reserved name `return`".into()]);
+        }
+
+        if let InstructionBody::Local(statements) = &instruction.body {
+            let errors: Vec<_> = statements
+                .iter()
+                .filter_map(|s| match s {
+                    ast::parsed::PilStatement::PolynomialIdentity(_, _) => None,
+                    ast::parsed::PilStatement::PermutationIdentity(_, l, _)
+                    | ast::parsed::PilStatement::PlookupIdentity(_, l, _) => l
+                        .selector
+                        .is_some()
+                        .then_some(format!("LHS selector not yet supported in {s}.")),
+                    _ => Some(format!("Statement not allowed in instruction body: {s}")),
+                })
+                .collect();
+            if !errors.is_empty() {
+                return Err(errors);
+            }
+        }
+        Ok(Instruction {
+            params: instruction.params,
+            body: instruction.body,
+        })
     }
 }

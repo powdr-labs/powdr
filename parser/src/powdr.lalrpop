@@ -212,24 +212,17 @@ pub CallableRef: CallableRef = {
     <instance:Identifier> "." <callable:Identifier> => CallableRef { instance, callable }
 }
 
-InstructionBodyElements: Vec<InstructionBodyElement<T>> = {
+InstructionBodyElements: Vec<PilStatement<T>> = {
     <mut list:( <InstructionBodyElement> "," )*> <end:InstructionBodyElement>  => { list.push(end); list },
     => vec![]
 }
 
-InstructionBodyElement: InstructionBodyElement<T> = {
-    <l:Expression> "=" <r:Expression> => InstructionBodyElement::PolynomialIdentity(l, r),
-    <SelectedExpressions> <PlookupOperator> <SelectedExpressions> => InstructionBodyElement::PlookupIdentity(<>),
-    <id:Identifier> "(" <arguments:ExpressionList> ")" => InstructionBodyElement::FunctionCall(FunctionCall {<>})
-}
-
-// This is only valid in instructions, not in PIL in general.
-// "connect" is not supported because it does not support selectors
-// and we need that for the instruction.
-
-PlookupOperator: PlookupOperator = {
-    "in" => PlookupOperator::In,
-    "is" => PlookupOperator::Is,
+InstructionBodyElement: PilStatement<T> = {
+    PolynomialIdentity,
+    PlookupIdentity,
+    PermutationIdentity,
+    // We could use FunctionCallStatement here, but it makes lalrpop fail to build
+    <@L> <Identifier> "(" <ExpressionList> ")" => PilStatement::FunctionCall(<>)
 }
 
 Params: Params = {
