@@ -164,9 +164,9 @@ impl<T: FieldElement> FixedLookup<T> {
         _fixed_data: &FixedData<T>,
         identities: &[&Identity<T>],
         witness_names: &HashSet<&str>,
-    ) -> Option<Box<Self>> {
+    ) -> Option<Self> {
         if identities.is_empty() && witness_names.is_empty() {
-            Some(Box::default())
+            Some(Default::default())
         } else {
             None
         }

@@ -126,3 +126,109 @@ impl<'a, T: FieldElement> Processor<'a, T> {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::collections::BTreeMap;
+
+    use ast::analyzed::PolyID;
+    use number::{FieldElement, GoldilocksField};
+    use pil_analyzer::analyze_string;
+
+    use crate::{
+        constant_evaluator::generate,
+        witgen::{
+            identity_processor::IdentityProcessor, machines::FixedLookup, rows::RowFactory,
+            FixedData,
+        },
+    };
+
+    use super::Processor;
+
+    fn name_to_poly_id<T: FieldElement>(fixed_data: &FixedData<T>) -> BTreeMap<String, PolyID> {
+        let mut name_to_poly_id = BTreeMap::new();
+        for (poly_id, col) in fixed_data.witness_cols.iter() {
+            name_to_poly_id.insert(col.name.clone(), poly_id);
+        }
+        for (poly_id, col) in fixed_data.fixed_cols.iter() {
+            name_to_poly_id.insert(col.name.clone(), poly_id);
+        }
+        name_to_poly_id
+    }
+
+    /// Constructs a processor for a given PIL, then calls a function on it.
+    fn do_with_processor<T: FieldElement, R>(
+        src: &str,
+        f: impl Fn(&mut Processor<T>, BTreeMap<String, PolyID>) -> R,
+    ) -> R {
+        let analyzed = analyze_string(src);
+        let (constants, degree) = generate(&analyzed);
+        let fixed_data = FixedData::new(&analyzed, degree, &constants);
+
+        // No submachines
+        let mut fixed_lookup = FixedLookup::default();
+        let machines = vec![];
+
+        // No global range constraints
+        let global_range_constraints = fixed_data.witness_map_with(None);
+
+        let row_factory = RowFactory::new(&fixed_data, global_range_constraints);
+        let data = vec![row_factory.fresh_row(); fixed_data.degree as usize];
+        let identity_processor = IdentityProcessor::new(&fixed_data, &mut fixed_lookup, machines);
+        let row_offset = 0;
+        let identities = analyzed.identities.iter().collect();
+
+        let mut processor = Processor::new(
+            row_offset,
+            data,
+            identity_processor,
+            identities,
+            &fixed_data,
+            row_factory,
+        );
+
+        f(&mut processor, name_to_poly_id(&fixed_data))
+    }
+
+    fn solve_and_assert<T: FieldElement>(src: &str, asserted_values: &[(usize, &str, u64)]) {
+        do_with_processor(src, |processor, poly_ids| {
+            processor.solve().unwrap();
+
+            // Can't use processor.finish(), because we don't own it...
+            let data = processor.data.clone();
+
+            // In case of any error, this will be useful
+            for (i, row) in data.iter().enumerate() {
+                println!("{}", row.render(&format!("Row {i}"), true));
+            }
+
+            for &(i, name, expected) in asserted_values.iter() {
+                let poly_id = poly_ids[name];
+                let row = &data[i];
+                let actual: T = row[&poly_id].value.unwrap_or_default();
+                assert_eq!(actual, T::from(expected));
+            }
+        })
+    }
+
+    #[test]
+    fn test_fibonacci() {
+        let src = r#"
+            constant %N = 8;
+            
+            namespace Fibonacci(%N);
+                col fixed ISFIRST = [1] + [0]*;
+                col fixed ISLAST = [0]* + [1];
+                col witness x, y;
+            
+                // Start with 1, 1
+                ISFIRST * (y - 1) = 0;
+                ISFIRST * (x - 1) = 0;
+            
+                (1-ISLAST) * (x' - y) = 0;
+                (1-ISLAST) * (y' - (x + y)) = 0;
+        "#;
+
+        solve_and_assert::<GoldilocksField>(src, &[(7, "Fibonacci.y", 34)]);
+    }
+}

@@ -46,27 +46,7 @@ where
     if degree.is_zero() {
         panic!("Resulting degree is zero. Please ensure that there is at least one non-constant fixed column to set the degree.");
     }
-    let witness_cols = ColumnMap::from(
-        analyzed
-            .committed_polys_in_source_order()
-            .iter()
-            .enumerate()
-            .map(|(i, (poly, value))| {
-                if poly.length.is_some() {
-                    unimplemented!("Committed arrays not implemented.")
-                }
-                assert_eq!(i as u64, poly.id);
-                let col = WitnessColumn::new(i, &poly.absolute_name, value);
-                col
-            }),
-        PolynomialType::Committed,
-    );
-
-    let fixed_cols = ColumnMap::from(
-        fixed_col_values.iter().map(|(n, v)| FixedColumn::new(n, v)),
-        PolynomialType::Constant,
-    );
-    let fixed = FixedData::new(degree, fixed_cols, witness_cols);
+    let fixed = FixedData::new(analyzed, degree, fixed_col_values);
     let identities = substitute_constants(&analyzed.identities, &analyzed.constants);
 
     let GlobalConstraints {
@@ -204,10 +184,30 @@ pub struct FixedData<'a, T> {
 
 impl<'a, T: FieldElement> FixedData<'a, T> {
     pub fn new(
+        analyzed: &'a Analyzed<T>,
         degree: DegreeType,
-        fixed_cols: ColumnMap<FixedColumn<'a, T>>,
-        witness_cols: ColumnMap<WitnessColumn<'a, T>>,
+        fixed_col_values: &'a [(&'a str, Vec<T>)],
     ) -> Self {
+        let witness_cols = ColumnMap::from(
+            analyzed
+                .committed_polys_in_source_order()
+                .iter()
+                .enumerate()
+                .map(|(i, (poly, value))| {
+                    if poly.length.is_some() {
+                        unimplemented!("Committed arrays not implemented.")
+                    }
+                    assert_eq!(i as u64, poly.id);
+                    let col = WitnessColumn::new(i, &poly.absolute_name, value);
+                    col
+                }),
+            PolynomialType::Committed,
+        );
+
+        let fixed_cols = ColumnMap::from(
+            fixed_col_values.iter().map(|(n, v)| FixedColumn::new(n, v)),
+            PolynomialType::Constant,
+        );
         FixedData {
             degree,
             fixed_cols,
