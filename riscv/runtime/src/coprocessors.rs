@@ -4,9 +4,9 @@
 // The function itself will be removed by the compiler
 // during the reachability analysis.
 extern "C" {
-    fn poseidon_coprocessor(a: u32, b: u32) -> u32;
+    fn poseidon_coprocessor(a: u32, b: u32, c: u32) -> u32;
 }
 
 pub fn poseidon_hash(a: u32, b: u32) -> u32 {
-    unsafe { poseidon_coprocessor(a, b) }
+    unsafe { poseidon_coprocessor(a, b, 0) }
 }
