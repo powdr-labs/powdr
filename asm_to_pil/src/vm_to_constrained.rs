@@ -351,9 +351,9 @@ impl<T: FieldElement> ASMPILConverter<T> {
                         }
                         InstructionBodyElement::PlookupIdentity(left, op, right) => {
                             assert!(
-                        left.selector.is_none(),
-                        "LHS selector not supported, could and-combine with instruction flag later."
-                    );
+                                left.selector.is_none(),
+                                "LHS selector not supported, could and-combine with instruction flag later."
+                            );
                             match op {
                                 PlookupOperator::In => {
                                     PilStatement::PlookupIdentity(s.start, left, right)
