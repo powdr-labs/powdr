@@ -7,7 +7,7 @@ use ast::analyzed::{
     PolynomialReference, PolynomialType, StatementIdentifier, UnaryOperator,
 };
 use starky::types::{
-    ConnectionIdentity, Expression as StarkyExpr, PermutationIdentity, PlookupIdentity,
+    self, ConnectionIdentity, Expression as StarkyExpr, PermutationIdentity, PlookupIdentity,
     PolIdentity, Reference, PIL,
 };
 
@@ -124,7 +124,7 @@ pub fn export<T: FieldElement>(analyzed: &Analyzed<T>) -> PIL {
             }
         }
     }
-    PIL {
+    let mut pil = PIL {
         nCommitments: analyzed.commitment_count(),
         nQ: exporter.number_q as usize,
         nIm: analyzed.intermediate_count(),
@@ -138,7 +138,67 @@ pub fn export<T: FieldElement>(analyzed: &Analyzed<T>) -> PIL {
         connectionIdentities: Some(connection_identities),
         cm_dims: Vec::new(),
         q2exp: Vec::new(),
+    };
+
+    if pil.nIm == 0 {
+        pil.nIm = 1;
+
+        let zero =
+            types::Expression::new("number".to_string(), 0, None, Some("0".to_string()), None);
+
+        let zero_id = pil.expressions.len();
+        pil.expressions.push(zero);
+
+        pil.references.insert(
+            "main.dummy_im".to_string(),
+            Reference {
+                polType: None,
+                type_: "imP".to_string(),
+                id: zero_id,
+                polDeg: 4,
+                isArray: false,
+                elementType: None,
+                len: None,
+            },
+        );
+
+        let eq = types::Expression::new(
+            "sub".to_string(),
+            1,
+            None,
+            None,
+            Some(vec![
+                types::Expression::new("cm".to_string(), 1, Some(0), None, None),
+                types::Expression::new(
+                    "add".to_string(),
+                    1,
+                    None,
+                    None,
+                    Some(vec![
+                        types::Expression::new("cm".to_string(), 1, Some(0), None, None),
+                        types::Expression::new(
+                            "exp".to_string(),
+                            1,
+                            Some(zero_id),
+                            None,
+                            None,
+                        ),
+                    ]),
+                ),
+            ]),
+        );
+
+        let eq_id = pil.expressions.len();
+        pil.expressions.push(eq);
+
+        pil.polIdentities.push(PolIdentity {
+            e: eq_id,
+            fileName: "main.pil".to_string(),
+            line: 0,
+        });
     }
+
+    pil
 }
 
 fn polynomial_type_to_json_string(t: PolynomialType) -> &'static str {
