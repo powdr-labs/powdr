@@ -357,6 +357,9 @@ where
     type Output = Self;
 
     fn add(self, rhs: Self) -> Self::Output {
+        if rhs.coefficients.len() < self.coefficients.len() {
+            return rhs + self;
+        }
         let mut coefficients = rhs.coefficients;
         for (i, v) in self.coefficients.into_iter() {
             coefficients
