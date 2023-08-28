@@ -651,6 +651,7 @@ fn preamble() -> String {
     reg X[<=];
     reg Y[<=];
     reg Z[<=];
+    reg A[<=];
     reg tmp1;
     reg tmp2;
     reg tmp3;
@@ -761,10 +762,8 @@ fn preamble() -> String {
 
     // ================= coprocessor substitution instructions =================
 
-    instr poseidon Y, Z -> X {
-        // Dummy code, to be replaced with actual poseidon code.
-        X = 0
-    }
+    PoseidonBN254 poseidon;
+    instr poseidon X, Y, Z -> A = poseidon.poseidon_permutation
 
     // ================= binary/bitwise instructions =================
 
@@ -783,8 +782,8 @@ fn preamble() -> String {
     // ================== wrapping instructions ==============
 
     // Wraps a value in Y to 32 bits.
-    // Requires 0 <= Y < 2**33
-    instr wrap Y -> X { Y = X + wrap_bit * 2**32, X = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000 }
+    // Requires 0 <= Y < 2**64
+    instr wrap Y -> X { Y = X + X_b5 * 2**32 + X_b6 * 2**40 + X_b7 * 2**48 + X_b8 * 2**56, X = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000 }
     // Requires -2**32 <= Y < 2**32
     instr wrap_signed Y -> X { Y + 2**32 = X + wrap_bit * 2**32, X = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000 }
     constraints{
@@ -793,10 +792,18 @@ fn preamble() -> String {
         col witness X_b2;
         col witness X_b3;
         col witness X_b4;
+		col witness X_b5;
+		col witness X_b6;
+		col witness X_b7;
+		col witness X_b8;
         { X_b1 } in { bytes };
         { X_b2 } in { bytes };
         { X_b3 } in { bytes };
         { X_b4 } in { bytes };
+        { X_b5 } in { bytes };
+        { X_b6 } in { bytes };
+        { X_b7 } in { bytes };
+        { X_b8 } in { bytes };
         col witness wrap_bit;
         wrap_bit * (1 - wrap_bit) = 0;
     }
@@ -1070,8 +1077,10 @@ fn only_if_no_write_to_zero_vec(statements: Vec<String>, reg: Register) -> Vec<S
     }
 }
 
-static COPROCESSOR_SUBSTITUTIONS: &[(&str, &str)] =
-    &[("poseidon_coprocessor", "x10 <== poseidon(x10, x11);")];
+static COPROCESSOR_SUBSTITUTIONS: &[(&str, &str)] = &[(
+    "poseidon_coprocessor",
+    "x10 <== poseidon(x10, x11, x12);\nx10 <== wrap(x10);",
+)];
 
 fn try_coprocessor_substitution(label: &str) -> Option<String> {
     COPROCESSOR_SUBSTITUTIONS
@@ -1378,7 +1387,7 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
             };
             match (replacement, instr) {
                 (Some(replacement), "call") => vec![replacement],
-                (Some(replacement), "tail") => vec![replacement, "ret".to_string()],
+                (Some(replacement), "tail") => vec![replacement, "ret;".to_string()],
                 (Some(_), _) => panic!(),
                 (None, _) => vec![format!("{instr} {};", argument_to_escaped_symbol(label))],
             }
