@@ -98,7 +98,7 @@ fn check_constraint<T: FieldElement>(constraint: &Expression<T>) -> Option<PolyI
         Err(_) => return None,
     };
     let key_column_id = match sort_constraint.nonzero_variables().as_slice() {
-        [key, _] => *key,
+        [key, _] | [_, key] if !key.next => *key,
         _ => return None,
     };
     if key_column_id.next || key_column_id.is_fixed() {
