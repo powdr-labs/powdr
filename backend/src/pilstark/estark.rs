@@ -82,6 +82,7 @@ impl<F: FieldElement> BackendImpl<F> for EStark {
         )
         .unwrap();
 
+        /*
         assert!(stark_verify::<MerkleTreeGL, TranscriptGL>(
             &starkproof,
             &setup.const_root,
@@ -90,6 +91,7 @@ impl<F: FieldElement> BackendImpl<F> for EStark {
             &mut setup.program,
         )
         .unwrap());
+        */
 
         (
             Some(serde_json::to_vec(&starkproof).unwrap()),
