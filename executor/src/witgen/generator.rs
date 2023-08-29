@@ -2,10 +2,11 @@ use ast::analyzed::{Identity, PolyID};
 use itertools::Itertools;
 use number::{DegreeType, FieldElement};
 use parser_util::lines::indent;
+use std::cmp::max;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::time::Instant;
 
-use crate::witgen::identity_processor::IdentityProcessor;
+use crate::witgen::identity_processor::{self, IdentityProcessor};
 use crate::witgen::rows::RowUpdater;
 
 use super::column_map::ColumnMap;
@@ -408,8 +409,19 @@ where
             let duration = self.last_report_time.elapsed();
             self.last_report_time = Instant::now();
 
+            let identity_statistics = identity_processor::get_and_reset_solving_statistics();
+            let identities_per_sec =
+                ((identity_statistics.values().map(|s| s.success).sum::<u64>() as u128 * 1000)
+                    / duration.as_micros()) as u64;
+            let identities_count = max(identity_statistics.len() as u64, 1);
+            let progress_percentage = identity_statistics
+                .values()
+                .map(|s| s.success * 100 / s.invocations)
+                .sum::<u64>()
+                / identities_count;
+
             log::info!(
-                "{next_row} of {} rows ({} %, {} rows per second)",
+                "{next_row} of {} rows ({}%) - {} rows/s, {identities_per_sec}k identities/s, {progress_percentage}% progress",
                 self.fixed_data.degree,
                 next_row * 100 / self.fixed_data.degree,
                 1_000_000_000 / duration.as_micros()
