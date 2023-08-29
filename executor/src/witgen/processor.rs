@@ -105,7 +105,10 @@ impl<'a, T: FieldElement> Processor<'a, T> {
                     .identity_processor
                     .process_identity(identity, &row_pair)
                     .map_err(|e| {
-                        log::warn!("Error in identity: {identity}");
+                        log::warn!(
+                            "Error in identity: {identity}, row {} (local: {i})",
+                            self.row_offset + i as u64
+                        );
                         e
                     })?;
 

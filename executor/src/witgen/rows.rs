@@ -34,6 +34,13 @@ impl<T: FieldElement> CellValue<T> {
             _ => Default::default(),
         }
     }
+
+    pub fn to_option(&self) -> Option<T> {
+        match self {
+            CellValue::Known(v) => Some(*v),
+            _ => None,
+        }
+    }
 }
 
 impl<T: FieldElement> From<&CellValue<T>> for Option<T> {

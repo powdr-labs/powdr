@@ -249,12 +249,46 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         if processor.check_constraints().is_err() {
             log::warn!("Detected error in last row! Will attempt to fix it now.");
 
+            println!("{}", self.identities[0]);
+
             // Clear the last row and run the solver
             processor.clear_row(1);
-            processor
-                .solve()
-                .expect("Some constraints were not satisfiable when solving for the last row.");
-            let last_row = processor.finish().remove(1);
+            let result = processor.solve();
+            let mut new_rows = processor.finish();
+
+            if let Err(e) = result {
+                println!("Error: {}", e);
+                let mut values = vec![];
+                for poly_id in new_rows[0].keys() {
+                    let value = (
+                        new_rows[0][&poly_id].name,
+                        new_rows[0][&poly_id]
+                            .value
+                            .to_option()
+                            .map(|v| format!("{}", v))
+                            .unwrap_or("none".to_string()),
+                        new_rows[1][&poly_id]
+                            .value
+                            .to_option()
+                            .map(|v| format!("{}", v))
+                            .unwrap_or("none".to_string()),
+                        new_rows[2][&poly_id]
+                            .value
+                            .to_option()
+                            .map(|v| format!("{}", v))
+                            .unwrap_or("none".to_string()),
+                    );
+                    if value.1 != "none" || value.2 != "none" || value.3 != "none" {
+                        values.push(value);
+                    }
+                }
+
+                for (name, v1, v2, v3) in values {
+                    println!("{}: {} {} {}", name, v1, v2, v3);
+                }
+            }
+
+            let last_row = new_rows.remove(1);
 
             // Copy values into data
             for (poly_id, values) in data.iter_mut() {
