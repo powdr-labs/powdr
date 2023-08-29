@@ -207,8 +207,7 @@ where
     /// Loops over all identities once and updates the current row and next row.
     /// Arguments:
     /// * `identities`: Identities to process. Completed identities are removed from the list.
-    /// * `frozen`: If true, the identities are processed assuming that all unknown values are 0.
-    ///             Also, no updates are applied to the current row.
+    /// * `unknown_strategy`: How to process unknown variables. Either use zero or keep it symbolic.
     /// Returns:
     /// * `Ok(true)`: If progress was made.
     /// * `Ok(false)`: If no progress was made.
