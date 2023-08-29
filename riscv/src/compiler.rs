@@ -1259,7 +1259,7 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
             };
             match (replacement, instr) {
                 (Some(replacement), "call") => vec![replacement],
-                (Some(replacement), "tail") => vec![replacement, "ret".to_string()],
+                (Some(replacement), "tail") => vec![replacement, "ret;".to_string()],
                 (Some(_), _) => panic!(),
                 (None, _) => vec![format!("{instr} {};", argument_to_escaped_symbol(label))],
             }
