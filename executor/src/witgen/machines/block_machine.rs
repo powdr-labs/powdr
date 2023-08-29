@@ -167,6 +167,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
         fixed_data: &FixedData<T>,
         fixed_lookup: &mut FixedLookup<T>,
     ) -> HashMap<String, Vec<T>> {
+        let mut handle_last_row = true;
         let mut data = transpose_rows(std::mem::take(&mut self.data), &self.witness_cols)
             .into_iter()
             .map(|(id, mut values)| {
@@ -177,6 +178,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
                 if values.len() < 2 * self.block_size {
                     log::warn!("Filling empty blocks with zeros, because the block machine is never used. \
                                 This might violate some internal constraints.");
+                    handle_last_row = false;
                 }
 
                 values.resize(fixed_data.degree as usize, None);
@@ -205,7 +207,9 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
                 (id, values)
             })
             .collect();
-        self.handle_last_row(&mut data, fixed_data, fixed_lookup);
+        if handle_last_row {
+            self.handle_last_row(&mut data, fixed_data, fixed_lookup);
+        }
         data.into_iter()
             .map(|(id, values)| (fixed_data.column_name(&id).to_string(), values))
             .collect()
