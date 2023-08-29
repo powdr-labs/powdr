@@ -622,6 +622,57 @@ mod test {
         assert_eq!(&result.to_string(), "12 * abc + 2 * def + 16");
         assert_eq!(b.clone() + a.clone(), a + b,);
     }
+
+    #[test]
+    pub fn test_affine_clean() {
+        let a = AffineExpression::<_, GoldilocksField> {
+            coefficients: convert(vec![1, 2]),
+            offset: 3.into(),
+            clean: true,
+        };
+        let b = AffineExpression {
+            coefficients: convert(vec![11, 80]),
+            offset: 13.into(),
+            clean: true,
+        };
+        assert_eq!(
+            (a.clone() * 3.into()) + b.clone(),
+            AffineExpression {
+                coefficients: convert(vec![14, 86]),
+                offset: 22.into(),
+                clean: true,
+            },
+        );
+        assert_eq!(a * 0.into(), GoldilocksField::zero().into());
+        assert_eq!(b * 0.into(), GoldilocksField::zero().into());
+    }
+
+    #[test]
+    pub fn test_affine_clean_long() {
+        let a = AffineExpression::<_, GoldilocksField> {
+            coefficients: convert(vec![1, 2, 0, 4, 0, 9, 8]),
+            offset: 3.into(),
+            clean: false,
+        };
+        let b = AffineExpression {
+            coefficients: convert(vec![11, 12, 0, 14, 15, 19, -8]),
+            offset: 1.into(),
+            clean: false,
+        };
+        assert_eq!(
+            (a.clone() + b.clone()).nonzero_coefficients(),
+            vec![
+                (0, 12.into()),
+                (1, 14.into()),
+                (3, 18.into()),
+                (4, 15.into()),
+                (5, 28.into())
+            ]
+        );
+        assert_eq!(a * 0.into(), GoldilocksField::zero().into());
+        assert_eq!(b * 0.into(), GoldilocksField::zero().into());
+    }
+
     struct TestRangeConstraints<T: FieldElement>(BTreeMap<usize, RangeConstraint<T>>);
     impl<T: FieldElement> RangeConstraintSet<usize, T> for TestRangeConstraints<T> {
         fn range_constraint(&self, id: usize) -> Option<RangeConstraint<T>> {
