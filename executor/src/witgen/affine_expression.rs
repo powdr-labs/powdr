@@ -190,6 +190,31 @@ where
         }
     }
 
+    pub fn solve_equal(&self, x: T) -> EvalResult<T, K> {
+        if !self.clean {
+            return self.clean().solve_equal(x);
+        }
+        if let [(i, c)] = &self.coefficients[..] {
+            // c * a + o = x <=> a = x-o/c
+            Ok(EvalValue::complete([(
+                *i,
+                Constraint::Assignment(if c.is_one() {
+                    if self.offset.is_zero() {
+                        x
+                    } else {
+                        x - self.offset
+                    }
+                } else if *c == -T::one() {
+                    self.offset - x
+                } else {
+                    (x - self.offset) / *c
+                }),
+            )]))
+        } else {
+            (self.clone() - x.into()).solve()
+        }
+    }
+
     /// Tries to solve "self = 0", or at least propagate a bit / range constraint:
     /// If we know that some components can only have certain bits set and the offset is zero,
     /// this property might transfer to another component.

@@ -224,6 +224,7 @@ impl<T: FieldElement> FixedLookup<T> {
             .iter()
             .map(|(poly_ref, v)| (poly_ref.poly_id(), *v))
             .collect();
+
         let index_value = self
             .indices
             .get_match(
@@ -256,9 +257,8 @@ impl<T: FieldElement> FixedLookup<T> {
 
         let mut result = EvalValue::complete(vec![]);
         for (l, r) in output_expressions.into_iter().zip(output) {
-            let evaluated = l.clone() - r.into();
             // TODO we could use bit constraints here
-            match evaluated.solve() {
+            match l.solve_equal(r) {
                 Ok(constraints) => {
                     result.combine(constraints);
                 }
