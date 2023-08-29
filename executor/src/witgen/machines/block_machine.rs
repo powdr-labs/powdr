@@ -252,8 +252,6 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         if processor.check_constraints().is_err() {
             log::warn!("Detected error in last row! Will attempt to fix it now.");
 
-            println!("{}", self.identities[0]);
-
             // Clear the last row and run the solver
             processor.clear_row(1);
             let result = processor.solve();
