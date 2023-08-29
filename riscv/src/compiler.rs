@@ -477,7 +477,7 @@ fn store_data_objects<'a>(
         current_pos += size;
     }
 
-    let code = objects
+    let mut code = objects
         .into_iter()
         .filter(|(_, data)| !data.is_empty())
         .flat_map(|(name, data)| {
@@ -546,7 +546,10 @@ fn store_data_objects<'a>(
             }
             object_code
         })
-        .collect();
+        .collect::<Vec<_>>();
+    code.push("x10 <== poseidon(x10, x11, x12);".to_string());
+    code.push("x10 <== and(x11, x12);".to_string());
+    code.push("x10 <== shl(x11, x12);".to_string());
     (code, positions)
 }
 
