@@ -1,4 +1,3 @@
-use std::collections::BTreeMap;
 use std::fmt::Display;
 
 use itertools::{Either, Itertools};
@@ -14,8 +13,10 @@ use super::{EvalError::*, EvalResult, EvalValue, IncompleteCause};
 /// An expression affine in the committed polynomials (or symbolic variables in general).
 #[derive(Debug, Clone)]
 pub struct AffineExpression<K, T> {
-    pub coefficients: BTreeMap<K, T>,
+    pub coefficients: Vec<(K, T)>,
     pub offset: T,
+    /// If true, coefficients all have nonzero values and do not have duplicate keys.
+    clean: bool,
 }
 
 pub type AffineResult<K, T> = Result<AffineExpression<K, T>, IncompleteCause<K>>;
@@ -25,6 +26,7 @@ impl<K, T> From<T> for AffineExpression<K, T> {
         Self {
             coefficients: Default::default(),
             offset: value,
+            clean: true,
         }
     }
 }
@@ -36,13 +38,14 @@ where
 {
     pub fn from_variable_id(var_id: K) -> AffineExpression<K, T> {
         Self {
-            coefficients: BTreeMap::from([(var_id, T::one())]),
+            coefficients: vec![(var_id, T::one())],
             offset: T::zero(),
+            clean: true,
         }
     }
 
     pub fn is_constant(&self) -> bool {
-        self.nonzero_coefficients().next().is_none()
+        self.nonzero_coefficients().is_empty()
     }
 
     pub fn constant_value(&self) -> Option<T> {
@@ -50,20 +53,93 @@ where
     }
 
     pub fn nonzero_variables(&self) -> Vec<K> {
-        self.nonzero_coefficients().map(|(i, _)| i).collect()
+        self.nonzero_coefficients()
+            .into_iter()
+            .map(|(i, _)| i)
+            .collect()
     }
 
-    /// @returns an iterator of the nonzero coefficients and their variable IDs (but not the offset).
-    pub fn nonzero_coefficients(&self) -> impl Iterator<Item = (K, &T)> {
-        self.coefficients
-            .iter()
-            .filter_map(|(i, c)| (!c.is_zero()).then_some((*i, c)))
-    }
+    /// @returns an vector of the nonzero coefficients and their variable IDs (but not the offset).
+    pub fn nonzero_coefficients(&self) -> Vec<(K, T)> {
+        // We need to make sure that there are no duplicates in the variable
+        // IDs and that the coefficients are nonzero. In other words, we need to
+        // "clean" the coefficient array.
 
-    pub fn assign(&mut self, key: K, value: T) {
-        if let Some(coefficient) = self.coefficients.remove(&key) {
-            self.offset -= coefficient * value;
+        // First try the easy cases.
+        if self.clean {
+            return self.coefficients.clone();
         }
+
+        match &self.coefficients[..] {
+            [] => return vec![],
+            [(k, v)] => return Self::clean_one(k, v),
+            [(k1, v1), (k2, v2)] => return Self::clean_two((k1, v1), (k2, v2)),
+            _ => {}
+        };
+
+        // Ok, this is more complicated.
+        // Remove duplicates by first sorting and then going through
+        // all adjacent pairs with equal variable IDs, adding the coefficient
+        // of the first to the second, and setting the coefficient of the
+        // first to zero.
+        // Then we filter out the zeros as a last step.
+        let mut coefficients = self.coefficients.clone();
+        coefficients.sort_unstable_by(|(k1, _), (k2, _)| k1.cmp(k2));
+        for i in 1..coefficients.len() {
+            let (first, second) = coefficients.split_at_mut(i);
+            let (k1, v1) = first.last_mut().unwrap();
+            let (k2, v2) = second.first_mut().unwrap();
+            if k1 == k2 {
+                *v2 += *v1;
+                *v1 = 0.into();
+            }
+        }
+        coefficients
+            .into_iter()
+            .filter(|(_, c)| !c.is_zero())
+            .collect()
+    }
+
+    fn clean_two(a: (&K, &T), b: (&K, &T)) -> Vec<(K, T)> {
+        if a.1.is_zero() {
+            Self::clean_one(b.0, b.1)
+        } else if b.1.is_zero() {
+            Self::clean_one(a.0, a.1)
+        } else if a.0 == b.0 {
+            Self::clean_one(a.0, &(*a.1 + *b.1))
+        } else {
+            vec![(*a.0, *a.1), (*b.0, *b.1)]
+        }
+    }
+
+    fn clean_one(k: &K, v: &T) -> Vec<(K, T)> {
+        if v.is_zero() {
+            vec![]
+        } else {
+            vec![(*k, *v)]
+        }
+    }
+
+    fn clean(&self) -> Self {
+        AffineExpression {
+            offset: self.offset,
+            coefficients: self.nonzero_coefficients(),
+            clean: true,
+        }
+    }
+
+    /// Incorporates the case where the symbolic variable `key` is assigned
+    /// the value `value`.
+    pub fn assign(&mut self, key: K, value: T) {
+        let mut offset = 0.into();
+        for (k, coeff) in &mut self.coefficients {
+            if *k == key {
+                offset += *coeff * value;
+                *coeff = 0.into();
+            }
+        }
+        self.offset -= offset;
+        self.clean = false;
     }
 }
 
@@ -77,14 +153,18 @@ where
     /// affine expression to zero.
     /// Returns an error if the constraint is unsat
     pub fn solve(&self) -> EvalResult<T, K> {
-        let mut nonzero = self.nonzero_coefficients();
+        if !self.clean {
+            return self.clean().solve();
+        }
+
+        let mut nonzero = self.coefficients.iter();
         let first = nonzero.next();
         let second = nonzero.next();
         match (first, second) {
             (Some((i, c)), None) => {
                 // c * a + o = 0 <=> a = -o/c
                 Ok(EvalValue::complete([(
-                    i,
+                    *i,
                     Constraint::Assignment(if c.is_one() {
                         -self.offset
                     } else if *c == -T::one() {
@@ -117,6 +197,10 @@ where
         &self,
         known_constraints: &impl RangeConstraintSet<K, T>,
     ) -> EvalResult<T, K> {
+        if !self.clean {
+            return self.clean().solve_with_range_constraints(known_constraints);
+        }
+
         // Try to solve directly.
         let value = self.solve()?;
         if value.is_complete() {
@@ -187,7 +271,8 @@ where
         &self,
         known_constraints: &impl RangeConstraintSet<K, T>,
     ) -> Option<EvalResult<T, K>> {
-        let mut coeffs = self.nonzero_coefficients();
+        assert!(self.clean);
+        let mut coeffs = self.coefficients.iter();
         let first = coeffs.next()?;
         let second = coeffs.next()?;
         if coeffs.next().is_some() {
@@ -206,7 +291,7 @@ where
             known_constraints.range_constraint(remainder)?.range();
 
         // Check that remainder is in [0, divisor - 1].
-        if remainder_lower > remainder_upper || remainder_upper >= *divisor {
+        if remainder_lower > remainder_upper || remainder_upper >= divisor {
             return None;
         }
         let (quotient_lower, quotient_upper) =
@@ -242,12 +327,14 @@ where
         &self,
         known_constraints: &impl RangeConstraintSet<K, T>,
     ) -> Option<(K, RangeConstraint<T>)> {
+        assert!(self.clean);
         // We are looking for X = a * Y + b * Z + ... or -X = a * Y + b * Z + ...
         // where X is least constrained.
 
         let (solve_for, solve_for_coefficient) = self
-            .nonzero_coefficients()
-            .filter(|(_i, c)| **c == -T::one() || c.is_one())
+            .coefficients
+            .iter()
+            .filter(|(_i, c)| *c == -T::one() || c.is_one())
             .max_by_key(|(i, _c)| {
                 // Sort so that we get the least constrained variable.
                 known_constraints
@@ -257,11 +344,12 @@ where
             })?;
 
         let summands = self
-            .nonzero_coefficients()
-            .filter(|(i, _)| *i != solve_for)
+            .coefficients
+            .iter()
+            .filter(|(i, _)| i != solve_for)
             .map(|(i, coeff)| {
                 known_constraints
-                    .range_constraint(i)
+                    .range_constraint(*i)
                     .map(|con| con.multiple(*coeff))
             })
             .chain(
@@ -272,12 +360,12 @@ where
         if solve_for_coefficient.is_one() {
             constraint = -constraint;
         }
-        if let Some(previous) = known_constraints.range_constraint(solve_for) {
+        if let Some(previous) = known_constraints.range_constraint(*solve_for) {
             if previous.conjunction(&constraint) == previous {
                 return None;
             }
         }
-        Some((solve_for, constraint))
+        Some((*solve_for, constraint))
     }
 
     /// Tries to assign values to all variables through their bit constraints.
@@ -288,10 +376,12 @@ where
         &self,
         known_constraints: &impl RangeConstraintSet<K, T>,
     ) -> EvalResult<T, K> {
+        assert!(self.clean);
         // Get constraints from coefficients and also collect unconstrained indices.
         let (constraints, unconstrained): (Vec<_>, Vec<K>) = self
-            .nonzero_coefficients()
-            .partition_map(|(i, coeff)| match known_constraints.range_constraint(i) {
+            .coefficients
+            .iter()
+            .partition_map(|(i, coeff)| match known_constraints.range_constraint(*i) {
                 None => Either::Right(i),
                 Some(constraint) => Either::Left((i, *coeff, constraint)),
             });
@@ -316,7 +406,7 @@ where
                 covered_bits |= mask;
             }
             assignments.combine(EvalValue::complete([(
-                i,
+                *i,
                 Constraint::Assignment(
                     ((offset & mask).to_arbitrary_integer() / coeff.to_arbitrary_integer())
                         .try_into()
@@ -341,7 +431,10 @@ where
     T: FieldElement,
 {
     fn eq(&self, other: &Self) -> bool {
-        self.offset == other.offset && self.nonzero_coefficients().eq(other.nonzero_coefficients())
+        self.offset == other.offset
+            && self
+                .nonzero_coefficients()
+                .eq(&other.nonzero_coefficients())
     }
 }
 
@@ -352,18 +445,24 @@ where
 {
     type Output = Self;
 
-    fn add(self, rhs: Self) -> Self::Output {
-        let mut coefficients = rhs.coefficients;
-        for (i, v) in self.coefficients.into_iter() {
-            coefficients
-                .entry(i)
-                .and_modify(|x| *x += v)
-                .or_insert_with(|| v);
+    fn add(mut self, mut rhs: Self) -> Self::Output {
+        if self.clean && rhs.clean {
+            // See if we can retain the clean flag.
+            if self.coefficients.is_empty() || rhs.coefficients.is_empty() {
+                // All clean.
+            } else if let [(lk, _)] = &self.coefficients[..] {
+                self.clean = !rhs.coefficients.iter().any(|(k, _)| k == lk);
+            } else if let [(rk, _)] = &rhs.coefficients[..] {
+                self.clean = !self.coefficients.iter().any(|(k, _)| k == rk);
+            } else {
+                self.clean = false;
+            }
+        } else {
+            self.clean = false;
         }
-        Self {
-            coefficients,
-            offset: self.offset + rhs.offset,
-        }
+        self.coefficients.append(&mut rhs.coefficients);
+        self.offset += rhs.offset;
+        self
     }
 }
 
@@ -375,7 +474,9 @@ where
     type Output = Self;
 
     fn neg(mut self) -> Self::Output {
-        self.coefficients.values_mut().for_each(|v| *v = -*v);
+        for (_, v) in &mut self.coefficients {
+            *v = -*v;
+        }
         self.offset = -self.offset;
         self
     }
@@ -396,11 +497,15 @@ where
 impl<K, T: FieldElement> std::ops::Mul<T> for AffineExpression<K, T> {
     type Output = Self;
     fn mul(mut self, factor: T) -> Self {
-        for f in self.coefficients.values_mut() {
-            *f = *f * factor;
+        if factor.is_zero() {
+            factor.into()
+        } else {
+            for (_, f) in &mut self.coefficients {
+                *f = *f * factor;
+            }
+            self.offset = self.offset * factor;
+            self
         }
-        self.offset = self.offset * factor;
-        self
     }
 }
 
@@ -416,6 +521,7 @@ where
                 f,
                 "{}",
                 self.nonzero_coefficients()
+                    .iter()
                     .map(|(i, c)| {
                         if c.is_one() {
                             i.to_string()
@@ -452,7 +558,7 @@ mod test {
         }
     }
 
-    fn convert<U, T>(input: Vec<U>) -> BTreeMap<usize, T>
+    fn convert<U, T>(input: Vec<U>) -> Vec<(usize, T)>
     where
         U: Copy + Into<T>,
         T: FieldElement,
@@ -465,6 +571,7 @@ mod test {
         let a = AffineExpression {
             coefficients: convert(vec![1, 0, 2]),
             offset: 9.into(),
+            clean: true,
         };
         assert_eq!(
             -a,
@@ -475,6 +582,7 @@ mod test {
                     GoldilocksField::from(0) - GoldilocksField::from(2u64),
                 ]),
                 offset: GoldilocksField::from(0) - GoldilocksField::from(9u64),
+                clean: true
             },
         );
     }
@@ -484,16 +592,19 @@ mod test {
         let a = AffineExpression::<_, GoldilocksField> {
             coefficients: convert(vec![1, 2]),
             offset: 3.into(),
+            clean: true,
         };
         let b = AffineExpression {
             coefficients: convert(vec![11]),
             offset: 13.into(),
+            clean: true,
         };
         assert_eq!(
             a.clone() + b.clone(),
             AffineExpression {
                 coefficients: convert(vec![12, 2]),
                 offset: 16.into(),
+                clean: true,
             },
         );
         assert_eq!(b.clone() + a.clone(), a + b,);
