@@ -445,7 +445,7 @@ fn export_columns_to_csv<T: FieldElement>(
 ) {
     let columns = fixed
         .into_iter()
-        .chain(witness.unwrap_or(vec![]).into_iter())
+        .chain(witness.unwrap_or(vec![]))
         .collect::<Vec<_>>();
 
     let mut csv_file = fs::File::create(csv_path).unwrap();

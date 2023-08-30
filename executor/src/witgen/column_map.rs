@@ -44,7 +44,7 @@ impl<V> ColumnMap<V> {
     }
 
     pub fn into_iter(self) -> impl Iterator<Item = (PolyID, V)> {
-        self.keys().zip(self.values.into_iter())
+        self.keys().zip(self.values)
     }
 
     pub fn values(&self) -> impl Iterator<Item = &V> {

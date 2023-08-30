@@ -24,7 +24,7 @@ impl IndexValue {
     pub fn single_row(row: usize) -> Self {
         // TODO check how expensive the cehck is
         // We negate to make it actually nonzero.
-        Self(Some(NonZeroUsize::new(!row)).unwrap())
+        Self(NonZeroUsize::new(!row))
     }
     fn row(&self) -> Option<usize> {
         self.0.map(|row| (!row.get()))
