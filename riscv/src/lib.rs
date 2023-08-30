@@ -1,11 +1,16 @@
 //! A RISC-V frontend for powdr
-use std::{collections::BTreeMap, ffi::OsStr, path::Path, process::Command};
+use std::{
+    collections::BTreeMap,
+    ffi::OsStr,
+    path::{Path, PathBuf},
+    process::Command,
+};
 
 use ::compiler::{compile_asm_string, BackendType};
 use asm_utils::compiler::Compiler;
+use json::JsonValue;
 use mktemp::Temp;
 use std::fs;
-use walkdir::WalkDir;
 
 use number::FieldElement;
 
@@ -210,40 +215,90 @@ pub fn compile_rust_crate_to_riscv_asm(
 ) -> BTreeMap<String, String> {
     let target_dir = output_dir.join("cargo_target");
 
-    let cargo_status = Command::new("cargo")
+    // We call cargo twice, once to get the build plan json, so we know exactly
+    // which object file to use, and once to perform the actual building.
+    let args = as_ref![
+        OsStr;
+        "+nightly-2023-01-03",
+        "build",
+        "--release",
+        "-Z",
+        "build-std=core,alloc",
+        "--target",
+        "riscv32imc-unknown-none-elf",
+        "--lib",
+        "--target-dir",
+        target_dir,
+        "--manifest-path",
+        input_dir,
+        // These 3 arguments must come last, as they will be removed:
+        "-Z",
+        "unstable-options",
+        "--build-plan"
+    ];
+
+    let build_status = Command::new("cargo")
         .env("RUSTFLAGS", "--emit=asm -g")
-        .args(&as_ref![
-            OsStr;
-            "+nightly-2023-01-03",
-            "build",
-            "--release",
-            "-Z",
-            "build-std=core,alloc",
-            "--target",
-            "riscv32imc-unknown-none-elf",
-            "--lib",
-            "--target-dir",
-            target_dir,
-            "--manifest-path",
-            input_dir,
-        ])
+        .args(&args[0..(args.len() - 3)])
         .status()
         .unwrap();
-    assert!(cargo_status.success());
+    assert!(build_status.success());
 
+    let output = Command::new("cargo").args(&args[..]).output().unwrap();
+    assert!(output.status.success());
+
+    let output_files = output_files_from_cargo_build_plan(&output.stdout);
+
+    // Load all the expected assembly files:
     let mut assemblies = BTreeMap::new();
-    for entry in WalkDir::new(&target_dir.join("riscv32imc-unknown-none-elf")) {
-        let entry = entry.unwrap();
-        // TODO narrow even more the search subdir?
-        let file_name = entry.file_name().to_str().unwrap();
-        if let Some(name) = file_name.strip_suffix(".s") {
-            assert!(
-                assemblies
-                    .insert(name.to_string(), fs::read_to_string(entry.path()).unwrap())
-                    .is_none(),
-                "Duplicate assembly file name: {name}"
-            );
+    for (name, filename) in output_files {
+        assert!(
+            assemblies
+                .insert(name, fs::read_to_string(&filename).unwrap())
+                .is_none(),
+            "Duplicate assembly file name: {}",
+            filename.to_string_lossy()
+        );
+    }
+    assemblies
+}
+
+fn output_files_from_cargo_build_plan(build_plan_bytes: &[u8]) -> Vec<(String, PathBuf)> {
+    // Can a json be anything but UTF-8? Well, cargo's build plan certainly is UTF-8:
+    let json_str = std::str::from_utf8(build_plan_bytes).unwrap();
+    let json = json::parse(json_str).unwrap();
+
+    let mut assemblies = Vec::new();
+
+    let JsonValue::Array(invocations) = &json["invocations"] else {
+        panic!("no invocations in cargo build plan");
+    };
+
+    log::info!("RISC-V assembly files of this build:");
+    for i in invocations {
+        let JsonValue::Array(outputs) = &i["outputs"] else {
+            panic!("no outputs in cargo build plan");
+        };
+        for output in outputs {
+            let output = Path::new(output.as_str().unwrap());
+            if Some(OsStr::new("rmeta")) == output.extension() {
+                // Have to convert to string to remove the "lib" prefix:
+                let name_stem = output
+                    .file_stem()
+                    .unwrap()
+                    .to_str()
+                    .unwrap()
+                    .strip_prefix("lib")
+                    .unwrap();
+
+                let mut asm_name = output.parent().unwrap().join(name_stem);
+                asm_name.set_extension("s");
+
+                log::info!(" - {}", asm_name.to_string_lossy());
+                assemblies.push((name_stem.to_string(), asm_name));
+            }
         }
     }
+
     assemblies
 }
