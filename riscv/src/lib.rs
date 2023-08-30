@@ -1,5 +1,5 @@
 //! A RISC-V frontend for powdr
-use std::{collections::BTreeMap, path::Path, process::Command};
+use std::{collections::BTreeMap, ffi::OsStr, path::Path, process::Command};
 
 use ::compiler::{compile_asm_string, BackendType};
 use asm_utils::compiler::Compiler;
@@ -29,11 +29,11 @@ pub fn compile_rust<T: FieldElement>(
     prove_with: Option<BackendType>,
 ) -> Result<(), Vec<String>> {
     let riscv_asm = if file_name.ends_with("Cargo.toml") {
-        compile_rust_crate_to_riscv_asm(file_name)
+        compile_rust_crate_to_riscv_asm(file_name, output_dir)
     } else if fs::metadata(file_name).unwrap().is_dir() {
-        compile_rust_crate_to_riscv_asm(&format!("{file_name}/Cargo.toml"))
+        compile_rust_crate_to_riscv_asm(&format!("{file_name}/Cargo.toml"), output_dir)
     } else {
-        compile_rust_to_riscv_asm(file_name)
+        compile_rust_to_riscv_asm(file_name, output_dir)
     };
     if !output_dir.exists() {
         fs::create_dir_all(output_dir).unwrap()
@@ -130,7 +130,7 @@ pub fn compile_riscv_asm<T: FieldElement>(
     )
 }
 
-pub fn compile_rust_to_riscv_asm(input_file: &str) -> BTreeMap<String, String> {
+pub fn compile_rust_to_riscv_asm(input_file: &str, output_dir: &Path) -> BTreeMap<String, String> {
     let crate_dir = Temp::new_dir().unwrap();
     // TODO is there no easier way?
     let mut cargo_file = crate_dir.clone();
@@ -195,15 +195,25 @@ runtime = {{ path = "./runtime" }}
     )
     .unwrap();
 
-    compile_rust_crate_to_riscv_asm(cargo_file.to_str().unwrap())
+    compile_rust_crate_to_riscv_asm(cargo_file.to_str().unwrap(), output_dir)
 }
 
-pub fn compile_rust_crate_to_riscv_asm(input_dir: &str) -> BTreeMap<String, String> {
-    let temp_dir = Temp::new_dir().unwrap();
+macro_rules! as_ref [
+    ($t:ty; $($x:expr),* $(,)?) => {
+        [$(AsRef::<$t>::as_ref(&$x)),+]
+    };
+];
+
+pub fn compile_rust_crate_to_riscv_asm(
+    input_dir: &str,
+    output_dir: &Path,
+) -> BTreeMap<String, String> {
+    let target_dir = output_dir.join("cargo_target");
 
     let cargo_status = Command::new("cargo")
         .env("RUSTFLAGS", "--emit=asm -g")
-        .args([
+        .args(&as_ref![
+            OsStr;
             "+nightly-2023-01-03",
             "build",
             "--release",
@@ -213,7 +223,7 @@ pub fn compile_rust_crate_to_riscv_asm(input_dir: &str) -> BTreeMap<String, Stri
             "riscv32imc-unknown-none-elf",
             "--lib",
             "--target-dir",
-            temp_dir.to_str().unwrap(),
+            target_dir,
             "--manifest-path",
             input_dir,
         ])
@@ -222,9 +232,9 @@ pub fn compile_rust_crate_to_riscv_asm(input_dir: &str) -> BTreeMap<String, Stri
     assert!(cargo_status.success());
 
     let mut assemblies = BTreeMap::new();
-    for entry in WalkDir::new(&temp_dir) {
+    for entry in WalkDir::new(&target_dir.join("riscv32imc-unknown-none-elf")) {
         let entry = entry.unwrap();
-        // TODO search only in certain subdir?
+        // TODO narrow even more the search subdir?
         let file_name = entry.file_name().to_str().unwrap();
         if let Some(name) = file_name.strip_suffix(".s") {
             assert!(
