@@ -68,6 +68,13 @@ fn test_keccak() {
 
 #[test]
 #[ignore = "Too slow"]
+fn test_keccak() {
+    let case = "poseidon";
+    verify_file(case, vec![]);
+}
+
+#[test]
+#[ignore = "Too slow"]
 fn test_vec_median() {
     let case = "vec_median";
     verify_crate(
