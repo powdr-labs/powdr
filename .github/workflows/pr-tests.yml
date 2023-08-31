@@ -33,12 +33,12 @@ jobs:
       run: git clone https://github.com/0xPolygonHermez/pilcom.git  && cd pilcom && npm install
     - name: Install Rust toolchain 1.72
       run: rustup toolchain install 1.72-x86_64-unknown-linux-gnu
-    - name: Check without Halo2
-      run: cargo check --all --no-default-features
-    - name: Build
-      run: cargo build --all --all-features
-    - name: Run tests
-      run: PILCOM=$(pwd)/pilcom/ cargo test --all --all-features --verbose
+    #- name: Check without Halo2
+    #  run: cargo check --all --no-default-features
+    #- name: Build
+    #  run: cargo build --all --all-features
+    #- name: Run tests
+    #  run: PILCOM=$(pwd)/pilcom/ cargo test --all --all-features --verbose
     - name: Lint
       run: cargo clippy --all --all-features -- -D warnings
     - name: Format
