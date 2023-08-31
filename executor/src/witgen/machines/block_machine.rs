@@ -167,24 +167,20 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
         fixed_data: &FixedData<T>,
         fixed_lookup: &mut FixedLookup<T>,
     ) -> HashMap<String, Vec<T>> {
+        if self.data.len() < 2 * self.block_size {
+            log::warn!(
+                "Filling empty blocks with zeros, because the block machine is never used. \
+                        This might violate some internal constraints."
+            );
+        }
         let mut data = transpose_rows(std::mem::take(&mut self.data), &self.witness_cols)
             .into_iter()
             .map(|(id, mut values)| {
-
                 // For all constraints to be satisfied, unused cells have to be filled with valid values.
                 // We do this, we construct a default block, by repeating the first input to the block machine.
-
-                if values.len() < 2 * self.block_size {
-                    log::warn!("Filling empty blocks with zeros, because the block machine is never used. \
-                                This might violate some internal constraints.");
-                }
-
                 values.resize(fixed_data.degree as usize, None);
 
-                let second_block_values = values
-                    .iter()
-                    .skip(self.block_size)
-                    .take(self.block_size);
+                let second_block_values = values.iter().skip(self.block_size).take(self.block_size);
 
                 // The first block is a dummy block (filled mostly with None), the second block is the first block
                 // resulting of an actual evaluation.
@@ -193,8 +189,14 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
                 // As a result, the default block consists of values of the first block if they are set, otherwise
                 // the values of the second block.
                 // TODO: Determine the row-extend per column
-                let default_block = values.iter().take(self.block_size).zip(second_block_values).map(
-                    |(first_block, second_block)| first_block.or(*second_block).unwrap_or_default()).collect::<Vec<_>>();
+                let default_block = values
+                    .iter()
+                    .take(self.block_size)
+                    .zip(second_block_values)
+                    .map(|(first_block, second_block)| {
+                        first_block.or(*second_block).unwrap_or_default()
+                    })
+                    .collect::<Vec<_>>();
 
                 let values = values
                     .into_iter()
