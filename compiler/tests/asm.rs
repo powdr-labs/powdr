@@ -4,7 +4,9 @@ use std::fs;
 use test_log::test;
 
 fn verify_asm<T: FieldElement>(file_name: &str, inputs: Vec<T>) {
-    let contents = fs::read_to_string(format!("../test_data/asm/{file_name}")).unwrap();
+    let contents = fs::read_to_string(format!("./test_data/asm/{file_name}"))
+        .unwrap_or_else(|_| fs::read_to_string(format!("../test_data/asm/{file_name}")).unwrap());
+
     verify_asm_string(file_name, &contents, inputs)
 }
 
