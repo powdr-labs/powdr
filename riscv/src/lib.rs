@@ -213,49 +213,31 @@ pub fn compile_rust_crate_to_riscv_asm(
     input_dir: &str,
     output_dir: &Path,
 ) -> BTreeMap<String, String> {
-    let target_dir = output_dir.join("cargo_target");
-
     // We call cargo twice, once to get the build plan json, so we know exactly
     // which object file to use, and once to perform the actual building.
-    let args = &as_ref![
-        OsStr;
-        "+nightly-2023-01-03",
-        "build",
-        "--release",
-        "-Z",
-        "build-std=core,alloc",
-        "-Z",
-        "unstable-options",
-        "--target",
-        "riscv32imac-unknown-none-elf",
-        "--lib",
-        "--target-dir",
-        target_dir,
-        "--manifest-path",
-        input_dir,
-    ];
 
-    // Build run
-    let build_status = Command::new("cargo")
-        .env("RUSTFLAGS", "--emit=asm -g")
-        .args(args)
+    // Real build run.
+    let target_dir = output_dir.join("cargo_target");
+    let build_status = build_cargo_command(input_dir, &target_dir, false)
         .status()
         .unwrap();
     assert!(build_status.success());
 
-    // Build plan run
-    let output = Command::new("cargo")
-        .env("RUSTFLAGS", "--emit=asm -g")
-        .args(itertools::chain(args, &[OsStr::new("--build-plan")]))
+    // Build plan run. We must set the target dir to a temporary directory,
+    // otherwise cargo will screw up the build done previously.
+    let tmp_dir = Temp::new_dir().unwrap();
+    let output = build_cargo_command(input_dir, &tmp_dir, true)
         .output()
         .unwrap();
     assert!(output.status.success());
 
-    let output_files = output_files_from_cargo_build_plan(&output.stdout);
+    let output_files = output_files_from_cargo_build_plan(&output.stdout, &tmp_dir);
+    drop(tmp_dir);
 
     // Load all the expected assembly files:
     let mut assemblies = BTreeMap::new();
     for (name, filename) in output_files {
+        let filename = target_dir.join(filename);
         assert!(
             assemblies
                 .insert(name, fs::read_to_string(&filename).unwrap())
@@ -267,7 +249,45 @@ pub fn compile_rust_crate_to_riscv_asm(
     assemblies
 }
 
-fn output_files_from_cargo_build_plan(build_plan_bytes: &[u8]) -> Vec<(String, PathBuf)> {
+fn build_cargo_command(input_dir: &str, target_dir: &Path, produce_build_plan: bool) -> Command {
+    let mut cmd = Command::new("cargo");
+    cmd.env("RUSTFLAGS", "--emit=asm -g");
+
+    let args = as_ref![
+        OsStr;
+        "+nightly-2023-01-03",
+        "build",
+        "--release",
+        "-Z",
+        "build-std=core,alloc",
+        "--target",
+        "riscv32imac-unknown-none-elf",
+        "--lib",
+        "--target-dir",
+        target_dir,
+        "--manifest-path",
+        input_dir,
+    ];
+
+    if produce_build_plan {
+        let extra_args = as_ref![
+            OsStr;
+            "-Z",
+            "unstable-options",
+            "--build-plan"
+        ];
+        cmd.args(itertools::chain(args.iter(), extra_args.iter()));
+    } else {
+        cmd.args(args.iter());
+    }
+
+    cmd
+}
+
+fn output_files_from_cargo_build_plan(
+    build_plan_bytes: &[u8],
+    target_dir: &Path,
+) -> Vec<(String, PathBuf)> {
     // Can a json be anything but UTF-8? Well, cargo's build plan certainly is UTF-8:
     let json_str = std::str::from_utf8(build_plan_bytes).unwrap();
     let json = json::parse(json_str).unwrap();
@@ -285,7 +305,8 @@ fn output_files_from_cargo_build_plan(build_plan_bytes: &[u8]) -> Vec<(String, P
         };
         for output in outputs {
             let output = Path::new(output.as_str().unwrap());
-            let parent = output.parent().unwrap();
+            // Strip the target_dir, so that the path becomes relative.
+            let parent = output.parent().unwrap().strip_prefix(target_dir).unwrap();
             if Some(OsStr::new("rmeta")) == output.extension()
                 && parent.ends_with("riscv32imac-unknown-none-elf/release/deps")
             {
