@@ -223,6 +223,7 @@ impl asm_utils::compiler::Compiler for Risc {
                 .into_iter()
                 .map(|(id, dir, file)| format!("debug file {id} {} {};", quote(&dir), quote(&file)))
                 .chain(["call __data_init;".to_string()])
+                .chain(call_every_submachine())
                 .chain([
                     format!("// Set stack pointer\nx2 <=X= {stack_start};"),
                     "call __runtime_start;".to_string(),
@@ -429,6 +430,18 @@ fn store_data_objects<'a>(
         })
         .collect();
     (code, positions)
+}
+
+fn call_every_submachine() -> Vec<String> {
+    // TODO This is a hacky snippet to ensure that every submachine in the RISCV machine
+    // is called at least once. This is needed for witgen until it can do default blocks
+    // automatically.
+    // https://github.com/powdr-labs/powdr/issues/548
+    vec![
+        "x10 <== and(x10, x10);".to_string(),
+        "x10 <== shl(x10, x10);".to_string(),
+        "x10 <=X= 0;".to_string(),
+    ]
 }
 
 fn next_multiple_of_four(x: usize) -> usize {
