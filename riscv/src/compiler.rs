@@ -792,10 +792,10 @@ fn preamble() -> String {
         col witness X_b2;
         col witness X_b3;
         col witness X_b4;
-		col witness X_b5;
-		col witness X_b6;
-		col witness X_b7;
-		col witness X_b8;
+        col witness X_b5;
+        col witness X_b6;
+        col witness X_b7;
+        col witness X_b8;
         { X_b1 } in { bytes };
         { X_b2 } in { bytes };
         { X_b3 } in { bytes };
