@@ -285,7 +285,10 @@ fn output_files_from_cargo_build_plan(build_plan_bytes: &[u8]) -> Vec<(String, P
         };
         for output in outputs {
             let output = Path::new(output.as_str().unwrap());
-            if Some(OsStr::new("rmeta")) == output.extension() {
+            let parent = output.parent().unwrap();
+            if Some(OsStr::new("rmeta")) == output.extension()
+                && parent.ends_with("riscv32imac-unknown-none-elf/release/deps")
+            {
                 // Have to convert to string to remove the "lib" prefix:
                 let name_stem = output
                     .file_stem()
@@ -295,7 +298,7 @@ fn output_files_from_cargo_build_plan(build_plan_bytes: &[u8]) -> Vec<(String, P
                     .strip_prefix("lib")
                     .unwrap();
 
-                let mut asm_name = output.parent().unwrap().join(name_stem);
+                let mut asm_name = parent.join(name_stem);
                 asm_name.set_extension("s");
 
                 log::debug!(" - {}", asm_name.to_string_lossy());
