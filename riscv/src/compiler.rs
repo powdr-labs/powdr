@@ -411,16 +411,32 @@ fn replace_dynamic_label_reference(
     s2: &Statement,
     data_objects: &BTreeMap<String, Vec<DataValue>>,
 ) -> Option<Statement> {
-    let Statement::Instruction(instr1, args1) = s1 else { return None; };
-    let Statement::Instruction(instr2, args2) = s2 else { return None; };
+    let Statement::Instruction(instr1, args1) = s1 else {
+        return None;
+    };
+    let Statement::Instruction(instr2, args2) = s2 else {
+        return None;
+    };
     if instr1.as_str() != "lui" || instr2.as_str() != "addi" {
         return None;
     };
-    let [Argument::Register(r1), Argument::Expression(Expression::FunctionOp(FunctionKind::HiDataRef, expr1))] = &args1[..] else { return None; };
+    let [Argument::Register(r1), Argument::Expression(Expression::FunctionOp(FunctionKind::HiDataRef, expr1))] =
+        &args1[..]
+    else {
+        return None;
+    };
     // Maybe should try to reduce expr1 and expr2 before comparing deciding it is a pure symbol?
-    let Expression::Symbol(label1) = expr1.as_ref() else { return None; };
-    let [Argument::Register(r2), Argument::Register(r3), Argument::Expression(Expression::FunctionOp(FunctionKind::LoDataRef, expr2))] = &args2[..] else { return None; };
-    let Expression::Symbol(label2) = expr2.as_ref() else { return None; };
+    let Expression::Symbol(label1) = expr1.as_ref() else {
+        return None;
+    };
+    let [Argument::Register(r2), Argument::Register(r3), Argument::Expression(Expression::FunctionOp(FunctionKind::LoDataRef, expr2))] =
+        &args2[..]
+    else {
+        return None;
+    };
+    let Expression::Symbol(label2) = expr2.as_ref() else {
+        return None;
+    };
     if r1 != r3 || label1 != label2 || data_objects.contains_key(label1) {
         return None;
     }
@@ -573,7 +589,9 @@ fn substitute_symbols_with_values(
     data_positions: &BTreeMap<String, u32>,
 ) -> Vec<Statement> {
     for s in &mut statements {
-        let Statement::Instruction(_name, args) = s else { continue; };
+        let Statement::Instruction(_name, args) = s else {
+            continue;
+        };
         for arg in args {
             arg.post_visit_expressions_mut(&mut |expression| match expression {
                 Expression::Number(_) => {}
