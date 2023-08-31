@@ -108,12 +108,12 @@ impl<'a, T: FieldElement> Processor<'a, T> {
                     .map_err(|e| {
                         log::warn!("Error in identity: {identity}");
                         log::warn!(
-                            "Current row (local: {i}, global {global_row_index}):\n{}",
+                            "Known values in current row (local: {i}, global {global_row_index}):\n{}",
                             self.data[i].render_values(false),
                         );
                         if identity.contains_next_ref() {
                             log::warn!(
-                                "Next row (local: {}, global {}):\n{}",
+                                "Known values in next row (local: {}, global {}):\n{}",
                                 i + 1,
                                 global_row_index + 1,
                                 self.data[i + 1].render_values(false),
