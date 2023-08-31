@@ -46,11 +46,7 @@ where
     }
 
     pub fn constant_value(&self) -> Option<T> {
-        if self.is_constant() {
-            Some(self.offset)
-        } else {
-            None
-        }
+        self.is_constant().then_some(self.offset)
     }
 
     pub fn nonzero_variables(&self) -> Vec<K> {
@@ -61,7 +57,7 @@ where
     pub fn nonzero_coefficients(&self) -> impl Iterator<Item = (K, &T)> {
         self.coefficients
             .iter()
-            .filter_map(|(i, c)| (c != &T::from(0)).then_some((*i, c)))
+            .filter_map(|(i, c)| (!c.is_zero()).then_some((*i, c)))
     }
 
     pub fn assign(&mut self, key: K, value: T) {

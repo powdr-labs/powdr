@@ -92,7 +92,7 @@ enum Commands {
     },
     /// Compiles (no-std) rust code to riscv assembly, then to powdr assembly
     /// and finally to PIL and generates fixed and witness columns.
-    /// Needs `rustup target add riscv32imc-unknown-none-elf`.
+    /// Needs `rustup target add riscv32imac-unknown-none-elf`.
     Rust {
         /// Input file (rust source file) or directory (containing a crate).
         file: String,
@@ -445,7 +445,7 @@ fn export_columns_to_csv<T: FieldElement>(
 ) {
     let columns = fixed
         .into_iter()
-        .chain(witness.unwrap_or(vec![]).into_iter())
+        .chain(witness.unwrap_or(vec![]))
         .collect::<Vec<_>>();
 
     let mut csv_file = fs::File::create(csv_path).unwrap();

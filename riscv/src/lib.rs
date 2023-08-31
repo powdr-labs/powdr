@@ -210,7 +210,7 @@ pub fn compile_rust_crate_to_riscv_asm(input_dir: &str) -> BTreeMap<String, Stri
             "-Z",
             "build-std=core,alloc",
             "--target",
-            "riscv32imc-unknown-none-elf",
+            "riscv32imac-unknown-none-elf",
             "--lib",
             "--target-dir",
             temp_dir.to_str().unwrap(),
@@ -231,7 +231,8 @@ pub fn compile_rust_crate_to_riscv_asm(input_dir: &str) -> BTreeMap<String, Stri
                 assemblies
                     .insert(name.to_string(), fs::read_to_string(entry.path()).unwrap())
                     .is_none(),
-                "Duplicate assembly file name: {name}"
+                "Duplicate assembly file name: {}/{file_name}",
+                temp_dir.as_path().to_string_lossy()
             );
         }
     }
