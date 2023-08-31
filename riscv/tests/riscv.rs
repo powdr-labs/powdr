@@ -69,7 +69,7 @@ fn test_keccak() {
 #[test]
 #[ignore = "Too slow"]
 fn test_poseidon() {
-    let case = "poseidon";
+    let case = "poseidon.rs";
     verify_file(case, vec![]);
 }
 
