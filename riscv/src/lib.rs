@@ -217,13 +217,15 @@ pub fn compile_rust_crate_to_riscv_asm(
 
     // We call cargo twice, once to get the build plan json, so we know exactly
     // which object file to use, and once to perform the actual building.
-    let args = as_ref![
+    let args = &as_ref![
         OsStr;
         "+nightly-2023-01-03",
         "build",
         "--release",
         "-Z",
         "build-std=core,alloc",
+        "-Z",
+        "unstable-options",
         "--target",
         "riscv32imc-unknown-none-elf",
         "--lib",
@@ -231,20 +233,22 @@ pub fn compile_rust_crate_to_riscv_asm(
         target_dir,
         "--manifest-path",
         input_dir,
-        // These 3 arguments must come last, as they will be removed:
-        "-Z",
-        "unstable-options",
-        "--build-plan"
     ];
 
+    // Build run
     let build_status = Command::new("cargo")
         .env("RUSTFLAGS", "--emit=asm -g")
-        .args(&args[0..(args.len() - 3)])
+        .args(args)
         .status()
         .unwrap();
     assert!(build_status.success());
 
-    let output = Command::new("cargo").args(&args[..]).output().unwrap();
+    // Build plan run
+    let output = Command::new("cargo")
+        .env("RUSTFLAGS", "--emit=asm -g")
+        .args(itertools::chain(args, &[OsStr::new("--build-plan")]))
+        .output()
+        .unwrap();
     assert!(output.status.success());
 
     let output_files = output_files_from_cargo_build_plan(&output.stdout);
@@ -274,7 +278,7 @@ fn output_files_from_cargo_build_plan(build_plan_bytes: &[u8]) -> Vec<(String, P
         panic!("no invocations in cargo build plan");
     };
 
-    log::info!("RISC-V assembly files of this build:");
+    log::debug!("RISC-V assembly files of this build:");
     for i in invocations {
         let JsonValue::Array(outputs) = &i["outputs"] else {
             panic!("no outputs in cargo build plan");
@@ -294,7 +298,7 @@ fn output_files_from_cargo_build_plan(build_plan_bytes: &[u8]) -> Vec<(String, P
                 let mut asm_name = output.parent().unwrap().join(name_stem);
                 asm_name.set_extension("s");
 
-                log::info!(" - {}", asm_name.to_string_lossy());
+                log::debug!(" - {}", asm_name.to_string_lossy());
                 assemblies.push((name_stem.to_string(), asm_name));
             }
         }
