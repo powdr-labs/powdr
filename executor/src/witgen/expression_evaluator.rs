@@ -56,10 +56,22 @@ where
         op: &BinaryOperator,
         right: &'a Expression<T>,
     ) -> AffineResult<&'a PolynomialReference, T> {
-        match (self.evaluate(left), op, self.evaluate(right)) {
-            // Special case for multiplication: It is enough for one to be known zero.
-            (Ok(zero), BinaryOperator::Mul, _) | (_, BinaryOperator::Mul, Ok(zero))
-                if zero.constant_value() == Some(0.into()) =>
+        let left = self.evaluate(left);
+
+        // Short-circuit multiplication by zero.
+        if *op == BinaryOperator::Mul {
+            if let Ok(zero) = &left {
+                if zero.constant_value().map(|z| z.is_zero()) == Some(true) {
+                    return Ok(zero.clone());
+                }
+            }
+        }
+        let right = self.evaluate(right);
+
+        match (left, op, right) {
+            // Short-circuit multiplication by zero for "right".
+            (_, BinaryOperator::Mul, Ok(zero))
+                if zero.constant_value().map(|z| z.is_zero()) == Some(true) =>
             {
                 Ok(zero)
             }

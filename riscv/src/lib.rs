@@ -227,7 +227,7 @@ pub fn compile_rust_crate_to_riscv_asm(
         "-Z",
         "unstable-options",
         "--target",
-        "riscv32imc-unknown-none-elf",
+        "riscv32imac-unknown-none-elf",
         "--lib",
         "--target-dir",
         target_dir,

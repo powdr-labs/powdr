@@ -6,7 +6,7 @@ A [RISCV](https://riscv.org/technical/specifications/) frontend for powdr is alr
 
 ```sh
 # Install the riscv target for the rust compiler
-rustup target add riscv32imc-unknown-none-elf
+rustup target add riscv32imac-unknown-none-elf
 # Run the compiler. It will generate files in /tmp/.
 # -i specifies the prover witness input (see below)
 powdr rust riscv/tests/riscv_data/sum.rs -o /tmp -f -i 10,2,4,6 

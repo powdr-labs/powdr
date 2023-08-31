@@ -92,7 +92,7 @@ enum Commands {
     },
     /// Compiles (no-std) rust code to riscv assembly, then to powdr assembly
     /// and finally to PIL and generates fixed and witness columns.
-    /// Needs `rustup target add riscv32imc-unknown-none-elf`.
+    /// Needs `rustup target add riscv32imac-unknown-none-elf`.
     Rust {
         /// Input file (rust source file) or directory (containing a crate).
         file: String,
