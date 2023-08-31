@@ -68,7 +68,7 @@ fn test_keccak() {
 
 #[test]
 #[ignore = "Too slow"]
-fn test_keccak() {
+fn test_poseidon() {
     let case = "poseidon";
     verify_file(case, vec![]);
 }
