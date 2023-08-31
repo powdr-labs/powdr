@@ -236,15 +236,19 @@ fn try_transfer_constraints<T: FieldElement>(
     }
 
     let symbolic_ev = SymbolicEvaluator;
-    let Some(aff_expr) = ExpressionEvaluator::new(symbolic_ev).evaluate(expr).ok()
-        else { return vec![]; };
+    let Some(aff_expr) = ExpressionEvaluator::new(symbolic_ev).evaluate(expr).ok() else {
+        return vec![];
+    };
 
     let range_constraints = SimpleRangeConstraintSet {
         range_constraints: known_constraints,
     };
     let Some(result) = aff_expr
         .solve_with_range_constraints(&range_constraints)
-        .ok() else { return vec![]; };
+        .ok()
+    else {
+        return vec![];
+    };
     result
         .constraints
         .into_iter()

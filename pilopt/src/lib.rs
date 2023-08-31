@@ -41,7 +41,9 @@ fn remove_constant_fixed_columns<T: FieldElement>(pil_file: &mut Analyzed<T>) {
         .constant_polys_in_source_order()
         .iter()
         .filter_map(|(poly, definition)| {
-            let Some(definition) = definition else { return None; };
+            let Some(definition) = definition else {
+                return None;
+            };
             let value = constant_value(definition)?;
             log::debug!(
                 "Determined fixed column {} to be constant {value}. Removing.",
