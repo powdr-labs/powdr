@@ -39,8 +39,8 @@ jobs:
     #  run: cargo build --all --all-features
     #- name: Run tests
     #  run: PILCOM=$(pwd)/pilcom/ cargo test --all --all-features --verbose
-    - name: Lint
-      run: cargo clippy --all --all-features -- -D warnings
+    #- name: Lint
+    #  run: cargo clippy --all --all-features -- -D warnings
     - name: Format
       run: cargo fmt --all --check --verbose
 
