@@ -559,6 +559,7 @@ fn call_every_submachine() -> Vec<String> {
     vec![
         "x10 <== and(x10, x10);".to_string(),
         "x10 <== shl(x10, x10);".to_string(),
+        "x10 <== poseidon(x10, x10, x10);".to_string(),
         "x10 <=X= 0;".to_string(),
     ]
 }
