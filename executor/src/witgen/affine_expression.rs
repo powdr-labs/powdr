@@ -60,6 +60,7 @@ where
     }
 
     /// @returns an vector of the nonzero coefficients and their variable IDs (but not the offset).
+    /// The order of coefficients is arbitrary.
     pub fn nonzero_coefficients(&self) -> Vec<(K, T)> {
         // We need to make sure that there are no duplicates in the variable
         // IDs and that the coefficients are nonzero. In other words, we need to
@@ -431,10 +432,14 @@ where
     T: FieldElement,
 {
     fn eq(&self, other: &Self) -> bool {
-        self.offset == other.offset
-            && self
-                .nonzero_coefficients()
-                .eq(&other.nonzero_coefficients())
+        if self.offset != other.offset {
+            return false;
+        };
+        let mut self_coeff = self.nonzero_coefficients();
+        self_coeff.sort_unstable();
+        let mut other_coeff = other.nonzero_coefficients();
+        other_coeff.sort_unstable();
+        self_coeff == other_coeff
     }
 }
 
@@ -446,22 +451,26 @@ where
     type Output = Self;
 
     fn add(mut self, mut rhs: Self) -> Self::Output {
-        if self.clean && rhs.clean {
-            // See if we can retain the clean flag.
-            if self.coefficients.is_empty() || rhs.coefficients.is_empty() {
-                // All clean.
-            } else if let [(lk, _)] = &self.coefficients[..] {
-                self.clean = !rhs.coefficients.iter().any(|(k, _)| k == lk);
-            } else if let [(rk, _)] = &rhs.coefficients[..] {
-                self.clean = !self.coefficients.iter().any(|(k, _)| k == rk);
-            } else {
-                self.clean = false;
-            }
+        self.offset += rhs.offset;
+
+        // Combine coefficients and try to retain the clean flag.
+        if rhs.coefficients.is_empty() {
+            // All clean.
+        } else if self.coefficients.is_empty() {
+            self.coefficients = rhs.coefficients;
+            self.clean = rhs.clean;
+        } else if let [(lk, lv)] = self.coefficients[..] {
+            self.clean = !rhs.coefficients.iter().any(|(k, _)| k == &lk);
+            self.coefficients = rhs.coefficients;
+            self.coefficients.push((lk, lv));
+        } else if let [(rk, rv)] = rhs.coefficients[..] {
+            self.clean = !self.coefficients.iter().any(|(k, _)| k == &rk);
+            self.coefficients.push((rk, rv));
         } else {
+            self.coefficients.append(&mut rhs.coefficients);
             self.clean = false;
         }
-        self.coefficients.append(&mut rhs.coefficients);
-        self.offset += rhs.offset;
+
         self
     }
 }
