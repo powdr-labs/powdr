@@ -170,7 +170,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
         if self.data.len() < 2 * self.block_size {
             log::warn!(
                 "Filling empty blocks with zeros, because the block machine is never used. \
-                        This might violate some internal constraints."
+                 This might violate some internal constraints."
             );
         }
         let mut data = transpose_rows(std::mem::take(&mut self.data), &self.witness_cols)
