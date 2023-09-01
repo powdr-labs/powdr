@@ -89,19 +89,20 @@ impl<'a, 'b, T: FieldElement> Processor<'a, 'b, T> {
         &mut self,
         sequence_iterator: &mut ProcessingSequenceIterator,
     ) -> Result<(), EvalError<T>> {
-        while let Some(step) = sequence_iterator.next() {
-            let SequenceStep {
-                row_delta,
-                identity,
-            } = step;
+        while let Some(SequenceStep {
+            row_delta,
+            identity,
+        }) = sequence_iterator.next()
+        {
             match identity {
                 IdentityInSequence::Internal(identity_index) => {
                     let row_index = (1 + row_delta) as usize;
                     let progress = self.process_identity(row_index, identity_index)?;
                     sequence_iterator.report_progress(progress);
                 }
-                // TODO: Implement outer query
-                IdentityInSequence::OuterQuery => {}
+                IdentityInSequence::OuterQuery => {
+                    unimplemented!("Implement outer query")
+                }
             }
         }
         Ok(())
@@ -112,8 +113,8 @@ impl<'a, 'b, T: FieldElement> Processor<'a, 'b, T> {
         self.data
     }
 
-    /// On a row pair of a given index, iterate over all identities until no more progress is made.
-    /// For each identity, it tries to figure out unknown values and updates it.
+    /// Given a row and identity index, computes any updates, applies them and returns
+    /// whether any progress was made.
     fn process_identity(
         &mut self,
         row_index: usize,

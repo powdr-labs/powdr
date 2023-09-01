@@ -103,7 +103,7 @@ impl DefaultSequenceIterator {
         assert!(!self.is_first, "Called report_progress() before next()");
 
         if progress_in_last_step {
-            self.progress_steps.push(self.get_current_step());
+            self.progress_steps.push(self.current_step());
         }
         self.progress_in_current_round |= progress_in_last_step;
     }
@@ -116,10 +116,10 @@ impl DefaultSequenceIterator {
             return None;
         }
 
-        Some(self.get_current_step())
+        Some(self.current_step())
     }
 
-    fn get_current_step(&self) -> SequenceStep {
+    fn current_step(&self) -> SequenceStep {
         SequenceStep {
             row_delta: self.row_deltas[self.cur_row_delta_index],
             identity: if self.cur_identity_index < self.identities_count {
