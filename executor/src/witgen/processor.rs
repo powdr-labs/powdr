@@ -79,7 +79,7 @@ impl<'a, 'b, T: FieldElement> Processor<'a, 'b, T> {
     /// and set the block size to `self.data.len() - 2`.
     pub fn solve_with_default_sequence_iterator(&mut self) -> Result<(), EvalError<T>> {
         let mut sequence_iterator = ProcessingSequenceIterator::Default(
-            DefaultSequenceIterator::new(self.data.len() - 2, self.identities.len()),
+            DefaultSequenceIterator::new(self.data.len() - 2, self.identities.len(), None),
         );
         self.solve(&mut sequence_iterator)
     }

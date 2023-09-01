@@ -14,9 +14,9 @@ pub struct SequenceStep {
 /// forward, backward, and forward again.
 /// In each row, iterates over all identities until no further progress is made.
 pub struct DefaultSequenceIterator {
-    block_size: usize,
     identities_count: usize,
     row_deltas: Vec<i64>,
+    outer_query_row: Option<i64>,
 
     /// Whether this is the first time the iterator is called.
     is_first: bool,
@@ -37,15 +37,15 @@ pub struct DefaultSequenceIterator {
 const MAX_ROUNDS_PER_ROW_DELTA: usize = 100;
 
 impl DefaultSequenceIterator {
-    pub fn new(block_size: usize, identities_count: usize) -> Self {
+    pub fn new(block_size: usize, identities_count: usize, outer_query_row: Option<i64>) -> Self {
         let max_row = block_size as i64 - 1;
         DefaultSequenceIterator {
-            block_size,
             identities_count,
             row_deltas: (-1..=max_row)
                 .chain((-1..max_row).rev())
                 .chain(0..=max_row)
                 .collect(),
+            outer_query_row,
             is_first: true,
             progress_in_current_round: false,
             cur_row_delta_index: 0,
@@ -72,8 +72,9 @@ impl DefaultSequenceIterator {
 
     fn is_last_identity(&self) -> bool {
         let row_delta = self.row_deltas[self.cur_row_delta_index];
+        let is_on_row_with_outer_query = self.outer_query_row == Some(row_delta);
 
-        if row_delta + 1 == self.block_size as i64 {
+        if is_on_row_with_outer_query {
             // In the last row, we want to process one more identity, the outer query.
             self.cur_identity_index == self.identities_count
         } else {
@@ -213,6 +214,8 @@ impl ProcessingSequenceCache {
                 ProcessingSequenceIterator::Default(DefaultSequenceIterator::new(
                     self.block_size,
                     self.identities_count,
+                    // Run the outer query on the last row of the block.
+                    Some(self.block_size as i64 - 1),
                 ))
             }
         }
