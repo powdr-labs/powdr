@@ -155,6 +155,7 @@ impl<'a, 'b, T: FieldElement> IdentityProcessor<'a, 'b, T> {
             match current_rows.evaluate(r) {
                 Ok(r) => {
                     let result = (l.clone() - r).solve()?;
+                    // TODO use push_complete?
                     updates.combine(result);
                 }
                 Err(e) => {

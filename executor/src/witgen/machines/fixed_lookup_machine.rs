@@ -8,7 +8,7 @@ use number::FieldElement;
 
 use crate::witgen::affine_expression::AffineExpression;
 use crate::witgen::util::try_to_simple_poly_ref;
-use crate::witgen::{EvalError, EvalValue, IncompleteCause};
+use crate::witgen::{Constraint, EvalError, EvalValue, IncompleteCause};
 use crate::witgen::{EvalResult, FixedData};
 
 type Application = (Vec<PolyID>, Vec<PolyID>);
@@ -159,6 +159,11 @@ pub struct FixedLookup<T> {
     indices: IndexedColumns<T>,
 }
 
+enum OutputExpression<'a, 'b, T> {
+    SimpleVar(&'b PolynomialReference),
+    Affine(&'a AffineExpression<&'b PolynomialReference, T>),
+}
+
 impl<T: FieldElement> FixedLookup<T> {
     pub fn try_new(
         _fixed_data: &FixedData<T>,
@@ -216,7 +221,11 @@ impl<T: FieldElement> FixedLookup<T> {
                 input_assignment.push((r, value));
             } else {
                 output_columns.push(r.poly_id());
-                output_expressions.push(l);
+                output_expressions.push(if let Some(var) = l.try_to_simple_variable() {
+                    OutputExpression::SimpleVar(var)
+                } else {
+                    OutputExpression::Affine(l)
+                });
             }
         });
 
@@ -257,16 +266,23 @@ impl<T: FieldElement> FixedLookup<T> {
 
         let mut result = EvalValue::complete(vec![]);
         for (l, r) in output_expressions.into_iter().zip(output) {
-            // TODO we could use bit constraints here
-            match l.solve_equal(r) {
-                Ok(constraints) => {
-                    result.combine(constraints);
+            match l {
+                OutputExpression::SimpleVar(var) => {
+                    result.push_complete((var, Constraint::Assignment(r)))
                 }
-                Err(_) => {
-                    // Fail the whole lookup
-                    return Err(EvalError::ConstraintUnsatisfiable(format!(
-                        "Constraint is invalid ({l} != {r}).",
-                    )));
+                OutputExpression::Affine(l) => {
+                    // TODO we could use bit constraints here
+                    match l.solve_equal(r) {
+                        Ok(constraints) => {
+                            result.combine(constraints);
+                        }
+                        Err(_) => {
+                            // Fail the whole lookup
+                            return Err(EvalError::ConstraintUnsatisfiable(format!(
+                                "Constraint is invalid ({l} != {r}).",
+                            )));
+                        }
+                    }
                 }
             }
         }

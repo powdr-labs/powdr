@@ -53,6 +53,18 @@ where
         self.is_constant().then_some(self.offset)
     }
 
+    /// If this is a single variable with a coefficient of one,
+    /// returns this variable, otherwise returns None.
+    pub fn try_to_simple_variable(&self) -> Option<K> {
+        if !self.offset.is_zero() {
+            return None;
+        }
+        match &self.nonzero_coefficients()[..] {
+            [(v, one)] if one.is_one() => Some(*v),
+            _ => None,
+        }
+    }
+
     pub fn nonzero_variables(&self) -> Vec<K> {
         self.nonzero_coefficients()
             .into_iter()

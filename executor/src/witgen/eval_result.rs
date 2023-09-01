@@ -142,6 +142,10 @@ where
         self.constraints.extend(other.constraints);
         self.status = self.status.clone().combine(other.status);
     }
+
+    pub fn push_complete(&mut self, item: (K, Constraint<T>)) {
+        self.constraints.push(item);
+    }
 }
 
 /// Result of evaluating an expression / lookup.
