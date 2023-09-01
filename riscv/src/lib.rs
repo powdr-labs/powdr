@@ -1,11 +1,16 @@
 //! A RISC-V frontend for powdr
-use std::{collections::BTreeMap, path::Path, process::Command};
+use std::{
+    collections::BTreeMap,
+    ffi::OsStr,
+    path::{Path, PathBuf},
+    process::Command,
+};
 
 use ::compiler::{compile_asm_string, BackendType};
 use asm_utils::compiler::Compiler;
+use json::JsonValue;
 use mktemp::Temp;
 use std::fs;
-use walkdir::WalkDir;
 
 use number::FieldElement;
 
@@ -29,11 +34,11 @@ pub fn compile_rust<T: FieldElement>(
     prove_with: Option<BackendType>,
 ) -> Result<(), Vec<String>> {
     let riscv_asm = if file_name.ends_with("Cargo.toml") {
-        compile_rust_crate_to_riscv_asm(file_name)
+        compile_rust_crate_to_riscv_asm(file_name, output_dir)
     } else if fs::metadata(file_name).unwrap().is_dir() {
-        compile_rust_crate_to_riscv_asm(&format!("{file_name}/Cargo.toml"))
+        compile_rust_crate_to_riscv_asm(&format!("{file_name}/Cargo.toml"), output_dir)
     } else {
-        compile_rust_to_riscv_asm(file_name)
+        compile_rust_to_riscv_asm(file_name, output_dir)
     };
     if !output_dir.exists() {
         fs::create_dir_all(output_dir).unwrap()
@@ -130,7 +135,7 @@ pub fn compile_riscv_asm<T: FieldElement>(
     )
 }
 
-pub fn compile_rust_to_riscv_asm(input_file: &str) -> BTreeMap<String, String> {
+pub fn compile_rust_to_riscv_asm(input_file: &str, output_dir: &Path) -> BTreeMap<String, String> {
     let crate_dir = Temp::new_dir().unwrap();
     // TODO is there no easier way?
     let mut cargo_file = crate_dir.clone();
@@ -195,46 +200,133 @@ runtime = {{ path = "./runtime" }}
     )
     .unwrap();
 
-    compile_rust_crate_to_riscv_asm(cargo_file.to_str().unwrap())
+    compile_rust_crate_to_riscv_asm(cargo_file.to_str().unwrap(), output_dir)
 }
 
-pub fn compile_rust_crate_to_riscv_asm(input_dir: &str) -> BTreeMap<String, String> {
-    let temp_dir = Temp::new_dir().unwrap();
+macro_rules! as_ref [
+    ($t:ty; $($x:expr),* $(,)?) => {
+        [$(AsRef::<$t>::as_ref(&$x)),+]
+    };
+];
 
-    let cargo_status = Command::new("cargo")
-        .env("RUSTFLAGS", "--emit=asm -g")
-        .args([
-            "+nightly-2023-01-03",
-            "build",
-            "--release",
-            "-Z",
-            "build-std=core,alloc",
-            "--target",
-            "riscv32imac-unknown-none-elf",
-            "--lib",
-            "--target-dir",
-            temp_dir.to_str().unwrap(),
-            "--manifest-path",
-            input_dir,
-        ])
+pub fn compile_rust_crate_to_riscv_asm(
+    input_dir: &str,
+    output_dir: &Path,
+) -> BTreeMap<String, String> {
+    // We call cargo twice, once to get the build plan json, so we know exactly
+    // which object file to use, and once to perform the actual building.
+
+    // Real build run.
+    let target_dir = output_dir.join("cargo_target");
+    let build_status = build_cargo_command(input_dir, &target_dir, false)
         .status()
         .unwrap();
-    assert!(cargo_status.success());
+    assert!(build_status.success());
 
+    // Build plan run. We must set the target dir to a temporary directory,
+    // otherwise cargo will screw up the build done previously.
+    let tmp_dir = Temp::new_dir().unwrap();
+    let output = build_cargo_command(input_dir, &tmp_dir, true)
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+
+    let output_files = output_files_from_cargo_build_plan(&output.stdout, &tmp_dir);
+    drop(tmp_dir);
+
+    // Load all the expected assembly files:
     let mut assemblies = BTreeMap::new();
-    for entry in WalkDir::new(&temp_dir) {
-        let entry = entry.unwrap();
-        // TODO search only in certain subdir?
-        let file_name = entry.file_name().to_str().unwrap();
-        if let Some(name) = file_name.strip_suffix(".s") {
-            assert!(
-                assemblies
-                    .insert(name.to_string(), fs::read_to_string(entry.path()).unwrap())
-                    .is_none(),
-                "Duplicate assembly file name: {}/{file_name}",
-                temp_dir.as_path().to_string_lossy()
-            );
+    for (name, filename) in output_files {
+        let filename = target_dir.join(filename);
+        assert!(
+            assemblies
+                .insert(name, fs::read_to_string(&filename).unwrap())
+                .is_none(),
+            "Duplicate assembly file name: {}",
+            filename.to_string_lossy()
+        );
+    }
+    assemblies
+}
+
+fn build_cargo_command(input_dir: &str, target_dir: &Path, produce_build_plan: bool) -> Command {
+    let mut cmd = Command::new("cargo");
+    cmd.env("RUSTFLAGS", "--emit=asm -g");
+
+    let args = as_ref![
+        OsStr;
+        "+nightly-2023-01-03",
+        "build",
+        "--release",
+        "-Z",
+        "build-std=core,alloc",
+        "--target",
+        "riscv32imac-unknown-none-elf",
+        "--lib",
+        "--target-dir",
+        target_dir,
+        "--manifest-path",
+        input_dir,
+    ];
+
+    if produce_build_plan {
+        let extra_args = as_ref![
+            OsStr;
+            "-Z",
+            "unstable-options",
+            "--build-plan"
+        ];
+        cmd.args(itertools::chain(args.iter(), extra_args.iter()));
+    } else {
+        cmd.args(args.iter());
+    }
+
+    cmd
+}
+
+fn output_files_from_cargo_build_plan(
+    build_plan_bytes: &[u8],
+    target_dir: &Path,
+) -> Vec<(String, PathBuf)> {
+    // Can a json be anything but UTF-8? Well, cargo's build plan certainly is UTF-8:
+    let json_str = std::str::from_utf8(build_plan_bytes).unwrap();
+    let json = json::parse(json_str).unwrap();
+
+    let mut assemblies = Vec::new();
+
+    let JsonValue::Array(invocations) = &json["invocations"] else {
+        panic!("no invocations in cargo build plan");
+    };
+
+    log::debug!("RISC-V assembly files of this build:");
+    for i in invocations {
+        let JsonValue::Array(outputs) = &i["outputs"] else {
+            panic!("no outputs in cargo build plan");
+        };
+        for output in outputs {
+            let output = Path::new(output.as_str().unwrap());
+            // Strip the target_dir, so that the path becomes relative.
+            let parent = output.parent().unwrap().strip_prefix(target_dir).unwrap();
+            if Some(OsStr::new("rmeta")) == output.extension()
+                && parent.ends_with("riscv32imac-unknown-none-elf/release/deps")
+            {
+                // Have to convert to string to remove the "lib" prefix:
+                let name_stem = output
+                    .file_stem()
+                    .unwrap()
+                    .to_str()
+                    .unwrap()
+                    .strip_prefix("lib")
+                    .unwrap();
+
+                let mut asm_name = parent.join(name_stem);
+                asm_name.set_extension("s");
+
+                log::debug!(" - {}", asm_name.to_string_lossy());
+                assemblies.push((name_stem.to_string(), asm_name));
+            }
         }
     }
+
     assemblies
 }

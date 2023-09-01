@@ -6,7 +6,7 @@ build = "build.rs"
 
 [dependencies]
 itertools = "^0.10"
-lalrpop-util = {version = "^0.19", features = ["lexer"]}
+lalrpop-util = { version = "^0.19", features = ["lexer"] }
 log = "0.4.17"
 mktemp = "0.5.0"
 walkdir = "2.3.3"
@@ -14,9 +14,13 @@ number = { path = "../number" }
 compiler = { path = "../compiler" }
 parser_util = { path = "../parser_util" }
 asm_utils = { path = "../asm_utils" }
+# TODO: replace with serde_json when PR #494 is merged
+json = "^0.12"
 # This is only here to work around https://github.com/lalrpop/lalrpop/issues/750
 # It should be removed once that workaround is no longer needed.
-regex-syntax = { version = "0.6", default_features = false, features = ["unicode"] }
+regex-syntax = { version = "0.6", default_features = false, features = [
+    "unicode",
+] }
 
 [build-dependencies]
 lalrpop = "^0.19"

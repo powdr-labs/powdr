@@ -1,5 +1,6 @@
 use asm_utils::compiler::Compiler;
 use compiler::verify_asm_string;
+use mktemp::Temp;
 use number::GoldilocksField;
 use test_log::test;
 
@@ -95,15 +96,20 @@ fn test_print() {
 }
 
 fn verify_file(case: &str, inputs: Vec<GoldilocksField>) {
-    let riscv_asm = riscv::compile_rust_to_riscv_asm(&format!("tests/riscv_data/{case}"));
+    let temp_dir = Temp::new_dir().unwrap();
+    let riscv_asm =
+        riscv::compile_rust_to_riscv_asm(&format!("tests/riscv_data/{case}"), &temp_dir);
     let powdr_asm = riscv::compiler::Risc::compile(riscv_asm);
 
     verify_asm_string(&format!("{case}.asm"), &powdr_asm, inputs);
 }
 
 fn verify_crate(case: &str, inputs: Vec<GoldilocksField>) {
-    let riscv_asm =
-        riscv::compile_rust_crate_to_riscv_asm(&format!("tests/riscv_data/{case}/Cargo.toml"));
+    let temp_dir = Temp::new_dir().unwrap();
+    let riscv_asm = riscv::compile_rust_crate_to_riscv_asm(
+        &format!("tests/riscv_data/{case}/Cargo.toml"),
+        &temp_dir,
+    );
     let powdr_asm = riscv::compiler::Risc::compile(riscv_asm);
 
     verify_asm_string(&format!("{case}.asm"), &powdr_asm, inputs);
