@@ -44,14 +44,14 @@ impl<T: FieldElement> IndexedColumns<T> {
     fn get_match(
         &mut self,
         fixed_data: &FixedData<T>,
-        mut assignment: Vec<(PolyID, T)>,
-        mut output_fixed_columns: Vec<PolyID>,
+        assignment: Vec<(PolyID, T)>,
+        output_fixed_columns: Vec<PolyID>,
     ) -> Option<&IndexValue> {
         // sort in order to have a single index for [X, Y] and for [Y, X]
-        assignment.sort_by(|(name0, _), (name1, _)| name0.cmp(name1));
+        //assignment.sort_by(|(name0, _), (name1, _)| name0.cmp(name1));
         let (input_fixed_columns, values): (Vec<_>, Vec<_>) = assignment.into_iter().unzip();
         // sort the output as well
-        output_fixed_columns.sort();
+        //output_fixed_columns.sort();
 
         let fixed_columns = (input_fixed_columns, output_fixed_columns);
 
