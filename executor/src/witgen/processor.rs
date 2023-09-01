@@ -122,7 +122,7 @@ impl<'a, 'b, T: FieldElement> Processor<'a, 'b, T> {
         let identity = &self.identities[identity_index];
 
         // Create row pair
-        let global_row_index = self.row_offset + row as u64;
+        let global_row_index = self.row_offset + row_index as u64;
         let row_pair = RowPair::new(
             &self.data[row_index],
             &self.data[row_index + 1],
@@ -138,15 +138,15 @@ impl<'a, 'b, T: FieldElement> Processor<'a, 'b, T> {
             .map_err(|e| {
                 log::warn!("Error in identity: {identity}");
                 log::warn!(
-                    "Known values in current row (local: {row}, global {global_row_index}):\n{}",
-                    self.data[row].render_values(false),
+                    "Known values in current row (local: {row_index}, global {global_row_index}):\n{}",
+                    self.data[row_index].render_values(false),
                 );
                 if identity.contains_next_ref() {
                     log::warn!(
                         "Known values in next row (local: {}, global {}):\n{}",
-                        row + 1,
+                        row_index + 1,
                         global_row_index + 1,
-                        self.data[row + 1].render_values(false),
+                        self.data[row_index + 1].render_values(false),
                     );
                 }
                 e
