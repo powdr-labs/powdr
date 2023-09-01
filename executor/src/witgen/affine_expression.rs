@@ -682,6 +682,23 @@ mod test {
         assert_eq!(b * 0.into(), GoldilocksField::zero().into());
     }
 
+    #[test]
+    pub fn equality() {
+        let a = AffineExpression::<_, GoldilocksField> {
+            coefficients: convert(vec![0, 1]),
+            offset: 3.into(),
+            clean: false,
+        }
+        .clean();
+        let b = AffineExpression {
+            coefficients: convert(vec![1, 0]),
+            offset: 13.into(),
+            clean: false,
+        }
+        .clean();
+        assert_eq!(a.clone() + b.clone(), b.clone() + a.clone());
+    }
+
     struct TestRangeConstraints<T: FieldElement>(BTreeMap<usize, RangeConstraint<T>>);
     impl<T: FieldElement> RangeConstraintSet<usize, T> for TestRangeConstraints<T> {
         fn range_constraint(&self, id: usize) -> Option<RangeConstraint<T>> {
