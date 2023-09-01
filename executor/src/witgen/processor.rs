@@ -92,10 +92,11 @@ impl<'a, T: FieldElement> Processor<'a, T> {
             let mut progress = false;
             for identity in &self.identities {
                 // Create row pair
+                let global_row_index = self.row_offset + i as u64;
                 let row_pair = RowPair::new(
                     &self.data[i],
                     &self.data[i + 1],
-                    self.row_offset + i as u64,
+                    global_row_index,
                     self.fixed_data,
                     UnknownStrategy::Unknown,
                 );
@@ -106,6 +107,18 @@ impl<'a, T: FieldElement> Processor<'a, T> {
                     .process_identity(identity, &row_pair)
                     .map_err(|e| {
                         log::warn!("Error in identity: {identity}");
+                        log::warn!(
+                            "Known values in current row (local: {i}, global {global_row_index}):\n{}",
+                            self.data[i].render_values(false),
+                        );
+                        if identity.contains_next_ref() {
+                            log::warn!(
+                                "Known values in next row (local: {}, global {}):\n{}",
+                                i + 1,
+                                global_row_index + 1,
+                                self.data[i + 1].render_values(false),
+                            );
+                        }
                         e
                     })?;
 
