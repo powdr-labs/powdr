@@ -12,6 +12,7 @@ fn main() {
 }
 
 fn build_lalrpop() {
+    println!("cargo:rerun-if-changed=src/riscv_asm.lalrpop");
     lalrpop::process_root().unwrap();
 }
 
