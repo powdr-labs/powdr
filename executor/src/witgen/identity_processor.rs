@@ -1,5 +1,8 @@
+use std::{collections::HashMap, sync::Mutex};
+
 use ast::analyzed::{Expression, Identity, IdentityKind, PolynomialReference, SelectedExpressions};
 use itertools::{Either, Itertools};
+use lazy_static::lazy_static;
 use number::FieldElement;
 
 use super::{
@@ -38,7 +41,7 @@ impl<'a, 'b, T: FieldElement> IdentityProcessor<'a, 'b, T> {
         identity: &'a Identity<T>,
         rows: &RowPair<'_, 'a, T>,
     ) -> EvalResult<'a, T> {
-        match identity.kind {
+        let result = match identity.kind {
             IdentityKind::Polynomial => self.process_polynomial_identity(identity, rows),
             IdentityKind::Plookup | IdentityKind::Permutation => {
                 self.process_plookup(identity, rows)
@@ -48,7 +51,9 @@ impl<'a, 'b, T: FieldElement> IdentityProcessor<'a, 'b, T> {
                     "Identity of kind {kind:?} is not supported by the identity processor."
                 )
             }
-        }
+        };
+        report_identity_solving(identity, &result);
+        result
     }
 
     fn process_polynomial_identity(
@@ -56,13 +61,10 @@ impl<'a, 'b, T: FieldElement> IdentityProcessor<'a, 'b, T> {
         identity: &'a Identity<T>,
         rows: &RowPair<T>,
     ) -> EvalResult<'a, T> {
-        let expression = identity.expression_for_poly_id();
-        let evaluated = match rows.evaluate(expression) {
-            Err(inclomplete_cause) => return Ok(EvalValue::incomplete(inclomplete_cause)),
-            Ok(evaluated) => evaluated,
-        };
-
-        evaluated.solve_with_range_constraints(rows)
+        match rows.evaluate(identity.expression_for_poly_id()) {
+            Err(inclomplete_cause) => Ok(EvalValue::incomplete(inclomplete_cause)),
+            Ok(evaluated) => evaluated.solve_with_range_constraints(rows),
+        }
     }
 
     fn process_plookup(
@@ -181,4 +183,35 @@ impl<'a, 'b, T: FieldElement> IdentityProcessor<'a, 'b, T> {
             )),
         }
     }
+}
+
+pub struct IdentityData {
+    pub invocations: u64,
+    pub success: u64,
+}
+
+type IdentityID = (u64, IdentityKind);
+
+lazy_static! {
+    static ref STATISTICS: Mutex<HashMap<IdentityID, IdentityData>> =
+        Mutex::new(Default::default());
+}
+
+fn report_identity_solving<T: FieldElement, K>(identity: &Identity<T>, result: &EvalResult<T, K>) {
+    let success = result.as_ref().map(|r| r.is_complete()).unwrap_or_default() as u64;
+    let mut stat = STATISTICS.lock().unwrap();
+    stat.entry((identity.id, identity.kind))
+        .and_modify(|s| {
+            s.invocations += 1;
+            s.success += success;
+        })
+        .or_insert(IdentityData {
+            invocations: 1,
+            success,
+        });
+}
+
+pub fn get_and_reset_solving_statistics() -> HashMap<IdentityID, IdentityData> {
+    let mut stat = STATISTICS.lock().unwrap();
+    std::mem::take(&mut (*stat))
 }
