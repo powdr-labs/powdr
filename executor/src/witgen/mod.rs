@@ -140,7 +140,7 @@ where
         }
     }
 
-    // Add columns from secondary machines
+    // Get columns from secondary machines
     let mut secondary_columns = mutable_state
         .machines
         .iter_mut()
@@ -150,7 +150,7 @@ where
         })
         .collect::<BTreeMap<_, _>>();
 
-    // We can't just do columns.into_iter().collect(), because:
+    // Done this way, because:
     // 1. The keys need to be string references of the right lifetime.
     // 2. The order needs to be the the order of declaration.
     analyzed
