@@ -164,7 +164,7 @@ where
                         id: p.id,
                         ptype: PolynomialType::Committed,
                     }];
-                    column.drain(..).collect()
+                    std::mem::take(column)
                 });
             assert!(!column.is_empty());
             (p.absolute_name.as_str(), column)
