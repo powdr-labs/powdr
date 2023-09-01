@@ -29,6 +29,8 @@ airgen = { version = "0.1.0", path = "../airgen" }
 test-log = "0.2.12"
 env_logger = "0.10.0"
 criterion = { version = "0.4", features = ["html_reports"] }
+riscv = { path = "../riscv" }
+asm_utils = { path = "../asm_utils" }
 
 [[bench]]
 name = "executor_benchmark"
