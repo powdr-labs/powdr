@@ -133,24 +133,22 @@ where
     }
 
     // Transpose the rows
-    let mut columns = base_witnesses
-        .iter()
-        .map(|c| (fixed.column_name(c).to_string(), vec![]))
-        .collect::<BTreeMap<_, _>>();
+    let mut columns = fixed.witness_map_with(vec![]);
     for row in rows.into_iter() {
-        for poly_id in &base_witnesses {
-            columns
-                .get_mut(fixed.column_name(poly_id))
-                .unwrap()
-                .push(row[poly_id]);
+        for (col_index, value) in row.into_iter() {
+            columns[&col_index].push(value);
         }
     }
 
     // Add columns from secondary machines
-    columns.extend(mutable_state.machines.iter_mut().flat_map(|m| {
-        m.take_witness_col_values(&fixed, &mut mutable_state.fixed_lookup)
-            .into_iter()
-    }));
+    let mut secondary_columns = mutable_state
+        .machines
+        .iter_mut()
+        .flat_map(|m| {
+            m.take_witness_col_values(&fixed, &mut mutable_state.fixed_lookup)
+                .into_iter()
+        })
+        .collect::<BTreeMap<_, _>>();
 
     // We can't just do columns.into_iter().collect(), because:
     // 1. The keys need to be string references of the right lifetime.
@@ -159,10 +157,17 @@ where
         .committed_polys_in_source_order()
         .into_iter()
         .map(|(p, _)| {
-            (
-                p.absolute_name.as_str(),
-                columns.remove(&p.absolute_name).unwrap(),
-            )
+            let column = secondary_columns
+                .remove(&p.absolute_name)
+                .unwrap_or_else(|| {
+                    let column = &mut columns[&PolyID {
+                        id: p.id,
+                        ptype: PolynomialType::Committed,
+                    }];
+                    column.drain(..).collect()
+                });
+            assert!(!column.is_empty());
+            (p.absolute_name.as_str(), column)
         })
         .collect()
 }
