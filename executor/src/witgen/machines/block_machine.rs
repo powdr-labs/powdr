@@ -237,12 +237,12 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
             })
             .collect();
 
-        // Build the processor. This copies the identities, but it's only done once per block machine instance.
+        // Build the processor.
         let mut processor = Processor::new(
             fixed_data.degree - 2,
             rows,
             IdentityProcessor::new(fixed_data, fixed_lookup, vec![]),
-            self.identities.clone(),
+            &self.identities,
             fixed_data,
             self.row_factory.clone(),
         );
@@ -254,7 +254,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
             // Clear the last row and run the solver
             processor.clear_row(1);
             processor
-                .solve()
+                .solve_with_default_sequence_iterator()
                 .expect("Some constraints were not satisfiable when solving for the last row.");
             let last_row = processor.finish().remove(1);
 
@@ -334,11 +334,6 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         // If we can find an assignment of all LHS variables at the end, we do not return an error,
         // even if there is a conflict.
 
-        // Record the steps where we made progress, so we can report this to the
-        // cache later on.
-        // TODO: Move this into the processing sequence iterator.
-        let mut progress_steps = vec![];
-
         // A copy of `left` which is mutated by `handle_outer_constraints()`
         let mut left_mut = left.to_vec();
 
@@ -383,10 +378,6 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
                 }
             };
 
-            if progress {
-                progress_steps.push(step);
-            }
-
             processing_sequence_iterator.report_progress(progress);
         }
 
@@ -402,7 +393,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         if success {
             // We solved the query, so report it to the cache.
             self.processing_sequence_cache
-                .report_processing_sequence(left, progress_steps);
+                .report_processing_sequence(left, processing_sequence_iterator);
             Ok(outer_assignments)
         } else if !errors.is_empty() {
             Err(errors

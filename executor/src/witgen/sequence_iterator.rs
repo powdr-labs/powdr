@@ -14,9 +14,9 @@ pub struct SequenceStep {
 /// forward, backward, and forward again.
 /// In each row, iterates over all identities until no further progress is made.
 pub struct DefaultSequenceIterator {
-    block_size: usize,
     identities_count: usize,
     row_deltas: Vec<i64>,
+    outer_query_row: Option<i64>,
 
     /// Whether this is the first time the iterator is called.
     is_first: bool,
@@ -29,25 +29,30 @@ pub struct DefaultSequenceIterator {
     /// The number of rounds for the current row delta.
     /// If this number gets too large, we will assume that we're in an infinite loop and exit.
     current_round_count: usize,
+
+    /// The steps on which we made progress.
+    progress_steps: Vec<SequenceStep>,
 }
 
 const MAX_ROUNDS_PER_ROW_DELTA: usize = 100;
 
 impl DefaultSequenceIterator {
-    pub fn new(block_size: usize, identities_count: usize) -> Self {
+    pub fn new(block_size: usize, identities_count: usize, outer_query_row: Option<i64>) -> Self {
+        assert!(block_size >= 1);
         let max_row = block_size as i64 - 1;
         DefaultSequenceIterator {
-            block_size,
             identities_count,
             row_deltas: (-1..=max_row)
                 .chain((-1..max_row).rev())
                 .chain(0..=max_row)
                 .collect(),
+            outer_query_row,
             is_first: true,
             progress_in_current_round: false,
             cur_row_delta_index: 0,
             cur_identity_index: 0,
             current_round_count: 0,
+            progress_steps: vec![],
         }
     }
 
@@ -68,8 +73,9 @@ impl DefaultSequenceIterator {
 
     fn is_last_identity(&self) -> bool {
         let row_delta = self.row_deltas[self.cur_row_delta_index];
+        let is_on_row_with_outer_query = self.outer_query_row == Some(row_delta);
 
-        if row_delta + 1 == self.block_size as i64 {
+        if is_on_row_with_outer_query {
             // In the last row, we want to process one more identity, the outer query.
             self.cur_identity_index == self.identities_count
         } else {
@@ -96,9 +102,12 @@ impl DefaultSequenceIterator {
     }
 
     pub fn report_progress(&mut self, progress_in_last_step: bool) {
-        if !self.is_first {
-            self.progress_in_current_round |= progress_in_last_step;
+        assert!(!self.is_first, "Called report_progress() before next()");
+
+        if progress_in_last_step {
+            self.progress_steps.push(self.current_step());
         }
+        self.progress_in_current_round |= progress_in_last_step;
     }
 
     pub fn next(&mut self) -> Option<SequenceStep> {
@@ -109,17 +118,18 @@ impl DefaultSequenceIterator {
             return None;
         }
 
-        let row_delta = self.row_deltas[self.cur_row_delta_index];
-        let identity = if self.cur_identity_index < self.identities_count {
-            IdentityInSequence::Internal(self.cur_identity_index)
-        } else {
-            IdentityInSequence::OuterQuery
-        };
+        Some(self.current_step())
+    }
 
-        Some(SequenceStep {
-            row_delta,
-            identity,
-        })
+    fn current_step(&self) -> SequenceStep {
+        SequenceStep {
+            row_delta: self.row_deltas[self.cur_row_delta_index],
+            identity: if self.cur_identity_index < self.identities_count {
+                IdentityInSequence::Internal(self.cur_identity_index)
+            } else {
+                IdentityInSequence::OuterQuery
+            },
+        }
     }
 }
 
@@ -147,12 +157,12 @@ where
     }
 }
 
-pub enum ProcessingSequenceIterator<I: Iterator<Item = SequenceStep>> {
+pub enum ProcessingSequenceIterator {
     Default(DefaultSequenceIterator),
-    Cached(I),
+    Cached(<Vec<SequenceStep> as IntoIterator>::IntoIter),
 }
 
-impl<I: Iterator<Item = SequenceStep>> ProcessingSequenceIterator<I> {
+impl ProcessingSequenceIterator {
     pub fn report_progress(&mut self, progress_in_last_step: bool) {
         match self {
             ProcessingSequenceIterator::Default(it) => it.report_progress(progress_in_last_step),
@@ -161,7 +171,7 @@ impl<I: Iterator<Item = SequenceStep>> ProcessingSequenceIterator<I> {
     }
 }
 
-impl<I: Iterator<Item = SequenceStep>> Iterator for ProcessingSequenceIterator<I> {
+impl Iterator for ProcessingSequenceIterator {
     type Item = SequenceStep;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -190,7 +200,7 @@ impl ProcessingSequenceCache {
     pub fn get_processing_sequence<K, T>(
         &self,
         left: &[AffineExpression<K, T>],
-    ) -> ProcessingSequenceIterator<impl Iterator<Item = SequenceStep>>
+    ) -> ProcessingSequenceIterator
     where
         K: Copy + Ord,
         T: FieldElement,
@@ -205,6 +215,8 @@ impl ProcessingSequenceCache {
                 ProcessingSequenceIterator::Default(DefaultSequenceIterator::new(
                     self.block_size,
                     self.identities_count,
+                    // Run the outer query on the last row of the block.
+                    Some(self.block_size as i64 - 1),
                 ))
             }
         }
@@ -213,11 +225,16 @@ impl ProcessingSequenceCache {
     pub fn report_processing_sequence<K, T>(
         &mut self,
         left: &[AffineExpression<K, T>],
-        sequence: Vec<SequenceStep>,
+        sequence_iterator: ProcessingSequenceIterator,
     ) where
         K: Copy + Ord,
         T: FieldElement,
     {
-        self.cache.entry(left.into()).or_insert(sequence);
+        match sequence_iterator {
+            ProcessingSequenceIterator::Default(it) => {
+                self.cache.entry(left.into()).or_insert(it.progress_steps);
+            }
+            ProcessingSequenceIterator::Cached(_) => {} // Already cached, do nothing
+        }
     }
 }
