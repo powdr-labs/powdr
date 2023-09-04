@@ -157,7 +157,7 @@ pub fn compile_asm_string<T: FieldElement>(
 
     let pil_file_path = output_dir.join(pil_file_name);
     if pil_file_path.exists() && !force_overwrite {
-        eprint!(
+        eprintln!(
             "Target file {} already exists. Not overwriting.",
             pil_file_path.to_str().unwrap()
         );

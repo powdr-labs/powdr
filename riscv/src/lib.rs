@@ -49,7 +49,7 @@ pub fn compile_rust<T: FieldElement>(
             Path::new(file_name).file_stem().unwrap().to_str().unwrap(),
         ));
         if riscv_asm_file_name.exists() && !force_overwrite {
-            eprint!(
+            eprintln!(
                 "Target file {} already exists. Not overwriting.",
                 riscv_asm_file_name.to_str().unwrap()
             );
@@ -87,7 +87,7 @@ pub fn compile_riscv_asm_bundle<T: FieldElement>(
             .unwrap()
     ));
     if powdr_asm_file_name.exists() && !force_overwrite {
-        eprint!(
+        eprintln!(
             "Target file {} already exists. Not overwriting.",
             powdr_asm_file_name.to_str().unwrap()
         );
