@@ -78,6 +78,7 @@ impl<'a, 'b, T: FieldElement> Processor<'a, 'b, T> {
     /// the current block, we assume that these lines are already part of [Self::data]
     /// and set the block size to `self.data.len() - 2`.
     pub fn solve_with_default_sequence_iterator(&mut self) -> Result<(), EvalError<T>> {
+        assert!(self.data.len() > 2);
         let mut sequence_iterator = ProcessingSequenceIterator::Default(
             DefaultSequenceIterator::new(self.data.len() - 2, self.identities.len(), None),
         );
