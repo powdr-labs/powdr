@@ -9,6 +9,7 @@ use self::block_machine::BlockMachine;
 use self::double_sorted_witness_machine::DoubleSortedWitnesses;
 pub use self::fixed_lookup_machine::FixedLookup;
 use self::sorted_witness_machine::SortedWitnesses;
+use self::triple_sorted_witness_machine::TripleSortedWitnesses;
 
 use super::affine_expression::AffineExpression;
 use super::EvalResult;
@@ -19,6 +20,7 @@ mod double_sorted_witness_machine;
 mod fixed_lookup_machine;
 pub mod machine_extractor;
 mod sorted_witness_machine;
+mod triple_sorted_witness_machine;
 
 /// A machine is a set of witness columns and identities where the columns
 /// are used on the right-hand-side of lookups. It can process plookups.
@@ -51,6 +53,7 @@ pub trait Machine<'a, T: FieldElement>: Send + Sync {
 pub enum KnownMachine<'a, T: FieldElement> {
     SortedWitnesses(SortedWitnesses<T>),
     DoubleSortedWitnesses(DoubleSortedWitnesses<T>),
+    TripleSortedWitnesses(TripleSortedWitnesses<T>),
     BlockMachine(BlockMachine<'a, T>),
 }
 
@@ -59,6 +62,7 @@ impl<'a, T: FieldElement> KnownMachine<'a, T> {
         match self {
             KnownMachine::SortedWitnesses(m) => m,
             KnownMachine::DoubleSortedWitnesses(m) => m,
+            KnownMachine::TripleSortedWitnesses(m) => m,
             KnownMachine::BlockMachine(m) => m,
         }
     }
