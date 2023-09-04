@@ -4,15 +4,19 @@ This crate is where most of the compilation pipeline lives. It takes a parse tre
 
 ## Definitions
 
-We define two types of machines: virtual machines and constrained machines. Constrained machines are the lower level kind of machine. They have a notion of blocks through a latch and an operation_id. Virtual machines are a higher level type of machines. For each machine type, we provide the elements which only appear exclusively in that type.
+We define two types of machines: virtual machines and constrained machines. Constrained machines are the lower level kind of machine. They have a notion of blocks through a latch and an operation_id. Virtual machines are a higher level type of machines. For each machine type, we provide the elements which appear in that type.
 
 |                         | Virtual | Constrained |
 |-------------------------|---------|-------------|
 | pc                      | yes     | no          |
-| latch                   | no      | yes         |
-| operation_id            | no      | yes         |
+| registers               | yes     | no          |
 | functions               | yes     | no          |
 | instructions            | yes     | no          |
+| latch                   | no      | yes         |
+| operation_id            | no      | yes         |
+| constraints             | yes     | yes         |
+| links                   | yes     | yes         |
+| submachines             | yes     | yes         |
 
 The pipeline accepts both kinds of machines, and they are represented by the same type `Machine`. Some steps are specific to virtual machines. They can still be applied to constrained machines and must have no effect. In the process, virtual machines get reduced to constrained machines by encoding their high-level elements into constrained machines elements.
 
@@ -101,7 +105,7 @@ Rom generation generates a single ROM for each virtual machine using the followi
 - Find the maximum number of inputs among all functions. Introduce as many input registers. Do the same for outputs, introducing output registers
 - Replace references to the function arguments by references to these input registers.
 - Pad all return statements with zeroes up to the number of output registers.
-- Inline all functions arbitrarily ordered by name, adding a label before each one.
+- Inline all function bodies, arbitrarily sorted by name, adding a label before each one.
 - Add an infinite loop also behind a label
 - Enable non-deterministically jumping to one of these labels by setting `operation_id` to the index of the label
 
@@ -322,7 +326,7 @@ The final program after analysis is the following:
 machine DifferentSignatures(instr_return, _operation_id) {
         operation identity<2> _input_0 -> _output_0;
         operation nothing<3>;
-        operation one<4>  -> _output_0;
+        operation one<4> -> _output_0;
 
         constraints {
                 pol commit _operation_id;
@@ -511,8 +515,8 @@ _operation_id_no_change = ((1 - _block_enforcer_last_step) * (1 - instr_return))
 (_operation_id_no_change * (_operation_id' - _operation_id)) = 0;
 // Links:
 // instr_identity  X -> Y links to function "identity" with id 2 with params  _input_0 -> _output_0 in object at location "main_sub" with latch "instr_return" and operation_id "_operation_id"
-// instr_one   -> Y links to function "one" with id 4 with params   -> _output_0 in object at location "main_sub" with latch "instr_return" and operation_id "_operation_id"
-// instr_nothing  links to function "nothing" with id 3 with params  in object at location "main_sub" with latch "instr_return" and operation_id "_operation_id"
+// instr_one  -> Y links to function "one" with id 4 with params  -> _output_0 in object at location "main_sub" with latch "instr_return" and operation_id "_operation_id"
+// instr_nothing links to function "nothing" with id 3 with params in object at location "main_sub" with latch "instr_return" and operation_id "_operation_id"
 
 
 // Object main_sub

@@ -559,20 +559,38 @@ mod tests {
         assert_eq!(empty.prepend_space_if_non_empty(), "");
         let in_out = Params {
             inputs: ParamList {
-                params: vec![Param {
-                    name: "abc".into(),
-                    ty: Some("ty".into()),
-                }],
+                params: vec![
+                    Param {
+                        name: "abc".into(),
+                        ty: Some("ty0".into()),
+                    },
+                    Param {
+                        name: "def".into(),
+                        ty: Some("ty1".into()),
+                    },
+                ],
             },
             outputs: Some(ParamList {
-                params: vec![Param {
-                    name: "abc".into(),
-                    ty: Some("ty".into()),
-                }],
+                params: vec![
+                    Param {
+                        name: "abc".into(),
+                        ty: Some("ty0".into()),
+                    },
+                    Param {
+                        name: "def".into(),
+                        ty: Some("ty1".into()),
+                    },
+                ],
             }),
         };
-        assert_eq!(in_out.to_string(), "abc: ty -> abc: ty");
-        assert_eq!(in_out.prepend_space_if_non_empty(), " abc: ty -> abc: ty");
+        assert_eq!(
+            in_out.to_string(),
+            "abc: ty0, def: ty1 -> abc: ty0, def: ty1"
+        );
+        assert_eq!(
+            in_out.prepend_space_if_non_empty(),
+            " abc: ty0, def: ty1 -> abc: ty0, def: ty1"
+        );
         let out = Params {
             inputs: ParamList { params: vec![] },
             outputs: Some(ParamList {
