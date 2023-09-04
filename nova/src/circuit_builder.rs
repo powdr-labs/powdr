@@ -125,8 +125,28 @@ pub(crate) fn nova_prove<T: FieldElement>(
     // TODO1: move this part to setup stage.
     // TODO2: replace this part with more efficient memory commitment strategy, e.g. folding KZG
 
-    let mut label_pc_mapping = BTreeMap::new();
     let mut pc = 0u64;
+
+    // To support jumping to label behind, we will process rom first to collect all available
+    // TODO optimise to have just one pass.
+    let mut label_pc_mapping = main_machine
+        .rom
+        .as_ref()
+        .map(|rom| {
+            rom.statements
+                .iter()
+                .flat_map(|statement| match statement {
+                    FunctionStatement::Label(LabelStatement { name, .. }) => Some((name, pc)),
+                    FunctionStatement::Assignment(..) | FunctionStatement::Instruction(..) => {
+                        pc += 1;
+                        None
+                    }
+                    s => unimplemented!("unimplemented statement {:?}", s),
+                })
+                .collect::<BTreeMap<&String, u64>>()
+        })
+        .unwrap_or_default();
+
     let rom = main_machine.rom.as_ref().map(|rom| {
         rom.statements.iter().flat_map(|statement| {
 
@@ -165,7 +185,7 @@ pub(crate) fn nova_prove<T: FieldElement>(
                             // label or register
                             if let Some(label_pc) = label_pc_mapping.get(name) {
                                 <G1 as Group>::Scalar::from(*label_pc)
-                            }else {
+                            } else {
                                 <G1 as Group>::Scalar::from(regs_index_mapping[name] as u64)
                             }
                         },
@@ -214,7 +234,7 @@ pub(crate) fn nova_prove<T: FieldElement>(
                         // label or register
                         if let Some(label_pc) = label_pc_mapping.get(name) {
                             <G1 as Group>::Scalar::from(*label_pc)
-                        }else {
+                        } else {
                             <G1 as Group>::Scalar::from(regs_index_mapping[name] as u64)
                         }
                     },
