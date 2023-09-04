@@ -15,7 +15,8 @@ use super::{EvalError::*, EvalResult, EvalValue, IncompleteCause};
 pub struct AffineExpression<K, T> {
     pub coefficients: Vec<(K, T)>,
     pub offset: T,
-    /// If true, coefficients all have nonzero values and do not have duplicate keys.
+    /// If true, all coefficients have nonzero values and there are no duplicate keys
+    /// (a constant affine expression is always clean).
     clean: bool,
 }
 
@@ -59,7 +60,7 @@ where
             .collect()
     }
 
-    /// @returns an vector of the nonzero coefficients and their variable IDs (but not the offset).
+    /// @returns the nonzero coefficients and their variable IDs (but not the offset).
     /// The order of coefficients is arbitrary.
     pub fn nonzero_coefficients(&self) -> Vec<(K, T)> {
         // We need to make sure that there are no duplicates in the variable
