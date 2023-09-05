@@ -9,7 +9,7 @@ use std::time::Instant;
 use crate::witgen::identity_processor::{self, IdentityProcessor};
 use crate::witgen::rows::RowUpdater;
 
-use super::column_map::{ColumnMap, Committed};
+use super::column_map::WitnessColumnMap;
 use super::machines::{KnownMachine, Machine};
 use super::query_processor::QueryProcessor;
 use super::range_constraints::RangeConstraint;
@@ -80,7 +80,7 @@ where
         fixed_lookup: &'b mut FixedLookup<T>,
         identities: &'a [&'a Identity<T>],
         witnesses: BTreeSet<PolyID>,
-        global_range_constraints: ColumnMap<Option<RangeConstraint<T>>, Committed>,
+        global_range_constraints: WitnessColumnMap<Option<RangeConstraint<T>>>,
         machines: Vec<KnownMachine<'a, T>>,
         query_callback: Option<QueryCallback>,
     ) -> Self {
@@ -121,7 +121,7 @@ where
         self.fixed_data.degree - 1
     }
 
-    pub fn compute_next_row(&mut self, next_row: DegreeType) -> ColumnMap<T, Committed> {
+    pub fn compute_next_row(&mut self, next_row: DegreeType) -> WitnessColumnMap<T> {
         self.compute_next_row_or_initialize(next_row, ProcessingPhase::Regular)
     }
 
@@ -156,7 +156,7 @@ where
         &mut self,
         next_row: DegreeType,
         phase: ProcessingPhase,
-    ) -> ColumnMap<T, Committed> {
+    ) -> WitnessColumnMap<T> {
         if phase == ProcessingPhase::Initialization {
             assert_eq!(next_row, self.last_row());
             self.current_row_index = next_row;
@@ -352,11 +352,7 @@ where
     /// Verifies the proposed values for the next row.
     /// TODO this is bad for machines because we might introduce rows in the machine that are then
     /// not used.
-    pub fn propose_next_row(
-        &mut self,
-        next_row: DegreeType,
-        values: &ColumnMap<T, Committed>,
-    ) -> bool {
+    pub fn propose_next_row(&mut self, next_row: DegreeType, values: &WitnessColumnMap<T>) -> bool {
         self.set_next_row_and_log(next_row);
 
         let proposed_row = self.row_factory.row_from_known_values_dense(values);

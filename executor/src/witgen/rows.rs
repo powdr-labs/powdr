@@ -8,11 +8,11 @@ use crate::witgen::Constraint;
 
 use super::{
     affine_expression::{AffineExpression, AffineResult},
-    column_map::{ColumnMap, Committed},
+    column_map::WitnessColumnMap,
     expression_evaluator::ExpressionEvaluator,
     global_constraints::RangeConstraintSet,
     range_constraints::RangeConstraint,
-    symbolic_witness_evaluator::{SymoblicWitnessEvaluator, WitnessColumnEvaluator},
+    symbolic_witness_evaluator::{WitnessColumnEvaluator, SymoblicWitnessEvaluator},
     EvalValue, FixedData,
 };
 
@@ -101,7 +101,7 @@ impl<T: FieldElement> Debug for Cell<'_, T> {
 }
 
 /// A row of cells, indexed by polynomial ID.
-pub type Row<'a, T> = ColumnMap<Cell<'a, T>, Committed>;
+pub type Row<'a, T> = WitnessColumnMap<Cell<'a, T>>;
 
 impl<T: FieldElement> Debug for Row<'_, T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -146,13 +146,13 @@ impl<T: FieldElement> Row<'_, T> {
 #[derive(Clone)]
 pub struct RowFactory<'a, T: FieldElement> {
     fixed_data: &'a FixedData<'a, T>,
-    global_range_constraints: ColumnMap<Option<RangeConstraint<T>>, Committed>,
+    global_range_constraints: WitnessColumnMap<Option<RangeConstraint<T>>>,
 }
 
 impl<'a, T: FieldElement> RowFactory<'a, T> {
     pub fn new(
         fixed_data: &'a FixedData<'a, T>,
-        global_range_constraints: ColumnMap<Option<RangeConstraint<T>>, Committed>,
+        global_range_constraints: WitnessColumnMap<Option<RangeConstraint<T>>>,
     ) -> Self {
         Self {
             fixed_data,
@@ -161,21 +161,19 @@ impl<'a, T: FieldElement> RowFactory<'a, T> {
     }
 
     pub fn fresh_row(&self) -> Row<'a, T> {
-        ColumnMap::from(
-            self.global_range_constraints
-                .iter()
-                .map(|(poly_id, range_constraint)| Cell {
-                    name: self.fixed_data.column_name(&poly_id),
-                    value: match range_constraint.as_ref() {
-                        Some(rc) => CellValue::RangeConstraint(rc.clone()),
-                        None => CellValue::Unknown,
-                    },
-                }),
-        )
+        WitnessColumnMap::from(self.global_range_constraints.iter().map(
+            |(poly_id, range_constraint)| Cell {
+                name: self.fixed_data.column_name(&poly_id),
+                value: match range_constraint.as_ref() {
+                    Some(rc) => CellValue::RangeConstraint(rc.clone()),
+                    None => CellValue::Unknown,
+                },
+            },
+        ))
     }
 
-    pub fn row_from_known_values_dense(&self, values: &ColumnMap<T, Committed>) -> Row<'a, T> {
-        ColumnMap::from(values.iter().map(|(poly_id, &v)| Cell {
+    pub fn row_from_known_values_dense(&self, values: &WitnessColumnMap<T>) -> Row<'a, T> {
+        WitnessColumnMap::from(values.iter().map(|(poly_id, &v)| Cell {
             name: self.fixed_data.column_name(&poly_id),
             value: CellValue::Known(v),
         }))
@@ -193,10 +191,10 @@ impl<'a, T: FieldElement> RowFactory<'a, T> {
     }
 }
 
-impl<T: FieldElement> From<Row<'_, T>> for ColumnMap<T, Committed> {
+impl<T: FieldElement> From<Row<'_, T>> for WitnessColumnMap<T> {
     /// Builds a map from polynomial ID to value. Unknown values are set to zero.
     fn from(val: Row<T>) -> Self {
-        ColumnMap::from(
+        WitnessColumnMap::from(
             val.into_iter()
                 .map(|(_, cell)| cell.value.unwrap_or_default()),
         )

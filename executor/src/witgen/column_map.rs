@@ -7,26 +7,29 @@ use ast::analyzed::{PolyID, PolynomialType};
 
 // Marker types for each PolynomialType
 #[derive(Clone, Copy)]
-pub struct Committed;
+pub struct Witness;
 
 #[derive(Clone, Copy)]
-pub struct Constant;
+pub struct Fixed;
 
 pub trait PolynomialTypeTrait {
     fn ptype() -> PolynomialType;
 }
 
-impl PolynomialTypeTrait for Committed {
+impl PolynomialTypeTrait for Witness {
     fn ptype() -> PolynomialType {
         PolynomialType::Committed
     }
 }
 
-impl PolynomialTypeTrait for Constant {
+impl PolynomialTypeTrait for Fixed {
     fn ptype() -> PolynomialType {
         PolynomialType::Constant
     }
 }
+
+pub type WitnessColumnMap<V> = ColumnMap<V, Witness>;
+pub type FixedColumnMap<V> = ColumnMap<V, Fixed>;
 
 /// A Map indexed by polynomial ID, for a specific polynomial type (e.g. fixed or witness).
 /// For performance reasons, it uses a Vec<V> internally and assumes that the polynomial IDs

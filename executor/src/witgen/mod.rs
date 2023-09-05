@@ -6,7 +6,7 @@ use ast::analyzed::{
 use num_traits::Zero;
 use number::{DegreeType, FieldElement};
 
-use self::column_map::{ColumnMap, Committed, Constant};
+use self::column_map::{FixedColumnMap, WitnessColumnMap};
 pub use self::eval_result::{
     Constraint, Constraints, EvalError, EvalResult, EvalStatus, EvalValue, IncompleteCause,
 };
@@ -76,7 +76,7 @@ where
         query_callback,
     );
 
-    let mut rows: Vec<ColumnMap<T, Committed>> = vec![];
+    let mut rows: Vec<WitnessColumnMap<T>> = vec![];
 
     let poly_ids = fixed.witness_cols.keys().collect::<Vec<_>>();
     for (i, p) in poly_ids.iter().enumerate() {
@@ -149,8 +149,8 @@ where
 }
 
 fn zip_relevant<'a, T>(
-    row1: &'a ColumnMap<T, Committed>,
-    row2: &'a ColumnMap<T, Committed>,
+    row1: &'a WitnessColumnMap<T>,
+    row2: &'a WitnessColumnMap<T>,
     relevant_mask: &'a [bool],
 ) -> impl Iterator<Item = (&'a T, &'a T)> {
     row1.values()
@@ -163,7 +163,7 @@ fn zip_relevant<'a, T>(
 /// Checks if the last rows are repeating and returns the period.
 /// Only checks for periods of 1, 2, 3 and 4.
 fn rows_are_repeating<T: PartialEq>(
-    rows: &[ColumnMap<T, Committed>],
+    rows: &[WitnessColumnMap<T>],
     relevant_mask: &[bool],
 ) -> Option<usize> {
     if rows.is_empty() {
@@ -184,8 +184,8 @@ fn rows_are_repeating<T: PartialEq>(
 /// Data that is fixed for witness generation.
 pub struct FixedData<'a, T> {
     degree: DegreeType,
-    fixed_cols: ColumnMap<FixedColumn<'a, T>, Constant>,
-    witness_cols: ColumnMap<WitnessColumn<'a, T>, Committed>,
+    fixed_cols: FixedColumnMap<FixedColumn<'a, T>>,
+    witness_cols: WitnessColumnMap<WitnessColumn<'a, T>>,
 }
 
 impl<'a, T: FieldElement> FixedData<'a, T> {
@@ -194,7 +194,7 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
         degree: DegreeType,
         fixed_col_values: &'a [(&'a str, Vec<T>)],
     ) -> Self {
-        let witness_cols = ColumnMap::from(
+        let witness_cols = WitnessColumnMap::from(
             analyzed
                 .committed_polys_in_source_order()
                 .iter()
@@ -210,7 +210,7 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
         );
 
         let fixed_cols =
-            ColumnMap::from(fixed_col_values.iter().map(|(n, v)| FixedColumn::new(n, v)));
+            FixedColumnMap::from(fixed_col_values.iter().map(|(n, v)| FixedColumn::new(n, v)));
         FixedData {
             degree,
             fixed_cols,
@@ -218,8 +218,8 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
         }
     }
 
-    fn witness_map_with<V: Clone>(&self, initial_value: V) -> ColumnMap<V, Committed> {
-        ColumnMap::new(initial_value, self.witness_cols.len())
+    fn witness_map_with<V: Clone>(&self, initial_value: V) -> WitnessColumnMap<V> {
+        WitnessColumnMap::new(initial_value, self.witness_cols.len())
     }
 
     fn column_name(&self, poly_id: &PolyID) -> &str {
