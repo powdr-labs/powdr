@@ -886,9 +886,11 @@ fn rl(args: &[Argument]) -> (Register, String) {
 
 fn rro(args: &[Argument]) -> (Register, Register, u32) {
     match args {
-        [Argument::Register(r1), Argument::RegOffset(r2, off)] => {
-            (*r1, *r2, expression_to_number(off))
-        }
+        [Argument::Register(r1), Argument::RegOffset(off, r2)] => (
+            *r1,
+            *r2,
+            expression_to_number(off.as_ref().unwrap_or(&Expression::Number(0))),
+        ),
         _ => panic!(),
     }
 }
