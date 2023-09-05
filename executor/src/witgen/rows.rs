@@ -267,19 +267,18 @@ impl<'row, 'a, T: FieldElement> RowUpdater<'row, 'a, T> {
             constraint
         );
         let cell = self.get_cell_mut(poly);
-        let new = match &cell.value {
-            CellValue::RangeConstraint(c) => constraint.conjunction(c),
-            _ => constraint.clone(),
-        };
-        if let CellValue::RangeConstraint(old) = &cell.value {
-            assert!(*old != new, "Range constraint was already set");
-        }
-        assert!(
-            !cell.value.is_known(),
-            "Range constraint was updated but value is already known"
-        );
-        log::trace!("         (the conjunction is {})", new);
-        cell.value = CellValue::RangeConstraint(new);
+        cell.value = CellValue::RangeConstraint(match &cell.value {
+            CellValue::RangeConstraint(c) => {
+                let new = constraint.conjunction(c);
+                assert!(*c != new, "Range constraint was already set");
+                log::trace!("         (the conjunction is {})", new);
+                new
+            }
+            CellValue::Unknown => constraint.clone(),
+            CellValue::Known(_) => {
+                panic!("Range constraint was updated but value is already known");
+            }
+        });
     }
 }
 
