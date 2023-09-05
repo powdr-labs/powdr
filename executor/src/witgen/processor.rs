@@ -15,10 +15,12 @@ use super::{
     Constraints, EvalError, FixedData,
 };
 
+type Left<'a, T> = Vec<AffineExpression<&'a PolynomialReference, T>>;
+
 pub struct Calldata<'a, 'b, T: FieldElement> {
     left: &'b [AffineExpression<&'a PolynomialReference, T>],
     right: &'a SelectedExpressions<T>,
-    left_mut: Vec<AffineExpression<&'a PolynomialReference, T>>,
+    left_mut: Left<'a, T>,
 }
 
 impl<'a, 'b, T: FieldElement> Calldata<'a, 'b, T> {
@@ -159,12 +161,7 @@ impl<'a, 'b, T: FieldElement> Processor<'a, 'b, T> {
     }
 
     /// Destroys itself, returns the data.
-    pub fn finish(
-        self,
-    ) -> (
-        Vec<Row<'a, T>>,
-        Option<Vec<AffineExpression<&'a PolynomialReference, T>>>,
-    ) {
+    pub fn finish(self) -> (Vec<Row<'a, T>>, Option<Left<'a, T>>) {
         (self.data, self.calldata.map(|c| c.left_mut))
     }
 

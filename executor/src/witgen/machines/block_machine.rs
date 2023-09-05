@@ -384,7 +384,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
                     _ => existing_last_row[&k].clone(),
                 }));
             // 4. Append the new block
-            self.data.extend(new_block.into_iter());
+            self.data.extend(new_block);
 
             // We solved the query, so report it to the cache.
             self.processing_sequence_cache
