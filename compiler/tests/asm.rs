@@ -173,3 +173,10 @@ fn hello_world_asm_fail() {
     let i = [1];
     verify_asm::<GoldilocksField>(f, slice_to_vec(&i));
 }
+
+#[test]
+fn test_macros_in_instructions() {
+    let f = "macros_in_instructions.asm";
+    verify_asm::<GoldilocksField>(f, Default::default());
+    gen_halo2_proof(f, Default::default());
+}

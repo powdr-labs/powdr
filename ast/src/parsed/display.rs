@@ -253,22 +253,6 @@ impl<T: Display> Display for FunctionCall<T> {
     }
 }
 
-impl<T: Display> Display for InstructionBodyElement<T> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        match self {
-            InstructionBodyElement::PolynomialIdentity(left, right) => {
-                write!(f, "{left} = {right}")
-            }
-            InstructionBodyElement::PlookupIdentity(left, operator, right) => {
-                write!(f, "{left} {operator} {right}")
-            }
-            InstructionBodyElement::FunctionCall(c) => {
-                write!(f, "{c}")
-            }
-        }
-    }
-}
-
 impl Display for PlookupOperator {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
