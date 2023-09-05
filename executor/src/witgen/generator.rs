@@ -1,4 +1,4 @@
-use ast::analyzed::{Identity, PolyID};
+use ast::analyzed::{Identity, PolyID, PolynomialType};
 use itertools::Itertools;
 use number::{DegreeType, FieldElement};
 use parser_util::lines::indent;
@@ -58,6 +58,8 @@ pub struct Generator<'a, 'b, T: FieldElement, QueryCallback: Send + Sync> {
     /// The subset of identities that does not contain a reference to the next row
     /// (precomputed once for performance reasons)
     identities_without_next_ref: Vec<&'a Identity<T>>,
+    /// Values of the witness polynomials in the first row (needed for checking wrap-around)
+    first: Row<'a, T>,
     /// Values of the witness polynomials in the previous row (needed to check proposed rows)
     previous: Row<'a, T>,
     /// Values of the witness polynomials
@@ -100,6 +102,7 @@ where
             fixed_data,
             identities_with_next_ref: identities_with_next,
             identities_without_next_ref: identities_without_next,
+            first: default_row.clone(),
             previous: default_row.clone(),
             current: default_row.clone(),
             next: default_row,
@@ -120,6 +123,33 @@ where
 
     pub fn compute_next_row(&mut self, next_row: DegreeType) -> ColumnMap<T> {
         self.compute_next_row_or_initialize(next_row, ProcessingPhase::Regular)
+    }
+
+    /// Update the first row for the wrap-around.
+    pub fn update_first_row(&mut self) -> ColumnMap<T> {
+        assert_eq!(self.current_row_index, self.last_row());
+        ColumnMap::<T>::from(
+            self.first
+                .values()
+                .zip(self.current.values())
+                .map(|(first, new_first)| {
+                    let first = first.value.clone();
+                    let new_first = new_first.value.clone();
+                    match (
+                        (first.is_known(), first.unwrap_or_default()),
+                        (new_first.is_known(), new_first.unwrap_or_default()),
+                    ) {
+                        ((true, x), (true, y)) => {
+                            // TODO we should probably print a proper error.
+                            assert_eq!(x, y);
+                            x
+                        }
+                        ((false, _), (true, y)) => y,
+                        ((_, x), (_, _)) => x,
+                    }
+                }),
+            PolynomialType::Committed,
+        )
     }
 
     fn compute_next_row_or_initialize(
@@ -172,6 +202,10 @@ where
         );
 
         self.shift_rows();
+
+        if next_row == 0 {
+            self.first = self.previous.clone()
+        }
 
         self.previous.clone().into()
     }

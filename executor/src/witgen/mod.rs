@@ -114,6 +114,12 @@ where
 
         rows.push(row_values.unwrap());
     }
+    // We re-compute the first row just in case we invalidly assumed unknown/unconstrained
+    // values are zero.
+    // TODO: do this properly.
+    for (poly, v) in generator.update_first_row().into_iter() {
+        rows[0][&poly] = v;
+    }
 
     // Transpose the rows
     let mut columns = fixed.witness_map_with(vec![]);
