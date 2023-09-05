@@ -177,7 +177,7 @@ machine Shift(latch, operation_id) {
     ]
 }
 
-/// Compiles riscv assembly to POWDR assembly. Adds required library routines.
+/// Compiles riscv assembly to a powdr assembly file. Adds required library routines.
 pub fn compile(mut assemblies: BTreeMap<String, String>) -> String {
     // stack grows towards zero
     let stack_start = 0x10000;
