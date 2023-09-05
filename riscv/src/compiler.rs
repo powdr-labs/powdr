@@ -6,8 +6,13 @@ use std::{
 use asm_utils::{
     ast::{BinaryOpKind, UnaryOpKind},
     data_parser::{self, DataValue},
+    data_storage::{store_data_objects, SingleDataValue},
     parser::parse_asm,
     reachability,
+    utils::{
+        argument_to_escaped_symbol, argument_to_number, escape_label, expression_to_number, quote,
+    },
+    Architecture,
 };
 use itertools::Itertools;
 
@@ -18,6 +23,60 @@ use crate::{Argument, Expression, Statement};
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct Register {
     value: u8,
+}
+
+impl Register {
+    pub fn new(value: u8) -> Self {
+        Self { value }
+    }
+
+    pub fn is_zero(&self) -> bool {
+        self.value == 0
+    }
+}
+
+impl asm_utils::ast::Register for Register {}
+
+impl fmt::Display for Register {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "x{}", self.value)
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub enum FunctionKind {
+    HiDataRef,
+    LoDataRef,
+}
+
+impl asm_utils::ast::FunctionOpKind for FunctionKind {}
+
+impl fmt::Display for FunctionKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            FunctionKind::HiDataRef => write!(f, "%hi"),
+            FunctionKind::LoDataRef => write!(f, "%lo"),
+        }
+    }
+}
+
+struct RiscvArchitecture {}
+
+impl Architecture for RiscvArchitecture {
+    fn instruction_ends_control_flow(instr: &str) -> bool {
+        match instr {
+            "li" | "lui" | "la" | "mv" | "add" | "addi" | "sub" | "neg" | "mul" | "mulhu"
+            | "divu" | "xor" | "xori" | "and" | "andi" | "or" | "ori" | "not" | "slli" | "sll"
+            | "srli" | "srl" | "srai" | "seqz" | "snez" | "slt" | "slti" | "sltu" | "sltiu"
+            | "sgtz" | "beq" | "beqz" | "bgeu" | "bltu" | "blt" | "bge" | "bltz" | "blez"
+            | "bgtz" | "bgez" | "bne" | "bnez" | "jal" | "jalr" | "call" | "ecall" | "ebreak"
+            | "lw" | "lb" | "lbu" | "lhu" | "sw" | "sh" | "sb" | "nop" => false,
+            "j" | "jr" | "tail" | "ret" | "unimp" => true,
+            _ => {
+                panic!("Unknown instruction: {instr}");
+            }
+        }
+    }
 }
 
 pub fn machine_decls() -> Vec<&'static str> {
@@ -118,123 +177,120 @@ machine Shift(latch, operation_id) {
     ]
 }
 
-impl Register {
-    pub fn new(value: u8) -> Self {
-        Self { value }
-    }
+/// Compiles riscv assembly to POWDR assembly. Adds required library routines.
+pub fn compile(mut assemblies: BTreeMap<String, String>) -> String {
+    // stack grows towards zero
+    let stack_start = 0x10000;
+    // data grows away from zero
+    let data_start = 0x10100;
 
-    pub fn is_zero(&self) -> bool {
-        self.value == 0
-    }
-}
+    assert!(assemblies
+        .insert("__runtime".to_string(), runtime().to_string())
+        .is_none());
 
-impl asm_utils::ast::Register for Register {}
-
-impl fmt::Display for Register {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "x{}", self.value)
-    }
-}
-
-#[derive(Clone, Copy, Debug)]
-pub enum FunctionKind {
-    HiDataRef,
-    LoDataRef,
-}
-
-impl asm_utils::ast::FunctionOpKind for FunctionKind {}
-
-impl fmt::Display for FunctionKind {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            FunctionKind::HiDataRef => write!(f, "%hi"),
-            FunctionKind::LoDataRef => write!(f, "%lo"),
-        }
-    }
-}
-
-#[derive(Default)]
-pub struct Risc {}
-
-impl asm_utils::compiler::Compiler for Risc {
-    /// Compiles riscv assembly to POWDR assembly. Adds required library routines.
-    fn compile(mut assemblies: BTreeMap<String, String>) -> String {
-        // stack grows towards zero
-        let stack_start = 0x10000;
-        // data grows away from zero
-        let data_start = 0x10100;
-
-        assert!(assemblies
-            .insert("__runtime".to_string(), runtime().to_string())
-            .is_none());
-
-        // TODO remove unreferenced files.
-        let (mut statements, file_ids) = disambiguator::disambiguate(
-            assemblies
-                .into_iter()
-                .map(|(name, contents)| (name, parse_asm(RiscParser::default(), &contents)))
-                .collect(),
-        );
-        let (mut objects, mut object_order) = data_parser::extract_data_objects(&statements);
-        assert_eq!(objects.keys().len(), object_order.len());
-
-        // Reduce to the code that is actually reachable from main
-        // (and the objects that are referred from there)
-        reachability::filter_reachable_from("__runtime_start", &mut statements, &mut objects);
-
-        // Replace dynamic references to code labels
-        replace_dynamic_label_references(&mut statements, &objects);
-
-        // Remove the riscv asm stub function, which is used
-        // for compilation, and will not be called.
-        statements = replace_coprocessor_stubs(statements).collect::<Vec<_>>();
-
-        // Sort the objects according to the order of the names in object_order.
-        // With the single exception: If there is large object, put that at the end.
-        // The idea behind this is that there might be a single gigantic object representing the heap
-        // and putting that at the end should keep memory addresses small.
-        let mut large_objects = objects
-            .iter()
-            .filter(|(_name, data)| data.iter().map(|d| d.size()).sum::<usize>() > 0x2000);
-        if let (Some((heap, _)), None) = (large_objects.next(), large_objects.next()) {
-            let heap_pos = object_order.iter().position(|o| o == heap).unwrap();
-            object_order.remove(heap_pos);
-            object_order.push(heap.clone());
-        };
-        let sorted_objects = object_order
+    // TODO remove unreferenced files.
+    let (mut statements, file_ids) = disambiguator::disambiguate(
+        assemblies
             .into_iter()
-            .filter_map(|n| {
-                let value = objects.get_mut(&n).map(std::mem::take);
-                value.map(|v| (n, v))
-            })
-            .collect::<Vec<_>>();
-        let (data_code, data_positions) = store_data_objects(&sorted_objects, data_start);
+            .map(|(name, contents)| (name, parse_asm(RiscParser::default(), &contents)))
+            .collect(),
+    );
+    let (mut objects, mut object_order) = data_parser::extract_data_objects(&statements);
+    assert_eq!(objects.keys().len(), object_order.len());
 
-        riscv_machine(
-            &machine_decls(),
-            &preamble(),
-            &[("binary", "Binary"), ("shift", "Shift")],
-            file_ids
-                .into_iter()
-                .map(|(id, dir, file)| format!("debug file {id} {} {};", quote(&dir), quote(&file)))
-                .chain(["call __data_init;".to_string()])
-                .chain(call_every_submachine())
-                .chain([
-                    format!("// Set stack pointer\nx2 <=X= {stack_start};"),
-                    "call __runtime_start;".to_string(),
-                    "return;".to_string(), // This is not "riscv ret", but "return from powdr asm function".
-                ])
-                .chain(
-                    substitute_symbols_with_values(statements, &data_positions)
-                        .into_iter()
-                        .flat_map(process_statement),
-                )
-                .chain(["// This is the data initialization routine.\n__data_init::".to_string()])
-                .chain(data_code)
-                .chain(["// This is the end of the data initialization routine.\nret;".to_string()])
-                .collect(),
-        )
-    }
+    // Reduce to the code that is actually reachable from main
+    // (and the objects that are referred from there)
+    reachability::filter_reachable_from::<_, _, RiscvArchitecture>(
+        "__runtime_start",
+        &mut statements,
+        &mut objects,
+    );
+
+    // Replace dynamic references to code labels
+    replace_dynamic_label_references(&mut statements, &objects);
+
+    // Remove the riscv asm stub function, which is used
+    // for compilation, and will not be called.
+    statements = replace_coprocessor_stubs(statements).collect::<Vec<_>>();
+
+    // Sort the objects according to the order of the names in object_order.
+    // With the single exception: If there is large object, put that at the end.
+    // The idea behind this is that there might be a single gigantic object representing the heap
+    // and putting that at the end should keep memory addresses small.
+    let mut large_objects = objects
+        .iter()
+        .filter(|(_name, data)| data.iter().map(|d| d.size()).sum::<usize>() > 0x2000);
+    if let (Some((heap, _)), None) = (large_objects.next(), large_objects.next()) {
+        let heap_pos = object_order.iter().position(|o| o == heap).unwrap();
+        object_order.remove(heap_pos);
+        object_order.push(heap.clone());
+    };
+    let sorted_objects = object_order
+        .into_iter()
+        .filter_map(|n| {
+            let value = objects.get_mut(&n).map(std::mem::take);
+            value.map(|v| (n, v))
+        })
+        .collect::<Vec<_>>();
+    let (data_code, data_positions) = store_data_objects(
+        &sorted_objects,
+        data_start,
+        &mut |addr, value| match value {
+            SingleDataValue::Value(v) => {
+                vec![format!("addr <=X= 0x{addr:x};"), format!("mstore 0x{v:x};")]
+            }
+            SingleDataValue::LabelReference(sym) => {
+                // TODO should be possible without temporary
+                vec![
+                    format!("addr <=X= 0x{addr:x};"),
+                    format!("tmp1 <== load_label({});", escape_label(sym)),
+                    "mstore tmp1;".to_string(),
+                ]
+            }
+            SingleDataValue::Offset(_, _) => {
+                unimplemented!();
+                /*
+                object_code.push(format!("addr <=X= 0x{pos:x};"));
+
+                I think this solution should be fine but hard to say without
+                an actual code snippet that uses it.
+
+                // TODO should be possible without temporary
+                object_code.extend([
+                    format!("tmp1 <== load_label({});", escape_label(a)),
+                    format!("tmp2 <== load_label({});", escape_label(b)),
+                    // TODO check if registers match
+                    "mstore wrap(tmp1 - tmp2);".to_string(),
+                ]);
+                */
+            }
+        },
+    );
+
+    riscv_machine(
+        &machine_decls(),
+        &preamble(),
+        &[("binary", "Binary"), ("shift", "Shift")],
+        file_ids
+            .into_iter()
+            .map(|(id, dir, file)| format!("debug file {id} {} {};", quote(&dir), quote(&file)))
+            .chain(["call __data_init;".to_string()])
+            .chain(call_every_submachine())
+            .chain([
+                format!("// Set stack pointer\nx2 <=X= {stack_start};"),
+                "call __runtime_start;".to_string(),
+                "return;".to_string(), // This is not "riscv ret", but "return from powdr asm function".
+            ])
+            .chain(
+                substitute_symbols_with_values(statements, &data_positions)
+                    .into_iter()
+                    .flat_map(process_statement),
+            )
+            .chain(["// This is the data initialization routine.\n__data_init::".to_string()])
+            .chain(data_code)
+            .chain(["// This is the end of the data initialization routine.\nret;".to_string()])
+            .collect(),
+    )
 }
 
 /// Replace certain patterns of references to code labels by
@@ -353,96 +409,6 @@ fn replace_coprocessor_stubs(
     })
 }
 
-fn store_data_objects<'a>(
-    objects: impl IntoIterator<Item = &'a (String, Vec<DataValue>)> + Copy,
-    mut memory_start: u32,
-) -> (Vec<String>, BTreeMap<String, u32>) {
-    memory_start = ((memory_start + 7) / 8) * 8;
-    let mut current_pos = memory_start;
-    let mut positions = BTreeMap::new();
-    for (name, data) in objects.into_iter() {
-        // TODO check if we need to use multiples of four.
-        let size: u32 = data
-            .iter()
-            .map(|d| next_multiple_of_four(d.size()) as u32)
-            .sum();
-        positions.insert(name.clone(), current_pos);
-        current_pos += size;
-    }
-
-    let code = objects
-        .into_iter()
-        .filter(|(_, data)| !data.is_empty())
-        .flat_map(|(name, data)| {
-            let mut object_code = vec![];
-            let mut pos = positions[name];
-            for item in data {
-                match &item {
-                    DataValue::Zero(_length) => {
-                        // We can assume memory to be zero-initialized,
-                        // so we do nothing.
-                    }
-                    DataValue::Direct(bytes) => {
-                        for i in (0..bytes.len()).step_by(4) {
-                            let v = (0..4)
-                                .map(|j| {
-                                    (bytes.get(i + j).cloned().unwrap_or_default() as u32)
-                                        << (j * 8)
-                                })
-                                .reduce(|a, b| a | b)
-                                .unwrap();
-                            // We can assume memory to be zero-initialized.
-                            if v != 0 {
-                                object_code.extend([
-                                    format!("addr <=X= 0x{:x};", pos + i as u32),
-                                    format!("mstore 0x{v:x};"),
-                                ]);
-                            }
-                        }
-                    }
-                    DataValue::Reference(sym) => {
-                        object_code.push(format!("addr <=X= 0x{pos:x};"));
-                        if let Some(p) = positions.get(sym) {
-                            object_code.push(format!("mstore 0x{p:x};"));
-                        } else {
-                            // code reference
-                            // TODO should be possible without temporary
-                            object_code.extend([
-                                format!("tmp1 <== load_label({});", escape_label(sym)),
-                                "mstore tmp1;".to_string(),
-                            ]);
-                        }
-                    }
-                    DataValue::Offset(_, _) => {
-                        unimplemented!()
-
-                        /*
-                        object_code.push(format!("addr <=X= 0x{pos:x};"));
-
-                        I think this solution should be fine but hard to say without
-                        an actual code snippet that uses it.
-
-                        // TODO should be possible without temporary
-                        object_code.extend([
-                            format!("tmp1 <== load_label({});", escape_label(a)),
-                            format!("tmp2 <== load_label({});", escape_label(b)),
-                            // TODO check if registers match
-                            "mstore wrap(tmp1 - tmp2);".to_string(),
-                        ]);
-                        */
-                    }
-                }
-                pos += item.size() as u32;
-            }
-            if let Some(first_line) = object_code.first_mut() {
-                *first_line = format!("// data {name}\n") + first_line;
-            }
-            object_code
-        })
-        .collect();
-    (code, positions)
-}
-
 fn call_every_submachine() -> Vec<String> {
     // TODO This is a hacky snippet to ensure that every submachine in the RISCV machine
     // is called at least once. This is needed for witgen until it can do default blocks
@@ -453,10 +419,6 @@ fn call_every_submachine() -> Vec<String> {
         "x10 <== shl(x10, x10);".to_string(),
         "x10 <=X= 0;".to_string(),
     ]
-}
-
-fn next_multiple_of_four(x: usize) -> usize {
-    ((x + 3) / 4) * 4
 }
 
 fn substitute_symbols_with_values(
@@ -868,40 +830,6 @@ fn process_statement(s: Statement) -> Vec<String> {
             .into_iter()
             .map(|s| "  ".to_string() + &s)
             .collect(),
-    }
-}
-
-fn quote(s: &str) -> String {
-    // TODO more things to quote
-    format!("\"{}\"", s.replace('\\', "\\\\").replace('\"', "\\\""))
-}
-
-fn escape_label(l: &str) -> String {
-    // TODO make this proper
-    l.replace('.', "_dot_").replace('/', "_slash_")
-}
-
-fn argument_to_number(x: &Argument) -> u32 {
-    if let Argument::Expression(expr) = x {
-        expression_to_number(expr)
-    } else {
-        panic!("Expected numeric expression, got {x}")
-    }
-}
-
-fn expression_to_number(expr: &Expression) -> u32 {
-    if let Expression::Number(n) = expr {
-        *n as u32
-    } else {
-        panic!("Constant expression could not be fully resolved to a number during preprocessing: {expr}");
-    }
-}
-
-fn argument_to_escaped_symbol(x: &Argument) -> String {
-    if let Argument::Expression(Expression::Symbol(symb)) = x {
-        escape_label(symb)
-    } else {
-        panic!("Expected a symbol, got {x}");
     }
 }
 

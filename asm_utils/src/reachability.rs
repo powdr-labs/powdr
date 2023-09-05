@@ -3,13 +3,14 @@ use std::collections::{BTreeMap, BTreeSet, HashSet};
 use itertools::Itertools;
 
 use crate::data_parser::DataValue;
+use crate::Architecture;
 
 use crate::ast::{Argument, Expression, FunctionOpKind, Register, Statement};
 
 /// Processes the statements and removes all statements and objects that are
 /// not reachable from the label `label`.
 /// Keeps the order of the statements.
-pub fn filter_reachable_from<R: Register, F: FunctionOpKind>(
+pub fn filter_reachable_from<R: Register, F: FunctionOpKind, A: Architecture>(
     label: &str,
     statements: &mut Vec<Statement<R, F>>,
     objects: &mut BTreeMap<String, Vec<DataValue>>,
@@ -19,10 +20,11 @@ pub fn filter_reachable_from<R: Register, F: FunctionOpKind>(
         .iter()
         .map(|(k, v)| (k.as_str(), v.as_str()))
         .collect();
-    let referenced_labels = find_reachable_labels(label, statements, objects, &replacement_refs)
-        .into_iter()
-        .map(|s| s.to_owned())
-        .collect::<HashSet<_>>();
+    let referenced_labels =
+        find_reachable_labels::<R, F, A>(label, statements, objects, &replacement_refs)
+            .into_iter()
+            .map(|s| s.to_owned())
+            .collect::<HashSet<_>>();
 
     objects.retain(|name, _value| referenced_labels.contains(name));
     for (_name, value) in objects.iter_mut() {
@@ -34,7 +36,7 @@ pub fn filter_reachable_from<R: Register, F: FunctionOpKind>(
         .into_iter()
         .filter_map(|mut s| {
             let include = if active {
-                if ends_control_flow(&s) {
+                if ends_control_flow::<R, F, A>(&s) {
                     active = false;
                 }
                 true
@@ -54,7 +56,7 @@ pub fn filter_reachable_from<R: Register, F: FunctionOpKind>(
         .collect();
 }
 
-pub fn find_reachable_labels<'a, R: Register, F: FunctionOpKind>(
+pub fn find_reachable_labels<'a, R: Register, F: FunctionOpKind, A: Architecture>(
     label: &'a str,
     statements: &'a [Statement<R, F>],
     objects: &'a mut BTreeMap<String, Vec<DataValue>>,
@@ -82,7 +84,7 @@ pub fn find_reachable_labels<'a, R: Register, F: FunctionOpKind>(
                 .collect()
         } else if let Some(offset) = label_offsets.get(l) {
             let (referenced_labels_in_block, seen_labels_in_block) =
-                basic_block_references_starting_from(&statements[*offset..]);
+                basic_block_references_starting_from::<R, F, A>(&statements[*offset..]);
             processed_labels.extend(seen_labels_in_block);
             referenced_labels_in_block
         } else {
@@ -185,12 +187,12 @@ pub fn references_in_statement<R: Register, F: FunctionOpKind>(
     ret
 }
 
-fn basic_block_references_starting_from<R: Register, F: FunctionOpKind>(
+fn basic_block_references_starting_from<R: Register, F: FunctionOpKind, A: Architecture>(
     statements: &[Statement<R, F>],
 ) -> (Vec<&str>, Vec<&str>) {
     let mut seen_labels = vec![];
     let mut referenced_labels = BTreeSet::<&str>::new();
-    iterate_basic_block(statements, |s| {
+    iterate_basic_block::<R, F, A>(statements, |s| {
         if let Statement::Label(l) = s {
             seen_labels.push(l.as_str());
         } else {
@@ -200,32 +202,23 @@ fn basic_block_references_starting_from<R: Register, F: FunctionOpKind>(
     (referenced_labels.into_iter().collect(), seen_labels)
 }
 
-fn iterate_basic_block<'a, R: Register, F: FunctionOpKind>(
+fn iterate_basic_block<'a, R: Register, F: FunctionOpKind, A: Architecture>(
     statements: &'a [Statement<R, F>],
     mut fun: impl FnMut(&'a Statement<R, F>),
 ) {
     for s in statements {
         fun(s);
-        if ends_control_flow(s) {
+        if ends_control_flow::<R, F, A>(s) {
             break;
         }
     }
 }
 
-fn ends_control_flow<R: Register, F: FunctionOpKind>(s: &Statement<R, F>) -> bool {
+fn ends_control_flow<R: Register, F: FunctionOpKind, A: Architecture>(s: &Statement<R, F>) -> bool {
     match s {
-        Statement::Instruction(instruction, _) => match instruction.as_str() {
-            "li" | "lui" | "la" | "mv" | "add" | "addi" | "sub" | "neg" | "mul" | "mulhu"
-            | "divu" | "xor" | "xori" | "and" | "andi" | "or" | "ori" | "not" | "slli" | "sll"
-            | "srli" | "srl" | "srai" | "seqz" | "snez" | "slt" | "slti" | "sltu" | "sltiu"
-            | "sgtz" | "beq" | "beqz" | "bgeu" | "bltu" | "blt" | "bge" | "bltz" | "blez"
-            | "bgtz" | "bgez" | "bne" | "bnez" | "jal" | "jalr" | "call" | "ecall" | "ebreak"
-            | "lw" | "lb" | "lbu" | "lhu" | "sw" | "sh" | "sb" | "nop" => false,
-            "j" | "jr" | "tail" | "ret" | "unimp" => true,
-            _ => {
-                panic!("Unknown instruction: {instruction}");
-            }
-        },
+        Statement::Instruction(instruction, _) => {
+            A::instruction_ends_control_flow(instruction.as_str())
+        }
         _ => false,
     }
 }
