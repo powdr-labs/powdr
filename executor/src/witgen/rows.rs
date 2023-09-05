@@ -12,7 +12,7 @@ use super::{
     expression_evaluator::ExpressionEvaluator,
     global_constraints::RangeConstraintSet,
     range_constraints::RangeConstraint,
-    symbolic_witness_evaluator::{WitnessColumnEvaluator, SymoblicWitnessEvaluator},
+    symbolic_witness_evaluator::{SymoblicWitnessEvaluator, WitnessColumnEvaluator},
     EvalValue, FixedData,
 };
 
