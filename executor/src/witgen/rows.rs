@@ -34,6 +34,30 @@ impl<T: FieldElement> CellValue<T> {
             _ => Default::default(),
         }
     }
+
+    /// Returns the new combined range constraint or new value for this cell.
+    ///
+    /// # Panics
+    /// Panics if the update is not an improvement.
+    pub fn update_with(&self, c: &Constraint<T>) -> Self {
+        match (self, c) {
+            (CellValue::Known(_), _) => {
+                // Note that this is a problem even if the value that was set is the same,
+                // because we would return that progress was made when it wasn't.
+                panic!("Value was already set.");
+            }
+            (_, Constraint::Assignment(v)) => CellValue::Known(*v),
+            (CellValue::RangeConstraint(current), Constraint::RangeConstraint(c)) => {
+                let new = c.conjunction(current);
+                assert!(new != *current, "Range constraint was already set");
+                log::trace!("         (the conjunction is {})", new);
+                CellValue::RangeConstraint(new)
+            }
+            (CellValue::Unknown, Constraint::RangeConstraint(c)) => {
+                CellValue::RangeConstraint(c.clone())
+            }
+        }
+    }
 }
 
 impl<T: FieldElement> From<&CellValue<T>> for Option<T> {
@@ -51,6 +75,16 @@ pub struct Cell<'a, T: FieldElement> {
     /// The column name, for debugging purposes.
     pub name: &'a str,
     pub value: CellValue<T>,
+}
+
+impl<'a, T: FieldElement> Cell<'a, T> {
+    /// Applies the new range constraint or new value to this cell.
+    ///
+    /// # Panics
+    /// Panics if the update is not an improvement.
+    pub fn apply_update(&mut self, c: &Constraint<T>) {
+        self.value = self.value.update_with(c);
+    }
 }
 
 impl<T: FieldElement> Debug for Cell<'_, T> {
@@ -197,12 +231,23 @@ impl<'row, 'a, T: FieldElement> RowUpdater<'row, 'a, T> {
     pub fn apply_update(&mut self, poly: &PolynomialReference, c: &Constraint<T>) {
         match c {
             Constraint::Assignment(value) => {
-                self.set_value(poly, *value);
+                log::trace!(
+                    "      => {} (Row {}) = {}",
+                    poly.name,
+                    self.row_number(poly),
+                    value
+                );
             }
             Constraint::RangeConstraint(constraint) => {
-                self.update_range_constraint(poly, constraint);
+                log::trace!(
+                    "      => Adding range constraint for {} (Row {}): {}",
+                    poly.name,
+                    self.row_number(poly),
+                    constraint
+                );
             }
         }
+        self.get_cell_mut(poly).apply_update(c);
     }
 
     /// Applies the updates to the underlying rows. Returns true if any updates
@@ -239,46 +284,6 @@ impl<'row, 'a, T: FieldElement> RowUpdater<'row, 'a, T> {
             false => self.current_row_index,
             true => self.current_row_index + 1,
         }
-    }
-
-    fn set_value(&mut self, poly: &PolynomialReference, value: T) {
-        log::trace!(
-            "      => {} (Row {}) = {}",
-            poly.name,
-            self.row_number(poly),
-            value
-        );
-        let cell = self.get_cell_mut(poly);
-        // Note that this is a problem even if the value that was set is the same,
-        // because we would return that progress was made when it wasn't.
-        assert!(!cell.value.is_known(), "Value was already set");
-        cell.value = CellValue::Known(value);
-    }
-
-    fn update_range_constraint(
-        &mut self,
-        poly: &PolynomialReference,
-        constraint: &RangeConstraint<T>,
-    ) {
-        log::trace!(
-            "      => Adding range constraint for {} (Row {}): {}",
-            poly.name,
-            self.row_number(poly),
-            constraint
-        );
-        let cell = self.get_cell_mut(poly);
-        cell.value = CellValue::RangeConstraint(match &cell.value {
-            CellValue::RangeConstraint(c) => {
-                let new = constraint.conjunction(c);
-                assert!(*c != new, "Range constraint was already set");
-                log::trace!("         (the conjunction is {})", new);
-                new
-            }
-            CellValue::Unknown => constraint.clone(),
-            CellValue::Known(_) => {
-                panic!("Range constraint was updated but value is already known");
-            }
-        });
     }
 }
 
