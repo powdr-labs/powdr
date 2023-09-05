@@ -173,6 +173,8 @@ pub fn references_in_statement<R: Register, F: FunctionOpKind>(
     match statement {
         Statement::Label(_) | Statement::Directive(_, _) => (),
         Statement::Instruction(_, args) => {
+            // TODO: filter out arguments of "fence" instruction, because they
+            // are parsed as symbols, but they aren't really...
             for arg in args {
                 arg.post_visit_expressions(&mut |expr| {
                     if let Expression::Symbol(sym) = expr {
@@ -215,12 +217,13 @@ fn iterate_basic_block<'a, R: Register, F: FunctionOpKind>(
 fn ends_control_flow<R: Register, F: FunctionOpKind>(s: &Statement<R, F>) -> bool {
     match s {
         Statement::Instruction(instruction, _) => match instruction.as_str() {
-            "li" | "lui" | "la" | "mv" | "add" | "addi" | "sub" | "neg" | "mul" | "mulhu"
-            | "divu" | "xor" | "xori" | "and" | "andi" | "or" | "ori" | "not" | "slli" | "sll"
-            | "srli" | "srl" | "srai" | "seqz" | "snez" | "slt" | "slti" | "sltu" | "sltiu"
-            | "sgtz" | "beq" | "beqz" | "bgeu" | "bltu" | "blt" | "bge" | "bltz" | "blez"
-            | "bgtz" | "bgez" | "bne" | "bnez" | "jal" | "jalr" | "call" | "ecall" | "ebreak"
-            | "lw" | "lb" | "lbu" | "lhu" | "sw" | "sh" | "sb" | "nop" => false,
+            "li" | "lui" | "la" | "mv" | "add" | "addi" | "sub" | "neg" | "mul" | "mulhsu"
+            | "mulhu" | "divu" | "xor" | "xori" | "and" | "andi" | "or" | "ori" | "not"
+            | "slli" | "sll" | "srli" | "srl" | "srai" | "seqz" | "snez" | "slt" | "slti"
+            | "sltu" | "sltiu" | "sgtz" | "beq" | "beqz" | "bgeu" | "bltu" | "blt" | "bge"
+            | "bltz" | "blez" | "bgtz" | "bgez" | "bne" | "bnez" | "jal" | "jalr" | "call"
+            | "ecall" | "ebreak" | "lh" | "lw" | "lb" | "lbu" | "lhu" | "sw" | "sh" | "sb"
+            | "nop" | "fence" | "amoadd.w.rl" | "amoadd.w" => false,
             "j" | "jr" | "tail" | "ret" | "unimp" => true,
             _ => {
                 panic!("Unknown instruction: {instruction}");
