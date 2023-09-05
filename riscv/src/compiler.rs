@@ -6,8 +6,13 @@ use std::{
 use asm_utils::{
     ast::{BinaryOpKind, UnaryOpKind},
     data_parser::{self, DataValue},
+    data_storage::{store_data_objects, SingleDataValue},
     parser::parse_asm,
     reachability,
+    utils::{
+        argument_to_escaped_symbol, argument_to_number, escape_label, expression_to_number, quote,
+    },
+    Architecture,
 };
 use itertools::Itertools;
 
@@ -18,109 +23,6 @@ use crate::{Argument, Expression, Statement};
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct Register {
     value: u8,
-}
-
-pub fn machine_decls() -> Vec<&'static str> {
-    vec![
-        r#"
-// ================= binary/bitwise instructions =================
-
-machine Binary(latch, function_id) {
-
-    degree 262144;
-
-    function and<0> A, B -> C {
-    }
-
-    function or<1> A, B -> C {
-    }
-
-    function xor<2> A, B -> C {
-    }
-
-    constraints{
-        col witness function_id;
-
-        macro is_nonzero(X) { match X { 0 => 0, _ => 1, } };
-        macro is_zero(X) { 1 - is_nonzero(X) };
-
-        col fixed latch(i) { is_zero((i % 4) - 3) };
-        col fixed FACTOR(i) { 1 << (((i + 1) % 4) * 8) };
-
-        col fixed P_A(i) { i % 256 };
-        col fixed P_B(i) { (i >> 8) % 256 };
-        col fixed P_operation(i) { (i / (256 * 256)) % 3 };
-        col fixed P_C(i) {
-            match P_operation(i) {
-                0 => P_A(i) & P_B(i),
-                1 => P_A(i) | P_B(i),
-                2 => P_A(i) ^ P_B(i),
-            } & 0xff
-        };
-
-        col witness A_byte;
-        col witness B_byte;
-        col witness C_byte;
-
-        col witness A;
-        col witness B;
-        col witness C;
-
-        A' = A * (1 - latch) + A_byte * FACTOR;
-        B' = B * (1 - latch) + B_byte * FACTOR;
-        C' = C * (1 - latch) + C_byte * FACTOR;
-
-        {function_id', A_byte, B_byte, C_byte} in {P_operation, P_A, P_B, P_C};
-    }
-}
-"#,
-        r#"
-// ================= shift instructions =================
-
-machine Shift(latch, function_id) {
-    degree 262144;
-
-    function shl<0> A, B -> C {
-    }
-
-    function shr<1> A, B -> C {
-    }
-
-    constraints{
-        col witness function_id;
-
-        col fixed latch(i) { is_zero((i % 4) - 3) };
-        col fixed FACTOR_ROW(i) { (i + 1) % 4 };
-        col fixed FACTOR(i) { 1 << (((i + 1) % 4) * 8) };
-
-        col fixed P_A(i) { i % 256 };
-        col fixed P_B(i) { (i / 256) % 32 };
-        col fixed P_ROW(i) { (i / (256 * 32)) % 4 };
-        col fixed P_operation(i) { (i / (256 * 32 * 4)) % 2 };
-        col fixed P_C(i) {
-            match P_operation(i) {
-                0 => (P_A(i) << (P_B(i) + (P_ROW(i) * 8))),
-                1 => (P_A(i) << (P_ROW(i) * 8)) >> P_B(i),
-            } & 0xffffffff
-        };
-
-        col witness A_byte;
-        col witness C_part;
-
-        col witness A;
-        col witness B;
-        col witness C;
-
-        A' = A * (1 - latch) + A_byte * FACTOR;
-        (B' - B) * (1 - latch) = 0;
-        C' = C * (1 - latch) + C_part;
-
-        // TODO this way, we cannot prove anything that shifts by more than 31 bits.
-        {function_id', A_byte, B', FACTOR_ROW, C_part} in {P_operation, P_A, P_B, P_ROW, P_C};
-    }
-}
-"#,
-    ]
 }
 
 impl Register {
@@ -158,88 +60,238 @@ impl fmt::Display for FunctionKind {
     }
 }
 
-#[derive(Default)]
-pub struct Risc {}
+struct RiscvArchitecture {}
 
-impl asm_utils::compiler::Compiler for Risc {
-    /// Compiles riscv assembly to POWDR assembly. Adds required library routines.
-    fn compile(mut assemblies: BTreeMap<String, String>) -> String {
-        // stack grows towards zero
-        let stack_start = 0x10000;
-        // data grows away from zero
-        let data_start = 0x10100;
-
-        assert!(assemblies
-            .insert("__runtime".to_string(), runtime().to_string())
-            .is_none());
-
-        // TODO remove unreferenced files.
-        let (mut statements, file_ids) = disambiguator::disambiguate(
-            assemblies
-                .into_iter()
-                .map(|(name, contents)| (name, parse_asm(RiscParser::default(), &contents)))
-                .collect(),
-        );
-        let (mut objects, mut object_order) = data_parser::extract_data_objects(&statements);
-        assert_eq!(objects.keys().len(), object_order.len());
-
-        // Reduce to the code that is actually reachable from main
-        // (and the objects that are referred from there)
-        reachability::filter_reachable_from("__runtime_start", &mut statements, &mut objects);
-
-        // Replace dynamic references to code labels
-        replace_dynamic_label_references(&mut statements, &objects);
-
-        // Remove the riscv asm stub function, which is used
-        // for compilation, and will not be called.
-        statements = replace_coprocessor_stubs(statements).collect::<Vec<_>>();
-
-        // Sort the objects according to the order of the names in object_order.
-        // With the single exception: If there is large object, put that at the end.
-        // The idea behind this is that there might be a single gigantic object representing the heap
-        // and putting that at the end should keep memory addresses small.
-        let mut large_objects = objects
-            .iter()
-            .filter(|(_name, data)| data.iter().map(|d| d.size()).sum::<usize>() > 0x2000);
-        if let (Some((heap, _)), None) = (large_objects.next(), large_objects.next()) {
-            let heap_pos = object_order.iter().position(|o| o == heap).unwrap();
-            object_order.remove(heap_pos);
-            object_order.push(heap.clone());
-        };
-        let sorted_objects = object_order
-            .into_iter()
-            .filter_map(|n| {
-                let value = objects.get_mut(&n).map(std::mem::take);
-                value.map(|v| (n, v))
-            })
-            .collect::<Vec<_>>();
-        let (data_code, data_positions) = store_data_objects(&sorted_objects, data_start);
-
-        riscv_machine(
-            &machine_decls(),
-            &preamble(),
-            &[("binary", "Binary"), ("shift", "Shift")],
-            file_ids
-                .into_iter()
-                .map(|(id, dir, file)| format!("debug file {id} {} {};", quote(&dir), quote(&file)))
-                .chain(["call __data_init;".to_string()])
-                .chain(call_every_submachine())
-                .chain([
-                    format!("// Set stack pointer\nx2 <=X= {stack_start};"),
-                    "call __runtime_start;".to_string(),
-                    "return;".to_string(), // This is not "riscv ret", but "return from powdr asm function".
-                ])
-                .chain(
-                    substitute_symbols_with_values(statements, &data_positions)
-                        .into_iter()
-                        .flat_map(process_statement),
-                )
-                .chain(["// This is the data initialization routine.\n__data_init::".to_string()])
-                .chain(data_code)
-                .chain(["// This is the end of the data initialization routine.\nret;".to_string()])
-                .collect(),
-        )
+impl Architecture for RiscvArchitecture {
+    fn instruction_ends_control_flow(instr: &str) -> bool {
+        match instr {
+            "li" | "lui" | "la" | "mv" | "add" | "addi" | "sub" | "neg" | "mul" | "mulhsu"
+            | "mulhu" | "divu" | "xor" | "xori" | "and" | "andi" | "or" | "ori" | "not"
+            | "slli" | "sll" | "srli" | "srl" | "srai" | "seqz" | "snez" | "slt" | "slti"
+            | "sltu" | "sltiu" | "sgtz" | "beq" | "beqz" | "bgeu" | "bltu" | "blt" | "bge"
+            | "bltz" | "blez" | "bgtz" | "bgez" | "bne" | "bnez" | "jal" | "jalr" | "call"
+            | "ecall" | "ebreak" | "lh" | "lw" | "lb" | "lbu" | "lhu" | "sw" | "sh" | "sb"
+            | "nop" | "fence" | "amoadd.w.rl" | "amoadd.w" => false,
+            "j" | "jr" | "tail" | "ret" | "unimp" => true,
+            _ => {
+                panic!("Unknown instruction: {instr}");
+            }
+        }
     }
+}
+
+pub fn machine_decls() -> Vec<&'static str> {
+    vec![
+        r#"
+// ================= binary/bitwise instructions =================
+
+machine Binary(latch, operation_id) {
+
+    degree 262144;
+
+    operation and<0> A, B -> C;
+
+    operation or<1> A, B -> C;
+
+    operation xor<2> A, B -> C;
+
+    constraints{
+        col witness operation_id;
+
+        macro is_nonzero(X) { match X { 0 => 0, _ => 1, } };
+        macro is_zero(X) { 1 - is_nonzero(X) };
+
+        col fixed latch(i) { is_zero((i % 4) - 3) };
+        col fixed FACTOR(i) { 1 << (((i + 1) % 4) * 8) };
+
+        col fixed P_A(i) { i % 256 };
+        col fixed P_B(i) { (i >> 8) % 256 };
+        col fixed P_operation(i) { (i / (256 * 256)) % 3 };
+        col fixed P_C(i) {
+            match P_operation(i) {
+                0 => P_A(i) & P_B(i),
+                1 => P_A(i) | P_B(i),
+                2 => P_A(i) ^ P_B(i),
+            } & 0xff
+        };
+
+        col witness A_byte;
+        col witness B_byte;
+        col witness C_byte;
+
+        col witness A;
+        col witness B;
+        col witness C;
+
+        A' = A * (1 - latch) + A_byte * FACTOR;
+        B' = B * (1 - latch) + B_byte * FACTOR;
+        C' = C * (1 - latch) + C_byte * FACTOR;
+
+        {operation_id', A_byte, B_byte, C_byte} in {P_operation, P_A, P_B, P_C};
+    }
+}
+"#,
+        r#"
+// ================= shift instructions =================
+
+machine Shift(latch, operation_id) {
+    degree 262144;
+
+    operation shl<0> A, B -> C;
+
+    operation shr<1> A, B -> C;
+
+    constraints{
+        col witness operation_id;
+
+        col fixed latch(i) { is_zero((i % 4) - 3) };
+        col fixed FACTOR_ROW(i) { (i + 1) % 4 };
+        col fixed FACTOR(i) { 1 << (((i + 1) % 4) * 8) };
+
+        col fixed P_A(i) { i % 256 };
+        col fixed P_B(i) { (i / 256) % 32 };
+        col fixed P_ROW(i) { (i / (256 * 32)) % 4 };
+        col fixed P_operation(i) { (i / (256 * 32 * 4)) % 2 };
+        col fixed P_C(i) {
+            match P_operation(i) {
+                0 => (P_A(i) << (P_B(i) + (P_ROW(i) * 8))),
+                1 => (P_A(i) << (P_ROW(i) * 8)) >> P_B(i),
+            } & 0xffffffff
+        };
+
+        col witness A_byte;
+        col witness C_part;
+
+        col witness A;
+        col witness B;
+        col witness C;
+
+        A' = A * (1 - latch) + A_byte * FACTOR;
+        (B' - B) * (1 - latch) = 0;
+        C' = C * (1 - latch) + C_part;
+
+        // TODO this way, we cannot prove anything that shifts by more than 31 bits.
+        {operation_id', A_byte, B', FACTOR_ROW, C_part} in {P_operation, P_A, P_B, P_ROW, P_C};
+    }
+}
+"#,
+    ]
+}
+
+/// Compiles riscv assembly to a powdr assembly file. Adds required library routines.
+pub fn compile(mut assemblies: BTreeMap<String, String>) -> String {
+    // stack grows towards zero
+    let stack_start = 0x10000;
+    // data grows away from zero
+    let data_start = 0x10100;
+
+    assert!(assemblies
+        .insert("__runtime".to_string(), runtime().to_string())
+        .is_none());
+
+    // TODO remove unreferenced files.
+    let (mut statements, file_ids) = disambiguator::disambiguate(
+        assemblies
+            .into_iter()
+            .map(|(name, contents)| (name, parse_asm(RiscParser::default(), &contents)))
+            .collect(),
+    );
+    let (mut objects, mut object_order) = data_parser::extract_data_objects(&statements);
+    assert_eq!(objects.keys().len(), object_order.len());
+
+    // Reduce to the code that is actually reachable from main
+    // (and the objects that are referred from there)
+    reachability::filter_reachable_from::<_, _, RiscvArchitecture>(
+        "__runtime_start",
+        &mut statements,
+        &mut objects,
+    );
+
+    // Replace dynamic references to code labels
+    replace_dynamic_label_references(&mut statements, &objects);
+
+    // Remove the riscv asm stub function, which is used
+    // for compilation, and will not be called.
+    statements = replace_coprocessor_stubs(statements).collect::<Vec<_>>();
+
+    // Sort the objects according to the order of the names in object_order.
+    // With the single exception: If there is large object, put that at the end.
+    // The idea behind this is that there might be a single gigantic object representing the heap
+    // and putting that at the end should keep memory addresses small.
+    let mut large_objects = objects
+        .iter()
+        .filter(|(_name, data)| data.iter().map(|d| d.size()).sum::<usize>() > 0x2000);
+    if let (Some((heap, _)), None) = (large_objects.next(), large_objects.next()) {
+        let heap_pos = object_order.iter().position(|o| o == heap).unwrap();
+        object_order.remove(heap_pos);
+        object_order.push(heap.clone());
+    };
+    let sorted_objects = object_order
+        .into_iter()
+        .filter_map(|n| {
+            let value = objects.get_mut(&n).map(std::mem::take);
+            value.map(|v| (n, v))
+        })
+        .collect::<Vec<_>>();
+    let (data_code, data_positions) = store_data_objects(
+        &sorted_objects,
+        data_start,
+        &mut |addr, value| match value {
+            SingleDataValue::Value(v) => {
+                vec![format!("addr <=X= 0x{addr:x};"), format!("mstore 0x{v:x};")]
+            }
+            SingleDataValue::LabelReference(sym) => {
+                // TODO should be possible without temporary
+                vec![
+                    format!("addr <=X= 0x{addr:x};"),
+                    format!("tmp1 <== load_label({});", escape_label(sym)),
+                    "mstore tmp1;".to_string(),
+                ]
+            }
+            SingleDataValue::Offset(_, _) => {
+                unimplemented!();
+                /*
+                object_code.push(format!("addr <=X= 0x{pos:x};"));
+
+                I think this solution should be fine but hard to say without
+                an actual code snippet that uses it.
+
+                // TODO should be possible without temporary
+                object_code.extend([
+                    format!("tmp1 <== load_label({});", escape_label(a)),
+                    format!("tmp2 <== load_label({});", escape_label(b)),
+                    // TODO check if registers match
+                    "mstore wrap(tmp1 - tmp2);".to_string(),
+                ]);
+                */
+            }
+        },
+    );
+
+    riscv_machine(
+        &machine_decls(),
+        &preamble(),
+        &[("binary", "Binary"), ("shift", "Shift")],
+        file_ids
+            .into_iter()
+            .map(|(id, dir, file)| format!("debug file {id} {} {};", quote(&dir), quote(&file)))
+            .chain(["call __data_init;".to_string()])
+            .chain(call_every_submachine())
+            .chain([
+                format!("// Set stack pointer\nx2 <=X= {stack_start};"),
+                "call __runtime_start;".to_string(),
+                "return;".to_string(), // This is not "riscv ret", but "return from powdr asm function".
+            ])
+            .chain(
+                substitute_symbols_with_values(statements, &data_positions)
+                    .into_iter()
+                    .flat_map(process_statement),
+            )
+            .chain(["// This is the data initialization routine.\n__data_init::".to_string()])
+            .chain(data_code)
+            .chain(["// This is the end of the data initialization routine.\nret;".to_string()])
+            .collect(),
+    )
 }
 
 /// Replace certain patterns of references to code labels by
@@ -358,96 +410,6 @@ fn replace_coprocessor_stubs(
     })
 }
 
-fn store_data_objects<'a>(
-    objects: impl IntoIterator<Item = &'a (String, Vec<DataValue>)> + Copy,
-    mut memory_start: u32,
-) -> (Vec<String>, BTreeMap<String, u32>) {
-    memory_start = ((memory_start + 7) / 8) * 8;
-    let mut current_pos = memory_start;
-    let mut positions = BTreeMap::new();
-    for (name, data) in objects.into_iter() {
-        // TODO check if we need to use multiples of four.
-        let size: u32 = data
-            .iter()
-            .map(|d| next_multiple_of_four(d.size()) as u32)
-            .sum();
-        positions.insert(name.clone(), current_pos);
-        current_pos += size;
-    }
-
-    let code = objects
-        .into_iter()
-        .filter(|(_, data)| !data.is_empty())
-        .flat_map(|(name, data)| {
-            let mut object_code = vec![];
-            let mut pos = positions[name];
-            for item in data {
-                match &item {
-                    DataValue::Zero(_length) => {
-                        // We can assume memory to be zero-initialized,
-                        // so we do nothing.
-                    }
-                    DataValue::Direct(bytes) => {
-                        for i in (0..bytes.len()).step_by(4) {
-                            let v = (0..4)
-                                .map(|j| {
-                                    (bytes.get(i + j).cloned().unwrap_or_default() as u32)
-                                        << (j * 8)
-                                })
-                                .reduce(|a, b| a | b)
-                                .unwrap();
-                            // We can assume memory to be zero-initialized.
-                            if v != 0 {
-                                object_code.extend([
-                                    format!("addr <=X= 0x{:x};", pos + i as u32),
-                                    format!("mstore 0x{v:x};"),
-                                ]);
-                            }
-                        }
-                    }
-                    DataValue::Reference(sym) => {
-                        object_code.push(format!("addr <=X= 0x{pos:x};"));
-                        if let Some(p) = positions.get(sym) {
-                            object_code.push(format!("mstore 0x{p:x};"));
-                        } else {
-                            // code reference
-                            // TODO should be possible without temporary
-                            object_code.extend([
-                                format!("tmp1 <== load_label({});", escape_label(sym)),
-                                "mstore tmp1;".to_string(),
-                            ]);
-                        }
-                    }
-                    DataValue::Offset(_, _) => {
-                        unimplemented!()
-
-                        /*
-                        object_code.push(format!("addr <=X= 0x{pos:x};"));
-
-                        I think this solution should be fine but hard to say without
-                        an actual code snippet that uses it.
-
-                        // TODO should be possible without temporary
-                        object_code.extend([
-                            format!("tmp1 <== load_label({});", escape_label(a)),
-                            format!("tmp2 <== load_label({});", escape_label(b)),
-                            // TODO check if registers match
-                            "mstore wrap(tmp1 - tmp2);".to_string(),
-                        ]);
-                        */
-                    }
-                }
-                pos += item.size() as u32;
-            }
-            if let Some(first_line) = object_code.first_mut() {
-                *first_line = format!("// data {name}\n") + first_line;
-            }
-            object_code
-        })
-        .collect();
-    (code, positions)
-}
-
 fn call_every_submachine() -> Vec<String> {
     // TODO This is a hacky snippet to ensure that every submachine in the RISCV machine
     // is called at least once. This is needed for witgen until it can do default blocks
@@ -458,10 +420,6 @@ fn call_every_submachine() -> Vec<String> {
         "x10 <== shl(x10, x10);".to_string(),
         "x10 <=X= 0;".to_string(),
     ]
-}
-
-fn next_multiple_of_four(x: usize) -> usize {
-    ((x + 3) / 4) * 4
 }
 
 fn substitute_symbols_with_values(
@@ -876,40 +834,6 @@ fn process_statement(s: Statement) -> Vec<String> {
     }
 }
 
-fn quote(s: &str) -> String {
-    // TODO more things to quote
-    format!("\"{}\"", s.replace('\\', "\\\\").replace('\"', "\\\""))
-}
-
-fn escape_label(l: &str) -> String {
-    // TODO make this proper
-    l.replace('.', "_dot_").replace('/', "_slash_")
-}
-
-fn argument_to_number(x: &Argument) -> u32 {
-    if let Argument::Expression(expr) = x {
-        expression_to_number(expr)
-    } else {
-        panic!("Expected numeric expression, got {x}")
-    }
-}
-
-fn expression_to_number(expr: &Expression) -> u32 {
-    if let Expression::Number(n) = expr {
-        *n as u32
-    } else {
-        panic!("Constant expression could not be fully resolved to a number during preprocessing: {expr}");
-    }
-}
-
-fn argument_to_escaped_symbol(x: &Argument) -> String {
-    if let Argument::Expression(Expression::Symbol(symb)) = x {
-        escape_label(symb)
-    } else {
-        panic!("Expected a symbol, got {x}");
-    }
-}
-
 fn r(args: &[Argument]) -> Register {
     match args {
         [Argument::Register(r1)] => *r1,
@@ -1282,7 +1206,7 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
         }
         "call" | "tail" => {
             // Depending on what symbol is called, the call is replaced by a
-            // powdr asm call, or a call to a coprocessor if a special function
+            // powdr-asm call, or a call to a coprocessor if a special function
             // has been recognized.
             assert_eq!(args.len(), 1);
             let label = &args[0];

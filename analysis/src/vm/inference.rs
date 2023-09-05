@@ -30,7 +30,7 @@ pub fn infer<T: FieldElement>(file: AnalysisASMFile<T>) -> Result<AnalysisASMFil
 fn infer_machine<T: FieldElement>(mut machine: Machine<T>) -> Result<Machine<T>, Vec<String>> {
     let mut errors = vec![];
 
-    for f in machine.functions.iter_mut() {
+    for f in machine.callable.functions_mut() {
         for s in f.body.statements.iter_mut() {
             if let FunctionStatement::Assignment(a) = s {
                 let expr_reg = match &*a.rhs {
@@ -115,13 +115,16 @@ mod tests {
 
         let file = infer_str::<Bn254Field>(file).unwrap();
 
-        if let FunctionStatement::Assignment(AssignmentStatement { using_reg, .. }) =
-            file.machines["Machine"].functions[0]
-                .body
-                .statements
-                .iter()
-                .next()
-                .unwrap()
+        if let FunctionStatement::Assignment(AssignmentStatement { using_reg, .. }) = file.machines
+            ["Machine"]
+            .functions()
+            .next()
+            .unwrap()
+            .body
+            .statements
+            .iter()
+            .next()
+            .unwrap()
         {
             assert_eq!(*using_reg, Some("X".to_string()));
         } else {
@@ -148,13 +151,16 @@ mod tests {
 
         let file = infer_str::<Bn254Field>(file).unwrap();
 
-        if let FunctionStatement::Assignment(AssignmentStatement { using_reg, .. }) =
-            &file.machines["Machine"].functions[0]
-                .body
-                .statements
-                .iter()
-                .next()
-                .unwrap()
+        if let FunctionStatement::Assignment(AssignmentStatement { using_reg, .. }) = &file.machines
+            ["Machine"]
+            .functions()
+            .next()
+            .unwrap()
+            .body
+            .statements
+            .iter()
+            .next()
+            .unwrap()
         {
             assert_eq!(*using_reg, Some("X".to_string()));
         } else {

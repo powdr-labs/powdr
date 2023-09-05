@@ -2,12 +2,19 @@ use std::collections::BTreeMap;
 
 use ast::{
     asm_analysis::{
-        AnalysisASMFile, AssignmentStatement, DebugDirective, DegreeStatement, FunctionBody,
-        FunctionDefinitionStatement, FunctionStatements, Instruction,
-        InstructionDefinitionStatement, InstructionStatement, LabelStatement, Machine, PilBlock,
-        RegisterDeclarationStatement, RegisterTy, Return, SubmachineDeclaration,
+        AnalysisASMFile, AssignmentStatement, CallableSymbolDefinitions, DebugDirective,
+        DegreeStatement, FunctionBody, FunctionStatements, FunctionSymbol, Instruction,
+        InstructionDefinitionStatement, InstructionStatement, LabelStatement,
+        LinkDefinitionStatement, Machine, OperationSymbol, PilBlock, RegisterDeclarationStatement,
+        RegisterTy, Return, SubmachineDeclaration,
     },
-    parsed::asm::{ASMFile, FunctionStatement, MachineStatement, RegisterFlag},
+    parsed::{
+        self,
+        asm::{
+            ASMFile, FunctionStatement, InstructionBody, LinkDeclaration, MachineStatement,
+            RegisterFlag,
+        },
+    },
 };
 use number::FieldElement;
 
@@ -44,7 +51,8 @@ impl<T: FieldElement> TypeChecker<T> {
         let mut registers = vec![];
         let mut constraints = vec![];
         let mut instructions = vec![];
-        let mut functions = vec![];
+        let mut links = vec![];
+        let mut callable = CallableSymbolDefinitions::default();
         let mut submachines = vec![];
 
         for s in machine.statements {
@@ -64,16 +72,26 @@ impl<T: FieldElement> TypeChecker<T> {
                     registers.push(RegisterDeclarationStatement { start, name, ty });
                 }
                 MachineStatement::InstructionDeclaration(start, name, instruction) => {
-                    if name == "return" {
-                        errors.push("Instruction cannot use reserved name `return`".into());
+                    match self.check_instruction(&name, instruction) {
+                        Ok(instruction) => instructions.push(InstructionDefinitionStatement {
+                            start,
+                            name,
+                            instruction,
+                        }),
+                        Err(e) => errors.extend(e),
                     }
-                    instructions.push(InstructionDefinitionStatement {
+                }
+                MachineStatement::LinkDeclaration(LinkDeclaration {
+                    start,
+                    flag,
+                    params,
+                    to,
+                }) => {
+                    links.push(LinkDefinitionStatement {
                         start,
-                        name,
-                        instruction: Instruction {
-                            params: instruction.params,
-                            body: instruction.body,
-                        },
+                        flag,
+                        params,
+                        to,
                     });
                 }
                 MachineStatement::InlinePil(start, statements) => {
@@ -86,15 +104,8 @@ impl<T: FieldElement> TypeChecker<T> {
                         errors.push(format!("Undeclared machine type {}", ty))
                     }
                 }
-                MachineStatement::FunctionDeclaration(
-                    start,
-                    name,
-                    function_id,
-                    params,
-                    statements,
-                ) => {
+                MachineStatement::FunctionDeclaration(start, name, params, statements) => {
                     let mut function_statements = vec![];
-                    let id = function_id.map(|id| id.id);
                     for s in statements {
                         match s {
                             FunctionStatement::Assignment(start, lhs, using_reg, rhs) => {
@@ -130,60 +141,73 @@ impl<T: FieldElement> TypeChecker<T> {
                             }
                         }
                     }
-                    functions.push(FunctionDefinitionStatement {
-                        start,
-                        name,
-                        id,
-                        params,
-                        body: FunctionBody {
-                            statements: FunctionStatements::new(function_statements),
-                        },
-                    })
+                    assert!(callable
+                        .insert(
+                            name,
+                            FunctionSymbol {
+                                start,
+                                params,
+                                body: FunctionBody {
+                                    statements: FunctionStatements::new(function_statements),
+                                },
+                            },
+                        )
+                        .is_none());
+                }
+                MachineStatement::OperationDeclaration(start, name, id, params) => {
+                    assert!(callable
+                        .insert(name, OperationSymbol { start, id, params })
+                        .is_none());
                 }
             }
         }
 
         let latch = machine.arguments.latch;
-        let function_id = machine.arguments.function_id;
+        let operation_id = machine.arguments.operation_id;
 
         if !registers.iter().any(|r| r.ty.is_pc()) {
             if latch.is_none() {
                 errors.push(format!(
-                    "Machine {} should have a latch column because it does not have a pc",
+                    "Machine {} should have a latch column as it does not have a pc",
                     machine.name
                 ));
             }
-            if function_id.is_none() {
+            if operation_id.is_none() {
                 errors.push(format!(
-                    "Machine {} should have a function id column because it does not have a pc",
+                    "Machine {} should have an operation id column as it does not have a pc",
                     machine.name
                 ));
             }
-            for o in &functions {
-                if o.id.is_none() {
-                    errors.push(format!("Function {} in machine {} should have an id because this machine does not have a pc", o.name, machine.name));
-                }
-                if !o.body.statements.is_empty() {
-                    errors.push(format!("Function {} in machine {} should have an empty body because this machine does not have a pc", o.name, machine.name));
-                }
+            for f in callable.function_definitions() {
+                errors.push(format!(
+                    "Machine {} should not have functions as it does not have a pc, found `{}`",
+                    machine.name, f.name
+                ))
+            }
+            for i in &instructions {
+                errors.push(format!(
+                    "Machine {} should not have instructions as it does not have a pc, found `{}`",
+                    machine.name, i.name
+                ))
             }
         } else {
             if latch.is_some() {
                 errors.push(format!(
-                    "Machine {} should not have a latch column because it has a pc",
+                    "Machine {} should not have a latch column as it has a pc",
                     machine.name
                 ));
             }
-            if function_id.is_some() {
+            if operation_id.is_some() {
                 errors.push(format!(
-                    "Machine {} should not have a function id column because it has a pc",
+                    "Machine {} should not have an operation id column as it has a pc",
                     machine.name
                 ));
             }
-            for o in &functions {
-                if o.id.is_some() {
-                    errors.push(format!("Function {} in machine {} should not have an id because this machine has a pc", o.name, machine.name));
-                }
+            for f in callable.operation_definitions() {
+                errors.push(format!(
+                    "Machine {} should not have operations as it has a pc, found `{}`",
+                    machine.name, f.name
+                ))
             }
         }
 
@@ -197,16 +221,17 @@ impl<T: FieldElement> TypeChecker<T> {
         *self.machines_types.get_mut(&machine.name).unwrap() = Some(Machine {
             degree,
             latch,
-            function_id,
+            operation_id,
             pc: registers
                 .iter()
                 .enumerate()
                 .filter_map(|(i, r)| (r.ty.is_pc()).then_some(i))
                 .next(),
             registers,
+            links,
             instructions,
             constraints,
-            functions,
+            callable,
             submachines,
         });
 
@@ -245,5 +270,37 @@ impl<T: FieldElement> TypeChecker<T> {
                 .collect();
             Ok(AnalysisASMFile { machines })
         }
+    }
+
+    fn check_instruction(
+        &mut self,
+        name: &str,
+        instruction: parsed::asm::Instruction<T>,
+    ) -> Result<Instruction<T>, Vec<String>> {
+        if name == "return" {
+            return Err(vec!["Instruction cannot use reserved name `return`".into()]);
+        }
+
+        if let InstructionBody::Local(statements) = &instruction.body {
+            let errors: Vec<_> = statements
+                .iter()
+                .filter_map(|s| match s {
+                    ast::parsed::PilStatement::PolynomialIdentity(_, _) => None,
+                    ast::parsed::PilStatement::PermutationIdentity(_, l, _)
+                    | ast::parsed::PilStatement::PlookupIdentity(_, l, _) => l
+                        .selector
+                        .is_some()
+                        .then_some(format!("LHS selector not yet supported in {s}.")),
+                    _ => Some(format!("Statement not allowed in instruction body: {s}")),
+                })
+                .collect();
+            if !errors.is_empty() {
+                return Err(errors);
+            }
+        }
+        Ok(Instruction {
+            params: instruction.params,
+            body: instruction.body,
+        })
     }
 }

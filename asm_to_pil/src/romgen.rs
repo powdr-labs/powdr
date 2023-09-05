@@ -5,10 +5,11 @@ use std::{collections::HashMap, iter::repeat, ops::ControlFlow};
 use ast::{
     asm_analysis::{
         utils::{previsit_expression_in_statement_mut, previsit_expression_mut},
-        Batch, FunctionStatement, Incompatible, IncompatibleSet, Machine, PilBlock, Rom,
+        Batch, CallableSymbol, FunctionStatement, FunctionSymbol, Incompatible, IncompatibleSet,
+        Machine, OperationSymbol, PilBlock, Rom,
     },
     parsed::{
-        asm::{Param, ParamList},
+        asm::{OperationId, Param, ParamList, Params},
         Expression,
     },
 };
@@ -65,20 +66,23 @@ pub fn generate_machine_rom<T: FieldElement>(
         // do nothing, there is no rom to be generated
         (machine, None)
     } else {
-        let function_id = "_function_id";
+        // all callables in the machine must be functions
+        assert!(machine.callable.is_only_functions());
+
+        let operation_id = "_operation_id";
 
         let pc = machine.pc().unwrap();
 
         // add the necessary embedded instructions
         let embedded_instructions = [
             parse_instruction_definition(&format!(
-                "instr _jump_to_operation {{ {pc}' = {function_id} }}",
+                "instr _jump_to_operation {{ {pc}' = {operation_id} }}",
             )),
             parse_instruction_definition(&format!(
                 "instr {RESET_NAME} {{ {} }}",
                 machine
-                    .write_registers()
-                    .map(|r| format!("{}' = 0", r.name))
+                    .write_register_names()
+                    .map(|w| format!("{w}' = 0"))
                     .collect::<Vec<_>>()
                     .join(", ")
             )),
@@ -105,16 +109,14 @@ pub fn generate_machine_rom<T: FieldElement>(
 
         // the number of inputs is the max of the number of inputs needed in each function
         let input_count = machine
-            .functions
-            .iter()
-            .map(|o| o.params.inputs.params.len())
+            .functions()
+            .map(|f| f.params.inputs.params.len())
             .max()
             .unwrap_or(0);
         let output_count = machine
-            .functions
-            .iter()
-            .map(|o| {
-                o.params
+            .functions()
+            .map(|f| {
+                f.params
                     .outputs
                     .as_ref()
                     .map(|o| o.params.len())
@@ -134,9 +136,16 @@ pub fn generate_machine_rom<T: FieldElement>(
             input_assignment_registers_declarations.chain(output_assignment_registers_declarations),
         );
 
-        // add each function, setting the function_id to the current position in the ROM
-        for function in machine.functions.iter_mut() {
-            function.id = Some(T::from(rom.len() as u64));
+        // turn each function into an operation, setting the operation_id to the current position in the ROM
+        for callable in machine.callable.iter_mut() {
+            let operation_id = T::from(rom.len() as u64);
+
+            let name = callable.name;
+
+            let function: &mut FunctionSymbol<T> = match callable.symbol {
+                CallableSymbol::Function(f) => f,
+                CallableSymbol::Operation(_) => unreachable!(),
+            };
 
             // create substitution map from declared input to the hidden witness columns
             let input_substitution = function
@@ -148,18 +157,20 @@ pub fn generate_machine_rom<T: FieldElement>(
                 .map(|(index, param)| (param.name.clone(), input_at(index)))
                 .collect();
 
-            function.params.inputs.params = function
-                .params
-                .inputs
-                .params
-                .iter()
-                .enumerate()
-                .map(|(i, _)| Param {
-                    name: input_at(i),
-                    ty: None,
-                })
-                .collect();
-            function.params.outputs = function.params.outputs.clone().map(|outputs| ParamList {
+            let operation_inputs = ParamList {
+                params: function
+                    .params
+                    .inputs
+                    .params
+                    .iter()
+                    .enumerate()
+                    .map(|(i, _)| Param {
+                        name: input_at(i),
+                        ty: None,
+                    })
+                    .collect(),
+            };
+            let operation_outputs = function.params.outputs.clone().map(|outputs| ParamList {
                 params: outputs
                     .params
                     .into_iter()
@@ -185,10 +196,7 @@ pub fn generate_machine_rom<T: FieldElement>(
                 .first_mut()
                 .expect("function should have at least one statement as it must return")
                 .statements
-                .insert(
-                    0,
-                    parse_function_statement(&format!("_{}::", function.name)),
-                );
+                .insert(0, parse_function_statement(&format!("_{}::", name)));
 
             // modify the last batch to be caused by the coming label
             let last = batches
@@ -197,6 +205,17 @@ pub fn generate_machine_rom<T: FieldElement>(
             last.set_reason(IncompatibleSet::from(Incompatible::Label));
 
             rom.extend(batches);
+
+            // replace the function by an operation
+            *callable.symbol = OperationSymbol {
+                start: 0,
+                id: OperationId { id: operation_id },
+                params: Params {
+                    inputs: operation_inputs,
+                    outputs: operation_outputs,
+                },
+            }
+            .into();
         }
 
         // add the sink which can be used to fill the rest of the table
@@ -217,21 +236,21 @@ pub fn generate_machine_rom<T: FieldElement>(
         machine.constraints.push(PilBlock {
             start: 0,
             statements: vec![
-                // inject the function_id
-                parse_pil_statement(&format!("col witness {function_id}")),
+                // inject the operation_id
+                parse_pil_statement(&format!("col witness {operation_id}")),
                 // declare `_sigma` as the sum of the latch, will be 0 and then 1 after the end of the first call
                 parse_pil_statement(&format!("col witness {sigma}")),
                 parse_pil_statement(&format!("col fixed {first_step} = [1] + [0]*")),
                 parse_pil_statement(&format!(
                     "{sigma}' = (1 - {first_step}') * ({sigma} + {latch})"
                 )),
-                // once `_sigma` is 1, constrain `_function_id` to the label of the sink
-                parse_pil_statement(&format!("{sigma} * ({function_id} - {sink_id}) = 0")),
+                // once `_sigma` is 1, constrain `_operation_id` to the label of the sink
+                parse_pil_statement(&format!("{sigma} * ({operation_id} - {sink_id}) = 0")),
             ],
         });
         ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-        machine.function_id = Some(function_id.into());
+        machine.operation_id = Some(operation_id.into());
 
         (
             machine,

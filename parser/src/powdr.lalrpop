@@ -153,9 +153,9 @@ Machine: Machine<T> = {
 
 MachineArguments: MachineArguments = {
     "(" "_" "," "_" ")" => MachineArguments::default(),
-    "(" <latch:Identifier> "," "_" ")" => MachineArguments { latch: Some(latch), function_id: None },
-    "(" "_" "," <function_id:Identifier> ")" => MachineArguments { latch: None, function_id: Some(function_id) },
-    "(" <latch:Identifier> "," <function_id:Identifier> ")" => MachineArguments { latch: Some(latch), function_id: Some(function_id) },
+    "(" <latch:Identifier> "," "_" ")" => MachineArguments { latch: Some(latch), operation_id: None },
+    "(" "_" "," <operation_id:Identifier> ")" => MachineArguments { latch: None, operation_id: Some(operation_id) },
+    "(" <latch:Identifier> "," <operation_id:Identifier> ")" => MachineArguments { latch: Some(latch), operation_id: Some(operation_id) },
     => MachineArguments::default(),
 }
 
@@ -164,8 +164,10 @@ MachineStatement: MachineStatement<T> = {
     Submachine,
     RegisterDeclaration,
     InstructionDeclaration,
+    LinkDeclaration,
     InlinePil,
     FunctionDeclaration,
+    OperationDeclaration,
 }
 
 Degree: MachineStatement<T> = {
@@ -196,30 +198,31 @@ pub Instruction: Instruction<T> = {
     <params:Params> <body:InstructionBody> => Instruction { params, body }
 }
 
+pub LinkDeclaration: MachineStatement<T> = {
+    <start:@L> "link" <flag:Expression> <params:Params> "=" <to:CallableRef> ";" => MachineStatement::LinkDeclaration(LinkDeclaration { start, flag, params, to })
+}
+
 pub InstructionBody: InstructionBody<T> = {
     "{}" => InstructionBody::Local(vec![]),
     "{" <InstructionBodyElements> "}" => InstructionBody::Local(<>),
-    "=" <Identifier> "." <Identifier> => InstructionBody::External(<>),
+    "=" <f_ref:CallableRef> => InstructionBody::CallableRef(f_ref),
 }
 
-InstructionBodyElements: Vec<InstructionBodyElement<T>> = {
+pub CallableRef: CallableRef = {
+    <instance:Identifier> "." <callable:Identifier> => CallableRef { instance, callable }
+}
+
+InstructionBodyElements: Vec<PilStatement<T>> = {
     <mut list:( <InstructionBodyElement> "," )*> <end:InstructionBodyElement>  => { list.push(end); list },
     => vec![]
 }
 
-InstructionBodyElement: InstructionBodyElement<T> = {
-    <l:Expression> "=" <r:Expression> => InstructionBodyElement::PolynomialIdentity(l, r),
-    <SelectedExpressions> <PlookupOperator> <SelectedExpressions> => InstructionBodyElement::PlookupIdentity(<>),
-    <id:Identifier> "(" <arguments:ExpressionList> ")" => InstructionBodyElement::FunctionCall(FunctionCall {<>})
-}
-
-// This is only valid in instructions, not in PIL in general.
-// "connect" is not supported because it does not support selectors
-// and we need that for the instruction.
-
-PlookupOperator: PlookupOperator = {
-    "in" => PlookupOperator::In,
-    "is" => PlookupOperator::Is,
+InstructionBodyElement: PilStatement<T> = {
+    PolynomialIdentity,
+    PlookupIdentity,
+    PermutationIdentity,
+    // We could use FunctionCallStatement here, but it makes lalrpop fail to build
+    <@L> <Identifier> "(" <ExpressionList> ")" => PilStatement::FunctionCall(<>)
 }
 
 Params: Params = {
@@ -244,12 +247,15 @@ InlinePil: MachineStatement<T> = {
 }
 
 FunctionDeclaration: MachineStatement<T> = {
-    <@L> "function" <Identifier> <FunctionId> <Params> "{" <(<FunctionStatement>)*> "}" => MachineStatement::FunctionDeclaration(<>)
+    <@L> "function" <Identifier> <Params> "{" <(<FunctionStatement>)*> "}" => MachineStatement::FunctionDeclaration(<>)
 }
 
-FunctionId: Option<FunctionId<T>> = {
-    "<" <id:FieldElement> ">" => Some(FunctionId { id }),
-    => None
+OperationDeclaration: MachineStatement<T> = {
+    <@L> "operation" <Identifier> <OperationId> <Params> ";" => MachineStatement::OperationDeclaration(<>)
+}
+
+OperationId: OperationId<T> = {
+    "<" <id:FieldElement> ">" => OperationId { id },
 }
 
 pub FunctionStatement: FunctionStatement<T> = {

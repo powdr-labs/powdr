@@ -4,9 +4,9 @@ use std::{
 };
 
 use ast::parsed::{
-    asm::{ASMFile, Instruction, InstructionBody, InstructionBodyElement, MachineStatement},
+    asm::{ASMFile, Instruction, InstructionBody, MachineStatement},
     postvisit_expression_in_statement_mut, postvisit_expression_mut, Expression,
-    FunctionDefinition, PilStatement, SelectedExpressions,
+    FunctionDefinition, PilStatement,
 };
 use number::FieldElement;
 
@@ -45,23 +45,9 @@ where
                     MachineStatement::InstructionDeclaration(_, _, Instruction { body, .. }) => {
                         match body {
                             InstructionBody::Local(body) => {
-                                body.iter_mut().for_each(|e| match e {
-                                    InstructionBodyElement::PolynomialIdentity(left, right) => {
-                                        self.process_expression(left);
-                                        self.process_expression(right);
-                                    }
-                                    InstructionBodyElement::PlookupIdentity(left, _, right) => {
-                                        self.process_selected_expressions(left);
-                                        self.process_selected_expressions(right);
-                                    }
-                                    InstructionBodyElement::FunctionCall(c) => {
-                                        c.arguments.iter_mut().for_each(|i| {
-                                            self.process_expression(i);
-                                        });
-                                    }
-                                });
+                                *body = expander.expand_macros(std::mem::take(body))
                             }
-                            InstructionBody::External(..) => {}
+                            InstructionBody::CallableRef(..) => {}
                         }
                     }
                     MachineStatement::InlinePil(_, statements) => {
@@ -183,22 +169,5 @@ where
         }
 
         ControlFlow::<()>::Continue(())
-    }
-
-    fn process_expressions(&mut self, exprs: &mut [Expression<T>]) -> ControlFlow<()> {
-        for e in exprs.iter_mut() {
-            self.process_expression(e)?;
-        }
-        ControlFlow::Continue(())
-    }
-
-    fn process_selected_expressions(
-        &mut self,
-        exprs: &mut SelectedExpressions<T>,
-    ) -> ControlFlow<()> {
-        if let Some(e) = &mut exprs.selector {
-            self.process_expression(e)?;
-        };
-        self.process_expressions(&mut exprs.expressions)
     }
 }

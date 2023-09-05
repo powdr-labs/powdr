@@ -348,7 +348,7 @@ impl<T: FieldElement> PILContext<T> {
             .definitions
             .insert(name.clone(), (poly, value))
             .is_none();
-        assert!(is_new, "{name} aready defined.");
+        assert!(is_new, "{name} already defined.");
         self.source_order
             .push(StatementIdentifier::Definition(name));
         id

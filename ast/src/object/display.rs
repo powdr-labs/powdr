@@ -1,6 +1,6 @@
 use std::fmt::{Display, Formatter, Result};
 
-use super::{Function, Instr, Link, LinkFrom, LinkTo, Location, Machine, Object, PILGraph};
+use super::{Link, LinkFrom, LinkTo, Location, Machine, Object, Operation, PILGraph};
 
 impl Display for Location {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
@@ -43,21 +43,15 @@ impl<T: Display> Display for Link<T> {
     }
 }
 
-impl Display for LinkFrom {
+impl<T: Display> Display for LinkFrom<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write!(f, "{}", self.instr)
-    }
-}
-
-impl Display for Instr {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write!(f, "instr {} with params {}", self.name, self.params)
+        write!(f, "{} {}", self.flag, self.params)
     }
 }
 
 impl<T: Display> Display for LinkTo<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write!(f, "{} in {}", self.function, self.machine)
+        write!(f, "{} in {}", self.operation, self.machine)
     }
 }
 
@@ -65,17 +59,17 @@ impl Display for Machine {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(
             f,
-            "object at location \"{}\" with latch \"{}\" and function_id \"{}\"",
-            self.location, self.latch, self.function_id
+            "object at location \"{}\" with latch \"{}\" and operation_id \"{}\"",
+            self.location, self.latch, self.operation_id
         )
     }
 }
 
-impl<T: Display> Display for Function<T> {
+impl<T: Display> Display for Operation<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(
             f,
-            "function \"{}\" with id {} with params {}",
+            "operation \"{}\" with id {} with params {}",
             self.name, self.id, self.params,
         )
     }
