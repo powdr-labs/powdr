@@ -12,11 +12,10 @@ pub enum SingleDataValue<'a> {
 
 pub fn store_data_objects<'a>(
     objects: impl IntoIterator<Item = &'a (String, Vec<DataValue>)> + Copy,
-    mut memory_start: u32,
+    memory_start: u32,
     code_gen: &mut dyn FnMut(u32, SingleDataValue) -> Vec<String>,
 ) -> (Vec<String>, BTreeMap<String, u32>) {
-    memory_start = ((memory_start + 7) / 8) * 8;
-    let mut current_pos = memory_start;
+    let mut current_pos = ((memory_start + 7) / 8) * 8;
     let mut positions = BTreeMap::new();
     for (name, data) in objects.into_iter() {
         // TODO check if we need to use multiples of four.
@@ -30,7 +29,6 @@ pub fn store_data_objects<'a>(
 
     let code = objects
         .into_iter()
-        .filter(|(_, data)| !data.is_empty())
         .flat_map(|(name, data)| {
             let mut object_code = vec![];
             let mut pos = positions[name];
