@@ -2,19 +2,17 @@
 // Note that this relies on the trace table being non-wrapping, so it will
 // only work with the Halo2 backend (which is the only backend that supports
 // the BN254 curve).
-machine PoseidonBN254(LASTBLOCK, function_id) {
+machine PoseidonBN254(LASTBLOCK, operation_id) {
 
     // Hashes two "rate" elements and one "capacity" element to one field element
     // by applying the Poseidon permutation and returning the first rate element.
     // When the hash function is used only once, the capacity element should be
     // set to a constant, where different constants can be used to define different
     // hash functions.
-    function poseidon_permutation<0> input_in0, input_in1, input_cap -> in0 {
-    }
-
+    operation poseidon_permutation<0> input_in0, input_in1, input_cap -> in0;
 
     constraints {
-        col witness function_id;
+        col witness operation_id;
 
         // Using parameters from https://eprint.iacr.org/2019/458.pdf
         // See https://extgit.iaik.tugraz.at/krypto/hadeshash/-/blob/master/code/poseidonperm_x5_254_3.sage

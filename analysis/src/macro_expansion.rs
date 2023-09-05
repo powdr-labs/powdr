@@ -61,7 +61,7 @@ where
                                     }
                                 });
                             }
-                            InstructionBody::External(..) => {}
+                            InstructionBody::CallableRef(..) => {}
                         }
                     }
                     MachineStatement::InlinePil(_, statements) => {

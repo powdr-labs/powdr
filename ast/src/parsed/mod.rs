@@ -10,7 +10,7 @@ use self::asm::FunctionCall;
 #[derive(Debug, PartialEq, Eq)]
 pub struct PILFile<T>(pub Vec<PilStatement<T>>);
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub enum PilStatement<T> {
     /// File name
     Include(usize, String),
@@ -41,13 +41,13 @@ pub enum PilStatement<T> {
     FunctionCall(usize, String, Vec<Expression<T>>),
 }
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub struct SelectedExpressions<T> {
     pub selector: Option<Expression<T>>,
     pub expressions: Vec<Expression<T>>,
 }
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub enum Expression<T> {
     /// Reference to a constant, "%ConstantName"
     Constant(String),
@@ -72,14 +72,14 @@ impl<T> From<ShiftedPolynomialReference<T>> for Expression<T> {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Default, Clone)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Default, Clone)]
 pub struct PolynomialName<T> {
     pub name: String,
     pub array_size: Option<Expression<T>>,
 }
 
 /// A polynomial with an optional shift
-#[derive(Debug, PartialEq, Eq, Default, Clone)]
+#[derive(Debug, PartialEq, Eq, Default, Clone, PartialOrd, Ord)]
 pub struct ShiftedPolynomialReference<T> {
     /// Whether we shift or not
     is_next: bool,
@@ -119,7 +119,7 @@ impl<T> ShiftedPolynomialReference<T> {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Default, Clone)]
+#[derive(Debug, PartialEq, Eq, Default, Clone, PartialOrd, Ord)]
 /// A polynomial with an optional namespace
 pub struct NamespacedPolynomialReference<T> {
     /// The optional namespace, if `None` then this polynomial inherits the next enclosing namespace, if any
@@ -168,7 +168,7 @@ impl<T> NamespacedPolynomialReference<T> {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Default, Clone)]
+#[derive(Debug, PartialEq, Eq, Default, Clone, PartialOrd, Ord)]
 /// A polynomial with an optional index to support unidimensional arrays of polynomials
 pub struct IndexedPolynomialReference<T> {
     /// The optional index, is `Some` iff the declaration of this polynomial is an array
@@ -212,7 +212,7 @@ impl<T> IndexedPolynomialReference<T> {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Default, Clone)]
+#[derive(Debug, PartialEq, Eq, Default, Clone, PartialOrd, Ord)]
 /// A polynomial or array of polynomials
 pub struct PolynomialReference {
     /// The name of this polynomial or array of polynomials
@@ -254,13 +254,13 @@ impl PolynomialReference {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
 pub enum UnaryOperator {
     Plus,
     Minus,
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
 pub enum BinaryOperator {
     Add,
     Sub,
@@ -277,7 +277,7 @@ pub enum BinaryOperator {
 
 /// The definition of a function (excluding its name):
 /// Either a param-value mapping or an array expression.
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub enum FunctionDefinition<T> {
     /// Parameter-value-mapping.
     Mapping(Vec<String>, Expression<T>),
@@ -287,7 +287,7 @@ pub enum FunctionDefinition<T> {
     Query(Vec<String>, Expression<T>),
 }
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub enum ArrayExpression<T> {
     Value(Vec<Expression<T>>),
     RepeatedValue(Vec<Expression<T>>),

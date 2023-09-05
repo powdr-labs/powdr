@@ -4,11 +4,10 @@ use std::collections::BTreeMap;
 
 use ast::{
     asm_analysis::{
-        AnalysisASMFile, Instruction, InstructionDefinitionStatement, Machine, PilBlock,
-        SubmachineDeclaration,
+        AnalysisASMFile, LinkDefinitionStatement, Machine, PilBlock, SubmachineDeclaration,
     },
-    object::{Function, Instr, Link, LinkFrom, LinkTo, Location, Object, PILGraph},
-    parsed::{asm::InstructionBody, PilStatement},
+    object::{Link, LinkFrom, LinkTo, Location, Object, Operation, PILGraph},
+    parsed::{asm::CallableRef, PilStatement},
 };
 
 const MAIN_MACHINE: &str = "Main";
@@ -64,16 +63,15 @@ pub fn compile<T: FieldElement>(input: AnalysisASMFile<T>) -> PILGraph<T> {
     PILGraph {
         main: ast::object::Machine {
             location: main_location,
-            function_id: main_ty.function_id.clone().unwrap(),
             latch: main_ty.latch.clone().unwrap(),
+            operation_id: main_ty.operation_id.clone().unwrap(),
         },
         entry_points: main_ty
-            .functions
-            .iter()
-            .map(|f| Function {
-                name: MAIN_FUNCTION.into(),
-                id: f.id.unwrap(),
-                params: f.params.clone(),
+            .operations()
+            .map(|o| Operation {
+                name: MAIN_FUNCTION.to_string(),
+                id: o.id.id,
+                params: o.params.clone(),
             })
             .collect(),
         objects,
@@ -118,23 +116,21 @@ impl<'a, T: FieldElement> ASMPILConverter<'a, T> {
 
         self.submachines = input.submachines;
 
-        // machines should only have constraints, functions and external instructions at this point
-        assert!(input
-            .instructions
-            .iter()
-            .all(|i| matches!(i.instruction.body, InstructionBody::External(..))));
+        // machines should only have constraints, operations and links at this point
+        assert!(input.instructions.is_empty());
         assert!(input.latch.is_some());
-        assert!(input.function_id.is_some());
+        assert!(input.operation_id.is_some());
         assert!(input.registers.is_empty());
+        assert!(input.callable.is_only_operations());
 
         for block in input.constraints {
             self.handle_inline_pil(block);
         }
 
         let links = input
-            .instructions
+            .links
             .into_iter()
-            .filter_map(|instr| self.handle_instruction_def(instr))
+            .map(|d| self.handle_link_def(d))
             .collect();
 
         Object {
@@ -144,60 +140,52 @@ impl<'a, T: FieldElement> ASMPILConverter<'a, T> {
         }
     }
 
-    fn handle_instruction_def(
+    fn handle_link_def(
         &mut self,
-        InstructionDefinitionStatement {
+        LinkDefinitionStatement {
             start: _,
-            name,
-            instruction: Instruction { params, body },
-        }: InstructionDefinitionStatement<T>,
-    ) -> Option<Link<T>> {
-        // TODO: this relies on `asm_to_pil` calling the instructions flags a certain way. It will go away once external instructions are turned into links earlier
-        let instruction_flag = format!("instr_{name}");
-        let instr = Instr {
-            name,
+            flag,
             params,
-            flag: instruction_flag,
+            to: CallableRef { instance, callable },
+        }: LinkDefinitionStatement<T>,
+    ) -> Link<T> {
+        let from = LinkFrom {
+            params: params.clone(),
+            flag: flag.clone(),
         };
 
-        let link = match body {
-            InstructionBody::Local(_body) => None,
-            InstructionBody::External(instance, function) => {
-                // get the machine type name for this submachine from the submachine delcarations
-                let instance_ty_name = self
-                    .submachines
-                    .iter()
-                    .find(|s| s.name == instance)
-                    .unwrap()
-                    .ty
-                    .clone();
-                // get the machine type from the machine map
-                let instance_ty = self.machines.get(&instance_ty_name).unwrap();
-                // get the instance location from the current location joined with the instance name
-                let instance_location = self.location.clone().join(instance);
+        // get the machine type name for this submachine from the submachine delcarations
+        let instance_ty_name = self
+            .submachines
+            .iter()
+            .find(|s| s.name == instance)
+            .unwrap()
+            .ty
+            .clone();
+        // get the machine type from the machine map
+        let instance_ty = self.machines.get(&instance_ty_name).unwrap();
+        // get the instance location from the current location joined with the instance name
+        let instance_location = self.location.clone().join(instance);
 
-                Some(Link {
-                    from: LinkFrom { instr },
-                    to: instance_ty
-                        .functions
-                        .iter()
-                        .find(|f| f.name == function)
-                        .map(|d| LinkTo {
-                            machine: ast::object::Machine {
-                                location: instance_location,
-                                latch: instance_ty.latch.clone().unwrap(),
-                                function_id: instance_ty.function_id.clone().unwrap(),
-                            },
-                            function: Function {
-                                name: d.name.clone(),
-                                id: d.id.unwrap(),
-                                params: d.params.clone(),
-                            },
-                        })
-                        .unwrap(),
+        Link {
+            from,
+            to: instance_ty
+                .operation_definitions()
+                .find(|o| o.name == callable)
+                .map(|d| LinkTo {
+                    machine: ast::object::Machine {
+                        location: instance_location,
+                        latch: instance_ty.latch.clone().unwrap(),
+                        operation_id: instance_ty.operation_id.clone().unwrap(),
+                    },
+                    operation: Operation {
+                        name: d.name.to_string(),
+                        id: d.operation.id.id,
+                        params: d.operation.params.clone(),
+                    },
                 })
-            }
-        };
-        link
+                .unwrap()
+                .clone(),
+        }
     }
 }

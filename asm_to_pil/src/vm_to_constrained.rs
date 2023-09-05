@@ -5,8 +5,8 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 use ast::{
     asm_analysis::{
         AssignmentStatement, Batch, DebugDirective, FunctionStatement,
-        InstructionDefinitionStatement, InstructionStatement, LabelStatement, Machine, PilBlock,
-        RegisterDeclarationStatement, RegisterTy, Rom,
+        InstructionDefinitionStatement, InstructionStatement, LabelStatement,
+        LinkDefinitionStatement, Machine, PilBlock, RegisterDeclarationStatement, RegisterTy, Rom,
     },
     parsed::{
         asm::{InstructionBody, InstructionBodyElement, PlookupOperator},
@@ -25,8 +25,7 @@ use crate::common::{instruction_flag, return_instruction, RETURN_NAME};
 
 pub fn convert_machine<T: FieldElement>(machine: Machine<T>, rom: Option<Rom<T>>) -> Machine<T> {
     let output_count = machine
-        .functions
-        .iter()
+        .operations()
         .map(|f| {
             f.params
                 .outputs
@@ -84,12 +83,13 @@ impl<T: FieldElement> ASMPILConverter<T> {
             self.handle_register_declaration(reg);
         }
 
-        // turn internal instructions into constraints and only keep external instructions
-        input.instructions = input
-            .instructions
-            .drain(..)
-            .filter_map(|instr| self.handle_instruction_def(instr))
-            .collect();
+        // turn internal instructions into constraints and external ones into links
+        input.links.extend(
+            input
+                .instructions
+                .drain(..)
+                .filter_map(|instr| self.handle_instruction_def(instr)),
+        );
 
         // introduce `return` instruction
         assert!(
@@ -295,7 +295,7 @@ impl<T: FieldElement> ASMPILConverter<T> {
     fn handle_instruction_def(
         &mut self,
         s: InstructionDefinitionStatement<T>,
-    ) -> Option<InstructionDefinitionStatement<T>> {
+    ) -> Option<LinkDefinitionStatement<T>> {
         let instruction_name = s.name.clone();
         let instruction_flag = format!("instr_{instruction_name}");
         self.create_witness_fixed_pair(s.start, &instruction_flag);
@@ -426,7 +426,12 @@ impl<T: FieldElement> ASMPILConverter<T> {
                 }
                 None
             }
-            InstructionBody::External(..) => Some(s),
+            InstructionBody::CallableRef(to) => Some(LinkDefinitionStatement {
+                start: s.start,
+                flag: direct_reference(instruction_flag),
+                params: s.instruction.params,
+                to,
+            }),
         };
         self.instructions.insert(instruction_name, instruction);
         res

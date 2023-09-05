@@ -1,12 +1,11 @@
-machine SimpleStatic(latch, function_id) {
+machine SimpleStatic(latch, operation_id) {
 
     degree 8;
 
-    function power_4<0> x -> y {        
-    }
+    operation power_4<0> x -> y;
 
     constraints {
-        col fixed function_id = [0]*;
+        col fixed operation_id = [0]*;
         col fixed latch = [0, 0, 0, 1]*;
         col witness x;
         col witness y;

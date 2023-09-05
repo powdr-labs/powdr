@@ -153,9 +153,9 @@ Machine: Machine<T> = {
 
 MachineArguments: MachineArguments = {
     "(" "_" "," "_" ")" => MachineArguments::default(),
-    "(" <latch:Identifier> "," "_" ")" => MachineArguments { latch: Some(latch), function_id: None },
-    "(" "_" "," <function_id:Identifier> ")" => MachineArguments { latch: None, function_id: Some(function_id) },
-    "(" <latch:Identifier> "," <function_id:Identifier> ")" => MachineArguments { latch: Some(latch), function_id: Some(function_id) },
+    "(" <latch:Identifier> "," "_" ")" => MachineArguments { latch: Some(latch), operation_id: None },
+    "(" "_" "," <operation_id:Identifier> ")" => MachineArguments { latch: None, operation_id: Some(operation_id) },
+    "(" <latch:Identifier> "," <operation_id:Identifier> ")" => MachineArguments { latch: Some(latch), operation_id: Some(operation_id) },
     => MachineArguments::default(),
 }
 
@@ -164,8 +164,10 @@ MachineStatement: MachineStatement<T> = {
     Submachine,
     RegisterDeclaration,
     InstructionDeclaration,
+    LinkDeclaration,
     InlinePil,
     FunctionDeclaration,
+    OperationDeclaration,
 }
 
 Degree: MachineStatement<T> = {
@@ -196,10 +198,18 @@ pub Instruction: Instruction<T> = {
     <params:Params> <body:InstructionBody> => Instruction { params, body }
 }
 
+pub LinkDeclaration: MachineStatement<T> = {
+    <start:@L> "link" <flag:Expression> <params:Params> "=" <to:CallableRef> ";" => MachineStatement::LinkDeclaration(LinkDeclaration { start, flag, params, to })
+}
+
 pub InstructionBody: InstructionBody<T> = {
     "{}" => InstructionBody::Local(vec![]),
     "{" <InstructionBodyElements> "}" => InstructionBody::Local(<>),
-    "=" <Identifier> "." <Identifier> => InstructionBody::External(<>),
+    "=" <f_ref:CallableRef> => InstructionBody::CallableRef(f_ref),
+}
+
+pub CallableRef: CallableRef = {
+    <instance:Identifier> "." <callable:Identifier> => CallableRef { instance, callable }
 }
 
 InstructionBodyElements: Vec<InstructionBodyElement<T>> = {
@@ -244,12 +254,15 @@ InlinePil: MachineStatement<T> = {
 }
 
 FunctionDeclaration: MachineStatement<T> = {
-    <@L> "function" <Identifier> <FunctionId> <Params> "{" <(<FunctionStatement>)*> "}" => MachineStatement::FunctionDeclaration(<>)
+    <@L> "function" <Identifier> <Params> "{" <(<FunctionStatement>)*> "}" => MachineStatement::FunctionDeclaration(<>)
 }
 
-FunctionId: Option<FunctionId<T>> = {
-    "<" <id:FieldElement> ">" => Some(FunctionId { id }),
-    => None
+OperationDeclaration: MachineStatement<T> = {
+    <@L> "operation" <Identifier> <OperationId> <Params> ";" => MachineStatement::OperationDeclaration(<>)
+}
+
+OperationId: OperationId<T> = {
+    "<" <id:FieldElement> ">" => OperationId { id },
 }
 
 pub FunctionStatement: FunctionStatement<T> = {
