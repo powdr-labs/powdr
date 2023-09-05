@@ -1,41 +1,64 @@
-use std::ops::{Index, IndexMut};
+use std::{
+    marker::PhantomData,
+    ops::{Index, IndexMut},
+};
 
 use ast::analyzed::{PolyID, PolynomialType};
+
+// Marker types for each PolynomialType
+#[derive(Clone, Copy)]
+pub struct Committed;
+
+#[derive(Clone, Copy)]
+pub struct Constant;
+
+pub trait PolynomialTypeTrait {
+    fn ptype() -> PolynomialType;
+}
+
+impl PolynomialTypeTrait for Committed {
+    fn ptype() -> PolynomialType {
+        PolynomialType::Committed
+    }
+}
+
+impl PolynomialTypeTrait for Constant {
+    fn ptype() -> PolynomialType {
+        PolynomialType::Constant
+    }
+}
 
 /// A Map indexed by polynomial ID, for a specific polynomial type (e.g. fixed or witness).
 /// For performance reasons, it uses a Vec<V> internally and assumes that the polynomial IDs
 /// are contiguous.
 #[derive(Clone)]
-pub struct ColumnMap<V> {
+pub struct ColumnMap<V, T: PolynomialTypeTrait> {
     values: Vec<V>,
-    ptype: PolynomialType,
+    _ptype: PhantomData<T>,
 }
 
-impl<V: Clone> ColumnMap<V> {
-    /// Create a new ColumnMap with the given initial value and polynomial type.
-    pub fn new(initial_value: V, capacity: usize, ptype: PolynomialType) -> Self {
+impl<V: Clone, T: PolynomialTypeTrait> ColumnMap<V, T> {
+    /// Create a new ColumnMap with the given initial value and size.
+    pub fn new(initial_value: V, size: usize) -> Self {
         ColumnMap {
-            values: vec![initial_value; capacity],
-            ptype,
+            values: vec![initial_value; size],
+            _ptype: PhantomData,
         }
     }
 }
 
-impl<V> ColumnMap<V> {
-    pub fn from(values: impl Iterator<Item = V>, ptype: PolynomialType) -> Self {
+impl<V, T: PolynomialTypeTrait> ColumnMap<V, T> {
+    pub fn from(values: impl Iterator<Item = V>) -> Self {
         ColumnMap {
             values: values.collect(),
-            ptype,
+            _ptype: PhantomData,
         }
     }
-}
 
-impl<V> ColumnMap<V> {
     pub fn keys(&self) -> impl Iterator<Item = PolyID> {
-        let ptype = self.ptype;
         (0..self.values.len()).map(move |i| PolyID {
             id: i as u64,
-            ptype,
+            ptype: T::ptype(),
         })
     }
 
@@ -56,18 +79,18 @@ impl<V> ColumnMap<V> {
     }
 }
 
-impl<V> Index<&PolyID> for ColumnMap<V> {
+impl<V, T: PolynomialTypeTrait> Index<&PolyID> for ColumnMap<V, T> {
     type Output = V;
 
     fn index(&self, poly_id: &PolyID) -> &Self::Output {
-        assert!(poly_id.ptype == self.ptype);
+        assert!(poly_id.ptype == T::ptype());
         &self.values[poly_id.id as usize]
     }
 }
 
-impl<V> IndexMut<&PolyID> for ColumnMap<V> {
+impl<V, T: PolynomialTypeTrait> IndexMut<&PolyID> for ColumnMap<V, T> {
     fn index_mut(&mut self, poly_id: &PolyID) -> &mut Self::Output {
-        assert!(poly_id.ptype == self.ptype);
+        assert!(poly_id.ptype == T::ptype());
         &mut self.values[poly_id.id as usize]
     }
 }

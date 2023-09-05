@@ -1,6 +1,6 @@
 use std::fmt::Debug;
 
-use ast::analyzed::{Expression, PolyID, PolynomialReference, PolynomialType};
+use ast::analyzed::{Expression, PolyID, PolynomialReference};
 use itertools::Itertools;
 use number::{DegreeType, FieldElement};
 
@@ -8,7 +8,7 @@ use crate::witgen::Constraint;
 
 use super::{
     affine_expression::{AffineExpression, AffineResult},
-    column_map::ColumnMap,
+    column_map::{ColumnMap, Committed},
     expression_evaluator::ExpressionEvaluator,
     global_constraints::RangeConstraintSet,
     range_constraints::RangeConstraint,
@@ -101,7 +101,7 @@ impl<T: FieldElement> Debug for Cell<'_, T> {
 }
 
 /// A row of cells, indexed by polynomial ID.
-pub type Row<'a, T> = ColumnMap<Cell<'a, T>>;
+pub type Row<'a, T> = ColumnMap<Cell<'a, T>, Committed>;
 
 impl<T: FieldElement> Debug for Row<'_, T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -146,13 +146,13 @@ impl<T: FieldElement> Row<'_, T> {
 #[derive(Clone)]
 pub struct RowFactory<'a, T: FieldElement> {
     fixed_data: &'a FixedData<'a, T>,
-    global_range_constraints: ColumnMap<Option<RangeConstraint<T>>>,
+    global_range_constraints: ColumnMap<Option<RangeConstraint<T>>, Committed>,
 }
 
 impl<'a, T: FieldElement> RowFactory<'a, T> {
     pub fn new(
         fixed_data: &'a FixedData<'a, T>,
-        global_range_constraints: ColumnMap<Option<RangeConstraint<T>>>,
+        global_range_constraints: ColumnMap<Option<RangeConstraint<T>>, Committed>,
     ) -> Self {
         Self {
             fixed_data,
@@ -171,18 +171,14 @@ impl<'a, T: FieldElement> RowFactory<'a, T> {
                         None => CellValue::Unknown,
                     },
                 }),
-            PolynomialType::Committed,
         )
     }
 
-    pub fn row_from_known_values_dense(&self, values: &ColumnMap<T>) -> Row<'a, T> {
-        ColumnMap::from(
-            values.iter().map(|(poly_id, &v)| Cell {
-                name: self.fixed_data.column_name(&poly_id),
-                value: CellValue::Known(v),
-            }),
-            PolynomialType::Committed,
-        )
+    pub fn row_from_known_values_dense(&self, values: &ColumnMap<T, Committed>) -> Row<'a, T> {
+        ColumnMap::from(values.iter().map(|(poly_id, &v)| Cell {
+            name: self.fixed_data.column_name(&poly_id),
+            value: CellValue::Known(v),
+        }))
     }
 
     pub fn row_from_known_values_sparse(
@@ -197,13 +193,12 @@ impl<'a, T: FieldElement> RowFactory<'a, T> {
     }
 }
 
-impl<T: FieldElement> From<Row<'_, T>> for ColumnMap<T> {
+impl<T: FieldElement> From<Row<'_, T>> for ColumnMap<T, Committed> {
     /// Builds a map from polynomial ID to value. Unknown values are set to zero.
     fn from(val: Row<T>) -> Self {
         ColumnMap::from(
             val.into_iter()
                 .map(|(_, cell)| cell.value.unwrap_or_default()),
-            PolynomialType::Committed,
         )
     }
 }
