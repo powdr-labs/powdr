@@ -175,6 +175,8 @@ pub fn references_in_statement<R: Register, F: FunctionOpKind>(
     match statement {
         Statement::Label(_) | Statement::Directive(_, _) => (),
         Statement::Instruction(_, args) => {
+            // TODO: filter out arguments of "fence" instruction, because they
+            // are parsed as symbols, but they aren't really...
             for arg in args {
                 arg.post_visit_expressions(&mut |expr| {
                     if let Expression::Symbol(sym) = expr {

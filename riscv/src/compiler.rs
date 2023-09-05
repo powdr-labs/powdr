@@ -65,12 +65,13 @@ struct RiscvArchitecture {}
 impl Architecture for RiscvArchitecture {
     fn instruction_ends_control_flow(instr: &str) -> bool {
         match instr {
-            "li" | "lui" | "la" | "mv" | "add" | "addi" | "sub" | "neg" | "mul" | "mulhu"
-            | "divu" | "xor" | "xori" | "and" | "andi" | "or" | "ori" | "not" | "slli" | "sll"
-            | "srli" | "srl" | "srai" | "seqz" | "snez" | "slt" | "slti" | "sltu" | "sltiu"
-            | "sgtz" | "beq" | "beqz" | "bgeu" | "bltu" | "blt" | "bge" | "bltz" | "blez"
-            | "bgtz" | "bgez" | "bne" | "bnez" | "jal" | "jalr" | "call" | "ecall" | "ebreak"
-            | "lw" | "lb" | "lbu" | "lhu" | "sw" | "sh" | "sb" | "nop" => false,
+            "li" | "lui" | "la" | "mv" | "add" | "addi" | "sub" | "neg" | "mul" | "mulhsu"
+            | "mulhu" | "divu" | "xor" | "xori" | "and" | "andi" | "or" | "ori" | "not"
+            | "slli" | "sll" | "srli" | "srl" | "srai" | "seqz" | "snez" | "slt" | "slti"
+            | "sltu" | "sltiu" | "sgtz" | "beq" | "beqz" | "bgeu" | "bltu" | "blt" | "bge"
+            | "bltz" | "blez" | "bgtz" | "bgez" | "bne" | "bnez" | "jal" | "jalr" | "call"
+            | "ecall" | "ebreak" | "lh" | "lw" | "lb" | "lbu" | "lhu" | "sw" | "sh" | "sb"
+            | "nop" | "fence" | "amoadd.w.rl" | "amoadd.w" => false,
             "j" | "jr" | "tail" | "ret" | "unimp" => true,
             _ => {
                 panic!("Unknown instruction: {instr}");
