@@ -340,9 +340,12 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
             ));
         }
 
+        // Make the block two larger than the block size, it includes the last row of the previous block
+        // and the first row of the next block.
+        let block = vec![self.row_factory.fresh_row(); self.block_size + 2];
         let mut processor = Processor::new(
             self.block_size as DegreeType - 1,
-            vec![self.row_factory.fresh_row(); self.block_size + 2],
+            block,
             identity_processor,
             &self.identities,
             self.fixed_data,
