@@ -116,8 +116,7 @@ Register: Register = {
 }
 
 OffsetRegister: Argument = {
-    <c:Expression> "(" <r:Register> ")" => Argument::RegOffset(r, c),
-    "(" <r:Register> ")" => Argument::RegOffset(r, Expression::Number(0)),
+    <c:Expression?> "(" <r:Register> ")" => Argument::RegOffset(r, c),
 }
 
 Expression: Expression = {
