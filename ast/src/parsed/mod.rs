@@ -15,6 +15,7 @@ pub enum PilStatement<T> {
     Include(usize, String),
     /// Name of namespace and polynomial degree (constant)
     Namespace(usize, String, Expression<T>),
+    LetStatement(usize, String, Option<Expression<T>>),
     PolynomialDefinition(usize, String, Expression<T>),
     PublicDeclaration(
         usize,

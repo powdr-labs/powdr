@@ -51,6 +51,8 @@ where
         | PilStatement::PublicDeclaration(_, _, _, e)
         | PilStatement::ConstantDefinition(_, _, e) => postvisit_expression_mut(e, f),
 
+        PilStatement::LetStatement(_, _, Some(body)) => postvisit_expression_mut(body, f),
+
         PilStatement::PolynomialConstantDefinition(_, _, fundef)
         | PilStatement::PolynomialCommitDeclaration(_, _, Some(fundef)) => match fundef {
             FunctionDefinition::Query(_, e) | FunctionDefinition::Mapping(_, e) => {
@@ -62,7 +64,8 @@ where
         PilStatement::PolynomialCommitDeclaration(_, _, None)
         | PilStatement::Include(_, _)
         | PilStatement::PolynomialConstantDeclaration(_, _)
-        | PilStatement::MacroDefinition(_, _, _, _, _) => ControlFlow::Continue(()),
+        | PilStatement::MacroDefinition(_, _, _, _, _)
+        | PilStatement::LetStatement(_, _, None) => ControlFlow::Continue(()),
     }
 }
 

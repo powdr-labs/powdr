@@ -369,6 +369,7 @@ impl<T: Display> Display for PilStatement<T> {
             PilStatement::Namespace(_, name, poly_length) => {
                 write!(f, "namespace {name}({poly_length});")
             }
+            PilStatement::LetStatement(_, _, _) => todo!(),
             PilStatement::PolynomialDefinition(_, name, value) => {
                 write!(f, "pol {name} = {value};")
             }

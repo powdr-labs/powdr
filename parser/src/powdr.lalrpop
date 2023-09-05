@@ -50,6 +50,7 @@ Part: Part = {
 pub PilStatement = {
     Include,
     Namespace,
+    LetStatement,
     ConstantDefinition,
     PolynomialDefinition,
     PublicDeclaration,
@@ -70,6 +71,10 @@ Include: PilStatement<T> = {
 
 Namespace: PilStatement<T> = {
     <start:@L> "namespace" <name:Identifier> "(" <pol_degree:Expression> ")" => PilStatement::Namespace(<>)
+}
+
+LetStatement: PilStatement<T> = {
+    <@L> "let" <Identifier> <( "=" <Expression> )?> => PilStatement::LetStatement(<>)
 }
 
 ConstantDefinition: PilStatement<T> = {
