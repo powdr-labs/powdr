@@ -23,10 +23,6 @@ members = [
     "type_check",
 ]
 
-# Running "cargo build" on root directory will by default build just
-# "powdr_cli", which may skip disabled dependencies.
-default-members = ["powdr_cli"]
-
 [patch."https://github.com/privacy-scaling-explorations/halo2.git"]
 # TODO change back to this once the PR is merged
 #halo2_proofs = { git = "https://github.com/appliedzkp/halo2.git", rev = "d3746109d7d38be53afc8ddae8fdfaf1f02ad1d7" }
