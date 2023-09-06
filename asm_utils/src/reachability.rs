@@ -168,21 +168,21 @@ pub fn extract_label_offsets<R: Register, F: FunctionOpKind>(
         })
 }
 
-pub fn references_in_statement<R: Register, F: FunctionOpKind>(
+pub fn references_in_statement<R: Register, F: FunctionOpKind, A: Architecture>(
     statement: &Statement<R, F>,
 ) -> BTreeSet<&str> {
     let mut ret = BTreeSet::new();
     match statement {
         Statement::Label(_) | Statement::Directive(_, _) => (),
-        Statement::Instruction(_, args) => {
-            // TODO: filter out arguments of "fence" instruction, because they
-            // are parsed as symbols, but they aren't really...
-            for arg in args {
-                arg.post_visit_expressions(&mut |expr| {
-                    if let Expression::Symbol(sym) = expr {
-                        ret.insert(sym.as_str());
-                    }
-                });
+        Statement::Instruction(name, args) => {
+            if A::instruction_can_have_references(name) {
+                for arg in args {
+                    arg.post_visit_expressions(&mut |expr| {
+                        if let Expression::Symbol(sym) = expr {
+                            ret.insert(sym.as_str());
+                        }
+                    });
+                }
             }
         }
     };
@@ -198,7 +198,7 @@ fn basic_block_references_starting_from<R: Register, F: FunctionOpKind, A: Archi
         if let Statement::Label(l) = s {
             seen_labels.push(l.as_str());
         } else {
-            referenced_labels.extend(references_in_statement(s))
+            referenced_labels.extend(references_in_statement::<R, F, A>(s))
         }
     });
     (referenced_labels.into_iter().collect(), seen_labels)
