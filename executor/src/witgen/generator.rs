@@ -1,4 +1,4 @@
-use ast::analyzed::{Identity, PolyID, PolynomialType};
+use ast::analyzed::{Identity, PolyID};
 use itertools::Itertools;
 use number::{DegreeType, FieldElement};
 use parser_util::lines::indent;
@@ -9,7 +9,7 @@ use std::time::Instant;
 use crate::witgen::identity_processor::{self, IdentityProcessor};
 use crate::witgen::rows::RowUpdater;
 
-use super::column_map::ColumnMap;
+use super::column_map::WitnessColumnMap;
 use super::machines::{KnownMachine, Machine};
 use super::query_processor::QueryProcessor;
 use super::range_constraints::RangeConstraint;
@@ -80,7 +80,7 @@ where
         fixed_lookup: &'b mut FixedLookup<T>,
         identities: &'a [&'a Identity<T>],
         witnesses: BTreeSet<PolyID>,
-        global_range_constraints: ColumnMap<Option<RangeConstraint<T>>>,
+        global_range_constraints: WitnessColumnMap<Option<RangeConstraint<T>>>,
         machines: Vec<KnownMachine<'a, T>>,
         query_callback: Option<QueryCallback>,
     ) -> Self {
@@ -121,42 +121,38 @@ where
         self.fixed_data.degree - 1
     }
 
-    pub fn compute_next_row(&mut self, next_row: DegreeType) -> ColumnMap<T> {
+    pub fn compute_next_row(&mut self, next_row: DegreeType) -> WitnessColumnMap<T> {
         self.compute_next_row_or_initialize(next_row, ProcessingPhase::Regular)
     }
 
     /// Update the first row for the wrap-around.
-    pub fn update_first_row(&mut self) -> ColumnMap<T> {
+    pub fn update_first_row(&mut self) -> WitnessColumnMap<T> {
         assert_eq!(self.current_row_index, self.last_row());
-        ColumnMap::<T>::from(
-            self.first
-                .values()
-                .zip(self.current.values())
-                .map(|(first, new_first)| {
-                    let first = first.value.clone();
-                    let new_first = new_first.value.clone();
-                    match (
-                        (first.is_known(), first.unwrap_or_default()),
-                        (new_first.is_known(), new_first.unwrap_or_default()),
-                    ) {
-                        ((true, x), (true, y)) => {
-                            // TODO we should probably print a proper error.
-                            assert_eq!(x, y);
-                            x
-                        }
-                        ((false, _), (true, y)) => y,
-                        ((_, x), (_, _)) => x,
+        WitnessColumnMap::<T>::from(self.first.values().zip(self.current.values()).map(
+            |(first, new_first)| {
+                let first = first.value.clone();
+                let new_first = new_first.value.clone();
+                match (
+                    (first.is_known(), first.unwrap_or_default()),
+                    (new_first.is_known(), new_first.unwrap_or_default()),
+                ) {
+                    ((true, x), (true, y)) => {
+                        // TODO we should probably print a proper error.
+                        assert_eq!(x, y);
+                        x
                     }
-                }),
-            PolynomialType::Committed,
-        )
+                    ((false, _), (true, y)) => y,
+                    ((_, x), (_, _)) => x,
+                }
+            },
+        ))
     }
 
     fn compute_next_row_or_initialize(
         &mut self,
         next_row: DegreeType,
         phase: ProcessingPhase,
-    ) -> ColumnMap<T> {
+    ) -> WitnessColumnMap<T> {
         if phase == ProcessingPhase::Initialization {
             assert_eq!(next_row, self.last_row());
             self.current_row_index = next_row;
@@ -352,7 +348,7 @@ where
     /// Verifies the proposed values for the next row.
     /// TODO this is bad for machines because we might introduce rows in the machine that are then
     /// not used.
-    pub fn propose_next_row(&mut self, next_row: DegreeType, values: &ColumnMap<T>) -> bool {
+    pub fn propose_next_row(&mut self, next_row: DegreeType, values: &WitnessColumnMap<T>) -> bool {
         self.set_next_row_and_log(next_row);
 
         let proposed_row = self.row_factory.row_from_known_values_dense(values);

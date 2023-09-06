@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 
 use super::{EvalResult, FixedData, FixedLookup};
 use crate::witgen::affine_expression::AffineExpression;
-use crate::witgen::column_map::ColumnMap;
+use crate::witgen::column_map::WitnessColumnMap;
 use crate::witgen::identity_processor::IdentityProcessor;
 use crate::witgen::processor::Processor;
 use crate::witgen::rows::{Row, RowFactory, RowPair, RowUpdater, UnknownStrategy};
@@ -65,7 +65,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         connecting_identities: &[&'a Identity<T>],
         identities: &[&'a Identity<T>],
         witness_cols: &HashSet<PolyID>,
-        global_range_constraints: &ColumnMap<Option<RangeConstraint<T>>>,
+        global_range_constraints: &WitnessColumnMap<Option<RangeConstraint<T>>>,
     ) -> Option<Self> {
         for id in connecting_identities {
             // TODO we should check that the other constraints/fixed columns are also periodic.
