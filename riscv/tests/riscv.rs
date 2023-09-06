@@ -87,6 +87,14 @@ fn test_password() {
 }
 
 #[test]
+// TODO: If this is merged, will probably break nightly tests.
+#[ignore = "Doesn't work yet"]
+fn test_evm() {
+    let case = "evm";
+    verify_crate(case, vec![]);
+}
+
+#[test]
 #[ignore = "Too slow"]
 #[should_panic(expected = "Witness generation failed.")]
 fn test_print() {
