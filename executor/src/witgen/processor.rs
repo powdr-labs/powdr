@@ -200,6 +200,45 @@ impl<'a, 'b, T: FieldElement> Processor<'a, 'b, T> {
         Ok(self.apply_updates(row_index, &updates, || identity.to_string()))
     }
 
+    fn process_outer_query(
+        &mut self,
+        row_index: usize,
+    ) -> Result<(bool, Constraints<&'a PolynomialReference, T>), EvalError<T>> {
+        let Calldata { left, right } = self.calldata.as_mut().unwrap();
+
+        let row_pair = RowPair::new(
+            &self.data[row_index],
+            &self.data[row_index + 1],
+            self.row_offset + row_index as u64,
+            self.fixed_data,
+            UnknownStrategy::Unknown,
+        );
+
+        let updates = self
+            .identity_processor
+            .process_link(left, right, &row_pair)
+            .map_err(|e| {
+                log::warn!("Error in outer query: {e}");
+                log::warn!("Some of the following entries could not be matched:");
+                for (l, r) in left.iter().zip(right.expressions.iter()) {
+                    if let Ok(r) = row_pair.evaluate(r) {
+                        log::warn!("  => {} = {}", l, r);
+                    }
+                }
+                e
+            })?;
+
+        let progress = self.apply_updates(row_index, &updates, || "outer query".to_string());
+
+        let outer_assignments = updates
+            .constraints
+            .into_iter()
+            .filter(|(poly, _)| !self.witness_cols.contains(&poly.poly_id()))
+            .collect::<Vec<_>>();
+
+        Ok((progress, outer_assignments))
+    }
+
     fn apply_updates(
         &mut self,
         row_index: usize,
@@ -225,43 +264,14 @@ impl<'a, 'b, T: FieldElement> Processor<'a, 'b, T> {
                 row_updater.apply_update(poly, c);
             } else if let Constraint::Assignment(v) = c {
                 let left = &mut self.calldata.as_mut().unwrap().left;
+                log::trace!("      => {} (outer) = {}", poly, v);
                 for l in left.iter_mut() {
-                    log::trace!("      => {} (outer) = {}", poly, v);
                     l.assign(poly, *v);
                 }
             };
         }
 
         true
-    }
-
-    fn process_outer_query(
-        &mut self,
-        row_index: usize,
-    ) -> Result<(bool, Constraints<&'a PolynomialReference, T>), EvalError<T>> {
-        let Calldata { left, right } = self.calldata.as_mut().unwrap();
-
-        let row_pair = RowPair::new(
-            &self.data[row_index],
-            &self.data[row_index + 1],
-            self.row_offset + row_index as u64,
-            self.fixed_data,
-            UnknownStrategy::Unknown,
-        );
-
-        let updates = self
-            .identity_processor
-            .process_link(left, right, &row_pair)?;
-
-        let progress = self.apply_updates(row_index, &updates, || "outer query".to_string());
-
-        let outer_assignments = updates
-            .constraints
-            .into_iter()
-            .filter(|(poly, _)| !self.witness_cols.contains(&poly.poly_id()))
-            .collect::<Vec<_>>();
-
-        Ok((progress, outer_assignments))
     }
 }
 

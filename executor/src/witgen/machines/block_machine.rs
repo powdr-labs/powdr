@@ -297,6 +297,10 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         right: &'a SelectedExpressions<T>,
     ) -> EvalResult<'a, T> {
         log::trace!("Start processing block machine");
+        log::trace!("Left values:");
+        for l in left {
+            log::trace!("  {}", l);
+        }
 
         // TODO: Add possibility for machines to call other machines.
         let mut machines = vec![];
