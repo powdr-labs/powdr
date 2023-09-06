@@ -253,15 +253,6 @@ impl<T: Display> Display for FunctionCall<T> {
     }
 }
 
-impl Display for PlookupOperator {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        match self {
-            PlookupOperator::In => write!(f, "in"),
-            PlookupOperator::Is => write!(f, "is"),
-        }
-    }
-}
-
 impl Display for Param {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(

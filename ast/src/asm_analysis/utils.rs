@@ -1,6 +1,6 @@
 use std::{iter::once, ops::ControlFlow};
 
-use crate::parsed::{asm::FunctionCall, Expression};
+use crate::parsed::{Expression, FunctionCall};
 
 use super::FunctionStatement;
 
