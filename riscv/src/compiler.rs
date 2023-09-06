@@ -78,6 +78,12 @@ impl Architecture for RiscvArchitecture {
             }
         }
     }
+
+    fn instruction_can_have_references(instr: &str) -> bool {
+        // fence arguments are not symbols, they are like reserved
+        // keywords affecting the instruction behavior
+        !instr.starts_with("fence")
+    }
 }
 
 pub fn machine_decls() -> Vec<&'static str> {

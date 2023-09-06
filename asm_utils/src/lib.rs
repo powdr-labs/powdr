@@ -9,4 +9,5 @@ pub mod utils;
 
 pub trait Architecture {
     fn instruction_ends_control_flow(instr: &str) -> bool;
+    fn instruction_can_have_references(instr: &str) -> bool;
 }
