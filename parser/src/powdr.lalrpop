@@ -310,7 +310,31 @@ Expression: Expression<T> = {
 }
 
 BoxedExpression: Box<Expression<T>> = {
+    LogicalOr,
+}
+
+LogicalOr: Box<Expression<T>> = {
+    <l:LogicalOr> "||" <r:LogicalAnd> => Box::new(Expression::BinaryOperation(l, BinaryOperator::LogicalOr, r)),
+    LogicalAnd,
+}
+
+LogicalAnd: Box<Expression<T>> = {
+    <l:LogicalAnd> "&&" <r:Comparison> => Box::new(Expression::BinaryOperation(l, BinaryOperator::LogicalAnd, r)),
+    Comparison,
+}
+
+Comparison: Box<Expression<T>> = {
+    <BinaryOr> <ComparisonOp> <BinaryOr> => Box::new(Expression::BinaryOperation(<>)),
     BinaryOr,
+}
+
+ComparisonOp: BinaryOperator = {
+    "<" => BinaryOperator::Less,
+    "<=" => BinaryOperator::LessEqual,
+    "==" => BinaryOperator::Equal,
+    "!=" => BinaryOperator::NotEqual,
+    ">=" => BinaryOperator::GreaterEqual,
+    ">" => BinaryOperator::Greater,
 }
 
 BinaryOr: Box<Expression<T>> = {
@@ -388,6 +412,7 @@ Unary: Box<Expression<T>> = {
 UnaryOp: UnaryOperator = {
     "+" => UnaryOperator::Plus,
     "-" => UnaryOperator::Minus,
+    "!" => UnaryOperator::LogicalNot,
 }
 
 Term: Box<Expression<T>> = {

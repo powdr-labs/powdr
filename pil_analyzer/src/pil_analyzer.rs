@@ -7,7 +7,7 @@ use ast::parsed::{
     ArrayExpression, BinaryOperator, FunctionDefinition, PilStatement, PolynomialName,
     UnaryOperator,
 };
-use number::{BigInt, DegreeType, FieldElement};
+use number::{DegreeType, FieldElement};
 
 use ast::analyzed::util::previsit_expressions_in_pil_file_mut;
 use ast::analyzed::{
@@ -580,40 +580,11 @@ impl<T: FieldElement> PILContext<T> {
         op: BinaryOperator,
         right: &::ast::parsed::Expression<T>,
     ) -> Option<T> {
-        if let (Some(left), Some(right)) = (
-            self.evaluate_expression(left),
-            self.evaluate_expression(right),
-        ) {
-            Some(match op {
-                BinaryOperator::Add => left + right,
-                BinaryOperator::Sub => left - right,
-                BinaryOperator::Mul => left * right,
-                BinaryOperator::Div => left.integer_div(right),
-                BinaryOperator::Pow => {
-                    let right_int = right.to_integer();
-                    assert!(right_int.to_arbitrary_integer() <= u32::MAX.into());
-                    left.pow(right_int)
-                }
-                BinaryOperator::Mod => left.integer_mod(right),
-                BinaryOperator::BinaryAnd => {
-                    (left.to_integer() & right.to_integer()).try_into().unwrap()
-                }
-                BinaryOperator::BinaryXor => {
-                    (left.to_integer() ^ right.to_integer()).try_into().unwrap()
-                }
-                BinaryOperator::BinaryOr => {
-                    (left.to_integer() | right.to_integer()).try_into().unwrap()
-                }
-                BinaryOperator::ShiftLeft => {
-                    (left.to_integer() << right.to_degree()).try_into().unwrap()
-                }
-                BinaryOperator::ShiftRight => {
-                    (left.to_integer() >> right.to_degree()).try_into().unwrap()
-                }
-            })
-        } else {
-            None
-        }
+        Some(ast::evaluate_binary_operation(
+            self.evaluate_expression(left)?,
+            op,
+            self.evaluate_expression(right)?,
+        ))
     }
 
     fn evaluate_unary_operation(
@@ -621,10 +592,10 @@ impl<T: FieldElement> PILContext<T> {
         op: UnaryOperator,
         value: &::ast::parsed::Expression<T>,
     ) -> Option<T> {
-        self.evaluate_expression(value).map(|v| match op {
-            UnaryOperator::Plus => v,
-            UnaryOperator::Minus => -v,
-        })
+        Some(ast::evaluate_unary_operation(
+            op,
+            self.evaluate_expression(value)?,
+        ))
     }
 }
 
@@ -645,6 +616,7 @@ namespace Bin(65536);
 namespace T(65536);
     col fixed first_step = [1] + [0]*;
     col fixed line(i) { i };
+    col fixed ops(i) { ((i < 7) && (6 >= !i)) };
     col witness pc;
     col witness XInv;
     col witness XIsZero;
