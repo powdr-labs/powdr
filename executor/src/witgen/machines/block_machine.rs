@@ -326,7 +326,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
             let result = identity_processor.process_link(left, right, &row_pair)?;
 
             if result.is_complete() {
-                return Ok(EvalValue::complete(vec![]));
+                return Ok(result);
             }
         }
 
