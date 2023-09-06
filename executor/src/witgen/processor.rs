@@ -12,7 +12,7 @@ use super::{
     sequence_iterator::{
         DefaultSequenceIterator, IdentityInSequence, ProcessingSequenceIterator, SequenceStep,
     },
-    Constraints, EvalError, FixedData,
+    Constraints, EvalError, EvalValue, FixedData,
 };
 
 type Left<'a, T> = Vec<AffineExpression<&'a PolynomialReference, T>>;
@@ -171,7 +171,7 @@ impl<'a, 'b, T: FieldElement> Processor<'a, 'b, T> {
         let row_pair = RowPair::new(
             &self.data[row_index],
             &self.data[row_index + 1],
-            self.row_offset + row_index as u64,
+            global_row_index,
             self.fixed_data,
             UnknownStrategy::Unknown,
         );
@@ -197,6 +197,21 @@ impl<'a, 'b, T: FieldElement> Processor<'a, 'b, T> {
                 e
             })?;
 
+        Ok(self.apply_updates(row_index, &updates, || identity.to_string()))
+    }
+
+    fn apply_updates(
+        &mut self,
+        row_index: usize,
+        updates: &EvalValue<&'a PolynomialReference, T>,
+        source_name: impl Fn() -> String,
+    ) -> bool {
+        if updates.constraints.is_empty() {
+            return false;
+        }
+
+        log::trace!("    Updates from: {}", source_name());
+
         // Build RowUpdater
         // (a bit complicated, because we need two mutable
         // references to elements of the same vector)
@@ -205,18 +220,27 @@ impl<'a, 'b, T: FieldElement> Processor<'a, 'b, T> {
         let next = after.first_mut().unwrap();
         let mut row_updater = RowUpdater::new(current, next, self.row_offset + row_index as u64);
 
-        // Apply the updates, return progress
-        Ok(row_updater.apply_updates(&updates, || identity.to_string()))
+        for (poly, c) in &updates.constraints {
+            if self.witness_cols.contains(&poly.poly_id()) {
+                row_updater.apply_update(poly, c);
+            } else if let Constraint::Assignment(v) = c {
+                let left = &mut self.calldata.as_mut().unwrap().left;
+                for l in left.iter_mut() {
+                    log::trace!("      => {} (outer) = {}", poly, v);
+                    l.assign(poly, *v);
+                }
+            };
+        }
+
+        true
     }
 
-    // TODO: Remove code duplication with process_identity
     fn process_outer_query(
         &mut self,
         row_index: usize,
     ) -> Result<(bool, Constraints<&'a PolynomialReference, T>), EvalError<T>> {
         let Calldata { left, right } = self.calldata.as_mut().unwrap();
 
-        // Create row pair
         let row_pair = RowPair::new(
             &self.data[row_index],
             &self.data[row_index + 1],
@@ -229,33 +253,7 @@ impl<'a, 'b, T: FieldElement> Processor<'a, 'b, T> {
             .identity_processor
             .process_link(left, right, &row_pair)?;
 
-        if updates.constraints.is_empty() {
-            return Ok((false, vec![]));
-        }
-
-        log::trace!("    Updates from: outer query");
-        // Build RowUpdater
-        // (a bit complicated, because we need two mutable
-        // references to elements of the same vector)
-        let (before, after) = self.data.split_at_mut(row_index + 1);
-        let current = before.last_mut().unwrap();
-        let next = after.first_mut().unwrap();
-        let mut row_updater = RowUpdater::new(current, next, self.row_offset + row_index as u64);
-
-        if updates.constraints.is_empty() {
-            return Ok((false, vec![]));
-        }
-
-        for (poly, c) in &updates.constraints {
-            if self.witness_cols.contains(&poly.poly_id()) {
-                row_updater.apply_update(poly, c);
-            } else if let Constraint::Assignment(v) = c {
-                for l in left.iter_mut() {
-                    log::trace!("      => {} (outer) = {}", poly, v);
-                    l.assign(poly, *v);
-                }
-            };
-        }
+        let progress = self.apply_updates(row_index, &updates, || "outer query".to_string());
 
         let outer_assignments = updates
             .constraints
@@ -263,7 +261,7 @@ impl<'a, 'b, T: FieldElement> Processor<'a, 'b, T> {
             .filter(|(poly, _)| !self.witness_cols.contains(&poly.poly_id()))
             .collect::<Vec<_>>();
 
-        Ok((true, outer_assignments))
+        Ok((progress, outer_assignments))
     }
 }
 
