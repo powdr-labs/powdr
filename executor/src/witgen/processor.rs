@@ -17,22 +17,14 @@ use super::{
 
 type Left<'a, T> = Vec<AffineExpression<&'a PolynomialReference, T>>;
 
-pub struct Calldata<'a, 'b, T: FieldElement> {
-    left: &'b [AffineExpression<&'a PolynomialReference, T>],
+pub struct Calldata<'a, T: FieldElement> {
+    left: Left<'a, T>,
     right: &'a SelectedExpressions<T>,
-    left_mut: Left<'a, T>,
 }
 
-impl<'a, 'b, T: FieldElement> Calldata<'a, 'b, T> {
-    pub fn new(
-        left: &'b [AffineExpression<&'a PolynomialReference, T>],
-        right: &'a SelectedExpressions<T>,
-    ) -> Self {
-        Self {
-            left,
-            right,
-            left_mut: left.to_vec(),
-        }
+impl<'a, T: FieldElement> Calldata<'a, T> {
+    pub fn new(left: Left<'a, T>, right: &'a SelectedExpressions<T>) -> Self {
+        Self { left, right }
     }
 }
 
@@ -56,7 +48,7 @@ pub struct Processor<'a, 'b, T: FieldElement> {
     row_factory: RowFactory<'a, T>,
     /// The set of witness columns that are actually part of this machine.
     witness_cols: &'b HashSet<PolyID>,
-    calldata: Option<Calldata<'a, 'b, T>>,
+    calldata: Option<Calldata<'a, T>>,
 }
 
 impl<'a, 'b, T: FieldElement> Processor<'a, 'b, T> {
@@ -81,7 +73,7 @@ impl<'a, 'b, T: FieldElement> Processor<'a, 'b, T> {
         }
     }
 
-    pub fn with_calldata(self, calldata: Calldata<'a, 'b, T>) -> Self {
+    pub fn with_calldata(self, calldata: Calldata<'a, T>) -> Self {
         Self {
             calldata: Some(calldata),
             ..self
@@ -162,7 +154,7 @@ impl<'a, 'b, T: FieldElement> Processor<'a, 'b, T> {
 
     /// Destroys itself, returns the data.
     pub fn finish(self) -> (Vec<Row<'a, T>>, Option<Left<'a, T>>) {
-        (self.data, self.calldata.map(|c| c.left_mut))
+        (self.data, self.calldata.map(|c| c.left))
     }
 
     /// Given a row and identity index, computes any updates, applies them and returns
@@ -222,11 +214,7 @@ impl<'a, 'b, T: FieldElement> Processor<'a, 'b, T> {
         &mut self,
         row_index: usize,
     ) -> Result<(bool, Constraints<&'a PolynomialReference, T>), EvalError<T>> {
-        let Calldata {
-            left,
-            right,
-            left_mut,
-        } = self.calldata.as_mut().unwrap();
+        let Calldata { left, right } = self.calldata.as_mut().unwrap();
 
         // Create row pair
         let row_pair = RowPair::new(
@@ -262,7 +250,7 @@ impl<'a, 'b, T: FieldElement> Processor<'a, 'b, T> {
             if self.witness_cols.contains(&poly.poly_id()) {
                 row_updater.apply_update(poly, c);
             } else if let Constraint::Assignment(v) = c {
-                for l in left_mut.iter_mut() {
+                for l in left.iter_mut() {
                     log::trace!("      => {} (outer) = {}", poly, v);
                     l.assign(poly, *v);
                 }

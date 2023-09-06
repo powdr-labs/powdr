@@ -352,7 +352,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
             self.row_factory.clone(),
             &self.witness_cols,
         )
-        .with_calldata(Calldata::new(left, right));
+        .with_calldata(Calldata::new(left.to_vec(), right));
 
         let outer_assignments = processor.solve(&mut sequence_iterator)?;
         let (mut new_block, left_new) = processor.finish();
