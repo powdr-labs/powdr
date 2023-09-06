@@ -94,7 +94,7 @@ pub fn prove_chunk<T: FieldElement>(
 
     log::info!("Generating aggregation circuit and vk...");
 
-    let protocol_comp = compile(&params, &comp_vk, Config::kzg().with_num_instance(vec![]));
+    let protocol_comp = compile(&params, &comp_vk, Config::kzg().with_num_instance(aggregation::AggregationCircuit::num_instance()));
     let empty_snark_comp = aggregation::Snark::new_without_witness(protocol_comp.clone());
     let aggr_circuit = aggregation::AggregationCircuit::new_without_witness(
         &params,
@@ -127,9 +127,9 @@ pub fn prove_chunk<T: FieldElement>(
     log::info!("Generating compression proofs...");
 
     let comp_pk = keygen_pk(&params, comp_vk.clone(), &comp_circuit).unwrap();
-    let comp_proofs = app_proofs
+    let comp_circuits_with_proofs = app_proofs
         .into_iter()
-        .map(|(proof_app, vk_app)| {
+        .map(|(proof_app, _vk_app)| {
             /*
             let protocol_app = compile(
                 &params_app,
@@ -141,7 +141,7 @@ pub fn prove_chunk<T: FieldElement>(
             let comp_circuit_with_proof =
                 aggregation::AggregationCircuit::new(&params_app, [snark_app]);
 
-            gen_proof::<
+            let proof = gen_proof::<
                 _,
                 _,
                 aggregation::PoseidonTranscript<NativeLoader, _>,
@@ -151,7 +151,8 @@ pub fn prove_chunk<T: FieldElement>(
                 &comp_pk,
                 comp_circuit_with_proof.clone(),
                 comp_circuit_with_proof.instances(),
-            )
+            );
+            (comp_circuit_with_proof, proof)
         })
         .collect::<Vec<_>>();
 
@@ -168,7 +169,7 @@ pub fn prove_chunk<T: FieldElement>(
 
     //let protocol_comp = compile(&params, &comp_vk, Config::kzg().with_num_instance(vec![]));
     let snark_comp_1 =
-        aggregation::Snark::new(protocol_comp.clone(), vec![], comp_proofs[0].clone());
+        aggregation::Snark::new(protocol_comp.clone(), comp_circuits_with_proofs[0].0.instances(), comp_circuits_with_proofs[0].1.clone());
     //let snark_comp_2 = aggregation::Snark::new(protocol_comp, vec![], comp_proofs[0].clone());
     let aggr_circuit_with_proof =
     //    aggregation::AggregationCircuit::new(&params, [snark_comp_1, snark_comp_2]);
