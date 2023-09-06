@@ -1,7 +1,8 @@
 use std::{iter::once, ops::ControlFlow};
 
 use super::{
-    ArrayExpression, Expression, FunctionCall, FunctionDefinition, MatchArm, PilStatement,
+    ArrayExpression, Expression, FunctionCall, FunctionDefinition, LambdaExpression, MatchArm,
+    PilStatement,
 };
 
 /// Visits `expr` and all of its sub-expressions and returns true if `f` returns true on any of them.
@@ -49,9 +50,8 @@ where
         | PilStatement::PolynomialDefinition(_, _, e)
         | PilStatement::PolynomialIdentity(_, e)
         | PilStatement::PublicDeclaration(_, _, _, e)
-        | PilStatement::ConstantDefinition(_, _, e) => postvisit_expression_mut(e, f),
-
-        PilStatement::LetStatement(_, _, Some(body)) => postvisit_expression_mut(body, f),
+        | PilStatement::ConstantDefinition(_, _, e)
+        | PilStatement::LetStatement(_, _, Some(e)) => postvisit_expression_mut(e, f),
 
         PilStatement::PolynomialConstantDefinition(_, _, fundef)
         | PilStatement::PolynomialCommitDeclaration(_, _, Some(fundef)) => match fundef {
@@ -105,7 +105,11 @@ where
             previsit_expression(left, f)?;
             previsit_expression(right, f)?;
         }
-        Expression::FreeInput(e) | Expression::UnaryOperation(_, e) => previsit_expression(e, f)?,
+        Expression::FreeInput(e)
+        | Expression::UnaryOperation(_, e)
+        | Expression::LambdaExpression(LambdaExpression { params: _, body: e }) => {
+            previsit_expression(e, f)?
+        }
         Expression::Tuple(items)
         | Expression::FunctionCall(FunctionCall {
             id: _,
@@ -142,7 +146,9 @@ where
             previsit_expression_mut(left, f)?;
             previsit_expression_mut(right, f)?;
         }
-        Expression::FreeInput(e) | Expression::UnaryOperation(_, e) => {
+        Expression::FreeInput(e)
+        | Expression::UnaryOperation(_, e)
+        | Expression::LambdaExpression(LambdaExpression { params: _, body: e }) => {
             previsit_expression_mut(e.as_mut(), f)?
         }
         Expression::Tuple(items)
@@ -178,7 +184,9 @@ where
             postvisit_expression_mut(left, f)?;
             postvisit_expression_mut(right, f)?;
         }
-        Expression::FreeInput(e) | Expression::UnaryOperation(_, e) => {
+        Expression::FreeInput(e)
+        | Expression::UnaryOperation(_, e)
+        | Expression::LambdaExpression(LambdaExpression { params: _, body: e }) => {
             postvisit_expression_mut(e.as_mut(), f)?
         }
         Expression::Tuple(items)

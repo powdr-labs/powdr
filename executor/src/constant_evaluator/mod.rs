@@ -103,6 +103,7 @@ impl<'a, T: FieldElement> Evaluator<'a, T> {
             Expression::UnaryOperation(op, expr) => {
                 evaluate_unary_operation(*op, self.evaluate(expr))
             }
+            Expression::LambdaExpression(_) => panic!(),
             Expression::FunctionCall(FunctionCall { id, arguments }) => {
                 let arg_values = arguments
                     .iter()

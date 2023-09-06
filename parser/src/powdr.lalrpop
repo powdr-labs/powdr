@@ -339,7 +339,12 @@ Expression: Expression<T> = {
 }
 
 BoxedExpression: Box<Expression<T>> = {
-    LogicalOr,
+    LambdaExpression,
+}
+
+LambdaExpression: Box<Expression<T>> = {
+    "|" <params:ParameterList> "|" <body:BoxedExpression> => Box::new(Expression::LambdaExpression(LambdaExpression{params, body})),
+    LogicalOr
 }
 
 LogicalOr: Box<Expression<T>> = {
@@ -354,7 +359,7 @@ LogicalAnd: Box<Expression<T>> = {
 
 Comparison: Box<Expression<T>> = {
     <BinaryOr> <ComparisonOp> <BinaryOr> => Box::new(Expression::BinaryOperation(<>)),
-    BinaryOr,
+    BinaryOr
 }
 
 ComparisonOp: BinaryOperator = {
