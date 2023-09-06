@@ -36,7 +36,6 @@ where
     T: FieldElement,
 {
     fn expand_asm(&mut self, file: ASMFile<T>) -> ASMFile<T> {
-        let mut expander = MacroExpander::default();
         let machines = file
             .machines
             .into_iter()
@@ -45,13 +44,13 @@ where
                     MachineStatement::InstructionDeclaration(_, _, Instruction { body, .. }) => {
                         match body {
                             InstructionBody::Local(body) => {
-                                *body = expander.expand_macros(std::mem::take(body))
+                                *body = self.expand_macros(std::mem::take(body))
                             }
                             InstructionBody::CallableRef(..) => {}
                         }
                     }
                     MachineStatement::InlinePil(_, statements) => {
-                        *statements = expander.expand_macros(std::mem::take(statements));
+                        *statements = self.expand_macros(std::mem::take(statements));
                     }
                     _ => {}
                 });
