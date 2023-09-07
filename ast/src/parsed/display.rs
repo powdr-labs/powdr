@@ -497,6 +497,14 @@ impl Display for BinaryOperator {
                 BinaryOperator::BinaryOr => "|",
                 BinaryOperator::ShiftLeft => "<<",
                 BinaryOperator::ShiftRight => ">>",
+                BinaryOperator::LogicalOr => "||",
+                BinaryOperator::LogicalAnd => "&&",
+                BinaryOperator::Less => "<",
+                BinaryOperator::LessEqual => "<=",
+                BinaryOperator::Equal => "==",
+                BinaryOperator::NotEqual => "!=",
+                BinaryOperator::GreaterEqual => ">=",
+                BinaryOperator::Greater => ">",
             }
         )
     }
@@ -510,6 +518,7 @@ impl Display for UnaryOperator {
             match self {
                 UnaryOperator::Minus => "-",
                 UnaryOperator::Plus => "+",
+                UnaryOperator::LogicalNot => "!",
             }
         )
     }

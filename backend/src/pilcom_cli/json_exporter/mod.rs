@@ -270,7 +270,15 @@ impl<'a, T: FieldElement> Exporter<'a, T> {
                     | BinaryOperator::BinaryOr
                     | BinaryOperator::BinaryXor
                     | BinaryOperator::ShiftLeft
-                    | BinaryOperator::ShiftRight => {
+                    | BinaryOperator::ShiftRight
+                    | BinaryOperator::LogicalOr
+                    | BinaryOperator::LogicalAnd
+                    | BinaryOperator::Less
+                    | BinaryOperator::LessEqual
+                    | BinaryOperator::Equal
+                    | BinaryOperator::NotEqual
+                    | BinaryOperator::GreaterEqual
+                    | BinaryOperator::Greater => {
                         panic!("Operator {op:?} not supported on polynomials.")
                     }
                 };
@@ -297,6 +305,7 @@ impl<'a, T: FieldElement> Exporter<'a, T> {
                         },
                         deps,
                     ),
+                    UnaryOperator::LogicalNot => panic!("Operator {op} not allowed here."),
                 }
             }
             Expression::FunctionCall(_, _) => {

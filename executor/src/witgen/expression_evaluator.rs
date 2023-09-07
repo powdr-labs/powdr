@@ -112,30 +112,19 @@ where
                 | BinaryOperator::BinaryXor
                 | BinaryOperator::BinaryOr
                 | BinaryOperator::ShiftLeft
-                | BinaryOperator::ShiftRight => {
+                | BinaryOperator::ShiftRight
+                | BinaryOperator::LogicalOr
+                | BinaryOperator::LogicalAnd
+                | BinaryOperator::Less
+                | BinaryOperator::LessEqual
+                | BinaryOperator::Equal
+                | BinaryOperator::NotEqual
+                | BinaryOperator::GreaterEqual
+                | BinaryOperator::Greater => {
                     if let (Some(left), Some(right)) =
                         (left.constant_value(), right.constant_value())
                     {
-                        let result: T = match op {
-                            BinaryOperator::Mod => left.integer_mod(right),
-                            BinaryOperator::BinaryAnd => {
-                                (left.to_integer() & right.to_integer()).into()
-                            }
-                            BinaryOperator::BinaryXor => {
-                                (left.to_integer() ^ right.to_integer()).into()
-                            }
-                            BinaryOperator::BinaryOr => {
-                                (left.to_integer() | right.to_integer()).into()
-                            }
-                            BinaryOperator::ShiftLeft => {
-                                (left.to_integer() << right.to_degree()).into()
-                            }
-                            BinaryOperator::ShiftRight => {
-                                (left.to_integer() >> right.to_degree()).into()
-                            }
-                            _ => panic!(),
-                        };
-                        Ok(result.into())
+                        Ok(ast::evaluate_binary_operation(left, *op, right).into())
                     } else {
                         panic!()
                     }
@@ -154,6 +143,13 @@ where
         self.evaluate(expr).map(|v| match op {
             UnaryOperator::Plus => v,
             UnaryOperator::Minus => -v,
+            UnaryOperator::LogicalNot => {
+                if let Some(v) = v.constant_value() {
+                    ast::evaluate_unary_operation(*op, v).into()
+                } else {
+                    panic!()
+                }
+            }
         })
     }
 }

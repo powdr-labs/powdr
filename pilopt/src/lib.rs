@@ -135,6 +135,7 @@ fn simplify_expression_single<T: FieldElement>(e: &mut Expression<T>) {
             *e = Expression::Number(match op {
                 UnaryOperator::Plus => inner,
                 UnaryOperator::Minus => -inner,
+                UnaryOperator::LogicalNot => inner.is_zero().into(),
             });
             return;
         }

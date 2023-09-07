@@ -256,6 +256,7 @@ impl PolynomialReference {
 pub enum UnaryOperator {
     Plus,
     Minus,
+    LogicalNot,
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
@@ -271,6 +272,14 @@ pub enum BinaryOperator {
     BinaryOr,
     ShiftLeft,
     ShiftRight,
+    LogicalOr,
+    LogicalAnd,
+    Less,
+    LessEqual,
+    Equal,
+    NotEqual,
+    GreaterEqual,
+    Greater,
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]

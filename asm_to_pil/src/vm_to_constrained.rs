@@ -617,7 +617,15 @@ impl<T: FieldElement> ASMPILConverter<T> {
                 | BinaryOperator::BinaryXor
                 | BinaryOperator::BinaryOr
                 | BinaryOperator::ShiftLeft
-                | BinaryOperator::ShiftRight => {
+                | BinaryOperator::ShiftRight
+                | BinaryOperator::LogicalOr
+                | BinaryOperator::LogicalAnd
+                | BinaryOperator::Less
+                | BinaryOperator::LessEqual
+                | BinaryOperator::Equal
+                | BinaryOperator::NotEqual
+                | BinaryOperator::GreaterEqual
+                | BinaryOperator::Greater => {
                     panic!("Invalid operation in expression {left} {op} {right}")
                 }
             },
