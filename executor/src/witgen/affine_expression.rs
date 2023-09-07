@@ -133,14 +133,12 @@ where
     /// Incorporates the case where the symbolic variable `key` is assigned
     /// the value `value`.
     pub fn assign(&mut self, key: K, value: T) {
-        let mut offset = 0.into();
         for (k, coeff) in &mut self.coefficients {
             if *k == key {
-                offset += *coeff * value;
+                self.offset += *coeff * value;
                 *coeff = 0.into();
             }
         }
-        self.offset -= offset;
         self.clean = false;
     }
 }
@@ -574,6 +572,26 @@ mod test {
         T: FieldElement,
     {
         input.iter().map(|x| (*x).into()).enumerate().collect()
+    }
+
+    #[test]
+    pub fn test_affine_assign() {
+        let mut a = AffineExpression::<_, GoldilocksField> {
+            coefficients: convert(vec![2, 3]),
+            offset: 3.into(),
+            clean: true,
+        };
+        a.assign(0, 3.into());
+        assert_eq!(
+            a,
+            AffineExpression {
+                coefficients: convert(vec![0, 3]),
+                offset: 9.into(),
+                clean: false
+            },
+        );
+        a.assign(1, 5.into());
+        assert_eq!(a.constant_value().unwrap(), 24.into());
     }
 
     #[test]
