@@ -1,9 +1,8 @@
-# 1 "sources/bltu.S"
-# 1 "<built-in>"
-# 1 "<command-line>"
-# 31 "<command-line>"
+# 0 "sources/bltu.S"
+# 0 "<built-in>"
+# 0 "<command-line>"
 # 1 "/usr/include/stdc-predef.h" 1 3 4
-# 32 "<command-line>" 2
+# 0 "<command-line>" 2
 # 1 "sources/bltu.S"
 # See LICENSE for license details.
 

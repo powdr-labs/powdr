@@ -1,22 +1,20 @@
-# 0 "sources/simple.S"
+# 0 "sources/amoadd_w.S"
 # 0 "<built-in>"
 # 0 "<command-line>"
 # 1 "/usr/include/stdc-predef.h" 1 3 4
 # 0 "<command-line>" 2
-# 1 "sources/simple.S"
+# 1 "sources/amoadd_w.S"
 # See LICENSE for license details.
 
 #*****************************************************************************
-# simple.S
+# amoadd_w.S
 #-----------------------------------------------------------------------------
 
-# This is the most basic self checking test. If your simulator does not
-# pass thiss then there is little chance that it will pass any of the
-# more complicated self checking tests.
+# Test amoadd.w instruction.
 
 
 # 1 "sources/riscv_test.h" 1
-# 13 "sources/simple.S" 2
+# 11 "sources/amoadd_w.S" 2
 # 1 "sources/test_macros.h" 1
 
 
@@ -78,12 +76,30 @@
 #-----------------------------------------------------------------------
 # Test data section
 #-----------------------------------------------------------------------
-# 14 "sources/simple.S" 2
+# 12 "sources/amoadd_w.S" 2
 
 
 .globl __runtime_start; __runtime_start:
 
-___pass: j ___pass;
+  test_2: li x10, 2; ebreak; li a0, 0xffffffff80000000; li a1, 0xfffffffffffff800; la a3, amo_operand; sw a0, 0(a3); amoadd.w a4, a1, 0(a3);; li x29, 0xffffffff80000000; li x28, 2; bne a4, x29, fail;
+
+
+
+
+
+
+
+  test_3: li x10, 3; ebreak; lw a5, 0(a3); li x29, 0x000000007ffff800; li x28, 3; bne a5, x29, fail;
+
+  # try again after a cache miss
+  test_4: li x10, 4; ebreak; li a1, 0xffffffff80000000; amoadd.w a4, a1, 0(a3);; li x29, 0x000000007ffff800; li x28, 4; bne a4, x29, fail;
+
+
+
+
+  test_5: li x10, 5; ebreak; lw a5, 0(a3); li x29, 0xfffffffffffff800; li x28, 5; bne a5, x29, fail;
+
+  bne x0, x28, pass; fail: unimp;; pass: ___pass: j ___pass;
 
 
 
@@ -93,3 +109,9 @@ ___pass: j ___pass;
  
 
 
+
+    .bss
+    .align 3
+amo_operand:
+    .word 0
+    .word 0
