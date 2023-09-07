@@ -74,26 +74,26 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
     ) -> Option<Self> {
         for id in connecting_identities {
             // TODO we should check that the other constraints/fixed columns are also periodic.
-            if let Some(period) = try_to_period(&id.right.selector, fixed_data) {
+            if let Some(block_size) = try_to_period(&id.right.selector, fixed_data) {
+                assert!(block_size <= fixed_data.degree as usize);
                 let row_factory = RowFactory::new(fixed_data, global_range_constraints.clone());
-                let mut machine = BlockMachine {
-                    block_size: period,
+                // Start out with an empty block so that we do not have to deal with wrap-around
+                // when storing machine witness data.
+                // This will be filled with the default block in `take_witness_col_values`
+                let data = vec![row_factory.fresh_row(); block_size];
+                return Some(BlockMachine {
+                    block_size,
                     selected_expressions: id.right.clone(),
                     identities: identities.to_vec(),
-                    data: vec![],
+                    data,
                     row_factory,
                     witness_cols: witness_cols.clone(),
                     processing_sequence_cache: ProcessingSequenceCache::new(
-                        period,
+                        block_size,
                         identities.len(),
                     ),
                     fixed_data,
-                };
-                // Append a block so that we do not have to deal with wrap-around
-                // when storing machine witness data.
-                machine.append_new_block(fixed_data.degree).unwrap();
-
-                return Some(machine);
+                });
             }
         }
 
@@ -274,18 +274,6 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         }
     }
 
-    /// Extends the data with a new block.
-    fn append_new_block(&mut self, max_len: DegreeType) -> Result<(), EvalError<T>> {
-        if self.rows() + self.block_size as DegreeType >= max_len {
-            return Err(EvalError::RowsExhausted);
-        }
-        self.data
-            .resize_with(self.data.len() + self.block_size, || {
-                self.row_factory.fresh_row()
-            });
-        Ok(())
-    }
-
     fn rows(&self) -> DegreeType {
         self.data.len() as DegreeType
     }
@@ -359,49 +347,66 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         .with_calldata(Calldata::new(left.to_vec(), right));
 
         let outer_assignments = processor.solve(&mut sequence_iterator)?;
-        let (mut new_block, left_new) = processor.finish();
+        let (new_block, left_new) = processor.finish();
         let left_new = left_new.unwrap();
-
-        log::trace!("End processing block machine");
 
         // Only succeed if we can assign everything.
         // Otherwise it is messy because we have to find the correct block again.
         let success = left_new.iter().all(|v| v.is_constant());
 
         if success {
-            // Append new block:
-            // 1. Ignore the first row of the next block:
-            new_block.pop();
-            // 2. Take out the last row from the previous block
-            let (mut last_row, new_block): (Vec<_>, Vec<_>) =
-                new_block.into_iter().enumerate().partition_map(|(i, row)| {
-                    if i == 0 {
-                        Either::Left(row)
-                    } else {
-                        Either::Right(row)
-                    }
-                });
-            let last_row = last_row.pop().unwrap();
-            // 3. Merge the last row of the previous block
-            let last_row_index = self.rows() as usize - 1;
-            let existing_last_row = self.data.get_mut(last_row_index).unwrap();
-            *existing_last_row =
-                WitnessColumnMap::from(last_row.into_iter().map(|(k, v)| match &v.value {
-                    CellValue::Known(_) => v,
-                    _ => existing_last_row[&k].clone(),
-                }));
-            // 4. Append the new block
-            self.data.extend(new_block);
+            log::trace!("End processing block machine (successfully)");
+            self.append_block(new_block)?;
 
             // We solved the query, so report it to the cache.
             self.processing_sequence_cache
                 .report_processing_sequence(left, sequence_iterator);
             Ok(EvalValue::complete(outer_assignments))
         } else {
+            log::trace!("End processing block machine (incomplete)");
             self.processing_sequence_cache.report_incomplete(left);
             Ok(EvalValue::incomplete(
                 IncompleteCause::BlockMachineLookupIncomplete,
             ))
         }
+    }
+
+    /// Takes a block of rows, which contains the last row of the previous block
+    /// and the first row of the next block. The first row of the next block is ignored,
+    /// the last row of the previous block is merged with the first row of the next block.
+    /// This is necessary to handle non-rectangular block machines, which already use
+    /// unused cells in the previous block.
+    fn append_block(&mut self, mut new_block: Vec<Row<'a, T>>) -> Result<(), EvalError<T>> {
+        if self.rows() + self.block_size as DegreeType >= self.fixed_data.degree {
+            return Err(EvalError::RowsExhausted);
+        }
+
+        assert_eq!(new_block.len(), self.block_size + 2);
+
+        // 1. Ignore the first row of the next block:
+        new_block.pop();
+        // 2. Take out the last row from the previous block
+        let (mut last_row, new_block): (Vec<_>, Vec<_>) =
+            new_block.into_iter().enumerate().partition_map(|(i, row)| {
+                if i == 0 {
+                    Either::Left(row)
+                } else {
+                    Either::Right(row)
+                }
+            });
+        let last_row = last_row.pop().unwrap();
+        // 3. Merge the last row of the previous block
+        let last_row_index = self.rows() as usize - 1;
+        let existing_last_row = self.data.get_mut(last_row_index).unwrap();
+        *existing_last_row =
+            WitnessColumnMap::from(last_row.into_iter().map(|(k, v)| match &v.value {
+                CellValue::Known(_) => v,
+                _ => existing_last_row[&k].clone(),
+            }));
+
+        // 4. Append the new block
+        self.data.extend(new_block);
+
+        Ok(())
     }
 }
