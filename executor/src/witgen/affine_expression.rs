@@ -590,8 +590,16 @@ mod test {
                 clean: false
             },
         );
-        a.assign(1, 5.into());
-        assert_eq!(a.constant_value().unwrap(), 24.into());
+
+        // Now, the expression is 3b + 9. It should be able to solve for b
+        // such that 3b + 9 = 0.
+        let updates = a.solve().unwrap();
+        for (col_id, update) in updates.constraints {
+            if let Constraint::Assignment(value) = update {
+                a.assign(col_id, value);
+            }
+        }
+        assert_eq!(a.constant_value().unwrap(), 0.into());
     }
 
     #[test]
