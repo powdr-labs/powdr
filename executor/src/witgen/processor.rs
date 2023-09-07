@@ -17,8 +17,12 @@ use super::{
 
 type Left<'a, T> = Vec<AffineExpression<&'a PolynomialReference, T>>;
 
+/// Data needed to handle an outer query.
 pub struct Calldata<'a, T: FieldElement> {
+    /// A local copy of the left-hand side of the outer query.
+    /// This will be mutated while processing the block.
     left: Left<'a, T>,
+    /// The right-hand side of the outer query.
     right: &'a SelectedExpressions<T>,
 }
 
@@ -48,6 +52,7 @@ pub struct Processor<'a, 'b, T: FieldElement> {
     row_factory: RowFactory<'a, T>,
     /// The set of witness columns that are actually part of this machine.
     witness_cols: &'b HashSet<PolyID>,
+    /// The calldata, if any. If there is none, processing an outer query will fail.
     calldata: Option<Calldata<'a, T>>,
 }
 
@@ -108,17 +113,21 @@ impl<'a, 'b, T: FieldElement> Processor<'a, 'b, T> {
     /// Since the default sequence iterator looks at the row before and after
     /// the current block, we assume that these lines are already part of [Self::data]
     /// and set the block size to `self.data.len() - 2`.
-    pub fn solve_with_default_sequence_iterator(
-        &mut self,
-    ) -> Result<Constraints<&'a PolynomialReference, T>, EvalError<T>> {
+    pub fn solve_with_default_sequence_iterator(&mut self) -> Result<(), EvalError<T>> {
         assert!(self.data.len() > 2);
         let mut sequence_iterator = ProcessingSequenceIterator::Default(
             DefaultSequenceIterator::new(self.data.len() - 2, self.identities.len(), None),
         );
-        self.solve(&mut sequence_iterator)
+        let outer_updates = self.solve(&mut sequence_iterator)?;
+        assert!(
+            outer_updates.is_empty(),
+            "Should not produce any outer updates, because we set outer_query_row to None"
+        );
+        Ok(())
     }
 
     /// Figures out unknown values.
+    /// Returns the assignments to outer query columns.
     pub fn solve(
         &mut self,
         sequence_iterator: &mut ProcessingSequenceIterator,
@@ -136,15 +145,9 @@ impl<'a, 'b, T: FieldElement> Processor<'a, 'b, T> {
                     self.process_identity(row_index, identity_index)?
                 }
                 IdentityInSequence::OuterQuery => {
-                    // TODO: Fail if not?
-                    if self.calldata.is_some() {
-                        let (progress, new_outer_assignments) =
-                            self.process_outer_query(row_index)?;
-                        outer_assignments.extend(new_outer_assignments);
-                        progress
-                    } else {
-                        false
-                    }
+                    let (progress, new_outer_assignments) = self.process_outer_query(row_index)?;
+                    outer_assignments.extend(new_outer_assignments);
+                    progress
                 }
             };
             sequence_iterator.report_progress(progress);
@@ -152,7 +155,7 @@ impl<'a, 'b, T: FieldElement> Processor<'a, 'b, T> {
         Ok(outer_assignments)
     }
 
-    /// Destroys itself, returns the data.
+    /// Destroys itself, returns the data and updated left-hand side of the outer query (if available).
     pub fn finish(self) -> (Vec<Row<'a, T>>, Option<Left<'a, T>>) {
         (self.data, self.calldata.map(|c| c.left))
     }
@@ -204,7 +207,10 @@ impl<'a, 'b, T: FieldElement> Processor<'a, 'b, T> {
         &mut self,
         row_index: usize,
     ) -> Result<(bool, Constraints<&'a PolynomialReference, T>), EvalError<T>> {
-        let Calldata { left, right } = self.calldata.as_mut().unwrap();
+        let Calldata { left, right } = self
+            .calldata
+            .as_mut()
+            .expect("Asked to process outer query, but no calldata was set!");
 
         let row_pair = RowPair::new(
             &self.data[row_index],
