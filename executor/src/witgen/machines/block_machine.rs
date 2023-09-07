@@ -315,6 +315,17 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
             }
         }
 
+        // TODO this assumes we are always using the same lookup for this machine.
+        let mut processing_sequence_iterator =
+            self.processing_sequence_cache.get_processing_sequence(left);
+
+        if !processing_sequence_iterator.has_steps() {
+            // Shortcut, no need to do anything.
+            return Ok(EvalValue::incomplete(
+                IncompleteCause::BlockMachineLookupIncomplete,
+            ));
+        }
+
         let old_len = self.rows();
         self.append_new_block(fixed_data.degree)?;
         let mut outer_assignments = EvalValue::complete(vec![]);
@@ -324,10 +335,6 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         // If we ignored updates to the last row, they would be computed over
         // and over again.
         self.data.push(self.row_factory.fresh_row());
-
-        // TODO this assumes we are always using the same lookup for this machine.
-        let mut processing_sequence_iterator =
-            self.processing_sequence_cache.get_processing_sequence(left);
 
         let mut errors = vec![];
         // TODO The error handling currently does not handle contradictions properly.
@@ -401,6 +408,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
                 .reduce(|x: EvalError<T>, y| x.combine(y))
                 .unwrap())
         } else {
+            self.processing_sequence_cache.report_incomplete(left);
             Ok(EvalValue::incomplete(
                 IncompleteCause::BlockMachineLookupIncomplete,
             ))
