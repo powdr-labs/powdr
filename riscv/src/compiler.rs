@@ -906,6 +906,18 @@ fn rro(args: &[Argument]) -> (Register, Register, u32) {
     }
 }
 
+fn rrro(args: &[Argument]) -> (Register, Register, Register, u32) {
+    match args {
+        [Argument::Register(r1), Argument::Register(r2), Argument::RegOffset(off, r3)] => (
+            *r1,
+            *r2,
+            *r3,
+            expression_to_number(off.as_ref().unwrap_or(&Expression::Number(0))),
+        ),
+        _ => panic!(),
+    }
+}
+
 fn only_if_no_write_to_zero(statement: String, reg: Register) -> Vec<String> {
     only_if_no_write_to_zero_vec(vec![statement], reg)
 }
@@ -1355,6 +1367,54 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
         "load_dynamic" => {
             let (rd, label) = rl(args);
             only_if_no_write_to_zero(format!("{rd} <== load_label({label});"), rd)
+        }
+
+        // atomic and synchronization
+        "fence" | "fence.i" => vec![],
+
+        insn if insn.starts_with("lr.w") => {
+            // Very similar to "lw", but without offset:
+            let (rd, rs) = rr(args);
+            // TODO misaligned access should raise misaligned address exceptions
+            only_if_no_write_to_zero_vec(
+                vec![
+                    format!("addr <== wrap({rs});"),
+                    format!("{rd} <== mload();"),
+                ],
+                rd,
+            )
+        }
+
+        insn if insn.starts_with("sc.w") => {
+            // Some overlap with "sw", but also writes 0 to rd on success (which
+            // is always, in our case)
+            let (rd, rs1, rs2) = rrr(args);
+            // TODO: in order to pass in official RISC-V tests, this must fail if
+            // there is not a corresponding lr.w
+            //
+            // TODO: misaligned access should raise misaligned address exceptions
+            let mut statements = vec![format!("addr <== wrap({rs1});"), format!("mstore {rs2};")];
+            if !rd.is_zero() {
+                statements.push(format!("{rd} <=X= 0;"));
+            }
+            statements
+        }
+
+        insn if insn.starts_with("amoadd.w") => {
+            let (rd, rs2, rs1, off) = rrro(args);
+
+            let rd = if rd.is_zero() {
+                "tmp2".to_string()
+            } else {
+                rd.to_string()
+            };
+
+            vec![
+                format!("addr <== wrap({rs1} + {off});"),
+                format!("{rd} <== mload();"),
+                format!("tmp1 <== wrap({rd} + {rs2});"),
+                format!("mstore tmp1;"),
+            ]
         }
 
         _ => {
