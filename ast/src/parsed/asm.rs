@@ -132,15 +132,3 @@ pub struct Param {
     pub name: String,
     pub ty: Option<String>,
 }
-
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
-pub struct FunctionCall<T> {
-    pub id: String,
-    pub arguments: Vec<Expression<T>>,
-}
-
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
-pub enum PlookupOperator {
-    In,
-    Is,
-}

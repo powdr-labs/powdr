@@ -5,8 +5,6 @@ use std::{iter::once, ops::ControlFlow};
 
 use number::{DegreeType, FieldElement};
 
-use self::asm::FunctionCall;
-
 #[derive(Debug, PartialEq, Eq)]
 pub struct PILFile<T>(pub Vec<PilStatement<T>>);
 
@@ -273,6 +271,12 @@ pub enum BinaryOperator {
     BinaryOr,
     ShiftLeft,
     ShiftRight,
+}
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
+pub struct FunctionCall<T> {
+    pub id: String,
+    pub arguments: Vec<Expression<T>>,
 }
 
 /// The definition of a function (excluding its name):
