@@ -12,7 +12,7 @@ use super::{
 /// This current implementation is very rudimentary and only used in the block machine
 /// to "fix" the last row. However, in the future we can generalize it to be used
 /// for general block machine or VM witness computation.
-pub struct Processor<'a, T: FieldElement> {
+pub struct Processor<'a, 'b, T: FieldElement> {
     /// The global index of the first row of [Processor::data].
     row_offset: u64,
     /// The rows that are being processed.
@@ -20,18 +20,18 @@ pub struct Processor<'a, T: FieldElement> {
     /// The list of identities
     identities: Vec<&'a Identity<T>>,
     /// The identity processor
-    identity_processor: IdentityProcessor<'a, 'a, T>,
+    identity_processor: IdentityProcessor<'a, 'b, T>,
     /// The fixed data (containing information about all columns)
     fixed_data: &'a FixedData<'a, T>,
     /// The row factory
     row_factory: RowFactory<'a, T>,
 }
 
-impl<'a, T: FieldElement> Processor<'a, T> {
+impl<'a, 'b, T: FieldElement> Processor<'a, 'b, T> {
     pub fn new(
         row_offset: u64,
         data: Vec<Row<'a, T>>,
-        identity_processor: IdentityProcessor<'a, 'a, T>,
+        identity_processor: IdentityProcessor<'a, 'b, T>,
         identities: Vec<&'a Identity<T>>,
         fixed_data: &'a FixedData<'a, T>,
         row_factory: RowFactory<'a, T>,

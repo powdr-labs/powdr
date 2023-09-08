@@ -78,7 +78,7 @@ where
     } = global_constraints::determine_global_constraints(&fixed, identities.iter().collect());
     let ExtractionOutput {
         mut fixed_lookup,
-        machines,
+        mut machines,
         base_identities,
         base_witnesses,
     } = machines::machine_extractor::split_out_machines(
@@ -86,13 +86,14 @@ where
         retained_identities,
         &known_witness_constraints,
     );
+    let machine_refs = machines.iter_mut().collect::<Vec<_>>();
     let mut generator = generator::Generator::new(
         &fixed,
         &mut fixed_lookup,
         &base_identities,
         base_witnesses.into_iter().collect(),
         known_witness_constraints,
-        machines,
+        machine_refs,
         query_callback,
     );
 

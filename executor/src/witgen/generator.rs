@@ -78,7 +78,7 @@ where
         identities: &'a [&'a Identity<T>],
         witnesses: BTreeSet<PolyID>,
         global_range_constraints: ColumnMap<Option<RangeConstraint<T>>>,
-        machines: Vec<KnownMachine<'a, T>>,
+        machines: Vec<&'b mut KnownMachine<'a, T>>,
         query_callback: Option<QueryCallback>,
     ) -> Self {
         let query_processor =
@@ -394,10 +394,13 @@ where
             .iter()
             .map(|(poly_id, col)| (col.name.as_str(), poly_id))
             .collect::<BTreeMap<_, _>>();
-        for m in &mut self.identity_processor.machines {
-            for (col_name, col) in
-                m.take_witness_col_values(self.fixed_data, self.identity_processor.fixed_lookup)
-            {
+        for i in 0..self.identity_processor.machines.len() {
+            let (current, others) = self.identity_processor.machines.split(i);
+            for (col_name, col) in current.take_witness_col_values(
+                self.fixed_data,
+                self.identity_processor.fixed_lookup,
+                others,
+            ) {
                 result.insert(*name_to_id.get(col_name.as_str()).unwrap(), col);
             }
         }
