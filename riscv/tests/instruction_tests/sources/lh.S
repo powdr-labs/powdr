@@ -24,10 +24,10 @@ RVTEST_CODE_BEGIN
 
   # Test with negative offset
 
-  TEST_LD_OP( 6, lh, 0x00000000000000ff, -6,  tdat4 );
-  TEST_LD_OP( 7, lh, 0xffffffffffffff00, -4,  tdat4 );
-  TEST_LD_OP( 8, lh, 0x0000000000000ff0, -2,  tdat4 );
-  TEST_LD_OP( 9, lh, 0xfffffffffffff00f,  0, tdat4 );
+  TEST_LD_OP( 6, lh, 0x00000000000000ff, -8,  tdat4 );
+  TEST_LD_OP( 7, lh, 0xffffffffffffff00, -6,  tdat4 );
+  TEST_LD_OP( 8, lh, 0x0000000000000ff0, -4,  tdat4 );
+  TEST_LD_OP( 9, lh, 0xfffffffffffff00f, -2,  tdat4 );
 
   # Test with a negative base
 
@@ -49,13 +49,13 @@ RVTEST_CODE_BEGIN
   # Bypassing tests
   #-------------------------------------------------------------
 
-  TEST_LD_DEST_BYPASS( 12, 0, lh, 0x0000000000000ff0, 2, tdat2 );
-  TEST_LD_DEST_BYPASS( 13, 1, lh, 0xfffffffffffff00f, 2, tdat3 );
-  TEST_LD_DEST_BYPASS( 14, 2, lh, 0xffffffffffffff00, 2, tdat1 );
+  TEST_LD_DEST_BYPASS( 12, 0, lh, 0x0000000000000ff0, 2, tdat + 2 );
+  TEST_LD_DEST_BYPASS( 13, 1, lh, 0xfffffffffffff00f, 2, tdat + 4 );
+  TEST_LD_DEST_BYPASS( 14, 2, lh, 0xffffffffffffff00, 2, tdat );
 
-  TEST_LD_SRC1_BYPASS( 15, 0, lh, 0x0000000000000ff0, 2, tdat2 );
-  TEST_LD_SRC1_BYPASS( 16, 1, lh, 0xfffffffffffff00f, 2, tdat3 );
-  TEST_LD_SRC1_BYPASS( 17, 2, lh, 0xffffffffffffff00, 2, tdat1 );
+  TEST_LD_SRC1_BYPASS( 15, 0, lh, 0x0000000000000ff0, 2, tdat + 2 );
+  TEST_LD_SRC1_BYPASS( 16, 1, lh, 0xfffffffffffff00f, 2, tdat + 4 );
+  TEST_LD_SRC1_BYPASS( 17, 2, lh, 0xffffffffffffff00, 2, tdat );
 
   #-------------------------------------------------------------
   # Test write-after-write hazard
@@ -84,9 +84,9 @@ RVTEST_DATA_BEGIN
   TEST_DATA
 
 tdat:
-tdat1:  .half 0x00ff
-tdat2:  .half 0xff00
-tdat3:  .half 0x0ff0
-tdat4:  .half 0xf00f
+  .word 0xff0000ff
+  .word 0xf00f0ff0
+tdat4:
+  .word 0
 
 RVTEST_DATA_END

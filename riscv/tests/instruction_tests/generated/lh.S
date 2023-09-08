@@ -92,10 +92,10 @@
 
   # Test with negative offset
 
-  test_6: li x10, 6; ebreak; la x1, tdat4; lh x3, -6(x1);; li x29, 0x00000000000000ff; li x28, 6; bne x3, x29, fail;;
-  test_7: li x10, 7; ebreak; la x1, tdat4; lh x3, -4(x1);; li x29, 0xffffffffffffff00; li x28, 7; bne x3, x29, fail;;
-  test_8: li x10, 8; ebreak; la x1, tdat4; lh x3, -2(x1);; li x29, 0x0000000000000ff0; li x28, 8; bne x3, x29, fail;;
-  test_9: li x10, 9; ebreak; la x1, tdat4; lh x3, 0(x1);; li x29, 0xfffffffffffff00f; li x28, 9; bne x3, x29, fail;;
+  test_6: li x10, 6; ebreak; la x1, tdat4; lh x3, -8(x1);; li x29, 0x00000000000000ff; li x28, 6; bne x3, x29, fail;;
+  test_7: li x10, 7; ebreak; la x1, tdat4; lh x3, -6(x1);; li x29, 0xffffffffffffff00; li x28, 7; bne x3, x29, fail;;
+  test_8: li x10, 8; ebreak; la x1, tdat4; lh x3, -4(x1);; li x29, 0x0000000000000ff0; li x28, 8; bne x3, x29, fail;;
+  test_9: li x10, 9; ebreak; la x1, tdat4; lh x3, -2(x1);; li x29, 0xfffffffffffff00f; li x28, 9; bne x3, x29, fail;;
 
   # Test with a negative base
 
@@ -117,13 +117,13 @@
   # Bypassing tests
   #-------------------------------------------------------------
 
-  test_12: li x28, 12; li x4, 0; test_12_l1: la x1, tdat2; lh x3, 2(x1); addi x6, x3, 0; li x29, 0x0000000000000ff0; bne x6, x29, fail; addi x4, x4, 1; li x5, 2; bne x4, x5, test_12_l1;;
-  test_13: li x28, 13; li x4, 0; test_13_l1: la x1, tdat3; lh x3, 2(x1); nop; addi x6, x3, 0; li x29, 0xfffffffffffff00f; bne x6, x29, fail; addi x4, x4, 1; li x5, 2; bne x4, x5, test_13_l1;;
-  test_14: li x28, 14; li x4, 0; test_14_l1: la x1, tdat1; lh x3, 2(x1); nop; nop; addi x6, x3, 0; li x29, 0xffffffffffffff00; bne x6, x29, fail; addi x4, x4, 1; li x5, 2; bne x4, x5, test_14_l1;;
+  test_12: li x28, 12; li x4, 0; test_12_l1: la x1, tdat + 2; lh x3, 2(x1); addi x6, x3, 0; li x29, 0x0000000000000ff0; bne x6, x29, fail; addi x4, x4, 1; li x5, 2; bne x4, x5, test_12_l1;;
+  test_13: li x28, 13; li x4, 0; test_13_l1: la x1, tdat + 4; lh x3, 2(x1); nop; addi x6, x3, 0; li x29, 0xfffffffffffff00f; bne x6, x29, fail; addi x4, x4, 1; li x5, 2; bne x4, x5, test_13_l1;;
+  test_14: li x28, 14; li x4, 0; test_14_l1: la x1, tdat; lh x3, 2(x1); nop; nop; addi x6, x3, 0; li x29, 0xffffffffffffff00; bne x6, x29, fail; addi x4, x4, 1; li x5, 2; bne x4, x5, test_14_l1;;
 
-  test_15: li x28, 15; li x4, 0; test_15_l1: la x1, tdat2; lh x3, 2(x1); li x29, 0x0000000000000ff0; bne x3, x29, fail; addi x4, x4, 1; li x5, 2; bne x4, x5, test_15_l1;
-  test_16: li x28, 16; li x4, 0; test_16_l1: la x1, tdat3; nop; lh x3, 2(x1); li x29, 0xfffffffffffff00f; bne x3, x29, fail; addi x4, x4, 1; li x5, 2; bne x4, x5, test_16_l1;
-  test_17: li x28, 17; li x4, 0; test_17_l1: la x1, tdat1; nop; nop; lh x3, 2(x1); li x29, 0xffffffffffffff00; bne x3, x29, fail; addi x4, x4, 1; li x5, 2; bne x4, x5, test_17_l1;
+  test_15: li x28, 15; li x4, 0; test_15_l1: la x1, tdat + 2; lh x3, 2(x1); li x29, 0x0000000000000ff0; bne x3, x29, fail; addi x4, x4, 1; li x5, 2; bne x4, x5, test_15_l1;
+  test_16: li x28, 16; li x4, 0; test_16_l1: la x1, tdat + 4; nop; lh x3, 2(x1); li x29, 0xfffffffffffff00f; bne x3, x29, fail; addi x4, x4, 1; li x5, 2; bne x4, x5, test_16_l1;
+  test_17: li x28, 17; li x4, 0; test_17_l1: la x1, tdat; nop; nop; lh x3, 2(x1); li x29, 0xffffffffffffff00; bne x3, x29, fail; addi x4, x4, 1; li x5, 2; bne x4, x5, test_17_l1;
 
   #-------------------------------------------------------------
   # Test write-after-write hazard
@@ -152,9 +152,9 @@
  
 
 tdat:
-tdat1: .half 0x00ff
-tdat2: .half 0xff00
-tdat3: .half 0x0ff0
-tdat4: .half 0xf00f
+  .word 0xff0000ff
+  .word 0xf00f0ff0
+tdat4:
+  .word 0
 
 
