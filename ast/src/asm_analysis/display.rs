@@ -8,7 +8,7 @@ use super::{
     DebugDirective, DegreeStatement, FunctionBody, FunctionStatement, FunctionStatements,
     Incompatible, IncompatibleSet, Instruction, InstructionDefinitionStatement,
     InstructionStatement, LabelStatement, LinkDefinitionStatement, Machine, PilBlock,
-    RegisterDeclarationStatement, RegisterTy, Return, Rom,
+    RegisterDeclarationStatement, RegisterTy, Return, Rom, SubmachineDeclaration,
 };
 
 impl<T: Display> Display for AnalysisASMFile<T> {
@@ -58,6 +58,7 @@ impl<T: Display> Display for Machine<T> {
         writeln!(f, " {{")?;
 
         write_indented_items(f, &self.degree)?;
+        write_indented_items(f, &self.submachines)?;
         write_indented_items(f, &self.registers)?;
         write_indented_items(f, &self.instructions)?;
         write_indented_items(f, &self.callable)?;
@@ -77,6 +78,12 @@ impl<T: Display> Display for LinkDefinitionStatement<T> {
             self.params.prepend_space_if_non_empty(),
             self.to
         )
+    }
+}
+
+impl Display for SubmachineDeclaration {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(f, "{} {}", self.ty, self.name)
     }
 }
 
