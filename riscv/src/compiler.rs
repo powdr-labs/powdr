@@ -677,7 +677,7 @@ fn preamble() -> String {
         wrap_bit * (1 - wrap_bit) = 0;
     }
 
-    // Input is a 32 bit unsigned number. We check the 7th bit and set all higher bits to that value.
+    // Input is a 32 bit unsigned number. We check bit 7 and set all higher bits to that value.
     instr sign_extend_byte Y -> X {
         // wrap_bit is used as sign_bit here.
         Y = Y_7bit + wrap_bit * 0x80 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000,
@@ -687,6 +687,18 @@ fn preamble() -> String {
         col fixed seven_bit(i) { i & 0x7f };
         col witness Y_7bit;
         { Y_7bit } in { seven_bit };
+    }
+
+    // Input is a 32 bit unsigned number. We check bit 15 and set all higher bits to that value.
+    instr sign_extend_16_bits Y -> X {
+        Y_15bit = X_b1 + Y_7bit * 0x100,
+
+        // wrap_bit is used as sign_bit here.
+        Y = Y_15bit + wrap_bit * 0x8000 + X_b3 * 0x10000 + X_b4 * 0x1000000,
+        X = Y_15bit + wrap_bit * 0xffff8000
+    }
+    constraints{
+        col witness Y_15bit;
     }
 
     // Input is a 32 but unsigned number (0 <= Y < 2**32) interpreted as a two's complement numbers.
@@ -1291,6 +1303,23 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
                 vec![
                     format!("addr <== wrap({rs} + {off});"),
                     format!("{rd} <== mload();"),
+                ],
+                rd,
+            )
+        }
+        "lh" => {
+            // Load two bytes and sign-extend.
+            // Assumes the address is a multiple of two.
+            let (rd, rs, off) = rro(args);
+            only_if_no_write_to_zero_vec(
+                vec![
+                    format!("tmp1 <== wrap({rs} + {off});"),
+                    "addr <== and(tmp1, 0xfffffffc);".to_string(),
+                    "tmp2 <== and(tmp1, 0x3);".to_string(),
+                    format!("{rd} <== mload();"),
+                    format!("{rd} <== shr({rd}, 8 * tmp2);"),
+                    format!("{rd} <== and({rd}, 0x0000ffff);"),
+                    format!("{rd} <== sign_extend_16_bits({rd});"),
                 ],
                 rd,
             )
