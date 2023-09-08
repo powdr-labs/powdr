@@ -141,6 +141,7 @@ pub fn export<T: FieldElement>(analyzed: &Analyzed<T>) -> PIL {
         q2exp: Vec::new(),
     };
 
+    /*
     if pil.nIm == 0 {
         pil.nIm = 1;
 
@@ -201,6 +202,7 @@ pub fn export<T: FieldElement>(analyzed: &Analyzed<T>) -> PIL {
     }
 
     println!("{pil}");
+    */
 
     pil
 }
