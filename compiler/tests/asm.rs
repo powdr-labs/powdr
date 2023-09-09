@@ -307,3 +307,11 @@ fn test_macros_in_instructions() {
     gen_halo2_proof(f, Default::default());
     gen_estark_proof(f, Default::default());
 }
+
+#[test]
+#[should_panic = "Witness generation failed."]
+fn recursive() {
+    let f = "recursive.asm";
+    let i = [];
+    verify_asm::<GoldilocksField>(f, slice_to_vec(&i));
+}
