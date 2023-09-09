@@ -281,8 +281,14 @@ pub struct LinkDeclaration<T> {
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
+pub enum Instance {
+    This,
+    Sub(String),
+}
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub struct CallableRef {
-    pub instance: String,
+    pub instance: Instance,
     pub callable: String,
 }
 

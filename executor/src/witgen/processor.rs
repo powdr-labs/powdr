@@ -365,7 +365,7 @@ mod tests {
             for (i, row) in data.iter().enumerate() {
                 println!(
                     "{}",
-                    row.render(&format!("Row {i}"), true, &processor.witness_cols)
+                    row.render(&format!("Row {i}"), true, processor.witness_cols)
                 );
             }
 

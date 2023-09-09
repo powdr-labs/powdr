@@ -238,7 +238,12 @@ pub InstructionBody: InstructionBody<T> = {
 }
 
 pub CallableRef: CallableRef = {
-    <instance:Identifier> "." <callable:Identifier> => CallableRef { instance, callable }
+    <instance:Instance> "." <callable:Identifier> => CallableRef { instance, callable }
+}
+
+pub Instance: Instance = {
+    "self" => Instance::This,
+    <Identifier> => Instance::Sub(<>),
 }
 
 InstructionBodyElements: Vec<PilStatement<T>> = {

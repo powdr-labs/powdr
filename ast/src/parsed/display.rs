@@ -133,6 +133,15 @@ impl Display for CallableRef {
     }
 }
 
+impl Display for Instance {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        match self {
+            Instance::This => write!(f, "self"),
+            Instance::Sub(s) => write!(f, "{s}"),
+        }
+    }
+}
+
 impl<T: Display> Display for MachineStatement<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {

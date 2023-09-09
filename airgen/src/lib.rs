@@ -8,7 +8,7 @@ use ast::{
     },
     object::{Link, LinkFrom, LinkTo, Location, Object, Operation, PILGraph},
     parsed::{
-        asm::{parse_absolute_path, AbsoluteSymbolPath, CallableRef},
+        asm::{parse_absolute_path, AbsoluteSymbolPath, CallableRef, Instance},
         PilStatement,
     },
 };
@@ -141,7 +141,7 @@ impl<'a, T: FieldElement> ASMPILConverter<'a, T> {
         let links = input
             .links
             .into_iter()
-            .map(|d| self.handle_link_def(d))
+            .map(|d| self.handle_link_def(d, ty))
             .collect();
 
         Object {
@@ -159,24 +159,31 @@ impl<'a, T: FieldElement> ASMPILConverter<'a, T> {
             params,
             to: CallableRef { instance, callable },
         }: LinkDefinitionStatement<T>,
+        this: &AbsoluteSymbolPath,
     ) -> Link<T> {
         let from = LinkFrom {
             params: params.clone(),
             flag: flag.clone(),
         };
 
-        // get the machine type name for this submachine from the submachine delcarations
-        let instance_ty_name = self
-            .submachines
-            .iter()
-            .find(|s| s.name == instance)
-            .unwrap()
-            .ty
-            .clone();
-        // get the machine type from the machine map
-        let instance_ty = self.machines.get(&instance_ty_name).unwrap();
-        // get the instance location from the current location joined with the instance name
-        let instance_location = self.location.clone().join(instance);
+        let (instance_ty, instance_location) = match instance {
+            Instance::This => (self.machines.get(this).unwrap(), self.location.clone()),
+            Instance::Sub(instance) => {
+                // get the machine type name for this submachine from the submachine declarations
+                let instance_ty_name = self
+                    .submachines
+                    .iter()
+                    .find(|s| s.name == instance)
+                    .unwrap()
+                    .ty
+                    .clone();
+                // get the machine type from the machine map
+                let instance_ty = self.machines.get(&instance_ty_name).unwrap();
+                // get the instance location from the current location joined with the instance name
+                let instance_location = self.location.clone().join(instance);
+                (instance_ty, instance_location)
+            }
+        };
 
         Link {
             from,

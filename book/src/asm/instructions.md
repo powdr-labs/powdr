@@ -20,11 +20,16 @@ Instructions feature:
 
 # External instructions
 
-An external instruction delegates calls to a function inside a submachine of this machine. When it is called, a call is made to the submachine function. An example of an external instruction is the following:
+An external instruction delegates calls to a function. An example of an external instruction is the following:
 
 ```
 instr assert_zero X = my_submachine.assert_zero // where `assert_zero` is a function defined in `my_submachine`
 ```
 
-> Note that external instructions cannot currently link to functions of the same machine: they delegate computation to a submachine.
+Alternatively, external instructions can target functions of the same machine using the `self` keyword:
+
+```
+instr factorial X -> Y = self.factorial
+```
+
 
