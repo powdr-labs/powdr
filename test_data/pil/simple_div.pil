@@ -1,4 +1,4 @@
-constant %N = 0x10000;
+constant %N = 0x8;
 
 namespace SimpleDiv(%N);
     col fixed BYTE(i) { i & 0xff };
