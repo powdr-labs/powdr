@@ -61,6 +61,12 @@ impl<T> Analyzed<T> {
         self.definitions_in_source_order(PolynomialType::Committed)
     }
 
+    pub fn intermediate_polys_in_source_order(
+        &self,
+    ) -> Vec<&(Polynomial, Option<FunctionValueDefinition<T>>)> {
+        self.definitions_in_source_order(PolynomialType::Intermediate)
+    }
+
     pub fn definitions_in_source_order(
         &self,
         poly_type: PolynomialType,
@@ -102,6 +108,7 @@ impl<T> Analyzed<T> {
             // for each kind.
             self.committed_polys_in_source_order(),
             self.constant_polys_in_source_order(),
+            self.intermediate_polys_in_source_order(),
         ]
         .map(|polys| {
             polys
@@ -239,6 +246,7 @@ pub enum FunctionValueDefinition<T> {
     Mapping(Expression<T>),
     Array(Vec<RepeatedArray<T>>),
     Query(Expression<T>),
+    Expression(Expression<T>),
 }
 
 /// An array of elements that might be repeated.

@@ -147,7 +147,7 @@ impl<T: FieldElement> PILContext<T> {
                     name,
                     None,
                     PolynomialType::Intermediate,
-                    Some(FunctionDefinition::Mapping(vec![], value)),
+                    Some(FunctionDefinition::Expression(value)),
                 );
             }
             PilStatement::PublicDeclaration(start, name, polynomial, index) => {
@@ -321,12 +321,14 @@ impl<T: FieldElement> PILContext<T> {
         let name = poly.absolute_name.clone();
 
         let value = value.map(|v| match v {
+            FunctionDefinition::Expression(expr) => {
+                assert!(!have_array_size);
+                assert!(poly.poly_type == PolynomialType::Intermediate);
+                FunctionValueDefinition::Expression(self.process_expression(expr))
+            }
             FunctionDefinition::Mapping(params, expr) => {
                 assert!(!have_array_size);
-                assert!(
-                    poly.poly_type == PolynomialType::Constant
-                        || poly.poly_type == PolynomialType::Intermediate
-                );
+                assert!(poly.poly_type == PolynomialType::Constant);
                 FunctionValueDefinition::Mapping(self.process_function(params, expr))
             }
             FunctionDefinition::Query(params, expr) => {
@@ -651,6 +653,22 @@ namespace T(65536);
     col fixed p_reg_write_X_A = [0, 0, 0, 1, 0, 0, 0, 1, 0] + [0]*;
     col fixed p_reg_write_X_CNT = [1, 0, 0, 0, 0, 0, 0, 0, 0] + [0]*;
     { T.pc, T.reg_write_X_A, T.reg_write_X_CNT } in (1 - T.first_step) { T.line, T.p_reg_write_X_A, T.p_reg_write_X_CNT };
+"#;
+        let formatted = process_pil_file_contents::<GoldilocksField>(input).to_string();
+        if input != formatted {
+            for (i, f) in input.split('\n').zip(formatted.split('\n')) {
+                assert_eq!(i, f);
+            }
+        }
+        assert_eq!(input, formatted);
+    }
+
+    #[test]
+    fn intermediate() {
+        let input = r#"namespace N(65536);
+    col witness x;
+    col intermediate = N.x;
+    N.intermediate = N.intermediate;
 "#;
         let formatted = process_pil_file_contents::<GoldilocksField>(input).to_string();
         if input != formatted {

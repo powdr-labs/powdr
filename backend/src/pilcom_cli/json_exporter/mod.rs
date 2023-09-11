@@ -34,7 +34,7 @@ pub fn export<T: FieldElement>(analyzed: &Analyzed<T>) -> JsonValue {
             StatementIdentifier::Definition(name) => {
                 if let (poly, Some(value)) = &analyzed.definitions[name] {
                     if poly.poly_type == PolynomialType::Intermediate {
-                        if let FunctionValueDefinition::Mapping(value) = value {
+                        if let FunctionValueDefinition::Expression(value) = value {
                             let expression_id = exporter.extract_expression(value, 1);
                             assert_eq!(
                                 expression_id,

@@ -74,6 +74,9 @@ fn generate_values<T: FieldElement>(
             values
         }
         FunctionValueDefinition::Query(_) => panic!("Query used for fixed column."),
+        FunctionValueDefinition::Expression(_) => {
+            panic!("Expression used for fixed column, only expected for intermediate polynomials")
+        }
     }
 }
 

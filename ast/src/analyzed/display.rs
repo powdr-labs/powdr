@@ -71,6 +71,7 @@ impl<T: Display> Display for FunctionValueDefinition<T> {
                 write!(f, " = {}", items.iter().map(|i| i.to_string()).join(" + "))
             }
             FunctionValueDefinition::Query(e) => write!(f, "(i) query {e}"),
+            FunctionValueDefinition::Expression(e) => write!(f, " = {e}"),
         }
     }
 }

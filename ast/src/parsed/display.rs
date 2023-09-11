@@ -370,6 +370,9 @@ impl<T: Display> Display for FunctionDefinition<T> {
             FunctionDefinition::Query(params, value) => {
                 write!(f, "({}) query {value}", params.join(", "),)
             }
+            FunctionDefinition::Expression(e) => {
+                write!(f, " = {e}")
+            }
         }
     }
 }
