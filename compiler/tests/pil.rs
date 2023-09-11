@@ -4,7 +4,13 @@ use std::path::Path;
 use test_log::test;
 
 pub fn verify_pil(file_name: &str, query_callback: Option<fn(&str) -> Option<GoldilocksField>>) {
-    let input_file = Path::new(&format!("../test_data/pil/{file_name}"))
+    let input_file = [".", ".."]
+        .into_iter()
+        .find_map(|p| {
+            let path = Path::new(&format!("{p}/test_data/pil/{file_name}")).to_owned();
+            path.exists().then_some(path.to_owned())
+        })
+        .unwrap()
         .canonicalize()
         .unwrap();
 
