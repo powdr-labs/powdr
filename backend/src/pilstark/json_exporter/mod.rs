@@ -88,8 +88,8 @@ pub fn export<T: FieldElement>(analyzed: &Analyzed<T>) -> PIL {
                 let sel_right = exporter.extract_expression_opt(&identity.right.selector, 1);
                 match identity.kind {
                     IdentityKind::Polynomial => pol_identities.push(PolIdentity {
-                        //e: sel_left.unwrap(),
-                        e: pol_identities.len(),
+                        e: sel_left.unwrap(),
+                        //e: pol_identities.len(),
                         fileName: file_name,
                         line,
                     }),
