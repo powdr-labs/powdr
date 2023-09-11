@@ -1,11 +1,11 @@
 /// Replace all relative paths in the program with absolute paths to the canonical symbol they point to, and remove all import statements in the program
 use number::FieldElement;
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use ast::parsed::asm::{
     ASMModule, ASMProgram, AbsoluteSymbolPath, Import, Machine, MachineStatement, Module,
-    ModuleStatement, Symbol, SymbolDefinition, SymbolPath,
+    ModuleStatement, SymbolDefinition, SymbolPath, SymbolValue,
 };
 
 pub fn canonicalize_paths<T: FieldElement>(
@@ -20,9 +20,9 @@ pub fn canonicalize_paths<T: FieldElement>(
     Ok(program)
 }
 
-// replace references to symbols with absolute paths. This removes the import statements. This always succeeds if the symbol table was generated correctly.
+/// replace references to symbols with absolute paths. This removes the import statements. This always succeeds if the symbol table was generated correctly.
 fn canonicalize_paths_in_module<T: FieldElement>(
-    absolute_path: AbsoluteSymbolPath,
+    module_path: AbsoluteSymbolPath,
     module: ASMModule<T>,
     paths: &PathMap,
 ) -> ASMModule<T> {
@@ -31,26 +31,24 @@ fn canonicalize_paths_in_module<T: FieldElement>(
             .statements
             .into_iter()
             .filter_map(|statement| match statement {
-                ModuleStatement::SymbolDefinition(SymbolDefinition { name, symbol }) => {
-                    match symbol {
-                        Symbol::Machine(m) => Some(Symbol::Machine(canonicalize_machine(
-                            absolute_path.clone(),
-                            m,
-                            paths,
-                        ))),
-                        Symbol::Import(_) => None,
-                        Symbol::Module(m) => match m {
+                ModuleStatement::SymbolDefinition(SymbolDefinition { name, value }) => {
+                    match value {
+                        SymbolValue::Machine(m) => Some(SymbolValue::Machine(
+                            canonicalize_machine(module_path.clone(), m, paths),
+                        )),
+                        SymbolValue::Import(_) => None,
+                        SymbolValue::Module(m) => match m {
                             Module::External(_) => unreachable!(),
-                            Module::Local(m) => {
-                                Some(Symbol::Module(Module::Local(canonicalize_paths_in_module(
-                                    absolute_path.clone().join(name.clone()),
+                            Module::Local(m) => Some(SymbolValue::Module(Module::Local(
+                                canonicalize_paths_in_module(
+                                    module_path.clone().join(name.clone()),
                                     m,
                                     paths,
-                                ))))
-                            }
+                                ),
+                            ))),
                         },
                     }
-                    .map(|symbol| SymbolDefinition { name, symbol }.into())
+                    .map(|value| SymbolDefinition { name, value }.into())
                 }
             })
             .collect(),
@@ -58,14 +56,14 @@ fn canonicalize_paths_in_module<T: FieldElement>(
 }
 
 fn canonicalize_machine<T: FieldElement>(
-    absolute_path: AbsoluteSymbolPath,
+    module_path: AbsoluteSymbolPath,
     mut m: Machine<T>,
     symbols: &PathMap,
 ) -> Machine<T> {
     for s in &mut m.statements {
         if let MachineStatement::Submachine(_, path, _) = s {
             *path = symbols
-                .get(&(absolute_path.clone(), std::mem::take(path)))
+                .get(&(module_path.clone(), std::mem::take(path)))
                 .cloned()
                 .unwrap()
                 .into();
@@ -78,15 +76,16 @@ fn canonicalize_machine<T: FieldElement>(
 /// Answers the question: When at absolute path `p`, refering to relative path `r`, what is the absolute path to the canonical symbol imported?
 pub type PathMap = BTreeMap<(AbsoluteSymbolPath, SymbolPath), AbsoluteSymbolPath>;
 
+/// The state of the checking process. We visit the module tree collecting each relative path and pointing it to the absolute path it resolves to in the state.
 #[derive(PartialEq, Debug)]
 pub struct State<'a, T> {
-    /// the root module of this program
+    /// The root module of this program, so that we can visit any import encountered: if we are at absolute path `a` and see relative import `r`, we want to go to `a.join(r)` starting from `root`. It does not change as we visit the tree.
     root: &'a ASMModule<T>,
-    /// the paths to replace
+    /// For each relative path at an absolute path, the absolute path of the canonical symbol it points to. It gets populated as we visit the tree.
     pub paths: PathMap,
 }
 
-/// Checks a relative path in the context of an absolute path
+/// Checks a relative path in the context of an absolute path, if successful returning an updated state containing the absolute path
 ///
 /// # Panics
 ///
@@ -102,7 +101,7 @@ fn check_path<T: Clone>(
     imported: SymbolPath,
     // the current state
     state: State<'_, T>,
-) -> Result<(State<'_, T>, AbsoluteSymbolPath, Symbol<T>), String> {
+) -> Result<(State<'_, T>, AbsoluteSymbolPath, SymbolValue<T>), String> {
     let root = state.root.clone();
     // walk down the tree of modules
     location
@@ -114,36 +113,36 @@ fn check_path<T: Clone>(
             (
                 state,
                 AbsoluteSymbolPath::default(),
-                Symbol::Module(Module::Local(root)),
+                SymbolValue::Module(Module::Local(root)),
             ),
-            |(state, mut location, symbol), member| {
-                match symbol {
+            |(state, mut location, value), member| {
+                match value {
                     // machines do not expose symbols
-                    Symbol::Machine(_) => {
+                    SymbolValue::Machine(_) => {
                         Err(format!("symbol not found in `{location}`: `{member}`"))
                     }
                     // modules expose symbols
-                    Symbol::Module(Module::Local(module)) => module
+                    SymbolValue::Module(Module::Local(module)) => module
                         .symbol_definitions()
-                        .find_map(|SymbolDefinition { name, symbol }| {
-                            (name == member).then_some(symbol.clone())
+                        .find_map(|SymbolDefinition { name, value }| {
+                            (name == member).then_some(value.clone())
                         })
                         .ok_or_else(|| format!("symbol not found in `{location}`: `{member}`"))
                         .and_then(|symbol| {
                             match symbol {
-                                Symbol::Import(p) => {
+                                SymbolValue::Import(p) => {
                                     // if we found an import, check it and continue from there
                                     check_path(location, p.path, state)
                                 }
                                 symbol => {
-                                    // if we found any other symbol,
+                                    // if we found any other symbol, continue from there
                                     Ok((state, location.join(member.clone()), symbol))
                                 }
                             }
                         }),
                     // external modules must have been turned into local ones before
-                    Symbol::Module(Module::External(_)) => unreachable!(),
-                    Symbol::Import(p) => {
+                    SymbolValue::Module(Module::External(_)) => unreachable!(),
+                    SymbolValue::Import(p) => {
                         location.pop_back().unwrap();
 
                         // redirect to `p`
@@ -202,29 +201,32 @@ fn check_module<'a, T: Clone>(
     module: &ASMModule<T>,
     state: State<'a, T>,
 ) -> Result<State<'a, T>, String> {
-    let _ = module.symbol_definitions().try_fold(
-        BTreeMap::<String, Option<Symbol<T>>>::default(),
-        |mut acc, SymbolDefinition { name, .. }| match acc.insert(name.clone(), None) {
-            Some(_) => Err(format!("duplicate name {name}")),
-            None => Ok(acc),
+    module.symbol_definitions().try_fold(
+        BTreeSet::default(),
+        |mut acc, SymbolDefinition { name, .. }| {
+            acc.insert(name.clone())
+                .then_some(acc)
+                .ok_or(format!("Duplicate name `{name}` in module `{location}`"))
         },
     )?;
 
     module
         .symbol_definitions()
         // start with the initial state
-        .try_fold(state, |state, SymbolDefinition { name, symbol }| {
+        .try_fold(state, |state, SymbolDefinition { name, value }| {
             // update the state
-            match symbol {
-                Symbol::Machine(m) => check_machine(location.clone().join(name.clone()), m, state),
-                Symbol::Module(m) => {
-                    let m = match m {
+            match value {
+                SymbolValue::Machine(machine) => {
+                    check_machine(location.clone().join(name.clone()), machine, state)
+                }
+                SymbolValue::Module(module) => {
+                    let m = match module {
                         Module::External(_) => unreachable!(),
                         Module::Local(m) => m,
                     };
                     check_module(location.clone().join(name.clone()), m, state)
                 }
-                Symbol::Import(s) => check_import(location.clone(), s.clone(), state),
+                SymbolValue::Import(s) => check_import(location.clone(), s.clone(), state),
             }
         })
 }
@@ -291,12 +293,15 @@ mod tests {
 
     #[test]
     fn duplicate() {
-        expect("duplicate", Err("duplicate name Foo"))
+        expect("duplicate", Err("Duplicate name `Foo` in module ``"))
     }
 
     #[test]
     fn duplicate_in_submodule() {
-        expect("duplicate_in_module", Err("duplicate name Foo"))
+        expect(
+            "duplicate_in_module",
+            Err("Duplicate name `Foo` in module `submodule`"),
+        )
     }
 
     #[test]

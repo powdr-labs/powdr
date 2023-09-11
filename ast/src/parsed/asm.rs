@@ -32,13 +32,16 @@ pub enum ModuleStatement<T> {
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct SymbolDefinition<T> {
     pub name: String,
-    pub symbol: Symbol<T>,
+    pub value: SymbolValue<T>,
 }
 
 #[derive(Debug, PartialEq, Eq, From, Clone)]
-pub enum Symbol<T> {
+pub enum SymbolValue<T> {
+    /// A machine definition
     Machine(Machine<T>),
+    /// An import of a symbol from another module
     Import(Import),
+    /// A module definition
     Module(Module<T>),
 }
 
@@ -50,7 +53,7 @@ pub enum Module<T> {
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Import {
-    // the path imported in the source
+    /// the path imported in the source
     pub path: SymbolPath,
 }
 

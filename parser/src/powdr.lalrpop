@@ -28,12 +28,12 @@ ModuleStatement: ModuleStatement<T> = {
 }
 
 ModuleDefinition: SymbolDefinition<T> = {
-    "mod" <name:Identifier> ";" => SymbolDefinition { name: name.clone(), symbol: Module::External(name).into() }, 
-    "mod" <name:Identifier> "{" <module:ASMModule> "}" => SymbolDefinition { name, symbol: Module::Local(module).into() }
+    "mod" <name:Identifier> ";" => SymbolDefinition { name: name.clone(), value: Module::External(name).into() }, 
+    "mod" <name:Identifier> "{" <module:ASMModule> "}" => SymbolDefinition { name, value: Module::Local(module).into() }
 }
 
 Import: SymbolDefinition<T> = {
-    "use" <path:SymbolPath> <name:( "as" <Identifier> )?> ";" => SymbolDefinition { name: name.unwrap_or(path.parts.back().unwrap().clone().try_into().unwrap()), symbol: Import {path}.into() }
+    "use" <path:SymbolPath> <name:( "as" <Identifier> )?> ";" => SymbolDefinition { name: name.unwrap_or(path.parts.back().unwrap().clone().try_into().unwrap()), value: Import {path}.into() }
 }
 
 pub SymbolPath: SymbolPath = {
@@ -172,7 +172,7 @@ ConstantFixed = {
 // ---------------------------- ASM part -----------------------------
 
 MachineDefinition: SymbolDefinition<T> = {
-    <start:@L> "machine" <name:Identifier> <arguments:MachineArguments> "{" <statements:(MachineStatement)*> "}" => SymbolDefinition { name, symbol: Machine { arguments, statements}.into() }
+    <start:@L> "machine" <name:Identifier> <arguments:MachineArguments> "{" <statements:(MachineStatement)*> "}" => SymbolDefinition { name, value: Machine { arguments, statements}.into() }
 }
 
 MachineArguments: MachineArguments = {

@@ -47,10 +47,10 @@ where
             .map(|mut s| {
                 match &mut s {
                     ModuleStatement::SymbolDefinition(SymbolDefinition {
-                        ref mut symbol, ..
+                        ref mut value, ..
                     }) => {
-                        match symbol {
-                            ast::parsed::asm::Symbol::Machine(m) => {
+                        match value {
+                            ast::parsed::asm::SymbolValue::Machine(m) => {
                                 m.statements.iter_mut().for_each(|s| match s {
                                     MachineStatement::InstructionDeclaration(
                                         _,
@@ -73,10 +73,10 @@ where
                                     _ => {}
                                 });
                             }
-                            ast::parsed::asm::Symbol::Import(_) => {
+                            ast::parsed::asm::SymbolValue::Import(_) => {
                                 // there is nothing to expand inside an import statement
                             }
-                            ast::parsed::asm::Symbol::Module(ref mut m) => {
+                            ast::parsed::asm::SymbolValue::Module(ref mut m) => {
                                 let m = match m {
                                     ast::parsed::asm::Module::External(_) => unreachable!(),
                                     ast::parsed::asm::Module::Local(m) => m,

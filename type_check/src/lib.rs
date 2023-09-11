@@ -241,9 +241,9 @@ impl<T: FieldElement> TypeChecker<T> {
 
         for m in module.statements {
             match m {
-                ModuleStatement::SymbolDefinition(SymbolDefinition { name, symbol }) => {
-                    match symbol {
-                        asm::Symbol::Machine(m) => {
+                ModuleStatement::SymbolDefinition(SymbolDefinition { name, value }) => {
+                    match value {
+                        asm::SymbolValue::Machine(m) => {
                             match self.check_machine_type(m, ctx) {
                                 Err(e) => {
                                     errors.extend(e);
@@ -253,10 +253,10 @@ impl<T: FieldElement> TypeChecker<T> {
                                 }
                             };
                         }
-                        asm::Symbol::Import(_) => {
+                        asm::SymbolValue::Import(_) => {
                             unreachable!("Imports should have been removed")
                         }
-                        asm::Symbol::Module(m) => {
+                        asm::SymbolValue::Module(m) => {
                             // add the name of this module to the context
                             let ctx = ctx.clone().join(name.clone());
 

@@ -1,6 +1,8 @@
 use std::path::PathBuf;
 
-use ast::parsed::asm::{ASMModule, ASMProgram, Module, ModuleStatement, Symbol, SymbolDefinition};
+use ast::parsed::asm::{
+    ASMModule, ASMProgram, Module, ModuleStatement, SymbolDefinition, SymbolValue,
+};
 use number::FieldElement;
 
 static ASM_EXTENSION: &str = "asm";
@@ -24,9 +26,9 @@ pub fn load_module_files_in_module<T: FieldElement>(
             .statements
             .into_iter()
             .map(|s| match s {
-                ModuleStatement::SymbolDefinition(SymbolDefinition { name, symbol }) => {
-                    let symbol = match symbol {
-                        Symbol::Module(m) => {
+                ModuleStatement::SymbolDefinition(SymbolDefinition { name, value }) => {
+                    let value = match value {
+                        SymbolValue::Module(m) => {
                             let m = match m {
                                 Module::External(name) => path
                                     .clone()
@@ -81,12 +83,12 @@ pub fn load_module_files_in_module<T: FieldElement>(
                                 Module::Local(m) => Ok((m, path.clone())),
                             }
                             .and_then(|(m, path)| load_module_files_in_module(path, m));
-                            m.map(|m| Symbol::Module(Module::Local(m)))
+                            m.map(|m| SymbolValue::Module(Module::Local(m)))
                         }
-                        symbol => Ok(symbol),
+                        value => Ok(value),
                     };
-                    symbol.map(|symbol| {
-                        ModuleStatement::SymbolDefinition(SymbolDefinition { name, symbol })
+                    value.map(|value| {
+                        ModuleStatement::SymbolDefinition(SymbolDefinition { name, value })
                     })
                 }
             })

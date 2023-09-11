@@ -30,14 +30,14 @@ impl<T: Display> Display for ASMModule<T> {
 impl<T: Display> Display for ModuleStatement<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
-            ModuleStatement::SymbolDefinition(SymbolDefinition { name, symbol }) => match symbol {
-                Symbol::Machine(m) => {
+            ModuleStatement::SymbolDefinition(SymbolDefinition { name, value }) => match value {
+                SymbolValue::Machine(m) => {
                     write!(f, "machine {name} {m}")
                 }
-                Symbol::Import(i) => {
+                SymbolValue::Import(i) => {
                     write!(f, "{i} as {name}")
                 }
-                Symbol::Module(m) => {
+                SymbolValue::Module(m) => {
                     write!(f, "mod {name} {m}")
                 }
             },
