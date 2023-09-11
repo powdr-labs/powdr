@@ -12,3 +12,6 @@ namespace Quad(%N);
     {wdouble, quadruple} in {id, double};
 
     public out = quadruple(%N-1);
+
+namespace main(%N);
+	col fixed first_step = [1] + [0]*;

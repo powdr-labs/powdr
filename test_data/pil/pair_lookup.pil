@@ -12,3 +12,6 @@ namespace Main(%N);
 
 	{a, b, c} in {Main.A, Main.B, Main.C};
 	{b, a, c} in {Main.A, Main.B, Main.C};
+
+namespace main(%N);
+	col fixed first_step = [1] + [0]*;

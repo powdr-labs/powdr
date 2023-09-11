@@ -20,3 +20,5 @@ namespace Main(%N);
 
     CALL {a, b, c} in {Add.A, Add.B, Add.C};
 
+namespace main(%N);
+	col fixed first_step = [1] + [0]*;
