@@ -36,3 +36,6 @@ namespace SimpleDiv(%N);
     col fixed CHECK = [0, 0, 0, 0, 0] + [1] + [0]*;
     CHECK * (X - 4) = 0;
     CHECK * (R - 1) = 0;
+
+namespace main(%N);
+    col fixed first_step = [1] + [0]*;
