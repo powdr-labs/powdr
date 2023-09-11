@@ -102,7 +102,6 @@ impl<T> Analyzed<T> {
     /// so that they are contiguous again.
     /// There must not be any reference to the removed polynomials left.
     pub fn remove_polynomials(&mut self, to_remove: &BTreeSet<PolyID>) {
-        // TODO intermediate polys
         let replacements: BTreeMap<PolyID, PolyID> = [
             // We have to do it separately because we need to re-start the counter
             // for each kind.

@@ -667,15 +667,15 @@ namespace T(65536);
     fn intermediate() {
         let input = r#"namespace N(65536);
     col witness x;
+    col intermediate = x;
+    intermediate = intermediate;
+"#;
+        let expected = r#"namespace N(65536);
+    col witness x;
     col intermediate = N.x;
     N.intermediate = N.intermediate;
 "#;
         let formatted = process_pil_file_contents::<GoldilocksField>(input).to_string();
-        if input != formatted {
-            for (i, f) in input.split('\n').zip(formatted.split('\n')) {
-                assert_eq!(i, f);
-            }
-        }
-        assert_eq!(input, formatted);
+        assert_eq!(formatted, expected);
     }
 }
