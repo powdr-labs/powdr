@@ -163,6 +163,22 @@ fn full_pil_constant() {
 }
 
 #[test]
+#[should_panic = "assertion failed: poly.is_fixed() || poly.is_witness()"]
+fn intermediate() {
+    let f = "intermediate.asm";
+    verify_asm::<GoldilocksField>(f, Default::default());
+    gen_halo2_proof(f, Default::default());
+}
+
+#[test]
+#[should_panic = "assertion failed: poly.is_fixed() || poly.is_witness()"]
+fn intermediate_nested() {
+    let f = "intermediate_nested.asm";
+    verify_asm::<GoldilocksField>(f, Default::default());
+    gen_halo2_proof(f, Default::default());
+}
+
+#[test]
 fn book() {
     for f in fs::read_dir("../test_data/asm/book/").unwrap() {
         let f = f.unwrap().path();

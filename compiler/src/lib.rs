@@ -163,6 +163,7 @@ pub fn compile_asm_string<T: FieldElement>(
         );
         return Ok((pil_file_path, None));
     }
+
     fs::write(pil_file_path.clone(), format!("{pil}")).unwrap();
 
     let pil_file_name = pil_file_path.file_name().unwrap();

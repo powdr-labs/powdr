@@ -289,7 +289,6 @@ pub struct FunctionCall<T> {
 }
 
 /// The definition of a function (excluding its name):
-/// Either a param-value mapping or an array expression.
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub enum FunctionDefinition<T> {
     /// Parameter-value-mapping.
@@ -298,6 +297,8 @@ pub enum FunctionDefinition<T> {
     Array(ArrayExpression<T>),
     /// Prover query.
     Query(Vec<String>, Expression<T>),
+    /// Expression, for intermediate polynomials
+    Expression(Expression<T>),
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
@@ -451,6 +452,7 @@ where
                 postvisit_expression_mut(e, f)
             }
             FunctionDefinition::Array(ae) => postvisit_expression_in_array_expression_mut(ae, f),
+            FunctionDefinition::Expression(e) => postvisit_expression_mut(e, f),
         },
         PilStatement::PolynomialCommitDeclaration(_, _, None)
         | PilStatement::Include(_, _)
