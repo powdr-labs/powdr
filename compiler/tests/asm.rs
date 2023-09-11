@@ -154,7 +154,6 @@ fn full_pil_constant() {
 }
 
 #[test]
-#[should_panic = "assertion failed: poly.is_fixed() || poly.is_witness()"]
 fn intermediate() {
     let f = "intermediate.asm";
     verify_asm::<GoldilocksField>(f, Default::default());

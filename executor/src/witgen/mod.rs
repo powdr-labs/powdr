@@ -12,7 +12,7 @@ pub use self::eval_result::{
 };
 use self::global_constraints::GlobalConstraints;
 use self::machines::machine_extractor::ExtractionOutput;
-use self::util::substitute_constants;
+use self::util::{substitute_constants, substitute_intermediate};
 
 mod affine_expression;
 mod column_map;
@@ -47,7 +47,25 @@ where
         panic!("Resulting degree is zero. Please ensure that there is at least one non-constant fixed column to set the degree.");
     }
     let fixed = FixedData::new(analyzed, degree, fixed_col_values);
-    let identities = substitute_constants(&analyzed.identities, &analyzed.constants);
+    let identities = substitute_intermediate(
+        &analyzed.identities,
+        &analyzed
+            .definitions
+            .iter()
+            .filter_map(|(_, (pol, def))| match pol.poly_type {
+                PolynomialType::Committed => None,
+                PolynomialType::Constant => None,
+                PolynomialType::Intermediate => Some((
+                    pol.id,
+                    match def.as_ref().unwrap() {
+                        FunctionValueDefinition::Expression(e) => e.clone(),
+                        _ => unreachable!(),
+                    },
+                )),
+            })
+            .collect(),
+    );
+    let identities = substitute_constants(&identities, &analyzed.constants);
 
     let GlobalConstraints {
         // Maps a polynomial to a mask specifying which bit is possibly set,
@@ -192,7 +210,7 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
     pub fn new(
         analyzed: &'a Analyzed<T>,
         degree: DegreeType,
-        fixed_col_values: &'a [(&'a str, Vec<T>)],
+        fixed_col_values: &'a [(&str, Vec<T>)],
     ) -> Self {
         let witness_cols = WitnessColumnMap::from(
             analyzed
