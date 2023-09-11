@@ -1,9 +1,8 @@
 namespace main(8);
     col fixed first_step = [1] + [0]*;
-    col fixed BYTE(i) { i & 0xff };
 
 	col witness x0;
-	{ x0 } in { BYTE };
+	{ x0 } in { first_step };
 
 	col witness y0;
 	col witness y1;
