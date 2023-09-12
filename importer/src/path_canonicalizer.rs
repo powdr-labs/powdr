@@ -68,10 +68,7 @@ impl<'a, T> Folder<T> for Canonicalizer<'a> {
                                 .transpose(),
                             },
                         }
-                        .map(|value| {
-                            value
-                                .map(|value| SymbolDefinition { name, value }.into())
-                        })
+                        .map(|value| value.map(|value| SymbolDefinition { name, value }.into()))
                     }
                 })
                 .collect::<Result<_, _>>()?,

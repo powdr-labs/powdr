@@ -265,7 +265,7 @@ pub fn generate_machine_rom<T: FieldElement>(
 mod tests {
     use std::collections::BTreeMap;
 
-    use ast::parsed::asm::AbsoluteSymbolPath;
+    use ast::parsed::asm::{parse_absolute_path, AbsoluteSymbolPath};
     use number::Bn254Field;
     use pretty_assertions::assert_eq;
 
@@ -295,7 +295,7 @@ mod tests {
         let res = generate_rom_str::<Bn254Field>(vm);
 
         assert_eq!(
-            res.get(&AbsoluteSymbolPath::default().join("VM"))
+            res.get(&parse_absolute_path("VM"))
                 .unwrap()
                 .1
                 .as_ref()
@@ -333,7 +333,7 @@ _loop;
         let res = generate_rom_str::<Bn254Field>(vm);
 
         assert_eq!(
-            res.get(&AbsoluteSymbolPath::default().join("VM"))
+            res.get(&parse_absolute_path("VM"))
                 .unwrap()
                 .1
                 .as_ref()
@@ -392,7 +392,7 @@ _loop;
         let res = generate_rom_str::<Bn254Field>(vm);
 
         assert_eq!(
-            res.get(&AbsoluteSymbolPath::default().join("VM"))
+            res.get(&parse_absolute_path("VM"))
                 .unwrap()
                 .1
                 .as_ref()

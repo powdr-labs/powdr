@@ -8,7 +8,7 @@ use ast::{
     },
     object::{Link, LinkFrom, LinkTo, Location, Object, Operation, PILGraph},
     parsed::{
-        asm::{AbsoluteSymbolPath, CallableRef},
+        asm::{parse_absolute_path, AbsoluteSymbolPath, CallableRef},
         PilStatement,
     },
 };
@@ -29,7 +29,7 @@ pub fn compile<T: FieldElement>(input: AnalysisASMFile<T>) -> PILGraph<T> {
         _ => {
             assert!(input
                 .machines
-                .contains_key(&AbsoluteSymbolPath::default().join(MAIN_MACHINE)));
+                .contains_key(&parse_absolute_path(MAIN_MACHINE)));
             MAIN_MACHINE.into()
         }
     };

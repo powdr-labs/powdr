@@ -75,6 +75,12 @@ impl<S: Into<String>> From<S> for AbsoluteSymbolPath {
     }
 }
 
+/// parses a path like `path::to::symbol`
+pub fn parse_absolute_path(s: &str) -> AbsoluteSymbolPath {
+    s.split("::")
+        .fold(AbsoluteSymbolPath::default(), |path, part| path.join(part))
+}
+
 impl AbsoluteSymbolPath {
     pub fn pop_front(&mut self) -> Option<String> {
         self.parts.pop_front()
