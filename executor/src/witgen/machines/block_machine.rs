@@ -77,7 +77,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
             if let Some(block_size) = try_to_period(&id.right.selector, fixed_data) {
                 assert!(block_size <= fixed_data.degree as usize);
                 let row_factory = RowFactory::new(fixed_data, global_range_constraints.clone());
-                // Start out with an empty block so that we do not have to deal with wrap-around
+                // Start out with a block filled with unknown values so that we do not have to deal with wrap-around
                 // when storing machine witness data.
                 // This will be filled with the default block in `take_witness_col_values`
                 let data = vec![row_factory.fresh_row(); block_size];
@@ -285,7 +285,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         right: &'a SelectedExpressions<T>,
     ) -> EvalResult<'a, T> {
         log::trace!("Start processing block machine");
-        log::trace!("Left values:");
+        log::trace!("Left values of lookup:");
         for l in left {
             log::trace!("  {}", l);
         }
