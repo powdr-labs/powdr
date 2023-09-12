@@ -10,6 +10,3 @@ Cargo.lock
 **/*.rs.bk
 
 riscv/runtime/target
-
-.idea
-.vscode
