@@ -106,7 +106,7 @@ pub fn split_out_machines<'a, T: FieldElement>(
             log::info!("Detected machine: block");
             machines.push(KnownMachine::BlockMachine(machine));
         } else {
-            log::info!("Detected machine: vm");
+            log::info!("Could not detect a specific machine. Will use the generic VM machine.");
             machines.push(KnownMachine::Vm(Generator::new(
                 fixed,
                 &machine_identities,
