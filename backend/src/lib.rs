@@ -3,7 +3,6 @@ mod halo2_impl;
 mod pilstark;
 pub use pilstark::json_exporter::export;
 
-
 use ast::analyzed::Analyzed;
 use number::{DegreeType, FieldElement};
 use std::{io, marker::PhantomData};
