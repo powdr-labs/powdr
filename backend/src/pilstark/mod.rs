@@ -1,5 +1,5 @@
 pub mod estark;
-mod json_exporter;
+pub mod json_exporter;
 
 use crate::{BackendImpl, Proof};
 use ast::analyzed::Analyzed;
