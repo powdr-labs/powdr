@@ -10,8 +10,10 @@ use self::column_map::{FixedColumnMap, WitnessColumnMap};
 pub use self::eval_result::{
     Constraint, Constraints, EvalError, EvalResult, EvalStatus, EvalValue, IncompleteCause,
 };
+use self::generator::Generator;
 use self::global_constraints::GlobalConstraints;
 use self::machines::machine_extractor::ExtractionOutput;
+use self::machines::{FixedLookup, KnownMachine, Machine};
 use self::util::substitute_constants;
 
 mod affine_expression;
@@ -31,6 +33,13 @@ mod sequence_iterator;
 pub mod symbolic_evaluator;
 mod symbolic_witness_evaluator;
 mod util;
+
+/// Everything [Generator] needs to mutate in order to compute a new row.
+pub struct MutableState<'a, T: FieldElement, Q: FnMut(&str) -> Option<T> + Send + Sync> {
+    pub fixed_lookup: FixedLookup<T>,
+    pub machines: Vec<KnownMachine<'a, T>>,
+    pub query_callback: Option<Q>,
+}
 
 /// Generates the committed polynomial values
 /// @returns the values (in source order) and the degree of the polynomials.
@@ -57,7 +66,7 @@ where
         retained_identities,
     } = global_constraints::determine_global_constraints(&fixed, identities.iter().collect());
     let ExtractionOutput {
-        mut fixed_lookup,
+        fixed_lookup,
         machines,
         base_identities,
         base_witnesses,
@@ -66,14 +75,16 @@ where
         retained_identities,
         &known_witness_constraints,
     );
-    let mut generator = generator::Generator::new(
-        &fixed,
-        &mut fixed_lookup,
-        &base_identities,
-        base_witnesses.into_iter().collect(),
-        known_witness_constraints,
+    let mut mutable_state = MutableState {
+        fixed_lookup,
         machines,
         query_callback,
+    };
+    let mut generator = Generator::new(
+        &fixed,
+        &base_identities,
+        &base_witnesses,
+        &known_witness_constraints,
     );
 
     let mut rows: Vec<WitnessColumnMap<T>> = vec![];
@@ -101,7 +112,7 @@ where
         let mut row_values = None;
         if let Some(period) = looping_period {
             let values = &rows[rows.len() - period];
-            if generator.propose_next_row(row, values) {
+            if generator.propose_next_row(row, values, &mut mutable_state) {
                 row_values = Some(values.clone());
             } else {
                 log::info!("Using loop failed. Trying to generate regularly again.");
@@ -109,7 +120,7 @@ where
             }
         }
         if row_values.is_none() {
-            row_values = Some(generator.compute_next_row(row));
+            row_values = Some(generator.compute_next_row(row, &mut mutable_state));
         };
 
         rows.push(row_values.unwrap());
@@ -129,22 +140,35 @@ where
         }
     }
 
-    // Overwrite all machine witness columns
-    for (poly_id, data) in generator.machine_witness_col_values() {
-        columns[&poly_id] = data;
-    }
-
-    // Map from column id to name
-    // We can't used `fixed` here, because the name would have the wrong lifetime.
-    let mut col_names = analyzed
-        .committed_polys_in_source_order()
-        .iter()
-        .map(|(p, _)| (p.id, p.absolute_name.as_str()))
+    // Get columns from secondary machines
+    let mut secondary_columns = mutable_state
+        .machines
+        .iter_mut()
+        .flat_map(|m| {
+            m.take_witness_col_values(&fixed, &mut mutable_state.fixed_lookup)
+                .into_iter()
+        })
         .collect::<BTreeMap<_, _>>();
 
-    columns
+    // Done this way, because:
+    // 1. The keys need to be string references of the right lifetime.
+    // 2. The order needs to be the the order of declaration.
+    analyzed
+        .committed_polys_in_source_order()
         .into_iter()
-        .map(|(id, v)| (col_names.remove(&id.id).unwrap(), v))
+        .map(|(p, _)| {
+            let column = secondary_columns
+                .remove(&p.absolute_name)
+                .unwrap_or_else(|| {
+                    let column = &mut columns[&PolyID {
+                        id: p.id,
+                        ptype: PolynomialType::Committed,
+                    }];
+                    std::mem::take(column)
+                });
+            assert!(!column.is_empty());
+            (p.absolute_name.as_str(), column)
+        })
         .collect()
 }
 

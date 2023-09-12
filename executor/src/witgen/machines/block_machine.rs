@@ -238,10 +238,11 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
             .collect();
 
         // Build the processor.
+        let mut machines = vec![];
         let mut processor = Processor::new(
             fixed_data.degree - 2,
             rows,
-            IdentityProcessor::new(fixed_data, fixed_lookup, vec![]),
+            IdentityProcessor::new(fixed_data, fixed_lookup, &mut machines),
             &self.identities,
             fixed_data,
             self.row_factory.clone(),
@@ -292,7 +293,9 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         log::trace!("Start processing block machine");
 
         // TODO: Add possibility for machines to call other machines.
-        let mut identity_processor = IdentityProcessor::new(fixed_data, fixed_lookup, vec![]);
+        let mut machines = vec![];
+        let mut identity_processor =
+            IdentityProcessor::new(fixed_data, fixed_lookup, &mut machines);
 
         // First check if we already store the value.
         // This can happen in the loop detection case, where this function is just called
