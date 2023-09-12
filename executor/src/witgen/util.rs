@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use ast::analyzed::util::previsit_expressions_in_identity_mut;
-use ast::analyzed::{Expression, Identity, PolynomialReference};
+use ast::analyzed::{Expression, Identity, PolynomialReference, PolynomialType};
 
 /// Checks if an expression is
 /// - a polynomial
@@ -59,6 +59,32 @@ pub fn substitute_constants<T: Copy>(
             previsit_expressions_in_identity_mut(&mut identity, &mut |e| {
                 if let Expression::Constant(name) = e {
                     *e = Expression::Number(constants[name])
+                }
+                std::ops::ControlFlow::Continue::<()>(())
+            });
+            identity
+        })
+        .collect()
+}
+
+pub fn substitute_intermediate<T: Copy>(
+    identities: &[Identity<T>],
+    intermediate_polynomials: &HashMap<u64, Expression<T>>,
+) -> Vec<Identity<T>> {
+    identities
+        .iter()
+        .cloned()
+        .map(|mut identity| {
+            previsit_expressions_in_identity_mut(&mut identity, &mut |e| {
+                if let Expression::PolynomialReference(r) = e {
+                    let poly_id = r.poly_id.unwrap();
+                    match poly_id.ptype {
+                        PolynomialType::Committed => {}
+                        PolynomialType::Constant => {}
+                        PolynomialType::Intermediate => {
+                            *e = intermediate_polynomials[&poly_id.id].clone();
+                        }
+                    }
                 }
                 std::ops::ControlFlow::Continue::<()>(())
             });
