@@ -137,10 +137,10 @@ impl<T: FieldElement> ASMPILConverter<T> {
                                 let pc_update_name = format!("{}_update", name);
 
                                 vec![
-                                    parse_pil_statement(&format!("col {pc_update_name}")),
-                                    PilStatement::PolynomialIdentity(
+                                    PilStatement::PolynomialDefinition(
                                         0,
-                                        build_sub(direct_reference(&pc_update_name), rhs),
+                                        format!("{pc_update_name}"),
+                                        rhs,
                                     ),
                                     PilStatement::PolynomialIdentity(
                                         0,
@@ -931,6 +931,12 @@ impl<T: FieldElement> ASMPILConverter<T> {
                         }
                     );
                     self.pil.extend([
+                        PilStatement::PolynomialDefinition(
+                            0,
+                            format!("{intermediate_name}"),
+                            build_mul(left, right),
+                        ),
+                        /*
                         parse_pil_statement(&format!("col {intermediate_name}")),
                         PilStatement::PolynomialIdentity(
                             0,
@@ -939,6 +945,7 @@ impl<T: FieldElement> ASMPILConverter<T> {
                                 build_mul(left, right),
                             ),
                         ),
+                        */
                     ]);
                     (counter + 1, direct_reference(intermediate_name))
                 }
