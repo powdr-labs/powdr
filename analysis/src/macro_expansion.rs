@@ -4,19 +4,17 @@ use std::{
 };
 
 use ast::parsed::{
-    asm::{
-        ASMModule, ASMProgram, Instruction, InstructionBody, MachineStatement, ModuleStatement,
-        SymbolDefinition,
-    },
+    asm::{ASMProgram, Instruction, InstructionBody, Machine, MachineStatement},
+    folder::Folder,
     postvisit_expression_in_statement_mut, postvisit_expression_mut, Expression,
     FunctionDefinition, PilStatement,
 };
 use number::FieldElement;
 
 pub fn expand<T: FieldElement>(program: ASMProgram<T>) -> ASMProgram<T> {
-    let mut expander = MacroExpander::default();
-    ASMProgram {
-        main: expander.expand_asm(program.main),
+    match MacroExpander::default().fold_program(program) {
+        Ok(p) => p,
+        Err(_) => unreachable!(),
     }
 }
 
@@ -27,6 +25,33 @@ pub struct MacroExpander<T> {
     parameter_names: HashMap<String, usize>,
     shadowing_locals: HashSet<String>,
     statements: Vec<PilStatement<T>>,
+}
+
+pub enum Error {}
+
+impl<T: FieldElement> Folder<T> for MacroExpander<T> {
+    type Error = Error;
+
+    fn fold_machine(&mut self, mut machine: Machine<T>) -> Result<Machine<T>, Self::Error> {
+        machine.statements.iter_mut().for_each(|s| match s {
+            MachineStatement::InstructionDeclaration(_, _, Instruction { body, .. }) => {
+                match body {
+                    InstructionBody::Local(body) => {
+                        *body = self.expand_macros(std::mem::take(body))
+                    }
+                    InstructionBody::CallableRef(..) => {
+                        // there is nothing to expand in a callable ref
+                    }
+                }
+            }
+            MachineStatement::InlinePil(_, statements) => {
+                *statements = self.expand_macros(std::mem::take(statements));
+            }
+            _ => {}
+        });
+
+        Ok(machine)
+    }
 }
 
 #[derive(Debug)]
@@ -40,59 +65,6 @@ impl<T> MacroExpander<T>
 where
     T: FieldElement,
 {
-    fn expand_asm(&mut self, module: ASMModule<T>) -> ASMModule<T> {
-        let statements = module
-            .statements
-            .into_iter()
-            .map(|mut s| {
-                match &mut s {
-                    ModuleStatement::SymbolDefinition(SymbolDefinition {
-                        ref mut value, ..
-                    }) => {
-                        match value {
-                            ast::parsed::asm::SymbolValue::Machine(m) => {
-                                m.statements.iter_mut().for_each(|s| match s {
-                                    MachineStatement::InstructionDeclaration(
-                                        _,
-                                        _,
-                                        Instruction { body, .. },
-                                    ) => {
-                                        match body {
-                                            InstructionBody::Local(body) => {
-                                                *body = self.expand_macros(std::mem::take(body))
-                                            }
-                                            InstructionBody::CallableRef(..) => {
-                                                // there is nothing to expand in a callable ref
-                                            }
-                                        }
-                                    }
-                                    MachineStatement::InlinePil(_, statements) => {
-                                        *statements =
-                                            self.expand_macros(std::mem::take(statements));
-                                    }
-                                    _ => {}
-                                });
-                            }
-                            ast::parsed::asm::SymbolValue::Import(_) => {
-                                // there is nothing to expand inside an import statement
-                            }
-                            ast::parsed::asm::SymbolValue::Module(ref mut m) => {
-                                let m = match m {
-                                    ast::parsed::asm::Module::External(_) => unreachable!(),
-                                    ast::parsed::asm::Module::Local(m) => m,
-                                };
-
-                                *m = self.expand_asm(std::mem::take(m));
-                            }
-                        }
-                    }
-                };
-                s
-            })
-            .collect();
-        ASMModule { statements }
-    }
-
     /// Expands all macro references inside the statements and also adds
     /// any macros defined therein to the list of macros.
     ///

@@ -1,6 +1,7 @@
 pub mod asm;
 pub mod build;
 pub mod display;
+pub mod folder;
 use std::{iter::once, ops::ControlFlow};
 
 use number::{DegreeType, FieldElement};
