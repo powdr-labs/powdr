@@ -15,8 +15,6 @@ use crate::witgen::{EvalValue, IncompleteCause};
 use ast::analyzed::{
     Expression, Identity, IdentityKind, PolyID, PolynomialReference, SelectedExpressions,
 };
-use itertools::Either;
-use itertools::Itertools;
 use number::{DegreeType, FieldElement};
 
 /// Transposes a list of rows into a map from column to a list of values.
@@ -371,9 +369,9 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         }
     }
 
-    /// Takes a block of rows, which contains the last row of the previous block
-    /// and the first row of the next block. The first row of the next block is ignored,
-    /// the last row of the previous block is merged with the first row of the next block.
+    /// Takes a block of rows, which contains the last row of its previous block
+    /// and the first row of its next block. The first row of its next block is ignored,
+    /// the last row of its previous block is merged with the one we have already.
     /// This is necessary to handle non-rectangular block machines, which already use
     /// unused cells in the previous block.
     fn append_block(&mut self, mut new_block: Vec<Row<'a, T>>) -> Result<(), EvalError<T>> {
@@ -385,26 +383,26 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
 
         // 1. Ignore the first row of the next block:
         new_block.pop();
-        // 2. Take out the last row from the previous block
-        let (mut last_row, new_block): (Vec<_>, Vec<_>) =
-            new_block.into_iter().enumerate().partition_map(|(i, row)| {
-                if i == 0 {
-                    Either::Left(row)
-                } else {
-                    Either::Right(row)
-                }
-            });
-        let last_row = last_row.pop().unwrap();
-        // 3. Merge the last row of the previous block
+        // 2. Merge the last row of the previous block
         let last_row_index = self.rows() as usize - 1;
-        let existing_last_row = self.data.get_mut(last_row_index).unwrap();
-        *existing_last_row =
-            WitnessColumnMap::from(last_row.into_iter().map(|(k, v)| match &v.value {
-                CellValue::Known(_) => v,
-                _ => existing_last_row[&k].clone(),
-            }));
+        let updated_last_row = new_block.get_mut(0).unwrap();
+        for (poly_id, existing_value) in self.data[last_row_index].iter() {
+            if let CellValue::Known(v) = existing_value.value {
+                if updated_last_row[&poly_id].value.is_known()
+                    && updated_last_row[&poly_id].value != existing_value.value
+                {
+                    return Err(EvalError::Generic(
+                        "Block machine overwrites existing value with different value!".to_string(),
+                    ));
+                }
+                updated_last_row[&poly_id].value = CellValue::Known(v);
+            }
+        }
 
-        // 4. Append the new block
+        // 3. Remove the last row of the previous block from data
+        self.data.pop();
+
+        // 4. Append the new block (including the merged last row of the previous block)
         self.data.extend(new_block);
 
         Ok(())

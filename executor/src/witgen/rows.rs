@@ -16,7 +16,7 @@ use super::{
     EvalValue, FixedData,
 };
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
 pub enum CellValue<T: FieldElement> {
     Known(T),
     RangeConstraint(RangeConstraint<T>),
