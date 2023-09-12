@@ -175,15 +175,16 @@ impl<T: FieldElement> TypeChecker<T> {
         let operation_id = machine.arguments.operation_id;
 
         if !registers.iter().any(|r| r.ty.is_pc()) {
-            if latch.is_none() {
+            let operation_count = callable.operation_definitions().count();
+            if operation_count > 0 && latch.is_none() {
                 errors.push(format!(
-                    "Machine {} should have a latch column as it does not have a pc",
+                    "Machine {} should have a latch column as it does not have a pc and has operations",
                     ctx
                 ));
             }
-            if operation_id.is_none() {
+            if operation_count > 1 && operation_id.is_none() {
                 errors.push(format!(
-                    "Machine {} should have an operation id column as it does not have a pc",
+                    "Machine {} should have an operation id column as it does not have a pc and has more than one operation",
                     ctx
                 ));
             }

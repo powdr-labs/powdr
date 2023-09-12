@@ -284,7 +284,8 @@ OperationDeclaration: MachineStatement<T> = {
 }
 
 OperationId: OperationId<T> = {
-    "<" <id:FieldElement> ">" => OperationId { id },
+    "<" <id:FieldElement> ">" => OperationId { id: Some(id) },
+    => OperationId { id: None }
 }
 
 pub FunctionStatement: FunctionStatement<T> = {

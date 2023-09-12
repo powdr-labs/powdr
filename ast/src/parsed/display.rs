@@ -171,7 +171,10 @@ impl<T: Display> Display for MachineStatement<T> {
 
 impl<T: Display> Display for OperationId<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write!(f, "<{}>", self.id)
+        match &self.id {
+            Some(id) => write!(f, "<{id}>"),
+            None => write!(f, ""),
+        }
     }
 }
 

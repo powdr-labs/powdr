@@ -1,8 +1,6 @@
-machine FullConstant(latch, operation_id) {
+machine FullConstant {
 	degree 2;
 
-	pol constant operation_id = [0]*;
-	pol constant latch = [1]*;
 	pol constant C = [0, 1]*;
 	col commit w;
 	w = C;

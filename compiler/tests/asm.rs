@@ -99,6 +99,24 @@ fn single_function_vm() {
 }
 
 #[test]
+fn empty() {
+    let f = "empty.asm";
+    let i = [];
+    verify_asm::<GoldilocksField>(f, slice_to_vec(&i));
+    gen_halo2_proof(f, slice_to_vec(&i));
+    gen_estark_proof(f, slice_to_vec(&i));
+}
+
+#[test]
+fn single_operation() {
+    let f = "single_operation.asm";
+    let i = [];
+    verify_asm::<GoldilocksField>(f, slice_to_vec(&i));
+    gen_halo2_proof(f, slice_to_vec(&i));
+    gen_estark_proof(f, slice_to_vec(&i));
+}
+
+#[test]
 fn empty_vm() {
     let f = "empty_vm.asm";
     let i = [];
