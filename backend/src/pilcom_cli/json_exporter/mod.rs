@@ -365,7 +365,11 @@ mod test {
         let temp_dir = mktemp::Temp::new_dir().unwrap();
         let output_file = temp_dir.join("out.json");
 
-        let file = std::path::PathBuf::from("../test_data/polygon-hermez/").join(file);
+        let file = std::path::PathBuf::from(format!(
+            "{}/../test_data/polygon-hermez/",
+            env!("CARGO_MANIFEST_DIR")
+        ))
+        .join(file);
 
         let analyzed = analyze::<GoldilocksField>(&file);
         let json_out = export(&analyzed);

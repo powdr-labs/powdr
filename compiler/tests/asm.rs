@@ -4,8 +4,11 @@ use std::fs;
 use test_log::test;
 
 fn verify_asm<T: FieldElement>(file_name: &str, inputs: Vec<T>) {
-    let contents = fs::read_to_string(format!("./test_data/asm/{file_name}"))
-        .unwrap_or_else(|_| fs::read_to_string(format!("../test_data/asm/{file_name}")).unwrap());
+    let contents = fs::read_to_string(format!(
+        "{}/../test_data/asm/{file_name}",
+        env!("CARGO_MANIFEST_DIR")
+    ))
+    .unwrap();
 
     verify_asm_string(file_name, &contents, inputs)
 }
@@ -13,7 +16,11 @@ fn verify_asm<T: FieldElement>(file_name: &str, inputs: Vec<T>) {
 #[cfg(feature = "halo2")]
 fn gen_halo2_proof(file_name: &str, inputs: Vec<Bn254Field>) {
     compiler::compile_pil_or_asm(
-        format!("../test_data/asm/{file_name}").as_str(),
+        format!(
+            "{}/../test_data/asm/{file_name}",
+            env!("CARGO_MANIFEST_DIR")
+        )
+        .as_str(),
         inputs,
         &mktemp::Temp::new_dir().unwrap(),
         true,
@@ -88,14 +95,16 @@ fn block_to_block() {
     gen_halo2_proof(f, slice_to_vec(&i));
 }
 
-#[test]
-#[ignore = "Too slow"]
-fn keccak() {
-    let f = "keccak.asm";
-    let i = [];
-    verify_asm::<GoldilocksField>(f, slice_to_vec(&i));
-    gen_halo2_proof(f, slice_to_vec(&i));
-}
+// Commented out until thibaut provides the "keccak.asm"
+//
+// #[test]
+// #[ignore = "Too slow"]
+// fn keccak() {
+//     let f = "keccak.asm";
+//     let i = [];
+//     verify_asm::<GoldilocksField>(f, slice_to_vec(&i));
+//     gen_halo2_proof(f, slice_to_vec(&i));
+// }
 
 #[test]
 #[should_panic = "not implemented: No executor machine matched identity `main.instr_sub { 1, main.X, main.Y, main.Z } in 1 { main_arith.operation_id, main_arith.z, main_arith.x, main_arith.y };`"]
