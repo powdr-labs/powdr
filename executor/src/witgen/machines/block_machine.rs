@@ -262,7 +262,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
             processor
                 .solve_with_default_sequence_iterator()
                 .expect("Some constraints were not satisfiable when solving for the last row.");
-            let last_row = processor.finish().0.remove(1);
+            let last_row = processor.finish().remove(1);
 
             // Copy values into data
             for (poly_id, values) in data.iter_mut() {
@@ -346,7 +346,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
 
         let outer_assignments = processor.solve(&mut sequence_iterator)?;
         let (new_block, left_new) = processor.finish();
-        let left_new = left_new.unwrap();
+        let left_new = left_new;
 
         // Only succeed if we can assign everything.
         // Otherwise it is messy because we have to find the correct block again.

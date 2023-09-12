@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::{collections::HashSet, marker::PhantomData};
 
 use ast::analyzed::{Identity, PolyID, PolynomialReference, SelectedExpressions};
 use number::FieldElement;
@@ -16,6 +16,10 @@ use super::{
 };
 
 type Left<'a, T> = Vec<AffineExpression<&'a PolynomialReference, T>>;
+
+// Marker types
+pub struct WithCalldata;
+pub struct WithoutCalldata;
 
 /// Data needed to handle an outer query.
 pub struct Calldata<'a, T: FieldElement> {
@@ -37,7 +41,7 @@ impl<'a, T: FieldElement> Calldata<'a, T> {
 /// This current implementation is very rudimentary and only used in the block machine
 /// to "fix" the last row. However, in the future we can generalize it to be used
 /// for general block machine or VM witness computation.
-pub struct Processor<'a, 'b, T: FieldElement> {
+pub struct Processor<'a, 'b, T: FieldElement, CalldataAvailable> {
     /// The global index of the first row of [Processor::data].
     row_offset: u64,
     /// The rows that are being processed.
@@ -54,9 +58,10 @@ pub struct Processor<'a, 'b, T: FieldElement> {
     witness_cols: &'b HashSet<PolyID>,
     /// The calldata, if any. If there is none, processing an outer query will fail.
     calldata: Option<Calldata<'a, T>>,
+    _marker: PhantomData<CalldataAvailable>,
 }
 
-impl<'a, 'b, T: FieldElement> Processor<'a, 'b, T> {
+impl<'a, 'b, T: FieldElement> Processor<'a, 'b, T, WithoutCalldata> {
     pub fn new(
         row_offset: u64,
         data: Vec<Row<'a, T>>,
@@ -75,16 +80,38 @@ impl<'a, 'b, T: FieldElement> Processor<'a, 'b, T> {
             row_factory,
             witness_cols,
             calldata: None,
+            _marker: PhantomData,
         }
     }
 
-    pub fn with_calldata(self, calldata: Calldata<'a, T>) -> Self {
-        Self {
+    pub fn with_calldata(self, calldata: Calldata<'a, T>) -> Processor<'a, 'b, T, WithCalldata> {
+        Processor {
             calldata: Some(calldata),
-            ..self
+            _marker: PhantomData,
+            row_offset: self.row_offset,
+            data: self.data,
+            identity_processor: self.identity_processor,
+            identities: self.identities,
+            fixed_data: self.fixed_data,
+            row_factory: self.row_factory,
+            witness_cols: self.witness_cols,
         }
     }
 
+    /// Destroys itself, returns the data and updated left-hand side of the outer query (if available).
+    pub fn finish(self) -> Vec<Row<'a, T>> {
+        self.data
+    }
+}
+
+impl<'a, 'b, T: FieldElement> Processor<'a, 'b, T, WithCalldata> {
+    /// Destroys itself, returns the data and updated left-hand side of the outer query (if available).
+    pub fn finish(self) -> (Vec<Row<'a, T>>, Left<'a, T>) {
+        (self.data, self.calldata.unwrap().left)
+    }
+}
+
+impl<'a, 'b, T: FieldElement, CalldataAvailable> Processor<'a, 'b, T, CalldataAvailable> {
     /// Evaluate all identities on all *non-wrapping* row pairs, assuming zero for unknown values.
     /// If any identity was unsatisfied, returns an error.
     pub fn check_constraints(&mut self) -> Result<(), EvalError<T>> {
@@ -153,11 +180,6 @@ impl<'a, 'b, T: FieldElement> Processor<'a, 'b, T> {
             sequence_iterator.report_progress(progress);
         }
         Ok(outer_assignments)
-    }
-
-    /// Destroys itself, returns the data and updated left-hand side of the outer query (if available).
-    pub fn finish(self) -> (Vec<Row<'a, T>>, Option<Left<'a, T>>) {
-        (self.data, self.calldata.map(|c| c.left))
     }
 
     /// Given a row and identity index, computes any updates, applies them and returns
@@ -297,7 +319,7 @@ mod tests {
         },
     };
 
-    use super::Processor;
+    use super::{Processor, WithoutCalldata};
 
     fn name_to_poly_id<T: FieldElement>(fixed_data: &FixedData<T>) -> BTreeMap<String, PolyID> {
         let mut name_to_poly_id = BTreeMap::new();
@@ -313,7 +335,7 @@ mod tests {
     /// Constructs a processor for a given PIL, then calls a function on it.
     fn do_with_processor<T: FieldElement, R>(
         src: &str,
-        f: impl Fn(&mut Processor<T>, BTreeMap<String, PolyID>) -> R,
+        f: impl Fn(&mut Processor<T, WithoutCalldata>, BTreeMap<String, PolyID>) -> R,
     ) -> R {
         let analyzed = analyze_string(src);
         let (constants, degree) = generate(&analyzed);
