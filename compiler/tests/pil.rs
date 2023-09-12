@@ -4,15 +4,12 @@ use std::path::Path;
 use test_log::test;
 
 pub fn verify_pil(file_name: &str, query_callback: Option<fn(&str) -> Option<GoldilocksField>>) {
-    let input_file = [".", ".."]
-        .into_iter()
-        .find_map(|p| {
-            let path = Path::new(&format!("{p}/test_data/pil/{file_name}")).to_owned();
-            path.exists().then_some(path.to_owned())
-        })
-        .unwrap()
-        .canonicalize()
-        .unwrap();
+    let input_file = Path::new(&format!(
+        "{}/../test_data/pil/{file_name}",
+        env!("CARGO_MANIFEST_DIR")
+    ))
+    .canonicalize()
+    .unwrap();
 
     let temp_dir = mktemp::Temp::new_dir().unwrap();
     assert!(compiler::compile_pil(
@@ -29,7 +26,11 @@ pub fn verify_pil(file_name: &str, query_callback: Option<fn(&str) -> Option<Gol
 #[cfg(feature = "halo2")]
 fn gen_halo2_proof(file_name: &str, inputs: Vec<Bn254Field>) {
     compiler::compile_pil_or_asm(
-        format!("../test_data/pil/{file_name}").as_str(),
+        format!(
+            "{}/../test_data/pil/{file_name}",
+            env!("CARGO_MANIFEST_DIR")
+        )
+        .as_str(),
         inputs,
         &mktemp::Temp::new_dir().unwrap(),
         true,

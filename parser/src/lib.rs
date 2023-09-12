@@ -101,7 +101,10 @@ mod test {
     }
 
     fn parse_file(name: &str) -> PILFile<GoldilocksField> {
-        let file = std::path::PathBuf::from("../test_data/").join(name);
+        let file = std::path::PathBuf::from(format!(
+            "{}/../test_data/{name}",
+            env!("CARGO_MANIFEST_DIR")
+        ));
 
         let input = fs::read_to_string(file).unwrap();
         parse(Some(name), &input).unwrap_or_else(|err| {
@@ -112,7 +115,10 @@ mod test {
     }
 
     fn parse_asm_file(name: &str) -> ASMFile<GoldilocksField> {
-        let file = std::path::PathBuf::from("../test_data/").join(name);
+        let file = std::path::PathBuf::from(format!(
+            "{}/../test_data/{name}",
+            env!("CARGO_MANIFEST_DIR")
+        ));
 
         let input = fs::read_to_string(file).unwrap();
         parse_asm(Some(name), &input).unwrap_or_else(|err| {

@@ -154,7 +154,10 @@ mod tests {
     use crate::vm::test_utils::batch_str;
 
     fn test_batching(path: &str) {
-        let base_path = PathBuf::from("../test_data/asm/batching");
+        let base_path = PathBuf::from(format!(
+            "{}/../test_data/asm/batching",
+            env!("CARGO_MANIFEST_DIR")
+        ));
         let file_name = base_path.join(path);
         let expected = fs::read_to_string(file_name).unwrap();
 

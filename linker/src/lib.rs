@@ -232,7 +232,10 @@ _operation_id_no_change = ((1 - _block_enforcer_last_step) * (1 - instr_return))
 (_operation_id_no_change * (_operation_id' - _operation_id)) = 0;
         "#;
 
-        let file_name = "../test_data/asm/empty_vm.asm";
+        let file_name = format!(
+            "{}/../test_data/asm/empty_vm.asm",
+            env!("CARGO_MANIFEST_DIR")
+        );
         let contents = fs::read_to_string(file_name).unwrap();
         let graph = parse_analyse_and_compile::<GoldilocksField>(&contents);
         let pil = link(graph).unwrap();
@@ -341,8 +344,10 @@ pol commit _operation_id_no_change;
 _operation_id_no_change = ((1 - _block_enforcer_last_step) * (1 - instr_return));
 (_operation_id_no_change * (_operation_id' - _operation_id)) = 0;
         "#;
-
-        let file_name = "../test_data/asm/different_signatures.asm";
+        let file_name = format!(
+            "{}/../test_data/asm/different_signatures.asm",
+            env!("CARGO_MANIFEST_DIR")
+        );
         let contents = fs::read_to_string(file_name).unwrap();
         let graph = parse_analyse_and_compile::<GoldilocksField>(&contents);
         let pil = link(graph).unwrap();
@@ -418,7 +423,10 @@ pol constant _linker_first_step = [1] + [0]*;
 (_linker_first_step * (_operation_id - 2)) = 0;
 
 "#;
-        let file_name = "../test_data/asm/simple_sum.asm";
+        let file_name = format!(
+            "{}/../test_data/asm/simple_sum.asm",
+            env!("CARGO_MANIFEST_DIR")
+        );
         let contents = fs::read_to_string(file_name).unwrap();
         let graph = parse_analyse_and_compile::<GoldilocksField>(&contents);
         let pil = link(graph).unwrap();
