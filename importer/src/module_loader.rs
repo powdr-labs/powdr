@@ -1,7 +1,8 @@
 use std::path::PathBuf;
 
-use ast::parsed::asm::{
-    ASMModule, ASMProgram, Module, ModuleStatement, SymbolDefinition, SymbolValue,
+use ast::parsed::{
+    asm::{ASMProgram, Module},
+    folder::Folder,
 };
 use number::FieldElement;
 
@@ -9,91 +10,70 @@ static ASM_EXTENSION: &str = "asm";
 static FOLDER_MODULE_NAME: &str = "mod";
 
 pub fn load_module_files<T: FieldElement>(
-    base_path: Option<PathBuf>,
+    path: Option<PathBuf>,
     program: ASMProgram<T>,
 ) -> Result<ASMProgram<T>, String> {
-    Ok(ASMProgram {
-        main: load_module_files_in_module(base_path, program.main)?,
-    })
+    Loader { path }.fold_program(program)
 }
 
-pub fn load_module_files_in_module<T: FieldElement>(
+struct Loader {
     path: Option<PathBuf>,
-    module: ASMModule<T>,
-) -> Result<ASMModule<T>, String> {
-    Ok(ASMModule {
-        statements: module
-            .statements
-            .into_iter()
-            .map(|s| match s {
-                ModuleStatement::SymbolDefinition(SymbolDefinition { name, value }) => {
-                    let value = match value {
-                        SymbolValue::Module(m) => {
-                            let m = match m {
-                                Module::External(name) => path
-                                    .clone()
-                                    .map(|path| {
-                                        // for this, we skip the last part of the current location as if we are at `a::b::c` and declare `d`, we are looking as `a/b/d`
-                                        let path = path.parent().unwrap().join(name);
+}
 
-                                        // look for the module locally, `path/to/module.asm`
-                                        let file_path = path.with_extension(ASM_EXTENSION);
-                                        // look for the module in a subdirectory, `path/to/module/mod.asm`
-                                        let file_in_folder_path = path
-                                            .join(FOLDER_MODULE_NAME)
-                                            .with_extension(ASM_EXTENSION);
+type Error = String;
 
-                                        dbg!(file_path.display());
-                                        dbg!(file_in_folder_path.display());
+impl<T: FieldElement> Folder<T> for Loader {
+    type Error = Error;
 
-                                        let file = std::fs::read_to_string(&file_path);
+    fn fold_module(&mut self, m: Module<T>) -> Result<Module<T>, Self::Error> {
+        match m {
+            Module::External(name) => self
+                .path
+                .clone()
+                .map(|path| {
+                    // for this, we skip the last part of the current location as if we are at `a::b::c` and declare `d`, we are looking as `a/b/d`
+                    let path = path.parent().unwrap().join(name);
 
-                                        let file_in_folder =
-                                            std::fs::read_to_string(&file_in_folder_path);
+                    // look for the module locally, `path/to/module.asm`
+                    let file_path = path.with_extension(ASM_EXTENSION);
+                    // look for the module in a subdirectory, `path/to/module/mod.asm`
+                    let file_in_folder_path =
+                        path.join(FOLDER_MODULE_NAME).with_extension(ASM_EXTENSION);
 
-                                        match (file, file_in_folder) {
-                                            // if we found it here, continue from here
-                                            (Ok(file), Err(_)) => Ok((file, Some(path))),
-                                            // if we found it in a subdirectory, continue from there
-                                            (Err(_), Ok(file)) => {
-                                                Ok((file, Some(path.join(FOLDER_MODULE_NAME))))
-                                            }
-                                            (Ok(_), Ok(_)) => Err(format!(
-                                                "Expecting either `{}` or `{}`, found both",
-                                                file_path.display(),
-                                                file_in_folder_path.display()
-                                            )),
-                                            (Err(_), Err(_)) => Err(format!(
-                                                "Expecting either `{}` or `{}`, found neither",
-                                                file_path.display(),
-                                                file_in_folder_path.display()
-                                            )),
-                                        }
-                                        .and_then(
-                                            |(file, path)| {
-                                                parser::parse_module(None, &file)
-                                                    .map(|res| (res, path))
-                                                    .map_err(|e| format!("{e:?}"))
-                                            },
-                                        )
-                                    })
-                                    .unwrap_or(Err(
-                                        "Cannot resolve external module without a base path".into(),
-                                    )),
-                                Module::Local(m) => Ok((m, path.clone())),
-                            }
-                            .and_then(|(m, path)| load_module_files_in_module(path, m));
-                            m.map(|m| SymbolValue::Module(Module::Local(m)))
-                        }
-                        value => Ok(value),
-                    };
-                    value.map(|value| {
-                        ModuleStatement::SymbolDefinition(SymbolDefinition { name, value })
+                    let file = std::fs::read_to_string(&file_path);
+
+                    let file_in_folder = std::fs::read_to_string(&file_in_folder_path);
+
+                    match (file, file_in_folder) {
+                        // if we found it here, continue from here
+                        (Ok(file), Err(_)) => Ok((file, Some(path))),
+                        // if we found it in a subdirectory, continue from there
+                        (Err(_), Ok(file)) => Ok((file, Some(path.join(FOLDER_MODULE_NAME)))),
+                        (Ok(_), Ok(_)) => Err(format!(
+                            "Expecting either `{}` or `{}`, found both",
+                            file_path.display(),
+                            file_in_folder_path.display()
+                        )),
+                        (Err(_), Err(_)) => Err(format!(
+                            "Expecting either `{}` or `{}`, found neither",
+                            file_path.display(),
+                            file_in_folder_path.display()
+                        )),
+                    }
+                    .and_then(|(file, path)| {
+                        parser::parse_module(None, &file)
+                            .map(|res| (res, path))
+                            .map_err(|e| format!("{e:?}"))
                     })
-                }
-            })
-            .collect::<Result<Vec<_>, _>>()?,
-    })
+                })
+                .unwrap_or(Err(
+                    "Cannot resolve external module without a base path".into()
+                )),
+            Module::Local(m) => Ok((m, self.path.clone())),
+        }
+        .and_then(|(m, path)| Loader { path }.fold_module_value(m))
+        .map(Module::Local)
+    }
 }
 
 #[cfg(test)]
