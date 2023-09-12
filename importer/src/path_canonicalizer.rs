@@ -3,74 +3,95 @@ use number::FieldElement;
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use ast::parsed::asm::{
-    ASMModule, ASMProgram, AbsoluteSymbolPath, Import, Machine, MachineStatement, Module,
-    ModuleStatement, SymbolDefinition, SymbolPath, SymbolValue,
+use ast::parsed::{
+    asm::{
+        ASMModule, ASMProgram, AbsoluteSymbolPath, Import, Machine, MachineStatement, Module,
+        ModuleStatement, SymbolDefinition, SymbolPath, SymbolValue,
+    },
+    folder::Folder,
 };
 
 pub fn canonicalize_paths<T: FieldElement>(
     program: ASMProgram<T>,
 ) -> Result<ASMProgram<T>, String> {
-    let paths = generate_path_map(&program)?;
+    let paths = &generate_path_map(&program)?;
 
-    let program = ASMProgram {
-        main: canonicalize_paths_in_module(AbsoluteSymbolPath::default(), program.main, &paths),
+    let mut canonicalizer = Canonicalizer {
+        path: Default::default(),
+        paths,
     };
 
-    Ok(program)
+    Ok(match canonicalizer.fold_program(program) {
+        Ok(p) => p,
+        Err(_) => unreachable!(),
+    })
 }
 
-/// replace references to symbols with absolute paths. This removes the import statements. This always succeeds if the symbol table was generated correctly.
-fn canonicalize_paths_in_module<T: FieldElement>(
-    module_path: AbsoluteSymbolPath,
-    module: ASMModule<T>,
-    paths: &PathMap,
-) -> ASMModule<T> {
-    ASMModule {
-        statements: module
-            .statements
-            .into_iter()
-            .filter_map(|statement| match statement {
-                ModuleStatement::SymbolDefinition(SymbolDefinition { name, value }) => {
-                    match value {
-                        SymbolValue::Machine(m) => Some(SymbolValue::Machine(
-                            canonicalize_machine(module_path.clone(), m, paths),
-                        )),
-                        SymbolValue::Import(_) => None,
-                        SymbolValue::Module(m) => match m {
-                            Module::External(_) => unreachable!(),
-                            Module::Local(m) => Some(SymbolValue::Module(Module::Local(
-                                canonicalize_paths_in_module(
-                                    module_path.clone().join(name.clone()),
-                                    m,
-                                    paths,
-                                ),
-                            ))),
-                        },
+struct Canonicalizer<'a> {
+    path: AbsoluteSymbolPath,
+    paths: &'a PathMap,
+}
+
+// once the paths are resolved, canonicalization cannot fail
+enum Error {}
+
+impl<'a, T> Folder<T> for Canonicalizer<'a> {
+    type Error = Error;
+
+    /// replace references to symbols with absolute paths. This removes the import statements. This always succeeds if the symbol table was generated correctly.
+    fn fold_module_value(&mut self, module: ASMModule<T>) -> Result<ASMModule<T>, Self::Error> {
+        Ok(ASMModule {
+            statements: module
+                .statements
+                .into_iter()
+                .filter_map(|statement| match statement {
+                    ModuleStatement::SymbolDefinition(SymbolDefinition { name, value }) => {
+                        match value {
+                            SymbolValue::Machine(m) => {
+                                // canonicalize the machine based on the same path, so we can reuse the same instance
+                                self.fold_machine(m).map(From::from).map(Some).transpose()
+                            }
+                            SymbolValue::Import(_) => None,
+                            SymbolValue::Module(m) => match m {
+                                Module::External(_) => {
+                                    unreachable!("external modules should have been removed")
+                                }
+                                // Continue canonicalizing inside the module with a new instance pointed at the module path
+                                Module::Local(module) => Canonicalizer {
+                                    path: self.path.clone().join(name.clone()),
+                                    paths: self.paths,
+                                }
+                                .fold_module_value(module)
+                                .map(Module::Local)
+                                .map(SymbolValue::from)
+                                .map(Some)
+                                .transpose(),
+                            },
+                        }
+                        .map(|value| {
+                            value
+                                .map(|value| SymbolDefinition { name, value }.into())
+                        })
                     }
-                    .map(|value| SymbolDefinition { name, value }.into())
-                }
-            })
-            .collect(),
+                })
+                .collect::<Result<_, _>>()?,
+        })
     }
-}
 
-fn canonicalize_machine<T: FieldElement>(
-    module_path: AbsoluteSymbolPath,
-    mut m: Machine<T>,
-    symbols: &PathMap,
-) -> Machine<T> {
-    for s in &mut m.statements {
-        if let MachineStatement::Submachine(_, path, _) = s {
-            *path = symbols
-                .get(&(module_path.clone(), std::mem::take(path)))
-                .cloned()
-                .unwrap()
-                .into();
+    fn fold_machine(&mut self, mut machine: Machine<T>) -> Result<Machine<T>, Self::Error> {
+        for s in &mut machine.statements {
+            if let MachineStatement::Submachine(_, path, _) = s {
+                *path = self
+                    .paths
+                    .get(&(self.path.clone(), std::mem::take(path)))
+                    .cloned()
+                    .unwrap()
+                    .into();
+            }
         }
-    }
 
-    m
+        Ok(machine)
+    }
 }
 
 /// Answers the question: When at absolute path `p`, refering to relative path `r`, what is the absolute path to the canonical symbol imported?
