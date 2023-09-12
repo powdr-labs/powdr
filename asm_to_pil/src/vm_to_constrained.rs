@@ -21,7 +21,10 @@ use ast::{
 
 use number::FieldElement;
 
-use crate::common::{instruction_flag, return_instruction, RETURN_NAME};
+use crate::{
+    common::{instruction_flag, return_instruction, RETURN_NAME},
+    utils::parse_pil_statement,
+};
 
 pub fn convert_machine<T: FieldElement>(machine: Machine<T>, rom: Option<Rom<T>>) -> Machine<T> {
     let output_count = machine
@@ -126,29 +129,50 @@ impl<T: FieldElement> ASMPILConverter<T> {
                     reg.update_expression().map(|rhs| {
                         let lhs = next_reference(name);
                         use RegisterTy::*;
-                        let (lhs, rhs) = match reg.ty {
+                        match reg.ty {
                             // Force pc to zero on first row.
-                            Pc => (
-                                lhs,
-                                build_mul(
-                                    build_sub(build_number(1u64), next_reference("first_step")),
-                                    rhs,
-                                ),
-                            ),
+                            Pc => {
+                                // introduce an intermediate witness polynomial to keep the degree of polynomial identities at 2
+                                // this may not be optimal for backends which support higher degree constraints
+                                let pc_update_name = format!("{}_update", name);
+
+                                vec![
+                                    parse_pil_statement(&format!("col {pc_update_name}")),
+                                    PilStatement::PolynomialIdentity(
+                                        0,
+                                        build_sub(direct_reference(&pc_update_name), rhs),
+                                    ),
+                                    PilStatement::PolynomialIdentity(
+                                        0,
+                                        build_sub(
+                                            lhs,
+                                            build_mul(
+                                                build_sub(
+                                                    build_number(1u64),
+                                                    next_reference("first_step"),
+                                                ),
+                                                direct_reference(pc_update_name),
+                                            ),
+                                        ),
+                                    ),
+                                ]
+                            }
                             // Unconstrain read-only registers when calling `_reset`
                             ReadOnly => {
                                 let not_reset =
                                     build_sub(build_number(1u64), direct_reference("instr__reset"));
-                                (build_mul(not_reset.clone(), lhs), build_mul(not_reset, rhs))
+                                vec![PilStatement::PolynomialIdentity(
+                                    0,
+                                    build_mul(not_reset, build_sub(lhs, rhs)),
+                                )]
                             }
-                            //
-                            _ => (lhs, rhs),
-                        };
-
-                        PilStatement::PolynomialIdentity(0, build_sub(lhs, rhs))
+                            _ => {
+                                vec![PilStatement::PolynomialIdentity(0, build_sub(lhs, rhs))]
+                            }
+                        }
                     })
                 })
-                .collect::<Vec<_>>(),
+                .flatten(),
         );
 
         for batch in rom.unwrap().statements.into_iter_batches() {
@@ -368,6 +392,10 @@ impl<T: FieldElement> ASMPILConverter<T> {
                         match extract_update(expr) {
                             (Some(var), expr) => {
                                 let reference = direct_reference(&instruction_flag);
+
+                                // reduce the update to linear by introducing intermediate variables
+                                let expr = self
+                                    .linearize(&format!("{instruction_flag}_{var}_update"), expr);
 
                                 self.registers
                                     .get_mut(&var)
@@ -863,6 +891,61 @@ impl<T: FieldElement> ASMPILConverter<T> {
 
     fn return_instruction(&self) -> ast::asm_analysis::Instruction<T> {
         return_instruction(self.output_count, self.pc_name.as_ref().unwrap())
+    }
+
+    /// Return an expression of degree at most 1 whose value matches that of `expr`
+    /// Intermediate witness columns can be introduced, with names starting with `prefix` optionally followed by a suffix
+    /// Suffixes are defined as follows: "", "_1", "_2", "_3" etc
+    fn linearize(&mut self, prefix: &str, expr: Expression<T>) -> Expression<T> {
+        self.linearize_rec(prefix, 0, expr).1
+    }
+
+    fn linearize_rec(
+        &mut self,
+        prefix: &str,
+        counter: usize,
+        expr: Expression<T>,
+    ) -> (usize, Expression<T>) {
+        match expr {
+            Expression::BinaryOperation(left, operator, right) => match operator {
+                BinaryOperator::Add => {
+                    let (counter, left) = self.linearize_rec(prefix, counter, *left);
+                    let (counter, right) = self.linearize_rec(prefix, counter, *right);
+                    (counter, build_add(left, right))
+                }
+                BinaryOperator::Sub => {
+                    let (counter, left) = self.linearize_rec(prefix, counter, *left);
+                    let (counter, right) = self.linearize_rec(prefix, counter, *right);
+                    (counter, build_sub(left, right))
+                }
+                BinaryOperator::Mul => {
+                    // if we have a quadratic term, we linearize each factor and introduce an intermediate variable for the product
+                    let (counter, left) = self.linearize_rec(prefix, counter, *left);
+                    let (counter, right) = self.linearize_rec(prefix, counter, *right);
+                    let intermediate_name = format!(
+                        "{prefix}{}",
+                        if counter == 0 {
+                            "".to_string()
+                        } else {
+                            format!("_{}", counter)
+                        }
+                    );
+                    self.pil.extend([
+                        parse_pil_statement(&format!("col {intermediate_name}")),
+                        PilStatement::PolynomialIdentity(
+                            0,
+                            build_sub(
+                                direct_reference(intermediate_name.clone()),
+                                build_mul(left, right),
+                            ),
+                        ),
+                    ]);
+                    (counter + 1, direct_reference(intermediate_name))
+                }
+                op => unimplemented!("{op} is not supported when linearizing"),
+            },
+            expr => (counter, expr),
+        }
     }
 }
 
