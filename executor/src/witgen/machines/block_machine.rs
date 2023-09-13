@@ -8,6 +8,7 @@ use crate::witgen::processor::Calldata;
 use crate::witgen::processor::Processor;
 use crate::witgen::rows::CellValue;
 use crate::witgen::rows::{Row, RowFactory, RowPair, UnknownStrategy};
+use crate::witgen::sequence_iterator::Direction;
 use crate::witgen::sequence_iterator::ProcessingSequenceCache;
 use crate::witgen::util::try_to_simple_poly;
 use crate::witgen::{machines::Machine, range_constraints::RangeConstraint, EvalError};
@@ -86,10 +87,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
                     data,
                     row_factory,
                     witness_cols: witness_cols.clone(),
-                    processing_sequence_cache: ProcessingSequenceCache::new(
-                        block_size,
-                        identities.len(),
-                    ),
+                    processing_sequence_cache: ProcessingSequenceCache::new(identities.len()),
                     fixed_data,
                 });
             }
@@ -260,7 +258,11 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
             // Clear the last row and run the solver
             processor.clear_row(1);
             processor
-                .solve_with_default_sequence_iterator()
+                .solve_with_default_sequence_iterator(vec![
+                    Direction::Forward,
+                    Direction::Backward,
+                    Direction::Forward,
+                ])
                 .expect("Some constraints were not satisfiable when solving for the last row.");
             let last_row = processor.finish().remove(1);
 

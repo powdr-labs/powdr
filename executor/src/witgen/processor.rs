@@ -3,14 +3,14 @@ use std::{collections::HashSet, marker::PhantomData};
 use ast::analyzed::{Identity, PolyID, PolynomialReference, SelectedExpressions};
 use number::FieldElement;
 
-use crate::witgen::Constraint;
+use crate::witgen::{sequence_iterator::Direction, Constraint};
 
 use super::{
     affine_expression::AffineExpression,
     identity_processor::IdentityProcessor,
     rows::{Row, RowFactory, RowPair, RowUpdater, UnknownStrategy},
     sequence_iterator::{
-        DefaultSequenceIterator, IdentityInSequence, ProcessingSequenceIterator, SequenceStep,
+        Action, DefaultSequenceIterator, ProcessingSequenceIterator, SequenceStep,
     },
     Constraints, EvalError, EvalValue, FixedData,
 };
@@ -140,10 +140,13 @@ impl<'a, 'b, T: FieldElement, CalldataAvailable> Processor<'a, 'b, T, CalldataAv
     /// Since the default sequence iterator looks at the row before and after
     /// the current block, we assume that these lines are already part of [Self::data]
     /// and set the block size to `self.data.len() - 2`.
-    pub fn solve_with_default_sequence_iterator(&mut self) -> Result<(), EvalError<T>> {
+    pub fn solve_with_default_sequence_iterator(
+        &mut self,
+        directions: Vec<Direction>,
+    ) -> Result<(), EvalError<T>> {
         assert!(self.data.len() > 2);
         let mut sequence_iterator = ProcessingSequenceIterator::Default(
-            DefaultSequenceIterator::new(self.data.len() - 2, self.identities.len(), None),
+            DefaultSequenceIterator::new(self.identities.len(), directions),
         );
         let outer_updates = self.solve(&mut sequence_iterator)?;
         assert!(
@@ -168,16 +171,18 @@ impl<'a, 'b, T: FieldElement, CalldataAvailable> Processor<'a, 'b, T, CalldataAv
         {
             let row_index = (1 + row_delta) as usize;
             let progress = match identity {
-                IdentityInSequence::Internal(identity_index) => {
+                Action::Process(identity_index) => {
                     self.process_identity(row_index, identity_index)?
                 }
-                IdentityInSequence::OuterQuery => {
+                Action::OuterQuery => {
                     let (progress, new_outer_assignments) = self.process_outer_query(row_index)?;
                     outer_assignments.extend(new_outer_assignments);
                     progress
                 }
             };
-            sequence_iterator.report_progress(progress);
+            let on_last_row = row_index == self.data.len() - 2;
+            let on_outer_query_row = on_last_row && self.calldata.is_some();
+            sequence_iterator.report_progress(progress, on_outer_query_row, on_last_row);
         }
         Ok(outer_assignments)
     }
@@ -315,7 +320,7 @@ mod tests {
         constant_evaluator::generate,
         witgen::{
             identity_processor::IdentityProcessor, machines::FixedLookup, rows::RowFactory,
-            FixedData,
+            sequence_iterator::Direction, FixedData,
         },
     };
 
@@ -371,7 +376,9 @@ mod tests {
 
     fn solve_and_assert<T: FieldElement>(src: &str, asserted_values: &[(usize, &str, u64)]) {
         do_with_processor(src, |processor, poly_ids| {
-            processor.solve_with_default_sequence_iterator().unwrap();
+            processor
+                .solve_with_default_sequence_iterator(vec![Direction::Forward])
+                .unwrap();
 
             // Can't use processor.finish(), because we don't own it...
             let data = processor.data.clone();

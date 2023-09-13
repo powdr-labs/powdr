@@ -4,10 +4,24 @@ use number::FieldElement;
 
 use super::affine_expression::AffineExpression;
 
+#[derive(Clone, Copy, Debug)]
+pub enum Action {
+    /// Process identity of a given index
+    Process(usize),
+    /// Process the outer query
+    OuterQuery,
+}
+
 #[derive(Clone, Debug)]
 pub struct SequenceStep {
     pub row_delta: i64,
-    pub identity: IdentityInSequence,
+    pub identity: Action,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum Direction {
+    Forward,
+    Backward,
 }
 
 /// Goes through all rows of the block machine (plus the ones before and after)
@@ -15,15 +29,16 @@ pub struct SequenceStep {
 /// In each row, iterates over all identities until no further progress is made.
 pub struct DefaultSequenceIterator {
     identities_count: usize,
-    row_deltas: Vec<i64>,
-    outer_query_row: Option<i64>,
+    current_row_delta: i64,
+    directions: Vec<Direction>,
+    direction_index: usize,
+    on_outer_query_row: bool,
+    on_last_row: bool,
 
     /// Whether this is the first time the iterator is called.
     is_first: bool,
     /// Whether any progress was made in the current round.
     progress_in_current_round: bool,
-    /// The current row delta index.
-    cur_row_delta_index: usize,
     /// The current identity index.
     cur_identity_index: usize,
     /// The number of rounds for the current row delta.
@@ -37,19 +52,18 @@ pub struct DefaultSequenceIterator {
 const MAX_ROUNDS_PER_ROW_DELTA: usize = 100;
 
 impl DefaultSequenceIterator {
-    pub fn new(block_size: usize, identities_count: usize, outer_query_row: Option<i64>) -> Self {
-        assert!(block_size >= 1);
-        let max_row = block_size as i64 - 1;
+    pub fn new(identities_count: usize, directions: Vec<Direction>) -> Self {
+        assert!(!directions.is_empty());
+        assert!(directions.last().unwrap() == &Direction::Forward);
         DefaultSequenceIterator {
             identities_count,
-            row_deltas: (-1..=max_row)
-                .chain((-1..max_row).rev())
-                .chain(0..=max_row)
-                .collect(),
-            outer_query_row,
+            directions,
+            direction_index: 0,
+            current_row_delta: -1,
+            on_outer_query_row: false,
+            on_last_row: false,
             is_first: true,
             progress_in_current_round: false,
-            cur_row_delta_index: 0,
             cur_identity_index: 0,
             current_round_count: 0,
             progress_steps: vec![],
@@ -59,23 +73,21 @@ impl DefaultSequenceIterator {
     /// Update the state of the iterator.
     /// If we're not at the last identity in the current row, just moves to the next.
     /// Otherwise, starts with identity 0 and moves to the next row if no progress was made.
-    fn update_state(&mut self) {
+    fn update_state(&mut self) -> Result<(), ()> {
         if !self.is_first {
             if self.is_last_identity() {
-                self.start_next_round();
+                self.start_next_round()?;
             } else {
                 // Stay at row delta, move to next identity.
                 self.cur_identity_index += 1;
             }
         }
         self.is_first = false;
+        Ok(())
     }
 
     fn is_last_identity(&self) -> bool {
-        let row_delta = self.row_deltas[self.cur_row_delta_index];
-        let is_on_row_with_outer_query = self.outer_query_row == Some(row_delta);
-
-        if is_on_row_with_outer_query {
+        if self.on_outer_query_row {
             // In the last row, we want to process one more identity, the outer query.
             self.cur_identity_index == self.identities_count
         } else {
@@ -83,7 +95,7 @@ impl DefaultSequenceIterator {
         }
     }
 
-    fn start_next_round(&mut self) {
+    fn start_next_round(&mut self) -> Result<(), ()> {
         if !self.progress_in_current_round || self.current_round_count > MAX_ROUNDS_PER_ROW_DELTA {
             // Move to next row delta, starting with identity 0.
             if self.current_round_count > MAX_ROUNDS_PER_ROW_DELTA {
@@ -91,7 +103,23 @@ impl DefaultSequenceIterator {
                             This is a bug in the witness generation algorithm.");
             }
 
-            self.cur_row_delta_index += 1;
+            let direction = &self.directions[self.direction_index];
+            if direction == &Direction::Forward && self.on_last_row
+                || direction == &Direction::Backward && self.current_row_delta == -1
+            {
+                // Move to next direction.
+                self.direction_index += 1;
+
+                if self.direction_index == self.directions.len() {
+                    // Done!
+                    return Err(());
+                }
+            }
+
+            self.current_row_delta += match self.directions[self.direction_index] {
+                Direction::Forward => 1,
+                Direction::Backward => -1,
+            };
             self.current_round_count = 0;
         } else {
             // Stay and current row delta, starting with identity 0.
@@ -99,44 +127,43 @@ impl DefaultSequenceIterator {
         }
         self.cur_identity_index = 0;
         self.progress_in_current_round = false;
+        Ok(())
     }
 
-    pub fn report_progress(&mut self, progress_in_last_step: bool) {
+    pub fn report_progress(
+        &mut self,
+        progress_in_last_step: bool,
+        on_outer_query_row: bool,
+        on_last_row: bool,
+    ) {
         assert!(!self.is_first, "Called report_progress() before next()");
 
         if progress_in_last_step {
             self.progress_steps.push(self.current_step());
         }
         self.progress_in_current_round |= progress_in_last_step;
+        self.on_outer_query_row = on_outer_query_row;
+        self.on_last_row = on_last_row;
     }
 
     pub fn next(&mut self) -> Option<SequenceStep> {
-        self.update_state();
-
-        if self.cur_row_delta_index == self.row_deltas.len() {
+        match self.update_state() {
+            Ok(()) => Some(self.current_step()),
             // Done!
-            return None;
+            Err(()) => None,
         }
-
-        Some(self.current_step())
     }
 
     fn current_step(&self) -> SequenceStep {
         SequenceStep {
-            row_delta: self.row_deltas[self.cur_row_delta_index],
+            row_delta: self.current_row_delta,
             identity: if self.cur_identity_index < self.identities_count {
-                IdentityInSequence::Internal(self.cur_identity_index)
+                Action::Process(self.cur_identity_index)
             } else {
-                IdentityInSequence::OuterQuery
+                Action::OuterQuery
             },
         }
     }
-}
-
-#[derive(Clone, Copy, Debug)]
-pub enum IdentityInSequence {
-    Internal(usize),
-    OuterQuery,
 }
 
 #[derive(PartialOrd, Ord, PartialEq, Eq, Debug)]
@@ -163,9 +190,16 @@ pub enum ProcessingSequenceIterator {
 }
 
 impl ProcessingSequenceIterator {
-    pub fn report_progress(&mut self, progress_in_last_step: bool) {
+    pub fn report_progress(
+        &mut self,
+        progress_in_last_step: bool,
+        on_outer_query_row: bool,
+        on_last_row: bool,
+    ) {
         match self {
-            Self::Default(it) => it.report_progress(progress_in_last_step),
+            Self::Default(it) => {
+                it.report_progress(progress_in_last_step, on_outer_query_row, on_last_row)
+            }
             Self::Cached(_) => {} // Progress is ignored
         }
     }
@@ -190,15 +224,13 @@ impl Iterator for ProcessingSequenceIterator {
 }
 
 pub struct ProcessingSequenceCache {
-    block_size: usize,
     identities_count: usize,
     cache: BTreeMap<SequenceCacheKey, Vec<SequenceStep>>,
 }
 
 impl ProcessingSequenceCache {
-    pub fn new(block_size: usize, identities_count: usize) -> Self {
+    pub fn new(identities_count: usize) -> Self {
         ProcessingSequenceCache {
-            block_size,
             identities_count,
             cache: Default::default(),
         }
@@ -220,10 +252,8 @@ impl ProcessingSequenceCache {
             None => {
                 log::trace!("Using default sequence");
                 ProcessingSequenceIterator::Default(DefaultSequenceIterator::new(
-                    self.block_size,
                     self.identities_count,
-                    // Run the outer query on the last row of the block.
-                    Some(self.block_size as i64 - 1),
+                    vec![Direction::Forward, Direction::Backward, Direction::Forward],
                 ))
             }
         }
