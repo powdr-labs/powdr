@@ -80,14 +80,17 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
                 // when storing machine witness data.
                 // This will be filled with the default block in `take_witness_col_values`
                 let data = vec![row_factory.fresh_row(); block_size];
+                let mut identities = identities.to_vec();
+                identities.sort_by_key(|a| a.contains_next_ref());
+                let processing_sequence_cache = ProcessingSequenceCache::new(identities.len());
                 return Some(BlockMachine {
                     block_size,
                     selected_expressions: id.right.clone(),
-                    identities: identities.to_vec(),
+                    identities,
                     data,
                     row_factory,
                     witness_cols: witness_cols.clone(),
-                    processing_sequence_cache: ProcessingSequenceCache::new(identities.len()),
+                    processing_sequence_cache,
                     fixed_data,
                 });
             }

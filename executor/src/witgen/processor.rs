@@ -71,6 +71,14 @@ impl<'a, 'b, T: FieldElement> Processor<'a, 'b, T, WithoutCalldata> {
         row_factory: RowFactory<'a, T>,
         witness_cols: &'b HashSet<PolyID>,
     ) -> Self {
+        let mut has_seen_next_ref = false;
+        for identity in identities {
+            let has_next_ref = identity.contains_next_ref();
+            if has_seen_next_ref && !has_next_ref {
+                panic!("For performance reasons, identities with next references must come after identities without next references!");
+            }
+            has_seen_next_ref |= has_next_ref;
+        }
         Self {
             row_offset,
             data,
@@ -365,7 +373,8 @@ mod tests {
         let identity_processor =
             IdentityProcessor::new(&fixed_data, &mut fixed_lookup, &mut machines);
         let row_offset = 0;
-        let identities = analyzed.identities.iter().collect::<Vec<_>>();
+        let mut identities = analyzed.identities.iter().collect::<Vec<_>>();
+        identities.sort_by_key(|a| a.contains_next_ref());
         let witness_cols = fixed_data.witness_cols.keys().collect();
 
         let mut processor = Processor::new(
