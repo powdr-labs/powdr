@@ -4,6 +4,7 @@ use crate::{
     parsed::{BinaryOperator, UnaryOperator},
     write_items, write_items_indented,
 };
+use itertools::Itertools;
 
 use super::{asm::*, *};
 
@@ -322,9 +323,23 @@ impl Display for ParamList {
     }
 }
 
-impl<T: Display> Display for FunctionCall<T> {
+impl<T: Display, Ref: Display> Display for FunctionCall<T, Ref> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(f, "{}({})", self.id, format_expressions(&self.arguments))
+    }
+}
+
+impl<T: Display, Ref: Display> Display for MatchArm<T, Ref> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(
+            f,
+            "{} => {},",
+            self.pattern
+                .as_ref()
+                .map(|n| n.to_string())
+                .unwrap_or_else(|| "_".to_string()),
+            self.value,
+        )
     }
 }
 
@@ -466,7 +481,7 @@ impl<T: Display> Display for SelectedExpressions<T> {
     }
 }
 
-fn format_expressions<T: Display>(expressions: &[Expression<T>]) -> String {
+pub fn format_expressions<T: Display, Ref: Display>(expressions: &[Expression<T, Ref>]) -> String {
     expressions
         .iter()
         .map(|e| format!("{e}"))
@@ -474,31 +489,23 @@ fn format_expressions<T: Display>(expressions: &[Expression<T>]) -> String {
         .join(", ")
 }
 
-impl<T: Display> Display for Expression<T> {
+impl<T: Display, Ref: Display> Display for Expression<T, Ref> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
             Expression::Constant(name) => write!(f, "{name}"),
-            Expression::PolynomialReference(reference) => write!(f, "{reference}"),
-            Expression::PublicReference(name) => write!(f, "{name}"),
+            Expression::Reference(reference) => write!(f, "{reference}"),
+            Expression::PublicReference(name) => write!(f, ":{name}"),
             Expression::Number(value) => write!(f, "{value}"),
             Expression::String(value) => write!(f, "\"{value}\""), // TODO quote?
             Expression::Tuple(items) => write!(f, "({})", format_expressions(items)),
             Expression::BinaryOperation(left, op, right) => write!(f, "({left} {op} {right})"),
             Expression::UnaryOperation(op, exp) => write!(f, "{op}{exp}"),
-            Expression::FunctionCall(c) => write!(f, "{c}"),
+            Expression::FunctionCall(fun_call) => write!(f, "{fun_call}"),
             Expression::FreeInput(input) => write!(f, "${{ {input} }}"),
             Expression::MatchExpression(scrutinee, arms) => write!(
                 f,
                 "match {scrutinee} {{ {} }}",
-                arms.iter()
-                    .map(|(n, e)| format!(
-                        "{} => {e},",
-                        n.as_ref()
-                            .map(|n| n.to_string())
-                            .unwrap_or_else(|| "_".to_string())
-                    ))
-                    .collect::<Vec<_>>()
-                    .join(" ")
+                arms.iter().map(|arm| arm.to_string()).join(" ")
             ),
         }
     }

@@ -14,8 +14,9 @@ use ast::{
             build_add, build_binary_expr, build_mul, build_number, build_sub, direct_reference,
             next_reference,
         },
-        postvisit_expression_in_statement_mut, ArrayExpression, BinaryOperator, Expression,
-        FunctionDefinition, PilStatement, PolynomialName, SelectedExpressions, UnaryOperator,
+        utils::postvisit_expression_in_statement_mut,
+        ArrayExpression, BinaryOperator, Expression, FunctionDefinition, MatchArm, PilStatement,
+        PolynomialName, SelectedExpressions, UnaryOperator,
     },
 };
 
@@ -354,7 +355,7 @@ impl<T: FieldElement> ASMPILConverter<T> {
                     .collect::<HashMap<_, _>>();
                 body.iter_mut().for_each(|s| {
                     postvisit_expression_in_statement_mut(s, &mut |e| {
-                        if let Expression::PolynomialReference(r) = e {
+                        if let Expression::Reference(r) = e {
                             if let Some(sub) = substitutions.get(r.name()) {
                                 *r.name_mut() = sub.to_string();
                             }
@@ -480,7 +481,7 @@ impl<T: FieldElement> ASMPILConverter<T> {
                             value.insert(reg.clone(), self.process_assignment_value(a));
                         }
                         Input::Literal(_, LiteralKind::Label) => {
-                            if let Expression::PolynomialReference(r) = a {
+                            if let Expression::Reference(r) = a {
                                 instruction_literal_arg
                                     .push(InstructionLiteralArg::LabelRef(r.name().into()));
                             } else {
@@ -522,7 +523,7 @@ impl<T: FieldElement> ASMPILConverter<T> {
             .zip(&mut args)
             .map(|(reg, a)| {
                 // Output a value trough assignment register "reg"
-                if let Expression::PolynomialReference(r) = a {
+                if let Expression::Reference(r) = a {
                     assert!(!r.shift());
                     assert!(r.index().is_none());
                     (reg.clone(), vec![r.name().into()])
@@ -550,7 +551,7 @@ impl<T: FieldElement> ASMPILConverter<T> {
             Expression::Constant(_) => panic!(),
             Expression::PublicReference(_) => panic!(),
             Expression::FunctionCall(_) => panic!(),
-            Expression::PolynomialReference(reference) => {
+            Expression::Reference(reference) => {
                 assert!(reference.namespace().is_none());
                 assert!(reference.index().is_none());
                 assert!(!reference.shift());
@@ -749,7 +750,10 @@ impl<T: FieldElement> ASMPILConverter<T> {
                             free_value_query_arms
                                 .get_mut(assign_reg)
                                 .unwrap()
-                                .push((Some(build_number(i as u64)), expr.clone()));
+                                .push(MatchArm {
+                                    pattern: (Some(build_number(i as u64))),
+                                    value: expr.clone(),
+                                });
                         }
                     }
                 }
@@ -966,7 +970,7 @@ fn extract_update<T: FieldElement>(expr: Expression<T>) -> (Option<String>, Expr
     // TODO check that there are no other "next" references in the expression
     if let Expression::BinaryOperation(left, BinaryOperator::Sub, right) = expr {
         match *left {
-            Expression::PolynomialReference(r) if r.shift() => {
+            Expression::Reference(r) if r.shift() => {
                 assert!(r.namespace().is_none());
                 assert!(r.index().is_none());
                 (Some(r.name().into()), *right)

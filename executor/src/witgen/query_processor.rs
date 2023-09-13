@@ -1,4 +1,7 @@
-use ast::analyzed::{Expression, PolynomialReference};
+use ast::{
+    analyzed::{Expression, PolynomialReference, Reference},
+    parsed::MatchArm,
+};
 use number::FieldElement;
 
 use super::{rows::RowPair, Constraint, EvalValue, FixedData, IncompleteCause, Query};
@@ -66,7 +69,7 @@ fn interpolate_query<'b, T: FieldElement>(
             .map(|i| interpolate_query(i, rows))
             .collect::<Result<Vec<_>, _>>()?
             .join(", ")),
-        Expression::LocalVariableReference(i) => {
+        Expression::Reference(Reference::LocalVar(i)) => {
             assert!(*i == 0);
             Ok(format!("{}", rows.current_row_index))
         }
@@ -79,9 +82,17 @@ fn interpolate_query<'b, T: FieldElement>(
                 .evaluate(scrutinee)?
                 .constant_value()
                 .ok_or(IncompleteCause::NonConstantQueryMatchScrutinee)?;
-            let (_, expr) = arms
+            let expr = arms
                 .iter()
-                .find(|(n, _)| n.is_none() || n.as_ref() == Some(&v))
+                .find_map(|MatchArm { pattern, value }| {
+                    (match pattern {
+                        None => true,
+                        Some(pattern) => {
+                            rows.evaluate(pattern).unwrap().constant_value() == Some(v)
+                        }
+                    })
+                    .then_some(value)
+                })
                 .ok_or(IncompleteCause::NoMatchArmFound)?;
             interpolate_query(expr, rows)
         }

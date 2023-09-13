@@ -1,6 +1,6 @@
 use std::marker::PhantomData;
 
-use ast::analyzed::{Expression, PolynomialReference};
+use ast::analyzed::{Expression, PolynomialReference, Reference};
 use ast::parsed::{BinaryOperator, UnaryOperator};
 use number::FieldElement;
 
@@ -38,7 +38,7 @@ where
         // we could store the simplified values.
         match expr {
             Expression::Constant(_) => panic!("Constants should have been replaced."),
-            Expression::PolynomialReference(poly) => self.variables.value(poly),
+            Expression::Reference(Reference::Poly(poly)) => self.variables.value(poly),
             Expression::Number(n) => Ok((*n).into()),
             Expression::BinaryOperation(left, op, right) => {
                 self.evaluate_binary_operation(left, op, right)

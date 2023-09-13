@@ -1,6 +1,10 @@
-use std::{iter::once, ops::ControlFlow};
+use std::ops::ControlFlow;
 
-use super::{Analyzed, Expression, FunctionValueDefinition, Identity};
+use crate::parsed::utils::{
+    postvisit_expression_mut, previsit_expression, previsit_expression_mut,
+};
+
+use super::{Analyzed, Expression, FunctionValueDefinition, Identity, SelectedExpressions};
 
 /// Calls `f` on each expression in the pil file and then descends into the
 /// (potentially modified) expression.
@@ -77,6 +81,29 @@ where
         .try_for_each(|i| postvisit_expressions_in_identity_mut(i, f))
 }
 
+pub fn previsit_expressions_in_identity<T, F, B>(i: &Identity<T>, f: &mut F) -> ControlFlow<B>
+where
+    F: FnMut(&Expression<T>) -> ControlFlow<B>,
+{
+    [&i.left, &i.right]
+        .iter()
+        .try_for_each(move |item| previsit_expressions_in_selected_expressions(item, f))
+}
+
+pub fn previsit_expressions_in_selected_expressions<T, F, B>(
+    s: &SelectedExpressions<T>,
+    f: &mut F,
+) -> ControlFlow<B>
+where
+    F: FnMut(&Expression<T>) -> ControlFlow<B>,
+{
+    s.selector
+        .as_ref()
+        .into_iter()
+        .chain(s.expressions.iter())
+        .try_for_each(move |item| previsit_expression(item, f))
+}
+
 pub fn previsit_expressions_in_identity_mut<T, F, B>(
     i: &mut Identity<T>,
     f: &mut F,
@@ -92,107 +119,4 @@ where
         .chain(i.right.selector.as_mut())
         .chain(i.right.expressions.iter_mut())
         .try_for_each(move |item| previsit_expression_mut(item, f))
-}
-
-/// Visits `expr` and all of its sub-expressions and returns true if `f` returns true on any of them.
-pub fn expr_any<T>(expr: &Expression<T>, mut f: impl FnMut(&Expression<T>) -> bool) -> bool {
-    previsit_expression(expr, &mut |e| {
-        if f(e) {
-            ControlFlow::Break(())
-        } else {
-            ControlFlow::Continue(())
-        }
-    })
-    .is_break()
-}
-
-/// Traverses the expression tree and calls `f` in pre-order.
-pub fn previsit_expression<'a, T, F, B>(e: &'a Expression<T>, f: &mut F) -> ControlFlow<B>
-where
-    F: FnMut(&'a Expression<T>) -> ControlFlow<B>,
-{
-    f(e)?;
-
-    match e {
-        Expression::PolynomialReference(_)
-        | Expression::Constant(_)
-        | Expression::LocalVariableReference(_)
-        | Expression::PublicReference(_)
-        | Expression::Number(_)
-        | Expression::String(_) => {}
-        Expression::BinaryOperation(left, _, right) => {
-            previsit_expression(left, f)?;
-            previsit_expression(right, f)?;
-        }
-        Expression::UnaryOperation(_, e) => previsit_expression(e, f)?,
-        Expression::Tuple(items) | Expression::FunctionCall(_, items) => items
-            .iter()
-            .try_for_each(|item| previsit_expression(item, f))?,
-        Expression::MatchExpression(scrutinee, arms) => {
-            once(scrutinee.as_ref())
-                .chain(arms.iter().map(|(_n, e)| e))
-                .try_for_each(move |item| previsit_expression(item, f))?;
-        }
-    };
-    ControlFlow::Continue(())
-}
-
-/// Traverses the expression tree and calls `f` in pre-order.
-pub fn previsit_expression_mut<T, F, B>(e: &mut Expression<T>, f: &mut F) -> ControlFlow<B>
-where
-    F: FnMut(&mut Expression<T>) -> ControlFlow<B>,
-{
-    f(e)?;
-
-    match e {
-        Expression::PolynomialReference(_)
-        | Expression::Constant(_)
-        | Expression::LocalVariableReference(_)
-        | Expression::PublicReference(_)
-        | Expression::Number(_)
-        | Expression::String(_) => {}
-        Expression::BinaryOperation(left, _, right) => {
-            previsit_expression_mut(left, f)?;
-            previsit_expression_mut(right, f)?;
-        }
-        Expression::UnaryOperation(_, e) => previsit_expression_mut(e.as_mut(), f)?,
-        Expression::Tuple(items) | Expression::FunctionCall(_, items) => items
-            .iter_mut()
-            .try_for_each(|item| previsit_expression_mut(item, f))?,
-        Expression::MatchExpression(scrutinee, arms) => {
-            once(scrutinee.as_mut())
-                .chain(arms.iter_mut().map(|(_n, e)| e))
-                .try_for_each(move |item| previsit_expression_mut(item, f))?;
-        }
-    };
-    ControlFlow::Continue(())
-}
-
-/// Traverses the expression tree and calls `f` in post-order.
-pub fn postvisit_expression_mut<T, F, B>(e: &mut Expression<T>, f: &mut F) -> ControlFlow<B>
-where
-    F: FnMut(&mut Expression<T>) -> ControlFlow<B>,
-{
-    match e {
-        Expression::PolynomialReference(_)
-        | Expression::Constant(_)
-        | Expression::LocalVariableReference(_)
-        | Expression::PublicReference(_)
-        | Expression::Number(_)
-        | Expression::String(_) => {}
-        Expression::BinaryOperation(left, _, right) => {
-            postvisit_expression_mut(left, f)?;
-            postvisit_expression_mut(right, f)?;
-        }
-        Expression::UnaryOperation(_, e) => postvisit_expression_mut(e.as_mut(), f)?,
-        Expression::Tuple(items) | Expression::FunctionCall(_, items) => items
-            .iter_mut()
-            .try_for_each(|item| postvisit_expression_mut(item, f))?,
-        Expression::MatchExpression(scrutinee, arms) => {
-            once(scrutinee.as_mut())
-                .chain(arms.iter_mut().map(|(_n, e)| e))
-                .try_for_each(|item| postvisit_expression_mut(item, f))?;
-        }
-    };
-    f(e)
 }
