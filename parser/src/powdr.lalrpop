@@ -442,7 +442,7 @@ UnaryOp: UnaryOperator = {
 Term: Box<Expression<T>> = {
     FunctionCall => Box::new(Expression::FunctionCall(<>)),
     ConstantIdentifier => Box::new(Expression::Constant(<>)),
-    ShiftedPolynomialReference => Box::new(Expression::PolynomialReference(<>)),
+    ShiftedPolynomialReference => Box::new(Expression::Reference(<>)),
     PublicReference => Box::new(Expression::PublicReference(<>)),
     FieldElement => Box::new(Expression::Number(<>)),
     StringLiteral => Box::new(Expression::String(<>)),
@@ -483,14 +483,18 @@ MatchExpression: Box<Expression<T>> = {
     "match" <BoxedExpression> "{" <MatchArms> "}" => Box::new(Expression::MatchExpression(<>))
 }
 
-MatchArms: Vec<(Option<Expression<T>>, Expression<T>)> = {
+MatchArms: Vec<MatchArm<T>> = {
     => vec![],
     <mut list:( <MatchArm> "," )*> <end:MatchArm> ","?  => { list.push(end); list }
 }
 
-MatchArm: (Option<Expression<T>>, Expression<T>) = {
-    <n:Expression> "=>" <e:Expression> => (Some(n), e),
-    <n:"_"> "=>" <e:Expression> => (None, e),
+MatchArm: MatchArm<T> = {
+    <pattern: MatchPattern> "=>" <value: Expression> => MatchArm{pattern, value},
+}
+
+MatchPattern: MatchPattern<T> = {
+    "_" => MatchPattern::CatchAll,
+    Expression => MatchPattern::Pattern(<>),
 }
 
 // ---------------------------- Terminals -----------------------------

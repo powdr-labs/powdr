@@ -6,8 +6,8 @@ use std::{
 use ast::parsed::{
     asm::{ASMProgram, Instruction, InstructionBody, Machine, MachineStatement},
     folder::Folder,
-    postvisit_expression_in_statement_mut, postvisit_expression_mut, Expression,
-    FunctionDefinition, PilStatement,
+    utils::{postvisit_expression_in_statement_mut, postvisit_expression_mut},
+    Expression, FunctionDefinition, PilStatement,
 };
 use number::FieldElement;
 
@@ -156,7 +156,7 @@ where
     }
 
     fn process_expression(&mut self, e: &mut Expression<T>) -> ControlFlow<()> {
-        if let Expression::PolynomialReference(poly) = e {
+        if let Expression::Reference(poly) = e {
             if poly.namespace().is_none() && self.parameter_names.contains_key(poly.name()) {
                 // TODO to make this work inside macros, "next" and "index" need to be
                 // their own ast nodes / operators.

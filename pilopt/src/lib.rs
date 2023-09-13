@@ -4,14 +4,15 @@ use std::collections::{BTreeMap, HashSet};
 use std::ops::ControlFlow;
 
 use ast::analyzed::util::{
-    postvisit_expression_mut, postvisit_expressions_in_pil_file_mut,
-    previsit_expressions_in_pil_file_mut,
+    postvisit_expressions_in_pil_file_mut, previsit_expressions_in_pil_file_mut,
 };
+use ast::analyzed::Reference;
 use ast::analyzed::{
     build::{build_mul, build_number, build_sub},
     Analyzed, BinaryOperator, Expression, FunctionValueDefinition, IdentityKind, PolyID,
     PolynomialReference,
 };
+use ast::parsed::utils::postvisit_expression_mut;
 use ast::parsed::UnaryOperator;
 use number::FieldElement;
 
@@ -54,12 +55,12 @@ fn remove_constant_fixed_columns<T: FieldElement>(pil_file: &mut Analyzed<T>) {
         .collect::<BTreeMap<PolyID, _>>();
 
     previsit_expressions_in_pil_file_mut(pil_file, &mut |e| {
-        if let Expression::PolynomialReference(PolynomialReference {
+        if let Expression::Reference(Reference::Poly(PolynomialReference {
             name: _,
             index,
             next: _,
             poly_id,
-        }) = e
+        })) = e
         {
             if let Some(value) = constant_polys.get(&poly_id.unwrap()) {
                 assert!(index.is_none());
@@ -281,12 +282,12 @@ fn remove_constant_witness_columns<T: FieldElement>(pil_file: &mut Analyzed<T>) 
         .collect::<BTreeMap<PolyID, _>>();
 
     previsit_expressions_in_pil_file_mut(pil_file, &mut |e| {
-        if let Expression::PolynomialReference(PolynomialReference {
+        if let Expression::Reference(Reference::Poly(PolynomialReference {
             name: _,
             index,
             next: _,
             poly_id,
-        }) = e
+        })) = e
         {
             if let Some(value) = constant_polys.get(&poly_id.unwrap()) {
                 assert!(index.is_none());
@@ -303,8 +304,8 @@ fn constrained_to_constant<T: FieldElement>(expr: &Expression<T>) -> Option<(Pol
     match expr {
         Expression::BinaryOperation(left, BinaryOperator::Sub, right) => {
             match (left.as_ref(), right.as_ref()) {
-                (Expression::Number(n), Expression::PolynomialReference(poly))
-                | (Expression::PolynomialReference(poly), Expression::Number(n)) => {
+                (Expression::Number(n), Expression::Reference(Reference::Poly(poly)))
+                | (Expression::Reference(Reference::Poly(poly)), Expression::Number(n)) => {
                     if poly.is_witness() {
                         // This also works if "next" is true.
                         return Some((poly.poly_id.unwrap(), *n));
@@ -313,7 +314,7 @@ fn constrained_to_constant<T: FieldElement>(expr: &Expression<T>) -> Option<(Pol
                 _ => {}
             }
         }
-        Expression::PolynomialReference(poly) => {
+        Expression::Reference(Reference::Poly(poly)) => {
             if poly.is_witness() {
                 return Some((poly.poly_id.unwrap(), 0.into()));
             }

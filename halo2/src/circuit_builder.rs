@@ -6,7 +6,7 @@ use polyexen::plaf::{
     ColumnFixed, ColumnWitness, Columns, Info, Lookup, Plaf, Poly, Shuffle, Witness,
 };
 
-use ast::analyzed::{Analyzed, Expression, IdentityKind, SelectedExpressions};
+use ast::analyzed::{Analyzed, Expression, IdentityKind, Reference, SelectedExpressions};
 use num_traits::One;
 use number::{BigInt, FieldElement};
 
@@ -236,7 +236,7 @@ pub(crate) fn analyzed_to_circuit<T: FieldElement>(
 fn expression_2_expr<T: FieldElement>(cd: &CircuitData<T>, expr: &Expression<T>) -> Expr<PlonkVar> {
     match expr {
         Expression::Number(n) => Expr::Const(n.to_arbitrary_integer()),
-        Expression::PolynomialReference(polyref) => {
+        Expression::Reference(Reference::Poly(polyref)) => {
             assert_eq!(polyref.index, None);
 
             let plonkvar = PlonkVar::Query(ColumnQuery {

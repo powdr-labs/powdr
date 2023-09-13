@@ -12,7 +12,7 @@ use crate::witgen::{
 };
 use crate::witgen::{EvalValue, IncompleteCause};
 use ast::analyzed::{
-    Expression, Identity, IdentityKind, PolyID, PolynomialReference, SelectedExpressions,
+    Expression, Identity, IdentityKind, PolyID, PolynomialReference, Reference, SelectedExpressions,
 };
 use number::FieldElement;
 
@@ -133,7 +133,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for SortedWitnesses<T> {
             .expressions
             .iter()
             .map(|e| match e {
-                Expression::PolynomialReference(p) => {
+                Expression::Reference(Reference::Poly(p)) => {
                     assert!(!p.next);
                     if p.poly_id() == self.key_col
                         || self.witness_positions.contains_key(&p.poly_id())

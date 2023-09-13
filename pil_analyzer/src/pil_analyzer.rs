@@ -3,18 +3,20 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use analysis::MacroExpander;
+use ast::parsed::utils::postvisit_expression_mut;
 use ast::parsed::{
-    ArrayExpression, BinaryOperator, FunctionDefinition, PilStatement, PolynomialName,
-    UnaryOperator,
+    self, ArrayExpression, BinaryOperator, FunctionDefinition, MatchArm, MatchPattern,
+    PilStatement, PolynomialName, UnaryOperator,
 };
 use number::{DegreeType, FieldElement};
 
-use ast::analyzed::util::previsit_expressions_in_pil_file_mut;
-use ast::analyzed::util::{postvisit_expression_mut, postvisit_expressions_in_identity_mut};
+use ast::analyzed::util::{
+    postvisit_expressions_in_identity_mut, previsit_expressions_in_pil_file_mut,
+};
 use ast::analyzed::{
     Analyzed, Expression, FunctionValueDefinition, Identity, IdentityKind, Polynomial,
-    PolynomialReference, PolynomialType, PublicDeclaration, RepeatedArray, SelectedExpressions,
-    SourceRef, StatementIdentifier,
+    PolynomialReference, PolynomialType, PublicDeclaration, Reference, RepeatedArray,
+    SelectedExpressions, SourceRef, StatementIdentifier,
 };
 
 pub fn process_pil_file<T: FieldElement>(path: &Path) -> Analyzed<T> {
@@ -81,7 +83,7 @@ impl<T> From<PILContext<T>> for Analyzed<T> {
             reference.poly_id = Some(poly.into());
         };
         previsit_expressions_in_pil_file_mut(&mut result, &mut |e| {
-            if let Expression::PolynomialReference(reference) = e {
+            if let Expression::Reference(Reference::Poly(reference)) = e {
                 assign_id(reference);
             }
             std::ops::ControlFlow::Continue::<()>(())
@@ -469,24 +471,26 @@ impl<T: FieldElement> PILContext<T> {
     }
 
     fn process_expression(&mut self, expr: ::ast::parsed::Expression<T>) -> Expression<T> {
-        use ::ast::parsed::Expression::*;
+        use ::ast::parsed::Expression as PExpression;
         match expr {
-            Constant(name) => Expression::Constant(name),
-            PolynomialReference(poly) => {
+            PExpression::Constant(name) => Expression::Constant(name),
+            PExpression::Reference(poly) => {
                 if poly.namespace().is_none() && self.local_variables.contains_key(poly.name()) {
                     let id = self.local_variables[poly.name()];
                     assert!(!poly.shift());
                     assert!(poly.index().is_none());
-                    Expression::LocalVariableReference(id)
+                    Expression::Reference(Reference::LocalVar(id))
                 } else {
-                    Expression::PolynomialReference(self.process_shifted_polynomial_reference(poly))
+                    Expression::Reference(Reference::Poly(
+                        self.process_shifted_polynomial_reference(poly),
+                    ))
                 }
             }
-            PublicReference(name) => Expression::PublicReference(name),
-            Number(n) => Expression::Number(n),
-            String(value) => Expression::String(value),
-            Tuple(items) => Expression::Tuple(self.process_expressions(items)),
-            BinaryOperation(left, op, right) => {
+            PExpression::PublicReference(name) => Expression::PublicReference(name),
+            PExpression::Number(n) => Expression::Number(n),
+            PExpression::String(value) => Expression::String(value),
+            PExpression::Tuple(items) => Expression::Tuple(self.process_expressions(items)),
+            PExpression::BinaryOperation(left, op, right) => {
                 if let Some(value) = self.evaluate_binary_operation(&left, op, &right) {
                     Expression::Number(value)
                 } else {
@@ -497,33 +501,32 @@ impl<T: FieldElement> PILContext<T> {
                     )
                 }
             }
-            UnaryOperation(op, value) => {
+            PExpression::UnaryOperation(op, value) => {
                 if let Some(value) = self.evaluate_unary_operation(op, &value) {
                     Expression::Number(value)
                 } else {
                     Expression::UnaryOperation(op, Box::new(self.process_expression(*value)))
                 }
             }
-            FunctionCall(c) => Expression::FunctionCall(
-                self.namespaced(&c.id),
-                self.process_expressions(c.arguments),
-            ),
-            MatchExpression(scrutinee, arms) => Expression::MatchExpression(
+            PExpression::FunctionCall(c) => Expression::FunctionCall(parsed::FunctionCall {
+                id: self.namespaced(&c.id),
+                arguments: self.process_expressions(c.arguments),
+            }),
+            PExpression::MatchExpression(scrutinee, arms) => Expression::MatchExpression(
                 Box::new(self.process_expression(*scrutinee)),
                 arms.into_iter()
-                    .map(|(n, e)| {
-                        (
-                            n.map(|n| {
-                                self.evaluate_expression(&n).unwrap_or_else(|| {
-                                    panic!("Left side of match arm must be a constant, found {n}")
-                                })
-                            }),
-                            self.process_expression(e),
-                        )
+                    .map(|MatchArm { pattern, value }| MatchArm {
+                        pattern: match pattern {
+                            MatchPattern::CatchAll => MatchPattern::CatchAll,
+                            MatchPattern::Pattern(e) => {
+                                MatchPattern::Pattern(self.process_expression(e))
+                            }
+                        },
+                        value: self.process_expression(value),
                     })
                     .collect(),
             ),
-            FreeInput(_) => panic!(),
+            PExpression::FreeInput(_) => panic!(),
         }
     }
 
@@ -564,7 +567,7 @@ impl<T: FieldElement> PILContext<T> {
                     .get(name)
                     .unwrap_or_else(|| panic!("Constant {name} not found.")),
             ),
-            PolynomialReference(_) => None,
+            Reference(_) => None,
             PublicReference(_) => None,
             Number(n) => Some(*n),
             String(_) => None,
@@ -633,7 +636,7 @@ fn substitute_intermediate<T: Copy>(
         .into_iter()
         .scan(HashMap::default(), |cache, mut identity| {
             postvisit_expressions_in_identity_mut(&mut identity, &mut |e| {
-                if let Expression::PolynomialReference(r) = e {
+                if let Expression::Reference(Reference::Poly(r)) = e {
                     let poly_id = r.poly_id.unwrap();
                     match poly_id.ptype {
                         PolynomialType::Committed => {}
@@ -664,7 +667,7 @@ fn inlined_expression_from_intermediate_poly_id<T: Copy>(
 ) -> Expression<T> {
     let mut expr = intermediate_polynomials[&poly_id].clone();
     postvisit_expression_mut(&mut expr, &mut |e| {
-        if let Expression::PolynomialReference(r) = e {
+        if let Expression::Reference(Reference::Poly(r)) = e {
             let poly_id = r.poly_id.unwrap();
             match poly_id.ptype {
                 PolynomialType::Committed => {}

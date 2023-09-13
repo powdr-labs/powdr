@@ -1,4 +1,5 @@
 use std::collections::HashSet;
+use std::ops::ControlFlow;
 
 use super::block_machine::BlockMachine;
 use super::double_sorted_witness_machine::DoubleSortedWitnesses;
@@ -6,11 +7,13 @@ use super::fixed_lookup_machine::FixedLookup;
 use super::sorted_witness_machine::SortedWitnesses;
 use super::FixedData;
 use super::KnownMachine;
-use crate::witgen::column_map::WitnessColumnMap;
-use crate::witgen::generator::Generator;
-use crate::witgen::range_constraints::RangeConstraint;
-use ast::analyzed::PolyID;
-use ast::analyzed::{Expression, Identity, IdentityKind, SelectedExpressions};
+use crate::witgen::{
+    column_map::WitnessColumnMap, generator::Generator, range_constraints::RangeConstraint,
+};
+use ast::analyzed::{
+    util::{previsit_expressions_in_identity, previsit_expressions_in_selected_expressions},
+    Expression, Identity, IdentityKind, PolyID, Reference, SelectedExpressions,
+};
 use itertools::Itertools;
 use number::FieldElement;
 
@@ -163,49 +166,29 @@ fn all_row_connected_witnesses<T>(
 
 /// Extracts all references to names from an identity.
 pub fn refs_in_identity<T>(identity: &Identity<T>) -> HashSet<PolyID> {
-    &refs_in_selected_expressions(&identity.left) | &refs_in_selected_expressions(&identity.right)
+    let mut refs: HashSet<PolyID> = Default::default();
+    previsit_expressions_in_identity(identity, &mut |expr| {
+        ref_of_expression(expr).map(|id| refs.insert(id));
+        ControlFlow::Continue::<()>(())
+    });
+    refs
 }
 
 /// Extracts all references to names from selected expressions.
 pub fn refs_in_selected_expressions<T>(selexpr: &SelectedExpressions<T>) -> HashSet<PolyID> {
-    selexpr
-        .expressions
-        .iter()
-        .chain(selexpr.selector.iter())
-        .map(refs_in_expression)
-        .reduce(|l, r| &l | &r)
-        .unwrap_or_default()
+    let mut refs: HashSet<PolyID> = Default::default();
+    previsit_expressions_in_selected_expressions(selexpr, &mut |expr| {
+        ref_of_expression(expr).map(|id| refs.insert(id));
+        ControlFlow::Continue::<()>(())
+    });
+    refs
 }
 
-/// Extracts all references to names from an expression
-pub fn refs_in_expression<T>(expr: &Expression<T>) -> HashSet<PolyID> {
+/// Extracts all references to names from an expression,
+/// NON-recursively.
+pub fn ref_of_expression<T>(expr: &Expression<T>) -> Option<PolyID> {
     match expr {
-        Expression::Constant(_) => todo!(),
-        Expression::PolynomialReference(p) => [p.poly_id()].into(),
-        Expression::Tuple(items) => refs_in_expressions(items),
-        Expression::BinaryOperation(l, _, r) => &refs_in_expression(l) | &refs_in_expression(r),
-        Expression::UnaryOperation(_, e) => refs_in_expression(e),
-        Expression::FunctionCall(_, args) => refs_in_expressions(args),
-        Expression::MatchExpression(scrutinee, arms) => {
-            &refs_in_expression(scrutinee)
-                | &arms
-                    .iter()
-                    .map(|(_, e)| refs_in_expression(e))
-                    .reduce(|a, b| &a | &b)
-                    .unwrap_or_default()
-        }
-        Expression::LocalVariableReference(_)
-        | Expression::PublicReference(_)
-        | Expression::Number(_)
-        | Expression::String(_) => HashSet::default(),
+        Expression::Reference(Reference::Poly(p)) => Some(p.poly_id()),
+        _ => None,
     }
-}
-
-/// Extracts all references to names from expressions.
-pub fn refs_in_expressions<T>(exprs: &[Expression<T>]) -> HashSet<PolyID> {
-    exprs
-        .iter()
-        .map(refs_in_expression)
-        .reduce(|l, r| &l | &r)
-        .unwrap_or_default()
 }
