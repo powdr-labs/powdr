@@ -1,5 +1,6 @@
 use number::FieldElement;
 use parsed::{BinaryOperator, UnaryOperator};
+use std::fmt::{Display, Result, Write};
 
 /// Analyzed PIL
 pub mod analyzed;
@@ -68,4 +69,43 @@ pub fn evaluate_unary_operation<T: FieldElement>(op: UnaryOperator, v: T) -> T {
         UnaryOperator::Minus => -v,
         UnaryOperator::LogicalNot => v.is_zero().into(),
     }
+}
+
+/// quick and dirty String to String indentation
+fn indent<S: ToString>(s: S, indentation: usize) -> String {
+    s.to_string()
+        .split('\n')
+        .map(|line| format!("{}{line}", "\t".repeat(indentation)))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn write_items<S, I, W>(f: &mut W, items: I) -> Result
+where
+    S: Display,
+    I: IntoIterator<Item = S>,
+    W: Write,
+{
+    write_items_indented_by(f, items, 0)
+}
+
+fn write_items_indented<S, I, W>(f: &mut W, items: I) -> Result
+where
+    S: Display,
+    I: IntoIterator<Item = S>,
+    W: Write,
+{
+    write_items_indented_by(f, items, 1)
+}
+
+fn write_items_indented_by<S, I, W>(f: &mut W, items: I, by: usize) -> Result
+where
+    S: Display,
+    I: IntoIterator<Item = S>,
+    W: Write,
+{
+    for item in items.into_iter() {
+        writeln!(f, "{}", indent(item, by))?;
+    }
+    Ok(())
 }

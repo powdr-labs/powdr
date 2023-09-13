@@ -1,6 +1,9 @@
 use std::fmt::{Display, Formatter, Result};
 
-use crate::parsed::{BinaryOperator, UnaryOperator};
+use crate::{
+    parsed::{BinaryOperator, UnaryOperator},
+    write_items, write_items_indented,
+};
 
 use super::{asm::*, *};
 
@@ -8,29 +11,101 @@ use super::{asm::*, *};
 
 impl<T: Display> Display for PILFile<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        for s in &self.0 {
-            writeln!(f, "{s}")?;
-        }
-        Ok(())
+        write_items(f, &self.0)
     }
 }
 
-impl<T: Display> Display for ASMFile<T> {
+impl<T: Display> Display for ASMProgram<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        for m in &self.machines {
-            writeln!(f, "{m}")?;
+        write!(f, "{}", self.main)
+    }
+}
+
+impl<T: Display> Display for ASMModule<T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write_items(f, &self.statements)
+    }
+}
+
+impl<T: Display> Display for ModuleStatement<T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        match self {
+            ModuleStatement::SymbolDefinition(SymbolDefinition { name, value }) => match value {
+                SymbolValue::Machine(m) => {
+                    write!(f, "machine {name} {m}")
+                }
+                SymbolValue::Import(i) => {
+                    write!(f, "{i} as {name}")
+                }
+                SymbolValue::Module(m) => {
+                    write!(f, "mod {name} {m}")
+                }
+            },
         }
-        Ok(())
+    }
+}
+
+impl<T: Display> Display for Module<T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        match self {
+            Module::External(name) => write!(f, "{name};"),
+            Module::Local(module) => {
+                writeln!(f, "{{")?;
+                write_items_indented(f, &module.statements)?;
+                write!(f, "}}")
+            }
+        }
+    }
+}
+
+impl Display for Import {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(f, "use {}", self.path)
+    }
+}
+
+impl Display for SymbolPath {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(
+            f,
+            "{}",
+            self.parts
+                .iter()
+                .map(|p| p.to_string())
+                .collect::<Vec<_>>()
+                .join("::")
+        )
+    }
+}
+
+impl Display for AbsoluteSymbolPath {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(
+            f,
+            "{}",
+            self.parts
+                .iter()
+                .map(|p| p.to_string())
+                .collect::<Vec<_>>()
+                .join("::")
+        )
+    }
+}
+
+impl Display for Part {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        match self {
+            Part::Super => write!(f, "super"),
+            Part::Named(name) => write!(f, "{name}"),
+        }
     }
 }
 
 impl<T: Display> Display for Machine<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        writeln!(f, "machine {} {{", self.name)?;
-        for s in &self.statements {
-            writeln!(f, "{s}")?;
-        }
-        writeln!(f, "}}")
+        writeln!(f, "{{")?;
+        write_items_indented(f, &self.statements)?;
+        write!(f, "}}")
     }
 }
 
@@ -84,7 +159,7 @@ impl<T: Display> Display for MachineStatement<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
             MachineStatement::Degree(_, degree) => write!(f, "degree {};", degree),
-            MachineStatement::Submachine(_, ty, name) => write!(f, "{ty} {name}"),
+            MachineStatement::Submachine(_, ty, name) => write!(f, "{ty} {name};"),
             MachineStatement::RegisterDeclaration(_, name, flag) => write!(
                 f,
                 "reg {}{};",

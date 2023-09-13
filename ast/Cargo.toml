@@ -11,5 +11,6 @@ num-bigint = "0.4.3"
 number = { path = "../number" }
 diff = "0.1"
 log = "0.4.18"
+derive_more = "0.99.17"
 
 

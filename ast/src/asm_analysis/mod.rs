@@ -14,7 +14,7 @@ use num_bigint::BigUint;
 use number::FieldElement;
 
 use crate::parsed::{
-    asm::{CallableRef, InstructionBody, OperationId, Params},
+    asm::{AbsoluteSymbolPath, CallableRef, InstructionBody, OperationId, Params},
     PilStatement,
 };
 
@@ -611,7 +611,7 @@ pub struct SubmachineDeclaration {
     /// the name of this instance
     pub name: String,
     /// the type of the submachine
-    pub ty: String,
+    pub ty: AbsoluteSymbolPath,
 }
 
 #[derive(Clone, Default, PartialEq, Eq, PartialOrd, Ord, Debug)]
@@ -722,7 +722,12 @@ pub struct Rom<T> {
 
 #[derive(Default, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct AnalysisASMFile<T> {
-    pub machines: BTreeMap<String, Machine<T>>,
+    pub machines: BTreeMap<AbsoluteSymbolPath, Machine<T>>,
+}
+impl<T> AnalysisASMFile<T> {
+    pub fn get_machine(&self, path: AbsoluteSymbolPath) -> &Machine<T> {
+        self.machines.get(&path).unwrap()
+    }
 }
 
 #[derive(Default, Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]

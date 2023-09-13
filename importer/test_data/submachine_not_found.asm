@@ -1,0 +1,3 @@
+machine Foo {
+    Bar foo;
+}

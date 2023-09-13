@@ -33,7 +33,7 @@ pub fn mock_prove<T: FieldElement>(
 
 #[cfg(test)]
 mod test {
-    use std::fs;
+    use std::{fs, path::PathBuf};
 
     use analysis::analyze;
     use number::Bn254Field;
@@ -45,13 +45,15 @@ mod test {
     fn mock_prove_asm(file_name: &str, inputs: &[Bn254Field]) {
         // read and compile PIL.
 
-        let contents = fs::read_to_string(format!(
+        let location = format!(
             "{}/../test_data/asm/{file_name}",
             env!("CARGO_MANIFEST_DIR")
-        ))
-        .unwrap();
-        let parsed = parse_asm::<Bn254Field>(Some(file_name), &contents).unwrap();
-        let analysed = analyze(parsed).unwrap();
+        );
+
+        let contents = fs::read_to_string(&location).unwrap();
+        let parsed = parse_asm::<Bn254Field>(Some(&location), &contents).unwrap();
+        let resolved = importer::resolve(Some(PathBuf::from(location)), parsed).unwrap();
+        let analysed = analyze(resolved).unwrap();
         let graph = airgen::compile(analysed);
         let pil = linker::link(graph).unwrap();
 
@@ -106,8 +108,8 @@ mod test {
     }
 
     #[test]
-    fn poseidon_bn254() {
-        mock_prove_asm("poseidon_bn254.asm", &[]);
+    fn poseidon_bn254_test() {
+        mock_prove_asm("poseidon_bn254_test.asm", &[]);
     }
 
     #[test]

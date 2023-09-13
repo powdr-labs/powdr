@@ -153,7 +153,9 @@ mod test {
     use crate::{link, DEFAULT_DEGREE};
 
     fn parse_analyse_and_compile<T: FieldElement>(input: &str) -> PILGraph<T> {
-        airgen::compile(analyze(parse_asm(None, input).unwrap()).unwrap())
+        let parsed = parse_asm(None, input).unwrap();
+        let resolved = importer::resolve(None, parsed).unwrap();
+        airgen::compile(analyze(resolved).unwrap())
     }
 
     #[test]

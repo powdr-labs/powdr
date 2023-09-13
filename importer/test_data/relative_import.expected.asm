@@ -1,0 +1,4 @@
+mod submodule {
+    machine Foo {
+    }
+}
