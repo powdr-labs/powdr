@@ -3,8 +3,7 @@ use itertools::Itertools;
 use number::{DegreeType, FieldElement};
 use parser_util::lines::indent;
 use std::cmp::max;
-use std::collections::HashSet;
-use std::collections::{BTreeSet, HashMap};
+use std::collections::{HashMap, HashSet};
 use std::time::Instant;
 
 use crate::witgen::identity_processor::{self, IdentityProcessor};
@@ -18,8 +17,8 @@ use super::query_processor::QueryProcessor;
 use super::range_constraints::RangeConstraint;
 
 use super::machines::FixedLookup;
-use super::rows::{Row, RowFactory, RowPair, UnknownStrategy};
-use super::{EvalError, EvalResult, FixedData, MutableState};
+use super::rows::{transpose_rows, Row, RowFactory, RowPair, UnknownStrategy};
+use super::{EvalError, EvalResult, EvalValue, FixedData, MutableState};
 
 /// Phase in which [Generator::compute_next_row_or_initialize] is called.
 #[derive(Debug, PartialEq)]
@@ -50,8 +49,7 @@ impl<'a, T: FieldElement> CompletableIdentities<'a, T> {
 
 pub struct Generator<'a, T: FieldElement> {
     /// The witness columns belonging to this machine
-    witnesses: BTreeSet<PolyID>,
-    row_factory: RowFactory<'a, T>,
+    witnesses: HashSet<PolyID>,
     fixed_data: &'a FixedData<'a, T>,
     /// The subset of identities that contains a reference to the next row
     /// (precomputed once for performance reasons)
@@ -59,15 +57,7 @@ pub struct Generator<'a, T: FieldElement> {
     /// The subset of identities that does not contain a reference to the next row
     /// (precomputed once for performance reasons)
     identities_without_next_ref: Vec<&'a Identity<T>>,
-    /// Values of the witness polynomials in the first row (needed for checking wrap-around)
-    first: Row<'a, T>,
-    /// Values of the witness polynomials in the previous row (needed to check proposed rows)
-    previous: Row<'a, T>,
-    /// Values of the witness polynomials
-    current: Row<'a, T>,
-    /// Values of the witness polynomials in the next row
-    next: Row<'a, T>,
-    current_row_index: DegreeType,
+    data: Vec<Row<'a, T>>,
     last_report: DegreeType,
     last_report_time: Instant,
 }
@@ -86,7 +76,15 @@ impl<'a, T: FieldElement> Machine<'a, T> for Generator<'a, T> {
     }
 
     fn take_witness_col_values(&mut self, _fixed_data: &FixedData<T>) -> HashMap<String, Vec<T>> {
-        unimplemented!()
+        let data = transpose_rows(std::mem::take(&mut self.data), &self.witnesses);
+        data.into_iter()
+            .map(|(id, values)| {
+                (
+                    self.fixed_data.column_name(&id).to_string(),
+                    values.into_iter().map(|v| v.unwrap_or_default()).collect(),
+                )
+            })
+            .collect()
     }
 }
 
@@ -94,7 +92,7 @@ impl<'a, T: FieldElement> Generator<'a, T> {
     pub fn new(
         fixed_data: &'a FixedData<'a, T>,
         identities: &[&'a Identity<T>],
-        witnesses: &HashSet<PolyID>,
+        witnesses: HashSet<PolyID>,
         global_range_constraints: &WitnessColumnMap<Option<RangeConstraint<T>>>,
     ) -> Self {
         let row_factory = RowFactory::new(fixed_data, global_range_constraints.clone());
@@ -105,16 +103,11 @@ impl<'a, T: FieldElement> Generator<'a, T> {
             .partition(|identity| identity.contains_next_ref());
 
         Generator {
-            row_factory,
-            witnesses: witnesses.clone().into_iter().collect(),
+            witnesses,
             fixed_data,
             identities_with_next_ref: identities_with_next,
             identities_without_next_ref: identities_without_next,
-            first: default_row.clone(),
-            previous: default_row.clone(),
-            current: default_row.clone(),
-            next: default_row,
-            current_row_index: fixed_data.degree - 1,
+            data: vec![default_row; fixed_data.degree as usize],
             last_report: 0,
             last_report_time: Instant::now(),
         }
@@ -124,66 +117,75 @@ impl<'a, T: FieldElement> Generator<'a, T> {
         self.fixed_data.degree - 1
     }
 
-    pub fn compute_next_row<Q>(
-        &mut self,
-        next_row: DegreeType,
-        mutable_state: &mut MutableState<'a, T, Q>,
-    ) -> WitnessColumnMap<T>
+    pub fn run<Q>(&mut self, mutable_state: &mut MutableState<'a, T, Q>)
     where
         Q: FnMut(&str) -> Option<T> + Send + Sync,
     {
-        if next_row == 0 {
-            // For identities like `pc' = (1 - first_step') * <...>`, we need to process the last
-            // row before processing the first row.
-            self.compute_next_row_or_initialize(
-                self.last_row(),
-                ProcessingPhase::Initialization,
-                mutable_state,
-            );
-        }
-        self.compute_next_row_or_initialize(next_row, ProcessingPhase::Regular, mutable_state)
-    }
+        // For identities like `pc' = (1 - first_step') * <...>`, we need to process the last
+        // row before processing the first row.
+        self.compute_next_row(
+            self.last_row(),
+            ProcessingPhase::Initialization,
+            mutable_state,
+        );
 
-    /// Update the first row for the wrap-around.
-    pub fn update_first_row(&mut self) -> WitnessColumnMap<T> {
-        assert_eq!(self.current_row_index, self.last_row());
-        WitnessColumnMap::<T>::from(self.first.values().zip(self.current.values()).map(
-            |(first, new_first)| {
-                let first = first.value.clone();
-                let new_first = new_first.value.clone();
-                match (
-                    (first.is_known(), first.unwrap_or_default()),
-                    (new_first.is_known(), new_first.unwrap_or_default()),
-                ) {
-                    ((true, x), (true, y)) => {
-                        // TODO we should probably print a proper error.
-                        assert_eq!(x, y);
-                        x
-                    }
-                    ((false, _), (true, y)) => y,
-                    ((_, x), (_, _)) => x,
+        // Are we in an infinite loop and can just re-use the old values?
+        let mut looping_period = None;
+        for row_index in 0..self.fixed_data.degree as DegreeType {
+            self.maybe_log(row_index);
+            // Check if we are in a loop.
+            if looping_period.is_none() && row_index % 100 == 0 && row_index > 0 {
+                looping_period = self.rows_are_repeating(row_index);
+                if let Some(p) = looping_period {
+                    log::info!("Found loop with period {p} starting at row {row_index}");
                 }
-            },
-        ))
+            }
+            if let Some(period) = looping_period {
+                let proposed_row = self.data[row_index as usize - period].clone();
+                if !self.try_proposed_row(row_index, proposed_row, mutable_state) {
+                    log::info!("Using loop failed. Trying to generate regularly again.");
+                    looping_period = None;
+                }
+            }
+            if looping_period.is_none() {
+                self.compute_next_row(row_index, ProcessingPhase::Regular, mutable_state);
+            };
+        }
     }
 
-    fn compute_next_row_or_initialize<Q>(
+    /// Checks if the last rows are repeating and returns the period.
+    /// Only checks for periods of 1, 2, 3 and 4.
+    fn rows_are_repeating(&self, row_index: DegreeType) -> Option<usize> {
+        if row_index < 4 {
+            return None;
+        }
+
+        let row = row_index as usize;
+        (1..=3).find(|&period| {
+            (1..=period).all(|i| {
+                self.data[row - i - period]
+                    .values()
+                    .zip(self.data[row - i].values())
+                    .all(|(a, b)| a.value == b.value)
+            })
+        })
+    }
+
+    // Returns a reference to a given row
+    fn row(&self, row_index: DegreeType) -> &Row<'a, T> {
+        let row_index = (row_index + self.fixed_data.degree) % self.fixed_data.degree;
+        &self.data[row_index as usize]
+    }
+
+    fn compute_next_row<Q>(
         &mut self,
-        next_row: DegreeType,
+        row_index: DegreeType,
         phase: ProcessingPhase,
         mutable_state: &mut MutableState<'a, T, Q>,
-    ) -> WitnessColumnMap<T>
-    where
+    ) where
         Q: FnMut(&str) -> Option<T> + Send + Sync,
     {
-        if phase == ProcessingPhase::Initialization {
-            assert_eq!(next_row, self.last_row());
-            self.current_row_index = next_row;
-        } else {
-            self.set_next_row_and_log(next_row);
-        }
-
-        log::trace!("Row: {}", self.current_row_index);
+        log::trace!("Row: {}", row_index);
 
         let mut identity_processor = IdentityProcessor::new(
             self.fixed_data,
@@ -203,18 +205,20 @@ impl<'a, T: FieldElement> Generator<'a, T> {
         let mut identities_with_next_ref =
             CompletableIdentities::new(self.identities_with_next_ref.iter().cloned());
         self.loop_until_no_progress(
+            row_index,
             &mut identities_without_next_ref,
             &mut identity_processor,
             &mut query_processor,
         )
         .and_then(|_| {
             self.loop_until_no_progress(
+                row_index,
                 &mut identities_with_next_ref,
                 &mut identity_processor,
                 &mut query_processor,
             )
         })
-        .map_err(|e| self.report_failure_and_panic_unsatisfiable(e))
+        .map_err(|e| self.report_failure_and_panic_unsatisfiable(row_index, e))
         .unwrap();
 
         // Check that the computed row is "final" by asserting that all unknown values can
@@ -227,40 +231,35 @@ impl<'a, T: FieldElement> Generator<'a, T> {
                 "  Checking that remaining identities hold when unknown values are set to 0"
             );
             self.process_identities(
+                row_index,
                 &mut identities_without_next_ref,
                 UnknownStrategy::Zero,
                 &mut identity_processor,
             )
             .and_then(|_| {
                 self.process_identities(
+                    row_index,
                     &mut identities_with_next_ref,
                     UnknownStrategy::Zero,
                     &mut identity_processor,
                 )
             })
-            .map_err(|e| self.report_failure_and_panic_underconstrained(e))
+            .map_err(|e| self.report_failure_and_panic_underconstrained(row_index, e))
             .unwrap();
         }
 
         log::trace!(
             "{}",
-            self.current
-                .render(&format!("===== Row {}", self.current_row_index), true)
+            self.row(row_index)
+                .render(&format!("===== Row {}", row_index), true)
         );
-
-        self.shift_rows();
-
-        if next_row == 0 {
-            self.first = self.previous.clone()
-        }
-
-        self.previous.clone().into()
     }
 
     /// Loops over all identities and queries, until no further progress is made.
     /// @returns the "incomplete" identities, i.e. identities that contain unknown values.
     fn loop_until_no_progress<Q>(
         &mut self,
+        row_index: DegreeType,
         identities: &mut CompletableIdentities<'a, T>,
         identity_processor: &mut IdentityProcessor<'a, '_, T>,
         query_processor: &mut Option<QueryProcessor<'a, '_, T, Q>>,
@@ -269,20 +268,22 @@ impl<'a, T: FieldElement> Generator<'a, T> {
         Q: FnMut(&str) -> Option<T> + Send + Sync,
     {
         loop {
-            let mut progress =
-                self.process_identities(identities, UnknownStrategy::Unknown, identity_processor)?;
+            let mut progress = self.process_identities(
+                row_index,
+                identities,
+                UnknownStrategy::Unknown,
+                identity_processor,
+            )?;
             if let Some(query_processor) = query_processor.as_mut() {
                 let row_pair = RowPair::new(
-                    &self.current,
-                    &self.next,
-                    self.current_row_index,
+                    self.row(row_index),
+                    self.row(row_index + 1),
+                    row_index,
                     self.fixed_data,
                     UnknownStrategy::Unknown,
                 );
                 let updates = query_processor.process_queries_on_current_row(&row_pair);
-                let mut row_updater =
-                    RowUpdater::new(&mut self.current, &mut self.next, self.current_row_index);
-                progress |= row_updater.apply_updates(&updates, || "query".to_string());
+                progress |= self.apply_updates(row_index, &updates, || "query".to_string());
             }
 
             if !progress {
@@ -302,6 +303,7 @@ impl<'a, T: FieldElement> Generator<'a, T> {
     /// * `Err(errors)`: If an error occurred.
     fn process_identities(
         &mut self,
+        row_index: DegreeType,
         identities: &mut CompletableIdentities<'a, T>,
         unknown_strategy: UnknownStrategy,
         identity_processor: &mut IdentityProcessor<'a, '_, T>,
@@ -315,9 +317,9 @@ impl<'a, T: FieldElement> Generator<'a, T> {
             }
 
             let row_pair = RowPair::new(
-                &self.current,
-                &self.next,
-                self.current_row_index,
+                self.row(row_index),
+                self.row(row_index + 1),
+                row_index,
                 self.fixed_data,
                 unknown_strategy,
             );
@@ -333,13 +335,8 @@ impl<'a, T: FieldElement> Generator<'a, T> {
                         assert!(eval_value.constraints.is_empty())
                     } else {
                         *is_complete = eval_value.is_complete();
-                        let mut row_updater = RowUpdater::new(
-                            &mut self.current,
-                            &mut self.next,
-                            self.current_row_index,
-                        );
                         progress |=
-                            row_updater.apply_updates(&eval_value, || format!("{identity}"));
+                            self.apply_updates(row_index, &eval_value, || format!("{identity}"));
                     }
                 }
                 Err(e) => {
@@ -355,22 +352,37 @@ impl<'a, T: FieldElement> Generator<'a, T> {
         }
     }
 
-    /// Shifts rows: fresh row -> next -> current -> previous
-    fn shift_rows(&mut self) {
-        let mut fresh_row = self.row_factory.fresh_row();
-        std::mem::swap(&mut self.previous, &mut fresh_row);
-        std::mem::swap(&mut self.current, &mut self.previous);
-        std::mem::swap(&mut self.next, &mut self.current);
+    fn apply_updates(
+        &mut self,
+        row_index: DegreeType,
+        updates: &EvalValue<&PolynomialReference, T>,
+        source_name: impl Fn() -> String,
+    ) -> bool {
+        let (before, after) = if row_index == self.last_row() {
+            // Last row is current, first row is next
+            let (after, before) = self.data.split_at_mut(row_index as usize);
+            (before, after)
+        } else {
+            self.data.split_at_mut(row_index as usize + 1)
+        };
+        let current = before.last_mut().unwrap();
+        let next = after.first_mut().unwrap();
+        let mut row_updater = RowUpdater::new(current, next, row_index);
+        row_updater.apply_updates(updates, source_name)
     }
 
-    fn report_failure_and_panic_unsatisfiable(&self, failures: Vec<EvalError<T>>) -> ! {
+    fn report_failure_and_panic_unsatisfiable(
+        &self,
+        row_index: DegreeType,
+        failures: Vec<EvalError<T>>,
+    ) -> ! {
         log::error!(
             "\nError: Row {} failed. Set RUST_LOG=debug for more information.\n",
-            self.current_row_index
+            row_index
         );
         log::debug!("Some identities where not satisfiable after the following values were uniquely determined (known nonzero first, then zero, unknown omitted):");
-        log::debug!("{}", self.current.render("Current Row", false));
-        log::debug!("{}", self.next.render("Next Row", false));
+        log::debug!("{}", self.row(row_index).render("Current Row", false));
+        log::debug!("{}", self.row(row_index + 1).render("Next Row", false));
         log::debug!("Set RUST_LOG=trace to understand why these values were chosen.");
         log::debug!(
             "Assuming these values are correct, the following identities fail:\n{}\n",
@@ -382,15 +394,19 @@ impl<'a, T: FieldElement> Generator<'a, T> {
         panic!("Witness generation failed.");
     }
 
-    fn report_failure_and_panic_underconstrained(&self, failures: Vec<EvalError<T>>) -> ! {
+    fn report_failure_and_panic_underconstrained(
+        &self,
+        row_index: DegreeType,
+        failures: Vec<EvalError<T>>,
+    ) -> ! {
         log::error!(
             "\nError: Row {} failed. Set RUST_LOG=debug for more information.\n",
-            self.current_row_index
+            row_index
         );
 
         log::debug!("Some columns could not be determined, but setting them to zero does not satisfy the constraints. This typically means that the system is underconstrained!");
-        log::debug!("{}", self.current.render("Current Row", true));
-        log::debug!("{}", self.next.render("Next Row", true));
+        log::debug!("{}", self.row(row_index).render("Current Row", true));
+        log::debug!("{}", self.row(row_index).render("Next Row", true));
         log::debug!("\nSet RUST_LOG=trace to understand why these values were (not) chosen.");
         log::debug!(
             "Assuming zero for unknown values, the following identities fail:\n{}\n",
@@ -405,42 +421,38 @@ impl<'a, T: FieldElement> Generator<'a, T> {
     /// Verifies the proposed values for the next row.
     /// TODO this is bad for machines because we might introduce rows in the machine that are then
     /// not used.
-    pub fn propose_next_row<Q>(
+    fn try_proposed_row<Q>(
         &mut self,
-        next_row: DegreeType,
-        values: &WitnessColumnMap<T>,
+        row_index: DegreeType,
+        proposed_row: Row<'a, T>,
         mutable_state: &mut MutableState<'a, T, Q>,
     ) -> bool
     where
         Q: FnMut(&str) -> Option<T> + Send + Sync,
     {
-        self.set_next_row_and_log(next_row);
-
-        let proposed_row = self.row_factory.row_from_known_values_dense(values);
-
         let mut identity_processor = IdentityProcessor::new(
             self.fixed_data,
             &mut mutable_state.fixed_lookup,
             mutable_state.machines.iter_mut().into(),
         );
-        let constraints_valid = self.check_row_pair(&proposed_row, false, &mut identity_processor)
-            && self.check_row_pair(&proposed_row, true, &mut identity_processor);
+        let constraints_valid =
+            self.check_row_pair(row_index, &proposed_row, false, &mut identity_processor)
+                && self.check_row_pair(row_index, &proposed_row, true, &mut identity_processor);
 
         if constraints_valid {
-            self.previous = proposed_row;
+            self.data[row_index as usize] = proposed_row;
         } else {
-            // Note that we never update `current` if proposing a row succeeds (the happy path).
+            // Note that we never update the next row if proposing a row succeeds (the happy path).
             // If it doesn't, we re-run compute_next_row on the previous row in order to
             // correctly forward-propagate values via next references.
-            std::mem::swap(&mut self.current, &mut self.previous);
-            self.next = self.row_factory.fresh_row();
-            self.compute_next_row(next_row - 1, mutable_state);
+            self.compute_next_row(row_index - 1, ProcessingPhase::Regular, mutable_state);
         }
         constraints_valid
     }
 
     fn check_row_pair(
         &mut self,
+        row_index: DegreeType,
         proposed_row: &Row<'a, T>,
         previous: bool,
         identity_processor: &mut IdentityProcessor<'a, '_, T>,
@@ -449,9 +461,9 @@ impl<'a, T: FieldElement> Generator<'a, T> {
             // Check whether identities with a reference to the next row are satisfied
             // when applied to the previous row and the proposed row.
             true => RowPair::new(
-                &self.previous,
+                self.row(row_index - 1),
                 proposed_row,
-                self.current_row_index - 1,
+                row_index - 1,
                 self.fixed_data,
                 UnknownStrategy::Zero,
             ),
@@ -460,8 +472,8 @@ impl<'a, T: FieldElement> Generator<'a, T> {
             // Note that we also provide the next row here, but it is not used.
             false => RowPair::new(
                 proposed_row,
-                &self.next,
-                self.current_row_index,
+                self.row(row_index + 1),
+                row_index,
                 self.fixed_data,
                 UnknownStrategy::Zero,
             ),
@@ -480,7 +492,7 @@ impl<'a, T: FieldElement> Generator<'a, T> {
                 .process_identity(identity, &row_pair)
                 .is_err()
             {
-                log::debug!("Previous {:?}", self.previous);
+                log::debug!("Previous {:?}", self.row(row_index - 1));
                 log::debug!("Proposed {:?}", proposed_row);
                 log::debug!("Failed on identity: {}", identity);
 
@@ -490,8 +502,8 @@ impl<'a, T: FieldElement> Generator<'a, T> {
         true
     }
 
-    fn set_next_row_and_log(&mut self, next_row: DegreeType) {
-        if next_row >= self.last_report + 1000 {
+    fn maybe_log(&mut self, row_index: DegreeType) {
+        if row_index >= self.last_report + 1000 {
             let duration = self.last_report_time.elapsed();
             self.last_report_time = Instant::now();
 
@@ -507,18 +519,12 @@ impl<'a, T: FieldElement> Generator<'a, T> {
                 / identities_count;
 
             log::info!(
-                "{next_row} of {} rows ({}%) - {} rows/s, {identities_per_sec}k identities/s, {progress_percentage}% progress",
+                "{row_index} of {} rows ({}%) - {} rows/s, {identities_per_sec}k identities/s, {progress_percentage}% progress",
                 self.fixed_data.degree,
-                next_row * 100 / self.fixed_data.degree,
+                row_index * 100 / self.fixed_data.degree,
                 1_000_000_000 / duration.as_micros()
             );
-            self.last_report = next_row;
+            self.last_report = row_index;
         }
-        self.current_row_index = next_row;
-    }
-
-    /// Returns true if this is a witness column we care about (instead of a sub-machine witness).
-    pub fn is_relevant_witness(&self, id: &PolyID) -> bool {
-        self.witnesses.contains(id)
     }
 }

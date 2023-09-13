@@ -124,7 +124,7 @@ pub fn split_out_machines<'a, T: FieldElement>(
             machines.push(KnownMachine::Vm(Generator::new(
                 fixed,
                 &machine_identities,
-                &machine_witnesses,
+                machine_witnesses,
                 global_range_constraints,
             )));
         }
