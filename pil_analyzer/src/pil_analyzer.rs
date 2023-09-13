@@ -147,7 +147,7 @@ impl<T: FieldElement> PILContext<T> {
                     name,
                     None,
                     PolynomialType::Intermediate,
-                    Some(FunctionDefinition::Mapping(vec![], value)),
+                    Some(FunctionDefinition::Expression(value)),
                 );
             }
             PilStatement::PublicDeclaration(start, name, polynomial, index) => {
@@ -321,12 +321,14 @@ impl<T: FieldElement> PILContext<T> {
         let name = poly.absolute_name.clone();
 
         let value = value.map(|v| match v {
+            FunctionDefinition::Expression(expr) => {
+                assert!(!have_array_size);
+                assert!(poly.poly_type == PolynomialType::Intermediate);
+                FunctionValueDefinition::Expression(self.process_expression(expr))
+            }
             FunctionDefinition::Mapping(params, expr) => {
                 assert!(!have_array_size);
-                assert!(
-                    poly.poly_type == PolynomialType::Constant
-                        || poly.poly_type == PolynomialType::Intermediate
-                );
+                assert!(poly.poly_type == PolynomialType::Constant);
                 FunctionValueDefinition::Mapping(self.process_function(params, expr))
             }
             FunctionDefinition::Query(params, expr) => {
@@ -659,5 +661,21 @@ namespace T(65536);
             }
         }
         assert_eq!(input, formatted);
+    }
+
+    #[test]
+    fn intermediate() {
+        let input = r#"namespace N(65536);
+    col witness x;
+    col intermediate = x;
+    intermediate = intermediate;
+"#;
+        let expected = r#"namespace N(65536);
+    col witness x;
+    col intermediate = N.x;
+    N.intermediate = N.intermediate;
+"#;
+        let formatted = process_pil_file_contents::<GoldilocksField>(input).to_string();
+        assert_eq!(formatted, expected);
     }
 }
