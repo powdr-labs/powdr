@@ -170,19 +170,25 @@ impl<'a, 'b, T: FieldElement, CalldataAvailable> Processor<'a, 'b, T, CalldataAv
         }) = sequence_iterator.next()
         {
             let row_index = (1 + row_delta) as usize;
-            let progress = match identity {
+            let (is_complete, progress) = match identity {
                 Action::Process(identity_index) => {
                     self.process_identity(row_index, identity_index)?
                 }
                 Action::OuterQuery => {
-                    let (progress, new_outer_assignments) = self.process_outer_query(row_index)?;
+                    let (is_complete, progress, new_outer_assignments) =
+                        self.process_outer_query(row_index)?;
                     outer_assignments.extend(new_outer_assignments);
-                    progress
+                    (is_complete, progress)
                 }
             };
             let on_last_row = row_index == self.data.len() - 2;
             let on_outer_query_row = on_last_row && self.calldata.is_some();
-            sequence_iterator.report_progress(progress, on_outer_query_row, on_last_row);
+            sequence_iterator.report_progress(
+                progress,
+                is_complete,
+                on_outer_query_row,
+                on_last_row,
+            );
         }
         Ok(outer_assignments)
     }
@@ -193,7 +199,7 @@ impl<'a, 'b, T: FieldElement, CalldataAvailable> Processor<'a, 'b, T, CalldataAv
         &mut self,
         row_index: usize,
         identity_index: usize,
-    ) -> Result<bool, EvalError<T>> {
+    ) -> Result<(bool, bool), EvalError<T>> {
         let identity = &self.identities[identity_index];
 
         // Create row pair
@@ -233,7 +239,7 @@ impl<'a, 'b, T: FieldElement, CalldataAvailable> Processor<'a, 'b, T, CalldataAv
     fn process_outer_query(
         &mut self,
         row_index: usize,
-    ) -> Result<(bool, Constraints<&'a PolynomialReference, T>), EvalError<T>> {
+    ) -> Result<(bool, bool, Constraints<&'a PolynomialReference, T>), EvalError<T>> {
         let Calldata { left, right } = self
             .calldata
             .as_mut()
@@ -261,7 +267,8 @@ impl<'a, 'b, T: FieldElement, CalldataAvailable> Processor<'a, 'b, T, CalldataAv
                 e
             })?;
 
-        let progress = self.apply_updates(row_index, &updates, || "outer query".to_string());
+        let (is_complete, progress) =
+            self.apply_updates(row_index, &updates, || "outer query".to_string());
 
         let outer_assignments = updates
             .constraints
@@ -269,7 +276,7 @@ impl<'a, 'b, T: FieldElement, CalldataAvailable> Processor<'a, 'b, T, CalldataAv
             .filter(|(poly, _)| !self.witness_cols.contains(&poly.poly_id()))
             .collect::<Vec<_>>();
 
-        Ok((progress, outer_assignments))
+        Ok((is_complete, progress, outer_assignments))
     }
 
     fn apply_updates(
@@ -277,9 +284,9 @@ impl<'a, 'b, T: FieldElement, CalldataAvailable> Processor<'a, 'b, T, CalldataAv
         row_index: usize,
         updates: &EvalValue<&'a PolynomialReference, T>,
         source_name: impl Fn() -> String,
-    ) -> bool {
+    ) -> (bool, bool) {
         if updates.constraints.is_empty() {
-            return false;
+            return (updates.is_complete(), false);
         }
 
         log::trace!("    Updates from: {}", source_name());
@@ -304,7 +311,7 @@ impl<'a, 'b, T: FieldElement, CalldataAvailable> Processor<'a, 'b, T, CalldataAv
             };
         }
 
-        true
+        (updates.is_complete(), true)
     }
 }
 

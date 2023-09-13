@@ -34,6 +34,7 @@ pub struct DefaultSequenceIterator {
     direction_index: usize,
     on_outer_query_row: bool,
     on_last_row: bool,
+    identity_complete: Vec<bool>,
 
     /// Whether this is the first time the iterator is called.
     is_first: bool,
@@ -63,6 +64,7 @@ impl DefaultSequenceIterator {
             on_outer_query_row: false,
             on_last_row: false,
             is_first: true,
+            identity_complete: vec![false; identities_count + 1],
             progress_in_current_round: false,
             cur_identity_index: 0,
             current_round_count: 0,
@@ -80,6 +82,9 @@ impl DefaultSequenceIterator {
             } else {
                 // Stay at row delta, move to next identity.
                 self.cur_identity_index += 1;
+                if self.identity_complete[self.cur_identity_index] {
+                    self.update_state()?;
+                }
             }
         }
         self.is_first = false;
@@ -116,6 +121,7 @@ impl DefaultSequenceIterator {
                 }
             }
 
+            self.identity_complete = vec![false; self.identities_count + 1];
             self.current_row_delta += match self.directions[self.direction_index] {
                 Direction::Forward => 1,
                 Direction::Backward => -1,
@@ -133,6 +139,7 @@ impl DefaultSequenceIterator {
     pub fn report_progress(
         &mut self,
         progress_in_last_step: bool,
+        identity_complete: bool,
         on_outer_query_row: bool,
         on_last_row: bool,
     ) {
@@ -141,6 +148,7 @@ impl DefaultSequenceIterator {
         if progress_in_last_step {
             self.progress_steps.push(self.current_step());
         }
+        self.identity_complete[self.cur_identity_index] = identity_complete;
         self.progress_in_current_round |= progress_in_last_step;
         self.on_outer_query_row = on_outer_query_row;
         self.on_last_row = on_last_row;
@@ -193,13 +201,17 @@ impl ProcessingSequenceIterator {
     pub fn report_progress(
         &mut self,
         progress_in_last_step: bool,
+        identity_complete: bool,
         on_outer_query_row: bool,
         on_last_row: bool,
     ) {
         match self {
-            Self::Default(it) => {
-                it.report_progress(progress_in_last_step, on_outer_query_row, on_last_row)
-            }
+            Self::Default(it) => it.report_progress(
+                progress_in_last_step,
+                identity_complete,
+                on_outer_query_row,
+                on_last_row,
+            ),
             Self::Cached(_) => {} // Progress is ignored
         }
     }
