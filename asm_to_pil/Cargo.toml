@@ -6,7 +6,6 @@ edition = "2021"
 [dependencies]
 log = "0.4.17"
 number = { path = "../number" }
-itertools = "^0.10"
 num-bigint = "0.4.3"
 ast = { path = "../ast" }
 pretty_assertions = "1.4.0"
