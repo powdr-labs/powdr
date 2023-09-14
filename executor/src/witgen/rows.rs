@@ -63,10 +63,10 @@ impl<T: FieldElement> CellValue<T> {
     }
 }
 
-impl<T: FieldElement> From<&CellValue<T>> for Option<T> {
-    fn from(val: &CellValue<T>) -> Self {
+impl<T: FieldElement> From<CellValue<T>> for Option<T> {
+    fn from(val: CellValue<T>) -> Self {
         match val {
-            CellValue::Known(v) => Some(*v),
+            CellValue::Known(v) => Some(v),
             _ => None,
         }
     }
@@ -150,20 +150,24 @@ pub fn transpose_rows<T: FieldElement>(
     rows: Vec<Row<T>>,
     column_set: &HashSet<PolyID>,
 ) -> BTreeMap<PolyID, Vec<Option<T>>> {
-    let mut result = column_set
-        .iter()
-        .map(|id| (*id, Vec::with_capacity(rows.len())))
-        .collect::<BTreeMap<_, _>>();
+    // Use column maps for efficiency
+    let mut columns: WitnessColumnMap<Vec<Option<T>>> =
+        WitnessColumnMap::from(rows[0].iter().map(|_| Vec::new()));
+    let is_relevant_column =
+        WitnessColumnMap::from(rows[0].keys().map(|poly_id| column_set.contains(&poly_id)));
 
     for row in rows.into_iter() {
-        for poly_id in column_set.iter() {
-            result
-                .get_mut(poly_id)
-                .unwrap()
-                .push((&row[poly_id].value).into());
+        for (poly_id, cell) in row.into_iter() {
+            if is_relevant_column[&poly_id] {
+                columns[&poly_id].push(cell.value.into());
+            }
         }
     }
-    result
+    // Convert to BTreeMap and filter out columns outside column set
+    columns
+        .into_iter()
+        .filter(|(poly_id, _)| is_relevant_column[poly_id])
+        .collect()
 }
 
 /// A factory for rows, which knows the global range constraints and has pointers to column names.
