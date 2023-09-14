@@ -6,7 +6,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use ast::parsed::{
     asm::{
         ASMModule, ASMProgram, AbsoluteSymbolPath, Import, Machine, MachineStatement, Module,
-        ModuleStatement, SymbolDefinition, SymbolPath, SymbolValue,
+        ModuleRef, ModuleStatement, SymbolDefinition, SymbolPath, SymbolValue, SymbolValueRef,
     },
     folder::Folder,
 };
@@ -112,14 +112,14 @@ pub struct State<'a, T> {
 /// # Errors
 ///
 /// This function will return an error if the relative path does not resolve to anything
-fn check_path<T: Clone>(
+fn check_path<T>(
     // the location at which the import is made
     location: AbsoluteSymbolPath,
     // the imported path, relative to the location
     imported: SymbolPath,
     // the current state
     state: State<'_, T>,
-) -> Result<(State<'_, T>, AbsoluteSymbolPath, SymbolValue<T>), String> {
+) -> Result<(State<'_, T>, AbsoluteSymbolPath, SymbolValueRef<'_, T>), String> {
     let root = state.root.clone();
     // walk down the tree of modules
     location
@@ -131,16 +131,16 @@ fn check_path<T: Clone>(
             (
                 state,
                 AbsoluteSymbolPath::default(),
-                SymbolValue::Module(Module::Local(root)),
+                SymbolValueRef::Module(ModuleRef::Local(root)),
             ),
             |(state, mut location, value), member| {
                 match value {
                     // machines do not expose symbols
-                    SymbolValue::Machine(_) => {
+                    SymbolValueRef::Machine(_) => {
                         Err(format!("symbol not found in `{location}`: `{member}`"))
                     }
                     // modules expose symbols
-                    SymbolValue::Module(Module::Local(module)) => module
+                    SymbolValueRef::Module(ModuleRef::Local(module)) => module
                         .symbol_definitions()
                         .find_map(|SymbolDefinition { name, value }| {
                             (name == member).then_some(value.clone())
@@ -150,21 +150,21 @@ fn check_path<T: Clone>(
                             match symbol {
                                 SymbolValue::Import(p) => {
                                     // if we found an import, check it and continue from there
-                                    check_path(location, p.path, state)
+                                    check_path(location, p.path.clone(), state)
                                 }
                                 symbol => {
                                     // if we found any other symbol, continue from there
-                                    Ok((state, location.join(member.clone()), symbol))
+                                    Ok((state, location.join(member.clone()), symbol.as_ref()))
                                 }
                             }
                         }),
                     // external modules must have been turned into local ones before
-                    SymbolValue::Module(Module::External(_)) => unreachable!(),
-                    SymbolValue::Import(p) => {
+                    SymbolValueRef::Module(ModuleRef::External(_)) => unreachable!(),
+                    SymbolValueRef::Import(p) => {
                         location.pop_back().unwrap();
 
                         // redirect to `p`
-                        check_path(location, p.path.join(member.clone()), state)
+                        check_path(location, p.path.clone().join(member.clone()), state)
                     }
                 }
             },
