@@ -10,6 +10,7 @@ use ast::parsed::{
 use number::{DegreeType, FieldElement};
 
 use ast::analyzed::util::previsit_expressions_in_pil_file_mut;
+use ast::analyzed::util::{postvisit_expression_mut, postvisit_expressions_in_identity_mut};
 use ast::analyzed::{
     Analyzed, Expression, FunctionValueDefinition, Identity, IdentityKind, Polynomial,
     PolynomialReference, PolynomialType, PublicDeclaration, RepeatedArray, SelectedExpressions,
@@ -601,6 +602,91 @@ impl<T: FieldElement> PILContext<T> {
     }
 }
 
+pub fn inline_intermediate_polynomials<T: Copy>(analyzed: &Analyzed<T>) -> Vec<Identity<T>> {
+    substitute_intermediate(
+        analyzed.identities.clone(),
+        &analyzed
+            .definitions
+            .iter()
+            .filter_map(|(_, (pol, def))| match pol.poly_type {
+                PolynomialType::Committed => None,
+                PolynomialType::Constant => None,
+                PolynomialType::Intermediate => Some((
+                    pol.id,
+                    match def.as_ref().unwrap() {
+                        FunctionValueDefinition::Expression(e) => e.clone(),
+                        _ => unreachable!(),
+                    },
+                )),
+            })
+            .collect(),
+    )
+}
+
+/// Takes identities as values and inlines intermediate polynomials everywhere, returning a vector of the updated identities
+/// TODO: this could return an iterator
+fn substitute_intermediate<T: Copy>(
+    identities: impl IntoIterator<Item = Identity<T>>,
+    intermediate_polynomials: &HashMap<u64, Expression<T>>,
+) -> Vec<Identity<T>> {
+    identities
+        .into_iter()
+        .scan(HashMap::default(), |cache, mut identity| {
+            postvisit_expressions_in_identity_mut(&mut identity, &mut |e| {
+                if let Expression::PolynomialReference(r) = e {
+                    let poly_id = r.poly_id.unwrap();
+                    match poly_id.ptype {
+                        PolynomialType::Committed => {}
+                        PolynomialType::Constant => {}
+                        PolynomialType::Intermediate => {
+                            // recursively inline intermediate polynomials, updating the cache
+                            *e = inlined_expression_from_intermediate_poly_id(
+                                poly_id.id,
+                                intermediate_polynomials,
+                                cache,
+                            );
+                        }
+                    }
+                }
+                std::ops::ControlFlow::Continue::<()>(())
+            });
+            Some(identity)
+        })
+        .collect()
+}
+
+/// Recursively inlines intermediate polynomials inside an expression and returns the new expression
+/// This uses a cache to avoid resolving an intermediate polynomial twice
+fn inlined_expression_from_intermediate_poly_id<T: Copy>(
+    poly_id: u64,
+    intermediate_polynomials: &HashMap<u64, Expression<T>>,
+    cache: &mut HashMap<u64, Expression<T>>,
+) -> Expression<T> {
+    let mut expr = intermediate_polynomials[&poly_id].clone();
+    postvisit_expression_mut(&mut expr, &mut |e| {
+        if let Expression::PolynomialReference(r) = e {
+            let poly_id = r.poly_id.unwrap();
+            match poly_id.ptype {
+                PolynomialType::Committed => {}
+                PolynomialType::Constant => {}
+                PolynomialType::Intermediate => {
+                    // read from the cache, if no cache hit, compute the inlined expression
+                    *e = cache.get(&poly_id.id).cloned().unwrap_or_else(|| {
+                        inlined_expression_from_intermediate_poly_id(
+                            poly_id.id,
+                            intermediate_polynomials,
+                            cache,
+                        )
+                    });
+                }
+            }
+        }
+        std::ops::ControlFlow::Continue::<()>(())
+    });
+    cache.insert(poly_id, expr.clone());
+    expr
+}
+
 #[cfg(test)]
 mod test {
     use number::GoldilocksField;
@@ -674,6 +760,26 @@ namespace T(65536);
     col witness x;
     col intermediate = N.x;
     N.intermediate = N.intermediate;
+"#;
+        let formatted = process_pil_file_contents::<GoldilocksField>(input).to_string();
+        assert_eq!(formatted, expected);
+    }
+
+    #[test]
+    fn intermediate_nested() {
+        let input = r#"namespace N(65536);
+    col witness x;
+    col intermediate = x;
+    col int2 = intermediate;
+    col int3 = int2 + intermediate;
+    int3 = 2 * x;
+"#;
+        let expected = r#"namespace N(65536);
+    col witness x;
+    col intermediate = N.x;
+    col int2 = N.intermediate;
+    col int3 = (N.int2 + N.intermediate);
+    N.int3 = (2 * N.x);
 "#;
         let formatted = process_pil_file_contents::<GoldilocksField>(input).to_string();
         assert_eq!(formatted, expected);
