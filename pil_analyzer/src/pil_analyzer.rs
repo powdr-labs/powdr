@@ -657,10 +657,10 @@ fn substitute_intermediate<T: Copy>(
 
 /// Recursively inlines intermediate polynomials inside an expression and returns the new expression
 /// This uses a cache to avoid resolving an intermediate polynomial twice
-fn inlined_expression_from_intermediate_poly_id<'a, 'b, T: Copy>(
+fn inlined_expression_from_intermediate_poly_id<T: Copy>(
     poly_id: u64,
-    intermediate_polynomials: &'a HashMap<u64, Expression<T>>,
-    cache: &'b mut HashMap<u64, Expression<T>>,
+    intermediate_polynomials: &HashMap<u64, Expression<T>>,
+    cache: &mut HashMap<u64, Expression<T>>,
 ) -> Expression<T> {
     let mut expr = intermediate_polynomials[&poly_id].clone();
     postvisit_expression_mut(&mut expr, &mut |e| {
@@ -683,7 +683,7 @@ fn inlined_expression_from_intermediate_poly_id<'a, 'b, T: Copy>(
         }
         std::ops::ControlFlow::Continue::<()>(())
     });
-    cache.insert(poly_id.clone(), expr.clone());
+    cache.insert(poly_id, expr.clone());
     expr
 }
 
