@@ -15,15 +15,15 @@ use super::{
 /// Computes (value or range constraint) updates given a [RowPair] and [Identity].
 pub struct IdentityProcessor<'a, 'b, T: FieldElement> {
     fixed_data: &'a FixedData<'a, T>,
-    pub fixed_lookup: &'b mut FixedLookup<T>,
-    pub machines: Vec<KnownMachine<'a, T>>,
+    fixed_lookup: &'b mut FixedLookup<T>,
+    machines: &'b mut Vec<KnownMachine<'a, T>>,
 }
 
 impl<'a, 'b, T: FieldElement> IdentityProcessor<'a, 'b, T> {
     pub fn new(
         fixed_data: &'a FixedData<'a, T>,
         fixed_lookup: &'b mut FixedLookup<T>,
-        machines: Vec<KnownMachine<'a, T>>,
+        machines: &'b mut Vec<KnownMachine<'a, T>>,
     ) -> Self {
         Self {
             fixed_data,
@@ -111,7 +111,7 @@ impl<'a, 'b, T: FieldElement> IdentityProcessor<'a, 'b, T> {
             return result;
         }
 
-        for m in &mut self.machines {
+        for m in self.machines.iter_mut() {
             // TODO also consider the reasons above.
             if let Some(result) = m.process_plookup(
                 self.fixed_data,

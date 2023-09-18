@@ -1,3 +1,7 @@
+use number::FieldElement;
+use parsed::{BinaryOperator, UnaryOperator};
+use std::fmt::{Display, Result, Write};
+
 /// Analyzed PIL
 pub mod analyzed;
 /// A typed-checked ASM + PIL AST optimised for analysis
@@ -33,4 +37,75 @@ impl DiffMonitor {
             }
         }
     }
+}
+
+pub fn evaluate_binary_operation<T: FieldElement>(left: T, op: BinaryOperator, right: T) -> T {
+    match op {
+        BinaryOperator::Add => left + right,
+        BinaryOperator::Sub => left - right,
+        BinaryOperator::Mul => left * right,
+        BinaryOperator::Div => left.integer_div(right),
+        BinaryOperator::Pow => left.pow(right.to_integer()),
+        BinaryOperator::Mod => (left.to_arbitrary_integer() % right.to_arbitrary_integer()).into(),
+        BinaryOperator::BinaryAnd => (left.to_integer() & right.to_integer()).into(),
+        BinaryOperator::BinaryXor => (left.to_integer() ^ right.to_integer()).into(),
+        BinaryOperator::BinaryOr => (left.to_integer() | right.to_integer()).into(),
+        BinaryOperator::ShiftLeft => (left.to_integer() << right.to_degree()).into(),
+        BinaryOperator::ShiftRight => (left.to_integer() >> right.to_degree()).into(),
+        BinaryOperator::LogicalOr => (!left.is_zero() || !right.is_zero()).into(),
+        BinaryOperator::LogicalAnd => (!left.is_zero() && !right.is_zero()).into(),
+        BinaryOperator::Less => (left.to_integer() < right.to_integer()).into(),
+        BinaryOperator::LessEqual => (left.to_integer() <= right.to_integer()).into(),
+        BinaryOperator::Equal => (left == right).into(),
+        BinaryOperator::NotEqual => (left != right).into(),
+        BinaryOperator::GreaterEqual => (left.to_integer() >= right.to_integer()).into(),
+        BinaryOperator::Greater => (left.to_integer() > right.to_integer()).into(),
+    }
+}
+
+pub fn evaluate_unary_operation<T: FieldElement>(op: UnaryOperator, v: T) -> T {
+    match op {
+        UnaryOperator::Plus => v,
+        UnaryOperator::Minus => -v,
+        UnaryOperator::LogicalNot => v.is_zero().into(),
+    }
+}
+
+/// quick and dirty String to String indentation
+fn indent<S: ToString>(s: S, indentation: usize) -> String {
+    s.to_string()
+        .split('\n')
+        .map(|line| format!("{}{line}", "\t".repeat(indentation)))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn write_items<S, I, W>(f: &mut W, items: I) -> Result
+where
+    S: Display,
+    I: IntoIterator<Item = S>,
+    W: Write,
+{
+    write_items_indented_by(f, items, 0)
+}
+
+fn write_items_indented<S, I, W>(f: &mut W, items: I) -> Result
+where
+    S: Display,
+    I: IntoIterator<Item = S>,
+    W: Write,
+{
+    write_items_indented_by(f, items, 1)
+}
+
+fn write_items_indented_by<S, I, W>(f: &mut W, items: I, by: usize) -> Result
+where
+    S: Display,
+    I: IntoIterator<Item = S>,
+    W: Write,
+{
+    for item in items.into_iter() {
+        writeln!(f, "{}", indent(item, by))?;
+    }
+    Ok(())
 }

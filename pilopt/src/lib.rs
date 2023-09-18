@@ -96,6 +96,7 @@ fn constant_value<T: FieldElement>(function: &FunctionValueDefinition<T>) -> Opt
             }
         }
         FunctionValueDefinition::Query(_) => None,
+        FunctionValueDefinition::Expression(_) => None,
     }
 }
 
@@ -135,6 +136,7 @@ fn simplify_expression_single<T: FieldElement>(e: &mut Expression<T>) {
             *e = Expression::Number(match op {
                 UnaryOperator::Plus => inner,
                 UnaryOperator::Minus => -inner,
+                UnaryOperator::LogicalNot => inner.is_zero().into(),
             });
             return;
         }
@@ -410,6 +412,22 @@ mod test {
     N.Z = ((1 + N.A) * 2);
     N.A = (1 + N.A);
     N.Z = (1 + N.A);
+"#;
+        let optimized = optimize(process_pil_file_contents::<GoldilocksField>(input)).to_string();
+        assert_eq!(optimized, expectation);
+    }
+
+    #[test]
+    fn intermediate() {
+        let input = r#"namespace N(65536);
+        col witness x;
+        col intermediate = x;
+        intermediate = intermediate;
+    "#;
+        let expectation = r#"namespace N(65536);
+    col witness x;
+    col intermediate = N.x;
+    N.intermediate = N.intermediate;
 "#;
         let optimized = optimize(process_pil_file_contents::<GoldilocksField>(input)).to_string();
         assert_eq!(optimized, expectation);

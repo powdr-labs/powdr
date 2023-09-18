@@ -12,7 +12,7 @@ pub enum Statement<R: Register, F: FunctionOpKind> {
 #[derive(Clone, Debug)]
 pub enum Argument<R: Register, F: FunctionOpKind> {
     Register(R),
-    RegOffset(R, Option<Expression<F>>),
+    RegOffset(Option<Expression<F>>, R),
     StringLiteral(Vec<u8>),
     Expression(Expression<F>),
 }
@@ -20,8 +20,8 @@ pub enum Argument<R: Register, F: FunctionOpKind> {
 impl<R: Register, F: FunctionOpKind> Argument<R, F> {
     pub fn post_visit_expressions_mut(&mut self, f: &mut impl FnMut(&mut Expression<F>)) {
         match self {
-            Argument::Register(_) | Argument::StringLiteral(_) | Argument::RegOffset(_, None) => (),
-            Argument::RegOffset(_, Some(expr)) | Argument::Expression(expr) => {
+            Argument::Register(_) | Argument::StringLiteral(_) | Argument::RegOffset(None, _) => (),
+            Argument::RegOffset(Some(expr), _) | Argument::Expression(expr) => {
                 expr.post_visit_mut(f);
             }
         }
@@ -29,8 +29,8 @@ impl<R: Register, F: FunctionOpKind> Argument<R, F> {
 
     pub fn post_visit_expressions<'a>(&'a self, f: &mut impl FnMut(&'a Expression<F>)) {
         match self {
-            Argument::Register(_) | Argument::StringLiteral(_) | Argument::RegOffset(_, None) => (),
-            Argument::RegOffset(_, Some(expr)) | Argument::Expression(expr) => {
+            Argument::Register(_) | Argument::StringLiteral(_) | Argument::RegOffset(None, _) => (),
+            Argument::RegOffset(Some(expr), _) | Argument::Expression(expr) => {
                 expr.post_visit(f);
             }
         }
@@ -147,8 +147,8 @@ impl<R: Register, F: FunctionOpKind> Display for Argument<R, F> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Argument::Register(r) => write!(f, "{r}"),
-            Argument::RegOffset(reg, None) => write!(f, "({reg})"),
-            Argument::RegOffset(reg, Some(off)) => write!(f, "{off}({reg})"),
+            Argument::RegOffset(None, reg) => write!(f, "({reg})"),
+            Argument::RegOffset(Some(off), reg) => write!(f, "{off}({reg})"),
             Argument::StringLiteral(lit) => write!(f, "\"{}\"", String::from_utf8_lossy(lit)),
             Argument::Expression(expr) => write!(f, "{expr}"),
         }

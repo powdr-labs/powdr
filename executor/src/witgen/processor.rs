@@ -207,14 +207,15 @@ mod tests {
 
         // No submachines
         let mut fixed_lookup = FixedLookup::default();
-        let machines = vec![];
+        let mut machines = vec![];
 
         // No global range constraints
         let global_range_constraints = fixed_data.witness_map_with(None);
 
         let row_factory = RowFactory::new(&fixed_data, global_range_constraints);
         let data = vec![row_factory.fresh_row(); fixed_data.degree as usize];
-        let identity_processor = IdentityProcessor::new(&fixed_data, &mut fixed_lookup, machines);
+        let identity_processor =
+            IdentityProcessor::new(&fixed_data, &mut fixed_lookup, &mut machines);
         let row_offset = 0;
         let identities = analyzed.identities.iter().collect::<Vec<_>>();
 

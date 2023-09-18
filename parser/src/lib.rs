@@ -1,5 +1,6 @@
 //! Parser for powdr assembly and PIL
 
+use ast::parsed::asm::ASMProgram;
 use lalrpop_util::*;
 
 use number::FieldElement;
@@ -23,8 +24,15 @@ pub fn parse<'a, T: FieldElement>(
 pub fn parse_asm<'a, T: FieldElement>(
     file_name: Option<&str>,
     input: &'a str,
-) -> Result<ast::parsed::asm::ASMFile<T>, ParseError<'a>> {
-    powdr::ASMFileParser::new()
+) -> Result<ast::parsed::asm::ASMProgram<T>, ParseError<'a>> {
+    parse_module(file_name, input).map(|main| ASMProgram { main })
+}
+
+pub fn parse_module<'a, T: FieldElement>(
+    file_name: Option<&str>,
+    input: &'a str,
+) -> Result<ast::parsed::asm::ASMModule<T>, ParseError<'a>> {
+    powdr::ASMModuleParser::new()
         .parse(input)
         .map_err(|err| handle_parse_error(err, file_name, input))
 }
@@ -33,8 +41,8 @@ pub fn parse_asm<'a, T: FieldElement>(
 mod test {
     use super::*;
     use ast::parsed::{
-        asm::ASMFile, build::direct_reference, BinaryOperator, Expression, PILFile, PilStatement,
-        PolynomialName, SelectedExpressions,
+        build::direct_reference, BinaryOperator, Expression, PILFile, PilStatement, PolynomialName,
+        SelectedExpressions,
     };
     use number::GoldilocksField;
     use std::fs;
@@ -101,7 +109,10 @@ mod test {
     }
 
     fn parse_file(name: &str) -> PILFile<GoldilocksField> {
-        let file = std::path::PathBuf::from("../test_data/").join(name);
+        let file = std::path::PathBuf::from(format!(
+            "{}/../test_data/{name}",
+            env!("CARGO_MANIFEST_DIR")
+        ));
 
         let input = fs::read_to_string(file).unwrap();
         parse(Some(name), &input).unwrap_or_else(|err| {
@@ -111,8 +122,11 @@ mod test {
         })
     }
 
-    fn parse_asm_file(name: &str) -> ASMFile<GoldilocksField> {
-        let file = std::path::PathBuf::from("../test_data/").join(name);
+    fn parse_asm_file(name: &str) -> ASMProgram<GoldilocksField> {
+        let file = std::path::PathBuf::from(format!(
+            "{}/../test_data/{name}",
+            env!("CARGO_MANIFEST_DIR")
+        ));
 
         let input = fs::read_to_string(file).unwrap();
         parse_asm(Some(name), &input).unwrap_or_else(|err| {

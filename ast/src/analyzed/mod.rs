@@ -61,6 +61,12 @@ impl<T> Analyzed<T> {
         self.definitions_in_source_order(PolynomialType::Committed)
     }
 
+    pub fn intermediate_polys_in_source_order(
+        &self,
+    ) -> Vec<&(Polynomial, Option<FunctionValueDefinition<T>>)> {
+        self.definitions_in_source_order(PolynomialType::Intermediate)
+    }
+
     pub fn definitions_in_source_order(
         &self,
         poly_type: PolynomialType,
@@ -96,12 +102,12 @@ impl<T> Analyzed<T> {
     /// so that they are contiguous again.
     /// There must not be any reference to the removed polynomials left.
     pub fn remove_polynomials(&mut self, to_remove: &BTreeSet<PolyID>) {
-        // TODO intermediate polys
         let replacements: BTreeMap<PolyID, PolyID> = [
             // We have to do it separately because we need to re-start the counter
             // for each kind.
             self.committed_polys_in_source_order(),
             self.constant_polys_in_source_order(),
+            self.intermediate_polys_in_source_order(),
         ]
         .map(|polys| {
             polys
@@ -239,6 +245,7 @@ pub enum FunctionValueDefinition<T> {
     Mapping(Expression<T>),
     Array(Vec<RepeatedArray<T>>),
     Query(Expression<T>),
+    Expression(Expression<T>),
 }
 
 /// An array of elements that might be repeated.

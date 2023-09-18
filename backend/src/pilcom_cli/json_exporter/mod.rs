@@ -34,7 +34,7 @@ pub fn export<T: FieldElement>(analyzed: &Analyzed<T>) -> JsonValue {
             StatementIdentifier::Definition(name) => {
                 if let (poly, Some(value)) = &analyzed.definitions[name] {
                     if poly.poly_type == PolynomialType::Intermediate {
-                        if let FunctionValueDefinition::Mapping(value) = value {
+                        if let FunctionValueDefinition::Expression(value) = value {
                             let expression_id = exporter.extract_expression(value, 1);
                             assert_eq!(
                                 expression_id,
@@ -270,7 +270,15 @@ impl<'a, T: FieldElement> Exporter<'a, T> {
                     | BinaryOperator::BinaryOr
                     | BinaryOperator::BinaryXor
                     | BinaryOperator::ShiftLeft
-                    | BinaryOperator::ShiftRight => {
+                    | BinaryOperator::ShiftRight
+                    | BinaryOperator::LogicalOr
+                    | BinaryOperator::LogicalAnd
+                    | BinaryOperator::Less
+                    | BinaryOperator::LessEqual
+                    | BinaryOperator::Equal
+                    | BinaryOperator::NotEqual
+                    | BinaryOperator::GreaterEqual
+                    | BinaryOperator::Greater => {
                         panic!("Operator {op:?} not supported on polynomials.")
                     }
                 };
@@ -297,6 +305,7 @@ impl<'a, T: FieldElement> Exporter<'a, T> {
                         },
                         deps,
                     ),
+                    UnaryOperator::LogicalNot => panic!("Operator {op} not allowed here."),
                 }
             }
             Expression::FunctionCall(_, _) => {
@@ -356,7 +365,11 @@ mod test {
         let temp_dir = mktemp::Temp::new_dir().unwrap();
         let output_file = temp_dir.join("out.json");
 
-        let file = std::path::PathBuf::from("../test_data/polygon-hermez/").join(file);
+        let file = std::path::PathBuf::from(format!(
+            "{}/../test_data/polygon-hermez/",
+            env!("CARGO_MANIFEST_DIR")
+        ))
+        .join(file);
 
         let analyzed = analyze::<GoldilocksField>(&file);
         let json_out = export(&analyzed);

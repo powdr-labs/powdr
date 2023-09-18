@@ -22,6 +22,7 @@ where
                 .iter_mut()
                 .flat_map(|e| e.pattern.iter_mut())
                 .try_for_each(|e| previsit_expression_mut(e, f)),
+            Some(FunctionValueDefinition::Expression(e)) => previsit_expression_mut(e, f),
             None => ControlFlow::Continue(()),
         })?;
 
@@ -66,6 +67,7 @@ where
                 .iter_mut()
                 .flat_map(|e| e.pattern.iter_mut())
                 .try_for_each(|e| postvisit_expression_mut(e, f)),
+            Some(FunctionValueDefinition::Expression(e)) => postvisit_expression_mut(e, f),
             None => ControlFlow::Continue(()),
         })?;
 

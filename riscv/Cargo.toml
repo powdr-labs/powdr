@@ -9,7 +9,6 @@ itertools = "^0.10"
 lalrpop-util = { version = "^0.19", features = ["lexer"] }
 log = "0.4.17"
 mktemp = "0.5.0"
-walkdir = "2.3.3"
 number = { path = "../number" }
 compiler = { path = "../compiler" }
 parser_util = { path = "../parser_util" }

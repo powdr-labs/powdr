@@ -8,7 +8,7 @@ use ast::analyzed::{
 use ast::parsed::BinaryOperator;
 use number::FieldElement;
 
-use super::column_map::ColumnMap;
+use super::column_map::WitnessColumnMap;
 use super::expression_evaluator::ExpressionEvaluator;
 use super::range_constraints::RangeConstraint;
 use super::symbolic_evaluator::SymbolicEvaluator;
@@ -34,7 +34,7 @@ impl<'a, T: FieldElement> RangeConstraintSet<&PolynomialReference, T>
 }
 
 pub struct GlobalConstraints<'a, T: FieldElement> {
-    pub known_witness_constraints: ColumnMap<Option<RangeConstraint<T>>>,
+    pub known_witness_constraints: WitnessColumnMap<Option<RangeConstraint<T>>>,
     pub retained_identities: Vec<&'a Identity<T>>,
 }
 
@@ -86,7 +86,7 @@ pub fn determine_global_constraints<'a, T: FieldElement>(
         log::debug!("  {id}");
     }
 
-    let mut known_witness_constraints: ColumnMap<Option<RangeConstraint<T>>> =
+    let mut known_witness_constraints: WitnessColumnMap<Option<RangeConstraint<T>>> =
         fixed_data.witness_map_with(None);
     for (poly_id, con) in known_constraints {
         if poly_id.ptype == PolynomialType::Committed {

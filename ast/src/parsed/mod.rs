@@ -1,11 +1,10 @@
 pub mod asm;
 pub mod build;
 pub mod display;
+pub mod folder;
 use std::{iter::once, ops::ControlFlow};
 
 use number::{DegreeType, FieldElement};
-
-use self::asm::FunctionCall;
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct PILFile<T>(pub Vec<PilStatement<T>>);
@@ -258,6 +257,7 @@ impl PolynomialReference {
 pub enum UnaryOperator {
     Plus,
     Minus,
+    LogicalNot,
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
@@ -273,10 +273,23 @@ pub enum BinaryOperator {
     BinaryOr,
     ShiftLeft,
     ShiftRight,
+    LogicalOr,
+    LogicalAnd,
+    Less,
+    LessEqual,
+    Equal,
+    NotEqual,
+    GreaterEqual,
+    Greater,
+}
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
+pub struct FunctionCall<T> {
+    pub id: String,
+    pub arguments: Vec<Expression<T>>,
 }
 
 /// The definition of a function (excluding its name):
-/// Either a param-value mapping or an array expression.
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub enum FunctionDefinition<T> {
     /// Parameter-value-mapping.
@@ -285,6 +298,8 @@ pub enum FunctionDefinition<T> {
     Array(ArrayExpression<T>),
     /// Prover query.
     Query(Vec<String>, Expression<T>),
+    /// Expression, for intermediate polynomials
+    Expression(Expression<T>),
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
@@ -438,6 +453,7 @@ where
                 postvisit_expression_mut(e, f)
             }
             FunctionDefinition::Array(ae) => postvisit_expression_in_array_expression_mut(ae, f),
+            FunctionDefinition::Expression(e) => postvisit_expression_mut(e, f),
         },
         PilStatement::PolynomialCommitDeclaration(_, _, None)
         | PilStatement::Include(_, _)

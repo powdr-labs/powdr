@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 
 use super::{EvalResult, FixedData, FixedLookup};
 use crate::witgen::affine_expression::AffineExpression;
-use crate::witgen::column_map::ColumnMap;
+use crate::witgen::column_map::WitnessColumnMap;
 use crate::witgen::identity_processor::IdentityProcessor;
 use crate::witgen::processor::Processor;
 use crate::witgen::rows::{Row, RowFactory, RowPair, RowUpdater, UnknownStrategy};
@@ -65,7 +65,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         connecting_identities: &[&'a Identity<T>],
         identities: &[&'a Identity<T>],
         witness_cols: &HashSet<PolyID>,
-        global_range_constraints: &ColumnMap<Option<RangeConstraint<T>>>,
+        global_range_constraints: &WitnessColumnMap<Option<RangeConstraint<T>>>,
     ) -> Option<Self> {
         for id in connecting_identities {
             // TODO we should check that the other constraints/fixed columns are also periodic.
@@ -238,10 +238,11 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
             .collect();
 
         // Build the processor.
+        let mut machines = vec![];
         let mut processor = Processor::new(
             fixed_data.degree - 2,
             rows,
-            IdentityProcessor::new(fixed_data, fixed_lookup, vec![]),
+            IdentityProcessor::new(fixed_data, fixed_lookup, &mut machines),
             &self.identities,
             fixed_data,
             self.row_factory.clone(),
@@ -292,7 +293,9 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         log::trace!("Start processing block machine");
 
         // TODO: Add possibility for machines to call other machines.
-        let mut identity_processor = IdentityProcessor::new(fixed_data, fixed_lookup, vec![]);
+        let mut machines = vec![];
+        let mut identity_processor =
+            IdentityProcessor::new(fixed_data, fixed_lookup, &mut machines);
 
         // First check if we already store the value.
         // This can happen in the loop detection case, where this function is just called
@@ -315,6 +318,17 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
             }
         }
 
+        // TODO this assumes we are always using the same lookup for this machine.
+        let mut processing_sequence_iterator =
+            self.processing_sequence_cache.get_processing_sequence(left);
+
+        if !processing_sequence_iterator.has_steps() {
+            // Shortcut, no need to do anything.
+            return Ok(EvalValue::incomplete(
+                IncompleteCause::BlockMachineLookupIncomplete,
+            ));
+        }
+
         let old_len = self.rows();
         self.append_new_block(fixed_data.degree)?;
         let mut outer_assignments = EvalValue::complete(vec![]);
@@ -324,10 +338,6 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         // If we ignored updates to the last row, they would be computed over
         // and over again.
         self.data.push(self.row_factory.fresh_row());
-
-        // TODO this assumes we are always using the same lookup for this machine.
-        let mut processing_sequence_iterator =
-            self.processing_sequence_cache.get_processing_sequence(left);
 
         let mut errors = vec![];
         // TODO The error handling currently does not handle contradictions properly.
@@ -401,6 +411,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
                 .reduce(|x: EvalError<T>, y| x.combine(y))
                 .unwrap())
         } else {
+            self.processing_sequence_cache.report_incomplete(left);
             Ok(EvalValue::incomplete(
                 IncompleteCause::BlockMachineLookupIncomplete,
             ))

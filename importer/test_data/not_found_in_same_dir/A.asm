@@ -1,0 +1,5 @@
+mod B;
+
+machine Machine {
+
+}

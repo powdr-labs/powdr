@@ -17,9 +17,33 @@ pub PILFile: PILFile<T> = {
 
 };
 
-pub ASMFile: ASMFile<T> = {
-    (<Machine>)* => ASMFile { machines: <> }
+pub ASMModule: ASMModule<T> = {
+    (<ModuleStatement>)* => ASMModule { statements: <> }
 };
+
+ModuleStatement: ModuleStatement<T> = {
+    <MachineDefinition> => ModuleStatement::SymbolDefinition(<>),
+    <Import> => ModuleStatement::SymbolDefinition(<>),
+    <ModuleDefinition> => ModuleStatement::SymbolDefinition(<>),
+}
+
+ModuleDefinition: SymbolDefinition<T> = {
+    "mod" <name:Identifier> ";" => SymbolDefinition { name: name.clone(), value: Module::External(name).into() }, 
+    "mod" <name:Identifier> "{" <module:ASMModule> "}" => SymbolDefinition { name, value: Module::Local(module).into() }
+}
+
+Import: SymbolDefinition<T> = {
+    "use" <path:SymbolPath> <name:( "as" <Identifier> )?> ";" => SymbolDefinition { name: name.unwrap_or(path.parts.back().unwrap().clone().try_into().unwrap()), value: Import {path}.into() }
+}
+
+pub SymbolPath: SymbolPath = {
+    <mut parts:( <Part> "::" )*> <end:Part>  => { parts.push(end); SymbolPath { parts: parts.into() } },
+}
+
+Part: Part = {
+    "super" => Part::Super,
+    <name:Identifier> => Part::Named(name),
+}
 
 // ---------------------------- PIL part -----------------------------
 
@@ -147,8 +171,8 @@ ConstantFixed = {
 
 // ---------------------------- ASM part -----------------------------
 
-Machine: Machine<T> = {
-    <start:@L> "machine" <name:Identifier> <arguments:MachineArguments> "{" <statements:(MachineStatement)*> "}" => Machine{<>}
+MachineDefinition: SymbolDefinition<T> = {
+    <start:@L> "machine" <name:Identifier> <arguments:MachineArguments> "{" <statements:(MachineStatement)*> "}" => SymbolDefinition { name, value: Machine { arguments, statements}.into() }
 }
 
 MachineArguments: MachineArguments = {
@@ -175,7 +199,7 @@ Degree: MachineStatement<T> = {
 }
 
 Submachine: MachineStatement<T> = {
-    <@L> <Identifier> <Identifier> ";" => MachineStatement::Submachine(<>)
+    <@L> <SymbolPath> <Identifier> ";" => MachineStatement::Submachine(<>)
 }
 
 pub RegisterDeclaration: MachineStatement<T> = {
@@ -310,7 +334,31 @@ Expression: Expression<T> = {
 }
 
 BoxedExpression: Box<Expression<T>> = {
+    LogicalOr,
+}
+
+LogicalOr: Box<Expression<T>> = {
+    <l:LogicalOr> "||" <r:LogicalAnd> => Box::new(Expression::BinaryOperation(l, BinaryOperator::LogicalOr, r)),
+    LogicalAnd,
+}
+
+LogicalAnd: Box<Expression<T>> = {
+    <l:LogicalAnd> "&&" <r:Comparison> => Box::new(Expression::BinaryOperation(l, BinaryOperator::LogicalAnd, r)),
+    Comparison,
+}
+
+Comparison: Box<Expression<T>> = {
+    <BinaryOr> <ComparisonOp> <BinaryOr> => Box::new(Expression::BinaryOperation(<>)),
     BinaryOr,
+}
+
+ComparisonOp: BinaryOperator = {
+    "<" => BinaryOperator::Less,
+    "<=" => BinaryOperator::LessEqual,
+    "==" => BinaryOperator::Equal,
+    "!=" => BinaryOperator::NotEqual,
+    ">=" => BinaryOperator::GreaterEqual,
+    ">" => BinaryOperator::Greater,
 }
 
 BinaryOr: Box<Expression<T>> = {
@@ -388,6 +436,7 @@ Unary: Box<Expression<T>> = {
 UnaryOp: UnaryOperator = {
     "+" => UnaryOperator::Plus,
     "-" => UnaryOperator::Minus,
+    "!" => UnaryOperator::LogicalNot,
 }
 
 Term: Box<Expression<T>> = {

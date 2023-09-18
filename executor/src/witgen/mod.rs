@@ -6,13 +6,17 @@ use ast::analyzed::{
 use num_traits::Zero;
 use number::{DegreeType, FieldElement};
 
-use self::column_map::ColumnMap;
+use self::column_map::{FixedColumnMap, WitnessColumnMap};
 pub use self::eval_result::{
     Constraint, Constraints, EvalError, EvalResult, EvalStatus, EvalValue, IncompleteCause,
 };
+use self::generator::Generator;
 use self::global_constraints::GlobalConstraints;
 use self::machines::machine_extractor::ExtractionOutput;
+use self::machines::{FixedLookup, KnownMachine, Machine};
 use self::util::substitute_constants;
+
+use pil_analyzer::pil_analyzer::inline_intermediate_polynomials;
 
 mod affine_expression;
 mod column_map;
@@ -32,6 +36,13 @@ pub mod symbolic_evaluator;
 mod symbolic_witness_evaluator;
 mod util;
 
+/// Everything [Generator] needs to mutate in order to compute a new row.
+pub struct MutableState<'a, T: FieldElement, Q: FnMut(&str) -> Option<T> + Send + Sync> {
+    pub fixed_lookup: FixedLookup<T>,
+    pub machines: Vec<KnownMachine<'a, T>>,
+    pub query_callback: Option<Q>,
+}
+
 /// Generates the committed polynomial values
 /// @returns the values (in source order) and the degree of the polynomials.
 pub fn generate<'a, T: FieldElement, QueryCallback>(
@@ -47,7 +58,8 @@ where
         panic!("Resulting degree is zero. Please ensure that there is at least one non-constant fixed column to set the degree.");
     }
     let fixed = FixedData::new(analyzed, degree, fixed_col_values);
-    let identities = substitute_constants(&analyzed.identities, &analyzed.constants);
+    let identities = inline_intermediate_polynomials(analyzed);
+    let identities = substitute_constants(&identities, &analyzed.constants);
 
     let GlobalConstraints {
         // Maps a polynomial to a mask specifying which bit is possibly set,
@@ -57,7 +69,7 @@ where
         retained_identities,
     } = global_constraints::determine_global_constraints(&fixed, identities.iter().collect());
     let ExtractionOutput {
-        mut fixed_lookup,
+        fixed_lookup,
         machines,
         base_identities,
         base_witnesses,
@@ -66,17 +78,19 @@ where
         retained_identities,
         &known_witness_constraints,
     );
-    let mut generator = generator::Generator::new(
-        &fixed,
-        &mut fixed_lookup,
-        &base_identities,
-        base_witnesses.into_iter().collect(),
-        known_witness_constraints,
+    let mut mutable_state = MutableState {
+        fixed_lookup,
         machines,
         query_callback,
+    };
+    let mut generator = Generator::new(
+        &fixed,
+        &base_identities,
+        &base_witnesses,
+        &known_witness_constraints,
     );
 
-    let mut rows: Vec<ColumnMap<T>> = vec![];
+    let mut rows: Vec<WitnessColumnMap<T>> = vec![];
 
     let poly_ids = fixed.witness_cols.keys().collect::<Vec<_>>();
     for (i, p) in poly_ids.iter().enumerate() {
@@ -101,7 +115,7 @@ where
         let mut row_values = None;
         if let Some(period) = looping_period {
             let values = &rows[rows.len() - period];
-            if generator.propose_next_row(row, values) {
+            if generator.propose_next_row(row, values, &mut mutable_state) {
                 row_values = Some(values.clone());
             } else {
                 log::info!("Using loop failed. Trying to generate regularly again.");
@@ -109,7 +123,7 @@ where
             }
         }
         if row_values.is_none() {
-            row_values = Some(generator.compute_next_row(row));
+            row_values = Some(generator.compute_next_row(row, &mut mutable_state));
         };
 
         rows.push(row_values.unwrap());
@@ -129,28 +143,41 @@ where
         }
     }
 
-    // Overwrite all machine witness columns
-    for (poly_id, data) in generator.machine_witness_col_values() {
-        columns[&poly_id] = data;
-    }
-
-    // Map from column id to name
-    // We can't used `fixed` here, because the name would have the wrong lifetime.
-    let mut col_names = analyzed
-        .committed_polys_in_source_order()
-        .iter()
-        .map(|(p, _)| (p.id, p.absolute_name.as_str()))
+    // Get columns from secondary machines
+    let mut secondary_columns = mutable_state
+        .machines
+        .iter_mut()
+        .flat_map(|m| {
+            m.take_witness_col_values(&fixed, &mut mutable_state.fixed_lookup)
+                .into_iter()
+        })
         .collect::<BTreeMap<_, _>>();
 
-    columns
+    // Done this way, because:
+    // 1. The keys need to be string references of the right lifetime.
+    // 2. The order needs to be the the order of declaration.
+    analyzed
+        .committed_polys_in_source_order()
         .into_iter()
-        .map(|(id, v)| (col_names.remove(&id.id).unwrap(), v))
+        .map(|(p, _)| {
+            let column = secondary_columns
+                .remove(&p.absolute_name)
+                .unwrap_or_else(|| {
+                    let column = &mut columns[&PolyID {
+                        id: p.id,
+                        ptype: PolynomialType::Committed,
+                    }];
+                    std::mem::take(column)
+                });
+            assert!(!column.is_empty());
+            (p.absolute_name.as_str(), column)
+        })
         .collect()
 }
 
 fn zip_relevant<'a, T>(
-    row1: &'a ColumnMap<T>,
-    row2: &'a ColumnMap<T>,
+    row1: &'a WitnessColumnMap<T>,
+    row2: &'a WitnessColumnMap<T>,
     relevant_mask: &'a [bool],
 ) -> impl Iterator<Item = (&'a T, &'a T)> {
     row1.values()
@@ -163,7 +190,7 @@ fn zip_relevant<'a, T>(
 /// Checks if the last rows are repeating and returns the period.
 /// Only checks for periods of 1, 2, 3 and 4.
 fn rows_are_repeating<T: PartialEq>(
-    rows: &[ColumnMap<T>],
+    rows: &[WitnessColumnMap<T>],
     relevant_mask: &[bool],
 ) -> Option<usize> {
     if rows.is_empty() {
@@ -184,17 +211,17 @@ fn rows_are_repeating<T: PartialEq>(
 /// Data that is fixed for witness generation.
 pub struct FixedData<'a, T> {
     degree: DegreeType,
-    fixed_cols: ColumnMap<FixedColumn<'a, T>>,
-    witness_cols: ColumnMap<WitnessColumn<'a, T>>,
+    fixed_cols: FixedColumnMap<FixedColumn<'a, T>>,
+    witness_cols: WitnessColumnMap<WitnessColumn<'a, T>>,
 }
 
 impl<'a, T: FieldElement> FixedData<'a, T> {
     pub fn new(
         analyzed: &'a Analyzed<T>,
         degree: DegreeType,
-        fixed_col_values: &'a [(&'a str, Vec<T>)],
+        fixed_col_values: &'a [(&str, Vec<T>)],
     ) -> Self {
-        let witness_cols = ColumnMap::from(
+        let witness_cols = WitnessColumnMap::from(
             analyzed
                 .committed_polys_in_source_order()
                 .iter()
@@ -207,13 +234,10 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
                     let col = WitnessColumn::new(i, &poly.absolute_name, value);
                     col
                 }),
-            PolynomialType::Committed,
         );
 
-        let fixed_cols = ColumnMap::from(
-            fixed_col_values.iter().map(|(n, v)| FixedColumn::new(n, v)),
-            PolynomialType::Constant,
-        );
+        let fixed_cols =
+            FixedColumnMap::from(fixed_col_values.iter().map(|(n, v)| FixedColumn::new(n, v)));
         FixedData {
             degree,
             fixed_cols,
@@ -221,12 +245,8 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
         }
     }
 
-    fn witness_map_with<V: Clone>(&self, initial_value: V) -> ColumnMap<V> {
-        ColumnMap::new(
-            initial_value,
-            self.witness_cols.len(),
-            PolynomialType::Committed,
-        )
+    fn witness_map_with<V: Clone>(&self, initial_value: V) -> WitnessColumnMap<V> {
+        WitnessColumnMap::new(initial_value, self.witness_cols.len())
     }
 
     fn column_name(&self, poly_id: &PolyID) -> &str {

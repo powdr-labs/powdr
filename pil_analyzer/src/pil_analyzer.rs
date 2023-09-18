@@ -7,9 +7,10 @@ use ast::parsed::{
     ArrayExpression, BinaryOperator, FunctionDefinition, PilStatement, PolynomialName,
     UnaryOperator,
 };
-use number::{BigInt, DegreeType, FieldElement};
+use number::{DegreeType, FieldElement};
 
 use ast::analyzed::util::previsit_expressions_in_pil_file_mut;
+use ast::analyzed::util::{postvisit_expression_mut, postvisit_expressions_in_identity_mut};
 use ast::analyzed::{
     Analyzed, Expression, FunctionValueDefinition, Identity, IdentityKind, Polynomial,
     PolynomialReference, PolynomialType, PublicDeclaration, RepeatedArray, SelectedExpressions,
@@ -147,7 +148,7 @@ impl<T: FieldElement> PILContext<T> {
                     name,
                     None,
                     PolynomialType::Intermediate,
-                    Some(FunctionDefinition::Mapping(vec![], value)),
+                    Some(FunctionDefinition::Expression(value)),
                 );
             }
             PilStatement::PublicDeclaration(start, name, polynomial, index) => {
@@ -321,12 +322,14 @@ impl<T: FieldElement> PILContext<T> {
         let name = poly.absolute_name.clone();
 
         let value = value.map(|v| match v {
+            FunctionDefinition::Expression(expr) => {
+                assert!(!have_array_size);
+                assert!(poly.poly_type == PolynomialType::Intermediate);
+                FunctionValueDefinition::Expression(self.process_expression(expr))
+            }
             FunctionDefinition::Mapping(params, expr) => {
                 assert!(!have_array_size);
-                assert!(
-                    poly.poly_type == PolynomialType::Constant
-                        || poly.poly_type == PolynomialType::Intermediate
-                );
+                assert!(poly.poly_type == PolynomialType::Constant);
                 FunctionValueDefinition::Mapping(self.process_function(params, expr))
             }
             FunctionDefinition::Query(params, expr) => {
@@ -580,40 +583,11 @@ impl<T: FieldElement> PILContext<T> {
         op: BinaryOperator,
         right: &::ast::parsed::Expression<T>,
     ) -> Option<T> {
-        if let (Some(left), Some(right)) = (
-            self.evaluate_expression(left),
-            self.evaluate_expression(right),
-        ) {
-            Some(match op {
-                BinaryOperator::Add => left + right,
-                BinaryOperator::Sub => left - right,
-                BinaryOperator::Mul => left * right,
-                BinaryOperator::Div => left.integer_div(right),
-                BinaryOperator::Pow => {
-                    let right_int = right.to_integer();
-                    assert!(right_int.to_arbitrary_integer() <= u32::MAX.into());
-                    left.pow(right_int)
-                }
-                BinaryOperator::Mod => left.integer_mod(right),
-                BinaryOperator::BinaryAnd => {
-                    (left.to_integer() & right.to_integer()).try_into().unwrap()
-                }
-                BinaryOperator::BinaryXor => {
-                    (left.to_integer() ^ right.to_integer()).try_into().unwrap()
-                }
-                BinaryOperator::BinaryOr => {
-                    (left.to_integer() | right.to_integer()).try_into().unwrap()
-                }
-                BinaryOperator::ShiftLeft => {
-                    (left.to_integer() << right.to_degree()).try_into().unwrap()
-                }
-                BinaryOperator::ShiftRight => {
-                    (left.to_integer() >> right.to_degree()).try_into().unwrap()
-                }
-            })
-        } else {
-            None
-        }
+        Some(ast::evaluate_binary_operation(
+            self.evaluate_expression(left)?,
+            op,
+            self.evaluate_expression(right)?,
+        ))
     }
 
     fn evaluate_unary_operation(
@@ -621,11 +595,96 @@ impl<T: FieldElement> PILContext<T> {
         op: UnaryOperator,
         value: &::ast::parsed::Expression<T>,
     ) -> Option<T> {
-        self.evaluate_expression(value).map(|v| match op {
-            UnaryOperator::Plus => v,
-            UnaryOperator::Minus => -v,
-        })
+        Some(ast::evaluate_unary_operation(
+            op,
+            self.evaluate_expression(value)?,
+        ))
     }
+}
+
+pub fn inline_intermediate_polynomials<T: Copy>(analyzed: &Analyzed<T>) -> Vec<Identity<T>> {
+    substitute_intermediate(
+        analyzed.identities.clone(),
+        &analyzed
+            .definitions
+            .iter()
+            .filter_map(|(_, (pol, def))| match pol.poly_type {
+                PolynomialType::Committed => None,
+                PolynomialType::Constant => None,
+                PolynomialType::Intermediate => Some((
+                    pol.id,
+                    match def.as_ref().unwrap() {
+                        FunctionValueDefinition::Expression(e) => e.clone(),
+                        _ => unreachable!(),
+                    },
+                )),
+            })
+            .collect(),
+    )
+}
+
+/// Takes identities as values and inlines intermediate polynomials everywhere, returning a vector of the updated identities
+/// TODO: this could return an iterator
+fn substitute_intermediate<T: Copy>(
+    identities: impl IntoIterator<Item = Identity<T>>,
+    intermediate_polynomials: &HashMap<u64, Expression<T>>,
+) -> Vec<Identity<T>> {
+    identities
+        .into_iter()
+        .scan(HashMap::default(), |cache, mut identity| {
+            postvisit_expressions_in_identity_mut(&mut identity, &mut |e| {
+                if let Expression::PolynomialReference(r) = e {
+                    let poly_id = r.poly_id.unwrap();
+                    match poly_id.ptype {
+                        PolynomialType::Committed => {}
+                        PolynomialType::Constant => {}
+                        PolynomialType::Intermediate => {
+                            // recursively inline intermediate polynomials, updating the cache
+                            *e = inlined_expression_from_intermediate_poly_id(
+                                poly_id.id,
+                                intermediate_polynomials,
+                                cache,
+                            );
+                        }
+                    }
+                }
+                std::ops::ControlFlow::Continue::<()>(())
+            });
+            Some(identity)
+        })
+        .collect()
+}
+
+/// Recursively inlines intermediate polynomials inside an expression and returns the new expression
+/// This uses a cache to avoid resolving an intermediate polynomial twice
+fn inlined_expression_from_intermediate_poly_id<T: Copy>(
+    poly_id: u64,
+    intermediate_polynomials: &HashMap<u64, Expression<T>>,
+    cache: &mut HashMap<u64, Expression<T>>,
+) -> Expression<T> {
+    let mut expr = intermediate_polynomials[&poly_id].clone();
+    postvisit_expression_mut(&mut expr, &mut |e| {
+        if let Expression::PolynomialReference(r) = e {
+            let poly_id = r.poly_id.unwrap();
+            match poly_id.ptype {
+                PolynomialType::Committed => {}
+                PolynomialType::Constant => {}
+                PolynomialType::Intermediate => {
+                    // read from the cache, if no cache hit, compute the inlined expression
+                    *e = cache.get(&poly_id.id).cloned().unwrap_or_else(|| {
+                        inlined_expression_from_intermediate_poly_id(
+                            poly_id.id,
+                            intermediate_polynomials,
+                            cache,
+                        )
+                    });
+                }
+            }
+        }
+        std::ops::ControlFlow::Continue::<()>(())
+    });
+    cache.insert(poly_id, expr.clone());
+    expr
 }
 
 #[cfg(test)]
@@ -645,6 +704,7 @@ namespace Bin(65536);
 namespace T(65536);
     col fixed first_step = [1] + [0]*;
     col fixed line(i) { i };
+    col fixed ops(i) { ((i < 7) && (6 >= !i)) };
     col witness pc;
     col witness XInv;
     col witness XIsZero;
@@ -687,5 +747,41 @@ namespace T(65536);
             }
         }
         assert_eq!(input, formatted);
+    }
+
+    #[test]
+    fn intermediate() {
+        let input = r#"namespace N(65536);
+    col witness x;
+    col intermediate = x;
+    intermediate = intermediate;
+"#;
+        let expected = r#"namespace N(65536);
+    col witness x;
+    col intermediate = N.x;
+    N.intermediate = N.intermediate;
+"#;
+        let formatted = process_pil_file_contents::<GoldilocksField>(input).to_string();
+        assert_eq!(formatted, expected);
+    }
+
+    #[test]
+    fn intermediate_nested() {
+        let input = r#"namespace N(65536);
+    col witness x;
+    col intermediate = x;
+    col int2 = intermediate;
+    col int3 = int2 + intermediate;
+    int3 = 2 * x;
+"#;
+        let expected = r#"namespace N(65536);
+    col witness x;
+    col intermediate = N.x;
+    col int2 = N.intermediate;
+    col int3 = (N.int2 + N.intermediate);
+    N.int3 = (2 * N.x);
+"#;
+        let formatted = process_pil_file_contents::<GoldilocksField>(input).to_string();
+        assert_eq!(formatted, expected);
     }
 }

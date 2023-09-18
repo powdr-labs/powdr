@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use ast::analyzed::{Analyzed, Expression, FunctionValueDefinition};
-use ast::parsed::{BinaryOperator, UnaryOperator};
+use ast::{evaluate_binary_operation, evaluate_unary_operation};
 use itertools::Itertools;
 use number::{DegreeType, FieldElement};
 use rayon::prelude::{IntoParallelIterator, ParallelIterator};
@@ -74,6 +74,9 @@ fn generate_values<T: FieldElement>(
             values
         }
         FunctionValueDefinition::Query(_) => panic!("Query used for fixed column."),
+        FunctionValueDefinition::Expression(_) => {
+            panic!("Expression used for fixed column, only expected for intermediate polynomials")
+        }
     }
 }
 
@@ -94,9 +97,11 @@ impl<'a, T: FieldElement> Evaluator<'a, T> {
             Expression::String(_) => panic!(),
             Expression::Tuple(_) => panic!(),
             Expression::BinaryOperation(left, op, right) => {
-                self.evaluate_binary_operation(left, op, right)
+                evaluate_binary_operation(self.evaluate(left), *op, self.evaluate(right))
             }
-            Expression::UnaryOperation(op, expr) => self.evaluate_unary_operation(op, expr),
+            Expression::UnaryOperation(op, expr) => {
+                evaluate_unary_operation(*op, self.evaluate(expr))
+            }
             Expression::FunctionCall(name, args) => {
                 let arg_values = args.iter().map(|a| self.evaluate(a)).collect::<Vec<_>>();
                 assert!(arg_values.len() == 1);
@@ -112,45 +117,13 @@ impl<'a, T: FieldElement> Evaluator<'a, T> {
             }
         }
     }
-
-    fn evaluate_binary_operation(
-        &self,
-        left: &Expression<T>,
-        op: &BinaryOperator,
-        right: &Expression<T>,
-    ) -> T {
-        let left = self.evaluate(left);
-        let right = self.evaluate(right);
-        match op {
-            BinaryOperator::Add => left + right,
-            BinaryOperator::Sub => left - right,
-            BinaryOperator::Mul => left * right,
-            BinaryOperator::Div => left.integer_div(right),
-            BinaryOperator::Pow => left.pow(right.to_integer()),
-            BinaryOperator::Mod => {
-                (left.to_arbitrary_integer() % right.to_arbitrary_integer()).into()
-            }
-            BinaryOperator::BinaryAnd => (left.to_integer() & right.to_integer()).into(),
-            BinaryOperator::BinaryXor => (left.to_integer() ^ right.to_integer()).into(),
-            BinaryOperator::BinaryOr => (left.to_integer() | right.to_integer()).into(),
-            BinaryOperator::ShiftLeft => (left.to_integer() << right.to_degree()).into(),
-            BinaryOperator::ShiftRight => (left.to_integer() >> right.to_degree()).into(),
-        }
-    }
-
-    fn evaluate_unary_operation(&self, op: &UnaryOperator, expr: &Expression<T>) -> T {
-        let v = self.evaluate(expr);
-        match op {
-            UnaryOperator::Plus => v,
-            UnaryOperator::Minus => -v,
-        }
-    }
 }
 
 #[cfg(test)]
 mod test {
     use number::GoldilocksField;
     use pil_analyzer::analyze_string;
+    use pretty_assertions::assert_eq;
     use test_log::test;
 
     use super::*;
@@ -354,6 +327,65 @@ mod test {
         assert_eq!(
             constants[0],
             ("F.arr", convert([0i32, 1, 2, 0, 1, 2, 0, 1, 2, 7].to_vec()))
+        );
+    }
+
+    #[test]
+    pub fn comparisons() {
+        let src = r#"
+            constant %N = 6;
+            namespace F(%N);
+            col fixed id(i) { i };
+            col fixed inv(i) { %N - i };
+            col fixed a = [0, 1, 0, 1, 2, 1];
+            col fixed b = [0, 0, 1, 1, 0, 5];
+            col fixed or(i) { a(i) || b(i) };
+            col fixed and(i) { a(i) && b(i) };
+            col fixed not(i) { !a(i) };
+            col fixed less(i) { id(i) < inv(i) };
+            col fixed less_eq(i) { id(i) <= inv(i) };
+            col fixed eq(i) { id(i) == inv(i) };
+            col fixed not_eq(i) { id(i) != inv(i) };
+            col fixed greater(i) { id(i) > inv(i) };
+            col fixed greater_eq(i) { id(i) >= inv(i) };
+        "#;
+        let analyzed = analyze_string(src);
+        let (constants, degree) = generate(&analyzed);
+        assert_eq!(degree, 6);
+        assert_eq!(constants[0], ("F.id", convert([0, 1, 2, 3, 4, 5].to_vec())));
+        assert_eq!(
+            constants[1],
+            ("F.inv", convert([6, 5, 4, 3, 2, 1].to_vec()))
+        );
+        assert_eq!(constants[4], ("F.or", convert([0, 1, 1, 1, 1, 1].to_vec())));
+        assert_eq!(
+            constants[5],
+            ("F.and", convert([0, 0, 0, 1, 0, 1].to_vec()))
+        );
+        assert_eq!(
+            constants[6],
+            ("F.not", convert([1, 0, 1, 0, 0, 0].to_vec()))
+        );
+        assert_eq!(
+            constants[7],
+            ("F.less", convert([1, 1, 1, 0, 0, 0].to_vec()))
+        );
+        assert_eq!(
+            constants[8],
+            ("F.less_eq", convert([1, 1, 1, 1, 0, 0].to_vec()))
+        );
+        assert_eq!(constants[9], ("F.eq", convert([0, 0, 0, 1, 0, 0].to_vec())));
+        assert_eq!(
+            constants[10],
+            ("F.not_eq", convert([1, 1, 1, 0, 1, 1].to_vec()))
+        );
+        assert_eq!(
+            constants[11],
+            ("F.greater", convert([0, 0, 0, 0, 1, 1].to_vec()))
+        );
+        assert_eq!(
+            constants[12],
+            ("F.greater_eq", convert([0, 0, 0, 1, 1, 1].to_vec()))
         );
     }
 }

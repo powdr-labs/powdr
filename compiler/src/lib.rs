@@ -137,8 +137,11 @@ pub fn compile_asm_string<T: FieldElement>(
         err.output_to_stderr();
         panic!();
     });
+    log::debug!("Resolve imports");
+    let resolved =
+        importer::resolve(Some(PathBuf::from(file_name)), parsed).map_err(|e| vec![e])?;
     log::debug!("Run analysis");
-    let analysed = analyze(parsed).unwrap();
+    let analysed = analyze(resolved).unwrap();
     log::debug!("Analysis done");
     log::trace!("{analysed}");
     log::debug!("Run airgen");
@@ -163,6 +166,7 @@ pub fn compile_asm_string<T: FieldElement>(
         );
         return Ok((pil_file_path, None));
     }
+
     fs::write(pil_file_path.clone(), format!("{pil}")).unwrap();
 
     let pil_file_name = pil_file_path.file_name().unwrap();

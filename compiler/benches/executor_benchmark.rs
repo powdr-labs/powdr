@@ -16,7 +16,8 @@ fn get_pil() -> Analyzed<GoldilocksField> {
         compile_rust_crate_to_riscv_asm("../riscv/tests/riscv_data/keccak/Cargo.toml", &tmp_dir);
     let contents = compiler::compile(riscv_asm_files);
     let parsed = parser::parse_asm::<T>(None, &contents).unwrap();
-    let analyzed = analyze(parsed).unwrap();
+    let resolved = importer::resolve(None, parsed).unwrap();
+    let analyzed = analyze(resolved).unwrap();
     let graph = airgen::compile(analyzed);
     let pil = linker::link(graph).unwrap();
     let analyzed = pil_analyzer::analyze_string(&format!("{pil}"));

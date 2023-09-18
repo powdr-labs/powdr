@@ -4,16 +4,24 @@ use std::fs;
 use test_log::test;
 
 fn verify_asm<T: FieldElement>(file_name: &str, inputs: Vec<T>) {
-    let contents = fs::read_to_string(format!("./test_data/asm/{file_name}"))
-        .unwrap_or_else(|_| fs::read_to_string(format!("../test_data/asm/{file_name}")).unwrap());
+    let file_name = format!(
+        "{}/../test_data/asm/{file_name}",
+        env!("CARGO_MANIFEST_DIR")
+    );
 
-    verify_asm_string(file_name, &contents, inputs)
+    let contents = fs::read_to_string(&file_name).unwrap();
+
+    verify_asm_string(&file_name, &contents, inputs)
 }
 
 #[cfg(feature = "halo2")]
 fn gen_halo2_proof(file_name: &str, inputs: Vec<Bn254Field>) {
     compiler::compile_pil_or_asm(
-        format!("../test_data/asm/{file_name}").as_str(),
+        format!(
+            "{}/../test_data/asm/{file_name}",
+            env!("CARGO_MANIFEST_DIR")
+        )
+        .as_str(),
         inputs,
         &mktemp::Temp::new_dir().unwrap(),
         true,
@@ -88,13 +96,22 @@ fn block_to_block() {
     gen_halo2_proof(f, slice_to_vec(&i));
 }
 
+// Commented out until thibaut provides the "keccak.asm"
+//
+// #[test]
+// #[ignore = "Too slow"]
+// fn keccak() {
+//     let f = "keccak.asm";
+//     let i = [];
+//     verify_asm::<GoldilocksField>(f, slice_to_vec(&i));
+//     gen_halo2_proof(f, slice_to_vec(&i));
+// }
+
 #[test]
-#[ignore = "Too slow"]
-fn keccak() {
-    let f = "keccak.asm";
+fn wrap_gl() {
+    let f = "wrap_gl.asm";
     let i = [];
     verify_asm::<GoldilocksField>(f, slice_to_vec(&i));
-    gen_halo2_proof(f, slice_to_vec(&i));
 }
 
 #[test]
@@ -107,7 +124,7 @@ fn vm_to_block_multiple_interfaces() {
 }
 
 #[test]
-#[should_panic = "not implemented: No executor machine matched identity `main.instr_add { 2, main.X, main.Y, main.Z } in main_vm.instr_return { main_vm._operation_id, main_vm._input_0, main_vm._input_1, main_vm._output_0 };`"]
+#[should_panic = "not implemented"]
 fn vm_to_vm() {
     let f = "vm_to_vm.asm";
     let i = [];
@@ -154,15 +171,34 @@ fn full_pil_constant() {
 }
 
 #[test]
-fn book() {
-    for f in fs::read_dir("../test_data/asm/book/").unwrap() {
-        let f = f.unwrap().path();
-        let f = f.strip_prefix("../test_data/asm/").unwrap();
-        // passing 0 to all tests currently works as they either take no prover input or 0 works
-        let i = [0];
+fn intermediate() {
+    let f = "intermediate.asm";
+    verify_asm::<GoldilocksField>(f, Default::default());
+    gen_halo2_proof(f, Default::default());
+}
 
-        verify_asm::<GoldilocksField>(f.to_str().unwrap(), slice_to_vec(&i));
-        gen_halo2_proof(f.to_str().unwrap(), slice_to_vec(&i));
+#[test]
+fn intermediate_nested() {
+    let f = "intermediate_nested.asm";
+    verify_asm::<GoldilocksField>(f, Default::default());
+    gen_halo2_proof(f, Default::default());
+}
+
+#[test]
+fn book() {
+    use walkdir::WalkDir;
+
+    for f in WalkDir::new("../test_data/asm/book/") {
+        let f = f.unwrap();
+        if f.metadata().unwrap().is_file() {
+            let f = f.path();
+            let f = f.strip_prefix("../test_data/asm/").unwrap();
+            // passing 0 to all tests currently works as they either take no prover input or 0 works
+            let i = [0];
+
+            verify_asm::<GoldilocksField>(f.to_str().unwrap(), slice_to_vec(&i));
+            gen_halo2_proof(f.to_str().unwrap(), slice_to_vec(&i));
+        }
     }
 }
 

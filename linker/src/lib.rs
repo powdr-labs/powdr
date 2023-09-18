@@ -153,7 +153,9 @@ mod test {
     use crate::{link, DEFAULT_DEGREE};
 
     fn parse_analyse_and_compile<T: FieldElement>(input: &str) -> PILGraph<T> {
-        airgen::compile(analyze(parse_asm(None, input).unwrap()).unwrap())
+        let parsed = parse_asm(None, input).unwrap();
+        let resolved = importer::resolve(None, parsed).unwrap();
+        airgen::compile(analyze(resolved).unwrap())
     }
 
     #[test]
@@ -219,7 +221,8 @@ pol commit instr__reset;
 pol commit instr__loop;
 pol commit instr_return;
 pol constant first_step = [1] + [0]*;
-pc' = ((1 - first_step') * ((((instr__jump_to_operation * _operation_id) + (instr__loop * pc)) + (instr_return * 0)) + ((1 - ((instr__jump_to_operation + instr__loop) + instr_return)) * (pc + 1))));
+pol pc_update = ((((instr__jump_to_operation * _operation_id) + (instr__loop * pc)) + (instr_return * 0)) + ((1 - ((instr__jump_to_operation + instr__loop) + instr_return)) * (pc + 1)));
+pc' = ((1 - first_step') * pc_update);
 pol constant p_line = [0, 1, 2] + [2]*;
 pol constant p_instr__jump_to_operation = [0, 1, 0] + [0]*;
 pol constant p_instr__loop = [0, 0, 1] + [1]*;
@@ -232,7 +235,10 @@ _operation_id_no_change = ((1 - _block_enforcer_last_step) * (1 - instr_return))
 (_operation_id_no_change * (_operation_id' - _operation_id)) = 0;
         "#;
 
-        let file_name = "../test_data/asm/empty_vm.asm";
+        let file_name = format!(
+            "{}/../test_data/asm/empty_vm.asm",
+            env!("CARGO_MANIFEST_DIR")
+        );
         let contents = fs::read_to_string(file_name).unwrap();
         let graph = parse_analyse_and_compile::<GoldilocksField>(&contents);
         let pil = link(graph).unwrap();
@@ -273,7 +279,8 @@ pol commit read_Y_pc;
 Y = ((((read_Y_A * A) + (read_Y_pc * pc)) + Y_const) + (Y_read_free * Y_free_value));
 pol constant first_step = [1] + [0]*;
 A' = ((((reg_write_X_A * X) + (reg_write_Y_A * Y)) + (instr__reset * 0)) + ((1 - ((reg_write_X_A + reg_write_Y_A) + instr__reset)) * A));
-pc' = ((1 - first_step') * ((((instr__jump_to_operation * _operation_id) + (instr__loop * pc)) + (instr_return * 0)) + ((1 - ((instr__jump_to_operation + instr__loop) + instr_return)) * (pc + 1))));
+pol pc_update = ((((instr__jump_to_operation * _operation_id) + (instr__loop * pc)) + (instr_return * 0)) + ((1 - ((instr__jump_to_operation + instr__loop) + instr_return)) * (pc + 1)));
+pc' = ((1 - first_step') * pc_update);
 pol constant p_line = [0, 1, 2, 3, 4] + [4]*;
 pol commit X_free_value(i) query match pc {  };
 pol commit Y_free_value(i) query match pc {  };
@@ -323,8 +330,9 @@ pol commit read__output_0_pc;
 pol commit read__output_0__input_0;
 _output_0 = ((((read__output_0_pc * pc) + (read__output_0__input_0 * _input_0)) + _output_0_const) + (_output_0_read_free * _output_0_free_value));
 pol constant first_step = [1] + [0]*;
-((1 - instr__reset) * _input_0') = ((1 - instr__reset) * _input_0);
-pc' = ((1 - first_step') * ((((instr__jump_to_operation * _operation_id) + (instr__loop * pc)) + (instr_return * 0)) + ((1 - ((instr__jump_to_operation + instr__loop) + instr_return)) * (pc + 1))));
+((1 - instr__reset) * (_input_0' - _input_0)) = 0;
+pol pc_update = ((((instr__jump_to_operation * _operation_id) + (instr__loop * pc)) + (instr_return * 0)) + ((1 - ((instr__jump_to_operation + instr__loop) + instr_return)) * (pc + 1)));
+pc' = ((1 - first_step') * pc_update);
 pol constant p_line = [0, 1, 2, 3, 4, 5] + [5]*;
 pol commit _output_0_free_value(i) query match pc {  };
 pol constant p__output_0_const = [0, 0, 0, 0, 1, 0] + [0]*;
@@ -341,8 +349,10 @@ pol commit _operation_id_no_change;
 _operation_id_no_change = ((1 - _block_enforcer_last_step) * (1 - instr_return));
 (_operation_id_no_change * (_operation_id' - _operation_id)) = 0;
         "#;
-
-        let file_name = "../test_data/asm/different_signatures.asm";
+        let file_name = format!(
+            "{}/../test_data/asm/different_signatures.asm",
+            env!("CARGO_MANIFEST_DIR")
+        );
         let contents = fs::read_to_string(file_name).unwrap();
         let graph = parse_analyse_and_compile::<GoldilocksField>(&contents);
         let pil = link(graph).unwrap();
@@ -371,6 +381,8 @@ pol commit reg_write_X_CNT;
 pol commit CNT;
 pol commit instr_jmpz;
 pol commit instr_jmpz_param_l;
+pol instr_jmpz_pc_update = (XIsZero * instr_jmpz_param_l);
+pol instr_jmpz_pc_update_1 = ((1 - XIsZero) * (pc + 1));
 pol commit instr_jmp;
 pol commit instr_jmp_param_l;
 pol commit instr_dec_CNT;
@@ -389,7 +401,8 @@ X = (((((read_X_A * A) + (read_X_CNT * CNT)) + (read_X_pc * pc)) + X_const) + (X
 pol constant first_step = [1] + [0]*;
 A' = (((reg_write_X_A * X) + (instr__reset * 0)) + ((1 - (reg_write_X_A + instr__reset)) * A));
 CNT' = ((((reg_write_X_CNT * X) + (instr_dec_CNT * (CNT - 1))) + (instr__reset * 0)) + ((1 - ((reg_write_X_CNT + instr_dec_CNT) + instr__reset)) * CNT));
-pc' = ((1 - first_step') * ((((((instr_jmpz * ((XIsZero * instr_jmpz_param_l) + ((1 - XIsZero) * (pc + 1)))) + (instr_jmp * instr_jmp_param_l)) + (instr__jump_to_operation * _operation_id)) + (instr__loop * pc)) + (instr_return * 0)) + ((1 - ((((instr_jmpz + instr_jmp) + instr__jump_to_operation) + instr__loop) + instr_return)) * (pc + 1))));
+pol pc_update = ((((((instr_jmpz * (instr_jmpz_pc_update + instr_jmpz_pc_update_1)) + (instr_jmp * instr_jmp_param_l)) + (instr__jump_to_operation * _operation_id)) + (instr__loop * pc)) + (instr_return * 0)) + ((1 - ((((instr_jmpz + instr_jmp) + instr__jump_to_operation) + instr__loop) + instr_return)) * (pc + 1)));
+pc' = ((1 - first_step') * pc_update);
 pol constant p_line = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10] + [10]*;
 pol commit X_free_value(i) query match pc { 2 => ("input", 1), 4 => ("input", (CNT + 1)), 7 => ("input", 0), };
 pol constant p_X_const = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0] + [0]*;
@@ -418,7 +431,10 @@ pol constant _linker_first_step = [1] + [0]*;
 (_linker_first_step * (_operation_id - 2)) = 0;
 
 "#;
-        let file_name = "../test_data/asm/simple_sum.asm";
+        let file_name = format!(
+            "{}/../test_data/asm/simple_sum.asm",
+            env!("CARGO_MANIFEST_DIR")
+        );
         let contents = fs::read_to_string(file_name).unwrap();
         let graph = parse_analyse_and_compile::<GoldilocksField>(&contents);
         let pil = link(graph).unwrap();
@@ -462,7 +478,8 @@ pol commit instr__loop;
 pol commit instr_return;
 pol constant first_step = [1] + [0]*;
 fp' = ((((instr_inc_fp * (fp + instr_inc_fp_param_amount)) + (instr_adjust_fp * (fp + instr_adjust_fp_param_amount))) + (instr__reset * 0)) + ((1 - ((instr_inc_fp + instr_adjust_fp) + instr__reset)) * fp));
-pc' = ((1 - first_step') * (((((instr_adjust_fp * label) + (instr__jump_to_operation * _operation_id)) + (instr__loop * pc)) + (instr_return * 0)) + ((1 - (((instr_adjust_fp + instr__jump_to_operation) + instr__loop) + instr_return)) * (pc + 1))));
+pol pc_update = (((((instr_adjust_fp * label) + (instr__jump_to_operation * _operation_id)) + (instr__loop * pc)) + (instr_return * 0)) + ((1 - (((instr_adjust_fp + instr__jump_to_operation) + instr__loop) + instr_return)) * (pc + 1)));
+pc' = ((1 - first_step') * pc_update);
 pol constant p_line = [0, 1, 2, 3, 4] + [4]*;
 pol constant p_instr__jump_to_operation = [0, 1, 0, 0, 0] + [0]*;
 pol constant p_instr__loop = [0, 0, 0, 0, 1] + [1]*;

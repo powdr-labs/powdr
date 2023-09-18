@@ -4,15 +4,18 @@ use std::{
 };
 
 use ast::parsed::{
-    asm::{ASMFile, Instruction, InstructionBody, MachineStatement},
+    asm::{ASMProgram, Instruction, InstructionBody, Machine, MachineStatement},
+    folder::Folder,
     postvisit_expression_in_statement_mut, postvisit_expression_mut, Expression,
     FunctionDefinition, PilStatement,
 };
 use number::FieldElement;
 
-pub fn expand<T: FieldElement>(file: ASMFile<T>) -> ASMFile<T> {
-    let mut expander = MacroExpander::default();
-    expander.expand_asm(file)
+pub fn expand<T: FieldElement>(program: ASMProgram<T>) -> ASMProgram<T> {
+    match MacroExpander::default().fold_program(program) {
+        Ok(p) => p,
+        Err(_) => unreachable!(),
+    }
 }
 
 #[derive(Debug, Default)]
@@ -22,6 +25,33 @@ pub struct MacroExpander<T> {
     parameter_names: HashMap<String, usize>,
     shadowing_locals: HashSet<String>,
     statements: Vec<PilStatement<T>>,
+}
+
+pub enum Error {}
+
+impl<T: FieldElement> Folder<T> for MacroExpander<T> {
+    type Error = Error;
+
+    fn fold_machine(&mut self, mut machine: Machine<T>) -> Result<Machine<T>, Self::Error> {
+        machine.statements.iter_mut().for_each(|s| match s {
+            MachineStatement::InstructionDeclaration(_, _, Instruction { body, .. }) => {
+                match body {
+                    InstructionBody::Local(body) => {
+                        *body = self.expand_macros(std::mem::take(body))
+                    }
+                    InstructionBody::CallableRef(..) => {
+                        // there is nothing to expand in a callable ref
+                    }
+                }
+            }
+            MachineStatement::InlinePil(_, statements) => {
+                *statements = self.expand_macros(std::mem::take(statements));
+            }
+            _ => {}
+        });
+
+        Ok(machine)
+    }
 }
 
 #[derive(Debug)]
@@ -35,32 +65,6 @@ impl<T> MacroExpander<T>
 where
     T: FieldElement,
 {
-    fn expand_asm(&mut self, file: ASMFile<T>) -> ASMFile<T> {
-        let mut expander = MacroExpander::default();
-        let machines = file
-            .machines
-            .into_iter()
-            .map(|mut m| {
-                m.statements.iter_mut().for_each(|s| match s {
-                    MachineStatement::InstructionDeclaration(_, _, Instruction { body, .. }) => {
-                        match body {
-                            InstructionBody::Local(body) => {
-                                *body = expander.expand_macros(std::mem::take(body))
-                            }
-                            InstructionBody::CallableRef(..) => {}
-                        }
-                    }
-                    MachineStatement::InlinePil(_, statements) => {
-                        *statements = expander.expand_macros(std::mem::take(statements));
-                    }
-                    _ => {}
-                });
-                m
-            })
-            .collect();
-        ASMFile { machines }
-    }
-
     /// Expands all macro references inside the statements and also adds
     /// any macros defined therein to the list of macros.
     ///

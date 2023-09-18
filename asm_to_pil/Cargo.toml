@@ -6,15 +6,10 @@ edition = "2021"
 [dependencies]
 log = "0.4.17"
 number = { path = "../number" }
-parser_util = { path = "../parser_util" }
-parser = { path = "../parser" }
-itertools = "^0.10"
 num-bigint = "0.4.3"
 ast = { path = "../ast" }
 pretty_assertions = "1.4.0"
+parser = { path = "../parser" }
 
 [dev-dependencies]
-test-log = "0.2.12"
-env_logger = "0.10.0"
 type_check = { path = "../type_check" }
-parser = { path = "../parser" }

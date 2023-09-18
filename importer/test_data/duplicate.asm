@@ -1,0 +1,4 @@
+machine Foo {
+}
+machine Foo {
+}

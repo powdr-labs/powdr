@@ -8,3 +8,6 @@ edition = "2021"
 [dependencies]
 ast = { version = "0.1.0", path = "../ast" }
 number = { version = "0.1.0", path = "../number" }
+
+[dev-dependencies]
+importer = { path = "../importer" }

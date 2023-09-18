@@ -165,8 +165,15 @@ pub enum ProcessingSequenceIterator {
 impl ProcessingSequenceIterator {
     pub fn report_progress(&mut self, progress_in_last_step: bool) {
         match self {
-            ProcessingSequenceIterator::Default(it) => it.report_progress(progress_in_last_step),
-            ProcessingSequenceIterator::Cached(_) => {} // Progress is ignored
+            Self::Default(it) => it.report_progress(progress_in_last_step),
+            Self::Cached(_) => {} // Progress is ignored
+        }
+    }
+
+    pub fn has_steps(&self) -> bool {
+        match self {
+            Self::Default(_) => true,
+            Self::Cached(it) => it.len() > 0,
         }
     }
 }
@@ -176,8 +183,8 @@ impl Iterator for ProcessingSequenceIterator {
 
     fn next(&mut self) -> Option<Self::Item> {
         match self {
-            ProcessingSequenceIterator::Default(it) => it.next(),
-            ProcessingSequenceIterator::Cached(it) => it.next(),
+            Self::Default(it) => it.next(),
+            Self::Cached(it) => it.next(),
         }
     }
 }
@@ -220,6 +227,14 @@ impl ProcessingSequenceCache {
                 ))
             }
         }
+    }
+
+    pub fn report_incomplete<K, T>(&mut self, left: &[AffineExpression<K, T>])
+    where
+        K: Copy + Ord,
+        T: FieldElement,
+    {
+        self.cache.entry(left.into()).or_insert(vec![]);
     }
 
     pub fn report_processing_sequence<K, T>(

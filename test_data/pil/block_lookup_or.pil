@@ -17,11 +17,11 @@ namespace Or(%N);
 	col fixed P_B(i) { (i >> 8) % 256 };
 	col fixed P_C(i) { (P_A(i) | P_B(i)) & 0xff };
 
-// ROW RESET  FACTOR
-//   0   0    1 << 4
-//   1   0    1 << 8
-//   2   0    1 << 12
-//   3   1    1 << 0
+	// ROW RESET  FACTOR
+	//   0   0    1 << 8
+	//   1   0    1 << 16
+	//   2   0    1 << 24
+	//   3   1    1 << 0
 
 	col witness A_byte;
 	col witness B_byte;

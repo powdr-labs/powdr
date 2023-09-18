@@ -24,6 +24,7 @@ ast = { version = "0.1.0", path = "../ast" }
 analysis = { version = "0.1.0", path = "../analysis" }
 linker = { version = "0.1.0", path = "../linker" }
 airgen = { version = "0.1.0", path = "../airgen" }
+importer = { path = "../importer" }
 
 [dev-dependencies]
 test-log = "0.2.12"
@@ -31,6 +32,7 @@ env_logger = "0.10.0"
 criterion = { version = "0.4", features = ["html_reports"] }
 riscv = { path = "../riscv" }
 asm_utils = { path = "../asm_utils" }
+walkdir = "2.4.0"
 
 [[bench]]
 name = "executor_benchmark"

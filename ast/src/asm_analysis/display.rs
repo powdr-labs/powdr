@@ -1,14 +1,16 @@
 use std::{
-    fmt::{Display, Formatter, Result, Write},
+    fmt::{Display, Formatter, Result},
     iter::once,
 };
+
+use crate::{indent, write_items_indented};
 
 use super::{
     AnalysisASMFile, AssignmentStatement, CallableSymbol, CallableSymbolDefinitionRef,
     DebugDirective, DegreeStatement, FunctionBody, FunctionStatement, FunctionStatements,
     Incompatible, IncompatibleSet, Instruction, InstructionDefinitionStatement,
     InstructionStatement, LabelStatement, LinkDefinitionStatement, Machine, PilBlock,
-    RegisterDeclarationStatement, RegisterTy, Return, Rom,
+    RegisterDeclarationStatement, RegisterTy, Return, Rom, SubmachineDeclaration,
 };
 
 impl<T: Display> Display for AnalysisASMFile<T> {
@@ -18,32 +20,6 @@ impl<T: Display> Display for AnalysisASMFile<T> {
         }
         Ok(())
     }
-}
-
-/// quick and dirty String to String indentation
-fn indent<S: ToString>(s: S, indentation: usize) -> String {
-    s.to_string()
-        .split('\n')
-        .map(|line| format!("{}{line}", "\t".repeat(indentation)))
-        .collect::<Vec<_>>()
-        .join("\n")
-}
-
-fn write_indented_items<S, I, W>(f: &mut W, items: I) -> Result
-where
-    S: Display,
-    I: IntoIterator<Item = S>,
-    W: Write,
-{
-    let mut iter = items.into_iter();
-    if let Some(first_item) = iter.next() {
-        writeln!(f, "{}", indent(first_item, 1))?;
-        for item in iter {
-            writeln!(f, "{}", indent(item, 1))?;
-        }
-        writeln!(f)?;
-    }
-    Ok(())
 }
 
 impl<T: Display> Display for Machine<T> {
@@ -57,12 +33,13 @@ impl<T: Display> Display for Machine<T> {
 
         writeln!(f, " {{")?;
 
-        write_indented_items(f, &self.degree)?;
-        write_indented_items(f, &self.registers)?;
-        write_indented_items(f, &self.instructions)?;
-        write_indented_items(f, &self.callable)?;
-        write_indented_items(f, &self.constraints)?;
-        write_indented_items(f, &self.links)?;
+        write_items_indented(f, &self.degree)?;
+        write_items_indented(f, &self.submachines)?;
+        write_items_indented(f, &self.registers)?;
+        write_items_indented(f, &self.instructions)?;
+        write_items_indented(f, &self.callable)?;
+        write_items_indented(f, &self.constraints)?;
+        write_items_indented(f, &self.links)?;
 
         writeln!(f, "}}")
     }
@@ -77,6 +54,12 @@ impl<T: Display> Display for LinkDefinitionStatement<T> {
             self.params.prepend_space_if_non_empty(),
             self.to
         )
+    }
+}
+
+impl Display for SubmachineDeclaration {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(f, "{} {}", self.ty, self.name)
     }
 }
 

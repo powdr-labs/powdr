@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, marker::PhantomData};
 
 use ast::{
     asm_analysis::{
@@ -11,40 +11,32 @@ use ast::{
     parsed::{
         self,
         asm::{
-            ASMFile, FunctionStatement, InstructionBody, LinkDeclaration, MachineStatement,
-            RegisterFlag,
+            self, ASMModule, ASMProgram, AbsoluteSymbolPath, FunctionStatement, InstructionBody,
+            LinkDeclaration, MachineStatement, ModuleStatement, RegisterFlag, SymbolDefinition,
         },
     },
 };
 use number::FieldElement;
 
-pub fn check<T: FieldElement>(file: ASMFile<T>) -> Result<AnalysisASMFile<T>, Vec<String>> {
-    TypeChecker::default().check_file(file)
+pub fn check<T: FieldElement>(file: ASMProgram<T>) -> Result<AnalysisASMFile<T>, Vec<String>> {
+    let ctx = AbsoluteSymbolPath::default();
+    let machines = TypeChecker::default().check_module(file.main, &ctx)?;
+    Ok(AnalysisASMFile {
+        machines: machines.into_iter().collect(),
+    })
 }
 
 #[derive(Default)]
 struct TypeChecker<T> {
-    /// The types of the machines. The value is an option, as we do a first pass populating with `None`, so that a machine type can be
-    /// declared later in the file than its usage in a submachine
-    machines_types: BTreeMap<String, Option<Machine<T>>>,
+    marker: PhantomData<T>,
 }
 
 impl<T: FieldElement> TypeChecker<T> {
     fn check_machine_type(
         &mut self,
-        machine: ast::parsed::asm::Machine<T>,
-    ) -> Result<(), Vec<String>> {
-        if self
-            .machines_types
-            .get(&machine.name)
-            .as_ref()
-            .unwrap()
-            .is_some()
-        {
-            // we already checked this machine type
-            return Ok(());
-        }
-
+        machine: asm::Machine<T>,
+        ctx: &AbsoluteSymbolPath,
+    ) -> Result<Machine<T>, Vec<String>> {
         let mut errors = vec![];
 
         let mut degree = None;
@@ -98,11 +90,10 @@ impl<T: FieldElement> TypeChecker<T> {
                     constraints.push(PilBlock { start, statements });
                 }
                 MachineStatement::Submachine(_, ty, name) => {
-                    if self.machines_types.contains_key(&ty) {
-                        submachines.push(SubmachineDeclaration { name, ty });
-                    } else {
-                        errors.push(format!("Undeclared machine type {}", ty))
-                    }
+                    submachines.push(SubmachineDeclaration {
+                        name,
+                        ty: AbsoluteSymbolPath::default().join(ty),
+                    });
                 }
                 MachineStatement::FunctionDeclaration(start, name, params, statements) => {
                     let mut function_statements = vec![];
@@ -169,56 +160,53 @@ impl<T: FieldElement> TypeChecker<T> {
             if latch.is_none() {
                 errors.push(format!(
                     "Machine {} should have a latch column as it does not have a pc",
-                    machine.name
+                    ctx
                 ));
             }
             if operation_id.is_none() {
                 errors.push(format!(
                     "Machine {} should have an operation id column as it does not have a pc",
-                    machine.name
+                    ctx
                 ));
             }
             for f in callable.function_definitions() {
                 errors.push(format!(
                     "Machine {} should not have functions as it does not have a pc, found `{}`",
-                    machine.name, f.name
+                    ctx, f.name
                 ))
             }
             for i in &instructions {
                 errors.push(format!(
                     "Machine {} should not have instructions as it does not have a pc, found `{}`",
-                    machine.name, i.name
+                    ctx, i.name
                 ))
             }
         } else {
             if latch.is_some() {
                 errors.push(format!(
                     "Machine {} should not have a latch column as it has a pc",
-                    machine.name
+                    ctx
                 ));
             }
             if operation_id.is_some() {
                 errors.push(format!(
                     "Machine {} should not have an operation id column as it has a pc",
-                    machine.name
+                    ctx
                 ));
             }
-            for f in callable.operation_definitions() {
+            for o in callable.operation_definitions() {
                 errors.push(format!(
                     "Machine {} should not have operations as it has a pc, found `{}`",
-                    machine.name, f.name
+                    ctx, o.name
                 ))
             }
         }
 
         if registers.iter().filter(|r| r.ty.is_pc()).count() > 1 {
-            errors.push(format!(
-                "Machine {} cannot have more than one pc",
-                machine.name
-            ));
+            errors.push(format!("Machine {} cannot have more than one pc", ctx));
         }
 
-        *self.machines_types.get_mut(&machine.name).unwrap() = Some(Machine {
+        let machine = Machine {
             degree,
             latch,
             operation_id,
@@ -233,42 +221,68 @@ impl<T: FieldElement> TypeChecker<T> {
             constraints,
             callable,
             submachines,
-        });
+        };
 
         if !errors.is_empty() {
             Err(errors)
         } else {
-            Ok(())
+            Ok(machine)
         }
     }
 
-    fn check_file(&mut self, file: ASMFile<T>) -> Result<AnalysisASMFile<T>, Vec<String>> {
+    fn check_module(
+        &mut self,
+        module: ASMModule<T>,
+        ctx: &AbsoluteSymbolPath,
+    ) -> Result<BTreeMap<AbsoluteSymbolPath, Machine<T>>, Vec<String>> {
         let mut errors = vec![];
 
-        // first pass to get all the declared machine types
-        for m in &file.machines {
-            let already_declared = self.machines_types.contains_key(&m.name);
-            if already_declared {
-                errors.push(format!("Machine with name {} is already declared", m.name));
-            } else {
-                self.machines_types.insert(m.name.clone(), None);
-            }
-        }
+        let mut res: BTreeMap<AbsoluteSymbolPath, Machine<T>> = BTreeMap::default();
 
-        for m in file.machines {
-            self.check_machine_type(m).unwrap_or_else(|e| {
-                errors.extend(e);
-            })
+        for m in module.statements {
+            match m {
+                ModuleStatement::SymbolDefinition(SymbolDefinition { name, value }) => {
+                    match value {
+                        asm::SymbolValue::Machine(m) => {
+                            match self.check_machine_type(m, ctx) {
+                                Err(e) => {
+                                    errors.extend(e);
+                                }
+                                Ok(machine) => {
+                                    res.insert(ctx.clone().join(name), machine);
+                                }
+                            };
+                        }
+                        asm::SymbolValue::Import(_) => {
+                            unreachable!("Imports should have been removed")
+                        }
+                        asm::SymbolValue::Module(m) => {
+                            // add the name of this module to the context
+                            let ctx = ctx.clone().join(name.clone());
+
+                            let m = match m {
+                                asm::Module::External(_) => unreachable!(),
+                                asm::Module::Local(m) => m,
+                            };
+
+                            match self.check_module(m, &ctx) {
+                                Err(err) => {
+                                    errors.extend(err);
+                                }
+                                Ok(m) => {
+                                    res.extend(m);
+                                }
+                            };
+                        }
+                    }
+                }
+            }
         }
 
         if !errors.is_empty() {
             Err(errors)
         } else {
-            let machines = std::mem::take(&mut self.machines_types)
-                .into_iter()
-                .map(|(name, machine)| (name, machine.unwrap()))
-                .collect();
-            Ok(AnalysisASMFile { machines })
+            Ok(res)
         }
     }
 
@@ -302,5 +316,42 @@ impl<T: FieldElement> TypeChecker<T> {
             params: instruction.params,
             body: instruction.body,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use importer::resolve_str;
+    use number::Bn254Field;
+
+    use crate::check;
+
+    // A utility to test behavior of the type checker on source inputs
+    // TODO: test returned values, not just success
+    fn expect_check_str(src: &str, expected: Result<(), Vec<&str>>) {
+        let resolved = resolve_str::<Bn254Field>(src);
+        let checked = check(resolved);
+        assert_eq!(
+            checked.map(|_| ()),
+            expected.map_err(|e| e.into_iter().map(|s| s.to_string()).collect())
+        )
+    }
+
+    // TODO: remove `should_panic` below by detecting that `A` is not a `Machine`
+    #[test]
+    #[should_panic = "Ok"]
+    fn submachine_is_not_a_machine() {
+        let src = r#"
+        mod A {
+        }
+        machine M(l, i) {
+            A a;
+        }"#;
+        expect_check_str(
+            src,
+            Err(vec![
+                "Expected A to be of type Machine, but found type module",
+            ]),
+        );
     }
 }

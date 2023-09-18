@@ -10,6 +10,7 @@
 <!-- markdown-link-check-disable-next-line -->
 - [CLI](./cli/README.md)
 - [asm](./asm/README.md)
+    - [Modules](./asm/modules.md)
     - [Machines](./asm/machines.md)
     - [Registers](./asm/registers.md)
     - [Functions](./asm/functions.md)

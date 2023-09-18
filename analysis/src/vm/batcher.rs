@@ -2,8 +2,11 @@
 
 use std::marker::PhantomData;
 
-use ast::asm_analysis::{
-    AnalysisASMFile, BatchMetadata, FunctionStatement, Incompatible, IncompatibleSet, Machine,
+use ast::{
+    asm_analysis::{
+        AnalysisASMFile, BatchMetadata, FunctionStatement, Incompatible, IncompatibleSet, Machine,
+    },
+    parsed::asm::AbsoluteSymbolPath,
 };
 use itertools::Itertools;
 use number::FieldElement;
@@ -75,7 +78,7 @@ struct RomBatcher<T> {
 
 impl<T: FieldElement> RomBatcher<T> {
     // split a list of statements into compatible batches
-    fn extract_batches(&self, machine_name: &str, machine: &mut Machine<T>) {
+    fn extract_batches(&self, machine_name: &AbsoluteSymbolPath, machine: &mut Machine<T>) {
         for definition in machine.function_definitions_mut() {
             let batches: Vec<_> = definition
                 .function
@@ -154,7 +157,10 @@ mod tests {
     use crate::vm::test_utils::batch_str;
 
     fn test_batching(path: &str) {
-        let base_path = PathBuf::from("../test_data/asm/batching");
+        let base_path = PathBuf::from(format!(
+            "{}/../test_data/asm/batching",
+            env!("CARGO_MANIFEST_DIR")
+        ));
         let file_name = base_path.join(path);
         let expected = fs::read_to_string(file_name).unwrap();
 
