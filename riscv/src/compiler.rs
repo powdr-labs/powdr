@@ -8,7 +8,7 @@ use asm_utils::{
     data_parser::{self, DataValue},
     data_storage::{store_data_objects, SingleDataValue},
     parser::parse_asm,
-    reachability,
+    reachability::{self, symbols_in_args},
     utils::{
         argument_to_escaped_symbol, argument_to_number, escape_label, expression_to_number, quote,
     },
@@ -79,10 +79,17 @@ impl Architecture for RiscvArchitecture {
         }
     }
 
-    fn instruction_can_have_references(instr: &str) -> bool {
+    fn get_references<'a, R: asm_utils::ast::Register, F: asm_utils::ast::FunctionOpKind>(
+        instr: &str,
+        args: &'a [asm_utils::ast::Argument<R, F>],
+    ) -> Vec<&'a str> {
         // fence arguments are not symbols, they are like reserved
         // keywords affecting the instruction behavior
-        !instr.starts_with("fence")
+        if instr.starts_with("fence") {
+            Vec::new()
+        } else {
+            symbols_in_args(args)
+        }
     }
 }
 
