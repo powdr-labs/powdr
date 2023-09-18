@@ -768,6 +768,7 @@ fn preamble() -> String {
     }
 
     // implements Z = Y % X, stores quotient in `div_tmp`.
+    // TODO: unify this code with divu after PR #485 (multi-return) is merged
     instr remu Y, X -> Z {
         // Y is the known dividend
         // X is the known divisor
