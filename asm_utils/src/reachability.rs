@@ -175,17 +175,22 @@ pub fn references_in_statement<R: Register, F: FunctionOpKind, A: Architecture>(
     match statement {
         Statement::Label(_) | Statement::Directive(_, _) => (),
         Statement::Instruction(name, args) => {
-            if A::instruction_can_have_references(name) {
-                for arg in args {
-                    arg.post_visit_expressions(&mut |expr| {
-                        if let Expression::Symbol(sym) = expr {
-                            ret.insert(sym.as_str());
-                        }
-                    });
-                }
-            }
+            ret.extend(A::get_references(name, args));
         }
     };
+    ret
+}
+
+pub fn symbols_in_args<R: Register, F: FunctionOpKind>(args: &[Argument<R, F>]) -> Vec<&str> {
+    let mut ret = Vec::new();
+    for arg in args {
+        arg.post_visit_expressions(&mut |expr| {
+            if let Expression::Symbol(sym) = expr {
+                ret.push(sym.as_str());
+            }
+        });
+    }
+
     ret
 }
 
