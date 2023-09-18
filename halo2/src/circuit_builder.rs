@@ -12,6 +12,8 @@ use number::{BigInt, FieldElement};
 
 use super::circuit_data::CircuitData;
 
+use pil_analyzer::pil_analyzer::inline_intermediate_polynomials;
+
 pub(crate) fn analyzed_to_circuit<T: FieldElement>(
     analyzed: &Analyzed<T>,
     fixed: &[(&str, Vec<T>)],
@@ -112,7 +114,8 @@ pub(crate) fn analyzed_to_circuit<T: FieldElement>(
             .collect()
     };
 
-    for id in &analyzed.identities {
+    let identities = inline_intermediate_polynomials(analyzed);
+    for id in &identities {
         match id.kind {
             IdentityKind::Polynomial => {
                 // polynomial identities.

@@ -6,12 +6,12 @@ use derive_more::From;
 
 use super::{Expression, PilStatement};
 
-#[derive(Default, Debug, PartialEq, Eq, Clone)]
+#[derive(Default, Debug, PartialEq, Eq)]
 pub struct ASMProgram<T> {
     pub main: ASMModule<T>,
 }
 
-#[derive(Default, Debug, PartialEq, Eq, Clone)]
+#[derive(Default, Debug, PartialEq, Eq)]
 pub struct ASMModule<T> {
     pub statements: Vec<ModuleStatement<T>>,
 }
@@ -24,18 +24,18 @@ impl<T> ASMModule<T> {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, From)]
+#[derive(Debug, PartialEq, Eq, From)]
 pub enum ModuleStatement<T> {
     SymbolDefinition(SymbolDefinition<T>),
 }
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct SymbolDefinition<T> {
     pub name: String,
     pub value: SymbolValue<T>,
 }
 
-#[derive(Debug, PartialEq, Eq, From, Clone)]
+#[derive(Debug, PartialEq, Eq, From)]
 pub enum SymbolValue<T> {
     /// A machine definition
     Machine(Machine<T>),
@@ -45,10 +45,45 @@ pub enum SymbolValue<T> {
     Module(Module<T>),
 }
 
-#[derive(Debug, PartialEq, Eq, From, Clone)]
+impl<T> SymbolValue<T> {
+    pub fn as_ref(&self) -> SymbolValueRef<T> {
+        match self {
+            SymbolValue::Machine(machine) => SymbolValueRef::Machine(machine),
+            SymbolValue::Import(i) => SymbolValueRef::Import(i),
+            SymbolValue::Module(m) => SymbolValueRef::Module(m.as_ref()),
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, From)]
+pub enum SymbolValueRef<'a, T> {
+    /// A machine definition
+    Machine(&'a Machine<T>),
+    /// An import of a symbol from another module
+    Import(&'a Import),
+    /// A module definition
+    Module(ModuleRef<'a, T>),
+}
+
+#[derive(Debug, PartialEq, Eq, From)]
 pub enum Module<T> {
     External(String),
     Local(ASMModule<T>),
+}
+
+impl<T> Module<T> {
+    fn as_ref(&self) -> ModuleRef<T> {
+        match self {
+            Module::External(n) => ModuleRef::External(n),
+            Module::Local(m) => ModuleRef::Local(m),
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, From)]
+pub enum ModuleRef<'a, T> {
+    External(&'a str),
+    Local(&'a ASMModule<T>),
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
