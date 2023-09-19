@@ -1,4 +1,5 @@
 mod display;
+pub mod types;
 pub mod visitor;
 
 use core::hash::Hash;
@@ -14,6 +15,8 @@ pub use crate::parsed::BinaryOperator;
 pub use crate::parsed::UnaryOperator;
 use crate::parsed::{self, SelectedExpressions};
 use crate::SourceRef;
+
+use self::types::TypedExpression;
 
 #[derive(Debug, Clone)]
 pub enum StatementIdentifier {
@@ -303,7 +306,9 @@ impl<T> Analyzed<T> {
                     .iter_mut()
                     .flat_map(|e| e.pattern.iter_mut())
                     .for_each(|e| e.post_visit_expressions_mut(f)),
-                Some(FunctionValueDefinition::Expression(e)) => e.post_visit_expressions_mut(f),
+                Some(FunctionValueDefinition::Expression(TypedExpression { e, ty: _ })) => {
+                    e.post_visit_expressions_mut(f)
+                }
                 None => {}
             });
     }
@@ -467,7 +472,7 @@ pub enum SymbolKind {
 pub enum FunctionValueDefinition<T> {
     Array(Vec<RepeatedArray<T>>),
     Query(Expression<T>),
-    Expression(Expression<T>),
+    Expression(TypedExpression<T>),
 }
 
 /// An array of elements that might be repeated.

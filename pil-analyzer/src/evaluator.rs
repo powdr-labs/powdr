@@ -6,7 +6,7 @@ use std::{
 
 use itertools::Itertools;
 use powdr_ast::{
-    analyzed::{Expression, FunctionValueDefinition, Reference, Symbol},
+    analyzed::{types::TypedExpression, Expression, FunctionValueDefinition, Reference, Symbol},
     parsed::{
         display::quote, BinaryOperator, FunctionCall, LambdaExpression, MatchArm, MatchPattern,
         UnaryOperator,
@@ -189,7 +189,7 @@ const BUILTINS: [(&str, BuiltinFunction); 6] = [
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum BuiltinFunction {
-    /// std::array::len: [_] -> int, returns the length of an array
+    /// std::array::len: _[] -> int, returns the length of an array
     ArrayLen,
     /// std::field::modulus: -> int, returns the field modulus as int
     Modulus,
@@ -282,7 +282,9 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T, NoCustom> for Definitions<'a, T> {
     fn lookup(&self, name: &'a str) -> Result<Value<'a, T, NoCustom>, EvalError> {
         Ok(match self.0.get(&name.to_string()) {
             Some((_, value)) => match value {
-                Some(FunctionValueDefinition::Expression(value)) => evaluate(value, self)?,
+                Some(FunctionValueDefinition::Expression(TypedExpression { e, ty: _ })) => {
+                    evaluate(e, self)?
+                }
                 _ => Err(EvalError::Unsupported(
                     "Cannot evaluate arrays and queries.".to_string(),
                 ))?,
@@ -640,7 +642,8 @@ mod test {
 
     fn parse_and_evaluate_symbol(input: &str, symbol: &str) -> String {
         let analyzed = analyze_string::<GoldilocksField>(input);
-        let Some(FunctionValueDefinition::Expression(symbol)) = &analyzed.definitions[symbol].1
+        let Some(FunctionValueDefinition::Expression(TypedExpression { e: symbol, ty: _ })) =
+            &analyzed.definitions[symbol].1
         else {
             panic!()
         };

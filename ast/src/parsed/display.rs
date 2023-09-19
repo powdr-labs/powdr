@@ -42,8 +42,15 @@ impl<T: Display> Display for ModuleStatement<T> {
                 SymbolValue::Module(m) => {
                     write!(f, "mod {name} {m}")
                 }
-                SymbolValue::Expression(e) => {
-                    write!(f, "let {name} = {e};")
+                SymbolValue::Expression(ExpressionWithTypeName { e, type_name }) => {
+                    write!(
+                        f,
+                        "let {name}{} = {e};",
+                        type_name
+                            .as_ref()
+                            .map(|t| format!(": {t}"))
+                            .unwrap_or_default()
+                    )
                 }
             },
         }
@@ -336,9 +343,15 @@ impl<T: Display> Display for PilStatement<T> {
             PilStatement::Namespace(_, name, poly_length) => {
                 write!(f, "namespace {name}({poly_length});")
             }
-            PilStatement::LetStatement(_, name, None) => write!(f, "    let {name};"),
-            PilStatement::LetStatement(_, name, Some(expr)) => {
-                write!(f, "    let {name} = {expr};")
+            PilStatement::LetStatement(_, name, type_name, value) => {
+                write!(f, "    let {name}")?;
+                if let Some(type_name) = type_name {
+                    write!(f, ": {type_name}")?;
+                }
+                if let Some(value) = &value {
+                    write!(f, " = {value}")?;
+                }
+                write!(f, ";")
             }
             PilStatement::PolynomialDefinition(_, name, value) => {
                 write!(f, "    pol {name} = {value};")
@@ -542,6 +555,74 @@ impl Display for UnaryOperator {
                 UnaryOperator::Minus => "-",
                 UnaryOperator::LogicalNot => "!",
                 UnaryOperator::Next => "'",
+            }
+        )
+    }
+}
+
+impl<E: Display> Display for TypeName<E> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        match self {
+            TypeName::Bool => write!(f, "bool"),
+            TypeName::Int => write!(f, "int"),
+            TypeName::Fe => write!(f, "fe"),
+            TypeName::String => write!(f, "string"),
+            TypeName::Col => write!(f, "col"),
+            TypeName::Expr => write!(f, "expr"),
+            TypeName::Constr => write!(f, "constr"),
+            TypeName::Array(array) => write!(f, "{array}"),
+            TypeName::Tuple(tuple) => write!(f, "{tuple}"),
+            TypeName::Function(fun) => write!(f, "{fun}"),
+        }
+    }
+}
+
+impl<E: Display> Display for ArrayTypeName<E> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        if self.base.needs_parentheses() {
+            write!(f, "({})", self.base)
+        } else {
+            write!(f, "{}", self.base)
+        }?;
+        write!(
+            f,
+            "[{}]",
+            self.length
+                .as_ref()
+                .map(|l| l.to_string())
+                .unwrap_or_default()
+        )
+    }
+}
+
+impl<E: Display> Display for TupleTypeName<E> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(f, "({})", self.items.iter().format(", "))
+    }
+}
+
+impl<E: Display> Display for FunctionTypeName<E> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        let params = self
+            .params
+            .iter()
+            .map(|x| {
+                if x.needs_parentheses() {
+                    format!("({x})")
+                } else {
+                    format!("{x}")
+                }
+            })
+            .join(", ")
+            + if self.params.is_empty() { "" } else { " " };
+
+        write!(
+            f,
+            "{params}-> {}",
+            if self.value.needs_parentheses() {
+                format!("({})", self.value)
+            } else {
+                format!("{}", self.value)
             }
         )
     }
