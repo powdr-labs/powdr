@@ -86,13 +86,15 @@ fn test_password() {
     verify_crate(case, vec![]);
 }
 
+// TODO: uncomment this test when we properly support revm
+/*
 #[test]
-// TODO: If this is merged, will probably break nightly tests.
-#[ignore = "Doesn't work yet"]
+#[ignore = "Too slow"]
 fn test_evm() {
     let case = "evm";
     verify_crate(case, vec![]);
 }
+*/
 
 #[test]
 #[ignore = "Too slow"]
