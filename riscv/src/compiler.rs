@@ -66,11 +66,11 @@ impl Architecture for RiscvArchitecture {
     fn instruction_ends_control_flow(instr: &str) -> bool {
         match instr {
             "li" | "lui" | "la" | "mv" | "add" | "addi" | "sub" | "neg" | "mul" | "mulhu"
-            | "divu" | "xor" | "xori" | "and" | "andi" | "or" | "ori" | "not" | "slli" | "sll"
-            | "srli" | "srl" | "srai" | "seqz" | "snez" | "slt" | "slti" | "sltu" | "sltiu"
-            | "sgtz" | "beq" | "beqz" | "bgeu" | "bltu" | "blt" | "bge" | "bltz" | "blez"
-            | "bgtz" | "bgez" | "bne" | "bnez" | "jal" | "jalr" | "call" | "ecall" | "ebreak"
-            | "lw" | "lb" | "lbu" | "lhu" | "sw" | "sh" | "sb" | "nop" => false,
+            | "divu" | "remu" | "xor" | "xori" | "and" | "andi" | "or" | "ori" | "not" | "slli"
+            | "sll" | "srli" | "srl" | "srai" | "seqz" | "snez" | "slt" | "slti" | "sltu"
+            | "sltiu" | "sgtz" | "beq" | "beqz" | "bgeu" | "bltu" | "blt" | "bge" | "bltz"
+            | "blez" | "bgtz" | "bgez" | "bne" | "bnez" | "jal" | "jalr" | "call" | "ecall"
+            | "ebreak" | "lw" | "lb" | "lbu" | "lhu" | "sw" | "sh" | "sb" | "nop" => false,
             "j" | "jr" | "tail" | "ret" | "unimp" => true,
             _ => {
                 panic!("Unknown instruction: {instr}");
@@ -707,7 +707,7 @@ fn preamble() -> String {
         { Y_b7 } in { bytes };
         { Y_b8 } in { bytes };
 
-        col witness remainder; 
+        col witness div_tmp;
 
         col witness REM_b1;
         col witness REM_b2;
@@ -719,26 +719,48 @@ fn preamble() -> String {
         { REM_b4 } in { bytes };
     }
 
-    // implements Z = Y / X, stores remainder in `remainder`.
+    // implements Z = Y / X, stores remainder in `div_tmp`.
     instr divu Y, X -> Z {
         // Y is the known dividend
         // X is the known divisor
         // Z is the unknown quotient
         // main division algorithm;
         // if X is zero, remainder is set to dividend, as per RISC-V specification:
-        X * Z + remainder = Y,
+        X * Z + div_tmp = Y,
 
         // remainder >= 0:
-        remainder = REM_b1 + REM_b2 * 0x100 + REM_b3 * 0x10000 + REM_b4 * 0x1000000,
+        div_tmp = REM_b1 + REM_b2 * 0x100 + REM_b3 * 0x10000 + REM_b4 * 0x1000000,
 
         // remainder < divisor, conditioned to X not being 0:
-        (1 - XIsZero) * (X - remainder - 1 - Y_b5 - Y_b6 * 0x100 - Y_b7 * 0x10000 - Y_b8 * 0x1000000) = 0,
+        (1 - XIsZero) * (X - div_tmp - 1 - Y_b5 - Y_b6 * 0x100 - Y_b7 * 0x10000 - Y_b8 * 0x1000000) = 0,
 
         // in case X is zero, we set quotient according to RISC-V specification
         XIsZero * (Z - 0xffffffff) = 0,
 
         // quotient is 32 bits:
         Z = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000
+    }
+
+    // implements Z = Y % X, stores quotient in `div_tmp`.
+    // TODO: unify this code with divu after PR #485 (multi-return) is merged
+    instr remu Y, X -> Z {
+        // Y is the known dividend
+        // X is the known divisor
+        // Z is the unknown remainder
+        // main division algorithm;
+        // if X is zero, remainder is set to dividend, as per RISC-V specification:
+        X * div_tmp + Z = Y,
+
+        // remainder >= 0:
+        Z = REM_b1 + REM_b2 * 0x100 + REM_b3 * 0x10000 + REM_b4 * 0x1000000,
+
+        // remainder < divisor, conditioned to X not being 0:
+        (1 - XIsZero) * (X - Z - 1 - Y_b5 - Y_b6 * 0x100 - Y_b7 * 0x10000 - Y_b8 * 0x1000000) = 0,
+
+        // It seems to be fine to leave quotient underconstrained, which happens in case X is zero.
+
+        // Quotient is 32 bits:
+        div_tmp = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000
     }
 
     // Removes up to 32 bits beyond 32
@@ -760,6 +782,10 @@ fn runtime() -> &'static str {
 .globl __udivdi3@plt
 .globl __udivdi3
 .set __udivdi3@plt, __udivdi3
+
+.globl __umoddi3@plt
+.globl __umoddi3
+.set __umoddi3@plt, __umoddi3
 
 .globl memcpy@plt
 .globl memcpy
@@ -966,6 +992,10 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
         "divu" => {
             let (rd, r1, r2) = rrr(args);
             only_if_no_write_to_zero(format!("{rd} <=Z= divu({r1}, {r2});"), rd)
+        }
+        "remu" => {
+            let (rd, r1, r2) = rrr(args);
+            only_if_no_write_to_zero(format!("{rd} <=Z= remu({r1}, {r2});"), rd)
         }
 
         // bitwise
