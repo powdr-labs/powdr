@@ -45,6 +45,7 @@ mod test {
         SelectedExpressions,
     };
     use number::GoldilocksField;
+    use parser_util::UnwrapErrToStderr;
     use std::fs;
     use test_log::test;
 
@@ -115,11 +116,7 @@ mod test {
         ));
 
         let input = fs::read_to_string(file).unwrap();
-        parse(Some(name), &input).unwrap_or_else(|err| {
-            eprintln!("Parse error during test:");
-            err.output_to_stderr();
-            panic!();
-        })
+        parse(Some(name), &input).unwrap_err_to_stderr()
     }
 
     fn parse_asm_file(name: &str) -> ASMProgram<GoldilocksField> {
@@ -129,11 +126,7 @@ mod test {
         ));
 
         let input = fs::read_to_string(file).unwrap();
-        parse_asm(Some(name), &input).unwrap_or_else(|err| {
-            eprintln!("Parse error during test:");
-            err.output_to_stderr();
-            panic!();
-        })
+        parse_asm(Some(name), &input).unwrap_err_to_stderr()
     }
 
     #[test]
@@ -195,6 +188,7 @@ mod test {
     mod display {
         use number::GoldilocksField;
 
+        use parser_util::UnwrapErrToStderr;
         use pretty_assertions::assert_eq;
 
         use crate::parse;
@@ -245,6 +239,16 @@ public out = y(%last_row);"#;
             let printed = format!(
                 "{}",
                 parse::<GoldilocksField>(Some("input"), input).unwrap()
+            );
+            assert_eq!(input.trim(), printed.trim());
+        }
+
+        #[test]
+        fn array_literals() {
+            let input = r#"let x = [[1], [2], [(3 + 7)]];"#;
+            let printed = format!(
+                "{}",
+                parse::<GoldilocksField>(Some("input"), input).unwrap_err_to_stderr()
             );
             assert_eq!(input.trim(), printed.trim());
         }

@@ -57,3 +57,24 @@ pub fn handle_parse_error<'a>(
         message: format!("{err}"),
     }
 }
+
+/// Convenience trait that outputs parser errors to stderr and panics.
+/// Should be used mostly in tests.
+pub trait UnwrapErrToStderr {
+    type Inner;
+    fn unwrap_err_to_stderr(self) -> Self::Inner;
+}
+
+impl<'a, T> UnwrapErrToStderr for Result<T, ParseError<'a>> {
+    type Inner = T;
+
+    fn unwrap_err_to_stderr(self) -> Self::Inner {
+        match self {
+            Ok(r) => r,
+            Err(err) => {
+                err.output_to_stderr();
+                panic!("Parse error.");
+            }
+        }
+    }
+}

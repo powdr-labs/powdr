@@ -433,6 +433,7 @@ impl<T: Display, Ref: Display> Display for Expression<T, Ref> {
             Expression::String(value) => write!(f, "\"{value}\""), // TODO quote?
             Expression::Tuple(items) => write!(f, "({})", format_expressions(items)),
             Expression::LambdaExpression(lambda) => write!(f, "{}", lambda),
+            Expression::ArrayLiteral(array) => write!(f, "{array}"),
             Expression::BinaryOperation(left, op, right) => write!(f, "({left} {op} {right})"),
             Expression::UnaryOperation(op, exp) => write!(f, "{op}{exp}"),
             Expression::FunctionCall(fun_call) => write!(f, "{fun_call}"),
@@ -501,6 +502,12 @@ impl Display for PolynomialReference {
 impl<T: Display, Ref: Display> Display for LambdaExpression<T, Ref> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(f, "|{}| {}", self.params.iter().format(", "), self.body)
+    }
+}
+
+impl<T: Display, Ref: Display> Display for ArrayLiteral<T, Ref> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(f, "[{}]", self.items.iter().format(", "))
     }
 }
 

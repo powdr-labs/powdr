@@ -1,8 +1,8 @@
 use std::{iter::once, ops::ControlFlow};
 
 use super::{
-    ArrayExpression, Expression, FunctionCall, FunctionDefinition, LambdaExpression, MatchArm,
-    PilStatement,
+    ArrayExpression, ArrayLiteral, Expression, FunctionCall, FunctionDefinition, LambdaExpression,
+    MatchArm, PilStatement,
 };
 
 /// Visits `expr` and all of its sub-expressions and returns true if `f` returns true on any of them.
@@ -111,6 +111,7 @@ where
             previsit_expression(e, f)?
         }
         Expression::Tuple(items)
+        | Expression::ArrayLiteral(ArrayLiteral { items })
         | Expression::FunctionCall(FunctionCall {
             id: _,
             arguments: items,
@@ -152,6 +153,7 @@ where
             previsit_expression_mut(e.as_mut(), f)?
         }
         Expression::Tuple(items)
+        | Expression::ArrayLiteral(ArrayLiteral { items })
         | Expression::FunctionCall(FunctionCall {
             arguments: items, ..
         }) => items
@@ -190,6 +192,7 @@ where
             postvisit_expression_mut(e.as_mut(), f)?
         }
         Expression::Tuple(items)
+        | Expression::ArrayLiteral(ArrayLiteral { items })
         | Expression::FunctionCall(FunctionCall {
             arguments: items, ..
         }) => items

@@ -66,6 +66,7 @@ pub enum Expression<T, Ref = ShiftedPolynomialReference<T>> {
     String(String),
     Tuple(Vec<Expression<T, Ref>>),
     LambdaExpression(LambdaExpression<T, Ref>),
+    ArrayLiteral(ArrayLiteral<T, Ref>),
     BinaryOperation(
         Box<Expression<T, Ref>>,
         BinaryOperator,
@@ -269,6 +270,11 @@ impl PolynomialReference {
 pub struct LambdaExpression<T, Ref = ShiftedPolynomialReference<T>> {
     pub params: Vec<String>,
     pub body: Box<Expression<T, Ref>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct ArrayLiteral<T, Ref = ShiftedPolynomialReference<T>> {
+    pub items: Vec<Expression<T, Ref>>,
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
