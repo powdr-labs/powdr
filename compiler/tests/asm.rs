@@ -14,6 +14,21 @@ fn verify_asm<T: FieldElement>(file_name: &str, inputs: Vec<T>) {
     verify_asm_string(&file_name, &contents, inputs)
 }
 
+fn gen_estark_proof(file_name: &str, inputs: Vec<GoldilocksField>) {
+    compiler::compile_pil_or_asm(
+        format!(
+            "{}/../test_data/asm/{file_name}",
+            env!("CARGO_MANIFEST_DIR")
+        )
+        .as_str(),
+        inputs,
+        &mktemp::Temp::new_dir().unwrap(),
+        true,
+        Some(backend::BackendType::EStark),
+    )
+    .unwrap();
+}
+
 #[cfg(feature = "halo2")]
 fn gen_halo2_proof(file_name: &str, inputs: Vec<Bn254Field>) {
     compiler::compile_pil_or_asm(
@@ -43,6 +58,7 @@ fn simple_sum_asm() {
     let i = [16, 4, 1, 2, 8, 5];
     verify_asm::<GoldilocksField>(f, slice_to_vec(&i));
     gen_halo2_proof(f, slice_to_vec(&i));
+    gen_estark_proof(f, slice_to_vec(&i));
 }
 
 #[test]
@@ -50,6 +66,7 @@ fn secondary_block_machine_add2() {
     let f = "secondary_block_machine_add2.asm";
     verify_asm::<GoldilocksField>(f, vec![]);
     gen_halo2_proof(f, vec![]);
+    gen_estark_proof(f, vec![]);
 }
 
 #[test]
@@ -58,6 +75,10 @@ fn palindrome() {
     let i = [7, 1, 7, 3, 9, 3, 7, 1];
     verify_asm::<GoldilocksField>(f, slice_to_vec(&i));
     gen_halo2_proof(f, slice_to_vec(&i));
+    // currently starky leads to
+    // thread 'functional_instructions' has overflowed its stack
+    // leave it out until that's fixed
+    //gen_estark_proof(f, slice_to_vec(&i));
 }
 
 #[test]
@@ -66,6 +87,7 @@ fn single_function_vm() {
     let i = [];
     verify_asm::<GoldilocksField>(f, slice_to_vec(&i));
     gen_halo2_proof(f, slice_to_vec(&i));
+    gen_estark_proof(f, slice_to_vec(&i));
 }
 
 #[test]
@@ -78,6 +100,7 @@ fn empty_vm() {
     let i = [];
     verify_asm::<GoldilocksField>(f, slice_to_vec(&i));
     gen_halo2_proof(f, slice_to_vec(&i));
+    gen_estark_proof(f, slice_to_vec(&i));
 }
 
 #[test]
@@ -86,6 +109,10 @@ fn vm_to_block_unique_interface() {
     let i = [];
     verify_asm::<GoldilocksField>(f, slice_to_vec(&i));
     gen_halo2_proof(f, slice_to_vec(&i));
+    // currently starky leads to
+    // thread 'functional_instructions' has overflowed its stack
+    // leave it out until that's fixed
+    //gen_estark_proof(f, slice_to_vec(&i));
 }
 
 #[test]
@@ -94,6 +121,7 @@ fn block_to_block() {
     let i = [];
     verify_asm::<GoldilocksField>(f, slice_to_vec(&i));
     gen_halo2_proof(f, slice_to_vec(&i));
+    gen_estark_proof(f, slice_to_vec(&i));
 }
 
 // Commented out until thibaut provides the "keccak.asm"
@@ -121,6 +149,7 @@ fn vm_to_block_multiple_interfaces() {
     let i = [];
     verify_asm::<GoldilocksField>(f, slice_to_vec(&i));
     gen_halo2_proof(f, slice_to_vec(&i));
+    gen_estark_proof(f, slice_to_vec(&i));
 }
 
 #[test]
@@ -130,6 +159,7 @@ fn vm_to_vm() {
     let i = [];
     verify_asm::<GoldilocksField>(f, slice_to_vec(&i));
     gen_halo2_proof(f, slice_to_vec(&i));
+    gen_estark_proof(f, slice_to_vec(&i));
 }
 
 #[test]
@@ -137,6 +167,7 @@ fn test_mem_read_write() {
     let f = "mem_read_write.asm";
     verify_asm::<GoldilocksField>(f, Default::default());
     gen_halo2_proof(f, Default::default());
+    gen_estark_proof(f, Default::default());
 }
 
 #[test]
@@ -145,6 +176,7 @@ fn test_multi_assign() {
     let i = [7];
     verify_asm::<GoldilocksField>(f, slice_to_vec(&i));
     gen_halo2_proof(f, slice_to_vec(&i));
+    gen_estark_proof(f, slice_to_vec(&i));
 }
 
 #[test]
@@ -153,6 +185,10 @@ fn test_bit_access() {
     let i = [20];
     verify_asm::<GoldilocksField>(f, slice_to_vec(&i));
     gen_halo2_proof(f, slice_to_vec(&i));
+    // currently starky leads to
+    // thread 'functional_instructions' has overflowed its stack
+    // leave it out until that's fixed
+    //gen_estark_proof(f, slice_to_vec(&i));
 }
 
 #[test]
@@ -161,6 +197,10 @@ fn functional_instructions() {
     let i = [20];
     verify_asm::<GoldilocksField>(f, slice_to_vec(&i));
     gen_halo2_proof(f, slice_to_vec(&i));
+    // currently starky leads to
+    // thread 'functional_instructions' has overflowed its stack
+    // leave it out until that's fixed
+    //gen_estark_proof(f, slice_to_vec(&i));
 }
 
 #[test]
@@ -168,6 +208,7 @@ fn full_pil_constant() {
     let f = "full_pil_constant.asm";
     verify_asm::<GoldilocksField>(f, Default::default());
     gen_halo2_proof(f, Default::default());
+    gen_estark_proof(f, Default::default());
 }
 
 #[test]
@@ -175,6 +216,7 @@ fn intermediate() {
     let f = "intermediate.asm";
     verify_asm::<GoldilocksField>(f, Default::default());
     gen_halo2_proof(f, Default::default());
+    gen_estark_proof(f, Default::default());
 }
 
 #[test]
@@ -182,6 +224,7 @@ fn intermediate_nested() {
     let f = "intermediate_nested.asm";
     verify_asm::<GoldilocksField>(f, Default::default());
     gen_halo2_proof(f, Default::default());
+    gen_estark_proof(f, Default::default());
 }
 
 #[test]
@@ -198,6 +241,7 @@ fn book() {
 
             verify_asm::<GoldilocksField>(f.to_str().unwrap(), slice_to_vec(&i));
             gen_halo2_proof(f.to_str().unwrap(), slice_to_vec(&i));
+            gen_estark_proof(f.to_str().unwrap(), slice_to_vec(&i));
         }
     }
 }
@@ -215,4 +259,5 @@ fn test_macros_in_instructions() {
     let f = "macros_in_instructions.asm";
     verify_asm::<GoldilocksField>(f, Default::default());
     gen_halo2_proof(f, Default::default());
+    gen_estark_proof(f, Default::default());
 }
