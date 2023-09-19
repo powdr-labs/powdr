@@ -70,9 +70,8 @@ impl Architecture for RiscvArchitecture {
             | "srli" | "srl" | "srai" | "seqz" | "snez" | "slt" | "slti" | "sltu" | "sltiu"
             | "sgtz" | "beq" | "beqz" | "bgeu" | "bltu" | "blt" | "bge" | "bltz" | "blez"
             | "bgtz" | "bgez" | "bne" | "bnez" | "jal" | "jalr" | "call" | "ecall" | "ebreak"
-            | "lw" | "lb" | "lbu" | "lhu" | "sw" | "sh" | "sb" | "nop" | "fence" | "fence.i" => {
-                false
-            }
+            | "lw" | "lb" | "lbu" | "lh" | "lhu" | "sw" | "sh" | "sb" | "nop" | "fence"
+            | "fence.i" => false,
             "j" | "jr" | "tail" | "ret" | "unimp" => true,
             _ => {
                 panic!("Unknown instruction: {instr}");
@@ -697,6 +696,18 @@ fn preamble() -> String {
         { Y_7bit } in { seven_bit };
     }
 
+    // Input is a 32 bit unsigned number. We check bit 15 and set all higher bits to that value.
+    instr sign_extend_16_bits Y -> X {
+        Y_15bit = X_b1 + Y_7bit * 0x100,
+
+        // wrap_bit is used as sign_bit here.
+        Y = Y_15bit + wrap_bit * 0x8000 + X_b3 * 0x10000 + X_b4 * 0x1000000,
+        X = Y_15bit + wrap_bit * 0xffff8000
+    }
+    constraints{
+        col witness Y_15bit;
+    }
+
     // Input is a 32 but unsigned number (0 <= Y < 2**32) interpreted as a two's complement numbers.
     // Returns a signed number (-2**31 <= X < 2**31).
     instr to_signed Y -> X {
@@ -1288,6 +1299,22 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
                     format!("{rd} <== mload();"),
                     format!("{rd} <== shr({rd}, 8 * tmp2);"),
                     format!("{rd} <== and({rd}, 0xff);"),
+                ],
+                rd,
+            )
+        }
+        "lh" => {
+            // Load two bytes and sign-extend.
+            // Assumes the address is a multiple of two.
+            let (rd, rs, off) = rro(args);
+            only_if_no_write_to_zero_vec(
+                vec![
+                    format!("tmp1 <== wrap({rs} + {off});"),
+                    "addr <== and(tmp1, 0xfffffffc);".to_string(),
+                    "tmp2 <== and(tmp1, 0x3);".to_string(),
+                    format!("{rd} <== mload();"),
+                    format!("{rd} <== shr({rd}, 8 * tmp2);"),
+                    format!("{rd} <== sign_extend_16_bits({rd});"),
                 ],
                 rd,
             )
