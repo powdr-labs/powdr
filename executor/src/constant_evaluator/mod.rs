@@ -1,7 +1,10 @@
 use std::{collections::HashMap, fmt::Display, rc::Rc};
 
 use itertools::Itertools;
-use powdr_ast::analyzed::{Analyzed, FunctionValueDefinition};
+use powdr_ast::analyzed::{
+    types::{Type, TypedExpression},
+    Analyzed, FunctionValueDefinition,
+};
 use powdr_number::{DegreeType, FieldElement};
 use powdr_pil_analyzer::evaluator::{self, Custom, EvalError, SymbolLookup, Value};
 use rayon::prelude::{IntoParallelIterator, ParallelIterator};
@@ -43,20 +46,25 @@ fn generate_values<T: FieldElement>(
     };
     // TODO we should maybe pre-compute some symbols here.
     let result = match body {
-        FunctionValueDefinition::Expression(e) => (0..degree)
-            .into_par_iter()
-            .map(|i| {
-                // We could try to avoid the first evaluation to be run for each iteration,
-                // but the data is not thread-safe.
-                let fun = evaluator::evaluate(e, &symbols).unwrap();
-                evaluator::evaluate_function_call(
-                    fun,
-                    vec![Rc::new(Value::Integer(num_bigint::BigInt::from(i)))],
-                    &symbols,
-                )
-                .and_then(|v| v.try_to_field_element())
-            })
-            .collect::<Result<Vec<_>, _>>(),
+        FunctionValueDefinition::Expression(TypedExpression { e, ty }) => {
+            if let Some(ty) = ty {
+                assert_eq!(ty, &Type::col())
+            };
+            (0..degree)
+                .into_par_iter()
+                .map(|i| {
+                    // We could try to avoid the first evaluation to be run for each iteration,
+                    // but the data is not thread-safe.
+                    let fun = evaluator::evaluate(e, &symbols).unwrap();
+                    evaluator::evaluate_function_call(
+                        fun,
+                        vec![Rc::new(Value::Integer(num_bigint::BigInt::from(i)))],
+                        &symbols,
+                    )
+                    .and_then(|v| v.try_to_field_element())
+                })
+                .collect::<Result<Vec<_>, _>>()
+        }
         FunctionValueDefinition::Array(values) => values
             .iter()
             .map(|elements| {
@@ -103,8 +111,8 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T, FixedColumnRef<'a>> for Symbols<'a
                 Value::Custom(FixedColumnRef { name })
             } else if let Some((_, value)) = self.analyzed.definitions.get(&name.to_string()) {
                 match value {
-                    Some(FunctionValueDefinition::Expression(value)) => {
-                        evaluator::evaluate(value, self)?
+                    Some(FunctionValueDefinition::Expression(TypedExpression { e, ty: _ })) => {
+                        evaluator::evaluate(e, self)?
                     }
                     Some(_) => Err(EvalError::Unsupported(
                         "Cannot evaluate arrays and queries.".to_string(),
@@ -268,7 +276,7 @@ mod test {
         let src = r#"
             constant %N = 8;
             namespace F(%N);
-            let minus_one = [|x| x - 1][0];
+            let minus_one: int -> int = |x| x - 1;
             pol constant EVEN(i) { 2 * minus_one(i) + 2 };
         "#;
         let analyzed = analyze_string(src);

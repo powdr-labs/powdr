@@ -509,4 +509,56 @@ namespace N(16);
         let formatted = analyze_string::<GoldilocksField>(input).to_string();
         assert_eq!(formatted, expected);
     }
+
+    #[test]
+    fn simple_type_resolution() {
+        let input = r#"namespace N(16);
+    let w: col[3 + 4];
+    "#;
+        let expected = r#"namespace N(16);
+    col witness w[7];
+"#;
+        let formatted = analyze_string::<GoldilocksField>(input).to_string();
+        assert_eq!(formatted, expected);
+    }
+
+    #[test]
+    fn complex_type_resolution() {
+        let input = r#"namespace N(16);
+    let f: int -> int = |i| i + 10;
+    let x: (int -> int), int -> int = |k, i| k(2**i);
+    let y: (int -> fe)[x(f, 2)];
+    let z: (((int -> int), int -> int)[x(|i| i, 3)], col) = ([x, x, x, x, x, x, x, x], y[0]);
+    "#;
+        let expected = r#"namespace N(16);
+    let f: int -> int = (|i| (i + 10));
+    let x: (int -> int), int -> int = (|k, i| k((2 ** i)));
+    col witness y[14];
+    let z: (((int -> int), int -> int)[8], col) = ([N.x, N.x, N.x, N.x, N.x, N.x, N.x, N.x], N.y[0]);
+"#;
+        let formatted = analyze_string::<GoldilocksField>(input).to_string();
+        assert_eq!(formatted, expected);
+    }
+
+    #[test]
+    fn expr_and_identity() {
+        let input = r#"namespace N(16);
+    let f: expr, expr -> constr[] = |x, y| [x == y];
+    let g: expr -> constr[1] = |x| [x == 0];
+    let x: col;
+    let y: col;
+    f(x, y);
+    g((x));
+    "#;
+        let expected = r#"namespace N(16);
+    let f: expr, expr -> constr[] = (|x, y| [(x == y)]);
+    let g: expr -> constr[1] = (|x| [(x == 0)]);
+    col witness x;
+    col witness y;
+    N.x = N.y;
+    N.x = 0;
+"#;
+        let formatted = analyze_string::<GoldilocksField>(input).to_string();
+        assert_eq!(formatted, expected);
+    }
 }
