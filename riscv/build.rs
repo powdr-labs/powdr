@@ -12,7 +12,10 @@ fn main() {
 }
 
 fn build_lalrpop() {
-    lalrpop::process_root().unwrap();
+    lalrpop::Configuration::new()
+        .emit_rerun_directives(true)
+        .process_current_dir()
+        .unwrap();
 }
 
 fn build_instruction_tests() {
