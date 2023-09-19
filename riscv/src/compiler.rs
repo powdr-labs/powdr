@@ -71,7 +71,9 @@ impl Architecture for RiscvArchitecture {
             | "sgtz" | "beq" | "beqz" | "bgeu" | "bltu" | "blt" | "bge" | "bltz" | "blez"
             | "bgtz" | "bgez" | "bne" | "bnez" | "jal" | "jalr" | "call" | "ecall" | "ebreak"
             | "lw" | "lb" | "lbu" | "lh" | "lhu" | "sw" | "sh" | "sb" | "nop" | "fence"
-            | "fence.i" | "amoadd.w.rl" | "amoadd.w" => false,
+            | "fence.i" | "amoadd.w.rl" | "amoadd.w" | "lr.w" | "lr.w.aq" | "sc.w" | "sc.w.rl" => {
+                false
+            }
             "j" | "jr" | "tail" | "ret" | "unimp" => true,
             _ => {
                 panic!("Unknown instruction: {instr}");
@@ -537,6 +539,7 @@ fn preamble() -> String {
     reg tmp1;
     reg tmp2;
     reg tmp3;
+    reg lr_sc_reservation;
 "#
     .to_string()
         + &(0..32)
@@ -623,6 +626,9 @@ fn preamble() -> String {
 
     instr branch_if_nonzero X, l: label { pc' = (1 - XIsZero) * l + XIsZero * (pc + 1) }
     instr branch_if_zero X, l: label { pc' = XIsZero * l + (1 - XIsZero) * (pc + 1) }
+
+    // Skips Y instructions if X is zero
+    instr skip_if_zero X, Y { pc' = pc + 1 + (XIsZero * Y) }
 
     // input X is required to be the difference of two 32-bit unsigend values.
     // i.e. -2**32 < X < 2**32
@@ -1419,6 +1425,40 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
                 format!("tmp1 <== wrap({rd} + {rs2});"),
                 format!("mstore tmp1;"),
             ]
+        }
+
+        insn if insn.starts_with("lr.w") => {
+            // Very similar to "lw":
+            let (rd, rs, off) = rro(args);
+            assert_eq!(off, 0);
+            // TODO misaligned access should raise misaligned address exceptions
+            only_if_no_write_to_zero_vec(
+                vec![
+                    format!("addr <=X= {rs};"),
+                    format!("{rd} <== mload();"),
+                    // For consistency sake, I tried to use format!() here, but
+                    // the lint doesn't like it
+                    "lr_sc_reservation <=X= 1;".into(),
+                ],
+                rd,
+            )
+        }
+
+        insn if insn.starts_with("sc.w") => {
+            // Some overlap with "sw", but also writes 0 to rd on success
+            let (rd, rs2, rs1, off) = rrro(args);
+            assert_eq!(off, 0);
+            // TODO: misaligned access should raise misaligned address exceptions
+            let mut statements = vec![
+                "skip_if_zero lr_sc_reservation, 2;".into(),
+                format!("addr <=X= {rs1};"),
+                format!("mstore {rs2};"),
+            ];
+            if !rd.is_zero() {
+                statements.push(format!("{rd} <=X= (1 - lr_sc_reservation);"));
+            }
+            statements.push("lr_sc_reservation <=X= 0;".into());
+            statements
         }
 
         _ => {
