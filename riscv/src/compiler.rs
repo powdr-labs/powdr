@@ -1315,23 +1315,6 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
                 rd,
             )
         }
-        "lh" => {
-            // Load two bytes and sign-extend.
-            // Assumes the address is a multiple of two.
-            let (rd, rs, off) = rro(args);
-            only_if_no_write_to_zero_vec(
-                vec![
-                    format!("tmp1 <== wrap({rs} + {off});"),
-                    "addr <== and(tmp1, 0xfffffffc);".to_string(),
-                    "tmp2 <== and(tmp1, 0x3);".to_string(),
-                    format!("{rd} <== mload();"),
-                    format!("{rd} <== shr({rd}, 8 * tmp2);"),
-                    format!("{rd} <== and({rd}, 0x0000ffff);"),
-                    format!("{rd} <== sign_extend_16_bits({rd});"),
-                ],
-                rd,
-            )
-        }
         "lb" => {
             // load byte and sign-extend. the memory is little-endian.
             let (rd, rs, off) = rro(args);
@@ -1358,6 +1341,23 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
                     format!("{rd} <== mload();"),
                     format!("{rd} <== shr({rd}, 8 * tmp2);"),
                     format!("{rd} <== and({rd}, 0xff);"),
+                ],
+                rd,
+            )
+        }
+        "lh" => {
+            // Load two bytes and sign-extend.
+            // Assumes the address is a multiple of two.
+            let (rd, rs, off) = rro(args);
+            only_if_no_write_to_zero_vec(
+                vec![
+                    format!("tmp1 <== wrap({rs} + {off});"),
+                    "addr <== and(tmp1, 0xfffffffc);".to_string(),
+                    "tmp2 <== and(tmp1, 0x3);".to_string(),
+                    format!("{rd} <== mload();"),
+                    format!("{rd} <== shr({rd}, 8 * tmp2);"),
+                    format!("{rd} <== and({rd}, 0x0000ffff);"),
+                    format!("{rd} <== sign_extend_16_bits({rd});"),
                 ],
                 rd,
             )
