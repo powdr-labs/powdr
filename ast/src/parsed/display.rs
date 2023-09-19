@@ -312,8 +312,16 @@ impl<T: Display> Display for PilStatement<T> {
             PilStatement::Namespace(_, name, poly_length) => {
                 write!(f, "namespace {name}({poly_length});")
             }
-            PilStatement::LetStatement(_, name, None) => write!(f, "let {name};"),
-            PilStatement::LetStatement(_, name, Some(expr)) => write!(f, "let {name} = {expr};"),
+            PilStatement::LetStatement(_, name, type_name, value) => {
+                write!(f, "let {name}")?;
+                if let Some(type_name) = type_name {
+                    write!(f, ": {type_name}")?;
+                }
+                if let Some(value) = &value {
+                    write!(f, " = {value}")?;
+                }
+                write!(f, ";")
+            }
             PilStatement::PolynomialDefinition(_, name, value) => {
                 write!(f, "pol {name} = {value};")
             }
@@ -551,6 +559,68 @@ impl Display for UnaryOperator {
                 UnaryOperator::Plus => "+",
                 UnaryOperator::LogicalNot => "!",
             }
+        )
+    }
+}
+
+impl<E: Display> Display for TypeName<E> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        match self {
+            TypeName::Int => write!(f, "int"),
+            TypeName::Fe => write!(f, "fe"),
+            TypeName::Col => write!(f, "col"),
+            TypeName::Array(array) => write!(f, "{array}"),
+            TypeName::Tuple(tuple) => write!(f, "{tuple}"),
+            TypeName::Function(fun) => write!(f, "{fun}"),
+        }
+    }
+}
+
+impl<E: Display> Display for ArrayTypeName<E> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        if self.base.needs_parentheses() {
+            write!(f, "({})", self.base)
+        } else {
+            write!(f, "{}", self.base)
+        }?;
+        write!(
+            f,
+            "[{}]",
+            self.length
+                .as_ref()
+                .map(|l| l.to_string())
+                .unwrap_or_default()
+        )
+    }
+}
+
+impl<E: Display> Display for TupleTypeName<E> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(f, "({})", self.items.iter().format(", "))
+    }
+}
+
+impl<E: Display> Display for FunctionTypeName<E> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(
+            f,
+            "{}->{}",
+            self.param
+                .as_ref()
+                .map(|x| if x.needs_parentheses() {
+                    format!("({x}) ")
+                } else {
+                    format!("{x} ")
+                })
+                .unwrap_or_default(),
+            self.value
+                .as_ref()
+                .map(|x| if x.needs_parentheses() {
+                    format!(" ({x})")
+                } else {
+                    format!(" {x}")
+                })
+                .unwrap_or_default()
         )
     }
 }

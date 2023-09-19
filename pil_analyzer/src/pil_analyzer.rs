@@ -191,7 +191,7 @@ impl<T: FieldElement> PILContext<T> {
             PilStatement::ConstantDefinition(_, name, value) => {
                 self.handle_constant_definition(name, value)
             }
-            PilStatement::LetStatement(start, name, None) => {
+            PilStatement::LetStatement(start, name, _type_name, None) => {
                 // Handle all let statements without assignment as witness column declarations for now.
                 self.handle_polynomial_definition(
                     self.to_source_ref(start),
@@ -201,7 +201,7 @@ impl<T: FieldElement> PILContext<T> {
                     None,
                 );
             }
-            PilStatement::LetStatement(start, name, Some(value)) => {
+            PilStatement::LetStatement(start, name, _type_name, Some(value)) => {
                 // Determine this is a fixed column or a constant depending on the structure
                 // of the value.
                 // Later, this should depend on the type.

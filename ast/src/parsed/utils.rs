@@ -50,8 +50,10 @@ where
         | PilStatement::PolynomialDefinition(_, _, e)
         | PilStatement::PolynomialIdentity(_, e)
         | PilStatement::PublicDeclaration(_, _, _, e)
-        | PilStatement::ConstantDefinition(_, _, e)
-        | PilStatement::LetStatement(_, _, Some(e)) => postvisit_expression_mut(e, f),
+        | PilStatement::ConstantDefinition(_, _, e) => postvisit_expression_mut(e, f),
+        // TODO we are not visiting the expressions inside the type name here.
+        // This needs to be fixed.
+        PilStatement::LetStatement(_, _, _type_name, Some(e)) => postvisit_expression_mut(e, f),
 
         PilStatement::PolynomialConstantDefinition(_, _, fundef)
         | PilStatement::PolynomialCommitDeclaration(_, _, Some(fundef)) => match fundef {
@@ -65,7 +67,7 @@ where
         | PilStatement::Include(_, _)
         | PilStatement::PolynomialConstantDeclaration(_, _)
         | PilStatement::MacroDefinition(_, _, _, _, _)
-        | PilStatement::LetStatement(_, _, None) => ControlFlow::Continue(()),
+        | PilStatement::LetStatement(_, _, _, None) => ControlFlow::Continue(()),
     }
 }
 

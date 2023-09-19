@@ -15,7 +15,12 @@ pub enum PilStatement<T> {
     Include(usize, String),
     /// Name of namespace and polynomial degree (constant)
     Namespace(usize, String, Expression<T>),
-    LetStatement(usize, String, Option<Expression<T>>),
+    LetStatement(
+        usize,
+        String,
+        Option<TypeName<Expression<T>>>,
+        Option<Expression<T>>,
+    ),
     PolynomialDefinition(usize, String, Expression<T>),
     PublicDeclaration(
         usize,
@@ -418,4 +423,49 @@ impl<T> ArrayExpression<T> {
             }
         }
     }
+}
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
+pub enum TypeName<E> {
+    /// Integer (arbitrary precision)
+    Int,
+    /// Field element (unspecified field)
+    Fe,
+    /// Column, shorthand for "int -> fe"
+    Col,
+    Array(ArrayTypeName<E>),
+    Tuple(TupleTypeName<E>),
+    Function(FunctionTypeName<E>),
+}
+
+impl<E> TypeName<E> {
+    /// Returns true if the type name needs parentheses during formatting
+    /// when used inside a complex expression.
+    pub fn needs_parentheses(&self) -> bool {
+        match self {
+            TypeName::Int
+            | TypeName::Fe
+            | TypeName::Col
+            | TypeName::Array(_)
+            | TypeName::Tuple(_) => false,
+            TypeName::Function(_) => true,
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
+pub struct ArrayTypeName<E> {
+    pub base: Box<TypeName<E>>,
+    pub length: Option<E>,
+}
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
+pub struct TupleTypeName<E> {
+    pub items: Vec<TypeName<E>>,
+}
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
+pub struct FunctionTypeName<E> {
+    pub param: Option<Box<TypeName<E>>>,
+    pub value: Option<Box<TypeName<E>>>,
 }

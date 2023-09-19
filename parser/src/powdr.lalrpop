@@ -74,7 +74,7 @@ Namespace: PilStatement<T> = {
 }
 
 LetStatement: PilStatement<T> = {
-    <@L> "let" <Identifier> <( "=" <Expression> )?> => PilStatement::LetStatement(<>)
+    <@L> "let" <Identifier> <(":" <TypeName>)?> <( "=" <Expression> )?> => PilStatement::LetStatement(<>)
 }
 
 ConstantDefinition: PilStatement<T> = {
@@ -506,6 +506,31 @@ MatchArm: MatchArm<T> = {
 MatchPattern: MatchPattern<T> = {
     "_" => MatchPattern::CatchAll,
     Expression => MatchPattern::Pattern(<>),
+}
+
+// ---------------------------- Type Names -----------------------------
+
+TypeName: TypeName<Expression<T>> = {
+    <param:TypeNameTermBox?> "->" <value:TypeNameTermBox?> => TypeName::Function(FunctionTypeName{<>}),
+    TypeNameTerm
+}
+
+TypeNameTermList: Vec<TypeName<Expression<T>>> = {
+    => vec![],
+    <mut list:( <TypeNameTerm> "," )*> <end:TypeNameTerm>  => { list.push(end); list }
+}
+
+TypeNameTermBox: Box<TypeName<Expression<T>>> = {
+    TypeNameTerm => Box::new(<>)
+}
+
+TypeNameTerm: TypeName<Expression<T>> = {
+    "int" => TypeName::Int,
+    "fe" => TypeName::Fe,
+    "col" => TypeName::Col,
+    <base:TypeNameTerm> "[" <length:Expression?> "]" => TypeName::Array(ArrayTypeName{base: Box::new(base), length}),
+    "(" <mut items:( <TypeName> "," )+> <end:TypeName> ")" => { items.push(end); TypeName::Tuple(TupleTypeName{items}) },
+    "(" <TypeName> ")",
 }
 
 // ---------------------------- Terminals -----------------------------
