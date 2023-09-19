@@ -6,6 +6,7 @@ use std::{collections::HashMap, fmt::Display, rc::Rc};
 use itertools::Itertools;
 use powdr_ast::{
     analyzed::{
+        types::{Type, TypedExpression},
         AlgebraicExpression, AlgebraicReference, Analyzed, Expression, FunctionValueDefinition,
         Identity, IdentityKind, PolynomialReference, PolynomialType, PublicDeclaration, Reference,
         StatementIdentifier, Symbol, SymbolKind,
@@ -58,9 +59,10 @@ pub fn condense<T: FieldElement>(
                 let Some(FunctionValueDefinition::Expression(e)) = definition else {
                     panic!("Expected expression")
                 };
+                assert!(e.ty == None || e.ty == Some(Type::col()));
                 Some((
                     name.clone(),
-                    (symbol.clone(), condenser.condense_expression(e)),
+                    (symbol.clone(), condenser.condense_expression(&e.e)),
                 ))
             } else {
                 None
@@ -231,7 +233,7 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T, Condensate<T>> for &'a Condenser<T
             }
         } else {
             match value {
-                Some(FunctionValueDefinition::Expression(value)) => {
+                Some(FunctionValueDefinition::Expression(TypedExpression { e: value, ty: _ })) => {
                     evaluator::evaluate(value, self)?
                 }
                 _ => Err(EvalError::Unsupported(
@@ -278,8 +280,9 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T, Condensate<T>> for &'a Condenser<T
                 };
 
                 match self.symbols[&name].1.as_ref() {
-                    Some(FunctionValueDefinition::Expression(v)) => {
-                        let function = evaluate(v, self)?;
+                    Some(FunctionValueDefinition::Expression(TypedExpression { e, ty: _ })) => {
+                        // TODO do something with the type?
+                        let function = evaluate(e, self)?;
                         evaluate_function_call(function, arguments, self)
                     }
                     None => Err(EvalError::SymbolNotFound(format!(
@@ -390,7 +393,7 @@ impl<T: FieldElement> Custom for Condensate<T> {
     fn type_name(&self) -> String {
         match self {
             Condensate::Expression(_) => "expr".to_string(),
-            Condensate::Identity(_, _) => "identity".to_string(),
+            Condensate::Identity(_, _) => "constr".to_string(),
         }
     }
 }

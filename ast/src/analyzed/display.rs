@@ -10,7 +10,10 @@ use std::{
 
 use itertools::Itertools;
 
-use self::parsed::asm::{AbsoluteSymbolPath, SymbolPath};
+use self::{
+    parsed::asm::{AbsoluteSymbolPath, SymbolPath},
+    types::{ArrayType, FunctionType, TupleType, Type},
+};
 
 use super::*;
 
@@ -49,6 +52,8 @@ impl<T: Display> Display for Analyzed<T> {
                                 if let Some(length) = symbol.length {
                                     write!(f, "[{length}]")?;
                                 }
+                                // TODO do not print the type again if we already used `length` here.
+                                // actually this should never print the type.
                                 if let Some(value) = definition {
                                     writeln!(f, "{value};")?
                                 } else {
@@ -57,11 +62,18 @@ impl<T: Display> Display for Analyzed<T> {
                             }
                             SymbolKind::Constant() => {
                                 let indentation = if is_local { "    " } else { "" };
-                                writeln!(
-                                    f,
-                                    "{indentation}constant {name}{};",
-                                    definition.as_ref().unwrap()
-                                )?;
+                                let Some(FunctionValueDefinition::Expression(TypedExpression {
+                                    e,
+                                    ty: Some(Type::Fe),
+                                })) = &definition
+                                else {
+                                    panic!(
+                                        "Invalid constant value: {}",
+                                        definition.as_ref().unwrap()
+                                    );
+                                };
+
+                                writeln!(f, "{indentation}constant {name} = {e};",)?;
                             }
                             SymbolKind::Other() => {
                                 write!(f, "    let {name}")?;
@@ -108,7 +120,17 @@ impl<T: Display> Display for FunctionValueDefinition<T> {
                 write!(f, " = {}", items.iter().format(" + "))
             }
             FunctionValueDefinition::Query(e) => format_outer_function(e, Some("query"), f),
-            FunctionValueDefinition::Expression(e) => format_outer_function(e, None, f),
+            FunctionValueDefinition::Expression(TypedExpression { e, ty: None }) => {
+                format_outer_function(e, None, f)
+            }
+            FunctionValueDefinition::Expression(TypedExpression { e, ty: Some(ty) })
+                if *ty == Type::col() =>
+            {
+                format_outer_function(e, None, f)
+            }
+            FunctionValueDefinition::Expression(TypedExpression { e, ty: Some(ty) }) => {
+                write!(f, ": {ty} = {e}")
+            }
         }
     }
 }
@@ -247,4 +269,66 @@ impl Display for PolynomialReference {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(f, "{}", self.name,)
     }
+}
+
+impl Display for Type {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        match self {
+            Type::Bool => write!(f, "bool"),
+            Type::Int => write!(f, "int"),
+            Type::Fe => write!(f, "fe"),
+            Type::String => write!(f, "string"),
+            Type::Expr => write!(f, "expr"),
+            Type::Constr => write!(f, "constr"),
+            Type::Array(ar) => write!(f, "{ar}"),
+            Type::Tuple(tu) => write!(f, "{tu}"),
+            Type::Function(fun) => write!(f, "{fun}"),
+        }
+    }
+}
+
+impl Display for ArrayType {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        let length = self.length.iter().format("");
+        if self.base.needs_parentheses() {
+            write!(f, "({})[{length}]", self.base)
+        } else {
+            write!(f, "{}[{length}]", self.base)
+        }
+    }
+}
+
+impl Display for TupleType {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(f, "({})", format_list_of_types(&self.items))
+    }
+}
+
+impl Display for FunctionType {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        if *self == Self::col() {
+            write!(f, "col")
+        } else {
+            write!(
+                f,
+                "{} -> {}",
+                format_list_of_types(&self.params),
+                self.value
+            )
+        }
+    }
+}
+
+fn format_list_of_types(types: &[Type]) -> String {
+    types
+        .iter()
+        .map(|x| {
+            if x.needs_parentheses() {
+                format!("({x})")
+            } else {
+                x.to_string()
+            }
+        })
+        .format(", ")
+        .to_string()
 }

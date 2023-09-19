@@ -24,7 +24,12 @@ pub enum PilStatement<T> {
     Include(SourceRef, String),
     /// Name of namespace and polynomial degree (constant)
     Namespace(SourceRef, SymbolPath, Expression<T>),
-    LetStatement(SourceRef, String, Option<Expression<T>>),
+    LetStatement(
+        SourceRef,
+        String,
+        Option<TypeName<Expression<T>>>,
+        Option<Expression<T>>,
+    ),
     PolynomialDefinition(SourceRef, String, Expression<T>),
     PublicDeclaration(
         SourceRef,
@@ -68,7 +73,7 @@ impl<T> PilStatement<T> {
             | PilStatement::PolynomialConstantDefinition(_, name, _)
             | PilStatement::ConstantDefinition(_, name, _)
             | PilStatement::PublicDeclaration(_, name, _, _, _)
-            | PilStatement::LetStatement(_, name, _) => Box::new(once(name)),
+            | PilStatement::LetStatement(_, name, _, _) => Box::new(once(name)),
             PilStatement::PolynomialConstantDeclaration(_, polynomials)
             | PilStatement::PolynomialCommitDeclaration(_, polynomials, _) => {
                 Box::new(polynomials.iter().map(|p| &p.name))
@@ -98,8 +103,11 @@ impl<T> PilStatement<T> {
             | PilStatement::Namespace(_, _, e)
             | PilStatement::PolynomialDefinition(_, _, e)
             | PilStatement::PolynomialIdentity(_, e)
-            | PilStatement::ConstantDefinition(_, _, e)
-            | PilStatement::LetStatement(_, _, Some(e)) => Box::new(once(e)),
+            | PilStatement::ConstantDefinition(_, _, e) => Box::new(once(e)),
+
+            PilStatement::LetStatement(_, _, type_name, value) => {
+                Box::new(type_name.iter().flat_map(|t| t.expressions()).chain(value))
+            }
 
             PilStatement::PublicDeclaration(_, _, _, i, e) => Box::new(i.iter().chain(once(e))),
 
@@ -107,8 +115,7 @@ impl<T> PilStatement<T> {
             | PilStatement::PolynomialCommitDeclaration(_, _, Some(fundef)) => fundef.expressions(),
             PilStatement::PolynomialCommitDeclaration(_, _, None)
             | PilStatement::Include(_, _)
-            | PilStatement::PolynomialConstantDeclaration(_, _)
-            | PilStatement::LetStatement(_, _, None) => Box::new(empty()),
+            | PilStatement::PolynomialConstantDeclaration(_, _) => Box::new(empty()),
         }
     }
 
@@ -126,8 +133,14 @@ impl<T> PilStatement<T> {
             | PilStatement::Namespace(_, _, e)
             | PilStatement::PolynomialDefinition(_, _, e)
             | PilStatement::PolynomialIdentity(_, e)
-            | PilStatement::ConstantDefinition(_, _, e)
-            | PilStatement::LetStatement(_, _, Some(e)) => Box::new(once(e)),
+            | PilStatement::ConstantDefinition(_, _, e) => Box::new(once(e)),
+
+            PilStatement::LetStatement(_, _, type_name, value) => Box::new(
+                type_name
+                    .iter_mut()
+                    .flat_map(|t| t.expressions_mut())
+                    .chain(value),
+            ),
 
             PilStatement::PublicDeclaration(_, _, _, i, e) => Box::new(i.iter_mut().chain(once(e))),
 
@@ -137,8 +150,7 @@ impl<T> PilStatement<T> {
             }
             PilStatement::PolynomialCommitDeclaration(_, _, None)
             | PilStatement::Include(_, _)
-            | PilStatement::PolynomialConstantDeclaration(_, _)
-            | PilStatement::LetStatement(_, _, None) => Box::new(empty()),
+            | PilStatement::PolynomialConstantDeclaration(_, _) => Box::new(empty()),
         }
     }
 }
@@ -494,5 +506,138 @@ impl<T> ArrayExpression<T> {
                 left.constant_length() + right.constant_length()
             }
         }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
+pub enum TypeName<E> {
+    /// Boolean
+    Bool,
+    /// Integer (arbitrary precision)
+    Int,
+    /// Field element (unspecified field)
+    Fe,
+    /// String
+    String,
+    /// Column, shorthand for "int -> fe"
+    Col,
+    /// (Algebraic) expression
+    Expr,
+    /// Polynomial identity
+    Constr,
+    Array(ArrayTypeName<E>),
+    Tuple(TupleTypeName<E>),
+    Function(FunctionTypeName<E>),
+}
+
+impl<E> TypeName<E> {
+    /// Returns true if the type name needs parentheses during formatting
+    /// when used inside a complex expression.
+    pub fn needs_parentheses(&self) -> bool {
+        match self {
+            TypeName::Bool
+            | TypeName::Int
+            | TypeName::Fe
+            | TypeName::String
+            | TypeName::Col
+            | TypeName::Expr
+            | TypeName::Constr
+            | TypeName::Array(_)
+            | TypeName::Tuple(_) => false,
+            TypeName::Function(_) => true,
+        }
+    }
+
+    /// Returns an iterator over all (top-level) expressions in this type name.
+    pub fn expressions(&self) -> Box<dyn Iterator<Item = &E> + '_> {
+        match self {
+            TypeName::Bool
+            | TypeName::Int
+            | TypeName::Fe
+            | TypeName::String
+            | TypeName::Col
+            | TypeName::Expr
+            | TypeName::Constr => Box::new(empty()),
+            TypeName::Array(a) => a.expressions(),
+            TypeName::Tuple(t) => t.expressions(),
+            TypeName::Function(f) => f.expressions(),
+        }
+    }
+
+    /// Returns an iterator over all (top-level) expressions in this type name.
+    pub fn expressions_mut(&mut self) -> Box<dyn Iterator<Item = &mut E> + '_> {
+        match self {
+            TypeName::Bool
+            | TypeName::Int
+            | TypeName::Fe
+            | TypeName::String
+            | TypeName::Col
+            | TypeName::Expr
+            | TypeName::Constr => Box::new(empty()),
+            TypeName::Array(a) => a.expressions_mut(),
+            TypeName::Tuple(t) => t.expressions_mut(),
+            TypeName::Function(f) => f.expressions_mut(),
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
+pub struct ArrayTypeName<E> {
+    pub base: Box<TypeName<E>>,
+    pub length: Option<E>,
+}
+
+impl<E> ArrayTypeName<E> {
+    /// Returns an iterator over all (top-level) expressions in this type name.
+    pub fn expressions(&self) -> Box<dyn Iterator<Item = &E> + '_> {
+        Box::new(self.base.expressions().chain(self.length.iter()))
+    }
+    /// Returns an iterator over all (top-level) expressions in this type name.
+    pub fn expressions_mut(&mut self) -> Box<dyn Iterator<Item = &mut E> + '_> {
+        Box::new(self.base.expressions_mut().chain(self.length.iter_mut()))
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
+pub struct TupleTypeName<E> {
+    pub items: Vec<TypeName<E>>,
+}
+
+impl<E> TupleTypeName<E> {
+    /// Returns an iterator over all (top-level) expressions in this type name.
+    pub fn expressions(&self) -> Box<dyn Iterator<Item = &E> + '_> {
+        Box::new(self.items.iter().flat_map(|t| t.expressions()))
+    }
+    /// Returns an iterator over all (top-level) expressions in this type name.
+    pub fn expressions_mut(&mut self) -> Box<dyn Iterator<Item = &mut E> + '_> {
+        Box::new(self.items.iter_mut().flat_map(|t| t.expressions_mut()))
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
+pub struct FunctionTypeName<E> {
+    pub params: Vec<TypeName<E>>,
+    pub value: Box<TypeName<E>>,
+}
+
+impl<E> FunctionTypeName<E> {
+    /// Returns an iterator over all (top-level) expressions in this type name.
+    pub fn expressions(&self) -> Box<dyn Iterator<Item = &E> + '_> {
+        Box::new(
+            self.params
+                .iter()
+                .flat_map(|t| t.expressions())
+                // TODO fix
+                .chain(once(&self.value).flat_map(|v| v.expressions())),
+        )
+    }
+    /// Returns an iterator over all (top-level) expressions in this type name.
+    pub fn expressions_mut(&mut self) -> Box<dyn Iterator<Item = &mut E> + '_> {
+        Box::new(
+            self.params
+                .iter_mut()
+                .flat_map(|t| t.expressions_mut())
+                .chain(once(&mut self.value).flat_map(|v| v.expressions_mut())),
+        )
     }
 }

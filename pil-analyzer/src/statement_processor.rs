@@ -1,8 +1,9 @@
 use std::collections::{BTreeMap, HashMap};
 use std::marker::PhantomData;
 
+use powdr_ast::analyzed::types::{ArrayType, Type, TypedExpression};
 use powdr_ast::parsed::{
-    self, FunctionDefinition, PilStatement, PolynomialName, SelectedExpressions,
+    self, FunctionDefinition, PilStatement, PolynomialName, SelectedExpressions, TypeName,
 };
 use powdr_ast::SourceRef;
 use powdr_number::{DegreeType, FieldElement};
@@ -98,7 +99,7 @@ where
             | PilStatement::PolynomialConstantDefinition(_, name, _)
             | PilStatement::ConstantDefinition(_, name, _)
             | PilStatement::PublicDeclaration(_, name, _, _, _)
-            | PilStatement::LetStatement(_, name, _) => vec![name.clone()],
+            | PilStatement::LetStatement(_, name, _, _) => vec![name.clone()],
             PilStatement::PolynomialConstantDeclaration(_, polynomials)
             | PilStatement::PolynomialCommitDeclaration(_, polynomials, _) => {
                 polynomials.iter().map(|p| p.name.clone()).collect()
@@ -128,8 +129,8 @@ where
                 .handle_symbol_definition(
                     source,
                     name,
-                    None,
                     SymbolKind::Poly(PolynomialType::Intermediate),
+                    Some(Type::col()),
                     Some(FunctionDefinition::Expression(value)),
                 ),
             PilStatement::PublicDeclaration(source, name, polynomial, array_index, index) => {
@@ -142,8 +143,8 @@ where
                 .handle_symbol_definition(
                     source,
                     name,
-                    None,
                     SymbolKind::Poly(PolynomialType::Constant),
+                    Some(Type::col()),
                     Some(definition),
                 ),
             PilStatement::PolynomialCommitDeclaration(source, polynomials, None) => {
@@ -155,12 +156,14 @@ where
                 Some(definition),
             ) => {
                 assert!(polynomials.len() == 1);
-                let name = polynomials.pop().unwrap();
+                let (name, ty) =
+                    self.name_and_type_from_polynomial_name(polynomials.pop().unwrap());
+
                 self.handle_symbol_definition(
                     source,
-                    name.name,
-                    name.array_size,
+                    name,
                     SymbolKind::Poly(PolynomialType::Committed),
+                    ty,
                     Some(definition),
                 )
             }
@@ -172,24 +175,53 @@ where
                 self.handle_symbol_definition(
                     source,
                     name,
-                    None,
                     SymbolKind::Constant(),
+                    Some(Type::Fe),
                     Some(FunctionDefinition::Expression(value)),
                 )
             }
-            PilStatement::LetStatement(source, name, value) => {
-                self.handle_generic_definition(source, name, value)
+            PilStatement::LetStatement(source, name, type_name, value) => {
+                self.handle_generic_definition(source, name, type_name, value)
             }
             _ => self.handle_identity_statement(statement),
         }
+    }
+
+    fn name_and_type_from_polynomial_name(
+        &mut self,
+        PolynomialName { name, array_size }: PolynomialName<T>,
+    ) -> (String, Option<Type>) {
+        let ty = Some(match array_size {
+            None => Type::col(),
+            Some(len) => {
+                let length = self
+                    .evaluate_expression(len)
+                    .map_err(|e| {
+                        panic!("Error evaluating array length of witness column {name}:\n{e}")
+                    })
+                    .map(|length| length.to_degree())
+                    .ok();
+                Type::Array(ArrayType {
+                    base: Box::new(Type::col()),
+                    length,
+                })
+            }
+        });
+        (name, ty)
     }
 
     fn handle_generic_definition(
         &mut self,
         source: SourceRef,
         name: String,
-        value: Option<::powdr_ast::parsed::Expression<T>>,
+        type_name: Option<TypeName<parsed::Expression<T>>>,
+        value: Option<parsed::Expression<T>>,
     ) -> Vec<PILItem<T>> {
+        let ty = type_name.map(|n|
+            self.resolve_type_name(n.clone())
+                .map_err(|e| panic!("Error evaluating expressions in type name \"{n}\" to reduce it to a type:\n{e})"))
+                .unwrap()
+        );
         // Determine whether this is a fixed column, a constant or something else
         // depending on the structure of the value and if we can evaluate
         // it to a single number.
@@ -197,30 +229,50 @@ where
         match value {
             None => {
                 // No value provided => treat it as a witness column.
+                let ty = ty
+                    .map(|t| {
+                        if let Type::Array(ArrayType { base, length }) = &t {
+                            assert!(length.is_some());
+                            assert_eq!(base.as_ref(), &Type::col());
+                            t
+                        } else {
+                            assert_eq!(t, Type::col());
+                            t
+                        }
+                    })
+                    .unwrap_or(Type::col());
                 self.handle_symbol_definition(
                     source,
                     name,
-                    None,
                     SymbolKind::Poly(PolynomialType::Committed),
+                    Some(ty),
                     None,
                 )
             }
             Some(value) => {
-                let symbol_kind = if matches!(&value, parsed::Expression::LambdaExpression(lambda) if lambda.params.len() == 1)
+                // TODO if we have proper type deduction here in the future, we can rely only on the type.
+                let (ty, symbol_kind) = if ty == Some(Type::col())
+                    || (ty == None
+                        && matches!(&value, parsed::Expression::LambdaExpression(lambda) if lambda.params.len() == 1))
                 {
-                    SymbolKind::Poly(PolynomialType::Constant)
-                } else if self.evaluate_expression(value.clone()).is_ok() {
+                    (
+                        Some(Type::col()),
+                        SymbolKind::Poly(PolynomialType::Constant),
+                    )
+                } else if ty == Some(Type::Fe)
+                    || (ty == None && self.evaluate_expression(value.clone()).is_ok())
+                {
                     // Value evaluates to a constant number => treat it as a constant
-                    SymbolKind::Constant()
+                    (Some(Type::Fe), SymbolKind::Constant())
                 } else {
                     // Otherwise, treat it as "generic definition"
-                    SymbolKind::Other()
+                    (ty, SymbolKind::Other())
                 };
                 self.handle_symbol_definition(
                     source,
                     name,
-                    None,
                     symbol_kind,
+                    ty,
                     Some(FunctionDefinition::Expression(value)),
                 )
             }
@@ -286,12 +338,13 @@ where
     ) -> Vec<PILItem<T>> {
         polynomials
             .into_iter()
-            .flat_map(|PolynomialName { name, array_size }| {
+            .flat_map(|poly_name| {
+                let (name, ty) = self.name_and_type_from_polynomial_name(poly_name);
                 self.handle_symbol_definition(
                     source.clone(),
                     name,
-                    array_size,
                     SymbolKind::Poly(polynomial_type),
+                    ty,
                     None,
                 )
             })
@@ -302,17 +355,20 @@ where
         &mut self,
         source: SourceRef,
         name: String,
-        array_size: Option<::powdr_ast::parsed::Expression<T>>,
         symbol_kind: SymbolKind,
+        ty: Option<Type>,
         value: Option<FunctionDefinition<T>>,
     ) -> Vec<PILItem<T>> {
-        let have_array_size = array_size.is_some();
-        let length = array_size
-            .map(|l| self.evaluate_expression(l).unwrap())
-            .map(|l| l.to_degree());
-        if length.is_some() {
-            assert!(value.is_none());
-        }
+        let length = ty.as_ref().and_then(|t| {
+            if let Type::Array(ArrayType { length, base: _ }) = t {
+                if length.is_none() && symbol_kind != SymbolKind::Other() {
+                    panic!("Explicit array length required for column {name}.");
+                }
+                *length
+            } else {
+                None
+            }
+        });
         let id = self.counters.dispense_symbol_id(symbol_kind, length);
         let name = self.driver.resolve_decl(&name);
         let symbol = Symbol {
@@ -325,13 +381,15 @@ where
 
         let value = value.map(|v| match v {
             FunctionDefinition::Expression(expr) => {
-                assert!(!have_array_size);
                 assert!(symbol_kind != SymbolKind::Poly(PolynomialType::Committed));
-                FunctionValueDefinition::Expression(self.process_expression(expr))
+                FunctionValueDefinition::Expression(TypedExpression {
+                    e: self.process_expression(expr),
+                    ty,
+                })
             }
             FunctionDefinition::Query(expr) => {
-                assert!(!have_array_size);
                 assert_eq!(symbol_kind, SymbolKind::Poly(PolynomialType::Committed));
+                assert!(ty == None || ty == Some(Type::col()));
                 FunctionValueDefinition::Query(self.process_expression(expr))
             }
             FunctionDefinition::Array(value) => {
@@ -343,6 +401,7 @@ where
                     expression.iter().map(|e| e.size()).sum::<DegreeType>(),
                     self.degree.unwrap()
                 );
+                assert!(ty == None || ty == Some(Type::col()));
                 FunctionValueDefinition::Array(expression)
             }
         });
@@ -376,10 +435,21 @@ where
         })]
     }
 
-    fn evaluate_expression(
-        &self,
-        expr: ::powdr_ast::parsed::Expression<T>,
-    ) -> Result<T, EvalError> {
+    /// Resolves a type name into a concrete type.
+    /// This routine mainly evaluates array length expressions.
+    fn resolve_type_name(&self, mut n: TypeName<parsed::Expression<T>>) -> Result<Type, EvalError> {
+        // Replace all expressions by number literals.
+        for e in n.expressions_mut() {
+            // TODO as soon as we have integers in the parser, this should be
+            // expected to be an integer, not a field element.
+            // But since this is an array length, it probably does not matter much.
+            let v = self.evaluate_expression(e.clone())?;
+            *e = parsed::Expression::Number(v);
+        }
+        Ok(n.into())
+    }
+
+    fn evaluate_expression(&self, expr: parsed::Expression<T>) -> Result<T, EvalError> {
         evaluator::evaluate_expression(
             &ExpressionProcessor::new(self.driver).process_expression(expr),
             self.driver.definitions(),
@@ -391,13 +461,13 @@ where
         ExpressionProcessor::new(self.driver)
     }
 
-    fn process_expression(&self, expr: ::powdr_ast::parsed::Expression<T>) -> Expression<T> {
+    fn process_expression(&self, expr: parsed::Expression<T>) -> Expression<T> {
         self.expression_processor().process_expression(expr)
     }
 
     fn process_selected_expressions(
         &self,
-        expr: ::powdr_ast::parsed::SelectedExpressions<::powdr_ast::parsed::Expression<T>>,
+        expr: parsed::SelectedExpressions<parsed::Expression<T>>,
     ) -> SelectedExpressions<Expression<T>> {
         self.expression_processor()
             .process_selected_expressions(expr)

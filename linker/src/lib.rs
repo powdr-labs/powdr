@@ -44,7 +44,8 @@ pub fn link<T: FieldElement>(graph: PILGraph<T>) -> Result<PILFile<T>, Vec<Strin
         })
         .flat_map(|(mut namespace, e)| {
             let name = namespace.pop().unwrap();
-            let def = PilStatement::LetStatement(SourceRef::unknown(), name.to_string(), Some(e));
+            let def =
+                PilStatement::LetStatement(SourceRef::unknown(), name.to_string(), None, Some(e));
 
             // If there is a namespace change, insert a namespace statement.
             if current_namespace != namespace {
