@@ -10,10 +10,10 @@ use std::ops::ControlFlow;
 use number::DegreeType;
 
 use crate::analyzed::util::previsit_expressions_in_pil_file_mut;
+use crate::parsed;
+use crate::parsed::utils::expr_any;
 pub use crate::parsed::BinaryOperator;
 pub use crate::parsed::UnaryOperator;
-
-use util::expr_any;
 
 #[derive(Debug)]
 pub enum StatementIdentifier {
@@ -161,7 +161,7 @@ impl<T> Analyzed<T> {
             poly.id = replacements[&poly_id].id;
         });
         previsit_expressions_in_pil_file_mut(self, &mut |expr| {
-            if let Expression::PolynomialReference(poly) = expr {
+            if let Expression::Reference(Reference::Poly(poly)) = expr {
                 let poly_id = poly.poly_id.unwrap();
                 assert!(!to_remove.contains(&poly_id));
                 poly.poly_id = Some(replacements[&poly_id]);
@@ -331,11 +331,7 @@ pub enum IdentityKind {
     Connect,
 }
 
-#[derive(Debug, Default, PartialEq, Eq, Clone)]
-pub struct SelectedExpressions<T> {
-    pub selector: Option<Expression<T>>,
-    pub expressions: Vec<Expression<T>>,
-}
+pub type SelectedExpressions<T> = parsed::SelectedExpressions<T, Reference>;
 
 impl<T> SelectedExpressions<T> {
     /// @returns true if the expression contains a reference to a next value of a
@@ -348,28 +344,14 @@ impl<T> SelectedExpressions<T> {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Clone)]
-pub enum Expression<T> {
-    Constant(String),
-    PolynomialReference(PolynomialReference),
-    LocalVariableReference(u64),
-    PublicReference(String),
-    Number(T),
-    String(String),
-    Tuple(Vec<Expression<T>>),
-    BinaryOperation(Box<Expression<T>>, BinaryOperator, Box<Expression<T>>),
-    UnaryOperation(UnaryOperator, Box<Expression<T>>),
-    /// Call to a non-macro function (like a constant polynomial)
-    FunctionCall(String, Vec<Expression<T>>),
-    MatchExpression(Box<Expression<T>>, Vec<(Option<T>, Expression<T>)>),
-}
+pub type Expression<T> = parsed::Expression<T, Reference>;
 
 impl<T> Expression<T> {
     /// @returns true if the expression contains a reference to a next value of a
     /// (witness or fixed) column
     pub fn contains_next_ref(&self) -> bool {
         expr_any(self, |e| match e {
-            Expression::PolynomialReference(poly) => poly.next,
+            Expression::Reference(Reference::Poly(poly)) => poly.next,
             _ => false,
         })
     }
@@ -377,7 +359,7 @@ impl<T> Expression<T> {
     /// @returns true if the expression contains a reference to a next value of a witness column.
     pub fn contains_next_witness_ref(&self) -> bool {
         expr_any(self, |e| match e {
-            Expression::PolynomialReference(poly) => poly.next && poly.is_witness(),
+            Expression::Reference(Reference::Poly(poly)) => poly.next && poly.is_witness(),
             _ => false,
         })
     }
@@ -385,10 +367,16 @@ impl<T> Expression<T> {
     /// @returns true if the expression contains a reference to a witness column.
     pub fn contains_witness_ref(&self) -> bool {
         expr_any(self, |e| match e {
-            Expression::PolynomialReference(poly) => poly.is_witness(),
+            Expression::Reference(Reference::Poly(poly)) => poly.is_witness(),
             _ => false,
         })
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Reference {
+    LocalVar(u64),
+    Poly(PolynomialReference),
 }
 
 #[derive(Debug, Clone, Eq)]

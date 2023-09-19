@@ -4,12 +4,12 @@ use std::{collections::HashMap, iter::repeat, ops::ControlFlow};
 
 use ast::{
     asm_analysis::{
-        utils::{previsit_expression_in_statement_mut, previsit_expression_mut},
-        Batch, CallableSymbol, FunctionStatement, FunctionSymbol, Incompatible, IncompatibleSet,
-        Machine, OperationSymbol, PilBlock, Rom,
+        utils::previsit_expression_in_statement_mut, Batch, CallableSymbol, FunctionStatement,
+        FunctionSymbol, Incompatible, IncompatibleSet, Machine, OperationSymbol, PilBlock, Rom,
     },
     parsed::{
         asm::{OperationId, Param, ParamList, Params},
+        utils::previsit_expression_mut,
         Expression,
     },
 };
@@ -35,7 +35,7 @@ fn substitute_name_in_statement_expressions<T>(
         substitution: &HashMap<String, String>,
     ) -> ControlFlow<()> {
         previsit_expression_mut(e, &mut |e| {
-            if let Expression::PolynomialReference(r) = e {
+            if let Expression::Reference(r) = e {
                 if let Some(v) = substitution.get(r.name()).cloned() {
                     *r.name_mut() = v;
                 }

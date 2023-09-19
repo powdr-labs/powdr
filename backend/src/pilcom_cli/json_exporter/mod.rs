@@ -6,7 +6,7 @@ use number::FieldElement;
 
 use ast::analyzed::{
     Analyzed, BinaryOperator, Expression, FunctionValueDefinition, IdentityKind, PolyID,
-    PolynomialReference, PolynomialType, StatementIdentifier, UnaryOperator,
+    PolynomialReference, PolynomialType, Reference, StatementIdentifier, UnaryOperator,
 };
 
 use self::expression_counter::compute_intermediate_expression_ids;
@@ -225,10 +225,10 @@ impl<'a, T: FieldElement> Exporter<'a, T> {
                 },
                 Vec::new(),
             ),
-            Expression::PolynomialReference(reference) => {
+            Expression::Reference(Reference::Poly(reference)) => {
                 self.polynomial_reference_to_json(reference)
             }
-            Expression::LocalVariableReference(_) => {
+            Expression::Reference(Reference::LocalVar(_)) => {
                 panic!("No local variable references allowed here.")
             }
             Expression::PublicReference(name) => (
@@ -308,13 +308,14 @@ impl<'a, T: FieldElement> Exporter<'a, T> {
                     UnaryOperator::LogicalNot => panic!("Operator {op} not allowed here."),
                 }
             }
-            Expression::FunctionCall(_, _) => {
-                panic!("No function calls allowed here.")
-            }
+            Expression::FunctionCall(_) => panic!("No function calls allowed here."),
             Expression::String(_) => panic!("Strings not allowed here."),
             Expression::Tuple(_) => panic!("Tuples not allowed here"),
             Expression::MatchExpression(_, _) => {
                 panic!("No match expressions allowed here.")
+            }
+            Expression::FreeInput(_) => {
+                panic!("No free input expressions allowed here.")
             }
         }
     }

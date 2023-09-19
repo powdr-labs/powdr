@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
-use ast::analyzed::{Analyzed, Expression, FunctionValueDefinition};
+use ast::analyzed::{Analyzed, Expression, FunctionValueDefinition, Reference};
+use ast::parsed::{FunctionCall, MatchArm, MatchPattern};
 use ast::{evaluate_binary_operation, evaluate_unary_operation};
 use itertools::Itertools;
 use number::{DegreeType, FieldElement};
@@ -90,8 +91,8 @@ impl<'a, T: FieldElement> Evaluator<'a, T> {
     fn evaluate(&self, expr: &Expression<T>) -> T {
         match expr {
             Expression::Constant(name) => self.analyzed.constants[name],
-            Expression::PolynomialReference(_) => todo!(),
-            Expression::LocalVariableReference(i) => self.variables[*i as usize],
+            Expression::Reference(Reference::LocalVar(i)) => self.variables[*i as usize],
+            Expression::Reference(Reference::Poly(_)) => todo!(),
             Expression::PublicReference(_) => todo!(),
             Expression::Number(n) => *n,
             Expression::String(_) => panic!(),
@@ -102,19 +103,27 @@ impl<'a, T: FieldElement> Evaluator<'a, T> {
             Expression::UnaryOperation(op, expr) => {
                 evaluate_unary_operation(*op, self.evaluate(expr))
             }
-            Expression::FunctionCall(name, args) => {
-                let arg_values = args.iter().map(|a| self.evaluate(a)).collect::<Vec<_>>();
+            Expression::FunctionCall(FunctionCall { id, arguments }) => {
+                let arg_values = arguments
+                    .iter()
+                    .map(|a| self.evaluate(a))
+                    .collect::<Vec<_>>();
                 assert!(arg_values.len() == 1);
-                let values = &self.other_constants[name.as_str()];
+                let values = &self.other_constants[id.as_str()];
                 values[arg_values[0].to_degree() as usize % values.len()]
             }
             Expression::MatchExpression(scrutinee, arms) => {
                 let v = self.evaluate(scrutinee);
                 arms.iter()
-                    .find(|(n, _)| n.is_none() || n.as_ref() == Some(&v))
-                    .map(|(_, e)| self.evaluate(e))
+                    .find_map(|MatchArm { pattern, value }| match pattern {
+                        MatchPattern::Pattern(p) => {
+                            (self.evaluate(p) == v).then(|| self.evaluate(value))
+                        }
+                        MatchPattern::CatchAll => Some(self.evaluate(value)),
+                    })
                     .expect("No arm matched the value {v}")
             }
+            Expression::FreeInput(_) => panic!(),
         }
     }
 }

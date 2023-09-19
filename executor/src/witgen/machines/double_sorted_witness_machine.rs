@@ -12,7 +12,7 @@ use crate::witgen::{EvalValue, IncompleteCause};
 use number::{DegreeType, FieldElement};
 
 use ast::analyzed::{
-    Expression, Identity, IdentityKind, PolyID, PolynomialReference, SelectedExpressions,
+    Expression, Identity, IdentityKind, PolyID, PolynomialReference, Reference, SelectedExpressions,
 };
 
 /// TODO make this generic
@@ -184,7 +184,9 @@ impl<T: FieldElement> DoubleSortedWitnesses<T> {
         // OP { ADDR, STEP, X } is m_is_read { m_addr, m_step, m_value }
 
         let is_write = match &right.selector {
-            Some(Expression::PolynomialReference(p)) => p.name == self.namespaced("m_is_write"),
+            Some(Expression::Reference(Reference::Poly(p))) => {
+                p.name == self.namespaced("m_is_write")
+            }
             _ => panic!(),
         };
         let addr = left[0].constant_value().ok_or_else(|| {
