@@ -8,7 +8,7 @@ use asm_utils::{
     data_parser::{self, DataValue},
     data_storage::{store_data_objects, SingleDataValue},
     parser::parse_asm,
-    reachability,
+    reachability::{self, symbols_in_args},
     utils::{
         argument_to_escaped_symbol, argument_to_number, escape_label, expression_to_number, quote,
     },
@@ -70,11 +70,26 @@ impl Architecture for RiscvArchitecture {
             | "srli" | "srl" | "srai" | "seqz" | "snez" | "slt" | "slti" | "sltu" | "sltiu"
             | "sgtz" | "beq" | "beqz" | "bgeu" | "bltu" | "blt" | "bge" | "bltz" | "blez"
             | "bgtz" | "bgez" | "bne" | "bnez" | "jal" | "jalr" | "call" | "ecall" | "ebreak"
-            | "lw" | "lb" | "lbu" | "lhu" | "sw" | "sh" | "sb" | "nop" => false,
+            | "lw" | "lb" | "lbu" | "lhu" | "sw" | "sh" | "sb" | "nop" | "fence" | "fence.i" => {
+                false
+            }
             "j" | "jr" | "tail" | "ret" | "unimp" => true,
             _ => {
                 panic!("Unknown instruction: {instr}");
             }
+        }
+    }
+
+    fn get_references<'a, R: asm_utils::ast::Register, F: asm_utils::ast::FunctionOpKind>(
+        instr: &str,
+        args: &'a [asm_utils::ast::Argument<R, F>],
+    ) -> Vec<&'a str> {
+        // fence arguments are not symbols, they are like reserved
+        // keywords affecting the instruction behavior
+        if instr.starts_with("fence") {
+            Vec::new()
+        } else {
+            symbols_in_args(args)
         }
     }
 }
@@ -670,7 +685,7 @@ fn preamble() -> String {
         wrap_bit * (1 - wrap_bit) = 0;
     }
 
-    // Input is a 32 bit unsigned number. We check the 7th bit and set all higher bits to that value.
+    // Input is a 32 bit unsigned number. We check bit 7 and set all higher bits to that value.
     instr sign_extend_byte Y -> X {
         // wrap_bit is used as sign_bit here.
         Y = Y_7bit + wrap_bit * 0x80 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000,
@@ -1345,6 +1360,9 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
             let (rd, label) = rl(args);
             only_if_no_write_to_zero(format!("{rd} <== load_label({label});"), rd)
         }
+
+        // atomic and synchronization
+        "fence" | "fence.i" => vec![],
 
         _ => {
             panic!("Unknown instruction: {instr}");
