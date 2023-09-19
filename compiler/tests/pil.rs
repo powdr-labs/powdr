@@ -150,3 +150,8 @@ fn test_fixed_columns() {
 fn test_witness_via_let() {
     verify_pil("witness_via_let.pil", None);
 }
+
+#[test]
+fn arrays_basic() {
+    verify_pil("arrays_basic.pil", None);
+}

@@ -1,0 +1,13 @@
+let array_size = 2;
+
+namespace Main(8);
+    let t = [
+        |i| i + 1,
+        |j| j + 7
+    ];
+    let x: fe[array_size];
+    let y: fe[array_size];
+
+    x[1] - x[0] * 7 = 0;
+    x[1] = t[1];
+    x = y;
