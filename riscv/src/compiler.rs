@@ -66,11 +66,13 @@ impl Architecture for RiscvArchitecture {
     fn instruction_ends_control_flow(instr: &str) -> bool {
         match instr {
             "li" | "lui" | "la" | "mv" | "add" | "addi" | "sub" | "neg" | "mul" | "mulhu"
-            | "divu" | "xor" | "xori" | "and" | "andi" | "or" | "ori" | "not" | "slli" | "sll"
-            | "srli" | "srl" | "srai" | "seqz" | "snez" | "slt" | "slti" | "sltu" | "sltiu"
-            | "sgtz" | "beq" | "beqz" | "bgeu" | "bltu" | "blt" | "bge" | "bltz" | "blez"
-            | "bgtz" | "bgez" | "bne" | "bnez" | "jal" | "jalr" | "call" | "ecall" | "ebreak"
-            | "lw" | "lb" | "lbu" | "lhu" | "sw" | "sh" | "sb" | "nop" => false,
+            | "mulhsu" | "divu" | "xor" | "xori" | "and" | "andi" | "or" | "ori" | "not"
+            | "slli" | "sll" | "srli" | "srl" | "srai" | "seqz" | "snez" | "slt" | "slti"
+            | "sltu" | "sltiu" | "sgtz" | "beq" | "beqz" | "bgeu" | "bltu" | "blt" | "bge"
+            | "bltz" | "blez" | "bgtz" | "bgez" | "bne" | "bnez" | "jal" | "jalr" | "call"
+            | "ecall" | "ebreak" | "lw" | "lb" | "lbu" | "lhu" | "sw" | "sh" | "sb" | "nop" => {
+                false
+            }
             "j" | "jr" | "tail" | "ret" | "unimp" => true,
             _ => {
                 panic!("Unknown instruction: {instr}");
@@ -741,15 +743,21 @@ fn preamble() -> String {
         Z = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000
     }
 
+    // Plain field multiplication
+    instr plain_mul Y, Z -> X {
+        X = Y * Z
+    }
+
     // Removes up to 32 bits beyond 32
     // TODO is this really safe?
     instr mul Y, Z -> X {
         Y * Z = X + Y_b5 * 2**32 + Y_b6 * 2**40 + Y_b7 * 2**48 + Y_b8 * 2**56,
         X = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000
     }
-    // implements (Y * Z) >> 32
-    instr mulhu Y, Z -> X {
-        Y * Z = X * 2**32 + Y_b5 + Y_b6 * 0x100 + Y_b7 * 0x10000 + Y_b8 * 0x1000000,
+    // implements Y >> 32, where is the result of multiplication between a value
+    // between 0 and (2**32 - 1) and another value between 0 and 2**32.
+    instr mul_high Y -> X {
+        Y = X * 2**32 + Y_b5 + Y_b6 * 0x100 + Y_b7 * 0x10000 + Y_b8 * 0x1000000,
         X = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000
     }
 "#
@@ -961,7 +969,37 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
         }
         "mulhu" => {
             let (rd, r1, r2) = rrr(args);
-            only_if_no_write_to_zero(format!("{rd} <== mulhu({r1}, {r2});"), rd)
+            only_if_no_write_to_zero_vec(
+                vec![
+                    format!("{rd} <=X= plain_mul({r1}, {r2});"),
+                    format!("{rd} <== mul_high({rd});"),
+                ],
+                rd,
+            )
+        }
+        "mulhsu" => {
+            let (rd, r1, r2) = rrr(args);
+            only_if_no_write_to_zero_vec(
+                // I can not prove it, but it seems that (r1 + 1) * r2 + 1,
+                // where r1 and r2 are interpreted as unsigned, will give the
+                // same binary result as r1 * r2, where r1 is interpreted as
+                // signed and is negative. One problem is that
+                // (0xffffffff+1)*0xffffffff+1 is exactly the modulus of the
+                // Goldilocks field. Another problem is that this code crashed
+                // the mulhsu test and I don't know why.
+                vec![
+                    // tmp1 is set to 1 if r1 would be negative in two's
+                    // complement
+                    format!("tmp1 <== is_positive(0x7fffffff - {r1});"),
+                    format!("tmp1 <=X= 1 - tmp1;"),
+                    // If input is negative, add 1
+                    //format!("{rd} <=X= {r1} + tmp1";),
+                    format!("{rd} <== plain_mul({r1} + tmp1, {r2});"),
+                    // If input is negative, add 1 again to the result
+                    format!("{rd} <== mul_high({rd} + tmp1);"),
+                ],
+                rd,
+            )
         }
         "divu" => {
             let (rd, r1, r2) = rrr(args);
