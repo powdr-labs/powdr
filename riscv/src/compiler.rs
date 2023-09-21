@@ -66,14 +66,13 @@ impl Architecture for RiscvArchitecture {
     fn instruction_ends_control_flow(instr: &str) -> bool {
         match instr {
             "li" | "lui" | "la" | "mv" | "add" | "addi" | "sub" | "neg" | "mul" | "mulhu"
-            | "divu" | "xor" | "xori" | "and" | "andi" | "or" | "ori" | "not" | "slli" | "sll"
-            | "srli" | "srl" | "srai" | "seqz" | "snez" | "slt" | "slti" | "sltu" | "sltiu"
-            | "sgtz" | "beq" | "beqz" | "bgeu" | "bltu" | "blt" | "bge" | "bltz" | "blez"
-            | "bgtz" | "bgez" | "bne" | "bnez" | "jal" | "jalr" | "call" | "ecall" | "ebreak"
-            | "lw" | "lb" | "lbu" | "lh" | "lhu" | "sw" | "sh" | "sb" | "nop" | "fence"
-            | "fence.i" | "amoadd.w.rl" | "amoadd.w" | "lr.w" | "lr.w.aq" | "sc.w" | "sc.w.rl" => {
-                false
-            }
+            | "mulhsu" | "divu" | "xor" | "xori" | "and" | "andi" | "or" | "ori" | "not"
+            | "slli" | "sll" | "srli" | "srl" | "srai" | "seqz" | "snez" | "slt" | "slti"
+            | "sltu" | "sltiu" | "sgtz" | "beq" | "beqz" | "bgeu" | "bltu" | "blt" | "bge"
+            | "bltz" | "blez" | "bgtz" | "bgez" | "bne" | "bnez" | "jal" | "jalr" | "call"
+            | "ecall" | "ebreak" | "lw" | "lb" | "lbu" | "lh" | "lhu" | "sw" | "sh" | "sb"
+            | "nop" | "fence" | "fence.i" | "amoadd.w.rl" | "amoadd.w" | "lr.w" | "lr.w.aq"
+            | "sc.w" | "sc.w.rl" => false,
             "j" | "jr" | "tail" | "ret" | "unimp" => true,
             _ => {
                 panic!("Unknown instruction: {instr}");
@@ -780,6 +779,7 @@ fn preamble() -> String {
         X = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000
     }
     // implements (Y * Z) >> 32
+    // TODO mulhu could be unified with mul when #485 is merged
     instr mulhu Y, Z -> X {
         Y * Z = X * 2**32 + Y_b5 + Y_b6 * 0x100 + Y_b7 * 0x10000 + Y_b8 * 0x1000000,
         X = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000
@@ -1006,6 +1006,28 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
         "mulhu" => {
             let (rd, r1, r2) = rrr(args);
             only_if_no_write_to_zero(format!("{rd} <== mulhu({r1}, {r2});"), rd)
+        }
+        "mulhsu" => {
+            let (rd, r1, r2) = rrr(args);
+            only_if_no_write_to_zero_vec(
+                vec![
+                    format!("tmp1 <== to_signed({r1});"),
+                    // tmp2 is 1 if tmp1 is non-negative
+                    "tmp2 <== is_positive(tmp1 + 1);".into(),
+                    // If negative, convert to positive
+                    "skip_if_zero 0, tmp2;".into(),
+                    "tmp1 <=X= 0 - tmp1;".into(),
+                    format!("{rd} <== mulhu(tmp1, {r2});"),
+                    // If was negative before, convert back to negative
+                    "skip_if_zero (1-tmp2), 3;".into(),
+                    format!("tmp3 <== mul(tmp1, {r2});"),
+                    "tmp3 <== is_equal_zero(tmp3);".into(),
+                    // If the lower bits are zero, return the two's complement,
+                    // otherwise return one's complement.
+                    format!("{rd} <== wrap_signed(-{rd} - 1 + tmp3);"),
+                ],
+                rd,
+            )
         }
         "divu" => {
             let (rd, r1, r2) = rrr(args);
