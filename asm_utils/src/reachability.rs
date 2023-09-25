@@ -168,22 +168,29 @@ pub fn extract_label_offsets<R: Register, F: FunctionOpKind>(
         })
 }
 
-pub fn references_in_statement<R: Register, F: FunctionOpKind>(
+pub fn references_in_statement<R: Register, F: FunctionOpKind, A: Architecture>(
     statement: &Statement<R, F>,
 ) -> BTreeSet<&str> {
     let mut ret = BTreeSet::new();
     match statement {
         Statement::Label(_) | Statement::Directive(_, _) => (),
-        Statement::Instruction(_, args) => {
-            for arg in args {
-                arg.post_visit_expressions(&mut |expr| {
-                    if let Expression::Symbol(sym) = expr {
-                        ret.insert(sym.as_str());
-                    }
-                });
-            }
+        Statement::Instruction(name, args) => {
+            ret.extend(A::get_references(name, args));
         }
     };
+    ret
+}
+
+pub fn symbols_in_args<R: Register, F: FunctionOpKind>(args: &[Argument<R, F>]) -> Vec<&str> {
+    let mut ret = Vec::new();
+    for arg in args {
+        arg.post_visit_expressions(&mut |expr| {
+            if let Expression::Symbol(sym) = expr {
+                ret.push(sym.as_str());
+            }
+        });
+    }
+
     ret
 }
 
@@ -196,7 +203,7 @@ fn basic_block_references_starting_from<R: Register, F: FunctionOpKind, A: Archi
         if let Statement::Label(l) = s {
             seen_labels.push(l.as_str());
         } else {
-            referenced_labels.extend(references_in_statement(s))
+            referenced_labels.extend(references_in_statement::<R, F, A>(s))
         }
     });
     (referenced_labels.into_iter().collect(), seen_labels)
