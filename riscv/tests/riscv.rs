@@ -86,6 +86,16 @@ fn test_password() {
     verify_crate(case, vec![]);
 }
 
+// TODO: uncomment this when we properly support revm, so we don't break nightly
+/*
+#[test]
+#[ignore = "Too slow"]
+fn test_evm() {
+    let case = "evm";
+    verify_crate(case, vec![]);
+}
+*/
+
 #[test]
 #[ignore = "Too slow"]
 #[should_panic(expected = "Witness generation failed.")]
