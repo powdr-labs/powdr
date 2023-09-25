@@ -314,6 +314,9 @@ impl<'a, T: FieldElement> Exporter<'a, T> {
             Expression::MatchExpression(_, _) => {
                 panic!("No match expressions allowed here.")
             }
+            Expression::LambdaExpression(_) => {
+                panic!("No lambda expressions allowed here.")
+            }
             Expression::FreeInput(_) => {
                 panic!("No free input expressions allowed here.")
             }

@@ -15,6 +15,7 @@ pub enum PilStatement<T> {
     Include(usize, String),
     /// Name of namespace and polynomial degree (constant)
     Namespace(usize, String, Expression<T>),
+    LetStatement(usize, String, Option<Expression<T>>),
     PolynomialDefinition(usize, String, Expression<T>),
     PublicDeclaration(
         usize,
@@ -64,6 +65,7 @@ pub enum Expression<T, Ref = ShiftedPolynomialReference<T>> {
     Number(T),
     String(String),
     Tuple(Vec<Expression<T, Ref>>),
+    LambdaExpression(LambdaExpression<T, Ref>),
     BinaryOperation(
         Box<Expression<T, Ref>>,
         BinaryOperator,
@@ -261,6 +263,12 @@ impl PolynomialReference {
     pub fn single<T>(self) -> IndexedPolynomialReference<T> {
         self.with_index(None)
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct LambdaExpression<T, Ref = ShiftedPolynomialReference<T>> {
+    pub params: Vec<String>,
+    pub body: Box<Expression<T, Ref>>,
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]

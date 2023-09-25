@@ -145,3 +145,8 @@ fn test_two_block_machine_functions() {
 fn test_fixed_columns() {
     verify_pil("fixed_columns.pil", None);
 }
+
+#[test]
+fn test_witness_via_let() {
+    verify_pil("witness_via_let.pil", None);
+}

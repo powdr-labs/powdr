@@ -593,6 +593,9 @@ impl<T: FieldElement> ASMPILConverter<T> {
             Expression::FreeInput(expr) => {
                 vec![(1.into(), AffineExpressionComponent::FreeInput(*expr))]
             }
+            Expression::LambdaExpression(_) => {
+                unreachable!("lambda expressions should have been removed")
+            }
             Expression::BinaryOperation(left, op, right) => match op {
                 BinaryOperator::Add => self.add_assignment_value(
                     self.process_assignment_value(*left),
