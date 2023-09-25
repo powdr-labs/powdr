@@ -8,8 +8,7 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  test_debug:
-
+  test:
     runs-on: ubuntu-latest
 
     steps:
@@ -23,43 +22,7 @@ jobs:
           ~/.cargo/registry
           ~/.cargo/git
           target
-        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.toml') }}
-    - name: ⚡ Cache nodejs
-      uses: actions/cache@v3
-      with:
-        path: |
-          ~/pilcom/node_modules
-        key: ${{ runner.os }}-pilcom-node-modules
-    - name: Install pilcom
-      run: git clone https://github.com/0xPolygonHermez/pilcom.git  && cd pilcom && npm install
-    - name: Install Rust toolchain 1.72 (with clippy and rustfmt)
-      run: rustup toolchain install 1.72-x86_64-unknown-linux-gnu && rustup component add clippy --toolchain 1.72-x86_64-unknown-linux-gnu && rustup component add rustfmt --toolchain 1.72-x86_64-unknown-linux-gnu
-    - name: Check without Halo2
-      run: cargo check --all --no-default-features
-    - name: Build
-      run: cargo build --all --all-features
-    - name: Run tests
-      run: PILCOM=$(pwd)/pilcom/ cargo test --all --all-features --verbose
-    - name: Lint
-      run: cargo clippy --all --all-features -- -D warnings
-    - name: Format
-      run: cargo fmt --all --check --verbose
-
-  test_release:
-    runs-on: ubuntu-latest
-
-    steps:
-    - uses: actions/checkout@v3
-      with:
-        submodules: recursive
-    - name: ⚡ Cache rust
-      uses: actions/cache@v3
-      with:
-        path: |
-          ~/.cargo/registry
-          ~/.cargo/git
-          target
-        key: ${{ runner.os }}-cargo-release-${{ hashFiles('**/Cargo.toml') }}
+        key: ${{ runner.os }}-cargo-pr-tests-${{ hashFiles('**/Cargo.toml') }}
     - name: ⚡ Cache nodejs
       uses: actions/cache@v3
       with:
@@ -74,12 +37,16 @@ jobs:
       run: rustup target add riscv32imac-unknown-none-elf --toolchain nightly-2023-01-03-x86_64-unknown-linux-gnu
     - name: Install stdlib
       run: rustup component add rust-src --toolchain nightly-2023-01-03-x86_64-unknown-linux-gnu
+    - name: Check without Halo2
+      run: cargo check --all --no-default-features --profile pr-tests
     - name: Install pilcom
       run: git clone https://github.com/0xPolygonHermez/pilcom.git  && cd pilcom && npm install
     - name: Build
-      run: cargo build --all --all-features --release
-    - name: Run tests
+      run: cargo build --all --all-features --profile pr-tests
+    - name: Run default tests
+      run: PILCOM=$(pwd)/pilcom/ cargo test --all --all-features --profile pr-tests --verbose
+    - name: Run slow tests
       # Number threads is set to 1 because the runner does not have enough memeory for more.
-      run: PILCOM=$(pwd)/pilcom/ cargo test --all --release --verbose -- --ignored --nocapture --test-threads=1 --exact test_keccak test_vec_median instruction_tests::addi
+      run: PILCOM=$(pwd)/pilcom/ cargo test --all --profile pr-tests --verbose -- --ignored --nocapture --test-threads=1 --exact test_keccak test_vec_median instruction_tests::addi
     - name: Check benches compile without running them
-      run: cargo bench --all --all-features --no-run
+      run: cargo bench --all --all-features --profile pr-tests --no-run
