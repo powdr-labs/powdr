@@ -1,3 +1,4 @@
+use itertools::Itertools;
 use number::FieldElement;
 use parsed::{BinaryOperator, UnaryOperator};
 use std::fmt::{Display, Result, Write};
@@ -76,7 +77,6 @@ fn indent<S: ToString>(s: S, indentation: usize) -> String {
     s.to_string()
         .split('\n')
         .map(|line| format!("{}{line}", "\t".repeat(indentation)))
-        .collect::<Vec<_>>()
         .join("\n")
 }
 

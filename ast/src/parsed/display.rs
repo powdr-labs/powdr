@@ -67,29 +67,13 @@ impl Display for Import {
 
 impl Display for SymbolPath {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write!(
-            f,
-            "{}",
-            self.parts
-                .iter()
-                .map(|p| p.to_string())
-                .collect::<Vec<_>>()
-                .join("::")
-        )
+        write!(f, "{}", self.parts.iter().format("::"))
     }
 }
 
 impl Display for AbsoluteSymbolPath {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write!(
-            f,
-            "{}",
-            self.parts
-                .iter()
-                .map(|p| p.to_string())
-                .collect::<Vec<_>>()
-                .join("::")
-        )
+        write!(f, "{}", self.parts.iter().format("::"))
     }
 }
 
@@ -113,15 +97,7 @@ impl<T: Display> Display for Machine<T> {
 impl<T: Display> Display for InstructionBody<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
-            InstructionBody::Local(elements) => write!(
-                f,
-                "{{ {} }}",
-                elements
-                    .iter()
-                    .map(|e| e.to_string())
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            ),
+            InstructionBody::Local(elements) => write!(f, "{{ {} }}", elements.iter().format(", ")),
             InstructionBody::CallableRef(r) => write!(f, " = {r};"),
         }
     }
@@ -176,26 +152,14 @@ impl<T: Display> Display for MachineStatement<T> {
                 write!(f, "{link}")
             }
             MachineStatement::InlinePil(_, statements) => {
-                write!(
-                    f,
-                    "pil{{\n{}\n}}",
-                    statements
-                        .iter()
-                        .map(|s| format!("{}", s))
-                        .collect::<Vec<_>>()
-                        .join("\n")
-                )
+                write!(f, "pil{{\n{}\n}}", statements.iter().format("\n"))
             }
             MachineStatement::FunctionDeclaration(_, name, params, statements) => {
                 write!(
                     f,
                     "function {name}{} {{\n{}\n}}",
                     params.prepend_space_if_non_empty(),
-                    statements
-                        .iter()
-                        .map(|s| format!("{}", s))
-                        .collect::<Vec<_>>()
-                        .join("\n")
+                    statements.iter().format("\n")
                 )
             }
             MachineStatement::OperationDeclaration(_, name, operation_id, params) => {
@@ -232,14 +196,7 @@ impl<T: Display> Display for FunctionStatement<T> {
                 if inputs.is_empty() {
                     "".to_string()
                 } else {
-                    format!(
-                        " {}",
-                        inputs
-                            .iter()
-                            .map(|i| i.to_string())
-                            .collect::<Vec<_>>()
-                            .join(", ")
-                    )
+                    format!(" {}", inputs.iter().format(", "))
                 }
             ),
             FunctionStatement::Label(_, name) => write!(f, "{name}::"),
@@ -250,14 +207,7 @@ impl<T: Display> Display for FunctionStatement<T> {
                 if values.is_empty() {
                     "".to_string()
                 } else {
-                    format!(
-                        " {}",
-                        values
-                            .iter()
-                            .map(|i| i.to_string())
-                            .collect::<Vec<_>>()
-                            .join(", ")
-                    )
+                    format!(" {}", values.iter().format(", "))
                 }
             ),
         }
@@ -311,15 +261,7 @@ impl Display for Params {
 
 impl Display for ParamList {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write!(
-            f,
-            "{}",
-            self.params
-                .iter()
-                .map(|p| p.to_string())
-                .collect::<Vec<_>>()
-                .join(", ")
-        )
+        write!(f, "{}", self.params.iter().format(", "))
     }
 }
 
@@ -376,7 +318,7 @@ impl<T: Display> Display for PilStatement<T> {
                 write!(f, "public {name} = {poly}({index});")
             }
             PilStatement::PolynomialConstantDeclaration(_, names) => {
-                write!(f, "pol constant {};", format_names(names))
+                write!(f, "pol constant {};", names.iter().format(", "))
             }
             PilStatement::PolynomialConstantDefinition(_, name, definition) => {
                 write!(f, "pol constant {name}{definition};")
@@ -385,7 +327,7 @@ impl<T: Display> Display for PilStatement<T> {
                 write!(
                     f,
                     "pol commit {}{};",
-                    format_names(names),
+                    names.iter().format(", "),
                     value.as_ref().map(|v| format!("{v}")).unwrap_or_default()
                 )
             }
@@ -425,14 +367,6 @@ impl<T: Display> Display for PilStatement<T> {
             }
         }
     }
-}
-
-fn format_names<T: Display>(names: &[PolynomialName<T>]) -> String {
-    names
-        .iter()
-        .map(|n| format!("{n}"))
-        .collect::<Vec<_>>()
-        .join(", ")
 }
 
 impl<T: Display> Display for ArrayExpression<T> {
@@ -483,11 +417,7 @@ impl<T: Display> Display for SelectedExpressions<T> {
 }
 
 pub fn format_expressions<T: Display, Ref: Display>(expressions: &[Expression<T, Ref>]) -> String {
-    expressions
-        .iter()
-        .map(|e| format!("{e}"))
-        .collect::<Vec<_>>()
-        .join(", ")
+    format!("{}", expressions.iter().format(", "))
 }
 
 impl<T: Display, Ref: Display> Display for Expression<T, Ref> {
@@ -503,11 +433,9 @@ impl<T: Display, Ref: Display> Display for Expression<T, Ref> {
             Expression::UnaryOperation(op, exp) => write!(f, "{op}{exp}"),
             Expression::FunctionCall(fun_call) => write!(f, "{fun_call}"),
             Expression::FreeInput(input) => write!(f, "${{ {input} }}"),
-            Expression::MatchExpression(scrutinee, arms) => write!(
-                f,
-                "match {scrutinee} {{ {} }}",
-                arms.iter().map(|arm| arm.to_string()).join(" ")
-            ),
+            Expression::MatchExpression(scrutinee, arms) => {
+                write!(f, "match {scrutinee} {{ {} }}", arms.iter().format(" "))
+            }
         }
     }
 }
