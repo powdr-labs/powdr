@@ -540,7 +540,7 @@ where
                         }
                     })
                     .chain((!self.offset.is_zero()).then(|| self.offset.to_string()))
-                    .join(" + ")
+                    .format(" + ")
             )
         }
     }

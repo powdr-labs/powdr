@@ -838,7 +838,7 @@ fn process_statement(s: Statement) -> Vec<String> {
             _ if directive.starts_with(".cfi_") => vec![],
             _ => panic!(
                 "Leftover directive in code: {directive} {}",
-                args.iter().map(|s| s.to_string()).join(", ")
+                args.iter().format(", ")
             ),
         },
         Statement::Instruction(instr, args) => process_instruction(instr, args)

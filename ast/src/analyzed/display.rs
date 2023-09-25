@@ -70,7 +70,7 @@ impl<T: Display> Display for FunctionValueDefinition<T> {
         match self {
             FunctionValueDefinition::Mapping(e) => write!(f, "(i) {{ {e} }}"),
             FunctionValueDefinition::Array(items) => {
-                write!(f, " = {}", items.iter().map(|i| i.to_string()).join(" + "))
+                write!(f, " = {}", items.iter().format(" + "))
             }
             FunctionValueDefinition::Query(e) => write!(f, "(i) query {e}"),
             FunctionValueDefinition::Expression(e) => write!(f, " = {e}"),
@@ -83,11 +83,7 @@ impl<T: Display> Display for RepeatedArray<T> {
         if self.is_empty() {
             return Ok(());
         }
-        write!(
-            f,
-            "[{}]",
-            self.pattern.iter().map(|i| i.to_string()).join(", ")
-        )?;
+        write!(f, "[{}]", self.pattern.iter().format(", "))?;
         if self.is_repeated() {
             write!(f, "*")?;
         }

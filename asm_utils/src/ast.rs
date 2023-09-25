@@ -2,6 +2,8 @@
 
 use std::fmt::{self, Debug, Display};
 
+use itertools::Itertools;
+
 #[derive(Clone, Debug)]
 pub enum Statement<R: Register, F: FunctionOpKind> {
     Label(String),
@@ -137,8 +139,8 @@ impl<R: Register, F: FunctionOpKind> Display for Statement<R, F> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Statement::Label(l) => writeln!(f, "{l}:"),
-            Statement::Directive(d, args) => writeln!(f, "  {d} {}", format_arguments(args)),
-            Statement::Instruction(i, args) => writeln!(f, "  {i} {}", format_arguments(args)),
+            Statement::Directive(d, args) => writeln!(f, "  {d} {}", args.iter().format(", ")),
+            Statement::Instruction(i, args) => writeln!(f, "  {i} {}", args.iter().format(", ")),
         }
     }
 }
@@ -179,13 +181,6 @@ impl<F: FunctionOpKind> Display for Expression<F> {
             Expression::FunctionOp(kind, expr) => write!(f, "{}({})", kind, expr),
         }
     }
-}
-
-fn format_arguments<R: Register, F: FunctionOpKind>(args: &[Argument<R, F>]) -> String {
-    args.iter()
-        .map(|a| format!("{a}"))
-        .collect::<Vec<_>>()
-        .join(", ")
 }
 
 /// Parse an escaped string - used in the grammar.

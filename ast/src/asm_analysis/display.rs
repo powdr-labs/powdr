@@ -3,6 +3,8 @@ use std::{
     iter::once,
 };
 
+use itertools::Itertools;
+
 use crate::{indent, write_items_indented};
 
 use super::{
@@ -119,14 +121,7 @@ impl<T: Display> Display for InstructionStatement<T> {
             if self.inputs.is_empty() {
                 "".to_string()
             } else {
-                format!(
-                    " {}",
-                    self.inputs
-                        .iter()
-                        .map(|i| i.to_string())
-                        .collect::<Vec<_>>()
-                        .join(", ")
-                )
+                format!(" {}", self.inputs.iter().format(", "))
             }
         )
     }
@@ -140,14 +135,7 @@ impl<T: Display> Display for Return<T> {
             if self.values.is_empty() {
                 "".to_string()
             } else {
-                format!(
-                    " {}",
-                    self.values
-                        .iter()
-                        .map(|i| i.to_string())
-                        .collect::<Vec<_>>()
-                        .join(", ")
-                )
+                format!(" {}", self.values.iter().format(", "))
             }
         )
     }
@@ -248,13 +236,8 @@ impl<T: Display> Display for FunctionStatements<T> {
                                 .unwrap_or_default()
                         )))
                 })
-                .collect::<Vec<String>>()
                 .join("\n"),
-            false => self
-                .iter()
-                .map(|s| s.to_string())
-                .collect::<Vec<String>>()
-                .join("\n"),
+            false => self.iter().format("\n").to_string(),
         };
         write!(f, "{res}")
     }
@@ -274,14 +257,6 @@ impl Display for Incompatible {
 
 impl Display for IncompatibleSet {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write!(
-            f,
-            "{}",
-            self.0
-                .iter()
-                .map(|r| r.to_string())
-                .collect::<Vec<_>>()
-                .join(", ")
-        )
+        write!(f, "{}", self.0.iter().format(", "))
     }
 }
