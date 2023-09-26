@@ -5,8 +5,8 @@ use std::path::{Path, PathBuf};
 use analysis::MacroExpander;
 use ast::parsed::utils::postvisit_expression_mut;
 use ast::parsed::{
-    self, ArrayExpression, BinaryOperator, FunctionDefinition, MatchArm, MatchPattern,
-    PilStatement, PolynomialName, UnaryOperator,
+    self, ArrayExpression, ArrayLiteral, BinaryOperator, FunctionDefinition, LambdaExpression,
+    MatchArm, MatchPattern, PilStatement, PolynomialName, UnaryOperator,
 };
 use number::{DegreeType, FieldElement};
 
@@ -190,6 +190,37 @@ impl<T: FieldElement> PILContext<T> {
             }
             PilStatement::ConstantDefinition(_, name, value) => {
                 self.handle_constant_definition(name, value)
+            }
+            PilStatement::LetStatement(start, name, None) => {
+                // Handle all let statements without assignment as witness column declarations for now.
+                self.handle_polynomial_definition(
+                    self.to_source_ref(start),
+                    name,
+                    None,
+                    PolynomialType::Committed,
+                    None,
+                );
+            }
+            PilStatement::LetStatement(start, name, Some(value)) => {
+                // Determine this is a fixed column or a constant depending on the structure
+                // of the value.
+                // Later, this should depend on the type.
+
+                if let parsed::Expression::LambdaExpression(parsed::LambdaExpression {
+                    params,
+                    body,
+                }) = value
+                {
+                    self.handle_polynomial_definition(
+                        self.to_source_ref(start),
+                        name,
+                        None,
+                        PolynomialType::Constant,
+                        Some(FunctionDefinition::Mapping(params, *body)),
+                    );
+                } else {
+                    self.handle_constant_definition(name, value);
+                }
             }
             PilStatement::MacroDefinition(_, _, _, _, _) => {
                 panic!("Macros should have been eliminated.");
@@ -490,6 +521,17 @@ impl<T: FieldElement> PILContext<T> {
             PExpression::Number(n) => Expression::Number(n),
             PExpression::String(value) => Expression::String(value),
             PExpression::Tuple(items) => Expression::Tuple(self.process_expressions(items)),
+            PExpression::ArrayLiteral(ArrayLiteral { items }) => {
+                Expression::ArrayLiteral(ArrayLiteral {
+                    items: self.process_expressions(items),
+                })
+            }
+            PExpression::LambdaExpression(LambdaExpression { params, body }) => {
+                Expression::LambdaExpression(LambdaExpression {
+                    params,
+                    body: Box::new(self.process_expression(*body)),
+                })
+            }
             PExpression::BinaryOperation(left, op, right) => {
                 if let Some(value) = self.evaluate_binary_operation(&left, op, &right) {
                     Expression::Number(value)
@@ -567,11 +609,22 @@ impl<T: FieldElement> PILContext<T> {
                     .get(name)
                     .unwrap_or_else(|| panic!("Constant {name} not found.")),
             ),
-            Reference(_) => None,
+            Reference(name) => {
+                // TODO this whole mechanism should be replaced by a generic "reference"
+                // type plus operators.
+                if !name.shift() && name.namespace().is_none() {
+                    // See if it might be a constant
+                    self.constants.get(&name.name().to_owned()).cloned()
+                } else {
+                    None
+                }
+            }
             PublicReference(_) => None,
             Number(n) => Some(*n),
             String(_) => None,
             Tuple(_) => None,
+            ArrayLiteral(_) => None,
+            LambdaExpression(_) => None,
             BinaryOperation(left, op, right) => self.evaluate_binary_operation(left, *op, right),
             UnaryOperation(op, value) => self.evaluate_unary_operation(*op, value),
             FunctionCall(_) => None,

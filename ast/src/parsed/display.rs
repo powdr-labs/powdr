@@ -1,10 +1,11 @@
 use std::fmt::{Display, Formatter, Result};
 
+use itertools::Itertools;
+
 use crate::{
     parsed::{BinaryOperator, UnaryOperator},
     write_items, write_items_indented,
 };
-use itertools::Itertools;
 
 use super::{asm::*, *};
 
@@ -311,6 +312,8 @@ impl<T: Display> Display for PilStatement<T> {
             PilStatement::Namespace(_, name, poly_length) => {
                 write!(f, "namespace {name}({poly_length});")
             }
+            PilStatement::LetStatement(_, name, None) => write!(f, "let {name};"),
+            PilStatement::LetStatement(_, name, Some(expr)) => write!(f, "let {name} = {expr};"),
             PilStatement::PolynomialDefinition(_, name, value) => {
                 write!(f, "pol {name} = {value};")
             }
@@ -429,6 +432,8 @@ impl<T: Display, Ref: Display> Display for Expression<T, Ref> {
             Expression::Number(value) => write!(f, "{value}"),
             Expression::String(value) => write!(f, "\"{value}\""), // TODO quote?
             Expression::Tuple(items) => write!(f, "({})", format_expressions(items)),
+            Expression::LambdaExpression(lambda) => write!(f, "{}", lambda),
+            Expression::ArrayLiteral(array) => write!(f, "{array}"),
             Expression::BinaryOperation(left, op, right) => write!(f, "({left} {op} {right})"),
             Expression::UnaryOperation(op, exp) => write!(f, "{op}{exp}"),
             Expression::FunctionCall(fun_call) => write!(f, "{fun_call}"),
@@ -491,6 +496,18 @@ impl<T: Display> Display for IndexedPolynomialReference<T> {
 impl Display for PolynomialReference {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(f, "{}", self.name)
+    }
+}
+
+impl<T: Display, Ref: Display> Display for LambdaExpression<T, Ref> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(f, "|{}| {}", self.params.iter().format(", "), self.body)
+    }
+}
+
+impl<T: Display, Ref: Display> Display for ArrayLiteral<T, Ref> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(f, "[{}]", self.items.iter().format(", "))
     }
 }
 

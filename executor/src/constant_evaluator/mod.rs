@@ -97,12 +97,14 @@ impl<'a, T: FieldElement> Evaluator<'a, T> {
             Expression::Number(n) => *n,
             Expression::String(_) => panic!(),
             Expression::Tuple(_) => panic!(),
+            Expression::ArrayLiteral(_) => panic!(),
             Expression::BinaryOperation(left, op, right) => {
                 evaluate_binary_operation(self.evaluate(left), *op, self.evaluate(right))
             }
             Expression::UnaryOperation(op, expr) => {
                 evaluate_unary_operation(*op, self.evaluate(expr))
             }
+            Expression::LambdaExpression(_) => panic!(),
             Expression::FunctionCall(FunctionCall { id, arguments }) => {
                 let arg_values = arguments
                     .iter()
