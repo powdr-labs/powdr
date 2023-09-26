@@ -1,4 +1,5 @@
 use itertools::Itertools;
+use log::log_enabled;
 use number::FieldElement;
 use parsed::{BinaryOperator, UnaryOperator};
 use std::fmt::{Display, Result, Write};
@@ -25,8 +26,8 @@ impl DiffMonitor {
         std::mem::swap(&mut self.previous, &mut self.current);
         self.current = Some(s.to_string());
 
-        if let Some(current) = &self.current {
-            if let Some(previous) = &self.previous {
+        if log_enabled!(log::Level::Trace) {
+            if let (Some(current), Some(previous)) = (&self.current, &self.previous) {
                 for diff in diff::lines(previous, current) {
                     match diff {
                         diff::Result::Left(l) => log::trace!("-{}", l),
