@@ -3,6 +3,7 @@ pub mod build;
 pub mod display;
 pub mod folder;
 pub mod utils;
+pub mod visitor;
 
 use number::{DegreeType, FieldElement};
 
@@ -81,6 +82,23 @@ pub enum Expression<T, Ref = ShiftedPolynomialReference<T>> {
     FunctionCall(FunctionCall<T, Ref>),
     FreeInput(Box<Expression<T, Ref>>),
     MatchExpression(Box<Expression<T, Ref>>, Vec<MatchArm<T, Ref>>),
+}
+
+impl<T, Ref> Expression<T, Ref> {
+    /// Visits this expression and all of its sub-expressions and returns true
+    /// if `f` returns true on any of them.
+    pub fn any(&self, mut f: impl FnMut(&Self) -> bool) -> bool {
+        use std::ops::ControlFlow;
+        use visitor::ExpressionVisitor;
+        self.pre_visit_expressions_return(&mut |e| {
+            if f(e) {
+                ControlFlow::Break(())
+            } else {
+                ControlFlow::Continue(())
+            }
+        })
+        .is_break()
+    }
 }
 
 impl<T> From<ShiftedPolynomialReference<T>> for Expression<T> {

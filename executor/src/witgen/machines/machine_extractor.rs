@@ -1,5 +1,4 @@
 use std::collections::HashSet;
-use std::ops::ControlFlow;
 
 use super::block_machine::BlockMachine;
 use super::double_sorted_witness_machine::DoubleSortedWitnesses;
@@ -10,10 +9,8 @@ use super::KnownMachine;
 use crate::witgen::{
     column_map::WitnessColumnMap, generator::Generator, range_constraints::RangeConstraint,
 };
-use ast::analyzed::{
-    util::{previsit_expressions_in_identity, previsit_expressions_in_selected_expressions},
-    Expression, Identity, IdentityKind, PolyID, Reference, SelectedExpressions,
-};
+use ast::analyzed::{Expression, Identity, IdentityKind, PolyID, Reference, SelectedExpressions};
+use ast::parsed::visitor::ExpressionVisitor;
 use itertools::Itertools;
 use number::FieldElement;
 
@@ -167,9 +164,8 @@ fn all_row_connected_witnesses<T>(
 /// Extracts all references to names from an identity.
 pub fn refs_in_identity<T>(identity: &Identity<T>) -> HashSet<PolyID> {
     let mut refs: HashSet<PolyID> = Default::default();
-    previsit_expressions_in_identity(identity, &mut |expr| {
+    identity.pre_visit_expression(&mut |expr| {
         ref_of_expression(expr).map(|id| refs.insert(id));
-        ControlFlow::Continue::<()>(())
     });
     refs
 }
@@ -177,9 +173,8 @@ pub fn refs_in_identity<T>(identity: &Identity<T>) -> HashSet<PolyID> {
 /// Extracts all references to names from selected expressions.
 pub fn refs_in_selected_expressions<T>(selexpr: &SelectedExpressions<T>) -> HashSet<PolyID> {
     let mut refs: HashSet<PolyID> = Default::default();
-    previsit_expressions_in_selected_expressions(selexpr, &mut |expr| {
+    selexpr.pre_visit_expression(&mut |expr| {
         ref_of_expression(expr).map(|id| refs.insert(id));
-        ControlFlow::Continue::<()>(())
     });
     refs
 }

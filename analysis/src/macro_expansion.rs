@@ -1,12 +1,9 @@
-use std::{
-    collections::{HashMap, HashSet},
-    ops::ControlFlow,
-};
+use std::collections::{HashMap, HashSet};
 
 use ast::parsed::{
     asm::{ASMProgram, Instruction, InstructionBody, Machine, MachineStatement},
     folder::Folder,
-    utils::{postvisit_expression_in_statement_mut, postvisit_expression_mut},
+    visitor::ExpressionVisitor,
     Expression, FunctionDefinition, PilStatement,
 };
 use number::FieldElement;
@@ -90,7 +87,7 @@ where
             }
         }
 
-        postvisit_expression_in_statement_mut(&mut statement, &mut |e| self.process_expression(e));
+        statement.post_visit_expressions_mut(&mut |e| self.process_expression(e));
 
         match &mut statement {
             PilStatement::FunctionCall(_start, name, arguments) => {
@@ -147,7 +144,7 @@ where
             self.handle_statement(identity)
         }
         if let Some(e) = &mut expression {
-            postvisit_expression_mut(e, &mut |e| self.process_expression(e));
+            e.post_visit_expressions_mut(&mut |e| self.process_expression(e));
         };
 
         self.arguments = old_arguments;
@@ -155,7 +152,7 @@ where
         expression
     }
 
-    fn process_expression(&mut self, e: &mut Expression<T>) -> ControlFlow<()> {
+    fn process_expression(&mut self, e: &mut Expression<T>) {
         if let Expression::Reference(poly) = e {
             if poly.namespace().is_none() && self.parameter_names.contains_key(poly.name()) {
                 // TODO to make this work inside macros, "next" and "index" need to be
@@ -171,7 +168,5 @@ where
                     .expect("Invoked a macro in expression context with empty expression.")
             }
         }
-
-        ControlFlow::<()>::Continue(())
     }
 }

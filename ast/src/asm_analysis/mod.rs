@@ -7,6 +7,7 @@ use std::{
         BTreeMap, BTreeSet,
     },
     iter::{once, repeat},
+    ops::ControlFlow,
 };
 
 use itertools::Either;
@@ -15,7 +16,8 @@ use number::FieldElement;
 
 use crate::parsed::{
     asm::{AbsoluteSymbolPath, CallableRef, InstructionBody, OperationId, Params},
-    PilStatement,
+    visitor::ExpressionVisitor,
+    PilStatement, ShiftedPolynomialReference,
 };
 
 pub use crate::parsed::Expression;
@@ -535,6 +537,74 @@ pub enum FunctionStatement<T> {
     Label(LabelStatement),
     DebugDirective(DebugDirective),
     Return(Return<T>),
+}
+
+impl<T> ExpressionVisitor<T, ShiftedPolynomialReference<T>> for FunctionStatement<T> {
+    fn pre_visit_expressions_return_mut<F, B>(&mut self, f: &mut F) -> std::ops::ControlFlow<B>
+    where
+        F: FnMut(&mut Expression<T, ShiftedPolynomialReference<T>>) -> std::ops::ControlFlow<B>,
+    {
+        match self {
+            FunctionStatement::Assignment(assignment) => {
+                assignment.rhs.as_mut().pre_visit_expressions_return_mut(f)
+            }
+            FunctionStatement::Instruction(instruction) => instruction
+                .inputs
+                .iter_mut()
+                .try_for_each(move |i| i.pre_visit_expressions_return_mut(f)),
+            FunctionStatement::Label(_) | FunctionStatement::DebugDirective(..) => {
+                ControlFlow::Continue(())
+            }
+            FunctionStatement::Return(ret) => ret
+                .values
+                .iter_mut()
+                .try_for_each(move |e| e.pre_visit_expressions_return_mut(f)),
+        }
+    }
+
+    fn pre_visit_expressions_return<F, B>(&self, f: &mut F) -> std::ops::ControlFlow<B>
+    where
+        F: FnMut(&Expression<T, ShiftedPolynomialReference<T>>) -> std::ops::ControlFlow<B>,
+    {
+        match self {
+            FunctionStatement::Assignment(assignment) => {
+                assignment.rhs.as_ref().pre_visit_expressions_return(f)
+            }
+            FunctionStatement::Instruction(instruction) => instruction
+                .inputs
+                .iter()
+                .try_for_each(move |i| i.pre_visit_expressions_return(f)),
+            FunctionStatement::Label(_) | FunctionStatement::DebugDirective(..) => {
+                ControlFlow::Continue(())
+            }
+            FunctionStatement::Return(ret) => ret
+                .values
+                .iter()
+                .try_for_each(move |e| e.pre_visit_expressions_return(f)),
+        }
+    }
+
+    fn post_visit_expressions_return_mut<F, B>(&mut self, f: &mut F) -> std::ops::ControlFlow<B>
+    where
+        F: FnMut(&mut Expression<T, ShiftedPolynomialReference<T>>) -> std::ops::ControlFlow<B>,
+    {
+        match self {
+            FunctionStatement::Assignment(assignment) => {
+                assignment.rhs.as_mut().post_visit_expressions_return_mut(f)
+            }
+            FunctionStatement::Instruction(instruction) => instruction
+                .inputs
+                .iter_mut()
+                .try_for_each(move |i| i.post_visit_expressions_return_mut(f)),
+            FunctionStatement::Label(_) | FunctionStatement::DebugDirective(..) => {
+                ControlFlow::Continue(())
+            }
+            FunctionStatement::Return(ret) => ret
+                .values
+                .iter_mut()
+                .try_for_each(move |e| e.post_visit_expressions_return_mut(f)),
+        }
+    }
 }
 
 impl<T> From<AssignmentStatement<T>> for FunctionStatement<T> {
