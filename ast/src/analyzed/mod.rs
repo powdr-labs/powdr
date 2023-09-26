@@ -1,6 +1,6 @@
 pub mod build;
 mod display;
-pub mod util;
+pub mod visitor;
 
 use core::hash::Hash;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
@@ -9,9 +9,9 @@ use std::ops::ControlFlow;
 
 use number::DegreeType;
 
-use crate::analyzed::util::previsit_expressions_in_pil_file_mut;
 use crate::parsed;
 use crate::parsed::utils::expr_any;
+use crate::parsed::visitor::ExpressionVisitor;
 pub use crate::parsed::BinaryOperator;
 pub use crate::parsed::UnaryOperator;
 
@@ -160,13 +160,12 @@ impl<T> Analyzed<T> {
             assert!(!to_remove.contains(&poly_id));
             poly.id = replacements[&poly_id].id;
         });
-        previsit_expressions_in_pil_file_mut(self, &mut |expr| {
+        self.pre_visit_expressions_mut(&mut |expr| {
             if let Expression::Reference(Reference::Poly(poly)) = expr {
                 let poly_id = poly.poly_id.unwrap();
                 assert!(!to_remove.contains(&poly_id));
                 poly.poly_id = Some(replacements[&poly_id]);
             }
-            ControlFlow::Continue::<()>(())
         });
     }
 

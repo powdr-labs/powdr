@@ -3,16 +3,14 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use analysis::MacroExpander;
-use ast::parsed::utils::postvisit_expression_mut;
+
+use ast::parsed::visitor::ExpressionVisitor;
 use ast::parsed::{
     self, ArrayExpression, ArrayLiteral, BinaryOperator, FunctionDefinition, LambdaExpression,
     MatchArm, MatchPattern, PilStatement, PolynomialName, UnaryOperator,
 };
 use number::{DegreeType, FieldElement};
 
-use ast::analyzed::util::{
-    postvisit_expressions_in_identity_mut, previsit_expressions_in_pil_file_mut,
-};
 use ast::analyzed::{
     Analyzed, Expression, FunctionValueDefinition, Identity, IdentityKind, Polynomial,
     PolynomialReference, PolynomialType, PublicDeclaration, Reference, RepeatedArray,
@@ -82,11 +80,10 @@ impl<T> From<PILContext<T>> for Analyzed<T> {
                 .unwrap_or_else(|| panic!("Column {} not found.", reference.name));
             reference.poly_id = Some(poly.into());
         };
-        previsit_expressions_in_pil_file_mut(&mut result, &mut |e| {
+        result.pre_visit_expressions_mut(&mut |e| {
             if let Expression::Reference(Reference::Poly(reference)) = e {
                 assign_id(reference);
             }
-            std::ops::ControlFlow::Continue::<()>(())
         });
         result
             .public_declarations
@@ -688,7 +685,7 @@ fn substitute_intermediate<T: Copy>(
     identities
         .into_iter()
         .scan(HashMap::default(), |cache, mut identity| {
-            postvisit_expressions_in_identity_mut(&mut identity, &mut |e| {
+            identity.post_visit_expressions_mut(&mut |e| {
                 if let Expression::Reference(Reference::Poly(r)) = e {
                     let poly_id = r.poly_id.unwrap();
                     match poly_id.ptype {
@@ -704,7 +701,6 @@ fn substitute_intermediate<T: Copy>(
                         }
                     }
                 }
-                std::ops::ControlFlow::Continue::<()>(())
             });
             Some(identity)
         })
@@ -719,7 +715,7 @@ fn inlined_expression_from_intermediate_poly_id<T: Copy>(
     cache: &mut HashMap<u64, Expression<T>>,
 ) -> Expression<T> {
     let mut expr = intermediate_polynomials[&poly_id].clone();
-    postvisit_expression_mut(&mut expr, &mut |e| {
+    expr.post_visit_expressions_mut(&mut |e| {
         if let Expression::Reference(Reference::Poly(r)) = e {
             let poly_id = r.poly_id.unwrap();
             match poly_id.ptype {
@@ -737,7 +733,6 @@ fn inlined_expression_from_intermediate_poly_id<T: Copy>(
                 }
             }
         }
-        std::ops::ControlFlow::Continue::<()>(())
     });
     cache.insert(poly_id, expr.clone());
     expr

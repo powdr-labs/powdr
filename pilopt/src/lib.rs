@@ -1,18 +1,15 @@
 //! PIL-based optimizer
 
 use std::collections::{BTreeMap, HashSet};
-use std::ops::ControlFlow;
 
-use ast::analyzed::util::{
-    postvisit_expressions_in_pil_file_mut, previsit_expressions_in_pil_file_mut,
-};
+
 use ast::analyzed::Reference;
 use ast::analyzed::{
     build::{build_mul, build_number, build_sub},
     Analyzed, BinaryOperator, Expression, FunctionValueDefinition, IdentityKind, PolyID,
     PolynomialReference,
 };
-use ast::parsed::utils::postvisit_expression_mut;
+use ast::parsed::visitor::ExpressionVisitor;
 use ast::parsed::UnaryOperator;
 use number::FieldElement;
 
@@ -54,7 +51,7 @@ fn remove_constant_fixed_columns<T: FieldElement>(pil_file: &mut Analyzed<T>) {
         })
         .collect::<BTreeMap<PolyID, _>>();
 
-    previsit_expressions_in_pil_file_mut(pil_file, &mut |e| {
+    pil_file.pre_visit_expressions_mut(&mut |e| {
         if let Expression::Reference(Reference::Poly(PolynomialReference {
             name: _,
             index,
@@ -67,7 +64,6 @@ fn remove_constant_fixed_columns<T: FieldElement>(pil_file: &mut Analyzed<T>) {
                 *e = Expression::Number(*value);
             }
         }
-        ControlFlow::Continue::<()>(())
     });
 
     pil_file.remove_polynomials(&constant_polys.keys().cloned().collect());
@@ -103,17 +99,11 @@ fn constant_value<T: FieldElement>(function: &FunctionValueDefinition<T>) -> Opt
 
 /// Simplifies multiplications by zero and one.
 fn simplify_expressions<T: FieldElement>(pil_file: &mut Analyzed<T>) {
-    postvisit_expressions_in_pil_file_mut(pil_file, &mut |e| -> ControlFlow<()> {
-        simplify_expression_single(e);
-        ControlFlow::Continue(())
-    });
+    pil_file.post_visit_expressions_mut(&mut simplify_expression_single);
 }
 
 fn simplify_expression<T: FieldElement>(mut e: Expression<T>) -> Expression<T> {
-    postvisit_expression_mut(&mut e, &mut |e| -> ControlFlow<()> {
-        simplify_expression_single(e);
-        ControlFlow::Continue(())
-    });
+    e.post_visit_expressions_mut(&mut simplify_expression_single);
     e
 }
 
@@ -281,7 +271,7 @@ fn remove_constant_witness_columns<T: FieldElement>(pil_file: &mut Analyzed<T>) 
         .filter_map(|expr| constrained_to_constant(expr))
         .collect::<BTreeMap<PolyID, _>>();
 
-    previsit_expressions_in_pil_file_mut(pil_file, &mut |e| {
+    pil_file.pre_visit_expressions_mut(&mut |e| {
         if let Expression::Reference(Reference::Poly(PolynomialReference {
             name: _,
             index,
@@ -294,7 +284,6 @@ fn remove_constant_witness_columns<T: FieldElement>(pil_file: &mut Analyzed<T>) 
                 *e = Expression::Number(*value);
             }
         }
-        ControlFlow::Continue::<()>(())
     });
 
     pil_file.remove_polynomials(&constant_polys.keys().cloned().collect());
