@@ -1,17 +1,15 @@
 //! Generate one ROM per machine from all declared functions
 
-use std::{collections::HashMap, iter::repeat, ops::ControlFlow};
+use std::{collections::HashMap, iter::repeat};
 
-use ast::{
-    asm_analysis::{
-        utils::previsit_expression_in_statement_mut, Batch, CallableSymbol, FunctionStatement,
-        FunctionSymbol, Incompatible, IncompatibleSet, Machine, OperationSymbol, PilBlock, Rom,
-    },
-    parsed::{
-        asm::{OperationId, Param, ParamList, Params},
-        utils::previsit_expression_mut,
-        Expression,
-    },
+use ast::asm_analysis::{
+    Batch, CallableSymbol, FunctionStatement, FunctionSymbol, Incompatible, IncompatibleSet,
+    Machine, OperationSymbol, PilBlock, Rom,
+};
+use ast::parsed::visitor::ExpressionVisitable;
+use ast::parsed::{
+    asm::{OperationId, Param, ParamList, Params},
+    Expression,
 };
 use number::FieldElement;
 
@@ -29,23 +27,16 @@ use crate::{
 fn substitute_name_in_statement_expressions<T>(
     s: &mut FunctionStatement<T>,
     substitution: &HashMap<String, String>,
-) -> ControlFlow<()> {
-    fn substitute<T>(
-        e: &mut Expression<T>,
-        substitution: &HashMap<String, String>,
-    ) -> ControlFlow<()> {
-        previsit_expression_mut(e, &mut |e| {
-            if let Expression::Reference(r) = e {
-                if let Some(v) = substitution.get(r.name()).cloned() {
-                    *r.name_mut() = v;
-                }
-            };
-            ControlFlow::Continue::<()>(())
-        });
-        ControlFlow::Continue(())
+) {
+    fn substitute<T>(e: &mut Expression<T>, substitution: &HashMap<String, String>) {
+        if let Expression::Reference(r) = e {
+            if let Some(v) = substitution.get(r.name()).cloned() {
+                *r.name_mut() = v;
+            }
+        };
     }
 
-    previsit_expression_in_statement_mut(s, &mut |e| substitute(e, substitution))
+    s.pre_visit_expressions_mut(&mut |e| substitute(e, substitution))
 }
 
 /// Pad the arguments in the `return` statements with zeroes to match the maximum number of outputs

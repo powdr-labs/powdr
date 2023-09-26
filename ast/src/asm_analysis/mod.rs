@@ -7,6 +7,7 @@ use std::{
         BTreeMap, BTreeSet,
     },
     iter::{once, repeat},
+    ops::ControlFlow,
 };
 
 use itertools::Either;
@@ -17,7 +18,8 @@ use crate::parsed::{
     asm::{
         AbsoluteSymbolPath, AssignmentRegister, CallableRef, InstructionBody, OperationId, Params,
     },
-    PilStatement,
+    visitor::{ExpressionVisitable, VisitOrder},
+    PilStatement, ShiftedPolynomialReference,
 };
 
 pub use crate::parsed::Expression;
@@ -537,6 +539,52 @@ pub enum FunctionStatement<T> {
     Label(LabelStatement),
     DebugDirective(DebugDirective),
     Return(Return<T>),
+}
+
+impl<T> ExpressionVisitable<T, ShiftedPolynomialReference<T>> for FunctionStatement<T> {
+    fn visit_expressions_mut<F, B>(&mut self, f: &mut F, o: VisitOrder) -> std::ops::ControlFlow<B>
+    where
+        F: FnMut(&mut Expression<T, ShiftedPolynomialReference<T>>) -> std::ops::ControlFlow<B>,
+    {
+        match self {
+            FunctionStatement::Assignment(assignment) => {
+                assignment.rhs.as_mut().visit_expressions_mut(f, o)
+            }
+            FunctionStatement::Instruction(instruction) => instruction
+                .inputs
+                .iter_mut()
+                .try_for_each(move |i| i.visit_expressions_mut(f, o)),
+            FunctionStatement::Label(_) | FunctionStatement::DebugDirective(..) => {
+                ControlFlow::Continue(())
+            }
+            FunctionStatement::Return(ret) => ret
+                .values
+                .iter_mut()
+                .try_for_each(move |e| e.visit_expressions_mut(f, o)),
+        }
+    }
+
+    fn visit_expressions<F, B>(&self, f: &mut F, o: VisitOrder) -> std::ops::ControlFlow<B>
+    where
+        F: FnMut(&Expression<T, ShiftedPolynomialReference<T>>) -> std::ops::ControlFlow<B>,
+    {
+        match self {
+            FunctionStatement::Assignment(assignment) => {
+                assignment.rhs.as_ref().visit_expressions(f, o)
+            }
+            FunctionStatement::Instruction(instruction) => instruction
+                .inputs
+                .iter()
+                .try_for_each(move |i| i.visit_expressions(f, o)),
+            FunctionStatement::Label(_) | FunctionStatement::DebugDirective(..) => {
+                ControlFlow::Continue(())
+            }
+            FunctionStatement::Return(ret) => ret
+                .values
+                .iter()
+                .try_for_each(move |e| e.visit_expressions(f, o)),
+        }
+    }
 }
 
 impl<T> From<AssignmentStatement<T>> for FunctionStatement<T> {

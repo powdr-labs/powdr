@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
-use ast::analyzed::util::previsit_expressions_in_identity_mut;
 use ast::analyzed::{Expression, Identity, PolynomialReference, Reference};
+use ast::parsed::visitor::ExpressionVisitable;
 
 /// Checks if an expression is
 /// - a polynomial
@@ -56,11 +56,10 @@ pub fn substitute_constants<T: Copy>(
         .iter()
         .cloned()
         .map(|mut identity| {
-            previsit_expressions_in_identity_mut(&mut identity, &mut |e| {
+            identity.pre_visit_expressions_mut(&mut |e| {
                 if let Expression::Constant(name) = e {
                     *e = Expression::Number(constants[name])
                 }
-                std::ops::ControlFlow::Continue::<()>(())
             });
             identity
         })
