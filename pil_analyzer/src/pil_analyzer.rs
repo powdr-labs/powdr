@@ -5,8 +5,8 @@ use std::path::{Path, PathBuf};
 use analysis::MacroExpander;
 use ast::parsed::utils::postvisit_expression_mut;
 use ast::parsed::{
-    self, ArrayExpression, BinaryOperator, FunctionDefinition, LambdaExpression, MatchArm,
-    MatchPattern, PilStatement, PolynomialName, UnaryOperator,
+    self, ArrayExpression, ArrayLiteral, BinaryOperator, FunctionDefinition, LambdaExpression,
+    MatchArm, MatchPattern, PilStatement, PolynomialName, UnaryOperator,
 };
 use number::{DegreeType, FieldElement};
 
@@ -521,6 +521,11 @@ impl<T: FieldElement> PILContext<T> {
             PExpression::Number(n) => Expression::Number(n),
             PExpression::String(value) => Expression::String(value),
             PExpression::Tuple(items) => Expression::Tuple(self.process_expressions(items)),
+            PExpression::ArrayLiteral(ArrayLiteral { items }) => {
+                Expression::ArrayLiteral(ArrayLiteral {
+                    items: self.process_expressions(items),
+                })
+            }
             PExpression::LambdaExpression(LambdaExpression { params, body }) => {
                 Expression::LambdaExpression(LambdaExpression {
                     params,
@@ -618,6 +623,7 @@ impl<T: FieldElement> PILContext<T> {
             Number(n) => Some(*n),
             String(_) => None,
             Tuple(_) => None,
+            ArrayLiteral(_) => None,
             LambdaExpression(_) => None,
             BinaryOperation(left, op, right) => self.evaluate_binary_operation(left, *op, right),
             UnaryOperation(op, value) => self.evaluate_unary_operation(*op, value),
