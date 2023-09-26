@@ -1,8 +1,9 @@
 use std::ops::ControlFlow;
 
 use super::{
-    ArrayExpression, ArrayLiteral, Expression, FunctionCall, FunctionDefinition, LambdaExpression,
-    MatchArm, PilStatement, ShiftedPolynomialReference,
+    ArrayExpression, ArrayLiteral, ArrayTypeName, Expression, FunctionCall, FunctionDefinition,
+    FunctionTypeName, LambdaExpression, MatchArm, PilStatement, ShiftedPolynomialReference,
+    TupleTypeName, TypeName,
 };
 
 /// A trait to be implemented by an AST node.
@@ -193,8 +194,16 @@ impl<T> ExpressionVisitor<T, ShiftedPolynomialReference<T>> for PilStatement<T> 
             | PilStatement::PolynomialDefinition(_, _, e)
             | PilStatement::PolynomialIdentity(_, e)
             | PilStatement::PublicDeclaration(_, _, _, e)
-            | PilStatement::ConstantDefinition(_, _, e)
-            | PilStatement::LetStatement(_, _, Some(e)) => e.pre_visit_expressions_return_mut(f),
+            | PilStatement::ConstantDefinition(_, _, e) => e.pre_visit_expressions_return_mut(f),
+
+            PilStatement::LetStatement(_, _, type_name, value) => {
+                type_name
+                    .iter_mut()
+                    .try_for_each(|t| t.pre_visit_expressions_return_mut(f))?;
+                value
+                    .iter_mut()
+                    .try_for_each(|t| t.pre_visit_expressions_return_mut(f))
+            }
 
             PilStatement::PolynomialConstantDefinition(_, _, fundef)
             | PilStatement::PolynomialCommitDeclaration(_, _, Some(fundef)) => {
@@ -203,8 +212,7 @@ impl<T> ExpressionVisitor<T, ShiftedPolynomialReference<T>> for PilStatement<T> 
             PilStatement::PolynomialCommitDeclaration(_, _, None)
             | PilStatement::Include(_, _)
             | PilStatement::PolynomialConstantDeclaration(_, _)
-            | PilStatement::MacroDefinition(_, _, _, _, _)
-            | PilStatement::LetStatement(_, _, None) => ControlFlow::Continue(()),
+            | PilStatement::MacroDefinition(_, _, _, _, _) => ControlFlow::Continue(()),
         }
     }
 
@@ -233,8 +241,16 @@ impl<T> ExpressionVisitor<T, ShiftedPolynomialReference<T>> for PilStatement<T> 
             | PilStatement::PolynomialDefinition(_, _, e)
             | PilStatement::PolynomialIdentity(_, e)
             | PilStatement::PublicDeclaration(_, _, _, e)
-            | PilStatement::ConstantDefinition(_, _, e)
-            | PilStatement::LetStatement(_, _, Some(e)) => e.pre_visit_expressions_return(f),
+            | PilStatement::ConstantDefinition(_, _, e) => e.pre_visit_expressions_return(f),
+
+            PilStatement::LetStatement(_, _, type_name, value) => {
+                type_name
+                    .iter()
+                    .try_for_each(|t| t.pre_visit_expressions_return(f))?;
+                value
+                    .iter()
+                    .try_for_each(|t| t.pre_visit_expressions_return(f))
+            }
 
             PilStatement::PolynomialConstantDefinition(_, _, fundef)
             | PilStatement::PolynomialCommitDeclaration(_, _, Some(fundef)) => {
@@ -243,8 +259,7 @@ impl<T> ExpressionVisitor<T, ShiftedPolynomialReference<T>> for PilStatement<T> 
             PilStatement::PolynomialCommitDeclaration(_, _, None)
             | PilStatement::Include(_, _)
             | PilStatement::PolynomialConstantDeclaration(_, _)
-            | PilStatement::MacroDefinition(_, _, _, _, _)
-            | PilStatement::LetStatement(_, _, None) => ControlFlow::Continue(()),
+            | PilStatement::MacroDefinition(_, _, _, _, _) => ControlFlow::Continue(()),
         }
     }
 
@@ -273,8 +288,16 @@ impl<T> ExpressionVisitor<T, ShiftedPolynomialReference<T>> for PilStatement<T> 
             | PilStatement::PolynomialDefinition(_, _, e)
             | PilStatement::PolynomialIdentity(_, e)
             | PilStatement::PublicDeclaration(_, _, _, e)
-            | PilStatement::ConstantDefinition(_, _, e)
-            | PilStatement::LetStatement(_, _, Some(e)) => e.post_visit_expressions_return_mut(f),
+            | PilStatement::ConstantDefinition(_, _, e) => e.post_visit_expressions_return_mut(f),
+
+            PilStatement::LetStatement(_, _, type_name, value) => {
+                type_name
+                    .iter_mut()
+                    .try_for_each(|t| t.post_visit_expressions_return_mut(f))?;
+                value
+                    .iter_mut()
+                    .try_for_each(|t| t.post_visit_expressions_return_mut(f))
+            }
 
             PilStatement::PolynomialConstantDefinition(_, _, fundef)
             | PilStatement::PolynomialCommitDeclaration(_, _, Some(fundef)) => {
@@ -283,8 +306,7 @@ impl<T> ExpressionVisitor<T, ShiftedPolynomialReference<T>> for PilStatement<T> 
             PilStatement::PolynomialCommitDeclaration(_, _, None)
             | PilStatement::Include(_, _)
             | PilStatement::PolynomialConstantDeclaration(_, _)
-            | PilStatement::MacroDefinition(_, _, _, _, _)
-            | PilStatement::LetStatement(_, _, None) => ControlFlow::Continue(()),
+            | PilStatement::MacroDefinition(_, _, _, _, _) => ControlFlow::Continue(()),
         }
     }
 }
@@ -458,5 +480,136 @@ impl<T, Ref> ExpressionVisitor<T, Ref> for FunctionCall<T, Ref> {
         self.arguments
             .iter_mut()
             .try_for_each(|item| item.post_visit_expressions_return_mut(f))
+    }
+}
+
+impl<T, Ref> ExpressionVisitor<T, Ref> for TypeName<Expression<T, Ref>> {
+    fn pre_visit_expressions_return_mut<F, B>(&mut self, f: &mut F) -> ControlFlow<B>
+    where
+        F: FnMut(&mut Expression<T, Ref>) -> ControlFlow<B>,
+    {
+        match self {
+            TypeName::Int | TypeName::Fe | TypeName::Col => ControlFlow::Continue(()),
+            TypeName::Array(array) => array.pre_visit_expressions_return_mut(f),
+            TypeName::Tuple(tuple) => tuple.pre_visit_expressions_return_mut(f),
+            TypeName::Function(function) => function.pre_visit_expressions_return_mut(f),
+        }
+    }
+
+    fn pre_visit_expressions_return<F, B>(&self, f: &mut F) -> ControlFlow<B>
+    where
+        F: FnMut(&Expression<T, Ref>) -> ControlFlow<B>,
+    {
+        match self {
+            TypeName::Int | TypeName::Fe | TypeName::Col => ControlFlow::Continue(()),
+            TypeName::Array(array) => array.pre_visit_expressions_return(f),
+            TypeName::Tuple(tuple) => tuple.pre_visit_expressions_return(f),
+            TypeName::Function(function) => function.pre_visit_expressions_return(f),
+        }
+    }
+
+    fn post_visit_expressions_return_mut<F, B>(&mut self, f: &mut F) -> ControlFlow<B>
+    where
+        F: FnMut(&mut Expression<T, Ref>) -> ControlFlow<B>,
+    {
+        match self {
+            TypeName::Int | TypeName::Fe | TypeName::Col => ControlFlow::Continue(()),
+            TypeName::Array(array) => array.post_visit_expressions_return_mut(f),
+            TypeName::Tuple(tuple) => tuple.post_visit_expressions_return_mut(f),
+            TypeName::Function(function) => function.post_visit_expressions_return_mut(f),
+        }
+    }
+}
+
+impl<T, Ref> ExpressionVisitor<T, Ref> for ArrayTypeName<Expression<T, Ref>> {
+    fn pre_visit_expressions_return_mut<F, B>(&mut self, f: &mut F) -> ControlFlow<B>
+    where
+        F: FnMut(&mut Expression<T, Ref>) -> ControlFlow<B>,
+    {
+        self.base.pre_visit_expressions_return_mut(f)?;
+        self.length
+            .iter_mut()
+            .try_for_each(|e| e.pre_visit_expressions_return_mut(f))
+    }
+
+    fn pre_visit_expressions_return<F, B>(&self, f: &mut F) -> ControlFlow<B>
+    where
+        F: FnMut(&Expression<T, Ref>) -> ControlFlow<B>,
+    {
+        self.base.pre_visit_expressions_return(f)?;
+        self.length
+            .iter()
+            .try_for_each(|e| e.pre_visit_expressions_return(f))
+    }
+
+    fn post_visit_expressions_return_mut<F, B>(&mut self, f: &mut F) -> ControlFlow<B>
+    where
+        F: FnMut(&mut Expression<T, Ref>) -> ControlFlow<B>,
+    {
+        self.base.post_visit_expressions_return_mut(f)?;
+        self.length
+            .iter_mut()
+            .try_for_each(|e| e.post_visit_expressions_return_mut(f))
+    }
+}
+
+impl<T, Ref> ExpressionVisitor<T, Ref> for TupleTypeName<Expression<T, Ref>> {
+    fn pre_visit_expressions_return_mut<F, B>(&mut self, f: &mut F) -> ControlFlow<B>
+    where
+        F: FnMut(&mut Expression<T, Ref>) -> ControlFlow<B>,
+    {
+        self.items
+            .iter_mut()
+            .try_for_each(|e| e.pre_visit_expressions_return_mut(f))
+    }
+
+    fn pre_visit_expressions_return<F, B>(&self, f: &mut F) -> ControlFlow<B>
+    where
+        F: FnMut(&Expression<T, Ref>) -> ControlFlow<B>,
+    {
+        self.items
+            .iter()
+            .try_for_each(|e| e.pre_visit_expressions_return(f))
+    }
+
+    fn post_visit_expressions_return_mut<F, B>(&mut self, f: &mut F) -> ControlFlow<B>
+    where
+        F: FnMut(&mut Expression<T, Ref>) -> ControlFlow<B>,
+    {
+        self.items
+            .iter_mut()
+            .try_for_each(|e| e.post_visit_expressions_return_mut(f))
+    }
+}
+
+impl<T, Ref> ExpressionVisitor<T, Ref> for FunctionTypeName<Expression<T, Ref>> {
+    fn pre_visit_expressions_return_mut<F, B>(&mut self, f: &mut F) -> ControlFlow<B>
+    where
+        F: FnMut(&mut Expression<T, Ref>) -> ControlFlow<B>,
+    {
+        self.param
+            .iter_mut()
+            .chain(self.value.iter_mut())
+            .try_for_each(|e| e.pre_visit_expressions_return_mut(f))
+    }
+
+    fn pre_visit_expressions_return<F, B>(&self, f: &mut F) -> ControlFlow<B>
+    where
+        F: FnMut(&Expression<T, Ref>) -> ControlFlow<B>,
+    {
+        self.param
+            .iter()
+            .chain(self.value.iter())
+            .try_for_each(|e| e.pre_visit_expressions_return(f))
+    }
+
+    fn post_visit_expressions_return_mut<F, B>(&mut self, f: &mut F) -> ControlFlow<B>
+    where
+        F: FnMut(&mut Expression<T, Ref>) -> ControlFlow<B>,
+    {
+        self.param
+            .iter_mut()
+            .chain(self.value.iter_mut())
+            .try_for_each(|e| e.post_visit_expressions_return_mut(f))
     }
 }
