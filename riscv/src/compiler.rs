@@ -39,7 +39,8 @@ impl asm_utils::ast::Register for Register {}
 
 impl fmt::Display for Register {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "x{}", self.value)
+        //write!(f, "x{}", self.value)
+        write!(f, "{} * 4", self.value)
     }
 }
 
@@ -196,8 +197,10 @@ machine Shift(latch, operation_id) {
 pub fn compile(mut assemblies: BTreeMap<String, String>) -> String {
     // stack grows towards zero
     let stack_start = 0x10000;
+    // riscv registers x0-x31 are stored in memory starting at 0x10100
+    let reg_start = 0x10100;
     // data grows away from zero
-    let data_start = 0x10100;
+    let data_start = 0x10200;
 
     assert!(assemblies
         .insert("__runtime".to_string(), runtime().to_string())
@@ -289,11 +292,11 @@ pub fn compile(mut assemblies: BTreeMap<String, String>) -> String {
         file_ids
             .into_iter()
             .map(|(id, dir, file)| format!("debug file {id} {} {};", quote(&dir), quote(&file)))
-            .chain(["call __data_init;".to_string()])
+            .chain([format!("addr <=X= 1 * 4 + {reg_start};\nmstore (pc + 2);\ncall __data_init;")])
             .chain(call_every_submachine())
             .chain([
-                format!("// Set stack pointer\nx2 <=X= {stack_start};"),
-                "call __runtime_start;".to_string(),
+                format!("// Set stack pointer\naddr <=X= 2 * 4 + {reg_start};\nmstore {stack_start};"),
+                format!("addr <=X= 1 * 4 + {reg_start};\nmstore (pc + 2);\ncall __runtime_start;"),
                 "return;".to_string(), // This is not "riscv ret", but "return from powdr asm function".
             ])
             .chain(
@@ -303,7 +306,7 @@ pub fn compile(mut assemblies: BTreeMap<String, String>) -> String {
             )
             .chain(["// This is the data initialization routine.\n__data_init::".to_string()])
             .chain(data_code)
-            .chain(["// This is the end of the data initialization routine.\nret;".to_string()])
+            .chain([format!("// This is the end of the data initialization routine.\naddr <=X= 1 * 4 + {reg_start};\ntmp1 <== mload();\nret tmp1;")])
             .collect(),
     )
 }
@@ -430,9 +433,9 @@ fn call_every_submachine() -> Vec<String> {
     // automatically.
     // https://github.com/powdr-labs/powdr/issues/548
     vec![
-        "x10 <== and(x10, x10);".to_string(),
-        "x10 <== shl(x10, x10);".to_string(),
-        "x10 <=X= 0;".to_string(),
+        "tmp1 <== and(tmp1, tmp1);".to_string(),
+        "tmp1 <== shl(tmp1, tmp1);".to_string(),
+        "tmp1 <=X= 0;".to_string(),
     ]
 }
 
@@ -540,16 +543,18 @@ fn preamble() -> String {
     reg tmp3;
 "#
     .to_string()
+    /*
         + &(0..32)
             .map(|i| format!("\t\treg x{i};\n"))
             .collect::<Vec<_>>()
             .concat()
+    */
         + r#"
     reg addr;
 
-    constraints {
-        x0 = 0;
-    }
+    //constraints {
+    //    x0 = 0;
+    //}
 
     constraints{
     // ============== iszero check for X =======================
@@ -616,11 +621,15 @@ fn preamble() -> String {
     instr jump l: label { pc' = l }
     instr load_label l: label -> X { X = l }
     instr jump_dyn X { pc' = X }
-    instr jump_and_link_dyn X { pc' = X, x1' = pc + 1 }
-    instr call l: label { pc' = l, x1' = pc + 1 }
+    //instr jump_and_link_dyn X { pc' = X, x1' = pc + 1 }
+    instr jump_and_link_dyn X { pc' = X }
+    //instr call l: label { pc' = l, x1' = pc + 1 }
+    instr call l: label { pc' = l }
     // TODO x6 actually stores some relative address, but only part of it.
-    instr tail l: label { pc' = l, x6' = l }
-    instr ret { pc' = x1 }
+    //instr tail l: label { pc' = l, x6' = l }
+    instr tail l: label { pc' = l }
+    //instr ret { pc' = x1 }
+    instr ret X { pc' = X }
 
     instr branch_if_nonzero X, l: label { pc' = (1 - XIsZero) * l + XIsZero * (pc + 1) }
     instr branch_if_zero X, l: label { pc' = XIsZero * l + (1 - XIsZero) * (pc + 1) }
@@ -933,84 +942,233 @@ fn try_coprocessor_substitution(label: &str) -> Option<String> {
 }
 
 fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
+    let reg_start = 0x10100;
     match instr {
         // load/store registers
         "li" => {
             let (rd, imm) = ri(args);
-            only_if_no_write_to_zero(format!("{rd} <=X= {imm};"), rd)
+            only_if_no_write_to_zero_vec(
+                vec![
+                    format!("addr <=X= {rd} + {reg_start};"),
+                    format!("mstore {imm};")
+                ],
+                rd
+            )
         }
         // TODO check if it is OK to clear the lower order bits
         "lui" => {
             let (rd, imm) = ri(args);
-            only_if_no_write_to_zero(format!("{rd} <=X= {};", imm << 12), rd)
+            only_if_no_write_to_zero_vec(
+                vec![
+                    format!("addr <=X= {rd} + {reg_start};"),
+                    format!("mstore {};", imm << 12)
+                ],
+                rd
+            )
         }
         "la" => {
             let (rd, addr) = ri(args);
-            only_if_no_write_to_zero(format!("{rd} <=X= {};", addr), rd)
+            only_if_no_write_to_zero_vec(
+                vec![
+                    format!("addr <=X= {rd} + {reg_start};"),
+                    format!("mstore {};", addr)
+                ],
+                rd
+            )
         }
         "mv" => {
             let (rd, rs) = rr(args);
-            only_if_no_write_to_zero(format!("{rd} <=X= {rs};"), rd)
+            only_if_no_write_to_zero_vec(
+                vec![
+                    format!("addr <=X= {rs} + {reg_start};"),
+                    format!("tmp1 <== mload();"),
+                    format!("addr <=X= {rd} + {reg_start};"),
+                    format!("mstore tmp1;"),
+                ],
+                rd
+            )
         }
 
         // Arithmetic
         "add" => {
             let (rd, r1, r2) = rrr(args);
-            only_if_no_write_to_zero(format!("{rd} <== wrap({r1} + {r2});"), rd)
+            only_if_no_write_to_zero_vec(
+                vec![
+                    format!("addr <=X= {r1} + {reg_start};"),
+                    format!("tmp1 <== mload();"),
+                    format!("addr <=X= {r2} + {reg_start};"),
+                    format!("tmp2 <== mload();"),
+                    format!("addr <=X= {rd} + {reg_start};"),
+                    format!("tmp1 <== wrap(tmp1 + tmp2);"),
+                    format!("mstore tmp1;")
+                ],
+                rd
+            )
         }
         "addi" => {
             let (rd, rs, imm) = rri(args);
-            only_if_no_write_to_zero(format!("{rd} <== wrap({rs} + {imm});"), rd)
+            only_if_no_write_to_zero_vec(
+                vec![
+                    format!("addr <=X= {rs} + {reg_start};"),
+                    format!("tmp1 <== mload();"),
+                    format!("addr <=X= {rd} + {reg_start};"),
+                    format!("tmp1 <== wrap(tmp1 + {imm});"),
+                    format!("mstore tmp1;")
+                ],
+                rd
+            )
         }
         "sub" => {
             let (rd, r1, r2) = rrr(args);
-            only_if_no_write_to_zero(format!("{rd} <== wrap_signed({r1} - {r2});"), rd)
+            only_if_no_write_to_zero_vec(
+                vec![
+                    format!("addr <=X= {r1} + {reg_start};"),
+                    format!("tmp1 <== mload();"),
+                    format!("addr <=X= {r2} + {reg_start};"),
+                    format!("tmp2 <== mload();"),
+                    format!("addr <=X= {rd} + {reg_start};"),
+                    format!("tmp1 <== wrap(tmp1 - tmp2);"),
+                    format!("mstore tmp1;")
+                ],
+                rd
+            )
         }
         "neg" => {
             let (rd, r1) = rr(args);
-            only_if_no_write_to_zero(format!("{rd} <== wrap_signed(0 - {r1});"), rd)
+            only_if_no_write_to_zero_vec(
+                vec![
+                    format!("addr <=X= {r1} + {reg_start};"),
+                    format!("tmp1 <== mload();"),
+                    format!("addr <=X= {rd} + {reg_start};"),
+                    format!("tmp1 <== wrap_signed(0 - tmp1);"),
+                    format!("mstore tmp1;")
+                ],
+                rd
+            )
         }
         "mul" => {
             let (rd, r1, r2) = rrr(args);
-            only_if_no_write_to_zero(format!("{rd} <== mul({r1}, {r2});"), rd)
+            only_if_no_write_to_zero_vec(
+                vec![
+                    format!("addr <=X= {r1} + {reg_start};"),
+                    format!("tmp1 <== mload();"),
+                    format!("addr <=X= {r2} + {reg_start};"),
+                    format!("tmp2 <== mload();"),
+                    format!("addr <=X= {rd} + {reg_start};"),
+                    format!("tmp1 <== mul(tmp1, tmp2);"),
+                    format!("mstore tmp1;")
+                ], rd)
         }
         "mulhu" => {
             let (rd, r1, r2) = rrr(args);
-            only_if_no_write_to_zero(format!("{rd} <== mulhu({r1}, {r2});"), rd)
+            only_if_no_write_to_zero_vec(
+                vec![
+                    format!("addr <=X= {r1} + {reg_start};"),
+                    format!("tmp1 <== mload();"),
+                    format!("addr <=X= {r2} + {reg_start};"),
+                    format!("tmp2 <== mload();"),
+                    format!("addr <=X= {rd} + {reg_start};"),
+                    format!("tmp1 <== mulhu(tmp1, tmp2);"),
+                    format!("mstore tmp1;")
+                ], rd)
         }
         "divu" => {
             let (rd, r1, r2) = rrr(args);
-            only_if_no_write_to_zero(format!("{rd} <=Z= divu({r1}, {r2});"), rd)
+            only_if_no_write_to_zero_vec(
+                vec![
+                    format!("addr <=X= {r1} + {reg_start};"),
+                    format!("tmp1 <== mload();"),
+                    format!("addr <=X= {r2} + {reg_start};"),
+                    format!("tmp2 <== mload();"),
+                    format!("addr <=X= {rd} + {reg_start};"),
+                    format!("tmp1 <== divu(tmp1, tmp2);"),
+                    format!("mstore tmp1;")
+                ], rd)
         }
 
         // bitwise
         "xor" => {
             let (rd, r1, r2) = rrr(args);
-            only_if_no_write_to_zero(format!("{rd} <== xor({r1}, {r2});"), rd)
+            only_if_no_write_to_zero_vec(
+                vec![
+                    format!("addr <=X= {r1} + {reg_start};"),
+                    format!("tmp1 <== mload();"),
+                    format!("addr <=X= {r2} + {reg_start};"),
+                    format!("tmp2 <== mload();"),
+                    format!("addr <=X= {rd} + {reg_start};"),
+                    format!("tmp1 <== xor(tmp1, tmp2);"),
+                    format!("mstore tmp1;")
+                ], rd)
         }
         "xori" => {
             let (rd, r1, imm) = rri(args);
-            only_if_no_write_to_zero(format!("{rd} <== xor({r1}, {imm});"), rd)
+            only_if_no_write_to_zero_vec(
+                vec![
+                    format!("addr <=X= {r1} + {reg_start};"),
+                    format!("tmp1 <== mload();"),
+                    format!("addr <=X= {rd} + {reg_start};"),
+                    format!("tmp1 <== xor(tmp1, {imm});"),
+                    format!("mstore tmp1;")
+                ], rd)
         }
         "and" => {
             let (rd, r1, r2) = rrr(args);
-            only_if_no_write_to_zero(format!("{rd} <== and({r1}, {r2});"), rd)
+            only_if_no_write_to_zero_vec(
+                vec![
+                    format!("addr <=X= {r1} + {reg_start};"),
+                    format!("tmp1 <== mload();"),
+                    format!("addr <=X= {r2} + {reg_start};"),
+                    format!("tmp2 <== mload();"),
+                    format!("addr <=X= {rd} + {reg_start};"),
+                    format!("tmp1 <== and(tmp1, tmp2);"),
+                    format!("mstore tmp1;")
+                ], rd)
         }
         "andi" => {
             let (rd, r1, imm) = rri(args);
-            only_if_no_write_to_zero(format!("{rd} <== and({r1}, {imm});"), rd)
+            only_if_no_write_to_zero_vec(
+                vec![
+                    format!("addr <=X= {r1} + {reg_start};"),
+                    format!("tmp1 <== mload();"),
+                    format!("addr <=X= {rd} + {reg_start};"),
+                    format!("tmp1 <== and(tmp1, {imm});"),
+                    format!("mstore tmp1;")
+                ], rd)
         }
         "or" => {
             let (rd, r1, r2) = rrr(args);
-            only_if_no_write_to_zero(format!("{rd} <== or({r1}, {r2});"), rd)
+            only_if_no_write_to_zero_vec(
+                vec![
+                    format!("addr <=X= {r1} + {reg_start};"),
+                    format!("tmp1 <== mload();"),
+                    format!("addr <=X= {r2} + {reg_start};"),
+                    format!("tmp2 <== mload();"),
+                    format!("addr <=X= {rd} + {reg_start};"),
+                    format!("tmp1 <== or(tmp1, tmp2);"),
+                    format!("mstore tmp1;")
+                ], rd)
         }
         "ori" => {
             let (rd, r1, imm) = rri(args);
-            only_if_no_write_to_zero(format!("{rd} <== or({r1}, {imm});"), rd)
+            only_if_no_write_to_zero_vec(
+                vec![
+                    format!("addr <=X= {r1} + {reg_start};"),
+                    format!("tmp1 <== mload();"),
+                    format!("addr <=X= {rd} + {reg_start};"),
+                    format!("tmp1 <== or(tmp1, {imm});"),
+                    format!("mstore tmp1;")
+                ], rd)
         }
         "not" => {
             let (rd, rs) = rr(args);
-            only_if_no_write_to_zero(format!("{rd} <== wrap_signed(-{rs} - 1);"), rd)
+            only_if_no_write_to_zero_vec(
+                vec![
+                    format!("addr <=X= {rs} + {reg_start};"),
+                    format!("tmp1 <== mload();"),
+                    format!("addr <=X= {rd} + {reg_start};"),
+                    format!("tmp1 <== wrap_signed(-tmp1 - 1);"),
+                    format!("mstore tmp1;")
+                ], rd)
         }
 
         // shift
@@ -1019,11 +1177,21 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
             assert!(amount <= 31);
             only_if_no_write_to_zero_vec(
                 if amount <= 16 {
-                    vec![format!("{rd} <== wrap16({rs} * {});", 1 << amount)]
+                    vec![
+                        format!("addr <=X= {rs} + {reg_start};"),
+                        format!("tmp1 <== mload();"),
+                        format!("addr <=X= {rd} + {reg_start};"),
+                        format!("tmp1 <== wrap16(tmp1 * {});", 1 << amount),
+                        format!("mstore tmp1;")
+                    ]
                 } else {
                     vec![
-                        format!("tmp1 <== wrap16({rs} * {});", 1 << 16),
-                        format!("{rd} <== wrap16(tmp1 * {});", 1 << (amount - 16)),
+                        format!("addr <=X= {rs} + {reg_start};"),
+                        format!("tmp1 <== mload();"),
+                        format!("tmp1 <== wrap16(tmp1 * {});", 1 << 16),
+                        format!("addr <=X= {rd} + {reg_start};"),
+                        format!("tmp1 <== wrap16(tmp1 * {});", 1 << (amount - 16)),
+                        format!("mstore tmp1;"),
                     ]
                 },
                 rd,
@@ -1033,8 +1201,15 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
             let (rd, r1, r2) = rrr(args);
             only_if_no_write_to_zero_vec(
                 vec![
-                    format!("tmp1 <== and({r2}, 0x1f);"),
-                    format!("{rd} <== shl({r1}, tmp1);"),
+                    format!("addr <=X= {r2} + {reg_start};"),
+                    format!("tmp2 <== mload();"),
+                    format!("addr <=X= {r1} + {reg_start};"),
+                    format!("tmp1 <== mload();"),
+
+                    format!("tmp2 <== and(tmp2, 0x1f);"),
+                    format!("addr <=X= {rd} + {reg_start};"),
+                    format!("tmp1 <== shl(tmp1, tmp2);"),
+                    format!("mstore tmp1;"),
                 ],
                 rd,
             )
@@ -1043,15 +1218,30 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
             // logical shift right
             let (rd, rs, amount) = rri(args);
             assert!(amount <= 31);
-            only_if_no_write_to_zero(format!("{rd} <== shr({rs}, {amount});"), rd)
+            only_if_no_write_to_zero_vec(
+                vec![
+                    format!("addr <=X= {rs} + {reg_start};"),
+                    format!("tmp1 <== mload();"),
+                    format!("addr <=X= {rd} + {reg_start};"),
+                    format!("tmp1 <== shl(tmp1, {amount});"),
+                    format!("mstore tmp1;"),
+                ], rd)
         }
         "srl" => {
             // logical shift right
             let (rd, r1, r2) = rrr(args);
             only_if_no_write_to_zero_vec(
                 vec![
-                    format!("tmp1 <== and({r2}, 0x1f);"),
-                    format!("{rd} <== shr({r1}, tmp1);"),
+                    format!("addr <=X= {r2} + {reg_start};"),
+                    format!("tmp2 <== mload();"),
+                    format!("addr <=X= {r1} + {reg_start};"),
+                    format!("tmp1 <== mload();"),
+
+                    format!("tmp2 <== and(tmp2, 0x1f);"),
+
+                    format!("addr <=X= {rd} + {reg_start};"),
+                    format!("tmp1 <== shl(tmp1, tmp2);"),
+                    format!("mstore tmp1;"),
                 ],
                 rd,
             )
@@ -1065,14 +1255,20 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
             assert!(amount <= 31);
             only_if_no_write_to_zero_vec(
                 vec![
-                    format!("tmp1 <== to_signed({rs});"),
+                    format!("addr <=X= {rs} + {reg_start};"),
+                    format!("tmp3 <== mload();"),
+
+                    format!("tmp1 <== to_signed(tmp3);"),
                     format!("tmp1 <== is_positive(0 - tmp1);"),
                     format!("tmp1 <=X= tmp1 * 0xffffffff;"),
                     // Here, tmp1 is the full bit mask if rs is negative
                     // and zero otherwise.
-                    format!("{rd} <== xor(tmp1, {rs});"),
-                    format!("{rd} <== shr({rd}, {amount});"),
-                    format!("{rd} <== xor(tmp1, {rd});"),
+                    format!("tmp2 <== xor(tmp1, tmp3);"),
+                    format!("tmp2 <== shr(tmp2, {amount});"),
+
+                    format!("addr <=X= {rd} + {reg_start};"),
+                    format!("tmp1 <== xor(tmp1, tmp2);"),
+                    format!("mstore tmp1;"),
                 ],
                 rd,
             )
@@ -1081,18 +1277,40 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
         // comparison
         "seqz" => {
             let (rd, rs) = rr(args);
-            only_if_no_write_to_zero(format!("{rd} <=Y= is_equal_zero({rs});"), rd)
+            only_if_no_write_to_zero_vec(
+                vec![
+                    format!("addr <=X= {rs} + {reg_start};"),
+                    format!("tmp1 <== mload();"),
+
+                    format!("addr <=X= {rd} + {reg_start};"),
+                    format!("tmp1 <== is_equal_zero(tmp1);"),
+                    format!("mstore tmp1;")
+                ], rd)
         }
         "snez" => {
             let (rd, rs) = rr(args);
-            only_if_no_write_to_zero(format!("{rd} <=Y= is_not_equal_zero({rs});"), rd)
+            only_if_no_write_to_zero_vec(
+                vec![
+                    format!("addr <=X= {rs} + {reg_start};"),
+                    format!("tmp1 <== mload();"),
+
+                    format!("addr <=X= {rd} + {reg_start};"),
+                    format!("tmp1 <== is_not_equal_zero(tmp1);"),
+                    format!("mstore tmp1;")
+                ], rd)
         }
         "slti" => {
             let (rd, rs, imm) = rri(args);
             only_if_no_write_to_zero_vec(
                 vec![
-                    format!("tmp1 <== to_signed({rs});"),
-                    format!("{rd} <=Y= is_positive({} - tmp1);", imm as i32),
+                    format!("addr <=X= {rs} + {reg_start};"),
+                    format!("tmp1 <== mload();"),
+
+                    format!("tmp1 <== to_signed(tmp1);"),
+
+                    format!("addr <=X= {rd} + {reg_start};"),
+                    format!("tmp1 <== is_positive({} - tmp1);", imm as i32),
+                    format!("mstore tmp1;"),
                 ],
                 rd,
             )
@@ -1100,45 +1318,99 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
         "slt" => {
             let (rd, r1, r2) = rrr(args);
             vec![
-                format!("tmp1 <== to_signed({r1});"),
-                format!("tmp2 <== to_signed({r2});"),
-                format!("{rd} <=Y= is_positive(tmp2 - tmp1);"),
+                format!("addr <=X= {r1} + {reg_start};"),
+                format!("tmp1 <== mload();"),
+                format!("addr <=X= {r2} + {reg_start};"),
+                format!("tmp2 <== mload();"),
+
+                format!("tmp1 <== to_signed(tmp1);"),
+                format!("tmp2 <== to_signed(tmp2);"),
+
+                format!("addr <=X= {rd} + {reg_start};"),
+                format!("tmp1 <== is_positive(tmp2 - tmp1);"),
+                format!("mstore tmp1;"),
             ]
         }
         "sltiu" => {
             let (rd, rs, imm) = rri(args);
-            only_if_no_write_to_zero(format!("{rd} <=Y= is_positive({imm} - {rs});"), rd)
+            only_if_no_write_to_zero_vec(
+                vec![
+                    format!("addr <=X= {rs} + {reg_start};"),
+                    format!("tmp1 <== mload();"),
+
+                    format!("addr <=X= {rd} + {reg_start};"),
+                    format!("tmp1 <== is_positive({imm} - tmp1);"),
+                    format!("mstore tmp1;"),
+                ],
+                rd,
+            )
         }
         "sltu" => {
             let (rd, r1, r2) = rrr(args);
-            only_if_no_write_to_zero(format!("{rd} <=Y= is_positive({r2} - {r1});"), rd)
+            only_if_no_write_to_zero_vec(
+                vec![
+                    format!("addr <=X= {r1} + {reg_start};"),
+                    format!("tmp1 <== mload();"),
+                    format!("addr <=X= {r2} + {reg_start};"),
+                    format!("tmp2 <== mload();"),
+
+                    format!("addr <=X= {rd} + {reg_start};"),
+                    format!("tmp1 <== is_positive(tmp2 - tmp1);"),
+                    format!("mstore tmp1;"),
+                ],
+                rd,
+            )
         }
         "sgtz" => {
             let (rd, rs) = rr(args);
             vec![
-                format!("tmp1 <== to_signed({rs});"),
-                format!("{rd} <=Y= is_positive(tmp1);"),
+                format!("addr <=X= {rs} + {reg_start};"),
+                format!("tmp1 <== mload();"),
+
+                format!("tmp1 <== to_signed(tmp1);"),
+
+                format!("addr <=X= {rd} + {reg_start};"),
+                format!("tmp1 <== is_positive(tmp1);"),
+                format!("mstore tmp1;"),
             ]
         }
 
         // branching
         "beq" => {
             let (r1, r2, label) = rrl(args);
-            vec![format!("branch_if_zero {r1} - {r2}, {label};")]
+            vec![
+                format!("addr <=X= {r1} + {reg_start};"),
+                format!("tmp1 <== mload();"),
+                format!("addr <=X= {r2} + {reg_start};"),
+                format!("tmp2 <== mload();"),
+                format!("branch_if_zero tmp1 - tmp2, {label};")
+            ]
         }
         "beqz" => {
             let (r1, label) = rl(args);
-            vec![format!("branch_if_zero {r1}, {label};")]
+            vec![
+                format!("addr <=X= {r1} + {reg_start};"),
+                format!("tmp1 <== mload();"),
+                format!("branch_if_zero tmp1, {label};")
+            ]
         }
         "bgeu" => {
             let (r1, r2, label) = rrl(args);
             // TODO does this fulfill the input requirements for branch_if_positive?
-            vec![format!("branch_if_positive {r1} - {r2} + 1, {label};")]
+            vec![
+                format!("addr <=X= {r1} + {reg_start};"),
+                format!("tmp1 <== mload();"),
+                format!("addr <=X= {r2} + {reg_start};"),
+                format!("tmp2 <== mload();"),
+                format!("branch_if_positive tmp1 - tmp2 + 1, {label};")
+            ]
         }
         "bgez" => {
             let (r1, label) = rl(args);
             vec![
-                format!("tmp1 <== to_signed({r1});"),
+                format!("addr <=X= {r1} + {reg_start};"),
+                format!("tmp1 <== mload();"),
+                format!("tmp1 <== to_signed(tmp1);"),
                 format!("branch_if_positive tmp1 + 1, {label};"),
             ]
         }
@@ -1151,8 +1423,13 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
             // Branch if r1 < r2 (signed).
             // TODO does this fulfill the input requirements for branch_if_positive?
             vec![
-                format!("tmp1 <== to_signed({r1});"),
-                format!("tmp2 <== to_signed({r2});"),
+                format!("addr <=X= {r1} + {reg_start};"),
+                format!("tmp1 <== mload();"),
+                format!("addr <=X= {r2} + {reg_start};"),
+                format!("tmp2 <== mload();"),
+
+                format!("tmp1 <== to_signed(tmp1);"),
+                format!("tmp2 <== to_signed(tmp2);"),
                 format!("branch_if_positive tmp2 - tmp1, {label};"),
             ]
         }
@@ -1161,22 +1438,33 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
             // Branch if r1 >= r2 (signed).
             // TODO does this fulfill the input requirements for branch_if_positive?
             vec![
-                format!("tmp1 <== to_signed({r1});"),
-                format!("tmp2 <== to_signed({r2});"),
+                format!("addr <=X= {r1} + {reg_start};"),
+                format!("tmp1 <== mload();"),
+                format!("addr <=X= {r2} + {reg_start};"),
+                format!("tmp2 <== mload();"),
+
+                format!("tmp1 <== to_signed(tmp1);"),
+                format!("tmp2 <== to_signed(tmp2);"),
                 format!("branch_if_positive tmp1 - tmp2 + 1, {label};"),
             ]
         }
         "bltz" => {
             // branch if 2**31 <= r1 < 2**32
             let (r1, label) = rl(args);
-            vec![format!("branch_if_positive {r1} - 2**31 + 1, {label};")]
+            vec![
+                format!("addr <=X= {r1} + {reg_start};"),
+                format!("tmp1 <== mload();"),
+                format!("branch_if_positive tmp1 - 2**31 + 1, {label};")
+            ]
         }
 
         "blez" => {
             // branch less or equal zero
             let (r1, label) = rl(args);
             vec![
-                format!("tmp1 <== to_signed({r1});"),
+                format!("addr <=X= {r1} + {reg_start};"),
+                format!("tmp1 <== mload();"),
+                format!("tmp1 <== to_signed(tmp1);"),
                 format!("branch_if_positive -tmp1 + 1, {label};"),
             ]
         }
@@ -1184,17 +1472,29 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
             // branch if 0 < r1 < 2**31
             let (r1, label) = rl(args);
             vec![
-                format!("tmp1 <== to_signed({r1});"),
+                format!("addr <=X= {r1} + {reg_start};"),
+                format!("tmp1 <== mload();"),
+                format!("tmp1 <== to_signed(tmp1);"),
                 format!("branch_if_positive tmp1, {label};"),
             ]
         }
         "bne" => {
             let (r1, r2, label) = rrl(args);
-            vec![format!("branch_if_nonzero {r1} - {r2}, {label};")]
+            vec![
+                format!("addr <=X= {r1} + {reg_start};"),
+                format!("tmp1 <== mload();"),
+                format!("addr <=X= {r2} + {reg_start};"),
+                format!("tmp2 <== mload();"),
+                format!("branch_if_nonzero tmp1 - tmp2, {label};")
+            ]
         }
         "bnez" => {
             let (r1, label) = rl(args);
-            vec![format!("branch_if_nonzero {r1}, {label};")]
+            vec![
+                format!("addr <=X= {r1} + {reg_start};"),
+                format!("tmp1 <== mload();"),
+                format!("branch_if_nonzero tmp1, {label};")
+            ]
         }
 
         // jump and call
@@ -1207,7 +1507,11 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
         }
         "jr" => {
             let rs = r(args);
-            vec![format!("jump_dyn {rs};")]
+            vec![
+                format!("addr <=X= {rs} + {reg_start};"),
+                format!("tmp1 <== mload();"),
+                format!("jump_dyn tmp1;")
+            ]
         }
         "jal" => {
             let (_rd, _label) = rl(args);
@@ -1216,7 +1520,15 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
         "jalr" => {
             // TODO there is also a form that takes more arguments
             let rs = r(args);
-            vec![format!("jump_and_link_dyn {rs};")]
+            vec![
+                format!("addr <=X= {rs} + {reg_start};"),
+                format!("tmp1 <== mload();"),
+                // instr jump_and_link_dyn X { pc' = X, x1' = pc + 1 }
+                format!("addr <=X= 1 * 4 + {reg_start};"),
+                format!("mstore (pc + 2);"),
+
+                format!("jump_and_link_dyn tmp1;")
+            ]
         }
         "call" | "tail" => {
             // Depending on what symbol is called, the call is replaced by a
@@ -1230,24 +1542,48 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
             };
             match (replacement, instr) {
                 (Some(replacement), "call") => vec![replacement],
-                (Some(replacement), "tail") => vec![replacement, "ret;".to_string()],
+                (Some(replacement), "tail") => vec![replacement, format!("addr <=X= 1 * 4 + {reg_start};\ntmp1 <== mload();\nret tmp1;")],
                 (Some(_), _) => panic!(),
+                (None, "call") => vec![
+                    format!("addr <=X= 1 * 4 + {reg_start};"),
+                    format!("mstore (pc + 2);"),
+                    format!("{instr} {};", argument_to_escaped_symbol(label))
+                ],
+                (None, "tail") => vec![
+                    format!("addr <=X= 6 * 4 + {reg_start};"),
+                    format!("tmp1 <== load_label({});", argument_to_escaped_symbol(label)),
+                    format!("mstore tmp1;"),
+                    format!("{instr} {};", argument_to_escaped_symbol(label))
+                ],
                 (None, _) => vec![format!("{instr} {};", argument_to_escaped_symbol(label))],
             }
         }
         "ecall" => {
             assert!(args.is_empty());
-            vec!["x10 <=X= ${ (\"input\", x10) };".to_string()]
+            vec![
+                format!("addr <=X= 10 * 4 + {reg_start};"),
+                format!("tmp1 <== mload();"),
+                "mstore ${ (\"input\", tmp1) };".to_string()
+            ]
         }
         "ebreak" => {
             assert!(args.is_empty());
             // This is using x0 on purpose, because we do not want to introduce
             // nondeterminism with this.
-            vec!["x0 <=X= ${ (\"print_char\", x10) };\n".to_string()]
+            vec![
+                format!("addr <=X= 10 * 4 + {reg_start};"),
+                format!("tmp1 <== mload();"),
+                format!("addr <=X= 0 * 4 + {reg_start};"),
+                "mstore ${ (\"print_char\", tmp1) };\n".to_string()
+            ]
         }
         "ret" => {
             assert!(args.is_empty());
-            vec!["ret;".to_string()]
+            vec![
+                format!("addr <=X= 1 * 4 + {reg_start};"),
+                format!("tmp1 <== mload();"),
+                "ret tmp1;".to_string()
+            ]
         }
 
         // memory access
@@ -1256,8 +1592,14 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
             // TODO we need to consider misaligned loads / stores
             only_if_no_write_to_zero_vec(
                 vec![
-                    format!("addr <== wrap({rs} + {off});"),
-                    format!("{rd} <== mload();"),
+                    format!("addr <=X= {rs} + {reg_start};"),
+                    format!("tmp1 <== mload();"),
+
+                    format!("addr <== wrap(tmp1 + {off});"),
+                    format!("tmp1 <== mload();"),
+
+                    format!("addr <=X= {rd} + {reg_start};"),
+                    format!("mstore tmp1;"),
                 ],
                 rd,
             )
@@ -1267,12 +1609,19 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
             let (rd, rs, off) = rro(args);
             only_if_no_write_to_zero_vec(
                 vec![
-                    format!("tmp1 <== wrap({rs} + {off});"),
+                    format!("addr <=X= {rs} + {reg_start};"),
+                    format!("tmp1 <== mload();"),
+
+                    format!("tmp1 <== wrap(tmp1 + {off});"),
                     "addr <== and(tmp1, 0xfffffffc);".to_string(),
                     "tmp2 <== and(tmp1, 0x3);".to_string(),
-                    format!("{rd} <== mload();"),
-                    format!("{rd} <== shr({rd}, 8 * tmp2);"),
-                    format!("{rd} <== sign_extend_byte({rd});"),
+
+                    format!("tmp1 <== mload();"),
+                    format!("tmp1 <== shr(tmp1, 8 * tmp2);"),
+
+                    format!("addr <=X= {rd} + {reg_start};"),
+                    format!("tmp1 <== sign_extend_byte(tmp1);"),
+                    format!("mstore tmp1;"),
                 ],
                 rd,
             )
@@ -1282,12 +1631,19 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
             let (rd, rs, off) = rro(args);
             only_if_no_write_to_zero_vec(
                 vec![
-                    format!("tmp1 <== wrap({rs} + {off});"),
+                    format!("addr <=X= {rs} + {reg_start};"),
+                    format!("tmp1 <== mload();"),
+
+                    format!("tmp1 <== wrap(tmp1 + {off});"),
                     "addr <== and(tmp1, 0xfffffffc);".to_string(),
                     "tmp2 <== and(tmp1, 0x3);".to_string(),
-                    format!("{rd} <== mload();"),
-                    format!("{rd} <== shr({rd}, 8 * tmp2);"),
-                    format!("{rd} <== and({rd}, 0xff);"),
+
+                    format!("tmp1 <== mload();"),
+                    format!("tmp1 <== shr(tmp1, 8 * tmp2);"),
+
+                    format!("addr <=X= {rd} + {reg_start};"),
+                    format!("tmp1 <== and(tmp1, 0xff);"),
+                    format!("mstore tmp1;"),
                 ],
                 rd,
             )
@@ -1298,12 +1654,19 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
             let (rd, rs, off) = rro(args);
             only_if_no_write_to_zero_vec(
                 vec![
-                    format!("tmp1 <== wrap({rs} + {off});"),
+                    format!("addr <=X= {rs} + {reg_start};"),
+                    format!("tmp1 <== mload();"),
+
+                    format!("tmp1 <== wrap(tmp1 + {off});"),
                     "addr <== and(tmp1, 0xfffffffc);".to_string(),
                     "tmp2 <== and(tmp1, 0x3);".to_string(),
-                    format!("{rd} <== mload();"),
-                    format!("{rd} <== shr({rd}, 8 * tmp2);"),
-                    format!("{rd} <== and({rd}, 0x0000ffff);"),
+
+                    format!("tmp1 <== mload();"),
+                    format!("tmp1 <== shr(tmp1, 8 * tmp2);"),
+
+                    format!("addr <=X= {rd} + {reg_start};"),
+                    format!("tmp1 <== and(tmp1, 0x0000ffff);"),
+                    format!("mstore tmp1;"),
                 ],
                 rd,
             )
@@ -1311,8 +1674,13 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
         "sw" => {
             let (r1, r2, off) = rro(args);
             vec![
-                format!("addr <== wrap({r2} + {off});"),
-                format!("mstore {r1};"),
+                format!("addr <=X= {r1} + {reg_start};"),
+                format!("tmp1 <== mload();"),
+                format!("addr <=X= {r2} + {reg_start};"),
+                format!("tmp2 <== mload();"),
+
+                format!("addr <== wrap(tmp2 + {off});"),
+                format!("mstore tmp1;"),
             ]
         }
         "sh" => {
@@ -1322,14 +1690,22 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
 
             let (rs, rd, off) = rro(args);
             vec![
-                format!("tmp1 <== wrap({rd} + {off});"),
+                format!("addr <=X= {rd} + {reg_start};"),
+                format!("tmp1 <== mload();"),
+
+                format!("tmp1 <== wrap(tmp1 + {off});"),
+
                 "addr <== and(tmp1, 0xfffffffc);".to_string(),
                 "tmp2 <== and(tmp1, 0x3);".to_string(),
                 "tmp1 <== mload();".to_string(),
                 "tmp3 <== shl(0xffff, 8 * tmp2);".to_string(),
                 "tmp3 <== xor(tmp3, 0xffffffff);".to_string(),
                 "tmp1 <== and(tmp1, tmp3);".to_string(),
-                format!("tmp3 <== and({rs}, 0xffff);"),
+
+                format!("addr <=X= {rs} + {reg_start};"),
+                format!("tmp3 <== mload();"),
+                format!("tmp3 <== and(tmp3, 0xffff);"),
+
                 "tmp3 <== shl(tmp3, 8 * tmp2);".to_string(),
                 "tmp1 <== or(tmp1, tmp3);".to_string(),
                 "mstore tmp1;".to_string(),
@@ -1339,14 +1715,21 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
             // store byte
             let (rs, rd, off) = rro(args);
             vec![
-                format!("tmp1 <== wrap({rd} + {off});"),
+                format!("addr <=X= {rd} + {reg_start};"),
+                format!("tmp1 <== mload();"),
+
+                format!("tmp1 <== wrap(tmp1 + {off});"),
                 "addr <== and(tmp1, 0xfffffffc);".to_string(),
                 "tmp2 <== and(tmp1, 0x3);".to_string(),
                 "tmp1 <== mload();".to_string(),
                 "tmp3 <== shl(0xff, 8 * tmp2);".to_string(),
                 "tmp3 <== xor(tmp3, 0xffffffff);".to_string(),
                 "tmp1 <== and(tmp1, tmp3);".to_string(),
-                format!("tmp3 <== and({rs}, 0xff);"),
+
+                format!("addr <=X= {rs} + {reg_start};"),
+                format!("tmp3 <== mload();"),
+                format!("tmp3 <== and(tmp3, 0xff);"),
+
                 "tmp3 <== shl(tmp3, 8 * tmp2);".to_string(),
                 "tmp1 <== or(tmp1, tmp3);".to_string(),
                 "mstore tmp1;".to_string(),
@@ -1358,7 +1741,12 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
         // Special instruction that is inserted to allow dynamic label references
         "load_dynamic" => {
             let (rd, label) = rl(args);
-            only_if_no_write_to_zero(format!("{rd} <== load_label({label});"), rd)
+            only_if_no_write_to_zero_vec(
+                vec![
+                    format!("tmp1 <== load_label({label});"),
+                    format!("addr <=X= {rd} + {reg_start};"),
+                    format!("mstore tmp1;")
+                ], rd)
         }
 
         // atomic and synchronization

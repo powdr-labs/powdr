@@ -575,7 +575,7 @@ impl<T: FieldElement> ASMPILConverter<T> {
         match value {
             Expression::Constant(_) => panic!(),
             Expression::PublicReference(_) => panic!(),
-            Expression::FunctionCall(_) => panic!(),
+            Expression::FunctionCall(_) => panic!("{value}"),
             Expression::Reference(reference) => {
                 assert!(reference.namespace().is_none());
                 assert!(reference.index().is_none());
