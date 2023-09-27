@@ -1,6 +1,6 @@
 use std::fmt::Debug;
 
-use ast::analyzed::{Expression, PolyID, PolynomialReference};
+use ast::analyzed::{Expression, PolynomialReference};
 use itertools::Itertools;
 use number::{DegreeType, FieldElement};
 
@@ -177,17 +177,6 @@ impl<'a, T: FieldElement> RowFactory<'a, T> {
             name: self.fixed_data.column_name(&poly_id),
             value: CellValue::Known(v),
         }))
-    }
-
-    pub fn row_from_known_values_sparse(
-        &self,
-        values: impl Iterator<Item = (PolyID, T)>,
-    ) -> Row<'a, T> {
-        let mut row = self.fresh_row();
-        for (poly_id, v) in values {
-            row[&poly_id].value = CellValue::Known(v);
-        }
-        row
     }
 }
 
