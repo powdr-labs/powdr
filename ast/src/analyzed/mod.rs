@@ -385,7 +385,7 @@ impl<T> Expression<T> {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Reference {
-    LocalVar(u64),
+    LocalVar(u64, String),
     Poly(PolynomialReference),
 }
 

@@ -137,14 +137,8 @@ impl<T: Display> Display for SelectedExpressions<T> {
 impl Display for Reference {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Reference::LocalVar(index) => {
-                // TODO this is not really reproducing the input, but
-                // if we want to do that, we would need the names of the local variables somehow.
-                if *index == 0 {
-                    write!(f, "i")
-                } else {
-                    write!(f, "${index}")
-                }
+            Reference::LocalVar(_index, name) => {
+                write!(f, "{name}")
             }
             Reference::Poly(r) => write!(f, "{r}"),
         }

@@ -247,7 +247,7 @@ impl<'a, T: FieldElement> Exporter<'a, T> {
             Expression::Reference(analyzed::Reference::Poly(reference)) => {
                 self.polynomial_reference_to_json(reference)
             }
-            Expression::Reference(analyzed::Reference::LocalVar(_)) => {
+            Expression::Reference(analyzed::Reference::LocalVar(_, _)) => {
                 panic!("No local variable references allowed here.")
             }
             Expression::PublicReference(name) => (

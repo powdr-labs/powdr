@@ -550,7 +550,7 @@ impl<T: FieldElement> PILAnalyzer<T> {
                     let id = self.local_variables[poly.name()];
                     assert!(!poly.shift());
                     assert!(poly.index().is_none());
-                    Expression::Reference(Reference::LocalVar(id))
+                    Expression::Reference(Reference::LocalVar(id, poly.name().to_string()))
                 } else {
                     Expression::Reference(Reference::Poly(
                         self.process_shifted_polynomial_reference(poly),
@@ -881,14 +881,14 @@ namespace T(65536);
     let t = |i| i + 1;
     let z = 7;
     let other = [1, 2];
-    let other_fun = |i, j| i + j;
+    let other_fun = |i, j| (i + 7, (|k| k - i));
 "#;
         let expected = r#"constant z = 7;
 namespace N(65536);
     col witness x;
     col fixed t(i) { (i + 1) };
     let other = [1, 2];
-    let other_fun = |i, j| (i + $1);
+    let other_fun = |i, j| ((i + 7), |k| (k - i));
 "#;
         let formatted = process_pil_file_contents::<GoldilocksField>(input).to_string();
         assert_eq!(formatted, expected);
