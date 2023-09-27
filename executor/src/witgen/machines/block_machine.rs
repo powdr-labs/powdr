@@ -168,7 +168,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
     fn take_witness_col_values(
         &mut self,
         fixed_data: &FixedData<T>,
-        fixed_lookup: &mut FixedLookup<T>,
+        _fixed_lookup: &mut FixedLookup<T>,
     ) -> HashMap<String, Vec<T>> {
         if self.data.len() < 2 * self.block_size {
             log::warn!(
@@ -210,7 +210,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
                 (id, values)
             })
             .collect();
-        self.handle_last_row(&mut data, fixed_data, fixed_lookup);
+        self.handle_last_row(&mut data, fixed_data);
         data.into_iter()
             .map(|(id, values)| (fixed_data.column_name(&id).to_string(), values))
             .collect()
@@ -218,55 +218,23 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
 }
 
 impl<'a, T: FieldElement> BlockMachine<'a, T> {
-    /// Check if constraints are satisfied on the last row and recompute it if not.
-    /// While the characteristic of a block machine is that that all fixed columns
-    /// should be periodic (and hence all constraints), the last row might be different,
-    /// in order to handle the cyclic nature of the proving system.
-    /// This can lead to an invalid last row when a default block is "copy-pasted" until
-    /// the end of the table. This function corrects it if it is the case.
-    fn handle_last_row(
-        &self,
-        data: &mut HashMap<PolyID, Vec<T>>,
-        fixed_data: &FixedData<T>,
-        fixed_lookup: &mut FixedLookup<T>,
-    ) {
-        // Build a vector of 3 rows: N -2, N - 1 and 0
-        let rows = ((fixed_data.degree - 2)..(fixed_data.degree + 1))
-            .map(|row| {
-                self.row_factory.row_from_known_values_sparse(
-                    data.iter()
-                        .map(|(col, values)| (*col, values[(row % fixed_data.degree) as usize])),
-                )
-            })
-            .collect();
-
-        // Build the processor.
-        let mut machines = vec![];
-        let mut processor = Processor::new(
-            fixed_data.degree - 2,
-            rows,
-            IdentityProcessor::new(fixed_data, fixed_lookup, &mut machines),
-            &self.identities,
-            fixed_data,
-            self.row_factory.clone(),
-            &self.witness_cols,
-        );
-
-        // Check if we can accept the last row as is.
-        if processor.check_constraints().is_err() {
-            log::warn!("Detected error in last row! Will attempt to fix it now.");
-
-            // Clear the last row and run the solver
-            processor.clear_row(1);
-            processor
-                .solve_with_default_sequence_iterator()
-                .expect("Some constraints were not satisfiable when solving for the last row.");
-            let last_row = processor.finish().remove(1);
-
-            // Copy values into data
-            for (poly_id, values) in data.iter_mut() {
-                values[fixed_data.degree as usize - 1] =
-                    last_row[poly_id].value.unwrap_or_default();
+    /// The characteristic of a block machine is that that all fixed columns are
+    /// periodic. However, there are exceptions to handle wrapping.
+    /// This becomes a problem when a witness polynomial depends on a fixed column
+    /// that is not periodic, because values of committed polynomials are copy-pasted
+    /// from the default block.
+    /// This is the case for the _operation_id_no_change column, generated when
+    /// compiling a block machine from Posdr ASM and constrained as:
+    /// _operation_id_no_change = ((1 - _block_enforcer_last_step) * (1 - <Latch>));
+    /// This function fixes this exception by setting _operation_id_no_change to 0.
+    fn handle_last_row(&self, data: &mut HashMap<PolyID, Vec<T>>, fixed_data: &FixedData<T>) {
+        for (poly_id, col) in data.iter_mut() {
+            if fixed_data
+                .column_name(poly_id)
+                .ends_with("_operation_id_no_change")
+            {
+                log::trace!("Setting _operation_id_no_change to 0.");
+                col[fixed_data.degree as usize - 1] = T::zero();
             }
         }
     }

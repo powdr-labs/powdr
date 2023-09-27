@@ -9,9 +9,7 @@ use super::{
     affine_expression::AffineExpression,
     identity_processor::IdentityProcessor,
     rows::{Row, RowFactory, RowPair, RowUpdater, UnknownStrategy},
-    sequence_iterator::{
-        DefaultSequenceIterator, IdentityInSequence, ProcessingSequenceIterator, SequenceStep,
-    },
+    sequence_iterator::{IdentityInSequence, ProcessingSequenceIterator, SequenceStep},
     Constraints, EvalError, EvalValue, FixedData,
 };
 
@@ -100,11 +98,6 @@ impl<'a, 'b, T: FieldElement> Processor<'a, 'b, T, WithoutCalldata> {
             witness_cols: self.witness_cols,
         }
     }
-
-    /// Destroys itself, returns the data and updated left-hand side of the outer query (if available).
-    pub fn finish(self) -> Vec<Row<'a, T>> {
-        self.data
-    }
 }
 
 impl<'a, 'b, T: FieldElement> Processor<'a, 'b, T, WithCalldata> {
@@ -117,6 +110,7 @@ impl<'a, 'b, T: FieldElement> Processor<'a, 'b, T, WithCalldata> {
 impl<'a, 'b, T: FieldElement, CalldataAvailable> Processor<'a, 'b, T, CalldataAvailable> {
     /// Evaluate all identities on all *non-wrapping* row pairs, assuming zero for unknown values.
     /// If any identity was unsatisfied, returns an error.
+    #[allow(dead_code)]
     pub fn check_constraints(&mut self) -> Result<(), EvalError<T>> {
         for i in 0..(self.data.len() - 1) {
             let row_pair = RowPair::new(
@@ -131,28 +125,6 @@ impl<'a, 'b, T: FieldElement, CalldataAvailable> Processor<'a, 'b, T, CalldataAv
                     .process_identity(identity, &row_pair)?;
             }
         }
-        Ok(())
-    }
-
-    /// Reset the row at the given index to a fresh row.
-    pub fn clear_row(&mut self, index: usize) {
-        self.data[index] = self.row_factory.fresh_row();
-    }
-
-    /// Figures out unknown values, using the default sequence iterator.
-    /// Since the default sequence iterator looks at the row before and after
-    /// the current block, we assume that these lines are already part of [Self::data]
-    /// and set the block size to `self.data.len() - 2`.
-    pub fn solve_with_default_sequence_iterator(&mut self) -> Result<(), EvalError<T>> {
-        assert!(self.data.len() > 2);
-        let mut sequence_iterator = ProcessingSequenceIterator::Default(
-            DefaultSequenceIterator::new(self.data.len() - 2, self.identities.len(), None),
-        );
-        let outer_updates = self.solve(&mut sequence_iterator)?;
-        assert!(
-            outer_updates.is_empty(),
-            "Should not produce any outer updates, because we set outer_query_row to None"
-        );
         Ok(())
     }
 
@@ -317,7 +289,10 @@ mod tests {
     use crate::{
         constant_evaluator::generate,
         witgen::{
-            identity_processor::IdentityProcessor, machines::FixedLookup, rows::RowFactory,
+            identity_processor::IdentityProcessor,
+            machines::FixedLookup,
+            rows::RowFactory,
+            sequence_iterator::{DefaultSequenceIterator, ProcessingSequenceIterator},
             FixedData,
         },
     };
@@ -374,7 +349,14 @@ mod tests {
 
     fn solve_and_assert<T: FieldElement>(src: &str, asserted_values: &[(usize, &str, u64)]) {
         do_with_processor(src, |processor, poly_ids| {
-            processor.solve_with_default_sequence_iterator().unwrap();
+            let mut sequence_iterator =
+                ProcessingSequenceIterator::Default(DefaultSequenceIterator::new(
+                    processor.data.len() - 2,
+                    processor.identities.len(),
+                    None,
+                ));
+            let outer_updates = processor.solve(&mut sequence_iterator).unwrap();
+            assert!(outer_updates.is_empty());
 
             // Can't use processor.finish(), because we don't own it...
             let data = processor.data.clone();
