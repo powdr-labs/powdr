@@ -27,7 +27,7 @@ pub enum StatementIdentifier {
 pub struct Analyzed<T> {
     /// Constants are not namespaced!
     pub constants: HashMap<String, T>,
-    pub definitions: HashMap<String, (Polynomial, Option<FunctionValueDefinition<T>>)>,
+    pub definitions: HashMap<String, (Symbol, Option<FunctionValueDefinition<T>>)>,
     pub public_declarations: HashMap<String, PublicDeclaration>,
     pub identities: Vec<Identity<T>>,
     /// The order in which definitions and identities
@@ -51,33 +51,36 @@ impl<T> Analyzed<T> {
 
     pub fn constant_polys_in_source_order(
         &self,
-    ) -> Vec<&(Polynomial, Option<FunctionValueDefinition<T>>)> {
+    ) -> Vec<&(Symbol, Option<FunctionValueDefinition<T>>)> {
         self.definitions_in_source_order(PolynomialType::Constant)
     }
 
     pub fn committed_polys_in_source_order(
         &self,
-    ) -> Vec<&(Polynomial, Option<FunctionValueDefinition<T>>)> {
+    ) -> Vec<&(Symbol, Option<FunctionValueDefinition<T>>)> {
         self.definitions_in_source_order(PolynomialType::Committed)
     }
 
     pub fn intermediate_polys_in_source_order(
         &self,
-    ) -> Vec<&(Polynomial, Option<FunctionValueDefinition<T>>)> {
+    ) -> Vec<&(Symbol, Option<FunctionValueDefinition<T>>)> {
         self.definitions_in_source_order(PolynomialType::Intermediate)
     }
 
     pub fn definitions_in_source_order(
         &self,
         poly_type: PolynomialType,
-    ) -> Vec<&(Polynomial, Option<FunctionValueDefinition<T>>)> {
+    ) -> Vec<&(Symbol, Option<FunctionValueDefinition<T>>)> {
         self.source_order
             .iter()
             .filter_map(move |statement| {
                 if let StatementIdentifier::Definition(name) = statement {
                     let definition = &self.definitions[name];
-                    if definition.0.poly_type == poly_type {
-                        return Some(definition);
+                    match definition.0.kind {
+                        SymbolKind::Poly(ptype) if ptype == poly_type => {
+                            return Some(definition);
+                        }
+                        _ => {}
                     }
                 }
                 None
@@ -88,12 +91,11 @@ impl<T> Analyzed<T> {
     fn declaration_type_count(&self, poly_type: PolynomialType) -> usize {
         self.definitions
             .iter()
-            .filter_map(move |(_name, (poly, _))| {
-                if poly.poly_type == poly_type {
-                    Some(poly.length.unwrap_or(1) as usize)
-                } else {
-                    None
+            .filter_map(move |(_name, (symbol, _))| match symbol.kind {
+                SymbolKind::Poly(ptype) if ptype == poly_type => {
+                    Some(symbol.length.unwrap_or(1) as usize)
                 }
+                _ => None,
             })
             .sum()
     }
@@ -140,7 +142,7 @@ impl<T> Analyzed<T> {
 
         let mut names_to_remove: HashSet<String> = Default::default();
         self.definitions.retain(|name, (poly, _def)| {
-            if to_remove.contains(&(poly as &Polynomial).into()) {
+            if to_remove.contains(&(poly as &Symbol).into()) {
                 names_to_remove.insert(name.clone());
                 false
             } else {
@@ -156,7 +158,7 @@ impl<T> Analyzed<T> {
             true
         });
         self.definitions.values_mut().for_each(|(poly, _def)| {
-            let poly_id = PolyID::from(poly as &Polynomial);
+            let poly_id = PolyID::from(poly as &Symbol);
             assert!(!to_remove.contains(&poly_id));
             poly.id = replacements[&poly_id].id;
         });
@@ -225,19 +227,27 @@ impl<T> Analyzed<T> {
 }
 
 #[derive(Debug, Clone)]
-pub struct Polynomial {
+pub struct Symbol {
     pub id: u64,
     pub source: SourceRef,
     pub absolute_name: String,
-    pub poly_type: PolynomialType,
+    pub kind: SymbolKind,
     pub degree: DegreeType,
     pub length: Option<DegreeType>,
 }
 
-impl Polynomial {
+impl Symbol {
     pub fn is_array(&self) -> bool {
         self.length.is_some()
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SymbolKind {
+    /// Fixed, witness or intermediate polynomial
+    Poly(PolynomialType),
+    /// Other symbol, could be a constant, depends on the type.
+    Other(),
 }
 
 #[derive(Debug)]
@@ -398,11 +408,14 @@ pub struct PolyID {
     pub ptype: PolynomialType,
 }
 
-impl From<&Polynomial> for PolyID {
-    fn from(poly: &Polynomial) -> Self {
+impl From<&Symbol> for PolyID {
+    fn from(symbol: &Symbol) -> Self {
+        let SymbolKind::Poly(ptype) = symbol.kind else {
+            panic!()
+        };
         PolyID {
-            id: poly.id,
-            ptype: poly.poly_type,
+            id: symbol.id,
+            ptype,
         }
     }
 }
