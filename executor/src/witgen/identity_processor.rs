@@ -5,25 +5,73 @@ use itertools::{Either, Itertools};
 use lazy_static::lazy_static;
 use number::FieldElement;
 
+use crate::witgen::machines::Machine;
+
 use super::{
     affine_expression::AffineExpression,
-    machines::{FixedLookup, KnownMachine, Machine},
+    machines::{FixedLookup, KnownMachine},
     rows::RowPair,
     EvalResult, EvalValue, FixedData, IncompleteCause,
 };
+
+/// A list of mutable references to machines.
+pub struct Machines<'a, 'b, T: FieldElement> {
+    machines: Vec<&'b mut KnownMachine<'a, T>>,
+}
+
+impl<'a, 'b, T: FieldElement> Machines<'a, 'b, T> {
+    /// Splits out the machine at `index` and returns it together with a list of all other machines.
+    /// As a result, they can be mutated independently.
+    /// With #515 implemented (making calling machines immutable), this could be removed as there
+    /// would not be a need to split the list of machines.
+    pub fn split<'c>(
+        &'c mut self,
+        index: usize,
+    ) -> (&'c mut KnownMachine<'a, T>, Machines<'a, 'c, T>) {
+        let (before, after) = self.machines.split_at_mut(index);
+        let (current, after) = after.split_at_mut(1);
+        let current: &'c mut KnownMachine<'a, T> = current.first_mut().unwrap();
+
+        // Reborrow machines to convert from `&'c mut &'b mut KnownMachine<'a, T>` to
+        // `&'c mut KnownMachine<'a, T>`.
+        let others: Vec<&'c mut KnownMachine<'a, T>> = before
+            .iter_mut()
+            .chain(after.iter_mut())
+            .map(|m| &mut **m)
+            .collect();
+
+        (current, others.into_iter().into())
+    }
+
+    pub fn len(&self) -> usize {
+        self.machines.len()
+    }
+}
+
+impl<'a, 'b, T, I> From<I> for Machines<'a, 'b, T>
+where
+    T: FieldElement,
+    I: Iterator<Item = &'b mut KnownMachine<'a, T>>,
+{
+    fn from(machines: I) -> Self {
+        Self {
+            machines: machines.collect(),
+        }
+    }
+}
 
 /// Computes (value or range constraint) updates given a [RowPair] and [Identity].
 pub struct IdentityProcessor<'a, 'b, T: FieldElement> {
     fixed_data: &'a FixedData<'a, T>,
     fixed_lookup: &'b mut FixedLookup<T>,
-    machines: &'b mut Vec<KnownMachine<'a, T>>,
+    machines: Machines<'a, 'b, T>,
 }
 
 impl<'a, 'b, T: FieldElement> IdentityProcessor<'a, 'b, T> {
     pub fn new(
         fixed_data: &'a FixedData<'a, T>,
         fixed_lookup: &'b mut FixedLookup<T>,
-        machines: &'b mut Vec<KnownMachine<'a, T>>,
+        machines: Machines<'a, 'b, T>,
     ) -> Self {
         Self {
             fixed_data,
@@ -111,14 +159,15 @@ impl<'a, 'b, T: FieldElement> IdentityProcessor<'a, 'b, T> {
             return result;
         }
 
-        for m in self.machines.iter_mut() {
-            // TODO also consider the reasons above.
-            if let Some(result) = m.process_plookup(
+        for i in 0..self.machines.len() {
+            let (current, others) = self.machines.split(i);
+            if let Some(result) = current.process_plookup(
                 self.fixed_data,
                 self.fixed_lookup,
                 identity.kind,
                 &left,
                 &identity.right,
+                others,
             ) {
                 return result;
             }
