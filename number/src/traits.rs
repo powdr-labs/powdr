@@ -46,6 +46,11 @@ pub trait BigInt:
     fn is_one(&self) -> bool;
 }
 
+pub enum KnownField {
+    GoldilocksField,
+    Bn254Field,
+}
+
 /// A field element
 pub trait FieldElement:
     'static
@@ -112,6 +117,9 @@ pub trait FieldElement:
     /// Returns true if the value is in the "lower half" of the field,
     /// i.e. the value <= (modulus() - 1) / 2
     fn is_in_lower_half(&self) -> bool;
+
+    /// If the field is a known field (as listed in the `KnownField` enum), returns the field variant.
+    fn known_field() -> Option<KnownField>;
 }
 
 #[cfg(test)]

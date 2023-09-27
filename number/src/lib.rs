@@ -11,6 +11,7 @@ pub use serialize::{read_polys_file, write_polys_file};
 
 pub use bn254::Bn254Field;
 pub use goldilocks::GoldilocksField;
+pub use traits::KnownField;
 
 use num_bigint::BigUint;
 pub use traits::{BigInt, FieldElement};

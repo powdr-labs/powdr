@@ -1,7 +1,7 @@
 macro_rules! powdr_field {
     ($name:ident, $ark_type:ty) => {
         use crate::{
-            traits::{BigInt, FieldElement},
+            traits::{BigInt, FieldElement, KnownField},
             DegreeType,
         };
         use ark_ff::{BigInteger, Field, PrimeField};
@@ -262,6 +262,10 @@ macro_rules! powdr_field {
         impl FieldElement for $name {
             type Integer = BigIntImpl;
             const BITS: u32 = <$ark_type>::MODULUS_BIT_SIZE;
+
+            fn known_field() -> Option<KnownField> {
+                Some(KnownField::$name)
+            }
 
             fn from_str(s: &str) -> Self {
                 Self {
