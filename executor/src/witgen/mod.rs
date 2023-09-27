@@ -147,10 +147,7 @@ where
     let mut secondary_columns = mutable_state
         .machines
         .iter_mut()
-        .flat_map(|m| {
-            m.take_witness_col_values(&fixed, &mut mutable_state.fixed_lookup)
-                .into_iter()
-        })
+        .flat_map(|m| m.take_witness_col_values(&fixed).into_iter())
         .collect::<BTreeMap<_, _>>();
 
     // Done this way, because:

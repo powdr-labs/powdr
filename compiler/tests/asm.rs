@@ -116,6 +116,14 @@ fn vm_to_block_unique_interface() {
 }
 
 #[test]
+fn vm_to_block_to_block() {
+    let f = "vm_to_block_to_block.asm";
+    let i = [];
+    verify_asm::<GoldilocksField>(f, slice_to_vec(&i));
+    gen_halo2_proof(f, slice_to_vec(&i));
+}
+
+#[test]
 fn block_to_block() {
     let f = "block_to_block.asm";
     let i = [];

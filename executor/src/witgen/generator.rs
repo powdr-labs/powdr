@@ -12,6 +12,7 @@ use crate::witgen::rows::RowUpdater;
 
 use super::affine_expression::AffineExpression;
 use super::column_map::WitnessColumnMap;
+use super::identity_processor::Machines;
 use super::machines::Machine;
 use super::query_processor::QueryProcessor;
 use super::range_constraints::RangeConstraint;
@@ -79,15 +80,12 @@ impl<'a, T: FieldElement> Machine<'a, T> for Generator<'a, T> {
         _kind: IdentityKind,
         _left: &[AffineExpression<&'a PolynomialReference, T>],
         _right: &'a SelectedExpressions<T>,
+        _machines: Machines<'a, '_, T>,
     ) -> Option<EvalResult<'a, T>> {
         unimplemented!()
     }
 
-    fn take_witness_col_values(
-        &mut self,
-        _fixed_data: &FixedData<T>,
-        _fixed_lookup: &mut FixedLookup<T>,
-    ) -> HashMap<String, Vec<T>> {
+    fn take_witness_col_values(&mut self, _fixed_data: &FixedData<T>) -> HashMap<String, Vec<T>> {
         unimplemented!()
     }
 }
@@ -190,7 +188,7 @@ impl<'a, T: FieldElement> Generator<'a, T> {
         let mut identity_processor = IdentityProcessor::new(
             self.fixed_data,
             &mut mutable_state.fixed_lookup,
-            &mut mutable_state.machines,
+            mutable_state.machines.iter_mut().into(),
         );
         let mut query_processor = mutable_state
             .query_callback
@@ -423,7 +421,7 @@ impl<'a, T: FieldElement> Generator<'a, T> {
         let mut identity_processor = IdentityProcessor::new(
             self.fixed_data,
             &mut mutable_state.fixed_lookup,
-            &mut mutable_state.machines,
+            mutable_state.machines.iter_mut().into(),
         );
         let constraints_valid = self.check_row_pair(&proposed_row, false, &mut identity_processor)
             && self.check_row_pair(&proposed_row, true, &mut identity_processor);

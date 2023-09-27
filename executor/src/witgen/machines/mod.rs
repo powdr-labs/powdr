@@ -12,6 +12,7 @@ use self::sorted_witness_machine::SortedWitnesses;
 
 use super::affine_expression::AffineExpression;
 use super::generator::Generator;
+use super::identity_processor::Machines;
 use super::EvalResult;
 use super::FixedData;
 
@@ -29,21 +30,18 @@ pub trait Machine<'a, T: FieldElement>: Send + Sync {
     /// Only return an error if this machine is able to handle the query and
     /// it results in a constraint failure.
     /// If this is not the right machine for the query, return `None`.
-    fn process_plookup(
+    fn process_plookup<'b>(
         &mut self,
         fixed_data: &'a FixedData<T>,
-        fixed_lookup: &mut FixedLookup<T>,
+        fixed_lookup: &'b mut FixedLookup<T>,
         kind: IdentityKind,
         left: &[AffineExpression<&'a PolynomialReference, T>],
         right: &'a SelectedExpressions<T>,
+        machines: Machines<'a, 'b, T>,
     ) -> Option<EvalResult<'a, T>>;
 
     /// Returns the final values of the witness columns.
-    fn take_witness_col_values(
-        &mut self,
-        fixed_data: &FixedData<T>,
-        fixed_lookup: &mut FixedLookup<T>,
-    ) -> HashMap<String, Vec<T>>;
+    fn take_witness_col_values(&mut self, fixed_data: &'a FixedData<T>) -> HashMap<String, Vec<T>>;
 }
 
 /// All known implementations of [Machine].
@@ -68,23 +66,23 @@ impl<'a, T: FieldElement> KnownMachine<'a, T> {
 }
 
 impl<'a, T: FieldElement> Machine<'a, T> for KnownMachine<'a, T> {
-    fn process_plookup(
+    fn process_plookup<'b>(
         &mut self,
         fixed_data: &'a FixedData<T>,
-        fixed_lookup: &mut FixedLookup<T>,
+        fixed_lookup: &'b mut FixedLookup<T>,
         kind: IdentityKind,
         left: &[AffineExpression<&'a PolynomialReference, T>],
         right: &'a SelectedExpressions<T>,
+        machines: Machines<'a, 'b, T>,
     ) -> Option<crate::witgen::EvalResult<'a, T>> {
         self.get()
-            .process_plookup(fixed_data, fixed_lookup, kind, left, right)
+            .process_plookup(fixed_data, fixed_lookup, kind, left, right, machines)
     }
 
     fn take_witness_col_values(
         &mut self,
-        fixed_data: &FixedData<T>,
-        fixed_lookup: &mut FixedLookup<T>,
+        fixed_data: &'a FixedData<T>,
     ) -> std::collections::HashMap<String, Vec<T>> {
-        self.get().take_witness_col_values(fixed_data, fixed_lookup)
+        self.get().take_witness_col_values(fixed_data)
     }
 }

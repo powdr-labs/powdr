@@ -6,6 +6,7 @@ use num_traits::Zero;
 
 use super::{FixedLookup, Machine};
 use crate::witgen::affine_expression::AffineExpression;
+use crate::witgen::identity_processor::Machines;
 use crate::witgen::util::is_simple_poly_of_name;
 use crate::witgen::{EvalResult, FixedData};
 use crate::witgen::{EvalValue, IncompleteCause};
@@ -100,6 +101,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses<T> {
         kind: IdentityKind,
         left: &[AffineExpression<&'a PolynomialReference, T>],
         right: &'a SelectedExpressions<T>,
+        _machines: Machines<'a, '_, T>,
     ) -> Option<EvalResult<'a, T>> {
         if kind != IdentityKind::Permutation
             || !(is_simple_poly_of_name(right.selector.as_ref()?, &self.namespaced("m_is_read"))
@@ -111,11 +113,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses<T> {
         Some(self.process_plookup_internal(left, right))
     }
 
-    fn take_witness_col_values(
-        &mut self,
-        fixed_data: &FixedData<T>,
-        _fixed_lookup: &mut FixedLookup<T>,
-    ) -> HashMap<String, Vec<T>> {
+    fn take_witness_col_values(&mut self, fixed_data: &FixedData<T>) -> HashMap<String, Vec<T>> {
         let mut addr = vec![];
         let mut step = vec![];
         let mut value = vec![];

@@ -6,6 +6,7 @@ use super::super::affine_expression::AffineExpression;
 use super::fixed_lookup_machine::FixedLookup;
 use super::Machine;
 use super::{EvalResult, FixedData};
+use crate::witgen::identity_processor::Machines;
 use crate::witgen::{
     expression_evaluator::ExpressionEvaluator, fixed_evaluator::FixedEvaluator,
     symbolic_evaluator::SymbolicEvaluator,
@@ -125,6 +126,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for SortedWitnesses<T> {
         kind: IdentityKind,
         left: &[AffineExpression<&'a PolynomialReference, T>],
         right: &'a SelectedExpressions<T>,
+        _machines: Machines<'a, '_, T>,
     ) -> Option<EvalResult<'a, T>> {
         if kind != IdentityKind::Plookup || right.selector.is_some() {
             return None;
@@ -149,11 +151,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for SortedWitnesses<T> {
 
         Some(self.process_plookup_internal(fixed_data, left, right, rhs))
     }
-    fn take_witness_col_values(
-        &mut self,
-        fixed_data: &FixedData<T>,
-        _fixed_lookup: &mut FixedLookup<T>,
-    ) -> HashMap<String, Vec<T>> {
+    fn take_witness_col_values(&mut self, fixed_data: &FixedData<T>) -> HashMap<String, Vec<T>> {
         let mut result = HashMap::new();
 
         let (mut keys, mut values): (Vec<_>, Vec<_>) =

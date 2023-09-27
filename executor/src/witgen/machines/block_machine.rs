@@ -3,7 +3,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use super::{EvalResult, FixedData, FixedLookup};
 use crate::witgen::affine_expression::AffineExpression;
 use crate::witgen::column_map::WitnessColumnMap;
-use crate::witgen::identity_processor::IdentityProcessor;
+use crate::witgen::identity_processor::{IdentityProcessor, Machines};
 use crate::witgen::processor::{OuterQuery, Processor};
 use crate::witgen::rows::{CellValue, Row, RowFactory, RowPair, UnknownStrategy};
 use crate::witgen::sequence_iterator::ProcessingSequenceCache;
@@ -141,20 +141,21 @@ fn try_to_period<T: FieldElement>(
 }
 
 impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
-    fn process_plookup(
+    fn process_plookup<'b>(
         &mut self,
         _fixed_data: &'a FixedData<T>,
-        fixed_lookup: &mut FixedLookup<T>,
+        fixed_lookup: &'b mut FixedLookup<T>,
         kind: IdentityKind,
         left: &[AffineExpression<&'a PolynomialReference, T>],
         right: &'a SelectedExpressions<T>,
+        machines: Machines<'a, 'b, T>,
     ) -> Option<EvalResult<'a, T>> {
         if *right != self.selected_expressions || kind != IdentityKind::Plookup {
             return None;
         }
         let previous_len = self.rows() as usize;
         Some({
-            let result = self.process_plookup_internal(fixed_lookup, left, right);
+            let result = self.process_plookup_internal(fixed_lookup, left, right, machines);
             if let Ok(assignments) = &result {
                 if !assignments.is_complete() {
                     // rollback the changes.
@@ -165,11 +166,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
         })
     }
 
-    fn take_witness_col_values(
-        &mut self,
-        fixed_data: &FixedData<T>,
-        _fixed_lookup: &mut FixedLookup<T>,
-    ) -> HashMap<String, Vec<T>> {
+    fn take_witness_col_values(&mut self, fixed_data: &'a FixedData<T>) -> HashMap<String, Vec<T>> {
         if self.data.len() < 2 * self.block_size {
             log::warn!(
                 "Filling empty blocks with zeros, because the block machine is never used. \
@@ -243,11 +240,12 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         self.data.len() as DegreeType
     }
 
-    fn process_plookup_internal(
+    fn process_plookup_internal<'b>(
         &mut self,
-        fixed_lookup: &mut FixedLookup<T>,
+        fixed_lookup: &'b mut FixedLookup<T>,
         left: &[AffineExpression<&'a PolynomialReference, T>],
         right: &'a SelectedExpressions<T>,
+        machines: Machines<'a, 'b, T>,
     ) -> EvalResult<'a, T> {
         log::trace!("Start processing block machine");
         log::trace!("Left values of lookup:");
@@ -255,10 +253,8 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
             log::trace!("  {}", l);
         }
 
-        // TODO: Add possibility for machines to call other machines.
-        let mut machines = vec![];
         let mut identity_processor =
-            IdentityProcessor::new(self.fixed_data, fixed_lookup, &mut machines);
+            IdentityProcessor::new(self.fixed_data, fixed_lookup, machines);
 
         // First check if we already store the value.
         // This can happen in the loop detection case, where this function is just called
