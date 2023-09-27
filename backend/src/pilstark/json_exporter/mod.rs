@@ -432,11 +432,8 @@ mod test {
                 }
             }
             JsonValue::Object(obj) => {
-                match obj.entry("deps") {
-                    serde_json::map::Entry::Occupied(deps) => {
-                        deps.remove();
-                    }
-                    _ => (),
+                if let serde_json::map::Entry::Occupied(deps) = obj.entry("deps") {
+                    deps.remove();
                 }
 
                 for (_, e) in obj.iter_mut() {
