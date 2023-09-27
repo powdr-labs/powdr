@@ -101,7 +101,7 @@ pub fn machine_decls() -> Vec<&'static str> {
 
 machine Binary(latch, operation_id) {
 
-    degree 262144;
+    degree 1048576;
 
     operation and<0> A, B -> C;
 
@@ -149,7 +149,7 @@ machine Binary(latch, operation_id) {
 // ================= shift instructions =================
 
 machine Shift(latch, operation_id) {
-    degree 262144;
+    degree 1048576;
 
     operation shl<0> A, B -> C;
 
@@ -530,7 +530,7 @@ machine Main {{
 
 fn preamble() -> String {
     r#"
-    degree 262144;
+    degree 1048576;
     reg pc[@pc];
     reg X[<=];
     reg Y[<=];
