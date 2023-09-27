@@ -451,7 +451,7 @@ impl<'a, T: FieldElement> Generator<'a, T> {
     }
 
     fn check_row_pair(
-        &mut self,
+        &self,
         row_index: DegreeType,
         proposed_row: &Row<'a, T>,
         previous: bool,
