@@ -11,8 +11,9 @@ use ast::{
     parsed::{
         self,
         asm::{
-            self, ASMModule, ASMProgram, AbsoluteSymbolPath, FunctionStatement, InstructionBody,
-            LinkDeclaration, MachineStatement, ModuleStatement, RegisterFlag, SymbolDefinition,
+            self, ASMModule, ASMProgram, AbsoluteSymbolPath, AssignmentRegister, FunctionStatement,
+            InstructionBody, LinkDeclaration, MachineStatement, ModuleStatement, RegisterFlag,
+            SymbolDefinition,
         },
     },
 };
@@ -98,13 +99,28 @@ impl<T: FieldElement> TypeChecker<T> {
                 MachineStatement::FunctionDeclaration(start, name, params, statements) => {
                     let mut function_statements = vec![];
                     for s in statements {
+                        let statement_string = s.to_string();
                         match s {
                             FunctionStatement::Assignment(start, lhs, using_reg, rhs) => {
+                                if let Some(using_reg) = &using_reg {
+                                    if using_reg.len() != lhs.len() {
+                                        errors.push(format!(
+                                            "Mismatched number of registers for assignment {}",
+                                            statement_string
+                                        ));
+                                    }
+                                }
+                                let using_reg = using_reg.unwrap_or_else(|| {
+                                    vec![AssignmentRegister::Wildcard; lhs.len()]
+                                });
+                                let lhs_with_reg = lhs
+                                    .into_iter()
+                                    .zip(using_reg.into_iter())
+                                    .collect::<Vec<_>>();
                                 function_statements.push(
                                     AssignmentStatement {
                                         start,
-                                        lhs,
-                                        using_reg,
+                                        lhs_with_reg,
                                         rhs,
                                     }
                                     .into(),

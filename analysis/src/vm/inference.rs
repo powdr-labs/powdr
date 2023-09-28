@@ -1,7 +1,8 @@
 //! Infer assignment registers in asm statements
 
-use ast::asm_analysis::{
-    AnalysisASMFile, AssignmentStatement, Expression, FunctionStatement, Machine,
+use ast::{
+    asm_analysis::{AnalysisASMFile, Expression, FunctionStatement, Machine},
+    parsed::asm::AssignmentRegister,
 };
 use number::FieldElement;
 
@@ -33,47 +34,47 @@ fn infer_machine<T: FieldElement>(mut machine: Machine<T>) -> Result<Machine<T>,
     for f in machine.callable.functions_mut() {
         for s in f.body.statements.iter_mut() {
             if let FunctionStatement::Assignment(a) = s {
-                let expr_reg = match &*a.rhs {
+                // Map function calls to the list of assignment registers and all other expressions to a list of None.
+                let expr_regs = match &*a.rhs {
                     Expression::FunctionCall(c) => {
                         let def = machine
                             .instructions
                             .iter()
                             .find(|i| i.name == c.id)
                             .unwrap();
-                        let output = {
-                            let outputs = def.instruction.params.outputs.as_ref().unwrap();
-                            assert!(outputs.params.len() == 1);
-                            &outputs.params[0]
-                        };
-                        assert!(output.ty.is_none());
-                        Some(output.name.clone())
+
+                        let outputs = def.instruction.params.outputs.clone().unwrap_or_default();
+
+                        outputs
+                            .params
+                            .iter()
+                            .map(|o| {
+                                assert!(o.ty.is_none());
+                                AssignmentRegister::Register(o.name.clone())
+                            })
+                            .collect::<Vec<_>>()
                     }
-                    _ => None,
+                    _ => vec![AssignmentRegister::Wildcard; a.lhs_with_reg.len()],
                 };
 
-                match (&mut a.using_reg, expr_reg) {
-                    (Some(using_reg), Some(expr_reg)) if *using_reg != expr_reg => {
-                        errors.push(format!("Assignment register `{}` is incompatible with `{}`. Try replacing `<={}=` by `<==`.", using_reg, a.rhs, using_reg));
-                    }
-                    (Some(_), _) => {}
-                    (None, Some(expr_reg)) => {
-                        // infer the assignment register to that of the rhs
-                        a.using_reg = Some(expr_reg);
-                    }
-                    (None, None) => {
-                        let hint = AssignmentStatement {
-                            using_reg: Some(
-                                machine
-                                    .registers
-                                    .iter()
-                                    .find(|r| r.ty.is_assignment())
-                                    .unwrap()
-                                    .name
-                                    .clone(),
-                            ),
-                            ..a.clone()
-                        };
-                        errors.push(format!("Impossible to infer the assignment register for `{a}`. Try using an assignment register like `{hint}`."));
+                assert_eq!(expr_regs.len(), a.lhs_with_reg.len());
+
+                for ((w, reg), expr_reg) in a.lhs_with_reg.iter_mut().zip(expr_regs) {
+                    match (&reg, expr_reg) {
+                        (
+                            AssignmentRegister::Register(using_reg),
+                            AssignmentRegister::Register(expr_reg),
+                        ) if *using_reg != expr_reg => {
+                            errors.push(format!("Assignment register `{}` is incompatible with `{}`. Try using `<==` with no explicit assignment registers.", using_reg, a.rhs));
+                        }
+                        (AssignmentRegister::Register(_), _) => {}
+                        (AssignmentRegister::Wildcard, AssignmentRegister::Register(expr_reg)) => {
+                            // infer the assignment register to that of the rhs
+                            *reg = AssignmentRegister::Register(expr_reg);
+                        }
+                        (AssignmentRegister::Wildcard, AssignmentRegister::Wildcard) => {
+                            errors.push(format!("Impossible to infer the assignment register to write to register `{w}`"));
+                        }
                     }
                 }
             }
@@ -115,8 +116,8 @@ mod tests {
 
         let file = infer_str::<Bn254Field>(file).unwrap();
 
-        if let FunctionStatement::Assignment(AssignmentStatement { using_reg, .. }) = file.machines
-            [&parse_absolute_path("Machine")]
+        if let FunctionStatement::Assignment(AssignmentStatement { lhs_with_reg, .. }) = file
+            .machines[&parse_absolute_path("Machine")]
             .functions()
             .next()
             .unwrap()
@@ -126,7 +127,10 @@ mod tests {
             .next()
             .unwrap()
         {
-            assert_eq!(*using_reg, Some("X".to_string()));
+            assert_eq!(
+                lhs_with_reg[0].1,
+                AssignmentRegister::Register("X".to_string())
+            );
         } else {
             panic!()
         };
@@ -151,8 +155,8 @@ mod tests {
 
         let file = infer_str::<Bn254Field>(file).unwrap();
 
-        if let FunctionStatement::Assignment(AssignmentStatement { using_reg, .. }) = &file.machines
-            [&parse_absolute_path("Machine")]
+        if let FunctionStatement::Assignment(AssignmentStatement { lhs_with_reg, .. }) = &file
+            .machines[&parse_absolute_path("Machine")]
             .functions()
             .next()
             .unwrap()
@@ -162,7 +166,10 @@ mod tests {
             .next()
             .unwrap()
         {
-            assert_eq!(*using_reg, Some("X".to_string()));
+            assert_eq!(
+                lhs_with_reg[0].1,
+                AssignmentRegister::Register("X".to_string())
+            );
         } else {
             panic!()
         };
@@ -185,7 +192,7 @@ mod tests {
             }
         "#;
 
-        assert_eq!(infer_str::<Bn254Field>(file).unwrap_err(), vec!["Assignment register `Y` is incompatible with `foo()`. Try replacing `<=Y=` by `<==`."]);
+        assert_eq!(infer_str::<Bn254Field>(file).unwrap_err(), vec!["Assignment register `Y` is incompatible with `foo()`. Try using `<==` with no explicit assignment registers."]);
     }
 
     #[test]
@@ -203,6 +210,11 @@ mod tests {
             }
         "#;
 
-        assert_eq!(infer_str::<Bn254Field>(file).unwrap_err(), vec!["Impossible to infer the assignment register for `A <== 1;`. Try using an assignment register like `A <=X= 1;`.".to_string()]);
+        assert_eq!(
+            infer_str::<Bn254Field>(file).unwrap_err(),
+            vec![
+                "Impossible to infer the assignment register to write to register `A`".to_string()
+            ]
+        );
     }
 }

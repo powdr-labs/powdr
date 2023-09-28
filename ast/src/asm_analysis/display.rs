@@ -96,11 +96,8 @@ impl<T: Display> Display for AssignmentStatement<T> {
         write!(
             f,
             "{} <={}= {};",
-            self.lhs.join(", "),
-            self.using_reg
-                .as_ref()
-                .map(ToString::to_string)
-                .unwrap_or_default(),
+            self.lhs().format(", "),
+            self.assignment_registers().format(", "),
             self.rhs
         )
     }

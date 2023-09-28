@@ -7,8 +7,10 @@ machine Machine {
     reg pc[@pc];
     reg X[<=];
     reg Y[<=];
+    reg Z[<=];
     reg CNT;
     reg A;
+    reg B;
 
     // an instruction to assert that a number is zero
     instr assert_zero X {
@@ -25,12 +27,13 @@ machine Machine {
         pc' = XIsZero * l + (1 - XIsZero) * (pc + 1) 
     }
     
-    // an instruction to return the square of an input
-    // ANCHOR: square
-    instr square X -> Y {
-        Y = X * X
+    // an instruction to return the square of an input as well as its double
+    // ANCHOR: square_and_double
+    instr square_and_double X -> Y, Z {
+        Y = X * X,
+        Z = 2 * X
     }
-    // ANCHOR_END: square
+    // ANCHOR_END: square_and_double
 
     function main {
         // initialise `A` to 2
@@ -48,9 +51,9 @@ machine Machine {
         // ANCHOR: read_register
         CNT <=X= CNT - 1;
         // ANCHOR_END: read_register
-        // square `A`
+        // get the square and the double of `A`
         // ANCHOR: instruction
-        A <== square(A);
+        A, B <== square_and_double(A);
         // ANCHOR_END: instruction
         // jump back to `start`
         jmp start;
@@ -59,6 +62,8 @@ machine Machine {
         // ANCHOR: instruction_statement
         assert_zero A - ((2**2)**2)**2;
         // ANCHOR_END: instruction_statement
+        // check that `B == ((2**2)**2)*2`
+        assert_zero B - ((2**2)**2)*2;
         return;
     }
 

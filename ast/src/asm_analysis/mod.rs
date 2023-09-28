@@ -14,7 +14,9 @@ use num_bigint::BigUint;
 use number::FieldElement;
 
 use crate::parsed::{
-    asm::{AbsoluteSymbolPath, CallableRef, InstructionBody, OperationId, Params},
+    asm::{
+        AbsoluteSymbolPath, AssignmentRegister, CallableRef, InstructionBody, OperationId, Params,
+    },
     PilStatement,
 };
 
@@ -570,9 +572,18 @@ impl<T> From<Return<T>> for FunctionStatement<T> {
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct AssignmentStatement<T> {
     pub start: usize,
-    pub lhs: Vec<String>,
-    pub using_reg: Option<String>,
+    pub lhs_with_reg: Vec<(String, AssignmentRegister)>,
     pub rhs: Box<Expression<T>>,
+}
+
+impl<T> AssignmentStatement<T> {
+    fn lhs(&self) -> impl Iterator<Item = &String> {
+        self.lhs_with_reg.iter().map(|(lhs, _)| lhs)
+    }
+
+    fn assignment_registers(&self) -> impl Iterator<Item = &AssignmentRegister> {
+        self.lhs_with_reg.iter().map(|(_, reg)| reg)
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]

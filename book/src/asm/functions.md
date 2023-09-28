@@ -24,16 +24,22 @@ Labels allow referring to a location in a function by name.
 
 ### Assignments
 
-Assignments allow setting the value of a write register to the value of an [expression](#expressions) using an assignment register.
+Assignments allow setting the values of some write registers to the values of some expressions [expression](#expressions) using assignment registers.
+
+```
+{{#include ../../../test_data/asm/book/function.asm:literals}}
+```
+
+If the right-hand side of the assignment is an instruction, assignment registers can be inferred and are optional:
 
 ```
 {{#include ../../../test_data/asm/book/function.asm:instruction}}
 ```
 
-One important requirement is for the assignment register of the assignment to be compatible with that of the expression. This is especially relevant for instructions: the assignment register of the instruction output must match that of the assignment. In this example, we use `Y` in the assignment as the output of `square` is `Y`:
+This will be inferred to be the same as `A, B <=Y, Z= square_and_double(A);` from the definition of the instruction:
 
 ```
-{{#include ../../../test_data/asm/book/function.asm:square}}
+{{#include ../../../test_data/asm/book/function.asm:square_and_double}}
 ```
 
 ### Instructions

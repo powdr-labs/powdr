@@ -28,7 +28,7 @@ pub mod utils {
             InstructionStatement, LabelStatement, RegisterDeclarationStatement, RegisterTy,
         },
         parsed::{
-            asm::{InstructionBody, MachineStatement, RegisterFlag},
+            asm::{AssignmentRegister, InstructionBody, MachineStatement, RegisterFlag},
             PilStatement,
         },
     };
@@ -76,11 +76,15 @@ pub mod utils {
             .parse::<T>(input)
             .unwrap()
         {
-            ast::parsed::asm::FunctionStatement::Assignment(start, lhs, using_reg, rhs) => {
+            ast::parsed::asm::FunctionStatement::Assignment(start, lhs, reg, rhs) => {
                 AssignmentStatement {
                     start,
-                    lhs,
-                    using_reg,
+                    lhs_with_reg: {
+                        let lhs_len = lhs.len();
+                        lhs.into_iter()
+                            .zip(reg.unwrap_or(vec![AssignmentRegister::Wildcard; lhs_len]))
+                            .collect()
+                    },
                     rhs,
                 }
                 .into()

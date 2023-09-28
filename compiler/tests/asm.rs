@@ -188,6 +188,31 @@ fn test_multi_assign() {
 }
 
 #[test]
+fn test_multi_return() {
+    let f = "multi_return.asm";
+    let i = [];
+    verify_asm::<GoldilocksField>(f, slice_to_vec(&i));
+    gen_halo2_proof(f, slice_to_vec(&i));
+    gen_estark_proof(f, Default::default());
+}
+
+#[test]
+#[should_panic = "called `Result::unwrap()` on an `Err` value: [\"Assignment register `Z` is incompatible with `square_and_double(3)`. Try using `<==` with no explicit assignment registers.\", \"Assignment register `Y` is incompatible with `square_and_double(3)`. Try using `<==` with no explicit assignment registers.\"]"]
+fn test_multi_return_wrong_assignment_registers() {
+    let f = "multi_return_wrong_assignment_registers.asm";
+    let i = [];
+    verify_asm::<GoldilocksField>(f, slice_to_vec(&i));
+}
+
+#[test]
+#[should_panic = "Result::unwrap()` on an `Err` value: [\"Mismatched number of registers for assignment A, B <=Y= square_and_double(3);\"]"]
+fn test_multi_return_wrong_assignment_register_length() {
+    let f = "multi_return_wrong_assignment_register_length.asm";
+    let i = [];
+    verify_asm::<GoldilocksField>(f, slice_to_vec(&i));
+}
+
+#[test]
 fn test_bit_access() {
     let f = "bit_access.asm";
     let i = [20];
