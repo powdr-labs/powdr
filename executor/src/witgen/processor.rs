@@ -8,7 +8,7 @@ use crate::witgen::Constraint;
 use super::{
     affine_expression::AffineExpression,
     identity_processor::IdentityProcessor,
-    rows::{Row, RowFactory, RowPair, RowUpdater, UnknownStrategy},
+    rows::{Row, RowPair, RowUpdater, UnknownStrategy},
     sequence_iterator::{IdentityInSequence, ProcessingSequenceIterator, SequenceStep},
     Constraints, EvalError, EvalValue, FixedData,
 };
@@ -50,8 +50,6 @@ pub struct Processor<'a, 'b, T: FieldElement, CalldataAvailable> {
     identity_processor: IdentityProcessor<'a, 'b, T>,
     /// The fixed data (containing information about all columns)
     fixed_data: &'a FixedData<'a, T>,
-    /// The row factory
-    row_factory: RowFactory<'a, T>,
     /// The set of witness columns that are actually part of this machine.
     witness_cols: &'b HashSet<PolyID>,
     /// The outer query, if any. If there is none, processing an outer query will fail.
@@ -66,7 +64,6 @@ impl<'a, 'b, T: FieldElement> Processor<'a, 'b, T, WithoutCalldata> {
         identity_processor: IdentityProcessor<'a, 'b, T>,
         identities: &'b [&'a Identity<T>],
         fixed_data: &'a FixedData<'a, T>,
-        row_factory: RowFactory<'a, T>,
         witness_cols: &'b HashSet<PolyID>,
     ) -> Self {
         Self {
@@ -75,7 +72,6 @@ impl<'a, 'b, T: FieldElement> Processor<'a, 'b, T, WithoutCalldata> {
             identity_processor,
             identities,
             fixed_data,
-            row_factory,
             witness_cols,
             outer_query: None,
             _marker: PhantomData,
@@ -94,7 +90,6 @@ impl<'a, 'b, T: FieldElement> Processor<'a, 'b, T, WithoutCalldata> {
             identity_processor: self.identity_processor,
             identities: self.identities,
             fixed_data: self.fixed_data,
-            row_factory: self.row_factory,
             witness_cols: self.witness_cols,
         }
     }
@@ -340,7 +335,6 @@ mod tests {
             identity_processor,
             &identities,
             &fixed_data,
-            row_factory,
             &witness_cols,
         );
 
