@@ -56,6 +56,7 @@ impl<'a, T: FieldElement> Generator<'a, T> {
                 identities,
                 witnesses,
                 global_range_constraints,
+                None,
             ),
         }
     }
