@@ -575,7 +575,6 @@ impl<T: FieldElement> ASMPILConverter<T> {
         value: Expression<T>,
     ) -> Vec<(T, AffineExpressionComponent<T>)> {
         match value {
-            Expression::Constant(_) => panic!(),
             Expression::PublicReference(_) => panic!(),
             Expression::FunctionCall(_) => panic!(),
             Expression::Reference(reference) => {

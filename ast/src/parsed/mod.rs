@@ -59,8 +59,6 @@ impl<T, Ref> Default for SelectedExpressions<T, Ref> {
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub enum Expression<T, Ref = ShiftedPolynomialReference<T>> {
-    /// Reference to a constant, "%ConstantName"
-    Constant(String),
     Reference(Ref),
     PublicReference(String),
     Number(T),
