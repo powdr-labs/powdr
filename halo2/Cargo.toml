@@ -6,6 +6,7 @@ edition = "2021"
 [dependencies]
 number = { path = "../number" }
 pil_analyzer = { path = "../pil_analyzer" }
+executor = { path = "../executor" }
 polyexen = { git = "https://github.com/Dhole/polyexen", branch = "feature/shuffles" }
 halo2_proofs = "0.2"
 halo2_curves = { git = "https://github.com/privacy-scaling-explorations/halo2curves", tag = "0.3.2", package = "halo2curves" }
