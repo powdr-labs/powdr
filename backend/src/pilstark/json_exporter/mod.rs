@@ -145,6 +145,7 @@ fn symbol_kind_to_json_string(k: SymbolKind) -> &'static str {
     match k {
         SymbolKind::Poly(poly_type) => polynomial_type_to_json_string(poly_type),
         SymbolKind::Other() => panic!("Cannot translate \"other\" symbol to json."),
+        SymbolKind::Constant() => unreachable!(),
     }
 }
 
@@ -183,12 +184,15 @@ impl<'a, T: FieldElement> Exporter<'a, T> {
         self.analyzed
             .definitions
             .iter()
-            .map(|(name, (symbol, _value))| {
-                let id = if symbol.kind == SymbolKind::Poly(PolynomialType::Intermediate) {
-                    self.intermediate_poly_expression_ids[&symbol.id]
-                } else {
-                    symbol.id
-                };
+            .filter_map(|(name, (symbol, _value))| {
+                let id = match symbol.kind {
+                    SymbolKind::Poly(PolynomialType::Intermediate) => {
+                        Some(self.intermediate_poly_expression_ids[&symbol.id])
+                    }
+                    SymbolKind::Poly(_) => Some(symbol.id),
+                    SymbolKind::Other() | SymbolKind::Constant() => None,
+                }?;
+
                 let out = Reference {
                     polType: None,
                     type_: symbol_kind_to_json_string(symbol.kind).to_string(),
@@ -198,7 +202,7 @@ impl<'a, T: FieldElement> Exporter<'a, T> {
                     elementType: None,
                     len: symbol.length.map(|l| l as usize),
                 };
-                (name.clone(), out)
+                Some((name.clone(), out))
             })
             .collect::<HashMap<String, Reference>>()
     }

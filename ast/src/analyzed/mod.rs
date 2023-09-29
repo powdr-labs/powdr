@@ -25,8 +25,6 @@ pub enum StatementIdentifier {
 
 #[derive(Debug)]
 pub struct Analyzed<T> {
-    /// Constants are not namespaced!
-    pub constants: HashMap<String, T>,
     pub definitions: HashMap<String, (Symbol, Option<FunctionValueDefinition<T>>)>,
     pub public_declarations: HashMap<String, PublicDeclaration>,
     pub identities: Vec<Identity<Expression<T>>>,
@@ -141,7 +139,9 @@ impl<T> Analyzed<T> {
 
         let mut names_to_remove: HashSet<String> = Default::default();
         self.definitions.retain(|name, (poly, _def)| {
-            if to_remove.contains(&(poly as &Symbol).into()) {
+            if matches!(poly.kind, SymbolKind::Poly(_))
+                && to_remove.contains(&(poly as &Symbol).into())
+            {
                 names_to_remove.insert(name.clone());
                 false
             } else {
@@ -157,15 +157,18 @@ impl<T> Analyzed<T> {
             true
         });
         self.definitions.values_mut().for_each(|(poly, _def)| {
-            let poly_id = PolyID::from(poly as &Symbol);
-            assert!(!to_remove.contains(&poly_id));
-            poly.id = replacements[&poly_id].id;
+            if matches!(poly.kind, SymbolKind::Poly(_)) {
+                let poly_id = PolyID::from(poly as &Symbol);
+                assert!(!to_remove.contains(&poly_id));
+                poly.id = replacements[&poly_id].id;
+            }
         });
         self.pre_visit_expressions_mut(&mut |expr| {
             if let Expression::Reference(Reference::Poly(poly)) = expr {
-                let poly_id = poly.poly_id.unwrap();
-                assert!(!to_remove.contains(&poly_id));
-                poly.poly_id = Some(replacements[&poly_id]);
+                poly.poly_id = poly.poly_id.map(|poly_id| {
+                    assert!(!to_remove.contains(&poly_id));
+                    replacements[&poly_id]
+                });
             }
         });
     }
@@ -240,11 +243,16 @@ impl Symbol {
     }
 }
 
+/// The "kind" of a symbol. In the future, this will be mostly
+/// replaced by its type.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum SymbolKind {
     /// Fixed, witness or intermediate polynomial
     Poly(PolynomialType),
-    /// Other symbol, could be a constant, depends on the type.
+    /// A constant value.
+    Constant(),
+    /// Other symbol, depends on the type.
+    /// Examples include functions not of the type "int -> fe".
     Other(),
 }
 
