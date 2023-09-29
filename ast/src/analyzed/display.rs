@@ -13,28 +13,25 @@ use super::*;
 
 impl<T: Display> Display for Analyzed<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        for (name, value) in &self.constants {
-            writeln!(f, "constant {name} = {value};")?;
-        }
-
-        let mut namespace = "Global".to_string();
+        let mut current_namespace = "Global".to_string();
         let mut update_namespace = |name: &str, degree: DegreeType, f: &mut Formatter<'_>| {
-            if let Some(dot) = name.find('.') {
-                if name[..dot] != namespace {
-                    namespace = name[..dot].to_string();
-                    writeln!(f, "namespace {namespace}({degree});")?;
+            let new_name = if let Some(dot) = name.find('.') {
+                if name[..dot] != current_namespace {
+                    current_namespace = name[..dot].to_string();
+                    writeln!(f, "namespace {current_namespace}({degree});")?;
                 }
-                Ok(name[dot + 1..].to_string())
+                &name[dot + 1..]
             } else {
-                Ok(name.to_string())
-            }
+                name
+            };
+            Ok((new_name.to_string(), &current_namespace != "Global"))
         };
 
         for statement in &self.source_order {
             match statement {
                 StatementIdentifier::Definition(name) => {
                     let (symbol, definition) = &self.definitions[name];
-                    let name = update_namespace(name, symbol.degree, f)?;
+                    let (name, is_local) = update_namespace(name, symbol.degree, f)?;
                     match symbol.kind {
                         SymbolKind::Poly(poly_type) => {
                             let kind = match &poly_type {
@@ -49,6 +46,14 @@ impl<T: Display> Display for Analyzed<T> {
                                 writeln!(f, ";")?
                             }
                         }
+                        SymbolKind::Constant() => {
+                            let indentation = if is_local { "    " } else { "" };
+                            writeln!(
+                                f,
+                                "{indentation}constant {name}{};",
+                                definition.as_ref().unwrap()
+                            )?;
+                        }
                         SymbolKind::Other() => {
                             write!(f, "    let {name}")?;
                             if let Some(value) = definition {
@@ -61,7 +66,7 @@ impl<T: Display> Display for Analyzed<T> {
                 StatementIdentifier::PublicDeclaration(name) => {
                     let decl = &self.public_declarations[name];
                     // TODO we do not know the degree of the namespace here.
-                    let name = update_namespace(&decl.name, 0, f)?;
+                    let (name, _) = update_namespace(&decl.name, 0, f)?;
                     writeln!(
                         f,
                         "    public {name} = {}({});",

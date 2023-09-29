@@ -25,8 +25,6 @@ pub enum StatementIdentifier {
 
 #[derive(Debug)]
 pub struct Analyzed<T> {
-    /// Constants are not namespaced!
-    pub constants: HashMap<String, T>,
     pub definitions: HashMap<String, (Symbol, Option<FunctionValueDefinition<T>>)>,
     pub public_declarations: HashMap<String, PublicDeclaration>,
     pub identities: Vec<Identity<T>>,
@@ -240,10 +238,14 @@ impl Symbol {
     }
 }
 
+/// The "kind" of a symbol. In the future, this will be mostly
+/// replaced by its type.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum SymbolKind {
     /// Fixed, witness or intermediate polynomial
     Poly(PolynomialType),
+    /// A constant value.
+    Constant(),
     /// Other symbol, could be a constant, depends on the type.
     Other(),
 }

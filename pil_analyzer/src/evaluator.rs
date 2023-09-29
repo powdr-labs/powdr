@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use ast::{
-    analyzed::{Analyzed, Expression, FunctionValueDefinition, Reference, Symbol},
+    analyzed::{Analyzed, Expression, FunctionValueDefinition, Reference, Symbol, SymbolKind},
     evaluate_binary_operation, evaluate_unary_operation,
     parsed::{FunctionCall, MatchArm, MatchPattern},
 };
@@ -13,7 +13,6 @@ pub fn evaluate_expression<T: FieldElement>(
     expression: &Expression<T>,
 ) -> Result<T, String> {
     Evaluator {
-        constants: &analyzed.constants,
         definitions: &analyzed.definitions,
         function_cache: &Default::default(),
         variables: &[],
@@ -21,8 +20,26 @@ pub fn evaluate_expression<T: FieldElement>(
     .evaluate(expression)
 }
 
+/// Returns a HashMap of all symbols that have a constant single value.
+pub fn compute_constants<T: FieldElement>(analyzed: &Analyzed<T>) -> HashMap<String, T> {
+    analyzed
+        .definitions
+        .iter()
+        .filter_map(|(name, (symbol, value))| {
+            (symbol.kind == SymbolKind::Constant()).then(|| {
+                let Some(FunctionValueDefinition::Expression(value)) = value else {
+                    panic!()
+                };
+                (
+                    name.to_owned(),
+                    evaluate_expression(analyzed, value).unwrap(),
+                )
+            })
+        })
+        .collect()
+}
+
 pub struct Evaluator<'a, T> {
-    pub constants: &'a HashMap<String, T>,
     pub definitions: &'a HashMap<String, (Symbol, Option<FunctionValueDefinition<T>>)>,
     /// Contains full value tables of functions (columns) we already evaluated.
     pub function_cache: &'a HashMap<&'a str, Vec<T>>,
@@ -35,17 +52,10 @@ impl<'a, T: FieldElement> Evaluator<'a, T> {
             Expression::Reference(Reference::LocalVar(i, _name)) => Ok(self.variables[*i as usize]),
             Expression::Reference(Reference::Poly(poly)) => {
                 if !poly.next && poly.index.is_none() {
-                    let name = poly.name.to_owned();
-                    if let Some(value) = self.constants.get(&name) {
-                        Ok(*value)
-                    } else {
-                        let (_, value) = &self.definitions[&name];
-                        match value {
-                            Some(FunctionValueDefinition::Expression(value)) => {
-                                self.evaluate(value)
-                            }
-                            _ => Err("Cannot evaluate function values".to_string()),
-                        }
+                    let (_, value) = &self.definitions[&poly.name.to_string()];
+                    match value {
+                        Some(FunctionValueDefinition::Expression(value)) => self.evaluate(value),
+                        _ => Err("Cannot evaluate function-typed values".to_string()),
                     }
                 } else {
                     Err("Cannot evaluate arrays or next references.".to_string())

@@ -41,7 +41,6 @@ fn generate_values<T: FieldElement>(
             .into_par_iter()
             .map(|i| {
                 Evaluator {
-                    constants: &analyzed.constants,
                     definitions: &analyzed.definitions,
                     variables: &[i.into()],
                     function_cache: other_constants,
@@ -52,7 +51,6 @@ fn generate_values<T: FieldElement>(
             .collect(),
         FunctionValueDefinition::Array(values) => {
             let evaluator = Evaluator {
-                constants: &analyzed.constants,
                 definitions: &analyzed.definitions,
                 variables: &[],
                 function_cache: other_constants,
