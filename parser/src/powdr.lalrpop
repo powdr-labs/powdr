@@ -304,8 +304,19 @@ IdentifierList: Vec<String> = {
     => vec![]
 }
 
-AssignOperator: Option<String> = {
-    "<=" <Identifier?> "="
+AssignOperator: Option<Vec<AssignmentRegister>> = {
+    "<==" => None,
+    "<=" <AssignmentRegisterList> "=" => Some(<>)
+}
+
+AssignmentRegisterList: Vec<AssignmentRegister> = {
+    <mut list:( <AssignmentRegister> "," )*> <end:AssignmentRegister>  => { list.push(end); list },
+    => vec![]
+}
+
+AssignmentRegister: AssignmentRegister = {
+    <Identifier> => AssignmentRegister::Register(<>),
+    "_" => AssignmentRegister::Wildcard,
 }
 
 ReturnStatement: FunctionStatement<T> = {

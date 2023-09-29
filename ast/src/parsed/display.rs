@@ -177,6 +177,19 @@ impl<T: Display> Display for OperationId<T> {
     }
 }
 
+impl Display for AssignmentRegister {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                Self::Register(r) => r.to_string(),
+                Self::Wildcard => "_".to_string(),
+            }
+        )
+    }
+}
+
 impl<T: Display> Display for FunctionStatement<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
@@ -186,7 +199,7 @@ impl<T: Display> Display for FunctionStatement<T> {
                 write_regs.join(", "),
                 assignment_reg
                     .as_ref()
-                    .map(ToString::to_string)
+                    .map(|s| s.iter().format(", ").to_string())
                     .unwrap_or_default(),
                 expression
             ),

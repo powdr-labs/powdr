@@ -292,9 +292,29 @@ pub enum InstructionBody<T> {
     CallableRef(CallableRef),
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum AssignmentRegister {
+    Register(String),
+    Wildcard,
+}
+
+impl AssignmentRegister {
+    pub fn unwrap(self) -> String {
+        match self {
+            AssignmentRegister::Register(r) => r,
+            AssignmentRegister::Wildcard => panic!("cannot unwrap wildcard"),
+        }
+    }
+}
+
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub enum FunctionStatement<T> {
-    Assignment(usize, Vec<String>, Option<String>, Box<Expression<T>>),
+    Assignment(
+        usize,
+        Vec<String>,
+        Option<Vec<AssignmentRegister>>,
+        Box<Expression<T>>,
+    ),
     Instruction(usize, String, Vec<Expression<T>>),
     Label(usize, String),
     DebugDirective(usize, DebugDirective),
