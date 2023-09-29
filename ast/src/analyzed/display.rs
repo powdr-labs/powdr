@@ -13,10 +13,6 @@ use super::*;
 
 impl<T: Display> Display for Analyzed<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        for (name, value) in &self.constants {
-            writeln!(f, "constant {name} = {value};")?;
-        }
-
         let mut namespace = "Global".to_string();
         let mut update_namespace = |name: &str, degree: DegreeType, f: &mut Formatter<'_>| {
             if let Some(dot) = name.find('.') {

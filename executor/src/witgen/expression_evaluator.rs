@@ -37,7 +37,6 @@ where
         // @TODO if we iterate on processing the constraints in the same row,
         // we could store the simplified values.
         match expr {
-            Expression::Constant(_) => panic!("Constants should have been replaced."),
             Expression::Reference(Reference::Poly(poly)) => self.variables.value(poly),
             Expression::Number(n) => Ok((*n).into()),
             Expression::BinaryOperation(left, op, right) => {

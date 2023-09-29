@@ -97,7 +97,6 @@ where
 
     match e {
         Expression::Reference(_)
-        | Expression::Constant(_)
         | Expression::PublicReference(_)
         | Expression::Number(_)
         | Expression::String(_) => {}
@@ -139,7 +138,6 @@ where
 
     match e {
         Expression::Reference(_)
-        | Expression::Constant(_)
         | Expression::PublicReference(_)
         | Expression::Number(_)
         | Expression::String(_) => {}
@@ -178,7 +176,6 @@ where
 {
     match e {
         Expression::Reference(_)
-        | Expression::Constant(_)
         | Expression::PublicReference(_)
         | Expression::Number(_)
         | Expression::String(_) => {}

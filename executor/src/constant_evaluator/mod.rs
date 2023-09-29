@@ -20,7 +20,7 @@ pub fn generate<T: FieldElement>(analyzed: &Analyzed<T>) -> (Vec<(&str, Vec<T>)>
             } else {
                 degree = Some(poly.degree);
             }
-            let values = generate_values(analyzed, poly.degree, value, &other_constants);
+            let values = generate_values(poly.degree, value, &other_constants);
             other_constants.insert(&poly.absolute_name, values);
         }
     }
@@ -32,7 +32,6 @@ pub fn generate<T: FieldElement>(analyzed: &Analyzed<T>) -> (Vec<(&str, Vec<T>)>
 }
 
 fn generate_values<T: FieldElement>(
-    analyzed: &Analyzed<T>,
     degree: DegreeType,
     body: &FunctionValueDefinition<T>,
     other_constants: &HashMap<&str, Vec<T>>,
@@ -42,7 +41,6 @@ fn generate_values<T: FieldElement>(
             .into_par_iter()
             .map(|i| {
                 Evaluator {
-                    analyzed,
                     variables: &[i.into()],
                     other_constants,
                 }
@@ -51,7 +49,6 @@ fn generate_values<T: FieldElement>(
             .collect(),
         FunctionValueDefinition::Array(values) => {
             let evaluator = Evaluator {
-                analyzed,
                 variables: &[],
                 other_constants,
             };
@@ -82,7 +79,6 @@ fn generate_values<T: FieldElement>(
 }
 
 struct Evaluator<'a, T> {
-    analyzed: &'a Analyzed<T>,
     other_constants: &'a HashMap<&'a str, Vec<T>>,
     variables: &'a [T],
 }
@@ -90,7 +86,6 @@ struct Evaluator<'a, T> {
 impl<'a, T: FieldElement> Evaluator<'a, T> {
     fn evaluate(&self, expr: &Expression<T>) -> T {
         match expr {
-            Expression::Constant(name) => self.analyzed.constants[name],
             Expression::Reference(Reference::LocalVar(i)) => self.variables[*i as usize],
             Expression::Reference(Reference::Poly(_)) => todo!(),
             Expression::PublicReference(_) => todo!(),

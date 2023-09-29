@@ -462,7 +462,7 @@ UnaryOp: UnaryOperator = {
 
 Term: Box<Expression<T>> = {
     FunctionCall => Box::new(Expression::FunctionCall(<>)),
-    ConstantIdentifier => Box::new(Expression::Constant(<>)),
+    ConstantIdentifier => Box::new(Expression::Reference(PolynomialReference::new(<>).single().local().current())),
     ShiftedPolynomialReference => Box::new(Expression::Reference(<>)),
     PublicReference => Box::new(Expression::PublicReference(<>)),
     FieldElement => Box::new(Expression::Number(<>)),

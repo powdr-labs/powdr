@@ -25,8 +25,6 @@ pub enum StatementIdentifier {
 
 #[derive(Debug)]
 pub struct Analyzed<T> {
-    /// Constants are not namespaced!
-    pub constants: HashMap<String, T>,
     pub definitions: HashMap<String, (Polynomial, Option<FunctionValueDefinition<T>>)>,
     pub public_declarations: HashMap<String, PublicDeclaration>,
     pub identities: Vec<Identity<T>>,

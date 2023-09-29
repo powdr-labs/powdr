@@ -54,7 +54,7 @@ struct PILAnalyzer<T> {
     macro_expander: MacroExpander<T>,
 }
 
-impl<T> From<PILAnalyzer<T>> for Analyzed<T> {
+impl<T: Copy> From<PILAnalyzer<T>> for Analyzed<T> {
     fn from(
         PILAnalyzer {
             constants,
@@ -70,11 +70,16 @@ impl<T> From<PILAnalyzer<T>> for Analyzed<T> {
             .map(|(name, (poly, _))| (name.clone(), poly.clone()))
             .collect::<HashMap<_, _>>();
         let mut result = Self {
-            constants,
             definitions,
             public_declarations,
             identities,
             source_order,
+        };
+        let lookup_constant = |reference: &mut PolynomialReference| {
+            if reference.next || reference.index.is_some() {
+                return None;
+            }
+            constants.get(&reference.name)
         };
         let assign_id = |reference: &mut PolynomialReference| {
             let poly = ids
@@ -84,7 +89,11 @@ impl<T> From<PILAnalyzer<T>> for Analyzed<T> {
         };
         previsit_expressions_in_pil_file_mut(&mut result, &mut |e| {
             if let Expression::Reference(Reference::Poly(reference)) = e {
-                assign_id(reference);
+                if let Some(value) = lookup_constant(reference) {
+                    *e = Expression::Number(*value)
+                } else {
+                    assign_id(reference);
+                }
             }
             std::ops::ControlFlow::Continue::<()>(())
         });
@@ -504,7 +513,6 @@ impl<T: FieldElement> PILAnalyzer<T> {
     fn process_expression(&mut self, expr: ::ast::parsed::Expression<T>) -> Expression<T> {
         use ::ast::parsed::Expression as PExpression;
         match expr {
-            PExpression::Constant(name) => Expression::Constant(name),
             PExpression::Reference(poly) => {
                 if poly.namespace().is_none() && self.local_variables.contains_key(poly.name()) {
                     let id = self.local_variables[poly.name()];
@@ -603,15 +611,7 @@ impl<T: FieldElement> PILAnalyzer<T> {
     fn evaluate_expression(&self, expr: &::ast::parsed::Expression<T>) -> Option<T> {
         use ::ast::parsed::Expression::*;
         match expr {
-            Constant(name) => Some(
-                *self
-                    .constants
-                    .get(name)
-                    .unwrap_or_else(|| panic!("Constant {name} not found.")),
-            ),
             Reference(name) => {
-                // TODO this whole mechanism should be replaced by a generic "reference"
-                // type plus operators.
                 if !name.shift() && name.namespace().is_none() {
                     // See if it might be a constant
                     self.constants.get(&name.name().to_owned()).cloned()
