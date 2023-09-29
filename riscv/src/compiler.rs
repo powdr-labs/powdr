@@ -535,6 +535,7 @@ fn preamble() -> String {
     reg X[<=];
     reg Y[<=];
     reg Z[<=];
+    reg W[<=];
     reg tmp1;
     reg tmp2;
     reg tmp3;
@@ -768,16 +769,14 @@ fn preamble() -> String {
         Z = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000
     }
 
-    // Removes up to 32 bits beyond 32
-    // TODO is this really safe?
-    instr mul Y, Z -> X {
-        Y * Z = X + Y_b5 * 2**32 + Y_b6 * 2**40 + Y_b7 * 2**48 + Y_b8 * 2**56,
-        X = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000
-    }
-    // implements (Y * Z) >> 32
-    instr mulhu Y, Z -> X {
-        Y * Z = X * 2**32 + Y_b5 + Y_b6 * 0x100 + Y_b7 * 0x10000 + Y_b8 * 0x1000000,
-        X = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000
+    // Multiply two 32-bits unsigned, return the upper and lower unsigned 32-bit
+    // halves of the result.
+    // X is the lower half (least significant bits)
+    // Y is the higher half (most significant bits)
+    instr mul Z, W -> X, Y {
+        Z * W = X + Y * 2**32,
+        X = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000,
+        Y = Y_b5 + Y_b6 * 0x100 + Y_b7 * 0x10000 + Y_b8 * 0x1000000
     }
 "#
 }
@@ -996,11 +995,11 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
         }
         "mul" => {
             let (rd, r1, r2) = rrr(args);
-            only_if_no_write_to_zero(format!("{rd} <== mul({r1}, {r2});"), rd)
+            only_if_no_write_to_zero(format!("{rd}, tmp1 <== mul({r1}, {r2});"), rd)
         }
         "mulhu" => {
             let (rd, r1, r2) = rrr(args);
-            only_if_no_write_to_zero(format!("{rd} <== mulhu({r1}, {r2});"), rd)
+            only_if_no_write_to_zero(format!("tmp1, {rd} <== mul({r1}, {r2});"), rd)
         }
         "divu" => {
             let (rd, r1, r2) = rrr(args);
