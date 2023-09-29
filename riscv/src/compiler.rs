@@ -72,7 +72,7 @@ impl Architecture for RiscvArchitecture {
             | "sgtz" | "beq" | "beqz" | "bgeu" | "bltu" | "blt" | "bge" | "bltz" | "blez"
             | "bgtz" | "bgez" | "bne" | "bnez" | "jal" | "jalr" | "call" | "ecall" | "ebreak"
             | "lw" | "lb" | "lbu" | "lh" | "lhu" | "sw" | "sh" | "sb" | "nop" | "fence"
-            | "fence.i" => false,
+            | "fence.i" | "amoadd.w.rl" | "amoadd.w" => false,
             "j" | "jr" | "tail" | "ret" | "unimp" => true,
             _ => {
                 panic!("Unknown instruction: {instr}");
@@ -922,6 +922,18 @@ fn rro(args: &[Argument]) -> (Register, Register, u32) {
     }
 }
 
+fn rrro(args: &[Argument]) -> (Register, Register, Register, u32) {
+    match args {
+        [Argument::Register(r1), Argument::Register(r2), Argument::RegOffset(off, r3)] => (
+            *r1,
+            *r2,
+            *r3,
+            expression_to_number(off.as_ref().unwrap_or(&Expression::Number(0))),
+        ),
+        _ => panic!(),
+    }
+}
+
 fn only_if_no_write_to_zero(statement: String, reg: Register) -> Vec<String> {
     only_if_no_write_to_zero_vec(vec![statement], reg)
 }
@@ -1391,6 +1403,24 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
 
         // atomic and synchronization
         "fence" | "fence.i" => vec![],
+
+        insn if insn.starts_with("amoadd.w") => {
+            let (rd, rs2, rs1, off) = rrro(args);
+            assert_eq!(off, 0);
+
+            let rd = if rd.is_zero() {
+                "tmp2".to_string()
+            } else {
+                rd.to_string()
+            };
+
+            vec![
+                format!("addr <=X= {rs1};"),
+                format!("{rd} <== mload();"),
+                format!("tmp1 <== wrap({rd} + {rs2});"),
+                format!("mstore tmp1;"),
+            ]
+        }
 
         _ => {
             panic!("Unknown instruction: {instr}");
