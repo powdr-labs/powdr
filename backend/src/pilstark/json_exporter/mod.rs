@@ -235,11 +235,6 @@ impl<'a, T: FieldElement> Exporter<'a, T> {
     /// returns the degree and the JSON value (intermediate polynomial IDs)
     fn expression_to_json(&self, expr: &Expression<T>) -> (u32, StarkyExpr) {
         match expr {
-            Expression::Constant(name) => {
-                panic!(
-                    "Constant {name} was not inlined. optimize_constants needs to be run at least."
-                )
-            }
             Expression::Reference(analyzed::Reference::Poly(reference)) => {
                 self.polynomial_reference_to_json(reference)
             }

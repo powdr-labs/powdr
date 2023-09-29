@@ -51,7 +51,7 @@ struct PILAnalyzer<T> {
     macro_expander: MacroExpander<T>,
 }
 
-impl<T> From<PILAnalyzer<T>> for Analyzed<T> {
+impl<T: Copy> From<PILAnalyzer<T>> for Analyzed<T> {
     fn from(
         PILAnalyzer {
             constants,
@@ -560,7 +560,6 @@ impl<'a, T: FieldElement> ExpressionProcessor<'a, T> {
     pub fn process_expression(&mut self, expr: parsed::Expression<T>) -> Expression<T> {
         use parsed::Expression as PExpression;
         match expr {
-            PExpression::Constant(name) => Expression::Constant(name),
             PExpression::Reference(poly) => {
                 if poly.namespace().is_none() && self.local_variables.contains_key(poly.name()) {
                     let id = self.local_variables[poly.name()];

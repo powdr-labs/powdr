@@ -46,16 +46,14 @@ pub fn optimize_constants<T: FieldElement>(mut pil_file: Analyzed<T>) -> Analyze
 /// Inlines references to symbols with a single constant value.
 fn inline_constant_values<T: FieldElement>(pil_file: &mut Analyzed<T>) {
     let constants = &pil_file.constants.clone();
-    pil_file.post_visit_expressions_mut(&mut |e| match e {
-        Expression::Reference(Reference::Poly(poly)) => {
+    pil_file.post_visit_expressions_mut(&mut |e| {
+        if let Expression::Reference(Reference::Poly(poly)) = e {
             if !poly.next && poly.index.is_none() {
                 if let Some(value) = constants.get(&poly.name) {
                     *e = Expression::Number(*value)
                 }
             }
         }
-        Expression::Constant(name) => *e = Expression::Number(constants[name]),
-        _ => {}
     });
 }
 

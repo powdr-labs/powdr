@@ -256,9 +256,6 @@ fn expression_2_expr<T: FieldElement>(cd: &CircuitData<T>, expr: &Expression<T>)
                 _ => unimplemented!("{:?}", expr),
             }
         }
-        Expression::Constant(name) => {
-            panic!("Constant {name} was not inlined. optimize_constants needs to be run at least.")
-        }
 
         _ => unimplemented!("{:?}", expr),
     }

@@ -423,7 +423,6 @@ pub fn format_expressions<T: Display, Ref: Display>(expressions: &[Expression<T,
 impl<T: Display, Ref: Display> Display for Expression<T, Ref> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
-            Expression::Constant(name) => write!(f, "{name}"),
             Expression::Reference(reference) => write!(f, "{reference}"),
             Expression::PublicReference(name) => write!(f, ":{name}"),
             Expression::Number(value) => write!(f, "{value}"),

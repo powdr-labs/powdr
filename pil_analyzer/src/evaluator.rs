@@ -32,7 +32,6 @@ pub struct Evaluator<'a, T> {
 impl<'a, T: FieldElement> Evaluator<'a, T> {
     pub fn evaluate(&self, expr: &Expression<T>) -> Result<T, String> {
         match expr {
-            Expression::Constant(name) => Ok(self.constants[name]),
             Expression::Reference(Reference::LocalVar(i, _name)) => Ok(self.variables[*i as usize]),
             Expression::Reference(Reference::Poly(poly)) => {
                 if !poly.next && poly.index.is_none() {
