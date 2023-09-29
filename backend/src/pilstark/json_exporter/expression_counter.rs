@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 
 use ast::analyzed::{
-    Analyzed, Expression, Identity, Polynomial, PolynomialType, PublicDeclaration,
-    SelectedExpressions, StatementIdentifier,
+    Analyzed, Expression, Identity, PolynomialType, PublicDeclaration, SelectedExpressions,
+    StatementIdentifier, Symbol, SymbolKind,
 };
 
 /// Computes expression IDs for each intermediate polynomial.
@@ -13,7 +13,7 @@ pub fn compute_intermediate_expression_ids<T>(analyzed: &Analyzed<T>) -> HashMap
         expression_counter += match item {
             StatementIdentifier::Definition(name) => {
                 let poly = &analyzed.definitions[name].0;
-                if poly.poly_type == PolynomialType::Intermediate {
+                if poly.kind == SymbolKind::Poly(PolynomialType::Intermediate) {
                     ids.insert(poly.id, expression_counter as u64);
                 }
                 poly.expression_count()
@@ -38,9 +38,9 @@ impl<T> ExpressionCounter for Identity<T> {
     }
 }
 
-impl ExpressionCounter for Polynomial {
+impl ExpressionCounter for Symbol {
     fn expression_count(&self) -> usize {
-        (self.poly_type == PolynomialType::Intermediate).into()
+        (self.kind == SymbolKind::Poly(PolynomialType::Intermediate)).into()
     }
 }
 

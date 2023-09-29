@@ -69,7 +69,7 @@ fn interpolate_query<'b, T: FieldElement>(
             .map(|i| interpolate_query(i, rows))
             .collect::<Result<Vec<_>, _>>()?
             .join(", ")),
-        Expression::Reference(Reference::LocalVar(i)) => {
+        Expression::Reference(Reference::LocalVar(i, _name)) => {
             assert!(*i == 0);
             Ok(format!("{}", rows.current_row_index))
         }

@@ -1,4 +1,4 @@
-use ast::analyzed::{Analyzed, FunctionValueDefinition, Polynomial};
+use ast::analyzed::{Analyzed, FunctionValueDefinition, Symbol};
 use number::{read_polys_file, DegreeType, FieldElement};
 use std::{fs::File, io::BufReader, path::Path};
 
@@ -6,7 +6,7 @@ pub trait PolySet {
     const FILE_NAME: &'static str;
     fn get_polys<T: FieldElement>(
         pil: &Analyzed<T>,
-    ) -> Vec<&(Polynomial, Option<FunctionValueDefinition<T>>)>;
+    ) -> Vec<&(Symbol, Option<FunctionValueDefinition<T>>)>;
 }
 
 pub struct FixedPolySet;
@@ -15,7 +15,7 @@ impl PolySet for FixedPolySet {
 
     fn get_polys<T: FieldElement>(
         pil: &Analyzed<T>,
-    ) -> Vec<&(Polynomial, Option<FunctionValueDefinition<T>>)> {
+    ) -> Vec<&(Symbol, Option<FunctionValueDefinition<T>>)> {
         pil.constant_polys_in_source_order()
     }
 }
@@ -26,7 +26,7 @@ impl PolySet for WitnessPolySet {
 
     fn get_polys<T: FieldElement>(
         pil: &Analyzed<T>,
-    ) -> Vec<&(Polynomial, Option<FunctionValueDefinition<T>>)> {
+    ) -> Vec<&(Symbol, Option<FunctionValueDefinition<T>>)> {
         pil.committed_polys_in_source_order()
     }
 }

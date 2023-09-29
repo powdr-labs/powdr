@@ -91,7 +91,7 @@ impl<'a, T: FieldElement> Evaluator<'a, T> {
     fn evaluate(&self, expr: &Expression<T>) -> T {
         match expr {
             Expression::Constant(name) => self.analyzed.constants[name],
-            Expression::Reference(Reference::LocalVar(i)) => self.variables[*i as usize],
+            Expression::Reference(Reference::LocalVar(i, _name)) => self.variables[*i as usize],
             Expression::Reference(Reference::Poly(_)) => todo!(),
             Expression::PublicReference(_) => todo!(),
             Expression::Number(n) => *n,

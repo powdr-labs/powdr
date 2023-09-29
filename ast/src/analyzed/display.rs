@@ -33,18 +33,29 @@ impl<T: Display> Display for Analyzed<T> {
         for statement in &self.source_order {
             match statement {
                 StatementIdentifier::Definition(name) => {
-                    let (poly, definition) = &self.definitions[name];
-                    let name = update_namespace(name, poly.degree, f)?;
-                    let kind = match &poly.poly_type {
-                        PolynomialType::Committed => "witness ",
-                        PolynomialType::Constant => "fixed ",
-                        PolynomialType::Intermediate => "",
-                    };
-                    write!(f, "    col {kind}{name}")?;
-                    if let Some(value) = definition {
-                        writeln!(f, "{value};")?
-                    } else {
-                        writeln!(f, ";")?
+                    let (symbol, definition) = &self.definitions[name];
+                    let name = update_namespace(name, symbol.degree, f)?;
+                    match symbol.kind {
+                        SymbolKind::Poly(poly_type) => {
+                            let kind = match &poly_type {
+                                PolynomialType::Committed => "witness ",
+                                PolynomialType::Constant => "fixed ",
+                                PolynomialType::Intermediate => "",
+                            };
+                            write!(f, "    col {kind}{name}")?;
+                            if let Some(value) = definition {
+                                writeln!(f, "{value};")?
+                            } else {
+                                writeln!(f, ";")?
+                            }
+                        }
+                        SymbolKind::Other() => {
+                            write!(f, "    let {name}")?;
+                            if let Some(value) = definition {
+                                write!(f, "{value}")?
+                            }
+                            writeln!(f, ";")?
+                        }
                     }
                 }
                 StatementIdentifier::PublicDeclaration(name) => {
@@ -126,14 +137,8 @@ impl<T: Display> Display for SelectedExpressions<T> {
 impl Display for Reference {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Reference::LocalVar(index) => {
-                // TODO this is not really reproducing the input, but
-                // if we want to do that, we would need the names of the local variables somehow.
-                if *index == 0 {
-                    write!(f, "i")
-                } else {
-                    write!(f, "${index}")
-                }
+            Reference::LocalVar(_index, name) => {
+                write!(f, "{name}")
             }
             Reference::Poly(r) => write!(f, "{r}"),
         }
