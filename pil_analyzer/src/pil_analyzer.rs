@@ -20,19 +20,19 @@ use ast::analyzed::{
 };
 
 pub fn process_pil_file<T: FieldElement>(path: &Path) -> Analyzed<T> {
-    let mut ctx = PILContext::new();
-    ctx.process_file(path);
-    ctx.into()
+    let mut analyzer = PILAnalyzer::new();
+    analyzer.process_file(path);
+    analyzer.into()
 }
 
 pub fn process_pil_file_contents<T: FieldElement>(contents: &str) -> Analyzed<T> {
-    let mut ctx = PILContext::new();
-    ctx.process_file_contents(Path::new("input"), contents);
-    ctx.into()
+    let mut analyzer = PILAnalyzer::new();
+    analyzer.process_file_contents(Path::new("input"), contents);
+    analyzer.into()
 }
 
 #[derive(Default)]
-struct PILContext<T> {
+struct PILAnalyzer<T> {
     namespace: String,
     polynomial_degree: DegreeType,
     /// Constants are not namespaced!
@@ -54,16 +54,16 @@ struct PILContext<T> {
     macro_expander: MacroExpander<T>,
 }
 
-impl<T> From<PILContext<T>> for Analyzed<T> {
+impl<T> From<PILAnalyzer<T>> for Analyzed<T> {
     fn from(
-        PILContext {
+        PILAnalyzer {
             constants,
             definitions,
             public_declarations,
             identities,
             source_order,
             ..
-        }: PILContext<T>,
+        }: PILAnalyzer<T>,
     ) -> Self {
         let ids = definitions
             .iter()
@@ -96,9 +96,9 @@ impl<T> From<PILContext<T>> for Analyzed<T> {
     }
 }
 
-impl<T: FieldElement> PILContext<T> {
-    pub fn new() -> PILContext<T> {
-        PILContext {
+impl<T: FieldElement> PILAnalyzer<T> {
+    pub fn new() -> PILAnalyzer<T> {
+        PILAnalyzer {
             namespace: "Global".to_string(),
             ..Default::default()
         }
