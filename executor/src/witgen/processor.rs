@@ -93,6 +93,10 @@ impl<'a, 'b, T: FieldElement> Processor<'a, 'b, T, WithoutCalldata> {
             witness_cols: self.witness_cols,
         }
     }
+
+    pub fn finish(self) -> Vec<Row<'a, T>> {
+        self.data
+    }
 }
 
 impl<'a, 'b, T: FieldElement> Processor<'a, 'b, T, WithCalldata> {
@@ -162,7 +166,7 @@ impl<'a, 'b, T: FieldElement, CalldataAvailable> Processor<'a, 'b, T, CalldataAv
         let identity = &self.identities[identity_index];
 
         // Create row pair
-        let global_row_index = self.row_offset + row_index as u64;
+        let global_row_index = (self.row_offset + row_index as u64) % self.fixed_data.degree;
         let row_pair = RowPair::new(
             &self.data[row_index],
             &self.data[row_index + 1],
@@ -207,7 +211,7 @@ impl<'a, 'b, T: FieldElement, CalldataAvailable> Processor<'a, 'b, T, CalldataAv
         let row_pair = RowPair::new(
             &self.data[row_index],
             &self.data[row_index + 1],
-            self.row_offset + row_index as u64,
+            (self.row_offset + row_index as u64) % self.fixed_data.degree,
             self.fixed_data,
             UnknownStrategy::Unknown,
         );
