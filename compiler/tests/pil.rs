@@ -119,7 +119,8 @@ fn test_witness_lookup() {
         }),
     );
     // halo2 fails with "gates must contain at least one constraint"
-    gen_estark_proof(f, vec![3.into(), 5.into(), 2.into()]);
+    let inputs = vec![3, 5, 2, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7];
+    gen_estark_proof(f, inputs.into_iter().map(GoldilocksField::from).collect());
 }
 
 #[test]
