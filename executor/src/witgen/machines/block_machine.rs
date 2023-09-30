@@ -1,4 +1,5 @@
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use std::ops::ControlFlow;
 
 use super::{EvalResult, FixedData, FixedLookup};
 use crate::witgen::affine_expression::AffineExpression;
@@ -11,9 +12,12 @@ use crate::witgen::util::try_to_simple_poly;
 use crate::witgen::{
     machines::Machine, range_constraints::RangeConstraint, EvalError, EvalValue, IncompleteCause,
 };
+use ast::analyzed::util::previsit_expressions_in_identity;
 use ast::analyzed::{
-    Expression, Identity, IdentityKind, PolyID, PolynomialReference, SelectedExpressions,
+    Expression, Identity, IdentityKind, PolyID, PolynomialReference, PolynomialType, Reference,
+    SelectedExpressions,
 };
+use itertools::Itertools;
 use number::{DegreeType, FieldElement};
 
 /// Transposes a list of rows into a map from column to a list of values.
@@ -57,8 +61,9 @@ pub struct BlockMachine<'a, T: FieldElement> {
     witness_cols: HashSet<PolyID>,
     /// Cache that states the order in which to evaluate identities
     /// to make progress most quickly.
-    processing_sequence_cache: ProcessingSequenceCache,
+    processing_sequence_cache: ProcessingSequenceCache<T>,
     fixed_data: &'a FixedData<'a, T>,
+    referenced_constants: BTreeSet<PolynomialReference>,
 }
 
 impl<'a, T: FieldElement> BlockMachine<'a, T> {
@@ -72,6 +77,26 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         for id in connecting_identities {
             // TODO we should check that the other constraints/fixed columns are also periodic.
             if let Some(block_size) = try_to_period(&id.right.selector, fixed_data) {
+                let mut referenced_constants = BTreeSet::new();
+                identities
+                    .iter()
+                    .filter(|identity| identity.kind == IdentityKind::Polynomial)
+                    .for_each(|identity| {
+                        previsit_expressions_in_identity(identity, &mut |expr| {
+                            match expr {
+                                Expression::Reference(Reference::Poly(p)) => {
+                                    match p.poly_id.as_ref().unwrap().ptype {
+                                        PolynomialType::Constant => Some(p),
+                                        _ => None,
+                                    }
+                                }
+                                _ => None,
+                            }
+                            .map(|id| referenced_constants.insert(id.clone()));
+                            ControlFlow::Continue::<()>(())
+                        });
+                    });
+
                 assert!(block_size <= fixed_data.degree as usize);
                 let row_factory = RowFactory::new(fixed_data, global_range_constraints.clone());
                 // Start out with a block filled with unknown values so that we do not have to deal with wrap-around
@@ -90,6 +115,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
                         identities.len(),
                     ),
                     fixed_data,
+                    referenced_constants,
                 });
             }
         }
@@ -302,8 +328,28 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
             }
         }
 
+        let constant_values = ((self.rows() - 1)..(self.rows() + self.block_size as DegreeType))
+            .map(|row| {
+                self.referenced_constants
+                    .iter()
+                    .map(|constant_ref| {
+                        let values = self.fixed_data.fixed_cols[&constant_ref.poly_id()].values;
+                        let row = if constant_ref.next {
+                            let degree = values.len() as DegreeType;
+                            (row + 1) % degree
+                        } else {
+                            row
+                        };
+                        values[row as usize]
+                    })
+                    .collect_vec()
+            })
+            .collect::<Vec<_>>();
+
         // TODO this assumes we are always using the same lookup for this machine.
-        let mut sequence_iterator = self.processing_sequence_cache.get_processing_sequence(left);
+        let mut sequence_iterator = self
+            .processing_sequence_cache
+            .get_processing_sequence((left, constant_values.clone()));
 
         if !sequence_iterator.has_steps() {
             // Shortcut, no need to do anything.
@@ -349,14 +395,15 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
 
             // We solved the query, so report it to the cache.
             self.processing_sequence_cache
-                .report_processing_sequence(left, sequence_iterator);
+                .report_processing_sequence((left, constant_values.clone()), sequence_iterator);
             Ok(EvalValue::complete(outer_assignments))
         } else {
             log::trace!(
                 "End processing block machine '{}' (incomplete)",
                 self.name()
             );
-            self.processing_sequence_cache.report_incomplete(left);
+            self.processing_sequence_cache
+                .report_incomplete((left, constant_values.clone()));
             Ok(EvalValue::incomplete(
                 IncompleteCause::BlockMachineLookupIncomplete,
             ))

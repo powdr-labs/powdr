@@ -140,19 +140,21 @@ pub enum IdentityInSequence {
 }
 
 #[derive(PartialOrd, Ord, PartialEq, Eq, Debug)]
-pub struct SequenceCacheKey {
+pub struct SequenceCacheKey<T: FieldElement> {
     /// For each expression on the left-hand side of the lookup, whether it is a constant.
     known_columns: Vec<bool>,
+    constant_values: Vec<Vec<T>>,
 }
 
-impl<K, T> From<&[AffineExpression<K, T>]> for SequenceCacheKey
+impl<K, T: FieldElement> From<(&[AffineExpression<K, T>], Vec<Vec<T>>)> for SequenceCacheKey<T>
 where
     K: Copy + Ord,
     T: FieldElement,
 {
-    fn from(value: &[AffineExpression<K, T>]) -> Self {
+    fn from(value: (&[AffineExpression<K, T>], Vec<Vec<T>>)) -> Self {
         SequenceCacheKey {
-            known_columns: value.iter().map(|v| v.is_constant()).collect(),
+            known_columns: value.0.iter().map(|v| v.is_constant()).collect(),
+            constant_values: value.1,
         }
     }
 }
@@ -189,13 +191,13 @@ impl Iterator for ProcessingSequenceIterator {
     }
 }
 
-pub struct ProcessingSequenceCache {
+pub struct ProcessingSequenceCache<T: FieldElement> {
     block_size: usize,
     identities_count: usize,
-    cache: BTreeMap<SequenceCacheKey, Vec<SequenceStep>>,
+    cache: BTreeMap<SequenceCacheKey<T>, Vec<SequenceStep>>,
 }
 
-impl ProcessingSequenceCache {
+impl<T: FieldElement> ProcessingSequenceCache<T> {
     pub fn new(block_size: usize, identities_count: usize) -> Self {
         ProcessingSequenceCache {
             block_size,
@@ -204,15 +206,15 @@ impl ProcessingSequenceCache {
         }
     }
 
-    pub fn get_processing_sequence<K, T>(
+    pub fn get_processing_sequence<K>(
         &self,
-        left: &[AffineExpression<K, T>],
+        cache_key: (&[AffineExpression<K, T>], Vec<Vec<T>>),
     ) -> ProcessingSequenceIterator
     where
         K: Copy + Ord,
         T: FieldElement,
     {
-        match self.cache.get(&left.into()) {
+        match self.cache.get(&cache_key.into()) {
             Some(cached_sequence) => {
                 log::trace!("Using cached sequence");
                 ProcessingSequenceIterator::Cached(cached_sequence.clone().into_iter())
@@ -229,17 +231,17 @@ impl ProcessingSequenceCache {
         }
     }
 
-    pub fn report_incomplete<K, T>(&mut self, left: &[AffineExpression<K, T>])
+    pub fn report_incomplete<K>(&mut self, key: (&[AffineExpression<K, T>], Vec<Vec<T>>))
     where
         K: Copy + Ord,
         T: FieldElement,
     {
-        self.cache.entry(left.into()).or_insert(vec![]);
+        self.cache.entry(key.into()).or_insert(vec![]);
     }
 
-    pub fn report_processing_sequence<K, T>(
+    pub fn report_processing_sequence<K>(
         &mut self,
-        left: &[AffineExpression<K, T>],
+        key: (&[AffineExpression<K, T>], Vec<Vec<T>>),
         sequence_iterator: ProcessingSequenceIterator,
     ) where
         K: Copy + Ord,
@@ -247,7 +249,7 @@ impl ProcessingSequenceCache {
     {
         match sequence_iterator {
             ProcessingSequenceIterator::Default(it) => {
-                self.cache.entry(left.into()).or_insert(it.progress_steps);
+                self.cache.entry(key.into()).or_insert(it.progress_steps);
             }
             ProcessingSequenceIterator::Cached(_) => {} // Already cached, do nothing
         }
