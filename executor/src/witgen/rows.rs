@@ -4,7 +4,8 @@ use ast::analyzed::{Expression, PolynomialReference};
 use itertools::Itertools;
 use number::{DegreeType, FieldElement};
 
-use crate::witgen::Constraint;
+use crate::witgen::{Constraint, PolyID};
+use std::collections::HashSet;
 
 use super::{
     affine_expression::{AffineExpression, AffineResult},
@@ -105,22 +106,27 @@ pub type Row<'a, T> = WitnessColumnMap<Cell<'a, T>>;
 
 impl<T: FieldElement> Debug for Row<'_, T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(&self.render("Row", true))
+        write!(f, "Row:\n{}", self.render_values(true, None))
     }
 }
 
 impl<T: FieldElement> Row<'_, T> {
     /// Builds a string representing the current row
-    pub fn render(&self, title: &str, include_unknown: bool) -> String {
-        format!("{}:\n{}", title, self.render_values(include_unknown))
+    pub fn render(&self, title: &str, include_unknown: bool, cols: &HashSet<PolyID>) -> String {
+        format!(
+            "{}:\n{}",
+            title,
+            self.render_values(include_unknown, Some(cols))
+        )
     }
 
     /// Builds a string listing all values, one by row. Nonzero entries are
     /// first, then zero, then unknown (if `include_unknown == true`).
-    pub fn render_values(&self, include_unknown: bool) -> String {
+    pub fn render_values(&self, include_unknown: bool, cols: Option<&HashSet<PolyID>>) -> String {
         let mut cells = self
             .iter()
             .filter(|(_, cell)| cell.value.is_known() || include_unknown)
+            .filter(|(col, _)| cols.map(|cols| cols.contains(col)).unwrap_or(true))
             .collect::<Vec<_>>();
 
         // Nonzero first, then zero, then unknown

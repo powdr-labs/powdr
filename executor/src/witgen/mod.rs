@@ -104,12 +104,16 @@ where
 
     // Are we in an infinite loop and can just re-use the old values?
     let mut looping_period = None;
+    let mut loop_log_level = log::Level::Info;
     for row in 0..degree as DegreeType {
         // Check if we are in a loop.
         if looping_period.is_none() && row % 100 == 0 && row > 0 {
             looping_period = rows_are_repeating(&rows, &relevant_witnesses_mask);
             if let Some(p) = looping_period {
-                log::info!("Found loop with period {p} starting at row {row}");
+                log::log!(
+                    loop_log_level,
+                    "Found loop with period {p} starting at row {row}"
+                );
             }
         }
         let mut row_values = None;
@@ -118,8 +122,14 @@ where
             if generator.propose_next_row(row, values, &mut mutable_state) {
                 row_values = Some(values.clone());
             } else {
-                log::info!("Using loop failed. Trying to generate regularly again.");
+                log::log!(
+                    loop_log_level,
+                    "Looping failed. Trying to generate regularly again. (Use RUST_LOG=debug to see whether this happens more often.)"
+                );
                 looping_period = None;
+                // For some programs, loop detection will often find loops and then fail.
+                // In this case, we don't want to spam the user with debug messages.
+                loop_log_level = log::Level::Debug;
             }
         }
         if row_values.is_none() {

@@ -240,6 +240,21 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         self.data.len() as DegreeType
     }
 
+    fn name(&self) -> &str {
+        let first_witness = self.witness_cols.iter().next().unwrap();
+        let first_witness_name = self.fixed_data.column_name(first_witness);
+        let namespace = first_witness_name
+            .rfind('.')
+            .map(|idx| &first_witness_name[..idx]);
+        if let Some(namespace) = namespace {
+            namespace
+        } else {
+            // For machines compiled using Powdr ASM we'll always have a namespace, but as a last
+            // resort we'll use the first witness name.
+            first_witness_name
+        }
+    }
+
     fn process_plookup_internal<'b>(
         &mut self,
         fixed_lookup: &'b mut FixedLookup<T>,
@@ -247,7 +262,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         right: &'a SelectedExpressions<T>,
         machines: Machines<'a, 'b, T>,
     ) -> EvalResult<'a, T> {
-        log::trace!("Start processing block machine");
+        log::trace!("Start processing block machine '{}'", self.name());
         log::trace!("Left values of lookup:");
         for l in left {
             log::trace!("  {}", l);
@@ -279,6 +294,10 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
             let result = identity_processor.process_link(left, right, &row_pair)?;
 
             if result.is_complete() {
+                log::trace!(
+                    "End processing block machine '{}' (already solved)",
+                    self.name()
+                );
                 return Ok(result);
             }
         }
@@ -288,6 +307,10 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
 
         if !sequence_iterator.has_steps() {
             // Shortcut, no need to do anything.
+            log::trace!(
+                "Abort processing block machine '{}' (inputs incomplete according to cache)",
+                self.name()
+            );
             return Ok(EvalValue::incomplete(
                 IncompleteCause::BlockMachineLookupIncomplete,
             ));
@@ -296,8 +319,10 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         // Make the block two rows larger than the block size, it includes the last row of the previous block
         // and the first row of the next block.
         let block = vec![self.row_factory.fresh_row(); self.block_size + 2];
+        // We start at the last row of the previous block.
+        let row_offset = self.data.len() as DegreeType - 1;
         let mut processor = Processor::new(
-            self.block_size as DegreeType - 1,
+            row_offset,
             block,
             identity_processor,
             &self.identities,
@@ -316,7 +341,10 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         let success = left_new.iter().all(|v| v.is_constant());
 
         if success {
-            log::trace!("End processing block machine (successfully)");
+            log::trace!(
+                "End processing block machine '{}' (successfully)",
+                self.name()
+            );
             self.append_block(new_block)?;
 
             // We solved the query, so report it to the cache.
@@ -324,7 +352,10 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
                 .report_processing_sequence(left, sequence_iterator);
             Ok(EvalValue::complete(outer_assignments))
         } else {
-            log::trace!("End processing block machine (incomplete)");
+            log::trace!(
+                "End processing block machine '{}' (incomplete)",
+                self.name()
+            );
             self.processing_sequence_cache.report_incomplete(left);
             Ok(EvalValue::incomplete(
                 IncompleteCause::BlockMachineLookupIncomplete,
