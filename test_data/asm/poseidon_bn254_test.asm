@@ -3,6 +3,8 @@ mod poseidon_bn254;
 use poseidon_bn254::PoseidonBN254;
 
 machine Main {
+    degree 512;
+
     reg pc[@pc];
     reg X0[<=];
     reg X1[<=];

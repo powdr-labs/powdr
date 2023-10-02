@@ -261,6 +261,19 @@ fn intermediate_nested() {
 }
 
 #[test]
+fn poseidon_bn254_test() {
+    let f = "poseidon_bn254_test.asm";
+    gen_halo2_proof(f, Default::default());
+}
+
+#[test]
+fn poseidon_gl_test() {
+    let f = "poseidon_gl_test.asm";
+    verify_asm::<GoldilocksField>(f, Default::default());
+    gen_estark_proof(f, Default::default());
+}
+
+#[test]
 fn book() {
     use walkdir::WalkDir;
 
