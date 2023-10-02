@@ -21,10 +21,16 @@ use number::FieldElement;
 pub fn compile<T: FieldElement>(input: AnalysisASMFile<T>) -> PILGraph<T> {
     let main_location = Location::main();
 
+    let non_std_machines = input
+        .machines
+        .iter()
+        .filter(|(k, _)| k.parts[0] != "std")
+        .collect::<BTreeMap<_, _>>();
+
     // we start from the main machine
-    let main_ty = match input.machines.len() {
+    let main_ty = match non_std_machines.len() {
         // if there is a single machine, treat it as main
-        1 => input.machines.keys().next().unwrap().clone(),
+        1 => (*non_std_machines.keys().next().unwrap()).clone(),
         // otherwise, use the machine called `MAIN`
         _ => {
             assert!(input

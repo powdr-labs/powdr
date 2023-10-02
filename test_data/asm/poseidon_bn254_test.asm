@@ -1,6 +1,4 @@
-mod poseidon_bn254;
-
-use poseidon_bn254::PoseidonBN254;
+use std::hash::poseidon_bn254::PoseidonBN254;
 
 machine Main {
     degree 512;
