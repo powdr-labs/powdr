@@ -6,8 +6,9 @@ use crate::witgen::column_map::WitnessColumnMap;
 use crate::witgen::identity_processor::{IdentityProcessor, Machines};
 use crate::witgen::processor::{OuterQuery, Processor};
 use crate::witgen::rows::{CellValue, Row, RowFactory, RowPair, UnknownStrategy};
-use crate::witgen::sequence_iterator::ProcessingSequenceCache;
+use crate::witgen::sequence_iterator::{ProcessingSequenceCache, ProcessingSequenceIterator};
 use crate::witgen::util::try_to_simple_poly;
+use crate::witgen::Constraints;
 use crate::witgen::{
     machines::Machine, range_constraints::RangeConstraint, EvalError, EvalValue, IncompleteCause,
 };
@@ -293,27 +294,20 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
             ));
         }
 
-        // Make the block two rows larger than the block size, it includes the last row of the previous block
-        // and the first row of the next block.
-        let block = vec![self.row_factory.fresh_row(); self.block_size + 2];
-        let mut processor = Processor::new(
-            self.block_size as DegreeType - 1,
-            block,
-            identity_processor,
-            &self.identities,
-            self.fixed_data,
-            self.row_factory.clone(),
-            &self.witness_cols,
-        )
-        .with_outer_query(OuterQuery::new(left.to_vec(), right));
+        let (success, new_block, outer_assignments) =
+            self.process(&mut identity_processor, left, right, &mut sequence_iterator)?;
 
-        let outer_assignments = processor.solve(&mut sequence_iterator)?;
-        let (new_block, left_new) = processor.finish();
-        let left_new = left_new;
-
-        // Only succeed if we can assign everything.
-        // Otherwise it is messy because we have to find the correct block again.
-        let success = left_new.iter().all(|v| v.is_constant());
+        let (success, new_block, outer_assignments) = if sequence_iterator.is_cached() && !success {
+            log::trace!("The cached sequence did not complete the block machine. \
+                         This can happen if the machine's execution steps depend on the input or constant values. \
+                         We'll try again with the default sequence.");
+            let mut sequence_iterator = self
+                .processing_sequence_cache
+                .get_default_sequence_iterator();
+            self.process(&mut identity_processor, left, right, &mut sequence_iterator)?
+        } else {
+            (success, new_block, outer_assignments)
+        };
 
         if success {
             log::trace!("End processing block machine (successfully)");
@@ -330,6 +324,46 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
                 IncompleteCause::BlockMachineLookupIncomplete,
             ))
         }
+    }
+
+    fn process<'b>(
+        &self,
+        identity_processor: &mut IdentityProcessor<'a, 'b, T>,
+        left: &[AffineExpression<&'a PolynomialReference, T>],
+        right: &'a SelectedExpressions<T>,
+        sequence_iterator: &mut ProcessingSequenceIterator,
+    ) -> Result<
+        (
+            bool,
+            Vec<Row<'a, T>>,
+            Constraints<&'a PolynomialReference, T>,
+        ),
+        EvalError<T>,
+    > {
+        // Make the block two rows larger than the block size, it includes the last row of the previous block
+        // and the first row of the next block.
+        let block = vec![self.row_factory.fresh_row(); self.block_size + 2];
+        // We start at the last row of the previous block.
+        let row_offset = self.data.len() as DegreeType - 1;
+        let mut processor = Processor::new(
+            row_offset,
+            block,
+            identity_processor,
+            &self.identities,
+            self.fixed_data,
+            self.row_factory.clone(),
+            &self.witness_cols,
+        )
+        .with_outer_query(OuterQuery::new(left.to_vec(), right));
+
+        let outer_assignments = processor.solve(sequence_iterator)?;
+        let (new_block, left_new) = processor.finish();
+
+        // Only succeed if we can assign everything.
+        // Otherwise it is messy because we have to find the correct block again.
+        let success = left_new.iter().all(|v| v.is_constant());
+
+        Ok((success, new_block, outer_assignments))
     }
 
     /// Takes a block of rows, which contains the last row of its previous block

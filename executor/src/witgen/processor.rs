@@ -36,38 +36,39 @@ impl<'a, T: FieldElement> OuterQuery<'a, T> {
 
 /// A basic processor that knows how to determine a unique satisfying witness
 /// for a given list of identities.
-/// This current implementation is very rudimentary and only used in the block machine
-/// to "fix" the last row. However, in the future we can generalize it to be used
-/// for general block machine or VM witness computation.
-pub struct Processor<'a, 'b, T: FieldElement, CalldataAvailable> {
+/// The lifetimes mean the following:
+/// - `'a`: The duration of the entire witness generation (e.g. references to identities)
+/// - `'b`: The duration of this machine's call (e.g. the mutable references of the other machines)
+/// - `'c`: The duration of this Processor's lifetime (e.g. the reference to the identity processor)
+pub struct Processor<'a, 'b, 'c, T: FieldElement, CalldataAvailable> {
     /// The global index of the first row of [Processor::data].
     row_offset: u64,
     /// The rows that are being processed.
     data: Vec<Row<'a, T>>,
     /// The list of identities
-    identities: &'b [&'a Identity<T>],
+    identities: &'c [&'a Identity<T>],
     /// The identity processor
-    identity_processor: IdentityProcessor<'a, 'b, T>,
+    identity_processor: &'c mut IdentityProcessor<'a, 'b, T>,
     /// The fixed data (containing information about all columns)
     fixed_data: &'a FixedData<'a, T>,
     /// The row factory
     row_factory: RowFactory<'a, T>,
     /// The set of witness columns that are actually part of this machine.
-    witness_cols: &'b HashSet<PolyID>,
+    witness_cols: &'c HashSet<PolyID>,
     /// The outer query, if any. If there is none, processing an outer query will fail.
     outer_query: Option<OuterQuery<'a, T>>,
     _marker: PhantomData<CalldataAvailable>,
 }
 
-impl<'a, 'b, T: FieldElement> Processor<'a, 'b, T, WithoutCalldata> {
+impl<'a, 'b, 'c, T: FieldElement> Processor<'a, 'b, 'c, T, WithoutCalldata> {
     pub fn new(
         row_offset: u64,
         data: Vec<Row<'a, T>>,
-        identity_processor: IdentityProcessor<'a, 'b, T>,
-        identities: &'b [&'a Identity<T>],
+        identity_processor: &'c mut IdentityProcessor<'a, 'b, T>,
+        identities: &'c [&'a Identity<T>],
         fixed_data: &'a FixedData<'a, T>,
         row_factory: RowFactory<'a, T>,
-        witness_cols: &'b HashSet<PolyID>,
+        witness_cols: &'c HashSet<PolyID>,
     ) -> Self {
         Self {
             row_offset,
@@ -85,7 +86,7 @@ impl<'a, 'b, T: FieldElement> Processor<'a, 'b, T, WithoutCalldata> {
     pub fn with_outer_query(
         self,
         outer_query: OuterQuery<'a, T>,
-    ) -> Processor<'a, 'b, T, WithCalldata> {
+    ) -> Processor<'a, 'b, 'c, T, WithCalldata> {
         Processor {
             outer_query: Some(outer_query),
             _marker: PhantomData,
@@ -100,14 +101,14 @@ impl<'a, 'b, T: FieldElement> Processor<'a, 'b, T, WithoutCalldata> {
     }
 }
 
-impl<'a, 'b, T: FieldElement> Processor<'a, 'b, T, WithCalldata> {
+impl<'a, 'b, T: FieldElement> Processor<'a, 'b, '_, T, WithCalldata> {
     /// Destroys itself, returns the data and updated left-hand side of the outer query (if available).
     pub fn finish(self) -> (Vec<Row<'a, T>>, Left<'a, T>) {
         (self.data, self.outer_query.unwrap().left)
     }
 }
 
-impl<'a, 'b, T: FieldElement, CalldataAvailable> Processor<'a, 'b, T, CalldataAvailable> {
+impl<'a, 'b, T: FieldElement, CalldataAvailable> Processor<'a, 'b, '_, T, CalldataAvailable> {
     /// Evaluate all identities on all *non-wrapping* row pairs, assuming zero for unknown values.
     /// If any identity was unsatisfied, returns an error.
     #[allow(dead_code)]
@@ -328,7 +329,7 @@ mod tests {
 
         let row_factory = RowFactory::new(&fixed_data, global_range_constraints);
         let data = vec![row_factory.fresh_row(); fixed_data.degree as usize];
-        let identity_processor =
+        let mut identity_processor =
             IdentityProcessor::new(&fixed_data, &mut fixed_lookup, machines.into_iter().into());
         let row_offset = 0;
         let identities = analyzed.identities.iter().collect::<Vec<_>>();
@@ -337,7 +338,7 @@ mod tests {
         let mut processor = Processor::new(
             row_offset,
             data,
-            identity_processor,
+            &mut identity_processor,
             &identities,
             &fixed_data,
             row_factory,
