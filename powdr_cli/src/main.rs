@@ -496,7 +496,8 @@ fn read_and_prove<T: FieldElement>(
     proof_path: Option<String>,
     params: Option<String>,
 ) {
-    let pil = compiler::analyze_pil::<T>(file);
+    let pil = pilopt::optimize(compiler::analyze_pil::<T>(file));
+
     let fixed = read_poly_set::<FixedPolySet, T>(&pil, dir);
     let witness = read_poly_set::<WitnessPolySet, T>(&pil, dir);
 

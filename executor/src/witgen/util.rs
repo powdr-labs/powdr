@@ -1,7 +1,4 @@
-use std::collections::HashMap;
-
-use ast::analyzed::{Expression, Identity, PolynomialReference, Reference};
-use ast::parsed::visitor::ExpressionVisitable;
+use ast::analyzed::{Expression, PolynomialReference, Reference};
 
 /// Checks if an expression is
 /// - a polynomial
@@ -46,22 +43,4 @@ pub fn is_simple_poly_of_name<T>(expr: &Expression<T>, poly_name: &str) -> bool 
     } else {
         false
     }
-}
-
-pub fn substitute_constants<T: Copy>(
-    identities: &[Identity<T>],
-    constants: &HashMap<String, T>,
-) -> Vec<Identity<T>> {
-    identities
-        .iter()
-        .cloned()
-        .map(|mut identity| {
-            identity.pre_visit_expressions_mut(&mut |e| {
-                if let Expression::Constant(name) = e {
-                    *e = Expression::Number(constants[name])
-                }
-            });
-            identity
-        })
-        .collect()
 }

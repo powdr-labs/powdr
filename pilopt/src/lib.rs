@@ -10,10 +10,13 @@ use ast::analyzed::{
 };
 use ast::parsed::visitor::ExpressionVisitable;
 use ast::parsed::UnaryOperator;
+use ast::{evaluate_binary_operation, evaluate_unary_operation};
 use number::FieldElement;
 
 pub fn optimize<T: FieldElement>(mut pil_file: Analyzed<T>) -> Analyzed<T> {
     let col_count_pre = (pil_file.commitment_count(), pil_file.constant_count());
+    inline_constant_values(&mut pil_file);
+    evaluate_constant_subtrees(&mut pil_file);
     remove_constant_fixed_columns(&mut pil_file);
     simplify_expressions(&mut pil_file);
     extract_constant_lookups(&mut pil_file);
@@ -29,6 +32,48 @@ pub fn optimize<T: FieldElement>(mut pil_file: Analyzed<T>) -> Analyzed<T> {
         col_count_post.1
     );
     pil_file
+}
+
+/// Just perform some very light optimizations: inlining constants and evaluating
+/// constant expressions.
+pub fn optimize_constants<T: FieldElement>(mut pil_file: Analyzed<T>) -> Analyzed<T> {
+    inline_constant_values(&mut pil_file);
+    evaluate_constant_subtrees(&mut pil_file);
+    pil_file
+}
+
+/// Inlines references to symbols with a single constant value.
+fn inline_constant_values<T: FieldElement>(pil_file: &mut Analyzed<T>) {
+    let constants = &pil_file.constants.clone();
+    pil_file.post_visit_expressions_mut(&mut |e| match e {
+        Expression::Reference(Reference::Poly(poly)) => {
+            if !poly.next && poly.index.is_none() {
+                if let Some(value) = constants.get(&poly.name) {
+                    *e = Expression::Number(*value)
+                }
+            }
+        }
+        Expression::Constant(name) => *e = Expression::Number(constants[name]),
+        _ => {}
+    });
+}
+
+/// Substitutes expression that evaluate to a constant value.
+fn evaluate_constant_subtrees<T: FieldElement>(pil_file: &mut Analyzed<T>) {
+    pil_file.post_visit_expressions_mut(&mut |e| match e {
+        Expression::BinaryOperation(left, op, right) => {
+            if let (Expression::Number(l), Expression::Number(r)) = (left.as_ref(), right.as_ref())
+            {
+                *e = Expression::Number(evaluate_binary_operation(*l, *op, *r))
+            }
+        }
+        Expression::UnaryOperation(op, sub) => {
+            if let Expression::Number(s) = sub.as_ref() {
+                *e = Expression::Number(evaluate_unary_operation(*op, *s))
+            }
+        }
+        _ => {}
+    });
 }
 
 /// Identifies fixed columns that only have a single value, replaces every

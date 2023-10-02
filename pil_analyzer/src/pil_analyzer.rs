@@ -68,6 +68,7 @@ impl<T> From<PILAnalyzer<T>> for Analyzed<T> {
             .iter()
             .map(|(name, (poly, _))| (name.clone(), poly.clone()))
             .collect::<HashMap<_, _>>();
+        let constant_names = constants.keys().cloned().collect::<HashSet<_>>();
         let mut result = Self {
             constants,
             definitions,
@@ -83,7 +84,9 @@ impl<T> From<PILAnalyzer<T>> for Analyzed<T> {
         };
         result.pre_visit_expressions_mut(&mut |e| {
             if let Expression::Reference(Reference::Poly(reference)) = e {
-                assign_id(reference);
+                if !constant_names.contains(&reference.name) {
+                    assign_id(reference);
+                }
             }
         });
         result
@@ -573,23 +576,13 @@ impl<T: FieldElement> PILAnalyzer<T> {
                 let body = Box::new(self.process_function(&params, *body));
                 Expression::LambdaExpression(LambdaExpression { params, body })
             }
-            PExpression::BinaryOperation(left, op, right) => {
-                if let Some(value) = self.evaluate_binary_operation(&left, op, &right) {
-                    Expression::Number(value)
-                } else {
-                    Expression::BinaryOperation(
-                        Box::new(self.process_expression(*left)),
-                        op,
-                        Box::new(self.process_expression(*right)),
-                    )
-                }
-            }
+            PExpression::BinaryOperation(left, op, right) => Expression::BinaryOperation(
+                Box::new(self.process_expression(*left)),
+                op,
+                Box::new(self.process_expression(*right)),
+            ),
             PExpression::UnaryOperation(op, value) => {
-                if let Some(value) = self.evaluate_unary_operation(op, &value) {
-                    Expression::Number(value)
-                } else {
-                    Expression::UnaryOperation(op, Box::new(self.process_expression(*value)))
-                }
+                Expression::UnaryOperation(op, Box::new(self.process_expression(*value)))
             }
             PExpression::FunctionCall(c) => Expression::FunctionCall(parsed::FunctionCall {
                 id: self.namespaced(&c.id),
