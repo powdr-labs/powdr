@@ -114,14 +114,13 @@ impl<T> Analyzed<T> {
         .map(|polys| {
             polys
                 .iter()
-                .enumerate()
                 .fold(
                     (0, BTreeMap::new()),
-                    |(shift, mut replacements), (i, (poly, _def))| {
-                        assert_eq!(i as u64, poly.id);
+                    |(shift, mut replacements), (poly, _def)| {
                         let poly_id = poly.into();
                         if to_remove.contains(&poly_id) {
-                            (shift + 1, replacements)
+                            let length = poly.length.unwrap_or(1);
+                            (shift + length, replacements)
                         } else {
                             replacements.insert(
                                 poly_id,
