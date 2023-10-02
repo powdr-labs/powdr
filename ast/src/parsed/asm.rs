@@ -263,11 +263,11 @@ pub struct Instruction<T> {
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub enum MachineStatement<T> {
     Degree(usize, AbstractNumberType),
+    Pil(usize, PilStatement<T>),
     Submachine(usize, SymbolPath, String),
     RegisterDeclaration(usize, String, Option<RegisterFlag>),
     InstructionDeclaration(usize, String, Instruction<T>),
     LinkDeclaration(LinkDeclaration<T>),
-    InlinePil(usize, Vec<PilStatement<T>>),
     FunctionDeclaration(usize, String, Params, Vec<FunctionStatement<T>>),
     OperationDeclaration(usize, String, OperationId<T>, Params),
 }

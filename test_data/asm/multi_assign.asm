@@ -4,13 +4,11 @@ machine MultiAssign {
     reg Y[<=];
     reg A;
 
-    constraints {
-        col witness XInv;
-        col witness XIsZero;
-        XIsZero  = 1 - X * XInv;
-        XIsZero * X = 0;
-        XIsZero * (1 - XIsZero) = 0;
-    }
+    col witness XInv;
+    col witness XIsZero;
+    XIsZero  = 1 - X * XInv;
+    XIsZero * X = 0;
+    XIsZero * (1 - XIsZero) = 0;
 
     instr assert_zero X { XIsZero = 1 }
 

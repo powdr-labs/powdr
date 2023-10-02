@@ -32,22 +32,38 @@ impl<T: FieldElement> Folder<T> for MacroExpander<T> {
     type Error = Infallible;
 
     fn fold_machine(&mut self, mut machine: Machine<T>) -> Result<Machine<T>, Self::Error> {
-        machine.statements.iter_mut().for_each(|s| match s {
-            MachineStatement::InstructionDeclaration(_, _, Instruction { body, .. }) => {
-                match body {
-                    InstructionBody::Local(body) => {
-                        *body = self.expand_macros(std::mem::take(body))
-                    }
-                    InstructionBody::CallableRef(..) => {
+        machine.statements = machine
+            .statements
+            .into_iter()
+            .flat_map(|s| match s {
+                MachineStatement::InstructionDeclaration(
+                    start,
+                    name,
+                    Instruction { body, params },
+                ) => {
+                    let body = match body {
+                        InstructionBody::Local(body) => {
+                            InstructionBody::Local(self.expand_macros(body))
+                        }
                         // there is nothing to expand in a callable ref
-                    }
+                        InstructionBody::CallableRef(r) => InstructionBody::CallableRef(r),
+                    };
+                    vec![MachineStatement::InstructionDeclaration(
+                        start,
+                        name,
+                        Instruction { body, params },
+                    )]
                 }
-            }
-            MachineStatement::InlinePil(_, statements) => {
-                *statements = self.expand_macros(std::mem::take(statements));
-            }
-            _ => {}
-        });
+                MachineStatement::Pil(start, statement) => self
+                    .expand_macros(vec![statement])
+                    .into_iter()
+                    .map(|s| MachineStatement::Pil(start, s))
+                    .collect(),
+                s => {
+                    vec![s]
+                }
+            })
+            .collect();
 
         Ok(machine)
     }

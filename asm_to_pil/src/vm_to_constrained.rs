@@ -6,7 +6,7 @@ use ast::{
     asm_analysis::{
         AssignmentStatement, Batch, DebugDirective, FunctionStatement,
         InstructionDefinitionStatement, InstructionStatement, LabelStatement,
-        LinkDefinitionStatement, Machine, PilBlock, RegisterDeclarationStatement, RegisterTy, Rom,
+        LinkDefinitionStatement, Machine, RegisterDeclarationStatement, RegisterTy, Rom,
     },
     parsed::{
         asm::InstructionBody,
@@ -202,10 +202,7 @@ impl<T: FieldElement> ASMPILConverter<T> {
         ));
 
         if !self.pil.is_empty() {
-            input.constraints.push(PilBlock {
-                start: 0,
-                statements: self.pil,
-            });
+            input.pil.extend(self.pil);
         }
 
         input

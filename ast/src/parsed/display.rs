@@ -137,6 +137,7 @@ impl<T: Display> Display for MachineStatement<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
             MachineStatement::Degree(_, degree) => write!(f, "degree {};", degree),
+            MachineStatement::Pil(_, statement) => write!(f, "{statement};"),
             MachineStatement::Submachine(_, ty, name) => write!(f, "{ty} {name};"),
             MachineStatement::RegisterDeclaration(_, name, flag) => write!(
                 f,
@@ -151,9 +152,6 @@ impl<T: Display> Display for MachineStatement<T> {
             }
             MachineStatement::LinkDeclaration(link) => {
                 write!(f, "{link}")
-            }
-            MachineStatement::InlinePil(_, statements) => {
-                write!(f, "pil{{\n{}\n}}", statements.iter().format("\n"))
             }
             MachineStatement::FunctionDeclaration(_, name, params, statements) => {
                 write!(

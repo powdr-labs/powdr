@@ -68,13 +68,11 @@ machine Machine {
     }
 
     // some superpowers on `X` to allow us to check if it's 0
-    constraints {
-        col witness XInv;
-        col witness XIsZero;
-        XIsZero  = 1 - X * XInv;
-        XIsZero * X = 0;
-        XIsZero * (1 - XIsZero) = 0;
-    }
+    col witness XInv;
+    col witness XIsZero;
+    XIsZero  = 1 - X * XInv;
+    XIsZero * X = 0;
+    XIsZero * (1 - XIsZero) = 0;
 }
 
 /* ANCHOR_END: all */

@@ -454,64 +454,60 @@ fn preamble() -> String {
         + r#"
     reg addr;
 
-    constraints {
-        x0 = 0;
-    }
+    x0 = 0;
 
-    constraints{
     // ============== iszero check for X =======================
-        col witness XInv;
-        col witness XIsZero;
-        XIsZero = 1 - X * XInv;
-        XIsZero * X = 0;
-        XIsZero * (1 - XIsZero) = 0;
+    col witness XInv;
+    col witness XIsZero;
+    XIsZero = 1 - X * XInv;
+    XIsZero * X = 0;
+    XIsZero * (1 - XIsZero) = 0;
 
     // =============== read-write memory =======================
-        // Read-write memory. Columns are sorted by m_addr and
-        // then by m_step. m_change is 1 if and only if m_addr changes
-        // in the next row.
-        col witness m_addr;
-        col witness m_step;
-        col witness m_change;
-        col witness m_value;
-        // If we have an operation at all (needed because this needs to be a permutation)
-        col witness m_op;
-        // If the operation is a write operation.
-        col witness m_is_write;
-        col witness m_is_read;
+    // Read-write memory. Columns are sorted by m_addr and
+    // then by m_step. m_change is 1 if and only if m_addr changes
+    // in the next row.
+    col witness m_addr;
+    col witness m_step;
+    col witness m_change;
+    col witness m_value;
+    // If we have an operation at all (needed because this needs to be a permutation)
+    col witness m_op;
+    // If the operation is a write operation.
+    col witness m_is_write;
+    col witness m_is_read;
 
-        // positive numbers (assumed to be much smaller than the field order)
-        col fixed POSITIVE(i) { i + 1 };
-        col fixed FIRST = [1] + [0]*;
-        col fixed LAST(i) { FIRST(i + 1) };
-        col fixed STEP(i) { i };
+    // positive numbers (assumed to be much smaller than the field order)
+    col fixed POSITIVE(i) { i + 1 };
+    col fixed FIRST = [1] + [0]*;
+    col fixed LAST(i) { FIRST(i + 1) };
+    col fixed STEP(i) { i };
 
-        m_change * (1 - m_change) = 0;
+    m_change * (1 - m_change) = 0;
 
-        // if m_change is zero, m_addr has to stay the same.
-        (m_addr' - m_addr) * (1 - m_change) = 0;
+    // if m_change is zero, m_addr has to stay the same.
+    (m_addr' - m_addr) * (1 - m_change) = 0;
 
-        // Except for the last row, if m_change is 1, then m_addr has to increase,
-        // if it is zero, m_step has to increase.
-        (1 - LAST) { m_change * (m_addr' - m_addr) + (1 - m_change) * (m_step' - m_step) } in POSITIVE;
+    // Except for the last row, if m_change is 1, then m_addr has to increase,
+    // if it is zero, m_step has to increase.
+    (1 - LAST) { m_change * (m_addr' - m_addr) + (1 - m_change) * (m_step' - m_step) } in POSITIVE;
 
-        m_op * (1 - m_op) = 0;
-        m_is_write * (1 - m_is_write) = 0;
-        m_is_read * (1 - m_is_read) = 0;
-        // m_is_write can only be 1 if m_op is 1.
-        m_is_write * (1 - m_op) = 0;
-        m_is_read * (1 - m_op) = 0;
-        m_is_read * m_is_write = 0;
+    m_op * (1 - m_op) = 0;
+    m_is_write * (1 - m_is_write) = 0;
+    m_is_read * (1 - m_is_read) = 0;
+    // m_is_write can only be 1 if m_op is 1.
+    m_is_write * (1 - m_op) = 0;
+    m_is_read * (1 - m_op) = 0;
+    m_is_read * m_is_write = 0;
 
 
-        // If the next line is a read and we stay at the same address, then the
-        // value cannot change.
-        (1 - m_is_write') * (1 - m_change) * (m_value' - m_value) = 0;
+    // If the next line is a read and we stay at the same address, then the
+    // value cannot change.
+    (1 - m_is_write') * (1 - m_change) * (m_value' - m_value) = 0;
 
-        // If the next line is a read and we have an address change,
-        // then the value is zero.
-        (1 - m_is_write') * m_change * m_value' = 0;
-    }
+    // If the next line is a read and we have an address change,
+    // then the value is zero.
+    (1 - m_is_write') * m_change * m_value' = 0;
 
     // ============== memory instructions ==============
 
@@ -578,19 +574,17 @@ fn preamble() -> String {
     instr wrap Y -> X { Y = X + wrap_bit * 2**32, X = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000 }
     // Requires -2**32 <= Y < 2**32
     instr wrap_signed Y -> X { Y + 2**32 = X + wrap_bit * 2**32, X = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000 }
-    constraints{
-        col fixed bytes(i) { i & 0xff };
-        col witness X_b1;
-        col witness X_b2;
-        col witness X_b3;
-        col witness X_b4;
-        { X_b1 } in { bytes };
-        { X_b2 } in { bytes };
-        { X_b3 } in { bytes };
-        { X_b4 } in { bytes };
-        col witness wrap_bit;
-        wrap_bit * (1 - wrap_bit) = 0;
-    }
+    col fixed bytes(i) { i & 0xff };
+    col witness X_b1;
+    col witness X_b2;
+    col witness X_b3;
+    col witness X_b4;
+    { X_b1 } in { bytes };
+    { X_b2 } in { bytes };
+    { X_b3 } in { bytes };
+    { X_b4 } in { bytes };
+    col witness wrap_bit;
+    wrap_bit * (1 - wrap_bit) = 0;
 
     // Input is a 32 bit unsigned number. We check bit 7 and set all higher bits to that value.
     instr sign_extend_byte Y -> X {
@@ -598,11 +592,9 @@ fn preamble() -> String {
         Y = Y_7bit + wrap_bit * 0x80 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000,
         X = Y_7bit + wrap_bit * 0xffffff80
     }
-    constraints{
-        col fixed seven_bit(i) { i & 0x7f };
-        col witness Y_7bit;
-        { Y_7bit } in { seven_bit };
-    }
+    col fixed seven_bit(i) { i & 0x7f };
+    col witness Y_7bit;
+    { Y_7bit } in { seven_bit };
 
     // Input is a 32 bit unsigned number. We check bit 15 and set all higher bits to that value.
     instr sign_extend_16_bits Y -> X {
@@ -612,9 +604,7 @@ fn preamble() -> String {
         Y = Y_15bit + wrap_bit * 0x8000 + X_b3 * 0x10000 + X_b4 * 0x1000000,
         X = Y_15bit + wrap_bit * 0xffff8000
     }
-    constraints{
-        col witness Y_15bit;
-    }
+    col witness Y_15bit;
 
     // Input is a 32 but unsigned number (0 <= Y < 2**32) interpreted as a two's complement numbers.
     // Returns a signed number (-2**31 <= X < 2**31).
@@ -631,25 +621,23 @@ fn preamble() -> String {
     // Removes up to 16 bits beyond 32
     // TODO is this really safe?
     instr wrap16 Y -> X { Y = Y_b5 * 2**32 + Y_b6 * 2**40 + X, X = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000 }
-    constraints {
-        col witness Y_b5;
-        col witness Y_b6;
-        col witness Y_b7;
-        col witness Y_b8;
-        { Y_b5 } in { bytes };
-        { Y_b6 } in { bytes };
-        { Y_b7 } in { bytes };
-        { Y_b8 } in { bytes };
+    col witness Y_b5;
+    col witness Y_b6;
+    col witness Y_b7;
+    col witness Y_b8;
+    { Y_b5 } in { bytes };
+    { Y_b6 } in { bytes };
+    { Y_b7 } in { bytes };
+    { Y_b8 } in { bytes };
 
-        col witness REM_b1;
-        col witness REM_b2;
-        col witness REM_b3;
-        col witness REM_b4;
-        { REM_b1 } in { bytes };
-        { REM_b2 } in { bytes };
-        { REM_b3 } in { bytes };
-        { REM_b4 } in { bytes };
-    }
+    col witness REM_b1;
+    col witness REM_b2;
+    col witness REM_b3;
+    col witness REM_b4;
+    { REM_b1 } in { bytes };
+    { REM_b2 } in { bytes };
+    { REM_b3 } in { bytes };
+    { REM_b4 } in { bytes };
 
     // implements Z = Y / X and W = Y % X.
     instr divremu Y, X -> Z, W {

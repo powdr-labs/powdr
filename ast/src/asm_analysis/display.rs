@@ -11,7 +11,7 @@ use super::{
     AnalysisASMFile, AssignmentStatement, CallableSymbol, CallableSymbolDefinitionRef,
     DebugDirective, DegreeStatement, FunctionBody, FunctionStatement, FunctionStatements,
     Incompatible, IncompatibleSet, Instruction, InstructionDefinitionStatement,
-    InstructionStatement, LabelStatement, LinkDefinitionStatement, Machine, PilBlock,
+    InstructionStatement, LabelStatement, LinkDefinitionStatement, Machine,
     RegisterDeclarationStatement, RegisterTy, Return, Rom, SubmachineDeclaration,
 };
 
@@ -40,7 +40,7 @@ impl<T: Display> Display for Machine<T> {
         write_items_indented(f, &self.registers)?;
         write_items_indented(f, &self.instructions)?;
         write_items_indented(f, &self.callable)?;
-        write_items_indented(f, &self.constraints)?;
+        write_items_indented(f, &self.pil)?;
         write_items_indented(f, &self.links)?;
 
         writeln!(f, "}}")
@@ -141,16 +141,6 @@ impl<T: Display> Display for Return<T> {
 impl Display for LabelStatement {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(f, "{}::", self.name)
-    }
-}
-
-impl<T: Display> Display for PilBlock<T> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        writeln!(f, "constraints {{")?;
-        for statement in &self.statements {
-            writeln!(f, "{}", indent(statement, 1))?;
-        }
-        writeln!(f, "}}")
     }
 }
 

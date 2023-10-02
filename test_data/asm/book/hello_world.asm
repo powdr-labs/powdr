@@ -21,10 +21,6 @@ machine HelloWorld {
         X = 0
     }
 
-    constraints {
-        // in this machine, we do not add more constraints
-    }
-
     // the main function assigns the first prover input to A, increments it, decrements it, and loops forever
     function main {
         A <=X= ${ ("input", 0) };

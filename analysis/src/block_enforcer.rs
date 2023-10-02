@@ -1,6 +1,6 @@
 //! For all machines, enforce that the `operation_id` can only change when the `latch` is on
 
-use ast::asm_analysis::{AnalysisASMFile, PilBlock};
+use ast::asm_analysis::AnalysisASMFile;
 use number::FieldElement;
 
 use crate::utils::parse_pil_statement;
@@ -27,10 +27,7 @@ pub fn enforce<T: FieldElement>(mut file: AnalysisASMFile<T>) -> AnalysisASMFile
             )),
         ];
 
-        machine.constraints.push(PilBlock {
-            start: 0,
-            statements: embedded_constraints.into_iter().collect(),
-        });
+        machine.pil.extend(embedded_constraints);
     }
     file
 }

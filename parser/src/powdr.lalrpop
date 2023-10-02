@@ -194,9 +194,13 @@ MachineStatement: MachineStatement<T> = {
     RegisterDeclaration,
     InstructionDeclaration,
     LinkDeclaration,
-    InlinePil,
+    PilStatementWithSemiColon,
     FunctionDeclaration,
     OperationDeclaration,
+}
+
+PilStatementWithSemiColon: MachineStatement<T> = {
+    <@L> <PilStatement> ";" => MachineStatement::Pil(<>)
 }
 
 Degree: MachineStatement<T> = {
@@ -269,10 +273,6 @@ ParamList: ParamList = {
 Param: Param = {
     <name: Identifier> <ty:(":" <Identifier>)?> =>
         Param{name, ty}
-}
-
-InlinePil: MachineStatement<T> = {
-    <@L> "constraints" "{" <(<PilStatement> ";")*> "}" => MachineStatement::InlinePil(<>)
 }
 
 FunctionDeclaration: MachineStatement<T> = {

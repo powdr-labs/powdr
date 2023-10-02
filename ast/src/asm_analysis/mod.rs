@@ -659,12 +659,6 @@ pub struct Return<T> {
     pub values: Vec<Expression<T>>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub struct PilBlock<T> {
-    pub start: usize,
-    pub statements: Vec<PilStatement<T>>,
-}
-
 #[derive(Clone, Default, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct SubmachineDeclaration {
     /// the name of this instance
@@ -685,8 +679,8 @@ pub struct Machine<T> {
     pub registers: Vec<RegisterDeclarationStatement>,
     /// The index of the program counter in the registers, if any
     pub pc: Option<usize>,
-    /// The set of contraint blocks
-    pub constraints: Vec<PilBlock<T>>,
+    /// The set of pil statements
+    pub pil: Vec<PilStatement<T>>,
     /// The set of instructions which can be invoked in functions
     pub instructions: Vec<InstructionDefinitionStatement<T>>,
     /// The set of low level links to other machines

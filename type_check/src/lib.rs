@@ -5,7 +5,7 @@ use ast::{
         AnalysisASMFile, AssignmentStatement, CallableSymbolDefinitions, DebugDirective,
         DegreeStatement, FunctionBody, FunctionStatements, FunctionSymbol, Instruction,
         InstructionDefinitionStatement, InstructionStatement, LabelStatement,
-        LinkDefinitionStatement, Machine, OperationSymbol, PilBlock, RegisterDeclarationStatement,
+        LinkDefinitionStatement, Machine, OperationSymbol, RegisterDeclarationStatement,
         RegisterTy, Return, SubmachineDeclaration,
     },
     parsed::{
@@ -42,7 +42,7 @@ impl<T: FieldElement> TypeChecker<T> {
 
         let mut degree = None;
         let mut registers = vec![];
-        let mut constraints = vec![];
+        let mut pil = vec![];
         let mut instructions = vec![];
         let mut links = vec![];
         let mut callable = CallableSymbolDefinitions::default();
@@ -87,8 +87,8 @@ impl<T: FieldElement> TypeChecker<T> {
                         to,
                     });
                 }
-                MachineStatement::InlinePil(start, statements) => {
-                    constraints.push(PilBlock { start, statements });
+                MachineStatement::Pil(_start, statement) => {
+                    pil.push(statement);
                 }
                 MachineStatement::Submachine(_, ty, name) => {
                     submachines.push(SubmachineDeclaration {
@@ -234,7 +234,7 @@ impl<T: FieldElement> TypeChecker<T> {
             registers,
             links,
             instructions,
-            constraints,
+            pil,
             callable,
             submachines,
         };
