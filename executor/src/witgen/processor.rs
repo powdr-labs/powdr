@@ -184,14 +184,14 @@ impl<'a, 'b, T: FieldElement, CalldataAvailable> Processor<'a, 'b, T, CalldataAv
                 log::warn!("Error in identity: {identity}");
                 log::warn!(
                     "Known values in current row (local: {row_index}, global {global_row_index}):\n{}",
-                    self.data[row_index].render_values(false),
+                    self.data[row_index].render_values(false, Some(self.witness_cols)),
                 );
                 if identity.contains_next_ref() {
                     log::warn!(
                         "Known values in next row (local: {}, global {}):\n{}",
                         row_index + 1,
                         global_row_index + 1,
-                        self.data[row_index + 1].render_values(false),
+                        self.data[row_index + 1].render_values(false, Some(self.witness_cols)),
                     );
                 }
                 e
@@ -363,7 +363,10 @@ mod tests {
 
             // In case of any error, this will be useful
             for (i, row) in data.iter().enumerate() {
-                println!("{}", row.render(&format!("Row {i}"), true));
+                println!(
+                    "{}",
+                    row.render(&format!("Row {i}"), true, &processor.witness_cols)
+                );
             }
 
             for &(i, name, expected) in asserted_values.iter() {

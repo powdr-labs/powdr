@@ -3,8 +3,8 @@ use itertools::Itertools;
 use number::{DegreeType, FieldElement};
 use parser_util::lines::indent;
 use std::cmp::max;
+use std::collections::HashMap;
 use std::collections::HashSet;
-use std::collections::{BTreeSet, HashMap};
 use std::time::Instant;
 
 use crate::witgen::identity_processor::{self, IdentityProcessor};
@@ -50,7 +50,7 @@ impl<'a, T: FieldElement> CompletableIdentities<'a, T> {
 
 pub struct Generator<'a, T: FieldElement> {
     /// The witness columns belonging to this machine
-    witnesses: BTreeSet<PolyID>,
+    witnesses: HashSet<PolyID>,
     row_factory: RowFactory<'a, T>,
     fixed_data: &'a FixedData<'a, T>,
     /// The subset of identities that contains a reference to the next row
@@ -106,7 +106,7 @@ impl<'a, T: FieldElement> Generator<'a, T> {
 
         Generator {
             row_factory,
-            witnesses: witnesses.clone().into_iter().collect(),
+            witnesses: witnesses.clone(),
             fixed_data,
             identities_with_next_ref: identities_with_next,
             identities_without_next_ref: identities_without_next,
@@ -244,8 +244,11 @@ impl<'a, T: FieldElement> Generator<'a, T> {
 
         log::trace!(
             "{}",
-            self.current
-                .render(&format!("===== Row {}", self.current_row_index), true)
+            self.current.render(
+                &format!("===== Row {}", self.current_row_index),
+                true,
+                &self.witnesses
+            )
         );
 
         self.shift_rows();
@@ -314,6 +317,18 @@ impl<'a, T: FieldElement> Generator<'a, T> {
                 continue;
             }
 
+            let is_machine_call = matches!(
+                identity.kind,
+                IdentityKind::Plookup | IdentityKind::Permutation
+            );
+            if is_machine_call && unknown_strategy == UnknownStrategy::Zero {
+                // The fact that we got to the point where we assume 0 for unknown cells, but this identity
+                // is still not complete, means that either the inputs or the machine is under-constrained.
+                errors.push(format!("{identity}:\n{}",
+                    indent("This machine call could not be completed. Either some inputs are missing or the machine is under-constrained.", "    ")).into());
+                continue;
+            }
+
             let row_pair = RowPair::new(
                 &self.current,
                 &self.next,
@@ -369,8 +384,11 @@ impl<'a, T: FieldElement> Generator<'a, T> {
             self.current_row_index
         );
         log::debug!("Some identities where not satisfiable after the following values were uniquely determined (known nonzero first, then zero, unknown omitted):");
-        log::debug!("{}", self.current.render("Current Row", false));
-        log::debug!("{}", self.next.render("Next Row", false));
+        log::debug!(
+            "{}",
+            self.current.render("Current Row", false, &self.witnesses)
+        );
+        log::debug!("{}", self.next.render("Next Row", false, &self.witnesses));
         log::debug!("Set RUST_LOG=trace to understand why these values were chosen.");
         log::debug!(
             "Assuming these values are correct, the following identities fail:\n{}\n",
@@ -389,8 +407,11 @@ impl<'a, T: FieldElement> Generator<'a, T> {
         );
 
         log::debug!("Some columns could not be determined, but setting them to zero does not satisfy the constraints. This typically means that the system is underconstrained!");
-        log::debug!("{}", self.current.render("Current Row", true));
-        log::debug!("{}", self.next.render("Next Row", true));
+        log::debug!(
+            "{}",
+            self.current.render("Current Row", true, &self.witnesses)
+        );
+        log::debug!("{}", self.next.render("Next Row", true, &self.witnesses));
         log::debug!("\nSet RUST_LOG=trace to understand why these values were (not) chosen.");
         log::debug!(
             "Assuming zero for unknown values, the following identities fail:\n{}\n",
