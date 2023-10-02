@@ -36,21 +36,6 @@ where
         .try_for_each(|i| previsit_expressions_in_identity_mut(i, f))
 }
 
-pub fn postvisit_expressions_in_identity_mut<T, F, B>(
-    i: &mut Identity<T>,
-    f: &mut F,
-) -> ControlFlow<B>
-where
-    F: FnMut(&mut Expression<T>) -> ControlFlow<B>,
-{
-    i.left
-        .selector
-        .as_mut()
-        .into_iter()
-        .chain(i.right.selector.as_mut())
-        .try_for_each(move |item| postvisit_expression_mut(item, f))
-}
-
 /// Calls `f` on each expression in the pil file and then descends into the
 /// (potentially modified) expression.
 pub fn postvisit_expressions_in_pil_file_mut<T, F, B>(
@@ -90,6 +75,30 @@ where
         .try_for_each(move |item| previsit_expressions_in_selected_expressions(item, f))
 }
 
+pub fn previsit_expressions_in_identity_mut<T, F, B>(
+    i: &mut Identity<T>,
+    f: &mut F,
+) -> ControlFlow<B>
+where
+    F: FnMut(&mut Expression<T>) -> ControlFlow<B>,
+{
+    [&mut i.left, &mut i.right]
+        .iter_mut()
+        .try_for_each(move |item| previsit_expressions_in_selected_expressions_mut(item, f))
+}
+
+pub fn postvisit_expressions_in_identity_mut<T, F, B>(
+    i: &mut Identity<T>,
+    f: &mut F,
+) -> ControlFlow<B>
+where
+    F: FnMut(&mut Expression<T>) -> ControlFlow<B>,
+{
+    [&mut i.left, &mut i.right]
+        .iter_mut()
+        .try_for_each(move |item| postvisit_expressions_in_selected_expressions_mut(item, f))
+}
+
 pub fn previsit_expressions_in_selected_expressions<T, F, B>(
     s: &SelectedExpressions<T>,
     f: &mut F,
@@ -104,19 +113,30 @@ where
         .try_for_each(move |item| previsit_expression(item, f))
 }
 
-pub fn previsit_expressions_in_identity_mut<T, F, B>(
-    i: &mut Identity<T>,
+pub fn previsit_expressions_in_selected_expressions_mut<T, F, B>(
+    s: &mut SelectedExpressions<T>,
     f: &mut F,
 ) -> ControlFlow<B>
 where
     F: FnMut(&mut Expression<T>) -> ControlFlow<B>,
 {
-    i.left
-        .selector
+    s.selector
         .as_mut()
         .into_iter()
-        .chain(i.left.expressions.iter_mut())
-        .chain(i.right.selector.as_mut())
-        .chain(i.right.expressions.iter_mut())
+        .chain(s.expressions.iter_mut())
         .try_for_each(move |item| previsit_expression_mut(item, f))
+}
+
+pub fn postvisit_expressions_in_selected_expressions_mut<T, F, B>(
+    s: &mut SelectedExpressions<T>,
+    f: &mut F,
+) -> ControlFlow<B>
+where
+    F: FnMut(&mut Expression<T>) -> ControlFlow<B>,
+{
+    s.selector
+        .as_mut()
+        .into_iter()
+        .chain(s.expressions.iter_mut())
+        .try_for_each(move |item| postvisit_expression_mut(item, f))
 }
