@@ -1,7 +1,10 @@
 /// Replace all relative paths in the program with absolute paths to the canonical symbol they point to, and remove all import statements in the program
 use number::FieldElement;
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    convert::Infallible,
+};
 
 use ast::parsed::{
     asm::{
@@ -32,11 +35,9 @@ struct Canonicalizer<'a> {
     paths: &'a PathMap,
 }
 
-// once the paths are resolved, canonicalization cannot fail
-enum Error {}
-
 impl<'a, T> Folder<T> for Canonicalizer<'a> {
-    type Error = Error;
+    // once the paths are resolved, canonicalization cannot fail
+    type Error = Infallible;
 
     /// replace references to symbols with absolute paths. This removes the import statements. This always succeeds if the symbol table was generated correctly.
     fn fold_module_value(&mut self, module: ASMModule<T>) -> Result<ASMModule<T>, Self::Error> {

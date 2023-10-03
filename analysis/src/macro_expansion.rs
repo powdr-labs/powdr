@@ -1,5 +1,6 @@
 use std::{
     collections::{HashMap, HashSet},
+    convert::Infallible,
     ops::ControlFlow,
 };
 
@@ -27,10 +28,9 @@ pub struct MacroExpander<T> {
     statements: Vec<PilStatement<T>>,
 }
 
-pub enum Error {}
-
 impl<T: FieldElement> Folder<T> for MacroExpander<T> {
-    type Error = Error;
+    // macro expansion cannot fail
+    type Error = Infallible;
 
     fn fold_machine(&mut self, mut machine: Machine<T>) -> Result<Machine<T>, Self::Error> {
         machine.statements.iter_mut().for_each(|s| match s {
