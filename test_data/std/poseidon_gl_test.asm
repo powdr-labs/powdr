@@ -1,6 +1,4 @@
-mod poseidon_gl;
-
-use poseidon_gl::PoseidonGL;
+use std::hash::poseidon_gl::PoseidonGL;
 
 machine Main {
     degree 256;

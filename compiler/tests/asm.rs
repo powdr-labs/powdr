@@ -132,24 +132,6 @@ fn block_to_block() {
     gen_estark_proof(f, slice_to_vec(&i));
 }
 
-// Commented out until thibaut provides the "keccak.asm"
-//
-// #[test]
-// #[ignore = "Too slow"]
-// fn keccak() {
-//     let f = "keccak.asm";
-//     let i = [];
-//     verify_asm::<GoldilocksField>(f, slice_to_vec(&i));
-//     gen_halo2_proof(f, slice_to_vec(&i));
-// }
-
-#[test]
-fn wrap_gl() {
-    let f = "wrap_gl.asm";
-    let i = [];
-    verify_asm::<GoldilocksField>(f, slice_to_vec(&i));
-}
-
 #[test]
 #[should_panic = "not implemented: No executor machine matched identity `main.instr_sub { 1, main.X, main.Y, main.Z } in 1 { main_arith.operation_id, main_arith.z, main_arith.x, main_arith.y };`"]
 fn vm_to_block_multiple_interfaces() {
@@ -257,19 +239,6 @@ fn intermediate_nested() {
     let f = "intermediate_nested.asm";
     verify_asm::<GoldilocksField>(f, Default::default());
     gen_halo2_proof(f, Default::default());
-    gen_estark_proof(f, Default::default());
-}
-
-#[test]
-fn poseidon_bn254_test() {
-    let f = "poseidon_bn254_test.asm";
-    gen_halo2_proof(f, Default::default());
-}
-
-#[test]
-fn poseidon_gl_test() {
-    let f = "poseidon_gl_test.asm";
-    verify_asm::<GoldilocksField>(f, Default::default());
     gen_estark_proof(f, Default::default());
 }
 
