@@ -2,7 +2,7 @@ use std::{iter::once, ops::ControlFlow};
 
 use super::{
     ArrayExpression, ArrayLiteral, Expression, FunctionCall, FunctionDefinition, LambdaExpression,
-    MatchArm, PilStatement,
+    PilStatement,
 };
 
 /// Visits `expr` and all of its sub-expressions and returns true if `f` returns true on any of them.
@@ -120,7 +120,14 @@ where
             .try_for_each(|item| previsit_expression(item, f))?,
         Expression::MatchExpression(scrutinee, arms) => {
             once(scrutinee.as_ref())
-                .chain(arms.iter().map(|MatchArm { pattern: _, value }| value))
+                .chain(arms.iter().flat_map(|arm| {
+                    match &arm.pattern {
+                        super::MatchPattern::CatchAll => None,
+                        super::MatchPattern::Pattern(e) => Some(e),
+                    }
+                    .into_iter()
+                    .chain(once(&arm.value))
+                }))
                 .try_for_each(move |item| previsit_expression(item, f))?;
         }
     };
@@ -161,7 +168,14 @@ where
             .try_for_each(|item| previsit_expression_mut(item, f))?,
         Expression::MatchExpression(scrutinee, arms) => {
             once(scrutinee.as_mut())
-                .chain(arms.iter_mut().map(|MatchArm { pattern: _, value }| value))
+                .chain(arms.iter_mut().flat_map(|arm| {
+                    match &mut arm.pattern {
+                        super::MatchPattern::CatchAll => None,
+                        super::MatchPattern::Pattern(e) => Some(e),
+                    }
+                    .into_iter()
+                    .chain(once(&mut arm.value))
+                }))
                 .try_for_each(move |item| previsit_expression_mut(item, f))?;
         }
     };
@@ -200,7 +214,14 @@ where
             .try_for_each(|item| postvisit_expression_mut(item, f))?,
         Expression::MatchExpression(scrutinee, arms) => {
             once(scrutinee.as_mut())
-                .chain(arms.iter_mut().map(|MatchArm { pattern: _, value }| value))
+                .chain(arms.iter_mut().flat_map(|arm| {
+                    match &mut arm.pattern {
+                        super::MatchPattern::CatchAll => None,
+                        super::MatchPattern::Pattern(e) => Some(e),
+                    }
+                    .into_iter()
+                    .chain(once(&mut arm.value))
+                }))
                 .try_for_each(|item| postvisit_expression_mut(item, f))?;
         }
     };
