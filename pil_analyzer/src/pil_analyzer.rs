@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -44,10 +44,7 @@ struct PILAnalyzer<T> {
     included_files: HashSet<PathBuf>,
     line_starts: Vec<usize>,
     current_file: PathBuf,
-    commit_poly_counter: u64,
-    constant_poly_counter: u64,
-    intermediate_poly_counter: u64,
-    other_symbol_counter: u64,
+    symbol_counters: BTreeMap<SymbolKind, u64>,
     identity_counter: HashMap<IdentityKind, u64>,
     local_variables: HashMap<String, u64>,
     macro_expander: MacroExpander<T>,
@@ -98,6 +95,15 @@ impl<T: FieldElement> PILAnalyzer<T> {
     pub fn new() -> PILAnalyzer<T> {
         PILAnalyzer {
             namespace: "Global".to_string(),
+            symbol_counters: [
+                SymbolKind::Poly(PolynomialType::Committed),
+                SymbolKind::Poly(PolynomialType::Constant),
+                SymbolKind::Poly(PolynomialType::Intermediate),
+                SymbolKind::Other(),
+            ]
+            .into_iter()
+            .map(|k| (k, 0))
+            .collect(),
             ..Default::default()
         }
     }
@@ -362,12 +368,7 @@ impl<T: FieldElement> PILAnalyzer<T> {
         if length.is_some() {
             assert!(value.is_none());
         }
-        let counter = match symbol_kind {
-            SymbolKind::Poly(PolynomialType::Committed) => &mut self.commit_poly_counter,
-            SymbolKind::Poly(PolynomialType::Constant) => &mut self.constant_poly_counter,
-            SymbolKind::Poly(PolynomialType::Intermediate) => &mut self.intermediate_poly_counter,
-            SymbolKind::Other() => &mut self.other_symbol_counter,
-        };
+        let counter = self.symbol_counters.get_mut(&symbol_kind).unwrap();
         let id = *counter;
         *counter += length.unwrap_or(1);
         let absolute_name = self.namespaced(&name);
