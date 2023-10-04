@@ -1,3 +1,5 @@
+#![deny(clippy::print_stdout)]
+
 #[cfg(feature = "halo2")]
 mod halo2_impl;
 mod pilstark;

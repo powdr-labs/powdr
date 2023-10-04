@@ -1,4 +1,5 @@
 //! PIL-based optimizer
+#![deny(clippy::print_stdout)]
 
 use std::collections::{BTreeMap, HashSet};
 

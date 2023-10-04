@@ -1,5 +1,7 @@
 //! Parser for powdr assembly and PIL
 
+#![deny(clippy::print_stdout)]
+
 use ast::parsed::asm::ASMProgram;
 use lalrpop_util::*;
 

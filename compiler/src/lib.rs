@@ -1,5 +1,7 @@
 //! The main powdr lib, used to compile from assembly to PIL
 
+#![deny(clippy::print_stdout)]
+
 use std::ffi::OsStr;
 use std::fs;
 use std::io::BufWriter;
@@ -320,6 +322,7 @@ fn write_commits_to_fs<T: FieldElement>(
     log::info!("Wrote commits.bin.");
 }
 
+#[allow(clippy::print_stdout)]
 pub fn inputs_to_query_callback<T: FieldElement>(inputs: Vec<T>) -> impl Fn(&str) -> Option<T> {
     move |query: &str| -> Option<T> {
         let items = query.split(',').map(|s| s.trim()).collect::<Vec<_>>();

@@ -1,5 +1,7 @@
 //! Utils used with different lalrpop parsers
 
+#![deny(clippy::print_stdout)]
+
 pub mod lines;
 
 #[derive(Debug)]

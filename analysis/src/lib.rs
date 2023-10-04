@@ -1,3 +1,5 @@
+#![deny(clippy::print_stdout)]
+
 mod block_enforcer;
 mod macro_expansion;
 mod vm;
