@@ -1,11 +1,11 @@
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{HashMap, HashSet};
 
 use super::{EvalResult, FixedData, FixedLookup};
 use crate::witgen::affine_expression::AffineExpression;
 use crate::witgen::column_map::WitnessColumnMap;
 use crate::witgen::identity_processor::{IdentityProcessor, Machines};
 use crate::witgen::processor::{OuterQuery, Processor};
-use crate::witgen::rows::{CellValue, Row, RowFactory, RowPair, UnknownStrategy};
+use crate::witgen::rows::{transpose_rows, CellValue, Row, RowFactory, RowPair, UnknownStrategy};
 use crate::witgen::sequence_iterator::{ProcessingSequenceCache, ProcessingSequenceIterator};
 use crate::witgen::util::try_to_simple_poly;
 use crate::witgen::Constraints;
@@ -29,28 +29,6 @@ impl<'a, T: FieldElement> ProcessResult<'a, T> {
             ProcessResult::Incomplete => false,
         }
     }
-}
-
-/// Transposes a list of rows into a map from column to a list of values.
-/// This is done to match the interface of [Machine::take_witness_col_values].
-pub fn transpose_rows<T: FieldElement>(
-    rows: Vec<Row<T>>,
-    column_set: &HashSet<PolyID>,
-) -> BTreeMap<PolyID, Vec<Option<T>>> {
-    let mut result = column_set
-        .iter()
-        .map(|id| (*id, Vec::with_capacity(rows.len())))
-        .collect::<BTreeMap<_, _>>();
-
-    for row in rows.into_iter() {
-        for poly_id in column_set.iter() {
-            result
-                .get_mut(poly_id)
-                .unwrap()
-                .push((&row[poly_id].value).into());
-        }
-    }
-    result
 }
 
 /// A machine that produces multiple rows (one block) per query.
