@@ -17,6 +17,20 @@ use ast::analyzed::{
 };
 use number::{DegreeType, FieldElement};
 
+enum ProcessResult<'a, T: FieldElement> {
+    Success(Vec<Row<'a, T>>, Constraints<&'a PolynomialReference, T>),
+    Incomplete,
+}
+
+impl<'a, T: FieldElement> ProcessResult<'a, T> {
+    fn is_success(&self) -> bool {
+        match self {
+            ProcessResult::Success(_, _) => true,
+            ProcessResult::Incomplete => false,
+        }
+    }
+}
+
 /// Transposes a list of rows into a map from column to a list of values.
 /// This is done to match the interface of [Machine::take_witness_col_values].
 pub fn transpose_rows<T: FieldElement>(
@@ -317,11 +331,11 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
             ));
         }
 
-        let (success, new_block, outer_assignments) =
+        let process_result =
             self.process(&mut identity_processor, left, right, &mut sequence_iterator)?;
 
-        let (success, new_block, outer_assignments) = if sequence_iterator.is_cached() && !success {
-            log::trace!("The cached sequence did not complete the block machine. \
+        let process_result = if sequence_iterator.is_cached() && !process_result.is_success() {
+            log::debug!("The cached sequence did not complete the block machine. \
                          This can happen if the machine's execution steps depend on the input or constant values. \
                          We'll try again with the default sequence.");
             let mut sequence_iterator = self
@@ -329,10 +343,10 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
                 .get_default_sequence_iterator();
             self.process(&mut identity_processor, left, right, &mut sequence_iterator)?
         } else {
-            (success, new_block, outer_assignments)
+            process_result
         };
 
-        if success {
+        if let ProcessResult::Success(new_block, outer_assignments) = process_result {
             log::trace!(
                 "End processing block machine '{}' (successfully)",
                 self.name()
@@ -361,14 +375,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         left: &[AffineExpression<&'a PolynomialReference, T>],
         right: &'a SelectedExpressions<T>,
         sequence_iterator: &mut ProcessingSequenceIterator,
-    ) -> Result<
-        (
-            bool,
-            Vec<Row<'a, T>>,
-            Constraints<&'a PolynomialReference, T>,
-        ),
-        EvalError<T>,
-    > {
+    ) -> Result<ProcessResult<'a, T>, EvalError<T>> {
         // Make the block two rows larger than the block size, it includes the last row of the previous block
         // and the first row of the next block.
         let block = vec![self.row_factory.fresh_row(); self.block_size + 2];
@@ -392,7 +399,10 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         // Otherwise it is messy because we have to find the correct block again.
         let success = left_new.iter().all(|v| v.is_constant());
 
-        Ok((success, new_block, outer_assignments))
+        match success {
+            true => Ok(ProcessResult::Success(new_block, outer_assignments)),
+            false => Ok(ProcessResult::Incomplete),
+        }
     }
 
     /// Takes a block of rows, which contains the last row of its previous block

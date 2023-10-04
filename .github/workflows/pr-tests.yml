@@ -29,8 +29,8 @@ jobs:
         path: |
           ~/pilcom/node_modules
         key: ${{ runner.os }}-pilcom-node-modules
-    - name: Install Rust toolchain 1.72
-      run: rustup toolchain install 1.72-x86_64-unknown-linux-gnu
+    - name: Install Rust toolchain 1.72 (with clippy and rustfmt)
+      run: rustup toolchain install 1.72-x86_64-unknown-linux-gnu && rustup component add clippy --toolchain 1.72-x86_64-unknown-linux-gnu && rustup component add rustfmt --toolchain 1.72-x86_64-unknown-linux-gnu
     - name: Install nightly
       run: rustup toolchain install nightly-2023-01-03-x86_64-unknown-linux-gnu
     - name: Install riscv target
@@ -48,5 +48,9 @@ jobs:
     - name: Run slow tests
       # Number threads is set to 1 because the runner does not have enough memory for more.
       run: PILCOM=$(pwd)/pilcom/ cargo test --all --all-features --profile pr-tests --verbose -- --ignored --nocapture --test-threads=1 --exact test_keccak test_vec_median instruction_tests::addi
+    - name: Lint
+      run: cargo clippy --all --all-features -- -D warnings
+    - name: Format
+      run: cargo fmt --all --check --verbose
     - name: Check benches compile without running them
       run: cargo bench --all --all-features --profile pr-tests --no-run
