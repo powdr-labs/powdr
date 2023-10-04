@@ -14,7 +14,6 @@ use self::generator::Generator;
 use self::global_constraints::GlobalConstraints;
 use self::machines::machine_extractor::ExtractionOutput;
 use self::machines::{FixedLookup, KnownMachine, Machine};
-use self::util::substitute_constants;
 
 use pil_analyzer::pil_analyzer::inline_intermediate_polynomials;
 
@@ -59,7 +58,6 @@ where
     }
     let fixed = FixedData::new(analyzed, degree, fixed_col_values);
     let identities = inline_intermediate_polynomials(analyzed);
-    let identities = substitute_constants(&identities, &analyzed.constants);
 
     let GlobalConstraints {
         // Maps a polynomial to a mask specifying which bit is possibly set,

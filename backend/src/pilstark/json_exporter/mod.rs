@@ -235,15 +235,11 @@ impl<'a, T: FieldElement> Exporter<'a, T> {
     /// returns the degree and the JSON value (intermediate polynomial IDs)
     fn expression_to_json(&self, expr: &Expression<T>) -> (u32, StarkyExpr) {
         match expr {
-            Expression::Constant(name) => (
-                0,
-                StarkyExpr {
-                    op: "number".to_string(),
-                    deg: 0,
-                    value: Some(format!("{}", self.analyzed.constants[name])),
-                    ..DEFAULT_EXPR
-                },
-            ),
+            Expression::Constant(name) => {
+                panic!(
+                    "Constant {name} was not inlined. optimize_constants needs to be run at least."
+                )
+            }
             Expression::Reference(analyzed::Reference::Poly(reference)) => {
                 self.polynomial_reference_to_json(reference)
             }
@@ -391,7 +387,7 @@ mod test {
         ))
         .join(file);
 
-        let analyzed = analyze::<GoldilocksField>(&file);
+        let analyzed = pilopt::optimize_constants(analyze::<GoldilocksField>(&file));
         let pil_out = export(&analyzed);
 
         let pilcom = std::env::var("PILCOM").expect(
