@@ -14,7 +14,7 @@ use ast::{
             build_add, build_binary_expr, build_mul, build_number, build_sub, direct_reference,
             next_reference,
         },
-        utils::postvisit_expression_in_statement_mut,
+        visitor::ExpressionVisitable,
         ArrayExpression, BinaryOperator, Expression, FunctionDefinition, MatchArm, MatchPattern,
         PilStatement, PolynomialName, SelectedExpressions, UnaryOperator,
     },
@@ -382,13 +382,12 @@ impl<T: FieldElement> ASMPILConverter<T> {
                     })
                     .collect::<HashMap<_, _>>();
                 body.iter_mut().for_each(|s| {
-                    postvisit_expression_in_statement_mut(s, &mut |e| {
+                    s.post_visit_expressions_mut(&mut |e| {
                         if let Expression::Reference(r) = e {
                             if let Some(sub) = substitutions.get(r.name()) {
                                 *r.name_mut() = sub.to_string();
                             }
                         }
-                        std::ops::ControlFlow::Continue::<()>(())
                     });
                 });
 
