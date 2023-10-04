@@ -1,5 +1,4 @@
 mod display;
-pub mod utils;
 
 use std::{
     collections::{
