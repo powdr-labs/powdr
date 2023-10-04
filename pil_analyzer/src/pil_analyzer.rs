@@ -149,7 +149,7 @@ impl<T: FieldElement> PILAnalyzer<T> {
             PilStatement::Include(_, include) => self.handle_include(include),
             PilStatement::Namespace(_, name, degree) => self.handle_namespace(name, degree),
             PilStatement::PolynomialDefinition(start, name, value) => {
-                self.handle_polynomial_definition(
+                self.handle_symbol_definition(
                     self.to_source_ref(start),
                     name,
                     None,
@@ -167,7 +167,7 @@ impl<T: FieldElement> PILAnalyzer<T> {
                     PolynomialType::Constant,
                 ),
             PilStatement::PolynomialConstantDefinition(start, name, definition) => {
-                self.handle_polynomial_definition(
+                self.handle_symbol_definition(
                     self.to_source_ref(start),
                     name,
                     None,
@@ -184,7 +184,7 @@ impl<T: FieldElement> PILAnalyzer<T> {
             PilStatement::PolynomialCommitDeclaration(start, mut polynomials, Some(definition)) => {
                 assert!(polynomials.len() == 1);
                 let name = polynomials.pop().unwrap();
-                self.handle_polynomial_definition(
+                self.handle_symbol_definition(
                     self.to_source_ref(start),
                     name.name,
                     name.array_size,
@@ -197,7 +197,7 @@ impl<T: FieldElement> PILAnalyzer<T> {
                 if let Err(err) = self.evaluate_expression(value.clone()) {
                     panic!("Could not evaluate constant: {name} = {value}: {err}");
                 }
-                self.handle_polynomial_definition(
+                self.handle_symbol_definition(
                     self.to_source_ref(start),
                     name,
                     None,
@@ -238,7 +238,7 @@ impl<T: FieldElement> PILAnalyzer<T> {
         match value {
             None => {
                 // No value provided => treat it as a witness column.
-                self.handle_polynomial_definition(
+                self.handle_symbol_definition(
                     self.to_source_ref(start),
                     name,
                     None,
@@ -253,7 +253,7 @@ impl<T: FieldElement> PILAnalyzer<T> {
                         body,
                     }) if params.len() == 1 => {
                         // Assigned value is a lambda expression with a single parameter => treat it as a fixed column.
-                        self.handle_polynomial_definition(
+                        self.handle_symbol_definition(
                             self.to_source_ref(start),
                             name,
                             None,
@@ -269,7 +269,7 @@ impl<T: FieldElement> PILAnalyzer<T> {
                             // Otherwise, treat it as "generic definition"
                             SymbolKind::Other()
                         };
-                        self.handle_polynomial_definition(
+                        self.handle_symbol_definition(
                             self.to_source_ref(start),
                             name,
                             None,
@@ -354,7 +354,7 @@ impl<T: FieldElement> PILAnalyzer<T> {
         polynomial_type: PolynomialType,
     ) {
         for PolynomialName { name, array_size } in polynomials {
-            self.handle_polynomial_definition(
+            self.handle_symbol_definition(
                 source.clone(),
                 name,
                 array_size,
@@ -364,7 +364,7 @@ impl<T: FieldElement> PILAnalyzer<T> {
         }
     }
 
-    fn handle_polynomial_definition(
+    fn handle_symbol_definition(
         &mut self,
         source: SourceRef,
         name: String,
