@@ -3,9 +3,7 @@
 use std::collections::BTreeMap;
 
 use ast::{
-    asm_analysis::{
-        AnalysisASMFile, LinkDefinitionStatement, Machine, PilBlock, SubmachineDeclaration,
-    },
+    asm_analysis::{AnalysisASMFile, LinkDefinitionStatement, Machine, SubmachineDeclaration},
     object::{Link, LinkFrom, LinkTo, Location, Object, Operation, PILGraph},
     parsed::{
         asm::{parse_absolute_path, AbsoluteSymbolPath, CallableRef},
@@ -108,8 +106,8 @@ impl<'a, T: FieldElement> ASMPILConverter<'a, T> {
         }
     }
 
-    fn handle_inline_pil(&mut self, PilBlock { statements, .. }: PilBlock<T>) {
-        self.pil.extend(statements)
+    fn handle_pil_statement(&mut self, statement: PilStatement<T>) {
+        self.pil.push(statement);
     }
 
     fn convert_machine(
@@ -134,8 +132,8 @@ impl<'a, T: FieldElement> ASMPILConverter<'a, T> {
         assert!(input.registers.is_empty());
         assert!(input.callable.is_only_operations());
 
-        for block in input.constraints {
-            self.handle_inline_pil(block);
+        for block in input.pil {
+            self.handle_pil_statement(block);
         }
 
         let links = input

@@ -22,10 +22,10 @@ Both frontend and backend are highly flexible.
 As an example, *powdr* contains a frontend that enables you to write code in (no-std) Rust,
 which is compiled to RISCV, then to powdr-asm and finally to PIL.
 
-*powdr*-PIL can be used to generate proofs using multiple backends, such as:
+*powdr*-pil can be used to generate proofs using multiple backends, such as:
 
 - Halo2
-- eSTARKs: *powdr*-PIL is fully compatible with the eSTARKS backend from Polygon Hermez,
+- eSTARKs: *powdr*-pil is fully compatible with the eSTARKS backend from Polygon Hermez,
   although not yet fully integrated in an automatic way.
 - Nova: ongoing work.
 - other STARKs: maybe?

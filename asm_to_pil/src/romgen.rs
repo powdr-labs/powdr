@@ -4,7 +4,7 @@ use std::{collections::HashMap, iter::repeat};
 
 use ast::asm_analysis::{
     Batch, CallableSymbol, FunctionStatement, FunctionSymbol, Incompatible, IncompatibleSet,
-    Machine, OperationSymbol, PilBlock, Rom,
+    Machine, OperationSymbol, Rom,
 };
 use ast::parsed::visitor::ExpressionVisitable;
 use ast::parsed::{
@@ -224,21 +224,18 @@ pub fn generate_machine_rom<T: FieldElement>(
         let sigma = "_sigma";
         let first_step = "_romgen_first_step";
 
-        machine.constraints.push(PilBlock {
-            start: 0,
-            statements: vec![
-                // inject the operation_id
-                parse_pil_statement(&format!("col witness {operation_id}")),
-                // declare `_sigma` as the sum of the latch, will be 0 and then 1 after the end of the first call
-                parse_pil_statement(&format!("col witness {sigma}")),
-                parse_pil_statement(&format!("col fixed {first_step} = [1] + [0]*")),
-                parse_pil_statement(&format!(
-                    "{sigma}' = (1 - {first_step}') * ({sigma} + {latch})"
-                )),
-                // once `_sigma` is 1, constrain `_operation_id` to the label of the sink
-                parse_pil_statement(&format!("{sigma} * ({operation_id} - {sink_id}) = 0")),
-            ],
-        });
+        machine.pil.extend([
+            // inject the operation_id
+            parse_pil_statement(&format!("col witness {operation_id}")),
+            // declare `_sigma` as the sum of the latch, will be 0 and then 1 after the end of the first call
+            parse_pil_statement(&format!("col witness {sigma}")),
+            parse_pil_statement(&format!("col fixed {first_step} = [1] + [0]*")),
+            parse_pil_statement(&format!(
+                "{sigma}' = (1 - {first_step}') * ({sigma} + {latch})"
+            )),
+            // once `_sigma` is 1, constrain `_operation_id` to the label of the sink
+            parse_pil_statement(&format!("{sigma} * ({operation_id} - {sink_id}) = 0")),
+        ]);
         ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
         machine.operation_id = Some(operation_id.into());

@@ -18,7 +18,7 @@
     - [Instructions](./asm/instructions.md)
     - [Operations](./asm/operations.md)
     - [Links](./asm/links.md)
-- [PIL](./pil/README.md)
+- [pil](./pil/README.md)
     - [Fixed Columns](./pil/fixed_columns.md)
     - [Macros](./pil/macros.md)
 - [Frontends](./frontends/README.md)

@@ -13,18 +13,15 @@ machine Main {
     reg A;
     reg CNT;
 
-    // Code in `constraints {`..`}` is pil code that is inserted into the pil file.
-    constraints {
-        col witness XInv;
-        col witness XIsZero;
-        // assume X = 7
-        // XisZero * 7 = 0 -> XIzZero = 0
-        // 0 = 1 - 7 * XInv
-        // => XInv = 1/7 (finite field)
-        XIsZero  = 1 - X * XInv;
-        XIsZero * X = 0;
-        XIsZero * (1 - XIsZero) = 0;
-    }
+    col witness XInv;
+    col witness XIsZero;
+    // assume X = 7
+    // XisZero * 7 = 0 -> XIzZero = 0
+    // 0 = 1 - 7 * XInv
+    // => XInv = 1/7 (finite field)
+    XIsZero  = 1 - X * XInv;
+    XIsZero * X = 0;
+    XIsZero * (1 - XIsZero) = 0;
 
     instr jmpz X, l: label { pc' = XIsZero * l + (1 - XIsZero) * (pc + 1) }
     instr jmp l: label { pc' = l }

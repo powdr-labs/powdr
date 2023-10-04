@@ -4,18 +4,16 @@ machine Binary(latch, operation_id) {
 
     operation or<1> x, y -> z;
 
-    constraints {
-        col witness operation_id;
-        col fixed latch = [1]*;
-        col witness x;
-        col witness y;
-        col witness z;
-        col fixed P_FUNCTION = [0, 0, 0, 0, 1, 1, 1, 1] + [1]*;
-        col fixed P_X = [0, 0, 1, 1, 0, 0, 1, 1] + [1]*;
-        col fixed P_Y = [0, 1, 0, 1, 0, 1, 0, 1] + [1]*;
-        col fixed P_Z = [0, 0, 0, 1, 0, 1, 1, 1] + [1]*;
-        { operation_id, x, y, z } in { P_FUNCTION, P_X, P_Y, P_Z };
-    }
+    col witness operation_id;
+    col fixed latch = [1]*;
+    col witness x;
+    col witness y;
+    col witness z;
+    col fixed P_FUNCTION = [0, 0, 0, 0, 1, 1, 1, 1] + [1]*;
+    col fixed P_X = [0, 0, 1, 1, 0, 0, 1, 1] + [1]*;
+    col fixed P_Y = [0, 1, 0, 1, 0, 1, 0, 1] + [1]*;
+    col fixed P_Z = [0, 0, 0, 1, 0, 1, 1, 1] + [1]*;
+    { operation_id, x, y, z } in { P_FUNCTION, P_X, P_Y, P_Z };
 }
 
 machine Arith(latch, operation_id) {
@@ -24,14 +22,12 @@ machine Arith(latch, operation_id) {
 
     operation sub<1> x, y -> z;
 
-    constraints {
-        col witness operation_id;
-        col fixed latch = [1]*;
-        col witness x;
-        col witness y;
-        col witness z;
-        z = (1 - operation_id) * (x + y) + operation_id * (x - y);
-    }
+    col witness operation_id;
+    col fixed latch = [1]*;
+    col witness x;
+    col witness y;
+    col witness z;
+    z = (1 - operation_id) * (x + y) + operation_id * (x - y);
 }
 
 machine Main {

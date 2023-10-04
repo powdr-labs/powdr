@@ -4,17 +4,15 @@ machine MacroAsm {
     reg Y[<=];
     reg A;
 
-    constraints {
-        macro branch_if(condition, target) {
-            pc' = condition * target + (1 - condition) * (pc + 1);
-        };
+    macro branch_if(condition, target) {
+        pc' = condition * target + (1 - condition) * (pc + 1);
+    };
 
-        col witness XInv;
-        col witness XIsZero;
-        XIsZero  = 1 - X * XInv;
-        XIsZero * X = 0;
-        XIsZero * (1 - XIsZero) = 0;
-    }
+    col witness XInv;
+    col witness XIsZero;
+    XIsZero  = 1 - X * XInv;
+    XIsZero * X = 0;
+    XIsZero * (1 - XIsZero) = 0;
 
     instr bz X, target: label { branch_if(XIsZero, target) }
     instr fail { X = X + 1 }

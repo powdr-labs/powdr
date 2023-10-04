@@ -8,14 +8,12 @@ machine Arith(latch, operation_id) {
 
     operation sub<1> z, x -> y;
 
-    constraints {
-        col witness operation_id;
-        col fixed latch = [1]*;
-        col witness x;
-        col witness y;
-        col witness z;
-        z = x + y;
-    }
+    col witness operation_id;
+    col fixed latch = [1]*;
+    col witness x;
+    col witness y;
+    col witness z;
+    z = x + y;
 }
 
 machine Main {

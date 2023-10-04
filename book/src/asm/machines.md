@@ -8,7 +8,7 @@ Dynamic machines are defined by:
 - a degree, indicating the number of execution steps
 - a set of [registers](./registers.md), including a program counter
 - an [instruction set](./instructions.md)
-- constraints
+- a set of [powdr-pil](../pil/) statements
 - a set of [functions](./functions.md)
 - a set of submachines
 
@@ -36,7 +36,7 @@ An example of a simple constrained machine is the following:
 {{#include ../../../test_data/asm/book/simple_static.asm}}
 ```
 
-For more details on the constraints, check out the [pil](../pil) section of this book. Note that the parameters of the operation are columns declared within the constraints block.
+For more details on the powdr-pil statements, check out the [pil](../pil) section of this book. Note that the parameters of the operation are columns defined in powdr-pil statements.
 
 ## Submachines
 

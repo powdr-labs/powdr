@@ -4,13 +4,11 @@ machine Inc(latch, operation_id) {
 
     operation inc<0> x -> y;
 
-    constraints {
-        col witness operation_id;
-        col fixed latch = [1]*;
-        col witness x;
-        col witness y;
-        y = x + 1;
-    }
+    col witness operation_id;
+    col fixed latch = [1]*;
+    col witness x;
+    col witness y;
+    y = x + 1;
 }
 
 machine Assert1(latch, operation_id) {
@@ -24,14 +22,12 @@ machine Assert1(latch, operation_id) {
     // Increment x by calling into inc machine
     link 1 x -> y = inc.inc;
 
-    constraints {
-        col witness operation_id;
-        col fixed latch = [1]*;
-        col witness x;
-        col witness y;
+    col witness operation_id;
+    col fixed latch = [1]*;
+    col witness x;
+    col witness y;
 
-        y = 2;
-    }
+    y = 2;
 }
 
 machine Main {

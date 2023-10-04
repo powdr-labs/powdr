@@ -1,6 +1,6 @@
 # Fixed columns
 
-powdr PIL requires the definition of fixed columns at the time of declaration.
+powdr-pil requires the definition of fixed columns at the time of declaration.
 
 For example:
 
@@ -12,7 +12,7 @@ A number of mechanisms are supported to declare fixed columns. Let `N` be the to
 
 ## Values with repetitions
 
-powdr PIL supports a basic language to define the value of constant columns using:
+powdr-pil supports a basic language to define the value of constant columns using:
 - arrays, for example `[1, 2, 3]`
 - repetition, for example `[1, 2]*`
 - concatenation, for example `[1, 2] + [3, 4]`

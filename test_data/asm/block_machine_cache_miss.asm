@@ -6,27 +6,25 @@ machine Arith(latch, operation_id) {
     operation double<0> x -> y;
     operation square<1> x -> y;
 
-    constraints {
-        col witness operation_id;
-        col fixed latch = [1]*;
-        col fixed X(i) {i};
-        col fixed DOUBLE(i) {2*i};
-        col fixed SQUARE(i) {i*i};
-        col witness x;
-        col witness y;
+    col witness operation_id;
+    col fixed latch = [1]*;
+    col fixed X(i) {i};
+    col fixed DOUBLE(i) {2*i};
+    col fixed SQUARE(i) {i*i};
+    col witness x;
+    col witness y;
 
-        // Depending on the operation ID, one of these identities
-        // has to be processed, the other can be ignored.
-        // Because powdr doesn't include the operation ID into the cache key
-        // for the sequence cache, this will lead to a cache miss:
-        // - For the very first execution, the sequence for the operation ID
-        //   will be computed and stored in the cache.
-        // - If the operation ID is different in the next execution, the
-        //   cached sequence won't include the correct lookup.
-        // Powdr should be able to recover from this.
-        (1 - operation_id) {x, y} in {X, DOUBLE};
-        operation_id {x, y} in {X, SQUARE};
-    }
+    // Depending on the operation ID, one of these identities
+    // has to be processed, the other can be ignored.
+    // Because powdr doesn't include the operation ID into the cache key
+    // for the sequence cache, this will lead to a cache miss:
+    // - For the very first execution, the sequence for the operation ID
+    //   will be computed and stored in the cache.
+    // - If the operation ID is different in the next execution, the
+    //   cached sequence won't include the correct lookup.
+    // Powdr should be able to recover from this.
+    (1 - operation_id) {x, y} in {X, DOUBLE};
+    operation_id {x, y} in {X, SQUARE};
 }
 
 machine Main {

@@ -16,7 +16,7 @@ Instructions feature:
 - a name
 - some inputs
 - some outputs
-- a set of PIL constraints to activate when the instruction is called
+- a set of [powdr-pil](../pil/) constraints to activate when the instruction is called
 
 # External instructions
 

@@ -12,26 +12,24 @@ machine Palindrome {
     reg CNT;
     reg ADDR;
 
-    constraints {
-        col witness XInv;
-        col witness XIsZero;
-        XIsZero  = 1 - X * XInv;
-        XIsZero * X = 0;
-        XIsZero * (1 - XIsZero) = 0;
+    col witness XInv;
+    col witness XIsZero;
+    XIsZero  = 1 - X * XInv;
+    XIsZero * X = 0;
+    XIsZero * (1 - XIsZero) = 0;
 
-        /// Write-once memory (actually a key-value store)
-        col witness m_addr;
-        col witness m_value;
+    /// Write-once memory (actually a key-value store)
+    col witness m_addr;
+    col witness m_value;
 
-        // positive numbers (assumed to be less than half the field order)
-        col fixed POSITIVE(i) { i + 1 };
-        col fixed FIRST = [1] + [0]*;
-        col fixed NOTLAST = [1]* + [0];
+    // positive numbers (assumed to be less than half the field order)
+    col fixed POSITIVE(i) { i + 1 };
+    col fixed FIRST = [1] + [0]*;
+    col fixed NOTLAST = [1]* + [0];
 
-        // This enforces that addresses are stored in an ascending order
-        // (and in particular, are unique).
-        NOTLAST { m_addr' - m_addr } in POSITIVE;
-    }
+    // This enforces that addresses are stored in an ascending order
+    // (and in particular, are unique).
+    NOTLAST { m_addr' - m_addr } in POSITIVE;
 
     instr jmpz X, l: label { pc' = XIsZero * l + (1 - XIsZero) * (pc + 1) }
     instr jmp l: label { pc' = l }
