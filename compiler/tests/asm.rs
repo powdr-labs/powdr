@@ -70,6 +70,14 @@ fn secondary_block_machine_add2() {
 }
 
 #[test]
+fn block_machine_cache_miss() {
+    let f = "block_machine_cache_miss.asm";
+    verify_asm::<GoldilocksField>(f, vec![]);
+    gen_halo2_proof(f, vec![]);
+    gen_estark_proof(f, vec![]);
+}
+
+#[test]
 fn palindrome() {
     let f = "palindrome.asm";
     let i = [7, 1, 7, 3, 9, 3, 7, 1];

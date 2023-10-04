@@ -176,6 +176,13 @@ impl ProcessingSequenceIterator {
             Self::Cached(it) => it.len() > 0,
         }
     }
+
+    pub fn is_cached(&self) -> bool {
+        match self {
+            Self::Default(_) => false,
+            Self::Cached(_) => true,
+        }
+    }
 }
 
 impl Iterator for ProcessingSequenceIterator {
@@ -219,14 +226,18 @@ impl ProcessingSequenceCache {
             }
             None => {
                 log::trace!("Using default sequence");
-                ProcessingSequenceIterator::Default(DefaultSequenceIterator::new(
-                    self.block_size,
-                    self.identities_count,
-                    // Run the outer query on the last row of the block.
-                    Some(self.block_size as i64 - 1),
-                ))
+                self.get_default_sequence_iterator()
             }
         }
+    }
+
+    pub fn get_default_sequence_iterator(&self) -> ProcessingSequenceIterator {
+        ProcessingSequenceIterator::Default(DefaultSequenceIterator::new(
+            self.block_size,
+            self.identities_count,
+            // Run the outer query on the last row of the block.
+            Some(self.block_size as i64 - 1),
+        ))
     }
 
     pub fn report_incomplete<K, T>(&mut self, left: &[AffineExpression<K, T>])
