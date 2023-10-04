@@ -486,7 +486,13 @@ impl<T: FieldElement> PILAnalyzer<T> {
     }
 
     fn namespaced_ref(&self, namespace: &Option<String>, name: &str) -> String {
-        format!("{}.{name}", namespace.as_ref().unwrap_or(&self.namespace))
+        if name.starts_with('%') || (namespace.is_none() && self.constants.contains_key(name)) {
+            assert!(namespace.is_none());
+            // Constants are not namespaced
+            name.to_string()
+        } else {
+            format!("{}.{name}", namespace.as_ref().unwrap_or(&self.namespace))
+        }
     }
 
     fn process_selected_expression(
