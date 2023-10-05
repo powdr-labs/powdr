@@ -84,78 +84,19 @@ where
     let mut generator = Generator::new(
         &fixed,
         &base_identities,
-        &base_witnesses,
+        base_witnesses,
         &known_witness_constraints,
     );
 
-    let mut rows: Vec<WitnessColumnMap<T>> = vec![];
+    generator.run(&mut mutable_state);
 
-    let poly_ids = fixed.witness_cols.keys().collect::<Vec<_>>();
-    for (i, p) in poly_ids.iter().enumerate() {
-        assert!(p.id == i as u64);
-    }
-
-    let relevant_witnesses_mask = poly_ids
-        .iter()
-        .map(|p| generator.is_relevant_witness(p))
-        .collect::<Vec<_>>();
-
-    // Are we in an infinite loop and can just re-use the old values?
-    let mut looping_period = None;
-    let mut loop_log_level = log::Level::Info;
-    for row in 0..degree as DegreeType {
-        // Check if we are in a loop.
-        if looping_period.is_none() && row % 100 == 0 && row > 0 {
-            looping_period = rows_are_repeating(&rows, &relevant_witnesses_mask);
-            if let Some(p) = looping_period {
-                log::log!(
-                    loop_log_level,
-                    "Found loop with period {p} starting at row {row}"
-                );
-            }
-        }
-        let mut row_values = None;
-        if let Some(period) = looping_period {
-            let values = &rows[rows.len() - period];
-            if generator.propose_next_row(row, values, &mut mutable_state) {
-                row_values = Some(values.clone());
-            } else {
-                log::log!(
-                    loop_log_level,
-                    "Looping failed. Trying to generate regularly again. (Use RUST_LOG=debug to see whether this happens more often.)"
-                );
-                looping_period = None;
-                // For some programs, loop detection will often find loops and then fail.
-                // In this case, we don't want to spam the user with debug messages.
-                loop_log_level = log::Level::Debug;
-            }
-        }
-        if row_values.is_none() {
-            row_values = Some(generator.compute_next_row(row, &mut mutable_state));
-        };
-
-        rows.push(row_values.unwrap());
-    }
-    // We re-compute the first row just in case we invalidly assumed unknown/unconstrained
-    // values are zero.
-    // TODO: do this properly.
-    for (poly, v) in generator.update_first_row().into_iter() {
-        rows[0][&poly] = v;
-    }
-
-    // Transpose the rows
-    let mut columns = fixed.witness_map_with(vec![]);
-    for row in rows.into_iter() {
-        for (col_index, value) in row.into_iter() {
-            columns[&col_index].push(value);
-        }
-    }
-
-    // Get columns from secondary machines
-    let mut secondary_columns = mutable_state
+    // Get columns from machines
+    let main_columns = generator.take_witness_col_values(&fixed);
+    let mut columns = mutable_state
         .machines
         .iter_mut()
         .flat_map(|m| m.take_witness_col_values(&fixed).into_iter())
+        .chain(main_columns)
         .collect::<BTreeMap<_, _>>();
 
     // Done this way, because:
@@ -165,52 +106,11 @@ where
         .committed_polys_in_source_order()
         .into_iter()
         .map(|(p, _)| {
-            let column = secondary_columns
-                .remove(&p.absolute_name)
-                .unwrap_or_else(|| {
-                    let column = &mut columns[&PolyID {
-                        id: p.id,
-                        ptype: PolynomialType::Committed,
-                    }];
-                    std::mem::take(column)
-                });
+            let column = columns.remove(&p.absolute_name).unwrap();
             assert!(!column.is_empty());
             (p.absolute_name.as_str(), column)
         })
         .collect()
-}
-
-fn zip_relevant<'a, T>(
-    row1: &'a WitnessColumnMap<T>,
-    row2: &'a WitnessColumnMap<T>,
-    relevant_mask: &'a [bool],
-) -> impl Iterator<Item = (&'a T, &'a T)> {
-    row1.values()
-        .zip(row2.values())
-        .zip(relevant_mask.iter())
-        .filter(|(_, &b)| b)
-        .map(|(v, _)| v)
-}
-
-/// Checks if the last rows are repeating and returns the period.
-/// Only checks for periods of 1, 2, 3 and 4.
-fn rows_are_repeating<T: PartialEq>(
-    rows: &[WitnessColumnMap<T>],
-    relevant_mask: &[bool],
-) -> Option<usize> {
-    if rows.is_empty() {
-        return Some(1);
-    } else if rows.len() < 4 {
-        return None;
-    }
-
-    let len = rows.len();
-    (1..=3).find(|&period| {
-        (1..=period).all(|i| {
-            zip_relevant(&rows[len - i - period], &rows[len - i], relevant_mask)
-                .all(|(a, b)| a == b)
-        })
-    })
 }
 
 /// Data that is fixed for witness generation.

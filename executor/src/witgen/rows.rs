@@ -1,11 +1,13 @@
-use std::fmt::Debug;
+use std::{
+    collections::{BTreeMap, HashSet},
+    fmt::Debug,
+};
 
-use ast::analyzed::{Expression, PolynomialReference};
+use ast::analyzed::{Expression, PolyID, PolynomialReference};
 use itertools::Itertools;
 use number::{DegreeType, FieldElement};
 
-use crate::witgen::{Constraint, PolyID};
-use std::collections::HashSet;
+use crate::witgen::Constraint;
 
 use super::{
     affine_expression::{AffineExpression, AffineResult},
@@ -17,7 +19,7 @@ use super::{
     EvalValue, FixedData,
 };
 
-#[derive(Clone, PartialEq)]
+#[derive(Clone, PartialEq, Debug)]
 pub enum CellValue<T: FieldElement> {
     Known(T),
     RangeConstraint(RangeConstraint<T>),
@@ -61,10 +63,10 @@ impl<T: FieldElement> CellValue<T> {
     }
 }
 
-impl<T: FieldElement> From<&CellValue<T>> for Option<T> {
-    fn from(val: &CellValue<T>) -> Self {
+impl<T: FieldElement> From<CellValue<T>> for Option<T> {
+    fn from(val: CellValue<T>) -> Self {
         match val {
-            CellValue::Known(v) => Some(*v),
+            CellValue::Known(v) => Some(v),
             _ => None,
         }
     }
@@ -148,6 +150,31 @@ impl<T: FieldElement> Row<'_, T> {
     }
 }
 
+/// Transposes a list of rows into a map from column to a list of values.
+pub fn transpose_rows<T: FieldElement>(
+    rows: Vec<Row<T>>,
+    column_set: &HashSet<PolyID>,
+) -> BTreeMap<PolyID, Vec<Option<T>>> {
+    // Use column maps for efficiency
+    let mut columns: WitnessColumnMap<Vec<Option<T>>> =
+        WitnessColumnMap::from(rows[0].iter().map(|_| Vec::new()));
+    let is_relevant_column =
+        WitnessColumnMap::from(rows[0].keys().map(|poly_id| column_set.contains(&poly_id)));
+
+    for row in rows.into_iter() {
+        for (poly_id, cell) in row.into_iter() {
+            if is_relevant_column[&poly_id] {
+                columns[&poly_id].push(cell.value.into());
+            }
+        }
+    }
+    // Convert to BTreeMap and filter out columns outside column set
+    columns
+        .into_iter()
+        .filter(|(poly_id, _)| is_relevant_column[poly_id])
+        .collect()
+}
+
 /// A factory for rows, which knows the global range constraints and has pointers to column names.
 #[derive(Clone)]
 pub struct RowFactory<'a, T: FieldElement> {
@@ -176,13 +203,6 @@ impl<'a, T: FieldElement> RowFactory<'a, T> {
                 },
             },
         ))
-    }
-
-    pub fn row_from_known_values_dense(&self, values: &WitnessColumnMap<T>) -> Row<'a, T> {
-        WitnessColumnMap::from(values.iter().map(|(poly_id, &v)| Cell {
-            name: self.fixed_data.column_name(&poly_id),
-            value: CellValue::Known(v),
-        }))
     }
 }
 
