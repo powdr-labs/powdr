@@ -1,34 +1,33 @@
+<p align="center">
+  <img src="book/src/powdr_wires.png" width="600">
+</p>
+
 # powdr
 
 [![Matrix Chat](https://img.shields.io/badge/Matrix%20-chat-brightgreen?style=plastic&logo=matrix)](https://matrix.to/#/#powdr:matrix.org)
 [![Twitter Follow](https://img.shields.io/twitter/follow/powdr_labs?style=plastic&logo=twitter)](https://twitter.com/powdr_labs)<!-- markdown-link-check-disable-line -->
 
-*powdr* is an extended polynomial identity (PIL) and zk-focused assembly (zkASM)
-language written in Rust, focused on modularity and excellent developer experience.
+> WARNING: This codebase is experimental and has not been audited. DO NOT USE FOR PRODUCTION!
 
-WARNING: This is a proof-of-concept implementation. It is missing many internal checks. DO NOT USE FOR PRODUCTION!
-
-## Basic Concept
+For detailed documentation please visit [the powdr book](https://docs.powdr.org/).
 
 *powdr* is a toolkit that helps build zkVMs and similar proof frameworks.
 
 It has two main components:
 
-- A polynomial identity language that allows you to define polynomial constraints, lookups, etc.
-- An extensible assembly language to perform dynamic executions.
+- powdr-asm: an extensible assembly IR language to perform dynamic executions.
+- powdr-PIL: a low level constraint language that allows you to define arithmetic constraints, lookups, etc.
   
 Both frontend and backend are highly flexible.
 
 As an example, *powdr* contains a frontend that enables you to write code in (no-std) Rust,
-which is compiled to RISCV, then to powdr-asm and finally to PIL.
+which is compiled to RISCV, then to powdr-asm and finally to powdr-PIL.
 
 *powdr*-pil can be used to generate proofs using multiple backends, such as:
 
-- Halo2
-- eSTARKs: *powdr*-pil is fully compatible with the eSTARKS backend from Polygon Hermez,
-  although not yet fully integrated in an automatic way.
-- Nova: ongoing work.
-- other STARKs: maybe?
+- Halo2: via [polyexen](https://github.com/Dhole/polyexen) and [snark-verifer](https://github.com/privacy-scaling-explorations/snark-verifier/)
+- eSTARK: via [Eigen's starky](https://github.com/0xEigenLabs/eigen-zkvm/)
+- SuperNova: ongoing work (https://github.com/powdr-labs/powdr/pull/453)
 
 All stages are fully automatic, which means you do not need to write any
 additional code for witness generation besides your Rust code. All witnesses
@@ -37,7 +36,7 @@ inferred, *powdr* can ensure that the system is not underconstrained, i.e.
 there are no additional unwanted witnesses.
 
 All artifacts from the compilation pipeline are human-readable. This means you
-can inspect the RISCV assembly files, the powdr-asm, and the PIL file.
+can inspect the RISCV assembly files, the powdr-asm IR, and the compiled PIL file.
 
 The assembly language is designed to be extensible. This means that it does not have a single
 native instruction. Instead, all instructions are user-defined and because of that,
@@ -45,10 +44,10 @@ it is easy to adapt *powdr* assembly to any VM.
 
 ### Notes on Efficiency
 
-Currently, the code is quite wasteful. It generates many unnecessary columns.
-The idea is to first see if automatic witness generation is possible in general.
-If this is confirmed, various optimizer stages will be built to reduce the
-column (and row) count automatically.
+The current focus of the project is VM support and developer experience.  The
+compiler generates many unnecessary columns. We will soon start writing
+optimizer steps that should bring performance closer to existing production
+systems.
 
 ### Project structure
 
