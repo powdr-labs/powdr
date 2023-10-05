@@ -172,6 +172,7 @@ fn simplify_expression_single<T: FieldElement>(e: &mut Expression<T>) {
                 UnaryOperator::Plus => inner,
                 UnaryOperator::Minus => -inner,
                 UnaryOperator::LogicalNot => inner.is_zero().into(),
+                UnaryOperator::Shift => panic!("Shift not allowed at this point."),
             });
             return;
         }

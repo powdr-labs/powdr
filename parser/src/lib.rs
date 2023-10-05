@@ -254,5 +254,15 @@ public out = y(%last_row);"#;
             );
             assert_eq!(input.trim(), printed.trim());
         }
+
+        #[test]
+        fn reparse_shifts() {
+            let input = r#"let x; let y = -x' + 1;"#;
+            let printed = format!(
+                "{}",
+                parse::<GoldilocksField>(Some("input"), input).unwrap()
+            );
+            assert_eq!(input.trim(), printed.trim());
+        }
     }
 }

@@ -149,6 +149,7 @@ where
                     panic!()
                 }
             }
+            UnaryOperator::Shift => panic!("Cannot evaluate shifts at this point."),
         })
     }
 }

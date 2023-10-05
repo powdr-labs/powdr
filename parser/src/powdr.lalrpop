@@ -450,8 +450,8 @@ PowOp: BinaryOperator = {
 }
 
 Unary: Box<Expression<T>> = {
-    UnaryOp Term => Box::new(Expression::UnaryOperation(<>)),
-    Term,
+    UnaryOp ShiftedTerm => Box::new(Expression::UnaryOperation(<>)),
+    ShiftedTerm,
 }
 
 UnaryOp: UnaryOperator = {
@@ -460,10 +460,15 @@ UnaryOp: UnaryOperator = {
     "!" => UnaryOperator::LogicalNot,
 }
 
+ShiftedTerm: Box<Expression<T>> = {
+    Term "'" => Box::new(Expression::UnaryOperation(<>, UnaryOperator::Shift)),
+    Term,
+}
+
 Term: Box<Expression<T>> = {
     FunctionCall => Box::new(Expression::FunctionCall(<>)),
     ConstantIdentifier => Box::new(Expression::Reference(PolynomialReference::new(<>).single().local().current())),
-    ShiftedPolynomialReference => Box::new(Expression::Reference(<>)),
+    NamespacedPolynomialReference => Box::new(Expression::Reference(<>)),
     PublicReference => Box::new(Expression::PublicReference(<>)),
     FieldElement => Box::new(Expression::Number(<>)),
     StringLiteral => Box::new(Expression::String(<>)),
@@ -476,11 +481,6 @@ Term: Box<Expression<T>> = {
 
 FunctionCall: FunctionCall<T> = {
     <id:Identifier> "(" <arguments:ExpressionList> ")" => FunctionCall {<>},
-}
-
-ShiftedPolynomialReference: ShiftedPolynomialReference<T> = {
-    <pol:NamespacedPolynomialReference>
-    <next:"'"?> => pol.with_shift(next.is_some()),
 }
 
 NamespacedPolynomialReference: NamespacedPolynomialReference<T> = {

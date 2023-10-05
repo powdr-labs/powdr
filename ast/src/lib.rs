@@ -72,6 +72,7 @@ pub fn evaluate_unary_operation<T: FieldElement>(op: UnaryOperator, v: T) -> T {
         UnaryOperator::Plus => v,
         UnaryOperator::Minus => -v,
         UnaryOperator::LogicalNot => v.is_zero().into(),
+        UnaryOperator::Shift => panic!("Cannot evaluate shifts on numbers."),
     }
 }
 

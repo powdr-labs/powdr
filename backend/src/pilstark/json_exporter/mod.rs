@@ -319,7 +319,9 @@ impl<'a, T: FieldElement> Exporter<'a, T> {
                             ..DEFAULT_EXPR
                         },
                     ),
-                    UnaryOperator::LogicalNot => panic!("Operator {op} not allowed here."),
+                    UnaryOperator::LogicalNot | UnaryOperator::Shift => {
+                        panic!("Operator {op} not allowed here.")
+                    }
                 }
             }
             Expression::FunctionCall(_) => panic!("No function calls allowed here."),

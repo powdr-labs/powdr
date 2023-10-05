@@ -601,7 +601,9 @@ impl<'a, T: FieldElement> ExpressionProcessor<'a, T> {
                 Box::new(self.process_expression(*right)),
             ),
             PExpression::UnaryOperation(op, value) => {
-                Expression::UnaryOperation(op, Box::new(self.process_expression(*value)))
+                let inner = self.process_expression(*value);
+
+                Expression::UnaryOperation(op, Box::new())
             }
             PExpression::FunctionCall(c) => Expression::FunctionCall(parsed::FunctionCall {
                 id: self.analyzer.namespaced_ref_to_absolute(&None, &c.id),

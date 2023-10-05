@@ -298,6 +298,18 @@ pub enum UnaryOperator {
     Plus,
     Minus,
     LogicalNot,
+    /// The '-postfix operator.
+    Shift,
+}
+
+impl UnaryOperator {
+    /// Returns true if the operator is a prefix-operator, false if it is a suffix-operator.
+    pub fn is_prefix(&self) -> bool {
+        match self {
+            UnaryOperator::Plus | UnaryOperator::Minus | UnaryOperator::LogicalNot => true,
+            UnaryOperator::Shift => false,
+        }
+    }
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
