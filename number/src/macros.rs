@@ -16,6 +16,26 @@ macro_rules! powdr_field {
             value: $ark_type,
         }
 
+        impl serde::Serialize for $name {
+            fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+            where
+                S: serde::Serializer,
+            {
+                self.value.0 .0.serialize(serializer)
+            }
+        }
+
+        impl<'de> serde::Deserialize<'de> for $name {
+            fn deserialize<D>(deserializer: D) -> Result<$name, D::Error>
+            where
+                D: serde::Deserializer<'de>,
+            {
+                let parts = <[u64; <$ark_type>::MODULUS.0.len()]>::deserialize(deserializer)?;
+                let value = <$ark_type>::from_bigint(ark_ff::BigInt(parts)).unwrap();
+                Ok($name { value })
+            }
+        }
+
         #[derive(Clone, Copy, PartialEq, Eq, Debug, Default, PartialOrd, Ord, Hash)]
         pub struct BigIntImpl {
             value: <$ark_type as PrimeField>::BigInt,

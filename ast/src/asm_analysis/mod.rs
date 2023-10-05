@@ -12,6 +12,7 @@ use std::{
 use itertools::Either;
 use num_bigint::BigUint;
 use number::FieldElement;
+use serde::{Deserialize, Serialize};
 
 use crate::parsed::{
     asm::{
@@ -22,14 +23,14 @@ use crate::parsed::{
 
 pub use crate::parsed::Expression;
 
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct RegisterDeclarationStatement {
     pub start: usize,
     pub name: String,
     pub ty: RegisterTy,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum RegisterTy {
     Pc,
     Assignment,
@@ -55,20 +56,20 @@ impl RegisterTy {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct InstructionDefinitionStatement<T> {
     pub start: usize,
     pub name: String,
     pub instruction: Instruction<T>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Instruction<T> {
     pub params: Params,
     pub body: InstructionBody<T>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct LinkDefinitionStatement<T> {
     pub start: usize,
     /// the flag which activates this link. Should be boolean.
@@ -79,7 +80,7 @@ pub struct LinkDefinitionStatement<T> {
     pub to: CallableRef,
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
 pub struct FunctionStatements<T> {
     inner: Vec<FunctionStatement<T>>,
     batches: Option<Vec<BatchMetadata>>,
@@ -215,7 +216,7 @@ impl<T> FromIterator<Batch<T>> for FunctionStatements<T> {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct FunctionBody<T> {
     pub statements: FunctionStatements<T>,
 }
@@ -244,7 +245,7 @@ pub struct CallableSymbolDefinition<T> {
     pub symbol: CallableSymbol<T>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Default)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Default)]
 pub struct CallableSymbolDefinitions<T>(BTreeMap<String, CallableSymbol<T>>);
 
 impl<T> IntoIterator for CallableSymbolDefinitions<T> {
@@ -423,7 +424,7 @@ pub struct FunctionDefinitionMut<'a, T> {
     pub function: &'a mut FunctionSymbol<T>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum CallableSymbol<T> {
     Function(FunctionSymbol<T>),
     Operation(OperationSymbol<T>),
@@ -507,7 +508,7 @@ impl<'a, T> TryFrom<&'a mut CallableSymbol<T>> for &'a mut OperationSymbol<T> {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct FunctionSymbol<T> {
     pub start: usize,
     /// the parameters of this function, in the form of values
@@ -516,7 +517,7 @@ pub struct FunctionSymbol<T> {
     pub body: FunctionBody<T>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct OperationSymbol<T> {
     pub start: usize,
     /// the id of this operation. This machine's operation id must be set to this value in order for this operation to be active.
@@ -525,12 +526,12 @@ pub struct OperationSymbol<T> {
     pub params: Params,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct DegreeStatement {
     pub degree: BigUint,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum FunctionStatement<T> {
     Assignment(AssignmentStatement<T>),
     Instruction(InstructionStatement<T>),
@@ -569,7 +570,7 @@ impl<T> From<Return<T>> for FunctionStatement<T> {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct AssignmentStatement<T> {
     pub start: usize,
     pub lhs_with_reg: Vec<(String, AssignmentRegister)>,
@@ -586,38 +587,38 @@ impl<T> AssignmentStatement<T> {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct InstructionStatement<T> {
     pub start: usize,
     pub instruction: String,
     pub inputs: Vec<Expression<T>>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct LabelStatement {
     pub start: usize,
     pub name: String,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct DebugDirective {
     pub start: usize,
     pub directive: crate::parsed::asm::DebugDirective,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Return<T> {
     pub start: usize,
     pub values: Vec<Expression<T>>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct PilBlock<T> {
     pub start: usize,
     pub statements: Vec<PilStatement<T>>,
 }
 
-#[derive(Clone, Default, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Serialize, Deserialize, Clone, Default, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct SubmachineDeclaration {
     /// the name of this instance
     pub name: String,
@@ -625,7 +626,7 @@ pub struct SubmachineDeclaration {
     pub ty: AbsoluteSymbolPath,
 }
 
-#[derive(Clone, Default, PartialEq, Eq, PartialOrd, Ord, Debug)]
+#[derive(Serialize, Deserialize, Clone, Default, PartialEq, Eq, PartialOrd, Ord, Debug)]
 pub struct Machine<T> {
     /// The degree if any, i.e. the number of rows in instances of this machine type
     pub degree: Option<DegreeStatement>,
@@ -731,7 +732,7 @@ pub struct Rom<T> {
     pub statements: FunctionStatements<T>,
 }
 
-#[derive(Default, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Serialize, Deserialize, Default, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct AnalysisASMFile<T> {
     pub machines: BTreeMap<AbsoluteSymbolPath, Machine<T>>,
 }
@@ -741,7 +742,7 @@ impl<T> AnalysisASMFile<T> {
     }
 }
 
-#[derive(Default, Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
+#[derive(Serialize, Deserialize, Default, Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub struct BatchMetadata {
     // the set of compatible statements
     pub size: usize,
@@ -755,13 +756,13 @@ impl BatchMetadata {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub enum Incompatible {
     Label,
     Unimplemented,
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Default, Clone)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, PartialOrd, Ord, Default, Clone)]
 pub struct IncompatibleSet(pub BTreeSet<Incompatible>);
 
 impl From<Incompatible> for IncompatibleSet {

@@ -5,11 +5,12 @@ pub mod folder;
 pub mod utils;
 
 use number::{DegreeType, FieldElement};
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct PILFile<T>(pub Vec<PilStatement<T>>);
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub enum PilStatement<T> {
     /// File name
     Include(usize, String),
@@ -41,7 +42,7 @@ pub enum PilStatement<T> {
     FunctionCall(usize, String, Vec<Expression<T>>),
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub struct SelectedExpressions<T, Ref = ShiftedPolynomialReference<T>> {
     pub selector: Option<Expression<T, Ref>>,
     pub expressions: Vec<Expression<T, Ref>>,
@@ -56,7 +57,7 @@ impl<T, Ref> Default for SelectedExpressions<T, Ref> {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub enum Expression<T, Ref = ShiftedPolynomialReference<T>> {
     /// Reference to a constant, "%ConstantName"
     Constant(String),
@@ -84,14 +85,14 @@ impl<T> From<ShiftedPolynomialReference<T>> for Expression<T> {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Default, Clone)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, PartialOrd, Ord, Default, Clone)]
 pub struct PolynomialName<T> {
     pub name: String,
     pub array_size: Option<Expression<T>>,
 }
 
 /// A polynomial with an optional shift
-#[derive(Debug, PartialEq, Eq, Default, Clone, PartialOrd, Ord)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Default, Clone, PartialOrd, Ord)]
 pub struct ShiftedPolynomialReference<T> {
     /// Whether we shift or not
     is_next: bool,
@@ -131,7 +132,7 @@ impl<T> ShiftedPolynomialReference<T> {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Default, Clone, PartialOrd, Ord)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Default, Clone, PartialOrd, Ord)]
 /// A polynomial with an optional namespace
 pub struct NamespacedPolynomialReference<T> {
     /// The optional namespace, if `None` then this polynomial inherits the next enclosing namespace, if any
@@ -180,7 +181,7 @@ impl<T> NamespacedPolynomialReference<T> {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Default, Clone, PartialOrd, Ord)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Default, Clone, PartialOrd, Ord)]
 /// A polynomial with an optional index to support unidimensional arrays of polynomials
 pub struct IndexedPolynomialReference<T> {
     /// The optional index, is `Some` iff the declaration of this polynomial is an array
@@ -224,7 +225,7 @@ impl<T> IndexedPolynomialReference<T> {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Default, Clone, PartialOrd, Ord)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Default, Clone, PartialOrd, Ord)]
 /// A polynomial or array of polynomials
 pub struct PolynomialReference {
     /// The name of this polynomial or array of polynomials
@@ -266,25 +267,25 @@ impl PolynomialReference {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct LambdaExpression<T, Ref = ShiftedPolynomialReference<T>> {
     pub params: Vec<String>,
     pub body: Box<Expression<T, Ref>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct ArrayLiteral<T, Ref = ShiftedPolynomialReference<T>> {
     pub items: Vec<Expression<T, Ref>>,
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
 pub enum UnaryOperator {
     Plus,
     Minus,
     LogicalNot,
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
 pub enum BinaryOperator {
     Add,
     Sub,
@@ -307,27 +308,27 @@ pub enum BinaryOperator {
     Greater,
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub struct FunctionCall<T, Ref = ShiftedPolynomialReference<T>> {
     pub id: String,
     pub arguments: Vec<Expression<T, Ref>>,
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub struct MatchArm<T, Ref = ShiftedPolynomialReference<T>> {
     pub pattern: MatchPattern<T, Ref>,
     pub value: Expression<T, Ref>,
 }
 
 /// A pattern for a match arm. We could extend this in the future.
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub enum MatchPattern<T, Ref = ShiftedPolynomialReference<T>> {
     CatchAll,
     Pattern(Expression<T, Ref>),
 }
 
 /// The definition of a function (excluding its name):
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub enum FunctionDefinition<T> {
     /// Parameter-value-mapping.
     Mapping(Vec<String>, Expression<T>),
@@ -339,7 +340,7 @@ pub enum FunctionDefinition<T> {
     Expression(Expression<T>),
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub enum ArrayExpression<T> {
     Value(Vec<Expression<T>>),
     RepeatedValue(Vec<Expression<T>>),

@@ -7,10 +7,9 @@ edition = "2021"
 
 [dependencies]
 itertools = "0.11.0"
-num-bigint = "0.4.3"
+num-bigint = { version = "0.4", features = ["serde"] }
 number = { path = "../number" }
 diff = "0.1"
 log = "0.4.18"
 derive_more = "0.99.17"
-
-
+serde = "1.0"
