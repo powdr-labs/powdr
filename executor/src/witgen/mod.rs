@@ -34,6 +34,7 @@ mod sequence_iterator;
 pub mod symbolic_evaluator;
 mod symbolic_witness_evaluator;
 mod util;
+mod vm_processor;
 
 /// Everything [Generator] needs to mutate in order to compute a new row.
 pub struct MutableState<'a, T: FieldElement, Q: FnMut(&str) -> Option<T> + Send + Sync> {
