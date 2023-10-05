@@ -1,5 +1,7 @@
 //! Common crate for generalized assembly handling.
 
+#![deny(clippy::print_stdout)]
+
 use ast::{Argument, FunctionOpKind, Register};
 
 pub mod ast;

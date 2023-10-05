@@ -1,3 +1,5 @@
+#![deny(clippy::print_stdout)]
+
 pub mod pil_analyzer;
 
 use std::path::Path;

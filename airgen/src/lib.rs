@@ -1,5 +1,7 @@
 //! Compilation from powdr machines to AIRs
 
+#![deny(clippy::print_stdout)]
+
 use std::collections::BTreeMap;
 
 use ast::{

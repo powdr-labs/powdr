@@ -1,3 +1,5 @@
+#![deny(clippy::print_stdout)]
+
 use itertools::Itertools;
 use log::log_enabled;
 use number::FieldElement;

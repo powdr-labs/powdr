@@ -1,3 +1,5 @@
+#![deny(clippy::print_stdout)]
+
 mod module_loader;
 mod path_canonicalizer;
 mod powdr_std;

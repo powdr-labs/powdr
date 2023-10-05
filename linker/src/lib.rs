@@ -1,3 +1,5 @@
+#![deny(clippy::print_stdout)]
+
 use std::iter::once;
 
 use analysis::utils::parse_pil_statement;

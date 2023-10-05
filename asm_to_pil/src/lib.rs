@@ -1,3 +1,5 @@
+#![deny(clippy::print_stdout)]
+
 use ast::asm_analysis::AnalysisASMFile;
 use number::FieldElement;
 use romgen::generate_machine_rom;

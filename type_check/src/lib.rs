@@ -1,3 +1,5 @@
+#![deny(clippy::print_stdout)]
+
 use std::{collections::BTreeMap, marker::PhantomData};
 
 use ast::{
