@@ -122,6 +122,10 @@ enum Commands {
         #[arg(short, long)]
         #[arg(value_parser = clap_enum_variants!(BackendType))]
         prove_with: Option<BackendType>,
+
+        /// Comma-separated list of coprocessors.
+        #[arg(long)]
+        coprocessors: Option<String>,
     },
 
     /// Compiles riscv assembly to powdr assembly and then to PIL
@@ -156,6 +160,10 @@ enum Commands {
         #[arg(short, long)]
         #[arg(value_parser = clap_enum_variants!(BackendType))]
         prove_with: Option<BackendType>,
+
+        /// Comma-separated list of coprocessors.
+        #[arg(long)]
+        coprocessors: Option<String>,
     },
 
     Prove {
@@ -285,13 +293,21 @@ fn run_command(command: Commands) {
             output_directory,
             force,
             prove_with,
+            coprocessors,
         } => {
+            let coprocessors = match coprocessors {
+                Some(list) => {
+                    riscv::CoProcessors::try_from(list.split(',').collect::<Vec<_>>()).unwrap()
+                }
+                None => riscv::CoProcessors::base(),
+            };
             if let Err(errors) = call_with_field!(run_rust::<field>(
                 &file,
                 split_inputs(&inputs),
                 Path::new(&output_directory),
                 force,
-                prove_with
+                prove_with,
+                coprocessors
             )) {
                 eprintln!("Errors:");
                 for e in errors {
@@ -306,6 +322,7 @@ fn run_command(command: Commands) {
             output_directory,
             force,
             prove_with,
+            coprocessors,
         } => {
             assert!(!files.is_empty());
             let name = if files.len() == 1 {
@@ -314,13 +331,20 @@ fn run_command(command: Commands) {
                 Cow::Borrowed("output")
             };
 
+            let coprocessors = match coprocessors {
+                Some(list) => {
+                    riscv::CoProcessors::try_from(list.split(',').collect::<Vec<_>>()).unwrap()
+                }
+                None => riscv::CoProcessors::base(),
+            };
             if let Err(errors) = call_with_field!(run_riscv_asm::<field>(
                 &name,
                 files.into_iter(),
                 split_inputs(&inputs),
                 Path::new(&output_directory),
                 force,
-                prove_with
+                prove_with,
+                coprocessors
             )) {
                 eprintln!("Errors:");
                 for e in errors {
@@ -386,7 +410,7 @@ fn run_command(command: Commands) {
         } => {
             call_with_field!(setup::<field>(size, dir, backend));
         }
-    }
+    };
 }
 
 fn setup<F: FieldElement>(size: u64, dir: String, backend_type: BackendType) {
@@ -403,15 +427,18 @@ fn write_backend_to_fs<F: FieldElement>(be: &dyn Backend<F>, output_dir: &Path) 
     params_writer.flush().unwrap();
     log::info!("Wrote params.bin.");
 }
+
 fn run_rust<F: FieldElement>(
     file_name: &str,
     inputs: Vec<F>,
     output_dir: &Path,
     force_overwrite: bool,
     prove_with: Option<BackendType>,
+    coprocessors: riscv::CoProcessors,
 ) -> Result<(), Vec<String>> {
-    let (asm_file_path, asm_contents) = compile_rust(file_name, output_dir, force_overwrite)
-        .ok_or_else(|| vec!["could not compile rust".to_string()])?;
+    let (asm_file_path, asm_contents) =
+        compile_rust(file_name, output_dir, force_overwrite, &coprocessors)
+            .ok_or_else(|| vec!["could not compile rust".to_string()])?;
 
     compile_asm_string(
         asm_file_path.to_str().unwrap(),
@@ -431,10 +458,16 @@ fn run_riscv_asm<F: FieldElement>(
     output_dir: &Path,
     force_overwrite: bool,
     prove_with: Option<BackendType>,
+    coprocessors: riscv::CoProcessors,
 ) -> Result<(), Vec<String>> {
-    let (asm_file_path, asm_contents) =
-        compile_riscv_asm(original_file_name, file_names, output_dir, force_overwrite)
-            .ok_or_else(|| vec!["could not compile RISC-V assembly".to_string()])?;
+    let (asm_file_path, asm_contents) = compile_riscv_asm(
+        original_file_name,
+        file_names,
+        output_dir,
+        force_overwrite,
+        &coprocessors,
+    )
+    .ok_or_else(|| vec!["could not compile RISC-V assembly".to_string()])?;
 
     compile_asm_string(
         asm_file_path.to_str().unwrap(),

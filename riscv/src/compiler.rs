@@ -16,6 +16,7 @@ use asm_utils::{
 };
 use itertools::Itertools;
 
+use crate::coprocessors::*;
 use crate::disambiguator;
 use crate::parser::RiscParser;
 use crate::{Argument, Expression, Statement};
@@ -95,19 +96,15 @@ impl Architecture for RiscvArchitecture {
     }
 }
 
-pub fn machine_decls() -> Vec<&'static str> {
-    vec!["use std::binary::Binary;", "use std::shift::Shift;"]
-}
-
 /// Compiles riscv assembly to a powdr assembly file. Adds required library routines.
-pub fn compile(mut assemblies: BTreeMap<String, String>) -> String {
+pub fn compile(mut assemblies: BTreeMap<String, String>, coprocessors: &CoProcessors) -> String {
     // stack grows towards zero
     let stack_start = 0x10000;
     // data grows away from zero
     let data_start = 0x10100;
 
     assert!(assemblies
-        .insert("__runtime".to_string(), runtime().to_string())
+        .insert("__runtime".to_string(), runtime(coprocessors))
         .is_none());
 
     // TODO remove unreferenced files.
@@ -133,7 +130,7 @@ pub fn compile(mut assemblies: BTreeMap<String, String>) -> String {
 
     // Remove the riscv asm stub function, which is used
     // for compilation, and will not be called.
-    statements = replace_coprocessor_stubs(statements).collect::<Vec<_>>();
+    statements = replace_coprocessor_stubs(statements, coprocessors).collect::<Vec<_>>();
 
     // Sort the objects according to the order of the names in object_order.
     // With the single exception: If there is large object, put that at the end.
@@ -190,14 +187,14 @@ pub fn compile(mut assemblies: BTreeMap<String, String>) -> String {
     );
 
     riscv_machine(
-        &machine_decls(),
-        &preamble(),
-        &[("binary", "Binary"), ("shift", "Shift")],
+        &coprocessors.machine_imports(),
+        &preamble(coprocessors),
+        &coprocessors.declarations(),
         file_ids
             .into_iter()
             .map(|(id, dir, file)| format!("debug file {id} {} {};", quote(&dir), quote(&file)))
             .chain(["call __data_init;".to_string()])
-            .chain(call_every_submachine())
+            .chain(call_every_submachine(coprocessors))
             .chain([
                 format!("// Set stack pointer\nx2 <=X= {stack_start};"),
                 "call __runtime_start;".to_string(),
@@ -206,7 +203,7 @@ pub fn compile(mut assemblies: BTreeMap<String, String>) -> String {
             .chain(
                 substitute_symbols_with_values(statements, &data_positions)
                     .into_iter()
-                    .flat_map(process_statement),
+                    .flat_map(|v| process_statement(v, coprocessors)),
             )
             .chain(["// This is the data initialization routine.\n__data_init::".to_string()])
             .chain(data_code)
@@ -318,29 +315,15 @@ where
     .filter_map(|(filter, statement)| (!filter).then_some(statement))
 }
 
-fn replace_coprocessor_stubs(
-    statements: impl IntoIterator<Item = Statement>,
-) -> impl Iterator<Item = Statement> {
-    let stub_names: Vec<&str> = COPROCESSOR_SUBSTITUTIONS
-        .iter()
-        .map(|(name, _)| *name)
-        .collect();
+fn replace_coprocessor_stubs<'a>(
+    statements: impl IntoIterator<Item = Statement> + 'a,
+    coprocessors: &'a CoProcessors,
+) -> impl Iterator<Item = Statement> + 'a {
+    let stub_names: Vec<&'a str> = coprocessors.runtime_names();
 
     remove_matching_and_next(statements.into_iter(), move |statement| -> bool {
         matches!(&statement, Statement::Label(label) if stub_names.contains(&label.as_str()))
     })
-}
-
-fn call_every_submachine() -> Vec<String> {
-    // TODO This is a hacky snippet to ensure that every submachine in the RISCV machine
-    // is called at least once. This is needed for witgen until it can do default blocks
-    // automatically.
-    // https://github.com/powdr-labs/powdr/issues/548
-    vec![
-        "x10 <== and(x10, x10);".to_string(),
-        "x10 <== shl(x10, x10);".to_string(),
-        "x10 <=X= 0;".to_string(),
-    ]
 }
 
 fn substitute_symbols_with_values(
@@ -435,7 +418,7 @@ machine Main {{
     )
 }
 
-fn preamble() -> String {
+fn preamble(coprocessors: &CoProcessors) -> String {
     r#"
     degree 262144;
     reg pc[@pc];
@@ -443,12 +426,17 @@ fn preamble() -> String {
     reg Y[<=];
     reg Z[<=];
     reg W[<=];
+"#
+    .to_string()
+        + &coprocessors.registers()
+        + &r#"
     reg tmp1;
     reg tmp2;
     reg tmp3;
     reg lr_sc_reservation;
 "#
-    .to_string()
+        .to_owned()
+        .to_string()
         + &(0..32)
             .map(|i| format!("\t\treg x{i};\n"))
             .collect::<Vec<_>>()
@@ -552,28 +540,8 @@ fn preamble() -> String {
     instr is_not_equal_zero X -> Y { Y = 1 - XIsZero }
 
     // ================= coprocessor substitution instructions =================
-
-    instr poseidon Y, Z -> X {
-        // Dummy code, to be replaced with actual poseidon code.
-        X = 0
-    }
-
-    // ================= binary/bitwise instructions =================
-
-    instr and Y, Z -> X = binary.and
-
-    instr or Y, Z -> X = binary.or
-
-    instr xor Y, Z -> X = binary.xor
-
-    // ================= shift instructions =================
-
-    instr shl Y, Z -> X = shift.shl
-
-    instr shr Y, Z -> X = shift.shr
-
-    // ================== wrapping instructions ==============
-
+"# + &coprocessors.instructions()
+        + r#"
     // Wraps a value in Y to 32 bits.
     // Requires 0 <= Y < 2**33
     instr wrap Y -> X { Y = X + wrap_bit * 2**32, X = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000 }
@@ -679,7 +647,7 @@ fn preamble() -> String {
 "#
 }
 
-fn runtime() -> &'static str {
+fn runtime(coprocessors: &CoProcessors) -> String {
     r#"
 .globl __udivdi3@plt
 .globl __udivdi3
@@ -727,14 +695,12 @@ fn runtime() -> &'static str {
 
 .globl __rust_alloc_error_handler
 .set __rust_alloc_error_handler, __rg_oom
-
-.globl poseidon_coprocessor
-poseidon_coprocessor:
-    ret
 "#
+    .to_owned()
+        + &coprocessors.runtime()
 }
 
-fn process_statement(s: Statement) -> Vec<String> {
+fn process_statement(s: Statement, coprocessors: &CoProcessors) -> Vec<String> {
     match &s {
         Statement::Label(l) => vec![format!("{}::", escape_label(l))],
         Statement::Directive(directive, args) => match (directive.as_str(), &args[..]) {
@@ -754,7 +720,7 @@ fn process_statement(s: Statement) -> Vec<String> {
                 args.iter().format(", ")
             ),
         },
-        Statement::Instruction(instr, args) => process_instruction(instr, args)
+        Statement::Instruction(instr, args) => process_instruction(instr, args, coprocessors)
             .into_iter()
             .map(|s| "  ".to_string() + &s)
             .collect(),
@@ -847,17 +813,15 @@ fn only_if_no_write_to_zero_vec(statements: Vec<String>, reg: Register) -> Vec<S
     }
 }
 
-static COPROCESSOR_SUBSTITUTIONS: &[(&str, &str)] =
-    &[("poseidon_coprocessor", "x10 <== poseidon(x10, x11);")];
-
-fn try_coprocessor_substitution(label: &str) -> Option<String> {
-    COPROCESSOR_SUBSTITUTIONS
+fn try_coprocessor_substitution(label: &str, coprocessors: &CoProcessors) -> Option<String> {
+    coprocessors
+        .substitutions()
         .iter()
         .find(|(l, _)| *l == label)
-        .map(|&(_, subst)| subst.to_string())
+        .map(|(_, subst)| subst.to_string())
 }
 
-fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
+fn process_instruction(instr: &str, args: &[Argument], coprocessors: &CoProcessors) -> Vec<String> {
     match instr {
         // load/store registers
         "li" => {
@@ -1175,7 +1139,9 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
             assert_eq!(args.len(), 1);
             let label = &args[0];
             let replacement = match label {
-                Argument::Expression(Expression::Symbol(l)) => try_coprocessor_substitution(l),
+                Argument::Expression(Expression::Symbol(l)) => {
+                    try_coprocessor_substitution(l, coprocessors)
+                }
                 _ => None,
             };
             match (replacement, instr) {
