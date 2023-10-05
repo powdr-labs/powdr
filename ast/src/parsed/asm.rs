@@ -3,6 +3,7 @@ use std::collections::VecDeque;
 use number::AbstractNumberType;
 
 use derive_more::From;
+use serde::{Deserialize, Serialize};
 
 use super::{Expression, PilStatement};
 
@@ -97,7 +98,7 @@ pub struct SymbolPath {
     pub parts: VecDeque<Part>,
 }
 
-#[derive(Default, Debug, PartialEq, Eq, Clone, PartialOrd, Ord)]
+#[derive(Serialize, Deserialize, Default, Debug, PartialEq, Eq, Clone, PartialOrd, Ord)]
 pub struct AbsoluteSymbolPath {
     pub parts: VecDeque<String>,
 }
@@ -208,7 +209,7 @@ pub struct MachineArguments {
     pub operation_id: Option<String>,
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Default)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Default)]
 pub struct ParamList {
     pub params: Vec<Param>,
 }
@@ -219,7 +220,7 @@ impl ParamList {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Default)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Default)]
 pub struct Params {
     pub inputs: ParamList,
     pub outputs: Option<ParamList>,
@@ -248,7 +249,7 @@ impl Params {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
 /// the operation id necessary to call this function from the outside
 pub struct OperationId<T> {
     pub id: T,
@@ -280,19 +281,19 @@ pub struct LinkDeclaration<T> {
     pub to: CallableRef,
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub struct CallableRef {
     pub instance: String,
     pub callable: String,
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub enum InstructionBody<T> {
     Local(Vec<PilStatement<T>>),
     CallableRef(CallableRef),
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum AssignmentRegister {
     Register(String),
     Wildcard,
@@ -321,7 +322,7 @@ pub enum FunctionStatement<T> {
     Return(usize, Vec<Expression<T>>),
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub enum DebugDirective {
     File(usize, String, String),
     Loc(usize, usize, usize),
@@ -334,7 +335,7 @@ pub enum RegisterFlag {
     IsReadOnly,
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub struct Param {
     pub name: String,
     pub ty: Option<String>,
