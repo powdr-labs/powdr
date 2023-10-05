@@ -1,7 +1,7 @@
-// Wraps an arbitrary field element into a u32, on the Goldilocks field.
-machine WrapGL(RESET, operation_id) {
+// Splits an arbitrary field element into two u32s, on the Goldilocks field.
+machine SplitGL(RESET, operation_id) {
 
-    operation wrap<0> in_acc -> output;
+    operation split<0> in_acc -> output_low, output_high;
 
     // Latch and operation ID
     col fixed RESET(i) { i % 8 == 7 };
@@ -22,9 +22,11 @@ machine WrapGL(RESET, operation_id) {
 
     // 2. Build the output, packing the least significant 4 byte into
     //    a field element
-    col witness output;
-    col fixed FACTOR_OUTPUT = [0x100, 0x10000, 0x1000000, 0, 0, 0, 0, 1]*;
-    output' = (1 - RESET) * output + bytes * FACTOR_OUTPUT;
+    col witness output_low, output_high;
+    col fixed FACTOR_OUTPUT_LOW = [0x100, 0x10000, 0x1000000, 0, 0, 0, 0, 1]*;
+    col fixed FACTOR_OUTPUT_HIGH = [0, 0, 0, 1, 0x100, 0x10000, 0x1000000, 0]*;
+    output_low' = (1 - RESET) * output_low + bytes * FACTOR_OUTPUT_LOW;
+    output_high' = (1 - RESET) * output_high + bytes * FACTOR_OUTPUT_HIGH;
 
     // 3. Check that the byte decomposition does not overflow
     //

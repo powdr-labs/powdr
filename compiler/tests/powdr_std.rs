@@ -62,8 +62,8 @@ fn poseidon_gl_test() {
 }
 
 #[test]
-fn wrap_gl_test() {
-    let f = "wrap_gl_test.asm";
+fn split_gl_test() {
+    let f = "split_gl_test.asm";
     verify_asm::<GoldilocksField>(f, Default::default());
     gen_estark_proof(f, Default::default());
 }
