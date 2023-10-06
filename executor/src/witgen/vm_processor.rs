@@ -116,7 +116,8 @@ impl<'a, T: FieldElement> VmProcessor<'a, T> {
                 }
             }
             if looping_period.is_none() && row_index != rows_left - 1 {
-                self.compute_next_row(row_index, mutable_state);
+                self.ensure_has_next_row(row_index);
+                self.compute_row(row_index, mutable_state);
             };
         }
 
@@ -146,19 +147,18 @@ impl<'a, T: FieldElement> VmProcessor<'a, T> {
         &self.data[row_index as usize]
     }
 
-    fn compute_next_row<Q>(
-        &mut self,
-        row_index: DegreeType,
-        mutable_state: &mut MutableState<'a, T, Q>,
-    ) where
+    fn ensure_has_next_row(&mut self, row_index: DegreeType) {
+        assert!(self.data.len() as DegreeType - 1 >= row_index);
+        if self.data.len() as DegreeType - 1 == row_index {
+            self.data.push(self.row_factory.fresh_row());
+        }
+    }
+
+    fn compute_row<Q>(&mut self, row_index: DegreeType, mutable_state: &mut MutableState<'a, T, Q>)
+    where
         Q: FnMut(&str) -> Option<T> + Send + Sync,
     {
         log::trace!("Row: {}", row_index);
-
-        assert_eq!(row_index, self.data.len() as DegreeType - 1);
-
-        // At this point, we do have the current row already, but we need to append a fresh next row.
-        self.data.push(self.row_factory.fresh_row());
 
         let mut identity_processor = IdentityProcessor::new(
             self.fixed_data,
@@ -439,7 +439,8 @@ impl<'a, T: FieldElement> VmProcessor<'a, T> {
             // Note that we never update the next row if proposing a row succeeds (the happy path).
             // If it doesn't, we re-run compute_next_row on the previous row in order to
             // correctly forward-propagate values via next references.
-            self.compute_next_row(row_index - 1, mutable_state);
+            self.ensure_has_next_row(row_index - 1);
+            self.compute_row(row_index - 1, mutable_state);
         }
         constraints_valid
     }
