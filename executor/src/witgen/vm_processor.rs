@@ -428,7 +428,15 @@ impl<'a, T: FieldElement> VmProcessor<'a, T> {
                 && self.check_row_pair(row_index, &proposed_row, true, &mut identity_processor);
 
         if constraints_valid {
-            self.data[row_index as usize] = proposed_row;
+            if row_index as usize == self.data.len() - 1 {
+                // We might already have added the row in [VmProcessor::ensure_has_next_row]
+                self.data[row_index as usize] = proposed_row;
+            } else {
+                // If the previous row was also added by [VmProcessor::try_propose_row], we won't have an entry
+                // for the current row yet.
+                assert_eq!(row_index as usize, self.data.len());
+                self.data.push(proposed_row);
+            }
         } else {
             // Note that we never update the next row if proposing a row succeeds (the happy path).
             // If it doesn't, we re-run compute_next_row on the previous row in order to
