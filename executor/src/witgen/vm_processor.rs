@@ -1,4 +1,4 @@
-use ast::analyzed::{Identity, IdentityKind, PolyID, PolynomialReference};
+use ast::analyzed::{Expression, Identity, IdentityKind, PolyID, PolynomialReference};
 use itertools::Itertools;
 use number::{DegreeType, FieldElement};
 use parser_util::lines::indent;
@@ -35,6 +35,8 @@ impl<'a, T: FieldElement> CompletableIdentities<'a, T> {
 }
 
 pub struct VmProcessor<'a, T: FieldElement> {
+    /// The global index of the first row of [VmProcessor::data].
+    row_offset: DegreeType,
     /// The witness columns belonging to this machine
     witnesses: HashSet<PolyID>,
     fixed_data: &'a FixedData<'a, T>,
@@ -48,21 +50,25 @@ pub struct VmProcessor<'a, T: FieldElement> {
     last_report: DegreeType,
     last_report_time: Instant,
     row_factory: RowFactory<'a, T>,
+    latch: Option<Expression<T>>,
 }
 
 impl<'a, T: FieldElement> VmProcessor<'a, T> {
     pub fn new(
+        row_offset: DegreeType,
         fixed_data: &'a FixedData<'a, T>,
         identities: &[&'a Identity<T>],
         witnesses: HashSet<PolyID>,
         data: Vec<Row<'a, T>>,
         row_factory: RowFactory<'a, T>,
+        latch: Option<Expression<T>>,
     ) -> Self {
         let (identities_with_next, identities_without_next): (Vec<_>, Vec<_>) = identities
             .iter()
             .partition(|identity| identity.contains_next_ref());
 
         VmProcessor {
+            row_offset,
             witnesses,
             fixed_data,
             identities_with_next_ref: identities_with_next,
@@ -71,6 +77,7 @@ impl<'a, T: FieldElement> VmProcessor<'a, T> {
             row_factory,
             last_report: 0,
             last_report_time: Instant::now(),
+            latch,
         }
     }
 
@@ -89,8 +96,8 @@ impl<'a, T: FieldElement> VmProcessor<'a, T> {
         // Are we in an infinite loop and can just re-use the old values?
         let mut looping_period = None;
         let mut loop_detection_log_level = log::Level::Info;
-        let rows_left = self.fixed_data.degree + 1;
-        for row_index in 0..rows_left {
+        let rows_left = self.fixed_data.degree - self.row_offset + 1;
+        for row_index in 0..rows_left as DegreeType {
             self.maybe_log_performance(row_index);
             // Check if we are in a loop.
             if looping_period.is_none() && row_index % 100 == 0 && row_index > 0 {
@@ -118,10 +125,27 @@ impl<'a, T: FieldElement> VmProcessor<'a, T> {
             if looping_period.is_none() && row_index != rows_left - 1 {
                 self.ensure_has_next_row(row_index);
                 self.compute_row(row_index, mutable_state);
+
+                if let Some(latch) = self.latch.as_ref() {
+                    let row_pair = RowPair::from_single_row(
+                        self.row(row_index),
+                        row_index + self.row_offset,
+                        self.fixed_data,
+                        UnknownStrategy::Unknown,
+                    );
+                    let latch_value = row_pair.evaluate(latch).unwrap().constant_value().unwrap();
+                    if latch_value.is_one() {
+                        log::trace!("Machine returns!");
+                        return;
+                    }
+                }
             };
         }
 
-        assert_eq!(self.data.len() as DegreeType, self.fixed_data.degree + 1);
+        assert_eq!(
+            self.data.len() as DegreeType + self.row_offset,
+            self.fixed_data.degree + 1
+        );
     }
 
     /// Checks if the last rows are repeating and returns the period.
@@ -158,7 +182,7 @@ impl<'a, T: FieldElement> VmProcessor<'a, T> {
     where
         Q: FnMut(&str) -> Option<T> + Send + Sync,
     {
-        log::trace!("Row: {}", row_index);
+        log::trace!("Row: {}", row_index + self.row_offset);
 
         let mut identity_processor = IdentityProcessor::new(
             self.fixed_data,
@@ -244,7 +268,7 @@ impl<'a, T: FieldElement> VmProcessor<'a, T> {
                 let row_pair = RowPair::new(
                     self.row(row_index),
                     self.row(row_index + 1),
-                    row_index,
+                    row_index + self.row_offset,
                     self.fixed_data,
                     UnknownStrategy::Unknown,
                 );
@@ -297,7 +321,7 @@ impl<'a, T: FieldElement> VmProcessor<'a, T> {
             let row_pair = RowPair::new(
                 self.row(row_index),
                 self.row(row_index + 1),
-                row_index,
+                row_index + self.row_offset,
                 self.fixed_data,
                 unknown_strategy,
             );
@@ -339,7 +363,7 @@ impl<'a, T: FieldElement> VmProcessor<'a, T> {
         let (before, after) = self.data.split_at_mut(row_index as usize + 1);
         let current = before.last_mut().unwrap();
         let next = after.first_mut().unwrap();
-        let mut row_updater = RowUpdater::new(current, next, row_index);
+        let mut row_updater = RowUpdater::new(current, next, row_index + self.row_offset);
         row_updater.apply_updates(updates, source_name)
     }
 
@@ -350,7 +374,7 @@ impl<'a, T: FieldElement> VmProcessor<'a, T> {
     ) -> ! {
         log::error!(
             "\nError: Row {} failed. Set RUST_LOG=debug for more information.\n",
-            row_index
+            row_index + self.row_offset
         );
         log::debug!("Some identities where not satisfiable after the following values were uniquely determined (known nonzero first, then zero, unknown omitted):");
         log::debug!(
@@ -381,7 +405,7 @@ impl<'a, T: FieldElement> VmProcessor<'a, T> {
     ) -> ! {
         log::error!(
             "\nError: Row {} failed. Set RUST_LOG=debug for more information.\n",
-            row_index
+            row_index + self.row_offset
         );
 
         log::debug!("Some columns could not be determined, but setting them to zero does not satisfy the constraints. This typically means that the system is underconstrained!");
@@ -460,7 +484,7 @@ impl<'a, T: FieldElement> VmProcessor<'a, T> {
             true => RowPair::new(
                 self.row(row_index - 1),
                 proposed_row,
-                row_index - 1,
+                row_index + self.row_offset - 1,
                 self.fixed_data,
                 UnknownStrategy::Zero,
             ),
@@ -469,7 +493,7 @@ impl<'a, T: FieldElement> VmProcessor<'a, T> {
             // Because we never access the next row, we can use [RowPair::from_single_row] here.
             false => RowPair::from_single_row(
                 proposed_row,
-                row_index,
+                row_index + self.row_offset,
                 self.fixed_data,
                 UnknownStrategy::Zero,
             ),
@@ -514,10 +538,11 @@ impl<'a, T: FieldElement> VmProcessor<'a, T> {
                 .sum::<u64>()
                 / identities_count;
 
+            let row = row_index + self.row_offset;
             log::info!(
-                "{row_index} of {} rows ({}%) - {} rows/s, {identities_per_sec}k identities/s, {progress_percentage}% progress",
+                "{row} of {} rows ({}%) - {} rows/s, {identities_per_sec}k identities/s, {progress_percentage}% progress",
                 self.fixed_data.degree,
-                row_index * 100 / self.fixed_data.degree,
+                row * 100 / self.fixed_data.degree,
                 1_000_000_000 / duration.as_micros()
             );
             self.last_report = row_index;

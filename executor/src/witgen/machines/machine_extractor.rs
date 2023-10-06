@@ -123,6 +123,8 @@ pub fn split_out_machines<'a, T: FieldElement>(
                 &machine_identities,
                 machine_witnesses,
                 global_range_constraints,
+                // TODO: Set correct latch expression
+                None,
             )));
         }
     }

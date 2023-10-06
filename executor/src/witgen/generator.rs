@@ -1,4 +1,6 @@
-use ast::analyzed::{Identity, IdentityKind, PolyID, PolynomialReference, SelectedExpressions};
+use ast::analyzed::{
+    Expression, Identity, IdentityKind, PolyID, PolynomialReference, SelectedExpressions,
+};
 use number::{DegreeType, FieldElement};
 use std::collections::{HashMap, HashSet};
 
@@ -23,6 +25,7 @@ pub struct Generator<'a, T: FieldElement> {
     witnesses: HashSet<PolyID>,
     global_range_constraints: WitnessColumnMap<Option<RangeConstraint<T>>>,
     data: Vec<Row<'a, T>>,
+    latch: Option<Expression<T>>,
 }
 
 impl<'a, T: FieldElement> Machine<'a, T> for Generator<'a, T> {
@@ -57,6 +60,7 @@ impl<'a, T: FieldElement> Generator<'a, T> {
         identities: &[&'a Identity<T>],
         witnesses: HashSet<PolyID>,
         global_range_constraints: &WitnessColumnMap<Option<RangeConstraint<T>>>,
+        latch: Option<Expression<T>>,
     ) -> Self {
         Self {
             fixed_data,
@@ -64,6 +68,7 @@ impl<'a, T: FieldElement> Generator<'a, T> {
             witnesses,
             global_range_constraints: global_range_constraints.clone(),
             data: vec![],
+            latch,
         }
     }
 
@@ -72,7 +77,22 @@ impl<'a, T: FieldElement> Generator<'a, T> {
         Q: FnMut(&str) -> Option<T> + Send + Sync,
     {
         let first_row = self.compute_partial_first_row(mutable_state);
-        self.data = self.process(first_row, mutable_state);
+
+        self.data = self.process(first_row, 0, mutable_state);
+
+        if self.data.len() < self.fixed_data.degree as usize + 1 {
+            assert!(self.latch.is_some());
+
+            let mut first_row = self.data.pop().unwrap();
+            self.set_default_operation_id(&mut first_row);
+
+            self.data.append(&mut self.process(
+                first_row,
+                self.data.len() as DegreeType,
+                mutable_state,
+            ));
+        }
+
         self.fix_first_row();
     }
 
@@ -113,23 +133,41 @@ impl<'a, T: FieldElement> Generator<'a, T> {
         first_row
     }
 
+    fn set_default_operation_id(&self, row: &mut Row<'a, T>) {
+        let rom_line_column = self.fixed_data.fixed_column_by_name("main.p_line").unwrap();
+        let default_operation_id = rom_line_column.values.iter().max().unwrap();
+        let operation_id_column = self
+            .fixed_data
+            .witness_column_by_name("main._operation_id")
+            .unwrap();
+        assert!(self.witnesses.contains(&operation_id_column.id));
+
+        row[&operation_id_column.id].value = CellValue::Known(*default_operation_id);
+    }
+
     fn process<Q>(
         &self,
         first_row: Row<'a, T>,
+        row_offset: DegreeType,
         mutable_state: &mut MutableState<'a, T, Q>,
     ) -> Vec<Row<'a, T>>
     where
         Q: FnMut(&str) -> Option<T> + Send + Sync,
     {
-        log::trace!("{}", first_row.render("first row", false, &self.witnesses));
+        log::trace!(
+            "Running main machine from row {row_offset} with the following initial values: {}",
+            first_row.render_values(false, None)
+        );
         let data = vec![first_row];
         let row_factory = RowFactory::new(self.fixed_data, self.global_range_constraints.clone());
         let mut processor = VmProcessor::new(
+            row_offset,
             self.fixed_data,
             &self.identities,
             self.witnesses.clone(),
             data,
             row_factory,
+            self.latch.clone(),
         );
         processor.run(mutable_state);
         processor.finish()

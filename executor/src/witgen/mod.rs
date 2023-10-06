@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 
 use ast::analyzed::{
     Analyzed, Expression, FunctionValueDefinition, PolyID, PolynomialReference, PolynomialType,
+    Reference,
 };
 use num_traits::Zero;
 use number::{DegreeType, FieldElement};
@@ -82,11 +83,24 @@ where
         machines,
         query_callback,
     };
+
+    let main_latch = fixed
+        .witness_column_by_name("main.instr_return")
+        .map(|col| {
+            Expression::Reference(Reference::Poly(PolynomialReference {
+                name: col.name.clone(),
+                poly_id: Some(col.id),
+                index: None,
+                next: false,
+            }))
+        });
+
     let mut generator = Generator::new(
         &fixed,
         &base_identities,
         base_witnesses,
         &known_witness_constraints,
+        main_latch,
     );
 
     generator.run(&mut mutable_state);
@@ -162,6 +176,20 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
             PolynomialType::Intermediate => unimplemented!(),
         }
     }
+
+    fn witness_column_by_name(&self, name: &str) -> Option<&WitnessColumn<'a, T>> {
+        self.witness_cols
+            .iter()
+            .find(|(_, col)| col.name == name)
+            .map(|(_, col)| col)
+    }
+
+    fn fixed_column_by_name(&self, name: &str) -> Option<&FixedColumn<'a, T>> {
+        self.fixed_cols
+            .iter()
+            .find(|(_, col)| col.name == name)
+            .map(|(_, col)| col)
+    }
 }
 
 pub struct FixedColumn<'a, T> {
@@ -188,6 +216,7 @@ pub struct Query<'a, T> {
 pub struct WitnessColumn<'a, T> {
     name: String,
     query: Option<Query<'a, T>>,
+    id: PolyID,
 }
 
 impl<'a, T> WitnessColumn<'a, T> {
@@ -202,12 +231,13 @@ impl<'a, T> WitnessColumn<'a, T> {
             None
         };
         let name = name.to_string();
+        let id = PolyID {
+            id: id as u64,
+            ptype: PolynomialType::Committed,
+        };
         let query = query.as_ref().map(|callback| {
             let poly = PolynomialReference {
-                poly_id: Some(PolyID {
-                    id: id as u64,
-                    ptype: PolynomialType::Committed,
-                }),
+                poly_id: Some(id),
                 name: name.clone(),
                 next: false,
                 index: None,
@@ -217,6 +247,6 @@ impl<'a, T> WitnessColumn<'a, T> {
                 expr: callback,
             }
         });
-        WitnessColumn { name, query }
+        WitnessColumn { name, query, id }
     }
 }
