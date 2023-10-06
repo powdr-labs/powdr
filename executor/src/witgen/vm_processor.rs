@@ -148,8 +148,8 @@ impl<'a, T: FieldElement> VmProcessor<'a, T> {
     }
 
     fn ensure_has_next_row(&mut self, row_index: DegreeType) {
-        assert!(self.data.len() as DegreeType - 1 >= row_index);
-        if self.data.len() as DegreeType - 1 == row_index {
+        assert!(self.data.len() as DegreeType > row_index);
+        if row_index == self.data.len() as DegreeType - 1 {
             self.data.push(self.row_factory.fresh_row());
         }
     }
