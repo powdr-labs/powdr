@@ -418,12 +418,6 @@ impl<'a, T: FieldElement> VmProcessor<'a, T> {
     where
         Q: FnMut(&str) -> Option<T> + Send + Sync,
     {
-        if row_index == self.data.len() as DegreeType - 1 {
-            // We
-            self.data.pop();
-        }
-        assert_eq!(row_index, self.data.len() as DegreeType);
-
         let mut identity_processor = IdentityProcessor::new(
             self.fixed_data,
             &mut mutable_state.fixed_lookup,
@@ -434,7 +428,7 @@ impl<'a, T: FieldElement> VmProcessor<'a, T> {
                 && self.check_row_pair(row_index, &proposed_row, true, &mut identity_processor);
 
         if constraints_valid {
-            self.data.push(proposed_row);
+            self.data[row_index as usize] = proposed_row;
         } else {
             // Note that we never update the next row if proposing a row succeeds (the happy path).
             // If it doesn't, we re-run compute_next_row on the previous row in order to
@@ -464,7 +458,7 @@ impl<'a, T: FieldElement> VmProcessor<'a, T> {
             ),
             // Check whether identities without a reference to the next row are satisfied
             // when applied to the proposed row.
-            // Note that we also provide the next row here, but it is not used.
+            // Because we never access the next row, we can use [RowPair::from_single_row] here.
             false => RowPair::from_single_row(
                 proposed_row,
                 row_index,

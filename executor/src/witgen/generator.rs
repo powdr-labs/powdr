@@ -72,7 +72,7 @@ impl<'a, T: FieldElement> Generator<'a, T> {
         Q: FnMut(&str) -> Option<T> + Send + Sync,
     {
         let first_row = self.compute_partial_first_row(mutable_state);
-        let data = self.process(first_row, mutable_state);
+        self.data = self.process(first_row, mutable_state);
         self.fix_first_row();
     }
 
