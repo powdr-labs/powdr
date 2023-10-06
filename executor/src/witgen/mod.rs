@@ -84,6 +84,8 @@ where
         query_callback,
     };
 
+    // If the main machine is a VM that has been compiled from Powdr ASM, there
+    // will be a `main.instr_return` witness column that represents the latch.
     let main_latch = fixed
         .witness_column_by_name("main.instr_return")
         .map(|col| {

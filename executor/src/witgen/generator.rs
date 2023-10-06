@@ -133,6 +133,11 @@ impl<'a, T: FieldElement> Generator<'a, T> {
         first_row
     }
 
+    /// Sets the "default" operation ID in the given row.
+    /// This assumes that there is a fixed column `main.p_line` and a witness column
+    /// `main._operation_id`, which will be the case if the PIL has been compiled from
+    /// Powdr ASM. By convention, the operation ID is last line of the ROM, i.e., the
+    /// largest value in `main.p_line`.
     fn set_default_operation_id(&self, row: &mut Row<'a, T>) {
         let rom_line_column = self.fixed_data.fixed_column_by_name("main.p_line").unwrap();
         let default_operation_id = rom_line_column.values.iter().max().unwrap();

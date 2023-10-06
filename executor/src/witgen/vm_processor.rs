@@ -85,8 +85,8 @@ impl<'a, T: FieldElement> VmProcessor<'a, T> {
         self.data
     }
 
-    /// Starting out with a single row, iteratively append rows until we have degree + 1 rows
-    /// (i.e., we have the first row twice).
+    /// Starting out with a single row (at a given offset), iteratively append rows
+    /// until we have exhausted the rows or the latch expression evaluates to 1.
     pub fn run<Q>(&mut self, mutable_state: &mut MutableState<'a, T, Q>)
     where
         Q: FnMut(&str) -> Option<T> + Send + Sync,
@@ -97,7 +97,7 @@ impl<'a, T: FieldElement> VmProcessor<'a, T> {
         let mut looping_period = None;
         let mut loop_detection_log_level = log::Level::Info;
         let rows_left = self.fixed_data.degree - self.row_offset + 1;
-        for row_index in 0..rows_left as DegreeType {
+        for row_index in 0..rows_left {
             self.maybe_log_performance(row_index);
             // Check if we are in a loop.
             if looping_period.is_none() && row_index % 100 == 0 && row_index > 0 {
@@ -127,6 +127,7 @@ impl<'a, T: FieldElement> VmProcessor<'a, T> {
                 self.compute_row(row_index, mutable_state);
 
                 if let Some(latch) = self.latch.as_ref() {
+                    // Evaluate latch expression and return if it evaluates to 1.
                     let row_pair = RowPair::from_single_row(
                         self.row(row_index),
                         row_index + self.row_offset,
