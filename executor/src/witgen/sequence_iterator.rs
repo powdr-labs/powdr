@@ -38,7 +38,6 @@ const MAX_ROUNDS_PER_ROW_DELTA: usize = 100;
 
 impl DefaultSequenceIterator {
     pub fn new(block_size: usize, identities_count: usize, outer_query_row: Option<i64>) -> Self {
-        assert!(block_size >= 1);
         let max_row = block_size as i64 - 1;
         DefaultSequenceIterator {
             identities_count,
@@ -113,7 +112,7 @@ impl DefaultSequenceIterator {
     pub fn next(&mut self) -> Option<SequenceStep> {
         self.update_state();
 
-        if self.cur_row_delta_index == self.row_deltas.len() {
+        if self.cur_row_delta_index == self.row_deltas.len() || self.identities_count == 0 {
             // Done!
             return None;
         }

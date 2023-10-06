@@ -11,15 +11,8 @@ use crate::witgen::rows::RowUpdater;
 
 use super::query_processor::QueryProcessor;
 
-use super::rows::{Row, RowPair, UnknownStrategy};
+use super::rows::{Row, RowFactory, RowPair, UnknownStrategy};
 use super::{EvalError, EvalResult, EvalValue, FixedData, MutableState};
-
-/// Phase in which [VmProcessor::compute_row] is called.
-#[derive(Debug, PartialEq)]
-enum ProcessingPhase {
-    Initialization,
-    Regular,
-}
 
 /// A list of identities with a flag whether it is complete.
 struct CompletableIdentities<'a, T: FieldElement> {
@@ -54,6 +47,7 @@ pub struct VmProcessor<'a, T: FieldElement> {
     data: Vec<Row<'a, T>>,
     last_report: DegreeType,
     last_report_time: Instant,
+    row_factory: RowFactory<'a, T>,
 }
 
 impl<'a, T: FieldElement> VmProcessor<'a, T> {
@@ -62,6 +56,7 @@ impl<'a, T: FieldElement> VmProcessor<'a, T> {
         identities: &[&'a Identity<T>],
         witnesses: HashSet<PolyID>,
         data: Vec<Row<'a, T>>,
+        row_factory: RowFactory<'a, T>,
     ) -> Self {
         let (identities_with_next, identities_without_next): (Vec<_>, Vec<_>) = identities
             .iter()
@@ -73,6 +68,7 @@ impl<'a, T: FieldElement> VmProcessor<'a, T> {
             identities_with_next_ref: identities_with_next,
             identities_without_next_ref: identities_without_next,
             data,
+            row_factory,
             last_report: 0,
             last_report_time: Instant::now(),
         }
@@ -82,21 +78,11 @@ impl<'a, T: FieldElement> VmProcessor<'a, T> {
         self.data
     }
 
-    fn last_row(&self) -> DegreeType {
-        self.fixed_data.degree - 1
-    }
-
     pub fn run<Q>(&mut self, mutable_state: &mut MutableState<'a, T, Q>)
     where
         Q: FnMut(&str) -> Option<T> + Send + Sync,
     {
-        // For identities like `pc' = (1 - first_step') * <...>`, we need to process the last
-        // row before processing the first row.
-        self.compute_row(
-            self.last_row(),
-            ProcessingPhase::Initialization,
-            mutable_state,
-        );
+        assert!(self.data.len() == 1);
 
         // Are we in an infinite loop and can just re-use the old values?
         let mut looping_period = None;
@@ -127,8 +113,10 @@ impl<'a, T: FieldElement> VmProcessor<'a, T> {
                 }
             }
             if looping_period.is_none() {
-                self.compute_row(row_index, ProcessingPhase::Regular, mutable_state);
+                self.compute_row(row_index, mutable_state);
             };
+
+            // TODO: return if latch (instr_return?) is 1
         }
     }
 
@@ -152,19 +140,19 @@ impl<'a, T: FieldElement> VmProcessor<'a, T> {
 
     // Returns a reference to a given row
     fn row(&self, row_index: DegreeType) -> &Row<'a, T> {
-        let row_index = (row_index + self.fixed_data.degree) % self.fixed_data.degree;
         &self.data[row_index as usize]
     }
 
-    fn compute_row<Q>(
-        &mut self,
-        row_index: DegreeType,
-        phase: ProcessingPhase,
-        mutable_state: &mut MutableState<'a, T, Q>,
-    ) where
+    fn compute_row<Q>(&mut self, row_index: DegreeType, mutable_state: &mut MutableState<'a, T, Q>)
+    where
         Q: FnMut(&str) -> Option<T> + Send + Sync,
     {
         log::trace!("Row: {}", row_index);
+
+        assert_eq!(row_index, self.data.len() as DegreeType - 1);
+
+        // At this point, we do have the current row already, but we need to append a fresh next row.
+        self.data.push(self.row_factory.fresh_row());
 
         let mut identity_processor = IdentityProcessor::new(
             self.fixed_data,
@@ -202,30 +190,23 @@ impl<'a, T: FieldElement> VmProcessor<'a, T> {
 
         // Check that the computed row is "final" by asserting that all unknown values can
         // be set to 0.
-        // This check is skipped in the initialization phase (run on the last row),
-        // because its only purpose is to transfer values to the first row,
-        // not to finalize the last row.
-        if phase == ProcessingPhase::Regular {
-            log::trace!(
-                "  Checking that remaining identities hold when unknown values are set to 0"
-            );
+        log::trace!("  Checking that remaining identities hold when unknown values are set to 0");
+        self.process_identities(
+            row_index,
+            &mut identities_without_next_ref,
+            UnknownStrategy::Zero,
+            &mut identity_processor,
+        )
+        .and_then(|_| {
             self.process_identities(
                 row_index,
-                &mut identities_without_next_ref,
+                &mut identities_with_next_ref,
                 UnknownStrategy::Zero,
                 &mut identity_processor,
             )
-            .and_then(|_| {
-                self.process_identities(
-                    row_index,
-                    &mut identities_with_next_ref,
-                    UnknownStrategy::Zero,
-                    &mut identity_processor,
-                )
-            })
-            .map_err(|e| self.report_failure_and_panic_underconstrained(row_index, e))
-            .unwrap();
-        }
+        })
+        .map_err(|e| self.report_failure_and_panic_underconstrained(row_index, e))
+        .unwrap();
 
         log::trace!(
             "{}",
@@ -349,13 +330,7 @@ impl<'a, T: FieldElement> VmProcessor<'a, T> {
         updates: &EvalValue<&PolynomialReference, T>,
         source_name: impl Fn() -> String,
     ) -> bool {
-        let (before, after) = if row_index == self.last_row() {
-            // Last row is current, first row is next
-            let (after, before) = self.data.split_at_mut(row_index as usize);
-            (before, after)
-        } else {
-            self.data.split_at_mut(row_index as usize + 1)
-        };
+        let (before, after) = self.data.split_at_mut(row_index as usize + 1);
         let current = before.last_mut().unwrap();
         let next = after.first_mut().unwrap();
         let mut row_updater = RowUpdater::new(current, next, row_index);
@@ -437,6 +412,12 @@ impl<'a, T: FieldElement> VmProcessor<'a, T> {
     where
         Q: FnMut(&str) -> Option<T> + Send + Sync,
     {
+        if row_index == self.data.len() as DegreeType - 1 {
+            // We
+            self.data.pop();
+        }
+        assert_eq!(row_index, self.data.len() as DegreeType);
+
         let mut identity_processor = IdentityProcessor::new(
             self.fixed_data,
             &mut mutable_state.fixed_lookup,
@@ -447,12 +428,12 @@ impl<'a, T: FieldElement> VmProcessor<'a, T> {
                 && self.check_row_pair(row_index, &proposed_row, true, &mut identity_processor);
 
         if constraints_valid {
-            self.data[row_index as usize] = proposed_row;
+            self.data.push(proposed_row);
         } else {
             // Note that we never update the next row if proposing a row succeeds (the happy path).
             // If it doesn't, we re-run compute_next_row on the previous row in order to
             // correctly forward-propagate values via next references.
-            self.compute_row(row_index - 1, ProcessingPhase::Regular, mutable_state);
+            self.compute_row(row_index - 1, mutable_state);
         }
         constraints_valid
     }
@@ -477,9 +458,8 @@ impl<'a, T: FieldElement> VmProcessor<'a, T> {
             // Check whether identities without a reference to the next row are satisfied
             // when applied to the proposed row.
             // Note that we also provide the next row here, but it is not used.
-            false => RowPair::new(
+            false => RowPair::from_single_row(
                 proposed_row,
-                self.row(row_index + 1),
                 row_index,
                 self.fixed_data,
                 UnknownStrategy::Zero,
