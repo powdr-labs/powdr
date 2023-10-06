@@ -71,33 +71,12 @@ impl<'a, T: FieldElement> Generator<'a, T> {
     where
         Q: FnMut(&str) -> Option<T> + Send + Sync,
     {
-        // For identities like `pc' = (1 - first_step') * <...>`, we need to process the last
-        // row before processing the first row.
-        let mut identity_processor = IdentityProcessor::new(
-            self.fixed_data,
-            &mut mutable_state.fixed_lookup,
-            mutable_state.machines.iter_mut().into(),
-        );
-        let row_factory = RowFactory::new(self.fixed_data, self.global_range_constraints.clone());
-        let data = vec![row_factory.fresh_row(); 2];
-        let mut processor = Processor::new(
-            self.fixed_data.degree - 1,
-            data,
-            &mut identity_processor,
-            &self.identities,
-            self.fixed_data,
-            &self.witnesses,
-        );
-        let mut sequence_iterator = ProcessingSequenceIterator::Default(
-            DefaultSequenceIterator::new(0, self.identities.len(), None),
-        );
-        processor.solve(&mut sequence_iterator).unwrap();
-        let first_row = processor.finish().remove(1);
-
+        let first_row = self.compute_first_row(mutable_state);
         log::trace!("{}", first_row.render("first row", false, &self.witnesses));
 
         let data = vec![first_row];
 
+        let row_factory = RowFactory::new(self.fixed_data, self.global_range_constraints.clone());
         let mut processor = VmProcessor::new(
             self.fixed_data,
             &self.identities,
@@ -122,5 +101,33 @@ impl<'a, T: FieldElement> Generator<'a, T> {
         assert_eq!(data.len(), self.fixed_data.degree as usize);
 
         self.data = data;
+    }
+
+    fn compute_first_row<Q>(&self, mutable_state: &mut MutableState<'a, T, Q>) -> Row<'a, T>
+    where
+        Q: FnMut(&str) -> Option<T> + Send + Sync,
+    {
+        // For identities like `pc' = (1 - first_step') * <...>`, we need to process the last
+        // row before processing the first row.
+        let mut identity_processor = IdentityProcessor::new(
+            self.fixed_data,
+            &mut mutable_state.fixed_lookup,
+            mutable_state.machines.iter_mut().into(),
+        );
+        let row_factory = RowFactory::new(self.fixed_data, self.global_range_constraints.clone());
+        let data = vec![row_factory.fresh_row(); 2];
+        let mut processor = Processor::new(
+            self.fixed_data.degree - 1,
+            data,
+            &mut identity_processor,
+            &self.identities,
+            self.fixed_data,
+            &self.witnesses,
+        );
+        let mut sequence_iterator = ProcessingSequenceIterator::Default(
+            DefaultSequenceIterator::new(0, self.identities.len(), None),
+        );
+        processor.solve(&mut sequence_iterator).unwrap();
+        processor.finish().remove(1)
     }
 }
