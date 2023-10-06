@@ -8,7 +8,7 @@ use crate::witgen::Constraint;
 use super::{
     affine_expression::AffineExpression,
     identity_processor::IdentityProcessor,
-    rows::{Row, RowPair, RowUpdater, UnknownStrategy},
+    rows::{Row, RowFactory, RowPair, RowUpdater, UnknownStrategy},
     sequence_iterator::{IdentityInSequence, ProcessingSequenceIterator, SequenceStep},
     Constraints, EvalError, EvalValue, FixedData,
 };
@@ -51,6 +51,8 @@ pub struct Processor<'a, 'b, 'c, T: FieldElement, CalldataAvailable> {
     identity_processor: &'c mut IdentityProcessor<'a, 'b, T>,
     /// The fixed data (containing information about all columns)
     fixed_data: &'a FixedData<'a, T>,
+    /// The row factory
+    row_factory: RowFactory<'a, T>,
     /// The set of witness columns that are actually part of this machine.
     witness_cols: &'c HashSet<PolyID>,
     /// The outer query, if any. If there is none, processing an outer query will fail.
@@ -65,6 +67,7 @@ impl<'a, 'b, 'c, T: FieldElement> Processor<'a, 'b, 'c, T, WithoutCalldata> {
         identity_processor: &'c mut IdentityProcessor<'a, 'b, T>,
         identities: &'c [&'a Identity<T>],
         fixed_data: &'a FixedData<'a, T>,
+        row_factory: RowFactory<'a, T>,
         witness_cols: &'c HashSet<PolyID>,
     ) -> Self {
         Self {
@@ -73,6 +76,7 @@ impl<'a, 'b, 'c, T: FieldElement> Processor<'a, 'b, 'c, T, WithoutCalldata> {
             identity_processor,
             identities,
             fixed_data,
+            row_factory,
             witness_cols,
             outer_query: None,
             _marker: PhantomData,
@@ -91,6 +95,7 @@ impl<'a, 'b, 'c, T: FieldElement> Processor<'a, 'b, 'c, T, WithoutCalldata> {
             identity_processor: self.identity_processor,
             identities: self.identities,
             fixed_data: self.fixed_data,
+            row_factory: self.row_factory,
             witness_cols: self.witness_cols,
         }
     }
@@ -167,7 +172,7 @@ impl<'a, 'b, T: FieldElement, CalldataAvailable> Processor<'a, 'b, '_, T, Callda
         let identity = &self.identities[identity_index];
 
         // Create row pair
-        let global_row_index = (self.row_offset + row_index as u64) % self.fixed_data.degree;
+        let global_row_index = self.row_offset + row_index as u64;
         let row_pair = RowPair::new(
             &self.data[row_index],
             &self.data[row_index + 1],
@@ -209,11 +214,10 @@ impl<'a, 'b, T: FieldElement, CalldataAvailable> Processor<'a, 'b, '_, T, Callda
             .as_mut()
             .expect("Asked to process outer query, but it was not set!");
 
-        let global_row_index = (self.row_offset + row_index as u64) % self.fixed_data.degree;
         let row_pair = RowPair::new(
             &self.data[row_index],
             &self.data[row_index + 1],
-            global_row_index,
+            self.row_offset + row_index as u64,
             self.fixed_data,
             UnknownStrategy::Unknown,
         );
@@ -341,6 +345,7 @@ mod tests {
             &mut identity_processor,
             &identities,
             &fixed_data,
+            row_factory,
             &witness_cols,
         );
 

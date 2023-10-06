@@ -122,6 +122,7 @@ impl<'a, T: FieldElement> Generator<'a, T> {
             &mut identity_processor,
             &self.identities,
             self.fixed_data,
+            row_factory,
             &self.witnesses,
         );
         let mut sequence_iterator = ProcessingSequenceIterator::Default(
