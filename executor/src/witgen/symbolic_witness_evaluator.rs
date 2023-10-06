@@ -46,11 +46,11 @@ where
         } else {
             // Constant polynomial (or something else)
             let values = self.fixed_data.fixed_cols[&poly.poly_id()].values;
+            let degree = values.len() as DegreeType;
             let row = if poly.next {
-                let degree = values.len() as DegreeType;
                 (self.row + 1) % degree
             } else {
-                self.row
+                self.row % degree
             };
             Ok(values[row as usize].into())
         }

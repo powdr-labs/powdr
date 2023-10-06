@@ -78,6 +78,8 @@ impl<'a, T: FieldElement> VmProcessor<'a, T> {
         self.data
     }
 
+    /// Starting out with a single row, iteratively append rows until we have degree + 1 rows
+    /// (i.e., we have the first row twice).
     pub fn run<Q>(&mut self, mutable_state: &mut MutableState<'a, T, Q>)
     where
         Q: FnMut(&str) -> Option<T> + Send + Sync,
@@ -87,7 +89,8 @@ impl<'a, T: FieldElement> VmProcessor<'a, T> {
         // Are we in an infinite loop and can just re-use the old values?
         let mut looping_period = None;
         let mut loop_detection_log_level = log::Level::Info;
-        for row_index in 0..self.fixed_data.degree as DegreeType {
+        let rows_left = self.fixed_data.degree + 1;
+        for row_index in 0..rows_left {
             self.maybe_log_performance(row_index);
             // Check if we are in a loop.
             if looping_period.is_none() && row_index % 100 == 0 && row_index > 0 {
@@ -112,12 +115,12 @@ impl<'a, T: FieldElement> VmProcessor<'a, T> {
                     loop_detection_log_level = log::Level::Debug;
                 }
             }
-            if looping_period.is_none() {
-                self.compute_row(row_index, mutable_state);
+            if looping_period.is_none() && row_index != rows_left - 1 {
+                self.compute_next_row(row_index, mutable_state);
             };
-
-            // TODO: return if latch (instr_return?) is 1
         }
+
+        assert_eq!(self.data.len() as DegreeType, self.fixed_data.degree + 1);
     }
 
     /// Checks if the last rows are repeating and returns the period.
@@ -143,8 +146,11 @@ impl<'a, T: FieldElement> VmProcessor<'a, T> {
         &self.data[row_index as usize]
     }
 
-    fn compute_row<Q>(&mut self, row_index: DegreeType, mutable_state: &mut MutableState<'a, T, Q>)
-    where
+    fn compute_next_row<Q>(
+        &mut self,
+        row_index: DegreeType,
+        mutable_state: &mut MutableState<'a, T, Q>,
+    ) where
         Q: FnMut(&str) -> Option<T> + Send + Sync,
     {
         log::trace!("Row: {}", row_index);
@@ -433,7 +439,7 @@ impl<'a, T: FieldElement> VmProcessor<'a, T> {
             // Note that we never update the next row if proposing a row succeeds (the happy path).
             // If it doesn't, we re-run compute_next_row on the previous row in order to
             // correctly forward-propagate values via next references.
-            self.compute_row(row_index - 1, mutable_state);
+            self.compute_next_row(row_index - 1, mutable_state);
         }
         constraints_valid
     }

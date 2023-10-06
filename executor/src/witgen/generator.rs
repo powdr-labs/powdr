@@ -86,21 +86,9 @@ impl<'a, T: FieldElement> Generator<'a, T> {
         );
         processor.run(mutable_state);
 
-        let mut data = processor.finish();
+        self.data = processor.finish();
 
-        if data.len() as DegreeType == self.fixed_data.degree + 1 {
-            let last_row = data.pop().unwrap();
-            data[0] = WitnessColumnMap::from(data[0].values().zip(last_row.values()).map(
-                |(cell1, cell2)| match cell1.value {
-                    CellValue::Known(_) => cell1.clone(),
-                    _ => cell2.clone(),
-                },
-            ))
-        }
-
-        assert_eq!(data.len(), self.fixed_data.degree as usize);
-
-        self.data = data;
+        self.fix_first_row();
     }
 
     fn compute_first_row<Q>(&self, mutable_state: &mut MutableState<'a, T, Q>) -> Row<'a, T>
@@ -130,5 +118,17 @@ impl<'a, T: FieldElement> Generator<'a, T> {
         );
         processor.solve(&mut sequence_iterator).unwrap();
         processor.finish().remove(1)
+    }
+
+    fn fix_first_row(&mut self) {
+        assert_eq!(self.data.len() as DegreeType, self.fixed_data.degree + 1);
+
+        let last_row = self.data.pop().unwrap();
+        self.data[0] = WitnessColumnMap::from(self.data[0].values().zip(last_row.values()).map(
+            |(cell1, cell2)| match cell1.value {
+                CellValue::Known(_) => cell1.clone(),
+                _ => cell2.clone(),
+            },
+        ));
     }
 }
