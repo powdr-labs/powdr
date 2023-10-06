@@ -313,6 +313,7 @@ pub struct RowPair<'row, 'a, T: FieldElement> {
     unknown_strategy: UnknownStrategy,
 }
 impl<'row, 'a, T: FieldElement> RowPair<'row, 'a, T> {
+    /// Creates a new row pair.
     pub fn new(
         current: &'row Row<'a, T>,
         next: &'row Row<'a, T>,
@@ -329,6 +330,7 @@ impl<'row, 'a, T: FieldElement> RowPair<'row, 'a, T> {
         }
     }
 
+    /// Creates a new row pair from a single row, setting the next row to None.
     pub fn from_single_row(
         current: &'row Row<'a, T>,
         current_row_index: DegreeType,
@@ -344,10 +346,16 @@ impl<'row, 'a, T: FieldElement> RowPair<'row, 'a, T> {
         }
     }
 
+    /// Gets the cell corresponding to the given polynomial reference.
+    ///
+    /// # Panics
+    /// Panics if the next row is accessed but the row pair has been constructed with
+    /// [RowPair::from_single_row].
     fn get_cell(&self, poly: &PolynomialReference) -> &Cell<T> {
-        match poly.next {
-            false => &self.current[&poly.poly_id()],
-            true => &self.next.as_ref().unwrap()[&poly.poly_id()],
+        match (poly.next, self.next.as_ref()) {
+            (false, _) => &self.current[&poly.poly_id()],
+            (true, Some(next)) => &next[&poly.poly_id()],
+            (true, None) => panic!("Tried to access next row, but it is not available."),
         }
     }
 
