@@ -213,10 +213,7 @@ mod test {
         let expectation = r#"
         namespace main(8);
 pol commit _operation_id;
-pol commit _sigma;
 pol constant _romgen_first_step = [1] + [0]*;
-_sigma' = ((1 - _romgen_first_step') * (_sigma + instr_return));
-(_sigma * (_operation_id - 2)) = 0;
 pol commit pc;
 pol commit instr__jump_to_operation;
 pol commit instr__reset;
@@ -252,10 +249,7 @@ _operation_id_no_change = ((1 - _block_enforcer_last_step) * (1 - instr_return))
         let expectation = r#"
         namespace main(16);
 pol commit _operation_id;
-pol commit _sigma;
 pol constant _romgen_first_step = [1] + [0]*;
-_sigma' = ((1 - _romgen_first_step') * (_sigma + instr_return));
-(_sigma * (_operation_id - 4)) = 0;
 pol commit pc;
 pol commit X;
 pol commit Y;
@@ -315,10 +309,7 @@ pol constant _linker_first_step = [1] + [0]*;
 (_linker_first_step * (_operation_id - 2)) = 0;
 namespace main_sub(16);
 pol commit _operation_id;
-pol commit _sigma;
 pol constant _romgen_first_step = [1] + [0]*;
-_sigma' = ((1 - _romgen_first_step') * (_sigma + instr_return));
-(_sigma * (_operation_id - 5)) = 0;
 pol commit pc;
 pol commit _input_0;
 pol commit _output_0;
@@ -371,10 +362,7 @@ XIsZero = (1 - (X * XInv));
 (XIsZero * X) = 0;
 (XIsZero * (1 - XIsZero)) = 0;
 pol commit _operation_id;
-pol commit _sigma;
 pol constant _romgen_first_step = [1] + [0]*;
-_sigma' = ((1 - _romgen_first_step') * (_sigma + instr_return));
-(_sigma * (_operation_id - 10)) = 0;
 pol commit pc;
 pol commit X;
 pol commit reg_write_X_A;
@@ -463,10 +451,7 @@ machine Machine {
         let expectation = r#"
 namespace main(1024);
 pol commit _operation_id;
-pol commit _sigma;
 pol constant _romgen_first_step = [1] + [0]*;
-_sigma' = ((1 - _romgen_first_step') * (_sigma + instr_return));
-(_sigma * (_operation_id - 4)) = 0;
 pol commit pc;
 pol commit fp;
 pol commit instr_inc_fp;
