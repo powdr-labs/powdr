@@ -73,7 +73,7 @@ impl<'a, T: FieldElement> Generator<'a, T> {
     {
         let first_row = self.compute_partial_first_row(mutable_state);
         let data = self.process(first_row, mutable_state);
-        self.data = self.fix_first_row(data);
+        self.fix_first_row();
     }
 
     /// Runs the solver on the row pair (degree - 1, 0) in order to partially compute the first
@@ -110,7 +110,6 @@ impl<'a, T: FieldElement> Generator<'a, T> {
         processor.solve(&mut sequence_iterator).unwrap();
         let first_row = processor.finish().remove(1);
 
-        log::trace!("{}", first_row.render("first row", false, &self.witnesses));
         first_row
     }
 
@@ -122,6 +121,7 @@ impl<'a, T: FieldElement> Generator<'a, T> {
     where
         Q: FnMut(&str) -> Option<T> + Send + Sync,
     {
+        log::trace!("{}", first_row.render("first row", false, &self.witnesses));
         let data = vec![first_row];
         let row_factory = RowFactory::new(self.fixed_data, self.global_range_constraints.clone());
         let mut processor = VmProcessor::new(
@@ -137,11 +137,11 @@ impl<'a, T: FieldElement> Generator<'a, T> {
 
     /// At the end of the solving algorithm, we'll have computed the first row twice
     /// (as row 0 and as row <degree>). This function merges the two versions.
-    fn fix_first_row(&self, mut data: Vec<Row<'a, T>>) -> Vec<Row<'a, T>> {
-        assert_eq!(data.len() as DegreeType, self.fixed_data.degree + 1);
+    fn fix_first_row(&mut self) {
+        assert_eq!(self.data.len() as DegreeType, self.fixed_data.degree + 1);
 
-        let last_row = data.pop().unwrap();
-        data[0] = WitnessColumnMap::from(data[0].values().zip(last_row.values()).map(
+        let last_row = self.data.pop().unwrap();
+        self.data[0] = WitnessColumnMap::from(self.data[0].values().zip(last_row.values()).map(
             |(cell1, cell2)| match (&cell1.value, &cell2.value) {
                 (CellValue::Known(v1), CellValue::Known(v2)) => {
                     assert_eq!(v1, v2);
@@ -151,6 +151,5 @@ impl<'a, T: FieldElement> Generator<'a, T> {
                 _ => cell2.clone(),
             },
         ));
-        data
     }
 }
