@@ -7,14 +7,14 @@ use analysis::MacroExpander;
 use ast::parsed::visitor::ExpressionVisitable;
 use ast::parsed::{
     self, ArrayExpression, ArrayLiteral, FunctionDefinition, LambdaExpression, MatchArm,
-    MatchPattern, PilStatement, PolynomialName,
+    MatchPattern, PilStatement, PolynomialName, SelectedExpressions,
 };
 use number::{DegreeType, FieldElement};
 
 use ast::analyzed::{
     Analyzed, Expression, FunctionValueDefinition, Identity, IdentityKind, PolynomialReference,
-    PolynomialType, PublicDeclaration, Reference, RepeatedArray, SelectedExpressions, SourceRef,
-    StatementIdentifier, Symbol, SymbolKind,
+    PolynomialType, PublicDeclaration, Reference, RepeatedArray, SourceRef, StatementIdentifier,
+    Symbol, SymbolKind,
 };
 
 use crate::evaluator::Evaluator;
@@ -39,7 +39,7 @@ struct PILAnalyzer<T> {
     constants: HashMap<String, T>,
     definitions: HashMap<String, (Symbol, Option<FunctionValueDefinition<T>>)>,
     public_declarations: HashMap<String, PublicDeclaration>,
-    identities: Vec<Identity<T>>,
+    identities: Vec<Identity<Expression<T>>>,
     /// The order in which definitions and identities
     /// appear in the source.
     source_order: Vec<StatementIdentifier>,
@@ -513,8 +513,8 @@ impl<'a, T: FieldElement> ExpressionProcessor<'a, T> {
 
     pub fn process_selected_expression(
         &mut self,
-        expr: ::ast::parsed::SelectedExpressions<T>,
-    ) -> SelectedExpressions<T> {
+        expr: SelectedExpressions<parsed::Expression<T>>,
+    ) -> SelectedExpressions<Expression<T>> {
         SelectedExpressions {
             selector: expr.selector.map(|e| self.process_expression(e)),
             expressions: self.process_expressions(expr.expressions),
@@ -550,18 +550,15 @@ impl<'a, T: FieldElement> ExpressionProcessor<'a, T> {
         }
     }
 
-    pub fn process_expressions(
-        &mut self,
-        exprs: Vec<::ast::parsed::Expression<T>>,
-    ) -> Vec<Expression<T>> {
+    pub fn process_expressions(&mut self, exprs: Vec<parsed::Expression<T>>) -> Vec<Expression<T>> {
         exprs
             .into_iter()
             .map(|e| self.process_expression(e))
             .collect()
     }
 
-    pub fn process_expression(&mut self, expr: ::ast::parsed::Expression<T>) -> Expression<T> {
-        use ast::parsed::Expression as PExpression;
+    pub fn process_expression(&mut self, expr: parsed::Expression<T>) -> Expression<T> {
+        use parsed::Expression as PExpression;
         match expr {
             PExpression::Constant(name) => Expression::Constant(name),
             PExpression::Reference(poly) => {
@@ -675,7 +672,9 @@ impl<'a, T: FieldElement> ExpressionProcessor<'a, T> {
     }
 }
 
-pub fn inline_intermediate_polynomials<T: Copy>(analyzed: &Analyzed<T>) -> Vec<Identity<T>> {
+pub fn inline_intermediate_polynomials<T: Copy>(
+    analyzed: &Analyzed<T>,
+) -> Vec<Identity<Expression<T>>> {
     substitute_intermediate(
         analyzed.identities.clone(),
         &analyzed
@@ -697,9 +696,9 @@ pub fn inline_intermediate_polynomials<T: Copy>(analyzed: &Analyzed<T>) -> Vec<I
 /// Takes identities as values and inlines intermediate polynomials everywhere, returning a vector of the updated identities
 /// TODO: this could return an iterator
 fn substitute_intermediate<T: Copy>(
-    identities: impl IntoIterator<Item = Identity<T>>,
+    identities: impl IntoIterator<Item = Identity<Expression<T>>>,
     intermediate_polynomials: &HashMap<u64, Expression<T>>,
-) -> Vec<Identity<T>> {
+) -> Vec<Identity<Expression<T>>> {
     identities
         .into_iter()
         .scan(HashMap::default(), |cache, mut identity| {

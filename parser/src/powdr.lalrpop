@@ -140,7 +140,7 @@ PlookupIdentity: PilStatement<T> = {
     <@L> <SelectedExpressions> "in" <SelectedExpressions> => PilStatement::PlookupIdentity(<>)
 }
 
-SelectedExpressions: SelectedExpressions<T> = {
+SelectedExpressions: SelectedExpressions<Expression<T>> = {
     <selector:Expression?> "{" <expressions:ExpressionList> "}" => SelectedExpressions{<>},
     Expression => SelectedExpressions{selector: None, expressions: vec![<>]},
 }

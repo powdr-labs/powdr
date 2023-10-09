@@ -1,5 +1,6 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 
+use ast::parsed::SelectedExpressions;
 use itertools::Itertools;
 
 use super::super::affine_expression::AffineExpression;
@@ -12,9 +13,7 @@ use crate::witgen::{
     symbolic_evaluator::SymbolicEvaluator,
 };
 use crate::witgen::{EvalValue, IncompleteCause};
-use ast::analyzed::{
-    Expression, Identity, IdentityKind, PolyID, PolynomialReference, Reference, SelectedExpressions,
-};
+use ast::analyzed::{Expression, Identity, IdentityKind, PolyID, PolynomialReference, Reference};
 use number::FieldElement;
 
 /// A machine that can support a lookup in a set of columns that are sorted
@@ -34,7 +33,7 @@ pub struct SortedWitnesses<T> {
 impl<T: FieldElement> SortedWitnesses<T> {
     pub fn try_new(
         fixed_data: &FixedData<T>,
-        identities: &[&Identity<T>],
+        identities: &[&Identity<Expression<T>>],
         witnesses: &HashSet<PolyID>,
     ) -> Option<Self> {
         if identities.len() != 1 {
@@ -58,7 +57,10 @@ impl<T: FieldElement> SortedWitnesses<T> {
     }
 }
 
-fn check_identity<T: FieldElement>(fixed_data: &FixedData<T>, id: &Identity<T>) -> Option<PolyID> {
+fn check_identity<T: FieldElement>(
+    fixed_data: &FixedData<T>,
+    id: &Identity<Expression<T>>,
+) -> Option<PolyID> {
     // Looking for NOTLAST { A' - A } in { POSITIVE }
     if id.kind != IdentityKind::Plookup
         || id.right.selector.is_some()
@@ -125,7 +127,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for SortedWitnesses<T> {
         _fixed_lookup: &mut FixedLookup<T>,
         kind: IdentityKind,
         left: &[AffineExpression<&'a PolynomialReference, T>],
-        right: &'a SelectedExpressions<T>,
+        right: &'a SelectedExpressions<Expression<T>>,
         _machines: Machines<'a, '_, T>,
     ) -> Option<EvalResult<'a, T>> {
         if kind != IdentityKind::Plookup || right.selector.is_some() {
@@ -182,7 +184,7 @@ impl<T: FieldElement> SortedWitnesses<T> {
         &mut self,
         fixed_data: &FixedData<T>,
         left: &[AffineExpression<&'a PolynomialReference, T>],
-        right: &SelectedExpressions<T>,
+        right: &SelectedExpressions<Expression<T>>,
         rhs: Vec<&PolynomialReference>,
     ) -> EvalResult<'a, T> {
         let key_index = rhs

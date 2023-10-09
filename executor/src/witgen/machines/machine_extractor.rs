@@ -9,15 +9,16 @@ use super::KnownMachine;
 use crate::witgen::{
     column_map::WitnessColumnMap, generator::Generator, range_constraints::RangeConstraint,
 };
-use ast::analyzed::{Expression, Identity, IdentityKind, PolyID, Reference, SelectedExpressions};
+use ast::analyzed::{Expression, Identity, IdentityKind, PolyID, Reference};
 use ast::parsed::visitor::ExpressionVisitable;
+use ast::parsed::SelectedExpressions;
 use itertools::Itertools;
 use number::FieldElement;
 
 pub struct ExtractionOutput<'a, T: FieldElement> {
     pub fixed_lookup: FixedLookup<T>,
     pub machines: Vec<KnownMachine<'a, T>>,
-    pub base_identities: Vec<&'a Identity<T>>,
+    pub base_identities: Vec<&'a Identity<Expression<T>>>,
     pub base_witnesses: HashSet<PolyID>,
 }
 
@@ -26,7 +27,7 @@ pub struct ExtractionOutput<'a, T: FieldElement> {
 /// that are not "internal" to the machines.
 pub fn split_out_machines<'a, T: FieldElement>(
     fixed: &'a FixedData<'a, T>,
-    identities: Vec<&'a Identity<T>>,
+    identities: Vec<&'a Identity<Expression<T>>>,
     global_range_constraints: &WitnessColumnMap<Option<RangeConstraint<T>>>,
 ) -> ExtractionOutput<'a, T> {
     let fixed_lookup = FixedLookup::try_new(fixed, &[], &Default::default()).unwrap();
@@ -140,7 +141,7 @@ pub fn split_out_machines<'a, T: FieldElement>(
 fn all_row_connected_witnesses<T>(
     mut witnesses: HashSet<PolyID>,
     all_witnesses: &HashSet<PolyID>,
-    identities: &[&Identity<T>],
+    identities: &[&Identity<Expression<T>>],
 ) -> HashSet<PolyID> {
     loop {
         let count = witnesses.len();
@@ -173,7 +174,7 @@ fn all_row_connected_witnesses<T>(
 }
 
 /// Extracts all references to names from an identity.
-pub fn refs_in_identity<T>(identity: &Identity<T>) -> HashSet<PolyID> {
+pub fn refs_in_identity<T>(identity: &Identity<Expression<T>>) -> HashSet<PolyID> {
     let mut refs: HashSet<PolyID> = Default::default();
     identity.pre_visit_expressions(&mut |expr| {
         ref_of_expression(expr).map(|id| refs.insert(id));
@@ -182,7 +183,9 @@ pub fn refs_in_identity<T>(identity: &Identity<T>) -> HashSet<PolyID> {
 }
 
 /// Extracts all references to names from selected expressions.
-pub fn refs_in_selected_expressions<T>(selexpr: &SelectedExpressions<T>) -> HashSet<PolyID> {
+pub fn refs_in_selected_expressions<T>(
+    selexpr: &SelectedExpressions<Expression<T>>,
+) -> HashSet<PolyID> {
     let mut refs: HashSet<PolyID> = Default::default();
     selexpr.pre_visit_expressions(&mut |expr| {
         ref_of_expression(expr).map(|id| refs.insert(id));

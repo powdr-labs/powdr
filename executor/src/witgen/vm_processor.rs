@@ -1,4 +1,4 @@
-use ast::analyzed::{Identity, IdentityKind, PolyID, PolynomialReference};
+use ast::analyzed::{Expression, Identity, IdentityKind, PolyID, PolynomialReference};
 use itertools::Itertools;
 use number::{DegreeType, FieldElement};
 use parser_util::lines::indent;
@@ -23,18 +23,18 @@ enum ProcessingPhase {
 
 /// A list of identities with a flag whether it is complete.
 struct CompletableIdentities<'a, T: FieldElement> {
-    identities_with_complete: Vec<(&'a Identity<T>, bool)>,
+    identities_with_complete: Vec<(&'a Identity<Expression<T>>, bool)>,
 }
 
 impl<'a, T: FieldElement> CompletableIdentities<'a, T> {
-    fn new(identities: impl Iterator<Item = &'a Identity<T>>) -> Self {
+    fn new(identities: impl Iterator<Item = &'a Identity<Expression<T>>>) -> Self {
         Self {
             identities_with_complete: identities.map(|identity| (identity, false)).collect(),
         }
     }
 
     /// Yields immutable references to the identity and mutable references to the complete flag.
-    fn iter_mut(&mut self) -> impl Iterator<Item = (&'a Identity<T>, &mut bool)> {
+    fn iter_mut(&mut self) -> impl Iterator<Item = (&'a Identity<Expression<T>>, &mut bool)> {
         self.identities_with_complete
             .iter_mut()
             .map(|(identity, complete)| (*identity, complete))
@@ -47,10 +47,10 @@ pub struct VmProcessor<'a, T: FieldElement> {
     fixed_data: &'a FixedData<'a, T>,
     /// The subset of identities that contains a reference to the next row
     /// (precomputed once for performance reasons)
-    identities_with_next_ref: Vec<&'a Identity<T>>,
+    identities_with_next_ref: Vec<&'a Identity<Expression<T>>>,
     /// The subset of identities that does not contain a reference to the next row
     /// (precomputed once for performance reasons)
-    identities_without_next_ref: Vec<&'a Identity<T>>,
+    identities_without_next_ref: Vec<&'a Identity<Expression<T>>>,
     data: Vec<Row<'a, T>>,
     last_report: DegreeType,
     last_report_time: Instant,
@@ -59,7 +59,7 @@ pub struct VmProcessor<'a, T: FieldElement> {
 impl<'a, T: FieldElement> VmProcessor<'a, T> {
     pub fn new(
         fixed_data: &'a FixedData<'a, T>,
-        identities: &[&'a Identity<T>],
+        identities: &[&'a Identity<Expression<T>>],
         witnesses: HashSet<PolyID>,
         data: Vec<Row<'a, T>>,
     ) -> Self {

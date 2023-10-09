@@ -1,4 +1,5 @@
-use ast::analyzed::{Identity, IdentityKind, PolyID, PolynomialReference, SelectedExpressions};
+use ast::analyzed::{Expression, Identity, IdentityKind, PolyID, PolynomialReference};
+use ast::parsed::SelectedExpressions;
 use number::FieldElement;
 use std::collections::{HashMap, HashSet};
 
@@ -15,7 +16,7 @@ use super::{EvalResult, FixedData, MutableState};
 
 pub struct Generator<'a, T: FieldElement> {
     fixed_data: &'a FixedData<'a, T>,
-    identities: Vec<&'a Identity<T>>,
+    identities: Vec<&'a Identity<Expression<T>>>,
     witnesses: HashSet<PolyID>,
     global_range_constraints: WitnessColumnMap<Option<RangeConstraint<T>>>,
     data: Vec<Row<'a, T>>,
@@ -28,7 +29,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for Generator<'a, T> {
         _fixed_lookup: &mut FixedLookup<T>,
         _kind: IdentityKind,
         _left: &[AffineExpression<&'a PolynomialReference, T>],
-        _right: &'a SelectedExpressions<T>,
+        _right: &'a SelectedExpressions<Expression<T>>,
         _machines: Machines<'a, '_, T>,
     ) -> Option<EvalResult<'a, T>> {
         unimplemented!()
@@ -50,7 +51,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for Generator<'a, T> {
 impl<'a, T: FieldElement> Generator<'a, T> {
     pub fn new(
         fixed_data: &'a FixedData<'a, T>,
-        identities: &[&'a Identity<T>],
+        identities: &[&'a Identity<Expression<T>>],
         witnesses: HashSet<PolyID>,
         global_range_constraints: &WitnessColumnMap<Option<RangeConstraint<T>>>,
     ) -> Self {

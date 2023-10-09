@@ -28,8 +28,16 @@ pub enum PilStatement<T> {
     PolynomialConstantDefinition(usize, String, FunctionDefinition<T>),
     PolynomialCommitDeclaration(usize, Vec<PolynomialName<T>>, Option<FunctionDefinition<T>>),
     PolynomialIdentity(usize, Expression<T>),
-    PlookupIdentity(usize, SelectedExpressions<T>, SelectedExpressions<T>),
-    PermutationIdentity(usize, SelectedExpressions<T>, SelectedExpressions<T>),
+    PlookupIdentity(
+        usize,
+        SelectedExpressions<Expression<T>>,
+        SelectedExpressions<Expression<T>>,
+    ),
+    PermutationIdentity(
+        usize,
+        SelectedExpressions<Expression<T>>,
+        SelectedExpressions<Expression<T>>,
+    ),
     ConnectIdentity(usize, Vec<Expression<T>>, Vec<Expression<T>>),
     ConstantDefinition(usize, String, Expression<T>),
     MacroDefinition(
@@ -43,12 +51,12 @@ pub enum PilStatement<T> {
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
-pub struct SelectedExpressions<T, Ref = ShiftedPolynomialReference<T>> {
-    pub selector: Option<Expression<T, Ref>>,
-    pub expressions: Vec<Expression<T, Ref>>,
+pub struct SelectedExpressions<Expr> {
+    pub selector: Option<Expr>,
+    pub expressions: Vec<Expr>,
 }
 
-impl<T, Ref> Default for SelectedExpressions<T, Ref> {
+impl<Expr> Default for SelectedExpressions<Expr> {
     fn default() -> Self {
         Self {
             selector: Default::default(),

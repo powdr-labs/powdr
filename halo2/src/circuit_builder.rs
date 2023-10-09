@@ -1,4 +1,4 @@
-use ast::parsed::BinaryOperator;
+use ast::parsed::{BinaryOperator, SelectedExpressions};
 use num_bigint::BigUint;
 use polyexen::expr::{ColumnKind, ColumnQuery, Expr, PlonkVar};
 use polyexen::plaf::backends::halo2::PlafH2Circuit;
@@ -6,7 +6,7 @@ use polyexen::plaf::{
     ColumnFixed, ColumnWitness, Columns, Info, Lookup, Plaf, Poly, Shuffle, Witness,
 };
 
-use ast::analyzed::{Analyzed, Expression, IdentityKind, Reference, SelectedExpressions};
+use ast::analyzed::{Analyzed, Expression, IdentityKind, Reference};
 use num_traits::One;
 use number::{BigInt, FieldElement};
 
@@ -89,7 +89,7 @@ pub(crate) fn analyzed_to_circuit<T: FieldElement>(
 
     // build Plaf polys. -------------------------------------------------------------------------
 
-    let apply_selectors_to_set = |set: &SelectedExpressions<T>| {
+    let apply_selectors_to_set = |set: &SelectedExpressions<Expression<T>>| {
         let selector = set
             .selector
             .clone()

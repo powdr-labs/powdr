@@ -256,10 +256,10 @@ impl<T> ExpressionVisitable<Expression<T, ShiftedPolynomialReference<T>>> for Pi
     }
 }
 
-impl<T, Ref> ExpressionVisitable<Expression<T, Ref>> for SelectedExpressions<T, Ref> {
+impl<Expr: ExpressionVisitable<Expr>> ExpressionVisitable<Expr> for SelectedExpressions<Expr> {
     fn visit_expressions_mut<F, B>(&mut self, f: &mut F, o: VisitOrder) -> ControlFlow<B>
     where
-        F: FnMut(&mut Expression<T, Ref>) -> ControlFlow<B>,
+        F: FnMut(&mut Expr) -> ControlFlow<B>,
     {
         self.selector
             .as_mut()
@@ -270,7 +270,7 @@ impl<T, Ref> ExpressionVisitable<Expression<T, Ref>> for SelectedExpressions<T, 
 
     fn visit_expressions<F, B>(&self, f: &mut F, o: VisitOrder) -> ControlFlow<B>
     where
-        F: FnMut(&Expression<T, Ref>) -> ControlFlow<B>,
+        F: FnMut(&Expr) -> ControlFlow<B>,
     {
         self.selector
             .as_ref()

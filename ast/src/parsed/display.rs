@@ -416,20 +416,6 @@ impl<T: Display> Display for FunctionDefinition<T> {
     }
 }
 
-impl<T: Display> Display for SelectedExpressions<T> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write!(
-            f,
-            "{}{{ {} }}",
-            self.selector
-                .as_ref()
-                .map(|s| format!("{s} "))
-                .unwrap_or_default(),
-            format_expressions(&self.expressions)
-        )
-    }
-}
-
 pub fn format_expressions<T: Display, Ref: Display>(expressions: &[Expression<T, Ref>]) -> String {
     format!("{}", expressions.iter().format(", "))
 }
