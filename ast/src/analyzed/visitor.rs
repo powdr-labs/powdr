@@ -2,7 +2,7 @@ use crate::parsed::visitor::VisitOrder;
 
 use super::*;
 
-impl<T> ExpressionVisitable<T, Reference> for Analyzed<T> {
+impl<T> ExpressionVisitable<parsed::Expression<T, Reference>> for Analyzed<T> {
     fn visit_expressions_mut<F, B>(&mut self, f: &mut F, o: VisitOrder) -> ControlFlow<B>
     where
         F: FnMut(&mut parsed::Expression<T, Reference>) -> ControlFlow<B>,
@@ -50,7 +50,7 @@ impl<T> ExpressionVisitable<T, Reference> for Analyzed<T> {
     }
 }
 
-impl<T> ExpressionVisitable<T, Reference> for Identity<T> {
+impl<T> ExpressionVisitable<parsed::Expression<T, Reference>> for Identity<T> {
     fn visit_expressions_mut<F, B>(&mut self, f: &mut F, o: VisitOrder) -> ControlFlow<B>
     where
         F: FnMut(&mut parsed::Expression<T, Reference>) -> ControlFlow<B>,
