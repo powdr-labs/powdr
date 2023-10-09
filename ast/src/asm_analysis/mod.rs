@@ -540,7 +540,7 @@ pub enum FunctionStatement<T> {
     Return(Return<T>),
 }
 
-impl<T> ExpressionVisitable<T, ShiftedPolynomialReference<T>> for FunctionStatement<T> {
+impl<T> ExpressionVisitable<Expression<T, ShiftedPolynomialReference<T>>> for FunctionStatement<T> {
     fn visit_expressions_mut<F, B>(&mut self, f: &mut F, o: VisitOrder) -> std::ops::ControlFlow<B>
     where
         F: FnMut(&mut Expression<T, ShiftedPolynomialReference<T>>) -> std::ops::ControlFlow<B>,

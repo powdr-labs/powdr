@@ -14,12 +14,12 @@ pub enum VisitOrder {
 /// A trait to be implemented by an AST node.
 /// The idea is that it calls a callback function on each of the sub-nodes
 /// that are expressions.
-pub trait ExpressionVisitable<T, Ref> {
+pub trait ExpressionVisitable<Expr> {
     /// Traverses the AST and calls `f` on each Expression in pre-order,
     /// potentially break early and return a value.
     fn pre_visit_expressions_return_mut<F, B>(&mut self, f: &mut F) -> ControlFlow<B>
     where
-        F: FnMut(&mut Expression<T, Ref>) -> ControlFlow<B>,
+        F: FnMut(&mut Expr) -> ControlFlow<B>,
     {
         self.visit_expressions_mut(f, VisitOrder::Pre)
     }
@@ -27,7 +27,7 @@ pub trait ExpressionVisitable<T, Ref> {
     /// Traverses the AST and calls `f` on each Expression in pre-order.
     fn pre_visit_expressions_mut<F>(&mut self, f: &mut F)
     where
-        F: FnMut(&mut Expression<T, Ref>),
+        F: FnMut(&mut Expr),
     {
         self.pre_visit_expressions_return_mut(&mut move |e| {
             f(e);
@@ -39,7 +39,7 @@ pub trait ExpressionVisitable<T, Ref> {
     /// potentially break early and return a value.
     fn pre_visit_expressions_return<F, B>(&self, f: &mut F) -> ControlFlow<B>
     where
-        F: FnMut(&Expression<T, Ref>) -> ControlFlow<B>,
+        F: FnMut(&Expr) -> ControlFlow<B>,
     {
         self.visit_expressions(f, VisitOrder::Pre)
     }
@@ -47,7 +47,7 @@ pub trait ExpressionVisitable<T, Ref> {
     /// Traverses the AST and calls `f` on each Expression in pre-order.
     fn pre_visit_expressions<F>(&self, f: &mut F)
     where
-        F: FnMut(&Expression<T, Ref>),
+        F: FnMut(&Expr),
     {
         self.pre_visit_expressions_return(&mut move |e| {
             f(e);
@@ -59,7 +59,7 @@ pub trait ExpressionVisitable<T, Ref> {
     /// potentially break early and return a value.
     fn post_visit_expressions_return_mut<F, B>(&mut self, f: &mut F) -> ControlFlow<B>
     where
-        F: FnMut(&mut Expression<T, Ref>) -> ControlFlow<B>,
+        F: FnMut(&mut Expr) -> ControlFlow<B>,
     {
         self.visit_expressions_mut(f, VisitOrder::Post)
     }
@@ -67,7 +67,7 @@ pub trait ExpressionVisitable<T, Ref> {
     /// Traverses the AST and calls `f` on each Expression in post-order.
     fn post_visit_expressions_mut<F>(&mut self, f: &mut F)
     where
-        F: FnMut(&mut Expression<T, Ref>),
+        F: FnMut(&mut Expr),
     {
         self.post_visit_expressions_return_mut(&mut move |e| {
             f(e);
@@ -79,7 +79,7 @@ pub trait ExpressionVisitable<T, Ref> {
     /// potentially break early and return a value.
     fn post_visit_expressions_return<F, B>(&self, f: &mut F) -> ControlFlow<B>
     where
-        F: FnMut(&Expression<T, Ref>) -> ControlFlow<B>,
+        F: FnMut(&Expr) -> ControlFlow<B>,
     {
         self.visit_expressions(f, VisitOrder::Post)
     }
@@ -87,7 +87,7 @@ pub trait ExpressionVisitable<T, Ref> {
     /// Traverses the AST and calls `f` on each Expression in post-order.
     fn post_visit_expressions<F>(&self, f: &mut F)
     where
-        F: FnMut(&Expression<T, Ref>),
+        F: FnMut(&Expr),
     {
         self.post_visit_expressions_return(&mut move |e| {
             f(e);
@@ -97,14 +97,14 @@ pub trait ExpressionVisitable<T, Ref> {
 
     fn visit_expressions<F, B>(&self, f: &mut F, order: VisitOrder) -> ControlFlow<B>
     where
-        F: FnMut(&Expression<T, Ref>) -> ControlFlow<B>;
+        F: FnMut(&Expr) -> ControlFlow<B>;
 
     fn visit_expressions_mut<F, B>(&mut self, f: &mut F, order: VisitOrder) -> ControlFlow<B>
     where
-        F: FnMut(&mut Expression<T, Ref>) -> ControlFlow<B>;
+        F: FnMut(&mut Expr) -> ControlFlow<B>;
 }
 
-impl<T, Ref> ExpressionVisitable<T, Ref> for Expression<T, Ref> {
+impl<T, Ref> ExpressionVisitable<Expression<T, Ref>> for Expression<T, Ref> {
     fn visit_expressions_mut<F, B>(&mut self, f: &mut F, o: VisitOrder) -> ControlFlow<B>
     where
         F: FnMut(&mut Expression<T, Ref>) -> ControlFlow<B>,
@@ -182,7 +182,7 @@ impl<T, Ref> ExpressionVisitable<T, Ref> for Expression<T, Ref> {
     }
 }
 
-impl<T> ExpressionVisitable<T, ShiftedPolynomialReference<T>> for PilStatement<T> {
+impl<T> ExpressionVisitable<Expression<T, ShiftedPolynomialReference<T>>> for PilStatement<T> {
     fn visit_expressions_mut<F, B>(&mut self, f: &mut F, o: VisitOrder) -> ControlFlow<B>
     where
         F: FnMut(&mut Expression<T, ShiftedPolynomialReference<T>>) -> ControlFlow<B>,
@@ -256,7 +256,7 @@ impl<T> ExpressionVisitable<T, ShiftedPolynomialReference<T>> for PilStatement<T
     }
 }
 
-impl<T, Ref> ExpressionVisitable<T, Ref> for SelectedExpressions<T, Ref> {
+impl<T, Ref> ExpressionVisitable<Expression<T, Ref>> for SelectedExpressions<T, Ref> {
     fn visit_expressions_mut<F, B>(&mut self, f: &mut F, o: VisitOrder) -> ControlFlow<B>
     where
         F: FnMut(&mut Expression<T, Ref>) -> ControlFlow<B>,
@@ -280,7 +280,7 @@ impl<T, Ref> ExpressionVisitable<T, Ref> for SelectedExpressions<T, Ref> {
     }
 }
 
-impl<T> ExpressionVisitable<T, ShiftedPolynomialReference<T>> for FunctionDefinition<T> {
+impl<T> ExpressionVisitable<Expression<T>> for FunctionDefinition<T> {
     fn visit_expressions_mut<F, B>(&mut self, f: &mut F, o: VisitOrder) -> ControlFlow<B>
     where
         F: FnMut(&mut Expression<T>) -> ControlFlow<B>,
@@ -308,7 +308,7 @@ impl<T> ExpressionVisitable<T, ShiftedPolynomialReference<T>> for FunctionDefini
     }
 }
 
-impl<T> ExpressionVisitable<T, ShiftedPolynomialReference<T>> for ArrayExpression<T> {
+impl<T> ExpressionVisitable<Expression<T>> for ArrayExpression<T> {
     fn visit_expressions_mut<F, B>(&mut self, f: &mut F, o: VisitOrder) -> ControlFlow<B>
     where
         F: FnMut(&mut Expression<T>) -> ControlFlow<B>,
@@ -342,7 +342,7 @@ impl<T> ExpressionVisitable<T, ShiftedPolynomialReference<T>> for ArrayExpressio
     }
 }
 
-impl<T, Ref> ExpressionVisitable<T, Ref> for LambdaExpression<T, Ref> {
+impl<T, Ref> ExpressionVisitable<Expression<T, Ref>> for LambdaExpression<T, Ref> {
     fn visit_expressions_mut<F, B>(&mut self, f: &mut F, o: VisitOrder) -> ControlFlow<B>
     where
         F: FnMut(&mut Expression<T, Ref>) -> ControlFlow<B>,
@@ -358,7 +358,7 @@ impl<T, Ref> ExpressionVisitable<T, Ref> for LambdaExpression<T, Ref> {
     }
 }
 
-impl<T, Ref> ExpressionVisitable<T, Ref> for ArrayLiteral<T, Ref> {
+impl<T, Ref> ExpressionVisitable<Expression<T, Ref>> for ArrayLiteral<T, Ref> {
     fn visit_expressions_mut<F, B>(&mut self, f: &mut F, o: VisitOrder) -> ControlFlow<B>
     where
         F: FnMut(&mut Expression<T, Ref>) -> ControlFlow<B>,
@@ -378,7 +378,7 @@ impl<T, Ref> ExpressionVisitable<T, Ref> for ArrayLiteral<T, Ref> {
     }
 }
 
-impl<T, Ref> ExpressionVisitable<T, Ref> for FunctionCall<T, Ref> {
+impl<T, Ref> ExpressionVisitable<Expression<T, Ref>> for FunctionCall<T, Ref> {
     fn visit_expressions_mut<F, B>(&mut self, f: &mut F, o: VisitOrder) -> ControlFlow<B>
     where
         F: FnMut(&mut Expression<T, Ref>) -> ControlFlow<B>,
@@ -398,7 +398,7 @@ impl<T, Ref> ExpressionVisitable<T, Ref> for FunctionCall<T, Ref> {
     }
 }
 
-impl<T, Ref> ExpressionVisitable<T, Ref> for MatchArm<T, Ref> {
+impl<T, Ref> ExpressionVisitable<Expression<T, Ref>> for MatchArm<T, Ref> {
     fn visit_expressions_mut<F, B>(&mut self, f: &mut F, o: VisitOrder) -> ControlFlow<B>
     where
         F: FnMut(&mut Expression<T, Ref>) -> ControlFlow<B>,
@@ -416,7 +416,7 @@ impl<T, Ref> ExpressionVisitable<T, Ref> for MatchArm<T, Ref> {
     }
 }
 
-impl<T, Ref> ExpressionVisitable<T, Ref> for MatchPattern<T, Ref> {
+impl<T, Ref> ExpressionVisitable<Expression<T, Ref>> for MatchPattern<T, Ref> {
     fn visit_expressions_mut<F, B>(&mut self, f: &mut F, o: VisitOrder) -> ControlFlow<B>
     where
         F: FnMut(&mut Expression<T, Ref>) -> ControlFlow<B>,
