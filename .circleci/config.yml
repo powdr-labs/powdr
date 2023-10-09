@@ -1,0 +1,105 @@
+version: 2.1
+
+jobs:
+  pr-tests:
+    machine:
+      image: ubuntu-2004:current
+    resource_class: large
+    steps:
+      - run:
+          name: Install dependencies
+          command: sudo apt update -qqy && sudo apt install libclang-dev git nodejs -qqy
+
+      - run:
+          name: Install Rust
+          command: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+
+      - checkout
+
+      - run:
+          name: Install pilcom
+          command: git clone https://github.com/0xPolygonHermez/pilcom.git
+
+      - restore_cache:
+          name: Restore pilcom modules cache
+          keys:
+            - v5-pilcom-node-modules-{{ checksum "pilcom/package-lock.json" }}
+
+      - run:
+          name: Install pilcom node modules if cache miss
+          command: |
+            if [ ! -d "pilcom/node_modules" ]; then
+              (cd pilcom && npm install)
+            fi
+
+      - save_cache:
+          name: Save pilcom modules cache
+          key: v5-pilcom-node-modules-{{ checksum "pilcom/package-lock.json" }}
+          paths:
+            - pilcom/node_modules
+
+      - restore_cache:
+          name: Restore Rust cache
+          keys:
+            - v5-cargo-pr-tests-{{ checksum "Cargo.toml" }}
+
+      - run:
+          name: Install Rust toolchain 1.72 (with clippy and rustfmt)
+          command: |
+            rustup toolchain install 1.72-x86_64-unknown-linux-gnu
+            rustup component add clippy --toolchain 1.72-x86_64-unknown-linux-gnu
+            rustup component add rustfmt --toolchain 1.72-x86_64-unknown-linux-gnu
+
+      - run:
+          name: Install nightly
+          command: rustup toolchain install nightly-2023-01-03-x86_64-unknown-linux-gnu
+
+      - run:
+          name: Install riscv target
+          command: rustup target add riscv32imac-unknown-none-elf --toolchain nightly-2023-01-03-x86_64-unknown-linux-gnu
+
+      - run:
+          name: Install stdlib
+          command: rustup component add rust-src --toolchain nightly-2023-01-03-x86_64-unknown-linux-gnu
+
+      - run:
+          name: Check without Halo2
+          command: cargo check --all --no-default-features --profile pr-tests
+
+      - run:
+          name: Build
+          command: cargo build --all --all-features --profile pr-tests
+
+      - save_cache:
+          name: Save Rust cache
+          key: v5-cargo-pr-tests-{{ checksum "Cargo.toml" }}
+          paths:
+            - ~/.cargo/registry
+            - ~/.cargo/git
+            - target
+
+      - run:
+          name: Run default tests
+          command: PILCOM=$(pwd)/pilcom/ cargo test --all --all-features --profile pr-tests --verbose
+
+      - run:
+          name: Run slow tests
+          command: PILCOM=$(pwd)/pilcom/ cargo test --all --all-features --profile pr-tests --verbose -- --ignored --nocapture --test-threads=1 --exact test_keccak test_vec_median instruction_tests::addi
+
+      - run:
+          name: Lint
+          command: cargo clippy --all --all-features -- -D warnings
+
+      - run:
+          name: Format
+          command: cargo fmt --all --check --verbose
+
+      - run:
+          name: Check benches compile without running them
+          command: cargo bench --all --all-features --profile pr-tests --no-run
+
+workflows:
+  version: 2
+  build-and-test:
+    jobs:
+      - pr-tests
