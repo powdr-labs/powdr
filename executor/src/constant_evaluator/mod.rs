@@ -1,10 +1,9 @@
 use std::collections::HashMap;
 
-use ast::analyzed::{Analyzed, Expression, FunctionValueDefinition, Reference};
-use ast::parsed::{FunctionCall, MatchArm, MatchPattern};
-use ast::{evaluate_binary_operation, evaluate_unary_operation};
+use ast::analyzed::{Analyzed, FunctionValueDefinition};
 use itertools::Itertools;
 use number::{DegreeType, FieldElement};
+use pil_analyzer::evaluator::Evaluator;
 use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 
 /// Generates the constant polynomial values for all constant polynomials
@@ -42,18 +41,21 @@ fn generate_values<T: FieldElement>(
             .into_par_iter()
             .map(|i| {
                 Evaluator {
-                    analyzed,
+                    constants: &analyzed.constants,
+                    definitions: &analyzed.definitions,
                     variables: &[i.into()],
-                    other_constants,
+                    function_cache: other_constants,
                 }
                 .evaluate(body)
+                .unwrap()
             })
             .collect(),
         FunctionValueDefinition::Array(values) => {
             let evaluator = Evaluator {
-                analyzed,
+                constants: &analyzed.constants,
+                definitions: &analyzed.definitions,
                 variables: &[],
-                other_constants,
+                function_cache: other_constants,
             };
             let values: Vec<_> = values
                 .iter()
@@ -61,7 +63,7 @@ fn generate_values<T: FieldElement>(
                     let items = elements
                         .pattern()
                         .iter()
-                        .map(|v| evaluator.evaluate(v))
+                        .map(|v| evaluator.evaluate(v).unwrap())
                         .collect::<Vec<_>>();
 
                     items
@@ -77,55 +79,6 @@ fn generate_values<T: FieldElement>(
         FunctionValueDefinition::Query(_) => panic!("Query used for fixed column."),
         FunctionValueDefinition::Expression(_) => {
             panic!("Expression used for fixed column, only expected for intermediate polynomials")
-        }
-    }
-}
-
-struct Evaluator<'a, T> {
-    analyzed: &'a Analyzed<T>,
-    other_constants: &'a HashMap<&'a str, Vec<T>>,
-    variables: &'a [T],
-}
-
-impl<'a, T: FieldElement> Evaluator<'a, T> {
-    fn evaluate(&self, expr: &Expression<T>) -> T {
-        match expr {
-            Expression::Constant(name) => self.analyzed.constants[name],
-            Expression::Reference(Reference::LocalVar(i, _name)) => self.variables[*i as usize],
-            Expression::Reference(Reference::Poly(_)) => todo!(),
-            Expression::PublicReference(_) => todo!(),
-            Expression::Number(n) => *n,
-            Expression::String(_) => panic!(),
-            Expression::Tuple(_) => panic!(),
-            Expression::ArrayLiteral(_) => panic!(),
-            Expression::BinaryOperation(left, op, right) => {
-                evaluate_binary_operation(self.evaluate(left), *op, self.evaluate(right))
-            }
-            Expression::UnaryOperation(op, expr) => {
-                evaluate_unary_operation(*op, self.evaluate(expr))
-            }
-            Expression::LambdaExpression(_) => panic!(),
-            Expression::FunctionCall(FunctionCall { id, arguments }) => {
-                let arg_values = arguments
-                    .iter()
-                    .map(|a| self.evaluate(a))
-                    .collect::<Vec<_>>();
-                assert!(arg_values.len() == 1);
-                let values = &self.other_constants[id.as_str()];
-                values[arg_values[0].to_degree() as usize % values.len()]
-            }
-            Expression::MatchExpression(scrutinee, arms) => {
-                let v = self.evaluate(scrutinee);
-                arms.iter()
-                    .find_map(|MatchArm { pattern, value }| match pattern {
-                        MatchPattern::Pattern(p) => {
-                            (self.evaluate(p) == v).then(|| self.evaluate(value))
-                        }
-                        MatchPattern::CatchAll => Some(self.evaluate(value)),
-                    })
-                    .expect("No arm matched the value {v}")
-            }
-            Expression::FreeInput(_) => panic!(),
         }
     }
 }
