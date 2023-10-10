@@ -9,7 +9,7 @@ use std::{
 use ast::parsed::{
     asm::{
         ASMModule, ASMProgram, AbsoluteSymbolPath, Import, Machine, MachineStatement, Module,
-        ModuleRef, ModuleStatement, SymbolDefinition, SymbolPath, SymbolValue, SymbolValueRef,
+        ModuleRef, ModuleStatement, SymbolDefinition, SymbolValue, SymbolValueRef,
     },
     folder::Folder,
 };
@@ -81,7 +81,7 @@ impl<'a, T> Folder<T> for Canonicalizer<'a> {
             if let MachineStatement::Submachine(_, path, _) = s {
                 *path = self
                     .paths
-                    .get(&(self.path.clone(), std::mem::take(path)))
+                    .get(&self.path.clone().join(std::mem::take(path)))
                     .cloned()
                     .unwrap()
                     .into();
@@ -92,8 +92,8 @@ impl<'a, T> Folder<T> for Canonicalizer<'a> {
     }
 }
 
-/// Answers the question: When at absolute path `p`, refering to relative path `r`, what is the absolute path to the canonical symbol imported?
-pub type PathMap = BTreeMap<(AbsoluteSymbolPath, SymbolPath), AbsoluteSymbolPath>;
+/// For each imported absolute path, the absolute path to the canonical symbol
+pub type PathMap = BTreeMap<AbsoluteSymbolPath, AbsoluteSymbolPath>;
 
 /// The state of the checking process. We visit the module tree collecting each relative path and pointing it to the absolute path it resolves to in the state.
 #[derive(PartialEq, Debug)]
@@ -102,6 +102,33 @@ pub struct State<'a, T> {
     root: &'a ASMModule<T>,
     /// For each relative path at an absolute path, the absolute path of the canonical symbol it points to. It gets populated as we visit the tree.
     pub paths: PathMap,
+}
+
+#[derive(Default)]
+struct PathDependencyChain {
+    paths: Vec<AbsoluteSymbolPath>,
+}
+
+impl PathDependencyChain {
+    fn push(&mut self, path: AbsoluteSymbolPath) -> Result<(), String> {
+        match self.paths.iter().position(|p| p == &path) {
+            Some(index) => {
+                self.paths.push(path);
+                Err(format!(
+                    "Cycle detected in `use` statements: {}",
+                    self.paths[index..]
+                        .iter()
+                        .map(|p| format!("`{p}`"))
+                        .collect::<Vec<_>>()
+                        .join(" -> ")
+                ))
+            }
+            None => {
+                self.paths.push(path);
+                Ok(())
+            }
+        }
+    }
 }
 
 /// Checks a relative path in the context of an absolute path, if successful returning an updated state containing the absolute path
@@ -114,27 +141,36 @@ pub struct State<'a, T> {
 ///
 /// This function will return an error if the relative path does not resolve to anything
 fn check_path<T>(
-    // the location at which the import is made
-    location: AbsoluteSymbolPath,
-    // the imported path, relative to the location
-    imported: SymbolPath,
+    // the path to check
+    path: AbsoluteSymbolPath,
     // the current state
     state: State<'_, T>,
-) -> Result<(State<'_, T>, AbsoluteSymbolPath, SymbolValueRef<'_, T>), String> {
+    // the locations visited so far
+    mut chain: PathDependencyChain,
+) -> Result<
+    (
+        State<'_, T>,
+        AbsoluteSymbolPath,
+        SymbolValueRef<'_, T>,
+        PathDependencyChain,
+    ),
+    String,
+> {
     let root = state.root.clone();
+
+    chain.push(path.clone())?;
+
     // walk down the tree of modules
-    location
-        .clone()
-        .join(imported.clone())
-        .parts
+    path.parts
         .iter()
         .try_fold(
             (
                 state,
                 AbsoluteSymbolPath::default(),
                 SymbolValueRef::Module(ModuleRef::Local(root)),
+                chain,
             ),
-            |(state, mut location, value), member| {
+            |(state, mut location, value, chain), member| {
                 match value {
                     // machines do not expose symbols
                     SymbolValueRef::Machine(_) => {
@@ -151,11 +187,16 @@ fn check_path<T>(
                             match symbol {
                                 SymbolValue::Import(p) => {
                                     // if we found an import, check it and continue from there
-                                    check_path(location, p.path.clone(), state)
+                                    check_path(location.join(p.path.clone()), state, chain)
                                 }
                                 symbol => {
                                     // if we found any other symbol, continue from there
-                                    Ok((state, location.join(member.clone()), symbol.as_ref()))
+                                    Ok((
+                                        state,
+                                        location.join(member.clone()),
+                                        symbol.as_ref(),
+                                        chain,
+                                    ))
                                 }
                             }
                         }),
@@ -165,16 +206,18 @@ fn check_path<T>(
                         location.pop_back().unwrap();
 
                         // redirect to `p`
-                        check_path(location, p.path.clone().join(member.clone()), state)
+                        check_path(
+                            location.join(p.path.clone().join(member.clone())),
+                            state,
+                            chain,
+                        )
                     }
                 }
             },
         )
-        .map(|(mut state, absolute_path, symbol)| {
-            state
-                .paths
-                .insert((location, imported), absolute_path.clone());
-            (state, absolute_path, symbol)
+        .map(|(mut state, canonical_path, symbol, chain)| {
+            state.paths.insert(path, canonical_path.clone());
+            (state, canonical_path, symbol, chain)
         })
 }
 
@@ -191,7 +234,11 @@ fn check_import<T: Clone>(
     // the current state
     state: State<'_, T>,
 ) -> Result<State<'_, T>, String> {
-    let (state, _, _) = check_path(location, imported.path, state)?;
+    let (state, _, _, _) = check_path(
+        location.join(imported.path),
+        state,
+        PathDependencyChain::default(),
+    )?;
 
     Ok(state)
 }
@@ -270,9 +317,12 @@ fn check_machine<'a, T: Clone>(
     m.statements
         .iter()
         .try_fold(state, |state, statement| match statement {
-            MachineStatement::Submachine(_, path, _) => {
-                check_path(module_location.clone(), path.clone(), state).map(|(state, _, _)| state)
-            }
+            MachineStatement::Submachine(_, path, _) => check_path(
+                module_location.clone().join(path.clone()),
+                state,
+                PathDependencyChain::default(),
+            )
+            .map(|(state, _, _, _)| state),
             _ => Ok(state),
         })
 }
@@ -398,5 +448,15 @@ mod tests {
     #[test]
     fn usage_chain() {
         expect("usage_chain", Ok(()))
+    }
+
+    #[test]
+    fn cycle() {
+        expect("cycle", Err("Cycle detected in `use` statements: `module::Machine` -> `other_module::submodule::MyMachine` -> `Machine` -> `module::Machine`"))
+    }
+
+    #[test]
+    fn import_after_usage() {
+        expect("import_after_usage", Ok(()))
     }
 }
