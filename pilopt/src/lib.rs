@@ -47,7 +47,7 @@ pub fn optimize_constants<T: FieldElement>(mut pil_file: Analyzed<T>) -> Analyze
 /// Inlines references to symbols with a single constant value.
 fn inline_constant_values<T: FieldElement>(pil_file: &mut Analyzed<T>) {
     let constants = compute_constants(pil_file);
-    pil_file.post_visit_expressions_mut(&mut |e| {
+    let visitor = &mut |e: &mut Expression<_>| {
         if let Expression::Reference(Reference::Poly(poly)) = e {
             if !poly.next && poly.index.is_none() {
                 if let Some(value) = constants.get(&poly.name) {
@@ -55,12 +55,14 @@ fn inline_constant_values<T: FieldElement>(pil_file: &mut Analyzed<T>) {
                 }
             }
         }
-    });
+    };
+    pil_file.post_visit_expressions_in_definitions_mut(visitor);
+    pil_file.post_visit_expressions_in_identities_mut(visitor);
 }
 
 /// Substitutes expression that evaluate to a constant value.
 fn evaluate_constant_subtrees<T: FieldElement>(pil_file: &mut Analyzed<T>) {
-    pil_file.post_visit_expressions_mut(&mut |e| match e {
+    let visitor = &mut |e: &mut Expression<_>| match e {
         Expression::BinaryOperation(left, op, right) => {
             if let (Expression::Number(l), Expression::Number(r)) = (left.as_ref(), right.as_ref())
             {
@@ -73,7 +75,9 @@ fn evaluate_constant_subtrees<T: FieldElement>(pil_file: &mut Analyzed<T>) {
             }
         }
         _ => {}
-    });
+    };
+    pil_file.post_visit_expressions_in_definitions_mut(visitor);
+    pil_file.post_visit_expressions_in_identities_mut(visitor);
 }
 
 /// Identifies fixed columns that only have a single value, replaces every
@@ -95,7 +99,7 @@ fn remove_constant_fixed_columns<T: FieldElement>(pil_file: &mut Analyzed<T>) {
         })
         .collect::<BTreeMap<PolyID, _>>();
 
-    pil_file.pre_visit_expressions_mut(&mut |e| {
+    let visitor = &mut |e: &mut Expression<_>| {
         if let Expression::Reference(Reference::Poly(PolynomialReference {
             name: _,
             index,
@@ -108,7 +112,9 @@ fn remove_constant_fixed_columns<T: FieldElement>(pil_file: &mut Analyzed<T>) {
                 *e = Expression::Number(*value);
             }
         }
-    });
+    };
+    pil_file.post_visit_expressions_in_definitions_mut(visitor);
+    pil_file.post_visit_expressions_in_identities_mut(visitor);
 
     pil_file.remove_polynomials(&constant_polys.keys().cloned().collect());
 }
@@ -143,7 +149,8 @@ fn constant_value<T: FieldElement>(function: &FunctionValueDefinition<T>) -> Opt
 
 /// Simplifies multiplications by zero and one.
 fn simplify_expressions<T: FieldElement>(pil_file: &mut Analyzed<T>) {
-    pil_file.post_visit_expressions_mut(&mut simplify_expression_single);
+    pil_file.post_visit_expressions_in_definitions_mut(&mut simplify_expression_single);
+    pil_file.post_visit_expressions_in_identities_mut(&mut simplify_expression_single);
 }
 
 fn simplify_expression<T: FieldElement>(mut e: Expression<T>) -> Expression<T> {
@@ -315,7 +322,7 @@ fn remove_constant_witness_columns<T: FieldElement>(pil_file: &mut Analyzed<T>) 
         .filter_map(|expr| constrained_to_constant(expr))
         .collect::<BTreeMap<PolyID, _>>();
 
-    pil_file.pre_visit_expressions_mut(&mut |e| {
+    let visitor = &mut |e: &mut Expression<_>| {
         if let Expression::Reference(Reference::Poly(PolynomialReference {
             name: _,
             index,
@@ -328,7 +335,9 @@ fn remove_constant_witness_columns<T: FieldElement>(pil_file: &mut Analyzed<T>) 
                 *e = Expression::Number(*value);
             }
         }
-    });
+    };
+    pil_file.post_visit_expressions_in_definitions_mut(visitor);
+    pil_file.post_visit_expressions_in_identities_mut(visitor);
 
     pil_file.remove_polynomials(&constant_polys.keys().cloned().collect());
 }

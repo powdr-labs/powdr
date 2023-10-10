@@ -77,11 +77,14 @@ impl<T: Copy> From<PILAnalyzer<T>> for Analyzed<T> {
                 reference.poly_id = Some(poly.into());
             }
         };
-        result.pre_visit_expressions_mut(&mut |e| {
+        let expr_visitor = &mut |e: &mut Expression<_>| {
             if let Expression::Reference(Reference::Poly(reference)) = e {
                 assign_id(reference);
             }
-        });
+        };
+        result.post_visit_expressions_in_definitions_mut(expr_visitor);
+        result.post_visit_expressions_in_identities_mut(expr_visitor);
+        // TODO at some point, merge public declarations with definitions as well.
         result
             .public_declarations
             .values_mut()
