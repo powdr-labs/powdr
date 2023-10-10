@@ -102,6 +102,10 @@ impl<'a, 'b, 'c, T: FieldElement> Processor<'a, 'b, 'c, T, WithoutCalldata> {
             witness_cols: self.witness_cols,
         }
     }
+
+    pub fn finish(self) -> Vec<Row<'a, T>> {
+        self.data
+    }
 }
 
 impl<'a, 'b, T: FieldElement> Processor<'a, 'b, '_, T, WithCalldata> {
