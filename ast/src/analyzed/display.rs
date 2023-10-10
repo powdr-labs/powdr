@@ -158,7 +158,7 @@ impl Display for PolynomialReference {
                 .as_ref()
                 .map(|s| format!("[{s}]"))
                 .unwrap_or_default(),
-            if self.next { "'" } else { "" }
+            if self.next { "'" } else { "" },
         )
     }
 }

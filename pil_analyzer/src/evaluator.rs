@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use ast::{
-    analyzed::{Analyzed, Expression, FunctionValueDefinition, Reference, Symbol, SymbolKind},
+    analyzed::{Expression, FunctionValueDefinition, Reference, Symbol, SymbolKind},
     evaluate_binary_operation, evaluate_unary_operation,
     parsed::{FunctionCall, MatchArm, MatchPattern},
 };
@@ -9,11 +9,11 @@ use number::FieldElement;
 
 /// Evaluates an expression to a single value.
 pub fn evaluate_expression<T: FieldElement>(
-    analyzed: &Analyzed<T>,
+    definitions: &HashMap<String, (Symbol, Option<FunctionValueDefinition<T>>)>,
     expression: &Expression<T>,
 ) -> Result<T, String> {
     Evaluator {
-        definitions: &analyzed.definitions,
+        definitions,
         function_cache: &Default::default(),
         variables: &[],
     }
@@ -21,9 +21,10 @@ pub fn evaluate_expression<T: FieldElement>(
 }
 
 /// Returns a HashMap of all symbols that have a constant single value.
-pub fn compute_constants<T: FieldElement>(analyzed: &Analyzed<T>) -> HashMap<String, T> {
-    analyzed
-        .definitions
+pub fn compute_constants<T: FieldElement>(
+    definitions: &HashMap<String, (Symbol, Option<FunctionValueDefinition<T>>)>,
+) -> HashMap<String, T> {
+    definitions
         .iter()
         .filter_map(|(name, (symbol, value))| {
             (symbol.kind == SymbolKind::Constant()).then(|| {
@@ -32,7 +33,7 @@ pub fn compute_constants<T: FieldElement>(analyzed: &Analyzed<T>) -> HashMap<Str
                 };
                 (
                     name.to_owned(),
-                    evaluate_expression(analyzed, value).unwrap(),
+                    evaluate_expression(definitions, value).unwrap(),
                 )
             })
         })

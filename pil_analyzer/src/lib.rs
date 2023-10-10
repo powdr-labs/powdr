@@ -1,5 +1,6 @@
 #![deny(clippy::print_stdout)]
 
+mod condenser;
 pub mod evaluator;
 pub mod pil_analyzer;
 
