@@ -1,6 +1,9 @@
 use std::{collections::HashMap, sync::Mutex};
 
-use ast::analyzed::{Expression, Identity, IdentityKind, PolynomialReference, SelectedExpressions};
+use ast::{
+    analyzed::{Expression, Identity, IdentityKind, PolynomialReference},
+    parsed::SelectedExpressions,
+};
 use itertools::{Either, Itertools};
 use lazy_static::lazy_static;
 use number::FieldElement;
@@ -86,7 +89,7 @@ impl<'a, 'b, T: FieldElement> IdentityProcessor<'a, 'b, T> {
     /// Returns the updates.
     pub fn process_identity(
         &mut self,
-        identity: &'a Identity<T>,
+        identity: &'a Identity<Expression<T>>,
         rows: &RowPair<'_, 'a, T>,
     ) -> EvalResult<'a, T> {
         let result = match identity.kind {
@@ -106,7 +109,7 @@ impl<'a, 'b, T: FieldElement> IdentityProcessor<'a, 'b, T> {
 
     fn process_polynomial_identity(
         &self,
-        identity: &'a Identity<T>,
+        identity: &'a Identity<Expression<T>>,
         rows: &RowPair<T>,
     ) -> EvalResult<'a, T> {
         match rows.evaluate(identity.expression_for_poly_id()) {
@@ -117,7 +120,7 @@ impl<'a, 'b, T: FieldElement> IdentityProcessor<'a, 'b, T> {
 
     fn process_plookup(
         &mut self,
-        identity: &'a Identity<T>,
+        identity: &'a Identity<Expression<T>>,
         rows: &RowPair<'_, 'a, T>,
     ) -> EvalResult<'a, T> {
         if let Some(left_selector) = &identity.left.selector {
@@ -187,7 +190,7 @@ impl<'a, 'b, T: FieldElement> IdentityProcessor<'a, 'b, T> {
     pub fn process_link(
         &mut self,
         left: &[AffineExpression<&'a PolynomialReference, T>],
-        right: &'a SelectedExpressions<T>,
+        right: &'a SelectedExpressions<Expression<T>>,
         current_rows: &RowPair<'_, 'a, T>,
     ) -> EvalResult<'a, T> {
         // sanity check that the right hand side selector is active
@@ -246,7 +249,10 @@ lazy_static! {
         Mutex::new(Default::default());
 }
 
-fn report_identity_solving<T: FieldElement, K>(identity: &Identity<T>, result: &EvalResult<T, K>) {
+fn report_identity_solving<T: FieldElement, K>(
+    identity: &Identity<Expression<T>>,
+    result: &EvalResult<T, K>,
+) {
     let success = result.as_ref().map(|r| r.is_complete()).unwrap_or_default() as u64;
     let mut stat = STATISTICS.lock().unwrap();
     stat.entry((identity.id, identity.kind))

@@ -1,14 +1,15 @@
 use std::collections::HashMap;
 
-use ast::analyzed::IdentityKind;
+use ast::analyzed::Expression;
 use ast::analyzed::PolynomialReference;
-use ast::analyzed::SelectedExpressions;
+use ast::parsed::SelectedExpressions;
 use number::FieldElement;
 
 use self::block_machine::BlockMachine;
 use self::double_sorted_witness_machine::DoubleSortedWitnesses;
 pub use self::fixed_lookup_machine::FixedLookup;
 use self::sorted_witness_machine::SortedWitnesses;
+use ast::analyzed::IdentityKind;
 
 use super::affine_expression::AffineExpression;
 use super::generator::Generator;
@@ -36,7 +37,7 @@ pub trait Machine<'a, T: FieldElement>: Send + Sync {
         fixed_lookup: &'b mut FixedLookup<T>,
         kind: IdentityKind,
         left: &[AffineExpression<&'a PolynomialReference, T>],
-        right: &'a SelectedExpressions<T>,
+        right: &'a SelectedExpressions<Expression<T>>,
         machines: Machines<'a, 'b, T>,
     ) -> Option<EvalResult<'a, T>>;
 
@@ -72,7 +73,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for KnownMachine<'a, T> {
         fixed_lookup: &'b mut FixedLookup<T>,
         kind: IdentityKind,
         left: &[AffineExpression<&'a PolynomialReference, T>],
-        right: &'a SelectedExpressions<T>,
+        right: &'a SelectedExpressions<Expression<T>>,
         machines: Machines<'a, 'b, T>,
     ) -> Option<crate::witgen::EvalResult<'a, T>> {
         self.get()

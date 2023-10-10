@@ -2,7 +2,8 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::mem;
 use std::num::NonZeroUsize;
 
-use ast::analyzed::{Identity, IdentityKind, PolyID, PolynomialReference, SelectedExpressions};
+use ast::analyzed::{Expression, Identity, IdentityKind, PolyID, PolynomialReference};
+use ast::parsed::SelectedExpressions;
 use itertools::Itertools;
 use number::FieldElement;
 
@@ -162,7 +163,7 @@ pub struct FixedLookup<T> {
 impl<T: FieldElement> FixedLookup<T> {
     pub fn try_new(
         _fixed_data: &FixedData<T>,
-        identities: &[&Identity<T>],
+        identities: &[&Identity<Expression<T>>],
         witness_names: &HashSet<&str>,
     ) -> Option<Self> {
         if identities.is_empty() && witness_names.is_empty() {
@@ -177,7 +178,7 @@ impl<T: FieldElement> FixedLookup<T> {
         fixed_data: &FixedData<T>,
         kind: IdentityKind,
         left: &[AffineExpression<&'b PolynomialReference, T>],
-        right: &'b SelectedExpressions<T>,
+        right: &'b SelectedExpressions<Expression<T>>,
     ) -> Option<EvalResult<'b, T>> {
         // This is a matching machine if it is a plookup and the RHS is fully constant.
         if kind != IdentityKind::Plookup

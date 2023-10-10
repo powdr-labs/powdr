@@ -1,6 +1,7 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::iter::once;
 
+use ast::parsed::SelectedExpressions;
 use itertools::Itertools;
 use num_traits::Zero;
 
@@ -12,9 +13,7 @@ use crate::witgen::{EvalResult, FixedData};
 use crate::witgen::{EvalValue, IncompleteCause};
 use number::{DegreeType, FieldElement};
 
-use ast::analyzed::{
-    Expression, Identity, IdentityKind, PolyID, PolynomialReference, Reference, SelectedExpressions,
-};
+use ast::analyzed::{Expression, Identity, IdentityKind, PolyID, PolynomialReference, Reference};
 
 /// TODO make this generic
 
@@ -43,7 +42,7 @@ impl<T: FieldElement> DoubleSortedWitnesses<T> {
 
     pub fn try_new(
         fixed_data: &FixedData<T>,
-        _identities: &[&Identity<T>],
+        _identities: &[&Identity<Expression<T>>],
         witness_cols: &HashSet<PolyID>,
     ) -> Option<Self> {
         // get the namespaces and column names
@@ -100,7 +99,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses<T> {
         _fixed_lookup: &mut FixedLookup<T>,
         kind: IdentityKind,
         left: &[AffineExpression<&'a PolynomialReference, T>],
-        right: &'a SelectedExpressions<T>,
+        right: &'a SelectedExpressions<Expression<T>>,
         _machines: Machines<'a, '_, T>,
     ) -> Option<EvalResult<'a, T>> {
         if kind != IdentityKind::Permutation
@@ -174,7 +173,7 @@ impl<T: FieldElement> DoubleSortedWitnesses<T> {
     fn process_plookup_internal<'a>(
         &mut self,
         left: &[AffineExpression<&'a PolynomialReference, T>],
-        right: &SelectedExpressions<T>,
+        right: &SelectedExpressions<Expression<T>>,
     ) -> EvalResult<'a, T> {
         // We blindly assume the lookup is of the form
         // OP { ADDR, STEP, X } is m_is_write { m_addr, m_step, m_value }

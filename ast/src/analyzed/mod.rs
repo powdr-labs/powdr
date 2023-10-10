@@ -9,11 +9,11 @@ use std::ops::ControlFlow;
 
 use number::DegreeType;
 
-use crate::parsed;
 use crate::parsed::utils::expr_any;
 use crate::parsed::visitor::ExpressionVisitable;
 pub use crate::parsed::BinaryOperator;
 pub use crate::parsed::UnaryOperator;
+use crate::parsed::{self, SelectedExpressions};
 
 #[derive(Debug)]
 pub enum StatementIdentifier {
@@ -29,7 +29,7 @@ pub struct Analyzed<T> {
     pub constants: HashMap<String, T>,
     pub definitions: HashMap<String, (Symbol, Option<FunctionValueDefinition<T>>)>,
     pub public_declarations: HashMap<String, PublicDeclaration>,
-    pub identities: Vec<Identity<T>>,
+    pub identities: Vec<Identity<Expression<T>>>,
     /// The order in which definitions and identities
     /// appear in the source.
     pub source_order: Vec<StatementIdentifier>,
@@ -308,24 +308,26 @@ pub struct PublicDeclaration {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
-pub struct Identity<T> {
+pub struct Identity<Expr> {
     /// The ID is specific to the identity kind.
     pub id: u64,
     pub kind: IdentityKind,
     pub source: SourceRef,
     /// For a simple polynomial identity, the selector contains
     /// the actual expression (see expression_for_poly_id).
-    pub left: SelectedExpressions<T>,
-    pub right: SelectedExpressions<T>,
+    pub left: SelectedExpressions<Expr>,
+    pub right: SelectedExpressions<Expr>,
 }
 
-impl<T> Identity<T> {
+impl<Expr> Identity<Expr> {
     /// Returns the expression in case this is a polynomial identity.
-    pub fn expression_for_poly_id(&self) -> &Expression<T> {
+    pub fn expression_for_poly_id(&self) -> &Expr {
         assert_eq!(self.kind, IdentityKind::Polynomial);
         self.left.selector.as_ref().unwrap()
     }
+}
 
+impl<T> Identity<Expression<T>> {
     pub fn contains_next_ref(&self) -> bool {
         self.left.contains_next_ref() || self.right.contains_next_ref()
     }
@@ -339,9 +341,7 @@ pub enum IdentityKind {
     Connect,
 }
 
-pub type SelectedExpressions<T> = parsed::SelectedExpressions<T, Reference>;
-
-impl<T> SelectedExpressions<T> {
+impl<T> SelectedExpressions<Expression<T>> {
     /// @returns true if the expression contains a reference to a next value of a
     /// (witness or fixed) column
     pub fn contains_next_ref(&self) -> bool {

@@ -1,6 +1,9 @@
 use std::{collections::HashSet, marker::PhantomData};
 
-use ast::analyzed::{Identity, PolyID, PolynomialReference, SelectedExpressions};
+use ast::{
+    analyzed::{Expression, Identity, PolyID, PolynomialReference},
+    parsed::SelectedExpressions,
+};
 use number::FieldElement;
 
 use crate::witgen::Constraint;
@@ -25,11 +28,11 @@ pub struct OuterQuery<'a, T: FieldElement> {
     /// This will be mutated while processing the block.
     left: Left<'a, T>,
     /// The right-hand side of the outer query.
-    right: &'a SelectedExpressions<T>,
+    right: &'a SelectedExpressions<Expression<T>>,
 }
 
 impl<'a, T: FieldElement> OuterQuery<'a, T> {
-    pub fn new(left: Left<'a, T>, right: &'a SelectedExpressions<T>) -> Self {
+    pub fn new(left: Left<'a, T>, right: &'a SelectedExpressions<Expression<T>>) -> Self {
         Self { left, right }
     }
 }
@@ -46,7 +49,7 @@ pub struct Processor<'a, 'b, 'c, T: FieldElement, CalldataAvailable> {
     /// The rows that are being processed.
     data: Vec<Row<'a, T>>,
     /// The list of identities
-    identities: &'c [&'a Identity<T>],
+    identities: &'c [&'a Identity<Expression<T>>],
     /// The identity processor
     identity_processor: &'c mut IdentityProcessor<'a, 'b, T>,
     /// The fixed data (containing information about all columns)
@@ -65,7 +68,7 @@ impl<'a, 'b, 'c, T: FieldElement> Processor<'a, 'b, 'c, T, WithoutCalldata> {
         row_offset: u64,
         data: Vec<Row<'a, T>>,
         identity_processor: &'c mut IdentityProcessor<'a, 'b, T>,
-        identities: &'c [&'a Identity<T>],
+        identities: &'c [&'a Identity<Expression<T>>],
         fixed_data: &'a FixedData<'a, T>,
         row_factory: RowFactory<'a, T>,
         witness_cols: &'c HashSet<PolyID>,

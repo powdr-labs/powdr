@@ -7,8 +7,6 @@ use std::fmt::{Display, Formatter, Result};
 
 use itertools::Itertools;
 
-use crate::parsed::display::format_expressions;
-
 use super::*;
 
 impl<T: Display> Display for Analyzed<T> {
@@ -102,7 +100,7 @@ impl<T: Display> Display for RepeatedArray<T> {
     }
 }
 
-impl<T: Display> Display for Identity<T> {
+impl<T: Display> Display for Identity<Expression<T>> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self.kind {
             IdentityKind::Polynomial => {
@@ -120,7 +118,7 @@ impl<T: Display> Display for Identity<T> {
     }
 }
 
-impl<T: Display> Display for SelectedExpressions<T> {
+impl<Expr: Display> Display for SelectedExpressions<Expr> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(
             f,
@@ -129,7 +127,7 @@ impl<T: Display> Display for SelectedExpressions<T> {
                 .as_ref()
                 .map(|s| format!("{s} "))
                 .unwrap_or_default(),
-            format_expressions(&self.expressions)
+            self.expressions.iter().format(", ")
         )
     }
 }

@@ -1,8 +1,11 @@
 use std::collections::HashMap;
 
-use ast::analyzed::{
-    Analyzed, Expression, Identity, PolynomialType, PublicDeclaration, SelectedExpressions,
-    StatementIdentifier, Symbol, SymbolKind,
+use ast::{
+    analyzed::{
+        Analyzed, Identity, PolynomialType, PublicDeclaration, StatementIdentifier, Symbol,
+        SymbolKind,
+    },
+    parsed::SelectedExpressions,
 };
 
 /// Computes expression IDs for each intermediate polynomial.
@@ -32,7 +35,7 @@ trait ExpressionCounter {
     fn expression_count(&self) -> usize;
 }
 
-impl<T> ExpressionCounter for Identity<T> {
+impl<Expr> ExpressionCounter for Identity<Expr> {
     fn expression_count(&self) -> usize {
         self.left.expression_count() + self.right.expression_count()
     }
@@ -50,20 +53,8 @@ impl ExpressionCounter for PublicDeclaration {
     }
 }
 
-impl<T> ExpressionCounter for SelectedExpressions<T> {
+impl<Expr> ExpressionCounter for SelectedExpressions<Expr> {
     fn expression_count(&self) -> usize {
-        self.selector.expression_count() + self.expressions.expression_count()
-    }
-}
-
-impl<T> ExpressionCounter for Vec<Expression<T>> {
-    fn expression_count(&self) -> usize {
-        self.len()
-    }
-}
-
-impl<T> ExpressionCounter for Option<Expression<T>> {
-    fn expression_count(&self) -> usize {
-        (self.is_some()).into()
+        self.selector.is_some() as usize + self.expressions.len()
     }
 }

@@ -35,7 +35,7 @@ impl<'a, T: FieldElement> RangeConstraintSet<&PolynomialReference, T>
 
 pub struct GlobalConstraints<'a, T: FieldElement> {
     pub known_witness_constraints: WitnessColumnMap<Option<RangeConstraint<T>>>,
-    pub retained_identities: Vec<&'a Identity<T>>,
+    pub retained_identities: Vec<&'a Identity<Expression<T>>>,
 }
 
 /// Determines global constraints on witness and fixed columns.
@@ -44,7 +44,7 @@ pub struct GlobalConstraints<'a, T: FieldElement> {
 /// TODO at some point, we should check that they still hold.
 pub fn determine_global_constraints<'a, T: FieldElement>(
     fixed_data: &'a FixedData<T>,
-    identities: Vec<&'a Identity<T>>,
+    identities: Vec<&'a Identity<Expression<T>>>,
 ) -> GlobalConstraints<'a, T> {
     let mut known_constraints = BTreeMap::new();
     // For these columns, we know that they are not only constrained to those bits
@@ -134,7 +134,7 @@ fn process_fixed_column<T: FieldElement>(fixed: &[T]) -> Option<(RangeConstraint
 /// no further information than the range constraint.
 fn propagate_constraints<T: FieldElement>(
     mut known_constraints: BTreeMap<PolyID, RangeConstraint<T>>,
-    identity: &Identity<T>,
+    identity: &Identity<Expression<T>>,
     full_span: &BTreeSet<PolyID>,
 ) -> (BTreeMap<PolyID, RangeConstraint<T>>, bool) {
     let mut remove = false;

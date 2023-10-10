@@ -12,9 +12,8 @@ use crate::witgen::Constraints;
 use crate::witgen::{
     machines::Machine, range_constraints::RangeConstraint, EvalError, EvalValue, IncompleteCause,
 };
-use ast::analyzed::{
-    Expression, Identity, IdentityKind, PolyID, PolynomialReference, SelectedExpressions,
-};
+use ast::analyzed::{Expression, Identity, IdentityKind, PolyID, PolynomialReference};
+use ast::parsed::SelectedExpressions;
 use number::{DegreeType, FieldElement};
 
 enum ProcessResult<'a, T: FieldElement> {
@@ -39,9 +38,9 @@ pub struct BlockMachine<'a, T: FieldElement> {
     block_size: usize,
     /// The right-hand side of the connecting identity, needed to identify
     /// when this machine is responsible.
-    selected_expressions: SelectedExpressions<T>,
+    selected_expressions: SelectedExpressions<Expression<T>>,
     /// The internal identities
-    identities: Vec<&'a Identity<T>>,
+    identities: Vec<&'a Identity<Expression<T>>>,
     /// The row factory
     row_factory: RowFactory<'a, T>,
     /// The data of the machine.
@@ -57,8 +56,8 @@ pub struct BlockMachine<'a, T: FieldElement> {
 impl<'a, T: FieldElement> BlockMachine<'a, T> {
     pub fn try_new(
         fixed_data: &'a FixedData<'a, T>,
-        connecting_identities: &[&'a Identity<T>],
-        identities: &[&'a Identity<T>],
+        connecting_identities: &[&'a Identity<Expression<T>>],
+        identities: &[&'a Identity<Expression<T>>],
         witness_cols: &HashSet<PolyID>,
         global_range_constraints: &WitnessColumnMap<Option<RangeConstraint<T>>>,
     ) -> Option<Self> {
@@ -140,7 +139,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
         fixed_lookup: &'b mut FixedLookup<T>,
         kind: IdentityKind,
         left: &[AffineExpression<&'a PolynomialReference, T>],
-        right: &'a SelectedExpressions<T>,
+        right: &'a SelectedExpressions<Expression<T>>,
         machines: Machines<'a, 'b, T>,
     ) -> Option<EvalResult<'a, T>> {
         if *right != self.selected_expressions || kind != IdentityKind::Plookup {
@@ -252,7 +251,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         &mut self,
         fixed_lookup: &'b mut FixedLookup<T>,
         left: &[AffineExpression<&'a PolynomialReference, T>],
-        right: &'a SelectedExpressions<T>,
+        right: &'a SelectedExpressions<Expression<T>>,
         machines: Machines<'a, 'b, T>,
     ) -> EvalResult<'a, T> {
         log::trace!("Start processing block machine '{}'", self.name());
@@ -351,7 +350,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         &self,
         identity_processor: &mut IdentityProcessor<'a, 'b, T>,
         left: &[AffineExpression<&'a PolynomialReference, T>],
-        right: &'a SelectedExpressions<T>,
+        right: &'a SelectedExpressions<Expression<T>>,
         sequence_iterator: &mut ProcessingSequenceIterator,
     ) -> Result<ProcessResult<'a, T>, EvalError<T>> {
         // Make the block two rows larger than the block size, it includes the last row of the previous block
