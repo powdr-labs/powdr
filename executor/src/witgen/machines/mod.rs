@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use ast::analyzed::Expression;
+use ast::analyzed::AlgebraicExpression as Expression;
 use ast::analyzed::PolynomialReference;
 use ast::parsed::SelectedExpressions;
 use number::FieldElement;

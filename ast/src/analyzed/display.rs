@@ -130,6 +130,26 @@ impl<T: Display> Display for Identity<Expression<T>> {
     }
 }
 
+impl<T: Display> Display for Identity<AlgebraicExpression<T>> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        match self.kind {
+            IdentityKind::Polynomial => {
+                let expression = self.expression_for_poly_id();
+                if let AlgebraicExpression::BinaryOperation(left, BinaryOperator::Sub, right) =
+                    expression
+                {
+                    write!(f, "{left} = {right};")
+                } else {
+                    write!(f, "{expression} = 0;")
+                }
+            }
+            IdentityKind::Plookup => write!(f, "{} in {};", self.left, self.right),
+            IdentityKind::Permutation => write!(f, "{} is {};", self.left, self.right),
+            IdentityKind::Connect => write!(f, "{} connect {};", self.left, self.right),
+        }
+    }
+}
+
 impl<Expr: Display> Display for SelectedExpressions<Expr> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(
@@ -151,6 +171,14 @@ impl Display for Reference {
                 write!(f, "{name}")
             }
             Reference::Poly(r) => write!(f, "{r}"),
+        }
+    }
+}
+
+impl Display for AlgebraicReference {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            AlgebraicReference::Poly(r) => write!(f, "{r}"),
         }
     }
 }

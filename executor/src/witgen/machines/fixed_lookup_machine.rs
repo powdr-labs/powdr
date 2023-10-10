@@ -2,7 +2,9 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::mem;
 use std::num::NonZeroUsize;
 
-use ast::analyzed::{Expression, IdentityKind, PolyID, PolynomialReference, PolynomialType};
+use ast::analyzed::{
+    AlgebraicExpression as Expression, IdentityKind, PolyID, PolynomialReference, PolynomialType,
+};
 use ast::parsed::SelectedExpressions;
 use itertools::Itertools;
 use number::FieldElement;

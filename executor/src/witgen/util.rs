@@ -1,4 +1,6 @@
-use ast::analyzed::{Expression, PolynomialReference, Reference};
+use ast::analyzed::{
+    AlgebraicExpression as Expression, AlgebraicReference as Reference, PolynomialReference,
+};
 
 /// Checks if an expression is
 /// - a polynomial

@@ -3,7 +3,7 @@ use std::{
     fmt::Debug,
 };
 
-use ast::analyzed::{Expression, PolyID, PolynomialReference};
+use ast::analyzed::{AlgebraicExpression as Expression, PolyID, PolynomialReference};
 use itertools::Itertools;
 use number::{DegreeType, FieldElement};
 

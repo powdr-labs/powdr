@@ -3,7 +3,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use num_traits::Zero;
 
 use ast::analyzed::{
-    Expression, Identity, IdentityKind, PolyID, PolynomialReference, PolynomialType,
+    AlgebraicExpression as Expression, Identity, IdentityKind, PolyID, PolynomialReference,
+    PolynomialType,
 };
 use ast::parsed::BinaryOperator;
 use number::FieldElement;

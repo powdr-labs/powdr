@@ -45,8 +45,7 @@ pub fn store_data_objects<'a>(
                                     (bytes.get(i + j).cloned().unwrap_or_default() as u32)
                                         << (j * 8)
                                 })
-                                .reduce(|a, b| a | b)
-                                .unwrap();
+                                .sum();
                             // We can assume memory to be zero-initialized.
                             if v != 0 {
                                 object_code

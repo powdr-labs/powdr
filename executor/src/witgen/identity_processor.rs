@@ -1,7 +1,7 @@
 use std::{collections::HashMap, sync::Mutex};
 
 use ast::{
-    analyzed::{Expression, Identity, IdentityKind, PolynomialReference},
+    analyzed::{AlgebraicExpression as Expression, Identity, IdentityKind, PolynomialReference},
     parsed::SelectedExpressions,
 };
 use itertools::{Either, Itertools};

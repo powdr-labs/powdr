@@ -6,7 +6,9 @@ use polyexen::plaf::{
     ColumnFixed, ColumnWitness, Columns, Info, Lookup, Plaf, Poly, Shuffle, Witness,
 };
 
-use ast::analyzed::{Analyzed, Expression, IdentityKind, Reference};
+use ast::analyzed::{
+    AlgebraicExpression as Expression, AlgebraicReference as Reference, Analyzed, IdentityKind,
+};
 use num_traits::One;
 use number::{BigInt, FieldElement};
 

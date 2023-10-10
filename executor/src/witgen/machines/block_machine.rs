@@ -11,7 +11,9 @@ use crate::witgen::sequence_iterator::{ProcessingSequenceCache, ProcessingSequen
 use crate::witgen::util::try_to_simple_poly;
 use crate::witgen::{machines::Machine, EvalError, EvalValue, IncompleteCause};
 use crate::witgen::{Constraints, MutableState, QueryCallback};
-use ast::analyzed::{Expression, Identity, IdentityKind, PolyID, PolynomialReference};
+use ast::analyzed::{
+    AlgebraicExpression as Expression, Identity, IdentityKind, PolyID, PolynomialReference,
+};
 use ast::parsed::SelectedExpressions;
 use number::{DegreeType, FieldElement};
 

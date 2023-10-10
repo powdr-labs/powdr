@@ -1,6 +1,8 @@
 use std::marker::PhantomData;
 
-use ast::analyzed::{Expression, PolynomialReference, Reference};
+use ast::analyzed::{
+    AlgebraicExpression as Expression, AlgebraicReference as Reference, PolynomialReference,
+};
 use ast::parsed::{BinaryOperator, UnaryOperator};
 use number::FieldElement;
 
