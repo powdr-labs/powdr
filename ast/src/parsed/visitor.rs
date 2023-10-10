@@ -114,7 +114,6 @@ impl<T, Ref> ExpressionVisitable<Expression<T, Ref>> for Expression<T, Ref> {
         }
         match self {
             Expression::Reference(_)
-            | Expression::Constant(_)
             | Expression::PublicReference(_)
             | Expression::Number(_)
             | Expression::String(_) => {}
@@ -152,7 +151,6 @@ impl<T, Ref> ExpressionVisitable<Expression<T, Ref>> for Expression<T, Ref> {
         }
         match self {
             Expression::Reference(_)
-            | Expression::Constant(_)
             | Expression::PublicReference(_)
             | Expression::Number(_)
             | Expression::String(_) => {}

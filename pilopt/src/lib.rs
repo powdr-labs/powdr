@@ -13,6 +13,7 @@ use ast::parsed::visitor::ExpressionVisitable;
 use ast::parsed::UnaryOperator;
 use ast::{evaluate_binary_operation, evaluate_unary_operation};
 use number::FieldElement;
+use pil_analyzer::evaluator::compute_constants;
 
 pub fn optimize<T: FieldElement>(mut pil_file: Analyzed<T>) -> Analyzed<T> {
     let col_count_pre = (pil_file.commitment_count(), pil_file.constant_count());
@@ -45,17 +46,15 @@ pub fn optimize_constants<T: FieldElement>(mut pil_file: Analyzed<T>) -> Analyze
 
 /// Inlines references to symbols with a single constant value.
 fn inline_constant_values<T: FieldElement>(pil_file: &mut Analyzed<T>) {
-    let constants = &pil_file.constants.clone();
-    pil_file.post_visit_expressions_mut(&mut |e| match e {
-        Expression::Reference(Reference::Poly(poly)) => {
+    let constants = compute_constants(pil_file);
+    pil_file.post_visit_expressions_mut(&mut |e| {
+        if let Expression::Reference(Reference::Poly(poly)) = e {
             if !poly.next && poly.index.is_none() {
                 if let Some(value) = constants.get(&poly.name) {
                     *e = Expression::Number(*value)
                 }
             }
         }
-        Expression::Constant(name) => *e = Expression::Number(constants[name]),
-        _ => {}
     });
 }
 
