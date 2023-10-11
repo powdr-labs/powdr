@@ -9,8 +9,8 @@ use std::{
 };
 
 use ::compiler::{compile_asm_string, BackendType};
-use json::JsonValue;
 use mktemp::Temp;
+use serde_json::Value as JsonValue;
 use std::fs;
 
 use number::FieldElement;
@@ -289,9 +289,7 @@ fn output_files_from_cargo_build_plan(
     build_plan_bytes: &[u8],
     target_dir: &Path,
 ) -> Vec<(String, PathBuf)> {
-    // Can a json be anything but UTF-8? Well, cargo's build plan certainly is UTF-8:
-    let json_str = std::str::from_utf8(build_plan_bytes).unwrap();
-    let json = json::parse(json_str).unwrap();
+    let json: JsonValue = serde_json::from_slice(build_plan_bytes).unwrap();
 
     let mut assemblies = Vec::new();
 
