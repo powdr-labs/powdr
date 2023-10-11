@@ -23,6 +23,7 @@ pub struct Generator<'a, T: FieldElement> {
     witnesses: HashSet<PolyID>,
     global_range_constraints: GlobalConstraints<T>,
     data: Vec<Row<'a, T>>,
+    latch: Option<Expression<T>>,
 }
 
 impl<'a, T: FieldElement> Machine<'a, T> for Generator<'a, T> {
@@ -55,6 +56,7 @@ impl<'a, T: FieldElement> Generator<'a, T> {
         identities: &[&'a Identity<Expression<T>>],
         witnesses: HashSet<PolyID>,
         global_range_constraints: &GlobalConstraints<T>,
+        latch: Option<Expression<T>>,
     ) -> Self {
         Self {
             fixed_data,
@@ -62,13 +64,32 @@ impl<'a, T: FieldElement> Generator<'a, T> {
             witnesses,
             global_range_constraints: global_range_constraints.clone(),
             data: vec![],
+            latch,
         }
     }
 
     pub fn run<Q: QueryCallback<T>>(&mut self, mutable_state: &mut MutableState<'a, '_, T, Q>) {
         let first_row = self.compute_partial_first_row(mutable_state);
-        self.data = self.process(first_row, mutable_state);
+        self.data = self.process(first_row, 0, mutable_state);
+        self.fill_remaining_rows(mutable_state);
         self.fix_first_row();
+    }
+
+    fn fill_remaining_rows<Q>(&mut self, mutable_state: &mut MutableState<'a, '_, T, Q>)
+    where
+        Q: FnMut(&str) -> Option<T> + Send + Sync,
+    {
+        if self.data.len() < self.fixed_data.degree as usize + 1 {
+            assert!(self.latch.is_some());
+
+            let first_row = self.data.pop().unwrap();
+
+            self.data.append(&mut self.process(
+                first_row,
+                self.data.len() as DegreeType,
+                mutable_state,
+            ));
+        }
     }
 
     /// Runs the solver on the row pair (degree - 1, 0) in order to partially compute the first
@@ -110,19 +131,24 @@ impl<'a, T: FieldElement> Generator<'a, T> {
     fn process<Q: QueryCallback<T>>(
         &self,
         first_row: Row<'a, T>,
+        row_offset: DegreeType,
         mutable_state: &mut MutableState<'a, '_, T, Q>,
     ) -> Vec<Row<'a, T>> {
-        log::trace!("{}", first_row.render("first row", false, &self.witnesses));
-        let data = vec![first_row];
+        log::trace!(
+            "Running main machine from row {row_offset} with the following initial values in the first row:\n{}", first_row.render_values(false, None)
+        );
         let row_factory = RowFactory::new(self.fixed_data, self.global_range_constraints.clone());
         let mut processor = VmProcessor::new(
+            row_offset,
             self.fixed_data,
             &self.identities,
             self.witnesses.clone(),
-            data,
+            vec![first_row],
             row_factory,
+            self.latch.clone(),
         );
-        processor.run(mutable_state);
+        let result = processor.run(mutable_state);
+        assert!(result.is_complete(), "Main machine did not complete");
         processor.finish()
     }
 

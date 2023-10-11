@@ -117,7 +117,16 @@ impl<'a, 'b, T: FieldElement, Q: QueryCallback<T>> WitnessGenerator<'a, 'b, T, Q
             machines: Machines::from(machines.iter_mut()),
             query_callback: &mut query_callback,
         };
-        let mut generator = Generator::new(&fixed, &base_identities, base_witnesses, &constraints);
+        let mut generator = Generator::new(
+            &fixed,
+            &base_identities,
+            base_witnesses,
+            &constraints,
+            // We could set the latch of the main VM here, but then we would have to detect it.
+            // Instead, the main VM will be computed in one block, directly continuing into the
+            // infinite loop after the first return.
+            None,
+        );
 
         generator.run(&mut mutable_state);
 

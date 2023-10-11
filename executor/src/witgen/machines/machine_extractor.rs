@@ -117,12 +117,32 @@ pub fn split_out_machines<'a, T: FieldElement>(
             log::info!("Detected machine: block");
             machines.push(KnownMachine::BlockMachine(machine));
         } else {
-            log::info!("Could not detect a specific machine. Will use the generic VM machine.");
+            log::info!("Detected machine: VM.");
+            let latch = connecting_identities
+                .iter()
+                .fold(None, |existing_latch, identity| {
+                    let current_latch = identity
+                        .right
+                        .selector
+                        .as_ref()
+                        .expect("Cannot handle lookup in this machine because it does not have a latch");
+                    if let Some(existing_latch) = existing_latch {
+                        assert_eq!(
+                            &existing_latch, current_latch,
+                            "All connecting identities must have the same selector expression on the right hand side"
+                        );
+                        Some(existing_latch)
+                    } else {
+                        Some(current_latch.clone())
+                    }
+                })
+                .unwrap();
             machines.push(KnownMachine::Vm(Generator::new(
                 fixed,
                 &machine_identities,
                 machine_witnesses,
                 global_range_constraints,
+                Some(latch),
             )));
         }
     }
