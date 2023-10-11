@@ -67,12 +67,12 @@ impl Architecture for RiscvArchitecture {
     fn instruction_ends_control_flow(instr: &str) -> bool {
         match instr {
             "li" | "lui" | "la" | "mv" | "add" | "addi" | "sub" | "neg" | "mul" | "mulhu"
-            | "divu" | "remu" | "xor" | "xori" | "and" | "andi" | "or" | "ori" | "not" | "slli"
-            | "sll" | "srli" | "srl" | "srai" | "seqz" | "snez" | "slt" | "slti" | "sltu"
-            | "sltiu" | "sgtz" | "beq" | "beqz" | "bgeu" | "bltu" | "blt" | "bge" | "bltz"
-            | "blez" | "bgtz" | "bgez" | "bne" | "bnez" | "jal" | "jalr" | "call" | "ecall"
-            | "ebreak" | "lw" | "lb" | "lbu" | "lh" | "lhu" | "sw" | "sh" | "sb" | "nop"
-            | "fence" | "fence.i" | "amoadd.w" | "amoadd.w.aq" | "amoadd.w.rl"
+            | "mulhsu" | "divu" | "remu" | "xor" | "xori" | "and" | "andi" | "or" | "ori"
+            | "not" | "slli" | "sll" | "srli" | "srl" | "srai" | "seqz" | "snez" | "slt"
+            | "slti" | "sltu" | "sltiu" | "sgtz" | "beq" | "beqz" | "bgeu" | "bltu" | "blt"
+            | "bge" | "bltz" | "blez" | "bgtz" | "bgez" | "bne" | "bnez" | "jal" | "jalr"
+            | "call" | "ecall" | "ebreak" | "lw" | "lb" | "lbu" | "lh" | "lhu" | "sw" | "sh"
+            | "sb" | "nop" | "fence" | "fence.i" | "amoadd.w" | "amoadd.w.aq" | "amoadd.w.rl"
             | "amoadd.w.aqrl" | "lr.w" | "lr.w.aq" | "lr.w.rl" | "lr.w.aqrl" | "sc.w"
             | "sc.w.aq" | "sc.w.rl" | "sc.w.aqrl" => false,
             "j" | "jr" | "tail" | "ret" | "unimp" => true,
@@ -903,6 +903,27 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
         "mulhu" => {
             let (rd, r1, r2) = rrr(args);
             only_if_no_write_to_zero(format!("tmp1, {rd} <== mul({r1}, {r2});"), rd)
+        }
+        "mulhsu" => {
+            let (rd, r1, r2) = rrr(args);
+            only_if_no_write_to_zero_vec(
+                vec![
+                    format!("tmp1 <== to_signed({r1});"),
+                    // tmp2 is 1 if tmp1 is non-negative
+                    "tmp2 <== is_positive(tmp1 + 1);".into(),
+                    // If negative, convert to positive
+                    "skip_if_zero 0, tmp2;".into(),
+                    "tmp1 <=X= 0 - tmp1;".into(),
+                    format!("tmp1, {rd} <== mul(tmp1, {r2});"),
+                    // If was negative before, convert back to negative
+                    "skip_if_zero (1-tmp2), 2;".into(),
+                    "tmp1 <== is_equal_zero(tmp1);".into(),
+                    // If the lower bits are zero, return the two's complement,
+                    // otherwise return one's complement.
+                    format!("{rd} <== wrap_signed(-{rd} - 1 + tmp1);"),
+                ],
+                rd,
+            )
         }
         "divu" => {
             let (rd, r1, r2) = rrr(args);
