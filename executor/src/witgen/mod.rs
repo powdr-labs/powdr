@@ -40,8 +40,8 @@ pub trait QueryCallback<T>: FnMut(&str) -> Option<T> + Send + Sync {}
 impl<T, F> QueryCallback<T> for F where F: FnMut(&str) -> Option<T> + Send + Sync {}
 
 /// Everything [Generator] needs to mutate in order to compute a new row.
-pub struct MutableState<'a, T: FieldElement, Q: QueryCallback<T>> {
-    pub fixed_lookup: FixedLookup<T>,
+pub struct MutableState<'a, 'b, T: FieldElement, Q: QueryCallback<T>> {
+    pub fixed_lookup: &'b mut FixedLookup<T>,
     pub machines: Vec<KnownMachine<'a, T>>,
     pub query_callback: Option<Q>,
 }
@@ -68,7 +68,7 @@ pub fn generate<'a, T: FieldElement, Q: QueryCallback<T>>(
         retained_identities,
     } = global_constraints::determine_global_constraints(&fixed, identities.iter().collect());
     let ExtractionOutput {
-        fixed_lookup,
+        mut fixed_lookup,
         machines,
         base_identities,
         base_witnesses,
@@ -78,7 +78,7 @@ pub fn generate<'a, T: FieldElement, Q: QueryCallback<T>>(
         &known_witness_constraints,
     );
     let mut mutable_state = MutableState {
-        fixed_lookup,
+        fixed_lookup: &mut fixed_lookup,
         machines,
         query_callback,
     };

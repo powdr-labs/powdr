@@ -147,7 +147,6 @@ fn vm_to_block_multiple_interfaces() {
 }
 
 #[test]
-#[should_panic = "not implemented"]
 fn vm_to_vm() {
     let f = "vm_to_vm.asm";
     let i = [];

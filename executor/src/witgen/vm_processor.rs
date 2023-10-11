@@ -8,11 +8,13 @@ use std::time::Instant;
 
 use crate::witgen::identity_processor::{self, IdentityProcessor};
 use crate::witgen::rows::RowUpdater;
+use crate::witgen::Constraint;
 
+use super::processor::OuterQuery;
 use super::query_processor::QueryProcessor;
 
 use super::rows::{Row, RowFactory, RowPair, UnknownStrategy};
-use super::{EvalError, EvalResult, EvalValue, FixedData, MutableState, QueryCallback};
+use super::{EvalError, EvalResult, EvalValue, FixedData, MutableState, QueryCallback, Constraints};
 
 /// A list of identities with a flag whether it is complete.
 struct CompletableIdentities<'a, T: FieldElement> {
@@ -51,9 +53,11 @@ pub struct VmProcessor<'a, T: FieldElement> {
     last_report_time: Instant,
     row_factory: RowFactory<'a, T>,
     latch: Option<Expression<T>>,
+    outer_query: Option<OuterQuery<'a, T>>,
 }
 
 impl<'a, T: FieldElement> VmProcessor<'a, T> {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         row_offset: DegreeType,
         fixed_data: &'a FixedData<'a, T>,
@@ -62,10 +66,15 @@ impl<'a, T: FieldElement> VmProcessor<'a, T> {
         data: Vec<Row<'a, T>>,
         row_factory: RowFactory<'a, T>,
         latch: Option<Expression<T>>,
+        outer_query: Option<OuterQuery<'a, T>>,
     ) -> Self {
         let (identities_with_next, identities_without_next): (Vec<_>, Vec<_>) = identities
             .iter()
             .partition(|identity| identity.contains_next_ref());
+
+        if outer_query.is_some() {
+            assert!(latch.is_some());
+        }
 
         VmProcessor {
             row_offset,
@@ -78,6 +87,7 @@ impl<'a, T: FieldElement> VmProcessor<'a, T> {
             last_report: 0,
             last_report_time: Instant::now(),
             latch,
+            outer_query,
         }
     }
 
@@ -87,8 +97,13 @@ impl<'a, T: FieldElement> VmProcessor<'a, T> {
 
     /// Starting out with a single row (at a given offset), iteratively append rows
     /// until we have exhausted the rows or the latch expression (if available) evaluates to 1.
-    pub fn run<Q: QueryCallback<T>>(&mut self, mutable_state: &mut MutableState<'a, T, Q>) {
-        assert!(self.data.len() == 1);
+    pub fn run<Q: QueryCallback<T>>(
+        &mut self,
+        mutable_state: &mut MutableState<'a, '_, T, Q>,
+    ) -> Constraints<&'a PolynomialReference, T> {
+        assert!(!self.data.is_empty());
+
+        let mut outer_assignments = vec![];
 
         // Are we in an infinite loop and can just re-use the old values?
         let mut looping_period = None;
@@ -124,7 +139,7 @@ impl<'a, T: FieldElement> VmProcessor<'a, T> {
             // add and compute some values for the next row as well.
             if looping_period.is_none() && row_index != rows_left - 1 {
                 self.ensure_has_next_row(row_index);
-                self.compute_row(row_index, mutable_state);
+                outer_assignments.extend(self.compute_row(row_index, mutable_state).into_iter());
 
                 if let Some(latch) = self.latch.as_ref() {
                     // Evaluate latch expression and return if it evaluates to 1.
@@ -137,7 +152,7 @@ impl<'a, T: FieldElement> VmProcessor<'a, T> {
                     let latch_value = row_pair.evaluate(latch).unwrap().constant_value().unwrap();
                     if latch_value.is_one() {
                         log::trace!("Machine returns!");
-                        return;
+                        return outer_assignments;
                     }
                 }
             };
@@ -147,6 +162,8 @@ impl<'a, T: FieldElement> VmProcessor<'a, T> {
             self.data.len() as DegreeType + self.row_offset,
             self.fixed_data.degree + 1
         );
+
+        outer_assignments
     }
 
     /// Checks if the last rows are repeating and returns the period.
@@ -182,13 +199,13 @@ impl<'a, T: FieldElement> VmProcessor<'a, T> {
     fn compute_row<Q: QueryCallback<T>>(
         &mut self,
         row_index: DegreeType,
-        mutable_state: &mut MutableState<'a, T, Q>,
-    ) {
+        mutable_state: &mut MutableState<'a, '_, T, Q>,
+    ) -> Constraints<&'a PolynomialReference, T> {
         log::trace!("Row: {}", row_index + self.row_offset);
 
         let mut identity_processor = IdentityProcessor::new(
             self.fixed_data,
-            &mut mutable_state.fixed_lookup,
+            mutable_state.fixed_lookup,
             mutable_state.machines.iter_mut().into(),
         );
         let mut query_processor = mutable_state
@@ -203,22 +220,26 @@ impl<'a, T: FieldElement> VmProcessor<'a, T> {
             CompletableIdentities::new(self.identities_without_next_ref.iter().cloned());
         let mut identities_with_next_ref =
             CompletableIdentities::new(self.identities_with_next_ref.iter().cloned());
-        self.loop_until_no_progress(
-            row_index,
-            &mut identities_without_next_ref,
-            &mut identity_processor,
-            &mut query_processor,
-        )
-        .and_then(|_| {
-            self.loop_until_no_progress(
+        let outer_assignments = self
+            .loop_until_no_progress(
                 row_index,
-                &mut identities_with_next_ref,
+                &mut identities_without_next_ref,
                 &mut identity_processor,
                 &mut query_processor,
             )
-        })
-        .map_err(|e| self.report_failure_and_panic_unsatisfiable(row_index, e))
-        .unwrap();
+            .and_then(|outer_assignments| {
+                Ok(outer_assignments
+                    .into_iter()
+                    .chain(self.loop_until_no_progress(
+                        row_index,
+                        &mut identities_with_next_ref,
+                        &mut identity_processor,
+                        &mut query_processor,
+                    )?)
+                    .collect::<Vec<_>>())
+            })
+            .map_err(|e| self.report_failure_and_panic_unsatisfiable(row_index, e))
+            .unwrap();
 
         // Check that the computed row is "final" by asserting that all unknown values can
         // be set to 0.
@@ -245,6 +266,8 @@ impl<'a, T: FieldElement> VmProcessor<'a, T> {
             self.row(row_index)
                 .render(&format!("===== Row {}", row_index), true, &self.witnesses)
         );
+
+        outer_assignments
     }
 
     /// Loops over all identities and queries, until no further progress is made.
@@ -255,10 +278,11 @@ impl<'a, T: FieldElement> VmProcessor<'a, T> {
         identities: &mut CompletableIdentities<'a, T>,
         identity_processor: &mut IdentityProcessor<'a, '_, T>,
         query_processor: &mut Option<QueryProcessor<'a, '_, T, Q>>,
-    ) -> Result<(), Vec<EvalError<T>>>
+    ) -> Result<Constraints<&'a PolynomialReference, T>, Vec<EvalError<T>>>
     where
         Q: FnMut(&str) -> Option<T> + Send + Sync,
     {
+        let mut outer_assignments = vec![];
         loop {
             let mut progress = self.process_identities(
                 row_index,
@@ -266,6 +290,27 @@ impl<'a, T: FieldElement> VmProcessor<'a, T> {
                 UnknownStrategy::Unknown,
                 identity_processor,
             )?;
+
+            if let Some(outer_query) = self.outer_query.as_ref() {
+                let row_pair = RowPair::new(
+                    self.row(row_index),
+                    self.row(row_index + 1),
+                    row_index + self.row_offset,
+                    self.fixed_data,
+                    UnknownStrategy::Unknown,
+                );
+                let latch_value = row_pair
+                    .evaluate(outer_query.right.selector.as_ref().unwrap())
+                    .unwrap()
+                    .constant_value()
+                    .unwrap();
+                if latch_value.is_one() {
+                    let (_progress, new_outer_assignments) = self
+                        .process_outer_query(row_index, identity_processor)
+                        .unwrap();
+                    outer_assignments.extend(new_outer_assignments);
+                }
+            }
             if let Some(query_processor) = query_processor.as_mut() {
                 let row_pair = RowPair::new(
                     self.row(row_index),
@@ -282,7 +327,7 @@ impl<'a, T: FieldElement> VmProcessor<'a, T> {
                 break;
             }
         }
-        Ok(())
+        Ok(outer_assignments)
     }
 
     /// Loops over all identities once and updates the current row and next row.
@@ -356,17 +401,81 @@ impl<'a, T: FieldElement> VmProcessor<'a, T> {
         }
     }
 
+    fn process_outer_query(
+        &mut self,
+        row_index: DegreeType,
+        identity_processor: &mut IdentityProcessor<'a, '_, T>,
+    ) -> Result<(bool, Constraints<&'a PolynomialReference, T>), EvalError<T>> {
+        let OuterQuery { left, right } = self
+            .outer_query
+            .as_ref()
+            .expect("Asked to process outer query, but it was not set!");
+
+        let row_pair = RowPair::new(
+            self.row(row_index),
+            self.row(row_index + 1),
+            (row_index + self.row_offset) % self.fixed_data.degree,
+            self.fixed_data,
+            UnknownStrategy::Unknown,
+        );
+
+        let updates = identity_processor
+            .process_link(left, right, &row_pair)
+            .map_err(|e| {
+                log::warn!("Error in outer query: {e}");
+                log::warn!("Some of the following entries could not be matched:");
+                for (l, r) in left.iter().zip(right.expressions.iter()) {
+                    if let Ok(r) = row_pair.evaluate(r) {
+                        log::warn!("  => {} = {}", l, r);
+                    }
+                }
+                e
+            })?;
+
+        let progress = self.apply_updates(row_index, &updates, || "outer query".to_string());
+
+        let outer_assignments = updates
+            .constraints
+            .into_iter()
+            .filter(|(poly, _)| !self.witnesses.contains(&poly.poly_id()))
+            .collect::<Vec<_>>();
+
+        Ok((progress, outer_assignments))
+    }
+
     fn apply_updates(
         &mut self,
         row_index: DegreeType,
-        updates: &EvalValue<&PolynomialReference, T>,
+        updates: &EvalValue<&'a PolynomialReference, T>,
         source_name: impl Fn() -> String,
     ) -> bool {
+        if updates.constraints.is_empty() {
+            return false;
+        }
+
+        log::trace!("    Updates from: {}", source_name());
+
+        // Build RowUpdater
+        // (a bit complicated, because we need two mutable
+        // references to elements of the same vector)
         let (before, after) = self.data.split_at_mut(row_index as usize + 1);
         let current = before.last_mut().unwrap();
         let next = after.first_mut().unwrap();
         let mut row_updater = RowUpdater::new(current, next, row_index + self.row_offset);
-        row_updater.apply_updates(updates, source_name)
+
+        for (poly, c) in &updates.constraints {
+            if self.witnesses.contains(&poly.poly_id()) {
+                row_updater.apply_update(poly, c);
+            } else if let Constraint::Assignment(v) = c {
+                let left = &mut self.outer_query.as_mut().unwrap().left;
+                log::trace!("      => {} (outer) = {}", poly, v);
+                for l in left.iter_mut() {
+                    l.assign(poly, *v);
+                }
+            };
+        }
+
+        true
     }
 
     fn report_failure_and_panic_unsatisfiable(
@@ -439,11 +548,11 @@ impl<'a, T: FieldElement> VmProcessor<'a, T> {
         &mut self,
         row_index: DegreeType,
         proposed_row: Row<'a, T>,
-        mutable_state: &mut MutableState<'a, T, Q>,
+        mutable_state: &mut MutableState<'a, '_, T, Q>,
     ) -> bool {
         let mut identity_processor = IdentityProcessor::new(
             self.fixed_data,
-            &mut mutable_state.fixed_lookup,
+            mutable_state.fixed_lookup,
             mutable_state.machines.iter_mut().into(),
         );
         let constraints_valid =
@@ -511,9 +620,9 @@ impl<'a, T: FieldElement> VmProcessor<'a, T> {
                 .process_identity(identity, &row_pair)
                 .is_err()
             {
-                log::debug!("Previous {:?}", self.row(row_index - 1));
-                log::debug!("Proposed {:?}", proposed_row);
-                log::debug!("Failed on identity: {}", identity);
+                log::trace!("Previous {:?}", self.row(row_index - 1));
+                log::trace!("Proposed {:?}", proposed_row);
+                log::trace!("Failed on identity: {}", identity);
 
                 return false;
             }

@@ -4,19 +4,21 @@ use number::{DegreeType, FieldElement};
 use std::collections::{HashMap, HashSet};
 
 use crate::witgen::rows::CellValue;
+use crate::witgen::{EvalStatus, EvalValue, IncompleteCause};
 
 use super::affine_expression::AffineExpression;
 use super::column_map::WitnessColumnMap;
 use super::identity_processor::{IdentityProcessor, Machines};
 use super::machines::Machine;
-use super::processor::Processor;
+use super::processor::{OuterQuery, Processor};
 use super::range_constraints::RangeConstraint;
 
 use super::machines::FixedLookup;
 use super::rows::{transpose_rows, Row, RowFactory};
 use super::sequence_iterator::{DefaultSequenceIterator, ProcessingSequenceIterator};
+use super::util::try_to_simple_poly;
 use super::vm_processor::VmProcessor;
-use super::{EvalResult, FixedData, MutableState, QueryCallback};
+use super::{EvalResult, FixedData, MutableState, QueryCallback, Constraints};
 
 pub struct Generator<'a, T: FieldElement> {
     fixed_data: &'a FixedData<'a, T>,
@@ -30,13 +32,104 @@ pub struct Generator<'a, T: FieldElement> {
 impl<'a, T: FieldElement> Machine<'a, T> for Generator<'a, T> {
     fn process_plookup(
         &mut self,
-        _fixed_lookup: &mut FixedLookup<T>,
+        fixed_lookup: &mut FixedLookup<T>,
         _kind: IdentityKind,
-        _left: &[AffineExpression<&'a PolynomialReference, T>],
-        _right: &'a SelectedExpressions<Expression<T>>,
+        left: &[AffineExpression<&'a PolynomialReference, T>],
+        right: &'a SelectedExpressions<Expression<T>>,
         _machines: Machines<'a, '_, T>,
     ) -> Option<EvalResult<'a, T>> {
-        unimplemented!()
+        if right.selector == self.latch {
+            log::trace!("Start processing secondary VM '{}'", self.name());
+            log::trace!("Left values of lookup:");
+            for l in left {
+                log::trace!("  {}", l);
+            }
+
+            // TODO: Pass machines and query callback
+            let mut mutable_state: MutableState<_, fn(&str) -> Option<_>> = MutableState {
+                fixed_lookup,
+                machines: vec![],
+                query_callback: None,
+            };
+
+            let row_factory =
+                RowFactory::new(self.fixed_data, self.global_range_constraints.clone());
+            let mut first_row = self
+                .data
+                .pop()
+                .unwrap_or_else(|| self.compute_partial_first_row(&mut mutable_state));
+            let mut second_row = row_factory.fresh_row();
+
+            for (l, r) in left.iter().zip(&right.expressions) {
+                let right_poly = try_to_simple_poly(r).map(|p| p.poly_id());
+                if let Some(right_poly) = right_poly {
+                    if self.fixed_data.column_name(&right_poly).contains("_input") {
+                        if let Some(l) = l.constant_value() {
+                            second_row[&right_poly].value = CellValue::Known(l);
+                        } else {
+                            log::trace!(
+                                "Abort processing secondary VM '{}': Input {} was not provided",
+                                self.name(),
+                                self.fixed_data.column_name(&right_poly)
+                            );
+                            self.data.push(first_row);
+                            return Some(Ok(EvalValue {
+                                constraints: vec![],
+                                status: EvalStatus::Incomplete(
+                                    IncompleteCause::BlockMachineLookupIncomplete,
+                                ),
+                            }));
+                        }
+                    }
+                    if self
+                        .fixed_data
+                        .column_name(&right_poly)
+                        .contains("_operation_id")
+                    {
+                        let l = l
+                            .constant_value()
+                            .expect("operation ID assumed to be hard-coded!");
+                        first_row[&right_poly].value = CellValue::Known(l);
+                    }
+                }
+            }
+
+            let outer_query = OuterQuery {
+                left: left.to_vec(),
+                right,
+            };
+            let (outer_assignments, mut block) = self.process(
+                vec![first_row, second_row],
+                0,
+                &mut mutable_state,
+                Some(outer_query),
+            );
+
+            self.data.append(&mut block);
+            let eval_value = EvalValue {
+                constraints: outer_assignments,
+                status: EvalStatus::Complete,
+            };
+            Some(Ok(eval_value))
+        } else {
+            None
+        }
+    }
+
+    fn finalize<'b>(
+        &mut self,
+        fixed_lookup: &'b mut FixedLookup<T>,
+        _machines: Machines<'a, 'b, T>,
+    ) {
+        // TODO: Pass machines and query callback
+        let mut mutable_state: MutableState<_, fn(&str) -> Option<_>> = MutableState {
+            fixed_lookup,
+            machines: vec![],
+            query_callback: None,
+        };
+        self.fill_remaining_rows(&mut mutable_state);
+
+        self.fix_first_row();
     }
 
     fn take_witness_col_values(&mut self) -> HashMap<String, Vec<T>> {
@@ -70,14 +163,42 @@ impl<'a, T: FieldElement> Generator<'a, T> {
         }
     }
 
-    pub fn run<Q: QueryCallback<T>>(&mut self, mutable_state: &mut MutableState<'a, T, Q>) {
-        let first_row = self.compute_partial_first_row(mutable_state);
-        self.data = self.process(vec![first_row], 0, mutable_state);
-        self.fill_remaining_rows(mutable_state);
-        self.fix_first_row();
+    fn name(&self) -> &str {
+        let first_witness = self.witnesses.iter().next().unwrap();
+        let first_witness_name = self.fixed_data.column_name(first_witness);
+        let namespace = first_witness_name
+            .rfind('.')
+            .map(|idx| &first_witness_name[..idx]);
+        if let Some(namespace) = namespace {
+            namespace
+        } else {
+            // For machines compiled using Powdr ASM we'll always have a namespace, but as a last
+            // resort we'll use the first witness name.
+            first_witness_name
+        }
     }
 
-    fn fill_remaining_rows<Q>(&mut self, mutable_state: &mut MutableState<'a, T, Q>)
+    pub fn run<Q: QueryCallback<T>>(&mut self, mutable_state: &mut MutableState<'a, '_, T, Q>) {
+        let first_row = self.compute_partial_first_row(mutable_state);
+        self.data = self.process(vec![first_row], 0, mutable_state, None).1;
+
+        log::debug!("Finalizing main Machine");
+        let machines = mutable_state.machines.iter_mut().into();
+        self.finalize(mutable_state.fixed_lookup, machines);
+
+        let mut machines: Machines<T> = mutable_state.machines.iter_mut().into();
+        for i in 0..machines.len() {
+            log::debug!(
+                "Finalizing secondary machine {} / {}",
+                i + 1,
+                machines.len()
+            );
+            let (current, others) = machines.split(i);
+            current.finalize(mutable_state.fixed_lookup, others)
+        }
+    }
+
+    fn fill_remaining_rows<Q>(&mut self, mutable_state: &mut MutableState<'a, '_, T, Q>)
     where
         Q: FnMut(&str) -> Option<T> + Send + Sync,
     {
@@ -86,11 +207,16 @@ impl<'a, T: FieldElement> Generator<'a, T> {
 
             let first_row = self.data.pop().unwrap();
 
-            self.data.append(&mut self.process(
-                vec![first_row],
-                self.data.len() as DegreeType,
-                mutable_state,
-            ));
+            self.data.append(
+                &mut self
+                    .process(
+                        vec![first_row],
+                        self.data.len() as DegreeType,
+                        mutable_state,
+                        None,
+                    )
+                    .1,
+            );
         }
     }
 
@@ -98,7 +224,7 @@ impl<'a, T: FieldElement> Generator<'a, T> {
     /// row from identities like `pc' = (1 - first_step') * <...>`.
     fn compute_partial_first_row<Q: QueryCallback<T>>(
         &self,
-        mutable_state: &mut MutableState<'a, T, Q>,
+        mutable_state: &mut MutableState<'a, '_, T, Q>,
     ) -> Row<'a, T> {
         // Use `Processor` + `DefaultSequenceIterator` using a "block size" of 0. Because `Processor`
         // expects `data` to include the row before and after the block, this means we'll run the
@@ -108,7 +234,7 @@ impl<'a, T: FieldElement> Generator<'a, T> {
         // are satisfied assuming 0 for unknown values).
         let mut identity_processor = IdentityProcessor::new(
             self.fixed_data,
-            &mut mutable_state.fixed_lookup,
+            mutable_state.fixed_lookup,
             mutable_state.machines.iter_mut().into(),
         );
         let row_factory = RowFactory::new(self.fixed_data, self.global_range_constraints.clone());
@@ -135,10 +261,12 @@ impl<'a, T: FieldElement> Generator<'a, T> {
         &self,
         data: Vec<Row<'a, T>>,
         row_offset: DegreeType,
-        mutable_state: &mut MutableState<'a, T, Q>,
-    ) -> Vec<Row<'a, T>> {
+        mutable_state: &mut MutableState<'a, '_, T, Q>,
+        outer_query: Option<OuterQuery<'a, T>>,
+    ) -> (Constraints<&'a PolynomialReference, T>, Vec<Row<'a, T>>) {
         log::trace!(
-            "Running main machine from row {row_offset} with the following initial values:"
+            "Running machine {} from row {row_offset} with the following initial values:",
+            self.name(),
         );
         for (i, row) in data.iter().enumerate() {
             log::trace!("  Row {i}:\n{}", row.render_values(false, None));
@@ -152,9 +280,10 @@ impl<'a, T: FieldElement> Generator<'a, T> {
             data,
             row_factory,
             self.latch.clone(),
+            outer_query,
         );
-        processor.run(mutable_state);
-        processor.finish()
+        let outer_assignments = processor.run(mutable_state);
+        (outer_assignments, processor.finish())
     }
 
     /// At the end of the solving algorithm, we'll have computed the first row twice

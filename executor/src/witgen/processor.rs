@@ -26,9 +26,9 @@ pub struct WithoutCalldata;
 pub struct OuterQuery<'a, T: FieldElement> {
     /// A local copy of the left-hand side of the outer query.
     /// This will be mutated while processing the block.
-    left: Left<'a, T>,
+    pub left: Left<'a, T>,
     /// The right-hand side of the outer query.
-    right: &'a SelectedExpressions<Expression<T>>,
+    pub right: &'a SelectedExpressions<Expression<T>>,
 }
 
 impl<'a, T: FieldElement> OuterQuery<'a, T> {
