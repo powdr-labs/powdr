@@ -17,18 +17,19 @@ use ast::analyzed::{
     Symbol, SymbolKind,
 };
 
+use crate::condenser;
 use crate::evaluator::Evaluator;
 
 pub fn process_pil_file<T: FieldElement>(path: &Path) -> Analyzed<T> {
     let mut analyzer = PILAnalyzer::new();
     analyzer.process_file(path);
-    analyzer.into()
+    analyzer.condense()
 }
 
 pub fn process_pil_file_contents<T: FieldElement>(contents: &str) -> Analyzed<T> {
     let mut analyzer = PILAnalyzer::new();
     analyzer.process_file_contents(Path::new("input"), contents);
-    analyzer.into()
+    analyzer.condense()
 }
 
 #[derive(Default)]
@@ -47,50 +48,6 @@ struct PILAnalyzer<T> {
     symbol_counters: BTreeMap<SymbolKind, u64>,
     identity_counter: HashMap<IdentityKind, u64>,
     macro_expander: MacroExpander<T>,
-}
-
-impl<T: Copy> From<PILAnalyzer<T>> for Analyzed<T> {
-    fn from(
-        PILAnalyzer {
-            definitions,
-            public_declarations,
-            identities,
-            source_order,
-            ..
-        }: PILAnalyzer<T>,
-    ) -> Self {
-        let ids = definitions
-            .iter()
-            .map(|(name, (poly, _))| (name.clone(), poly.clone()))
-            .collect::<HashMap<_, _>>();
-        let mut result = Self {
-            definitions,
-            public_declarations,
-            identities,
-            source_order,
-        };
-        let assign_id = |reference: &mut PolynomialReference| {
-            let poly = ids
-                .get(&reference.name)
-                .unwrap_or_else(|| panic!("Column {} not found.", reference.name));
-            if let SymbolKind::Poly(_) = &poly.kind {
-                reference.poly_id = Some(poly.into());
-            }
-        };
-        let expr_visitor = &mut |e: &mut Expression<_>| {
-            if let Expression::Reference(Reference::Poly(reference)) = e {
-                assign_id(reference);
-            }
-        };
-        result.post_visit_expressions_in_definitions_mut(expr_visitor);
-        result.post_visit_expressions_in_identities_mut(expr_visitor);
-        // TODO at some point, merge public declarations with definitions as well.
-        result
-            .public_declarations
-            .values_mut()
-            .for_each(|public_decl| assign_id(&mut public_decl.polynomial));
-        result
-    }
 }
 
 impl<T: FieldElement> PILAnalyzer<T> {
@@ -145,6 +102,15 @@ impl<T: FieldElement> PILAnalyzer<T> {
 
         self.current_file = old_current_file;
         self.line_starts = old_line_starts;
+    }
+
+    pub fn condense(self) -> Analyzed<T> {
+        condenser::condense(
+            self.definitions,
+            self.public_declarations,
+            self.identities,
+            self.source_order,
+        )
     }
 
     fn handle_statement(&mut self, statement: PilStatement<T>) {
