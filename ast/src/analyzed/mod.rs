@@ -163,14 +163,16 @@ impl<T> Analyzed<T> {
                 poly.id = replacements[&poly_id].id;
             }
         });
-        self.pre_visit_expressions_mut(&mut |expr| {
+        let visitor = &mut |expr: &mut Expression<_>| {
             if let Expression::Reference(Reference::Poly(poly)) = expr {
                 poly.poly_id = poly.poly_id.map(|poly_id| {
                     assert!(!to_remove.contains(&poly_id));
                     replacements[&poly_id]
                 });
             }
-        });
+        };
+        self.post_visit_expressions_in_definitions_mut(visitor);
+        self.post_visit_expressions_in_identities_mut(visitor);
     }
 
     /// Adds a polynomial identity and returns the ID.
@@ -224,6 +226,34 @@ impl<T> Analyzed<T> {
             index += 1;
             retain
         })
+    }
+
+    pub fn post_visit_expressions_in_identities_mut<F>(&mut self, f: &mut F)
+    where
+        F: FnMut(&mut Expression<T>),
+    {
+        self.identities
+            .iter_mut()
+            .for_each(|i| i.post_visit_expressions_mut(f));
+    }
+
+    pub fn post_visit_expressions_in_definitions_mut<F>(&mut self, f: &mut F)
+    where
+        F: FnMut(&mut Expression<T>),
+    {
+        // TODO add public inputs if we change them to expressions at some point.
+        self.definitions
+            .values_mut()
+            .for_each(|(_poly, definition)| match definition {
+                Some(FunctionValueDefinition::Mapping(e))
+                | Some(FunctionValueDefinition::Query(e)) => e.post_visit_expressions_mut(f),
+                Some(FunctionValueDefinition::Array(elements)) => elements
+                    .iter_mut()
+                    .flat_map(|e| e.pattern.iter_mut())
+                    .for_each(|e| e.post_visit_expressions_mut(f)),
+                Some(FunctionValueDefinition::Expression(e)) => e.post_visit_expressions_mut(f),
+                None => {}
+            });
     }
 }
 
