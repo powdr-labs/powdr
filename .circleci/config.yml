@@ -1,20 +1,31 @@
 version: 2.1
 
-jobs:
-  pr-tests:
+executors:
+  executor:
     machine:
       image: ubuntu-2004:current
     resource_class: large
+
+jobs:
+  build:
+    executor: executor
     steps:
+      - checkout
+
       - run:
           name: Install dependencies
           command: sudo apt update -qqy && sudo apt install libclang-dev git nodejs -qqy
 
       - run:
-          name: Install Rust
+          name: Install Rustup
           command: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
 
-      - checkout
+      - run:
+          name: Install Rust
+          command: |
+            rustup toolchain install 1.72-x86_64-unknown-linux-gnu
+            rustup component add clippy --toolchain 1.72-x86_64-unknown-linux-gnu
+            rustup component add rustfmt --toolchain 1.72-x86_64-unknown-linux-gnu
 
       - run:
           name: Install pilcom
@@ -44,31 +55,12 @@ jobs:
             - v5-cargo-pr-tests-{{ checksum "Cargo.toml" }}
 
       - run:
-          name: Install Rust toolchain 1.72 (with clippy and rustfmt)
-          command: |
-            rustup toolchain install 1.72-x86_64-unknown-linux-gnu
-            rustup component add clippy --toolchain 1.72-x86_64-unknown-linux-gnu
-            rustup component add rustfmt --toolchain 1.72-x86_64-unknown-linux-gnu
-
-      - run:
-          name: Install nightly
-          command: rustup toolchain install nightly-2023-01-03-x86_64-unknown-linux-gnu
-
-      - run:
-          name: Install riscv target
-          command: rustup target add riscv32imac-unknown-none-elf --toolchain nightly-2023-01-03-x86_64-unknown-linux-gnu
-
-      - run:
-          name: Install stdlib
-          command: rustup component add rust-src --toolchain nightly-2023-01-03-x86_64-unknown-linux-gnu
-
-      - run:
           name: Check without Halo2
           command: cargo check --all --no-default-features --profile pr-tests
 
       - run:
           name: Build
-          command: cargo build --all --all-features --profile pr-tests
+          command: cargo build --bins --tests --benches --all --all-features --profile pr-tests
 
       - save_cache:
           name: Save Rust cache
@@ -78,13 +70,102 @@ jobs:
             - ~/.cargo/git
             - target
 
+      - persist_to_workspace:
+          root: .
+          paths:
+            - target/pr-tests
+            - pilcom
+
+
+  test:
+    executor: executor
+    parallelism: 4
+    steps:
+      - checkout
+
+      - attach_workspace:
+          at: .
+
+      - run:
+          name: Install dependencies
+          command: sudo apt update -qqy && sudo apt install libclang-dev git nodejs -qqy
+
+      - run:
+          name: Install Rustup
+          command: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+
+      - run:
+          name: Install Rust
+          command: |
+            rustup toolchain install 1.72-x86_64-unknown-linux-gnu
+            rustup toolchain install nightly-2023-01-03-x86_64-unknown-linux-gnu
+            rustup target add riscv32imac-unknown-none-elf --toolchain nightly-2023-01-03-x86_64-unknown-linux-gnu
+            rustup component add rust-src --toolchain nightly-2023-01-03-x86_64-unknown-linux-gnu
+
+      - run:
+          name: Determine which tests to run
+          command: |
+              cargo test --all --all-features --profile pr-tests  -- --list 2> /dev/null | grep ': test' | sed -e 's/: test//' | \
+              circleci tests split --split-by=timings | tee tests_to_run.txt
+
       - run:
           name: Run default tests
-          command: PILCOM=$(pwd)/pilcom/ cargo test --all --all-features --profile pr-tests --verbose
+          command: |
+            PILCOM=$(pwd)/pilcom/ cargo test --no-fail-fast --all --all-features --profile pr-tests --verbose -- --exact $(cat tests_to_run.txt)
+
+      - run:
+          name: Check benches compile without running them
+          command: cargo bench --all --all-features --profile pr-tests --no-run
+
+  slow_test:
+    executor: executor
+    steps:
+      - checkout
+
+      - attach_workspace:
+          at: .
+
+      - run:
+          name: Install dependencies
+          command: sudo apt update -qqy && sudo apt install libclang-dev git nodejs -qqy
+
+      - run:
+          name: Install Rustup
+          command: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+
+      - run:
+          name: Install Rust
+          command: |
+            rustup toolchain install 1.72-x86_64-unknown-linux-gnu
+            rustup toolchain install nightly-2023-01-03-x86_64-unknown-linux-gnu
+            rustup target add riscv32imac-unknown-none-elf --toolchain nightly-2023-01-03-x86_64-unknown-linux-gnu
+            rustup component add rust-src --toolchain nightly-2023-01-03-x86_64-unknown-linux-gnu
 
       - run:
           name: Run slow tests
           command: PILCOM=$(pwd)/pilcom/ cargo test --all --all-features --profile pr-tests --verbose -- --ignored --nocapture --test-threads=1 --exact test_keccak test_vec_median instruction_tests::addi
+
+  lint:
+    executor: executor
+    steps:
+      - checkout
+      - attach_workspace:
+          at: .
+
+      - run:
+          name: Install dependencies
+          command: sudo apt update -qqy && sudo apt install libclang-dev git nodejs -qqy
+
+      - run:
+          name: Install Rustup
+          command: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+
+      - run:
+          name: Install Rust
+          command: |
+            rustup toolchain install 1.72-x86_64-unknown-linux-gnu
+            rustup component add clippy --toolchain 1.72-x86_64-unknown-linux-gnu
+            rustup component add rustfmt --toolchain 1.72-x86_64-unknown-linux-gnu
 
       - run:
           name: Lint
@@ -94,12 +175,18 @@ jobs:
           name: Format
           command: cargo fmt --all --check --verbose
 
-      - run:
-          name: Check benches compile without running them
-          command: cargo bench --all --all-features --profile pr-tests --no-run
 
 workflows:
   version: 2
   build-and-test:
     jobs:
-      - pr-tests
+      - build
+      - lint:
+          requires:
+            - build
+      - test:
+          requires:
+            - build
+      - slow_test:
+          requires:
+            - build
