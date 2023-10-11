@@ -19,7 +19,6 @@ pilopt = { path = "../pilopt" }
 asm_to_pil = { path = "../asm_to_pil" }
 pil_analyzer = { path = "../pil_analyzer" }
 halo2 = { path = "../halo2", optional = true }
-json = "^0.12"
 ast = { version = "0.1.0", path = "../ast" }
 analysis = { version = "0.1.0", path = "../analysis" }
 linker = { version = "0.1.0", path = "../linker" }
