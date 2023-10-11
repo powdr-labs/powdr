@@ -87,6 +87,10 @@ pub fn generate<'a, T: FieldElement, Q: QueryCallback<T>>(
         &base_identities,
         base_witnesses,
         &known_witness_constraints,
+        // We could set the latch of the main VM here, but then we would have to detect it.
+        // Instead, the main VM will be computed in one block, directly continuing into the
+        // infinite loop after the first return.
+        None,
     );
 
     generator.run(&mut mutable_state);
