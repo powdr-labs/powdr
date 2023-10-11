@@ -52,7 +52,7 @@ jobs:
       - restore_cache:
           name: Restore Rust cache
           keys:
-            - v5-cargo-pr-tests-{{ checksum "Cargo.toml" }}
+            - v5-cargo-pr-tests-{{ .Branch }}
 
       - run:
           name: Check without Halo2
@@ -64,7 +64,7 @@ jobs:
 
       - save_cache:
           name: Save Rust cache
-          key: v5-cargo-pr-tests-{{ checksum "Cargo.toml" }}
+          key: v5-cargo-pr-tests-{{ .Branch }}
           paths:
             - ~/.cargo/registry
             - ~/.cargo/git
