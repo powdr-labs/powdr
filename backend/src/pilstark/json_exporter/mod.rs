@@ -402,7 +402,7 @@ mod test {
         ))
         .join(file);
 
-        let analyzed = pilopt::optimize_constants(analyze::<GoldilocksField>(&file));
+        let analyzed = analyze::<GoldilocksField>(&file);
         let pil_out = export(&analyzed);
 
         let pilcom = std::env::var("PILCOM").expect(
