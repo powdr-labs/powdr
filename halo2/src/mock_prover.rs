@@ -77,6 +77,10 @@ mod test {
                     print!("{}", items[1].parse::<u8>().unwrap() as char);
                     Some(0.into())
                 }
+                "\"hint\"" => {
+                    assert_eq!(items.len(), 2);
+                    Some(Bn254Field::from_str(items[1]))
+                }
                 _ => None,
             }
         };

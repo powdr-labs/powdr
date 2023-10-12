@@ -335,6 +335,10 @@ pub fn inputs_to_query_callback<T: FieldElement>(inputs: Vec<T>) -> impl Fn(&str
                 print!("{}", items[1].parse::<u8>().unwrap() as char);
                 Some(0.into())
             }
+            "\"hint\"" => {
+                assert_eq!(items.len(), 2);
+                Some(T::from_str(items[1]))
+            }
             _ => None,
         }
     }
