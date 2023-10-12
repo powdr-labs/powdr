@@ -1,17 +1,17 @@
 use std::collections::{HashMap, HashSet};
 
-use super::{EvalResult, FixedData, FixedLookup};
+use super::{EvalResult, FixedData};
 use crate::witgen::affine_expression::AffineExpression;
 use crate::witgen::column_map::WitnessColumnMap;
-use crate::witgen::identity_processor::{IdentityProcessor, Machines};
+use crate::witgen::identity_processor::IdentityProcessor;
 use crate::witgen::processor::{OuterQuery, Processor};
 use crate::witgen::rows::{transpose_rows, CellValue, Row, RowFactory, RowPair, UnknownStrategy};
 use crate::witgen::sequence_iterator::{ProcessingSequenceCache, ProcessingSequenceIterator};
 use crate::witgen::util::try_to_simple_poly;
-use crate::witgen::Constraints;
 use crate::witgen::{
     machines::Machine, range_constraints::RangeConstraint, EvalError, EvalValue, IncompleteCause,
 };
+use crate::witgen::{Constraints, MutableState, QueryCallback};
 use ast::analyzed::{Expression, Identity, IdentityKind, PolyID, PolynomialReference};
 use ast::parsed::SelectedExpressions;
 use number::{DegreeType, FieldElement};
@@ -135,20 +135,19 @@ fn try_to_period<T: FieldElement>(
 }
 
 impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
-    fn process_plookup<'b>(
+    fn process_plookup<'b, Q: QueryCallback<T>>(
         &mut self,
-        fixed_lookup: &'b mut FixedLookup<T>,
+        mutable_state: &'b mut MutableState<'a, 'b, T, Q>,
         kind: IdentityKind,
         left: &[AffineExpression<&'a PolynomialReference, T>],
         right: &'a SelectedExpressions<Expression<T>>,
-        machines: Machines<'a, 'b, T>,
     ) -> Option<EvalResult<'a, T>> {
         if *right != self.selected_expressions || kind != IdentityKind::Plookup {
             return None;
         }
         let previous_len = self.rows() as usize;
         Some({
-            let result = self.process_plookup_internal(fixed_lookup, left, right, machines);
+            let result = self.process_plookup_internal(mutable_state, left, right);
             if let Ok(assignments) = &result {
                 if !assignments.is_complete() {
                     // rollback the changes.
@@ -249,12 +248,11 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         }
     }
 
-    fn process_plookup_internal<'b>(
+    fn process_plookup_internal<'b, Q: QueryCallback<T>>(
         &mut self,
-        fixed_lookup: &'b mut FixedLookup<T>,
+        mutable_state: &mut MutableState<'a, 'b, T, Q>,
         left: &[AffineExpression<&'a PolynomialReference, T>],
         right: &'a SelectedExpressions<Expression<T>>,
-        machines: Machines<'a, 'b, T>,
     ) -> EvalResult<'a, T> {
         log::trace!("Start processing block machine '{}'", self.name());
         log::trace!("Left values of lookup:");
@@ -262,8 +260,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
             log::trace!("  {}", l);
         }
 
-        let mut identity_processor =
-            IdentityProcessor::new(self.fixed_data, fixed_lookup, machines);
+        let mut identity_processor = IdentityProcessor::new(self.fixed_data, mutable_state);
 
         // First check if we already store the value.
         // This can happen in the loop detection case, where this function is just called
@@ -310,8 +307,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
             ));
         }
 
-        let process_result =
-            self.process(&mut identity_processor, left, right, &mut sequence_iterator)?;
+        let process_result = self.process(mutable_state, left, right, &mut sequence_iterator)?;
 
         let process_result = if sequence_iterator.is_cached() && !process_result.is_success() {
             log::debug!("The cached sequence did not complete the block machine. \
@@ -320,7 +316,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
             let mut sequence_iterator = self
                 .processing_sequence_cache
                 .get_default_sequence_iterator();
-            self.process(&mut identity_processor, left, right, &mut sequence_iterator)?
+            self.process(mutable_state, left, right, &mut sequence_iterator)?
         } else {
             process_result
         };
@@ -348,9 +344,9 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         }
     }
 
-    fn process<'b>(
+    fn process<'b, Q: QueryCallback<T>>(
         &self,
-        identity_processor: &mut IdentityProcessor<'a, 'b, T>,
+        mutable_state: &mut MutableState<'a, 'b, T, Q>,
         left: &[AffineExpression<&'a PolynomialReference, T>],
         right: &'a SelectedExpressions<Expression<T>>,
         sequence_iterator: &mut ProcessingSequenceIterator,
@@ -362,10 +358,11 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         let block = (0..(self.block_size + 2))
             .map(|i| self.row_factory.fresh_row(i as DegreeType + row_offset))
             .collect();
+        let mut identity_processor = IdentityProcessor::new(self.fixed_data, mutable_state);
         let mut processor = Processor::new(
             row_offset,
             block,
-            identity_processor,
+            &mut identity_processor,
             &self.identities,
             self.fixed_data,
             self.row_factory.clone(),

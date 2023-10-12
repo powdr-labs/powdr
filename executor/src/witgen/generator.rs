@@ -7,12 +7,11 @@ use crate::witgen::rows::CellValue;
 
 use super::affine_expression::AffineExpression;
 use super::column_map::WitnessColumnMap;
-use super::identity_processor::{IdentityProcessor, Machines};
+use super::identity_processor::IdentityProcessor;
 use super::machines::Machine;
 use super::processor::Processor;
 use super::range_constraints::RangeConstraint;
 
-use super::machines::FixedLookup;
 use super::rows::{transpose_rows, Row, RowFactory};
 use super::sequence_iterator::{DefaultSequenceIterator, ProcessingSequenceIterator};
 use super::vm_processor::VmProcessor;
@@ -27,13 +26,12 @@ pub struct Generator<'a, T: FieldElement> {
 }
 
 impl<'a, T: FieldElement> Machine<'a, T> for Generator<'a, T> {
-    fn process_plookup(
+    fn process_plookup<Q: QueryCallback<T>>(
         &mut self,
-        _fixed_lookup: &mut FixedLookup<T>,
+        _mutable_state: &mut MutableState<'a, '_, T, Q>,
         _kind: IdentityKind,
         _left: &[AffineExpression<&'a PolynomialReference, T>],
         _right: &'a SelectedExpressions<Expression<T>>,
-        _machines: Machines<'a, '_, T>,
     ) -> Option<EvalResult<'a, T>> {
         unimplemented!()
     }
@@ -67,7 +65,7 @@ impl<'a, T: FieldElement> Generator<'a, T> {
         }
     }
 
-    pub fn run<Q: QueryCallback<T>>(&mut self, mutable_state: &mut MutableState<'a, T, Q>) {
+    pub fn run<Q: QueryCallback<T>>(&mut self, mutable_state: &mut MutableState<'a, '_, T, Q>) {
         let first_row = self.compute_partial_first_row(mutable_state);
         self.data = self.process(first_row, mutable_state);
         self.fix_first_row();
@@ -77,7 +75,7 @@ impl<'a, T: FieldElement> Generator<'a, T> {
     /// row from identities like `pc' = (1 - first_step') * <...>`.
     fn compute_partial_first_row<Q: QueryCallback<T>>(
         &self,
-        mutable_state: &mut MutableState<'a, T, Q>,
+        mutable_state: &mut MutableState<'a, '_, T, Q>,
     ) -> Row<'a, T> {
         // Use `Processor` + `DefaultSequenceIterator` using a "block size" of 0. Because `Processor`
         // expects `data` to include the row before and after the block, this means we'll run the
@@ -85,11 +83,7 @@ impl<'a, T: FieldElement> Generator<'a, T> {
         // Note that using `Processor` instead of `VmProcessor` is more convenient here because
         // it does not assert that the row is "complete" afterwards (i.e., that all identities
         // are satisfied assuming 0 for unknown values).
-        let mut identity_processor = IdentityProcessor::new(
-            self.fixed_data,
-            &mut mutable_state.fixed_lookup,
-            mutable_state.machines.iter_mut().into(),
-        );
+        let mut identity_processor = IdentityProcessor::new(self.fixed_data, mutable_state);
         let row_factory = RowFactory::new(self.fixed_data, self.global_range_constraints.clone());
         let data = vec![
             row_factory.fresh_row(self.fixed_data.degree - 1),
@@ -116,7 +110,7 @@ impl<'a, T: FieldElement> Generator<'a, T> {
     fn process<Q: QueryCallback<T>>(
         &self,
         first_row: Row<'a, T>,
-        mutable_state: &mut MutableState<'a, T, Q>,
+        mutable_state: &mut MutableState<'a, '_, T, Q>,
     ) -> Vec<Row<'a, T>> {
         log::trace!("{}", first_row.render("first row", false, &self.witnesses));
         let data = vec![first_row];

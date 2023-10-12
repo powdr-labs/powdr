@@ -4,15 +4,13 @@ use ast::parsed::SelectedExpressions;
 use itertools::Itertools;
 
 use super::super::affine_expression::AffineExpression;
-use super::fixed_lookup_machine::FixedLookup;
 use super::Machine;
 use super::{EvalResult, FixedData};
-use crate::witgen::identity_processor::Machines;
 use crate::witgen::{
     expression_evaluator::ExpressionEvaluator, fixed_evaluator::FixedEvaluator,
     symbolic_evaluator::SymbolicEvaluator,
 };
-use crate::witgen::{EvalValue, IncompleteCause};
+use crate::witgen::{EvalValue, IncompleteCause, MutableState, QueryCallback};
 use ast::analyzed::{Expression, Identity, IdentityKind, PolyID, PolynomialReference, Reference};
 use number::FieldElement;
 
@@ -123,13 +121,12 @@ fn check_constraint<T: FieldElement>(constraint: &Expression<T>) -> Option<PolyI
 }
 
 impl<'a, T: FieldElement> Machine<'a, T> for SortedWitnesses<'a, T> {
-    fn process_plookup(
+    fn process_plookup<Q: QueryCallback<T>>(
         &mut self,
-        _fixed_lookup: &mut FixedLookup<T>,
+        _mutable_state: &mut MutableState<'a, '_, T, Q>,
         kind: IdentityKind,
         left: &[AffineExpression<&'a PolynomialReference, T>],
         right: &'a SelectedExpressions<Expression<T>>,
-        _machines: Machines<'a, '_, T>,
     ) -> Option<EvalResult<'a, T>> {
         if kind != IdentityKind::Plookup || right.selector.is_some() {
             return None;

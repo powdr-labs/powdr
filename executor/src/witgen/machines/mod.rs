@@ -13,9 +13,10 @@ use ast::analyzed::IdentityKind;
 
 use super::affine_expression::AffineExpression;
 use super::generator::Generator;
-use super::identity_processor::Machines;
 use super::EvalResult;
 use super::FixedData;
+use super::MutableState;
+use super::QueryCallback;
 
 mod block_machine;
 mod double_sorted_witness_machine;
@@ -31,13 +32,12 @@ pub trait Machine<'a, T: FieldElement>: Send + Sync {
     /// Only return an error if this machine is able to handle the query and
     /// it results in a constraint failure.
     /// If this is not the right machine for the query, return `None`.
-    fn process_plookup<'b>(
+    fn process_plookup<'b, Q: QueryCallback<T>>(
         &mut self,
-        fixed_lookup: &'b mut FixedLookup<T>,
+        mutable_state: &'b mut MutableState<'a, 'b, T, Q>,
         kind: IdentityKind,
         left: &[AffineExpression<&'a PolynomialReference, T>],
         right: &'a SelectedExpressions<Expression<T>>,
-        machines: Machines<'a, 'b, T>,
     ) -> Option<EvalResult<'a, T>>;
 
     /// Returns the final values of the witness columns.
@@ -54,31 +54,30 @@ pub enum KnownMachine<'a, T: FieldElement> {
     Vm(Generator<'a, T>),
 }
 
-impl<'a, T: FieldElement> KnownMachine<'a, T> {
-    fn get(&mut self) -> &mut dyn Machine<'a, T> {
-        match self {
-            KnownMachine::SortedWitnesses(m) => m,
-            KnownMachine::DoubleSortedWitnesses(m) => m,
-            KnownMachine::BlockMachine(m) => m,
-            KnownMachine::Vm(m) => m,
-        }
-    }
-}
-
 impl<'a, T: FieldElement> Machine<'a, T> for KnownMachine<'a, T> {
-    fn process_plookup<'b>(
+    fn process_plookup<'b, Q: QueryCallback<T>>(
         &mut self,
-        fixed_lookup: &'b mut FixedLookup<T>,
+        mutable_state: &'b mut MutableState<'a, 'b, T, Q>,
         kind: IdentityKind,
         left: &[AffineExpression<&'a PolynomialReference, T>],
         right: &'a SelectedExpressions<Expression<T>>,
-        machines: Machines<'a, 'b, T>,
     ) -> Option<crate::witgen::EvalResult<'a, T>> {
-        self.get()
-            .process_plookup(fixed_lookup, kind, left, right, machines)
+        match self {
+            KnownMachine::SortedWitnesses(m) => m.process_plookup(mutable_state, kind, left, right),
+            KnownMachine::DoubleSortedWitnesses(m) => {
+                m.process_plookup(mutable_state, kind, left, right)
+            }
+            KnownMachine::BlockMachine(m) => m.process_plookup(mutable_state, kind, left, right),
+            KnownMachine::Vm(m) => m.process_plookup(mutable_state, kind, left, right),
+        }
     }
 
     fn take_witness_col_values(&mut self) -> std::collections::HashMap<String, Vec<T>> {
-        self.get().take_witness_col_values()
+        match self {
+            KnownMachine::SortedWitnesses(m) => m.take_witness_col_values(),
+            KnownMachine::DoubleSortedWitnesses(m) => m.take_witness_col_values(),
+            KnownMachine::BlockMachine(m) => m.take_witness_col_values(),
+            KnownMachine::Vm(m) => m.take_witness_col_values(),
+        }
     }
 }

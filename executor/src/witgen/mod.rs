@@ -12,8 +12,9 @@ pub use self::eval_result::{
 };
 use self::generator::Generator;
 use self::global_constraints::GlobalConstraints;
+use self::identity_processor::Machines;
 use self::machines::machine_extractor::ExtractionOutput;
-use self::machines::{FixedLookup, KnownMachine, Machine};
+use self::machines::{FixedLookup, Machine};
 
 use pil_analyzer::pil_analyzer::inline_intermediate_polynomials;
 
@@ -40,10 +41,10 @@ pub trait QueryCallback<T>: FnMut(&str) -> Option<T> + Send + Sync {}
 impl<T, F> QueryCallback<T> for F where F: FnMut(&str) -> Option<T> + Send + Sync {}
 
 /// Everything [Generator] needs to mutate in order to compute a new row.
-pub struct MutableState<'a, T: FieldElement, Q: QueryCallback<T>> {
-    pub fixed_lookup: FixedLookup<T>,
-    pub machines: Vec<KnownMachine<'a, T>>,
-    pub query_callback: Option<Q>,
+pub struct MutableState<'a, 'b, T: FieldElement, Q: QueryCallback<T>> {
+    pub fixed_lookup: &'b mut FixedLookup<T>,
+    pub machines: Machines<'a, 'b, T>,
+    pub query_callback: &'b mut Option<Q>,
 }
 
 pub struct WitnessGenerator<'a, 'b, T: FieldElement, Q: QueryCallback<T>> {
@@ -102,8 +103,8 @@ impl<'a, 'b, T: FieldElement, Q: QueryCallback<T>> WitnessGenerator<'a, 'b, T, Q
             retained_identities,
         } = global_constraints::determine_global_constraints(&fixed, identities.iter().collect());
         let ExtractionOutput {
-            fixed_lookup,
-            machines,
+            mut fixed_lookup,
+            mut machines,
             base_identities,
             base_witnesses,
         } = machines::machine_extractor::split_out_machines(
@@ -111,10 +112,11 @@ impl<'a, 'b, T: FieldElement, Q: QueryCallback<T>> WitnessGenerator<'a, 'b, T, Q
             retained_identities,
             &known_witness_constraints,
         );
+        let mut query_callback = self.query_callback;
         let mut mutable_state = MutableState {
-            fixed_lookup,
-            machines,
-            query_callback: self.query_callback,
+            fixed_lookup: &mut fixed_lookup,
+            machines: Machines::from(machines.iter_mut()),
+            query_callback: &mut query_callback,
         };
         let mut generator = Generator::new(
             &fixed,
