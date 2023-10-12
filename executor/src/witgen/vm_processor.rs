@@ -12,7 +12,7 @@ use crate::witgen::rows::RowUpdater;
 use super::query_processor::QueryProcessor;
 
 use super::rows::{Row, RowFactory, RowPair, UnknownStrategy};
-use super::{EvalError, EvalResult, EvalValue, FixedData, MutableState};
+use super::{EvalError, EvalResult, EvalValue, FixedData, MutableState, QueryCallback};
 
 /// A list of identities with a flag whether it is complete.
 struct CompletableIdentities<'a, T: FieldElement> {
@@ -80,10 +80,7 @@ impl<'a, T: FieldElement> VmProcessor<'a, T> {
 
     /// Starting out with a single row, iteratively append rows until we have degree + 1 rows
     /// (i.e., we have the first row twice).
-    pub fn run<Q>(&mut self, mutable_state: &mut MutableState<'a, T, Q>)
-    where
-        Q: FnMut(&str) -> Option<T> + Send + Sync,
-    {
+    pub fn run<Q: QueryCallback<T>>(&mut self, mutable_state: &mut MutableState<'a, T, Q>) {
         assert!(self.data.len() == 1);
 
         // Are we in an infinite loop and can just re-use the old values?
@@ -157,10 +154,11 @@ impl<'a, T: FieldElement> VmProcessor<'a, T> {
         }
     }
 
-    fn compute_row<Q>(&mut self, row_index: DegreeType, mutable_state: &mut MutableState<'a, T, Q>)
-    where
-        Q: FnMut(&str) -> Option<T> + Send + Sync,
-    {
+    fn compute_row<Q: QueryCallback<T>>(
+        &mut self,
+        row_index: DegreeType,
+        mutable_state: &mut MutableState<'a, T, Q>,
+    ) {
         log::trace!("Row: {}", row_index);
 
         let mut identity_processor = IdentityProcessor::new(
@@ -412,15 +410,12 @@ impl<'a, T: FieldElement> VmProcessor<'a, T> {
     /// Verifies the proposed values for the next row.
     /// TODO this is bad for machines because we might introduce rows in the machine that are then
     /// not used.
-    fn try_proposed_row<Q>(
+    fn try_proposed_row<Q: QueryCallback<T>>(
         &mut self,
         row_index: DegreeType,
         proposed_row: Row<'a, T>,
         mutable_state: &mut MutableState<'a, T, Q>,
-    ) -> bool
-    where
-        Q: FnMut(&str) -> Option<T> + Send + Sync,
-    {
+    ) -> bool {
         let mut identity_processor = IdentityProcessor::new(
             self.fixed_data,
             &mut mutable_state.fixed_lookup,
