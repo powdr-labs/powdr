@@ -17,6 +17,7 @@ mod verify;
 
 use analysis::analyze;
 pub use backend::{BackendType, Proof};
+use executor::witgen::QueryCallback;
 use number::write_polys_file;
 use number::DegreeType;
 pub use verify::{verify, verify_asm_string};
@@ -45,7 +46,7 @@ pub fn compile_pil_or_asm<T: FieldElement>(
         Ok(Some(compile_pil(
             Path::new(file_name),
             output_dir,
-            Some(inputs_to_query_callback(inputs)),
+            Some(Box::new(inputs_to_query_callback(inputs))),
             prove_with,
         )))
     }
@@ -59,15 +60,12 @@ pub fn analyze_pil<T: FieldElement>(pil_file: &Path) -> Analyzed<T> {
 /// constants and committed polynomials.
 /// @returns a compilation result, containing witness and fixed columns
 /// if they could be successfully generated.
-pub fn compile_pil<T: FieldElement, QueryCallback>(
+pub fn compile_pil<T: FieldElement>(
     pil_file: &Path,
     output_dir: &Path,
-    query_callback: Option<QueryCallback>,
+    query_callback: Option<QueryCallback<T>>,
     prove_with: Option<BackendType>,
-) -> CompilationResult<T>
-where
-    QueryCallback: FnMut(&str) -> Option<T> + Sync + Send,
-{
+) -> CompilationResult<T> {
     compile(
         pil_analyzer::analyze(pil_file),
         pil_file.file_name().unwrap(),
@@ -79,16 +77,13 @@ where
 
 /// Compiles a given PIL and tries to generate fixed and witness columns.
 /// @returns a compilation result, containing witness and fixed columns
-pub fn compile_pil_ast<T: FieldElement, QueryCallback>(
+pub fn compile_pil_ast<T: FieldElement>(
     pil: &PILFile<T>,
     file_name: &OsStr,
     output_dir: &Path,
-    query_callback: Option<QueryCallback>,
+    query_callback: Option<QueryCallback<T>>,
     prove_with: Option<BackendType>,
-) -> CompilationResult<T>
-where
-    QueryCallback: FnMut(&str) -> Option<T> + Sync + Send,
-{
+) -> CompilationResult<T> {
     // TODO exporting this to string as a hack because the parser
     // is tied into the analyzer due to imports.
     compile(
@@ -178,7 +173,7 @@ pub fn compile_asm_string<T: FieldElement>(
             &pil,
             pil_file_name,
             output_dir,
-            Some(inputs_to_query_callback(inputs)),
+            Some(Box::new(inputs_to_query_callback(inputs))),
             prove_with,
         )),
     ))
@@ -193,16 +188,13 @@ pub struct CompilationResult<T: FieldElement> {
 
 /// Optimizes a given pil and tries to generate constants and committed polynomials.
 /// @returns a compilation result, containing witness and fixed columns, if successful.
-fn compile<T: FieldElement, QueryCallback>(
+fn compile<T: FieldElement>(
     analyzed: Analyzed<T>,
     file_name: &OsStr,
     output_dir: &Path,
-    query_callback: Option<QueryCallback>,
+    query_callback: Option<QueryCallback<T>>,
     prove_with: Option<BackendType>,
-) -> CompilationResult<T>
-where
-    QueryCallback: FnMut(&str) -> Option<T> + Send + Sync,
-{
+) -> CompilationResult<T> {
     log::info!("Optimizing pil...");
     let analyzed = pilopt::optimize(analyzed);
     let optimized_pil_file_name = output_dir.join(format!(

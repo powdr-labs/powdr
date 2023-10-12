@@ -42,7 +42,7 @@ mod test {
 
     use super::*;
 
-    fn mock_prove_asm(file_name: &str, inputs: &[Bn254Field]) {
+    fn mock_prove_asm(file_name: &str, inputs: Vec<Bn254Field>) {
         // read and compile PIL.
 
         let location = format!(
@@ -57,7 +57,7 @@ mod test {
         let graph = airgen::compile(analysed);
         let pil = linker::link(graph).unwrap();
 
-        let query_callback = |query: &str| -> Option<Bn254Field> {
+        let query_callback = move |query: &str| -> Option<Bn254Field> {
             let items = query.split(',').map(|s| s.trim()).collect::<Vec<_>>();
             match items[0] {
                 "\"input\"" => {
@@ -84,7 +84,8 @@ mod test {
         let analyzed = pil_analyzer::analyze_string(&format!("{pil}"));
 
         let (fixed, degree) = executor::constant_evaluator::generate(&analyzed);
-        let witness = executor::witgen::generate(&analyzed, degree, &fixed, Some(query_callback));
+        let witness =
+            executor::witgen::generate(&analyzed, degree, &fixed, Some(Box::new(query_callback)));
 
         mock_prove(&analyzed, &fixed, &witness);
     }
@@ -97,19 +98,20 @@ mod test {
 
         let query_callback = |_: &str| -> Option<Bn254Field> { None };
 
-        let witness = executor::witgen::generate(&analyzed, degree, &fixed, Some(query_callback));
+        let witness =
+            executor::witgen::generate(&analyzed, degree, &fixed, Some(Box::new(query_callback)));
         mock_prove(&analyzed, &fixed, &witness);
     }
 
     #[test]
     fn simple_sum() {
-        let inputs = [165, 5, 11, 22, 33, 44, 55].map(From::from);
-        mock_prove_asm("simple_sum.asm", &inputs);
+        let inputs = [165, 5, 11, 22, 33, 44, 55].map(From::from).to_vec();
+        mock_prove_asm("simple_sum.asm", inputs);
     }
 
     #[test]
     fn palindrome() {
-        let inputs = [3, 11, 22, 11].map(From::from);
-        mock_prove_asm("palindrome.asm", &inputs);
+        let inputs = [3, 11, 22, 11].map(From::from).to_vec();
+        mock_prove_asm("palindrome.asm", inputs);
     }
 }

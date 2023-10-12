@@ -1,9 +1,10 @@
 use backend::BackendType;
+use executor::witgen::QueryCallback;
 use number::{Bn254Field, GoldilocksField};
 use std::path::Path;
 use test_log::test;
 
-pub fn verify_pil(file_name: &str, query_callback: Option<fn(&str) -> Option<GoldilocksField>>) {
+pub fn verify_pil(file_name: &str, query_callback: Option<QueryCallback<GoldilocksField>>) {
     let input_file = Path::new(&format!(
         "{}/../test_data/pil/{file_name}",
         env!("CARGO_MANIFEST_DIR")
@@ -92,7 +93,7 @@ fn test_global() {
 fn test_sum_via_witness_query() {
     verify_pil(
         "sum_via_witness_query.pil",
-        Some(|q| {
+        Some(Box::new(|q| {
             match q {
                 "\"in\", 0" => Some(7.into()),
                 "\"in\", 1" => Some(8.into()),
@@ -100,7 +101,7 @@ fn test_sum_via_witness_query() {
                 "\"in\", 3" => None, // This line checks that if we return "None", the system still tries to figure it out on its own.
                 _ => None,
             }
-        }),
+        })),
     );
     // prover query string uses a different convention,
     // so we cannot directly use the halo2_proof and estark functions here.
@@ -111,12 +112,12 @@ fn test_witness_lookup() {
     let f = "witness_lookup.pil";
     verify_pil(
         f,
-        Some(|q| match q {
+        Some(Box::new(|q| match q {
             "\"input\", 0" => Some(3.into()),
             "\"input\", 1" => Some(5.into()),
             "\"input\", 2" => Some(2.into()),
             _ => Some(7.into()),
-        }),
+        })),
     );
     // halo2 fails with "gates must contain at least one constraint"
     let inputs = vec![3, 5, 2, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7];

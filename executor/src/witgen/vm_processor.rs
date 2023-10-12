@@ -80,10 +80,7 @@ impl<'a, T: FieldElement> VmProcessor<'a, T> {
 
     /// Starting out with a single row, iteratively append rows until we have degree + 1 rows
     /// (i.e., we have the first row twice).
-    pub fn run<Q>(&mut self, mutable_state: &mut MutableState<'a, T, Q>)
-    where
-        Q: FnMut(&str) -> Option<T> + Send + Sync,
-    {
+    pub fn run(&mut self, mutable_state: &mut MutableState<'a, T>) {
         assert!(self.data.len() == 1);
 
         // Are we in an infinite loop and can just re-use the old values?
@@ -157,10 +154,7 @@ impl<'a, T: FieldElement> VmProcessor<'a, T> {
         }
     }
 
-    fn compute_row<Q>(&mut self, row_index: DegreeType, mutable_state: &mut MutableState<'a, T, Q>)
-    where
-        Q: FnMut(&str) -> Option<T> + Send + Sync,
-    {
+    fn compute_row(&mut self, row_index: DegreeType, mutable_state: &mut MutableState<'a, T>) {
         log::trace!("Row: {}", row_index);
 
         let mut identity_processor = IdentityProcessor::new(
@@ -412,15 +406,12 @@ impl<'a, T: FieldElement> VmProcessor<'a, T> {
     /// Verifies the proposed values for the next row.
     /// TODO this is bad for machines because we might introduce rows in the machine that are then
     /// not used.
-    fn try_proposed_row<Q>(
+    fn try_proposed_row(
         &mut self,
         row_index: DegreeType,
         proposed_row: Row<'a, T>,
-        mutable_state: &mut MutableState<'a, T, Q>,
-    ) -> bool
-    where
-        Q: FnMut(&str) -> Option<T> + Send + Sync,
-    {
+        mutable_state: &mut MutableState<'a, T>,
+    ) -> bool {
         let mut identity_processor = IdentityProcessor::new(
             self.fixed_data,
             &mut mutable_state.fixed_lookup,
