@@ -92,11 +92,11 @@ where
     generator.run(&mut mutable_state);
 
     // Get columns from machines
-    let main_columns = generator.take_witness_col_values(&fixed);
+    let main_columns = generator.take_witness_col_values();
     let mut columns = mutable_state
         .machines
         .iter_mut()
-        .flat_map(|m| m.take_witness_col_values(&fixed).into_iter())
+        .flat_map(|m| m.take_witness_col_values().into_iter())
         .chain(main_columns)
         .collect::<BTreeMap<_, _>>();
 

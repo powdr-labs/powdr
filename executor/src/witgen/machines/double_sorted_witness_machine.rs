@@ -95,7 +95,6 @@ impl<T: FieldElement> DoubleSortedWitnesses<T> {
 impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses<T> {
     fn process_plookup(
         &mut self,
-        _fixed_data: &FixedData<T>,
         _fixed_lookup: &mut FixedLookup<T>,
         kind: IdentityKind,
         left: &[AffineExpression<&'a PolynomialReference, T>],
@@ -112,7 +111,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses<T> {
         Some(self.process_plookup_internal(left, right))
     }
 
-    fn take_witness_col_values(&mut self, fixed_data: &FixedData<T>) -> HashMap<String, Vec<T>> {
+    fn take_witness_col_values(&mut self) -> HashMap<String, Vec<T>> {
         let mut addr = vec![];
         let mut step = vec![];
         let mut value = vec![];
@@ -138,7 +137,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses<T> {
             is_write.push(0.into());
             is_read.push(0.into());
         }
-        while addr.len() < fixed_data.degree as usize {
+        while addr.len() < self.degree as usize {
             addr.push(*addr.last().unwrap());
             step.push(*step.last().unwrap() + T::from(1));
             value.push(*value.last().unwrap());

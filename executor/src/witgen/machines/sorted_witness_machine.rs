@@ -23,16 +23,17 @@ use number::FieldElement;
 /// Where
 ///  - NOTLAST is zero only on the last row
 ///  - POSITIVE has all values from 1 to half of the field size.
-pub struct SortedWitnesses<T> {
+pub struct SortedWitnesses<'a, T> {
     key_col: PolyID,
     /// Position of the witness columns in the data.
     witness_positions: HashMap<PolyID, usize>,
     data: BTreeMap<T, Vec<Option<T>>>,
+    fixed_data: &'a FixedData<'a, T>,
 }
 
-impl<T: FieldElement> SortedWitnesses<T> {
+impl<'a, T: FieldElement> SortedWitnesses<'a, T> {
     pub fn try_new(
-        fixed_data: &FixedData<T>,
+        fixed_data: &'a FixedData<T>,
         identities: &[&Identity<Expression<T>>],
         witnesses: &HashSet<PolyID>,
     ) -> Option<Self> {
@@ -52,6 +53,7 @@ impl<T: FieldElement> SortedWitnesses<T> {
                 key_col,
                 witness_positions,
                 data: Default::default(),
+                fixed_data,
             }
         })
     }
@@ -120,10 +122,9 @@ fn check_constraint<T: FieldElement>(constraint: &Expression<T>) -> Option<PolyI
     Some(key_column_id.poly_id())
 }
 
-impl<'a, T: FieldElement> Machine<'a, T> for SortedWitnesses<T> {
+impl<'a, T: FieldElement> Machine<'a, T> for SortedWitnesses<'a, T> {
     fn process_plookup(
         &mut self,
-        fixed_data: &FixedData<T>,
         _fixed_lookup: &mut FixedLookup<T>,
         kind: IdentityKind,
         left: &[AffineExpression<&'a PolynomialReference, T>],
@@ -151,38 +152,37 @@ impl<'a, T: FieldElement> Machine<'a, T> for SortedWitnesses<T> {
             })
             .collect::<Option<Vec<_>>>()?;
 
-        Some(self.process_plookup_internal(fixed_data, left, right, rhs))
+        Some(self.process_plookup_internal(left, right, rhs))
     }
-    fn take_witness_col_values(&mut self, fixed_data: &FixedData<T>) -> HashMap<String, Vec<T>> {
+    fn take_witness_col_values(&mut self) -> HashMap<String, Vec<T>> {
         let mut result = HashMap::new();
 
         let (mut keys, mut values): (Vec<_>, Vec<_>) =
             std::mem::take(&mut self.data).into_iter().unzip();
 
         let mut last_key = keys.last().cloned().unwrap_or_default();
-        while keys.len() < fixed_data.degree as usize {
+        while keys.len() < self.fixed_data.degree as usize {
             last_key += 1u64.into();
             keys.push(last_key);
         }
-        result.insert(fixed_data.column_name(&self.key_col).to_string(), keys);
+        result.insert(self.fixed_data.column_name(&self.key_col).to_string(), keys);
 
         for (col, &i) in &self.witness_positions {
             let mut col_values = values
                 .iter_mut()
                 .map(|row| std::mem::take(&mut row[i]).unwrap_or_default())
                 .collect::<Vec<_>>();
-            col_values.resize(fixed_data.degree as usize, 0.into());
-            result.insert(fixed_data.column_name(col).to_string(), col_values);
+            col_values.resize(self.fixed_data.degree as usize, 0.into());
+            result.insert(self.fixed_data.column_name(col).to_string(), col_values);
         }
 
         result
     }
 }
 
-impl<T: FieldElement> SortedWitnesses<T> {
-    fn process_plookup_internal<'a>(
+impl<'a, T: FieldElement> SortedWitnesses<'a, T> {
+    fn process_plookup_internal(
         &mut self,
-        fixed_data: &FixedData<T>,
         left: &[AffineExpression<&'a PolynomialReference, T>],
         right: &SelectedExpressions<Expression<T>>,
         rhs: Vec<&PolynomialReference>,
@@ -215,7 +215,7 @@ impl<T: FieldElement> SortedWitnesses<T> {
                             return Err(format!(
                                 "Lookup mismatch: There is already a unique row with {} = \
                             {key_value} and {r} = {v}, but wanted to store {r} = {l}",
-                                fixed_data.column_name(&self.key_col),
+                                self.fixed_data.column_name(&self.key_col),
                             )
                             .into());
                         }
@@ -223,7 +223,7 @@ impl<T: FieldElement> SortedWitnesses<T> {
                             if !ass.is_empty() {
                                 log::trace!(
                                     "Read {} = {key_value} -> {r} = {v}",
-                                    fixed_data.column_name(&self.key_col)
+                                    self.fixed_data.column_name(&self.key_col)
                                 );
                             }
                             assignments.combine(ass);
@@ -235,7 +235,7 @@ impl<T: FieldElement> SortedWitnesses<T> {
                     Some(v) => {
                         log::trace!(
                             "Stored {} = {key_value} -> {r} = {v}",
-                            fixed_data.column_name(&self.key_col)
+                            self.fixed_data.column_name(&self.key_col)
                         );
                         *stored_value = Some(v);
                     }
