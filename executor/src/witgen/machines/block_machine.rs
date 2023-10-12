@@ -135,7 +135,6 @@ fn try_to_period<T: FieldElement>(
 impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
     fn process_plookup<'b>(
         &mut self,
-        _fixed_data: &'a FixedData<T>,
         fixed_lookup: &'b mut FixedLookup<T>,
         kind: IdentityKind,
         left: &[AffineExpression<&'a PolynomialReference, T>],
@@ -158,7 +157,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
         })
     }
 
-    fn take_witness_col_values(&mut self, fixed_data: &'a FixedData<T>) -> HashMap<String, Vec<T>> {
+    fn take_witness_col_values(&mut self) -> HashMap<String, Vec<T>> {
         if self.data.len() < 2 * self.block_size {
             log::warn!(
                 "Filling empty blocks with zeros, because the block machine is never used. \
@@ -170,7 +169,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
             .map(|(id, mut values)| {
                 // For all constraints to be satisfied, unused cells have to be filled with valid values.
                 // We do this, we construct a default block, by repeating the first input to the block machine.
-                values.resize(fixed_data.degree as usize, None);
+                values.resize(self.fixed_data.degree as usize, None);
 
                 let second_block_values = values.iter().skip(self.block_size).take(self.block_size);
 
@@ -199,9 +198,9 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
                 (id, values)
             })
             .collect();
-        self.handle_last_row(&mut data, fixed_data);
+        self.handle_last_row(&mut data);
         data.into_iter()
-            .map(|(id, values)| (fixed_data.column_name(&id).to_string(), values))
+            .map(|(id, values)| (self.fixed_data.column_name(&id).to_string(), values))
             .collect()
     }
 }
@@ -216,14 +215,15 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
     /// compiling a block machine from Posdr ASM and constrained as:
     /// _operation_id_no_change = ((1 - _block_enforcer_last_step) * (1 - <Latch>));
     /// This function fixes this exception by setting _operation_id_no_change to 0.
-    fn handle_last_row(&self, data: &mut HashMap<PolyID, Vec<T>>, fixed_data: &FixedData<T>) {
+    fn handle_last_row(&self, data: &mut HashMap<PolyID, Vec<T>>) {
         for (poly_id, col) in data.iter_mut() {
-            if fixed_data
+            if self
+                .fixed_data
                 .column_name(poly_id)
                 .ends_with("_operation_id_no_change")
             {
                 log::trace!("Setting _operation_id_no_change to 0.");
-                col[fixed_data.degree as usize - 1] = T::zero();
+                col[self.fixed_data.degree as usize - 1] = T::zero();
             }
         }
     }

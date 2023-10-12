@@ -165,7 +165,6 @@ impl<'a, 'b, T: FieldElement> IdentityProcessor<'a, 'b, T> {
         for i in 0..self.machines.len() {
             let (current, others) = self.machines.split(i);
             if let Some(result) = current.process_plookup(
-                self.fixed_data,
                 self.fixed_lookup,
                 identity.kind,
                 &left,

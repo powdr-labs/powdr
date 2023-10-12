@@ -29,7 +29,6 @@ pub struct Generator<'a, T: FieldElement> {
 impl<'a, T: FieldElement> Machine<'a, T> for Generator<'a, T> {
     fn process_plookup(
         &mut self,
-        _fixed_data: &'a FixedData<T>,
         _fixed_lookup: &mut FixedLookup<T>,
         _kind: IdentityKind,
         _left: &[AffineExpression<&'a PolynomialReference, T>],
@@ -39,7 +38,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for Generator<'a, T> {
         unimplemented!()
     }
 
-    fn take_witness_col_values(&mut self, _fixed_data: &FixedData<T>) -> HashMap<String, Vec<T>> {
+    fn take_witness_col_values(&mut self) -> HashMap<String, Vec<T>> {
         transpose_rows(std::mem::take(&mut self.data), &self.witnesses)
             .into_iter()
             .map(|(id, values)| {
