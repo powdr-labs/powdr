@@ -15,7 +15,7 @@ members = [
     "asm_to_pil",
     "halo2",
     "backend",
-    "aztec",
+    "bberg",
     "ast",
     "analysis",
     "linker",

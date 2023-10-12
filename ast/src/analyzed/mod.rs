@@ -315,8 +315,12 @@ pub struct Identity<T> {
     pub source: SourceRef,
     /// For a simple polynomial identity, the selector contains
     /// the actual expression (see expression_for_poly_id).
-    pub left: SelectedExpressions<T>,
-    pub right: SelectedExpressions<T>,
+    //
+    //
+    // NTS(Md) Both left and right are only used in the case of perm / plookup
+    //
+    pub left: SelectedExpressions<T>, // left is selector expressions  - for an arithmetic gate, the entire relation is in SL
+    pub right: SelectedExpressions<T>, // right is the overall expressions
 }
 
 impl<T> Identity<T> {
@@ -336,7 +340,7 @@ pub enum IdentityKind {
     Polynomial,
     Plookup,
     Permutation,
-    Connect,
+    Connect, // not used
 }
 
 pub type SelectedExpressions<T> = parsed::SelectedExpressions<T, Reference>;

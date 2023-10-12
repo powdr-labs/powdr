@@ -115,8 +115,11 @@ pub(crate) fn analyzed_to_circuit<T: FieldElement>(
     };
 
     let identities = inline_intermediate_polynomials(analyzed);
+
+    // NTS(md): this is traversing all of the identities and building the polys.
     for id in &identities {
         match id.kind {
+            // for the case of normal poly everything is in the left
             IdentityKind::Polynomial => {
                 // polynomial identities.
 

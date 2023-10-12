@@ -13,6 +13,8 @@ pub fn write_polys_file<T: FieldElement>(
 ) {
     let width = ceil_div(T::BITS as usize, 64) * 8;
 
+    // TODO: maybe i need to prefix this at the beginning
+
     for i in 0..degree as usize {
         for (_name, constant) in polys {
             let bytes = constant[i].to_bytes_le();

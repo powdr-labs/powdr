@@ -1,5 +1,7 @@
 #![deny(clippy::print_stdout)]
 
+// #[cfg(feature = "bberg")]
+mod bberg_impl;
 #[cfg(feature = "halo2")]
 mod halo2_impl;
 mod pilstark;
@@ -11,6 +13,9 @@ use strum::{Display, EnumString, EnumVariantNames};
 
 #[derive(Clone, EnumString, EnumVariantNames, Display)]
 pub enum BackendType {
+    // #[cfg(feature = "bberg")]
+    #[strum(serialize = "bberg")]
+    BBerg,
     #[cfg(feature = "halo2")]
     #[strum(serialize = "halo2")]
     Halo2,
@@ -34,6 +39,8 @@ impl BackendType {
             WithoutSetupFactory(PhantomData);
         const PIL_STARK_CLI_FACTORY: WithoutSetupFactory<pilstark::PilStarkCli> =
             WithoutSetupFactory(PhantomData);
+        const BBERG_FACTORY: WithoutSetupFactory<bberg::bberg_codegen::BBergCodegen> =
+            WithoutSetupFactory(PhantomData);
 
         match self {
             #[cfg(feature = "halo2")]
@@ -42,6 +49,7 @@ impl BackendType {
             BackendType::Halo2Mock => &HALO2_MOCK_FACTORY,
             BackendType::PilStarkCli => &PIL_STARK_CLI_FACTORY,
             BackendType::EStark => &ESTARK_FACTORY,
+            BackendType::BBerg => &BBERG_FACTORY,
         }
     }
 }
