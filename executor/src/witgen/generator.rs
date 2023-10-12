@@ -16,7 +16,7 @@ use super::machines::FixedLookup;
 use super::rows::{transpose_rows, Row, RowFactory};
 use super::sequence_iterator::{DefaultSequenceIterator, ProcessingSequenceIterator};
 use super::vm_processor::VmProcessor;
-use super::{EvalResult, FixedData, MutableState};
+use super::{EvalResult, FixedData, MutableState, QueryCallback};
 
 pub struct Generator<'a, T: FieldElement> {
     fixed_data: &'a FixedData<'a, T>,
@@ -68,10 +68,7 @@ impl<'a, T: FieldElement> Generator<'a, T> {
         }
     }
 
-    pub fn run<Q>(&mut self, mutable_state: &mut MutableState<'a, T, Q>)
-    where
-        Q: FnMut(&str) -> Option<T> + Send + Sync,
-    {
+    pub fn run<Q: QueryCallback<T>>(&mut self, mutable_state: &mut MutableState<'a, T, Q>) {
         let first_row = self.compute_partial_first_row(mutable_state);
         self.data = self.process(first_row, mutable_state);
         self.fix_first_row();
@@ -79,10 +76,10 @@ impl<'a, T: FieldElement> Generator<'a, T> {
 
     /// Runs the solver on the row pair (degree - 1, 0) in order to partially compute the first
     /// row from identities like `pc' = (1 - first_step') * <...>`.
-    fn compute_partial_first_row<Q>(&self, mutable_state: &mut MutableState<'a, T, Q>) -> Row<'a, T>
-    where
-        Q: FnMut(&str) -> Option<T> + Send + Sync,
-    {
+    fn compute_partial_first_row<Q: QueryCallback<T>>(
+        &self,
+        mutable_state: &mut MutableState<'a, T, Q>,
+    ) -> Row<'a, T> {
         // Use `Processor` + `DefaultSequenceIterator` using a "block size" of 0. Because `Processor`
         // expects `data` to include the row before and after the block, this means we'll run the
         // solver on exactly one row pair.
@@ -114,14 +111,11 @@ impl<'a, T: FieldElement> Generator<'a, T> {
         first_row
     }
 
-    fn process<Q>(
+    fn process<Q: QueryCallback<T>>(
         &self,
         first_row: Row<'a, T>,
         mutable_state: &mut MutableState<'a, T, Q>,
-    ) -> Vec<Row<'a, T>>
-    where
-        Q: FnMut(&str) -> Option<T> + Send + Sync,
-    {
+    ) -> Vec<Row<'a, T>> {
         log::trace!("{}", first_row.render("first row", false, &self.witnesses));
         let data = vec![first_row];
         let row_factory = RowFactory::new(self.fixed_data, self.global_range_constraints.clone());

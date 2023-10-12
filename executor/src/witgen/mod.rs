@@ -36,8 +36,11 @@ mod symbolic_witness_evaluator;
 mod util;
 mod vm_processor;
 
+pub trait QueryCallback<T>: FnMut(&str) -> Option<T> + Send + Sync {}
+impl<T, F> QueryCallback<T> for F where F: FnMut(&str) -> Option<T> + Send + Sync {}
+
 /// Everything [Generator] needs to mutate in order to compute a new row.
-pub struct MutableState<'a, T: FieldElement, Q: FnMut(&str) -> Option<T> + Send + Sync> {
+pub struct MutableState<'a, T: FieldElement, Q: QueryCallback<T>> {
     pub fixed_lookup: FixedLookup<T>,
     pub machines: Vec<KnownMachine<'a, T>>,
     pub query_callback: Option<Q>,
@@ -45,15 +48,12 @@ pub struct MutableState<'a, T: FieldElement, Q: FnMut(&str) -> Option<T> + Send 
 
 /// Generates the committed polynomial values
 /// @returns the values (in source order) and the degree of the polynomials.
-pub fn generate<'a, T: FieldElement, QueryCallback>(
+pub fn generate<'a, T: FieldElement, Q: QueryCallback<T>>(
     analyzed: &'a Analyzed<T>,
     degree: DegreeType,
     fixed_col_values: &[(&str, Vec<T>)],
-    query_callback: Option<QueryCallback>,
-) -> Vec<(&'a str, Vec<T>)>
-where
-    QueryCallback: FnMut(&str) -> Option<T> + Send + Sync,
-{
+    query_callback: Option<Q>,
+) -> Vec<(&'a str, Vec<T>)> {
     if degree.is_zero() {
         panic!("Resulting degree is zero. Please ensure that there is at least one non-constant fixed column to set the degree.");
     }
