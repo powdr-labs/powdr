@@ -99,11 +99,7 @@ fn single_function_vm() {
 }
 
 #[test]
-#[should_panic = "Witness generation failed."]
 fn empty_vm() {
-    // TODO: an empty vm does not work because witgen does not find the infinite loop
-    // this can be fixed by removing the assumption that we run exactly one block before
-    // hitting the loop
     let f = "empty_vm.asm";
     let i = [];
     verify_asm::<GoldilocksField>(f, slice_to_vec(&i));
