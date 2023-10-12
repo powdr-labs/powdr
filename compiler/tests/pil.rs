@@ -19,6 +19,8 @@ pub fn verify_pil_with_external_witness(
     .canonicalize()
     .unwrap();
 
+    let query_callback = query_callback.unwrap_or(|_: &str| -> Option<GoldilocksField> { None });
+
     let temp_dir = mktemp::Temp::new_dir().unwrap();
     assert!(compiler::compile_pil(
         &input_file,

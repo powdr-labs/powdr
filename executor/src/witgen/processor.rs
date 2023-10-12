@@ -325,7 +325,7 @@ mod tests {
     /// Constructs a processor for a given PIL, then calls a function on it.
     fn do_with_processor<T: FieldElement, Q: QueryCallback<T>, R>(
         src: &str,
-        query_callback: Q,
+        mut query_callback: Q,
         f: impl Fn(&mut Processor<T, Q, WithoutCalldata>, BTreeMap<String, PolyID>) -> R,
     ) -> R {
         let analyzed = analyze_string(src);
@@ -344,11 +344,10 @@ mod tests {
             .map(|i| row_factory.fresh_row(i))
             .collect();
 
-        let mut query_callback_opt = Some(query_callback);
         let mut mutable_state = MutableState {
             fixed_lookup: &mut fixed_lookup,
             machines: Machines::from(machines.iter_mut()),
-            query_callback: &mut query_callback_opt,
+            query_callback: &mut query_callback,
         };
         let mut identity_processor = IdentityProcessor::new(&fixed_data, &mut mutable_state);
         let row_offset = 0;

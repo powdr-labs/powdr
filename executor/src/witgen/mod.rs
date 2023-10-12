@@ -44,14 +44,14 @@ impl<T, F> QueryCallback<T> for F where F: FnMut(&str) -> Option<T> + Send + Syn
 pub struct MutableState<'a, 'b, T: FieldElement, Q: QueryCallback<T>> {
     pub fixed_lookup: &'b mut FixedLookup<T>,
     pub machines: Machines<'a, 'b, T>,
-    pub query_callback: &'b mut Option<Q>,
+    pub query_callback: &'b mut Q,
 }
 
 pub struct WitnessGenerator<'a, 'b, T: FieldElement, Q: QueryCallback<T>> {
     analyzed: &'a Analyzed<T>,
     degree: DegreeType,
     fixed_col_values: &'b [(&'a str, Vec<T>)],
-    query_callback: Option<Q>,
+    query_callback: Q,
     external_witness_values: Vec<(&'a str, Vec<T>)>,
 }
 
@@ -60,7 +60,7 @@ impl<'a, 'b, T: FieldElement, Q: QueryCallback<T>> WitnessGenerator<'a, 'b, T, Q
         analyzed: &'a Analyzed<T>,
         degree: DegreeType,
         fixed_col_values: &'b [(&'a str, Vec<T>)],
-        query_callback: Option<Q>,
+        query_callback: Q,
     ) -> Self {
         WitnessGenerator {
             analyzed,

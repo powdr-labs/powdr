@@ -222,18 +222,17 @@ impl<'a, T: FieldElement> VmProcessor<'a, T> {
                 UnknownStrategy::Unknown,
                 &mut identity_processor,
             )?;
-            if let Some(query_callback) = mutable_state.query_callback.as_mut() {
-                let mut query_processor = QueryProcessor::new(self.fixed_data, query_callback);
-                let row_pair = RowPair::new(
-                    self.row(row_index),
-                    self.row(row_index + 1),
-                    row_index,
-                    self.fixed_data,
-                    UnknownStrategy::Unknown,
-                );
-                let updates = query_processor.process_queries_on_current_row(&row_pair);
-                progress |= self.apply_updates(row_index, &updates, || "query".to_string());
-            }
+            let mut query_processor =
+                QueryProcessor::new(self.fixed_data, mutable_state.query_callback);
+            let row_pair = RowPair::new(
+                self.row(row_index),
+                self.row(row_index + 1),
+                row_index,
+                self.fixed_data,
+                UnknownStrategy::Unknown,
+            );
+            let updates = query_processor.process_queries_on_current_row(&row_pair);
+            progress |= self.apply_updates(row_index, &updates, || "query".to_string());
 
             if !progress {
                 break;

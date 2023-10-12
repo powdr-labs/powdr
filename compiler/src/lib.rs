@@ -46,7 +46,7 @@ pub fn compile_pil_or_asm<T: FieldElement>(
         Ok(Some(compile_pil(
             Path::new(file_name),
             output_dir,
-            Some(inputs_to_query_callback(inputs)),
+            inputs_to_query_callback(inputs),
             prove_with,
             vec![],
         )))
@@ -64,7 +64,7 @@ pub fn analyze_pil<T: FieldElement>(pil_file: &Path) -> Analyzed<T> {
 pub fn compile_pil<T: FieldElement, Q: QueryCallback<T>>(
     pil_file: &Path,
     output_dir: &Path,
-    query_callback: Option<Q>,
+    query_callback: Q,
     prove_with: Option<BackendType>,
     external_witness_values: Vec<(&str, Vec<T>)>,
 ) -> CompilationResult<T> {
@@ -84,7 +84,7 @@ pub fn compile_pil_ast<T: FieldElement, Q: QueryCallback<T>>(
     pil: &PILFile<T>,
     file_name: &OsStr,
     output_dir: &Path,
-    query_callback: Option<Q>,
+    query_callback: Q,
     prove_with: Option<BackendType>,
 ) -> CompilationResult<T> {
     // TODO exporting this to string as a hack because the parser
@@ -177,7 +177,7 @@ pub fn compile_asm_string<T: FieldElement>(
             &pil,
             pil_file_name,
             output_dir,
-            Some(inputs_to_query_callback(inputs)),
+            inputs_to_query_callback(inputs),
             prove_with,
         )),
     ))
@@ -196,7 +196,7 @@ fn compile<T: FieldElement, Q: QueryCallback<T>>(
     analyzed: Analyzed<T>,
     file_name: &OsStr,
     output_dir: &Path,
-    query_callback: Option<Q>,
+    query_callback: Q,
     prove_with: Option<BackendType>,
     external_witness_values: Vec<(&str, Vec<T>)>,
 ) -> CompilationResult<T> {
