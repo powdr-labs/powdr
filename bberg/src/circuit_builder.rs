@@ -13,39 +13,100 @@ use number::{BigInt, DegreeType, FieldElement};
 
 use pil_analyzer::pil_analyzer::inline_intermediate_polynomials;
 
-use crate::{flavor_builder, trace_builder};
+use crate::{flavor_builder, trace_builder::TraceBuilder};
 
 pub struct BBFiles {
-    file_name: String,
-    relation_hpp: String,
-    arith_hpp: String,
-    trace_hpp: String,
-    flavor_hpp: String,
+    pub relation_hpp: Option<String>,
+    pub arith_hpp: Option<String>,
+    pub trace_hpp: Option<String>,
+    pub flavor_hpp: Option<String>,
+
+    // Relative paths
+    pub file_name: String,
+    pub base: String,
+    pub rel: String,
+    pub arith: String,
+    pub trace: String,
+    pub flavor: String,
 }
 
 impl BBFiles {
+    pub fn default(file_name: String) -> Self {
+        Self::new(file_name, None, None, None, None, None)
+    }
+
+    pub fn new(
+        file_name: String,
+        base: Option<String>,
+        rel: Option<String>,
+        arith: Option<String>,
+        trace: Option<String>,
+        flavor: Option<String>,
+    ) -> Self {
+        let base = base.unwrap_or("src/barretenberg".to_owned());
+        let rel = rel.unwrap_or("proof_system/relations/generated".to_owned());
+        let arith = arith.unwrap_or("proof_system/arithmetization/generated".to_owned());
+        let trace = trace.unwrap_or("proof_system/circuit_builder/generated".to_owned());
+        let flavor = flavor.unwrap_or("honk/flavor/generated".to_owned());
+
+        Self {
+            file_name,
+            relation_hpp: None,
+            arith_hpp: None,
+            trace_hpp: None,
+            flavor_hpp: None,
+            base,
+            rel,
+            arith,
+            trace,
+            flavor,
+        }
+    }
+
+    pub fn add_files(
+        &mut self,
+        relation_hpp: String,
+        arith_hpp: String,
+        trace_hpp: String,
+        flavor_hpp: String,
+    ) {
+        self.relation_hpp = Some(relation_hpp);
+        self.arith_hpp = Some(arith_hpp);
+        self.trace_hpp = Some(trace_hpp);
+        self.flavor_hpp = Some(flavor_hpp);
+    }
+
     pub fn write(&self) {
         self.write_file(
+            &self.rel,
             &format!("{}.hpp", self.file_name),
-            self.relation_hpp.to_owned(),
+            &self.relation_hpp.clone().unwrap(),
         );
         self.write_file(
+            &self.arith,
             &format!("{}_arith.hpp", self.file_name),
-            self.arith_hpp.to_owned(),
+            &self.arith_hpp.clone().unwrap(),
         );
         self.write_file(
+            &self.trace,
             &format!("{}_trace.hpp", self.file_name),
-            self.trace_hpp.to_owned(),
+            &self.trace_hpp.clone().unwrap(),
         );
         self.write_file(
+            &self.flavor,
             &format!("{}_flavor.hpp", self.file_name),
-            self.flavor_hpp.to_owned(),
+            &self.flavor_hpp.clone().unwrap(),
         );
     }
 
-    fn write_file(&self, filename: &str, contents: String) {
-        println!("Writing file: {}", filename);
-        let mut file = File::create(filename).unwrap();
+    fn write_file(&self, folder: &str, filename: &str, contents: &String) {
+        // attempt to create dir
+        let base_path = format!("{}/{}", self.base, folder);
+        let _ = std::fs::create_dir_all(&base_path);
+
+        let joined = format!("{}/{}", base_path, filename);
+        println!("Writing file: {}", joined);
+        let mut file = File::create(joined).unwrap();
         file.write_all(contents.as_bytes()).unwrap();
     }
 }
@@ -55,6 +116,9 @@ pub(crate) fn analyzed_to_cpp<F: FieldElement>(
     fixed: &[(&str, Vec<F>)],
     witness: &[(&str, Vec<F>)],
 ) -> BBFiles {
+    let file_name: &str = "ExampleRelation";
+    let mut bb_files = BBFiles::default(file_name.to_owned());
+
     let all_cols = get_all_col_names(fixed, witness);
     let fixed_names = fixed
         .iter()
@@ -71,8 +135,6 @@ pub(crate) fn analyzed_to_cpp<F: FieldElement>(
 
     let (subrelations, identities) = create_identities(&analyzed.identities, &all_cols);
 
-    let file_name: &str = "ExampleRelation";
-
     // ----------------------- Create the relation file -----------------------
     let relation_hpp = create_relation_hpp(file_name, &subrelations, &identities, &row_type); // TODO: do we need this
 
@@ -80,7 +142,7 @@ pub(crate) fn analyzed_to_cpp<F: FieldElement>(
     let arith_hpp = create_arith_boilerplate_file(file_name, num_cols);
 
     // ----------------------- Create the read from powdr columns file -----------------------
-    let trace_hpp = trace_builder::create_trace_buidler(file_name, fixed, witness);
+    let trace_hpp = bb_files.create_trace_builder(file_name, fixed, witness);
 
     let flavor_hpp =
         flavor_builder::create_flavor_hpp(file_name, all_cols, &fixed_names, &witness_names);
@@ -95,19 +157,15 @@ pub(crate) fn analyzed_to_cpp<F: FieldElement>(
     // // Note: we do not have lookups yet
     // assert!(lookups.len() == 0, "lookups not implemented");
 
-    BBFiles {
-        file_name: file_name.to_owned(),
-        relation_hpp,
-        arith_hpp,
-        trace_hpp,
-        flavor_hpp,
-    }
+    bb_files.add_files(relation_hpp, arith_hpp, trace_hpp, flavor_hpp);
+    bb_files
 }
 
 // We have no selectors so we can easily create a boilerplate file
 fn create_arith_boilerplate_file(name: &str, num_cols: usize) -> String {
     format!(
         "
+#include \"barretenberg/proof_system/arithmetization/arithmetization.hpp\"
 namespace arithmetization {{
     class {name}Arithmetization : public Arithmetization<{num_cols}, 0> {{
         public:
@@ -153,8 +211,9 @@ fn relation_class_boilerplate(
     let degree_boilerplate = get_degree_boilerplate(degrees);
     let relation_code = get_relation_code(sub_relations);
     format!(
-        "template <typename FF> class {name}Impl {{
+        "template <typename FF_> class {name}Impl {{
     public:
+        using FF = FF_;
         
         {degree_boilerplate}
         
@@ -165,7 +224,7 @@ fn relation_class_boilerplate(
 
 fn get_export(name: &str) -> String {
     format!(
-        "template <typename FF> using {name} = {name}Impl<FF>;",
+        "template <typename FF> using {name} = Relation<{name}Impl<FF>>;",
         name = name
     )
 }
@@ -381,320 +440,3 @@ fn create_identities<F: FieldElement>(
     // Returning both for now
     (subrelations, identities)
 }
-
-// ///  &_analyzed.identities = [
-// Identity {
-//     id: 0,
-//     kind: Polynomial,
-//     source: SourceRef {
-//         file: "fibonacci.pil",
-//         line: 12,
-//     },
-//     left: SelectedExpressions {
-//         selector: Some(
-//             BinaryOperation(
-//                 Reference(
-//                     Poly(
-//                         PolynomialReference {
-//                             name: "Fibonacci.ISLAST",
-//                             poly_id: Some(
-//                                 PolyID {
-//                                     id: 0,
-//                                     ptype: Constant,
-//                                 },
-//                             ),
-//                             index: None,
-//                             next: false,
-//                         },
-//                     ),
-//                 ),
-//                 Mul,
-//                 BinaryOperation(
-//                     Reference(
-//                         Poly(
-//                             PolynomialReference {
-//                                 name: "Fibonacci.y",
-//                                 poly_id: Some(
-//                                     PolyID {
-//                                         id: 1,
-//                                         ptype: Committed,
-//                                     },
-//                                 ),
-//                                 index: None,
-//                                 next: true,
-//                             },
-//                         ),
-//                     ),
-//                     Sub,
-//                     Number(
-//                         Bn254Field {
-//                             value: BigInt(
-//                                 [
-//                                     1,
-//                                     0,
-//                                     0,
-//                                     0,
-//                                 ],
-//                             ),
-//                         },
-//                     ),
-//                 ),
-//             ),
-//         ),
-//         expressions: [],
-//     },
-//     right: SelectedExpressions {
-//         selector: None,
-//         expressions: [],
-//     },
-// },
-// Identity {
-//     id: 1,
-//     kind: Polynomial,
-//     source: SourceRef {
-//         file: "fibonacci.pil",
-//         line: 13,
-//     },
-//     left: SelectedExpressions {
-//         selector: Some(
-//             BinaryOperation(
-//                 Reference(
-//                     Poly(
-//                         PolynomialReference {
-//                             name: "Fibonacci.ISLAST",
-//                             poly_id: Some(
-//                                 PolyID {
-//                                     id: 0,
-//                                     ptype: Constant,
-//                                 },
-//                             ),
-//                             index: None,
-//                             next: false,
-//                         },
-//                     ),
-//                 ),
-//                 Mul,
-//                 BinaryOperation(
-//                     Reference(
-//                         Poly(
-//                             PolynomialReference {
-//                                 name: "Fibonacci.x",
-//                                 poly_id: Some(
-//                                     PolyID {
-//                                         id: 0,
-//                                         ptype: Committed,
-//                                     },
-//                                 ),
-//                                 index: None,
-//                                 next: true,
-//                             },
-//                         ),
-//                     ),
-//                     Sub,
-//                     Number(
-//                         Bn254Field {
-//                             value: BigInt(
-//                                 [
-//                                     1,
-//                                     0,
-//                                     0,
-//                                     0,
-//                                 ],
-//                             ),
-//                         },
-//                     ),
-//                 ),
-//             ),
-//         ),
-//         expressions: [],
-//     },
-//     right: SelectedExpressions {
-//         selector: None,
-//         expressions: [],
-//     },
-// },
-// Identity {
-//     id: 2,
-//     kind: Polynomial,
-//     source: SourceRef {
-//         file: "fibonacci.pil",
-//         line: 15,
-//     },
-//     left: SelectedExpressions {
-//         selector: Some(
-//             BinaryOperation(
-//                 BinaryOperation(
-//                     Number(
-//                         Bn254Field {
-//                             value: BigInt(
-//                                 [
-//                                     1,
-//                                     0,
-//                                     0,
-//                                     0,
-//                                 ],
-//                             ),
-//                         },
-//                     ),
-//                     Sub,
-//                     Reference(
-//                         Poly(
-//                             PolynomialReference {
-//                                 name: "Fibonacci.ISLAST",
-//                                 poly_id: Some(
-//                                     PolyID {
-//                                         id: 0,
-//                                         ptype: Constant,
-//                                     },
-//                                 ),
-//                                 index: None,
-//                                 next: false,
-//                             },
-//                         ),
-//                     ),
-//                 ),
-//                 Mul,
-//                 BinaryOperation(
-//                     Reference(
-//                         Poly(
-//                             PolynomialReference {
-//                                 name: "Fibonacci.x",
-//                                 poly_id: Some(
-//                                     PolyID {
-//                                         id: 0,
-//                                         ptype: Committed,
-//                                     },
-//                                 ),
-//                                 index: None,
-//                                 next: true,
-//                             },
-//                         ),
-//                     ),
-//                     Sub,
-//                     Reference(
-//                         Poly(
-//                             PolynomialReference {
-//                                 name: "Fibonacci.y",
-//                                 poly_id: Some(
-//                                     PolyID {
-//                                         id: 1,
-//                                         ptype: Committed,
-//                                     },
-//                                 ),
-//                                 index: None,
-//                                 next: false,
-//                             },
-//                         ),
-//                     ),
-//                 ),
-//             ),
-//         ),
-//         expressions: [],
-//     },
-//     right: SelectedExpressions {
-//         selector: None,
-//         expressions: [],
-//     },
-// },
-// Identity {
-//     id: 3,
-//     kind: Polynomial,
-//     source: SourceRef {
-//         file: "fibonacci.pil",
-//         line: 16,
-//     },
-//     left: SelectedExpressions {
-//         selector: Some(
-//             BinaryOperation(
-//                 BinaryOperation(
-//                     Number(
-//                         Bn254Field {
-//                             value: BigInt(
-//                                 [
-//                                     1,
-//                                     0,
-//                                     0,
-//                                     0,
-//                                 ],
-//                             ),
-//                         },
-//                     ),
-//                     Sub,
-//                     Reference(
-//                         Poly(
-//                             PolynomialReference {
-//                                 name: "Fibonacci.ISLAST",
-//                                 poly_id: Some(
-//                                     PolyID {
-//                                         id: 0,
-//                                         ptype: Constant,
-//                                     },
-//                                 ),
-//                                 index: None,
-//                                 next: false,
-//                             },
-//                         ),
-//                     ),
-//                 ),
-//                 Mul,
-//                 BinaryOperation(
-//                     Reference(
-//                         Poly(
-//                             PolynomialReference {
-//                                 name: "Fibonacci.y",
-//                                 poly_id: Some(
-//                                     PolyID {
-//                                         id: 1,
-//                                         ptype: Committed,
-//                                     },
-//                                 ),
-//                                 index: None,
-//                                 next: true,
-//                             },
-//                         ),
-//                     ),
-//                     Sub,
-//                     BinaryOperation(
-//                         Reference(
-//                             Poly(
-//                                 PolynomialReference {
-//                                     name: "Fibonacci.x",
-//                                     poly_id: Some(
-//                                         PolyID {
-//                                             id: 0,
-//                                             ptype: Committed,
-//                                         },
-//                                     ),
-//                                     index: None,
-//                                     next: false,
-//                                 },
-//                             ),
-//                         ),
-//                         Add,
-//                         Reference(
-//                             Poly(
-//                                 PolynomialReference {
-//                                     name: "Fibonacci.y",
-//                                     poly_id: Some(
-//                                         PolyID {
-//                                             id: 1,
-//                                             ptype: Committed,
-//                                         },
-//                                     ),
-//                                     index: None,
-//                                     next: false,
-//                                 },
-//                             ),
-//                         ),
-//                     ),
-//                 ),
-//             ),
-//         ),
-//         expressions: [],
-//     },
-//     right: SelectedExpressions {
-//         selector: None,
-//         expressions: [],
-//     },
-// },
-// ]

@@ -44,11 +44,13 @@ pub(crate) fn create_flavor_hpp(
 
     let verification_commitments = create_verifier_commitments();
 
-    let relations_tuple = relations
-        .iter()
-        .map(|r| format!("{}Relation", r))
-        .collect::<Vec<_>>()
-        .join(", ");
+    // TODO: make this work when we have multiple relation files, for now we just have the one
+    let relations_tuple = format!("{name}_vm::{name}<FF>");
+    // let relations_tuple = relations
+    //     .iter()
+    //     .map(|r| format!("{}Relation", r))
+    //     .collect::<Vec<_>>()
+    //     .join(", ");
 
     format!(
         "
@@ -83,9 +85,9 @@ template <typename CycleGroup_T, typename Curve_T, typename PCS_T> class {name}F
         using Relations = std::tuple<{relations_tuple}>;
         // using LookupRelation = sumcheck::LookupRelation<FF>;
 
-        static constexpr size_t NUM_RELATION_LENGTH  = get_max_relation_length<Relations>();
-        static constexpr size_t NUM_RANDOM_RELATION_LENGTH = MAX_RELATION_LENGTH + 1;
-        static constexpr size_t NUM_RELATIONS = std::tuple_size_v<Relations>::value;
+        static constexpr size_t MAX_RELATION_LENGTH  = get_max_relation_length<Relations>();
+        static constexpr size_t MAX_RANDOM_RELATION_LENGTH = MAX_RELATION_LENGTH + 1;
+        static constexpr size_t NUM_RELATIONS = std::tuple_size<Relations>::value;
 
         // define the containers for storing the contributions from each relation in Sumcheck
         using RelationUnivariates = decltype(create_relation_univariates_container<FF, Relations>());
@@ -109,7 +111,7 @@ template <typename CycleGroup_T, typename Curve_T, typename PCS_T> class {name}F
             public:
 
             {witness_str} 
-        }}
+        }};
 
         template <typename DataType, typename HandleType>
         class AllEntities : public AllEntities_<DataType, HandleType, NUM_WITNESS_ENTITIES> {{
@@ -234,6 +236,7 @@ class {name}Flavor : public {name}FlavorBase<grumpkin::g1, curve::BN254, pcs::kz
 fn flavor_includes(name: &str, _relations: &Vec<String>) -> String {
     // TODO: when there are multiple relations generated, they will need to be known in this file
 
+    // TODO: Get the path for generated / other relations from self
     format!(
         "
 #pragma once
@@ -247,7 +250,7 @@ fn flavor_includes(name: &str, _relations: &Vec<String>) -> String {
 #include \"barretenberg/polynomials/polynomial.hpp\"
 // #include \"barretenberg/proof_system/circuit_builder/ultra_circuit_builder.hpp\"
 #include \"barretenberg/proof_system/flavor/flavor.hpp\"
-#include \"barretenberg/proof_system/relations/{name}_relation.hpp\"
+#include \"barretenberg/proof_system/relations/generated/{name}.hpp\"
 "
     )
 }
@@ -332,7 +335,7 @@ fn create_labels(all_ents: &Vec<String>) -> String {
     for name in all_ents {
         let n = name.replace(".", "_");
         labels.push_str(&format!(
-            "Base::{n} = \"{n}\", 
+            "Base::{n} = \"{n}\"; 
             ",
             n = n
         ));
