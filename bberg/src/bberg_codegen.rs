@@ -5,6 +5,8 @@ use number::{BigInt, Bn254Field, DegreeType, FieldElement};
 
 use crate::circuit_builder::analyzed_to_cpp;
 
+// TODO: there will need to be multiple files that are generated, one for each relation
+
 /// Barretenberg codegen
 ///
 /// This module will take pil compiler output and make it generate relation header files that can be compiled into bberg
@@ -31,7 +33,8 @@ impl BBergCodegen {
         fixed: &[(&str, Vec<F>)],
         witness: &[(&str, Vec<F>)],
     ) -> Vec<u8> {
-        let circuit = analyzed_to_cpp(pil, fixed, witness);
+        let bberg_files = analyzed_to_cpp(pil, fixed, witness);
+        bberg_files.write();
 
         Vec::new()
     }
