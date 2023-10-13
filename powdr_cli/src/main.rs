@@ -5,7 +5,7 @@ mod util;
 use backend::{Backend, BackendType};
 use clap::{CommandFactory, Parser, Subcommand};
 use compiler::util::{read_poly_set, FixedPolySet, WitnessPolySet};
-use compiler::{compile_pil_or_asm, write_proving_results_to_fs};
+use compiler::{compile_asm_string, compile_pil_or_asm, write_proving_results_to_fs};
 use env_logger::fmt::Color;
 use env_logger::{Builder, Target};
 use log::LevelFilter;
@@ -286,7 +286,7 @@ fn run_command(command: Commands) {
             force,
             prove_with,
         } => {
-            if let Err(errors) = call_with_field!(compile_rust::<field>(
+            if let Err(errors) = call_with_field!(run_rust::<field>(
                 &file,
                 split_inputs(&inputs),
                 Path::new(&output_directory),
@@ -314,7 +314,7 @@ fn run_command(command: Commands) {
                 Cow::Borrowed("output")
             };
 
-            if let Err(errors) = call_with_field!(compile_riscv_asm::<field>(
+            if let Err(errors) = call_with_field!(run_riscv_asm::<field>(
                 &name,
                 files.into_iter(),
                 split_inputs(&inputs),
@@ -402,6 +402,49 @@ fn write_backend_to_fs<F: FieldElement>(be: &dyn Backend<F>, output_dir: &Path) 
     be.write_setup(&mut params_writer).unwrap();
     params_writer.flush().unwrap();
     log::info!("Wrote params.bin.");
+}
+fn run_rust<F: FieldElement>(
+    file_name: &str,
+    inputs: Vec<F>,
+    output_dir: &Path,
+    force_overwrite: bool,
+    prove_with: Option<BackendType>,
+) -> Result<(), Vec<String>> {
+    let (asm_file_path, asm_contents) = compile_rust(file_name, output_dir, force_overwrite)
+        .ok_or_else(|| vec!["could not compile rust".to_string()])?;
+
+    compile_asm_string(
+        asm_file_path.to_str().unwrap(),
+        &asm_contents,
+        inputs,
+        output_dir,
+        force_overwrite,
+        prove_with,
+    )?;
+    Ok(())
+}
+
+fn run_riscv_asm<F: FieldElement>(
+    original_file_name: &str,
+    file_names: impl Iterator<Item = String>,
+    inputs: Vec<F>,
+    output_dir: &Path,
+    force_overwrite: bool,
+    prove_with: Option<BackendType>,
+) -> Result<(), Vec<String>> {
+    let (asm_file_path, asm_contents) =
+        compile_riscv_asm(original_file_name, file_names, output_dir, force_overwrite)
+            .ok_or_else(|| vec!["could not compile RISC-V assembly".to_string()])?;
+
+    compile_asm_string(
+        asm_file_path.to_str().unwrap(),
+        &asm_contents,
+        inputs,
+        output_dir,
+        force_overwrite,
+        prove_with,
+    )?;
+    Ok(())
 }
 
 fn compile_with_csv_export<T: FieldElement>(

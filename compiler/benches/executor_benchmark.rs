@@ -14,7 +14,7 @@ fn get_pil() -> Analyzed<T> {
     let tmp_dir = Temp::new_dir().unwrap();
     let riscv_asm_files =
         compile_rust_crate_to_riscv_asm("../riscv/tests/riscv_data/keccak/Cargo.toml", &tmp_dir);
-    let contents = compiler::compile::<T>(riscv_asm_files);
+    let contents = compiler::compile(riscv_asm_files);
     let parsed = parser::parse_asm::<T>(None, &contents).unwrap();
     let resolved = importer::resolve(None, parsed).unwrap();
     let analyzed = analyze(resolved).unwrap();

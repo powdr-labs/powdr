@@ -108,7 +108,7 @@ fn verify_file(case: &str, inputs: Vec<GoldilocksField>) {
     let temp_dir = Temp::new_dir().unwrap();
     let riscv_asm =
         riscv::compile_rust_to_riscv_asm(&format!("tests/riscv_data/{case}"), &temp_dir);
-    let powdr_asm = riscv::compiler::compile::<GoldilocksField>(riscv_asm);
+    let powdr_asm = riscv::compiler::compile(riscv_asm);
 
     verify_asm_string(&format!("{case}.asm"), &powdr_asm, inputs);
 }
@@ -119,7 +119,7 @@ fn verify_crate(case: &str, inputs: Vec<GoldilocksField>) {
         &format!("tests/riscv_data/{case}/Cargo.toml"),
         &temp_dir,
     );
-    let powdr_asm = riscv::compiler::compile::<GoldilocksField>(riscv_asm);
+    let powdr_asm = riscv::compiler::compile(riscv_asm);
 
     verify_asm_string(&format!("{case}.asm"), &powdr_asm, inputs);
 }
