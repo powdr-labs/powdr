@@ -3,17 +3,18 @@ use itertools::Itertools;
 use number::{DegreeType, FieldElement};
 use parser_util::lines::indent;
 use std::cmp::max;
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 use std::time::Instant;
 
 use crate::witgen::identity_processor::{self, IdentityProcessor};
 use crate::witgen::rows::RowUpdater;
+use crate::witgen::util::try_to_simple_poly;
 use crate::witgen::Constraint;
 
 use super::processor::OuterQuery;
 use super::query_processor::QueryProcessor;
 
-use super::rows::{Row, RowFactory, RowPair, UnknownStrategy};
+use super::rows::{Row, RowFactory, RowPair, UnknownStrategy, CellValue};
 use super::{EvalError, EvalResult, EvalValue, FixedData, MutableState, QueryCallback, Constraints};
 
 /// A list of identities with a flag whether it is complete.
@@ -54,6 +55,7 @@ pub struct VmProcessor<'a, T: FieldElement> {
     row_factory: RowFactory<'a, T>,
     latch: Option<Expression<T>>,
     outer_query: Option<OuterQuery<'a, T>>,
+    inputs: Option<BTreeMap<PolyID, T>>,
 }
 
 impl<'a, T: FieldElement> VmProcessor<'a, T> {
@@ -72,9 +74,19 @@ impl<'a, T: FieldElement> VmProcessor<'a, T> {
             .iter()
             .partition(|identity| identity.contains_next_ref());
 
-        if outer_query.is_some() {
+        let inputs = outer_query.as_ref().map(|outer_query| {
             assert!(latch.is_some());
-        }
+
+            let mut inputs = BTreeMap::new();
+            for (l, r) in outer_query.left.iter().zip(&outer_query.right.expressions) {
+                if let Some(right_poly) = try_to_simple_poly(r).map(|p| p.poly_id()) {
+                    if let Some(l) = l.constant_value() {
+                        inputs.insert(right_poly, l);
+                    }
+                }
+            }
+            inputs
+        });
 
         VmProcessor {
             row_offset,
@@ -88,11 +100,17 @@ impl<'a, T: FieldElement> VmProcessor<'a, T> {
             last_report_time: Instant::now(),
             latch,
             outer_query,
+            inputs,
         }
     }
 
-    pub fn finish(self) -> Vec<Row<'a, T>> {
-        self.data
+    pub fn finish(self) -> (Vec<Row<'a, T>>, bool) {
+        (
+            self.data,
+            self.outer_query
+                .map(|outer_query| outer_query.left.iter().all(|v| v.is_constant()))
+                .unwrap_or(false),
+        )
     }
 
     /// Starting out with a single row (at a given offset), iteratively append rows
@@ -241,6 +259,7 @@ impl<'a, T: FieldElement> VmProcessor<'a, T> {
             .map_err(|e| self.report_failure_and_panic_unsatisfiable(row_index, e))
             .unwrap();
 
+        // TODO: If we fail here, we should return as incomplete
         // Check that the computed row is "final" by asserting that all unknown values can
         // be set to 0.
         log::trace!("  Checking that remaining identities hold when unknown values are set to 0");
@@ -321,6 +340,31 @@ impl<'a, T: FieldElement> VmProcessor<'a, T> {
                 );
                 let updates = query_processor.process_queries_on_current_row(&row_pair);
                 progress |= self.apply_updates(row_index, &updates, || "query".to_string());
+            }
+            let input_updates = self.inputs.as_ref().map(|inputs| {
+                let mut updates = EvalValue::complete(vec![]);
+                for (poly_id, value) in inputs.iter() {
+                    match &self.data[row_index as usize][poly_id].value {
+                        CellValue::Known(_) => {}
+                        CellValue::RangeConstraint(_) | CellValue::Unknown => {
+                            updates.combine(EvalValue::complete([(
+                                &self.fixed_data.witness_poly_refs[poly_id],
+                                Constraint::Assignment(*value),
+                            )]));
+                        }
+                    };
+                }
+                updates
+            });
+
+            if let Some(input_updates) = input_updates {
+                // TODO: This should be helpful to make sure that we fail if the inputs are not held constant
+                // for the duration of the block. So far it causes a failure, because it takes the input out
+                // twice, before and after the reset instruction.
+                // for (poly_ref, _) in &input_updates.constraints {
+                //     self.inputs.as_mut().unwrap().remove(&poly_ref.poly_id());
+                // }
+                progress |= self.apply_updates(row_index, &input_updates, || "input".to_string());
             }
 
             if !progress {

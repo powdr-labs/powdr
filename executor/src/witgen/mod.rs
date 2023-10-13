@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 
 use ast::analyzed::{
     Analyzed, Expression, FunctionValueDefinition, PolyID, PolynomialReference, PolynomialType,
+    SymbolKind,
 };
 use num_traits::Zero;
 use number::{DegreeType, FieldElement};
@@ -57,6 +58,7 @@ pub fn generate<'a, T: FieldElement, Q: QueryCallback<T>>(
     if degree.is_zero() {
         panic!("Resulting degree is zero. Please ensure that there is at least one non-constant fixed column to set the degree.");
     }
+
     let fixed = FixedData::new(analyzed, degree, fixed_col_values);
     let identities = inline_intermediate_polynomials(analyzed);
 
@@ -123,6 +125,7 @@ pub struct FixedData<'a, T> {
     degree: DegreeType,
     fixed_cols: FixedColumnMap<FixedColumn<'a, T>>,
     witness_cols: WitnessColumnMap<WitnessColumn<'a, T>>,
+    pub witness_poly_refs: WitnessColumnMap<PolynomialReference>,
 }
 
 impl<'a, T: FieldElement> FixedData<'a, T> {
@@ -145,6 +148,26 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
                     col
                 }),
         );
+        let witness_poly_refs = WitnessColumnMap::from(
+            analyzed
+                .committed_polys_in_source_order()
+                .iter()
+                .enumerate()
+                .map(|(i, (poly, _))| {
+                    assert_eq!(i as u64, poly.id);
+                    assert_eq!(poly.kind, SymbolKind::Poly(PolynomialType::Committed));
+                    let poly_id = PolyID {
+                        id: poly.id,
+                        ptype: PolynomialType::Committed,
+                    };
+                    PolynomialReference {
+                        poly_id: Some(poly_id),
+                        name: poly.absolute_name.clone(),
+                        next: false,
+                        index: None,
+                    }
+                }),
+        );
 
         let fixed_cols =
             FixedColumnMap::from(fixed_col_values.iter().map(|(n, v)| FixedColumn::new(n, v)));
@@ -152,6 +175,7 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
             degree,
             fixed_cols,
             witness_cols,
+            witness_poly_refs,
         }
     }
 

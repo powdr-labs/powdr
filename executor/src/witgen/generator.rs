@@ -16,9 +16,8 @@ use super::range_constraints::RangeConstraint;
 use super::machines::FixedLookup;
 use super::rows::{transpose_rows, Row, RowFactory};
 use super::sequence_iterator::{DefaultSequenceIterator, ProcessingSequenceIterator};
-use super::util::try_to_simple_poly;
 use super::vm_processor::VmProcessor;
-use super::{EvalResult, FixedData, MutableState, QueryCallback, Constraints};
+use super::{Constraints, EvalResult, FixedData, MutableState, QueryCallback};
 
 pub struct Generator<'a, T: FieldElement> {
     fixed_data: &'a FixedData<'a, T>,
@@ -52,65 +51,36 @@ impl<'a, T: FieldElement> Machine<'a, T> for Generator<'a, T> {
                 query_callback: None,
             };
 
-            let row_factory =
-                RowFactory::new(self.fixed_data, self.global_range_constraints.clone());
-            let mut first_row = self
+            let first_row = self
                 .data
-                .pop()
+                .last()
+                .cloned()
                 .unwrap_or_else(|| self.compute_partial_first_row(&mut mutable_state));
-            let mut second_row = row_factory.fresh_row();
-
-            for (l, r) in left.iter().zip(&right.expressions) {
-                let right_poly = try_to_simple_poly(r).map(|p| p.poly_id());
-                if let Some(right_poly) = right_poly {
-                    if self.fixed_data.column_name(&right_poly).contains("_input") {
-                        if let Some(l) = l.constant_value() {
-                            second_row[&right_poly].value = CellValue::Known(l);
-                        } else {
-                            log::trace!(
-                                "Abort processing secondary VM '{}': Input {} was not provided",
-                                self.name(),
-                                self.fixed_data.column_name(&right_poly)
-                            );
-                            self.data.push(first_row);
-                            return Some(Ok(EvalValue {
-                                constraints: vec![],
-                                status: EvalStatus::Incomplete(
-                                    IncompleteCause::BlockMachineLookupIncomplete,
-                                ),
-                            }));
-                        }
-                    }
-                    if self
-                        .fixed_data
-                        .column_name(&right_poly)
-                        .contains("_operation_id")
-                    {
-                        let l = l
-                            .constant_value()
-                            .expect("operation ID assumed to be hard-coded!");
-                        first_row[&right_poly].value = CellValue::Known(l);
-                    }
-                }
-            }
 
             let outer_query = OuterQuery {
                 left: left.to_vec(),
                 right,
             };
-            let (outer_assignments, mut block) = self.process(
-                vec![first_row, second_row],
-                0,
-                &mut mutable_state,
-                Some(outer_query),
-            );
+            let (outer_assignments, (mut block, success)) =
+                self.process(vec![first_row], 0, &mut mutable_state, Some(outer_query));
 
-            self.data.append(&mut block);
-            let eval_value = EvalValue {
-                constraints: outer_assignments,
-                status: EvalStatus::Complete,
-            };
-            Some(Ok(eval_value))
+            if success {
+                self.data.pop();
+                self.data.append(&mut block);
+                let eval_value = EvalValue {
+                    constraints: outer_assignments,
+                    status: EvalStatus::Complete,
+                };
+                log::trace!("End processing VM '{}' (successfully)", self.name());
+                Some(Ok(eval_value))
+            } else {
+                let eval_value = EvalValue {
+                    constraints: outer_assignments,
+                    status: EvalStatus::Incomplete(IncompleteCause::BlockMachineLookupIncomplete),
+                };
+                log::trace!("End processing VM '{}' (incomplete)", self.name());
+                Some(Ok(eval_value))
+            }
         } else {
             None
         }
@@ -180,7 +150,7 @@ impl<'a, T: FieldElement> Generator<'a, T> {
 
     pub fn run<Q: QueryCallback<T>>(&mut self, mutable_state: &mut MutableState<'a, '_, T, Q>) {
         let first_row = self.compute_partial_first_row(mutable_state);
-        self.data = self.process(vec![first_row], 0, mutable_state, None).1;
+        self.data = self.process(vec![first_row], 0, mutable_state, None).1 .0;
 
         log::debug!("Finalizing main Machine");
         let machines = mutable_state.machines.iter_mut().into();
@@ -215,7 +185,8 @@ impl<'a, T: FieldElement> Generator<'a, T> {
                         mutable_state,
                         None,
                     )
-                    .1,
+                    .1
+                     .0,
             );
         }
     }
@@ -263,7 +234,10 @@ impl<'a, T: FieldElement> Generator<'a, T> {
         row_offset: DegreeType,
         mutable_state: &mut MutableState<'a, '_, T, Q>,
         outer_query: Option<OuterQuery<'a, T>>,
-    ) -> (Constraints<&'a PolynomialReference, T>, Vec<Row<'a, T>>) {
+    ) -> (
+        Constraints<&'a PolynomialReference, T>,
+        (Vec<Row<'a, T>>, bool),
+    ) {
         log::trace!(
             "Running machine {} from row {row_offset} with the following initial values:",
             self.name(),
