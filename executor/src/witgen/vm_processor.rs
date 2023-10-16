@@ -14,8 +14,10 @@ use crate::witgen::Constraint;
 use super::processor::OuterQuery;
 use super::query_processor::QueryProcessor;
 
-use super::rows::{Row, RowFactory, RowPair, UnknownStrategy, CellValue};
-use super::{EvalError, EvalResult, EvalValue, FixedData, MutableState, QueryCallback, Constraints};
+use super::rows::{CellValue, Row, RowFactory, RowPair, UnknownStrategy};
+use super::{
+    Constraints, EvalError, EvalResult, EvalValue, FixedData, MutableState, QueryCallback,
+};
 
 /// A list of identities with a flag whether it is complete.
 struct CompletableIdentities<'a, T: FieldElement> {
@@ -338,7 +340,8 @@ impl<'a, T: FieldElement> VmProcessor<'a, T> {
                     self.fixed_data,
                     UnknownStrategy::Unknown,
                 );
-                let updates = query_processor.process_queries_on_current_row(&row_pair);
+                let updates =
+                    query_processor.process_queries_on_current_row(&row_pair, &self.witnesses);
                 progress |= self.apply_updates(row_index, &updates, || "query".to_string());
             }
             let input_updates = self.inputs.as_ref().map(|inputs| {
