@@ -40,13 +40,6 @@ pub trait Machine<'a, T: FieldElement>: Send + Sync {
         machines: Machines<'a, 'b, T>,
     ) -> Option<EvalResult<'a, T>>;
 
-    fn finalize<'b>(
-        &mut self,
-        _fixed_lookup: &'b mut FixedLookup<T>,
-        _machines: Machines<'a, 'b, T>,
-    ) {
-    }
-
     /// Returns the final values of the witness columns.
     fn take_witness_col_values(&mut self) -> HashMap<String, Vec<T>>;
 }
@@ -83,13 +76,6 @@ impl<'a, T: FieldElement> Machine<'a, T> for KnownMachine<'a, T> {
     ) -> Option<crate::witgen::EvalResult<'a, T>> {
         self.get()
             .process_plookup(fixed_lookup, kind, left, right, machines)
-    }
-    fn finalize<'b>(
-        &mut self,
-        fixed_lookup: &'b mut FixedLookup<T>,
-        machines: Machines<'a, 'b, T>,
-    ) {
-        self.get().finalize(fixed_lookup, machines)
     }
 
     fn take_witness_col_values(&mut self) -> std::collections::HashMap<String, Vec<T>> {

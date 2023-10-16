@@ -44,7 +44,7 @@ impl<T, F> QueryCallback<T> for F where F: FnMut(&str) -> Option<T> + Send + Syn
 pub struct MutableState<'a, 'b, T: FieldElement, Q: QueryCallback<T>> {
     pub fixed_lookup: &'b mut FixedLookup<T>,
     pub machines: Vec<KnownMachine<'a, T>>,
-    pub query_callback: Option<Q>,
+    pub query_callback: Option<&'b mut Q>,
 }
 
 /// Generates the committed polynomial values
@@ -53,7 +53,7 @@ pub fn generate<'a, T: FieldElement, Q: QueryCallback<T>>(
     analyzed: &'a Analyzed<T>,
     degree: DegreeType,
     fixed_col_values: &[(&str, Vec<T>)],
-    query_callback: Option<Q>,
+    mut query_callback: Option<Q>,
 ) -> Vec<(&'a str, Vec<T>)> {
     if degree.is_zero() {
         panic!("Resulting degree is zero. Please ensure that there is at least one non-constant fixed column to set the degree.");
@@ -82,7 +82,7 @@ pub fn generate<'a, T: FieldElement, Q: QueryCallback<T>>(
     let mut mutable_state = MutableState {
         fixed_lookup: &mut fixed_lookup,
         machines,
-        query_callback,
+        query_callback: query_callback.as_mut(),
     };
     let mut generator = Generator::new(
         &fixed,

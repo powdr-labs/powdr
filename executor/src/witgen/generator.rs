@@ -3,6 +3,7 @@ use ast::parsed::SelectedExpressions;
 use number::{DegreeType, FieldElement};
 use std::collections::{HashMap, HashSet};
 
+use crate::witgen::machines::KnownMachine;
 use crate::witgen::rows::CellValue;
 use crate::witgen::{EvalStatus, EvalValue, IncompleteCause};
 
@@ -86,22 +87,6 @@ impl<'a, T: FieldElement> Machine<'a, T> for Generator<'a, T> {
         }
     }
 
-    fn finalize<'b>(
-        &mut self,
-        fixed_lookup: &'b mut FixedLookup<T>,
-        _machines: Machines<'a, 'b, T>,
-    ) {
-        // TODO: Pass machines and query callback
-        let mut mutable_state: MutableState<_, fn(&str) -> Option<_>> = MutableState {
-            fixed_lookup,
-            machines: vec![],
-            query_callback: None,
-        };
-        self.fill_remaining_rows(&mut mutable_state);
-
-        self.fix_first_row();
-    }
-
     fn take_witness_col_values(&mut self) -> HashMap<String, Vec<T>> {
         transpose_rows(std::mem::take(&mut self.data), &self.witnesses)
             .into_iter()
@@ -148,13 +133,31 @@ impl<'a, T: FieldElement> Generator<'a, T> {
         }
     }
 
+    fn finalize<Q: QueryCallback<T>>(
+        &mut self,
+        fixed_lookup: &mut FixedLookup<T>,
+        query_callback: Option<&mut Q>,
+    ) {
+        // TODO: Pass machines and query callback
+        let mut mutable_state = MutableState {
+            fixed_lookup,
+            machines: vec![],
+            query_callback,
+        };
+        self.fill_remaining_rows(&mut mutable_state);
+
+        self.fix_first_row();
+    }
+
     pub fn run<Q: QueryCallback<T>>(&mut self, mutable_state: &mut MutableState<'a, '_, T, Q>) {
         let first_row = self.compute_partial_first_row(mutable_state);
         self.data = self.process(vec![first_row], 0, mutable_state, None).1 .0;
 
         log::debug!("Finalizing main Machine");
-        let machines = mutable_state.machines.iter_mut().into();
-        self.finalize(mutable_state.fixed_lookup, machines);
+        self.finalize(
+            mutable_state.fixed_lookup,
+            mutable_state.query_callback.as_mut(),
+        );
 
         let mut machines: Machines<T> = mutable_state.machines.iter_mut().into();
         for i in 0..machines.len() {
@@ -163,8 +166,13 @@ impl<'a, T: FieldElement> Generator<'a, T> {
                 i + 1,
                 machines.len()
             );
-            let (current, others) = machines.split(i);
-            current.finalize(mutable_state.fixed_lookup, others)
+            let (current, _others) = machines.split(i);
+            if let KnownMachine::Vm(current) = current {
+                current.finalize(
+                    mutable_state.fixed_lookup,
+                    mutable_state.query_callback.as_mut(),
+                );
+            }
         }
     }
 
@@ -228,6 +236,7 @@ impl<'a, T: FieldElement> Generator<'a, T> {
         first_row
     }
 
+    #[allow(clippy::type_complexity)]
     fn process<Q: QueryCallback<T>>(
         &self,
         data: Vec<Row<'a, T>>,
