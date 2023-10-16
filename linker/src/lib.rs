@@ -212,11 +212,7 @@ mod test {
     fn compile_empty_vm() {
         let expectation = r#"
         namespace main(8);
-pol commit _operation_id;
-pol commit _sigma;
-pol constant _romgen_first_step = [1] + [0]*;
-_sigma' = ((1 - _romgen_first_step') * (_sigma + instr_return));
-(_sigma * (_operation_id - 2)) = 0;
+pol commit _operation_id(i) query ("hint", 2);
 pol commit pc;
 pol commit instr__jump_to_operation;
 pol commit instr__reset;
@@ -251,11 +247,7 @@ _operation_id_no_change = ((1 - _block_enforcer_last_step) * (1 - instr_return))
     fn compile_different_signatures() {
         let expectation = r#"
         namespace main(16);
-pol commit _operation_id;
-pol commit _sigma;
-pol constant _romgen_first_step = [1] + [0]*;
-_sigma' = ((1 - _romgen_first_step') * (_sigma + instr_return));
-(_sigma * (_operation_id - 4)) = 0;
+pol commit _operation_id(i) query ("hint", 4);
 pol commit pc;
 pol commit X;
 pol commit Y;
@@ -314,11 +306,7 @@ instr_nothing { 3 } in main_sub.instr_return { main_sub._operation_id };
 pol constant _linker_first_step = [1] + [0]*;
 (_linker_first_step * (_operation_id - 2)) = 0;
 namespace main_sub(16);
-pol commit _operation_id;
-pol commit _sigma;
-pol constant _romgen_first_step = [1] + [0]*;
-_sigma' = ((1 - _romgen_first_step') * (_sigma + instr_return));
-(_sigma * (_operation_id - 5)) = 0;
+pol commit _operation_id(i) query ("hint", 5);
 pol commit pc;
 pol commit _input_0;
 pol commit _output_0;
@@ -370,11 +358,7 @@ pol commit XIsZero;
 XIsZero = (1 - (X * XInv));
 (XIsZero * X) = 0;
 (XIsZero * (1 - XIsZero)) = 0;
-pol commit _operation_id;
-pol commit _sigma;
-pol constant _romgen_first_step = [1] + [0]*;
-_sigma' = ((1 - _romgen_first_step') * (_sigma + instr_return));
-(_sigma * (_operation_id - 10)) = 0;
+pol commit _operation_id(i) query ("hint", 10);
 pol commit pc;
 pol commit X;
 pol commit reg_write_X_A;
@@ -462,11 +446,7 @@ machine Machine {
 "#;
         let expectation = r#"
 namespace main(1024);
-pol commit _operation_id;
-pol commit _sigma;
-pol constant _romgen_first_step = [1] + [0]*;
-_sigma' = ((1 - _romgen_first_step') * (_sigma + instr_return));
-(_sigma * (_operation_id - 4)) = 0;
+pol commit _operation_id(i) query ("hint", 4);
 pol commit pc;
 pol commit fp;
 pol commit instr_inc_fp;
