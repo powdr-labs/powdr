@@ -13,13 +13,30 @@ use number::{BigInt, DegreeType, FieldElement};
 
 use pil_analyzer::pil_analyzer::inline_intermediate_polynomials;
 
-use crate::{flavor_builder, trace_builder::TraceBuilder};
+use crate::prover_builder::{prover_builder_cpp, prover_builder_hpp};
+use crate::verifier_builder::{verifier_builder_cpp, verifier_builder_hpp};
+use crate::{
+    composer_builder::{composer_builder_cpp, composer_builder_hpp},
+    flavor_builder,
+    trace_builder::TraceBuilder,
+};
 
 pub struct BBFiles {
     pub relation_hpp: Option<String>,
     pub arith_hpp: Option<String>,
     pub trace_hpp: Option<String>,
     pub flavor_hpp: Option<String>,
+    // composer
+    pub composer_cpp: Option<String>,
+    pub composer_hpp: Option<String>,
+
+    // prover
+    pub prover_cpp: Option<String>,
+    pub prover_hpp: Option<String>,
+
+    // verifier
+    pub verifier_cpp: Option<String>,
+    pub verifier_hpp: Option<String>,
 
     // Relative paths
     pub file_name: String,
@@ -28,11 +45,13 @@ pub struct BBFiles {
     pub arith: String,
     pub trace: String,
     pub flavor: String,
+    pub composer: String,
+    pub prover: String, // path for both prover and verifier files
 }
 
 impl BBFiles {
     pub fn default(file_name: String) -> Self {
-        Self::new(file_name, None, None, None, None, None)
+        Self::new(file_name, None, None, None, None, None, None, None)
     }
 
     pub fn new(
@@ -42,12 +61,16 @@ impl BBFiles {
         arith: Option<String>,
         trace: Option<String>,
         flavor: Option<String>,
+        composer: Option<String>,
+        prover: Option<String>,
     ) -> Self {
         let base = base.unwrap_or("src/barretenberg".to_owned());
         let rel = rel.unwrap_or("proof_system/relations/generated".to_owned());
         let arith = arith.unwrap_or("proof_system/arithmetization/generated".to_owned());
         let trace = trace.unwrap_or("proof_system/circuit_builder/generated".to_owned());
         let flavor = flavor.unwrap_or("honk/flavor/generated".to_owned());
+        let composer = composer.unwrap_or("honk/composer/generated".to_owned());
+        let prover = prover.unwrap_or("honk/proof_system/generated".to_owned());
 
         Self {
             file_name,
@@ -55,11 +78,20 @@ impl BBFiles {
             arith_hpp: None,
             trace_hpp: None,
             flavor_hpp: None,
+            composer_cpp: None,
+            composer_hpp: None,
+            prover_cpp: None,
+            prover_hpp: None,
+            verifier_cpp: None,
+            verifier_hpp: None,
+
             base,
             rel,
             arith,
             trace,
             flavor,
+            composer,
+            prover,
         }
     }
 
@@ -69,11 +101,25 @@ impl BBFiles {
         arith_hpp: String,
         trace_hpp: String,
         flavor_hpp: String,
+        composer_cpp: String,
+        composer_hpp: String,
+        verifier_cpp: String,
+        verifier_hpp: String,
+        prover_cpp: String,
+        prover_hpp: String,
     ) {
         self.relation_hpp = Some(relation_hpp);
         self.arith_hpp = Some(arith_hpp);
         self.trace_hpp = Some(trace_hpp);
         self.flavor_hpp = Some(flavor_hpp);
+        self.composer_cpp = Some(composer_cpp);
+        self.composer_hpp = Some(composer_hpp);
+
+        self.verifier_cpp = Some(verifier_cpp);
+        self.verifier_hpp = Some(verifier_hpp);
+
+        self.prover_cpp = Some(prover_cpp);
+        self.prover_hpp = Some(prover_hpp);
     }
 
     pub fn write(&self) {
@@ -96,6 +142,41 @@ impl BBFiles {
             &self.flavor,
             &format!("{}_flavor.hpp", self.file_name),
             &self.flavor_hpp.clone().unwrap(),
+        );
+        // Composer
+        self.write_file(
+            &self.composer,
+            &format!("{}_composer.cpp", self.file_name),
+            &self.composer_cpp.clone().unwrap(),
+        );
+        self.write_file(
+            &self.composer,
+            &format!("{}_composer.hpp", self.file_name),
+            &self.composer_hpp.clone().unwrap(),
+        );
+
+        // Prover
+        self.write_file(
+            &self.prover,
+            &format!("{}_prover.cpp", self.file_name),
+            &self.prover_cpp.clone().unwrap(),
+        );
+        self.write_file(
+            &self.prover,
+            &format!("{}_prover.hpp", self.file_name),
+            &self.prover_hpp.clone().unwrap(),
+        );
+
+        // Verifier
+        self.write_file(
+            &self.prover,
+            &format!("{}_verifier.cpp", self.file_name),
+            &self.verifier_cpp.clone().unwrap(),
+        );
+        self.write_file(
+            &self.prover,
+            &format!("{}_verifier.hpp", self.file_name),
+            &self.verifier_hpp.clone().unwrap(),
         );
     }
 
@@ -144,8 +225,21 @@ pub(crate) fn analyzed_to_cpp<F: FieldElement>(
     // ----------------------- Create the read from powdr columns file -----------------------
     let trace_hpp = bb_files.create_trace_builder(file_name, fixed, witness);
 
+    // ----------------------- Create the flavor file -----------------------
     let flavor_hpp =
-        flavor_builder::create_flavor_hpp(file_name, all_cols, &fixed_names, &witness_names);
+        flavor_builder::create_flavor_hpp(file_name, &all_cols, &fixed_names, &witness_names);
+
+    // ----------------------- Create the composer files -----------------------
+    let composer_cpp = composer_builder_cpp(file_name);
+    let composer_hpp = composer_builder_hpp(file_name);
+
+    // ----------------------- Create the prover files -----------------------
+    let verifier_cpp = verifier_builder_cpp(file_name, &all_cols);
+    let verifier_hpp = verifier_builder_hpp(file_name);
+
+    // ----------------------- Create the verifier files -----------------------
+    let prover_cpp = prover_builder_cpp(file_name, &fixed_names, &witness_names);
+    let prover_hpp = prover_builder_hpp(file_name);
 
     // These are all of the exotic ish data structures we will need
     // let mut lookups = vec![];
@@ -157,7 +251,18 @@ pub(crate) fn analyzed_to_cpp<F: FieldElement>(
     // // Note: we do not have lookups yet
     // assert!(lookups.len() == 0, "lookups not implemented");
 
-    bb_files.add_files(relation_hpp, arith_hpp, trace_hpp, flavor_hpp);
+    bb_files.add_files(
+        relation_hpp,
+        arith_hpp,
+        trace_hpp,
+        flavor_hpp,
+        composer_cpp,
+        composer_hpp,
+        verifier_cpp,
+        verifier_hpp,
+        prover_cpp,
+        prover_hpp,
+    );
     bb_files
 }
 
@@ -340,7 +445,10 @@ fn get_cols_in_identity(row_index: usize, all_rows: &Vec<String>) -> String {
         .iter()
         .map(|col_name| {
             let name = col_name.replace(".", "_");
-            format!("   auto {} = View(new_term.{});", name, name)
+            format!(
+                "   [[maybe_unused]] auto {} = View(new_term.{});",
+                name, name
+            )
         })
         .collect();
 

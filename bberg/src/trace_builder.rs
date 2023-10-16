@@ -11,7 +11,7 @@ pub trait TraceBuilder {
     ) -> String;
 }
 
-fn trace_includes(relation_path: &str) -> String {
+fn trace_includes(relation_path: &str, name: &str) -> String {
     let boilerplate = r#"
 #include "barretenberg/ecc/curves/bn254/fr.hpp"
 #include <cstdint>
@@ -21,14 +21,35 @@ fn trace_includes(relation_path: &str) -> String {
 #include <string>
 #include <sys/types.h>
 #include <vector>
+#include "barretenberg/proof_system/arithmetization/arithmetization.hpp"
+#include "barretenberg/proof_system/circuit_builder/execution_trace_builder_base.hpp"
 "#
     .to_owned();
 
     format!(
         "
 {boilerplate}
-#include \"{relation_path}\"
+#include \"barretenberg/{relation_path}/{name}.hpp\"
+#include \"barretenberg/proof_system/arithmetization/generated/{name}_arith.hpp\"
 "
+    )
+}
+
+fn build_shifts(fixed: Vec<String>) -> String {
+    let shift_assign: Vec<String> = fixed
+        .iter()
+        .map(|name| format!("row.{name}_shift = rows[(i+1) % rows.size()].{name};"))
+        .collect();
+
+    format!(
+        "
+    for (size_t i = 0; i < rows.size(); ++i) {{
+        Row& row = rows[i];
+        {}
+        
+    }}
+    ",
+        shift_assign.join("\n")
     )
 }
 
@@ -42,27 +63,37 @@ impl TraceBuilder for BBFiles {
         witness: &[(&str, Vec<F>)],
     ) -> String {
         // We are assuming that the order of the columns in the trace file is the same as the order in the witness file
-        let includes = trace_includes(&self.rel);
-        let row_import = format!("using Row = {name}::{name}Row<barretenberg::fr>;");
+        let includes = trace_includes(&self.rel, &name);
+        let row_import = format!("using Row = {name}_vm::Row<barretenberg::fr>;");
+
+        // TODO: Recalculated!
+        let num_cols = fixed.len() + witness.len() * 2; // (2* as shifts)
 
         let fixed_rows = fixed
             .iter()
-            .map(|(name, _)| format!("current_row.{name} = read_file(constants_filename);"))
+            .map(|(name, _)| {
+                let n = name.replace(".", "_");
+                format!("current_row.{n} = read_field(constant_file);")
+            })
             .collect::<Vec<_>>()
             .join("\n");
 
-        let wit_rows = witness
+        let wit_names = witness
             .iter()
-            .map(|(name, _)| {
-                let n = name.replace(".", "_");
+            .map(|(name, _)| name.replace(".", "_"))
+            .collect::<Vec<_>>();
+        let wit_rows = wit_names
+            .iter()
+            .map(|n| {
                 format!(
                     "
-        current_row.{n} = read_file(commited_filename);
-        current_row.{n}_shift = read_file(constants_filename);"
+        current_row.{n} = read_field(commited_file);"
                 )
             })
             .collect::<Vec<_>>()
             .join("\n");
+
+        let construct_shifts = build_shifts(wit_names);
 
         // NOTE: can we assume that the witness filename etc will stay the same?
         let read_from_file_boilerplate = format!(
@@ -72,6 +103,8 @@ impl TraceBuilder for BBFiles {
 
 using namespace barretenberg;
 using fr = barretenberg::fr;
+
+namespace proof_system {{
 
 {row_import}
 fr read_field(std::ifstream& file)
@@ -88,21 +121,21 @@ fr read_field(std::ifstream& file)
 }}
     
 std::vector<Row> read_both_file_into_cols(
-    std::string commited_filename,
-    std::string constants_filename,
+    std::string const& commited_filename,
+    std::string const& constants_filename
 ) {{
     std::vector<Row> rows;
 
     // open both files
     std::ifstream commited_file(commited_filename, std::ios::binary);
     if (!commited_file) {{
-        std::cout << 'Error opening commited file' << std::endl;
+        std::cout << \"Error opening commited file\" << std::endl;
         return {{}};
     }}
 
-    std::ifstream constant_file(constant_filename, std::ios::binary);
+    std::ifstream constant_file(constants_filename, std::ios::binary);
     if (!constant_file) {{
-        std::cout << 'Error opening constant file' << std::endl;
+        std::cout << \"Error opening constant file\" << std::endl;
         return {{}};
     }}
 
@@ -116,7 +149,48 @@ std::vector<Row> read_both_file_into_cols(
         rows.push_back(current_row);
     }}
 
+    // remove the last row - TODO: BUG!
+    rows.pop_back();
+
+    // Build out shifts from collected rows
+    {construct_shifts}
+
+
     return rows;
+}}
+
+class {name}TraceBuilder : public ExecutionTraceBuilderBase<arithmetization::{name}Arithmetization> {{
+    public:
+        using FF = arithmetization::{name}Arithmetization::FF;
+        using Row = {name}_vm::Row<FF>;
+
+        static constexpr size_t num_fixed_columns = {num_cols};
+        std::vector<Row> rows;
+
+
+        [[maybe_unused]] build_circuit() {{
+            rows = read_both_file_into_cols(\"../commits.bin\", \"../constants.bin\");
+        }}
+
+        [[maybe_unused]] bool check_circuit() {{
+            // Get the rows from file
+            build_circuit();
+
+            return evaluate_relation<{name}_vm::{name}<FF>, Row>(\"{name}\", rows);
+        }}
+
+        [[nodiscard]] size_t get_num_gates() const {{ return rows.size(); }}
+
+        [[nodiscard]] size_t get_circuit_subgroup_size() const
+        {{
+            const size_t num_rows = get_num_gates();
+            const auto num_rows_log2 = static_cast<size_t>(numeric::get_msb64(num_rows));
+            size_t num_rows_pow2 = 1UL << (num_rows_log2 + (1UL << num_rows_log2 == num_rows ? 0 : 1));
+            return num_rows_pow2;
+        }}
+
+
+}};
 }}
     "
         );

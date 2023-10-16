@@ -2,7 +2,7 @@
 
 pub(crate) fn create_flavor_hpp(
     name: &str,
-    relations: Vec<String>,
+    relations: &Vec<String>,
     fixed: &Vec<String>,
     witness: &Vec<String>,
 ) -> String {
