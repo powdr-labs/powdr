@@ -3,8 +3,8 @@ use std::cmp;
 use std::collections::HashMap;
 
 use ast::analyzed::{
-    self, Analyzed, BinaryOperator, Expression, FunctionValueDefinition, IdentityKind, PolyID,
-    PolynomialReference, PolynomialType, StatementIdentifier, SymbolKind, UnaryOperator,
+    self, Analyzed, BinaryOperator, Expression, IdentityKind, PolyID, PolynomialReference,
+    PolynomialType, StatementIdentifier, SymbolKind, UnaryOperator,
 };
 use starky::types::{
     ConnectionIdentity, Expression as StarkyExpr, PermutationIdentity, PlookupIdentity,
@@ -46,18 +46,13 @@ pub fn export<T: FieldElement>(analyzed: &Analyzed<T>) -> PIL {
     for item in &analyzed.source_order {
         match item {
             StatementIdentifier::Definition(name) => {
-                if let (poly, Some(value)) = &analyzed.definitions[name] {
-                    if poly.kind == SymbolKind::Poly(PolynomialType::Intermediate) {
-                        if let FunctionValueDefinition::Expression(value) = value {
-                            let expression_id = exporter.extract_expression(value, 1);
-                            assert_eq!(
-                                expression_id,
-                                exporter.intermediate_poly_expression_ids[&poly.id] as usize
-                            );
-                        } else {
-                            panic!("Expected single value");
-                        }
-                    }
+                if let Some((poly, value)) = analyzed.intermediate_columns.get(name) {
+                    assert_eq!(poly.kind, SymbolKind::Poly(PolynomialType::Intermediate));
+                    let expression_id = exporter.extract_expression(value, 1);
+                    assert_eq!(
+                        expression_id,
+                        exporter.intermediate_poly_expression_ids[&poly.id] as usize
+                    );
                 }
             }
             StatementIdentifier::PublicDeclaration(name) => {
@@ -187,7 +182,7 @@ impl<'a, T: FieldElement> Exporter<'a, T> {
             .filter_map(|(name, (symbol, _value))| {
                 let id = match symbol.kind {
                     SymbolKind::Poly(PolynomialType::Intermediate) => {
-                        Some(self.intermediate_poly_expression_ids[&symbol.id])
+                        panic!("Should be in intermediates")
                     }
                     SymbolKind::Poly(_) => Some(symbol.id),
                     SymbolKind::Other() | SymbolKind::Constant() => None,
@@ -204,6 +199,26 @@ impl<'a, T: FieldElement> Exporter<'a, T> {
                 };
                 Some((name.clone(), out))
             })
+            .chain(
+                self.analyzed
+                    .intermediate_columns
+                    .iter()
+                    .map(|(name, (symbol, _))| {
+                        assert_eq!(symbol.kind, SymbolKind::Poly(PolynomialType::Intermediate));
+                        let id = self.intermediate_poly_expression_ids[&symbol.id];
+
+                        let out = Reference {
+                            polType: None,
+                            type_: symbol_kind_to_json_string(symbol.kind).to_string(),
+                            id: id as usize,
+                            polDeg: symbol.degree as usize,
+                            isArray: symbol.is_array(),
+                            elementType: None,
+                            len: symbol.length.map(|l| l as usize),
+                        };
+                        (name.clone(), out)
+                    }),
+            )
             .collect::<HashMap<String, Reference>>()
     }
 
@@ -368,6 +383,7 @@ impl<'a, T: FieldElement> Exporter<'a, T> {
 #[cfg(test)]
 mod test {
     use pil_analyzer::analyze;
+    use pretty_assertions::assert_eq;
     use serde_json::Value as JsonValue;
     use std::{fs, process::Command};
     use test_log::test;

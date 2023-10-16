@@ -459,6 +459,7 @@ impl<T: FieldElement> PILAnalyzer<T> {
     fn evaluate_expression(&self, expr: ::ast::parsed::Expression<T>) -> Result<T, String> {
         Evaluator {
             definitions: &self.definitions,
+            intermediate_columns: &Default::default(),
             function_cache: &Default::default(),
             variables: &[],
         }
@@ -655,17 +656,9 @@ pub fn inline_intermediate_polynomials<T: Copy>(
     substitute_intermediate(
         analyzed.identities.clone(),
         &analyzed
-            .definitions_in_source_order(PolynomialType::Intermediate)
+            .intermediate_polys_in_source_order()
             .iter()
-            .map(|(symbol, def)| {
-                (
-                    symbol.id,
-                    match def.as_ref().unwrap() {
-                        FunctionValueDefinition::Expression(e) => e.clone(),
-                        _ => unreachable!(),
-                    },
-                )
-            })
+            .map(|(symbol, def)| (symbol.id, def.clone()))
             .collect(),
     )
 }
