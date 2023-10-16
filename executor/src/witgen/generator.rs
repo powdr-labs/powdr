@@ -243,7 +243,11 @@ impl<'a, T: FieldElement> Generator<'a, T> {
             self.name(),
         );
         for (i, row) in data.iter().enumerate() {
-            log::trace!("  Row {i}:\n{}", row.render_values(false, None));
+            log::trace!(
+                "  Row {}:\n{}",
+                i as DegreeType + row_offset,
+                row.render_values(false, None)
+            );
         }
         let row_factory = RowFactory::new(self.fixed_data, self.global_range_constraints.clone());
         let mut processor = VmProcessor::new(

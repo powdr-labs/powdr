@@ -3,7 +3,7 @@ use itertools::Itertools;
 use number::{DegreeType, FieldElement};
 use parser_util::lines::indent;
 use std::cmp::max;
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::time::Instant;
 
 use crate::witgen::identity_processor::{self, IdentityProcessor};
@@ -58,6 +58,7 @@ pub struct VmProcessor<'a, T: FieldElement> {
     latch: Option<Expression<T>>,
     outer_query: Option<OuterQuery<'a, T>>,
     inputs: Option<BTreeMap<PolyID, T>>,
+    inputs_used: BTreeSet<PolyID>,
 }
 
 impl<'a, T: FieldElement> VmProcessor<'a, T> {
@@ -79,10 +80,12 @@ impl<'a, T: FieldElement> VmProcessor<'a, T> {
         let inputs = outer_query.as_ref().map(|outer_query| {
             assert!(latch.is_some());
 
+            log::trace!("  Extracting inputs:");
             let mut inputs = BTreeMap::new();
             for (l, r) in outer_query.left.iter().zip(&outer_query.right.expressions) {
                 if let Some(right_poly) = try_to_simple_poly(r).map(|p| p.poly_id()) {
                     if let Some(l) = l.constant_value() {
+                        log::trace!("    {} = {}", r, l);
                         inputs.insert(right_poly, l);
                     }
                 }
@@ -103,6 +106,7 @@ impl<'a, T: FieldElement> VmProcessor<'a, T> {
             latch,
             outer_query,
             inputs,
+            inputs_used: BTreeSet::new(),
         }
     }
 
@@ -284,8 +288,11 @@ impl<'a, T: FieldElement> VmProcessor<'a, T> {
 
         log::trace!(
             "{}",
-            self.row(row_index)
-                .render(&format!("===== Row {}", row_index), true, &self.witnesses)
+            self.row(row_index).render(
+                &format!("===== Row {}", row_index as DegreeType + self.row_offset),
+                true,
+                &self.witnesses
+            )
         );
 
         outer_assignments
@@ -361,13 +368,29 @@ impl<'a, T: FieldElement> VmProcessor<'a, T> {
             });
 
             if let Some(input_updates) = input_updates {
-                // TODO: This should be helpful to make sure that we fail if the inputs are not held constant
-                // for the duration of the block. So far it causes a failure, because it takes the input out
-                // twice, before and after the reset instruction.
-                // for (poly_ref, _) in &input_updates.constraints {
-                //     self.inputs.as_mut().unwrap().remove(&poly_ref.poly_id());
-                // }
-                progress |= self.apply_updates(row_index, &input_updates, || "input".to_string());
+                if !input_updates.constraints.is_empty() {
+                    assert!(row_index < 2);
+                    if row_index == 0 {
+                        self.inputs_used = input_updates
+                            .constraints
+                            .iter()
+                            .map(|(poly, _)| poly.poly_id())
+                            .collect();
+                    } else {
+                        for update in &input_updates.constraints {
+                            let poly_id = update.0.poly_id();
+                            if self.inputs_used.contains(&poly_id) {
+                                log::trace!(
+                                    "    Resetting previously set input: {}",
+                                    self.fixed_data.column_name(&poly_id)
+                                );
+                                self.data[0][&poly_id].value = CellValue::Unknown;
+                            }
+                        }
+                    }
+                    progress |=
+                        self.apply_updates(row_index, &input_updates, || "input".to_string());
+                }
             }
 
             if !progress {
