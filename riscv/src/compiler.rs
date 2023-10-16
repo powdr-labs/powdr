@@ -15,7 +15,6 @@ use asm_utils::{
     Architecture,
 };
 use itertools::Itertools;
-use number::FieldElement;
 
 use crate::disambiguator;
 use crate::parser::RiscParser;
@@ -96,12 +95,12 @@ impl Architecture for RiscvArchitecture {
     }
 }
 
-pub fn machine_decls<T: FieldElement>() -> Vec<&'static str> {
+pub fn machine_decls() -> Vec<&'static str> {
     vec!["use std::binary::Binary;", "use std::shift::Shift;"]
 }
 
 /// Compiles riscv assembly to a powdr assembly file. Adds required library routines.
-pub fn compile<T: FieldElement>(mut assemblies: BTreeMap<String, String>) -> String {
+pub fn compile(mut assemblies: BTreeMap<String, String>) -> String {
     // stack grows towards zero
     let stack_start = 0x10000;
     // data grows away from zero
@@ -191,7 +190,7 @@ pub fn compile<T: FieldElement>(mut assemblies: BTreeMap<String, String>) -> Str
     );
 
     riscv_machine(
-        &machine_decls::<T>(),
+        &machine_decls(),
         &preamble(),
         &[("binary", "Binary"), ("shift", "Shift")],
         file_ids
