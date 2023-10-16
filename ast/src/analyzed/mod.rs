@@ -17,6 +17,7 @@ use crate::parsed::{self, SelectedExpressions};
 
 #[derive(Debug)]
 pub enum StatementIdentifier {
+    /// Either an intermediate column or a definition.
     Definition(String),
     PublicDeclaration(String),
     /// Index into the vector of identities.
@@ -27,6 +28,7 @@ pub enum StatementIdentifier {
 pub struct Analyzed<T> {
     pub definitions: HashMap<String, (Symbol, Option<FunctionValueDefinition<T>>)>,
     pub public_declarations: HashMap<String, PublicDeclaration>,
+    pub intermediate_columns: HashMap<String, (Symbol, Expression<T>)>,
     pub identities: Vec<Identity<Expression<T>>>,
     /// The order in which definitions and identities
     /// appear in the source.
@@ -40,7 +42,7 @@ impl<T> Analyzed<T> {
     }
     /// @returns the number of intermediate polynomials (with multiplicities for arrays)
     pub fn intermediate_count(&self) -> usize {
-        self.declaration_type_count(PolynomialType::Intermediate)
+        self.intermediate_columns.len()
     }
     /// @returns the number of constant polynomials (with multiplicities for arrays)
     pub fn constant_count(&self) -> usize {
@@ -59,26 +61,39 @@ impl<T> Analyzed<T> {
         self.definitions_in_source_order(PolynomialType::Committed)
     }
 
-    pub fn intermediate_polys_in_source_order(
-        &self,
-    ) -> Vec<&(Symbol, Option<FunctionValueDefinition<T>>)> {
-        self.definitions_in_source_order(PolynomialType::Intermediate)
+    pub fn intermediate_polys_in_source_order(&self) -> Vec<&(Symbol, Expression<T>)> {
+        self.source_order
+            .iter()
+            .filter_map(move |statement| {
+                if let StatementIdentifier::Definition(name) = statement {
+                    if let Some(definition) = self.intermediate_columns.get(name) {
+                        return Some(definition);
+                    }
+                }
+                None
+            })
+            .collect()
     }
 
     pub fn definitions_in_source_order(
         &self,
         poly_type: PolynomialType,
     ) -> Vec<&(Symbol, Option<FunctionValueDefinition<T>>)> {
+        assert!(
+            poly_type != PolynomialType::Intermediate,
+            "Use intermediate_polys_in_source_order to get intermediate polys."
+        );
         self.source_order
             .iter()
             .filter_map(move |statement| {
                 if let StatementIdentifier::Definition(name) = statement {
-                    let definition = &self.definitions[name];
-                    match definition.0.kind {
-                        SymbolKind::Poly(ptype) if ptype == poly_type => {
-                            return Some(definition);
+                    if let Some(definition) = self.definitions.get(name) {
+                        match definition.0.kind {
+                            SymbolKind::Poly(ptype) if ptype == poly_type => {
+                                return Some(definition);
+                            }
+                            _ => {}
                         }
-                        _ => {}
                     }
                 }
                 None
@@ -102,12 +117,11 @@ impl<T> Analyzed<T> {
     /// so that they are contiguous again.
     /// There must not be any reference to the removed polynomials left.
     pub fn remove_polynomials(&mut self, to_remove: &BTreeSet<PolyID>) {
-        let replacements: BTreeMap<PolyID, PolyID> = [
+        let mut replacements: BTreeMap<PolyID, PolyID> = [
             // We have to do it separately because we need to re-start the counter
             // for each kind.
             self.committed_polys_in_source_order(),
             self.constant_polys_in_source_order(),
-            self.intermediate_polys_in_source_order(),
         ]
         .map(|polys| {
             polys
@@ -136,6 +150,13 @@ impl<T> Analyzed<T> {
         .into_iter()
         .flatten()
         .collect();
+
+        // We assume for now that intermediate columns are not removed.
+        for (poly, _) in self.intermediate_columns.values() {
+            let poly_id: PolyID = poly.into();
+            assert!(!to_remove.contains(&poly_id));
+            replacements.insert(poly_id, poly_id);
+        }
 
         let mut names_to_remove: HashSet<String> = Default::default();
         self.definitions.retain(|name, (poly, _def)| {
@@ -235,6 +256,9 @@ impl<T> Analyzed<T> {
         self.identities
             .iter_mut()
             .for_each(|i| i.post_visit_expressions_mut(f));
+        self.intermediate_columns
+            .values_mut()
+            .for_each(|(_sym, value)| value.post_visit_expressions_mut(f));
     }
 
     pub fn post_visit_expressions_in_definitions_mut<F>(&mut self, f: &mut F)

@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use ast::{
     analyzed::{
         Analyzed, Expression, FunctionValueDefinition, Identity, PolynomialReference,
-        PublicDeclaration, Reference, StatementIdentifier, Symbol, SymbolKind,
+        PolynomialType, PublicDeclaration, Reference, StatementIdentifier, Symbol, SymbolKind,
     },
     evaluate_binary_operation, evaluate_unary_operation,
     parsed::{visitor::ExpressionVisitable, SelectedExpressions},
@@ -22,7 +22,7 @@ pub fn condense<T: FieldElement>(
     source_order: Vec<StatementIdentifier>,
 ) -> Analyzed<T> {
     let condenser = Condenser {
-        constants: compute_constants(&definitions),
+        constants: compute_constants(&definitions, &Default::default()),
         symbols: definitions
             .iter()
             .map(|(name, (symbol, _))| (name.clone(), symbol.clone()))
@@ -33,6 +33,25 @@ pub fn condense<T: FieldElement>(
         .into_iter()
         .map(|identity| condenser.condense_identity(identity))
         .collect();
+
+    // Extract intermediate columns
+    let intermediate_columns: HashMap<_, _> = definitions
+        .iter()
+        .filter_map(|(name, (symbol, definition))| {
+            if matches!(symbol.kind, SymbolKind::Poly(PolynomialType::Intermediate)) {
+                let Some(FunctionValueDefinition::Expression(e)) = definition else {
+                    panic!("Expected expression")
+                };
+                Some((
+                    name.clone(),
+                    (symbol.clone(), condenser.condense_expression(e.clone())),
+                ))
+            } else {
+                None
+            }
+        })
+        .collect();
+    definitions.retain(|name, _| !intermediate_columns.contains_key(name));
 
     definitions.values_mut().for_each(|(_, definition)| {
         if let Some(def) = definition {
@@ -50,6 +69,7 @@ pub fn condense<T: FieldElement>(
     Analyzed {
         definitions,
         public_declarations,
+        intermediate_columns,
         identities,
         source_order,
     }

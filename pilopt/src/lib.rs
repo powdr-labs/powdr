@@ -46,7 +46,7 @@ pub fn optimize_constants<T: FieldElement>(mut pil_file: Analyzed<T>) -> Analyze
 
 /// Inlines references to symbols with a single constant value.
 fn inline_constant_values<T: FieldElement>(pil_file: &mut Analyzed<T>) {
-    let constants = compute_constants(&pil_file.definitions);
+    let constants = compute_constants(&pil_file.definitions, &pil_file.intermediate_columns);
     let visitor = &mut |e: &mut Expression<_>| {
         if let Expression::Reference(Reference::Poly(poly)) = e {
             if !poly.next && poly.index.is_none() {

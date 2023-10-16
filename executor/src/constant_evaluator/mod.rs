@@ -42,6 +42,7 @@ fn generate_values<T: FieldElement>(
             .map(|i| {
                 Evaluator {
                     definitions: &analyzed.definitions,
+                    intermediate_columns: &analyzed.intermediate_columns,
                     variables: &[i.into()],
                     function_cache: other_constants,
                 }
@@ -52,6 +53,7 @@ fn generate_values<T: FieldElement>(
         FunctionValueDefinition::Array(values) => {
             let evaluator = Evaluator {
                 definitions: &analyzed.definitions,
+                intermediate_columns: &analyzed.intermediate_columns,
                 variables: &[],
                 function_cache: other_constants,
             };

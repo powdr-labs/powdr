@@ -28,37 +28,44 @@ impl<T: Display> Display for Analyzed<T> {
         for statement in &self.source_order {
             match statement {
                 StatementIdentifier::Definition(name) => {
-                    let (symbol, definition) = &self.definitions[name];
-                    let (name, is_local) = update_namespace(name, symbol.degree, f)?;
-                    match symbol.kind {
-                        SymbolKind::Poly(poly_type) => {
-                            let kind = match &poly_type {
-                                PolynomialType::Committed => "witness ",
-                                PolynomialType::Constant => "fixed ",
-                                PolynomialType::Intermediate => "",
-                            };
-                            write!(f, "    col {kind}{name}")?;
-                            if let Some(value) = definition {
-                                writeln!(f, "{value};")?
-                            } else {
+                    if let Some((symbol, definition)) = self.definitions.get(name) {
+                        let (name, is_local) = update_namespace(name, symbol.degree, f)?;
+                        match symbol.kind {
+                            SymbolKind::Poly(poly_type) => {
+                                let kind = match &poly_type {
+                                    PolynomialType::Committed => "witness ",
+                                    PolynomialType::Constant => "fixed ",
+                                    PolynomialType::Intermediate => panic!(),
+                                };
+                                write!(f, "    col {kind}{name}")?;
+                                if let Some(value) = definition {
+                                    writeln!(f, "{value};")?
+                                } else {
+                                    writeln!(f, ";")?
+                                }
+                            }
+                            SymbolKind::Constant() => {
+                                let indentation = if is_local { "    " } else { "" };
+                                writeln!(
+                                    f,
+                                    "{indentation}constant {name}{};",
+                                    definition.as_ref().unwrap()
+                                )?;
+                            }
+                            SymbolKind::Other() => {
+                                write!(f, "    let {name}")?;
+                                if let Some(value) = definition {
+                                    write!(f, "{value}")?
+                                }
                                 writeln!(f, ";")?
                             }
                         }
-                        SymbolKind::Constant() => {
-                            let indentation = if is_local { "    " } else { "" };
-                            writeln!(
-                                f,
-                                "{indentation}constant {name}{};",
-                                definition.as_ref().unwrap()
-                            )?;
-                        }
-                        SymbolKind::Other() => {
-                            write!(f, "    let {name}")?;
-                            if let Some(value) = definition {
-                                write!(f, "{value}")?
-                            }
-                            writeln!(f, ";")?
-                        }
+                    } else if let Some((symbol, definition)) = self.intermediate_columns.get(name) {
+                        let (name, _) = update_namespace(name, symbol.degree, f)?;
+                        assert_eq!(symbol.kind, SymbolKind::Poly(PolynomialType::Intermediate));
+                        writeln!(f, "    col {name} = {definition};")?;
+                    } else {
+                        panic!()
                     }
                 }
                 StatementIdentifier::PublicDeclaration(name) => {
