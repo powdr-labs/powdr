@@ -3,11 +3,20 @@ use mktemp::Temp;
 use number::GoldilocksField;
 use test_log::test;
 
+use riscv::CoProcessors;
+
 #[test]
 #[ignore = "Too slow"]
 fn test_trivial() {
     let case = "trivial.rs";
-    verify_file(case, vec![]);
+    verify_file(case, vec![], &CoProcessors::base())
+}
+
+#[test]
+#[ignore = "Too slow"]
+fn test_poseidon_gl() {
+    let case = "poseidon_gl_via_coprocessor.rs";
+    verify_file(case, vec![], &CoProcessors::base().with_poseidon());
 }
 
 #[test]
@@ -17,6 +26,7 @@ fn test_sum() {
     verify_file(
         case,
         [16, 4, 1, 2, 8, 5].iter().map(|&x| x.into()).collect(),
+        &CoProcessors::base(),
     );
 }
 
@@ -24,7 +34,11 @@ fn test_sum() {
 #[ignore = "Too slow"]
 fn test_byte_access() {
     let case = "byte_access.rs";
-    verify_file(case, [0, 104, 707].iter().map(|&x| x.into()).collect());
+    verify_file(
+        case,
+        [0, 104, 707].iter().map(|&x| x.into()).collect(),
+        &CoProcessors::base(),
+    );
 }
 
 #[test]
@@ -49,6 +63,7 @@ fn test_double_word() {
         .iter()
         .map(|&x| x.into())
         .collect(),
+        &CoProcessors::base(),
     );
 }
 
@@ -56,14 +71,14 @@ fn test_double_word() {
 #[ignore = "Too slow"]
 fn test_memfuncs() {
     let case = "memfuncs";
-    verify_crate(case, vec![]);
+    verify_crate(case, vec![], &CoProcessors::base());
 }
 
 #[test]
 #[ignore = "Too slow"]
 fn test_keccak() {
     let case = "keccak";
-    verify_crate(case, vec![]);
+    verify_crate(case, vec![], &CoProcessors::base());
 }
 
 #[test]
@@ -76,6 +91,7 @@ fn test_vec_median() {
             .into_iter()
             .map(|x| x.into())
             .collect(),
+        &CoProcessors::base(),
     );
 }
 
@@ -83,7 +99,7 @@ fn test_vec_median() {
 #[ignore = "Too slow"]
 fn test_password() {
     let case = "password_checker";
-    verify_crate(case, vec![]);
+    verify_crate(case, vec![], &CoProcessors::base());
 }
 
 // TODO: uncomment this when we properly support revm, so we don't break nightly
@@ -101,25 +117,25 @@ fn test_evm() {
 #[should_panic(expected = "Witness generation failed.")]
 fn test_print() {
     let case = "print.rs";
-    verify_file(case, vec![]);
+    verify_file(case, vec![], &CoProcessors::base());
 }
 
-fn verify_file(case: &str, inputs: Vec<GoldilocksField>) {
+fn verify_file(case: &str, inputs: Vec<GoldilocksField>, coprocessors: &CoProcessors) {
     let temp_dir = Temp::new_dir().unwrap();
     let riscv_asm =
         riscv::compile_rust_to_riscv_asm(&format!("tests/riscv_data/{case}"), &temp_dir);
-    let powdr_asm = riscv::compiler::compile(riscv_asm);
+    let powdr_asm = riscv::compiler::compile(riscv_asm, coprocessors);
 
     verify_asm_string(&format!("{case}.asm"), &powdr_asm, inputs);
 }
 
-fn verify_crate(case: &str, inputs: Vec<GoldilocksField>) {
+fn verify_crate(case: &str, inputs: Vec<GoldilocksField>, coprocessors: &CoProcessors) {
     let temp_dir = Temp::new_dir().unwrap();
     let riscv_asm = riscv::compile_rust_crate_to_riscv_asm(
         &format!("tests/riscv_data/{case}/Cargo.toml"),
         &temp_dir,
     );
-    let powdr_asm = riscv::compiler::compile(riscv_asm);
+    let powdr_asm = riscv::compiler::compile(riscv_asm, coprocessors);
 
     verify_asm_string(&format!("{case}.asm"), &powdr_asm, inputs);
 }

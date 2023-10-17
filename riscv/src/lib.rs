@@ -13,8 +13,10 @@ use serde_json::Value as JsonValue;
 use std::fs;
 
 use crate::compiler::{FunctionKind, Register};
+pub use crate::coprocessors::CoProcessors;
 
 pub mod compiler;
+mod coprocessors;
 mod disambiguator;
 pub mod parser;
 
@@ -28,6 +30,7 @@ pub fn compile_rust(
     file_name: &str,
     output_dir: &Path,
     force_overwrite: bool,
+    coprocessors: &CoProcessors,
 ) -> Option<(PathBuf, String)> {
     let riscv_asm = if file_name.ends_with("Cargo.toml") {
         compile_rust_crate_to_riscv_asm(file_name, output_dir)
@@ -56,7 +59,13 @@ pub fn compile_rust(
         log::info!("Wrote {}", riscv_asm_file_name.to_str().unwrap());
     }
 
-    compile_riscv_asm_bundle(file_name, riscv_asm, output_dir, force_overwrite)
+    compile_riscv_asm_bundle(
+        file_name,
+        riscv_asm,
+        output_dir,
+        force_overwrite,
+        coprocessors,
+    )
 }
 
 pub fn compile_riscv_asm_bundle(
@@ -64,6 +73,7 @@ pub fn compile_riscv_asm_bundle(
     riscv_asm_files: BTreeMap<String, String>,
     output_dir: &Path,
     force_overwrite: bool,
+    coprocessors: &CoProcessors,
 ) -> Option<(PathBuf, String)> {
     let powdr_asm_file_name = output_dir.join(format!(
         "{}.asm",
@@ -81,7 +91,7 @@ pub fn compile_riscv_asm_bundle(
         return None;
     }
 
-    let powdr_asm = compiler::compile(riscv_asm_files);
+    let powdr_asm = compiler::compile(riscv_asm_files, coprocessors);
 
     fs::write(powdr_asm_file_name.clone(), &powdr_asm).unwrap();
     log::info!("Wrote {}", powdr_asm_file_name.to_str().unwrap());
@@ -96,6 +106,7 @@ pub fn compile_riscv_asm(
     file_names: impl Iterator<Item = String>,
     output_dir: &Path,
     force_overwrite: bool,
+    coprocessors: &CoProcessors,
 ) -> Option<(PathBuf, String)> {
     compile_riscv_asm_bundle(
         original_file_name,
@@ -107,6 +118,7 @@ pub fn compile_riscv_asm(
             .collect(),
         output_dir,
         force_overwrite,
+        coprocessors,
     )
 }
 
