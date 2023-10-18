@@ -91,7 +91,10 @@ impl<'a, T: FieldElement> Generator<'a, T> {
             mutable_state.machines.iter_mut().into(),
         );
         let row_factory = RowFactory::new(self.fixed_data, self.global_range_constraints.clone());
-        let data = vec![row_factory.fresh_row(); 2];
+        let data = vec![
+            row_factory.fresh_row(self.fixed_data.degree - 1),
+            row_factory.fresh_row(0),
+        ];
         let mut processor = Processor::new(
             self.fixed_data.degree - 1,
             data,

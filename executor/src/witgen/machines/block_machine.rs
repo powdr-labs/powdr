@@ -69,7 +69,9 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
                 // Start out with a block filled with unknown values so that we do not have to deal with wrap-around
                 // when storing machine witness data.
                 // This will be filled with the default block in `take_witness_col_values`
-                let data = vec![row_factory.fresh_row(); block_size];
+                let data = (0..block_size)
+                    .map(|i| row_factory.fresh_row(i as DegreeType))
+                    .collect();
                 return Some(BlockMachine {
                     block_size,
                     selected_expressions: id.right.clone(),
@@ -274,7 +276,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
             let current = &self.data[row as usize];
             // We don't have the next row, because it would be the first row of the next block.
             // We'll use a fresh row instead.
-            let next = self.row_factory.fresh_row();
+            let next = self.row_factory.fresh_row(row + 1);
             let row_pair = RowPair::new(
                 current,
                 &next,
@@ -353,11 +355,13 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         right: &'a SelectedExpressions<Expression<T>>,
         sequence_iterator: &mut ProcessingSequenceIterator,
     ) -> Result<ProcessResult<'a, T>, EvalError<T>> {
+        // We start at the last row of the previous block.
+        let row_offset = self.rows() - 1;
         // Make the block two rows larger than the block size, it includes the last row of the previous block
         // and the first row of the next block.
-        let block = vec![self.row_factory.fresh_row(); self.block_size + 2];
-        // We start at the last row of the previous block.
-        let row_offset = self.data.len() as DegreeType - 1;
+        let block = (0..(self.block_size + 2))
+            .map(|i| self.row_factory.fresh_row(i as DegreeType + row_offset))
+            .collect();
         let mut processor = Processor::new(
             row_offset,
             block,

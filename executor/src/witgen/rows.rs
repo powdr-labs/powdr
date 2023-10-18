@@ -193,14 +193,21 @@ impl<'a, T: FieldElement> RowFactory<'a, T> {
         }
     }
 
-    pub fn fresh_row(&self) -> Row<'a, T> {
+    pub fn fresh_row(&self, row: DegreeType) -> Row<'a, T> {
         WitnessColumnMap::from(self.global_range_constraints.iter().map(
-            |(poly_id, range_constraint)| Cell {
-                name: self.fixed_data.column_name(&poly_id),
-                value: match range_constraint.as_ref() {
-                    Some(rc) => CellValue::RangeConstraint(rc.clone()),
-                    None => CellValue::Unknown,
-                },
+            |(poly_id, range_constraint)| {
+                let name = self.fixed_data.column_name(&poly_id);
+                let value = match (
+                    self.fixed_data.external_witness(row, &poly_id),
+                    range_constraint.as_ref(),
+                ) {
+                    (Some(external_witness), _) => CellValue::Known(external_witness),
+                    (None, Some(range_constraint)) => {
+                        CellValue::RangeConstraint(range_constraint.clone())
+                    }
+                    (None, None) => CellValue::Unknown,
+                };
+                Cell { name, value }
             },
         ))
     }
