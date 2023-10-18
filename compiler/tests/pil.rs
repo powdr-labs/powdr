@@ -4,6 +4,14 @@ use std::path::Path;
 use test_log::test;
 
 pub fn verify_pil(file_name: &str, query_callback: Option<fn(&str) -> Option<GoldilocksField>>) {
+    verify_pil_with_external_witness(file_name, query_callback, vec![]);
+}
+
+pub fn verify_pil_with_external_witness(
+    file_name: &str,
+    query_callback: Option<fn(&str) -> Option<GoldilocksField>>,
+    external_witness_values: Vec<(&str, Vec<GoldilocksField>)>,
+) {
     let input_file = Path::new(&format!(
         "{}/../test_data/pil/{file_name}",
         env!("CARGO_MANIFEST_DIR")
@@ -16,7 +24,8 @@ pub fn verify_pil(file_name: &str, query_callback: Option<fn(&str) -> Option<Gol
         &input_file,
         &temp_dir,
         query_callback,
-        Some(BackendType::PilStarkCli)
+        Some(BackendType::PilStarkCli),
+        external_witness_values
     )
     .witness
     .is_some());
@@ -79,6 +88,49 @@ fn test_fibonacci_macro() {
     verify_pil(f, None);
     gen_halo2_proof(f, Default::default());
     gen_estark_proof(f, Default::default());
+}
+
+#[test]
+#[should_panic = "Witness generation failed."]
+fn test_external_witgen_fails_if_none_provided() {
+    let f = "external_witgen.pil";
+    verify_pil(f, None);
+}
+
+#[test]
+fn test_external_witgen_a_provided() {
+    let f = "external_witgen.pil";
+    let external_witness = vec![("main.a", vec![GoldilocksField::from(3); 16])];
+    verify_pil_with_external_witness(f, None, external_witness);
+}
+
+#[test]
+fn test_external_witgen_b_provided() {
+    let f = "external_witgen.pil";
+    let external_witness = vec![("main.b", vec![GoldilocksField::from(4); 16])];
+    verify_pil_with_external_witness(f, None, external_witness);
+}
+
+#[test]
+fn test_external_witgen_both_provided() {
+    let f = "external_witgen.pil";
+    let external_witness = vec![
+        ("main.a", vec![GoldilocksField::from(3); 16]),
+        ("main.b", vec![GoldilocksField::from(4); 16]),
+    ];
+    verify_pil_with_external_witness(f, None, external_witness);
+}
+
+#[test]
+#[should_panic = "called `Result::unwrap()` on an `Err` value: ConstraintUnsatisfiable(\"-1\")"]
+fn test_external_witgen_fails_on_conflicting_external_witness() {
+    let f = "external_witgen.pil";
+    let external_witness = vec![
+        ("main.a", vec![GoldilocksField::from(3); 16]),
+        // Does not satisfy b = a + 1
+        ("main.b", vec![GoldilocksField::from(3); 16]),
+    ];
+    verify_pil_with_external_witness(f, None, external_witness);
 }
 
 #[test]

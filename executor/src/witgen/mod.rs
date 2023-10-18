@@ -46,72 +46,107 @@ pub struct MutableState<'a, T: FieldElement, Q: QueryCallback<T>> {
     pub query_callback: Option<Q>,
 }
 
-/// Generates the committed polynomial values
-/// @returns the values (in source order) and the degree of the polynomials.
-pub fn generate<'a, T: FieldElement, Q: QueryCallback<T>>(
+pub struct WitnessGenerator<'a, 'b, T: FieldElement, Q: QueryCallback<T>> {
     analyzed: &'a Analyzed<T>,
     degree: DegreeType,
-    fixed_col_values: &[(&str, Vec<T>)],
+    fixed_col_values: &'b [(&'a str, Vec<T>)],
     query_callback: Option<Q>,
-) -> Vec<(&'a str, Vec<T>)> {
-    if degree.is_zero() {
-        panic!("Resulting degree is zero. Please ensure that there is at least one non-constant fixed column to set the degree.");
+    external_witness_values: Vec<(&'a str, Vec<T>)>,
+}
+
+impl<'a, 'b, T: FieldElement, Q: QueryCallback<T>> WitnessGenerator<'a, 'b, T, Q> {
+    pub fn new(
+        analyzed: &'a Analyzed<T>,
+        degree: DegreeType,
+        fixed_col_values: &'b [(&'a str, Vec<T>)],
+        query_callback: Option<Q>,
+    ) -> Self {
+        WitnessGenerator {
+            analyzed,
+            degree,
+            fixed_col_values,
+            query_callback,
+            external_witness_values: Vec::new(),
+        }
     }
-    let fixed = FixedData::new(analyzed, degree, fixed_col_values);
-    let identities = inline_intermediate_polynomials(analyzed);
 
-    let GlobalConstraints {
-        // Maps a polynomial to a mask specifying which bit is possibly set,
-        known_witness_constraints,
-        // Removes identities like X * (X - 1) = 0 or { A } in { BYTES }
-        // These are already captured in the range constraints.
-        retained_identities,
-    } = global_constraints::determine_global_constraints(&fixed, identities.iter().collect());
-    let ExtractionOutput {
-        fixed_lookup,
-        machines,
-        base_identities,
-        base_witnesses,
-    } = machines::machine_extractor::split_out_machines(
-        &fixed,
-        retained_identities,
-        &known_witness_constraints,
-    );
-    let mut mutable_state = MutableState {
-        fixed_lookup,
-        machines,
-        query_callback,
-    };
-    let mut generator = Generator::new(
-        &fixed,
-        &base_identities,
-        base_witnesses,
-        &known_witness_constraints,
-    );
+    pub fn with_external_witness_values(
+        self,
+        external_witness_values: Vec<(&'a str, Vec<T>)>,
+    ) -> Self {
+        WitnessGenerator {
+            external_witness_values,
+            ..self
+        }
+    }
 
-    generator.run(&mut mutable_state);
+    /// Generates the committed polynomial values
+    /// @returns the values (in source order) and the degree of the polynomials.
+    pub fn generate(self) -> Vec<(&'a str, Vec<T>)> {
+        if self.degree.is_zero() {
+            panic!("Resulting degree is zero. Please ensure that there is at least one non-constant fixed column to set the degree.");
+        }
+        let fixed = FixedData::new(
+            self.analyzed,
+            self.degree,
+            self.fixed_col_values,
+            self.external_witness_values,
+        );
+        let identities = inline_intermediate_polynomials(self.analyzed);
 
-    // Get columns from machines
-    let main_columns = generator.take_witness_col_values();
-    let mut columns = mutable_state
-        .machines
-        .iter_mut()
-        .flat_map(|m| m.take_witness_col_values().into_iter())
-        .chain(main_columns)
-        .collect::<BTreeMap<_, _>>();
+        let GlobalConstraints {
+            // Maps a polynomial to a mask specifying which bit is possibly set,
+            known_witness_constraints,
+            // Removes identities like X * (X - 1) = 0 or { A } in { BYTES }
+            // These are already captured in the range constraints.
+            retained_identities,
+        } = global_constraints::determine_global_constraints(&fixed, identities.iter().collect());
+        let ExtractionOutput {
+            fixed_lookup,
+            machines,
+            base_identities,
+            base_witnesses,
+        } = machines::machine_extractor::split_out_machines(
+            &fixed,
+            retained_identities,
+            &known_witness_constraints,
+        );
+        let mut mutable_state = MutableState {
+            fixed_lookup,
+            machines,
+            query_callback: self.query_callback,
+        };
+        let mut generator = Generator::new(
+            &fixed,
+            &base_identities,
+            base_witnesses,
+            &known_witness_constraints,
+        );
 
-    // Done this way, because:
-    // 1. The keys need to be string references of the right lifetime.
-    // 2. The order needs to be the the order of declaration.
-    analyzed
-        .committed_polys_in_source_order()
-        .into_iter()
-        .map(|(p, _)| {
-            let column = columns.remove(&p.absolute_name).unwrap();
-            assert!(!column.is_empty());
-            (p.absolute_name.as_str(), column)
-        })
-        .collect()
+        generator.run(&mut mutable_state);
+
+        // Get columns from machines
+        let main_columns = generator.take_witness_col_values();
+        let mut columns = mutable_state
+            .machines
+            .iter_mut()
+            .flat_map(|m| m.take_witness_col_values().into_iter())
+            .chain(main_columns)
+            .collect::<BTreeMap<_, _>>();
+
+        // Done this way, because:
+        // 1. The keys need to be string references of the right lifetime.
+        // 2. The order needs to be the the order of declaration.
+        self.analyzed
+            .committed_polys_in_source_order()
+            .into_iter()
+            .map(|(p, _)| {
+                let column = columns.remove(&p.absolute_name).unwrap();
+                assert!(!column.is_empty());
+                (p.absolute_name.as_str(), column)
+            })
+            .collect()
+    }
 }
 
 /// Data that is fixed for witness generation.
@@ -126,7 +161,9 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
         analyzed: &'a Analyzed<T>,
         degree: DegreeType,
         fixed_col_values: &'a [(&str, Vec<T>)],
+        external_witness_values: Vec<(&'a str, Vec<T>)>,
     ) -> Self {
+        let mut external_witness_values = BTreeMap::from_iter(external_witness_values);
         let witness_cols = WitnessColumnMap::from(
             analyzed
                 .committed_polys_in_source_order()
@@ -137,10 +174,22 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
                         unimplemented!("Committed arrays not implemented.")
                     }
                     assert_eq!(i as u64, poly.id);
-                    let col = WitnessColumn::new(i, &poly.absolute_name, value);
+                    let external_values =
+                        external_witness_values.remove(poly.absolute_name.as_str());
+                    if let Some(external_values) = &external_values {
+                        assert_eq!(external_values.len(), degree as usize);
+                    }
+                    let col = WitnessColumn::new(i, &poly.absolute_name, value, external_values);
                     col
                 }),
         );
+
+        if !external_witness_values.is_empty() {
+            panic!(
+                "External witness values for non-existent columns: {:?}",
+                external_witness_values.keys()
+            );
+        }
 
         let fixed_cols =
             FixedColumnMap::from(fixed_col_values.iter().map(|(n, v)| FixedColumn::new(n, v)));
@@ -161,6 +210,14 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
             PolynomialType::Constant => &self.fixed_cols[poly_id].name,
             PolynomialType::Intermediate => unimplemented!(),
         }
+    }
+
+    fn external_witness(&self, row: DegreeType, column: &PolyID) -> Option<T> {
+        let row = row % self.degree;
+        self.witness_cols[column]
+            .external_values
+            .as_ref()
+            .map(|v| v[row as usize])
     }
 }
 
@@ -188,6 +245,7 @@ pub struct Query<'a, T> {
 pub struct WitnessColumn<'a, T> {
     name: String,
     query: Option<Query<'a, T>>,
+    external_values: Option<Vec<T>>,
 }
 
 impl<'a, T> WitnessColumn<'a, T> {
@@ -195,6 +253,7 @@ impl<'a, T> WitnessColumn<'a, T> {
         id: usize,
         name: &'a str,
         value: &'a Option<FunctionValueDefinition<T>>,
+        external_values: Option<Vec<T>>,
     ) -> WitnessColumn<'a, T> {
         let query = if let Some(FunctionValueDefinition::Query(query)) = value {
             Some(query)
@@ -217,6 +276,10 @@ impl<'a, T> WitnessColumn<'a, T> {
                 expr: callback,
             }
         });
-        WitnessColumn { name, query }
+        WitnessColumn {
+            name,
+            query,
+            external_values,
+        }
     }
 }

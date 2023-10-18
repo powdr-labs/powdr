@@ -325,7 +325,7 @@ mod tests {
     ) -> R {
         let analyzed = analyze_string(src);
         let (constants, degree) = generate(&analyzed);
-        let fixed_data = FixedData::new(&analyzed, degree, &constants);
+        let fixed_data = FixedData::new(&analyzed, degree, &constants, vec![]);
 
         // No submachines
         let mut fixed_lookup = FixedLookup::default();
@@ -335,7 +335,9 @@ mod tests {
         let global_range_constraints = fixed_data.witness_map_with(None);
 
         let row_factory = RowFactory::new(&fixed_data, global_range_constraints);
-        let data = vec![row_factory.fresh_row(); fixed_data.degree as usize];
+        let data = (0..fixed_data.degree)
+            .map(|i| row_factory.fresh_row(i))
+            .collect();
         let mut identity_processor =
             IdentityProcessor::new(&fixed_data, &mut fixed_lookup, machines.into_iter().into());
         let row_offset = 0;

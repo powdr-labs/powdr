@@ -48,6 +48,7 @@ pub fn compile_pil_or_asm<T: FieldElement>(
             output_dir,
             Some(inputs_to_query_callback(inputs)),
             prove_with,
+            vec![],
         )))
     }
 }
@@ -65,6 +66,7 @@ pub fn compile_pil<T: FieldElement, Q: QueryCallback<T>>(
     output_dir: &Path,
     query_callback: Option<Q>,
     prove_with: Option<BackendType>,
+    external_witness_values: Vec<(&str, Vec<T>)>,
 ) -> CompilationResult<T> {
     compile(
         pil_analyzer::analyze(pil_file),
@@ -72,6 +74,7 @@ pub fn compile_pil<T: FieldElement, Q: QueryCallback<T>>(
         output_dir,
         query_callback,
         prove_with,
+        external_witness_values,
     )
 }
 
@@ -92,6 +95,7 @@ pub fn compile_pil_ast<T: FieldElement, Q: QueryCallback<T>>(
         output_dir,
         query_callback,
         prove_with,
+        vec![],
     )
 }
 
@@ -194,6 +198,7 @@ fn compile<T: FieldElement, Q: QueryCallback<T>>(
     output_dir: &Path,
     query_callback: Option<Q>,
     prove_with: Option<BackendType>,
+    external_witness_values: Vec<(&str, Vec<T>)>,
 ) -> CompilationResult<T> {
     log::info!("Optimizing pil...");
     let analyzed = pilopt::optimize(analyzed);
@@ -210,7 +215,10 @@ fn compile<T: FieldElement, Q: QueryCallback<T>>(
 
     let witness = (analyzed.constant_count() == constants.len()).then(|| {
         log::info!("Deducing witness columns...");
-        let commits = executor::witgen::generate(&analyzed, degree, &constants, query_callback);
+        let commits =
+            executor::witgen::WitnessGenerator::new(&analyzed, degree, &constants, query_callback)
+                .with_external_witness_values(external_witness_values)
+                .generate();
 
         let witness = commits
             .into_iter()

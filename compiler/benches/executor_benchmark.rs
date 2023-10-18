@@ -29,7 +29,8 @@ fn get_pil() -> Analyzed<T> {
 fn run_witgen<T: FieldElement>(analyzed: &Analyzed<T>, input: Vec<T>) {
     let query_callback = Some(inputs_to_query_callback(input));
     let (constants, degree) = constant_evaluator::generate(analyzed);
-    executor::witgen::generate(analyzed, degree, &constants, query_callback);
+    executor::witgen::WitnessGenerator::new(analyzed, degree, &constants, query_callback)
+        .generate();
 }
 
 fn criterion_benchmark(c: &mut Criterion) {
