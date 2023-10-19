@@ -156,14 +156,13 @@ pub fn compile(mut assemblies: BTreeMap<String, String>, coprocessors: &CoProces
         data_start,
         &mut |addr, value| match value {
             SingleDataValue::Value(v) => {
-                vec![format!("addr <=X= 0x{addr:x};"), format!("mstore 0x{v:x};")]
+                vec![format!("mstore 0x{addr:x}, 0x{v:x};")]
             }
             SingleDataValue::LabelReference(sym) => {
                 // TODO should be possible without temporary
                 vec![
-                    format!("addr <=X= 0x{addr:x};"),
                     format!("tmp1 <== load_label({});", escape_label(sym)),
-                    "mstore tmp1;".to_string(),
+                    format!("mstore 0x{addr:x}, tmp1;"),
                 ]
             }
             SingleDataValue::Offset(_, _) => {
@@ -442,6 +441,7 @@ fn preamble(coprocessors: &CoProcessors) -> String {
             .collect::<Vec<_>>()
             .concat()
         + r#"
+    // TODO: addr can be removed once  mload also takes it via argument
     reg addr;
 
     x0 = 0;
@@ -501,7 +501,11 @@ fn preamble(coprocessors: &CoProcessors) -> String {
 
     // ============== memory instructions ==============
 
-    instr mstore X { { addr, STEP, X } is m_is_write { m_addr, m_step, m_value } }
+    instr mstore Y, Z {
+        { X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000, STEP, Z } is m_is_write { m_addr, m_step, m_value },
+        // Wrap the addr value
+        Y = (X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000) + wrap_bit * 2**32
+    }
     instr mload -> X { { addr, STEP, X } is m_is_read { m_addr, m_step, m_value } }
 
     // ============== control-flow instructions ==============
@@ -1242,10 +1246,7 @@ fn process_instruction(instr: &str, args: &[Argument], coprocessors: &CoProcesso
         }
         "sw" => {
             let (r1, r2, off) = rro(args);
-            vec![
-                format!("addr <== wrap({r2} + {off});"),
-                format!("mstore {r1};"),
-            ]
+            vec![format!("mstore {r2} + {off}, {r1};")]
         }
         "sh" => {
             // store half word (two bytes)
@@ -1264,7 +1265,7 @@ fn process_instruction(instr: &str, args: &[Argument], coprocessors: &CoProcesso
                 format!("tmp3 <== and({rs}, 0xffff);"),
                 "tmp3 <== shl(tmp3, 8 * tmp2);".to_string(),
                 "tmp1 <== or(tmp1, tmp3);".to_string(),
-                "mstore tmp1;".to_string(),
+                "mstore addr, tmp1;".to_string(),
             ]
         }
         "sb" => {
@@ -1281,7 +1282,7 @@ fn process_instruction(instr: &str, args: &[Argument], coprocessors: &CoProcesso
                 format!("tmp3 <== and({rs}, 0xff);"),
                 "tmp3 <== shl(tmp3, 8 * tmp2);".to_string(),
                 "tmp1 <== or(tmp1, tmp3);".to_string(),
-                "mstore tmp1;".to_string(),
+                "mstore addr, tmp1;".to_string(),
             ]
         }
         "nop" => vec![],
@@ -1310,7 +1311,7 @@ fn process_instruction(instr: &str, args: &[Argument], coprocessors: &CoProcesso
                 format!("addr <=X= {rs1};"),
                 format!("{rd} <== mload();"),
                 format!("tmp1 <== wrap({rd} + {rs2});"),
-                format!("mstore tmp1;"),
+                format!("mstore addr, tmp1;"),
             ]
         }
 
@@ -1334,8 +1335,7 @@ fn process_instruction(instr: &str, args: &[Argument], coprocessors: &CoProcesso
             // TODO: misaligned access should raise misaligned address exceptions
             let mut statements = vec![
                 "skip_if_zero lr_sc_reservation, 2;".into(),
-                format!("addr <=X= {rs1};"),
-                format!("mstore {rs2};"),
+                format!("mstore {rs1}, {rs2};"),
             ];
             if !rd.is_zero() {
                 statements.push(format!("{rd} <=X= (1 - lr_sc_reservation);"));
