@@ -185,12 +185,15 @@ impl<T: FieldElement> DoubleSortedWitnesses<T> {
             }
             _ => panic!(),
         };
-        let addr = left[0].constant_value().ok_or_else(|| {
-            format!(
-                "Address must be known: {} = {}",
-                left[0], right.expressions[0]
-            )
-        })?;
+        let addr = match left[0].constant_value() {
+            Some(v) => v,
+            None => {
+                return Ok(EvalValue::incomplete(
+                    IncompleteCause::NonConstantRequiredArgument("m_addr"),
+                ))
+            }
+        };
+
         if addr.to_degree() >= self.degree {
             return Err(format!(
                 "Memory access to too large address: 0x{addr:x} (must be less than 0x{:x})",
@@ -218,7 +221,7 @@ impl<T: FieldElement> DoubleSortedWitnesses<T> {
                 Some(v) => v,
                 None => {
                     return Ok(EvalValue::incomplete(
-                        IncompleteCause::NonConstantWriteValue,
+                        IncompleteCause::NonConstantRequiredArgument("m_value"),
                     ))
                 }
             };
