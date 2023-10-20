@@ -29,10 +29,10 @@ pub enum IncompleteCause<K = usize> {
     NonConstantQueryMatchScrutinee,
     /// Query element is not constant.
     NonConstantQueryElement,
+    /// A required argument was not provided
+    NonConstantRequiredArgument(&'static str),
     /// The left selector in a lookup is not constant. Example: `x * {1} in [{1}]` where `x` is not constant.
     NonConstantLeftSelector,
-    /// A value to be written is not constant. TODO: should this be covered by another case? it's used for memory
-    NonConstantWriteValue,
     /// An expression cannot be evaluated.
     ExpressionEvaluationUnimplemented(String),
     /// A value is not found on the left side of a match. Example: `match x {1 => 2, 3 => 4}` where `x == 0`
