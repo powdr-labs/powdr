@@ -2,12 +2,13 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::mem;
 use std::num::NonZeroUsize;
 
-use ast::analyzed::{Expression, Identity, IdentityKind, PolyID, PolynomialReference};
+use ast::analyzed::{Expression, IdentityKind, PolyID, PolynomialReference};
 use ast::parsed::SelectedExpressions;
 use itertools::Itertools;
 use number::FieldElement;
 
 use crate::witgen::affine_expression::AffineExpression;
+use crate::witgen::global_constraints::{GlobalConstraints, SimpleRangeConstraintSet};
 use crate::witgen::util::try_to_simple_poly_ref;
 use crate::witgen::{EvalError, EvalValue, IncompleteCause};
 use crate::witgen::{EvalResult, FixedData};
@@ -155,21 +156,16 @@ impl<T: FieldElement> IndexedColumns<T> {
 }
 
 /// Machine to perform a lookup in fixed columns only.
-#[derive(Default)]
-pub struct FixedLookup<T> {
+pub struct FixedLookup<T: FieldElement> {
+    global_constraints: GlobalConstraints<T>,
     indices: IndexedColumns<T>,
 }
 
 impl<T: FieldElement> FixedLookup<T> {
-    pub fn try_new(
-        _fixed_data: &FixedData<T>,
-        identities: &[&Identity<Expression<T>>],
-        witness_names: &HashSet<&str>,
-    ) -> Option<Self> {
-        if identities.is_empty() && witness_names.is_empty() {
-            Some(Default::default())
-        } else {
-            None
+    pub fn new(global_constraints: GlobalConstraints<T>) -> Self {
+        Self {
+            global_constraints,
+            indices: Default::default(),
         }
     }
 
@@ -188,6 +184,8 @@ impl<T: FieldElement> FixedLookup<T> {
             return None;
         }
 
+        println!("Processing {{ {} }} in {}", left.iter().format(", "), right);
+
         // get the values of the fixed columns
         let right = right
             .expressions
@@ -202,18 +200,22 @@ impl<T: FieldElement> FixedLookup<T> {
         &mut self,
         fixed_data: &FixedData<T>,
         left: &[AffineExpression<&'b PolynomialReference, T>],
-        right: Vec<&PolynomialReference>,
+        right: Vec<&'b PolynomialReference>,
     ) -> EvalResult<'b, T> {
         // split the fixed columns depending on whether their associated lookup variable is constant or not. Preserve the value of the constant arguments.
         // {1, 2, x} in {A, B, C} -> [[(A, 1), (B, 2)], [C, x]]
+
+        if left.len() == 1 && !left.first().unwrap().is_constant() {
+            // Lookup of the form "c { X } in { B }". Might be a conditional range check.
+            return self.process_range_check(left.first().unwrap(), right.first().unwrap());
+        }
 
         let mut input_assignment = vec![];
         let mut output_columns = vec![];
         let mut output_expressions = vec![];
 
         left.iter().zip(right).for_each(|(l, r)| {
-            let left_value = l.constant_value();
-            if let Some(value) = left_value {
+            if let Some(value) = l.constant_value() {
                 input_assignment.push((r, value));
             } else {
                 output_columns.push(r.poly_id());
@@ -273,5 +275,18 @@ impl<T: FieldElement> FixedLookup<T> {
         }
 
         Ok(result)
+    }
+
+    fn process_range_check<'b>(
+        &self,
+        lhs: &AffineExpression<&'b PolynomialReference, T>,
+        rhs: &'b PolynomialReference,
+    ) -> EvalResult<'b, T> {
+        let equation = lhs.clone() - AffineExpression::from_variable_id(rhs);
+        // TODO this is kind of unusual because we use symbolic fixed columns.
+        // we should better filter out the fixed column from the result.
+        let r = equation.solve_with_range_constraints(&self.global_constraints);
+        println!("{r:?}");
+        r
     }
 }

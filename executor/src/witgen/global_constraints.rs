@@ -41,6 +41,18 @@ pub struct GlobalConstraints<T: FieldElement> {
     pub fixed_constraints: FixedColumnMap<Option<RangeConstraint<T>>>,
 }
 
+impl<'a, T: FieldElement> RangeConstraintSet<&PolynomialReference, T> for GlobalConstraints<T> {
+    fn range_constraint(&self, id: &PolynomialReference) -> Option<RangeConstraint<T>> {
+        assert!(!id.next);
+        let poly_id = id.poly_id.unwrap();
+        match poly_id.ptype {
+            PolynomialType::Constant => self.fixed_constraints[&poly_id].clone(),
+            PolynomialType::Committed => self.witness_constraints[&poly_id].clone(),
+            PolynomialType::Intermediate => None,
+        }
+    }
+}
+
 /// Determines global constraints on witness and fixed columns.
 /// Removes identities that only serve to create range constraints from
 /// the identities vector and returns the remaining identities.
