@@ -1,9 +1,10 @@
 fn cpp_includes(name: &str) -> String {
     format!(
         "
-#include \"barretenberg/honk/composer/generated/{name}_composer.hpp\"
+#include \"./{name}_composer.hpp\"
+#include \"barretenberg/honk/proof_system/generated/{name}_verifier.hpp\"
 #include \"barretenberg/honk/proof_system/grand_product_library.hpp\"
-#include \"barretenberg/proof_system/circuit_builder/generated/{name}_builder.hpp\"
+#include \"barretenberg/proof_system/circuit_builder/generated/{name}_trace.hpp\"
 #include \"barretenberg/proof_system/composer/composer_lib.hpp\"
 #include \"barretenberg/proof_system/composer/permutation_lib.hpp\"
 "
@@ -20,30 +21,86 @@ pub fn composer_builder_cpp(name: &str) -> String {
 
 namespace proof_system::honk {{
 
-template <typename Flavor>
-std::shared_ptr<ProverInstance_<Flavor>> {name}Composer_<Flavor>::create_instance(CircuitBuilder& circuit)
+template <typename Flavor> void {name}Composer_<Flavor>::compute_witness(CircuitConstructor& circuit)
 {{
-    circuit.build_circuit();
-    auto instance = std::make_shared<Instance>(circuit);
-    instance->commitment_key = compute_commitment_key(instance->proving_key->circuit_size);
-    return instance;
+    if (computed_witness) {{
+        return;
+    }}
+
+    auto polynomials = circuit.compute_polynomials();
+
+    auto key_wires = proving_key->get_wires();
+    auto poly_wires = polynomials.get_wires();
+
+    for (size_t i = 0; i < key_wires.size(); ++i) {{
+        std::copy(poly_wires[i].begin(), poly_wires[i].end(), key_wires[i].begin());
+    }}
+
+    computed_witness = true;
 }}
 
 template <typename Flavor>
-{name}Prover_<Flavor> {name}Composer_<Flavor>::create_prover(const std::shared_ptr<Instance>& instance)
+{name}Prover_<Flavor> {name}Composer_<Flavor>::create_prover(CircuitConstructor& circuit_constructor)
 {{
-    return {name}Prover_<Flavor>(instance);
-}}
+    compute_proving_key(circuit_constructor);
+    compute_witness(circuit_constructor);
+    compute_commitment_key(circuit_constructor.get_circuit_subgroup_size());
 
-template <typename Flavor>
-{name}Verifier_<Flavor> {name}Composer_<Flavor>::create_verifier(const std::shared_ptr<Instance>& instance)
-{{
-    auto vk = instance->compute_verification_key();
-    {name}Verifier_<Flavor> output_state(vk);
-    auto pcs_vk = std::make_unique<VerifierCommitmentKey>(verification_key->circuit_size, crs_factory_);
-    output_state.pcs_verification_key = std::move(pcs_vk);
+    {name}Prover_<Flavor> output_state(proving_key, commitment_key);
 
     return output_state;
+}}
+
+template <typename Flavor>
+{name}Verifier_<Flavor> {name}Composer_<Flavor>::create_verifier(
+    CircuitConstructor& circuit_constructor)
+{{
+    auto verification_key = compute_verification_key(circuit_constructor);
+
+    {name}Verifier_<Flavor> output_state(verification_key);
+
+    auto pcs_verification_key = std::make_unique<VerifierCommitmentKey>(verification_key->circuit_size, crs_factory_);
+
+    output_state.pcs_verification_key = std::move(pcs_verification_key);
+
+    return output_state;
+}}
+
+template <typename Flavor>
+std::shared_ptr<typename Flavor::ProvingKey> {name}Composer_<Flavor>::compute_proving_key(
+    CircuitConstructor& circuit_constructor)
+{{
+    if (proving_key) {{
+        return proving_key;
+    }}
+
+    // Initialize proving_key
+    {{
+        const size_t subgroup_size = circuit_constructor.get_circuit_subgroup_size();
+        proving_key = std::make_shared<typename Flavor::ProvingKey>(subgroup_size, 0);
+    }}
+
+    proving_key->contains_recursive_proof = false;
+
+    return proving_key;
+}}
+
+template <typename Flavor>
+std::shared_ptr<typename Flavor::VerificationKey> {name}Composer_<Flavor>::compute_verification_key(
+    CircuitConstructor& circuit_constructor)
+{{
+    if (verification_key) {{
+        return verification_key;
+    }}
+
+    if (!proving_key) {{
+        compute_proving_key(circuit_constructor);
+    }}
+
+    verification_key =
+        std::make_shared<typename Flavor::VerificationKey>(proving_key->circuit_size, proving_key->num_public_inputs);
+
+    return verification_key;
 }}
 
 template class {name}Composer_<honk::flavor::{name}Flavor>;
@@ -59,9 +116,9 @@ pub fn hpp_includes(name: &str) -> String {
 
 #include \"barretenberg/honk/proof_system/generated/{name}_prover.hpp\"
 #include \"barretenberg/honk/proof_system/generated/{name}_verifier.hpp\"
-#include \"barretenberg/proof_system/circuit_builder/generated/{name}_builder.hpp\"
+#include \"barretenberg/proof_system/circuit_builder/generated/{name}_trace.hpp\"
 #include \"barretenberg/proof_system/composer/composer_lib.hpp\"
-#include \"barretenberg/srs/factories/file_crs_factory.hpp\"
+#include \"barretenberg/srs/global_crs.hpp\"
     "
     )
 }
@@ -76,7 +133,7 @@ pub fn composer_builder_hpp(name: &str) -> String {
 namespace proof_system::honk {{
 template <typename Flavor> class {name}Composer_ {{
     public:
-        // using CircuitConstructor = ECCVMCircuitBuilder<Flavor>; // TODO what should this be?
+        using CircuitConstructor = {name}TraceBuilder;
         using ProvingKey = typename Flavor::ProvingKey;
         using VerificationKey = typename Flavor::VerificationKey;
         using PCS = typename Flavor::PCS;
@@ -86,7 +143,7 @@ template <typename Flavor> class {name}Composer_ {{
         // TODO: which of these will we really need
         static constexpr std::string_view NAME_STRING = \"{name}\";
         static constexpr size_t NUM_RESERVED_GATES = 0; 
-        static constexpr size_t NUM_WIRES = CircuitConstructor::NUM_WIRES;
+        static constexpr size_t NUM_WIRES = Flavor::NUM_WIRES;
 
         std::shared_ptr<ProvingKey> proving_key;
         std::shared_ptr<VerificationKey> verification_key;
@@ -99,9 +156,9 @@ template <typename Flavor> class {name}Composer_ {{
 
         std::vector<uint32_t> recursive_proof_public_input_indices;
         bool contains_recursive_proof = false;
-        bool computer_witness = false;
+        bool computed_witness = false;
 
-        {name}Composer_() requires(std::same_as<Flavor, honk::flavor::{name}Flavor)
+        {name}Composer_() requires(std::same_as<Flavor, honk::flavor::{name}Flavor>)
         {{
             crs_factory_ = barretenberg::srs::get_crs_factory();
         }}
@@ -111,10 +168,10 @@ template <typename Flavor> class {name}Composer_ {{
             , verification_key(std::move(v_key))
         {{}}
 
-        {name}Composer_(ECCVMComposer_&& other) noexcept = default;
-        {name}Composer_(ECCVMComposer_ const& other) noexcept = default;
-        {name}Composer_& operator=(ECCVMComposer_&& other) noexcept = default;
-        {name}Composer_& operator=(ECCVMComposer_ const& other) noexcept = default;
+        {name}Composer_({name}Composer_&& other) noexcept = default;
+        {name}Composer_({name}Composer_ const& other) noexcept = default;
+        {name}Composer_& operator=({name}Composer_&& other) noexcept = default;
+        {name}Composer_& operator=({name}Composer_ const& other) noexcept = default;
         ~{name}Composer_() = default;
 
         std::shared_ptr<ProvingKey> compute_proving_key(CircuitConstructor& circuit_constructor);

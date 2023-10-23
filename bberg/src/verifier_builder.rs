@@ -2,7 +2,7 @@ fn include_hpp(name: &str) -> String {
     format!(
         "
 #pragma once
-#include \"barretenberg/honk/flavor/generated/{name}.hpp\"
+#include \"barretenberg/honk/flavor/generated/{name}_flavor.hpp\"
 #include \"barretenberg/honk/sumcheck/sumcheck.hpp\"
 #include \"barretenberg/plonk/proof_system/types/proof.hpp\"
 "
@@ -51,11 +51,9 @@ pub fn verifier_builder_hpp(name: &str) -> String {
         VerifierTranscript<FF> transcript;
     }};
     
-    extern template class {name}Verifier_<honk::flavor::{name}>;
-    extern template class {name}Verifier_<honk::flavor::{name}Grumpkin>;
+    extern template class {name}Verifier_<honk::flavor::{name}Flavor>;
     
-    using {name}Verifier = {name}Verifier_<honk::flavor::{name}>;
-    using {name}VerifierGrumpkin = {name}Verifier_<honk::flavor::{name}Grumpkin>;
+    using {name}Verifier = {name}Verifier_<honk::flavor::{name}Flavor>;
     
     }} // namespace proof_system::honk
      
@@ -68,6 +66,7 @@ fn includes_cpp(name: &str) -> String {
     format!(
         "
     #include \"./{name}_verifier.hpp\"
+    #include \"barretenberg/honk/flavor/generated/{name}_flavor.hpp\"
     #include \"barretenberg/honk/pcs/gemini/gemini.hpp\"
     #include \"barretenberg/honk/pcs/shplonk/shplonk.hpp\"
     #include \"barretenberg/honk/transcript/transcript.hpp\"
@@ -80,7 +79,10 @@ fn includes_cpp(name: &str) -> String {
 pub fn verifier_builder_cpp(name: &str, all_wires: &Vec<String>) -> String {
     let include_str = includes_cpp(name);
 
-    let wire_commitments = all_wires.iter().map(|name| format!("commitments.{name} = transcript.template receive_from_prover<Commitment>(commitment_labels.{name});", name=name)).collect::<Vec<String>>().join("\n");
+    let wire_commitments = all_wires.iter().map(|name|{
+        let n = name.replace(".","_");
+        format!("commitments.{n} = transcript.template receive_from_prover<Commitment>(commitment_labels.{n});", n=n)
+    }).collect::<Vec<String>>().join("\n");
 
     format!("
 {include_str} 
@@ -141,21 +143,22 @@ pub fn verifier_builder_cpp(name: &str, all_wires: &Vec<String>) -> String {
         // Get commitments to VM wires
         {wire_commitments}
     
+        // Permutation / logup related stuff?
         // Get challenge for sorted list batching and wire four memory records
-        auto [beta, gamma] = transcript.get_challenges(\"bbeta\", \"gamma\");
-        relation_parameters.gamma = gamma;
-        auto beta_sqr = beta * beta;
-        relation_parameters.beta = beta;
-        relation_parameters.beta_sqr = beta_sqr;
-        relation_parameters.beta_cube = beta_sqr * beta;
-        relation_parameters.{name}_set_permutation_delta =
-            gamma * (gamma + beta_sqr) * (gamma + beta_sqr + beta_sqr) * (gamma + beta_sqr + beta_sqr + beta_sqr);
-        relation_parameters.{name}_set_permutation_delta = relation_parameters.{name}_set_permutation_delta.invert();
+        // auto [beta, gamma] = transcript.get_challenges(\"bbeta\", \"gamma\");
+        // relation_parameters.gamma = gamma;
+        // auto beta_sqr = beta * beta;
+        // relation_parameters.beta = beta;
+        // relation_parameters.beta_sqr = beta_sqr;
+        // relation_parameters.beta_cube = beta_sqr * beta;
+        // relation_parameters.{name}_set_permutation_delta =
+        //     gamma * (gamma + beta_sqr) * (gamma + beta_sqr + beta_sqr) * (gamma + beta_sqr + beta_sqr + beta_sqr);
+        // relation_parameters.{name}_set_permutation_delta = relation_parameters.{name}_set_permutation_delta.invert();
     
         // Get commitment to permutation and lookup grand products
-        commitments.lookup_inverses =
-            transcript.template receive_from_prover<Commitment>(commitment_labels.lookup_inverses);
-        commitments.z_perm = transcript.template receive_from_prover<Commitment>(commitment_labels.z_perm);
+        // commitments.lookup_inverses =
+        //     transcript.template receive_from_prover<Commitment>(commitment_labels.lookup_inverses);
+        // commitments.z_perm = transcript.template receive_from_prover<Commitment>(commitment_labels.z_perm);
     
         // Execute Sumcheck Verifier
         auto sumcheck = SumcheckVerifier<Flavor>(circuit_size);
@@ -233,7 +236,7 @@ pub fn verifier_builder_cpp(name: &str, all_wires: &Vec<String>) -> String {
         return sumcheck_verified.value() && verified;
     }}
     
-    template class {name}Verifier_<honk::flavor::{name}>;
+    template class {name}Verifier_<honk::flavor::{name}Flavor>;
     
     }} // namespace proof_system::honk
     

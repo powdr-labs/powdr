@@ -5,7 +5,6 @@ fn includes_hpp(name: &str) -> String {
 #include \"barretenberg/honk/flavor/generated/{name}_flavor.hpp\"
 #include \"barretenberg/honk/pcs/gemini/gemini.hpp\"
 #include \"barretenberg/honk/pcs/shplonk/shplonk.hpp\"
-#include \"barretenberg/honk/proof_system/work_queue.hpp\"
 #include \"barretenberg/honk/sumcheck/sumcheck_output.hpp\"
 #include \"barretenberg/honk/transcript/transcript.hpp\"
 #include \"barretenberg/plonk/proof_system/types/proof.hpp\"
@@ -37,8 +36,8 @@ pub fn prover_builder_hpp(name: &str) -> String {
     
         void execute_preamble_round();
         void execute_wire_commitments_round();
-        void execute_log_derivative_commitments_round();
-        void execute_grand_product_computation_round();
+        // void execute_log_derivative_commitments_round();
+        // void execute_grand_product_computation_round();
         void execute_relation_check_rounds();
         void execute_univariatization_round();
         void execute_pcs_evaluation_round();
@@ -72,12 +71,10 @@ pub fn prover_builder_hpp(name: &str) -> String {
     
         Polynomial quotient_W;
     
-        work_queue<Curve> queue;
-    
         sumcheck::SumcheckOutput<Flavor> sumcheck_output;
         pcs::gemini::ProverOutput<Curve> gemini_output;
         pcs::shplonk::ProverOutput<Curve> shplonk_output;
-        std::shared_ptr<PCSCommitmentKey> pcs_commitment_key;
+        std::shared_ptr<PCSCommitmentKey> commitment_key;
     
         using Gemini = pcs::gemini::GeminiProver_<Curve>;
         using Shplonk = pcs::shplonk::ShplonkProver_<Curve>;
@@ -86,10 +83,9 @@ pub fn prover_builder_hpp(name: &str) -> String {
         plonk::proof proof;
     }};
     
-    extern template class {name}Prover_<honk::flavor::{name}>;
-    extern template class {name}Prover_<honk::flavor::{name}Grumpkin>;
+    extern template class {name}Prover_<honk::flavor::{name}Flavor>;
     
-    using {name}Prover = {name}Prover_<honk::flavor::{name}>;
+    using {name}Prover = {name}Prover_<honk::flavor::{name}Flavor>;
     
     }} // namespace proof_system::honk
      
@@ -177,15 +173,14 @@ prover_polynomials.{n}_shift = key->{n}.shifted();
     {name}Prover_<Flavor>::{name}Prover_(std::shared_ptr<typename Flavor::ProvingKey> input_key,
                                        std::shared_ptr<PCSCommitmentKey> commitment_key)
         : key(input_key)
-        , queue(commitment_key, transcript)
-        , pcs_commitment_key(commitment_key)
+        , commitment_key(commitment_key)
     {{
         // TODO: take every polynomial and assign it to the key!!
         {all_assignments}
     
-        prover_polynomials.lookup_inverses = key->lookup_inverses;
-        key->z_perm = Polynomial(key->circuit_size);
-        prover_polynomials.z_perm = key->z_perm;
+        // prover_polynomials.lookup_inverses = key->lookup_inverses;
+        // key->z_perm = Polynomial(key->circuit_size);
+        // prover_polynomials.z_perm = key->z_perm;
     }}
     
     /**
@@ -197,7 +192,7 @@ prover_polynomials.{n}_shift = key->{n}.shifted();
         auto wire_polys = key->get_wires();
         auto labels = commitment_labels.get_wires();
         for (size_t idx = 0; idx < wire_polys.size(); ++idx) {{
-            queue.add_commitment(wire_polys[idx], labels[idx]);
+            transcript.send_to_verifier(labels[idx], commitment_key->commit(wire_polys[idx]));
         }}
     }}
     
@@ -221,7 +216,7 @@ prover_polynomials.{n}_shift = key->{n}.shifted();
         auto wire_polys = key->get_wires();
         auto labels = commitment_labels.get_wires();
         for (size_t idx = 0; idx < wire_polys.size(); ++idx) {{
-            queue.add_commitment(wire_polys[idx], labels[idx]);
+            transcript.send_to_verifier(labels[idx], commitment_key->commit(wire_polys[idx]));
         }}
     }}
     
@@ -229,37 +224,37 @@ prover_polynomials.{n}_shift = key->{n}.shifted();
      * @brief Compute sorted witness-table accumulator
      *
      */
-    template <typename Flavor> void {name}Prover_<Flavor>::execute_log_derivative_commitments_round()
-    {{
-        // Compute and add beta to relation parameters
-        auto [beta, gamma] = transcript.get_challenges(\"beta\", \"gamma\");
-        // TODO(#583)(@zac-williamson): fix Transcript to be able to generate more than 2 challenges per round! oof.
-        auto beta_sqr = beta * beta;
-        relation_parameters.gamma = gamma;
-        relation_parameters.beta = beta;
-        relation_parameters.beta_sqr = beta_sqr;
-        relation_parameters.beta_cube = beta_sqr * beta;
-        relation_parameters.{name}_set_permutation_delta =
-            gamma * (gamma + beta_sqr) * (gamma + beta_sqr + beta_sqr) * (gamma + beta_sqr + beta_sqr + beta_sqr);
-        relation_parameters.{name}_set_permutation_delta = relation_parameters.{name}_set_permutation_delta.invert();
-        // Compute inverse polynomial for our logarithmic-derivative lookup method
-        lookup_library::compute_logderivative_inverse<Flavor, typename Flavor::LookupRelation>(
-            prover_polynomials, relation_parameters, key->circuit_size);
-        queue.add_commitment(key->lookup_inverses, commitment_labels.lookup_inverses);
-        prover_polynomials.lookup_inverses = key->lookup_inverses;
-    }}
+    // template <typename Flavor> void {name}Prover_<Flavor>::execute_log_derivative_commitments_round()
+    // {{
+    //     // Compute and add beta to relation parameters
+    //     auto [beta, gamma] = transcript.get_challenges(\"beta\", \"gamma\");
+    //     // TODO(#583)(@zac-williamson): fix Transcript to be able to generate more than 2 challenges per round! oof.
+    //     auto beta_sqr = beta * beta;
+    //     relation_parameters.gamma = gamma;
+    //     relation_parameters.beta = beta;
+    //     relation_parameters.beta_sqr = beta_sqr;
+    //     relation_parameters.beta_cube = beta_sqr * beta;
+    //     relation_parameters.{name}_set_permutation_delta =
+    //         gamma * (gamma + beta_sqr) * (gamma + beta_sqr + beta_sqr) * (gamma + beta_sqr + beta_sqr + beta_sqr);
+    //     relation_parameters.{name}_set_permutation_delta = relation_parameters.{name}_set_permutation_delta.invert();
+    //     // Compute inverse polynomial for our logarithmic-derivative lookup method
+    //     lookup_library::compute_logderivative_inverse<Flavor, typename Flavor::LookupRelation>(
+    //         prover_polynomials, relation_parameters, key->circuit_size);
+    //     transcript.send_to_verifier(commitment_labels.lookup_inverses, commitment_key->commit(key->lookup_inverses));
+    //     prover_polynomials.lookup_inverses = key->lookup_inverses;
+    // }}
     
     /**
      * @brief Compute permutation and lookup grand product polynomials and commitments
      *
      */
-    template <typename Flavor> void {name}Prover_<Flavor>::execute_grand_product_computation_round()
-    {{
-        // Compute permutation grand product and their commitments
-        permutation_library::compute_permutation_grand_products<Flavor>(key, prover_polynomials, relation_parameters);
+    // template <typename Flavor> void {name}Prover_<Flavor>::execute_grand_product_computation_round()
+    // {{
+    //     // Compute permutation grand product and their commitments
+    //     permutation_library::compute_permutation_grand_products<Flavor>(key, prover_polynomials, relation_parameters);
     
-        queue.add_commitment(key->z_perm, commitment_labels.z_perm);
-    }}
+    //     transcript.send_to_verifier(commitment_labels.z_perm, commitment_key->commit(key->z_perm));
+    // }}
     
     /**
      * @brief Run Sumcheck resulting in u = (u_1,...,u_d) challenges and all evaluations at u being calculated.
@@ -307,7 +302,8 @@ prover_polynomials.{n}_shift = key->{n}.shifted();
     
         // Compute and add to trasnscript the commitments [Fold^(i)], i = 1, ..., d-1
         for (size_t l = 0; l < key->log_circuit_size - 1; ++l) {{
-            queue.add_commitment(gemini_polynomials[l + 2], \"Gemini:FOLD_\" + std::to_string(l + 1));
+            transcript.send_to_verifier(\"Gemini:FOLD_\" + std::to_string(l + 1),
+                commitment_key->commit(gemini_polynomials[l + 2]));
         }}
     }}
     
@@ -342,7 +338,7 @@ prover_polynomials.{n}_shift = key->{n}.shifted();
             Shplonk::compute_batched_quotient(gemini_output.opening_pairs, gemini_output.witnesses, nu_challenge);
     
         // commit to Q(X) and add [Q] to the transcript
-        queue.add_commitment(batched_quotient_Q, \"Shplonk:Q\");
+        transcript.send_to_verifier(\"Shplonk:Q\", commitment_key->commit(batched_quotient_Q));
     }}
     
     /**
@@ -363,11 +359,10 @@ prover_polynomials.{n}_shift = key->{n}.shifted();
      * */
     template <typename Flavor> void {name}Prover_<Flavor>::execute_final_pcs_round()
     {{
-        PCS::compute_opening_proof(pcs_commitment_key, shplonk_output.opening_pair, shplonk_output.witness, transcript);
-        // queue.add_commitment(quotient_W, \"KZG:W\");
+        PCS::compute_opening_proof(commitment_key, shplonk_output.opening_pair, shplonk_output.witness, transcript);
     }}
     
-    template <{name}Flavor Flavor> plonk::proof& {name}Prover_<Flavor>::export_proof()
+    template <typename Flavor> plonk::proof& {name}Prover_<Flavor>::export_proof()
     {{
         proof.proof_data = transcript.proof_data;
         return proof;
@@ -378,18 +373,16 @@ prover_polynomials.{n}_shift = key->{n}.shifted();
         // Add circuit size public input size and public inputs to transcript.
         execute_preamble_round();
     
-        // Compute first three wire commitments
+        // Compute wire commitments
         execute_wire_commitments_round();
-        queue.process_queue();
     
+        // TODO: not implemented for codegen just yet
         // Compute sorted list accumulator and commitment
-        execute_log_derivative_commitments_round();
-        queue.process_queue();
+        // execute_log_derivative_commitments_round();
     
         // Fiat-Shamir: bbeta & gamma
         // Compute grand product(s) and commitments.
-        execute_grand_product_computation_round();
-        queue.process_queue();
+        // execute_grand_product_computation_round();
     
         // Fiat-Shamir: alpha
         // Run sumcheck subprotocol.
@@ -398,7 +391,6 @@ prover_polynomials.{n}_shift = key->{n}.shifted();
         // Fiat-Shamir: rho
         // Compute Fold polynomials and their commitments.
         execute_univariatization_round();
-        queue.process_queue();
     
         // Fiat-Shamir: r
         // Compute Fold evaluations
@@ -407,7 +399,6 @@ prover_polynomials.{n}_shift = key->{n}.shifted();
         // Fiat-Shamir: nu
         // Compute Shplonk batched quotient commitment Q
         execute_shplonk_batched_quotient_round();
-        queue.process_queue();
     
         // Fiat-Shamir: z
         // Compute partial evaluation Q_z
@@ -420,7 +411,7 @@ prover_polynomials.{n}_shift = key->{n}.shifted();
         return export_proof();
     }}
     
-    template class {name}Prover_<honk::flavor::{name}>;
+    template class {name}Prover_<honk::flavor::{name}Flavor>;
     
     }} // namespace proof_system::honk
      

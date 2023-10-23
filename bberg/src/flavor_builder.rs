@@ -15,8 +15,8 @@ pub(crate) fn create_flavor_hpp(
     let num_entities = num_fixed + num_witness * 2;
 
     let precomputed = witness_get(fixed, 0, false);
-    let precomputed_get = create_precomputed_entities(fixed);
-    let witness_str = create_witness_entities(&witness);
+    let witness_and_fixed = [&fixed[..], &witness[..]].concat();
+    let witness_str = create_witness_entities(&witness_and_fixed);
     let all_witness = witness_get(&witness, num_fixed, false);
     let all_shift = witness_get(&witness, num_fixed + num_witness, true);
 
@@ -77,9 +77,12 @@ template <typename CycleGroup_T, typename Curve_T, typename PCS_T> class {name}F
         using VerifierCommitmentKey = pcs::VerifierCommitmentKey<Curve>;
 
         static constexpr size_t NUM_WIRES = {num_wires};
-        static constexpr size_t NUM_ALL_ENTITIES = {num_entities};
-        static constexpr size_t NUM_PRECOMPUTED_ENTITIES = {num_fixed};
-        static constexpr size_t NUM_WITNESS_ENTITIES = {num_witness};
+        static constexpr size_t NUM_FIXED_WIRES = {num_fixed};
+        static constexpr size_t NUM_PRECOMPUTED_ENTITIES = 0; // This is zero for now
+        static constexpr size_t NUM_WITNESS_ENTITIES = {num_wires};
+        // We have two copies of the witness entities, so we subtract the number of fixed ones (they have no shift), one for the unshifted and one for the shifted
+        static constexpr size_t NUM_ALL_ENTITIES = NUM_PRECOMPUTED_ENTITIES + NUM_FIXED_WIRES + ((NUM_WITNESS_ENTITIES - {num_fixed}) * 2);
+
 
         // using GrandProductRelations = std::tuple<>;
         using Relations = std::tuple<{relations_tuple}>;
@@ -90,17 +93,15 @@ template <typename CycleGroup_T, typename Curve_T, typename PCS_T> class {name}F
         static constexpr size_t NUM_RELATIONS = std::tuple_size<Relations>::value;
 
         // define the containers for storing the contributions from each relation in Sumcheck
-        using RelationUnivariates = decltype(create_relation_univariates_container<FF, Relations>());
-        using RelationValues = decltype(create_relation_values_container<FF, Relations>());
+        using TupleOfTuplesOfUnivariates = decltype(create_relation_univariates_container<FF, Relations>());
+        using TupleOfArraysOfValues = decltype(create_relation_values_container<FF, Relations>());
 
     private:
         template<typename DataType, typename HandleType>
         class PrecomputedEntities : public PrecomputedEntities_<DataType, HandleType, NUM_PRECOMPUTED_ENTITIES> {{
             public:
 
-            {precomputed}
-            {precomputed_get}
-      
+              std::vector<HandleType> get_selectors() override {{ return {{}}; }};
               std::vector<HandleType> get_sigma_polynomials() override {{ return {{}}; }};
               std::vector<HandleType> get_id_polynomials() override {{ return {{}}; }};
               std::vector<HandleType> get_table_polynomials() {{ return {{}}; }};
@@ -114,7 +115,7 @@ template <typename CycleGroup_T, typename Curve_T, typename PCS_T> class {name}F
         }};
 
         template <typename DataType, typename HandleType>
-        class AllEntities : public AllEntities_<DataType, HandleType, NUM_WITNESS_ENTITIES> {{
+        class AllEntities : public AllEntities_<DataType, HandleType, NUM_ALL_ENTITIES> {{
             public:
 
             {precomputed} 
@@ -191,7 +192,26 @@ template <typename CycleGroup_T, typename Curve_T, typename PCS_T> class {name}F
 
     using FoldedPolynomials = AllEntities<std::vector<FF>, PolynomialHandle>;
 
-    using RawPolynomials = AllEntities<Polynomial, PolynomialHandle>;
+    class AllValues : public AllEntities<FF, FF> {{
+        public:
+          using Base = AllEntities<FF, FF>;
+          using Base::Base;
+          AllValues(std::array<FF, NUM_ALL_ENTITIES> _data_in) {{ this->_data = _data_in; }}
+      }};
+  
+    class AllPolynomials : public AllEntities<Polynomial, PolynomialHandle> {{
+      public:
+        AllValues get_row(const size_t row_idx) const
+        {{
+            AllValues result;
+            size_t column_idx = 0; // // TODO(https://github.com/AztecProtocol/barretenberg/issues/391) zip
+            for (auto& column : this->_data) {{
+                result[column_idx] = column[row_idx];
+                column_idx++;
+            }}
+            return result;
+        }}
+    }};
 
     using RowPolynomials = AllEntities<FF, FF>;
 

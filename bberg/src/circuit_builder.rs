@@ -1,6 +1,8 @@
 use std::fs::File;
 use std::{fmt::Display, io::Write, process::id};
 
+use ast::parsed::UnaryOperator;
+// use acvm::acir::native_types::Expression;
 use ast::{analyzed::Identity, asm_analysis::DegreeStatement, parsed::BinaryOperator};
 use itertools::Itertools;
 use num_bigint::BigUint;
@@ -24,8 +26,10 @@ use crate::{
 pub struct BBFiles {
     pub relation_hpp: Option<String>,
     pub arith_hpp: Option<String>,
-    pub trace_hpp: Option<String>,
     pub flavor_hpp: Option<String>,
+    // trace
+    pub trace_hpp: Option<String>,
+    pub trace_cpp: Option<String>,
     // composer
     pub composer_cpp: Option<String>,
     pub composer_hpp: Option<String>,
@@ -76,8 +80,9 @@ impl BBFiles {
             file_name,
             relation_hpp: None,
             arith_hpp: None,
-            trace_hpp: None,
             flavor_hpp: None,
+            trace_hpp: None,
+            trace_cpp: None,
             composer_cpp: None,
             composer_hpp: None,
             prover_cpp: None,
@@ -100,6 +105,7 @@ impl BBFiles {
         relation_hpp: String,
         arith_hpp: String,
         trace_hpp: String,
+        trace_cpp: String,
         flavor_hpp: String,
         composer_cpp: String,
         composer_hpp: String,
@@ -110,10 +116,12 @@ impl BBFiles {
     ) {
         self.relation_hpp = Some(relation_hpp);
         self.arith_hpp = Some(arith_hpp);
-        self.trace_hpp = Some(trace_hpp);
         self.flavor_hpp = Some(flavor_hpp);
         self.composer_cpp = Some(composer_cpp);
         self.composer_hpp = Some(composer_hpp);
+
+        self.trace_hpp = Some(trace_hpp);
+        self.trace_cpp = Some(trace_cpp);
 
         self.verifier_cpp = Some(verifier_cpp);
         self.verifier_hpp = Some(verifier_hpp);
@@ -123,61 +131,36 @@ impl BBFiles {
     }
 
     pub fn write(&self) {
-        self.write_file(
-            &self.rel,
-            &format!("{}.hpp", self.file_name),
-            &self.relation_hpp.clone().unwrap(),
-        );
-        self.write_file(
-            &self.arith,
-            &format!("{}_arith.hpp", self.file_name),
-            &self.arith_hpp.clone().unwrap(),
-        );
-        self.write_file(
-            &self.trace,
-            &format!("{}_trace.hpp", self.file_name),
-            &self.trace_hpp.clone().unwrap(),
-        );
-        self.write_file(
-            &self.flavor,
-            &format!("{}_flavor.hpp", self.file_name),
-            &self.flavor_hpp.clone().unwrap(),
-        );
+        // Helper macro codegen using the classes' write_file method
+        macro_rules! write_file {
+            ($location:expr, $extension:expr, $content:expr) => {
+                self.write_file(
+                    &$location,
+                    &format!("{}{}", self.file_name, $extension),
+                    &$content.clone().unwrap(),
+                );
+            };
+        }
+        write_file!(self.rel, ".hpp", self.relation_hpp);
+        write_file!(self.arith, "_arith.hpp", self.arith_hpp);
+
+        // Trace
+        write_file!(self.trace, "_trace.hpp", self.trace_hpp);
+        write_file!(self.trace, "_trace.cpp", self.trace_cpp);
+
+        write_file!(self.flavor, "_flavor.hpp", self.flavor_hpp);
+
         // Composer
-        self.write_file(
-            &self.composer,
-            &format!("{}_composer.cpp", self.file_name),
-            &self.composer_cpp.clone().unwrap(),
-        );
-        self.write_file(
-            &self.composer,
-            &format!("{}_composer.hpp", self.file_name),
-            &self.composer_hpp.clone().unwrap(),
-        );
+        write_file!(self.composer, "_composer.hpp", self.composer_hpp);
+        write_file!(self.composer, "_composer.cpp", self.composer_cpp);
 
         // Prover
-        self.write_file(
-            &self.prover,
-            &format!("{}_prover.cpp", self.file_name),
-            &self.prover_cpp.clone().unwrap(),
-        );
-        self.write_file(
-            &self.prover,
-            &format!("{}_prover.hpp", self.file_name),
-            &self.prover_hpp.clone().unwrap(),
-        );
+        write_file!(self.prover, "_prover.hpp", self.prover_hpp);
+        write_file!(self.prover, "_prover.cpp", self.prover_cpp);
 
         // Verifier
-        self.write_file(
-            &self.prover,
-            &format!("{}_verifier.cpp", self.file_name),
-            &self.verifier_cpp.clone().unwrap(),
-        );
-        self.write_file(
-            &self.prover,
-            &format!("{}_verifier.hpp", self.file_name),
-            &self.verifier_hpp.clone().unwrap(),
-        );
+        write_file!(self.prover, "_verifier.hpp", self.verifier_hpp);
+        write_file!(self.prover, "_verifier.cpp", self.verifier_cpp);
     }
 
     fn write_file(&self, folder: &str, filename: &str, contents: &String) {
@@ -223,7 +206,8 @@ pub(crate) fn analyzed_to_cpp<F: FieldElement>(
     let arith_hpp = create_arith_boilerplate_file(file_name, num_cols);
 
     // ----------------------- Create the read from powdr columns file -----------------------
-    let trace_hpp = bb_files.create_trace_builder(file_name, fixed, witness);
+    let trace_cpp = bb_files.create_trace_builder_cpp(file_name, fixed, witness);
+    let trace_hpp = bb_files.create_trace_builder_hpp(file_name, fixed, witness);
 
     // ----------------------- Create the flavor file -----------------------
     let flavor_hpp =
@@ -255,6 +239,7 @@ pub(crate) fn analyzed_to_cpp<F: FieldElement>(
         relation_hpp,
         arith_hpp,
         trace_hpp,
+        trace_cpp,
         flavor_hpp,
         composer_cpp,
         composer_hpp,
@@ -270,6 +255,7 @@ pub(crate) fn analyzed_to_cpp<F: FieldElement>(
 fn create_arith_boilerplate_file(name: &str, num_cols: usize) -> String {
     format!(
         "
+#pragma once
 #include \"barretenberg/proof_system/arithmetization/arithmetization.hpp\"
 namespace arithmetization {{
     class {name}Arithmetization : public Arithmetization<{num_cols}, 0> {{
@@ -336,10 +322,10 @@ fn get_export(name: &str) -> String {
 
 fn get_relation_code(ids: &Vec<String>) -> String {
     let mut relation_code = r#"
-    template <typename AccumulatorTypes>
+    template <typename ContainerOverSubrelations, typename AllEntities>
     void static accumulate(
-        typename AccumulatorTypes::Accumulators& evals,
-        const auto& new_term,
+        ContainerOverSubrelations& evals,
+        const AllEntities& new_term,
         [[maybe_unused]] const RelationParameters<FF>&,
         [[maybe_unused]] const FF& scaling_factor
     ){
@@ -354,28 +340,14 @@ fn get_relation_code(ids: &Vec<String>) -> String {
 }
 
 fn get_degree_boilerplate(degrees: Vec<DegreeType>) -> String {
-    let max = degrees.iter().max().unwrap();
+    let num_degrees = degrees.len();
 
-    let mut degree_boilerplate = format!("static constexpr size_t RELATION_LENGTH = {};\n", max);
+    let mut degree_boilerplate =
+        format!("static constexpr std::array<size_t, {num_degrees}> SUBRELATION_LENGTHS{{\n");
     for i in 0..degrees.len() {
-        degree_boilerplate.push_str(&format!(
-            "   static constexpr size_t DEGREE_{i} = {};\n",
-            degrees[i]
-        ));
+        degree_boilerplate.push_str(&format!("   {},\n", degrees[i]));
     }
-
-    let degrees_str = degrees
-        .iter()
-        .enumerate()
-        .map(|(i, _)| format!("DEGREE_{}", i))
-        .join(", ");
-
-    let acc_boilerplate = format!(
-        "template <template <size_t...> typename SubrelationAccumulatorsTemplate>
-    using GetAccumulatorTypes = SubrelationAccumulatorsTemplate<{degrees_str}>;"
-    );
-
-    degree_boilerplate.push_str(&acc_boilerplate);
+    degree_boilerplate.push_str("};");
 
     degree_boilerplate
 }
@@ -437,7 +409,7 @@ fn create_row_type(all_rows: &Vec<String>) -> String {
 fn get_cols_in_identity(row_index: usize, all_rows: &Vec<String>) -> String {
     let template = format!(
         "
-        using View = typename std::tuple_element<{}, typename AccumulatorTypes::AccumulatorViews>::type;
+        using View = typename std::tuple_element<{}, ContainerOverSubrelations>::type;
     ",
         row_index
     );
@@ -506,6 +478,18 @@ fn craft_expression<T: FieldElement>(expr: &Expression<T>) -> BBIdentity {
         Expression::Constant(name) => {
             panic!("Constant {name} was not inlined. optimize_constants needs to be run at least.")
         }
+        // pub enum UnaryOperator {
+        //     Plus,
+        //     Minus,
+        //     LogicalNot,
+        // }
+        Expression::UnaryOperation(operator, expression) => match operator {
+            UnaryOperator::Minus => {
+                let (d, e) = craft_expression(expression);
+                (d, format!("-{}", e))
+            }
+            _ => unimplemented!("{:?}", expr),
+        },
 
         _ => unimplemented!("{:?}", expr),
     }

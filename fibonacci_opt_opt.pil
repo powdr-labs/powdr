@@ -1,6 +1,6 @@
 constant %N = 16;
 namespace Fibonacci(16);
-    col fixed ISLAST(i) { match i { 15 => 1, 0 => 1, _ => 0, } };
+    col fixed ISLAST(i) { match i { 15 => 1, _ => 0, } };
     col witness x;
     col witness y;
     (Fibonacci.ISLAST * (Fibonacci.y' - 1)) = 0;
