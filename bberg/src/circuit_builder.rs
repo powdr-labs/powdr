@@ -183,7 +183,7 @@ pub(crate) fn analyzed_to_cpp<F: FieldElement>(
     let file_name: &str = "ExampleRelation";
     let mut bb_files = BBFiles::default(file_name.to_owned());
 
-    let all_cols = get_all_col_names(fixed, witness);
+    let (all_cols, all_cols_with_shifts) = get_all_col_names(fixed, witness);
     let fixed_names = fixed
         .iter()
         .map(|(name, _)| (*name).to_owned())
@@ -193,11 +193,11 @@ pub(crate) fn analyzed_to_cpp<F: FieldElement>(
         .map(|(name, _)| (*name).to_owned())
         .collect::<Vec<_>>();
 
-    let num_cols = all_cols.len();
+    let num_cols = all_cols_with_shifts.len();
 
-    let row_type = create_row_type(&all_cols);
+    let row_type = create_row_type(&all_cols_with_shifts);
 
-    let (subrelations, identities) = create_identities(&analyzed.identities, &all_cols);
+    let (subrelations, identities) = create_identities(&analyzed.identities, &all_cols_with_shifts);
 
     // ----------------------- Create the relation file -----------------------
     let relation_hpp = create_relation_hpp(file_name, &subrelations, &identities, &row_type); // TODO: do we need this
@@ -210,8 +210,12 @@ pub(crate) fn analyzed_to_cpp<F: FieldElement>(
     let trace_hpp = bb_files.create_trace_builder_hpp(file_name, fixed, witness);
 
     // ----------------------- Create the flavor file -----------------------
-    let flavor_hpp =
-        flavor_builder::create_flavor_hpp(file_name, &all_cols, &fixed_names, &witness_names);
+    let flavor_hpp = flavor_builder::create_flavor_hpp(
+        file_name,
+        &all_cols_with_shifts,
+        &fixed_names,
+        &witness_names,
+    );
 
     // ----------------------- Create the composer files -----------------------
     let composer_cpp = composer_builder_cpp(file_name);
@@ -340,12 +344,18 @@ fn get_relation_code(ids: &Vec<String>) -> String {
 }
 
 fn get_degree_boilerplate(degrees: Vec<DegreeType>) -> String {
+    // TODO: for the meantime we will use the max degree for all, i am facing a compile time issue with cpp
+    // that is preventing me from using the real degree
+    let max = degrees.iter().max().unwrap();
     let num_degrees = degrees.len();
 
     let mut degree_boilerplate =
         format!("static constexpr std::array<size_t, {num_degrees}> SUBRELATION_LENGTHS{{\n");
-    for i in 0..degrees.len() {
-        degree_boilerplate.push_str(&format!("   {},\n", degrees[i]));
+    // for i in 0..degrees.len() {
+    //     degree_boilerplate.push_str(&format!("   {},\n", degrees[i]));
+    // }
+    for _ in 0..degrees.len() {
+        degree_boilerplate.push_str(&format!("   {},\n", max));
     }
     degree_boilerplate.push_str("};");
 
@@ -376,7 +386,7 @@ fn create_row_type_items(names: &Vec<String>) -> Vec<String> {
 fn get_all_col_names<F: FieldElement>(
     fixed: &[(&str, Vec<F>)],
     witness: &[(&str, Vec<F>)],
-) -> Vec<String> {
+) -> (Vec<String>, Vec<String>) {
     let fixed_names: Vec<String> = fixed.iter().map(|(name, _)| (*name).to_owned()).collect();
     let witness_names: Vec<String> = witness.iter().map(|(name, _)| (*name).to_owned()).collect();
 
@@ -386,10 +396,17 @@ fn get_all_col_names<F: FieldElement>(
         .collect();
 
     // h/t kev
-    [fixed_names, witness_names, shift_names]
+    let without_shifts = [fixed_names.clone(), witness_names.clone()]
         .into_iter()
         .flatten()
-        .collect()
+        .collect();
+
+    let with_shifts = [fixed_names, witness_names, shift_names]
+        .into_iter()
+        .flatten()
+        .collect();
+
+    (without_shifts, with_shifts)
 }
 
 // Each vm will need to have a row which is a combination of all of the witness columns

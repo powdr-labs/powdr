@@ -143,7 +143,7 @@ impl TraceBuilder for BBFiles {
             .flatten()
             .collect::<Vec<_>>();
 
-        let empty_row = build_empty_row(&all_names);
+        // let empty_row = build_empty_row(&all_names);
 
         let compute_polys_assignemnt = all_names
             .iter()
@@ -221,8 +221,6 @@ inline std::vector<Row> read_both_file_into_cols(
         std::cout << \"Error opening constant file\" << std::endl;
         return {{}};
     }}
-
-    {empty_row}
 
     // We are assuming that the two files are the same length
     while (commited_file) {{
