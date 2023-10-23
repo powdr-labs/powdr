@@ -8,7 +8,6 @@ use crate::witgen::rows::CellValue;
 use super::affine_expression::AffineExpression;
 use super::column_map::WitnessColumnMap;
 use super::global_constraints::GlobalConstraints;
-use super::identity_processor::IdentityProcessor;
 use super::machines::Machine;
 use super::processor::Processor;
 
@@ -104,7 +103,6 @@ impl<'a, T: FieldElement> Generator<'a, T> {
         // Note that using `Processor` instead of `VmProcessor` is more convenient here because
         // it does not assert that the row is "complete" afterwards (i.e., that all identities
         // are satisfied assuming 0 for unknown values).
-        let mut identity_processor = IdentityProcessor::new(self.fixed_data, mutable_state);
         let row_factory = RowFactory::new(self.fixed_data, self.global_range_constraints.clone());
         let data = vec![
             row_factory.fresh_row(self.fixed_data.degree - 1),
@@ -113,7 +111,7 @@ impl<'a, T: FieldElement> Generator<'a, T> {
         let mut processor = Processor::new(
             self.fixed_data.degree - 1,
             data,
-            &mut identity_processor,
+            mutable_state,
             &self.identities,
             self.fixed_data,
             row_factory,

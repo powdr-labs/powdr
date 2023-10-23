@@ -229,6 +229,14 @@ fn test_bit_access() {
 }
 
 #[test]
+fn test_sqrt() {
+    let f = "sqrt.asm";
+    verify_asm::<GoldilocksField>(f, Default::default());
+    gen_halo2_proof(f, Default::default());
+    gen_estark_proof(f, Default::default());
+}
+
+#[test]
 fn functional_instructions() {
     let f = "functional_instructions.asm";
     let i = [20];

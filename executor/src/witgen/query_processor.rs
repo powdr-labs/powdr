@@ -1,5 +1,5 @@
 use ast::{
-    analyzed::{Expression, PolynomialReference, Reference},
+    analyzed::{Expression, PolyID, PolynomialReference, Reference},
     parsed::{MatchArm, MatchPattern},
 };
 use number::FieldElement;
@@ -23,19 +23,20 @@ where
         }
     }
 
-    pub fn process_queries_on_current_row(
+    pub fn process_query(
         &mut self,
         rows: &RowPair<T>,
+        poly_id: &PolyID,
     ) -> EvalValue<&'a PolynomialReference, T> {
-        let mut eval_value = EvalValue::complete(vec![]);
-        for column in self.fixed_data.witness_cols.values() {
-            if let Some(query) = column.query.as_ref() {
-                if rows.get_value(&query.poly).is_none() {
-                    eval_value.combine(self.process_witness_query(query, rows));
-                }
+        let column = &self.fixed_data.witness_cols[poly_id];
+
+        if let Some(query) = column.query.as_ref() {
+            if rows.get_value(&query.poly).is_none() {
+                return self.process_witness_query(query, rows);
             }
         }
-        eval_value
+        // Either no query or the value is already known.
+        EvalValue::complete(vec![])
     }
 
     fn process_witness_query(

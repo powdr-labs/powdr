@@ -7,7 +7,7 @@ use super::affine_expression::AffineExpression;
 #[derive(Clone, Debug)]
 pub struct SequenceStep {
     pub row_delta: i64,
-    pub identity: IdentityInSequence,
+    pub action: Action,
 }
 
 /// Goes through all rows of the block machine (plus the ones before and after)
@@ -24,8 +24,9 @@ pub struct DefaultSequenceIterator {
     progress_in_current_round: bool,
     /// The current row delta index.
     cur_row_delta_index: usize,
-    /// The current identity index.
-    cur_identity_index: usize,
+    /// Index of the current action. Actions are:
+    /// [process identity 1, ..., process identity <identities_count>, process queries, process outer query (if on outer_query_row)]
+    cur_action_index: usize,
     /// The number of rounds for the current row delta.
     /// If this number gets too large, we will assume that we're in an infinite loop and exit.
     current_round_count: usize,
@@ -49,7 +50,7 @@ impl DefaultSequenceIterator {
             is_first: true,
             progress_in_current_round: false,
             cur_row_delta_index: 0,
-            cur_identity_index: 0,
+            cur_action_index: 0,
             current_round_count: 0,
             progress_steps: vec![],
         }
@@ -60,25 +61,25 @@ impl DefaultSequenceIterator {
     /// Otherwise, starts with identity 0 and moves to the next row if no progress was made.
     fn update_state(&mut self) {
         if !self.is_first {
-            if self.is_last_identity() {
+            if self.is_last_action() {
                 self.start_next_round();
             } else {
                 // Stay at row delta, move to next identity.
-                self.cur_identity_index += 1;
+                self.cur_action_index += 1;
             }
         }
         self.is_first = false;
     }
 
-    fn is_last_identity(&self) -> bool {
+    fn is_last_action(&self) -> bool {
         let row_delta = self.row_deltas[self.cur_row_delta_index];
         let is_on_row_with_outer_query = self.outer_query_row == Some(row_delta);
 
         if is_on_row_with_outer_query {
-            // In the last row, we want to process one more identity, the outer query.
-            self.cur_identity_index == self.identities_count
+            // In the last row, we want to do one more action, processing the outer query.
+            self.cur_action_index == self.identities_count + 1
         } else {
-            self.cur_identity_index == self.identities_count - 1
+            self.cur_action_index == self.identities_count
         }
     }
 
@@ -96,7 +97,7 @@ impl DefaultSequenceIterator {
             // Stay and current row delta, starting with identity 0.
             self.current_round_count += 1;
         }
-        self.cur_identity_index = 0;
+        self.cur_action_index = 0;
         self.progress_in_current_round = false;
     }
 
@@ -123,19 +124,20 @@ impl DefaultSequenceIterator {
     fn current_step(&self) -> SequenceStep {
         SequenceStep {
             row_delta: self.row_deltas[self.cur_row_delta_index],
-            identity: if self.cur_identity_index < self.identities_count {
-                IdentityInSequence::Internal(self.cur_identity_index)
-            } else {
-                IdentityInSequence::OuterQuery
+            action: match self.cur_action_index.cmp(&self.identities_count) {
+                std::cmp::Ordering::Less => Action::InternalIdentity(self.cur_action_index),
+                std::cmp::Ordering::Equal => Action::ProverQueries,
+                std::cmp::Ordering::Greater => Action::OuterQuery,
             },
         }
     }
 }
 
 #[derive(Clone, Copy, Debug)]
-pub enum IdentityInSequence {
-    Internal(usize),
+pub enum Action {
+    InternalIdentity(usize),
     OuterQuery,
+    ProverQueries,
 }
 
 #[derive(PartialOrd, Ord, PartialEq, Eq, Debug)]
