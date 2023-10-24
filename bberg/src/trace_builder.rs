@@ -3,18 +3,19 @@ use number::FieldElement;
 use crate::circuit_builder::BBFiles;
 
 pub trait TraceBuilder {
-    fn create_trace_builder_cpp<F: FieldElement>(
+    fn create_trace_builder_cpp(
         &mut self,
         name: &str,
-        fixed: &[(&str, Vec<F>)],
-        witness: &[(&str, Vec<F>)],
+        fixed: &Vec<String>,
+        witness: &Vec<String>,
+        to_be_shifted: &Vec<String>,
     ) -> String;
 
-    fn create_trace_builder_hpp<F: FieldElement>(
+    fn create_trace_builder_hpp(
         &mut self,
         name: &str,
-        fixed: &[(&str, Vec<F>)],
-        witness: &[(&str, Vec<F>)],
+        fixed: &Vec<String>,
+        shifted: &Vec<String>,
     ) -> String;
 }
 
@@ -51,7 +52,7 @@ fn trace_hpp_includes(name: &str) -> String {
     #include \"barretenberg/proof_system/arithmetization/arithmetization.hpp\"
     #include \"barretenberg/proof_system/circuit_builder/circuit_builder_base.hpp\"
     
-    #include \"./ExampleRelation_trace.cpp\"
+    #include \"./{name}_trace.cpp\"
     #include \"barretenberg/honk/flavor/generated/{name}_flavor.hpp\"
     #include \"barretenberg/proof_system/arithmetization/generated/{name}_arith.hpp\"
     #include \"barretenberg/proof_system/relations/generated/{name}.hpp\"
@@ -59,7 +60,7 @@ fn trace_hpp_includes(name: &str) -> String {
     )
 }
 
-fn build_shifts(fixed: Vec<String>) -> String {
+fn build_shifts(fixed: &Vec<String>) -> String {
     let shift_assign: Vec<String> = fixed
         .iter()
         .map(|name| format!("row.{name}_shift = rows[(i) % rows.size()].{name};"))
@@ -109,11 +110,12 @@ fn build_empty_row(all_cols: &Vec<String>) -> String {
 impl TraceBuilder for BBFiles {
     // Create trace builder
     // Generate some code that can read a commits.bin and constants.bin into data structures that bberg understands
-    fn create_trace_builder_cpp<F: FieldElement>(
+    fn create_trace_builder_cpp(
         &mut self,
         name: &str,
-        fixed: &[(&str, Vec<F>)],
-        witness: &[(&str, Vec<F>)],
+        fixed: &Vec<String>,
+        witness: &Vec<String>,
+        to_be_shifted: &Vec<String>,
     ) -> String {
         // We are assuming that the order of the columns in the trace file is the same as the order in the witness file
         let includes = trace_cpp_includes(&self.rel, &name);
@@ -124,14 +126,14 @@ impl TraceBuilder for BBFiles {
         let num_cols = fixed.len() + witness.len() * 2; // (2* as shifts)
         let fixed_name = fixed
             .iter()
-            .map(|(name, _)| {
+            .map(|name| {
                 let n = name.replace(".", "_");
                 n.to_string()
             })
             .collect::<Vec<_>>();
         let witness_name = witness
             .iter()
-            .map(|(name, _)| {
+            .map(|name| {
                 let n = name.replace(".", "_");
                 n.to_string()
             })
@@ -159,7 +161,7 @@ impl TraceBuilder for BBFiles {
 
         let fixed_rows = fixed
             .iter()
-            .map(|(name, _)| {
+            .map(|name| {
                 let n = name.replace(".", "_");
                 format!("current_row.{n} = read_field(constant_file);")
             })
@@ -177,7 +179,7 @@ impl TraceBuilder for BBFiles {
             .collect::<Vec<_>>()
             .join("\n");
 
-        let construct_shifts = build_shifts(witness_name);
+        let construct_shifts = build_shifts(to_be_shifted);
 
         // NOTE: can we assume that the witness filename etc will stay the same?
         let read_from_file_boilerplate = format!(
@@ -251,44 +253,24 @@ inline std::vector<Row> read_both_file_into_cols(
         read_from_file_boilerplate
     }
 
-    fn create_trace_builder_hpp<F: FieldElement>(
+    fn create_trace_builder_hpp(
         &mut self,
         name: &str,
-        fixed: &[(&str, Vec<F>)],
-        witness: &[(&str, Vec<F>)],
+        all_cols: &Vec<String>,
+        to_be_shifted: &Vec<String>,
     ) -> String {
         let includes = trace_hpp_includes(&name);
 
-        let num_polys = fixed.len() + witness.len();
-        let num_cols = fixed.len() + witness.len() * 2; // (2* as shifts)
-        let fixed_name = fixed
-            .iter()
-            .map(|(name, _)| {
-                let n = name.replace(".", "_");
-                n.to_string()
-            })
-            .collect::<Vec<_>>();
-        let witness_name = witness
-            .iter()
-            .map(|(name, _)| {
-                let n = name.replace(".", "_");
-                n.to_string()
-            })
-            .collect::<Vec<_>>();
+        let num_polys = all_cols.len();
+        let num_cols = all_cols.len() + to_be_shifted.len();
 
-        // TODO: remove the ol clones
-        let all_names = [fixed_name.clone(), witness_name.clone()]
-            .into_iter()
-            .flatten()
-            .collect::<Vec<_>>();
-
-        let compute_polys_assignemnt = all_names
+        let compute_polys_assignemnt = all_cols
             .iter()
             .map(|name| format!("polys.{name}[i] = rows[i].{name};",))
             .collect::<Vec<String>>()
             .join("\n");
 
-        let all_poly_shifts = &witness_name
+        let all_poly_shifts = &to_be_shifted
             .iter()
             .map(|name| format!("polys.{name}_shift = Polynomial(polys.{name}.shifted());"))
             .collect::<Vec<String>>()
@@ -342,8 +324,35 @@ class {name}TraceBuilder {{
             // Get the rows from file
             build_circuit();
 
-            // return evaluate_relation<{name}_vm::{name}<FF>, Row>(\"{name}\", rows);
-            return true; // TODO: ^ bring back above
+            auto polys = compute_polynomials();
+            const size_t num_rows = polys[0].size();
+
+            const auto evaluate_relation = [&]<typename Relation>(const std::string& relation_name) {{
+                typename Relation::ArrayOfValuesOverSubrelations result;
+                for (auto& r : result) {{
+                    r = 0;
+                }}
+                constexpr size_t NUM_SUBRELATIONS = result.size();
+
+                for (size_t i = 0; i < num_rows; ++i) {{
+                    Relation::accumulate(result, polys.get_row(i), {{}}, 1);
+
+                    bool x = true;
+                    for (size_t j = 0; j < NUM_SUBRELATIONS; ++j) {{
+                        if (result[j] != 0) {{
+                            info(\"Relation \", relation_name, \", subrelation index \", j, \" failed at row \", i);
+                            throw false;
+                            x = false;
+                        }}
+                    }}
+                    if (!x) {{
+                        return false;
+                    }}
+                }}
+                return true;
+            }};
+
+            return evaluate_relation.template operator()<{name}_vm::{name}<FF>>(\"{name}\");
         }}
 
         [[nodiscard]] size_t get_num_gates() const {{ return rows.size(); }}

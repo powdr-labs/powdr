@@ -1,3 +1,4 @@
+use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::{fmt::Display, io::Write, process::id};
 
@@ -180,10 +181,12 @@ pub(crate) fn analyzed_to_cpp<F: FieldElement>(
     fixed: &[(&str, Vec<F>)],
     witness: &[(&str, Vec<F>)],
 ) -> BBFiles {
-    let file_name: &str = "ExampleRelation";
+    let file_name: &str = "BrilligVM";
     let mut bb_files = BBFiles::default(file_name.to_owned());
 
-    let (all_cols, all_cols_with_shifts) = get_all_col_names(fixed, witness);
+    // Collect all column names and determine if they need a shift or not
+
+    // TODO: currently we provide shifts for both the fixed and witness columns, in the long term we need to work out what needs a shift and what doesn't
     let fixed_names = fixed
         .iter()
         .map(|(name, _)| (*name).to_owned())
@@ -193,28 +196,43 @@ pub(crate) fn analyzed_to_cpp<F: FieldElement>(
         .map(|(name, _)| (*name).to_owned())
         .collect::<Vec<_>>();
 
+    // Inlining step to remove the intermediate poly definitions
+    let analyzed_identities = inline_intermediate_polynomials(analyzed);
+
+    let (subrelations, identities, mut collected_shifts) = create_identities(&analyzed_identities);
+    let shifted_polys: Vec<String> = collected_shifts.drain().collect_vec();
+    dbg!(shifted_polys.clone());
+
+    let (all_cols, unshifted, to_be_shifted, shifted, all_cols_with_shifts) =
+        get_all_col_names(fixed, witness, &shifted_polys);
     let num_cols = all_cols_with_shifts.len();
 
     let row_type = create_row_type(&all_cols_with_shifts);
 
-    let (subrelations, identities) = create_identities(&analyzed.identities, &all_cols_with_shifts);
-
     // ----------------------- Create the relation file -----------------------
-    let relation_hpp = create_relation_hpp(file_name, &subrelations, &identities, &row_type); // TODO: do we need this
+    let relation_hpp = create_relation_hpp(
+        file_name,
+        &subrelations,
+        &identities,
+        &row_type,
+        &all_cols_with_shifts,
+    );
 
     // ----------------------- Create the arithmetization file -----------------------
     let arith_hpp = create_arith_boilerplate_file(file_name, num_cols);
 
     // ----------------------- Create the read from powdr columns file -----------------------
-    let trace_cpp = bb_files.create_trace_builder_cpp(file_name, fixed, witness);
-    let trace_hpp = bb_files.create_trace_builder_hpp(file_name, fixed, witness);
+    let trace_cpp =
+        bb_files.create_trace_builder_cpp(file_name, &fixed_names, &witness_names, &to_be_shifted);
+    let trace_hpp = bb_files.create_trace_builder_hpp(file_name, &all_cols, &to_be_shifted);
 
     // ----------------------- Create the flavor file -----------------------
     let flavor_hpp = flavor_builder::create_flavor_hpp(
         file_name,
-        &all_cols_with_shifts,
-        &fixed_names,
-        &witness_names,
+        &subrelations,
+        &unshifted,
+        &to_be_shifted,
+        // &shifted,
     );
 
     // ----------------------- Create the composer files -----------------------
@@ -226,18 +244,8 @@ pub(crate) fn analyzed_to_cpp<F: FieldElement>(
     let verifier_hpp = verifier_builder_hpp(file_name);
 
     // ----------------------- Create the verifier files -----------------------
-    let prover_cpp = prover_builder_cpp(file_name, &fixed_names, &witness_names);
+    let prover_cpp = prover_builder_cpp(file_name, &unshifted, &to_be_shifted);
     let prover_hpp = prover_builder_hpp(file_name);
-
-    // These are all of the exotic ish data structures we will need
-    // let mut lookups = vec![];
-    // let mut perms = vec![];
-    // let mut polys = vec![];
-
-    // // From all of the fixed and witness columns we have, we want to create the row object for bb
-
-    // // Note: we do not have lookups yet
-    // assert!(lookups.len() == 0, "lookups not implemented");
 
     bb_files.add_files(
         relation_hpp,
@@ -277,16 +285,21 @@ fn create_relation_hpp(
     sub_relations: &Vec<String>,
     identities: &Vec<BBIdentity>,
     row_type: &String,
+    all_rows_and_shifts: &Vec<String>,
 ) -> String {
     let includes = relation_includes();
     let class_boilerplate = relation_class_boilerplate(name, sub_relations, identities);
     let export = get_export(name);
+
+    let view_macro_preamble = get_cols_in_identity_macro(all_rows_and_shifts);
 
     format!(
         "{includes}
 namespace proof_system::{name}_vm {{
 
 {row_type};
+
+{view_macro_preamble}
 
 {class_boilerplate}
 
@@ -379,34 +392,66 @@ fn relation_includes() -> &'static str {
 fn create_row_type_items(names: &Vec<String>) -> Vec<String> {
     names
         .iter()
-        .map(|name| format!("    FF {};", name.replace(".", "_")))
+        .map(|name| format!("    FF {} {{}};", name.replace(".", "_")))
         .collect::<Vec<_>>()
 }
 
 fn get_all_col_names<F: FieldElement>(
     fixed: &[(&str, Vec<F>)],
     witness: &[(&str, Vec<F>)],
-) -> (Vec<String>, Vec<String>) {
-    let fixed_names: Vec<String> = fixed.iter().map(|(name, _)| (*name).to_owned()).collect();
-    let witness_names: Vec<String> = witness.iter().map(|(name, _)| (*name).to_owned()).collect();
-
-    let shift_names: Vec<String> = witness
+    to_be_shifted: &Vec<String>,
+) -> (
+    Vec<String>,
+    Vec<String>,
+    Vec<String>,
+    Vec<String>,
+    Vec<String>,
+) {
+    let fixed_names: Vec<String> = fixed
         .iter()
-        .map(|(name, _)| format!("{}_shift", *name))
+        .map(|(name, _)| {
+            let n = name.replace(".", "_");
+            n.to_owned()
+        })
+        .collect();
+    let witness_names: Vec<String> = witness
+        .iter()
+        .map(|(name, _)| {
+            let n = name.replace(".", "_");
+            n.to_owned()
+        })
         .collect();
 
-    // h/t kev
-    let without_shifts = [fixed_names.clone(), witness_names.clone()]
+    let shifted: Vec<String> = to_be_shifted
+        .iter()
+        .map(|name| format!("{}_shift", *name))
+        .collect();
+
+    let all_cols: Vec<String> = [fixed_names.clone(), witness_names.clone()]
         .into_iter()
         .flatten()
         .collect();
 
-    let with_shifts = [fixed_names, witness_names, shift_names]
+    dbg!(all_cols.clone());
+
+    let unshifted: Vec<String> = [fixed_names.clone(), witness_names.clone()]
+        .into_iter()
+        .flatten()
+        .filter(|name| !shifted.contains(name))
+        .collect();
+
+    let with_shifts: Vec<String> = [fixed_names, witness_names, shifted.clone()]
         .into_iter()
         .flatten()
         .collect();
 
-    (without_shifts, with_shifts)
+    (
+        all_cols,
+        unshifted,
+        to_be_shifted.clone(),
+        shifted,
+        with_shifts,
+    )
 }
 
 // Each vm will need to have a row which is a combination of all of the witness columns
@@ -422,33 +467,37 @@ fn create_row_type(all_rows: &Vec<String>) -> String {
     row_type
 }
 
-// Get the boiler plate to access rows
-fn get_cols_in_identity(row_index: usize, all_rows: &Vec<String>) -> String {
-    let template = format!(
-        "
-        using View = typename std::tuple_element<{}, ContainerOverSubrelations>::type;
-    ",
-        row_index
-    );
-    let col_accesses: Vec<String> = all_rows
+fn get_cols_in_identity_macro(all_rows_and_shifts: &Vec<String>) -> String {
+    let make_view_per_row = all_rows_and_shifts
         .iter()
-        .map(|col_name| {
-            let name = col_name.replace(".", "_");
-            format!(
-                "   [[maybe_unused]] auto {} = View(new_term.{});",
-                name, name
-            )
+        .map(|row_name| {
+            let name = row_name.replace(".", "_");
+            format!("[[maybe_unused]] auto {name} = View(new_term.{name});  \\")
         })
-        .collect();
+        .collect::<Vec<_>>()
+        .join("\n");
 
-    return template + &col_accesses.join("\n");
+    format!(
+        "
+    #define DECLARE_VIEWS(index) \
+        using View = typename std::tuple_element<index, ContainerOverSubrelations>::type; \
+        {make_view_per_row}
+
+    
+
+
+    "
+    )
 }
 
-fn create_identity<F: FieldElement>(expression: &SelectedExpressions<F>) -> Option<BBIdentity> {
+fn create_identity<F: FieldElement>(
+    expression: &SelectedExpressions<F>,
+    collected_shifts: &mut HashSet<String>,
+) -> Option<BBIdentity> {
     // We want to read the types of operators and then create the appropiate code
 
     if let Some(expr) = &expression.selector {
-        let x = craft_expression(&expr);
+        let x = craft_expression(&expr, collected_shifts);
         println!("{:?}", x);
         Some(x)
     } else {
@@ -456,39 +505,62 @@ fn create_identity<F: FieldElement>(expression: &SelectedExpressions<F>) -> Opti
     }
 }
 
-fn create_subrelation(index: usize, preamble: String, identity: &BBIdentity) -> String {
+// TODO: replace the preamble with a macro so the code looks nicer
+fn create_subrelation(index: usize, preamble: String, identity: &mut BBIdentity) -> String {
     // \\\
     let id = &identity.1;
+
+    // TODO: TEMP HACK: Part of the main_FIRST hack below - to switch off constraints on the first row
+    identity.0 += identity.0 + 1;
     format!(
         "//Contribution {index}
     {{\n{preamble}
     
     auto tmp = {id};
     tmp *= scaling_factor;
+    tmp *= main_FIRST; // Temp to switch off 
     std::get<{index}>(evals) += tmp;
 }}",
     )
 }
 
-fn craft_expression<T: FieldElement>(expr: &Expression<T>) -> BBIdentity {
+fn craft_expression<T: FieldElement>(
+    expr: &Expression<T>,
+    collected_shifts: &mut HashSet<String>,
+) -> BBIdentity {
     match expr {
         Expression::Number(n) => (1, format!("FF({})", n.to_arbitrary_integer())),
         Expression::Reference(Reference::Poly(polyref)) => {
             assert_eq!(polyref.index, None);
             let mut poly_name = format!("{}", &polyref.name.replace(".", "_"));
+            let mut degree = 1;
             if polyref.next {
+                // NOTE: Naive algorithm to collect all shifted polys
+                collected_shifts.insert(poly_name.clone());
+
                 poly_name = format!("{}_shift", poly_name);
+
+                // TODO(HORRIBLE): TEMP, add in a relation that turns off shifts on the last row
+                poly_name = format!("{poly_name} * (-main_LAST + FF(1))");
+                degree = degree + 1;
             }
-            (1, poly_name)
+            (degree, poly_name)
         }
         Expression::BinaryOperation(lhe, op, rhe) => {
-            let (ld, lhe) = craft_expression(lhe);
-            let (rd, rhe) = craft_expression(rhe);
+            let (ld, lhs) = craft_expression(lhe, collected_shifts);
+            let (rd, rhs) = craft_expression(rhe, collected_shifts);
+
+            // dbg!(&lhe);
             let degree = std::cmp::max(ld, rd);
             match op {
-                BinaryOperator::Add => (degree, format!("({} + {})", lhe, rhe)),
-                BinaryOperator::Sub => (degree, format!("({} - {})", lhe, rhe)),
-                BinaryOperator::Mul => (degree + 1, format!("({} * {})", lhe, rhe)),
+                BinaryOperator::Add => (degree, format!("({} + {})", lhs, rhs)),
+                BinaryOperator::Sub => match lhe.as_ref() {
+                    // BBerg hack, we do not want a field on the lhs of an expression
+                    Expression::Number(_) => (degree, format!("(-{} + {})", rhs, lhs)),
+                    _ => (degree, format!("({} - {})", lhs, rhs)),
+                },
+
+                BinaryOperator::Mul => (degree + 1, format!("({} * {})", lhs, rhs)),
                 _ => unimplemented!("{:?}", expr),
             }
         }
@@ -502,7 +574,7 @@ fn craft_expression<T: FieldElement>(expr: &Expression<T>) -> BBIdentity {
         // }
         Expression::UnaryOperation(operator, expression) => match operator {
             UnaryOperator::Minus => {
-                let (d, e) = craft_expression(expression);
+                let (d, e) = craft_expression(expression, collected_shifts);
                 (d, format!("-{}", e))
             }
             _ => unimplemented!("{:?}", expr),
@@ -518,8 +590,7 @@ type BBIdentity = (DegreeType, String);
 /// Todo, eventually these will need to be siloed based on the file name they are in
 fn create_identities<F: FieldElement>(
     identities: &Vec<Identity<F>>,
-    all_rows: &Vec<String>,
-) -> (Vec<String>, Vec<BBIdentity>) {
+) -> (Vec<String>, Vec<BBIdentity>, HashSet<String>) {
     // We only want the expressions for now
     // When we have a poly type, we only need the left side of it
     let expressions = identities
@@ -535,11 +606,17 @@ fn create_identities<F: FieldElement>(
 
     let mut identities = Vec::new();
     let mut subrelations = Vec::new();
+    let mut collected_shifts: HashSet<String> = HashSet::new();
+
     for (i, expression) in expressions.iter().enumerate() {
-        let relation_boilerplate = get_cols_in_identity(i, all_rows);
+        let relation_boilerplate = format!(
+            "DECLARE_VIEWS({i});
+        ",
+        );
         // TODO: deal with unwrap
-        let identity = create_identity(expression).unwrap();
-        let subrelation = create_subrelation(i, relation_boilerplate, &identity);
+
+        let mut identity = create_identity(expression, &mut collected_shifts).unwrap();
+        let subrelation = create_subrelation(i, relation_boilerplate, &mut identity);
 
         identities.push(identity);
 
@@ -547,5 +624,11 @@ fn create_identities<F: FieldElement>(
     }
 
     // Returning both for now
-    (subrelations, identities)
+    (subrelations, identities, collected_shifts)
 }
+
+//
+//    Row check_row = { .main_FIRST = 1, .main__block_enforcer_last_step = 1, .main_XIsZero = 1 };
+// rows.push_back(check_row);
+//
+//

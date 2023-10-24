@@ -3,44 +3,38 @@
 pub(crate) fn create_flavor_hpp(
     name: &str,
     relations: &Vec<String>,
-    fixed: &Vec<String>,
-    witness: &Vec<String>,
+    all_cols: &Vec<String>,
+    shifted: &Vec<String>,
+    // shifted: &Vec<String>,
 ) -> String {
     let includes = flavor_includes(name, &relations);
-    let num_fixed = fixed.len();
-    let num_witness = witness.len();
-    let num_wires = num_fixed + num_witness;
+    let num_witness = all_cols.len();
+    let num_all = num_witness + shifted.len();
     // Note: includes all witness shifts
     // TODO: for now we include a shift OF ALL witness wires, however this is not necessarily true
-    let num_entities = num_fixed + num_witness * 2;
 
-    let precomputed = witness_get(fixed, 0, false);
-    let witness_and_fixed = [&fixed[..], &witness[..]].concat();
-    let witness_str = create_witness_entities(&witness_and_fixed);
-    let all_witness = witness_get(&witness, num_fixed, false);
-    let all_shift = witness_get(&witness, num_fixed + num_witness, true);
+    let precomputed = witness_get(all_cols, 0, false);
+    let witness_str = create_witness_entities(&all_cols);
+    let all_shift = witness_get(&shifted, num_witness, true);
+
+    dbg!(&all_shift);
 
     let all_entities_get_wires = make_wires_set(
-        &[fixed.clone(), witness.clone()]
+        &[all_cols.clone(), shifted.clone()]
             .into_iter()
             .flatten()
             .collect::<Vec<String>>(),
     );
-    let all_entities_get_unshifted = make_wires_set(fixed);
-    let all_entities_get_to_be_shifted = make_wires_set(witness);
+    let all_entities_get_unshifted = make_wires_set(all_cols);
+    let all_entities_get_to_be_shifted = make_wires_set(shifted);
     let all_entities_get_shifted = make_wires_set(
-        &witness
+        &shifted
             .iter()
             .map(|w| format!("{}_shift", w))
             .collect::<Vec<String>>(),
     );
 
-    let commitment_labels_class = create_commitment_labels(
-        &[fixed.clone(), witness.clone()]
-            .into_iter()
-            .flatten()
-            .collect::<Vec<String>>(),
-    );
+    let commitment_labels_class = create_commitment_labels(&all_cols);
 
     let verification_commitments = create_verifier_commitments();
 
@@ -76,12 +70,11 @@ template <typename CycleGroup_T, typename Curve_T, typename PCS_T> class {name}F
         using CommitmentKey = pcs::CommitmentKey<Curve>;
         using VerifierCommitmentKey = pcs::VerifierCommitmentKey<Curve>;
 
-        static constexpr size_t NUM_WIRES = {num_wires};
-        static constexpr size_t NUM_FIXED_WIRES = {num_fixed};
+        static constexpr size_t NUM_WIRES = {num_witness};
         static constexpr size_t NUM_PRECOMPUTED_ENTITIES = 0; // This is zero for now
-        static constexpr size_t NUM_WITNESS_ENTITIES = {num_wires};
+        static constexpr size_t NUM_WITNESS_ENTITIES = {num_witness};
         // We have two copies of the witness entities, so we subtract the number of fixed ones (they have no shift), one for the unshifted and one for the shifted
-        static constexpr size_t NUM_ALL_ENTITIES = NUM_PRECOMPUTED_ENTITIES + NUM_FIXED_WIRES + ((NUM_WITNESS_ENTITIES - {num_fixed}) * 2);
+        static constexpr size_t NUM_ALL_ENTITIES = {num_all};
 
 
         // using GrandProductRelations = std::tuple<>;
@@ -119,7 +112,6 @@ template <typename CycleGroup_T, typename Curve_T, typename PCS_T> class {name}F
             public:
 
             {precomputed} 
-            {all_witness}
             {all_shift}
 
 
