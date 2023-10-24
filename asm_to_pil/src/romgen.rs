@@ -200,7 +200,9 @@ pub fn generate_machine_rom<T: FieldElement>(
             // replace the function by an operation
             *callable.symbol = OperationSymbol {
                 start: 0,
-                id: OperationId { id: operation_id },
+                id: OperationId {
+                    id: Some(operation_id),
+                },
                 params: Params {
                     inputs: operation_inputs,
                     outputs: operation_outputs,

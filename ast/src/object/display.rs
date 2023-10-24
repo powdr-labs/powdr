@@ -59,7 +59,7 @@ impl Display for Machine {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(
             f,
-            "object at location \"{}\" with latch \"{}\" and operation_id \"{}\"",
+            "object at location \"{}\" with latch \"{:?}\" and operation_id \"{:?}\"",
             self.location, self.latch, self.operation_id
         )
     }
@@ -69,8 +69,10 @@ impl<T: Display> Display for Operation<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(
             f,
-            "operation \"{}\" with id {} with params {}",
-            self.name, self.id, self.params,
+            "operation \"{}\" with id {:?} with params {}",
+            self.name,
+            self.id.as_ref().map(|id| id.to_string()),
+            self.params,
         )
     }
 }

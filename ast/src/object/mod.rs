@@ -72,9 +72,9 @@ pub struct Machine {
     /// the location of this instance
     pub location: Location,
     /// its latch
-    pub latch: String,
+    pub latch: Option<String>,
     /// its operation id
-    pub operation_id: String,
+    pub operation_id: Option<String>,
 }
 
 #[derive(Clone)]
@@ -82,7 +82,7 @@ pub struct Operation<T> {
     /// the name of the operation
     pub name: String,
     /// the value of the operation id of this machine which activates this operation
-    pub id: T,
+    pub id: Option<T>,
     /// the parameters
     pub params: Params,
 }

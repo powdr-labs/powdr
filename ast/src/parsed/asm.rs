@@ -251,7 +251,7 @@ impl Params {
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
 /// the operation id necessary to call this function from the outside
 pub struct OperationId<T> {
-    pub id: T,
+    pub id: Option<T>,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, PartialOrd, Ord)]

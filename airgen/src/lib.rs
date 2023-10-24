@@ -74,8 +74,8 @@ pub fn compile<T: FieldElement>(input: AnalysisASMFile<T>) -> PILGraph<T> {
     PILGraph {
         main: ast::object::Machine {
             location: main_location,
-            latch: main_ty.latch.clone().unwrap(),
-            operation_id: main_ty.operation_id.clone().unwrap(),
+            latch: main_ty.latch.clone(),
+            operation_id: main_ty.operation_id.clone(),
         },
         entry_points: main_ty
             .operations()
@@ -129,8 +129,6 @@ impl<'a, T: FieldElement> ASMPILConverter<'a, T> {
 
         // machines should only have constraints, operations and links at this point
         assert!(input.instructions.is_empty());
-        assert!(input.latch.is_some());
-        assert!(input.operation_id.is_some());
         assert!(input.registers.is_empty());
         assert!(input.callable.is_only_operations());
 
@@ -186,8 +184,8 @@ impl<'a, T: FieldElement> ASMPILConverter<'a, T> {
                 .map(|d| LinkTo {
                     machine: ast::object::Machine {
                         location: instance_location,
-                        latch: instance_ty.latch.clone().unwrap(),
-                        operation_id: instance_ty.operation_id.clone().unwrap(),
+                        latch: instance_ty.latch.clone(),
+                        operation_id: instance_ty.operation_id.clone(),
                     },
                     operation: Operation {
                         name: d.name.to_string(),
