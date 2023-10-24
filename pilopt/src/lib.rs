@@ -11,14 +11,10 @@ use ast::analyzed::{
 };
 use ast::parsed::visitor::ExpressionVisitable;
 use ast::parsed::UnaryOperator;
-use ast::{evaluate_binary_operation, evaluate_unary_operation};
 use number::FieldElement;
-use pil_analyzer::evaluator::compute_constants;
 
 pub fn optimize<T: FieldElement>(mut pil_file: Analyzed<T>) -> Analyzed<T> {
     let col_count_pre = (pil_file.commitment_count(), pil_file.constant_count());
-    inline_constant_values(&mut pil_file);
-    evaluate_constant_subtrees(&mut pil_file);
     remove_constant_fixed_columns(&mut pil_file);
     simplify_expressions(&mut pil_file);
     extract_constant_lookups(&mut pil_file);
@@ -34,50 +30,6 @@ pub fn optimize<T: FieldElement>(mut pil_file: Analyzed<T>) -> Analyzed<T> {
         col_count_post.1
     );
     pil_file
-}
-
-/// Just perform some very light optimizations: inlining constants and evaluating
-/// constant expressions.
-pub fn optimize_constants<T: FieldElement>(mut pil_file: Analyzed<T>) -> Analyzed<T> {
-    inline_constant_values(&mut pil_file);
-    evaluate_constant_subtrees(&mut pil_file);
-    pil_file
-}
-
-/// Inlines references to symbols with a single constant value.
-fn inline_constant_values<T: FieldElement>(pil_file: &mut Analyzed<T>) {
-    let constants = compute_constants(&pil_file.definitions, &pil_file.intermediate_columns);
-    let visitor = &mut |e: &mut Expression<_>| {
-        if let Expression::Reference(Reference::Poly(poly)) = e {
-            if !poly.next && poly.index.is_none() {
-                if let Some(value) = constants.get(&poly.name) {
-                    *e = Expression::Number(*value)
-                }
-            }
-        }
-    };
-    pil_file.post_visit_expressions_in_definitions_mut(visitor);
-    pil_file.post_visit_expressions_in_identities_mut(visitor);
-}
-
-/// Substitutes expression that evaluate to a constant value.
-fn evaluate_constant_subtrees<T: FieldElement>(pil_file: &mut Analyzed<T>) {
-    let visitor = &mut |e: &mut Expression<_>| match e {
-        Expression::BinaryOperation(left, op, right) => {
-            if let (Expression::Number(l), Expression::Number(r)) = (left.as_ref(), right.as_ref())
-            {
-                *e = Expression::Number(evaluate_binary_operation(*l, *op, *r))
-            }
-        }
-        Expression::UnaryOperation(op, sub) => {
-            if let Expression::Number(s) = sub.as_ref() {
-                *e = Expression::Number(evaluate_unary_operation(*op, *s))
-            }
-        }
-        _ => {}
-    };
-    pil_file.post_visit_expressions_in_definitions_mut(visitor);
-    pil_file.post_visit_expressions_in_identities_mut(visitor);
 }
 
 /// Identifies fixed columns that only have a single value, replaces every
@@ -104,10 +56,10 @@ fn remove_constant_fixed_columns<T: FieldElement>(pil_file: &mut Analyzed<T>) {
             name: _,
             index,
             next: _,
-            poly_id,
+            poly_id: Some(poly_id),
         })) = e
         {
-            if let Some(value) = constant_polys.get(&poly_id.unwrap()) {
+            if let Some(value) = constant_polys.get(poly_id) {
                 assert!(index.is_none());
                 *e = Expression::Number(*value);
             }
@@ -327,10 +279,10 @@ fn remove_constant_witness_columns<T: FieldElement>(pil_file: &mut Analyzed<T>) 
             name: _,
             index,
             next: _,
-            poly_id,
+            poly_id: Some(poly_id),
         })) = e
         {
-            if let Some(value) = constant_polys.get(&poly_id.unwrap()) {
+            if let Some(value) = constant_polys.get(poly_id) {
                 assert!(index.is_none());
                 *e = Expression::Number(*value);
             }
