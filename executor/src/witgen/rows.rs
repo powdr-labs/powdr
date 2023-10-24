@@ -95,9 +95,9 @@ impl<T: FieldElement> Debug for Cell<'_, T> {
         let debug_str = match &self.value {
             CellValue::Known(v) => format!("{} = {}", self.name, v),
             CellValue::RangeConstraint(rc) => {
-                format!("{} = <unknown>\n  (range constraint: {})", self.name, rc)
+                format!("{} = ?  (range constraint: {})", self.name, rc)
             }
-            CellValue::Unknown => format!("{} = <unknown>", self.name),
+            CellValue::Unknown => format!("{} = ?", self.name),
         };
         f.write_str(&debug_str)
     }
