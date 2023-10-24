@@ -5,11 +5,10 @@ use ast::parsed::SelectedExpressions;
 use itertools::Itertools;
 use num_traits::Zero;
 
-use super::{FixedLookup, Machine};
+use super::Machine;
 use crate::witgen::affine_expression::AffineExpression;
-use crate::witgen::identity_processor::Machines;
 use crate::witgen::util::is_simple_poly_of_name;
-use crate::witgen::{EvalResult, FixedData};
+use crate::witgen::{EvalResult, FixedData, MutableState, QueryCallback};
 use crate::witgen::{EvalValue, IncompleteCause};
 use number::{DegreeType, FieldElement};
 
@@ -93,13 +92,12 @@ impl<T: FieldElement> DoubleSortedWitnesses<T> {
 }
 
 impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses<T> {
-    fn process_plookup(
+    fn process_plookup<Q: QueryCallback<T>>(
         &mut self,
-        _fixed_lookup: &mut FixedLookup<T>,
+        _mutable_state: &mut MutableState<'a, '_, T, Q>,
         kind: IdentityKind,
         left: &[AffineExpression<&'a PolynomialReference, T>],
         right: &'a SelectedExpressions<Expression<T>>,
-        _machines: Machines<'a, '_, T>,
     ) -> Option<EvalResult<'a, T>> {
         if kind != IdentityKind::Permutation
             || !(is_simple_poly_of_name(right.selector.as_ref()?, &self.namespaced("m_is_read"))

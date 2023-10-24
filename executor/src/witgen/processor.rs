@@ -13,7 +13,7 @@ use super::{
     identity_processor::IdentityProcessor,
     rows::{Row, RowFactory, RowPair, RowUpdater, UnknownStrategy},
     sequence_iterator::{IdentityInSequence, ProcessingSequenceIterator, SequenceStep},
-    Constraints, EvalError, EvalValue, FixedData,
+    Constraints, EvalError, EvalValue, FixedData, QueryCallback,
 };
 
 type Left<'a, T> = Vec<AffineExpression<&'a PolynomialReference, T>>;
@@ -43,7 +43,7 @@ impl<'a, T: FieldElement> OuterQuery<'a, T> {
 /// - `'a`: The duration of the entire witness generation (e.g. references to identities)
 /// - `'b`: The duration of this machine's call (e.g. the mutable references of the other machines)
 /// - `'c`: The duration of this Processor's lifetime (e.g. the reference to the identity processor)
-pub struct Processor<'a, 'b, 'c, T: FieldElement, CalldataAvailable> {
+pub struct Processor<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>, CalldataAvailable> {
     /// The global index of the first row of [Processor::data].
     row_offset: u64,
     /// The rows that are being processed.
@@ -51,7 +51,7 @@ pub struct Processor<'a, 'b, 'c, T: FieldElement, CalldataAvailable> {
     /// The list of identities
     identities: &'c [&'a Identity<Expression<T>>],
     /// The identity processor
-    identity_processor: &'c mut IdentityProcessor<'a, 'b, T>,
+    identity_processor: &'c mut IdentityProcessor<'a, 'b, 'c, T, Q>,
     /// The fixed data (containing information about all columns)
     fixed_data: &'a FixedData<'a, T>,
     /// The row factory
@@ -63,11 +63,13 @@ pub struct Processor<'a, 'b, 'c, T: FieldElement, CalldataAvailable> {
     _marker: PhantomData<CalldataAvailable>,
 }
 
-impl<'a, 'b, 'c, T: FieldElement> Processor<'a, 'b, 'c, T, WithoutCalldata> {
+impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>>
+    Processor<'a, 'b, 'c, T, Q, WithoutCalldata>
+{
     pub fn new(
         row_offset: u64,
         data: Vec<Row<'a, T>>,
-        identity_processor: &'c mut IdentityProcessor<'a, 'b, T>,
+        identity_processor: &'c mut IdentityProcessor<'a, 'b, 'c, T, Q>,
         identities: &'c [&'a Identity<Expression<T>>],
         fixed_data: &'a FixedData<'a, T>,
         row_factory: RowFactory<'a, T>,
@@ -89,7 +91,7 @@ impl<'a, 'b, 'c, T: FieldElement> Processor<'a, 'b, 'c, T, WithoutCalldata> {
     pub fn with_outer_query(
         self,
         outer_query: OuterQuery<'a, T>,
-    ) -> Processor<'a, 'b, 'c, T, WithCalldata> {
+    ) -> Processor<'a, 'b, 'c, T, Q, WithCalldata> {
         Processor {
             outer_query: Some(outer_query),
             _marker: PhantomData,
@@ -108,14 +110,16 @@ impl<'a, 'b, 'c, T: FieldElement> Processor<'a, 'b, 'c, T, WithoutCalldata> {
     }
 }
 
-impl<'a, 'b, T: FieldElement> Processor<'a, 'b, '_, T, WithCalldata> {
+impl<'a, 'b, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, '_, T, Q, WithCalldata> {
     /// Destroys itself, returns the data and updated left-hand side of the outer query (if available).
     pub fn finish(self) -> (Vec<Row<'a, T>>, Left<'a, T>) {
         (self.data, self.outer_query.unwrap().left)
     }
 }
 
-impl<'a, 'b, T: FieldElement, CalldataAvailable> Processor<'a, 'b, '_, T, CalldataAvailable> {
+impl<'a, 'b, T: FieldElement, Q: QueryCallback<T>, CalldataAvailable>
+    Processor<'a, 'b, '_, T, Q, CalldataAvailable>
+{
     /// Evaluate all identities on all *non-wrapping* row pairs, assuming zero for unknown values.
     /// If any identity was unsatisfied, returns an error.
     #[allow(dead_code)]
@@ -297,11 +301,11 @@ mod tests {
     use crate::{
         constant_evaluator::generate,
         witgen::{
-            identity_processor::IdentityProcessor,
+            identity_processor::{IdentityProcessor, Machines},
             machines::FixedLookup,
             rows::RowFactory,
             sequence_iterator::{DefaultSequenceIterator, ProcessingSequenceIterator},
-            FixedData,
+            FixedData, MutableState, QueryCallback,
         },
     };
 
@@ -319,9 +323,10 @@ mod tests {
     }
 
     /// Constructs a processor for a given PIL, then calls a function on it.
-    fn do_with_processor<T: FieldElement, R>(
+    fn do_with_processor<T: FieldElement, Q: QueryCallback<T>, R>(
         src: &str,
-        f: impl Fn(&mut Processor<T, WithoutCalldata>, BTreeMap<String, PolyID>) -> R,
+        mut query_callback: Q,
+        f: impl Fn(&mut Processor<T, Q, WithoutCalldata>, BTreeMap<String, PolyID>) -> R,
     ) -> R {
         let analyzed = analyze_string(src);
         let (constants, degree) = generate(&analyzed);
@@ -329,7 +334,7 @@ mod tests {
 
         // No submachines
         let mut fixed_lookup = FixedLookup::default();
-        let machines = vec![];
+        let mut machines = vec![];
 
         // No global range constraints
         let global_range_constraints = fixed_data.witness_map_with(None);
@@ -338,8 +343,13 @@ mod tests {
         let data = (0..fixed_data.degree)
             .map(|i| row_factory.fresh_row(i))
             .collect();
-        let mut identity_processor =
-            IdentityProcessor::new(&fixed_data, &mut fixed_lookup, machines.into_iter().into());
+
+        let mut mutable_state = MutableState {
+            fixed_lookup: &mut fixed_lookup,
+            machines: Machines::from(machines.iter_mut()),
+            query_callback: &mut query_callback,
+        };
+        let mut identity_processor = IdentityProcessor::new(&fixed_data, &mut mutable_state);
         let row_offset = 0;
         let identities = analyzed.identities.iter().collect::<Vec<_>>();
         let witness_cols = fixed_data.witness_cols.keys().collect();
@@ -358,7 +368,8 @@ mod tests {
     }
 
     fn solve_and_assert<T: FieldElement>(src: &str, asserted_values: &[(usize, &str, u64)]) {
-        do_with_processor(src, |processor, poly_ids| {
+        let query_callback = |_: &str| -> Option<T> { None };
+        do_with_processor(src, query_callback, |processor, poly_ids| {
             let mut sequence_iterator =
                 ProcessingSequenceIterator::Default(DefaultSequenceIterator::new(
                     processor.data.len() - 2,
@@ -392,16 +403,16 @@ mod tests {
     fn test_fibonacci() {
         let src = r#"
             constant %N = 8;
-            
+
             namespace Fibonacci(%N);
                 col fixed ISFIRST = [1] + [0]*;
                 col fixed ISLAST = [0]* + [1];
                 col witness x, y;
-            
+
                 // Start with 1, 1
                 ISFIRST * (y - 1) = 0;
                 ISFIRST * (x - 1) = 0;
-            
+
                 (1-ISLAST) * (x' - y) = 0;
                 (1-ISLAST) * (y' - (x + y)) = 0;
         "#;

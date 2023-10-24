@@ -11,10 +11,8 @@ use number::FieldElement;
 use crate::witgen::machines::Machine;
 
 use super::{
-    affine_expression::AffineExpression,
-    machines::{FixedLookup, KnownMachine},
-    rows::RowPair,
-    EvalResult, EvalValue, FixedData, IncompleteCause,
+    affine_expression::AffineExpression, machines::KnownMachine, rows::RowPair, EvalResult,
+    EvalValue, FixedData, IncompleteCause, MutableState, QueryCallback,
 };
 
 /// A list of mutable references to machines.
@@ -49,6 +47,10 @@ impl<'a, 'b, T: FieldElement> Machines<'a, 'b, T> {
     pub fn len(&self) -> usize {
         self.machines.len()
     }
+
+    pub fn iter_mut(&'b mut self) -> impl Iterator<Item = &'b mut KnownMachine<'a, T>> {
+        self.machines.iter_mut().map(|m| &mut **m)
+    }
 }
 
 impl<'a, 'b, T, I> From<I> for Machines<'a, 'b, T>
@@ -64,22 +66,23 @@ where
 }
 
 /// Computes (value or range constraint) updates given a [RowPair] and [Identity].
-pub struct IdentityProcessor<'a, 'b, T: FieldElement> {
+/// The lifetimes mean the following:
+/// - `'a`: The duration of the entire witness generation (e.g. references to identities)
+/// - `'b`: The duration of this machine's call (e.g. the mutable references of the other machines)
+/// - `'c`: The duration of this IdentityProcessor's lifetime (e.g. the reference to the mutable state)
+pub struct IdentityProcessor<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> {
     fixed_data: &'a FixedData<'a, T>,
-    fixed_lookup: &'b mut FixedLookup<T>,
-    machines: Machines<'a, 'b, T>,
+    mutable_state: &'c mut MutableState<'a, 'b, T, Q>,
 }
 
-impl<'a, 'b, T: FieldElement> IdentityProcessor<'a, 'b, T> {
+impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> IdentityProcessor<'a, 'b, 'c, T, Q> {
     pub fn new(
         fixed_data: &'a FixedData<'a, T>,
-        fixed_lookup: &'b mut FixedLookup<T>,
-        machines: Machines<'a, 'b, T>,
+        mutable_state: &'c mut MutableState<'a, 'b, T, Q>,
     ) -> Self {
         Self {
             fixed_data,
-            fixed_lookup,
-            machines,
+            mutable_state,
         }
     }
 
@@ -153,7 +156,7 @@ impl<'a, 'b, T: FieldElement> IdentityProcessor<'a, 'b, T> {
         // TODO could it be that multiple machines match?
 
         // query the fixed lookup "machine"
-        if let Some(result) = self.fixed_lookup.process_plookup(
+        if let Some(result) = self.mutable_state.fixed_lookup.process_plookup(
             self.fixed_data,
             identity.kind,
             &left,
@@ -162,15 +165,17 @@ impl<'a, 'b, T: FieldElement> IdentityProcessor<'a, 'b, T> {
             return result;
         }
 
-        for i in 0..self.machines.len() {
-            let (current, others) = self.machines.split(i);
-            if let Some(result) = current.process_plookup(
-                self.fixed_lookup,
-                identity.kind,
-                &left,
-                &identity.right,
-                others,
-            ) {
+        for i in 0..self.mutable_state.machines.len() {
+            let (current, others) = self.mutable_state.machines.split(i);
+            let mut mutable_state = MutableState {
+                fixed_lookup: self.mutable_state.fixed_lookup,
+                machines: others,
+                query_callback: self.mutable_state.query_callback,
+            };
+
+            if let Some(result) =
+                current.process_plookup(&mut mutable_state, identity.kind, &left, &identity.right)
+            {
                 return result;
             }
         }

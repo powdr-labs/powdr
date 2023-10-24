@@ -80,7 +80,7 @@ impl<'a, T: FieldElement> VmProcessor<'a, T> {
 
     /// Starting out with a single row, iteratively append rows until we have degree + 1 rows
     /// (i.e., we have the first row twice).
-    pub fn run<Q: QueryCallback<T>>(&mut self, mutable_state: &mut MutableState<'a, T, Q>) {
+    pub fn run<Q: QueryCallback<T>>(&mut self, mutable_state: &mut MutableState<'a, '_, T, Q>) {
         assert!(self.data.len() == 1);
 
         // Are we in an infinite loop and can just re-use the old values?
@@ -157,19 +157,9 @@ impl<'a, T: FieldElement> VmProcessor<'a, T> {
     fn compute_row<Q: QueryCallback<T>>(
         &mut self,
         row_index: DegreeType,
-        mutable_state: &mut MutableState<'a, T, Q>,
+        mutable_state: &mut MutableState<'a, '_, T, Q>,
     ) {
         log::trace!("Row: {}", row_index);
-
-        let mut identity_processor = IdentityProcessor::new(
-            self.fixed_data,
-            &mut mutable_state.fixed_lookup,
-            mutable_state.machines.iter_mut().into(),
-        );
-        let mut query_processor = mutable_state
-            .query_callback
-            .as_mut()
-            .map(|query| QueryProcessor::new(self.fixed_data, query));
 
         log::trace!("  Going over all identities until no more progress is made");
         // First, go over identities that don't reference the next row,
@@ -178,26 +168,17 @@ impl<'a, T: FieldElement> VmProcessor<'a, T> {
             CompletableIdentities::new(self.identities_without_next_ref.iter().cloned());
         let mut identities_with_next_ref =
             CompletableIdentities::new(self.identities_with_next_ref.iter().cloned());
-        self.loop_until_no_progress(
-            row_index,
-            &mut identities_without_next_ref,
-            &mut identity_processor,
-            &mut query_processor,
-        )
-        .and_then(|_| {
-            self.loop_until_no_progress(
-                row_index,
-                &mut identities_with_next_ref,
-                &mut identity_processor,
-                &mut query_processor,
-            )
-        })
-        .map_err(|e| self.report_failure_and_panic_unsatisfiable(row_index, e))
-        .unwrap();
+        self.loop_until_no_progress(row_index, &mut identities_without_next_ref, mutable_state)
+            .and_then(|_| {
+                self.loop_until_no_progress(row_index, &mut identities_with_next_ref, mutable_state)
+            })
+            .map_err(|e| self.report_failure_and_panic_unsatisfiable(row_index, e))
+            .unwrap();
 
         // Check that the computed row is "final" by asserting that all unknown values can
         // be set to 0.
         log::trace!("  Checking that remaining identities hold when unknown values are set to 0");
+        let mut identity_processor = IdentityProcessor::new(self.fixed_data, mutable_state);
         self.process_identities(
             row_index,
             &mut identities_without_next_ref,
@@ -228,30 +209,30 @@ impl<'a, T: FieldElement> VmProcessor<'a, T> {
         &mut self,
         row_index: DegreeType,
         identities: &mut CompletableIdentities<'a, T>,
-        identity_processor: &mut IdentityProcessor<'a, '_, T>,
-        query_processor: &mut Option<QueryProcessor<'a, '_, T, Q>>,
+        mutable_state: &mut MutableState<'a, '_, T, Q>,
     ) -> Result<(), Vec<EvalError<T>>>
     where
         Q: FnMut(&str) -> Option<T> + Send + Sync,
     {
         loop {
+            let mut identity_processor = IdentityProcessor::new(self.fixed_data, mutable_state);
             let mut progress = self.process_identities(
                 row_index,
                 identities,
                 UnknownStrategy::Unknown,
-                identity_processor,
+                &mut identity_processor,
             )?;
-            if let Some(query_processor) = query_processor.as_mut() {
-                let row_pair = RowPair::new(
-                    self.row(row_index),
-                    self.row(row_index + 1),
-                    row_index,
-                    self.fixed_data,
-                    UnknownStrategy::Unknown,
-                );
-                let updates = query_processor.process_queries_on_current_row(&row_pair);
-                progress |= self.apply_updates(row_index, &updates, || "query".to_string());
-            }
+            let mut query_processor =
+                QueryProcessor::new(self.fixed_data, mutable_state.query_callback);
+            let row_pair = RowPair::new(
+                self.row(row_index),
+                self.row(row_index + 1),
+                row_index,
+                self.fixed_data,
+                UnknownStrategy::Unknown,
+            );
+            let updates = query_processor.process_queries_on_current_row(&row_pair);
+            progress |= self.apply_updates(row_index, &updates, || "query".to_string());
 
             if !progress {
                 break;
@@ -268,12 +249,12 @@ impl<'a, T: FieldElement> VmProcessor<'a, T> {
     /// * `Ok(true)`: If progress was made.
     /// * `Ok(false)`: If no progress was made.
     /// * `Err(errors)`: If an error occurred.
-    fn process_identities(
+    fn process_identities<Q: QueryCallback<T>>(
         &mut self,
         row_index: DegreeType,
         identities: &mut CompletableIdentities<'a, T>,
         unknown_strategy: UnknownStrategy,
-        identity_processor: &mut IdentityProcessor<'a, '_, T>,
+        identity_processor: &mut IdentityProcessor<'a, '_, '_, T, Q>,
     ) -> Result<bool, Vec<EvalError<T>>> {
         let mut progress = false;
         let mut errors = vec![];
@@ -410,20 +391,17 @@ impl<'a, T: FieldElement> VmProcessor<'a, T> {
     /// Verifies the proposed values for the next row.
     /// TODO this is bad for machines because we might introduce rows in the machine that are then
     /// not used.
-    fn try_proposed_row<Q: QueryCallback<T>>(
+    fn try_proposed_row<'b, Q: QueryCallback<T>>(
         &mut self,
         row_index: DegreeType,
         proposed_row: Row<'a, T>,
-        mutable_state: &mut MutableState<'a, T, Q>,
+        mutable_state: &mut MutableState<'a, 'b, T, Q>,
     ) -> bool {
-        let mut identity_processor = IdentityProcessor::new(
-            self.fixed_data,
-            &mut mutable_state.fixed_lookup,
-            mutable_state.machines.iter_mut().into(),
-        );
-        let constraints_valid =
+        let constraints_valid = {
+            let mut identity_processor = IdentityProcessor::new(self.fixed_data, mutable_state);
             self.check_row_pair(row_index, &proposed_row, false, &mut identity_processor)
-                && self.check_row_pair(row_index, &proposed_row, true, &mut identity_processor);
+                && self.check_row_pair(row_index, &proposed_row, true, &mut identity_processor)
+        };
 
         if constraints_valid {
             if row_index as usize == self.data.len() - 1 {
@@ -445,12 +423,12 @@ impl<'a, T: FieldElement> VmProcessor<'a, T> {
         constraints_valid
     }
 
-    fn check_row_pair(
+    fn check_row_pair<Q: QueryCallback<T>>(
         &self,
         row_index: DegreeType,
         proposed_row: &Row<'a, T>,
         previous: bool,
-        identity_processor: &mut IdentityProcessor<'a, '_, T>,
+        identity_processor: &mut IdentityProcessor<'a, '_, '_, T, Q>,
     ) -> bool {
         let row_pair = match previous {
             // Check whether identities with a reference to the next row are satisfied
