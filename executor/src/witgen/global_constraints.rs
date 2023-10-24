@@ -182,7 +182,9 @@ fn propagate_constraints<T: FieldElement>(
                 // We can only remove the lookup if the RHS is a fixed polynomial that
                 // provides all values in the span.
                 if let Some(name) = try_to_simple_poly(&identity.right.expressions[0]) {
-                    if full_span.contains(&name.poly_id()) {
+                    if try_to_simple_poly(&identity.left.expressions[0]).is_some()
+                        && full_span.contains(&name.poly_id())
+                    {
                         remove = true;
                     }
                 }
@@ -399,5 +401,29 @@ namespace Global(2**20);
             .into_iter()
             .collect::<BTreeMap<_, _>>()
         );
+    }
+
+    #[test]
+    fn test_no_remove_identity() {
+        // There used to be a bug where the lookup would be removed because the code
+        // incorrectly determined it to be a pure range constraint, but it would actually not
+        // be able to derive the full constraint.
+        let pil_source = r"
+namespace Global(1024);
+    let bytes = |i| i % 256;
+    let X;
+    { X * 4 } in { bytes };
+";
+        let analyzed = pil_analyzer::analyze_string::<GoldilocksField>(pil_source);
+        let known_constraints = vec![(constant_poly_id(0), RangeConstraint::from_max_bit(7))]
+            .into_iter()
+            .collect();
+        assert_eq!(analyzed.identities.len(), 1);
+        let (_, removed) = propagate_constraints(
+            known_constraints,
+            analyzed.identities.first().unwrap(),
+            &Default::default(),
+        );
+        assert!(!removed);
     }
 }
