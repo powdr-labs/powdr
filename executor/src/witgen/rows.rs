@@ -13,7 +13,7 @@ use super::{
     affine_expression::{AffineExpression, AffineResult},
     column_map::WitnessColumnMap,
     expression_evaluator::ExpressionEvaluator,
-    global_constraints::RangeConstraintSet,
+    global_constraints::{GlobalConstraints, RangeConstraintSet},
     range_constraints::RangeConstraint,
     symbolic_witness_evaluator::{SymoblicWitnessEvaluator, WitnessColumnEvaluator},
     EvalValue, FixedData,
@@ -179,13 +179,13 @@ pub fn transpose_rows<T: FieldElement>(
 #[derive(Clone)]
 pub struct RowFactory<'a, T: FieldElement> {
     fixed_data: &'a FixedData<'a, T>,
-    global_range_constraints: WitnessColumnMap<Option<RangeConstraint<T>>>,
+    global_range_constraints: GlobalConstraints<T>,
 }
 
 impl<'a, T: FieldElement> RowFactory<'a, T> {
     pub fn new(
         fixed_data: &'a FixedData<'a, T>,
-        global_range_constraints: WitnessColumnMap<Option<RangeConstraint<T>>>,
+        global_range_constraints: GlobalConstraints<T>,
     ) -> Self {
         Self {
             fixed_data,
@@ -194,22 +194,25 @@ impl<'a, T: FieldElement> RowFactory<'a, T> {
     }
 
     pub fn fresh_row(&self, row: DegreeType) -> Row<'a, T> {
-        WitnessColumnMap::from(self.global_range_constraints.iter().map(
-            |(poly_id, range_constraint)| {
-                let name = self.fixed_data.column_name(&poly_id);
-                let value = match (
-                    self.fixed_data.external_witness(row, &poly_id),
-                    range_constraint.as_ref(),
-                ) {
-                    (Some(external_witness), _) => CellValue::Known(external_witness),
-                    (None, Some(range_constraint)) => {
-                        CellValue::RangeConstraint(range_constraint.clone())
-                    }
-                    (None, None) => CellValue::Unknown,
-                };
-                Cell { name, value }
-            },
-        ))
+        WitnessColumnMap::from(
+            self.global_range_constraints
+                .witness_constraints
+                .iter()
+                .map(|(poly_id, range_constraint)| {
+                    let name = self.fixed_data.column_name(&poly_id);
+                    let value = match (
+                        self.fixed_data.external_witness(row, &poly_id),
+                        range_constraint.as_ref(),
+                    ) {
+                        (Some(external_witness), _) => CellValue::Known(external_witness),
+                        (None, Some(range_constraint)) => {
+                            CellValue::RangeConstraint(range_constraint.clone())
+                        }
+                        (None, None) => CellValue::Unknown,
+                    };
+                    Cell { name, value }
+                }),
+        )
     }
 }
 

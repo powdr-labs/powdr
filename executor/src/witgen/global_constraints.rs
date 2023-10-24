@@ -8,6 +8,8 @@ use ast::analyzed::{
 use ast::parsed::BinaryOperator;
 use number::FieldElement;
 
+use crate::witgen::column_map::FixedColumnMap;
+
 use super::column_map::WitnessColumnMap;
 use super::expression_evaluator::ExpressionEvaluator;
 use super::range_constraints::RangeConstraint;
@@ -33,19 +35,20 @@ impl<'a, T: FieldElement> RangeConstraintSet<&PolynomialReference, T>
     }
 }
 
-pub struct GlobalConstraints<'a, T: FieldElement> {
-    pub known_witness_constraints: WitnessColumnMap<Option<RangeConstraint<T>>>,
-    pub retained_identities: Vec<&'a Identity<Expression<T>>>,
+#[derive(Clone)]
+pub struct GlobalConstraints<T: FieldElement> {
+    pub witness_constraints: WitnessColumnMap<Option<RangeConstraint<T>>>,
+    pub fixed_constraints: FixedColumnMap<Option<RangeConstraint<T>>>,
 }
 
 /// Determines global constraints on witness and fixed columns.
 /// Removes identities that only serve to create range constraints from
-/// the identities vector.
+/// the identities vector and returns the remaining identities.
 /// TODO at some point, we should check that they still hold.
 pub fn determine_global_constraints<'a, T: FieldElement>(
     fixed_data: &'a FixedData<T>,
     identities: Vec<&'a Identity<Expression<T>>>,
-) -> GlobalConstraints<'a, T> {
+) -> (GlobalConstraints<T>, Vec<&'a Identity<Expression<T>>>) {
     let mut known_constraints = BTreeMap::new();
     // For these columns, we know that they are not only constrained to those bits
     // but also have one row for each possible value.
@@ -59,6 +62,10 @@ pub fn determine_global_constraints<'a, T: FieldElement>(
             }
         }
     }
+    let fixed_constraints = FixedColumnMap::from_indexed(
+        known_constraints.iter().map(|(p, c)| (*p, Some(c.clone()))),
+        fixed_data.fixed_cols.len(),
+    );
 
     let mut retained_identities = vec![];
     let mut removed_identities = vec![];
@@ -86,24 +93,27 @@ pub fn determine_global_constraints<'a, T: FieldElement>(
         log::debug!("  {id}");
     }
 
-    let mut known_witness_constraints: WitnessColumnMap<Option<RangeConstraint<T>>> =
+    let mut witness_constraints: WitnessColumnMap<Option<RangeConstraint<T>>> =
         fixed_data.witness_map_with(None);
     for (poly_id, con) in known_constraints {
         if poly_id.ptype == PolynomialType::Committed {
             // It's theoretically possible to have a constraint for both X and X'.
             // In that case, we take the conjunction.
-            let con = known_witness_constraints[&poly_id]
+            let con = witness_constraints[&poly_id]
                 .as_ref()
                 .map(|existing_con| existing_con.conjunction(&con))
                 .unwrap_or(con);
-            known_witness_constraints[&poly_id] = Some(con);
+            witness_constraints[&poly_id] = Some(con);
         }
     }
 
-    GlobalConstraints {
-        known_witness_constraints,
+    (
+        GlobalConstraints {
+            witness_constraints,
+            fixed_constraints,
+        },
         retained_identities,
-    }
+    )
 }
 
 /// Analyzes a fixed column and checks if its values correspond exactly

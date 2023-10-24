@@ -2,15 +2,14 @@ use std::collections::{HashMap, HashSet};
 
 use super::{EvalResult, FixedData};
 use crate::witgen::affine_expression::AffineExpression;
-use crate::witgen::column_map::WitnessColumnMap;
+
+use crate::witgen::global_constraints::GlobalConstraints;
 use crate::witgen::identity_processor::IdentityProcessor;
 use crate::witgen::processor::{OuterQuery, Processor};
 use crate::witgen::rows::{transpose_rows, CellValue, Row, RowFactory, RowPair, UnknownStrategy};
 use crate::witgen::sequence_iterator::{ProcessingSequenceCache, ProcessingSequenceIterator};
 use crate::witgen::util::try_to_simple_poly;
-use crate::witgen::{
-    machines::Machine, range_constraints::RangeConstraint, EvalError, EvalValue, IncompleteCause,
-};
+use crate::witgen::{machines::Machine, EvalError, EvalValue, IncompleteCause};
 use crate::witgen::{Constraints, MutableState, QueryCallback};
 use ast::analyzed::{Expression, Identity, IdentityKind, PolyID, PolynomialReference};
 use ast::parsed::SelectedExpressions;
@@ -59,7 +58,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         connecting_identities: &[&'a Identity<Expression<T>>],
         identities: &[&'a Identity<Expression<T>>],
         witness_cols: &HashSet<PolyID>,
-        global_range_constraints: &WitnessColumnMap<Option<RangeConstraint<T>>>,
+        global_range_constraints: &GlobalConstraints<T>,
     ) -> Option<Self> {
         for id in connecting_identities {
             // TODO we should check that the other constraints/fixed columns are also periodic.
