@@ -11,7 +11,7 @@ pub use self::eval_result::{
     Constraint, Constraints, EvalError, EvalResult, EvalStatus, EvalValue, IncompleteCause,
 };
 use self::generator::Generator;
-use self::global_constraints::GlobalConstraints;
+
 use self::identity_processor::Machines;
 use self::machines::machine_extractor::ExtractionOutput;
 use self::machines::{FixedLookup, Machine};
@@ -95,13 +95,12 @@ impl<'a, 'b, T: FieldElement, Q: QueryCallback<T>> WitnessGenerator<'a, 'b, T, Q
         );
         let identities = inline_intermediate_polynomials(self.analyzed);
 
-        let GlobalConstraints {
-            // Maps a polynomial to a mask specifying which bit is possibly set,
-            known_witness_constraints,
+        let (
+            constraints,
             // Removes identities like X * (X - 1) = 0 or { A } in { BYTES }
             // These are already captured in the range constraints.
             retained_identities,
-        } = global_constraints::determine_global_constraints(&fixed, identities.iter().collect());
+        ) = global_constraints::determine_global_constraints(&fixed, identities.iter().collect());
         let ExtractionOutput {
             mut fixed_lookup,
             mut machines,
@@ -110,7 +109,7 @@ impl<'a, 'b, T: FieldElement, Q: QueryCallback<T>> WitnessGenerator<'a, 'b, T, Q
         } = machines::machine_extractor::split_out_machines(
             &fixed,
             retained_identities,
-            &known_witness_constraints,
+            &constraints,
         );
         let mut query_callback = self.query_callback;
         let mut mutable_state = MutableState {
@@ -118,12 +117,7 @@ impl<'a, 'b, T: FieldElement, Q: QueryCallback<T>> WitnessGenerator<'a, 'b, T, Q
             machines: Machines::from(machines.iter_mut()),
             query_callback: &mut query_callback,
         };
-        let mut generator = Generator::new(
-            &fixed,
-            &base_identities,
-            base_witnesses,
-            &known_witness_constraints,
-        );
+        let mut generator = Generator::new(&fixed, &base_identities, base_witnesses, &constraints);
 
         generator.run(&mut mutable_state);
 

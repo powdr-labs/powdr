@@ -7,10 +7,10 @@ use crate::witgen::rows::CellValue;
 
 use super::affine_expression::AffineExpression;
 use super::column_map::WitnessColumnMap;
+use super::global_constraints::GlobalConstraints;
 use super::identity_processor::IdentityProcessor;
 use super::machines::Machine;
 use super::processor::Processor;
-use super::range_constraints::RangeConstraint;
 
 use super::rows::{transpose_rows, Row, RowFactory};
 use super::sequence_iterator::{DefaultSequenceIterator, ProcessingSequenceIterator};
@@ -21,7 +21,7 @@ pub struct Generator<'a, T: FieldElement> {
     fixed_data: &'a FixedData<'a, T>,
     identities: Vec<&'a Identity<Expression<T>>>,
     witnesses: HashSet<PolyID>,
-    global_range_constraints: WitnessColumnMap<Option<RangeConstraint<T>>>,
+    global_range_constraints: GlobalConstraints<T>,
     data: Vec<Row<'a, T>>,
 }
 
@@ -54,7 +54,7 @@ impl<'a, T: FieldElement> Generator<'a, T> {
         fixed_data: &'a FixedData<'a, T>,
         identities: &[&'a Identity<Expression<T>>],
         witnesses: HashSet<PolyID>,
-        global_range_constraints: &WitnessColumnMap<Option<RangeConstraint<T>>>,
+        global_range_constraints: &GlobalConstraints<T>,
     ) -> Self {
         Self {
             fixed_data,

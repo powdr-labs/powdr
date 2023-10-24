@@ -58,6 +58,23 @@ impl<V, T: PolynomialTypeTrait> ColumnMap<V, T> {
         }
     }
 
+    /// Creates a ColumnMap from an iterator over PolyIDs and values.
+    pub fn from_indexed(items: impl Iterator<Item = (PolyID, V)>, len: usize) -> Self
+    where
+        V: Default,
+    {
+        let mut values: Vec<V> = (0..len).map(|_| V::default()).collect();
+        for (poly, value) in items {
+            values[poly.id as usize] = value;
+            assert_eq!(poly.ptype, T::ptype());
+        }
+
+        ColumnMap {
+            values,
+            _ptype: PhantomData,
+        }
+    }
+
     pub fn keys(&self) -> impl Iterator<Item = PolyID> {
         (0..self.values.len()).map(move |i| PolyID {
             id: i as u64,

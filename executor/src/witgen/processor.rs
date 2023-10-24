@@ -301,6 +301,8 @@ mod tests {
     use crate::{
         constant_evaluator::generate,
         witgen::{
+            column_map::FixedColumnMap,
+            global_constraints::GlobalConstraints,
             identity_processor::{IdentityProcessor, Machines},
             machines::FixedLookup,
             rows::RowFactory,
@@ -337,7 +339,10 @@ mod tests {
         let mut machines = vec![];
 
         // No global range constraints
-        let global_range_constraints = fixed_data.witness_map_with(None);
+        let global_range_constraints = GlobalConstraints {
+            witness_constraints: fixed_data.witness_map_with(None),
+            fixed_constraints: FixedColumnMap::new(None, fixed_data.fixed_cols.len()),
+        };
 
         let row_factory = RowFactory::new(&fixed_data, global_range_constraints);
         let data = (0..fixed_data.degree)

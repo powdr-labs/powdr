@@ -6,9 +6,8 @@ use super::fixed_lookup_machine::FixedLookup;
 use super::sorted_witness_machine::SortedWitnesses;
 use super::FixedData;
 use super::KnownMachine;
-use crate::witgen::{
-    column_map::WitnessColumnMap, generator::Generator, range_constraints::RangeConstraint,
-};
+use crate::witgen::generator::Generator;
+use crate::witgen::global_constraints::GlobalConstraints;
 use ast::analyzed::{Expression, Identity, IdentityKind, PolyID, Reference};
 use ast::parsed::visitor::ExpressionVisitable;
 use ast::parsed::SelectedExpressions;
@@ -28,7 +27,7 @@ pub struct ExtractionOutput<'a, T: FieldElement> {
 pub fn split_out_machines<'a, T: FieldElement>(
     fixed: &'a FixedData<'a, T>,
     identities: Vec<&'a Identity<Expression<T>>>,
-    global_range_constraints: &WitnessColumnMap<Option<RangeConstraint<T>>>,
+    global_range_constraints: &GlobalConstraints<T>,
 ) -> ExtractionOutput<'a, T> {
     let fixed_lookup = FixedLookup::try_new(fixed, &[], &Default::default()).unwrap();
 
