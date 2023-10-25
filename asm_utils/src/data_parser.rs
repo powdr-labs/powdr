@@ -91,13 +91,15 @@ fn extract_data_value<R: Register, F: FunctionOpKind>(
     arguments: &[Argument<R, F>],
 ) -> Vec<DataValue> {
     match (directive, arguments) {
+        (".zero", [Argument::Expression(Expression::Number(n))]) => {
+            vec![DataValue::Zero(*n as usize)]
+        }
         (
             ".zero",
-            [Argument::Expression(Expression::Number(n))]
-            // TODO not clear what the second argument is
-            | [Argument::Expression(Expression::Number(n)), _],
+            [Argument::Expression(Expression::Number(n)), Argument::Expression(Expression::Number(value))],
         ) => {
-            vec![DataValue::Zero(*n as usize)]
+            assert!(0 <= *value && *value <= 0xff);
+            vec![DataValue::Direct(vec![*value as u8; *n as usize])]
         }
         (".ascii", [Argument::StringLiteral(data)]) => {
             vec![DataValue::Direct(data.clone())]
@@ -107,38 +109,34 @@ fn extract_data_value<R: Register, F: FunctionOpKind>(
             data.push(0);
             vec![DataValue::Direct(data)]
         }
-        (".word", data) => {
-            data
-                    .iter()
-                    .map(|x| {
-                        match x {
-                            Argument::Expression(Expression::Number(n)) =>{
-                                let n = *n as u32;
-                                DataValue::Direct(vec![
-                                    (n & 0xff) as u8,
-                                    (n >> 8 & 0xff) as u8,
-                                    (n >> 16 & 0xff) as u8,
-                                    (n >> 24 & 0xff) as u8,
-                                ])
-                            }
-                            Argument::Expression(Expression::Symbol(sym)) => {
-                                DataValue::Reference(sym.clone())
-                            }
-                            Argument::Expression(
-                                Expression::BinaryOp(BinaryOpKind::Sub, args)
-                            ) => match args.as_slice() {
-                                [Expression::Symbol(a), Expression::Symbol(b)] => DataValue::Offset(a.to_string(), b.to_string()),
-                                _ => panic!("Invalid .word directive")
-                            }
-                            _ => panic!("Invalid .word directive")
+        (".word", data) => data
+            .iter()
+            .map(|x| match x {
+                Argument::Expression(Expression::Number(n)) => {
+                    let n = *n as u32;
+                    DataValue::Direct(vec![
+                        (n & 0xff) as u8,
+                        (n >> 8 & 0xff) as u8,
+                        (n >> 16 & 0xff) as u8,
+                        (n >> 24 & 0xff) as u8,
+                    ])
+                }
+                Argument::Expression(Expression::Symbol(sym)) => DataValue::Reference(sym.clone()),
+                Argument::Expression(Expression::BinaryOp(BinaryOpKind::Sub, args)) => {
+                    match args.as_slice() {
+                        [Expression::Symbol(a), Expression::Symbol(b)] => {
+                            DataValue::Offset(a.to_string(), b.to_string())
                         }
-                    })
-                    .collect::<Vec<DataValue>>()
-        }
+                        _ => panic!("Invalid .word directive"),
+                    }
+                }
+                _ => panic!("Invalid .word directive"),
+            })
+            .collect::<Vec<DataValue>>(),
         (".byte", data) => {
             // TODO alignment?
-                vec![DataValue::Direct(data
-                    .iter()
+            vec![DataValue::Direct(
+                data.iter()
                     .map(|x| {
                         if let Argument::Expression(Expression::Number(n)) = x {
                             *n as u8
@@ -146,8 +144,9 @@ fn extract_data_value<R: Register, F: FunctionOpKind>(
                             panic!("Invalid argument to .byte directive")
                         }
                     })
-                    .collect::<Vec<u8>>())]
+                    .collect::<Vec<u8>>(),
+            )]
         }
-        _ => panic!()
+        _ => panic!(),
     }
 }
