@@ -14,6 +14,13 @@ fn test_trivial() {
 
 #[test]
 #[ignore = "Too slow"]
+fn test_zero_with_values() {
+    let case = "zero_with_values.rs";
+    verify_file(case, vec![], &CoProcessors::base())
+}
+
+#[test]
+#[ignore = "Too slow"]
 fn test_poseidon_gl() {
     let case = "poseidon_gl_via_coprocessor.rs";
     verify_file(case, vec![], &CoProcessors::base().with_poseidon());
