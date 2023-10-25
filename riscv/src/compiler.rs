@@ -441,8 +441,6 @@ fn preamble(coprocessors: &CoProcessors) -> String {
             .collect::<Vec<_>>()
             .concat()
         + r#"
-    // TODO: addr can be removed once  mload also takes it via argument
-    reg addr;
 
     x0 = 0;
 
@@ -521,6 +519,8 @@ fn preamble(coprocessors: &CoProcessors) -> String {
         // { W, X, Z} in { shr.value, shr.amount, shr.amount}
     }
 
+    /// Stores Z at address Y % 2**32. Y can be between 0 and 2**33.
+    /// Y should be a multiple of 4, but this instruction does not enforce it.
     instr mstore Y, Z {
         { X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000, STEP, Z } is m_is_write { m_addr, m_step, m_value },
         // Wrap the addr value
@@ -1256,8 +1256,6 @@ fn process_instruction(instr: &str, args: &[Argument], coprocessors: &CoProcesso
 
             let (rs, rd, off) = rro(args);
             vec![
-                format!("tmp1 <== wrap({rd} + {off});"),
-                "addr <== and(tmp1, 0xfffffffc);".to_string(),
                 format!("tmp1, tmp2 <== mload({rd} + {off});"),
                 "tmp3 <== shl(0xffff, 8 * tmp2);".to_string(),
                 "tmp3 <== xor(tmp3, 0xffffffff);".to_string(),
@@ -1265,15 +1263,13 @@ fn process_instruction(instr: &str, args: &[Argument], coprocessors: &CoProcesso
                 format!("tmp3 <== and({rs}, 0xffff);"),
                 "tmp3 <== shl(tmp3, 8 * tmp2);".to_string(),
                 "tmp1 <== or(tmp1, tmp3);".to_string(),
-                "mstore addr, tmp1;".to_string(),
+                format!("mstore {rd} + {off} - tmp2, tmp1;"),
             ]
         }
         "sb" => {
             // store byte
             let (rs, rd, off) = rro(args);
             vec![
-                format!("tmp1 <== wrap({rd} + {off});"),
-                "addr <== and(tmp1, 0xfffffffc);".to_string(),
                 format!("tmp1, tmp2 <== mload({rd} + {off});"),
                 "tmp3 <== shl(0xff, 8 * tmp2);".to_string(),
                 "tmp3 <== xor(tmp3, 0xffffffff);".to_string(),
@@ -1281,7 +1277,7 @@ fn process_instruction(instr: &str, args: &[Argument], coprocessors: &CoProcesso
                 format!("tmp3 <== and({rs}, 0xff);"),
                 "tmp3 <== shl(tmp3, 8 * tmp2);".to_string(),
                 "tmp1 <== or(tmp1, tmp3);".to_string(),
-                "mstore addr, tmp1;".to_string(),
+                format!("mstore {rd} + {off} - tmp2, tmp1;"),
             ]
         }
         "nop" => vec![],
@@ -1300,18 +1296,15 @@ fn process_instruction(instr: &str, args: &[Argument], coprocessors: &CoProcesso
             let (rd, rs2, rs1, off) = rrro(args);
             assert_eq!(off, 0);
 
-            let rd = if rd.is_zero() {
-                "tmp2".to_string()
-            } else {
-                rd.to_string()
-            };
-
-            vec![
-                format!("addr <=X= {rs1};"),
-                format!("{rd}, tmp1 <== mload({rs1});"),
-                format!("tmp1 <== wrap({rd} + {rs2});"),
-                format!("mstore addr, tmp1;"),
+            [
+                vec![
+                    format!("tmp1, tmp2 <== mload({rs1});"),
+                    format!("tmp2 <== wrap(tmp1 + {rs2});"),
+                    format!("mstore {rs1}, tmp2;"),
+                ],
+                only_if_no_write_to_zero(format!("{rd} <== tmp1"), rd),
             ]
+            .concat()
         }
 
         insn if insn.starts_with("lr.w") => {
