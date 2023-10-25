@@ -21,7 +21,7 @@ namespace Main(%N);
     cond { Z } in { two_bits };
     let two_bits = |i| i % 4;
 
-    0 = cond * (Y - wrap_bit * 2**32 + X_b4 * 0x1000000 + X_b3 * 0x10000 + X_b2 * 0x100 + X_b1 * 4 + Z);
+    0 = cond * (Y - (wrap_bit * 2**32 + X_b4 * 0x1000000 + X_b3 * 0x10000 + X_b2 * 0x100 + X_b1 * 4 + Z));
     let six_bits = |i| i % 2**6;
     cond { X_b1 } in { six_bits };
 

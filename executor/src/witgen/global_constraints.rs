@@ -41,7 +41,7 @@ pub struct GlobalConstraints<T: FieldElement> {
     pub fixed_constraints: FixedColumnMap<Option<RangeConstraint<T>>>,
 }
 
-impl<'a, T: FieldElement> RangeConstraintSet<&PolynomialReference, T> for GlobalConstraints<T> {
+impl<T: FieldElement> RangeConstraintSet<&PolynomialReference, T> for GlobalConstraints<T> {
     fn range_constraint(&self, id: &PolynomialReference) -> Option<RangeConstraint<T>> {
         assert!(!id.next);
         let poly_id = id.poly_id.unwrap();

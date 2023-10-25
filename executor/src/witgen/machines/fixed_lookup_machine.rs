@@ -2,13 +2,15 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::mem;
 use std::num::NonZeroUsize;
 
-use ast::analyzed::{Expression, IdentityKind, PolyID, PolynomialReference};
+use ast::analyzed::{Expression, IdentityKind, PolyID, PolynomialReference, PolynomialType};
 use ast::parsed::SelectedExpressions;
 use itertools::Itertools;
 use number::FieldElement;
 
 use crate::witgen::affine_expression::AffineExpression;
-use crate::witgen::global_constraints::{GlobalConstraints, SimpleRangeConstraintSet};
+use crate::witgen::global_constraints::{GlobalConstraints, RangeConstraintSet};
+use crate::witgen::range_constraints::RangeConstraint;
+use crate::witgen::rows::RowPair;
 use crate::witgen::util::try_to_simple_poly_ref;
 use crate::witgen::{EvalError, EvalValue, IncompleteCause};
 use crate::witgen::{EvalResult, FixedData};
@@ -172,6 +174,7 @@ impl<T: FieldElement> FixedLookup<T> {
     pub fn process_plookup<'b>(
         &mut self,
         fixed_data: &FixedData<T>,
+        rows: &RowPair<'_, '_, T>,
         kind: IdentityKind,
         left: &[AffineExpression<&'b PolynomialReference, T>],
         right: &'b SelectedExpressions<Expression<T>>,
@@ -184,8 +187,6 @@ impl<T: FieldElement> FixedLookup<T> {
             return None;
         }
 
-        println!("Processing {{ {} }} in {}", left.iter().format(", "), right);
-
         // get the values of the fixed columns
         let right = right
             .expressions
@@ -193,22 +194,26 @@ impl<T: FieldElement> FixedLookup<T> {
             .map(try_to_simple_poly_ref)
             .collect::<Option<Vec<_>>>()?;
 
-        Some(self.process_plookup_internal(fixed_data, left, right))
+        Some(self.process_plookup_internal(fixed_data, rows, left, right))
     }
 
     fn process_plookup_internal<'b>(
         &mut self,
         fixed_data: &FixedData<T>,
+        rows: &RowPair<'_, '_, T>,
         left: &[AffineExpression<&'b PolynomialReference, T>],
         right: Vec<&'b PolynomialReference>,
     ) -> EvalResult<'b, T> {
+        if left.len() == 1
+            && !left.first().unwrap().is_constant()
+            && right.first().unwrap().poly_id().ptype == PolynomialType::Constant
+        {
+            // Lookup of the form "c { X } in { B }". Might be a conditional range check.
+            return self.process_range_check(rows, left.first().unwrap(), right.first().unwrap());
+        }
+
         // split the fixed columns depending on whether their associated lookup variable is constant or not. Preserve the value of the constant arguments.
         // {1, 2, x} in {A, B, C} -> [[(A, 1), (B, 2)], [C, x]]
-
-        if left.len() == 1 && !left.first().unwrap().is_constant() {
-            // Lookup of the form "c { X } in { B }". Might be a conditional range check.
-            return self.process_range_check(left.first().unwrap(), right.first().unwrap());
-        }
 
         let mut input_assignment = vec![];
         let mut output_columns = vec![];
@@ -279,14 +284,47 @@ impl<T: FieldElement> FixedLookup<T> {
 
     fn process_range_check<'b>(
         &self,
+        rows: &RowPair<'_, '_, T>,
         lhs: &AffineExpression<&'b PolynomialReference, T>,
         rhs: &'b PolynomialReference,
     ) -> EvalResult<'b, T> {
+        // Use AffineExpression::solve_with_range_constraints to transfer range constraints
+        // from the rhs to the lhs.
         let equation = lhs.clone() - AffineExpression::from_variable_id(rhs);
-        // TODO this is kind of unusual because we use symbolic fixed columns.
-        // we should better filter out the fixed column from the result.
-        let r = equation.solve_with_range_constraints(&self.global_constraints);
-        println!("{r:?}");
-        r
+        let range_constraints = UnifiedRangeConstraints {
+            witness_constraints: rows,
+            global_constraints: &self.global_constraints,
+        };
+        let updates = equation.solve_with_range_constraints(&range_constraints)?;
+
+        // Filter out any updates to the fixed columns
+        Ok(EvalValue::incomplete_with_constraints(
+            updates
+                .constraints
+                .into_iter()
+                .filter(|(poly, _)| poly.poly_id().ptype == PolynomialType::Committed),
+            IncompleteCause::NotConcrete,
+        ))
+    }
+}
+
+/// Combines witness constraints on a concrete row with global range constraints
+/// (used for fixed columns).
+/// This is useful in order to transfer range constraints from fixed columns to
+/// witness columns (see [FixedLookup::process_range_check]).
+pub struct UnifiedRangeConstraints<'a, T: FieldElement> {
+    witness_constraints: &'a RowPair<'a, 'a, T>,
+    global_constraints: &'a GlobalConstraints<T>,
+}
+
+impl<T: FieldElement> RangeConstraintSet<&PolynomialReference, T>
+    for UnifiedRangeConstraints<'_, T>
+{
+    fn range_constraint(&self, poly: &PolynomialReference) -> Option<RangeConstraint<T>> {
+        match poly.poly_id().ptype {
+            PolynomialType::Committed => self.witness_constraints.range_constraint(poly),
+            PolynomialType::Constant => self.global_constraints.range_constraint(poly),
+            PolynomialType::Intermediate => unimplemented!(),
+        }
     }
 }
