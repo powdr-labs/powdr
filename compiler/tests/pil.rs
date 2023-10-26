@@ -239,3 +239,8 @@ fn test_fixed_columns() {
 fn test_witness_via_let() {
     verify_pil("witness_via_let.pil", None);
 }
+
+#[test]
+fn conditional_fixed_constraints() {
+    verify_pil("conditional_fixed_constraints.pil", None);
+}

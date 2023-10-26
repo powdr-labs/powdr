@@ -334,15 +334,15 @@ mod tests {
         let (constants, degree) = generate(&analyzed);
         let fixed_data = FixedData::new(&analyzed, degree, &constants, vec![]);
 
-        // No submachines
-        let mut fixed_lookup = FixedLookup::default();
-        let mut machines = vec![];
-
         // No global range constraints
         let global_range_constraints = GlobalConstraints {
             witness_constraints: fixed_data.witness_map_with(None),
             fixed_constraints: FixedColumnMap::new(None, fixed_data.fixed_cols.len()),
         };
+
+        // No submachines
+        let mut fixed_lookup = FixedLookup::new(global_range_constraints.clone());
+        let mut machines = vec![];
 
         let row_factory = RowFactory::new(&fixed_data, global_range_constraints);
         let data = (0..fixed_data.degree)

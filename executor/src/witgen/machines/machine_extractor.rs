@@ -29,7 +29,7 @@ pub fn split_out_machines<'a, T: FieldElement>(
     identities: Vec<&'a Identity<Expression<T>>>,
     global_range_constraints: &GlobalConstraints<T>,
 ) -> ExtractionOutput<'a, T> {
-    let fixed_lookup = FixedLookup::try_new(fixed, &[], &Default::default()).unwrap();
+    let fixed_lookup = FixedLookup::new(global_range_constraints.clone());
 
     let mut machines: Vec<KnownMachine<T>> = vec![];
 

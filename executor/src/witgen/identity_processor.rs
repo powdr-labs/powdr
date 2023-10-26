@@ -158,6 +158,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> IdentityProcessor<'a, 'b,
         // query the fixed lookup "machine"
         if let Some(result) = self.mutable_state.fixed_lookup.process_plookup(
             self.fixed_data,
+            rows,
             identity.kind,
             &left,
             &identity.right,
