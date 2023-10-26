@@ -10,12 +10,10 @@ use number::FieldElement;
 /// Evaluates an expression to a single value.
 pub fn evaluate_expression<T: FieldElement>(
     definitions: &HashMap<String, (Symbol, Option<FunctionValueDefinition<T>>)>,
-    intermediate_columns: &HashMap<String, (Symbol, Expression<T>)>,
     expression: &Expression<T>,
 ) -> Result<T, String> {
     Evaluator {
         definitions,
-        intermediate_columns,
         function_cache: &Default::default(),
         variables: &[],
     }
@@ -25,7 +23,6 @@ pub fn evaluate_expression<T: FieldElement>(
 /// Returns a HashMap of all symbols that have a constant single value.
 pub fn compute_constants<T: FieldElement>(
     definitions: &HashMap<String, (Symbol, Option<FunctionValueDefinition<T>>)>,
-    intermediate_columns: &HashMap<String, (Symbol, Expression<T>)>,
 ) -> HashMap<String, T> {
     definitions
         .iter()
@@ -36,7 +33,7 @@ pub fn compute_constants<T: FieldElement>(
                 };
                 (
                     name.to_owned(),
-                    evaluate_expression(definitions, intermediate_columns, value).unwrap(),
+                    evaluate_expression(definitions, value).unwrap(),
                 )
             })
         })
@@ -45,7 +42,6 @@ pub fn compute_constants<T: FieldElement>(
 
 pub struct Evaluator<'a, T> {
     pub definitions: &'a HashMap<String, (Symbol, Option<FunctionValueDefinition<T>>)>,
-    pub intermediate_columns: &'a HashMap<String, (Symbol, Expression<T>)>,
     /// Contains full value tables of functions (columns) we already evaluated.
     pub function_cache: &'a HashMap<&'a str, Vec<T>>,
     pub variables: &'a [T],
@@ -64,12 +60,8 @@ impl<'a, T: FieldElement> Evaluator<'a, T> {
                             }
                             _ => Err("Cannot evaluate function-typed values".to_string()),
                         }
-                    } else if let Some((_, value)) =
-                        self.intermediate_columns.get(&poly.name.to_string())
-                    {
-                        self.evaluate(value)
                     } else {
-                        unreachable!()
+                        panic!("Reference to {}, which is not a fixed column.", poly.name)
                     }
                 } else {
                     Err("Cannot evaluate arrays or next references.".to_string())

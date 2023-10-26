@@ -459,7 +459,6 @@ impl<T: FieldElement> PILAnalyzer<T> {
     fn evaluate_expression(&self, expr: ::ast::parsed::Expression<T>) -> Result<T, String> {
         Evaluator {
             definitions: &self.definitions,
-            intermediate_columns: &Default::default(),
             function_cache: &Default::default(),
             variables: &[],
         }
