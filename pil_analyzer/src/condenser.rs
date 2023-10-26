@@ -82,6 +82,7 @@ pub struct Condenser<T> {
 }
 
 impl<T: FieldElement> Condenser<T> {
+    // TODO this is only used externally now
     pub fn assign_id(&self, reference: &mut PolynomialReference) {
         let poly = self
             .symbols
@@ -130,10 +131,17 @@ impl<T: FieldElement> Condenser<T> {
                         return AlgebraicExpression::Number(*value);
                     }
                 }
-
-                let mut poly = poly.clone();
-                self.assign_id(&mut poly);
-                AlgebraicExpression::Reference(AlgebraicReference::Poly(poly))
+                let poly_id = self
+                    .symbols
+                    .get(&poly.name)
+                    .unwrap_or_else(|| panic!("Column {} not found.", poly.name))
+                    .into();
+                AlgebraicExpression::Reference(AlgebraicReference {
+                    name: poly.name.clone(),
+                    poly_id,
+                    index: poly.index,
+                    next: poly.next,
+                })
             }
             Expression::Reference(Reference::LocalVar(_, _)) => {
                 panic!("Local variables not allowed here.")

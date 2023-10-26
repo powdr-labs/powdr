@@ -270,12 +270,12 @@ fn substitute_polynomial_references<T: FieldElement>(
         }
     });
     pil_file.post_visit_expressions_in_identities_mut(&mut |e: &mut AlgebraicExpression<_>| {
-        if let AlgebraicExpression::Reference(AlgebraicReference::Poly(PolynomialReference {
+        if let AlgebraicExpression::Reference(AlgebraicReference {
             name: _,
             index,
             next: _,
-            poly_id: Some(poly_id),
-        })) = e
+            poly_id,
+        }) = e
         {
             if let Some(value) = substitutions.get(poly_id) {
                 assert!(index.is_none());
@@ -289,25 +289,19 @@ fn constrained_to_constant<T: FieldElement>(expr: &AlgebraicExpression<T>) -> Op
     match expr {
         AlgebraicExpression::BinaryOperation(left, BinaryOperator::Sub, right) => {
             match (left.as_ref(), right.as_ref()) {
-                (
-                    AlgebraicExpression::Number(n),
-                    AlgebraicExpression::Reference(AlgebraicReference::Poly(poly)),
-                )
-                | (
-                    AlgebraicExpression::Reference(AlgebraicReference::Poly(poly)),
-                    AlgebraicExpression::Number(n),
-                ) => {
+                (AlgebraicExpression::Number(n), AlgebraicExpression::Reference(poly))
+                | (AlgebraicExpression::Reference(poly), AlgebraicExpression::Number(n)) => {
                     if poly.is_witness() {
                         // This also works if "next" is true.
-                        return Some((poly.poly_id.unwrap(), *n));
+                        return Some((poly.poly_id, *n));
                     }
                 }
                 _ => {}
             }
         }
-        AlgebraicExpression::Reference(AlgebraicReference::Poly(poly)) => {
+        AlgebraicExpression::Reference(poly) => {
             if poly.is_witness() {
-                return Some((poly.poly_id.unwrap(), 0.into()));
+                return Some((poly.poly_id, 0.into()));
             }
         }
         _ => {}

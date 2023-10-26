@@ -1,7 +1,7 @@
 use std::{collections::HashMap, sync::Mutex};
 
 use ast::{
-    analyzed::{AlgebraicExpression as Expression, Identity, IdentityKind, PolynomialReference},
+    analyzed::{AlgebraicExpression as Expression, AlgebraicReference, Identity, IdentityKind},
     parsed::SelectedExpressions,
 };
 use itertools::{Either, Itertools};
@@ -194,7 +194,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> IdentityProcessor<'a, 'b,
     /// - `Err(e)`: If the constraint system is not satisfiable.
     pub fn process_link(
         &mut self,
-        left: &[AffineExpression<&'a PolynomialReference, T>],
+        left: &[AffineExpression<&'a AlgebraicReference, T>],
         right: &'a SelectedExpressions<Expression<T>>,
         current_rows: &RowPair<'_, 'a, T>,
     ) -> EvalResult<'a, T> {
@@ -227,7 +227,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> IdentityProcessor<'a, 'b,
         &mut self,
         left_selector: &'a Expression<T>,
         rows: &RowPair<T>,
-    ) -> Option<EvalValue<&'a PolynomialReference, T>> {
+    ) -> Option<EvalValue<&'a AlgebraicReference, T>> {
         let value = match rows.evaluate(left_selector) {
             Err(inclomplete_cause) => return Some(EvalValue::incomplete(inclomplete_cause)),
             Ok(value) => value,

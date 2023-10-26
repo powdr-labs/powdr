@@ -1,7 +1,7 @@
 use std::{collections::HashSet, marker::PhantomData};
 
 use ast::{
-    analyzed::{AlgebraicExpression as Expression, Identity, PolyID, PolynomialReference},
+    analyzed::{AlgebraicExpression as Expression, AlgebraicReference, Identity, PolyID},
     parsed::SelectedExpressions,
 };
 use number::FieldElement;
@@ -17,7 +17,7 @@ use super::{
     Constraints, EvalError, EvalValue, FixedData, MutableState, QueryCallback,
 };
 
-type Left<'a, T> = Vec<AffineExpression<&'a PolynomialReference, T>>;
+type Left<'a, T> = Vec<AffineExpression<&'a AlgebraicReference, T>>;
 
 // Marker types
 pub struct WithCalldata;
@@ -156,7 +156,7 @@ impl<'a, 'b, T: FieldElement, Q: QueryCallback<T>, CalldataAvailable>
     pub fn solve(
         &mut self,
         sequence_iterator: &mut ProcessingSequenceIterator,
-    ) -> Result<Constraints<&'a PolynomialReference, T>, EvalError<T>> {
+    ) -> Result<Constraints<&'a AlgebraicReference, T>, EvalError<T>> {
         let mut outer_assignments = vec![];
 
         while let Some(SequenceStep { row_delta, action }) = sequence_iterator.next() {
@@ -243,7 +243,7 @@ impl<'a, 'b, T: FieldElement, Q: QueryCallback<T>, CalldataAvailable>
     fn process_outer_query(
         &mut self,
         row_index: usize,
-    ) -> Result<(bool, Constraints<&'a PolynomialReference, T>), EvalError<T>> {
+    ) -> Result<(bool, Constraints<&'a AlgebraicReference, T>), EvalError<T>> {
         let OuterQuery { left, right } = self
             .outer_query
             .as_mut()
@@ -276,7 +276,7 @@ impl<'a, 'b, T: FieldElement, Q: QueryCallback<T>, CalldataAvailable>
         let outer_assignments = updates
             .constraints
             .into_iter()
-            .filter(|(poly, _)| !self.witness_cols.contains(&poly.poly_id()))
+            .filter(|(poly, _)| !self.witness_cols.contains(&poly.poly_id))
             .collect::<Vec<_>>();
 
         Ok((progress, outer_assignments))
@@ -285,7 +285,7 @@ impl<'a, 'b, T: FieldElement, Q: QueryCallback<T>, CalldataAvailable>
     fn apply_updates(
         &mut self,
         row_index: usize,
-        updates: &EvalValue<&'a PolynomialReference, T>,
+        updates: &EvalValue<&'a AlgebraicReference, T>,
         source_name: impl Fn() -> String,
     ) -> bool {
         if updates.constraints.is_empty() {
@@ -301,7 +301,7 @@ impl<'a, 'b, T: FieldElement, Q: QueryCallback<T>, CalldataAvailable>
         let mut row_updater = RowUpdater::new(current, next, self.row_offset + row_index as u64);
 
         for (poly, c) in &updates.constraints {
-            if self.witness_cols.contains(&poly.poly_id()) {
+            if self.witness_cols.contains(&poly.poly_id) {
                 row_updater.apply_update(poly, c);
             } else if let Constraint::Assignment(v) = c {
                 let left = &mut self.outer_query.as_mut().unwrap().left;

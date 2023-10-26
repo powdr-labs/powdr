@@ -1,20 +1,18 @@
-use ast::analyzed::{
-    AlgebraicExpression as Expression, AlgebraicReference as Reference, PolynomialReference,
-};
+use ast::analyzed::{AlgebraicExpression as Expression, AlgebraicReference};
 
 /// Checks if an expression is
 /// - a polynomial
 /// - not part of a polynomial array
 /// - not shifted with `'`
 /// and return the polynomial if so
-pub fn try_to_simple_poly<T>(expr: &Expression<T>) -> Option<&PolynomialReference> {
-    if let Expression::Reference(Reference::Poly(
-        p @ PolynomialReference {
+pub fn try_to_simple_poly<T>(expr: &Expression<T>) -> Option<&AlgebraicReference> {
+    if let Expression::Reference(
+        p @ AlgebraicReference {
             index: None,
             next: false,
             ..
         },
-    )) = expr
+    ) = expr
     {
         Some(p)
     } else {
@@ -22,8 +20,8 @@ pub fn try_to_simple_poly<T>(expr: &Expression<T>) -> Option<&PolynomialReferenc
     }
 }
 
-pub fn try_to_simple_poly_ref<T>(expr: &Expression<T>) -> Option<&PolynomialReference> {
-    if let Expression::Reference(Reference::Poly(poly_ref)) = expr {
+pub fn try_to_simple_poly_ref<T>(expr: &Expression<T>) -> Option<&AlgebraicReference> {
+    if let Expression::Reference(poly_ref) = expr {
         if poly_ref.index.is_none() && !poly_ref.next {
             return Some(poly_ref);
         }
@@ -34,12 +32,12 @@ pub fn try_to_simple_poly_ref<T>(expr: &Expression<T>) -> Option<&PolynomialRefe
 }
 
 pub fn is_simple_poly_of_name<T>(expr: &Expression<T>, poly_name: &str) -> bool {
-    if let Expression::Reference(Reference::Poly(PolynomialReference {
+    if let Expression::Reference(AlgebraicReference {
         name,
         index: None,
         next: false,
         ..
-    })) = expr
+    }) = expr
     {
         name == poly_name
     } else {

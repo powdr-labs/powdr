@@ -3,7 +3,7 @@ use std::mem;
 use std::num::NonZeroUsize;
 
 use ast::analyzed::{
-    AlgebraicExpression as Expression, IdentityKind, PolyID, PolynomialReference, PolynomialType,
+    AlgebraicExpression as Expression, AlgebraicReference, IdentityKind, PolyID, PolynomialType,
 };
 use ast::parsed::SelectedExpressions;
 use itertools::Itertools;
@@ -178,7 +178,7 @@ impl<T: FieldElement> FixedLookup<T> {
         fixed_data: &FixedData<T>,
         rows: &RowPair<'_, '_, T>,
         kind: IdentityKind,
-        left: &[AffineExpression<&'b PolynomialReference, T>],
+        left: &[AffineExpression<&'b AlgebraicReference, T>],
         right: &'b SelectedExpressions<Expression<T>>,
     ) -> Option<EvalResult<'b, T>> {
         // This is a matching machine if it is a plookup and the RHS is fully constant.
@@ -203,12 +203,12 @@ impl<T: FieldElement> FixedLookup<T> {
         &mut self,
         fixed_data: &FixedData<T>,
         rows: &RowPair<'_, '_, T>,
-        left: &[AffineExpression<&'b PolynomialReference, T>],
-        right: Vec<&'b PolynomialReference>,
+        left: &[AffineExpression<&'b AlgebraicReference, T>],
+        right: Vec<&'b AlgebraicReference>,
     ) -> EvalResult<'b, T> {
         if left.len() == 1
             && !left.first().unwrap().is_constant()
-            && right.first().unwrap().poly_id().ptype == PolynomialType::Constant
+            && right.first().unwrap().poly_id.ptype == PolynomialType::Constant
         {
             // Lookup of the form "c { X } in { B }". Might be a conditional range check.
             return self.process_range_check(rows, left.first().unwrap(), right.first().unwrap());
@@ -225,14 +225,14 @@ impl<T: FieldElement> FixedLookup<T> {
             if let Some(value) = l.constant_value() {
                 input_assignment.push((r, value));
             } else {
-                output_columns.push(r.poly_id());
+                output_columns.push(r.poly_id);
                 output_expressions.push(l);
             }
         });
 
         let input_assignment_with_ids = input_assignment
             .iter()
-            .map(|(poly_ref, v)| (poly_ref.poly_id(), *v))
+            .map(|(poly_ref, v)| (poly_ref.poly_id, *v))
             .collect();
         let index_value = self
             .indices
@@ -287,8 +287,8 @@ impl<T: FieldElement> FixedLookup<T> {
     fn process_range_check<'b>(
         &self,
         rows: &RowPair<'_, '_, T>,
-        lhs: &AffineExpression<&'b PolynomialReference, T>,
-        rhs: &'b PolynomialReference,
+        lhs: &AffineExpression<&'b AlgebraicReference, T>,
+        rhs: &'b AlgebraicReference,
     ) -> EvalResult<'b, T> {
         // Use AffineExpression::solve_with_range_constraints to transfer range constraints
         // from the rhs to the lhs.
@@ -304,7 +304,7 @@ impl<T: FieldElement> FixedLookup<T> {
             updates
                 .constraints
                 .into_iter()
-                .filter(|(poly, _)| poly.poly_id().ptype == PolynomialType::Committed),
+                .filter(|(poly, _)| poly.poly_id.ptype == PolynomialType::Committed),
             IncompleteCause::NotConcrete,
         ))
     }
@@ -319,11 +319,11 @@ pub struct UnifiedRangeConstraints<'a, T: FieldElement> {
     global_constraints: &'a GlobalConstraints<T>,
 }
 
-impl<T: FieldElement> RangeConstraintSet<&PolynomialReference, T>
+impl<T: FieldElement> RangeConstraintSet<&AlgebraicReference, T>
     for UnifiedRangeConstraints<'_, T>
 {
-    fn range_constraint(&self, poly: &PolynomialReference) -> Option<RangeConstraint<T>> {
-        match poly.poly_id().ptype {
+    fn range_constraint(&self, poly: &AlgebraicReference) -> Option<RangeConstraint<T>> {
+        match poly.poly_id.ptype {
             PolynomialType::Committed => self.witness_constraints.range_constraint(poly),
             PolynomialType::Constant => self.global_constraints.range_constraint(poly),
             PolynomialType::Intermediate => unimplemented!(),

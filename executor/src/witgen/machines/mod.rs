@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use ast::analyzed::AlgebraicExpression as Expression;
-use ast::analyzed::PolynomialReference;
+use ast::analyzed::AlgebraicReference;
 use ast::parsed::SelectedExpressions;
 use number::FieldElement;
 
@@ -36,7 +36,7 @@ pub trait Machine<'a, T: FieldElement>: Send + Sync {
         &mut self,
         mutable_state: &'b mut MutableState<'a, 'b, T, Q>,
         kind: IdentityKind,
-        left: &[AffineExpression<&'a PolynomialReference, T>],
+        left: &[AffineExpression<&'a AlgebraicReference, T>],
         right: &'a SelectedExpressions<Expression<T>>,
     ) -> Option<EvalResult<'a, T>>;
 
@@ -59,7 +59,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for KnownMachine<'a, T> {
         &mut self,
         mutable_state: &'b mut MutableState<'a, 'b, T, Q>,
         kind: IdentityKind,
-        left: &[AffineExpression<&'a PolynomialReference, T>],
+        left: &[AffineExpression<&'a AlgebraicReference, T>],
         right: &'a SelectedExpressions<Expression<T>>,
     ) -> Option<crate::witgen::EvalResult<'a, T>> {
         match self {

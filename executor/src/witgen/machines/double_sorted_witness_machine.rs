@@ -13,8 +13,7 @@ use crate::witgen::{EvalValue, IncompleteCause};
 use number::{DegreeType, FieldElement};
 
 use ast::analyzed::{
-    AlgebraicExpression as Expression, AlgebraicReference as Reference, Identity, IdentityKind,
-    PolyID, PolynomialReference,
+    AlgebraicExpression as Expression, AlgebraicReference, Identity, IdentityKind, PolyID,
 };
 
 /// TODO make this generic
@@ -99,7 +98,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses<T> {
         &mut self,
         _mutable_state: &mut MutableState<'a, '_, T, Q>,
         kind: IdentityKind,
-        left: &[AffineExpression<&'a PolynomialReference, T>],
+        left: &[AffineExpression<&'a AlgebraicReference, T>],
         right: &'a SelectedExpressions<Expression<T>>,
     ) -> Option<EvalResult<'a, T>> {
         if kind != IdentityKind::Permutation
@@ -172,7 +171,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses<T> {
 impl<T: FieldElement> DoubleSortedWitnesses<T> {
     fn process_plookup_internal<'a>(
         &mut self,
-        left: &[AffineExpression<&'a PolynomialReference, T>],
+        left: &[AffineExpression<&'a AlgebraicReference, T>],
         right: &SelectedExpressions<Expression<T>>,
     ) -> EvalResult<'a, T> {
         // We blindly assume the lookup is of the form
@@ -181,9 +180,7 @@ impl<T: FieldElement> DoubleSortedWitnesses<T> {
         // OP { ADDR, STEP, X } is m_is_read { m_addr, m_step, m_value }
 
         let is_write = match &right.selector {
-            Some(Expression::Reference(Reference::Poly(p))) => {
-                p.name == self.namespaced("m_is_write")
-            }
+            Some(Expression::Reference(p)) => p.name == self.namespaced("m_is_write"),
             _ => panic!(),
         };
         let addr = match left[0].constant_value() {

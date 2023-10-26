@@ -1,5 +1,5 @@
 use ast::analyzed::{
-    AlgebraicExpression as Expression, Identity, IdentityKind, PolyID, PolynomialReference,
+    AlgebraicExpression as Expression, AlgebraicReference, Identity, IdentityKind, PolyID,
 };
 use ast::parsed::SelectedExpressions;
 use number::{DegreeType, FieldElement};
@@ -33,7 +33,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for Generator<'a, T> {
         &mut self,
         _mutable_state: &mut MutableState<'a, '_, T, Q>,
         _kind: IdentityKind,
-        _left: &[AffineExpression<&'a PolynomialReference, T>],
+        _left: &[AffineExpression<&'a AlgebraicReference, T>],
         _right: &'a SelectedExpressions<Expression<T>>,
     ) -> Option<EvalResult<'a, T>> {
         unimplemented!()
