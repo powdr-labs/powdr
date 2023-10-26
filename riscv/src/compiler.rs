@@ -441,8 +441,6 @@ fn preamble(coprocessors: &CoProcessors) -> String {
             .collect::<Vec<_>>()
             .concat()
         + r#"
-    // TODO: addr can be removed once  mload also takes it via argument
-    reg addr;
 
     x0 = 0;
 
@@ -501,12 +499,33 @@ fn preamble(coprocessors: &CoProcessors) -> String {
 
     // ============== memory instructions ==============
 
+    let up_to_three = |i| i % 4;
+    let six_bits = |i| i % 2**6;
+    /// Loads one word from an address Y, where Y can be between 0 and 2**33 (sic!),
+    /// wraps the address to 32 bits and rounds it down to the next multiple of 4.
+    /// Returns the loaded word and the remainder of the division by 4.
+    instr mload Y -> X, Z {
+        // Z * (Z - 1) * (Z - 2) * (Z - 3) = 0,
+        { Z } in { up_to_three },
+        Y = wrap_bit * 2**32 + X_b4 * 0x1000000 + X_b3 * 0x10000 + X_b2 * 0x100 + X_b1 * 4 + Z,
+        { X_b1 } in { six_bits },
+        {
+            X_b4 * 0x1000000 + X_b3 * 0x10000 + X_b2 * 0x100 + X_b1 * 4,
+            STEP,
+            X
+        } is m_is_read { m_addr, m_step, m_value }
+        // If we could access the shift machine here, we
+        // could even do the following to complete the mload:
+        // { W, X, Z} in { shr.value, shr.amount, shr.amount}
+    }
+
+    /// Stores Z at address Y % 2**32. Y can be between 0 and 2**33.
+    /// Y should be a multiple of 4, but this instruction does not enforce it.
     instr mstore Y, Z {
         { X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000, STEP, Z } is m_is_write { m_addr, m_step, m_value },
         // Wrap the addr value
         Y = (X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000) + wrap_bit * 2**32
     }
-    instr mload -> X { { addr, STEP, X } is m_is_read { m_addr, m_step, m_value } }
 
     // ============== control-flow instructions ==============
 
@@ -1174,23 +1193,14 @@ fn process_instruction(instr: &str, args: &[Argument], coprocessors: &CoProcesso
         "lw" => {
             let (rd, rs, off) = rro(args);
             // TODO we need to consider misaligned loads / stores
-            only_if_no_write_to_zero_vec(
-                vec![
-                    format!("addr <== wrap({rs} + {off});"),
-                    format!("{rd} <== mload();"),
-                ],
-                rd,
-            )
+            only_if_no_write_to_zero_vec(vec![format!("{rd}, tmp1 <== mload({rs} + {off});")], rd)
         }
         "lb" => {
             // load byte and sign-extend. the memory is little-endian.
             let (rd, rs, off) = rro(args);
             only_if_no_write_to_zero_vec(
                 vec![
-                    format!("tmp1 <== wrap({rs} + {off});"),
-                    "addr <== and(tmp1, 0xfffffffc);".to_string(),
-                    "tmp2 <== and(tmp1, 0x3);".to_string(),
-                    format!("{rd} <== mload();"),
+                    format!("{rd}, tmp2 <== mload({rs} + {off});"),
                     format!("{rd} <== shr({rd}, 8 * tmp2);"),
                     format!("{rd} <== sign_extend_byte({rd});"),
                 ],
@@ -1202,10 +1212,7 @@ fn process_instruction(instr: &str, args: &[Argument], coprocessors: &CoProcesso
             let (rd, rs, off) = rro(args);
             only_if_no_write_to_zero_vec(
                 vec![
-                    format!("tmp1 <== wrap({rs} + {off});"),
-                    "addr <== and(tmp1, 0xfffffffc);".to_string(),
-                    "tmp2 <== and(tmp1, 0x3);".to_string(),
-                    format!("{rd} <== mload();"),
+                    format!("{rd}, tmp2 <== mload({rs} + {off});"),
                     format!("{rd} <== shr({rd}, 8 * tmp2);"),
                     format!("{rd} <== and({rd}, 0xff);"),
                 ],
@@ -1218,10 +1225,7 @@ fn process_instruction(instr: &str, args: &[Argument], coprocessors: &CoProcesso
             let (rd, rs, off) = rro(args);
             only_if_no_write_to_zero_vec(
                 vec![
-                    format!("tmp1 <== wrap({rs} + {off});"),
-                    "addr <== and(tmp1, 0xfffffffc);".to_string(),
-                    "tmp2 <== and(tmp1, 0x3);".to_string(),
-                    format!("{rd} <== mload();"),
+                    format!("{rd}, tmp2 <== mload({rs} + {off});"),
                     format!("{rd} <== shr({rd}, 8 * tmp2);"),
                     format!("{rd} <== sign_extend_16_bits({rd});"),
                 ],
@@ -1234,10 +1238,7 @@ fn process_instruction(instr: &str, args: &[Argument], coprocessors: &CoProcesso
             let (rd, rs, off) = rro(args);
             only_if_no_write_to_zero_vec(
                 vec![
-                    format!("tmp1 <== wrap({rs} + {off});"),
-                    "addr <== and(tmp1, 0xfffffffc);".to_string(),
-                    "tmp2 <== and(tmp1, 0x3);".to_string(),
-                    format!("{rd} <== mload();"),
+                    format!("{rd}, tmp2 <== mload({rs} + {off});"),
                     format!("{rd} <== shr({rd}, 8 * tmp2);"),
                     format!("{rd} <== and({rd}, 0x0000ffff);"),
                 ],
@@ -1255,34 +1256,28 @@ fn process_instruction(instr: &str, args: &[Argument], coprocessors: &CoProcesso
 
             let (rs, rd, off) = rro(args);
             vec![
-                format!("tmp1 <== wrap({rd} + {off});"),
-                "addr <== and(tmp1, 0xfffffffc);".to_string(),
-                "tmp2 <== and(tmp1, 0x3);".to_string(),
-                "tmp1 <== mload();".to_string(),
+                format!("tmp1, tmp2 <== mload({rd} + {off});"),
                 "tmp3 <== shl(0xffff, 8 * tmp2);".to_string(),
                 "tmp3 <== xor(tmp3, 0xffffffff);".to_string(),
                 "tmp1 <== and(tmp1, tmp3);".to_string(),
                 format!("tmp3 <== and({rs}, 0xffff);"),
                 "tmp3 <== shl(tmp3, 8 * tmp2);".to_string(),
                 "tmp1 <== or(tmp1, tmp3);".to_string(),
-                "mstore addr, tmp1;".to_string(),
+                format!("mstore {rd} + {off} - tmp2, tmp1;"),
             ]
         }
         "sb" => {
             // store byte
             let (rs, rd, off) = rro(args);
             vec![
-                format!("tmp1 <== wrap({rd} + {off});"),
-                "addr <== and(tmp1, 0xfffffffc);".to_string(),
-                "tmp2 <== and(tmp1, 0x3);".to_string(),
-                "tmp1 <== mload();".to_string(),
+                format!("tmp1, tmp2 <== mload({rd} + {off});"),
                 "tmp3 <== shl(0xff, 8 * tmp2);".to_string(),
                 "tmp3 <== xor(tmp3, 0xffffffff);".to_string(),
                 "tmp1 <== and(tmp1, tmp3);".to_string(),
                 format!("tmp3 <== and({rs}, 0xff);"),
                 "tmp3 <== shl(tmp3, 8 * tmp2);".to_string(),
                 "tmp1 <== or(tmp1, tmp3);".to_string(),
-                "mstore addr, tmp1;".to_string(),
+                format!("mstore {rd} + {off} - tmp2, tmp1;"),
             ]
         }
         "nop" => vec![],
@@ -1301,18 +1296,15 @@ fn process_instruction(instr: &str, args: &[Argument], coprocessors: &CoProcesso
             let (rd, rs2, rs1, off) = rrro(args);
             assert_eq!(off, 0);
 
-            let rd = if rd.is_zero() {
-                "tmp2".to_string()
-            } else {
-                rd.to_string()
-            };
-
-            vec![
-                format!("addr <=X= {rs1};"),
-                format!("{rd} <== mload();"),
-                format!("tmp1 <== wrap({rd} + {rs2});"),
-                format!("mstore addr, tmp1;"),
+            [
+                vec![
+                    format!("tmp1, tmp2 <== mload({rs1});"),
+                    format!("tmp2 <== wrap(tmp1 + {rs2});"),
+                    format!("mstore {rs1}, tmp2;"),
+                ],
+                only_if_no_write_to_zero(format!("{rd} <== tmp1"), rd),
             ]
+            .concat()
         }
 
         insn if insn.starts_with("lr.w") => {
@@ -1320,10 +1312,8 @@ fn process_instruction(instr: &str, args: &[Argument], coprocessors: &CoProcesso
             let (rd, rs, off) = rro(args);
             assert_eq!(off, 0);
             // TODO misaligned access should raise misaligned address exceptions
-            let mut statments = only_if_no_write_to_zero_vec(
-                vec![format!("addr <=X= {rs};"), format!("{rd} <== mload();")],
-                rd,
-            );
+            let mut statments =
+                only_if_no_write_to_zero_vec(vec![format!("{rd}, tmp1 <== mload({rs});")], rd);
             statments.push("lr_sc_reservation <=X= 1;".into());
             statments
         }

@@ -209,7 +209,11 @@ impl<T: FieldElement> DoubleSortedWitnesses<T> {
             left[2]
         );
         if !(addr.clone().to_arbitrary_integer() % 4u32).is_zero() {
-            panic!("UNALIGNED");
+            panic!(
+                "Unaligned memory access: addr={:x}, step={step}, write: {is_write}, left: {}",
+                addr.to_arbitrary_integer(),
+                left[2]
+            );
         }
 
         // TODO this does not check any of the failure modes
