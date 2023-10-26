@@ -10,11 +10,15 @@ use crate::witgen::identity_processor::{self, IdentityProcessor};
 use crate::witgen::rows::RowUpdater;
 use crate::witgen::IncompleteCause;
 
-use super::column_map::WitnessColumnMap;
+use super::data_structures::column_map::WitnessColumnMap;
+use super::data_structures::finalizable_data::FinalizableData;
 use super::query_processor::QueryProcessor;
 
 use super::rows::{Row, RowFactory, RowPair, UnknownStrategy};
 use super::{EvalError, EvalResult, EvalValue, FixedData, MutableState, QueryCallback};
+
+/// Maximal period checked during loop detection.
+const MAX_PERIOD: usize = 4;
 
 /// A list of identities with a flag whether it is complete.
 struct CompletableIdentities<'a, T: FieldElement> {
@@ -50,7 +54,7 @@ pub struct VmProcessor<'a, T: FieldElement> {
     /// The subset of identities that does not contain a reference to the next row
     /// (precomputed once for performance reasons)
     identities_without_next_ref: Vec<&'a Identity<Expression<T>>>,
-    data: Vec<Row<'a, T>>,
+    data: FinalizableData<'a, T>,
     last_report: DegreeType,
     last_report_time: Instant,
     row_factory: RowFactory<'a, T>,
@@ -63,7 +67,7 @@ impl<'a, T: FieldElement> VmProcessor<'a, T> {
         fixed_data: &'a FixedData<'a, T>,
         identities: &[&'a Identity<Expression<T>>],
         witnesses: HashSet<PolyID>,
-        data: Vec<Row<'a, T>>,
+        data: FinalizableData<'a, T>,
         row_factory: RowFactory<'a, T>,
         latch: Option<Expression<T>>,
     ) -> Self {
@@ -93,7 +97,7 @@ impl<'a, T: FieldElement> VmProcessor<'a, T> {
         }
     }
 
-    pub fn finish(self) -> Vec<Row<'a, T>> {
+    pub fn finish(self) -> FinalizableData<'a, T> {
         self.data
     }
 
@@ -109,8 +113,18 @@ impl<'a, T: FieldElement> VmProcessor<'a, T> {
         let mut looping_period = None;
         let mut loop_detection_log_level = log::Level::Info;
         let rows_left = self.fixed_data.degree - self.row_offset + 1;
+        let mut finalize_start = 1;
         for row_index in 0..rows_left {
             self.maybe_log_performance(row_index);
+
+            if (row_index + 1) % 10000 == 0 {
+                // Periodically make sure most rows are finalized.
+                // Row 0 and the last MAX_PERIOD rows might be needed later, so they are not finalized.
+                let finalize_end = row_index as usize - MAX_PERIOD;
+                self.data.finalize_range(finalize_start..finalize_end);
+                finalize_start = finalize_end;
+            }
+
             // Check if we are in a loop.
             if looping_period.is_none() && row_index % 100 == 0 && row_index > 0 {
                 looping_period = self.rows_are_repeating(row_index);
@@ -175,14 +189,14 @@ impl<'a, T: FieldElement> VmProcessor<'a, T> {
     }
 
     /// Checks if the last rows are repeating and returns the period.
-    /// Only checks for periods of 1, 2, 3 and 4.
+    /// Only checks for periods of 1, ..., MAX_PERIOD.
     fn rows_are_repeating(&self, row_index: DegreeType) -> Option<usize> {
-        if row_index < 4 {
+        if row_index < MAX_PERIOD as DegreeType {
             return None;
         }
 
         let row = row_index as usize;
-        (1..=3).find(|&period| {
+        (1..MAX_PERIOD).find(|&period| {
             (1..=period).all(|i| {
                 self.data[row - i - period]
                     .values()
@@ -376,9 +390,7 @@ impl<'a, T: FieldElement> VmProcessor<'a, T> {
         if updates.constraints.is_empty() {
             return false;
         }
-        let (before, after) = self.data.split_at_mut(row_index as usize + 1);
-        let current = before.last_mut().unwrap();
-        let next = after.first_mut().unwrap();
+        let (current, next) = self.data.mutable_row_pair(row_index as usize);
         let mut row_updater = RowUpdater::new(current, next, row_index + self.row_offset);
         row_updater.apply_updates(updates, source_name)
     }

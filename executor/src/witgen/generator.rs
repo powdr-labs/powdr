@@ -3,15 +3,16 @@ use ast::parsed::SelectedExpressions;
 use number::{DegreeType, FieldElement};
 use std::collections::{HashMap, HashSet};
 
+use crate::witgen::data_structures::finalizable_data::FinalizableData;
 use crate::witgen::rows::CellValue;
 
 use super::affine_expression::AffineExpression;
-use super::column_map::WitnessColumnMap;
+use super::data_structures::column_map::WitnessColumnMap;
 use super::global_constraints::GlobalConstraints;
 use super::machines::Machine;
 use super::processor::Processor;
 
-use super::rows::{transpose_rows, Row, RowFactory};
+use super::rows::{Row, RowFactory};
 use super::sequence_iterator::{DefaultSequenceIterator, ProcessingSequenceIterator};
 use super::vm_processor::VmProcessor;
 use super::{EvalResult, FixedData, MutableState, QueryCallback};
@@ -21,7 +22,7 @@ pub struct Generator<'a, T: FieldElement> {
     identities: Vec<&'a Identity<Expression<T>>>,
     witnesses: HashSet<PolyID>,
     global_range_constraints: GlobalConstraints<T>,
-    data: Vec<Row<'a, T>>,
+    data: FinalizableData<'a, T>,
     latch: Option<Expression<T>>,
 }
 
@@ -37,14 +38,9 @@ impl<'a, T: FieldElement> Machine<'a, T> for Generator<'a, T> {
     }
 
     fn take_witness_col_values(&mut self) -> HashMap<String, Vec<T>> {
-        transpose_rows(std::mem::take(&mut self.data), &self.witnesses)
-            .into_iter()
-            .map(|(id, values)| {
-                (
-                    self.fixed_data.column_name(&id).to_string(),
-                    values.into_iter().map(|v| v.unwrap_or_default()).collect(),
-                )
-            })
+        self.data
+            .take_transposed()
+            .map(|(id, (values, _))| (self.fixed_data.column_name(&id).to_string(), values))
             .collect()
     }
 }
@@ -57,12 +53,13 @@ impl<'a, T: FieldElement> Generator<'a, T> {
         global_range_constraints: &GlobalConstraints<T>,
         latch: Option<Expression<T>>,
     ) -> Self {
+        let data = FinalizableData::new(&witnesses);
         Self {
             fixed_data,
             identities: identities.to_vec(),
             witnesses,
             global_range_constraints: global_range_constraints.clone(),
-            data: vec![],
+            data,
             latch,
         }
     }
@@ -83,11 +80,8 @@ impl<'a, T: FieldElement> Generator<'a, T> {
 
             let first_row = self.data.pop().unwrap();
 
-            self.data.append(&mut self.process(
-                first_row,
-                self.data.len() as DegreeType,
-                mutable_state,
-            ));
+            self.data
+                .extend(self.process(first_row, self.data.len() as DegreeType, mutable_state));
         }
     }
 
@@ -104,10 +98,14 @@ impl<'a, T: FieldElement> Generator<'a, T> {
         // it does not assert that the row is "complete" afterwards (i.e., that all identities
         // are satisfied assuming 0 for unknown values).
         let row_factory = RowFactory::new(self.fixed_data, self.global_range_constraints.clone());
-        let data = vec![
-            row_factory.fresh_row(self.fixed_data.degree - 1),
-            row_factory.fresh_row(0),
-        ];
+        let data = FinalizableData::with_initial_rows_in_progress(
+            &self.witnesses,
+            [
+                row_factory.fresh_row(self.fixed_data.degree - 1),
+                row_factory.fresh_row(0),
+            ]
+            .into_iter(),
+        );
         let mut processor = Processor::new(
             self.fixed_data.degree - 1,
             data,
@@ -131,17 +129,21 @@ impl<'a, T: FieldElement> Generator<'a, T> {
         first_row: Row<'a, T>,
         row_offset: DegreeType,
         mutable_state: &mut MutableState<'a, '_, T, Q>,
-    ) -> Vec<Row<'a, T>> {
+    ) -> FinalizableData<'a, T> {
         log::trace!(
             "Running main machine from row {row_offset} with the following initial values in the first row:\n{}", first_row.render_values(false, None)
         );
         let row_factory = RowFactory::new(self.fixed_data, self.global_range_constraints.clone());
+        let data = FinalizableData::with_initial_rows_in_progress(
+            &self.witnesses,
+            [first_row].into_iter(),
+        );
         let mut processor = VmProcessor::new(
             row_offset,
             self.fixed_data,
             &self.identities,
             self.witnesses.clone(),
-            vec![first_row],
+            data,
             row_factory,
             self.latch.clone(),
         );
