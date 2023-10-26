@@ -6,14 +6,15 @@ use ast::{
 };
 use number::FieldElement;
 
-use crate::witgen::Constraint;
+use crate::witgen::{query_processor::QueryProcessor, Constraint};
 
 use super::{
     affine_expression::AffineExpression,
+    column_map::WitnessColumnMap,
     identity_processor::IdentityProcessor,
     rows::{Row, RowFactory, RowPair, RowUpdater, UnknownStrategy},
-    sequence_iterator::{IdentityInSequence, ProcessingSequenceIterator, SequenceStep},
-    Constraints, EvalError, EvalValue, FixedData, QueryCallback,
+    sequence_iterator::{Action, ProcessingSequenceIterator, SequenceStep},
+    Constraints, EvalError, EvalValue, FixedData, MutableState, QueryCallback,
 };
 
 type Left<'a, T> = Vec<AffineExpression<&'a PolynomialReference, T>>;
@@ -50,14 +51,16 @@ pub struct Processor<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>, CalldataA
     data: Vec<Row<'a, T>>,
     /// The list of identities
     identities: &'c [&'a Identity<Expression<T>>],
-    /// The identity processor
-    identity_processor: &'c mut IdentityProcessor<'a, 'b, 'c, T, Q>,
+    /// The mutable state
+    mutable_state: &'c mut MutableState<'a, 'b, T, Q>,
     /// The fixed data (containing information about all columns)
     fixed_data: &'a FixedData<'a, T>,
     /// The row factory
     row_factory: RowFactory<'a, T>,
     /// The set of witness columns that are actually part of this machine.
     witness_cols: &'c HashSet<PolyID>,
+    /// Whether a given witness column is relevant for this machine (faster than doing a contains check on witness_cols)
+    is_relevant_witness: WitnessColumnMap<bool>,
     /// The outer query, if any. If there is none, processing an outer query will fail.
     outer_query: Option<OuterQuery<'a, T>>,
     _marker: PhantomData<CalldataAvailable>,
@@ -69,20 +72,27 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>>
     pub fn new(
         row_offset: u64,
         data: Vec<Row<'a, T>>,
-        identity_processor: &'c mut IdentityProcessor<'a, 'b, 'c, T, Q>,
+        mutable_state: &'c mut MutableState<'a, 'b, T, Q>,
         identities: &'c [&'a Identity<Expression<T>>],
         fixed_data: &'a FixedData<'a, T>,
         row_factory: RowFactory<'a, T>,
         witness_cols: &'c HashSet<PolyID>,
     ) -> Self {
+        let is_relevant_witness = WitnessColumnMap::from(
+            fixed_data
+                .witness_cols
+                .keys()
+                .map(|poly_id| witness_cols.contains(&poly_id)),
+        );
         Self {
             row_offset,
             data,
-            identity_processor,
+            mutable_state,
             identities,
             fixed_data,
             row_factory,
             witness_cols,
+            is_relevant_witness,
             outer_query: None,
             _marker: PhantomData,
         }
@@ -97,11 +107,12 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>>
             _marker: PhantomData,
             row_offset: self.row_offset,
             data: self.data,
-            identity_processor: self.identity_processor,
+            mutable_state: self.mutable_state,
             identities: self.identities,
             fixed_data: self.fixed_data,
             row_factory: self.row_factory,
             witness_cols: self.witness_cols,
+            is_relevant_witness: self.is_relevant_witness,
         }
     }
 
@@ -124,6 +135,7 @@ impl<'a, 'b, T: FieldElement, Q: QueryCallback<T>, CalldataAvailable>
     /// If any identity was unsatisfied, returns an error.
     #[allow(dead_code)]
     pub fn check_constraints(&mut self) -> Result<(), EvalError<T>> {
+        let mut identity_processor = IdentityProcessor::new(self.fixed_data, self.mutable_state);
         for i in 0..(self.data.len() - 1) {
             let row_pair = RowPair::new(
                 &self.data[i],
@@ -133,8 +145,7 @@ impl<'a, 'b, T: FieldElement, Q: QueryCallback<T>, CalldataAvailable>
                 UnknownStrategy::Zero,
             );
             for identity in self.identities {
-                self.identity_processor
-                    .process_identity(identity, &row_pair)?;
+                identity_processor.process_identity(identity, &row_pair)?;
             }
         }
         Ok(())
@@ -148,25 +159,42 @@ impl<'a, 'b, T: FieldElement, Q: QueryCallback<T>, CalldataAvailable>
     ) -> Result<Constraints<&'a PolynomialReference, T>, EvalError<T>> {
         let mut outer_assignments = vec![];
 
-        while let Some(SequenceStep {
-            row_delta,
-            identity,
-        }) = sequence_iterator.next()
-        {
+        while let Some(SequenceStep { row_delta, action }) = sequence_iterator.next() {
             let row_index = (1 + row_delta) as usize;
-            let progress = match identity {
-                IdentityInSequence::Internal(identity_index) => {
+            let progress = match action {
+                Action::InternalIdentity(identity_index) => {
                     self.process_identity(row_index, identity_index)?
                 }
-                IdentityInSequence::OuterQuery => {
+                Action::OuterQuery => {
                     let (progress, new_outer_assignments) = self.process_outer_query(row_index)?;
                     outer_assignments.extend(new_outer_assignments);
                     progress
                 }
+                Action::ProverQueries => self.process_queries(row_index),
             };
             sequence_iterator.report_progress(progress);
         }
         Ok(outer_assignments)
+    }
+
+    fn process_queries(&mut self, row_index: usize) -> bool {
+        let mut query_processor =
+            QueryProcessor::new(self.fixed_data, self.mutable_state.query_callback);
+        let global_row_index = self.row_offset + row_index as u64;
+        let row_pair = RowPair::new(
+            &self.data[row_index],
+            &self.data[row_index + 1],
+            global_row_index,
+            self.fixed_data,
+            UnknownStrategy::Unknown,
+        );
+        let mut updates = EvalValue::complete(vec![]);
+        for poly_id in self.fixed_data.witness_cols.keys() {
+            if self.is_relevant_witness[&poly_id] {
+                updates.combine(query_processor.process_query(&row_pair, &poly_id));
+            }
+        }
+        self.apply_updates(row_index, &updates, || "queries".to_string())
     }
 
     /// Given a row and identity index, computes any updates, applies them and returns
@@ -189,8 +217,8 @@ impl<'a, 'b, T: FieldElement, Q: QueryCallback<T>, CalldataAvailable>
         );
 
         // Compute updates
-        let updates = self
-            .identity_processor
+        let mut identity_processor = IdentityProcessor::new(self.fixed_data, self.mutable_state);
+        let updates = identity_processor
             .process_identity(identity, &row_pair)
             .map_err(|e| {
                 log::warn!("Error in identity: {identity}");
@@ -229,8 +257,8 @@ impl<'a, 'b, T: FieldElement, Q: QueryCallback<T>, CalldataAvailable>
             UnknownStrategy::Unknown,
         );
 
-        let updates = self
-            .identity_processor
+        let mut identity_processor = IdentityProcessor::new(self.fixed_data, self.mutable_state);
+        let updates = identity_processor
             .process_link(left, right, &row_pair)
             .map_err(|e| {
                 log::warn!("Error in outer query: {e}");
@@ -303,7 +331,7 @@ mod tests {
         witgen::{
             column_map::FixedColumnMap,
             global_constraints::GlobalConstraints,
-            identity_processor::{IdentityProcessor, Machines},
+            identity_processor::Machines,
             machines::FixedLookup,
             rows::RowFactory,
             sequence_iterator::{DefaultSequenceIterator, ProcessingSequenceIterator},
@@ -354,7 +382,6 @@ mod tests {
             machines: Machines::from(machines.iter_mut()),
             query_callback: &mut query_callback,
         };
-        let mut identity_processor = IdentityProcessor::new(&fixed_data, &mut mutable_state);
         let row_offset = 0;
         let identities = analyzed.identities.iter().collect::<Vec<_>>();
         let witness_cols = fixed_data.witness_cols.keys().collect();
@@ -362,7 +389,7 @@ mod tests {
         let mut processor = Processor::new(
             row_offset,
             data,
-            &mut identity_processor,
+            &mut mutable_state,
             &identities,
             &fixed_data,
             row_factory,

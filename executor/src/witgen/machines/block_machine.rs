@@ -259,8 +259,6 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
             log::trace!("  {}", l);
         }
 
-        let mut identity_processor = IdentityProcessor::new(self.fixed_data, mutable_state);
-
         // First check if we already store the value.
         // This can happen in the loop detection case, where this function is just called
         // to validate the constraints.
@@ -281,6 +279,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
                 UnknownStrategy::Unknown,
             );
 
+            let mut identity_processor = IdentityProcessor::new(self.fixed_data, mutable_state);
             let result = identity_processor.process_link(left, right, &row_pair)?;
 
             if result.is_complete() {
@@ -357,11 +356,10 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         let block = (0..(self.block_size + 2))
             .map(|i| self.row_factory.fresh_row(i as DegreeType + row_offset))
             .collect();
-        let mut identity_processor = IdentityProcessor::new(self.fixed_data, mutable_state);
         let mut processor = Processor::new(
             row_offset,
             block,
-            &mut identity_processor,
+            mutable_state,
             &self.identities,
             self.fixed_data,
             self.row_factory.clone(),

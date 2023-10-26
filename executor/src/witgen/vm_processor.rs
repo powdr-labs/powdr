@@ -10,6 +10,7 @@ use crate::witgen::identity_processor::{self, IdentityProcessor};
 use crate::witgen::rows::RowUpdater;
 use crate::witgen::IncompleteCause;
 
+use super::column_map::WitnessColumnMap;
 use super::query_processor::QueryProcessor;
 
 use super::rows::{Row, RowFactory, RowPair, UnknownStrategy};
@@ -40,6 +41,8 @@ pub struct VmProcessor<'a, T: FieldElement> {
     row_offset: DegreeType,
     /// The witness columns belonging to this machine
     witnesses: HashSet<PolyID>,
+    /// Whether a given witness column is relevant for this machine (faster than doing a contains check on witnesses)
+    is_relevant_witness: WitnessColumnMap<bool>,
     fixed_data: &'a FixedData<'a, T>,
     /// The subset of identities that contains a reference to the next row
     /// (precomputed once for performance reasons)
@@ -68,9 +71,17 @@ impl<'a, T: FieldElement> VmProcessor<'a, T> {
             .iter()
             .partition(|identity| identity.contains_next_ref());
 
+        let is_relevant_witness = WitnessColumnMap::from(
+            fixed_data
+                .witness_cols
+                .keys()
+                .map(|poly_id| witnesses.contains(&poly_id)),
+        );
+
         VmProcessor {
             row_offset,
             witnesses,
+            is_relevant_witness,
             fixed_data,
             identities_with_next_ref: identities_with_next,
             identities_without_next_ref: identities_without_next,
@@ -261,6 +272,7 @@ impl<'a, T: FieldElement> VmProcessor<'a, T> {
                 UnknownStrategy::Unknown,
                 &mut identity_processor,
             )?;
+            let mut updates = EvalValue::complete(vec![]);
             let mut query_processor =
                 QueryProcessor::new(self.fixed_data, mutable_state.query_callback);
             let row_pair = RowPair::new(
@@ -270,8 +282,12 @@ impl<'a, T: FieldElement> VmProcessor<'a, T> {
                 self.fixed_data,
                 UnknownStrategy::Unknown,
             );
-            let updates = query_processor.process_queries_on_current_row(&row_pair);
-            progress |= self.apply_updates(row_index, &updates, || "query".to_string());
+            for poly_id in self.fixed_data.witness_cols.keys() {
+                if self.is_relevant_witness[&poly_id] {
+                    updates.combine(query_processor.process_query(&row_pair, &poly_id));
+                }
+            }
+            progress |= self.apply_updates(row_index, &updates, || "queries".to_string());
 
             if !progress {
                 break;
@@ -357,6 +373,9 @@ impl<'a, T: FieldElement> VmProcessor<'a, T> {
         updates: &EvalValue<&PolynomialReference, T>,
         source_name: impl Fn() -> String,
     ) -> bool {
+        if updates.constraints.is_empty() {
+            return false;
+        }
         let (before, after) = self.data.split_at_mut(row_index as usize + 1);
         let current = before.last_mut().unwrap();
         let next = after.first_mut().unwrap();
