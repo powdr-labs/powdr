@@ -22,7 +22,7 @@ pub fn condense<T: FieldElement>(
     source_order: Vec<StatementIdentifier>,
 ) -> Analyzed<T> {
     let condenser = Condenser {
-        constants: compute_constants(&definitions, &Default::default()),
+        constants: compute_constants(&definitions),
         symbols: definitions
             .iter()
             .map(|(name, (symbol, _))| (name.clone(), symbol.clone()))
