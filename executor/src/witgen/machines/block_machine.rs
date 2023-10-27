@@ -296,14 +296,14 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
             );
 
             let mut identity_processor = IdentityProcessor::new(self.fixed_data, mutable_state);
-            let result = identity_processor.process_link(left, right, &row_pair)?;
-
-            if result.is_complete() {
-                log::trace!(
-                    "End processing block machine '{}' (already solved)",
-                    self.name()
-                );
-                return Ok(result);
+            if let Ok(result) = identity_processor.process_link(left, right, &row_pair) {
+                if result.is_complete() && result.constraints.is_empty() {
+                    log::trace!(
+                        "End processing block machine '{}' (already solved)",
+                        self.name()
+                    );
+                    return Ok(result);
+                }
             }
         }
 

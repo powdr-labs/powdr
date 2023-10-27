@@ -221,13 +221,12 @@ fn test_single_line_blocks() {
     gen_estark_proof(f, Default::default());
 }
 
-// TODO: Add back once #693 is merged
-// #[test]
-// fn test_two_block_machine_functions() {
-//     let f = "two_block_machine_functions.pil";
-//     verify_pil(f, None);
-//     gen_estark_proof(f, Default::default());
-// }
+#[test]
+fn test_two_block_machine_functions() {
+    let f = "two_block_machine_functions.pil";
+    verify_pil(f, None);
+    gen_estark_proof(f, Default::default());
+}
 
 #[test]
 fn test_fixed_columns() {
