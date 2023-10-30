@@ -243,7 +243,7 @@ fn remove_constant_witness_columns<T: FieldElement>(pil_file: &mut Analyzed<T>) 
         .identities
         .iter()
         .filter_map(|id| (id.kind == IdentityKind::Polynomial).then(|| id.expression_for_poly_id()))
-        .filter_map(|expr| constrained_to_constant(expr))
+        .filter_map(constrained_to_constant)
         .collect::<BTreeMap<PolyID, _>>();
 
     substitute_polynomial_references(pil_file, &constant_polys);
@@ -323,7 +323,7 @@ fn remove_trivial_identities<T: FieldElement>(pil_file: &mut Analyzed<T>) {
         .enumerate()
         .filter_map(|(index, identity)| match identity.kind {
             IdentityKind::Polynomial => {
-                if let AlgebraicExpression::Number(n) = identity.left.selector.as_ref().unwrap() {
+                if let AlgebraicExpression::Number(n) = identity.expression_for_poly_id() {
                     if *n == 0.into() {
                         return Some(index);
                     }
