@@ -1302,7 +1302,7 @@ fn process_instruction(instr: &str, args: &[Argument], coprocessors: &CoProcesso
                     format!("tmp2 <== wrap(tmp1 + {rs2});"),
                     format!("mstore {rs1}, tmp2;"),
                 ],
-                only_if_no_write_to_zero(format!("{rd} <== tmp1"), rd),
+                only_if_no_write_to_zero(format!("{rd} <=X= tmp1;"), rd),
             ]
             .concat()
         }
