@@ -6,7 +6,7 @@ use ast::analyzed::{
 use num_traits::Zero;
 use number::{DegreeType, FieldElement};
 
-use self::column_map::{FixedColumnMap, WitnessColumnMap};
+use self::data_structures::column_map::{FixedColumnMap, WitnessColumnMap};
 pub use self::eval_result::{
     Constraint, Constraints, EvalError, EvalResult, EvalStatus, EvalValue, IncompleteCause,
 };
@@ -19,7 +19,7 @@ use self::machines::{FixedLookup, Machine};
 use pil_analyzer::pil_analyzer::inline_intermediate_polynomials;
 
 mod affine_expression;
-mod column_map;
+mod data_structures;
 mod eval_result;
 mod expression_evaluator;
 pub mod fixed_evaluator;

@@ -1,7 +1,4 @@
-use std::{
-    collections::{BTreeMap, HashSet},
-    fmt::Debug,
-};
+use std::{collections::HashSet, fmt::Debug};
 
 use ast::analyzed::{Expression, PolyID, PolynomialReference};
 use itertools::Itertools;
@@ -11,7 +8,7 @@ use crate::witgen::Constraint;
 
 use super::{
     affine_expression::{AffineExpression, AffineResult},
-    column_map::WitnessColumnMap,
+    data_structures::column_map::WitnessColumnMap,
     expression_evaluator::ExpressionEvaluator,
     global_constraints::{GlobalConstraints, RangeConstraintSet},
     range_constraints::RangeConstraint,
@@ -148,31 +145,6 @@ impl<T: FieldElement> Row<'_, T> {
             .map(|(_, cell)| format!("    {:?}", cell))
             .join("\n")
     }
-}
-
-/// Transposes a list of rows into a map from column to a list of values.
-pub fn transpose_rows<T: FieldElement>(
-    rows: Vec<Row<T>>,
-    column_set: &HashSet<PolyID>,
-) -> BTreeMap<PolyID, Vec<Option<T>>> {
-    // Use column maps for efficiency
-    let mut columns: WitnessColumnMap<Vec<Option<T>>> =
-        WitnessColumnMap::from(rows[0].iter().map(|_| Vec::new()));
-    let is_relevant_column =
-        WitnessColumnMap::from(rows[0].keys().map(|poly_id| column_set.contains(&poly_id)));
-
-    for row in rows.into_iter() {
-        for (poly_id, cell) in row.into_iter() {
-            if is_relevant_column[&poly_id] {
-                columns[&poly_id].push(cell.value.into());
-            }
-        }
-    }
-    // Convert to BTreeMap and filter out columns outside column set
-    columns
-        .into_iter()
-        .filter(|(poly_id, _)| is_relevant_column[poly_id])
-        .collect()
 }
 
 /// A factory for rows, which knows the global range constraints and has pointers to column names.

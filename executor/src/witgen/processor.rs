@@ -10,9 +10,9 @@ use crate::witgen::{query_processor::QueryProcessor, Constraint};
 
 use super::{
     affine_expression::AffineExpression,
-    column_map::WitnessColumnMap,
+    data_structures::{column_map::WitnessColumnMap, finalizable_data::FinalizableData},
     identity_processor::IdentityProcessor,
-    rows::{Row, RowFactory, RowPair, RowUpdater, UnknownStrategy},
+    rows::{RowFactory, RowPair, RowUpdater, UnknownStrategy},
     sequence_iterator::{Action, ProcessingSequenceIterator, SequenceStep},
     Constraints, EvalError, EvalValue, FixedData, MutableState, QueryCallback,
 };
@@ -48,7 +48,7 @@ pub struct Processor<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>, CalldataA
     /// The global index of the first row of [Processor::data].
     row_offset: u64,
     /// The rows that are being processed.
-    data: Vec<Row<'a, T>>,
+    data: FinalizableData<'a, T>,
     /// The list of identities
     identities: &'c [&'a Identity<Expression<T>>],
     /// The mutable state
@@ -71,7 +71,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>>
 {
     pub fn new(
         row_offset: u64,
-        data: Vec<Row<'a, T>>,
+        data: FinalizableData<'a, T>,
         mutable_state: &'c mut MutableState<'a, 'b, T, Q>,
         identities: &'c [&'a Identity<Expression<T>>],
         fixed_data: &'a FixedData<'a, T>,
@@ -116,14 +116,14 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>>
         }
     }
 
-    pub fn finish(self) -> Vec<Row<'a, T>> {
+    pub fn finish(self) -> FinalizableData<'a, T> {
         self.data
     }
 }
 
 impl<'a, 'b, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, '_, T, Q, WithCalldata> {
     /// Destroys itself, returns the data and updated left-hand side of the outer query (if available).
-    pub fn finish(self) -> (Vec<Row<'a, T>>, Left<'a, T>) {
+    pub fn finish(self) -> (FinalizableData<'a, T>, Left<'a, T>) {
         (self.data, self.outer_query.unwrap().left)
     }
 }
@@ -297,9 +297,7 @@ impl<'a, 'b, T: FieldElement, Q: QueryCallback<T>, CalldataAvailable>
         // Build RowUpdater
         // (a bit complicated, because we need two mutable
         // references to elements of the same vector)
-        let (before, after) = self.data.split_at_mut(row_index + 1);
-        let current = before.last_mut().unwrap();
-        let next = after.first_mut().unwrap();
+        let (current, next) = self.data.mutable_row_pair(row_index);
         let mut row_updater = RowUpdater::new(current, next, self.row_offset + row_index as u64);
 
         for (poly, c) in &updates.constraints {
@@ -322,14 +320,15 @@ impl<'a, 'b, T: FieldElement, Q: QueryCallback<T>, CalldataAvailable>
 mod tests {
     use std::collections::BTreeMap;
 
-    use ast::analyzed::PolyID;
+    use ast::analyzed::{PolyID, PolynomialType};
     use number::{FieldElement, GoldilocksField};
     use pil_analyzer::analyze_string;
 
     use crate::{
         constant_evaluator::generate,
         witgen::{
-            column_map::FixedColumnMap,
+            data_structures::column_map::FixedColumnMap,
+            data_structures::finalizable_data::FinalizableData,
             global_constraints::GlobalConstraints,
             identity_processor::Machines,
             machines::FixedLookup,
@@ -373,9 +372,16 @@ mod tests {
         let mut machines = vec![];
 
         let row_factory = RowFactory::new(&fixed_data, global_range_constraints);
-        let data = (0..fixed_data.degree)
-            .map(|i| row_factory.fresh_row(i))
+        let columns = (0..fixed_data.witness_cols.len())
+            .map(move |i| PolyID {
+                id: i as u64,
+                ptype: PolynomialType::Committed,
+            })
             .collect();
+        let data = FinalizableData::with_initial_rows_in_progress(
+            &columns,
+            (0..fixed_data.degree).map(|i| row_factory.fresh_row(i)),
+        );
 
         let mut mutable_state = MutableState {
             fixed_lookup: &mut fixed_lookup,
@@ -413,14 +419,6 @@ mod tests {
 
             // Can't use processor.finish(), because we don't own it...
             let data = processor.data.clone();
-
-            // In case of any error, this will be useful
-            for (i, row) in data.iter().enumerate() {
-                println!(
-                    "{}",
-                    row.render(&format!("Row {i}"), true, processor.witness_cols)
-                );
-            }
 
             for &(i, name, expected) in asserted_values.iter() {
                 let poly_id = poly_ids[name];

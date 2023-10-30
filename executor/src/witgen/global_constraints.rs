@@ -8,9 +8,8 @@ use ast::analyzed::{
 use ast::parsed::BinaryOperator;
 use number::FieldElement;
 
-use crate::witgen::column_map::FixedColumnMap;
+use crate::witgen::data_structures::column_map::{FixedColumnMap, WitnessColumnMap};
 
-use super::column_map::WitnessColumnMap;
 use super::expression_evaluator::ExpressionEvaluator;
 use super::range_constraints::RangeConstraint;
 use super::symbolic_evaluator::SymbolicEvaluator;
