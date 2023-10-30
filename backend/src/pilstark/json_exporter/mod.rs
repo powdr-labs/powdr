@@ -3,8 +3,8 @@ use std::cmp;
 use std::collections::HashMap;
 
 use ast::analyzed::{
-    self, Analyzed, BinaryOperator, Expression, IdentityKind, PolyID, PolynomialReference,
-    PolynomialType, StatementIdentifier, SymbolKind, UnaryOperator,
+    self, AlgebraicExpression as Expression, Analyzed, BinaryOperator, IdentityKind, PolyID,
+    PolynomialReference, PolynomialType, StatementIdentifier, SymbolKind, UnaryOperator,
 };
 use starky::types::{
     ConnectionIdentity, Expression as StarkyExpr, PermutationIdentity, PlookupIdentity,
@@ -254,11 +254,8 @@ impl<'a, T: FieldElement> Exporter<'a, T> {
     /// returns the degree and the JSON value (intermediate polynomial IDs)
     fn expression_to_json(&self, expr: &Expression<T>) -> (u32, StarkyExpr) {
         match expr {
-            Expression::Reference(analyzed::Reference::Poly(reference)) => {
+            Expression::Reference(analyzed::AlgebraicReference::Poly(reference)) => {
                 self.polynomial_reference_to_json(reference)
-            }
-            Expression::Reference(analyzed::Reference::LocalVar(_, _)) => {
-                panic!("No local variable references allowed here.")
             }
             Expression::PublicReference(name) => (
                 0,

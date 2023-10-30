@@ -1,4 +1,3 @@
-pub mod build;
 mod display;
 pub mod visitor;
 
@@ -28,8 +27,8 @@ pub enum StatementIdentifier {
 pub struct Analyzed<T> {
     pub definitions: HashMap<String, (Symbol, Option<FunctionValueDefinition<T>>)>,
     pub public_declarations: HashMap<String, PublicDeclaration>,
-    pub intermediate_columns: HashMap<String, (Symbol, Expression<T>)>,
-    pub identities: Vec<Identity<Expression<T>>>,
+    pub intermediate_columns: HashMap<String, (Symbol, AlgebraicExpression<T>)>,
+    pub identities: Vec<Identity<AlgebraicExpression<T>>>,
     /// The order in which definitions and identities
     /// appear in the source.
     pub source_order: Vec<StatementIdentifier>,
@@ -61,7 +60,7 @@ impl<T> Analyzed<T> {
         self.definitions_in_source_order(PolynomialType::Committed)
     }
 
-    pub fn intermediate_polys_in_source_order(&self) -> Vec<&(Symbol, Expression<T>)> {
+    pub fn intermediate_polys_in_source_order(&self) -> Vec<&(Symbol, AlgebraicExpression<T>)> {
         self.source_order
             .iter()
             .filter_map(move |statement| {
@@ -193,13 +192,21 @@ impl<T> Analyzed<T> {
             }
         };
         self.post_visit_expressions_in_definitions_mut(visitor);
-        self.post_visit_expressions_in_identities_mut(visitor);
+        let algebraic_visitor = &mut |expr: &mut AlgebraicExpression<_>| {
+            if let AlgebraicExpression::Reference(AlgebraicReference::Poly(poly)) = expr {
+                poly.poly_id = poly.poly_id.map(|poly_id| {
+                    assert!(!to_remove.contains(&poly_id));
+                    replacements[&poly_id]
+                });
+            }
+        };
+        self.post_visit_expressions_in_identities_mut(algebraic_visitor);
     }
 
     /// Adds a polynomial identity and returns the ID.
     pub fn append_polynomial_identity(
         &mut self,
-        identity: Expression<T>,
+        identity: AlgebraicExpression<T>,
         source: SourceRef,
     ) -> u64 {
         let id = self
@@ -251,7 +258,7 @@ impl<T> Analyzed<T> {
 
     pub fn post_visit_expressions_in_identities_mut<F>(&mut self, f: &mut F)
     where
-        F: FnMut(&mut Expression<T>),
+        F: FnMut(&mut AlgebraicExpression<T>),
     {
         self.identities
             .iter_mut()
@@ -389,7 +396,7 @@ impl<Expr> Identity<Expr> {
     }
 }
 
-impl<T> Identity<Expression<T>> {
+impl<T> Identity<AlgebraicExpression<T>> {
     pub fn contains_next_ref(&self) -> bool {
         self.left.contains_next_ref() || self.right.contains_next_ref()
     }
@@ -403,7 +410,7 @@ pub enum IdentityKind {
     Connect,
 }
 
-impl<T> SelectedExpressions<Expression<T>> {
+impl<T> SelectedExpressions<AlgebraicExpression<T>> {
     /// @returns true if the expression contains a reference to a next value of a
     /// (witness or fixed) column
     pub fn contains_next_ref(&self) -> bool {
@@ -416,12 +423,29 @@ impl<T> SelectedExpressions<Expression<T>> {
 
 pub type Expression<T> = parsed::Expression<T, Reference>;
 
-impl<T> Expression<T> {
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Reference {
+    LocalVar(u64, String),
+    Poly(PolynomialReference),
+}
+
+// TODO "inline" this enum.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AlgebraicReference {
+    Poly(PolynomialReference),
+}
+
+// TODO After renaming, this will be even simpler:
+// expression enum will be much simpler
+// Reference will have PolyID directly, not Option<PolyID>
+pub type AlgebraicExpression<T> = parsed::Expression<T, AlgebraicReference>;
+
+impl<T> AlgebraicExpression<T> {
     /// @returns true if the expression contains a reference to a next value of a
     /// (witness or fixed) column
     pub fn contains_next_ref(&self) -> bool {
         expr_any(self, |e| match e {
-            Expression::Reference(Reference::Poly(poly)) => poly.next,
+            AlgebraicExpression::Reference(AlgebraicReference::Poly(poly)) => poly.next,
             _ => false,
         })
     }
@@ -429,7 +453,9 @@ impl<T> Expression<T> {
     /// @returns true if the expression contains a reference to a next value of a witness column.
     pub fn contains_next_witness_ref(&self) -> bool {
         expr_any(self, |e| match e {
-            Expression::Reference(Reference::Poly(poly)) => poly.next && poly.is_witness(),
+            AlgebraicExpression::Reference(AlgebraicReference::Poly(poly)) => {
+                poly.next && poly.is_witness()
+            }
             _ => false,
         })
     }
@@ -437,16 +463,10 @@ impl<T> Expression<T> {
     /// @returns true if the expression contains a reference to a witness column.
     pub fn contains_witness_ref(&self) -> bool {
         expr_any(self, |e| match e {
-            Expression::Reference(Reference::Poly(poly)) => poly.is_witness(),
+            AlgebraicExpression::Reference(AlgebraicReference::Poly(poly)) => poly.is_witness(),
             _ => false,
         })
     }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Reference {
-    LocalVar(u64, String),
-    Poly(PolynomialReference),
 }
 
 #[derive(Debug, Clone, Eq)]

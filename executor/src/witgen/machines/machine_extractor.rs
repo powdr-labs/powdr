@@ -8,7 +8,10 @@ use super::FixedData;
 use super::KnownMachine;
 use crate::witgen::generator::Generator;
 use crate::witgen::global_constraints::GlobalConstraints;
-use ast::analyzed::{Expression, Identity, IdentityKind, PolyID, Reference};
+use ast::analyzed::{
+    AlgebraicExpression as Expression, AlgebraicReference as Reference, Identity, IdentityKind,
+    PolyID,
+};
 use ast::parsed::visitor::ExpressionVisitable;
 use ast::parsed::SelectedExpressions;
 use itertools::Itertools;

@@ -5,8 +5,9 @@ use std::collections::HashMap;
 
 use ast::{
     analyzed::{
-        Analyzed, Expression, FunctionValueDefinition, Identity, PolynomialReference,
-        PolynomialType, PublicDeclaration, Reference, StatementIdentifier, Symbol, SymbolKind,
+        AlgebraicExpression, AlgebraicReference, Analyzed, Expression, FunctionValueDefinition,
+        Identity, PolynomialReference, PolynomialType, PublicDeclaration, Reference,
+        StatementIdentifier, Symbol, SymbolKind,
     },
     evaluate_binary_operation, evaluate_unary_operation,
     parsed::{visitor::ExpressionVisitable, SelectedExpressions},
@@ -18,7 +19,7 @@ use crate::evaluator::compute_constants;
 pub fn condense<T: FieldElement>(
     mut definitions: HashMap<String, (Symbol, Option<FunctionValueDefinition<T>>)>,
     mut public_declarations: HashMap<String, PublicDeclaration>,
-    identities: Vec<Identity<Expression<T>>>,
+    identities: &[Identity<Expression<T>>],
     source_order: Vec<StatementIdentifier>,
 ) -> Analyzed<T> {
     let condenser = Condenser {
@@ -30,7 +31,7 @@ pub fn condense<T: FieldElement>(
     };
 
     let identities = identities
-        .into_iter()
+        .iter()
         .map(|identity| condenser.condense_identity(identity))
         .collect();
 
@@ -44,7 +45,7 @@ pub fn condense<T: FieldElement>(
                 };
                 Some((
                     name.clone(),
-                    (symbol.clone(), condenser.condense_expression(e.clone())),
+                    (symbol.clone(), condenser.condense_expression(e)),
                 ))
             } else {
                 None
@@ -75,9 +76,9 @@ pub fn condense<T: FieldElement>(
     }
 }
 
-struct Condenser<T> {
-    symbols: HashMap<String, Symbol>,
-    constants: HashMap<String, T>,
+pub struct Condenser<T> {
+    pub symbols: HashMap<String, Symbol>,
+    pub constants: HashMap<String, T>,
 }
 
 impl<T: FieldElement> Condenser<T> {
@@ -91,60 +92,74 @@ impl<T: FieldElement> Condenser<T> {
         }
     }
 
-    pub fn condense_identity(&self, identity: Identity<Expression<T>>) -> Identity<Expression<T>> {
+    pub fn condense_identity(
+        &self,
+        identity: &Identity<Expression<T>>,
+    ) -> Identity<AlgebraicExpression<T>> {
         Identity {
             id: identity.id,
             kind: identity.kind,
-            source: identity.source,
-            left: self.condense_selected_expressions(identity.left),
-            right: self.condense_selected_expressions(identity.right),
+            source: identity.source.clone(),
+            left: self.condense_selected_expressions(&identity.left),
+            right: self.condense_selected_expressions(&identity.right),
         }
     }
 
     fn condense_selected_expressions(
         &self,
-        sel_expr: SelectedExpressions<Expression<T>>,
-    ) -> SelectedExpressions<Expression<T>> {
+        sel_expr: &SelectedExpressions<Expression<T>>,
+    ) -> SelectedExpressions<AlgebraicExpression<T>> {
         SelectedExpressions {
-            selector: sel_expr.selector.map(|expr| self.condense_expression(expr)),
+            selector: sel_expr
+                .selector
+                .as_ref()
+                .map(|expr| self.condense_expression(expr)),
             expressions: sel_expr
                 .expressions
-                .into_iter()
+                .iter()
                 .map(|expr| self.condense_expression(expr))
                 .collect(),
         }
     }
 
-    fn condense_expression(&self, e: Expression<T>) -> Expression<T> {
+    pub fn condense_expression(&self, e: &Expression<T>) -> AlgebraicExpression<T> {
         match e {
-            Expression::Reference(Reference::Poly(mut poly)) => {
+            Expression::Reference(Reference::Poly(poly)) => {
                 if !poly.next && poly.index.is_none() {
                     if let Some(value) = self.constants.get(&poly.name) {
-                        return Expression::Number(*value);
+                        return AlgebraicExpression::Number(*value);
                     }
                 }
 
+                let mut poly = poly.clone();
                 self.assign_id(&mut poly);
-                Expression::Reference(Reference::Poly(poly))
+                AlgebraicExpression::Reference(AlgebraicReference::Poly(poly))
             }
-            Expression::Reference(_) => e,
-            Expression::Number(_) => e,
+            Expression::Reference(Reference::LocalVar(_, _)) => {
+                panic!("Local variables not allowed here.")
+            }
+            Expression::Number(n) => AlgebraicExpression::Number(*n),
             Expression::BinaryOperation(left, op, right) => {
                 match (
-                    self.condense_expression(*left),
-                    self.condense_expression(*right),
+                    self.condense_expression(left),
+                    self.condense_expression(right),
                 ) {
-                    (Expression::Number(l), Expression::Number(r)) => {
-                        Expression::Number(evaluate_binary_operation(l, op, r))
+                    (AlgebraicExpression::Number(l), AlgebraicExpression::Number(r)) => {
+                        AlgebraicExpression::Number(evaluate_binary_operation(l, *op, r))
                     }
-                    (l, r) => Expression::BinaryOperation(Box::new(l), op, Box::new(r)),
+                    (l, r) => AlgebraicExpression::BinaryOperation(Box::new(l), *op, Box::new(r)),
                 }
             }
-            Expression::UnaryOperation(op, inner) => match self.condense_expression(*inner) {
-                Expression::Number(n) => Expression::Number(evaluate_unary_operation(op, n)),
-                inner => Expression::UnaryOperation(op, Box::new(inner)),
-            },
-            Expression::PublicReference(r) => Expression::PublicReference(r),
+            Expression::UnaryOperation(op, inner) => {
+                let inner = self.condense_expression(inner);
+                match inner {
+                    AlgebraicExpression::Number(n) => {
+                        AlgebraicExpression::Number(evaluate_unary_operation(*op, n))
+                    }
+                    _ => AlgebraicExpression::UnaryOperation(*op, Box::new(inner)),
+                }
+            }
+            Expression::PublicReference(r) => AlgebraicExpression::PublicReference(r.clone()),
             Expression::String(_) => panic!("Strings are not allowed here."),
             Expression::Tuple(_) => panic!(),
             Expression::LambdaExpression(_) => panic!(),

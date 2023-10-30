@@ -11,7 +11,10 @@ use crate::witgen::{
     symbolic_evaluator::SymbolicEvaluator,
 };
 use crate::witgen::{EvalValue, IncompleteCause, MutableState, QueryCallback};
-use ast::analyzed::{Expression, Identity, IdentityKind, PolyID, PolynomialReference, Reference};
+use ast::analyzed::{
+    AlgebraicExpression as Expression, AlgebraicReference as Reference, Identity, IdentityKind,
+    PolyID, PolynomialReference,
+};
 use number::FieldElement;
 
 /// A machine that can support a lookup in a set of columns that are sorted

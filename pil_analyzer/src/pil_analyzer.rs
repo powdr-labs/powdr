@@ -12,9 +12,9 @@ use ast::parsed::{
 use number::{DegreeType, FieldElement};
 
 use ast::analyzed::{
-    Analyzed, Expression, FunctionValueDefinition, Identity, IdentityKind, PolynomialReference,
-    PolynomialType, PublicDeclaration, Reference, RepeatedArray, SourceRef, StatementIdentifier,
-    Symbol, SymbolKind,
+    AlgebraicExpression, AlgebraicReference, Analyzed, Expression, FunctionValueDefinition,
+    Identity, IdentityKind, PolynomialReference, PolynomialType, PublicDeclaration, Reference,
+    RepeatedArray, SourceRef, StatementIdentifier, Symbol, SymbolKind,
 };
 
 use crate::condenser;
@@ -108,7 +108,7 @@ impl<T: FieldElement> PILAnalyzer<T> {
         condenser::condense(
             self.definitions,
             self.public_declarations,
-            self.identities,
+            &self.identities,
             self.source_order,
         )
     }
@@ -649,30 +649,29 @@ impl<'a, T: FieldElement> ExpressionProcessor<'a, T> {
     }
 }
 
-pub fn inline_intermediate_polynomials<T: Copy>(
+pub fn inline_intermediate_polynomials<T: FieldElement>(
     analyzed: &Analyzed<T>,
-) -> Vec<Identity<Expression<T>>> {
-    substitute_intermediate(
-        analyzed.identities.clone(),
-        &analyzed
-            .intermediate_polys_in_source_order()
-            .iter()
-            .map(|(symbol, def)| (symbol.id, def.clone()))
-            .collect(),
-    )
+) -> Vec<Identity<AlgebraicExpression<T>>> {
+    let intermediates = &analyzed
+        .intermediate_polys_in_source_order()
+        .iter()
+        .map(|(symbol, def)| (symbol.id, def))
+        .collect();
+
+    substitute_intermediate(analyzed.identities.clone(), intermediates)
 }
 
 /// Takes identities as values and inlines intermediate polynomials everywhere, returning a vector of the updated identities
 /// TODO: this could return an iterator
 fn substitute_intermediate<T: Copy>(
-    identities: impl IntoIterator<Item = Identity<Expression<T>>>,
-    intermediate_polynomials: &HashMap<u64, Expression<T>>,
-) -> Vec<Identity<Expression<T>>> {
+    identities: impl IntoIterator<Item = Identity<AlgebraicExpression<T>>>,
+    intermediate_polynomials: &HashMap<u64, &AlgebraicExpression<T>>,
+) -> Vec<Identity<AlgebraicExpression<T>>> {
     identities
         .into_iter()
         .scan(HashMap::default(), |cache, mut identity| {
             identity.post_visit_expressions_mut(&mut |e| {
-                if let Expression::Reference(Reference::Poly(r)) = e {
+                if let AlgebraicExpression::Reference(AlgebraicReference::Poly(r)) = e {
                     let poly_id = r.poly_id.unwrap();
                     match poly_id.ptype {
                         PolynomialType::Committed => {}
@@ -697,12 +696,15 @@ fn substitute_intermediate<T: Copy>(
 /// This uses a cache to avoid resolving an intermediate polynomial twice
 fn inlined_expression_from_intermediate_poly_id<T: Copy>(
     poly_id: u64,
-    intermediate_polynomials: &HashMap<u64, Expression<T>>,
-    cache: &mut HashMap<u64, Expression<T>>,
-) -> Expression<T> {
+    intermediate_polynomials: &HashMap<u64, &AlgebraicExpression<T>>,
+    cache: &mut HashMap<u64, AlgebraicExpression<T>>,
+) -> AlgebraicExpression<T> {
+    if let Some(e) = cache.get(&poly_id) {
+        return e.clone();
+    }
     let mut expr = intermediate_polynomials[&poly_id].clone();
     expr.post_visit_expressions_mut(&mut |e| {
-        if let Expression::Reference(Reference::Poly(r)) = e {
+        if let AlgebraicExpression::Reference(AlgebraicReference::Poly(r)) = e {
             let poly_id = r.poly_id.unwrap();
             match poly_id.ptype {
                 PolynomialType::Committed => {}

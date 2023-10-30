@@ -5,6 +5,8 @@ pub mod folder;
 pub mod utils;
 pub mod visitor;
 
+use std::ops;
+
 use number::{DegreeType, FieldElement};
 
 #[derive(Debug, PartialEq, Eq)]
@@ -86,6 +88,10 @@ pub enum Expression<T, Ref = ShiftedPolynomialReference<T>> {
 }
 
 impl<T, Ref> Expression<T, Ref> {
+    pub fn new_binary(left: Self, op: BinaryOperator, right: Self) -> Self {
+        Expression::BinaryOperation(Box::new(left), op, Box::new(right))
+    }
+
     /// Visits this expression and all of its sub-expressions and returns true
     /// if `f` returns true on any of them.
     pub fn any(&self, mut f: impl FnMut(&Self) -> bool) -> bool {
@@ -99,6 +105,42 @@ impl<T, Ref> Expression<T, Ref> {
             }
         })
         .is_break()
+    }
+}
+
+impl<T, Ref> ops::Add for Expression<T, Ref> {
+    type Output = Expression<T, Ref>;
+
+    fn add(self, rhs: Self) -> Self::Output {
+        Self::new_binary(self, BinaryOperator::Add, rhs)
+    }
+}
+
+impl<T, Ref> ops::Sub for Expression<T, Ref> {
+    type Output = Expression<T, Ref>;
+
+    fn sub(self, rhs: Self) -> Self::Output {
+        Self::new_binary(self, BinaryOperator::Sub, rhs)
+    }
+}
+impl<T, Ref> ops::Mul for Expression<T, Ref> {
+    type Output = Expression<T, Ref>;
+
+    fn mul(self, rhs: Self) -> Self::Output {
+        Self::new_binary(self, BinaryOperator::Mul, rhs)
+    }
+}
+
+impl<T: FieldElement, Ref> std::iter::Sum for Expression<T, Ref> {
+    fn sum<I: Iterator<Item = Self>>(iter: I) -> Self {
+        iter.reduce(|a, b| a + b)
+            .unwrap_or_else(|| T::zero().into())
+    }
+}
+
+impl<T: FieldElement, Ref> From<T> for Expression<T, Ref> {
+    fn from(value: T) -> Self {
+        Expression::Number(value)
     }
 }
 

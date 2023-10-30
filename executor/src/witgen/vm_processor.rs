@@ -1,4 +1,6 @@
-use ast::analyzed::{Expression, Identity, IdentityKind, PolyID, PolynomialReference};
+use ast::analyzed::{
+    AlgebraicExpression as Expression, Identity, IdentityKind, PolyID, PolynomialReference,
+};
 use itertools::Itertools;
 use number::{DegreeType, FieldElement};
 use parser_util::lines::indent;

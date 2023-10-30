@@ -1,7 +1,7 @@
 use std::{collections::HashSet, marker::PhantomData};
 
 use ast::{
-    analyzed::{Expression, Identity, PolyID, PolynomialReference},
+    analyzed::{AlgebraicExpression as Expression, Identity, PolyID, PolynomialReference},
     parsed::SelectedExpressions,
 };
 use number::FieldElement;

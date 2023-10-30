@@ -1,5 +1,6 @@
 use ast::{
-    analyzed::{Expression, PolyID, PolynomialReference, Reference},
+    analyzed::{Expression, PolyID, PolynomialReference, PolynomialType, Reference},
+    evaluate_binary_operation, evaluate_unary_operation,
     parsed::{MatchArm, MatchPattern},
 };
 use number::FieldElement;
@@ -44,7 +45,7 @@ where
         query: &'a Query<'_, T>,
         rows: &RowPair<T>,
     ) -> EvalValue<&'a PolynomialReference, T> {
-        let query_str = match interpolate_query(query.expr, rows) {
+        let query_str = match self.interpolate_query(query.expr, rows) {
             Ok(query) => query,
             Err(incomplete) => return EvalValue::incomplete(incomplete),
         };
@@ -57,50 +58,82 @@ where
             ))
         }
     }
-}
 
-fn interpolate_query<'b, T: FieldElement>(
-    query: &'b Expression<T>,
-    rows: &RowPair<T>,
-) -> Result<String, IncompleteCause<&'b PolynomialReference>> {
-    // TODO combine that with the constant evaluator and the commit evaluator...
-    match query {
-        Expression::Tuple(items) => Ok(items
-            .iter()
-            .map(|i| interpolate_query(i, rows))
-            .collect::<Result<Vec<_>, _>>()?
-            .join(", ")),
-        Expression::Reference(Reference::LocalVar(i, _name)) => {
-            assert!(*i == 0);
-            Ok(format!("{}", rows.current_row_index))
-        }
-        Expression::String(s) => Ok(format!(
-            "\"{}\"",
-            s.replace('\\', "\\\\").replace('"', "\\\"")
-        )),
-        Expression::MatchExpression(scrutinee, arms) => {
-            let v = rows
-                .evaluate(scrutinee)?
-                .constant_value()
-                .ok_or(IncompleteCause::NonConstantQueryMatchScrutinee)?;
-            let expr = arms
+    fn interpolate_query(
+        &self,
+        query: &'a Expression<T>,
+        rows: &RowPair<T>,
+    ) -> Result<String, IncompleteCause<&'a PolynomialReference>> {
+        // TODO combine that with the constant evaluator and the commit evaluator...
+        match query {
+            Expression::Tuple(items) => Ok(items
                 .iter()
-                .find_map(|MatchArm { pattern, value }| {
-                    (match pattern {
-                        MatchPattern::CatchAll => true,
-                        MatchPattern::Pattern(pattern) => {
-                            rows.evaluate(pattern).unwrap().constant_value() == Some(v)
-                        }
+                .map(|i| self.interpolate_query(i, rows))
+                .collect::<Result<Vec<_>, _>>()?
+                .join(", ")),
+            Expression::String(s) => Ok(format!(
+                "\"{}\"",
+                s.replace('\\', "\\\\").replace('"', "\\\"")
+            )),
+            Expression::MatchExpression(scrutinee, arms) => {
+                let v = self.evaluate_expression(scrutinee, rows)?;
+                let expr = arms
+                    .iter()
+                    .find_map(|MatchArm { pattern, value }| {
+                        (match pattern {
+                            MatchPattern::CatchAll => true,
+                            MatchPattern::Pattern(pattern) => {
+                                self.evaluate_expression(pattern, rows) == Ok(v)
+                            }
+                        })
+                        .then_some(value)
                     })
-                    .then_some(value)
-                })
-                .ok_or(IncompleteCause::NoMatchArmFound)?;
-            interpolate_query(expr, rows)
+                    .ok_or(IncompleteCause::NoMatchArmFound)?;
+                self.interpolate_query(expr, rows)
+            }
+            _ => self.evaluate_expression(query, rows).map(|v| v.to_string()),
         }
-        _ => rows
-            .evaluate(query)?
-            .constant_value()
-            .map(|c| c.to_string())
-            .ok_or(IncompleteCause::NonConstantQueryElement),
+    }
+
+    fn evaluate_expression(
+        &self,
+        expr: &'a Expression<T>,
+        rows: &RowPair<T>,
+    ) -> Result<T, IncompleteCause<&'a PolynomialReference>> {
+        match expr {
+            Expression::Number(n) => Ok(*n),
+            Expression::BinaryOperation(left, op, right) => Ok(evaluate_binary_operation(
+                self.evaluate_expression(left, rows)?,
+                *op,
+                self.evaluate_expression(right, rows)?,
+            )),
+            Expression::UnaryOperation(op, expr) => Ok(evaluate_unary_operation(
+                *op,
+                self.evaluate_expression(expr, rows)?,
+            )),
+            Expression::Reference(Reference::LocalVar(i, _name)) => {
+                assert!(*i == 0);
+                Ok(rows.current_row_index.into())
+            }
+            Expression::Reference(Reference::Poly(poly)) => {
+                if !poly.next && poly.index.is_none() {
+                    let poly_id = poly.poly_id();
+                    match poly_id.ptype {
+                        PolynomialType::Committed | PolynomialType::Intermediate => rows
+                            .get_value(poly)
+                            .ok_or(IncompleteCause::DataNotYetAvailable),
+                        PolynomialType::Constant => Ok(self.fixed_data.fixed_cols[&poly_id].values
+                            [rows.current_row_index as usize]),
+                    }
+                } else {
+                    Err(IncompleteCause::ExpressionEvaluationUnimplemented(
+                        "Cannot evaluate arrays or next references.".to_string(),
+                    ))
+                }
+            }
+            e => Err(IncompleteCause::ExpressionEvaluationUnimplemented(
+                e.to_string(),
+            )),
+        }
     }
 }

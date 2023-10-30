@@ -12,7 +12,10 @@ use crate::witgen::{EvalResult, FixedData, MutableState, QueryCallback};
 use crate::witgen::{EvalValue, IncompleteCause};
 use number::{DegreeType, FieldElement};
 
-use ast::analyzed::{Expression, Identity, IdentityKind, PolyID, PolynomialReference, Reference};
+use ast::analyzed::{
+    AlgebraicExpression as Expression, AlgebraicReference as Reference, Identity, IdentityKind,
+    PolyID, PolynomialReference,
+};
 
 /// TODO make this generic
 
