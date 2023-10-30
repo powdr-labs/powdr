@@ -434,7 +434,13 @@ impl<T: Display, Ref: Display> Display for Expression<T, Ref> {
             Expression::LambdaExpression(lambda) => write!(f, "{}", lambda),
             Expression::ArrayLiteral(array) => write!(f, "{array}"),
             Expression::BinaryOperation(left, op, right) => write!(f, "({left} {op} {right})"),
-            Expression::UnaryOperation(op, exp) => write!(f, "{op}{exp}"),
+            Expression::UnaryOperation(op, exp) => {
+                if op.is_prefix() {
+                    write!(f, "{op}{exp}")
+                } else {
+                    write!(f, "{exp}{op}")
+                }
+            }
             Expression::FunctionCall(fun_call) => write!(f, "{fun_call}"),
             Expression::FreeInput(input) => write!(f, "${{ {input} }}"),
             Expression::MatchExpression(scrutinee, arms) => {
@@ -455,12 +461,6 @@ impl<T: Display> Display for PolynomialName<T> {
                 .map(|s| format!("[{s}]"))
                 .unwrap_or_default()
         )
-    }
-}
-
-impl<T: Display> Display for ShiftedPolynomialReference<T> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write!(f, "{}{}", self.pol, if self.is_next { "'" } else { "" })
     }
 }
 
@@ -549,6 +549,7 @@ impl Display for UnaryOperator {
                 UnaryOperator::Minus => "-",
                 UnaryOperator::Plus => "+",
                 UnaryOperator::LogicalNot => "!",
+                UnaryOperator::Next => "'",
             }
         )
     }

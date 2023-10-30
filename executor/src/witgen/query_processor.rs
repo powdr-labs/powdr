@@ -124,7 +124,7 @@ where
                                 name: poly.name.clone(),
                                 poly_id,
                                 index: poly.index,
-                                next: poly.next,
+                                next: false,
                             };
                             Ok(rows
                                 .get_value(&poly_ref)

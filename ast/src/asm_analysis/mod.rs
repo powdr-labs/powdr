@@ -18,7 +18,7 @@ use crate::parsed::{
         AbsoluteSymbolPath, AssignmentRegister, CallableRef, InstructionBody, OperationId, Params,
     },
     visitor::{ExpressionVisitable, VisitOrder},
-    PilStatement, ShiftedPolynomialReference,
+    NamespacedPolynomialReference, PilStatement,
 };
 
 pub use crate::parsed::Expression;
@@ -540,10 +540,12 @@ pub enum FunctionStatement<T> {
     Return(Return<T>),
 }
 
-impl<T> ExpressionVisitable<Expression<T, ShiftedPolynomialReference<T>>> for FunctionStatement<T> {
+impl<T> ExpressionVisitable<Expression<T, NamespacedPolynomialReference<T>>>
+    for FunctionStatement<T>
+{
     fn visit_expressions_mut<F, B>(&mut self, f: &mut F, o: VisitOrder) -> std::ops::ControlFlow<B>
     where
-        F: FnMut(&mut Expression<T, ShiftedPolynomialReference<T>>) -> std::ops::ControlFlow<B>,
+        F: FnMut(&mut Expression<T, NamespacedPolynomialReference<T>>) -> std::ops::ControlFlow<B>,
     {
         match self {
             FunctionStatement::Assignment(assignment) => {
@@ -565,7 +567,7 @@ impl<T> ExpressionVisitable<Expression<T, ShiftedPolynomialReference<T>>> for Fu
 
     fn visit_expressions<F, B>(&self, f: &mut F, o: VisitOrder) -> std::ops::ControlFlow<B>
     where
-        F: FnMut(&Expression<T, ShiftedPolynomialReference<T>>) -> std::ops::ControlFlow<B>,
+        F: FnMut(&Expression<T, NamespacedPolynomialReference<T>>) -> std::ops::ControlFlow<B>,
     {
         match self {
             FunctionStatement::Assignment(assignment) => {

@@ -10,7 +10,7 @@ use ast::{
         StatementIdentifier, Symbol, SymbolKind,
     },
     evaluate_binary_operation, evaluate_unary_operation,
-    parsed::{visitor::ExpressionVisitable, SelectedExpressions},
+    parsed::{visitor::ExpressionVisitable, SelectedExpressions, UnaryOperator},
 };
 use number::FieldElement;
 
@@ -126,7 +126,7 @@ impl<T: FieldElement> Condenser<T> {
     pub fn condense_expression(&self, e: &Expression<T>) -> AlgebraicExpression<T> {
         match e {
             Expression::Reference(Reference::Poly(poly)) => {
-                if !poly.next && poly.index.is_none() {
+                if poly.index.is_none() {
                     if let Some(value) = self.constants.get(&poly.name) {
                         return AlgebraicExpression::Number(*value);
                     }
@@ -140,7 +140,7 @@ impl<T: FieldElement> Condenser<T> {
                     name: poly.name.clone(),
                     poly_id,
                     index: poly.index,
-                    next: poly.next,
+                    next: false,
                 })
             }
             Expression::Reference(Reference::LocalVar(_, _)) => {
@@ -164,14 +164,28 @@ impl<T: FieldElement> Condenser<T> {
             }
             Expression::UnaryOperation(op, inner) => {
                 let inner = self.condense_expression(inner);
-                match inner {
-                    AlgebraicExpression::Number(n) => {
-                        AlgebraicExpression::Number(evaluate_unary_operation(*op, n))
+                if *op == UnaryOperator::Next {
+                    let AlgebraicExpression::Reference(reference) = inner else {
+                        panic!(
+                            "Can apply \"'\" operator only directly to columns in this context."
+                        );
+                    };
+
+                    assert!(!reference.next, "Double application of \"'\"");
+                    AlgebraicExpression::Reference(AlgebraicReference {
+                        next: true,
+                        ..reference
+                    })
+                } else {
+                    match inner {
+                        AlgebraicExpression::Number(n) => {
+                            AlgebraicExpression::Number(evaluate_unary_operation(*op, n))
+                        }
+                        _ => AlgebraicExpression::UnaryOperation(
+                            (*op).try_into().unwrap(),
+                            Box::new(inner),
+                        ),
                     }
-                    _ => AlgebraicExpression::UnaryOperation(
-                        (*op).try_into().unwrap(),
-                        Box::new(inner),
-                    ),
                 }
             }
             Expression::PublicReference(r) => AlgebraicExpression::PublicReference(r.clone()),

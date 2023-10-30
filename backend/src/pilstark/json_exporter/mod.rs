@@ -59,7 +59,6 @@ pub fn export<T: FieldElement>(analyzed: &Analyzed<T>) -> PIL {
             StatementIdentifier::PublicDeclaration(name) => {
                 let pub_def = &analyzed.public_declarations[name];
                 let pub_ref = &pub_def.polynomial;
-                assert!(!pub_ref.next);
                 let (_, expr) = exporter.polynomial_reference_to_json(&AlgebraicReference {
                     name: pub_ref.name.clone(),
                     poly_id: pub_ref.poly_id.unwrap(),
