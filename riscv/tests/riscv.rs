@@ -109,15 +109,23 @@ fn test_password() {
     verify_crate(case, vec![], &CoProcessors::base());
 }
 
-// TODO: uncomment this when we properly support revm, so we don't break nightly
 /*
+mstore(0, 666)
+return(0, 32)
+*/
+static BYTECODE: &str = "61029a60005260206000f3";
+
 #[test]
 #[ignore = "Too slow"]
 fn test_evm() {
     let case = "evm";
-    verify_crate(case, vec![]);
+    let bytes = hex::decode(BYTECODE).unwrap();
+    verify_crate(
+        case,
+        bytes.into_iter().map(|x| (x as u64).into()).collect(),
+        &CoProcessors::base(),
+    );
 }
-*/
 
 #[test]
 #[ignore = "Too slow"]

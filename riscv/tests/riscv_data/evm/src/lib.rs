@@ -7,15 +7,10 @@ use revm::{
     },
     EVM,
 };
-use runtime::print;
+use runtime::{print, get_prover_input};
 
-/*
-mstore(0, 666)
-return(0, 32)
-*/
-static BYTECODE: &[u8] = &[
-    0x61, 0x02, 0x9a, 0x60, 0x00, 0x52, 0x60, 0x20, 0x60, 0x00, 0xf3,
-];
+extern crate alloc;
+use alloc::vec::Vec;
 
 #[no_mangle]
 fn main() {
@@ -24,16 +19,17 @@ fn main() {
         b256!("e3c84e69bac71c159b2ff0d62b9a5c231887a809a96cb4a262a4b96ed78a1db2");
     let mut db = CacheDB::new(EmptyDB::default());
 
+    let bytecode_len = get_prover_input(0);
+    let bytecode: Vec<_> = (1..(bytecode_len + 1)).map(|idx| get_prover_input(idx) as u8).collect();
+
     // Fill database:
-    let bytecode = Bytes::from_static(BYTECODE);
+    let bytecode = Bytes::from(bytecode);
     let account = AccountInfo::new(Uint::from(10), 0, CODE_HASH, Bytecode::new_raw(bytecode));
 
     db.insert_account_info(CONTRACT_ADDR, account);
 
     let mut evm: EVM<CacheDB<EmptyDB>> = EVM::new();
     evm.database(db);
-
-    let result = evm.transact().unwrap();
 
     // fill in missing bits of env struc
     // change that to whatever caller you want to be
@@ -44,6 +40,8 @@ fn main() {
     evm.env.tx.data = Bytes::new();
     // transaction value in wei
     evm.env.tx.value = U256::try_from(0).unwrap();
+
+    let result = evm.transact().unwrap();
 
     match result.result {
         revm::primitives::ExecutionResult::Success {
