@@ -116,7 +116,7 @@ where
                 Ok(rows.current_row_index.into())
             }
             Expression::Reference(Reference::Poly(poly)) => {
-                if !poly.next && poly.index.is_none() {
+                if poly.index.is_none() {
                     let poly_id = poly.poly_id.unwrap();
                     match poly_id.ptype {
                         PolynomialType::Committed | PolynomialType::Intermediate => {
@@ -135,7 +135,7 @@ where
                     }
                 } else {
                     Err(IncompleteCause::ExpressionEvaluationUnimplemented(
-                        "Cannot evaluate arrays or next references.".to_string(),
+                        "Cannot evaluate arrays.".to_string(),
                     ))
                 }
             }
