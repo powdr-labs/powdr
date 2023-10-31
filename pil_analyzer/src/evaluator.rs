@@ -52,19 +52,13 @@ impl<'a, T: FieldElement> Evaluator<'a, T> {
         match expr {
             Expression::Reference(Reference::LocalVar(i, _name)) => Ok(self.variables[*i as usize]),
             Expression::Reference(Reference::Poly(poly)) => {
-                if poly.index.is_none() {
-                    if let Some((_, value)) = self.definitions.get(&poly.name.to_string()) {
-                        match value {
-                            Some(FunctionValueDefinition::Expression(value)) => {
-                                self.evaluate(value)
-                            }
-                            _ => Err("Cannot evaluate function-typed values".to_string()),
-                        }
-                    } else {
-                        panic!("Reference to {}, which is not a fixed column.", poly.name)
+                if let Some((_, value)) = self.definitions.get(&poly.name.to_string()) {
+                    match value {
+                        Some(FunctionValueDefinition::Expression(value)) => self.evaluate(value),
+                        _ => Err("Cannot evaluate function-typed values".to_string()),
                     }
                 } else {
-                    Err("Cannot evaluate arrays.".to_string())
+                    panic!("Reference to {}, which is not a fixed column.", poly.name)
                 }
             }
             Expression::PublicReference(r) => Err(format!("Cannot evaluate public reference: {r}")),
@@ -83,6 +77,7 @@ impl<'a, T: FieldElement> Evaluator<'a, T> {
             Expression::LambdaExpression(_) => {
                 Err("Cannot evaluate lambda expression.".to_string())
             }
+            Expression::IndexAccess(_) => Err("Cannot evaluate index access.".to_string()),
             Expression::FunctionCall(FunctionCall { id, arguments }) => {
                 let arg_values = arguments
                     .iter()

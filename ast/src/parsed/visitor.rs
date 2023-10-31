@@ -1,8 +1,9 @@
 use std::ops::ControlFlow;
 
 use super::{
-    ArrayExpression, ArrayLiteral, Expression, FunctionCall, FunctionDefinition, LambdaExpression,
-    MatchArm, MatchPattern, NamespacedPolynomialReference, PilStatement, SelectedExpressions,
+    ArrayExpression, ArrayLiteral, Expression, FunctionCall, FunctionDefinition, IndexAccess,
+    LambdaExpression, MatchArm, MatchPattern, NamespacedPolynomialReference, PilStatement,
+    SelectedExpressions,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -126,6 +127,7 @@ impl<T, Ref> ExpressionVisitable<Expression<T, Ref>> for Expression<T, Ref> {
             }
             Expression::LambdaExpression(lambda) => lambda.visit_expressions_mut(f, o)?,
             Expression::ArrayLiteral(array_literal) => array_literal.visit_expressions_mut(f, o)?,
+            Expression::IndexAccess(index_access) => index_access.visit_expressions_mut(f, o)?,
             Expression::FunctionCall(function) => function.visit_expressions_mut(f, o)?,
             Expression::Tuple(items) => items
                 .iter_mut()
@@ -163,6 +165,7 @@ impl<T, Ref> ExpressionVisitable<Expression<T, Ref>> for Expression<T, Ref> {
             }
             Expression::LambdaExpression(lambda) => lambda.visit_expressions(f, o)?,
             Expression::ArrayLiteral(array_literal) => array_literal.visit_expressions(f, o)?,
+            Expression::IndexAccess(index_access) => index_access.visit_expressions(f, o)?,
             Expression::FunctionCall(function) => function.visit_expressions(f, o)?,
             Expression::Tuple(items) => items
                 .iter()
@@ -180,10 +183,10 @@ impl<T, Ref> ExpressionVisitable<Expression<T, Ref>> for Expression<T, Ref> {
     }
 }
 
-impl<T> ExpressionVisitable<Expression<T, NamespacedPolynomialReference<T>>> for PilStatement<T> {
+impl<T> ExpressionVisitable<Expression<T, NamespacedPolynomialReference>> for PilStatement<T> {
     fn visit_expressions_mut<F, B>(&mut self, f: &mut F, o: VisitOrder) -> ControlFlow<B>
     where
-        F: FnMut(&mut Expression<T, NamespacedPolynomialReference<T>>) -> ControlFlow<B>,
+        F: FnMut(&mut Expression<T, NamespacedPolynomialReference>) -> ControlFlow<B>,
     {
         match self {
             PilStatement::FunctionCall(_, _, arguments) => arguments
@@ -201,9 +204,13 @@ impl<T> ExpressionVisitable<Expression<T, NamespacedPolynomialReference<T>>> for
             PilStatement::Namespace(_, _, e)
             | PilStatement::PolynomialDefinition(_, _, e)
             | PilStatement::PolynomialIdentity(_, e)
-            | PilStatement::PublicDeclaration(_, _, _, e)
+            | PilStatement::PublicDeclaration(_, _, _, None, e)
             | PilStatement::ConstantDefinition(_, _, e)
             | PilStatement::LetStatement(_, _, Some(e)) => e.visit_expressions_mut(f, o),
+
+            PilStatement::PublicDeclaration(_, _, _, Some(i), e) => [i, e]
+                .into_iter()
+                .try_for_each(|e| e.visit_expressions_mut(f, o)),
 
             PilStatement::PolynomialConstantDefinition(_, _, fundef)
             | PilStatement::PolynomialCommitDeclaration(_, _, Some(fundef)) => {
@@ -237,9 +244,13 @@ impl<T> ExpressionVisitable<Expression<T, NamespacedPolynomialReference<T>>> for
             PilStatement::Namespace(_, _, e)
             | PilStatement::PolynomialDefinition(_, _, e)
             | PilStatement::PolynomialIdentity(_, e)
-            | PilStatement::PublicDeclaration(_, _, _, e)
+            | PilStatement::PublicDeclaration(_, _, _, None, e)
             | PilStatement::ConstantDefinition(_, _, e)
             | PilStatement::LetStatement(_, _, Some(e)) => e.visit_expressions(f, o),
+
+            PilStatement::PublicDeclaration(_, _, _, Some(i), e) => [i, e]
+                .into_iter()
+                .try_for_each(|e| e.visit_expressions(f, o)),
 
             PilStatement::PolynomialConstantDefinition(_, _, fundef)
             | PilStatement::PolynomialCommitDeclaration(_, _, Some(fundef)) => {
@@ -373,6 +384,24 @@ impl<T, Ref> ExpressionVisitable<Expression<T, Ref>> for ArrayLiteral<T, Ref> {
         self.items
             .iter()
             .try_for_each(|item| item.visit_expressions(f, o))
+    }
+}
+
+impl<T, Ref> ExpressionVisitable<Expression<T, Ref>> for IndexAccess<T, Ref> {
+    fn visit_expressions_mut<F, B>(&mut self, f: &mut F, o: VisitOrder) -> ControlFlow<B>
+    where
+        F: FnMut(&mut Expression<T, Ref>) -> ControlFlow<B>,
+    {
+        self.array.visit_expressions_mut(f, o)?;
+        self.index.visit_expressions_mut(f, o)
+    }
+
+    fn visit_expressions<F, B>(&self, f: &mut F, o: VisitOrder) -> ControlFlow<B>
+    where
+        F: FnMut(&Expression<T, Ref>) -> ControlFlow<B>,
+    {
+        self.array.visit_expressions(f, o)?;
+        self.index.visit_expressions(f, o)
     }
 }
 

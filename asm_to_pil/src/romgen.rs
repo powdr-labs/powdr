@@ -30,8 +30,8 @@ fn substitute_name_in_statement_expressions<T>(
 ) {
     fn substitute<T>(e: &mut Expression<T>, substitution: &HashMap<String, String>) {
         if let Expression::Reference(r) = e {
-            if let Some(v) = substitution.get(r.name()).cloned() {
-                *r.name_mut() = v;
+            if let Some(v) = substitution.get(&r.name).cloned() {
+                r.name = v;
             }
         };
     }

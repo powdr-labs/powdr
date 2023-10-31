@@ -280,6 +280,12 @@ impl Display for ParamList {
     }
 }
 
+impl<T: Display, Ref: Display> Display for IndexAccess<T, Ref> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(f, "{}[{}]", self.array, self.index)
+    }
+}
+
 impl<T: Display, Ref: Display> Display for FunctionCall<T, Ref> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(f, "{}({})", self.id, format_expressions(&self.arguments))
@@ -331,8 +337,15 @@ impl<T: Display> Display for PilStatement<T> {
             PilStatement::PolynomialDefinition(_, name, value) => {
                 write!(f, "pol {name} = {value};")
             }
-            PilStatement::PublicDeclaration(_, name, poly, index) => {
-                write!(f, "public {name} = {poly}({index});")
+            PilStatement::PublicDeclaration(_, name, poly, array_index, index) => {
+                write!(
+                    f,
+                    "public {name} = {poly}{}({index});",
+                    array_index
+                        .as_ref()
+                        .map(|i| format!("[{i}]"))
+                        .unwrap_or_default()
+                )
             }
             PilStatement::PolynomialConstantDeclaration(_, names) => {
                 write!(f, "pol constant {};", names.iter().format(", "))
@@ -441,6 +454,7 @@ impl<T: Display, Ref: Display> Display for Expression<T, Ref> {
                     write!(f, "{exp}{op}")
                 }
             }
+            Expression::IndexAccess(index_access) => write!(f, "{index_access}"),
             Expression::FunctionCall(fun_call) => write!(f, "{fun_call}"),
             Expression::FreeInput(input) => write!(f, "${{ {input} }}"),
             Expression::MatchExpression(scrutinee, arms) => {
@@ -464,7 +478,7 @@ impl<T: Display> Display for PolynomialName<T> {
     }
 }
 
-impl<T: Display> Display for NamespacedPolynomialReference<T> {
+impl Display for NamespacedPolynomialReference {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(
             f,
@@ -473,28 +487,8 @@ impl<T: Display> Display for NamespacedPolynomialReference<T> {
                 .as_ref()
                 .map(|n| format!("{n}."))
                 .unwrap_or_default(),
-            self.pol
+            self.name
         )
-    }
-}
-
-impl<T: Display> Display for IndexedPolynomialReference<T> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write!(
-            f,
-            "{}{}",
-            self.pol,
-            self.index
-                .as_ref()
-                .map(|s| format!("[{s}]"))
-                .unwrap_or_default(),
-        )
-    }
-}
-
-impl Display for PolynomialReference {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write!(f, "{}", self.name)
     }
 }
 

@@ -315,7 +315,7 @@ pub enum SymbolKind {
     Other(),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum FunctionValueDefinition<T> {
     Mapping(Expression<T>),
     Array(Vec<RepeatedArray<T>>),
@@ -324,7 +324,7 @@ pub enum FunctionValueDefinition<T> {
 }
 
 /// An array of elements that might be repeated.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct RepeatedArray<T> {
     /// The pattern to be repeated
     pattern: Vec<Expression<T>>,
@@ -370,6 +370,7 @@ pub struct PublicDeclaration {
     pub source: SourceRef,
     pub name: String,
     pub polynomial: PolynomialReference,
+    pub array_index: Option<DegreeType>,
     /// The evaluation point of the polynomial, not the array index.
     pub index: DegreeType,
 }
@@ -629,7 +630,6 @@ pub struct PolynomialReference {
     /// Optional because it is filled in in a second stage of analysis.
     /// TODO make this non-optional
     pub poly_id: Option<PolyID>,
-    pub index: Option<u64>,
 }
 
 #[derive(Debug, Copy, Clone, PartialOrd, Ord, PartialEq, Eq, Hash)]

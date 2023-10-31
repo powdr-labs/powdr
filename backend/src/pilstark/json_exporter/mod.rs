@@ -62,7 +62,7 @@ pub fn export<T: FieldElement>(analyzed: &Analyzed<T>) -> PIL {
                 let (_, expr) = exporter.polynomial_reference_to_json(&AlgebraicReference {
                     name: pub_ref.name.clone(),
                     poly_id: pub_ref.poly_id.unwrap(),
-                    index: pub_ref.index,
+                    index: None,
                     next: false,
                 });
                 let id = publics.len();
