@@ -1,5 +1,5 @@
 use ast::{
-    analyzed::{Expression, PolyID, PolynomialReference, PolynomialType, Reference},
+    analyzed::{AlgebraicReference, Expression, PolyID, PolynomialType, Reference},
     evaluate_binary_operation, evaluate_unary_operation,
     parsed::{MatchArm, MatchPattern},
 };
@@ -28,7 +28,7 @@ where
         &mut self,
         rows: &RowPair<T>,
         poly_id: &PolyID,
-    ) -> EvalValue<&'a PolynomialReference, T> {
+    ) -> EvalValue<&'a AlgebraicReference, T> {
         let column = &self.fixed_data.witness_cols[poly_id];
 
         if let Some(query) = column.query.as_ref() {
@@ -44,7 +44,7 @@ where
         &mut self,
         query: &'a Query<'_, T>,
         rows: &RowPair<T>,
-    ) -> EvalValue<&'a PolynomialReference, T> {
+    ) -> EvalValue<&'a AlgebraicReference, T> {
         let query_str = match self.interpolate_query(query.expr, rows) {
             Ok(query) => query,
             Err(incomplete) => return EvalValue::incomplete(incomplete),
@@ -63,7 +63,7 @@ where
         &self,
         query: &'a Expression<T>,
         rows: &RowPair<T>,
-    ) -> Result<String, IncompleteCause<&'a PolynomialReference>> {
+    ) -> Result<String, IncompleteCause<&'a AlgebraicReference>> {
         // TODO combine that with the constant evaluator and the commit evaluator...
         match query {
             Expression::Tuple(items) => Ok(items
@@ -79,16 +79,16 @@ where
                 let v = self.evaluate_expression(scrutinee, rows)?;
                 let expr = arms
                     .iter()
-                    .find_map(|MatchArm { pattern, value }| {
-                        (match pattern {
-                            MatchPattern::CatchAll => true,
-                            MatchPattern::Pattern(pattern) => {
-                                self.evaluate_expression(pattern, rows) == Ok(v)
+                    .find_map(|MatchArm { pattern, value }| match pattern {
+                        MatchPattern::CatchAll => Some(Ok(value)),
+                        MatchPattern::Pattern(pattern) => {
+                            match self.evaluate_expression(pattern, rows) {
+                                Ok(p) => (p == v).then_some(Ok(value)),
+                                Err(e) => Some(Err(e)),
                             }
-                        })
-                        .then_some(value)
+                        }
                     })
-                    .ok_or(IncompleteCause::NoMatchArmFound)?;
+                    .ok_or(IncompleteCause::NoMatchArmFound)??;
                 self.interpolate_query(expr, rows)
             }
             _ => self.evaluate_expression(query, rows).map(|v| v.to_string()),
@@ -99,7 +99,7 @@ where
         &self,
         expr: &'a Expression<T>,
         rows: &RowPair<T>,
-    ) -> Result<T, IncompleteCause<&'a PolynomialReference>> {
+    ) -> Result<T, IncompleteCause<&'a AlgebraicReference>> {
         match expr {
             Expression::Number(n) => Ok(*n),
             Expression::BinaryOperation(left, op, right) => Ok(evaluate_binary_operation(
@@ -117,11 +117,19 @@ where
             }
             Expression::Reference(Reference::Poly(poly)) => {
                 if !poly.next && poly.index.is_none() {
-                    let poly_id = poly.poly_id();
+                    let poly_id = poly.poly_id.unwrap();
                     match poly_id.ptype {
-                        PolynomialType::Committed | PolynomialType::Intermediate => rows
-                            .get_value(poly)
-                            .ok_or(IncompleteCause::DataNotYetAvailable),
+                        PolynomialType::Committed | PolynomialType::Intermediate => {
+                            let poly_ref = AlgebraicReference {
+                                name: poly.name.clone(),
+                                poly_id,
+                                index: poly.index,
+                                next: poly.next,
+                            };
+                            Ok(rows
+                                .get_value(&poly_ref)
+                                .ok_or(IncompleteCause::DataNotYetAvailable)?)
+                        }
                         PolynomialType::Constant => Ok(self.fixed_data.fixed_cols[&poly_id].values
                             [rows.current_row_index as usize]),
                     }

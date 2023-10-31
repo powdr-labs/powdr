@@ -1,5 +1,5 @@
 use ast::analyzed::{
-    AlgebraicExpression as Expression, Identity, IdentityKind, PolyID, PolynomialReference,
+    AlgebraicExpression as Expression, AlgebraicReference, Identity, IdentityKind, PolyID,
 };
 use itertools::Itertools;
 use number::{DegreeType, FieldElement};
@@ -108,7 +108,7 @@ impl<'a, T: FieldElement> VmProcessor<'a, T> {
     pub fn run<Q: QueryCallback<T>>(
         &mut self,
         mutable_state: &mut MutableState<'a, '_, T, Q>,
-    ) -> EvalValue<&'a PolynomialReference, T> {
+    ) -> EvalValue<&'a AlgebraicReference, T> {
         assert!(self.data.len() == 1);
 
         // Are we in an infinite loop and can just re-use the old values?
@@ -386,7 +386,7 @@ impl<'a, T: FieldElement> VmProcessor<'a, T> {
     fn apply_updates(
         &mut self,
         row_index: DegreeType,
-        updates: &EvalValue<&PolynomialReference, T>,
+        updates: &EvalValue<&AlgebraicReference, T>,
         source_name: impl Fn() -> String,
     ) -> bool {
         if updates.constraints.is_empty() {

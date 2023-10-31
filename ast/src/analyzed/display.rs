@@ -175,11 +175,32 @@ impl Display for Reference {
     }
 }
 
+impl<T: Display> Display for AlgebraicExpression<T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        match self {
+            AlgebraicExpression::Reference(reference) => write!(f, "{reference}"),
+            AlgebraicExpression::PublicReference(name) => write!(f, ":{name}"),
+            AlgebraicExpression::Number(value) => write!(f, "{value}"),
+            AlgebraicExpression::BinaryOperation(left, op, right) => {
+                write!(f, "({left} {op} {right})")
+            }
+            AlgebraicExpression::UnaryOperation(op, exp) => write!(f, "{op}{exp}"),
+        }
+    }
+}
+
 impl Display for AlgebraicReference {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            AlgebraicReference::Poly(r) => write!(f, "{r}"),
-        }
+        write!(
+            f,
+            "{}{}{}",
+            self.name,
+            self.index
+                .as_ref()
+                .map(|s| format!("[{s}]"))
+                .unwrap_or_default(),
+            if self.next { "'" } else { "" },
+        )
     }
 }
 

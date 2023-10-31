@@ -1,8 +1,6 @@
 use std::marker::PhantomData;
 
-use ast::analyzed::{
-    AlgebraicExpression as Expression, AlgebraicReference as Reference, PolynomialReference,
-};
+use ast::analyzed::{AlgebraicExpression as Expression, AlgebraicReference};
 use ast::parsed::{BinaryOperator, UnaryOperator};
 use number::FieldElement;
 
@@ -10,7 +8,7 @@ use super::{affine_expression::AffineResult, IncompleteCause};
 
 pub trait SymbolicVariables<T> {
     /// Value of a polynomial (fixed or witness).
-    fn value<'a>(&self, poly: &'a PolynomialReference) -> AffineResult<&'a PolynomialReference, T>;
+    fn value<'a>(&self, poly: &'a AlgebraicReference) -> AffineResult<&'a AlgebraicReference, T>;
 }
 
 pub struct ExpressionEvaluator<T, SV> {
@@ -32,14 +30,11 @@ where
     /// Tries to evaluate the expression to an expression affine in the witness polynomials,
     /// taking current values of polynomials into account.
     /// @returns an expression affine in the witness polynomials
-    pub fn evaluate<'a>(
-        &self,
-        expr: &'a Expression<T>,
-    ) -> AffineResult<&'a PolynomialReference, T> {
+    pub fn evaluate<'a>(&self, expr: &'a Expression<T>) -> AffineResult<&'a AlgebraicReference, T> {
         // @TODO if we iterate on processing the constraints in the same row,
         // we could store the simplified values.
         match expr {
-            Expression::Reference(Reference::Poly(poly)) => self.variables.value(poly),
+            Expression::Reference(poly) => self.variables.value(poly),
             Expression::Number(n) => Ok((*n).into()),
             Expression::BinaryOperation(left, op, right) => {
                 self.evaluate_binary_operation(left, op, right)
@@ -56,7 +51,7 @@ where
         left: &'a Expression<T>,
         op: &BinaryOperator,
         right: &'a Expression<T>,
-    ) -> AffineResult<&'a PolynomialReference, T> {
+    ) -> AffineResult<&'a AlgebraicReference, T> {
         let left = self.evaluate(left);
 
         // Short-circuit multiplication by zero.
@@ -140,7 +135,7 @@ where
         &self,
         op: &UnaryOperator,
         expr: &'a Expression<T>,
-    ) -> AffineResult<&'a PolynomialReference, T> {
+    ) -> AffineResult<&'a AlgebraicReference, T> {
         self.evaluate(expr).map(|v| match op {
             UnaryOperator::Plus => v,
             UnaryOperator::Minus => -v,

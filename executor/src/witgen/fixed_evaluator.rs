@@ -1,7 +1,7 @@
 use super::affine_expression::AffineResult;
 use super::expression_evaluator::SymbolicVariables;
 use super::FixedData;
-use ast::analyzed::PolynomialReference;
+use ast::analyzed::AlgebraicReference;
 use number::FieldElement;
 
 /// Evaluates only fixed columns on a specific row.
@@ -17,13 +17,13 @@ impl<'a, T> FixedEvaluator<'a, T> {
 }
 
 impl<'a, T: FieldElement> SymbolicVariables<T> for FixedEvaluator<'a, T> {
-    fn value<'b>(&self, poly: &'b PolynomialReference) -> AffineResult<&'b PolynomialReference, T> {
+    fn value<'b>(&self, poly: &'b AlgebraicReference) -> AffineResult<&'b AlgebraicReference, T> {
         // TODO arrays
         assert!(
             poly.is_fixed(),
             "Can only access fixed columns in the fixed evaluator."
         );
-        let col_data = self.fixed_data.fixed_cols[&poly.poly_id()].values;
+        let col_data = self.fixed_data.fixed_cols[&poly.poly_id].values;
         let degree = col_data.len();
         let row = if poly.next {
             (self.row + 1) % degree

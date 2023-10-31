@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
 use ast::analyzed::{
-    Analyzed, Expression, FunctionValueDefinition, PolyID, PolynomialReference, PolynomialType,
+    AlgebraicReference, Analyzed, Expression, FunctionValueDefinition, PolyID, PolynomialType,
 };
 use num_traits::Zero;
 use number::{DegreeType, FieldElement};
@@ -243,7 +243,7 @@ pub struct Query<'a, T> {
     /// The query expression
     expr: &'a Expression<T>,
     /// The polynomial that is referenced by the query
-    poly: PolynomialReference,
+    poly: AlgebraicReference,
 }
 
 #[derive(Debug)]
@@ -267,11 +267,11 @@ impl<'a, T> WitnessColumn<'a, T> {
         };
         let name = name.to_string();
         let query = query.as_ref().map(|callback| {
-            let poly = PolynomialReference {
-                poly_id: Some(PolyID {
+            let poly = AlgebraicReference {
+                poly_id: PolyID {
                     id: id as u64,
                     ptype: PolynomialType::Committed,
-                }),
+                },
                 name: name.clone(),
                 next: false,
                 index: None,

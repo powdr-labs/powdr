@@ -1,6 +1,6 @@
 use std::fmt;
 
-use ast::analyzed::PolynomialReference;
+use ast::analyzed::AlgebraicReference;
 use number::FieldElement;
 
 use super::range_constraints::RangeConstraint;
@@ -148,7 +148,7 @@ where
 
 /// Result of evaluating an expression / lookup.
 /// New assignments or constraints for witness columns identified by an ID.
-pub type EvalResult<'a, T, K = &'a PolynomialReference> = Result<EvalValue<K, T>, EvalError<T>>;
+pub type EvalResult<'a, T, K = &'a AlgebraicReference> = Result<EvalValue<K, T>, EvalError<T>>;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum EvalError<T: FieldElement> {

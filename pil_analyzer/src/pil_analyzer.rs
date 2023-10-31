@@ -12,9 +12,9 @@ use ast::parsed::{
 use number::{DegreeType, FieldElement};
 
 use ast::analyzed::{
-    AlgebraicExpression, AlgebraicReference, Analyzed, Expression, FunctionValueDefinition,
-    Identity, IdentityKind, PolynomialReference, PolynomialType, PublicDeclaration, Reference,
-    RepeatedArray, SourceRef, StatementIdentifier, Symbol, SymbolKind,
+    AlgebraicExpression, Analyzed, Expression, FunctionValueDefinition, Identity, IdentityKind,
+    PolynomialReference, PolynomialType, PublicDeclaration, Reference, RepeatedArray, SourceRef,
+    StatementIdentifier, Symbol, SymbolKind,
 };
 
 use crate::condenser;
@@ -671,15 +671,14 @@ fn substitute_intermediate<T: Copy>(
         .into_iter()
         .scan(HashMap::default(), |cache, mut identity| {
             identity.post_visit_expressions_mut(&mut |e| {
-                if let AlgebraicExpression::Reference(AlgebraicReference::Poly(r)) = e {
-                    let poly_id = r.poly_id.unwrap();
-                    match poly_id.ptype {
+                if let AlgebraicExpression::Reference(poly) = e {
+                    match poly.poly_id.ptype {
                         PolynomialType::Committed => {}
                         PolynomialType::Constant => {}
                         PolynomialType::Intermediate => {
                             // recursively inline intermediate polynomials, updating the cache
                             *e = inlined_expression_from_intermediate_poly_id(
-                                poly_id.id,
+                                poly.poly_id.id,
                                 intermediate_polynomials,
                                 cache,
                             );
@@ -704,16 +703,15 @@ fn inlined_expression_from_intermediate_poly_id<T: Copy>(
     }
     let mut expr = intermediate_polynomials[&poly_id].clone();
     expr.post_visit_expressions_mut(&mut |e| {
-        if let AlgebraicExpression::Reference(AlgebraicReference::Poly(r)) = e {
-            let poly_id = r.poly_id.unwrap();
-            match poly_id.ptype {
+        if let AlgebraicExpression::Reference(r) = e {
+            match r.poly_id.ptype {
                 PolynomialType::Committed => {}
                 PolynomialType::Constant => {}
                 PolynomialType::Intermediate => {
                     // read from the cache, if no cache hit, compute the inlined expression
-                    *e = cache.get(&poly_id.id).cloned().unwrap_or_else(|| {
+                    *e = cache.get(&r.poly_id.id).cloned().unwrap_or_else(|| {
                         inlined_expression_from_intermediate_poly_id(
-                            poly_id.id,
+                            r.poly_id.id,
                             intermediate_polynomials,
                             cache,
                         )

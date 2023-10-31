@@ -8,10 +8,7 @@ use super::FixedData;
 use super::KnownMachine;
 use crate::witgen::generator::Generator;
 use crate::witgen::global_constraints::GlobalConstraints;
-use ast::analyzed::{
-    AlgebraicExpression as Expression, AlgebraicReference as Reference, Identity, IdentityKind,
-    PolyID,
-};
+use ast::analyzed::{AlgebraicExpression as Expression, Identity, IdentityKind, PolyID};
 use ast::parsed::visitor::ExpressionVisitable;
 use ast::parsed::SelectedExpressions;
 use itertools::Itertools;
@@ -219,7 +216,7 @@ pub fn refs_in_selected_expressions<T>(
 /// NON-recursively.
 pub fn ref_of_expression<T>(expr: &Expression<T>) -> Option<PolyID> {
     match expr {
-        Expression::Reference(Reference::Poly(p)) => Some(p.poly_id()),
+        Expression::Reference(p) => Some(p.poly_id),
         _ => None,
     }
 }

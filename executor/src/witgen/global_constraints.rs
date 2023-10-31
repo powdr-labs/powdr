@@ -3,7 +3,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use num_traits::Zero;
 
 use ast::analyzed::{
-    AlgebraicExpression as Expression, Identity, IdentityKind, PolyID, PolynomialReference,
+    AlgebraicExpression as Expression, AlgebraicReference, Identity, IdentityKind, PolyID,
     PolynomialType,
 };
 use ast::parsed::BinaryOperator;
@@ -26,12 +26,12 @@ pub struct SimpleRangeConstraintSet<'a, T: FieldElement> {
     range_constraints: &'a BTreeMap<PolyID, RangeConstraint<T>>,
 }
 
-impl<'a, T: FieldElement> RangeConstraintSet<&PolynomialReference, T>
+impl<'a, T: FieldElement> RangeConstraintSet<&AlgebraicReference, T>
     for SimpleRangeConstraintSet<'a, T>
 {
-    fn range_constraint(&self, id: &PolynomialReference) -> Option<RangeConstraint<T>> {
+    fn range_constraint(&self, id: &AlgebraicReference) -> Option<RangeConstraint<T>> {
         assert!(!id.next);
-        self.range_constraints.get(&id.poly_id()).cloned()
+        self.range_constraints.get(&id.poly_id).cloned()
     }
 }
 
@@ -41,10 +41,10 @@ pub struct GlobalConstraints<T: FieldElement> {
     pub fixed_constraints: FixedColumnMap<Option<RangeConstraint<T>>>,
 }
 
-impl<T: FieldElement> RangeConstraintSet<&PolynomialReference, T> for GlobalConstraints<T> {
-    fn range_constraint(&self, id: &PolynomialReference) -> Option<RangeConstraint<T>> {
+impl<T: FieldElement> RangeConstraintSet<&AlgebraicReference, T> for GlobalConstraints<T> {
+    fn range_constraint(&self, id: &AlgebraicReference) -> Option<RangeConstraint<T>> {
         assert!(!id.next);
-        let poly_id = id.poly_id.unwrap();
+        let poly_id = id.poly_id;
         match poly_id.ptype {
             PolynomialType::Constant => self.fixed_constraints[&poly_id].clone(),
             PolynomialType::Committed => self.witness_constraints[&poly_id].clone(),
@@ -191,9 +191,9 @@ fn propagate_constraints<T: FieldElement>(
                 if let (Some(left), Some(right)) =
                     (try_to_simple_poly(left), try_to_simple_poly(right))
                 {
-                    if let Some(constraint) = known_constraints.get(&right.poly_id()).cloned() {
+                    if let Some(constraint) = known_constraints.get(&right.poly_id).cloned() {
                         known_constraints
-                            .entry(left.poly_id())
+                            .entry(left.poly_id)
                             .and_modify(|existing| *existing = existing.conjunction(&constraint))
                             .or_insert(constraint);
                     }
@@ -204,7 +204,7 @@ fn propagate_constraints<T: FieldElement>(
                 // provides all values in the span.
                 if let Some(name) = try_to_simple_poly(&identity.right.expressions[0]) {
                     if try_to_simple_poly(&identity.left.expressions[0]).is_some()
-                        && full_span.contains(&name.poly_id())
+                        && full_span.contains(&name.poly_id)
                     {
                         remove = true;
                     }
@@ -242,7 +242,7 @@ fn is_binary_constraint<T: FieldElement>(expr: &Expression<T>) -> Option<PolyID>
                 return None;
             }
             if (value1.is_zero() && value2.is_one()) || (value1.is_one() && value2.is_zero()) {
-                return Some(id1.poly_id());
+                return Some(id1.poly_id);
             }
         }
     }
@@ -278,7 +278,7 @@ fn try_transfer_constraints<T: FieldElement>(
         .flat_map(|(poly, cons)| {
             if let Constraint::RangeConstraint(cons) = cons {
                 assert!(!poly.next);
-                Some((poly.poly_id(), cons))
+                Some((poly.poly_id, cons))
             } else {
                 None
             }

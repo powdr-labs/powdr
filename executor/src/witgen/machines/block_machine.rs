@@ -13,7 +13,7 @@ use crate::witgen::util::try_to_simple_poly;
 use crate::witgen::{machines::Machine, EvalError, EvalValue, IncompleteCause};
 use crate::witgen::{Constraints, MutableState, QueryCallback};
 use ast::analyzed::{
-    AlgebraicExpression as Expression, Identity, IdentityKind, PolyID, PolynomialReference,
+    AlgebraicExpression as Expression, AlgebraicReference, Identity, IdentityKind, PolyID,
 };
 use ast::parsed::SelectedExpressions;
 use number::{DegreeType, FieldElement};
@@ -21,7 +21,7 @@ use number::{DegreeType, FieldElement};
 enum ProcessResult<'a, T: FieldElement> {
     Success(
         FinalizableData<'a, T>,
-        Constraints<&'a PolynomialReference, T>,
+        Constraints<&'a AlgebraicReference, T>,
     ),
     Incomplete,
 }
@@ -120,7 +120,7 @@ fn try_to_period<T: FieldElement>(
                 return None;
             }
 
-            let values = fixed_data.fixed_cols[&poly.poly_id()].values;
+            let values = fixed_data.fixed_cols[&poly.poly_id].values;
 
             let period = 1 + values.iter().position(|v| v.is_one())?;
             values
@@ -145,7 +145,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
         &mut self,
         mutable_state: &'b mut MutableState<'a, 'b, T, Q>,
         kind: IdentityKind,
-        left: &[AffineExpression<&'a PolynomialReference, T>],
+        left: &[AffineExpression<&'a AlgebraicReference, T>],
         right: &'a SelectedExpressions<Expression<T>>,
     ) -> Option<EvalResult<'a, T>> {
         if *right != self.selected_expressions || kind != IdentityKind::Plookup {
@@ -265,7 +265,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
     fn process_plookup_internal<'b, Q: QueryCallback<T>>(
         &mut self,
         mutable_state: &mut MutableState<'a, 'b, T, Q>,
-        left: &[AffineExpression<&'a PolynomialReference, T>],
+        left: &[AffineExpression<&'a AlgebraicReference, T>],
         right: &'a SelectedExpressions<Expression<T>>,
     ) -> EvalResult<'a, T> {
         log::trace!("Start processing block machine '{}'", self.name());
@@ -360,7 +360,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
     fn process<'b, Q: QueryCallback<T>>(
         &self,
         mutable_state: &mut MutableState<'a, 'b, T, Q>,
-        left: &[AffineExpression<&'a PolynomialReference, T>],
+        left: &[AffineExpression<&'a AlgebraicReference, T>],
         right: &'a SelectedExpressions<Expression<T>>,
         sequence_iterator: &mut ProcessingSequenceIterator,
     ) -> Result<ProcessResult<'a, T>, EvalError<T>> {
