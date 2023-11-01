@@ -1,4 +1,4 @@
-use std::{collections::HashSet, marker::PhantomData};
+use std::collections::HashSet;
 
 use ast::{
     analyzed::{AlgebraicExpression as Expression, AlgebraicReference, Identity, PolyID},
@@ -16,11 +16,7 @@ use super::{
     Constraints, EvalError, EvalValue, FixedData, MutableState, QueryCallback,
 };
 
-pub type Left<'a, T> = Vec<AffineExpression<&'a AlgebraicReference, T>>;
-
-// Marker types
-pub struct WithCalldata;
-pub struct WithoutCalldata;
+type Left<'a, T> = Vec<AffineExpression<&'a AlgebraicReference, T>>;
 
 /// Data needed to handle an outer query.
 pub struct OuterQuery<'a, T: FieldElement> {
@@ -47,7 +43,7 @@ impl<'a, T: FieldElement> OuterQuery<'a, T> {
 /// - `'a`: The duration of the entire witness generation (e.g. references to identities)
 /// - `'b`: The duration of this machine's call (e.g. the mutable references of the other machines)
 /// - `'c`: The duration of this Processor's lifetime (e.g. the reference to the identity processor)
-pub struct Processor<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>, CalldataAvailable> {
+pub struct Processor<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> {
     /// The global index of the first row of [Processor::data].
     row_offset: u64,
     /// The rows that are being processed.
@@ -66,12 +62,9 @@ pub struct Processor<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>, CalldataA
     is_relevant_witness: WitnessColumnMap<bool>,
     /// The outer query, if any. If there is none, processing an outer query will fail.
     outer_query: Option<OuterQuery<'a, T>>,
-    _marker: PhantomData<CalldataAvailable>,
 }
 
-impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>>
-    Processor<'a, 'b, 'c, T, Q, WithoutCalldata>
-{
+impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, Q> {
     pub fn new(
         row_offset: u64,
         data: FinalizableData<'a, T>,
@@ -97,17 +90,12 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>>
             witness_cols,
             is_relevant_witness,
             outer_query: None,
-            _marker: PhantomData,
         }
     }
 
-    pub fn with_outer_query(
-        self,
-        outer_query: OuterQuery<'a, T>,
-    ) -> Processor<'a, 'b, 'c, T, Q, WithCalldata> {
+    pub fn with_outer_query(self, outer_query: OuterQuery<'a, T>) -> Processor<'a, 'b, 'c, T, Q> {
         Processor {
             outer_query: Some(outer_query),
-            _marker: PhantomData,
             row_offset: self.row_offset,
             data: self.data,
             mutable_state: self.mutable_state,
@@ -119,21 +107,17 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>>
         }
     }
 
+    pub fn finshed_outer_query(&self) -> bool {
+        self.outer_query
+            .as_ref()
+            .map(|outer_query| outer_query.left.iter().all(|l| l.is_constant()))
+            .unwrap_or(true)
+    }
+
     pub fn finish(self) -> FinalizableData<'a, T> {
         self.data
     }
-}
 
-impl<'a, 'b, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, '_, T, Q, WithCalldata> {
-    /// Destroys itself, returns the data and updated left-hand side of the outer query (if available).
-    pub fn finish(self) -> (FinalizableData<'a, T>, Left<'a, T>) {
-        (self.data, self.outer_query.unwrap().left)
-    }
-}
-
-impl<'a, 'b, T: FieldElement, Q: QueryCallback<T>, CalldataAvailable>
-    Processor<'a, 'b, '_, T, Q, CalldataAvailable>
-{
     pub fn process_queries(&mut self, row_index: usize) -> bool {
         let mut query_processor =
             QueryProcessor::new(self.fixed_data, self.mutable_state.query_callback);

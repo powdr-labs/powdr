@@ -12,7 +12,7 @@ use crate::witgen::rows::{CellValue, RowFactory, RowPair, UnknownStrategy};
 use crate::witgen::sequence_iterator::{ProcessingSequenceCache, ProcessingSequenceIterator};
 use crate::witgen::util::try_to_simple_poly;
 use crate::witgen::{machines::Machine, EvalError, EvalValue, IncompleteCause};
-use crate::witgen::{Constraints, MutableState, QueryCallback};
+use crate::witgen::{MutableState, QueryCallback};
 use ast::analyzed::{
     AlgebraicExpression as Expression, AlgebraicReference, Identity, IdentityKind, PolyID,
 };
@@ -20,18 +20,22 @@ use ast::parsed::SelectedExpressions;
 use number::{DegreeType, FieldElement};
 
 enum ProcessResult<'a, T: FieldElement> {
-    Success(
-        FinalizableData<'a, T>,
-        Constraints<&'a AlgebraicReference, T>,
-    ),
-    Incomplete,
+    Success(FinalizableData<'a, T>, EvalValue<&'a AlgebraicReference, T>),
+    Incomplete(EvalValue<&'a AlgebraicReference, T>),
 }
 
 impl<'a, T: FieldElement> ProcessResult<'a, T> {
+    fn new(data: FinalizableData<'a, T>, updates: EvalValue<&'a AlgebraicReference, T>) -> Self {
+        match updates.is_complete() {
+            true => ProcessResult::Success(data, updates),
+            false => ProcessResult::Incomplete(updates),
+        }
+    }
+
     fn is_success(&self) -> bool {
         match self {
             ProcessResult::Success(_, _) => true,
-            ProcessResult::Incomplete => false,
+            ProcessResult::Incomplete(_) => false,
         }
     }
 }
@@ -336,26 +340,27 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
             process_result
         };
 
-        if let ProcessResult::Success(new_block, outer_assignments) = process_result {
-            log::trace!(
-                "End processing block machine '{}' (successfully)",
-                self.name()
-            );
-            self.append_block(new_block)?;
+        match process_result {
+            ProcessResult::Success(new_block, updates) => {
+                log::trace!(
+                    "End processing block machine '{}' (successfully)",
+                    self.name()
+                );
+                self.append_block(new_block)?;
 
-            // We solved the query, so report it to the cache.
-            self.processing_sequence_cache
-                .report_processing_sequence(left, sequence_iterator);
-            Ok(EvalValue::complete(outer_assignments))
-        } else {
-            log::trace!(
-                "End processing block machine '{}' (incomplete)",
-                self.name()
-            );
-            self.processing_sequence_cache.report_incomplete(left);
-            Ok(EvalValue::incomplete(
-                IncompleteCause::BlockMachineLookupIncomplete,
-            ))
+                // We solved the query, so report it to the cache.
+                self.processing_sequence_cache
+                    .report_processing_sequence(left, sequence_iterator);
+                Ok(updates)
+            }
+            ProcessResult::Incomplete(updates) => {
+                log::trace!(
+                    "End processing block machine '{}' (incomplete)",
+                    self.name()
+                );
+                self.processing_sequence_cache.report_incomplete(left);
+                Ok(updates)
+            }
         }
     }
 
@@ -387,16 +392,9 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         .with_outer_query(OuterQuery::new(left.to_vec(), right));
 
         let outer_assignments = processor.solve(sequence_iterator)?;
-        let (new_block, left_new) = processor.finish();
+        let new_block = processor.finish();
 
-        // Only succeed if we can assign everything.
-        // Otherwise it is messy because we have to find the correct block again.
-        let success = left_new.iter().all(|v| v.is_constant());
-
-        match success {
-            true => Ok(ProcessResult::Success(new_block, outer_assignments)),
-            false => Ok(ProcessResult::Incomplete),
-        }
+        Ok(ProcessResult::new(new_block, outer_assignments))
     }
 
     /// Takes a block of rows, which contains the last row of its previous block
