@@ -44,7 +44,7 @@ impl<'a, T: FieldElement> OuterQuery<'a, T> {
 /// - `'a`: The duration of the entire witness generation (e.g. references to identities)
 /// - `'b`: The duration of this machine's call (e.g. the mutable references of the other machines)
 /// - `'c`: The duration of this Processor's lifetime (e.g. the reference to the identity processor)
-pub struct Processor<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>, CalldataAvailable> {
+pub struct BlockProcessor<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>, CalldataAvailable> {
     /// The global index of the first row of [Processor::data].
     row_offset: u64,
     /// The rows that are being processed.
@@ -67,7 +67,7 @@ pub struct Processor<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>, CalldataA
 }
 
 impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>>
-    Processor<'a, 'b, 'c, T, Q, WithoutCalldata>
+    BlockProcessor<'a, 'b, 'c, T, Q, WithoutCalldata>
 {
     pub fn new(
         row_offset: u64,
@@ -101,8 +101,8 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>>
     pub fn with_outer_query(
         self,
         outer_query: OuterQuery<'a, T>,
-    ) -> Processor<'a, 'b, 'c, T, Q, WithCalldata> {
-        Processor {
+    ) -> BlockProcessor<'a, 'b, 'c, T, Q, WithCalldata> {
+        BlockProcessor {
             outer_query: Some(outer_query),
             _marker: PhantomData,
             row_offset: self.row_offset,
@@ -121,7 +121,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>>
     }
 }
 
-impl<'a, 'b, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, '_, T, Q, WithCalldata> {
+impl<'a, 'b, T: FieldElement, Q: QueryCallback<T>> BlockProcessor<'a, 'b, '_, T, Q, WithCalldata> {
     /// Destroys itself, returns the data and updated left-hand side of the outer query (if available).
     pub fn finish(self) -> (FinalizableData<'a, T>, Left<'a, T>) {
         (self.data, self.outer_query.unwrap().left)
@@ -129,7 +129,7 @@ impl<'a, 'b, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, '_, T, Q, W
 }
 
 impl<'a, 'b, T: FieldElement, Q: QueryCallback<T>, CalldataAvailable>
-    Processor<'a, 'b, '_, T, Q, CalldataAvailable>
+    BlockProcessor<'a, 'b, '_, T, Q, CalldataAvailable>
 {
     /// Evaluate all identities on all *non-wrapping* row pairs, assuming zero for unknown values.
     /// If any identity was unsatisfied, returns an error.
@@ -338,7 +338,7 @@ mod tests {
         },
     };
 
-    use super::{Processor, WithoutCalldata};
+    use super::{BlockProcessor, WithoutCalldata};
 
     fn name_to_poly_id<T: FieldElement>(fixed_data: &FixedData<T>) -> BTreeMap<String, PolyID> {
         let mut name_to_poly_id = BTreeMap::new();
@@ -355,7 +355,7 @@ mod tests {
     fn do_with_processor<T: FieldElement, Q: QueryCallback<T>, R>(
         src: &str,
         mut query_callback: Q,
-        f: impl Fn(&mut Processor<T, Q, WithoutCalldata>, BTreeMap<String, PolyID>) -> R,
+        f: impl Fn(&mut BlockProcessor<T, Q, WithoutCalldata>, BTreeMap<String, PolyID>) -> R,
     ) -> R {
         let analyzed = analyze_string(src);
         let (constants, degree) = generate(&analyzed);
@@ -392,7 +392,7 @@ mod tests {
         let identities = analyzed.identities.iter().collect::<Vec<_>>();
         let witness_cols = fixed_data.witness_cols.keys().collect();
 
-        let mut processor = Processor::new(
+        let mut processor = BlockProcessor::new(
             row_offset,
             data,
             &mut mutable_state,
