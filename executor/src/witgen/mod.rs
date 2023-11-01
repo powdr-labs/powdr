@@ -19,6 +19,7 @@ use self::machines::{FixedLookup, Machine};
 use pil_analyzer::pil_analyzer::inline_intermediate_polynomials;
 
 mod affine_expression;
+mod block_processor;
 mod data_structures;
 mod eval_result;
 mod expression_evaluator;
@@ -27,7 +28,6 @@ mod generator;
 mod global_constraints;
 mod identity_processor;
 mod machines;
-mod processor;
 mod query_processor;
 mod range_constraints;
 mod rows;

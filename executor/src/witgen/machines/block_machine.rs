@@ -3,10 +3,10 @@ use std::collections::{HashMap, HashSet};
 use super::{EvalResult, FixedData};
 use crate::witgen::affine_expression::AffineExpression;
 
+use crate::witgen::block_processor::{BlockProcessor, OuterQuery};
 use crate::witgen::data_structures::finalizable_data::FinalizableData;
 use crate::witgen::global_constraints::GlobalConstraints;
 use crate::witgen::identity_processor::IdentityProcessor;
-use crate::witgen::processor::{OuterQuery, Processor};
 use crate::witgen::rows::{CellValue, RowFactory, RowPair, UnknownStrategy};
 use crate::witgen::sequence_iterator::{ProcessingSequenceCache, ProcessingSequenceIterator};
 use crate::witgen::util::try_to_simple_poly;
@@ -373,7 +373,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
             (0..(self.block_size + 2))
                 .map(|i| self.row_factory.fresh_row(i as DegreeType + row_offset)),
         );
-        let mut processor = Processor::new(
+        let mut processor = BlockProcessor::new(
             row_offset,
             block,
             mutable_state,

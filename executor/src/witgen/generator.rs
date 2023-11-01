@@ -9,10 +9,10 @@ use crate::witgen::data_structures::finalizable_data::FinalizableData;
 use crate::witgen::rows::CellValue;
 
 use super::affine_expression::AffineExpression;
+use super::block_processor::BlockProcessor;
 use super::data_structures::column_map::WitnessColumnMap;
 use super::global_constraints::GlobalConstraints;
 use super::machines::Machine;
-use super::processor::Processor;
 
 use super::rows::{Row, RowFactory};
 use super::sequence_iterator::{DefaultSequenceIterator, ProcessingSequenceIterator};
@@ -93,10 +93,10 @@ impl<'a, T: FieldElement> Generator<'a, T> {
         &self,
         mutable_state: &mut MutableState<'a, '_, T, Q>,
     ) -> Row<'a, T> {
-        // Use `Processor` + `DefaultSequenceIterator` using a "block size" of 0. Because `Processor`
+        // Use `BlockProcessor` + `DefaultSequenceIterator` using a "block size" of 0. Because `BlockProcessor`
         // expects `data` to include the row before and after the block, this means we'll run the
         // solver on exactly one row pair.
-        // Note that using `Processor` instead of `VmProcessor` is more convenient here because
+        // Note that using `BlockProcessor` instead of `VmProcessor` is more convenient here because
         // it does not assert that the row is "complete" afterwards (i.e., that all identities
         // are satisfied assuming 0 for unknown values).
         let row_factory = RowFactory::new(self.fixed_data, self.global_range_constraints.clone());
@@ -108,7 +108,7 @@ impl<'a, T: FieldElement> Generator<'a, T> {
             ]
             .into_iter(),
         );
-        let mut processor = Processor::new(
+        let mut processor = BlockProcessor::new(
             self.fixed_data.degree - 1,
             data,
             mutable_state,
