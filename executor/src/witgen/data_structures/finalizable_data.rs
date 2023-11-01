@@ -121,19 +121,19 @@ impl<'a, T: FieldElement> FinalizableData<'a, T> {
     /// - A list of values
     /// - A bit vector indicating which cells are known. Values of unknown cells should be ignored.
     pub fn take_transposed(&mut self) -> impl Iterator<Item = (PolyID, (Vec<T>, BitVec))> {
-        log::info!(
+        log::debug!(
             "Transposing {} rows with {} columns...",
             self.data.len(),
             self.column_ids.len()
         );
-        log::info!("Finalizing remaining rows...");
+        log::debug!("Finalizing remaining rows...");
         let mut counter = 0;
         for i in 0..self.data.len() {
             if self.finalize(i) {
                 counter += 1;
             }
         }
-        log::info!("Needed to finalize {} / {} rows.", counter, self.data.len());
+        log::debug!("Needed to finalize {} / {} rows.", counter, self.data.len());
 
         // Store transposed columns in vectors for performance reasons
         let mut columns = vec![vec![]; self.column_ids.len()];
@@ -152,7 +152,7 @@ impl<'a, T: FieldElement> FinalizableData<'a, T> {
             }
         }
 
-        log::info!("Done transposing.");
+        log::debug!("Done transposing.");
 
         // Pair columns with their IDs
         let column_ids = std::mem::take(&mut self.column_ids);
