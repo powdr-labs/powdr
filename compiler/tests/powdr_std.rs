@@ -40,7 +40,7 @@ fn gen_halo2_proof(file_name: &str, inputs: Vec<Bn254Field>) {
         inputs,
         &mktemp::Temp::new_dir().unwrap(),
         true,
-        Some(backend::BackendType::Halo2),
+        Some(backend::BackendType::Halo2Mock),
     )
     .unwrap();
 }
@@ -59,6 +59,12 @@ fn poseidon_gl_test() {
     let f = "poseidon_gl_test.asm";
     verify_asm::<GoldilocksField>(f, Default::default());
     gen_estark_proof(f, Default::default());
+}
+
+#[test]
+fn split_bn254_test() {
+    let f = "split_bn254_test.asm";
+    gen_halo2_proof(f, Default::default());
 }
 
 #[test]
