@@ -155,7 +155,11 @@ impl<T: FieldElement> Condenser<T> {
                     (AlgebraicExpression::Number(l), AlgebraicExpression::Number(r)) => {
                         AlgebraicExpression::Number(evaluate_binary_operation(l, *op, r))
                     }
-                    (l, r) => AlgebraicExpression::BinaryOperation(Box::new(l), *op, Box::new(r)),
+                    (l, r) => AlgebraicExpression::BinaryOperation(
+                        Box::new(l),
+                        (*op).try_into().unwrap(),
+                        Box::new(r),
+                    ),
                 }
             }
             Expression::UnaryOperation(op, inner) => {
@@ -164,7 +168,10 @@ impl<T: FieldElement> Condenser<T> {
                     AlgebraicExpression::Number(n) => {
                         AlgebraicExpression::Number(evaluate_unary_operation(*op, n))
                     }
-                    _ => AlgebraicExpression::UnaryOperation(*op, Box::new(inner)),
+                    _ => AlgebraicExpression::UnaryOperation(
+                        (*op).try_into().unwrap(),
+                        Box::new(inner),
+                    ),
                 }
             }
             Expression::PublicReference(r) => AlgebraicExpression::PublicReference(r.clone()),

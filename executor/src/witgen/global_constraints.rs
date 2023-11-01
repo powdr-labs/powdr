@@ -3,10 +3,10 @@ use std::collections::{BTreeMap, BTreeSet};
 use num_traits::Zero;
 
 use ast::analyzed::{
-    AlgebraicExpression as Expression, AlgebraicReference, Identity, IdentityKind, PolyID,
-    PolynomialType,
+    AlgebraicBinaryOperator, AlgebraicExpression as Expression, AlgebraicReference, Identity,
+    IdentityKind, PolyID, PolynomialType,
 };
-use ast::parsed::BinaryOperator;
+
 use number::FieldElement;
 
 use crate::witgen::data_structures::column_map::{FixedColumnMap, WitnessColumnMap};
@@ -219,13 +219,13 @@ fn propagate_constraints<T: FieldElement>(
 /// Tries to find "X * (1 - X) = 0"
 fn is_binary_constraint<T: FieldElement>(expr: &Expression<T>) -> Option<PolyID> {
     // TODO Write a proper pattern matching engine.
-    if let Expression::BinaryOperation(left, BinaryOperator::Sub, right) = expr {
+    if let Expression::BinaryOperation(left, AlgebraicBinaryOperator::Sub, right) = expr {
         if let Expression::Number(n) = right.as_ref() {
             if n.is_zero() {
                 return is_binary_constraint(left.as_ref());
             }
         }
-    } else if let Expression::BinaryOperation(left, BinaryOperator::Mul, right) = expr {
+    } else if let Expression::BinaryOperation(left, AlgebraicBinaryOperator::Mul, right) = expr {
         let symbolic_ev = SymbolicEvaluator;
         let left_root = ExpressionEvaluator::new(symbolic_ev.clone())
             .evaluate(left)

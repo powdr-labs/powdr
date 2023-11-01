@@ -135,8 +135,11 @@ impl<T: Display> Display for Identity<AlgebraicExpression<T>> {
         match self.kind {
             IdentityKind::Polynomial => {
                 let expression = self.expression_for_poly_id();
-                if let AlgebraicExpression::BinaryOperation(left, BinaryOperator::Sub, right) =
-                    expression
+                if let AlgebraicExpression::BinaryOperation(
+                    left,
+                    AlgebraicBinaryOperator::Sub,
+                    right,
+                ) = expression
                 {
                     write!(f, "{left} = {right};")
                 } else {
@@ -186,6 +189,18 @@ impl<T: Display> Display for AlgebraicExpression<T> {
             }
             AlgebraicExpression::UnaryOperation(op, exp) => write!(f, "{op}{exp}"),
         }
+    }
+}
+
+impl Display for AlgebraicUnaryOperator {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        UnaryOperator::from(*self).fmt(f)
+    }
+}
+
+impl Display for AlgebraicBinaryOperator {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        BinaryOperator::from(*self).fmt(f)
     }
 }
 

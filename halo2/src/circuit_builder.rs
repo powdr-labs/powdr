@@ -1,4 +1,4 @@
-use ast::parsed::{BinaryOperator, SelectedExpressions};
+use ast::parsed::SelectedExpressions;
 use num_bigint::BigUint;
 use polyexen::expr::{ColumnKind, ColumnQuery, Expr, PlonkVar};
 use polyexen::plaf::backends::halo2::PlafH2Circuit;
@@ -6,8 +6,10 @@ use polyexen::plaf::{
     ColumnFixed, ColumnWitness, Columns, Info, Lookup, Plaf, Poly, Shuffle, Witness,
 };
 
-use ast::analyzed::{AlgebraicExpression as Expression, Analyzed, IdentityKind};
-use num_traits::One;
+use ast::analyzed::{
+    AlgebraicBinaryOperator, AlgebraicExpression as Expression, Analyzed, IdentityKind,
+};
+use num_traits::{One, ToPrimitive};
 use number::{BigInt, FieldElement};
 
 use super::circuit_data::CircuitData;
@@ -246,14 +248,24 @@ fn expression_2_expr<T: FieldElement>(cd: &CircuitData<T>, expr: &Expression<T>)
 
             Expr::Var(plonkvar)
         }
-        Expression::BinaryOperation(lhe, op, rhe) => {
+        Expression::BinaryOperation(lhe, op, rhe_powdr) => {
             let lhe = expression_2_expr(cd, lhe);
-            let rhe = expression_2_expr(cd, rhe);
+            let rhe = expression_2_expr(cd, rhe_powdr);
             match op {
-                BinaryOperator::Add => Expr::Sum(vec![lhe, rhe]),
-                BinaryOperator::Sub => Expr::Sum(vec![lhe, Expr::Neg(Box::new(rhe))]),
-                BinaryOperator::Mul => Expr::Mul(vec![lhe, rhe]),
-                _ => unimplemented!("{:?}", expr),
+                AlgebraicBinaryOperator::Add => Expr::Sum(vec![lhe, rhe]),
+                AlgebraicBinaryOperator::Sub => Expr::Sum(vec![lhe, Expr::Neg(Box::new(rhe))]),
+                AlgebraicBinaryOperator::Mul => Expr::Mul(vec![lhe, rhe]),
+                AlgebraicBinaryOperator::Pow => {
+                    let Expression::Number(e) = rhe_powdr.as_ref() else {
+                        panic!("Expected number in exponent.")
+                    };
+                    Expr::Pow(
+                        Box::new(lhe),
+                        e.to_arbitrary_integer()
+                            .to_u32()
+                            .unwrap_or_else(|| panic!("Exponent has to fit 32 bits.")),
+                    )
+                }
             }
         }
 

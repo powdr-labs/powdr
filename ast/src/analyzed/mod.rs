@@ -487,14 +487,80 @@ pub enum AlgebraicExpression<T> {
     Number(T),
     BinaryOperation(
         Box<AlgebraicExpression<T>>,
-        BinaryOperator,
+        AlgebraicBinaryOperator,
         Box<AlgebraicExpression<T>>,
     ),
-    UnaryOperation(UnaryOperator, Box<AlgebraicExpression<T>>),
+
+    UnaryOperation(AlgebraicUnaryOperator, Box<AlgebraicExpression<T>>),
+}
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
+pub enum AlgebraicBinaryOperator {
+    Add,
+    Sub,
+    Mul,
+    /// Exponentiation, but only by constants.
+    Pow,
+}
+
+impl From<AlgebraicBinaryOperator> for BinaryOperator {
+    fn from(op: AlgebraicBinaryOperator) -> BinaryOperator {
+        match op {
+            AlgebraicBinaryOperator::Add => BinaryOperator::Add,
+            AlgebraicBinaryOperator::Sub => BinaryOperator::Sub,
+            AlgebraicBinaryOperator::Mul => BinaryOperator::Mul,
+            AlgebraicBinaryOperator::Pow => BinaryOperator::Pow,
+        }
+    }
+}
+
+impl TryFrom<BinaryOperator> for AlgebraicBinaryOperator {
+    type Error = String;
+
+    fn try_from(op: BinaryOperator) -> Result<Self, Self::Error> {
+        match op {
+            BinaryOperator::Add => Ok(AlgebraicBinaryOperator::Add),
+            BinaryOperator::Sub => Ok(AlgebraicBinaryOperator::Sub),
+            BinaryOperator::Mul => Ok(AlgebraicBinaryOperator::Mul),
+            BinaryOperator::Pow => Ok(AlgebraicBinaryOperator::Pow),
+            _ => Err(format!(
+                "Binary operator {op} not allowed in algebraic expression."
+            )),
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
+pub enum AlgebraicUnaryOperator {
+    Plus,
+    Minus,
+}
+
+impl From<AlgebraicUnaryOperator> for UnaryOperator {
+    fn from(op: AlgebraicUnaryOperator) -> UnaryOperator {
+        match op {
+            AlgebraicUnaryOperator::Plus => UnaryOperator::Plus,
+            AlgebraicUnaryOperator::Minus => UnaryOperator::Minus,
+        }
+    }
+}
+
+impl TryFrom<UnaryOperator> for AlgebraicUnaryOperator {
+    type Error = String;
+
+    fn try_from(op: UnaryOperator) -> Result<Self, Self::Error> {
+        match op {
+            UnaryOperator::Plus => Ok(AlgebraicUnaryOperator::Plus),
+            UnaryOperator::Minus => Ok(AlgebraicUnaryOperator::Minus),
+            _ => Err(format!(
+                "Unary operator {op} not allowed in algebraic expression."
+            )),
+        }
+    }
 }
 
 impl<T> AlgebraicExpression<T> {
-    pub fn new_binary(left: Self, op: BinaryOperator, right: Self) -> Self {
+    pub fn new_binary(left: Self, op: AlgebraicBinaryOperator, right: Self) -> Self {
         AlgebraicExpression::BinaryOperation(Box::new(left), op, Box::new(right))
     }
 
@@ -528,7 +594,7 @@ impl<T> ops::Add for AlgebraicExpression<T> {
     type Output = Self;
 
     fn add(self, rhs: Self) -> Self::Output {
-        Self::new_binary(self, BinaryOperator::Add, rhs)
+        Self::new_binary(self, AlgebraicBinaryOperator::Add, rhs)
     }
 }
 
@@ -536,7 +602,7 @@ impl<T> ops::Sub for AlgebraicExpression<T> {
     type Output = Self;
 
     fn sub(self, rhs: Self) -> Self::Output {
-        Self::new_binary(self, BinaryOperator::Sub, rhs)
+        Self::new_binary(self, AlgebraicBinaryOperator::Sub, rhs)
     }
 }
 
@@ -544,7 +610,7 @@ impl<T> ops::Mul for AlgebraicExpression<T> {
     type Output = Self;
 
     fn mul(self, rhs: Self) -> Self::Output {
-        Self::new_binary(self, BinaryOperator::Mul, rhs)
+        Self::new_binary(self, AlgebraicBinaryOperator::Mul, rhs)
     }
 }
 
