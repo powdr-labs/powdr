@@ -3,10 +3,11 @@ use std::collections::{HashMap, HashSet};
 use super::{EvalResult, FixedData, FixedLookup};
 use crate::witgen::affine_expression::AffineExpression;
 
-use crate::witgen::block_processor::{BlockProcessor, OuterQuery};
+use crate::witgen::block_processor::BlockProcessor;
 use crate::witgen::data_structures::finalizable_data::FinalizableData;
 use crate::witgen::global_constraints::GlobalConstraints;
 use crate::witgen::identity_processor::IdentityProcessor;
+use crate::witgen::processor::OuterQuery;
 use crate::witgen::rows::{CellValue, RowFactory, RowPair, UnknownStrategy};
 use crate::witgen::sequence_iterator::{ProcessingSequenceCache, ProcessingSequenceIterator};
 use crate::witgen::util::try_to_simple_poly;
