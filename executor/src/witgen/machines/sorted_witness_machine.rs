@@ -4,8 +4,8 @@ use ast::parsed::SelectedExpressions;
 use itertools::Itertools;
 
 use super::super::affine_expression::AffineExpression;
-use super::Machine;
 use super::{EvalResult, FixedData};
+use super::{FixedLookup, Machine};
 use crate::witgen::{
     expression_evaluator::ExpressionEvaluator, fixed_evaluator::FixedEvaluator,
     symbolic_evaluator::SymbolicEvaluator,
@@ -152,7 +152,12 @@ impl<'a, T: FieldElement> Machine<'a, T> for SortedWitnesses<'a, T> {
 
         Some(self.process_plookup_internal(left, right, rhs))
     }
-    fn take_witness_col_values(&mut self) -> HashMap<String, Vec<T>> {
+
+    fn take_witness_col_values<'b, Q: QueryCallback<T>>(
+        &mut self,
+        _fixed_lookup: &'b mut FixedLookup<T>,
+        _query_callback: &'b mut Q,
+    ) -> HashMap<String, Vec<T>> {
         let mut result = HashMap::new();
 
         let (mut keys, mut values): (Vec<_>, Vec<_>) =

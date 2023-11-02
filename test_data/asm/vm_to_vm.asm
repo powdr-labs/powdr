@@ -1,5 +1,7 @@
 machine Main {
 
+    degree 256;
+
     VM vm;
 
     reg pc[@pc];
@@ -14,9 +16,8 @@ machine Main {
 
     function main {
         A <== add(1, 1);
-        // TODO: uncomment the following two lines once we support having many calls to a machine
-        // A <== add(A, 1);
-        // A <== sub(A, 1);
+        A <== add(A, 1);
+        A <== sub(A, 1);
         assert_eq A, 2;
         return;
     }

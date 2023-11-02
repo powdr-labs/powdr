@@ -7,17 +7,22 @@ use std::collections::{HashMap, HashSet};
 
 use crate::witgen::data_structures::finalizable_data::FinalizableData;
 use crate::witgen::rows::CellValue;
+use crate::witgen::EvalValue;
 
 use super::affine_expression::AffineExpression;
-use super::block_processor::BlockProcessor;
+use super::block_processor::{BlockProcessor, OuterQuery};
 use super::data_structures::column_map::WitnessColumnMap;
 use super::global_constraints::GlobalConstraints;
-use super::machines::Machine;
-
+use super::machines::{FixedLookup, Machine};
 use super::rows::{Row, RowFactory};
 use super::sequence_iterator::{DefaultSequenceIterator, ProcessingSequenceIterator};
 use super::vm_processor::VmProcessor;
 use super::{EvalResult, FixedData, MutableState, QueryCallback};
+
+struct ProcessResult<'a, T: FieldElement> {
+    eval_value: EvalValue<&'a AlgebraicReference, T>,
+    block: FinalizableData<'a, T>,
+}
 
 pub struct Generator<'a, T: FieldElement> {
     fixed_data: &'a FixedData<'a, T>,
@@ -31,15 +36,63 @@ pub struct Generator<'a, T: FieldElement> {
 impl<'a, T: FieldElement> Machine<'a, T> for Generator<'a, T> {
     fn process_plookup<Q: QueryCallback<T>>(
         &mut self,
-        _mutable_state: &mut MutableState<'a, '_, T, Q>,
+        mutable_state: &mut MutableState<'a, '_, T, Q>,
         _kind: IdentityKind,
-        _left: &[AffineExpression<&'a AlgebraicReference, T>],
-        _right: &'a SelectedExpressions<Expression<T>>,
+        left: &[AffineExpression<&'a AlgebraicReference, T>],
+        right: &'a SelectedExpressions<Expression<T>>,
     ) -> Option<EvalResult<'a, T>> {
-        unimplemented!()
+        if right.selector != self.latch {
+            None
+        } else {
+            log::trace!("Start processing secondary VM '{}'", self.name());
+            log::trace!("Arguments:");
+            for (r, l) in right.expressions.iter().zip(left) {
+                log::trace!("  {r} = {l}");
+            }
+
+            let first_row = self
+                .data
+                .last()
+                .cloned()
+                .unwrap_or_else(|| self.compute_partial_first_row(mutable_state));
+
+            let outer_query = OuterQuery {
+                left: left.to_vec(),
+                right,
+            };
+            let ProcessResult { eval_value, block } =
+                self.process(first_row, 0, mutable_state, Some(outer_query));
+
+            if eval_value.is_complete() {
+                log::trace!("End processing VM '{}' (successfully)", self.name());
+                // Remove the last row of the previous block, as it is the first row of the current
+                // block.
+                self.data.pop();
+                self.data.extend(block);
+            } else {
+                log::trace!("End processing VM '{}' (incomplete)", self.name());
+            }
+            Some(Ok(eval_value))
+        }
     }
 
-    fn take_witness_col_values(&mut self) -> HashMap<String, Vec<T>> {
+    fn take_witness_col_values<'b, Q: QueryCallback<T>>(
+        &mut self,
+        fixed_lookup: &'b mut FixedLookup<T>,
+        query_callback: &'b mut Q,
+    ) -> HashMap<String, Vec<T>> {
+        log::debug!("Finalizing VM: {}", self.name());
+
+        // In this stage, we don't have access to other machines, as they might already be finalized.
+        let mut mutable_state_no_machines = MutableState {
+            fixed_lookup,
+            machines: [].into_iter().into(),
+            query_callback,
+        };
+
+        self.fill_remaining_rows(&mut mutable_state_no_machines);
+        self.fix_first_row();
+
         self.data
             .take_transposed()
             .map(|(id, (values, _))| (self.fixed_data.column_name(&id).to_string(), values))
@@ -66,11 +119,23 @@ impl<'a, T: FieldElement> Generator<'a, T> {
         }
     }
 
-    pub fn run<Q: QueryCallback<T>>(&mut self, mutable_state: &mut MutableState<'a, '_, T, Q>) {
+    pub fn name(&self) -> &str {
+        let first_witness = self.witnesses.iter().next().unwrap();
+        let first_witness_name = self.fixed_data.column_name(first_witness);
+        let namespace = first_witness_name
+            .rfind('.')
+            .map(|idx| &first_witness_name[..idx]);
+
+        // For machines compiled using Powdr ASM we'll always have a namespace, but as a last
+        // resort we'll use the first witness name.
+        namespace.unwrap_or(first_witness_name)
+    }
+
+    /// Runs the machine without any arguments from the first row.
+    pub fn run<'b, Q: QueryCallback<T>>(&mut self, mutable_state: &mut MutableState<'a, 'b, T, Q>) {
+        assert!(self.data.is_empty());
         let first_row = self.compute_partial_first_row(mutable_state);
-        self.data = self.process(first_row, 0, mutable_state);
-        self.fill_remaining_rows(mutable_state);
-        self.fix_first_row();
+        self.data = self.process(first_row, 0, mutable_state, None).block;
     }
 
     fn fill_remaining_rows<Q>(&mut self, mutable_state: &mut MutableState<'a, '_, T, Q>)
@@ -81,9 +146,15 @@ impl<'a, T: FieldElement> Generator<'a, T> {
             assert!(self.latch.is_some());
 
             let first_row = self.data.pop().unwrap();
+            let ProcessResult { block, eval_value } = self.process(
+                first_row,
+                self.data.len() as DegreeType,
+                mutable_state,
+                None,
+            );
+            assert!(eval_value.is_complete());
 
-            self.data
-                .extend(self.process(first_row, self.data.len() as DegreeType, mutable_state));
+            self.data.extend(block);
         }
     }
 
@@ -131,7 +202,8 @@ impl<'a, T: FieldElement> Generator<'a, T> {
         first_row: Row<'a, T>,
         row_offset: DegreeType,
         mutable_state: &mut MutableState<'a, '_, T, Q>,
-    ) -> FinalizableData<'a, T> {
+        outer_query: Option<OuterQuery<'a, T>>,
+    ) -> ProcessResult<'a, T> {
         log::trace!(
             "Running main machine from row {row_offset} with the following initial values in the first row:\n{}", first_row.render_values(false, None)
         );
@@ -147,11 +219,13 @@ impl<'a, T: FieldElement> Generator<'a, T> {
             self.witnesses.clone(),
             data,
             row_factory,
-            self.latch.clone(),
         );
-        let result = processor.run(mutable_state);
-        assert!(result.is_complete(), "Main machine did not complete");
-        processor.finish()
+        if let Some(outer_query) = outer_query {
+            processor = processor.with_outer_query(outer_query);
+        }
+        let eval_value = processor.run(mutable_state);
+        let block = processor.finish();
+        ProcessResult { eval_value, block }
     }
 
     /// At the end of the solving algorithm, we'll have computed the first row twice

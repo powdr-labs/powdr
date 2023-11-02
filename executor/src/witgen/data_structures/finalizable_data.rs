@@ -52,6 +52,10 @@ impl<'a, T: FieldElement> FinalizableData<'a, T> {
         self.data.len()
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.data.is_empty()
+    }
+
     pub fn push(&mut self, row: Row<'a, T>) {
         self.data.push(Entry::InProgress(row));
     }
@@ -83,6 +87,14 @@ impl<'a, T: FieldElement> FinalizableData<'a, T> {
         match &mut self.data[i] {
             Entry::InProgress(row) => Some(row),
             Entry::Finalized(_, _) => panic!("Row {} already finalized.", i),
+        }
+    }
+
+    pub fn last(&self) -> Option<&Row<'a, T>> {
+        match self.data.last() {
+            Some(Entry::InProgress(row)) => Some(row),
+            Some(Entry::Finalized(_, _)) => panic!("Last row already finalized."),
+            None => None,
         }
     }
 

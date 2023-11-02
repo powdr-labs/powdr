@@ -13,7 +13,7 @@ use super::{
     global_constraints::{GlobalConstraints, RangeConstraintSet},
     range_constraints::RangeConstraint,
     symbolic_witness_evaluator::{SymoblicWitnessEvaluator, WitnessColumnEvaluator},
-    EvalValue, FixedData,
+    FixedData,
 };
 
 #[derive(Clone, PartialEq, Debug)]
@@ -238,28 +238,6 @@ impl<'row, 'a, T: FieldElement> RowUpdater<'row, 'a, T> {
             }
         }
         self.get_cell_mut(poly).apply_update(c);
-    }
-
-    /// Applies the updates to the underlying rows. Returns true if any updates
-    /// were applied.
-    ///
-    /// # Panics
-    /// Panics if any updates are redundant, as this indicates a bug that would
-    /// potentially cause infinite loops otherwise.
-    pub fn apply_updates(
-        &mut self,
-        updates: &EvalValue<&AlgebraicReference, T>,
-        source_name: impl Fn() -> String,
-    ) -> bool {
-        if updates.constraints.is_empty() {
-            return false;
-        }
-
-        log::trace!("    Updates from: {}", source_name());
-        for (poly, c) in &updates.constraints {
-            self.apply_update(poly, c)
-        }
-        true
     }
 
     fn get_cell_mut<'b>(&'b mut self, poly: &AlgebraicReference) -> &'b mut Cell<'a, T> {

@@ -131,11 +131,15 @@ impl<'a, 'b, T: FieldElement, Q: QueryCallback<T>> WitnessGenerator<'a, 'b, T, Q
         generator.run(&mut mutable_state);
 
         // Get columns from machines
-        let main_columns = generator.take_witness_col_values();
+        let main_columns = generator
+            .take_witness_col_values(mutable_state.fixed_lookup, mutable_state.query_callback);
         let mut columns = mutable_state
             .machines
             .iter_mut()
-            .flat_map(|m| m.take_witness_col_values().into_iter())
+            .flat_map(|m| {
+                m.take_witness_col_values(mutable_state.fixed_lookup, mutable_state.query_callback)
+                    .into_iter()
+            })
             .chain(main_columns)
             .collect::<BTreeMap<_, _>>();
 
@@ -211,7 +215,7 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
 
     fn column_name(&self, poly_id: &PolyID) -> &str {
         match poly_id.ptype {
-            PolynomialType::Committed => &self.witness_cols[poly_id].name,
+            PolynomialType::Committed => &self.witness_cols[poly_id].poly.name,
             PolynomialType::Constant => &self.fixed_cols[poly_id].name,
             PolynomialType::Intermediate => unimplemented!(),
         }
@@ -239,17 +243,16 @@ impl<'a, T> FixedColumn<'a, T> {
 }
 
 #[derive(Debug)]
-pub struct Query<'a, T> {
-    /// The query expression
-    expr: &'a Expression<T>,
-    /// The polynomial that is referenced by the query
-    poly: AlgebraicReference,
-}
-
-#[derive(Debug)]
 pub struct WitnessColumn<'a, T> {
-    name: String,
-    query: Option<Query<'a, T>>,
+    /// A polynomial reference that points to this column in the "current" row
+    /// (i.e., the "next" flag is set to false).
+    /// This is needed in situations where we want to update a cell when the
+    /// update does not come from an identity (which also has an AlgebraicReference).
+    poly: AlgebraicReference,
+    /// The prover query expression, if any.
+    query: Option<&'a Expression<T>>,
+    /// A list of externally computed witness values, if any.
+    /// The length of this list must be equal to the degree.
     external_values: Option<Vec<T>>,
 }
 
@@ -265,24 +268,17 @@ impl<'a, T> WitnessColumn<'a, T> {
         } else {
             None
         };
-        let name = name.to_string();
-        let query = query.as_ref().map(|callback| {
-            let poly = AlgebraicReference {
-                poly_id: PolyID {
-                    id: id as u64,
-                    ptype: PolynomialType::Committed,
-                },
-                name: name.clone(),
-                next: false,
-                index: None,
-            };
-            Query {
-                poly,
-                expr: callback,
-            }
-        });
+        let poly = AlgebraicReference {
+            poly_id: PolyID {
+                id: id as u64,
+                ptype: PolynomialType::Committed,
+            },
+            name: name.to_string(),
+            next: false,
+            index: None,
+        };
         WitnessColumn {
-            name,
+            poly,
             query,
             external_values,
         }
