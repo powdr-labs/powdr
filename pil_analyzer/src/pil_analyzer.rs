@@ -539,12 +539,11 @@ impl<'a, T: FieldElement> ExpressionProcessor<'a, T> {
             PExpression::Reference(poly) => {
                 if poly.namespace().is_none() && self.local_variables.contains_key(poly.name()) {
                     let id = self.local_variables[poly.name()];
-                    assert!(!poly.shift());
                     assert!(poly.index().is_none());
                     Expression::Reference(Reference::LocalVar(id, poly.name().to_string()))
                 } else {
                     Expression::Reference(Reference::Poly(
-                        self.process_shifted_polynomial_reference(poly),
+                        self.process_namespaced_polynomial_reference(poly),
                     ))
                 }
             }
@@ -634,17 +633,6 @@ impl<'a, T: FieldElement> ExpressionProcessor<'a, T> {
             name,
             poly_id: None,
             index,
-            next: false,
-        }
-    }
-
-    pub fn process_shifted_polynomial_reference(
-        &mut self,
-        poly: ::ast::parsed::ShiftedPolynomialReference<T>,
-    ) -> PolynomialReference {
-        PolynomialReference {
-            next: poly.shift(),
-            ..self.process_namespaced_polynomial_reference(poly.into_namespaced())
         }
     }
 }

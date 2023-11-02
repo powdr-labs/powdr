@@ -2,7 +2,7 @@ use std::ops::ControlFlow;
 
 use super::{
     ArrayExpression, ArrayLiteral, Expression, FunctionCall, FunctionDefinition, LambdaExpression,
-    MatchArm, MatchPattern, PilStatement, SelectedExpressions, ShiftedPolynomialReference,
+    MatchArm, MatchPattern, NamespacedPolynomialReference, PilStatement, SelectedExpressions,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -180,10 +180,10 @@ impl<T, Ref> ExpressionVisitable<Expression<T, Ref>> for Expression<T, Ref> {
     }
 }
 
-impl<T> ExpressionVisitable<Expression<T, ShiftedPolynomialReference<T>>> for PilStatement<T> {
+impl<T> ExpressionVisitable<Expression<T, NamespacedPolynomialReference<T>>> for PilStatement<T> {
     fn visit_expressions_mut<F, B>(&mut self, f: &mut F, o: VisitOrder) -> ControlFlow<B>
     where
-        F: FnMut(&mut Expression<T, ShiftedPolynomialReference<T>>) -> ControlFlow<B>,
+        F: FnMut(&mut Expression<T, NamespacedPolynomialReference<T>>) -> ControlFlow<B>,
     {
         match self {
             PilStatement::FunctionCall(_, _, arguments) => arguments

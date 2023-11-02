@@ -68,7 +68,7 @@ impl<Expr> Default for SelectedExpressions<Expr> {
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
-pub enum Expression<T, Ref = ShiftedPolynomialReference<T>> {
+pub enum Expression<T, Ref = NamespacedPolynomialReference<T>> {
     Reference(Ref),
     PublicReference(String),
     Number(T),
@@ -82,6 +82,7 @@ pub enum Expression<T, Ref = ShiftedPolynomialReference<T>> {
         Box<Expression<T, Ref>>,
     ),
     UnaryOperation(UnaryOperator, Box<Expression<T, Ref>>),
+
     FunctionCall(FunctionCall<T, Ref>),
     FreeInput(Box<Expression<T, Ref>>),
     MatchExpression(Box<Expression<T, Ref>>, Vec<MatchArm<T, Ref>>),
@@ -144,8 +145,8 @@ impl<T: FieldElement, Ref> From<T> for Expression<T, Ref> {
     }
 }
 
-impl<T> From<ShiftedPolynomialReference<T>> for Expression<T> {
-    fn from(value: ShiftedPolynomialReference<T>) -> Self {
+impl<T> From<NamespacedPolynomialReference<T>> for Expression<T> {
+    fn from(value: NamespacedPolynomialReference<T>) -> Self {
         Self::Reference(value)
     }
 }
@@ -154,47 +155,6 @@ impl<T> From<ShiftedPolynomialReference<T>> for Expression<T> {
 pub struct PolynomialName<T> {
     pub name: String,
     pub array_size: Option<Expression<T>>,
-}
-
-/// A polynomial with an optional shift
-#[derive(Debug, PartialEq, Eq, Default, Clone, PartialOrd, Ord)]
-pub struct ShiftedPolynomialReference<T> {
-    /// Whether we shift or not
-    is_next: bool,
-    /// The underlying polynomial
-    pol: NamespacedPolynomialReference<T>,
-}
-
-impl<T> ShiftedPolynomialReference<T> {
-    /// Returns the underlying namespaced polynomial
-    pub fn into_namespaced(self) -> NamespacedPolynomialReference<T> {
-        self.pol
-    }
-
-    /// Returns the shift of this polynomial
-    pub fn shift(&self) -> bool {
-        self.is_next
-    }
-
-    /// Returns the optional namespace of the underlying polynomial
-    pub fn namespace(&self) -> &Option<String> {
-        self.pol.namespace()
-    }
-
-    /// Returns the optional index of the underlying polynomial in its declaration array
-    pub fn index(&self) -> &Option<Box<Expression<T>>> {
-        self.pol.index()
-    }
-
-    /// Returns the name of the declared polynomial or array of polynomials
-    pub fn name(&self) -> &str {
-        self.pol.name()
-    }
-
-    /// Returns a mutable reference to the declared polynomial or array of polynomials
-    pub fn name_mut(&mut self) -> &mut String {
-        self.pol.name_mut()
-    }
 }
 
 #[derive(Debug, PartialEq, Eq, Default, Clone, PartialOrd, Ord)]
@@ -207,14 +167,6 @@ pub struct NamespacedPolynomialReference<T> {
 }
 
 impl<T> NamespacedPolynomialReference<T> {
-    /// Return a shifted polynomial based on this namespaced polynomial and a boolean shift
-    pub fn with_shift(self, next: bool) -> ShiftedPolynomialReference<T> {
-        ShiftedPolynomialReference {
-            is_next: next,
-            pol: self,
-        }
-    }
-
     /// Returns the optional namespace of this polynomial
     pub fn namespace(&self) -> &Option<String> {
         &self.namespace
@@ -233,16 +185,6 @@ impl<T> NamespacedPolynomialReference<T> {
     /// Returns a mutable reference to the declared polynomial or array of polynomials
     pub fn name_mut(&mut self) -> &mut String {
         self.pol.name_mut()
-    }
-
-    /// Return a shifted polynomial based on this namespaced polynomial with a shift of 1
-    pub fn next(self) -> ShiftedPolynomialReference<T> {
-        self.with_shift(true)
-    }
-
-    /// Return a shifted polynomial based on this namespaced polynomial with a shift of 0
-    pub fn current(self) -> ShiftedPolynomialReference<T> {
-        self.with_shift(false)
     }
 }
 
@@ -333,13 +275,13 @@ impl PolynomialReference {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
-pub struct LambdaExpression<T, Ref = ShiftedPolynomialReference<T>> {
+pub struct LambdaExpression<T, Ref = NamespacedPolynomialReference<T>> {
     pub params: Vec<String>,
     pub body: Box<Expression<T, Ref>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
-pub struct ArrayLiteral<T, Ref = ShiftedPolynomialReference<T>> {
+pub struct ArrayLiteral<T, Ref = NamespacedPolynomialReference<T>> {
     pub items: Vec<Expression<T, Ref>>,
 }
 
@@ -348,6 +290,17 @@ pub enum UnaryOperator {
     Plus,
     Minus,
     LogicalNot,
+    Next,
+}
+
+impl UnaryOperator {
+    /// Returns true if the operator is a prefix-operator and false if it is a postfix operator.
+    pub fn is_prefix(&self) -> bool {
+        match self {
+            UnaryOperator::Plus | UnaryOperator::Minus | UnaryOperator::LogicalNot => true,
+            UnaryOperator::Next => false,
+        }
+    }
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
@@ -374,20 +327,20 @@ pub enum BinaryOperator {
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
-pub struct FunctionCall<T, Ref = ShiftedPolynomialReference<T>> {
+pub struct FunctionCall<T, Ref = NamespacedPolynomialReference<T>> {
     pub id: String,
     pub arguments: Vec<Expression<T, Ref>>,
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
-pub struct MatchArm<T, Ref = ShiftedPolynomialReference<T>> {
+pub struct MatchArm<T, Ref = NamespacedPolynomialReference<T>> {
     pub pattern: MatchPattern<T, Ref>,
     pub value: Expression<T, Ref>,
 }
 
 /// A pattern for a match arm. We could extend this in the future.
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
-pub enum MatchPattern<T, Ref = ShiftedPolynomialReference<T>> {
+pub enum MatchPattern<T, Ref = NamespacedPolynomialReference<T>> {
     CatchAll,
     Pattern(Expression<T, Ref>),
 }

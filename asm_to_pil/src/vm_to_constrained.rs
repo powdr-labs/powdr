@@ -538,7 +538,6 @@ impl<T: FieldElement> ASMPILConverter<T> {
             .map(|(reg, a)| {
                 // Output a value trough assignment register "reg"
                 if let Expression::Reference(r) = a {
-                    assert!(!r.shift());
                     assert!(r.index().is_none());
                     (reg.clone(), vec![r.name().into()])
                 } else {
@@ -567,7 +566,6 @@ impl<T: FieldElement> ASMPILConverter<T> {
             Expression::Reference(reference) => {
                 assert!(reference.namespace().is_none());
                 assert!(reference.index().is_none());
-                assert!(!reference.shift());
                 // TODO check it actually is a register
                 vec![(
                     1.into(),
@@ -1029,11 +1027,17 @@ fn extract_update<T: FieldElement>(expr: Expression<T>) -> (Option<String>, Expr
     // TODO check that there are no other "next" references in the expression
     if let Expression::BinaryOperation(left, BinaryOperator::Sub, right) = expr {
         match *left {
-            Expression::Reference(r) if r.shift() => {
-                assert!(r.namespace().is_none());
-                assert!(r.index().is_none());
-                (Some(r.name().into()), *right)
-            }
+            Expression::UnaryOperation(UnaryOperator::Next, column) => match *column {
+                Expression::Reference(column) => {
+                    assert!(column.namespace().is_none());
+                    assert!(column.index().is_none());
+                    return (Some(column.name().into()), *right);
+                }
+                _ => (
+                    None,
+                    Expression::UnaryOperation(UnaryOperator::Next, column) - *right,
+                ),
+            },
             _ => (None, *left - *right),
         }
     } else {

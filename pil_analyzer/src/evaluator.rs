@@ -52,7 +52,7 @@ impl<'a, T: FieldElement> Evaluator<'a, T> {
         match expr {
             Expression::Reference(Reference::LocalVar(i, _name)) => Ok(self.variables[*i as usize]),
             Expression::Reference(Reference::Poly(poly)) => {
-                if !poly.next && poly.index.is_none() {
+                if poly.index.is_none() {
                     if let Some((_, value)) = self.definitions.get(&poly.name.to_string()) {
                         match value {
                             Some(FunctionValueDefinition::Expression(value)) => {
@@ -64,7 +64,7 @@ impl<'a, T: FieldElement> Evaluator<'a, T> {
                         panic!("Reference to {}, which is not a fixed column.", poly.name)
                     }
                 } else {
-                    Err("Cannot evaluate arrays or next references.".to_string())
+                    Err("Cannot evaluate arrays.".to_string())
                 }
             }
             Expression::PublicReference(r) => Err(format!("Cannot evaluate public reference: {r}")),

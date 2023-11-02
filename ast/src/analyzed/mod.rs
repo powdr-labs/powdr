@@ -630,7 +630,6 @@ pub struct PolynomialReference {
     /// TODO make this non-optional
     pub poly_id: Option<PolyID>,
     pub index: Option<u64>,
-    pub next: bool,
 }
 
 #[derive(Debug, Copy, Clone, PartialOrd, Ord, PartialEq, Eq, Hash)]

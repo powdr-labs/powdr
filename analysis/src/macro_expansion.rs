@@ -173,9 +173,6 @@ where
     fn process_expression(&mut self, e: &mut Expression<T>) {
         if let Expression::Reference(poly) = e {
             if poly.namespace().is_none() && self.parameter_names.contains_key(poly.name()) {
-                // TODO to make this work inside macros, "next" and "index" need to be
-                // their own ast nodes / operators.
-                assert!(!poly.shift());
                 assert!(poly.index().is_none());
                 *e = self.arguments[self.parameter_names[poly.name()]].clone()
             }

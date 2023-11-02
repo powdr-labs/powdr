@@ -223,13 +223,12 @@ impl Display for PolynomialReference {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(
             f,
-            "{}{}{}",
+            "{}{}",
             self.name,
             self.index
                 .as_ref()
                 .map(|s| format!("[{s}]"))
                 .unwrap_or_default(),
-            if self.next { "'" } else { "" },
         )
     }
 }
