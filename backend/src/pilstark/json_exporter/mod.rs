@@ -3,8 +3,9 @@ use std::cmp;
 use std::collections::HashMap;
 
 use ast::analyzed::{
-    AlgebraicExpression as Expression, AlgebraicReference, Analyzed, BinaryOperator, IdentityKind,
-    PolyID, PolynomialType, StatementIdentifier, SymbolKind, UnaryOperator,
+    AlgebraicBinaryOperator, AlgebraicExpression as Expression, AlgebraicReference,
+    AlgebraicUnaryOperator, Analyzed, IdentityKind, PolyID, PolynomialType, StatementIdentifier,
+    SymbolKind,
 };
 use starky::types::{
     ConnectionIdentity, Expression as StarkyExpr, PermutationIdentity, PlookupIdentity,
@@ -284,33 +285,16 @@ impl<'a, T: FieldElement> Exporter<'a, T> {
                 let (deg_left, left) = self.expression_to_json(left);
                 let (deg_right, right) = self.expression_to_json(right);
                 let (op, degree) = match op {
-                    BinaryOperator::Add => ("add", cmp::max(deg_left, deg_right)),
-                    BinaryOperator::Sub => ("sub", cmp::max(deg_left, deg_right)),
-                    BinaryOperator::Mul => ("mul", deg_left + deg_right),
-                    BinaryOperator::Div => panic!("Div is not really allowed"),
-                    BinaryOperator::Pow => {
+                    AlgebraicBinaryOperator::Add => ("add", cmp::max(deg_left, deg_right)),
+                    AlgebraicBinaryOperator::Sub => ("sub", cmp::max(deg_left, deg_right)),
+                    AlgebraicBinaryOperator::Mul => ("mul", deg_left + deg_right),
+                    AlgebraicBinaryOperator::Pow => {
                         assert_eq!(
                             deg_left + deg_right,
                             0,
                             "Exponentiation can only be used on constants."
                         );
                         ("pow", deg_left + deg_right)
-                    }
-                    BinaryOperator::Mod
-                    | BinaryOperator::BinaryAnd
-                    | BinaryOperator::BinaryOr
-                    | BinaryOperator::BinaryXor
-                    | BinaryOperator::ShiftLeft
-                    | BinaryOperator::ShiftRight
-                    | BinaryOperator::LogicalOr
-                    | BinaryOperator::LogicalAnd
-                    | BinaryOperator::Less
-                    | BinaryOperator::LessEqual
-                    | BinaryOperator::Equal
-                    | BinaryOperator::NotEqual
-                    | BinaryOperator::GreaterEqual
-                    | BinaryOperator::Greater => {
-                        panic!("Operator {op:?} not supported on polynomials.")
                     }
                 };
                 (
@@ -326,8 +310,8 @@ impl<'a, T: FieldElement> Exporter<'a, T> {
             Expression::UnaryOperation(op, value) => {
                 let (deg, value) = self.expression_to_json(value);
                 match op {
-                    UnaryOperator::Plus => (deg, value),
-                    UnaryOperator::Minus => (
+                    AlgebraicUnaryOperator::Plus => (deg, value),
+                    AlgebraicUnaryOperator::Minus => (
                         deg,
                         StarkyExpr {
                             op: "neg".to_string(),
@@ -336,7 +320,6 @@ impl<'a, T: FieldElement> Exporter<'a, T> {
                             ..DEFAULT_EXPR
                         },
                     ),
-                    UnaryOperator::LogicalNot => panic!("Operator {op} not allowed here."),
                 }
             }
         }

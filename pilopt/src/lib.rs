@@ -3,13 +3,15 @@
 
 use std::collections::{BTreeMap, HashSet};
 
-use ast::analyzed::{AlgebraicExpression, Reference};
 use ast::analyzed::{
-    AlgebraicReference, Analyzed, BinaryOperator, Expression, FunctionValueDefinition,
-    IdentityKind, PolyID, PolynomialReference,
+    AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicUnaryOperator, Reference,
+};
+use ast::analyzed::{
+    AlgebraicReference, Analyzed, Expression, FunctionValueDefinition, IdentityKind, PolyID,
+    PolynomialReference,
 };
 use ast::parsed::visitor::ExpressionVisitable;
-use ast::parsed::UnaryOperator;
+
 use number::FieldElement;
 
 pub fn optimize<T: FieldElement>(mut pil_file: Analyzed<T>) -> Analyzed<T> {
@@ -98,9 +100,9 @@ fn simplify_expression_single<T: FieldElement>(e: &mut AlgebraicExpression<T>) {
             (left.as_ref(), right.as_ref())
         {
             if let Some(v) = match op {
-                BinaryOperator::Add => Some(*l + *r),
-                BinaryOperator::Sub => Some(*l - *r),
-                BinaryOperator::Mul => Some(*l * *r),
+                AlgebraicBinaryOperator::Add => Some(*l + *r),
+                AlgebraicBinaryOperator::Sub => Some(*l - *r),
+                AlgebraicBinaryOperator::Mul => Some(*l * *r),
                 // TODO we might do some more operations later.
                 _ => None,
             } {
@@ -112,15 +114,14 @@ fn simplify_expression_single<T: FieldElement>(e: &mut AlgebraicExpression<T>) {
     if let AlgebraicExpression::UnaryOperation(op, inner) = e {
         if let AlgebraicExpression::Number(inner) = **inner {
             *e = AlgebraicExpression::Number(match op {
-                UnaryOperator::Plus => inner,
-                UnaryOperator::Minus => -inner,
-                UnaryOperator::LogicalNot => inner.is_zero().into(),
+                AlgebraicUnaryOperator::Plus => inner,
+                AlgebraicUnaryOperator::Minus => -inner,
             });
             return;
         }
     }
     match e {
-        AlgebraicExpression::BinaryOperation(left, BinaryOperator::Mul, right) => {
+        AlgebraicExpression::BinaryOperation(left, AlgebraicBinaryOperator::Mul, right) => {
             if let AlgebraicExpression::Number(n) = left.as_mut() {
                 if *n == 0.into() {
                     *e = AlgebraicExpression::Number(0.into());
@@ -149,7 +150,7 @@ fn simplify_expression_single<T: FieldElement>(e: &mut AlgebraicExpression<T>) {
                 }
             }
         }
-        AlgebraicExpression::BinaryOperation(left, BinaryOperator::Add, right) => {
+        AlgebraicExpression::BinaryOperation(left, AlgebraicBinaryOperator::Add, right) => {
             if let AlgebraicExpression::Number(n) = left.as_mut() {
                 if *n == 0.into() {
                     let mut tmp = AlgebraicExpression::Number(1.into());
@@ -166,7 +167,7 @@ fn simplify_expression_single<T: FieldElement>(e: &mut AlgebraicExpression<T>) {
                 }
             }
         }
-        AlgebraicExpression::BinaryOperation(left, BinaryOperator::Sub, right) => {
+        AlgebraicExpression::BinaryOperation(left, AlgebraicBinaryOperator::Sub, right) => {
             if let AlgebraicExpression::Number(n) = right.as_mut() {
                 if *n == 0.into() {
                     let mut tmp = AlgebraicExpression::Number(1.into());
@@ -287,7 +288,7 @@ fn substitute_polynomial_references<T: FieldElement>(
 
 fn constrained_to_constant<T: FieldElement>(expr: &AlgebraicExpression<T>) -> Option<(PolyID, T)> {
     match expr {
-        AlgebraicExpression::BinaryOperation(left, BinaryOperator::Sub, right) => {
+        AlgebraicExpression::BinaryOperation(left, AlgebraicBinaryOperator::Sub, right) => {
             match (left.as_ref(), right.as_ref()) {
                 (AlgebraicExpression::Number(n), AlgebraicExpression::Reference(poly))
                 | (AlgebraicExpression::Reference(poly), AlgebraicExpression::Number(n)) => {
