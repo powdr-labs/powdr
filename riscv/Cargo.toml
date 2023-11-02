@@ -26,3 +26,4 @@ test-log = "0.2.12"
 env_logger = "0.10.0"
 number = { path = "../number" }
 compiler = { path = "../compiler" }
+hex = "0.4.3"

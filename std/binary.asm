@@ -1,6 +1,6 @@
 machine Binary(latch, operation_id) {
 
-    degree 262144;
+    // lower bound degree is 262144
 
     operation and<0> A, B -> C;
 

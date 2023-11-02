@@ -185,29 +185,47 @@ pub fn compile(mut assemblies: BTreeMap<String, String>, coprocessors: &CoProces
         },
     );
 
+    let program: Vec<String> = file_ids
+        .into_iter()
+        .map(|(id, dir, file)| format!("debug file {id} {} {};", quote(&dir), quote(&file)))
+        .chain(["call __data_init;".to_string()])
+        .chain(call_every_submachine(coprocessors))
+        .chain([
+            format!("// Set stack pointer\nx2 <=X= {stack_start};"),
+            "call __runtime_start;".to_string(),
+            "return;".to_string(), // This is not "riscv ret", but "return from powdr asm function".
+        ])
+        .chain(
+            substitute_symbols_with_values(statements, &data_positions)
+                .into_iter()
+                .flat_map(|v| process_statement(v, coprocessors)),
+        )
+        .chain(["// This is the data initialization routine.\n__data_init::".to_string()])
+        .chain(data_code)
+        .chain(["// This is the end of the data initialization routine.\nret;".to_string()])
+        .collect();
+
+    // The program ROM needs to fit the degree, so we use the next power of 2.
+    let degree = program.len().ilog2() + 1;
+    let degree = std::cmp::max(degree, 18);
+    log::info!("Inferred degree 2^{degree}");
+
+    // In practice, these are the lengths of single proofs that we want to support.
+    // Reasoning:
+    // - 18: is the lower bound for the Binary and Shift machines.
+    // - 20: revm's ROM does not fit in 2^19.
+    // - >20: may be needed in the future.
+    // This is an assert for now, but could be a compiler warning or error.
+    // TODO note that if the degree is higher than 18 we might need mux machines for Binary and
+    // Shift.
+    assert!((18..=20).contains(&degree));
+    let degree = 1 << degree;
+
     riscv_machine(
         &coprocessors.machine_imports(),
-        &preamble(coprocessors),
+        &preamble(degree, coprocessors),
         &coprocessors.declarations(),
-        file_ids
-            .into_iter()
-            .map(|(id, dir, file)| format!("debug file {id} {} {};", quote(&dir), quote(&file)))
-            .chain(["call __data_init;".to_string()])
-            .chain(call_every_submachine(coprocessors))
-            .chain([
-                format!("// Set stack pointer\nx2 <=X= {stack_start};"),
-                "call __runtime_start;".to_string(),
-                "return;".to_string(), // This is not "riscv ret", but "return from powdr asm function".
-            ])
-            .chain(
-                substitute_symbols_with_values(statements, &data_positions)
-                    .into_iter()
-                    .flat_map(|v| process_statement(v, coprocessors)),
-            )
-            .chain(["// This is the data initialization routine.\n__data_init::".to_string()])
-            .chain(data_code)
-            .chain(["// This is the end of the data initialization routine.\nret;".to_string()])
-            .collect(),
+        program,
     )
 }
 
@@ -417,17 +435,15 @@ machine Main {{
     )
 }
 
-fn preamble(coprocessors: &CoProcessors) -> String {
-    r#"
-    degree 262144;
+fn preamble(degree: u64, coprocessors: &CoProcessors) -> String {
+    format!("degree {degree};")
+        + r#"
     reg pc[@pc];
     reg X[<=];
     reg Y[<=];
     reg Z[<=];
     reg W[<=];
-"#
-    .to_string()
-        + &coprocessors.registers()
+"# + &coprocessors.registers()
         + &r#"
     reg tmp1;
     reg tmp2;
