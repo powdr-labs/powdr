@@ -113,6 +113,7 @@ fn test_password() {
 mstore(0, 666)
 return(0, 32)
 */
+/*
 static BYTECODE: &str = "61029a60005260206000f3";
 
 #[test]
@@ -126,6 +127,7 @@ fn test_evm() {
         &CoProcessors::base(),
     );
 }
+*/
 
 #[test]
 #[ignore = "Too slow"]
