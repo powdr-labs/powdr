@@ -1,7 +1,9 @@
 use ast::{
-    analyzed::{AlgebraicReference, Expression, PolyID, PolynomialType, Reference},
+    analyzed::{
+        AlgebraicReference, Expression, PolyID, PolynomialReference, PolynomialType, Reference,
+    },
     evaluate_binary_operation, evaluate_unary_operation,
-    parsed::{MatchArm, MatchPattern},
+    parsed::{MatchArm, MatchPattern, UnaryOperator},
 };
 use number::FieldElement;
 
@@ -107,41 +109,60 @@ where
                 *op,
                 self.evaluate_expression(right, rows)?,
             )),
-            Expression::UnaryOperation(op, expr) => Ok(evaluate_unary_operation(
-                *op,
-                self.evaluate_expression(expr, rows)?,
-            )),
+            Expression::UnaryOperation(op, expr) => {
+                // Special case to allow `x'` for now on witness columns.
+                // TODO: Check if we actually need this or should replace it by `x(i + 1)`
+                if *op == UnaryOperator::Next {
+                    if let Expression::Reference(Reference::Poly(poly)) = expr.as_ref() {
+                        return self.evaluate_poly(poly, true, rows);
+                    }
+                }
+                Ok(evaluate_unary_operation(
+                    *op,
+                    self.evaluate_expression(expr, rows)?,
+                ))
+            }
             Expression::Reference(Reference::LocalVar(i, _name)) => {
                 assert!(*i == 0);
                 Ok(rows.current_row_index.into())
             }
-            Expression::Reference(Reference::Poly(poly)) => {
-                if poly.index.is_none() {
-                    let poly_id = poly.poly_id.unwrap();
-                    match poly_id.ptype {
-                        PolynomialType::Committed | PolynomialType::Intermediate => {
-                            let poly_ref = AlgebraicReference {
-                                name: poly.name.clone(),
-                                poly_id,
-                                index: poly.index,
-                                next: false,
-                            };
-                            Ok(rows
-                                .get_value(&poly_ref)
-                                .ok_or(IncompleteCause::DataNotYetAvailable)?)
-                        }
-                        PolynomialType::Constant => Ok(self.fixed_data.fixed_cols[&poly_id].values
-                            [rows.current_row_index as usize]),
-                    }
-                } else {
-                    Err(IncompleteCause::ExpressionEvaluationUnimplemented(
-                        "Cannot evaluate arrays.".to_string(),
-                    ))
-                }
-            }
+            Expression::Reference(Reference::Poly(poly)) => self.evaluate_poly(poly, false, rows),
             e => Err(IncompleteCause::ExpressionEvaluationUnimplemented(
                 e.to_string(),
             )),
+        }
+    }
+
+    fn evaluate_poly(
+        &self,
+        poly: &'a PolynomialReference,
+        next: bool,
+        rows: &RowPair<T>,
+    ) -> Result<T, IncompleteCause<&'a AlgebraicReference>> {
+        if poly.index.is_none() {
+            let poly_id = poly.poly_id.unwrap();
+            match poly_id.ptype {
+                PolynomialType::Committed | PolynomialType::Intermediate => {
+                    let poly_ref = AlgebraicReference {
+                        name: poly.name.clone(),
+                        poly_id,
+                        index: poly.index,
+                        next,
+                    };
+                    Ok(rows
+                        .get_value(&poly_ref)
+                        .ok_or(IncompleteCause::DataNotYetAvailable)?)
+                }
+                PolynomialType::Constant => {
+                    let values = self.fixed_data.fixed_cols[&poly_id].values;
+                    let row = rows.current_row_index as usize + next as usize;
+                    Ok(values[row % values.len()])
+                }
+            }
+        } else {
+            Err(IncompleteCause::ExpressionEvaluationUnimplemented(
+                "Cannot evaluate arrays.".to_string(),
+            ))
         }
     }
 }
