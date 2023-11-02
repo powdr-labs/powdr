@@ -5,7 +5,7 @@ use ast::{
 };
 use number::FieldElement;
 
-use super::{rows::RowPair, Constraint, EvalValue, FixedData, IncompleteCause, Query};
+use super::{rows::RowPair, Constraint, EvalValue, FixedData, IncompleteCause};
 
 /// Computes value updates that result from a query.
 pub struct QueryProcessor<'a, 'b, T: FieldElement, QueryCallback: Send + Sync> {
@@ -32,8 +32,8 @@ where
         let column = &self.fixed_data.witness_cols[poly_id];
 
         if let Some(query) = column.query.as_ref() {
-            if rows.get_value(&query.poly).is_none() {
-                return self.process_witness_query(query, rows);
+            if rows.get_value(&column.poly).is_none() {
+                return self.process_witness_query(query, &column.poly, rows);
             }
         }
         // Either no query or the value is already known.
@@ -42,19 +42,20 @@ where
 
     fn process_witness_query(
         &mut self,
-        query: &'a Query<'_, T>,
+        query: &'a Expression<T>,
+        poly: &'a AlgebraicReference,
         rows: &RowPair<T>,
     ) -> EvalValue<&'a AlgebraicReference, T> {
-        let query_str = match self.interpolate_query(query.expr, rows) {
+        let query_str = match self.interpolate_query(query, rows) {
             Ok(query) => query,
             Err(incomplete) => return EvalValue::incomplete(incomplete),
         };
         if let Some(value) = (self.query_callback)(&query_str) {
-            EvalValue::complete(vec![(&query.poly, Constraint::Assignment(value))])
+            EvalValue::complete(vec![(poly, Constraint::Assignment(value))])
         } else {
             EvalValue::incomplete(IncompleteCause::NoQueryAnswer(
                 query_str,
-                query.poly.name.to_string(),
+                poly.name.to_string(),
             ))
         }
     }

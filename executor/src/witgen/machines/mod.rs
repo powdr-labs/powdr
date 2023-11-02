@@ -41,7 +41,11 @@ pub trait Machine<'a, T: FieldElement>: Send + Sync {
     ) -> Option<EvalResult<'a, T>>;
 
     /// Returns the final values of the witness columns.
-    fn take_witness_col_values(&mut self) -> HashMap<String, Vec<T>>;
+    fn take_witness_col_values<'b, Q: QueryCallback<T>>(
+        &mut self,
+        fixed_lookup: &'b mut FixedLookup<T>,
+        query_callback: &'b mut Q,
+    ) -> HashMap<String, Vec<T>>;
 }
 
 /// All known implementations of [Machine].
@@ -61,7 +65,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for KnownMachine<'a, T> {
         kind: IdentityKind,
         left: &[AffineExpression<&'a AlgebraicReference, T>],
         right: &'a SelectedExpressions<Expression<T>>,
-    ) -> Option<crate::witgen::EvalResult<'a, T>> {
+    ) -> Option<EvalResult<'a, T>> {
         match self {
             KnownMachine::SortedWitnesses(m) => m.process_plookup(mutable_state, kind, left, right),
             KnownMachine::DoubleSortedWitnesses(m) => {
@@ -72,12 +76,22 @@ impl<'a, T: FieldElement> Machine<'a, T> for KnownMachine<'a, T> {
         }
     }
 
-    fn take_witness_col_values(&mut self) -> std::collections::HashMap<String, Vec<T>> {
+    fn take_witness_col_values<'b, Q: QueryCallback<T>>(
+        &mut self,
+        fixed_lookup: &'b mut FixedLookup<T>,
+        query_callback: &'b mut Q,
+    ) -> HashMap<String, Vec<T>> {
         match self {
-            KnownMachine::SortedWitnesses(m) => m.take_witness_col_values(),
-            KnownMachine::DoubleSortedWitnesses(m) => m.take_witness_col_values(),
-            KnownMachine::BlockMachine(m) => m.take_witness_col_values(),
-            KnownMachine::Vm(m) => m.take_witness_col_values(),
+            KnownMachine::SortedWitnesses(m) => {
+                m.take_witness_col_values(fixed_lookup, query_callback)
+            }
+            KnownMachine::DoubleSortedWitnesses(m) => {
+                m.take_witness_col_values(fixed_lookup, query_callback)
+            }
+            KnownMachine::BlockMachine(m) => {
+                m.take_witness_col_values(fixed_lookup, query_callback)
+            }
+            KnownMachine::Vm(m) => m.take_witness_col_values(fixed_lookup, query_callback),
         }
     }
 }

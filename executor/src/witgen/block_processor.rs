@@ -27,14 +27,18 @@ pub struct WithoutCalldata;
 pub struct OuterQuery<'a, T: FieldElement> {
     /// A local copy of the left-hand side of the outer query.
     /// This will be mutated while processing the block.
-    left: Left<'a, T>,
+    pub left: Left<'a, T>,
     /// The right-hand side of the outer query.
-    right: &'a SelectedExpressions<Expression<T>>,
+    pub right: &'a SelectedExpressions<Expression<T>>,
 }
 
 impl<'a, T: FieldElement> OuterQuery<'a, T> {
     pub fn new(left: Left<'a, T>, right: &'a SelectedExpressions<Expression<T>>) -> Self {
         Self { left, right }
+    }
+
+    pub fn is_complete(&self) -> bool {
+        self.left.iter().all(|l| l.is_constant())
     }
 }
 
@@ -343,7 +347,7 @@ mod tests {
     fn name_to_poly_id<T: FieldElement>(fixed_data: &FixedData<T>) -> BTreeMap<String, PolyID> {
         let mut name_to_poly_id = BTreeMap::new();
         for (poly_id, col) in fixed_data.witness_cols.iter() {
-            name_to_poly_id.insert(col.name.clone(), poly_id);
+            name_to_poly_id.insert(col.poly.name.clone(), poly_id);
         }
         for (poly_id, col) in fixed_data.fixed_cols.iter() {
             name_to_poly_id.insert(col.name.clone(), poly_id);

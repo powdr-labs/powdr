@@ -5,7 +5,7 @@ use ast::parsed::SelectedExpressions;
 use itertools::Itertools;
 use num_traits::Zero;
 
-use super::Machine;
+use super::{FixedLookup, Machine};
 use crate::witgen::affine_expression::AffineExpression;
 use crate::witgen::util::is_simple_poly_of_name;
 use crate::witgen::{EvalResult, FixedData, MutableState, QueryCallback};
@@ -111,7 +111,11 @@ impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses<T> {
         Some(self.process_plookup_internal(left, right))
     }
 
-    fn take_witness_col_values(&mut self) -> HashMap<String, Vec<T>> {
+    fn take_witness_col_values<'b, Q: QueryCallback<T>>(
+        &mut self,
+        _fixed_lookup: &'b mut FixedLookup<T>,
+        _query_callback: &'b mut Q,
+    ) -> HashMap<String, Vec<T>> {
         let mut addr = vec![];
         let mut step = vec![];
         let mut value = vec![];

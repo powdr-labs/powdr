@@ -5,19 +5,24 @@ use itertools::Itertools;
 use number::{DegreeType, FieldElement};
 use parser_util::lines::indent;
 use std::cmp::max;
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 use std::time::Instant;
 
 use crate::witgen::identity_processor::{self, IdentityProcessor};
 use crate::witgen::rows::RowUpdater;
+use crate::witgen::util::try_to_simple_poly;
+use crate::witgen::Constraint;
 use crate::witgen::IncompleteCause;
 
+use super::block_processor::OuterQuery;
 use super::data_structures::column_map::WitnessColumnMap;
 use super::data_structures::finalizable_data::FinalizableData;
 use super::query_processor::QueryProcessor;
 
-use super::rows::{Row, RowFactory, RowPair, UnknownStrategy};
-use super::{EvalError, EvalResult, EvalValue, FixedData, MutableState, QueryCallback};
+use super::rows::{CellValue, Row, RowFactory, RowPair, UnknownStrategy};
+use super::{
+    Constraints, EvalError, EvalResult, EvalValue, FixedData, MutableState, QueryCallback,
+};
 
 /// Maximal period checked during loop detection.
 const MAX_PERIOD: usize = 4;
@@ -60,7 +65,9 @@ pub struct VmProcessor<'a, T: FieldElement> {
     last_report: DegreeType,
     last_report_time: Instant,
     row_factory: RowFactory<'a, T>,
-    latch: Option<Expression<T>>,
+    outer_query: Option<OuterQuery<'a, T>>,
+    inputs: BTreeMap<PolyID, T>,
+    previously_set_inputs: BTreeMap<PolyID, DegreeType>,
 }
 
 impl<'a, T: FieldElement> VmProcessor<'a, T> {
@@ -71,7 +78,6 @@ impl<'a, T: FieldElement> VmProcessor<'a, T> {
         witnesses: HashSet<PolyID>,
         data: FinalizableData<'a, T>,
         row_factory: RowFactory<'a, T>,
-        latch: Option<Expression<T>>,
     ) -> Self {
         let (identities_with_next, identities_without_next): (Vec<_>, Vec<_>) = identities
             .iter()
@@ -95,7 +101,27 @@ impl<'a, T: FieldElement> VmProcessor<'a, T> {
             row_factory,
             last_report: 0,
             last_report_time: Instant::now(),
-            latch,
+            outer_query: None,
+            inputs: BTreeMap::new(),
+            previously_set_inputs: BTreeMap::new(),
+        }
+    }
+
+    pub fn with_outer_query(self, outer_query: OuterQuery<'a, T>) -> Self {
+        log::trace!("  Extracting inputs:");
+        let mut inputs = BTreeMap::new();
+        for (l, r) in outer_query.left.iter().zip(&outer_query.right.expressions) {
+            if let Some(right_poly) = try_to_simple_poly(r).map(|p| p.poly_id) {
+                if let Some(l) = l.constant_value() {
+                    log::trace!("    {} = {}", r, l);
+                    inputs.insert(right_poly, l);
+                }
+            }
+        }
+        Self {
+            outer_query: Some(outer_query),
+            inputs,
+            ..self
         }
     }
 
@@ -110,6 +136,8 @@ impl<'a, T: FieldElement> VmProcessor<'a, T> {
         mutable_state: &mut MutableState<'a, '_, T, Q>,
     ) -> EvalValue<&'a AlgebraicReference, T> {
         assert!(self.data.len() == 1);
+
+        let mut outer_assignments = vec![];
 
         // Are we in an infinite loop and can just re-use the old values?
         let mut looping_period = None;
@@ -155,29 +183,26 @@ impl<'a, T: FieldElement> VmProcessor<'a, T> {
             // add and compute some values for the next row as well.
             if looping_period.is_none() && row_index != rows_left - 1 {
                 self.ensure_has_next_row(row_index);
-                self.compute_row(row_index, mutable_state);
+                outer_assignments.extend(self.compute_row(row_index, mutable_state).into_iter());
 
-                if let Some(latch) = self.latch.as_ref() {
-                    // Evaluate latch expression and return if it evaluates to 1.
-                    let row_pair = RowPair::from_single_row(
-                        self.row(row_index),
-                        row_index + self.row_offset,
-                        self.fixed_data,
-                        UnknownStrategy::Unknown,
-                    );
-                    let latch_value = row_pair
-                        .evaluate(latch)
-                        .ok()
-                        .and_then(|l| l.constant_value());
-
-                    if let Some(latch_value) = latch_value {
-                        if latch_value.is_one() {
-                            log::trace!("Machine returns!");
-                            return EvalValue::complete(vec![]);
+                // Evaluate latch expression and return if it evaluates to 1.
+                if let Some(latch) = self.latch_value(row_index) {
+                    if latch {
+                        log::trace!("Machine returns!");
+                        if self.outer_query.as_ref().unwrap().is_complete() {
+                            return EvalValue::complete(outer_assignments);
+                        } else {
+                            return EvalValue::incomplete_with_constraints(
+                                outer_assignments,
+                                IncompleteCause::BlockMachineLookupIncomplete,
+                            );
                         }
-                    } else {
-                        return EvalValue::incomplete(IncompleteCause::UnknownLatch);
                     }
+                } else if self.outer_query.is_some() {
+                    // If we have an outer query (and therefore a latch expression),
+                    // its value should be known at this point.
+                    // Probably, we don't have all the necessary inputs.
+                    return EvalValue::incomplete(IncompleteCause::UnknownLatch);
                 }
             };
         }
@@ -187,7 +212,7 @@ impl<'a, T: FieldElement> VmProcessor<'a, T> {
             self.fixed_data.degree + 1
         );
 
-        EvalValue::complete(vec![])
+        EvalValue::complete(outer_assignments)
     }
 
     /// Checks if the last rows are repeating and returns the period.
@@ -208,6 +233,21 @@ impl<'a, T: FieldElement> VmProcessor<'a, T> {
         })
     }
 
+    fn latch_value(&self, row_index: DegreeType) -> Option<bool> {
+        let row_pair = RowPair::from_single_row(
+            self.row(row_index),
+            row_index + self.row_offset,
+            self.fixed_data,
+            UnknownStrategy::Unknown,
+        );
+        self.outer_query
+            .as_ref()
+            .and_then(|outer_query| outer_query.right.selector.as_ref())
+            .and_then(|latch| row_pair.evaluate(latch).ok())
+            .and_then(|l| l.constant_value())
+            .map(|l| l.is_one())
+    }
+
     // Returns a reference to a given row
     fn row(&self, row_index: DegreeType) -> &Row<'a, T> {
         &self.data[row_index as usize]
@@ -224,7 +264,7 @@ impl<'a, T: FieldElement> VmProcessor<'a, T> {
         &mut self,
         row_index: DegreeType,
         mutable_state: &mut MutableState<'a, '_, T, Q>,
-    ) {
+    ) -> Constraints<&'a AlgebraicReference, T> {
         log::trace!("Row: {}", row_index + self.row_offset);
 
         log::trace!("  Going over all identities until no more progress is made");
@@ -234,52 +274,69 @@ impl<'a, T: FieldElement> VmProcessor<'a, T> {
             CompletableIdentities::new(self.identities_without_next_ref.iter().cloned());
         let mut identities_with_next_ref =
             CompletableIdentities::new(self.identities_with_next_ref.iter().cloned());
-        self.loop_until_no_progress(row_index, &mut identities_without_next_ref, mutable_state)
-            .and_then(|_| {
-                self.loop_until_no_progress(row_index, &mut identities_with_next_ref, mutable_state)
+        let outer_assignments = self
+            .loop_until_no_progress(row_index, &mut identities_without_next_ref, mutable_state)
+            .and_then(|outer_assignments| {
+                Ok(outer_assignments
+                    .into_iter()
+                    .chain(self.loop_until_no_progress(
+                        row_index,
+                        &mut identities_with_next_ref,
+                        mutable_state,
+                    )?)
+                    .collect::<Vec<_>>())
             })
             .map_err(|e| self.report_failure_and_panic_unsatisfiable(row_index, e))
             .unwrap();
 
         // Check that the computed row is "final" by asserting that all unknown values can
         // be set to 0.
-        log::trace!("  Checking that remaining identities hold when unknown values are set to 0");
-        let mut identity_processor = IdentityProcessor::new(self.fixed_data, mutable_state);
-        self.process_identities(
-            row_index,
-            &mut identities_without_next_ref,
-            UnknownStrategy::Zero,
-            &mut identity_processor,
-        )
-        .and_then(|_| {
+        // This check is only done for the primary machine, as secondary machines might simply
+        // not have all the inputs yet and therefore be underconstrained.
+        if self.outer_query.is_none() {
+            log::trace!(
+                "  Checking that remaining identities hold when unknown values are set to 0"
+            );
+            let mut identity_processor = IdentityProcessor::new(self.fixed_data, mutable_state);
             self.process_identities(
                 row_index,
-                &mut identities_with_next_ref,
+                &mut identities_without_next_ref,
                 UnknownStrategy::Zero,
                 &mut identity_processor,
             )
-        })
-        .map_err(|e| self.report_failure_and_panic_underconstrained(row_index, e))
-        .unwrap();
+            .and_then(|_| {
+                self.process_identities(
+                    row_index,
+                    &mut identities_with_next_ref,
+                    UnknownStrategy::Zero,
+                    &mut identity_processor,
+                )
+            })
+            .map_err(|e| self.report_failure_and_panic_underconstrained(row_index, e))
+            .unwrap();
+        }
 
         log::trace!(
             "{}",
-            self.row(row_index)
-                .render(&format!("===== Row {}", row_index), true, &self.witnesses)
+            self.row(row_index).render(
+                &format!("===== Row {}", row_index as DegreeType + self.row_offset),
+                true,
+                &self.witnesses
+            )
         );
+
+        outer_assignments
     }
 
     /// Loops over all identities and queries, until no further progress is made.
     /// @returns the "incomplete" identities, i.e. identities that contain unknown values.
-    fn loop_until_no_progress<Q>(
+    fn loop_until_no_progress<Q: QueryCallback<T>>(
         &mut self,
         row_index: DegreeType,
         identities: &mut CompletableIdentities<'a, T>,
         mutable_state: &mut MutableState<'a, '_, T, Q>,
-    ) -> Result<(), Vec<EvalError<T>>>
-    where
-        Q: FnMut(&str) -> Option<T> + Send + Sync,
-    {
+    ) -> Result<Constraints<&'a AlgebraicReference, T>, Vec<EvalError<T>>> {
+        let mut outer_assignments = vec![];
         loop {
             let mut identity_processor = IdentityProcessor::new(self.fixed_data, mutable_state);
             let mut progress = self.process_identities(
@@ -288,6 +345,16 @@ impl<'a, T: FieldElement> VmProcessor<'a, T> {
                 UnknownStrategy::Unknown,
                 &mut identity_processor,
             )?;
+            if let Some(true) = self.latch_value(row_index) {
+                let (outer_query_progress, new_outer_assignments) = self
+                    .process_outer_query(row_index, mutable_state)
+                    .map_err(|e| vec![e])?;
+                progress |= outer_query_progress;
+                outer_assignments.extend(new_outer_assignments);
+            }
+
+            progress |= self.set_inputs_if_unset(row_index);
+
             let mut updates = EvalValue::complete(vec![]);
             let mut query_processor =
                 QueryProcessor::new(self.fixed_data, mutable_state.query_callback);
@@ -309,7 +376,7 @@ impl<'a, T: FieldElement> VmProcessor<'a, T> {
                 break;
             }
         }
-        Ok(())
+        Ok(outer_assignments)
     }
 
     /// Loops over all identities once and updates the current row and next row.
@@ -383,18 +450,117 @@ impl<'a, T: FieldElement> VmProcessor<'a, T> {
         }
     }
 
+    fn process_outer_query<Q: QueryCallback<T>>(
+        &mut self,
+        row_index: DegreeType,
+        mutable_state: &mut MutableState<'a, '_, T, Q>,
+    ) -> Result<(bool, Constraints<&'a AlgebraicReference, T>), EvalError<T>> {
+        let OuterQuery { left, right } = self
+            .outer_query
+            .as_ref()
+            .expect("Asked to process outer query, but it was not set!");
+
+        let row_pair = RowPair::new(
+            &self.data[row_index as usize],
+            &self.data[row_index as usize + 1],
+            (row_index + self.row_offset) % self.fixed_data.degree,
+            self.fixed_data,
+            UnknownStrategy::Unknown,
+        );
+
+        let mut identity_processor = IdentityProcessor::new(self.fixed_data, mutable_state);
+        let updates = identity_processor
+            .process_link(left, right, &row_pair)
+            .map_err(|e| {
+                log::warn!("Error in outer query: {e}");
+                log::warn!("Some of the following entries could not be matched:");
+                for (l, r) in left.iter().zip(right.expressions.iter()) {
+                    if let Ok(r) = row_pair.evaluate(r) {
+                        log::warn!("  => {} = {}", l, r);
+                    }
+                }
+                e
+            })?;
+
+        let progress = self.apply_updates(row_index, &updates, || "outer query".to_string());
+
+        let outer_assignments = updates
+            .constraints
+            .into_iter()
+            .filter(|(poly, _)| !self.witnesses.contains(&poly.poly_id))
+            .collect::<Vec<_>>();
+
+        Ok((progress, outer_assignments))
+    }
+
+    /// Sets the inputs to the values given in [VmProcessor::inputs] if they are not already set.
+    /// Typically, inputs will have a constraint of the form: `((1 - instr__reset) * (_input' - _input)) = 0;`
+    /// So, once the value of `_input` is set, this function will do nothing until the next reset instruction.
+    /// However, if `_input` does become unconstrained, we need to undo all changes we've done so far.
+    /// For this reason, we keep track of all changes we've done to inputs in [VmProcessor::previously_set_inputs].
+    fn set_inputs_if_unset(&mut self, row_index: DegreeType) -> bool {
+        let mut input_updates = EvalValue::complete(vec![]);
+        for (poly_id, value) in self.inputs.iter() {
+            match &self.data[row_index as usize][poly_id].value {
+                CellValue::Known(_) => {}
+                CellValue::RangeConstraint(_) | CellValue::Unknown => {
+                    input_updates.combine(EvalValue::complete([(
+                        &self.fixed_data.witness_cols[poly_id].poly,
+                        Constraint::Assignment(*value),
+                    )]));
+                }
+            };
+        }
+
+        for (poly, _) in &input_updates.constraints {
+            let poly_id = poly.poly_id;
+            if let Some(start_row) = self.previously_set_inputs.remove(&poly_id) {
+                log::trace!(
+                    "    Resetting previously set inputs for column: {}",
+                    self.fixed_data.column_name(&poly_id)
+                );
+                for row_index in start_row..row_index {
+                    self.data[row_index as usize][&poly_id].value = CellValue::Unknown;
+                }
+            }
+        }
+        for (poly, _) in &input_updates.constraints {
+            self.previously_set_inputs.insert(poly.poly_id, row_index);
+        }
+        self.apply_updates(row_index, &input_updates, || "inputs".to_string())
+    }
+
     fn apply_updates(
         &mut self,
         row_index: DegreeType,
-        updates: &EvalValue<&AlgebraicReference, T>,
+        updates: &EvalValue<&'a AlgebraicReference, T>,
         source_name: impl Fn() -> String,
     ) -> bool {
         if updates.constraints.is_empty() {
             return false;
         }
+
+        log::trace!("    Updates from: {}", source_name());
+
+        // Build RowUpdater
+        // (a bit complicated, because we need two mutable
+        // references to elements of the same vector)
         let (current, next) = self.data.mutable_row_pair(row_index as usize);
         let mut row_updater = RowUpdater::new(current, next, row_index + self.row_offset);
-        row_updater.apply_updates(updates, source_name)
+
+        for (poly, c) in &updates.constraints {
+            if self.witnesses.contains(&poly.poly_id) {
+                row_updater.apply_update(poly, c);
+            } else if let Constraint::Assignment(v) = c {
+                let left = &mut self.outer_query.as_mut().unwrap().left;
+                log::trace!("      => {} (outer) = {}", poly, v);
+                for l in left.iter_mut() {
+                    l.assign(poly, *v);
+                }
+            };
+        }
+
+        true
     }
 
     fn report_failure_and_panic_unsatisfiable(

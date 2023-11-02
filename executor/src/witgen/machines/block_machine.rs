@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-use super::{EvalResult, FixedData};
+use super::{EvalResult, FixedData, FixedLookup};
 use crate::witgen::affine_expression::AffineExpression;
 
 use crate::witgen::block_processor::{BlockProcessor, OuterQuery};
@@ -164,7 +164,11 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
         })
     }
 
-    fn take_witness_col_values(&mut self) -> HashMap<String, Vec<T>> {
+    fn take_witness_col_values<'b, Q: QueryCallback<T>>(
+        &mut self,
+        _fixed_lookup: &'b mut FixedLookup<T>,
+        _query_callback: &'b mut Q,
+    ) -> HashMap<String, Vec<T>> {
         if self.data.len() < 2 * self.block_size {
             log::warn!(
                 "Filling empty blocks with zeros, because the block machine is never used. \
@@ -253,13 +257,10 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         let namespace = first_witness_name
             .rfind('.')
             .map(|idx| &first_witness_name[..idx]);
-        if let Some(namespace) = namespace {
-            namespace
-        } else {
-            // For machines compiled using Powdr ASM we'll always have a namespace, but as a last
-            // resort we'll use the first witness name.
-            first_witness_name
-        }
+
+        // For machines compiled using Powdr ASM we'll always have a namespace, but as a last
+        // resort we'll use the first witness name.
+        namespace.unwrap_or(first_witness_name)
     }
 
     fn process_plookup_internal<'b, Q: QueryCallback<T>>(
