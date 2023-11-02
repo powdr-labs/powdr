@@ -25,6 +25,7 @@ fn gen_estark_proof(file_name: &str, inputs: Vec<GoldilocksField>) {
         &mktemp::Temp::new_dir().unwrap(),
         true,
         Some(backend::BackendType::EStark),
+        vec![],
     )
     .unwrap();
 }
@@ -41,6 +42,7 @@ fn gen_halo2_proof(file_name: &str, inputs: Vec<Bn254Field>) {
         &mktemp::Temp::new_dir().unwrap(),
         true,
         Some(backend::BackendType::Halo2),
+        vec![],
     )
     .unwrap();
 }
