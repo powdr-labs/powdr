@@ -6,11 +6,12 @@ use number::{DegreeType, FieldElement};
 use std::collections::{HashMap, HashSet};
 
 use crate::witgen::data_structures::finalizable_data::FinalizableData;
+use crate::witgen::processor::OuterQuery;
 use crate::witgen::rows::CellValue;
 use crate::witgen::EvalValue;
 
 use super::affine_expression::AffineExpression;
-use super::block_processor::{BlockProcessor, OuterQuery};
+use super::block_processor::BlockProcessor;
 use super::data_structures::column_map::WitnessColumnMap;
 use super::global_constraints::GlobalConstraints;
 use super::machines::{FixedLookup, Machine};

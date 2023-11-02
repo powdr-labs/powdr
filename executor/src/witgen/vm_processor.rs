@@ -14,9 +14,9 @@ use crate::witgen::util::try_to_simple_poly;
 use crate::witgen::Constraint;
 use crate::witgen::IncompleteCause;
 
-use super::block_processor::OuterQuery;
 use super::data_structures::column_map::WitnessColumnMap;
 use super::data_structures::finalizable_data::FinalizableData;
+use super::processor::OuterQuery;
 use super::query_processor::QueryProcessor;
 
 use super::rows::{CellValue, Row, RowFactory, RowPair, UnknownStrategy};
