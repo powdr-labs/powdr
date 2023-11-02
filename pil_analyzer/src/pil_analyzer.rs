@@ -853,4 +853,38 @@ namespace N(65536);
         let formatted = process_pil_file_contents::<GoldilocksField>(input).to_string();
         assert_eq!(formatted, expected);
     }
+
+    #[test]
+    fn reparse_arrays() {
+        let input = r#"namespace N(16);
+    col witness y[3];
+    (N.y[1] - 2) = 0;
+    (N.y[2]' - 2) = 0;
+    public out = N.y[1](2);
+"#;
+        let formatted = process_pil_file_contents::<GoldilocksField>(input).to_string();
+        assert_eq!(formatted, input);
+    }
+
+    #[test]
+    #[should_panic = "Arrays cannot be used as a whole in this context"]
+    fn no_direct_array_references() {
+        let input = r#"namespace N(16);
+    col witness y[3];
+    (N.y - 2) = 0;
+"#;
+        let formatted = process_pil_file_contents::<GoldilocksField>(input).to_string();
+        assert_eq!(formatted, input);
+    }
+
+    #[test]
+    #[should_panic = "Array access to index 3 for array of length 3"]
+    fn no_out_of_bounds() {
+        let input = r#"namespace N(16);
+    col witness y[3];
+    (N.y[3] - 2) = 0;
+"#;
+        let formatted = process_pil_file_contents::<GoldilocksField>(input).to_string();
+        assert_eq!(formatted, input);
+    }
 }

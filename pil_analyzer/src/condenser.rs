@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use ast::{
     analyzed::{
         AlgebraicExpression, AlgebraicReference, Analyzed, Expression, FunctionValueDefinition,
-        Identity, PolynomialReference, PolynomialType, PublicDeclaration, Reference,
+        Identity, PolyID, PolynomialReference, PolynomialType, PublicDeclaration, Reference,
         StatementIdentifier, Symbol, SymbolKind,
     },
     evaluate_binary_operation, evaluate_unary_operation,
@@ -136,10 +136,14 @@ impl<T: FieldElement> Condenser<T> {
                     .unwrap_or_else(|| panic!("Column {} not found.", poly.name))
                     .0;
 
+                assert!(
+                    symbol.length.is_none(),
+                    "Arrays cannot be used as a whole in this context, only individual array elements can be used."
+                );
+
                 AlgebraicExpression::Reference(AlgebraicReference {
                     name: poly.name.clone(),
                     poly_id: symbol.into(),
-                    index: None,
                     next: false,
                 })
             }
@@ -190,19 +194,39 @@ impl<T: FieldElement> Condenser<T> {
             }
             Expression::PublicReference(r) => AlgebraicExpression::PublicReference(r.clone()),
             Expression::IndexAccess(IndexAccess { array, index }) => {
-                let AlgebraicExpression::Reference(array) = self.condense_expression(array) else {
-                    panic!("Expected direct reference before array index access.");
+                let array_symbol = match array.as_ref() {
+                    ast::parsed::Expression::Reference(Reference::Poly(PolynomialReference {
+                        name,
+                        poly_id: _,
+                    })) => {
+                        &self
+                            .symbols
+                            .get(name)
+                            .unwrap_or_else(|| panic!("Column {name} not found."))
+                            .0
+                    }
+                    _ => panic!("Expected direct reference before array index access."),
                 };
+                let Some(length) = array_symbol.length else {
+                    panic!("Array-access for non-array {}.", array_symbol.absolute_name);
+                };
+
                 let index = evaluate_expression(&self.symbols, index)
-                    .expect("Index needs to be constant number.");
+                    .expect("Index needs to be constant number.")
+                    .to_degree();
                 assert!(
-                    array.index.is_none(),
-                    "Cannot index an array twice in this context."
+                    index < length,
+                    "Array access to index {index} for array of length {length}: {}",
+                    array_symbol.absolute_name,
                 );
-                assert!(index.to_degree() <= usize::MAX as u64);
+                let poly_id: PolyID = array_symbol.into();
                 AlgebraicExpression::Reference(AlgebraicReference {
-                    index: Some(index.to_degree() as usize),
-                    ..array
+                    poly_id: PolyID {
+                        id: poly_id.id + index,
+                        ..poly_id
+                    },
+                    name: array_symbol.array_element_name(index),
+                    next: false,
                 })
             }
             Expression::String(_) => panic!("Strings are not allowed here."),

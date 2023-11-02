@@ -98,6 +98,14 @@ fn test_fibonacci_macro() {
 }
 
 #[test]
+fn fib_arrays() {
+    let f = "fib_arrays.pil";
+    verify_pil(f, None);
+    gen_halo2_proof(f, Default::default());
+    gen_estark_proof(f, Default::default());
+}
+
+#[test]
 #[should_panic = "Witness generation failed."]
 fn test_external_witgen_fails_if_none_provided() {
     let f = "external_witgen.pil";

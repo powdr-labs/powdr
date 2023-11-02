@@ -93,7 +93,6 @@ mod test {
             executor::witgen::WitnessGenerator::new(&analyzed, &fixed, query_callback).generate();
 
         let fixed = to_owned_values(fixed);
-        let witness = to_owned_values(witness);
 
         mock_prove(&analyzed, &fixed, &witness);
     }
@@ -110,7 +109,6 @@ mod test {
             executor::witgen::WitnessGenerator::new(&analyzed, &fixed, query_callback).generate();
 
         let fixed = to_owned_values(fixed);
-        let witness = to_owned_values(witness);
 
         mock_prove(&analyzed, &fixed, &witness);
     }

@@ -239,8 +239,6 @@ fn expression_2_expr<T: FieldElement>(cd: &CircuitData<T>, expr: &Expression<T>)
     match expr {
         Expression::Number(n) => Expr::Const(n.to_arbitrary_integer()),
         Expression::Reference(polyref) => {
-            assert_eq!(polyref.index, None);
-
             let plonkvar = PlonkVar::Query(ColumnQuery {
                 column: cd.col(&polyref.name),
                 rotation: polyref.next as i32,
