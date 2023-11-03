@@ -579,8 +579,7 @@ fn read_and_prove<T: FieldElement>(
         let mut file = fs::File::open(dir.join(filename)).unwrap();
         builder.create_from_setup(&mut file).unwrap()
     } else {
-        let degree = usize::BITS - fixed.1.leading_zeros() + 1;
-        builder.create(degree as u64)
+        builder.create(fixed.1)
     };
 
     let proof = proof_path.map(|filename| {
