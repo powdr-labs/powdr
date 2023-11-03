@@ -22,15 +22,18 @@ pub fn verify_pil_with_external_witness(
     let query_callback = query_callback.unwrap_or(|_: &str| -> Option<GoldilocksField> { None });
 
     let temp_dir = mktemp::Temp::new_dir().unwrap();
-    assert!(compiler::compile_pil(
+    let result = compiler::compile_pil(
         &input_file,
         &temp_dir,
         query_callback,
         Some(BackendType::PilStarkCli),
-        external_witness_values
-    )
-    .witness
-    .is_some());
+        external_witness_values,
+    );
+
+    compiler::write_constants_to_fs(&result.constants, &temp_dir);
+    compiler::write_commits_to_fs(&result.witness.unwrap(), &temp_dir);
+    compiler::write_constraints_to_fs(&result.constraints_serialization.unwrap(), &temp_dir);
+
     compiler::verify(&temp_dir);
 }
 

@@ -81,14 +81,17 @@ fn ceil_div(num: usize, div: usize) -> usize {
     (num + div - 1) / div
 }
 
-pub fn write_polys_file<T: FieldElement>(
-    file: &mut impl Write,
-    degree: DegreeType,
-    polys: &[(&str, Vec<T>)],
-) {
+pub fn write_polys_file<T: FieldElement>(file: &mut impl Write, polys: &[(String, Vec<T>)]) {
     let width = ceil_div(T::BITS as usize, 64) * 8;
 
-    for i in 0..degree as usize {
+    if polys.is_empty() {
+        return;
+    }
+
+    // TODO maybe the witness should have a proper type that
+    // explicitly has a degree or length?
+    let degree = polys[0].1.len();
+    for i in 0..degree {
         for (_name, constant) in polys {
             let bytes = constant[i].to_bytes_le();
             assert_eq!(bytes.len(), width);
@@ -97,15 +100,18 @@ pub fn write_polys_file<T: FieldElement>(
     }
 }
 
-pub fn read_polys_file<'a, T: FieldElement>(
+pub fn read_polys_file<T: FieldElement>(
     file: &mut impl Read,
-    columns: &[&'a str],
-) -> (Vec<(&'a str, Vec<T>)>, DegreeType) {
+    columns: &[&str],
+) -> (Vec<(String, Vec<T>)>, DegreeType) {
     let width = ceil_div(T::BITS as usize, 64) * 8;
 
     let bytes_to_read = width * columns.len();
 
-    let mut result: Vec<(_, Vec<T>)> = columns.iter().map(|name| (*name, vec![])).collect();
+    let mut result: Vec<(_, Vec<T>)> = columns
+        .iter()
+        .map(|name| (name.to_string(), vec![]))
+        .collect();
     let mut degree = 0;
 
     loop {
@@ -132,10 +138,10 @@ mod tests {
     use super::*;
     use test_log::test;
 
-    fn test_polys() -> Vec<(&'static str, Vec<Bn254Field>)> {
+    fn test_polys() -> Vec<(String, Vec<Bn254Field>)> {
         vec![
-            ("a", (0..16).map(Bn254Field::from).collect()),
-            ("b", (-16..0).map(Bn254Field::from).collect()),
+            ("a".to_string(), (0..16).map(Bn254Field::from).collect()),
+            ("b".to_string(), (-16..0).map(Bn254Field::from).collect()),
         ]
     }
 
@@ -146,7 +152,7 @@ mod tests {
         let polys = test_polys();
         let degree = polys[0].1.len();
 
-        write_polys_file(&mut buf, degree as u64, &polys);
+        write_polys_file(&mut buf, &polys);
         let (read_polys, read_degree) =
             read_polys_file::<Bn254Field>(&mut Cursor::new(buf), &["a", "b"]);
 

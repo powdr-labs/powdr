@@ -48,8 +48,8 @@ impl<F: FieldElement> BackendImpl<F> for EStark {
     fn prove(
         &self,
         pil: &Analyzed<F>,
-        fixed: &[(&str, Vec<F>)],
-        witness: &[(&str, Vec<F>)],
+        fixed: &[(String, Vec<F>)],
+        witness: &[(String, Vec<F>)],
         prev_proof: Option<crate::Proof>,
     ) -> (Option<crate::Proof>, Option<String>) {
         if prev_proof.is_some() {
@@ -68,7 +68,7 @@ impl<F: FieldElement> BackendImpl<F> for EStark {
         // This is a hack to inject such column if it doesn't exist.
         // It should be eventually improved.
         let mut fixed = fixed.to_vec();
-        if !fixed.iter().any(|&(k, _)| k == "main.first_step") {
+        if !fixed.iter().any(|(k, _)| k == "main.first_step") {
             use starky::types::Reference;
             pil.nConstants += 1;
             pil.references.insert(
@@ -84,7 +84,7 @@ impl<F: FieldElement> BackendImpl<F> for EStark {
                 },
             );
             fixed.push((
-                "main.first_step",
+                "main.first_step".to_string(),
                 [vec![F::one()], vec![F::zero(); fixed[0].1.len() - 1]].concat(),
             ));
         }
@@ -134,7 +134,7 @@ impl<F: FieldElement> BackendImpl<F> for EStark {
 }
 
 fn to_starky_pols_array<F: FieldElement>(
-    array: &[(&str, Vec<F>)],
+    array: &[(String, Vec<F>)],
     pil: &PIL,
     kind: PolKind,
 ) -> PolsArray {

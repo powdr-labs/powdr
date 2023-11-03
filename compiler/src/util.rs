@@ -31,10 +31,10 @@ impl PolySet for WitnessPolySet {
     }
 }
 
-pub fn read_poly_set<'a, P: PolySet, T: FieldElement>(
-    pil: &'a Analyzed<T>,
+pub fn read_poly_set<P: PolySet, T: FieldElement>(
+    pil: &Analyzed<T>,
     dir: &Path,
-) -> (Vec<(&'a str, Vec<T>)>, DegreeType) {
+) -> (Vec<(String, Vec<T>)>, DegreeType) {
     let fixed_columns: Vec<&str> = P::get_polys(pil)
         .iter()
         .map(|(poly, _)| poly.absolute_name.as_str())

@@ -7,8 +7,8 @@ use number::{BigInt, FieldElement};
 
 pub fn mock_prove<T: FieldElement>(
     pil: &Analyzed<T>,
-    fixed: &[(&str, Vec<T>)],
-    witness: &[(&str, Vec<T>)],
+    fixed: &[(String, Vec<T>)],
+    witness: &[(String, Vec<T>)],
 ) {
     if polyexen::expr::get_field_p::<Fr>() != T::modulus().to_arbitrary_integer() {
         panic!("powdr modulus doesn't match halo2 modulus. Make sure you are using Bn254");
@@ -92,6 +92,9 @@ mod test {
             executor::witgen::WitnessGenerator::new(&analyzed, degree, &fixed, query_callback)
                 .generate();
 
+        let fixed = to_owned_values(fixed);
+        let witness = to_owned_values(witness);
+
         mock_prove(&analyzed, &fixed, &witness);
     }
 
@@ -106,6 +109,10 @@ mod test {
         let witness =
             executor::witgen::WitnessGenerator::new(&analyzed, degree, &fixed, query_callback)
                 .generate();
+
+        let fixed = to_owned_values(fixed);
+        let witness = to_owned_values(witness);
+
         mock_prove(&analyzed, &fixed, &witness);
     }
 
@@ -119,5 +126,12 @@ mod test {
     fn palindrome() {
         let inputs = [3, 11, 22, 11].map(From::from);
         mock_prove_asm("palindrome.asm", &inputs);
+    }
+
+    fn to_owned_values<T: FieldElement>(values: Vec<(&str, Vec<T>)>) -> Vec<(String, Vec<T>)> {
+        values
+            .into_iter()
+            .map(|(s, fields)| (s.to_string(), fields.clone()))
+            .collect::<Vec<_>>()
     }
 }
