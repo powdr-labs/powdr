@@ -39,16 +39,24 @@ pub fn compile_pil_or_asm<T: FieldElement>(
     output_dir: &Path,
     force_overwrite: bool,
     prove_with: Option<BackendType>,
+    external_witness_values: Vec<(&str, Vec<T>)>,
 ) -> Result<Option<CompilationResult<T>>, Vec<String>> {
     if file_name.ends_with(".asm") {
-        compile_asm(file_name, inputs, output_dir, force_overwrite, prove_with)
+        compile_asm(
+            file_name,
+            inputs,
+            output_dir,
+            force_overwrite,
+            prove_with,
+            external_witness_values,
+        )
     } else {
         Ok(Some(compile_pil(
             Path::new(file_name),
             output_dir,
             inputs_to_query_callback(inputs),
             prove_with,
-            vec![],
+            external_witness_values,
         )))
     }
 }
@@ -86,6 +94,7 @@ pub fn compile_pil_ast<T: FieldElement, Q: QueryCallback<T>>(
     output_dir: &Path,
     query_callback: Q,
     prove_with: Option<BackendType>,
+    external_witness_values: Vec<(&str, Vec<T>)>,
 ) -> CompilationResult<T> {
     // TODO exporting this to string as a hack because the parser
     // is tied into the analyzer due to imports.
@@ -95,7 +104,7 @@ pub fn compile_pil_ast<T: FieldElement, Q: QueryCallback<T>>(
         output_dir,
         query_callback,
         prove_with,
-        vec![],
+        external_witness_values,
     )
 }
 
@@ -108,6 +117,7 @@ pub fn compile_asm<T: FieldElement>(
     output_dir: &Path,
     force_overwrite: bool,
     prove_with: Option<BackendType>,
+    external_witness_values: Vec<(&str, Vec<T>)>,
 ) -> Result<Option<CompilationResult<T>>, Vec<String>> {
     let contents = fs::read_to_string(file_name).unwrap();
     Ok(compile_asm_string(
@@ -117,6 +127,7 @@ pub fn compile_asm<T: FieldElement>(
         output_dir,
         force_overwrite,
         prove_with,
+        external_witness_values,
     )?
     .1)
 }
@@ -132,6 +143,7 @@ pub fn compile_asm_string<T: FieldElement>(
     output_dir: &Path,
     force_overwrite: bool,
     prove_with: Option<BackendType>,
+    external_witness_values: Vec<(&str, Vec<T>)>,
 ) -> Result<(PathBuf, Option<CompilationResult<T>>), Vec<String>> {
     let parsed = parser::parse_asm(Some(file_name), contents).unwrap_or_else(|err| {
         eprintln!("Error parsing .asm file:");
@@ -179,6 +191,7 @@ pub fn compile_asm_string<T: FieldElement>(
             output_dir,
             inputs_to_query_callback(inputs),
             prove_with,
+            external_witness_values,
         )),
     ))
 }

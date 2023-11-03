@@ -9,10 +9,11 @@ use compiler::{compile_asm_string, compile_pil_or_asm, write_proving_results_to_
 use env_logger::fmt::Color;
 use env_logger::{Builder, Target};
 use log::LevelFilter;
+use number::{read_polys_csv_file, write_polys_csv_file, CsvRenderMode};
 use number::{Bn254Field, FieldElement, GoldilocksField};
 use riscv::{compile_riscv_asm, compile_rust};
-use std::io::{self, BufWriter, Read};
-use std::{borrow::Cow, collections::HashSet, fs, io::Write, path::Path};
+use std::io::{self, BufReader, BufWriter, Read};
+use std::{borrow::Cow, fs, io::Write, path::Path};
 use strum::{Display, EnumString, EnumVariantNames};
 
 #[derive(Clone, EnumString, EnumVariantNames, Display)]
@@ -24,7 +25,7 @@ pub enum FieldArgument {
 }
 
 #[derive(Clone, EnumString, EnumVariantNames, Display)]
-pub enum CsvRenderMode {
+pub enum CsvRenderModeCLI {
     #[strum(serialize = "i")]
     SignedBase10,
     #[strum(serialize = "ui")]
@@ -63,6 +64,10 @@ enum Commands {
         #[arg(default_value_t = String::from("."))]
         output_directory: String,
 
+        /// Path to a CSV file containing externally computed witness values.
+        #[arg(short, long)]
+        witness_values: Option<String>,
+
         /// Comma-separated list of free inputs (numbers). Assumes queries to have the form
         /// ("input", <index>).
         #[arg(short, long)]
@@ -86,9 +91,9 @@ enum Commands {
 
         /// How to render field elements in the csv file
         #[arg(long)]
-        #[arg(default_value_t = CsvRenderMode::Hex)]
-        #[arg(value_parser = clap_enum_variants!(CsvRenderMode))]
-        csv_mode: CsvRenderMode,
+        #[arg(default_value_t = CsvRenderModeCLI::Hex)]
+        #[arg(value_parser = clap_enum_variants!(CsvRenderModeCLI))]
+        csv_mode: CsvRenderModeCLI,
     },
     /// Compiles (no-std) rust code to riscv assembly, then to powdr assembly
     /// and finally to PIL and generates fixed and witness columns.
@@ -366,6 +371,7 @@ fn run_command(command: Commands) {
             file,
             field,
             output_directory,
+            witness_values,
             inputs,
             force,
             prove_with,
@@ -375,6 +381,7 @@ fn run_command(command: Commands) {
             match call_with_field!(compile_with_csv_export::<field>(
                 file,
                 output_directory,
+                witness_values,
                 inputs,
                 force,
                 prove_with,
@@ -447,6 +454,7 @@ fn run_rust<F: FieldElement>(
         output_dir,
         force_overwrite,
         prove_with,
+        vec![],
     )?;
     Ok(())
 }
@@ -476,25 +484,41 @@ fn run_riscv_asm<F: FieldElement>(
         output_dir,
         force_overwrite,
         prove_with,
+        vec![],
     )?;
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 fn compile_with_csv_export<T: FieldElement>(
     file: String,
     output_directory: String,
+    witness_values: Option<String>,
     inputs: String,
     force: bool,
     prove_with: Option<BackendType>,
     export_csv: bool,
-    csv_mode: CsvRenderMode,
+    csv_mode: CsvRenderModeCLI,
 ) -> Result<(), Vec<String>> {
+    let external_witness_values = witness_values
+        .map(|csv_path| {
+            let csv_file = fs::File::open(csv_path).unwrap();
+            let mut csv_writer = BufReader::new(&csv_file);
+            read_polys_csv_file::<T>(&mut csv_writer)
+        })
+        .unwrap_or(vec![]);
+
+    // Convert Vec<(String, Vec<T>)> to Vec<(&str, Vec<T>)>
+    let (strings, values): (Vec<_>, Vec<_>) = external_witness_values.into_iter().unzip();
+    let external_witness_values = strings.iter().map(AsRef::as_ref).zip(values).collect();
+
     let result = compile_pil_or_asm::<T>(
         &file,
         split_inputs(&inputs),
         Path::new(&output_directory),
         force,
         prove_with,
+        external_witness_values,
     )?;
 
     if export_csv {
@@ -517,7 +541,7 @@ fn export_columns_to_csv<T: FieldElement>(
     fixed: Vec<(String, Vec<T>)>,
     witness: Option<Vec<(String, Vec<T>)>>,
     csv_path: &Path,
-    render_mode: CsvRenderMode,
+    render_mode: CsvRenderModeCLI,
 ) {
     let columns = fixed
         .into_iter()
@@ -527,42 +551,13 @@ fn export_columns_to_csv<T: FieldElement>(
     let mut csv_file = fs::File::create(csv_path).unwrap();
     let mut csv_writer = BufWriter::new(&mut csv_file);
 
-    // Remove prefixes (e.g. "Assembly.") if column names are still unique after
-    let headers = columns
-        .iter()
-        .map(|(header, _)| header.to_owned())
-        .collect::<Vec<_>>();
-    let headers_without_prefix = headers
-        .iter()
-        .map(|header| {
-            let suffix_start = header.rfind('.').map(|i| i + 1).unwrap_or(0);
-            header[suffix_start..].to_owned()
-        })
-        .collect::<Vec<_>>();
-
-    let unique_elements = headers_without_prefix.iter().collect::<HashSet<_>>();
-    let headers = if unique_elements.len() == headers.len() {
-        headers_without_prefix
-    } else {
-        headers
+    let render_mode = match render_mode {
+        CsvRenderModeCLI::SignedBase10 => CsvRenderMode::SignedBase10,
+        CsvRenderModeCLI::UnsignedBase10 => CsvRenderMode::UnsignedBase10,
+        CsvRenderModeCLI::Hex => CsvRenderMode::Hex,
     };
 
-    writeln!(csv_writer, "Row,{}", headers.join(",")).unwrap();
-
-    // Write the column values
-    let row_count = columns[0].1.len();
-    for row_index in 0..row_count {
-        // format!("{}", values[row_index].to_integer()
-        let row_values: Vec<String> = columns
-            .iter()
-            .map(|(_, values)| match render_mode {
-                CsvRenderMode::SignedBase10 => format!("{}", values[row_index]),
-                CsvRenderMode::UnsignedBase10 => format!("{}", values[row_index].to_integer()),
-                CsvRenderMode::Hex => format!("0x{:x}", values[row_index].to_integer()),
-            })
-            .collect();
-        writeln!(csv_writer, "{row_index},{}", row_values.join(",")).unwrap();
-    }
+    write_polys_csv_file(&mut csv_writer, render_mode, &columns);
 }
 
 fn read_and_prove<T: FieldElement>(
@@ -613,7 +608,7 @@ fn optimize_and_output<T: FieldElement>(file: &str) {
 
 #[cfg(test)]
 mod test {
-    use crate::{run_command, Commands, CsvRenderMode, FieldArgument};
+    use crate::{run_command, Commands, CsvRenderModeCLI, FieldArgument};
     use backend::BackendType;
 
     #[test]
@@ -629,11 +624,12 @@ mod test {
             file,
             field: FieldArgument::Bn254,
             output_directory: output_dir_str.clone(),
+            witness_values: None,
             inputs: "3,2,1,2".into(),
             force: false,
             prove_with: Some(BackendType::PilStarkCli),
             export_csv: true,
-            csv_mode: CsvRenderMode::Hex,
+            csv_mode: CsvRenderModeCLI::Hex,
         };
         run_command(pil_command);
 
