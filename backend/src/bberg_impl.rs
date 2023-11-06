@@ -37,7 +37,7 @@ impl<T: FieldElement> BackendImplWithSetup<T> for BBergCodegen {
     }
 
     // TODO: implement this
-    fn write_setup(&self, mut output: &mut dyn io::Write) -> Result<(), io::Error> {
+    fn write_setup(&self, _output: &mut dyn io::Write) -> Result<(), io::Error> {
         Ok(())
         // self.write_setup(&mut output)
     }
@@ -51,9 +51,9 @@ impl<T: FieldElement> BackendImpl<T> for BBergMock {
 
     fn prove(
         &self,
-        pil: &Analyzed<T>,
-        fixed: &[(&str, Vec<T>)],
-        witness: &[(&str, Vec<T>)],
+        _pil: &Analyzed<T>,
+        _fixed: &[(&str, Vec<T>)],
+        _witness: &[(&str, Vec<T>)],
         prev_proof: Option<Proof>,
     ) -> (Option<Proof>, Option<String>) {
         if prev_proof.is_some() {

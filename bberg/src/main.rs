@@ -12,9 +12,6 @@ use std::iter;
 
 use std::collections::HashMap;
 
-
-
-
 /// Module to convert brillig assmebly into powdr assembly
 
 // struct BrilligArchitecture {}
@@ -58,7 +55,8 @@ fn main() {
     let bytecode = Vec::from(decoded);
 
     // Create a new circuit from the bytecode instance
-    let circuit: Circuit = Circuit::read(&*bytecode).expect("Failed to deserialize circuit");
+    let circuit: Circuit =
+        Circuit::deserialize_circuit(&*bytecode).expect("Failed to deserialize circuit");
 
     println!("circuit: {:?}", circuit);
 

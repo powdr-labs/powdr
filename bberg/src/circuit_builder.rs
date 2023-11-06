@@ -2,13 +2,16 @@ use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::{fmt::Display, io::Write, process::id};
 
-use ast::parsed::UnaryOperator;
+use ast::parsed::{SelectedExpressions, UnaryOperator};
 // use acvm::acir::native_types::Expression;
 use ast::{analyzed::Identity, asm_analysis::DegreeStatement, parsed::BinaryOperator};
 use itertools::Itertools;
 use num_bigint::BigUint;
 
-use ast::analyzed::{Analyzed, Expression, IdentityKind, Reference, SelectedExpressions};
+use ast::analyzed::{
+    AlgebraicBinaryOperator, AlgebraicExpression as Expression, AlgebraicUnaryOperator, Analyzed,
+    IdentityKind, Reference,
+};
 use num_traits::{identities, One};
 use number::{BigInt, DegreeType, FieldElement};
 
@@ -490,14 +493,14 @@ fn get_cols_in_identity_macro(all_rows_and_shifts: &Vec<String>) -> String {
     )
 }
 
-fn create_identity<F: FieldElement>(
-    expression: &SelectedExpressions<F>,
+fn create_identity<T: FieldElement>(
+    expression: &SelectedExpressions<Expression<T>>,
     collected_shifts: &mut HashSet<String>,
 ) -> Option<BBIdentity> {
     // We want to read the types of operators and then create the appropiate code
 
     if let Some(expr) = &expression.selector {
-        let x = craft_expression(&expr, collected_shifts);
+        let x = craft_expression(expr, collected_shifts);
         println!("{:?}", x);
         Some(x)
     } else {
@@ -518,7 +521,7 @@ fn create_subrelation(index: usize, preamble: String, identity: &mut BBIdentity)
     
     auto tmp = {id};
     tmp *= scaling_factor;
-    tmp *= main_FIRST; // Temp to switch off 
+    tmp *= (-main_FIRST+ FF(1)); // Temp to switch off 
     std::get<{index}>(evals) += tmp;
 }}",
     )
@@ -530,7 +533,7 @@ fn craft_expression<T: FieldElement>(
 ) -> BBIdentity {
     match expr {
         Expression::Number(n) => (1, format!("FF({})", n.to_arbitrary_integer())),
-        Expression::Reference(Reference::Poly(polyref)) => {
+        Expression::Reference(polyref) => {
             assert_eq!(polyref.index, None);
             let mut poly_name = format!("{}", &polyref.name.replace(".", "_"));
             let mut degree = 1;
@@ -553,27 +556,27 @@ fn craft_expression<T: FieldElement>(
             // dbg!(&lhe);
             let degree = std::cmp::max(ld, rd);
             match op {
-                BinaryOperator::Add => (degree, format!("({} + {})", lhs, rhs)),
-                BinaryOperator::Sub => match lhe.as_ref() {
+                AlgebraicBinaryOperator::Add => (degree, format!("({} + {})", lhs, rhs)),
+                AlgebraicBinaryOperator::Sub => match lhe.as_ref() {
                     // BBerg hack, we do not want a field on the lhs of an expression
                     Expression::Number(_) => (degree, format!("(-{} + {})", rhs, lhs)),
                     _ => (degree, format!("({} - {})", lhs, rhs)),
                 },
 
-                BinaryOperator::Mul => (degree + 1, format!("({} * {})", lhs, rhs)),
+                AlgebraicBinaryOperator::Mul => (degree + 1, format!("({} * {})", lhs, rhs)),
                 _ => unimplemented!("{:?}", expr),
             }
         }
-        Expression::Constant(name) => {
-            panic!("Constant {name} was not inlined. optimize_constants needs to be run at least.")
-        }
+        // Expression::Constant(name) => {
+        //     panic!("Constant {name} was not inlined. optimize_constants needs to be run at least.")
+        // }
         // pub enum UnaryOperator {
         //     Plus,
         //     Minus,
         //     LogicalNot,
         // }
         Expression::UnaryOperation(operator, expression) => match operator {
-            UnaryOperator::Minus => {
+            AlgebraicUnaryOperator::Minus => {
                 let (d, e) = craft_expression(expression, collected_shifts);
                 (d, format!("-{}", e))
             }
@@ -589,7 +592,7 @@ type BBIdentity = (DegreeType, String);
 
 /// Todo, eventually these will need to be siloed based on the file name they are in
 fn create_identities<F: FieldElement>(
-    identities: &Vec<Identity<F>>,
+    identities: &Vec<Identity<Expression<F>>>,
 ) -> (Vec<String>, Vec<BBIdentity>, HashSet<String>) {
     // We only want the expressions for now
     // When we have a poly type, we only need the left side of it

@@ -386,8 +386,8 @@ pub struct Identity<Expr> {
     //
     // NTS(Md) Both left and right are only used in the case of perm / plookup
     //
-    pub left: SelectedExpressions<T>, // left is selector expressions  - for an arithmetic gate, the entire relation is in SL
-    pub right: SelectedExpressions<T>, // right is the overall expressions
+    pub left: SelectedExpressions<Expr>, // left is selector expressions  - for an arithmetic gate, the entire relation is in SL
+    pub right: SelectedExpressions<Expr>, // right is the overall expressions
 }
 
 impl<Expr> Identity<Expr> {
