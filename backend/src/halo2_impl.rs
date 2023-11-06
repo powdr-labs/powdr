@@ -14,8 +14,8 @@ impl<T: FieldElement> BackendImpl<T> for Halo2Prover {
     fn prove(
         &self,
         pil: &Analyzed<T>,
-        fixed: &[(&str, Vec<T>)],
-        witness: &[(&str, Vec<T>)],
+        fixed: &[(String, Vec<T>)],
+        witness: &[(String, Vec<T>)],
         prev_proof: Option<Proof>,
     ) -> (Option<Proof>, Option<String>) {
         let proof = match prev_proof {
@@ -47,8 +47,8 @@ impl<T: FieldElement> BackendImpl<T> for Halo2Mock {
     fn prove(
         &self,
         pil: &Analyzed<T>,
-        fixed: &[(&str, Vec<T>)],
-        witness: &[(&str, Vec<T>)],
+        fixed: &[(String, Vec<T>)],
+        witness: &[(String, Vec<T>)],
         prev_proof: Option<Proof>,
     ) -> (Option<Proof>, Option<String>) {
         if prev_proof.is_some() {

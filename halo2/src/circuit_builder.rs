@@ -18,8 +18,8 @@ use pil_analyzer::pil_analyzer::inline_intermediate_polynomials;
 
 pub(crate) fn analyzed_to_circuit<T: FieldElement>(
     analyzed: &Analyzed<T>,
-    fixed: &[(&str, Vec<T>)],
-    witness: &[(&str, Vec<T>)],
+    fixed: &[(String, Vec<T>)],
+    witness: &[(String, Vec<T>)],
 ) -> PlafH2Circuit {
     // The structure of the table is as following
     //
