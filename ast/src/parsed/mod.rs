@@ -22,9 +22,13 @@ pub enum PilStatement<T> {
     PolynomialDefinition(usize, String, Expression<T>),
     PublicDeclaration(
         usize,
+        /// The name of the public value.
         String,
+        /// The polynomial/column that contains the public value.
         NamespacedPolynomialReference,
+        /// If the polynomial is an array, this is the array element index.
         Option<Expression<T>>,
+        /// The row number of the public value.
         Expression<T>,
     ),
     PolynomialConstantDeclaration(usize, Vec<PolynomialName<T>>),

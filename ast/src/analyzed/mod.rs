@@ -370,7 +370,7 @@ pub struct PublicDeclaration {
     pub source: SourceRef,
     pub name: String,
     pub polynomial: PolynomialReference,
-    pub array_index: Option<DegreeType>,
+    pub array_index: Option<usize>,
     /// The evaluation point of the polynomial, not the array index.
     pub index: DegreeType,
 }
@@ -435,7 +435,7 @@ pub struct AlgebraicReference {
     pub name: String,
     /// Identifier for a polynomial reference.
     pub poly_id: PolyID,
-    pub index: Option<u64>,
+    pub index: Option<usize>,
     pub next: bool,
 }
 

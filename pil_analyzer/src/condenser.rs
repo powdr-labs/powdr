@@ -197,8 +197,9 @@ impl<T: FieldElement> Condenser<T> {
                     array.index.is_none(),
                     "Cannot index an array twice in this context."
                 );
+                assert!(index.to_degree() <= usize::MAX as u64);
                 AlgebraicExpression::Reference(AlgebraicReference {
-                    index: Some(index.to_degree()),
+                    index: Some(index.to_degree() as usize),
                     ..array
                 })
             }

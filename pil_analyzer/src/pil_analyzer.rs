@@ -426,15 +426,21 @@ impl<T: FieldElement> PILAnalyzer<T> {
         index: parsed::Expression<T>,
     ) {
         let id = self.public_declarations.len() as u64;
+        let polynomial =
+            ExpressionProcessor::new(self).process_namespaced_polynomial_reference(poly);
+        let array_index = array_index.map(|i| {
+            let index = self.evaluate_expression(i).unwrap().to_degree();
+            assert!(index <= usize::MAX as u64);
+            index as usize
+        });
         self.public_declarations.insert(
             name.to_string(),
             PublicDeclaration {
                 id,
                 source,
                 name: name.to_string(),
-                polynomial: ExpressionProcessor::new(self)
-                    .process_namespaced_polynomial_reference(poly),
-                array_index: array_index.map(|i| self.evaluate_expression(i).unwrap().to_degree()),
+                polynomial,
+                array_index,
                 index: self.evaluate_expression(index).unwrap().to_degree(),
             },
         );
