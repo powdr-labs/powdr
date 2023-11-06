@@ -99,7 +99,7 @@
 
   test_5: li x10, 5; ebreak; lw a5, 0(a3); li x29, 0xfffffffffffff800; li x28, 5; bne a5, x29, fail;
 
-  bne x0, x28, pass; fail: unimp;; pass: ___pass: j ___pass;
+  bne x0, x28, pass; fail: unimp;; pass: ret;
 
 
 

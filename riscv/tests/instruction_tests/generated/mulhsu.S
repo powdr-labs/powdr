@@ -139,7 +139,7 @@
 
 
 
-  bne x0, x28, pass; fail: unimp;; pass: ___pass: j ___pass;
+  bne x0, x28, pass; fail: unimp;; pass: ret;
 
 
 
