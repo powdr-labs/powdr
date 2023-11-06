@@ -32,10 +32,10 @@ __runtime_start:				\
 // 	sw	a1,0(a2);		\
 // 	sw	a1,0(a2);
 
+// On success returns from __runtime_start and finishes normally.
 // TODO we could (and should?) also output something
 #define RVTEST_PASS			\
-    ___pass: \
-	j ___pass;
+	ret;
 
 // TODO we could (and should?) also output something
 #define RVTEST_FAIL			\

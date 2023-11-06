@@ -1,9 +1,8 @@
-# 1 "sources/bltu.S"
-# 1 "<built-in>"
-# 1 "<command-line>"
-# 31 "<command-line>"
+# 0 "sources/bltu.S"
+# 0 "<built-in>"
+# 0 "<command-line>"
 # 1 "/usr/include/stdc-predef.h" 1 3 4
-# 32 "<command-line>" 2
+# 0 "<command-line>" 2
 # 1 "sources/bltu.S"
 # See LICENSE for license details.
 
@@ -121,7 +120,7 @@
 
   test_21: li x10, 21; ebreak; li x1, 1; bltu x0, x1, test_21_l1; addi x1, x1, 1; addi x1, x1, 1; addi x1, x1, 1; addi x1, x1, 1; test_21_l1: addi x1, x1, 1; addi x1, x1, 1;; li x29, 3; li x28, 21; bne x1, x29, fail;
 # 64 "sources/bltu.S"
-  bne x0, x28, pass; fail: unimp;; pass: ___pass: j ___pass;
+  bne x0, x28, pass; fail: unimp;; pass: ret;
 
 
 

@@ -1,9 +1,8 @@
-# 1 "sources/mulhu.S"
-# 1 "<built-in>"
-# 1 "<command-line>"
-# 31 "<command-line>"
+# 0 "sources/mulhu.S"
+# 0 "<built-in>"
+# 0 "<command-line>"
 # 1 "/usr/include/stdc-predef.h" 1 3 4
-# 32 "<command-line>" 2
+# 0 "<command-line>" 2
 # 1 "sources/mulhu.S"
 # See LICENSE for license details.
 
@@ -139,7 +138,7 @@
   test_29: li x10, 29; ebreak; li x1, 33<<20; li x2, 34<<20; mulhu x0, x1, x2;; li x29, 0; li x28, 29; bne x0, x29, fail;;
 
 
-  bne x0, x28, pass; fail: unimp;; pass: ___pass: j ___pass;
+  bne x0, x28, pass; fail: unimp;; pass: ret;
 
 
 

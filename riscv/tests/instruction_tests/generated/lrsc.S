@@ -146,7 +146,7 @@ test_5: li x10, 5; ebreak; lw a0, foo(x0); slli a1, a3, 10 - 1; aae:sub a0, a0, 
  # make sure that sc-after-successful-sc fails.
 test_6: li x10, 6; ebreak; la a0, foo; aaf:lr.w a1, (a0); sc.w a1, x0, (a0); bnez a1, aaf; sc.w a1, x0, (a0); sc.w a2, x0, (a0); add a1, a1, a2; li x29, 2; li x28, 6; bne a1, x29, fail;
 # 97 "sources/lrsc.S"
-bne x0, x28, pass; fail: unimp;; pass: ___pass: j ___pass;
+bne x0, x28, pass; fail: unimp;; pass: ret;
 
 
 
