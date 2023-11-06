@@ -15,7 +15,8 @@ pub fn verify_asm_string<T: FieldElement>(file_name: &str, contents: &str, input
     let (_, result) = compile_asm_string(
         file_name,
         contents,
-        inputs,
+        &inputs,
+        None,
         &temp_dir,
         true,
         Some(BackendType::PilStarkCli),

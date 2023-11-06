@@ -151,7 +151,7 @@ mod test {
     };
     use number::{Bn254Field, FieldElement, GoldilocksField};
 
-    use analysis::analyze;
+    use analysis::convert_asm_to_pil;
     use parser::parse_asm;
 
     use pretty_assertions::assert_eq;
@@ -161,7 +161,7 @@ mod test {
     fn parse_analyse_and_compile<T: FieldElement>(input: &str) -> PILGraph<T> {
         let parsed = parse_asm(None, input).unwrap();
         let resolved = importer::resolve(None, parsed).unwrap();
-        airgen::compile(analyze(resolved).unwrap())
+        airgen::compile(convert_asm_to_pil(resolved).unwrap())
     }
 
     #[test]

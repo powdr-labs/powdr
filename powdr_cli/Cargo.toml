@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [features]
-default = [] # halo2 is disabled by default
+default = []                                             # halo2 is disabled by default
 halo2 = ["dep:halo2", "backend/halo2", "compiler/halo2"]
 
 [dependencies]
@@ -14,6 +14,7 @@ log = "0.4.17"
 compiler = { path = "../compiler" }
 parser = { path = "../parser" }
 riscv = { path = "../riscv" }
+riscv_executor = { path = "../riscv_executor" }
 number = { path = "../number" }
 halo2 = { path = "../halo2", optional = true }
 backend = { path = "../backend" }

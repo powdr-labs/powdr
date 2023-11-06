@@ -161,9 +161,9 @@ pub struct PolynomialName<T> {
 /// A polynomial with an optional namespace
 pub struct NamespacedPolynomialReference<T> {
     /// The optional namespace, if `None` then this polynomial inherits the next enclosing namespace, if any
-    namespace: Option<String>,
+    pub namespace: Option<String>,
     /// The underlying polynomial
-    pol: IndexedPolynomialReference<T>,
+    pub pol: IndexedPolynomialReference<T>,
 }
 
 impl<T> NamespacedPolynomialReference<T> {

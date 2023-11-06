@@ -10,9 +10,18 @@ pub use macro_expansion::MacroExpander;
 use ast::{asm_analysis::AnalysisASMFile, parsed::asm::ASMProgram, DiffMonitor};
 use number::FieldElement;
 
-pub fn analyze<T: FieldElement>(file: ASMProgram<T>) -> Result<AnalysisASMFile<T>, Vec<String>> {
+pub fn convert_asm_to_pil<T: FieldElement>(
+    file: ASMProgram<T>,
+) -> Result<AnalysisASMFile<T>, Vec<String>> {
     let mut monitor = DiffMonitor::default();
+    let file = analyze(file, &mut monitor)?;
+    Ok(convert_analyzed_to_pil_constraints(file, &mut monitor))
+}
 
+pub fn analyze<T: FieldElement>(
+    file: ASMProgram<T>,
+    monitor: &mut DiffMonitor,
+) -> Result<AnalysisASMFile<T>, Vec<String>> {
     // expand macros
     log::debug!("Run expand analysis step");
     let file = macro_expansion::expand(file);
@@ -23,15 +32,27 @@ pub fn analyze<T: FieldElement>(file: ASMProgram<T>) -> Result<AnalysisASMFile<T
 
     // run analysis on virtual machines, reducing them to constrained machines
     log::debug!("Start asm analysis");
-    let file = vm::analyze(file, &mut monitor)?;
+    let file = vm::analyze(file, monitor)?;
     log::debug!("End asm analysis");
+
+    Ok(file)
+}
+
+pub fn convert_analyzed_to_pil_constraints<T: FieldElement>(
+    file: AnalysisASMFile<T>,
+    monitor: &mut DiffMonitor,
+) -> AnalysisASMFile<T> {
+    // remove all asm (except external instructions)
+    log::debug!("Run asm_to_pil");
+    let file = asm_to_pil::compile(file);
+    monitor.push(&file);
 
     // enforce blocks using `operation_id` and `latch`
     log::debug!("Run enforce_block analysis step");
     let file = block_enforcer::enforce(file);
     monitor.push(&file);
 
-    Ok(file)
+    file
 }
 
 pub mod utils {

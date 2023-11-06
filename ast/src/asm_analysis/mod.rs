@@ -87,7 +87,7 @@ pub struct FunctionStatements<T> {
 }
 
 pub struct BatchRef<'a, T> {
-    statements: &'a [FunctionStatement<T>],
+    pub statements: &'a [FunctionStatement<T>],
     reason: &'a Option<IncompatibleSet>,
 }
 
@@ -151,7 +151,7 @@ impl<T> FunctionStatements<T> {
     }
 
     /// iterate over the batches by reference
-    fn iter_batches(&self) -> impl Iterator<Item = BatchRef<T>> {
+    pub fn iter_batches(&self) -> impl Iterator<Item = BatchRef<T>> {
         match &self.batches {
             Some(batches) => Either::Left(batches.iter()),
             None => Either::Right(
@@ -246,7 +246,7 @@ pub struct CallableSymbolDefinition<T> {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Default)]
-pub struct CallableSymbolDefinitions<T>(BTreeMap<String, CallableSymbol<T>>);
+pub struct CallableSymbolDefinitions<T>(pub BTreeMap<String, CallableSymbol<T>>);
 
 impl<T> IntoIterator for CallableSymbolDefinitions<T> {
     type Item = CallableSymbolDefinition<T>;
