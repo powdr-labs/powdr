@@ -289,6 +289,7 @@ fn main() -> Result<(), io::Error> {
     }
 }
 
+#[allow(clippy::print_stderr)]
 fn run_command(command: Commands) {
     match command {
         Commands::Rust {
@@ -598,6 +599,7 @@ fn read_and_prove<T: FieldElement>(
     );
 }
 
+#[allow(clippy::print_stdout)]
 fn optimize_and_output<T: FieldElement>(file: &str) {
     println!(
         "{}",

@@ -42,6 +42,7 @@ mod test {
 
     use super::*;
 
+    #[allow(clippy::print_stdout)]
     fn mock_prove_asm(file_name: &str, inputs: &[Bn254Field]) {
         // read and compile PIL.
 

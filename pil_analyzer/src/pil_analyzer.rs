@@ -80,6 +80,7 @@ impl<T: FieldElement> PILAnalyzer<T> {
         self.process_file_contents(&path, &contents);
     }
 
+    #[allow(clippy::print_stderr)]
     pub fn process_file_contents(&mut self, path: &Path, contents: &str) {
         let old_current_file = std::mem::take(&mut self.current_file);
         let old_line_starts = std::mem::take(&mut self.line_starts);

@@ -136,6 +136,7 @@ pub fn compile_asm<T: FieldElement>(
 /// fixed and witness columns.
 ///
 /// Returns the relative pil file name and the compilation result if any compilation was done.
+#[allow(clippy::print_stderr)]
 pub fn compile_asm_string<T: FieldElement>(
     file_name: &str,
     contents: &str,
