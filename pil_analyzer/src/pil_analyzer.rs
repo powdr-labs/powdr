@@ -35,7 +35,7 @@ pub fn process_pil_file_contents<T: FieldElement>(contents: &str) -> Analyzed<T>
 #[derive(Default)]
 struct PILAnalyzer<T> {
     namespace: String,
-    polynomial_degree: DegreeType,
+    polynomial_degree: Option<DegreeType>,
     definitions: HashMap<String, (Symbol, Option<FunctionValueDefinition<T>>)>,
     public_declarations: HashMap<String, PublicDeclaration>,
     identities: Vec<Identity<Expression<T>>>,
@@ -107,6 +107,7 @@ impl<T: FieldElement> PILAnalyzer<T> {
 
     pub fn condense(self) -> Analyzed<T> {
         condenser::condense(
+            self.polynomial_degree,
             self.definitions,
             self.public_declarations,
             &self.identities,
@@ -313,7 +314,15 @@ impl<T: FieldElement> PILAnalyzer<T> {
 
     fn handle_namespace(&mut self, name: String, degree: ::ast::parsed::Expression<T>) {
         // TODO: the polynomial degree should be handled without going through a field element. This requires having types in Expression
-        self.polynomial_degree = self.evaluate_expression(degree).unwrap().to_degree();
+        let namespace_degree = self.evaluate_expression(degree).unwrap().to_degree();
+        if let Some(degree) = self.polynomial_degree {
+            assert_eq!(
+                degree, namespace_degree,
+                "all namespaces must have the same degree"
+            );
+        } else {
+            self.polynomial_degree = Some(namespace_degree);
+        }
         self.namespace = name;
     }
 
@@ -362,7 +371,10 @@ impl<T: FieldElement> PILAnalyzer<T> {
             id,
             source,
             absolute_name,
-            degree: self.polynomial_degree,
+            degree: self.polynomial_degree.unwrap_or_else(|| {
+                assert!(matches!(symbol_kind, SymbolKind::Constant()));
+                0
+            }),
             kind: symbol_kind,
             length,
         };
@@ -393,12 +405,12 @@ impl<T: FieldElement> PILAnalyzer<T> {
                 )
             }
             FunctionDefinition::Array(value) => {
-                let size = value.solve(self.polynomial_degree);
+                let size = value.solve(self.polynomial_degree.unwrap());
                 let expression =
                     ExpressionProcessor::new(self).process_array_expression(value, size);
                 assert_eq!(
                     expression.iter().map(|e| e.size()).sum::<DegreeType>(),
-                    self.polynomial_degree
+                    self.polynomial_degree.unwrap()
                 );
                 FunctionValueDefinition::Array(expression)
             }

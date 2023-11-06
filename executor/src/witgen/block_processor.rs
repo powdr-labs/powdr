@@ -138,8 +138,8 @@ mod tests {
         f: impl Fn(BlockProcessor<T, Q, WithoutCalldata>, BTreeMap<String, PolyID>, u64, usize) -> R,
     ) -> R {
         let analyzed = analyze_string(src);
-        let (constants, degree) = generate(&analyzed);
-        let fixed_data = FixedData::new(&analyzed, degree, &constants, vec![]);
+        let constants = generate(&analyzed);
+        let fixed_data = FixedData::new(&analyzed, &constants, vec![]);
 
         // No global range constraints
         let global_range_constraints = GlobalConstraints {
@@ -185,7 +185,7 @@ mod tests {
         f(
             processor,
             name_to_poly_id(&fixed_data),
-            degree,
+            analyzed.degree(),
             identities.len(),
         )
     }

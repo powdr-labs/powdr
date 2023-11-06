@@ -9,25 +9,20 @@ use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 /// Generates the constant polynomial values for all constant polynomials
 /// that are defined (and not just declared).
 /// @returns the values (in source order) and the degree of the polynomials.
-pub fn generate<T: FieldElement>(analyzed: &Analyzed<T>) -> (Vec<(&str, Vec<T>)>, DegreeType) {
-    let mut degree = None;
+pub fn generate<T: FieldElement>(analyzed: &Analyzed<T>) -> Vec<(&str, Vec<T>)> {
     let mut other_constants = HashMap::new();
     for (poly, value) in analyzed.constant_polys_in_source_order() {
         if let Some(value) = value {
-            if let Some(degree) = degree {
-                assert!(degree == poly.degree);
-            } else {
-                degree = Some(poly.degree);
-            }
+            assert!(analyzed.degree() == poly.degree);
             let values = generate_values(analyzed, poly.degree, value, &other_constants);
             other_constants.insert(&poly.absolute_name, values);
         }
     }
-    let values = other_constants
+
+    other_constants
         .into_iter()
         .sorted_by_key(|(name, _)| analyzed.definitions[&name.to_string()].0.id)
-        .collect::<Vec<_>>();
-    (values, degree.unwrap_or_default())
+        .collect::<Vec<_>>()
 }
 
 fn generate_values<T: FieldElement>(
@@ -105,8 +100,8 @@ mod test {
             } };
         "#;
         let analyzed = analyze_string(src);
-        let (constants, degree) = generate(&analyzed);
-        assert_eq!(degree, 8);
+        assert_eq!(analyzed.degree(), 8);
+        let constants = generate(&analyzed);
         assert_eq!(
             constants,
             vec![("F.LAST", convert(vec![0, 0, 0, 0, 0, 0, 0, 1]))]
@@ -121,8 +116,8 @@ mod test {
             pol constant EVEN(i) { 2 * (i - 1) };
         "#;
         let analyzed = analyze_string(src);
-        let (constants, degree) = generate(&analyzed);
-        assert_eq!(degree, 8);
+        assert_eq!(analyzed.degree(), 8);
+        let constants = generate(&analyzed);
         assert_eq!(
             constants,
             vec![("F.EVEN", convert(vec![-2, 0, 2, 4, 6, 8, 10, 12]))]
@@ -137,8 +132,8 @@ mod test {
             pol constant X(i) { i ^ (i + 17) | 3 };
         "#;
         let analyzed = analyze_string(src);
-        let (constants, degree) = generate(&analyzed);
-        assert_eq!(degree, 8);
+        assert_eq!(analyzed.degree(), 8);
+        let constants = generate(&analyzed);
         assert_eq!(
             constants,
             vec![("F.X", convert((0..8).map(|i| i ^ (i + 17) | 3).collect()))]
@@ -158,8 +153,8 @@ mod test {
             } + 1 };
         "#;
         let analyzed = analyze_string(src);
-        let (constants, degree) = generate(&analyzed);
-        assert_eq!(degree, 8);
+        assert_eq!(analyzed.degree(), 8);
+        let constants = generate(&analyzed);
         assert_eq!(
             constants,
             vec![("F.X", convert(vec![8, 5, 5, 10, 5, 3, 5, 5]))]
@@ -175,8 +170,8 @@ mod test {
             pol constant EVEN(i) { 2 * minus_one(i) };
         "#;
         let analyzed = analyze_string(src);
-        let (constants, degree) = generate(&analyzed);
-        assert_eq!(degree, 8);
+        assert_eq!(analyzed.degree(), 8);
+        let constants = generate(&analyzed);
         assert_eq!(
             constants,
             vec![("F.EVEN", convert(vec![-2, 0, 2, 4, 6, 8, 10, 12]))]
@@ -196,8 +191,8 @@ mod test {
             pol constant TEN(i) { ite(is_equal(i, 10), 1, 0) };
         "#;
         let analyzed = analyze_string(src);
-        let (constants, degree) = generate(&analyzed);
-        assert_eq!(degree, 12);
+        assert_eq!(analyzed.degree(), 12);
+        let constants = generate(&analyzed);
         assert_eq!(
             constants,
             vec![(
@@ -218,8 +213,8 @@ mod test {
             col fixed doubled_half_nibble(i) { half_nibble(i / 2) };
         "#;
         let analyzed = analyze_string(src);
-        let (constants, degree) = generate(&analyzed);
-        assert_eq!(degree, 10);
+        assert_eq!(analyzed.degree(), 10);
+        let constants = generate(&analyzed);
         assert_eq!(constants.len(), 4);
         assert_eq!(
             constants[0],
@@ -258,8 +253,8 @@ mod test {
             col fixed ref_other = [%N-1, alt(1), 8] + [0]*;
         "#;
         let analyzed = analyze_string(src);
-        let (constants, degree) = generate(&analyzed);
-        assert_eq!(degree, 10);
+        assert_eq!(analyzed.degree(), 10);
+        let constants = generate(&analyzed);
         assert_eq!(constants.len(), 3);
         assert_eq!(
             constants[0],
@@ -283,8 +278,8 @@ mod test {
             col fixed arr = [0, 1, 2]* + [7];
         "#;
         let analyzed = analyze_string(src);
-        let (constants, degree) = generate(&analyzed);
-        assert_eq!(degree, 10);
+        assert_eq!(analyzed.degree(), 10);
+        let constants = generate(&analyzed);
         assert_eq!(constants.len(), 1);
         assert_eq!(
             constants[0],
@@ -312,8 +307,8 @@ mod test {
             col fixed greater_eq(i) { id(i) >= inv(i) };
         "#;
         let analyzed = analyze_string(src);
-        let (constants, degree) = generate(&analyzed);
-        assert_eq!(degree, 6);
+        assert_eq!(analyzed.degree(), 6);
+        let constants = generate(&analyzed);
         assert_eq!(constants[0], ("F.id", convert([0, 1, 2, 3, 4, 5].to_vec())));
         assert_eq!(
             constants[1],

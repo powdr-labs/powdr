@@ -1,3 +1,5 @@
+use std::iter::{once, repeat};
+
 use crate::{pilstark, BackendImpl};
 use ast::analyzed::Analyzed;
 use number::{BigInt, DegreeType, FieldElement, GoldilocksField};
@@ -58,6 +60,8 @@ impl<F: FieldElement> BackendImpl<F> for EStark {
 
         log::info!("Creating eSTARK proof.");
 
+        let degree = pil.degree();
+
         let mut pil: PIL = pilstark::json_exporter::export(pil);
 
         // TODO starky requires a fixed column with the equivalent
@@ -77,7 +81,7 @@ impl<F: FieldElement> BackendImpl<F> for EStark {
                     polType: None,
                     type_: "constP".to_string(),
                     id: fixed.len(),
-                    polDeg: fixed[0].1.len(),
+                    polDeg: degree as usize,
                     isArray: false,
                     elementType: None,
                     len: None,
@@ -85,7 +89,10 @@ impl<F: FieldElement> BackendImpl<F> for EStark {
             );
             fixed.push((
                 "main.first_step".to_string(),
-                [vec![F::one()], vec![F::zero(); fixed[0].1.len() - 1]].concat(),
+                once(F::one())
+                    .chain(repeat(F::zero()))
+                    .take(degree as usize)
+                    .collect(),
             ));
         }
 

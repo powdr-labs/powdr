@@ -58,7 +58,7 @@ impl<'a, T: FieldElement> CircuitData<'a, T> {
     }
 
     pub fn len(&self) -> usize {
-        self.fixed.get(0).unwrap().1.len()
+        self.witness.get(0).unwrap().1.len()
     }
 
     pub fn insert_constant<IT: IntoIterator<Item = T>>(

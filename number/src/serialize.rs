@@ -91,6 +91,7 @@ pub fn write_polys_file<T: FieldElement>(file: &mut impl Write, polys: &[(String
     // TODO maybe the witness should have a proper type that
     // explicitly has a degree or length?
     let degree = polys[0].1.len();
+
     for i in 0..degree {
         for (_name, constant) in polys {
             let bytes = constant[i].to_bytes_le();
@@ -138,31 +139,34 @@ mod tests {
     use super::*;
     use test_log::test;
 
-    fn test_polys() -> Vec<(String, Vec<Bn254Field>)> {
-        vec![
-            ("a".to_string(), (0..16).map(Bn254Field::from).collect()),
-            ("b".to_string(), (-16..0).map(Bn254Field::from).collect()),
-        ]
+    fn test_polys() -> (Vec<(String, Vec<Bn254Field>)>, u64) {
+        (
+            vec![
+                ("a".to_string(), (0..16).map(Bn254Field::from).collect()),
+                ("b".to_string(), (-16..0).map(Bn254Field::from).collect()),
+            ],
+            16,
+        )
     }
 
     #[test]
     fn write_read() {
         let mut buf: Vec<u8> = vec![];
 
-        let polys = test_polys();
-        let degree = polys[0].1.len();
+        let (polys, degree) = test_polys();
 
         write_polys_file(&mut buf, &polys);
         let (read_polys, read_degree) =
             read_polys_file::<Bn254Field>(&mut Cursor::new(buf), &["a", "b"]);
 
         assert_eq!(read_polys, polys);
-        assert_eq!(read_degree, degree as u64);
+        assert_eq!(read_degree, degree);
     }
 
     #[test]
     fn write_read_csv() {
         let polys = test_polys()
+            .0
             .into_iter()
             .map(|(name, values)| (name.to_string(), values))
             .collect::<Vec<_>>();

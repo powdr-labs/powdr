@@ -88,10 +88,9 @@ mod test {
 
         let analyzed = pil_analyzer::analyze_string(&format!("{pil}"));
 
-        let (fixed, degree) = executor::constant_evaluator::generate(&analyzed);
+        let fixed = executor::constant_evaluator::generate(&analyzed);
         let witness =
-            executor::witgen::WitnessGenerator::new(&analyzed, degree, &fixed, query_callback)
-                .generate();
+            executor::witgen::WitnessGenerator::new(&analyzed, &fixed, query_callback).generate();
 
         let fixed = to_owned_values(fixed);
         let witness = to_owned_values(witness);
@@ -103,13 +102,12 @@ mod test {
     fn simple_pil_halo2() {
         let content = "namespace Global(8); pol fixed z = [0]*; pol witness a; a = 0;";
         let analyzed: Analyzed<Bn254Field> = pil_analyzer::analyze_string(content);
-        let (fixed, degree) = executor::constant_evaluator::generate(&analyzed);
+        let fixed = executor::constant_evaluator::generate(&analyzed);
 
         let query_callback = |_: &str| -> Option<Bn254Field> { None };
 
         let witness =
-            executor::witgen::WitnessGenerator::new(&analyzed, degree, &fixed, query_callback)
-                .generate();
+            executor::witgen::WitnessGenerator::new(&analyzed, &fixed, query_callback).generate();
 
         let fixed = to_owned_values(fixed);
         let witness = to_owned_values(witness);

@@ -226,13 +226,13 @@ fn compile<T: FieldElement, Q: QueryCallback<T>>(
     log::info!("Wrote {}.", optimized_pil_file_name.to_str().unwrap());
     let start = Instant::now();
     log::info!("Evaluating fixed columns...");
-    let (constants, degree) = constant_evaluator::generate(&analyzed);
+    let constants = constant_evaluator::generate(&analyzed);
     log::info!("Took {}", start.elapsed().as_secs_f32());
 
     let witness = (analyzed.constant_count() == constants.len()).then(|| {
         log::info!("Deducing witness columns...");
         let commits =
-            executor::witgen::WitnessGenerator::new(&analyzed, degree, &constants, query_callback)
+            executor::witgen::WitnessGenerator::new(&analyzed, &constants, query_callback)
                 .with_external_witness_values(external_witness_values)
                 .generate();
 
@@ -251,7 +251,7 @@ fn compile<T: FieldElement, Q: QueryCallback<T>>(
     // still output the constraint serialization.
     let (proof, constraints_serialization) = if let Some(backend) = prove_with {
         let factory = backend.factory::<T>();
-        let backend = factory.create(degree);
+        let backend = factory.create(analyzed.degree());
 
         backend.prove(
             &analyzed,

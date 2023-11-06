@@ -12,11 +12,12 @@ use ast::{
     evaluate_binary_operation, evaluate_unary_operation,
     parsed::{visitor::ExpressionVisitable, SelectedExpressions, UnaryOperator},
 };
-use number::FieldElement;
+use number::{DegreeType, FieldElement};
 
 use crate::evaluator::compute_constants;
 
 pub fn condense<T: FieldElement>(
+    degree: Option<DegreeType>,
     mut definitions: HashMap<String, (Symbol, Option<FunctionValueDefinition<T>>)>,
     mut public_declarations: HashMap<String, PublicDeclaration>,
     identities: &[Identity<Expression<T>>],
@@ -68,6 +69,7 @@ pub fn condense<T: FieldElement>(
         .values_mut()
         .for_each(|public_decl| condenser.assign_id(&mut public_decl.polynomial));
     Analyzed {
+        degree,
         definitions,
         public_declarations,
         intermediate_columns,
