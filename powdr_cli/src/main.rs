@@ -95,6 +95,11 @@ enum Commands {
         #[arg(default_value_t = CsvRenderModeCLI::Hex)]
         #[arg(value_parser = clap_enum_variants!(CsvRenderModeCLI))]
         csv_mode: CsvRenderModeCLI,
+
+        /// Just execute in the RISCV/Powdr executor
+        #[arg(short, long)]
+        #[arg(default_value_t = false)]
+        just_execute: bool,
     },
     /// Compiles (no-std) rust code to riscv assembly, then to powdr assembly
     /// and finally to PIL and generates fixed and witness columns.
@@ -132,6 +137,11 @@ enum Commands {
         /// Comma-separated list of coprocessors.
         #[arg(long)]
         coprocessors: Option<String>,
+
+        /// Just execute in the RISCV/Powdr executor
+        #[arg(short, long)]
+        #[arg(default_value_t = false)]
+        just_execute: bool,
     },
 
     /// Compiles riscv assembly to powdr assembly and then to PIL
@@ -170,6 +180,11 @@ enum Commands {
         /// Comma-separated list of coprocessors.
         #[arg(long)]
         coprocessors: Option<String>,
+
+        /// Just execute in the RISCV/Powdr executor
+        #[arg(short, long)]
+        #[arg(default_value_t = false)]
+        just_execute: bool,
     },
 
     Prove {
@@ -301,6 +316,7 @@ fn run_command(command: Commands) {
             force,
             prove_with,
             coprocessors,
+            just_execute,
         } => {
             let coprocessors = match coprocessors {
                 Some(list) => {
@@ -314,7 +330,8 @@ fn run_command(command: Commands) {
                 Path::new(&output_directory),
                 force,
                 prove_with,
-                coprocessors
+                coprocessors,
+                just_execute
             )) {
                 eprintln!("Errors:");
                 for e in errors {
@@ -330,6 +347,7 @@ fn run_command(command: Commands) {
             force,
             prove_with,
             coprocessors,
+            just_execute,
         } => {
             assert!(!files.is_empty());
             let name = if files.len() == 1 {
@@ -351,7 +369,8 @@ fn run_command(command: Commands) {
                 Path::new(&output_directory),
                 force,
                 prove_with,
-                coprocessors
+                coprocessors,
+                just_execute
             )) {
                 eprintln!("Errors:");
                 for e in errors {
@@ -379,25 +398,33 @@ fn run_command(command: Commands) {
             prove_with,
             export_csv,
             csv_mode,
+            just_execute,
         } => {
-            match call_with_field!(compile_with_csv_export::<field>(
-                file,
-                output_directory,
-                witness_values,
-                inputs,
-                force,
-                prove_with,
-                export_csv,
-                csv_mode
-            )) {
-                Ok(()) => {}
-                Err(errors) => {
-                    eprintln!("Errors:");
-                    for e in errors {
-                        eprintln!("{e}");
+            if just_execute {
+                // assume input is riscv asm and just execute it
+                let contents = fs::read_to_string(file).unwrap();
+                let inputs = split_inputs(&inputs);
+                riscv_executor::execute::<GoldilocksField>(&contents, &inputs);
+            } else {
+                match call_with_field!(compile_with_csv_export::<field>(
+                    file,
+                    output_directory,
+                    witness_values,
+                    inputs,
+                    force,
+                    prove_with,
+                    export_csv,
+                    csv_mode
+                )) {
+                    Ok(()) => {}
+                    Err(errors) => {
+                        eprintln!("Errors:");
+                        for e in errors {
+                            eprintln!("{e}");
+                        }
                     }
-                }
-            };
+                };
+            }
         }
         Commands::Prove {
             file,
@@ -444,19 +471,20 @@ fn run_rust<F: FieldElement>(
     force_overwrite: bool,
     prove_with: Option<BackendType>,
     coprocessors: riscv::CoProcessors,
+    just_execute: bool,
 ) -> Result<(), Vec<String>> {
     let (asm_file_path, asm_contents) =
         compile_rust(file_name, output_dir, force_overwrite, &coprocessors)
             .ok_or_else(|| vec!["could not compile rust".to_string()])?;
 
-    compile_asm_string(
+    handle_riscv_asm(
         asm_file_path.to_str().unwrap(),
         &asm_contents,
         inputs,
         output_dir,
         force_overwrite,
         prove_with,
-        vec![],
+        just_execute,
     )?;
     Ok(())
 }
@@ -469,6 +497,7 @@ fn run_riscv_asm<F: FieldElement>(
     force_overwrite: bool,
     prove_with: Option<BackendType>,
     coprocessors: riscv::CoProcessors,
+    just_execute: bool,
 ) -> Result<(), Vec<String>> {
     let (asm_file_path, asm_contents) = compile_riscv_asm(
         original_file_name,
@@ -479,15 +508,41 @@ fn run_riscv_asm<F: FieldElement>(
     )
     .ok_or_else(|| vec!["could not compile RISC-V assembly".to_string()])?;
 
-    compile_asm_string(
+    handle_riscv_asm(
         asm_file_path.to_str().unwrap(),
         &asm_contents,
         inputs,
         output_dir,
         force_overwrite,
         prove_with,
-        vec![],
+        just_execute,
     )?;
+    Ok(())
+}
+
+fn handle_riscv_asm<F: FieldElement>(
+    file_name: &str,
+    contents: &str,
+    inputs: Vec<F>,
+    output_dir: &Path,
+    force_overwrite: bool,
+    prove_with: Option<BackendType>,
+    just_execute: bool,
+) -> Result<(), Vec<String>> {
+    if just_execute {
+        riscv_executor::execute::<F>(contents, &inputs);
+    } else {
+        compile_asm_string(
+            file_name,
+            contents,
+            &inputs,
+            None,
+            output_dir,
+            force_overwrite,
+            prove_with,
+            vec![]
+        )?;
+    }
     Ok(())
 }
 
@@ -703,6 +758,7 @@ mod test {
             prove_with: Some(BackendType::PilStarkCli),
             export_csv: true,
             csv_mode: CsvRenderModeCLI::Hex,
+            just_execute: false,
         };
         run_command(pil_command);
 

@@ -759,10 +759,18 @@ fn process_statement(s: Statement, coprocessors: &CoProcessors) -> Vec<String> {
                 args.iter().format(", ")
             ),
         },
-        Statement::Instruction(instr, args) => process_instruction(instr, args, coprocessors)
-            .into_iter()
-            .map(|s| "  ".to_string() + &s)
-            .collect(),
+        Statement::Instruction(instr, args) => {
+            let stmt_str = format!("{s}");
+            // remove indentation and trailing newline
+            let stmt_str = &stmt_str[2..(stmt_str.len() - 1)];
+            let mut ret = vec![format!("  debug insn \"{stmt_str}\";")];
+            ret.extend(
+                process_instruction(instr, args, coprocessors)
+                    .into_iter()
+                    .map(|s| "  ".to_string() + &s),
+            );
+            ret
+        }
     }
 }
 

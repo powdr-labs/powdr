@@ -35,7 +35,7 @@ pub fn mock_prove<T: FieldElement>(
 mod test {
     use std::{fs, path::PathBuf};
 
-    use analysis::analyze;
+    use analysis::convert_asm_to_pil;
     use number::Bn254Field;
     use parser::parse_asm;
     use test_log::test;
@@ -54,7 +54,7 @@ mod test {
         let contents = fs::read_to_string(&location).unwrap();
         let parsed = parse_asm::<Bn254Field>(Some(&location), &contents).unwrap();
         let resolved = importer::resolve(Some(PathBuf::from(location)), parsed).unwrap();
-        let analysed = analyze(resolved).unwrap();
+        let analysed = convert_asm_to_pil(resolved).unwrap();
         let graph = airgen::compile(analysed);
         let pil = linker::link(graph).unwrap();
 
