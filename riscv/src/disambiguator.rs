@@ -88,11 +88,14 @@ fn disambiguate_file_ids(
         .iter()
         .flat_map(|(name, statements)| extract_file_ids(name, statements))
         .collect::<Vec<_>>();
-    let debug_file_id_mapping = debug_file_ids
-        .iter()
-        .enumerate()
-        .map(|(i, (asm_name, file_id, ..))| ((asm_name.to_string(), *file_id), i as i64 + 1))
-        .collect::<HashMap<_, _>>();
+    // ensure the ids are densely packed:
+    let debug_file_id_mapping = {
+        let mut map = HashMap::new();
+        for (asm_name, file_id, ..) in debug_file_ids.iter() {
+            map.insert((asm_name.to_string(), *file_id), map.len() as i64 + 1);
+        }
+        map
+    };
     let new_debug_file_ids = debug_file_ids
         .into_iter()
         .map(|(asm_file, id, dir, file)| {
