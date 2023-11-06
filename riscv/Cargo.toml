@@ -24,6 +24,7 @@ lalrpop = "^0.19"
 [dev-dependencies]
 test-log = "0.2.12"
 env_logger = "0.10.0"
+hex = "0.4.3"
 number = { path = "../number" }
 compiler = { path = "../compiler" }
-hex = "0.4.3"
+riscv_executor = { path = "../riscv_executor" }

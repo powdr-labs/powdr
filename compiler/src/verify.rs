@@ -16,6 +16,7 @@ pub fn verify_asm_string<T: FieldElement>(file_name: &str, contents: &str, input
         file_name,
         contents,
         inputs,
+        None,
         &temp_dir,
         true,
         Some(BackendType::PilStarkCli),
