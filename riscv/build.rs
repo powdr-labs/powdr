@@ -18,6 +18,7 @@ fn build_lalrpop() {
         .unwrap();
 }
 
+#[allow(clippy::print_stdout)]
 fn build_instruction_tests() {
     let out_dir = env::var("OUT_DIR").unwrap();
     let destination = Path::new(&out_dir).join("instruction_tests.rs");

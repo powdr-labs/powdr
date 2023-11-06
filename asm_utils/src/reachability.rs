@@ -56,6 +56,7 @@ pub fn filter_reachable_from<R: Register, F: FunctionOpKind, A: Architecture>(
         .collect();
 }
 
+#[allow(clippy::print_stderr)]
 pub fn find_reachable_labels<'a, R: Register, F: FunctionOpKind, A: Architecture>(
     label: &'a str,
     statements: &'a [Statement<R, F>],

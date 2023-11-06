@@ -26,6 +26,7 @@ type Expression = asm_utils::ast::Expression<FunctionKind>;
 
 /// Compiles a rust file all the way down to PIL and generates
 /// fixed and witness columns.
+#[allow(clippy::print_stderr)]
 pub fn compile_rust(
     file_name: &str,
     output_dir: &Path,
@@ -68,6 +69,7 @@ pub fn compile_rust(
     )
 }
 
+#[allow(clippy::print_stderr)]
 pub fn compile_riscv_asm_bundle(
     original_file_name: &str,
     riscv_asm_files: BTreeMap<String, String>,
