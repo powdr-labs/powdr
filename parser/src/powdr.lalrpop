@@ -140,7 +140,7 @@ PlookupIdentity: PilStatement<T> = {
     <@L> <SelectedExpressions> "in" <SelectedExpressions> => PilStatement::PlookupIdentity(<>)
 }
 
-SelectedExpressions: SelectedExpressions<T> = {
+SelectedExpressions: SelectedExpressions<Expression<T>> = {
     <selector:Expression?> "{" <expressions:ExpressionList> "}" => SelectedExpressions{<>},
     Expression => SelectedExpressions{selector: None, expressions: vec![<>]},
 }
@@ -284,7 +284,8 @@ OperationDeclaration: MachineStatement<T> = {
 }
 
 OperationId: OperationId<T> = {
-    "<" <id:FieldElement> ">" => OperationId { id },
+    "<" <id:FieldElement> ">" => OperationId { id: Some(id) },
+    => OperationId { id: None }
 }
 
 pub FunctionStatement: FunctionStatement<T> = {
@@ -450,20 +451,29 @@ PowOp: BinaryOperator = {
 }
 
 Unary: Box<Expression<T>> = {
-    UnaryOp Term => Box::new(Expression::UnaryOperation(<>)),
-    Term,
+    PrefixUnaryOp PostfixUnary => Box::new(Expression::UnaryOperation(<>)),
+    PostfixUnary,
 }
 
-UnaryOp: UnaryOperator = {
+PrefixUnaryOp: UnaryOperator = {
     "+" => UnaryOperator::Plus,
     "-" => UnaryOperator::Minus,
     "!" => UnaryOperator::LogicalNot,
 }
 
+PostfixUnary: Box<Expression<T>> = {
+    <t:Term> <o:PostfixUnaryOp> => Box::new(Expression::UnaryOperation(o, t)),
+    Term,
+}
+
+PostfixUnaryOp: UnaryOperator = {
+    "'" => UnaryOperator::Next,
+}
+
 Term: Box<Expression<T>> = {
     FunctionCall => Box::new(Expression::FunctionCall(<>)),
-    ConstantIdentifier => Box::new(Expression::Constant(<>)),
-    ShiftedPolynomialReference => Box::new(Expression::Reference(<>)),
+    ConstantIdentifier => Box::new(Expression::Reference(PolynomialReference::new(<>).single().local())),
+    NamespacedPolynomialReference => Box::new(Expression::Reference(<>)),
     PublicReference => Box::new(Expression::PublicReference(<>)),
     FieldElement => Box::new(Expression::Number(<>)),
     StringLiteral => Box::new(Expression::String(<>)),
@@ -476,11 +486,6 @@ Term: Box<Expression<T>> = {
 
 FunctionCall: FunctionCall<T> = {
     <id:Identifier> "(" <arguments:ExpressionList> ")" => FunctionCall {<>},
-}
-
-ShiftedPolynomialReference: ShiftedPolynomialReference<T> = {
-    <pol:NamespacedPolynomialReference>
-    <next:"'"?> => pol.with_shift(next.is_some()),
 }
 
 NamespacedPolynomialReference: NamespacedPolynomialReference<T> = {

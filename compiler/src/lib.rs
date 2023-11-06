@@ -17,6 +17,7 @@ mod verify;
 
 use analysis::analyze;
 pub use backend::{BackendType, Proof};
+use executor::witgen::QueryCallback;
 use number::write_polys_file;
 use number::DegreeType;
 pub use verify::{verify, verify_asm_string};
@@ -38,15 +39,24 @@ pub fn compile_pil_or_asm<T: FieldElement>(
     output_dir: &Path,
     force_overwrite: bool,
     prove_with: Option<BackendType>,
+    external_witness_values: Vec<(&str, Vec<T>)>,
 ) -> Result<Option<CompilationResult<T>>, Vec<String>> {
     if file_name.ends_with(".asm") {
-        compile_asm(file_name, inputs, output_dir, force_overwrite, prove_with)
+        compile_asm(
+            file_name,
+            inputs,
+            output_dir,
+            force_overwrite,
+            prove_with,
+            external_witness_values,
+        )
     } else {
         Ok(Some(compile_pil(
             Path::new(file_name),
             output_dir,
-            Some(inputs_to_query_callback(inputs)),
+            inputs_to_query_callback(inputs),
             prove_with,
+            external_witness_values,
         )))
     }
 }
@@ -59,36 +69,33 @@ pub fn analyze_pil<T: FieldElement>(pil_file: &Path) -> Analyzed<T> {
 /// constants and committed polynomials.
 /// @returns a compilation result, containing witness and fixed columns
 /// if they could be successfully generated.
-pub fn compile_pil<T: FieldElement, QueryCallback>(
+pub fn compile_pil<T: FieldElement, Q: QueryCallback<T>>(
     pil_file: &Path,
     output_dir: &Path,
-    query_callback: Option<QueryCallback>,
+    query_callback: Q,
     prove_with: Option<BackendType>,
-) -> CompilationResult<T>
-where
-    QueryCallback: FnMut(&str) -> Option<T> + Sync + Send,
-{
+    external_witness_values: Vec<(&str, Vec<T>)>,
+) -> CompilationResult<T> {
     compile(
         pil_analyzer::analyze(pil_file),
         pil_file.file_name().unwrap(),
         output_dir,
         query_callback,
         prove_with,
+        external_witness_values,
     )
 }
 
 /// Compiles a given PIL and tries to generate fixed and witness columns.
 /// @returns a compilation result, containing witness and fixed columns
-pub fn compile_pil_ast<T: FieldElement, QueryCallback>(
+pub fn compile_pil_ast<T: FieldElement, Q: QueryCallback<T>>(
     pil: &PILFile<T>,
     file_name: &OsStr,
     output_dir: &Path,
-    query_callback: Option<QueryCallback>,
+    query_callback: Q,
     prove_with: Option<BackendType>,
-) -> CompilationResult<T>
-where
-    QueryCallback: FnMut(&str) -> Option<T> + Sync + Send,
-{
+    external_witness_values: Vec<(&str, Vec<T>)>,
+) -> CompilationResult<T> {
     // TODO exporting this to string as a hack because the parser
     // is tied into the analyzer due to imports.
     compile(
@@ -97,6 +104,7 @@ where
         output_dir,
         query_callback,
         prove_with,
+        external_witness_values,
     )
 }
 
@@ -109,6 +117,7 @@ pub fn compile_asm<T: FieldElement>(
     output_dir: &Path,
     force_overwrite: bool,
     prove_with: Option<BackendType>,
+    external_witness_values: Vec<(&str, Vec<T>)>,
 ) -> Result<Option<CompilationResult<T>>, Vec<String>> {
     let contents = fs::read_to_string(file_name).unwrap();
     Ok(compile_asm_string(
@@ -118,6 +127,7 @@ pub fn compile_asm<T: FieldElement>(
         output_dir,
         force_overwrite,
         prove_with,
+        external_witness_values,
     )?
     .1)
 }
@@ -133,6 +143,7 @@ pub fn compile_asm_string<T: FieldElement>(
     output_dir: &Path,
     force_overwrite: bool,
     prove_with: Option<BackendType>,
+    external_witness_values: Vec<(&str, Vec<T>)>,
 ) -> Result<(PathBuf, Option<CompilationResult<T>>), Vec<String>> {
     let parsed = parser::parse_asm(Some(file_name), contents).unwrap_or_else(|err| {
         eprintln!("Error parsing .asm file:");
@@ -178,8 +189,9 @@ pub fn compile_asm_string<T: FieldElement>(
             &pil,
             pil_file_name,
             output_dir,
-            Some(inputs_to_query_callback(inputs)),
+            inputs_to_query_callback(inputs),
             prove_with,
+            external_witness_values,
         )),
     ))
 }
@@ -193,16 +205,14 @@ pub struct CompilationResult<T: FieldElement> {
 
 /// Optimizes a given pil and tries to generate constants and committed polynomials.
 /// @returns a compilation result, containing witness and fixed columns, if successful.
-fn compile<T: FieldElement, QueryCallback>(
+fn compile<T: FieldElement, Q: QueryCallback<T>>(
     analyzed: Analyzed<T>,
     file_name: &OsStr,
     output_dir: &Path,
-    query_callback: Option<QueryCallback>,
+    query_callback: Q,
     prove_with: Option<BackendType>,
-) -> CompilationResult<T>
-where
-    QueryCallback: FnMut(&str) -> Option<T> + Send + Sync,
-{
+    external_witness_values: Vec<(&str, Vec<T>)>,
+) -> CompilationResult<T> {
     log::info!("Optimizing pil...");
     let analyzed = pilopt::optimize(analyzed);
     let optimized_pil_file_name = output_dir.join(format!(
@@ -218,7 +228,10 @@ where
 
     let witness = (analyzed.constant_count() == constants.len()).then(|| {
         log::info!("Deducing witness columns...");
-        let commits = executor::witgen::generate(&analyzed, degree, &constants, query_callback);
+        let commits =
+            executor::witgen::WitnessGenerator::new(&analyzed, degree, &constants, query_callback)
+                .with_external_witness_values(external_witness_values)
+                .generate();
 
         let witness = commits
             .into_iter()
@@ -342,6 +355,10 @@ pub fn inputs_to_query_callback<T: FieldElement>(inputs: Vec<T>) -> impl Fn(&str
                 assert_eq!(items.len(), 2);
                 print!("{}", items[1].parse::<u8>().unwrap() as char);
                 Some(0.into())
+            }
+            "\"hint\"" => {
+                assert_eq!(items.len(), 2);
+                Some(T::from_str(items[1]))
             }
             _ => None,
         }

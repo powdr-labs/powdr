@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-revm = { git = "https://github.com/bluealloy/revm.git", default-features = false }
+revm = { version = "3.5.0", default-features = false }
 runtime = { path = "../../../runtime" }
 
 [workspace]

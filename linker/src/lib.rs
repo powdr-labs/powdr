@@ -1,7 +1,5 @@
 #![deny(clippy::print_stdout)]
 
-use std::iter::once;
-
 use analysis::utils::parse_pil_statement;
 use ast::{
     object::{Location, PILGraph},
@@ -59,7 +57,7 @@ pub fn link<T: FieldElement>(graph: PILGraph<T>) -> Result<PILFile<T>, Vec<Strin
                 // the lhs is `instr_flag { inputs, outputs }`
                 let lhs = SelectedExpressions {
                     selector: Some(from.flag),
-                    expressions: once(Expression::Number(to.operation.id))
+                    expressions: to.operation.id.map(Expression::Number).into_iter()
                         .chain(
                             from.params
                                 .inputs
@@ -87,11 +85,11 @@ pub fn link<T: FieldElement>(graph: PILGraph<T>) -> Result<PILFile<T>, Vec<Strin
                 let to_namespace = to.machine.location.clone().to_string();
 
                 let rhs = SelectedExpressions {
-                    selector: Some(namespaced_reference(to_namespace.clone(), to.machine.latch)),
-                    expressions: once(namespaced_reference(
+                    selector: Some(namespaced_reference(to_namespace.clone(), to.machine.latch.unwrap())),
+                    expressions: to.machine.operation_id.map(|operation_id| namespaced_reference(
                         to_namespace.clone(),
-                        to.machine.operation_id,
-                    ))
+                        operation_id,
+                    )).into_iter()
                     .chain(
                         params
                             .inputs
@@ -115,14 +113,20 @@ pub fn link<T: FieldElement>(graph: PILGraph<T>) -> Result<PILFile<T>, Vec<Strin
                 {
                     let main_operation_id = main_operation.id;
                     let operation_id = main_machine.operation_id.clone();
-                    // call the main operation by initialising `operation_id` to that of the main operation
-                    let linker_first_step = "_linker_first_step";
-                    pil.extend([
-                        parse_pil_statement(&format!("col fixed {linker_first_step} = [1] + [0]*")),
-                        parse_pil_statement(&format!(
-                            "{linker_first_step} * ({operation_id} - {main_operation_id}) = 0"
-                        )),
-                    ]);
+                    match (operation_id, main_operation_id) {
+                        (Some(operation_id), Some(main_operation_id)) => {
+                            // call the main operation by initialising `operation_id` to that of the main operation
+                            let linker_first_step = "_linker_first_step";
+                            pil.extend([
+                                parse_pil_statement(&format!("col fixed {linker_first_step} = [1] + [0]*")),
+                                parse_pil_statement(&format!(
+                                    "{linker_first_step} * ({operation_id} - {main_operation_id}) = 0"
+                                )),
+                            ]);
+                        }
+                        (None, None) => {}
+                        _ => unreachable!()
+                    }
                 }
             }
 
@@ -166,8 +170,8 @@ mod test {
         let test_graph = |main_degree, foo_degree| PILGraph {
             main: ast::object::Machine {
                 location: Location::main(),
-                operation_id: "operation_id".into(),
-                latch: "latch".into(),
+                operation_id: Some("operation_id".into()),
+                latch: Some("latch".into()),
             },
             entry_points: vec![],
             objects: [
@@ -212,11 +216,7 @@ mod test {
     fn compile_empty_vm() {
         let expectation = r#"
         namespace main(8);
-pol commit _operation_id;
-pol commit _sigma;
-pol constant _romgen_first_step = [1] + [0]*;
-_sigma' = ((1 - _romgen_first_step') * (_sigma + instr_return));
-(_sigma * (_operation_id - 2)) = 0;
+pol commit _operation_id(i) query ("hint", 2);
 pol commit pc;
 pol commit instr__jump_to_operation;
 pol commit instr__reset;
@@ -251,11 +251,7 @@ _operation_id_no_change = ((1 - _block_enforcer_last_step) * (1 - instr_return))
     fn compile_different_signatures() {
         let expectation = r#"
         namespace main(16);
-pol commit _operation_id;
-pol commit _sigma;
-pol constant _romgen_first_step = [1] + [0]*;
-_sigma' = ((1 - _romgen_first_step') * (_sigma + instr_return));
-(_sigma * (_operation_id - 4)) = 0;
+pol commit _operation_id(i) query ("hint", 4);
 pol commit pc;
 pol commit X;
 pol commit Y;
@@ -314,11 +310,7 @@ instr_nothing { 3 } in main_sub.instr_return { main_sub._operation_id };
 pol constant _linker_first_step = [1] + [0]*;
 (_linker_first_step * (_operation_id - 2)) = 0;
 namespace main_sub(16);
-pol commit _operation_id;
-pol commit _sigma;
-pol constant _romgen_first_step = [1] + [0]*;
-_sigma' = ((1 - _romgen_first_step') * (_sigma + instr_return));
-(_sigma * (_operation_id - 5)) = 0;
+pol commit _operation_id(i) query ("hint", 5);
 pol commit pc;
 pol commit _input_0;
 pol commit _output_0;
@@ -370,11 +362,7 @@ pol commit XIsZero;
 XIsZero = (1 - (X * XInv));
 (XIsZero * X) = 0;
 (XIsZero * (1 - XIsZero)) = 0;
-pol commit _operation_id;
-pol commit _sigma;
-pol constant _romgen_first_step = [1] + [0]*;
-_sigma' = ((1 - _romgen_first_step') * (_sigma + instr_return));
-(_sigma * (_operation_id - 10)) = 0;
+pol commit _operation_id(i) query ("hint", 10);
 pol commit pc;
 pol commit X;
 pol commit reg_write_X_A;
@@ -462,11 +450,7 @@ machine Machine {
 "#;
         let expectation = r#"
 namespace main(1024);
-pol commit _operation_id;
-pol commit _sigma;
-pol constant _romgen_first_step = [1] + [0]*;
-_sigma' = ((1 - _romgen_first_step') * (_sigma + instr_return));
-(_sigma * (_operation_id - 4)) = 0;
+pol commit _operation_id(i) query ("hint", 4);
 pol commit pc;
 pol commit fp;
 pol commit instr_inc_fp;

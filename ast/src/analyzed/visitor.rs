@@ -2,58 +2,58 @@ use crate::parsed::visitor::VisitOrder;
 
 use super::*;
 
-impl<T> ExpressionVisitable<parsed::Expression<T, Reference>> for Analyzed<T> {
+impl<T> ExpressionVisitable<AlgebraicExpression<T>> for AlgebraicExpression<T> {
     fn visit_expressions_mut<F, B>(&mut self, f: &mut F, o: VisitOrder) -> ControlFlow<B>
     where
-        F: FnMut(&mut parsed::Expression<T, Reference>) -> ControlFlow<B>,
+        F: FnMut(&mut AlgebraicExpression<T>) -> ControlFlow<B>,
     {
-        // TODO add constants if we change them to expressions at some point.
-        self.definitions
-            .values_mut()
-            .try_for_each(|(_poly, definition)| match definition {
-                Some(FunctionValueDefinition::Mapping(e))
-                | Some(FunctionValueDefinition::Query(e)) => e.visit_expressions_mut(f, o),
-                Some(FunctionValueDefinition::Array(elements)) => elements
-                    .iter_mut()
-                    .flat_map(|e| e.pattern.iter_mut())
-                    .try_for_each(|e| e.visit_expressions_mut(f, o)),
-                Some(FunctionValueDefinition::Expression(e)) => e.visit_expressions_mut(f, o),
-                None => ControlFlow::Continue(()),
-            })?;
-
-        self.identities
-            .iter_mut()
-            .try_for_each(|i| i.visit_expressions_mut(f, o))
+        if o == VisitOrder::Pre {
+            f(self)?;
+        }
+        match self {
+            AlgebraicExpression::Reference(_)
+            | AlgebraicExpression::PublicReference(_)
+            | AlgebraicExpression::Number(_) => {}
+            AlgebraicExpression::BinaryOperation(left, _, right) => {
+                left.visit_expressions_mut(f, o)?;
+                right.visit_expressions_mut(f, o)?;
+            }
+            AlgebraicExpression::UnaryOperation(_, e) => e.visit_expressions_mut(f, o)?,
+        };
+        if o == VisitOrder::Post {
+            f(self)?;
+        }
+        ControlFlow::Continue(())
     }
 
     fn visit_expressions<F, B>(&self, f: &mut F, o: VisitOrder) -> ControlFlow<B>
     where
-        F: FnMut(&parsed::Expression<T, Reference>) -> ControlFlow<B>,
+        F: FnMut(&AlgebraicExpression<T>) -> ControlFlow<B>,
     {
-        // TODO add constants if we change them to expressions at some point.
-        self.definitions
-            .values()
-            .try_for_each(|(_poly, definition)| match definition {
-                Some(FunctionValueDefinition::Mapping(e))
-                | Some(FunctionValueDefinition::Query(e)) => e.visit_expressions(f, o),
-                Some(FunctionValueDefinition::Array(elements)) => elements
-                    .iter()
-                    .flat_map(|e| e.pattern.iter())
-                    .try_for_each(|e| e.visit_expressions(f, o)),
-                Some(FunctionValueDefinition::Expression(e)) => e.visit_expressions(f, o),
-                None => ControlFlow::Continue(()),
-            })?;
-
-        self.identities
-            .iter()
-            .try_for_each(|i| i.visit_expressions(f, o))
+        if o == VisitOrder::Pre {
+            f(self)?;
+        }
+        match self {
+            AlgebraicExpression::Reference(_)
+            | AlgebraicExpression::PublicReference(_)
+            | AlgebraicExpression::Number(_) => {}
+            AlgebraicExpression::BinaryOperation(left, _, right) => {
+                left.visit_expressions(f, o)?;
+                right.visit_expressions(f, o)?;
+            }
+            AlgebraicExpression::UnaryOperation(_, e) => e.visit_expressions(f, o)?,
+        };
+        if o == VisitOrder::Post {
+            f(self)?;
+        }
+        ControlFlow::Continue(())
     }
 }
 
-impl<T> ExpressionVisitable<parsed::Expression<T, Reference>> for Identity<T> {
+impl<Expr: ExpressionVisitable<Expr>> ExpressionVisitable<Expr> for Identity<Expr> {
     fn visit_expressions_mut<F, B>(&mut self, f: &mut F, o: VisitOrder) -> ControlFlow<B>
     where
-        F: FnMut(&mut parsed::Expression<T, Reference>) -> ControlFlow<B>,
+        F: FnMut(&mut Expr) -> ControlFlow<B>,
     {
         self.left
             .selector
@@ -67,7 +67,7 @@ impl<T> ExpressionVisitable<parsed::Expression<T, Reference>> for Identity<T> {
 
     fn visit_expressions<F, B>(&self, f: &mut F, o: VisitOrder) -> ControlFlow<B>
     where
-        F: FnMut(&parsed::Expression<T, Reference>) -> ControlFlow<B>,
+        F: FnMut(&Expr) -> ControlFlow<B>,
     {
         self.left
             .selector
@@ -77,5 +77,37 @@ impl<T> ExpressionVisitable<parsed::Expression<T, Reference>> for Identity<T> {
             .chain(self.right.selector.iter())
             .chain(self.right.expressions.iter())
             .try_for_each(move |item| item.visit_expressions(f, o))
+    }
+}
+
+impl<T> ExpressionVisitable<Expression<T>> for FunctionValueDefinition<T> {
+    fn visit_expressions_mut<F, B>(&mut self, f: &mut F, o: VisitOrder) -> ControlFlow<B>
+    where
+        F: FnMut(&mut Expression<T>) -> ControlFlow<B>,
+    {
+        match self {
+            FunctionValueDefinition::Mapping(e)
+            | FunctionValueDefinition::Query(e)
+            | FunctionValueDefinition::Expression(e) => e.visit_expressions_mut(f, o),
+            FunctionValueDefinition::Array(array) => array
+                .iter_mut()
+                .flat_map(|a| a.pattern.iter_mut())
+                .try_for_each(move |item| item.visit_expressions_mut(f, o)),
+        }
+    }
+
+    fn visit_expressions<F, B>(&self, f: &mut F, o: VisitOrder) -> ControlFlow<B>
+    where
+        F: FnMut(&Expression<T>) -> ControlFlow<B>,
+    {
+        match self {
+            FunctionValueDefinition::Mapping(e)
+            | FunctionValueDefinition::Query(e)
+            | FunctionValueDefinition::Expression(e) => e.visit_expressions(f, o),
+            FunctionValueDefinition::Array(array) => array
+                .iter()
+                .flat_map(|a| a.pattern().iter())
+                .try_for_each(move |item| item.visit_expressions(f, o)),
+        }
     }
 }

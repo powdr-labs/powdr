@@ -1,12 +1,14 @@
 use std::fmt;
 
-use ast::analyzed::PolynomialReference;
+use ast::analyzed::AlgebraicReference;
 use number::FieldElement;
 
 use super::range_constraints::RangeConstraint;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum IncompleteCause<K = usize> {
+    /// In a VM, the latch value could not be figured out after a row was processed.
+    UnknownLatch,
     /// Some parts of an expression are not bit constrained. Example: `x + y == 0x3` with `x | 0x1`. Arguments: the indices of the unconstrained variables.
     BitUnconstrained(Vec<K>),
     /// Some bit constraints are overlapping. Example: `x + y == 0x3` with `x | 0x3` and `y | 0x3`
@@ -29,10 +31,10 @@ pub enum IncompleteCause<K = usize> {
     NonConstantQueryMatchScrutinee,
     /// Query element is not constant.
     NonConstantQueryElement,
+    /// A required argument was not provided
+    NonConstantRequiredArgument(&'static str),
     /// The left selector in a lookup is not constant. Example: `x * {1} in [{1}]` where `x` is not constant.
     NonConstantLeftSelector,
-    /// A value to be written is not constant. TODO: should this be covered by another case? it's used for memory
-    NonConstantWriteValue,
     /// An expression cannot be evaluated.
     ExpressionEvaluationUnimplemented(String),
     /// A value is not found on the left side of a match. Example: `match x {1 => 2, 3 => 4}` where `x == 0`
@@ -146,7 +148,7 @@ where
 
 /// Result of evaluating an expression / lookup.
 /// New assignments or constraints for witness columns identified by an ID.
-pub type EvalResult<'a, T, K = &'a PolynomialReference> = Result<EvalValue<K, T>, EvalError<T>>;
+pub type EvalResult<'a, T, K = &'a AlgebraicReference> = Result<EvalValue<K, T>, EvalError<T>>;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum EvalError<T: FieldElement> {

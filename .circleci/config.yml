@@ -1,0 +1,192 @@
+version: 2.1
+
+executors:
+  executor:
+    machine:
+      image: ubuntu-2004:current
+    resource_class: large
+
+jobs:
+  build:
+    executor: executor
+    steps:
+      - checkout
+
+      - run:
+          name: Install dependencies
+          command: sudo apt update -qqy && sudo apt install libclang-dev git nodejs -qqy
+
+      - run:
+          name: Install Rustup
+          command: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+
+      - run:
+          name: Install Rust
+          command: |
+            rustup toolchain install 1.72-x86_64-unknown-linux-gnu
+            rustup component add clippy --toolchain 1.72-x86_64-unknown-linux-gnu
+            rustup component add rustfmt --toolchain 1.72-x86_64-unknown-linux-gnu
+
+      - run:
+          name: Install pilcom
+          command: git clone https://github.com/0xPolygonHermez/pilcom.git
+
+      - restore_cache:
+          name: Restore pilcom modules cache
+          keys:
+            - v5-pilcom-node-modules-{{ checksum "pilcom/package-lock.json" }}
+
+      - run:
+          name: Install pilcom node modules if cache miss
+          command: |
+            if [ ! -d "pilcom/node_modules" ]; then
+              (cd pilcom && npm install)
+            fi
+
+      - save_cache:
+          name: Save pilcom modules cache
+          key: v5-pilcom-node-modules-{{ checksum "pilcom/package-lock.json" }}
+          paths:
+            - pilcom/node_modules
+
+      - restore_cache:
+          name: Restore Rust cache
+          keys:
+            - v5-cargo-pr-tests-{{ .Branch }}
+
+      - run:
+          name: Check without Halo2
+          command: cargo check --all --no-default-features --profile pr-tests
+
+      - run:
+          name: Build
+          command: cargo build --bins --tests --benches --all --all-features --profile pr-tests
+
+      - save_cache:
+          name: Save Rust cache
+          key: v5-cargo-pr-tests-{{ .Branch }}
+          paths:
+            - ~/.cargo/registry
+            - ~/.cargo/git
+            - target
+
+      - persist_to_workspace:
+          root: .
+          paths:
+            - target/pr-tests
+            - pilcom
+
+
+  test:
+    executor: executor
+    parallelism: 4
+    steps:
+      - checkout
+
+      - attach_workspace:
+          at: .
+
+      - run:
+          name: Install dependencies
+          command: sudo apt update -qqy && sudo apt install libclang-dev git nodejs -qqy
+
+      - run:
+          name: Install Rustup
+          command: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+
+      - run:
+          name: Install Rust
+          command: |
+            rustup toolchain install 1.72-x86_64-unknown-linux-gnu
+            rustup toolchain install nightly-2023-01-03-x86_64-unknown-linux-gnu
+            rustup target add riscv32imac-unknown-none-elf --toolchain nightly-2023-01-03-x86_64-unknown-linux-gnu
+            rustup component add rust-src --toolchain nightly-2023-01-03-x86_64-unknown-linux-gnu
+
+      - run:
+          name: Determine which tests to run
+          command: |
+              cargo test --all --all-features --profile pr-tests  -- --list 2> /dev/null | grep ': test' | sed -e 's/: test//' | \
+              circleci tests split --split-by=timings | tee tests_to_run.txt
+
+      - run:
+          name: Run default tests
+          command: |
+            PILCOM=$(pwd)/pilcom/ cargo test --no-fail-fast --all --all-features --profile pr-tests --verbose -- --exact $(cat tests_to_run.txt)
+
+      - run:
+          name: Check benches compile without running them
+          command: cargo bench --all --all-features --profile pr-tests --no-run
+
+  slow_test:
+    executor: executor
+    steps:
+      - checkout
+
+      - attach_workspace:
+          at: .
+
+      - run:
+          name: Install dependencies
+          command: sudo apt update -qqy && sudo apt install libclang-dev git nodejs -qqy
+
+      - run:
+          name: Install Rustup
+          command: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+
+      - run:
+          name: Install Rust
+          command: |
+            rustup toolchain install 1.72-x86_64-unknown-linux-gnu
+            rustup toolchain install nightly-2023-01-03-x86_64-unknown-linux-gnu
+            rustup target add riscv32imac-unknown-none-elf --toolchain nightly-2023-01-03-x86_64-unknown-linux-gnu
+            rustup component add rust-src --toolchain nightly-2023-01-03-x86_64-unknown-linux-gnu
+
+      - run:
+          name: Run slow tests
+          command: PILCOM=$(pwd)/pilcom/ cargo test --all --all-features --profile pr-tests --verbose -- --ignored --nocapture --test-threads=2 --exact test_keccak test_vec_median instruction_tests::addi
+
+  lint:
+    executor: executor
+    steps:
+      - checkout
+      - attach_workspace:
+          at: .
+
+      - run:
+          name: Install dependencies
+          command: sudo apt update -qqy && sudo apt install libclang-dev git nodejs -qqy
+
+      - run:
+          name: Install Rustup
+          command: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+
+      - run:
+          name: Install Rust
+          command: |
+            rustup toolchain install 1.72-x86_64-unknown-linux-gnu
+            rustup component add clippy --toolchain 1.72-x86_64-unknown-linux-gnu
+            rustup component add rustfmt --toolchain 1.72-x86_64-unknown-linux-gnu
+
+      - run:
+          name: Lint
+          command: cargo clippy --all --all-features -- -D warnings
+
+      - run:
+          name: Format
+          command: cargo fmt --all --check --verbose
+
+
+workflows:
+  version: 2
+  build-and-test:
+    jobs:
+      - build
+      - lint:
+          requires:
+            - build
+      - test:
+          requires:
+            - build
+      - slow_test:
+          requires:
+            - build

@@ -3,12 +3,14 @@ use std::collections::{BTreeMap, BTreeSet};
 use num_traits::Zero;
 
 use ast::analyzed::{
-    Expression, Identity, IdentityKind, PolyID, PolynomialReference, PolynomialType,
+    AlgebraicBinaryOperator, AlgebraicExpression as Expression, AlgebraicReference, Identity,
+    IdentityKind, PolyID, PolynomialType,
 };
-use ast::parsed::BinaryOperator;
+
 use number::FieldElement;
 
-use super::column_map::WitnessColumnMap;
+use crate::witgen::data_structures::column_map::{FixedColumnMap, WitnessColumnMap};
+
 use super::expression_evaluator::ExpressionEvaluator;
 use super::range_constraints::RangeConstraint;
 use super::symbolic_evaluator::SymbolicEvaluator;
@@ -24,28 +26,41 @@ pub struct SimpleRangeConstraintSet<'a, T: FieldElement> {
     range_constraints: &'a BTreeMap<PolyID, RangeConstraint<T>>,
 }
 
-impl<'a, T: FieldElement> RangeConstraintSet<&PolynomialReference, T>
+impl<'a, T: FieldElement> RangeConstraintSet<&AlgebraicReference, T>
     for SimpleRangeConstraintSet<'a, T>
 {
-    fn range_constraint(&self, id: &PolynomialReference) -> Option<RangeConstraint<T>> {
+    fn range_constraint(&self, id: &AlgebraicReference) -> Option<RangeConstraint<T>> {
         assert!(!id.next);
-        self.range_constraints.get(&id.poly_id()).cloned()
+        self.range_constraints.get(&id.poly_id).cloned()
     }
 }
 
-pub struct GlobalConstraints<'a, T: FieldElement> {
-    pub known_witness_constraints: WitnessColumnMap<Option<RangeConstraint<T>>>,
-    pub retained_identities: Vec<&'a Identity<T>>,
+#[derive(Clone)]
+pub struct GlobalConstraints<T: FieldElement> {
+    pub witness_constraints: WitnessColumnMap<Option<RangeConstraint<T>>>,
+    pub fixed_constraints: FixedColumnMap<Option<RangeConstraint<T>>>,
+}
+
+impl<T: FieldElement> RangeConstraintSet<&AlgebraicReference, T> for GlobalConstraints<T> {
+    fn range_constraint(&self, id: &AlgebraicReference) -> Option<RangeConstraint<T>> {
+        assert!(!id.next);
+        let poly_id = id.poly_id;
+        match poly_id.ptype {
+            PolynomialType::Constant => self.fixed_constraints[&poly_id].clone(),
+            PolynomialType::Committed => self.witness_constraints[&poly_id].clone(),
+            PolynomialType::Intermediate => None,
+        }
+    }
 }
 
 /// Determines global constraints on witness and fixed columns.
 /// Removes identities that only serve to create range constraints from
-/// the identities vector.
+/// the identities vector and returns the remaining identities.
 /// TODO at some point, we should check that they still hold.
 pub fn determine_global_constraints<'a, T: FieldElement>(
     fixed_data: &'a FixedData<T>,
-    identities: Vec<&'a Identity<T>>,
-) -> GlobalConstraints<'a, T> {
+    identities: Vec<&'a Identity<Expression<T>>>,
+) -> (GlobalConstraints<T>, Vec<&'a Identity<Expression<T>>>) {
     let mut known_constraints = BTreeMap::new();
     // For these columns, we know that they are not only constrained to those bits
     // but also have one row for each possible value.
@@ -59,6 +74,10 @@ pub fn determine_global_constraints<'a, T: FieldElement>(
             }
         }
     }
+    let fixed_constraints = FixedColumnMap::from_indexed(
+        known_constraints.iter().map(|(p, c)| (*p, Some(c.clone()))),
+        fixed_data.fixed_cols.len(),
+    );
 
     let mut retained_identities = vec![];
     let mut removed_identities = vec![];
@@ -86,24 +105,27 @@ pub fn determine_global_constraints<'a, T: FieldElement>(
         log::debug!("  {id}");
     }
 
-    let mut known_witness_constraints: WitnessColumnMap<Option<RangeConstraint<T>>> =
+    let mut witness_constraints: WitnessColumnMap<Option<RangeConstraint<T>>> =
         fixed_data.witness_map_with(None);
     for (poly_id, con) in known_constraints {
         if poly_id.ptype == PolynomialType::Committed {
             // It's theoretically possible to have a constraint for both X and X'.
             // In that case, we take the conjunction.
-            let con = known_witness_constraints[&poly_id]
+            let con = witness_constraints[&poly_id]
                 .as_ref()
                 .map(|existing_con| existing_con.conjunction(&con))
                 .unwrap_or(con);
-            known_witness_constraints[&poly_id] = Some(con);
+            witness_constraints[&poly_id] = Some(con);
         }
     }
 
-    GlobalConstraints {
-        known_witness_constraints,
+    (
+        GlobalConstraints {
+            witness_constraints,
+            fixed_constraints,
+        },
         retained_identities,
-    }
+    )
 }
 
 /// Analyzes a fixed column and checks if its values correspond exactly
@@ -134,7 +156,7 @@ fn process_fixed_column<T: FieldElement>(fixed: &[T]) -> Option<(RangeConstraint
 /// no further information than the range constraint.
 fn propagate_constraints<T: FieldElement>(
     mut known_constraints: BTreeMap<PolyID, RangeConstraint<T>>,
-    identity: &Identity<T>,
+    identity: &Identity<Expression<T>>,
     full_span: &BTreeSet<PolyID>,
 ) -> (BTreeMap<PolyID, RangeConstraint<T>>, bool) {
     let mut remove = false;
@@ -146,10 +168,9 @@ fn propagate_constraints<T: FieldElement>(
                     .is_none());
                 remove = true;
             } else {
-                for (p, c) in try_transfer_constraints(
-                    identity.left.selector.as_ref().unwrap(),
-                    &known_constraints,
-                ) {
+                for (p, c) in
+                    try_transfer_constraints(identity.expression_for_poly_id(), &known_constraints)
+                {
                     known_constraints
                         .entry(p)
                         .and_modify(|existing| *existing = existing.conjunction(&c))
@@ -170,9 +191,9 @@ fn propagate_constraints<T: FieldElement>(
                 if let (Some(left), Some(right)) =
                     (try_to_simple_poly(left), try_to_simple_poly(right))
                 {
-                    if let Some(constraint) = known_constraints.get(&right.poly_id()).cloned() {
+                    if let Some(constraint) = known_constraints.get(&right.poly_id).cloned() {
                         known_constraints
-                            .entry(left.poly_id())
+                            .entry(left.poly_id)
                             .and_modify(|existing| *existing = existing.conjunction(&constraint))
                             .or_insert(constraint);
                     }
@@ -182,7 +203,9 @@ fn propagate_constraints<T: FieldElement>(
                 // We can only remove the lookup if the RHS is a fixed polynomial that
                 // provides all values in the span.
                 if let Some(name) = try_to_simple_poly(&identity.right.expressions[0]) {
-                    if full_span.contains(&name.poly_id()) {
+                    if try_to_simple_poly(&identity.left.expressions[0]).is_some()
+                        && full_span.contains(&name.poly_id)
+                    {
                         remove = true;
                     }
                 }
@@ -196,13 +219,13 @@ fn propagate_constraints<T: FieldElement>(
 /// Tries to find "X * (1 - X) = 0"
 fn is_binary_constraint<T: FieldElement>(expr: &Expression<T>) -> Option<PolyID> {
     // TODO Write a proper pattern matching engine.
-    if let Expression::BinaryOperation(left, BinaryOperator::Sub, right) = expr {
+    if let Expression::BinaryOperation(left, AlgebraicBinaryOperator::Sub, right) = expr {
         if let Expression::Number(n) = right.as_ref() {
             if n.is_zero() {
                 return is_binary_constraint(left.as_ref());
             }
         }
-    } else if let Expression::BinaryOperation(left, BinaryOperator::Mul, right) = expr {
+    } else if let Expression::BinaryOperation(left, AlgebraicBinaryOperator::Mul, right) = expr {
         let symbolic_ev = SymbolicEvaluator;
         let left_root = ExpressionEvaluator::new(symbolic_ev.clone())
             .evaluate(left)
@@ -219,7 +242,7 @@ fn is_binary_constraint<T: FieldElement>(expr: &Expression<T>) -> Option<PolyID>
                 return None;
             }
             if (value1.is_zero() && value2.is_one()) || (value1.is_one() && value2.is_zero()) {
-                return Some(id1.poly_id());
+                return Some(id1.poly_id);
             }
         }
     }
@@ -255,7 +278,7 @@ fn try_transfer_constraints<T: FieldElement>(
         .flat_map(|(poly, cons)| {
             if let Constraint::RangeConstraint(cons) = cons {
                 assert!(!poly.next);
-                Some((poly.poly_id(), cons))
+                Some((poly.poly_id, cons))
             } else {
                 None
             }
@@ -399,5 +422,29 @@ namespace Global(2**20);
             .into_iter()
             .collect::<BTreeMap<_, _>>()
         );
+    }
+
+    #[test]
+    fn test_no_remove_identity() {
+        // There used to be a bug where the lookup would be removed because the code
+        // incorrectly determined it to be a pure range constraint, but it would actually not
+        // be able to derive the full constraint.
+        let pil_source = r"
+namespace Global(1024);
+    let bytes = |i| i % 256;
+    let X;
+    { X * 4 } in { bytes };
+";
+        let analyzed = pil_analyzer::analyze_string::<GoldilocksField>(pil_source);
+        let known_constraints = vec![(constant_poly_id(0), RangeConstraint::from_max_bit(7))]
+            .into_iter()
+            .collect();
+        assert_eq!(analyzed.identities.len(), 1);
+        let (_, removed) = propagate_constraints(
+            known_constraints,
+            analyzed.identities.first().unwrap(),
+            &Default::default(),
+        );
+        assert!(!removed);
     }
 }

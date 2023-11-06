@@ -20,16 +20,13 @@ pol constant ISLAST(i) { one_hot(i, %last_row) };
 
 // ANCHOR: constraint_macro_definitions
 macro constrain_equal_expr(A, B) { A - B };
-macro force_equal_on_last_row(poly, value) { ISLAST * constrain_equal_expr(poly, value) = 0; };
+macro force_equal_on_first_row(poly, value) { ISLAST * constrain_equal_expr(poly', value) = 0; };
 // ANCHOR_END: constraint_macro_definitions
 
-    // TODO would be easier if we could use "'" as an operator,
-    // then we could write a "force_equal_on_first_row" macro,
-    // and the macro would add a "'" to the parameter.
 // ANCHOR: constraint_macro_usage
-force_equal_on_last_row(x', 1);
+force_equal_on_first_row(x, 1);
 // ANCHOR_END: constraint_macro_usage
-    force_equal_on_last_row(y', 1);
+    force_equal_on_first_row(y, 1);
 
     macro on_regular_row(cond) { (1 - ISLAST) * cond = 0; };
 

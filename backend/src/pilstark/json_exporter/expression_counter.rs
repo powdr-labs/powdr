@@ -1,8 +1,11 @@
 use std::collections::HashMap;
 
-use ast::analyzed::{
-    Analyzed, Expression, Identity, PolynomialType, PublicDeclaration, SelectedExpressions,
-    StatementIdentifier, Symbol, SymbolKind,
+use ast::{
+    analyzed::{
+        Analyzed, Identity, PolynomialType, PublicDeclaration, StatementIdentifier, Symbol,
+        SymbolKind,
+    },
+    parsed::SelectedExpressions,
 };
 
 /// Computes expression IDs for each intermediate polynomial.
@@ -12,11 +15,16 @@ pub fn compute_intermediate_expression_ids<T>(analyzed: &Analyzed<T>) -> HashMap
     for item in &analyzed.source_order {
         expression_counter += match item {
             StatementIdentifier::Definition(name) => {
-                let poly = &analyzed.definitions[name].0;
-                if poly.kind == SymbolKind::Poly(PolynomialType::Intermediate) {
+                if let Some((poly, _)) = analyzed.definitions.get(name) {
+                    assert!(poly.kind != SymbolKind::Poly(PolynomialType::Intermediate));
+                    poly.expression_count()
+                } else if let Some((poly, _)) = analyzed.intermediate_columns.get(name) {
+                    assert!(poly.kind == SymbolKind::Poly(PolynomialType::Intermediate));
                     ids.insert(poly.id, expression_counter as u64);
+                    poly.expression_count()
+                } else {
+                    unreachable!()
                 }
-                poly.expression_count()
             }
             StatementIdentifier::PublicDeclaration(name) => {
                 analyzed.public_declarations[name].expression_count()
@@ -32,7 +40,7 @@ trait ExpressionCounter {
     fn expression_count(&self) -> usize;
 }
 
-impl<T> ExpressionCounter for Identity<T> {
+impl<Expr> ExpressionCounter for Identity<Expr> {
     fn expression_count(&self) -> usize {
         self.left.expression_count() + self.right.expression_count()
     }
@@ -50,20 +58,8 @@ impl ExpressionCounter for PublicDeclaration {
     }
 }
 
-impl<T> ExpressionCounter for SelectedExpressions<T> {
+impl<Expr> ExpressionCounter for SelectedExpressions<Expr> {
     fn expression_count(&self) -> usize {
-        self.selector.expression_count() + self.expressions.expression_count()
-    }
-}
-
-impl<T> ExpressionCounter for Vec<Expression<T>> {
-    fn expression_count(&self) -> usize {
-        self.len()
-    }
-}
-
-impl<T> ExpressionCounter for Option<Expression<T>> {
-    fn expression_count(&self) -> usize {
-        (self.is_some()).into()
+        self.selector.is_some() as usize + self.expressions.len()
     }
 }

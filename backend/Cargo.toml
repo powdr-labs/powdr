@@ -22,7 +22,7 @@ thiserror = "1.0.43"
 starky = { git = "https://github.com/0xEigenLabs/eigen-zkvm.git", branch = "main" }
 
 [dev-dependencies]
-pilopt = { path = "../pilopt" }
 mktemp = "0.5.0"
 test-log = "0.2.12"
 env_logger = "0.10.0"
+pretty_assertions = "1.4.0"

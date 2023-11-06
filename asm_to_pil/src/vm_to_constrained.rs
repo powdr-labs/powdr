@@ -10,10 +10,7 @@ use ast::{
     },
     parsed::{
         asm::InstructionBody,
-        build::{
-            build_add, build_binary_expr, build_mul, build_number, build_sub, direct_reference,
-            next_reference,
-        },
+        build::{direct_reference, next_reference},
         visitor::ExpressionVisitable,
         ArrayExpression, BinaryOperator, Expression, FunctionDefinition, MatchArm, MatchPattern,
         PilStatement, PolynomialName, SelectedExpressions, UnaryOperator,
@@ -116,7 +113,7 @@ impl<T: FieldElement> ASMPILConverter<T> {
             0,
             "first_step".to_string(),
             FunctionDefinition::Array(
-                ArrayExpression::value(vec![build_number(1u64)]).pad_with_zeroes(),
+                ArrayExpression::value(vec![T::one().into()]).pad_with_zeroes(),
             ),
         ));
 
@@ -142,30 +139,20 @@ impl<T: FieldElement> ASMPILConverter<T> {
                                     ),
                                     PilStatement::PolynomialIdentity(
                                         0,
-                                        build_sub(
-                                            lhs,
-                                            build_mul(
-                                                build_sub(
-                                                    build_number(1u64),
-                                                    next_reference("first_step"),
-                                                ),
-                                                direct_reference(pc_update_name),
-                                            ),
-                                        ),
+                                        lhs - (Expression::from(T::one())
+                                            - next_reference("first_step"))
+                                            * direct_reference(pc_update_name),
                                     ),
                                 ]
                             }
                             // Unconstrain read-only registers when calling `_reset`
                             ReadOnly => {
-                                let not_reset =
-                                    build_sub(build_number(1u64), direct_reference("instr__reset"));
-                                vec![PilStatement::PolynomialIdentity(
-                                    0,
-                                    build_mul(not_reset, build_sub(lhs, rhs)),
-                                )]
+                                let not_reset: Expression<T> =
+                                    Expression::from(T::one()) - direct_reference("instr__reset");
+                                vec![PilStatement::PolynomialIdentity(0, not_reset * (lhs - rhs))]
                             }
                             _ => {
-                                vec![PilStatement::PolynomialIdentity(0, build_sub(lhs, rhs))]
+                                vec![PilStatement::PolynomialIdentity(0, lhs - rhs)]
                             }
                         }
                     })
@@ -283,7 +270,7 @@ impl<T: FieldElement> ASMPILConverter<T> {
                 self.pc_name = Some(name.to_string());
                 self.line_lookup
                     .push((name.to_string(), "p_line".to_string()));
-                default_update = Some(build_add(direct_reference(&name), build_number(1u64)));
+                default_update = Some(direct_reference(&name) + T::one().into());
             }
             RegisterTy::Assignment => {
                 // no default update as this is transient
@@ -406,7 +393,7 @@ impl<T: FieldElement> ASMPILConverter<T> {
                             }
                             (None, expr) => self.pil.push(PilStatement::PolynomialIdentity(
                                 0,
-                                build_mul(direct_reference(&instruction_flag), expr.clone()),
+                                direct_reference(&instruction_flag) * expr.clone(),
                             )),
                         }
                     } else {
@@ -551,7 +538,6 @@ impl<T: FieldElement> ASMPILConverter<T> {
             .map(|(reg, a)| {
                 // Output a value trough assignment register "reg"
                 if let Expression::Reference(r) = a {
-                    assert!(!r.shift());
                     assert!(r.index().is_none());
                     (reg.clone(), vec![r.name().into()])
                 } else {
@@ -575,13 +561,11 @@ impl<T: FieldElement> ASMPILConverter<T> {
         value: Expression<T>,
     ) -> Vec<(T, AffineExpressionComponent<T>)> {
         match value {
-            Expression::Constant(_) => panic!(),
             Expression::PublicReference(_) => panic!(),
             Expression::FunctionCall(_) => panic!(),
             Expression::Reference(reference) => {
                 assert!(reference.namespace().is_none());
                 assert!(reference.index().is_none());
-                assert!(!reference.shift());
                 // TODO check it actually is a register
                 vec![(
                     1.into(),
@@ -698,24 +682,21 @@ impl<T: FieldElement> ASMPILConverter<T> {
             .chain(self.read_only_register_names())
             .cloned()
             .collect::<Vec<_>>();
-        let assign_constraint = read_registers
+        let assign_constraint: Expression<T> = read_registers
             .iter()
             .map(|name| {
                 let read_coefficient = format!("read_{register}_{name}");
                 self.create_witness_fixed_pair(0, &read_coefficient);
-                build_mul(
-                    direct_reference(read_coefficient),
-                    direct_reference(name.clone()),
-                )
+                direct_reference(read_coefficient) * direct_reference(name.clone())
             })
             .chain([
                 direct_reference(assign_const),
-                build_mul(direct_reference(read_free), direct_reference(free_value)),
+                direct_reference(read_free) * direct_reference(free_value),
             ])
-            .reduce(build_add);
+            .sum();
         self.pil.push(PilStatement::PolynomialIdentity(
             0,
-            build_sub(direct_reference(register), assign_constraint.unwrap()),
+            direct_reference(register) - assign_constraint,
         ));
     }
 
@@ -728,11 +709,11 @@ impl<T: FieldElement> ASMPILConverter<T> {
             FunctionDefinition::Array(
                 ArrayExpression::Value(
                     (0..self.code_lines.len())
-                        .map(|i| build_number(i as u32))
+                        .map(|i| T::from(i as u32).into())
                         .collect(),
                 )
                 .pad_with_last()
-                .unwrap_or_else(|| ArrayExpression::RepeatedValue(vec![build_number(0)])),
+                .unwrap_or_else(|| ArrayExpression::RepeatedValue(vec![T::zero().into()])),
             ),
         ));
         // TODO check that all of them are matched against execution trace witnesses.
@@ -782,7 +763,7 @@ impl<T: FieldElement> ASMPILConverter<T> {
                                 .get_mut(assign_reg)
                                 .unwrap()
                                 .push(MatchArm {
-                                    pattern: MatchPattern::Pattern(build_number(i as u64)),
+                                    pattern: MatchPattern::Pattern(T::from(i as u64).into()),
                                     value: expr.clone(),
                                 });
                         }
@@ -844,9 +825,9 @@ impl<T: FieldElement> ASMPILConverter<T> {
                 0,
                 name.clone(),
                 FunctionDefinition::Array(
-                    ArrayExpression::value(values.into_iter().map(build_number).collect())
+                    ArrayExpression::value(values.into_iter().map(Expression::from).collect())
                         .pad_with_last()
-                        .unwrap_or_else(|| ArrayExpression::RepeatedValue(vec![build_number(0)])),
+                        .unwrap_or_else(|| ArrayExpression::RepeatedValue(vec![T::zero().into()])),
                 ),
             ));
         }
@@ -918,12 +899,12 @@ impl<T: FieldElement> ASMPILConverter<T> {
                 BinaryOperator::Add => {
                     let (counter, left) = self.linearize_rec(prefix, counter, *left);
                     let (counter, right) = self.linearize_rec(prefix, counter, *right);
-                    (counter, build_add(left, right))
+                    (counter, left + right)
                 }
                 BinaryOperator::Sub => {
                     let (counter, left) = self.linearize_rec(prefix, counter, *left);
                     let (counter, right) = self.linearize_rec(prefix, counter, *right);
-                    (counter, build_sub(left, right))
+                    (counter, left - right)
                 }
                 BinaryOperator::Mul => {
                     // if we have a quadratic term, we linearize each factor and introduce an intermediate variable for the product
@@ -940,7 +921,7 @@ impl<T: FieldElement> ASMPILConverter<T> {
                     self.pil.push(PilStatement::PolynomialDefinition(
                         0,
                         intermediate_name.to_string(),
-                        build_mul(left, right),
+                        left * right,
                     ));
                     (counter + 1, direct_reference(intermediate_name))
                 }
@@ -967,27 +948,22 @@ impl<T: FieldElement> Register<T> {
         let updates = self
             .conditioned_updates
             .iter()
-            .map(|(cond, value)| build_mul(cond.clone(), value.clone()))
-            .reduce(build_add);
+            .map(|(cond, value)| cond.clone() * value.clone())
+            .sum();
 
         // TODO for computing the default condition, we need to ensure
         // that the conditions all exclude each other
         match (self.conditioned_updates.len(), &self.default_update) {
             (0, update) => update.clone(),
-            (_, None) => Some(updates.unwrap()),
+            (_, None) => Some(updates),
             (_, Some(def)) => {
-                let default_condition = build_sub(
-                    build_number(1u64),
-                    self.conditioned_updates
+                let default_condition = Expression::from(T::one())
+                    - self
+                        .conditioned_updates
                         .iter()
                         .map(|(cond, _value)| cond.clone())
-                        .reduce(build_add)
-                        .unwrap(),
-                );
-                Some(build_add(
-                    updates.unwrap(),
-                    build_mul(default_condition, def.clone()),
-                ))
+                        .sum();
+                Some(updates + (default_condition * def.clone()))
             }
         }
     }
@@ -1051,12 +1027,18 @@ fn extract_update<T: FieldElement>(expr: Expression<T>) -> (Option<String>, Expr
     // TODO check that there are no other "next" references in the expression
     if let Expression::BinaryOperation(left, BinaryOperator::Sub, right) = expr {
         match *left {
-            Expression::Reference(r) if r.shift() => {
-                assert!(r.namespace().is_none());
-                assert!(r.index().is_none());
-                (Some(r.name().into()), *right)
-            }
-            _ => (None, build_binary_expr(*left, BinaryOperator::Sub, *right)),
+            Expression::UnaryOperation(UnaryOperator::Next, column) => match *column {
+                Expression::Reference(column) => {
+                    assert!(column.namespace().is_none());
+                    assert!(column.index().is_none());
+                    return (Some(column.name().into()), *right);
+                }
+                _ => (
+                    None,
+                    Expression::UnaryOperation(UnaryOperator::Next, column) - *right,
+                ),
+            },
+            _ => (None, *left - *right),
         }
     } else {
         (None, expr)

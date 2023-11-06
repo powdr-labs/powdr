@@ -3,26 +3,24 @@
 
 use std::collections::{BTreeMap, HashSet};
 
-use ast::analyzed::Reference;
 use ast::analyzed::{
-    build::{build_mul, build_number, build_sub},
-    Analyzed, BinaryOperator, Expression, FunctionValueDefinition, IdentityKind, PolyID,
+    AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicUnaryOperator, Reference,
+};
+use ast::analyzed::{
+    AlgebraicReference, Analyzed, Expression, FunctionValueDefinition, IdentityKind, PolyID,
     PolynomialReference,
 };
 use ast::parsed::visitor::ExpressionVisitable;
-use ast::parsed::UnaryOperator;
-use ast::{evaluate_binary_operation, evaluate_unary_operation};
+
 use number::FieldElement;
 
 pub fn optimize<T: FieldElement>(mut pil_file: Analyzed<T>) -> Analyzed<T> {
     let col_count_pre = (pil_file.commitment_count(), pil_file.constant_count());
-    inline_constant_values(&mut pil_file);
-    evaluate_constant_subtrees(&mut pil_file);
     remove_constant_fixed_columns(&mut pil_file);
-    simplify_expressions(&mut pil_file);
+    simplify_identities(&mut pil_file);
     extract_constant_lookups(&mut pil_file);
     remove_constant_witness_columns(&mut pil_file);
-    simplify_expressions(&mut pil_file);
+    simplify_identities(&mut pil_file);
     remove_trivial_identities(&mut pil_file);
     let col_count_post = (pil_file.commitment_count(), pil_file.constant_count());
     log::info!(
@@ -33,48 +31,6 @@ pub fn optimize<T: FieldElement>(mut pil_file: Analyzed<T>) -> Analyzed<T> {
         col_count_post.1
     );
     pil_file
-}
-
-/// Just perform some very light optimizations: inlining constants and evaluating
-/// constant expressions.
-pub fn optimize_constants<T: FieldElement>(mut pil_file: Analyzed<T>) -> Analyzed<T> {
-    inline_constant_values(&mut pil_file);
-    evaluate_constant_subtrees(&mut pil_file);
-    pil_file
-}
-
-/// Inlines references to symbols with a single constant value.
-fn inline_constant_values<T: FieldElement>(pil_file: &mut Analyzed<T>) {
-    let constants = &pil_file.constants.clone();
-    pil_file.post_visit_expressions_mut(&mut |e| match e {
-        Expression::Reference(Reference::Poly(poly)) => {
-            if !poly.next && poly.index.is_none() {
-                if let Some(value) = constants.get(&poly.name) {
-                    *e = Expression::Number(*value)
-                }
-            }
-        }
-        Expression::Constant(name) => *e = Expression::Number(constants[name]),
-        _ => {}
-    });
-}
-
-/// Substitutes expression that evaluate to a constant value.
-fn evaluate_constant_subtrees<T: FieldElement>(pil_file: &mut Analyzed<T>) {
-    pil_file.post_visit_expressions_mut(&mut |e| match e {
-        Expression::BinaryOperation(left, op, right) => {
-            if let (Expression::Number(l), Expression::Number(r)) = (left.as_ref(), right.as_ref())
-            {
-                *e = Expression::Number(evaluate_binary_operation(*l, *op, *r))
-            }
-        }
-        Expression::UnaryOperation(op, sub) => {
-            if let Expression::Number(s) = sub.as_ref() {
-                *e = Expression::Number(evaluate_unary_operation(*op, *s))
-            }
-        }
-        _ => {}
-    });
 }
 
 /// Identifies fixed columns that only have a single value, replaces every
@@ -96,21 +52,7 @@ fn remove_constant_fixed_columns<T: FieldElement>(pil_file: &mut Analyzed<T>) {
         })
         .collect::<BTreeMap<PolyID, _>>();
 
-    pil_file.pre_visit_expressions_mut(&mut |e| {
-        if let Expression::Reference(Reference::Poly(PolynomialReference {
-            name: _,
-            index,
-            next: _,
-            poly_id,
-        })) = e
-        {
-            if let Some(value) = constant_polys.get(&poly_id.unwrap()) {
-                assert!(index.is_none());
-                *e = Expression::Number(*value);
-            }
-        }
-    });
-
+    substitute_polynomial_references(pil_file, &constant_polys);
     pil_file.remove_polynomials(&constant_polys.keys().cloned().collect());
 }
 
@@ -143,91 +85,92 @@ fn constant_value<T: FieldElement>(function: &FunctionValueDefinition<T>) -> Opt
 }
 
 /// Simplifies multiplications by zero and one.
-fn simplify_expressions<T: FieldElement>(pil_file: &mut Analyzed<T>) {
-    pil_file.post_visit_expressions_mut(&mut simplify_expression_single);
+fn simplify_identities<T: FieldElement>(pil_file: &mut Analyzed<T>) {
+    pil_file.post_visit_expressions_in_identities_mut(&mut simplify_expression_single);
 }
 
-fn simplify_expression<T: FieldElement>(mut e: Expression<T>) -> Expression<T> {
+fn simplify_expression<T: FieldElement>(mut e: AlgebraicExpression<T>) -> AlgebraicExpression<T> {
     e.post_visit_expressions_mut(&mut simplify_expression_single);
     e
 }
 
-fn simplify_expression_single<T: FieldElement>(e: &mut Expression<T>) {
-    if let Expression::BinaryOperation(left, op, right) = e {
-        if let (Expression::Number(l), Expression::Number(r)) = (left.as_ref(), right.as_ref()) {
+fn simplify_expression_single<T: FieldElement>(e: &mut AlgebraicExpression<T>) {
+    if let AlgebraicExpression::BinaryOperation(left, op, right) = e {
+        if let (AlgebraicExpression::Number(l), AlgebraicExpression::Number(r)) =
+            (left.as_ref(), right.as_ref())
+        {
             if let Some(v) = match op {
-                BinaryOperator::Add => Some(*l + *r),
-                BinaryOperator::Sub => Some(*l - *r),
-                BinaryOperator::Mul => Some(*l * *r),
+                AlgebraicBinaryOperator::Add => Some(*l + *r),
+                AlgebraicBinaryOperator::Sub => Some(*l - *r),
+                AlgebraicBinaryOperator::Mul => Some(*l * *r),
                 // TODO we might do some more operations later.
                 _ => None,
             } {
-                *e = Expression::Number(v);
+                *e = AlgebraicExpression::Number(v);
                 return;
             }
         }
     }
-    if let Expression::UnaryOperation(op, inner) = e {
-        if let Expression::Number(inner) = **inner {
-            *e = Expression::Number(match op {
-                UnaryOperator::Plus => inner,
-                UnaryOperator::Minus => -inner,
-                UnaryOperator::LogicalNot => inner.is_zero().into(),
+    if let AlgebraicExpression::UnaryOperation(op, inner) = e {
+        if let AlgebraicExpression::Number(inner) = **inner {
+            *e = AlgebraicExpression::Number(match op {
+                AlgebraicUnaryOperator::Plus => inner,
+                AlgebraicUnaryOperator::Minus => -inner,
             });
             return;
         }
     }
     match e {
-        Expression::BinaryOperation(left, BinaryOperator::Mul, right) => {
-            if let Expression::Number(n) = left.as_mut() {
+        AlgebraicExpression::BinaryOperation(left, AlgebraicBinaryOperator::Mul, right) => {
+            if let AlgebraicExpression::Number(n) = left.as_mut() {
                 if *n == 0.into() {
-                    *e = Expression::Number(0.into());
+                    *e = AlgebraicExpression::Number(0.into());
                     return;
                 }
             }
-            if let Expression::Number(n) = right.as_mut() {
+            if let AlgebraicExpression::Number(n) = right.as_mut() {
                 if *n == 0.into() {
-                    *e = Expression::Number(0.into());
+                    *e = AlgebraicExpression::Number(0.into());
                     return;
                 }
             }
-            if let Expression::Number(n) = left.as_mut() {
+            if let AlgebraicExpression::Number(n) = left.as_mut() {
                 if *n == 1.into() {
-                    let mut tmp = Expression::Number(1.into());
+                    let mut tmp = AlgebraicExpression::Number(1.into());
                     std::mem::swap(&mut tmp, right);
                     std::mem::swap(e, &mut tmp);
                     return;
                 }
             }
-            if let Expression::Number(n) = right.as_mut() {
+            if let AlgebraicExpression::Number(n) = right.as_mut() {
                 if *n == 1.into() {
-                    let mut tmp = Expression::Number(1.into());
+                    let mut tmp = AlgebraicExpression::Number(1.into());
                     std::mem::swap(&mut tmp, left);
                     std::mem::swap(e, &mut tmp);
                 }
             }
         }
-        Expression::BinaryOperation(left, BinaryOperator::Add, right) => {
-            if let Expression::Number(n) = left.as_mut() {
+        AlgebraicExpression::BinaryOperation(left, AlgebraicBinaryOperator::Add, right) => {
+            if let AlgebraicExpression::Number(n) = left.as_mut() {
                 if *n == 0.into() {
-                    let mut tmp = Expression::Number(1.into());
+                    let mut tmp = AlgebraicExpression::Number(1.into());
                     std::mem::swap(&mut tmp, right);
                     std::mem::swap(e, &mut tmp);
                     return;
                 }
             }
-            if let Expression::Number(n) = right.as_mut() {
+            if let AlgebraicExpression::Number(n) = right.as_mut() {
                 if *n == 0.into() {
-                    let mut tmp = Expression::Number(1.into());
+                    let mut tmp = AlgebraicExpression::Number(1.into());
                     std::mem::swap(&mut tmp, left);
                     std::mem::swap(e, &mut tmp);
                 }
             }
         }
-        Expression::BinaryOperation(left, BinaryOperator::Sub, right) => {
-            if let Expression::Number(n) = right.as_mut() {
+        AlgebraicExpression::BinaryOperation(left, AlgebraicBinaryOperator::Sub, right) => {
+            if let AlgebraicExpression::Number(n) = right.as_mut() {
                 if *n == 0.into() {
-                    let mut tmp = Expression::Number(1.into());
+                    let mut tmp = AlgebraicExpression::Number(1.into());
                     std::mem::swap(&mut tmp, left);
                     std::mem::swap(e, &mut tmp);
                 }
@@ -254,7 +197,7 @@ fn extract_constant_lookups<T: FieldElement>(pil_file: &mut Analyzed<T>) {
             .zip(&identity.right.expressions)
             .enumerate()
             .filter_map(|(i, (l, r))| {
-                if let Expression::Number(n) = r {
+                if let AlgebraicExpression::Number(n) = r {
                     Some((i, (l, n)))
                 } else {
                     None
@@ -262,27 +205,17 @@ fn extract_constant_lookups<T: FieldElement>(pil_file: &mut Analyzed<T>) {
             })
         {
             // TODO remove clones
-            let pol_id = build_sub(
-                build_mul(
-                    identity
-                        .left
-                        .selector
-                        .as_ref()
-                        .cloned()
-                        .unwrap_or_else(|| build_number(1)),
-                    l.clone(),
-                ),
-                build_mul(
-                    identity
-                        .right
-                        .selector
-                        .as_ref()
-                        .cloned()
-                        .unwrap_or_else(|| build_number(1))
-                        .clone(),
-                    build_number(*r),
-                ),
-            );
+            let l_sel = identity
+                .left
+                .selector
+                .clone()
+                .unwrap_or_else(|| AlgebraicExpression::from(T::one()));
+            let r_sel = identity
+                .right
+                .selector
+                .clone()
+                .unwrap_or_else(|| AlgebraicExpression::from(T::one()));
+            let pol_id = (l_sel * l.clone()) - (r_sel * AlgebraicExpression::from(*r));
             new_identities.push((simplify_expression(pol_id), identity.source.clone()));
 
             extracted.insert(i);
@@ -310,47 +243,65 @@ fn remove_constant_witness_columns<T: FieldElement>(pil_file: &mut Analyzed<T>) 
     let constant_polys = pil_file
         .identities
         .iter()
-        .filter_map(|id| {
-            (id.kind == IdentityKind::Polynomial).then(|| id.left.selector.as_ref().unwrap())
-        })
-        .filter_map(|expr| constrained_to_constant(expr))
+        .filter_map(|id| (id.kind == IdentityKind::Polynomial).then(|| id.expression_for_poly_id()))
+        .filter_map(constrained_to_constant)
         .collect::<BTreeMap<PolyID, _>>();
 
-    pil_file.pre_visit_expressions_mut(&mut |e| {
+    substitute_polynomial_references(pil_file, &constant_polys);
+    pil_file.remove_polynomials(&constant_polys.keys().cloned().collect());
+}
+
+/// Substitutes all references to certain polynomials by the given field elements.
+fn substitute_polynomial_references<T: FieldElement>(
+    pil_file: &mut Analyzed<T>,
+    substitutions: &BTreeMap<PolyID, T>,
+) {
+    pil_file.post_visit_expressions_in_definitions_mut(&mut |e: &mut Expression<_>| {
         if let Expression::Reference(Reference::Poly(PolynomialReference {
             name: _,
             index,
-            next: _,
-            poly_id,
+            poly_id: Some(poly_id),
         })) = e
         {
-            if let Some(value) = constant_polys.get(&poly_id.unwrap()) {
+            if let Some(value) = substitutions.get(poly_id) {
                 assert!(index.is_none());
                 *e = Expression::Number(*value);
             }
         }
     });
-
-    pil_file.remove_polynomials(&constant_polys.keys().cloned().collect());
+    pil_file.post_visit_expressions_in_identities_mut(&mut |e: &mut AlgebraicExpression<_>| {
+        if let AlgebraicExpression::Reference(AlgebraicReference {
+            name: _,
+            index,
+            next: _,
+            poly_id,
+        }) = e
+        {
+            if let Some(value) = substitutions.get(poly_id) {
+                assert!(index.is_none());
+                *e = AlgebraicExpression::Number(*value);
+            }
+        }
+    });
 }
 
-fn constrained_to_constant<T: FieldElement>(expr: &Expression<T>) -> Option<(PolyID, T)> {
+fn constrained_to_constant<T: FieldElement>(expr: &AlgebraicExpression<T>) -> Option<(PolyID, T)> {
     match expr {
-        Expression::BinaryOperation(left, BinaryOperator::Sub, right) => {
+        AlgebraicExpression::BinaryOperation(left, AlgebraicBinaryOperator::Sub, right) => {
             match (left.as_ref(), right.as_ref()) {
-                (Expression::Number(n), Expression::Reference(Reference::Poly(poly)))
-                | (Expression::Reference(Reference::Poly(poly)), Expression::Number(n)) => {
+                (AlgebraicExpression::Number(n), AlgebraicExpression::Reference(poly))
+                | (AlgebraicExpression::Reference(poly), AlgebraicExpression::Number(n)) => {
                     if poly.is_witness() {
                         // This also works if "next" is true.
-                        return Some((poly.poly_id.unwrap(), *n));
+                        return Some((poly.poly_id, *n));
                     }
                 }
                 _ => {}
             }
         }
-        Expression::Reference(Reference::Poly(poly)) => {
+        AlgebraicExpression::Reference(poly) => {
             if poly.is_witness() {
-                return Some((poly.poly_id.unwrap(), 0.into()));
+                return Some((poly.poly_id, 0.into()));
             }
         }
         _ => {}
@@ -366,7 +317,7 @@ fn remove_trivial_identities<T: FieldElement>(pil_file: &mut Analyzed<T>) {
         .enumerate()
         .filter_map(|(index, identity)| match identity.kind {
             IdentityKind::Polynomial => {
-                if let Expression::Number(n) = identity.left.selector.as_ref().unwrap() {
+                if let AlgebraicExpression::Number(n) = identity.expression_for_poly_id() {
                     if *n == 0.into() {
                         return Some(index);
                     }

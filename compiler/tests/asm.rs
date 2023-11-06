@@ -25,6 +25,7 @@ fn gen_estark_proof(file_name: &str, inputs: Vec<GoldilocksField>) {
         &mktemp::Temp::new_dir().unwrap(),
         true,
         Some(backend::BackendType::EStark),
+        vec![],
     )
     .unwrap();
 }
@@ -41,6 +42,7 @@ fn gen_halo2_proof(file_name: &str, inputs: Vec<Bn254Field>) {
         &mktemp::Temp::new_dir().unwrap(),
         true,
         Some(backend::BackendType::Halo2),
+        vec![],
     )
     .unwrap();
 }
@@ -99,11 +101,25 @@ fn single_function_vm() {
 }
 
 #[test]
-#[should_panic = "Witness generation failed."]
+fn empty() {
+    let f = "empty.asm";
+    let i = [];
+    verify_asm::<GoldilocksField>(f, slice_to_vec(&i));
+    gen_halo2_proof(f, slice_to_vec(&i));
+    gen_estark_proof(f, slice_to_vec(&i));
+}
+
+#[test]
+fn single_operation() {
+    let f = "single_operation.asm";
+    let i = [];
+    verify_asm::<GoldilocksField>(f, slice_to_vec(&i));
+    gen_halo2_proof(f, slice_to_vec(&i));
+    gen_estark_proof(f, slice_to_vec(&i));
+}
+
+#[test]
 fn empty_vm() {
-    // TODO: an empty vm does not work because witgen does not find the infinite loop
-    // this can be fixed by removing the assumption that we run exactly one block before
-    // hitting the loop
     let f = "empty_vm.asm";
     let i = [];
     verify_asm::<GoldilocksField>(f, slice_to_vec(&i));
@@ -151,9 +167,35 @@ fn vm_to_block_multiple_interfaces() {
 }
 
 #[test]
-#[should_panic = "not implemented"]
 fn vm_to_vm() {
     let f = "vm_to_vm.asm";
+    let i = [];
+    verify_asm::<GoldilocksField>(f, slice_to_vec(&i));
+    gen_halo2_proof(f, slice_to_vec(&i));
+    gen_estark_proof(f, slice_to_vec(&i));
+}
+
+#[test]
+fn vm_to_vm_dynamic_trace_length() {
+    let f = "vm_to_vm_dynamic_trace_length.asm";
+    let i = [];
+    verify_asm::<GoldilocksField>(f, slice_to_vec(&i));
+    gen_halo2_proof(f, slice_to_vec(&i));
+    gen_estark_proof(f, slice_to_vec(&i));
+}
+
+#[test]
+fn vm_to_vm_to_block() {
+    let f = "vm_to_vm_to_block.asm";
+    let i = [];
+    verify_asm::<GoldilocksField>(f, slice_to_vec(&i));
+    gen_halo2_proof(f, slice_to_vec(&i));
+    gen_estark_proof(f, slice_to_vec(&i));
+}
+
+#[test]
+fn vm_to_vm_to_vm() {
+    let f = "vm_to_vm_to_vm.asm";
     let i = [];
     verify_asm::<GoldilocksField>(f, slice_to_vec(&i));
     gen_halo2_proof(f, slice_to_vec(&i));
@@ -212,6 +254,14 @@ fn test_bit_access() {
     // thread 'functional_instructions' has overflowed its stack
     // leave it out until that's fixed
     //gen_estark_proof(f, slice_to_vec(&i));
+}
+
+#[test]
+fn test_sqrt() {
+    let f = "sqrt.asm";
+    verify_asm::<GoldilocksField>(f, Default::default());
+    gen_halo2_proof(f, Default::default());
+    gen_estark_proof(f, Default::default());
 }
 
 #[test]

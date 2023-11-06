@@ -1,22 +1,22 @@
-pub mod build;
 mod display;
 pub mod visitor;
 
 use core::hash::Hash;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fmt::Display;
-use std::ops::ControlFlow;
+use std::ops::{self, ControlFlow};
 
 use number::DegreeType;
 
-use crate::parsed;
 use crate::parsed::utils::expr_any;
 use crate::parsed::visitor::ExpressionVisitable;
 pub use crate::parsed::BinaryOperator;
 pub use crate::parsed::UnaryOperator;
+use crate::parsed::{self, SelectedExpressions};
 
 #[derive(Debug)]
 pub enum StatementIdentifier {
+    /// Either an intermediate column or a definition.
     Definition(String),
     PublicDeclaration(String),
     /// Index into the vector of identities.
@@ -25,11 +25,10 @@ pub enum StatementIdentifier {
 
 #[derive(Debug)]
 pub struct Analyzed<T> {
-    /// Constants are not namespaced!
-    pub constants: HashMap<String, T>,
     pub definitions: HashMap<String, (Symbol, Option<FunctionValueDefinition<T>>)>,
     pub public_declarations: HashMap<String, PublicDeclaration>,
-    pub identities: Vec<Identity<T>>,
+    pub intermediate_columns: HashMap<String, (Symbol, AlgebraicExpression<T>)>,
+    pub identities: Vec<Identity<AlgebraicExpression<T>>>,
     /// The order in which definitions and identities
     /// appear in the source.
     pub source_order: Vec<StatementIdentifier>,
@@ -42,7 +41,7 @@ impl<T> Analyzed<T> {
     }
     /// @returns the number of intermediate polynomials (with multiplicities for arrays)
     pub fn intermediate_count(&self) -> usize {
-        self.declaration_type_count(PolynomialType::Intermediate)
+        self.intermediate_columns.len()
     }
     /// @returns the number of constant polynomials (with multiplicities for arrays)
     pub fn constant_count(&self) -> usize {
@@ -61,26 +60,39 @@ impl<T> Analyzed<T> {
         self.definitions_in_source_order(PolynomialType::Committed)
     }
 
-    pub fn intermediate_polys_in_source_order(
-        &self,
-    ) -> Vec<&(Symbol, Option<FunctionValueDefinition<T>>)> {
-        self.definitions_in_source_order(PolynomialType::Intermediate)
+    pub fn intermediate_polys_in_source_order(&self) -> Vec<&(Symbol, AlgebraicExpression<T>)> {
+        self.source_order
+            .iter()
+            .filter_map(move |statement| {
+                if let StatementIdentifier::Definition(name) = statement {
+                    if let Some(definition) = self.intermediate_columns.get(name) {
+                        return Some(definition);
+                    }
+                }
+                None
+            })
+            .collect()
     }
 
     pub fn definitions_in_source_order(
         &self,
         poly_type: PolynomialType,
     ) -> Vec<&(Symbol, Option<FunctionValueDefinition<T>>)> {
+        assert!(
+            poly_type != PolynomialType::Intermediate,
+            "Use intermediate_polys_in_source_order to get intermediate polys."
+        );
         self.source_order
             .iter()
             .filter_map(move |statement| {
                 if let StatementIdentifier::Definition(name) = statement {
-                    let definition = &self.definitions[name];
-                    match definition.0.kind {
-                        SymbolKind::Poly(ptype) if ptype == poly_type => {
-                            return Some(definition);
+                    if let Some(definition) = self.definitions.get(name) {
+                        match definition.0.kind {
+                            SymbolKind::Poly(ptype) if ptype == poly_type => {
+                                return Some(definition);
+                            }
+                            _ => {}
                         }
-                        _ => {}
                     }
                 }
                 None
@@ -104,12 +116,11 @@ impl<T> Analyzed<T> {
     /// so that they are contiguous again.
     /// There must not be any reference to the removed polynomials left.
     pub fn remove_polynomials(&mut self, to_remove: &BTreeSet<PolyID>) {
-        let replacements: BTreeMap<PolyID, PolyID> = [
+        let mut replacements: BTreeMap<PolyID, PolyID> = [
             // We have to do it separately because we need to re-start the counter
             // for each kind.
             self.committed_polys_in_source_order(),
             self.constant_polys_in_source_order(),
-            self.intermediate_polys_in_source_order(),
         ]
         .map(|polys| {
             polys
@@ -139,9 +150,18 @@ impl<T> Analyzed<T> {
         .flatten()
         .collect();
 
+        // We assume for now that intermediate columns are not removed.
+        for (poly, _) in self.intermediate_columns.values() {
+            let poly_id: PolyID = poly.into();
+            assert!(!to_remove.contains(&poly_id));
+            replacements.insert(poly_id, poly_id);
+        }
+
         let mut names_to_remove: HashSet<String> = Default::default();
         self.definitions.retain(|name, (poly, _def)| {
-            if to_remove.contains(&(poly as &Symbol).into()) {
+            if matches!(poly.kind, SymbolKind::Poly(_))
+                && to_remove.contains(&(poly as &Symbol).into())
+            {
                 names_to_remove.insert(name.clone());
                 false
             } else {
@@ -157,23 +177,34 @@ impl<T> Analyzed<T> {
             true
         });
         self.definitions.values_mut().for_each(|(poly, _def)| {
-            let poly_id = PolyID::from(poly as &Symbol);
-            assert!(!to_remove.contains(&poly_id));
-            poly.id = replacements[&poly_id].id;
-        });
-        self.pre_visit_expressions_mut(&mut |expr| {
-            if let Expression::Reference(Reference::Poly(poly)) = expr {
-                let poly_id = poly.poly_id.unwrap();
+            if matches!(poly.kind, SymbolKind::Poly(_)) {
+                let poly_id = PolyID::from(poly as &Symbol);
                 assert!(!to_remove.contains(&poly_id));
-                poly.poly_id = Some(replacements[&poly_id]);
+                poly.id = replacements[&poly_id].id;
             }
         });
+        let visitor = &mut |expr: &mut Expression<_>| {
+            if let Expression::Reference(Reference::Poly(poly)) = expr {
+                poly.poly_id = poly.poly_id.map(|poly_id| {
+                    assert!(!to_remove.contains(&poly_id));
+                    replacements[&poly_id]
+                });
+            }
+        };
+        self.post_visit_expressions_in_definitions_mut(visitor);
+        let algebraic_visitor = &mut |expr: &mut AlgebraicExpression<_>| {
+            if let AlgebraicExpression::Reference(poly) = expr {
+                assert!(!to_remove.contains(&poly.poly_id));
+                poly.poly_id = replacements[&poly.poly_id];
+            }
+        };
+        self.post_visit_expressions_in_identities_mut(algebraic_visitor);
     }
 
     /// Adds a polynomial identity and returns the ID.
     pub fn append_polynomial_identity(
         &mut self,
-        identity: Expression<T>,
+        identity: AlgebraicExpression<T>,
         source: SourceRef,
     ) -> u64 {
         let id = self
@@ -222,6 +253,37 @@ impl<T> Analyzed<T> {
             retain
         })
     }
+
+    pub fn post_visit_expressions_in_identities_mut<F>(&mut self, f: &mut F)
+    where
+        F: FnMut(&mut AlgebraicExpression<T>),
+    {
+        self.identities
+            .iter_mut()
+            .for_each(|i| i.post_visit_expressions_mut(f));
+        self.intermediate_columns
+            .values_mut()
+            .for_each(|(_sym, value)| value.post_visit_expressions_mut(f));
+    }
+
+    pub fn post_visit_expressions_in_definitions_mut<F>(&mut self, f: &mut F)
+    where
+        F: FnMut(&mut Expression<T>),
+    {
+        // TODO add public inputs if we change them to expressions at some point.
+        self.definitions
+            .values_mut()
+            .for_each(|(_poly, definition)| match definition {
+                Some(FunctionValueDefinition::Mapping(e))
+                | Some(FunctionValueDefinition::Query(e)) => e.post_visit_expressions_mut(f),
+                Some(FunctionValueDefinition::Array(elements)) => elements
+                    .iter_mut()
+                    .flat_map(|e| e.pattern.iter_mut())
+                    .for_each(|e| e.post_visit_expressions_mut(f)),
+                Some(FunctionValueDefinition::Expression(e)) => e.post_visit_expressions_mut(f),
+                None => {}
+            });
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -240,11 +302,16 @@ impl Symbol {
     }
 }
 
+/// The "kind" of a symbol. In the future, this will be mostly
+/// replaced by its type.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum SymbolKind {
     /// Fixed, witness or intermediate polynomial
     Poly(PolynomialType),
-    /// Other symbol, could be a constant, depends on the type.
+    /// A constant value.
+    Constant(),
+    /// Other symbol, depends on the type.
+    /// Examples include functions not of the type "int -> fe".
     Other(),
 }
 
@@ -308,7 +375,7 @@ pub struct PublicDeclaration {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
-pub struct Identity<T> {
+pub struct Identity<Expr> {
     /// The ID is specific to the identity kind.
     pub id: u64,
     pub kind: IdentityKind,
@@ -323,13 +390,15 @@ pub struct Identity<T> {
     pub right: SelectedExpressions<T>, // right is the overall expressions
 }
 
-impl<T> Identity<T> {
+impl<Expr> Identity<Expr> {
     /// Returns the expression in case this is a polynomial identity.
-    pub fn expression_for_poly_id(&self) -> &Expression<T> {
+    pub fn expression_for_poly_id(&self) -> &Expr {
         assert_eq!(self.kind, IdentityKind::Polynomial);
         self.left.selector.as_ref().unwrap()
     }
+}
 
+impl<T> Identity<AlgebraicExpression<T>> {
     pub fn contains_next_ref(&self) -> bool {
         self.left.contains_next_ref() || self.right.contains_next_ref()
     }
@@ -343,9 +412,7 @@ pub enum IdentityKind {
     Connect, // not used
 }
 
-pub type SelectedExpressions<T> = parsed::SelectedExpressions<T, Reference>;
-
-impl<T> SelectedExpressions<T> {
+impl<T> SelectedExpressions<AlgebraicExpression<T>> {
     /// @returns true if the expression contains a reference to a next value of a
     /// (witness or fixed) column
     pub fn contains_next_ref(&self) -> bool {
@@ -358,12 +425,154 @@ impl<T> SelectedExpressions<T> {
 
 pub type Expression<T> = parsed::Expression<T, Reference>;
 
-impl<T> Expression<T> {
+#[derive(Debug, Clone)]
+pub enum Reference {
+    LocalVar(u64, String),
+    Poly(PolynomialReference),
+}
+
+#[derive(Debug, Clone, Eq)]
+pub struct AlgebraicReference {
+    /// Name of the polynomial - just for informational purposes.
+    /// Comparisons are based on polynomial ID.
+    pub name: String,
+    /// Identifier for a polynomial reference.
+    pub poly_id: PolyID,
+    pub index: Option<u64>,
+    pub next: bool,
+}
+
+impl AlgebraicReference {
+    #[inline]
+    pub fn is_witness(&self) -> bool {
+        self.poly_id.ptype == PolynomialType::Committed
+    }
+    #[inline]
+    pub fn is_fixed(&self) -> bool {
+        self.poly_id.ptype == PolynomialType::Constant
+    }
+}
+
+impl PartialOrd for AlgebraicReference {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for AlgebraicReference {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        match self.poly_id.cmp(&other.poly_id) {
+            core::cmp::Ordering::Equal => {}
+            ord => return ord,
+        }
+        assert!(self.index.is_none() && other.index.is_none());
+        self.next.cmp(&other.next)
+    }
+}
+
+impl PartialEq for AlgebraicReference {
+    fn eq(&self, other: &Self) -> bool {
+        assert!(self.index.is_none() && other.index.is_none());
+        self.poly_id == other.poly_id && self.next == other.next
+    }
+}
+
+impl Hash for AlgebraicReference {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.poly_id.hash(state);
+        self.index.hash(state);
+        self.next.hash(state);
+    }
+}
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
+pub enum AlgebraicExpression<T> {
+    Reference(AlgebraicReference),
+    PublicReference(String),
+    Number(T),
+    BinaryOperation(
+        Box<AlgebraicExpression<T>>,
+        AlgebraicBinaryOperator,
+        Box<AlgebraicExpression<T>>,
+    ),
+
+    UnaryOperation(AlgebraicUnaryOperator, Box<AlgebraicExpression<T>>),
+}
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
+pub enum AlgebraicBinaryOperator {
+    Add,
+    Sub,
+    Mul,
+    /// Exponentiation, but only by constants.
+    Pow,
+}
+
+impl From<AlgebraicBinaryOperator> for BinaryOperator {
+    fn from(op: AlgebraicBinaryOperator) -> BinaryOperator {
+        match op {
+            AlgebraicBinaryOperator::Add => BinaryOperator::Add,
+            AlgebraicBinaryOperator::Sub => BinaryOperator::Sub,
+            AlgebraicBinaryOperator::Mul => BinaryOperator::Mul,
+            AlgebraicBinaryOperator::Pow => BinaryOperator::Pow,
+        }
+    }
+}
+
+impl TryFrom<BinaryOperator> for AlgebraicBinaryOperator {
+    type Error = String;
+
+    fn try_from(op: BinaryOperator) -> Result<Self, Self::Error> {
+        match op {
+            BinaryOperator::Add => Ok(AlgebraicBinaryOperator::Add),
+            BinaryOperator::Sub => Ok(AlgebraicBinaryOperator::Sub),
+            BinaryOperator::Mul => Ok(AlgebraicBinaryOperator::Mul),
+            BinaryOperator::Pow => Ok(AlgebraicBinaryOperator::Pow),
+            _ => Err(format!(
+                "Binary operator {op} not allowed in algebraic expression."
+            )),
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
+pub enum AlgebraicUnaryOperator {
+    Plus,
+    Minus,
+}
+
+impl From<AlgebraicUnaryOperator> for UnaryOperator {
+    fn from(op: AlgebraicUnaryOperator) -> UnaryOperator {
+        match op {
+            AlgebraicUnaryOperator::Plus => UnaryOperator::Plus,
+            AlgebraicUnaryOperator::Minus => UnaryOperator::Minus,
+        }
+    }
+}
+
+impl TryFrom<UnaryOperator> for AlgebraicUnaryOperator {
+    type Error = String;
+
+    fn try_from(op: UnaryOperator) -> Result<Self, Self::Error> {
+        match op {
+            UnaryOperator::Plus => Ok(AlgebraicUnaryOperator::Plus),
+            UnaryOperator::Minus => Ok(AlgebraicUnaryOperator::Minus),
+            _ => Err(format!(
+                "Unary operator {op} not allowed in algebraic expression."
+            )),
+        }
+    }
+}
+
+impl<T> AlgebraicExpression<T> {
+    pub fn new_binary(left: Self, op: AlgebraicBinaryOperator, right: Self) -> Self {
+        AlgebraicExpression::BinaryOperation(Box::new(left), op, Box::new(right))
+    }
+
     /// @returns true if the expression contains a reference to a next value of a
     /// (witness or fixed) column
     pub fn contains_next_ref(&self) -> bool {
         expr_any(self, |e| match e {
-            Expression::Reference(Reference::Poly(poly)) => poly.next,
+            AlgebraicExpression::Reference(poly) => poly.next,
             _ => false,
         })
     }
@@ -371,7 +580,7 @@ impl<T> Expression<T> {
     /// @returns true if the expression contains a reference to a next value of a witness column.
     pub fn contains_next_witness_ref(&self) -> bool {
         expr_any(self, |e| match e {
-            Expression::Reference(Reference::Poly(poly)) => poly.next && poly.is_witness(),
+            AlgebraicExpression::Reference(poly) => poly.next && poly.is_witness(),
             _ => false,
         })
     }
@@ -379,19 +588,43 @@ impl<T> Expression<T> {
     /// @returns true if the expression contains a reference to a witness column.
     pub fn contains_witness_ref(&self) -> bool {
         expr_any(self, |e| match e {
-            Expression::Reference(Reference::Poly(poly)) => poly.is_witness(),
+            AlgebraicExpression::Reference(poly) => poly.is_witness(),
             _ => false,
         })
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Reference {
-    LocalVar(u64, String),
-    Poly(PolynomialReference),
+impl<T> ops::Add for AlgebraicExpression<T> {
+    type Output = Self;
+
+    fn add(self, rhs: Self) -> Self::Output {
+        Self::new_binary(self, AlgebraicBinaryOperator::Add, rhs)
+    }
 }
 
-#[derive(Debug, Clone, Eq)]
+impl<T> ops::Sub for AlgebraicExpression<T> {
+    type Output = Self;
+
+    fn sub(self, rhs: Self) -> Self::Output {
+        Self::new_binary(self, AlgebraicBinaryOperator::Sub, rhs)
+    }
+}
+
+impl<T> ops::Mul for AlgebraicExpression<T> {
+    type Output = Self;
+
+    fn mul(self, rhs: Self) -> Self::Output {
+        Self::new_binary(self, AlgebraicBinaryOperator::Mul, rhs)
+    }
+}
+
+impl<T> From<T> for AlgebraicExpression<T> {
+    fn from(value: T) -> Self {
+        AlgebraicExpression::Number(value)
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct PolynomialReference {
     /// Name of the polynomial - just for informational purposes.
     /// Comparisons are based on polynomial ID.
@@ -401,7 +634,6 @@ pub struct PolynomialReference {
     /// TODO make this non-optional
     pub poly_id: Option<PolyID>,
     pub index: Option<u64>,
-    pub next: bool,
 }
 
 #[derive(Debug, Copy, Clone, PartialOrd, Ord, PartialEq, Eq, Hash)]
@@ -419,55 +651,6 @@ impl From<&Symbol> for PolyID {
             id: symbol.id,
             ptype,
         }
-    }
-}
-
-impl PolynomialReference {
-    #[inline]
-    pub fn poly_id(&self) -> PolyID {
-        self.poly_id.unwrap()
-    }
-    #[inline]
-    pub fn is_witness(&self) -> bool {
-        self.poly_id.unwrap().ptype == PolynomialType::Committed
-    }
-    #[inline]
-    pub fn is_fixed(&self) -> bool {
-        self.poly_id.unwrap().ptype == PolynomialType::Constant
-    }
-}
-
-impl PartialOrd for PolynomialReference {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl Ord for PolynomialReference {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        // TODO for efficiency reasons, we should avoid the unwrap check here somehow.
-        match self.poly_id.unwrap().cmp(&other.poly_id.unwrap()) {
-            core::cmp::Ordering::Equal => {}
-            ord => return ord,
-        }
-        assert!(self.index.is_none() && other.index.is_none());
-        self.next.cmp(&other.next)
-    }
-}
-
-impl PartialEq for PolynomialReference {
-    fn eq(&self, other: &Self) -> bool {
-        assert!(self.index.is_none() && other.index.is_none());
-        // TODO for efficiency reasons, we should avoid the unwrap check here somehow.
-        self.poly_id.unwrap() == other.poly_id.unwrap() && self.next == other.next
-    }
-}
-
-impl Hash for PolynomialReference {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.poly_id.hash(state);
-        self.index.hash(state);
-        self.next.hash(state);
     }
 }
 

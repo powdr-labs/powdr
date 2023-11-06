@@ -8,16 +8,15 @@ use std::{
     process::Command,
 };
 
-use ::compiler::{compile_asm_string, BackendType};
-use json::JsonValue;
 use mktemp::Temp;
+use serde_json::Value as JsonValue;
 use std::fs;
 
-use number::FieldElement;
-
 use crate::compiler::{FunctionKind, Register};
+pub use crate::coprocessors::CoProcessors;
 
 pub mod compiler;
+mod coprocessors;
 mod disambiguator;
 pub mod parser;
 
@@ -27,13 +26,12 @@ type Expression = asm_utils::ast::Expression<FunctionKind>;
 
 /// Compiles a rust file all the way down to PIL and generates
 /// fixed and witness columns.
-pub fn compile_rust<T: FieldElement>(
+pub fn compile_rust(
     file_name: &str,
-    inputs: Vec<T>,
     output_dir: &Path,
     force_overwrite: bool,
-    prove_with: Option<BackendType>,
-) -> Result<(), Vec<String>> {
+    coprocessors: &CoProcessors,
+) -> Option<(PathBuf, String)> {
     let riscv_asm = if file_name.ends_with("Cargo.toml") {
         compile_rust_crate_to_riscv_asm(file_name, output_dir)
     } else if fs::metadata(file_name).unwrap().is_dir() {
@@ -54,7 +52,7 @@ pub fn compile_rust<T: FieldElement>(
                 "Target file {} already exists. Not overwriting.",
                 riscv_asm_file_name.to_str().unwrap()
             );
-            return Ok(());
+            return None;
         }
 
         fs::write(riscv_asm_file_name.clone(), contents).unwrap();
@@ -64,21 +62,19 @@ pub fn compile_rust<T: FieldElement>(
     compile_riscv_asm_bundle(
         file_name,
         riscv_asm,
-        inputs,
         output_dir,
         force_overwrite,
-        prove_with,
+        coprocessors,
     )
 }
 
-pub fn compile_riscv_asm_bundle<T: FieldElement>(
+pub fn compile_riscv_asm_bundle(
     original_file_name: &str,
     riscv_asm_files: BTreeMap<String, String>,
-    inputs: Vec<T>,
     output_dir: &Path,
     force_overwrite: bool,
-    prove_with: Option<BackendType>,
-) -> Result<(), Vec<String>> {
+    coprocessors: &CoProcessors,
+) -> Option<(PathBuf, String)> {
     let powdr_asm_file_name = output_dir.join(format!(
         "{}.asm",
         Path::new(original_file_name)
@@ -92,35 +88,26 @@ pub fn compile_riscv_asm_bundle<T: FieldElement>(
             "Target file {} already exists. Not overwriting.",
             powdr_asm_file_name.to_str().unwrap()
         );
-        return Ok(());
+        return None;
     }
 
-    let powdr_asm = compiler::compile::<T>(riscv_asm_files);
+    let powdr_asm = compiler::compile(riscv_asm_files, coprocessors);
 
     fs::write(powdr_asm_file_name.clone(), &powdr_asm).unwrap();
     log::info!("Wrote {}", powdr_asm_file_name.to_str().unwrap());
 
-    compile_asm_string(
-        powdr_asm_file_name.to_str().unwrap(),
-        &powdr_asm,
-        inputs,
-        output_dir,
-        force_overwrite,
-        prove_with,
-    )?;
-    Ok(())
+    Some((powdr_asm_file_name, powdr_asm))
 }
 
 /// Compiles a riscv asm file all the way down to PIL and generates
 /// fixed and witness columns.
-pub fn compile_riscv_asm<T: FieldElement>(
+pub fn compile_riscv_asm(
     original_file_name: &str,
     file_names: impl Iterator<Item = String>,
-    inputs: Vec<T>,
     output_dir: &Path,
     force_overwrite: bool,
-    prove_with: Option<BackendType>,
-) -> Result<(), Vec<String>> {
+    coprocessors: &CoProcessors,
+) -> Option<(PathBuf, String)> {
     compile_riscv_asm_bundle(
         original_file_name,
         file_names
@@ -129,10 +116,9 @@ pub fn compile_riscv_asm<T: FieldElement>(
                 (name, contents)
             })
             .collect(),
-        inputs,
         output_dir,
         force_overwrite,
-        prove_with,
+        coprocessors,
     )
 }
 
@@ -289,9 +275,7 @@ fn output_files_from_cargo_build_plan(
     build_plan_bytes: &[u8],
     target_dir: &Path,
 ) -> Vec<(String, PathBuf)> {
-    // Can a json be anything but UTF-8? Well, cargo's build plan certainly is UTF-8:
-    let json_str = std::str::from_utf8(build_plan_bytes).unwrap();
-    let json = json::parse(json_str).unwrap();
+    let json: JsonValue = serde_json::from_slice(build_plan_bytes).unwrap();
 
     let mut assemblies = Vec::new();
 

@@ -4,6 +4,14 @@ use std::path::Path;
 use test_log::test;
 
 pub fn verify_pil(file_name: &str, query_callback: Option<fn(&str) -> Option<GoldilocksField>>) {
+    verify_pil_with_external_witness(file_name, query_callback, vec![]);
+}
+
+pub fn verify_pil_with_external_witness(
+    file_name: &str,
+    query_callback: Option<fn(&str) -> Option<GoldilocksField>>,
+    external_witness_values: Vec<(&str, Vec<GoldilocksField>)>,
+) {
     let input_file = Path::new(&format!(
         "{}/../test_data/pil/{file_name}",
         env!("CARGO_MANIFEST_DIR")
@@ -11,12 +19,15 @@ pub fn verify_pil(file_name: &str, query_callback: Option<fn(&str) -> Option<Gol
     .canonicalize()
     .unwrap();
 
+    let query_callback = query_callback.unwrap_or(|_: &str| -> Option<GoldilocksField> { None });
+
     let temp_dir = mktemp::Temp::new_dir().unwrap();
     assert!(compiler::compile_pil(
         &input_file,
         &temp_dir,
         query_callback,
-        Some(BackendType::PilStarkCli)
+        Some(BackendType::PilStarkCli),
+        external_witness_values
     )
     .witness
     .is_some());
@@ -34,6 +45,7 @@ fn gen_estark_proof(file_name: &str, inputs: Vec<GoldilocksField>) {
         &mktemp::Temp::new_dir().unwrap(),
         true,
         Some(BackendType::EStark),
+        vec![],
     )
     .unwrap();
 }
@@ -50,6 +62,7 @@ fn gen_halo2_proof(file_name: &str, inputs: Vec<Bn254Field>) {
         &mktemp::Temp::new_dir().unwrap(),
         true,
         Some(BackendType::Halo2),
+        vec![],
     )
     .unwrap();
 }
@@ -79,6 +92,49 @@ fn test_fibonacci_macro() {
     verify_pil(f, None);
     gen_halo2_proof(f, Default::default());
     gen_estark_proof(f, Default::default());
+}
+
+#[test]
+#[should_panic = "Witness generation failed."]
+fn test_external_witgen_fails_if_none_provided() {
+    let f = "external_witgen.pil";
+    verify_pil(f, None);
+}
+
+#[test]
+fn test_external_witgen_a_provided() {
+    let f = "external_witgen.pil";
+    let external_witness = vec![("main.a", vec![GoldilocksField::from(3); 16])];
+    verify_pil_with_external_witness(f, None, external_witness);
+}
+
+#[test]
+fn test_external_witgen_b_provided() {
+    let f = "external_witgen.pil";
+    let external_witness = vec![("main.b", vec![GoldilocksField::from(4); 16])];
+    verify_pil_with_external_witness(f, None, external_witness);
+}
+
+#[test]
+fn test_external_witgen_both_provided() {
+    let f = "external_witgen.pil";
+    let external_witness = vec![
+        ("main.a", vec![GoldilocksField::from(3); 16]),
+        ("main.b", vec![GoldilocksField::from(4); 16]),
+    ];
+    verify_pil_with_external_witness(f, None, external_witness);
+}
+
+#[test]
+#[should_panic = "called `Result::unwrap()` on an `Err` value: ConstraintUnsatisfiable(\"-1\")"]
+fn test_external_witgen_fails_on_conflicting_external_witness() {
+    let f = "external_witgen.pil";
+    let external_witness = vec![
+        ("main.a", vec![GoldilocksField::from(3); 16]),
+        // Does not satisfy b = a + 1
+        ("main.b", vec![GoldilocksField::from(3); 16]),
+    ];
+    verify_pil_with_external_witness(f, None, external_witness);
 }
 
 #[test]
@@ -184,4 +240,9 @@ fn test_fixed_columns() {
 #[test]
 fn test_witness_via_let() {
     verify_pil("witness_via_let.pil", None);
+}
+
+#[test]
+fn conditional_fixed_constraints() {
+    verify_pil("conditional_fixed_constraints.pil", None);
 }

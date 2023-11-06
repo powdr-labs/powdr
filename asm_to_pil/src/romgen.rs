@@ -14,7 +14,7 @@ use ast::parsed::{
 use number::FieldElement;
 
 use crate::{
-    common::{input_at, instruction_flag, output_at, RESET_NAME, RETURN_NAME},
+    common::{input_at, output_at, RESET_NAME},
     utils::{
         parse_function_statement, parse_instruction_definition, parse_pil_statement,
         parse_register_declaration,
@@ -200,7 +200,9 @@ pub fn generate_machine_rom<T: FieldElement>(
             // replace the function by an operation
             *callable.symbol = OperationSymbol {
                 start: 0,
-                id: OperationId { id: operation_id },
+                id: OperationId {
+                    id: Some(operation_id),
+                },
                 params: Params {
                     inputs: operation_inputs,
                     outputs: operation_outputs,
@@ -217,24 +219,11 @@ pub fn generate_machine_rom<T: FieldElement>(
             parse_function_statement("_loop;"),
         ])]);
 
-        // TODO: the following is necessary because of witgen, it can be removed once witgen can call the infinite loop itself
-        // we get the location of the sink so that witgen jumps to it after the first call is done
-        // this constrains the VM to being able to execute only one call, which will be fixed in the future
-        let latch = instruction_flag(RETURN_NAME);
-        let sigma = "_sigma";
-        let first_step = "_romgen_first_step";
-
         machine.pil.extend([
             // inject the operation_id
-            parse_pil_statement(&format!("col witness {operation_id}")),
-            // declare `_sigma` as the sum of the latch, will be 0 and then 1 after the end of the first call
-            parse_pil_statement(&format!("col witness {sigma}")),
-            parse_pil_statement(&format!("col fixed {first_step} = [1] + [0]*")),
             parse_pil_statement(&format!(
-                "{sigma}' = (1 - {first_step}') * ({sigma} + {latch})"
+                "col witness {operation_id}(i) query (\"hint\", {sink_id})"
             )),
-            // once `_sigma` is 1, constrain `_operation_id` to the label of the sink
-            parse_pil_statement(&format!("{sigma} * ({operation_id} - {sink_id}) = 0")),
         ]);
         ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 

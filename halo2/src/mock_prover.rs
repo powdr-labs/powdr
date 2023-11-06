@@ -77,6 +77,10 @@ mod test {
                     print!("{}", items[1].parse::<u8>().unwrap() as char);
                     Some(0.into())
                 }
+                "\"hint\"" => {
+                    assert_eq!(items.len(), 2);
+                    Some(Bn254Field::from_str(items[1]))
+                }
                 _ => None,
             }
         };
@@ -84,7 +88,9 @@ mod test {
         let analyzed = pil_analyzer::analyze_string(&format!("{pil}"));
 
         let (fixed, degree) = executor::constant_evaluator::generate(&analyzed);
-        let witness = executor::witgen::generate(&analyzed, degree, &fixed, Some(query_callback));
+        let witness =
+            executor::witgen::WitnessGenerator::new(&analyzed, degree, &fixed, query_callback)
+                .generate();
 
         mock_prove(&analyzed, &fixed, &witness);
     }
@@ -97,7 +103,9 @@ mod test {
 
         let query_callback = |_: &str| -> Option<Bn254Field> { None };
 
-        let witness = executor::witgen::generate(&analyzed, degree, &fixed, Some(query_callback));
+        let witness =
+            executor::witgen::WitnessGenerator::new(&analyzed, degree, &fixed, query_callback)
+                .generate();
         mock_prove(&analyzed, &fixed, &witness);
     }
 

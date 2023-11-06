@@ -15,8 +15,8 @@ use asm_utils::{
     Architecture,
 };
 use itertools::Itertools;
-use number::FieldElement;
 
+use crate::coprocessors::*;
 use crate::disambiguator;
 use crate::parser::RiscParser;
 use crate::{Argument, Expression, Statement};
@@ -67,12 +67,12 @@ impl Architecture for RiscvArchitecture {
     fn instruction_ends_control_flow(instr: &str) -> bool {
         match instr {
             "li" | "lui" | "la" | "mv" | "add" | "addi" | "sub" | "neg" | "mul" | "mulhu"
-            | "divu" | "remu" | "xor" | "xori" | "and" | "andi" | "or" | "ori" | "not" | "slli"
-            | "sll" | "srli" | "srl" | "srai" | "seqz" | "snez" | "slt" | "slti" | "sltu"
-            | "sltiu" | "sgtz" | "beq" | "beqz" | "bgeu" | "bltu" | "blt" | "bge" | "bltz"
-            | "blez" | "bgtz" | "bgez" | "bne" | "bnez" | "jal" | "jalr" | "call" | "ecall"
-            | "ebreak" | "lw" | "lb" | "lbu" | "lh" | "lhu" | "sw" | "sh" | "sb" | "nop"
-            | "fence" | "fence.i" | "amoadd.w" | "amoadd.w.aq" | "amoadd.w.rl"
+            | "mulhsu" | "divu" | "remu" | "xor" | "xori" | "and" | "andi" | "or" | "ori"
+            | "not" | "slli" | "sll" | "srli" | "srl" | "srai" | "seqz" | "snez" | "slt"
+            | "slti" | "sltu" | "sltiu" | "sgtz" | "beq" | "beqz" | "bgeu" | "bltu" | "blt"
+            | "bge" | "bltz" | "blez" | "bgtz" | "bgez" | "bne" | "bnez" | "jal" | "jalr"
+            | "call" | "ecall" | "ebreak" | "lw" | "lb" | "lbu" | "lh" | "lhu" | "sw" | "sh"
+            | "sb" | "nop" | "fence" | "fence.i" | "amoadd.w" | "amoadd.w.aq" | "amoadd.w.rl"
             | "amoadd.w.aqrl" | "lr.w" | "lr.w.aq" | "lr.w.rl" | "lr.w.aqrl" | "sc.w"
             | "sc.w.aq" | "sc.w.rl" | "sc.w.aqrl" => false,
             "j" | "jr" | "tail" | "ret" | "unimp" => true,
@@ -96,19 +96,15 @@ impl Architecture for RiscvArchitecture {
     }
 }
 
-pub fn machine_decls<T: FieldElement>() -> Vec<&'static str> {
-    vec!["use std::binary::Binary;", "use std::shift::Shift;"]
-}
-
 /// Compiles riscv assembly to a powdr assembly file. Adds required library routines.
-pub fn compile<T: FieldElement>(mut assemblies: BTreeMap<String, String>) -> String {
+pub fn compile(mut assemblies: BTreeMap<String, String>, coprocessors: &CoProcessors) -> String {
     // stack grows towards zero
     let stack_start = 0x10000;
     // data grows away from zero
     let data_start = 0x10100;
 
     assert!(assemblies
-        .insert("__runtime".to_string(), runtime().to_string())
+        .insert("__runtime".to_string(), runtime(coprocessors))
         .is_none());
 
     // TODO remove unreferenced files.
@@ -134,7 +130,7 @@ pub fn compile<T: FieldElement>(mut assemblies: BTreeMap<String, String>) -> Str
 
     // Remove the riscv asm stub function, which is used
     // for compilation, and will not be called.
-    statements = replace_coprocessor_stubs(statements).collect::<Vec<_>>();
+    statements = replace_coprocessor_stubs(statements, coprocessors).collect::<Vec<_>>();
 
     // Sort the objects according to the order of the names in object_order.
     // With the single exception: If there is large object, put that at the end.
@@ -160,14 +156,13 @@ pub fn compile<T: FieldElement>(mut assemblies: BTreeMap<String, String>) -> Str
         data_start,
         &mut |addr, value| match value {
             SingleDataValue::Value(v) => {
-                vec![format!("addr <=X= 0x{addr:x};"), format!("mstore 0x{v:x};")]
+                vec![format!("mstore 0x{addr:x}, 0x{v:x};")]
             }
             SingleDataValue::LabelReference(sym) => {
                 // TODO should be possible without temporary
                 vec![
-                    format!("addr <=X= 0x{addr:x};"),
                     format!("tmp1 <== load_label({});", escape_label(sym)),
-                    "mstore tmp1;".to_string(),
+                    format!("mstore 0x{addr:x}, tmp1;"),
                 ]
             }
             SingleDataValue::Offset(_, _) => {
@@ -190,29 +185,47 @@ pub fn compile<T: FieldElement>(mut assemblies: BTreeMap<String, String>) -> Str
         },
     );
 
+    let program: Vec<String> = file_ids
+        .into_iter()
+        .map(|(id, dir, file)| format!("debug file {id} {} {};", quote(&dir), quote(&file)))
+        .chain(["call __data_init;".to_string()])
+        .chain(call_every_submachine(coprocessors))
+        .chain([
+            format!("// Set stack pointer\nx2 <=X= {stack_start};"),
+            "call __runtime_start;".to_string(),
+            "return;".to_string(), // This is not "riscv ret", but "return from powdr asm function".
+        ])
+        .chain(
+            substitute_symbols_with_values(statements, &data_positions)
+                .into_iter()
+                .flat_map(|v| process_statement(v, coprocessors)),
+        )
+        .chain(["// This is the data initialization routine.\n__data_init::".to_string()])
+        .chain(data_code)
+        .chain(["// This is the end of the data initialization routine.\nret;".to_string()])
+        .collect();
+
+    // The program ROM needs to fit the degree, so we use the next power of 2.
+    let degree = program.len().ilog2() + 1;
+    let degree = std::cmp::max(degree, 18);
+    log::info!("Inferred degree 2^{degree}");
+
+    // In practice, these are the lengths of single proofs that we want to support.
+    // Reasoning:
+    // - 18: is the lower bound for the Binary and Shift machines.
+    // - 20: revm's ROM does not fit in 2^19.
+    // - >20: may be needed in the future.
+    // This is an assert for now, but could be a compiler warning or error.
+    // TODO note that if the degree is higher than 18 we might need mux machines for Binary and
+    // Shift.
+    assert!((18..=20).contains(&degree));
+    let degree = 1 << degree;
+
     riscv_machine(
-        &machine_decls::<T>(),
-        &preamble(),
-        &[("binary", "Binary"), ("shift", "Shift")],
-        file_ids
-            .into_iter()
-            .map(|(id, dir, file)| format!("debug file {id} {} {};", quote(&dir), quote(&file)))
-            .chain(["call __data_init;".to_string()])
-            .chain(call_every_submachine())
-            .chain([
-                format!("// Set stack pointer\nx2 <=X= {stack_start};"),
-                "call __runtime_start;".to_string(),
-                "return;".to_string(), // This is not "riscv ret", but "return from powdr asm function".
-            ])
-            .chain(
-                substitute_symbols_with_values(statements, &data_positions)
-                    .into_iter()
-                    .flat_map(process_statement),
-            )
-            .chain(["// This is the data initialization routine.\n__data_init::".to_string()])
-            .chain(data_code)
-            .chain(["// This is the end of the data initialization routine.\nret;".to_string()])
-            .collect(),
+        &coprocessors.machine_imports(),
+        &preamble(degree, coprocessors),
+        &coprocessors.declarations(),
+        program,
     )
 }
 
@@ -319,29 +332,15 @@ where
     .filter_map(|(filter, statement)| (!filter).then_some(statement))
 }
 
-fn replace_coprocessor_stubs(
-    statements: impl IntoIterator<Item = Statement>,
-) -> impl Iterator<Item = Statement> {
-    let stub_names: Vec<&str> = COPROCESSOR_SUBSTITUTIONS
-        .iter()
-        .map(|(name, _)| *name)
-        .collect();
+fn replace_coprocessor_stubs<'a>(
+    statements: impl IntoIterator<Item = Statement> + 'a,
+    coprocessors: &'a CoProcessors,
+) -> impl Iterator<Item = Statement> + 'a {
+    let stub_names: Vec<&'a str> = coprocessors.runtime_names();
 
     remove_matching_and_next(statements.into_iter(), move |statement| -> bool {
         matches!(&statement, Statement::Label(label) if stub_names.contains(&label.as_str()))
     })
-}
-
-fn call_every_submachine() -> Vec<String> {
-    // TODO This is a hacky snippet to ensure that every submachine in the RISCV machine
-    // is called at least once. This is needed for witgen until it can do default blocks
-    // automatically.
-    // https://github.com/powdr-labs/powdr/issues/548
-    vec![
-        "x10 <== and(x10, x10);".to_string(),
-        "x10 <== shl(x10, x10);".to_string(),
-        "x10 <=X= 0;".to_string(),
-    ]
 }
 
 fn substitute_symbols_with_values(
@@ -436,26 +435,28 @@ machine Main {{
     )
 }
 
-fn preamble() -> String {
-    r#"
-    degree 262144;
+fn preamble(degree: u64, coprocessors: &CoProcessors) -> String {
+    format!("degree {degree};")
+        + r#"
     reg pc[@pc];
     reg X[<=];
     reg Y[<=];
     reg Z[<=];
     reg W[<=];
+"# + &coprocessors.registers()
+        + &r#"
     reg tmp1;
     reg tmp2;
     reg tmp3;
     reg lr_sc_reservation;
 "#
-    .to_string()
+        .to_owned()
+        .to_string()
         + &(0..32)
             .map(|i| format!("\t\treg x{i};\n"))
             .collect::<Vec<_>>()
             .concat()
         + r#"
-    reg addr;
 
     x0 = 0;
 
@@ -514,8 +515,33 @@ fn preamble() -> String {
 
     // ============== memory instructions ==============
 
-    instr mstore X { { addr, STEP, X } is m_is_write { m_addr, m_step, m_value } }
-    instr mload -> X { { addr, STEP, X } is m_is_read { m_addr, m_step, m_value } }
+    let up_to_three = |i| i % 4;
+    let six_bits = |i| i % 2**6;
+    /// Loads one word from an address Y, where Y can be between 0 and 2**33 (sic!),
+    /// wraps the address to 32 bits and rounds it down to the next multiple of 4.
+    /// Returns the loaded word and the remainder of the division by 4.
+    instr mload Y -> X, Z {
+        // Z * (Z - 1) * (Z - 2) * (Z - 3) = 0,
+        { Z } in { up_to_three },
+        Y = wrap_bit * 2**32 + X_b4 * 0x1000000 + X_b3 * 0x10000 + X_b2 * 0x100 + X_b1 * 4 + Z,
+        { X_b1 } in { six_bits },
+        {
+            X_b4 * 0x1000000 + X_b3 * 0x10000 + X_b2 * 0x100 + X_b1 * 4,
+            STEP,
+            X
+        } is m_is_read { m_addr, m_step, m_value }
+        // If we could access the shift machine here, we
+        // could even do the following to complete the mload:
+        // { W, X, Z} in { shr.value, shr.amount, shr.amount}
+    }
+
+    /// Stores Z at address Y % 2**32. Y can be between 0 and 2**33.
+    /// Y should be a multiple of 4, but this instruction does not enforce it.
+    instr mstore Y, Z {
+        { X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000, STEP, Z } is m_is_write { m_addr, m_step, m_value },
+        // Wrap the addr value
+        Y = (X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000) + wrap_bit * 2**32
+    }
 
     // ============== control-flow instructions ==============
 
@@ -553,28 +579,8 @@ fn preamble() -> String {
     instr is_not_equal_zero X -> Y { Y = 1 - XIsZero }
 
     // ================= coprocessor substitution instructions =================
-
-    instr poseidon Y, Z -> X {
-        // Dummy code, to be replaced with actual poseidon code.
-        X = 0
-    }
-
-    // ================= binary/bitwise instructions =================
-
-    instr and Y, Z -> X = binary.and
-
-    instr or Y, Z -> X = binary.or
-
-    instr xor Y, Z -> X = binary.xor
-
-    // ================= shift instructions =================
-
-    instr shl Y, Z -> X = shift.shl
-
-    instr shr Y, Z -> X = shift.shr
-
-    // ================== wrapping instructions ==============
-
+"# + &coprocessors.instructions()
+        + r#"
     // Wraps a value in Y to 32 bits.
     // Requires 0 <= Y < 2**33
     instr wrap Y -> X { Y = X + wrap_bit * 2**32, X = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000 }
@@ -680,7 +686,7 @@ fn preamble() -> String {
 "#
 }
 
-fn runtime() -> &'static str {
+fn runtime(coprocessors: &CoProcessors) -> String {
     r#"
 .globl __udivdi3@plt
 .globl __udivdi3
@@ -728,14 +734,12 @@ fn runtime() -> &'static str {
 
 .globl __rust_alloc_error_handler
 .set __rust_alloc_error_handler, __rg_oom
-
-.globl poseidon_coprocessor
-poseidon_coprocessor:
-    ret
 "#
+    .to_owned()
+        + &coprocessors.runtime()
 }
 
-fn process_statement(s: Statement) -> Vec<String> {
+fn process_statement(s: Statement, coprocessors: &CoProcessors) -> Vec<String> {
     match &s {
         Statement::Label(l) => vec![format!("{}::", escape_label(l))],
         Statement::Directive(directive, args) => match (directive.as_str(), &args[..]) {
@@ -755,7 +759,7 @@ fn process_statement(s: Statement) -> Vec<String> {
                 args.iter().format(", ")
             ),
         },
-        Statement::Instruction(instr, args) => process_instruction(instr, args)
+        Statement::Instruction(instr, args) => process_instruction(instr, args, coprocessors)
             .into_iter()
             .map(|s| "  ".to_string() + &s)
             .collect(),
@@ -848,17 +852,15 @@ fn only_if_no_write_to_zero_vec(statements: Vec<String>, reg: Register) -> Vec<S
     }
 }
 
-static COPROCESSOR_SUBSTITUTIONS: &[(&str, &str)] =
-    &[("poseidon_coprocessor", "x10 <== poseidon(x10, x11);")];
-
-fn try_coprocessor_substitution(label: &str) -> Option<String> {
-    COPROCESSOR_SUBSTITUTIONS
+fn try_coprocessor_substitution(label: &str, coprocessors: &CoProcessors) -> Option<String> {
+    coprocessors
+        .substitutions()
         .iter()
         .find(|(l, _)| *l == label)
-        .map(|&(_, subst)| subst.to_string())
+        .map(|(_, subst)| subst.to_string())
 }
 
-fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
+fn process_instruction(instr: &str, args: &[Argument], coprocessors: &CoProcessors) -> Vec<String> {
     match instr {
         // load/store registers
         "li" => {
@@ -903,6 +905,27 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
         "mulhu" => {
             let (rd, r1, r2) = rrr(args);
             only_if_no_write_to_zero(format!("tmp1, {rd} <== mul({r1}, {r2});"), rd)
+        }
+        "mulhsu" => {
+            let (rd, r1, r2) = rrr(args);
+            only_if_no_write_to_zero_vec(
+                vec![
+                    format!("tmp1 <== to_signed({r1});"),
+                    // tmp2 is 1 if tmp1 is non-negative
+                    "tmp2 <== is_positive(tmp1 + 1);".into(),
+                    // If negative, convert to positive
+                    "skip_if_zero 0, tmp2;".into(),
+                    "tmp1 <=X= 0 - tmp1;".into(),
+                    format!("tmp1, {rd} <== mul(tmp1, {r2});"),
+                    // If was negative before, convert back to negative
+                    "skip_if_zero (1-tmp2), 2;".into(),
+                    "tmp1 <== is_equal_zero(tmp1);".into(),
+                    // If the lower bits are zero, return the two's complement,
+                    // otherwise return one's complement.
+                    format!("{rd} <== wrap_signed(-{rd} - 1 + tmp1);"),
+                ],
+                rd,
+            )
         }
         "divu" => {
             let (rd, r1, r2) = rrr(args);
@@ -1155,7 +1178,9 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
             assert_eq!(args.len(), 1);
             let label = &args[0];
             let replacement = match label {
-                Argument::Expression(Expression::Symbol(l)) => try_coprocessor_substitution(l),
+                Argument::Expression(Expression::Symbol(l)) => {
+                    try_coprocessor_substitution(l, coprocessors)
+                }
                 _ => None,
             };
             match (replacement, instr) {
@@ -1184,23 +1209,14 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
         "lw" => {
             let (rd, rs, off) = rro(args);
             // TODO we need to consider misaligned loads / stores
-            only_if_no_write_to_zero_vec(
-                vec![
-                    format!("addr <== wrap({rs} + {off});"),
-                    format!("{rd} <== mload();"),
-                ],
-                rd,
-            )
+            only_if_no_write_to_zero_vec(vec![format!("{rd}, tmp1 <== mload({rs} + {off});")], rd)
         }
         "lb" => {
             // load byte and sign-extend. the memory is little-endian.
             let (rd, rs, off) = rro(args);
             only_if_no_write_to_zero_vec(
                 vec![
-                    format!("tmp1 <== wrap({rs} + {off});"),
-                    "addr <== and(tmp1, 0xfffffffc);".to_string(),
-                    "tmp2 <== and(tmp1, 0x3);".to_string(),
-                    format!("{rd} <== mload();"),
+                    format!("{rd}, tmp2 <== mload({rs} + {off});"),
                     format!("{rd} <== shr({rd}, 8 * tmp2);"),
                     format!("{rd} <== sign_extend_byte({rd});"),
                 ],
@@ -1212,10 +1228,7 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
             let (rd, rs, off) = rro(args);
             only_if_no_write_to_zero_vec(
                 vec![
-                    format!("tmp1 <== wrap({rs} + {off});"),
-                    "addr <== and(tmp1, 0xfffffffc);".to_string(),
-                    "tmp2 <== and(tmp1, 0x3);".to_string(),
-                    format!("{rd} <== mload();"),
+                    format!("{rd}, tmp2 <== mload({rs} + {off});"),
                     format!("{rd} <== shr({rd}, 8 * tmp2);"),
                     format!("{rd} <== and({rd}, 0xff);"),
                 ],
@@ -1228,10 +1241,7 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
             let (rd, rs, off) = rro(args);
             only_if_no_write_to_zero_vec(
                 vec![
-                    format!("tmp1 <== wrap({rs} + {off});"),
-                    "addr <== and(tmp1, 0xfffffffc);".to_string(),
-                    "tmp2 <== and(tmp1, 0x3);".to_string(),
-                    format!("{rd} <== mload();"),
+                    format!("{rd}, tmp2 <== mload({rs} + {off});"),
                     format!("{rd} <== shr({rd}, 8 * tmp2);"),
                     format!("{rd} <== sign_extend_16_bits({rd});"),
                 ],
@@ -1244,10 +1254,7 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
             let (rd, rs, off) = rro(args);
             only_if_no_write_to_zero_vec(
                 vec![
-                    format!("tmp1 <== wrap({rs} + {off});"),
-                    "addr <== and(tmp1, 0xfffffffc);".to_string(),
-                    "tmp2 <== and(tmp1, 0x3);".to_string(),
-                    format!("{rd} <== mload();"),
+                    format!("{rd}, tmp2 <== mload({rs} + {off});"),
                     format!("{rd} <== shr({rd}, 8 * tmp2);"),
                     format!("{rd} <== and({rd}, 0x0000ffff);"),
                 ],
@@ -1256,10 +1263,7 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
         }
         "sw" => {
             let (r1, r2, off) = rro(args);
-            vec![
-                format!("addr <== wrap({r2} + {off});"),
-                format!("mstore {r1};"),
-            ]
+            vec![format!("mstore {r2} + {off}, {r1};")]
         }
         "sh" => {
             // store half word (two bytes)
@@ -1268,34 +1272,28 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
 
             let (rs, rd, off) = rro(args);
             vec![
-                format!("tmp1 <== wrap({rd} + {off});"),
-                "addr <== and(tmp1, 0xfffffffc);".to_string(),
-                "tmp2 <== and(tmp1, 0x3);".to_string(),
-                "tmp1 <== mload();".to_string(),
+                format!("tmp1, tmp2 <== mload({rd} + {off});"),
                 "tmp3 <== shl(0xffff, 8 * tmp2);".to_string(),
                 "tmp3 <== xor(tmp3, 0xffffffff);".to_string(),
                 "tmp1 <== and(tmp1, tmp3);".to_string(),
                 format!("tmp3 <== and({rs}, 0xffff);"),
                 "tmp3 <== shl(tmp3, 8 * tmp2);".to_string(),
                 "tmp1 <== or(tmp1, tmp3);".to_string(),
-                "mstore tmp1;".to_string(),
+                format!("mstore {rd} + {off} - tmp2, tmp1;"),
             ]
         }
         "sb" => {
             // store byte
             let (rs, rd, off) = rro(args);
             vec![
-                format!("tmp1 <== wrap({rd} + {off});"),
-                "addr <== and(tmp1, 0xfffffffc);".to_string(),
-                "tmp2 <== and(tmp1, 0x3);".to_string(),
-                "tmp1 <== mload();".to_string(),
+                format!("tmp1, tmp2 <== mload({rd} + {off});"),
                 "tmp3 <== shl(0xff, 8 * tmp2);".to_string(),
                 "tmp3 <== xor(tmp3, 0xffffffff);".to_string(),
                 "tmp1 <== and(tmp1, tmp3);".to_string(),
                 format!("tmp3 <== and({rs}, 0xff);"),
                 "tmp3 <== shl(tmp3, 8 * tmp2);".to_string(),
                 "tmp1 <== or(tmp1, tmp3);".to_string(),
-                "mstore tmp1;".to_string(),
+                format!("mstore {rd} + {off} - tmp2, tmp1;"),
             ]
         }
         "nop" => vec![],
@@ -1314,18 +1312,15 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
             let (rd, rs2, rs1, off) = rrro(args);
             assert_eq!(off, 0);
 
-            let rd = if rd.is_zero() {
-                "tmp2".to_string()
-            } else {
-                rd.to_string()
-            };
-
-            vec![
-                format!("addr <=X= {rs1};"),
-                format!("{rd} <== mload();"),
-                format!("tmp1 <== wrap({rd} + {rs2});"),
-                format!("mstore tmp1;"),
+            [
+                vec![
+                    format!("tmp1, tmp2 <== mload({rs1});"),
+                    format!("tmp2 <== wrap(tmp1 + {rs2});"),
+                    format!("mstore {rs1}, tmp2;"),
+                ],
+                only_if_no_write_to_zero(format!("{rd} <=X= tmp1;"), rd),
             ]
+            .concat()
         }
 
         insn if insn.starts_with("lr.w") => {
@@ -1333,10 +1328,8 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
             let (rd, rs, off) = rro(args);
             assert_eq!(off, 0);
             // TODO misaligned access should raise misaligned address exceptions
-            let mut statments = only_if_no_write_to_zero_vec(
-                vec![format!("addr <=X= {rs};"), format!("{rd} <== mload();")],
-                rd,
-            );
+            let mut statments =
+                only_if_no_write_to_zero_vec(vec![format!("{rd}, tmp1 <== mload({rs});")], rd);
             statments.push("lr_sc_reservation <=X= 1;".into());
             statments
         }
@@ -1348,8 +1341,7 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
             // TODO: misaligned access should raise misaligned address exceptions
             let mut statements = vec![
                 "skip_if_zero lr_sc_reservation, 2;".into(),
-                format!("addr <=X= {rs1};"),
-                format!("mstore {rs2};"),
+                format!("mstore {rs1}, {rs2};"),
             ];
             if !rd.is_zero() {
                 statements.push(format!("{rd} <=X= (1 - lr_sc_reservation);"));

@@ -171,7 +171,10 @@ impl<T: Display> Display for MachineStatement<T> {
 
 impl<T: Display> Display for OperationId<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write!(f, "<{}>", self.id)
+        match &self.id {
+            Some(id) => write!(f, "<{id}>"),
+            None => write!(f, ""),
+        }
     }
 }
 
@@ -416,20 +419,6 @@ impl<T: Display> Display for FunctionDefinition<T> {
     }
 }
 
-impl<T: Display> Display for SelectedExpressions<T> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write!(
-            f,
-            "{}{{ {} }}",
-            self.selector
-                .as_ref()
-                .map(|s| format!("{s} "))
-                .unwrap_or_default(),
-            format_expressions(&self.expressions)
-        )
-    }
-}
-
 pub fn format_expressions<T: Display, Ref: Display>(expressions: &[Expression<T, Ref>]) -> String {
     format!("{}", expressions.iter().format(", "))
 }
@@ -437,7 +426,6 @@ pub fn format_expressions<T: Display, Ref: Display>(expressions: &[Expression<T,
 impl<T: Display, Ref: Display> Display for Expression<T, Ref> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
-            Expression::Constant(name) => write!(f, "{name}"),
             Expression::Reference(reference) => write!(f, "{reference}"),
             Expression::PublicReference(name) => write!(f, ":{name}"),
             Expression::Number(value) => write!(f, "{value}"),
@@ -446,7 +434,13 @@ impl<T: Display, Ref: Display> Display for Expression<T, Ref> {
             Expression::LambdaExpression(lambda) => write!(f, "{}", lambda),
             Expression::ArrayLiteral(array) => write!(f, "{array}"),
             Expression::BinaryOperation(left, op, right) => write!(f, "({left} {op} {right})"),
-            Expression::UnaryOperation(op, exp) => write!(f, "{op}{exp}"),
+            Expression::UnaryOperation(op, exp) => {
+                if op.is_prefix() {
+                    write!(f, "{op}{exp}")
+                } else {
+                    write!(f, "{exp}{op}")
+                }
+            }
             Expression::FunctionCall(fun_call) => write!(f, "{fun_call}"),
             Expression::FreeInput(input) => write!(f, "${{ {input} }}"),
             Expression::MatchExpression(scrutinee, arms) => {
@@ -467,12 +461,6 @@ impl<T: Display> Display for PolynomialName<T> {
                 .map(|s| format!("[{s}]"))
                 .unwrap_or_default()
         )
-    }
-}
-
-impl<T: Display> Display for ShiftedPolynomialReference<T> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write!(f, "{}{}", self.pol, if self.is_next { "'" } else { "" })
     }
 }
 
@@ -561,6 +549,7 @@ impl Display for UnaryOperator {
                 UnaryOperator::Minus => "-",
                 UnaryOperator::Plus => "+",
                 UnaryOperator::LogicalNot => "!",
+                UnaryOperator::Next => "'",
             }
         )
     }

@@ -1,19 +1,19 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::iter::once;
 
+use ast::parsed::SelectedExpressions;
 use itertools::Itertools;
 use num_traits::Zero;
 
 use super::{FixedLookup, Machine};
 use crate::witgen::affine_expression::AffineExpression;
-use crate::witgen::identity_processor::Machines;
 use crate::witgen::util::is_simple_poly_of_name;
-use crate::witgen::{EvalResult, FixedData};
+use crate::witgen::{EvalResult, FixedData, MutableState, QueryCallback};
 use crate::witgen::{EvalValue, IncompleteCause};
 use number::{DegreeType, FieldElement};
 
 use ast::analyzed::{
-    Expression, Identity, IdentityKind, PolyID, PolynomialReference, Reference, SelectedExpressions,
+    AlgebraicExpression as Expression, AlgebraicReference, Identity, IdentityKind, PolyID,
 };
 
 /// TODO make this generic
@@ -43,7 +43,7 @@ impl<T: FieldElement> DoubleSortedWitnesses<T> {
 
     pub fn try_new(
         fixed_data: &FixedData<T>,
-        _identities: &[&Identity<T>],
+        _identities: &[&Identity<Expression<T>>],
         witness_cols: &HashSet<PolyID>,
     ) -> Option<Self> {
         // get the namespaces and column names
@@ -94,14 +94,12 @@ impl<T: FieldElement> DoubleSortedWitnesses<T> {
 }
 
 impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses<T> {
-    fn process_plookup(
+    fn process_plookup<Q: QueryCallback<T>>(
         &mut self,
-        _fixed_data: &FixedData<T>,
-        _fixed_lookup: &mut FixedLookup<T>,
+        _mutable_state: &mut MutableState<'a, '_, T, Q>,
         kind: IdentityKind,
-        left: &[AffineExpression<&'a PolynomialReference, T>],
-        right: &'a SelectedExpressions<T>,
-        _machines: Machines<'a, '_, T>,
+        left: &[AffineExpression<&'a AlgebraicReference, T>],
+        right: &'a SelectedExpressions<Expression<T>>,
     ) -> Option<EvalResult<'a, T>> {
         if kind != IdentityKind::Permutation
             || !(is_simple_poly_of_name(right.selector.as_ref()?, &self.namespaced("m_is_read"))
@@ -113,7 +111,11 @@ impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses<T> {
         Some(self.process_plookup_internal(left, right))
     }
 
-    fn take_witness_col_values(&mut self, fixed_data: &FixedData<T>) -> HashMap<String, Vec<T>> {
+    fn take_witness_col_values<'b, Q: QueryCallback<T>>(
+        &mut self,
+        _fixed_lookup: &'b mut FixedLookup<T>,
+        _query_callback: &'b mut Q,
+    ) -> HashMap<String, Vec<T>> {
         let mut addr = vec![];
         let mut step = vec![];
         let mut value = vec![];
@@ -139,7 +141,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses<T> {
             is_write.push(0.into());
             is_read.push(0.into());
         }
-        while addr.len() < fixed_data.degree as usize {
+        while addr.len() < self.degree as usize {
             addr.push(*addr.last().unwrap());
             step.push(*step.last().unwrap() + T::from(1));
             value.push(*value.last().unwrap());
@@ -173,8 +175,8 @@ impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses<T> {
 impl<T: FieldElement> DoubleSortedWitnesses<T> {
     fn process_plookup_internal<'a>(
         &mut self,
-        left: &[AffineExpression<&'a PolynomialReference, T>],
-        right: &SelectedExpressions<T>,
+        left: &[AffineExpression<&'a AlgebraicReference, T>],
+        right: &SelectedExpressions<Expression<T>>,
     ) -> EvalResult<'a, T> {
         // We blindly assume the lookup is of the form
         // OP { ADDR, STEP, X } is m_is_write { m_addr, m_step, m_value }
@@ -182,17 +184,18 @@ impl<T: FieldElement> DoubleSortedWitnesses<T> {
         // OP { ADDR, STEP, X } is m_is_read { m_addr, m_step, m_value }
 
         let is_write = match &right.selector {
-            Some(Expression::Reference(Reference::Poly(p))) => {
-                p.name == self.namespaced("m_is_write")
-            }
+            Some(Expression::Reference(p)) => p.name == self.namespaced("m_is_write"),
             _ => panic!(),
         };
-        let addr = left[0].constant_value().ok_or_else(|| {
-            format!(
-                "Address must be known: {} = {}",
-                left[0], right.expressions[0]
-            )
-        })?;
+        let addr = match left[0].constant_value() {
+            Some(v) => v,
+            None => {
+                return Ok(EvalValue::incomplete(
+                    IncompleteCause::NonConstantRequiredArgument("m_addr"),
+                ))
+            }
+        };
+
         if addr.to_degree() >= self.degree {
             return Err(format!(
                 "Memory access to too large address: 0x{addr:x} (must be less than 0x{:x})",
@@ -210,7 +213,11 @@ impl<T: FieldElement> DoubleSortedWitnesses<T> {
             left[2]
         );
         if !(addr.clone().to_arbitrary_integer() % 4u32).is_zero() {
-            panic!("UNALIGNED");
+            panic!(
+                "Unaligned memory access: addr={:x}, step={step}, write: {is_write}, left: {}",
+                addr.to_arbitrary_integer(),
+                left[2]
+            );
         }
 
         // TODO this does not check any of the failure modes
@@ -220,7 +227,7 @@ impl<T: FieldElement> DoubleSortedWitnesses<T> {
                 Some(v) => v,
                 None => {
                     return Ok(EvalValue::incomplete(
-                        IncompleteCause::NonConstantWriteValue,
+                        IncompleteCause::NonConstantRequiredArgument("m_value"),
                     ))
                 }
             };

@@ -1,18 +1,19 @@
 // Splits an arbitrary field element into two u32s, on the Goldilocks field.
-machine SplitGL(RESET, operation_id) {
+machine SplitGL(RESET, _) {
 
-    operation split<0> in_acc -> output_low, output_high;
+    operation split in_acc -> output_low, output_high;
 
     // Latch and operation ID
     col fixed RESET(i) { i % 8 == 7 };
-    col witness operation_id;
 
     // 1. Decompose the input into bytes
 
     // The byte decomposition of the input, in little-endian order
     // and shifted forward by one (to use the last row of the
     // previous block)
-    col witness bytes;
+    // A hint is provided because automatic witness generation does not
+    // understand step 3 to figure out that the byte decomposition is unique.
+    col witness bytes(i) query ("hint", (in_acc' >> (((i + 1) % 8) * 8)) % 0xff);
     // Puts the bytes together to form the input
     col witness in_acc;
     // Factors to multiply the bytes by
@@ -20,8 +21,7 @@ machine SplitGL(RESET, operation_id) {
 
     in_acc' = (1 - RESET) * in_acc + bytes * FACTOR;
 
-    // 2. Build the output, packing the least significant 4 byte into
-    //    a field element
+    // 2. Build the output, packing chunks of 4 bytes (i.e., 32 bit) into a field element
     col witness output_low, output_high;
     col fixed FACTOR_OUTPUT_LOW = [0x100, 0x10000, 0x1000000, 0, 0, 0, 0, 1]*;
     col fixed FACTOR_OUTPUT_HIGH = [0, 0, 0, 1, 0x100, 0x10000, 0x1000000, 0]*;

@@ -1,4 +1,4 @@
-use ast::analyzed::PolynomialReference;
+use ast::analyzed::AlgebraicReference;
 use number::{DegreeType, FieldElement};
 
 use super::{affine_expression::AffineResult, expression_evaluator::SymbolicVariables, FixedData};
@@ -7,7 +7,7 @@ pub trait WitnessColumnEvaluator<T> {
     /// Returns a symbolic or concrete value for the given witness column and next flag.
     /// This function defines the mapping to IDs.
     /// It should be used together with a matching reverse mapping in WitnessColumnNamer.
-    fn value<'b>(&self, poly: &'b PolynomialReference) -> AffineResult<&'b PolynomialReference, T>;
+    fn value<'b>(&self, poly: &'b AlgebraicReference) -> AffineResult<&'b AlgebraicReference, T>;
 }
 
 /// An evaluator (to be used together with ExpressionEvaluator) that performs concrete
@@ -39,19 +39,15 @@ impl<'a, T: FieldElement, WA> SymbolicVariables<T> for SymoblicWitnessEvaluator<
 where
     WA: WitnessColumnEvaluator<T>,
 {
-    fn value<'b>(&self, poly: &'b PolynomialReference) -> AffineResult<&'b PolynomialReference, T> {
+    fn value<'b>(&self, poly: &'b AlgebraicReference) -> AffineResult<&'b AlgebraicReference, T> {
         // TODO arrays
         if poly.is_witness() {
             self.witness_access.value(poly)
         } else {
             // Constant polynomial (or something else)
-            let values = self.fixed_data.fixed_cols[&poly.poly_id()].values;
-            let row = if poly.next {
-                let degree = values.len() as DegreeType;
-                (self.row + 1) % degree
-            } else {
-                self.row
-            };
+            let values = self.fixed_data.fixed_cols[&poly.poly_id].values;
+            let row =
+                if poly.next { self.row + 1 } else { self.row } % (values.len() as DegreeType);
             Ok(values[row as usize].into())
         }
     }

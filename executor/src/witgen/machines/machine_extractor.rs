@@ -6,18 +6,18 @@ use super::fixed_lookup_machine::FixedLookup;
 use super::sorted_witness_machine::SortedWitnesses;
 use super::FixedData;
 use super::KnownMachine;
-use crate::witgen::{
-    column_map::WitnessColumnMap, generator::Generator, range_constraints::RangeConstraint,
-};
-use ast::analyzed::{Expression, Identity, IdentityKind, PolyID, Reference, SelectedExpressions};
+use crate::witgen::generator::Generator;
+use crate::witgen::global_constraints::GlobalConstraints;
+use ast::analyzed::{AlgebraicExpression as Expression, Identity, IdentityKind, PolyID};
 use ast::parsed::visitor::ExpressionVisitable;
+use ast::parsed::SelectedExpressions;
 use itertools::Itertools;
 use number::FieldElement;
 
 pub struct ExtractionOutput<'a, T: FieldElement> {
     pub fixed_lookup: FixedLookup<T>,
     pub machines: Vec<KnownMachine<'a, T>>,
-    pub base_identities: Vec<&'a Identity<T>>,
+    pub base_identities: Vec<&'a Identity<Expression<T>>>,
     pub base_witnesses: HashSet<PolyID>,
 }
 
@@ -26,10 +26,10 @@ pub struct ExtractionOutput<'a, T: FieldElement> {
 /// that are not "internal" to the machines.
 pub fn split_out_machines<'a, T: FieldElement>(
     fixed: &'a FixedData<'a, T>,
-    identities: Vec<&'a Identity<T>>,
-    global_range_constraints: &WitnessColumnMap<Option<RangeConstraint<T>>>,
+    identities: Vec<&'a Identity<Expression<T>>>,
+    global_range_constraints: &GlobalConstraints<T>,
 ) -> ExtractionOutput<'a, T> {
-    let fixed_lookup = FixedLookup::try_new(fixed, &[], &Default::default()).unwrap();
+    let fixed_lookup = FixedLookup::new(global_range_constraints.clone());
 
     let mut machines: Vec<KnownMachine<T>> = vec![];
 
@@ -117,12 +117,32 @@ pub fn split_out_machines<'a, T: FieldElement>(
             log::info!("Detected machine: block");
             machines.push(KnownMachine::BlockMachine(machine));
         } else {
-            log::info!("Could not detect a specific machine. Will use the generic VM machine.");
+            log::info!("Detected machine: VM.");
+            let latch = connecting_identities
+                .iter()
+                .fold(None, |existing_latch, identity| {
+                    let current_latch = identity
+                        .right
+                        .selector
+                        .as_ref()
+                        .expect("Cannot handle lookup in this machine because it does not have a latch");
+                    if let Some(existing_latch) = existing_latch {
+                        assert_eq!(
+                            &existing_latch, current_latch,
+                            "All connecting identities must have the same selector expression on the right hand side"
+                        );
+                        Some(existing_latch)
+                    } else {
+                        Some(current_latch.clone())
+                    }
+                })
+                .unwrap();
             machines.push(KnownMachine::Vm(Generator::new(
                 fixed,
                 &machine_identities,
                 machine_witnesses,
                 global_range_constraints,
+                Some(latch),
             )));
         }
     }
@@ -140,7 +160,7 @@ pub fn split_out_machines<'a, T: FieldElement>(
 fn all_row_connected_witnesses<T>(
     mut witnesses: HashSet<PolyID>,
     all_witnesses: &HashSet<PolyID>,
-    identities: &[&Identity<T>],
+    identities: &[&Identity<Expression<T>>],
 ) -> HashSet<PolyID> {
     loop {
         let count = witnesses.len();
@@ -173,7 +193,7 @@ fn all_row_connected_witnesses<T>(
 }
 
 /// Extracts all references to names from an identity.
-pub fn refs_in_identity<T>(identity: &Identity<T>) -> HashSet<PolyID> {
+pub fn refs_in_identity<T>(identity: &Identity<Expression<T>>) -> HashSet<PolyID> {
     let mut refs: HashSet<PolyID> = Default::default();
     identity.pre_visit_expressions(&mut |expr| {
         ref_of_expression(expr).map(|id| refs.insert(id));
@@ -182,7 +202,9 @@ pub fn refs_in_identity<T>(identity: &Identity<T>) -> HashSet<PolyID> {
 }
 
 /// Extracts all references to names from selected expressions.
-pub fn refs_in_selected_expressions<T>(selexpr: &SelectedExpressions<T>) -> HashSet<PolyID> {
+pub fn refs_in_selected_expressions<T>(
+    selexpr: &SelectedExpressions<Expression<T>>,
+) -> HashSet<PolyID> {
     let mut refs: HashSet<PolyID> = Default::default();
     selexpr.pre_visit_expressions(&mut |expr| {
         ref_of_expression(expr).map(|id| refs.insert(id));
@@ -194,7 +216,7 @@ pub fn refs_in_selected_expressions<T>(selexpr: &SelectedExpressions<T>) -> Hash
 /// NON-recursively.
 pub fn ref_of_expression<T>(expr: &Expression<T>) -> Option<PolyID> {
     match expr {
-        Expression::Reference(Reference::Poly(p)) => Some(p.poly_id()),
+        Expression::Reference(p) => Some(p.poly_id),
         _ => None,
     }
 }
