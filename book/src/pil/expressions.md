@@ -36,6 +36,7 @@ Elementary expressions are
 - array literals written in square brackets, e.g. ``[1, 2, 3]``
 - tuples, having at least two elements, e.g. `(1, "abc")`
 - match expressions (see below).
+- if expressions (see below).
 
 Parentheses are allowed at any point to force precedence.
 
@@ -56,6 +57,20 @@ let fib = |i| match i {
     _ => fib(i - 2) + fib(i - 1),
 };
 ```
+
+### If Expressions
+
+If expressions take the form ``if <condition> { <true value> } else { <false value> }``, where the "else" part is not optional.
+
+If the condition evaluates to a non-zero number, `<true value>` is evaluated, otherwise `<false value>` is.
+
+
+Example:
+
+```
+let is_seven = |i| if i == 7 { 1 } else { 0 };
+```
+
 
 ## Algebraic Expressions
 
