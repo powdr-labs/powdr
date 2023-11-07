@@ -79,7 +79,7 @@
 # 12 "sources/andi.S" 2
 
 
-.globl __runtime_start; __runtime_start:
+.globl __runtime_start; __runtime_start: la x10,__return_pointer; sw x1,0(x10); li x10,0
 
   #-------------------------------------------------------------
   # Logical tests
@@ -111,12 +111,12 @@
   test_13: li x10, 13; ebreak; andi x1, x0, ((0x0f0) | (-(((0x0f0) >> 11) & 1) << 11));; li x29, 0; li x28, 13; bne x1, x29, fail;;
   test_14: li x10, 14; ebreak; li x1, 0x00ff00ff; andi x0, x1, ((0x70f) | (-(((0x70f) >> 11) & 1) << 11));; li x29, 0; li x28, 14; bne x0, x29, fail;;
 
-  bne x0, x28, pass; fail: unimp;; pass: ret;
+  bne x0, x28, pass; fail: unimp;; pass: la x10,__return_pointer; lw x1,0(x10); ret;
 
 
 
   .data
-.balign 4;
+.balign 4; __return_pointer: .word 0;
 
  
 
