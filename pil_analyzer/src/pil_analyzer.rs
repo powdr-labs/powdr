@@ -127,9 +127,14 @@ impl<T: FieldElement> PILAnalyzer<T> {
                     Some(FunctionDefinition::Expression(value)),
                 );
             }
-            PilStatement::PublicDeclaration(start, name, polynomial, index) => {
-                self.handle_public_declaration(self.to_source_ref(start), name, polynomial, index)
-            }
+            PilStatement::PublicDeclaration(start, name, polynomial, array_index, index) => self
+                .handle_public_declaration(
+                    self.to_source_ref(start),
+                    name,
+                    polynomial,
+                    array_index,
+                    index,
+                ),
             PilStatement::PolynomialConstantDeclaration(start, polynomials) => self
                 .handle_polynomial_declarations(
                     self.to_source_ref(start),
@@ -417,18 +422,26 @@ impl<T: FieldElement> PILAnalyzer<T> {
         &mut self,
         source: SourceRef,
         name: String,
-        poly: ::ast::parsed::NamespacedPolynomialReference<T>,
-        index: ::ast::parsed::Expression<T>,
+        poly: parsed::NamespacedPolynomialReference,
+        array_index: Option<parsed::Expression<T>>,
+        index: parsed::Expression<T>,
     ) {
         let id = self.public_declarations.len() as u64;
+        let polynomial =
+            ExpressionProcessor::new(self).process_namespaced_polynomial_reference(poly);
+        let array_index = array_index.map(|i| {
+            let index = self.evaluate_expression(i).unwrap().to_degree();
+            assert!(index <= usize::MAX as u64);
+            index as usize
+        });
         self.public_declarations.insert(
             name.to_string(),
             PublicDeclaration {
                 id,
                 source,
                 name: name.to_string(),
-                polynomial: ExpressionProcessor::new(self)
-                    .process_namespaced_polynomial_reference(poly),
+                polynomial,
+                array_index,
                 index: self.evaluate_expression(index).unwrap().to_degree(),
             },
         );
@@ -538,10 +551,9 @@ impl<'a, T: FieldElement> ExpressionProcessor<'a, T> {
         use parsed::Expression as PExpression;
         match expr {
             PExpression::Reference(poly) => {
-                if poly.namespace().is_none() && self.local_variables.contains_key(poly.name()) {
-                    let id = self.local_variables[poly.name()];
-                    assert!(poly.index().is_none());
-                    Expression::Reference(Reference::LocalVar(id, poly.name().to_string()))
+                if poly.namespace.is_none() && self.local_variables.contains_key(&poly.name) {
+                    let id = self.local_variables[&poly.name];
+                    Expression::Reference(Reference::LocalVar(id, poly.name.to_string()))
                 } else {
                     Expression::Reference(Reference::Poly(
                         self.process_namespaced_polynomial_reference(poly),
@@ -568,6 +580,12 @@ impl<'a, T: FieldElement> ExpressionProcessor<'a, T> {
             ),
             PExpression::UnaryOperation(op, value) => {
                 Expression::UnaryOperation(op, Box::new(self.process_expression(*value)))
+            }
+            PExpression::IndexAccess(index_access) => {
+                Expression::IndexAccess(parsed::IndexAccess {
+                    array: Box::new(self.process_expression(*index_access.array)),
+                    index: Box::new(self.process_expression(*index_access.index)),
+                })
             }
             PExpression::FunctionCall(c) => Expression::FunctionCall(parsed::FunctionCall {
                 id: self.analyzer.namespaced_ref_to_absolute(&None, &c.id),
@@ -620,20 +638,14 @@ impl<'a, T: FieldElement> ExpressionProcessor<'a, T> {
 
     pub fn process_namespaced_polynomial_reference(
         &mut self,
-        poly: ::ast::parsed::NamespacedPolynomialReference<T>,
+        poly: ::ast::parsed::NamespacedPolynomialReference,
     ) -> PolynomialReference {
-        let index = poly
-            .index()
-            .as_ref()
-            .map(|i| self.analyzer.evaluate_expression(*i.clone()).unwrap())
-            .map(|i| i.to_degree());
         let name = self
             .analyzer
-            .namespaced_ref_to_absolute(poly.namespace(), poly.name());
+            .namespaced_ref_to_absolute(&poly.namespace, &poly.name);
         PolynomialReference {
             name,
             poly_id: None,
-            index,
         }
     }
 }

@@ -62,7 +62,7 @@ pub fn export<T: FieldElement>(analyzed: &Analyzed<T>) -> PIL {
                 let (_, expr) = exporter.polynomial_reference_to_json(&AlgebraicReference {
                     name: pub_ref.name.clone(),
                     poly_id: pub_ref.poly_id.unwrap(),
-                    index: pub_ref.index,
+                    index: pub_def.array_index,
                     next: false,
                 });
                 let id = publics.len();
@@ -337,7 +337,7 @@ impl<'a, T: FieldElement> Exporter<'a, T> {
             assert!(index.is_none());
             self.intermediate_poly_expression_ids[id]
         } else {
-            id + index.unwrap_or_default()
+            id + index.unwrap_or_default() as u64
         };
         let poly = StarkyExpr {
             id: Some(id as usize),
