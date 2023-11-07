@@ -1,0 +1,2 @@
+namespace Main(16);
+let is_seven = |i| if i == 7 { 1 } else { 0 };

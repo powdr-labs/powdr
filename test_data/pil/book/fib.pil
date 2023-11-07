@@ -1,0 +1,6 @@
+namespace Main(16);
+let fib = |i| match i {
+    0 => 1,
+    1 => 1,
+    _ => fib(i - 2) + fib(i - 1),
+};
