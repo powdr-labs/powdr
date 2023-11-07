@@ -54,7 +54,7 @@ pub enum PilStatement<T> {
         Vec<PilStatement<T>>,
         Option<Expression<T>>,
     ),
-    FunctionCall(usize, String, Vec<Expression<T>>),
+    Expression(usize, Expression<T>),
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]

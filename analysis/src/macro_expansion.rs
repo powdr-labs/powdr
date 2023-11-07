@@ -7,7 +7,7 @@ use ast::parsed::{
     asm::{ASMProgram, Instruction, InstructionBody, Machine, MachineStatement},
     folder::Folder,
     visitor::ExpressionVisitable,
-    Expression, FunctionDefinition, PilStatement,
+    Expression, FunctionCall, FunctionDefinition, PilStatement,
 };
 use number::FieldElement;
 
@@ -108,16 +108,17 @@ where
         statement.post_visit_expressions_mut(&mut |e| self.process_expression(e));
 
         match &mut statement {
-            PilStatement::FunctionCall(_start, name, arguments) => {
-                if !self.macros.contains_key(name) {
-                    panic!(
-                        "Macro {name} not found - only macros allowed at this point, no fixed columns."
-                    );
+            PilStatement::Expression(_start, e) => match e {
+                Expression::FunctionCall(FunctionCall { id, arguments }) => {
+                    if !self.macros.contains_key(id) {
+                        panic!("Macro {id} not found - only macros allowed at this point, no fixed columns.");
+                    }
+                    if self.expand_macro(id, std::mem::take(arguments)).is_some() {
+                        panic!("Invoked a macro in statement context with non-empty expression.");
+                    }
                 }
-                if self.expand_macro(name, std::mem::take(arguments)).is_some() {
-                    panic!("Invoked a macro in statement context with non-empty expression.");
-                }
-            }
+                _ => panic!("Only function calls or identities allowed at PIL statement level."),
+            },
             PilStatement::MacroDefinition(_start, name, parameters, statements, expression) => {
                 // We expand lazily. Is that a mistake?
                 let is_new = self
