@@ -70,3 +70,9 @@ be an "algebraic expression". These are restricted in the following way:
 - No other operators are allowed.
 
 Arbitrary parentheses are allowed.
+
+The following example illustrates how you can still use the generic language:
+
+```
+{{#include ../../../test_data/pil/generic_to_algebraic.pil}}
+```

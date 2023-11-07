@@ -7,6 +7,7 @@ use walkdir::WalkDir;
 
 fn main() {
     build_book_tests("asm");
+    build_book_tests("pil");
 }
 
 #[allow(clippy::print_stdout)]

@@ -248,13 +248,17 @@ mod internal {
                     .collect::<Result<_, _>>()?,
             ),
             Expression::BinaryOperation(left, op, right) => {
-                let left = evaluate(left, locals, symbols)?;
-                let right = evaluate(right, locals, symbols)?;
-                match (&left, &right) {
-                    (Value::Custom(_), _) | (_, Value::Custom(_)) => {
+                let mut left = evaluate(left, locals, symbols)?;
+                let mut right = evaluate(right, locals, symbols)?;
+                match (&mut left, op, &mut right) {
+                    (Value::Custom(_), _, _) | (_, _, Value::Custom(_)) => {
                         symbols.eval_binary_operation(left, *op, right)?
                     }
-                    (Value::Number(l), Value::Number(r)) => {
+                    (Value::Array(l), BinaryOperator::Add, Value::Array(r)) => {
+                        l.extend(std::mem::take(r));
+                        Value::Array(std::mem::take(l))
+                    }
+                    (Value::Number(l), _, Value::Number(r)) => {
                         Value::Number(evaluate_binary_operation(*l, *op, *r))
                     }
                     _ => Err(EvalError::TypeError(format!(
@@ -284,7 +288,7 @@ mod internal {
                             evaluate(&index_access.index, locals, symbols)?.try_to_number()?;
                         if index.to_integer() >= (elements.len() as u64).into() {
                             Err(EvalError::OutOfBounds(format!(
-                                "Index access out of bounds: Tried to access element {index} of array of size {}.",
+                                "Index access out of bounds: Tried to access element {index} of array of size {} in: {expr}.",
                                 elements.len()
                             )))?;
                         }

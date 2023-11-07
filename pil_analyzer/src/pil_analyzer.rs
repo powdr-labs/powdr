@@ -236,7 +236,8 @@ impl<T: FieldElement> PILAnalyzer<T> {
 
     fn handle_identity_statement(&mut self, statement: PilStatement<T>) {
         let (start, kind, left, right) = match statement {
-            PilStatement::PolynomialIdentity(start, expression) => (
+            PilStatement::PolynomialIdentity(start, expression)
+            | PilStatement::Expression(start, expression) => (
                 start,
                 IdentityKind::Polynomial,
                 SelectedExpressions {
@@ -611,7 +612,7 @@ namespace N(65536);
     }
 
     #[test]
-    #[should_panic = "Tried to access element 3 of array of size 3."]
+    #[should_panic = "Tried to access element 3 of array of size 3"]
     fn no_out_of_bounds() {
         let input = r#"namespace N(16);
     col witness y[3];
