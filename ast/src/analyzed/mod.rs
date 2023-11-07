@@ -25,6 +25,8 @@ pub enum StatementIdentifier {
 
 #[derive(Debug)]
 pub struct Analyzed<T> {
+    /// The degree of all namespaces, which must match. If there are no namespaces, then `None`.
+    pub degree: Option<DegreeType>,
     pub definitions: HashMap<String, (Symbol, Option<FunctionValueDefinition<T>>)>,
     pub public_declarations: HashMap<String, PublicDeclaration>,
     pub intermediate_columns: HashMap<String, (Symbol, AlgebraicExpression<T>)>,
@@ -35,6 +37,10 @@ pub struct Analyzed<T> {
 }
 
 impl<T> Analyzed<T> {
+    /// @returns the degree if any. Panics if there is none.
+    pub fn degree(&self) -> DegreeType {
+        self.degree.unwrap()
+    }
     /// @returns the number of committed polynomials (with multiplicities for arrays)
     pub fn commitment_count(&self) -> usize {
         self.declaration_type_count(PolynomialType::Committed)

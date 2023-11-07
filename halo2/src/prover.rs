@@ -65,7 +65,7 @@ impl Halo2Prover {
         witness: &[(String, Vec<F>)],
     ) -> Vec<u8> {
         // TODO this is hacky
-        let degree = usize::BITS - fixed[0].1.len().leading_zeros() + 1;
+        let degree = usize::BITS - pil.degree().leading_zeros() + 1;
         let params = {
             let mut params = self.params.clone();
             params.downsize(degree);
@@ -111,7 +111,7 @@ impl Halo2Prover {
         log::info!("Starting proof aggregation...");
 
         // TODO this is hacky
-        let degree = usize::BITS - fixed[0].1.len().leading_zeros() + 1;
+        let degree = usize::BITS - pil.degree().leading_zeros() + 1;
         let params_app = {
             let mut params = self.params.clone();
             params.downsize(degree);

@@ -59,10 +59,6 @@ pub fn verify(temp_dir: &Path) {
 
     let constants_file = format!("{}/constants.bin", temp_dir.to_str().unwrap());
     let commits_file = format!("{}/commits.bin", temp_dir.to_str().unwrap());
-    assert!(
-        fs::metadata(&constants_file).unwrap().len() > 0,
-        "Empty constants file"
-    );
 
     let verifier_output = Command::new("node")
         .args([
