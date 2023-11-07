@@ -54,6 +54,13 @@ pub trait ExpressionFolder<T, Ref> {
         &mut self,
         e: Expression<T, Ref>,
     ) -> Result<Expression<T, Ref>, Self::Error> {
+        self.fold_expression_default(e)
+    }
+
+    fn fold_expression_default(
+        &mut self,
+        e: Expression<T, Ref>,
+    ) -> Result<Expression<T, Ref>, Self::Error> {
         Ok(match e {
             Expression::Reference(r) => Expression::Reference(self.fold_reference(r)?),
             Expression::PublicReference(r) => Expression::PublicReference(r),
@@ -116,10 +123,13 @@ pub trait ExpressionFolder<T, Ref> {
 
     fn fold_function_call(
         &mut self,
-        FunctionCall { id, arguments }: FunctionCall<T, Ref>,
+        FunctionCall {
+            function,
+            arguments,
+        }: FunctionCall<T, Ref>,
     ) -> Result<FunctionCall<T, Ref>, Self::Error> {
         Ok(FunctionCall {
-            id,
+            function: self.fold_boxed_expression(*function)?,
             arguments: self.fold_expressions(arguments)?,
         })
     }

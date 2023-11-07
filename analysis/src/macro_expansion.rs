@@ -7,7 +7,7 @@ use ast::parsed::{
     asm::{ASMProgram, Instruction, InstructionBody, Machine, MachineStatement},
     folder::Folder,
     visitor::ExpressionVisitable,
-    Expression, FunctionCall, FunctionDefinition, PilStatement,
+    Expression, FunctionCall, FunctionDefinition, NamespacedPolynomialReference, PilStatement,
 };
 use number::FieldElement;
 
@@ -107,11 +107,13 @@ where
 
         match &mut statement {
             PilStatement::Expression(_start, e) => match e {
-                Expression::FunctionCall(FunctionCall { id, arguments }) => {
-                    assert!(id.namespace.is_none());
-                    if !self.macros.contains_key(&id.name) {
-                        panic!("Macro {id} not found - only macros allowed at this point, no fixed columns.");
-                    }
+                Expression::FunctionCall(FunctionCall {
+                    function,
+                    arguments,
+                }) => {
+                    let mac = self.find_macro(function).unwrap_or_else(
+                        || panic!("Macro {} not found - only macros allowed at this point, no fixed columns.", function)
+                    );
                     let arguments = std::mem::take(arguments)
                         .into_iter()
                         .map(|mut a| {
@@ -119,9 +121,11 @@ where
                             a
                         })
                         .collect();
-                    if self.expand_macro(&id.name, arguments).is_some() {
-                        panic!("Invoked a macro in statement context with non-empty expression.");
-                    }
+                    let returned_expression = self.expand_macro(mac, arguments).is_some();
+                    assert!(
+                        !returned_expression,
+                        "Invoked a macro in statement context with non-empty expression."
+                    );
                 }
                 _ => panic!("Only function calls or identities allowed at PIL statement level."),
             },
@@ -151,13 +155,25 @@ where
         }
     }
 
+    fn find_macro<'a>(&self, name: &'a Expression<T>) -> Option<&'a str> {
+        if let Expression::Reference(NamespacedPolynomialReference {
+            namespace: None,
+            name,
+        }) = name
+        {
+            if !self.shadowing_locals.contains(name.as_str())
+                && self.macros.contains_key(name.as_str())
+            {
+                return Some(name.as_str());
+            }
+        }
+        None
+    }
+
     fn expand_macro(&mut self, name: &str, arguments: Vec<Expression<T>>) -> Option<Expression<T>> {
         let old_arguments = std::mem::replace(&mut self.arguments, arguments);
 
-        let mac = &self
-            .macros
-            .get(name)
-            .unwrap_or_else(|| panic!("Macro {name} not found."));
+        let mac = self.macros.get(name).unwrap();
         let parameters = mac
             .parameters
             .iter()
@@ -186,12 +202,9 @@ where
                 *e = self.arguments[self.parameter_names[&poly.name]].clone()
             }
         } else if let Expression::FunctionCall(call) = e {
-            if call.id.namespace.is_none()
-                && !self.shadowing_locals.contains(&call.id.name)
-                && self.macros.contains_key(&call.id.name)
-            {
+            if let Some(mac) = self.find_macro(&call.function) {
                 *e = self
-                    .expand_macro(&call.id.name, std::mem::take(&mut call.arguments))
+                    .expand_macro(mac, std::mem::take(&mut call.arguments))
                     .expect("Invoked a macro in expression context with empty expression.")
             }
         }

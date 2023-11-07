@@ -291,7 +291,12 @@ impl<T: Display, Ref: Display> Display for IndexAccess<T, Ref> {
 
 impl<T: Display, Ref: Display> Display for FunctionCall<T, Ref> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write!(f, "{}({})", self.id, format_expressions(&self.arguments))
+        write!(
+            f,
+            "{}({})",
+            self.function,
+            format_expressions(&self.arguments)
+        )
     }
 }
 
