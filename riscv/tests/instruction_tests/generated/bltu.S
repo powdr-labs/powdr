@@ -79,7 +79,7 @@
 # 12 "sources/bltu.S" 2
 
 
-.globl __runtime_start; __runtime_start:
+.globl __runtime_start; __runtime_start: la x10,__return_pointer; sw x1,0(x10); li x10,0
 
   #-------------------------------------------------------------
   # Branch tests
@@ -120,12 +120,12 @@
 
   test_21: li x10, 21; ebreak; li x1, 1; bltu x0, x1, test_21_l1; addi x1, x1, 1; addi x1, x1, 1; addi x1, x1, 1; addi x1, x1, 1; test_21_l1: addi x1, x1, 1; addi x1, x1, 1;; li x29, 3; li x28, 21; bne x1, x29, fail;
 # 64 "sources/bltu.S"
-  bne x0, x28, pass; fail: unimp;; pass: ret;
+  bne x0, x28, pass; fail: unimp;; pass: la x10,__return_pointer; lw x1,0(x10); ret;
 
 
 
   .data
-.balign 4;
+.balign 4; __return_pointer: .word 0;
 
  
 

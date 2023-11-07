@@ -79,7 +79,7 @@
 # 12 "sources/mulhu.S" 2
 
 
-.globl __runtime_start; __runtime_start:
+.globl __runtime_start; __runtime_start: la x10,__return_pointer; sw x1,0(x10); li x10,0
 
   #-------------------------------------------------------------
   # Arithmetic tests
@@ -138,12 +138,12 @@
   test_29: li x10, 29; ebreak; li x1, 33<<20; li x2, 34<<20; mulhu x0, x1, x2;; li x29, 0; li x28, 29; bne x0, x29, fail;;
 
 
-  bne x0, x28, pass; fail: unimp;; pass: ret;
+  bne x0, x28, pass; fail: unimp;; pass: la x10,__return_pointer; lw x1,0(x10); ret;
 
 
 
   .data
-.balign 4;
+.balign 4; __return_pointer: .word 0;
 
  
 

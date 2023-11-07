@@ -81,14 +81,14 @@
 # 14 "sources/simple.S" 2
 
 
-.globl __runtime_start; __runtime_start:
+.globl __runtime_start; __runtime_start: la x10,__return_pointer; sw x1,0(x10); li x10,0
 
-ret;
+la x10,__return_pointer; lw x1,0(x10); ret;
 
 
 
   .data
-.balign 4;
+.balign 4; __return_pointer: .word 0;
 
  
 
