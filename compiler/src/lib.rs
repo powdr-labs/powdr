@@ -214,7 +214,7 @@ fn compile<T: FieldElement, Q: QueryCallback<T>>(
     external_witness_values: Vec<(&str, Vec<T>)>,
 ) -> CompilationResult<T> {
     log::info!("Optimizing pil...");
-    let analyzed = pilopt::optimize(analyzed);
+    // let analyzed = pilopt::optimize(analyzed);
     let optimized_pil_file_name = output_dir.join(format!(
         "{}_opt.pil",
         Path::new(file_name).file_stem().unwrap().to_str().unwrap()
