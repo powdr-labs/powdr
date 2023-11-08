@@ -24,7 +24,7 @@ use builder::{MemoryBuilder, TraceBuilder};
 use number::{BigInt, FieldElement};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-struct Elem(i64);
+pub struct Elem(i64);
 
 impl Elem {
     const fn zero() -> Self {
@@ -59,12 +59,12 @@ impl From<i32> for Elem {
 }
 
 pub struct ExecutionTrace<'a> {
-    reg_map: HashMap<&'a str, usize>,
+    pub reg_map: HashMap<&'a str, usize>,
 
     /// Values of the registers in the execution trace.
     ///
     /// Each N elements is a row with all registers.
-    values: Vec<Elem>,
+    pub values: Vec<Elem>,
 }
 
 mod builder {
@@ -109,12 +109,22 @@ mod builder {
                 .collect::<HashMap<&str, usize>>();
 
             // first row has all values zeroed
-            let values = vec![Elem::zero(); 2 * reg_map.len()];
+            //let values = vec![Elem::zero(); 2 * reg_map.len()];
+            // TODO is this 2 more rows?
+            let mut values = vec![Elem::zero(); 4 * reg_map.len()];
+
+            let pc_idx = reg_map["pc"];
+            let reg_len = reg_map.len();
+
+            values[pc_idx] = 0.into();
+            values[pc_idx + reg_len] = 1.into();
+            values[pc_idx + reg_len * 2] = 2.into();
+            //values[pc_idx + reg_len * 3] = 3.into();
 
             let mut ret = Self {
-                curr_idx: 0,
+                curr_idx: 2,
                 x0_idx: reg_map["x0"],
-                pc_idx: reg_map["pc"],
+                pc_idx,
                 trace: ExecutionTrace { reg_map, values },
                 next_statement_line: 1,
                 batch_to_line_map,
@@ -729,8 +739,20 @@ pub fn execute_ast<'a, T: FieldElement>(
     inputs: &[T],
 ) -> ExecutionTrace<'a> {
     let main_machine = get_main_machine(program);
-    let (statements, label_map, batch_to_line_map, debug_files) =
+    let (mut statements, label_map, mut batch_to_line_map, debug_files) =
         preprocess_main_function(main_machine);
+
+    //let noop_0 = FunctionStatement::<T>::Label(LabelStatement { start: 0, name: "noop_0".to_string() });
+    //let noop_1 = FunctionStatement::<T>::Label(LabelStatement { start: 0, name: "noop_1".to_string() });
+    let noop_0 = FunctionStatement::<T>::DebugDirective(ast::asm_analysis::DebugDirective { start: 0, directive: ast::parsed::asm::DebugDirective::Loc(1, 0, 0) });
+
+    /* HACK */
+    //statements.insert(0, &noop_0);
+    //statements.insert(0, &noop_0);
+
+    batch_to_line_map.insert(0, 0);
+    batch_to_line_map.insert(0, 0);
+    /* END OF HACK */
 
     let mut e = Executor {
         proc: TraceBuilder::new(main_machine, &batch_to_line_map),
@@ -741,10 +763,11 @@ pub fn execute_ast<'a, T: FieldElement>(
     };
 
     let mut curr_pc = 0u32;
+    let mut length = 0;
     loop {
         let stm = statements[curr_pc as usize];
 
-        //println!("l {curr_pc}: {stm}",);
+        println!("l {curr_pc}: {stm}",);
 
         let is_nop = match stm {
             FunctionStatement::Assignment(a) => {
@@ -786,7 +809,11 @@ pub fn execute_ast<'a, T: FieldElement>(
         };
 
         curr_pc = e.proc.advance(is_nop);
+
+        length += 1;
     }
+
+    println!("LENGTH = {length}");
 
     e.proc.finish()
 }
@@ -795,7 +822,7 @@ pub fn execute_ast<'a, T: FieldElement>(
 ///
 /// The FieldElement is just used by the parser, before everything is converted
 /// to i64, so it is probably not very important.
-pub fn execute<F: FieldElement>(asm_source: &str, inputs: &[F]) {
+pub fn execute<F: FieldElement>(asm_source: &str, inputs: &[F]) -> Vec<(String, Vec<F>)> {
     log::info!("Parsing...");
     let parsed = parser::parse_asm::<F>(None, asm_source).unwrap();
     log::info!("Resolving imports...");
@@ -804,7 +831,25 @@ pub fn execute<F: FieldElement>(asm_source: &str, inputs: &[F]) {
     let analyzed = analysis::analyze(resolved, &mut ast::DiffMonitor::default()).unwrap();
 
     log::info!("Executing...");
-    execute_ast(&analyzed, inputs);
+    let trace = execute_ast(&analyzed, inputs);
+
+    assert_eq!(trace.values.len() % trace.reg_map.len(), 0);
+
+    let mut witness: HashMap<&str, Vec<F>> = HashMap::with_capacity(trace.reg_map.len());
+
+    for chunk in trace.values.chunks_exact(trace.reg_map.len()) {
+        for (reg_name, &index) in trace.reg_map.iter() {
+            witness
+                .entry(reg_name)
+                .or_default()
+                .push(chunk[index].0.into());
+        }
+    }
+
+    witness
+        .into_iter()
+        .map(|(n, c)| (format!("main.{}", n), c))
+        .collect()
 }
 
 fn to_u32<F: FieldElement>(val: &F) -> Option<u32> {

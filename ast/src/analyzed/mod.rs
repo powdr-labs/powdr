@@ -14,7 +14,7 @@ pub use crate::parsed::BinaryOperator;
 pub use crate::parsed::UnaryOperator;
 use crate::parsed::{self, SelectedExpressions};
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum StatementIdentifier {
     /// Either an intermediate column or a definition.
     Definition(String),
@@ -23,7 +23,7 @@ pub enum StatementIdentifier {
     Identity(usize),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Analyzed<T> {
     pub definitions: HashMap<String, (Symbol, Option<FunctionValueDefinition<T>>)>,
     pub public_declarations: HashMap<String, PublicDeclaration>,
@@ -315,7 +315,7 @@ pub enum SymbolKind {
     Other(),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum FunctionValueDefinition<T> {
     Mapping(Expression<T>),
     Array(Vec<RepeatedArray<T>>),
@@ -324,7 +324,7 @@ pub enum FunctionValueDefinition<T> {
 }
 
 /// An array of elements that might be repeated.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct RepeatedArray<T> {
     /// The pattern to be repeated
     pattern: Vec<Expression<T>>,
@@ -364,7 +364,7 @@ impl<T> RepeatedArray<T> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct PublicDeclaration {
     pub id: u64,
     pub source: SourceRef,

@@ -134,6 +134,18 @@ pub fn compile_asm<T: FieldElement>(
     .1)
 }
 
+pub fn compile_asm_string_to_analyzed<T: FieldElement>(
+    file_name: &str,
+    contents: &str,
+) -> Analyzed<T> {
+    let mut monitor = DiffMonitor::default();
+    let analyzed = compile_asm_string_to_analyzed_ast::<T>(file_name, contents, &mut monitor).unwrap();
+    let constraints = convert_analyzed_to_pil_constraints(analyzed, &mut monitor);
+    let graph = airgen::compile(constraints);
+    let pil = linker::link(graph).unwrap();
+    pil_analyzer::analyze_string(&format!("{pil}"))
+}
+
 #[allow(clippy::print_stderr)]
 pub fn compile_asm_string_to_analyzed_ast<T: FieldElement>(
     file_name: &str,
@@ -250,7 +262,7 @@ pub struct CompilationResult<T: FieldElement> {
 
 /// Optimizes a given pil and tries to generate constants and committed polynomials.
 /// @returns a compilation result, containing witness and fixed columns, if successful.
-fn compile<T: FieldElement, Q: QueryCallback<T>>(
+pub fn compile<T: FieldElement, Q: QueryCallback<T>>(
     analyzed: Analyzed<T>,
     file_name: &OsStr,
     output_dir: &Path,

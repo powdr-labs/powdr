@@ -13,6 +13,7 @@ use number::write_polys_file;
 use number::{read_polys_csv_file, write_polys_csv_file, CsvRenderMode};
 use number::{Bn254Field, FieldElement, GoldilocksField};
 use riscv::{compile_riscv_asm, compile_rust};
+use std::collections::HashMap;
 use std::io::{self, BufReader, BufWriter, Read};
 use std::{borrow::Cow, fs, io::Write, path::Path};
 use strum::{Display, EnumString, EnumVariantNames};
@@ -530,7 +531,96 @@ fn handle_riscv_asm<F: FieldElement>(
     just_execute: bool,
 ) -> Result<(), Vec<String>> {
     if just_execute {
-        riscv_executor::execute::<F>(contents, &inputs);
+        log::info!("Compiling powdr-asm to PIL...");
+        let pil = compiler::compile_asm_string_to_analyzed::<F>(file_name, contents);
+
+        let pil = pilopt::optimize(pil);
+        let pil = pilopt::optimize(pil);
+
+        log::info!("Executing powdr-asm...");
+        let witness = riscv_executor::execute::<F>(contents, &inputs);
+
+        // Collect the runtime column names
+        let wit_columns: Vec<String> = pil.committed_polys_in_source_order().iter()
+            .map(|(symbol, _)| symbol.absolute_name.clone())
+            .collect();
+
+        // Filter executor witness by the columns that still exist in PIL
+        let mut witness: Vec<(String, Vec<F>)> = witness.into_iter()
+            .filter(|(name, _)| wit_columns.contains(name))
+            .collect();
+
+        let length = witness[0].1.len();
+        log::info!("Trace has length {length}");
+
+        for (_, v) in &witness {
+            assert_eq!(length, v.len());
+        }
+
+        let chunk_len = 1 << 18;
+        let n_chunks = (length + chunk_len - 1) / chunk_len;
+        let aligned_length = n_chunks * chunk_len;
+
+        log::info!("n_chunks = {n_chunks}");
+        log::info!("aligned_length = {aligned_length}");
+
+        for wit_col in &mut witness {
+            let last_elem = wit_col.1.last().cloned().unwrap();
+            wit_col.1.resize_with(aligned_length, || last_elem);
+        }
+
+        // Create a vector of vectors to hold the chunks.
+        let mut chunked_witness: Vec<Vec<(&str, Vec<F>)>> = Vec::new();
+        //let mut chunked_witness: Vec<Vec<(String, Vec<F>)>> = Vec::new();
+
+        // Initialize the chunked vector with empty vectors.
+        for _ in 0..(length + chunk_len - 1) / chunk_len {
+            chunked_witness.push(Vec::new());
+        }
+        log::info!("Splitting into {} chunks", chunked_witness.len());
+
+        for (key, values) in &witness {
+            // Create the chunks for each Vec<T>.
+            let mut chunks = values.chunks(chunk_len);
+
+            // Iterate over the chunked vectors and insert the chunks along with the key.
+            for chunk_vec in &mut chunked_witness {
+                if let Some(chunk) = chunks.next() {
+                    chunk_vec.push((&key.as_str(), chunk.to_vec()));
+                    //chunk_vec.push((key.clone(), chunk.to_vec()));
+                }
+            }
+        }
+
+        use std::ffi::OsStr;
+        for (i, chunk_witness) in chunked_witness.iter().enumerate() {
+            log::info!("Proving chunk {i}...");
+
+            //log::info!("\n\nwitness chunk\n{:?}", chunk_witness);
+
+            /*
+            let csv_path = Path::new(&output_dir).join(format!("chunk_{i}_columns.csv"));
+            export_columns_to_csv(
+                chunk_witness.clone(),
+                None,
+                &csv_path,
+                CsvRenderModeCLI::SignedBase10,
+            );
+            break;
+            */
+
+            let h: HashMap<_, _> = chunk_witness.clone().into_iter().collect();
+            log::info!("MAIN.PC\n{:?}", h["main.pc"]);
+
+            compiler::compile(
+                pil.clone(),
+                OsStr::new(file_name),
+                output_dir,
+                compiler::inputs_to_query_callback(&inputs),
+                prove_with.clone(),
+                chunk_witness.clone(),
+            );
+        }
     } else {
         compile_asm_string(
             file_name,
@@ -540,7 +630,7 @@ fn handle_riscv_asm<F: FieldElement>(
             output_dir,
             force_overwrite,
             prove_with,
-            vec![]
+            vec![],
         )?;
     }
     Ok(())
