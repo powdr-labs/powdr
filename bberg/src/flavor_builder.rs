@@ -2,25 +2,25 @@
 
 pub(crate) fn create_flavor_hpp(
     name: &str,
-    relations: &Vec<String>,
-    all_cols: &Vec<String>,
-    shifted: &Vec<String>,
-    // shifted: &Vec<String>,
+    relations: &[String],
+    all_cols: &[String],
+    shifted: &[String],
+    // shifted: &[String],
 ) -> String {
-    let includes = flavor_includes(name, &relations);
+    let includes = flavor_includes(name, relations);
     let num_witness = all_cols.len();
     let num_all = num_witness + shifted.len();
     // Note: includes all witness shifts
     // TODO: for now we include a shift OF ALL witness wires, however this is not necessarily true
 
     let precomputed = witness_get(all_cols, 0, false);
-    let witness_str = create_witness_entities(&all_cols);
-    let all_shift = witness_get(&shifted, num_witness, true);
+    let witness_str = create_witness_entities(all_cols);
+    let all_shift = witness_get(shifted, num_witness, true);
 
     dbg!(&all_shift);
 
     let all_entities_get_wires = make_wires_set(
-        &[all_cols.clone(), shifted.clone()]
+        &[all_cols.to_vec(), shifted.to_vec()]
             .into_iter()
             .flatten()
             .collect::<Vec<String>>(),
@@ -34,7 +34,7 @@ pub(crate) fn create_flavor_hpp(
             .collect::<Vec<String>>(),
     );
 
-    let commitment_labels_class = create_commitment_labels(&all_cols);
+    let commitment_labels_class = create_commitment_labels(all_cols);
 
     let verification_commitments = create_verifier_commitments();
 
@@ -245,7 +245,7 @@ class {name}Flavor : public {name}FlavorBase<grumpkin::g1, curve::BN254, pcs::kz
     )
 }
 
-fn flavor_includes(name: &str, _relations: &Vec<String>) -> String {
+fn flavor_includes(name: &str, _relations: &[String]) -> String {
     // TODO: when there are multiple relations generated, they will need to be known in this file
 
     // TODO: Get the path for generated / other relations from self
@@ -267,10 +267,10 @@ fn flavor_includes(name: &str, _relations: &Vec<String>) -> String {
     )
 }
 
-fn create_precomputed_entities(fixed: &Vec<String>) -> String {
+fn create_precomputed_entities(fixed: &[String]) -> String {
     let mut name_set = String::new();
     for name in fixed {
-        let n = name.replace(".", "_");
+        let n = name.replace('.', "_");
         name_set.push_str(&format!("{n}, ", n = n));
     }
 
@@ -286,10 +286,10 @@ fn create_precomputed_entities(fixed: &Vec<String>) -> String {
     get_selectors
 }
 
-fn witness_get(witness: &Vec<String>, offset: usize, shift: bool) -> String {
+fn witness_get(witness: &[String], offset: usize, shift: bool) -> String {
     let mut return_string = String::new();
     for (i, name) in witness.iter().enumerate() {
-        let n = name.replace(".", "_");
+        let n = name.replace('.', "_");
         let n = if shift { format!("{}_shift", n) } else { n };
         let index = i + offset;
         return_string.push_str(&format!(
@@ -309,11 +309,11 @@ fn witness_get(witness: &Vec<String>, offset: usize, shift: bool) -> String {
 // fn wi
 
 // Takes in a set of wire names and outputs wrapped get_wires function
-fn make_wires_set(set: &Vec<String>) -> String {
+fn make_wires_set(set: &[String]) -> String {
     let mut wires = String::new();
 
     for name in set.iter() {
-        let n = name.replace(".", "_");
+        let n = name.replace('.', "_");
         wires.push_str(&format!(
             "{n}, 
             ",
@@ -323,7 +323,7 @@ fn make_wires_set(set: &Vec<String>) -> String {
     wires
 }
 
-fn create_witness_entities(witness: &Vec<String>) -> String {
+fn create_witness_entities(witness: &[String]) -> String {
     let data_types = witness_get(witness, 0, false);
     let get_wires = make_wires_set(witness);
 
@@ -342,10 +342,10 @@ fn create_witness_entities(witness: &Vec<String>) -> String {
     )
 }
 
-fn create_labels(all_ents: &Vec<String>) -> String {
+fn create_labels(all_ents: &[String]) -> String {
     let mut labels = String::new();
     for name in all_ents {
-        let n = name.replace(".", "_");
+        let n = name.replace('.', "_");
         labels.push_str(&format!(
             "Base::{n} = \"{n}\"; 
             ",
@@ -355,7 +355,7 @@ fn create_labels(all_ents: &Vec<String>) -> String {
     labels
 }
 
-fn create_commitment_labels(all_ents: &Vec<String>) -> String {
+fn create_commitment_labels(all_ents: &[String]) -> String {
     let labels = create_labels(all_ents);
 
     format!(

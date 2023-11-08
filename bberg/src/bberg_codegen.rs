@@ -1,5 +1,5 @@
 use ast::analyzed::Analyzed;
-use std::{io, str::FromStr};
+use std::io;
 
 use number::{BigInt, Bn254Field, DegreeType, FieldElement};
 
@@ -21,7 +21,7 @@ impl BBergCodegen {
         Self {}
     }
 
-    pub fn new_from_setup(input: &mut impl io::Read) -> Result<Self, io::Error> {
+    pub fn new_from_setup(_input: &mut impl io::Read) -> Result<Self, io::Error> {
         println!("warning bberg: new_from_setup not implemented");
         Ok(Self {})
     }

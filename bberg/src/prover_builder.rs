@@ -120,14 +120,14 @@ fn includes_cpp(name: &str) -> String {
     )
 }
 
-pub fn prover_builder_cpp(name: &str, fixed: &Vec<String>, to_be_shifted: &Vec<String>) -> String {
+pub fn prover_builder_cpp(name: &str, fixed: &[String], to_be_shifted: &[String]) -> String {
     let include_str = includes_cpp(name);
 
     // Create the wire assignments, prover_polynomial = key
     let fixed_assignments = fixed
         .iter()
         .map(|name| {
-            let n = name.replace(".", "_");
+            let n = name.replace('.', "_");
             format!("prover_polynomials.{n} = key->{n};", n = n)
         })
         .collect::<Vec<_>>()
@@ -136,7 +136,7 @@ pub fn prover_builder_cpp(name: &str, fixed: &Vec<String>, to_be_shifted: &Vec<S
     let committed_assignments = to_be_shifted
         .iter()
         .map(|name| {
-            let n = name.replace(".", "_");
+            let n = name.replace('.', "_");
             format!(
                 "
 prover_polynomials.{n} = key->{n};

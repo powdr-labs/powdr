@@ -76,11 +76,11 @@ fn includes_cpp(name: &str) -> String {
     )
 }
 
-pub fn verifier_builder_cpp(name: &str, all_wires: &Vec<String>) -> String {
+pub fn verifier_builder_cpp(name: &str, all_wires: &[String]) -> String {
     let include_str = includes_cpp(name);
 
     let wire_commitments = all_wires.iter().map(|name|{
-        let n = name.replace(".","_");
+        let n = name.replace('.',"_");
         format!("commitments.{n} = transcript.template receive_from_prover<Commitment>(commitment_labels.{n});", n=n)
     }).collect::<Vec<String>>().join("\n");
 

@@ -4,7 +4,7 @@ use acvm::acir::circuit::Opcode;
 use acvm::brillig_vm::brillig::BinaryFieldOp;
 use acvm::brillig_vm::brillig::Label;
 use acvm::brillig_vm::brillig::RegisterIndex;
-use rand::distributions::Alphanumeric;
+
 use rand::Rng;
 use std::fs;
 use std::io::Write;
@@ -51,12 +51,12 @@ fn main() {
     // Read in file called bytecode.acir
     let bytecode = fs::read("bytecode.acir").expect("Unable to read file");
     // Convert the read-in base64 file into Vec<u8>
-    let decoded = base64::decode(&bytecode).expect("Failed to decode base64");
-    let bytecode = Vec::from(decoded);
+    let decoded = base64::decode(bytecode).expect("Failed to decode base64");
+    let bytecode = decoded;
 
     // Create a new circuit from the bytecode instance
     let circuit: Circuit =
-        Circuit::deserialize_circuit(&*bytecode).expect("Failed to deserialize circuit");
+        Circuit::deserialize_circuit(&bytecode).expect("Failed to deserialize circuit");
 
     println!("circuit: {:?}", circuit);
 
@@ -114,22 +114,21 @@ fn construct_main(program: Opcode) -> Vec<String> {
         }
     };
 
-    println!("");
-    println!("");
+    println!();
+    println!();
     trace.iter().for_each(|i| println!("{:?}", i));
-    println!("");
-    println!("");
+    println!();
+    println!();
 
     // Label of [index], String, where index is the generated name of the jump, we will place a jump label there when
     // we encounter it to prove
-    let mut index = 0;
     let mut labels: HashMap<Label, String> = HashMap::new();
 
-    for instr in trace {
+    for (index, instr) in trace.into_iter().enumerate() {
         println!("{:?}", instr);
-        println!("");
-        println!("");
-        println!("");
+        println!();
+        println!();
+        println!();
         // powdr_asm.push_str(&instr.to_string());
 
         // If we require a label to be placed at the jump location then we add it
@@ -205,9 +204,6 @@ fn construct_main(program: Opcode) -> Vec<String> {
             }
             _ => println!("not implemented"),
         }
-
-        // Increment the index in the instruction array
-        index += 1;
     }
 
     println!("main_asm: {:?}", main_asm);
@@ -230,13 +226,12 @@ fn gen_label() -> String {
 
 fn print_register(r_index: RegisterIndex) -> String {
     let num = r_index.to_usize();
-    format!("r{}", num.to_string()).to_owned()
+    format!("r{}", num).to_owned()
 }
 
 // Read the preamble from the brillig.asm machine
 fn get_preamble() -> String {
-    let preamble = fs::read_to_string("brillig.asm").expect("Unable to read file");
-    preamble
+    fs::read_to_string("brillig.asm").expect("Unable to read file")
 }
 
 fn extract_brillig(opcodes: Vec<Opcode>) -> Opcode {

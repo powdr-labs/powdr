@@ -1,21 +1,19 @@
-use number::FieldElement;
-
 use crate::circuit_builder::BBFiles;
 
 pub trait TraceBuilder {
     fn create_trace_builder_cpp(
         &mut self,
         name: &str,
-        fixed: &Vec<String>,
-        witness: &Vec<String>,
-        to_be_shifted: &Vec<String>,
+        fixed: &[String],
+        witness: &[String],
+        to_be_shifted: &[String],
     ) -> String;
 
     fn create_trace_builder_hpp(
         &mut self,
         name: &str,
-        fixed: &Vec<String>,
-        shifted: &Vec<String>,
+        fixed: &[String],
+        shifted: &[String],
     ) -> String;
 }
 
@@ -60,7 +58,7 @@ fn trace_hpp_includes(name: &str) -> String {
     )
 }
 
-fn build_shifts(fixed: &Vec<String>) -> String {
+fn build_shifts(fixed: &[String]) -> String {
     let shift_assign: Vec<String> = fixed
         .iter()
         .map(|name| format!("row.{name}_shift = rows[(i) % rows.size()].{name};"))
@@ -78,7 +76,7 @@ fn build_shifts(fixed: &Vec<String>) -> String {
     )
 }
 
-fn build_empty_row(all_cols: &Vec<String>) -> String {
+fn build_empty_row(all_cols: &[String]) -> String {
     // The empty row turns off all constraints when the ISLAST flag is set
     // We must check that this column exists, and return an error to the user if it is not found
     let is_last = all_cols.iter().find(|name| name.contains("ISLAST"));
@@ -113,28 +111,28 @@ impl TraceBuilder for BBFiles {
     fn create_trace_builder_cpp(
         &mut self,
         name: &str,
-        fixed: &Vec<String>,
-        witness: &Vec<String>,
-        to_be_shifted: &Vec<String>,
+        fixed: &[String],
+        witness: &[String],
+        to_be_shifted: &[String],
     ) -> String {
         // We are assuming that the order of the columns in the trace file is the same as the order in the witness file
-        let includes = trace_cpp_includes(&self.rel, &name);
+        let includes = trace_cpp_includes(&self.rel, name);
         let row_import = format!("using Row = {name}_vm::Row<barretenberg::fr>;");
 
         // NOTE: Both of these are also calculated elsewhere, this is extra work
         // TODO: Recalculated!
-        let num_cols = fixed.len() + witness.len() * 2; // (2* as shifts)
+        let _num_cols = fixed.len() + witness.len() * 2; // (2* as shifts)
         let fixed_name = fixed
             .iter()
             .map(|name| {
-                let n = name.replace(".", "_");
+                let n = name.replace('.', "_");
                 n.to_string()
             })
             .collect::<Vec<_>>();
         let witness_name = witness
             .iter()
             .map(|name| {
-                let n = name.replace(".", "_");
+                let n = name.replace('.', "_");
                 n.to_string()
             })
             .collect::<Vec<_>>();
@@ -147,13 +145,13 @@ impl TraceBuilder for BBFiles {
 
         // let empty_row = build_empty_row(&all_names);
 
-        let compute_polys_assignemnt = all_names
+        let _compute_polys_assignemnt = all_names
             .iter()
             .map(|name| format!("polys.{name}[i] = rows[i].{name};",))
             .collect::<Vec<String>>()
             .join("\n");
 
-        let all_poly_shifts = &witness_name
+        let _all_poly_shifts = &witness_name
             .iter()
             .map(|name| format!("polys.{name}_shift = rows[i].{name}_shift;"))
             .collect::<Vec<String>>()
@@ -162,7 +160,7 @@ impl TraceBuilder for BBFiles {
         let fixed_rows = fixed
             .iter()
             .map(|name| {
-                let n = name.replace(".", "_");
+                let n = name.replace('.', "_");
                 format!("current_row.{n} = read_field(constant_file);")
             })
             .collect::<Vec<_>>()
@@ -256,10 +254,10 @@ inline std::vector<Row> read_both_file_into_cols(
     fn create_trace_builder_hpp(
         &mut self,
         name: &str,
-        all_cols: &Vec<String>,
-        to_be_shifted: &Vec<String>,
+        all_cols: &[String],
+        to_be_shifted: &[String],
     ) -> String {
-        let includes = trace_hpp_includes(&name);
+        let includes = trace_hpp_includes(name);
 
         let num_polys = all_cols.len();
         let num_cols = all_cols.len() + to_be_shifted.len();

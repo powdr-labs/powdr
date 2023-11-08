@@ -1,19 +1,18 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::fs::File;
-use std::{fmt::Display, io::Write, process::id};
+use std::io::Write;
 
-use ast::parsed::{SelectedExpressions, UnaryOperator};
+use ast::parsed::SelectedExpressions;
 // use acvm::acir::native_types::Expression;
-use ast::{analyzed::Identity, asm_analysis::DegreeStatement, parsed::BinaryOperator};
+use ast::analyzed::Identity;
 use itertools::Itertools;
-use num_bigint::BigUint;
 
 use ast::analyzed::{
     AlgebraicBinaryOperator, AlgebraicExpression as Expression, AlgebraicUnaryOperator, Analyzed,
-    IdentityKind, Reference,
+    IdentityKind,
 };
-use num_traits::{identities, One};
-use number::{BigInt, DegreeType, FieldElement};
+
+use number::{DegreeType, FieldElement};
 
 // use super::circuit_data::CircuitData;
 
@@ -206,7 +205,7 @@ pub(crate) fn analyzed_to_cpp<F: FieldElement>(
     let shifted_polys: Vec<String> = collected_shifts.drain().collect_vec();
     dbg!(shifted_polys.clone());
 
-    let (all_cols, unshifted, to_be_shifted, shifted, all_cols_with_shifts) =
+    let (all_cols, unshifted, to_be_shifted, _shifted, all_cols_with_shifts) =
         get_all_col_names(fixed, witness, &shifted_polys);
     let num_cols = all_cols_with_shifts.len();
 
@@ -285,10 +284,10 @@ namespace arithmetization {{
 
 fn create_relation_hpp(
     name: &str,
-    sub_relations: &Vec<String>,
-    identities: &Vec<BBIdentity>,
+    sub_relations: &[String],
+    identities: &[BBIdentity],
     row_type: &String,
-    all_rows_and_shifts: &Vec<String>,
+    all_rows_and_shifts: &[String],
 ) -> String {
     let includes = relation_includes();
     let class_boilerplate = relation_class_boilerplate(name, sub_relations, identities);
@@ -314,8 +313,8 @@ namespace proof_system::{name}_vm {{
 
 fn relation_class_boilerplate(
     name: &str,
-    sub_relations: &Vec<String>,
-    identities: &Vec<BBIdentity>,
+    sub_relations: &[String],
+    identities: &[BBIdentity],
 ) -> String {
     // TODO: MOVE ELSEWHERE: We add one to all degrees because we have an extra scaling factor
     let degrees = identities.iter().map(|(d, _)| d + 1).collect();
@@ -340,7 +339,7 @@ fn get_export(name: &str) -> String {
     )
 }
 
-fn get_relation_code(ids: &Vec<String>) -> String {
+fn get_relation_code(ids: &[String]) -> String {
     let mut relation_code = r#"
     template <typename ContainerOverSubrelations, typename AllEntities>
     void static accumulate(
@@ -392,17 +391,17 @@ fn relation_includes() -> &'static str {
 }
 
 // Yucky that everything is allocated into vecs here
-fn create_row_type_items(names: &Vec<String>) -> Vec<String> {
+fn create_row_type_items(names: &[String]) -> Vec<String> {
     names
         .iter()
-        .map(|name| format!("    FF {} {{}};", name.replace(".", "_")))
+        .map(|name| format!("    FF {} {{}};", name.replace('.', "_")))
         .collect::<Vec<_>>()
 }
 
 fn get_all_col_names<F: FieldElement>(
     fixed: &[(&str, Vec<F>)],
     witness: &[(&str, Vec<F>)],
-    to_be_shifted: &Vec<String>,
+    to_be_shifted: &[String],
 ) -> (
     Vec<String>,
     Vec<String>,
@@ -413,14 +412,14 @@ fn get_all_col_names<F: FieldElement>(
     let fixed_names: Vec<String> = fixed
         .iter()
         .map(|(name, _)| {
-            let n = name.replace(".", "_");
+            let n = name.replace('.', "_");
             n.to_owned()
         })
         .collect();
     let witness_names: Vec<String> = witness
         .iter()
         .map(|(name, _)| {
-            let n = name.replace(".", "_");
+            let n = name.replace('.', "_");
             n.to_owned()
         })
         .collect();
@@ -451,14 +450,14 @@ fn get_all_col_names<F: FieldElement>(
     (
         all_cols,
         unshifted,
-        to_be_shifted.clone(),
+        to_be_shifted.to_vec(),
         shifted,
         with_shifts,
     )
 }
 
 // Each vm will need to have a row which is a combination of all of the witness columns
-fn create_row_type(all_rows: &Vec<String>) -> String {
+fn create_row_type(all_rows: &[String]) -> String {
     let all_annotated = create_row_type_items(all_rows);
 
     let row_type = format!(
@@ -470,11 +469,11 @@ fn create_row_type(all_rows: &Vec<String>) -> String {
     row_type
 }
 
-fn get_cols_in_identity_macro(all_rows_and_shifts: &Vec<String>) -> String {
+fn get_cols_in_identity_macro(all_rows_and_shifts: &[String]) -> String {
     let make_view_per_row = all_rows_and_shifts
         .iter()
         .map(|row_name| {
-            let name = row_name.replace(".", "_");
+            let name = row_name.replace('.', "_");
             format!("[[maybe_unused]] auto {name} = View(new_term.{name});  \\")
         })
         .collect::<Vec<_>>()
@@ -514,7 +513,7 @@ fn create_subrelation(index: usize, preamble: String, identity: &mut BBIdentity)
     let id = &identity.1;
 
     // TODO: TEMP HACK: Part of the main_FIRST hack below - to switch off constraints on the first row
-    identity.0 += identity.0 + 1;
+    identity.0 += 1;
     format!(
         "//Contribution {index}
     {{\n{preamble}
@@ -535,7 +534,7 @@ fn craft_expression<T: FieldElement>(
         Expression::Number(n) => (1, format!("FF({})", n.to_arbitrary_integer())),
         Expression::Reference(polyref) => {
             assert_eq!(polyref.index, None);
-            let mut poly_name = format!("{}", &polyref.name.replace(".", "_"));
+            let mut poly_name = polyref.name.replace('.', "_").to_string();
             let mut degree = 1;
             if polyref.next {
                 // NOTE: Naive algorithm to collect all shifted polys
@@ -545,7 +544,7 @@ fn craft_expression<T: FieldElement>(
 
                 // TODO(HORRIBLE): TEMP, add in a relation that turns off shifts on the last row
                 poly_name = format!("{poly_name} * (-main_LAST + FF(1))");
-                degree = degree + 1;
+                degree += 1;
             }
             (degree, poly_name)
         }
