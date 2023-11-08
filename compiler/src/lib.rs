@@ -335,6 +335,12 @@ pub fn inputs_to_query_callback<T: FieldElement>(inputs: Vec<T>) -> impl QueryCa
         // TODO In the future, when match statements need to be exhaustive,
         // This function probably gets an Option as argument and it should
         // answer None by Ok(None).
+
+        // We are expecting a tuple
+        let query = query
+            .strip_prefix('(')
+            .and_then(|q| q.strip_suffix(')'))
+            .ok_or_else(|| "Prover query has to be a tuple".to_string())?;
         let items = query.split(',').map(|s| s.trim()).collect::<Vec<_>>();
         match &items[..] {
             ["\"input\"", index] => {

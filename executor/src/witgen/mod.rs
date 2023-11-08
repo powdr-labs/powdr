@@ -223,8 +223,8 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
         }
     }
 
-    pub fn column_by_name(&self, name: &str) -> PolyID {
-        self.column_by_name[name]
+    pub fn try_column_by_name(&self, name: &str) -> Option<PolyID> {
+        self.column_by_name.get(name).cloned()
     }
 
     fn external_witness(&self, row: DegreeType, column: &PolyID) -> Option<T> {
