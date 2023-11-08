@@ -80,7 +80,7 @@ impl<'a, 'b, T: FieldElement, Q: QueryCallback<T>> WitnessGenerator<'a, 'b, T, Q
 
     /// Generates the committed polynomial values
     /// @returns the values (in source order) and the degree of the polynomials.
-    pub fn generate(self) -> Vec<(&'a str, Vec<T>)> {
+    pub fn generate(self) -> Vec<(String, Vec<T>)> {
         let fixed = FixedData::new(
             self.analyzed,
             self.fixed_col_values,
@@ -136,16 +136,15 @@ impl<'a, 'b, T: FieldElement, Q: QueryCallback<T>> WitnessGenerator<'a, 'b, T, Q
             .chain(main_columns)
             .collect::<BTreeMap<_, _>>();
 
-        // Done this way, because:
-        // 1. The keys need to be string references of the right lifetime.
-        // 2. The order needs to be the the order of declaration.
+        // Order columns according to the order of declaration.
         self.analyzed
             .committed_polys_in_source_order()
             .into_iter()
-            .map(|(p, _)| {
-                let column = columns.remove(&p.absolute_name).unwrap();
+            .flat_map(|(p, _)| p.array_elements())
+            .map(|(name, _id)| {
+                let column = columns.remove(&name).unwrap();
                 assert!(!column.is_empty());
-                (p.absolute_name.as_str(), column)
+                (name, column)
             })
             .collect()
     }
@@ -165,25 +164,21 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
         external_witness_values: Vec<(&'a str, Vec<T>)>,
     ) -> Self {
         let mut external_witness_values = BTreeMap::from_iter(external_witness_values);
-        let witness_cols = WitnessColumnMap::from(
-            analyzed
-                .committed_polys_in_source_order()
-                .iter()
-                .enumerate()
-                .map(|(i, (poly, value))| {
-                    if poly.length.is_some() {
-                        unimplemented!("Committed arrays not implemented.")
-                    }
-                    assert_eq!(i as u64, poly.id);
-                    let external_values =
-                        external_witness_values.remove(poly.absolute_name.as_str());
-                    if let Some(external_values) = &external_values {
-                        assert_eq!(external_values.len(), analyzed.degree() as usize);
-                    }
-                    let col = WitnessColumn::new(i, &poly.absolute_name, value, external_values);
-                    col
-                }),
-        );
+
+        let witness_cols =
+            WitnessColumnMap::from(analyzed.committed_polys_in_source_order().iter().flat_map(
+                |(poly, value)| {
+                    poly.array_elements()
+                        .map(|(name, poly_id)| {
+                            let external_values = external_witness_values.remove(name.as_str());
+                            if let Some(external_values) = &external_values {
+                                assert_eq!(external_values.len(), analyzed.degree() as usize);
+                            }
+                            WitnessColumn::new(poly_id.id as usize, &name, value, external_values)
+                        })
+                        .collect::<Vec<_>>()
+                },
+            ));
 
         if !external_witness_values.is_empty() {
             panic!(
@@ -251,7 +246,7 @@ pub struct WitnessColumn<'a, T> {
 impl<'a, T> WitnessColumn<'a, T> {
     pub fn new(
         id: usize,
-        name: &'a str,
+        name: &str,
         value: &'a Option<FunctionValueDefinition<T>>,
         external_values: Option<Vec<T>>,
     ) -> WitnessColumn<'a, T> {
@@ -267,7 +262,6 @@ impl<'a, T> WitnessColumn<'a, T> {
             },
             name: name.to_string(),
             next: false,
-            index: None,
         };
         WitnessColumn {
             poly,

@@ -146,7 +146,6 @@ where
                 let poly_ref = AlgebraicReference {
                     name: poly.name.clone(),
                     poly_id,
-                    index: None,
                     next,
                 };
                 Ok(rows

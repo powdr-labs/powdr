@@ -268,15 +268,8 @@ fn substitute_polynomial_references<T: FieldElement>(
         }
     });
     pil_file.post_visit_expressions_in_identities_mut(&mut |e: &mut AlgebraicExpression<_>| {
-        if let AlgebraicExpression::Reference(AlgebraicReference {
-            name: _,
-            index,
-            next: _,
-            poly_id,
-        }) = e
-        {
+        if let AlgebraicExpression::Reference(AlgebraicReference { poly_id, .. }) = e {
             if let Some(value) = substitutions.get(poly_id) {
-                assert!(index.is_none());
                 *e = AlgebraicExpression::Number(*value);
             }
         }

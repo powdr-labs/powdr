@@ -121,6 +121,7 @@ impl<T> Analyzed<T> {
     /// Removes the specified polynomials and updates the IDs of the other polynomials
     /// so that they are contiguous again.
     /// There must not be any reference to the removed polynomials left.
+    /// Does not support arrays or array elements.
     pub fn remove_polynomials(&mut self, to_remove: &BTreeSet<PolyID>) {
         let mut replacements: BTreeMap<PolyID, PolyID> = [
             // We have to do it separately because we need to re-start the counter
@@ -135,17 +136,19 @@ impl<T> Analyzed<T> {
                     (0, BTreeMap::new()),
                     |(shift, mut replacements), (poly, _def)| {
                         let poly_id = poly.into();
+                        let length = poly.length.unwrap_or(1);
                         if to_remove.contains(&poly_id) {
-                            let length = poly.length.unwrap_or(1);
                             (shift + length, replacements)
                         } else {
-                            replacements.insert(
-                                poly_id,
-                                PolyID {
-                                    id: poly_id.id - shift,
-                                    ..poly_id
-                                },
-                            );
+                            for (_name, id) in poly.array_elements() {
+                                replacements.insert(
+                                    id,
+                                    PolyID {
+                                        id: id.id - shift,
+                                        ..id
+                                    },
+                                );
+                            }
                             (shift, replacements)
                         }
                     },
@@ -306,6 +309,46 @@ impl Symbol {
     pub fn is_array(&self) -> bool {
         self.length.is_some()
     }
+    /// Returns an iterator producing either just the symbol (if it is not an array),
+    /// or all the elements of the array with their names in the form `array[index]`.
+    pub fn array_elements(&self) -> impl Iterator<Item = (String, PolyID)> + '_ {
+        let SymbolKind::Poly(ptype) = self.kind else {
+            panic!("Expected polynomial.");
+        };
+        let length = self.length.unwrap_or(1);
+        (0..length).map(move |i| {
+            (
+                self.array_element_name(i),
+                PolyID {
+                    id: self.id + i,
+                    ptype,
+                },
+            )
+        })
+    }
+
+    /// Returns "name[index]" if this is an array or just "name" otherwise.
+    /// In the second case, requires index to be zero and otherwise
+    /// requires index to be less than length.
+    pub fn array_element_name(&self, index: u64) -> String {
+        match self.length {
+            Some(length) => {
+                assert!(index < length);
+                format!("{}[{index}]", self.absolute_name)
+            }
+            None => self.absolute_name.to_string(),
+        }
+    }
+
+    /// Returns "name[length]" if this is an array or just "name" otherwise.
+    pub fn array_name(&self) -> String {
+        match self.length {
+            Some(length) => {
+                format!("{}[{length}]", self.absolute_name)
+            }
+            None => self.absolute_name.to_string(),
+        }
+    }
 }
 
 /// The "kind" of a symbol. In the future, this will be mostly
@@ -438,10 +481,11 @@ pub enum Reference {
 pub struct AlgebraicReference {
     /// Name of the polynomial - just for informational purposes.
     /// Comparisons are based on polynomial ID.
+    /// In case of an array element, this ends in `[i]`.
     pub name: String,
-    /// Identifier for a polynomial reference.
+    /// Identifier for a polynomial reference, already contains
+    /// the element offset in case of an array element.
     pub poly_id: PolyID,
-    pub index: Option<usize>,
     pub next: bool,
 }
 
@@ -464,18 +508,12 @@ impl PartialOrd for AlgebraicReference {
 
 impl Ord for AlgebraicReference {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        match self.poly_id.cmp(&other.poly_id) {
-            core::cmp::Ordering::Equal => {}
-            ord => return ord,
-        }
-        assert!(self.index.is_none() && other.index.is_none());
-        self.next.cmp(&other.next)
+        (&self.poly_id, &self.next).cmp(&(&other.poly_id, &other.next))
     }
 }
 
 impl PartialEq for AlgebraicReference {
     fn eq(&self, other: &Self) -> bool {
-        assert!(self.index.is_none() && other.index.is_none());
         self.poly_id == other.poly_id && self.next == other.next
     }
 }
@@ -483,7 +521,6 @@ impl PartialEq for AlgebraicReference {
 impl Hash for AlgebraicReference {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.poly_id.hash(state);
-        self.index.hash(state);
         self.next.hash(state);
     }
 }

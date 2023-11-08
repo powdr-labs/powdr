@@ -103,7 +103,7 @@ pub fn write_polys_file<T: FieldElement>(file: &mut impl Write, polys: &[(String
 
 pub fn read_polys_file<T: FieldElement>(
     file: &mut impl Read,
-    columns: &[&str],
+    columns: &[String],
 ) -> (Vec<(String, Vec<T>)>, DegreeType) {
     let width = ceil_div(T::BITS as usize, 64) * 8;
 
@@ -156,8 +156,10 @@ mod tests {
         let (polys, degree) = test_polys();
 
         write_polys_file(&mut buf, &polys);
-        let (read_polys, read_degree) =
-            read_polys_file::<Bn254Field>(&mut Cursor::new(buf), &["a", "b"]);
+        let (read_polys, read_degree) = read_polys_file::<Bn254Field>(
+            &mut Cursor::new(buf),
+            &["a".to_string(), "b".to_string()],
+        );
 
         assert_eq!(read_polys, polys);
         assert_eq!(read_degree, degree);
