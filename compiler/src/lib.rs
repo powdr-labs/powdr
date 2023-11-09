@@ -190,7 +190,7 @@ pub fn convert_analyzed_to_pil<T: FieldElement>(
         return Ok((pil_file_path, None));
     }
 
-    fs::write(pil_file_path.clone(), format!("{pil}")).unwrap();
+    fs::write(&pil_file_path, format!("{pil}")).unwrap();
 
     let pil_file_name = pil_file_path.file_name().unwrap();
     Ok((
