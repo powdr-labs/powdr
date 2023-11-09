@@ -1340,7 +1340,7 @@ fn process_instruction(instr: &str, args: &[Argument], coprocessors: &CoProcesso
             assert_eq!(off, 0);
             // TODO: misaligned access should raise misaligned address exceptions
             let mut statements = vec![
-                "skip_if_zero lr_sc_reservation, 2;".into(),
+                "skip_if_zero lr_sc_reservation, 1;".into(),
                 format!("mstore {rs1}, {rs2};"),
             ];
             if !rd.is_zero() {
