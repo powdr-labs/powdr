@@ -403,9 +403,18 @@ fn run_command(command: Commands) {
         } => {
             if just_execute {
                 // assume input is riscv asm and just execute it
-                let contents = fs::read_to_string(file).unwrap();
-                let inputs = split_inputs(&inputs);
-                riscv_executor::execute::<GoldilocksField>(&contents, &inputs);
+                let contents = fs::read_to_string(&file).unwrap();
+                let inputs = split_inputs::<GoldilocksField>(&inputs);
+
+                let output_dir = Path::new(&output_directory);
+                rust_continuations(
+                    file.as_str(),
+                    contents.as_str(),
+                    inputs,
+                    &output_dir,
+                    prove_with
+                );
+                //riscv_executor::execute::<GoldilocksField>(&contents, &inputs);
             } else {
                 match call_with_field!(compile_with_csv_export::<field>(
                     file,
@@ -531,96 +540,13 @@ fn handle_riscv_asm<F: FieldElement>(
     just_execute: bool,
 ) -> Result<(), Vec<String>> {
     if just_execute {
-        log::info!("Compiling powdr-asm to PIL...");
-        let pil = compiler::compile_asm_string_to_analyzed::<F>(file_name, contents);
-
-        let pil = pilopt::optimize(pil);
-        let pil = pilopt::optimize(pil);
-
-        log::info!("Executing powdr-asm...");
-        let witness = riscv_executor::execute::<F>(contents, &inputs);
-
-        // Collect the runtime column names
-        let wit_columns: Vec<String> = pil.committed_polys_in_source_order().iter()
-            .map(|(symbol, _)| symbol.absolute_name.clone())
-            .collect();
-
-        // Filter executor witness by the columns that still exist in PIL
-        let mut witness: Vec<(String, Vec<F>)> = witness.into_iter()
-            .filter(|(name, _)| wit_columns.contains(name))
-            .collect();
-
-        let length = witness[0].1.len();
-        log::info!("Trace has length {length}");
-
-        for (_, v) in &witness {
-            assert_eq!(length, v.len());
-        }
-
-        let chunk_len = 1 << 18;
-        let n_chunks = (length + chunk_len - 1) / chunk_len;
-        let aligned_length = n_chunks * chunk_len;
-
-        log::info!("n_chunks = {n_chunks}");
-        log::info!("aligned_length = {aligned_length}");
-
-        for wit_col in &mut witness {
-            let last_elem = wit_col.1.last().cloned().unwrap();
-            wit_col.1.resize_with(aligned_length, || last_elem);
-        }
-
-        // Create a vector of vectors to hold the chunks.
-        let mut chunked_witness: Vec<Vec<(&str, Vec<F>)>> = Vec::new();
-        //let mut chunked_witness: Vec<Vec<(String, Vec<F>)>> = Vec::new();
-
-        // Initialize the chunked vector with empty vectors.
-        for _ in 0..(length + chunk_len - 1) / chunk_len {
-            chunked_witness.push(Vec::new());
-        }
-        log::info!("Splitting into {} chunks", chunked_witness.len());
-
-        for (key, values) in &witness {
-            // Create the chunks for each Vec<T>.
-            let mut chunks = values.chunks(chunk_len);
-
-            // Iterate over the chunked vectors and insert the chunks along with the key.
-            for chunk_vec in &mut chunked_witness {
-                if let Some(chunk) = chunks.next() {
-                    chunk_vec.push((&key.as_str(), chunk.to_vec()));
-                    //chunk_vec.push((key.clone(), chunk.to_vec()));
-                }
-            }
-        }
-
-        use std::ffi::OsStr;
-        for (i, chunk_witness) in chunked_witness.iter().enumerate() {
-            log::info!("Proving chunk {i}...");
-
-            //log::info!("\n\nwitness chunk\n{:?}", chunk_witness);
-
-            /*
-            let csv_path = Path::new(&output_dir).join(format!("chunk_{i}_columns.csv"));
-            export_columns_to_csv(
-                chunk_witness.clone(),
-                None,
-                &csv_path,
-                CsvRenderModeCLI::SignedBase10,
-            );
-            break;
-            */
-
-            let h: HashMap<_, _> = chunk_witness.clone().into_iter().collect();
-            log::info!("MAIN.PC\n{:?}", h["main.pc"]);
-
-            compiler::compile(
-                pil.clone(),
-                OsStr::new(file_name),
-                output_dir,
-                compiler::inputs_to_query_callback(&inputs),
-                prove_with.clone(),
-                chunk_witness.clone(),
-            );
-        }
+        rust_continuations(
+            file_name,
+            contents,
+            inputs,
+            output_dir,
+            prove_with
+        );
     } else {
         compile_asm_string(
             file_name,
@@ -634,6 +560,160 @@ fn handle_riscv_asm<F: FieldElement>(
         )?;
     }
     Ok(())
+}
+
+fn rust_continuations<F: FieldElement>(
+    file_name: &str,
+    contents: &str,
+    inputs: Vec<F>,
+    output_dir: &Path,
+    prove_with: Option<BackendType>,
+) {
+    log::info!("Compiling powdr-asm to PIL...");
+    let pil = compiler::compile_asm_string_to_analyzed::<F>(file_name, contents);
+
+    let pil = pilopt::optimize(pil);
+    let pil = pilopt::optimize(pil);
+
+    log::info!("Executing powdr-asm...");
+    let (witness, rom_len)  = riscv_executor::execute::<F>(contents, &inputs);
+
+    // Collect the runtime column names
+    let wit_columns: Vec<String> = pil.committed_polys_in_source_order().iter()
+        .map(|(symbol, _)| symbol.absolute_name.clone())
+        .collect();
+
+    // Filter executor witness by the columns that still exist in PIL
+    let witness: Vec<(String, Vec<F>)> = witness.into_iter()
+        .filter(|(name, _)| wit_columns.contains(name))
+        .collect();
+
+    // Filter executor witness by the needed state columns: pc and x0-x31
+    let mut witness: Vec<(String, Vec<F>)> = witness.into_iter()
+        .filter(|(name, _)| name.starts_with("main.pc") || name.starts_with("main.x"))
+        //.filter(|(name, _)| name.starts_with("main.pc"))
+        .collect();
+
+    let final_columns: Vec<String> = witness
+        .iter()
+        .map(|(name, _)| name.clone())
+        .collect();
+
+    //println!("FINAL COLUMNS\n{:?}", final_columns);
+
+    let length = witness[0].1.len();
+    log::info!("Trace has length {length}");
+
+    for (_, v) in &witness {
+        assert_eq!(length, v.len());
+    }
+
+    let chunk_len = 1 << 18;
+    //let chunk_len = 1 << 20;
+    //let chunk_len = 1 << 5;
+    let n_chunks = (length + chunk_len - 1) / chunk_len;
+    let aligned_length = n_chunks * chunk_len;
+
+    log::info!("n_chunks = {n_chunks}");
+    log::info!("aligned_length = {aligned_length}");
+
+    for wit_col in &mut witness {
+        match wit_col.0.as_str() {
+            "main.pc" => {
+                wit_col.1.pop();
+                wit_col.1.push(0.into());
+                wit_col.1.push(1.into());
+                wit_col.1.resize_with(aligned_length, || F::from((rom_len - 1) as u64));
+            },
+            _ => {
+                //let last = wit_col.1.last().cloned().unwrap();
+                //wit_col.1.push(0.into());
+                //wit_col.1.resize_with(aligned_length, || last);
+                wit_col.1.resize_with(aligned_length, || 0.into());
+            }
+        }
+    }
+
+    // Create a vector of vectors to hold the chunks.
+    let mut chunked_witness: Vec<Vec<(&str, Vec<F>)>> = Vec::new();
+    //let mut chunked_witness: Vec<Vec<(String, Vec<F>)>> = Vec::new();
+
+    // Initialize the chunked vector with empty vectors.
+    for _ in 0..(length + chunk_len - 1) / chunk_len {
+        chunked_witness.push(Vec::new());
+    }
+    log::info!("Splitting into {} chunks", chunked_witness.len());
+
+    for (key, values) in &witness {
+        // Create the chunks for each Vec<T>.
+        let mut chunks = values.chunks(chunk_len);
+
+        // Iterate over the chunked vectors and insert the chunks along with the key.
+        for chunk_vec in &mut chunked_witness {
+            if let Some(chunk) = chunks.next() {
+                chunk_vec.push((&key.as_str(), chunk.to_vec()));
+                //chunk_vec.push((key.clone(), chunk.to_vec()));
+            }
+        }
+    }
+
+    use std::ffi::OsStr;
+    for (i, mut chunk_witness) in chunked_witness.clone().into_iter().enumerate() {
+        log::info!("Proving chunk {i}...");
+
+        //log::info!("\n\nwitness chunk\n{:?}", chunk_witness);
+
+        let next_map: HashMap<&str, Vec<F>> = chunked_witness[i+1].clone().into_iter().collect();
+
+        for (n, w) in &mut chunk_witness {
+            if n.starts_with("main.x") {
+                w[0] = next_map[n][0];
+            }
+        }
+
+        let csv_witness = chunk_witness
+            .iter()
+            .map(|(n, c)| (n.to_string(), c.clone()))
+            .collect::<Vec<_>>();
+
+        let csv_path = Path::new(&output_dir).join(format!("chunk_{i}_columns.csv"));
+        export_columns_to_csv(
+            csv_witness,
+            None,
+            &csv_path,
+            CsvRenderModeCLI::SignedBase10,
+        );
+        //break;
+
+        let csv_witness_next = chunked_witness[i+1]
+            .iter()
+            .map(|(n, c)| (n.to_string(), c.clone()))
+            .collect::<Vec<_>>();
+
+        let csv_path = Path::new(&output_dir).join(format!("chunk_{}_columns.csv", i + 1));
+        export_columns_to_csv(
+            csv_witness_next,
+            None,
+            &csv_path,
+            CsvRenderModeCLI::SignedBase10,
+        );
+
+        let h: HashMap<_, _> = chunk_witness.clone().into_iter().collect();
+        //log::info!("main.pc\n{:?}", h["main.pc"]);
+        //log::info!("main.X\n{:?}", h["main.X"]);
+        //log::info!("main.x1\n{:?}", h["main.x1"]);
+        //log::info!("main.x2\n{:?}", h["main.x2"]);
+
+        compiler::compile(
+            pil.clone(),
+            OsStr::new(file_name),
+            output_dir,
+            compiler::inputs_to_query_callback(&inputs),
+            prove_with.clone(),
+            //chunk_witness.clone(),
+            chunk_witness,
+        );
+    }
 }
 
 #[allow(clippy::too_many_arguments)]

@@ -65,6 +65,8 @@ pub struct ExecutionTrace<'a> {
     ///
     /// Each N elements is a row with all registers.
     pub values: Vec<Elem>,
+
+    pub rom_length: usize,
 }
 
 mod builder {
@@ -122,10 +124,10 @@ mod builder {
             //values[pc_idx + reg_len * 3] = 3.into();
 
             let mut ret = Self {
-                curr_idx: 2,
+                curr_idx: 2 * reg_len,
                 x0_idx: reg_map["x0"],
                 pc_idx,
-                trace: ExecutionTrace { reg_map, values },
+                trace: ExecutionTrace { reg_map, values, rom_length: batch_to_line_map.len() },
                 next_statement_line: 1,
                 batch_to_line_map,
             };
@@ -306,7 +308,7 @@ fn preprocess_main_function<T: FieldElement>(
                 FunctionStatement::Label(LabelStatement { start: _, name }) => {
                     // assert there are no statements in the middle of a block
                     assert!(!statement_seen);
-                    label_map.insert(name.as_str(), (batch_idx as i64).into());
+                    label_map.insert(name.as_str(), ((batch_idx + 2) as i64).into());
                 }
             }
         }
@@ -742,6 +744,9 @@ pub fn execute_ast<'a, T: FieldElement>(
     let (mut statements, label_map, mut batch_to_line_map, debug_files) =
         preprocess_main_function(main_machine);
 
+    println!("Statements len = {}", statements.len());
+    println!("Batch map len = {}", batch_to_line_map.len());
+
     //let noop_0 = FunctionStatement::<T>::Label(LabelStatement { start: 0, name: "noop_0".to_string() });
     //let noop_1 = FunctionStatement::<T>::Label(LabelStatement { start: 0, name: "noop_1".to_string() });
     let noop_0 = FunctionStatement::<T>::DebugDirective(ast::asm_analysis::DebugDirective { start: 0, directive: ast::parsed::asm::DebugDirective::Loc(1, 0, 0) });
@@ -767,7 +772,7 @@ pub fn execute_ast<'a, T: FieldElement>(
     loop {
         let stm = statements[curr_pc as usize];
 
-        println!("l {curr_pc}: {stm}",);
+        //println!("l {curr_pc}: {stm}\nreal_pc: {}", e.proc.g("pc").0);
 
         let is_nop = match stm {
             FunctionStatement::Assignment(a) => {
@@ -793,10 +798,10 @@ pub fn execute_ast<'a, T: FieldElement>(
                 match &dd.directive {
                     DebugDirective::Loc(file, line, column) => {
                         let (dir, file) = debug_files[file - 1];
-                        println!("Executed {dir}/{file}:{line}:{column}");
+                        //println!("Executed {dir}/{file}:{line}:{column}");
                     }
                     DebugDirective::OriginalInstruction(insn) => {
-                        println!("  {insn}");
+                        //println!("  {insn}");
                     }
                     DebugDirective::File(_, _, _) => unreachable!(),
                 };
@@ -822,7 +827,7 @@ pub fn execute_ast<'a, T: FieldElement>(
 ///
 /// The FieldElement is just used by the parser, before everything is converted
 /// to i64, so it is probably not very important.
-pub fn execute<F: FieldElement>(asm_source: &str, inputs: &[F]) -> Vec<(String, Vec<F>)> {
+pub fn execute<F: FieldElement>(asm_source: &str, inputs: &[F]) -> (Vec<(String, Vec<F>)>, usize) {
     log::info!("Parsing...");
     let parsed = parser::parse_asm::<F>(None, asm_source).unwrap();
     log::info!("Resolving imports...");
@@ -846,10 +851,13 @@ pub fn execute<F: FieldElement>(asm_source: &str, inputs: &[F]) -> Vec<(String, 
         }
     }
 
-    witness
-        .into_iter()
-        .map(|(n, c)| (format!("main.{}", n), c))
-        .collect()
+    (
+        witness
+            .into_iter()
+            .map(|(n, c)| (format!("main.{}", n), c))
+            .collect(),
+        trace.rom_length
+    )
 }
 
 fn to_u32<F: FieldElement>(val: &F) -> Option<u32> {
