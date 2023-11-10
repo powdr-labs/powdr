@@ -70,13 +70,22 @@ pub struct ExecutionTrace<'a> {
 mod builder {
     use std::collections::HashMap;
 
-    use ast::asm_analysis::Machine;
+    use ast::asm_analysis::{Machine, RegisterTy};
     use number::FieldElement;
 
     use crate::{Elem, ExecutionTrace};
 
     fn register_names<T: FieldElement>(main: &Machine<T>) -> Vec<&str> {
-        main.registers.iter().map(|stmnt| &stmnt.name[..]).collect()
+        main.registers
+            .iter()
+            .filter_map(|stmnt| {
+                if stmnt.ty != RegisterTy::Assignment {
+                    Some(&stmnt.name[..])
+                } else {
+                    None
+                }
+            })
+            .collect()
     }
 
     pub struct TraceBuilder<'a, 'b> {
@@ -326,239 +335,123 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
         match name {
             "mstore" => {
-                // input
-                self.proc.s("Y", args[0]);
-                self.proc.s("Z", args[1]);
-
-                // execution
                 let addr = args[0].0 as u32;
                 assert_eq!(addr % 4, 0);
                 self.mem.s(args[0].0 as u32, args[1]);
 
-                // no output
                 Vec::new()
             }
             "mload" => {
-                // input
-                self.proc.s("Y", args[0]);
-
-                // execution
                 let addr = args[0].0 as u32;
                 let val = self.mem.g(addr & 0xfffffffc);
                 let rem = addr % 4;
 
-                // output
-                self.proc.s("X", val);
-                self.proc.s("Z", rem);
                 vec![val, rem.into()]
             }
             "jump" => {
-                // no register input
-
-                // execution
                 self.proc.s("pc", args[0]);
 
-                // no output
                 Vec::new()
             }
-            "load_label" => {
-                // no register input
-
-                // no execution
-
-                // output
-                self.proc.s("X", args[0]);
-                args
-            }
+            "load_label" => args,
             "jump_dyn" => {
-                // input
-                self.proc.s("X", args[0]);
-
-                // execution
                 self.proc.s("pc", args[0]);
 
-                // no output
                 Vec::new()
             }
             "jump_and_link_dyn" => {
-                // input
-                self.proc.s("X", args[0]);
-
-                // execution
                 let pc = self.proc.g("pc");
                 self.proc.s("x1", pc.u() + 1);
                 self.proc.s("pc", args[0]);
 
-                // no output
                 Vec::new()
             }
             "call" => {
-                // no register input
-
-                // execution
                 let pc = self.proc.g("pc");
                 self.proc.s("x1", pc.u() + 1);
                 self.proc.s("pc", args[0]);
 
-                // no output
                 Vec::new()
             }
             "tail" => {
-                // no register input
-
-                // execution
                 self.proc.s("pc", args[0]);
                 self.proc.s("x6", args[0]);
 
-                // no output
                 Vec::new()
             }
             "ret" => {
-                // no input
-
-                // execution
                 let target = self.proc.g("x1");
                 self.proc.s("pc", target);
 
-                // no output
                 Vec::new()
             }
             "branch_if_nonzero" => {
-                // input
-                self.proc.s("X", args[0]);
-
-                // execution
                 if args[0].0 != 0 {
                     self.proc.s("pc", args[1]);
                 }
 
-                // no output
                 Vec::new()
             }
             "branch_if_zero" => {
-                // input
-                self.proc.s("X", args[0]);
-
-                // execution
                 if args[0].0 == 0 {
                     self.proc.s("pc", args[1]);
                 }
 
-                // no output
                 Vec::new()
             }
             "skip_if_zero" => {
-                // input
-                self.proc.s("X", args[0]);
-                self.proc.s("Y", args[1]);
-
-                // execution
                 if args[0].0 == 0 {
                     let pc = self.proc.g("pc").s();
                     self.proc.s("pc", pc + args[1].s() + 1);
                 }
 
-                // no output
                 Vec::new()
             }
             "branch_if_positive" => {
-                // input
-                self.proc.s("X", args[0]);
-
-                // execution
                 if args[0].0 > 0 {
                     self.proc.s("pc", args[1]);
                 }
 
-                // no output
                 Vec::new()
             }
             "is_positive" => {
-                // input
-                self.proc.s("X", args[0]);
-
-                // execution
                 let r = if args[0].0 > 0 { 1 } else { 0 };
 
-                // output
-                self.proc.s("Y", r);
                 vec![r.into()]
             }
             "is_equal_zero" => {
-                // input
-                self.proc.s("X", args[0]);
-
-                // execution
                 let r = if args[0].0 == 0 { 1 } else { 0 };
 
-                // output
-                self.proc.s("Y", r);
                 vec![r.into()]
             }
             "is_not_equal_zero" => {
-                // input
-                self.proc.s("X", args[0]);
-
-                // execution
                 let r = if args[0].0 != 0 { 1 } else { 0 };
 
-                // output
-                self.proc.s("Y", r);
                 vec![r.into()]
             }
             "wrap" | "wrap16" => {
-                // input
-                self.proc.s("Y", args[0]);
-
-                // execution
                 let r = args[0].0 as u32;
 
-                // output
-                self.proc.s("X", r);
                 vec![r.into()]
             }
             "wrap_signed" => {
-                // input
-                self.proc.s("Y", args[0]);
-
-                // execution
                 let r = (args[0].0 + 0x100000000) as u32;
 
-                // output
-                self.proc.s("X", r);
                 vec![r.into()]
             }
             "sign_extend_byte" => {
-                // input
-                self.proc.s("Y", args[0]);
-
-                // execution
                 let r = args[0].u() as i8 as u32;
 
-                // output
-                self.proc.s("X", r);
                 vec![r.into()]
             }
             "sign_extend_16_bits" => {
-                // input
-                self.proc.s("Y", args[0]);
-
-                // execution
                 let r = args[0].u() as i16 as u32;
 
-                // output
-                self.proc.s("X", r);
                 vec![r.into()]
             }
             "to_signed" => {
-                // input
-                self.proc.s("Y", args[0]);
-
-                // execution
                 let r = args[0].u() as i32;
 
-                // output
-                self.proc.s("X", r);
                 vec![r.into()]
             }
             "fail" => {
@@ -566,11 +459,6 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 panic!("reached a fail instruction")
             }
             "divremu" => {
-                // input
-                self.proc.s("Y", args[0]);
-                self.proc.s("X", args[1]);
-
-                // execution
                 let y = args[0].u();
                 let x = args[1].u();
                 let div;
@@ -583,31 +471,16 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     rem = y;
                 }
 
-                // output
-                self.proc.s("Z", div);
-                self.proc.s("W", rem);
                 vec![div.into(), rem.into()]
             }
             "mul" => {
-                // input
-                self.proc.s("Z", args[0]);
-                self.proc.s("W", args[1]);
-
-                // execution
                 let r = args[0].u() as u64 * args[1].u() as u64;
                 let lo = r as u32;
                 let hi = (r >> 32) as u32;
 
-                // output
-                self.proc.s("X", lo);
-                self.proc.s("Y", hi);
                 vec![lo.into(), hi.into()]
             }
             bin_op => {
-                // input
-                self.proc.s("Y", args[0]);
-                self.proc.s("Z", args[1]);
-
                 let val = match bin_op {
                     "poseidon" => todo!(),
                     "and" => (args[0].u() & args[1].u()).into(),
@@ -620,8 +493,6 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     }
                 };
 
-                // output
-                self.proc.s("X", val);
                 vec![val]
             }
         }
@@ -750,11 +621,7 @@ pub fn execute_ast<'a, T: FieldElement>(
             FunctionStatement::Assignment(a) => {
                 let results = e.eval_expression(a.rhs.as_ref());
                 assert_eq!(a.lhs_with_reg.len(), results.len());
-                for ((dest, reg), val) in a.lhs_with_reg.iter().zip(results) {
-                    let AssignmentRegister::Register(reg) = reg else {
-                        panic!();
-                    };
-                    e.proc.s(reg, val);
+                for ((dest, _), val) in a.lhs_with_reg.iter().zip(results) {
                     e.proc.s(dest, val);
                 }
 
