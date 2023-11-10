@@ -12,8 +12,9 @@ use ast::{
         asm::InstructionBody,
         build::{direct_reference, next_reference},
         visitor::ExpressionVisitable,
-        ArrayExpression, BinaryOperator, Expression, FunctionDefinition, MatchArm, MatchPattern,
-        PilStatement, PolynomialName, SelectedExpressions, UnaryOperator,
+        ArrayExpression, BinaryOperator, Expression, FunctionCall, FunctionDefinition, MatchArm,
+        MatchPattern, NamespacedPolynomialReference, PilStatement, PolynomialName,
+        SelectedExpressions, UnaryOperator,
     },
 };
 
@@ -763,7 +764,7 @@ impl<T: FieldElement> ASMPILConverter<T> {
                                 .unwrap()
                                 .push(MatchArm {
                                     pattern: MatchPattern::Pattern(T::from(i as u64).into()),
-                                    value: expr.clone(),
+                                    value: transform_references_in_free_input_query(expr.clone()),
                                 });
                         }
                     }
@@ -811,7 +812,13 @@ impl<T: FieldElement> ASMPILConverter<T> {
                     Some(FunctionDefinition::Query(
                         vec!["i".to_string()],
                         Expression::MatchExpression(
-                            Box::new(direct_reference(pc_name.as_ref().unwrap())),
+                            Box::new(Expression::FunctionCall(FunctionCall {
+                                id: NamespacedPolynomialReference {
+                                    namespace: None,
+                                    name: pc_name.clone().unwrap(),
+                                },
+                                arguments: vec![direct_reference("i")],
+                            })),
                             free_value_query_arms[reg].clone(),
                         ),
                     )),
@@ -929,6 +936,34 @@ impl<T: FieldElement> ASMPILConverter<T> {
             expr => (counter, expr),
         }
     }
+}
+
+/// Transforms `x` -> `x(i)` and `x' -> `x(i + 1)`
+fn transform_references_in_free_input_query<T: FieldElement>(
+    mut e: Expression<T>,
+) -> Expression<T> {
+    // TODO we should check that we only transform columns and not other symbols.
+    e.pre_visit_expressions_mut(&mut |e| match e {
+        Expression::Reference(reference) => {
+            if &reference.to_string() != "i" {
+                *e = Expression::FunctionCall(FunctionCall {
+                    id: std::mem::take(reference),
+                    arguments: vec![direct_reference("i")],
+                });
+            }
+        }
+        Expression::UnaryOperation(UnaryOperator::Next, inner) => {
+            let Expression::Reference(reference) = inner.as_mut() else {
+                panic!("Can only use ' on symbols directly in free inputs.");
+            };
+            *e = Expression::FunctionCall(FunctionCall {
+                id: std::mem::take(reference),
+                arguments: vec![direct_reference("i") + Expression::from(T::from(1))],
+            });
+        }
+        _ => {}
+    });
+    e
 }
 
 struct Register<T> {
