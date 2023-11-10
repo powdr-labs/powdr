@@ -156,6 +156,7 @@ pub fn compile_asm_string_to_analyzed_ast<T: FieldElement>(
     Ok(analyzed)
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn convert_analyzed_to_pil<T: FieldElement>(
     file_name: &str,
     monitor: &mut DiffMonitor,
@@ -206,15 +207,18 @@ pub fn convert_analyzed_to_pil<T: FieldElement>(
     ))
 }
 
+pub type AnalyzedASTHook<'a, T> = &'a mut dyn FnMut(&AnalysisASMFile<T>);
+
 /// Compiles the contents of a .asm file, outputs the PIL on stdout and tries to generate
 /// fixed and witness columns.
 ///
 /// Returns the relative pil file name and the compilation result if any compilation was done.
+#[allow(clippy::too_many_arguments)]
 pub fn compile_asm_string<T: FieldElement>(
     file_name: &str,
     contents: &str,
     inputs: &[T],
-    analyzed_hook: Option<&mut dyn FnMut(&AnalysisASMFile<T>)>,
+    analyzed_hook: Option<AnalyzedASTHook<T>>,
     output_dir: &Path,
     force_overwrite: bool,
     prove_with: Option<BackendType>,
@@ -325,9 +329,7 @@ fn compile<T: FieldElement, Q: QueryCallback<T>>(
 }
 
 #[allow(clippy::print_stdout)]
-pub fn inputs_to_query_callback<'a, T: FieldElement>(
-    inputs: &'a [T],
-) -> impl Fn(&str) -> Option<T> + 'a {
+pub fn inputs_to_query_callback<T: FieldElement>(inputs: &[T]) -> impl Fn(&str) -> Option<T> + '_ {
     move |query: &str| -> Option<T> {
         let items = query.split(',').map(|s| s.trim()).collect::<Vec<_>>();
         match items[0] {

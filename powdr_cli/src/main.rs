@@ -489,6 +489,7 @@ fn run_rust<F: FieldElement>(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 fn run_riscv_asm<F: FieldElement>(
     original_file_name: &str,
     file_names: impl Iterator<Item = String>,
@@ -540,7 +541,7 @@ fn handle_riscv_asm<F: FieldElement>(
             output_dir,
             force_overwrite,
             prove_with,
-            vec![]
+            vec![],
         )?;
     }
     Ok(())

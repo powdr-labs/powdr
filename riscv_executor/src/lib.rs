@@ -15,10 +15,7 @@ use std::{
 
 use ast::{
     asm_analysis::{AnalysisASMFile, CallableSymbol, FunctionStatement, LabelStatement, Machine},
-    parsed::{
-        asm::{AssignmentRegister, DebugDirective},
-        Expression,
-    },
+    parsed::{asm::DebugDirective, Expression},
 };
 use builder::{MemoryBuilder, TraceBuilder};
 use number::{BigInt, FieldElement};
@@ -256,16 +253,16 @@ fn get_main_machine<T: FieldElement>(program: &AnalysisASMFile<T>) -> &Machine<T
     panic!();
 }
 
+struct PreprocessedMain<'a, T: FieldElement> {
+    statements: Vec<&'a FunctionStatement<T>>,
+    label_map: HashMap<&'a str, Elem>,
+    batch_to_line_map: Vec<u32>,
+    debug_files: Vec<(&'a str, &'a str)>,
+}
+
 /// Returns the list of instructions, directly indexable by PC, the map from
 /// labels to indices into that list, and the list with the start of each batch.
-fn preprocess_main_function<T: FieldElement>(
-    machine: &Machine<T>,
-) -> (
-    Vec<&FunctionStatement<T>>,
-    HashMap<&str, Elem>,
-    Vec<u32>,
-    Vec<(&str, &str)>,
-) {
+fn preprocess_main_function<T: FieldElement>(machine: &Machine<T>) -> PreprocessedMain<T> {
     let CallableSymbol::Function(main_function) = &machine.callable.0["main"] else {
         panic!("main function missing")
     };
@@ -315,7 +312,12 @@ fn preprocess_main_function<T: FieldElement>(
     // add a final element to the map so the queries don't overflow:
     batch_to_line_map.push(statements.len() as u32);
 
-    (statements, label_map, batch_to_line_map, debug_files)
+    PreprocessedMain {
+        statements,
+        label_map,
+        batch_to_line_map,
+        debug_files,
+    }
 }
 
 struct Executor<'a, 'b, F: FieldElement> {
@@ -577,7 +579,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                                 to_u32(&self.inputs[idx]).unwrap().into()
                             }
                             "print_char" => {
-                                self.stdout.write(&[val.u() as u8]).unwrap();
+                                self.stdout.write_all(&[val.u() as u8]).unwrap();
                                 // what is print_char supposed to return?
                                 Elem::zero()
                             }
@@ -600,8 +602,12 @@ pub fn execute_ast<'a, T: FieldElement>(
     inputs: &[T],
 ) -> ExecutionTrace<'a> {
     let main_machine = get_main_machine(program);
-    let (statements, label_map, batch_to_line_map, debug_files) =
-        preprocess_main_function(main_machine);
+    let PreprocessedMain {
+        statements,
+        label_map,
+        batch_to_line_map,
+        debug_files,
+    } = preprocess_main_function(main_machine);
 
     let mut e = Executor {
         proc: TraceBuilder::new(main_machine, &batch_to_line_map),
