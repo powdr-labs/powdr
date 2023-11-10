@@ -113,7 +113,7 @@ impl<T: FieldElement> Row<'_, T> {
     /// Builds a string representing the current row
     pub fn render(&self, title: &str, include_unknown: bool, cols: &HashSet<PolyID>) -> String {
         format!(
-            "{}:\n{}",
+            "{}:\n{}\n---------------------",
             title,
             self.render_values(include_unknown, Some(cols))
         )
