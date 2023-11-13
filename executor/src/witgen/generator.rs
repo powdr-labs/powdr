@@ -82,7 +82,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for Generator<'a, T> {
         fixed_lookup: &'b mut FixedLookup<T>,
         query_callback: &'b mut Q,
     ) -> HashMap<String, Vec<T>> {
-        log::debug!("Finalizing VM: {}", self.name());
+        log::trace!("Finalizing VM: {}", self.name());
 
         // In this stage, we don't have access to other machines, as they might already be finalized.
         let mut mutable_state_no_machines = MutableState {

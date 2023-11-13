@@ -232,7 +232,7 @@ impl<T: FieldElement> DoubleSortedWitnesses<T> {
                 }
             };
 
-            log::debug!(
+            log::trace!(
                 "Memory write: addr={:x}, step={step}, value={:x}",
                 addr,
                 value
@@ -249,7 +249,7 @@ impl<T: FieldElement> DoubleSortedWitnesses<T> {
                     value: *value,
                 },
             );
-            log::debug!(
+            log::trace!(
                 "Memory read: addr={:x}, step={step}, value={:x}",
                 addr,
                 value
