@@ -806,10 +806,9 @@ impl<T: FieldElement> ASMPILConverter<T> {
             .assignment_register_names()
             .map(|reg| {
                 let free_value = format!("{reg}_free_value");
-                witness_column(
-                    0,
-                    free_value,
-                    Some(FunctionDefinition::Query(
+                let prover_query_arms = free_value_query_arms.remove(reg).unwrap();
+                let prover_query = (!prover_query_arms.is_empty()).then_some({
+                    FunctionDefinition::Query(
                         vec!["i".to_string()],
                         Expression::MatchExpression(
                             Box::new(Expression::FunctionCall(FunctionCall {
@@ -819,10 +818,11 @@ impl<T: FieldElement> ASMPILConverter<T> {
                                 },
                                 arguments: vec![direct_reference("i")],
                             })),
-                            free_value_query_arms[reg].clone(),
+                            prover_query_arms,
                         ),
-                    )),
-                )
+                    )
+                });
+                witness_column(0, free_value, prover_query)
             })
             .collect::<Vec<_>>();
         self.pil.extend(free_value_pil);
