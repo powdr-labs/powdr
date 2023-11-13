@@ -412,7 +412,7 @@ fn run_command(command: Commands) {
                     contents.as_str(),
                     inputs,
                     &output_dir,
-                    prove_with
+                    prove_with,
                 );
                 //riscv_executor::execute::<GoldilocksField>(&contents, &inputs);
             } else {
@@ -540,13 +540,7 @@ fn handle_riscv_asm<F: FieldElement>(
     just_execute: bool,
 ) -> Result<(), Vec<String>> {
     if just_execute {
-        rust_continuations(
-            file_name,
-            contents,
-            inputs,
-            output_dir,
-            prove_with
-        );
+        rust_continuations(file_name, contents, inputs, output_dir, prove_with);
     } else {
         compile_asm_string(
             file_name,
@@ -569,6 +563,12 @@ fn rust_continuations<F: FieldElement>(
     output_dir: &Path,
     prove_with: Option<BackendType>,
 ) {
+    println!("{:?}", inputs);
+    assert!(inputs.is_empty(), "Inputs are hijacked for bootloader");
+    // 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,50,0
+    let mut inputs = vec![F::zero(); 37];
+    inputs[35] = F::from(50u64);
+
     log::info!("Compiling powdr-asm to PIL...");
     let pil = compiler::compile_asm_string_to_analyzed::<F>(file_name, contents);
 
@@ -576,22 +576,30 @@ fn rust_continuations<F: FieldElement>(
     let pil = pilopt::optimize(pil);
 
     log::info!("Executing powdr-asm...");
-    let (witness, rom_len)  = riscv_executor::execute::<F>(contents, &inputs);
+    let (witness, rom_len) = riscv_executor::execute::<F>(contents, &inputs);
 
     // Collect the runtime column names
-    let wit_columns: Vec<String> = pil.committed_polys_in_source_order().iter()
+    let wit_columns: Vec<String> = pil
+        .committed_polys_in_source_order()
+        .iter()
         .map(|(symbol, _)| symbol.absolute_name.clone())
         .collect();
 
     // Filter executor witness by the columns that still exist in PIL
-    let witness: Vec<(String, Vec<F>)> = witness.into_iter()
+    let witness: Vec<(String, Vec<F>)> = witness
+        .into_iter()
         .filter(|(name, _)| wit_columns.contains(name))
         .collect();
 
     // Filter executor witness by the needed state columns: pc and x0-x31
-    let mut witness: Vec<(String, Vec<F>)> = witness.into_iter()
+    let mut witness: Vec<(String, Vec<F>)> = witness
+        .into_iter()
         //.filter(|(name, _)| name.starts_with("main.pc") || name.starts_with("main.x"))
-        .filter(|(name, _)| name.starts_with("main.pc") || name.starts_with("main.x") || name.starts_with("main.tmp"))
+        .filter(|(name, _)| {
+            name.starts_with("main.pc")
+                || name.starts_with("main.x")
+                || name.starts_with("main.tmp")
+        })
         //.filter(|(name, _)| name.starts_with("main.pc"))
         .collect();
 
@@ -627,8 +635,10 @@ fn rust_continuations<F: FieldElement>(
                 //wit_col.1.pop();
                 //wit_col.1.push(0.into());
                 //wit_col.1.push(1.into());
-                wit_col.1.resize_with(aligned_length, || F::from((rom_len - 1) as u64));
-            },
+                wit_col
+                    .1
+                    .resize_with(aligned_length, || F::from((rom_len - 1) as u64));
+            }
             _ => {
                 //let last = wit_col.1.last().cloned().unwrap();
                 //wit_col.1.push(0.into());
@@ -667,7 +677,7 @@ fn rust_continuations<F: FieldElement>(
 
         //log::info!("\n\nwitness chunk\n{:?}", chunk_witness);
 
-        let next_map: HashMap<&str, Vec<F>> = chunked_witness[i+1].clone().into_iter().collect();
+        let next_map: HashMap<&str, Vec<F>> = chunked_witness[i + 1].clone().into_iter().collect();
 
         for (n, w) in &mut chunk_witness {
             w.push(next_map[n][0]);
@@ -679,12 +689,7 @@ fn rust_continuations<F: FieldElement>(
             .collect::<Vec<_>>();
 
         let csv_path = Path::new(&output_dir).join(format!("chunk_{i}_columns.csv"));
-        export_columns_to_csv(
-            csv_witness,
-            None,
-            &csv_path,
-            CsvRenderModeCLI::SignedBase10,
-        );
+        export_columns_to_csv(csv_witness, None, &csv_path, CsvRenderModeCLI::SignedBase10);
 
         /*
         let csv_witness_next = chunked_witness[i+1]

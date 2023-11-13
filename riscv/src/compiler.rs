@@ -21,6 +21,85 @@ use crate::disambiguator;
 use crate::parser::RiscParser;
 use crate::{Argument, Expression, Statement};
 
+const BOOTLOADER: &'static str = r#"
+// Number of pages
+x1 <=X= ${ ("input", 36) };
+x1 <== wrap(x1);
+
+branch_if_zero x1, end_page_loop;
+
+// Current page index
+x2 <=X= 0;
+
+start_page_loop::
+
+// Start address
+x3 <=X= ${ ("input", x2 * (256 + 1) + 36 + 1) };
+x3 <== wrap(x3);
+
+// Current word index
+x4 <=X= 0;
+
+start_word_loop::
+
+// Store word
+mstore x3 + x4 * 4, ${ ("input", x2 * (256 + 1) + 36 + 2 + x4) };
+
+// Increment word index
+x4 <=X= x4 + 1;
+
+branch_if_nonzero x4 - 256, start_word_loop;
+
+end_word_loop::
+
+// Increment page index
+x2 <=X= x2 + 1;
+
+branch_if_nonzero x2 - x1, start_page_loop;
+
+end_page_loop::
+
+// Initialize registers, starting with index 0
+x1 <=X= ${ ("input", 0) };
+x2 <=X= ${ ("input", 1) };
+x3 <=X= ${ ("input", 2) };
+x4 <=X= ${ ("input", 3) };
+x5 <=X= ${ ("input", 4) };
+x6 <=X= ${ ("input", 5) };
+x7 <=X= ${ ("input", 6) };
+x8 <=X= ${ ("input", 7) };
+x9 <=X= ${ ("input", 8) };
+x10 <=X= ${ ("input", 9) };
+x11 <=X= ${ ("input", 10) };
+x12 <=X= ${ ("input", 11) };
+x13 <=X= ${ ("input", 12) };
+x14 <=X= ${ ("input", 13) };
+x15 <=X= ${ ("input", 14) };
+x16 <=X= ${ ("input", 15) };
+x17 <=X= ${ ("input", 16) };
+x18 <=X= ${ ("input", 17) };
+x19 <=X= ${ ("input", 18) };
+x20 <=X= ${ ("input", 19) };
+x21 <=X= ${ ("input", 20) };
+x22 <=X= ${ ("input", 21) };
+x23 <=X= ${ ("input", 22) };
+x24 <=X= ${ ("input", 23) };
+x25 <=X= ${ ("input", 24) };
+x26 <=X= ${ ("input", 25) };
+x27 <=X= ${ ("input", 26) };
+x28 <=X= ${ ("input", 27) };
+x29 <=X= ${ ("input", 28) };
+x30 <=X= ${ ("input", 29) };
+x31 <=X= ${ ("input", 30) };
+tmp1 <=X= ${ ("input", 31) };
+tmp2 <=X= ${ ("input", 32) };
+tmp3 <=X= ${ ("input", 33) };
+lr_sc_reservation <=X= ${ ("input", 34) };
+
+// Set the PC
+jump_dyn ${ ("input", 35) };
+"#;
+
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct Register {
     value: u8,
@@ -189,6 +268,7 @@ pub fn compile(mut assemblies: BTreeMap<String, String>, coprocessors: &CoProces
         .into_iter()
         .map(|(id, dir, file)| format!("debug file {id} {} {};", quote(&dir), quote(&file)))
         .chain(["call __data_init;".to_string()])
+        .chain(BOOTLOADER.split("\n").map(|l| l.to_string()))
         .chain(call_every_submachine(coprocessors))
         .chain([
             format!("// Set stack pointer\nx2 <=X= {stack_start};"),

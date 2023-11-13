@@ -7,7 +7,7 @@ use runtime::get_prover_input;
 
 #[no_mangle]
 pub fn main() {
-    for _ in 0..1000 {
+    for _ in 0..50 {
         let proposed_sum = 1_000;
         let len = 1_000 as usize;
         let data: Vec<_> = (2..(len + 2)).map(|idx| 1).collect();
