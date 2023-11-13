@@ -207,7 +207,7 @@ impl<T: FieldElement> DoubleSortedWitnesses<T> {
             .constant_value()
             .ok_or_else(|| format!("Step must be known: {} = {}", left[1], right.expressions[1]))?;
 
-        log::trace!(
+        log::info!(
             "Query addr={:x}, step={step}, write: {is_write}, left: {}",
             addr.to_arbitrary_integer(),
             left[2]
