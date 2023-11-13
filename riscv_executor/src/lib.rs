@@ -171,7 +171,16 @@ mod builder {
             self.trace.values[self.curr_idx + self.reg_len() + idx]
         }
 
-        /// set next value of register, accounting to x0 or pc writes
+        /// sets the PC
+        pub(crate) fn s_pc(&mut self, value: Elem) {
+            // updates the internal statement-based program counter accordingly:
+            self.next_statement_line = self.batch_to_line_map[value.u() as usize];
+            self.s_idx(self.pc_idx, value);
+        }
+
+        /// set next value of register, accounting to x0 writes
+        ///
+        /// to set the PC, use s_pc() instead of this
         pub(crate) fn s(&mut self, idx: &str, value: impl Into<Elem>) {
             self.s_impl(idx, value.into())
         }
@@ -180,10 +189,6 @@ mod builder {
             let idx = self.trace.reg_map[idx];
             if idx == self.x0_idx {
                 return;
-            } else if idx == self.pc_idx {
-                // PC has been written, so we must update our statement-based
-                // program counter accordingly:
-                self.next_statement_line = self.batch_to_line_map[value.u() as usize];
             }
             self.s_idx(idx, value);
         }
@@ -377,52 +382,52 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 vec![val, rem.into()]
             }
             "jump" => {
-                self.proc.s("pc", args[0]);
+                self.proc.s_pc(args[0]);
 
                 Vec::new()
             }
             "load_label" => args,
             "jump_dyn" => {
-                self.proc.s("pc", args[0]);
+                self.proc.s_pc(args[0]);
 
                 Vec::new()
             }
             "jump_and_link_dyn" => {
                 let pc = self.proc.g("pc");
                 self.proc.s("x1", pc.u() + 1);
-                self.proc.s("pc", args[0]);
+                self.proc.s_pc(args[0]);
 
                 Vec::new()
             }
             "call" => {
                 let pc = self.proc.g("pc");
                 self.proc.s("x1", pc.u() + 1);
-                self.proc.s("pc", args[0]);
+                self.proc.s_pc(args[0]);
 
                 Vec::new()
             }
             "tail" => {
-                self.proc.s("pc", args[0]);
+                self.proc.s_pc(args[0]);
                 self.proc.s("x6", args[0]);
 
                 Vec::new()
             }
             "ret" => {
                 let target = self.proc.g("x1");
-                self.proc.s("pc", target);
+                self.proc.s_pc(target);
 
                 Vec::new()
             }
             "branch_if_nonzero" => {
                 if args[0].0 != 0 {
-                    self.proc.s("pc", args[1]);
+                    self.proc.s_pc(args[1]);
                 }
 
                 Vec::new()
             }
             "branch_if_zero" => {
                 if args[0].0 == 0 {
-                    self.proc.s("pc", args[1]);
+                    self.proc.s_pc(args[1]);
                 }
 
                 Vec::new()
@@ -430,14 +435,14 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
             "skip_if_zero" => {
                 if args[0].0 == 0 {
                     let pc = self.proc.g("pc").s();
-                    self.proc.s("pc", pc + args[1].s() + 1);
+                    self.proc.s_pc((pc + args[1].s() + 1).into());
                 }
 
                 Vec::new()
             }
             "branch_if_positive" => {
                 if args[0].0 > 0 {
-                    self.proc.s("pc", args[1]);
+                    self.proc.s_pc(args[1]);
                 }
 
                 Vec::new()
