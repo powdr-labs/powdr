@@ -19,7 +19,10 @@ use ast::{
 
 use number::FieldElement;
 
-use crate::common::{instruction_flag, return_instruction, RETURN_NAME};
+use crate::{
+    common::{instruction_flag, return_instruction, RETURN_NAME},
+    utils::parse_pil_statement
+};
 
 pub fn convert_machine<T: FieldElement>(machine: Machine<T>, rom: Option<Rom<T>>) -> Machine<T> {
     let output_count = machine
@@ -137,11 +140,19 @@ impl<T: FieldElement> ASMPILConverter<T> {
                                         pc_update_name.to_string(),
                                         rhs,
                                     ),
+                                    /*
                                     PilStatement::PolynomialIdentity(
                                         0,
                                         lhs - (Expression::from(T::one())
                                             - next_reference("first_step"))
                                             * direct_reference(pc_update_name),
+                                    ),
+                                    */
+                                    PilStatement::PolynomialIdentity(
+                                        0,
+                                        (Expression::from(T::one())
+                                         - next_reference("first_step"))
+                                        * (lhs - direct_reference(pc_update_name)),
                                     ),
                                 ]
                             }
@@ -152,7 +163,10 @@ impl<T: FieldElement> ASMPILConverter<T> {
                                 vec![PilStatement::PolynomialIdentity(0, not_reset * (lhs - rhs))]
                             }
                             _ => {
-                                vec![PilStatement::PolynomialIdentity(0, lhs - rhs)]
+                                //vec![PilStatement::PolynomialIdentity(0, lhs - rhs)]
+                                vec![PilStatement::PolynomialIdentity(0,
+                                    (Expression::from(T::one()) - next_reference("first_step")) * (lhs - rhs))
+                                ]
                             }
                         }
                     })
@@ -271,13 +285,18 @@ impl<T: FieldElement> ASMPILConverter<T> {
                 self.line_lookup
                     .push((name.to_string(), "p_line".to_string()));
                 default_update = Some(direct_reference(&name) + T::one().into());
+                self.pil.push(parse_pil_statement::<T>(&format!(
+                    "col witness {}(i) query match i {{0 => (\"hint\", 2) }}", name
+                )));
             }
             RegisterTy::Assignment => {
                 // no default update as this is transient
+                self.pil.push(witness_column(start, name.to_string(), None));
             }
             RegisterTy::ReadOnly => {
                 // default update to be kept constant
-                default_update = Some(direct_reference(&name))
+                default_update = Some(direct_reference(&name));
+                self.pil.push(witness_column(start, name.to_string(), None));
             }
             RegisterTy::Write => {
                 let assignment_regs = self
@@ -292,6 +311,9 @@ impl<T: FieldElement> ASMPILConverter<T> {
                         .push((direct_reference(&write_flag), direct_reference(&reg)));
                 }
                 default_update = Some(direct_reference(&name));
+                self.pil.push(parse_pil_statement::<T>(&format!(
+                    "col witness {}(i) query match i {{0 => (\"hint\", 0) }}", name
+                )));
             }
         };
         self.registers.insert(
@@ -302,7 +324,6 @@ impl<T: FieldElement> ASMPILConverter<T> {
                 ty,
             },
         );
-        self.pil.push(witness_column(start, name, None));
     }
 
     fn handle_instruction_def(

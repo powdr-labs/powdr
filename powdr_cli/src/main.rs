@@ -590,16 +590,19 @@ fn rust_continuations<F: FieldElement>(
 
     // Filter executor witness by the needed state columns: pc and x0-x31
     let mut witness: Vec<(String, Vec<F>)> = witness.into_iter()
-        .filter(|(name, _)| name.starts_with("main.pc") || name.starts_with("main.x"))
+        //.filter(|(name, _)| name.starts_with("main.pc") || name.starts_with("main.x"))
+        .filter(|(name, _)| name.starts_with("main.pc") || name.starts_with("main.x") || name.starts_with("main.tmp"))
         //.filter(|(name, _)| name.starts_with("main.pc"))
         .collect();
 
+    /*
     let final_columns: Vec<String> = witness
         .iter()
         .map(|(name, _)| name.clone())
         .collect();
 
-    //println!("FINAL COLUMNS\n{:?}", final_columns);
+    println!("FINAL COLUMNS\n{:?}", final_columns);
+    */
 
     let length = witness[0].1.len();
     log::info!("Trace has length {length}");
@@ -608,7 +611,8 @@ fn rust_continuations<F: FieldElement>(
         assert_eq!(length, v.len());
     }
 
-    let chunk_len = 1 << 18;
+    let proof_chunk_len = 1 << 18;
+    let chunk_len = proof_chunk_len - 1;
     //let chunk_len = 1 << 20;
     //let chunk_len = 1 << 5;
     let n_chunks = (length + chunk_len - 1) / chunk_len;
@@ -620,9 +624,9 @@ fn rust_continuations<F: FieldElement>(
     for wit_col in &mut witness {
         match wit_col.0.as_str() {
             "main.pc" => {
-                wit_col.1.pop();
-                wit_col.1.push(0.into());
-                wit_col.1.push(1.into());
+                //wit_col.1.pop();
+                //wit_col.1.push(0.into());
+                //wit_col.1.push(1.into());
                 wit_col.1.resize_with(aligned_length, || F::from((rom_len - 1) as u64));
             },
             _ => {
@@ -666,9 +670,7 @@ fn rust_continuations<F: FieldElement>(
         let next_map: HashMap<&str, Vec<F>> = chunked_witness[i+1].clone().into_iter().collect();
 
         for (n, w) in &mut chunk_witness {
-            if n.starts_with("main.x") {
-                w[0] = next_map[n][0];
-            }
+            w.push(next_map[n][0]);
         }
 
         let csv_witness = chunk_witness
@@ -683,8 +685,8 @@ fn rust_continuations<F: FieldElement>(
             &csv_path,
             CsvRenderModeCLI::SignedBase10,
         );
-        //break;
 
+        /*
         let csv_witness_next = chunked_witness[i+1]
             .iter()
             .map(|(n, c)| (n.to_string(), c.clone()))
@@ -697,6 +699,7 @@ fn rust_continuations<F: FieldElement>(
             &csv_path,
             CsvRenderModeCLI::SignedBase10,
         );
+        */
 
         let h: HashMap<_, _> = chunk_witness.clone().into_iter().collect();
         //log::info!("main.pc\n{:?}", h["main.pc"]);

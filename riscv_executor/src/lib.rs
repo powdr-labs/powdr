@@ -111,20 +111,22 @@ mod builder {
                 .collect::<HashMap<&str, usize>>();
 
             // first row has all values zeroed
-            //let values = vec![Elem::zero(); 2 * reg_map.len()];
+            let mut values = vec![Elem::zero(); 2 * reg_map.len()];
             // TODO is this 2 more rows?
-            let mut values = vec![Elem::zero(); 4 * reg_map.len()];
+            //let mut values = vec![Elem::zero(); 4 * reg_map.len()];
 
             let pc_idx = reg_map["pc"];
             let reg_len = reg_map.len();
 
-            values[pc_idx] = 0.into();
-            values[pc_idx + reg_len] = 1.into();
-            values[pc_idx + reg_len * 2] = 2.into();
+            //values[pc_idx] = 0.into();
+            //values[pc_idx + reg_len] = 1.into();
+            //values[pc_idx + reg_len * 2] = 2.into();
             //values[pc_idx + reg_len * 3] = 3.into();
+            values[pc_idx] = 2.into();
 
             let mut ret = Self {
-                curr_idx: 2 * reg_len,
+                //curr_idx: 2 * reg_len,
+                curr_idx: 0,
                 x0_idx: reg_map["x0"],
                 pc_idx,
                 trace: ExecutionTrace { reg_map, values, rom_length: batch_to_line_map.len() },
