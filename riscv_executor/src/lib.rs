@@ -158,43 +158,43 @@ mod builder {
         }
 
         /// get current value of register
-        pub(crate) fn g(&self, idx: &str) -> Elem {
-            self.g_idx(self.trace.reg_map[idx])
+        pub(crate) fn get(&self, idx: &str) -> Elem {
+            self.get_idx(self.trace.reg_map[idx])
         }
 
         /// get current value of register by register index instead of name
-        fn g_idx(&self, idx: usize) -> Elem {
+        fn get_idx(&self, idx: usize) -> Elem {
             self.trace.values[self.curr_idx + idx]
         }
 
-        fn g_idx_next(&self, idx: usize) -> Elem {
+        fn get_idx_next(&self, idx: usize) -> Elem {
             self.trace.values[self.curr_idx + self.reg_len() + idx]
         }
 
         /// sets the PC
-        pub(crate) fn s_pc(&mut self, value: Elem) {
+        pub(crate) fn set_pc(&mut self, value: Elem) {
             // updates the internal statement-based program counter accordingly:
             self.next_statement_line = self.batch_to_line_map[value.u() as usize];
-            self.s_idx(self.pc_idx, value);
+            self.set_idx(self.pc_idx, value);
         }
 
         /// set next value of register, accounting to x0 writes
         ///
         /// to set the PC, use s_pc() instead of this
-        pub(crate) fn s(&mut self, idx: &str, value: impl Into<Elem>) {
-            self.s_impl(idx, value.into())
+        pub(crate) fn set(&mut self, idx: &str, value: impl Into<Elem>) {
+            self.set_impl(idx, value.into())
         }
 
-        fn s_impl(&mut self, idx: &str, value: Elem) {
+        fn set_impl(&mut self, idx: &str, value: Elem) {
             let idx = self.trace.reg_map[idx];
             if idx == self.x0_idx {
                 return;
             }
-            self.s_idx(idx, value);
+            self.set_idx(idx, value);
         }
 
         /// raw set next value of register by register index instead of name
-        fn s_idx(&mut self, idx: usize, value: Elem) {
+        fn set_idx(&mut self, idx: usize, value: Elem) {
             let final_idx = self.curr_idx + self.reg_len() + idx;
             self.trace.values[final_idx] = value;
         }
@@ -202,7 +202,7 @@ mod builder {
         /// advance to next row, returns the index to the statement that must be
         /// executed now
         pub fn advance(&mut self, was_nop: bool) -> u32 {
-            if self.g_idx(self.pc_idx) != self.g_idx_next(self.pc_idx) {
+            if self.get_idx(self.pc_idx) != self.get_idx_next(self.pc_idx) {
                 // PC changed, create a new line
                 self.curr_idx += self.reg_len();
                 self.trace.values.extend_from_within(self.curr_idx..);
@@ -234,11 +234,11 @@ mod builder {
         }
 
         fn set_next_pc(&mut self) {
-            let curr_pc = self.g_idx(self.pc_idx).u();
+            let curr_pc = self.get_idx(self.pc_idx).u();
 
             let line_of_next_batch = self.batch_to_line_map[curr_pc as usize + 1];
 
-            self.s_idx(
+            self.set_idx(
                 self.pc_idx,
                 if self.next_statement_line >= line_of_next_batch {
                     assert_eq!(self.next_statement_line, line_of_next_batch);
@@ -382,67 +382,67 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 vec![val, rem.into()]
             }
             "jump" => {
-                self.proc.s_pc(args[0]);
+                self.proc.set_pc(args[0]);
 
                 Vec::new()
             }
             "load_label" => args,
             "jump_dyn" => {
-                self.proc.s_pc(args[0]);
+                self.proc.set_pc(args[0]);
 
                 Vec::new()
             }
             "jump_and_link_dyn" => {
-                let pc = self.proc.g("pc");
-                self.proc.s("x1", pc.u() + 1);
-                self.proc.s_pc(args[0]);
+                let pc = self.proc.get("pc");
+                self.proc.set("x1", pc.u() + 1);
+                self.proc.set_pc(args[0]);
 
                 Vec::new()
             }
             "call" => {
-                let pc = self.proc.g("pc");
-                self.proc.s("x1", pc.u() + 1);
-                self.proc.s_pc(args[0]);
+                let pc = self.proc.get("pc");
+                self.proc.set("x1", pc.u() + 1);
+                self.proc.set_pc(args[0]);
 
                 Vec::new()
             }
             "tail" => {
-                self.proc.s_pc(args[0]);
-                self.proc.s("x6", args[0]);
+                self.proc.set_pc(args[0]);
+                self.proc.set("x6", args[0]);
 
                 Vec::new()
             }
             "ret" => {
-                let target = self.proc.g("x1");
-                self.proc.s_pc(target);
+                let target = self.proc.get("x1");
+                self.proc.set_pc(target);
 
                 Vec::new()
             }
             "branch_if_nonzero" => {
                 if args[0].0 != 0 {
-                    self.proc.s_pc(args[1]);
+                    self.proc.set_pc(args[1]);
                 }
 
                 Vec::new()
             }
             "branch_if_zero" => {
                 if args[0].0 == 0 {
-                    self.proc.s_pc(args[1]);
+                    self.proc.set_pc(args[1]);
                 }
 
                 Vec::new()
             }
             "skip_if_zero" => {
                 if args[0].0 == 0 {
-                    let pc = self.proc.g("pc").s();
-                    self.proc.s_pc((pc + args[1].s() + 1).into());
+                    let pc = self.proc.get("pc").s();
+                    self.proc.set_pc((pc + args[1].s() + 1).into());
                 }
 
                 Vec::new()
             }
             "branch_if_positive" => {
                 if args[0].0 > 0 {
-                    self.proc.s_pc(args[1]);
+                    self.proc.set_pc(args[1]);
                 }
 
                 Vec::new()
@@ -545,7 +545,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     .label_map
                     .get(name)
                     .cloned()
-                    .unwrap_or_else(|| self.proc.g(name));
+                    .unwrap_or_else(|| self.proc.get(name));
                 vec![val]
             }
             Expression::PublicReference(_) => todo!(),
@@ -659,7 +659,7 @@ pub fn execute_ast<'a, T: FieldElement>(
                 let results = e.eval_expression(a.rhs.as_ref());
                 assert_eq!(a.lhs_with_reg.len(), results.len());
                 for ((dest, _), val) in a.lhs_with_reg.iter().zip(results) {
-                    e.proc.s(dest, val);
+                    e.proc.set(dest, val);
                 }
 
                 false
