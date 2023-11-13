@@ -14,6 +14,7 @@ pub fn verify_asm_string<T: FieldElement>(file_name: &str, contents: &str, input
         true,
         Some(BackendType::PilStarkCli),
         vec![],
+        None,
     )
     .unwrap();
     verify(&temp_dir);

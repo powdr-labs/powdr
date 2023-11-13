@@ -178,8 +178,9 @@ pub(crate) fn analyzed_to_cpp<F: FieldElement>(
     analyzed: &Analyzed<F>,
     fixed: &[(&str, Vec<F>)],
     witness: &[(&str, Vec<F>)],
+    bname: Option<String>,
 ) -> BBFiles {
-    let file_name: &str = FILE_NAME;
+    let file_name: &str = &bname.unwrap_or("Example".to_owned());
 
     let mut bb_files = BBFiles::default(file_name.to_owned());
 

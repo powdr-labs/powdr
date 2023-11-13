@@ -20,8 +20,9 @@ impl<T: FieldElement> BackendImpl<T> for BBergCodegen {
         fixed: &[(&str, Vec<T>)],
         witness: &[(&str, Vec<T>)],
         _prev_proof: Option<Proof>,
+        bname: Option<String>,
     ) -> (Option<Proof>, Option<String>) {
-        self.build_ast(pil, fixed, witness);
+        self.build_ast(pil, fixed, witness, bname);
 
         // Note(md): In the current bberg impl we do not produce proofs here
         // as we do cpp code generation, and then create proofs with bberg
@@ -55,6 +56,7 @@ impl<T: FieldElement> BackendImpl<T> for BBergMock {
         _fixed: &[(&str, Vec<T>)],
         _witness: &[(&str, Vec<T>)],
         prev_proof: Option<Proof>,
+        _bname: Option<String>,
     ) -> (Option<Proof>, Option<String>) {
         if prev_proof.is_some() {
             unimplemented!("BBergMock backend does not support aggregation");

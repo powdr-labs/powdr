@@ -51,6 +51,7 @@ impl<F: FieldElement> BackendImpl<F> for EStark {
         fixed: &[(&str, Vec<F>)],
         witness: &[(&str, Vec<F>)],
         prev_proof: Option<crate::Proof>,
+        _bname: Option<String>,
     ) -> (Option<crate::Proof>, Option<String>) {
         if prev_proof.is_some() {
             unimplemented!("aggregration is not implemented");

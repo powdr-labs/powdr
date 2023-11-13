@@ -94,6 +94,10 @@ enum Commands {
         #[arg(default_value_t = CsvRenderModeCLI::Hex)]
         #[arg(value_parser = clap_enum_variants!(CsvRenderModeCLI))]
         csv_mode: CsvRenderModeCLI,
+
+        /// BBerg: Name of the output file for bberg
+        #[arg(long)]
+        bname: Option<String>,
     },
     /// Compiles (no-std) rust code to riscv assembly, then to powdr assembly
     /// and finally to PIL and generates fixed and witness columns.
@@ -377,6 +381,7 @@ fn run_command(command: Commands) {
             prove_with,
             export_csv,
             csv_mode,
+            bname,
         } => {
             match call_with_field!(compile_with_csv_export::<field>(
                 file,
@@ -386,7 +391,8 @@ fn run_command(command: Commands) {
                 force,
                 prove_with,
                 export_csv,
-                csv_mode
+                csv_mode,
+                bname
             )) {
                 Ok(()) => {}
                 Err(errors) => {
@@ -455,6 +461,7 @@ fn run_rust<F: FieldElement>(
         force_overwrite,
         prove_with,
         vec![],
+        None,
     )?;
     Ok(())
 }
@@ -485,6 +492,7 @@ fn run_riscv_asm<F: FieldElement>(
         force_overwrite,
         prove_with,
         vec![],
+        None,
     )?;
     Ok(())
 }
@@ -499,6 +507,7 @@ fn compile_with_csv_export<T: FieldElement>(
     prove_with: Option<BackendType>,
     export_csv: bool,
     csv_mode: CsvRenderModeCLI,
+    bname: Option<String>,
 ) -> Result<(), Vec<String>> {
     let external_witness_values = witness_values
         .map(|csv_path| {
@@ -519,6 +528,7 @@ fn compile_with_csv_export<T: FieldElement>(
         force,
         prove_with,
         external_witness_values,
+        bname,
     )?;
 
     if export_csv {
@@ -593,7 +603,7 @@ fn read_and_prove<T: FieldElement>(
 
     write_proving_results_to_fs(
         proof.is_some(),
-        backend.prove(&pil, &fixed.0, &witness.0, proof),
+        backend.prove(&pil, &fixed.0, &witness.0, proof, None),
         dir,
     );
 }
@@ -629,6 +639,7 @@ mod test {
             prove_with: Some(BackendType::PilStarkCli),
             export_csv: true,
             csv_mode: CsvRenderModeCLI::Hex,
+            bname: "Example".into(),
         };
         run_command(pil_command);
 

@@ -18,6 +18,7 @@ impl<T: FieldElement> BackendImpl<T> for PilStarkCli {
         _fixed: &[(&str, Vec<T>)],
         _witness: &[(&str, Vec<T>)],
         prev_proof: Option<Proof>,
+        _bname: Option<String>,
     ) -> (Option<Proof>, Option<String>) {
         if prev_proof.is_some() {
             unimplemented!("Aggregration is not implemented for pil-stark CLI backend");

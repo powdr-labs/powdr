@@ -79,8 +79,9 @@ impl<F: FieldElement, B: BackendImpl<F>> Backend<F> for ConcreteBackendWithoutSe
         fixed: &[(&str, Vec<F>)],
         witness: &[(&str, Vec<F>)],
         prev_proof: Option<Proof>,
+        bname: Option<String>,
     ) -> (Option<Proof>, Option<String>) {
-        self.0.prove(pil, fixed, witness, prev_proof)
+        self.0.prove(pil, fixed, witness, prev_proof, bname)
     }
 
     fn write_setup(&self, _output: &mut dyn io::Write) -> Result<(), Error> {
@@ -117,8 +118,9 @@ impl<F: FieldElement, B: BackendImplWithSetup<F>> Backend<F> for ConcreteBackend
         fixed: &[(&str, Vec<F>)],
         witness: &[(&str, Vec<F>)],
         prev_proof: Option<Proof>,
+        bname: Option<String>,
     ) -> (Option<Proof>, Option<String>) {
-        self.0.prove(pil, fixed, witness, prev_proof)
+        self.0.prove(pil, fixed, witness, prev_proof, bname)
     }
 
     fn write_setup(&self, output: &mut dyn io::Write) -> Result<(), Error> {
@@ -155,6 +157,7 @@ pub trait Backend<F: FieldElement> {
         fixed: &[(&str, Vec<F>)],
         witness: &[(&str, Vec<F>)],
         prev_proof: Option<Proof>,
+        bname: Option<String>,
     ) -> (Option<Proof>, Option<String>);
 
     /// Write the prover setup to a file, so that it can be loaded later.
@@ -184,6 +187,7 @@ trait BackendImpl<F: FieldElement> {
         fixed: &[(&str, Vec<F>)],
         witness: &[(&str, Vec<F>)],
         prev_proof: Option<Proof>,
+        bname: Option<String>,
     ) -> (Option<Proof>, Option<String>);
 }
 
