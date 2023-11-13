@@ -122,6 +122,7 @@ mod builder {
 
     impl<'a, 'b> TraceBuilder<'a, 'b> {
         // creates a new builder
+        // main must not be empty
         pub fn new<T: FieldElement>(main: &'a Machine<T>, batch_to_line_map: &'b [u32]) -> Self {
             let reg_map = register_names(main)
                 .into_iter()
@@ -152,8 +153,7 @@ mod builder {
                 batch_to_line_map,
             };
 
-            ret.set_next_pc();
-
+            let _ = ret.set_next_pc();
             ret
         }
 
@@ -201,7 +201,7 @@ mod builder {
 
         /// advance to next row, returns the index to the statement that must be
         /// executed now
-        pub fn advance(&mut self, was_nop: bool) -> u32 {
+        pub fn advance(&mut self, was_nop: bool) -> Option<u32> {
             if self.get_idx(self.pc_idx) != self.get_idx_next(self.pc_idx) {
                 // PC changed, create a new line
                 self.curr_idx += self.reg_len();
@@ -220,9 +220,7 @@ mod builder {
             self.next_statement_line += 1;
 
             // optimistically write next PC, but the code might rewrite it
-            self.set_next_pc();
-
-            curr_line
+            self.set_next_pc().and(Some(curr_line))
         }
 
         pub fn finish(self) -> ExecutionTrace<'a> {
@@ -233,10 +231,10 @@ mod builder {
             self.trace.reg_map.len()
         }
 
-        fn set_next_pc(&mut self) {
+        fn set_next_pc(&mut self) -> Option<()> {
             let curr_pc = self.get_idx(self.pc_idx).u();
 
-            let line_of_next_batch = self.batch_to_line_map[curr_pc as usize + 1];
+            let line_of_next_batch = *self.batch_to_line_map.get(curr_pc as usize + 1)?;
 
             self.set_idx(
                 self.pc_idx,
@@ -248,6 +246,8 @@ mod builder {
                 }
                 .into(),
             );
+
+            Some(())
         }
     }
 
@@ -648,6 +648,10 @@ pub fn execute_ast<'a, T: FieldElement>(
         stdout: io::stdout(),
     };
 
+    if statements.is_empty() {
+        return e.proc.finish();
+    }
+
     let mut curr_pc = 0u32;
     loop {
         let stm = statements[curr_pc as usize];
@@ -689,7 +693,10 @@ pub fn execute_ast<'a, T: FieldElement>(
             }
         };
 
-        curr_pc = e.proc.advance(is_nop);
+        curr_pc = match e.proc.advance(is_nop) {
+            Some(pc) => pc,
+            None => break,
+        }
     }
 
     e.proc.finish()
