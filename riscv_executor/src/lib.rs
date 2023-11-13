@@ -1,4 +1,5 @@
-//! A specialized executor for our RISC-V assembly that can speedup witgen.
+//! A specialized executor for our RISC-V assembly that can speedup witgen and
+//! help with making partition decisions.
 //!
 //! WARNING: the general witness generation/execution code over the polynomial
 //! constraints try to ensure the determinism of the instructions. If we bypass
@@ -19,6 +20,14 @@ use ast::{
 };
 use builder::{MemoryBuilder, TraceBuilder};
 use number::{BigInt, FieldElement};
+
+/// Initial value of the PC.
+///
+/// To match the ZK proof witness, the PC must start after some offset used for
+/// proof initialization.
+///
+/// TODO: get this value from some authoritative place
+const PC_INITIAL_VAL: usize = 2;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 struct Elem(i64);
@@ -43,14 +52,20 @@ impl From<u32> for Elem {
     }
 }
 
+impl From<i32> for Elem {
+    fn from(value: i32) -> Self {
+        Self(value as i64)
+    }
+}
+
 impl From<i64> for Elem {
     fn from(value: i64) -> Self {
         Self(value)
     }
 }
 
-impl From<i32> for Elem {
-    fn from(value: i32) -> Self {
+impl From<usize> for Elem {
+    fn from(value: usize) -> Self {
         Self(value as i64)
     }
 }
@@ -70,7 +85,7 @@ mod builder {
     use ast::asm_analysis::{Machine, RegisterTy};
     use number::FieldElement;
 
-    use crate::{Elem, ExecutionTrace};
+    use crate::{Elem, ExecutionTrace, PC_INITIAL_VAL};
 
     fn register_names<T: FieldElement>(main: &Machine<T>) -> Vec<&str> {
         main.registers
@@ -114,13 +129,24 @@ mod builder {
                 .map(|(i, name)| (name, i))
                 .collect::<HashMap<&str, usize>>();
 
-            // first row has all values zeroed
-            let values = vec![Elem::zero(); 2 * reg_map.len()];
+            let reg_len = reg_map.len();
+
+            // the + 2 accounts for current row and next row
+            const ROW_COUNT: usize = PC_INITIAL_VAL + 2;
+
+            // first rows has all values zeroed...
+            let mut values = vec![Elem::zero(); ROW_COUNT * reg_len];
+
+            // ...except for the PC
+            let pc_idx = reg_map["pc"];
+            for i in 0..=PC_INITIAL_VAL {
+                values[pc_idx + reg_len * i] = i.into();
+            }
 
             let mut ret = Self {
-                curr_idx: 0,
+                curr_idx: 2 * reg_len,
                 x0_idx: reg_map["x0"],
-                pc_idx: reg_map["pc"],
+                pc_idx,
                 trace: ExecutionTrace { reg_map, values },
                 next_statement_line: 1,
                 batch_to_line_map,
@@ -271,7 +297,7 @@ fn preprocess_main_function<T: FieldElement>(machine: &Machine<T>) -> Preprocess
 
     let mut statements = Vec::new();
     let mut label_map = HashMap::new();
-    let mut batch_to_line_map = Vec::new();
+    let mut batch_to_line_map = vec![0; PC_INITIAL_VAL];
     let mut debug_files = Vec::new();
 
     for (batch_idx, batch) in orig_statements.iter_batches().enumerate() {
@@ -302,7 +328,7 @@ fn preprocess_main_function<T: FieldElement>(machine: &Machine<T>) -> Preprocess
                 FunctionStatement::Label(LabelStatement { start: _, name }) => {
                     // assert there are no statements in the middle of a block
                     assert!(!statement_seen);
-                    label_map.insert(name.as_str(), (batch_idx as i64).into());
+                    label_map.insert(name.as_str(), ((batch_idx + PC_INITIAL_VAL) as i64).into());
                 }
             }
         }
