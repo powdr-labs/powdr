@@ -50,58 +50,10 @@ fn trace_hpp_includes(name: &str) -> String {
     #include \"barretenberg/proof_system/arithmetization/arithmetization.hpp\"
     #include \"barretenberg/proof_system/circuit_builder/circuit_builder_base.hpp\"
     
-    #include \"./{name}_trace.cpp\"
     #include \"barretenberg/honk/flavor/generated/{name}_flavor.hpp\"
     #include \"barretenberg/proof_system/arithmetization/generated/{name}_arith.hpp\"
     #include \"barretenberg/proof_system/relations/generated/{name}.hpp\"
 "
-    )
-}
-
-fn build_shifts(fixed: &[String]) -> String {
-    let shift_assign: Vec<String> = fixed
-        .iter()
-        .map(|name| format!("row.{name}_shift = rows[(i) % rows.size()].{name};"))
-        .collect();
-
-    format!(
-        "
-    for (size_t i = 1; i < rows.size(); ++i) {{
-        Row& row = rows[i-1];
-        {}
-        
-    }}
-    ",
-        shift_assign.join("\n")
-    )
-}
-
-fn build_empty_row(all_cols: &[String]) -> String {
-    // The empty row turns off all constraints when the ISLAST flag is set
-    // We must check that this column exists, and return an error to the user if it is not found
-    let is_last = all_cols.iter().find(|name| name.contains("ISLAST"));
-    if is_last.is_none() {
-        // TODO: make error
-        panic!("ISLAST column not found in witness");
-    }
-    let is_last = is_last.unwrap();
-
-    let initialize = all_cols
-        .iter()
-        .filter(|name| !name.contains("ISLAST")) // filter out islast
-        .map(|name| format!("empty_row.{name} = fr(0);"))
-        .collect::<Vec<_>>()
-        .join("\n");
-
-    format!(
-        "
-    auto empty_row = Row{{}};
-    empty_row.{is_last} = fr(1);
-    {initialize}
-    rows.push_back(empty_row);
-
-        
-    "
     )
 }
 
@@ -113,7 +65,7 @@ impl TraceBuilder for BBFiles {
         name: &str,
         fixed: &[String],
         witness: &[String],
-        to_be_shifted: &[String],
+        _to_be_shifted: &[String],
     ) -> String {
         // We are assuming that the order of the columns in the trace file is the same as the order in the witness file
         let includes = trace_cpp_includes(&self.rel, name);
@@ -157,28 +109,6 @@ impl TraceBuilder for BBFiles {
             .collect::<Vec<String>>()
             .join("\n");
 
-        let fixed_rows = fixed
-            .iter()
-            .map(|name| {
-                let n = name.replace('.', "_");
-                format!("current_row.{n} = read_field(constant_file);")
-            })
-            .collect::<Vec<_>>()
-            .join("\n");
-
-        let wit_rows = &witness_name
-            .iter()
-            .map(|n| {
-                format!(
-                    "
-        current_row.{n} = read_field(commited_file);"
-                )
-            })
-            .collect::<Vec<_>>()
-            .join("\n");
-
-        let construct_shifts = build_shifts(to_be_shifted);
-
         // NOTE: can we assume that the witness filename etc will stay the same?
         let read_from_file_boilerplate = format!(
             "
@@ -190,57 +120,6 @@ using namespace barretenberg;
 namespace proof_system {{
 
 {row_import}
-inline fr read_field(std::ifstream& file)
-{{
-    uint8_t buffer[32];
-    file.read(reinterpret_cast<char*>(buffer), 32);
-
-    // swap it to big endian ???? TODO: create utility
-    for (int n = 0, m = 31; n < m; ++n, --m) {{
-        std::swap(buffer[n], buffer[m]);
-    }}
-
-    return fr::serialize_from_buffer(buffer);
-}}
-    
-inline std::vector<Row> read_both_file_into_cols(
-    std::string const& commited_filename,
-    std::string const& constants_filename
-) {{
-    std::vector<Row> rows;
-
-    // open both files
-    std::ifstream commited_file(commited_filename, std::ios::binary);
-    if (!commited_file) {{
-        std::cout << \"Error opening commited file\" << std::endl;
-        return {{}};
-    }}
-
-    std::ifstream constant_file(constants_filename, std::ios::binary);
-    if (!constant_file) {{
-        std::cout << \"Error opening constant file\" << std::endl;
-        return {{}};
-    }}
-
-    // We are assuming that the two files are the same length
-    while (commited_file) {{
-        Row current_row = {{}};
-
-        {fixed_rows}
-        {wit_rows}
-
-        rows.push_back(current_row);
-    }}
-
-    // remove the last row - TODO: BUG!
-    rows.pop_back();
-
-    // Build out shifts from collected rows
-    {construct_shifts}
-
-
-    return rows;
-}}
 
 }}
     "
@@ -294,11 +173,7 @@ class {name}TraceBuilder {{
         static constexpr size_t num_polys = {num_polys};
         std::vector<Row> rows;
 
-
-        [[maybe_unused]] void build_circuit() {{
-            rows = read_both_file_into_cols(\"../commits.bin\", \"../constants.bin\");
-        }}
-
+        [[maybe_unused]] void build_circuit();
 
         AllPolynomials compute_polynomials() {{
             const auto num_rows = get_circuit_subgroup_size();
@@ -319,9 +194,6 @@ class {name}TraceBuilder {{
         }}
 
         [[maybe_unused]] bool check_circuit() {{
-            // Get the rows from file
-            build_circuit();
-
             auto polys = compute_polynomials();
             const size_t num_rows = polys[0].size();
 

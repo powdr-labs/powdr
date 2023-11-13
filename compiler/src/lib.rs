@@ -20,6 +20,7 @@ pub use backend::{BackendType, Proof};
 use executor::witgen::QueryCallback;
 use number::write_polys_file;
 use number::DegreeType;
+use pil_analyzer::pil_analyzer::inline_intermediate_polynomials;
 pub use verify::{verify, verify_asm_string};
 
 use ast::parsed::PILFile;
@@ -209,40 +210,39 @@ fn compile<T: FieldElement, Q: QueryCallback<T>>(
     analyzed: Analyzed<T>,
     file_name: &OsStr,
     output_dir: &Path,
-    query_callback: Q,
+    _query_callback: Q,
     prove_with: Option<BackendType>,
-    external_witness_values: Vec<(&str, Vec<T>)>,
+    _external_witness_values: Vec<(&str, Vec<T>)>,
 ) -> CompilationResult<T> {
     log::info!("Optimizing pil...");
     // let analyzed = pilopt::optimize(analyzed);
+
+    // md: we inline intermediate polynomials here, as honk does not have a notion of an intermediate
+    let mut mut_analyzed = analyzed;
+    mut_analyzed.identities = inline_intermediate_polynomials(&mut_analyzed);
+
     let optimized_pil_file_name = output_dir.join(format!(
         "{}_opt.pil",
         Path::new(file_name).file_stem().unwrap().to_str().unwrap()
     ));
-    fs::write(optimized_pil_file_name.clone(), format!("{analyzed}")).unwrap();
+    fs::write(optimized_pil_file_name.clone(), format!("{mut_analyzed}")).unwrap();
     log::info!("Wrote {}.", optimized_pil_file_name.to_str().unwrap());
     let start = Instant::now();
     log::info!("Evaluating fixed columns...");
-    let (constants, degree) = constant_evaluator::generate(&analyzed);
+    let (constants, degree) = constant_evaluator::generate(&mut_analyzed);
     log::info!("Took {}", start.elapsed().as_secs_f32());
 
-    let witness = (analyzed.constant_count() == constants.len()).then(|| {
-        log::info!("Deducing witness columns...");
-        let commits =
-            executor::witgen::WitnessGenerator::new(&analyzed, degree, &constants, query_callback)
-                .with_external_witness_values(external_witness_values)
-                .generate();
+    let witness_names = mut_analyzed
+        .committed_polys_in_source_order()
+        .into_iter()
+        .map(|(sym, _)| sym.absolute_name.clone())
+        .collect::<Vec<_>>();
 
-        let witness = commits
-            .into_iter()
-            .map(|(name, c)| (name, c))
-            .collect::<Vec<_>>();
-
-        write_constants_to_fs(&constants, output_dir, degree);
-        write_commits_to_fs(&witness, output_dir, degree);
-
-        witness
-    });
+    // NOTE: temporarily just append a vector to the end such that it is in the expected form for the backend
+    let witness_in_powdr_form: Vec<(&str, Vec<T>)> = witness_names
+        .iter()
+        .map(|name| (name.as_str(), vec![]))
+        .collect();
 
     // Even if we don't have all constants and witnesses, some backends will
     // still output the constraint serialization.
@@ -250,16 +250,7 @@ fn compile<T: FieldElement, Q: QueryCallback<T>>(
         let factory = backend.factory::<T>();
         let backend = factory.create(degree);
 
-        write_proving_results_to_fs(
-            false,
-            backend.prove(
-                &analyzed,
-                &constants,
-                witness.as_deref().unwrap_or_default(),
-                None,
-            ),
-            output_dir,
-        );
+        backend.prove(&mut_analyzed, &constants, &witness_in_powdr_form, None);
     }
 
     let constants = constants
@@ -267,13 +258,10 @@ fn compile<T: FieldElement, Q: QueryCallback<T>>(
         .map(|(name, c)| (name.to_owned(), c))
         .collect();
 
-    let witness = witness.map(|v| {
-        v.into_iter()
-            .map(|(name, c)| (name.to_owned(), c))
-            .collect()
-    });
-
-    CompilationResult { constants, witness }
+    CompilationResult {
+        constants,
+        witness: None,
+    }
 }
 
 pub fn write_proving_results_to_fs(
