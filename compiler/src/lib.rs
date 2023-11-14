@@ -4,24 +4,15 @@
 
 use std::ffi::OsStr;
 use std::fs;
-use std::io::BufWriter;
-use std::io::Write;
 use std::path::Path;
-use std::path::PathBuf;
 use std::time::Instant;
 
 use ast::analyzed::Analyzed;
 
-pub mod util;
-mod verify;
-
-use analysis::analyze;
 pub use backend::{BackendType, Proof};
 use executor::witgen::QueryCallback;
-use number::write_polys_file;
-use number::DegreeType;
+
 use pil_analyzer::pil_analyzer::inline_intermediate_polynomials;
-pub use verify::{verify, verify_asm_string};
 
 use ast::parsed::PILFile;
 use executor::constant_evaluator;
@@ -34,35 +25,21 @@ pub fn no_callback<T>() -> Option<fn(&str) -> Option<T>> {
 /// Compiles a .pil or .asm file and runs witness generation.
 /// If the file ends in .asm, converts it to .pil first.
 /// Returns the compilation result if any compilation took place.
-pub fn compile_pil_or_asm<T: FieldElement>(
+pub fn compile_pil_root<T: FieldElement>(
     file_name: &str,
     inputs: Vec<T>,
     output_dir: &Path,
-    force_overwrite: bool,
+    _force_overwrite: bool,
     prove_with: Option<BackendType>,
-    external_witness_values: Vec<(&str, Vec<T>)>,
     bname: Option<String>,
 ) -> Result<Option<CompilationResult<T>>, Vec<String>> {
-    if file_name.ends_with(".asm") {
-        compile_asm(
-            file_name,
-            inputs,
-            output_dir,
-            force_overwrite,
-            prove_with,
-            external_witness_values,
-            bname,
-        )
-    } else {
-        Ok(Some(compile_pil(
-            Path::new(file_name),
-            output_dir,
-            inputs_to_query_callback(inputs),
-            prove_with,
-            external_witness_values,
-            bname,
-        )))
-    }
+    Ok(Some(compile_pil(
+        Path::new(file_name),
+        output_dir,
+        inputs_to_query_callback(inputs),
+        prove_with,
+        bname,
+    )))
 }
 
 pub fn analyze_pil<T: FieldElement>(pil_file: &Path) -> Analyzed<T> {
@@ -78,7 +55,6 @@ pub fn compile_pil<T: FieldElement, Q: QueryCallback<T>>(
     output_dir: &Path,
     query_callback: Q,
     prove_with: Option<BackendType>,
-    external_witness_values: Vec<(&str, Vec<T>)>,
     bname: Option<String>,
 ) -> CompilationResult<T> {
     compile(
@@ -87,7 +63,6 @@ pub fn compile_pil<T: FieldElement, Q: QueryCallback<T>>(
         output_dir,
         query_callback,
         prove_with,
-        external_witness_values,
         bname,
     )
 }
@@ -100,7 +75,6 @@ pub fn compile_pil_ast<T: FieldElement, Q: QueryCallback<T>>(
     output_dir: &Path,
     query_callback: Q,
     prove_with: Option<BackendType>,
-    external_witness_values: Vec<(&str, Vec<T>)>,
     bname: Option<String>,
 ) -> CompilationResult<T> {
     // TODO exporting this to string as a hack because the parser
@@ -111,101 +85,8 @@ pub fn compile_pil_ast<T: FieldElement, Q: QueryCallback<T>>(
         output_dir,
         query_callback,
         prove_with,
-        external_witness_values,
         bname,
     )
-}
-
-/// Compiles a .asm file, outputs the PIL on stdout and tries to generate
-/// fixed and witness columns.
-/// @returns a compilation result if any compilation was done.
-pub fn compile_asm<T: FieldElement>(
-    file_name: &str,
-    inputs: Vec<T>,
-    output_dir: &Path,
-    force_overwrite: bool,
-    prove_with: Option<BackendType>,
-    external_witness_values: Vec<(&str, Vec<T>)>,
-    bname: Option<String>,
-) -> Result<Option<CompilationResult<T>>, Vec<String>> {
-    let contents = fs::read_to_string(file_name).unwrap();
-    Ok(compile_asm_string(
-        file_name,
-        &contents,
-        inputs,
-        output_dir,
-        force_overwrite,
-        prove_with,
-        external_witness_values,
-        bname,
-    )?
-    .1)
-}
-
-/// Compiles the contents of a .asm file, outputs the PIL on stdout and tries to generate
-/// fixed and witness columns.
-///
-/// Returns the relative pil file name and the compilation result if any compilation was done.
-pub fn compile_asm_string<T: FieldElement>(
-    file_name: &str,
-    contents: &str,
-    inputs: Vec<T>,
-    output_dir: &Path,
-    force_overwrite: bool,
-    prove_with: Option<BackendType>,
-    external_witness_values: Vec<(&str, Vec<T>)>,
-    bname: Option<String>,
-) -> Result<(PathBuf, Option<CompilationResult<T>>), Vec<String>> {
-    let parsed = parser::parse_asm(Some(file_name), contents).unwrap_or_else(|err| {
-        eprintln!("Error parsing .asm file:");
-        err.output_to_stderr();
-        panic!();
-    });
-    log::debug!("Resolve imports");
-    let resolved =
-        importer::resolve(Some(PathBuf::from(file_name)), parsed).map_err(|e| vec![e])?;
-    log::debug!("Run analysis");
-    let analysed = analyze(resolved).unwrap();
-    log::debug!("Analysis done");
-    log::trace!("{analysed}");
-    log::debug!("Run airgen");
-    let graph = airgen::compile(analysed);
-    log::debug!("Airgen done");
-    log::trace!("{graph}");
-    log::debug!("Run linker");
-    let pil = linker::link(graph)?;
-    log::debug!("Linker done");
-    log::trace!("{pil}");
-
-    let pil_file_name = format!(
-        "{}.pil",
-        Path::new(file_name).file_stem().unwrap().to_str().unwrap()
-    );
-
-    let pil_file_path = output_dir.join(pil_file_name);
-    if pil_file_path.exists() && !force_overwrite {
-        eprintln!(
-            "Target file {} already exists. Not overwriting.",
-            pil_file_path.to_str().unwrap()
-        );
-        return Ok((pil_file_path, None));
-    }
-
-    fs::write(pil_file_path.clone(), format!("{pil}")).unwrap();
-
-    let pil_file_name = pil_file_path.file_name().unwrap();
-    Ok((
-        pil_file_path.clone(),
-        Some(compile_pil_ast(
-            &pil,
-            pil_file_name,
-            output_dir,
-            inputs_to_query_callback(inputs),
-            prove_with,
-            external_witness_values,
-            bname,
-        )),
-    ))
 }
 
 pub struct CompilationResult<T: FieldElement> {
@@ -223,7 +104,6 @@ fn compile<T: FieldElement, Q: QueryCallback<T>>(
     output_dir: &Path,
     _query_callback: Q,
     prove_with: Option<BackendType>,
-    _external_witness_values: Vec<(&str, Vec<T>)>,
     bname: Option<String>,
 ) -> CompilationResult<T> {
     log::info!("Optimizing pil...");
@@ -267,7 +147,7 @@ fn compile<T: FieldElement, Q: QueryCallback<T>>(
             &constants,
             &witness_in_powdr_form,
             None,
-            None,
+            bname,
         );
     }
 
@@ -280,65 +160,6 @@ fn compile<T: FieldElement, Q: QueryCallback<T>>(
         constants,
         witness: None,
     }
-}
-
-pub fn write_proving_results_to_fs(
-    is_aggregation: bool,
-    result: (Option<Proof>, Option<String>),
-    output_dir: &Path,
-) {
-    let (proof, constraints_serialization) = result;
-    match proof {
-        Some(proof) => {
-            let fname = if is_aggregation {
-                "proof_aggr.bin"
-            } else {
-                "proof.bin"
-            };
-
-            // No need to bufferize the writing, because we write the whole
-            // proof in one call.
-            let mut proof_file = fs::File::create(output_dir.join(fname)).unwrap();
-            proof_file.write_all(&proof).unwrap();
-            log::info!("Wrote {fname}.");
-        }
-        None => log::warn!("No proof was generated"),
-    }
-
-    match constraints_serialization {
-        Some(json) => {
-            let mut file = fs::File::create(output_dir.join("constraints.json")).unwrap();
-            file.write_all(json.as_bytes()).unwrap();
-            log::info!("Wrote constraints.json.");
-        }
-        None => log::warn!("Constraints were not JSON serialized"),
-    }
-}
-
-fn write_constants_to_fs<T: FieldElement>(
-    constants: &[(&str, Vec<T>)],
-    output_dir: &Path,
-    degree: DegreeType,
-) {
-    write_polys_file(
-        &mut BufWriter::new(&mut fs::File::create(output_dir.join("constants.bin")).unwrap()),
-        degree,
-        constants,
-    );
-    log::info!("Wrote constants.bin.");
-}
-
-fn write_commits_to_fs<T: FieldElement>(
-    commits: &[(&str, Vec<T>)],
-    output_dir: &Path,
-    degree: DegreeType,
-) {
-    write_polys_file(
-        &mut BufWriter::new(&mut fs::File::create(output_dir.join("commits.bin")).unwrap()),
-        degree,
-        commits,
-    );
-    log::info!("Wrote commits.bin.");
 }
 
 #[allow(clippy::print_stdout)]

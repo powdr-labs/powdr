@@ -20,7 +20,6 @@ use pil_analyzer::pil_analyzer::inline_intermediate_polynomials;
 
 use crate::prover_builder::{prover_builder_cpp, prover_builder_hpp};
 use crate::verifier_builder::{verifier_builder_cpp, verifier_builder_hpp};
-use crate::FILE_NAME;
 use crate::{
     composer_builder::{composer_builder_cpp, composer_builder_hpp},
     flavor_builder,

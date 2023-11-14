@@ -6,5 +6,3 @@ pub mod prover_builder;
 pub mod relation_builder;
 pub mod trace_builder;
 pub mod verifier_builder;
-
-const FILE_NAME: &str = "Fib";

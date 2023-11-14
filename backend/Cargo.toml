@@ -4,12 +4,8 @@ version = "0.1.0"
 edition = "2021"
 
 [features]
-halo2 = ["dep:halo2"]
-# TODO: enable feature flag for bberg backend
-# bberg = ["dep:bberg"]
 
 [dependencies]
-halo2 = { path = "../halo2", optional = true }
 bberg = { path = "../bberg"}
 
 pil_analyzer = { path = "../pil_analyzer" }
@@ -19,7 +15,6 @@ ast = { version = "0.1.0", path = "../ast" }
 log = "0.4.17"
 serde_json = "1.0"
 thiserror = "1.0.43"
-starky = { git = "https://github.com/0xEigenLabs/eigen-zkvm.git", branch = "main" }
 
 [dev-dependencies]
 mktemp = "0.5.0"

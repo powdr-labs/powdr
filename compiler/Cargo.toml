@@ -3,9 +3,6 @@ name = "compiler"
 version = "0.1.0"
 edition = "2021"
 
-[features]
-halo2 = ["dep:halo2", "backend/halo2"]
-
 [dependencies]
 backend = { path = "../backend" }
 itertools = "^0.10"
@@ -16,20 +13,18 @@ parser_util = { path = "../parser_util" }
 parser = { path = "../parser" }
 executor = { path = "../executor" }
 pilopt = { path = "../pilopt" }
-asm_to_pil = { path = "../asm_to_pil" }
 pil_analyzer = { path = "../pil_analyzer" }
-halo2 = { path = "../halo2", optional = true }
 ast = { version = "0.1.0", path = "../ast" }
 analysis = { version = "0.1.0", path = "../analysis" }
 linker = { version = "0.1.0", path = "../linker" }
 airgen = { version = "0.1.0", path = "../airgen" }
+
 importer = { path = "../importer" }
 
 [dev-dependencies]
 test-log = "0.2.12"
 env_logger = "0.10.0"
 criterion = { version = "0.4", features = ["html_reports"] }
-riscv = { path = "../riscv" }
 asm_utils = { path = "../asm_utils" }
 walkdir = "2.4.0"
 

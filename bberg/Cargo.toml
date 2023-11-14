@@ -26,7 +26,6 @@ base64 = "*"
 
 [dev-dependencies]
 importer = { path = "../importer" }
-analysis = { path = "../analysis" }
 executor = { path = "../executor" }
 parser = { path = "../parser" }
 test-log = "0.2.12"
