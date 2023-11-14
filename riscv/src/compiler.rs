@@ -267,8 +267,8 @@ pub fn compile(mut assemblies: BTreeMap<String, String>, coprocessors: &CoProces
     let program: Vec<String> = file_ids
         .into_iter()
         .map(|(id, dir, file)| format!("debug file {id} {} {};", quote(&dir), quote(&file)))
-        .chain(["call __data_init;".to_string()])
         .chain(BOOTLOADER.split("\n").map(|l| l.to_string()))
+        .chain(["call __data_init;".to_string()])
         .chain(call_every_submachine(coprocessors))
         .chain([
             format!("// Set stack pointer\nx2 <=X= {stack_start};"),

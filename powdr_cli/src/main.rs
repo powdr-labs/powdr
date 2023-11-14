@@ -576,7 +576,16 @@ fn rust_continuations<F: FieldElement>(
     let pil = pilopt::optimize(pil);
 
     log::info!("Executing powdr-asm...");
-    let (witness, rom_len) = riscv_executor::execute::<F>(contents, &inputs);
+    let (witness, rom_len, last_state, memory) =
+        riscv_executor::execute::<F>(contents, &inputs, u64::MAX);
+
+    log::info!("Running first chunk...");
+    let (witness, rom_len, last_state, memory) =
+        riscv_executor::execute::<F>(contents, &inputs, (1 << 18) - 2);
+
+    for (reg, v) in last_state.iter() {
+        println!("{}: {}", reg, v);
+    }
 
     // Collect the runtime column names
     let wit_columns: Vec<String> = pil
