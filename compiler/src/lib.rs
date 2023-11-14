@@ -267,7 +267,7 @@ fn compile<T: FieldElement, Q: QueryCallback<T>>(
             &constants,
             &witness_in_powdr_form,
             None,
-            None,
+            bname,
         );
     }
 

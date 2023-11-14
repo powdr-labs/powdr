@@ -1,0 +1,42 @@
+
+[package]
+name = "bberg_bin_cli"
+version = "0.1.0"
+authors = ["Maddiaa"]
+edition = "2021"
+
+[[bin]]
+name = "bberg_pil"
+path = "src/main.rs"
+
+[dependencies]
+clap = { version = "^4.3", features = ["derive"] }
+asm_utils = { path = "../asm_utils" }
+compiler = { path = "../compiler" }
+num-bigint = "0.4.3"
+
+number = { path = "../number" }
+pil_analyzer = { path = "../pil_analyzer" }
+num-traits = "0.2.15"
+num-integer = "0.1.45"
+itertools = "^0.10"
+log = "0.4.17"
+rand = "0.8.5"
+ast = { version = "0.1.0", path = "../ast" }
+
+
+# TODO: we probably want to pull in the local version of nargo while i am working on it here
+
+# Include acvm brillig module such that we can serialise and deserialise them
+acvm = { git = "https://github.com/noir-lang/noir",  directory = "acvm-repo/acvm" }
+base64 = "*"
+
+[dev-dependencies]
+importer = { path = "../importer" }
+analysis = { path = "../analysis" }
+executor = { path = "../executor" }
+parser = { path = "../parser" }
+test-log = "0.2.12"
+env_logger = "0.10.0"
+linker = { path = "../linker" }
+

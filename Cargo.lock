@@ -588,6 +588,33 @@ dependencies = [
 ]
 
 [[package]]
+name = "bberg_bin_cli"
+version = "0.1.0"
+dependencies = [
+ "acvm",
+ "analysis 0.1.0",
+ "asm_utils",
+ "ast 0.1.0",
+ "base64 0.10.1",
+ "clap 4.4.6",
+ "compiler",
+ "env_logger",
+ "executor",
+ "importer",
+ "itertools 0.10.5",
+ "linker",
+ "log",
+ "num-bigint 0.4.4",
+ "num-integer",
+ "num-traits",
+ "number 0.1.0",
+ "parser 0.1.0",
+ "pil_analyzer 0.1.0",
+ "rand 0.8.5",
+ "test-log",
+]
+
+[[package]]
 name = "bellman_ce"
 version = "0.3.2"
 source = "git+https://github.com/matter-labs/bellman?branch=beta#416f79d3f93fc855fb96bb61bfe73d2472e95548"

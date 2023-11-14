@@ -16,6 +16,7 @@ members = [
     "halo2",
     "backend",
     "bberg",
+    "bberg_pil_cli",
     "ast",
     "analysis",
     "linker",
