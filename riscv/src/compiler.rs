@@ -26,10 +26,10 @@ const BOOTLOADER: &'static str = r#"
 x1 <=X= ${ ("input", 36) };
 x1 <== wrap(x1);
 
-branch_if_zero x1, end_page_loop;
-
 // Current page index
 x2 <=X= 0;
+
+branch_if_zero x1, end_page_loop;
 
 start_page_loop::
 

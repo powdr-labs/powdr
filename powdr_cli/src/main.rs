@@ -13,7 +13,7 @@ use number::write_polys_file;
 use number::{read_polys_csv_file, write_polys_csv_file, CsvRenderMode};
 use number::{Bn254Field, FieldElement, GoldilocksField};
 use riscv::{compile_riscv_asm, compile_rust};
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::io::{self, BufReader, BufWriter, Read};
 use std::{borrow::Cow, fs, io::Write, path::Path};
 use strum::{Display, EnumString, EnumVariantNames};
@@ -575,13 +575,123 @@ fn rust_continuations<F: FieldElement>(
     let pil = pilopt::optimize(pil);
     let pil = pilopt::optimize(pil);
 
+    // Bootloader instructions:
+    // - 36 (set registers)
+    // - 4 (setup)
+    // - For each page:
+    //   - TODO
+
     log::info!("Executing powdr-asm...");
-    let (witness, rom_len, last_state, memory) =
+    let (witness, rom_len, last_state, memory, memory_accesses) =
         riscv_executor::execute::<F>(contents, &inputs, u64::MAX);
 
+    log::info!("Trace length: {}", witness[0].1.len());
+
     log::info!("Running first chunk...");
-    let (witness, rom_len, last_state, memory) =
+    let (w, rom_len, last_state, memory, _) =
         riscv_executor::execute::<F>(contents, &inputs, (1 << 18) - 2);
+
+    log::info!("Building inputs for second chunk...");
+    let witness_map = witness
+        .iter()
+        .map(|(name, values)| (name.as_str(), values))
+        .collect::<HashMap<_, _>>();
+    let mut accessed_pages = BTreeSet::new();
+    let start = (1 << 18) - 3;
+    let total_mem_access: u64 = memory_accesses.iter().map(|x| *x as u64).sum();
+    log::info!("Total memory accesses: {}", total_mem_access);
+    log::info!("Trace length: {}", memory_accesses.len());
+    let total_mem_access: u64 = memory_accesses[start..].iter().map(|x| *x as u64).sum();
+    log::info!(
+        "Memory accesses in second chunk ({}): {}",
+        start,
+        total_mem_access
+    );
+
+    for (accesses_memory, addr) in (&memory_accesses[start..])
+        .iter()
+        .zip((&witness_map["main.Y"][start..]).iter())
+    {
+        if *accesses_memory {
+            let digits = addr.to_arbitrary_integer().to_u32_digits();
+            let addr = if digits.is_empty() { 0 } else { digits[0] };
+            accessed_pages.insert(addr >> 10);
+        }
+    }
+    println!("Accessed pages: {:?}", accessed_pages);
+
+    let register_names = [
+        "main.x1",
+        "main.x2",
+        "main.x3",
+        "main.x4",
+        "main.x5",
+        "main.x6",
+        "main.x7",
+        "main.x8",
+        "main.x9",
+        "main.x10",
+        "main.x11",
+        "main.x12",
+        "main.x13",
+        "main.x14",
+        "main.x15",
+        "main.x16",
+        "main.x17",
+        "main.x18",
+        "main.x19",
+        "main.x20",
+        "main.x21",
+        "main.x22",
+        "main.x23",
+        "main.x24",
+        "main.x25",
+        "main.x26",
+        "main.x27",
+        "main.x28",
+        "main.x29",
+        "main.x30",
+        "main.x31",
+        "main.tmp1",
+        "main.tmp2",
+        "main.tmp3",
+        "main.lr_sc_reservation",
+        "main.pc",
+    ];
+    let mut inputs = vec![];
+    let witness_map = w
+        .iter()
+        .map(|(name, values)| (name.as_str(), values))
+        .collect::<HashMap<_, _>>();
+    for reg in register_names.iter() {
+        inputs.push(*witness_map[reg].last().unwrap());
+    }
+    inputs.push((accessed_pages.len() as u64).into());
+    for page in accessed_pages.iter() {
+        let start_addr = page << 10;
+        inputs.push(start_addr.into());
+        for i in 0..256 {
+            let addr = start_addr + i * 4;
+            inputs.push(memory.get(&addr).unwrap_or(&F::zero()).clone());
+        }
+    }
+
+    log::info!("Inputs length: {}", inputs.len());
+
+    let input_str = inputs
+        .iter()
+        .map(|x| x.to_string())
+        .collect::<Vec<_>>()
+        .join(",");
+    log::info!("Inputs: {}", input_str);
+
+    log::info!("Running second chunk...");
+    let (w, rom_len, last_state, memory, _) =
+        riscv_executor::execute::<F>(contents, &inputs, (1 << 18) - 2);
+
+    println!("Remaining rows: {}", w[0].1.len());
+
+    todo!();
 
     for (reg, v) in last_state.iter() {
         println!("{}: {}", reg, v);

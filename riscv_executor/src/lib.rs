@@ -82,7 +82,7 @@ mod builder {
     }
 
     pub struct TraceBuilder<'a, 'b> {
-        trace: ExecutionTrace<'a>,
+        pub trace: ExecutionTrace<'a>,
 
         /// First register of current row.
         /// Next row is reg_map.len() elems ahead.
@@ -182,7 +182,8 @@ mod builder {
 
         /// advance to next row, returns the index to the statement that must be
         /// executed now
-        pub fn advance(&mut self, was_nop: bool) -> u32 {
+        pub fn advance(&mut self, was_nop: bool) -> (bool, u32) {
+            let mut add_row = true;
             if self.g_idx(self.pc_idx) != self.g_idx_next(self.pc_idx) {
                 // PC changed, create a new line
                 self.curr_idx += self.reg_len();
@@ -194,6 +195,7 @@ mod builder {
                     let next_idx = self.curr_idx + self.reg_len();
                     self.trace.values.copy_within(next_idx.., self.curr_idx);
                 }
+                add_row = false;
             }
 
             // advance the next statement
@@ -203,7 +205,7 @@ mod builder {
             // optimistically write next PC, but the code might rewrite it
             self.set_next_pc();
 
-            curr_line
+            (add_row, curr_line)
         }
 
         pub fn finish(self) -> ExecutionTrace<'a> {
@@ -340,6 +342,10 @@ struct Executor<'a, 'b, F: FieldElement> {
 }
 
 impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
+    pub fn len(&self) -> usize {
+        self.proc.trace.values.len() / self.proc.trace.reg_map.len()
+    }
+
     fn finish(self) -> (HashMap<u32, i64>, ExecutionTrace<'a>) {
         (self.mem.finish(), self.proc.finish())
     }
@@ -754,7 +760,7 @@ pub fn execute_ast<'a, T: FieldElement>(
     program: &'a AnalysisASMFile<T>,
     inputs: &[T],
     num_steps: u64,
-) -> (HashMap<u32, i64>, ExecutionTrace<'a>) {
+) -> ((HashMap<u32, i64>, ExecutionTrace<'a>), Vec<bool>) {
     let main_machine = get_main_machine(program);
     let (mut statements, label_map, mut batch_to_line_map, debug_files) =
         preprocess_main_function(main_machine);
@@ -785,6 +791,9 @@ pub fn execute_ast<'a, T: FieldElement>(
         stdout: io::stdout(),
     };
 
+    let mut memory_accesses = vec![false, false];
+
+    log::info!("initial trace values: {}", e.len());
     let mut curr_pc = 0u32;
     let mut length = 0;
     loop {
@@ -831,18 +840,26 @@ pub fn execute_ast<'a, T: FieldElement>(
             }
         };
 
-        curr_pc = e.proc.advance(is_nop);
+        let (add_row, new_pc) = e.proc.advance(is_nop);
+        curr_pc = new_pc;
 
         length += 1;
 
-        if length >= num_steps {
+        if add_row {
+            memory_accesses.push(accesses_memory(stm));
+        }
+
+        if memory_accesses.len() as u64 >= num_steps {
             break;
         }
     }
 
     println!("LENGTH = {length}");
+    log::info!("final trace values: {}", e.len());
+    log::info!("final memory access values: {}", memory_accesses.len());
 
-    e.finish()
+    assert_eq!(e.len(), memory_accesses.len());
+    (e.finish(), memory_accesses)
 }
 
 /// Execute a Powdr/RISCV assembly source.
@@ -858,6 +875,7 @@ pub fn execute<F: FieldElement>(
     usize,
     HashMap<String, F>,
     HashMap<u32, F>,
+    Vec<bool>,
 ) {
     log::info!("Parsing...");
     let parsed = parser::parse_asm::<F>(None, asm_source).unwrap();
@@ -867,7 +885,7 @@ pub fn execute<F: FieldElement>(
     let analyzed = analysis::analyze(resolved, &mut ast::DiffMonitor::default()).unwrap();
 
     log::info!("Executing...");
-    let (memory, trace) = execute_ast(&analyzed, inputs, num_steps);
+    let ((memory, trace), memory_accesses) = execute_ast(&analyzed, inputs, num_steps);
 
     assert_eq!(trace.values.len() % trace.reg_map.len(), 0);
 
@@ -898,6 +916,7 @@ pub fn execute<F: FieldElement>(
         trace.rom_length,
         last_state,
         memory,
+        memory_accesses,
     )
 }
 
@@ -913,6 +932,35 @@ fn to_u32<F: FieldElement>(val: &F) -> Option<u32> {
             None
         }
     })
+}
+
+fn accesses_memory<T: FieldElement>(statement: &FunctionStatement<T>) -> bool {
+    match statement {
+        FunctionStatement::Assignment(a) => accesses_memory_expr(&a.rhs),
+        FunctionStatement::Instruction(i) => i.instruction == "mstore" || i.instruction == "mload",
+        FunctionStatement::Label(_) => false,
+        FunctionStatement::DebugDirective(_) => false,
+        FunctionStatement::Return(_) => false,
+    }
+}
+
+fn accesses_memory_expr<T: FieldElement>(expr: &Expression<T>) -> bool {
+    match expr {
+        Expression::Reference(_) => false,
+        Expression::PublicReference(_) => false,
+        Expression::Number(_) => false,
+        Expression::String(_) => false,
+        Expression::Tuple(_) => false,
+        Expression::LambdaExpression(_) => false,
+        Expression::ArrayLiteral(_) => false,
+        Expression::BinaryOperation(expr1, _, expr2) => {
+            accesses_memory_expr(expr1) || accesses_memory_expr(expr2)
+        }
+        Expression::UnaryOperation(_, expr) => accesses_memory_expr(expr),
+        Expression::FunctionCall(f) => f.id == "mstore" || f.id == "mload",
+        Expression::FreeInput(_) => false,
+        Expression::MatchExpression(_, _) => false,
+    }
 }
 
 #[cfg(test)]
