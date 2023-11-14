@@ -17,9 +17,6 @@ log = "0.4.17"
 rand = "0.8.5"
 ast = { version = "0.1.0", path = "../ast" }
 
-
-# TODO: we probably want to pull in the local version of nargo while i am working on it here
-
 # Include acvm brillig module such that we can serialise and deserialise them
 acvm = { git = "https://github.com/noir-lang/noir",  directory = "acvm-repo/acvm" }
 base64 = "*"
