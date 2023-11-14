@@ -1,10 +1,9 @@
 pub mod bberg_codegen;
 pub mod circuit_builder;
-pub mod composer_builder;
-pub mod flavor_builder;
-pub mod prover_builder;
-pub mod relation_builder;
-pub mod trace_builder;
-pub mod verifier_builder;
-
-const FILE_NAME: &str = "Fib";
+mod composer_builder;
+mod file_writer;
+mod flavor_builder;
+mod prover_builder;
+mod relation_builder;
+mod trace_builder;
+mod verifier_builder;

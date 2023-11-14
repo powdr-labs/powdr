@@ -1,4 +1,4 @@
-use crate::circuit_builder::BBFiles;
+use crate::file_writer::BBFiles;
 
 pub trait TraceBuilder {
     fn create_trace_builder_cpp(
