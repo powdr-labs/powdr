@@ -762,18 +762,15 @@ pub fn execute_ast<'a, T: FieldElement>(
     num_steps: u64,
 ) -> ((HashMap<u32, i64>, ExecutionTrace<'a>), Vec<bool>) {
     let main_machine = get_main_machine(program);
-    let (mut statements, label_map, mut batch_to_line_map, debug_files) =
+    let (statements, label_map, mut batch_to_line_map, debug_files) =
         preprocess_main_function(main_machine);
-
-    println!("Statements len = {}", statements.len());
-    println!("Batch map len = {}", batch_to_line_map.len());
 
     //let noop_0 = FunctionStatement::<T>::Label(LabelStatement { start: 0, name: "noop_0".to_string() });
     //let noop_1 = FunctionStatement::<T>::Label(LabelStatement { start: 0, name: "noop_1".to_string() });
-    let noop_0 = FunctionStatement::<T>::DebugDirective(ast::asm_analysis::DebugDirective {
-        start: 0,
-        directive: ast::parsed::asm::DebugDirective::Loc(1, 0, 0),
-    });
+    // let noop_0 = FunctionStatement::<T>::DebugDirective(ast::asm_analysis::DebugDirective {
+    //     start: 0,
+    //     directive: ast::parsed::asm::DebugDirective::Loc(1, 0, 0),
+    // });
 
     /* HACK */
     //statements.insert(0, &noop_0);
@@ -793,7 +790,6 @@ pub fn execute_ast<'a, T: FieldElement>(
 
     let mut memory_accesses = vec![false, false];
 
-    log::info!("initial trace values: {}", e.len());
     let mut curr_pc = 0u32;
     let mut length = 0;
     loop {
@@ -854,10 +850,6 @@ pub fn execute_ast<'a, T: FieldElement>(
         }
     }
 
-    println!("LENGTH = {length}");
-    log::info!("final trace values: {}", e.len());
-    log::info!("final memory access values: {}", memory_accesses.len());
-
     assert_eq!(e.len(), memory_accesses.len());
     (e.finish(), memory_accesses)
 }
@@ -870,13 +862,7 @@ pub fn execute<F: FieldElement>(
     asm_source: &str,
     inputs: &[F],
     num_steps: u64,
-) -> (
-    HashMap<String, Vec<F>>,
-    usize,
-    HashMap<String, F>,
-    HashMap<u32, F>,
-    Vec<bool>,
-) {
+) -> (HashMap<String, Vec<F>>, HashMap<u32, F>, Vec<bool>) {
     log::info!("Parsing...");
     let parsed = parser::parse_asm::<F>(None, asm_source).unwrap();
     log::info!("Resolving imports...");
@@ -899,12 +885,6 @@ pub fn execute<F: FieldElement>(
                 .push(chunk[index].0.into());
         }
     }
-    let last_state = &trace.values[trace.values.len() - trace.reg_map.len()..];
-    let last_state = trace
-        .reg_map
-        .iter()
-        .map(|(name, index)| (format!("main.{}", name), last_state[*index].0.into()))
-        .collect();
 
     let memory = memory.into_iter().map(|(k, v)| (k, v.into())).collect();
 
@@ -913,8 +893,6 @@ pub fn execute<F: FieldElement>(
             .into_iter()
             .map(|(n, c)| (format!("main.{}", n), c))
             .collect(),
-        trace.rom_length,
-        last_state,
         memory,
         memory_accesses,
     )

@@ -13,7 +13,7 @@ use number::write_polys_file;
 use number::{read_polys_csv_file, write_polys_csv_file, CsvRenderMode};
 use number::{Bn254Field, FieldElement, GoldilocksField};
 use riscv::{compile_riscv_asm, compile_rust};
-use std::collections::{BTreeSet, HashMap, HashSet};
+use std::collections::BTreeSet;
 use std::io::{self, BufReader, BufWriter, Read};
 use std::{borrow::Cow, fs, io::Write, path::Path};
 use strum::{Display, EnumString, EnumVariantNames};
@@ -596,11 +596,11 @@ fn handle_riscv_asm<F: FieldElement>(
 }
 
 fn rust_continuations<F: FieldElement>(
-    file_name: &str,
+    _file_name: &str,
     contents: &str,
     inputs: Vec<F>,
-    output_dir: &Path,
-    prove_with: Option<BackendType>,
+    _output_dir: &Path,
+    _prove_with: Option<BackendType>,
 ) {
     println!("{:?}", inputs);
     assert!(inputs.is_empty(), "Inputs are hijacked for bootloader");
@@ -608,256 +608,101 @@ fn rust_continuations<F: FieldElement>(
     let mut inputs = vec![F::zero(); 37];
     inputs[35] = F::from(50u64);
 
-    log::info!("Compiling powdr-asm to PIL...");
-    let pil = compiler::compile_asm_string_to_analyzed::<F>(file_name, contents);
-
-    let pil = pilopt::optimize(pil);
-    let pil = pilopt::optimize(pil);
-
-    // Bootloader instructions:
-    // - 36 (set registers)
-    // - 4 (setup)
-    // - For each page:
-    //   - TODO
-
     log::info!("Executing powdr-asm...");
-    let (witness, rom_len, last_state, memory, memory_accesses) =
+    let (full_trace, _, memory_accesses) =
         riscv_executor::execute::<F>(contents, &inputs, u64::MAX);
 
-    log::info!("Trace length: {}", witness["main.pc"].len());
+    let full_trace_length = full_trace["main.pc"].len();
+    log::info!("Total trace length: {}", full_trace_length);
 
-    log::info!("Running first chunk...");
-    let (w, rom_len, last_state, memory, _) =
-        riscv_executor::execute::<F>(contents, &inputs, (1 << 18) - 2);
+    let mut proven_trace = 0;
+    let mut chunk_index = 0;
+    let mut initial_pc = F::from(50);
 
-    log::info!("Building inputs for second chunk...");
-    let mut accessed_pages = BTreeSet::new();
-    let start = (1 << 18) - 3;
-    let total_mem_access: u64 = memory_accesses.iter().map(|x| *x as u64).sum();
-    log::info!("Total memory accesses: {}", total_mem_access);
-    log::info!("Trace length: {}", memory_accesses.len());
-    let total_mem_access: u64 = memory_accesses[start..].iter().map(|x| *x as u64).sum();
-    log::info!(
-        "Memory accesses in second chunk ({}): {}",
-        start,
-        total_mem_access
-    );
+    loop {
+        log::info!("Running chunk {}...", chunk_index);
+        let (chunk_trace, memory_snapshot, _) =
+            riscv_executor::execute::<F>(contents, &inputs, (1 << 18) - 2);
+        println!("Chunk trace length: {}", chunk_trace["main.pc"].len());
 
-    for (i, accesses_memory) in (&memory_accesses[start..]).iter().enumerate() {
-        if *accesses_memory {
-            // TODO: Not sure why we have to subtract -1...
-            let addr = &witness["main.Y"][start + i - 1];
-            println!("{}: {}", start + i, addr);
-            let digits = addr.to_arbitrary_integer().to_u32_digits();
-            let addr = if digits.is_empty() { 0 } else { digits[0] };
-            accessed_pages.insert(addr >> 10);
-        }
-    }
-    println!("Accessed pages: {:?}", accessed_pages);
-
-    let mut inputs = vec![];
-    for &reg in REGISTER_NAMES.iter() {
-        inputs.push(*w[reg].last().unwrap());
-    }
-    inputs.push((accessed_pages.len() as u64).into());
-    for page in accessed_pages.iter() {
-        let start_addr = page << 10;
-        inputs.push(start_addr.into());
-        for i in 0..256 {
-            let addr = start_addr + i * 4;
-            inputs.push(memory.get(&addr).unwrap_or(&F::zero()).clone());
-        }
-    }
-
-    log::info!("Inputs length: {}", inputs.len());
-
-    let input_str = inputs
-        .iter()
-        .map(|x| x.to_string())
-        .collect::<Vec<_>>()
-        .join(",");
-    log::info!("Inputs: {}", input_str);
-
-    let initial_pc = w["main.pc"].last().unwrap();
-
-    log::info!("Running second chunk...");
-    let (w, rom_len, last_state, memory, _) =
-        riscv_executor::execute::<F>(contents, &inputs, (1 << 18) - 2);
-
-    // Find the actual start of the chunk
-    let (start, _) = w["main.pc"]
-        .iter()
-        .enumerate()
-        .find(|(_, pc)| *pc == initial_pc)
-        .unwrap();
-    for &reg in REGISTER_NAMES.iter() {
-        for i in start..w["main.pc"].len() {
-            // TODO: Why -4?
-            let original_index = i - start + (1 << 18) - 4;
-            if w[reg][i] != witness[reg][original_index] {
-                panic!(
-                    "{}: {} (Line {}) != {} (Line {})",
-                    reg,
-                    w[reg][i],
-                    i,
-                    witness[reg][i - start + (1 << 18) - 1],
-                    original_index
-                );
-            }
-        }
-    }
-
-    println!("Remaining rows: {}", w["main.pc"].len());
-
-    return;
-
-    for (reg, v) in last_state.iter() {
-        println!("{}: {}", reg, v);
-    }
-
-    // Collect the runtime column names
-    let wit_columns: Vec<String> = pil
-        .committed_polys_in_source_order()
-        .iter()
-        .map(|(symbol, _)| symbol.absolute_name.clone())
-        .collect();
-
-    // Filter executor witness by the columns that still exist in PIL
-    let witness: Vec<(String, Vec<F>)> = witness
-        .into_iter()
-        .filter(|(name, _)| wit_columns.contains(name))
-        .collect();
-
-    // Filter executor witness by the needed state columns: pc and x0-x31
-    let mut witness: Vec<(String, Vec<F>)> = witness
-        .into_iter()
-        //.filter(|(name, _)| name.starts_with("main.pc") || name.starts_with("main.x"))
-        .filter(|(name, _)| {
-            name.starts_with("main.pc")
-                || name.starts_with("main.x")
-                || name.starts_with("main.tmp")
-        })
-        //.filter(|(name, _)| name.starts_with("main.pc"))
-        .collect();
-
-    /*
-    let final_columns: Vec<String> = witness
-        .iter()
-        .map(|(name, _)| name.clone())
-        .collect();
-
-    println!("FINAL COLUMNS\n{:?}", final_columns);
-    */
-
-    let length = witness[0].1.len();
-    log::info!("Trace has length {length}");
-
-    for (_, v) in &witness {
-        assert_eq!(length, v.len());
-    }
-
-    let proof_chunk_len = 1 << 18;
-    let chunk_len = proof_chunk_len - 1;
-    //let chunk_len = 1 << 20;
-    //let chunk_len = 1 << 5;
-    let n_chunks = (length + chunk_len - 1) / chunk_len;
-    let aligned_length = n_chunks * chunk_len;
-
-    log::info!("n_chunks = {n_chunks}");
-    log::info!("aligned_length = {aligned_length}");
-
-    for wit_col in &mut witness {
-        match wit_col.0.as_str() {
-            "main.pc" => {
-                //wit_col.1.pop();
-                //wit_col.1.push(0.into());
-                //wit_col.1.push(1.into());
-                wit_col
-                    .1
-                    .resize_with(aligned_length, || F::from((rom_len - 1) as u64));
-            }
-            _ => {
-                //let last = wit_col.1.last().cloned().unwrap();
-                //wit_col.1.push(0.into());
-                //wit_col.1.resize_with(aligned_length, || last);
-                wit_col.1.resize_with(aligned_length, || 0.into());
-            }
-        }
-    }
-
-    // Create a vector of vectors to hold the chunks.
-    let mut chunked_witness: Vec<Vec<(&str, Vec<F>)>> = Vec::new();
-    //let mut chunked_witness: Vec<Vec<(String, Vec<F>)>> = Vec::new();
-
-    // Initialize the chunked vector with empty vectors.
-    for _ in 0..(length + chunk_len - 1) / chunk_len {
-        chunked_witness.push(Vec::new());
-    }
-    log::info!("Splitting into {} chunks", chunked_witness.len());
-
-    for (key, values) in &witness {
-        // Create the chunks for each Vec<T>.
-        let mut chunks = values.chunks(chunk_len);
-
-        // Iterate over the chunked vectors and insert the chunks along with the key.
-        for chunk_vec in &mut chunked_witness {
-            if let Some(chunk) = chunks.next() {
-                chunk_vec.push((&key.as_str(), chunk.to_vec()));
-                //chunk_vec.push((key.clone(), chunk.to_vec()));
-            }
-        }
-    }
-
-    use std::ffi::OsStr;
-    for (i, mut chunk_witness) in chunked_witness.clone().into_iter().enumerate() {
-        log::info!("Proving chunk {i}...");
-
-        //log::info!("\n\nwitness chunk\n{:?}", chunk_witness);
-
-        let next_map: HashMap<&str, Vec<F>> = chunked_witness[i + 1].clone().into_iter().collect();
-
-        for (n, w) in &mut chunk_witness {
-            w.push(next_map[n][0]);
-        }
-
-        let csv_witness = chunk_witness
+        log::info!("Validating chunk...");
+        let (start, _) = chunk_trace["main.pc"]
             .iter()
-            .map(|(n, c)| (n.to_string(), c.clone()))
-            .collect::<Vec<_>>();
+            .enumerate()
+            .find(|(_, &pc)| pc == initial_pc)
+            .unwrap();
+        let full_trace_start = match chunk_index {
+            0 => start,
+            // TODO: Why -2?
+            _ => proven_trace - 2,
+        };
+        for &reg in REGISTER_NAMES.iter() {
+            let mut error_count = 0;
+            for i in 0..(chunk_trace["main.pc"].len() - start) {
+                // TODO: Why -4?
+                let full_i = i + full_trace_start;
+                let chunk_i = i + start;
+                if chunk_trace[reg][i + start] != full_trace[reg][full_i] {
+                    log::warn!(
+                        "{}: {} (Line {}) != {} (Line {})",
+                        reg,
+                        chunk_trace[reg][chunk_i],
+                        chunk_i,
+                        full_trace[reg][full_i],
+                        full_i
+                    );
+                    error_count += 1;
+                    if error_count > 3 {
+                        break;
+                    }
+                }
+            }
+        }
 
-        let csv_path = Path::new(&output_dir).join(format!("chunk_{i}_columns.csv"));
-        export_columns_to_csv(csv_witness, None, &csv_path, CsvRenderModeCLI::SignedBase10);
+        if chunk_trace["main.pc"].len() < (1 << 18) - 2 {
+            log::info!("Done!");
+            break;
+        }
 
-        /*
-        let csv_witness_next = chunked_witness[i+1]
-            .iter()
-            .map(|(n, c)| (n.to_string(), c.clone()))
-            .collect::<Vec<_>>();
+        log::info!("Building inputs for chunk {}...", chunk_index + 1);
+        let mut accessed_pages = BTreeSet::new();
+        let start = proven_trace + (1 << 18) - 3;
 
-        let csv_path = Path::new(&output_dir).join(format!("chunk_{}_columns.csv", i + 1));
-        export_columns_to_csv(
-            csv_witness_next,
-            None,
-            &csv_path,
-            CsvRenderModeCLI::SignedBase10,
-        );
-        */
+        for (i, accesses_memory) in (&memory_accesses[start..]).iter().enumerate() {
+            if *accesses_memory {
+                // TODO: Not sure why we have to subtract -1...
+                let addr = &full_trace["main.Y"][start + i - 1];
+                let digits = addr.to_arbitrary_integer().to_u32_digits();
+                let addr = if digits.is_empty() { 0 } else { digits[0] };
+                accessed_pages.insert(addr >> 10);
+            }
+        }
+        log::info!("Accessed pages: {:?}", accessed_pages);
 
-        let h: HashMap<_, _> = chunk_witness.clone().into_iter().collect();
-        //log::info!("main.pc\n{:?}", h["main.pc"]);
-        //log::info!("main.X\n{:?}", h["main.X"]);
-        //log::info!("main.x1\n{:?}", h["main.x1"]);
-        //log::info!("main.x2\n{:?}", h["main.x2"]);
+        inputs = vec![];
+        for &reg in REGISTER_NAMES.iter() {
+            inputs.push(*chunk_trace[reg].last().unwrap());
+        }
+        inputs.push((accessed_pages.len() as u64).into());
+        for page in accessed_pages.iter() {
+            let start_addr = page << 10;
+            inputs.push(start_addr.into());
+            for i in 0..256 {
+                let addr = start_addr + i * 4;
+                inputs.push(memory_snapshot.get(&addr).unwrap_or(&F::zero()).clone());
+            }
+        }
 
-        compiler::compile(
-            pil.clone(),
-            OsStr::new(file_name),
-            output_dir,
-            compiler::inputs_to_query_callback(&inputs),
-            prove_with.clone(),
-            //chunk_witness.clone(),
-            chunk_witness,
-        );
+        log::info!("Inputs length: {}", inputs.len());
+
+        let initial_pc_usize = initial_pc.to_arbitrary_integer().to_u32_digits()[0] as usize;
+        proven_trace += match chunk_index {
+            0 => chunk_trace["main.pc"].len(),
+            _ => chunk_trace["main.pc"].len() - initial_pc_usize,
+        };
+        initial_pc = *chunk_trace["main.pc"].last().unwrap();
+
+        chunk_index += 1;
     }
 }
 
