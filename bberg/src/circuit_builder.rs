@@ -17,7 +17,7 @@ pub(crate) fn analyzed_to_cpp<F: FieldElement>(
     analyzed: &Analyzed<F>,
     fixed: &[(String, Vec<F>)],
     witness: &[(String, Vec<F>)],
-    bname: Option<String>,
+    name: Option<String>,
 ) -> BBFiles {
     let file_name: &str = &name.unwrap_or("Example".to_owned());
 
