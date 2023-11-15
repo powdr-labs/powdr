@@ -633,16 +633,14 @@ fn rust_continuations<F: FieldElement>(
             .unwrap();
         let full_trace_start = match chunk_index {
             0 => start,
-            // TODO: Why -2?
-            _ => proven_trace - 2,
+            _ => proven_trace - 1,
         };
         for &reg in REGISTER_NAMES.iter() {
             let mut error_count = 0;
             for i in 0..(chunk_trace["main.pc"].len() - start) {
-                // TODO: Why -4?
-                let full_i = i + full_trace_start;
                 let chunk_i = i + start;
-                if chunk_trace[reg][i + start] != full_trace[reg][full_i] {
+                let full_i = i + full_trace_start;
+                if chunk_trace[reg][chunk_i] != full_trace[reg][full_i] {
                     log::warn!(
                         "{}: {} (Line {}) != {} (Line {})",
                         reg,
@@ -670,8 +668,7 @@ fn rust_continuations<F: FieldElement>(
 
         for (i, accesses_memory) in (&memory_accesses[start..]).iter().enumerate() {
             if *accesses_memory {
-                // TODO: Not sure why we have to subtract -1...
-                let addr = &full_trace["main.Y"][start + i - 1];
+                let addr = &full_trace["main.Y"][start + i + 1];
                 let digits = addr.to_arbitrary_integer().to_u32_digits();
                 let addr = if digits.is_empty() { 0 } else { digits[0] };
                 accessed_pages.insert(addr >> 10);

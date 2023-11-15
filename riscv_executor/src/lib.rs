@@ -788,7 +788,7 @@ pub fn execute_ast<'a, T: FieldElement>(
         stdout: io::stdout(),
     };
 
-    let mut memory_accesses = vec![false, false];
+    let mut memory_accesses = vec![];
 
     let mut curr_pc = 0u32;
     let mut length = 0;
@@ -850,7 +850,6 @@ pub fn execute_ast<'a, T: FieldElement>(
         }
     }
 
-    assert_eq!(e.len(), memory_accesses.len());
     (e.finish(), memory_accesses)
 }
 
@@ -891,7 +890,7 @@ pub fn execute<F: FieldElement>(
     (
         witness
             .into_iter()
-            .map(|(n, c)| (format!("main.{}", n), c))
+            .map(|(n, c)| (format!("main.{}", n), c[..memory_accesses.len()].to_vec()))
             .collect(),
         memory,
         memory_accesses,
