@@ -1,34 +1,7 @@
 use crate::file_writer::BBFiles;
 
 pub trait TraceBuilder {
-    fn create_trace_builder_hpp(
-        &mut self,
-        name: &str,
-        fixed: &[String],
-        shifted: &[String],
-    ) -> String;
-}
-
-fn trace_cpp_includes(relation_path: &str, name: &str) -> String {
-    let boilerplate = r#"
-#include "barretenberg/ecc/curves/bn254/fr.hpp"
-#include <cstdint>
-#include <fstream>
-#include <iostream>
-#include <string>
-#include <sys/types.h>
-#include <vector>
-#include "barretenberg/proof_system/arithmetization/arithmetization.hpp"
-"#
-    .to_owned();
-
-    format!(
-        "
-{boilerplate}
-#include \"barretenberg/{relation_path}/{name}.hpp\"
-#include \"barretenberg/proof_system/arithmetization/generated/{name}_arith.hpp\"
-"
-    )
+    fn create_trace_builder_hpp(&mut self, name: &str, fixed: &[String], shifted: &[String]);
 }
 
 fn trace_hpp_includes(name: &str) -> String {
@@ -57,7 +30,7 @@ impl TraceBuilder for BBFiles {
         name: &str,
         all_cols: &[String],
         to_be_shifted: &[String],
-    ) -> String {
+    ) {
         let includes = trace_hpp_includes(name);
 
         let num_polys = all_cols.len();
@@ -75,7 +48,7 @@ impl TraceBuilder for BBFiles {
             .collect::<Vec<String>>()
             .join("\n");
 
-        format!("
+        let trace_hpp = format!("
 {includes}
 
 using namespace barretenberg;
@@ -159,6 +132,7 @@ class {name}TraceBuilder {{
 
 }};
 }}
-        ")
+        ");
+        self.trace_hpp = Some(trace_hpp);
     }
 }

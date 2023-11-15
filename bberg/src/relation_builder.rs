@@ -181,14 +181,13 @@ fn get_cols_in_identity_macro(all_rows_and_shifts: &[String]) -> String {
 }
 
 fn create_identity<T: FieldElement>(
-    last_col: &str,
     expression: &SelectedExpressions<Expression<T>>,
     collected_shifts: &mut HashSet<String>,
 ) -> Option<BBIdentity> {
     // We want to read the types of operators and then create the appropiate code
 
     if let Some(expr) = &expression.selector {
-        let x = craft_expression(last_col, expr, collected_shifts);
+        let x = craft_expression(expr, collected_shifts);
         println!("{:?}", x);
         Some(x)
     } else {
@@ -197,31 +196,22 @@ fn create_identity<T: FieldElement>(
 }
 
 // TODO: replace the preamble with a macro so the code looks nicer
-fn create_subrelation(
-    first_col: &str,
-    index: usize,
-    preamble: String,
-    identity: &mut BBIdentity,
-) -> String {
+fn create_subrelation(index: usize, preamble: String, identity: &mut BBIdentity) -> String {
     // \\\
     let id = &identity.1;
 
-    // TODO: TEMP HACK: Part of the main_FIRST hack below - to switch off constraints on the first row
-    identity.0 += 1;
     format!(
         "//Contribution {index}
     {{\n{preamble}
     
     auto tmp = {id};
     tmp *= scaling_factor;
-    tmp *= (-{first_col} + FF(1)); // Temp to switch off 
     std::get<{index}>(evals) += tmp;
 }}",
     )
 }
 
 fn craft_expression<T: FieldElement>(
-    last_col: &str,
     expr: &Expression<T>,
     collected_shifts: &mut HashSet<String>,
 ) -> BBIdentity {
@@ -237,14 +227,14 @@ fn craft_expression<T: FieldElement>(
                 poly_name = format!("{}_shift", poly_name);
 
                 // TODO(HORRIBLE): TEMP, add in a relation that turns off shifts on the last row
-                poly_name = format!("{poly_name} * (-{} + FF(1))", last_col);
+                poly_name = format!("{poly_name}");
                 degree += 1;
             }
             (degree, poly_name)
         }
         Expression::BinaryOperation(lhe, op, rhe) => {
-            let (ld, lhs) = craft_expression(last_col, lhe, collected_shifts);
-            let (rd, rhs) = craft_expression(last_col, rhe, collected_shifts);
+            let (ld, lhs) = craft_expression(lhe, collected_shifts);
+            let (rd, rhs) = craft_expression(rhe, collected_shifts);
 
             // dbg!(&lhe);
             let degree = std::cmp::max(ld, rd);
@@ -270,7 +260,7 @@ fn craft_expression<T: FieldElement>(
         // }
         Expression::UnaryOperation(operator, expression) => match operator {
             AlgebraicUnaryOperator::Minus => {
-                let (d, e) = craft_expression(last_col, expression, collected_shifts);
+                let (d, e) = craft_expression(expression, collected_shifts);
                 (d, format!("-{}", e))
             }
             _ => unimplemented!("{:?}", expr),
@@ -282,8 +272,6 @@ fn craft_expression<T: FieldElement>(
 
 /// Todo, eventually these will need to be siloed based on the file name they are in
 pub(crate) fn create_identities<F: FieldElement>(
-    first_col: &str,
-    last_col: &str,
     identities: &Vec<Identity<Expression<F>>>,
 ) -> (Vec<String>, Vec<BBIdentity>, HashSet<String>) {
     // We only want the expressions for now
@@ -310,8 +298,8 @@ pub(crate) fn create_identities<F: FieldElement>(
         );
         // TODO: deal with unwrap
 
-        let mut identity = create_identity(last_col, expression, &mut collected_shifts).unwrap();
-        let subrelation = create_subrelation(first_col, i, relation_boilerplate, &mut identity);
+        let mut identity = create_identity(expression, &mut collected_shifts).unwrap();
+        let subrelation = create_subrelation(i, relation_boilerplate, &mut identity);
 
         identities.push(identity);
 
@@ -321,9 +309,3 @@ pub(crate) fn create_identities<F: FieldElement>(
     // Returning both for now
     (subrelations, identities, collected_shifts)
 }
-
-//
-//    Row check_row = { .main_FIRST = 1, .main__block_enforcer_last_step = 1, .main_XIsZero = 1 };
-// rows.push_back(check_row);
-//
-//

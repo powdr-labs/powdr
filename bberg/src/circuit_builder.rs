@@ -35,25 +35,10 @@ pub(crate) fn analyzed_to_cpp<F: FieldElement>(
         .map(|(name, _)| (*name).to_owned())
         .collect::<Vec<_>>();
 
-    let first_col = fixed
-        .iter()
-        .find(|col_name| col_name.0.contains("FIRST"))
-        .expect("PIL file must contain a fixed column named FIRST")
-        .0
-        .replace('.', "_");
-
-    let last_col = fixed
-        .iter()
-        .find(|col_name| col_name.0.contains("LAST"))
-        .expect("PIL file must contain a fixed column named LAST")
-        .0
-        .replace('.', "_");
-
     // Inlining step to remove the intermediate poly definitions
     let analyzed_identities = inline_intermediate_polynomials(analyzed);
 
-    let (subrelations, identities, mut collected_shifts) =
-        create_identities(&first_col, &last_col, &analyzed_identities);
+    let (subrelations, identities, mut collected_shifts) = create_identities(&analyzed_identities);
     let shifted_polys: Vec<String> = collected_shifts.drain().collect_vec();
 
     let (all_cols, unshifted, to_be_shifted, _shifted, all_cols_with_shifts) =
