@@ -492,7 +492,7 @@ IndexAccess: IndexAccess<T> = {
 }
 
 FunctionCall: FunctionCall<T> = {
-    <id:Identifier> "(" <arguments:ExpressionList> ")" => FunctionCall {<>},
+    <id:NamespacedPolynomialReference> "(" <arguments:ExpressionList> ")" => FunctionCall {<>},
 }
 
 NamespacedPolynomialReference: NamespacedPolynomialReference = {

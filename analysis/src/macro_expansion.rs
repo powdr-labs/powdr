@@ -108,7 +108,8 @@ where
         match &mut statement {
             PilStatement::Expression(_start, e) => match e {
                 Expression::FunctionCall(FunctionCall { id, arguments }) => {
-                    if !self.macros.contains_key(id) {
+                    assert!(id.namespace.is_none());
+                    if !self.macros.contains_key(&id.name) {
                         panic!("Macro {id} not found - only macros allowed at this point, no fixed columns.");
                     }
                     let arguments = std::mem::take(arguments)
@@ -118,7 +119,7 @@ where
                             a
                         })
                         .collect();
-                    if self.expand_macro(id, arguments).is_some() {
+                    if self.expand_macro(&id.name, arguments).is_some() {
                         panic!("Invoked a macro in statement context with non-empty expression.");
                     }
                 }
@@ -185,10 +186,12 @@ where
                 *e = self.arguments[self.parameter_names[&poly.name]].clone()
             }
         } else if let Expression::FunctionCall(call) = e {
-            let name = call.id.as_str();
-            if !self.shadowing_locals.contains(name) && self.macros.contains_key(name) {
+            if call.id.namespace.is_none()
+                && !self.shadowing_locals.contains(&call.id.name)
+                && self.macros.contains_key(&call.id.name)
+            {
                 *e = self
-                    .expand_macro(name, std::mem::take(&mut call.arguments))
+                    .expand_macro(&call.id.name, std::mem::take(&mut call.arguments))
                     .expect("Invoked a macro in expression context with empty expression.")
             }
         }

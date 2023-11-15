@@ -40,7 +40,7 @@ fn infer_machine<T: FieldElement>(mut machine: Machine<T>) -> Result<Machine<T>,
                         let def = machine
                             .instructions
                             .iter()
-                            .find(|i| i.name == c.id)
+                            .find(|i| i.name == c.id.to_string())
                             .unwrap();
 
                         let outputs = def.instruction.params.outputs.clone().unwrap_or_default();
