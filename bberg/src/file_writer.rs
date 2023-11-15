@@ -76,34 +76,6 @@ impl BBFiles {
         }
     }
 
-    pub fn add_files(
-        &mut self,
-        relation_hpp: String,
-        arith_hpp: String,
-        trace_hpp: String,
-        flavor_hpp: String,
-        composer_cpp: String,
-        composer_hpp: String,
-        verifier_cpp: String,
-        verifier_hpp: String,
-        prover_cpp: String,
-        prover_hpp: String,
-    ) {
-        self.relation_hpp = Some(relation_hpp);
-        self.arith_hpp = Some(arith_hpp);
-        self.flavor_hpp = Some(flavor_hpp);
-        self.composer_cpp = Some(composer_cpp);
-        self.composer_hpp = Some(composer_hpp);
-
-        self.trace_hpp = Some(trace_hpp);
-
-        self.verifier_cpp = Some(verifier_cpp);
-        self.verifier_hpp = Some(verifier_hpp);
-
-        self.prover_cpp = Some(prover_cpp);
-        self.prover_hpp = Some(prover_hpp);
-    }
-
     pub fn write(&self) {
         // Helper macro codegen using the classes' write_file method
         macro_rules! write_file {

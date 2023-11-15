@@ -1,21 +1,16 @@
-fn cpp_includes(name: &str) -> String {
-    format!(
-        "
-#include \"./{name}_composer.hpp\"
-#include \"barretenberg/honk/proof_system/generated/{name}_verifier.hpp\"
-#include \"barretenberg/honk/proof_system/grand_product_library.hpp\"
-#include \"barretenberg/proof_system/circuit_builder/generated/{name}_trace.hpp\"
-#include \"barretenberg/proof_system/composer/composer_lib.hpp\"
-#include \"barretenberg/proof_system/composer/permutation_lib.hpp\"
-"
-    )
+use crate::file_writer::BBFiles;
+
+pub trait ComposerBuilder {
+    fn create_composer_cpp(&mut self, name: &str);
+    fn create_composer_hpp(&mut self, name: &str);
 }
 
-pub fn composer_builder_cpp(name: &str) -> String {
-    // Create a composer file, this is used to a prover and verifier for our flavour
-    let include_str = cpp_includes(name);
+impl ComposerBuilder for BBFiles {
+    fn create_composer_cpp(&mut self, name: &str) {
+        // Create a composer file, this is used to a prover and verifier for our flavour
+        let include_str = cpp_includes(name);
 
-    format!(
+        let composer_cpp = format!(
         "
 {include_str}
 
@@ -106,27 +101,14 @@ std::shared_ptr<typename Flavor::VerificationKey> {name}Composer_<Flavor>::compu
 template class {name}Composer_<honk::flavor::{name}Flavor>;
 
 }}    
-")
-}
+");
+        self.composer_cpp = Some(composer_cpp);
+    }
 
-pub fn hpp_includes(name: &str) -> String {
-    format!(
-        "
-#pragma once
+    fn create_composer_hpp(&mut self, name: &str) {
+        let include_str = hpp_includes(name);
 
-#include \"barretenberg/honk/proof_system/generated/{name}_prover.hpp\"
-#include \"barretenberg/honk/proof_system/generated/{name}_verifier.hpp\"
-#include \"barretenberg/proof_system/circuit_builder/generated/{name}_trace.hpp\"
-#include \"barretenberg/proof_system/composer/composer_lib.hpp\"
-#include \"barretenberg/srs/global_crs.hpp\"
-    "
-    )
-}
-
-pub fn composer_builder_hpp(name: &str) -> String {
-    let include_str = hpp_includes(name);
-
-    format!(
+        let composer_hpp = format!(
         "
 {include_str}
 
@@ -195,5 +177,34 @@ using {name}Composer = {name}Composer_<honk::flavor::{name}Flavor>;
 
 }} // namespace proof_system::honk
 "
+    );
+        self.composer_hpp = Some(composer_hpp);
+    }
+}
+
+fn cpp_includes(name: &str) -> String {
+    format!(
+        "
+#include \"./{name}_composer.hpp\"
+#include \"barretenberg/honk/proof_system/generated/{name}_verifier.hpp\"
+#include \"barretenberg/honk/proof_system/grand_product_library.hpp\"
+#include \"barretenberg/proof_system/circuit_builder/generated/{name}_trace.hpp\"
+#include \"barretenberg/proof_system/composer/composer_lib.hpp\"
+#include \"barretenberg/proof_system/composer/permutation_lib.hpp\"
+"
+    )
+}
+
+pub fn hpp_includes(name: &str) -> String {
+    format!(
+        "
+#pragma once
+
+#include \"barretenberg/honk/proof_system/generated/{name}_prover.hpp\"
+#include \"barretenberg/honk/proof_system/generated/{name}_verifier.hpp\"
+#include \"barretenberg/proof_system/circuit_builder/generated/{name}_trace.hpp\"
+#include \"barretenberg/proof_system/composer/composer_lib.hpp\"
+#include \"barretenberg/srs/global_crs.hpp\"
+    "
     )
 }

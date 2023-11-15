@@ -4,23 +4,22 @@ use itertools::Itertools;
 use number::FieldElement;
 use pil_analyzer::pil_analyzer::inline_intermediate_polynomials;
 
+use crate::arith_builder::ArithmetizationBuilder;
+use crate::composer_builder::ComposerBuilder;
 use crate::file_writer::BBFiles;
-use crate::prover_builder::{prover_builder_cpp, prover_builder_hpp};
-use crate::relation_builder::{create_identities, create_relation_hpp, create_row_type};
+use crate::flavor_builder::FlavorBuilder;
+use crate::prover_builder::ProverBuilder;
+use crate::relation_builder::{create_identities, create_row_type, RelationBuilder};
 use crate::trace_builder::TraceBuilder;
-use crate::verifier_builder::{verifier_builder_cpp, verifier_builder_hpp};
-use crate::{
-    composer_builder::{composer_builder_cpp, composer_builder_hpp},
-    flavor_builder,
-};
+use crate::verifier_builder::VerifierBuilder;
 
 pub(crate) fn analyzed_to_cpp<F: FieldElement>(
     analyzed: &Analyzed<F>,
     fixed: &[(&str, Vec<F>)],
     witness: &[(&str, Vec<F>)],
-    bname: Option<String>,
+    name: Option<String>,
 ) -> BBFiles {
-    let file_name: &str = &bname.unwrap_or("Example".to_owned());
+    let file_name: &str = &name.unwrap_or("Example".to_owned());
 
     let mut bb_files = BBFiles::default(file_name.to_owned());
 
@@ -41,14 +40,14 @@ pub(crate) fn analyzed_to_cpp<F: FieldElement>(
         .find(|col_name| col_name.0.contains("FIRST"))
         .expect("PIL file must contain a fixed column named FIRST")
         .0
-        .replace(".", "_");
+        .replace('.', "_");
 
     let last_col = fixed
         .iter()
         .find(|col_name| col_name.0.contains("LAST"))
         .expect("PIL file must contain a fixed column named LAST")
         .0
-        .replace(".", "_");
+        .replace('.', "_");
 
     // Inlining step to remove the intermediate poly definitions
     let analyzed_identities = inline_intermediate_polynomials(analyzed);
@@ -64,7 +63,7 @@ pub(crate) fn analyzed_to_cpp<F: FieldElement>(
     let row_type = create_row_type(&all_cols_with_shifts);
 
     // ----------------------- Create the relation file -----------------------
-    let relation_hpp = create_relation_hpp(
+    bb_files.create_relation_hpp(
         file_name,
         &subrelations,
         &identities,
@@ -73,13 +72,13 @@ pub(crate) fn analyzed_to_cpp<F: FieldElement>(
     );
 
     // ----------------------- Create the arithmetization file -----------------------
-    let arith_hpp = create_arith_boilerplate_file(file_name, num_cols);
+    bb_files.create_arith_hpp(file_name, num_cols);
 
-    // ----------------------- Create the read from powdr columns file -----------------------
-    let trace_hpp = bb_files.create_trace_builder_hpp(file_name, &all_cols, &to_be_shifted);
+    // ----------------------- Create the trace builder file -----------------------
+    bb_files.create_trace_builder_hpp(file_name, &all_cols, &to_be_shifted);
 
     // ----------------------- Create the flavor file -----------------------
-    let flavor_hpp = flavor_builder::create_flavor_hpp(
+    bb_files.create_flavor_hpp(
         file_name,
         &subrelations,
         &all_cols,
@@ -88,47 +87,18 @@ pub(crate) fn analyzed_to_cpp<F: FieldElement>(
     );
 
     // ----------------------- Create the composer files -----------------------
-    let composer_cpp = composer_builder_cpp(file_name);
-    let composer_hpp = composer_builder_hpp(file_name);
+    bb_files.create_composer_cpp(file_name);
+    bb_files.create_composer_hpp(file_name);
 
-    // ----------------------- Create the prover files -----------------------
-    let verifier_cpp = verifier_builder_cpp(file_name, &all_cols);
-    let verifier_hpp = verifier_builder_hpp(file_name);
+    // ----------------------- Create the Verifier files -----------------------
+    bb_files.create_verifier_cpp(file_name, &all_cols);
+    bb_files.create_verifier_hpp(file_name);
 
-    // ----------------------- Create the verifier files -----------------------
-    let prover_cpp = prover_builder_cpp(file_name, &unshifted, &to_be_shifted);
-    let prover_hpp = prover_builder_hpp(file_name);
+    // ----------------------- Create the Prover files -----------------------
+    bb_files.create_prover_cpp(file_name, &unshifted, &to_be_shifted);
+    bb_files.create_prover_hpp(file_name);
 
-    bb_files.add_files(
-        relation_hpp,
-        arith_hpp,
-        trace_hpp,
-        flavor_hpp,
-        composer_cpp,
-        composer_hpp,
-        verifier_cpp,
-        verifier_hpp,
-        prover_cpp,
-        prover_hpp,
-    );
     bb_files
-}
-
-// We have no selectors so we can easily create a boilerplate file
-fn create_arith_boilerplate_file(name: &str, num_cols: usize) -> String {
-    format!(
-        "
-#pragma once
-#include \"barretenberg/proof_system/arithmetization/arithmetization.hpp\"
-namespace arithmetization {{
-    class {name}Arithmetization : public Arithmetization<{num_cols}, 0> {{
-        public:
-            using FF = barretenberg::fr;
-            struct Selectors {{}};
-    }};
-}} // namespace arithmetization
-"
-    )
 }
 
 fn get_all_col_names<F: FieldElement>(

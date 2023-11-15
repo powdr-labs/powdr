@@ -1,90 +1,21 @@
-fn include_hpp(name: &str) -> String {
-    format!(
-        "
-#pragma once
-#include \"barretenberg/honk/flavor/generated/{name}_flavor.hpp\"
-#include \"barretenberg/honk/sumcheck/sumcheck.hpp\"
-#include \"barretenberg/plonk/proof_system/types/proof.hpp\"
-"
-    )
+use crate::file_writer::BBFiles;
+
+pub trait VerifierBuilder {
+    fn create_verifier_cpp(&mut self, name: &str, all_wires: &[String]);
+
+    fn create_verifier_hpp(&mut self, name: &str);
 }
 
-pub fn verifier_builder_hpp(name: &str) -> String {
-    let include_str = include_hpp(name);
-    format!(
-        "
-{include_str}
-    
-    namespace proof_system::honk {{
-    template <typename Flavor> class {name}Verifier_ {{
-        using FF = typename Flavor::FF;
-        using Commitment = typename Flavor::Commitment;
-        using VerificationKey = typename Flavor::VerificationKey;
-        using VerifierCommitmentKey = typename Flavor::VerifierCommitmentKey;
-    
-      public:
-        explicit {name}Verifier_(std::shared_ptr<VerificationKey> verifier_key = nullptr);
-        {name}Verifier_(std::shared_ptr<VerificationKey> key,
-                       std::map<std::string, Commitment> commitments,
-                       std::map<std::string, FF> pcs_fr_elements,
-                       std::shared_ptr<VerifierCommitmentKey> pcs_verification_key,
-                       VerifierTranscript<FF> transcript)
-            : key(std::move(key))
-            , commitments(std::move(commitments))
-            , pcs_fr_elements(std::move(pcs_fr_elements))
-            , pcs_verification_key(std::move(pcs_verification_key))
-            , transcript(std::move(transcript))
-        {{}}
+impl VerifierBuilder for BBFiles {
+    fn create_verifier_cpp(&mut self, name: &str, all_wires: &[String]) {
+        let include_str = includes_cpp(name);
 
-        {name}Verifier_({name}Verifier_&& other) noexcept;
-        {name}Verifier_(const {name}Verifier_& other) = delete;
-        {name}Verifier_& operator=(const {name}Verifier_& other) = delete;
-        {name}Verifier_& operator=({name}Verifier_&& other) noexcept;
-        ~{name}Verifier_() = default;
-    
-        bool verify_proof(const plonk::proof& proof);
-    
-        std::shared_ptr<VerificationKey> key;
-        std::map<std::string, Commitment> commitments;
-        std::map<std::string, FF> pcs_fr_elements;
-        std::shared_ptr<VerifierCommitmentKey> pcs_verification_key;
-        VerifierTranscript<FF> transcript;
-    }};
-    
-    extern template class {name}Verifier_<honk::flavor::{name}Flavor>;
-    
-    using {name}Verifier = {name}Verifier_<honk::flavor::{name}Flavor>;
-    
-    }} // namespace proof_system::honk
-     
-    
-    "
-    )
-}
-
-fn includes_cpp(name: &str) -> String {
-    format!(
-        "
-    #include \"./{name}_verifier.hpp\"
-    #include \"barretenberg/honk/flavor/generated/{name}_flavor.hpp\"
-    #include \"barretenberg/honk/pcs/gemini/gemini.hpp\"
-    #include \"barretenberg/honk/pcs/shplonk/shplonk.hpp\"
-    #include \"barretenberg/honk/transcript/transcript.hpp\"
-    #include \"barretenberg/honk/utils/power_polynomial.hpp\"
-    #include \"barretenberg/numeric/bitop/get_msb.hpp\"
-    "
-    )
-}
-
-pub fn verifier_builder_cpp(name: &str, all_wires: &[String]) -> String {
-    let include_str = includes_cpp(name);
-
-    let wire_commitments = all_wires.iter().map(|name|{
+        let wire_commitments = all_wires.iter().map(|name|{
         let n = name.replace('.',"_");
         format!("commitments.{n} = transcript.template receive_from_prover<Commitment>(commitment_labels.{n});", n=n)
     }).collect::<Vec<String>>().join("\n");
 
-    format!("
+        let ver_cpp = format!("
 {include_str} 
 
     using namespace barretenberg;
@@ -241,5 +172,86 @@ pub fn verifier_builder_cpp(name: &str, all_wires: &[String]) -> String {
     }} // namespace proof_system::honk
     
     
-    ")
+    ");
+        self.verifier_cpp = Some(ver_cpp);
+    }
+
+    fn create_verifier_hpp(&mut self, name: &str) {
+        let include_str = include_hpp(name);
+        let ver_hpp = format!(
+            "
+{include_str}
+    
+    namespace proof_system::honk {{
+    template <typename Flavor> class {name}Verifier_ {{
+        using FF = typename Flavor::FF;
+        using Commitment = typename Flavor::Commitment;
+        using VerificationKey = typename Flavor::VerificationKey;
+        using VerifierCommitmentKey = typename Flavor::VerifierCommitmentKey;
+    
+      public:
+        explicit {name}Verifier_(std::shared_ptr<VerificationKey> verifier_key = nullptr);
+        {name}Verifier_(std::shared_ptr<VerificationKey> key,
+                       std::map<std::string, Commitment> commitments,
+                       std::map<std::string, FF> pcs_fr_elements,
+                       std::shared_ptr<VerifierCommitmentKey> pcs_verification_key,
+                       VerifierTranscript<FF> transcript)
+            : key(std::move(key))
+            , commitments(std::move(commitments))
+            , pcs_fr_elements(std::move(pcs_fr_elements))
+            , pcs_verification_key(std::move(pcs_verification_key))
+            , transcript(std::move(transcript))
+        {{}}
+
+        {name}Verifier_({name}Verifier_&& other) noexcept;
+        {name}Verifier_(const {name}Verifier_& other) = delete;
+        {name}Verifier_& operator=(const {name}Verifier_& other) = delete;
+        {name}Verifier_& operator=({name}Verifier_&& other) noexcept;
+        ~{name}Verifier_() = default;
+    
+        bool verify_proof(const plonk::proof& proof);
+    
+        std::shared_ptr<VerificationKey> key;
+        std::map<std::string, Commitment> commitments;
+        std::map<std::string, FF> pcs_fr_elements;
+        std::shared_ptr<VerifierCommitmentKey> pcs_verification_key;
+        VerifierTranscript<FF> transcript;
+    }};
+    
+    extern template class {name}Verifier_<honk::flavor::{name}Flavor>;
+    
+    using {name}Verifier = {name}Verifier_<honk::flavor::{name}Flavor>;
+    
+    }} // namespace proof_system::honk
+     
+    
+    "
+        );
+        self.verifier_hpp = Some(ver_hpp);
+    }
+}
+
+fn include_hpp(name: &str) -> String {
+    format!(
+        "
+#pragma once
+#include \"barretenberg/honk/flavor/generated/{name}_flavor.hpp\"
+#include \"barretenberg/honk/sumcheck/sumcheck.hpp\"
+#include \"barretenberg/plonk/proof_system/types/proof.hpp\"
+"
+    )
+}
+
+fn includes_cpp(name: &str) -> String {
+    format!(
+        "
+    #include \"./{name}_verifier.hpp\"
+    #include \"barretenberg/honk/flavor/generated/{name}_flavor.hpp\"
+    #include \"barretenberg/honk/pcs/gemini/gemini.hpp\"
+    #include \"barretenberg/honk/pcs/shplonk/shplonk.hpp\"
+    #include \"barretenberg/honk/transcript/transcript.hpp\"
+    #include \"barretenberg/honk/utils/power_polynomial.hpp\"
+    #include \"barretenberg/numeric/bitop/get_msb.hpp\"
+    "
+    )
 }

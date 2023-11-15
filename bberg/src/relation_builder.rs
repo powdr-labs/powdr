@@ -4,29 +4,43 @@ use ast::analyzed::{
     IdentityKind,
 };
 use ast::parsed::SelectedExpressions;
-use itertools::Itertools;
 use std::collections::HashSet;
 
 use number::{DegreeType, FieldElement};
 
+use crate::file_writer::BBFiles;
+
+pub trait RelationBuilder {
+    fn create_relation_hpp(
+        &mut self,
+        name: &str,
+        sub_relations: &[String],
+        identities: &[BBIdentity],
+        row_type: &String,
+        all_rows_and_shifts: &[String],
+    );
+}
+
 // TODO: MOve -> to gen code we need to know the degree of each poly
 type BBIdentity = (DegreeType, String);
 
-pub(crate) fn create_relation_hpp(
-    name: &str,
-    sub_relations: &[String],
-    identities: &[BBIdentity],
-    row_type: &String,
-    all_rows_and_shifts: &[String],
-) -> String {
-    let includes = relation_includes();
-    let class_boilerplate = relation_class_boilerplate(name, sub_relations, identities);
-    let export = get_export(name);
+impl RelationBuilder for BBFiles {
+    fn create_relation_hpp(
+        &mut self,
+        name: &str,
+        sub_relations: &[String],
+        identities: &[BBIdentity],
+        row_type: &String,
+        all_rows_and_shifts: &[String],
+    ) {
+        let includes = relation_includes();
+        let class_boilerplate = relation_class_boilerplate(name, sub_relations, identities);
+        let export = get_export(name);
 
-    let view_macro_preamble = get_cols_in_identity_macro(all_rows_and_shifts);
+        let view_macro_preamble = get_cols_in_identity_macro(all_rows_and_shifts);
 
-    format!(
-        "{includes}
+        let relations = format!(
+            "{includes}
 namespace proof_system::{name}_vm {{
 
 {row_type};
@@ -38,7 +52,9 @@ namespace proof_system::{name}_vm {{
 {export}
 
         }}"
-    )
+        );
+        self.relation_hpp = Some(relations);
+    }
 }
 
 fn relation_class_boilerplate(

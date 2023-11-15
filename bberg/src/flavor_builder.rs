@@ -1,52 +1,63 @@
+use crate::file_writer::BBFiles;
+
+pub trait FlavorBuilder {
+    fn create_flavor_hpp(
+        &mut self,
+        name: &str,
+        relations: &[String],
+        all_cols: &[String],
+        shifted: &[String],
+    );
+}
+
 /// Build the boilerplate for the flavor file
+impl FlavorBuilder for BBFiles {
+    fn create_flavor_hpp(
+        &mut self,
+        name: &str,
+        relations: &[String],
+        all_cols: &[String],
+        shifted: &[String],
+        // shifted: &[String],
+    ) {
+        let includes = flavor_includes(name, relations);
+        let num_witness = all_cols.len();
+        let num_all = num_witness + shifted.len();
+        // Note: includes all witness shifts
+        // TODO: for now we include a shift OF ALL witness wires, however this is not necessarily true
 
-pub(crate) fn create_flavor_hpp(
-    name: &str,
-    relations: &[String],
-    all_cols: &[String],
-    shifted: &[String],
-    // shifted: &[String],
-) -> String {
-    let includes = flavor_includes(name, relations);
-    let num_witness = all_cols.len();
-    let num_all = num_witness + shifted.len();
-    // Note: includes all witness shifts
-    // TODO: for now we include a shift OF ALL witness wires, however this is not necessarily true
+        let precomputed = witness_get(all_cols, 0, false);
+        let witness_str = create_witness_entities(all_cols);
+        let all_shift = witness_get(shifted, num_witness, true);
 
-    let precomputed = witness_get(all_cols, 0, false);
-    let witness_str = create_witness_entities(all_cols);
-    let all_shift = witness_get(shifted, num_witness, true);
+        let all_entities_get_wires = make_wires_set(
+            &[all_cols.to_vec(), shifted.to_vec()]
+                .into_iter()
+                .flatten()
+                .collect::<Vec<String>>(),
+        );
+        let all_entities_get_unshifted = make_wires_set(all_cols);
+        let all_entities_get_to_be_shifted = make_wires_set(shifted);
+        let all_entities_get_shifted = make_wires_set(
+            &shifted
+                .iter()
+                .map(|w| format!("{}_shift", w))
+                .collect::<Vec<String>>(),
+        );
 
-    dbg!(&all_shift);
+        let commitment_labels_class = create_commitment_labels(all_cols);
 
-    let all_entities_get_wires = make_wires_set(
-        &[all_cols.to_vec(), shifted.to_vec()]
-            .into_iter()
-            .flatten()
-            .collect::<Vec<String>>(),
-    );
-    let all_entities_get_unshifted = make_wires_set(all_cols);
-    let all_entities_get_to_be_shifted = make_wires_set(shifted);
-    let all_entities_get_shifted = make_wires_set(
-        &shifted
-            .iter()
-            .map(|w| format!("{}_shift", w))
-            .collect::<Vec<String>>(),
-    );
+        let verification_commitments = create_verifier_commitments();
 
-    let commitment_labels_class = create_commitment_labels(all_cols);
+        // TODO: make this work when we have multiple relation files, for now we just have the one
+        let relations_tuple = format!("{name}_vm::{name}<FF>");
+        // let relations_tuple = relations
+        //     .iter()
+        //     .map(|r| format!("{}Relation", r))
+        //     .collect::<Vec<_>>()
+        //     .join(", ");
 
-    let verification_commitments = create_verifier_commitments();
-
-    // TODO: make this work when we have multiple relation files, for now we just have the one
-    let relations_tuple = format!("{name}_vm::{name}<FF>");
-    // let relations_tuple = relations
-    //     .iter()
-    //     .map(|r| format!("{}Relation", r))
-    //     .collect::<Vec<_>>()
-    //     .join(", ");
-
-    format!(
+        let flavor_hpp = format!(
         "
 {includes}
 
@@ -242,7 +253,9 @@ class {name}Flavor : public {name}FlavorBase<grumpkin::g1, curve::BN254, pcs::kz
     
     
     "
-    )
+    );
+        self.flavor_hpp = Some(flavor_hpp);
+    }
 }
 
 fn flavor_includes(name: &str, _relations: &[String]) -> String {

@@ -1,22 +1,15 @@
-fn includes_hpp(name: &str) -> String {
-    format!(
-        "
-#pragma once
-#include \"barretenberg/honk/flavor/generated/{name}_flavor.hpp\"
-#include \"barretenberg/honk/pcs/gemini/gemini.hpp\"
-#include \"barretenberg/honk/pcs/shplonk/shplonk.hpp\"
-#include \"barretenberg/honk/sumcheck/sumcheck_output.hpp\"
-#include \"barretenberg/honk/transcript/transcript.hpp\"
-#include \"barretenberg/plonk/proof_system/types/proof.hpp\"
-#include \"barretenberg/proof_system/relations/relation_parameters.hpp\"
+use crate::file_writer::BBFiles;
 
-    "
-    )
+pub trait ProverBuilder {
+    fn create_prover_cpp(&mut self, name: &str, fixed: &[String], to_be_shifted: &[String]);
+
+    fn create_prover_hpp(&mut self, name: &str);
 }
 
-pub fn prover_builder_hpp(name: &str) -> String {
-    let include_str = includes_hpp(name);
-    format!("
+impl ProverBuilder for BBFiles {
+    fn create_prover_hpp(&mut self, name: &str) {
+        let include_str = includes_hpp(name);
+        let prover_hpp = format!("
     {include_str} 
     namespace proof_system::honk {{
     
@@ -89,74 +82,47 @@ pub fn prover_builder_hpp(name: &str) -> String {
     
     }} // namespace proof_system::honk
      
-    ")
-}
+    ");
+        self.prover_hpp = Some(prover_hpp);
+    }
 
-fn includes_cpp(name: &str) -> String {
-    format!(
-        "
-    
-    #include \"{name}_prover.hpp\"
-    #include \"barretenberg/honk/pcs/claim.hpp\"
-    #include \"barretenberg/honk/pcs/commitment_key.hpp\"
-    #include \"barretenberg/honk/proof_system/lookup_library.hpp\"
-    #include \"barretenberg/honk/proof_system/permutation_library.hpp\"
-    #include \"barretenberg/honk/sumcheck/sumcheck.hpp\"
-    #include \"barretenberg/honk/utils/power_polynomial.hpp\"
-    #include \"barretenberg/polynomials/polynomial.hpp\"
-    #include \"barretenberg/polynomials/univariate.hpp\" // will go away
-    #include \"barretenberg/proof_system/relations/lookup_relation.hpp\"
-    #include \"barretenberg/proof_system/relations/permutation_relation.hpp\"
-    #include \"barretenberg/transcript/transcript_wrappers.hpp\"
-    #include <algorithm>
-    #include <array>
-    #include <cstddef>
-    #include <memory>
-    #include <span>
-    #include <string>
-    #include <utility>
-    #include <vector>
-    "
-    )
-}
+    fn create_prover_cpp(&mut self, name: &str, fixed: &[String], to_be_shifted: &[String]) {
+        let include_str = includes_cpp(name);
 
-pub fn prover_builder_cpp(name: &str, fixed: &[String], to_be_shifted: &[String]) -> String {
-    let include_str = includes_cpp(name);
+        // Create the wire assignments, prover_polynomial = key
+        let fixed_assignments = fixed
+            .iter()
+            .map(|name| {
+                let n = name.replace('.', "_");
+                format!("prover_polynomials.{n} = key->{n};", n = n)
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
 
-    // Create the wire assignments, prover_polynomial = key
-    let fixed_assignments = fixed
-        .iter()
-        .map(|name| {
-            let n = name.replace('.', "_");
-            format!("prover_polynomials.{n} = key->{n};", n = n)
-        })
-        .collect::<Vec<_>>()
-        .join("\n");
-
-    let committed_assignments = to_be_shifted
-        .iter()
-        .map(|name| {
-            let n = name.replace('.', "_");
-            format!(
-                "
+        let committed_assignments = to_be_shifted
+            .iter()
+            .map(|name| {
+                let n = name.replace('.', "_");
+                format!(
+                    "
 prover_polynomials.{n} = key->{n};
 prover_polynomials.{n}_shift = key->{n}.shifted();
 ",
-                n = n
-            )
-        })
-        .collect::<Vec<_>>()
-        .join("\n");
+                    n = n
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
 
-    // Lmao yuck
-    let all_assignments = format!(
-        "
+        // Lmao yuck
+        let all_assignments = format!(
+            "
     {fixed_assignments}
     {committed_assignments}
     "
-    );
+        );
 
-    format!("
+        let prover_cpp = format!("
     {include_str}
     
     namespace proof_system::honk {{
@@ -416,5 +382,51 @@ prover_polynomials.{n}_shift = key->{n}.shifted();
     }} // namespace proof_system::honk
      
     
-    ")
+    ");
+        self.prover_cpp = Some(prover_cpp);
+    }
+}
+
+fn includes_hpp(name: &str) -> String {
+    format!(
+        "
+#pragma once
+#include \"barretenberg/honk/flavor/generated/{name}_flavor.hpp\"
+#include \"barretenberg/honk/pcs/gemini/gemini.hpp\"
+#include \"barretenberg/honk/pcs/shplonk/shplonk.hpp\"
+#include \"barretenberg/honk/sumcheck/sumcheck_output.hpp\"
+#include \"barretenberg/honk/transcript/transcript.hpp\"
+#include \"barretenberg/plonk/proof_system/types/proof.hpp\"
+#include \"barretenberg/proof_system/relations/relation_parameters.hpp\"
+
+    "
+    )
+}
+
+fn includes_cpp(name: &str) -> String {
+    format!(
+        "
+    
+    #include \"{name}_prover.hpp\"
+    #include \"barretenberg/honk/pcs/claim.hpp\"
+    #include \"barretenberg/honk/pcs/commitment_key.hpp\"
+    #include \"barretenberg/honk/proof_system/lookup_library.hpp\"
+    #include \"barretenberg/honk/proof_system/permutation_library.hpp\"
+    #include \"barretenberg/honk/sumcheck/sumcheck.hpp\"
+    #include \"barretenberg/honk/utils/power_polynomial.hpp\"
+    #include \"barretenberg/polynomials/polynomial.hpp\"
+    #include \"barretenberg/polynomials/univariate.hpp\" // will go away
+    #include \"barretenberg/proof_system/relations/lookup_relation.hpp\"
+    #include \"barretenberg/proof_system/relations/permutation_relation.hpp\"
+    #include \"barretenberg/transcript/transcript_wrappers.hpp\"
+    #include <algorithm>
+    #include <array>
+    #include <cstddef>
+    #include <memory>
+    #include <span>
+    #include <string>
+    #include <utility>
+    #include <vector>
+    "
+    )
 }

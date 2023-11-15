@@ -1,3 +1,4 @@
+mod arith_builder;
 pub mod bberg_codegen;
 pub mod circuit_builder;
 mod composer_builder;
