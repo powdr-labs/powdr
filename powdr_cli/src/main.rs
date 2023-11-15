@@ -18,6 +18,45 @@ use std::io::{self, BufReader, BufWriter, Read};
 use std::{borrow::Cow, fs, io::Write, path::Path};
 use strum::{Display, EnumString, EnumVariantNames};
 
+const REGISTER_NAMES: [&'static str; 36] = [
+    "main.x1",
+    "main.x2",
+    "main.x3",
+    "main.x4",
+    "main.x5",
+    "main.x6",
+    "main.x7",
+    "main.x8",
+    "main.x9",
+    "main.x10",
+    "main.x11",
+    "main.x12",
+    "main.x13",
+    "main.x14",
+    "main.x15",
+    "main.x16",
+    "main.x17",
+    "main.x18",
+    "main.x19",
+    "main.x20",
+    "main.x21",
+    "main.x22",
+    "main.x23",
+    "main.x24",
+    "main.x25",
+    "main.x26",
+    "main.x27",
+    "main.x28",
+    "main.x29",
+    "main.x30",
+    "main.x31",
+    "main.tmp1",
+    "main.tmp2",
+    "main.tmp3",
+    "main.lr_sc_reservation",
+    "main.pc",
+];
+
 #[derive(Clone, EnumString, EnumVariantNames, Display)]
 pub enum FieldArgument {
     #[strum(serialize = "gl")]
@@ -585,17 +624,13 @@ fn rust_continuations<F: FieldElement>(
     let (witness, rom_len, last_state, memory, memory_accesses) =
         riscv_executor::execute::<F>(contents, &inputs, u64::MAX);
 
-    log::info!("Trace length: {}", witness[0].1.len());
+    log::info!("Trace length: {}", witness["main.pc"].len());
 
     log::info!("Running first chunk...");
     let (w, rom_len, last_state, memory, _) =
         riscv_executor::execute::<F>(contents, &inputs, (1 << 18) - 2);
 
     log::info!("Building inputs for second chunk...");
-    let witness_map = witness
-        .iter()
-        .map(|(name, values)| (name.as_str(), values))
-        .collect::<HashMap<_, _>>();
     let mut accessed_pages = BTreeSet::new();
     let start = (1 << 18) - 3;
     let total_mem_access: u64 = memory_accesses.iter().map(|x| *x as u64).sum();
@@ -610,12 +645,8 @@ fn rust_continuations<F: FieldElement>(
 
     for (i, accesses_memory) in (&memory_accesses[start..]).iter().enumerate() {
         if *accesses_memory {
-            // println!("{}:", start + i);
-            // for j in 0..8 {
-            //     println!("  {}: {}", j - 4, &witness_map["main.Y"][start + i - 4 + j])
-            // }
             // TODO: Not sure why we have to subtract -1...
-            let addr = &witness_map["main.Y"][start + i - 1];
+            let addr = &witness["main.Y"][start + i - 1];
             println!("{}: {}", start + i, addr);
             let digits = addr.to_arbitrary_integer().to_u32_digits();
             let addr = if digits.is_empty() { 0 } else { digits[0] };
@@ -624,51 +655,9 @@ fn rust_continuations<F: FieldElement>(
     }
     println!("Accessed pages: {:?}", accessed_pages);
 
-    let register_names = [
-        "main.x1",
-        "main.x2",
-        "main.x3",
-        "main.x4",
-        "main.x5",
-        "main.x6",
-        "main.x7",
-        "main.x8",
-        "main.x9",
-        "main.x10",
-        "main.x11",
-        "main.x12",
-        "main.x13",
-        "main.x14",
-        "main.x15",
-        "main.x16",
-        "main.x17",
-        "main.x18",
-        "main.x19",
-        "main.x20",
-        "main.x21",
-        "main.x22",
-        "main.x23",
-        "main.x24",
-        "main.x25",
-        "main.x26",
-        "main.x27",
-        "main.x28",
-        "main.x29",
-        "main.x30",
-        "main.x31",
-        "main.tmp1",
-        "main.tmp2",
-        "main.tmp3",
-        "main.lr_sc_reservation",
-        "main.pc",
-    ];
     let mut inputs = vec![];
-    let witness_map = w
-        .iter()
-        .map(|(name, values)| (name.as_str(), values))
-        .collect::<HashMap<_, _>>();
-    for reg in register_names.iter() {
-        inputs.push(*witness_map[reg].last().unwrap());
+    for &reg in REGISTER_NAMES.iter() {
+        inputs.push(*w[reg].last().unwrap());
     }
     inputs.push((accessed_pages.len() as u64).into());
     for page in accessed_pages.iter() {
@@ -689,13 +678,38 @@ fn rust_continuations<F: FieldElement>(
         .join(",");
     log::info!("Inputs: {}", input_str);
 
+    let initial_pc = w["main.pc"].last().unwrap();
+
     log::info!("Running second chunk...");
     let (w, rom_len, last_state, memory, _) =
         riscv_executor::execute::<F>(contents, &inputs, (1 << 18) - 2);
 
-    println!("Remaining rows: {}", w[0].1.len());
+    // Find the actual start of the chunk
+    let (start, _) = w["main.pc"]
+        .iter()
+        .enumerate()
+        .find(|(_, pc)| *pc == initial_pc)
+        .unwrap();
+    for &reg in REGISTER_NAMES.iter() {
+        for i in start..w["main.pc"].len() {
+            // TODO: Why -4?
+            let original_index = i - start + (1 << 18) - 4;
+            if w[reg][i] != witness[reg][original_index] {
+                panic!(
+                    "{}: {} (Line {}) != {} (Line {})",
+                    reg,
+                    w[reg][i],
+                    i,
+                    witness[reg][i - start + (1 << 18) - 1],
+                    original_index
+                );
+            }
+        }
+    }
 
-    todo!();
+    println!("Remaining rows: {}", w["main.pc"].len());
+
+    return;
 
     for (reg, v) in last_state.iter() {
         println!("{}: {}", reg, v);

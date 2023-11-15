@@ -871,7 +871,7 @@ pub fn execute<F: FieldElement>(
     inputs: &[F],
     num_steps: u64,
 ) -> (
-    Vec<(String, Vec<F>)>,
+    HashMap<String, Vec<F>>,
     usize,
     HashMap<String, F>,
     HashMap<u32, F>,
