@@ -140,30 +140,23 @@ where
         next: bool,
         rows: &RowPair<T>,
     ) -> Result<T, IncompleteCause<&'a AlgebraicReference>> {
-        if poly.index.is_none() {
-            let poly_id = poly.poly_id.unwrap();
-            match poly_id.ptype {
-                PolynomialType::Committed | PolynomialType::Intermediate => {
-                    let poly_ref = AlgebraicReference {
-                        name: poly.name.clone(),
-                        poly_id,
-                        index: poly.index,
-                        next,
-                    };
-                    Ok(rows
-                        .get_value(&poly_ref)
-                        .ok_or(IncompleteCause::DataNotYetAvailable)?)
-                }
-                PolynomialType::Constant => {
-                    let values = self.fixed_data.fixed_cols[&poly_id].values;
-                    let row = rows.current_row_index as usize + next as usize;
-                    Ok(values[row % values.len()])
-                }
+        let poly_id = poly.poly_id.unwrap();
+        match poly_id.ptype {
+            PolynomialType::Committed | PolynomialType::Intermediate => {
+                let poly_ref = AlgebraicReference {
+                    name: poly.name.clone(),
+                    poly_id,
+                    next,
+                };
+                Ok(rows
+                    .get_value(&poly_ref)
+                    .ok_or(IncompleteCause::DataNotYetAvailable)?)
             }
-        } else {
-            Err(IncompleteCause::ExpressionEvaluationUnimplemented(
-                "Cannot evaluate arrays.".to_string(),
-            ))
+            PolynomialType::Constant => {
+                let values = self.fixed_data.fixed_cols[&poly_id].values;
+                let row = rows.current_row_index as usize + next as usize;
+                Ok(values[row % values.len()])
+            }
         }
     }
 }

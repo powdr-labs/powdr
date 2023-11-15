@@ -1,3 +1,5 @@
+use std::iter::{once, repeat};
+
 use crate::{pilstark, BackendImpl};
 use ast::analyzed::Analyzed;
 use number::{BigInt, DegreeType, FieldElement, GoldilocksField};
@@ -48,8 +50,8 @@ impl<F: FieldElement> BackendImpl<F> for EStark {
     fn prove(
         &self,
         pil: &Analyzed<F>,
-        fixed: &[(&str, Vec<F>)],
-        witness: &[(&str, Vec<F>)],
+        fixed: &[(String, Vec<F>)],
+        witness: &[(String, Vec<F>)],
         prev_proof: Option<crate::Proof>,
         _bname: Option<String>,
     ) -> (Option<crate::Proof>, Option<String>) {
@@ -58,6 +60,8 @@ impl<F: FieldElement> BackendImpl<F> for EStark {
         }
 
         log::info!("Creating eSTARK proof.");
+
+        let degree = pil.degree();
 
         let mut pil: PIL = pilstark::json_exporter::export(pil);
 
@@ -69,7 +73,7 @@ impl<F: FieldElement> BackendImpl<F> for EStark {
         // This is a hack to inject such column if it doesn't exist.
         // It should be eventually improved.
         let mut fixed = fixed.to_vec();
-        if !fixed.iter().any(|&(k, _)| k == "main.first_step") {
+        if !fixed.iter().any(|(k, _)| k == "main.first_step") {
             use starky::types::Reference;
             pil.nConstants += 1;
             pil.references.insert(
@@ -78,15 +82,18 @@ impl<F: FieldElement> BackendImpl<F> for EStark {
                     polType: None,
                     type_: "constP".to_string(),
                     id: fixed.len(),
-                    polDeg: fixed[0].1.len(),
+                    polDeg: degree as usize,
                     isArray: false,
                     elementType: None,
                     len: None,
                 },
             );
             fixed.push((
-                "main.first_step",
-                [vec![F::one()], vec![F::zero(); fixed[0].1.len() - 1]].concat(),
+                "main.first_step".to_string(),
+                once(F::one())
+                    .chain(repeat(F::zero()))
+                    .take(degree as usize)
+                    .collect(),
             ));
         }
 
@@ -114,7 +121,7 @@ impl<F: FieldElement> BackendImpl<F> for EStark {
             &setup.program,
             &pil,
             &self.params,
-            // "",
+            "",
         )
         .unwrap();
 
@@ -135,7 +142,7 @@ impl<F: FieldElement> BackendImpl<F> for EStark {
 }
 
 fn to_starky_pols_array<F: FieldElement>(
-    array: &[(&str, Vec<F>)],
+    array: &[(String, Vec<F>)],
     pil: &PIL,
     kind: PolKind,
 ) -> PolsArray {

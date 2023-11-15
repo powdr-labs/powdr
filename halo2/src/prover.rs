@@ -61,11 +61,11 @@ impl Halo2Prover {
     pub fn prove_ast<F: FieldElement>(
         &self,
         pil: &Analyzed<F>,
-        fixed: &[(&str, Vec<F>)],
-        witness: &[(&str, Vec<F>)],
+        fixed: &[(String, Vec<F>)],
+        witness: &[(String, Vec<F>)],
     ) -> Vec<u8> {
         // TODO this is hacky
-        let degree = usize::BITS - fixed[0].1.len().leading_zeros() + 1;
+        let degree = usize::BITS - pil.degree().leading_zeros() + 1;
         let params = {
             let mut params = self.params.clone();
             params.downsize(degree);
@@ -104,14 +104,14 @@ impl Halo2Prover {
     pub fn prove_aggr<F: FieldElement>(
         &self,
         pil: &Analyzed<F>,
-        fixed: &[(&str, Vec<F>)],
-        witness: &[(&str, Vec<F>)],
+        fixed: &[(String, Vec<F>)],
+        witness: &[(String, Vec<F>)],
         proof: Vec<u8>,
     ) -> Vec<u8> {
         log::info!("Starting proof aggregation...");
 
         // TODO this is hacky
-        let degree = usize::BITS - fixed[0].1.len().leading_zeros() + 1;
+        let degree = usize::BITS - pil.degree().leading_zeros() + 1;
         let params_app = {
             let mut params = self.params.clone();
             params.downsize(degree);

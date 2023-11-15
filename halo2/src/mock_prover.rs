@@ -7,8 +7,8 @@ use number::{BigInt, FieldElement};
 
 pub fn mock_prove<T: FieldElement>(
     pil: &Analyzed<T>,
-    fixed: &[(&str, Vec<T>)],
-    witness: &[(&str, Vec<T>)],
+    fixed: &[(String, Vec<T>)],
+    witness: &[(String, Vec<T>)],
 ) {
     if polyexen::expr::get_field_p::<Fr>() != T::modulus().to_arbitrary_integer() {
         panic!("powdr modulus doesn't match halo2 modulus. Make sure you are using Bn254");
@@ -42,6 +42,7 @@ mod test {
 
     use super::*;
 
+    #[allow(clippy::print_stdout)]
     fn mock_prove_asm(file_name: &str, inputs: &[Bn254Field]) {
         // read and compile PIL.
 
@@ -87,10 +88,11 @@ mod test {
 
         let analyzed = pil_analyzer::analyze_string(&format!("{pil}"));
 
-        let (fixed, degree) = executor::constant_evaluator::generate(&analyzed);
+        let fixed = executor::constant_evaluator::generate(&analyzed);
         let witness =
-            executor::witgen::WitnessGenerator::new(&analyzed, degree, &fixed, query_callback)
-                .generate();
+            executor::witgen::WitnessGenerator::new(&analyzed, &fixed, query_callback).generate();
+
+        let fixed = to_owned_values(fixed);
 
         mock_prove(&analyzed, &fixed, &witness);
     }
@@ -99,13 +101,15 @@ mod test {
     fn simple_pil_halo2() {
         let content = "namespace Global(8); pol fixed z = [0]*; pol witness a; a = 0;";
         let analyzed: Analyzed<Bn254Field> = pil_analyzer::analyze_string(content);
-        let (fixed, degree) = executor::constant_evaluator::generate(&analyzed);
+        let fixed = executor::constant_evaluator::generate(&analyzed);
 
         let query_callback = |_: &str| -> Option<Bn254Field> { None };
 
         let witness =
-            executor::witgen::WitnessGenerator::new(&analyzed, degree, &fixed, query_callback)
-                .generate();
+            executor::witgen::WitnessGenerator::new(&analyzed, &fixed, query_callback).generate();
+
+        let fixed = to_owned_values(fixed);
+
         mock_prove(&analyzed, &fixed, &witness);
     }
 
@@ -119,5 +123,12 @@ mod test {
     fn palindrome() {
         let inputs = [3, 11, 22, 11].map(From::from);
         mock_prove_asm("palindrome.asm", &inputs);
+    }
+
+    fn to_owned_values<T: FieldElement>(values: Vec<(&str, Vec<T>)>) -> Vec<(String, Vec<T>)> {
+        values
+            .into_iter()
+            .map(|(s, fields)| (s.to_string(), fields.clone()))
+            .collect::<Vec<_>>()
     }
 }

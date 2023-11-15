@@ -37,6 +37,12 @@ jobs:
       run: rustup target add riscv32imac-unknown-none-elf --toolchain nightly-2023-01-03-x86_64-unknown-linux-gnu
     - name: Install stdlib
       run: rustup component add rust-src --toolchain nightly-2023-01-03-x86_64-unknown-linux-gnu
+    - name: Lint
+      run: cargo clippy --all --all-features -- -D warnings
+    - name: Format
+      run: cargo fmt --all --check --verbose
+    - name: Check benches compile without running them
+      run: cargo bench --all --all-features --profile pr-tests --no-run
     - name: Check without Halo2
       run: cargo check --all --no-default-features --profile pr-tests
     - name: Install pilcom
@@ -48,9 +54,3 @@ jobs:
     - name: Run slow tests
       # Number threads is set to 1 because the runner does not have enough memory for more.
       run: PILCOM=$(pwd)/pilcom/ cargo test --all --all-features --profile pr-tests --verbose -- --ignored --nocapture --test-threads=1 --exact test_keccak test_vec_median instruction_tests::addi
-    - name: Lint
-      run: cargo clippy --all --all-features -- -D warnings
-    - name: Format
-      run: cargo fmt --all --check --verbose
-    - name: Check benches compile without running them
-      run: cargo bench --all --all-features --profile pr-tests --no-run

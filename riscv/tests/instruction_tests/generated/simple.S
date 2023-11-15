@@ -1,9 +1,8 @@
-# 1 "sources/simple.S"
-# 1 "<built-in>"
-# 1 "<command-line>"
-# 31 "<command-line>"
+# 0 "sources/simple.S"
+# 0 "<built-in>"
+# 0 "<command-line>"
 # 1 "/usr/include/stdc-predef.h" 1 3 4
-# 32 "<command-line>" 2
+# 0 "<command-line>" 2
 # 1 "sources/simple.S"
 # See LICENSE for license details.
 
@@ -82,14 +81,14 @@
 # 14 "sources/simple.S" 2
 
 
-.globl __runtime_start; __runtime_start:
+.globl __runtime_start; __runtime_start: la x10,__return_pointer; sw x1,0(x10); li x10,0
 
-___pass: j ___pass;
+la x10,__return_pointer; lw x1,0(x10); ret;
 
 
 
   .data
-.balign 4;
+.balign 4; __return_pointer: .word 0;
 
  
 

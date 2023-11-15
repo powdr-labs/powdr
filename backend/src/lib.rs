@@ -76,8 +76,8 @@ impl<F: FieldElement, B: BackendImpl<F>> Backend<F> for ConcreteBackendWithoutSe
     fn prove(
         &self,
         pil: &Analyzed<F>,
-        fixed: &[(&str, Vec<F>)],
-        witness: &[(&str, Vec<F>)],
+        fixed: &[(String, Vec<F>)],
+        witness: &[(String, Vec<F>)],
         prev_proof: Option<Proof>,
         bname: Option<String>,
     ) -> (Option<Proof>, Option<String>) {
@@ -115,8 +115,8 @@ impl<F: FieldElement, B: BackendImplWithSetup<F>> Backend<F> for ConcreteBackend
     fn prove(
         &self,
         pil: &Analyzed<F>,
-        fixed: &[(&str, Vec<F>)],
-        witness: &[(&str, Vec<F>)],
+        fixed: &[(String, Vec<F>)],
+        witness: &[(String, Vec<F>)],
         prev_proof: Option<Proof>,
         bname: Option<String>,
     ) -> (Option<Proof>, Option<String>) {
@@ -154,8 +154,8 @@ pub trait Backend<F: FieldElement> {
     fn prove(
         &self,
         pil: &Analyzed<F>,
-        fixed: &[(&str, Vec<F>)],
-        witness: &[(&str, Vec<F>)],
+        fixed: &[(String, Vec<F>)],
+        witness: &[(String, Vec<F>)],
         prev_proof: Option<Proof>,
         bname: Option<String>,
     ) -> (Option<Proof>, Option<String>);
@@ -184,8 +184,8 @@ trait BackendImpl<F: FieldElement> {
     fn prove(
         &self,
         pil: &Analyzed<F>,
-        fixed: &[(&str, Vec<F>)],
-        witness: &[(&str, Vec<F>)],
+        fixed: &[(String, Vec<F>)],
+        witness: &[(String, Vec<F>)],
         prev_proof: Option<Proof>,
         bname: Option<String>,
     ) -> (Option<Proof>, Option<String>);

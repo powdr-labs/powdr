@@ -6,17 +6,18 @@ use std::collections::HashMap;
 use ast::{
     analyzed::{
         AlgebraicExpression, AlgebraicReference, Analyzed, Expression, FunctionValueDefinition,
-        Identity, PolynomialReference, PolynomialType, PublicDeclaration, Reference,
+        Identity, PolyID, PolynomialReference, PolynomialType, PublicDeclaration, Reference,
         StatementIdentifier, Symbol, SymbolKind,
     },
     evaluate_binary_operation, evaluate_unary_operation,
-    parsed::{visitor::ExpressionVisitable, SelectedExpressions, UnaryOperator},
+    parsed::{visitor::ExpressionVisitable, IndexAccess, SelectedExpressions, UnaryOperator},
 };
-use number::FieldElement;
+use number::{DegreeType, FieldElement};
 
-use crate::evaluator::compute_constants;
+use crate::evaluator::{compute_constants, evaluate_expression};
 
 pub fn condense<T: FieldElement>(
+    degree: Option<DegreeType>,
     mut definitions: HashMap<String, (Symbol, Option<FunctionValueDefinition<T>>)>,
     mut public_declarations: HashMap<String, PublicDeclaration>,
     identities: &[Identity<Expression<T>>],
@@ -24,10 +25,7 @@ pub fn condense<T: FieldElement>(
 ) -> Analyzed<T> {
     let condenser = Condenser {
         constants: compute_constants(&definitions),
-        symbols: definitions
-            .iter()
-            .map(|(name, (symbol, _))| (name.clone(), symbol.clone()))
-            .collect::<HashMap<_, _>>(),
+        symbols: definitions.clone(),
     };
 
     let identities = identities
@@ -68,6 +66,7 @@ pub fn condense<T: FieldElement>(
         .values_mut()
         .for_each(|public_decl| condenser.assign_id(&mut public_decl.polynomial));
     Analyzed {
+        degree,
         definitions,
         public_declarations,
         intermediate_columns,
@@ -77,14 +76,16 @@ pub fn condense<T: FieldElement>(
 }
 
 pub struct Condenser<T> {
-    pub symbols: HashMap<String, Symbol>,
+    /// All the definitions from the PIL file.
+    pub symbols: HashMap<String, (Symbol, Option<FunctionValueDefinition<T>>)>,
+    /// Definitions that evaluate to constant numbers.
     pub constants: HashMap<String, T>,
 }
 
 impl<T: FieldElement> Condenser<T> {
     // TODO this is only used externally now
     pub fn assign_id(&self, reference: &mut PolynomialReference) {
-        let poly = self
+        let (poly, _) = self
             .symbols
             .get(&reference.name)
             .unwrap_or_else(|| panic!("Column {} not found.", reference.name));
@@ -126,20 +127,23 @@ impl<T: FieldElement> Condenser<T> {
     pub fn condense_expression(&self, e: &Expression<T>) -> AlgebraicExpression<T> {
         match e {
             Expression::Reference(Reference::Poly(poly)) => {
-                if poly.index.is_none() {
-                    if let Some(value) = self.constants.get(&poly.name) {
-                        return AlgebraicExpression::Number(*value);
-                    }
+                if let Some(value) = self.constants.get(&poly.name) {
+                    return AlgebraicExpression::Number(*value);
                 }
-                let poly_id = self
+                let symbol = &self
                     .symbols
                     .get(&poly.name)
                     .unwrap_or_else(|| panic!("Column {} not found.", poly.name))
-                    .into();
+                    .0;
+
+                assert!(
+                    symbol.length.is_none(),
+                    "Arrays cannot be used as a whole in this context, only individual array elements can be used."
+                );
+
                 AlgebraicExpression::Reference(AlgebraicReference {
                     name: poly.name.clone(),
-                    poly_id,
-                    index: poly.index,
+                    poly_id: symbol.into(),
                     next: false,
                 })
             }
@@ -189,6 +193,42 @@ impl<T: FieldElement> Condenser<T> {
                 }
             }
             Expression::PublicReference(r) => AlgebraicExpression::PublicReference(r.clone()),
+            Expression::IndexAccess(IndexAccess { array, index }) => {
+                let array_symbol = match array.as_ref() {
+                    ast::parsed::Expression::Reference(Reference::Poly(PolynomialReference {
+                        name,
+                        poly_id: _,
+                    })) => {
+                        &self
+                            .symbols
+                            .get(name)
+                            .unwrap_or_else(|| panic!("Column {name} not found."))
+                            .0
+                    }
+                    _ => panic!("Expected direct reference before array index access."),
+                };
+                let Some(length) = array_symbol.length else {
+                    panic!("Array-access for non-array {}.", array_symbol.absolute_name);
+                };
+
+                let index = evaluate_expression(&self.symbols, index)
+                    .expect("Index needs to be constant number.")
+                    .to_degree();
+                assert!(
+                    index < length,
+                    "Array access to index {index} for array of length {length}: {}",
+                    array_symbol.absolute_name,
+                );
+                let poly_id: PolyID = array_symbol.into();
+                AlgebraicExpression::Reference(AlgebraicReference {
+                    poly_id: PolyID {
+                        id: poly_id.id + index,
+                        ..poly_id
+                    },
+                    name: array_symbol.array_element_name(index),
+                    next: false,
+                })
+            }
             Expression::String(_) => panic!("Strings are not allowed here."),
             Expression::Tuple(_) => panic!(),
             Expression::LambdaExpression(_) => panic!(),

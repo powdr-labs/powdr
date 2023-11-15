@@ -38,6 +38,9 @@ impl<T: Display> Display for Analyzed<T> {
                                     PolynomialType::Intermediate => panic!(),
                                 };
                                 write!(f, "    col {kind}{name}")?;
+                                if let Some(length) = symbol.length {
+                                    write!(f, "[{length}]")?;
+                                }
                                 if let Some(value) = definition {
                                     writeln!(f, "{value};")?
                                 } else {
@@ -74,8 +77,12 @@ impl<T: Display> Display for Analyzed<T> {
                     let (name, _) = update_namespace(&decl.name, 0, f)?;
                     writeln!(
                         f,
-                        "    public {name} = {}({});",
-                        decl.polynomial, decl.index
+                        "    public {name} = {}{}({});",
+                        decl.polynomial,
+                        decl.array_index
+                            .map(|i| format!("[{i}]"))
+                            .unwrap_or_default(),
+                        decl.index
                     )?;
                 }
                 StatementIdentifier::Identity(i) => writeln!(f, "    {}", &self.identities[*i])?,
@@ -206,29 +213,12 @@ impl Display for AlgebraicBinaryOperator {
 
 impl Display for AlgebraicReference {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "{}{}{}",
-            self.name,
-            self.index
-                .as_ref()
-                .map(|s| format!("[{s}]"))
-                .unwrap_or_default(),
-            if self.next { "'" } else { "" },
-        )
+        write!(f, "{}{}", self.name, if self.next { "'" } else { "" },)
     }
 }
 
 impl Display for PolynomialReference {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write!(
-            f,
-            "{}{}",
-            self.name,
-            self.index
-                .as_ref()
-                .map(|s| format!("[{s}]"))
-                .unwrap_or_default(),
-        )
+        write!(f, "{}", self.name,)
     }
 }

@@ -30,8 +30,8 @@ impl BBergCodegen {
     pub fn build_ast<F: FieldElement>(
         &self,
         pil: &Analyzed<F>,
-        fixed: &[(&str, Vec<F>)],
-        witness: &[(&str, Vec<F>)],
+        fixed: &[(String, Vec<F>)],
+        witness: &[(String, Vec<F>)],
         bname: Option<String>,
     ) -> Vec<u8> {
         let bberg_files = analyzed_to_cpp(pil, fixed, witness, bname);

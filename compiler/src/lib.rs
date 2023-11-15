@@ -4,8 +4,6 @@
 
 use std::ffi::OsStr;
 use std::fs;
-use std::io::BufWriter;
-use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
 use std::time::Instant;
@@ -18,10 +16,10 @@ mod verify;
 use analysis::analyze;
 pub use backend::{BackendType, Proof};
 use executor::witgen::QueryCallback;
-use number::write_polys_file;
-use number::DegreeType;
 use pil_analyzer::pil_analyzer::inline_intermediate_polynomials;
-pub use verify::{verify, verify_asm_string};
+pub use verify::{
+    verify, verify_asm_string, write_commits_to_fs, write_constants_to_fs, write_constraints_to_fs,
+};
 
 use ast::parsed::PILFile;
 use executor::constant_evaluator;
@@ -146,6 +144,7 @@ pub fn compile_asm<T: FieldElement>(
 /// fixed and witness columns.
 ///
 /// Returns the relative pil file name and the compilation result if any compilation was done.
+#[allow(clippy::print_stderr)]
 pub fn compile_asm_string<T: FieldElement>(
     file_name: &str,
     contents: &str,
@@ -213,6 +212,10 @@ pub struct CompilationResult<T: FieldElement> {
     pub constants: Vec<(String, Vec<T>)>,
     /// Witness columns, potentially None (if success is false)
     pub witness: Option<Vec<(String, Vec<T>)>>,
+    /// Proof, potentially None (if success is false)
+    pub proof: Option<Proof>,
+    /// Serialized low level constraints, potentially None (if success is false)
+    pub constraints_serialization: Option<String>,
 }
 
 /// Optimizes a given pil and tries to generate constants and committed polynomials.
@@ -241,7 +244,7 @@ fn compile<T: FieldElement, Q: QueryCallback<T>>(
     log::info!("Wrote {}.", optimized_pil_file_name.to_str().unwrap());
     let start = Instant::now();
     log::info!("Evaluating fixed columns...");
-    let (constants, degree) = constant_evaluator::generate(&mut_analyzed);
+    let constants = constant_evaluator::generate(&mut_analyzed);
     log::info!("Took {}", start.elapsed().as_secs_f32());
 
     let witness_names = mut_analyzed
@@ -251,16 +254,21 @@ fn compile<T: FieldElement, Q: QueryCallback<T>>(
         .collect::<Vec<_>>();
 
     // NOTE: temporarily just append a vector to the end such that it is in the expected form for the backend
-    let witness_in_powdr_form: Vec<(&str, Vec<T>)> = witness_names
+    let witness_in_powdr_form: Vec<(String, Vec<T>)> = witness_names
         .iter()
-        .map(|name| (name.as_str(), vec![]))
+        .map(|name| (name.clone(), vec![]))
         .collect();
+
+    let constants = constants
+        .into_iter()
+        .map(|(name, c)| (name.to_string(), c))
+        .collect::<Vec<_>>();
 
     // Even if we don't have all constants and witnesses, some backends will
     // still output the constraint serialization.
-    if let Some(backend) = prove_with {
+    let (proof, constraints_serialization) = if let Some(backend) = prove_with {
         let factory = backend.factory::<T>();
-        let backend = factory.create(degree);
+        let backend = factory.create(mut_analyzed.degree());
 
         backend.prove(
             &mut_analyzed,
@@ -268,8 +276,10 @@ fn compile<T: FieldElement, Q: QueryCallback<T>>(
             &witness_in_powdr_form,
             None,
             bname,
-        );
-    }
+        )
+    } else {
+        (None, None)
+    };
 
     let constants = constants
         .into_iter()
@@ -279,66 +289,9 @@ fn compile<T: FieldElement, Q: QueryCallback<T>>(
     CompilationResult {
         constants,
         witness: None,
+        proof,
+        constraints_serialization,
     }
-}
-
-pub fn write_proving_results_to_fs(
-    is_aggregation: bool,
-    result: (Option<Proof>, Option<String>),
-    output_dir: &Path,
-) {
-    let (proof, constraints_serialization) = result;
-    match proof {
-        Some(proof) => {
-            let fname = if is_aggregation {
-                "proof_aggr.bin"
-            } else {
-                "proof.bin"
-            };
-
-            // No need to bufferize the writing, because we write the whole
-            // proof in one call.
-            let mut proof_file = fs::File::create(output_dir.join(fname)).unwrap();
-            proof_file.write_all(&proof).unwrap();
-            log::info!("Wrote {fname}.");
-        }
-        None => log::warn!("No proof was generated"),
-    }
-
-    match constraints_serialization {
-        Some(json) => {
-            let mut file = fs::File::create(output_dir.join("constraints.json")).unwrap();
-            file.write_all(json.as_bytes()).unwrap();
-            log::info!("Wrote constraints.json.");
-        }
-        None => log::warn!("Constraints were not JSON serialized"),
-    }
-}
-
-fn write_constants_to_fs<T: FieldElement>(
-    constants: &[(&str, Vec<T>)],
-    output_dir: &Path,
-    degree: DegreeType,
-) {
-    write_polys_file(
-        &mut BufWriter::new(&mut fs::File::create(output_dir.join("constants.bin")).unwrap()),
-        degree,
-        constants,
-    );
-    log::info!("Wrote constants.bin.");
-}
-
-fn write_commits_to_fs<T: FieldElement>(
-    commits: &[(&str, Vec<T>)],
-    output_dir: &Path,
-    degree: DegreeType,
-) {
-    write_polys_file(
-        &mut BufWriter::new(&mut fs::File::create(output_dir.join("commits.bin")).unwrap()),
-        degree,
-        commits,
-    );
-    log::info!("Wrote commits.bin.");
 }
 
 #[allow(clippy::print_stdout)]

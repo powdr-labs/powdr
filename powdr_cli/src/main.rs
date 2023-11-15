@@ -2,13 +2,14 @@
 
 mod util;
 
-use backend::{Backend, BackendType};
+use backend::{Backend, BackendType, Proof};
 use clap::{CommandFactory, Parser, Subcommand};
 use compiler::util::{read_poly_set, FixedPolySet, WitnessPolySet};
-use compiler::{compile_asm_string, compile_pil_or_asm, write_proving_results_to_fs};
+use compiler::{compile_asm_string, compile_pil_or_asm, CompilationResult};
 use env_logger::fmt::Color;
 use env_logger::{Builder, Target};
 use log::LevelFilter;
+use number::write_polys_file;
 use number::{read_polys_csv_file, write_polys_csv_file, CsvRenderMode};
 use number::{Bn254Field, FieldElement, GoldilocksField};
 use riscv::{compile_riscv_asm, compile_rust};
@@ -293,6 +294,7 @@ fn main() -> Result<(), io::Error> {
     }
 }
 
+#[allow(clippy::print_stderr)]
 fn run_command(command: Commands) {
     match command {
         Commands::Rust {
@@ -521,15 +523,29 @@ fn compile_with_csv_export<T: FieldElement>(
     let (strings, values): (Vec<_>, Vec<_>) = external_witness_values.into_iter().unzip();
     let external_witness_values = strings.iter().map(AsRef::as_ref).zip(values).collect();
 
+    let output_dir = Path::new(&output_directory);
     let result = compile_pil_or_asm::<T>(
         &file,
         split_inputs(&inputs),
-        Path::new(&output_directory),
+        output_dir,
         force,
-        prove_with,
+        prove_with.clone(),
         external_witness_values,
         bname,
     )?;
+
+    if let Some(ref compilation_result) = result {
+        serialize_result_witness(output_dir, compilation_result);
+
+        if let Some(_backend) = prove_with {
+            write_proving_results_to_fs(
+                false,
+                &compilation_result.proof,
+                &compilation_result.constraints_serialization,
+                output_dir,
+            );
+        }
+    }
 
     if export_csv {
         // Compilation result is None if the ASM file has not been compiled
@@ -600,19 +616,77 @@ fn read_and_prove<T: FieldElement>(
             .unwrap();
         buf
     });
+    let is_aggr = proof.is_some();
 
-    write_proving_results_to_fs(
-        proof.is_some(),
-        backend.prove(&pil, &fixed.0, &witness.0, proof, None),
-        dir,
-    );
+    let (proof, constraints_serialization) = backend.prove(&pil, &fixed.0, &witness.0, proof, None);
+    write_proving_results_to_fs(is_aggr, &proof, &constraints_serialization, dir);
 }
 
+#[allow(clippy::print_stdout)]
 fn optimize_and_output<T: FieldElement>(file: &str) {
     println!(
         "{}",
         pilopt::optimize(compiler::analyze_pil::<T>(Path::new(file)))
     );
+}
+
+fn serialize_result_witness<T: FieldElement>(output_dir: &Path, results: &CompilationResult<T>) {
+    write_constants_to_fs(&results.constants, output_dir);
+    let witness = results.witness.as_ref().unwrap();
+    write_commits_to_fs(witness, output_dir);
+}
+
+fn write_constants_to_fs<T: FieldElement>(constants: &[(String, Vec<T>)], output_dir: &Path) {
+    let to_write = output_dir.join("constants.bin");
+    write_polys_file(
+        &mut BufWriter::new(&mut fs::File::create(&to_write).unwrap()),
+        constants,
+    );
+    log::info!("Wrote {}.", to_write.display());
+}
+
+fn write_commits_to_fs<T: FieldElement>(commits: &[(String, Vec<T>)], output_dir: &Path) {
+    let to_write = output_dir.join("commits.bin");
+    write_polys_file(
+        &mut BufWriter::new(&mut fs::File::create(&to_write).unwrap()),
+        commits,
+    );
+    log::info!("Wrote {}.", to_write.display());
+}
+
+fn write_proving_results_to_fs(
+    is_aggregation: bool,
+    proof: &Option<Proof>,
+    constraints_serialization: &Option<String>,
+    output_dir: &Path,
+) {
+    match proof {
+        Some(proof) => {
+            let fname = if is_aggregation {
+                "proof_aggr.bin"
+            } else {
+                "proof.bin"
+            };
+
+            // No need to bufferize the writing, because we write the whole
+            // proof in one call.
+            let to_write = output_dir.join(fname);
+            let mut proof_file = fs::File::create(&to_write).unwrap();
+            proof_file.write_all(proof).unwrap();
+            log::info!("Wrote {}.", to_write.display());
+        }
+        None => log::warn!("No proof was generated"),
+    }
+
+    match constraints_serialization {
+        Some(json) => {
+            let to_write = output_dir.join("constraints.json");
+            let mut file = fs::File::create(&to_write).unwrap();
+            file.write_all(json.as_bytes()).unwrap();
+            log::info!("Wrote {}.", to_write.display());
+        }
+        None => log::warn!("Constraints were not JSON serialized"),
+    }
 }
 
 #[cfg(test)]

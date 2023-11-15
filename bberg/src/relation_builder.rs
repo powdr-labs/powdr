@@ -228,7 +228,6 @@ fn craft_expression<T: FieldElement>(
     match expr {
         Expression::Number(n) => (1, format!("FF({})", n.to_arbitrary_integer())),
         Expression::Reference(polyref) => {
-            assert_eq!(polyref.index, None);
             let mut poly_name = polyref.name.replace('.', "_").to_string();
             let mut degree = 1;
             if polyref.next {

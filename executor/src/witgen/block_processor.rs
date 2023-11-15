@@ -5,10 +5,10 @@ use number::FieldElement;
 
 use super::{
     data_structures::finalizable_data::FinalizableData,
-    processor::{Left, OuterQuery, Processor, WithCalldata, WithoutCalldata},
+    processor::{OuterQuery, Processor},
     rows::RowFactory,
     sequence_iterator::{Action, ProcessingSequenceIterator, SequenceStep},
-    Constraints, EvalError, FixedData, MutableState, QueryCallback,
+    EvalError, EvalValue, FixedData, IncompleteCause, MutableState, QueryCallback,
 };
 
 /// A basic processor that knows how to determine a unique satisfying witness
@@ -17,13 +17,11 @@ use super::{
 /// - `'a`: The duration of the entire witness generation (e.g. references to identities)
 /// - `'b`: The duration of this machine's call (e.g. the mutable references of the other machines)
 /// - `'c`: The duration of this Processor's lifetime (e.g. the reference to the identity processor)
-pub struct BlockProcessor<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>, CalldataAvailable> {
-    processor: Processor<'a, 'b, 'c, T, Q, CalldataAvailable>,
+pub struct BlockProcessor<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> {
+    processor: Processor<'a, 'b, 'c, T, Q>,
 }
 
-impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>>
-    BlockProcessor<'a, 'b, 'c, T, Q, WithoutCalldata>
-{
+impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> BlockProcessor<'a, 'b, 'c, T, Q> {
     pub fn new(
         row_offset: u64,
         data: FinalizableData<'a, T>,
@@ -48,32 +46,17 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>>
     pub fn with_outer_query(
         self,
         outer_query: OuterQuery<'a, T>,
-    ) -> BlockProcessor<'a, 'b, 'c, T, Q, WithCalldata> {
+    ) -> BlockProcessor<'a, 'b, 'c, T, Q> {
         let processor = self.processor.with_outer_query(outer_query);
-        BlockProcessor::<_, _, WithCalldata> { processor }
+        Self { processor }
     }
 
-    pub fn finish(self) -> FinalizableData<'a, T> {
-        self.processor.finish()
-    }
-}
-
-impl<'a, 'b, T: FieldElement, Q: QueryCallback<T>> BlockProcessor<'a, 'b, '_, T, Q, WithCalldata> {
-    /// Destroys itself, returns the data and updated left-hand side of the outer query (if available).
-    pub fn finish(self) -> (FinalizableData<'a, T>, Left<'a, T>) {
-        self.processor.finish()
-    }
-}
-
-impl<'a, 'b, T: FieldElement, Q: QueryCallback<T>, CalldataAvailable>
-    BlockProcessor<'a, 'b, '_, T, Q, CalldataAvailable>
-{
     /// Figures out unknown values.
     /// Returns the assignments to outer query columns.
     pub fn solve(
         &mut self,
         sequence_iterator: &mut ProcessingSequenceIterator,
-    ) -> Result<Constraints<&'a AlgebraicReference, T>, EvalError<T>> {
+    ) -> Result<EvalValue<&'a AlgebraicReference, T>, EvalError<T>> {
         let mut outer_assignments = vec![];
 
         while let Some(SequenceStep { row_delta, action }) = sequence_iterator.next() {
@@ -92,7 +75,18 @@ impl<'a, 'b, T: FieldElement, Q: QueryCallback<T>, CalldataAvailable>
             };
             sequence_iterator.report_progress(progress);
         }
-        Ok(outer_assignments)
+
+        match self.processor.finshed_outer_query() {
+            true => Ok(EvalValue::complete(outer_assignments)),
+            false => Ok(EvalValue::incomplete_with_constraints(
+                outer_assignments,
+                IncompleteCause::BlockMachineLookupIncomplete,
+            )),
+        }
+    }
+
+    pub fn finish(self) -> FinalizableData<'a, T> {
+        self.processor.finish()
     }
 }
 
@@ -118,7 +112,7 @@ mod tests {
         },
     };
 
-    use super::{BlockProcessor, WithoutCalldata};
+    use super::BlockProcessor;
 
     fn name_to_poly_id<T: FieldElement>(fixed_data: &FixedData<T>) -> BTreeMap<String, PolyID> {
         let mut name_to_poly_id = BTreeMap::new();
@@ -135,11 +129,11 @@ mod tests {
     fn do_with_processor<T: FieldElement, Q: QueryCallback<T>, R>(
         src: &str,
         mut query_callback: Q,
-        f: impl Fn(BlockProcessor<T, Q, WithoutCalldata>, BTreeMap<String, PolyID>, u64, usize) -> R,
+        f: impl Fn(BlockProcessor<T, Q>, BTreeMap<String, PolyID>, u64, usize) -> R,
     ) -> R {
         let analyzed = analyze_string(src);
-        let (constants, degree) = generate(&analyzed);
-        let fixed_data = FixedData::new(&analyzed, degree, &constants, vec![]);
+        let constants = generate(&analyzed);
+        let fixed_data = FixedData::new(&analyzed, &constants, vec![]);
 
         // No global range constraints
         let global_range_constraints = GlobalConstraints {
@@ -185,7 +179,7 @@ mod tests {
         f(
             processor,
             name_to_poly_id(&fixed_data),
-            degree,
+            analyzed.degree(),
             identities.len(),
         )
     }
@@ -200,6 +194,7 @@ mod tests {
                     DefaultSequenceIterator::new(degree as usize - 2, num_identities, None),
                 );
                 let outer_updates = processor.solve(&mut sequence_iterator).unwrap();
+                assert!(outer_updates.is_complete());
                 assert!(outer_updates.is_empty());
 
                 let data = processor.finish();

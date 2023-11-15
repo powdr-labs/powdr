@@ -1,9 +1,8 @@
-# 1 "sources/srl.S"
-# 1 "<built-in>"
-# 1 "<command-line>"
-# 31 "<command-line>"
+# 0 "sources/srl.S"
+# 0 "<built-in>"
+# 0 "<command-line>"
 # 1 "/usr/include/stdc-predef.h" 1 3 4
-# 32 "<command-line>" 2
+# 0 "<command-line>" 2
 # 1 "sources/srl.S"
 # See LICENSE for license details.
 
@@ -80,7 +79,7 @@
 # 12 "sources/srl.S" 2
 
 
-.globl __runtime_start; __runtime_start:
+.globl __runtime_start; __runtime_start: la x10,__return_pointer; sw x1,0(x10); li x10,0
 
   #-------------------------------------------------------------
   # Arithmetic tests
@@ -147,12 +146,12 @@
   test_42: li x10, 42; ebreak; srl x1, x0, x0;; li x29, 0; li x28, 42; bne x1, x29, fail;;
   test_43: li x10, 43; ebreak; li x1, 1024; li x2, 2048; srl x0, x1, x2;; li x29, 0; li x28, 43; bne x0, x29, fail;;
 
-  bne x0, x28, pass; fail: unimp;; pass: ___pass: j ___pass;
+  bne x0, x28, pass; fail: unimp;; pass: la x10,__return_pointer; lw x1,0(x10); ret;
 
 
 
   .data
-.balign 4;
+.balign 4; __return_pointer: .word 0;
 
  
 

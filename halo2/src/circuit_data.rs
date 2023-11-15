@@ -7,13 +7,13 @@ use number::{AbstractNumberType, FieldElement};
 use polyexen::expr::{Column, ColumnKind};
 
 pub(crate) struct CircuitData<'a, T> {
-    pub(crate) fixed: Vec<(&'a str, Vec<T>)>,
-    pub(crate) witness: &'a [(&'a str, Vec<T>)],
+    pub(crate) fixed: Vec<(String, Vec<T>)>,
+    pub(crate) witness: &'a [(String, Vec<T>)],
     columns: HashMap<String, Column>,
 }
 
 impl<'a, T: FieldElement> CircuitData<'a, T> {
-    pub fn from(fixed: Vec<(&'a str, Vec<T>)>, witness: &'a [(&'a str, Vec<T>)]) -> Self {
+    pub fn from(fixed: Vec<(String, Vec<T>)>, witness: &'a [(String, Vec<T>)]) -> Self {
         if !fixed.is_empty() && !witness.is_empty() {
             assert_eq!(
                 fixed.get(0).unwrap().1.len(),
@@ -58,7 +58,7 @@ impl<'a, T: FieldElement> CircuitData<'a, T> {
     }
 
     pub fn len(&self) -> usize {
-        self.fixed.get(0).unwrap().1.len()
+        self.witness.get(0).unwrap().1.len()
     }
 
     pub fn insert_constant<IT: IntoIterator<Item = T>>(
@@ -68,7 +68,7 @@ impl<'a, T: FieldElement> CircuitData<'a, T> {
     ) -> Column {
         let values = values.into_iter().collect::<Vec<_>>();
         assert_eq!(values.len(), self.len());
-        self.fixed.push((name, values));
+        self.fixed.push((name.to_string(), values));
         let column = Column {
             kind: ColumnKind::Fixed,
             index: self.fixed.len() - 1,

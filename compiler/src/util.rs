@@ -31,17 +31,18 @@ impl PolySet for WitnessPolySet {
     }
 }
 
-pub fn read_poly_set<'a, P: PolySet, T: FieldElement>(
-    pil: &'a Analyzed<T>,
+pub fn read_poly_set<P: PolySet, T: FieldElement>(
+    pil: &Analyzed<T>,
     dir: &Path,
-) -> (Vec<(&'a str, Vec<T>)>, DegreeType) {
-    let fixed_columns: Vec<&str> = P::get_polys(pil)
+) -> (Vec<(String, Vec<T>)>, DegreeType) {
+    let column_names: Vec<String> = P::get_polys(pil)
         .iter()
-        .map(|(poly, _)| poly.absolute_name.as_str())
+        .flat_map(|(poly, _)| poly.array_elements())
+        .map(|(name, _id)| name)
         .collect();
 
     read_polys_file(
         &mut BufReader::new(File::open(dir.join(P::FILE_NAME)).unwrap()),
-        &fixed_columns,
+        &column_names,
     )
 }

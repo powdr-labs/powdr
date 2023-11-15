@@ -3,9 +3,8 @@ use std::cmp;
 use std::collections::HashMap;
 
 use ast::analyzed::{
-    AlgebraicBinaryOperator, AlgebraicExpression as Expression, AlgebraicReference,
-    AlgebraicUnaryOperator, Analyzed, IdentityKind, PolyID, PolynomialType, StatementIdentifier,
-    SymbolKind,
+    AlgebraicBinaryOperator, AlgebraicExpression as Expression, AlgebraicUnaryOperator, Analyzed,
+    IdentityKind, PolyID, PolynomialType, StatementIdentifier, SymbolKind,
 };
 use starky::types::{
     ConnectionIdentity, Expression as StarkyExpr, PermutationIdentity, PlookupIdentity,
@@ -59,12 +58,14 @@ pub fn export<T: FieldElement>(analyzed: &Analyzed<T>) -> PIL {
             StatementIdentifier::PublicDeclaration(name) => {
                 let pub_def = &analyzed.public_declarations[name];
                 let pub_ref = &pub_def.polynomial;
-                let (_, expr) = exporter.polynomial_reference_to_json(&AlgebraicReference {
-                    name: pub_ref.name.clone(),
-                    poly_id: pub_ref.poly_id.unwrap(),
-                    index: pub_ref.index,
-                    next: false,
-                });
+                let poly_id = pub_ref.poly_id.unwrap();
+                let (_, expr) = exporter.polynomial_reference_to_json(
+                    PolyID {
+                        id: poly_id.id + pub_def.array_index.unwrap_or_default() as u64,
+                        ..poly_id
+                    },
+                    false,
+                );
                 let id = publics.len();
                 publics.push(starky::types::Public {
                     polType: polynomial_reference_type_to_type(&expr.op).to_string(),
@@ -261,7 +262,9 @@ impl<'a, T: FieldElement> Exporter<'a, T> {
     /// returns the degree and the JSON value (intermediate polynomial IDs)
     fn expression_to_json(&self, expr: &Expression<T>) -> (u32, StarkyExpr) {
         match expr {
-            Expression::Reference(reference) => self.polynomial_reference_to_json(reference),
+            Expression::Reference(reference) => {
+                self.polynomial_reference_to_json(reference.poly_id, reference.next)
+            }
             Expression::PublicReference(name) => (
                 0,
                 StarkyExpr {
@@ -326,24 +329,19 @@ impl<'a, T: FieldElement> Exporter<'a, T> {
 
     fn polynomial_reference_to_json(
         &self,
-        AlgebraicReference {
-            name: _,
-            index,
-            poly_id: PolyID { id, ptype },
-            next,
-        }: &AlgebraicReference,
+        PolyID { id, ptype }: PolyID,
+        next: bool,
     ) -> (u32, StarkyExpr) {
-        let id = if *ptype == PolynomialType::Intermediate {
-            assert!(index.is_none());
-            self.intermediate_poly_expression_ids[id]
+        let id = if ptype == PolynomialType::Intermediate {
+            self.intermediate_poly_expression_ids[&id]
         } else {
-            id + index.unwrap_or_default()
+            id
         };
         let poly = StarkyExpr {
             id: Some(id as usize),
-            op: polynomial_reference_type_to_json_string(*ptype).to_string(),
+            op: polynomial_reference_type_to_json_string(ptype).to_string(),
             deg: 1,
-            next: Some(*next),
+            next: Some(next),
             ..DEFAULT_EXPR
         };
         (1, poly)

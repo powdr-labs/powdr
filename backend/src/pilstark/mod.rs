@@ -15,8 +15,8 @@ impl<T: FieldElement> BackendImpl<T> for PilStarkCli {
     fn prove(
         &self,
         pil: &Analyzed<T>,
-        _fixed: &[(&str, Vec<T>)],
-        _witness: &[(&str, Vec<T>)],
+        _fixed: &[(String, Vec<T>)],
+        _witness: &[(String, Vec<T>)],
         prev_proof: Option<Proof>,
         _bname: Option<String>,
     ) -> (Option<Proof>, Option<String>) {

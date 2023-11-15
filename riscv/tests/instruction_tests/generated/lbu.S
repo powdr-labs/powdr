@@ -79,7 +79,7 @@
 # 12 "sources/lbu.S" 2
 
 
-.globl __runtime_start; __runtime_start:
+.globl __runtime_start; __runtime_start: la x10,__return_pointer; sw x1,0(x10); li x10,0
 
   #-------------------------------------------------------------
   # Basic tests
@@ -107,7 +107,6 @@
 
   # Test with unaligned base
 
-  # TODO uncomment when we support unaligned memory access
   test_11: li x10, 11; ebreak; la x1, tdat; addi x1, x1, -6; lbu x3, 7(x1);; li x29, 0x00000000; li x28, 11; bne x3, x29, fail;
 
 
@@ -143,12 +142,12 @@
 
 
 
-  bne x0, x28, pass; fail: unimp;; pass: ___pass: j ___pass;
+  bne x0, x28, pass; fail: unimp;; pass: la x10,__return_pointer; lw x1,0(x10); ret;
 
 
 
   .data
-.balign 4;
+.balign 4; __return_pointer: .word 0;
 
  
 

@@ -1,9 +1,8 @@
-# 1 "sources/and.S"
-# 1 "<built-in>"
-# 1 "<command-line>"
-# 31 "<command-line>"
+# 0 "sources/and.S"
+# 0 "<built-in>"
+# 0 "<command-line>"
 # 1 "/usr/include/stdc-predef.h" 1 3 4
-# 32 "<command-line>" 2
+# 0 "<command-line>" 2
 # 1 "sources/and.S"
 # See LICENSE for license details.
 
@@ -80,7 +79,7 @@
 # 12 "sources/and.S" 2
 
 
-.globl __runtime_start; __runtime_start:
+.globl __runtime_start; __runtime_start: la x10,__return_pointer; sw x1,0(x10); li x10,0
 
   #-------------------------------------------------------------
   # Logical tests
@@ -126,12 +125,12 @@
   test_26: li x10, 26; ebreak; and x1, x0, x0;; li x29, 0; li x28, 26; bne x1, x29, fail;;
   test_27: li x10, 27; ebreak; li x1, 0x11111111; li x2, 0x22222222; and x0, x1, x2;; li x29, 0; li x28, 27; bne x0, x29, fail;;
 
-  bne x0, x28, pass; fail: unimp;; pass: ___pass: j ___pass;
+  bne x0, x28, pass; fail: unimp;; pass: la x10,__return_pointer; lw x1,0(x10); ret;
 
 
 
   .data
-.balign 4;
+.balign 4; __return_pointer: .word 0;
 
  
 

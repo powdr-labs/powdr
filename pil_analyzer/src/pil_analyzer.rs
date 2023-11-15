@@ -35,7 +35,7 @@ pub fn process_pil_file_contents<T: FieldElement>(contents: &str) -> Analyzed<T>
 #[derive(Default)]
 struct PILAnalyzer<T> {
     namespace: String,
-    polynomial_degree: DegreeType,
+    polynomial_degree: Option<DegreeType>,
     definitions: HashMap<String, (Symbol, Option<FunctionValueDefinition<T>>)>,
     public_declarations: HashMap<String, PublicDeclaration>,
     identities: Vec<Identity<Expression<T>>>,
@@ -80,6 +80,7 @@ impl<T: FieldElement> PILAnalyzer<T> {
         self.process_file_contents(&path, &contents);
     }
 
+    #[allow(clippy::print_stderr)]
     pub fn process_file_contents(&mut self, path: &Path, contents: &str) {
         let old_current_file = std::mem::take(&mut self.current_file);
         let old_line_starts = std::mem::take(&mut self.line_starts);
@@ -106,6 +107,7 @@ impl<T: FieldElement> PILAnalyzer<T> {
 
     pub fn condense(self) -> Analyzed<T> {
         condenser::condense(
+            self.polynomial_degree,
             self.definitions,
             self.public_declarations,
             &self.identities,
@@ -126,9 +128,14 @@ impl<T: FieldElement> PILAnalyzer<T> {
                     Some(FunctionDefinition::Expression(value)),
                 );
             }
-            PilStatement::PublicDeclaration(start, name, polynomial, index) => {
-                self.handle_public_declaration(self.to_source_ref(start), name, polynomial, index)
-            }
+            PilStatement::PublicDeclaration(start, name, polynomial, array_index, index) => self
+                .handle_public_declaration(
+                    self.to_source_ref(start),
+                    name,
+                    polynomial,
+                    array_index,
+                    index,
+                ),
             PilStatement::PolynomialConstantDeclaration(start, polynomials) => self
                 .handle_polynomial_declarations(
                     self.to_source_ref(start),
@@ -312,7 +319,15 @@ impl<T: FieldElement> PILAnalyzer<T> {
 
     fn handle_namespace(&mut self, name: String, degree: ::ast::parsed::Expression<T>) {
         // TODO: the polynomial degree should be handled without going through a field element. This requires having types in Expression
-        self.polynomial_degree = self.evaluate_expression(degree).unwrap().to_degree();
+        let namespace_degree = self.evaluate_expression(degree).unwrap().to_degree();
+        if let Some(degree) = self.polynomial_degree {
+            assert_eq!(
+                degree, namespace_degree,
+                "all namespaces must have the same degree"
+            );
+        } else {
+            self.polynomial_degree = Some(namespace_degree);
+        }
         self.namespace = name;
     }
 
@@ -361,7 +376,10 @@ impl<T: FieldElement> PILAnalyzer<T> {
             id,
             source,
             absolute_name,
-            degree: self.polynomial_degree,
+            degree: self.polynomial_degree.unwrap_or_else(|| {
+                assert!(matches!(symbol_kind, SymbolKind::Constant()));
+                0
+            }),
             kind: symbol_kind,
             length,
         };
@@ -392,12 +410,12 @@ impl<T: FieldElement> PILAnalyzer<T> {
                 )
             }
             FunctionDefinition::Array(value) => {
-                let size = value.solve(self.polynomial_degree);
+                let size = value.solve(self.polynomial_degree.unwrap());
                 let expression =
                     ExpressionProcessor::new(self).process_array_expression(value, size);
                 assert_eq!(
                     expression.iter().map(|e| e.size()).sum::<DegreeType>(),
-                    self.polynomial_degree
+                    self.polynomial_degree.unwrap()
                 );
                 FunctionValueDefinition::Array(expression)
             }
@@ -416,18 +434,26 @@ impl<T: FieldElement> PILAnalyzer<T> {
         &mut self,
         source: SourceRef,
         name: String,
-        poly: ::ast::parsed::NamespacedPolynomialReference<T>,
-        index: ::ast::parsed::Expression<T>,
+        poly: parsed::NamespacedPolynomialReference,
+        array_index: Option<parsed::Expression<T>>,
+        index: parsed::Expression<T>,
     ) {
         let id = self.public_declarations.len() as u64;
+        let polynomial =
+            ExpressionProcessor::new(self).process_namespaced_polynomial_reference(poly);
+        let array_index = array_index.map(|i| {
+            let index = self.evaluate_expression(i).unwrap().to_degree();
+            assert!(index <= usize::MAX as u64);
+            index as usize
+        });
         self.public_declarations.insert(
             name.to_string(),
             PublicDeclaration {
                 id,
                 source,
                 name: name.to_string(),
-                polynomial: ExpressionProcessor::new(self)
-                    .process_namespaced_polynomial_reference(poly),
+                polynomial,
+                array_index,
                 index: self.evaluate_expression(index).unwrap().to_degree(),
             },
         );
@@ -537,10 +563,9 @@ impl<'a, T: FieldElement> ExpressionProcessor<'a, T> {
         use parsed::Expression as PExpression;
         match expr {
             PExpression::Reference(poly) => {
-                if poly.namespace().is_none() && self.local_variables.contains_key(poly.name()) {
-                    let id = self.local_variables[poly.name()];
-                    assert!(poly.index().is_none());
-                    Expression::Reference(Reference::LocalVar(id, poly.name().to_string()))
+                if poly.namespace.is_none() && self.local_variables.contains_key(&poly.name) {
+                    let id = self.local_variables[&poly.name];
+                    Expression::Reference(Reference::LocalVar(id, poly.name.to_string()))
                 } else {
                     Expression::Reference(Reference::Poly(
                         self.process_namespaced_polynomial_reference(poly),
@@ -567,6 +592,12 @@ impl<'a, T: FieldElement> ExpressionProcessor<'a, T> {
             ),
             PExpression::UnaryOperation(op, value) => {
                 Expression::UnaryOperation(op, Box::new(self.process_expression(*value)))
+            }
+            PExpression::IndexAccess(index_access) => {
+                Expression::IndexAccess(parsed::IndexAccess {
+                    array: Box::new(self.process_expression(*index_access.array)),
+                    index: Box::new(self.process_expression(*index_access.index)),
+                })
             }
             PExpression::FunctionCall(c) => Expression::FunctionCall(parsed::FunctionCall {
                 id: self.analyzer.namespaced_ref_to_absolute(&None, &c.id),
@@ -619,20 +650,14 @@ impl<'a, T: FieldElement> ExpressionProcessor<'a, T> {
 
     pub fn process_namespaced_polynomial_reference(
         &mut self,
-        poly: ::ast::parsed::NamespacedPolynomialReference<T>,
+        poly: ::ast::parsed::NamespacedPolynomialReference,
     ) -> PolynomialReference {
-        let index = poly
-            .index()
-            .as_ref()
-            .map(|i| self.analyzer.evaluate_expression(*i.clone()).unwrap())
-            .map(|i| i.to_degree());
         let name = self
             .analyzer
-            .namespaced_ref_to_absolute(poly.namespace(), poly.name());
+            .namespaced_ref_to_absolute(&poly.namespace, &poly.name);
         PolynomialReference {
             name,
             poly_id: None,
-            index,
         }
     }
 }
@@ -827,5 +852,39 @@ namespace N(65536);
 "#;
         let formatted = process_pil_file_contents::<GoldilocksField>(input).to_string();
         assert_eq!(formatted, expected);
+    }
+
+    #[test]
+    fn reparse_arrays() {
+        let input = r#"namespace N(16);
+    col witness y[3];
+    (N.y[1] - 2) = 0;
+    (N.y[2]' - 2) = 0;
+    public out = N.y[1](2);
+"#;
+        let formatted = process_pil_file_contents::<GoldilocksField>(input).to_string();
+        assert_eq!(formatted, input);
+    }
+
+    #[test]
+    #[should_panic = "Arrays cannot be used as a whole in this context"]
+    fn no_direct_array_references() {
+        let input = r#"namespace N(16);
+    col witness y[3];
+    (N.y - 2) = 0;
+"#;
+        let formatted = process_pil_file_contents::<GoldilocksField>(input).to_string();
+        assert_eq!(formatted, input);
+    }
+
+    #[test]
+    #[should_panic = "Array access to index 3 for array of length 3"]
+    fn no_out_of_bounds() {
+        let input = r#"namespace N(16);
+    col witness y[3];
+    (N.y[3] - 2) = 0;
+"#;
+        let formatted = process_pil_file_contents::<GoldilocksField>(input).to_string();
+        assert_eq!(formatted, input);
     }
 }

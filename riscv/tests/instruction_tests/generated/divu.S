@@ -79,7 +79,7 @@
 # 12 "sources/divu.S" 2
 
 
-.globl __runtime_start; __runtime_start:
+.globl __runtime_start; __runtime_start: la x10,__return_pointer; sw x1,0(x10); li x10,0
 
   #-------------------------------------------------------------
   # Arithmetic tests
@@ -97,12 +97,12 @@
   test_9: li x10, 9; ebreak; li x1, 1; li x2, 0; divu x3, x1, x2;; li x29, -1; li x28, 9; bne x3, x29, fail;;
   test_10: li x10, 10; ebreak; li x1, 0; li x2, 0; divu x3, x1, x2;; li x29, -1; li x28, 10; bne x3, x29, fail;;
 
-  bne x0, x28, pass; fail: unimp;; pass: ___pass: j ___pass;
+  bne x0, x28, pass; fail: unimp;; pass: la x10,__return_pointer; lw x1,0(x10); ret;
 
 
 
   .data
-.balign 4;
+.balign 4; __return_pointer: .word 0;
 
  
 

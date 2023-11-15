@@ -79,7 +79,7 @@
 # 12 "sources/amoadd_w.S" 2
 
 
-.globl __runtime_start; __runtime_start:
+.globl __runtime_start; __runtime_start: la x10,__return_pointer; sw x1,0(x10); li x10,0
 
   test_2: li x10, 2; ebreak; li a0, 0xffffffff80000000; li a1, 0xfffffffffffff800; la a3, amo_operand; sw a0, 0(a3); amoadd.w a4, a1, 0(a3);; li x29, 0xffffffff80000000; li x28, 2; bne a4, x29, fail;
 
@@ -99,12 +99,12 @@
 
   test_5: li x10, 5; ebreak; lw a5, 0(a3); li x29, 0xfffffffffffff800; li x28, 5; bne a5, x29, fail;
 
-  bne x0, x28, pass; fail: unimp;; pass: ___pass: j ___pass;
+  bne x0, x28, pass; fail: unimp;; pass: la x10,__return_pointer; lw x1,0(x10); ret;
 
 
 
   .data
-.balign 4;
+.balign 4; __return_pointer: .word 0;
 
  
 

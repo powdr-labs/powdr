@@ -86,7 +86,10 @@ PolynomialDefinition: PilStatement<T> = {
 }
 
 PublicDeclaration: PilStatement<T> = {
-    <@L> "public" <Identifier> "=" <NamespacedPolynomialReference> "(" <Expression> ")" => PilStatement::PublicDeclaration(<>)
+    <@L> "public" <Identifier> "="
+        <NamespacedPolynomialReference>
+        <("[" <Expression> "]")?>
+        "(" <Expression> ")" => PilStatement::PublicDeclaration(<>)
 }
 
 PolynomialConstantDeclaration: PilStatement<T> = {
@@ -471,8 +474,9 @@ PostfixUnaryOp: UnaryOperator = {
 }
 
 Term: Box<Expression<T>> = {
+    IndexAccess => Box::new(Expression::IndexAccess(<>)),
     FunctionCall => Box::new(Expression::FunctionCall(<>)),
-    ConstantIdentifier => Box::new(Expression::Reference(PolynomialReference::new(<>).single().local())),
+    ConstantIdentifier => Box::new(Expression::Reference(NamespacedPolynomialReference{namespace: None, name: <>})),
     NamespacedPolynomialReference => Box::new(Expression::Reference(<>)),
     PublicReference => Box::new(Expression::PublicReference(<>)),
     FieldElement => Box::new(Expression::Number(<>)),
@@ -484,22 +488,16 @@ Term: Box<Expression<T>> = {
     "${" <BoxedExpression> "}" => Box::new(Expression::FreeInput(<>))
 }
 
+IndexAccess: IndexAccess<T> = {
+    <array:Term> "[" <index:BoxedExpression> "]" => IndexAccess{<>},
+}
+
 FunctionCall: FunctionCall<T> = {
     <id:Identifier> "(" <arguments:ExpressionList> ")" => FunctionCall {<>},
 }
 
-NamespacedPolynomialReference: NamespacedPolynomialReference<T> = {
-    <namespace:( <Identifier> "." )?>
-    <pol:IndexedPolynomialReference> => pol.with_namespace(namespace),
-}
-
-IndexedPolynomialReference: IndexedPolynomialReference<T> = {
-    <pol:PolynomialReference>
-    <index:( "[" <Expression> "]" )?> => pol.with_index(index),
-}
-
-PolynomialReference: PolynomialReference = {
-    <name:Identifier> => PolynomialReference::new(name),
+NamespacedPolynomialReference: NamespacedPolynomialReference = {
+    <namespace:( <Identifier> "." )?> <name:Identifier> => NamespacedPolynomialReference{<>},
 }
 
 PublicReference: String = {

@@ -1,9 +1,8 @@
-# 1 "sources/addi.S"
-# 1 "<built-in>"
-# 1 "<command-line>"
-# 31 "<command-line>"
+# 0 "sources/addi.S"
+# 0 "<built-in>"
+# 0 "<command-line>"
 # 1 "/usr/include/stdc-predef.h" 1 3 4
-# 32 "<command-line>" 2
+# 0 "<command-line>" 2
 # 1 "sources/addi.S"
 # See LICENSE for license details.
 
@@ -80,7 +79,7 @@
 # 12 "sources/addi.S" 2
 
 
-.globl __runtime_start; __runtime_start:
+.globl __runtime_start; __runtime_start: la x10,__return_pointer; sw x1,0(x10); li x10,0
 
   #-------------------------------------------------------------
   # Arithmetic tests
@@ -128,12 +127,12 @@
   test_24: li x10, 24; ebreak; addi x1, x0, ((32) | (-(((32) >> 11) & 1) << 11));; li x29, 32; li x28, 24; bne x1, x29, fail;;
   test_25: li x10, 25; ebreak; li x1, 33; addi x0, x1, ((50) | (-(((50) >> 11) & 1) << 11));; li x29, 0; li x28, 25; bne x0, x29, fail;;
 
-  bne x0, x28, pass; fail: unimp;; pass: ___pass: j ___pass;
+  bne x0, x28, pass; fail: unimp;; pass: la x10,__return_pointer; lw x1,0(x10); ret;
 
 
 
   .data
-.balign 4;
+.balign 4; __return_pointer: .word 0;
 
  
 

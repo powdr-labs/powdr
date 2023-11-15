@@ -17,8 +17,8 @@ impl<T: FieldElement> BackendImpl<T> for BBergCodegen {
     fn prove(
         &self,
         pil: &Analyzed<T>,
-        fixed: &[(&str, Vec<T>)],
-        witness: &[(&str, Vec<T>)],
+        fixed: &[(String, Vec<T>)],
+        witness: &[(String, Vec<T>)],
         _prev_proof: Option<Proof>,
         bname: Option<String>,
     ) -> (Option<Proof>, Option<String>) {
@@ -53,8 +53,8 @@ impl<T: FieldElement> BackendImpl<T> for BBergMock {
     fn prove(
         &self,
         _pil: &Analyzed<T>,
-        _fixed: &[(&str, Vec<T>)],
-        _witness: &[(&str, Vec<T>)],
+        _fixed: &[(String, Vec<T>)],
+        _witness: &[(String, Vec<T>)],
         prev_proof: Option<Proof>,
         _bname: Option<String>,
     ) -> (Option<Proof>, Option<String>) {

@@ -79,7 +79,7 @@
 # 12 "sources/lrsc.S" 2
 
 
-.globl __runtime_start; __runtime_start:
+.globl __runtime_start; __runtime_start: la x10,__return_pointer; sw x1,0(x10); li x10,0
 
  # get a unique core id
 la a0, coreid
@@ -146,12 +146,12 @@ test_5: li x10, 5; ebreak; lw a0, foo(x0); slli a1, a3, 10 - 1; aae:sub a0, a0, 
  # make sure that sc-after-successful-sc fails.
 test_6: li x10, 6; ebreak; la a0, foo; aaf:lr.w a1, (a0); sc.w a1, x0, (a0); bnez a1, aaf; sc.w a1, x0, (a0); sc.w a2, x0, (a0); add a1, a1, a2; li x29, 2; li x28, 6; bne a1, x29, fail;
 # 97 "sources/lrsc.S"
-bne x0, x28, pass; fail: unimp;; pass: ___pass: j ___pass;
+bne x0, x28, pass; fail: unimp;; pass: la x10,__return_pointer; lw x1,0(x10); ret;
 
 
 
   .data
-.balign 4;
+.balign 4; __return_pointer: .word 0;
 
  
 

@@ -236,6 +236,16 @@ public out = y(%last_row);"#;
         }
 
         #[test]
+        fn reparse_arrays() {
+            let input = "pol commit y[3];\n(y - 2) = 0;\n(y[2] - 2) = 0;\npublic out = y[1](2);";
+            let printed = format!(
+                "{}",
+                parse::<GoldilocksField>(Some("input"), input).unwrap()
+            );
+            assert_eq!(input.trim(), printed.trim());
+        }
+
+        #[test]
         fn reparse_strings_and_tuples() {
             let input = r#"constant %N = ("abc", 3);"#;
             let printed = format!(

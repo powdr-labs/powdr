@@ -15,9 +15,9 @@ use crate::verifier_builder::VerifierBuilder;
 
 pub(crate) fn analyzed_to_cpp<F: FieldElement>(
     analyzed: &Analyzed<F>,
-    fixed: &[(&str, Vec<F>)],
-    witness: &[(&str, Vec<F>)],
-    name: Option<String>,
+    fixed: &[(String, Vec<F>)],
+    witness: &[(String, Vec<F>)],
+    bname: Option<String>,
 ) -> BBFiles {
     let file_name: &str = &name.unwrap_or("Example".to_owned());
 
@@ -102,8 +102,8 @@ pub(crate) fn analyzed_to_cpp<F: FieldElement>(
 }
 
 fn get_all_col_names<F: FieldElement>(
-    fixed: &[(&str, Vec<F>)],
-    witness: &[(&str, Vec<F>)],
+    fixed: &[(String, Vec<F>)],
+    witness: &[(String, Vec<F>)],
     to_be_shifted: &[String],
 ) -> (
     Vec<String>,

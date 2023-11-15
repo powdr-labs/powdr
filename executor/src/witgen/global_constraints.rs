@@ -373,7 +373,7 @@ namespace Global(2**20);
     { D } in { SHIFTED };
 ";
         let analyzed = pil_analyzer::analyze_string::<GoldilocksField>(pil_source);
-        let (constants, _) = crate::constant_evaluator::generate(&analyzed);
+        let constants = crate::constant_evaluator::generate(&analyzed);
         let fixed_polys = (0..constants.len())
             .map(|i| constant_poly_id(i as u64))
             .collect::<Vec<_>>();
