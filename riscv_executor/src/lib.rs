@@ -731,22 +731,3 @@ fn to_u32<F: FieldElement>(val: &F) -> Option<u32> {
         }
     })
 }
-
-#[cfg(test)]
-mod test {
-    use crate::execute;
-    use number::GoldilocksField;
-    use std::fs;
-
-    #[test]
-    fn execute_from_file() {
-        println!("{}", std::env::current_dir().unwrap().to_string_lossy());
-
-        println!("Loading...");
-        let asm = fs::read("../tmp/evm.asm").unwrap();
-        println!("Validating UTF-8...");
-        let asm_str = std::str::from_utf8(&asm).unwrap();
-
-        execute::<GoldilocksField>(asm_str, &[]);
-    }
-}
