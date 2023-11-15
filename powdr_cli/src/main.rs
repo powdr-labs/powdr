@@ -608,11 +608,15 @@ fn rust_continuations<F: FieldElement>(
         total_mem_access
     );
 
-    for (accesses_memory, addr) in (&memory_accesses[start..])
-        .iter()
-        .zip((&witness_map["main.Y"][start..]).iter())
-    {
+    for (i, accesses_memory) in (&memory_accesses[start..]).iter().enumerate() {
         if *accesses_memory {
+            // println!("{}:", start + i);
+            // for j in 0..8 {
+            //     println!("  {}: {}", j - 4, &witness_map["main.Y"][start + i - 4 + j])
+            // }
+            // TODO: Not sure why we have to subtract -1...
+            let addr = &witness_map["main.Y"][start + i - 1];
+            println!("{}: {}", start + i, addr);
             let digits = addr.to_arbitrary_integer().to_u32_digits();
             let addr = if digits.is_empty() { 0 } else { digits[0] };
             accessed_pages.insert(addr >> 10);
