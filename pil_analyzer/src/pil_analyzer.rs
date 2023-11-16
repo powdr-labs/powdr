@@ -834,7 +834,7 @@ namespace N(65536);
     }
 
     #[test]
-    #[should_panic = "Arrays cannot be used as a whole in this context"]
+    #[should_panic = "Operator - not supported on types"]
     fn no_direct_array_references() {
         let input = r#"namespace N(16);
     col witness y[3];
@@ -845,7 +845,7 @@ namespace N(65536);
     }
 
     #[test]
-    #[should_panic = "Array access to index 3 for array of length 3"]
+    #[should_panic = "Tried to access element 3 of array of size 3."]
     fn no_out_of_bounds() {
         let input = r#"namespace N(16);
     col witness y[3];
@@ -864,5 +864,75 @@ namespace N(65536);
 "#;
         let formatted = process_pil_file_contents::<GoldilocksField>(input).to_string();
         assert_eq!(formatted, input);
+    }
+
+    #[test]
+    fn symbolic_functions() {
+        let input = r#"namespace N(16);
+    let last_row = 15;
+    let ISLAST = |i| match i { last_row => 1, _ => 0 };
+    let x;
+    let y;
+    let constrain_equal_expr = |A, B| A - B;
+    let on_regular_row = |cond| (1 - ISLAST) * cond;
+    on_regular_row(constrain_equal_expr(x', y)) = 0;
+    on_regular_row(constrain_equal_expr(y', x + y)) = 0;
+    "#;
+        let expected = r#"constant last_row = 15;
+namespace N(16);
+    col fixed ISLAST(i) { match i { last_row => 1, _ => 0, } };
+    col witness x;
+    col witness y;
+    let constrain_equal_expr = |A, B| (A - B);
+    col fixed on_regular_row(cond) { ((1 - N.ISLAST) * cond) };
+    ((1 - N.ISLAST) * (N.x' - N.y)) = 0;
+    ((1 - N.ISLAST) * (N.y' - (N.x + N.y))) = 0;
+"#;
+        let formatted = process_pil_file_contents::<GoldilocksField>(input).to_string();
+        assert_eq!(formatted, expected);
+    }
+
+    #[test]
+    fn next_op_on_param() {
+        let input = r#"namespace N(16);
+    let last_row = 15;
+    let ISLAST = |i| match i { last_row => 1, _ => 0 };
+    let x;
+    let y;
+    let next_is_seven = |t| t' - 7;
+    next_is_seven(y) = 0;
+    "#;
+        let expected = r#"constant last_row = 15;
+namespace N(16);
+    col fixed ISLAST(i) { match i { last_row => 1, _ => 0, } };
+    col witness x;
+    col witness y;
+    col fixed next_is_seven(t) { (t' - 7) };
+    (N.y' - 7) = 0;
+"#;
+        let formatted = process_pil_file_contents::<GoldilocksField>(input).to_string();
+        assert_eq!(formatted, expected);
+    }
+
+    #[test]
+    fn fixed_concrete_and_symbolic() {
+        let input = r#"namespace N(16);
+    let last_row = 15;
+    let ISLAST = |i| match i { last_row => 1, _ => 0, };
+    let x;
+    let y;
+    y - ISLAST(3) = 0;
+    x - ISLAST = 0;
+    "#;
+        let expected = r#"constant last_row = 15;
+namespace N(16);
+    col fixed ISLAST(i) { match i { last_row => 1, _ => 0, } };
+    col witness x;
+    col witness y;
+    (N.y - 0) = 0;
+    (N.x - N.ISLAST) = 0;
+"#;
+        let formatted = process_pil_file_contents::<GoldilocksField>(input).to_string();
+        assert_eq!(formatted, expected);
     }
 }

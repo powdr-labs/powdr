@@ -3,7 +3,10 @@ use std::{collections::HashMap, fmt::Display, rc::Rc};
 use ast::{
     analyzed::{Expression, FunctionValueDefinition, Reference, Symbol},
     evaluate_binary_operation, evaluate_unary_operation,
-    parsed::{display::quote, FunctionCall, LambdaExpression, MatchArm, MatchPattern},
+    parsed::{
+        display::quote, BinaryOperator, FunctionCall, LambdaExpression, MatchArm, MatchPattern,
+        UnaryOperator,
+    },
 };
 use itertools::Itertools;
 use number::FieldElement;
@@ -199,6 +202,23 @@ pub trait SymbolLookup<'a, T, C> {
         function: C,
         arguments: &[Rc<Value<'a, T, C>>],
     ) -> Result<Value<'a, T, C>, EvalError>;
+
+    fn eval_binary_operation(
+        &self,
+        _left: Value<'a, T, C>,
+        _op: BinaryOperator,
+        _right: Value<'a, T, C>,
+    ) -> Result<Value<'a, T, C>, EvalError> {
+        unreachable!()
+    }
+
+    fn eval_unary_operation(
+        &self,
+        _op: UnaryOperator,
+        _inner: C,
+    ) -> Result<Value<'a, T, C>, EvalError> {
+        unreachable!()
+    }
 }
 
 mod internal {
@@ -228,16 +248,27 @@ mod internal {
                     .collect::<Result<_, _>>()?,
             ),
             Expression::BinaryOperation(left, op, right) => {
-                Value::Number(evaluate_binary_operation(
-                    evaluate(left, locals, symbols)?.try_to_number()?,
-                    *op,
-                    evaluate(right, locals, symbols)?.try_to_number()?,
-                ))
+                let left = evaluate(left, locals, symbols)?;
+                let right = evaluate(right, locals, symbols)?;
+                match (&left, &right) {
+                    (Value::Custom(_), _) | (_, Value::Custom(_)) => {
+                        symbols.eval_binary_operation(left, *op, right)?
+                    }
+                    (Value::Number(l), Value::Number(r)) => {
+                        Value::Number(evaluate_binary_operation(*l, *op, *r))
+                    }
+                    _ => Err(EvalError::TypeError(format!(
+                        "Operator {op} not supported on types: {left} {op} {right}"
+                    )))?,
+                }
             }
-            Expression::UnaryOperation(op, expr) => Value::Number(evaluate_unary_operation(
-                *op,
-                evaluate(expr, locals, symbols)?.try_to_number()?,
-            )),
+            Expression::UnaryOperation(op, expr) => match evaluate(expr, locals, symbols)? {
+                Value::Custom(inner) => symbols.eval_unary_operation(*op, inner)?,
+                Value::Number(n) => Value::Number(evaluate_unary_operation(*op, n)),
+                inner => Err(EvalError::TypeError(format!(
+                    "Operator {op} not supported on types: {op} {inner}"
+                )))?,
+            },
             Expression::LambdaExpression(lambda) => {
                 // TODO only copy the part of the environment that is actually referenced?
                 (Closure {
