@@ -18,7 +18,7 @@ use ast::{
     asm_analysis::{AnalysisASMFile, CallableSymbol, FunctionStatement, LabelStatement, Machine},
     parsed::{asm::DebugDirective, Expression},
 };
-use builder::{MemoryBuilder, TraceBuilder};
+use builder::TraceBuilder;
 use number::{BigInt, FieldElement};
 
 /// Initial value of the PC.
@@ -30,7 +30,7 @@ use number::{BigInt, FieldElement};
 const PC_INITIAL_VAL: usize = 2;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-struct Elem(i64);
+pub struct Elem(i64);
 
 impl Elem {
     const fn zero() -> Self {
@@ -70,13 +70,40 @@ impl From<usize> for Elem {
     }
 }
 
+pub enum MemOperationKind {
+    Read,
+    Write,
+}
+
+pub struct MemOperation {
+    /// Line of the register trace the memory operation happened.
+    pub idx: usize,
+    pub kind: MemOperationKind,
+    pub address: u32,
+}
+
 pub struct ExecutionTrace<'a> {
-    reg_map: HashMap<&'a str, usize>,
+    pub reg_map: HashMap<&'a str, usize>,
 
     /// Values of the registers in the execution trace.
     ///
-    /// Each N elements is a row with all registers.
-    values: Vec<Elem>,
+    /// Each N elements is a row with all registers, where N is the number of
+    /// registers.
+    pub regs: Vec<Elem>,
+
+    /// Writes and reads to memory.
+    pub mem: Vec<MemOperation>,
+}
+
+impl<'a> ExecutionTrace<'a> {
+    /// Split the values of the registers' trace into rows.
+    pub fn regs_rows(&self) -> impl Iterator<Item = &[Elem]> {
+        self.regs.chunks_exact(self.reg_map.len())
+    }
+
+    pub fn row(&self, idx: usize) -> &[Elem] {
+        &self.regs[(idx * self.reg_map.len())..((idx + 1) * self.reg_map.len())]
+    }
 }
 
 mod builder {
@@ -85,7 +112,7 @@ mod builder {
     use ast::asm_analysis::{Machine, RegisterTy};
     use number::FieldElement;
 
-    use crate::{Elem, ExecutionTrace, PC_INITIAL_VAL};
+    use crate::{Elem, ExecutionTrace, MemOperation, MemOperationKind, PC_INITIAL_VAL};
 
     fn register_names<T: FieldElement>(main: &Machine<T>) -> Vec<&str> {
         main.registers
@@ -107,6 +134,9 @@ mod builder {
         /// Next row is reg_map.len() elems ahead.
         curr_idx: usize,
 
+        /// Maximum value curr_idx can have before we stop the execution.
+        max_curr_idx: usize,
+
         // index of special case registers to look after:
         x0_idx: usize,
         pc_idx: usize,
@@ -119,8 +149,8 @@ mod builder {
         /// from this map of batch to statement line.
         batch_to_line_map: &'b [u32],
 
-        /// Maximum value curr_idx can have before we stop the execution.
-        max_curr_idx: usize,
+        /// Current memory.
+        mem: HashMap<u32, Elem>,
     }
 
     impl<'a, 'b> TraceBuilder<'a, 'b> {
@@ -158,10 +188,15 @@ mod builder {
                 curr_idx: PC_INITIAL_VAL * reg_len,
                 x0_idx: reg_map["x0"],
                 pc_idx,
-                trace: ExecutionTrace { reg_map, values },
+                trace: ExecutionTrace {
+                    reg_map,
+                    regs: values,
+                    mem: Vec::new(),
+                },
                 next_statement_line: 1,
                 batch_to_line_map,
                 max_curr_idx: max_rows_len.saturating_sub(1).saturating_mul(reg_len),
+                mem: HashMap::new(),
             };
 
             if ret.has_enough_rows() || ret.set_next_pc().is_none() {
@@ -172,54 +207,54 @@ mod builder {
         }
 
         /// get current value of register
-        pub(crate) fn get(&self, idx: &str) -> Elem {
-            self.get_idx(self.trace.reg_map[idx])
+        pub(crate) fn get_reg(&self, idx: &str) -> Elem {
+            self.get_reg_idx(self.trace.reg_map[idx])
         }
 
         /// get current value of register by register index instead of name
-        fn get_idx(&self, idx: usize) -> Elem {
-            self.trace.values[self.curr_idx + idx]
+        fn get_reg_idx(&self, idx: usize) -> Elem {
+            self.trace.regs[self.curr_idx + idx]
         }
 
-        fn get_idx_next(&self, idx: usize) -> Elem {
-            self.trace.values[self.curr_idx + self.reg_len() + idx]
+        fn get_reg_idx_next(&self, idx: usize) -> Elem {
+            self.trace.regs[self.curr_idx + self.reg_len() + idx]
         }
 
         /// sets the PC
         pub(crate) fn set_pc(&mut self, value: Elem) {
             // updates the internal statement-based program counter accordingly:
             self.next_statement_line = self.batch_to_line_map[value.u() as usize];
-            self.set_idx(self.pc_idx, value);
+            self.set_reg_idx(self.pc_idx, value);
         }
 
         /// set next value of register, accounting to x0 writes
         ///
         /// to set the PC, use s_pc() instead of this
-        pub(crate) fn set(&mut self, idx: &str, value: impl Into<Elem>) {
-            self.set_impl(idx, value.into())
+        pub(crate) fn set_reg(&mut self, idx: &str, value: impl Into<Elem>) {
+            self.set_reg_impl(idx, value.into())
         }
 
-        fn set_impl(&mut self, idx: &str, value: Elem) {
+        fn set_reg_impl(&mut self, idx: &str, value: Elem) {
             let idx = self.trace.reg_map[idx];
             if idx == self.x0_idx {
                 return;
             }
-            self.set_idx(idx, value);
+            self.set_reg_idx(idx, value);
         }
 
         /// raw set next value of register by register index instead of name
-        fn set_idx(&mut self, idx: usize, value: Elem) {
+        fn set_reg_idx(&mut self, idx: usize, value: Elem) {
             let final_idx = self.curr_idx + self.reg_len() + idx;
-            self.trace.values[final_idx] = value;
+            self.trace.regs[final_idx] = value;
         }
 
         /// advance to next row, returns the index to the statement that must be
         /// executed now, or None if the execution is finished
         pub fn advance(&mut self, was_nop: bool) -> Option<u32> {
-            if self.get_idx(self.pc_idx) != self.get_idx_next(self.pc_idx) {
+            if self.get_reg_idx(self.pc_idx) != self.get_reg_idx_next(self.pc_idx) {
                 // PC changed, create a new line
                 self.curr_idx += self.reg_len();
-                self.trace.values.extend_from_within(self.curr_idx..);
+                self.trace.regs.extend_from_within(self.curr_idx..);
 
                 // If we are at the limit of rows, stop the execution
                 if self.has_enough_rows() {
@@ -230,7 +265,7 @@ mod builder {
                 // so there is no need to create a new row, just update curr
                 if !was_nop {
                     let next_idx = self.curr_idx + self.reg_len();
-                    self.trace.values.copy_within(next_idx.., self.curr_idx);
+                    self.trace.regs.copy_within(next_idx.., self.curr_idx);
                 }
             }
 
@@ -242,9 +277,33 @@ mod builder {
             self.set_next_pc().and(Some(curr_line))
         }
 
+        pub(crate) fn set_mem(&mut self, addr: u32, val: Elem) {
+            self.trace.mem.push(MemOperation {
+                idx: self.curr_idx / self.reg_len() + 1,
+                kind: MemOperationKind::Write,
+                address: addr,
+            });
+
+            if val.u() != 0 {
+                self.mem.insert(addr, val);
+            } else {
+                self.mem.remove(&addr);
+            }
+        }
+
+        pub(crate) fn get_mem(&mut self, addr: u32) -> Elem {
+            self.trace.mem.push(MemOperation {
+                idx: self.curr_idx / self.reg_len() + 1,
+                kind: MemOperationKind::Read,
+                address: addr,
+            });
+
+            *self.mem.get(&addr).unwrap_or(&Elem::zero())
+        }
+
         pub fn finish(mut self) -> ExecutionTrace<'a> {
             // remove the last row (future row), as it is not part of the trace
-            self.trace.values.drain((self.curr_idx + self.reg_len())..);
+            self.trace.regs.drain((self.curr_idx + self.reg_len())..);
             self.trace
         }
 
@@ -259,11 +318,11 @@ mod builder {
         }
 
         fn set_next_pc(&mut self) -> Option<()> {
-            let curr_pc = self.get_idx(self.pc_idx).u();
+            let curr_pc = self.get_reg_idx(self.pc_idx).u();
 
             let line_of_next_batch = *self.batch_to_line_map.get(curr_pc as usize + 1)?;
 
-            self.set_idx(
+            self.set_reg_idx(
                 self.pc_idx,
                 if self.next_statement_line >= line_of_next_batch {
                     assert_eq!(self.next_statement_line, line_of_next_batch);
@@ -275,29 +334,6 @@ mod builder {
             );
 
             Some(())
-        }
-    }
-
-    pub struct MemoryBuilder(
-        // TODO: track modifications to help build the memory machine
-        HashMap<u32, Elem>,
-    );
-
-    impl MemoryBuilder {
-        pub fn new() -> Self {
-            Self(HashMap::new())
-        }
-
-        pub(crate) fn s(&mut self, addr: u32, val: Elem) {
-            if val.u() != 0 {
-                self.0.insert(addr, val);
-            } else {
-                self.0.remove(&addr);
-            }
-        }
-
-        pub(crate) fn g(&mut self, addr: u32) -> Elem {
-            *self.0.get(&addr).unwrap_or(&Elem::zero())
         }
     }
 }
@@ -380,7 +416,6 @@ fn preprocess_main_function<T: FieldElement>(machine: &Machine<T>) -> Preprocess
 
 struct Executor<'a, 'b, F: FieldElement> {
     proc: TraceBuilder<'a, 'b>,
-    mem: MemoryBuilder,
     label_map: HashMap<&'a str, Elem>,
     inputs: &'b [F],
     stdout: io::Stdout,
@@ -397,13 +432,13 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
             "mstore" => {
                 let addr = args[0].0 as u32;
                 assert_eq!(addr % 4, 0);
-                self.mem.s(args[0].0 as u32, args[1]);
+                self.proc.set_mem(args[0].0 as u32, args[1]);
 
                 Vec::new()
             }
             "mload" => {
                 let addr = args[0].0 as u32;
-                let val = self.mem.g(addr & 0xfffffffc);
+                let val = self.proc.get_mem(addr & 0xfffffffc);
                 let rem = addr % 4;
 
                 vec![val, rem.into()]
@@ -420,27 +455,27 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 Vec::new()
             }
             "jump_and_link_dyn" => {
-                let pc = self.proc.get("pc");
-                self.proc.set("x1", pc.u() + 1);
+                let pc = self.proc.get_reg("pc");
+                self.proc.set_reg("x1", pc.u() + 1);
                 self.proc.set_pc(args[0]);
 
                 Vec::new()
             }
             "call" => {
-                let pc = self.proc.get("pc");
-                self.proc.set("x1", pc.u() + 1);
+                let pc = self.proc.get_reg("pc");
+                self.proc.set_reg("x1", pc.u() + 1);
                 self.proc.set_pc(args[0]);
 
                 Vec::new()
             }
             "tail" => {
                 self.proc.set_pc(args[0]);
-                self.proc.set("x6", args[0]);
+                self.proc.set_reg("x6", args[0]);
 
                 Vec::new()
             }
             "ret" => {
-                let target = self.proc.get("x1");
+                let target = self.proc.get_reg("x1");
                 self.proc.set_pc(target);
 
                 Vec::new()
@@ -461,7 +496,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
             }
             "skip_if_zero" => {
                 if args[0].0 == 0 {
-                    let pc = self.proc.get("pc").s();
+                    let pc = self.proc.get_reg("pc").s();
                     self.proc.set_pc((pc + args[1].s() + 1).into());
                 }
 
@@ -572,7 +607,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     .label_map
                     .get(name)
                     .cloned()
-                    .unwrap_or_else(|| self.proc.get(name));
+                    .unwrap_or_else(|| self.proc.get_reg(name));
                 vec![val]
             }
             Expression::PublicReference(_) => todo!(),
@@ -675,7 +710,6 @@ pub fn execute_ast<'a, T: FieldElement>(
 
     let mut e = Executor {
         proc,
-        mem: MemoryBuilder::new(),
         label_map,
         inputs,
         stdout: io::stdout(),
@@ -692,7 +726,7 @@ pub fn execute_ast<'a, T: FieldElement>(
                 let results = e.eval_expression(a.rhs.as_ref());
                 assert_eq!(a.lhs_with_reg.len(), results.len());
                 for ((dest, _), val) in a.lhs_with_reg.iter().zip(results) {
-                    e.proc.set(dest, val);
+                    e.proc.set_reg(dest, val);
                 }
 
                 false
