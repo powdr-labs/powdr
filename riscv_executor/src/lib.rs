@@ -118,12 +118,22 @@ mod builder {
         /// When PC is written, we need to know what line to actually execute next
         /// from this map of batch to statement line.
         batch_to_line_map: &'b [u32],
+
+        /// Maximum value curr_idx can have before we stop the execution.
+        max_curr_idx: usize,
     }
 
     impl<'a, 'b> TraceBuilder<'a, 'b> {
-        // creates a new builder
-        // main must not be empty
-        pub fn new<T: FieldElement>(main: &'a Machine<T>, batch_to_line_map: &'b [u32]) -> Self {
+        /// Creates a new builder.
+        ///
+        /// May fail if max_rows_len is too small or if the main machine is
+        /// empty. In this case, the final (empty) execution trace is returned
+        /// in Err.
+        pub fn new<T: FieldElement>(
+            main: &'a Machine<T>,
+            batch_to_line_map: &'b [u32],
+            max_rows_len: usize,
+        ) -> Result<Self, ExecutionTrace<'a>> {
             let reg_map = register_names(main)
                 .into_iter()
                 .enumerate()
@@ -145,16 +155,20 @@ mod builder {
             }
 
             let mut ret = Self {
-                curr_idx: 2 * reg_len,
+                curr_idx: PC_INITIAL_VAL * reg_len,
                 x0_idx: reg_map["x0"],
                 pc_idx,
                 trace: ExecutionTrace { reg_map, values },
                 next_statement_line: 1,
                 batch_to_line_map,
+                max_curr_idx: max_rows_len.saturating_sub(1).saturating_mul(reg_len),
             };
 
-            let _ = ret.set_next_pc();
-            ret
+            if ret.has_enough_rows() || ret.set_next_pc().is_none() {
+                Err(ret.finish())
+            } else {
+                Ok(ret)
+            }
         }
 
         /// get current value of register
@@ -200,12 +214,17 @@ mod builder {
         }
 
         /// advance to next row, returns the index to the statement that must be
-        /// executed now
+        /// executed now, or None if the execution is finished
         pub fn advance(&mut self, was_nop: bool) -> Option<u32> {
             if self.get_idx(self.pc_idx) != self.get_idx_next(self.pc_idx) {
                 // PC changed, create a new line
                 self.curr_idx += self.reg_len();
                 self.trace.values.extend_from_within(self.curr_idx..);
+
+                // If we are at the limit of rows, stop the execution
+                if self.has_enough_rows() {
+                    return None;
+                }
             } else {
                 // PC didn't change, execution was inside same batch,
                 // so there is no need to create a new row, just update curr
@@ -223,12 +242,20 @@ mod builder {
             self.set_next_pc().and(Some(curr_line))
         }
 
-        pub fn finish(self) -> ExecutionTrace<'a> {
+        pub fn finish(mut self) -> ExecutionTrace<'a> {
+            // remove the last row (future row), as it is not part of the trace
+            self.trace.values.drain((self.curr_idx + self.reg_len())..);
             self.trace
         }
 
         fn reg_len(&self) -> usize {
             self.trace.reg_map.len()
+        }
+
+        /// Should we stop the execution because the maximum number of rows has
+        /// been reached?
+        fn has_enough_rows(&self) -> bool {
+            self.curr_idx >= self.max_curr_idx
         }
 
         fn set_next_pc(&mut self) -> Option<()> {
@@ -631,6 +658,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 pub fn execute_ast<'a, T: FieldElement>(
     program: &'a AnalysisASMFile<T>,
     inputs: &[T],
+    max_steps_to_execute: usize,
 ) -> ExecutionTrace<'a> {
     let main_machine = get_main_machine(program);
     let PreprocessedMain {
@@ -640,17 +668,18 @@ pub fn execute_ast<'a, T: FieldElement>(
         debug_files,
     } = preprocess_main_function(main_machine);
 
+    let proc = match TraceBuilder::new(main_machine, &batch_to_line_map, max_steps_to_execute) {
+        Ok(proc) => proc,
+        Err(trace) => return trace,
+    };
+
     let mut e = Executor {
-        proc: TraceBuilder::new(main_machine, &batch_to_line_map),
+        proc,
         mem: MemoryBuilder::new(),
         label_map,
         inputs,
         stdout: io::stdout(),
     };
-
-    if statements.is_empty() {
-        return e.proc.finish();
-    }
 
     let mut curr_pc = 0u32;
     loop {
@@ -704,8 +733,8 @@ pub fn execute_ast<'a, T: FieldElement>(
 
 /// Execute a Powdr/RISCV assembly source.
 ///
-/// The FieldElement is just used by the parser, before everything is converted
-/// to i64, so it is probably not very important.
+/// Generic argument F is just used by the parser, before everything is
+/// converted to i64, so it is important to the execution itself.
 pub fn execute<F: FieldElement>(asm_source: &str, inputs: &[F]) {
     log::info!("Parsing...");
     let parsed = parser::parse_asm::<F>(None, asm_source).unwrap();
@@ -715,7 +744,7 @@ pub fn execute<F: FieldElement>(asm_source: &str, inputs: &[F]) {
     let analyzed = analysis::analyze(resolved, &mut ast::DiffMonitor::default()).unwrap();
 
     log::info!("Executing...");
-    execute_ast(&analyzed, inputs);
+    execute_ast(&analyzed, inputs, usize::MAX);
 }
 
 fn to_u32<F: FieldElement>(val: &F) -> Option<u32> {
