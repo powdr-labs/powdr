@@ -376,10 +376,6 @@ impl<T: FieldElement> PILAnalyzer<T> {
             id,
             source,
             absolute_name,
-            degree: self.polynomial_degree.unwrap_or_else(|| {
-                assert!(matches!(symbol_kind, SymbolKind::Constant()));
-                0
-            }),
             kind: symbol_kind,
             length,
         };
