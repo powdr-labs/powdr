@@ -7,7 +7,7 @@ use analysis::MacroExpander;
 use ast::parsed::visitor::ExpressionVisitable;
 use ast::parsed::{
     self, ArrayExpression, ArrayLiteral, FunctionDefinition, LambdaExpression, MatchArm,
-    MatchPattern, PilStatement, PolynomialName, SelectedExpressions,
+    MatchPattern, NamespacedPolynomialReference, PilStatement, PolynomialName, SelectedExpressions,
 };
 use number::{DegreeType, FieldElement};
 
@@ -558,16 +558,7 @@ impl<'a, T: FieldElement> ExpressionProcessor<'a, T> {
     pub fn process_expression(&mut self, expr: parsed::Expression<T>) -> Expression<T> {
         use parsed::Expression as PExpression;
         match expr {
-            PExpression::Reference(poly) => {
-                if poly.namespace.is_none() && self.local_variables.contains_key(&poly.name) {
-                    let id = self.local_variables[&poly.name];
-                    Expression::Reference(Reference::LocalVar(id, poly.name.to_string()))
-                } else {
-                    Expression::Reference(Reference::Poly(
-                        self.process_namespaced_polynomial_reference(poly),
-                    ))
-                }
-            }
+            PExpression::Reference(poly) => Expression::Reference(self.process_reference(poly)),
             PExpression::PublicReference(name) => Expression::PublicReference(name),
             PExpression::Number(n) => Expression::Number(n),
             PExpression::String(value) => Expression::String(value),
@@ -596,7 +587,7 @@ impl<'a, T: FieldElement> ExpressionProcessor<'a, T> {
                 })
             }
             PExpression::FunctionCall(c) => Expression::FunctionCall(parsed::FunctionCall {
-                id: self.analyzer.namespaced_ref_to_absolute(&None, &c.id),
+                id: self.process_reference(c.id),
                 arguments: self.process_expressions(c.arguments),
             }),
             PExpression::MatchExpression(scrutinee, arms) => Expression::MatchExpression(
@@ -614,6 +605,15 @@ impl<'a, T: FieldElement> ExpressionProcessor<'a, T> {
                     .collect(),
             ),
             PExpression::FreeInput(_) => panic!(),
+        }
+    }
+
+    fn process_reference(&mut self, reference: NamespacedPolynomialReference) -> Reference {
+        if reference.namespace.is_none() && self.local_variables.contains_key(&reference.name) {
+            let id = self.local_variables[&reference.name];
+            Reference::LocalVar(id, reference.name.to_string())
+        } else {
+            Reference::Poly(self.process_namespaced_polynomial_reference(reference))
         }
     }
 
@@ -879,6 +879,17 @@ namespace N(65536);
         let input = r#"namespace N(16);
     col witness y[3];
     (N.y[3] - 2) = 0;
+"#;
+        let formatted = process_pil_file_contents::<GoldilocksField>(input).to_string();
+        assert_eq!(formatted, input);
+    }
+
+    #[test]
+    fn namespaced_call() {
+        let input = r#"namespace Assembly(2);
+    col fixed A = [0]*;
+    col fixed C(i) { (Assembly.A((i + 2)) + 3) };
+    col fixed D(i) { Assembly.C((i + 3)) };
 "#;
         let formatted = process_pil_file_contents::<GoldilocksField>(input).to_string();
         assert_eq!(formatted, input);
