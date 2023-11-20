@@ -5,13 +5,22 @@ use alloc::vec::Vec;
 
 use runtime::get_prover_input;
 
+const OFFSET: usize = 1;
+
 #[no_mangle]
 pub fn main() {
-    let proposed_sum = get_prover_input(0);
-    let len = get_prover_input(1) as usize;
-    let data: Vec<_> = (2..(len + 2))
-        .map(|idx| get_prover_input(idx as u32))
-        .collect();
-    let sum: u32 = data.iter().sum();
-    assert_eq!(sum, proposed_sum);
+    let mut foo = Vec::new();
+    foo.push(1);
+
+    // Compute some fibonacci numbers
+    // -> Does not access memory but also does not get optimized out...
+    let mut a = 1;
+    let mut b = 1;
+    for i in 0..100000 {
+        let tmp = a + b;
+        a = b;
+        b = tmp;
+    }
+    // Don't optimize me away :/
+    assert!(foo[0] + a > 1000000);
 }

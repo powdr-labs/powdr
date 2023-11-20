@@ -13,9 +13,49 @@ use number::write_polys_file;
 use number::{read_polys_csv_file, write_polys_csv_file, CsvRenderMode};
 use number::{Bn254Field, FieldElement, GoldilocksField};
 use riscv::{compile_riscv_asm, compile_rust};
+use std::collections::BTreeSet;
 use std::io::{self, BufReader, BufWriter, Read};
 use std::{borrow::Cow, fs, io::Write, path::Path};
 use strum::{Display, EnumString, EnumVariantNames};
+
+const REGISTER_NAMES: [&'static str; 36] = [
+    "main.x1",
+    "main.x2",
+    "main.x3",
+    "main.x4",
+    "main.x5",
+    "main.x6",
+    "main.x7",
+    "main.x8",
+    "main.x9",
+    "main.x10",
+    "main.x11",
+    "main.x12",
+    "main.x13",
+    "main.x14",
+    "main.x15",
+    "main.x16",
+    "main.x17",
+    "main.x18",
+    "main.x19",
+    "main.x20",
+    "main.x21",
+    "main.x22",
+    "main.x23",
+    "main.x24",
+    "main.x25",
+    "main.x26",
+    "main.x27",
+    "main.x28",
+    "main.x29",
+    "main.x30",
+    "main.x31",
+    "main.tmp1",
+    "main.tmp2",
+    "main.tmp3",
+    "main.lr_sc_reservation",
+    "main.pc",
+];
 
 #[derive(Clone, EnumString, EnumVariantNames, Display)]
 pub enum FieldArgument {
@@ -402,9 +442,18 @@ fn run_command(command: Commands) {
         } => {
             if just_execute {
                 // assume input is riscv asm and just execute it
-                let contents = fs::read_to_string(file).unwrap();
-                let inputs = split_inputs(&inputs);
-                riscv_executor::execute::<GoldilocksField>(&contents, &inputs);
+                let contents = fs::read_to_string(&file).unwrap();
+                let inputs = split_inputs::<GoldilocksField>(&inputs);
+
+                let output_dir = Path::new(&output_directory);
+                rust_continuations(
+                    file.as_str(),
+                    contents.as_str(),
+                    inputs,
+                    &output_dir,
+                    prove_with,
+                );
+                //riscv_executor::execute::<GoldilocksField>(&contents, &inputs);
             } else {
                 match call_with_field!(compile_with_csv_export::<field>(
                     file,
@@ -531,7 +580,7 @@ fn handle_riscv_asm<F: FieldElement>(
     just_execute: bool,
 ) -> Result<(), Vec<String>> {
     if just_execute {
-        riscv_executor::execute::<F>(contents, &inputs);
+        rust_continuations(file_name, contents, inputs, output_dir, prove_with);
     } else {
         compile_asm_string(
             file_name,
@@ -545,6 +594,114 @@ fn handle_riscv_asm<F: FieldElement>(
         )?;
     }
     Ok(())
+}
+
+fn rust_continuations<F: FieldElement>(
+    _file_name: &str,
+    contents: &str,
+    inputs: Vec<F>,
+    _output_dir: &Path,
+    _prove_with: Option<BackendType>,
+) {
+    println!("{:?}", inputs);
+    assert!(inputs.is_empty(), "Inputs are hijacked for bootloader");
+    // 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,50,0
+    let mut inputs = vec![F::zero(); 37];
+    inputs[35] = F::from(50u64);
+
+    log::info!("Executing powdr-asm...");
+    let (full_trace, _, memory_accesses) =
+        riscv_executor::execute::<F>(contents, &inputs, u64::MAX);
+
+    let full_trace_length = full_trace["main.pc"].len();
+    log::info!("Total trace length: {}", full_trace_length);
+
+    let mut proven_trace = 0;
+    let mut chunk_index = 0;
+    let mut initial_pc = F::from(50);
+
+    loop {
+        log::info!("Running chunk {}...", chunk_index);
+        let (chunk_trace, memory_snapshot, _) =
+            riscv_executor::execute::<F>(contents, &inputs, (1 << 18) - 2);
+        println!("Chunk trace length: {}", chunk_trace["main.pc"].len());
+
+        log::info!("Validating chunk...");
+        let (start, _) = chunk_trace["main.pc"]
+            .iter()
+            .enumerate()
+            .find(|(_, &pc)| pc == initial_pc)
+            .unwrap();
+        let full_trace_start = match chunk_index {
+            0 => start,
+            _ => proven_trace - 1,
+        };
+        for &reg in REGISTER_NAMES.iter() {
+            let mut error_count = 0;
+            for i in 0..(chunk_trace["main.pc"].len() - start) {
+                let chunk_i = i + start;
+                let full_i = i + full_trace_start;
+                if chunk_trace[reg][chunk_i] != full_trace[reg][full_i] {
+                    log::warn!(
+                        "{}: {} (Line {}) != {} (Line {})",
+                        reg,
+                        chunk_trace[reg][chunk_i],
+                        chunk_i,
+                        full_trace[reg][full_i],
+                        full_i
+                    );
+                    error_count += 1;
+                    if error_count > 3 {
+                        break;
+                    }
+                }
+            }
+        }
+
+        if chunk_trace["main.pc"].len() < (1 << 18) - 2 {
+            log::info!("Done!");
+            break;
+        }
+
+        log::info!("Building inputs for chunk {}...", chunk_index + 1);
+        let mut accessed_pages = BTreeSet::new();
+        let start = proven_trace + (1 << 18) - 3;
+
+        for (i, accesses_memory) in (&memory_accesses[start..]).iter().enumerate() {
+            if *accesses_memory {
+                let addr = &full_trace["main.Y"][start + i + 1];
+                let digits = addr.to_arbitrary_integer().to_u32_digits();
+                let addr = if digits.is_empty() { 0 } else { digits[0] };
+                accessed_pages.insert(addr >> 10);
+            }
+        }
+        log::info!("Accessed pages: {:?}", accessed_pages);
+
+        inputs = vec![];
+        for &reg in REGISTER_NAMES.iter() {
+            inputs.push(*chunk_trace[reg].last().unwrap());
+        }
+        inputs.push((accessed_pages.len() as u64).into());
+        for page in accessed_pages.iter() {
+            let start_addr = page << 10;
+            inputs.push(start_addr.into());
+            for i in 0..256 {
+                let addr = start_addr + i * 4;
+                inputs.push(memory_snapshot.get(&addr).unwrap_or(&F::zero()).clone());
+            }
+        }
+
+        log::info!("Inputs length: {}", inputs.len());
+
+        let initial_pc_usize = initial_pc.to_arbitrary_integer().to_u32_digits()[0] as usize;
+        proven_trace += match chunk_index {
+            0 => chunk_trace["main.pc"].len(),
+            _ => chunk_trace["main.pc"].len() - initial_pc_usize,
+        };
+        initial_pc = *chunk_trace["main.pc"].last().unwrap();
+
+        chunk_index += 1;
+    }
 }
 
 #[allow(clippy::too_many_arguments)]

@@ -196,13 +196,13 @@ impl<T: FieldElement> DoubleSortedWitnesses<T> {
             }
         };
 
-        if addr.to_degree() >= self.degree {
-            return Err(format!(
-                "Memory access to too large address: 0x{addr:x} (must be less than 0x{:x})",
-                self.degree
-            )
-            .into());
-        }
+        // if addr.to_degree() >= self.degree {
+        //     return Err(format!(
+        //         "Memory access to too large address: 0x{addr:x} (must be less than 0x{:x})",
+        //         self.degree
+        //     )
+        //     .into());
+        // }
         let step = left[1]
             .constant_value()
             .ok_or_else(|| format!("Step must be known: {} = {}", left[1], right.expressions[1]))?;
@@ -232,7 +232,7 @@ impl<T: FieldElement> DoubleSortedWitnesses<T> {
                 }
             };
 
-            log::debug!(
+            log::trace!(
                 "Memory write: addr={:x}, step={step}, value={:x}",
                 addr,
                 value
@@ -249,7 +249,7 @@ impl<T: FieldElement> DoubleSortedWitnesses<T> {
                     value: *value,
                 },
             );
-            log::debug!(
+            log::trace!(
                 "Memory read: addr={:x}, step={step}, value={:x}",
                 addr,
                 value

@@ -720,9 +720,9 @@ impl<'a, T: FieldElement> VmProcessor<'a, T> {
                 .process_identity(identity, &row_pair)
                 .is_err()
             {
-                log::debug!("Previous {:?}", self.row(row_index - 1));
-                log::debug!("Proposed {:?}", proposed_row);
-                log::debug!("Failed on identity: {}", identity);
+                log::trace!("Previous {:?}", self.row(row_index - 1));
+                log::trace!("Proposed {:?}", proposed_row);
+                log::trace!("Failed on identity: {}", identity);
 
                 return false;
             }
@@ -731,7 +731,7 @@ impl<'a, T: FieldElement> VmProcessor<'a, T> {
     }
 
     fn maybe_log_performance(&mut self, row_index: DegreeType) {
-        if row_index >= self.last_report + 1000 {
+        if row_index >= self.last_report + 10000 {
             let duration = self.last_report_time.elapsed();
             self.last_report_time = Instant::now();
 

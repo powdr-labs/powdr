@@ -143,6 +143,12 @@ impl<T: FieldElement> ASMPILConverter<T> {
                                             - next_reference("first_step"))
                                             * direct_reference(pc_update_name),
                                     ),
+                                    /*
+                                    PilStatement::PolynomialIdentity(
+                                        0,
+                                        (Expression::from(T::one()) - next_reference("first_step"))
+                                            * (lhs - direct_reference(pc_update_name)),
+                                    ), */
                                 ]
                             }
                             // Unconstrain read-only registers when calling `_reset`
@@ -153,6 +159,11 @@ impl<T: FieldElement> ASMPILConverter<T> {
                             }
                             _ => {
                                 vec![PilStatement::PolynomialIdentity(0, lhs - rhs)]
+                                // vec![PilStatement::PolynomialIdentity(
+                                //     0,
+                                //     (Expression::from(T::one()) - next_reference("first_step"))
+                                //         * (lhs - rhs),
+                                // )]
                             }
                         }
                     })
@@ -272,13 +283,19 @@ impl<T: FieldElement> ASMPILConverter<T> {
                 self.line_lookup
                     .push((name.to_string(), "p_line".to_string()));
                 default_update = Some(direct_reference(&name) + T::one().into());
+                // self.pil.push(parse_pil_statement::<T>(&format!(
+                //     "col witness {}(i) query match i {{0 => (\"hint\", 2) }}",
+                //     name
+                // )));
             }
             RegisterTy::Assignment => {
                 // no default update as this is transient
+                // self.pil.push(witness_column(start, name.to_string(), None));
             }
             RegisterTy::ReadOnly => {
                 // default update to be kept constant
-                default_update = Some(direct_reference(&name))
+                default_update = Some(direct_reference(&name));
+                // self.pil.push(witness_column(start, name.to_string(), None));
             }
             RegisterTy::Write => {
                 let assignment_regs = self
@@ -293,6 +310,10 @@ impl<T: FieldElement> ASMPILConverter<T> {
                         .push((direct_reference(&write_flag), direct_reference(&reg)));
                 }
                 default_update = Some(direct_reference(&name));
+                // self.pil.push(parse_pil_statement::<T>(&format!(
+                //     "col witness {}(i) query match i {{0 => (\"hint\", 0) }}",
+                //     name
+                // )));
             }
         };
         self.registers.insert(
