@@ -19,10 +19,10 @@ pilopt = { path = "../pilopt" }
 asm_to_pil = { path = "../asm_to_pil" }
 pil_analyzer = { path = "../pil_analyzer" }
 halo2 = { path = "../halo2", optional = true }
-ast = { version = "0.1.0", path = "../ast" }
-analysis = { version = "0.1.0", path = "../analysis" }
-linker = { version = "0.1.0", path = "../linker" }
-airgen = { version = "0.1.0", path = "../airgen" }
+ast = { path = "../ast" }
+analysis = { path = "../analysis" }
+linker = { path = "../linker" }
+airgen = { path = "../airgen" }
 importer = { path = "../importer" }
 
 [dev-dependencies]

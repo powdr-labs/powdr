@@ -6,6 +6,7 @@ edition = "2021"
 [dependencies]
 number = { path = "../number" }
 pil_analyzer = { path = "../pil_analyzer" }
+ast = { path = "../ast" }
 polyexen = { git = "https://github.com/Dhole/polyexen", branch = "feature/shuffles" }
 halo2_proofs = "0.2"
 halo2_curves = { git = "https://github.com/privacy-scaling-explorations/halo2curves", tag = "0.3.2", package = "halo2curves" }
@@ -16,7 +17,6 @@ itertools = "^0.10"
 num-bigint = "^0.4"
 log = "0.4.17"
 rand = "0.8.5"
-ast = { version = "0.1.0", path = "../ast" }
 
 [dev-dependencies]
 importer = { path = "../importer" }

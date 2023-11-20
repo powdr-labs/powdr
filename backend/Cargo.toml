@@ -10,8 +10,8 @@ halo2 = ["dep:halo2"]
 halo2 = { path = "../halo2", optional = true }
 pil_analyzer = { path = "../pil_analyzer" }
 number = { path = "../number" }
+ast = { path = "../ast" }
 strum = { version = "0.24.1", features = ["derive"] }
-ast = { version = "0.1.0", path = "../ast" }
 log = "0.4.17"
 serde_json = "1.0"
 thiserror = "1.0.43"
