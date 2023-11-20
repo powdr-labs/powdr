@@ -283,8 +283,7 @@ impl<T> Analyzed<T> {
         self.definitions
             .values_mut()
             .for_each(|(_poly, definition)| match definition {
-                Some(FunctionValueDefinition::Mapping(e))
-                | Some(FunctionValueDefinition::Query(e)) => e.post_visit_expressions_mut(f),
+                Some(FunctionValueDefinition::Query(e)) => e.post_visit_expressions_mut(f),
                 Some(FunctionValueDefinition::Array(elements)) => elements
                     .iter_mut()
                     .flat_map(|e| e.pattern.iter_mut())
@@ -365,7 +364,6 @@ pub enum SymbolKind {
 
 #[derive(Debug, Clone)]
 pub enum FunctionValueDefinition<T> {
-    Mapping(Expression<T>),
     Array(Vec<RepeatedArray<T>>),
     Query(Expression<T>),
     Expression(Expression<T>),

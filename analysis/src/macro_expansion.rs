@@ -97,8 +97,7 @@ where
         if let PilStatement::PolynomialConstantDefinition(_, _, f)
         | PilStatement::PolynomialCommitDeclaration(_, _, Some(f)) = &statement
         {
-            if let FunctionDefinition::Mapping(params, _) | FunctionDefinition::Query(params, _) = f
-            {
+            if let FunctionDefinition::Query(params, _) = f {
                 assert!(self.shadowing_locals.is_empty());
                 self.shadowing_locals.extend(params.iter().cloned());
                 added_locals = true;

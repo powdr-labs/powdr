@@ -60,7 +60,6 @@ fn remove_constant_fixed_columns<T: FieldElement>(pil_file: &mut Analyzed<T>) {
 /// value and returns it in that case.
 fn constant_value<T: FieldElement>(function: &FunctionValueDefinition<T>) -> Option<T> {
     match function {
-        FunctionValueDefinition::Mapping(_) => None, // TODO we could also analyze this case.
         FunctionValueDefinition::Array(expressions) => {
             // TODO use a proper evaluator at some point,
             // combine with constant_evalutaor

@@ -74,16 +74,13 @@ impl<'a, 'b, T: FieldElement, QueryCallback: super::QueryCallback<T>>
         query: &'a Expression<T>,
         rows: &RowPair<T>,
     ) -> Result<String, EvalError> {
-        let arguments = vec![rows.current_row_index.into()];
-        evaluator::evaluate_function_call(
-            query,
-            arguments,
-            &Symbols {
-                fixed_data: self.fixed_data,
-                rows,
-            },
-        )
-        .map(|v| v.to_string())
+        let arguments = vec![Rc::new(T::from(rows.current_row_index).into())];
+        let symbols = Symbols {
+            fixed_data: self.fixed_data,
+            rows,
+        };
+        let fun = evaluator::evaluate(query, &symbols)?;
+        evaluator::evaluate_function_call(fun, arguments, &symbols).map(|v| v.to_string())
     }
 }
 
