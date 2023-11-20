@@ -13,8 +13,7 @@ pub fn generate<T: FieldElement>(analyzed: &Analyzed<T>) -> Vec<(&str, Vec<T>)> 
     let mut other_constants = HashMap::new();
     for (poly, value) in analyzed.constant_polys_in_source_order() {
         if let Some(value) = value {
-            assert!(analyzed.degree() == poly.degree);
-            let values = generate_values(analyzed, poly.degree, value, &other_constants);
+            let values = generate_values(analyzed, analyzed.degree(), value, &other_constants);
             other_constants.insert(&poly.absolute_name, values);
         }
     }

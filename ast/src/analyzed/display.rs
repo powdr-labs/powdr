@@ -11,8 +11,9 @@ use super::*;
 
 impl<T: Display> Display for Analyzed<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        let degree = self.degree.unwrap_or_default();
         let mut current_namespace = "Global".to_string();
-        let mut update_namespace = |name: &str, degree: DegreeType, f: &mut Formatter<'_>| {
+        let mut update_namespace = |name: &str, f: &mut Formatter<'_>| {
             let new_name = if let Some(dot) = name.find('.') {
                 if name[..dot] != current_namespace {
                     current_namespace = name[..dot].to_string();
@@ -29,7 +30,7 @@ impl<T: Display> Display for Analyzed<T> {
             match statement {
                 StatementIdentifier::Definition(name) => {
                     if let Some((symbol, definition)) = self.definitions.get(name) {
-                        let (name, is_local) = update_namespace(name, symbol.degree, f)?;
+                        let (name, is_local) = update_namespace(name, f)?;
                         match symbol.kind {
                             SymbolKind::Poly(poly_type) => {
                                 let kind = match &poly_type {
@@ -64,7 +65,7 @@ impl<T: Display> Display for Analyzed<T> {
                             }
                         }
                     } else if let Some((symbol, definition)) = self.intermediate_columns.get(name) {
-                        let (name, _) = update_namespace(name, symbol.degree, f)?;
+                        let (name, _) = update_namespace(name, f)?;
                         assert_eq!(symbol.kind, SymbolKind::Poly(PolynomialType::Intermediate));
                         writeln!(f, "    col {name} = {definition};")?;
                     } else {
@@ -73,8 +74,7 @@ impl<T: Display> Display for Analyzed<T> {
                 }
                 StatementIdentifier::PublicDeclaration(name) => {
                     let decl = &self.public_declarations[name];
-                    // TODO we do not know the degree of the namespace here.
-                    let (name, _) = update_namespace(&decl.name, 0, f)?;
+                    let (name, _) = update_namespace(&decl.name, f)?;
                     writeln!(
                         f,
                         "    public {name} = {}{}({});",

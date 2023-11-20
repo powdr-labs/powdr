@@ -62,7 +62,7 @@ pub PilStatement = {
     PermutationIdentity,
     ConnectIdentity,
     MacroDefinition,
-    FunctionCallStatement,
+    ExpressionStatement,
 };
 
 Include: PilStatement<T> = {
@@ -161,8 +161,8 @@ MacroDefinition: PilStatement<T> = {
         => PilStatement::MacroDefinition(<>)
 }
 
-FunctionCallStatement: PilStatement<T> = {
-    <@L> <Identifier> "(" <ExpressionList> ")" => PilStatement::FunctionCall(<>)
+ExpressionStatement: PilStatement<T> = {
+    <@L> <Expression> => PilStatement::Expression(<>)
 }
 
 PolCol = {
@@ -257,8 +257,7 @@ InstructionBodyElement: PilStatement<T> = {
     PolynomialIdentity,
     PlookupIdentity,
     PermutationIdentity,
-    // We could use FunctionCallStatement here, but it makes lalrpop fail to build
-    <@L> <Identifier> "(" <ExpressionList> ")" => PilStatement::FunctionCall(<>)
+    ExpressionStatement,
 }
 
 Params: Params = {
@@ -495,7 +494,7 @@ IndexAccess: IndexAccess<T> = {
 }
 
 FunctionCall: FunctionCall<T> = {
-    <id:Identifier> "(" <arguments:ExpressionList> ")" => FunctionCall {<>},
+    <id:NamespacedPolynomialReference> "(" <arguments:ExpressionList> ")" => FunctionCall {<>},
 }
 
 NamespacedPolynomialReference: NamespacedPolynomialReference = {

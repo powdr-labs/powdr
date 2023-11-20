@@ -1,7 +1,8 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 
 use ast::analyzed::{
     AlgebraicReference, Analyzed, Expression, FunctionValueDefinition, PolyID, PolynomialType,
+    SymbolKind,
 };
 use number::{DegreeType, FieldElement};
 
@@ -155,6 +156,7 @@ pub struct FixedData<'a, T> {
     degree: DegreeType,
     fixed_cols: FixedColumnMap<FixedColumn<'a, T>>,
     witness_cols: WitnessColumnMap<WitnessColumn<'a, T>>,
+    column_by_name: HashMap<String, PolyID>,
 }
 
 impl<'a, T: FieldElement> FixedData<'a, T> {
@@ -193,6 +195,14 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
             degree: analyzed.degree(),
             fixed_cols,
             witness_cols,
+            column_by_name: analyzed
+                .definitions
+                .iter()
+                .filter_map(|(name, (symbol, _))| {
+                    matches!(symbol.kind, SymbolKind::Poly(_))
+                        .then(|| (name.clone(), symbol.into()))
+                })
+                .collect(),
         }
     }
 
@@ -206,6 +216,10 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
             PolynomialType::Constant => &self.fixed_cols[poly_id].name,
             PolynomialType::Intermediate => unimplemented!(),
         }
+    }
+
+    pub fn column_by_name(&self, name: &str) -> PolyID {
+        self.column_by_name[name]
     }
 
     fn external_witness(&self, row: DegreeType, column: &PolyID) -> Option<T> {

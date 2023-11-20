@@ -468,12 +468,6 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
                 Vec::new()
             }
-            "tail" => {
-                self.proc.set_pc(args[0]);
-                self.proc.set_reg("x6", args[0]);
-
-                Vec::new()
-            }
             "ret" => {
                 let target = self.proc.get_reg("x1");
                 self.proc.set_pc(target);
@@ -661,7 +655,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
                 vec![result.into()]
             }
-            Expression::FunctionCall(f) => self.exec_instruction(&f.id, &f.arguments),
+            Expression::FunctionCall(f) => self.exec_instruction(&f.id.name, &f.arguments),
             Expression::FreeInput(expr) => 'input: {
                 if let Expression::Tuple(t) = &**expr {
                     if let Expression::String(name) = &t[0] {

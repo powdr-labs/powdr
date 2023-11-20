@@ -58,39 +58,15 @@ mod test {
         let graph = airgen::compile(analysed);
         let pil = linker::link(graph).unwrap();
 
-        let query_callback = |query: &str| -> Option<Bn254Field> {
-            let items = query.split(',').map(|s| s.trim()).collect::<Vec<_>>();
-            match items[0] {
-                "\"input\"" => {
-                    assert_eq!(items.len(), 2);
-                    let index = items[1].parse::<usize>().unwrap();
-                    let value = inputs.get(index).cloned();
-                    if let Some(value) = value {
-                        log::trace!("Input query: Index {index} -> {value}");
-                    }
-                    value
-                }
-                "\"print\"" => {
-                    log::info!("Print: {}", items[1..].join(", "));
-                    Some(0.into())
-                }
-                "\"print_ch\"" => {
-                    print!("{}", items[1].parse::<u8>().unwrap() as char);
-                    Some(0.into())
-                }
-                "\"hint\"" => {
-                    assert_eq!(items.len(), 2);
-                    Some(Bn254Field::from_str(items[1]))
-                }
-                _ => None,
-            }
-        };
-
         let analyzed = pil_analyzer::analyze_string(&format!("{pil}"));
 
         let fixed = executor::constant_evaluator::generate(&analyzed);
-        let witness =
-            executor::witgen::WitnessGenerator::new(&analyzed, &fixed, query_callback).generate();
+        let witness = executor::witgen::WitnessGenerator::new(
+            &analyzed,
+            &fixed,
+            compiler::inputs_to_query_callback(inputs),
+        )
+        .generate();
 
         let fixed = to_owned_values(fixed);
 

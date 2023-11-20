@@ -550,8 +550,6 @@ fn preamble(degree: u64, coprocessors: &CoProcessors) -> String {
     instr jump_dyn X { pc' = X }
     instr jump_and_link_dyn X { pc' = X, x1' = pc + 1 }
     instr call l: label { pc' = l, x1' = pc + 1 }
-    // TODO x6 actually stores some relative address, but only part of it.
-    instr tail l: label { pc' = l, x6' = l }
     instr ret { pc' = x1 }
 
     instr branch_if_nonzero X, l: label { pc' = (1 - XIsZero) * l + XIsZero * (pc + 1) }
@@ -1192,10 +1190,19 @@ fn process_instruction(instr: &str, args: &[Argument], coprocessors: &CoProcesso
                 _ => None,
             };
             match (replacement, instr) {
+                (None, instr) => {
+                    let instr = if instr == "tail" { "jump" } else { instr };
+                    let arg = argument_to_escaped_symbol(label);
+                    vec![format!("{instr} {arg};")]
+                }
+                // Both "call" and "tail" are pseudoinstructions that are
+                // supposed to use x6 to calculate the high bits of the
+                // destination address. Our implementation does not touch x6,
+                // but no sane program would rely on this behavior, so we are
+                // probably fine.
                 (Some(replacement), "call") => vec![replacement],
                 (Some(replacement), "tail") => vec![replacement, "ret;".to_string()],
-                (Some(_), _) => panic!(),
-                (None, _) => vec![format!("{instr} {};", argument_to_escaped_symbol(label))],
+                (Some(_), _) => unreachable!(),
             }
         }
         "ecall" => {

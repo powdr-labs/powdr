@@ -395,8 +395,8 @@ impl<T: Display> Display for PilStatement<T> {
                 };
                 write!(f, "macro {name}({}) {{{body}}};", params.join(", "))
             }
-            PilStatement::FunctionCall(_, name, args) => {
-                write!(f, "{name}({});", format_expressions(args))
+            PilStatement::Expression(_, e) => {
+                write!(f, "{e};")
             }
         }
     }
