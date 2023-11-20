@@ -70,6 +70,8 @@ impl From<usize> for Elem {
     }
 }
 
+pub type MemoryState = HashMap<u32, u32>;
+
 pub enum MemOperationKind {
     Read,
     Write,
@@ -112,7 +114,9 @@ mod builder {
     use ast::asm_analysis::{Machine, RegisterTy};
     use number::FieldElement;
 
-    use crate::{Elem, ExecutionTrace, MemOperation, MemOperationKind, PC_INITIAL_VAL};
+    use crate::{
+        Elem, ExecutionTrace, MemOperation, MemOperationKind, MemoryState, PC_INITIAL_VAL,
+    };
 
     fn register_names<T: FieldElement>(main: &Machine<T>) -> Vec<&str> {
         main.registers
@@ -150,7 +154,7 @@ mod builder {
         batch_to_line_map: &'b [u32],
 
         /// Current memory.
-        mem: HashMap<u32, Elem>,
+        mem: HashMap<u32, u32>,
     }
 
     impl<'a, 'b> TraceBuilder<'a, 'b> {
@@ -163,7 +167,7 @@ mod builder {
             main: &'a Machine<T>,
             batch_to_line_map: &'b [u32],
             max_rows_len: usize,
-        ) -> Result<Self, ExecutionTrace<'a>> {
+        ) -> Result<Self, Box<(ExecutionTrace<'a>, MemoryState)>> {
             let reg_map = register_names(main)
                 .into_iter()
                 .enumerate()
@@ -200,7 +204,7 @@ mod builder {
             };
 
             if ret.has_enough_rows() || ret.set_next_pc().is_none() {
-                Err(ret.finish())
+                Err(Box::new(ret.finish()))
             } else {
                 Ok(ret)
             }
@@ -277,34 +281,34 @@ mod builder {
             self.set_next_pc().and(Some(curr_line))
         }
 
-        pub(crate) fn set_mem(&mut self, addr: u32, val: Elem) {
+        pub(crate) fn set_mem(&mut self, addr: u32, val: u32) {
             self.trace.mem.push(MemOperation {
                 idx: self.curr_idx / self.reg_len() + 1,
                 kind: MemOperationKind::Write,
                 address: addr,
             });
 
-            if val.u() != 0 {
+            if val != 0 {
                 self.mem.insert(addr, val);
             } else {
                 self.mem.remove(&addr);
             }
         }
 
-        pub(crate) fn get_mem(&mut self, addr: u32) -> Elem {
+        pub(crate) fn get_mem(&mut self, addr: u32) -> u32 {
             self.trace.mem.push(MemOperation {
                 idx: self.curr_idx / self.reg_len() + 1,
                 kind: MemOperationKind::Read,
                 address: addr,
             });
 
-            *self.mem.get(&addr).unwrap_or(&Elem::zero())
+            *self.mem.get(&addr).unwrap_or(&0)
         }
 
-        pub fn finish(mut self) -> ExecutionTrace<'a> {
+        pub fn finish(mut self) -> (ExecutionTrace<'a>, MemoryState) {
             // remove the last row (future row), as it is not part of the trace
             self.trace.regs.drain((self.curr_idx + self.reg_len())..);
-            self.trace
+            (self.trace, self.mem)
         }
 
         fn reg_len(&self) -> usize {
@@ -432,7 +436,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
             "mstore" => {
                 let addr = args[0].0 as u32;
                 assert_eq!(addr % 4, 0);
-                self.proc.set_mem(args[0].0 as u32, args[1]);
+                self.proc.set_mem(args[0].0 as u32, args[1].u());
 
                 Vec::new()
             }
@@ -441,7 +445,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 let val = self.proc.get_mem(addr & 0xfffffffc);
                 let rem = addr % 4;
 
-                vec![val, rem.into()]
+                vec![val.into(), rem.into()]
             }
             "jump" => {
                 self.proc.set_pc(args[0]);
@@ -688,7 +692,7 @@ pub fn execute_ast<'a, T: FieldElement>(
     program: &'a AnalysisASMFile<T>,
     inputs: &[T],
     max_steps_to_execute: usize,
-) -> ExecutionTrace<'a> {
+) -> (ExecutionTrace<'a>, MemoryState) {
     let main_machine = get_main_machine(program);
     let PreprocessedMain {
         statements,
@@ -699,7 +703,7 @@ pub fn execute_ast<'a, T: FieldElement>(
 
     let proc = match TraceBuilder::new(main_machine, &batch_to_line_map, max_steps_to_execute) {
         Ok(proc) => proc,
-        Err(trace) => return trace,
+        Err(ret) => return *ret,
     };
 
     let mut e = Executor {
