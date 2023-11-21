@@ -189,9 +189,7 @@ impl<T> ExpressionVisitable<Expression<T, NamespacedPolynomialReference>> for Pi
         F: FnMut(&mut Expression<T, NamespacedPolynomialReference>) -> ControlFlow<B>,
     {
         match self {
-            PilStatement::FunctionCall(_, _, arguments) => arguments
-                .iter_mut()
-                .try_for_each(|e| e.visit_expressions_mut(f, o)),
+            PilStatement::Expression(_, e) => e.visit_expressions_mut(f, o),
             PilStatement::PlookupIdentity(_, left, right)
             | PilStatement::PermutationIdentity(_, left, right) => [left, right]
                 .into_iter()
@@ -229,9 +227,7 @@ impl<T> ExpressionVisitable<Expression<T, NamespacedPolynomialReference>> for Pi
         F: FnMut(&Expression<T>) -> ControlFlow<B>,
     {
         match self {
-            PilStatement::FunctionCall(_, _, arguments) => {
-                arguments.iter().try_for_each(|e| e.visit_expressions(f, o))
-            }
+            PilStatement::Expression(_, e) => e.visit_expressions(f, o),
             PilStatement::PlookupIdentity(_, left, right)
             | PilStatement::PermutationIdentity(_, left, right) => [left, right]
                 .into_iter()

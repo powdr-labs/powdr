@@ -300,23 +300,21 @@ fn intermediate_nested() {
     gen_estark_proof(f, Default::default());
 }
 
-#[test]
-fn book() {
-    use walkdir::WalkDir;
+mod book {
+    use super::*;
+    use number::GoldilocksField;
+    use test_log::test;
 
-    for f in WalkDir::new("../test_data/asm/book/") {
-        let f = f.unwrap();
-        if f.metadata().unwrap().is_file() {
-            let f = f.path();
-            let f = f.strip_prefix("../test_data/asm/").unwrap();
-            // passing 0 to all tests currently works as they either take no prover input or 0 works
-            let i = [0];
+    fn run_book_test(file: &str) {
+        // passing 0 to all tests currently works as they either take no prover input or 0 works
+        let i = [0];
 
-            verify_asm::<GoldilocksField>(f.to_str().unwrap(), slice_to_vec(&i));
-            gen_halo2_proof(f.to_str().unwrap(), slice_to_vec(&i));
-            gen_estark_proof(f.to_str().unwrap(), slice_to_vec(&i));
-        }
+        verify_asm::<GoldilocksField>(file, slice_to_vec(&i));
+        gen_halo2_proof(file, slice_to_vec(&i));
+        gen_estark_proof(file, slice_to_vec(&i));
     }
+
+    include!(concat!(env!("OUT_DIR"), "/asm_book_tests.rs"));
 }
 
 #[test]

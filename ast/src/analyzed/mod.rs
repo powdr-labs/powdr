@@ -301,7 +301,6 @@ pub struct Symbol {
     pub source: SourceRef,
     pub absolute_name: String,
     pub kind: SymbolKind,
-    pub degree: DegreeType,
     pub length: Option<DegreeType>,
 }
 
