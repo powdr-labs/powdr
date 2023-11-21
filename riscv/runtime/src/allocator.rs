@@ -27,6 +27,10 @@ impl<const SIZE: usize> FixedMemoryAllocator<SIZE> {
 
 unsafe impl<const SIZE: usize> GlobalAlloc for FixedMemoryAllocator<SIZE> {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
+        self.alloc_zeroed(layout)
+    }
+
+    unsafe fn alloc_zeroed(&self, layout: Layout) -> *mut u8 {
         // Start address of the allocation array:
         let array_start = addr_of!(self.mem_buffer) as usize;
 

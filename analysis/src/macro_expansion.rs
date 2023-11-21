@@ -7,7 +7,7 @@ use ast::parsed::{
     asm::{ASMProgram, Instruction, InstructionBody, Machine, MachineStatement},
     folder::Folder,
     visitor::ExpressionVisitable,
-    Expression, FunctionDefinition, PilStatement,
+    Expression, FunctionCall, FunctionDefinition, PilStatement,
 };
 use number::FieldElement;
 
@@ -105,19 +105,26 @@ where
             }
         }
 
-        statement.post_visit_expressions_mut(&mut |e| self.process_expression(e));
-
         match &mut statement {
-            PilStatement::FunctionCall(_start, name, arguments) => {
-                if !self.macros.contains_key(name) {
-                    panic!(
-                        "Macro {name} not found - only macros allowed at this point, no fixed columns."
-                    );
+            PilStatement::Expression(_start, e) => match e {
+                Expression::FunctionCall(FunctionCall { id, arguments }) => {
+                    assert!(id.namespace.is_none());
+                    if !self.macros.contains_key(&id.name) {
+                        panic!("Macro {id} not found - only macros allowed at this point, no fixed columns.");
+                    }
+                    let arguments = std::mem::take(arguments)
+                        .into_iter()
+                        .map(|mut a| {
+                            self.process_expression(&mut a);
+                            a
+                        })
+                        .collect();
+                    if self.expand_macro(&id.name, arguments).is_some() {
+                        panic!("Invoked a macro in statement context with non-empty expression.");
+                    }
                 }
-                if self.expand_macro(name, std::mem::take(arguments)).is_some() {
-                    panic!("Invoked a macro in statement context with non-empty expression.");
-                }
-            }
+                _ => panic!("Only function calls or identities allowed at PIL statement level."),
+            },
             PilStatement::MacroDefinition(_start, name, parameters, statements, expression) => {
                 // We expand lazily. Is that a mistake?
                 let is_new = self
@@ -133,7 +140,10 @@ where
                     .is_none();
                 assert!(is_new);
             }
-            _ => self.statements.push(statement),
+            _ => {
+                statement.post_visit_expressions_mut(&mut |e| self.process_expression(e));
+                self.statements.push(statement);
+            }
         };
 
         if added_locals {
@@ -176,9 +186,12 @@ where
                 *e = self.arguments[self.parameter_names[&poly.name]].clone()
             }
         } else if let Expression::FunctionCall(call) = e {
-            if self.macros.contains_key(call.id.as_str()) {
+            if call.id.namespace.is_none()
+                && !self.shadowing_locals.contains(&call.id.name)
+                && self.macros.contains_key(&call.id.name)
+            {
                 *e = self
-                    .expand_macro(call.id.as_str(), std::mem::take(&mut call.arguments))
+                    .expand_macro(&call.id.name, std::mem::take(&mut call.arguments))
                     .expect("Invoked a macro in expression context with empty expression.")
             }
         }

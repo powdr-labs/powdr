@@ -264,6 +264,11 @@ fn compile<T: FieldElement, Q: QueryCallback<T>>(
         .map(|(name, c)| (name.to_string(), c))
         .collect::<Vec<_>>();
 
+    let constants = constants
+        .into_iter()
+        .map(|(name, c)| (name.to_string(), c))
+        .collect::<Vec<_>>();
+
     // Even if we don't have all constants and witnesses, some backends will
     // still output the constraint serialization.
     let (proof, constraints_serialization) = if let Some(backend) = prove_with {

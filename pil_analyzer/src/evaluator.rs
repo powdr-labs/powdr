@@ -84,7 +84,7 @@ impl<'a, T: FieldElement> Evaluator<'a, T> {
                     .map(|a| self.evaluate(a))
                     .collect::<Result<Vec<_>, _>>()?;
                 assert!(arg_values.len() == 1);
-                let values = &self.function_cache[id.as_str()];
+                let values = &self.function_cache[id.to_string().as_str()];
                 Ok(values[arg_values[0].to_degree() as usize % values.len()])
             }
             Expression::MatchExpression(scrutinee, arms) => {

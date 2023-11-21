@@ -21,6 +21,7 @@ ast = { version = "0.1.0", path = "../ast" }
 [dev-dependencies]
 importer = { path = "../importer" }
 analysis = { path = "../analysis" }
+compiler = { path = "../compiler" }
 executor = { path = "../executor" }
 parser = { path = "../parser" }
 airgen = { path = "../airgen" }

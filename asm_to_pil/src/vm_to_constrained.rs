@@ -236,7 +236,8 @@ impl<T: FieldElement> ASMPILConverter<T> {
 
                 match *rhs {
                     Expression::FunctionCall(c) => {
-                        self.handle_functional_instruction(lhs_with_reg, c.id, c.arguments)
+                        assert!(c.id.namespace.is_none());
+                        self.handle_functional_instruction(lhs_with_reg, c.id.name, c.arguments)
                     }
                     _ => self.handle_non_functional_assignment(start, lhs_with_reg, *rhs),
                 }
