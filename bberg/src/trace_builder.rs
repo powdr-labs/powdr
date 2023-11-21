@@ -117,7 +117,7 @@ class {name}TraceBuilder {{
                 return true;
             }};
 
-            return evaluate_relation.template operator()<Fib_vm::Fib<FF>>(\"Fib\");
+            return evaluate_relation.template operator()<{name}_vm::{name}<FF>>(\"{name}\");
         }}
     
 
