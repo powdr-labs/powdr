@@ -230,7 +230,7 @@ fn compile<T: FieldElement, Q: QueryCallback<T>>(
     bname: Option<String>,
 ) -> CompilationResult<T> {
     log::info!("Optimizing pil...");
-    // let analyzed = pilopt::optimize(analyzed);
+    let analyzed = pilopt::optimize(analyzed);
 
     // md: we inline intermediate polynomials here, as honk does not have a notion of an intermediate
     let mut mut_analyzed = analyzed;

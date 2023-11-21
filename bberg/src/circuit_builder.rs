@@ -4,7 +4,6 @@ use itertools::Itertools;
 use number::FieldElement;
 use pil_analyzer::pil_analyzer::inline_intermediate_polynomials;
 
-use crate::arith_builder::ArithmetizationBuilder;
 use crate::composer_builder::ComposerBuilder;
 use crate::file_writer::BBFiles;
 use crate::flavor_builder::FlavorBuilder;
@@ -26,13 +25,13 @@ pub(crate) fn analyzed_to_cpp<F: FieldElement>(
     // Collect all column names and determine if they need a shift or not
 
     // TODO: currently we provide shifts for both the fixed and witness columns, in the long term we need to work out what needs a shift and what doesn't
-    let _fixed_names = fixed
+    let fixed_names = fixed
         .iter()
-        .map(|(name, _)| (*name).to_owned())
+        .map(|(name, _)| (*name.replace(".", "_")).to_owned())
         .collect::<Vec<_>>();
-    let _witness_names = witness
+    let witness_names = witness
         .iter()
-        .map(|(name, _)| (*name).to_owned())
+        .map(|(name, _)| (*name.replace(".", "_")).to_owned())
         .collect::<Vec<_>>();
 
     // Inlining step to remove the intermediate poly definitions
@@ -41,7 +40,7 @@ pub(crate) fn analyzed_to_cpp<F: FieldElement>(
     let (subrelations, identities, mut collected_shifts) = create_identities(&analyzed_identities);
     let shifted_polys: Vec<String> = collected_shifts.drain().collect_vec();
 
-    let (all_cols, unshifted, to_be_shifted, _shifted, all_cols_with_shifts) =
+    let (all_cols, unshifted, to_be_shifted, shifted, all_cols_with_shifts) =
         get_all_col_names(fixed, witness, &shifted_polys);
     let num_cols = all_cols_with_shifts.len();
 
@@ -56,9 +55,6 @@ pub(crate) fn analyzed_to_cpp<F: FieldElement>(
         &all_cols_with_shifts,
     );
 
-    // ----------------------- Create the arithmetization file -----------------------
-    bb_files.create_arith_hpp(file_name, num_cols);
-
     // ----------------------- Create the trace builder file -----------------------
     bb_files.create_trace_builder_hpp(file_name, &all_cols, &to_be_shifted);
 
@@ -66,17 +62,20 @@ pub(crate) fn analyzed_to_cpp<F: FieldElement>(
     bb_files.create_flavor_hpp(
         file_name,
         &subrelations,
+        &fixed_names,
+        &witness_names,
         &all_cols,
         &to_be_shifted,
+        &shifted,
         // &shifted,
     );
 
     // ----------------------- Create the composer files -----------------------
-    bb_files.create_composer_cpp(file_name);
+    bb_files.create_composer_cpp(file_name, &all_cols);
     bb_files.create_composer_hpp(file_name);
 
     // ----------------------- Create the Verifier files -----------------------
-    bb_files.create_verifier_cpp(file_name, &all_cols);
+    bb_files.create_verifier_cpp(file_name, &witness_names);
     bb_files.create_verifier_hpp(file_name);
 
     // ----------------------- Create the Prover files -----------------------

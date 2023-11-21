@@ -12,12 +12,10 @@ fn trace_hpp_includes(name: &str) -> String {
 
     #include \"barretenberg/common/throw_or_abort.hpp\"
     #include \"barretenberg/ecc/curves/bn254/fr.hpp\"
-    #include \"barretenberg/proof_system/arithmetization/arithmetization.hpp\"
     #include \"barretenberg/proof_system/circuit_builder/circuit_builder_base.hpp\"
     
-    #include \"barretenberg/honk/flavor/generated/{name}_flavor.hpp\"
-    #include \"barretenberg/proof_system/arithmetization/generated/{name}_arith.hpp\"
-    #include \"barretenberg/proof_system/relations/generated/{name}.hpp\"
+    #include \"barretenberg/flavor/generated/{name}_flavor.hpp\"
+    #include \"barretenberg/relations/generated/{name}.hpp\"
 "
     )
 }
@@ -57,12 +55,13 @@ namespace proof_system {{
 
 class {name}TraceBuilder {{
     public:
-        using FF = arithmetization::{name}Arithmetization::FF;
+        using Flavor = proof_system::honk::flavor::{name}Flavor;
+        using FF = Flavor::FF;
         using Row = {name}_vm::Row<FF>;
 
         // TODO: tempalte
-        using Polynomial = honk::flavor::{name}Flavor::Polynomial;
-        using AllPolynomials = honk::flavor::{name}Flavor::AllPolynomials;
+        using Polynomial = Flavor::Polynomial;
+        using AllPolynomials = Flavor::AllPolynomials;
 
         static constexpr size_t num_fixed_columns = {num_cols};
         static constexpr size_t num_polys = {num_polys};
@@ -75,8 +74,8 @@ class {name}TraceBuilder {{
             AllPolynomials polys;
 
             // Allocate mem for each column
-            for (size_t i = 0; i < num_fixed_columns; ++i) {{
-                polys[i] = Polynomial(num_rows);
+            for (auto* poly : polys.pointer_view()) {{
+                *poly = Polynomial(num_rows);
             }}
 
             for (size_t i = 0; i < rows.size(); i++) {{
@@ -88,24 +87,26 @@ class {name}TraceBuilder {{
             return polys;
         }}
 
-        [[maybe_unused]] bool check_circuit() {{
+        [[maybe_unused]] bool check_circuit()
+        {{
             auto polys = compute_polynomials();
-            const size_t num_rows = polys[0].size();
-
+            const size_t num_rows = polys.get_polynomial_size();
+    
             const auto evaluate_relation = [&]<typename Relation>(const std::string& relation_name) {{
-                typename Relation::ArrayOfValuesOverSubrelations result;
+                typename Relation::SumcheckArrayOfValuesOverSubrelations result;
                 for (auto& r : result) {{
                     r = 0;
                 }}
                 constexpr size_t NUM_SUBRELATIONS = result.size();
-
+    
                 for (size_t i = 0; i < num_rows; ++i) {{
                     Relation::accumulate(result, polys.get_row(i), {{}}, 1);
-
+    
                     bool x = true;
                     for (size_t j = 0; j < NUM_SUBRELATIONS; ++j) {{
                         if (result[j] != 0) {{
-                            throw_or_abort(format(\"Relation \", relation_name, \", subrelation index \", j, \" failed at row \", i));
+                            throw_or_abort(
+                                format(\"Relation \", relation_name, \", subrelation index \", j, \" failed at row \", i));
                             x = false;
                         }}
                     }}
@@ -116,8 +117,9 @@ class {name}TraceBuilder {{
                 return true;
             }};
 
-            return evaluate_relation.template operator()<{name}_vm::{name}<FF>>(\"{name}\");
+            return evaluate_relation.template operator()<Fib_vm::Fib<FF>>(\"Fib\");
         }}
+    
 
         [[nodiscard]] size_t get_num_gates() const {{ return rows.size(); }}
 

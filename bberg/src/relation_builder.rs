@@ -110,8 +110,9 @@ fn get_degree_boilerplate(degrees: Vec<DegreeType>) -> String {
     let max = degrees.iter().max().unwrap();
     let num_degrees = degrees.len();
 
-    let mut degree_boilerplate =
-        format!("static constexpr std::array<size_t, {num_degrees}> SUBRELATION_LENGTHS{{\n");
+    let mut degree_boilerplate = format!(
+        "static constexpr std::array<size_t, {num_degrees}> SUBRELATION_PARTIAL_LENGTHS{{\n"
+    );
     // for i in 0..degrees.len() {
     //     degree_boilerplate.push_str(&format!("   {},\n", degrees[i]));
     // }

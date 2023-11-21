@@ -3,7 +3,6 @@ use std::io::Write;
 
 pub struct BBFiles {
     pub relation_hpp: Option<String>,
-    pub arith_hpp: Option<String>,
     pub flavor_hpp: Option<String>,
     // trace
     pub trace_hpp: Option<String>,
@@ -46,17 +45,16 @@ impl BBFiles {
         prover: Option<String>,
     ) -> Self {
         let base = base.unwrap_or("src/barretenberg".to_owned());
-        let rel = rel.unwrap_or("proof_system/relations/generated".to_owned());
+        let rel = rel.unwrap_or("relations/generated".to_owned());
         let arith = arith.unwrap_or("proof_system/arithmetization/generated".to_owned());
         let trace = trace.unwrap_or("proof_system/circuit_builder/generated".to_owned());
-        let flavor = flavor.unwrap_or("honk/flavor/generated".to_owned());
-        let composer = composer.unwrap_or("honk/composer/generated".to_owned());
-        let prover = prover.unwrap_or("honk/proof_system/generated".to_owned());
+        let flavor = flavor.unwrap_or("flavor/generated".to_owned());
+        let composer = composer.unwrap_or("vm/generated".to_owned());
+        let prover = prover.unwrap_or("vm/generated".to_owned());
 
         Self {
             file_name,
             relation_hpp: None,
-            arith_hpp: None,
             flavor_hpp: None,
             trace_hpp: None,
             composer_cpp: None,
@@ -88,7 +86,6 @@ impl BBFiles {
             };
         }
         write_file!(self.rel, ".hpp", self.relation_hpp);
-        write_file!(self.arith, "_arith.hpp", self.arith_hpp);
 
         // Trace
         write_file!(self.trace, "_trace.hpp", self.trace_hpp);

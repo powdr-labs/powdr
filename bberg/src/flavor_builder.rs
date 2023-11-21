@@ -5,7 +5,10 @@ pub trait FlavorBuilder {
         &mut self,
         name: &str,
         relations: &[String],
+        fixed: &[String],
+        witness: &[String],
         all_cols: &[String],
+        to_be_shifted: &[String],
         shifted: &[String],
     );
 }
@@ -16,38 +19,44 @@ impl FlavorBuilder for BBFiles {
         &mut self,
         name: &str,
         relations: &[String],
+        fixed: &[String],
+        witness: &[String],
         all_cols: &[String],
+        to_be_shifted: &[String],
         shifted: &[String],
         // shifted: &[String],
     ) {
+        let first_poly = &fixed[0];
         let includes = flavor_includes(name, relations);
-        let num_witness = all_cols.len();
-        let num_all = num_witness + shifted.len();
-        // Note: includes all witness shifts
+        let num_precomputed = &fixed.len();
+        let num_witness = witness.len();
+        let num_all = num_witness + shifted.len() + to_be_shifted.len();
         // TODO: for now we include a shift OF ALL witness wires, however this is not necessarily true
 
-        let precomputed = witness_get(all_cols, 0, false);
-        let witness_str = create_witness_entities(all_cols);
-        let all_shift = witness_get(shifted, num_witness, true);
+        let precomputed = witness_get(fixed, false);
 
-        let all_entities_get_wires = make_wires_set(
-            &[all_cols.to_vec(), shifted.to_vec()]
-                .into_iter()
-                .flatten()
-                .collect::<Vec<String>>(),
-        );
+        let witnesses = witness_get(witness, false);
+        let precomputed_str = create_precomputed_entities(&fixed);
+        let witness_str = create_witness_entities(&witness);
+        let all_shift = witness_get(shifted, false);
+
+        let all_cols_and_shifts = &[all_cols.to_vec(), shifted.to_vec()]
+            .into_iter()
+            .flatten()
+            .collect::<Vec<String>>();
+        let all_entities_get_wires = make_wires_set(&all_cols_and_shifts);
+        let all_entities_pointer_view =
+            create_pointer_view("NUM_ALL_ENTITIES", &all_cols_and_shifts);
+
         let all_entities_get_unshifted = make_wires_set(all_cols);
-        let all_entities_get_to_be_shifted = make_wires_set(shifted);
-        let all_entities_get_shifted = make_wires_set(
-            &shifted
-                .iter()
-                .map(|w| format!("{}_shift", w))
-                .collect::<Vec<String>>(),
-        );
+        let all_entities_get_to_be_shifted = make_wires_set(to_be_shifted);
+        let all_entities_get_shifted = make_wires_set(shifted);
 
         let commitment_labels_class = create_commitment_labels(all_cols);
 
-        let verification_commitments = create_verifier_commitments();
+        let verification_commitments = create_verifier_commitments(fixed);
+
+        let transcript = generate_transcript(witness);
 
         // TODO: make this work when we have multiple relation files, for now we just have the one
         let relations_tuple = format!("{name}_vm::{name}<FF>");
@@ -64,48 +73,53 @@ impl FlavorBuilder for BBFiles {
 namespace proof_system::honk {{
 namespace flavor {{
 
-template <typename CycleGroup_T, typename Curve_T, typename PCS_T> class {name}FlavorBase {{
+class {name}Flavor {{
     public: 
-        // forward template params into the ECCVMBase namespace
-        using CycleGroup = CycleGroup_T;
-        using Curve = Curve_T;
-        using G1 = typename Curve::Group;
-        using PCS = PCS_T;
+        using Curve = curve::BN254;
+        using G1 = Curve::Group;
+        using PCS = pcs::kzg::KZG<Curve>;
 
-        using FF = typename G1::subgroup_field;
+        using FF = G1::subgroup_field;
         using Polynomial = barretenberg::Polynomial<FF>;
         using PolynomialHandle = std::span<FF>;
-        using GroupElement = typename G1::element;
-        using Commitment = typename G1::affine_element;
-        using CommitmentHandle = typename G1::affine_element;
+        using GroupElement = G1::element;
+        using Commitment = G1::affine_element;
+        using CommitmentHandle = G1::affine_element;
         using CommitmentKey = pcs::CommitmentKey<Curve>;
         using VerifierCommitmentKey = pcs::VerifierCommitmentKey<Curve>;
 
-        static constexpr size_t NUM_WIRES = {num_witness};
-        static constexpr size_t NUM_PRECOMPUTED_ENTITIES = 0; // This is zero for now
+        static constexpr size_t NUM_PRECOMPUTED_ENTITIES = {num_precomputed}; 
         static constexpr size_t NUM_WITNESS_ENTITIES = {num_witness};
+        static constexpr size_t NUM_WIRES = NUM_WITNESS_ENTITIES + NUM_PRECOMPUTED_ENTITIES;
         // We have two copies of the witness entities, so we subtract the number of fixed ones (they have no shift), one for the unshifted and one for the shifted
         static constexpr size_t NUM_ALL_ENTITIES = {num_all};
 
 
-        // using GrandProductRelations = std::tuple<>;
         using Relations = std::tuple<{relations_tuple}>;
-        // using LookupRelation = sumcheck::LookupRelation<FF>;
 
-        static constexpr size_t MAX_RELATION_LENGTH  = get_max_relation_length<Relations>();
-        static constexpr size_t MAX_RANDOM_RELATION_LENGTH = MAX_RELATION_LENGTH + 1;
+        static constexpr size_t MAX_PARTIAL_RELATION_LENGTH = compute_max_partial_relation_length<Relations>();
+
+        // BATCHED_RELATION_PARTIAL_LENGTH = algebraic degree of sumcheck relation *after* multiplying by the `pow_zeta`
+        // random polynomial e.g. For \\sum(x) [A(x) * B(x) + C(x)] * PowZeta(X), relation length = 2 and random relation
+        // length = 3
+        static constexpr size_t BATCHED_RELATION_PARTIAL_LENGTH = MAX_PARTIAL_RELATION_LENGTH + 1;
         static constexpr size_t NUM_RELATIONS = std::tuple_size<Relations>::value;
 
-        // define the containers for storing the contributions from each relation in Sumcheck
-        using TupleOfTuplesOfUnivariates = decltype(create_relation_univariates_container<FF, Relations>());
-        using TupleOfArraysOfValues = decltype(create_relation_values_container<FF, Relations>());
+        template <size_t NUM_INSTANCES>
+        using ProtogalaxyTupleOfTuplesOfUnivariates =
+            decltype(create_protogalaxy_tuple_of_tuples_of_univariates<Relations, NUM_INSTANCES>());
+        using SumcheckTupleOfTuplesOfUnivariates = decltype(create_sumcheck_tuple_of_tuples_of_univariates<Relations>());
+        using TupleOfArraysOfValues = decltype(create_tuple_of_arrays_of_values<Relations>());
+    
+
+        static constexpr bool has_zero_row = true;
 
     private:
         template<typename DataType, typename HandleType>
         class PrecomputedEntities : public PrecomputedEntities_<DataType, HandleType, NUM_PRECOMPUTED_ENTITIES> {{
             public:
+              {precomputed_str}
 
-              std::vector<HandleType> get_selectors() override {{ return {{}}; }};
               std::vector<HandleType> get_sigma_polynomials() override {{ return {{}}; }};
               std::vector<HandleType> get_id_polynomials() override {{ return {{}}; }};
               std::vector<HandleType> get_table_polynomials() {{ return {{}}; }};
@@ -123,7 +137,10 @@ template <typename CycleGroup_T, typename Curve_T, typename PCS_T> class {name}F
             public:
 
             {precomputed} 
+            {witnesses}
             {all_shift}
+
+            {all_entities_pointer_view}
 
 
             std::vector<HandleType> get_wires() override {{
@@ -150,30 +167,6 @@ template <typename CycleGroup_T, typename Curve_T, typename PCS_T> class {name}F
                 }};
             }};
 
-            AllEntities() = default;
-
-            AllEntities(const AllEntities& other)
-                : AllEntities_<DataType, HandleType, NUM_ALL_ENTITIES>(other){{}};
-    
-            AllEntities(AllEntities&& other) noexcept
-                : AllEntities_<DataType, HandleType, NUM_ALL_ENTITIES>(other){{}};
-    
-            AllEntities& operator=(const AllEntities& other)
-            {{
-                if (this == &other) {{
-                    return *this;
-                }}
-                AllEntities_<DataType, HandleType, NUM_ALL_ENTITIES>::operator=(other);
-                return *this;
-            }}
-    
-            AllEntities& operator=(AllEntities&& other) noexcept
-            {{
-                AllEntities_<DataType, HandleType, NUM_ALL_ENTITIES>::operator=(other);
-                return *this;
-            }}
-    
-            ~AllEntities() override = default;
         }};
     
     public:
@@ -199,54 +192,54 @@ template <typename CycleGroup_T, typename Curve_T, typename PCS_T> class {name}F
         public:
           using Base = AllEntities<FF, FF>;
           using Base::Base;
-          AllValues(std::array<FF, NUM_ALL_ENTITIES> _data_in) {{ this->_data = _data_in; }}
       }};
   
     class AllPolynomials : public AllEntities<Polynomial, PolynomialHandle> {{
       public:
-        AllValues get_row(const size_t row_idx) const
+        [[nodiscard]] size_t get_polynomial_size() const {{ return this->{first_poly}.size(); }}
+        [[nodiscard]] AllValues get_row(const size_t row_idx) const
         {{
             AllValues result;
-            size_t column_idx = 0; // // TODO(https://github.com/AztecProtocol/barretenberg/issues/391) zip
-            for (auto& column : this->_data) {{
-                result[column_idx] = column[row_idx];
-                column_idx++;
+            for (auto [result_field, polynomial] : zip_view(result.pointer_view(), pointer_view())) {{
+                *result_field = (*polynomial)[row_idx];
             }}
             return result;
         }}
     }};
 
+
     using RowPolynomials = AllEntities<FF, FF>;
 
     class PartiallyEvaluatedMultivariates : public AllEntities<Polynomial, PolynomialHandle> {{
-        public:
+      public:
         PartiallyEvaluatedMultivariates() = default;
         PartiallyEvaluatedMultivariates(const size_t circuit_size)
         {{
             // Storage is only needed after the first partial evaluation, hence polynomials of size (n / 2)
-            for (auto& poly : this->_data) {{
-                poly = Polynomial(circuit_size / 2);
+            for (auto* poly : pointer_view()) {{
+                *poly = Polynomial(circuit_size / 2);
             }}
         }}
     }};
 
-    template <size_t MAX_RELATION_LENGTH>
-    using ExtendedEdges = AllEntities<barretenberg::Univariate<FF, MAX_RELATION_LENGTH>,
-    barretenberg::Univariate<FF, MAX_RELATION_LENGTH>>;
+    /**
+     * @brief A container for univariates used during Protogalaxy folding and sumcheck.
+     * @details During folding and sumcheck, the prover evaluates the relations on these univariates.
+     */
+    template <size_t LENGTH>
+    using ProverUnivariates = AllEntities<barretenberg::Univariate<FF, LENGTH>, barretenberg::Univariate<FF, LENGTH>>;
 
-    class ClaimedEvaluations : public AllEntities<FF, FF> {{
-        public:
-            using Base = AllEntities<FF, FF>;
-            using Base::Base;
-            ClaimedEvaluations(std::array<FF, NUM_ALL_ENTITIES> _data_in) {{ this->_data = _data_in; }}
-    }};
+    /**
+     * @brief A container for univariates produced during the hot loop in sumcheck.
+     */
+    using ExtendedEdges = ProverUnivariates<MAX_PARTIAL_RELATION_LENGTH>;
 
     {commitment_labels_class}
 
     {verification_commitments}
-}};
 
-class {name}Flavor : public {name}FlavorBase<grumpkin::g1, curve::BN254, pcs::kzg::KZG<curve::BN254>> {{}};
+    {transcript}
+}};
 
 }} // namespace proof_system::honk::flavor
 }} // namespace proof_system::honk
@@ -265,49 +258,66 @@ fn flavor_includes(name: &str, _relations: &[String]) -> String {
     format!(
         "
 #pragma once
+#include \"../relation_definitions_fwd.hpp\"
 #include \"barretenberg/ecc/curves/bn254/g1.hpp\"
-#include \"barretenberg/honk/pcs/kzg/kzg.hpp\"
+#include \"barretenberg/commitment_schemes/kzg/kzg.hpp\"
 #include \"barretenberg/polynomials/barycentric.hpp\"
 #include \"barretenberg/polynomials/univariate.hpp\"
 
-#include \"barretenberg/honk/transcript/transcript.hpp\"
+#include \"barretenberg/transcript/transcript.hpp\"
 #include \"barretenberg/polynomials/evaluation_domain.hpp\"
 #include \"barretenberg/polynomials/polynomial.hpp\"
-// #include \"barretenberg/proof_system/circuit_builder/ultra_circuit_builder.hpp\"
-#include \"barretenberg/proof_system/flavor/flavor.hpp\"
-#include \"barretenberg/proof_system/relations/generated/{name}.hpp\"
+#include \"barretenberg/flavor/flavor.hpp\"
+#include \"barretenberg/relations/generated/{name}.hpp\"
 "
     )
 }
 
 fn create_precomputed_entities(fixed: &[String]) -> String {
+    let data_types = witness_get(fixed, false);
     let mut name_set = String::new();
     for name in fixed {
         let n = name.replace('.', "_");
         name_set.push_str(&format!("{n}, ", n = n));
     }
 
-    let get_selectors = format!(
+    let pointer_view = create_pointer_view("NUM_PRECOMPUTED_ENTITIES", fixed);
+
+    format!(
         "
+        {data_types}
+        {pointer_view}
+
         std::vector<HandleType> get_selectors() override {{
             return {{ {name_set} }};
         }};
         ",
         name_set = name_set
-    );
-
-    get_selectors
+    )
 }
 
-fn witness_get(witness: &[String], offset: usize, shift: bool) -> String {
+fn create_pointer_view(label: &str, entities: &[String]) -> String {
+    let pointer_list = entities
+        .iter()
+        .map(|e| format!("&{}", e.replace('.', "_")))
+        .collect::<Vec<_>>()
+        .join(", ");
+
+    format!(
+        "DEFINE_POINTER_VIEW({label}, {pointer_list})",
+        label = label,
+        pointer_list = pointer_list
+    )
+}
+
+fn witness_get(witness: &[String], shift: bool) -> String {
     let mut return_string = String::new();
-    for (i, name) in witness.iter().enumerate() {
+    for name in witness.iter() {
         let n = name.replace('.', "_");
         let n = if shift { format!("{}_shift", n) } else { n };
-        let index = i + offset;
         return_string.push_str(&format!(
             "
-            DataType& {n} = std::get<{index}>(this->_data);",
+            DataType {n};",
             n = n
         ));
     }
@@ -337,12 +347,15 @@ fn make_wires_set(set: &[String]) -> String {
 }
 
 fn create_witness_entities(witness: &[String]) -> String {
-    let data_types = witness_get(witness, 0, false);
+    let data_types = witness_get(witness, false);
     let get_wires = make_wires_set(witness);
+    let pointer_view = create_pointer_view("NUM_WITNESS_ENTITIES", witness);
 
     format!(
         "
         {data_types}
+
+        {pointer_view}
 
         std::vector<HandleType> get_wires() override {{
             return {{ 
@@ -388,19 +401,129 @@ fn create_commitment_labels(all_ents: &[String]) -> String {
     )
 }
 
-fn create_verifier_commitments() -> &'static str {
-    r#"
-    class VerifierCommitments : public AllEntities<Commitment, CommitmentHandle> {
+fn create_key_dereference(fixed: &[String]) -> String {
+    fixed
+        .iter()
+        .map(|f| {
+            let name = f.replace('.', "_");
+            format!("{name} = verification_key->{name};")
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn create_verifier_commitments(fixed: &[String]) -> String {
+    let key_dereference = create_key_dereference(fixed);
+
+    format!(
+        "
+    class VerifierCommitments : public AllEntities<Commitment, CommitmentHandle> {{
       private:
         using Base = AllEntities<Commitment, CommitmentHandle>;
 
       public:
         VerifierCommitments(const std::shared_ptr<VerificationKey>& verification_key,
-                            const VerifierTranscript<FF>& transcript)
-        {
+                            const BaseTranscript<FF>& transcript)
+        {{
             static_cast<void>(transcript);
-            static_cast<void>(verification_key);
-        }
-    };
-"#
+            {key_dereference}
+        }}
+    }};
+"
+    )
+}
+
+fn generate_transcript(witness: &[String]) -> String {
+    let declarations = witness
+        .iter()
+        .map(|f| format!("Commitment {};", f.replace('.', "_")))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let deserialize_wires = witness
+        .iter()
+        .map(|f| {
+            format!(
+                "{} = deserialize_from_buffer<Commitment>(BaseTranscript<FF>::proof_data, num_bytes_read);",
+                f.replace('.', "_")
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    let serialize_wires = witness
+        .iter()
+        .map(|f| {
+            format!(
+                "serialize_to_buffer<Commitment>({}, BaseTranscript<FF>::proof_data);",
+                f.replace('.', "_")
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    format!("
+    class Transcript : public BaseTranscript<FF> {{
+      public:
+        uint32_t circuit_size;
+
+        {declarations}
+
+        std::vector<barretenberg::Univariate<FF, BATCHED_RELATION_PARTIAL_LENGTH>> sumcheck_univariates;
+        std::array<FF, NUM_ALL_ENTITIES> sumcheck_evaluations;
+        std::vector<Commitment> zm_cq_comms;
+        Commitment zm_cq_comm;
+        Commitment zm_pi_comm;
+
+        Transcript() = default;
+
+        Transcript(const std::vector<uint8_t>& proof)
+            : BaseTranscript<FF>(proof)
+        {{}}
+
+        void deserialize_full_transcript() override
+        {{
+            size_t num_bytes_read = 0;
+            circuit_size = deserialize_from_buffer<uint32_t>(proof_data, num_bytes_read);
+            size_t log_n = numeric::get_msb(circuit_size);
+
+            {deserialize_wires}
+
+            for (size_t i = 0; i < log_n; ++i) {{
+                sumcheck_univariates.emplace_back(
+                    deserialize_from_buffer<barretenberg::Univariate<FF, BATCHED_RELATION_PARTIAL_LENGTH>>(
+                        BaseTranscript<FF>::proof_data, num_bytes_read));
+            }}
+            sumcheck_evaluations = deserialize_from_buffer<std::array<FF, NUM_ALL_ENTITIES>>(
+                BaseTranscript<FF>::proof_data, num_bytes_read);
+            for (size_t i = 0; i < log_n; ++i) {{
+                zm_cq_comms.push_back(deserialize_from_buffer<Commitment>(proof_data, num_bytes_read));
+            }}
+            zm_cq_comm = deserialize_from_buffer<Commitment>(proof_data, num_bytes_read);
+            zm_pi_comm = deserialize_from_buffer<Commitment>(proof_data, num_bytes_read);
+        }}
+
+        void serialize_full_transcript() override
+        {{
+            size_t old_proof_length = proof_data.size();
+            BaseTranscript<FF>::proof_data.clear();
+            size_t log_n = numeric::get_msb(circuit_size);
+
+            serialize_to_buffer(circuit_size, BaseTranscript<FF>::proof_data);
+
+            {serialize_wires}
+
+            for (size_t i = 0; i < log_n; ++i) {{
+                serialize_to_buffer(sumcheck_univariates[i], BaseTranscript<FF>::proof_data);
+            }}
+            serialize_to_buffer(sumcheck_evaluations, BaseTranscript<FF>::proof_data);
+            for (size_t i = 0; i < log_n; ++i) {{
+                serialize_to_buffer(zm_cq_comms[i], proof_data);
+            }}
+            serialize_to_buffer(zm_cq_comm, proof_data);
+            serialize_to_buffer(zm_pi_comm, proof_data);
+
+            // sanity check to make sure we generate the same length of proof as before.
+            ASSERT(proof_data.size() == old_proof_length);
+        }}
+    }};
+    ")
 }
