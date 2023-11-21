@@ -30,7 +30,7 @@ use number::{BigInt, FieldElement};
 const PC_INITIAL_VAL: usize = 2;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub struct Elem(i64);
+pub struct Elem(pub i64);
 
 impl Elem {
     const fn zero() -> Self {
