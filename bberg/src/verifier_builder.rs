@@ -119,12 +119,12 @@ impl VerifierBuilder for BBFiles {
         using VerifierCommitmentKey = Flavor::VerifierCommitmentKey;
     
     public:
-        explicit FibVerifier(std::shared_ptr<VerificationKey> verifier_key = nullptr);
-        FibVerifier(FibVerifier&& other) noexcept;
-        FibVerifier(const FibVerifier& other) = delete;
+        explicit {name}Verifier(std::shared_ptr<VerificationKey> verifier_key = nullptr);
+        {name}Verifier({name}Verifier&& other) noexcept;
+        {name}Verifier(const {name}Verifier& other) = delete;
     
-        FibVerifier& operator=(const FibVerifier& other) = delete;
-        FibVerifier& operator=(FibVerifier&& other) noexcept;
+        {name}Verifier& operator=(const {name}Verifier& other) = delete;
+        {name}Verifier& operator=({name}Verifier&& other) noexcept;
     
         bool verify_proof(const plonk::proof& proof);
     

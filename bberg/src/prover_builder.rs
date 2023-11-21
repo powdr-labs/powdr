@@ -179,7 +179,7 @@ prover_polynomials.{n}_shift = key->{n}.shifted();
      * @details See https://hackmd.io/dlf9xEwhTQyE3hiGbq4FsA?view for a complete description of the unrolled protocol.
      *
      * */
-     void FibProver::execute_zeromorph_rounds()
+     void {name}Prover::execute_zeromorph_rounds()
     {{
         ZeroMorph::prove(prover_polynomials.get_unshifted(),
                          prover_polynomials.get_to_be_shifted(),
