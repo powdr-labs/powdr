@@ -40,17 +40,24 @@ pub fn compile_pil_or_asm<T: FieldElement>(
     external_witness_values: Vec<(&str, Vec<T>)>,
 ) -> Result<Option<CompilationResult<T>>, Vec<String>> {
     if file_name.ends_with(".asm") {
-        compile_asm(
-            file_name,
-            inputs,
+        let contents = fs::read_to_string(file_name).unwrap();
+        let (pil_file_path, pil) =
+            get_pil_file::<T>(file_name, &contents, output_dir, force_overwrite)?;
+        let query_callback = inputs_to_query_callback(inputs);
+        let analyzed = pil_analyzer::analyze_string(&format!("{pil}"));
+        Ok(Some(compile(
+            analyzed,
+            pil_file_path.file_name().unwrap(),
             output_dir,
-            force_overwrite,
+            query_callback,
             prove_with,
             external_witness_values,
-        )
+        )))
     } else {
-        Ok(Some(compile_pil(
-            Path::new(file_name),
+        let pil_file = Path::new(file_name);
+        Ok(Some(compile(
+            pil_analyzer::analyze(pil_file),
+            pil_file.file_name().unwrap(),
             output_dir,
             inputs_to_query_callback(inputs),
             prove_with,
@@ -118,16 +125,18 @@ pub fn compile_asm<T: FieldElement>(
     external_witness_values: Vec<(&str, Vec<T>)>,
 ) -> Result<Option<CompilationResult<T>>, Vec<String>> {
     let contents = fs::read_to_string(file_name).unwrap();
-    Ok(compile_asm_string(
-        file_name,
-        &contents,
-        inputs,
+    let (pil_file_path, pil) =
+        get_pil_file::<T>(file_name, &contents, output_dir, force_overwrite)?;
+    let query_callback = inputs_to_query_callback(inputs);
+    let analyzed = pil_analyzer::analyze_string(&format!("{pil}"));
+    Ok(Some(compile(
+        analyzed,
+        pil_file_path.file_name().unwrap(),
         output_dir,
-        force_overwrite,
+        query_callback,
         prove_with,
         external_witness_values,
-    )?
-    .1)
+    )))
 }
 
 /// Compiles the contents of a .asm file, outputs the PIL on stdout and tries to generate
@@ -193,6 +202,53 @@ pub fn compile_asm_string<T: FieldElement>(
             external_witness_values,
         )),
     ))
+}
+
+// Returns the relative pil file name and PILFile, for passing to compile()
+fn get_pil_file<T: FieldElement>(
+    file_name: &str,
+    contents: &str,
+    output_dir: &Path,
+    force_overwrite: bool,
+) -> Result<(PathBuf, PILFile<T>), Vec<String>> {
+    let parsed = parser::parse_asm(Some(file_name), contents).unwrap_or_else(|err| {
+        eprintln!("Error parsing .asm file:");
+        err.output_to_stderr();
+        panic!();
+    });
+    log::debug!("Resolve imports");
+    let resolved =
+        importer::resolve(Some(PathBuf::from(file_name)), parsed).map_err(|e| vec![e])?;
+    log::debug!("Run analysis");
+    let analysed = analyze(resolved).unwrap();
+    log::debug!("Analysis done");
+    log::trace!("{analysed}");
+    log::debug!("Run airgen");
+    let graph = airgen::compile(analysed);
+    log::debug!("Airgen done");
+    log::trace!("{graph}");
+    log::debug!("Run linker");
+    let pil = linker::link(graph)?;
+    log::debug!("Linker done");
+    log::trace!("{pil}");
+
+    let pil_file_name = format!(
+        "{}.pil",
+        Path::new(file_name).file_stem().unwrap().to_str().unwrap()
+    );
+
+    let pil_file_path = output_dir.join(pil_file_name);
+    if pil_file_path.exists() && !force_overwrite {
+        eprintln!(
+            "Target file {} already exists. Not overwriting.",
+            pil_file_path.to_str().unwrap()
+        );
+        return Ok((pil_file_path, pil));
+    }
+
+    fs::write(pil_file_path.clone(), format!("{pil}")).unwrap();
+
+    Ok((pil_file_path.clone(), pil))
 }
 
 pub struct CompilationResult<T: FieldElement> {
