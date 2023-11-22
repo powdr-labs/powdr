@@ -1,11 +1,10 @@
 use ast::{
-    analyzed::{
-        AlgebraicReference, Expression, PolyID, PolynomialReference, PolynomialType, Reference,
-    },
+    analyzed::{AlgebraicReference, Expression, PolyID, PolynomialType, Reference},
     evaluate_binary_operation, evaluate_unary_operation,
-    parsed::{MatchArm, MatchPattern, UnaryOperator},
+    parsed::{FunctionCall, MatchArm, MatchPattern},
 };
-use number::FieldElement;
+
+use number::{DegreeType, FieldElement};
 
 use super::{rows::RowPair, Constraint, EvalValue, FixedData, IncompleteCause};
 
@@ -110,24 +109,23 @@ where
                 *op,
                 self.evaluate_expression(right, rows)?,
             )),
-            Expression::UnaryOperation(op, expr) => {
-                // Special case to allow `x'` for now on witness columns.
-                // TODO: Check if we actually need this or should replace it by `x(i + 1)`
-                if *op == UnaryOperator::Next {
-                    if let Expression::Reference(Reference::Poly(poly)) = expr.as_ref() {
-                        return self.evaluate_poly(poly, true, rows);
-                    }
-                }
-                Ok(evaluate_unary_operation(
-                    *op,
-                    self.evaluate_expression(expr, rows)?,
-                ))
-            }
+            Expression::UnaryOperation(op, inner) => Ok(evaluate_unary_operation(
+                *op,
+                self.evaluate_expression(inner, rows)?,
+            )),
             Expression::Reference(Reference::LocalVar(i, _name)) => {
                 assert!(*i == 0);
                 Ok(rows.current_row_index.into())
             }
-            Expression::Reference(Reference::Poly(poly)) => self.evaluate_poly(poly, false, rows),
+            Expression::FunctionCall(FunctionCall { id, arguments }) => {
+                let [arg] = &arguments[..] else {
+                    return Err(IncompleteCause::ExpressionEvaluationUnimplemented(
+                        expr.to_string(),
+                    ));
+                };
+                let arg = self.evaluate_expression(arg, rows)?;
+                self.evaluate_poly(id.to_string().as_str(), arg.to_degree(), rows)
+            }
             e => Err(IncompleteCause::ExpressionEvaluationUnimplemented(
                 e.to_string(),
             )),
@@ -136,15 +134,25 @@ where
 
     fn evaluate_poly(
         &self,
-        poly: &'a PolynomialReference,
-        next: bool,
+        poly: &str,
+        row: DegreeType,
         rows: &RowPair<T>,
     ) -> Result<T, IncompleteCause<&'a AlgebraicReference>> {
-        let poly_id = poly.poly_id.unwrap();
+        let poly_id = self.fixed_data.column_by_name(poly);
         match poly_id.ptype {
             PolynomialType::Committed | PolynomialType::Intermediate => {
+                let next = if row == rows.current_row_index {
+                    false
+                } else if row == rows.current_row_index + 1 {
+                    true
+                } else {
+                    return Err(IncompleteCause::ExpressionEvaluationUnimplemented(
+                        "Referenced witness column outside of evaluation window.".to_string(),
+                    ));
+                };
+
                 let poly_ref = AlgebraicReference {
-                    name: poly.name.clone(),
+                    name: poly.to_string(),
                     poly_id,
                     next,
                 };
@@ -154,8 +162,7 @@ where
             }
             PolynomialType::Constant => {
                 let values = self.fixed_data.fixed_cols[&poly_id].values;
-                let row = rows.current_row_index as usize + next as usize;
-                Ok(values[row % values.len()])
+                Ok(values[row as usize % values.len()])
             }
         }
     }

@@ -280,8 +280,8 @@ A' = ((((reg_write_X_A * X) + (reg_write_Y_A * Y)) + (instr__reset * 0)) + ((1 -
 pol pc_update = ((((instr__jump_to_operation * _operation_id) + (instr__loop * pc)) + (instr_return * 0)) + ((1 - ((instr__jump_to_operation + instr__loop) + instr_return)) * (pc + 1)));
 pc' = ((1 - first_step') * pc_update);
 pol constant p_line = [0, 1, 2, 3, 4] + [4]*;
-pol commit X_free_value(i) query match pc {  };
-pol commit Y_free_value(i) query match pc {  };
+pol commit X_free_value;
+pol commit Y_free_value;
 pol constant p_X_const = [0, 0, 0, 0, 0] + [0]*;
 pol constant p_X_read_free = [0, 0, 0, 0, 0] + [0]*;
 pol constant p_Y_const = [0, 0, 0, 0, 0] + [0]*;
@@ -328,7 +328,7 @@ pol constant first_step = [1] + [0]*;
 pol pc_update = ((((instr__jump_to_operation * _operation_id) + (instr__loop * pc)) + (instr_return * 0)) + ((1 - ((instr__jump_to_operation + instr__loop) + instr_return)) * (pc + 1)));
 pc' = ((1 - first_step') * pc_update);
 pol constant p_line = [0, 1, 2, 3, 4, 5] + [5]*;
-pol commit _output_0_free_value(i) query match pc {  };
+pol commit _output_0_free_value;
 pol constant p__output_0_const = [0, 0, 0, 0, 1, 0] + [0]*;
 pol constant p__output_0_read_free = [0, 0, 0, 0, 0, 0] + [0]*;
 pol constant p_instr__jump_to_operation = [0, 1, 0, 0, 0, 0] + [0]*;
@@ -394,7 +394,7 @@ CNT' = ((((reg_write_X_CNT * X) + (instr_dec_CNT * (CNT - 1))) + (instr__reset *
 pol pc_update = ((((((instr_jmpz * (instr_jmpz_pc_update + instr_jmpz_pc_update_1)) + (instr_jmp * instr_jmp_param_l)) + (instr__jump_to_operation * _operation_id)) + (instr__loop * pc)) + (instr_return * 0)) + ((1 - ((((instr_jmpz + instr_jmp) + instr__jump_to_operation) + instr__loop) + instr_return)) * (pc + 1)));
 pc' = ((1 - first_step') * pc_update);
 pol constant p_line = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10] + [10]*;
-pol commit X_free_value(i) query match pc { 2 => ("input", 1), 4 => ("input", (CNT + 1)), 7 => ("input", 0), };
+pol commit X_free_value(i) query match pc(i) { 2 => ("input", 1), 4 => ("input", (CNT(i) + 1)), 7 => ("input", 0), };
 pol constant p_X_const = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0] + [0]*;
 pol constant p_X_read_free = [0, 0, 1, 0, 1, 0, 0, -1, 0, 0, 0] + [0]*;
 pol constant p_instr__jump_to_operation = [0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0] + [0]*;
