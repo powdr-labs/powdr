@@ -13,7 +13,8 @@ use number::write_polys_file;
 use number::{read_polys_csv_file, write_polys_csv_file, CsvRenderMode};
 use number::{Bn254Field, FieldElement, GoldilocksField};
 use riscv::{compile_riscv_asm, compile_rust};
-use std::collections::BTreeSet;
+use riscv_executor::ExecutionTrace;
+use std::collections::{BTreeSet, HashMap};
 use std::io::{self, BufReader, BufWriter, Read};
 use std::{borrow::Cow, fs, io::Write, path::Path};
 use strum::{Display, EnumString, EnumVariantNames};
@@ -596,8 +597,26 @@ fn handle_riscv_asm<F: FieldElement>(
     Ok(())
 }
 
+fn transposed_trace<'a, F: FieldElement>(trace: &ExecutionTrace<'a>) -> HashMap<String, Vec<F>> {
+    let mut reg_values: HashMap<&str, Vec<F>> = HashMap::with_capacity(trace.reg_map.len());
+
+    for row in trace.regs_rows() {
+        for (reg_name, &index) in trace.reg_map.iter() {
+            reg_values
+                .entry(reg_name)
+                .or_default()
+                .push(row[index].0.into());
+        }
+    }
+
+    reg_values
+        .into_iter()
+        .map(|(n, c)| (format!("main.{}", n), c))
+        .collect()
+}
+
 fn rust_continuations<F: FieldElement>(
-    _file_name: &str,
+    file_name: &str,
     contents: &str,
     inputs: Vec<F>,
     _output_dir: &Path,
@@ -609,9 +628,14 @@ fn rust_continuations<F: FieldElement>(
     let mut inputs = vec![F::zero(); 37];
     inputs[35] = F::from(50u64);
 
+    let program =
+        compiler::compile_asm_string_to_analyzed_ast::<F>(file_name, contents, None).unwrap();
+
     log::info!("Executing powdr-asm...");
-    let (full_trace, _, memory_accesses) =
-        riscv_executor::execute::<F>(contents, &inputs, u64::MAX);
+    let (full_trace, memory_accesses) = {
+        let trace = riscv_executor::execute_ast::<F>(&program, &inputs, usize::MAX).0;
+        (transposed_trace::<F>(&trace), trace.mem)
+    };
 
     let full_trace_length = full_trace["main.pc"].len();
     log::info!("Total trace length: {}", full_trace_length);
@@ -622,8 +646,11 @@ fn rust_continuations<F: FieldElement>(
 
     loop {
         log::info!("Running chunk {}...", chunk_index);
-        let (chunk_trace, memory_snapshot, _) =
-            riscv_executor::execute::<F>(contents, &inputs, (1 << 18) - 2);
+        let (chunk_trace, memory_snapshot) = {
+            let (trace, memory_snapshot) =
+                riscv_executor::execute_ast::<F>(&program, &inputs, (1 << 18) - 2);
+            (transposed_trace(&trace), memory_snapshot)
+        };
         println!("Chunk trace length: {}", chunk_trace["main.pc"].len());
 
         log::info!("Validating chunk...");
@@ -665,15 +692,20 @@ fn rust_continuations<F: FieldElement>(
 
         log::info!("Building inputs for chunk {}...", chunk_index + 1);
         let mut accessed_pages = BTreeSet::new();
+        // maybe not all pages in this interval are needed, but pages beyond it
+        // are certainly not needed.
         let start = proven_trace + (1 << 18) - 3;
+        let end = start + (1 << 18) - 2;
 
-        for (i, accesses_memory) in (&memory_accesses[start..]).iter().enumerate() {
-            if *accesses_memory {
-                let addr = &full_trace["main.Y"][start + i + 1];
-                let digits = addr.to_arbitrary_integer().to_u32_digits();
-                let addr = if digits.is_empty() { 0 } else { digits[0] };
-                accessed_pages.insert(addr >> 10);
+        let start_idx = memory_accesses
+            .binary_search_by_key(&start, |a| a.idx)
+            .unwrap_or_else(|v| v);
+
+        for access in &memory_accesses[start_idx..] {
+            if access.idx >= end {
+                break;
             }
+            accessed_pages.insert(access.address >> 10);
         }
         log::info!("Accessed pages: {:?}", accessed_pages);
 
@@ -687,7 +719,7 @@ fn rust_continuations<F: FieldElement>(
             inputs.push(start_addr.into());
             for i in 0..256 {
                 let addr = start_addr + i * 4;
-                inputs.push(memory_snapshot.get(&addr).unwrap_or(&F::zero()).clone());
+                inputs.push(memory_snapshot.get(&addr).unwrap_or(&0).clone().into());
             }
         }
 

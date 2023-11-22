@@ -139,7 +139,8 @@ pub fn compile_asm_string_to_analyzed<T: FieldElement>(
     contents: &str,
 ) -> Analyzed<T> {
     let mut monitor = DiffMonitor::default();
-    let analyzed = compile_asm_string_to_analyzed_ast::<T>(file_name, contents, &mut monitor).unwrap();
+    let analyzed =
+        compile_asm_string_to_analyzed_ast::<T>(file_name, contents, Some(&mut monitor)).unwrap();
     let constraints = convert_analyzed_to_pil_constraints(analyzed, &mut monitor);
     let graph = airgen::compile(constraints);
     let pil = linker::link(graph).unwrap();
@@ -150,7 +151,7 @@ pub fn compile_asm_string_to_analyzed<T: FieldElement>(
 pub fn compile_asm_string_to_analyzed_ast<T: FieldElement>(
     file_name: &str,
     contents: &str,
-    monitor: &mut DiffMonitor,
+    monitor: Option<&mut DiffMonitor>,
 ) -> Result<AnalysisASMFile<T>, Vec<String>> {
     let parsed = parser::parse_asm(Some(file_name), contents).unwrap_or_else(|err| {
         eprintln!("Error parsing .asm file:");
@@ -161,7 +162,7 @@ pub fn compile_asm_string_to_analyzed_ast<T: FieldElement>(
     let resolved =
         importer::resolve(Some(PathBuf::from(file_name)), parsed).map_err(|e| vec![e])?;
     log::debug!("Run analysis");
-    let analyzed = analyze(resolved, monitor)?;
+    let analyzed = analyze(resolved, monitor.unwrap_or(&mut DiffMonitor::default()))?;
     log::debug!("Analysis done");
     log::trace!("{analyzed}");
 
@@ -237,7 +238,7 @@ pub fn compile_asm_string<T: FieldElement>(
     external_witness_values: Vec<(&str, Vec<T>)>,
 ) -> Result<(PathBuf, Option<CompilationResult<T>>), Vec<String>> {
     let mut monitor = DiffMonitor::default();
-    let analyzed = compile_asm_string_to_analyzed_ast(file_name, contents, &mut monitor)?;
+    let analyzed = compile_asm_string_to_analyzed_ast(file_name, contents, Some(&mut monitor))?;
     if let Some(hook) = analyzed_hook {
         hook(&analyzed);
     };
