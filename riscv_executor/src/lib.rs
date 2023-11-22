@@ -703,6 +703,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 panic!("does not matched IO pattern")
             }
             Expression::MatchExpression(_, _) => todo!(),
+            Expression::IfExpression(_) => panic!(),
             Expression::IndexAccess(_) => todo!(),
         }
     }

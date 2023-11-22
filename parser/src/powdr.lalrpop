@@ -477,6 +477,7 @@ Term: Box<Expression<T>> = {
     FieldElement => Box::new(Expression::Number(<>)),
     StringLiteral => Box::new(Expression::String(<>)),
     MatchExpression,
+    IfExpression,
     "[" <items:ExpressionList> "]" => Box::new(Expression::ArrayLiteral(ArrayLiteral{items})),
     "(" <head:Expression> "," <tail:ExpressionList> ")" => { let mut list = vec![head]; list.extend(tail); Box::new(Expression::Tuple(list)) },
     "(" <BoxedExpression> ")",
@@ -515,6 +516,13 @@ MatchArm: MatchArm<T> = {
 MatchPattern: MatchPattern<T> = {
     "_" => MatchPattern::CatchAll,
     Expression => MatchPattern::Pattern(<>),
+}
+
+IfExpression: Box<Expression<T>> = {
+    "if" <condition:BoxedExpression>
+        "{" <body:BoxedExpression> "}"
+        "else"
+        "{" <else_body:BoxedExpression> "}" => Box::new(Expression::IfExpression(IfExpression{<>}))
 }
 
 // ---------------------------- Terminals -----------------------------

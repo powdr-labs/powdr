@@ -3,8 +3,8 @@ use std::collections::HashMap;
 use ast::{
     analyzed::{Expression, PolynomialReference, Reference, RepeatedArray},
     parsed::{
-        self, ArrayExpression, ArrayLiteral, LambdaExpression, MatchArm, MatchPattern,
-        NamespacedPolynomialReference, SelectedExpressions,
+        self, ArrayExpression, ArrayLiteral, IfExpression, LambdaExpression, MatchArm,
+        MatchPattern, NamespacedPolynomialReference, SelectedExpressions,
     },
 };
 use number::DegreeType;
@@ -129,6 +129,15 @@ impl<R: ReferenceResolver> ExpressionProcessor<R> {
                     })
                     .collect(),
             ),
+            PExpression::IfExpression(IfExpression {
+                condition,
+                body,
+                else_body,
+            }) => Expression::IfExpression(IfExpression {
+                condition: Box::new(self.process_expression(*condition)),
+                body: Box::new(self.process_expression(*body)),
+                else_body: Box::new(self.process_expression(*else_body)),
+            }),
             PExpression::FreeInput(_) => panic!(),
         }
     }

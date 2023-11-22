@@ -228,6 +228,22 @@ mod test {
     }
 
     #[test]
+    pub fn test_if() {
+        let src = r#"
+            constant %N = 8;
+            namespace F(%N);
+            let X = |i| if i < 3 { 7 } else { 9 };
+        "#;
+        let analyzed = analyze_string(src);
+        assert_eq!(analyzed.degree(), 8);
+        let constants = generate(&analyzed);
+        assert_eq!(
+            constants,
+            vec![("F.X", convert(vec![7, 7, 7, 9, 9, 9, 9, 9]))]
+        );
+    }
+
+    #[test]
     pub fn test_macro() {
         let src = r#"
             constant %N = 8;
