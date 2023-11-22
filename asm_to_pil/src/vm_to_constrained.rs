@@ -577,6 +577,7 @@ impl<T: FieldElement> ASMPILConverter<T> {
             Expression::Tuple(_) => panic!(),
             Expression::ArrayLiteral(_) => panic!(),
             Expression::MatchExpression(_, _) => panic!(),
+            Expression::IfExpression(_) => panic!(),
             Expression::FreeInput(expr) => {
                 vec![(1.into(), AffineExpressionComponent::FreeInput(*expr))]
             }

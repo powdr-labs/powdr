@@ -91,6 +91,7 @@ pub enum Expression<T, Ref = NamespacedPolynomialReference> {
     FunctionCall(FunctionCall<T, Ref>),
     FreeInput(Box<Expression<T, Ref>>),
     MatchExpression(Box<Expression<T, Ref>>, Vec<MatchArm<T, Ref>>),
+    IfExpression(IfExpression<T, Ref>),
 }
 
 impl<T, Ref> Expression<T, Ref> {
@@ -246,6 +247,13 @@ pub struct MatchArm<T, Ref = NamespacedPolynomialReference> {
 pub enum MatchPattern<T, Ref = NamespacedPolynomialReference> {
     CatchAll,
     Pattern(Expression<T, Ref>),
+}
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
+pub struct IfExpression<T, Ref = NamespacedPolynomialReference> {
+    pub condition: Box<Expression<T, Ref>>,
+    pub body: Box<Expression<T, Ref>>,
+    pub else_body: Box<Expression<T, Ref>>,
 }
 
 /// The definition of a function (excluding its name):

@@ -237,6 +237,7 @@ impl<T: FieldElement> Condenser<T> {
             Expression::FunctionCall(_) => panic!(),
             Expression::FreeInput(_) => panic!(),
             Expression::MatchExpression(_, _) => panic!(),
+            Expression::IfExpression(_) => panic!(),
         }
     }
 }

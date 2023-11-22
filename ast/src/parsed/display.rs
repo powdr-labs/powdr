@@ -310,6 +310,16 @@ impl<T: Display, Ref: Display> Display for MatchPattern<T, Ref> {
     }
 }
 
+impl<T: Display, Ref: Display> Display for IfExpression<T, Ref> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(
+            f,
+            "if {} {{ {} }} else {{ {} }}",
+            self.condition, self.body, self.else_body
+        )
+    }
+}
+
 impl Display for Param {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(
@@ -463,6 +473,7 @@ impl<T: Display, Ref: Display> Display for Expression<T, Ref> {
             Expression::MatchExpression(scrutinee, arms) => {
                 write!(f, "match {scrutinee} {{ {} }}", arms.iter().format(" "))
             }
+            Expression::IfExpression(e) => write!(f, "{e}"),
         }
     }
 }

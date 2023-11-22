@@ -300,6 +300,15 @@ mod internal {
                     .ok_or_else(EvalError::NoMatch)?;
                 evaluate(body, locals, symbols)?
             }
+            Expression::IfExpression(if_expr) => {
+                let v = evaluate(&if_expr.condition, locals, symbols)?.try_to_number()?;
+                let body = if !v.is_zero() {
+                    &if_expr.body
+                } else {
+                    &if_expr.else_body
+                };
+                evaluate(body.as_ref(), locals, symbols)?
+            }
             Expression::FreeInput(_) => Err(EvalError::Unsupported(
                 "Cannot evaluate free input.".to_string(),
             ))?,

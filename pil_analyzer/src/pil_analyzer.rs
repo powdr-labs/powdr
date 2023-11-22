@@ -6,8 +6,9 @@ use analysis::MacroExpander;
 
 use ast::parsed::visitor::ExpressionVisitable;
 use ast::parsed::{
-    self, ArrayExpression, ArrayLiteral, FunctionDefinition, LambdaExpression, MatchArm,
-    MatchPattern, NamespacedPolynomialReference, PilStatement, PolynomialName, SelectedExpressions,
+    self, ArrayExpression, ArrayLiteral, FunctionDefinition, IfExpression, LambdaExpression,
+    MatchArm, MatchPattern, NamespacedPolynomialReference, PilStatement, PolynomialName,
+    SelectedExpressions,
 };
 use number::{DegreeType, FieldElement};
 
@@ -600,6 +601,15 @@ impl<'a, T: FieldElement> ExpressionProcessor<'a, T> {
                     })
                     .collect(),
             ),
+            PExpression::IfExpression(IfExpression {
+                condition,
+                body,
+                else_body,
+            }) => Expression::IfExpression(IfExpression {
+                condition: Box::new(self.process_expression(*condition)),
+                body: Box::new(self.process_expression(*body)),
+                else_body: Box::new(self.process_expression(*else_body)),
+            }),
             PExpression::FreeInput(_) => panic!(),
         }
     }
@@ -886,6 +896,17 @@ namespace N(65536);
     col fixed A = [0]*;
     col fixed C(i) { (Assembly.A((i + 2)) + 3) };
     col fixed D(i) { Assembly.C((i + 3)) };
+"#;
+        let formatted = process_pil_file_contents::<GoldilocksField>(input).to_string();
+        assert_eq!(formatted, input);
+    }
+
+    #[test]
+    fn if_expr() {
+        let input = r#"namespace Assembly(2);
+    col fixed A = [0]*;
+    col fixed C(i) { if (i < 3) { Assembly.A(i) } else { (i + 9) } };
+    col fixed D(i) { if Assembly.C(i) { 3 } else { 2 } };
 "#;
         let formatted = process_pil_file_contents::<GoldilocksField>(input).to_string();
         assert_eq!(formatted, input);

@@ -3,7 +3,8 @@ use super::{
         ASMModule, ASMProgram, Import, Machine, Module, ModuleStatement, SymbolDefinition,
         SymbolValue,
     },
-    ArrayLiteral, Expression, FunctionCall, IndexAccess, LambdaExpression, MatchArm, MatchPattern,
+    ArrayLiteral, Expression, FunctionCall, IfExpression, IndexAccess, LambdaExpression, MatchArm,
+    MatchPattern,
 };
 
 pub trait Folder<T> {
@@ -87,6 +88,9 @@ pub trait ExpressionFolder<T, Ref> {
                     .map(|a| self.fold_match_arm(a))
                     .collect::<Result<_, _>>()?,
             ),
+            Expression::IfExpression(if_expr) => {
+                Expression::IfExpression(self.fold_if_expression(if_expr)?)
+            }
         })
     }
 
@@ -141,6 +145,21 @@ pub trait ExpressionFolder<T, Ref> {
         Ok(match pattern {
             MatchPattern::CatchAll => MatchPattern::CatchAll,
             MatchPattern::Pattern(p) => MatchPattern::Pattern(self.fold_expression(p)?),
+        })
+    }
+
+    fn fold_if_expression(
+        &mut self,
+        IfExpression {
+            condition,
+            body,
+            else_body,
+        }: IfExpression<T, Ref>,
+    ) -> Result<IfExpression<T, Ref>, Self::Error> {
+        Ok(IfExpression {
+            condition: self.fold_boxed_expression(*condition)?,
+            body: self.fold_boxed_expression(*body)?,
+            else_body: self.fold_boxed_expression(*else_body)?,
         })
     }
 
