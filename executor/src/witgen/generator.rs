@@ -139,10 +139,10 @@ impl<'a, T: FieldElement> Generator<'a, T> {
         self.data = self.process(first_row, 0, mutable_state, None).block;
     }
 
-    fn fill_remaining_rows<Q>(&mut self, mutable_state: &mut MutableState<'a, '_, T, Q>)
-    where
-        Q: FnMut(&str) -> Option<T> + Send + Sync,
-    {
+    fn fill_remaining_rows<Q: QueryCallback<T>>(
+        &mut self,
+        mutable_state: &mut MutableState<'a, '_, T, Q>,
+    ) {
         if self.data.len() < self.fixed_data.degree as usize + 1 {
             assert!(self.latch.is_some());
 
