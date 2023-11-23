@@ -3,7 +3,7 @@ use std::io;
 
 use number::{BigInt, Bn254Field, DegreeType, FieldElement};
 
-use crate::circuit_builder::analyzed_to_cpp;
+use crate::vm_builder::analyzed_to_cpp;
 
 // TODO: there will need to be multiple files that are generated, one for each relation
 

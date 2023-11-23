@@ -42,7 +42,6 @@ pub(crate) fn analyzed_to_cpp<F: FieldElement>(
 
     let (all_cols, unshifted, to_be_shifted, shifted, all_cols_with_shifts) =
         get_all_col_names(fixed, witness, &shifted_polys);
-    let num_cols = all_cols_with_shifts.len();
 
     let row_type = create_row_type(&all_cols_with_shifts);
 
