@@ -440,7 +440,7 @@ fn preprocess_main_function<T: FieldElement>(machine: &Machine<T>) -> Preprocess
 struct Executor<'a, 'b, F: FieldElement> {
     proc: TraceBuilder<'a, 'b>,
     label_map: HashMap<&'a str, Elem>,
-    inputs: &'b [F],
+    inputs: HashMap<F, Vec<F>>,
     bootloader_inputs: &'b [F],
     stdout: io::Stdout,
 }
@@ -717,7 +717,13 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                         break 'input vec![match name.as_str() {
                             "input" => {
                                 let idx = val.u() as usize;
-                                to_u32(&self.inputs[idx]).unwrap().into()
+                                to_u32(&self.inputs[&F::zero()][idx]).unwrap().into()
+                            }
+                            "data" => {
+                                let idx = val.u() as usize;
+                                let what = self.eval_expression(&t[2])[0];
+                                let what = what.u();
+                                to_u32(&self.inputs[&what.into()][idx]).unwrap().into()
                             }
                             "bootloader_input" => {
                                 let idx = val.u() as usize;
@@ -745,7 +751,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
 pub fn execute_ast<'a, T: FieldElement>(
     program: &'a AnalysisASMFile<T>,
-    inputs: &[T],
+    inputs: &HashMap<T, Vec<T>>,
     bootloader_inputs: &[T],
     max_steps_to_execute: usize,
 ) -> (ExecutionTrace<'a>, MemoryState) {
@@ -765,7 +771,7 @@ pub fn execute_ast<'a, T: FieldElement>(
     let mut e = Executor {
         proc,
         label_map,
-        inputs,
+        inputs: inputs.clone(),
         bootloader_inputs,
         stdout: io::stdout(),
     };
@@ -814,7 +820,7 @@ pub fn execute_ast<'a, T: FieldElement>(
         curr_pc = match e.proc.advance(is_nop) {
             Some(pc) => pc,
             None => break,
-        }
+        };
     }
 
     e.proc.finish()
@@ -824,7 +830,11 @@ pub fn execute_ast<'a, T: FieldElement>(
 ///
 /// Generic argument F is just used by the parser, before everything is
 /// converted to i64, so it is important to the execution itself.
-pub fn execute<F: FieldElement>(asm_source: &str, inputs: &[F], bootloader_inputs: &[F]) {
+pub fn execute<F: FieldElement>(
+    asm_source: &str,
+    inputs: &HashMap<F, Vec<F>>,
+    bootloader_inputs: &[F],
+) {
     log::info!("Parsing...");
     let parsed = parser::parse_asm::<F>(None, asm_source).unwrap();
     log::info!("Resolving imports...");
