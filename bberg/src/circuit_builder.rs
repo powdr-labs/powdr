@@ -59,7 +59,7 @@ class {name}CircuitBuilder {{
         using FF = Flavor::FF;
         using Row = {name}_vm::Row<FF>;
 
-        // TODO: tempalte
+        // TODO: template
         using Polynomial = Flavor::Polynomial;
         using AllPolynomials = Flavor::AllPolynomials;
 
@@ -67,7 +67,7 @@ class {name}CircuitBuilder {{
         static constexpr size_t num_polys = {num_polys};
         std::vector<Row> rows;
 
-        [[maybe_unused]] void build_circuit();
+        void set_trace(std::vector<Row>&& trace) {{ rows = std::move(trace); }}
 
         AllPolynomials compute_polynomials() {{
             const auto num_rows = get_circuit_subgroup_size();
