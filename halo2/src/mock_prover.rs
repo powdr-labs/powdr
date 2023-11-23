@@ -36,6 +36,7 @@ mod test {
     use std::{fs, path::PathBuf};
 
     use analysis::convert_asm_to_pil;
+    use executor::witgen::unused_query_callback;
     use number::Bn254Field;
     use parser::parse_asm;
     use test_log::test;
@@ -79,10 +80,9 @@ mod test {
         let analyzed: Analyzed<Bn254Field> = pil_analyzer::analyze_string(content);
         let fixed = executor::constant_evaluator::generate(&analyzed);
 
-        let query_callback = |_: &str| -> Option<Bn254Field> { None };
-
         let witness =
-            executor::witgen::WitnessGenerator::new(&analyzed, &fixed, query_callback).generate();
+            executor::witgen::WitnessGenerator::new(&analyzed, &fixed, unused_query_callback())
+                .generate();
 
         let fixed = to_owned_values(fixed);
 

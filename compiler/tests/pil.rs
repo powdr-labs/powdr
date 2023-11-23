@@ -3,13 +3,15 @@ use number::{Bn254Field, GoldilocksField};
 use std::path::Path;
 use test_log::test;
 
-pub fn verify_pil(file_name: &str, query_callback: Option<fn(&str) -> Option<GoldilocksField>>) {
+type QueryCallbackFn = fn(&str) -> Result<Option<GoldilocksField>, String>;
+
+pub fn verify_pil(file_name: &str, query_callback: Option<QueryCallbackFn>) {
     verify_pil_with_external_witness(file_name, query_callback, vec![]);
 }
 
 pub fn verify_pil_with_external_witness(
     file_name: &str,
-    query_callback: Option<fn(&str) -> Option<GoldilocksField>>,
+    query_callback: Option<QueryCallbackFn>,
     external_witness_values: Vec<(&str, Vec<GoldilocksField>)>,
 ) {
     let input_file = Path::new(&format!(
@@ -19,7 +21,7 @@ pub fn verify_pil_with_external_witness(
     .canonicalize()
     .unwrap();
 
-    let query_callback = query_callback.unwrap_or(|_: &str| -> Option<GoldilocksField> { None });
+    let query_callback = query_callback.unwrap_or(|_| -> _ { unreachable!() });
 
     let temp_dir = mktemp::Temp::new_dir().unwrap();
     let result = compiler::compile_pil(
@@ -160,13 +162,13 @@ fn test_sum_via_witness_query() {
     verify_pil(
         "sum_via_witness_query.pil",
         Some(|q| {
-            match q {
+            Ok(match q {
                 "\"in\", 0" => Some(7.into()),
                 "\"in\", 1" => Some(8.into()),
                 "\"in\", 2" => Some(2.into()),
                 "\"in\", 3" => None, // This line checks that if we return "None", the system still tries to figure it out on its own.
                 _ => None,
-            }
+            })
         }),
     );
     // prover query string uses a different convention,
@@ -178,11 +180,13 @@ fn test_witness_lookup() {
     let f = "witness_lookup.pil";
     verify_pil(
         f,
-        Some(|q| match q {
-            "\"input\", 0" => Some(3.into()),
-            "\"input\", 1" => Some(5.into()),
-            "\"input\", 2" => Some(2.into()),
-            _ => Some(7.into()),
+        Some(|q| {
+            Ok(match q {
+                "\"input\", 0" => Some(3.into()),
+                "\"input\", 1" => Some(5.into()),
+                "\"input\", 2" => Some(2.into()),
+                _ => Some(7.into()),
+            })
         }),
     );
     // halo2 fails with "gates must contain at least one constraint"
