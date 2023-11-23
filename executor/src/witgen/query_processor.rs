@@ -14,9 +14,8 @@ pub struct QueryProcessor<'a, 'b, T: FieldElement, QueryCallback: Send + Sync> {
     query_callback: &'b mut QueryCallback,
 }
 
-impl<'a, 'b, T: FieldElement, QueryCallback> QueryProcessor<'a, 'b, T, QueryCallback>
-where
-    QueryCallback: FnMut(&str) -> Option<T> + Send + Sync,
+impl<'a, 'b, T: FieldElement, QueryCallback: super::QueryCallback<T>>
+    QueryProcessor<'a, 'b, T, QueryCallback>
 {
     pub fn new(fixed_data: &'a FixedData<'a, T>, query_callback: &'b mut QueryCallback) -> Self {
         Self {
