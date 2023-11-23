@@ -112,7 +112,7 @@ namespace proof_system::honk {{
 class {name}Composer {{
     public:
         using Flavor = honk::flavor::{name}Flavor;
-        using CircuitConstructor = {name}TraceBuilder;
+        using CircuitConstructor = {name}CircuitBuilder;
         using ProvingKey = Flavor::ProvingKey;
         using VerificationKey = Flavor::VerificationKey;
         using PCS = Flavor::PCS;
@@ -181,7 +181,7 @@ fn cpp_includes(name: &str) -> String {
         "
 #include \"./{name}_composer.hpp\"
 #include \"barretenberg/vm/generated/{name}_verifier.hpp\"
-#include \"barretenberg/proof_system/circuit_builder/generated/{name}_trace.hpp\"
+#include \"barretenberg/proof_system/circuit_builder/generated/{name}_circuit_builder.hpp\"
 #include \"barretenberg/proof_system/composer/composer_lib.hpp\"
 #include \"barretenberg/proof_system/composer/permutation_lib.hpp\"
 "
@@ -195,7 +195,7 @@ pub fn hpp_includes(name: &str) -> String {
 
 #include \"barretenberg/vm/generated/{name}_prover.hpp\"
 #include \"barretenberg/vm/generated/{name}_verifier.hpp\"
-#include \"barretenberg/proof_system/circuit_builder/generated/{name}_trace.hpp\"
+#include \"barretenberg/proof_system/circuit_builder/generated/{name}_circuit_builder.hpp\"
 #include \"barretenberg/proof_system/composer/composer_lib.hpp\"
 #include \"barretenberg/srs/global_crs.hpp\"
     "

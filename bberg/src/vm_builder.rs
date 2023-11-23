@@ -4,12 +4,12 @@ use itertools::Itertools;
 use number::FieldElement;
 use pil_analyzer::pil_analyzer::inline_intermediate_polynomials;
 
+use crate::circuit_builder::CircuitBuilder;
 use crate::composer_builder::ComposerBuilder;
 use crate::file_writer::BBFiles;
 use crate::flavor_builder::FlavorBuilder;
 use crate::prover_builder::ProverBuilder;
 use crate::relation_builder::{create_identities, create_row_type, RelationBuilder};
-use crate::trace_builder::TraceBuilder;
 use crate::verifier_builder::VerifierBuilder;
 
 pub(crate) fn analyzed_to_cpp<F: FieldElement>(
@@ -55,8 +55,8 @@ pub(crate) fn analyzed_to_cpp<F: FieldElement>(
         &all_cols_with_shifts,
     );
 
-    // ----------------------- Create the trace builder file -----------------------
-    bb_files.create_trace_builder_hpp(file_name, &all_cols, &to_be_shifted);
+    // ----------------------- Create the circuit builder file -----------------------
+    bb_files.create_circuit_builder_hpp(file_name, &all_cols, &to_be_shifted);
 
     // ----------------------- Create the flavor file -----------------------
     bb_files.create_flavor_hpp(

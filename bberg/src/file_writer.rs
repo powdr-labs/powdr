@@ -4,8 +4,8 @@ use std::io::Write;
 pub struct BBFiles {
     pub relation_hpp: Option<String>,
     pub flavor_hpp: Option<String>,
-    // trace
-    pub trace_hpp: Option<String>,
+    // circuit
+    pub circuit_hpp: Option<String>,
     // composer
     pub composer_cpp: Option<String>,
     pub composer_hpp: Option<String>,
@@ -23,7 +23,7 @@ pub struct BBFiles {
     pub base: String,
     pub rel: String,
     pub arith: String,
-    pub trace: String,
+    pub circuit: String,
     pub flavor: String,
     pub composer: String,
     pub prover: String, // path for both prover and verifier files
@@ -39,7 +39,7 @@ impl BBFiles {
         base: Option<String>,
         rel: Option<String>,
         arith: Option<String>,
-        trace: Option<String>,
+        circuit: Option<String>,
         flavor: Option<String>,
         composer: Option<String>,
         prover: Option<String>,
@@ -47,7 +47,7 @@ impl BBFiles {
         let base = base.unwrap_or("src/barretenberg".to_owned());
         let rel = rel.unwrap_or("relations/generated".to_owned());
         let arith = arith.unwrap_or("proof_system/arithmetization/generated".to_owned());
-        let trace = trace.unwrap_or("proof_system/circuit_builder/generated".to_owned());
+        let circuit = circuit.unwrap_or("proof_system/circuit_builder/generated".to_owned());
         let flavor = flavor.unwrap_or("flavor/generated".to_owned());
         let composer = composer.unwrap_or("vm/generated".to_owned());
         let prover = prover.unwrap_or("vm/generated".to_owned());
@@ -56,7 +56,7 @@ impl BBFiles {
             file_name,
             relation_hpp: None,
             flavor_hpp: None,
-            trace_hpp: None,
+            circuit_hpp: None,
             composer_cpp: None,
             composer_hpp: None,
             prover_cpp: None,
@@ -67,7 +67,7 @@ impl BBFiles {
             base,
             rel,
             arith,
-            trace,
+            circuit,
             flavor,
             composer,
             prover,
@@ -87,8 +87,8 @@ impl BBFiles {
         }
         write_file!(self.rel, ".hpp", self.relation_hpp);
 
-        // Trace
-        write_file!(self.trace, "_trace.hpp", self.trace_hpp);
+        // Circuit
+        write_file!(self.circuit, "_circuit_builder.hpp", self.circuit_hpp);
 
         write_file!(self.flavor, "_flavor.hpp", self.flavor_hpp);
 
