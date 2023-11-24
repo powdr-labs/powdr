@@ -15,6 +15,7 @@ use crate::witgen::{machines::Machine, EvalError, EvalValue, IncompleteCause};
 use crate::witgen::{MutableState, QueryCallback};
 use ast::analyzed::{
     AlgebraicExpression as Expression, AlgebraicReference, Identity, IdentityKind, PolyID,
+    PolynomialType,
 };
 use ast::parsed::SelectedExpressions;
 use number::{DegreeType, FieldElement};
@@ -72,6 +73,17 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         global_range_constraints: &GlobalConstraints<T>,
     ) -> Option<Self> {
         for id in connecting_identities {
+            for r in id.right.expressions.iter() {
+                if let Some(poly) = try_to_simple_poly(r) {
+                    if poly.poly_id.ptype == PolynomialType::Constant {
+                        // It does not really make sense to have constant polynomials on the RHS
+                        // of a block machine lookup, as all constant polynomials are periodic, so
+                        // it would always return the same value.
+                        return None;
+                    }
+                }
+            }
+
             // TODO we should check that the other constraints/fixed columns are also periodic.
             if let Some(block_size) = try_to_period(&id.right.selector, fixed_data) {
                 assert!(block_size <= fixed_data.degree as usize);

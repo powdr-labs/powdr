@@ -10,7 +10,12 @@ use std::{
 
 use crate::compile_asm_string;
 
-pub fn verify_asm_string<T: FieldElement>(file_name: &str, contents: &str, inputs: Vec<T>) {
+pub fn verify_asm_string<T: FieldElement>(
+    file_name: &str,
+    contents: &str,
+    inputs: Vec<T>,
+    external_witness_values: Vec<(&str, Vec<T>)>,
+) {
     let temp_dir = mktemp::Temp::new_dir().unwrap();
     let (_, result) = compile_asm_string(
         file_name,
@@ -20,7 +25,7 @@ pub fn verify_asm_string<T: FieldElement>(file_name: &str, contents: &str, input
         &temp_dir,
         true,
         Some(BackendType::PilStarkCli),
-        vec![],
+        external_witness_values,
     )
     .unwrap();
 
