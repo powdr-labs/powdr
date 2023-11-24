@@ -24,7 +24,7 @@ use builder::{MemoryBuilder, TraceBuilder};
 use number::{BigInt, FieldElement};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-struct Elem(i64);
+pub struct Elem(i64);
 
 impl Elem {
     const fn zero() -> Self {
@@ -59,12 +59,14 @@ impl From<i32> for Elem {
 }
 
 pub struct ExecutionTrace<'a> {
-    reg_map: HashMap<&'a str, usize>,
+    pub reg_map: HashMap<&'a str, usize>,
 
     /// Values of the registers in the execution trace.
     ///
     /// Each N elements is a row with all registers.
-    values: Vec<Elem>,
+    pub values: Vec<Elem>,
+
+    pub rom_length: usize,
 }
 
 mod builder {
@@ -80,7 +82,7 @@ mod builder {
     }
 
     pub struct TraceBuilder<'a, 'b> {
-        trace: ExecutionTrace<'a>,
+        pub trace: ExecutionTrace<'a>,
 
         /// First register of current row.
         /// Next row is reg_map.len() elems ahead.
@@ -109,13 +111,29 @@ mod builder {
                 .collect::<HashMap<&str, usize>>();
 
             // first row has all values zeroed
-            let values = vec![Elem::zero(); 2 * reg_map.len()];
+            let mut values = vec![Elem::zero(); 2 * reg_map.len()];
+            // TODO is this 2 more rows?
+            //let mut values = vec![Elem::zero(); 4 * reg_map.len()];
+
+            let pc_idx = reg_map["pc"];
+            let reg_len = reg_map.len();
+
+            //values[pc_idx] = 0.into();
+            //values[pc_idx + reg_len] = 1.into();
+            //values[pc_idx + reg_len * 2] = 2.into();
+            //values[pc_idx + reg_len * 3] = 3.into();
+            values[pc_idx] = 2.into();
 
             let mut ret = Self {
+                //curr_idx: 2 * reg_len,
                 curr_idx: 0,
                 x0_idx: reg_map["x0"],
-                pc_idx: reg_map["pc"],
-                trace: ExecutionTrace { reg_map, values },
+                pc_idx,
+                trace: ExecutionTrace {
+                    reg_map,
+                    values,
+                    rom_length: batch_to_line_map.len(),
+                },
                 next_statement_line: 1,
                 batch_to_line_map,
             };
@@ -164,7 +182,8 @@ mod builder {
 
         /// advance to next row, returns the index to the statement that must be
         /// executed now
-        pub fn advance(&mut self, was_nop: bool) -> u32 {
+        pub fn advance(&mut self, was_nop: bool) -> (bool, u32) {
+            let mut add_row = true;
             if self.g_idx(self.pc_idx) != self.g_idx_next(self.pc_idx) {
                 // PC changed, create a new line
                 self.curr_idx += self.reg_len();
@@ -176,6 +195,7 @@ mod builder {
                     let next_idx = self.curr_idx + self.reg_len();
                     self.trace.values.copy_within(next_idx.., self.curr_idx);
                 }
+                add_row = false;
             }
 
             // advance the next statement
@@ -185,7 +205,7 @@ mod builder {
             // optimistically write next PC, but the code might rewrite it
             self.set_next_pc();
 
-            curr_line
+            (add_row, curr_line)
         }
 
         pub fn finish(self) -> ExecutionTrace<'a> {
@@ -222,6 +242,10 @@ mod builder {
     impl MemoryBuilder {
         pub fn new() -> Self {
             Self(HashMap::new())
+        }
+
+        pub fn finish(self) -> HashMap<u32, i64> {
+            self.0.into_iter().map(|(k, v)| (k, v.0)).collect()
         }
 
         pub(crate) fn s(&mut self, addr: u32, val: Elem) {
@@ -296,7 +320,7 @@ fn preprocess_main_function<T: FieldElement>(
                 FunctionStatement::Label(LabelStatement { start: _, name }) => {
                     // assert there are no statements in the middle of a block
                     assert!(!statement_seen);
-                    label_map.insert(name.as_str(), (batch_idx as i64).into());
+                    label_map.insert(name.as_str(), ((batch_idx + 2) as i64).into());
                 }
             }
         }
@@ -318,6 +342,14 @@ struct Executor<'a, 'b, F: FieldElement> {
 }
 
 impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
+    pub fn len(&self) -> usize {
+        self.proc.trace.values.len() / self.proc.trace.reg_map.len()
+    }
+
+    fn finish(self) -> (HashMap<u32, i64>, ExecutionTrace<'a>) {
+        (self.mem.finish(), self.proc.finish())
+    }
+
     fn exec_instruction(&mut self, name: &str, args: &[Expression<F>]) -> Vec<Elem> {
         let args = args
             .iter()
@@ -727,10 +759,26 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 pub fn execute_ast<'a, T: FieldElement>(
     program: &'a AnalysisASMFile<T>,
     inputs: &[T],
-) -> ExecutionTrace<'a> {
+    num_steps: u64,
+) -> ((HashMap<u32, i64>, ExecutionTrace<'a>), Vec<bool>) {
     let main_machine = get_main_machine(program);
-    let (statements, label_map, batch_to_line_map, debug_files) =
+    let (statements, label_map, mut batch_to_line_map, debug_files) =
         preprocess_main_function(main_machine);
+
+    //let noop_0 = FunctionStatement::<T>::Label(LabelStatement { start: 0, name: "noop_0".to_string() });
+    //let noop_1 = FunctionStatement::<T>::Label(LabelStatement { start: 0, name: "noop_1".to_string() });
+    // let noop_0 = FunctionStatement::<T>::DebugDirective(ast::asm_analysis::DebugDirective {
+    //     start: 0,
+    //     directive: ast::parsed::asm::DebugDirective::Loc(1, 0, 0),
+    // });
+
+    /* HACK */
+    //statements.insert(0, &noop_0);
+    //statements.insert(0, &noop_0);
+
+    batch_to_line_map.insert(0, 0);
+    batch_to_line_map.insert(0, 0);
+    /* END OF HACK */
 
     let mut e = Executor {
         proc: TraceBuilder::new(main_machine, &batch_to_line_map),
@@ -740,11 +788,14 @@ pub fn execute_ast<'a, T: FieldElement>(
         stdout: io::stdout(),
     };
 
+    let mut memory_accesses = vec![];
+
     let mut curr_pc = 0u32;
+    let mut length = 0;
     loop {
         let stm = statements[curr_pc as usize];
 
-        //println!("l {curr_pc}: {stm}",);
+        //println!("l {curr_pc}: {stm}\nreal_pc: {}", e.proc.g("pc").0);
 
         let is_nop = match stm {
             FunctionStatement::Assignment(a) => {
@@ -770,10 +821,10 @@ pub fn execute_ast<'a, T: FieldElement>(
                 match &dd.directive {
                     DebugDirective::Loc(file, line, column) => {
                         let (dir, file) = debug_files[file - 1];
-                        println!("Executed {dir}/{file}:{line}:{column}");
+                        //println!("Executed {dir}/{file}:{line}:{column}");
                     }
                     DebugDirective::OriginalInstruction(insn) => {
-                        println!("  {insn}");
+                        //println!("  {insn}");
                     }
                     DebugDirective::File(_, _, _) => unreachable!(),
                 };
@@ -785,17 +836,32 @@ pub fn execute_ast<'a, T: FieldElement>(
             }
         };
 
-        curr_pc = e.proc.advance(is_nop);
+        let (add_row, new_pc) = e.proc.advance(is_nop);
+        curr_pc = new_pc;
+
+        length += 1;
+
+        if add_row {
+            memory_accesses.push(accesses_memory(stm));
+        }
+
+        if memory_accesses.len() as u64 >= num_steps {
+            break;
+        }
     }
 
-    e.proc.finish()
+    (e.finish(), memory_accesses)
 }
 
 /// Execute a Powdr/RISCV assembly source.
 ///
 /// The FieldElement is just used by the parser, before everything is converted
 /// to i64, so it is probably not very important.
-pub fn execute<F: FieldElement>(asm_source: &str, inputs: &[F]) {
+pub fn execute<F: FieldElement>(
+    asm_source: &str,
+    inputs: &[F],
+    num_steps: u64,
+) -> (HashMap<String, Vec<F>>, HashMap<u32, F>, Vec<bool>) {
     log::info!("Parsing...");
     let parsed = parser::parse_asm::<F>(None, asm_source).unwrap();
     log::info!("Resolving imports...");
@@ -804,7 +870,31 @@ pub fn execute<F: FieldElement>(asm_source: &str, inputs: &[F]) {
     let analyzed = analysis::analyze(resolved, &mut ast::DiffMonitor::default()).unwrap();
 
     log::info!("Executing...");
-    execute_ast(&analyzed, inputs);
+    let ((memory, trace), memory_accesses) = execute_ast(&analyzed, inputs, num_steps);
+
+    assert_eq!(trace.values.len() % trace.reg_map.len(), 0);
+
+    let mut witness: HashMap<&str, Vec<F>> = HashMap::with_capacity(trace.reg_map.len());
+
+    for chunk in trace.values.chunks_exact(trace.reg_map.len()) {
+        for (reg_name, &index) in trace.reg_map.iter() {
+            witness
+                .entry(reg_name)
+                .or_default()
+                .push(chunk[index].0.into());
+        }
+    }
+
+    let memory = memory.into_iter().map(|(k, v)| (k, v.into())).collect();
+
+    (
+        witness
+            .into_iter()
+            .map(|(n, c)| (format!("main.{}", n), c[..memory_accesses.len()].to_vec()))
+            .collect(),
+        memory,
+        memory_accesses,
+    )
 }
 
 fn to_u32<F: FieldElement>(val: &F) -> Option<u32> {
@@ -819,6 +909,35 @@ fn to_u32<F: FieldElement>(val: &F) -> Option<u32> {
             None
         }
     })
+}
+
+fn accesses_memory<T: FieldElement>(statement: &FunctionStatement<T>) -> bool {
+    match statement {
+        FunctionStatement::Assignment(a) => accesses_memory_expr(&a.rhs),
+        FunctionStatement::Instruction(i) => i.instruction == "mstore" || i.instruction == "mload",
+        FunctionStatement::Label(_) => false,
+        FunctionStatement::DebugDirective(_) => false,
+        FunctionStatement::Return(_) => false,
+    }
+}
+
+fn accesses_memory_expr<T: FieldElement>(expr: &Expression<T>) -> bool {
+    match expr {
+        Expression::Reference(_) => false,
+        Expression::PublicReference(_) => false,
+        Expression::Number(_) => false,
+        Expression::String(_) => false,
+        Expression::Tuple(_) => false,
+        Expression::LambdaExpression(_) => false,
+        Expression::ArrayLiteral(_) => false,
+        Expression::BinaryOperation(expr1, _, expr2) => {
+            accesses_memory_expr(expr1) || accesses_memory_expr(expr2)
+        }
+        Expression::UnaryOperation(_, expr) => accesses_memory_expr(expr),
+        Expression::FunctionCall(f) => f.id == "mstore" || f.id == "mload",
+        Expression::FreeInput(_) => false,
+        Expression::MatchExpression(_, _) => false,
+    }
 }
 
 #[cfg(test)]
@@ -836,6 +955,6 @@ mod test {
         println!("Validating UTF-8...");
         let asm_str = std::str::from_utf8(&asm).unwrap();
 
-        execute::<GoldilocksField>(asm_str, &[]);
+        execute::<GoldilocksField>(asm_str, &[], u64::MAX);
     }
 }
