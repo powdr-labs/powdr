@@ -19,6 +19,7 @@ mod verify;
 use ast::asm_analysis::AnalysisASMFile;
 pub use backend::{BackendType, Proof};
 use executor::witgen::QueryCallback;
+use itertools::Itertools;
 pub use verify::{
     verify, verify_asm_string, write_commits_to_fs, write_constants_to_fs, write_constraints_to_fs,
 };
@@ -330,30 +331,40 @@ fn compile<T: FieldElement, Q: QueryCallback<T>>(
 
 #[allow(clippy::print_stdout)]
 pub fn inputs_to_query_callback<T: FieldElement>(inputs: Vec<T>) -> impl QueryCallback<T> {
-    move |query: &str| -> Option<T> {
+    move |query: &str| -> Result<Option<T>, String> {
+        // TODO In the future, when match statements need to be exhaustive,
+        // This function probably gets an Option as argument and it should
+        // answer None by Ok(None).
         let items = query.split(',').map(|s| s.trim()).collect::<Vec<_>>();
-        match items[0] {
-            "\"input\"" => {
-                assert_eq!(items.len(), 2);
-                let index = items[1].parse::<usize>().unwrap();
+        match &items[..] {
+            ["\"input\"", index] => {
+                let index = index
+                    .parse::<usize>()
+                    .map_err(|e| format!("Error parsing index: {e})"))?;
                 let value = inputs.get(index).cloned();
                 if let Some(value) = value {
                     log::trace!("Input query: Index {index} -> {value}");
+                    Ok(Some(value))
                 } else {
-                    log::warn!("Not enough inputs provided! Index {index} out of bounds")
+                    Err(format!(
+                        "Error accessing prover inputs: Index {index} out of bounds {}",
+                        inputs.len()
+                    ))
                 }
-                value
             }
-            "\"print_char\"" => {
-                assert_eq!(items.len(), 2);
-                print!("{}", items[1].parse::<u8>().unwrap() as char);
-                Some(0.into())
+            ["\"print_char\"", ch] => {
+                print!(
+                    "{}",
+                    ch.parse::<u8>()
+                        .map_err(|e| format!("Invalid char to print: {e}"))?
+                        as char
+                );
+                // We do not answer None because we don't want this function to be
+                // called again.
+                Ok(Some(0.into()))
             }
-            "\"hint\"" => {
-                assert_eq!(items.len(), 2);
-                Some(T::from_str(items[1]))
-            }
-            _ => None,
+            ["\"hint\"", value] => Ok(Some(T::from_str(value))),
+            k => Err(format!("Unsupported query: {}", k.iter().format(", "))),
         }
     }
 }

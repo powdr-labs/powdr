@@ -6,7 +6,9 @@ use ast::{
 
 use number::{DegreeType, FieldElement};
 
-use super::{rows::RowPair, Constraint, EvalValue, FixedData, IncompleteCause};
+use super::{
+    rows::RowPair, Constraint, EvalError, EvalResult, EvalValue, FixedData, IncompleteCause,
+};
 
 /// Computes value updates that result from a query.
 pub struct QueryProcessor<'a, 'b, T: FieldElement, QueryCallback: Send + Sync> {
@@ -24,11 +26,7 @@ impl<'a, 'b, T: FieldElement, QueryCallback: super::QueryCallback<T>>
         }
     }
 
-    pub fn process_query(
-        &mut self,
-        rows: &RowPair<T>,
-        poly_id: &PolyID,
-    ) -> EvalValue<&'a AlgebraicReference, T> {
+    pub fn process_query(&mut self, rows: &RowPair<T>, poly_id: &PolyID) -> EvalResult<'a, T> {
         let column = &self.fixed_data.witness_cols[poly_id];
 
         if let Some(query) = column.query.as_ref() {
@@ -37,7 +35,7 @@ impl<'a, 'b, T: FieldElement, QueryCallback: super::QueryCallback<T>>
             }
         }
         // Either no query or the value is already known.
-        EvalValue::complete(vec![])
+        Ok(EvalValue::complete(vec![]))
     }
 
     fn process_witness_query(
@@ -45,19 +43,23 @@ impl<'a, 'b, T: FieldElement, QueryCallback: super::QueryCallback<T>>
         query: &'a Expression<T>,
         poly: &'a AlgebraicReference,
         rows: &RowPair<T>,
-    ) -> EvalValue<&'a AlgebraicReference, T> {
+    ) -> EvalResult<'a, T> {
         let query_str = match self.interpolate_query(query, rows) {
             Ok(query) => query,
-            Err(incomplete) => return EvalValue::incomplete(incomplete),
+            Err(incomplete) => return Ok(EvalValue::incomplete(incomplete)),
         };
-        if let Some(value) = (self.query_callback)(&query_str) {
-            EvalValue::complete(vec![(poly, Constraint::Assignment(value))])
-        } else {
-            EvalValue::incomplete(IncompleteCause::NoQueryAnswer(
-                query_str,
-                poly.name.to_string(),
-            ))
-        }
+        Ok(
+            if let Some(value) =
+                (self.query_callback)(&query_str).map_err(EvalError::ProverQueryError)?
+            {
+                EvalValue::complete(vec![(poly, Constraint::Assignment(value))])
+            } else {
+                EvalValue::incomplete(IncompleteCause::NoQueryAnswer(
+                    query_str,
+                    poly.name.to_string(),
+                ))
+            },
+        )
     }
 
     fn interpolate_query(

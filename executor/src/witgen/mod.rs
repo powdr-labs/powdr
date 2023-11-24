@@ -38,8 +38,13 @@ mod symbolic_witness_evaluator;
 mod util;
 mod vm_processor;
 
-pub trait QueryCallback<T>: FnMut(&str) -> Option<T> + Send + Sync {}
-impl<T, F> QueryCallback<T> for F where F: FnMut(&str) -> Option<T> + Send + Sync {}
+pub trait QueryCallback<T>: FnMut(&str) -> Result<Option<T>, String> + Send + Sync {}
+impl<T, F> QueryCallback<T> for F where F: FnMut(&str) -> Result<Option<T>, String> + Send + Sync {}
+
+/// @returns a query callback that is never expected to be used.
+pub fn unused_query_callback<T>() -> impl QueryCallback<T> {
+    |_| -> _ { unreachable!() }
+}
 
 /// Everything [Generator] needs to mutate in order to compute a new row.
 pub struct MutableState<'a, 'b, T: FieldElement, Q: QueryCallback<T>> {

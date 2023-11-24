@@ -118,7 +118,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
         self.data
     }
 
-    pub fn process_queries(&mut self, row_index: usize) -> bool {
+    pub fn process_queries(&mut self, row_index: usize) -> Result<bool, EvalError<T>> {
         let mut query_processor =
             QueryProcessor::new(self.fixed_data, self.mutable_state.query_callback);
         let global_row_index = self.row_offset + row_index as u64;
@@ -132,10 +132,10 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
         let mut updates = EvalValue::complete(vec![]);
         for poly_id in self.fixed_data.witness_cols.keys() {
             if self.is_relevant_witness[&poly_id] {
-                updates.combine(query_processor.process_query(&row_pair, &poly_id));
+                updates.combine(query_processor.process_query(&row_pair, &poly_id)?);
             }
         }
-        self.apply_updates(row_index, &updates, || "queries".to_string())
+        Ok(self.apply_updates(row_index, &updates, || "queries".to_string()))
     }
 
     /// Given a row and identity index, computes any updates, applies them and returns

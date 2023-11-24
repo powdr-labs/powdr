@@ -373,7 +373,11 @@ impl<'a, T: FieldElement> VmProcessor<'a, T> {
             );
             for poly_id in self.fixed_data.witness_cols.keys() {
                 if self.is_relevant_witness[&poly_id] {
-                    updates.combine(query_processor.process_query(&row_pair, &poly_id));
+                    updates.combine(
+                        query_processor
+                            .process_query(&row_pair, &poly_id)
+                            .map_err(|e| vec![e])?,
+                    );
                 }
             }
             progress |= self.apply_updates(row_index, &updates, || "queries".to_string());
