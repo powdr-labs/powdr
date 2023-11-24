@@ -17,8 +17,8 @@ use ast::analyzed::{
     StatementIdentifier, Symbol, SymbolKind,
 };
 
-use crate::condenser;
-use crate::evaluator::Evaluator;
+use crate::evaluator::EvalError;
+use crate::{condenser, evaluator};
 
 pub fn process_pil_file<T: FieldElement>(path: &Path) -> Analyzed<T> {
     let mut analyzer = PILAnalyzer::new();
@@ -171,7 +171,7 @@ impl<T: FieldElement> PILAnalyzer<T> {
             PilStatement::ConstantDefinition(start, name, value) => {
                 // Check it is a constant.
                 if let Err(err) = self.evaluate_expression(value.clone()) {
-                    panic!("Could not evaluate constant: {name} = {value}: {err}");
+                    panic!("Could not evaluate constant: {name} = {value}: {err:?}");
                 }
                 self.handle_symbol_definition(
                     self.to_source_ref(start),
@@ -478,13 +478,9 @@ impl<T: FieldElement> PILAnalyzer<T> {
         }
     }
 
-    fn evaluate_expression(&self, expr: ::ast::parsed::Expression<T>) -> Result<T, String> {
-        Evaluator {
-            definitions: &self.definitions,
-            function_cache: &Default::default(),
-            variables: &[],
-        }
-        .evaluate(&self.process_expression(expr))
+    fn evaluate_expression(&self, expr: ::ast::parsed::Expression<T>) -> Result<T, EvalError> {
+        evaluator::evaluate_expression(&self.process_expression(expr), &self.definitions)?
+            .try_to_number()
     }
 
     fn process_expression(&self, expr: ::ast::parsed::Expression<T>) -> Expression<T> {

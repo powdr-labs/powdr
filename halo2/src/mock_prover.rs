@@ -59,15 +59,13 @@ mod test {
         let graph = airgen::compile(analysed);
         let pil = linker::link(graph).unwrap();
 
+        let query_callback = compiler::inputs_to_query_callback(inputs.to_vec());
+
         let analyzed = pil_analyzer::analyze_string(&format!("{pil}"));
 
         let fixed = executor::constant_evaluator::generate(&analyzed);
-        let witness = executor::witgen::WitnessGenerator::new(
-            &analyzed,
-            &fixed,
-            compiler::inputs_to_query_callback(inputs.to_vec()),
-        )
-        .generate();
+        let witness =
+            executor::witgen::WitnessGenerator::new(&analyzed, &fixed, query_callback).generate();
 
         let fixed = to_owned_values(fixed);
 

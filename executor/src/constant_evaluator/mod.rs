@@ -1,9 +1,9 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, fmt::Display, rc::Rc};
 
 use ast::analyzed::{Analyzed, FunctionValueDefinition};
 use itertools::Itertools;
 use number::{DegreeType, FieldElement};
-use pil_analyzer::evaluator::Evaluator;
+use pil_analyzer::evaluator::{self, Closure, Custom, EvalError, SymbolLookup, Value};
 use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 
 /// Generates the constant polynomial values for all constant polynomials
@@ -28,34 +28,36 @@ fn generate_values<T: FieldElement>(
     analyzed: &Analyzed<T>,
     degree: DegreeType,
     body: &FunctionValueDefinition<T>,
-    other_constants: &HashMap<&str, Vec<T>>,
+    computed_columns: &HashMap<&str, Vec<T>>,
 ) -> Vec<T> {
+    let symbols = Symbols {
+        analyzed,
+        computed_columns,
+    };
+    // TODO we should maybe pre-compute some symbols here.
     match body {
         FunctionValueDefinition::Mapping(body) => (0..degree)
             .into_par_iter()
             .map(|i| {
-                Evaluator {
-                    definitions: &analyzed.definitions,
-                    variables: &[i.into()],
-                    function_cache: other_constants,
-                }
-                .evaluate(body)
-                .unwrap()
+                evaluator::evaluate_function_call(body, vec![i.into()], &symbols)
+                    .unwrap()
+                    .try_to_number()
+                    .unwrap()
             })
             .collect(),
         FunctionValueDefinition::Array(values) => {
-            let evaluator = Evaluator {
-                definitions: &analyzed.definitions,
-                variables: &[],
-                function_cache: other_constants,
-            };
             let values: Vec<_> = values
                 .iter()
                 .flat_map(|elements| {
                     let items = elements
                         .pattern()
                         .iter()
-                        .map(|v| evaluator.evaluate(v).unwrap())
+                        .map(|v| {
+                            evaluator::evaluate(v, &symbols)
+                                .unwrap()
+                                .try_to_number()
+                                .unwrap()
+                        })
                         .collect::<Vec<_>>();
 
                     items
@@ -72,6 +74,77 @@ fn generate_values<T: FieldElement>(
         FunctionValueDefinition::Expression(_) => {
             panic!("Expression used for fixed column, only expected for intermediate polynomials")
         }
+    }
+}
+
+struct Symbols<'a, T> {
+    pub analyzed: &'a Analyzed<T>,
+    pub computed_columns: &'a HashMap<&'a str, Vec<T>>,
+}
+
+impl<'a, T: FieldElement> SymbolLookup<'a, T, FixedColumnRef<'a>> for Symbols<'a, T> {
+    fn lookup(&self, name: &str) -> Result<Value<'a, T, FixedColumnRef<'a>>, EvalError> {
+        Ok(
+            if let Some((name, _)) = self.computed_columns.get_key_value(name) {
+                Value::Custom(FixedColumnRef { name })
+            } else if let Some((_, value)) = self.analyzed.definitions.get(&name.to_string()) {
+                match value {
+                    Some(FunctionValueDefinition::Expression(value)) => {
+                        evaluator::evaluate(value, self)?
+                    }
+                    Some(FunctionValueDefinition::Mapping(body)) => (Closure {
+                        parameter_count: 1,
+                        body,
+                        environment: vec![],
+                    })
+                    .into(),
+                    Some(_) => Err(EvalError::Unsupported(
+                        "Cannot evaluate arrays and queries.".to_string(),
+                    ))?,
+                    None => Err(EvalError::Unsupported(
+                        "Cannot evaluate witness columns.".to_string(),
+                    ))?,
+                }
+            } else {
+                Err(EvalError::SymbolNotFound(format!(
+                    "Symbol {name} not found."
+                )))?
+            },
+        )
+    }
+
+    fn eval_function_application(
+        &self,
+        function: FixedColumnRef<'a>,
+        arguments: &[Rc<Value<'a, T, FixedColumnRef<'a>>>],
+    ) -> Result<Value<'a, T, FixedColumnRef<'a>>, EvalError> {
+        if arguments.len() != 1 {
+            Err(EvalError::TypeError(format!(
+                "Expected one argument, but got {}",
+                arguments.len()
+            )))?
+        };
+        let Value::Number(row) = arguments[0].as_ref() else {
+            return Err(EvalError::TypeError(format!(
+                "Expected number but got {}",
+                arguments[0]
+            )));
+        };
+        let data = &self.computed_columns[function.name];
+        Ok(Value::Number(data[row.to_degree() as usize % data.len()]))
+    }
+}
+
+#[derive(Clone, PartialEq)]
+pub struct FixedColumnRef<'a> {
+    pub name: &'a str,
+}
+
+impl<'a> Custom for FixedColumnRef<'a> {}
+
+impl<'a> Display for FixedColumnRef<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.name)
     }
 }
 
@@ -343,5 +416,61 @@ mod test {
             constants[12],
             ("F.greater_eq", convert([0, 0, 0, 1, 1, 1].to_vec()))
         );
+    }
+
+    #[test]
+    #[should_panic = "Cannot evaluate witness columns"]
+    pub fn calling_witness() {
+        let src = r#"
+            constant %N = 10;
+            namespace F(%N);
+            let w;
+            let x = |i| w(i) + 1;
+        "#;
+        let analyzed = analyze_string::<GoldilocksField>(src);
+        assert_eq!(analyzed.degree(), 10);
+        generate(&analyzed);
+    }
+
+    #[test]
+    #[should_panic = "Symbol F.w not found"]
+    pub fn symbol_not_found() {
+        let src = r#"
+            constant %N = 10;
+            namespace F(%N);
+            let x = |i| w(i) + 1;
+        "#;
+        let analyzed = analyze_string::<GoldilocksField>(src);
+        assert_eq!(analyzed.degree(), 10);
+        generate(&analyzed);
+    }
+
+    #[test]
+    #[should_panic = "Cannot evaluate arrays"]
+    pub fn forward_reference_to_array() {
+        let src = r#"
+            constant %N = 10;
+            namespace F(%N);
+            let x = |i| y(i) + 1;
+            col fixed y = [1, 2, 3]*;
+        "#;
+        let analyzed = analyze_string::<GoldilocksField>(src);
+        assert_eq!(analyzed.degree(), 10);
+        generate(&analyzed);
+    }
+
+    #[test]
+    pub fn forward_reference_to_function() {
+        let src = r#"
+            constant %N = 4;
+            namespace F(%N);
+            let x = |i| y(i) + 1;
+            let y = |i| i + 20;
+        "#;
+        let analyzed = analyze_string::<GoldilocksField>(src);
+        assert_eq!(analyzed.degree(), 4);
+        let constants = generate(&analyzed);
+        assert_eq!(constants[0], ("F.x", convert([21, 22, 23, 24].to_vec())));
+        assert_eq!(constants[1], ("F.y", convert([20, 21, 22, 23].to_vec())));
     }
 }

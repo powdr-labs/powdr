@@ -14,7 +14,7 @@ use ast::{
 };
 use number::{DegreeType, FieldElement};
 
-use crate::evaluator::{compute_constants, evaluate_expression};
+use crate::evaluator;
 
 pub fn condense<T: FieldElement>(
     degree: Option<DegreeType>,
@@ -211,7 +211,8 @@ impl<T: FieldElement> Condenser<T> {
                     panic!("Array-access for non-array {}.", array_symbol.absolute_name);
                 };
 
-                let index = evaluate_expression(&self.symbols, index)
+                let index = evaluator::evaluate_expression(index, &self.symbols)
+                    .and_then(|v| v.try_to_number())
                     .expect("Index needs to be constant number.")
                     .to_degree();
                 assert!(
@@ -238,4 +239,29 @@ impl<T: FieldElement> Condenser<T> {
             Expression::MatchExpression(_, _) => panic!(),
         }
     }
+}
+
+/// Returns a HashMap of all symbols that have a constant single value.
+fn compute_constants<T: FieldElement>(
+    definitions: &HashMap<String, (Symbol, Option<FunctionValueDefinition<T>>)>,
+) -> HashMap<String, T> {
+    definitions
+        .iter()
+        .filter_map(|(name, (symbol, value))| {
+            // TODO we could try to compute anything that evaluates to a "value" here.
+            if symbol.kind == SymbolKind::Constant() {
+                let Some(FunctionValueDefinition::Expression(value)) = value else {
+                    panic!();
+                };
+                Ok(value)
+                    .and_then(|value| {
+                        evaluator::evaluate_expression(value, definitions)?.try_to_number()
+                    })
+                    .map(|value| (name.to_owned(), value))
+                    .ok()
+            } else {
+                None
+            }
+        })
+        .collect()
 }
