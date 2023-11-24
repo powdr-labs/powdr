@@ -13,9 +13,51 @@ use number::write_polys_file;
 use number::{read_polys_csv_file, write_polys_csv_file, CsvRenderMode};
 use number::{Bn254Field, FieldElement, GoldilocksField};
 use riscv::{compile_riscv_asm, compile_rust};
+use riscv_executor::ExecutionTrace;
+use std::collections::{BTreeSet, HashMap};
 use std::io::{self, BufReader, BufWriter, Read};
+use std::ops::Deref;
 use std::{borrow::Cow, fs, io::Write, path::Path};
 use strum::{Display, EnumString, EnumVariantNames};
+
+const REGISTER_NAMES: [&str; 36] = [
+    "main.x1",
+    "main.x2",
+    "main.x3",
+    "main.x4",
+    "main.x5",
+    "main.x6",
+    "main.x7",
+    "main.x8",
+    "main.x9",
+    "main.x10",
+    "main.x11",
+    "main.x12",
+    "main.x13",
+    "main.x14",
+    "main.x15",
+    "main.x16",
+    "main.x17",
+    "main.x18",
+    "main.x19",
+    "main.x20",
+    "main.x21",
+    "main.x22",
+    "main.x23",
+    "main.x24",
+    "main.x25",
+    "main.x26",
+    "main.x27",
+    "main.x28",
+    "main.x29",
+    "main.x30",
+    "main.x31",
+    "main.tmp1",
+    "main.tmp2",
+    "main.tmp3",
+    "main.lr_sc_reservation",
+    "main.pc",
+];
 
 #[derive(Clone, EnumString, EnumVariantNames, Display)]
 pub enum FieldArgument {
@@ -402,9 +444,18 @@ fn run_command(command: Commands) {
         } => {
             if just_execute {
                 // assume input is riscv asm and just execute it
-                let contents = fs::read_to_string(file).unwrap();
-                let inputs = split_inputs(&inputs);
-                riscv_executor::execute::<GoldilocksField>(&contents, &inputs);
+                let contents = fs::read_to_string(&file).unwrap();
+                let inputs = split_inputs::<GoldilocksField>(&inputs);
+
+                let output_dir = Path::new(&output_directory);
+                rust_continuations(
+                    file.as_str(),
+                    contents.as_str(),
+                    inputs,
+                    output_dir,
+                    prove_with,
+                );
+                //riscv_executor::execute::<GoldilocksField>(&contents, &inputs);
             } else {
                 match call_with_field!(compile_with_csv_export::<field>(
                     file,
@@ -531,7 +582,7 @@ fn handle_riscv_asm<F: FieldElement>(
     just_execute: bool,
 ) -> Result<(), Vec<String>> {
     if just_execute {
-        riscv_executor::execute::<F>(contents, &inputs);
+        rust_continuations(file_name, contents, inputs, output_dir, prove_with);
     } else {
         compile_asm_string(
             file_name,
@@ -545,6 +596,176 @@ fn handle_riscv_asm<F: FieldElement>(
         )?;
     }
     Ok(())
+}
+
+fn transposed_trace<F: FieldElement>(trace: &ExecutionTrace) -> HashMap<String, Vec<F>> {
+    let mut reg_values: HashMap<&str, Vec<F>> = HashMap::with_capacity(trace.reg_map.len());
+
+    for row in trace.regs_rows() {
+        for (reg_name, &index) in trace.reg_map.iter() {
+            reg_values
+                .entry(reg_name)
+                .or_default()
+                .push(row[index].0.into());
+        }
+    }
+
+    reg_values
+        .into_iter()
+        .map(|(n, c)| (format!("main.{}", n), c))
+        .collect()
+}
+
+struct Inputs<F: FieldElement>(Vec<F>);
+
+impl<F: FieldElement> Default for Inputs<F> {
+    fn default() -> Self {
+        // 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,50,0
+        let mut inputs = vec![F::zero(); 37];
+        // Dispatcher + Bootloader takes 50 instructions, so 50 is the first instruction after the bootloader.
+        inputs[35] = F::from(50u64);
+        Self(inputs)
+    }
+}
+
+impl<F: FieldElement> Deref for Inputs<F> {
+    type Target = [F];
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl<F: FieldElement> From<Vec<F>> for Inputs<F> {
+    fn from(inputs: Vec<F>) -> Self {
+        Self(inputs)
+    }
+}
+
+impl<F: FieldElement> Inputs<F> {
+    fn pc(&self) -> F {
+        self.0[35]
+    }
+}
+
+fn rust_continuations<F: FieldElement>(
+    file_name: &str,
+    contents: &str,
+    inputs: Vec<F>,
+    _output_dir: &Path,
+    _prove_with: Option<BackendType>,
+) {
+    // TODO: Fix this
+    assert!(inputs.is_empty(), "Inputs are hijacked for bootloader");
+    let mut inputs = Inputs::default();
+
+    let program =
+        compiler::compile_asm_string_to_analyzed_ast::<F>(file_name, contents, None).unwrap();
+
+    log::info!("Executing powdr-asm...");
+    let (full_trace, memory_accesses) = {
+        let trace = riscv_executor::execute_ast::<F>(&program, &inputs, usize::MAX).0;
+        (transposed_trace::<F>(&trace), trace.mem)
+    };
+
+    let full_trace_length = full_trace["main.pc"].len();
+    log::info!("Total trace length: {}", full_trace_length);
+
+    let mut proven_trace = 0;
+    let mut chunk_index = 0;
+
+    loop {
+        log::info!("Running chunk {}...", chunk_index);
+        // TODO: Don't hard-code degree
+        let num_rows = (1 << 18) - 2;
+        let (chunk_trace, memory_snapshot) = {
+            // Run for 2**degree - 2 steps, because the executor doesn't run the dispatcher,
+            // which takes 2 rows.
+            let (trace, memory_snapshot) =
+                riscv_executor::execute_ast::<F>(&program, &inputs, num_rows);
+            (transposed_trace(&trace), memory_snapshot)
+        };
+        log::info!("Chunk trace length: {}", chunk_trace["main.pc"].len());
+
+        log::info!("Validating chunk...");
+        let (start, _) = chunk_trace["main.pc"]
+            .iter()
+            .enumerate()
+            .find(|(_, &pc)| pc == inputs.pc())
+            .unwrap();
+        let full_trace_start = match chunk_index {
+            // The bootloader execution in the first chunk is part of the full trace.
+            0 => start,
+            // Any other chunk starts at where we left off in the full trace.
+            _ => proven_trace - 1,
+        };
+        for &reg in REGISTER_NAMES.iter() {
+            let mut error_count = 0;
+            for i in 0..(chunk_trace["main.pc"].len() - start) {
+                let chunk_i = i + start;
+                let full_i = i + full_trace_start;
+                if chunk_trace[reg][chunk_i] != full_trace[reg][full_i] {
+                    log::warn!(
+                        "{}: {} (Line {}) != {} (Line {})",
+                        reg,
+                        chunk_trace[reg][chunk_i],
+                        chunk_i,
+                        full_trace[reg][full_i],
+                        full_i
+                    );
+                    error_count += 1;
+                    if error_count > 3 {
+                        break;
+                    }
+                }
+            }
+        }
+
+        if chunk_trace["main.pc"].len() < num_rows {
+            log::info!("Done!");
+            break;
+        }
+
+        proven_trace += match chunk_index {
+            0 => num_rows,
+            _ => num_rows - start,
+        };
+
+        log::info!("Building inputs for chunk {}...", chunk_index + 1);
+        let mut accessed_pages = BTreeSet::new();
+        // maybe not all pages in this interval are needed, but pages beyond it
+        // are certainly not needed.
+        let start_idx = memory_accesses
+            .binary_search_by_key(&proven_trace, |a| a.idx)
+            .unwrap_or_else(|v| v);
+
+        for access in &memory_accesses[start_idx..] {
+            if access.idx >= proven_trace + num_rows {
+                break;
+            }
+            accessed_pages.insert(access.address >> 10);
+        }
+        log::info!("Accessed pages: {:?}", accessed_pages);
+
+        let mut new_inputs = vec![];
+        for &reg in REGISTER_NAMES.iter() {
+            new_inputs.push(*chunk_trace[reg].last().unwrap());
+        }
+        new_inputs.push((accessed_pages.len() as u64).into());
+        for page in accessed_pages.iter() {
+            let start_addr = page << 10;
+            new_inputs.push(start_addr.into());
+            for i in 0..256 {
+                let addr = start_addr + i * 4;
+                new_inputs.push((*memory_snapshot.get(&addr).unwrap_or(&0)).into());
+            }
+        }
+
+        log::info!("Inputs length: {}", new_inputs.len());
+        inputs = new_inputs.into();
+
+        chunk_index += 1;
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
