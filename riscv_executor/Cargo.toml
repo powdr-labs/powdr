@@ -1,13 +1,13 @@
 [package]
-name = "type_check"
+name = "riscv_executor"
 version = "0.1.0"
 edition = "2021"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [dependencies]
+log = "0.4.17"
+itertools = "0.11"
 ast = { path = "../ast" }
 number = { path = "../number" }
-
-[dev-dependencies]
+parser = { path = "../parser" }
 importer = { path = "../importer" }
+analysis = { path = "../analysis" }

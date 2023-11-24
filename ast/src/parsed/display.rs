@@ -238,6 +238,9 @@ impl Display for DebugDirective {
             DebugDirective::Loc(file, line, col) => {
                 write!(f, "debug loc {file} {line} {col};")
             }
+            DebugDirective::OriginalInstruction(insn) => {
+                write!(f, "debug insn \"{insn}\";")
+            }
         }
     }
 }

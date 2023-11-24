@@ -6,6 +6,6 @@ edition = "2021"
 [dependencies]
 number = { path = "../number" }
 ast = { path = "../ast" }
+pil_analyzer = { path = "../pil_analyzer" }
 log = "0.4.17"
-pil_analyzer = { version = "0.1.0", path = "../pil_analyzer" }
 pretty_assertions = "1.3.0"

@@ -325,6 +325,7 @@ pub enum FunctionStatement<T> {
 pub enum DebugDirective {
     File(usize, String, String),
     Loc(usize, usize, usize),
+    OriginalInstruction(String),
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]

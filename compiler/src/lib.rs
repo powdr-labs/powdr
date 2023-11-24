@@ -8,12 +8,15 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::time::Instant;
 
+use analysis::analyze;
+use analysis::convert_analyzed_to_pil_constraints;
 use ast::analyzed::Analyzed;
+use ast::DiffMonitor;
 
 pub mod util;
 mod verify;
 
-use analysis::analyze;
+use ast::asm_analysis::AnalysisASMFile;
 pub use backend::{BackendType, Proof};
 use executor::witgen::QueryCallback;
 pub use verify::{
@@ -122,6 +125,7 @@ pub fn compile_asm<T: FieldElement>(
         file_name,
         &contents,
         inputs,
+        None,
         output_dir,
         force_overwrite,
         prove_with,
@@ -130,20 +134,12 @@ pub fn compile_asm<T: FieldElement>(
     .1)
 }
 
-/// Compiles the contents of a .asm file, outputs the PIL on stdout and tries to generate
-/// fixed and witness columns.
-///
-/// Returns the relative pil file name and the compilation result if any compilation was done.
 #[allow(clippy::print_stderr)]
-pub fn compile_asm_string<T: FieldElement>(
+pub fn compile_asm_string_to_analyzed_ast<T: FieldElement>(
     file_name: &str,
     contents: &str,
-    inputs: Vec<T>,
-    output_dir: &Path,
-    force_overwrite: bool,
-    prove_with: Option<BackendType>,
-    external_witness_values: Vec<(&str, Vec<T>)>,
-) -> Result<(PathBuf, Option<CompilationResult<T>>), Vec<String>> {
+    monitor: &mut DiffMonitor,
+) -> Result<AnalysisASMFile<T>, Vec<String>> {
     let parsed = parser::parse_asm(Some(file_name), contents).unwrap_or_else(|err| {
         eprintln!("Error parsing .asm file:");
         err.output_to_stderr();
@@ -153,11 +149,27 @@ pub fn compile_asm_string<T: FieldElement>(
     let resolved =
         importer::resolve(Some(PathBuf::from(file_name)), parsed).map_err(|e| vec![e])?;
     log::debug!("Run analysis");
-    let analysed = analyze(resolved).unwrap();
+    let analyzed = analyze(resolved, monitor)?;
     log::debug!("Analysis done");
-    log::trace!("{analysed}");
+    log::trace!("{analyzed}");
+
+    Ok(analyzed)
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn convert_analyzed_to_pil<T: FieldElement>(
+    file_name: &str,
+    monitor: &mut DiffMonitor,
+    analyzed: AnalysisASMFile<T>,
+    inputs: Vec<T>,
+    output_dir: &Path,
+    force_overwrite: bool,
+    prove_with: Option<BackendType>,
+    external_witness_values: Vec<(&str, Vec<T>)>,
+) -> Result<(PathBuf, Option<CompilationResult<T>>), Vec<String>> {
+    let constraints = convert_analyzed_to_pil_constraints(analyzed, monitor);
     log::debug!("Run airgen");
-    let graph = airgen::compile(analysed);
+    let graph = airgen::compile(constraints);
     log::debug!("Airgen done");
     log::trace!("{graph}");
     log::debug!("Run linker");
@@ -179,7 +191,7 @@ pub fn compile_asm_string<T: FieldElement>(
         return Ok((pil_file_path, None));
     }
 
-    fs::write(pil_file_path.clone(), format!("{pil}")).unwrap();
+    fs::write(&pil_file_path, format!("{pil}")).unwrap();
 
     let pil_file_name = pil_file_path.file_name().unwrap();
     Ok((
@@ -193,6 +205,40 @@ pub fn compile_asm_string<T: FieldElement>(
             external_witness_values,
         )),
     ))
+}
+
+pub type AnalyzedASTHook<'a, T> = &'a mut dyn FnMut(&AnalysisASMFile<T>);
+
+/// Compiles the contents of a .asm file, outputs the PIL on stdout and tries to generate
+/// fixed and witness columns.
+///
+/// Returns the relative pil file name and the compilation result if any compilation was done.
+#[allow(clippy::too_many_arguments)]
+pub fn compile_asm_string<T: FieldElement>(
+    file_name: &str,
+    contents: &str,
+    inputs: Vec<T>,
+    analyzed_hook: Option<AnalyzedASTHook<T>>,
+    output_dir: &Path,
+    force_overwrite: bool,
+    prove_with: Option<BackendType>,
+    external_witness_values: Vec<(&str, Vec<T>)>,
+) -> Result<(PathBuf, Option<CompilationResult<T>>), Vec<String>> {
+    let mut monitor = DiffMonitor::default();
+    let analyzed = compile_asm_string_to_analyzed_ast(file_name, contents, &mut monitor)?;
+    if let Some(hook) = analyzed_hook {
+        hook(&analyzed);
+    };
+    convert_analyzed_to_pil(
+        file_name,
+        &mut monitor,
+        analyzed,
+        inputs,
+        output_dir,
+        force_overwrite,
+        prove_with,
+        external_witness_values,
+    )
 }
 
 pub struct CompilationResult<T: FieldElement> {
