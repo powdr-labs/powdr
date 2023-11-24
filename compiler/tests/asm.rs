@@ -194,6 +194,15 @@ fn vm_to_vm_to_block() {
 }
 
 #[test]
+fn vm_to_block_array() {
+    let f = "vm_to_block_array.asm";
+    let i = [];
+    verify_asm::<GoldilocksField>(f, slice_to_vec(&i));
+    gen_halo2_proof(f, slice_to_vec(&i));
+    gen_estark_proof(f, slice_to_vec(&i));
+}
+
+#[test]
 fn vm_to_vm_to_vm() {
     let f = "vm_to_vm_to_vm.asm";
     let i = [];

@@ -260,21 +260,20 @@ InstructionBodyElement: PilStatement<T> = {
     ExpressionStatement,
 }
 
-Params: Params = {
+Params: Params<T> = {
     <_input: ParamList> "->" <output: ParamList> => Params::new(_input, Some(output)),
     // we can ommit the arrow if there are no outputs
     <_input: ParamList> => Params::new(_input, None)
 
 }
 
-ParamList: ParamList = {
+ParamList: ParamList<T> = {
     => ParamList::new(vec![]),
     <mut list:( <Param> "," )*> <end:Param>  => { list.push(end); ParamList::new(list) }
 }
 
-Param: Param = {
-    <name: Identifier> <ty:(":" <Identifier>)?> =>
-        Param{name, ty}
+Param: Param<T> = {
+    <name: Identifier> <index:("[" <FieldElement> "]")?> <ty:(":" <Identifier>)?> => Param{<>}
 }
 
 FunctionDeclaration: MachineStatement<T> = {
