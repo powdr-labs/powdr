@@ -157,8 +157,6 @@ impl<R: ReferenceResolver> ExpressionProcessor<R> {
             .collect();
         // Re-add the outer local variables if we do not overwrite them
         // and increase their index by the number of parameters.
-        // TODO re-evaluate if this mechanism makes sense as soon as we properly
-        // support nested functions and closures.
         for (name, index) in &previous_local_vars {
             self.local_variables
                 .entry(name.clone())
