@@ -100,8 +100,10 @@ impl Architecture for RiscvArchitecture {
 pub fn compile(mut assemblies: BTreeMap<String, String>, coprocessors: &CoProcessors) -> String {
     // stack grows towards zero
     let stack_start = 0x10000;
+    // registers "grow" away from zero
+    //let reg_start = 0x10100;
     // data grows away from zero
-    let data_start = 0x10100;
+    let data_start = 0x10200;
 
     assert!(assemblies
         .insert("__runtime".to_string(), runtime(coprocessors))
@@ -449,16 +451,11 @@ fn preamble(degree: u64, coprocessors: &CoProcessors) -> String {
     reg tmp2;
     reg tmp3;
     reg lr_sc_reservation;
+    let reg_start = 0x10100; // Register area.
 "#
         .to_owned()
         .to_string()
-        + &(0..32)
-            .map(|i| format!("\t\treg x{i};\n"))
-            .collect::<Vec<_>>()
-            .concat()
         + r#"
-
-    x0 = 0;
 
     // ============== iszero check for X =======================
     col witness XInv;
@@ -548,9 +545,9 @@ fn preamble(degree: u64, coprocessors: &CoProcessors) -> String {
     instr jump l: label { pc' = l }
     instr load_label l: label -> X { X = l }
     instr jump_dyn X { pc' = X }
-    instr jump_and_link_dyn X { pc' = X, x1' = pc + 1 }
-    instr call l: label { pc' = l, x1' = pc + 1 }
-    instr ret { pc' = x1 }
+    // instr jump_and_link_dyn X { pc' = X, x1' = pc + 1 }
+    // instr call l: label { pc' = l, x1' = pc + 1 }
+    // instr ret { pc' = x1 }
 
     instr branch_if_nonzero X, l: label { pc' = (1 - XIsZero) * l + XIsZero * (pc + 1) }
     instr branch_if_zero X, l: label { pc' = XIsZero * l + (1 - XIsZero) * (pc + 1) }
@@ -871,26 +868,40 @@ fn process_instruction(instr: &str, args: &[Argument], coprocessors: &CoProcesso
         // load/store registers
         "li" => {
             let (rd, imm) = ri(args);
-            only_if_no_write_to_zero(format!("{rd} <=X= {imm};"), rd)
+            only_if_no_write_to_zero(format!("mstore(reg_mem + {rd}, {imm});"), rd)
         }
         // TODO check if it is OK to clear the lower order bits
         "lui" => {
             let (rd, imm) = ri(args);
-            only_if_no_write_to_zero(format!("{rd} <=X= {};", imm << 12), rd)
+            only_if_no_write_to_zero(format!("mstore(reg_mem + {rd}, {});", imm << 12), rd)
         }
         "la" => {
             let (rd, addr) = ri(args);
-            only_if_no_write_to_zero(format!("{rd} <=X= {};", addr), rd)
+            only_if_no_write_to_zero(format!("mstore(reg_mem + {rd}, {});", addr), rd)
         }
         "mv" => {
             let (rd, rs) = rr(args);
-            only_if_no_write_to_zero(format!("{rd} <=X= {rs};"), rd)
+            only_if_no_write_to_zero_vec(
+                vec![
+                    format!("tmp1, tmp2 <== mload(reg_mem + {rs});"),
+                    format!("mstore(reg_mem + {rd}, tmp1);"),
+                ],
+                rd,
+            )
         }
 
         // Arithmetic
         "add" => {
             let (rd, r1, r2) = rrr(args);
-            only_if_no_write_to_zero(format!("{rd} <== wrap({r1} + {r2});"), rd)
+            only_if_no_write_to_zero_vec(
+                vec![
+                    format!("tmp1, tmp2 <== mload(reg_mem + {r1});"),
+                    format!("tmp2, tmp3 <== mload(reg_mem + {r2});"),
+                    format!("tmp1 <== wrap(tmp1 + tmp2)"),
+                    format!("mstore(reg_mem + {rd}, tmp1);"),
+                ],
+                rd,
+            )
         }
         "addi" => {
             let (rd, rs, imm) = rri(args);
