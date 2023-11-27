@@ -713,8 +713,16 @@ fn rust_continuations<F: FieldElement>(
                         full_trace[reg][full_i],
                         full_i
                     );
+                    for j in 0..10 {
+                        let k = j as i32 - 5;
+                        log::warn!(
+                            "    {} (Line {})",
+                            full_trace[reg][(full_i as i32 + k) as usize],
+                            k
+                        );
+                    }
                     error_count += 1;
-                    if error_count > 3 {
+                    if error_count > 0 {
                         break;
                     }
                 }
@@ -728,7 +736,8 @@ fn rust_continuations<F: FieldElement>(
 
         proven_trace += match chunk_index {
             0 => num_rows,
-            _ => num_rows - start,
+            // Minus 1 because the first row was proven already.
+            _ => num_rows - start - 1,
         };
 
         log::info!("Building inputs for chunk {}...", chunk_index + 1);

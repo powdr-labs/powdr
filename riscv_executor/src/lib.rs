@@ -72,11 +72,13 @@ impl From<usize> for Elem {
 
 pub type MemoryState = HashMap<u32, u32>;
 
+#[derive(Debug)]
 pub enum MemOperationKind {
     Read,
     Write,
 }
 
+#[derive(Debug)]
 pub struct MemOperation {
     /// Line of the register trace the memory operation happened.
     pub idx: usize,
@@ -328,11 +330,15 @@ mod builder {
 
             self.set_reg_idx(
                 self.pc_idx,
-                if self.next_statement_line >= line_of_next_batch {
-                    assert_eq!(self.next_statement_line, line_of_next_batch);
+                if self.next_statement_line == line_of_next_batch {
                     curr_pc + 1
-                } else {
+                } else if self.next_statement_line < line_of_next_batch {
                     curr_pc
+                } else {
+                    panic!(
+                        "next_statement_line: {} > line_of_next_batch: {}",
+                        self.next_statement_line, line_of_next_batch
+                    );
                 }
                 .into(),
             );
@@ -723,7 +729,7 @@ pub fn execute_ast<'a, T: FieldElement>(
     loop {
         let stm = statements[curr_pc as usize];
 
-        //println!("l {curr_pc}: {stm}",);
+        log::trace!("l {curr_pc}: {stm}",);
 
         let is_nop = match stm {
             FunctionStatement::Assignment(a) => {
@@ -745,10 +751,10 @@ pub fn execute_ast<'a, T: FieldElement>(
                 match &dd.directive {
                     DebugDirective::Loc(file, line, column) => {
                         let (dir, file) = debug_files[file - 1];
-                        log::trace!("Executed {dir}/{file}:{line}:{column}");
+                        log::debug!("Executed {dir}/{file}:{line}:{column}");
                     }
                     DebugDirective::OriginalInstruction(insn) => {
-                        log::trace!("  {insn}");
+                        log::debug!("  {insn}");
                     }
                     DebugDirective::File(_, _, _) => unreachable!(),
                 };
