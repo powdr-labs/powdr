@@ -419,18 +419,23 @@ impl<T: Display> Display for ArrayExpression<T> {
 impl<T: Display> Display for FunctionDefinition<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
-            FunctionDefinition::Mapping(params, body) => {
-                write!(f, "({}) {{ {body} }}", params.join(", "))
-            }
             FunctionDefinition::Array(array_expression) => {
                 write!(f, " = {array_expression}")
             }
             FunctionDefinition::Query(params, value) => {
                 write!(f, "({}) query {value}", params.join(", "),)
             }
-            FunctionDefinition::Expression(e) => {
-                write!(f, " = {e}")
-            }
+            FunctionDefinition::Expression(e) => match e {
+                Expression::LambdaExpression(lambda) if lambda.params.len() == 1 => {
+                    write!(
+                        f,
+                        "({}) {{ {} }}",
+                        lambda.params.iter().format(", "),
+                        lambda.body
+                    )
+                }
+                _ => write!(f, " = {e}"),
+            },
         }
     }
 }

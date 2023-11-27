@@ -102,7 +102,7 @@ PolynomialConstantDefinition: PilStatement<T> = {
 }
 
 FunctionDefinition: FunctionDefinition<T> = {
-    "(" <ParameterList> ")" "{" <Expression> "}" => FunctionDefinition::Mapping(<>),
+    "(" <params:ParameterList> ")" "{" <body:BoxedExpression> "}" => FunctionDefinition::Expression(Expression::LambdaExpression(LambdaExpression{params, body})),
     "=" <ArrayLiteralExpression> => FunctionDefinition::Array(<>),
 }
 

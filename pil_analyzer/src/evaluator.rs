@@ -1,9 +1,9 @@
-use std::{collections::HashMap, fmt::Display, iter::repeat, rc::Rc};
+use std::{collections::HashMap, fmt::Display, rc::Rc};
 
 use ast::{
     analyzed::{Expression, FunctionValueDefinition, Reference, Symbol},
     evaluate_binary_operation, evaluate_unary_operation,
-    parsed::{display::quote, FunctionCall, MatchArm, MatchPattern},
+    parsed::{display::quote, FunctionCall, LambdaExpression, MatchArm, MatchPattern},
 };
 use itertools::Itertools;
 use number::FieldElement;
@@ -16,6 +16,7 @@ pub fn evaluate_expression<'a, T: FieldElement>(
     evaluate(expr, &Definitions(definitions))
 }
 
+/// Evaluates an expression given a symbol lookup implementation
 pub fn evaluate<'a, T: FieldElement, C: Custom>(
     expr: &'a Expression<T>,
     symbols: &impl SymbolLookup<'a, T, C>,
@@ -23,21 +24,34 @@ pub fn evaluate<'a, T: FieldElement, C: Custom>(
     internal::evaluate(expr, &[], symbols)
 }
 
-// TODO this function should be removed in the future, or at least it should
-// check that `expr` actually evaluates to a Closure.
+/// Evaluates a function call.
 pub fn evaluate_function_call<'a, T: FieldElement, C: Custom>(
-    expr: &'a Expression<T>,
-    arguments: Vec<T>,
+    function: Value<'a, T, C>,
+    arguments: Vec<Rc<Value<'a, T, C>>>,
     symbols: &impl SymbolLookup<'a, T, C>,
 ) -> Result<Value<'a, T, C>, EvalError> {
-    internal::evaluate(
-        expr,
-        &arguments
-            .into_iter()
-            .map(|x| Rc::new(Value::Number(x)))
-            .collect::<Vec<_>>(),
-        symbols,
-    )
+    match function {
+        Value::Closure(Closure {
+            lambda,
+            environment,
+        }) => {
+            if lambda.params.len() != arguments.len() {
+                Err(EvalError::TypeError(format!(
+                    "Invalid function call: Supplied {} arguments to function that takes {} parameters.",
+                    arguments.len(),
+                    lambda.params.len())
+                ))?
+            }
+
+            let local_vars = arguments.into_iter().chain(environment).collect::<Vec<_>>();
+
+            internal::evaluate(&lambda.body, &local_vars, symbols)
+        }
+        Value::Custom(value) => symbols.eval_function_application(value, &arguments),
+        e => Err(EvalError::TypeError(format!(
+            "Expected function but got {e}"
+        ))),
+    }
 }
 
 /// Evaluation errors.
@@ -67,6 +81,12 @@ pub enum Value<'a, T, C> {
     Array(Vec<Self>),
     Closure(Closure<'a, T, C>),
     Custom(C),
+}
+
+impl<'a, T, C> From<T> for Value<'a, T, C> {
+    fn from(value: T) -> Self {
+        Value::Number(value)
+    }
 }
 
 // TODO somehow, implementing TryFrom or TryInto did not work.
@@ -108,10 +128,7 @@ impl Display for NoCustom {
 
 #[derive(Clone)]
 pub struct Closure<'a, T, C> {
-    // TODO we could also store the names of the parameters (for printing)
-    // In order to do this, we would need to add a parameter name to Mapping, which might be a good idea anyway.
-    pub parameter_count: usize,
-    pub body: &'a Expression<T>,
+    pub lambda: &'a LambdaExpression<T, Reference>,
     pub environment: Vec<Rc<Value<'a, T, C>>>,
 }
 
@@ -125,12 +142,7 @@ impl<'a, T, C> PartialEq for Closure<'a, T, C> {
 
 impl<'a, T: Display, C> Display for Closure<'a, T, C> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "|{}| {}",
-            repeat('_').take(self.parameter_count).format(", "),
-            self.body
-        )
+        write!(f, "{}", self.lambda)
     }
 }
 
@@ -149,12 +161,6 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T, NoCustom> for Definitions<'a, T> {
         Ok(match self.0.get(&name.to_string()) {
             Some((_, value)) => match value {
                 Some(FunctionValueDefinition::Expression(value)) => evaluate(value, self)?,
-                Some(FunctionValueDefinition::Mapping(body)) => (Closure {
-                    parameter_count: 1,
-                    body,
-                    environment: vec![],
-                })
-                .into(),
                 _ => Err(EvalError::Unsupported(
                     "Cannot evaluate arrays and queries.".to_string(),
                 ))?,
@@ -235,8 +241,7 @@ mod internal {
             Expression::LambdaExpression(lambda) => {
                 // TODO only copy the part of the environment that is actually referenced?
                 (Closure {
-                    parameter_count: lambda.params.len(),
-                    body: lambda.body.as_ref(),
+                    lambda,
                     environment: locals.to_vec(),
                 })
                 .into()
@@ -266,24 +271,7 @@ mod internal {
                     .iter()
                     .map(|a| evaluate(a, locals, symbols).map(Rc::new))
                     .collect::<Result<Vec<_>, _>>()?;
-                match function {
-                    Value::Closure(Closure {
-                        parameter_count,
-                        body,
-                        environment,
-                    }) => {
-                        assert_eq!(parameter_count, arguments.len());
-
-                        let local_vars =
-                            arguments.into_iter().chain(environment).collect::<Vec<_>>();
-
-                        evaluate(body, &local_vars, symbols)?
-                    }
-                    Value::Custom(value) => symbols.eval_function_application(value, &arguments)?,
-                    e => Err(EvalError::TypeError(format!(
-                        "Expected function but got {e}"
-                    )))?,
-                }
+                evaluate_function_call(function, arguments, symbols)?
             }
             Expression::MatchExpression(scrutinee, arms) => {
                 let v = evaluate(scrutinee, locals, symbols)?;

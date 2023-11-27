@@ -251,13 +251,11 @@ pub enum MatchPattern<T, Ref = NamespacedPolynomialReference> {
 /// The definition of a function (excluding its name):
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub enum FunctionDefinition<T> {
-    /// Parameter-value-mapping.
-    Mapping(Vec<String>, Expression<T>),
     /// Array expression.
     Array(ArrayExpression<T>),
     /// Prover query.
     Query(Vec<String>, Expression<T>),
-    /// Expression, for intermediate polynomials
+    /// Generic expression
     Expression(Expression<T>),
 }
 

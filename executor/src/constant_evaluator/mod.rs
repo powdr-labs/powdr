@@ -3,7 +3,7 @@ use std::{collections::HashMap, fmt::Display, rc::Rc};
 use ast::analyzed::{Analyzed, FunctionValueDefinition};
 use itertools::Itertools;
 use number::{DegreeType, FieldElement};
-use pil_analyzer::evaluator::{self, Closure, Custom, EvalError, SymbolLookup, Value};
+use pil_analyzer::evaluator::{self, Custom, EvalError, SymbolLookup, Value};
 use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 
 /// Generates the constant polynomial values for all constant polynomials
@@ -36,10 +36,13 @@ fn generate_values<T: FieldElement>(
     };
     // TODO we should maybe pre-compute some symbols here.
     match body {
-        FunctionValueDefinition::Mapping(body) => (0..degree)
+        FunctionValueDefinition::Expression(e) => (0..degree)
             .into_par_iter()
             .map(|i| {
-                evaluator::evaluate_function_call(body, vec![i.into()], &symbols)
+                // We could try to avoid the first evaluation to be run for each iteration,
+                // but the data is not thread-safe.
+                let fun = evaluator::evaluate(e, &symbols).unwrap();
+                evaluator::evaluate_function_call(fun, vec![Rc::new(T::from(i).into())], &symbols)
                     .unwrap()
                     .try_to_number()
                     .unwrap()
@@ -71,9 +74,6 @@ fn generate_values<T: FieldElement>(
             values
         }
         FunctionValueDefinition::Query(_) => panic!("Query used for fixed column."),
-        FunctionValueDefinition::Expression(_) => {
-            panic!("Expression used for fixed column, only expected for intermediate polynomials")
-        }
     }
 }
 
@@ -92,12 +92,6 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T, FixedColumnRef<'a>> for Symbols<'a
                     Some(FunctionValueDefinition::Expression(value)) => {
                         evaluator::evaluate(value, self)?
                     }
-                    Some(FunctionValueDefinition::Mapping(body)) => (Closure {
-                        parameter_count: 1,
-                        body,
-                        environment: vec![],
-                    })
-                    .into(),
                     Some(_) => Err(EvalError::Unsupported(
                         "Cannot evaluate arrays and queries.".to_string(),
                     ))?,

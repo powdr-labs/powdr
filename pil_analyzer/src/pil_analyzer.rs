@@ -223,37 +223,23 @@ impl<T: FieldElement> PILAnalyzer<T> {
                 );
             }
             Some(value) => {
-                match value {
-                    parsed::Expression::LambdaExpression(parsed::LambdaExpression {
-                        params,
-                        body,
-                    }) if params.len() == 1 => {
-                        // Assigned value is a lambda expression with a single parameter => treat it as a fixed column.
-                        self.handle_symbol_definition(
-                            self.to_source_ref(start),
-                            name,
-                            None,
-                            SymbolKind::Poly(PolynomialType::Constant),
-                            Some(FunctionDefinition::Mapping(params, *body)),
-                        );
-                    }
-                    _ => {
-                        let symbol_kind = if self.evaluate_expression(value.clone()).is_ok() {
-                            // Value evaluates to a constant number => treat it as a constant
-                            SymbolKind::Constant()
-                        } else {
-                            // Otherwise, treat it as "generic definition"
-                            SymbolKind::Other()
-                        };
-                        self.handle_symbol_definition(
-                            self.to_source_ref(start),
-                            name,
-                            None,
-                            symbol_kind,
-                            Some(FunctionDefinition::Expression(value)),
-                        );
-                    }
-                }
+                let symbol_kind = if matches!(&value, parsed::Expression::LambdaExpression(lambda) if lambda.params.len() == 1)
+                {
+                    SymbolKind::Poly(PolynomialType::Constant)
+                } else if self.evaluate_expression(value.clone()).is_ok() {
+                    // Value evaluates to a constant number => treat it as a constant
+                    SymbolKind::Constant()
+                } else {
+                    // Otherwise, treat it as "generic definition"
+                    SymbolKind::Other()
+                };
+                self.handle_symbol_definition(
+                    self.to_source_ref(start),
+                    name,
+                    None,
+                    symbol_kind,
+                    Some(FunctionDefinition::Expression(value)),
+                );
             }
         }
     }
@@ -384,26 +370,17 @@ impl<T: FieldElement> PILAnalyzer<T> {
         let value = value.map(|v| match v {
             FunctionDefinition::Expression(expr) => {
                 assert!(!have_array_size);
-                assert!(
-                    symbol_kind == SymbolKind::Other()
-                        || symbol_kind == SymbolKind::Constant()
-                        || symbol_kind == SymbolKind::Poly(PolynomialType::Intermediate)
-                );
+                assert!(symbol_kind != SymbolKind::Poly(PolynomialType::Committed));
                 FunctionValueDefinition::Expression(self.process_expression(expr))
-            }
-            FunctionDefinition::Mapping(params, expr) => {
-                assert!(!have_array_size);
-                assert!(symbol_kind == SymbolKind::Poly(PolynomialType::Constant));
-                FunctionValueDefinition::Mapping(
-                    ExpressionProcessor::new(self).process_function(&params, expr),
-                )
             }
             FunctionDefinition::Query(params, expr) => {
                 assert!(!have_array_size);
                 assert_eq!(symbol_kind, SymbolKind::Poly(PolynomialType::Committed));
-                FunctionValueDefinition::Query(
-                    ExpressionProcessor::new(self).process_function(&params, expr),
-                )
+                let body = Box::new(ExpressionProcessor::new(self).process_function(&params, expr));
+                FunctionValueDefinition::Query(Expression::LambdaExpression(LambdaExpression {
+                    params,
+                    body,
+                }))
             }
             FunctionDefinition::Array(value) => {
                 let size = value.solve(self.polynomial_degree.unwrap());
@@ -628,8 +605,6 @@ impl<'a, T: FieldElement> ExpressionProcessor<'a, T> {
             .collect();
         // Re-add the outer local variables if we do not overwrite them
         // and increase their index by the number of parameters.
-        // TODO re-evaluate if this mechanism makes sense as soon as we properly
-        // support nested functions and closures.
         for (name, index) in &previous_local_vars {
             self.local_variables
                 .entry(name.clone())

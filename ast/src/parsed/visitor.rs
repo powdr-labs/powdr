@@ -291,9 +291,7 @@ impl<T> ExpressionVisitable<Expression<T>> for FunctionDefinition<T> {
         F: FnMut(&mut Expression<T>) -> ControlFlow<B>,
     {
         match self {
-            FunctionDefinition::Query(_, e) | FunctionDefinition::Mapping(_, e) => {
-                e.visit_expressions_mut(f, o)
-            }
+            FunctionDefinition::Query(_, e) => e.visit_expressions_mut(f, o),
             FunctionDefinition::Array(ae) => ae.visit_expressions_mut(f, o),
             FunctionDefinition::Expression(e) => e.visit_expressions_mut(f, o),
         }
@@ -304,9 +302,7 @@ impl<T> ExpressionVisitable<Expression<T>> for FunctionDefinition<T> {
         F: FnMut(&Expression<T>) -> ControlFlow<B>,
     {
         match self {
-            FunctionDefinition::Query(_, e) | FunctionDefinition::Mapping(_, e) => {
-                e.visit_expressions(f, o)
-            }
+            FunctionDefinition::Query(_, e) => e.visit_expressions(f, o),
             FunctionDefinition::Array(ae) => ae.visit_expressions(f, o),
             FunctionDefinition::Expression(e) => e.visit_expressions(f, o),
         }
