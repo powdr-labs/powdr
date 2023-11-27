@@ -231,7 +231,7 @@ pub struct IndexAccess<T, Ref = NamespacedPolynomialReference> {
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub struct FunctionCall<T, Ref = NamespacedPolynomialReference> {
-    pub id: Ref,
+    pub function: Box<Expression<T, Ref>>,
     pub arguments: Vec<Expression<T, Ref>>,
 }
 

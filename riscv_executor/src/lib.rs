@@ -16,7 +16,7 @@ use std::{
 
 use ast::{
     asm_analysis::{AnalysisASMFile, CallableSymbol, FunctionStatement, LabelStatement, Machine},
-    parsed::{asm::DebugDirective, Expression},
+    parsed::{asm::DebugDirective, Expression, FunctionCall},
 };
 use builder::TraceBuilder;
 use number::{BigInt, FieldElement};
@@ -665,7 +665,16 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
                 vec![result.into()]
             }
-            Expression::FunctionCall(f) => self.exec_instruction(&f.id.name, &f.arguments),
+            Expression::FunctionCall(FunctionCall {
+                function,
+                arguments,
+            }) => match function.as_ref() {
+                Expression::Reference(f) => {
+                    assert!(f.namespace.is_none());
+                    self.exec_instruction(&f.name, arguments)
+                }
+                _ => panic!(),
+            },
             Expression::FreeInput(expr) => 'input: {
                 if let Expression::Tuple(t) = &**expr {
                     if let Expression::String(name) = &t[0] {

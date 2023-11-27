@@ -1,4 +1,4 @@
-use std::ops::ControlFlow;
+use std::{iter::once, ops::ControlFlow};
 
 use super::{
     ArrayExpression, ArrayLiteral, Expression, FunctionCall, FunctionDefinition, IndexAccess,
@@ -402,8 +402,8 @@ impl<T, Ref> ExpressionVisitable<Expression<T, Ref>> for FunctionCall<T, Ref> {
     where
         F: FnMut(&mut Expression<T, Ref>) -> ControlFlow<B>,
     {
-        self.arguments
-            .iter_mut()
+        once(self.function.as_mut())
+            .chain(&mut self.arguments)
             .try_for_each(|item| item.visit_expressions_mut(f, o))
     }
 
@@ -411,8 +411,8 @@ impl<T, Ref> ExpressionVisitable<Expression<T, Ref>> for FunctionCall<T, Ref> {
     where
         F: FnMut(&Expression<T, Ref>) -> ControlFlow<B>,
     {
-        self.arguments
-            .iter()
+        once(self.function.as_ref())
+            .chain(&self.arguments)
             .try_for_each(|item| item.visit_expressions(f, o))
     }
 }

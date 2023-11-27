@@ -265,8 +265,11 @@ mod internal {
                     e => Err(EvalError::TypeError(format!("Expected array, but got {e}")))?,
                 }
             }
-            Expression::FunctionCall(FunctionCall { id, arguments }) => {
-                let function = evaluate_reference(id, locals, symbols)?;
+            Expression::FunctionCall(FunctionCall {
+                function,
+                arguments,
+            }) => {
+                let function = evaluate(function, locals, symbols)?;
                 let arguments = arguments
                     .iter()
                     .map(|a| evaluate(a, locals, symbols).map(Rc::new))

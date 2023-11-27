@@ -1,6 +1,9 @@
 //! Compilation from powdr assembly to PIL
 
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::{
+    collections::{BTreeMap, BTreeSet, HashMap},
+    convert::Infallible,
+};
 
 use ast::{
     asm_analysis::{
@@ -11,6 +14,7 @@ use ast::{
     parsed::{
         asm::InstructionBody,
         build::{direct_reference, next_reference},
+        folder::ExpressionFolder,
         visitor::ExpressionVisitable,
         ArrayExpression, BinaryOperator, Expression, FunctionCall, FunctionDefinition, MatchArm,
         MatchPattern, NamespacedPolynomialReference, PilStatement, PolynomialName,
@@ -237,8 +241,7 @@ impl<T: FieldElement> ASMPILConverter<T> {
 
                 match *rhs {
                     Expression::FunctionCall(c) => {
-                        assert!(c.id.namespace.is_none());
-                        self.handle_functional_instruction(lhs_with_reg, c.id.name, c.arguments)
+                        self.handle_functional_instruction(lhs_with_reg, *c.function, c.arguments)
                     }
                     _ => self.handle_non_functional_assignment(start, lhs_with_reg, *rhs),
                 }
@@ -452,9 +455,16 @@ impl<T: FieldElement> ASMPILConverter<T> {
     fn handle_functional_instruction(
         &mut self,
         lhs_with_regs: Vec<(String, String)>,
-        instr_name: String,
+        function: Expression<T>,
         mut args: Vec<Expression<T>>,
     ) -> CodeLine<T> {
+        let Expression::Reference(NamespacedPolynomialReference {
+            namespace: _,
+            name: instr_name,
+        }) = function
+        else {
+            panic!("Expected instruction name");
+        };
         let instr = &self
             .instructions
             .get(&instr_name)
@@ -764,7 +774,7 @@ impl<T: FieldElement> ASMPILConverter<T> {
                                 .unwrap()
                                 .push(MatchArm {
                                     pattern: MatchPattern::Pattern(T::from(i as u64).into()),
-                                    value: transform_references_in_free_input_query(expr.clone()),
+                                    value: NextTransform {}.fold_expression(expr.clone()).unwrap(),
                                 });
                         }
                     }
@@ -812,10 +822,7 @@ impl<T: FieldElement> ASMPILConverter<T> {
                         vec!["i".to_string()],
                         Expression::MatchExpression(
                             Box::new(Expression::FunctionCall(FunctionCall {
-                                id: NamespacedPolynomialReference {
-                                    namespace: None,
-                                    name: pc_name.clone().unwrap(),
-                                },
+                                function: Box::new(direct_reference(pc_name.as_ref().unwrap())),
                                 arguments: vec![direct_reference("i")],
                             })),
                             prover_query_arms,
@@ -938,32 +945,44 @@ impl<T: FieldElement> ASMPILConverter<T> {
     }
 }
 
+struct NextTransform;
+
 /// Transforms `x` -> `x(i)` and `x' -> `x(i + 1)`
-fn transform_references_in_free_input_query<T: FieldElement>(
-    mut e: Expression<T>,
-) -> Expression<T> {
-    // TODO we should check that we only transform columns and not other symbols.
-    e.pre_visit_expressions_mut(&mut |e| match e {
-        Expression::Reference(reference) => {
-            if &reference.to_string() != "i" {
-                *e = Expression::FunctionCall(FunctionCall {
-                    id: std::mem::take(reference),
+impl<T: FieldElement> ExpressionFolder<T, NamespacedPolynomialReference> for NextTransform {
+    type Error = Infallible;
+    fn fold_expression(&mut self, e: Expression<T>) -> Result<Expression<T>, Self::Error> {
+        Ok(match e {
+            Expression::Reference(reference) if &reference.to_string() != "i" => {
+                Expression::FunctionCall(FunctionCall {
+                    function: Box::new(Expression::Reference(reference)),
                     arguments: vec![direct_reference("i")],
-                });
+                })
             }
-        }
-        Expression::UnaryOperation(UnaryOperator::Next, inner) => {
-            let Expression::Reference(reference) = inner.as_mut() else {
-                panic!("Can only use ' on symbols directly in free inputs.");
-            };
-            *e = Expression::FunctionCall(FunctionCall {
-                id: std::mem::take(reference),
-                arguments: vec![direct_reference("i") + Expression::from(T::from(1))],
-            });
-        }
-        _ => {}
-    });
-    e
+            Expression::UnaryOperation(UnaryOperator::Next, inner) => {
+                if !matches!(inner.as_ref(), Expression::Reference(_)) {
+                    panic!("Can only use ' on symbols directly in free inputs.");
+                };
+                Expression::FunctionCall(FunctionCall {
+                    function: inner,
+                    arguments: vec![direct_reference("i") + Expression::from(T::from(1))],
+                })
+            }
+            _ => self.fold_expression_default(e)?,
+        })
+    }
+    fn fold_function_call(
+        &mut self,
+        FunctionCall {
+            function,
+            arguments,
+        }: FunctionCall<T>,
+    ) -> Result<FunctionCall<T>, Self::Error> {
+        Ok(FunctionCall {
+            // Call fold_expression_default to avoid replacement.
+            function: Box::new(self.fold_expression_default(*function)?),
+            arguments: self.fold_expressions(arguments)?,
+        })
+    }
 }
 
 struct Register<T> {

@@ -560,7 +560,7 @@ impl<'a, T: FieldElement> ExpressionProcessor<'a, T> {
                 })
             }
             PExpression::FunctionCall(c) => Expression::FunctionCall(parsed::FunctionCall {
-                id: self.process_reference(c.id),
+                function: Box::new(self.process_expression(*c.function)),
                 arguments: self.process_expressions(c.arguments),
             }),
             PExpression::MatchExpression(scrutinee, arms) => Expression::MatchExpression(

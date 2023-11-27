@@ -88,7 +88,7 @@ impl<T: FieldElement> Condenser<T> {
         let (poly, _) = self
             .symbols
             .get(&reference.name)
-            .unwrap_or_else(|| panic!("Column {} not found.", reference.name));
+            .unwrap_or_else(|| panic!("Symbol {} not found.", reference.name));
         if let SymbolKind::Poly(_) = &poly.kind {
             reference.poly_id = Some(poly.into());
         }
@@ -133,7 +133,7 @@ impl<T: FieldElement> Condenser<T> {
                 let symbol = &self
                     .symbols
                     .get(&poly.name)
-                    .unwrap_or_else(|| panic!("Column {} not found.", poly.name))
+                    .unwrap_or_else(|| panic!("Symbol {} not found.", poly.name))
                     .0;
 
                 assert!(
@@ -202,7 +202,7 @@ impl<T: FieldElement> Condenser<T> {
                         &self
                             .symbols
                             .get(name)
-                            .unwrap_or_else(|| panic!("Column {name} not found."))
+                            .unwrap_or_else(|| panic!("Symbol {name} not found."))
                             .0
                     }
                     _ => panic!("Expected direct reference before array index access."),
