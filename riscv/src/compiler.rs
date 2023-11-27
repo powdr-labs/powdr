@@ -887,29 +887,52 @@ fn store(reg: Register, value: impl Display) -> Vec<String> {
 /// and is supposed to return a single expression.
 /// Returns the empty vector if rd is zero.
 fn load_op_store_1(args: &[Argument], op: impl Fn(&str) -> String) -> Vec<String> {
-    load_op_store_1_v(args, |a| vec![format!("tmp1 <== {};", op(a))])
+    load_op_store_1_v(args, |out, a| vec![format!("{out} <== {};", op(a))])
 }
 
-fn load_op_store_1_v(args: &[Argument], op: impl Fn(&str) -> Vec<String>) -> Vec<String> {
+fn load_op_store_1_v(args: &[Argument], op: impl Fn(&str, &str) -> Vec<String>) -> Vec<String> {
     let (rd, rs) = rr(args);
     if rd.is_zero() {
         vec![]
     } else {
-        [vec![load_1(rs)], op("tmp1"), store(rd, "tmp1")].concat()
+        [vec![load_1(rs)], op("tmp1", "tmp1"), store(rd, "tmp1")].concat()
     }
 }
 
 fn load_op_store_1imm(args: &[Argument], op: impl Fn(&str, u32) -> String) -> Vec<String> {
-    load_op_store_1imm_v(args, |a, imm| vec![format!("tmp1 <== {};", op(a, imm))])
+    load_op_store_1imm_v(args, |out, a, imm| {
+        vec![format!("{out} <== {};", op(a, imm))]
+    })
 }
 
-fn load_op_store_1imm_v(args: &[Argument], op: impl Fn(&str, u32) -> Vec<String>) -> Vec<String> {
+fn load_op_store_1imm_v(
+    args: &[Argument],
+    op: impl Fn(&str, &str, u32) -> Vec<String>,
+) -> Vec<String> {
     let (rd, r1, imm) = rri(args);
     if rd.is_zero() {
         vec![]
     } else {
-        [vec![load_1(r1)], op("tmp1", imm), store(rd, "tmp1")].concat()
+        [vec![load_1(r1)], op("tmp1", "tmp1", imm), store(rd, "tmp1")].concat()
     }
+}
+
+fn load_op_1l(args: &[Argument], op: impl Fn(&str, &str) -> String) -> Vec<String> {
+    load_op_1l_v(args, |a, label| vec![format!("{};", op(a, label))])
+}
+
+fn load_op_1l_v(args: &[Argument], op: impl Fn(&str, &str) -> Vec<String>) -> Vec<String> {
+    let (r1, label) = rl(args);
+    [vec![load_1(r1)], op("tmp1", &label)].concat()
+}
+
+fn load_op_2l(args: &[Argument], op: impl Fn(&str, &str, &str) -> String) -> Vec<String> {
+    load_op_2l_v(args, |a, b, label| vec![format!("{};", op(a, b, label))])
+}
+
+fn load_op_2l_v(args: &[Argument], op: impl Fn(&str, &str, &str) -> Vec<String>) -> Vec<String> {
+    let (r1, r2, label) = rrl(args);
+    [load_2(r1, r2), op("tmp1", "tmp2", &label)].concat()
 }
 
 /// Returns instructions that load from r1 and r2, run the operation and store in rd.
@@ -917,7 +940,7 @@ fn load_op_store_1imm_v(args: &[Argument], op: impl Fn(&str, u32) -> Vec<String>
 /// and is supposed to return a single expression.
 /// Returns the empty vector if rd is zero.
 fn load_op_store_2(args: &[Argument], op: impl Fn(&str, &str) -> String) -> Vec<String> {
-    load_op_store_2_v(args, |a, b| vec![format!("tmp1 <== {}", op(a, b))])
+    load_op_store_2_v(args, |out, a, b| vec![format!("{out} <== {}", op(a, b))])
 }
 
 /// Returns instructions that load from r1 and r2, run the operation and store in rd.
@@ -925,12 +948,20 @@ fn load_op_store_2(args: &[Argument], op: impl Fn(&str, &str) -> String) -> Vec<
 /// and is supposed to return a vector of instructions where the value to be written
 /// is stored in tmp1.
 /// Returns the empty vector if rd is zero.
-fn load_op_store_2_v(args: &[Argument], op: impl Fn(&str, &str) -> Vec<String>) -> Vec<String> {
+fn load_op_store_2_v(
+    args: &[Argument],
+    op: impl Fn(&str, &str, &str) -> Vec<String>,
+) -> Vec<String> {
     let (rd, r1, r2) = rrr(args);
     if rd.is_zero() {
         vec![]
     } else {
-        [load_2(r1, r2), op("tmp1", "tmp2"), store(rd, "tmp1")].concat()
+        [
+            load_2(r1, r2),
+            op("tmp1", "tmp1", "tmp2"),
+            store(rd, "tmp1"),
+        ]
+        .concat()
     }
 }
 
@@ -953,10 +984,14 @@ fn process_instruction(instr: &str, args: &[Argument], coprocessors: &CoProcesso
         "addi" => load_op_store_1imm(args, |a, imm| format!("wrap({a} + {imm})")),
         "sub" => load_op_store_2(args, |a, b| format!("wrap_signed({a} - {b})")),
         "neg" => load_op_store_1(args, |a| format!("wrap_signed(0 - {a})")),
-        "mul" => load_op_store_2_v(args, |a, b| vec![format!("tmp1, tmp2 <== mul({a}, {b});")]),
-        "mulhu" => load_op_store_2_v(args, |a, b| vec![format!("tmp2, tmp1 <== mul({a}, {b});")]),
+        "mul" => load_op_store_2_v(args, |o, a, b| {
+            vec![format!("{o}, tmp2 <== mul({a}, {b});")]
+        }),
+        "mulhu" => load_op_store_2_v(args, |o, a, b| {
+            vec![format!("tmp2, {o} <== mul({a}, {b});")]
+        }),
         "mulhsu" => {
-            load_op_store_2_v(args, |a, b| {
+            load_op_store_2_v(args, |o, a, b| {
                 assert_eq!([a, b], ["tmp1", "tmp2"]);
                 // TODO this might not work. It is horrible.
                 vec![
@@ -972,15 +1007,15 @@ fn process_instruction(instr: &str, args: &[Argument], coprocessors: &CoProcesso
                     "tmp1 <== is_equal_zero(tmp1);".into(),
                     // If the lower bits are zero, return the two's complement,
                     // otherwise return one's complement.
-                    format!("tmp1 <== wrap_signed(-tmp2 - 1 + tmp1);"),
+                    format!("{o} <== wrap_signed(-tmp2 - 1 + tmp1);"),
                 ]
             })
         }
-        "divu" => load_op_store_2_v(args, |a, b| {
-            vec![format!("tmp1, tmp2 <== divremu({a}, {b});")]
+        "divu" => load_op_store_2_v(args, |o, a, b| {
+            vec![format!("{o}, tmp2 <== divremu({a}, {b});")]
         }),
-        "remu" => load_op_store_2_v(args, |a, b| {
-            vec![format!("tmp2, tmp1 <== divremu({a}, {b});")]
+        "remu" => load_op_store_2_v(args, |o, a, b| {
+            vec![format!("tmp2, {o} <== divremu({a}, {b});")]
         }),
 
         // bitwise
@@ -991,21 +1026,21 @@ fn process_instruction(instr: &str, args: &[Argument], coprocessors: &CoProcesso
         "not" => load_op_store_1(args, |a| format!("wrap_signed(-{a} - 1)")),
 
         // shift
-        "slli" => load_op_store_1imm_v(args, |a, amount| {
+        "slli" => load_op_store_1imm_v(args, |o, a, amount| {
             assert!(amount <= 31);
             if amount <= 16 {
-                vec![format!("tmp1 <= wrap16({a} * {});", 1 << amount)]
+                vec![format!("{o} <= wrap16({a} * {});", 1 << amount)]
             } else {
                 vec![
                     format!("tmp1 <== wrap16({a} * {});", 1 << 16),
-                    format!("tmp1 <== wrap16(tmp1 * {});", 1 << (amount - 16)),
+                    format!("{o} <== wrap16(tmp1 * {});", 1 << (amount - 16)),
                 ]
             }
         }),
-        "sll" => load_op_store_2_v(args, |a, b| {
+        "sll" => load_op_store_2_v(args, |o, a, b| {
             vec![
                 format!("{b} <== and({b}, 0x1f);"),
-                format!("tmp1 <== shl({a}, {b});"),
+                format!("{o} <== shl({a}, {b});"),
             ]
         }),
         "srli" => {
@@ -1017,10 +1052,10 @@ fn process_instruction(instr: &str, args: &[Argument], coprocessors: &CoProcesso
         }
         "srl" => {
             // logical shift right
-            load_op_store_2_v(args, |a, b| {
+            load_op_store_2_v(args, |o, a, b| {
                 vec![
                     format!("{b} <== and({b}, 0x1f);"),
-                    format!("tmp1 <== shr({a}, {b});"),
+                    format!("{o} <== shr({a}, {b});"),
                 ]
             })
         }
@@ -1048,117 +1083,93 @@ fn process_instruction(instr: &str, args: &[Argument], coprocessors: &CoProcesso
         }
 
         // comparison
-        "seqz" => load_op_store_1_v(args, |a| vec![format!("tmp1 <=Y= is_equal_zero({a});")]),
-        "snez" => load_op_store_1_v(args, |a| vec![format!("tmp1 <=Y= is_not_equal_zero({a});")]),
-        "slti" => {
-            let (rd, rs, imm) = rri(args);
-            only_if_no_write_to_zero_vec(
-                vec![
-                    format!("tmp1 <== to_signed({rs});"),
-                    format!("{rd} <=Y= is_positive({} - tmp1);", imm as i32),
-                ],
-                rd,
-            )
-        }
-        "slt" => {
-            let (rd, r1, r2) = rrr(args);
+        "seqz" => load_op_store_1_v(args, |o, a| vec![format!("{o} <=Y= is_equal_zero({a});")]),
+        "snez" => load_op_store_1_v(args, |o, a| {
+            vec![format!("{o} <=Y= is_not_equal_zero({a});")]
+        }),
+        "slti" => load_op_store_1imm_v(args, |o, a, imm| {
             vec![
-                format!("tmp1 <== to_signed({r1});"),
-                format!("tmp2 <== to_signed({r2});"),
-                format!("{rd} <=Y= is_positive(tmp2 - tmp1);"),
+                format!("tmp1 <== to_signed({a});"),
+                format!("{o} <=Y= is_positive({} - tmp1);", imm as i32),
             ]
-        }
-        "sltiu" => {
-            let (rd, rs, imm) = rri(args);
-            only_if_no_write_to_zero(format!("{rd} <=Y= is_positive({imm} - {rs});"), rd)
-        }
-        "sltu" => {
-            let (rd, r1, r2) = rrr(args);
-            only_if_no_write_to_zero(format!("{rd} <=Y= is_positive({r2} - {r1});"), rd)
-        }
-        "sgtz" => {
-            let (rd, rs) = rr(args);
+        }),
+        "slt" => load_op_store_2_v(args, |o, a, b| {
             vec![
-                format!("tmp1 <== to_signed({rs});"),
-                format!("{rd} <=Y= is_positive(tmp1);"),
+                format!("{a} <== to_signed({a});"),
+                format!("{b} <== to_signed({b});"),
+                format!("{o} <=Y= is_positive({b} - {a});"),
             ]
-        }
+        }),
+        "sltiu" => load_op_store_1imm_v(args, |o, a, imm| {
+            vec![format!("{o} <=Y= is_positive({imm} - {a});")]
+        }),
+        "sltu" => load_op_store_2_v(args, |o, a, b| {
+            vec![format!("{o} <=Y= is_positive({b} - {a});")]
+        }),
+        "sgtz" => load_op_store_1_v(args, |o, a| {
+            vec![
+                format!("tmp1 <== to_signed({a});"),
+                format!("{o} <=Y= is_positive(tmp1);"),
+            ]
+        }),
 
         // branching
-        "beq" => {
-            let (r1, r2, label) = rrl(args);
-            vec![format!("branch_if_zero {r1} - {r2}, {label};")]
-        }
-        "beqz" => {
-            let (r1, label) = rl(args);
-            vec![format!("branch_if_zero {r1}, {label};")]
-        }
+        "beq" => load_op_2l(args, |a, b, l| format!("branch_if_zero {a} - {b}, {l}")),
+        "beqz" => load_op_1l(args, |a, l| format!("branch_if_zero {a}, {l}")),
         "bgeu" => {
-            let (r1, r2, label) = rrl(args);
             // TODO does this fulfill the input requirements for branch_if_positive?
-            vec![format!("branch_if_positive {r1} - {r2} + 1, {label};")]
+            load_op_2l(args, |a, b, l| {
+                format!("branch_if_positive {a} - {b} + 1, {l}")
+            })
         }
-        "bgez" => {
-            let (r1, label) = rl(args);
+        "bgez" => load_op_1l_v(args, |a, l| {
             vec![
-                format!("tmp1 <== to_signed({r1});"),
-                format!("branch_if_positive tmp1 + 1, {label};"),
+                format!("tmp1 <== to_signed({a});"),
+                format!("branch_if_positive tmp1 + 1, {l};"),
             ]
-        }
-        "bltu" => {
-            let (r1, r2, label) = rrl(args);
-            vec![format!("branch_if_positive {r2} - {r1}, {label};")]
-        }
-        "blt" => {
-            let (r1, r2, label) = rrl(args);
-            // Branch if r1 < r2 (signed).
+        }),
+        "bltu" => load_op_2l(args, |a, b, l| format!("branch_if_positive {a} - {b}, {l}")),
+        "blt" => load_op_2l_v(args, |a, b, l| {
+            // Branch if a < b (signed).
             // TODO does this fulfill the input requirements for branch_if_positive?
             vec![
-                format!("tmp1 <== to_signed({r1});"),
-                format!("tmp2 <== to_signed({r2});"),
-                format!("branch_if_positive tmp2 - tmp1, {label};"),
+                format!("{a} <== to_signed({a});"),
+                format!("{b} <== to_signed({b});"),
+                format!("branch_if_positive {b} - {a}, {l};"),
             ]
-        }
-        "bge" => {
-            let (r1, r2, label) = rrl(args);
-            // Branch if r1 >= r2 (signed).
+        }),
+        "bge" => load_op_2l_v(args, |a, b, l| {
+            // Branch if a >= b (signed).
             // TODO does this fulfill the input requirements for branch_if_positive?
             vec![
-                format!("tmp1 <== to_signed({r1});"),
-                format!("tmp2 <== to_signed({r2});"),
-                format!("branch_if_positive tmp1 - tmp2 + 1, {label};"),
+                format!("{a} <== to_signed({a});"),
+                format!("{b} <== to_signed({b});"),
+                format!("branch_if_positive {a} - {b} + 1, {l};"),
             ]
-        }
-        "bltz" => {
-            // branch if 2**31 <= r1 < 2**32
-            let (r1, label) = rl(args);
-            vec![format!("branch_if_positive {r1} - 2**31 + 1, {label};")]
-        }
+        }),
+        "bltz" => load_op_1l(args, |a, l| {
+            // branch if 2**31 <= a < 2**32
+            format!("branch_if_positive {a} - 2**31 + 1, {l}")
+        }),
 
-        "blez" => {
+        "blez" => load_op_1l_v(args, |a, l| {
             // branch less or equal zero
-            let (r1, label) = rl(args);
             vec![
-                format!("tmp1 <== to_signed({r1});"),
-                format!("branch_if_positive -tmp1 + 1, {label};"),
+                format!("{a} <== to_signed({a});"),
+                format!("branch_if_positive -{a} + 1, {l};"),
             ]
-        }
-        "bgtz" => {
+        }),
+        "bgtz" => load_op_1l_v(args, |a, l| {
             // branch if 0 < r1 < 2**31
-            let (r1, label) = rl(args);
             vec![
-                format!("tmp1 <== to_signed({r1});"),
-                format!("branch_if_positive tmp1, {label};"),
+                format!("{a} <== to_signed({a});"),
+                format!("branch_if_positive {a}, {l};"),
             ]
-        }
-        "bne" => {
-            let (r1, r2, label) = rrl(args);
-            vec![format!("branch_if_nonzero {r1} - {r2}, {label};")]
-        }
-        "bnez" => {
-            let (r1, label) = rl(args);
-            vec![format!("branch_if_nonzero {r1}, {label};")]
-        }
+        }),
+        "bne" => load_op_2l_v(args, |a, b, l| {
+            vec![format!("branch_if_nonzero {a} - {b}, {l}")]
+        }),
+        "bnez" => load_op_1l(args, |a, l| format!("branch_if_nonzero {a}, {l}")),
 
         // jump and call
         "j" => {
@@ -1168,18 +1179,22 @@ fn process_instruction(instr: &str, args: &[Argument], coprocessors: &CoProcesso
                 panic!()
             }
         }
-        "jr" => {
-            let rs = r(args);
-            vec![format!("jump_dyn {rs};")]
-        }
+        "jr" => vec![load_1(r(args)), format!("jump_dyn tmp1;")],
         "jal" => {
             let (_rd, _label) = rl(args);
             todo!();
         }
         "jalr" => {
             // TODO there is also a form that takes more arguments
+            // instr jump_and_link_dyn X { pc' = X, x1' = pc + 1 }
             let rs = r(args);
-            vec![format!("jump_and_link_dyn {rs};")]
+            // TODO check that "pc + 2" is correct!
+            [
+                vec![load_1(rs)],
+                store(Register::new(1), "pc + 2"),
+                vec![format!("jump_dyn tmp1;")],
+            ]
+            .concat()
         }
         "call" | "tail" => {
             // Depending on what symbol is called, the call is replaced by a
@@ -1195,9 +1210,17 @@ fn process_instruction(instr: &str, args: &[Argument], coprocessors: &CoProcesso
             };
             match (replacement, instr) {
                 (None, instr) => {
-                    let instr = if instr == "tail" { "jump" } else { instr };
-                    let arg = argument_to_escaped_symbol(label);
-                    vec![format!("{instr} {arg};")]
+                    // instr call l: label { pc' = l, x1' = pc + 1 }
+                    [
+                        if instr == "call" {
+                            store(Register::new(1), "pc + 2")
+                        } else {
+                            // tail
+                            vec![]
+                        },
+                        vec![format!("jump {};", argument_to_escaped_symbol(label))],
+                    ]
+                    .concat()
                 }
                 // Both "call" and "tail" are pseudoinstructions that are
                 // supposed to use x6 to calculate the high bits of the
@@ -1205,23 +1228,32 @@ fn process_instruction(instr: &str, args: &[Argument], coprocessors: &CoProcesso
                 // but no sane program would rely on this behavior, so we are
                 // probably fine.
                 (Some(replacement), "call") => vec![replacement],
-                (Some(replacement), "tail") => vec![replacement, "ret;".to_string()],
+                (Some(replacement), "tail") => vec![
+                    replacement,
+                    load_1(Register::new(1)),
+                    "jump_dyn tmp1;".to_string(),
+                ],
                 (Some(_), _) => unreachable!(),
             }
         }
         "ecall" => {
             assert!(args.is_empty());
-            vec!["x10 <=X= ${ (\"input\", x10) };".to_string()]
+            let x10 = Register::new(10);
+            [vec![load_1(x10)], store(x10, "${ (\"input\", tmp1) }")].concat()
         }
         "ebreak" => {
             assert!(args.is_empty());
-            // This is using x0 on purpose, because we do not want to introduce
-            // nondeterminism with this.
-            vec!["x0 <=X= ${ (\"print_char\", x10) };\n".to_string()]
+            // TODO is it OK to just store this in tmp1?
+            // Will it get optimized away?
+            let x10 = Register::new(10);
+            vec![
+                load_1(x10),
+                "tmp1 <=X= ${ (\"print_ch\", tmp1) };".to_string(),
+            ]
         }
         "ret" => {
             assert!(args.is_empty());
-            vec!["ret;".to_string()]
+            vec![load_1(Register::new(1)), "jump_dyn tmp1;".to_string()]
         }
 
         // memory access
