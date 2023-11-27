@@ -1,6 +1,6 @@
 use std::{
     collections::{BTreeMap, BTreeSet},
-    fmt,
+    fmt::{self, Display},
 };
 
 use asm_utils::{
@@ -863,200 +863,193 @@ fn try_coprocessor_substitution(label: &str, coprocessors: &CoProcessors) -> Opt
         .map(|(_, subst)| subst.to_string())
 }
 
+fn load_1(reg: Register) -> String {
+    format!("tmp1, tmp2 <== mload(reg_mem + {reg});")
+}
+
+fn load_2(reg1: Register, reg2: Register) -> Vec<String> {
+    vec![
+        format!("tmp1, tmp2 <== mload(reg_mem + {reg1});"),
+        format!("tmp2, tmp3 <== mload(reg_mem + {reg2});"),
+    ]
+}
+
+fn store(reg: Register, value: impl Display) -> Vec<String> {
+    if reg.is_zero() {
+        vec![]
+    } else {
+        vec![format!("mstore(reg_mem + {reg}, {value});")]
+    }
+}
+
+/// Returns instructions that load from rs, run the operation and store in rd.
+/// op is a function that receives the column containing the loaded value as argument
+/// and is supposed to return a single expression.
+/// Returns the empty vector if rd is zero.
+fn load_op_store_1(args: &[Argument], op: impl Fn(&str) -> String) -> Vec<String> {
+    load_op_store_1_v(args, |a| vec![format!("tmp1 <== {};", op(a))])
+}
+
+fn load_op_store_1_v(args: &[Argument], op: impl Fn(&str) -> Vec<String>) -> Vec<String> {
+    let (rd, rs) = rr(args);
+    if rd.is_zero() {
+        vec![]
+    } else {
+        [vec![load_1(rs)], op("tmp1"), store(rd, "tmp1")].concat()
+    }
+}
+
+fn load_op_store_1imm(args: &[Argument], op: impl Fn(&str, u32) -> String) -> Vec<String> {
+    load_op_store_1imm_v(args, |a, imm| vec![format!("tmp1 <== {};", op(a, imm))])
+}
+
+fn load_op_store_1imm_v(args: &[Argument], op: impl Fn(&str, u32) -> Vec<String>) -> Vec<String> {
+    let (rd, r1, imm) = rri(args);
+    if rd.is_zero() {
+        vec![]
+    } else {
+        [vec![load_1(r1)], op("tmp1", imm), store(rd, "tmp1")].concat()
+    }
+}
+
+/// Returns instructions that load from r1 and r2, run the operation and store in rd.
+/// op is a function that receives the columns containing the loaded values as arguments
+/// and is supposed to return a single expression.
+/// Returns the empty vector if rd is zero.
+fn load_op_store_2(args: &[Argument], op: impl Fn(&str, &str) -> String) -> Vec<String> {
+    load_op_store_2_v(args, |a, b| vec![format!("tmp1 <== {}", op(a, b))])
+}
+
+/// Returns instructions that load from r1 and r2, run the operation and store in rd.
+/// op is a function that receives the columns containing the loaded values as arguments
+/// and is supposed to return a vector of instructions where the value to be written
+/// is stored in tmp1.
+/// Returns the empty vector if rd is zero.
+fn load_op_store_2_v(args: &[Argument], op: impl Fn(&str, &str) -> Vec<String>) -> Vec<String> {
+    let (rd, r1, r2) = rrr(args);
+    if rd.is_zero() {
+        vec![]
+    } else {
+        [load_2(r1, r2), op("tmp1", "tmp2"), store(rd, "tmp1")].concat()
+    }
+}
+
 fn process_instruction(instr: &str, args: &[Argument], coprocessors: &CoProcessors) -> Vec<String> {
     match instr {
         // load/store registers
-        "li" => {
+        "li" | "la" => {
             let (rd, imm) = ri(args);
-            only_if_no_write_to_zero(format!("mstore(reg_mem + {rd}, {imm});"), rd)
+            store(rd, imm)
         }
         // TODO check if it is OK to clear the lower order bits
         "lui" => {
             let (rd, imm) = ri(args);
-            only_if_no_write_to_zero(format!("mstore(reg_mem + {rd}, {});", imm << 12), rd)
+            store(rd, imm << 12)
         }
-        "la" => {
-            let (rd, addr) = ri(args);
-            only_if_no_write_to_zero(format!("mstore(reg_mem + {rd}, {});", addr), rd)
-        }
-        "mv" => {
-            let (rd, rs) = rr(args);
-            only_if_no_write_to_zero_vec(
-                vec![
-                    format!("tmp1, tmp2 <== mload(reg_mem + {rs});"),
-                    format!("mstore(reg_mem + {rd}, tmp1);"),
-                ],
-                rd,
-            )
-        }
+        "mv" => load_op_store_1(args, |arg| arg.to_string()),
 
         // Arithmetic
-        "add" => {
-            let (rd, r1, r2) = rrr(args);
-            only_if_no_write_to_zero_vec(
-                vec![
-                    format!("tmp1, tmp2 <== mload(reg_mem + {r1});"),
-                    format!("tmp2, tmp3 <== mload(reg_mem + {r2});"),
-                    format!("tmp1 <== wrap(tmp1 + tmp2)"),
-                    format!("mstore(reg_mem + {rd}, tmp1);"),
-                ],
-                rd,
-            )
-        }
-        "addi" => {
-            let (rd, rs, imm) = rri(args);
-            only_if_no_write_to_zero(format!("{rd} <== wrap({rs} + {imm});"), rd)
-        }
-        "sub" => {
-            let (rd, r1, r2) = rrr(args);
-            only_if_no_write_to_zero(format!("{rd} <== wrap_signed({r1} - {r2});"), rd)
-        }
-        "neg" => {
-            let (rd, r1) = rr(args);
-            only_if_no_write_to_zero(format!("{rd} <== wrap_signed(0 - {r1});"), rd)
-        }
-        "mul" => {
-            let (rd, r1, r2) = rrr(args);
-            only_if_no_write_to_zero(format!("{rd}, tmp1 <== mul({r1}, {r2});"), rd)
-        }
-        "mulhu" => {
-            let (rd, r1, r2) = rrr(args);
-            only_if_no_write_to_zero(format!("tmp1, {rd} <== mul({r1}, {r2});"), rd)
-        }
+        "add" => load_op_store_2(args, |a, b| format!("wrap({a} + {b})")),
+        "addi" => load_op_store_1imm(args, |a, imm| format!("wrap({a} + {imm})")),
+        "sub" => load_op_store_2(args, |a, b| format!("wrap_signed({a} - {b})")),
+        "neg" => load_op_store_1(args, |a| format!("wrap_signed(0 - {a})")),
+        "mul" => load_op_store_2_v(args, |a, b| vec![format!("tmp1, tmp2 <== mul({a}, {b});")]),
+        "mulhu" => load_op_store_2_v(args, |a, b| vec![format!("tmp2, tmp1 <== mul({a}, {b});")]),
         "mulhsu" => {
-            let (rd, r1, r2) = rrr(args);
-            only_if_no_write_to_zero_vec(
+            load_op_store_2_v(args, |a, b| {
+                assert_eq!([a, b], ["tmp1", "tmp2"]);
+                // TODO this might not work. It is horrible.
                 vec![
-                    format!("tmp1 <== to_signed({r1});"),
-                    // tmp2 is 1 if tmp1 is non-negative
-                    "tmp2 <== is_positive(tmp1 + 1);".into(),
+                    format!("tmp1 <== to_signed({a});"),
+                    // tmp3 is 1 if tmp1 is non-negative
+                    "tmp3 <== is_positive(tmp1 + 1);".into(),
                     // If negative, convert to positive
-                    "skip_if_zero 0, tmp2;".into(),
+                    "skip_if_zero 0, tmp3;".into(),
                     "tmp1 <=X= 0 - tmp1;".into(),
-                    format!("tmp1, {rd} <== mul(tmp1, {r2});"),
+                    format!("tmp1, tmp2 <== mul(tmp1, tmp2);"),
                     // If was negative before, convert back to negative
-                    "skip_if_zero (1-tmp2), 2;".into(),
+                    "skip_if_zero (1-tmp3), 2;".into(),
                     "tmp1 <== is_equal_zero(tmp1);".into(),
                     // If the lower bits are zero, return the two's complement,
                     // otherwise return one's complement.
-                    format!("{rd} <== wrap_signed(-{rd} - 1 + tmp1);"),
-                ],
-                rd,
-            )
+                    format!("tmp1 <== wrap_signed(-tmp2 - 1 + tmp1);"),
+                ]
+            })
         }
-        "divu" => {
-            let (rd, r1, r2) = rrr(args);
-            only_if_no_write_to_zero(format!("{rd}, tmp1 <== divremu({r1}, {r2});"), rd)
-        }
-        "remu" => {
-            let (rd, r1, r2) = rrr(args);
-            only_if_no_write_to_zero(format!("tmp1, {rd} <== divremu({r1}, {r2});"), rd)
-        }
+        "divu" => load_op_store_2_v(args, |a, b| {
+            vec![format!("tmp1, tmp2 <== divremu({a}, {b});")]
+        }),
+        "remu" => load_op_store_2_v(args, |a, b| {
+            vec![format!("tmp2, tmp1 <== divremu({a}, {b});")]
+        }),
 
         // bitwise
-        "xor" => {
-            let (rd, r1, r2) = rrr(args);
-            only_if_no_write_to_zero(format!("{rd} <== xor({r1}, {r2});"), rd)
-        }
-        "xori" => {
-            let (rd, r1, imm) = rri(args);
-            only_if_no_write_to_zero(format!("{rd} <== xor({r1}, {imm});"), rd)
-        }
-        "and" => {
-            let (rd, r1, r2) = rrr(args);
-            only_if_no_write_to_zero(format!("{rd} <== and({r1}, {r2});"), rd)
-        }
-        "andi" => {
-            let (rd, r1, imm) = rri(args);
-            only_if_no_write_to_zero(format!("{rd} <== and({r1}, {imm});"), rd)
-        }
-        "or" => {
-            let (rd, r1, r2) = rrr(args);
-            only_if_no_write_to_zero(format!("{rd} <== or({r1}, {r2});"), rd)
-        }
-        "ori" => {
-            let (rd, r1, imm) = rri(args);
-            only_if_no_write_to_zero(format!("{rd} <== or({r1}, {imm});"), rd)
-        }
-        "not" => {
-            let (rd, rs) = rr(args);
-            only_if_no_write_to_zero(format!("{rd} <== wrap_signed(-{rs} - 1);"), rd)
-        }
+        "xor" | "and" | "or" => load_op_store_2(args, |a, b| format!("{instr}({a}, {b})")),
+        "xori" => load_op_store_1imm(args, |a, imm| format!("xor({a}, {imm})")),
+        "andi" => load_op_store_1imm(args, |a, imm| format!("and({a}, {imm})")),
+        "ori" => load_op_store_1imm(args, |a, imm| format!("or({a}, {imm})")),
+        "not" => load_op_store_1(args, |a| format!("wrap_signed(-{a} - 1)")),
 
         // shift
-        "slli" => {
-            let (rd, rs, amount) = rri(args);
+        "slli" => load_op_store_1imm_v(args, |a, amount| {
             assert!(amount <= 31);
-            only_if_no_write_to_zero_vec(
-                if amount <= 16 {
-                    vec![format!("{rd} <== wrap16({rs} * {});", 1 << amount)]
-                } else {
-                    vec![
-                        format!("tmp1 <== wrap16({rs} * {});", 1 << 16),
-                        format!("{rd} <== wrap16(tmp1 * {});", 1 << (amount - 16)),
-                    ]
-                },
-                rd,
-            )
-        }
-        "sll" => {
-            let (rd, r1, r2) = rrr(args);
-            only_if_no_write_to_zero_vec(
+            if amount <= 16 {
+                vec![format!("tmp1 <= wrap16({a} * {});", 1 << amount)]
+            } else {
                 vec![
-                    format!("tmp1 <== and({r2}, 0x1f);"),
-                    format!("{rd} <== shl({r1}, tmp1);"),
-                ],
-                rd,
-            )
-        }
+                    format!("tmp1 <== wrap16({a} * {});", 1 << 16),
+                    format!("tmp1 <== wrap16(tmp1 * {});", 1 << (amount - 16)),
+                ]
+            }
+        }),
+        "sll" => load_op_store_2_v(args, |a, b| {
+            vec![
+                format!("{b} <== and({b}, 0x1f);"),
+                format!("tmp1 <== shl({a}, {b});"),
+            ]
+        }),
         "srli" => {
             // logical shift right
-            let (rd, rs, amount) = rri(args);
-            assert!(amount <= 31);
-            only_if_no_write_to_zero(format!("{rd} <== shr({rs}, {amount});"), rd)
+            load_op_store_1imm(args, |a, amount| {
+                assert!(amount <= 31);
+                format!("shr({a} * {amount})")
+            })
         }
         "srl" => {
             // logical shift right
-            let (rd, r1, r2) = rrr(args);
-            only_if_no_write_to_zero_vec(
+            load_op_store_2_v(args, |a, b| {
                 vec![
-                    format!("tmp1 <== and({r2}, 0x1f);"),
-                    format!("{rd} <== shr({r1}, tmp1);"),
-                ],
-                rd,
-            )
+                    format!("{b} <== and({b}, 0x1f);"),
+                    format!("tmp1 <== shr({a}, {b});"),
+                ]
+            })
         }
         "srai" => {
             // arithmetic shift right
             // TODO see if we can implement this directly with a machine.
             // Now we are using the equivalence
             // a >>> b = (a >= 0 ? a >> b : ~(~a >> b))
-            let (rd, rs, amount) = rri(args);
-            assert!(amount <= 31);
-            only_if_no_write_to_zero_vec(
-                vec![
-                    format!("tmp1 <== to_signed({rs});"),
-                    format!("tmp1 <== is_positive(0 - tmp1);"),
-                    format!("tmp1 <=X= tmp1 * 0xffffffff;"),
-                    // Here, tmp1 is the full bit mask if rs is negative
-                    // and zero otherwise.
-                    format!("{rd} <== xor(tmp1, {rs});"),
-                    format!("{rd} <== shr({rd}, {amount});"),
-                    format!("{rd} <== xor(tmp1, {rd});"),
-                ],
-                rd,
-            )
+            todo!();
+            // let (rd, rs, amount) = rri(args);
+            // assert!(amount <= 31);
+            // only_if_no_write_to_zero_vec(
+            //     vec![
+            //         format!("tmp1 <== to_signed({rs});"),
+            //         format!("tmp1 <== is_positive(0 - tmp1);"),
+            //         format!("tmp1 <=X= tmp1 * 0xffffffff;"),
+            //         // Here, tmp1 is the full bit mask if rs is negative
+            //         // and zero otherwise.
+            //         format!("{rd} <== xor(tmp1, {rs});"),
+            //         format!("{rd} <== shr({rd}, {amount});"),
+            //         format!("{rd} <== xor(tmp1, {rd});"),
+            //     ],
+            //     rd,
+            // )
         }
 
         // comparison
-        "seqz" => {
-            let (rd, rs) = rr(args);
-            only_if_no_write_to_zero(format!("{rd} <=Y= is_equal_zero({rs});"), rd)
-        }
-        "snez" => {
-            let (rd, rs) = rr(args);
-            only_if_no_write_to_zero(format!("{rd} <=Y= is_not_equal_zero({rs});"), rd)
-        }
+        "seqz" => load_op_store_1_v(args, |a| vec![format!("tmp1 <=Y= is_equal_zero({a});")]),
+        "snez" => load_op_store_1_v(args, |a| vec![format!("tmp1 <=Y= is_not_equal_zero({a});")]),
         "slti" => {
             let (rd, rs, imm) = rri(args);
             only_if_no_write_to_zero_vec(
