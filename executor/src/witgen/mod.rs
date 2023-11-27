@@ -16,8 +16,6 @@ use self::identity_processor::Machines;
 use self::machines::machine_extractor::ExtractionOutput;
 use self::machines::{FixedLookup, Machine};
 
-use pil_analyzer::pil_analyzer::inline_intermediate_polynomials;
-
 mod affine_expression;
 mod block_processor;
 mod data_structures;
@@ -92,7 +90,9 @@ impl<'a, 'b, T: FieldElement, Q: QueryCallback<T>> WitnessGenerator<'a, 'b, T, Q
             self.fixed_col_values,
             self.external_witness_values,
         );
-        let identities = inline_intermediate_polynomials(self.analyzed);
+        let identities = self
+            .analyzed
+            .identities_with_inlined_intermediate_polynomials();
 
         let (
             constraints,
