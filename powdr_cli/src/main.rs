@@ -664,7 +664,7 @@ fn rust_continuations<F: FieldElement>(
 
     log::info!("Executing powdr-asm...");
     let (full_trace, memory_accesses) = {
-        let trace = riscv_executor::execute_ast::<F>(&program, &inputs, usize::MAX).0;
+        let trace = riscv_executor::execute_ast::<F>(&program, &inputs, usize::MAX, None).0;
         (transposed_trace::<F>(&trace), trace.mem)
     };
 

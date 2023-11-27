@@ -12,7 +12,7 @@ pub fn verify_riscv_asm_string(file_name: &str, contents: &str, inputs: Vec<Gold
         contents,
         inputs.clone(),
         Some(&mut |analyzed| {
-            riscv_executor::execute_ast(analyzed, &inputs.clone(), usize::MAX);
+            riscv_executor::execute_ast(analyzed, &inputs.clone(), usize::MAX, None);
         }),
         &temp_dir,
         true,

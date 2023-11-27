@@ -10,7 +10,7 @@
 //! from execution.
 
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     io::{self, Write},
 };
 
@@ -28,6 +28,15 @@ use number::{BigInt, FieldElement};
 ///
 /// TODO: get this value from some authoritative place
 const PC_INITIAL_VAL: usize = 2;
+
+/// Page size in bytes.
+pub const PAGE_SIZE: u32 = 1024;
+
+/// Number of 32-bit words per page.
+pub const ENTRIES_PER_PAGE: usize = (PAGE_SIZE / 4) as usize;
+
+// Asserts the page size is a power of two.
+static_assertions::const_assert!((PAGE_SIZE != 0) && ((PAGE_SIZE & (PAGE_SIZE - 1)) == 0));
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub struct Elem(pub i64);
@@ -70,7 +79,7 @@ impl From<usize> for Elem {
     }
 }
 
-pub type MemoryState = HashMap<u32, u32>;
+pub type MemoryState = HashMap<u32, [u32; ENTRIES_PER_PAGE]>;
 
 #[derive(Debug)]
 pub enum MemOperationKind {
@@ -111,13 +120,14 @@ impl<'a> ExecutionTrace<'a> {
 }
 
 mod builder {
-    use std::collections::HashMap;
+    use std::collections::{HashMap, HashSet};
 
     use ast::asm_analysis::{Machine, RegisterTy};
     use number::FieldElement;
 
     use crate::{
-        Elem, ExecutionTrace, MemOperation, MemOperationKind, MemoryState, PC_INITIAL_VAL,
+        Elem, ExecutionTrace, MemOperation, MemOperationKind, MemoryState, ENTRIES_PER_PAGE,
+        PAGE_SIZE, PC_INITIAL_VAL,
     };
 
     fn register_names<T: FieldElement>(main: &Machine<T>) -> Vec<&str> {
@@ -156,7 +166,10 @@ mod builder {
         batch_to_line_map: &'b [u32],
 
         /// Current memory.
-        mem: HashMap<u32, u32>,
+        mem: MemoryState,
+
+        /// Allowed memory pages. None means all pages are allowed.
+        allowed_pages: Option<HashSet<u32>>,
     }
 
     impl<'a, 'b> TraceBuilder<'a, 'b> {
@@ -169,6 +182,7 @@ mod builder {
             main: &'a Machine<T>,
             batch_to_line_map: &'b [u32],
             max_rows_len: usize,
+            allowed_pages: Option<HashSet<u32>>,
         ) -> Result<Self, Box<(ExecutionTrace<'a>, MemoryState)>> {
             let reg_map = register_names(main)
                 .into_iter()
@@ -203,6 +217,7 @@ mod builder {
                 batch_to_line_map,
                 max_curr_idx: max_rows_len.saturating_sub(1).saturating_mul(reg_len),
                 mem: HashMap::new(),
+                allowed_pages,
             };
 
             if ret.has_enough_rows() || ret.set_next_pc().is_none() {
@@ -283,6 +298,16 @@ mod builder {
             self.set_next_pc().and(Some(curr_line))
         }
 
+        // can't take &self here because this function is needed when &mut self is borrowed
+        fn assert_page_is_allowed(allowed_pages: &Option<HashSet<u32>>, page_num: u32) {
+            if let Some(allowed_pages) = &allowed_pages {
+                assert!(
+                    allowed_pages.contains(&page_num),
+                    "page {page_num} is not allowed"
+                );
+            }
+        }
+
         pub(crate) fn set_mem(&mut self, addr: u32, val: u32) {
             self.trace.mem.push(MemOperation {
                 idx: self.curr_idx / self.reg_len() + 1,
@@ -290,11 +315,24 @@ mod builder {
                 address: addr,
             });
 
-            if val != 0 {
-                self.mem.insert(addr, val);
-            } else {
-                self.mem.remove(&addr);
-            }
+            let page_num = addr >> PAGE_SIZE.trailing_zeros();
+            let page = match self.mem.entry(page_num) {
+                std::collections::hash_map::Entry::Occupied(entry) => entry.into_mut(),
+                std::collections::hash_map::Entry::Vacant(entry) => {
+                    if val == 0 {
+                        // no point allocating the page just to write 0
+                        return;
+                    }
+
+                    Self::assert_page_is_allowed(&self.allowed_pages, page_num);
+                    entry.insert([0; ENTRIES_PER_PAGE])
+                }
+            };
+
+            // addr must be 4-byte aligned
+            assert_eq!(addr & 0b11, 0);
+            let in_page_idx = ((addr & (PAGE_SIZE - 1)) >> 2) as usize;
+            page[in_page_idx] = val;
         }
 
         pub(crate) fn get_mem(&mut self, addr: u32) -> u32 {
@@ -304,7 +342,19 @@ mod builder {
                 address: addr,
             });
 
-            *self.mem.get(&addr).unwrap_or(&0)
+            let page_num = addr >> PAGE_SIZE.trailing_zeros();
+            let page = match self.mem.entry(page_num) {
+                std::collections::hash_map::Entry::Occupied(entry) => &*entry.into_mut(),
+                std::collections::hash_map::Entry::Vacant(_) => {
+                    Self::assert_page_is_allowed(&self.allowed_pages, page_num);
+                    return 0;
+                }
+            };
+
+            // addr must be 4-byte aligned
+            assert_eq!(addr & 0b11, 0);
+            let in_page_idx = ((addr & (PAGE_SIZE - 1)) >> 2) as usize;
+            page[in_page_idx]
         }
 
         pub fn finish(mut self) -> (ExecutionTrace<'a>, MemoryState) {
@@ -700,10 +750,12 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
     }
 }
 
+/// If allowed pages is none, all pages are allowed.
 pub fn execute_ast<'a, T: FieldElement>(
     program: &'a AnalysisASMFile<T>,
     inputs: &[T],
     max_steps_to_execute: usize,
+    allowed_pages: Option<HashSet<u32>>,
 ) -> (ExecutionTrace<'a>, MemoryState) {
     let main_machine = get_main_machine(program);
     let PreprocessedMain {
@@ -713,7 +765,12 @@ pub fn execute_ast<'a, T: FieldElement>(
         debug_files,
     } = preprocess_main_function(main_machine);
 
-    let proc = match TraceBuilder::new(main_machine, &batch_to_line_map, max_steps_to_execute) {
+    let proc = match TraceBuilder::new(
+        main_machine,
+        &batch_to_line_map,
+        max_steps_to_execute,
+        allowed_pages,
+    ) {
         Ok(proc) => proc,
         Err(ret) => return *ret,
     };
@@ -788,7 +845,7 @@ pub fn execute<F: FieldElement>(asm_source: &str, inputs: &[F]) {
     let analyzed = analysis::analyze(resolved, &mut ast::DiffMonitor::default()).unwrap();
 
     log::info!("Executing...");
-    execute_ast(&analyzed, inputs, usize::MAX);
+    execute_ast(&analyzed, inputs, usize::MAX, None);
 }
 
 fn to_u32<F: FieldElement>(val: &F) -> Option<u32> {
