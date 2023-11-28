@@ -194,13 +194,25 @@ pub fn compile(mut assemblies: BTreeMap<String, String>, coprocessors: &CoProces
     let program: Vec<String> = file_ids
         .into_iter()
         .map(|(id, dir, file)| format!("debug file {id} {} {};", quote(&dir), quote(&file)))
-        .chain(["call __data_init;".to_string()])
+        .chain(
+            [
+                store(Register::new(1), "pc + 2"),
+                vec!["jump __data_init;".to_string()],
+            ]
+            .concat(),
+        )
         .chain(call_every_submachine(coprocessors))
-        .chain([
-            format!("// Set stack pointer\nx2 <=X= {stack_start};"),
-            "call __runtime_start;".to_string(),
-            "return;".to_string(), // This is not "riscv ret", but "return from powdr asm function".
-        ])
+        .chain(
+            [
+                vec![format!("// Set stack pointer\nx2 <=X= {stack_start};")],
+                store(Register::new(1), "pc + 2"),
+                vec![
+                    "jump __runtime_start;".to_string(),
+                    "return;".to_string(), // This is not "riscv ret", but "return from powdr asm function".
+                ],
+            ]
+            .concat(),
+        )
         .chain(
             substitute_symbols_with_values(statements, &data_positions)
                 .into_iter()
@@ -882,7 +894,7 @@ fn store(reg: Register, value: impl Display) -> Vec<String> {
     if reg.is_zero() {
         vec![]
     } else {
-        vec![format!("mstore(reg_mem + {}, {value});", reg.mem_offset())]
+        vec![format!("mstore reg_mem + {}, {value};", reg.mem_offset())]
     }
 }
 
@@ -921,6 +933,24 @@ fn load_op_store_1imm_v(
     }
 }
 
+fn load_op_store_1off(args: &[Argument], op: impl Fn(&str, u32) -> String) -> Vec<String> {
+    load_op_store_1off_v(args, |out, a, off| {
+        vec![format!("{out} <== {};", op(a, off))]
+    })
+}
+
+fn load_op_store_1off_v(
+    args: &[Argument],
+    op: impl Fn(&str, &str, u32) -> Vec<String>,
+) -> Vec<String> {
+    let (rd, r1, off) = rro(args);
+    if rd.is_zero() {
+        vec![]
+    } else {
+        [vec![load_1(r1)], op("tmp1", "tmp1", off), store(rd, "tmp1")].concat()
+    }
+}
+
 fn load_op_1l(args: &[Argument], op: impl Fn(&str, &str) -> String) -> Vec<String> {
     load_op_1l_v(args, |a, label| vec![format!("{};", op(a, label))])
 }
@@ -928,19 +958,6 @@ fn load_op_1l(args: &[Argument], op: impl Fn(&str, &str) -> String) -> Vec<Strin
 fn load_op_1l_v(args: &[Argument], op: impl Fn(&str, &str) -> Vec<String>) -> Vec<String> {
     let (r1, label) = rl(args);
     [vec![load_1(r1)], op("tmp1", &label)].concat()
-}
-
-fn op_store_1l(args: &[Argument], op: impl Fn(&str) -> String) -> Vec<String> {
-    op_store_1l_v(args, |out, label| vec![format!("{out} <== {};", op(label))])
-}
-
-fn op_store_1l_v(args: &[Argument], op: impl Fn(&str, &str) -> Vec<String>) -> Vec<String> {
-    let (rd, label) = rl(args);
-    if rd.is_zero() {
-        vec![]
-    } else {
-        [op("tmp1", &label), store(rd, "tmp1")].concat()
-    }
 }
 
 fn load_op_2l(args: &[Argument], op: impl Fn(&str, &str, &str) -> String) -> Vec<String> {
@@ -959,6 +976,28 @@ fn load_op_2imm(args: &[Argument], op: impl Fn(&str, &str, u32) -> String) -> Ve
 fn load_op_2imm_v(args: &[Argument], op: impl Fn(&str, &str, u32) -> Vec<String>) -> Vec<String> {
     let (r1, r2, imm) = rri(args);
     [load_2(r1, r2), op("tmp1", "tmp2", imm)].concat()
+}
+
+fn load_op_2off(args: &[Argument], op: impl Fn(&str, &str, u32) -> String) -> Vec<String> {
+    load_op_2off_v(args, |a, b, imm| vec![format!("{};", op(a, b, imm))])
+}
+
+fn load_op_2off_v(args: &[Argument], op: impl Fn(&str, &str, u32) -> Vec<String>) -> Vec<String> {
+    let (r1, r2, off) = rro(args);
+    [load_2(r1, r2), op("tmp1", "tmp2", off)].concat()
+}
+
+fn op_store_1l(args: &[Argument], op: impl Fn(&str) -> String) -> Vec<String> {
+    op_store_1l_v(args, |out, label| vec![format!("{out} <== {};", op(label))])
+}
+
+fn op_store_1l_v(args: &[Argument], op: impl Fn(&str, &str) -> Vec<String>) -> Vec<String> {
+    let (rd, label) = rl(args);
+    if rd.is_zero() {
+        vec![]
+    } else {
+        [op("tmp1", &label), store(rd, "tmp1")].concat()
+    }
 }
 
 /// Returns instructions that load from r1 and r2, run the operation and store in rd.
@@ -1192,9 +1231,7 @@ fn process_instruction(instr: &str, args: &[Argument], coprocessors: &CoProcesso
                 format!("branch_if_positive {a}, {l};"),
             ]
         }),
-        "bne" => load_op_2l_v(args, |a, b, l| {
-            vec![format!("branch_if_nonzero {a} - {b}, {l}")]
-        }),
+        "bne" => load_op_2l(args, |a, b, l| format!("branch_if_nonzero {a} - {b}, {l}")),
         "bnez" => load_op_1l(args, |a, l| format!("branch_if_nonzero {a}, {l}")),
 
         // jump and call
@@ -1285,7 +1322,9 @@ fn process_instruction(instr: &str, args: &[Argument], coprocessors: &CoProcesso
         // memory access
         "lw" => {
             // TODO we need to consider misaligned loads / stores
-            load_op_store_1imm(args, |a, off| format!("mload({a} + {off})"))
+            load_op_store_1off_v(args, |o, a, off| {
+                vec![format!("{o}, tmp2 <== mload({a} + {off});")]
+            })
         }
         "lb" => {
             // load byte and sign-extend. the memory is little-endian.
@@ -1329,7 +1368,7 @@ fn process_instruction(instr: &str, args: &[Argument], coprocessors: &CoProcesso
                 ]
             })
         }
-        "sw" => load_op_2imm(args, |r1, r2, off| format!("mstore {r2} + {off}, {r1}")),
+        "sw" => load_op_2off(args, |r1, r2, off| format!("mstore {r2} + {off}, {r1}")),
         "sh" => {
             // store half word (two bytes)
             // TODO this code assumes it is at least aligned on
@@ -1391,7 +1430,7 @@ fn process_instruction(instr: &str, args: &[Argument], coprocessors: &CoProcesso
         insn if insn.starts_with("lr.w") => {
             [
                 // Very similar to "lw":
-                load_op_store_1imm(args, |a, off| {
+                load_op_store_1off(args, |a, off| {
                     assert_eq!(off, 0);
                     format!("mload({a})")
                 }),

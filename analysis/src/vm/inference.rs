@@ -64,7 +64,7 @@ fn infer_machine<T: FieldElement>(mut machine: Machine<T>) -> Result<Machine<T>,
                     _ => vec![AssignmentRegister::Wildcard; a.lhs_with_reg.len()],
                 };
 
-                assert_eq!(expr_regs.len(), a.lhs_with_reg.len());
+                assert_eq!(expr_regs.len(), a.lhs_with_reg.len(), "{s}",);
 
                 for ((w, reg), expr_reg) in a.lhs_with_reg.iter_mut().zip(expr_regs) {
                     match (&reg, expr_reg) {
