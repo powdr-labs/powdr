@@ -2,15 +2,7 @@ constant %N = 65536;
 
 // ORs two 32-bit numbers, byte-by-byte.
 namespace Or(%N);
-	macro is_nonzero(X) {
-		match X {
-			0 => 0,
-			_ => 1,
-		}
-	};
-	macro is_zero(X) { 1 - is_nonzero(X) };
-
-	col fixed RESET(i) { is_zero((i % 4) - 3) };
+	col fixed RESET(i) { (i % 4) == 3 };
 	col fixed FACTOR(i) { 1 << (((i + 1) % 4) * 8) };
 
 	col fixed P_A(i) { i % 256 };
@@ -41,7 +33,7 @@ namespace Main(%N);
 	col fixed a(i) { (i + 13) & 0xffffffff };
 	col fixed b(i) { ((i + 19) * 17) & 0xffffffff };
 	col witness c;
-	col fixed NTH(i) { is_zero(i % 32) };
+	col fixed NTH(i) { i % 32 == 0 };
 
 	NTH {a, b, c} in Or.RESET {Or.A, Or.B, Or.C};
 

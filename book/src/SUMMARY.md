@@ -22,7 +22,6 @@
     - [Declarations](./pil/declarations.md)
     - [Expressions](./pil/expressions.md)
     - [Fixed Columns](./pil/fixed_columns.md)
-    - [Macros](./pil/macros.md)
 - [Frontends](./frontends/README.md)
     - [RISCV](./frontends/riscv.md)
     - [Valida](./frontends/valida.md)

@@ -357,8 +357,6 @@ impl<T: FieldElement> ASMPILConverter<T> {
 
         let instruction = Instruction { inputs, outputs };
 
-        // First transform into PIL so that we can apply macro expansion.
-
         let res = match s.instruction.body {
             InstructionBody::Local(mut body) => {
                 // Substitute parameter references by the column names

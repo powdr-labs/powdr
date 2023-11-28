@@ -92,14 +92,6 @@ fn test_constant_in_identity() {
 }
 
 #[test]
-fn test_fibonacci_macro() {
-    let f = "fib_macro.pil";
-    verify_pil(f, None);
-    gen_halo2_proof(f, Default::default());
-    gen_estark_proof(f, Default::default());
-}
-
-#[test]
 fn fib_arrays() {
     let f = "fib_arrays.pil";
     verify_pil(f, None);

@@ -43,8 +43,7 @@ pub fn parse_module<'a, T: FieldElement>(
 mod test {
     use super::*;
     use ast::parsed::{
-        build::direct_reference, BinaryOperator, Expression, PILFile, PilStatement, PolynomialName,
-        SelectedExpressions,
+        build::direct_reference, PILFile, PilStatement, PolynomialName, SelectedExpressions,
     };
     use number::GoldilocksField;
     use parser_util::UnwrapErrToStderr;
@@ -152,37 +151,6 @@ mod test {
     }
 
     #[test]
-    fn simple_macro() {
-        let parsed = powdr::PILFileParser::new()
-            .parse::<GoldilocksField>("macro f(x) { x in g; x + 1 };")
-            .unwrap();
-        assert_eq!(
-            parsed,
-            PILFile(vec![PilStatement::MacroDefinition(
-                0,
-                "f".to_string(),
-                vec!["x".to_string()],
-                vec![PilStatement::PlookupIdentity(
-                    13,
-                    SelectedExpressions {
-                        selector: None,
-                        expressions: vec![direct_reference("x")]
-                    },
-                    SelectedExpressions {
-                        selector: None,
-                        expressions: vec![direct_reference("g")]
-                    }
-                )],
-                Some(Expression::BinaryOperation(
-                    Box::new(direct_reference("x")),
-                    BinaryOperator::Add,
-                    Box::new(Expression::Number(1.into()))
-                ))
-            )])
-        );
-    }
-
-    #[test]
     fn parse_example_asm_files() {
         parse_asm_file("asm/simple_sum.asm");
     }
@@ -201,22 +169,14 @@ mod test {
 constant %N = 16;
 namespace Fibonacci(%N);
 constant %last_row = (%N - 1);
-macro bool(X) { (X * (1 - X)) = 0; };
-macro is_nonzero(X) { match X { 0 => 0, _ => 1, } };
-macro is_zero(X) { (1 - is_nonzero(X)) };
-macro is_equal(A, B) { is_zero((A - B)) };
-macro is_one(X) { is_equal(X, 1) };
-macro ite(C, A, B) { ((is_nonzero(C) * A) + (is_zero(C) * B)) };
-macro one_hot(i, index) { ite(is_equal(i, index), 1, 0) };
+let bool = [|X| (X * (1 - X))][0];
+let one_hot = |i, which| match i { which => 1, _ => 0, };
 pol constant ISLAST(i) { one_hot(i, %last_row) };
+pol commit arr[8];
 pol commit x, y;
-macro constrain_equal_expr(A, B) { (A - B) };
-macro force_equal_on_last_row(poly, value) { (ISLAST * constrain_equal_expr(poly, value)) = 0; };
-force_equal_on_last_row(x', 1);
-force_equal_on_last_row(y', 1);
-macro on_regular_row(cond) { ((1 - ISLAST) * cond) = 0; };
-on_regular_row(constrain_equal_expr(x', y));
-on_regular_row(constrain_equal_expr(y', (x + y)));
+{ (x + 2), y' } in { ISLAST, 7 };
+y { (x + 2), y' } is ISLAST { ISLAST, 7 };
+((x - 2) * y) = 8;
 public out = y(%last_row);"#;
             let printed = format!(
                 "{}",
