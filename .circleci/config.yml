@@ -72,6 +72,10 @@ jobs:
           name: Build
           command: cargo build --bins --tests --benches --all --all-features --profile pr-tests
 
+      - run:
+          name: Cache stats
+          command: sccache --show-stats
+
       - save_cache:
           name: Save sccache cache
           # We use {{ epoch }} to always upload a fresh cache:
