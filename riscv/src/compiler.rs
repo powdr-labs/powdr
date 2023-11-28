@@ -66,15 +66,15 @@ struct RiscvArchitecture {}
 impl Architecture for RiscvArchitecture {
     fn instruction_ends_control_flow(instr: &str) -> bool {
         match instr {
-            "li" | "lui" | "la" | "mv" | "add" | "addi" | "sub" | "neg" | "mul" | "mulhu"
-            | "mulhsu" | "divu" | "remu" | "xor" | "xori" | "and" | "andi" | "or" | "ori"
-            | "not" | "slli" | "sll" | "srli" | "srl" | "srai" | "seqz" | "snez" | "slt"
-            | "slti" | "sltu" | "sltiu" | "sgtz" | "beq" | "beqz" | "bgeu" | "bltu" | "blt"
-            | "bge" | "bltz" | "blez" | "bgtz" | "bgez" | "bne" | "bnez" | "jal" | "jalr"
-            | "call" | "ecall" | "ebreak" | "lw" | "lb" | "lbu" | "lh" | "lhu" | "sw" | "sh"
-            | "sb" | "nop" | "fence" | "fence.i" | "amoadd.w" | "amoadd.w.aq" | "amoadd.w.rl"
-            | "amoadd.w.aqrl" | "lr.w" | "lr.w.aq" | "lr.w.rl" | "lr.w.aqrl" | "sc.w"
-            | "sc.w.aq" | "sc.w.rl" | "sc.w.aqrl" => false,
+            "li" | "lui" | "la" | "mv" | "add" | "addi" | "sub" | "neg" | "mul" | "mulh"
+            | "mulhu" | "mulhsu" | "divu" | "remu" | "xor" | "xori" | "and" | "andi" | "or"
+            | "ori" | "not" | "slli" | "sll" | "srli" | "srl" | "srai" | "seqz" | "snez"
+            | "slt" | "slti" | "sltu" | "sltiu" | "sgtz" | "beq" | "beqz" | "bgeu" | "bltu"
+            | "blt" | "bge" | "bltz" | "blez" | "bgtz" | "bgez" | "bne" | "bnez" | "jal"
+            | "jalr" | "call" | "ecall" | "ebreak" | "lw" | "lb" | "lbu" | "lh" | "lhu" | "sw"
+            | "sh" | "sb" | "nop" | "fence" | "fence.i" | "amoadd.w" | "amoadd.w.aq"
+            | "amoadd.w.rl" | "amoadd.w.aqrl" | "lr.w" | "lr.w.aq" | "lr.w.rl" | "lr.w.aqrl"
+            | "sc.w" | "sc.w.aq" | "sc.w.rl" | "sc.w.aqrl" => false,
             "j" | "jr" | "tail" | "ret" | "unimp" => true,
             _ => {
                 panic!("Unknown instruction: {instr}");
@@ -448,6 +448,7 @@ fn preamble(degree: u64, coprocessors: &CoProcessors) -> String {
     reg tmp1;
     reg tmp2;
     reg tmp3;
+    reg tmp4;
     reg lr_sc_reservation;
 "#
         .to_owned()
@@ -911,6 +912,33 @@ fn process_instruction(instr: &str, args: &[Argument], coprocessors: &CoProcesso
         "mulhu" => {
             let (rd, r1, r2) = rrr(args);
             only_if_no_write_to_zero(format!("tmp1, {rd} <== mul({r1}, {r2});"), rd)
+        }
+        "mulh" => {
+            let (rd, r1, r2) = rrr(args);
+            only_if_no_write_to_zero_vec(
+                vec![
+                    format!("tmp1 <== to_signed({r1});"),
+                    format!("tmp2 <== to_signed({r2});"),
+                    // tmp3 is 1 if tmp1 is non-negative
+                    "tmp3 <== is_positive(tmp1 + 1);".into(),
+                    // tmp4 is 1 if tmp2 is non-negative
+                    "tmp4 <== is_positive(tmp2 + 1);".into(),
+                    // If tmp1 is negative, convert to positive
+                    "skip_if_zero 0, tmp3;".into(),
+                    "tmp1 <=X= 0 - tmp1;".into(),
+                    // If tmp2 is negative, convert to positive
+                    "skip_if_zero 0, tmp4;".into(),
+                    "tmp2 <=X= 0 - tmp2;".into(),
+                    format!("tmp1, {rd} <== mul(tmp1, tmp2);"),
+                    // Determine the sign of the result based on the signs of tmp1 and tmp2
+                    "tmp3 <== is_not_equal_zero(tmp3 - tmp4);".into(),
+                    // If the result should be negative, convert back to negative
+                    "skip_if_zero tmp3, 2;".into(),
+                    "tmp1 <== is_equal_zero(tmp1);".into(),
+                    format!("{rd} <== wrap_signed(-{rd} - 1 + tmp1);"),
+                ],
+                rd,
+            )
         }
         "mulhsu" => {
             let (rd, r1, r2) = rrr(args);
