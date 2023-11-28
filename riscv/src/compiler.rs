@@ -686,55 +686,36 @@ fn preamble(degree: u64, coprocessors: &CoProcessors) -> String {
 }
 
 fn runtime(coprocessors: &CoProcessors) -> String {
-    r#"
-.globl __udivdi3@plt
-.globl __udivdi3
-.set __udivdi3@plt, __udivdi3
-
-.globl __umoddi3@plt
-.globl __umoddi3
-.set __umoddi3@plt, __umoddi3
-
-.globl memcpy@plt
-.globl memcpy
-.set memcpy@plt, memcpy
-
-.globl memmove@plt
-.globl memmove
-.set memmove@plt, memmove
-
-.globl memset@plt
-.globl memset
-.set memset@plt, memset
-
-.globl memcmp@plt
-.globl memcmp
-.set memcmp@plt, memcmp
-
-.globl bcmp@plt
-.globl bcmp
-.set bcmp@plt, bcmp
-
-.globl strlen@plt
-.globl strlen
-.set strlen@plt, strlen
-
-.globl __rust_alloc
-.set __rust_alloc, __rg_alloc
-
-.globl __rust_dealloc
-.set __rust_dealloc, __rg_dealloc
-
-.globl __rust_realloc
-.set __rust_realloc, __rg_realloc
-
-.globl __rust_alloc_zeroed
-.set __rust_alloc_zeroed, __rg_alloc_zeroed
-
-.globl __rust_alloc_error_handler
-.set __rust_alloc_error_handler, __rg_oom
-"#
-    .to_owned()
+    [
+        "__udivdi3",
+        "__udivti3",
+        "__divdf3",
+        "__muldf3",
+        "__umoddi3",
+        "__umodti3",
+        "__eqdf2",
+        "__ltdf2",
+        "__nedf2",
+        "__unorddf2",
+        "__floatundidf",
+        "memcpy",
+        "memmove",
+        "memset",
+        "memcmp",
+        "bcmp",
+        "strlen",
+    ]
+    .map(|n| format!(".globl {n}@plt\n.globl {n}\n.set {n}@plt, {n}\n"))
+    .join("\n\n")
+        + &[
+            ("__rust_alloc", "__rg_alloc"),
+            ("__rust_dealloc", "__rg_dealloc"),
+            ("__rust_realloc", "__rg_realloc"),
+            ("__rust_alloc_zeroed", "__rg_alloc_zeroed"),
+            ("__rust_alloc_error_handler", "__rg_oom"),
+        ]
+        .map(|(n, m)| format!(".globl {n}\n.set {n}, {m}\n"))
+        .join("\n\n")
         + &coprocessors.runtime()
 }
 
