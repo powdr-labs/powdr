@@ -34,6 +34,10 @@ impl Register {
     pub fn is_zero(&self) -> bool {
         self.value == 0
     }
+
+    pub fn mem_offset(&self) -> u32 {
+        4 * self.value as u32
+    }
 }
 
 impl asm_utils::ast::Register for Register {}
@@ -864,13 +868,13 @@ fn try_coprocessor_substitution(label: &str, coprocessors: &CoProcessors) -> Opt
 }
 
 fn load_1(reg: Register) -> String {
-    format!("tmp1, tmp2 <== mload(reg_mem + {reg});")
+    format!("tmp1, tmp2 <== mload(reg_mem + {});", reg.mem_offset())
 }
 
 fn load_2(reg1: Register, reg2: Register) -> Vec<String> {
     vec![
-        format!("tmp1, tmp2 <== mload(reg_mem + {reg1});"),
-        format!("tmp2, tmp3 <== mload(reg_mem + {reg2});"),
+        format!("tmp1, tmp2 <== mload(reg_mem + {});", reg1.mem_offset()),
+        format!("tmp2, tmp3 <== mload(reg_mem + {});", reg2.mem_offset()),
     ]
 }
 
@@ -878,7 +882,7 @@ fn store(reg: Register, value: impl Display) -> Vec<String> {
     if reg.is_zero() {
         vec![]
     } else {
-        vec![format!("mstore(reg_mem + {reg}, {value});")]
+        vec![format!("mstore(reg_mem + {}, {value});", reg.mem_offset())]
     }
 }
 
@@ -926,6 +930,19 @@ fn load_op_1l_v(args: &[Argument], op: impl Fn(&str, &str) -> Vec<String>) -> Ve
     [vec![load_1(r1)], op("tmp1", &label)].concat()
 }
 
+fn op_store_1l(args: &[Argument], op: impl Fn(&str) -> String) -> Vec<String> {
+    op_store_1l_v(args, |out, label| vec![format!("{out} <== {};", op(label))])
+}
+
+fn op_store_1l_v(args: &[Argument], op: impl Fn(&str, &str) -> Vec<String>) -> Vec<String> {
+    let (rd, label) = rl(args);
+    if rd.is_zero() {
+        vec![]
+    } else {
+        [op("tmp1", &label), store(rd, "tmp1")].concat()
+    }
+}
+
 fn load_op_2l(args: &[Argument], op: impl Fn(&str, &str, &str) -> String) -> Vec<String> {
     load_op_2l_v(args, |a, b, label| vec![format!("{};", op(a, b, label))])
 }
@@ -933,6 +950,15 @@ fn load_op_2l(args: &[Argument], op: impl Fn(&str, &str, &str) -> String) -> Vec
 fn load_op_2l_v(args: &[Argument], op: impl Fn(&str, &str, &str) -> Vec<String>) -> Vec<String> {
     let (r1, r2, label) = rrl(args);
     [load_2(r1, r2), op("tmp1", "tmp2", &label)].concat()
+}
+
+fn load_op_2imm(args: &[Argument], op: impl Fn(&str, &str, u32) -> String) -> Vec<String> {
+    load_op_2imm_v(args, |a, b, imm| vec![format!("{};", op(a, b, imm))])
+}
+
+fn load_op_2imm_v(args: &[Argument], op: impl Fn(&str, &str, u32) -> Vec<String>) -> Vec<String> {
+    let (r1, r2, imm) = rri(args);
+    [load_2(r1, r2), op("tmp1", "tmp2", imm)].concat()
 }
 
 /// Returns instructions that load from r1 and r2, run the operation and store in rd.
@@ -1258,103 +1284,90 @@ fn process_instruction(instr: &str, args: &[Argument], coprocessors: &CoProcesso
 
         // memory access
         "lw" => {
-            let (rd, rs, off) = rro(args);
             // TODO we need to consider misaligned loads / stores
-            only_if_no_write_to_zero_vec(vec![format!("{rd}, tmp1 <== mload({rs} + {off});")], rd)
+            load_op_store_1imm(args, |a, off| format!("mload({a} + {off})"))
         }
         "lb" => {
             // load byte and sign-extend. the memory is little-endian.
-            let (rd, rs, off) = rro(args);
-            only_if_no_write_to_zero_vec(
+            load_op_store_1imm_v(args, |rd, rs, off| {
                 vec![
                     format!("{rd}, tmp2 <== mload({rs} + {off});"),
                     format!("{rd} <== shr({rd}, 8 * tmp2);"),
                     format!("{rd} <== sign_extend_byte({rd});"),
-                ],
-                rd,
-            )
+                ]
+            })
         }
         "lbu" => {
             // load byte and zero-extend. the memory is little-endian.
-            let (rd, rs, off) = rro(args);
-            only_if_no_write_to_zero_vec(
+            load_op_store_1imm_v(args, |rd, rs, off| {
                 vec![
                     format!("{rd}, tmp2 <== mload({rs} + {off});"),
                     format!("{rd} <== shr({rd}, 8 * tmp2);"),
                     format!("{rd} <== and({rd}, 0xff);"),
-                ],
-                rd,
-            )
+                ]
+            })
         }
         "lh" => {
             // Load two bytes and sign-extend.
             // Assumes the address is a multiple of two.
-            let (rd, rs, off) = rro(args);
-            only_if_no_write_to_zero_vec(
+            load_op_store_1imm_v(args, |o, a, off| {
                 vec![
-                    format!("{rd}, tmp2 <== mload({rs} + {off});"),
-                    format!("{rd} <== shr({rd}, 8 * tmp2);"),
-                    format!("{rd} <== sign_extend_16_bits({rd});"),
-                ],
-                rd,
-            )
+                    format!("{o}, tmp2 <== mload({a} + {off});"),
+                    format!("{o} <== shr({o}, 8 * tmp2);"),
+                    format!("{o} <== sign_extend_16_bits({o});"),
+                ]
+            })
         }
         "lhu" => {
             // Load two bytes and zero-extend.
             // Assumes the address is a multiple of two.
-            let (rd, rs, off) = rro(args);
-            only_if_no_write_to_zero_vec(
+            load_op_store_1imm_v(args, |rd, rs, off| {
                 vec![
                     format!("{rd}, tmp2 <== mload({rs} + {off});"),
                     format!("{rd} <== shr({rd}, 8 * tmp2);"),
                     format!("{rd} <== and({rd}, 0x0000ffff);"),
-                ],
-                rd,
-            )
+                ]
+            })
         }
-        "sw" => {
-            let (r1, r2, off) = rro(args);
-            vec![format!("mstore {r2} + {off}, {r1};")]
-        }
+        "sw" => load_op_2imm(args, |r1, r2, off| format!("mstore {r2} + {off}, {r1}")),
         "sh" => {
             // store half word (two bytes)
             // TODO this code assumes it is at least aligned on
             // a two-byte boundary
 
-            let (rs, rd, off) = rro(args);
-            vec![
-                format!("tmp1, tmp2 <== mload({rd} + {off});"),
-                "tmp3 <== shl(0xffff, 8 * tmp2);".to_string(),
-                "tmp3 <== xor(tmp3, 0xffffffff);".to_string(),
-                "tmp1 <== and(tmp1, tmp3);".to_string(),
-                format!("tmp3 <== and({rs}, 0xffff);"),
-                "tmp3 <== shl(tmp3, 8 * tmp2);".to_string(),
-                "tmp1 <== or(tmp1, tmp3);".to_string(),
-                format!("mstore {rd} + {off} - tmp2, tmp1;"),
-            ]
+            load_op_2imm_v(args, |rs, rd, off| {
+                vec![
+                    format!("tmp1, tmp2 <== mload({rd} + {off});"),
+                    "tmp3 <== shl(0xffff, 8 * tmp2);".to_string(),
+                    "tmp3 <== xor(tmp3, 0xffffffff);".to_string(),
+                    "tmp1 <== and(tmp1, tmp3);".to_string(),
+                    format!("tmp3 <== and({rs}, 0xffff);"),
+                    "tmp3 <== shl(tmp3, 8 * tmp2);".to_string(),
+                    "tmp1 <== or(tmp1, tmp3);".to_string(),
+                    format!("mstore {rd} + {off} - tmp2, tmp1;"),
+                ]
+            })
         }
         "sb" => {
             // store byte
-            let (rs, rd, off) = rro(args);
-            vec![
-                format!("tmp1, tmp2 <== mload({rd} + {off});"),
-                "tmp3 <== shl(0xff, 8 * tmp2);".to_string(),
-                "tmp3 <== xor(tmp3, 0xffffffff);".to_string(),
-                "tmp1 <== and(tmp1, tmp3);".to_string(),
-                format!("tmp3 <== and({rs}, 0xff);"),
-                "tmp3 <== shl(tmp3, 8 * tmp2);".to_string(),
-                "tmp1 <== or(tmp1, tmp3);".to_string(),
-                format!("mstore {rd} + {off} - tmp2, tmp1;"),
-            ]
+            load_op_2imm_v(args, |rs, rd, off| {
+                vec![
+                    format!("tmp1, tmp2 <== mload({rd} + {off});"),
+                    "tmp3 <== shl(0xff, 8 * tmp2);".to_string(),
+                    "tmp3 <== xor(tmp3, 0xffffffff);".to_string(),
+                    "tmp1 <== and(tmp1, tmp3);".to_string(),
+                    format!("tmp3 <== and({rs}, 0xff);"),
+                    "tmp3 <== shl(tmp3, 8 * tmp2);".to_string(),
+                    "tmp1 <== or(tmp1, tmp3);".to_string(),
+                    format!("mstore {rd} + {off} - tmp2, tmp1;"),
+                ]
+            })
         }
         "nop" => vec![],
         "unimp" => vec!["fail;".to_string()],
 
         // Special instruction that is inserted to allow dynamic label references
-        "load_dynamic" => {
-            let (rd, label) = rl(args);
-            only_if_no_write_to_zero(format!("{rd} <== load_label({label});"), rd)
-        }
+        "load_dynamic" => op_store_1l(args, |label| format!("load_label({label})")),
 
         // atomic and synchronization
         "fence" | "fence.i" => vec![],
