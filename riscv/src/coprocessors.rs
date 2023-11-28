@@ -248,13 +248,13 @@ pub fn call_every_submachine(coprocessors: &CoProcessors) -> Vec<String> {
     // https://github.com/powdr-labs/powdr/issues/548
     let mut calls = vec![];
     if coprocessors.has(BINARY_COPROCESSOR.name) {
-        calls.push("x10 <== and(x10, x10);".to_string());
+        calls.push("tmp1 <== and(tmp1, tmp1);".to_string());
     }
     if coprocessors.has(SHIFT_COPROCESSOR.name) {
-        calls.push("x10 <== shl(x10, x10);".to_string());
+        calls.push("tmp1 <== shl(tmp1, tmp1);".to_string());
     }
     if coprocessors.has(SPLIT_GL_COPROCESSOR.name) {
-        calls.push("x10, x11 <== split_gl(x10);".to_string());
+        calls.push("tmp1, tmp2 <== split_gl(tmp1);".to_string());
     }
     if coprocessors.has(POSEIDON_GL_COPROCESSOR.name) {
         calls.extend(vec![
@@ -267,7 +267,7 @@ pub fn call_every_submachine(coprocessors: &CoProcessors) -> Vec<String> {
         ]);
     }
 
-    calls.extend(vec!["x10 <=X= 0;".to_string(), "x11 <=X= 0;".to_string()]);
+    calls.extend(vec!["tmp1 <=X= 0;".to_string(), "tmp2 <=X= 0;".to_string()]);
 
     calls
 }

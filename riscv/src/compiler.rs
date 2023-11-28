@@ -100,15 +100,15 @@ impl Architecture for RiscvArchitecture {
     }
 }
 
+// stack grows towards zero
+const STACK_START: u32 = 0x10000;
+// registers "grow" away from zero
+const REG_START: u32 = 0x10100;
+// data grows away from zero
+const DATA_START: u32 = 0x10200;
+
 /// Compiles riscv assembly to a powdr assembly file. Adds required library routines.
 pub fn compile(mut assemblies: BTreeMap<String, String>, coprocessors: &CoProcessors) -> String {
-    // stack grows towards zero
-    let stack_start = 0x10000;
-    // registers "grow" away from zero
-    //let reg_start = 0x10100;
-    // data grows away from zero
-    let data_start = 0x10200;
-
     assert!(assemblies
         .insert("__runtime".to_string(), runtime(coprocessors))
         .is_none());
@@ -159,7 +159,7 @@ pub fn compile(mut assemblies: BTreeMap<String, String>, coprocessors: &CoProces
         .collect::<Vec<_>>();
     let (data_code, data_positions) = store_data_objects(
         &sorted_objects,
-        data_start,
+        DATA_START,
         &mut |addr, value| match value {
             SingleDataValue::Value(v) => {
                 vec![format!("mstore 0x{addr:x}, 0x{v:x};")]
@@ -204,7 +204,10 @@ pub fn compile(mut assemblies: BTreeMap<String, String>, coprocessors: &CoProces
         .chain(call_every_submachine(coprocessors))
         .chain(
             [
-                vec![format!("// Set stack pointer\nx2 <=X= {stack_start};")],
+                vec![format!(
+                    "// Set stack pointer\nmstore {}, {STACK_START};",
+                    REG_START + Register::new(2).mem_offset(),
+                )],
                 store(Register::new(1), "pc + 2"),
                 vec![
                     "jump __runtime_start;".to_string(),
@@ -220,7 +223,13 @@ pub fn compile(mut assemblies: BTreeMap<String, String>, coprocessors: &CoProces
         )
         .chain(["// This is the data initialization routine.\n__data_init::".to_string()])
         .chain(data_code)
-        .chain(["// This is the end of the data initialization routine.\nret;".to_string()])
+        .chain([
+            format!(
+                "// This is the end of the data initialization routine.\n{}",
+                load_1(Register::new(1))
+            ),
+            "jump_dyn tmp1;".to_string(),
+        ])
         .collect();
 
     // The program ROM needs to fit the degree, so we use the next power of 2.
@@ -467,7 +476,6 @@ fn preamble(degree: u64, coprocessors: &CoProcessors) -> String {
     reg tmp2;
     reg tmp3;
     reg lr_sc_reservation;
-    let reg_start = 0x10100; // Register area.
 "#
         .to_owned()
         .to_string()
@@ -880,13 +888,13 @@ fn try_coprocessor_substitution(label: &str, coprocessors: &CoProcessors) -> Opt
 }
 
 fn load_1(reg: Register) -> String {
-    format!("tmp1, tmp2 <== mload(reg_mem + {});", reg.mem_offset())
+    format!("tmp1, tmp2 <== mload({});", REG_START + reg.mem_offset())
 }
 
 fn load_2(reg1: Register, reg2: Register) -> Vec<String> {
     vec![
-        format!("tmp1, tmp2 <== mload(reg_mem + {});", reg1.mem_offset()),
-        format!("tmp2, tmp3 <== mload(reg_mem + {});", reg2.mem_offset()),
+        format!("tmp1, tmp2 <== mload({});", REG_START + reg1.mem_offset()),
+        format!("tmp2, tmp3 <== mload({});", REG_START + reg2.mem_offset()),
     ]
 }
 
@@ -894,7 +902,7 @@ fn store(reg: Register, value: impl Display) -> Vec<String> {
     if reg.is_zero() {
         vec![]
     } else {
-        vec![format!("mstore reg_mem + {}, {value};", reg.mem_offset())]
+        vec![format!("mstore {}, {value};", REG_START + reg.mem_offset())]
     }
 }
 
