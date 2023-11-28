@@ -1376,42 +1376,45 @@ fn process_instruction(instr: &str, args: &[Argument], coprocessors: &CoProcesso
             let (rd, rs2, rs1, off) = rrro(args);
             assert_eq!(off, 0);
 
+            todo!();
+            // [
+            //     vec![
+            //         format!("tmp1, tmp2 <== mload({rs1});"),
+            //         format!("tmp2 <== wrap(tmp1 + {rs2});"),
+            //         format!("mstore {rs1}, tmp2;"),
+            //     ],
+            //     only_if_no_write_to_zero(format!("{rd} <=X= tmp1;"), rd),
+            // ]
+            // .concat()
+        }
+
+        insn if insn.starts_with("lr.w") => {
             [
-                vec![
-                    format!("tmp1, tmp2 <== mload({rs1});"),
-                    format!("tmp2 <== wrap(tmp1 + {rs2});"),
-                    format!("mstore {rs1}, tmp2;"),
-                ],
-                only_if_no_write_to_zero(format!("{rd} <=X= tmp1;"), rd),
+                // Very similar to "lw":
+                load_op_store_1imm(args, |a, off| {
+                    assert_eq!(off, 0);
+                    format!("mload({a})")
+                }),
+                vec!["lr_sc_reservation <=X= 1;".to_string()],
             ]
             .concat()
         }
 
-        insn if insn.starts_with("lr.w") => {
-            // Very similar to "lw":
-            let (rd, rs, off) = rro(args);
-            assert_eq!(off, 0);
-            // TODO misaligned access should raise misaligned address exceptions
-            let mut statments =
-                only_if_no_write_to_zero_vec(vec![format!("{rd}, tmp1 <== mload({rs});")], rd);
-            statments.push("lr_sc_reservation <=X= 1;".into());
-            statments
-        }
-
         insn if insn.starts_with("sc.w") => {
-            // Some overlap with "sw", but also writes 0 to rd on success
-            let (rd, rs2, rs1, off) = rrro(args);
-            assert_eq!(off, 0);
-            // TODO: misaligned access should raise misaligned address exceptions
-            let mut statements = vec![
-                "skip_if_zero lr_sc_reservation, 1;".into(),
-                format!("mstore {rs1}, {rs2};"),
-            ];
-            if !rd.is_zero() {
-                statements.push(format!("{rd} <=X= (1 - lr_sc_reservation);"));
-            }
-            statements.push("lr_sc_reservation <=X= 0;".into());
-            statements
+            todo!();
+            // // Some overlap with "sw", but also writes 0 to rd on success
+            // let (rd, rs2, rs1, off) = rrro(args);
+            // assert_eq!(off, 0);
+            // // TODO: misaligned access should raise misaligned address exceptions
+            // let mut statements = vec![
+            //     "skip_if_zero lr_sc_reservation, 1;".into(),
+            //     format!("mstore {rs1}, {rs2};"),
+            // ];
+            // if !rd.is_zero() {
+            //     statements.push(format!("{rd} <=X= (1 - lr_sc_reservation);"));
+            // }
+            // statements.push("lr_sc_reservation <=X= 0;".into());
+            // statements
         }
 
         _ => {
