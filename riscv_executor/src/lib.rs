@@ -72,11 +72,13 @@ impl From<usize> for Elem {
 
 pub type MemoryState = HashMap<u32, u32>;
 
+#[derive(Debug)]
 pub enum MemOperationKind {
     Read,
     Write,
 }
 
+#[derive(Debug)]
 pub struct MemOperation {
     /// Line of the register trace the memory operation happened.
     pub idx: usize,
@@ -109,7 +111,7 @@ impl<'a> ExecutionTrace<'a> {
 }
 
 mod builder {
-    use std::collections::HashMap;
+    use std::{cmp, collections::HashMap};
 
     use ast::asm_analysis::{Machine, RegisterTy};
     use number::FieldElement;
@@ -288,11 +290,7 @@ mod builder {
                 address: addr,
             });
 
-            if val != 0 {
-                self.mem.insert(addr, val);
-            } else {
-                self.mem.remove(&addr);
-            }
+            self.mem.insert(addr, val);
         }
 
         pub(crate) fn get_mem(&mut self, addr: u32) -> u32 {
@@ -328,11 +326,15 @@ mod builder {
 
             self.set_reg_idx(
                 self.pc_idx,
-                if self.next_statement_line >= line_of_next_batch {
-                    assert_eq!(self.next_statement_line, line_of_next_batch);
-                    curr_pc + 1
-                } else {
-                    curr_pc
+                match self.next_statement_line.cmp(&line_of_next_batch) {
+                    cmp::Ordering::Less => curr_pc,
+                    cmp::Ordering::Equal => curr_pc + 1,
+                    cmp::Ordering::Greater => {
+                        panic!(
+                            "next_statement_line: {} > line_of_next_batch: {}",
+                            self.next_statement_line, line_of_next_batch
+                        );
+                    }
                 }
                 .into(),
             );
@@ -739,7 +741,7 @@ pub fn execute_ast<'a, T: FieldElement>(
     loop {
         let stm = statements[curr_pc as usize];
 
-        //println!("l {curr_pc}: {stm}",);
+        log::trace!("l {curr_pc}: {stm}",);
 
         let is_nop = match stm {
             FunctionStatement::Assignment(a) => {
@@ -761,10 +763,10 @@ pub fn execute_ast<'a, T: FieldElement>(
                 match &dd.directive {
                     DebugDirective::Loc(file, line, column) => {
                         let (dir, file) = debug_files[file - 1];
-                        println!("Executed {dir}/{file}:{line}:{column}");
+                        log::debug!("Executed {dir}/{file}:{line}:{column}");
                     }
                     DebugDirective::OriginalInstruction(insn) => {
-                        println!("  {insn}");
+                        log::debug!("  {insn}");
                     }
                     DebugDirective::File(_, _, _) => unreachable!(),
                 };

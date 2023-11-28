@@ -139,7 +139,7 @@ pub fn compile_asm<T: FieldElement>(
 pub fn compile_asm_string_to_analyzed_ast<T: FieldElement>(
     file_name: &str,
     contents: &str,
-    monitor: &mut DiffMonitor,
+    monitor: Option<&mut DiffMonitor>,
 ) -> Result<AnalysisASMFile<T>, Vec<String>> {
     let parsed = parser::parse_asm(Some(file_name), contents).unwrap_or_else(|err| {
         eprintln!("Error parsing .asm file:");
@@ -150,6 +150,8 @@ pub fn compile_asm_string_to_analyzed_ast<T: FieldElement>(
     let resolved =
         importer::resolve(Some(PathBuf::from(file_name)), parsed).map_err(|e| vec![e])?;
     log::debug!("Run analysis");
+    let mut default_monitor = DiffMonitor::default();
+    let monitor = monitor.unwrap_or(&mut default_monitor);
     let analyzed = analyze(resolved, monitor)?;
     log::debug!("Analysis done");
     log::trace!("{analyzed}");
@@ -226,7 +228,7 @@ pub fn compile_asm_string<T: FieldElement>(
     external_witness_values: Vec<(&str, Vec<T>)>,
 ) -> Result<(PathBuf, Option<CompilationResult<T>>), Vec<String>> {
     let mut monitor = DiffMonitor::default();
-    let analyzed = compile_asm_string_to_analyzed_ast(file_name, contents, &mut monitor)?;
+    let analyzed = compile_asm_string_to_analyzed_ast(file_name, contents, Some(&mut monitor))?;
     if let Some(hook) = analyzed_hook {
         hook(&analyzed);
     };
@@ -331,6 +333,10 @@ fn compile<T: FieldElement, Q: QueryCallback<T>>(
 
 #[allow(clippy::print_stdout)]
 pub fn inputs_to_query_callback<T: FieldElement>(inputs: Vec<T>) -> impl QueryCallback<T> {
+    // TODO: Pass bootloader inputs into this function
+    // Right now, accessing bootloader inputs will always fail, because it will be out of bounds
+    let bootloader_inputs = [];
+
     move |query: &str| -> Result<Option<T>, String> {
         // TODO In the future, when match statements need to be exhaustive,
         // This function probably gets an Option as argument and it should
@@ -354,6 +360,21 @@ pub fn inputs_to_query_callback<T: FieldElement>(inputs: Vec<T>) -> impl QueryCa
                 } else {
                     Err(format!(
                         "Error accessing prover inputs: Index {index} out of bounds {}",
+                        inputs.len()
+                    ))
+                }
+            }
+            ["\"bootloader_input\"", index] => {
+                let index = index
+                    .parse::<usize>()
+                    .map_err(|e| format!("Error parsing index: {e})"))?;
+                let value = bootloader_inputs.get(index).cloned();
+                if let Some(value) = value {
+                    log::trace!("Bootloader input query: Index {index} -> {value}");
+                    Ok(Some(value))
+                } else {
+                    Err(format!(
+                        "Error accessing bootloader inputs: Index {index} out of bounds {}",
                         inputs.len()
                     ))
                 }
