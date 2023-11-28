@@ -217,7 +217,6 @@ impl<T> ExpressionVisitable<Expression<T, NamespacedPolynomialReference>> for Pi
             PilStatement::PolynomialCommitDeclaration(_, _, None)
             | PilStatement::Include(_, _)
             | PilStatement::PolynomialConstantDeclaration(_, _)
-            | PilStatement::MacroDefinition(_, _, _, _, _)
             | PilStatement::LetStatement(_, _, None) => ControlFlow::Continue(()),
         }
     }
@@ -255,7 +254,6 @@ impl<T> ExpressionVisitable<Expression<T, NamespacedPolynomialReference>> for Pi
             PilStatement::PolynomialCommitDeclaration(_, _, None)
             | PilStatement::Include(_, _)
             | PilStatement::PolynomialConstantDeclaration(_, _)
-            | PilStatement::MacroDefinition(_, _, _, _, _)
             | PilStatement::LetStatement(_, _, None) => ControlFlow::Continue(()),
         }
     }

@@ -387,19 +387,6 @@ impl<T: Display> Display for PilStatement<T> {
             PilStatement::ConstantDefinition(_, name, value) => {
                 write!(f, "constant {name} = {value};")
             }
-            PilStatement::MacroDefinition(_, name, params, statements, expression) => {
-                let statements = statements
-                    .iter()
-                    .map(|s| format!("{s}"))
-                    .chain(expression.iter().map(|e| format!("{e}")))
-                    .collect::<Vec<_>>();
-                let body = if statements.len() <= 1 {
-                    format!(" {} ", statements.join(""))
-                } else {
-                    format!("\n    {}\n", statements.join("\n    "))
-                };
-                write!(f, "macro {name}({}) {{{body}}};", params.join(", "))
-            }
             PilStatement::Expression(_, e) => {
                 write!(f, "{e};")
             }

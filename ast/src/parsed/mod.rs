@@ -47,13 +47,6 @@ pub enum PilStatement<T> {
     ),
     ConnectIdentity(usize, Vec<Expression<T>>, Vec<Expression<T>>),
     ConstantDefinition(usize, String, Expression<T>),
-    MacroDefinition(
-        usize,
-        String,
-        Vec<String>,
-        Vec<PilStatement<T>>,
-        Option<Expression<T>>,
-    ),
     Expression(usize, Expression<T>),
 }
 

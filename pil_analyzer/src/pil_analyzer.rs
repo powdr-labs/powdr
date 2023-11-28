@@ -2,8 +2,6 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use analysis::MacroExpander;
-
 use ast::parsed::{
     self, FunctionDefinition, LambdaExpression, PilStatement, PolynomialName, SelectedExpressions,
 };
@@ -45,7 +43,6 @@ struct PILAnalyzer<T> {
     current_file: PathBuf,
     symbol_counters: BTreeMap<SymbolKind, u64>,
     identity_counter: HashMap<IdentityKind, u64>,
-    macro_expander: MacroExpander<T>,
 }
 
 impl<T: FieldElement> PILAnalyzer<T> {
@@ -94,9 +91,7 @@ impl<T: FieldElement> PILAnalyzer<T> {
             });
 
         for statement in pil_file.0 {
-            for statement in self.macro_expander.expand_macros(vec![statement]) {
-                self.handle_statement(statement);
-            }
+            self.handle_statement(statement);
         }
 
         self.current_file = old_current_file;
@@ -181,9 +176,6 @@ impl<T: FieldElement> PILAnalyzer<T> {
             }
             PilStatement::LetStatement(start, name, value) => {
                 self.handle_generic_definition(start, name, value)
-            }
-            PilStatement::MacroDefinition(_, _, _, _, _) => {
-                panic!("Macros should have been eliminated.");
             }
             _ => {
                 self.handle_identity_statement(statement);

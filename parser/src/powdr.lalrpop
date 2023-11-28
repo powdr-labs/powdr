@@ -61,7 +61,6 @@ pub PilStatement = {
     PlookupIdentity,
     PermutationIdentity,
     ConnectIdentity,
-    MacroDefinition,
     ExpressionStatement,
 };
 
@@ -154,11 +153,6 @@ PermutationIdentity: PilStatement<T> = {
 
 ConnectIdentity: PilStatement<T> = {
     <@L> "{" <ExpressionList> "}" "connect" "{" <ExpressionList> "}" => PilStatement::ConnectIdentity(<>)
-}
-
-MacroDefinition: PilStatement<T> = {
-    <@L> "macro" <Identifier> "(" <ParameterList> ")" "{" <( <PilStatement> ";")*> <Expression?> "}"
-        => PilStatement::MacroDefinition(<>)
 }
 
 ExpressionStatement: PilStatement<T> = {
