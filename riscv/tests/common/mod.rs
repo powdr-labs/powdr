@@ -3,6 +3,7 @@ use compiler::{
     write_constraints_to_fs, BackendType,
 };
 use number::GoldilocksField;
+use riscv::bootloader::default_input;
 
 /// Like compiler::verify::verify_asm_string, but also runs RISCV executor.
 pub fn verify_riscv_asm_string(file_name: &str, contents: &str, inputs: Vec<GoldilocksField>) {
@@ -12,7 +13,7 @@ pub fn verify_riscv_asm_string(file_name: &str, contents: &str, inputs: Vec<Gold
         contents,
         inputs.clone(),
         Some(&mut |analyzed| {
-            riscv_executor::execute_ast(analyzed, &inputs.clone(), usize::MAX);
+            riscv_executor::execute_ast(analyzed, &inputs.clone(), &default_input(), usize::MAX);
         }),
         &temp_dir,
         true,

@@ -12,6 +12,7 @@ use log::LevelFilter;
 use number::write_polys_file;
 use number::{read_polys_csv_file, write_polys_csv_file, CsvRenderMode};
 use number::{Bn254Field, FieldElement, GoldilocksField};
+use riscv::bootloader::default_input;
 use riscv::{compile_riscv_asm, compile_rust};
 use std::io::{self, BufReader, BufWriter, Read};
 use std::{borrow::Cow, fs, io::Write, path::Path};
@@ -404,7 +405,7 @@ fn run_command(command: Commands) {
                 // assume input is riscv asm and just execute it
                 let contents = fs::read_to_string(file).unwrap();
                 let inputs = split_inputs(&inputs);
-                riscv_executor::execute::<GoldilocksField>(&contents, &inputs);
+                riscv_executor::execute::<GoldilocksField>(&contents, &inputs, &default_input());
             } else {
                 match call_with_field!(compile_with_csv_export::<field>(
                     file,
@@ -474,7 +475,7 @@ fn run_rust<F: FieldElement>(
     just_execute: bool,
 ) -> Result<(), Vec<String>> {
     let (asm_file_path, asm_contents) =
-        compile_rust(file_name, output_dir, force_overwrite, &coprocessors)
+        compile_rust(file_name, output_dir, force_overwrite, &coprocessors, false)
             .ok_or_else(|| vec!["could not compile rust".to_string()])?;
 
     handle_riscv_asm(
@@ -506,6 +507,7 @@ fn run_riscv_asm<F: FieldElement>(
         output_dir,
         force_overwrite,
         &coprocessors,
+        false,
     )
     .ok_or_else(|| vec!["could not compile RISC-V assembly".to_string()])?;
 
@@ -531,7 +533,7 @@ fn handle_riscv_asm<F: FieldElement>(
     just_execute: bool,
 ) -> Result<(), Vec<String>> {
     if just_execute {
-        riscv_executor::execute::<F>(contents, &inputs);
+        riscv_executor::execute::<F>(contents, &inputs, &default_input());
     } else {
         compile_asm_string(
             file_name,

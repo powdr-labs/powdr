@@ -143,7 +143,7 @@ fn verify_file(case: &str, inputs: Vec<GoldilocksField>, coprocessors: &CoProces
     let temp_dir = Temp::new_dir().unwrap();
     let riscv_asm =
         riscv::compile_rust_to_riscv_asm(&format!("tests/riscv_data/{case}"), &temp_dir);
-    let powdr_asm = riscv::compiler::compile(riscv_asm, coprocessors);
+    let powdr_asm = riscv::compiler::compile(riscv_asm, coprocessors, false);
 
     verify_asm_string(&format!("{case}.asm"), &powdr_asm, inputs, vec![]);
 }
@@ -160,7 +160,7 @@ fn verify_riscv_file(case: &str, inputs: Vec<GoldilocksField>, coprocessors: &Co
     let temp_dir = Temp::new_dir().unwrap();
     let riscv_asm =
         riscv::compile_rust_to_riscv_asm(&format!("tests/riscv_data/{case}"), &temp_dir);
-    let powdr_asm = riscv::compiler::compile(riscv_asm, coprocessors);
+    let powdr_asm = riscv::compiler::compile(riscv_asm, coprocessors, false);
 
     verify_riscv_asm_string(&format!("{case}.asm"), &powdr_asm, inputs);
 }
@@ -171,7 +171,7 @@ fn verify_riscv_crate(case: &str, inputs: Vec<GoldilocksField>, coprocessors: &C
         &format!("tests/riscv_data/{case}/Cargo.toml"),
         &temp_dir,
     );
-    let powdr_asm = riscv::compiler::compile(riscv_asm, coprocessors);
+    let powdr_asm = riscv::compiler::compile(riscv_asm, coprocessors, false);
 
     verify_riscv_asm_string(&format!("{case}.asm"), &powdr_asm, inputs);
 }
