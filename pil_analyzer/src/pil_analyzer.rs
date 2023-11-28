@@ -4,15 +4,14 @@ use std::path::{Path, PathBuf};
 
 use analysis::MacroExpander;
 
-use ast::parsed::visitor::ExpressionVisitable;
 use ast::parsed::{
     self, FunctionDefinition, LambdaExpression, PilStatement, PolynomialName, SelectedExpressions,
 };
 use number::{DegreeType, FieldElement};
 
 use ast::analyzed::{
-    AlgebraicExpression, Analyzed, Expression, FunctionValueDefinition, Identity, IdentityKind,
-    PolynomialType, PublicDeclaration, SourceRef, StatementIdentifier, Symbol, SymbolKind,
+    Analyzed, Expression, FunctionValueDefinition, Identity, IdentityKind, PolynomialType,
+    PublicDeclaration, SourceRef, StatementIdentifier, Symbol, SymbolKind,
 };
 
 use crate::evaluator::EvalError;
@@ -475,81 +474,6 @@ impl<'a, T: FieldElement> ReferenceResolver for PILResolver<'a, T> {
             format!("{}.{name}", namespace.as_ref().unwrap_or(&self.0.namespace))
         }
     }
-}
-
-pub fn inline_intermediate_polynomials<T: FieldElement>(
-    analyzed: &Analyzed<T>,
-) -> Vec<Identity<AlgebraicExpression<T>>> {
-    let intermediates = &analyzed
-        .intermediate_polys_in_source_order()
-        .iter()
-        .map(|(symbol, def)| (symbol.id, def))
-        .collect();
-
-    substitute_intermediate(analyzed.identities.clone(), intermediates)
-}
-
-/// Takes identities as values and inlines intermediate polynomials everywhere, returning a vector of the updated identities
-/// TODO: this could return an iterator
-fn substitute_intermediate<T: Copy>(
-    identities: impl IntoIterator<Item = Identity<AlgebraicExpression<T>>>,
-    intermediate_polynomials: &HashMap<u64, &AlgebraicExpression<T>>,
-) -> Vec<Identity<AlgebraicExpression<T>>> {
-    identities
-        .into_iter()
-        .scan(HashMap::default(), |cache, mut identity| {
-            identity.post_visit_expressions_mut(&mut |e| {
-                if let AlgebraicExpression::Reference(poly) = e {
-                    match poly.poly_id.ptype {
-                        PolynomialType::Committed => {}
-                        PolynomialType::Constant => {}
-                        PolynomialType::Intermediate => {
-                            // recursively inline intermediate polynomials, updating the cache
-                            *e = inlined_expression_from_intermediate_poly_id(
-                                poly.poly_id.id,
-                                intermediate_polynomials,
-                                cache,
-                            );
-                        }
-                    }
-                }
-            });
-            Some(identity)
-        })
-        .collect()
-}
-
-/// Recursively inlines intermediate polynomials inside an expression and returns the new expression
-/// This uses a cache to avoid resolving an intermediate polynomial twice
-fn inlined_expression_from_intermediate_poly_id<T: Copy>(
-    poly_id: u64,
-    intermediate_polynomials: &HashMap<u64, &AlgebraicExpression<T>>,
-    cache: &mut HashMap<u64, AlgebraicExpression<T>>,
-) -> AlgebraicExpression<T> {
-    if let Some(e) = cache.get(&poly_id) {
-        return e.clone();
-    }
-    let mut expr = intermediate_polynomials[&poly_id].clone();
-    expr.post_visit_expressions_mut(&mut |e| {
-        if let AlgebraicExpression::Reference(r) = e {
-            match r.poly_id.ptype {
-                PolynomialType::Committed => {}
-                PolynomialType::Constant => {}
-                PolynomialType::Intermediate => {
-                    // read from the cache, if no cache hit, compute the inlined expression
-                    *e = cache.get(&r.poly_id.id).cloned().unwrap_or_else(|| {
-                        inlined_expression_from_intermediate_poly_id(
-                            r.poly_id.id,
-                            intermediate_polynomials,
-                            cache,
-                        )
-                    });
-                }
-            }
-        }
-    });
-    cache.insert(poly_id, expr.clone());
-    expr
 }
 
 #[cfg(test)]
