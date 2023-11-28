@@ -4,7 +4,7 @@ use analysis::utils::parse_pil_statement;
 use ast::{
     object::{Location, PILGraph},
     parsed::{
-        build::{direct_reference, namespaced_reference},
+        build::{direct_reference, index_access, namespaced_reference},
         Expression, PILFile, PilStatement, SelectedExpressions,
     },
 };
@@ -71,9 +71,9 @@ pub fn link<T: FieldElement>(graph: PILGraph<T>) -> Result<PILFile<T>, Vec<Strin
                                 )
                                 .map(|i| {
                                     assert!(i.ty.is_none());
-                                    i.name
+                                    (i.name, i.index)
                                 })
-                                .map(|i| direct_reference(i)),
+                                .map(|(name, index)| index_access(direct_reference(name), index)),
                         )
                         .collect(),
                 };
@@ -96,7 +96,7 @@ pub fn link<T: FieldElement>(graph: PILGraph<T>) -> Result<PILFile<T>, Vec<Strin
                             .params
                             .iter()
                             .chain(params.outputs.iter().flat_map(|o| o.params.iter()))
-                            .map(|i| namespaced_reference(to_namespace.clone(), i.name.clone())),
+                            .map(|i| index_access(namespaced_reference(to_namespace.clone(), &i.name), i.index)),
                     )
                     .collect(),
                 };

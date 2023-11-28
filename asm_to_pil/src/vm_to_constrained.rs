@@ -325,16 +325,22 @@ impl<T: FieldElement> ASMPILConverter<T> {
             .inputs
             .params
             .into_iter()
-            .map(|param| match param.ty {
-                Some(ty) if ty == "label" => Input::Literal(param.name, LiteralKind::Label),
-                Some(ty) if ty == "signed" => {
-                    Input::Literal(param.name, LiteralKind::SignedConstant)
+            .map(|param| {
+                assert!(
+                    param.index.is_none(),
+                    "Cannot use array elements for instruction parameters."
+                );
+                match param.ty {
+                    Some(ty) if ty == "label" => Input::Literal(param.name, LiteralKind::Label),
+                    Some(ty) if ty == "signed" => {
+                        Input::Literal(param.name, LiteralKind::SignedConstant)
+                    }
+                    Some(ty) if ty == "unsigned" => {
+                        Input::Literal(param.name, LiteralKind::UnsignedConstant)
+                    }
+                    None => Input::Register(param.name),
+                    Some(_) => unreachable!(),
                 }
-                Some(ty) if ty == "unsigned" => {
-                    Input::Literal(param.name, LiteralKind::UnsignedConstant)
-                }
-                None => Input::Register(param.name),
-                Some(_) => unreachable!(),
             })
             .collect();
 
@@ -348,6 +354,10 @@ impl<T: FieldElement> ASMPILConverter<T> {
                     .params
                     .into_iter()
                     .map(|param| {
+                        assert!(
+                            param.index.is_none(),
+                            "Cannot use array elements for instruction outputs."
+                        );
                         assert!(param.ty.is_none(), "output must be a register");
                         param.name
                     })

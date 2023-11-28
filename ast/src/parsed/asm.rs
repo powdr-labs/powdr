@@ -1,4 +1,4 @@
-use std::collections::VecDeque;
+use std::{collections::VecDeque, fmt::Display};
 
 use number::AbstractNumberType;
 
@@ -209,24 +209,24 @@ pub struct MachineArguments {
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Default)]
-pub struct ParamList {
-    pub params: Vec<Param>,
+pub struct ParamList<T> {
+    pub params: Vec<Param<T>>,
 }
 
-impl ParamList {
-    pub fn new(params: Vec<Param>) -> Self {
+impl<T> ParamList<T> {
+    pub fn new(params: Vec<Param<T>>) -> Self {
         Self { params }
     }
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Default)]
-pub struct Params {
-    pub inputs: ParamList,
-    pub outputs: Option<ParamList>,
+pub struct Params<T> {
+    pub inputs: ParamList<T>,
+    pub outputs: Option<ParamList<T>>,
 }
 
-impl Params {
-    pub fn new(inputs: ParamList, outputs: Option<ParamList>) -> Self {
+impl<T: Display> Params<T> {
+    pub fn new(inputs: ParamList<T>, outputs: Option<ParamList<T>>) -> Self {
         Self { inputs, outputs }
     }
 
@@ -256,7 +256,7 @@ pub struct OperationId<T> {
 
 #[derive(Debug, PartialEq, Eq, Clone, PartialOrd, Ord)]
 pub struct Instruction<T> {
-    pub params: Params,
+    pub params: Params<T>,
     pub body: InstructionBody<T>,
 }
 
@@ -268,15 +268,15 @@ pub enum MachineStatement<T> {
     RegisterDeclaration(usize, String, Option<RegisterFlag>),
     InstructionDeclaration(usize, String, Instruction<T>),
     LinkDeclaration(LinkDeclaration<T>),
-    FunctionDeclaration(usize, String, Params, Vec<FunctionStatement<T>>),
-    OperationDeclaration(usize, String, OperationId<T>, Params),
+    FunctionDeclaration(usize, String, Params<T>, Vec<FunctionStatement<T>>),
+    OperationDeclaration(usize, String, OperationId<T>, Params<T>),
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub struct LinkDeclaration<T> {
     pub start: usize,
     pub flag: Expression<T>,
-    pub params: Params,
+    pub params: Params<T>,
     pub to: CallableRef,
 }
 
@@ -336,7 +336,8 @@ pub enum RegisterFlag {
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
-pub struct Param {
+pub struct Param<T> {
     pub name: String,
+    pub index: Option<T>,
     pub ty: Option<String>,
 }

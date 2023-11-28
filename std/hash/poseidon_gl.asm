@@ -6,7 +6,7 @@ machine PoseidonGL(LASTBLOCK, operation_id) {
     // When the hash function is used only once, the capacity elements should be
     // set to constants, where different constants can be used to define different
     // hash functions.
-    operation poseidon_permutation<0> input_in0, input_in1, input_in2, input_in3, input_in4, input_in5, input_in6, input_in7, input_cap0, input_cap1, input_cap2, input_cap3 -> in0, in1, in2, in3;
+    operation poseidon_permutation<0> input_inp[0], input_inp[1], input_inp[2], input_inp[3], input_inp[4], input_inp[5], input_inp[6], input_inp[7], input_cap[0], input_cap[1], input_cap[2], input_cap[3] -> inp[0], inp[1], inp[2], inp[3];
 
     col witness operation_id;
 
@@ -27,14 +27,8 @@ machine PoseidonGL(LASTBLOCK, operation_id) {
     constant %rowsPerHash = %nRoundsF + %nRoundsP + 1;
 
     pol constant L0 = [1] + [0]*;
-    pol constant FIRSTBLOCK(i) { match i % %rowsPerHash {
-        0 => 1,
-        _ => 0
-    }};
-    pol constant LASTBLOCK(i) { match i % %rowsPerHash {
-        %rowsPerHash - 1 => 1,
-        _ => 0
-    }};
+    pol constant FIRSTBLOCK(i) { (i % %rowsPerHash) == 0 };
+    pol constant LASTBLOCK(i) { (i % %rowsPerHash) == %rowsPerHash - 1 };
     // Like LASTBLOCK, but also 1 in the last row of the table
     // Specified this way because we can't access the degree in the match statement
     pol constant LAST = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]* + [1];
@@ -57,26 +51,28 @@ machine PoseidonGL(LASTBLOCK, operation_id) {
     pol constant C_11 = [0xc54302f225db2c76, 0xc0572c8c08cbbbad, 0x28b8ec3ae9c29633, 0xa637093ecb2ad631, 0xfac6ff1346a41675, 0xb65481ba645c602, 0x6604df4fee32bcb1, 0xa6217d8bf660f29c, 0x5d693c1ba3ba3621, 0xb0a7eae879ddb76d, 0x28fd3b046380f850, 0x1c4dbb1c4c27d243, 0x25d64362697828fd, 0xdd5118375bf1a9b9, 0x64bb6dec369d4418, 0x8ad97b33f1ac1455, 0x4f0a2e5fb028f2ce, 0x6d1f5a59005bec17, 0xeeb76e397069e804, 0x9ef1cd60e679f284, 0xdfe89923f6c9c2ff, 0x9001a64209f21db8, 0x9e8cd55b57637ed0, 0x7248fe7705f38e47, 0x4a20358574454ec0, 0x29bff3ecb9b7a6e3, 0xc02ac5e47312d3ca, 0xa49229d24d014343, 0x164bb2de1bbeddc8, 0xbc8dfb627fe558fc, 0x0]*;
     
     // State of the Poseidon permutation
-    pol commit in0, in1, in2, in3, in4, in5, in6, in7, cap0, cap1, cap2, cap3;
+    pol commit inp[8];
+    pol commit cap[4];
 
     // The initial state of the Poseidon permutation
-    // (constrained to be equal to (in0, in1, in2, in3, in4, in5, in6, in7, cap0, cap1, cap2, cap3)
+    // (constrained to be equal to (inp[0], inp[1], ..., inp[7], cap[0], cap[1], cap[2], cap[3])
     // in the first row and then repeated until the end of the block)
-    pol commit input_in0, input_in1, input_in2, input_in3, input_in4, input_in5, input_in6, input_in7, input_cap0, input_cap1, input_cap2, input_cap3;
+    pol commit input_inp[8];
+    pol commit input_cap[4];
 
     // Add round constants
-    pol a0 = in0 + C_0;
-    pol a1 = in1 + C_1;
-    pol a2 = in2 + C_2;
-    pol a3 = in3 + C_3;
-    pol a4 = in4 + C_4;
-    pol a5 = in5 + C_5;
-    pol a6 = in6 + C_6;
-    pol a7 = in7 + C_7;
-    pol a8 = cap0 + C_8;
-    pol a9 = cap1 + C_9;
-    pol a10 = cap2 + C_10;
-    pol a11 = cap3 + C_11;
+    pol a0 = inp[0] + C_0;
+    pol a1 = inp[1] + C_1;
+    pol a2 = inp[2] + C_2;
+    pol a3 = inp[3] + C_3;
+    pol a4 = inp[4] + C_4;
+    pol a5 = inp[5] + C_5;
+    pol a6 = inp[6] + C_6;
+    pol a7 = inp[7] + C_7;
+    pol a8 = cap[0] + C_8;
+    pol a9 = cap[1] + C_9;
+    pol a10 = cap[2] + C_10;
+    pol a11 = cap[3] + C_11;
 
     // Compute S-Boxes (x^7)
     pol x2_0 = a0 * a0;
@@ -167,42 +163,42 @@ machine PoseidonGL(LASTBLOCK, operation_id) {
     pol c10 = 41*b0 + 16*b1 +  2*b2 + 28*b3 + 13*b4 + 13*b5 + 39*b6 + 18*b7 + 34*b8 + 20*b9 + 17*b10 + 15*b11;
     pol c11 = 15*b0 + 41*b1 + 16*b2 +  2*b3 + 28*b4 + 13*b5 + 13*b6 + 39*b7 + 18*b8 + 34*b9 + 20*b10 + 17*b11;
 
-    (in0' - c0) * (1-LAST) = 0;
-    (in1' - c1) * (1-LAST) = 0;
-    (in2' - c2) * (1-LAST) = 0;
-    (in3' - c3) * (1-LAST) = 0;
-    (in4' - c4) * (1-LAST) = 0;
-    (in5' - c5) * (1-LAST) = 0;
-    (in6' - c6) * (1-LAST) = 0;
-    (in7' - c7) * (1-LAST) = 0;
-    (cap0' - c8) * (1-LAST) = 0;
-    (cap1' - c9) * (1-LAST) = 0;
-    (cap2' - c10) * (1-LAST) = 0;
-    (cap3' - c11) * (1-LAST) = 0;
+    (inp[0]' - c0) * (1-LAST) = 0;
+    (inp[1]' - c1) * (1-LAST) = 0;
+    (inp[2]' - c2) * (1-LAST) = 0;
+    (inp[3]' - c3) * (1-LAST) = 0;
+    (inp[4]' - c4) * (1-LAST) = 0;
+    (inp[5]' - c5) * (1-LAST) = 0;
+    (inp[6]' - c6) * (1-LAST) = 0;
+    (inp[7]' - c7) * (1-LAST) = 0;
+    (cap[0]' - c8) * (1-LAST) = 0;
+    (cap[1]' - c9) * (1-LAST) = 0;
+    (cap[2]' - c10) * (1-LAST) = 0;
+    (cap[3]' - c11) * (1-LAST) = 0;
 
-    FIRSTBLOCK * (input_in0 - in0) = 0;
-    FIRSTBLOCK * (input_in1 - in1) = 0;
-    FIRSTBLOCK * (input_in2 - in2) = 0;
-    FIRSTBLOCK * (input_in3 - in3) = 0;
-    FIRSTBLOCK * (input_in4 - in4) = 0;
-    FIRSTBLOCK * (input_in5 - in5) = 0;
-    FIRSTBLOCK * (input_in6 - in6) = 0;
-    FIRSTBLOCK * (input_in7 - in7) = 0;
-    FIRSTBLOCK * (input_cap0 - cap0) = 0;
-    FIRSTBLOCK * (input_cap1 - cap1) = 0;
-    FIRSTBLOCK * (input_cap2 - cap2) = 0;
-    FIRSTBLOCK * (input_cap3 - cap3) = 0;
+    FIRSTBLOCK * (input_inp[0] - inp[0]) = 0;
+    FIRSTBLOCK * (input_inp[1] - inp[1]) = 0;
+    FIRSTBLOCK * (input_inp[2] - inp[2]) = 0;
+    FIRSTBLOCK * (input_inp[3] - inp[3]) = 0;
+    FIRSTBLOCK * (input_inp[4] - inp[4]) = 0;
+    FIRSTBLOCK * (input_inp[5] - inp[5]) = 0;
+    FIRSTBLOCK * (input_inp[6] - inp[6]) = 0;
+    FIRSTBLOCK * (input_inp[7] - inp[7]) = 0;
+    FIRSTBLOCK * (input_cap[0] - cap[0]) = 0;
+    FIRSTBLOCK * (input_cap[1] - cap[1]) = 0;
+    FIRSTBLOCK * (input_cap[2] - cap[2]) = 0;
+    FIRSTBLOCK * (input_cap[3] - cap[3]) = 0;
 
-    (1 - LAST) * (input_in0 - input_in0') = 0;
-    (1 - LAST) * (input_in1 - input_in1') = 0;
-    (1 - LAST) * (input_in2 - input_in2') = 0;
-    (1 - LAST) * (input_in3 - input_in3') = 0;
-    (1 - LAST) * (input_in4 - input_in4') = 0;
-    (1 - LAST) * (input_in5 - input_in5') = 0;
-    (1 - LAST) * (input_in6 - input_in6') = 0;
-    (1 - LAST) * (input_in7 - input_in7') = 0;
-    (1 - LAST) * (input_cap0 - input_cap0') = 0;
-    (1 - LAST) * (input_cap1 - input_cap1') = 0;
-    (1 - LAST) * (input_cap2 - input_cap2') = 0;
-    (1 - LAST) * (input_cap3 - input_cap3') = 0;
+    (1 - LAST) * (input_inp[0] - input_inp[0]') = 0;
+    (1 - LAST) * (input_inp[1] - input_inp[1]') = 0;
+    (1 - LAST) * (input_inp[2] - input_inp[2]') = 0;
+    (1 - LAST) * (input_inp[3] - input_inp[3]') = 0;
+    (1 - LAST) * (input_inp[4] - input_inp[4]') = 0;
+    (1 - LAST) * (input_inp[5] - input_inp[5]') = 0;
+    (1 - LAST) * (input_inp[6] - input_inp[6]') = 0;
+    (1 - LAST) * (input_inp[7] - input_inp[7]') = 0;
+    (1 - LAST) * (input_cap[0] - input_cap[0]') = 0;
+    (1 - LAST) * (input_cap[1] - input_cap[1]') = 0;
+    (1 - LAST) * (input_cap[2] - input_cap[2]') = 0;
+    (1 - LAST) * (input_cap[3] - input_cap[3]') = 0;
 }

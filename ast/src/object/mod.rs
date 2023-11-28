@@ -56,7 +56,7 @@ pub struct Link<T> {
 #[derive(Clone)]
 pub struct LinkFrom<T> {
     pub flag: Expression<T>,
-    pub params: Params,
+    pub params: Params<T>,
 }
 
 #[derive(Clone)]
@@ -84,5 +84,5 @@ pub struct Operation<T> {
     /// the value of the operation id of this machine which activates this operation
     pub id: Option<T>,
     /// the parameters
-    pub params: Params,
+    pub params: Params<T>,
 }
