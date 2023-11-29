@@ -16,7 +16,7 @@ use asm_utils::{
 };
 use itertools::Itertools;
 
-use crate::bootloader::BOOTLOADER;
+use crate::bootloader::bootloader;
 use crate::coprocessors::*;
 use crate::disambiguator;
 use crate::parser::RiscParser;
@@ -191,7 +191,9 @@ pub fn compile(
     );
 
     let bootloader_lines = if with_bootloader {
-        BOOTLOADER
+        let (bootloader, _) = bootloader();
+        log::debug!("Adding Bootloader:\n{}", bootloader);
+        bootloader
             .split('\n')
             .map(|l| l.to_string())
             .collect::<Vec<_>>()

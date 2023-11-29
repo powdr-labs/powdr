@@ -671,6 +671,7 @@ fn rust_continuations<F: FieldElement>(file_name: &str, contents: &str, inputs: 
             // Any other chunk starts at where we left off in the full trace.
             _ => proven_trace - 1,
         };
+        log::info!("Bootloader used {} rows.", start);
         for i in 0..(chunk_trace["main.pc"].len() - start) {
             for &reg in REGISTER_NAMES.iter() {
                 let chunk_i = i + start;
@@ -724,7 +725,11 @@ fn rust_continuations<F: FieldElement>(file_name: &str, contents: &str, inputs: 
             }
             accessed_pages.insert(access.address >> 10);
         }
-        log::info!("Accessed pages: {:?}", accessed_pages);
+        log::info!(
+            "{} accessed pages: {:?}",
+            accessed_pages.len(),
+            accessed_pages
+        );
 
         bootloader_inputs = vec![];
         for &reg in REGISTER_NAMES.iter() {

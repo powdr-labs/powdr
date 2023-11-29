@@ -763,10 +763,10 @@ pub fn execute_ast<'a, T: FieldElement>(
                 match &dd.directive {
                     DebugDirective::Loc(file, line, column) => {
                         let (dir, file) = debug_files[file - 1];
-                        log::debug!("Executed {dir}/{file}:{line}:{column}");
+                        log::trace!("Executed {dir}/{file}:{line}:{column}");
                     }
                     DebugDirective::OriginalInstruction(insn) => {
-                        log::debug!("  {insn}");
+                        log::trace!("  {insn}");
                     }
                     DebugDirective::File(_, _, _) => unreachable!(),
                 };
