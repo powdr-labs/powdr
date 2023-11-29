@@ -422,6 +422,7 @@ struct Executor<'a, 'b, F: FieldElement> {
     proc: TraceBuilder<'a, 'b>,
     label_map: HashMap<&'a str, Elem>,
     inputs: &'b [F],
+    bootloader_inputs: &'b [F],
     stdout: io::Stdout,
 }
 
@@ -684,6 +685,10 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                                 let idx = val.u() as usize;
                                 to_u32(&self.inputs[idx]).unwrap().into()
                             }
+                            "bootloader_input" => {
+                                let idx = val.u() as usize;
+                                to_u32(&self.bootloader_inputs[idx]).unwrap().into()
+                            }
                             "print_char" => {
                                 self.stdout.write_all(&[val.u() as u8]).unwrap();
                                 // what is print_char supposed to return?
@@ -706,6 +711,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 pub fn execute_ast<'a, T: FieldElement>(
     program: &'a AnalysisASMFile<T>,
     inputs: &[T],
+    bootloader_inputs: &[T],
     max_steps_to_execute: usize,
 ) -> (ExecutionTrace<'a>, MemoryState) {
     let main_machine = get_main_machine(program);
@@ -725,6 +731,7 @@ pub fn execute_ast<'a, T: FieldElement>(
         proc,
         label_map,
         inputs,
+        bootloader_inputs,
         stdout: io::stdout(),
     };
 
@@ -782,7 +789,7 @@ pub fn execute_ast<'a, T: FieldElement>(
 ///
 /// Generic argument F is just used by the parser, before everything is
 /// converted to i64, so it is important to the execution itself.
-pub fn execute<F: FieldElement>(asm_source: &str, inputs: &[F]) {
+pub fn execute<F: FieldElement>(asm_source: &str, inputs: &[F], bootloader_inputs: &[F]) {
     log::info!("Parsing...");
     let parsed = parser::parse_asm::<F>(None, asm_source).unwrap();
     log::info!("Resolving imports...");
@@ -791,7 +798,7 @@ pub fn execute<F: FieldElement>(asm_source: &str, inputs: &[F]) {
     let analyzed = analysis::analyze(resolved, &mut ast::DiffMonitor::default()).unwrap();
 
     log::info!("Executing...");
-    execute_ast(&analyzed, inputs, usize::MAX);
+    execute_ast(&analyzed, inputs, bootloader_inputs, usize::MAX);
 }
 
 fn to_u32<F: FieldElement>(val: &F) -> Option<u32> {

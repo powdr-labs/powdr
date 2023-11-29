@@ -11,6 +11,7 @@ mod instruction_tests {
         let powdr_asm = compile(
             [(name.to_string(), assembly.to_string())].into(),
             &CoProcessors::base(),
+            false,
         );
 
         verify_riscv_asm_string(&format!("{name}.asm"), &powdr_asm, vec![]);

@@ -16,6 +16,7 @@ use asm_utils::{
 };
 use itertools::Itertools;
 
+use crate::bootloader::BOOTLOADER;
 use crate::coprocessors::*;
 use crate::disambiguator;
 use crate::parser::RiscParser;
@@ -97,7 +98,11 @@ impl Architecture for RiscvArchitecture {
 }
 
 /// Compiles riscv assembly to a powdr assembly file. Adds required library routines.
-pub fn compile(mut assemblies: BTreeMap<String, String>, coprocessors: &CoProcessors) -> String {
+pub fn compile(
+    mut assemblies: BTreeMap<String, String>,
+    coprocessors: &CoProcessors,
+    with_bootloader: bool,
+) -> String {
     // stack grows towards zero
     let stack_start = 0x10000;
     // data grows away from zero
@@ -185,9 +190,19 @@ pub fn compile(mut assemblies: BTreeMap<String, String>, coprocessors: &CoProces
         },
     );
 
+    let bootloader_lines = if with_bootloader {
+        BOOTLOADER
+            .split('\n')
+            .map(|l| l.to_string())
+            .collect::<Vec<_>>()
+    } else {
+        vec![]
+    };
+
     let program: Vec<String> = file_ids
         .into_iter()
         .map(|(id, dir, file)| format!("debug file {id} {} {};", quote(&dir), quote(&file)))
+        .chain(bootloader_lines)
         .chain(["call __data_init;".to_string()])
         .chain(call_every_submachine(coprocessors))
         .chain([
