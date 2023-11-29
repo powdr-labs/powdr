@@ -345,20 +345,14 @@ impl<T: FieldElement> PILAnalyzer<T> {
         let counter = self.symbol_counters.get_mut(&symbol_kind).unwrap();
         let id = *counter;
         *counter += length.unwrap_or(1);
-        let absolute_name = if symbol_kind == SymbolKind::Constant() {
-            // Constants are not namespaced.
-            name.to_owned()
-        } else {
-            self.prepend_current_namespace(&name)
-        };
+        let name = PILResolver(self).resolve_decl(&name);
         let symbol = Symbol {
             id,
             source,
-            absolute_name,
+            absolute_name: name.clone(),
             kind: symbol_kind,
             length,
         };
-        let name = symbol.absolute_name.clone();
 
         let value = value.map(|v| match v {
             FunctionDefinition::Expression(expr) => {
@@ -436,10 +430,6 @@ impl<T: FieldElement> PILAnalyzer<T> {
         id
     }
 
-    fn prepend_current_namespace(&self, name: &str) -> String {
-        format!("{}.{name}", self.namespace)
-    }
-
     fn evaluate_expression(&self, expr: ::ast::parsed::Expression<T>) -> Result<T, EvalError> {
         evaluator::evaluate_expression(&self.process_expression(expr), &self.definitions)?
             .try_to_number()
@@ -457,11 +447,23 @@ impl<T: FieldElement> PILAnalyzer<T> {
 struct PILResolver<'a, T>(&'a PILAnalyzer<T>);
 
 impl<'a, T: FieldElement> ReferenceResolver for PILResolver<'a, T> {
-    fn resolve(&self, namespace: &Option<String>, name: &str) -> String {
+    fn resolve_decl(&self, name: &str) -> String {
+        if name.starts_with('%') {
+            // Constants are not namespaced
+            name.to_string()
+        } else {
+            format!("{}.{name}", self.0.namespace)
+        }
+    }
+
+    fn resolve_ref(&self, namespace: &Option<String>, name: &str) -> String {
         if name.starts_with('%') || self.0.definitions.contains_key(&name.to_string()) {
             assert!(namespace.is_none());
             // Constants are not namespaced
             name.to_string()
+        } else if namespace.is_none() && self.0.definitions.contains_key(&format!("Global.{name}"))
+        {
+            format!("Global.{name}")
         } else {
             format!("{}.{name}", namespace.as_ref().unwrap_or(&self.0.namespace))
         }
@@ -577,8 +579,8 @@ namespace N(%r);
 namespace N(65536);
     col witness x;
     constant z = 2;
-    col fixed t(i) { (i + z) };
-    let other = [1, z];
+    col fixed t(i) { (i + N.z) };
+    let other = [1, N.z];
     let other_fun = |i, j| ((i + 7), |k| (k - i));
 "#;
         let formatted = process_pil_file_contents::<GoldilocksField>(input).to_string();
@@ -642,9 +644,9 @@ namespace N(65536);
     on_regular_row(constrain_equal_expr(x', y)) = 0;
     on_regular_row(constrain_equal_expr(y', x + y)) = 0;
     "#;
-        let expected = r#"constant last_row = 15;
-namespace N(16);
-    col fixed ISLAST(i) { match i { last_row => 1, _ => 0, } };
+        let expected = r#"namespace N(16);
+    constant last_row = 15;
+    col fixed ISLAST(i) { match i { N.last_row => 1, _ => 0, } };
     col witness x;
     col witness y;
     let constrain_equal_expr = |A, B| (A - B);
@@ -666,9 +668,9 @@ namespace N(16);
     let next_is_seven = |t| t' - 7;
     next_is_seven(y) = 0;
     "#;
-        let expected = r#"constant last_row = 15;
-namespace N(16);
-    col fixed ISLAST(i) { match i { last_row => 1, _ => 0, } };
+        let expected = r#"namespace N(16);
+    constant last_row = 15;
+    col fixed ISLAST(i) { match i { N.last_row => 1, _ => 0, } };
     col witness x;
     col witness y;
     col fixed next_is_seven(t) { (t' - 7) };
@@ -688,9 +690,9 @@ namespace N(16);
     y - ISLAST(3) = 0;
     x - ISLAST = 0;
     "#;
-        let expected = r#"constant last_row = 15;
-namespace N(16);
-    col fixed ISLAST(i) { match i { last_row => 1, _ => 0, } };
+        let expected = r#"namespace N(16);
+    constant last_row = 15;
+    col fixed ISLAST(i) { match i { N.last_row => 1, _ => 0, } };
     col witness x;
     col witness y;
     (N.y - 0) = 0;

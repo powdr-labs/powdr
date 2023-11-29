@@ -388,7 +388,10 @@ mod test {
             };
             let result = fib(20);
         "#;
-        assert_eq!(parse_and_evaluate_symbol(src, "result"), "6765".to_string());
+        assert_eq!(
+            parse_and_evaluate_symbol(src, "Main.result"),
+            "6765".to_string()
+        );
     }
 
     #[test]
@@ -399,6 +402,9 @@ mod test {
         "#;
         // If the lambda function returned by the expression f(99, ...) does not
         // properly capture the value of n in a closure, then f(1, ...) would return 1.
-        assert_eq!(parse_and_evaluate_symbol(src, "result"), "99".to_string());
+        assert_eq!(
+            parse_and_evaluate_symbol(src, "Main.result"),
+            "99".to_string()
+        );
     }
 }
