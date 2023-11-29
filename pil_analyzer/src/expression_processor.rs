@@ -19,8 +19,10 @@ pub struct ExpressionProcessor<R: ReferenceResolver> {
 }
 
 pub trait ReferenceResolver {
+    /// Turns a declaration into an absolute name.
+    fn resolve_decl(&self, name: &str) -> String;
     /// Turns a reference to a name with an optional namespace to an absolute name.
-    fn resolve(&self, namespace: &Option<String>, name: &str) -> String;
+    fn resolve_ref(&self, namespace: &Option<String>, name: &str) -> String;
 }
 
 impl<R: ReferenceResolver> ExpressionProcessor<R> {
@@ -172,7 +174,7 @@ impl<R: ReferenceResolver> ExpressionProcessor<R> {
         poly: ::ast::parsed::NamespacedPolynomialReference,
     ) -> PolynomialReference {
         PolynomialReference {
-            name: self.resolver.resolve(&poly.namespace, &poly.name),
+            name: self.resolver.resolve_ref(&poly.namespace, &poly.name),
             poly_id: None,
         }
     }
