@@ -32,6 +32,7 @@ pub struct PILGraph<T> {
 pub struct Object<T> {
     pub degree: Option<u64>,
     /// the pil identities for this machine
+    /// TODO turn these into analyzed PILItems.
     pub pil: Vec<PilStatement<T>>,
     /// the links from this machine to its children
     pub links: Vec<Link<T>>,

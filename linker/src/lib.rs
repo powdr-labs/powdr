@@ -41,6 +41,8 @@ pub fn link<T: FieldElement>(graph: PILGraph<T>) -> Result<PILFile<T>, Vec<Strin
                 }
             }
 
+            // TODO is namespace needs to be translated into a module or something.
+
             // create a namespace for this object
             pil.push(PilStatement::Namespace(
                 0,

@@ -6,13 +6,13 @@ use std::{
 };
 
 use ast::{
+    analyzed::{Identity, IdentityKind},
     asm_analysis::{
-        AssignmentStatement, Batch, DebugDirective, FunctionStatement,
+        AssignmentStatement, Batch, DebugDirective, FunctionStatement, InstructionBody,
         InstructionDefinitionStatement, InstructionStatement, LabelStatement,
         LinkDefinitionStatement, Machine, RegisterDeclarationStatement, RegisterTy, Rom,
     },
     parsed::{
-        asm::InstructionBody,
         build::{direct_reference, next_reference},
         folder::ExpressionFolder,
         visitor::ExpressionVisitable,
@@ -388,9 +388,9 @@ impl<T: FieldElement> ASMPILConverter<T> {
                     });
                 });
 
-                for mut statement in body {
-                    if let PilStatement::PolynomialIdentity(_start, expr) = statement {
-                        match extract_update(expr) {
+                for mut identity in body {
+                    if identity.kind == IdentityKind::PolynomialIdentity {
+                        match extract_update(identity.expression_for_poly_id()) {
                             (Some(var), expr) => {
                                 let reference = direct_reference(&instruction_flag);
 
@@ -410,7 +410,7 @@ impl<T: FieldElement> ASMPILConverter<T> {
                             )),
                         }
                     } else {
-                        match &mut statement {
+                        match &mut identity {
                             PilStatement::PermutationIdentity(_, left, _)
                             | PilStatement::PlookupIdentity(_, left, _) => {
                                 assert!(
@@ -418,7 +418,7 @@ impl<T: FieldElement> ASMPILConverter<T> {
                                     "LHS selector not supported, could and-combine with instruction flag later."
                                 );
                                 left.selector = Some(direct_reference(&instruction_flag));
-                                self.pil.push(statement)
+                                self.pil.push(identity)
                             }
                             _ => {
                                 panic!("Invalid statement for instruction body: {statement}");

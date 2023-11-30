@@ -6,7 +6,7 @@ use ast::{
     asm_analysis::{
         AnalysisASMFile, AssignmentStatement, CallableSymbolDefinitions, DebugDirective,
         DegreeStatement, FunctionBody, FunctionStatements, FunctionSymbol, Instruction,
-        InstructionDefinitionStatement, InstructionStatement, LabelStatement,
+        InstructionBody, InstructionDefinitionStatement, InstructionStatement, LabelStatement,
         LinkDefinitionStatement, Machine, OperationSymbol, RegisterDeclarationStatement,
         RegisterTy, Return, SubmachineDeclaration,
     },
@@ -14,9 +14,10 @@ use ast::{
         self,
         asm::{
             self, ASMModule, ASMProgram, AbsoluteSymbolPath, AssignmentRegister, FunctionStatement,
-            InstructionBody, LinkDeclaration, MachineStatement, ModuleStatement, RegisterFlag,
+            LinkDeclaration, MachineStatement, ModuleStatement, Params, RegisterFlag,
             SymbolDefinition,
         },
+        PilStatement,
     },
 };
 use number::FieldElement;
@@ -314,27 +315,42 @@ impl<T: FieldElement> TypeChecker<T> {
             return Err(vec!["Instruction cannot use reserved name `return`".into()]);
         }
 
-        if let InstructionBody::Local(statements) = &instruction.body {
-            let errors: Vec<_> = statements
-                .iter()
-                .filter_map(|s| match s {
-                    ast::parsed::PilStatement::PolynomialIdentity(_, _) => None,
-                    ast::parsed::PilStatement::PermutationIdentity(_, l, _)
-                    | ast::parsed::PilStatement::PlookupIdentity(_, l, _) => l
-                        .selector
-                        .is_some()
-                        .then_some(format!("LHS selector not yet supported in {s}.")),
-                    _ => Some(format!("Statement not allowed in instruction body: {s}")),
-                })
-                .collect();
-            if !errors.is_empty() {
-                return Err(errors);
-            }
+        todo!("Nede to translate");
+        // let body = match instruction.body {
+        //     parsed::asm::InstructionBody::Local(statements) => {
+        //         self.check_local_instruction_body(&instruction.params, statements)
+        //     }
+        //     parsed::asm::InstructionBody::CallableRef(reference) => {
+        //         InstructionBody::CallableRef(reference)
+        //     }
+        // };
+        // Ok(Instruction {
+        //     params: instruction.params,
+        //     body,
+        // })
+    }
+
+    fn check_local_instruction_body(
+        &mut self,
+        params: &Params<T>,
+        statements: Vec<PilStatement<T>>,
+    ) -> Result<InstructionBody<T>, Vec<String>> {
+        let errors: Vec<_> = statements
+            .iter()
+            .filter_map(|s| match s {
+                ast::parsed::PilStatement::PolynomialIdentity(_, _) => None,
+                ast::parsed::PilStatement::PermutationIdentity(_, l, _)
+                | ast::parsed::PilStatement::PlookupIdentity(_, l, _) => l
+                    .selector
+                    .is_some()
+                    .then_some(format!("LHS selector not yet supported in {s}.")),
+                _ => Some(format!("Statement not allowed in instruction body: {s}")),
+            })
+            .collect();
+        if !errors.is_empty() {
+            return Err(errors);
         }
-        Ok(Instruction {
-            params: instruction.params,
-            body: instruction.body,
-        })
+        todo!("Need to translate instructions using the condenser.");
     }
 }
 
