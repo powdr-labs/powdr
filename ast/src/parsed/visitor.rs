@@ -1,9 +1,9 @@
 use std::{iter::once, ops::ControlFlow};
 
 use super::{
-    ArrayExpression, ArrayLiteral, Expression, FunctionCall, FunctionDefinition, IndexAccess,
-    LambdaExpression, MatchArm, MatchPattern, NamespacedPolynomialReference, PilStatement,
-    SelectedExpressions,
+    ArrayExpression, ArrayLiteral, Expression, FunctionCall, FunctionDefinition, IfExpression,
+    IndexAccess, LambdaExpression, MatchArm, MatchPattern, NamespacedPolynomialReference,
+    PilStatement, SelectedExpressions,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -137,6 +137,7 @@ impl<T, Ref> ExpressionVisitable<Expression<T, Ref>> for Expression<T, Ref> {
                 arms.iter_mut()
                     .try_for_each(|arm| arm.visit_expressions_mut(f, o))?;
             }
+            Expression::IfExpression(if_expr) => if_expr.visit_expressions_mut(f, o)?,
         };
         if o == VisitOrder::Post {
             f(self)?;
@@ -175,6 +176,7 @@ impl<T, Ref> ExpressionVisitable<Expression<T, Ref>> for Expression<T, Ref> {
                 arms.iter()
                     .try_for_each(|arm| arm.visit_expressions(f, o))?;
             }
+            Expression::IfExpression(if_expr) => if_expr.visit_expressions(f, o)?,
         };
         if o == VisitOrder::Post {
             f(self)?;
@@ -452,5 +454,25 @@ impl<T, Ref> ExpressionVisitable<Expression<T, Ref>> for MatchPattern<T, Ref> {
             MatchPattern::CatchAll => ControlFlow::Continue(()),
             MatchPattern::Pattern(e) => e.visit_expressions(f, o),
         }
+    }
+}
+
+impl<T, Ref> ExpressionVisitable<Expression<T, Ref>> for IfExpression<T, Ref> {
+    fn visit_expressions_mut<F, B>(&mut self, f: &mut F, o: VisitOrder) -> ControlFlow<B>
+    where
+        F: FnMut(&mut Expression<T, Ref>) -> ControlFlow<B>,
+    {
+        [&mut self.condition, &mut self.body, &mut self.else_body]
+            .into_iter()
+            .try_for_each(|e| e.visit_expressions_mut(f, o))
+    }
+
+    fn visit_expressions<F, B>(&self, f: &mut F, o: VisitOrder) -> ControlFlow<B>
+    where
+        F: FnMut(&Expression<T, Ref>) -> ControlFlow<B>,
+    {
+        [&self.condition, &self.body, &self.else_body]
+            .into_iter()
+            .try_for_each(|e| e.visit_expressions(f, o))
     }
 }

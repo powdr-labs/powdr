@@ -633,6 +633,17 @@ namespace N(65536);
     }
 
     #[test]
+    fn if_expr() {
+        let input = r#"namespace Assembly(2);
+    col fixed A = [0]*;
+    col fixed C(i) { if (i < 3) { Assembly.A(i) } else { (i + 9) } };
+    col fixed D(i) { if Assembly.C(i) { 3 } else { 2 } };
+"#;
+        let formatted = process_pil_file_contents::<GoldilocksField>(input).to_string();
+        assert_eq!(formatted, input);
+    }
+
+    #[test]
     fn symbolic_functions() {
         let input = r#"namespace N(16);
     let last_row = 15;
