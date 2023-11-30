@@ -1,16 +1,25 @@
-use crate::file_writer::BBFiles;
+use crate::{file_writer::BBFiles, utils::get_relations_imports};
 
 pub trait FlavorBuilder {
     fn create_flavor_hpp(
         &mut self,
         name: &str,
-        relations: &[String],
+        relation_file_names: &[String],
         fixed: &[String],
         witness: &[String],
         all_cols: &[String],
         to_be_shifted: &[String],
         shifted: &[String],
+        all_cols_and_shifts: &[String],
     );
+}
+
+fn create_relations_tuple(master_name: &str, relation_file_names: &[String]) -> String {
+    relation_file_names
+        .iter()
+        .map(|name| format!("{master_name}_vm::{name}<FF>"))
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 /// Build the boilerplate for the flavor file
@@ -18,35 +27,27 @@ impl FlavorBuilder for BBFiles {
     fn create_flavor_hpp(
         &mut self,
         name: &str,
-        relations: &[String],
+        relation_file_names: &[String],
         fixed: &[String],
         witness: &[String],
         all_cols: &[String],
         to_be_shifted: &[String],
         shifted: &[String],
+        all_cols_and_shifts: &[String],
         // shifted: &[String],
     ) {
-        let first_poly = &fixed[0];
-        let includes = flavor_includes(name, relations);
+        let first_poly = &witness[0];
+        let includes = flavor_includes(name, relation_file_names);
         let num_precomputed = &fixed.len();
         let num_witness = witness.len();
-        let num_all = num_witness + shifted.len() + to_be_shifted.len();
+        let num_all = all_cols_and_shifts.len();
         // TODO: for now we include a shift OF ALL witness wires, however this is not necessarily true
 
-        let precomputed = witness_get(fixed, false);
+        let precomputed_str = create_precomputed_entities(fixed);
+        let witness_str = create_witness_entities(witness);
 
-        let witnesses = witness_get(witness, false);
-        let precomputed_str = create_precomputed_entities(&fixed);
-        let witness_str = create_witness_entities(&witness);
-        let all_shift = witness_get(shifted, false);
-
-        let all_cols_and_shifts = &[all_cols.to_vec(), shifted.to_vec()]
-            .into_iter()
-            .flatten()
-            .collect::<Vec<String>>();
-        let all_entities_get_wires = make_wires_set(&all_cols_and_shifts);
-        let all_entities_pointer_view =
-            create_pointer_view("NUM_ALL_ENTITIES", &all_cols_and_shifts);
+        let all_entities_get_wires = make_wires_set(all_cols_and_shifts);
+        let all_entities_flavor_members = create_flavor_members(all_cols_and_shifts);
 
         let all_entities_get_unshifted = make_wires_set(all_cols);
         let all_entities_get_to_be_shifted = make_wires_set(to_be_shifted);
@@ -59,7 +60,7 @@ impl FlavorBuilder for BBFiles {
         let transcript = generate_transcript(witness);
 
         // TODO: make this work when we have multiple relation files, for now we just have the one
-        let relations_tuple = format!("{name}_vm::{name}<FF>");
+        let relations_tuple = create_relations_tuple(name, relation_file_names);
         // let relations_tuple = relations
         //     .iter()
         //     .map(|r| format!("{}Relation", r))
@@ -115,53 +116,51 @@ class {name}Flavor {{
         static constexpr bool has_zero_row = true;
 
     private:
-        template<typename DataType, typename HandleType>
-        class PrecomputedEntities : public PrecomputedEntities_<DataType, HandleType, NUM_PRECOMPUTED_ENTITIES> {{
+        template<typename DataType_>
+        class PrecomputedEntities : public PrecomputedEntitiesBase {{
             public:
+              using DataType = DataType_;
+
               {precomputed_str}
 
-              std::vector<HandleType> get_sigma_polynomials() override {{ return {{}}; }};
-              std::vector<HandleType> get_id_polynomials() override {{ return {{}}; }};
-              std::vector<HandleType> get_table_polynomials() {{ return {{}}; }};
+              RefVector<DataType> get_sigma_polynomials() {{ return {{}}; }};
+              RefVector<DataType> get_id_polynomials() {{ return {{}}; }};
+              RefVector<DataType> get_table_polynomials() {{ return {{}}; }};
           }};
           
-        template <typename DataType, typename HandleType>
-        class WitnessEntities : public WitnessEntities_<DataType, HandleType, NUM_WITNESS_ENTITIES> {{
+        template <typename DataType>
+        class WitnessEntities {{
             public:
 
             {witness_str} 
         }};
 
-        template <typename DataType, typename HandleType>
-        class AllEntities : public AllEntities_<DataType, HandleType, NUM_ALL_ENTITIES> {{
+        template <typename DataType>
+        class AllEntities {{
             public:
 
-            {precomputed} 
-            {witnesses}
-            {all_shift}
-
-            {all_entities_pointer_view}
+            {all_entities_flavor_members}
 
 
-            std::vector<HandleType> get_wires() override {{
+            RefVector<DataType> get_wires() {{
                 return {{
 {all_entities_get_wires}
                 }};
             }};
 
-            std::vector<HandleType> get_unshifted() override {{
+            RefVector<DataType> get_unshifted() {{
                 return {{
                     {all_entities_get_unshifted}
                 }};
             }};
 
-            std::vector<HandleType> get_to_be_shifted() override {{
+            RefVector<DataType> get_to_be_shifted() {{
                 return {{
                     {all_entities_get_to_be_shifted}
                 }};
             }};
 
-            std::vector<HandleType> get_shifted() override {{
+            RefVector<DataType> get_shifted() {{
                 return {{
                     {all_entities_get_shifted}
                 }};
@@ -170,31 +169,29 @@ class {name}Flavor {{
         }};
     
     public:
-    class ProvingKey : public ProvingKey_<PrecomputedEntities<Polynomial, PolynomialHandle>,
-    WitnessEntities<Polynomial, PolynomialHandle>> {{
+    class ProvingKey : public ProvingKey_<PrecomputedEntities<Polynomial>, WitnessEntities<Polynomial>> {{
         public:
         // Expose constructors on the base class
-        using Base = ProvingKey_<PrecomputedEntities<Polynomial, PolynomialHandle>,
-        WitnessEntities<Polynomial, PolynomialHandle>>;
+        using Base = ProvingKey_<PrecomputedEntities<Polynomial>, WitnessEntities<Polynomial>>;
         using Base::Base;
 
         // The plookup wires that store plookup read data.
         std::array<PolynomialHandle, 0> get_table_column_wires() {{ return {{}}; }};
     }};
 
-    using VerificationKey = VerificationKey_<PrecomputedEntities<Commitment, CommitmentHandle>>;
+    using VerificationKey = VerificationKey_<PrecomputedEntities<Commitment>>;
 
-    using ProverPolynomials = AllEntities<PolynomialHandle, PolynomialHandle>;
+    using ProverPolynomials = AllEntities<PolynomialHandle>;
 
-    using FoldedPolynomials = AllEntities<std::vector<FF>, PolynomialHandle>;
+    using FoldedPolynomials = AllEntities<std::vector<FF>>;
 
-    class AllValues : public AllEntities<FF, FF> {{
+    class AllValues : public AllEntities<FF> {{
         public:
-          using Base = AllEntities<FF, FF>;
+          using Base = AllEntities<FF>;
           using Base::Base;
       }};
   
-    class AllPolynomials : public AllEntities<Polynomial, PolynomialHandle> {{
+    class AllPolynomials : public AllEntities<Polynomial> {{
       public:
         [[nodiscard]] size_t get_polynomial_size() const {{ return this->{first_poly}.size(); }}
         [[nodiscard]] AllValues get_row(const size_t row_idx) const
@@ -208,9 +205,9 @@ class {name}Flavor {{
     }};
 
 
-    using RowPolynomials = AllEntities<FF, FF>;
+    using RowPolynomials = AllEntities<FF>;
 
-    class PartiallyEvaluatedMultivariates : public AllEntities<Polynomial, PolynomialHandle> {{
+    class PartiallyEvaluatedMultivariates : public AllEntities<Polynomial> {{
       public:
         PartiallyEvaluatedMultivariates() = default;
         PartiallyEvaluatedMultivariates(const size_t circuit_size)
@@ -227,7 +224,7 @@ class {name}Flavor {{
      * @details During folding and sumcheck, the prover evaluates the relations on these univariates.
      */
     template <size_t LENGTH>
-    using ProverUnivariates = AllEntities<barretenberg::Univariate<FF, LENGTH>, barretenberg::Univariate<FF, LENGTH>>;
+    using ProverUnivariates = AllEntities<barretenberg::Univariate<FF, LENGTH>>;
 
     /**
      * @brief A container for univariates produced during the hot loop in sumcheck.
@@ -247,12 +244,14 @@ class {name}Flavor {{
     
     "
     );
-        self.flavor_hpp = Some(flavor_hpp);
+
+        self.write_file(&self.flavor, &format!("{}_flavor.hpp", name), &flavor_hpp);
     }
 }
 
-fn flavor_includes(name: &str, _relations: &[String]) -> String {
+fn flavor_includes(name: &str, relation_file_names: &[String]) -> String {
     // TODO: when there are multiple relations generated, they will need to be known in this file
+    let relation_imports = get_relations_imports(name, relation_file_names);
 
     // TODO: Get the path for generated / other relations from self
     format!(
@@ -264,31 +263,29 @@ fn flavor_includes(name: &str, _relations: &[String]) -> String {
 #include \"barretenberg/polynomials/barycentric.hpp\"
 #include \"barretenberg/polynomials/univariate.hpp\"
 
+#include \"barretenberg/flavor/flavor_macros.hpp\"
 #include \"barretenberg/transcript/transcript.hpp\"
 #include \"barretenberg/polynomials/evaluation_domain.hpp\"
 #include \"barretenberg/polynomials/polynomial.hpp\"
 #include \"barretenberg/flavor/flavor.hpp\"
-#include \"barretenberg/relations/generated/{name}.hpp\"
+{relation_imports}
 "
     )
 }
 
 fn create_precomputed_entities(fixed: &[String]) -> String {
-    let data_types = witness_get(fixed, false);
     let mut name_set = String::new();
     for name in fixed {
-        let n = name.replace('.', "_");
-        name_set.push_str(&format!("{n}, ", n = n));
+        name_set.push_str(&format!("{name}, "));
     }
 
-    let pointer_view = create_pointer_view("NUM_PRECOMPUTED_ENTITIES", fixed);
+    let pointer_view = create_flavor_members(fixed);
 
     format!(
         "
-        {data_types}
         {pointer_view}
 
-        std::vector<HandleType> get_selectors() override {{
+        RefVector<DataType> get_selectors() {{
             return {{ {name_set} }};
         }};
         ",
@@ -296,29 +293,31 @@ fn create_precomputed_entities(fixed: &[String]) -> String {
     )
 }
 
-fn create_pointer_view(label: &str, entities: &[String]) -> String {
+fn create_flavor_members(entities: &[String]) -> String {
     let pointer_list = entities
         .iter()
-        .map(|e| format!("&{}", e.replace('.', "_")))
+        .map(|e| e.clone())
         .collect::<Vec<_>>()
         .join(", ");
 
     format!(
-        "DEFINE_POINTER_VIEW({label}, {pointer_list})",
-        label = label,
+        "DEFINE_FLAVOR_MEMBERS(DataType, {pointer_list})",
         pointer_list = pointer_list
     )
 }
 
 fn witness_get(witness: &[String], shift: bool) -> String {
     let mut return_string = String::new();
-    for name in witness.iter() {
-        let n = name.replace('.', "_");
-        let n = if shift { format!("{}_shift", n) } else { n };
+    for n in witness.iter() {
+        let n = if shift {
+            format!("{n}_shift")
+        } else {
+            n.to_owned()
+        };
+
         return_string.push_str(&format!(
             "
             DataType {n};",
-            n = n
         ));
     }
 
@@ -336,34 +335,30 @@ fn make_wires_set(set: &[String]) -> String {
     let mut wires = String::new();
 
     for name in set.iter() {
-        let n = name.replace('.', "_");
         wires.push_str(&format!(
-            "{n}, 
+            "{name}, 
             ",
-            n = n
         ));
     }
     wires
 }
 
 fn create_witness_entities(witness: &[String]) -> String {
-    let data_types = witness_get(witness, false);
     let get_wires = make_wires_set(witness);
-    let pointer_view = create_pointer_view("NUM_WITNESS_ENTITIES", witness);
+    let pointer_view = create_flavor_members(witness);
 
     format!(
         "
-        {data_types}
 
         {pointer_view}
 
-        std::vector<HandleType> get_wires() override {{
+        RefVector<DataType> get_wires() {{
             return {{ 
 {get_wires}
             }};
         }};
 
-        std::vector<HandleType> get_sorted_polynomials()  {{ return {{}}; }};
+        RefVector<DataType> get_sorted_polynomials()  {{ return {{}}; }};
         "
     )
 }
@@ -371,11 +366,9 @@ fn create_witness_entities(witness: &[String]) -> String {
 fn create_labels(all_ents: &[String]) -> String {
     let mut labels = String::new();
     for name in all_ents {
-        let n = name.replace('.', "_");
         labels.push_str(&format!(
-            "Base::{n} = \"{n}\"; 
+            "Base::{name} = \"{name}\"; 
             ",
-            n = n
         ));
     }
     labels
@@ -386,13 +379,13 @@ fn create_commitment_labels(all_ents: &[String]) -> String {
 
     format!(
         "
-        class CommitmentLabels: public AllEntities<std::string, std::string> {{
+        class CommitmentLabels: public AllEntities<std::string> {{
             private:
-                using Base = AllEntities<std::string, std::string>;
+                using Base = AllEntities<std::string>;
 
 
             public:
-                CommitmentLabels() : AllEntities<std::string, std::string>()
+                CommitmentLabels() : AllEntities<std::string>()
             {{
                 {labels}
             }};
@@ -404,10 +397,7 @@ fn create_commitment_labels(all_ents: &[String]) -> String {
 fn create_key_dereference(fixed: &[String]) -> String {
     fixed
         .iter()
-        .map(|f| {
-            let name = f.replace('.', "_");
-            format!("{name} = verification_key->{name};")
-        })
+        .map(|name| format!("{name} = verification_key->{name};"))
         .collect::<Vec<_>>()
         .join("\n")
 }
@@ -417,9 +407,9 @@ fn create_verifier_commitments(fixed: &[String]) -> String {
 
     format!(
         "
-    class VerifierCommitments : public AllEntities<Commitment, CommitmentHandle> {{
+    class VerifierCommitments : public AllEntities<Commitment> {{
       private:
-        using Base = AllEntities<Commitment, CommitmentHandle>;
+        using Base = AllEntities<Commitment>;
 
       public:
         VerifierCommitments(const std::shared_ptr<VerificationKey>& verification_key,
@@ -436,26 +426,22 @@ fn create_verifier_commitments(fixed: &[String]) -> String {
 fn generate_transcript(witness: &[String]) -> String {
     let declarations = witness
         .iter()
-        .map(|f| format!("Commitment {};", f.replace('.', "_")))
+        .map(|f| format!("Commitment {f};"))
         .collect::<Vec<_>>()
         .join("\n");
     let deserialize_wires = witness
         .iter()
-        .map(|f| {
+        .map(|name| {
             format!(
-                "{} = deserialize_from_buffer<Commitment>(BaseTranscript<FF>::proof_data, num_bytes_read);",
-                f.replace('.', "_")
+                "{name} = deserialize_from_buffer<Commitment>(BaseTranscript<FF>::proof_data, num_bytes_read);",
             )
         })
         .collect::<Vec<_>>()
         .join("\n");
     let serialize_wires = witness
         .iter()
-        .map(|f| {
-            format!(
-                "serialize_to_buffer<Commitment>({}, BaseTranscript<FF>::proof_data);",
-                f.replace('.', "_")
-            )
+        .map(|name| {
+            format!("serialize_to_buffer<Commitment>({name}, BaseTranscript<FF>::proof_data);",)
         })
         .collect::<Vec<_>>()
         .join("\n");
@@ -479,7 +465,7 @@ fn generate_transcript(witness: &[String]) -> String {
             : BaseTranscript<FF>(proof)
         {{}}
 
-        void deserialize_full_transcript() override
+        void deserialize_full_transcript()
         {{
             size_t num_bytes_read = 0;
             circuit_size = deserialize_from_buffer<uint32_t>(proof_data, num_bytes_read);
@@ -501,7 +487,7 @@ fn generate_transcript(witness: &[String]) -> String {
             zm_pi_comm = deserialize_from_buffer<Commitment>(proof_data, num_bytes_read);
         }}
 
-        void serialize_full_transcript() override
+        void serialize_full_transcript()
         {{
             size_t old_proof_length = proof_data.size();
             BaseTranscript<FF>::proof_data.clear();

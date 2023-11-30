@@ -2,22 +2,6 @@ use std::fs::File;
 use std::io::Write;
 
 pub struct BBFiles {
-    pub relation_hpp: Option<String>,
-    pub flavor_hpp: Option<String>,
-    // circuit
-    pub circuit_hpp: Option<String>,
-    // composer
-    pub composer_cpp: Option<String>,
-    pub composer_hpp: Option<String>,
-
-    // prover
-    pub prover_cpp: Option<String>,
-    pub prover_hpp: Option<String>,
-
-    // verifier
-    pub verifier_cpp: Option<String>,
-    pub verifier_hpp: Option<String>,
-
     // Relative paths
     pub file_name: String,
     pub base: String,
@@ -54,15 +38,6 @@ impl BBFiles {
 
         Self {
             file_name,
-            relation_hpp: None,
-            flavor_hpp: None,
-            circuit_hpp: None,
-            composer_cpp: None,
-            composer_hpp: None,
-            prover_cpp: None,
-            prover_hpp: None,
-            verifier_cpp: None,
-            verifier_hpp: None,
 
             base,
             rel,
@@ -74,38 +49,7 @@ impl BBFiles {
         }
     }
 
-    pub fn write(&self) {
-        // Helper macro codegen using the classes' write_file method
-        macro_rules! write_file {
-            ($location:expr, $extension:expr, $content:expr) => {
-                self.write_file(
-                    &$location,
-                    &format!("{}{}", self.file_name, $extension),
-                    &$content.clone().unwrap(),
-                );
-            };
-        }
-        write_file!(self.rel, ".hpp", self.relation_hpp);
-
-        // Circuit
-        write_file!(self.circuit, "_circuit_builder.hpp", self.circuit_hpp);
-
-        write_file!(self.flavor, "_flavor.hpp", self.flavor_hpp);
-
-        // Composer
-        write_file!(self.composer, "_composer.hpp", self.composer_hpp);
-        write_file!(self.composer, "_composer.cpp", self.composer_cpp);
-
-        // Prover
-        write_file!(self.prover, "_prover.hpp", self.prover_hpp);
-        write_file!(self.prover, "_prover.cpp", self.prover_cpp);
-
-        // Verifier
-        write_file!(self.prover, "_verifier.hpp", self.verifier_hpp);
-        write_file!(self.prover, "_verifier.cpp", self.verifier_cpp);
-    }
-
-    fn write_file(&self, folder: &str, filename: &str, contents: &String) {
+    pub fn write_file(&self, folder: &str, filename: &str, contents: &String) {
         // attempt to create dir
         let base_path = format!("{}/{}", self.base, folder);
         let _ = std::fs::create_dir_all(&base_path);

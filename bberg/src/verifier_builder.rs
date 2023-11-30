@@ -101,7 +101,8 @@ impl VerifierBuilder for BBFiles {
     
     
     ");
-        self.verifier_cpp = Some(ver_cpp);
+
+        self.write_file(&self.prover, &format!("{}_verifier.cpp", name), &ver_cpp);
     }
 
     fn create_verifier_hpp(&mut self, name: &str) {
@@ -139,7 +140,8 @@ impl VerifierBuilder for BBFiles {
     
     "
         );
-        self.verifier_hpp = Some(ver_hpp);
+
+        self.write_file(&self.prover, &format!("{}_verifier.hpp", name), &ver_hpp);
     }
 }
 

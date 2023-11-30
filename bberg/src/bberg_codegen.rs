@@ -34,8 +34,7 @@ impl BBergCodegen {
         witness: &[(String, Vec<F>)],
         bname: Option<String>,
     ) -> Vec<u8> {
-        let bberg_files = analyzed_to_cpp(pil, fixed, witness, bname);
-        bberg_files.write();
+        analyzed_to_cpp(pil, fixed, witness, bname);
 
         Vec::new()
     }

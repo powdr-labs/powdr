@@ -98,7 +98,11 @@ std::shared_ptr<Flavor::VerificationKey> {name}Composer::compute_verification_ke
 
 }}    
 ");
-        self.composer_cpp = Some(composer_cpp);
+        self.write_file(
+            &self.composer,
+            &format!("{}_composer.cpp", name),
+            &composer_cpp,
+        );
     }
 
     fn create_composer_hpp(&mut self, name: &str) {
@@ -172,7 +176,12 @@ class {name}Composer {{
 }} // namespace proof_system::honk
 "
     );
-        self.composer_hpp = Some(composer_hpp);
+
+        self.write_file(
+            &self.composer,
+            &format!("{}_composer.hpp", name),
+            &composer_hpp,
+        );
     }
 }
 
