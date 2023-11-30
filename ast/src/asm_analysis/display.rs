@@ -10,7 +10,7 @@ use crate::{indent, write_items_indented};
 use super::{
     AnalysisASMFile, AssignmentStatement, CallableSymbol, CallableSymbolDefinitionRef,
     DebugDirective, DegreeStatement, FunctionBody, FunctionStatement, FunctionStatements,
-    Incompatible, IncompatibleSet, Instruction, InstructionDefinitionStatement,
+    Incompatible, IncompatibleSet, Instruction, InstructionBody, InstructionDefinitionStatement,
     InstructionStatement, LabelStatement, LinkDefinitionStatement, Machine,
     RegisterDeclarationStatement, RegisterTy, Return, Rom, SubmachineDeclaration,
 };
@@ -175,6 +175,15 @@ impl<T: Display> Display for Instruction<T> {
             self.params.prepend_space_if_non_empty(),
             self.body
         )
+    }
+}
+
+impl<T: Display> Display for InstructionBody<T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        match self {
+            InstructionBody::Local(elements) => write!(f, "{{ {} }}", elements.iter().format(", ")),
+            InstructionBody::CallableRef(r) => write!(f, " = {r};"),
+        }
     }
 }
 
