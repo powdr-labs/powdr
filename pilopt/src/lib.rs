@@ -239,12 +239,19 @@ fn extract_constant_lookups<T: FieldElement>(pil_file: &mut Analyzed<T>) {
 /// Identifies witness columns that are constrained to a single value, replaces every
 /// reference to this column by the value and deletes the column.
 fn remove_constant_witness_columns<T: FieldElement>(pil_file: &mut Analyzed<T>) {
-    let constant_polys = pil_file
+    let mut constant_polys = pil_file
         .identities
         .iter()
         .filter_map(|id| (id.kind == IdentityKind::Polynomial).then(|| id.expression_for_poly_id()))
         .filter_map(constrained_to_constant)
         .collect::<BTreeMap<PolyID, _>>();
+    // We cannot remove arrays or array elements, so filter them out.
+    let columns = pil_file
+        .committed_polys_in_source_order()
+        .iter()
+        .filter_map(|(s, _)| (!s.is_array()).then(|| s.into()))
+        .collect::<HashSet<PolyID>>();
+    constant_polys.retain(|id, _| columns.contains(id));
 
     substitute_polynomial_references(pil_file, &constant_polys);
     pil_file.remove_polynomials(&constant_polys.keys().cloned().collect());

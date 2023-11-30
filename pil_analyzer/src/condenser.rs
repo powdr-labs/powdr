@@ -6,10 +6,10 @@ use std::{collections::HashMap, fmt::Display, rc::Rc};
 use ast::{
     analyzed::{
         AlgebraicExpression, AlgebraicReference, Analyzed, Expression, FunctionValueDefinition,
-        Identity, PolynomialReference, PolynomialType, PublicDeclaration, Reference,
+        Identity, IdentityKind, PolynomialReference, PolynomialType, PublicDeclaration, Reference,
         StatementIdentifier, Symbol, SymbolKind,
     },
-    parsed::{visitor::ExpressionVisitable, SelectedExpressions, UnaryOperator},
+    parsed::{visitor::ExpressionVisitable, BinaryOperator, SelectedExpressions, UnaryOperator},
 };
 use itertools::Itertools;
 use number::{DegreeType, FieldElement};
@@ -29,9 +29,25 @@ pub fn condense<T: FieldElement>(
         symbols: definitions.clone(),
     };
 
-    let identities = identities
-        .iter()
-        .map(|identity| condenser.condense_identity(identity))
+    let mut condensed_identities = vec![];
+    // Condense identities and update the source order.
+    let source_order = source_order
+        .into_iter()
+        .flat_map(|s| match s {
+            StatementIdentifier::Identity(index) => {
+                let identity = &identities[index];
+                condenser
+                    .condense_identity(identity)
+                    .into_iter()
+                    .map(|identity| {
+                        let id = condensed_identities.len();
+                        condensed_identities.push(identity);
+                        StatementIdentifier::Identity(id)
+                    })
+                    .collect()
+            }
+            s => vec![s],
+        })
         .collect();
 
     // Extract intermediate columns
@@ -71,7 +87,7 @@ pub fn condense<T: FieldElement>(
         definitions,
         public_declarations,
         intermediate_columns,
-        identities,
+        identities: condensed_identities,
         source_order,
     }
 }
@@ -96,13 +112,29 @@ impl<T: FieldElement> Condenser<T> {
     pub fn condense_identity(
         &self,
         identity: &Identity<Expression<T>>,
-    ) -> Identity<AlgebraicExpression<T>> {
-        Identity {
-            id: identity.id,
-            kind: identity.kind,
-            source: identity.source.clone(),
-            left: self.condense_selected_expressions(&identity.left),
-            right: self.condense_selected_expressions(&identity.right),
+    ) -> Vec<Identity<AlgebraicExpression<T>>> {
+        if identity.kind == IdentityKind::Polynomial {
+            self.condense_expression_to_constraints(identity.expression_for_poly_id())
+                .into_iter()
+                .map(|constraint| Identity {
+                    id: identity.id,
+                    kind: identity.kind,
+                    source: identity.source.clone(),
+                    left: SelectedExpressions {
+                        selector: Some(constraint),
+                        expressions: vec![],
+                    },
+                    right: Default::default(),
+                })
+                .collect()
+        } else {
+            vec![Identity {
+                id: identity.id,
+                kind: identity.kind,
+                source: identity.source.clone(),
+                left: self.condense_selected_expressions(&identity.left),
+                right: self.condense_selected_expressions(&identity.right),
+            }]
         }
     }
 
@@ -123,19 +155,45 @@ impl<T: FieldElement> Condenser<T> {
         }
     }
 
-    pub fn condense_expression(&self, e: &Expression<T>) -> AlgebraicExpression<T> {
+    fn condense_expression(&self, e: &Expression<T>) -> AlgebraicExpression<T> {
         evaluator::evaluate(e, &self)
-            .and_then(|result| {
-                // TODO at this point, we could also support arrays of constraints, but we would
-                // need to make it clear if an array is supported in this context (it is at statement level,
-                // but not inside a lookup for example).
-                match result {
-                    Value::Custom(Condensate { expr, .. }) => Ok(expr),
-                    Value::Number(n) => Ok(n.into()),
-                    _ => Err(EvalError::TypeError(format!(
-                        "Expected constraint, but got {result}"
-                    ))),
-                }
+            .and_then(|result| match result {
+                Value::Custom(Condensate::Expression(expr)) => Ok(expr),
+                Value::Number(n) => Ok(n.into()),
+                _ => Err(EvalError::TypeError(format!(
+                    "Expected expression, but got {result}"
+                ))),
+            })
+            .unwrap_or_else(|err| {
+                panic!("Error reducing expression to constraint:\nExpression: {e}\nError: {err:?}")
+            })
+    }
+
+    /// Evaluates an expression and expects a single constraint or an array of constraints.
+    fn condense_expression_to_constraints(&self, e: &Expression<T>) -> Vec<AlgebraicExpression<T>> {
+        evaluator::evaluate(e, &self)
+            .and_then(|result| match result {
+                // TODO We have to allow expressions here because the parser
+                // turns polynomial constraints "a = b" into expressions "a - b".
+                // If we change the parser, we need to distinguish between constraints
+                // like "a = b" and expressions like "f()".
+                Value::Custom(Condensate::Expression(e)) => Ok(vec![e]),
+                Value::Custom(Condensate::Identity(left, right)) => Ok(vec![left - right]),
+                Value::Array(items) => items
+                    .into_iter()
+                    .map(|item| {
+                        if let Value::Custom(c) = item {
+                            c.try_to_constraint()
+                        } else {
+                            Err(EvalError::TypeError(format!(
+                                "Expected constraint, but got {item}"
+                            )))
+                        }
+                    })
+                    .collect::<Result<_, _>>(),
+                _ => Err(EvalError::TypeError(format!(
+                    "Expected constraint or array of constraints, but got {result}"
+                ))),
             })
             .unwrap_or_else(|err| {
                 panic!("Error reducing expression to constraint:\nExpression: {e}\nError: {err:?}")
@@ -198,7 +256,12 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T, Condensate<T>> for &'a Condenser<T
         function: Condensate<T>,
         arguments: &[Rc<Value<'a, T, Condensate<T>>>],
     ) -> Result<Value<'a, T, Condensate<T>>, EvalError> {
-        match function.expr {
+        let Condensate::Expression(expr) = function else {
+            Err(EvalError::TypeError(format!(
+                "Expected function, but got: {function}"
+            )))?
+        };
+        match expr {
             AlgebraicExpression::Reference(AlgebraicReference {
                 name,
                 poly_id,
@@ -231,7 +294,7 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T, Condensate<T>> for &'a Condenser<T
                 }
             }
             _ => Err(EvalError::TypeError(format!(
-                "Function application not supported: {function}({})",
+                "Function application not supported: {expr}({})",
                 arguments.iter().format(", ")
             ))),
         }
@@ -245,12 +308,18 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T, Condensate<T>> for &'a Condenser<T
     ) -> Result<Value<'a, T, Condensate<T>>, EvalError> {
         let left: Condensate<T> = left.try_into()?;
         let right: Condensate<T> = right.try_into()?;
-        Ok(AlgebraicExpression::BinaryOperation(
-            Box::new(left.expr),
-            op.try_into().map_err(EvalError::TypeError)?,
-            Box::new(right.expr),
-        )
-        .into())
+        let left_expr = left.try_to_expression()?;
+        let right_expr = right.try_to_expression()?;
+        Ok(if op == BinaryOperator::Equal {
+            Value::Custom(Condensate::Identity(left_expr, right_expr))
+        } else {
+            AlgebraicExpression::BinaryOperation(
+                Box::new(left_expr),
+                op.try_into().map_err(EvalError::TypeError)?,
+                Box::new(right_expr),
+            )
+            .into()
+        })
     }
 
     fn eval_unary_operation(
@@ -258,8 +327,9 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T, Condensate<T>> for &'a Condenser<T
         op: UnaryOperator,
         inner: Condensate<T>,
     ) -> Result<Value<'a, T, Condensate<T>>, EvalError> {
+        let inner = inner.try_to_expression()?;
         if op == UnaryOperator::Next {
-            let AlgebraicExpression::Reference(reference) = inner.expr else {
+            let AlgebraicExpression::Reference(reference) = inner else {
                 return Err(EvalError::TypeError(format!(
                     "Expected column for \"'\" operator, but got: {inner}"
                 )));
@@ -278,27 +348,44 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T, Condensate<T>> for &'a Condenser<T
         } else {
             Ok(AlgebraicExpression::UnaryOperation(
                 op.try_into().map_err(EvalError::TypeError)?,
-                Box::new(inner.expr),
+                Box::new(inner),
             )
             .into())
         }
     }
 }
 
-#[derive(Clone)]
-struct Condensate<T> {
-    pub expr: AlgebraicExpression<T>,
+#[derive(Clone, PartialEq)]
+enum Condensate<T> {
+    Expression(AlgebraicExpression<T>),
+    Identity(AlgebraicExpression<T>, AlgebraicExpression<T>),
 }
 
-impl<T: PartialEq> PartialEq for Condensate<T> {
-    fn eq(&self, other: &Self) -> bool {
-        self.expr == other.expr
+impl<T: FieldElement> Condensate<T> {
+    pub fn try_to_expression(self) -> Result<AlgebraicExpression<T>, EvalError> {
+        match self {
+            Condensate::Expression(e) => Ok(e),
+            Condensate::Identity(left, right) => Err(EvalError::TypeError(format!(
+                "Expected expression, got identity: {left} = {right}."
+            ))),
+        }
+    }
+    pub fn try_to_constraint(self) -> Result<AlgebraicExpression<T>, EvalError> {
+        match self {
+            Condensate::Expression(e) => Err(EvalError::TypeError(format!(
+                "Expected constraint but got expression: {e}"
+            ))),
+            Condensate::Identity(left, right) => Ok(left - right),
+        }
     }
 }
 
 impl<T: Display> Display for Condensate<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.expr)
+        match self {
+            Condensate::Expression(expr) => write!(f, "{expr}"),
+            Condensate::Identity(left, right) => write!(f, "{left} = {right}"),
+        }
     }
 }
 
@@ -309,7 +396,7 @@ impl<'a, T: FieldElement> TryFrom<Value<'a, T, Self>> for Condensate<T> {
 
     fn try_from(value: Value<'a, T, Self>) -> Result<Self, Self::Error> {
         match value {
-            Value::Number(n) => Ok(Self { expr: n.into() }),
+            Value::Number(n) => Ok(Condensate::Expression(n.into())),
             Value::Custom(v) => Ok(v),
             value => Err(EvalError::TypeError(format!(
                 "Expected algebraic expression, got {value}"
@@ -320,6 +407,6 @@ impl<'a, T: FieldElement> TryFrom<Value<'a, T, Self>> for Condensate<T> {
 
 impl<'a, T: FieldElement> From<AlgebraicExpression<T>> for Value<'a, T, Condensate<T>> {
     fn from(expr: AlgebraicExpression<T>) -> Self {
-        Value::Custom(Condensate { expr })
+        Value::Custom(Condensate::Expression(expr))
     }
 }

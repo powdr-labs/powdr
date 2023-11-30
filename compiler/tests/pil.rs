@@ -253,3 +253,29 @@ fn test_witness_via_let() {
 fn conditional_fixed_constraints() {
     verify_pil("conditional_fixed_constraints.pil", None);
 }
+
+#[test]
+fn arith_improved() {
+    let f = "arith_improved.pil";
+    pil_analyzer::analyze::<GoldilocksField>(
+        &Path::new(&format!(
+            "{}/../test_data/pil/{f}",
+            env!("CARGO_MANIFEST_DIR")
+        ))
+        .canonicalize()
+        .unwrap(),
+    );
+}
+
+mod book {
+    use super::*;
+    use test_log::test;
+
+    fn run_book_test(file: &str) {
+        verify_pil(file, None);
+        gen_halo2_proof(file, Default::default());
+        gen_estark_proof(file, Default::default());
+    }
+
+    include!(concat!(env!("OUT_DIR"), "/pil_book_tests.rs"));
+}
