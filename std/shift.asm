@@ -7,7 +7,7 @@ machine Shift(latch, operation_id) {
 
     col witness operation_id;
 
-    col fixed latch(i) { is_zero((i % 4) - 3) };
+    col fixed latch(i) { (i % 4) == 3 };
     col fixed FACTOR_ROW(i) { (i + 1) % 4 };
     col fixed FACTOR(i) { 1 << (((i + 1) % 4) * 8) };
 

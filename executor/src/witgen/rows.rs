@@ -113,7 +113,7 @@ impl<T: FieldElement> Row<'_, T> {
     /// Builds a string representing the current row
     pub fn render(&self, title: &str, include_unknown: bool, cols: &HashSet<PolyID>) -> String {
         format!(
-            "{}:\n{}",
+            "{}:\n{}\n---------------------",
             title,
             self.render_values(include_unknown, Some(cols))
         )
@@ -339,6 +339,16 @@ impl<'row, 'a, T: FieldElement> RowPair<'row, 'a, T> {
             self,
         ))
         .evaluate(expr)
+    }
+
+    /// Returns Ok(true) if the given row number references the "next" row,
+    /// Ok(false) if it references the "current" row and Err if it is out of range.
+    pub fn is_row_number_next(&self, row_number: DegreeType) -> Result<bool, ()> {
+        match row_number - self.current_row_index {
+            0 => Ok(false),
+            1 => Ok(true),
+            _ => Err(()),
+        }
     }
 }
 

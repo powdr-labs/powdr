@@ -19,10 +19,6 @@ pub fn analyze<T: FieldElement>(
     log::debug!("Run batch analysis step");
     let file = batcher::batch(file);
     monitor.push(&file);
-    // remove all asm (except external instructions)
-    log::debug!("Run asm_to_pil analysis step");
-    let file = asm_to_pil::compile(file);
-    monitor.push(&file);
 
     Ok(file)
 }

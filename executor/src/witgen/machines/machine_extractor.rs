@@ -8,6 +8,7 @@ use super::FixedData;
 use super::KnownMachine;
 use crate::witgen::generator::Generator;
 use crate::witgen::global_constraints::GlobalConstraints;
+use crate::witgen::machines::write_once_memory::WriteOnceMemory;
 use ast::analyzed::{AlgebraicExpression as Expression, Identity, IdentityKind, PolyID};
 use ast::parsed::visitor::ExpressionVisitable;
 use ast::parsed::SelectedExpressions;
@@ -107,6 +108,11 @@ pub fn split_out_machines<'a, T: FieldElement>(
         {
             log::info!("Detected machine: memory");
             machines.push(KnownMachine::DoubleSortedWitnesses(machine));
+        } else if let Some(machine) =
+            WriteOnceMemory::try_new(fixed, &connecting_identities, &machine_identities)
+        {
+            log::info!("Detected machine: write-once memory");
+            machines.push(KnownMachine::WriteOnceMemory(machine));
         } else if let Some(machine) = BlockMachine::try_new(
             fixed,
             &connecting_identities,

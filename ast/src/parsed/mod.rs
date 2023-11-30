@@ -47,14 +47,7 @@ pub enum PilStatement<T> {
     ),
     ConnectIdentity(usize, Vec<Expression<T>>, Vec<Expression<T>>),
     ConstantDefinition(usize, String, Expression<T>),
-    MacroDefinition(
-        usize,
-        String,
-        Vec<String>,
-        Vec<PilStatement<T>>,
-        Option<Expression<T>>,
-    ),
-    FunctionCall(usize, String, Vec<Expression<T>>),
+    Expression(usize, Expression<T>),
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
@@ -91,6 +84,7 @@ pub enum Expression<T, Ref = NamespacedPolynomialReference> {
     FunctionCall(FunctionCall<T, Ref>),
     FreeInput(Box<Expression<T, Ref>>),
     MatchExpression(Box<Expression<T, Ref>>, Vec<MatchArm<T, Ref>>),
+    IfExpression(IfExpression<T, Ref>),
 }
 
 impl<T, Ref> Expression<T, Ref> {
@@ -231,7 +225,7 @@ pub struct IndexAccess<T, Ref = NamespacedPolynomialReference> {
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub struct FunctionCall<T, Ref = NamespacedPolynomialReference> {
-    pub id: String,
+    pub function: Box<Expression<T, Ref>>,
     pub arguments: Vec<Expression<T, Ref>>,
 }
 
@@ -248,16 +242,21 @@ pub enum MatchPattern<T, Ref = NamespacedPolynomialReference> {
     Pattern(Expression<T, Ref>),
 }
 
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
+pub struct IfExpression<T, Ref = NamespacedPolynomialReference> {
+    pub condition: Box<Expression<T, Ref>>,
+    pub body: Box<Expression<T, Ref>>,
+    pub else_body: Box<Expression<T, Ref>>,
+}
+
 /// The definition of a function (excluding its name):
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub enum FunctionDefinition<T> {
-    /// Parameter-value-mapping.
-    Mapping(Vec<String>, Expression<T>),
     /// Array expression.
     Array(ArrayExpression<T>),
     /// Prover query.
     Query(Vec<String>, Expression<T>),
-    /// Expression, for intermediate polynomials
+    /// Generic expression
     Expression(Expression<T>),
 }
 

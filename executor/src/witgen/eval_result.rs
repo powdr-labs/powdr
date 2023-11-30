@@ -160,8 +160,10 @@ pub enum EvalError<T: FieldElement> {
     ConflictingRangeConstraints,
     /// A division pattern was recognized but the solution does not satisfy the range constraints.
     InvalidDivision,
-    // Fixed lookup failed
+    /// Fixed lookup failed
     FixedLookupFailed(Vec<(String, T)>),
+    /// Error getting information from the prover.
+    ProverQueryError(String),
     Generic(String),
     Multiple(Vec<EvalError<T>>),
 }
@@ -215,6 +217,9 @@ impl<T: FieldElement> fmt::Display for EvalError<T> {
                     f,
                     "Lookup into fixed columns failed: no match for query: {query}"
                 )
+            }
+            EvalError::ProverQueryError(s) => {
+                write!(f, "Error getting external information from the prover: {s}")
             }
             EvalError::Generic(s) => write!(f, "{s}"),
         }

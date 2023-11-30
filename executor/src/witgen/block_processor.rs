@@ -71,7 +71,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> BlockProcessor<'a, 'b, 'c
                     outer_assignments.extend(new_outer_assignments);
                     progress
                 }
-                Action::ProverQueries => self.processor.process_queries(row_index),
+                Action::ProverQueries => self.processor.process_queries(row_index)?,
             };
             sequence_iterator.report_progress(progress);
         }
@@ -108,7 +108,7 @@ mod tests {
             machines::FixedLookup,
             rows::RowFactory,
             sequence_iterator::{DefaultSequenceIterator, ProcessingSequenceIterator},
-            FixedData, MutableState, QueryCallback,
+            unused_query_callback, FixedData, MutableState, QueryCallback,
         },
     };
 
@@ -185,10 +185,9 @@ mod tests {
     }
 
     fn solve_and_assert<T: FieldElement>(src: &str, asserted_values: &[(usize, &str, u64)]) {
-        let query_callback = |_: &str| -> Option<T> { None };
         do_with_processor(
             src,
-            query_callback,
+            unused_query_callback(),
             |mut processor, poly_ids, degree, num_identities| {
                 let mut sequence_iterator = ProcessingSequenceIterator::Default(
                     DefaultSequenceIterator::new(degree as usize - 2, num_identities, None),

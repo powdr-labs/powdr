@@ -2,23 +2,19 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use analysis::MacroExpander;
-
-use ast::parsed::visitor::ExpressionVisitable;
 use ast::parsed::{
-    self, ArrayExpression, ArrayLiteral, FunctionDefinition, LambdaExpression, MatchArm,
-    MatchPattern, PilStatement, PolynomialName, SelectedExpressions,
+    self, FunctionDefinition, LambdaExpression, PilStatement, PolynomialName, SelectedExpressions,
 };
 use number::{DegreeType, FieldElement};
 
 use ast::analyzed::{
-    AlgebraicExpression, Analyzed, Expression, FunctionValueDefinition, Identity, IdentityKind,
-    PolynomialReference, PolynomialType, PublicDeclaration, Reference, RepeatedArray, SourceRef,
-    StatementIdentifier, Symbol, SymbolKind,
+    Analyzed, Expression, FunctionValueDefinition, Identity, IdentityKind, PolynomialType,
+    PublicDeclaration, SourceRef, StatementIdentifier, Symbol, SymbolKind,
 };
 
-use crate::condenser;
-use crate::evaluator::Evaluator;
+use crate::evaluator::EvalError;
+use crate::expression_processor::ReferenceResolver;
+use crate::{condenser, evaluator, expression_processor::ExpressionProcessor};
 
 pub fn process_pil_file<T: FieldElement>(path: &Path) -> Analyzed<T> {
     let mut analyzer = PILAnalyzer::new();
@@ -47,7 +43,6 @@ struct PILAnalyzer<T> {
     current_file: PathBuf,
     symbol_counters: BTreeMap<SymbolKind, u64>,
     identity_counter: HashMap<IdentityKind, u64>,
-    macro_expander: MacroExpander<T>,
 }
 
 impl<T: FieldElement> PILAnalyzer<T> {
@@ -96,9 +91,7 @@ impl<T: FieldElement> PILAnalyzer<T> {
             });
 
         for statement in pil_file.0 {
-            for statement in self.macro_expander.expand_macros(vec![statement]) {
-                self.handle_statement(statement);
-            }
+            self.handle_statement(statement);
         }
 
         self.current_file = old_current_file;
@@ -171,7 +164,7 @@ impl<T: FieldElement> PILAnalyzer<T> {
             PilStatement::ConstantDefinition(start, name, value) => {
                 // Check it is a constant.
                 if let Err(err) = self.evaluate_expression(value.clone()) {
-                    panic!("Could not evaluate constant: {name} = {value}: {err}");
+                    panic!("Could not evaluate constant: {name} = {value}: {err:?}");
                 }
                 self.handle_symbol_definition(
                     self.to_source_ref(start),
@@ -183,9 +176,6 @@ impl<T: FieldElement> PILAnalyzer<T> {
             }
             PilStatement::LetStatement(start, name, value) => {
                 self.handle_generic_definition(start, name, value)
-            }
-            PilStatement::MacroDefinition(_, _, _, _, _) => {
-                panic!("Macros should have been eliminated.");
             }
             _ => {
                 self.handle_identity_statement(statement);
@@ -223,44 +213,31 @@ impl<T: FieldElement> PILAnalyzer<T> {
                 );
             }
             Some(value) => {
-                match value {
-                    parsed::Expression::LambdaExpression(parsed::LambdaExpression {
-                        params,
-                        body,
-                    }) if params.len() == 1 => {
-                        // Assigned value is a lambda expression with a single parameter => treat it as a fixed column.
-                        self.handle_symbol_definition(
-                            self.to_source_ref(start),
-                            name,
-                            None,
-                            SymbolKind::Poly(PolynomialType::Constant),
-                            Some(FunctionDefinition::Mapping(params, *body)),
-                        );
-                    }
-                    _ => {
-                        let symbol_kind = if self.evaluate_expression(value.clone()).is_ok() {
-                            // Value evaluates to a constant number => treat it as a constant
-                            SymbolKind::Constant()
-                        } else {
-                            // Otherwise, treat it as "generic definition"
-                            SymbolKind::Other()
-                        };
-                        self.handle_symbol_definition(
-                            self.to_source_ref(start),
-                            name,
-                            None,
-                            symbol_kind,
-                            Some(FunctionDefinition::Expression(value)),
-                        );
-                    }
-                }
+                let symbol_kind = if matches!(&value, parsed::Expression::LambdaExpression(lambda) if lambda.params.len() == 1)
+                {
+                    SymbolKind::Poly(PolynomialType::Constant)
+                } else if self.evaluate_expression(value.clone()).is_ok() {
+                    // Value evaluates to a constant number => treat it as a constant
+                    SymbolKind::Constant()
+                } else {
+                    // Otherwise, treat it as "generic definition"
+                    SymbolKind::Other()
+                };
+                self.handle_symbol_definition(
+                    self.to_source_ref(start),
+                    name,
+                    None,
+                    symbol_kind,
+                    Some(FunctionDefinition::Expression(value)),
+                );
             }
         }
     }
 
     fn handle_identity_statement(&mut self, statement: PilStatement<T>) {
         let (start, kind, left, right) = match statement {
-            PilStatement::PolynomialIdentity(start, expression) => (
+            PilStatement::PolynomialIdentity(start, expression)
+            | PilStatement::Expression(start, expression) => (
                 start,
                 IdentityKind::Polynomial,
                 SelectedExpressions {
@@ -272,25 +249,28 @@ impl<T: FieldElement> PILAnalyzer<T> {
             PilStatement::PlookupIdentity(start, key, haystack) => (
                 start,
                 IdentityKind::Plookup,
-                ExpressionProcessor::new(self).process_selected_expression(key),
-                ExpressionProcessor::new(self).process_selected_expression(haystack),
+                self.expression_processor().process_selected_expression(key),
+                self.expression_processor()
+                    .process_selected_expression(haystack),
             ),
             PilStatement::PermutationIdentity(start, left, right) => (
                 start,
                 IdentityKind::Permutation,
-                ExpressionProcessor::new(self).process_selected_expression(left),
-                ExpressionProcessor::new(self).process_selected_expression(right),
+                self.expression_processor()
+                    .process_selected_expression(left),
+                self.expression_processor()
+                    .process_selected_expression(right),
             ),
             PilStatement::ConnectIdentity(start, left, right) => (
                 start,
                 IdentityKind::Connect,
                 SelectedExpressions {
                     selector: None,
-                    expressions: ExpressionProcessor::new(self).process_expressions(left),
+                    expressions: self.expression_processor().process_expressions(left),
                 },
                 SelectedExpressions {
                     selector: None,
-                    expressions: ExpressionProcessor::new(self).process_expressions(right),
+                    expressions: self.expression_processor().process_expressions(right),
                 },
             ),
             // TODO at some point, these should all be caught by the type checker.
@@ -366,53 +346,35 @@ impl<T: FieldElement> PILAnalyzer<T> {
         let counter = self.symbol_counters.get_mut(&symbol_kind).unwrap();
         let id = *counter;
         *counter += length.unwrap_or(1);
-        let absolute_name = if symbol_kind == SymbolKind::Constant() {
-            // Constants are not namespaced.
-            name.to_owned()
-        } else {
-            self.prepend_current_namespace(&name)
-        };
+        let name = PILResolver(self).resolve_decl(&name);
         let symbol = Symbol {
             id,
             source,
-            absolute_name,
-            degree: self.polynomial_degree.unwrap_or_else(|| {
-                assert!(matches!(symbol_kind, SymbolKind::Constant()));
-                0
-            }),
+            absolute_name: name.clone(),
             kind: symbol_kind,
             length,
         };
-        let name = symbol.absolute_name.clone();
 
         let value = value.map(|v| match v {
             FunctionDefinition::Expression(expr) => {
                 assert!(!have_array_size);
-                assert!(
-                    symbol_kind == SymbolKind::Other()
-                        || symbol_kind == SymbolKind::Constant()
-                        || symbol_kind == SymbolKind::Poly(PolynomialType::Intermediate)
-                );
+                assert!(symbol_kind != SymbolKind::Poly(PolynomialType::Committed));
                 FunctionValueDefinition::Expression(self.process_expression(expr))
-            }
-            FunctionDefinition::Mapping(params, expr) => {
-                assert!(!have_array_size);
-                assert!(symbol_kind == SymbolKind::Poly(PolynomialType::Constant));
-                FunctionValueDefinition::Mapping(
-                    ExpressionProcessor::new(self).process_function(&params, expr),
-                )
             }
             FunctionDefinition::Query(params, expr) => {
                 assert!(!have_array_size);
                 assert_eq!(symbol_kind, SymbolKind::Poly(PolynomialType::Committed));
-                FunctionValueDefinition::Query(
-                    ExpressionProcessor::new(self).process_function(&params, expr),
-                )
+                let body = Box::new(self.expression_processor().process_function(&params, expr));
+                FunctionValueDefinition::Query(Expression::LambdaExpression(LambdaExpression {
+                    params,
+                    body,
+                }))
             }
             FunctionDefinition::Array(value) => {
                 let size = value.solve(self.polynomial_degree.unwrap());
-                let expression =
-                    ExpressionProcessor::new(self).process_array_expression(value, size);
+                let expression = self
+                    .expression_processor()
+                    .process_array_expression(value, size);
                 assert_eq!(
                     expression.iter().map(|e| e.size()).sum::<DegreeType>(),
                     self.polynomial_degree.unwrap()
@@ -439,8 +401,9 @@ impl<T: FieldElement> PILAnalyzer<T> {
         index: parsed::Expression<T>,
     ) {
         let id = self.public_declarations.len() as u64;
-        let polynomial =
-            ExpressionProcessor::new(self).process_namespaced_polynomial_reference(poly);
+        let polynomial = self
+            .expression_processor()
+            .process_namespaced_polynomial_reference(poly);
         let array_index = array_index.map(|i| {
             let index = self.evaluate_expression(i).unwrap().to_degree();
             assert!(index <= usize::MAX as u64);
@@ -468,273 +431,44 @@ impl<T: FieldElement> PILAnalyzer<T> {
         id
     }
 
-    fn prepend_current_namespace(&self, name: &str) -> String {
-        format!("{}.{name}", self.namespace)
+    fn evaluate_expression(&self, expr: ::ast::parsed::Expression<T>) -> Result<T, EvalError> {
+        evaluator::evaluate_expression(&self.process_expression(expr), &self.definitions)?
+            .try_to_number()
     }
 
-    pub fn namespaced_ref_to_absolute(&self, namespace: &Option<String>, name: &str) -> String {
-        if name.starts_with('%') || self.definitions.contains_key(&name.to_string()) {
-            assert!(namespace.is_none());
-            // Constants are not namespaced
-            name.to_string()
-        } else {
-            format!("{}.{name}", namespace.as_ref().unwrap_or(&self.namespace))
-        }
-    }
-
-    fn evaluate_expression(&self, expr: ::ast::parsed::Expression<T>) -> Result<T, String> {
-        Evaluator {
-            definitions: &self.definitions,
-            function_cache: &Default::default(),
-            variables: &[],
-        }
-        .evaluate(&self.process_expression(expr))
+    fn expression_processor(&self) -> ExpressionProcessor<PILResolver<T>> {
+        ExpressionProcessor::new(PILResolver(self))
     }
 
     fn process_expression(&self, expr: ::ast::parsed::Expression<T>) -> Expression<T> {
-        ExpressionProcessor::new(self).process_expression(expr)
+        self.expression_processor().process_expression(expr)
     }
 }
 
-/// The ExpressionProcessor turns parsed expressions into analyzed expressions.
-/// Its main job is to resolve references:
-/// It turns simple references into fully namespaced references and resolves local function variables.
-/// It also evaluates expressions that are required to be compile-time constant.
-struct ExpressionProcessor<'a, T> {
-    analyzer: &'a PILAnalyzer<T>,
-    local_variables: HashMap<String, u64>,
-}
+struct PILResolver<'a, T>(&'a PILAnalyzer<T>);
 
-impl<'a, T: FieldElement> ExpressionProcessor<'a, T> {
-    fn new(analyzer: &'a PILAnalyzer<T>) -> Self {
-        Self {
-            analyzer,
-            local_variables: Default::default(),
+impl<'a, T: FieldElement> ReferenceResolver for PILResolver<'a, T> {
+    fn resolve_decl(&self, name: &str) -> String {
+        if name.starts_with('%') {
+            // Constants are not namespaced
+            name.to_string()
+        } else {
+            format!("{}.{name}", self.0.namespace)
         }
     }
 
-    pub fn process_selected_expression(
-        &mut self,
-        expr: SelectedExpressions<parsed::Expression<T>>,
-    ) -> SelectedExpressions<Expression<T>> {
-        SelectedExpressions {
-            selector: expr.selector.map(|e| self.process_expression(e)),
-            expressions: self.process_expressions(expr.expressions),
+    fn resolve_ref(&self, namespace: &Option<String>, name: &str) -> String {
+        if name.starts_with('%') || self.0.definitions.contains_key(&name.to_string()) {
+            assert!(namespace.is_none());
+            // Constants are not namespaced
+            name.to_string()
+        } else if namespace.is_none() && self.0.definitions.contains_key(&format!("Global.{name}"))
+        {
+            format!("Global.{name}")
+        } else {
+            format!("{}.{name}", namespace.as_ref().unwrap_or(&self.0.namespace))
         }
     }
-
-    pub fn process_array_expression(
-        &mut self,
-        array_expression: ::ast::parsed::ArrayExpression<T>,
-        size: DegreeType,
-    ) -> Vec<RepeatedArray<T>> {
-        match array_expression {
-            ArrayExpression::Value(expressions) => {
-                let values = self.process_expressions(expressions);
-                let size = values.len() as DegreeType;
-                vec![RepeatedArray::new(values, size)]
-            }
-            ArrayExpression::RepeatedValue(expressions) => {
-                if size == 0 {
-                    vec![]
-                } else {
-                    vec![RepeatedArray::new(
-                        self.process_expressions(expressions),
-                        size,
-                    )]
-                }
-            }
-            ArrayExpression::Concat(left, right) => self
-                .process_array_expression(*left, size)
-                .into_iter()
-                .chain(self.process_array_expression(*right, size))
-                .collect(),
-        }
-    }
-
-    pub fn process_expressions(&mut self, exprs: Vec<parsed::Expression<T>>) -> Vec<Expression<T>> {
-        exprs
-            .into_iter()
-            .map(|e| self.process_expression(e))
-            .collect()
-    }
-
-    pub fn process_expression(&mut self, expr: parsed::Expression<T>) -> Expression<T> {
-        use parsed::Expression as PExpression;
-        match expr {
-            PExpression::Reference(poly) => {
-                if poly.namespace.is_none() && self.local_variables.contains_key(&poly.name) {
-                    let id = self.local_variables[&poly.name];
-                    Expression::Reference(Reference::LocalVar(id, poly.name.to_string()))
-                } else {
-                    Expression::Reference(Reference::Poly(
-                        self.process_namespaced_polynomial_reference(poly),
-                    ))
-                }
-            }
-            PExpression::PublicReference(name) => Expression::PublicReference(name),
-            PExpression::Number(n) => Expression::Number(n),
-            PExpression::String(value) => Expression::String(value),
-            PExpression::Tuple(items) => Expression::Tuple(self.process_expressions(items)),
-            PExpression::ArrayLiteral(ArrayLiteral { items }) => {
-                Expression::ArrayLiteral(ArrayLiteral {
-                    items: self.process_expressions(items),
-                })
-            }
-            PExpression::LambdaExpression(LambdaExpression { params, body }) => {
-                let body = Box::new(self.process_function(&params, *body));
-                Expression::LambdaExpression(LambdaExpression { params, body })
-            }
-            PExpression::BinaryOperation(left, op, right) => Expression::BinaryOperation(
-                Box::new(self.process_expression(*left)),
-                op,
-                Box::new(self.process_expression(*right)),
-            ),
-            PExpression::UnaryOperation(op, value) => {
-                Expression::UnaryOperation(op, Box::new(self.process_expression(*value)))
-            }
-            PExpression::IndexAccess(index_access) => {
-                Expression::IndexAccess(parsed::IndexAccess {
-                    array: Box::new(self.process_expression(*index_access.array)),
-                    index: Box::new(self.process_expression(*index_access.index)),
-                })
-            }
-            PExpression::FunctionCall(c) => Expression::FunctionCall(parsed::FunctionCall {
-                id: self.analyzer.namespaced_ref_to_absolute(&None, &c.id),
-                arguments: self.process_expressions(c.arguments),
-            }),
-            PExpression::MatchExpression(scrutinee, arms) => Expression::MatchExpression(
-                Box::new(self.process_expression(*scrutinee)),
-                arms.into_iter()
-                    .map(|MatchArm { pattern, value }| MatchArm {
-                        pattern: match pattern {
-                            MatchPattern::CatchAll => MatchPattern::CatchAll,
-                            MatchPattern::Pattern(e) => {
-                                MatchPattern::Pattern(self.process_expression(e))
-                            }
-                        },
-                        value: self.process_expression(value),
-                    })
-                    .collect(),
-            ),
-            PExpression::FreeInput(_) => panic!(),
-        }
-    }
-
-    fn process_function(
-        &mut self,
-        params: &[String],
-        expression: ::ast::parsed::Expression<T>,
-    ) -> Expression<T> {
-        let previous_local_vars = std::mem::take(&mut self.local_variables);
-
-        assert!(self.local_variables.is_empty());
-        self.local_variables = params
-            .iter()
-            .enumerate()
-            .map(|(i, p)| (p.clone(), i as u64))
-            .collect();
-        // Re-add the outer local variables if we do not overwrite them
-        // and increase their index by the number of parameters.
-        // TODO re-evaluate if this mechanism makes sense as soon as we properly
-        // support nested functions and closures.
-        for (name, index) in &previous_local_vars {
-            self.local_variables
-                .entry(name.clone())
-                .or_insert(index + params.len() as u64);
-        }
-        let processed_value = self.process_expression(expression);
-        self.local_variables = previous_local_vars;
-        processed_value
-    }
-
-    pub fn process_namespaced_polynomial_reference(
-        &mut self,
-        poly: ::ast::parsed::NamespacedPolynomialReference,
-    ) -> PolynomialReference {
-        let name = self
-            .analyzer
-            .namespaced_ref_to_absolute(&poly.namespace, &poly.name);
-        PolynomialReference {
-            name,
-            poly_id: None,
-        }
-    }
-}
-
-pub fn inline_intermediate_polynomials<T: FieldElement>(
-    analyzed: &Analyzed<T>,
-) -> Vec<Identity<AlgebraicExpression<T>>> {
-    let intermediates = &analyzed
-        .intermediate_polys_in_source_order()
-        .iter()
-        .map(|(symbol, def)| (symbol.id, def))
-        .collect();
-
-    substitute_intermediate(analyzed.identities.clone(), intermediates)
-}
-
-/// Takes identities as values and inlines intermediate polynomials everywhere, returning a vector of the updated identities
-/// TODO: this could return an iterator
-fn substitute_intermediate<T: Copy>(
-    identities: impl IntoIterator<Item = Identity<AlgebraicExpression<T>>>,
-    intermediate_polynomials: &HashMap<u64, &AlgebraicExpression<T>>,
-) -> Vec<Identity<AlgebraicExpression<T>>> {
-    identities
-        .into_iter()
-        .scan(HashMap::default(), |cache, mut identity| {
-            identity.post_visit_expressions_mut(&mut |e| {
-                if let AlgebraicExpression::Reference(poly) = e {
-                    match poly.poly_id.ptype {
-                        PolynomialType::Committed => {}
-                        PolynomialType::Constant => {}
-                        PolynomialType::Intermediate => {
-                            // recursively inline intermediate polynomials, updating the cache
-                            *e = inlined_expression_from_intermediate_poly_id(
-                                poly.poly_id.id,
-                                intermediate_polynomials,
-                                cache,
-                            );
-                        }
-                    }
-                }
-            });
-            Some(identity)
-        })
-        .collect()
-}
-
-/// Recursively inlines intermediate polynomials inside an expression and returns the new expression
-/// This uses a cache to avoid resolving an intermediate polynomial twice
-fn inlined_expression_from_intermediate_poly_id<T: Copy>(
-    poly_id: u64,
-    intermediate_polynomials: &HashMap<u64, &AlgebraicExpression<T>>,
-    cache: &mut HashMap<u64, AlgebraicExpression<T>>,
-) -> AlgebraicExpression<T> {
-    if let Some(e) = cache.get(&poly_id) {
-        return e.clone();
-    }
-    let mut expr = intermediate_polynomials[&poly_id].clone();
-    expr.post_visit_expressions_mut(&mut |e| {
-        if let AlgebraicExpression::Reference(r) = e {
-            match r.poly_id.ptype {
-                PolynomialType::Committed => {}
-                PolynomialType::Constant => {}
-                PolynomialType::Intermediate => {
-                    // read from the cache, if no cache hit, compute the inlined expression
-                    *e = cache.get(&r.poly_id.id).cloned().unwrap_or_else(|| {
-                        inlined_expression_from_intermediate_poly_id(
-                            r.poly_id.id,
-                            intermediate_polynomials,
-                            cache,
-                        )
-                    });
-                }
-            }
-        }
-    });
-    cache.insert(poly_id, expr.clone());
-    expr
 }
 
 #[cfg(test)]
@@ -782,7 +516,7 @@ namespace T(65536);
     col witness reg_write_X_A;
     T.X = ((((T.read_X_A * T.A) + (T.read_X_CNT * T.CNT)) + T.X_const) + (T.X_read_free * T.X_free_value));
     T.A' = (((T.first_step' * 0) + (T.reg_write_X_A * T.X)) + ((1 - (T.first_step' + T.reg_write_X_A)) * T.A));
-    col witness X_free_value(i) query match T.pc { 0 => ("input", 1), 3 => ("input", (T.CNT + 1)), 7 => ("input", 0), };
+    col witness X_free_value(i) query match T.pc { 0 => ("input", 1), 3 => ("input", (T.CNT(i) + 1)), 7 => ("input", 0), };
     col fixed p_X_const = [0, 0, 0, 0, 0, 0, 0, 0, 0] + [0]*;
     col fixed p_X_read_free = [1, 0, 0, 1, 0, 0, 0, -1, 0] + [0]*;
     col fixed p_read_X_A = [0, 0, 0, 1, 0, 0, 0, 1, 1] + [0]*;
@@ -846,8 +580,8 @@ namespace N(%r);
 namespace N(65536);
     col witness x;
     constant z = 2;
-    col fixed t(i) { (i + z) };
-    let other = [1, z];
+    col fixed t(i) { (i + N.z) };
+    let other = [1, N.z];
     let other_fun = |i, j| ((i + 7), |k| (k - i));
 "#;
         let formatted = process_pil_file_contents::<GoldilocksField>(input).to_string();
@@ -867,7 +601,7 @@ namespace N(65536);
     }
 
     #[test]
-    #[should_panic = "Arrays cannot be used as a whole in this context"]
+    #[should_panic = "Operator - not supported on types"]
     fn no_direct_array_references() {
         let input = r#"namespace N(16);
     col witness y[3];
@@ -878,7 +612,7 @@ namespace N(65536);
     }
 
     #[test]
-    #[should_panic = "Array access to index 3 for array of length 3"]
+    #[should_panic = "Tried to access element 3 of array of size 3"]
     fn no_out_of_bounds() {
         let input = r#"namespace N(16);
     col witness y[3];
@@ -886,5 +620,97 @@ namespace N(65536);
 "#;
         let formatted = process_pil_file_contents::<GoldilocksField>(input).to_string();
         assert_eq!(formatted, input);
+    }
+
+    #[test]
+    fn namespaced_call() {
+        let input = r#"namespace Assembly(2);
+    col fixed A = [0]*;
+    col fixed C(i) { (Assembly.A((i + 2)) + 3) };
+    col fixed D(i) { Assembly.C((i + 3)) };
+"#;
+        let formatted = process_pil_file_contents::<GoldilocksField>(input).to_string();
+        assert_eq!(formatted, input);
+    }
+
+    #[test]
+    fn if_expr() {
+        let input = r#"namespace Assembly(2);
+    col fixed A = [0]*;
+    col fixed C(i) { if (i < 3) { Assembly.A(i) } else { (i + 9) } };
+    col fixed D(i) { if Assembly.C(i) { 3 } else { 2 } };
+"#;
+        let formatted = process_pil_file_contents::<GoldilocksField>(input).to_string();
+        assert_eq!(formatted, input);
+    }
+
+    #[test]
+    fn symbolic_functions() {
+        let input = r#"namespace N(16);
+    let last_row = 15;
+    let ISLAST = |i| match i { last_row => 1, _ => 0 };
+    let x;
+    let y;
+    let constrain_equal_expr = |A, B| A - B;
+    let on_regular_row = |cond| (1 - ISLAST) * cond;
+    on_regular_row(constrain_equal_expr(x', y)) = 0;
+    on_regular_row(constrain_equal_expr(y', x + y)) = 0;
+    "#;
+        let expected = r#"namespace N(16);
+    constant last_row = 15;
+    col fixed ISLAST(i) { match i { N.last_row => 1, _ => 0, } };
+    col witness x;
+    col witness y;
+    let constrain_equal_expr = |A, B| (A - B);
+    col fixed on_regular_row(cond) { ((1 - N.ISLAST) * cond) };
+    ((1 - N.ISLAST) * (N.x' - N.y)) = 0;
+    ((1 - N.ISLAST) * (N.y' - (N.x + N.y))) = 0;
+"#;
+        let formatted = process_pil_file_contents::<GoldilocksField>(input).to_string();
+        assert_eq!(formatted, expected);
+    }
+
+    #[test]
+    fn next_op_on_param() {
+        let input = r#"namespace N(16);
+    let last_row = 15;
+    let ISLAST = |i| match i { last_row => 1, _ => 0 };
+    let x;
+    let y;
+    let next_is_seven = |t| t' - 7;
+    next_is_seven(y) = 0;
+    "#;
+        let expected = r#"namespace N(16);
+    constant last_row = 15;
+    col fixed ISLAST(i) { match i { N.last_row => 1, _ => 0, } };
+    col witness x;
+    col witness y;
+    col fixed next_is_seven(t) { (t' - 7) };
+    (N.y' - 7) = 0;
+"#;
+        let formatted = process_pil_file_contents::<GoldilocksField>(input).to_string();
+        assert_eq!(formatted, expected);
+    }
+
+    #[test]
+    fn fixed_concrete_and_symbolic() {
+        let input = r#"namespace N(16);
+    let last_row = 15;
+    let ISLAST = |i| match i { last_row => 1, _ => 0, };
+    let x;
+    let y;
+    y - ISLAST(3) = 0;
+    x - ISLAST = 0;
+    "#;
+        let expected = r#"namespace N(16);
+    constant last_row = 15;
+    col fixed ISLAST(i) { match i { N.last_row => 1, _ => 0, } };
+    col witness x;
+    col witness y;
+    (N.y - 0) = 0;
+    (N.x - N.ISLAST) = 0;
+"#;
+        let formatted = process_pil_file_contents::<GoldilocksField>(input).to_string();
+        assert_eq!(formatted, expected);
     }
 }

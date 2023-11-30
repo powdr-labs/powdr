@@ -9,15 +9,8 @@
 constant %N = 2**20;
 
 namespace Global(%N);
-    macro is_nonzero(X) { match X { 0 => 0, _ => 1, } };
-    macro is_zero(X) { 1 - is_nonzero(X) };
-    macro is_equal(A, B) { is_zero(A - B) };
-    macro is_one(X) { is_equal(X, 1) };
-    macro ite(C, A, B) { is_nonzero(C) * A + is_zero(C) * B};
-    macro one_hot(i, index) { ite(is_equal(i, index), 1, 0) };
-
     col fixed L1 = [1] + [0]*;
-    col fixed LLAST(i) { one_hot(i, %N - 1) };
+    col fixed LLAST(i) { i == %N - 1 };
     col fixed BYTE(i) { i & 0xff };
     col fixed BYTE2(i) { i & 0xffff };
     col fixed BYTE_2A(i) { BYTE2(i) >> 8 };

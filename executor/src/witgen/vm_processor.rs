@@ -265,7 +265,10 @@ impl<'a, T: FieldElement> VmProcessor<'a, T> {
         row_index: DegreeType,
         mutable_state: &mut MutableState<'a, '_, T, Q>,
     ) -> Constraints<&'a AlgebraicReference, T> {
-        log::trace!("Row: {}", row_index + self.row_offset);
+        log::trace!(
+            "===== Starting to process row: {}",
+            row_index + self.row_offset
+        );
 
         log::trace!("  Going over all identities until no more progress is made");
         // First, go over identities that don't reference the next row,
@@ -319,7 +322,10 @@ impl<'a, T: FieldElement> VmProcessor<'a, T> {
         log::trace!(
             "{}",
             self.row(row_index).render(
-                &format!("===== Row {}", row_index as DegreeType + self.row_offset),
+                &format!(
+                    "===== Summary for row {}",
+                    row_index as DegreeType + self.row_offset
+                ),
                 true,
                 &self.witnesses
             )
@@ -367,7 +373,11 @@ impl<'a, T: FieldElement> VmProcessor<'a, T> {
             );
             for poly_id in self.fixed_data.witness_cols.keys() {
                 if self.is_relevant_witness[&poly_id] {
-                    updates.combine(query_processor.process_query(&row_pair, &poly_id));
+                    updates.combine(
+                        query_processor
+                            .process_query(&row_pair, &poly_id)
+                            .map_err(|e| vec![e])?,
+                    );
                 }
             }
             progress |= self.apply_updates(row_index, &updates, || "queries".to_string());
@@ -575,13 +585,19 @@ impl<'a, T: FieldElement> VmProcessor<'a, T> {
         log::debug!("Some identities where not satisfiable after the following values were uniquely determined (known nonzero first, then zero, unknown omitted):");
         log::debug!(
             "{}",
-            self.row(row_index)
-                .render("Current Row", false, &self.witnesses)
+            self.row(row_index).render(
+                &format!("Current row ({row_index})"),
+                false,
+                &self.witnesses
+            )
         );
         log::debug!(
             "{}",
-            self.row(row_index + 1)
-                .render("Next Row", false, &self.witnesses)
+            self.row(row_index + 1).render(
+                &format!("Next row ({})", row_index + 1),
+                false,
+                &self.witnesses
+            )
         );
         log::debug!("Set RUST_LOG=trace to understand why these values were chosen.");
         log::debug!(
@@ -607,13 +623,19 @@ impl<'a, T: FieldElement> VmProcessor<'a, T> {
         log::debug!("Some columns could not be determined, but setting them to zero does not satisfy the constraints. This typically means that the system is underconstrained!");
         log::debug!(
             "{}",
-            self.row(row_index)
-                .render("Current Row", true, &self.witnesses)
+            self.row(row_index).render(
+                &format!("Current row ({row_index})"),
+                true,
+                &self.witnesses
+            )
         );
         log::debug!(
             "{}",
-            self.row(row_index)
-                .render("Next Row", true, &self.witnesses)
+            self.row(row_index + 1).render(
+                &format!("Next row ({})", row_index + 1),
+                true,
+                &self.witnesses
+            )
         );
         log::debug!("\nSet RUST_LOG=trace to understand why these values were (not) chosen.");
         log::debug!(

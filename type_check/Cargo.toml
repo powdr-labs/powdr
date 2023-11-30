@@ -6,8 +6,8 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-ast = { version = "0.1.0", path = "../ast" }
-number = { version = "0.1.0", path = "../number" }
+ast = { path = "../ast" }
+number = { path = "../number" }
 
 [dev-dependencies]
 importer = { path = "../importer" }

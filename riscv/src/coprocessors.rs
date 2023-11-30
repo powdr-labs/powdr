@@ -201,13 +201,16 @@ impl CoProcessors {
 }
 
 fn poseidon_gl_call() -> String {
+    // The x10 register is RISCV's a0 register, which has the first function argument in function
+    // calls.  The poseidon coprocessor has a single argument, the memory address of the 12 field
+    // element input array, that is, a pointer to the first element.  Since the memory offset is
+    // chosen by LLVM, we assume it is properly aligned.  The accesses to all elements are computed
+    // below, using the offset above as base.  Therefore these should also be aligned.
     let decoding = |i| {
         format!(
             r#"
-        addr <=X= {} + x10;
-        P{i} <== mload();
-        addr <=X= {} + x10;
-        tmp1 <== mload();
+        P{i}, tmp2 <== mload({} + x10);
+        tmp1, tmp2 <== mload({} + x10);
         P{i} <=X= P{i} + tmp1 * 2**32;
     "#,
             i * 8,
@@ -219,10 +222,8 @@ fn poseidon_gl_call() -> String {
         format!(
             r#"
         tmp1, tmp2 <== split_gl(P{i});
-        addr <=X= {} + x10;
-        mstore tmp1;
-        addr <=X= {} + x10;
-        mstore tmp2;
+        mstore {} + x10, tmp1;
+        mstore {} + x10, tmp2;
     "#,
             i * 8,
             i * 8 + 4

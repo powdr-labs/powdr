@@ -86,9 +86,9 @@ impl<T> ExpressionVisitable<Expression<T>> for FunctionValueDefinition<T> {
         F: FnMut(&mut Expression<T>) -> ControlFlow<B>,
     {
         match self {
-            FunctionValueDefinition::Mapping(e)
-            | FunctionValueDefinition::Query(e)
-            | FunctionValueDefinition::Expression(e) => e.visit_expressions_mut(f, o),
+            FunctionValueDefinition::Query(e) | FunctionValueDefinition::Expression(e) => {
+                e.visit_expressions_mut(f, o)
+            }
             FunctionValueDefinition::Array(array) => array
                 .iter_mut()
                 .flat_map(|a| a.pattern.iter_mut())
@@ -101,9 +101,9 @@ impl<T> ExpressionVisitable<Expression<T>> for FunctionValueDefinition<T> {
         F: FnMut(&Expression<T>) -> ControlFlow<B>,
     {
         match self {
-            FunctionValueDefinition::Mapping(e)
-            | FunctionValueDefinition::Query(e)
-            | FunctionValueDefinition::Expression(e) => e.visit_expressions(f, o),
+            FunctionValueDefinition::Query(e) | FunctionValueDefinition::Expression(e) => {
+                e.visit_expressions(f, o)
+            }
             FunctionValueDefinition::Array(array) => array
                 .iter()
                 .flat_map(|a| a.pattern().iter())

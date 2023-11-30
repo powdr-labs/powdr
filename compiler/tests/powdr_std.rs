@@ -11,7 +11,7 @@ fn verify_asm<T: FieldElement>(file_name: &str, inputs: Vec<T>) {
 
     let contents = fs::read_to_string(&file_name).unwrap();
 
-    verify_asm_string(&file_name, &contents, inputs)
+    verify_asm_string(&file_name, &contents, inputs, vec![])
 }
 
 fn gen_estark_proof(file_name: &str, inputs: Vec<GoldilocksField>) {

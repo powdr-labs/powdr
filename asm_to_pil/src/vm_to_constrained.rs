@@ -1,6 +1,9 @@
 //! Compilation from powdr assembly to PIL
 
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::{
+    collections::{BTreeMap, BTreeSet, HashMap},
+    convert::Infallible,
+};
 
 use ast::{
     asm_analysis::{
@@ -11,9 +14,11 @@ use ast::{
     parsed::{
         asm::InstructionBody,
         build::{direct_reference, next_reference},
+        folder::ExpressionFolder,
         visitor::ExpressionVisitable,
-        ArrayExpression, BinaryOperator, Expression, FunctionDefinition, MatchArm, MatchPattern,
-        PilStatement, PolynomialName, SelectedExpressions, UnaryOperator,
+        ArrayExpression, BinaryOperator, Expression, FunctionCall, FunctionDefinition, MatchArm,
+        MatchPattern, NamespacedPolynomialReference, PilStatement, PolynomialName,
+        SelectedExpressions, UnaryOperator,
     },
 };
 
@@ -236,7 +241,7 @@ impl<T: FieldElement> ASMPILConverter<T> {
 
                 match *rhs {
                     Expression::FunctionCall(c) => {
-                        self.handle_functional_instruction(lhs_with_reg, c.id, c.arguments)
+                        self.handle_functional_instruction(lhs_with_reg, *c.function, c.arguments)
                     }
                     _ => self.handle_non_functional_assignment(start, lhs_with_reg, *rhs),
                 }
@@ -320,16 +325,22 @@ impl<T: FieldElement> ASMPILConverter<T> {
             .inputs
             .params
             .into_iter()
-            .map(|param| match param.ty {
-                Some(ty) if ty == "label" => Input::Literal(param.name, LiteralKind::Label),
-                Some(ty) if ty == "signed" => {
-                    Input::Literal(param.name, LiteralKind::SignedConstant)
+            .map(|param| {
+                assert!(
+                    param.index.is_none(),
+                    "Cannot use array elements for instruction parameters."
+                );
+                match param.ty {
+                    Some(ty) if ty == "label" => Input::Literal(param.name, LiteralKind::Label),
+                    Some(ty) if ty == "signed" => {
+                        Input::Literal(param.name, LiteralKind::SignedConstant)
+                    }
+                    Some(ty) if ty == "unsigned" => {
+                        Input::Literal(param.name, LiteralKind::UnsignedConstant)
+                    }
+                    None => Input::Register(param.name),
+                    Some(_) => unreachable!(),
                 }
-                Some(ty) if ty == "unsigned" => {
-                    Input::Literal(param.name, LiteralKind::UnsignedConstant)
-                }
-                None => Input::Register(param.name),
-                Some(_) => unreachable!(),
             })
             .collect();
 
@@ -343,6 +354,10 @@ impl<T: FieldElement> ASMPILConverter<T> {
                     .params
                     .into_iter()
                     .map(|param| {
+                        assert!(
+                            param.index.is_none(),
+                            "Cannot use array elements for instruction outputs."
+                        );
                         assert!(param.ty.is_none(), "output must be a register");
                         param.name
                     })
@@ -351,8 +366,6 @@ impl<T: FieldElement> ASMPILConverter<T> {
             .unwrap_or_default();
 
         let instruction = Instruction { inputs, outputs };
-
-        // First transform into PIL so that we can apply macro expansion.
 
         let res = match s.instruction.body {
             InstructionBody::Local(mut body) => {
@@ -450,9 +463,16 @@ impl<T: FieldElement> ASMPILConverter<T> {
     fn handle_functional_instruction(
         &mut self,
         lhs_with_regs: Vec<(String, String)>,
-        instr_name: String,
+        function: Expression<T>,
         mut args: Vec<Expression<T>>,
     ) -> CodeLine<T> {
+        let Expression::Reference(NamespacedPolynomialReference {
+            namespace: _,
+            name: instr_name,
+        }) = function
+        else {
+            panic!("Expected instruction name");
+        };
         let instr = &self
             .instructions
             .get(&instr_name)
@@ -575,6 +595,7 @@ impl<T: FieldElement> ASMPILConverter<T> {
             Expression::Tuple(_) => panic!(),
             Expression::ArrayLiteral(_) => panic!(),
             Expression::MatchExpression(_, _) => panic!(),
+            Expression::IfExpression(_) => panic!(),
             Expression::FreeInput(expr) => {
                 vec![(1.into(), AffineExpressionComponent::FreeInput(*expr))]
             }
@@ -762,7 +783,7 @@ impl<T: FieldElement> ASMPILConverter<T> {
                                 .unwrap()
                                 .push(MatchArm {
                                     pattern: MatchPattern::Pattern(T::from(i as u64).into()),
-                                    value: expr.clone(),
+                                    value: NextTransform {}.fold_expression(expr.clone()).unwrap(),
                                 });
                         }
                     }
@@ -804,17 +825,20 @@ impl<T: FieldElement> ASMPILConverter<T> {
             .assignment_register_names()
             .map(|reg| {
                 let free_value = format!("{reg}_free_value");
-                witness_column(
-                    0,
-                    free_value,
-                    Some(FunctionDefinition::Query(
+                let prover_query_arms = free_value_query_arms.remove(reg).unwrap();
+                let prover_query = (!prover_query_arms.is_empty()).then_some({
+                    FunctionDefinition::Query(
                         vec!["i".to_string()],
                         Expression::MatchExpression(
-                            Box::new(direct_reference(pc_name.as_ref().unwrap())),
-                            free_value_query_arms[reg].clone(),
+                            Box::new(Expression::FunctionCall(FunctionCall {
+                                function: Box::new(direct_reference(pc_name.as_ref().unwrap())),
+                                arguments: vec![direct_reference("i")],
+                            })),
+                            prover_query_arms,
                         ),
-                    )),
-                )
+                    )
+                });
+                witness_column(0, free_value, prover_query)
             })
             .collect::<Vec<_>>();
         self.pil.extend(free_value_pil);
@@ -927,6 +951,46 @@ impl<T: FieldElement> ASMPILConverter<T> {
             },
             expr => (counter, expr),
         }
+    }
+}
+
+struct NextTransform;
+
+/// Transforms `x` -> `x(i)` and `x' -> `x(i + 1)`
+impl<T: FieldElement> ExpressionFolder<T, NamespacedPolynomialReference> for NextTransform {
+    type Error = Infallible;
+    fn fold_expression(&mut self, e: Expression<T>) -> Result<Expression<T>, Self::Error> {
+        Ok(match e {
+            Expression::Reference(reference) if &reference.to_string() != "i" => {
+                Expression::FunctionCall(FunctionCall {
+                    function: Box::new(Expression::Reference(reference)),
+                    arguments: vec![direct_reference("i")],
+                })
+            }
+            Expression::UnaryOperation(UnaryOperator::Next, inner) => {
+                if !matches!(inner.as_ref(), Expression::Reference(_)) {
+                    panic!("Can only use ' on symbols directly in free inputs.");
+                };
+                Expression::FunctionCall(FunctionCall {
+                    function: inner,
+                    arguments: vec![direct_reference("i") + Expression::from(T::from(1))],
+                })
+            }
+            _ => self.fold_expression_default(e)?,
+        })
+    }
+    fn fold_function_call(
+        &mut self,
+        FunctionCall {
+            function,
+            arguments,
+        }: FunctionCall<T>,
+    ) -> Result<FunctionCall<T>, Self::Error> {
+        Ok(FunctionCall {
+            // Call fold_expression_default to avoid replacement.
+            function: Box::new(self.fold_expression_default(*function)?),
+            arguments: self.fold_expressions(arguments)?,
+        })
     }
 }
 

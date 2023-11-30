@@ -4,6 +4,14 @@ use std::fs;
 use test_log::test;
 
 fn verify_asm<T: FieldElement>(file_name: &str, inputs: Vec<T>) {
+    verify_asm_with_external_witness(file_name, inputs, vec![]);
+}
+
+fn verify_asm_with_external_witness<T: FieldElement>(
+    file_name: &str,
+    inputs: Vec<T>,
+    external_witness_values: Vec<(&str, Vec<T>)>,
+) {
     let file_name = format!(
         "{}/../test_data/asm/{file_name}",
         env!("CARGO_MANIFEST_DIR")
@@ -11,7 +19,7 @@ fn verify_asm<T: FieldElement>(file_name: &str, inputs: Vec<T>) {
 
     let contents = fs::read_to_string(&file_name).unwrap();
 
-    verify_asm_string(&file_name, &contents, inputs)
+    verify_asm_string(&file_name, &contents, inputs, external_witness_values);
 }
 
 fn gen_estark_proof(file_name: &str, inputs: Vec<GoldilocksField>) {
@@ -69,6 +77,24 @@ fn secondary_block_machine_add2() {
     verify_asm::<GoldilocksField>(f, vec![]);
     gen_halo2_proof(f, vec![]);
     gen_estark_proof(f, vec![]);
+}
+
+#[test]
+fn mem_write_once() {
+    let f = "mem_write_once.asm";
+    verify_asm::<GoldilocksField>(f, vec![]);
+    gen_halo2_proof(f, vec![]);
+    gen_estark_proof(f, vec![]);
+}
+
+#[test]
+fn mem_write_once_external_write() {
+    let f = "mem_write_once_external_write.asm";
+    let mut mem = vec![GoldilocksField::from(0); 256];
+    mem[17] = GoldilocksField::from(42);
+    mem[62] = GoldilocksField::from(123);
+    mem[255] = GoldilocksField::from(-1);
+    verify_asm_with_external_witness::<GoldilocksField>(f, vec![], vec![("main.v", mem)]);
 }
 
 #[test]
@@ -194,6 +220,15 @@ fn vm_to_vm_to_block() {
 }
 
 #[test]
+fn vm_to_block_array() {
+    let f = "vm_to_block_array.asm";
+    let i = [];
+    verify_asm::<GoldilocksField>(f, slice_to_vec(&i));
+    gen_halo2_proof(f, slice_to_vec(&i));
+    gen_estark_proof(f, slice_to_vec(&i));
+}
+
+#[test]
 fn vm_to_vm_to_vm() {
     let f = "vm_to_vm_to_vm.asm";
     let i = [];
@@ -300,23 +335,21 @@ fn intermediate_nested() {
     gen_estark_proof(f, Default::default());
 }
 
-#[test]
-fn book() {
-    use walkdir::WalkDir;
+mod book {
+    use super::*;
+    use number::GoldilocksField;
+    use test_log::test;
 
-    for f in WalkDir::new("../test_data/asm/book/") {
-        let f = f.unwrap();
-        if f.metadata().unwrap().is_file() {
-            let f = f.path();
-            let f = f.strip_prefix("../test_data/asm/").unwrap();
-            // passing 0 to all tests currently works as they either take no prover input or 0 works
-            let i = [0];
+    fn run_book_test(file: &str) {
+        // passing 0 to all tests currently works as they either take no prover input or 0 works
+        let i = [0];
 
-            verify_asm::<GoldilocksField>(f.to_str().unwrap(), slice_to_vec(&i));
-            gen_halo2_proof(f.to_str().unwrap(), slice_to_vec(&i));
-            gen_estark_proof(f.to_str().unwrap(), slice_to_vec(&i));
-        }
+        verify_asm::<GoldilocksField>(file, slice_to_vec(&i));
+        gen_halo2_proof(file, slice_to_vec(&i));
+        gen_estark_proof(file, slice_to_vec(&i));
     }
+
+    include!(concat!(env!("OUT_DIR"), "/asm_book_tests.rs"));
 }
 
 #[test]
@@ -325,12 +358,4 @@ fn hello_world_asm_fail() {
     let f = "book/hello_world.asm";
     let i = [1];
     verify_asm::<GoldilocksField>(f, slice_to_vec(&i));
-}
-
-#[test]
-fn test_macros_in_instructions() {
-    let f = "macros_in_instructions.asm";
-    verify_asm::<GoldilocksField>(f, Default::default());
-    gen_halo2_proof(f, Default::default());
-    gen_estark_proof(f, Default::default());
 }

@@ -9,6 +9,7 @@ use self::block_machine::BlockMachine;
 use self::double_sorted_witness_machine::DoubleSortedWitnesses;
 pub use self::fixed_lookup_machine::FixedLookup;
 use self::sorted_witness_machine::SortedWitnesses;
+use self::write_once_memory::WriteOnceMemory;
 use ast::analyzed::IdentityKind;
 
 use super::affine_expression::AffineExpression;
@@ -23,6 +24,7 @@ mod double_sorted_witness_machine;
 mod fixed_lookup_machine;
 pub mod machine_extractor;
 mod sorted_witness_machine;
+mod write_once_memory;
 
 /// A machine is a set of witness columns and identities where the columns
 /// are used on the right-hand-side of lookups. It can process plookups.
@@ -54,6 +56,7 @@ pub trait Machine<'a, T: FieldElement>: Send + Sync {
 pub enum KnownMachine<'a, T: FieldElement> {
     SortedWitnesses(SortedWitnesses<'a, T>),
     DoubleSortedWitnesses(DoubleSortedWitnesses<T>),
+    WriteOnceMemory(WriteOnceMemory<'a, T>),
     BlockMachine(BlockMachine<'a, T>),
     Vm(Generator<'a, T>),
 }
@@ -71,6 +74,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for KnownMachine<'a, T> {
             KnownMachine::DoubleSortedWitnesses(m) => {
                 m.process_plookup(mutable_state, kind, left, right)
             }
+            KnownMachine::WriteOnceMemory(m) => m.process_plookup(mutable_state, kind, left, right),
             KnownMachine::BlockMachine(m) => m.process_plookup(mutable_state, kind, left, right),
             KnownMachine::Vm(m) => m.process_plookup(mutable_state, kind, left, right),
         }
@@ -86,6 +90,9 @@ impl<'a, T: FieldElement> Machine<'a, T> for KnownMachine<'a, T> {
                 m.take_witness_col_values(fixed_lookup, query_callback)
             }
             KnownMachine::DoubleSortedWitnesses(m) => {
+                m.take_witness_col_values(fixed_lookup, query_callback)
+            }
+            KnownMachine::WriteOnceMemory(m) => {
                 m.take_witness_col_values(fixed_lookup, query_callback)
             }
             KnownMachine::BlockMachine(m) => {

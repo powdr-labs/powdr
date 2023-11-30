@@ -65,7 +65,7 @@ pub struct InstructionDefinitionStatement<T> {
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Instruction<T> {
-    pub params: Params,
+    pub params: Params<T>,
     pub body: InstructionBody<T>,
 }
 
@@ -75,7 +75,7 @@ pub struct LinkDefinitionStatement<T> {
     /// the flag which activates this link. Should be boolean.
     pub flag: Expression<T>,
     /// the parameters to pass to the callable
-    pub params: Params,
+    pub params: Params<T>,
     /// the callable to invoke when the flag is on. TODO: check this during type checking
     pub to: CallableRef,
 }
@@ -87,7 +87,7 @@ pub struct FunctionStatements<T> {
 }
 
 pub struct BatchRef<'a, T> {
-    statements: &'a [FunctionStatement<T>],
+    pub statements: &'a [FunctionStatement<T>],
     reason: &'a Option<IncompatibleSet>,
 }
 
@@ -151,7 +151,7 @@ impl<T> FunctionStatements<T> {
     }
 
     /// iterate over the batches by reference
-    fn iter_batches(&self) -> impl Iterator<Item = BatchRef<T>> {
+    pub fn iter_batches(&self) -> impl Iterator<Item = BatchRef<T>> {
         match &self.batches {
             Some(batches) => Either::Left(batches.iter()),
             None => Either::Right(
@@ -246,7 +246,7 @@ pub struct CallableSymbolDefinition<T> {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Default)]
-pub struct CallableSymbolDefinitions<T>(BTreeMap<String, CallableSymbol<T>>);
+pub struct CallableSymbolDefinitions<T>(pub BTreeMap<String, CallableSymbol<T>>);
 
 impl<T> IntoIterator for CallableSymbolDefinitions<T> {
     type Item = CallableSymbolDefinition<T>;
@@ -512,7 +512,7 @@ impl<'a, T> TryFrom<&'a mut CallableSymbol<T>> for &'a mut OperationSymbol<T> {
 pub struct FunctionSymbol<T> {
     pub start: usize,
     /// the parameters of this function, in the form of values
-    pub params: Params,
+    pub params: Params<T>,
     /// the body of the function
     pub body: FunctionBody<T>,
 }
@@ -523,7 +523,7 @@ pub struct OperationSymbol<T> {
     /// the id of this operation. This machine's operation id must be set to this value in order for this operation to be active.
     pub id: OperationId<T>,
     /// the parameters of this operation, in the form of columns defined in some constraints block of this machine
-    pub params: Params,
+    pub params: Params<T>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]

@@ -156,7 +156,7 @@ fn check_path<T>(
     ),
     String,
 > {
-    let root = state.root.clone();
+    let root = state.root;
 
     chain.push(path.clone())?;
 
@@ -180,7 +180,7 @@ fn check_path<T>(
                     SymbolValueRef::Module(ModuleRef::Local(module)) => module
                         .symbol_definitions()
                         .find_map(|SymbolDefinition { name, value }| {
-                            (name == member).then_some(value.clone())
+                            (name == member).then_some(value)
                         })
                         .ok_or_else(|| format!("symbol not found in `{location}`: `{member}`"))
                         .and_then(|symbol| {

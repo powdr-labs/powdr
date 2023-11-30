@@ -2,6 +2,7 @@
 
 mod condenser;
 pub mod evaluator;
+pub mod expression_processor;
 pub mod pil_analyzer;
 
 use std::path::Path;
