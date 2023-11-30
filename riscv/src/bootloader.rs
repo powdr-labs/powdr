@@ -34,18 +34,49 @@ start_page_loop::
 x3 <=X= ${{ ("bootloader_input", x2 * (256 + 1) + {num_registers} + 1) }};
 x3 <== wrap(x3);
 
-// Store 256 page words
+// Store & hash 256 page words. This is an unrolled loop that for each each word:
+// - Loads the word into the P{{(i % 4) + 4}} register
+// - Stores the word at the address x3 + i * 4
+// - If i % 4 == 3: Hashes registers P0-P11, storing the result in P0-P3
+//
+// At the end of the loop, we'll have a linear hash of the page in P0-P3, using a Merkle-Damgard
+// construction. The initial P0-P3 values are 0, and the capacity (P8-P11) is 0 throughout the
+// booloader execution.
+
+P0 <=X= 0;
+P1 <=X= 0;
+P2 <=X= 0;
+P3 <=X= 0;
 "#
     ));
-    instructions += 6;
+    instructions += 10;
 
     for i in 0..256 {
+        // Store the word in registers
+        let reg_index = (i % 4) + 4;
         bootloader.push_str(&format!(
-            r#"mstore x3 + {i} * 4, ${{ ("bootloader_input", x2 * (256 + 1) + {num_registers} + 2 + {i})}};"#
+            r#"
+P{reg_index} <=X= ${{ ("bootloader_input", x2 * (256 + 1) + {num_registers} + 2 + {i})}};"#
         ));
-        bootloader.push('\n');
+        instructions += 1;
+
+        // Write to memory
+        bootloader.push_str(&format!(
+            r#"
+mstore x3 + {i} * 4, P{reg_index};"#
+        ));
+        instructions += 1;
+
+        // Hash if buffer is full
+        if i % 4 == 3 {
+            bootloader.push_str(
+                r#"
+P0, P1, P2, P3 <== poseidon_gl(P0, P1, P2, P3, P4, P5, P6, P7, P8, P9, P10, P11);
+"#,
+            );
+            instructions += 1;
+        }
     }
-    instructions += 256;
 
     bootloader.push_str(
         r#"
