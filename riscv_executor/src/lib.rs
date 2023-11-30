@@ -21,6 +21,8 @@ use ast::{
 use builder::TraceBuilder;
 use number::{BigInt, FieldElement};
 
+mod poseidon_gl;
+
 /// Initial value of the PC.
 ///
 /// To match the ZK proof witness, the PC must start after some offset used for
@@ -43,6 +45,21 @@ impl Elem {
 
     fn s(&self) -> i32 {
         self.0.try_into().unwrap()
+    }
+
+    fn fe<F: FieldElement>(&self) -> F {
+        F::from(self.0)
+    }
+
+    // Rust doesn't allow us to implement From<F> for Elem...
+    fn from_fe<F: FieldElement>(value: F) -> Self {
+        let value = value.to_degree();
+        let p: u64 = F::modulus().to_arbitrary_integer().try_into().unwrap();
+        if value < p >> 1 {
+            (value as i64).into()
+        } else {
+            (-((p - value) as i64)).into()
+        }
     }
 }
 
@@ -580,20 +597,29 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
                 vec![lo.into(), hi.into()]
             }
-            bin_op => {
-                let val = match bin_op {
-                    "poseidon" => todo!(),
-                    "and" => (args[0].u() & args[1].u()).into(),
-                    "or" => (args[0].u() | args[1].u()).into(),
-                    "xor" => (args[0].u() ^ args[1].u()).into(),
-                    "shl" => (args[0].u() << args[1].u()).into(),
-                    "shr" => (args[0].u() >> args[1].u()).into(),
-                    _ => {
-                        unreachable!()
-                    }
-                };
+            "and" => vec![(args[0].u() & args[1].u()).into()],
+            "or" => vec![(args[0].u() | args[1].u()).into()],
+            "xor" => vec![(args[0].u() ^ args[1].u()).into()],
+            "shl" => vec![(args[0].u() << args[1].u()).into()],
+            "shr" => vec![(args[0].u() >> args[1].u()).into()],
+            "split_gl" => {
+                let arg: u64 = args[0].fe::<F>().to_degree();
+                let lo = (arg & 0xffffffff) as u32;
+                let hi = (arg >> 32) as u32;
 
-                vec![val]
+                vec![lo.into(), hi.into()]
+            }
+            "poseidon_gl" => {
+                let inputs = args
+                    .iter()
+                    .take(12)
+                    .map(|arg| arg.fe::<F>())
+                    .collect::<Vec<_>>();
+                let result = poseidon_gl::poseidon_gl(&inputs);
+                result.into_iter().map(Elem::from_fe).collect()
+            }
+            instr => {
+                panic!("unknown instruction: {instr}");
             }
         }
     }
@@ -634,7 +660,13 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 let result = match op {
                     ast::parsed::BinaryOperator::Add => l.0 + r.0,
                     ast::parsed::BinaryOperator::Sub => l.0 - r.0,
-                    ast::parsed::BinaryOperator::Mul => l.0 * r.0,
+                    ast::parsed::BinaryOperator::Mul => {
+                        // Do multiplication in the field, in case we overflow.
+                        let l: F = l.fe();
+                        let r: F = r.fe();
+                        let res = l * r;
+                        Elem::from_fe(res).0
+                    }
                     ast::parsed::BinaryOperator::Div => l.0 / r.0,
                     ast::parsed::BinaryOperator::Mod => l.0 % r.0,
                     ast::parsed::BinaryOperator::Pow => l.0.pow(r.u()),
