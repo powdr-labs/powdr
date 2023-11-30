@@ -42,7 +42,7 @@ pub fn compile_pil_or_asm<T: FieldElement>(
     if file_name.ends_with(".asm") {
         let contents = fs::read_to_string(file_name).unwrap();
         let (pil_file_path, pil) =
-            get_pil_file::<T>(file_name, &contents, output_dir, force_overwrite)?;
+            compile_asm_to_pil::<T>(file_name, &contents, output_dir, force_overwrite)?;
         let query_callback = inputs_to_query_callback(inputs);
         let analyzed = pil_analyzer::analyze_string(&format!("{pil}"));
         Ok(Some(compile(
@@ -126,7 +126,7 @@ pub fn compile_asm<T: FieldElement>(
 ) -> Result<Option<CompilationResult<T>>, Vec<String>> {
     let contents = fs::read_to_string(file_name).unwrap();
     let (pil_file_path, pil) =
-        get_pil_file::<T>(file_name, &contents, output_dir, force_overwrite)?;
+        compile_asm_to_pil::<T>(file_name, &contents, output_dir, force_overwrite)?;
     let query_callback = inputs_to_query_callback(inputs);
     let analyzed = pil_analyzer::analyze_string(&format!("{pil}"));
     Ok(Some(compile(
@@ -153,7 +153,8 @@ pub fn compile_asm_string<T: FieldElement>(
     prove_with: Option<BackendType>,
     external_witness_values: Vec<(&str, Vec<T>)>,
 ) -> Result<(PathBuf, Option<CompilationResult<T>>), Vec<String>> {
-    let (pil_file_path, pil) = get_pil_file::<T>(file_name, contents, output_dir, force_overwrite)?;
+    let (pil_file_path, pil) =
+        compile_asm_to_pil::<T>(file_name, contents, output_dir, force_overwrite)?;
     let analyzed = pil_analyzer::analyze_string(&format!("{pil}"));
     Ok((
         pil_file_path.clone(),
@@ -169,7 +170,7 @@ pub fn compile_asm_string<T: FieldElement>(
 }
 
 // Returns the relative pil file name and PILFile, for passing to compile()
-fn get_pil_file<T: FieldElement>(
+fn compile_asm_to_pil<T: FieldElement>(
     file_name: &str,
     contents: &str,
     output_dir: &Path,
