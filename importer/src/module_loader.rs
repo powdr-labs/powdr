@@ -60,10 +60,17 @@ impl<T: FieldElement> Folder<T> for Loader {
                             file_in_folder_path.display()
                         )),
                     }
-                    .and_then(|(file, path)| {
+                    .map(|(file, path)| {
                         parser::parse_module(None, &file)
                             .map(|res| (res, path))
-                            .map_err(|e| format!("{e:?}"))
+                            .unwrap_or_else(|err| {
+                                eprintln!(
+                                    "Error parsing powdr assembly file {}:",
+                                    file_path.display()
+                                );
+                                err.output_to_stderr();
+                                panic!();
+                            })
                     })
                 })
                 .unwrap_or(Err(
