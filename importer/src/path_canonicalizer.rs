@@ -4,14 +4,19 @@ use number::FieldElement;
 use std::{
     collections::{BTreeMap, BTreeSet},
     convert::Infallible,
+    ops::ControlFlow,
 };
 
-use ast::parsed::{
-    asm::{
-        ASMModule, ASMProgram, AbsoluteSymbolPath, Import, Machine, MachineStatement, Module,
-        ModuleRef, ModuleStatement, SymbolDefinition, SymbolValue, SymbolValueRef,
+use ast::{
+    parsed::Expression,
+    parsed::{
+        asm::{
+            ASMModule, ASMProgram, AbsoluteSymbolPath, Import, Machine, MachineStatement, Module,
+            ModuleRef, ModuleStatement, SymbolDefinition, SymbolValue, SymbolValueRef,
+        },
+        folder::Folder,
+        visitor::ExpressionVisitable,
     },
-    folder::Folder,
 };
 
 /// Changes all symbol references (symbol paths) from relative paths
@@ -32,6 +37,9 @@ pub fn canonicalize_paths<T: FieldElement>(
     })
 }
 
+/// For each imported absolute path, the absolute path to the canonical symbol
+pub type PathMap = BTreeMap<AbsoluteSymbolPath, AbsoluteSymbolPath>;
+
 struct Canonicalizer<'a> {
     path: AbsoluteSymbolPath,
     paths: &'a PathMap,
@@ -41,7 +49,8 @@ impl<'a, T> Folder<T> for Canonicalizer<'a> {
     // once the paths are resolved, canonicalization cannot fail
     type Error = Infallible;
 
-    /// replace references to symbols with absolute paths. This removes the import statements. This always succeeds if the symbol table was generated correctly.
+    /// replace references to symbols with absolute paths. This removes the import statements.
+    /// This always succeeds if the symbol table was generated correctly.
     fn fold_module_value(&mut self, module: ASMModule<T>) -> Result<ASMModule<T>, Self::Error> {
         Ok(ASMModule {
             statements: module
@@ -70,6 +79,14 @@ impl<'a, T> Folder<T> for Canonicalizer<'a> {
                                 .map(Some)
                                 .transpose(),
                             },
+                            SymbolValue::Expression(mut e) => {
+                                canonicalize_inside_expression(
+                                    &mut e,
+                                    self.path.clone(),
+                                    self.paths,
+                                );
+                                Some(Ok(SymbolValue::Expression(e)))
+                            }
                         }
                         .map(|value| value.map(|value| SymbolDefinition { name, value }.into()))
                     }
@@ -80,9 +97,19 @@ impl<'a, T> Folder<T> for Canonicalizer<'a> {
 
     fn fold_machine(&mut self, mut machine: Machine<T>) -> Result<Machine<T>, Self::Error> {
         for s in &mut machine.statements {
-            if let MachineStatement::Submachine(_, path, _) = s {
-                let p = self.path.clone().join(path.clone());
-                *path = self.paths.get(&p).cloned().unwrap().into();
+            match s {
+                MachineStatement::Submachine(_, path, _) => {
+                    let p = self.path.clone().join(path.clone());
+                    *path = self.paths.get(&p).cloned().unwrap().into();
+                }
+                MachineStatement::Pil(_start, statement) => match statement {
+                    ast::parsed::PilStatement::LetStatement(_, _, Some(e))
+                    | ast::parsed::PilStatement::Expression(_, e) => {
+                        canonicalize_inside_expression(e, self.path.clone(), self.paths);
+                    }
+                    _ => {}
+                },
+                _ => {}
             }
         }
 
@@ -90,8 +117,21 @@ impl<'a, T> Folder<T> for Canonicalizer<'a> {
     }
 }
 
-/// For each imported absolute path, the absolute path to the canonical symbol
-pub type PathMap = BTreeMap<AbsoluteSymbolPath, AbsoluteSymbolPath>;
+fn canonicalize_inside_expression<T>(
+    e: &mut Expression<T>,
+    path: AbsoluteSymbolPath,
+    paths: &'_ PathMap,
+) {
+    e.pre_visit_expressions_mut(&mut |e| {
+        if let Expression::Reference(reference) = e {
+            let name = reference.try_to_identifier().unwrap();
+            //TODO we ignore errors for now because local variables are not yet properly implemented.
+            if let Some(n) = paths.get(&path.clone().with_part(name)) {
+                *reference = n.relative_to(&Default::default()).into();
+            }
+        }
+    });
+}
 
 /// The state of the checking process. We visit the module tree collecting each relative path and pointing it to the absolute path it resolves to in the state.
 #[derive(PartialEq, Debug)]
@@ -177,8 +217,8 @@ fn check_path_internal<'a, T>(
             ),
             |(mut location, value, chain), member| {
                 match value {
-                    // machines do not expose symbols
-                    SymbolValueRef::Machine(_) => {
+                    // machines and expressions do not expose symbols
+                    SymbolValueRef::Machine(_) | SymbolValueRef::Expression(_) => {
                         Err(format!("symbol not found in `{location}`: `{member}`"))
                     }
                     // modules expose symbols
@@ -286,6 +326,7 @@ fn check_module<T: Clone>(
                 check_module(location.with_part(name), m, state)?;
             }
             SymbolValue::Import(s) => check_import(location.clone(), s.clone(), state)?,
+            SymbolValue::Expression(e) => check_expressions(location.clone(), e, state)?,
         }
     }
     Ok(())
@@ -302,18 +343,55 @@ fn check_machine<T: Clone>(
     state: &mut State<'_, T>,
 ) -> Result<(), String> {
     // we check the path in the context of the parent module
-    let module_location = {
-        let mut l = location.clone();
-        l.pop();
-        l
-    };
-
+    let module_location = location.parent();
     for statement in &m.statements {
-        if let MachineStatement::Submachine(_, path, _) = statement {
-            check_path(module_location.clone().join(path.clone()), state)?
+        match statement {
+            MachineStatement::Submachine(_, path, _) => {
+                check_path(module_location.clone().join(path.clone()), state)?
+            }
+            MachineStatement::Pil(_, statement) => {
+                check_expressions(module_location.clone(), statement, state)?
+            }
+            _ => {}
         }
     }
     Ok(())
+}
+
+/// Checks an expression, checking the paths it contains.
+///
+/// # Errors
+///
+/// This function will return an error if any of the paths does not resolve to anything
+fn check_expressions<T: Clone>(
+    location: AbsoluteSymbolPath,
+    e: &impl ExpressionVisitable<Expression<T>>,
+    state: &mut State<'_, T>,
+) -> Result<(), String> {
+    // TODO To handle local variables correctly, we first have detect them and transform the references
+    // so that they include local variables. Then we can check all other references.
+    let x = e.pre_visit_expressions_return(&mut |e| match e {
+        Expression::Reference(reference) => {
+            let name = reference.try_to_identifier().unwrap();
+            match check_path(location.clone().with_part(name), state) {
+                Ok(()) => ControlFlow::<String>::Continue(()),
+                Err(_e) => {
+                    // TODO we ignore errors for now because of local variables.
+                    ControlFlow::Continue(())
+                    // std::ops::ControlFlow::Break(e),
+                }
+            }
+        }
+        _ => ControlFlow::Continue(()),
+    });
+
+    match x {
+        std::ops::ControlFlow::Continue(()) => Ok(()),
+        std::ops::ControlFlow::Break(_err) => {
+            // TODO we ignore errors for now because of local variables.
+            Ok(())
+        }
+    }
 }
 
 #[cfg(test)]

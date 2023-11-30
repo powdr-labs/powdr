@@ -6,7 +6,7 @@ use number::FieldElement;
 use crate::utils::parse_pil_statement;
 
 pub fn enforce<T: FieldElement>(mut file: AnalysisASMFile<T>) -> AnalysisASMFile<T> {
-    for machine in file.machines.values_mut() {
+    for (_, machine) in file.machines_mut() {
         if let Some(operation_id) = machine.operation_id.as_ref() {
             let latch = machine.latch.as_ref().unwrap();
             let last_step = "_block_enforcer_last_step";

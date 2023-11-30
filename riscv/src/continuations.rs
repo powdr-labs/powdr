@@ -78,7 +78,9 @@ where
 }
 
 fn sanity_check<T>(program: &AnalysisASMFile<T>) {
-    let main_machine = program.get_machine(parse_absolute_path("::Main"));
+    let main_machine = program.items[&parse_absolute_path("::Main")]
+        .try_to_machine()
+        .unwrap();
     for expected_instruction in BOOTLOADER_SPECIFIC_INSTRUCTION_NAMES {
         if !main_machine
             .instructions
@@ -161,8 +163,7 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
     // Run for 2**degree - 2 steps, because the executor doesn't run the dispatcher,
     // which takes 2 rows.
     let degree = program
-        .machines
-        .iter()
+        .machines()
         .fold(None, |acc, (_, m)| acc.or(m.degree.clone()))
         .unwrap()
         .degree;

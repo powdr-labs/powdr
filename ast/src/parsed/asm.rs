@@ -47,6 +47,8 @@ pub enum SymbolValue<T> {
     Import(Import),
     /// A module definition
     Module(Module<T>),
+    /// A generic symbol / function.
+    Expression(Expression<T>),
 }
 
 impl<T> SymbolValue<T> {
@@ -55,6 +57,7 @@ impl<T> SymbolValue<T> {
             SymbolValue::Machine(machine) => SymbolValueRef::Machine(machine),
             SymbolValue::Import(i) => SymbolValueRef::Import(i),
             SymbolValue::Module(m) => SymbolValueRef::Module(m.as_ref()),
+            SymbolValue::Expression(e) => SymbolValueRef::Expression(e),
         }
     }
 }
@@ -67,6 +70,8 @@ pub enum SymbolValueRef<'a, T> {
     Import(&'a Import),
     /// A module definition
     Module(ModuleRef<'a, T>),
+    /// A generic symbol / function.
+    Expression(&'a Expression<T>),
 }
 
 #[derive(Debug, PartialEq, Eq, From)]

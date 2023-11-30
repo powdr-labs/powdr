@@ -42,6 +42,9 @@ impl<T: Display> Display for ModuleStatement<T> {
                 SymbolValue::Module(m) => {
                     write!(f, "mod {name} {m}")
                 }
+                SymbolValue::Expression(e) => {
+                    write!(f, "let {name} = {e};")
+                }
             },
         }
     }
