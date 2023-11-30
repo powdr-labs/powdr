@@ -133,6 +133,9 @@ pub const REGISTER_NAMES: [&str; 37] = [
     "main.pc",
 ];
 
+/// Index of the PC in the bootloader input.
+pub const PC_INDEX: usize = REGISTER_NAMES.len() - 1;
+
 /// The bootloader input that is equivalent to not using a bootloader, i.e.:
 /// - No pages are initialized
 /// - All registers are set to 0
