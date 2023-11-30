@@ -7,14 +7,20 @@ use number::FieldElement;
 /// can provide arbitrary values. In the future, these should be exposed as public inputs (with Merkle
 /// proofs for the memory pages).
 /// Bootloader inputs are in the format:
-/// - First 36 values: Values of x1-x31, tmp1-tmp3, lr_sc_reservation, and the PC
+/// - First 37 values: Values of x1-x31, tmp1-tmp4, lr_sc_reservation, and the PC
 /// - Number of pages
 /// - For each page:
 ///   - The start address
 ///   - The 256 words of the page
-pub const BOOTLOADER: &str = r#"
+pub fn bootloader() -> (String, usize) {
+    let mut bootloader = String::new();
+    let mut instructions = 0;
+    let num_registers = REGISTER_NAMES.len();
+
+    bootloader.push_str(&format!(
+        r#"
 // Number of pages
-x1 <=X= ${ ("bootloader_input", 37) };
+x1 <=X= ${{ ("bootloader_input", {num_registers}) }};
 x1 <== wrap(x1);
 
 // Current page index
@@ -25,24 +31,24 @@ branch_if_zero x1, end_page_loop;
 start_page_loop::
 
 // Start address
-x3 <=X= ${ ("bootloader_input", x2 * (256 + 1) + 37 + 1) };
+x3 <=X= ${{ ("bootloader_input", x2 * (256 + 1) + {num_registers} + 1) }};
 x3 <== wrap(x3);
 
-// Current word index
-x4 <=X= 0;
+// Store 256 page words
+"#
+    ));
+    instructions += 6;
 
-start_word_loop::
+    for i in 0..256 {
+        bootloader.push_str(&format!(
+            r#"mstore x3 + {i} * 4, ${{ ("bootloader_input", x2 * (256 + 1) + {num_registers} + 2 + {i})}};"#
+        ));
+        bootloader.push('\n');
+    }
+    instructions += 256;
 
-// Store word
-mstore x3 + x4 * 4, ${ ("bootloader_input", x2 * (256 + 1) + 37 + 2 + x4) };
-
-// Increment word index
-x4 <=X= x4 + 1;
-
-branch_if_nonzero x4 - 256, start_word_loop;
-
-end_word_loop::
-
+    bootloader.push_str(
+        r#"
 // Increment page index
 x2 <=X= x2 + 1;
 
@@ -51,46 +57,23 @@ branch_if_nonzero x2 - x1, start_page_loop;
 end_page_loop::
 
 // Initialize registers, starting with index 0
-x1 <=X= ${ ("bootloader_input", 0) };
-x2 <=X= ${ ("bootloader_input", 1) };
-x3 <=X= ${ ("bootloader_input", 2) };
-x4 <=X= ${ ("bootloader_input", 3) };
-x5 <=X= ${ ("bootloader_input", 4) };
-x6 <=X= ${ ("bootloader_input", 5) };
-x7 <=X= ${ ("bootloader_input", 6) };
-x8 <=X= ${ ("bootloader_input", 7) };
-x9 <=X= ${ ("bootloader_input", 8) };
-x10 <=X= ${ ("bootloader_input", 9) };
-x11 <=X= ${ ("bootloader_input", 10) };
-x12 <=X= ${ ("bootloader_input", 11) };
-x13 <=X= ${ ("bootloader_input", 12) };
-x14 <=X= ${ ("bootloader_input", 13) };
-x15 <=X= ${ ("bootloader_input", 14) };
-x16 <=X= ${ ("bootloader_input", 15) };
-x17 <=X= ${ ("bootloader_input", 16) };
-x18 <=X= ${ ("bootloader_input", 17) };
-x19 <=X= ${ ("bootloader_input", 18) };
-x20 <=X= ${ ("bootloader_input", 19) };
-x21 <=X= ${ ("bootloader_input", 20) };
-x22 <=X= ${ ("bootloader_input", 21) };
-x23 <=X= ${ ("bootloader_input", 22) };
-x24 <=X= ${ ("bootloader_input", 23) };
-x25 <=X= ${ ("bootloader_input", 24) };
-x26 <=X= ${ ("bootloader_input", 25) };
-x27 <=X= ${ ("bootloader_input", 26) };
-x28 <=X= ${ ("bootloader_input", 27) };
-x29 <=X= ${ ("bootloader_input", 28) };
-x30 <=X= ${ ("bootloader_input", 29) };
-x31 <=X= ${ ("bootloader_input", 30) };
-tmp1 <=X= ${ ("bootloader_input", 31) };
-tmp2 <=X= ${ ("bootloader_input", 32) };
-tmp3 <=X= ${ ("bootloader_input", 33) };
-tmp4 <=X= ${ ("bootloader_input", 34) };
-lr_sc_reservation <=X= ${ ("bootloader_input", 35) };
+"#,
+    );
+    instructions += 2;
 
-// Set the PC
-jump_dyn ${ ("bootloader_input", 36) };
-"#;
+    for (i, reg) in REGISTER_NAMES.iter().enumerate() {
+        let reg = reg.strip_prefix("main.").unwrap();
+        if i != PC_INDEX {
+            bootloader.push_str(&format!(r#"{reg} <=X= ${{ ("bootloader_input", {i}) }};"#));
+        } else {
+            bootloader.push_str(&format!(r#"jump_dyn ${{ ("bootloader_input", {}) }};"#, i));
+        }
+        bootloader.push('\n');
+        instructions += 1;
+    }
+
+    (bootloader, instructions)
+}
 
 /// The names of the registers in the order in which they are expected by the bootloader.
 pub const REGISTER_NAMES: [&str; 37] = [
@@ -141,9 +124,12 @@ pub const PC_INDEX: usize = REGISTER_NAMES.len() - 1;
 /// - All registers are set to 0
 /// - The PC is set to 51 (the first instruction after the bootloader)
 pub fn default_input<T: FieldElement>() -> Vec<T> {
-    // 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,51,0
-    let mut bootloader_inputs = vec![T::zero(); 38];
-    // Dispatcher + Bootloader takes 51 instructions, so 51 is the first instruction after the bootloader.
-    bootloader_inputs[36] = T::from(51u64);
+    // Set all registers and the number of pages to zero
+    let mut bootloader_inputs = vec![T::zero(); REGISTER_NAMES.len() + 1];
+
+    // PC should be set to the next instruction after the dispatcher (2 instructions) and bootloader
+    let (_, num_instructions) = bootloader();
+    bootloader_inputs[PC_INDEX] = T::from(num_instructions as u64 + 2);
+
     bootloader_inputs
 }
