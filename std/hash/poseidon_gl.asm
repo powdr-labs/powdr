@@ -150,55 +150,34 @@ machine PoseidonGL(LASTBLOCK, operation_id) {
     pol b11 = PARTIAL * (a11 - x7_11) + x7_11;
 
     // Multiply with MDS Matrix
-    pol c0 = 25*b0 + 15*b1 + 41*b2 + 16*b3 +  2*b4 + 28*b5 + 13*b6 + 13*b7 + 39*b8 + 18*b9 + 34*b10 + 20*b11;
-    pol c1 = 20*b0 + 17*b1 + 15*b2 + 41*b3 + 16*b4 +  2*b5 + 28*b6 + 13*b7 + 13*b8 + 39*b9 + 18*b10 + 34*b11 ;
-    pol c2 = 34*b0 + 20*b1 + 17*b2 + 15*b3 + 41*b4 + 16*b5 +  2*b6 + 28*b7 + 13*b8 + 13*b9 + 39*b10 + 18*b11;
-    pol c3 = 18*b0 + 34*b1 + 20*b2 + 17*b3 + 15*b4 + 41*b5 + 16*b6 +  2*b7 + 28*b8 + 13*b9 + 13*b10 + 39*b11;
-    pol c4 = 39*b0 + 18*b1 + 34*b2 + 20*b3 + 17*b4 + 15*b5 + 41*b6 + 16*b7 +  2*b8 + 28*b9 + 13*b10 + 13*b11;
-    pol c5 = 13*b0 + 39*b1 + 18*b2 + 34*b3 + 20*b4 + 17*b5 + 15*b6 + 41*b7 + 16*b8 +  2*b9 + 28*b10 + 13*b11;
-    pol c6 = 13*b0 + 13*b1 + 39*b2 + 18*b3 + 34*b4 + 20*b5 + 17*b6 + 15*b7 + 41*b8 + 16*b9 +  2*b10 + 28*b11;
-    pol c7 = 28*b0 + 13*b1 + 13*b2 + 39*b3 + 18*b4 + 34*b5 + 20*b6 + 17*b7 + 15*b8 + 41*b9 + 16*b10 +  2*b11;
-    pol c8 =  2*b0 + 28*b1 + 13*b2 + 13*b3 + 39*b4 + 18*b5 + 34*b6 + 20*b7 + 17*b8 + 15*b9 + 41*b10 + 16*b11;
-    pol c9 = 16*b0 +  2*b1 + 28*b2 + 13*b3 + 13*b4 + 39*b5 + 18*b6 + 34*b7 + 20*b8 + 17*b9 + 15*b10 + 41*b11;
-    pol c10 = 41*b0 + 16*b1 +  2*b2 + 28*b3 + 13*b4 + 13*b5 + 39*b6 + 18*b7 + 34*b8 + 20*b9 + 17*b10 + 15*b11;
-    pol c11 = 15*b0 + 41*b1 + 16*b2 +  2*b3 + 28*b4 + 13*b5 + 13*b6 + 39*b7 + 18*b8 + 34*b9 + 20*b10 + 17*b11;
+    let c = [
+        25*b0 + 15*b1 + 41*b2 + 16*b3 +  2*b4 + 28*b5 + 13*b6 + 13*b7 + 39*b8 + 18*b9 + 34*b10 + 20*b11,
+        20*b0 + 17*b1 + 15*b2 + 41*b3 + 16*b4 +  2*b5 + 28*b6 + 13*b7 + 13*b8 + 39*b9 + 18*b10 + 34*b11,
+        34*b0 + 20*b1 + 17*b2 + 15*b3 + 41*b4 + 16*b5 +  2*b6 + 28*b7 + 13*b8 + 13*b9 + 39*b10 + 18*b11,
+        18*b0 + 34*b1 + 20*b2 + 17*b3 + 15*b4 + 41*b5 + 16*b6 +  2*b7 + 28*b8 + 13*b9 + 13*b10 + 39*b11,
+        39*b0 + 18*b1 + 34*b2 + 20*b3 + 17*b4 + 15*b5 + 41*b6 + 16*b7 +  2*b8 + 28*b9 + 13*b10 + 13*b11,
+        13*b0 + 39*b1 + 18*b2 + 34*b3 + 20*b4 + 17*b5 + 15*b6 + 41*b7 + 16*b8 +  2*b9 + 28*b10 + 13*b11,
+        13*b0 + 13*b1 + 39*b2 + 18*b3 + 34*b4 + 20*b5 + 17*b6 + 15*b7 + 41*b8 + 16*b9 +  2*b10 + 28*b11,
+        28*b0 + 13*b1 + 13*b2 + 39*b3 + 18*b4 + 34*b5 + 20*b6 + 17*b7 + 15*b8 + 41*b9 + 16*b10 +  2*b11,
+         2*b0 + 28*b1 + 13*b2 + 13*b3 + 39*b4 + 18*b5 + 34*b6 + 20*b7 + 17*b8 + 15*b9 + 41*b10 + 16*b11,
+        16*b0 +  2*b1 + 28*b2 + 13*b3 + 13*b4 + 39*b5 + 18*b6 + 34*b7 + 20*b8 + 17*b9 + 15*b10 + 41*b11,
+        41*b0 + 16*b1 +  2*b2 + 28*b3 + 13*b4 + 13*b5 + 39*b6 + 18*b7 + 34*b8 + 20*b9 + 17*b10 + 15*b11,
+        15*b0 + 41*b1 + 16*b2 +  2*b3 + 28*b4 + 13*b5 + 13*b6 + 39*b7 + 18*b8 + 34*b9 + 20*b10 + 17*b11
+    ];
 
-    (inp[0]' - c0) * (1-LAST) = 0;
-    (inp[1]' - c1) * (1-LAST) = 0;
-    (inp[2]' - c2) * (1-LAST) = 0;
-    (inp[3]' - c3) * (1-LAST) = 0;
-    (inp[4]' - c4) * (1-LAST) = 0;
-    (inp[5]' - c5) * (1-LAST) = 0;
-    (inp[6]' - c6) * (1-LAST) = 0;
-    (inp[7]' - c7) * (1-LAST) = 0;
-    (cap[0]' - c8) * (1-LAST) = 0;
-    (cap[1]' - c9) * (1-LAST) = 0;
-    (cap[2]' - c10) * (1-LAST) = 0;
-    (cap[3]' - c11) * (1-LAST) = 0;
+    let fold = |length, f, initial, folder| match length {
+        0 => initial,
+        _ => folder(fold(length - 1, f, initial, folder), f(length - 1))
+    };
+    let make_array = |length, f| fold(length, f, [], |acc, e| acc + [e]);
 
-    FIRSTBLOCK * (input_inp[0] - inp[0]) = 0;
-    FIRSTBLOCK * (input_inp[1] - inp[1]) = 0;
-    FIRSTBLOCK * (input_inp[2] - inp[2]) = 0;
-    FIRSTBLOCK * (input_inp[3] - inp[3]) = 0;
-    FIRSTBLOCK * (input_inp[4] - inp[4]) = 0;
-    FIRSTBLOCK * (input_inp[5] - inp[5]) = 0;
-    FIRSTBLOCK * (input_inp[6] - inp[6]) = 0;
-    FIRSTBLOCK * (input_inp[7] - inp[7]) = 0;
-    FIRSTBLOCK * (input_cap[0] - cap[0]) = 0;
-    FIRSTBLOCK * (input_cap[1] - cap[1]) = 0;
-    FIRSTBLOCK * (input_cap[2] - cap[2]) = 0;
-    FIRSTBLOCK * (input_cap[3] - cap[3]) = 0;
+    let equal_unless_last = |a, b| (1 - LAST) * (a - b) == 0;
+    make_array(8, |i| equal_unless_last(inp[i]', c[i]));
+    make_array(4, |i| equal_unless_last(cap[i]', c[8 + i]));
+    make_array(8, |i| equal_unless_last(input_inp[i], input_inp[i]'));
+    make_array(4, |i| equal_unless_last(input_cap[i], input_cap[i]'));
 
-    (1 - LAST) * (input_inp[0] - input_inp[0]') = 0;
-    (1 - LAST) * (input_inp[1] - input_inp[1]') = 0;
-    (1 - LAST) * (input_inp[2] - input_inp[2]') = 0;
-    (1 - LAST) * (input_inp[3] - input_inp[3]') = 0;
-    (1 - LAST) * (input_inp[4] - input_inp[4]') = 0;
-    (1 - LAST) * (input_inp[5] - input_inp[5]') = 0;
-    (1 - LAST) * (input_inp[6] - input_inp[6]') = 0;
-    (1 - LAST) * (input_inp[7] - input_inp[7]') = 0;
-    (1 - LAST) * (input_cap[0] - input_cap[0]') = 0;
-    (1 - LAST) * (input_cap[1] - input_cap[1]') = 0;
-    (1 - LAST) * (input_cap[2] - input_cap[2]') = 0;
-    (1 - LAST) * (input_cap[3] - input_cap[3]') = 0;
+    let equal_on_first_block = |a, b| FIRSTBLOCK * (a - b) == 0;
+    make_array(8, |i| equal_on_first_block(input_inp[i], inp[i]));
+    make_array(4, |i| equal_on_first_block(input_cap[i], cap[i]));
 }
