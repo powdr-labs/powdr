@@ -13,12 +13,13 @@ use itertools::Either;
 use num_bigint::BigUint;
 use number::FieldElement;
 
-use crate::parsed::{
-    asm::{
-        AbsoluteSymbolPath, AssignmentRegister, CallableRef, InstructionBody, OperationId, Params,
+use crate::{
+    analyzed::{self, Identity},
+    parsed::{
+        asm::{AbsoluteSymbolPath, AssignmentRegister, CallableRef, OperationId, Params},
+        visitor::{ExpressionVisitable, VisitOrder},
+        NamespacedPolynomialReference, PilStatement,
     },
-    visitor::{ExpressionVisitable, VisitOrder},
-    NamespacedPolynomialReference, PilStatement,
 };
 
 pub use crate::parsed::Expression;
@@ -67,6 +68,12 @@ pub struct InstructionDefinitionStatement<T> {
 pub struct Instruction<T> {
     pub params: Params<T>,
     pub body: InstructionBody<T>,
+}
+
+#[derive(Debug, Clone)]
+pub enum InstructionBody<T> {
+    Local(Vec<Identity<analyzed::Expression<T>>>),
+    CallableRef(CallableRef),
 }
 
 #[derive(Clone, Debug)]

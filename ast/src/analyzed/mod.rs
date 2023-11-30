@@ -499,7 +499,7 @@ pub struct PublicDeclaration {
     pub index: DegreeType,
 }
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, PartialOrd, Ord)]
 pub struct Identity<Expr> {
     /// The ID is specific to the identity kind.
     pub id: u64,
