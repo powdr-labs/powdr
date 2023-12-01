@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 
 use super::{EvalResult, FixedData, FixedLookup};
 use crate::witgen::affine_expression::AffineExpression;
@@ -49,7 +49,7 @@ pub struct BlockMachine<'a, T: FieldElement> {
     block_size: usize,
     /// The right-hand side of the connecting identity, needed to identify
     /// when this machine is responsible.
-    selected_expressions: SelectedExpressions<Expression<T>>,
+    connecting_rhs: BTreeSet<SelectedExpressions<Expression<T>>>,
     /// The internal identities
     identities: Vec<&'a Identity<Expression<T>>>,
     /// The row factory
@@ -72,20 +72,44 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         witness_cols: &HashSet<PolyID>,
         global_range_constraints: &GlobalConstraints<T>,
     ) -> Option<Self> {
-        for id in connecting_identities {
-            for r in id.right.expressions.iter() {
-                if let Some(poly) = try_to_simple_poly(r) {
-                    if poly.poly_id.ptype == PolynomialType::Constant {
-                        // It does not really make sense to have constant polynomials on the RHS
-                        // of a block machine lookup, as all constant polynomials are periodic, so
-                        // it would always return the same value.
-                        return None;
+        // TODO we should check that the other constraints/fixed columns are also periodic.
+        let periods = connecting_identities
+            .iter()
+            .map(|id| try_to_period(&id.right.selector, fixed_data))
+            .collect::<Vec<_>>();
+
+        let period = periods[0].and_then(|first_period| {
+            periods
+                .iter()
+                .all(|p| *p == Some(first_period))
+                .then_some(first_period)
+        });
+
+        period
+            .and_then(|block_size| {
+                // Collect all right-hand sides of the connecting identities.
+                // This is used later to decide to which lookup the machine should respond.
+                let connecting_rhs = connecting_identities
+                    .iter()
+                    .map(|id| id.right.clone())
+                    .collect::<BTreeSet<_>>();
+
+                for rhs in connecting_rhs.iter() {
+                    for r in rhs.expressions.iter() {
+                        if let Some(poly) = try_to_simple_poly(r) {
+                            if poly.poly_id.ptype == PolynomialType::Constant {
+                                // It does not really make sense to have constant polynomials on the RHS
+                                // of a block machine lookup, as all constant polynomials are periodic, so
+                                // it would always return the same value.
+                                return None;
+                            }
+                        }
                     }
                 }
-            }
 
-            // TODO we should check that the other constraints/fixed columns are also periodic.
-            if let Some(block_size) = try_to_period(&id.right.selector, fixed_data) {
+                Some((block_size, connecting_rhs))
+            })
+            .map(|(block_size, connecting_rhs)| {
                 assert!(block_size <= fixed_data.degree as usize);
                 let row_factory = RowFactory::new(fixed_data, global_range_constraints.clone());
                 // Start out with a block filled with unknown values so that we do not have to deal with wrap-around
@@ -95,9 +119,9 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
                     witness_cols,
                     (0..block_size).map(|i| row_factory.fresh_row(i as DegreeType)),
                 );
-                return Some(BlockMachine {
+                BlockMachine {
                     block_size,
-                    selected_expressions: id.right.clone(),
+                    connecting_rhs,
                     identities: identities.to_vec(),
                     data,
                     row_factory,
@@ -107,11 +131,8 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
                         identities.len(),
                     ),
                     fixed_data,
-                });
-            }
-        }
-
-        None
+                }
+            })
     }
 }
 
@@ -165,7 +186,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
         left: &[AffineExpression<&'a AlgebraicReference, T>],
         right: &'a SelectedExpressions<Expression<T>>,
     ) -> Option<EvalResult<'a, T>> {
-        if *right != self.selected_expressions || kind != IdentityKind::Plookup {
+        if !self.connecting_rhs.contains(right) || kind != IdentityKind::Plookup {
             return None;
         }
         let previous_len = self.rows() as usize;
