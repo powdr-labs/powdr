@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, marker::PhantomData};
 
 use ast::{
     analyzed::{Expression, PolynomialReference, Reference, RepeatedArray},
@@ -9,31 +9,27 @@ use ast::{
 };
 use number::DegreeType;
 
+use crate::AnalysisDriver;
+
 /// The ExpressionProcessor turns parsed expressions into analyzed expressions.
 /// Its main job is to resolve references:
 /// It turns simple references into fully namespaced references and resolves local function variables.
-/// It also evaluates expressions that are required to be compile-time constant.
-pub struct ExpressionProcessor<R: ReferenceResolver> {
-    resolver: R,
+pub struct ExpressionProcessor<T, D: AnalysisDriver<T>> {
+    driver: D,
     local_variables: HashMap<String, u64>,
+    _phantom: PhantomData<T>,
 }
 
-pub trait ReferenceResolver {
-    /// Turns a declaration into an absolute name.
-    fn resolve_decl(&self, name: &str) -> String;
-    /// Turns a reference to a name with an optional namespace to an absolute name.
-    fn resolve_ref(&self, namespace: &Option<String>, name: &str) -> String;
-}
-
-impl<R: ReferenceResolver> ExpressionProcessor<R> {
-    pub fn new(resolver: R) -> Self {
+impl<T, D: AnalysisDriver<T>> ExpressionProcessor<T, D> {
+    pub fn new(driver: D) -> Self {
         Self {
-            resolver,
+            driver,
             local_variables: Default::default(),
+            _phantom: PhantomData,
         }
     }
 
-    pub fn process_selected_expression<T>(
+    pub fn process_selected_expressions(
         &mut self,
         expr: SelectedExpressions<parsed::Expression<T>>,
     ) -> SelectedExpressions<Expression<T>> {
@@ -43,7 +39,7 @@ impl<R: ReferenceResolver> ExpressionProcessor<R> {
         }
     }
 
-    pub fn process_array_expression<T>(
+    pub fn process_array_expression(
         &mut self,
         array_expression: ::ast::parsed::ArrayExpression<T>,
         size: DegreeType,
@@ -72,17 +68,14 @@ impl<R: ReferenceResolver> ExpressionProcessor<R> {
         }
     }
 
-    pub fn process_expressions<T>(
-        &mut self,
-        exprs: Vec<parsed::Expression<T>>,
-    ) -> Vec<Expression<T>> {
+    pub fn process_expressions(&mut self, exprs: Vec<parsed::Expression<T>>) -> Vec<Expression<T>> {
         exprs
             .into_iter()
             .map(|e| self.process_expression(e))
             .collect()
     }
 
-    pub fn process_expression<T>(&mut self, expr: parsed::Expression<T>) -> Expression<T> {
+    pub fn process_expression(&mut self, expr: parsed::Expression<T>) -> Expression<T> {
         use parsed::Expression as PExpression;
         match expr {
             PExpression::Reference(poly) => Expression::Reference(self.process_reference(poly)),
@@ -153,7 +146,7 @@ impl<R: ReferenceResolver> ExpressionProcessor<R> {
         }
     }
 
-    pub fn process_function<T>(
+    pub fn process_function(
         &mut self,
         params: &[String],
         expression: ::ast::parsed::Expression<T>,
@@ -183,7 +176,7 @@ impl<R: ReferenceResolver> ExpressionProcessor<R> {
         poly: ::ast::parsed::NamespacedPolynomialReference,
     ) -> PolynomialReference {
         PolynomialReference {
-            name: self.resolver.resolve_ref(&poly.namespace, &poly.name),
+            name: self.driver.resolve_ref(&poly.namespace, &poly.name),
             poly_id: None,
         }
     }

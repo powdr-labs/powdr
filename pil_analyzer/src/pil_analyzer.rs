@@ -1,19 +1,18 @@
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use ast::parsed::{
-    self, FunctionDefinition, LambdaExpression, PilStatement, PolynomialName, SelectedExpressions,
-};
+use ast::parsed::PilStatement;
 use number::{DegreeType, FieldElement};
 
 use ast::analyzed::{
-    Analyzed, Expression, FunctionValueDefinition, Identity, IdentityKind, PolynomialType,
-    PublicDeclaration, SourceRef, StatementIdentifier, Symbol, SymbolKind,
+    Analyzed, Expression, FunctionValueDefinition, Identity, PublicDeclaration, SourceRef,
+    StatementIdentifier, Symbol,
 };
 
-use crate::evaluator::EvalError;
-use crate::expression_processor::ReferenceResolver;
+use crate::AnalysisDriver;
+
+use crate::statement_processor::{Counters, PILItem, StatementProcessor};
 use crate::{condenser, evaluator, expression_processor::ExpressionProcessor};
 
 pub fn process_pil_file<T: FieldElement>(path: &Path) -> Analyzed<T> {
@@ -28,7 +27,9 @@ pub fn process_pil_file_contents<T: FieldElement>(contents: &str) -> Analyzed<T>
     analyzer.condense()
 }
 
-#[derive(Default)]
+// TODO we could further extract a component that is only responsible for
+// collecting definitions, assigning IDs and maintaining the source order.
+
 struct PILAnalyzer<T> {
     namespace: String,
     polynomial_degree: Option<DegreeType>,
@@ -38,28 +39,25 @@ struct PILAnalyzer<T> {
     /// The order in which definitions and identities
     /// appear in the source.
     source_order: Vec<StatementIdentifier>,
+    symbol_counters: Option<Counters>,
     included_files: HashSet<PathBuf>,
     line_starts: Vec<usize>,
     current_file: PathBuf,
-    symbol_counters: BTreeMap<SymbolKind, u64>,
-    identity_counter: HashMap<IdentityKind, u64>,
 }
 
 impl<T: FieldElement> PILAnalyzer<T> {
     pub fn new() -> PILAnalyzer<T> {
         PILAnalyzer {
             namespace: "Global".to_string(),
-            symbol_counters: [
-                SymbolKind::Poly(PolynomialType::Committed),
-                SymbolKind::Poly(PolynomialType::Constant),
-                SymbolKind::Poly(PolynomialType::Intermediate),
-                SymbolKind::Constant(),
-                SymbolKind::Other(),
-            ]
-            .into_iter()
-            .map(|k| (k, 0))
-            .collect(),
-            ..Default::default()
+            polynomial_degree: None,
+            definitions: Default::default(),
+            public_declarations: Default::default(),
+            identities: vec![],
+            source_order: vec![],
+            included_files: Default::default(),
+            line_starts: Default::default(),
+            current_file: Default::default(),
+            symbol_counters: Some(Default::default()),
         }
     }
 
@@ -112,183 +110,40 @@ impl<T: FieldElement> PILAnalyzer<T> {
         match statement {
             PilStatement::Include(_, include) => self.handle_include(include),
             PilStatement::Namespace(_, name, degree) => self.handle_namespace(name, degree),
-            PilStatement::PolynomialDefinition(start, name, value) => {
-                self.handle_symbol_definition(
-                    self.to_source_ref(start),
-                    name,
-                    None,
-                    SymbolKind::Poly(PolynomialType::Intermediate),
-                    Some(FunctionDefinition::Expression(value)),
-                );
-            }
-            PilStatement::PublicDeclaration(start, name, polynomial, array_index, index) => self
-                .handle_public_declaration(
-                    self.to_source_ref(start),
-                    name,
-                    polynomial,
-                    array_index,
-                    index,
-                ),
-            PilStatement::PolynomialConstantDeclaration(start, polynomials) => self
-                .handle_polynomial_declarations(
-                    self.to_source_ref(start),
-                    polynomials,
-                    PolynomialType::Constant,
-                ),
-            PilStatement::PolynomialConstantDefinition(start, name, definition) => {
-                self.handle_symbol_definition(
-                    self.to_source_ref(start),
-                    name,
-                    None,
-                    SymbolKind::Poly(PolynomialType::Constant),
-                    Some(definition),
-                );
-            }
-            PilStatement::PolynomialCommitDeclaration(start, polynomials, None) => self
-                .handle_polynomial_declarations(
-                    self.to_source_ref(start),
-                    polynomials,
-                    PolynomialType::Committed,
-                ),
-            PilStatement::PolynomialCommitDeclaration(start, mut polynomials, Some(definition)) => {
-                assert!(polynomials.len() == 1);
-                let name = polynomials.pop().unwrap();
-                self.handle_symbol_definition(
-                    self.to_source_ref(start),
-                    name.name,
-                    name.array_size,
-                    SymbolKind::Poly(PolynomialType::Committed),
-                    Some(definition),
-                );
-            }
-            PilStatement::ConstantDefinition(start, name, value) => {
-                // Check it is a constant.
-                if let Err(err) = self.evaluate_expression(value.clone()) {
-                    panic!("Could not evaluate constant: {name} = {value}: {err:?}");
+            _ => {
+                // We need a mutable reference to the counter, but it is short-lived.
+                let mut counters = self.symbol_counters.take().unwrap();
+                let items =
+                    StatementProcessor::new(self.driver(), &mut counters, self.polynomial_degree)
+                        .handle_statement(statement);
+                self.symbol_counters = Some(counters);
+                for item in items {
+                    match item {
+                        PILItem::Definition(symbol, value) => {
+                            let name = symbol.absolute_name.clone();
+                            let is_new = self
+                                .definitions
+                                .insert(name.clone(), (symbol, value))
+                                .is_none();
+                            assert!(is_new, "{name} already defined.");
+                            self.source_order
+                                .push(StatementIdentifier::Definition(name));
+                        }
+                        PILItem::PublicDeclaration(decl) => {
+                            let name = decl.name.clone();
+                            self.public_declarations.insert(name.clone(), decl);
+                            self.source_order
+                                .push(StatementIdentifier::PublicDeclaration(name));
+                        }
+                        PILItem::Identity(identity) => {
+                            let index = self.identities.len();
+                            self.source_order.push(StatementIdentifier::Identity(index));
+                            self.identities.push(identity)
+                        }
+                    }
                 }
-                self.handle_symbol_definition(
-                    self.to_source_ref(start),
-                    name,
-                    None,
-                    SymbolKind::Constant(),
-                    Some(FunctionDefinition::Expression(value)),
-                );
-            }
-            PilStatement::LetStatement(start, name, value) => {
-                self.handle_generic_definition(start, name, value)
-            }
-            _ => {
-                self.handle_identity_statement(statement);
             }
         }
-    }
-
-    fn to_source_ref(&self, start: usize) -> SourceRef {
-        let file = self.current_file.file_name().unwrap().to_str().unwrap();
-        SourceRef {
-            line: parser_util::lines::offset_to_line(start, &self.line_starts),
-            file: file.to_string(),
-        }
-    }
-
-    fn handle_generic_definition(
-        &mut self,
-        start: usize,
-        name: String,
-        value: Option<::ast::parsed::Expression<T>>,
-    ) {
-        // Determine whether this is a fixed column, a constant or something else
-        // depending on the structure of the value and if we can evaluate
-        // it to a single number.
-        // Later, this should depend on the type.
-        match value {
-            None => {
-                // No value provided => treat it as a witness column.
-                self.handle_symbol_definition(
-                    self.to_source_ref(start),
-                    name,
-                    None,
-                    SymbolKind::Poly(PolynomialType::Committed),
-                    None,
-                );
-            }
-            Some(value) => {
-                let symbol_kind = if matches!(&value, parsed::Expression::LambdaExpression(lambda) if lambda.params.len() == 1)
-                {
-                    SymbolKind::Poly(PolynomialType::Constant)
-                } else if self.evaluate_expression(value.clone()).is_ok() {
-                    // Value evaluates to a constant number => treat it as a constant
-                    SymbolKind::Constant()
-                } else {
-                    // Otherwise, treat it as "generic definition"
-                    SymbolKind::Other()
-                };
-                self.handle_symbol_definition(
-                    self.to_source_ref(start),
-                    name,
-                    None,
-                    symbol_kind,
-                    Some(FunctionDefinition::Expression(value)),
-                );
-            }
-        }
-    }
-
-    fn handle_identity_statement(&mut self, statement: PilStatement<T>) {
-        let (start, kind, left, right) = match statement {
-            PilStatement::PolynomialIdentity(start, expression)
-            | PilStatement::Expression(start, expression) => (
-                start,
-                IdentityKind::Polynomial,
-                SelectedExpressions {
-                    selector: Some(self.process_expression(expression)),
-                    expressions: vec![],
-                },
-                SelectedExpressions::default(),
-            ),
-            PilStatement::PlookupIdentity(start, key, haystack) => (
-                start,
-                IdentityKind::Plookup,
-                self.expression_processor().process_selected_expression(key),
-                self.expression_processor()
-                    .process_selected_expression(haystack),
-            ),
-            PilStatement::PermutationIdentity(start, left, right) => (
-                start,
-                IdentityKind::Permutation,
-                self.expression_processor()
-                    .process_selected_expression(left),
-                self.expression_processor()
-                    .process_selected_expression(right),
-            ),
-            PilStatement::ConnectIdentity(start, left, right) => (
-                start,
-                IdentityKind::Connect,
-                SelectedExpressions {
-                    selector: None,
-                    expressions: self.expression_processor().process_expressions(left),
-                },
-                SelectedExpressions {
-                    selector: None,
-                    expressions: self.expression_processor().process_expressions(right),
-                },
-            ),
-            // TODO at some point, these should all be caught by the type checker.
-            _ => {
-                panic!("Only identities allowed at this point.")
-            }
-        };
-        let id = self.dispense_id(kind);
-        let identity = Identity {
-            id,
-            kind,
-            source: self.to_source_ref(start),
-            left,
-            right,
-        };
-        let id = self.identities.len();
-        self.identities.push(identity);
-        self.source_order.push(StatementIdentifier::Identity(id));
     }
 
     fn handle_include(&mut self, path: String) {
@@ -299,7 +154,12 @@ impl<T: FieldElement> PILAnalyzer<T> {
 
     fn handle_namespace(&mut self, name: String, degree: ::ast::parsed::Expression<T>) {
         // TODO: the polynomial degree should be handled without going through a field element. This requires having types in Expression
-        let namespace_degree = self.evaluate_expression(degree).unwrap().to_degree();
+        let degree = ExpressionProcessor::new(self.driver()).process_expression(degree);
+        let namespace_degree = evaluator::evaluate_expression(&degree, &self.definitions)
+            .unwrap()
+            .try_to_number()
+            .unwrap()
+            .to_degree();
         if let Some(degree) = self.polynomial_degree {
             assert_eq!(
                 degree, namespace_degree,
@@ -311,143 +171,15 @@ impl<T: FieldElement> PILAnalyzer<T> {
         self.namespace = name;
     }
 
-    fn handle_polynomial_declarations(
-        &mut self,
-        source: SourceRef,
-        polynomials: Vec<PolynomialName<T>>,
-        polynomial_type: PolynomialType,
-    ) {
-        for PolynomialName { name, array_size } in polynomials {
-            self.handle_symbol_definition(
-                source.clone(),
-                name,
-                array_size,
-                SymbolKind::Poly(polynomial_type),
-                None,
-            );
-        }
-    }
-
-    fn handle_symbol_definition(
-        &mut self,
-        source: SourceRef,
-        name: String,
-        array_size: Option<::ast::parsed::Expression<T>>,
-        symbol_kind: SymbolKind,
-        value: Option<FunctionDefinition<T>>,
-    ) -> u64 {
-        let have_array_size = array_size.is_some();
-        let length = array_size
-            .map(|l| self.evaluate_expression(l).unwrap())
-            .map(|l| l.to_degree());
-        if length.is_some() {
-            assert!(value.is_none());
-        }
-        let counter = self.symbol_counters.get_mut(&symbol_kind).unwrap();
-        let id = *counter;
-        *counter += length.unwrap_or(1);
-        let name = PILResolver(self).resolve_decl(&name);
-        let symbol = Symbol {
-            id,
-            source,
-            absolute_name: name.clone(),
-            kind: symbol_kind,
-            length,
-        };
-
-        let value = value.map(|v| match v {
-            FunctionDefinition::Expression(expr) => {
-                assert!(!have_array_size);
-                assert!(symbol_kind != SymbolKind::Poly(PolynomialType::Committed));
-                FunctionValueDefinition::Expression(self.process_expression(expr))
-            }
-            FunctionDefinition::Query(params, expr) => {
-                assert!(!have_array_size);
-                assert_eq!(symbol_kind, SymbolKind::Poly(PolynomialType::Committed));
-                let body = Box::new(self.expression_processor().process_function(&params, expr));
-                FunctionValueDefinition::Query(Expression::LambdaExpression(LambdaExpression {
-                    params,
-                    body,
-                }))
-            }
-            FunctionDefinition::Array(value) => {
-                let size = value.solve(self.polynomial_degree.unwrap());
-                let expression = self
-                    .expression_processor()
-                    .process_array_expression(value, size);
-                assert_eq!(
-                    expression.iter().map(|e| e.size()).sum::<DegreeType>(),
-                    self.polynomial_degree.unwrap()
-                );
-                FunctionValueDefinition::Array(expression)
-            }
-        });
-        let is_new = self
-            .definitions
-            .insert(name.clone(), (symbol, value))
-            .is_none();
-        assert!(is_new, "{name} already defined.");
-        self.source_order
-            .push(StatementIdentifier::Definition(name));
-        id
-    }
-
-    fn handle_public_declaration(
-        &mut self,
-        source: SourceRef,
-        name: String,
-        poly: parsed::NamespacedPolynomialReference,
-        array_index: Option<parsed::Expression<T>>,
-        index: parsed::Expression<T>,
-    ) {
-        let id = self.public_declarations.len() as u64;
-        let polynomial = self
-            .expression_processor()
-            .process_namespaced_polynomial_reference(poly);
-        let array_index = array_index.map(|i| {
-            let index = self.evaluate_expression(i).unwrap().to_degree();
-            assert!(index <= usize::MAX as u64);
-            index as usize
-        });
-        self.public_declarations.insert(
-            name.to_string(),
-            PublicDeclaration {
-                id,
-                source,
-                name: name.to_string(),
-                polynomial,
-                array_index,
-                index: self.evaluate_expression(index).unwrap().to_degree(),
-            },
-        );
-        self.source_order
-            .push(StatementIdentifier::PublicDeclaration(name));
-    }
-
-    fn dispense_id(&mut self, kind: IdentityKind) -> u64 {
-        let cnt = self.identity_counter.entry(kind).or_default();
-        let id = *cnt;
-        *cnt += 1;
-        id
-    }
-
-    fn evaluate_expression(&self, expr: ::ast::parsed::Expression<T>) -> Result<T, EvalError> {
-        evaluator::evaluate_expression(&self.process_expression(expr), &self.definitions)?
-            .try_to_number()
-    }
-
-    fn expression_processor(&self) -> ExpressionProcessor<PILResolver<T>> {
-        ExpressionProcessor::new(PILResolver(self))
-    }
-
-    fn process_expression(&self, expr: ::ast::parsed::Expression<T>) -> Expression<T> {
-        self.expression_processor().process_expression(expr)
+    fn driver(&self) -> Driver<T> {
+        Driver(self)
     }
 }
 
-struct PILResolver<'a, T>(&'a PILAnalyzer<T>);
+#[derive(Clone, Copy)]
+struct Driver<'a, T>(&'a PILAnalyzer<T>);
 
-impl<'a, T: FieldElement> ReferenceResolver for PILResolver<'a, T> {
+impl<'a, T: FieldElement> AnalysisDriver<T> for Driver<'a, T> {
     fn resolve_decl(&self, name: &str) -> String {
         if name.starts_with('%') {
             // Constants are not namespaced
@@ -458,16 +190,28 @@ impl<'a, T: FieldElement> ReferenceResolver for PILResolver<'a, T> {
     }
 
     fn resolve_ref(&self, namespace: &Option<String>, name: &str) -> String {
-        if name.starts_with('%') || self.0.definitions.contains_key(&name.to_string()) {
+        let definitions = &self.0.definitions;
+        if name.starts_with('%') || definitions.contains_key(&name.to_string()) {
             assert!(namespace.is_none());
             // Constants are not namespaced
             name.to_string()
-        } else if namespace.is_none() && self.0.definitions.contains_key(&format!("Global.{name}"))
-        {
+        } else if namespace.is_none() && definitions.contains_key(&format!("Global.{name}")) {
             format!("Global.{name}")
         } else {
             format!("{}.{name}", namespace.as_ref().unwrap_or(&self.0.namespace))
         }
+    }
+
+    fn source_position_to_source_ref(&self, pos: usize) -> SourceRef {
+        let file = self.0.current_file.file_name().unwrap().to_str().unwrap();
+        SourceRef {
+            line: parser_util::lines::offset_to_line(pos, &self.0.line_starts),
+            file: file.to_string(),
+        }
+    }
+
+    fn definitions(&self) -> &HashMap<String, (Symbol, Option<FunctionValueDefinition<T>>)> {
+        &self.0.definitions
     }
 }
 
