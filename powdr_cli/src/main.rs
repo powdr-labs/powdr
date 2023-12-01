@@ -12,7 +12,9 @@ use log::LevelFilter;
 use number::write_polys_file;
 use number::{read_polys_csv_file, write_polys_csv_file, CsvRenderMode};
 use number::{Bn254Field, FieldElement, GoldilocksField};
-use riscv::bootloader::{default_input, PC_INDEX, REGISTER_NAMES};
+use riscv::bootloader::{
+    default_input, BYTES_PER_WORD, PAGE_SIZE_BYTES_LOG, PC_INDEX, REGISTER_NAMES,
+};
 use riscv::{compile_riscv_asm, compile_rust};
 use riscv_executor::ExecutionTrace;
 use std::collections::{BTreeSet, HashMap};
@@ -723,7 +725,7 @@ fn rust_continuations<F: FieldElement>(file_name: &str, contents: &str, inputs: 
             if access.idx >= proven_trace + num_rows {
                 break;
             }
-            accessed_pages.insert(access.address >> 10);
+            accessed_pages.insert(access.address >> PAGE_SIZE_BYTES_LOG);
         }
         log::info!(
             "{} accessed pages: {:?}",
@@ -736,11 +738,12 @@ fn rust_continuations<F: FieldElement>(file_name: &str, contents: &str, inputs: 
             bootloader_inputs.push(*chunk_trace[reg].last().unwrap());
         }
         bootloader_inputs.push((accessed_pages.len() as u64).into());
-        for page in accessed_pages.iter() {
-            let start_addr = page << 10;
-            bootloader_inputs.push(start_addr.into());
-            for i in 0..256 {
-                let addr = start_addr + i * 4;
+        for &page in accessed_pages.iter() {
+            let start_addr = page << PAGE_SIZE_BYTES_LOG;
+            bootloader_inputs.push(page.into());
+            let words_per_page = (1 << (PAGE_SIZE_BYTES_LOG)) / BYTES_PER_WORD;
+            for i in 0..words_per_page {
+                let addr = start_addr + (i * BYTES_PER_WORD) as u32;
                 bootloader_inputs.push((*memory_snapshot.get(&addr).unwrap_or(&0)).into());
             }
         }
