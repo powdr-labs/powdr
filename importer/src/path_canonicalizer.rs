@@ -144,14 +144,23 @@ fn check_path<T>(
     // the path to check
     path: AbsoluteSymbolPath,
     // the current state
-    state: State<'_, T>,
+    state: &mut State<'_, T>,
+) -> Result<(), String> {
+    check_path_internal(path, state, Default::default())?;
+    Ok(())
+}
+
+fn check_path_internal<'a, T>(
+    // the path to check
+    path: AbsoluteSymbolPath,
+    // the current state
+    state: &mut State<'a, T>,
     // the locations visited so far
     mut chain: PathDependencyChain,
 ) -> Result<
     (
-        State<'_, T>,
         AbsoluteSymbolPath,
-        SymbolValueRef<'_, T>,
+        SymbolValueRef<'a, T>,
         PathDependencyChain,
     ),
     String,
@@ -165,12 +174,11 @@ fn check_path<T>(
         .iter()
         .try_fold(
             (
-                state,
                 AbsoluteSymbolPath::default(),
                 SymbolValueRef::Module(ModuleRef::Local(root)),
                 chain,
             ),
-            |(state, mut location, value, chain), member| {
+            |(mut location, value, chain), member| {
                 match value {
                     // machines do not expose symbols
                     SymbolValueRef::Machine(_) => {
@@ -187,16 +195,11 @@ fn check_path<T>(
                             match symbol {
                                 SymbolValue::Import(p) => {
                                     // if we found an import, check it and continue from there
-                                    check_path(location.join(p.path.clone()), state, chain)
+                                    check_path_internal(location.join(p.path.clone()), state, chain)
                                 }
                                 symbol => {
                                     // if we found any other symbol, continue from there
-                                    Ok((
-                                        state,
-                                        location.join(member.clone()),
-                                        symbol.as_ref(),
-                                        chain,
-                                    ))
+                                    Ok((location.join(member.clone()), symbol.as_ref(), chain))
                                 }
                             }
                         }),
@@ -206,7 +209,7 @@ fn check_path<T>(
                         location.pop_back().unwrap();
 
                         // redirect to `p`
-                        check_path(
+                        check_path_internal(
                             location.join(p.path.clone().join(member.clone())),
                             state,
                             chain,
@@ -215,9 +218,9 @@ fn check_path<T>(
                 }
             },
         )
-        .map(|(mut state, canonical_path, symbol, chain)| {
+        .map(|(canonical_path, symbol, chain)| {
             state.paths.insert(path, canonical_path.clone());
-            (state, canonical_path, symbol, chain)
+            (canonical_path, symbol, chain)
         })
 }
 
@@ -232,29 +235,24 @@ fn check_import<T: Clone>(
     // the imported path, relative to the location
     imported: Import,
     // the current state
-    state: State<'_, T>,
-) -> Result<State<'_, T>, String> {
-    let (state, _, _, _) = check_path(
-        location.join(imported.path),
-        state,
-        PathDependencyChain::default(),
-    )?;
-
-    Ok(state)
+    state: &mut State<'_, T>,
+) -> Result<(), String> {
+    check_path(location.join(imported.path), state)
 }
 
 fn generate_path_map<T: FieldElement>(program: &ASMProgram<T>) -> Result<PathMap, String> {
+    // an empty state starting from this module
+    let mut state = State {
+        root: &program.main,
+        paths: Default::default(),
+    };
     check_module(
         // the location of the main module
         AbsoluteSymbolPath::default(),
         &program.main,
-        // an empty state starting from this module
-        State {
-            root: &program.main,
-            paths: Default::default(),
-        },
-    )
-    .map(|state| state.paths)
+        &mut state,
+    )?;
+    Ok(state.paths)
 }
 
 /// Checks a module
@@ -262,11 +260,11 @@ fn generate_path_map<T: FieldElement>(program: &ASMProgram<T>) -> Result<PathMap
 /// # Errors
 ///
 /// This function will return an error if a name is not unique, or if any path in this module does not resolve to anything
-fn check_module<'a, T: Clone>(
+fn check_module<T: Clone>(
     location: AbsoluteSymbolPath,
     module: &ASMModule<T>,
-    state: State<'a, T>,
-) -> Result<State<'a, T>, String> {
+    state: &mut State<'_, T>,
+) -> Result<(), String> {
     module.symbol_definitions().try_fold(
         BTreeSet::default(),
         |mut acc, SymbolDefinition { name, .. }| {
@@ -276,25 +274,24 @@ fn check_module<'a, T: Clone>(
         },
     )?;
 
-    module
-        .symbol_definitions()
+    for SymbolDefinition { name, value } in module.symbol_definitions() {
         // start with the initial state
-        .try_fold(state, |state, SymbolDefinition { name, value }| {
-            // update the state
-            match value {
-                SymbolValue::Machine(machine) => {
-                    check_machine(location.clone().join(name.clone()), machine, state)
-                }
-                SymbolValue::Module(module) => {
-                    let m = match module {
-                        Module::External(_) => unreachable!(),
-                        Module::Local(m) => m,
-                    };
-                    check_module(location.clone().join(name.clone()), m, state)
-                }
-                SymbolValue::Import(s) => check_import(location.clone(), s.clone(), state),
+        // update the state
+        match value {
+            SymbolValue::Machine(machine) => {
+                check_machine(location.clone().join(name.clone()), machine, state)?;
             }
-        })
+            SymbolValue::Module(module) => {
+                let m = match module {
+                    Module::External(_) => unreachable!(),
+                    Module::Local(m) => m,
+                };
+                check_module(location.clone().join(name.clone()), m, state)?;
+            }
+            SymbolValue::Import(s) => check_import(location.clone(), s.clone(), state)?,
+        }
+    }
+    Ok(())
 }
 
 /// Checks a machine, checking the paths it contains, in particular paths to the types of submachines
@@ -302,11 +299,11 @@ fn check_module<'a, T: Clone>(
 /// # Errors
 ///
 /// This function will return an error if any of the paths does not resolve to anything
-fn check_machine<'a, T: Clone>(
+fn check_machine<T: Clone>(
     location: AbsoluteSymbolPath,
     m: &Machine<T>,
-    state: State<'a, T>,
-) -> Result<State<'a, T>, String> {
+    state: &mut State<'_, T>,
+) -> Result<(), String> {
     // we check the path in the context of the parent module
     let module_location = {
         let mut l = location.clone();
@@ -314,17 +311,12 @@ fn check_machine<'a, T: Clone>(
         l
     };
 
-    m.statements
-        .iter()
-        .try_fold(state, |state, statement| match statement {
-            MachineStatement::Submachine(_, path, _) => check_path(
-                module_location.clone().join(path.clone()),
-                state,
-                PathDependencyChain::default(),
-            )
-            .map(|(state, _, _, _)| state),
-            _ => Ok(state),
-        })
+    for statement in &m.statements {
+        if let MachineStatement::Submachine(_, path, _) = statement {
+            check_path(module_location.clone().join(path.clone()), state)?
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]
