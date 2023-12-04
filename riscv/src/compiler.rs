@@ -467,6 +467,8 @@ fn preamble(degree: u64, coprocessors: &CoProcessors) -> String {
     reg tmp3;
     reg tmp4;
     reg lr_sc_reservation;
+    public main_input = x13(0);
+    public main_output = x14(0);
 "#
         .to_owned()
         .to_string()
