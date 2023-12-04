@@ -1,10 +1,25 @@
-// This is a dummy implementation of Poseidon hash,
-// which will be replaced with a call to the Poseidon
-// coprocessor during compilation.
-// The function itself will be removed by the compiler
-// during the reachability analysis.
 extern "C" {
+    // This is a dummy implementation of Poseidon hash,
+    // which will be replaced with a call to the Poseidon
+    // coprocessor during compilation.
+    // The function itself will be removed by the compiler
+    // during the reachability analysis.
     fn poseidon_gl_coprocessor(data: *mut [u64; 12]);
+
+    // This will be replaced by a call to prover input.
+    fn input_coprocessor(index: u32, what: u32) -> u32;
+}
+
+extern crate alloc;
+
+pub fn get_data(what: u32, data: &mut [u32]) {
+    for (i, d) in data.iter_mut().enumerate() {
+        *d = unsafe { input_coprocessor(what, (i + 1) as u32) };
+    }
+}
+
+pub fn get_data_len(what: u32) -> usize {
+    unsafe { input_coprocessor(what, 0) as usize }
 }
 
 const GOLDILOCKS: u64 = 0xffffffff00000001;

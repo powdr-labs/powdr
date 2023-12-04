@@ -65,11 +65,20 @@ instr poseidon_gl A0, A1, A2, A3, A4, A5, A6, A7, A8, A9, A10, A11 -> X, Y, Z, W
     runtime_function_impl: Some(("poseidon_gl_coprocessor", poseidon_gl_call)),
 };
 
-static ALL_COPROCESSORS: [(&str, &CoProcessor); 4] = [
+static INPUT_COPROCESSOR: CoProcessor = CoProcessor {
+    name: "prover_input",
+    ty: "",
+    import: "",
+    instructions: "",
+    runtime_function_impl: Some(("input_coprocessor", prover_input_call)),
+};
+
+static ALL_COPROCESSORS: [(&str, &CoProcessor); 5] = [
     (BINARY_COPROCESSOR.name, &BINARY_COPROCESSOR),
     (SHIFT_COPROCESSOR.name, &SHIFT_COPROCESSOR),
     (SPLIT_GL_COPROCESSOR.name, &SPLIT_GL_COPROCESSOR),
     (POSEIDON_GL_COPROCESSOR.name, &POSEIDON_GL_COPROCESSOR),
+    (INPUT_COPROCESSOR.name, &INPUT_COPROCESSOR),
 ];
 
 /// Defines which coprocessors should be used by the RISCV machine.
@@ -116,6 +125,7 @@ impl CoProcessors {
             coprocessors: BTreeMap::from([
                 (BINARY_COPROCESSOR.name, &BINARY_COPROCESSOR),
                 (SHIFT_COPROCESSOR.name, &SHIFT_COPROCESSOR),
+                (INPUT_COPROCESSOR.name, &INPUT_COPROCESSOR),
             ]),
         }
     }
@@ -134,7 +144,11 @@ impl CoProcessors {
     }
 
     pub fn declarations(&self) -> Vec<(&'static str, &'static str)> {
-        self.coprocessors.values().map(|c| (c.name, c.ty)).collect()
+        self.coprocessors
+            .values()
+            .filter(|c| !c.ty.is_empty())
+            .map(|c| (c.name, c.ty))
+            .collect()
     }
 
     pub fn machine_imports(&self) -> Vec<&'static str> {
@@ -237,6 +251,10 @@ fn poseidon_gl_call() -> String {
         .chain(std::iter::once(call.to_string()))
         .chain((0..4).map(encoding))
         .collect()
+}
+
+fn prover_input_call() -> String {
+    "x10 <=X= ${ (\"data\", x11, x10) };".to_string()
 }
 
 // This could also potentially go in the impl of CoProcessors,

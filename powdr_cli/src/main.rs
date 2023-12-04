@@ -426,6 +426,7 @@ fn run_command(command: Commands) {
             continuations,
         } => match (just_execute, continuations) {
             (true, true) => {
+                assert!(matches!(field, FieldArgument::Gl));
                 let contents = fs::read_to_string(&file).unwrap();
                 let inputs = split_inputs::<GoldilocksField>(&inputs);
                 rust_continuations(file.as_str(), contents.as_str(), inputs);
@@ -433,6 +434,10 @@ fn run_command(command: Commands) {
             (true, false) => {
                 let contents = fs::read_to_string(&file).unwrap();
                 let inputs = split_inputs::<GoldilocksField>(&inputs);
+                let inputs: HashMap<GoldilocksField, Vec<GoldilocksField>> =
+                    vec![(GoldilocksField::from(0), inputs)]
+                        .into_iter()
+                        .collect();
                 riscv_executor::execute::<GoldilocksField>(&contents, &inputs, &default_input());
             }
             (false, true) => {
@@ -581,7 +586,9 @@ fn handle_riscv_asm<F: FieldElement>(
             rust_continuations(file_name, contents, inputs);
         }
         (true, false) => {
-            riscv_executor::execute::<F>(contents, &inputs, &default_input());
+            let mut inputs_hash: HashMap<F, Vec<F>> = HashMap::default();
+            inputs_hash.insert(0u32.into(), inputs);
+            riscv_executor::execute::<F>(contents, &inputs_hash, &default_input());
         }
         (false, true) => {
             unimplemented!("Running witgen with continuations is not supported yet.")
@@ -625,6 +632,8 @@ fn rust_continuations<F: FieldElement>(file_name: &str, contents: &str, inputs: 
 
     let program =
         compiler::compile_asm_string_to_analyzed_ast::<F>(file_name, contents, None).unwrap();
+
+    let inputs: HashMap<F, Vec<F>> = vec![(F::from(0), inputs)].into_iter().collect();
 
     log::info!("Executing powdr-asm...");
     let (full_trace, memory_accesses) = {
