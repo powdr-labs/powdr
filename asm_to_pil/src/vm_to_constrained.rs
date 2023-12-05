@@ -12,7 +12,7 @@ use ast::{
         LinkDefinitionStatement, Machine, RegisterDeclarationStatement, RegisterTy, Rom,
     },
     parsed::{
-        asm::InstructionBody,
+        asm::{InstructionBody, Part},
         build::{direct_reference, next_reference},
         folder::ExpressionFolder,
         visitor::ExpressionVisitable,
@@ -381,8 +381,11 @@ impl<T: FieldElement> ASMPILConverter<T> {
                 body.iter_mut().for_each(|s| {
                     s.post_visit_expressions_mut(&mut |e| {
                         if let Expression::Reference(r) = e {
-                            if let Some(sub) = substitutions.get(&r.name) {
-                                r.name = sub.to_string();
+                            if let Some(name) = r.try_to_identifier() {
+                                if let Some(sub) = substitutions.get(name) {
+                                    *r.path.parts.last_mut().unwrap() =
+                                        Part::Named(sub.to_string());
+                                }
                             }
                         }
                     });
@@ -466,16 +469,13 @@ impl<T: FieldElement> ASMPILConverter<T> {
         function: Expression<T>,
         mut args: Vec<Expression<T>>,
     ) -> CodeLine<T> {
-        let Expression::Reference(NamespacedPolynomialReference {
-            namespace: _,
-            name: instr_name,
-        }) = function
-        else {
+        let Expression::Reference(reference) = function else {
             panic!("Expected instruction name");
         };
+        let instr_name = reference.try_to_identifier().unwrap();
         let instr = &self
             .instructions
-            .get(&instr_name)
+            .get(instr_name)
             .unwrap_or_else(|| panic!("Instruction not found: {instr_name}"));
         let output = instr.outputs.clone();
 
@@ -487,7 +487,7 @@ impl<T: FieldElement> ASMPILConverter<T> {
         }
 
         args.extend(lhs_with_regs.iter().map(|(lhs, _)| direct_reference(lhs)));
-        self.handle_instruction(instr_name, args)
+        self.handle_instruction(instr_name.clone(), args)
     }
 
     fn handle_instruction(&mut self, instr_name: String, args: Vec<Expression<T>>) -> CodeLine<T> {
@@ -517,7 +517,7 @@ impl<T: FieldElement> ASMPILConverter<T> {
                         Input::Literal(_, LiteralKind::Label) => {
                             if let Expression::Reference(r) = a {
                                 instruction_literal_arg
-                                    .push(InstructionLiteralArg::LabelRef(r.name));
+                                    .push(InstructionLiteralArg::LabelRef(r.try_to_identifier().unwrap().clone()));
                             } else {
                                 panic!();
                             }
@@ -558,7 +558,7 @@ impl<T: FieldElement> ASMPILConverter<T> {
             .map(|(reg, a)| {
                 // Output a value trough assignment register "reg"
                 if let Expression::Reference(r) = a {
-                    (reg.clone(), vec![r.name])
+                    (reg.clone(), vec![r.try_to_identifier().unwrap().clone()])
                 } else {
                     panic!("Expected direct register to assign to in instruction call.");
                 }
@@ -585,10 +585,8 @@ impl<T: FieldElement> ASMPILConverter<T> {
             Expression::FunctionCall(_) => panic!(),
             Expression::Reference(reference) => {
                 // TODO check it actually is a register
-                vec![(
-                    1.into(),
-                    AffineExpressionComponent::Register(reference.name),
-                )]
+                let name = reference.try_to_identifier().unwrap();
+                vec![(1.into(), AffineExpressionComponent::Register(name.clone()))]
             }
             Expression::Number(value) => vec![(value, AffineExpressionComponent::Constant)],
             Expression::String(_) => panic!(),
@@ -1090,7 +1088,9 @@ fn extract_update<T: FieldElement>(expr: Expression<T>) -> (Option<String>, Expr
     if let Expression::BinaryOperation(left, BinaryOperator::Sub, right) = expr {
         match *left {
             Expression::UnaryOperation(UnaryOperator::Next, column) => match *column {
-                Expression::Reference(column) => (Some(column.name), *right),
+                Expression::Reference(column) => {
+                    (Some(column.try_to_identifier().unwrap().clone()), *right)
+                }
                 _ => (
                     None,
                     Expression::UnaryOperation(UnaryOperator::Next, column) - *right,

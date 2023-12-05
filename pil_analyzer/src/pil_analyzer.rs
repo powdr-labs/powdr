@@ -1,7 +1,9 @@
 use std::collections::{HashMap, HashSet};
+
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use ast::parsed::asm::{AbsoluteSymbolPath, SymbolPath};
 use ast::parsed::PilStatement;
 use number::{DegreeType, FieldElement};
 
@@ -30,8 +32,10 @@ pub fn process_pil_file_contents<T: FieldElement>(contents: &str) -> Analyzed<T>
 // TODO we could further extract a component that is only responsible for
 // collecting definitions, assigning IDs and maintaining the source order.
 
+#[derive(Default)]
 struct PILAnalyzer<T> {
-    namespace: String,
+    known_symbols: HashSet<String>,
+    current_namespace: AbsoluteSymbolPath,
     polynomial_degree: Option<DegreeType>,
     definitions: HashMap<String, (Symbol, Option<FunctionValueDefinition<T>>)>,
     public_declarations: HashMap<String, PublicDeclaration>,
@@ -48,16 +52,8 @@ struct PILAnalyzer<T> {
 impl<T: FieldElement> PILAnalyzer<T> {
     pub fn new() -> PILAnalyzer<T> {
         PILAnalyzer {
-            namespace: "Global".to_string(),
-            polynomial_degree: None,
-            definitions: Default::default(),
-            public_declarations: Default::default(),
-            identities: vec![],
-            source_order: vec![],
-            included_files: Default::default(),
-            line_starts: Default::default(),
-            current_file: Default::default(),
             symbol_counters: Some(Default::default()),
+            ..Default::default()
         }
     }
 
@@ -88,6 +84,10 @@ impl<T: FieldElement> PILAnalyzer<T> {
                 panic!();
             });
 
+        for statement in &pil_file.0 {
+            self.collect_names(statement);
+        }
+        self.current_namespace = Default::default();
         for statement in pil_file.0 {
             self.handle_statement(statement);
         }
@@ -104,6 +104,32 @@ impl<T: FieldElement> PILAnalyzer<T> {
             &self.identities,
             self.source_order,
         )
+    }
+
+    /// A step to collect all defined names in the statement.
+    /// This allows at least some forward-references at least in the current file.
+    fn collect_names(&mut self, statement: &PilStatement<T>) {
+        match statement {
+            PilStatement::Namespace(_, name, _) => {
+                self.current_namespace = AbsoluteSymbolPath {
+                    parts: vec![name.to_string()],
+                };
+            }
+            PilStatement::Include(_, _) => {
+                // TODO also handle includes here, let's just make this proper!
+            }
+            _ => {
+                let mut counters = Default::default();
+                for absolute_name in
+                    StatementProcessor::new(self.driver(), &mut counters, self.polynomial_degree)
+                        .symbol_definition_names(statement)
+                {
+                    if !self.known_symbols.insert(absolute_name.clone()) {
+                        panic!("Duplicate symbol definition: {absolute_name}");
+                    }
+                }
+            }
+        }
     }
 
     fn handle_statement(&mut self, statement: PilStatement<T>) {
@@ -152,7 +178,7 @@ impl<T: FieldElement> PILAnalyzer<T> {
         self.process_file(&dir);
     }
 
-    fn handle_namespace(&mut self, name: String, degree: ::ast::parsed::Expression<T>) {
+    fn handle_namespace(&mut self, name: SymbolPath, degree: ::ast::parsed::Expression<T>) {
         // TODO: the polynomial degree should be handled without going through a field element. This requires having types in Expression
         let degree = ExpressionProcessor::new(self.driver()).process_expression(degree);
         let namespace_degree = evaluator::evaluate_expression(&degree, &self.definitions)
@@ -168,7 +194,7 @@ impl<T: FieldElement> PILAnalyzer<T> {
         } else {
             self.polynomial_degree = Some(namespace_degree);
         }
-        self.namespace = name;
+        self.current_namespace = AbsoluteSymbolPath::default().join(name);
     }
 
     fn driver(&self) -> Driver<T> {
@@ -181,25 +207,28 @@ struct Driver<'a, T>(&'a PILAnalyzer<T>);
 
 impl<'a, T: FieldElement> AnalysisDriver<T> for Driver<'a, T> {
     fn resolve_decl(&self, name: &str) -> String {
-        if name.starts_with('%') {
+        (if name.starts_with('%') {
             // Constants are not namespaced
-            name.to_string()
+            AbsoluteSymbolPath::default()
         } else {
-            format!("{}.{name}", self.0.namespace)
-        }
+            self.0.current_namespace.clone()
+        })
+        .with_part(name)
+        .to_dotted_string()
     }
 
-    fn resolve_ref(&self, namespace: &Option<String>, name: &str) -> String {
-        let definitions = &self.0.definitions;
-        if name.starts_with('%') || definitions.contains_key(&name.to_string()) {
-            assert!(namespace.is_none());
-            // Constants are not namespaced
-            name.to_string()
-        } else if namespace.is_none() && definitions.contains_key(&format!("Global.{name}")) {
-            format!("Global.{name}")
-        } else {
-            format!("{}.{name}", namespace.as_ref().unwrap_or(&self.0.namespace))
-        }
+    fn resolve_ref(&self, path: &SymbolPath) -> String {
+        // Try to resolve the name starting at the current namespace and then
+        // go up level by level until the root.
+
+        self.0
+            .current_namespace
+            .iter_to_root()
+            .find_map(|prefix| {
+                let path = prefix.join(path.clone()).to_dotted_string();
+                self.0.known_symbols.contains(&path).then_some(path)
+            })
+            .unwrap_or_else(|| panic!("Symbol not found: {}", path.to_dotted_string()))
     }
 
     fn source_position_to_source_ref(&self, pos: usize) -> SourceRef {

@@ -41,7 +41,15 @@ Import: SymbolDefinition<T> = {
 }
 
 pub SymbolPath: SymbolPath = {
-    <mut parts:( <Part> "::" )*> <end:Part>  => { parts.push(end); SymbolPath { parts: parts.into() } },
+    <abs:"::"?> <parts:( <Part> "::" )*> <end:Part>  => {
+        SymbolPath {
+            parts: [
+                abs.map(|_| vec![Part::Named(String::new())]).unwrap_or_default(),
+                parts,
+                vec![end],
+            ].concat()
+        }
+    },
 }
 
 Part: Part = {
@@ -73,7 +81,7 @@ Include: PilStatement<T> = {
 };
 
 Namespace: PilStatement<T> = {
-    <start:@L> "namespace" <name:Identifier> "(" <pol_degree:Expression> ")" => PilStatement::Namespace(<>)
+    <start:@L> "namespace" <name:SymbolPath> "(" <pol_degree:Expression> ")" => PilStatement::Namespace(<>)
 }
 
 LetStatement: PilStatement<T> = {
@@ -475,7 +483,7 @@ PostfixUnaryOp: UnaryOperator = {
 Term: Box<Expression<T>> = {
     IndexAccess => Box::new(Expression::IndexAccess(<>)),
     FunctionCall => Box::new(Expression::FunctionCall(<>)),
-    ConstantIdentifier => Box::new(Expression::Reference(NamespacedPolynomialReference{namespace: None, name: <>})),
+    ConstantIdentifier => Box::new(Expression::Reference(NamespacedPolynomialReference::from_identifier(<>))),
     NamespacedPolynomialReference => Box::new(Expression::Reference(<>)),
     PublicIdentifier => Box::new(Expression::PublicReference(<>)),
     FieldElement => Box::new(Expression::Number(<>)),
@@ -497,7 +505,8 @@ FunctionCall: FunctionCall<T> = {
 }
 
 NamespacedPolynomialReference: NamespacedPolynomialReference = {
-    <namespace:( <Identifier> "." )?> <name:Identifier> => NamespacedPolynomialReference{<>},
+    <SymbolPath> => <>.into(),
+    <namespace:Identifier> "." <name:Identifier> => SymbolPath{parts: [namespace, name].into_iter().map(Part::Named).collect()}.into(),
 }
 
 MatchExpression: Box<Expression<T>> = {

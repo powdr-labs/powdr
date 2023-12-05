@@ -495,15 +495,7 @@ impl<T: Display> Display for PolynomialName<T> {
 
 impl Display for NamespacedPolynomialReference {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write!(
-            f,
-            "{}{}",
-            self.namespace
-                .as_ref()
-                .map(|n| format!("{n}."))
-                .unwrap_or_default(),
-            self.name
-        )
+        write!(f, "{}", self.path.to_dotted_string())
     }
 }
 

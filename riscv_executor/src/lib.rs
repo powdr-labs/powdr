@@ -675,17 +675,15 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
         match expression {
             Expression::Reference(r) => {
                 // an identifier looks like this:
-                assert!(r.namespace.is_none());
-
-                let name = r.name.as_str();
+                let name = r.try_to_identifier().unwrap();
 
                 // labels share the identifier space with registers:
                 // try one, then the other
                 let val = self
                     .label_map
-                    .get(name)
+                    .get(name.as_str())
                     .cloned()
-                    .unwrap_or_else(|| self.proc.get_reg(name));
+                    .unwrap_or_else(|| self.proc.get_reg(name.as_str()));
                 vec![val]
             }
             Expression::PublicReference(_) => todo!(),
@@ -750,8 +748,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 arguments,
             }) => match function.as_ref() {
                 Expression::Reference(f) => {
-                    assert!(f.namespace.is_none());
-                    self.exec_instruction(&f.name, arguments)
+                    self.exec_instruction(f.try_to_identifier().unwrap(), arguments)
                 }
                 _ => panic!(),
             },
