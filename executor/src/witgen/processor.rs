@@ -48,8 +48,6 @@ pub struct Processor<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> {
     row_offset: u64,
     /// The rows that are being processed.
     data: FinalizableData<'a, T>,
-    /// The list of identities
-    identities: &'c [&'a Identity<Expression<T>>],
     /// The mutable state
     mutable_state: &'c mut MutableState<'a, 'b, T, Q>,
     /// The fixed data (containing information about all columns)
@@ -69,7 +67,6 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
         row_offset: u64,
         data: FinalizableData<'a, T>,
         mutable_state: &'c mut MutableState<'a, 'b, T, Q>,
-        identities: &'c [&'a Identity<Expression<T>>],
         fixed_data: &'a FixedData<'a, T>,
         row_factory: RowFactory<'a, T>,
         witness_cols: &'c HashSet<PolyID>,
@@ -84,7 +81,6 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
             row_offset,
             data,
             mutable_state,
-            identities,
             fixed_data,
             row_factory,
             witness_cols,
@@ -99,7 +95,6 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
             row_offset: self.row_offset,
             data: self.data,
             mutable_state: self.mutable_state,
-            identities: self.identities,
             fixed_data: self.fixed_data,
             row_factory: self.row_factory,
             witness_cols: self.witness_cols,
@@ -143,10 +138,8 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
     pub fn process_identity(
         &mut self,
         row_index: usize,
-        identity_index: usize,
+        identity: &'a Identity<Expression<T>>,
     ) -> Result<bool, EvalError<T>> {
-        let identity = &self.identities[identity_index];
-
         // Create row pair
         let global_row_index = self.row_offset + row_index as u64;
         let row_pair = RowPair::new(

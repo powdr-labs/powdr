@@ -19,6 +19,8 @@ use super::{
 /// - `'c`: The duration of this Processor's lifetime (e.g. the reference to the identity processor)
 pub struct BlockProcessor<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> {
     processor: Processor<'a, 'b, 'c, T, Q>,
+    /// The list of identities
+    identities: &'c [&'a Identity<Expression<T>>],
 }
 
 impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> BlockProcessor<'a, 'b, 'c, T, Q> {
@@ -35,12 +37,14 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> BlockProcessor<'a, 'b, 'c
             row_offset,
             data,
             mutable_state,
-            identities,
             fixed_data,
             row_factory,
             witness_cols,
         );
-        Self { processor }
+        Self {
+            processor,
+            identities,
+        }
     }
 
     pub fn with_outer_query(
@@ -48,7 +52,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> BlockProcessor<'a, 'b, 'c
         outer_query: OuterQuery<'a, T>,
     ) -> BlockProcessor<'a, 'b, 'c, T, Q> {
         let processor = self.processor.with_outer_query(outer_query);
-        Self { processor }
+        Self { processor, ..self }
     }
 
     /// Figures out unknown values.
@@ -62,9 +66,9 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> BlockProcessor<'a, 'b, 'c
         while let Some(SequenceStep { row_delta, action }) = sequence_iterator.next() {
             let row_index = (1 + row_delta) as usize;
             let progress = match action {
-                Action::InternalIdentity(identity_index) => {
-                    self.processor.process_identity(row_index, identity_index)?
-                }
+                Action::InternalIdentity(identity_index) => self
+                    .processor
+                    .process_identity(row_index, self.identities[identity_index])?,
                 Action::OuterQuery => {
                     let (progress, new_outer_assignments) =
                         self.processor.process_outer_query(row_index)?;
