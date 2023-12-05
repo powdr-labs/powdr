@@ -713,7 +713,7 @@ mod test {
             prove_with: Some(BackendType::PilStarkCli),
             export_csv: true,
             csv_mode: CsvRenderModeCLI::Hex,
-            bname: "Example".into(),
+            bname: Some("Example".into()),
         };
         run_command(pil_command);
 

@@ -1,4 +1,4 @@
-use crate::file_writer::BBFiles;
+use crate::{file_writer::BBFiles, utils::map_with_newline};
 
 pub trait ComposerBuilder {
     fn create_composer_cpp(&mut self, name: &str, all_cols: &[String]);
@@ -10,11 +10,7 @@ impl ComposerBuilder for BBFiles {
         // Create a composer file, this is used to a prover and verifier for our flavour
         let include_str = cpp_includes(name);
 
-        let polys_to_key = all_cols
-            .iter()
-            .map(|name| format!("proving_key->{name} = polynomials.{name};", name = name))
-            .collect::<Vec<String>>()
-            .join("\n");
+        let map_polys_to_key = create_map_polys_to_key(all_cols);
 
         let composer_cpp = format!(
         "
@@ -31,7 +27,7 @@ void {name}Composer::compute_witness(CircuitConstructor& circuit)
 
     auto polynomials = circuit.compute_polynomials();
 
-    {polys_to_key}
+    {map_polys_to_key}
 
     computed_witness = true;
 }}
@@ -209,4 +205,11 @@ pub fn hpp_includes(name: &str) -> String {
 #include \"barretenberg/srs/global_crs.hpp\"
     "
     )
+}
+
+fn create_map_polys_to_key(all_cols: &[String]) -> String {
+    let map_transformation =
+        |name: &String| format!("proving_key->{name} = polynomials.{name};", name = name);
+
+    map_with_newline(all_cols, map_transformation)
 }

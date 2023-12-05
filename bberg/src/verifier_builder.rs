@@ -1,4 +1,4 @@
-use crate::file_writer::BBFiles;
+use crate::{file_writer::BBFiles, utils::map_with_newline};
 
 pub trait VerifierBuilder {
     fn create_verifier_cpp(&mut self, name: &str, witness: &[String]);
@@ -10,10 +10,12 @@ impl VerifierBuilder for BBFiles {
     fn create_verifier_cpp(&mut self, name: &str, witness: &[String]) {
         let include_str = includes_cpp(name);
 
-        let wire_commitments = witness.iter().map(|name|{
-        let n = name.replace('.',"_");
-        format!("commitments.{n} = transcript.template receive_from_prover<Commitment>(commitment_labels.{n});", n=n)
-    }).collect::<Vec<String>>().join("\n");
+        let wire_transformation = |n: &String| {
+            format!(
+            "commitments.{n} = transcript.template receive_from_prover<Commitment>(commitment_labels.{n});"
+        )
+        };
+        let wire_commitments = map_with_newline(witness, wire_transformation);
 
         let ver_cpp = format!("
 {include_str} 

@@ -1,4 +1,4 @@
-use crate::file_writer::BBFiles;
+use crate::{file_writer::BBFiles, utils::map_with_newline};
 
 pub trait ProverBuilder {
     fn create_prover_cpp(&mut self, name: &str, fixed: &[String], to_be_shifted: &[String]);
@@ -72,32 +72,17 @@ impl ProverBuilder for BBFiles {
         let include_str = includes_cpp(name);
 
         // Create the wire assignments, prover_polynomial = key
-        let fixed_assignments = fixed
-            .iter()
-            .map(|name| format!("prover_polynomials.{name} = key->{name};"))
-            .collect::<Vec<_>>()
-            .join("\n");
-
-        let committed_assignments = to_be_shifted
-            .iter()
-            .map(|name| {
-                format!(
-                    "
+        let fixed_assignments = map_with_newline(fixed, |name| {
+            format!("prover_polynomials.{name} = key->{name};")
+        });
+        let committed_assignments = map_with_newline(to_be_shifted, |name| {
+            format!(
+                "
 prover_polynomials.{name} = key->{name};
 prover_polynomials.{name}_shift = key->{name}.shifted();
 ",
-                )
-            })
-            .collect::<Vec<_>>()
-            .join("\n");
-
-        // Lmao yuck
-        let all_assignments = format!(
-            "
-    {fixed_assignments}
-    {committed_assignments}
-    "
-        );
+            )
+        });
 
         let prover_cpp = format!("
     {include_str}
@@ -120,7 +105,8 @@ prover_polynomials.{name}_shift = key->{name}.shifted();
         , commitment_key(commitment_key)
     {{
         // TODO: take every polynomial and assign it to the key!!
-        {all_assignments}
+        {fixed_assignments}
+        {committed_assignments}
     
         // prover_polynomials.lookup_inverses = key->lookup_inverses;
         // key->z_perm = Polynomial(key->circuit_size);

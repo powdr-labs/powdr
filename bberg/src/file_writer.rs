@@ -18,6 +18,7 @@ impl BBFiles {
         Self::new(file_name, None, None, None, None, None, None, None)
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         file_name: String,
         base: Option<String>,

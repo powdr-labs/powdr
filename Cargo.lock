@@ -2330,6 +2330,7 @@ dependencies = [
  "airgen",
  "analysis 0.1.0",
  "ast 0.1.0",
+ "compiler",
  "env_logger",
  "executor",
  "halo2_proofs",

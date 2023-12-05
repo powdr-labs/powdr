@@ -9,6 +9,7 @@ use std::collections::HashSet;
 use number::{DegreeType, FieldElement};
 
 use crate::file_writer::BBFiles;
+use crate::utils::map_with_newline;
 
 pub trait RelationBuilder {
     fn create_relations(
@@ -17,7 +18,7 @@ pub trait RelationBuilder {
         name: &str,
         sub_relations: &[String],
         identities: &[BBIdentity],
-        row_type: &String,
+        row_type: &str,
     );
 
     fn create_declare_views(&self, name: &str, all_cols_and_shifts: &[String]);
@@ -33,7 +34,7 @@ impl RelationBuilder for BBFiles {
         name: &str,
         sub_relations: &[String],
         identities: &[BBIdentity],
-        row_type: &String,
+        row_type: &str,
     ) {
         let includes = relation_includes();
         let class_boilerplate = relation_class_boilerplate(name, sub_relations, identities);
@@ -60,14 +61,9 @@ namespace proof_system::{root_name}_vm {{
     }
 
     fn create_declare_views(&self, name: &str, all_cols_and_shifts: &[String]) {
-        let make_view_per_row = all_cols_and_shifts
-            .iter()
-            .map(|row_name| {
-                let name = row_name.replace('.', "_");
-                format!("[[maybe_unused]] auto {name} = View(new_term.{name});  \\")
-            })
-            .collect::<Vec<_>>()
-            .join("\n");
+        let view_transformation =
+            |name: &String| format!("[[maybe_unused]] auto {name} = View(new_term.{name});  \\");
+        let make_view_per_row = map_with_newline(all_cols_and_shifts, view_transformation);
 
         let declare_views = format!(
             "
@@ -82,7 +78,7 @@ namespace proof_system::{root_name}_vm {{
 
         self.write_file(
             &format!("{}/{name}", &self.rel),
-            &format!("declare_views.hpp"),
+            "declare_views.hpp",
             &declare_views,
         );
     }
@@ -141,17 +137,13 @@ fn get_degree_boilerplate(degrees: Vec<DegreeType>) -> String {
     let mut degree_boilerplate = format!(
         "static constexpr std::array<size_t, {num_degrees}> SUBRELATION_PARTIAL_LENGTHS{{\n"
     );
-    for i in 0..degrees.len() {
-        degree_boilerplate.push_str(&format!("   {},\n", degrees[i]));
+    for degree in &degrees {
+        degree_boilerplate.push_str(&format!("   {},\n", degree));
     }
     degree_boilerplate.push_str("};");
 
     degree_boilerplate
 }
-
-// As all of our rows are annotated, we should be able to create
-// the row type by hand here
-// The row type is a combination of the fixed and witness columns
 
 // The include statements required for a new relation file
 fn relation_includes() -> &'static str {
@@ -163,25 +155,15 @@ fn relation_includes() -> &'static str {
 "#
 }
 
-// Yucky that everything is allocated into vecs here
-fn create_row_type_items(names: &[String]) -> Vec<String> {
-    names
-        .iter()
-        .map(|name| format!("    FF {} {{}};", name.replace('.', "_")))
-        .collect::<Vec<_>>()
-}
-
 // Each vm will need to have a row which is a combination of all of the witness columns
 pub(crate) fn create_row_type(name: &str, all_rows: &[String]) -> String {
-    let all_annotated = create_row_type_items(all_rows);
+    let row_transformation = |row: &_| format!("    FF {row} {{}};");
+    let all_annotated = map_with_newline(all_rows, row_transformation);
 
-    let row_type = format!(
+    format!(
         "template <typename FF> struct {name}Row {{ \n{}\n }}",
-        all_annotated.join("\n"),
-    );
-
-    println!("{}", row_type);
-    row_type
+        all_annotated,
+    )
 }
 
 fn create_identity<T: FieldElement>(
@@ -250,14 +232,6 @@ fn craft_expression<T: FieldElement>(
                 _ => unimplemented!("{:?}", expr),
             }
         }
-        // Expression::Constant(name) => {
-        //     panic!("Constant {name} was not inlined. optimize_constants needs to be run at least.")
-        // }
-        // pub enum UnaryOperator {
-        //     Plus,
-        //     Minus,
-        //     LogicalNot,
-        // }
         Expression::UnaryOperation(operator, expression) => match operator {
             AlgebraicUnaryOperator::Minus => {
                 let (d, e) =
@@ -276,9 +250,8 @@ fn craft_expression<T: FieldElement>(
     }
 }
 
-/// Todo, eventually these will need to be siloed based on the file name they are in
 pub(crate) fn create_identities<F: FieldElement>(
-    identities: &Vec<Identity<Expression<F>>>,
+    identities: &[Identity<Expression<F>>],
 ) -> (Vec<String>, Vec<BBIdentity>, Vec<String>, Vec<String>) {
     // We only want the expressions for now
     // When we have a poly type, we only need the left side of it
@@ -292,12 +265,6 @@ pub(crate) fn create_identities<F: FieldElement>(
             }
         })
         .collect::<Vec<_>>();
-
-    // Temp
-    // if collected_public_identities.len() > 0 {
-    //     println!("Public Identities are not supported yet in codegen, however some were collected");
-    //     println!("Public Identities: {:?}", collected_public_identities);
-    // }
 
     let mut identities = Vec::new();
     let mut subrelations = Vec::new();

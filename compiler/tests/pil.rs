@@ -28,6 +28,7 @@ pub fn verify_pil_with_external_witness(
         query_callback,
         Some(BackendType::PilStarkCli),
         external_witness_values,
+        None,
     );
 
     compiler::write_constants_to_fs(&result.constants, &temp_dir);
@@ -49,6 +50,7 @@ fn gen_estark_proof(file_name: &str, inputs: Vec<GoldilocksField>) {
         true,
         Some(BackendType::EStark),
         vec![],
+        None,
     )
     .unwrap();
 }
@@ -66,6 +68,7 @@ fn gen_halo2_proof(file_name: &str, inputs: Vec<Bn254Field>) {
         true,
         Some(BackendType::Halo2),
         vec![],
+        None,
     )
     .unwrap();
 }

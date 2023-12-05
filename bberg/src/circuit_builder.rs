@@ -1,5 +1,7 @@
 use crate::{
-    file_writer::BBFiles, relation_builder::create_row_type, utils::get_relations_imports,
+    file_writer::BBFiles,
+    relation_builder::create_row_type,
+    utils::{get_relations_imports, map_with_newline},
 };
 
 pub trait CircuitBuilder {
@@ -48,31 +50,26 @@ impl CircuitBuilder for BBFiles {
         let num_polys = all_cols.len();
         let num_cols = all_cols.len() + to_be_shifted.len();
 
-        let compute_polys_assignemnt = all_cols
-            .iter()
-            .map(|name| format!("polys.{name}[i] = rows[i].{name};",))
-            .collect::<Vec<String>>()
-            .join("\n");
-
-        let all_poly_shifts = &to_be_shifted
-            .iter()
-            .map(|name| format!("polys.{name}_shift = Polynomial(polys.{name}.shifted());"))
-            .collect::<Vec<String>>()
-            .join("\n");
-
-        let check_circuit_for_each_relation = relations
-            .iter()
-            .map(|relation_name| {
-                format!(
+        // Declare mapping transformations
+        let compute_polys_transformation =
+            |name: &String| format!("polys.{name}[i] = rows[i].{name};");
+        let all_polys_transformation =
+            |name: &String| format!("polys.{name}_shift = Polynomial(polys.{name}.shifted());");
+        let check_circuit_transformation = |relation_name: &String| {
+            format!(
                     "if (!evaluate_relation.template operator()<{name}_vm::{relation_name}<FF>>(\"{relation_name}\")) {{
                         return false;
                     }}",
                     name = name,
                     relation_name = relation_name
                 )
-            })
-            .collect::<Vec<String>>()
-            .join("\n");
+        };
+
+        // Apply transformations
+        let compute_polys_assignemnt = map_with_newline(all_cols, compute_polys_transformation);
+        let all_poly_shifts = map_with_newline(to_be_shifted, all_polys_transformation);
+        let check_circuit_for_each_relation =
+            map_with_newline(relations, check_circuit_transformation);
 
         let circuit_hpp = format!("
 {includes}

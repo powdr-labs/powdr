@@ -17,6 +17,7 @@ impl<T: FieldElement> BackendImpl<T> for Halo2Prover {
         fixed: &[(String, Vec<T>)],
         witness: &[(String, Vec<T>)],
         prev_proof: Option<Proof>,
+        _name: Option<String>,
     ) -> (Option<Proof>, Option<String>) {
         let proof = match prev_proof {
             Some(proof) => self.prove_aggr(pil, fixed, witness, proof),
@@ -50,6 +51,7 @@ impl<T: FieldElement> BackendImpl<T> for Halo2Mock {
         fixed: &[(String, Vec<T>)],
         witness: &[(String, Vec<T>)],
         prev_proof: Option<Proof>,
+        _name: Option<String>,
     ) -> (Option<Proof>, Option<String>) {
         if prev_proof.is_some() {
             unimplemented!("Halo2Mock backend does not support aggregation");

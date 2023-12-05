@@ -32,6 +32,7 @@ pub fn no_callback<T>() -> Option<fn(&str) -> Option<T>> {
 /// Compiles a .pil or .asm file and runs witness generation.
 /// If the file ends in .asm, converts it to .pil first.
 /// Returns the compilation result if any compilation took place.
+#[allow(clippy::too_many_arguments)]
 pub fn compile_pil_or_asm<T: FieldElement>(
     file_name: &str,
     inputs: Vec<T>,
@@ -144,7 +145,7 @@ pub fn compile_asm<T: FieldElement>(
 /// fixed and witness columns.
 ///
 /// Returns the relative pil file name and the compilation result if any compilation was done.
-#[allow(clippy::print_stderr)]
+#[allow(clippy::print_stderr, clippy::too_many_arguments)]
 pub fn compile_asm_string<T: FieldElement>(
     file_name: &str,
     contents: &str,
