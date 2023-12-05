@@ -71,21 +71,38 @@ pub fn compile<T: FieldElement>(input: AnalysisASMFile<T>) -> PILGraph<T> {
         panic!()
     };
 
+    let main = ast::object::Machine {
+        location: main_location,
+        latch: main_ty.latch.clone(),
+        operation_id: main_ty.operation_id.clone(),
+    };
+    let entry_points = main_ty
+        .operations()
+        .map(|o| Operation {
+            name: MAIN_FUNCTION.to_string(),
+            id: o.id.id,
+            params: o.params.clone(),
+        })
+        .collect();
+
+    // Extract all the pil utility definitions
+    let definitions = input
+        .items
+        .into_iter()
+        .filter_map(|(n, v)| {
+            if let Item::Expression(e) = v {
+                Some((n, e))
+            } else {
+                None
+            }
+        })
+        .collect();
+
     PILGraph {
-        main: ast::object::Machine {
-            location: main_location,
-            latch: main_ty.latch.clone(),
-            operation_id: main_ty.operation_id.clone(),
-        },
-        entry_points: main_ty
-            .operations()
-            .map(|o| Operation {
-                name: MAIN_FUNCTION.to_string(),
-                id: o.id.id,
-                params: o.params.clone(),
-            })
-            .collect(),
+        main,
+        entry_points,
         objects,
+        definitions,
     }
 }
 
