@@ -37,7 +37,7 @@ impl ProverBuilder for BBFiles {
         plonk::proof& export_proof();
         plonk::proof& construct_proof();
     
-        Transcript transcript;
+        std::shared_ptr<Transcript> transcript = std::make_shared<Transcript>();
     
         std::vector<FF> public_inputs;
     
@@ -122,7 +122,7 @@ prover_polynomials.{name}_shift = key->{name}.shifted();
     {{
         const auto circuit_size = static_cast<uint32_t>(key->circuit_size);
     
-        transcript.send_to_verifier(\"circuit_size\", circuit_size);
+        transcript->send_to_verifier(\"circuit_size\", circuit_size);
     }}
     
     /**
@@ -134,7 +134,7 @@ prover_polynomials.{name}_shift = key->{name}.shifted();
         auto wire_polys = key->get_wires();
         auto labels = commitment_labels.get_wires();
         for (size_t idx = 0; idx < wire_polys.size(); ++idx) {{
-            transcript.send_to_verifier(labels[idx], commitment_key->commit(wire_polys[idx]));
+            transcript->send_to_verifier(labels[idx], commitment_key->commit(wire_polys[idx]));
         }}
     }}
     
@@ -149,7 +149,7 @@ prover_polynomials.{name}_shift = key->{name}.shifted();
         using Sumcheck = sumcheck::SumcheckProver<Flavor>;
     
         auto sumcheck = Sumcheck(key->circuit_size, transcript);
-        auto alpha = transcript.get_challenge(\"alpha\");
+        auto alpha = transcript->get_challenge(\"alpha\");
     
         sumcheck_output = sumcheck.prove(prover_polynomials, relation_parameters, alpha);
     }}
@@ -175,7 +175,7 @@ prover_polynomials.{name}_shift = key->{name}.shifted();
     
     plonk::proof& {name}Prover::export_proof()
     {{
-        proof.proof_data = transcript.proof_data;
+        proof.proof_data = transcript->proof_data;
         return proof;
     }}
     
