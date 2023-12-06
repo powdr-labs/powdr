@@ -69,9 +69,9 @@ class {name}Flavor {{
     public: 
         {class_aliases}
 
-        {relation_definitions}
-
         {container_size_definitions}
+
+        {relation_definitions}
 
         static constexpr bool has_zero_row = true;
 
@@ -337,8 +337,8 @@ fn create_polynomial_views(first_poly: &String) -> String {
         [[nodiscard]] AllValues get_row(const size_t row_idx) const
         {{
             AllValues result;
-            for (auto [result_field, polynomial] : zip_view(result.pointer_view(), pointer_view())) {{
-                *result_field = (*polynomial)[row_idx];
+            for (auto [result_field, polynomial] : zip_view(result.get_all(), get_all())) {{
+                result_field = polynomial[row_idx];
             }}
             return result;
         }}
@@ -353,8 +353,8 @@ fn create_polynomial_views(first_poly: &String) -> String {
         PartiallyEvaluatedMultivariates(const size_t circuit_size)
         {{
             // Storage is only needed after the first partial evaluation, hence polynomials of size (n / 2)
-            for (auto* poly : pointer_view()) {{
-                *poly = Polynomial(circuit_size / 2);
+            for (auto& poly : get_all()) {{
+                poly = Polynomial(circuit_size / 2);
             }}
         }}
     }};
@@ -431,10 +431,8 @@ fn create_verifier_commitments(fixed: &[String]) -> String {
         using Base = AllEntities<Commitment>;
 
       public:
-        VerifierCommitments(const std::shared_ptr<VerificationKey>& verification_key,
-                            const BaseTranscript<FF>& transcript)
+        VerifierCommitments(const std::shared_ptr<VerificationKey>& verification_key)
         {{
-            static_cast<void>(transcript);
             {key_dereference}
         }}
     }};
@@ -447,11 +445,11 @@ fn generate_transcript(witness: &[String]) -> String {
     let declaration_transform = |c: &_| format!("Commitment {c};");
     let deserialize_transform = |name: &_| {
         format!(
-                "{name} = deserialize_from_buffer<Commitment>(BaseTranscript<FF>::proof_data, num_bytes_read);",
+                "{name} = deserialize_from_buffer<Commitment>(Transcript::proof_data, num_bytes_read);",
     )
     };
     let serialize_transform = |name: &_| {
-        format!("serialize_to_buffer<Commitment>({name}, BaseTranscript<FF>::proof_data);")
+        format!("serialize_to_buffer<Commitment>({name}, Transcript::proof_data);")
     };
 
     // Perform Transformations
@@ -460,7 +458,7 @@ fn generate_transcript(witness: &[String]) -> String {
     let serialize_wires = map_with_newline(witness, serialize_transform);
 
     format!("
-    class Transcript : public BaseTranscript<FF> {{
+    class Transcript : public BaseTranscript {{
       public:
         uint32_t circuit_size;
 
@@ -475,7 +473,7 @@ fn generate_transcript(witness: &[String]) -> String {
         Transcript() = default;
 
         Transcript(const std::vector<uint8_t>& proof)
-            : BaseTranscript<FF>(proof)
+            : BaseTranscript(proof)
         {{}}
 
         void deserialize_full_transcript()
@@ -489,10 +487,10 @@ fn generate_transcript(witness: &[String]) -> String {
             for (size_t i = 0; i < log_n; ++i) {{
                 sumcheck_univariates.emplace_back(
                     deserialize_from_buffer<barretenberg::Univariate<FF, BATCHED_RELATION_PARTIAL_LENGTH>>(
-                        BaseTranscript<FF>::proof_data, num_bytes_read));
+                        Transcript::proof_data, num_bytes_read));
             }}
             sumcheck_evaluations = deserialize_from_buffer<std::array<FF, NUM_ALL_ENTITIES>>(
-                BaseTranscript<FF>::proof_data, num_bytes_read);
+                Transcript::proof_data, num_bytes_read);
             for (size_t i = 0; i < log_n; ++i) {{
                 zm_cq_comms.push_back(deserialize_from_buffer<Commitment>(proof_data, num_bytes_read));
             }}
@@ -503,17 +501,17 @@ fn generate_transcript(witness: &[String]) -> String {
         void serialize_full_transcript()
         {{
             size_t old_proof_length = proof_data.size();
-            BaseTranscript<FF>::proof_data.clear();
+            Transcript::proof_data.clear();
             size_t log_n = numeric::get_msb(circuit_size);
 
-            serialize_to_buffer(circuit_size, BaseTranscript<FF>::proof_data);
+            serialize_to_buffer(circuit_size, Transcript::proof_data);
 
             {serialize_wires}
 
             for (size_t i = 0; i < log_n; ++i) {{
-                serialize_to_buffer(sumcheck_univariates[i], BaseTranscript<FF>::proof_data);
+                serialize_to_buffer(sumcheck_univariates[i], Transcript::proof_data);
             }}
-            serialize_to_buffer(sumcheck_evaluations, BaseTranscript<FF>::proof_data);
+            serialize_to_buffer(sumcheck_evaluations, Transcript::proof_data);
             for (size_t i = 0; i < log_n; ++i) {{
                 serialize_to_buffer(zm_cq_comms[i], proof_data);
             }}

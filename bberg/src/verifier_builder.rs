@@ -10,11 +10,9 @@ impl VerifierBuilder for BBFiles {
     fn create_verifier_cpp(&mut self, name: &str, witness: &[String]) {
         let include_str = includes_cpp(name);
 
-        let wire_transformation = |n: &String| {
-            format!(
-            "commitments.{n} = transcript.template receive_from_prover<Commitment>(commitment_labels.{n});"
-        )
-        };
+        let wire_transformation = |n: &String| format!(
+            "commitments.{n} = transcript->template receive_from_prover<Commitment>(commitment_labels.{n});"
+        );
         let wire_commitments = map_with_newline(witness, wire_transformation);
 
         let ver_cpp = format!("
@@ -57,12 +55,12 @@ impl VerifierBuilder for BBFiles {
     
         RelationParameters<FF> relation_parameters;
     
-        transcript = BaseTranscript<FF>{{ proof.proof_data }};
+        transcript = std::make_shared<Transcript>(proof.proof_data);
     
-        auto commitments = VerifierCommitments(key, transcript);
-        auto commitment_labels = CommitmentLabels();
+        VerifierCommitments commitments {{ key }};
+        CommitmentLabels commitment_labels;
     
-        const auto circuit_size = transcript.template receive_from_prover<uint32_t>(\"circuit_size\");
+        const auto circuit_size = transcript->template receive_from_prover<uint32_t>(\"circuit_size\");
     
         if (circuit_size != key->circuit_size) {{
             return false;
@@ -74,7 +72,7 @@ impl VerifierBuilder for BBFiles {
         // Execute Sumcheck Verifier
         auto sumcheck = SumcheckVerifier<Flavor>(circuit_size);
     
-        auto alpha = transcript.get_challenge(\"alpha\");
+        auto alpha = transcript->get_challenge(\"alpha\");
         auto [multivariate_challenge, claimed_evaluations, sumcheck_verified] =
             sumcheck.verify(relation_parameters, alpha, transcript);
     
@@ -120,6 +118,7 @@ impl VerifierBuilder for BBFiles {
         using Commitment = Flavor::Commitment;
         using VerificationKey = Flavor::VerificationKey;
         using VerifierCommitmentKey = Flavor::VerifierCommitmentKey;
+        using Transcript = Flavor::Transcript;
     
     public:
         explicit {name}Verifier(std::shared_ptr<VerificationKey> verifier_key = nullptr);
@@ -134,7 +133,7 @@ impl VerifierBuilder for BBFiles {
         std::shared_ptr<VerificationKey> key;
         std::map<std::string, Commitment> commitments;
         std::shared_ptr<VerifierCommitmentKey> pcs_verification_key;
-        BaseTranscript<FF> transcript;
+        std::shared_ptr<Transcript> transcript;
     }};
     
     }} // namespace proof_system::honk
