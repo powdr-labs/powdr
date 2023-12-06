@@ -368,7 +368,7 @@ fn compile<T: FieldElement, Q: QueryCallback<T>>(
 
     // md: we inline intermediate polynomials here, as honk does not have a notion of an intermediate
     let mut mut_analyzed = analyzed;
-    mut_analyzed.identities = inline_intermediate_polynomials(&mut_analyzed);
+    mut_analyzed.identities = mut_analyzed.identities_with_inlined_intermediate_polynomials();
 
     let optimized_pil_file_name = output_dir.join(format!(
         "{}_opt.pil",

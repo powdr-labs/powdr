@@ -458,7 +458,7 @@ fn run_command(command: Commands) {
                     prove_with,
                     export_csv,
                     csv_mode,
-                    bname,
+                    bname
                 )) {
                     Ok(()) => {}
                     Err(errors) => {
