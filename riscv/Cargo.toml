@@ -9,6 +9,7 @@ itertools = "^0.10"
 lalrpop-util = { version = "^0.19", features = ["lexer"] }
 log = "0.4.17"
 mktemp = "0.5.0"
+number = { path = "../number" }
 parser_util = { path = "../parser_util" }
 asm_utils = { path = "../asm_utils" }
 serde_json = "1.0"
@@ -24,6 +25,7 @@ lalrpop = "^0.19"
 [dev-dependencies]
 test-log = "0.2.12"
 env_logger = "0.10.0"
+hex = "0.4.3"
 number = { path = "../number" }
 compiler = { path = "../compiler" }
-hex = "0.4.3"
+riscv_executor = { path = "../riscv_executor" }

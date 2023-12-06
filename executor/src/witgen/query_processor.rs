@@ -1,13 +1,11 @@
-use ast::{
-    analyzed::{
-        AlgebraicReference, Expression, PolyID, PolynomialReference, PolynomialType, Reference,
-    },
-    evaluate_binary_operation, evaluate_unary_operation,
-    parsed::{MatchArm, MatchPattern, UnaryOperator},
-};
-use number::FieldElement;
+use std::{fmt::Display, rc::Rc};
 
-use super::{rows::RowPair, Constraint, EvalValue, FixedData, IncompleteCause};
+use ast::analyzed::{AlgebraicReference, Expression, PolyID, PolynomialType};
+use num_traits::ToPrimitive;
+use number::FieldElement;
+use pil_analyzer::evaluator::{self, Custom, EvalError, SymbolLookup, Value};
+
+use super::{rows::RowPair, Constraint, EvalResult, EvalValue, FixedData, IncompleteCause};
 
 /// Computes value updates that result from a query.
 pub struct QueryProcessor<'a, 'b, T: FieldElement, QueryCallback: Send + Sync> {
@@ -15,9 +13,8 @@ pub struct QueryProcessor<'a, 'b, T: FieldElement, QueryCallback: Send + Sync> {
     query_callback: &'b mut QueryCallback,
 }
 
-impl<'a, 'b, T: FieldElement, QueryCallback> QueryProcessor<'a, 'b, T, QueryCallback>
-where
-    QueryCallback: FnMut(&str) -> Option<T> + Send + Sync,
+impl<'a, 'b, T: FieldElement, QueryCallback: super::QueryCallback<T>>
+    QueryProcessor<'a, 'b, T, QueryCallback>
 {
     pub fn new(fixed_data: &'a FixedData<'a, T>, query_callback: &'b mut QueryCallback) -> Self {
         Self {
@@ -26,11 +23,7 @@ where
         }
     }
 
-    pub fn process_query(
-        &mut self,
-        rows: &RowPair<T>,
-        poly_id: &PolyID,
-    ) -> EvalValue<&'a AlgebraicReference, T> {
+    pub fn process_query(&mut self, rows: &RowPair<T>, poly_id: &PolyID) -> EvalResult<'a, T> {
         let column = &self.fixed_data.witness_cols[poly_id];
 
         if let Some(query) = column.query.as_ref() {
@@ -39,7 +32,7 @@ where
             }
         }
         // Either no query or the value is already known.
-        EvalValue::complete(vec![])
+        Ok(EvalValue::complete(vec![]))
     }
 
     fn process_witness_query(
@@ -47,116 +40,125 @@ where
         query: &'a Expression<T>,
         poly: &'a AlgebraicReference,
         rows: &RowPair<T>,
-    ) -> EvalValue<&'a AlgebraicReference, T> {
+    ) -> EvalResult<'a, T> {
         let query_str = match self.interpolate_query(query, rows) {
             Ok(query) => query,
-            Err(incomplete) => return EvalValue::incomplete(incomplete),
+            Err(e) => {
+                return match e {
+                    // TODO this mechanism should be replaced by a proper Option datatype.
+                    EvalError::NoMatch() => Ok(EvalValue::complete(vec![])),
+                    EvalError::DataNotAvailable => {
+                        Ok(EvalValue::incomplete(IncompleteCause::DataNotYetAvailable))
+                    }
+                    // All other errors are non-recoverable
+                    e => Err(super::EvalError::ProverQueryError(format!("{e:?}"))),
+                };
+            }
         };
-        if let Some(value) = (self.query_callback)(&query_str) {
-            EvalValue::complete(vec![(poly, Constraint::Assignment(value))])
-        } else {
-            EvalValue::incomplete(IncompleteCause::NoQueryAnswer(
-                query_str,
-                poly.name.to_string(),
-            ))
-        }
+        Ok(
+            if let Some(value) =
+                (self.query_callback)(&query_str).map_err(super::EvalError::ProverQueryError)?
+            {
+                EvalValue::complete(vec![(poly, Constraint::Assignment(value))])
+            } else {
+                EvalValue::incomplete(IncompleteCause::NoQueryAnswer(
+                    query_str,
+                    poly.name.to_string(),
+                ))
+            },
+        )
     }
 
     fn interpolate_query(
         &self,
         query: &'a Expression<T>,
         rows: &RowPair<T>,
-    ) -> Result<String, IncompleteCause<&'a AlgebraicReference>> {
-        // TODO combine that with the constant evaluator and the commit evaluator...
-        match query {
-            Expression::Tuple(items) => Ok(items
-                .iter()
-                .map(|i| self.interpolate_query(i, rows))
-                .collect::<Result<Vec<_>, _>>()?
-                .join(", ")),
-            Expression::String(s) => Ok(format!(
-                "\"{}\"",
-                s.replace('\\', "\\\\").replace('"', "\\\"")
-            )),
-            Expression::MatchExpression(scrutinee, arms) => {
-                let v = self.evaluate_expression(scrutinee, rows)?;
-                let expr = arms
-                    .iter()
-                    .find_map(|MatchArm { pattern, value }| match pattern {
-                        MatchPattern::CatchAll => Some(Ok(value)),
-                        MatchPattern::Pattern(pattern) => {
-                            match self.evaluate_expression(pattern, rows) {
-                                Ok(p) => (p == v).then_some(Ok(value)),
-                                Err(e) => Some(Err(e)),
-                            }
-                        }
-                    })
-                    .ok_or(IncompleteCause::NoMatchArmFound)??;
-                self.interpolate_query(expr, rows)
-            }
-            _ => self.evaluate_expression(query, rows).map(|v| v.to_string()),
-        }
-    }
-
-    fn evaluate_expression(
-        &self,
-        expr: &'a Expression<T>,
-        rows: &RowPair<T>,
-    ) -> Result<T, IncompleteCause<&'a AlgebraicReference>> {
-        match expr {
-            Expression::Number(n) => Ok(*n),
-            Expression::BinaryOperation(left, op, right) => Ok(evaluate_binary_operation(
-                self.evaluate_expression(left, rows)?,
-                *op,
-                self.evaluate_expression(right, rows)?,
-            )),
-            Expression::UnaryOperation(op, expr) => {
-                // Special case to allow `x'` for now on witness columns.
-                // TODO: Check if we actually need this or should replace it by `x(i + 1)`
-                if *op == UnaryOperator::Next {
-                    if let Expression::Reference(Reference::Poly(poly)) = expr.as_ref() {
-                        return self.evaluate_poly(poly, true, rows);
-                    }
-                }
-                Ok(evaluate_unary_operation(
-                    *op,
-                    self.evaluate_expression(expr, rows)?,
-                ))
-            }
-            Expression::Reference(Reference::LocalVar(i, _name)) => {
-                assert!(*i == 0);
-                Ok(rows.current_row_index.into())
-            }
-            Expression::Reference(Reference::Poly(poly)) => self.evaluate_poly(poly, false, rows),
-            e => Err(IncompleteCause::ExpressionEvaluationUnimplemented(
-                e.to_string(),
-            )),
-        }
-    }
-
-    fn evaluate_poly(
-        &self,
-        poly: &'a PolynomialReference,
-        next: bool,
-        rows: &RowPair<T>,
-    ) -> Result<T, IncompleteCause<&'a AlgebraicReference>> {
-        let poly_id = poly.poly_id.unwrap();
-        match poly_id.ptype {
-            PolynomialType::Committed | PolynomialType::Intermediate => {
-                let poly_ref = AlgebraicReference {
-                    name: poly.name.clone(),
-                    poly_id,
-                    next,
-                };
-                Ok(rows
-                    .get_value(&poly_ref)
-                    .ok_or(IncompleteCause::DataNotYetAvailable)?)
-            }
-            PolynomialType::Constant => {
-                let values = self.fixed_data.fixed_cols[&poly_id].values;
-                let row = rows.current_row_index as usize + next as usize;
-                Ok(values[row % values.len()])
-            }
-        }
+    ) -> Result<String, EvalError> {
+        let arguments = vec![Rc::new(T::from(rows.current_row_index).into())];
+        let symbols = Symbols {
+            fixed_data: self.fixed_data,
+            rows,
+        };
+        let fun = evaluator::evaluate(query, &symbols)?;
+        evaluator::evaluate_function_call(fun, arguments, &symbols).map(|v| v.to_string())
     }
 }
+
+#[derive(Clone)]
+struct Symbols<'a, T: FieldElement> {
+    // TODO we should also provide access to non-column symbols.
+    fixed_data: &'a FixedData<'a, T>,
+    rows: &'a RowPair<'a, 'a, T>,
+}
+
+impl<'a, T: FieldElement> SymbolLookup<'a, T, Reference<'a>> for Symbols<'a, T> {
+    fn lookup(&self, name: &'a str) -> Result<Value<'a, T, Reference<'a>>, EvalError> {
+        match self.fixed_data.try_column_by_name(name) {
+            Some(poly_id) => Ok(Value::Custom(Reference { name, poly_id })),
+            None => Err(EvalError::SymbolNotFound(format!(
+                "Symbol {name} not found."
+            ))),
+        }
+    }
+    fn eval_function_application(
+        &self,
+        function: Reference<'a>,
+        arguments: &[Rc<Value<'a, T, Reference<'a>>>],
+    ) -> Result<Value<'a, T, Reference<'a>>, EvalError> {
+        if arguments.len() != 1 {
+            Err(EvalError::TypeError(format!(
+                "Expected one argument, but got {}",
+                arguments.len()
+            )))?
+        };
+        let Value::Number(row) = arguments[0].as_ref() else {
+            return Err(EvalError::TypeError(format!(
+                "Expected number but got {}",
+                arguments[0]
+            )));
+        };
+        Ok(Value::Number(match function.poly_id.ptype {
+            PolynomialType::Committed | PolynomialType::Intermediate => {
+                let next = self.rows.is_row_number_next(row.to_degree()).map_err(|_| {
+                    EvalError::OutOfBounds(format!("Referenced row outside of window: {row}"))
+                })?;
+                let poly_ref = AlgebraicReference {
+                    name: function.name.to_string(),
+                    poly_id: function.poly_id,
+                    next,
+                };
+
+                self.rows
+                    .get_value(&poly_ref)
+                    .ok_or(EvalError::DataNotAvailable)?
+            }
+            PolynomialType::Constant => {
+                let values = self.fixed_data.fixed_cols[&function.poly_id].values;
+                // TODO can we avoid bigint?
+                values[(row.to_arbitrary_integer() % values.len())
+                    .to_u64()
+                    .unwrap() as usize]
+            }
+        }))
+    }
+}
+
+#[derive(Clone)]
+struct Reference<'a> {
+    name: &'a str,
+    poly_id: PolyID,
+}
+
+impl<'a> PartialEq for Reference<'a> {
+    fn eq(&self, other: &Self) -> bool {
+        self.poly_id == other.poly_id
+    }
+}
+
+impl<'a> Display for Reference<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.name)
+    }
+}
+
+impl<'a> Custom for Reference<'a> {}

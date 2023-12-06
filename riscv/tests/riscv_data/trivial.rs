@@ -1,5 +1,4 @@
 #![no_std]
 
 #[no_mangle]
-pub fn main() {
-}
+pub fn main() {}

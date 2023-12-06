@@ -13,7 +13,7 @@ machine SplitGL(RESET, _) {
     // previous block)
     // A hint is provided because automatic witness generation does not
     // understand step 3 to figure out that the byte decomposition is unique.
-    col witness bytes(i) query ("hint", (in_acc' >> (((i + 1) % 8) * 8)) % 0xff);
+    col witness bytes(i) query ("hint", (in_acc(i + 1) >> (((i + 1) % 8) * 8)) % 0xff);
     // Puts the bytes together to form the input
     col witness in_acc;
     // Factors to multiply the bytes by

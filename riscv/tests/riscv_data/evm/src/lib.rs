@@ -7,9 +7,10 @@ use revm::{
     },
     EVM,
 };
-use runtime::{print, get_prover_input};
+use runtime::{print, coprocessors::{get_data, get_data_len}};
 
 extern crate alloc;
+use alloc::vec;
 use alloc::vec::Vec;
 
 #[no_mangle]
@@ -19,8 +20,10 @@ fn main() {
         b256!("e3c84e69bac71c159b2ff0d62b9a5c231887a809a96cb4a262a4b96ed78a1db2");
     let mut db = CacheDB::new(EmptyDB::default());
 
-    let bytecode_len = get_prover_input(0);
-    let bytecode: Vec<_> = (1..(bytecode_len + 1)).map(|idx| get_prover_input(idx) as u8).collect();
+    let bytecode_len = get_data_len(0);
+    let mut bytecode = vec![0; bytecode_len];
+    get_data(0, &mut bytecode);
+    let bytecode: Vec<u8> = bytecode.into_iter().map(|x| x as u8).collect();
 
     // Fill database:
     let bytecode = Bytes::from(bytecode);

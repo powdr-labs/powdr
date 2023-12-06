@@ -15,6 +15,7 @@ use std::fs;
 use crate::compiler::{FunctionKind, Register};
 pub use crate::coprocessors::CoProcessors;
 
+pub mod bootloader;
 pub mod compiler;
 mod coprocessors;
 mod disambiguator;
@@ -32,6 +33,7 @@ pub fn compile_rust(
     output_dir: &Path,
     force_overwrite: bool,
     coprocessors: &CoProcessors,
+    with_bootloader: bool,
 ) -> Option<(PathBuf, String)> {
     let riscv_asm = if file_name.ends_with("Cargo.toml") {
         compile_rust_crate_to_riscv_asm(file_name, output_dir)
@@ -66,6 +68,7 @@ pub fn compile_rust(
         output_dir,
         force_overwrite,
         coprocessors,
+        with_bootloader,
     )
 }
 
@@ -76,6 +79,7 @@ pub fn compile_riscv_asm_bundle(
     output_dir: &Path,
     force_overwrite: bool,
     coprocessors: &CoProcessors,
+    with_bootloader: bool,
 ) -> Option<(PathBuf, String)> {
     let powdr_asm_file_name = output_dir.join(format!(
         "{}.asm",
@@ -93,7 +97,7 @@ pub fn compile_riscv_asm_bundle(
         return None;
     }
 
-    let powdr_asm = compiler::compile(riscv_asm_files, coprocessors);
+    let powdr_asm = compiler::compile(riscv_asm_files, coprocessors, with_bootloader);
 
     fs::write(powdr_asm_file_name.clone(), &powdr_asm).unwrap();
     log::info!("Wrote {}", powdr_asm_file_name.to_str().unwrap());
@@ -109,6 +113,7 @@ pub fn compile_riscv_asm(
     output_dir: &Path,
     force_overwrite: bool,
     coprocessors: &CoProcessors,
+    with_bootloader: bool,
 ) -> Option<(PathBuf, String)> {
     compile_riscv_asm_bundle(
         original_file_name,
@@ -121,6 +126,7 @@ pub fn compile_riscv_asm(
         output_dir,
         force_overwrite,
         coprocessors,
+        with_bootloader,
     )
 }
 

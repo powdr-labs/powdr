@@ -14,6 +14,7 @@ log = "0.4.17"
 compiler = { path = "../compiler" }
 parser = { path = "../parser" }
 riscv = { path = "../riscv" }
+riscv_executor = { path = "../riscv_executor" }
 number = { path = "../number" }
 halo2 = { path = "../halo2", optional = true }
 backend = { path = "../backend" }

@@ -10,10 +10,7 @@ machine Binary(latch, operation_id) {
 
     col witness operation_id;
 
-    macro is_nonzero(X) { match X { 0 => 0, _ => 1, } };
-    macro is_zero(X) { 1 - is_nonzero(X) };
-
-    col fixed latch(i) { is_zero((i % 4) - 3) };
+    col fixed latch(i) { (i % 4) == 3 };
     col fixed FACTOR(i) { 1 << (((i + 1) % 4) * 8) };
 
     col fixed P_A(i) { i % 256 };

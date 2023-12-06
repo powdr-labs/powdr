@@ -1,5 +1,4 @@
 use ::compiler::inputs_to_query_callback;
-use analysis::analyze;
 use ast::analyzed::Analyzed;
 use criterion::{criterion_group, criterion_main, Criterion};
 
@@ -16,10 +15,10 @@ fn get_pil() -> Analyzed<T> {
     let tmp_dir = Temp::new_dir().unwrap();
     let riscv_asm_files =
         compile_rust_crate_to_riscv_asm("../riscv/tests/riscv_data/keccak/Cargo.toml", &tmp_dir);
-    let contents = compiler::compile(riscv_asm_files, &CoProcessors::base());
+    let contents = compiler::compile(riscv_asm_files, &CoProcessors::base(), false);
     let parsed = parser::parse_asm::<T>(None, &contents).unwrap();
     let resolved = importer::resolve(None, parsed).unwrap();
-    let analyzed = analyze(resolved).unwrap();
+    let analyzed = analysis::convert_asm_to_pil(resolved).unwrap();
     let graph = airgen::compile(analyzed);
     let pil = linker::link(graph).unwrap();
     let analyzed = pil_analyzer::analyze_string(&format!("{pil}"));

@@ -4,6 +4,14 @@ use std::fs;
 use test_log::test;
 
 fn verify_asm<T: FieldElement>(file_name: &str, inputs: Vec<T>) {
+    verify_asm_with_external_witness(file_name, inputs, vec![]);
+}
+
+fn verify_asm_with_external_witness<T: FieldElement>(
+    file_name: &str,
+    inputs: Vec<T>,
+    external_witness_values: Vec<(&str, Vec<T>)>,
+) {
     let file_name = format!(
         "{}/../test_data/asm/{file_name}",
         env!("CARGO_MANIFEST_DIR")
@@ -11,7 +19,7 @@ fn verify_asm<T: FieldElement>(file_name: &str, inputs: Vec<T>) {
 
     let contents = fs::read_to_string(&file_name).unwrap();
 
-    verify_asm_string(&file_name, &contents, inputs)
+    verify_asm_string(&file_name, &contents, inputs, external_witness_values);
 }
 
 fn gen_estark_proof(file_name: &str, inputs: Vec<GoldilocksField>) {
@@ -71,6 +79,24 @@ fn secondary_block_machine_add2() {
     verify_asm::<GoldilocksField>(f, vec![]);
     gen_halo2_proof(f, vec![]);
     gen_estark_proof(f, vec![]);
+}
+
+#[test]
+fn mem_write_once() {
+    let f = "mem_write_once.asm";
+    verify_asm::<GoldilocksField>(f, vec![]);
+    gen_halo2_proof(f, vec![]);
+    gen_estark_proof(f, vec![]);
+}
+
+#[test]
+fn mem_write_once_external_write() {
+    let f = "mem_write_once_external_write.asm";
+    let mut mem = vec![GoldilocksField::from(0); 256];
+    mem[17] = GoldilocksField::from(42);
+    mem[62] = GoldilocksField::from(123);
+    mem[255] = GoldilocksField::from(-1);
+    verify_asm_with_external_witness::<GoldilocksField>(f, vec![], vec![("main.v", mem)]);
 }
 
 #[test]
@@ -159,7 +185,6 @@ fn block_to_block() {
 }
 
 #[test]
-#[should_panic = "not implemented: No executor machine matched identity `main.instr_sub { 1, main.X, main.Y, main.Z } in 1 { main_arith.operation_id, main_arith.z, main_arith.x, main_arith.y };`"]
 fn vm_to_block_multiple_interfaces() {
     let f = "vm_to_block_multiple_interfaces.asm";
     let i = [];
@@ -189,6 +214,15 @@ fn vm_to_vm_dynamic_trace_length() {
 #[test]
 fn vm_to_vm_to_block() {
     let f = "vm_to_vm_to_block.asm";
+    let i = [];
+    verify_asm::<GoldilocksField>(f, slice_to_vec(&i));
+    gen_halo2_proof(f, slice_to_vec(&i));
+    gen_estark_proof(f, slice_to_vec(&i));
+}
+
+#[test]
+fn vm_to_block_array() {
+    let f = "vm_to_block_array.asm";
     let i = [];
     verify_asm::<GoldilocksField>(f, slice_to_vec(&i));
     gen_halo2_proof(f, slice_to_vec(&i));
@@ -325,12 +359,4 @@ fn hello_world_asm_fail() {
     let f = "book/hello_world.asm";
     let i = [1];
     verify_asm::<GoldilocksField>(f, slice_to_vec(&i));
-}
-
-#[test]
-fn test_macros_in_instructions() {
-    let f = "macros_in_instructions.asm";
-    verify_asm::<GoldilocksField>(f, Default::default());
-    gen_halo2_proof(f, Default::default());
-    gen_estark_proof(f, Default::default());
 }

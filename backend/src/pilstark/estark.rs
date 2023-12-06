@@ -1,4 +1,5 @@
 use std::iter::{once, repeat};
+use std::time::Instant;
 
 use crate::{pilstark, BackendImpl};
 use ast::analyzed::Analyzed;
@@ -113,6 +114,7 @@ impl<F: FieldElement> BackendImpl<F> for EStark {
         )
         .unwrap();
 
+        let start = Instant::now();
         let starkproof = StarkProof::<MerkleTreeGL>::stark_gen::<TranscriptGL>(
             &cm_pols,
             &const_pols,
@@ -124,6 +126,9 @@ impl<F: FieldElement> BackendImpl<F> for EStark {
             "",
         )
         .unwrap();
+        let duration = start.elapsed();
+
+        log::info!("Proof done in: {:?}", duration);
 
         assert!(stark_verify::<MerkleTreeGL, TranscriptGL>(
             &starkproof,

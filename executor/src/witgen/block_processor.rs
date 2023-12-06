@@ -6,7 +6,7 @@ use number::FieldElement;
 use super::{
     data_structures::finalizable_data::FinalizableData,
     processor::{OuterQuery, Processor},
-    rows::RowFactory,
+    rows::UnknownStrategy,
     sequence_iterator::{Action, ProcessingSequenceIterator, SequenceStep},
     EvalError, EvalValue, FixedData, IncompleteCause, MutableState, QueryCallback,
 };
@@ -19,6 +19,8 @@ use super::{
 /// - `'c`: The duration of this Processor's lifetime (e.g. the reference to the identity processor)
 pub struct BlockProcessor<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> {
     processor: Processor<'a, 'b, 'c, T, Q>,
+    /// The list of identities
+    identities: &'c [&'a Identity<Expression<T>>],
 }
 
 impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> BlockProcessor<'a, 'b, 'c, T, Q> {
@@ -28,19 +30,13 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> BlockProcessor<'a, 'b, 'c
         mutable_state: &'c mut MutableState<'a, 'b, T, Q>,
         identities: &'c [&'a Identity<Expression<T>>],
         fixed_data: &'a FixedData<'a, T>,
-        row_factory: RowFactory<'a, T>,
         witness_cols: &'c HashSet<PolyID>,
     ) -> Self {
-        let processor = Processor::new(
-            row_offset,
-            data,
-            mutable_state,
+        let processor = Processor::new(row_offset, data, mutable_state, fixed_data, witness_cols);
+        Self {
+            processor,
             identities,
-            fixed_data,
-            row_factory,
-            witness_cols,
-        );
-        Self { processor }
+        }
     }
 
     pub fn with_outer_query(
@@ -48,7 +44,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> BlockProcessor<'a, 'b, 'c
         outer_query: OuterQuery<'a, T>,
     ) -> BlockProcessor<'a, 'b, 'c, T, Q> {
         let processor = self.processor.with_outer_query(outer_query);
-        Self { processor }
+        Self { processor, ..self }
     }
 
     /// Figures out unknown values.
@@ -63,7 +59,13 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> BlockProcessor<'a, 'b, 'c
             let row_index = (1 + row_delta) as usize;
             let progress = match action {
                 Action::InternalIdentity(identity_index) => {
-                    self.processor.process_identity(row_index, identity_index)?
+                    self.processor
+                        .process_identity(
+                            row_index,
+                            self.identities[identity_index],
+                            UnknownStrategy::Unknown,
+                        )?
+                        .progress
                 }
                 Action::OuterQuery => {
                     let (progress, new_outer_assignments) =
@@ -71,7 +73,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> BlockProcessor<'a, 'b, 'c
                     outer_assignments.extend(new_outer_assignments);
                     progress
                 }
-                Action::ProverQueries => self.processor.process_queries(row_index),
+                Action::ProverQueries => self.processor.process_queries(row_index)?,
             };
             sequence_iterator.report_progress(progress);
         }
@@ -108,7 +110,7 @@ mod tests {
             machines::FixedLookup,
             rows::RowFactory,
             sequence_iterator::{DefaultSequenceIterator, ProcessingSequenceIterator},
-            FixedData, MutableState, QueryCallback,
+            unused_query_callback, FixedData, MutableState, QueryCallback,
         },
     };
 
@@ -172,7 +174,6 @@ mod tests {
             &mut mutable_state,
             &identities,
             &fixed_data,
-            row_factory,
             &witness_cols,
         );
 
@@ -185,10 +186,9 @@ mod tests {
     }
 
     fn solve_and_assert<T: FieldElement>(src: &str, asserted_values: &[(usize, &str, u64)]) {
-        let query_callback = |_: &str| -> Option<T> { None };
         do_with_processor(
             src,
-            query_callback,
+            unused_query_callback(),
             |mut processor, poly_ids, degree, num_identities| {
                 let mut sequence_iterator = ProcessingSequenceIterator::Default(
                     DefaultSequenceIterator::new(degree as usize - 2, num_identities, None),

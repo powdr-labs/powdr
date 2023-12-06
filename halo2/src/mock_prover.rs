@@ -35,7 +35,8 @@ pub fn mock_prove<T: FieldElement>(
 mod test {
     use std::{fs, path::PathBuf};
 
-    use analysis::analyze;
+    use analysis::convert_asm_to_pil;
+    use executor::witgen::unused_query_callback;
     use number::Bn254Field;
     use parser::parse_asm;
     use test_log::test;
@@ -54,19 +55,17 @@ mod test {
         let contents = fs::read_to_string(&location).unwrap();
         let parsed = parse_asm::<Bn254Field>(Some(&location), &contents).unwrap();
         let resolved = importer::resolve(Some(PathBuf::from(location)), parsed).unwrap();
-        let analysed = analyze(resolved).unwrap();
+        let analysed = convert_asm_to_pil(resolved).unwrap();
         let graph = airgen::compile(analysed);
         let pil = linker::link(graph).unwrap();
+
+        let query_callback = compiler::inputs_to_query_callback(inputs.to_vec());
 
         let analyzed = pil_analyzer::analyze_string(&format!("{pil}"));
 
         let fixed = executor::constant_evaluator::generate(&analyzed);
-        let witness = executor::witgen::WitnessGenerator::new(
-            &analyzed,
-            &fixed,
-            compiler::inputs_to_query_callback(inputs.to_vec()),
-        )
-        .generate();
+        let witness =
+            executor::witgen::WitnessGenerator::new(&analyzed, &fixed, query_callback).generate();
 
         let fixed = to_owned_values(fixed);
 
@@ -79,10 +78,9 @@ mod test {
         let analyzed: Analyzed<Bn254Field> = pil_analyzer::analyze_string(content);
         let fixed = executor::constant_evaluator::generate(&analyzed);
 
-        let query_callback = |_: &str| -> Option<Bn254Field> { None };
-
         let witness =
-            executor::witgen::WitnessGenerator::new(&analyzed, &fixed, query_callback).generate();
+            executor::witgen::WitnessGenerator::new(&analyzed, &fixed, unused_query_callback())
+                .generate();
 
         let fixed = to_owned_values(fixed);
 

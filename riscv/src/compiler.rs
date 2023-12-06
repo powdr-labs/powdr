@@ -16,6 +16,7 @@ use asm_utils::{
 };
 use itertools::Itertools;
 
+use crate::bootloader::bootloader;
 use crate::coprocessors::*;
 use crate::disambiguator;
 use crate::parser::RiscParser;
@@ -66,15 +67,15 @@ struct RiscvArchitecture {}
 impl Architecture for RiscvArchitecture {
     fn instruction_ends_control_flow(instr: &str) -> bool {
         match instr {
-            "li" | "lui" | "la" | "mv" | "add" | "addi" | "sub" | "neg" | "mul" | "mulhu"
-            | "mulhsu" | "divu" | "remu" | "xor" | "xori" | "and" | "andi" | "or" | "ori"
-            | "not" | "slli" | "sll" | "srli" | "srl" | "srai" | "seqz" | "snez" | "slt"
-            | "slti" | "sltu" | "sltiu" | "sgtz" | "beq" | "beqz" | "bgeu" | "bltu" | "blt"
-            | "bge" | "bltz" | "blez" | "bgtz" | "bgez" | "bne" | "bnez" | "jal" | "jalr"
-            | "call" | "ecall" | "ebreak" | "lw" | "lb" | "lbu" | "lh" | "lhu" | "sw" | "sh"
-            | "sb" | "nop" | "fence" | "fence.i" | "amoadd.w" | "amoadd.w.aq" | "amoadd.w.rl"
-            | "amoadd.w.aqrl" | "lr.w" | "lr.w.aq" | "lr.w.rl" | "lr.w.aqrl" | "sc.w"
-            | "sc.w.aq" | "sc.w.rl" | "sc.w.aqrl" => false,
+            "li" | "lui" | "la" | "mv" | "add" | "addi" | "sub" | "neg" | "mul" | "mulh"
+            | "mulhu" | "mulhsu" | "divu" | "remu" | "xor" | "xori" | "and" | "andi" | "or"
+            | "ori" | "not" | "slli" | "sll" | "srli" | "srl" | "srai" | "seqz" | "snez"
+            | "slt" | "slti" | "sltu" | "sltiu" | "sgtz" | "beq" | "beqz" | "bgeu" | "bltu"
+            | "blt" | "bge" | "bltz" | "blez" | "bgtz" | "bgez" | "bne" | "bnez" | "jal"
+            | "jalr" | "call" | "ecall" | "ebreak" | "lw" | "lb" | "lbu" | "lh" | "lhu" | "sw"
+            | "sh" | "sb" | "nop" | "fence" | "fence.i" | "amoadd.w" | "amoadd.w.aq"
+            | "amoadd.w.rl" | "amoadd.w.aqrl" | "lr.w" | "lr.w.aq" | "lr.w.rl" | "lr.w.aqrl"
+            | "sc.w" | "sc.w.aq" | "sc.w.rl" | "sc.w.aqrl" => false,
             "j" | "jr" | "tail" | "ret" | "unimp" => true,
             _ => {
                 panic!("Unknown instruction: {instr}");
@@ -97,7 +98,11 @@ impl Architecture for RiscvArchitecture {
 }
 
 /// Compiles riscv assembly to a powdr assembly file. Adds required library routines.
-pub fn compile(mut assemblies: BTreeMap<String, String>, coprocessors: &CoProcessors) -> String {
+pub fn compile(
+    mut assemblies: BTreeMap<String, String>,
+    coprocessors: &CoProcessors,
+    with_bootloader: bool,
+) -> String {
     // stack grows towards zero
     let stack_start = 0x10000;
     // data grows away from zero
@@ -185,9 +190,21 @@ pub fn compile(mut assemblies: BTreeMap<String, String>, coprocessors: &CoProces
         },
     );
 
+    let bootloader_lines = if with_bootloader {
+        let (bootloader, _) = bootloader();
+        log::debug!("Adding Bootloader:\n{}", bootloader);
+        bootloader
+            .split('\n')
+            .map(|l| l.to_string())
+            .collect::<Vec<_>>()
+    } else {
+        vec![]
+    };
+
     let program: Vec<String> = file_ids
         .into_iter()
         .map(|(id, dir, file)| format!("debug file {id} {} {};", quote(&dir), quote(&file)))
+        .chain(bootloader_lines)
         .chain(["call __data_init;".to_string()])
         .chain(call_every_submachine(coprocessors))
         .chain([
@@ -448,6 +465,7 @@ fn preamble(degree: u64, coprocessors: &CoProcessors) -> String {
     reg tmp1;
     reg tmp2;
     reg tmp3;
+    reg tmp4;
     reg lr_sc_reservation;
 "#
         .to_owned()
@@ -685,55 +703,36 @@ fn preamble(degree: u64, coprocessors: &CoProcessors) -> String {
 }
 
 fn runtime(coprocessors: &CoProcessors) -> String {
-    r#"
-.globl __udivdi3@plt
-.globl __udivdi3
-.set __udivdi3@plt, __udivdi3
-
-.globl __umoddi3@plt
-.globl __umoddi3
-.set __umoddi3@plt, __umoddi3
-
-.globl memcpy@plt
-.globl memcpy
-.set memcpy@plt, memcpy
-
-.globl memmove@plt
-.globl memmove
-.set memmove@plt, memmove
-
-.globl memset@plt
-.globl memset
-.set memset@plt, memset
-
-.globl memcmp@plt
-.globl memcmp
-.set memcmp@plt, memcmp
-
-.globl bcmp@plt
-.globl bcmp
-.set bcmp@plt, bcmp
-
-.globl strlen@plt
-.globl strlen
-.set strlen@plt, strlen
-
-.globl __rust_alloc
-.set __rust_alloc, __rg_alloc
-
-.globl __rust_dealloc
-.set __rust_dealloc, __rg_dealloc
-
-.globl __rust_realloc
-.set __rust_realloc, __rg_realloc
-
-.globl __rust_alloc_zeroed
-.set __rust_alloc_zeroed, __rg_alloc_zeroed
-
-.globl __rust_alloc_error_handler
-.set __rust_alloc_error_handler, __rg_oom
-"#
-    .to_owned()
+    [
+        "__udivdi3",
+        "__udivti3",
+        "__divdf3",
+        "__muldf3",
+        "__umoddi3",
+        "__umodti3",
+        "__eqdf2",
+        "__ltdf2",
+        "__nedf2",
+        "__unorddf2",
+        "__floatundidf",
+        "memcpy",
+        "memmove",
+        "memset",
+        "memcmp",
+        "bcmp",
+        "strlen",
+    ]
+    .map(|n| format!(".globl {n}@plt\n.globl {n}\n.set {n}@plt, {n}\n"))
+    .join("\n\n")
+        + &[
+            ("__rust_alloc", "__rg_alloc"),
+            ("__rust_dealloc", "__rg_dealloc"),
+            ("__rust_realloc", "__rg_realloc"),
+            ("__rust_alloc_zeroed", "__rg_alloc_zeroed"),
+            ("__rust_alloc_error_handler", "__rg_oom"),
+        ]
+        .map(|(n, m)| format!(".globl {n}\n.set {n}, {m}\n"))
+        .join("\n\n")
         + &coprocessors.runtime()
 }
 
@@ -757,10 +756,18 @@ fn process_statement(s: Statement, coprocessors: &CoProcessors) -> Vec<String> {
                 args.iter().format(", ")
             ),
         },
-        Statement::Instruction(instr, args) => process_instruction(instr, args, coprocessors)
-            .into_iter()
-            .map(|s| "  ".to_string() + &s)
-            .collect(),
+        Statement::Instruction(instr, args) => {
+            let stmt_str = format!("{s}");
+            // remove indentation and trailing newline
+            let stmt_str = &stmt_str[2..(stmt_str.len() - 1)];
+            let mut ret = vec![format!("  debug insn \"{stmt_str}\";")];
+            ret.extend(
+                process_instruction(instr, args, coprocessors)
+                    .into_iter()
+                    .map(|s| "  ".to_string() + &s),
+            );
+            ret
+        }
     }
 }
 
@@ -903,6 +910,33 @@ fn process_instruction(instr: &str, args: &[Argument], coprocessors: &CoProcesso
         "mulhu" => {
             let (rd, r1, r2) = rrr(args);
             only_if_no_write_to_zero(format!("tmp1, {rd} <== mul({r1}, {r2});"), rd)
+        }
+        "mulh" => {
+            let (rd, r1, r2) = rrr(args);
+            only_if_no_write_to_zero_vec(
+                vec![
+                    format!("tmp1 <== to_signed({r1});"),
+                    format!("tmp2 <== to_signed({r2});"),
+                    // tmp3 is 1 if tmp1 is non-negative
+                    "tmp3 <== is_positive(tmp1 + 1);".into(),
+                    // tmp4 is 1 if tmp2 is non-negative
+                    "tmp4 <== is_positive(tmp2 + 1);".into(),
+                    // If tmp1 is negative, convert to positive
+                    "skip_if_zero 0, tmp3;".into(),
+                    "tmp1 <=X= 0 - tmp1;".into(),
+                    // If tmp2 is negative, convert to positive
+                    "skip_if_zero 0, tmp4;".into(),
+                    "tmp2 <=X= 0 - tmp2;".into(),
+                    format!("tmp1, {rd} <== mul(tmp1, tmp2);"),
+                    // Determine the sign of the result based on the signs of tmp1 and tmp2
+                    "tmp3 <== is_not_equal_zero(tmp3 - tmp4);".into(),
+                    // If the result should be negative, convert back to negative
+                    "skip_if_zero tmp3, 2;".into(),
+                    "tmp1 <== is_equal_zero(tmp1);".into(),
+                    format!("{rd} <== wrap_signed(-{rd} - 1 + tmp1);"),
+                ],
+                rd,
+            )
         }
         "mulhsu" => {
             let (rd, r1, r2) = rrr(args);

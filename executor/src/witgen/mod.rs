@@ -16,8 +16,6 @@ use self::identity_processor::Machines;
 use self::machines::machine_extractor::ExtractionOutput;
 use self::machines::{FixedLookup, Machine};
 
-use pil_analyzer::pil_analyzer::inline_intermediate_polynomials;
-
 mod affine_expression;
 mod block_processor;
 mod data_structures;
@@ -38,8 +36,13 @@ mod symbolic_witness_evaluator;
 mod util;
 mod vm_processor;
 
-pub trait QueryCallback<T>: FnMut(&str) -> Option<T> + Send + Sync {}
-impl<T, F> QueryCallback<T> for F where F: FnMut(&str) -> Option<T> + Send + Sync {}
+pub trait QueryCallback<T>: FnMut(&str) -> Result<Option<T>, String> + Send + Sync {}
+impl<T, F> QueryCallback<T> for F where F: FnMut(&str) -> Result<Option<T>, String> + Send + Sync {}
+
+/// @returns a query callback that is never expected to be used.
+pub fn unused_query_callback<T>() -> impl QueryCallback<T> {
+    |_| -> _ { unreachable!() }
+}
 
 /// Everything [Generator] needs to mutate in order to compute a new row.
 pub struct MutableState<'a, 'b, T: FieldElement, Q: QueryCallback<T>> {
@@ -87,7 +90,9 @@ impl<'a, 'b, T: FieldElement, Q: QueryCallback<T>> WitnessGenerator<'a, 'b, T, Q
             self.fixed_col_values,
             self.external_witness_values,
         );
-        let identities = inline_intermediate_polynomials(self.analyzed);
+        let identities = self
+            .analyzed
+            .identities_with_inlined_intermediate_polynomials();
 
         let (
             constraints,
@@ -218,8 +223,8 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
         }
     }
 
-    pub fn column_by_name(&self, name: &str) -> PolyID {
-        self.column_by_name[name]
+    pub fn try_column_by_name(&self, name: &str) -> Option<PolyID> {
+        self.column_by_name.get(name).cloned()
     }
 
     fn external_witness(&self, row: DegreeType, column: &PolyID) -> Option<T> {

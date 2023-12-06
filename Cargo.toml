@@ -23,6 +23,7 @@ members = [
     "asm_utils",
     "airgen",
     "type_check",
+    "riscv_executor",
 ]
 
 [patch."https://github.com/privacy-scaling-explorations/halo2.git"]

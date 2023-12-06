@@ -224,7 +224,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> IdentityProcessor<'a, 'b,
 
     /// Returns updates of the left selector cannot be evaluated to 1, otherwise None.
     fn handle_left_selector(
-        &mut self,
+        &self,
         left_selector: &'a Expression<T>,
         rows: &RowPair<T>,
     ) -> Option<EvalValue<&'a AlgebraicReference, T>> {
