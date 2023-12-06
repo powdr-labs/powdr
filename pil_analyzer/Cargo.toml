@@ -7,9 +7,8 @@ edition = "2021"
 number = { path = "../number" }
 parser_util = { path = "../parser_util" }
 parser = { path = "../parser" }
+ast = { path = "../ast" }
 itertools = "^0.10"
-ast = { version = "0.1.0", path = "../ast" }
-analysis = { version = "0.1", path = "../analysis" }
 
 [dev-dependencies]
 test-log = "0.2.12"

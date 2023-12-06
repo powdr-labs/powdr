@@ -3,13 +3,15 @@ use number::{Bn254Field, GoldilocksField};
 use std::path::Path;
 use test_log::test;
 
-pub fn verify_pil(file_name: &str, query_callback: Option<fn(&str) -> Option<GoldilocksField>>) {
+type QueryCallbackFn = fn(&str) -> Result<Option<GoldilocksField>, String>;
+
+pub fn verify_pil(file_name: &str, query_callback: Option<QueryCallbackFn>) {
     verify_pil_with_external_witness(file_name, query_callback, vec![]);
 }
 
 pub fn verify_pil_with_external_witness(
     file_name: &str,
-    query_callback: Option<fn(&str) -> Option<GoldilocksField>>,
+    query_callback: Option<QueryCallbackFn>,
     external_witness_values: Vec<(&str, Vec<GoldilocksField>)>,
 ) {
     let input_file = Path::new(&format!(
@@ -19,7 +21,7 @@ pub fn verify_pil_with_external_witness(
     .canonicalize()
     .unwrap();
 
-    let query_callback = query_callback.unwrap_or(|_: &str| -> Option<GoldilocksField> { None });
+    let query_callback = query_callback.unwrap_or(|_| -> _ { unreachable!() });
 
     let temp_dir = mktemp::Temp::new_dir().unwrap();
     let result = compiler::compile_pil(
@@ -93,14 +95,6 @@ fn test_constant_in_identity() {
 }
 
 #[test]
-fn test_fibonacci_macro() {
-    let f = "fib_macro.pil";
-    verify_pil(f, None);
-    gen_halo2_proof(f, Default::default());
-    gen_estark_proof(f, Default::default());
-}
-
-#[test]
 fn fib_arrays() {
     let f = "fib_arrays.pil";
     verify_pil(f, None);
@@ -140,7 +134,7 @@ fn test_external_witgen_both_provided() {
 }
 
 #[test]
-#[should_panic = "called `Result::unwrap()` on an `Err` value: ConstraintUnsatisfiable(\"-1\")"]
+#[should_panic = "called `Result::unwrap()` on an `Err` value: Generic(\"main.b = (main.a + 1);:\\n    Linear constraint is not satisfiable: -1 != 0\")"]
 fn test_external_witgen_fails_on_conflicting_external_witness() {
     let f = "external_witgen.pil";
     let external_witness = vec![
@@ -163,13 +157,13 @@ fn test_sum_via_witness_query() {
     verify_pil(
         "sum_via_witness_query.pil",
         Some(|q| {
-            match q {
+            Ok(match q {
                 "\"in\", 0" => Some(7.into()),
                 "\"in\", 1" => Some(8.into()),
                 "\"in\", 2" => Some(2.into()),
                 "\"in\", 3" => None, // This line checks that if we return "None", the system still tries to figure it out on its own.
                 _ => None,
-            }
+            })
         }),
     );
     // prover query string uses a different convention,
@@ -181,11 +175,13 @@ fn test_witness_lookup() {
     let f = "witness_lookup.pil";
     verify_pil(
         f,
-        Some(|q| match q {
-            "\"input\", 0" => Some(3.into()),
-            "\"input\", 1" => Some(5.into()),
-            "\"input\", 2" => Some(2.into()),
-            _ => Some(7.into()),
+        Some(|q| {
+            Ok(match q {
+                "\"input\", 0" => Some(3.into()),
+                "\"input\", 1" => Some(5.into()),
+                "\"input\", 2" => Some(2.into()),
+                _ => Some(7.into()),
+            })
         }),
     );
     // halo2 fails with "gates must contain at least one constraint"
@@ -259,4 +255,30 @@ fn test_witness_via_let() {
 #[test]
 fn conditional_fixed_constraints() {
     verify_pil("conditional_fixed_constraints.pil", None);
+}
+
+#[test]
+fn arith_improved() {
+    let f = "arith_improved.pil";
+    pil_analyzer::analyze::<GoldilocksField>(
+        &Path::new(&format!(
+            "{}/../test_data/pil/{f}",
+            env!("CARGO_MANIFEST_DIR")
+        ))
+        .canonicalize()
+        .unwrap(),
+    );
+}
+
+mod book {
+    use super::*;
+    use test_log::test;
+
+    fn run_book_test(file: &str) {
+        verify_pil(file, None);
+        gen_halo2_proof(file, Default::default());
+        gen_estark_proof(file, Default::default());
+    }
+
+    include!(concat!(env!("OUT_DIR"), "/pil_book_tests.rs"));
 }

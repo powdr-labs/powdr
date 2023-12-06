@@ -23,7 +23,7 @@ use crate::parsed::{
 
 pub use crate::parsed::Expression;
 
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Debug)]
 pub struct RegisterDeclarationStatement {
     pub start: usize,
     pub name: String,
@@ -56,38 +56,38 @@ impl RegisterTy {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Debug)]
 pub struct InstructionDefinitionStatement<T> {
     pub start: usize,
     pub name: String,
     pub instruction: Instruction<T>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Debug)]
 pub struct Instruction<T> {
-    pub params: Params,
+    pub params: Params<T>,
     pub body: InstructionBody<T>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Debug)]
 pub struct LinkDefinitionStatement<T> {
     pub start: usize,
     /// the flag which activates this link. Should be boolean.
     pub flag: Expression<T>,
     /// the parameters to pass to the callable
-    pub params: Params,
+    pub params: Params<T>,
     /// the callable to invoke when the flag is on. TODO: check this during type checking
     pub to: CallableRef,
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Debug, Default)]
 pub struct FunctionStatements<T> {
     inner: Vec<FunctionStatement<T>>,
     batches: Option<Vec<BatchMetadata>>,
 }
 
 pub struct BatchRef<'a, T> {
-    statements: &'a [FunctionStatement<T>],
+    pub statements: &'a [FunctionStatement<T>],
     reason: &'a Option<IncompatibleSet>,
 }
 
@@ -151,7 +151,7 @@ impl<T> FunctionStatements<T> {
     }
 
     /// iterate over the batches by reference
-    fn iter_batches(&self) -> impl Iterator<Item = BatchRef<T>> {
+    pub fn iter_batches(&self) -> impl Iterator<Item = BatchRef<T>> {
         match &self.batches {
             Some(batches) => Either::Left(batches.iter()),
             None => Either::Right(
@@ -216,12 +216,12 @@ impl<T> FromIterator<Batch<T>> for FunctionStatements<T> {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Debug)]
 pub struct FunctionBody<T> {
     pub statements: FunctionStatements<T>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug)]
 pub struct CallableSymbolDefinitionRef<'a, T> {
     /// the name of this symbol
     pub name: &'a str,
@@ -229,7 +229,7 @@ pub struct CallableSymbolDefinitionRef<'a, T> {
     pub symbol: &'a CallableSymbol<T>,
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug)]
 pub struct CallableSymbolDefinitionMut<'a, T> {
     /// the name of this symbol
     pub name: &'a str,
@@ -237,7 +237,7 @@ pub struct CallableSymbolDefinitionMut<'a, T> {
     pub symbol: &'a mut CallableSymbol<T>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug)]
 pub struct CallableSymbolDefinition<T> {
     /// the name of this symbol
     pub name: String,
@@ -245,8 +245,8 @@ pub struct CallableSymbolDefinition<T> {
     pub symbol: CallableSymbol<T>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Default)]
-pub struct CallableSymbolDefinitions<T>(BTreeMap<String, CallableSymbol<T>>);
+#[derive(Clone, Debug, Default)]
+pub struct CallableSymbolDefinitions<T>(pub BTreeMap<String, CallableSymbol<T>>);
 
 impl<T> IntoIterator for CallableSymbolDefinitions<T> {
     type Item = CallableSymbolDefinition<T>;
@@ -424,7 +424,7 @@ pub struct FunctionDefinitionMut<'a, T> {
     pub function: &'a mut FunctionSymbol<T>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Debug)]
 pub enum CallableSymbol<T> {
     Function(FunctionSymbol<T>),
     Operation(OperationSymbol<T>),
@@ -508,30 +508,30 @@ impl<'a, T> TryFrom<&'a mut CallableSymbol<T>> for &'a mut OperationSymbol<T> {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Debug)]
 pub struct FunctionSymbol<T> {
     pub start: usize,
     /// the parameters of this function, in the form of values
-    pub params: Params,
+    pub params: Params<T>,
     /// the body of the function
     pub body: FunctionBody<T>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Debug)]
 pub struct OperationSymbol<T> {
     pub start: usize,
     /// the id of this operation. This machine's operation id must be set to this value in order for this operation to be active.
     pub id: OperationId<T>,
     /// the parameters of this operation, in the form of columns defined in some constraints block of this machine
-    pub params: Params,
+    pub params: Params<T>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Debug)]
 pub struct DegreeStatement {
     pub degree: BigUint,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Debug)]
 pub enum FunctionStatement<T> {
     Assignment(AssignmentStatement<T>),
     Instruction(InstructionStatement<T>),
@@ -616,7 +616,7 @@ impl<T> From<Return<T>> for FunctionStatement<T> {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Debug)]
 pub struct AssignmentStatement<T> {
     pub start: usize,
     pub lhs_with_reg: Vec<(String, AssignmentRegister)>,
@@ -633,32 +633,32 @@ impl<T> AssignmentStatement<T> {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Debug)]
 pub struct InstructionStatement<T> {
     pub start: usize,
     pub instruction: String,
     pub inputs: Vec<Expression<T>>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Debug)]
 pub struct LabelStatement {
     pub start: usize,
     pub name: String,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Debug)]
 pub struct DebugDirective {
     pub start: usize,
     pub directive: crate::parsed::asm::DebugDirective,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Debug)]
 pub struct Return<T> {
     pub start: usize,
     pub values: Vec<Expression<T>>,
 }
 
-#[derive(Clone, Default, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Debug)]
 pub struct SubmachineDeclaration {
     /// the name of this instance
     pub name: String,
@@ -666,7 +666,7 @@ pub struct SubmachineDeclaration {
     pub ty: AbsoluteSymbolPath,
 }
 
-#[derive(Clone, Default, PartialEq, Eq, PartialOrd, Ord, Debug)]
+#[derive(Clone, Default, Debug)]
 pub struct Machine<T> {
     /// The degree if any, i.e. the number of rows in instances of this machine type
     pub degree: Option<DegreeStatement>,
@@ -767,12 +767,12 @@ impl<T> Machine<T> {
     }
 }
 
-#[derive(Clone, Default, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Default, Debug)]
 pub struct Rom<T> {
     pub statements: FunctionStatements<T>,
 }
 
-#[derive(Default, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Default, Debug)]
 pub struct AnalysisASMFile<T> {
     pub machines: BTreeMap<AbsoluteSymbolPath, Machine<T>>,
 }
@@ -782,7 +782,7 @@ impl<T> AnalysisASMFile<T> {
     }
 }
 
-#[derive(Default, Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
+#[derive(Default, Debug, Clone)]
 pub struct BatchMetadata {
     // the set of compatible statements
     pub size: usize,

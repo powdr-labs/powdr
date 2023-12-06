@@ -65,11 +65,20 @@ instr poseidon_gl A0, A1, A2, A3, A4, A5, A6, A7, A8, A9, A10, A11 -> X, Y, Z, W
     runtime_function_impl: Some(("poseidon_gl_coprocessor", poseidon_gl_call)),
 };
 
-static ALL_COPROCESSORS: [(&str, &CoProcessor); 4] = [
+static INPUT_COPROCESSOR: CoProcessor = CoProcessor {
+    name: "prover_input",
+    ty: "",
+    import: "",
+    instructions: "",
+    runtime_function_impl: Some(("input_coprocessor", prover_input_call)),
+};
+
+static ALL_COPROCESSORS: [(&str, &CoProcessor); 5] = [
     (BINARY_COPROCESSOR.name, &BINARY_COPROCESSOR),
     (SHIFT_COPROCESSOR.name, &SHIFT_COPROCESSOR),
     (SPLIT_GL_COPROCESSOR.name, &SPLIT_GL_COPROCESSOR),
     (POSEIDON_GL_COPROCESSOR.name, &POSEIDON_GL_COPROCESSOR),
+    (INPUT_COPROCESSOR.name, &INPUT_COPROCESSOR),
 ];
 
 /// Defines which coprocessors should be used by the RISCV machine.
@@ -116,6 +125,7 @@ impl CoProcessors {
             coprocessors: BTreeMap::from([
                 (BINARY_COPROCESSOR.name, &BINARY_COPROCESSOR),
                 (SHIFT_COPROCESSOR.name, &SHIFT_COPROCESSOR),
+                (INPUT_COPROCESSOR.name, &INPUT_COPROCESSOR),
             ]),
         }
     }
@@ -134,7 +144,11 @@ impl CoProcessors {
     }
 
     pub fn declarations(&self) -> Vec<(&'static str, &'static str)> {
-        self.coprocessors.values().map(|c| (c.name, c.ty)).collect()
+        self.coprocessors
+            .values()
+            .filter(|c| !c.ty.is_empty())
+            .map(|c| (c.name, c.ty))
+            .collect()
     }
 
     pub fn machine_imports(&self) -> Vec<&'static str> {
@@ -201,13 +215,16 @@ impl CoProcessors {
 }
 
 fn poseidon_gl_call() -> String {
+    // The x10 register is RISCV's a0 register, which has the first function argument in function
+    // calls.  The poseidon coprocessor has a single argument, the memory address of the 12 field
+    // element input array, that is, a pointer to the first element.  Since the memory offset is
+    // chosen by LLVM, we assume it is properly aligned.  The accesses to all elements are computed
+    // below, using the offset above as base.  Therefore these should also be aligned.
     let decoding = |i| {
         format!(
             r#"
-        addr <=X= {} + x10;
-        P{i} <== mload();
-        addr <=X= {} + x10;
-        tmp1 <== mload();
+        P{i}, tmp2 <== mload({} + x10);
+        tmp1, tmp2 <== mload({} + x10);
         P{i} <=X= P{i} + tmp1 * 2**32;
     "#,
             i * 8,
@@ -219,10 +236,8 @@ fn poseidon_gl_call() -> String {
         format!(
             r#"
         tmp1, tmp2 <== split_gl(P{i});
-        addr <=X= {} + x10;
-        mstore tmp1;
-        addr <=X= {} + x10;
-        mstore tmp2;
+        mstore {} + x10, tmp1;
+        mstore {} + x10, tmp2;
     "#,
             i * 8,
             i * 8 + 4
@@ -236,6 +251,10 @@ fn poseidon_gl_call() -> String {
         .chain(std::iter::once(call.to_string()))
         .chain((0..4).map(encoding))
         .collect()
+}
+
+fn prover_input_call() -> String {
+    "x10 <=X= ${ (\"data\", x11, x10) };".to_string()
 }
 
 // This could also potentially go in the impl of CoProcessors,

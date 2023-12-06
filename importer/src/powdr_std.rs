@@ -40,8 +40,12 @@ fn load_std<T: FieldElement>() -> ASMModule<T> {
         }
         Ok(std_source) => {
             let std_content =
-                parse_asm::<T>(Some(std_path.as_path().to_str().unwrap()), &std_source).unwrap();
-
+                parse_asm::<T>(Some(std_path.as_path().to_str().unwrap()), &std_source)
+                    .unwrap_or_else(|err| {
+                        eprintln!("Error parsing powdr standard library file:");
+                        err.output_to_stderr();
+                        panic!();
+                    });
             // This resolves all submodules and returns the standard library's main module
             load_module_files(Some(std_path), std_content).unwrap().main
         }

@@ -6,7 +6,6 @@ use ast::analyzed::Identity;
 
 use itertools::Itertools;
 use number::FieldElement;
-use pil_analyzer::pil_analyzer::inline_intermediate_polynomials;
 
 use crate::circuit_builder::CircuitBuilder;
 use crate::composer_builder::ComposerBuilder;
@@ -41,7 +40,7 @@ pub(crate) fn analyzed_to_cpp<F: FieldElement>(
     let mut bb_files = BBFiles::default(file_name.to_owned());
 
     // Inlining step to remove the intermediate poly definitions
-    let analyzed_identities = inline_intermediate_polynomials(analyzed);
+    let analyzed_identities = analyzed.identities_with_inlined_intermediate_polynomials();
 
     // Group relations per file
     let grouped_relations = group_relations_per_file(&analyzed_identities);

@@ -157,6 +157,7 @@ pub fn generate_machine_rom<T: FieldElement>(
                     .enumerate()
                     .map(|(i, _)| Param {
                         name: input_at(i),
+                        index: None,
                         ty: None,
                     })
                     .collect(),
@@ -168,6 +169,7 @@ pub fn generate_machine_rom<T: FieldElement>(
                     .enumerate()
                     .map(|(i, _)| Param {
                         name: output_at(i),
+                        index: None,
                         ty: None,
                     })
                     .collect(),

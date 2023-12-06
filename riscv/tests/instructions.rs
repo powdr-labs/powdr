@@ -1,6 +1,7 @@
+mod common;
+
 mod instruction_tests {
-    use compiler::verify_asm_string;
-    use number::GoldilocksField;
+    use crate::common::verify_riscv_asm_string;
     use riscv::compiler::compile;
     use riscv::CoProcessors;
     use test_log::test;
@@ -10,9 +11,10 @@ mod instruction_tests {
         let powdr_asm = compile(
             [(name.to_string(), assembly.to_string())].into(),
             &CoProcessors::base(),
+            false,
         );
 
-        verify_asm_string::<GoldilocksField>(&format!("{name}.asm"), &powdr_asm, vec![]);
+        verify_riscv_asm_string(&format!("{name}.asm"), &powdr_asm, vec![]);
     }
 
     include!(concat!(env!("OUT_DIR"), "/instruction_tests.rs"));

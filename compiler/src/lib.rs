@@ -8,15 +8,18 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::time::Instant;
 
+use analysis::analyze;
+use analysis::convert_analyzed_to_pil_constraints;
 use ast::analyzed::Analyzed;
+use ast::DiffMonitor;
 
 pub mod util;
 mod verify;
 
-use analysis::analyze;
+use ast::asm_analysis::AnalysisASMFile;
 pub use backend::{BackendType, Proof};
 use executor::witgen::QueryCallback;
-use pil_analyzer::pil_analyzer::inline_intermediate_polynomials;
+use itertools::Itertools;
 pub use verify::{
     verify, verify_asm_string, write_commits_to_fs, write_constants_to_fs, write_constraints_to_fs,
 };
@@ -132,6 +135,7 @@ pub fn compile_asm<T: FieldElement>(
         file_name,
         &contents,
         inputs,
+        None,
         output_dir,
         force_overwrite,
         prove_with,
@@ -141,21 +145,12 @@ pub fn compile_asm<T: FieldElement>(
     .1)
 }
 
-/// Compiles the contents of a .asm file, outputs the PIL on stdout and tries to generate
-/// fixed and witness columns.
-///
-/// Returns the relative pil file name and the compilation result if any compilation was done.
-#[allow(clippy::print_stderr, clippy::too_many_arguments)]
-pub fn compile_asm_string<T: FieldElement>(
+#[allow(clippy::print_stderr)]
+pub fn compile_asm_string_to_analyzed_ast<T: FieldElement>(
     file_name: &str,
     contents: &str,
-    inputs: Vec<T>,
-    output_dir: &Path,
-    force_overwrite: bool,
-    prove_with: Option<BackendType>,
-    external_witness_values: Vec<(&str, Vec<T>)>,
-    bname: Option<String>,
-) -> Result<(PathBuf, Option<CompilationResult<T>>), Vec<String>> {
+    monitor: Option<&mut DiffMonitor>,
+) -> Result<AnalysisASMFile<T>, Vec<String>> {
     let parsed = parser::parse_asm(Some(file_name), contents).unwrap_or_else(|err| {
         eprintln!("Error parsing .asm file:");
         err.output_to_stderr();
@@ -165,11 +160,30 @@ pub fn compile_asm_string<T: FieldElement>(
     let resolved =
         importer::resolve(Some(PathBuf::from(file_name)), parsed).map_err(|e| vec![e])?;
     log::debug!("Run analysis");
-    let analysed = analyze(resolved).unwrap();
+    let mut default_monitor = DiffMonitor::default();
+    let monitor = monitor.unwrap_or(&mut default_monitor);
+    let analyzed = analyze(resolved, monitor)?;
     log::debug!("Analysis done");
-    log::trace!("{analysed}");
+    log::trace!("{analyzed}");
+
+    Ok(analyzed)
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn convert_analyzed_to_pil<T: FieldElement>(
+    file_name: &str,
+    monitor: &mut DiffMonitor,
+    analyzed: AnalysisASMFile<T>,
+    inputs: Vec<T>,
+    output_dir: &Path,
+    force_overwrite: bool,
+    prove_with: Option<BackendType>,
+    external_witness_values: Vec<(&str, Vec<T>)>,
+    bname: Option<String>,
+) -> Result<(PathBuf, Option<CompilationResult<T>>), Vec<String>> {
+    let constraints = convert_analyzed_to_pil_constraints(analyzed, monitor);
     log::debug!("Run airgen");
-    let graph = airgen::compile(analysed);
+    let graph = airgen::compile(constraints);
     log::debug!("Airgen done");
     log::trace!("{graph}");
     log::debug!("Run linker");
@@ -191,7 +205,7 @@ pub fn compile_asm_string<T: FieldElement>(
         return Ok((pil_file_path, None));
     }
 
-    fs::write(pil_file_path.clone(), format!("{pil}")).unwrap();
+    fs::write(&pil_file_path, format!("{pil}")).unwrap();
 
     let pil_file_name = pil_file_path.file_name().unwrap();
     Ok((
@@ -206,6 +220,125 @@ pub fn compile_asm_string<T: FieldElement>(
             bname,
         )),
     ))
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn convert_analyzed_to_pil_with_callback<T: FieldElement, Q: QueryCallback<T>>(
+    file_name: &str,
+    monitor: &mut DiffMonitor,
+    analyzed: AnalysisASMFile<T>,
+    query_callback: Q,
+    output_dir: &Path,
+    force_overwrite: bool,
+    prove_with: Option<BackendType>,
+    external_witness_values: Vec<(&str, Vec<T>)>,
+    bname: Option<String>,
+) -> Result<(PathBuf, Option<CompilationResult<T>>), Vec<String>> {
+    let constraints = convert_analyzed_to_pil_constraints(analyzed, monitor);
+    log::debug!("Run airgen");
+    let graph = airgen::compile(constraints);
+    log::debug!("Airgen done");
+    log::trace!("{graph}");
+    log::debug!("Run linker");
+    let pil = linker::link(graph)?;
+    log::debug!("Linker done");
+    log::trace!("{pil}");
+
+    let pil_file_name = format!(
+        "{}.pil",
+        Path::new(file_name).file_stem().unwrap().to_str().unwrap()
+    );
+
+    let pil_file_path = output_dir.join(pil_file_name);
+    if pil_file_path.exists() && !force_overwrite {
+        eprintln!(
+            "Target file {} already exists. Not overwriting.",
+            pil_file_path.to_str().unwrap()
+        );
+        return Ok((pil_file_path, None));
+    }
+
+    fs::write(&pil_file_path, format!("{pil}")).unwrap();
+
+    let pil_file_name = pil_file_path.file_name().unwrap();
+    Ok((
+        pil_file_path.clone(),
+        Some(compile_pil_ast(
+            &pil,
+            pil_file_name,
+            output_dir,
+            query_callback,
+            prove_with,
+            external_witness_values,
+            bname
+        )),
+    ))
+}
+
+pub type AnalyzedASTHook<'a, T> = &'a mut dyn FnMut(&AnalysisASMFile<T>);
+
+/// Compiles the contents of a .asm file, outputs the PIL on stdout and tries to generate
+/// fixed and witness columns.
+///
+/// Returns the relative pil file name and the compilation result if any compilation was done.
+#[allow(clippy::too_many_arguments)]
+pub fn compile_asm_string<T: FieldElement>(
+    file_name: &str,
+    contents: &str,
+    inputs: Vec<T>,
+    analyzed_hook: Option<AnalyzedASTHook<T>>,
+    output_dir: &Path,
+    force_overwrite: bool,
+    prove_with: Option<BackendType>,
+    external_witness_values: Vec<(&str, Vec<T>)>,
+    bname: Option<String>
+) -> Result<(PathBuf, Option<CompilationResult<T>>), Vec<String>> {
+    let mut monitor = DiffMonitor::default();
+    let analyzed = compile_asm_string_to_analyzed_ast(file_name, contents, Some(&mut monitor))?;
+    if let Some(hook) = analyzed_hook {
+        hook(&analyzed);
+    };
+    convert_analyzed_to_pil(
+        file_name,
+        &mut monitor,
+        analyzed,
+        inputs,
+        output_dir,
+        force_overwrite,
+        prove_with,
+        external_witness_values,
+        bname
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn compile_asm_string_with_callback<T: FieldElement, Q: QueryCallback<T>>(
+    file_name: &str,
+    contents: &str,
+    query_callback: Q,
+    analyzed_hook: Option<AnalyzedASTHook<T>>,
+    output_dir: &Path,
+    force_overwrite: bool,
+    prove_with: Option<BackendType>,
+    external_witness_values: Vec<(&str, Vec<T>)>,
+    bname: Option<String>
+) -> Result<(PathBuf, Option<CompilationResult<T>>), Vec<String>> {
+    let mut monitor = DiffMonitor::default();
+    let analyzed = compile_asm_string_to_analyzed_ast(file_name, contents, Some(&mut monitor))?;
+    if let Some(hook) = analyzed_hook {
+        hook(&analyzed);
+    };
+    convert_analyzed_to_pil_with_callback(
+        file_name,
+        &mut monitor,
+        analyzed,
+        query_callback,
+        output_dir,
+        force_overwrite,
+        prove_with,
+        external_witness_values,
+        bname
+    )
 }
 
 pub struct CompilationResult<T: FieldElement> {
@@ -301,31 +434,86 @@ fn compile<T: FieldElement, Q: QueryCallback<T>>(
 }
 
 #[allow(clippy::print_stdout)]
-pub fn inputs_to_query_callback<T: FieldElement>(inputs: Vec<T>) -> impl Fn(&str) -> Option<T> {
-    move |query: &str| -> Option<T> {
+pub fn inputs_to_query_callback<T: FieldElement>(inputs: Vec<T>) -> impl QueryCallback<T> {
+    // TODO: Pass bootloader inputs into this function
+    // Right now, accessing bootloader inputs will always fail, because it will be out of bounds
+    let bootloader_inputs = [];
+
+    move |query: &str| -> Result<Option<T>, String> {
+        // TODO In the future, when match statements need to be exhaustive,
+        // This function probably gets an Option as argument and it should
+        // answer None by Ok(None).
+
+        // We are expecting a tuple
+        let query = query
+            .strip_prefix('(')
+            .and_then(|q| q.strip_suffix(')'))
+            .ok_or_else(|| "Prover query has to be a tuple".to_string())?;
         let items = query.split(',').map(|s| s.trim()).collect::<Vec<_>>();
-        match items[0] {
-            "\"input\"" => {
-                assert_eq!(items.len(), 2);
-                let index = items[1].parse::<usize>().unwrap();
+        match &items[..] {
+            ["\"input\"", index] => {
+                let index = index
+                    .parse::<usize>()
+                    .map_err(|e| format!("Error parsing index: {e})"))?;
                 let value = inputs.get(index).cloned();
                 if let Some(value) = value {
                     log::trace!("Input query: Index {index} -> {value}");
+                    Ok(Some(value))
                 } else {
-                    log::warn!("Not enough inputs provided! Index {index} out of bounds")
+                    Err(format!(
+                        "Error accessing prover inputs: Index {index} out of bounds {}",
+                        inputs.len()
+                    ))
                 }
-                value
             }
-            "\"print_char\"" => {
-                assert_eq!(items.len(), 2);
-                print!("{}", items[1].parse::<u8>().unwrap() as char);
-                Some(0.into())
+            ["\"data\"", index, what] => {
+                let index = index
+                    .parse::<usize>()
+                    .map_err(|e| format!("Error parsing index: {e})"))?;
+                let what = what
+                    .parse::<usize>()
+                    .map_err(|e| format!("Error parsing what: {e})"))?;
+                assert_eq!(what, 0);
+
+                let value = inputs.get(index).cloned();
+                if let Some(value) = value {
+                    log::trace!("Input query: Index {index} -> {value}");
+                    Ok(Some(value))
+                } else {
+                    Err(format!(
+                        "Error accessing prover inputs: Index {index} out of bounds {}",
+                        inputs.len()
+                    ))
+                }
             }
-            "\"hint\"" => {
-                assert_eq!(items.len(), 2);
-                Some(T::from_str(items[1]))
+            ["\"bootloader_input\"", index] => {
+                let index = index
+                    .parse::<usize>()
+                    .map_err(|e| format!("Error parsing index: {e})"))?;
+                let value = bootloader_inputs.get(index).cloned();
+                if let Some(value) = value {
+                    log::trace!("Bootloader input query: Index {index} -> {value}");
+                    Ok(Some(value))
+                } else {
+                    Err(format!(
+                        "Error accessing bootloader inputs: Index {index} out of bounds {}",
+                        inputs.len()
+                    ))
+                }
             }
-            _ => None,
+            ["\"print_char\"", ch] => {
+                print!(
+                    "{}",
+                    ch.parse::<u8>()
+                        .map_err(|e| format!("Invalid char to print: {e}"))?
+                        as char
+                );
+                // We do not answer None because we don't want this function to be
+                // called again.
+                Ok(Some(0.into()))
+            }
+            ["\"hint\"", value] => Ok(Some(T::from_str(value))),
+            k => Err(format!("Unsupported query: {}", k.iter().format(", "))),
         }
     }
 }

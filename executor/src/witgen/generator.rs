@@ -139,10 +139,10 @@ impl<'a, T: FieldElement> Generator<'a, T> {
         self.data = self.process(first_row, 0, mutable_state, None).block;
     }
 
-    fn fill_remaining_rows<Q>(&mut self, mutable_state: &mut MutableState<'a, '_, T, Q>)
-    where
-        Q: FnMut(&str) -> Option<T> + Send + Sync,
-    {
+    fn fill_remaining_rows<Q: QueryCallback<T>>(
+        &mut self,
+        mutable_state: &mut MutableState<'a, '_, T, Q>,
+    ) {
         if self.data.len() < self.fixed_data.degree as usize + 1 {
             assert!(self.latch.is_some());
 
@@ -186,7 +186,6 @@ impl<'a, T: FieldElement> Generator<'a, T> {
             mutable_state,
             &self.identities,
             self.fixed_data,
-            row_factory,
             &self.witnesses,
         );
         let mut sequence_iterator = ProcessingSequenceIterator::Default(
@@ -217,14 +216,15 @@ impl<'a, T: FieldElement> Generator<'a, T> {
             row_offset,
             self.fixed_data,
             &self.identities,
-            self.witnesses.clone(),
+            &self.witnesses,
             data,
             row_factory,
+            mutable_state,
         );
         if let Some(outer_query) = outer_query {
             processor = processor.with_outer_query(outer_query);
         }
-        let eval_value = processor.run(mutable_state);
+        let eval_value = processor.run();
         let block = processor.finish();
         ProcessResult { eval_value, block }
     }
