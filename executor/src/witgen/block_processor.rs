@@ -6,7 +6,7 @@ use number::FieldElement;
 use super::{
     data_structures::finalizable_data::FinalizableData,
     processor::{OuterQuery, Processor},
-    rows::RowFactory,
+    rows::UnknownStrategy,
     sequence_iterator::{Action, ProcessingSequenceIterator, SequenceStep},
     EvalError, EvalValue, FixedData, IncompleteCause, MutableState, QueryCallback,
 };
@@ -30,17 +30,9 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> BlockProcessor<'a, 'b, 'c
         mutable_state: &'c mut MutableState<'a, 'b, T, Q>,
         identities: &'c [&'a Identity<Expression<T>>],
         fixed_data: &'a FixedData<'a, T>,
-        row_factory: RowFactory<'a, T>,
         witness_cols: &'c HashSet<PolyID>,
     ) -> Self {
-        let processor = Processor::new(
-            row_offset,
-            data,
-            mutable_state,
-            fixed_data,
-            row_factory,
-            witness_cols,
-        );
+        let processor = Processor::new(row_offset, data, mutable_state, fixed_data, witness_cols);
         Self {
             processor,
             identities,
@@ -66,9 +58,15 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> BlockProcessor<'a, 'b, 'c
         while let Some(SequenceStep { row_delta, action }) = sequence_iterator.next() {
             let row_index = (1 + row_delta) as usize;
             let progress = match action {
-                Action::InternalIdentity(identity_index) => self
-                    .processor
-                    .process_identity(row_index, self.identities[identity_index])?,
+                Action::InternalIdentity(identity_index) => {
+                    self.processor
+                        .process_identity(
+                            row_index,
+                            self.identities[identity_index],
+                            UnknownStrategy::Unknown,
+                        )?
+                        .progress
+                }
                 Action::OuterQuery => {
                     let (progress, new_outer_assignments) =
                         self.processor.process_outer_query(row_index)?;
@@ -176,7 +174,6 @@ mod tests {
             &mut mutable_state,
             &identities,
             &fixed_data,
-            row_factory,
             &witness_cols,
         );
 

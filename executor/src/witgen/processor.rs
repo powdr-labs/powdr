@@ -1,18 +1,19 @@
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 
 use ast::{
     analyzed::{AlgebraicExpression as Expression, AlgebraicReference, Identity, PolyID},
     parsed::SelectedExpressions,
 };
-use number::FieldElement;
+use number::{DegreeType, FieldElement};
+use parser_util::lines::indent;
 
-use crate::witgen::{query_processor::QueryProcessor, Constraint};
+use crate::witgen::{query_processor::QueryProcessor, util::try_to_simple_poly, Constraint};
 
 use super::{
     affine_expression::AffineExpression,
     data_structures::{column_map::WitnessColumnMap, finalizable_data::FinalizableData},
     identity_processor::IdentityProcessor,
-    rows::{RowFactory, RowPair, RowUpdater, UnknownStrategy},
+    rows::{CellValue, Row, RowPair, RowUpdater, UnknownStrategy},
     Constraints, EvalError, EvalValue, FixedData, MutableState, QueryCallback,
 };
 
@@ -37,6 +38,13 @@ impl<'a, T: FieldElement> OuterQuery<'a, T> {
     }
 }
 
+pub struct IdentityResult {
+    /// Whether any progress was made by processing the identity
+    pub progress: bool,
+    /// Whether the identity is complete (i.e. all referenced values are known)
+    pub is_complete: bool,
+}
+
 /// A basic processor that holds a set of rows and knows how to process identities and queries
 /// on any given row.
 /// The lifetimes mean the following:
@@ -52,14 +60,14 @@ pub struct Processor<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> {
     mutable_state: &'c mut MutableState<'a, 'b, T, Q>,
     /// The fixed data (containing information about all columns)
     fixed_data: &'a FixedData<'a, T>,
-    /// The row factory
-    row_factory: RowFactory<'a, T>,
     /// The set of witness columns that are actually part of this machine.
     witness_cols: &'c HashSet<PolyID>,
     /// Whether a given witness column is relevant for this machine (faster than doing a contains check on witness_cols)
     is_relevant_witness: WitnessColumnMap<bool>,
     /// The outer query, if any. If there is none, processing an outer query will fail.
     outer_query: Option<OuterQuery<'a, T>>,
+    inputs: BTreeMap<PolyID, T>,
+    previously_set_inputs: BTreeMap<PolyID, usize>,
 }
 
 impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, Q> {
@@ -68,7 +76,6 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
         data: FinalizableData<'a, T>,
         mutable_state: &'c mut MutableState<'a, 'b, T, Q>,
         fixed_data: &'a FixedData<'a, T>,
-        row_factory: RowFactory<'a, T>,
         witness_cols: &'c HashSet<PolyID>,
     ) -> Self {
         let is_relevant_witness = WitnessColumnMap::from(
@@ -82,35 +89,56 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
             data,
             mutable_state,
             fixed_data,
-            row_factory,
             witness_cols,
             is_relevant_witness,
             outer_query: None,
+            inputs: BTreeMap::new(),
+            previously_set_inputs: BTreeMap::new(),
         }
     }
 
     pub fn with_outer_query(self, outer_query: OuterQuery<'a, T>) -> Processor<'a, 'b, 'c, T, Q> {
+        log::trace!("  Extracting inputs:");
+        let mut inputs = BTreeMap::new();
+        for (l, r) in outer_query.left.iter().zip(&outer_query.right.expressions) {
+            if let Some(right_poly) = try_to_simple_poly(r).map(|p| p.poly_id) {
+                if let Some(l) = l.constant_value() {
+                    log::trace!("    {} = {}", r, l);
+                    inputs.insert(right_poly, l);
+                }
+            }
+        }
         Processor {
             outer_query: Some(outer_query),
-            row_offset: self.row_offset,
-            data: self.data,
-            mutable_state: self.mutable_state,
-            fixed_data: self.fixed_data,
-            row_factory: self.row_factory,
-            witness_cols: self.witness_cols,
-            is_relevant_witness: self.is_relevant_witness,
+            inputs,
+            ..self
         }
     }
 
     pub fn finshed_outer_query(&self) -> bool {
         self.outer_query
             .as_ref()
-            .map(|outer_query| outer_query.left.iter().all(|l| l.is_constant()))
+            .map(|outer_query| outer_query.is_complete())
             .unwrap_or(true)
     }
 
     pub fn finish(self) -> FinalizableData<'a, T> {
         self.data
+    }
+
+    pub fn latch_value(&self, row_index: usize) -> Option<bool> {
+        let row_pair = RowPair::from_single_row(
+            &self.data[row_index],
+            row_index as u64 + self.row_offset,
+            self.fixed_data,
+            UnknownStrategy::Unknown,
+        );
+        self.outer_query
+            .as_ref()
+            .and_then(|outer_query| outer_query.right.selector.as_ref())
+            .and_then(|latch| row_pair.evaluate(latch).ok())
+            .and_then(|l| l.constant_value())
+            .map(|l| l.is_one())
     }
 
     pub fn process_queries(&mut self, row_index: usize) -> Result<bool, EvalError<T>> {
@@ -133,13 +161,14 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
         Ok(self.apply_updates(row_index, &updates, || "queries".to_string()))
     }
 
-    /// Given a row and identity index, computes any updates, applies them and returns
-    /// whether any progress was made.
+    /// Given a row and identity index, computes any updates and applies them.
+    /// @returns the `IdentityResult`.
     pub fn process_identity(
         &mut self,
         row_index: usize,
         identity: &'a Identity<Expression<T>>,
-    ) -> Result<bool, EvalError<T>> {
+        unknown_strategy: UnknownStrategy,
+    ) -> Result<IdentityResult, EvalError<T>> {
         // Create row pair
         let global_row_index = self.row_offset + row_index as u64;
         let row_pair = RowPair::new(
@@ -147,14 +176,14 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
             &self.data[row_index + 1],
             global_row_index,
             self.fixed_data,
-            UnknownStrategy::Unknown,
+            unknown_strategy,
         );
 
         // Compute updates
         let mut identity_processor = IdentityProcessor::new(self.fixed_data, self.mutable_state);
         let updates = identity_processor
             .process_identity(identity, &row_pair)
-            .map_err(|e| {
+            .map_err(|e| -> EvalError<T> {
                 log::warn!("Error in identity: {identity}");
                 log::warn!(
                     "Known values in current row (local: {row_index}, global {global_row_index}):\n{}",
@@ -168,10 +197,21 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
                         self.data[row_index + 1].render_values(false, Some(self.witness_cols)),
                     );
                 }
-                e
+                format!("{identity}:\n{}", indent(&format!("{e}"), "    ")).into()
             })?;
 
-        Ok(self.apply_updates(row_index, &updates, || identity.to_string()))
+        if unknown_strategy == UnknownStrategy::Zero {
+            assert!(updates.constraints.is_empty());
+            return Ok(IdentityResult {
+                progress: false,
+                is_complete: false,
+            });
+        }
+
+        Ok(IdentityResult {
+            progress: self.apply_updates(row_index, &updates, || identity.to_string()),
+            is_complete: updates.is_complete(),
+        })
     }
 
     pub fn process_outer_query(
@@ -216,6 +256,43 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
         Ok((progress, outer_assignments))
     }
 
+    /// Sets the inputs to the values given in [VmProcessor::inputs] if they are not already set.
+    /// Typically, inputs will have a constraint of the form: `((1 - instr__reset) * (_input' - _input)) = 0;`
+    /// So, once the value of `_input` is set, this function will do nothing until the next reset instruction.
+    /// However, if `_input` does become unconstrained, we need to undo all changes we've done so far.
+    /// For this reason, we keep track of all changes we've done to inputs in [Processor::previously_set_inputs].
+    pub fn set_inputs_if_unset(&mut self, row_index: usize) -> bool {
+        let mut input_updates = EvalValue::complete(vec![]);
+        for (poly_id, value) in self.inputs.iter() {
+            match &self.data[row_index][poly_id].value {
+                CellValue::Known(_) => {}
+                CellValue::RangeConstraint(_) | CellValue::Unknown => {
+                    input_updates.combine(EvalValue::complete([(
+                        &self.fixed_data.witness_cols[poly_id].poly,
+                        Constraint::Assignment(*value),
+                    )]));
+                }
+            };
+        }
+
+        for (poly, _) in &input_updates.constraints {
+            let poly_id = poly.poly_id;
+            if let Some(start_row) = self.previously_set_inputs.remove(&poly_id) {
+                log::trace!(
+                    "    Resetting previously set inputs for column: {}",
+                    self.fixed_data.column_name(&poly_id)
+                );
+                for row_index in start_row..row_index {
+                    self.data[row_index][&poly_id].value = CellValue::Unknown;
+                }
+            }
+        }
+        for (poly, _) in &input_updates.constraints {
+            self.previously_set_inputs.insert(poly.poly_id, row_index);
+        }
+        self.apply_updates(row_index, &input_updates, || "inputs".to_string())
+    }
+
     fn apply_updates(
         &mut self,
         row_index: usize,
@@ -246,6 +323,79 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
             };
         }
 
+        true
+    }
+
+    pub fn len(&self) -> usize {
+        self.data.len()
+    }
+
+    pub fn finalize_range(&mut self, range: impl Iterator<Item = usize>) {
+        self.data.finalize_range(range)
+    }
+
+    pub fn row(&self, i: usize) -> &Row<'a, T> {
+        &self.data[i]
+    }
+
+    pub fn has_outer_query(&self) -> bool {
+        self.outer_query.is_some()
+    }
+
+    /// Sets the ith row, extending the data if necessary.
+    pub fn set_row(&mut self, i: usize, row: Row<'a, T>) {
+        if i < self.data.len() {
+            self.data[i] = row;
+        } else {
+            assert_eq!(i, self.data.len());
+            self.data.push(row);
+        }
+    }
+
+    /// Checks whether a given identity is satisfied on a proposed row.
+    pub fn check_row_pair(
+        &mut self,
+        row_index: usize,
+        proposed_row: &Row<'a, T>,
+        identity: &'a Identity<Expression<T>>,
+        // This could be computed from the identity, but should be pre-computed for performance reasons.
+        has_next_reference: bool,
+    ) -> bool {
+        let mut identity_processor = IdentityProcessor::new(self.fixed_data, self.mutable_state);
+        let row_pair = match has_next_reference {
+            // Check whether identities with a reference to the next row are satisfied
+            // when applied to the previous row and the proposed row.
+            true => {
+                assert!(row_index > 0);
+                RowPair::new(
+                    &self.data[row_index - 1],
+                    proposed_row,
+                    row_index as DegreeType + self.row_offset - 1,
+                    self.fixed_data,
+                    UnknownStrategy::Zero,
+                )
+            }
+            // Check whether identities without a reference to the next row are satisfied
+            // when applied to the proposed row.
+            // Because we never access the next row, we can use [RowPair::from_single_row] here.
+            false => RowPair::from_single_row(
+                proposed_row,
+                row_index as DegreeType + self.row_offset,
+                self.fixed_data,
+                UnknownStrategy::Zero,
+            ),
+        };
+
+        if identity_processor
+            .process_identity(identity, &row_pair)
+            .is_err()
+        {
+            log::debug!("Previous {:?}", &self.data[row_index - 1]);
+            log::debug!("Proposed {:?}", proposed_row);
+            log::debug!("Failed on identity: {}", identity);
+
+            return false;
+        }
         true
     }
 }
