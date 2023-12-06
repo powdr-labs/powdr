@@ -131,7 +131,7 @@ fn test_external_witgen_both_provided() {
 }
 
 #[test]
-#[should_panic = "called `Result::unwrap()` on an `Err` value: ConstraintUnsatisfiable(\"-1\")"]
+#[should_panic = "called `Result::unwrap()` on an `Err` value: Generic(\"main.b = (main.a + 1);:\\n    Linear constraint is not satisfiable: -1 != 0\")"]
 fn test_external_witgen_fails_on_conflicting_external_witness() {
     let f = "external_witgen.pil";
     let external_witness = vec![

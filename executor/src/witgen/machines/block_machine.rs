@@ -419,7 +419,6 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
             mutable_state,
             &self.identities,
             self.fixed_data,
-            self.row_factory.clone(),
             &self.witness_cols,
         )
         .with_outer_query(OuterQuery::new(left.to_vec(), right));
