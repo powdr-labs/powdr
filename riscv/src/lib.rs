@@ -17,6 +17,7 @@ pub use crate::coprocessors::CoProcessors;
 
 pub mod bootloader;
 pub mod compiler;
+pub mod continuations;
 mod coprocessors;
 mod disambiguator;
 pub mod parser;
