@@ -6,7 +6,7 @@ use mktemp::Temp;
 use number::GoldilocksField;
 use test_log::test;
 
-use riscv::CoProcessors;
+use riscv::{continuations::rust_continuations, CoProcessors};
 
 #[test]
 #[ignore = "Too slow"]
@@ -137,6 +137,20 @@ fn test_evm() {
 fn test_print() {
     let case = "print.rs";
     verify_file(case, vec![], &CoProcessors::base());
+}
+
+#[test]
+fn test_many_chunks_dry() {
+    // Compiles and runs the many_chunks.rs example with continuations, just computing
+    // and validating the bootloader inputs.
+    // Doesn't do a full witness generation, verification, or proving.
+    let case = "many_chunks.rs";
+    let coprocessors = CoProcessors::base().with_poseidon();
+    let temp_dir = Temp::new_dir().unwrap();
+    let riscv_asm =
+        riscv::compile_rust_to_riscv_asm(&format!("tests/riscv_data/{case}"), &temp_dir);
+    let powdr_asm = riscv::compiler::compile(riscv_asm, &coprocessors, true);
+    rust_continuations::<GoldilocksField>(case, &powdr_asm, vec![])
 }
 
 fn verify_file(case: &str, inputs: Vec<GoldilocksField>, coprocessors: &CoProcessors) {
