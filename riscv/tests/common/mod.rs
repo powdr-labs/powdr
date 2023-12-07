@@ -29,6 +29,7 @@ pub fn verify_riscv_asm_string(file_name: &str, contents: &str, inputs: Vec<Gold
         true,
         Some(BackendType::PilStarkCli),
         vec![],
+        None,
     )
     .unwrap();
 
