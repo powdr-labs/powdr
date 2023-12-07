@@ -215,7 +215,8 @@ where
                 self.process_selected_expressions(key),
                 self.process_selected_expressions(haystack),
             ),
-            PilStatement::PermutationIdentity(start, left, right) => (
+            PilStatement::PermutationIdentity(start,//  TODO: include the attribute in the PIL ITEM!
+                _,  left, right) => (
                 start,
                 IdentityKind::Permutation,
                 self.process_selected_expressions(left),

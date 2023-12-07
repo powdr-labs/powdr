@@ -110,6 +110,30 @@ mod test {
         );
     }
 
+    #[test]
+    fn parse_permutation_attribute() {
+        let parsed = powdr::PILFileParser::new()
+            .parse::<GoldilocksField>("
+            #[attribute]
+            { f } is { g };")
+            .unwrap();
+        assert_eq!(
+            parsed,
+            PILFile(vec![PilStatement::PermutationIdentity(
+                13,
+                Some("attribute".to_string()),
+                SelectedExpressions {
+                    selector: None,
+                    expressions: vec![direct_reference("f")]
+                },
+                SelectedExpressions {
+                    selector: None,
+                    expressions: vec![direct_reference("g")]
+                }
+            )])
+        );
+    }
+
     fn parse_file(name: &str) -> PILFile<GoldilocksField> {
         let file = std::path::PathBuf::from(format!(
             "{}/../test_data/{name}",

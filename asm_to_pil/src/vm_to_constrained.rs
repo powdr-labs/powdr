@@ -411,7 +411,7 @@ impl<T: FieldElement> ASMPILConverter<T> {
                         }
                     } else {
                         match &mut statement {
-                            PilStatement::PermutationIdentity(_, left, _)
+                            PilStatement::PermutationIdentity(_, _, left, _)
                             | PilStatement::PlookupIdentity(_, left, _) => {
                                 assert!(
                                     left.selector.is_none(),

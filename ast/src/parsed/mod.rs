@@ -42,6 +42,7 @@ pub enum PilStatement<T> {
     ),
     PermutationIdentity(
         usize,
+        Option<String>,
         SelectedExpressions<Expression<T>>,
         SelectedExpressions<Expression<T>>,
     ),
@@ -49,6 +50,12 @@ pub enum PilStatement<T> {
     ConstantDefinition(usize, String, Expression<T>),
     Expression(usize, Expression<T>),
 }
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
+pub struct Attribute {
+    pub name: Option<String>,
+}
+
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub struct SelectedExpressions<Expr> {

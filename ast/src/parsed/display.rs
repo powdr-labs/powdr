@@ -391,7 +391,9 @@ impl<T: Display> Display for PilStatement<T> {
                 }
             }
             PilStatement::PlookupIdentity(_, left, right) => write!(f, "{left} in {right};"),
-            PilStatement::PermutationIdentity(_, left, right) => write!(f, "{left} is {right};"),
+            PilStatement::PermutationIdentity(_, //
+                 _, //
+                  left, right) => write!(f, "{left} is {right};"), //
             PilStatement::ConnectIdentity(_, left, right) => write!(
                 f,
                 "{{ {} }} connect {{ {} }};",

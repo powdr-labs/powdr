@@ -147,8 +147,12 @@ SelectedExpressions: SelectedExpressions<Expression<T>> = {
     Expression => SelectedExpressions{selector: None, expressions: vec![<>]},
 }
 
+Attribute: String = {
+    "#[" <Identifier> "]" => <>.to_string()
+}
+
 PermutationIdentity: PilStatement<T> = {
-    <@L> <SelectedExpressions> "is" <SelectedExpressions> => PilStatement::PermutationIdentity(<>)
+    <@L> <Attribute?> <SelectedExpressions> "is" <SelectedExpressions> => PilStatement::PermutationIdentity(<>)
 }
 
 ConnectIdentity: PilStatement<T> = {

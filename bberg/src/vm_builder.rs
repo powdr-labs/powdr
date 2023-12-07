@@ -46,7 +46,10 @@ pub(crate) fn analyzed_to_cpp<F: FieldElement>(
 
     // ----------------------- Handle Standard Relation Identities -----------------------
     // We collect all references to shifts as we traverse all identities and create relation files
-    let shifted_polys = create_relation_files(&bb_files, file_name, &analyzed_identities);
+    let RelationOutput {
+        relations,
+        shifted_polys
+     } = create_relation_files(&bb_files, file_name, &analyzed_identities);
 
     // ----------------------- Handle Lookup / Permutation Relation Identities -----------------------
     // We will likely need to create a new set of permutation identities for each lookup / permutation pair we come across
@@ -110,10 +113,15 @@ pub(crate) fn analyzed_to_cpp<F: FieldElement>(
 }
 
 
+struct RelationOutput {
+    relations: Vec<String>,
+    shifted_polys: Vec<String>,
+}
+
 /// TODO: MOVE THIS OUT OF THIS FILE????
 /// Does this need to return all of the shifted polys that it collects>
 /// TODO: restructure this so that we do not have to pass in bb files abd the name at the top level
-fn create_relation_files<F: FieldElement>(bb_files: &BBFiles, file_name: &str, analyzed_identities: &Vec<Identity<AlgebraicExpression<F>>>) -> Vec<String> {
+fn create_relation_files<F: FieldElement>(bb_files: &BBFiles, file_name: &str, analyzed_identities: &Vec<Identity<AlgebraicExpression<F>>>) -> RelationOutput {
     // Group relations per file
     let grouped_relations: HashMap<String, Vec<Identity<AlgebraicExpression<F>>>> = group_relations_per_file(&analyzed_identities);
     let relations = grouped_relations.keys().cloned().collect_vec();
@@ -146,7 +154,10 @@ fn create_relation_files<F: FieldElement>(bb_files: &BBFiles, file_name: &str, a
         );
     }
 
-    shifted_polys
+    RelationOutput {
+        relations,
+        shifted_polys
+    }
 
 }
 
