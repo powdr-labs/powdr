@@ -3,8 +3,7 @@ use number::FieldElement;
 use number::{Bn254Field, GoldilocksField};
 use std::path::PathBuf;
 
-use crate::inputs_to_query_callback;
-use crate::pipeline::Pipeline;
+use crate::pipeline::{Pipeline, Stage};
 use crate::verify::verify;
 
 pub fn resolve_test_file(file_name: &str) -> PathBuf {
@@ -39,36 +38,40 @@ pub fn verify_pipeline<T: FieldElement>(
     inputs: Vec<T>,
     external_witness_values: Vec<(&str, Vec<T>)>,
 ) {
-    let mut pipeline = pipeline.with_tmp_output();
-    pipeline
-        .generate_witness(inputs_to_query_callback(inputs), external_witness_values)
-        .unwrap();
-    pipeline.prove(BackendType::PilStarkCli).unwrap();
+    let mut pipeline = pipeline
+        .with_tmp_output()
+        .with_external_witness_values(external_witness_values)
+        .with_prover_inputs(inputs)
+        .with_backend(BackendType::PilStarkCli);
+
+    // Don't get the proof, because that would destroy the pipeline
+    // which owns the temporary directory.
+    pipeline.advance_to(Stage::Proof).unwrap();
 
     verify(pipeline.tmp_dir());
 }
 
 pub fn gen_estark_proof(file_name: &str, inputs: Vec<GoldilocksField>) {
     let file_name = format!("{}/../test_data/{file_name}", env!("CARGO_MANIFEST_DIR"));
-    let mut pipeline = Pipeline::default()
+    Pipeline::default()
         .with_tmp_output()
-        .from_file(PathBuf::from(file_name));
-    pipeline
-        .generate_witness(inputs_to_query_callback(inputs), vec![])
+        .from_file(PathBuf::from(file_name))
+        .with_prover_inputs(inputs)
+        .with_backend(backend::BackendType::EStark)
+        .proof()
         .unwrap();
-    pipeline.prove(backend::BackendType::EStark).unwrap();
 }
 
 #[cfg(feature = "halo2")]
 pub fn gen_halo2_proof(file_name: &str, inputs: Vec<Bn254Field>) {
     let file_name = format!("{}/../test_data/{file_name}", env!("CARGO_MANIFEST_DIR"));
-    let mut pipeline = Pipeline::default()
+    Pipeline::default()
         .with_tmp_output()
-        .from_file(PathBuf::from(file_name));
-    pipeline
-        .generate_witness(inputs_to_query_callback(inputs), vec![])
+        .from_file(PathBuf::from(file_name))
+        .with_prover_inputs(inputs)
+        .with_backend(backend::BackendType::Halo2)
+        .proof()
         .unwrap();
-    pipeline.prove(backend::BackendType::Halo2).unwrap();
 }
 
 #[cfg(not(feature = "halo2"))]
