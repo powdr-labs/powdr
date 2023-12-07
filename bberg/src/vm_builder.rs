@@ -165,6 +165,10 @@ fn create_relation_files<F: FieldElement>(bb_files: &BBFiles, file_name: &str, a
 // Maybe this is not the right thing to do?
 #[derive(Debug)]
 struct Permutation {
+    /// Attribute in this setting is used to determine what the name of the inverse column should be
+    /// TODO(md): Future implementations should use this to allow using the same inverse column multiple times, thus 
+    /// allowing granularity in the logup trade-off
+    attribute: Option<String>,
     left: PermSide,
     right: PermSide
 }
@@ -176,21 +180,162 @@ struct PermSide {
     cols: Vec<String>
 }
 
-fn handle_permutations<F: FieldElement>(analyzed: &Analyzed<F>) -> Vec<Permutation> {
+fn handle_permutations<F: FieldElement>(analyzed: &Analyzed<F>) {
     let perms: Vec<&Identity<AlgebraicExpression<F>>> = analyzed.identities.iter().filter(|identity| matches!(identity.kind, IdentityKind::Permutation)).collect();
     let new_perms = perms.iter().map(|perm| 
         Permutation {
+            attribute: perm.attribute.clone(),
             left: get_perm_side(&perm.left),
             right: get_perm_side(&perm.right)
         }).collect_vec();
-
     dbg!(&new_perms);
 
     // For every permutation set that we create, we will need to create an inverse column ( helper function )
     // TODO: how do we determine the name of this inverse column?
 
+    create_permutations(new_perms);
+}
 
-    new_perms
+fn create_permutations(permutations: Vec<Permutation>) {
+    for permutation in permutations {
+        create_permutation_settings_file(permutation);
+    }
+}
+
+fn create_permutation_settings_file(permutation: Permutation) -> String {
+
+    println!("Permutation: {:?}", permutation);
+    let columns_per_set = permutation.left.cols.len();
+    // TODO(md): Throw an error if no attribute is provided for the permutation
+    // TODO(md): In the future we will need to condense off the back of this - combining those with the same inverse column
+    let inverse_column_name = permutation.attribute.clone().expect("Inverse column name must be provided"); // TODO(md): catch this earlier than here
+    
+    // NOTE: syntax is not flexible enough to enable the single row case right now :(:(:(:(:))))
+    // This also will need to work for both sides of this !
+    let selector = permutation.left.selector.clone().unwrap(); // TODO: deal with unwrap
+    let lhs_cols = permutation.left.cols.clone();
+    let rhs_cols = permutation.right.cols.clone();
+
+    // 0.                       The polynomial containing the inverse products -> taken from the attributes
+    // 1.                       The polynomial enabling the relation (the selector)
+    // 2.                       lhs selector
+    // 3.                       rhs selector
+    // 4.. + columns per set.   lhs cols
+    // 4 + columns per set.. .  rhs cols
+    let mut perm_entities: Vec<String> = [
+        inverse_column_name,
+        selector.clone(),
+        selector.clone(),
+        selector.clone() // TODO: update this away from the simple example
+    ].to_vec();
+
+    perm_entities.extend(lhs_cols);
+    perm_entities.extend(rhs_cols);
+
+
+    // TODO: below here should really be in a new function as we have just got the settings extracted from the parsed type
+    let inverse_computed_at = create_inverse_computed_at(selector);
+    let const_entities = create_get_const_entities(&perm_entities);
+    let nonconst_entities = create_get_nonconst_entities(&perm_entities);
+
+
+    format!(
+        // TODO: replace with the inverse label name!
+        "
+        class ExampleTuplePermutationSettings {{
+            public:
+                  // This constant defines how many columns are bundled together to form each set. For example, in this case we are
+                  // bundling tuples of (permutation_set_column_1, permutation_set_column_2) to be a permutation of
+                  // (permutation_set_column_3,permutation_set_column_4). As the tuple has 2 elements, set the value to 2
+                  constexpr static size_t COLUMNS_PER_SET = {columns_per_set};
+              
+                  /**
+                   * @brief If this method returns true on a row of values, then the inverse polynomial at this index. Otherwise the
+                   * value needs to be set to zero.
+                   *
+                   * @details If this is true then permutation takes place in this row
+                   *
+                   */
+                  {inverse_computed_at}
+              
+                  /**
+                   * @brief Get all the entities for the permutation when we don't need to update them
+                   *
+                   * @details The entities are returned as a tuple of references in the following order:
+                   * - The entity/polynomial used to store the product of the inverse values
+                   * - The entity/polynomial that switches on the subrelation of the permutation relation that ensures correctness of
+                   * the inverse polynomial
+                   * - The entity/polynomial that enables adding a tuple-generated value from the first set to the logderivative sum
+                   * subrelation
+                   * - The entity/polynomial that enables adding a tuple-generated value from the second set to the logderivative sum
+                   * subrelation
+                   * - A sequence of COLUMNS_PER_SET entities/polynomials that represent the first set (N.B. ORDER IS IMPORTANT!)
+                   * - A sequence of COLUMNS_PER_SET entities/polynomials that represent the second set (N.B. ORDER IS IMPORTANT!)
+                   *
+                   * @return All the entities needed for the permutation
+                   */
+                  {const_entities}
+              
+                  /**
+                   * @brief Get all the entities for the permutation when need to update them
+                   *
+                   * @details The entities are returned as a tuple of references in the following order:
+                   * - The entity/polynomial used to store the product of the inverse values
+                   * - The entity/polynomial that switches on the subrelation of the permutation relation that ensures correctness of
+                   * the inverse polynomial
+                   * - The entity/polynomial that enables adding a tuple-generated value from the first set to the logderivative sum
+                   * subrelation
+                   * - The entity/polynomial that enables adding a tuple-generated value from the second set to the logderivative sum
+                   * subrelation
+                   * - A sequence of COLUMNS_PER_SET entities/polynomials that represent the first set (N.B. ORDER IS IMPORTANT!)
+                   * - A sequence of COLUMNS_PER_SET entities/polynomials that represent the second set (N.B. ORDER IS IMPORTANT!)
+                   *
+                   * @return All the entities needed for the permutation
+                   */
+                  {nonconst_entities}
+        }}
+        "
+    )
+    
+}
+
+
+
+// TODO: make this dynamic such that there can be more than one
+fn create_inverse_computed_at(inverse_selector: String) -> String {
+    let inverse_computed_selector = format!("in.{inverse_selector}");
+    format!("
+    template <typename AllEntities> static inline auto inverse_polynomial_is_computed_at_row(const AllEntities& in) {{
+        return ({inverse_computed_selector} == 1);
+    }}")
+}
+
+fn create_get_const_entities (settings: &[String]) -> String {
+    let forward = create_forward_as_tuple(settings);
+    format!("
+    template <typename AllEntities> static inline auto get_const_entities(const AllEntities& in) {{
+        {forward}
+    }}
+    ")
+}
+
+fn create_get_nonconst_entities (settings: &[String]) -> String {
+    let forward = create_forward_as_tuple(settings);
+    format!("
+    template <typename AllEntities> static inline auto get_nonconst_entities(AllEntities& in) {{
+        {forward}
+    }}
+    ")
+}
+
+
+fn create_forward_as_tuple(settings: &[String]) -> String {
+    let adjusted = settings.iter().map(|col| format!("in.{col},\n")).join("");
+    format!("
+        return std::forward_as_tuple(
+            {}
+        );
+    ", adjusted)
 }
 
 fn get_perm_side<F: FieldElement>(def: &SelectedExpressions<AlgebraicExpression<F>>) -> PermSide {

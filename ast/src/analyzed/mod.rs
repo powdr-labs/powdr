@@ -226,6 +226,7 @@ impl<T> Analyzed<T> {
         self.identities.push(Identity {
             id,
             kind: IdentityKind::Polynomial,
+            attribute: None, // TODO(md): None for the meantime as we do not have tagged identities, will be updated in following pr
             source,
             left: SelectedExpressions {
                 selector: Some(identity),
@@ -504,6 +505,7 @@ pub struct Identity<Expr> {
     /// The ID is specific to the identity kind.
     pub id: u64,
     pub kind: IdentityKind,
+    pub attribute: Option<String>,
     pub source: SourceRef,
     /// For a simple polynomial identity, the selector contains
     /// the actual expression (see expression_for_poly_id).

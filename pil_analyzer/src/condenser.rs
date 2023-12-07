@@ -119,6 +119,7 @@ impl<T: FieldElement> Condenser<T> {
                 .map(|constraint| Identity {
                     id: identity.id,
                     kind: identity.kind,
+                    attribute: identity.attribute.clone(),
                     source: identity.source.clone(),
                     left: SelectedExpressions {
                         selector: Some(constraint),
@@ -131,6 +132,7 @@ impl<T: FieldElement> Condenser<T> {
             vec![Identity {
                 id: identity.id,
                 kind: identity.kind,
+                attribute: identity.attribute.clone(),
                 source: identity.source.clone(),
                 left: self.condense_selected_expressions(&identity.left),
                 right: self.condense_selected_expressions(&identity.right),
