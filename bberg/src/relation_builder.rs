@@ -228,7 +228,7 @@ fn craft_expression<T: FieldElement>(
                     _ => (degree, format!("({} - {})", lhs, rhs)),
                 },
 
-                AlgebraicBinaryOperator::Mul => (degree + 1, format!("({} * {})", lhs, rhs)),
+                AlgebraicBinaryOperator::Mul => (ld + rd, format!("({} * {})", lhs, rhs)),
                 _ => unimplemented!("{:?}", expr),
             }
         }
