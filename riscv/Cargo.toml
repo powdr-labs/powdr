@@ -18,6 +18,8 @@ serde_json = "1.0"
 regex-syntax = { version = "0.6", default_features = false, features = [
     "unicode",
 ] }
+riscv_executor = { path = "../riscv_executor" }
+compiler = { path = "../compiler" }
 
 [build-dependencies]
 lalrpop = "^0.19"
@@ -27,5 +29,3 @@ test-log = "0.2.12"
 env_logger = "0.10.0"
 hex = "0.4.3"
 number = { path = "../number" }
-compiler = { path = "../compiler" }
-riscv_executor = { path = "../riscv_executor" }
