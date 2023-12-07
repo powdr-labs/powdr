@@ -438,7 +438,12 @@ fn run_command(command: Commands) {
                     vec![(GoldilocksField::from(0), inputs)]
                         .into_iter()
                         .collect();
-                riscv_executor::execute::<GoldilocksField>(&contents, &inputs, &default_input());
+                riscv_executor::execute::<GoldilocksField>(
+                    &contents,
+                    &inputs,
+                    &default_input(),
+                    riscv_executor::ExecMode::Fast,
+                );
             }
             (false, true) => {
                 unimplemented!("Running witgen with continuations is not supported yet.")
@@ -588,7 +593,12 @@ fn handle_riscv_asm<F: FieldElement>(
         (true, false) => {
             let mut inputs_hash: HashMap<F, Vec<F>> = HashMap::default();
             inputs_hash.insert(0u32.into(), inputs);
-            riscv_executor::execute::<F>(contents, &inputs_hash, &default_input());
+            riscv_executor::execute::<F>(
+                contents,
+                &inputs_hash,
+                &default_input(),
+                riscv_executor::ExecMode::Fast,
+            );
         }
         (false, true) => {
             unimplemented!("Running witgen with continuations is not supported yet.")
@@ -637,8 +647,14 @@ fn rust_continuations<F: FieldElement>(file_name: &str, contents: &str, inputs: 
 
     log::info!("Executing powdr-asm...");
     let (full_trace, memory_accesses) = {
-        let trace =
-            riscv_executor::execute_ast::<F>(&program, &inputs, &bootloader_inputs, usize::MAX).0;
+        let trace = riscv_executor::execute_ast::<F>(
+            &program,
+            &inputs,
+            &bootloader_inputs,
+            usize::MAX,
+            riscv_executor::ExecMode::Trace,
+        )
+        .0;
         (transposed_trace::<F>(&trace), trace.mem)
     };
 
@@ -662,8 +678,13 @@ fn rust_continuations<F: FieldElement>(file_name: &str, contents: &str, inputs: 
         let degree = F::from(degree).to_degree();
         let num_rows = degree as usize - 2;
         let (chunk_trace, memory_snapshot_update) = {
-            let (trace, memory_snapshot_update) =
-                riscv_executor::execute_ast::<F>(&program, &inputs, &bootloader_inputs, num_rows);
+            let (trace, memory_snapshot_update) = riscv_executor::execute_ast::<F>(
+                &program,
+                &inputs,
+                &bootloader_inputs,
+                num_rows,
+                riscv_executor::ExecMode::Trace,
+            );
             (transposed_trace(&trace), memory_snapshot_update)
         };
         log::info!("{} memory slots updated.", memory_snapshot_update.len());

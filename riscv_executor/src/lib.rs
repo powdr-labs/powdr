@@ -103,8 +103,8 @@ pub struct MemOperation {
     pub address: u32,
 }
 
-pub struct ExecutionTrace<'a> {
-    pub reg_map: HashMap<&'a str, usize>,
+pub struct ExecutionTrace {
+    pub reg_map: HashMap<String, usize>,
 
     /// Values of the registers in the execution trace.
     ///
@@ -114,9 +114,12 @@ pub struct ExecutionTrace<'a> {
 
     /// Writes and reads to memory.
     pub mem: Vec<MemOperation>,
+
+    /// The length of the trace.
+    pub len: u64,
 }
 
-impl<'a> ExecutionTrace<'a> {
+impl ExecutionTrace {
     /// Split the values of the registers' trace into rows.
     pub fn regs_rows(&self) -> impl Iterator<Item = &[Elem]> {
         self.regs.chunks_exact(self.reg_map.len())
@@ -134,7 +137,7 @@ mod builder {
     use number::FieldElement;
 
     use crate::{
-        Elem, ExecutionTrace, MemOperation, MemOperationKind, MemoryState, PC_INITIAL_VAL,
+        Elem, ExecMode, ExecutionTrace, MemOperation, MemOperationKind, MemoryState, PC_INITIAL_VAL,
     };
 
     fn register_names<T: FieldElement>(main: &Machine<T>) -> Vec<&str> {
@@ -150,8 +153,8 @@ mod builder {
             .collect()
     }
 
-    pub struct TraceBuilder<'a, 'b> {
-        trace: ExecutionTrace<'a>,
+    pub struct TraceBuilder<'b> {
+        trace: ExecutionTrace,
 
         /// First register of current row.
         /// Next row is reg_map.len() elems ahead.
@@ -174,9 +177,14 @@ mod builder {
 
         /// Current memory.
         mem: HashMap<u32, u32>,
+
+        /// The execution mode we running.
+        /// Fast: do not save the register's trace and memory accesses.
+        /// Trace: save everything - needed for continuations.
+        mode: ExecMode,
     }
 
-    impl<'a, 'b> TraceBuilder<'a, 'b> {
+    impl<'a, 'b> TraceBuilder<'b> {
         /// Creates a new builder.
         ///
         /// May fail if max_rows_len is too small or if the main machine is
@@ -186,12 +194,13 @@ mod builder {
             main: &'a Machine<T>,
             batch_to_line_map: &'b [u32],
             max_rows_len: usize,
-        ) -> Result<Self, Box<(ExecutionTrace<'a>, MemoryState)>> {
+            mode: ExecMode,
+        ) -> Result<Self, Box<(ExecutionTrace, MemoryState)>> {
             let reg_map = register_names(main)
                 .into_iter()
                 .enumerate()
-                .map(|(i, name)| (name, i))
-                .collect::<HashMap<&str, usize>>();
+                .map(|(i, name)| (name.to_string(), i))
+                .collect::<HashMap<String, usize>>();
 
             let reg_len = reg_map.len();
 
@@ -215,11 +224,13 @@ mod builder {
                     reg_map,
                     regs: values,
                     mem: Vec::new(),
+                    len: 0,
                 },
                 next_statement_line: 1,
                 batch_to_line_map,
                 max_curr_idx: max_rows_len.saturating_sub(1).saturating_mul(reg_len),
                 mem: HashMap::new(),
+                mode,
             };
 
             if ret.has_enough_rows() || ret.set_next_pc().is_none() {
@@ -274,10 +285,19 @@ mod builder {
         /// advance to next row, returns the index to the statement that must be
         /// executed now, or None if the execution is finished
         pub fn advance(&mut self, was_nop: bool) -> Option<u32> {
+            if !was_nop {
+                self.trace.len += 1;
+            }
+
             if self.get_reg_idx(self.pc_idx) != self.get_reg_idx_next(self.pc_idx) {
-                // PC changed, create a new line
-                self.curr_idx += self.reg_len();
-                self.trace.regs.extend_from_within(self.curr_idx..);
+                if let ExecMode::Trace = self.mode {
+                    // PC changed, create a new line
+                    self.curr_idx += self.reg_len();
+                    self.trace.regs.extend_from_within(self.curr_idx..);
+                } else if !was_nop {
+                    let next_idx = self.curr_idx + self.reg_len();
+                    self.trace.regs.copy_within(next_idx.., self.curr_idx);
+                }
 
                 // If we are at the limit of rows, stop the execution
                 if self.has_enough_rows() {
@@ -301,26 +321,30 @@ mod builder {
         }
 
         pub(crate) fn set_mem(&mut self, addr: u32, val: u32) {
-            self.trace.mem.push(MemOperation {
-                idx: self.curr_idx / self.reg_len() + 1,
-                kind: MemOperationKind::Write,
-                address: addr,
-            });
+            if let ExecMode::Trace = self.mode {
+                self.trace.mem.push(MemOperation {
+                    idx: self.curr_idx / self.reg_len() + 1,
+                    kind: MemOperationKind::Write,
+                    address: addr,
+                });
+            }
 
             self.mem.insert(addr, val);
         }
 
         pub(crate) fn get_mem(&mut self, addr: u32) -> u32 {
-            self.trace.mem.push(MemOperation {
-                idx: self.curr_idx / self.reg_len() + 1,
-                kind: MemOperationKind::Read,
-                address: addr,
-            });
+            if let ExecMode::Trace = self.mode {
+                self.trace.mem.push(MemOperation {
+                    idx: self.curr_idx / self.reg_len() + 1,
+                    kind: MemOperationKind::Read,
+                    address: addr,
+                });
+            }
 
             *self.mem.get(&addr).unwrap_or(&0)
         }
 
-        pub fn finish(mut self) -> (ExecutionTrace<'a>, MemoryState) {
+        pub fn finish(mut self) -> (ExecutionTrace, MemoryState) {
             // remove the last row (future row), as it is not part of the trace
             self.trace.regs.drain((self.curr_idx + self.reg_len())..);
             (self.trace, self.mem)
@@ -438,7 +462,7 @@ fn preprocess_main_function<T: FieldElement>(machine: &Machine<T>) -> Preprocess
 }
 
 struct Executor<'a, 'b, F: FieldElement> {
-    proc: TraceBuilder<'a, 'b>,
+    proc: TraceBuilder<'b>,
     label_map: HashMap<&'a str, Elem>,
     inputs: HashMap<F, Vec<F>>,
     bootloader_inputs: &'b [F],
@@ -749,12 +773,13 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
     }
 }
 
-pub fn execute_ast<'a, T: FieldElement>(
-    program: &'a AnalysisASMFile<T>,
+pub fn execute_ast<T: FieldElement>(
+    program: &AnalysisASMFile<T>,
     inputs: &HashMap<T, Vec<T>>,
     bootloader_inputs: &[T],
     max_steps_to_execute: usize,
-) -> (ExecutionTrace<'a>, MemoryState) {
+    mode: ExecMode,
+) -> (ExecutionTrace, MemoryState) {
     let main_machine = get_main_machine(program);
     let PreprocessedMain {
         statements,
@@ -763,7 +788,8 @@ pub fn execute_ast<'a, T: FieldElement>(
         debug_files,
     } = preprocess_main_function(main_machine);
 
-    let proc = match TraceBuilder::new(main_machine, &batch_to_line_map, max_steps_to_execute) {
+    let proc = match TraceBuilder::new(main_machine, &batch_to_line_map, max_steps_to_execute, mode)
+    {
         Ok(proc) => proc,
         Err(ret) => return *ret,
     };
@@ -826,6 +852,11 @@ pub fn execute_ast<'a, T: FieldElement>(
     e.proc.finish()
 }
 
+pub enum ExecMode {
+    Fast,
+    Trace,
+}
+
 /// Execute a Powdr/RISCV assembly source.
 ///
 /// Generic argument F is just used by the parser, before everything is
@@ -834,7 +865,8 @@ pub fn execute<F: FieldElement>(
     asm_source: &str,
     inputs: &HashMap<F, Vec<F>>,
     bootloader_inputs: &[F],
-) {
+    mode: ExecMode,
+) -> (ExecutionTrace, MemoryState) {
     log::info!("Parsing...");
     let parsed = parser::parse_asm::<F>(None, asm_source).unwrap();
     log::info!("Resolving imports...");
@@ -843,7 +875,7 @@ pub fn execute<F: FieldElement>(
     let analyzed = analysis::analyze(resolved, &mut ast::DiffMonitor::default()).unwrap();
 
     log::info!("Executing...");
-    execute_ast(&analyzed, inputs, bootloader_inputs, usize::MAX);
+    execute_ast(&analyzed, inputs, bootloader_inputs, usize::MAX, mode)
 }
 
 fn to_u32<F: FieldElement>(val: &F) -> Option<u32> {

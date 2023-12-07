@@ -23,6 +23,7 @@ pub fn verify_riscv_asm_string(file_name: &str, contents: &str, inputs: Vec<Gold
                 &inputs_hash.clone(),
                 &default_input(),
                 usize::MAX,
+                riscv_executor::ExecMode::Fast,
             );
         }),
         &temp_dir,
