@@ -33,7 +33,11 @@ ModuleDefinition: SymbolDefinition<T> = {
 }
 
 Import: SymbolDefinition<T> = {
-    "use" <path:SymbolPath> <name:( "as" <Identifier> )?> ";" => SymbolDefinition { name: name.unwrap_or(path.parts.back().unwrap().clone().try_into().unwrap()), value: Import {path}.into() }
+    "use" <path:SymbolPath> <name:( "as" <Identifier> )?> ";" =>
+        SymbolDefinition {
+            name: name.unwrap_or(path.parts.last().unwrap().clone().try_into().unwrap()),
+            value: Import {path}.into()
+        }
 }
 
 pub SymbolPath: SymbolPath = {

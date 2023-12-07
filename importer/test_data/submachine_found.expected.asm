@@ -3,5 +3,5 @@ mod bar {
     }
 }
 machine Foo {
-    bar::Bar foo;
+    ::bar::Bar foo;
 }

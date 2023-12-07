@@ -4,6 +4,6 @@ mod b {
 }
 mod a {
     machine M {
-        Bar bar;
+        ::Bar bar;
     }
 }

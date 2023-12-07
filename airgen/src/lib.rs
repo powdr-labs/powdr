@@ -13,7 +13,7 @@ use ast::{
     },
 };
 
-const MAIN_MACHINE: &str = "Main";
+const MAIN_MACHINE: &str = "::Main";
 const MAIN_FUNCTION: &str = "main";
 
 use number::FieldElement;
@@ -33,10 +33,9 @@ pub fn compile<T: FieldElement>(input: AnalysisASMFile<T>) -> PILGraph<T> {
         1 => (*non_std_machines.keys().next().unwrap()).clone(),
         // otherwise, use the machine called `MAIN`
         _ => {
-            assert!(input
-                .machines
-                .contains_key(&parse_absolute_path(MAIN_MACHINE)));
-            MAIN_MACHINE.into()
+            let p = parse_absolute_path(MAIN_MACHINE);
+            assert!(input.machines.contains_key(&p));
+            p
         }
     };
 

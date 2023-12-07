@@ -74,7 +74,7 @@ impl Display for SymbolPath {
 
 impl Display for AbsoluteSymbolPath {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write!(f, "{}", self.parts.iter().format("::"))
+        write!(f, "::{}", self.parts.iter().format("::"))
     }
 }
 
@@ -646,5 +646,24 @@ mod tests {
         };
         assert_eq!(_in.to_string(), "abc: ty");
         assert_eq!(_in.prepend_space_if_non_empty(), " abc: ty");
+    }
+
+    #[test]
+    fn symbol_paths() {
+        let s = SymbolPath {
+            parts: vec![
+                Part::Named("x".to_string()),
+                Part::Super,
+                Part::Named("y".to_string()),
+            ],
+        };
+        assert_eq!(s.to_string(), "x::super::y");
+        let p = parse_absolute_path("::abc");
+        assert_eq!(p.to_string(), "::abc");
+
+        assert_eq!(p.with_part("t").to_string(), "::abc::t");
+
+        assert_eq!(p.clone().join(s.clone()).to_string(), "::abc::y");
+        assert_eq!(SymbolPath::from(p.join(s)).to_string(), "::abc::y");
     }
 }

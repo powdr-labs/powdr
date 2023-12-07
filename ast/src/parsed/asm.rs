@@ -1,4 +1,4 @@
-use std::{collections::VecDeque, fmt::Display};
+use std::{fmt::Display, iter::once};
 
 use number::AbstractNumberType;
 
@@ -92,63 +92,86 @@ pub struct Import {
     pub path: SymbolPath,
 }
 
+/// A symbol path is a sequence of strings separated by ``::`.
+/// It can contain the special word `super`, which goes up a level.
+/// If it does not start with `::`, it is relative.
 #[derive(Default, Debug, PartialEq, Eq, Clone, PartialOrd, Ord)]
 pub struct SymbolPath {
-    pub parts: VecDeque<Part>,
+    /// The parts between each `::`.
+    pub parts: Vec<Part>,
 }
 
+impl SymbolPath {
+    pub fn join<P: Into<Self>>(mut self, other: P) -> Self {
+        self.parts.extend(other.into().parts);
+        self
+    }
+}
+
+/// An absolute symbol path is a resolved SymbolPath,
+/// which means it has to start with `::` and it cannot contain
+/// the word `super`.
 #[derive(Default, Debug, PartialEq, Eq, Clone, PartialOrd, Ord)]
 pub struct AbsoluteSymbolPath {
-    pub parts: VecDeque<String>,
+    /// Contains the parts after the initial `::`.
+    pub parts: Vec<String>,
 }
 
-impl<S: Into<String>> From<S> for AbsoluteSymbolPath {
-    fn from(name: S) -> Self {
-        Self {
-            parts: [name.into()].into(),
-        }
-    }
-}
-
-/// parses a path like `path::to::symbol`
+/// Parses a path like `::path::to::symbol`.
+/// Panics if the path does not start with '::'.
 pub fn parse_absolute_path(s: &str) -> AbsoluteSymbolPath {
-    s.split("::")
-        .fold(AbsoluteSymbolPath::default(), |path, part| path.join(part))
-}
-
-impl AbsoluteSymbolPath {
-    pub fn pop_front(&mut self) -> Option<String> {
-        self.parts.pop_front()
-    }
-
-    pub fn pop_back(&mut self) -> Option<String> {
-        self.parts.pop_back()
+    match s.strip_prefix("::") {
+        Some(s) => s
+            .split("::")
+            .fold(AbsoluteSymbolPath::default(), |path, part| {
+                path.with_part(part)
+            }),
+        None => panic!("Absolute symbol path does not start with '::': {s}"),
     }
 }
 
 impl AbsoluteSymbolPath {
-    pub fn join<P: Into<SymbolPath>>(self, other: P) -> Self {
-        other
-            .into()
-            .parts
-            .into_iter()
-            .fold(self, |mut acc, part| match part {
+    pub fn pop(&mut self) -> Option<String> {
+        self.parts.pop()
+    }
+}
+
+impl AbsoluteSymbolPath {
+    /// Resolves a relative path in the context of this absolute path.
+    pub fn join<P: Into<SymbolPath> + Display>(mut self, other: P) -> Self {
+        for part in other.into().parts {
+            match part {
                 Part::Super => {
-                    acc.pop_back().unwrap();
-                    acc
+                    self.pop().unwrap();
                 }
                 Part::Named(name) => {
-                    acc.parts.push_back(name);
-                    acc
+                    if name.is_empty() {
+                        self.parts.clear();
+                    } else {
+                        self.parts.push(name);
+                    }
                 }
-            })
+            }
+        }
+        self
+    }
+
+    /// Appends a part to the end of the path and returns a new copy.
+    pub fn with_part(&self, part: &str) -> Self {
+        assert!(!part.is_empty());
+        let mut parts = self.parts.clone();
+        parts.push(part.to_string());
+        Self { parts }
     }
 }
 
 impl From<AbsoluteSymbolPath> for SymbolPath {
     fn from(value: AbsoluteSymbolPath) -> Self {
         Self {
-            parts: value.parts.into_iter().map(Part::Named).collect(),
+            parts: once(String::new())
+                .chain(value.parts)
+                .map(Part::Named)
+                .collect(),
         }
     }
 }
@@ -168,31 +191,6 @@ impl TryInto<String> for Part {
         } else {
             Err(())
         }
-    }
-}
-
-impl SymbolPath {
-    pub fn pop_front(&mut self) -> Option<Part> {
-        self.parts.pop_front()
-    }
-
-    pub fn pop_back(&mut self) -> Option<Part> {
-        self.parts.pop_back()
-    }
-}
-
-impl<S: Into<String>> From<S> for SymbolPath {
-    fn from(name: S) -> Self {
-        Self {
-            parts: [Part::Named(name.into())].into(),
-        }
-    }
-}
-
-impl SymbolPath {
-    pub fn join<P: Into<Self>>(mut self, other: P) -> Self {
-        self.parts.extend(other.into().parts);
-        self
     }
 }
 

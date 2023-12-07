@@ -59,7 +59,7 @@ impl<'a, T> Folder<T> for Canonicalizer<'a> {
                                 }
                                 // Continue canonicalizing inside the module with a new instance pointed at the module path
                                 Module::Local(module) => Canonicalizer {
-                                    path: self.path.clone().join(name.clone()),
+                                    path: self.path.with_part(&name),
                                     paths: self.paths,
                                 }
                                 .fold_module_value(module)
@@ -79,12 +79,8 @@ impl<'a, T> Folder<T> for Canonicalizer<'a> {
     fn fold_machine(&mut self, mut machine: Machine<T>) -> Result<Machine<T>, Self::Error> {
         for s in &mut machine.statements {
             if let MachineStatement::Submachine(_, path, _) = s {
-                *path = self
-                    .paths
-                    .get(&self.path.clone().join(std::mem::take(path)))
-                    .cloned()
-                    .unwrap()
-                    .into();
+                let p = self.path.clone().join(path.clone());
+                *path = self.paths.get(&p).cloned().unwrap().into();
             }
         }
 
@@ -199,18 +195,18 @@ fn check_path_internal<'a, T>(
                                 }
                                 symbol => {
                                     // if we found any other symbol, continue from there
-                                    Ok((location.join(member.clone()), symbol.as_ref(), chain))
+                                    Ok((location.with_part(member), symbol.as_ref(), chain))
                                 }
                             }
                         }),
                     // external modules must have been turned into local ones before
                     SymbolValueRef::Module(ModuleRef::External(_)) => unreachable!(),
                     SymbolValueRef::Import(p) => {
-                        location.pop_back().unwrap();
+                        location.pop().unwrap();
 
                         // redirect to `p`
                         check_path_internal(
-                            location.join(p.path.clone().join(member.clone())),
+                            location.join(p.path.clone()).with_part(member),
                             state,
                             chain,
                         )
@@ -279,14 +275,14 @@ fn check_module<T: Clone>(
         // update the state
         match value {
             SymbolValue::Machine(machine) => {
-                check_machine(location.clone().join(name.clone()), machine, state)?;
+                check_machine(location.with_part(name), machine, state)?;
             }
             SymbolValue::Module(module) => {
                 let m = match module {
                     Module::External(_) => unreachable!(),
                     Module::Local(m) => m,
                 };
-                check_module(location.clone().join(name.clone()), m, state)?;
+                check_module(location.with_part(name), m, state)?;
             }
             SymbolValue::Import(s) => check_import(location.clone(), s.clone(), state)?,
         }
@@ -307,7 +303,7 @@ fn check_machine<T: Clone>(
     // we check the path in the context of the parent module
     let module_location = {
         let mut l = location.clone();
-        l.pop_back();
+        l.pop();
         l
     };
 
@@ -354,14 +350,14 @@ mod tests {
 
     #[test]
     fn duplicate() {
-        expect("duplicate", Err("Duplicate name `Foo` in module ``"))
+        expect("duplicate", Err("Duplicate name `Foo` in module `::`"))
     }
 
     #[test]
     fn duplicate_in_submodule() {
         expect(
             "duplicate_in_module",
-            Err("Duplicate name `Foo` in module `submodule`"),
+            Err("Duplicate name `Foo` in module `::submodule`"),
         )
     }
 
@@ -374,7 +370,7 @@ mod tests {
     fn relative_import_not_found() {
         expect(
             "relative_import_not_found",
-            Err("symbol not found in `submodule`: `Foo`"),
+            Err("symbol not found in `::submodule`: `Foo`"),
         )
     }
 
@@ -387,7 +383,7 @@ mod tests {
     fn double_relative_import_not_found() {
         expect(
             "double_relative_import_not_found",
-            Err("symbol not found in `submodule::subbbb`: `Foo`"),
+            Err("symbol not found in `::submodule::subbbb`: `Foo`"),
         )
     }
 
@@ -400,7 +396,7 @@ mod tests {
     fn import_of_import_not_found() {
         expect(
             "import_of_import_not_found",
-            Err("symbol not found in `submodule::subbbb`: `Foo`"),
+            Err("symbol not found in `::submodule::subbbb`: `Foo`"),
         )
     }
 
@@ -411,7 +407,10 @@ mod tests {
 
     #[test]
     fn submachine_not_found() {
-        expect("submachine_not_found", Err("symbol not found in ``: `Bar`"))
+        expect(
+            "submachine_not_found",
+            Err("symbol not found in `::`: `Bar`"),
+        )
     }
 
     #[test]
@@ -423,7 +422,7 @@ mod tests {
     fn symbol_not_found() {
         expect(
             "symbol_not_found",
-            Err("symbol not found in `submodule::Foo`: `Bar`"),
+            Err("symbol not found in `::submodule::Foo`: `Bar`"),
         )
     }
 
@@ -444,7 +443,7 @@ mod tests {
 
     #[test]
     fn cycle() {
-        expect("cycle", Err("Cycle detected in `use` statements: `module::Machine` -> `other_module::submodule::MyMachine` -> `Machine` -> `module::Machine`"))
+        expect("cycle", Err("Cycle detected in `use` statements: `::module::Machine` -> `::other_module::submodule::MyMachine` -> `::Machine` -> `::module::Machine`"))
     }
 
     #[test]

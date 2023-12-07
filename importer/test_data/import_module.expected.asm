@@ -3,5 +3,5 @@ mod submodule {
     }
 }
 machine Foo {
-    submodule::Foo foo;
+    ::submodule::Foo foo;
 }
