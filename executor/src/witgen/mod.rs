@@ -53,7 +53,7 @@ pub struct MutableState<'a, 'b, T: FieldElement, Q: QueryCallback<T>> {
 
 pub struct WitnessGenerator<'a, 'b, T: FieldElement, Q: QueryCallback<T>> {
     analyzed: &'a Analyzed<T>,
-    fixed_col_values: &'b [(&'a str, Vec<T>)],
+    fixed_col_values: &'b [(String, Vec<T>)],
     query_callback: Q,
     external_witness_values: Vec<(&'a str, Vec<T>)>,
 }
@@ -61,7 +61,7 @@ pub struct WitnessGenerator<'a, 'b, T: FieldElement, Q: QueryCallback<T>> {
 impl<'a, 'b, T: FieldElement, Q: QueryCallback<T>> WitnessGenerator<'a, 'b, T, Q> {
     pub fn new(
         analyzed: &'a Analyzed<T>,
-        fixed_col_values: &'b [(&'a str, Vec<T>)],
+        fixed_col_values: &'b [(String, Vec<T>)],
         query_callback: Q,
     ) -> Self {
         WitnessGenerator {
@@ -167,7 +167,7 @@ pub struct FixedData<'a, T> {
 impl<'a, T: FieldElement> FixedData<'a, T> {
     pub fn new(
         analyzed: &'a Analyzed<T>,
-        fixed_col_values: &'a [(&str, Vec<T>)],
+        fixed_col_values: &'a [(String, Vec<T>)],
         external_witness_values: Vec<(&'a str, Vec<T>)>,
     ) -> Self {
         let mut external_witness_values = BTreeMap::from_iter(external_witness_values);

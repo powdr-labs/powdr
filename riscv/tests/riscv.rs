@@ -1,7 +1,7 @@
 mod common;
 
 use common::verify_riscv_asm_string;
-use compiler::verify_asm_string;
+use compiler::test_util::verify_asm_string;
 use mktemp::Temp;
 use number::GoldilocksField;
 use test_log::test;

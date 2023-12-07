@@ -7,7 +7,7 @@ namespace Sum(%N);
     pol fixed ISALMOSTLAST(i) { i == %last_row - 1 };
     pol fixed ISFIRST = [ 1, 0 ] + [0]*;
 
-    col witness input(i) query ("in", i);
+    col witness input(i) query ("input", i);
     col witness sum;
 
     ISLAST * sum' = 0;

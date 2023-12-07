@@ -36,7 +36,7 @@ fn build_book_tests(kind: &str) {
                 r#"
 #[test]
 fn {test_name}() {{
-    run_book_test("book/{relative_name}");
+    run_book_test("{kind}/book/{relative_name}");
 }}
 "#,
             )

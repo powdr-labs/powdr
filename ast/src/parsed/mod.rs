@@ -9,7 +9,7 @@ use std::ops;
 
 use number::{DegreeType, FieldElement};
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct PILFile<T>(pub Vec<PilStatement<T>>);
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]

@@ -7,7 +7,7 @@ use number::FieldElement;
 pub mod batcher;
 pub mod inference;
 
-pub fn analyze<T: FieldElement>(
+pub(crate) fn analyze<T: FieldElement>(
     file: AnalysisASMFile<T>,
     monitor: &mut DiffMonitor,
 ) -> Result<AnalysisASMFile<T>, Vec<String>> {
