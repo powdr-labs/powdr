@@ -5,16 +5,17 @@ use super::circuit_builder::analyzed_to_circuit;
 use halo2_proofs::{dev::MockProver, halo2curves::bn256::Fr};
 use number::{BigInt, FieldElement};
 
+// Can't depend on compiler::pipeline::GeneratedWitness because of circular dependencies...
 pub fn mock_prove<T: FieldElement>(
     pil: &Analyzed<T>,
-    fixed: &[(String, Vec<T>)],
+    constants: &[(String, Vec<T>)],
     witness: &[(String, Vec<T>)],
 ) {
     if polyexen::expr::get_field_p::<Fr>() != T::modulus().to_arbitrary_integer() {
         panic!("powdr modulus doesn't match halo2 modulus. Make sure you are using Bn254");
     }
 
-    let circuit = analyzed_to_circuit(pil, fixed, witness);
+    let circuit = analyzed_to_circuit(pil, constants, witness);
 
     // double the row count in order to make space for the cells introduced by the backend
     // TODO: use a precise count of the extra rows needed to avoid using so many rows
@@ -33,76 +34,53 @@ pub fn mock_prove<T: FieldElement>(
 
 #[cfg(test)]
 mod test {
-    use std::{fs, path::PathBuf};
-
-    use analysis::convert_asm_to_pil;
+    use compiler::{inputs_to_query_callback, pipeline::Pipeline, test_util::resolve_test_file};
     use executor::witgen::unused_query_callback;
     use number::Bn254Field;
-    use parser::parse_asm;
     use test_log::test;
 
     use super::*;
 
     #[allow(clippy::print_stdout)]
     fn mock_prove_asm(file_name: &str, inputs: &[Bn254Field]) {
-        // read and compile PIL.
-
-        let location = format!(
-            "{}/../test_data/asm/{file_name}",
-            env!("CARGO_MANIFEST_DIR")
+        let mut pipeline = Pipeline::default().from_file(resolve_test_file(file_name));
+        pipeline
+            .generate_witness(inputs_to_query_callback(inputs.to_vec()), vec![])
+            .unwrap();
+        let result = pipeline.generated_witness().unwrap();
+        mock_prove(
+            &result.pil,
+            &result.constants,
+            result.witness.as_ref().unwrap(),
         );
-
-        let contents = fs::read_to_string(&location).unwrap();
-        let parsed = parse_asm::<Bn254Field>(Some(&location), &contents).unwrap();
-        let resolved = importer::resolve(Some(PathBuf::from(location)), parsed).unwrap();
-        let analysed = convert_asm_to_pil(resolved).unwrap();
-        let graph = airgen::compile(analysed);
-        let pil = linker::link(graph).unwrap();
-
-        let query_callback = compiler::inputs_to_query_callback(inputs.to_vec());
-
-        let analyzed = pil_analyzer::analyze_string(&format!("{pil}"));
-
-        let fixed = executor::constant_evaluator::generate(&analyzed);
-        let witness =
-            executor::witgen::WitnessGenerator::new(&analyzed, &fixed, query_callback).generate();
-
-        let fixed = to_owned_values(fixed);
-
-        mock_prove(&analyzed, &fixed, &witness);
     }
 
     #[test]
     fn simple_pil_halo2() {
-        let content = "namespace Global(8); pol fixed z = [0]*; pol witness a; a = 0;";
-        let analyzed: Analyzed<Bn254Field> = pil_analyzer::analyze_string(content);
-        let fixed = executor::constant_evaluator::generate(&analyzed);
+        let content = "namespace Global(8); pol fixed z = [1, 2]*; pol witness a; a = z + 1;";
 
-        let witness =
-            executor::witgen::WitnessGenerator::new(&analyzed, &fixed, unused_query_callback())
-                .generate();
+        let mut pipeline = Pipeline::<Bn254Field>::default().from_pil_string(content.to_string());
+        pipeline
+            .generate_witness(unused_query_callback(), vec![])
+            .unwrap();
 
-        let fixed = to_owned_values(fixed);
-
-        mock_prove(&analyzed, &fixed, &witness);
+        let result = pipeline.generated_witness().unwrap();
+        mock_prove(
+            &result.pil,
+            &result.constants,
+            result.witness.as_ref().unwrap(),
+        );
     }
 
     #[test]
     fn simple_sum() {
         let inputs = [165, 5, 11, 22, 33, 44, 55].map(From::from);
-        mock_prove_asm("simple_sum.asm", &inputs);
+        mock_prove_asm("asm/simple_sum.asm", &inputs);
     }
 
     #[test]
     fn palindrome() {
         let inputs = [3, 11, 22, 11].map(From::from);
-        mock_prove_asm("palindrome.asm", &inputs);
-    }
-
-    fn to_owned_values<T: FieldElement>(values: Vec<(&str, Vec<T>)>) -> Vec<(String, Vec<T>)> {
-        values
-            .into_iter()
-            .map(|(s, fields)| (s.to_string(), fields.clone()))
-            .collect::<Vec<_>>()
+        mock_prove_asm("asm/palindrome.asm", &inputs);
     }
 }

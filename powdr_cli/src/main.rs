@@ -4,8 +4,9 @@ mod util;
 
 use backend::{Backend, BackendType, Proof};
 use clap::{CommandFactory, Parser, Subcommand};
+use compiler::inputs_to_query_callback;
+use compiler::pipeline::{Pipeline, ProofResult};
 use compiler::util::{read_poly_set, FixedPolySet, WitnessPolySet};
-use compiler::{compile_asm_string, compile_pil_or_asm, CompilationResult};
 use env_logger::fmt::Color;
 use env_logger::{Builder, Target};
 use log::LevelFilter;
@@ -16,6 +17,7 @@ use riscv::continuations::rust_continuations;
 use riscv::{compile_riscv_asm, compile_rust};
 use std::collections::HashMap;
 use std::io::{self, BufReader, BufWriter, Read};
+use std::path::PathBuf;
 use std::{borrow::Cow, fs, io::Write, path::Path};
 use strum::{Display, EnumString, EnumVariantNames};
 
@@ -601,16 +603,16 @@ fn handle_riscv_asm<F: FieldElement>(
             unimplemented!("Running witgen with continuations is not supported yet.")
         }
         (false, false) => {
-            compile_asm_string(
-                file_name,
-                contents,
-                inputs,
-                None,
-                output_dir,
-                force_overwrite,
-                prove_with,
-                vec![],
-            )?;
+            let mut pipeline = Pipeline::default()
+                .with_output(output_dir.to_path_buf(), force_overwrite)
+                .from_asm_string(contents.to_string(), Some(PathBuf::from(file_name)));
+            pipeline
+                .generate_witness(inputs_to_query_callback(inputs), vec![])
+                .unwrap();
+            pipeline.prove(BackendType::PilStarkCli).unwrap();
+            if let Some(backend) = prove_with {
+                pipeline.prove(backend).unwrap();
+            }
         }
     }
     Ok(())
@@ -640,19 +642,27 @@ fn compile_with_csv_export<T: FieldElement>(
     let external_witness_values = strings.iter().map(AsRef::as_ref).zip(values).collect();
 
     let output_dir = Path::new(&output_directory);
-    let result = compile_pil_or_asm::<T>(
-        &file,
-        split_inputs(&inputs),
-        output_dir,
-        force,
-        prove_with.clone(),
-        external_witness_values,
-    )?;
+
+    let mut pipeline = Pipeline::default()
+        .with_output(output_dir.to_path_buf(), force)
+        .from_file(PathBuf::from(file));
+    pipeline
+        .generate_witness(
+            inputs_to_query_callback(split_inputs(&inputs)),
+            external_witness_values,
+        )
+        .unwrap();
+    let result = if let Some(backend) = &prove_with {
+        pipeline.prove(backend.clone()).unwrap();
+        Some(pipeline.proof().unwrap())
+    } else {
+        None
+    };
 
     if let Some(ref compilation_result) = result {
         serialize_result_witness(output_dir, compilation_result);
 
-        if let Some(_backend) = prove_with {
+        if let Some(_backend) = &prove_with {
             write_proving_results_to_fs(
                 false,
                 &compilation_result.proof,
@@ -708,7 +718,10 @@ fn read_and_prove<T: FieldElement>(
     proof_path: Option<String>,
     params: Option<String>,
 ) {
-    let pil = pilopt::optimize(compiler::analyze_pil::<T>(file));
+    let pil = Pipeline::default()
+        .from_file(file.to_path_buf())
+        .optimized_pil()
+        .unwrap();
 
     let fixed = read_poly_set::<FixedPolySet, T>(&pil, dir);
     let witness = read_poly_set::<WitnessPolySet, T>(&pil, dir);
@@ -741,11 +754,14 @@ fn read_and_prove<T: FieldElement>(
 fn optimize_and_output<T: FieldElement>(file: &str) {
     println!(
         "{}",
-        pilopt::optimize(compiler::analyze_pil::<T>(Path::new(file)))
+        Pipeline::<T>::default()
+            .from_file(PathBuf::from(file))
+            .optimized_pil()
+            .unwrap()
     );
 }
 
-fn serialize_result_witness<T: FieldElement>(output_dir: &Path, results: &CompilationResult<T>) {
+fn serialize_result_witness<T: FieldElement>(output_dir: &Path, results: &ProofResult<T>) {
     write_constants_to_fs(&results.constants, output_dir);
     let witness = results.witness.as_ref().unwrap();
     write_commits_to_fs(witness, output_dir);

@@ -134,7 +134,10 @@ mod tests {
         f: impl Fn(BlockProcessor<T, Q>, BTreeMap<String, PolyID>, u64, usize) -> R,
     ) -> R {
         let analyzed = analyze_string(src);
-        let constants = generate(&analyzed);
+        let constants = generate(&analyzed)
+            .into_iter()
+            .map(|(n, c)| (n.to_string(), c))
+            .collect::<Vec<_>>();
         let fixed_data = FixedData::new(&analyzed, &constants, vec![]);
 
         // No global range constraints

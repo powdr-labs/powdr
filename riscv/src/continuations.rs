@@ -1,5 +1,9 @@
-use std::collections::{BTreeSet, HashMap};
+use std::{
+    collections::{BTreeSet, HashMap},
+    path::PathBuf,
+};
 
+use compiler::pipeline::Pipeline;
 use number::FieldElement;
 use riscv_executor::ExecutionTrace;
 
@@ -28,8 +32,10 @@ fn transposed_trace<F: FieldElement>(trace: &ExecutionTrace) -> HashMap<String, 
 pub fn rust_continuations<F: FieldElement>(file_name: &str, contents: &str, inputs: Vec<F>) {
     let mut bootloader_inputs = default_input();
 
-    let program =
-        compiler::compile_asm_string_to_analyzed_ast::<F>(file_name, contents, None).unwrap();
+    let program = Pipeline::default()
+        .from_asm_string(contents.to_string(), Some(PathBuf::from(file_name)))
+        .analyzed_asm()
+        .unwrap();
 
     let inputs: HashMap<F, Vec<F>> = vec![(F::from(0), inputs)].into_iter().collect();
 

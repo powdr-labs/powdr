@@ -1,62 +1,10 @@
-use compiler::verify_asm_string;
-use number::{Bn254Field, FieldElement, GoldilocksField};
-use std::fs;
+use compiler::test_util::{gen_estark_proof, gen_halo2_proof, verify_test_file};
+use number::{FieldElement, GoldilocksField};
 use test_log::test;
 
 fn verify_asm<T: FieldElement>(file_name: &str, inputs: Vec<T>) {
-    verify_asm_with_external_witness(file_name, inputs, vec![]);
+    verify_test_file(file_name, inputs, vec![]);
 }
-
-fn verify_asm_with_external_witness<T: FieldElement>(
-    file_name: &str,
-    inputs: Vec<T>,
-    external_witness_values: Vec<(&str, Vec<T>)>,
-) {
-    let file_name = format!(
-        "{}/../test_data/asm/{file_name}",
-        env!("CARGO_MANIFEST_DIR")
-    );
-
-    let contents = fs::read_to_string(&file_name).unwrap();
-
-    verify_asm_string(&file_name, &contents, inputs, external_witness_values);
-}
-
-fn gen_estark_proof(file_name: &str, inputs: Vec<GoldilocksField>) {
-    compiler::compile_pil_or_asm(
-        format!(
-            "{}/../test_data/asm/{file_name}",
-            env!("CARGO_MANIFEST_DIR")
-        )
-        .as_str(),
-        inputs,
-        &mktemp::Temp::new_dir().unwrap(),
-        true,
-        Some(backend::BackendType::EStark),
-        vec![],
-    )
-    .unwrap();
-}
-
-#[cfg(feature = "halo2")]
-fn gen_halo2_proof(file_name: &str, inputs: Vec<Bn254Field>) {
-    compiler::compile_pil_or_asm(
-        format!(
-            "{}/../test_data/asm/{file_name}",
-            env!("CARGO_MANIFEST_DIR")
-        )
-        .as_str(),
-        inputs,
-        &mktemp::Temp::new_dir().unwrap(),
-        true,
-        Some(backend::BackendType::Halo2),
-        vec![],
-    )
-    .unwrap();
-}
-
-#[cfg(not(feature = "halo2"))]
-fn gen_halo2_proof(_file_name: &str, _inputs: Vec<Bn254Field>) {}
 
 fn slice_to_vec<T: FieldElement>(arr: &[i32]) -> Vec<T> {
     arr.iter().cloned().map(|x| x.into()).collect()
@@ -64,7 +12,7 @@ fn slice_to_vec<T: FieldElement>(arr: &[i32]) -> Vec<T> {
 
 #[test]
 fn simple_sum_asm() {
-    let f = "simple_sum.asm";
+    let f = "asm/simple_sum.asm";
     let i = [16, 4, 1, 2, 8, 5];
     verify_asm::<GoldilocksField>(f, slice_to_vec(&i));
     gen_halo2_proof(f, slice_to_vec(&i));
@@ -73,7 +21,7 @@ fn simple_sum_asm() {
 
 #[test]
 fn secondary_block_machine_add2() {
-    let f = "secondary_block_machine_add2.asm";
+    let f = "asm/secondary_block_machine_add2.asm";
     verify_asm::<GoldilocksField>(f, vec![]);
     gen_halo2_proof(f, vec![]);
     gen_estark_proof(f, vec![]);
@@ -81,7 +29,7 @@ fn secondary_block_machine_add2() {
 
 #[test]
 fn mem_write_once() {
-    let f = "mem_write_once.asm";
+    let f = "asm/mem_write_once.asm";
     verify_asm::<GoldilocksField>(f, vec![]);
     gen_halo2_proof(f, vec![]);
     gen_estark_proof(f, vec![]);
@@ -89,17 +37,17 @@ fn mem_write_once() {
 
 #[test]
 fn mem_write_once_external_write() {
-    let f = "mem_write_once_external_write.asm";
+    let f = "asm/mem_write_once_external_write.asm";
     let mut mem = vec![GoldilocksField::from(0); 256];
     mem[17] = GoldilocksField::from(42);
     mem[62] = GoldilocksField::from(123);
     mem[255] = GoldilocksField::from(-1);
-    verify_asm_with_external_witness::<GoldilocksField>(f, vec![], vec![("main.v", mem)]);
+    verify_test_file::<GoldilocksField>(f, vec![], vec![("main.v", mem)]);
 }
 
 #[test]
 fn block_machine_cache_miss() {
-    let f = "block_machine_cache_miss.asm";
+    let f = "asm/block_machine_cache_miss.asm";
     verify_asm::<GoldilocksField>(f, vec![]);
     gen_halo2_proof(f, vec![]);
     gen_estark_proof(f, vec![]);
@@ -107,7 +55,7 @@ fn block_machine_cache_miss() {
 
 #[test]
 fn palindrome() {
-    let f = "palindrome.asm";
+    let f = "asm/palindrome.asm";
     let i = [7, 1, 7, 3, 9, 3, 7, 1];
     verify_asm::<GoldilocksField>(f, slice_to_vec(&i));
     gen_halo2_proof(f, slice_to_vec(&i));
@@ -119,7 +67,7 @@ fn palindrome() {
 
 #[test]
 fn single_function_vm() {
-    let f = "single_function_vm.asm";
+    let f = "asm/single_function_vm.asm";
     let i = [];
     verify_asm::<GoldilocksField>(f, slice_to_vec(&i));
     gen_halo2_proof(f, slice_to_vec(&i));
@@ -128,7 +76,7 @@ fn single_function_vm() {
 
 #[test]
 fn empty() {
-    let f = "empty.asm";
+    let f = "asm/empty.asm";
     let i = [];
     verify_asm::<GoldilocksField>(f, slice_to_vec(&i));
     gen_halo2_proof(f, slice_to_vec(&i));
@@ -137,7 +85,7 @@ fn empty() {
 
 #[test]
 fn single_operation() {
-    let f = "single_operation.asm";
+    let f = "asm/single_operation.asm";
     let i = [];
     verify_asm::<GoldilocksField>(f, slice_to_vec(&i));
     gen_halo2_proof(f, slice_to_vec(&i));
@@ -146,7 +94,7 @@ fn single_operation() {
 
 #[test]
 fn empty_vm() {
-    let f = "empty_vm.asm";
+    let f = "asm/empty_vm.asm";
     let i = [];
     verify_asm::<GoldilocksField>(f, slice_to_vec(&i));
     gen_halo2_proof(f, slice_to_vec(&i));
@@ -155,7 +103,7 @@ fn empty_vm() {
 
 #[test]
 fn vm_to_block_unique_interface() {
-    let f = "vm_to_block_unique_interface.asm";
+    let f = "asm/vm_to_block_unique_interface.asm";
     let i = [];
     verify_asm::<GoldilocksField>(f, slice_to_vec(&i));
     gen_halo2_proof(f, slice_to_vec(&i));
@@ -167,7 +115,7 @@ fn vm_to_block_unique_interface() {
 
 #[test]
 fn vm_to_block_to_block() {
-    let f = "vm_to_block_to_block.asm";
+    let f = "asm/vm_to_block_to_block.asm";
     let i = [];
     verify_asm::<GoldilocksField>(f, slice_to_vec(&i));
     gen_halo2_proof(f, slice_to_vec(&i));
@@ -175,7 +123,7 @@ fn vm_to_block_to_block() {
 
 #[test]
 fn block_to_block() {
-    let f = "block_to_block.asm";
+    let f = "asm/block_to_block.asm";
     let i = [];
     verify_asm::<GoldilocksField>(f, slice_to_vec(&i));
     gen_halo2_proof(f, slice_to_vec(&i));
@@ -184,7 +132,7 @@ fn block_to_block() {
 
 #[test]
 fn vm_to_block_multiple_interfaces() {
-    let f = "vm_to_block_multiple_interfaces.asm";
+    let f = "asm/vm_to_block_multiple_interfaces.asm";
     let i = [];
     verify_asm::<GoldilocksField>(f, slice_to_vec(&i));
     gen_halo2_proof(f, slice_to_vec(&i));
@@ -193,7 +141,7 @@ fn vm_to_block_multiple_interfaces() {
 
 #[test]
 fn vm_to_vm() {
-    let f = "vm_to_vm.asm";
+    let f = "asm/vm_to_vm.asm";
     let i = [];
     verify_asm::<GoldilocksField>(f, slice_to_vec(&i));
     gen_halo2_proof(f, slice_to_vec(&i));
@@ -202,7 +150,7 @@ fn vm_to_vm() {
 
 #[test]
 fn vm_to_vm_dynamic_trace_length() {
-    let f = "vm_to_vm_dynamic_trace_length.asm";
+    let f = "asm/vm_to_vm_dynamic_trace_length.asm";
     let i = [];
     verify_asm::<GoldilocksField>(f, slice_to_vec(&i));
     gen_halo2_proof(f, slice_to_vec(&i));
@@ -211,7 +159,7 @@ fn vm_to_vm_dynamic_trace_length() {
 
 #[test]
 fn vm_to_vm_to_block() {
-    let f = "vm_to_vm_to_block.asm";
+    let f = "asm/vm_to_vm_to_block.asm";
     let i = [];
     verify_asm::<GoldilocksField>(f, slice_to_vec(&i));
     gen_halo2_proof(f, slice_to_vec(&i));
@@ -220,7 +168,7 @@ fn vm_to_vm_to_block() {
 
 #[test]
 fn vm_to_block_array() {
-    let f = "vm_to_block_array.asm";
+    let f = "asm/vm_to_block_array.asm";
     let i = [];
     verify_asm::<GoldilocksField>(f, slice_to_vec(&i));
     gen_halo2_proof(f, slice_to_vec(&i));
@@ -229,7 +177,7 @@ fn vm_to_block_array() {
 
 #[test]
 fn vm_to_vm_to_vm() {
-    let f = "vm_to_vm_to_vm.asm";
+    let f = "asm/vm_to_vm_to_vm.asm";
     let i = [];
     verify_asm::<GoldilocksField>(f, slice_to_vec(&i));
     gen_halo2_proof(f, slice_to_vec(&i));
@@ -238,7 +186,7 @@ fn vm_to_vm_to_vm() {
 
 #[test]
 fn test_mem_read_write() {
-    let f = "mem_read_write.asm";
+    let f = "asm/mem_read_write.asm";
     verify_asm::<GoldilocksField>(f, Default::default());
     gen_halo2_proof(f, Default::default());
     gen_estark_proof(f, Default::default());
@@ -246,7 +194,7 @@ fn test_mem_read_write() {
 
 #[test]
 fn test_multi_assign() {
-    let f = "multi_assign.asm";
+    let f = "asm/multi_assign.asm";
     let i = [7];
     verify_asm::<GoldilocksField>(f, slice_to_vec(&i));
     gen_halo2_proof(f, slice_to_vec(&i));
@@ -255,7 +203,7 @@ fn test_multi_assign() {
 
 #[test]
 fn test_multi_return() {
-    let f = "multi_return.asm";
+    let f = "asm/multi_return.asm";
     let i = [];
     verify_asm::<GoldilocksField>(f, slice_to_vec(&i));
     gen_halo2_proof(f, slice_to_vec(&i));
@@ -265,7 +213,7 @@ fn test_multi_return() {
 #[test]
 #[should_panic = "called `Result::unwrap()` on an `Err` value: [\"Assignment register `Z` is incompatible with `square_and_double(3)`. Try using `<==` with no explicit assignment registers.\", \"Assignment register `Y` is incompatible with `square_and_double(3)`. Try using `<==` with no explicit assignment registers.\"]"]
 fn test_multi_return_wrong_assignment_registers() {
-    let f = "multi_return_wrong_assignment_registers.asm";
+    let f = "asm/multi_return_wrong_assignment_registers.asm";
     let i = [];
     verify_asm::<GoldilocksField>(f, slice_to_vec(&i));
 }
@@ -273,14 +221,14 @@ fn test_multi_return_wrong_assignment_registers() {
 #[test]
 #[should_panic = "Result::unwrap()` on an `Err` value: [\"Mismatched number of registers for assignment A, B <=Y= square_and_double(3);\"]"]
 fn test_multi_return_wrong_assignment_register_length() {
-    let f = "multi_return_wrong_assignment_register_length.asm";
+    let f = "asm/multi_return_wrong_assignment_register_length.asm";
     let i = [];
     verify_asm::<GoldilocksField>(f, slice_to_vec(&i));
 }
 
 #[test]
 fn test_bit_access() {
-    let f = "bit_access.asm";
+    let f = "asm/bit_access.asm";
     let i = [20];
     verify_asm::<GoldilocksField>(f, slice_to_vec(&i));
     gen_halo2_proof(f, slice_to_vec(&i));
@@ -292,7 +240,7 @@ fn test_bit_access() {
 
 #[test]
 fn test_sqrt() {
-    let f = "sqrt.asm";
+    let f = "asm/sqrt.asm";
     verify_asm::<GoldilocksField>(f, Default::default());
     gen_halo2_proof(f, Default::default());
     gen_estark_proof(f, Default::default());
@@ -300,7 +248,7 @@ fn test_sqrt() {
 
 #[test]
 fn functional_instructions() {
-    let f = "functional_instructions.asm";
+    let f = "asm/functional_instructions.asm";
     let i = [20];
     verify_asm::<GoldilocksField>(f, slice_to_vec(&i));
     gen_halo2_proof(f, slice_to_vec(&i));
@@ -312,7 +260,7 @@ fn functional_instructions() {
 
 #[test]
 fn full_pil_constant() {
-    let f = "full_pil_constant.asm";
+    let f = "asm/full_pil_constant.asm";
     verify_asm::<GoldilocksField>(f, Default::default());
     gen_halo2_proof(f, Default::default());
     gen_estark_proof(f, Default::default());
@@ -320,7 +268,7 @@ fn full_pil_constant() {
 
 #[test]
 fn intermediate() {
-    let f = "intermediate.asm";
+    let f = "asm/intermediate.asm";
     verify_asm::<GoldilocksField>(f, Default::default());
     gen_halo2_proof(f, Default::default());
     gen_estark_proof(f, Default::default());
@@ -328,7 +276,7 @@ fn intermediate() {
 
 #[test]
 fn intermediate_nested() {
-    let f = "intermediate_nested.asm";
+    let f = "asm/intermediate_nested.asm";
     verify_asm::<GoldilocksField>(f, Default::default());
     gen_halo2_proof(f, Default::default());
     gen_estark_proof(f, Default::default());
@@ -343,7 +291,7 @@ mod book {
         // passing 0 to all tests currently works as they either take no prover input or 0 works
         let i = [0];
 
-        verify_asm::<GoldilocksField>(file, slice_to_vec(&i));
+        verify_asm::<GoldilocksField>(&format!("{file}"), slice_to_vec(&i));
         gen_halo2_proof(file, slice_to_vec(&i));
         gen_estark_proof(file, slice_to_vec(&i));
     }
@@ -354,7 +302,7 @@ mod book {
 #[test]
 #[should_panic = "Witness generation failed."]
 fn hello_world_asm_fail() {
-    let f = "book/hello_world.asm";
+    let f = "asm/book/hello_world.asm";
     let i = [1];
     verify_asm::<GoldilocksField>(f, slice_to_vec(&i));
 }
