@@ -39,6 +39,13 @@ mod vm_processor;
 pub trait QueryCallback<T>: FnMut(&str) -> Result<Option<T>, String> + Send + Sync {}
 impl<T, F> QueryCallback<T> for F where F: FnMut(&str) -> Result<Option<T>, String> + Send + Sync {}
 
+pub fn chain_callbacks<T: FieldElement>(
+    mut c1: Box<dyn QueryCallback<T>>,
+    mut c2: Box<dyn QueryCallback<T>>,
+) -> impl QueryCallback<T> {
+    move |query| c1(query).or_else(|_| c2(query))
+}
+
 /// @returns a query callback that is never expected to be used.
 pub fn unused_query_callback<T>() -> impl QueryCallback<T> {
     |_| -> _ { unreachable!() }

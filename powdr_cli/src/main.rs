@@ -12,7 +12,7 @@ use log::LevelFilter;
 use number::write_polys_file;
 use number::{read_polys_csv_file, write_polys_csv_file, CsvRenderMode};
 use number::{Bn254Field, FieldElement, GoldilocksField};
-use riscv::continuations::rust_continuations;
+use riscv::continuations::{rust_continuations, rust_continuations_dry_run};
 use riscv::{compile_riscv_asm, compile_rust};
 use std::collections::HashMap;
 use std::io::{self, BufReader, BufWriter, Read};
@@ -425,9 +425,11 @@ fn run_command(command: Commands) {
         } => match (just_execute, continuations) {
             (true, true) => {
                 assert!(matches!(field, FieldArgument::Gl));
-                let contents = fs::read_to_string(&file).unwrap();
                 let inputs = split_inputs::<GoldilocksField>(&inputs);
-                rust_continuations(file.as_str(), contents.as_str(), inputs);
+                rust_continuations_dry_run(
+                    Pipeline::default().from_asm_file(PathBuf::from(file)),
+                    inputs,
+                );
             }
             (true, false) => {
                 let contents = fs::read_to_string(&file).unwrap();
@@ -444,7 +446,23 @@ fn run_command(command: Commands) {
                 );
             }
             (false, true) => {
-                unimplemented!("Running witgen with continuations is not supported yet.")
+                assert!(matches!(field, FieldArgument::Gl));
+                let inputs = split_inputs::<GoldilocksField>(&inputs);
+                let pipeline_factory = || {
+                    Pipeline::default()
+                        .from_asm_file(PathBuf::from(&file))
+                        .with_prover_inputs(vec![])
+                };
+                let pipeline_callback =
+                    |mut pipeline: Pipeline<GoldilocksField>| -> Result<(), Vec<String>> {
+                        pipeline.advance_to(Stage::GeneratedWitness)?;
+                        if let Some(backend) = prove_with {
+                            pipeline.with_backend(backend).proof()?;
+                        }
+                        Ok(())
+                    };
+
+                rust_continuations(pipeline_factory, pipeline_callback, inputs.clone()).unwrap();
             }
             (false, false) => {
                 match call_with_field!(compile_with_csv_export::<field>(
@@ -556,7 +574,7 @@ fn run_riscv_asm<F: FieldElement>(
         output_dir,
         force_overwrite,
         &coprocessors,
-        false,
+        continuations,
     )
     .ok_or_else(|| vec!["could not compile RISC-V assembly".to_string()])?;
 
@@ -586,7 +604,11 @@ fn handle_riscv_asm<F: FieldElement>(
 ) -> Result<(), Vec<String>> {
     match (just_execute, continuations) {
         (true, true) => {
-            rust_continuations(file_name, contents, inputs);
+            rust_continuations_dry_run(
+                Pipeline::default()
+                    .from_asm_string(contents.to_string(), Some(PathBuf::from(file_name))),
+                inputs,
+            );
         }
         (true, false) => {
             let mut inputs_hash: HashMap<F, Vec<F>> = HashMap::default();
@@ -599,7 +621,21 @@ fn handle_riscv_asm<F: FieldElement>(
             );
         }
         (false, true) => {
-            unimplemented!("Running witgen with continuations is not supported yet.")
+            let pipeline_factory = || {
+                Pipeline::default()
+                    .with_output(output_dir.to_path_buf(), force_overwrite)
+                    .from_asm_string(contents.to_string(), Some(PathBuf::from(file_name)))
+                    .with_prover_inputs(inputs.clone())
+            };
+            let pipeline_callback = |mut pipeline: Pipeline<F>| -> Result<(), Vec<String>> {
+                pipeline.advance_to(Stage::GeneratedWitness)?;
+                if let Some(backend) = prove_with {
+                    pipeline.with_backend(backend).proof()?;
+                }
+                Ok(())
+            };
+
+            rust_continuations(pipeline_factory, pipeline_callback, inputs.clone())?;
         }
         (false, false) => {
             let mut pipeline = Pipeline::default()
@@ -649,9 +685,7 @@ fn compile_with_csv_export<T: FieldElement>(
         .with_prover_inputs(split_inputs(&inputs));
 
     pipeline.advance_to(Stage::GeneratedWitness).unwrap();
-    let result = prove_with
-        .as_ref()
-        .map(|backend| pipeline.with_backend(backend.clone()).proof().unwrap());
+    let result = prove_with.map(|backend| pipeline.with_backend(backend).proof().unwrap());
 
     if let Some(ref compilation_result) = result {
         serialize_result_witness(output_dir, compilation_result);

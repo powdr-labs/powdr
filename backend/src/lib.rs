@@ -9,7 +9,7 @@ use number::{DegreeType, FieldElement};
 use std::{io, marker::PhantomData};
 use strum::{Display, EnumString, EnumVariantNames};
 
-#[derive(Clone, EnumString, EnumVariantNames, Display)]
+#[derive(Clone, EnumString, EnumVariantNames, Display, Copy)]
 pub enum BackendType {
     #[cfg(feature = "halo2")]
     #[strum(serialize = "halo2")]

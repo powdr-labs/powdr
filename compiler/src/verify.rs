@@ -49,15 +49,17 @@ pub fn verify(temp_dir: &Path) {
         .output()
         .expect("failed to run pil verifier");
     if !verifier_output.status.success() {
-        panic!(
+        log::error!(
             "Pil verifier run was unsuccessful.\nStdout: {}\nStderr: {}\n",
             String::from_utf8_lossy(&verifier_output.stdout),
             String::from_utf8_lossy(&verifier_output.stderr)
         );
+        panic!("Pil verifier run was unsuccessful.");
     } else {
         let output = String::from_utf8(verifier_output.stdout).unwrap();
+        log::error!("PIL verifier output: {}", output);
         if !output.trim().ends_with("PIL OK!!") {
-            panic!("Verified did not say 'PIL OK': {output}");
+            panic!("Verified did not say 'PIL OK'.");
         }
     }
 }
