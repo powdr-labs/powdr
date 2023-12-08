@@ -4,12 +4,13 @@ use number::FieldElement;
 ///
 /// We may have multiple relation files in the generated foler
 /// This method will return all of the imports for the relation header files
-pub fn get_relations_imports(name: &str, relations: &[String]) -> String {
+pub fn get_relations_imports(name: &str, relations: &[String], permutations: &[String]) -> String {
+    let all_relations = flatten(&[relations.to_vec(), permutations.to_vec()]);
     let transformation = |relation_name: &_| {
         format!("#include \"barretenberg/relations/generated/{name}/{relation_name}.hpp\"")
     };
 
-    map_with_newline(relations, transformation)
+    map_with_newline(&all_relations, transformation)
 }
 
 /// Sanitize Names
