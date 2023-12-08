@@ -4,8 +4,7 @@ mod util;
 
 use backend::{Backend, BackendType, Proof};
 use clap::{CommandFactory, Parser, Subcommand};
-use compiler::inputs_to_query_callback;
-use compiler::pipeline::{Pipeline, ProofResult};
+use compiler::pipeline::{Pipeline, ProofResult, Stage};
 use compiler::util::{read_poly_set, FixedPolySet, WitnessPolySet};
 use env_logger::fmt::Color;
 use env_logger::{Builder, Target};
@@ -605,13 +604,13 @@ fn handle_riscv_asm<F: FieldElement>(
         (false, false) => {
             let mut pipeline = Pipeline::default()
                 .with_output(output_dir.to_path_buf(), force_overwrite)
-                .from_asm_string(contents.to_string(), Some(PathBuf::from(file_name)));
-            pipeline
-                .generate_witness(inputs_to_query_callback(inputs), vec![])
-                .unwrap();
-            pipeline.prove(BackendType::PilStarkCli).unwrap();
+                .from_asm_string(contents.to_string(), Some(PathBuf::from(file_name)))
+                .with_prover_inputs(inputs)
+                .with_backend(BackendType::PilStarkCli);
+            pipeline.advance_to(Stage::GeneratedWitness).unwrap();
             if let Some(backend) = prove_with {
-                pipeline.prove(backend).unwrap();
+                pipeline = pipeline.with_backend(backend);
+                pipeline.proof().unwrap();
             }
         }
     }
@@ -645,19 +644,14 @@ fn compile_with_csv_export<T: FieldElement>(
 
     let mut pipeline = Pipeline::default()
         .with_output(output_dir.to_path_buf(), force)
-        .from_file(PathBuf::from(file));
-    pipeline
-        .generate_witness(
-            inputs_to_query_callback(split_inputs(&inputs)),
-            external_witness_values,
-        )
-        .unwrap();
-    let result = if let Some(backend) = &prove_with {
-        pipeline.prove(backend.clone()).unwrap();
-        Some(pipeline.proof().unwrap())
-    } else {
-        None
-    };
+        .from_file(PathBuf::from(file))
+        .with_external_witness_values(external_witness_values)
+        .with_prover_inputs(split_inputs(&inputs));
+
+    pipeline.advance_to(Stage::GeneratedWitness).unwrap();
+    let result = prove_with
+        .as_ref()
+        .map(|backend| pipeline.with_backend(backend.clone()).proof().unwrap());
 
     if let Some(ref compilation_result) = result {
         serialize_result_witness(output_dir, compilation_result);

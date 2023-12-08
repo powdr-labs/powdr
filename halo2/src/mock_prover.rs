@@ -34,8 +34,7 @@ pub fn mock_prove<T: FieldElement>(
 
 #[cfg(test)]
 mod test {
-    use compiler::{inputs_to_query_callback, pipeline::Pipeline, test_util::resolve_test_file};
-    use executor::witgen::unused_query_callback;
+    use compiler::{pipeline::Pipeline, test_util::resolve_test_file};
     use number::Bn254Field;
     use test_log::test;
 
@@ -43,11 +42,11 @@ mod test {
 
     #[allow(clippy::print_stdout)]
     fn mock_prove_asm(file_name: &str, inputs: &[Bn254Field]) {
-        let mut pipeline = Pipeline::default().from_file(resolve_test_file(file_name));
-        pipeline
-            .generate_witness(inputs_to_query_callback(inputs.to_vec()), vec![])
+        let result = Pipeline::default()
+            .from_file(resolve_test_file(file_name))
+            .with_prover_inputs(inputs.to_vec())
+            .generated_witness()
             .unwrap();
-        let result = pipeline.generated_witness().unwrap();
         mock_prove(
             &result.pil,
             &result.constants,
@@ -59,12 +58,10 @@ mod test {
     fn simple_pil_halo2() {
         let content = "namespace Global(8); pol fixed z = [1, 2]*; pol witness a; a = z + 1;";
 
-        let mut pipeline = Pipeline::<Bn254Field>::default().from_pil_string(content.to_string());
-        pipeline
-            .generate_witness(unused_query_callback(), vec![])
+        let result = Pipeline::<Bn254Field>::default()
+            .from_pil_string(content.to_string())
+            .generated_witness()
             .unwrap();
-
-        let result = pipeline.generated_witness().unwrap();
         mock_prove(
             &result.pil,
             &result.constants,

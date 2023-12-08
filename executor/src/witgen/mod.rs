@@ -55,7 +55,7 @@ pub struct WitnessGenerator<'a, 'b, T: FieldElement, Q: QueryCallback<T>> {
     analyzed: &'a Analyzed<T>,
     fixed_col_values: &'b [(String, Vec<T>)],
     query_callback: Q,
-    external_witness_values: Vec<(&'a str, Vec<T>)>,
+    external_witness_values: Vec<(String, Vec<T>)>,
 }
 
 impl<'a, 'b, T: FieldElement, Q: QueryCallback<T>> WitnessGenerator<'a, 'b, T, Q> {
@@ -74,7 +74,7 @@ impl<'a, 'b, T: FieldElement, Q: QueryCallback<T>> WitnessGenerator<'a, 'b, T, Q
 
     pub fn with_external_witness_values(
         self,
-        external_witness_values: Vec<(&'a str, Vec<T>)>,
+        external_witness_values: Vec<(String, Vec<T>)>,
     ) -> Self {
         WitnessGenerator {
             external_witness_values,
@@ -168,7 +168,7 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
     pub fn new(
         analyzed: &'a Analyzed<T>,
         fixed_col_values: &'a [(String, Vec<T>)],
-        external_witness_values: Vec<(&'a str, Vec<T>)>,
+        external_witness_values: Vec<(String, Vec<T>)>,
     ) -> Self {
         let mut external_witness_values = BTreeMap::from_iter(external_witness_values);
 

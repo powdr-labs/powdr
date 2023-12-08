@@ -19,7 +19,10 @@ use log::Level;
 use mktemp::Temp;
 use number::FieldElement;
 
-use crate::verify::{write_commits_to_fs, write_constants_to_fs, write_constraints_to_fs};
+use crate::{
+    inputs_to_query_callback,
+    verify::{write_commits_to_fs, write_constants_to_fs, write_constraints_to_fs},
+};
 
 pub struct GeneratedWitness<T: FieldElement> {
     pub pil: Analyzed<T>,
@@ -44,7 +47,7 @@ pub struct ProofResult<T: FieldElement> {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
-enum Stage {
+pub enum Stage {
     AsmFile,
     AsmString,
     Parsed,
@@ -95,6 +98,13 @@ enum Artifact<T: FieldElement> {
     Proof(ProofResult<T>),
 }
 
+#[derive(Default)]
+struct Arguments<T: FieldElement> {
+    external_witness_values: Vec<(String, Vec<T>)>,
+    query_callback: Option<Box<dyn QueryCallback<T>>>,
+    backend: Option<BackendType>,
+}
+
 pub struct Pipeline<T: FieldElement> {
     /// The current artifact. It is never None in practice, making it an Option is
     /// only necessary so that we can take ownership of it in advance().
@@ -114,6 +124,7 @@ pub struct Pipeline<T: FieldElement> {
     // Note that there is some redundancy with `output_dir`, but the Temp
     // object has to live for the lifetime of the pipeline, so we keep it here.
     tmp_dir: Option<Temp>,
+    arguments: Arguments<T>,
 }
 
 impl<T> Default for Pipeline<T>
@@ -129,6 +140,7 @@ where
             name: None,
             force_overwrite: false,
             tmp_dir: None,
+            arguments: Arguments::default(),
         }
     }
 }
@@ -156,19 +168,19 @@ where
 ///
 /// # Example
 /// ```rust
-/// use compiler::{pipeline::Pipeline, verify, BackendType, test_util::resolve_test_file};
+/// use compiler::{pipeline::Pipeline, pipeline::Stage, verify, BackendType, test_util::resolve_test_file};
 /// use std::path::PathBuf;
 /// use number::GoldilocksField;
 ///
 /// let mut pipeline = Pipeline::<GoldilocksField>::default()
-///   .from_file(resolve_test_file("pil/fibonacci.pil"));
-/// pipeline
-///    .generate_witness(
-///       compiler::inputs_to_query_callback(vec![]),
-///      vec![],
-/// )
-/// .unwrap();
-/// pipeline.prove(BackendType::PilStarkCli).unwrap();
+///   .from_file(resolve_test_file("pil/fibonacci.pil"))
+///   .with_backend(BackendType::PilStarkCli);
+///
+/// // Advance to some stage (which might have side effects)
+/// pipeline.advance_to(Stage::Proof).unwrap();
+///
+/// // Get the result
+/// let proof = pipeline.proof().unwrap();
 /// ```
 impl<T: FieldElement> Pipeline<T> {
     pub fn with_tmp_output(self) -> Self {
@@ -184,6 +196,46 @@ impl<T: FieldElement> Pipeline<T> {
         Pipeline {
             output_dir: Some(output_dir),
             force_overwrite,
+            ..self
+        }
+    }
+
+    pub fn with_external_witness_values(
+        self,
+        external_witness_values: Vec<(&str, Vec<T>)>,
+    ) -> Self {
+        Pipeline {
+            arguments: Arguments {
+                external_witness_values: external_witness_values
+                    .into_iter()
+                    .map(|(name, values)| (name.to_string(), values))
+                    .collect(),
+                ..self.arguments
+            },
+            ..self
+        }
+    }
+
+    pub fn with_query_callback(self, query_callback: Box<dyn QueryCallback<T>>) -> Self {
+        Pipeline {
+            arguments: Arguments {
+                query_callback: Some(query_callback),
+                ..self.arguments
+            },
+            ..self
+        }
+    }
+
+    pub fn with_prover_inputs(self, inputs: Vec<T>) -> Self {
+        self.with_query_callback(Box::new(inputs_to_query_callback(inputs)))
+    }
+
+    pub fn with_backend(self, backend: BackendType) -> Self {
+        Pipeline {
+            arguments: Arguments {
+                backend: Some(backend),
+                ..self.arguments
+            },
             ..self
         }
     }
@@ -317,16 +369,72 @@ impl<T: FieldElement> Pipeline<T> {
                 self.log(&format!("Took {}", start.elapsed().as_secs_f32()));
                 Artifact::PilWithConstants(PilWithConstants { pil, constants })
             }
-            Artifact::PilWithConstants(_) => {
-                return Err(vec![
-                    "Witness generation requires arguments, call generate_witness() instead!"
-                        .into(),
-                ])
+            Artifact::PilWithConstants(PilWithConstants { pil, constants }) => {
+                let witness = (pil.constant_count() == constants.len()).then(|| {
+                    self.log("Deducing witness columns...");
+                    let start = Instant::now();
+                    let external_witness_values =
+                        std::mem::take(&mut self.arguments.external_witness_values);
+                    let query_callback = self
+                        .arguments
+                        .query_callback
+                        .take()
+                        .unwrap_or_else(|| Box::new(executor::witgen::unused_query_callback()));
+                    let witness =
+                        executor::witgen::WitnessGenerator::new(&pil, &constants, query_callback)
+                            .with_external_witness_values(external_witness_values)
+                            .generate();
+
+                    self.log(&format!("Took {}", start.elapsed().as_secs_f32()));
+                    witness
+                        .into_iter()
+                        .map(|(name, c)| (name.to_string(), c))
+                        .collect::<Vec<_>>()
+                });
+                Artifact::GeneratedWitness(GeneratedWitness {
+                    pil,
+                    constants,
+                    witness,
+                })
             }
-            Artifact::GeneratedWitness(_) => {
-                return Err(vec![
-                    "Proof generation requires arguments, call prove() instead!".into(),
-                ])
+            Artifact::GeneratedWitness(GeneratedWitness {
+                pil,
+                constants,
+                witness,
+            }) => {
+                let backend = self
+                    .arguments
+                    .backend
+                    .take()
+                    .expect("backend must be set before calling proving!");
+                let factory = backend.factory::<T>();
+                let backend = factory.create(pil.degree());
+
+                // Even if we don't have all constants and witnesses, some backends will
+                // still output the constraint serialization.
+                let (proof, constraints_serialization) = backend.prove(
+                    &pil,
+                    &constants,
+                    witness.as_deref().unwrap_or_default(),
+                    None,
+                );
+
+                if let Some(output_dir) = &self.output_dir {
+                    write_constants_to_fs(&constants, output_dir);
+                    if let Some(witness) = &witness {
+                        write_commits_to_fs(witness, output_dir);
+                    }
+                    if let Some(constraints_serialization) = &constraints_serialization {
+                        write_constraints_to_fs(constraints_serialization, output_dir);
+                    }
+                };
+
+                Artifact::Proof(ProofResult {
+                    constants,
+                    witness,
+                    proof,
+                    constraints_serialization,
+                })
             }
             Artifact::Proof(_) => panic!("Last pipeline step!"),
         });
@@ -378,83 +486,10 @@ impl<T: FieldElement> Pipeline<T> {
         }
     }
 
-    fn advance_to(&mut self, target_stage: Stage) -> Result<(), Vec<String>> {
+    pub fn advance_to(&mut self, target_stage: Stage) -> Result<(), Vec<String>> {
         while self.stage() != target_stage {
             self.advance()?;
         }
-        Ok(())
-    }
-
-    pub fn generate_witness<Q: QueryCallback<T>>(
-        &mut self,
-        query_callback: Q,
-        external_witness_values: Vec<(&str, Vec<T>)>,
-    ) -> Result<(), Vec<String>> {
-        self.advance_to(Stage::PilWithConstants)?;
-        let Artifact::PilWithConstants(PilWithConstants { pil, constants }) =
-            std::mem::take(&mut self.artifact).unwrap()
-        else {
-            panic!()
-        };
-        let witness = (pil.constant_count() == constants.len()).then(|| {
-            self.log("Deducing witness columns...");
-            let start = Instant::now();
-            let witness = executor::witgen::WitnessGenerator::new(&pil, &constants, query_callback)
-                .with_external_witness_values(external_witness_values)
-                .generate();
-
-            self.log(&format!("Took {}", start.elapsed().as_secs_f32()));
-            witness
-                .into_iter()
-                .map(|(name, c)| (name.to_string(), c))
-                .collect::<Vec<_>>()
-        });
-        self.artifact = Some(Artifact::GeneratedWitness(GeneratedWitness {
-            pil,
-            constants,
-            witness,
-        }));
-        Ok(())
-    }
-
-    pub fn prove(&mut self, backend: BackendType) -> Result<(), Vec<String>> {
-        self.advance_to(Stage::GeneratedWitness)?;
-        let Artifact::GeneratedWitness(GeneratedWitness {
-            pil: analyzed,
-            constants,
-            witness,
-        }) = std::mem::take(&mut self.artifact).unwrap()
-        else {
-            panic!()
-        };
-        let factory = backend.factory::<T>();
-        let backend = factory.create(analyzed.degree());
-
-        // Even if we don't have all constants and witnesses, some backends will
-        // still output the constraint serialization.
-        let (proof, constraints_serialization) = backend.prove(
-            &analyzed,
-            &constants,
-            witness.as_deref().unwrap_or_default(),
-            None,
-        );
-
-        if let Some(output_dir) = &self.output_dir {
-            write_constants_to_fs(&constants, output_dir);
-            if let Some(witness) = &witness {
-                write_commits_to_fs(witness, output_dir);
-            }
-            if let Some(constraints_serialization) = &constraints_serialization {
-                write_constraints_to_fs(constraints_serialization, output_dir);
-            }
-        };
-
-        self.artifact = Some(Artifact::Proof(ProofResult {
-            constants,
-            witness,
-            proof,
-            constraints_serialization,
-        }));
         Ok(())
     }
 
