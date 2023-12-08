@@ -14,7 +14,10 @@ use ast::{
     DiffMonitor,
 };
 use backend::{BackendType, Proof};
-use executor::{constant_evaluator, witgen::QueryCallback};
+use executor::{
+    constant_evaluator,
+    witgen::{chain_callbacks, QueryCallback},
+};
 use log::Level;
 use mktemp::Temp;
 use number::FieldElement;
@@ -216,7 +219,11 @@ impl<T: FieldElement> Pipeline<T> {
         }
     }
 
-    pub fn with_query_callback(self, query_callback: Box<dyn QueryCallback<T>>) -> Self {
+    pub fn add_query_callback(self, query_callback: Box<dyn QueryCallback<T>>) -> Self {
+        let query_callback = match self.arguments.query_callback {
+            Some(old_callback) => Box::new(chain_callbacks(old_callback, query_callback)),
+            None => query_callback,
+        };
         Pipeline {
             arguments: Arguments {
                 query_callback: Some(query_callback),
@@ -227,7 +234,7 @@ impl<T: FieldElement> Pipeline<T> {
     }
 
     pub fn with_prover_inputs(self, inputs: Vec<T>) -> Self {
-        self.with_query_callback(Box::new(inputs_to_query_callback(inputs)))
+        self.add_query_callback(Box::new(inputs_to_query_callback(inputs)))
     }
 
     pub fn with_backend(self, backend: BackendType) -> Self {

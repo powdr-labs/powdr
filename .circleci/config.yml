@@ -143,7 +143,7 @@ jobs:
 
       - run:
           name: Run slow tests
-          command: PILCOM=$(pwd)/pilcom/ cargo test --all --all-features --profile pr-tests --verbose -- --ignored --nocapture --test-threads=2 --exact test_keccak test_vec_median instruction_tests::addi
+          command: PILCOM=$(pwd)/pilcom/ cargo test --all --all-features --profile pr-tests --verbose -- --ignored --nocapture --test-threads=2 --exact test_keccak test_vec_median instruction_tests::addi test_many_chunks
 
   lint:
     executor: executor

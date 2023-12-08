@@ -1,15 +1,32 @@
-use std::{
-    collections::{BTreeSet, HashMap},
-    path::PathBuf,
-};
+use std::collections::{BTreeSet, HashMap};
 
-use compiler::pipeline::Pipeline;
+use compiler::{access_element, parse_query, pipeline::Pipeline};
+use executor::witgen::QueryCallback;
+use itertools::Itertools;
 use number::FieldElement;
 use riscv_executor::ExecutionTrace;
 
 use crate::bootloader::{
     default_input, BYTES_PER_WORD, PAGE_SIZE_BYTES_LOG, PC_INDEX, REGISTER_NAMES,
 };
+
+fn make_query_callback<T: FieldElement>(bootloader_inputs: Vec<T>) -> impl QueryCallback<T> {
+    move |query: &str| -> Result<Option<T>, String> {
+        match &parse_query(query)?[..] {
+            ["\"bootloader_input\"", index] => {
+                access_element("bootloader input", &bootloader_inputs, index)
+            }
+            k => Err(format!("Unsupported query: {}", k.iter().format(", "))),
+        }
+    }
+}
+
+fn add_bootloader_inputs<F: FieldElement>(
+    pipeline: Pipeline<F>,
+    bootload_inputs: Vec<F>,
+) -> Pipeline<F> {
+    pipeline.add_query_callback(Box::new(make_query_callback(bootload_inputs)))
+}
 
 fn transposed_trace<F: FieldElement>(trace: &ExecutionTrace) -> HashMap<String, Vec<F>> {
     let mut reg_values: HashMap<&str, Vec<F>> = HashMap::with_capacity(trace.reg_map.len());
@@ -29,13 +46,45 @@ fn transposed_trace<F: FieldElement>(trace: &ExecutionTrace) -> HashMap<String, 
         .collect()
 }
 
-pub fn rust_continuations<F: FieldElement>(file_name: &str, contents: &str, inputs: Vec<F>) {
+pub fn rust_continuations<F: FieldElement, PipelineFactory, PipelineCallback, E>(
+    pipeline_factory: PipelineFactory,
+    pipeline_callback: PipelineCallback,
+    inputs: Vec<F>,
+) -> Result<(), E>
+where
+    PipelineFactory: Fn() -> Pipeline<F>,
+    PipelineCallback: Fn(Pipeline<F>) -> Result<(), E>,
+{
+    log::info!("Dry running execution to collect bootloader inputs...");
+    let pipeline = pipeline_factory();
+    let bootloader_inputs = rust_continuations_dry_run(pipeline, inputs.clone());
+    let num_chunks = bootloader_inputs.len();
+
+    bootloader_inputs
+        .into_iter()
+        .enumerate()
+        .map(|(i, bootloader_inputs)| -> Result<(), E> {
+            log::info!("Running chunk {} / {}...", i + 1, num_chunks);
+            let pipeline = pipeline_factory();
+            let pipeline = add_bootloader_inputs(pipeline, bootloader_inputs);
+            pipeline_callback(pipeline)?;
+            Ok(())
+        })
+        .collect::<Result<Vec<_>, E>>()?;
+    Ok(())
+}
+
+pub fn rust_continuations_dry_run<F: FieldElement>(
+    pipeline: Pipeline<F>,
+    inputs: Vec<F>,
+) -> Vec<Vec<F>> {
+    // All inputs for all chunks.
+    let mut all_bootloader_inputs = vec![];
+
+    // Bootloader inputs for the current chunk.
     let mut bootloader_inputs = default_input();
 
-    let program = Pipeline::default()
-        .from_asm_string(contents.to_string(), Some(PathBuf::from(file_name)))
-        .analyzed_asm()
-        .unwrap();
+    let program = pipeline.analyzed_asm().unwrap();
 
     let inputs: HashMap<F, Vec<F>> = vec![(F::from(0), inputs)].into_iter().collect();
 
@@ -60,6 +109,8 @@ pub fn rust_continuations<F: FieldElement>(file_name: &str, contents: &str, inpu
     let mut memory_snapshot = HashMap::new();
 
     loop {
+        all_bootloader_inputs.push(bootloader_inputs.clone());
+
         log::info!("\nRunning chunk {}...", chunk_index);
         // Run for 2**degree - 2 steps, because the executor doesn't run the dispatcher,
         // which takes 2 rows.
@@ -176,4 +227,5 @@ pub fn rust_continuations<F: FieldElement>(file_name: &str, contents: &str, inpu
 
         chunk_index += 1;
     }
+    all_bootloader_inputs
 }

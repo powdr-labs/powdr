@@ -18,6 +18,7 @@ serde_json = "1.0"
 regex-syntax = { version = "0.6", default_features = false, features = [
     "unicode",
 ] }
+executor = { path = "../executor" }
 riscv_executor = { path = "../riscv_executor" }
 compiler = { path = "../compiler" }
 

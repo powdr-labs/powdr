@@ -53,4 +53,4 @@ jobs:
       run: PILCOM=$(pwd)/pilcom/ cargo test --all --all-features --profile pr-tests --verbose
     - name: Run slow tests
       # Number threads is set to 1 because the runner does not have enough memory for more.
-      run: PILCOM=$(pwd)/pilcom/ cargo test --all --all-features --profile pr-tests --verbose -- --ignored --nocapture --test-threads=1 --exact test_keccak test_vec_median instruction_tests::addi
+      run: PILCOM=$(pwd)/pilcom/ cargo test --all --all-features --profile pr-tests --verbose -- --ignored --nocapture --test-threads=1 --exact test_keccak test_vec_median instruction_tests::addi test_many_chunks
