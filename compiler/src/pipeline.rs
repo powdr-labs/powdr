@@ -641,6 +641,14 @@ impl<T: FieldElement> Pipeline<T> {
         Ok(())
     }
 
+    pub fn asm_string(mut self) -> Result<String, Vec<String>> {
+        self.advance_to(Stage::AsmString)?;
+        match self.artifact.unwrap() {
+            Artifact::AsmString(_, asm_string) => Ok(asm_string),
+            _ => panic!(),
+        }
+    }
+
     pub fn analyzed_asm(mut self) -> Result<AnalysisASMFile<T>, Vec<String>> {
         self.advance_to(Stage::AnalyzedAsm)?;
         let Artifact::AnalyzedAsm(analyzed_asm) = self.artifact.unwrap() else {

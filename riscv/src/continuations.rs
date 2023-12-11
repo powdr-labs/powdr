@@ -49,15 +49,12 @@ fn transposed_trace<F: FieldElement>(trace: &ExecutionTrace) -> HashMap<String, 
 pub fn rust_continuations<F: FieldElement, PipelineFactory, PipelineCallback, E>(
     pipeline_factory: PipelineFactory,
     pipeline_callback: PipelineCallback,
-    inputs: Vec<F>,
+    bootloader_inputs: Vec<Vec<F>>,
 ) -> Result<(), E>
 where
     PipelineFactory: Fn() -> Pipeline<F>,
     PipelineCallback: Fn(Pipeline<F>) -> Result<(), E>,
 {
-    log::info!("Dry running execution to collect bootloader inputs...");
-    let pipeline = pipeline_factory();
-    let bootloader_inputs = rust_continuations_dry_run(pipeline, inputs.clone());
     let num_chunks = bootloader_inputs.len();
 
     bootloader_inputs

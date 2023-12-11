@@ -18,6 +18,35 @@ use std::path::PathBuf;
 use std::{borrow::Cow, fs, io::Write, path::Path};
 use strum::{Display, EnumString, EnumVariantNames};
 
+fn add_external_witness_values<T: FieldElement>(
+    pipeline: Pipeline<T>,
+    witness_values: Option<String>,
+) -> Pipeline<T> {
+    let external_witness_values = witness_values
+        .map(|csv_path| {
+            let csv_file = fs::File::open(csv_path).unwrap();
+            let mut csv_writer = BufReader::new(&csv_file);
+            read_polys_csv_file::<T>(&mut csv_writer)
+        })
+        .unwrap_or(vec![]);
+
+    pipeline.with_external_witness_values(external_witness_values)
+}
+
+fn add_csv_settings<T: FieldElement>(
+    pipeline: Pipeline<T>,
+    export_csv: bool,
+    csv_mode: CsvRenderModeCLI,
+) -> Pipeline<T> {
+    let csv_mode = match csv_mode {
+        CsvRenderModeCLI::SignedBase10 => CsvRenderMode::SignedBase10,
+        CsvRenderModeCLI::UnsignedBase10 => CsvRenderMode::UnsignedBase10,
+        CsvRenderModeCLI::Hex => CsvRenderMode::Hex,
+    };
+
+    pipeline.with_witness_csv_settings(export_csv, csv_mode)
+}
+
 #[derive(Clone, EnumString, EnumVariantNames, Display)]
 pub enum FieldArgument {
     #[strum(serialize = "gl")]
@@ -26,7 +55,7 @@ pub enum FieldArgument {
     Bn254,
 }
 
-#[derive(Clone, EnumString, EnumVariantNames, Display)]
+#[derive(Clone, Copy, EnumString, EnumVariantNames, Display)]
 pub enum CsvRenderModeCLI {
     #[strum(serialize = "i")]
     SignedBase10,
@@ -420,69 +449,20 @@ fn run_command(command: Commands) {
             csv_mode,
             just_execute,
             continuations,
-        } => match (just_execute, continuations) {
-            (true, true) => {
-                assert!(matches!(field, FieldArgument::Gl));
-                let inputs = split_inputs::<GoldilocksField>(&inputs);
-                rust_continuations_dry_run(
-                    Pipeline::default().from_asm_file(PathBuf::from(file)),
-                    inputs,
-                );
-            }
-            (true, false) => {
-                let contents = fs::read_to_string(&file).unwrap();
-                let inputs = split_inputs::<GoldilocksField>(&inputs);
-                let inputs: HashMap<GoldilocksField, Vec<GoldilocksField>> =
-                    vec![(GoldilocksField::from(0), inputs)]
-                        .into_iter()
-                        .collect();
-                riscv_executor::execute::<GoldilocksField>(
-                    &contents,
-                    &inputs,
-                    &[],
-                    riscv_executor::ExecMode::Fast,
-                );
-            }
-            (false, true) => {
-                assert!(matches!(field, FieldArgument::Gl));
-                let inputs = split_inputs::<GoldilocksField>(&inputs);
-                let pipeline_factory = || {
-                    Pipeline::default()
-                        .from_asm_file(PathBuf::from(&file))
-                        .with_prover_inputs(vec![])
-                };
-                let pipeline_callback =
-                    |mut pipeline: Pipeline<GoldilocksField>| -> Result<(), Vec<String>> {
-                        pipeline.advance_to(Stage::GeneratedWitness)?;
-                        if let Some(backend) = prove_with {
-                            pipeline.with_backend(backend).proof()?;
-                        }
-                        Ok(())
-                    };
-
-                rust_continuations(pipeline_factory, pipeline_callback, inputs.clone()).unwrap();
-            }
-            (false, false) => {
-                match call_with_field!(compile_with_csv_export::<field>(
-                    file,
-                    output_directory,
-                    witness_values,
-                    inputs,
-                    force,
-                    prove_with,
-                    export_csv,
-                    csv_mode
-                )) {
-                    Ok(()) => {}
-                    Err(errors) => {
-                        eprintln!("Errors:");
-                        for e in errors {
-                            eprintln!("{e}");
-                        }
-                    }
-                };
-            }
-        },
+        } => {
+            call_with_field!(run_pil::<field>(
+                file,
+                output_directory,
+                witness_values,
+                inputs,
+                force,
+                prove_with,
+                export_csv,
+                csv_mode,
+                just_execute,
+                continuations
+            ));
+        }
         Commands::Prove {
             file,
             dir,
@@ -541,12 +521,25 @@ fn run_rust<F: FieldElement>(
     )
     .ok_or_else(|| vec!["could not compile rust".to_string()])?;
 
-    handle_riscv_asm(
-        asm_file_path.to_str().unwrap(),
-        &asm_contents,
-        inputs,
-        output_dir,
+    let pipeline_factory = || {
+        Pipeline::<F>::default().from_asm_string(
+            asm_contents.clone(),
+            Some(PathBuf::from(asm_file_path.to_str().unwrap())),
+        )
+    };
+
+    let pipeline_factory = make_pipeline_factory(
+        pipeline_factory,
+        inputs.clone(),
+        output_dir.to_path_buf(),
         force_overwrite,
+        None,                  // witness_values,
+        false,                 // export_csv,
+        CsvRenderModeCLI::Hex, // csv_mode,
+    );
+    run(
+        pipeline_factory,
+        inputs,
         prove_with,
         just_execute,
         continuations,
@@ -576,12 +569,25 @@ fn run_riscv_asm<F: FieldElement>(
     )
     .ok_or_else(|| vec!["could not compile RISC-V assembly".to_string()])?;
 
-    handle_riscv_asm(
-        asm_file_path.to_str().unwrap(),
-        &asm_contents,
-        inputs,
-        output_dir,
+    let pipeline_factory = || {
+        Pipeline::<F>::default().from_asm_string(
+            asm_contents.clone(),
+            Some(PathBuf::from(asm_file_path.to_str().unwrap())),
+        )
+    };
+
+    let pipeline_factory = make_pipeline_factory(
+        pipeline_factory,
+        inputs.clone(),
+        output_dir.to_path_buf(),
         force_overwrite,
+        None,                  // witness_values,
+        false,                 // export_csv,
+        CsvRenderModeCLI::Hex, // csv_mode,
+    );
+    run(
+        pipeline_factory,
+        inputs,
         prove_with,
         just_execute,
         continuations,
@@ -590,69 +596,27 @@ fn run_riscv_asm<F: FieldElement>(
 }
 
 #[allow(clippy::too_many_arguments)]
-fn handle_riscv_asm<F: FieldElement>(
-    file_name: &str,
-    contents: &str,
+fn make_pipeline_factory<F: FieldElement>(
+    pipeline_factory: impl Fn() -> Pipeline<F>,
     inputs: Vec<F>,
-    output_dir: &Path,
+    output_dir: PathBuf,
     force_overwrite: bool,
-    prove_with: Option<BackendType>,
-    just_execute: bool,
-    continuations: bool,
-) -> Result<(), Vec<String>> {
-    match (just_execute, continuations) {
-        (true, true) => {
-            rust_continuations_dry_run(
-                Pipeline::default()
-                    .from_asm_string(contents.to_string(), Some(PathBuf::from(file_name))),
-                inputs,
-            );
-        }
-        (true, false) => {
-            let mut inputs_hash: HashMap<F, Vec<F>> = HashMap::default();
-            inputs_hash.insert(0u32.into(), inputs);
-            riscv_executor::execute::<F>(
-                contents,
-                &inputs_hash,
-                &[],
-                riscv_executor::ExecMode::Fast,
-            );
-        }
-        (false, true) => {
-            let pipeline_factory = || {
-                Pipeline::default()
-                    .with_output(output_dir.to_path_buf(), force_overwrite)
-                    .from_asm_string(contents.to_string(), Some(PathBuf::from(file_name)))
-                    .with_prover_inputs(inputs.clone())
-            };
-            let pipeline_callback = |mut pipeline: Pipeline<F>| -> Result<(), Vec<String>> {
-                pipeline.advance_to(Stage::GeneratedWitness)?;
-                if let Some(backend) = prove_with {
-                    pipeline.with_backend(backend).proof()?;
-                }
-                Ok(())
-            };
+    witness_values: Option<String>,
+    export_csv: bool,
+    csv_mode: CsvRenderModeCLI,
+) -> impl Fn() -> Pipeline<F> {
+    move || {
+        let pipeline = pipeline_factory()
+            .with_output(output_dir.clone(), force_overwrite)
+            .with_prover_inputs(inputs.clone());
 
-            rust_continuations(pipeline_factory, pipeline_callback, inputs.clone())?;
-        }
-        (false, false) => {
-            let mut pipeline = Pipeline::default()
-                .with_output(output_dir.to_path_buf(), force_overwrite)
-                .from_asm_string(contents.to_string(), Some(PathBuf::from(file_name)))
-                .with_prover_inputs(inputs)
-                .with_backend(BackendType::PilStarkCli);
-            pipeline.advance_to(Stage::GeneratedWitness).unwrap();
-            if let Some(backend) = prove_with {
-                pipeline = pipeline.with_backend(backend);
-                pipeline.proof().unwrap();
-            }
-        }
+        let pipeline = add_external_witness_values(pipeline, witness_values.clone());
+        add_csv_settings(pipeline, export_csv, csv_mode)
     }
-    Ok(())
 }
 
 #[allow(clippy::too_many_arguments)]
-fn compile_with_csv_export<T: FieldElement>(
+fn run_pil<F: FieldElement>(
     file: String,
     output_directory: String,
     witness_values: Option<String>,
@@ -661,33 +625,80 @@ fn compile_with_csv_export<T: FieldElement>(
     prove_with: Option<BackendType>,
     export_csv: bool,
     csv_mode: CsvRenderModeCLI,
+    just_execute: bool,
+    continuations: bool,
+) {
+    let pipeline_factory = || Pipeline::<F>::default().from_asm_file(PathBuf::from(&file));
+    let inputs = split_inputs::<F>(&inputs);
+
+    let pipeline_factory = make_pipeline_factory(
+        pipeline_factory,
+        inputs.clone(),
+        PathBuf::from(output_directory),
+        force,
+        witness_values,
+        export_csv,
+        csv_mode,
+    );
+    if let Err(errors) = run(
+        pipeline_factory,
+        inputs,
+        prove_with,
+        just_execute,
+        continuations,
+    ) {
+        eprintln!("Errors:");
+        for e in errors {
+            eprintln!("{e}");
+        }
+    };
+}
+
+#[allow(clippy::too_many_arguments)]
+fn run<F: FieldElement>(
+    pipeline_factory: impl Fn() -> Pipeline<F>,
+    inputs: Vec<F>,
+    prove_with: Option<BackendType>,
+    just_execute: bool,
+    continuations: bool,
 ) -> Result<(), Vec<String>> {
-    let external_witness_values = witness_values
-        .map(|csv_path| {
-            let csv_file = fs::File::open(csv_path).unwrap();
-            let mut csv_writer = BufReader::new(&csv_file);
-            read_polys_csv_file::<T>(&mut csv_writer)
-        })
-        .unwrap_or(vec![]);
-
-    let output_dir = Path::new(&output_directory);
-
-    let csv_mode = match csv_mode {
-        CsvRenderModeCLI::SignedBase10 => CsvRenderMode::SignedBase10,
-        CsvRenderModeCLI::UnsignedBase10 => CsvRenderMode::UnsignedBase10,
-        CsvRenderModeCLI::Hex => CsvRenderMode::Hex,
+    let bootloader_inputs = if continuations {
+        rust_continuations_dry_run(pipeline_factory(), inputs.clone())
+    } else {
+        vec![]
     };
 
-    let mut pipeline = Pipeline::default()
-        .with_output(output_dir.to_path_buf(), force)
-        .from_file(PathBuf::from(file))
-        .with_external_witness_values(external_witness_values)
-        .with_witness_csv_settings(export_csv, csv_mode)
-        .with_prover_inputs(split_inputs(&inputs));
+    match (just_execute, continuations) {
+        (true, true) => {
+            // Nothing to do
+        }
+        (true, false) => {
+            let mut inputs_hash: HashMap<F, Vec<F>> = HashMap::default();
+            inputs_hash.insert(0u32.into(), inputs);
+            riscv_executor::execute::<F>(
+                &pipeline_factory().asm_string().unwrap(),
+                &inputs_hash,
+                &[],
+                riscv_executor::ExecMode::Fast,
+            );
+        }
+        (false, true) => {
+            let pipeline_callback = |mut pipeline: Pipeline<F>| -> Result<(), Vec<String>> {
+                pipeline.advance_to(Stage::GeneratedWitness)?;
+                if let Some(backend) = prove_with {
+                    pipeline.with_backend(backend).proof()?;
+                }
+                Ok(())
+            };
 
-    pipeline.advance_to(Stage::GeneratedWitness).unwrap();
-    prove_with.map(|backend| pipeline.with_backend(backend).proof().unwrap());
-
+            rust_continuations(pipeline_factory, pipeline_callback, bootloader_inputs)?;
+        }
+        (false, false) => {
+            let mut pipeline = pipeline_factory();
+            pipeline.advance_to(Stage::GeneratedWitness).unwrap();
+            prove_with.map(|backend| pipeline.with_backend(backend).proof().unwrap());
+        }
+    }
     Ok(())
 }
 
