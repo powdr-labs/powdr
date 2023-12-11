@@ -210,14 +210,11 @@ impl<T: FieldElement> Pipeline<T> {
 
     pub fn with_external_witness_values(
         self,
-        external_witness_values: Vec<(&str, Vec<T>)>,
+        external_witness_values: Vec<(String, Vec<T>)>,
     ) -> Self {
         Pipeline {
             arguments: Arguments {
-                external_witness_values: external_witness_values
-                    .into_iter()
-                    .map(|(name, values)| (name.to_string(), values))
-                    .collect(),
+                external_witness_values,
                 ..self.arguments
             },
             ..self

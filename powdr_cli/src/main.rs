@@ -670,10 +670,6 @@ fn compile_with_csv_export<T: FieldElement>(
         })
         .unwrap_or(vec![]);
 
-    // Convert Vec<(String, Vec<T>)> to Vec<(&str, Vec<T>)>
-    let (strings, values): (Vec<_>, Vec<_>) = external_witness_values.into_iter().unzip();
-    let external_witness_values = strings.iter().map(AsRef::as_ref).zip(values).collect();
-
     let output_dir = Path::new(&output_directory);
 
     let csv_mode = match csv_mode {

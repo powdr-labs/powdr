@@ -41,14 +41,14 @@ fn test_external_witgen_fails_if_none_provided() {
 #[test]
 fn test_external_witgen_a_provided() {
     let f = "pil/external_witgen.pil";
-    let external_witness = vec![("main.a", vec![GoldilocksField::from(3); 16])];
+    let external_witness = vec![("main.a".to_string(), vec![GoldilocksField::from(3); 16])];
     verify_test_file(f, vec![], external_witness);
 }
 
 #[test]
 fn test_external_witgen_b_provided() {
     let f = "pil/external_witgen.pil";
-    let external_witness = vec![("main.b", vec![GoldilocksField::from(4); 16])];
+    let external_witness = vec![("main.b".to_string(), vec![GoldilocksField::from(4); 16])];
     verify_test_file(f, vec![], external_witness);
 }
 
@@ -56,8 +56,8 @@ fn test_external_witgen_b_provided() {
 fn test_external_witgen_both_provided() {
     let f = "pil/external_witgen.pil";
     let external_witness = vec![
-        ("main.a", vec![GoldilocksField::from(3); 16]),
-        ("main.b", vec![GoldilocksField::from(4); 16]),
+        ("main.a".to_string(), vec![GoldilocksField::from(3); 16]),
+        ("main.b".to_string(), vec![GoldilocksField::from(4); 16]),
     ];
     verify_test_file(f, vec![], external_witness);
 }
@@ -67,9 +67,9 @@ fn test_external_witgen_both_provided() {
 fn test_external_witgen_fails_on_conflicting_external_witness() {
     let f = "pil/external_witgen.pil";
     let external_witness = vec![
-        ("main.a", vec![GoldilocksField::from(3); 16]),
+        ("main.a".to_string(), vec![GoldilocksField::from(3); 16]),
         // Does not satisfy b = a + 1
-        ("main.b", vec![GoldilocksField::from(3); 16]),
+        ("main.b".to_string(), vec![GoldilocksField::from(3); 16]),
     ];
     verify_test_file(f, vec![], external_witness);
 }
