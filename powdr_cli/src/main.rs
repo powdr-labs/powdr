@@ -18,33 +18,37 @@ use std::path::PathBuf;
 use std::{borrow::Cow, fs, io::Write, path::Path};
 use strum::{Display, EnumString, EnumVariantNames};
 
-fn add_external_witness_values<T: FieldElement>(
-    pipeline: Pipeline<T>,
+#[allow(clippy::too_many_arguments)]
+fn bind_cli_args<F: FieldElement>(
+    pipeline_factory: impl Fn() -> Pipeline<F>,
+    inputs: Vec<F>,
+    output_dir: PathBuf,
+    force_overwrite: bool,
     witness_values: Option<String>,
-) -> Pipeline<T> {
-    let external_witness_values = witness_values
+    export_csv: bool,
+    csv_mode: CsvRenderModeCLI,
+) -> impl Fn() -> Pipeline<F> {
+    let witness_values = witness_values
         .map(|csv_path| {
             let csv_file = fs::File::open(csv_path).unwrap();
             let mut csv_writer = BufReader::new(&csv_file);
-            read_polys_csv_file::<T>(&mut csv_writer)
+            read_polys_csv_file::<F>(&mut csv_writer)
         })
         .unwrap_or(vec![]);
 
-    pipeline.with_external_witness_values(external_witness_values)
-}
-
-fn add_csv_settings<T: FieldElement>(
-    pipeline: Pipeline<T>,
-    export_csv: bool,
-    csv_mode: CsvRenderModeCLI,
-) -> Pipeline<T> {
     let csv_mode = match csv_mode {
         CsvRenderModeCLI::SignedBase10 => CsvRenderMode::SignedBase10,
         CsvRenderModeCLI::UnsignedBase10 => CsvRenderMode::UnsignedBase10,
         CsvRenderModeCLI::Hex => CsvRenderMode::Hex,
     };
 
-    pipeline.with_witness_csv_settings(export_csv, csv_mode)
+    move || {
+        pipeline_factory()
+            .with_output(output_dir.clone(), force_overwrite)
+            .with_external_witness_values(witness_values.clone())
+            .with_witness_csv_settings(export_csv, csv_mode)
+            .with_prover_inputs(inputs.clone())
+    }
 }
 
 #[derive(Clone, EnumString, EnumVariantNames, Display)]
@@ -527,7 +531,7 @@ fn run_rust<F: FieldElement>(
         )
     };
 
-    let pipeline_factory = make_pipeline_factory(
+    let pipeline_factory = bind_cli_args(
         pipeline_factory,
         inputs.clone(),
         output_dir.to_path_buf(),
@@ -575,7 +579,7 @@ fn run_riscv_asm<F: FieldElement>(
         )
     };
 
-    let pipeline_factory = make_pipeline_factory(
+    let pipeline_factory = bind_cli_args(
         pipeline_factory,
         inputs.clone(),
         output_dir.to_path_buf(),
@@ -595,26 +599,6 @@ fn run_riscv_asm<F: FieldElement>(
 }
 
 #[allow(clippy::too_many_arguments)]
-fn make_pipeline_factory<F: FieldElement>(
-    pipeline_factory: impl Fn() -> Pipeline<F>,
-    inputs: Vec<F>,
-    output_dir: PathBuf,
-    force_overwrite: bool,
-    witness_values: Option<String>,
-    export_csv: bool,
-    csv_mode: CsvRenderModeCLI,
-) -> impl Fn() -> Pipeline<F> {
-    move || {
-        let pipeline = pipeline_factory()
-            .with_output(output_dir.clone(), force_overwrite)
-            .with_prover_inputs(inputs.clone());
-
-        let pipeline = add_external_witness_values(pipeline, witness_values.clone());
-        add_csv_settings(pipeline, export_csv, csv_mode)
-    }
-}
-
-#[allow(clippy::too_many_arguments)]
 fn run_pil<F: FieldElement>(
     file: String,
     output_directory: String,
@@ -629,7 +613,7 @@ fn run_pil<F: FieldElement>(
 ) -> Result<(), Vec<String>> {
     let inputs = split_inputs::<F>(&inputs);
 
-    let pipeline_factory = make_pipeline_factory(
+    let pipeline_factory = bind_cli_args(
         || Pipeline::<F>::default().from_asm_file(PathBuf::from(&file)),
         inputs.clone(),
         PathBuf::from(output_directory),
