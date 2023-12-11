@@ -209,78 +209,48 @@ impl<T: FieldElement> Pipeline<T> {
     }
 
     pub fn with_external_witness_values(
-        self,
+        mut self,
         external_witness_values: Vec<(String, Vec<T>)>,
     ) -> Self {
-        Pipeline {
-            arguments: Arguments {
-                external_witness_values,
-                ..self.arguments
-            },
-            ..self
-        }
+        self.arguments.external_witness_values = external_witness_values;
+        self
     }
     pub fn with_witness_csv_settings(
-        self,
+        mut self,
         export_witness_csv: bool,
         csv_render_mode: CsvRenderMode,
     ) -> Self {
-        Pipeline {
-            arguments: Arguments {
-                csv_render_mode,
-                export_witness_csv,
-                ..self.arguments
-            },
-            ..self
-        }
+        self.arguments.export_witness_csv = export_witness_csv;
+        self.arguments.csv_render_mode = csv_render_mode;
+        self
     }
 
-    pub fn add_query_callback(self, query_callback: Box<dyn QueryCallback<T>>) -> Self {
+    pub fn add_query_callback(mut self, query_callback: Box<dyn QueryCallback<T>>) -> Self {
         let query_callback = match self.arguments.query_callback {
             Some(old_callback) => Box::new(chain_callbacks(old_callback, query_callback)),
             None => query_callback,
         };
-        Pipeline {
-            arguments: Arguments {
-                query_callback: Some(query_callback),
-                ..self.arguments
-            },
-            ..self
-        }
+        self.arguments.query_callback = Some(query_callback);
+        self
     }
 
     pub fn with_prover_inputs(self, inputs: Vec<T>) -> Self {
         self.add_query_callback(Box::new(inputs_to_query_callback(inputs)))
     }
 
-    pub fn with_backend(self, backend: BackendType) -> Self {
-        Pipeline {
-            arguments: Arguments {
-                backend: Some(backend),
-                ..self.arguments
-            },
-            ..self
-        }
+    pub fn with_backend(mut self, backend: BackendType) -> Self {
+        self.arguments.backend = Some(backend);
+        self
     }
 
-    pub fn with_setup_file(self, setup_file: Option<PathBuf>) -> Self {
-        Pipeline {
-            arguments: Arguments {
-                setup_file,
-                ..self.arguments
-            },
-            ..self
-        }
+    pub fn with_setup_file(mut self, setup_file: Option<PathBuf>) -> Self {
+        self.arguments.setup_file = setup_file;
+        self
     }
 
-    pub fn with_existing_proof_file(self, existing_proof_file: Option<PathBuf>) -> Self {
-        Pipeline {
-            arguments: Arguments {
-                existing_proof_file,
-                ..self.arguments
-            },
-            ..self
-        }
+    pub fn with_existing_proof_file(mut self, existing_proof_file: Option<PathBuf>) -> Self {
+        self.arguments.existing_proof_file = existing_proof_file;
+        self
     }
 
     pub fn from_file(self, asm_file: PathBuf) -> Self {
