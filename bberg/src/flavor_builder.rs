@@ -194,7 +194,10 @@ fn create_relation_definitions(name: &str, relation_file_names: &[String], permu
     // Relations tuple = ns::relation_name_0, ns::relation_name_1, ... ns::relation_name_n (comma speratated)
     let comma_sep_relations = create_relations_tuple(name, relation_file_names);
     let comma_sep_perms: String = create_permutations_tuple(permutations);
-    let all_relations = format!("{comma_sep_relations}, {comma_sep_perms}"); 
+    let mut all_relations = format!("{comma_sep_relations}"); 
+    if permutations.len() > 0 {
+        all_relations = all_relations + &format!(", {comma_sep_perms}");
+    }
 
     format!("
         using Relations = std::tuple<{all_relations}>;

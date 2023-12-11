@@ -96,13 +96,23 @@ impl CircuitBuilder for BBFiles {
         };
 
         // Apply transformations
-        let params = get_params();
         let compute_polys_assignemnt = map_with_newline(all_cols, compute_polys_transformation);
         let all_poly_shifts = map_with_newline(to_be_shifted, all_polys_transformation);
         let check_circuit_for_each_relation =
             map_with_newline(relations, check_circuit_transformation);
         let check_circuit_for_each_permutation =
             map_with_newline(permutations, check_permutation_transformation);
+
+        let (params,permutation_check_closure) = if permutations.len() > 0 {
+            (get_params(), get_permutation_check_closure())
+        } else {
+            ("", "".to_owned())
+        };
+        let relation_check_closure = if relations.len() > 0 {
+            get_relation_check_closure()
+        } else {
+            "".to_owned()
+        };
 
         let circuit_hpp = format!("
 {includes}
@@ -154,57 +164,9 @@ class {name}CircuitBuilder {{
             auto polys = compute_polynomials();
             const size_t num_rows = polys.get_polynomial_size();
     
-            const auto evaluate_relation = [&]<typename Relation>(const std::string& relation_name) {{
-                typename Relation::SumcheckArrayOfValuesOverSubrelations result;
-                for (auto& r : result) {{
-                    r = 0;
-                }}
-                constexpr size_t NUM_SUBRELATIONS = result.size();
-    
-                for (size_t i = 0; i < num_rows; ++i) {{
-                    Relation::accumulate(result, polys.get_row(i), {{}}, 1);
-    
-                    bool x = true;
-                    for (size_t j = 0; j < NUM_SUBRELATIONS; ++j) {{
-                        if (result[j] != 0) {{
-                            throw_or_abort(
-                                format(\"Relation \", relation_name, \", subrelation index \", j, \" failed at row \", i));
-                            x = false;
-                        }}
-                    }}
-                    if (!x) {{
-                        return false;
-                    }}
-                }}
-                return true;
-            }};
+            {relation_check_closure}
 
-            const auto evaluate_permutation = [&]<typename PermutationSettings>(const std::string& permutation_name) {{
-
-                // Check the tuple permutation relation
-                proof_system::honk::logderivative_library::compute_logderivative_inverse<
-                    Flavor,
-                    PermutationSettings>(
-                    polys, params, num_rows);
-        
-                typename PermutationSettings::SumcheckArrayOfValuesOverSubrelations
-                    permutation_result;
-
-                for (auto& r : permutation_result) {{
-                    r = 0;
-                }}
-                for (size_t i = 0; i < num_rows; ++i) {{
-                    PermutationSettings::accumulate(permutation_result, polys.get_row(i), params, 1);
-                }}
-                for (auto r : permutation_result) {{
-                    if (r != 0) {{
-                        info(\"Tuple\", permutation_name, \"failed.\");
-                        return false;
-                    }}
-                }}
-                return true;
-            }};
-
+            {permutation_check_closure}
 
             {check_circuit_for_each_relation}
 
@@ -235,4 +197,67 @@ class {name}CircuitBuilder {{
             &circuit_hpp,
         );
     }
+}
+
+
+fn get_permutation_check_closure() -> String {
+
+            format!("
+            const auto evaluate_permutation = [&]<typename PermutationSettings>(const std::string& permutation_name) {{
+
+                // Check the tuple permutation relation
+                proof_system::honk::logderivative_library::compute_logderivative_inverse<
+                    Flavor,
+                    PermutationSettings>(
+                    polys, params, num_rows);
+        
+                typename PermutationSettings::SumcheckArrayOfValuesOverSubrelations
+                    permutation_result;
+
+                for (auto& r : permutation_result) {{
+                    r = 0;
+                }}
+                for (size_t i = 0; i < num_rows; ++i) {{
+                    PermutationSettings::accumulate(permutation_result, polys.get_row(i), params, 1);
+                }}
+                for (auto r : permutation_result) {{
+                    if (r != 0) {{
+                        info(\"Tuple\", permutation_name, \"failed.\");
+                        return false;
+                    }}
+                }}
+                return true;
+            }};
+            ")
+
+}
+
+
+fn get_relation_check_closure() -> String {
+    format!("
+            const auto evaluate_relation = [&]<typename Relation>(const std::string& relation_name) {{
+                typename Relation::SumcheckArrayOfValuesOverSubrelations result;
+                for (auto& r : result) {{
+                    r = 0;
+                }}
+                constexpr size_t NUM_SUBRELATIONS = result.size();
+    
+                for (size_t i = 0; i < num_rows; ++i) {{
+                    Relation::accumulate(result, polys.get_row(i), {{}}, 1);
+    
+                    bool x = true;
+                    for (size_t j = 0; j < NUM_SUBRELATIONS; ++j) {{
+                        if (result[j] != 0) {{
+                            throw_or_abort(
+                                format(\"Relation \", relation_name, \", subrelation index \", j, \" failed at row \", i));
+                            x = false;
+                        }}
+                    }}
+                    if (!x) {{
+                        return false;
+                    }}
+                }}
+                return true;
+            }};
+    ")
 }
