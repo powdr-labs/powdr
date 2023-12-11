@@ -67,7 +67,7 @@ namespace proof_system::{root_name}_vm {{
 
         let declare_views = format!(
             "
-    #define DECLARE_VIEWS(index) \\
+    #define {name}_DECLARE_VIEWS(index) \\
         using Accumulator = typename std::tuple_element<index, ContainerOverSubrelations>::type; \\
         using View = typename Accumulator::View; \\
         {make_view_per_row}
@@ -251,6 +251,7 @@ fn craft_expression<T: FieldElement>(
 }
 
 pub(crate) fn create_identities<F: FieldElement>(
+    file_name: &str,
     identities: &[Identity<Expression<F>>],
 ) -> (Vec<String>, Vec<BBIdentity>, Vec<String>, Vec<String>) {
     // We only want the expressions for now
@@ -273,7 +274,7 @@ pub(crate) fn create_identities<F: FieldElement>(
 
     for (i, expression) in expressions.iter().enumerate() {
         let relation_boilerplate = format!(
-            "DECLARE_VIEWS({i});
+            "{file_name}_DECLARE_VIEWS({i});
         ",
         );
         // TODO: deal with unwrap

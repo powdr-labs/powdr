@@ -1,6 +1,6 @@
 use crate::{
     file_writer::BBFiles,
-    utils::{get_relations_imports, map_with_newline}, vm_builder::{Permutation, get_inverses_from_permutations},
+    utils::{get_relations_imports, map_with_newline}, permutation_builder::{Permutation, get_inverses_from_permutations}, 
 };
 
 pub trait FlavorBuilder {
@@ -63,6 +63,8 @@ impl FlavorBuilder for BBFiles {
 
         let transcript = generate_transcript(witness);
 
+        let declare_permutation_sumcheck = create_permuation_sumcheck_declaration(&inverses, name);
+
         let flavor_hpp = format!(
             "
 {includes}
@@ -101,6 +103,10 @@ class {name}Flavor {{
 }};
 
 }} // namespace proof_system::honk::flavor
+
+namespace sumcheck {{
+    {declare_permutation_sumcheck}
+}}
 }} // namespace proof_system::honk
     
     
@@ -544,4 +550,17 @@ fn generate_transcript(witness: &[String]) -> String {
         }}
     }};
     ")
+}
+
+
+fn create_permuation_sumcheck_declaration(permutations: &[String], name: &str) -> String {
+    let sumcheck_transformation = |perm: &String| {
+        format!(
+            "
+            DECLARE_SUMCHECK_RELATION_CLASS({perm}, flavor::{name}Flavor);
+            ",
+        )
+    };
+
+    map_with_newline(permutations, sumcheck_transformation)
 }
