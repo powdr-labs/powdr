@@ -1,7 +1,7 @@
 use std::{
     fmt::Display,
     fs,
-    io::{BufWriter, Write},
+    io::{BufWriter, Read, Write},
     path::{Path, PathBuf},
     time::Instant,
 };
@@ -23,7 +23,10 @@ use log::Level;
 use mktemp::Temp;
 use number::{write_polys_csv_file, write_polys_file, CsvRenderMode, FieldElement};
 
-use crate::inputs_to_query_callback;
+use crate::{
+    inputs_to_query_callback,
+    util::{read_poly_set, FixedPolySet, WitnessPolySet},
+};
 
 pub struct GeneratedWitness<T: FieldElement> {
     pub pil: Analyzed<T>,
@@ -106,6 +109,8 @@ struct Arguments<T: FieldElement> {
     backend: Option<BackendType>,
     csv_render_mode: CsvRenderMode,
     export_witness_csv: bool,
+    setup_file: Option<PathBuf>,
+    existing_proof_file: Option<PathBuf>,
 }
 
 pub struct Pipeline<T: FieldElement> {
@@ -261,6 +266,26 @@ impl<T: FieldElement> Pipeline<T> {
         }
     }
 
+    pub fn with_setup_file(self, setup_file: Option<PathBuf>) -> Self {
+        Pipeline {
+            arguments: Arguments {
+                setup_file,
+                ..self.arguments
+            },
+            ..self
+        }
+    }
+
+    pub fn with_existing_proof_file(self, existing_proof_file: Option<PathBuf>) -> Self {
+        Pipeline {
+            arguments: Arguments {
+                existing_proof_file,
+                ..self.arguments
+            },
+            ..self
+        }
+    }
+
     pub fn from_file(self, asm_file: PathBuf) -> Self {
         if asm_file.extension().unwrap() == "asm" {
             self.from_asm_file(asm_file)
@@ -299,6 +324,30 @@ impl<T: FieldElement> Pipeline<T> {
     pub fn from_pil_string(self, pil_string: String) -> Self {
         Pipeline {
             artifact: Some(Artifact::PilString(pil_string)),
+            ..self
+        }
+    }
+
+    /// Reads a previously generated witness from the provided directory and
+    /// advances the pipeline to the `GeneratedWitness` stage.
+    pub fn read_generated_witness(mut self, directory: &Path) -> Self {
+        self.advance_to(Stage::OptimizedPil).unwrap();
+
+        let pil = match self.artifact.unwrap() {
+            Artifact::OptimzedPil(pil) => pil,
+            _ => panic!(),
+        };
+
+        let (fixed, degree_fixed) = read_poly_set::<FixedPolySet, T>(&pil, directory);
+        let (witness, degree_witness) = read_poly_set::<WitnessPolySet, T>(&pil, directory);
+        assert_eq!(degree_fixed, degree_witness);
+
+        Pipeline {
+            artifact: Some(Artifact::GeneratedWitness(GeneratedWitness {
+                pil,
+                constants: fixed,
+                witness: Some(witness),
+            })),
             ..self
         }
     }
@@ -429,10 +478,20 @@ impl<T: FieldElement> Pipeline<T> {
                 let backend = self
                     .arguments
                     .backend
-                    .take()
                     .expect("backend must be set before calling proving!");
                 let factory = backend.factory::<T>();
-                let backend = factory.create(pil.degree());
+                let backend = if let Some(path) = self.arguments.setup_file.as_ref() {
+                    let mut file = fs::File::open(path).unwrap();
+                    factory.create_from_setup(&mut file).unwrap()
+                } else {
+                    factory.create(pil.degree())
+                };
+
+                let existing_proof = self.arguments.existing_proof_file.as_ref().map(|path| {
+                    let mut buf = Vec::new();
+                    fs::File::open(path).unwrap().read_to_end(&mut buf).unwrap();
+                    buf
+                });
 
                 // Even if we don't have all constants and witnesses, some backends will
                 // still output the constraint serialization.
@@ -440,7 +499,7 @@ impl<T: FieldElement> Pipeline<T> {
                     &pil,
                     &constants,
                     witness.as_deref().unwrap_or_default(),
-                    None,
+                    existing_proof,
                 );
 
                 let proof_result = ProofResult {
@@ -544,7 +603,12 @@ impl<T: FieldElement> Pipeline<T> {
             if let Some(proof) = &proof_result.proof {
                 // No need to bufferize the writing, because we write the whole
                 // proof in one call.
-                let to_write = output_dir.join("proof.bin");
+                let fname = if self.arguments.existing_proof_file.is_some() {
+                    "proof_aggr.bin"
+                } else {
+                    "proof.bin"
+                };
+                let to_write = output_dir.join(fname);
                 let mut proof_file = fs::File::create(&to_write).unwrap();
                 proof_file.write_all(proof).unwrap();
                 log::info!("Wrote {}.", to_write.display());
