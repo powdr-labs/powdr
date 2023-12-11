@@ -11,12 +11,18 @@ pub enum CsvRenderMode {
     Hex,
 }
 
+impl Default for CsvRenderMode {
+    fn default() -> Self {
+        Self::Hex
+    }
+}
+
 const ROW_NAME: &str = "Row";
 
 pub fn write_polys_csv_file<T: FieldElement>(
     file: &mut impl Write,
     render_mode: CsvRenderMode,
-    polys: &[(String, Vec<T>)],
+    polys: &[&(String, Vec<T>)],
 ) {
     let mut writer = Writer::from_writer(file);
 
@@ -172,6 +178,7 @@ mod tests {
             .into_iter()
             .map(|(name, values)| (name.to_string(), values))
             .collect::<Vec<_>>();
+        let polys_ref = polys.iter().collect::<Vec<_>>();
 
         for render_mode in &[
             CsvRenderMode::SignedBase10,
@@ -179,7 +186,7 @@ mod tests {
             CsvRenderMode::Hex,
         ] {
             let mut buf: Vec<u8> = vec![];
-            write_polys_csv_file(&mut buf, *render_mode, &polys);
+            write_polys_csv_file(&mut buf, *render_mode, &polys_ref);
             let read_polys = read_polys_csv_file::<Bn254Field>(&mut Cursor::new(buf));
 
             assert_eq!(read_polys, polys);

@@ -10,7 +10,7 @@ use env_logger::fmt::Color;
 use env_logger::{Builder, Target};
 use log::LevelFilter;
 use number::write_polys_file;
-use number::{read_polys_csv_file, write_polys_csv_file, CsvRenderMode};
+use number::{read_polys_csv_file, CsvRenderMode};
 use number::{Bn254Field, FieldElement, GoldilocksField};
 use riscv::continuations::{rust_continuations, rust_continuations_dry_run};
 use riscv::{compile_riscv_asm, compile_rust};
@@ -678,10 +678,17 @@ fn compile_with_csv_export<T: FieldElement>(
 
     let output_dir = Path::new(&output_directory);
 
+    let csv_mode = match csv_mode {
+        CsvRenderModeCLI::SignedBase10 => CsvRenderMode::SignedBase10,
+        CsvRenderModeCLI::UnsignedBase10 => CsvRenderMode::UnsignedBase10,
+        CsvRenderModeCLI::Hex => CsvRenderMode::Hex,
+    };
+
     let mut pipeline = Pipeline::default()
         .with_output(output_dir.to_path_buf(), force)
         .from_file(PathBuf::from(file))
         .with_external_witness_values(external_witness_values)
+        .with_witness_csv_settings(export_csv, csv_mode)
         .with_prover_inputs(split_inputs(&inputs));
 
     pipeline.advance_to(Stage::GeneratedWitness).unwrap();
@@ -700,43 +707,7 @@ fn compile_with_csv_export<T: FieldElement>(
         }
     }
 
-    if export_csv {
-        // Compilation result is None if the ASM file has not been compiled
-        // (e.g. it has been compiled before and the force flag is not set)
-        if let Some(compilation_result) = result {
-            let csv_path = Path::new(&output_directory).join("columns.csv");
-            export_columns_to_csv::<T>(
-                compilation_result.constants,
-                compilation_result.witness,
-                &csv_path,
-                csv_mode,
-            );
-        }
-    }
     Ok(())
-}
-
-fn export_columns_to_csv<T: FieldElement>(
-    fixed: Vec<(String, Vec<T>)>,
-    witness: Option<Vec<(String, Vec<T>)>>,
-    csv_path: &Path,
-    render_mode: CsvRenderModeCLI,
-) {
-    let columns = fixed
-        .into_iter()
-        .chain(witness.unwrap_or(vec![]))
-        .collect::<Vec<_>>();
-
-    let mut csv_file = fs::File::create(csv_path).unwrap();
-    let mut csv_writer = BufWriter::new(&mut csv_file);
-
-    let render_mode = match render_mode {
-        CsvRenderModeCLI::SignedBase10 => CsvRenderMode::SignedBase10,
-        CsvRenderModeCLI::UnsignedBase10 => CsvRenderMode::UnsignedBase10,
-        CsvRenderModeCLI::Hex => CsvRenderMode::Hex,
-    };
-
-    write_polys_csv_file(&mut csv_writer, render_mode, &columns);
 }
 
 fn read_and_prove<T: FieldElement>(

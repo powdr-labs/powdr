@@ -1,6 +1,7 @@
 use std::{
     fmt::Display,
     fs,
+    io::BufWriter,
     path::{Path, PathBuf},
     time::Instant,
 };
@@ -20,7 +21,7 @@ use executor::{
 };
 use log::Level;
 use mktemp::Temp;
-use number::FieldElement;
+use number::{write_polys_csv_file, CsvRenderMode, FieldElement};
 
 use crate::{
     inputs_to_query_callback,
@@ -106,6 +107,8 @@ struct Arguments<T: FieldElement> {
     external_witness_values: Vec<(String, Vec<T>)>,
     query_callback: Option<Box<dyn QueryCallback<T>>>,
     backend: Option<BackendType>,
+    csv_render_mode: CsvRenderMode,
+    export_witness_csv: bool,
 }
 
 pub struct Pipeline<T: FieldElement> {
@@ -213,6 +216,20 @@ impl<T: FieldElement> Pipeline<T> {
                     .into_iter()
                     .map(|(name, values)| (name.to_string(), values))
                     .collect(),
+                ..self.arguments
+            },
+            ..self
+        }
+    }
+    pub fn with_witness_csv_settings(
+        self,
+        export_witness_csv: bool,
+        csv_render_mode: CsvRenderMode,
+    ) -> Self {
+        Pipeline {
+            arguments: Arguments {
+                csv_render_mode,
+                export_witness_csv,
                 ..self.arguments
             },
             ..self
@@ -398,6 +415,7 @@ impl<T: FieldElement> Pipeline<T> {
                         .map(|(name, c)| (name.to_string(), c))
                         .collect::<Vec<_>>()
                 });
+                self.maybe_write_witness_csv(&constants, &witness)?;
                 Artifact::GeneratedWitness(GeneratedWitness {
                     pil,
                     constants,
@@ -469,6 +487,33 @@ impl<T: FieldElement> Pipeline<T> {
                     output_file.to_str().unwrap()
                 )]);
             }
+        }
+        Ok(())
+    }
+
+    fn maybe_write_witness_csv(
+        &self,
+        fixed: &[(String, Vec<T>)],
+        witness: &Option<Vec<(String, Vec<T>)>>,
+    ) -> Result<(), Vec<String>> {
+        if !self.arguments.export_witness_csv {
+            return Ok(());
+        }
+
+        if let Some(output_dir) = &self.output_dir {
+            let columns = fixed
+                .iter()
+                .chain(match witness.as_ref() {
+                    Some(witness) => witness.iter(),
+                    None => [].iter(),
+                })
+                .collect::<Vec<_>>();
+
+            let csv_path = Path::new(output_dir).join("columns.csv");
+            let mut csv_file = fs::File::create(csv_path).map_err(|e| vec![format!("{}", e)])?;
+            let mut csv_writer = BufWriter::new(&mut csv_file);
+
+            write_polys_csv_file(&mut csv_writer, self.arguments.csv_render_mode, &columns);
         }
         Ok(())
     }
