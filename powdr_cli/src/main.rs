@@ -173,6 +173,17 @@ enum Commands {
         #[arg(value_parser = clap_enum_variants!(BackendType))]
         prove_with: Option<BackendType>,
 
+        /// Generate a CSV file containing the fixed and witness column values. Useful for debugging purposes.
+        #[arg(long)]
+        #[arg(default_value_t = false)]
+        export_csv: bool,
+
+        /// How to render field elements in the csv file
+        #[arg(long)]
+        #[arg(default_value_t = CsvRenderModeCLI::Hex)]
+        #[arg(value_parser = clap_enum_variants!(CsvRenderModeCLI))]
+        csv_mode: CsvRenderModeCLI,
+
         /// Comma-separated list of coprocessors.
         #[arg(long)]
         coprocessors: Option<String>,
@@ -220,6 +231,17 @@ enum Commands {
         #[arg(short, long)]
         #[arg(value_parser = clap_enum_variants!(BackendType))]
         prove_with: Option<BackendType>,
+
+        /// Generate a CSV file containing the fixed and witness column values. Useful for debugging purposes.
+        #[arg(long)]
+        #[arg(default_value_t = false)]
+        export_csv: bool,
+
+        /// How to render field elements in the csv file
+        #[arg(long)]
+        #[arg(default_value_t = CsvRenderModeCLI::Hex)]
+        #[arg(value_parser = clap_enum_variants!(CsvRenderModeCLI))]
+        csv_mode: CsvRenderModeCLI,
 
         /// Comma-separated list of coprocessors.
         #[arg(long)]
@@ -364,6 +386,8 @@ fn run_command(command: Commands) {
             output_directory,
             force,
             prove_with,
+            export_csv,
+            csv_mode,
             coprocessors,
             just_execute,
             continuations,
@@ -380,6 +404,8 @@ fn run_command(command: Commands) {
                 Path::new(&output_directory),
                 force,
                 prove_with,
+                export_csv,
+                csv_mode,
                 coprocessors,
                 just_execute,
                 continuations
@@ -392,6 +418,8 @@ fn run_command(command: Commands) {
             output_directory,
             force,
             prove_with,
+            export_csv,
+            csv_mode,
             coprocessors,
             just_execute,
             continuations,
@@ -416,6 +444,8 @@ fn run_command(command: Commands) {
                 Path::new(&output_directory),
                 force,
                 prove_with,
+                export_csv,
+                csv_mode,
                 coprocessors,
                 just_execute,
                 continuations
@@ -511,6 +541,8 @@ fn run_rust<F: FieldElement>(
     output_dir: &Path,
     force_overwrite: bool,
     prove_with: Option<BackendType>,
+    export_csv: bool,
+    csv_mode: CsvRenderModeCLI,
     coprocessors: riscv::CoProcessors,
     just_execute: bool,
     continuations: bool,
@@ -536,9 +568,9 @@ fn run_rust<F: FieldElement>(
         inputs.clone(),
         output_dir.to_path_buf(),
         force_overwrite,
-        None,                  // witness_values,
-        false,                 // export_csv,
-        CsvRenderModeCLI::Hex, // csv_mode,
+        None,
+        export_csv,
+        csv_mode,
     );
     run(
         pipeline_factory,
@@ -558,6 +590,8 @@ fn run_riscv_asm<F: FieldElement>(
     output_dir: &Path,
     force_overwrite: bool,
     prove_with: Option<BackendType>,
+    export_csv: bool,
+    csv_mode: CsvRenderModeCLI,
     coprocessors: riscv::CoProcessors,
     just_execute: bool,
     continuations: bool,
@@ -584,9 +618,9 @@ fn run_riscv_asm<F: FieldElement>(
         inputs.clone(),
         output_dir.to_path_buf(),
         force_overwrite,
-        None,                  // witness_values,
-        false,                 // export_csv,
-        CsvRenderModeCLI::Hex, // csv_mode,
+        None,
+        export_csv,
+        csv_mode,
     );
     run(
         pipeline_factory,
