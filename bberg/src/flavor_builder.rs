@@ -157,7 +157,7 @@ fn create_permutations_tuple(permutations: &[Permutation]) -> String {
     permutations
         .iter()
         .map(|perm| 
-            format!("sumcheck::{}<FF>", perm.attribute.clone().unwrap()
+            format!("sumcheck::{}_relation<FF>", perm.attribute.clone().unwrap()
         ))
         .collect::<Vec<_>>()
         .join(", ")

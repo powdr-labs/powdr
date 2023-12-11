@@ -88,7 +88,7 @@ impl CircuitBuilder for BBFiles {
         };
         let check_permutation_transformation = |permutation_name: &String| {
             format!(
-                    "if (!evaluate_permutation.template operator()<honk::sumcheck::{permutation_name}<FF>>(\"{permutation_name}\")) {{
+                    "if (!evaluate_permutation.template operator()<honk::sumcheck::{permutation_name}_relation<FF>>(\"{permutation_name}\")) {{
                         return false;
                     }}",
                     permutation_name = permutation_name

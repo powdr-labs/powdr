@@ -71,9 +71,11 @@ fn create_permutations(bb_files: &BBFiles, project_name: &str, permutations: &Ve
 /// This function creates the export for the relation type so that it can be added to the flavor
 fn create_relation_exporter(permutation_name: &str) -> String {
     let settings_name = format!("{}_permutation_settings", permutation_name);
-    let relation_export = format!("template <typename FF_> using {permutation_name} = GenericPermutationRelation<{settings_name}, FF_>;");
+    let permutation_export = format!("template <typename FF_> using {permutation_name}_relation = GenericPermutationRelation<{settings_name}, FF_>;");
+    let relation_export = format!("template <typename FF_> using {permutation_name} = GenericPermutation<{settings_name}, FF_>;");
 
     format!("
+    {permutation_export} 
     {relation_export} 
     ")
 }
