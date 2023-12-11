@@ -165,7 +165,6 @@ fn test_many_chunks_dry() {
 
 #[test]
 #[ignore = "Too slow"]
-#[should_panic(expected = "Verified did not say 'PIL OK'.")]
 fn test_many_chunks() {
     // Compiles and runs the many_chunks.rs example with continuations, runs the full
     // witness generation & verifies it using Pilcom.
