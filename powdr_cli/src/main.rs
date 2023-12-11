@@ -352,7 +352,7 @@ fn main() -> Result<(), io::Error> {
 
 #[allow(clippy::print_stderr)]
 fn run_command(command: Commands) {
-    match command {
+    let result = match command {
         Commands::Rust {
             file,
             field,
@@ -370,7 +370,7 @@ fn run_command(command: Commands) {
                 }
                 None => riscv::CoProcessors::base(),
             };
-            if let Err(errors) = call_with_field!(run_rust::<field>(
+            call_with_field!(run_rust::<field>(
                 &file,
                 split_inputs(&inputs),
                 Path::new(&output_directory),
@@ -379,12 +379,7 @@ fn run_command(command: Commands) {
                 coprocessors,
                 just_execute,
                 continuations
-            )) {
-                eprintln!("Errors:");
-                for e in errors {
-                    eprintln!("{e}");
-                }
-            };
+            ))
         }
         Commands::RiscvAsm {
             files,
@@ -410,7 +405,7 @@ fn run_command(command: Commands) {
                 }
                 None => riscv::CoProcessors::base(),
             };
-            if let Err(errors) = call_with_field!(run_riscv_asm::<field>(
+            call_with_field!(run_riscv_asm::<field>(
                 &name,
                 files.into_iter(),
                 split_inputs(&inputs),
@@ -420,22 +415,19 @@ fn run_command(command: Commands) {
                 coprocessors,
                 just_execute,
                 continuations
-            )) {
-                eprintln!("Errors:");
-                for e in errors {
-                    eprintln!("{e}");
-                }
-            };
+            ))
         }
         Commands::Reformat { file } => {
             let contents = fs::read_to_string(&file).unwrap();
             match parser::parse::<GoldilocksField>(Some(&file), &contents) {
                 Ok(ast) => println!("{ast}"),
                 Err(err) => err.output_to_stderr(),
-            }
+            };
+            Ok(())
         }
         Commands::OptimizePIL { file, field } => {
-            call_with_field!(optimize_and_output::<field>(&file))
+            call_with_field!(optimize_and_output::<field>(&file));
+            Ok(())
         }
         Commands::Pil {
             file,
@@ -461,7 +453,7 @@ fn run_command(command: Commands) {
                 csv_mode,
                 just_execute,
                 continuations
-            ));
+            ))
         }
         Commands::Prove {
             file,
@@ -473,7 +465,7 @@ fn run_command(command: Commands) {
         } => {
             let pil = Path::new(&file);
             let dir = Path::new(&dir);
-            call_with_field!(read_and_prove::<field>(pil, dir, &backend, proof, params));
+            call_with_field!(read_and_prove::<field>(pil, dir, &backend, proof, params))
         }
         Commands::Setup {
             size,
@@ -482,8 +474,15 @@ fn run_command(command: Commands) {
             backend,
         } => {
             call_with_field!(setup::<field>(size, dir, backend));
+            Ok(())
         }
     };
+    if let Err(errors) = result {
+        for error in errors {
+            eprintln!("{}", error);
+        }
+        std::process::exit(1);
+    }
 }
 
 fn setup<F: FieldElement>(size: u64, dir: String, backend_type: BackendType) {
@@ -627,12 +626,11 @@ fn run_pil<F: FieldElement>(
     csv_mode: CsvRenderModeCLI,
     just_execute: bool,
     continuations: bool,
-) {
-    let pipeline_factory = || Pipeline::<F>::default().from_asm_file(PathBuf::from(&file));
+) -> Result<(), Vec<String>> {
     let inputs = split_inputs::<F>(&inputs);
 
     let pipeline_factory = make_pipeline_factory(
-        pipeline_factory,
+        || Pipeline::<F>::default().from_asm_file(PathBuf::from(&file)),
         inputs.clone(),
         PathBuf::from(output_directory),
         force,
@@ -640,18 +638,14 @@ fn run_pil<F: FieldElement>(
         export_csv,
         csv_mode,
     );
-    if let Err(errors) = run(
+    run(
         pipeline_factory,
         inputs,
         prove_with,
         just_execute,
         continuations,
-    ) {
-        eprintln!("Errors:");
-        for e in errors {
-            eprintln!("{e}");
-        }
-    };
+    )?;
+    Ok(())
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -670,7 +664,7 @@ fn run<F: FieldElement>(
 
     match (just_execute, continuations) {
         (true, true) => {
-            // Nothing to do
+            // Already ran when computing bootloader inputs, nothing else to do.
         }
         (true, false) => {
             let mut inputs_hash: HashMap<F, Vec<F>> = HashMap::default();
@@ -708,15 +702,15 @@ fn read_and_prove<T: FieldElement>(
     backend_type: &BackendType,
     proof_path: Option<String>,
     params: Option<String>,
-) {
+) -> Result<(), Vec<String>> {
     Pipeline::<T>::default()
         .from_file(file.to_path_buf())
         .read_generated_witness(dir)
         .with_setup_file(params.map(PathBuf::from))
         .with_existing_proof_file(proof_path.map(PathBuf::from))
         .with_backend(*backend_type)
-        .proof()
-        .unwrap();
+        .proof()?;
+    Ok(())
 }
 
 #[allow(clippy::print_stdout)]
