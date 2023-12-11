@@ -1,7 +1,7 @@
 use std::{
     fmt::Display,
     fs,
-    io::BufWriter,
+    io::{BufWriter, Write},
     path::{Path, PathBuf},
     time::Instant,
 };
@@ -21,12 +21,9 @@ use executor::{
 };
 use log::Level;
 use mktemp::Temp;
-use number::{write_polys_csv_file, CsvRenderMode, FieldElement};
+use number::{write_polys_csv_file, write_polys_file, CsvRenderMode, FieldElement};
 
-use crate::{
-    inputs_to_query_callback,
-    verify::{write_commits_to_fs, write_constants_to_fs, write_constraints_to_fs},
-};
+use crate::inputs_to_query_callback;
 
 pub struct GeneratedWitness<T: FieldElement> {
     pub pil: Analyzed<T>,
@@ -389,7 +386,8 @@ impl<T: FieldElement> Pipeline<T> {
                 let constants = constants
                     .into_iter()
                     .map(|(k, v)| (k.to_string(), v))
-                    .collect();
+                    .collect::<Vec<_>>();
+                self.maybe_write_constants(&constants)?;
                 self.log(&format!("Took {}", start.elapsed().as_secs_f32()));
                 Artifact::PilWithConstants(PilWithConstants { pil, constants })
             }
@@ -415,7 +413,8 @@ impl<T: FieldElement> Pipeline<T> {
                         .map(|(name, c)| (name.to_string(), c))
                         .collect::<Vec<_>>()
                 });
-                self.maybe_write_witness_csv(&constants, &witness)?;
+
+                self.maybe_write_witness(&constants, &witness)?;
                 Artifact::GeneratedWitness(GeneratedWitness {
                     pil,
                     constants,
@@ -444,22 +443,16 @@ impl<T: FieldElement> Pipeline<T> {
                     None,
                 );
 
-                if let Some(output_dir) = &self.output_dir {
-                    write_constants_to_fs(&constants, output_dir);
-                    if let Some(witness) = &witness {
-                        write_commits_to_fs(witness, output_dir);
-                    }
-                    if let Some(constraints_serialization) = &constraints_serialization {
-                        write_constraints_to_fs(constraints_serialization, output_dir);
-                    }
-                };
-
-                Artifact::Proof(ProofResult {
+                let proof_result = ProofResult {
                     constants,
                     witness,
                     proof,
                     constraints_serialization,
-                })
+                };
+
+                self.maybe_wite_proof(&proof_result)?;
+
+                Artifact::Proof(proof_result)
             }
             Artifact::Proof(_) => panic!("Last pipeline step!"),
         });
@@ -491,29 +484,71 @@ impl<T: FieldElement> Pipeline<T> {
         Ok(())
     }
 
-    fn maybe_write_witness_csv(
+    fn maybe_write_constants(&self, constants: &[(String, Vec<T>)]) -> Result<(), Vec<String>> {
+        if let Some(output_dir) = &self.output_dir {
+            let to_write = output_dir.join("constants.bin");
+            write_polys_file(
+                &mut BufWriter::new(&mut fs::File::create(&to_write).unwrap()),
+                constants,
+            );
+            log::info!("Wrote {}.", to_write.display());
+        }
+        Ok(())
+    }
+
+    fn maybe_write_witness(
         &self,
         fixed: &[(String, Vec<T>)],
         witness: &Option<Vec<(String, Vec<T>)>>,
     ) -> Result<(), Vec<String>> {
-        if !self.arguments.export_witness_csv {
-            return Ok(());
-        }
-
         if let Some(output_dir) = &self.output_dir {
-            let columns = fixed
-                .iter()
-                .chain(match witness.as_ref() {
-                    Some(witness) => witness.iter(),
-                    None => [].iter(),
-                })
-                .collect::<Vec<_>>();
+            if let Some(witness) = witness.as_ref() {
+                let to_write = output_dir.join("commits.bin");
+                write_polys_file(
+                    &mut BufWriter::new(&mut fs::File::create(&to_write).unwrap()),
+                    witness,
+                );
+                log::info!("Wrote {}.", to_write.display());
+            }
 
-            let csv_path = Path::new(output_dir).join("columns.csv");
-            let mut csv_file = fs::File::create(csv_path).map_err(|e| vec![format!("{}", e)])?;
-            let mut csv_writer = BufWriter::new(&mut csv_file);
+            if self.arguments.export_witness_csv {
+                let columns = fixed
+                    .iter()
+                    .chain(match witness.as_ref() {
+                        Some(witness) => witness.iter(),
+                        None => [].iter(),
+                    })
+                    .collect::<Vec<_>>();
 
-            write_polys_csv_file(&mut csv_writer, self.arguments.csv_render_mode, &columns);
+                let csv_path = Path::new(output_dir).join("columns.csv");
+                let mut csv_file =
+                    fs::File::create(&csv_path).map_err(|e| vec![format!("{}", e)])?;
+                let mut csv_writer = BufWriter::new(&mut csv_file);
+
+                write_polys_csv_file(&mut csv_writer, self.arguments.csv_render_mode, &columns);
+                log::info!("Wrote {}.", csv_path.display());
+            }
+        }
+        Ok(())
+    }
+
+    fn maybe_wite_proof(&self, proof_result: &ProofResult<T>) -> Result<(), Vec<String>> {
+        if let Some(output_dir) = &self.output_dir {
+            if let Some(constraints_serialization) = &proof_result.constraints_serialization {
+                let to_write = output_dir.join("constraints.json");
+                let mut file = fs::File::create(&to_write).unwrap();
+                file.write_all(constraints_serialization.as_bytes())
+                    .unwrap();
+                log::info!("Wrote {}.", to_write.display());
+            }
+            if let Some(proof) = &proof_result.proof {
+                // No need to bufferize the writing, because we write the whole
+                // proof in one call.
+                let to_write = output_dir.join("proof.bin");
+                let mut proof_file = fs::File::create(&to_write).unwrap();
+                proof_file.write_all(proof).unwrap();
+                log::info!("Wrote {}.", to_write.display());
+            }
         }
         Ok(())
     }
