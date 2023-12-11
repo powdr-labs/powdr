@@ -165,6 +165,7 @@ fn test_many_chunks_dry() {
 
 #[test]
 #[ignore = "Too slow"]
+#[should_panic(expected = "Verified did not say 'PIL OK'.")]
 fn test_many_chunks() {
     // Compiles and runs the many_chunks.rs example with continuations, runs the full
     // witness generation & verifies it using Pilcom.
@@ -185,7 +186,8 @@ fn test_many_chunks() {
         verify_pipeline(pipeline, vec![], vec![]);
         Ok(())
     };
-    rust_continuations(pipeline_factory, pipeline_callback, vec![]).unwrap();
+    let bootloader_inputs = rust_continuations_dry_run(pipeline_factory(), vec![]);
+    rust_continuations(pipeline_factory, pipeline_callback, bootloader_inputs).unwrap();
 }
 
 fn verify_file(case: &str, inputs: Vec<GoldilocksField>, coprocessors: &CoProcessors) {
