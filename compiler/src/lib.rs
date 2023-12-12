@@ -270,7 +270,7 @@ pub fn convert_analyzed_to_pil_with_callback<T: FieldElement, Q: QueryCallback<T
             query_callback,
             prove_with,
             external_witness_values,
-            bname
+            bname,
         )),
     ))
 }
@@ -291,7 +291,7 @@ pub fn compile_asm_string<T: FieldElement>(
     force_overwrite: bool,
     prove_with: Option<BackendType>,
     external_witness_values: Vec<(&str, Vec<T>)>,
-    bname: Option<String>
+    bname: Option<String>,
 ) -> Result<(PathBuf, Option<CompilationResult<T>>), Vec<String>> {
     let mut monitor = DiffMonitor::default();
     let analyzed = compile_asm_string_to_analyzed_ast(file_name, contents, Some(&mut monitor))?;
@@ -307,7 +307,7 @@ pub fn compile_asm_string<T: FieldElement>(
         force_overwrite,
         prove_with,
         external_witness_values,
-        bname
+        bname,
     )
 }
 
@@ -321,7 +321,7 @@ pub fn compile_asm_string_with_callback<T: FieldElement, Q: QueryCallback<T>>(
     force_overwrite: bool,
     prove_with: Option<BackendType>,
     external_witness_values: Vec<(&str, Vec<T>)>,
-    bname: Option<String>
+    bname: Option<String>,
 ) -> Result<(PathBuf, Option<CompilationResult<T>>), Vec<String>> {
     let mut monitor = DiffMonitor::default();
     let analyzed = compile_asm_string_to_analyzed_ast(file_name, contents, Some(&mut monitor))?;
@@ -337,7 +337,7 @@ pub fn compile_asm_string_with_callback<T: FieldElement, Q: QueryCallback<T>>(
         force_overwrite,
         prove_with,
         external_witness_values,
-        bname
+        bname,
     )
 }
 

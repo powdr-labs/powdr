@@ -319,9 +319,12 @@ impl<T: FieldElement> TypeChecker<T> {
                 .iter()
                 .filter_map(|s| match s {
                     ast::parsed::PilStatement::PolynomialIdentity(_, _) => None,
-                    ast::parsed::PilStatement::PermutationIdentity(_, //
-                         _, //
-                          l, _) //
+                    ast::parsed::PilStatement::PermutationIdentity(
+                        _, //
+                        _, //
+                        l,
+                        _,
+                    )
                     | ast::parsed::PilStatement::PlookupIdentity(_, l, _) => l
                         .selector
                         .is_some()

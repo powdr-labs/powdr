@@ -56,7 +56,6 @@ pub struct Attribute {
     pub name: Option<String>,
 }
 
-
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub struct SelectedExpressions<Expr> {
     pub selector: Option<Expr>,

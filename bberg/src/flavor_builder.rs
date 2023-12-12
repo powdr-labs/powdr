@@ -1,6 +1,7 @@
 use crate::{
     file_writer::BBFiles,
-    utils::{get_relations_imports, map_with_newline}, permutation_builder::{Permutation, get_inverses_from_permutations}, 
+    permutation_builder::{get_inverses_from_permutations, Permutation},
+    utils::{get_relations_imports, map_with_newline},
 };
 
 pub trait FlavorBuilder {
@@ -44,7 +45,8 @@ impl FlavorBuilder for BBFiles {
 
         // Top of file boilerplate
         let class_aliases = create_class_aliases();
-        let relation_definitions = create_relation_definitions(name, relation_file_names, permutations);
+        let relation_definitions =
+            create_relation_definitions(name, relation_file_names, permutations);
         let container_size_definitions =
             container_size_definitions(num_precomputed, num_witness, num_all);
 
@@ -152,13 +154,11 @@ fn create_relations_tuple(master_name: &str, relation_file_names: &[String]) -> 
 }
 
 /// Creates comma separated relations tuple file
-/// TODO(md): maybe need the filename in here too if we scope these 
+/// TODO(md): maybe need the filename in here too if we scope these
 fn create_permutations_tuple(permutations: &[Permutation]) -> String {
     permutations
         .iter()
-        .map(|perm| 
-            format!("sumcheck::{}_relation<FF>", perm.attribute.clone().unwrap()
-        ))
+        .map(|perm| format!("sumcheck::{}_relation<FF>", perm.attribute.clone().unwrap()))
         .collect::<Vec<_>>()
         .join(", ")
 }
@@ -190,12 +190,16 @@ fn create_class_aliases() -> &'static str {
 /// definitions.
 ///
 /// We then also define some constants, making use of the preprocessor.
-fn create_relation_definitions(name: &str, relation_file_names: &[String], permutations: &[Permutation]) -> String {
+fn create_relation_definitions(
+    name: &str,
+    relation_file_names: &[String],
+    permutations: &[Permutation],
+) -> String {
     // Relations tuple = ns::relation_name_0, ns::relation_name_1, ... ns::relation_name_n (comma speratated)
     let comma_sep_relations = create_relations_tuple(name, relation_file_names);
     let comma_sep_perms: String = create_permutations_tuple(permutations);
-    let mut all_relations = format!("{comma_sep_relations}"); 
-    if permutations.len() > 0 {
+    let mut all_relations = comma_sep_relations.to_string();
+    if !permutations.is_empty() {
         all_relations = all_relations + &format!(", {comma_sep_perms}");
     }
 
@@ -475,12 +479,11 @@ fn generate_transcript(witness: &[String]) -> String {
     let declaration_transform = |c: &_| format!("Commitment {c};");
     let deserialize_transform = |name: &_| {
         format!(
-                "{name} = deserialize_from_buffer<Commitment>(Transcript::proof_data, num_bytes_read);",
-    )
+            "{name} = deserialize_from_buffer<Commitment>(Transcript::proof_data, num_bytes_read);",
+        )
     };
-    let serialize_transform = |name: &_| {
-        format!("serialize_to_buffer<Commitment>({name}, Transcript::proof_data);")
-    };
+    let serialize_transform =
+        |name: &_| format!("serialize_to_buffer<Commitment>({name}, Transcript::proof_data);");
 
     // Perform Transformations
     let declarations = map_with_newline(witness, declaration_transform);
@@ -554,7 +557,6 @@ fn generate_transcript(witness: &[String]) -> String {
     }};
     ")
 }
-
 
 fn create_permuation_sumcheck_declaration(permutations: &[String], name: &str) -> String {
     let sumcheck_transformation = |perm: &String| {

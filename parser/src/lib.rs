@@ -113,9 +113,11 @@ mod test {
     #[test]
     fn parse_permutation_attribute() {
         let parsed = powdr::PILFileParser::new()
-            .parse::<GoldilocksField>("
+            .parse::<GoldilocksField>(
+                "
             #[attribute]
-            { f } is { g };")
+            { f } is { g };",
+            )
             .unwrap();
         assert_eq!(
             parsed,

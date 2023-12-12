@@ -217,16 +217,13 @@ where
                 self.process_selected_expressions(key),
                 self.process_selected_expressions(haystack),
             ),
-            PilStatement::PermutationIdentity(start,
-                attribute,  left, right) => {
-                    (
+            PilStatement::PermutationIdentity(start, attribute, left, right) => (
                 start,
                 IdentityKind::Permutation,
                 attribute.clone(),
                 self.process_selected_expressions(left),
                 self.process_selected_expressions(right),
-            )
-        },
+            ),
             PilStatement::ConnectIdentity(start, left, right) => (
                 start,
                 IdentityKind::Connect,

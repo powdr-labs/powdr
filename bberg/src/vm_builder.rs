@@ -1,4 +1,3 @@
-
 use ast::analyzed::Analyzed;
 
 use number::FieldElement;
@@ -7,9 +6,9 @@ use crate::circuit_builder::CircuitBuilder;
 use crate::composer_builder::ComposerBuilder;
 use crate::file_writer::BBFiles;
 use crate::flavor_builder::FlavorBuilder;
+use crate::permutation_builder::get_inverses_from_permutations;
 use crate::permutation_builder::Permutation;
 use crate::permutation_builder::PermutationBuilder;
-use crate::permutation_builder::get_inverses_from_permutations;
 use crate::prover_builder::ProverBuilder;
 use crate::relation_builder::RelationBuilder;
 use crate::relation_builder::RelationOutput;
@@ -38,7 +37,7 @@ struct ColumnGroups {
 }
 
 /// Analyzed to cpp
-/// 
+///
 /// Converts an analyzed pil AST into a set of cpp files that can be used to generate a proof
 pub(crate) fn analyzed_to_cpp<F: FieldElement>(
     analyzed: &Analyzed<F>,
@@ -56,8 +55,8 @@ pub(crate) fn analyzed_to_cpp<F: FieldElement>(
     // We collect all references to shifts as we traverse all identities and create relation files
     let RelationOutput {
         relations,
-        shifted_polys
-     } = bb_files.create_relations(file_name, &analyzed_identities);
+        shifted_polys,
+    } = bb_files.create_relations(file_name, &analyzed_identities);
 
     // ----------------------- Handle Lookup / Permutation Relation Identities -----------------------
     let permutations = bb_files.create_permutation_files(file_name, analyzed);
@@ -118,7 +117,6 @@ pub(crate) fn analyzed_to_cpp<F: FieldElement>(
     bb_files.create_prover_cpp(file_name, &unshifted, &to_be_shifted);
     bb_files.create_prover_hpp(file_name);
 }
-
 
 /// Get all col names
 ///

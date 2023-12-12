@@ -1,5 +1,8 @@
-use ast::{analyzed::{Analyzed, AlgebraicExpression, Identity, IdentityKind}, parsed::SelectedExpressions};
 use crate::file_writer::BBFiles;
+use ast::{
+    analyzed::{AlgebraicExpression, Analyzed, Identity, IdentityKind},
+    parsed::SelectedExpressions,
+};
 use itertools::Itertools;
 use number::FieldElement;
 
@@ -7,7 +10,7 @@ use crate::utils::sanitize_name;
 
 #[derive(Debug)]
 /// Permutation
-/// 
+///
 /// Contains the information required to produce a permutation relation
 pub struct Permutation {
     /// -> Attribute - the name given to the inverse helper column
@@ -15,68 +18,91 @@ pub struct Permutation {
     /// -> PermSide - the left side of the permutation
     pub left: PermutationSide,
     /// -> PermSide - the right side of the permutation
-    pub right: PermutationSide
+    pub right: PermutationSide,
 }
 
 #[derive(Debug)]
 /// PermSide
-/// 
+///
 /// One side of a two sided permutation relationship
 pub struct PermutationSide {
     /// -> Option<String> - the selector for the permutation ( on / off toggle )
     selector: Option<String>,
     /// The columns involved in this side of the permutation
-    cols: Vec<String>
+    cols: Vec<String>,
 }
 
 pub trait PermutationBuilder {
     /// Takes in an AST and works out what permutation relations are needed
     /// Note: returns the name of the inverse columns, such that they can be added to he prover in subsequent steps
-    fn  create_permutation_files<F: FieldElement>(&self, name: &str, analyzed: &Analyzed<F>)-> Vec<Permutation>;
+    fn create_permutation_files<F: FieldElement>(
+        &self,
+        name: &str,
+        analyzed: &Analyzed<F>,
+    ) -> Vec<Permutation>;
 }
 
 impl PermutationBuilder for BBFiles {
-    fn create_permutation_files<F: FieldElement>(&self, project_name: &str, analyzed: &Analyzed<F>) -> Vec<Permutation> {
-        let perms: Vec<&Identity<AlgebraicExpression<F>>> = analyzed.identities.iter().filter(|identity| matches!(identity.kind, IdentityKind::Permutation)).collect();
-        let new_perms = perms.iter().map(|perm| 
-            Permutation {
+    fn create_permutation_files<F: FieldElement>(
+        &self,
+        project_name: &str,
+        analyzed: &Analyzed<F>,
+    ) -> Vec<Permutation> {
+        let perms: Vec<&Identity<AlgebraicExpression<F>>> = analyzed
+            .identities
+            .iter()
+            .filter(|identity| matches!(identity.kind, IdentityKind::Permutation))
+            .collect();
+        let new_perms = perms
+            .iter()
+            .map(|perm| Permutation {
                 attribute: perm.attribute.clone(),
                 left: get_perm_side(&perm.left),
-                right: get_perm_side(&perm.right)
-            }).collect_vec();
+                right: get_perm_side(&perm.right),
+            })
+            .collect_vec();
 
-        create_permutations(self, project_name,&new_perms);
+        create_permutations(self, project_name, &new_perms);
         new_perms
     }
 }
 
 /// The attributes of a permutation contain the name of the inverse, we collect all of these to create the inverse column
 pub fn get_inverses_from_permutations(permutations: &[Permutation]) -> Vec<String> {
-    permutations.iter().map(|perm| perm.attribute.clone().unwrap()).collect()
+    permutations
+        .iter()
+        .map(|perm| perm.attribute.clone().unwrap())
+        .collect()
 }
 
 /// Write the permutation settings files to disk
 fn create_permutations(bb_files: &BBFiles, project_name: &str, permutations: &Vec<Permutation>) {
     for permutation in permutations {
         let perm_settings = create_permutation_settings_file(permutation);
-        
+
         let folder = format!("{}/{}", bb_files.rel, project_name);
-        let file_name = format!("{}{}", permutation.attribute.clone().unwrap_or("NONAME".to_owned()), ".hpp".to_owned());
+        let file_name = format!(
+            "{}{}",
+            permutation.attribute.clone().unwrap_or("NONAME".to_owned()),
+            ".hpp".to_owned()
+        );
         bb_files.write_file(&folder, &file_name, &perm_settings);
     }
 }
 
-/// All relation types eventually get wrapped in the relation type 
+/// All relation types eventually get wrapped in the relation type
 /// This function creates the export for the relation type so that it can be added to the flavor
 fn create_relation_exporter(permutation_name: &str) -> String {
     let settings_name = format!("{}_permutation_settings", permutation_name);
     let permutation_export = format!("template <typename FF_> using {permutation_name}_relation = GenericPermutationRelation<{settings_name}, FF_>;");
     let relation_export = format!("template <typename FF_> using {permutation_name} = GenericPermutation<{settings_name}, FF_>;");
 
-    format!("
+    format!(
+        "
     {permutation_export} 
     {relation_export} 
-    ")
+    "
+    )
 }
 
 fn permutation_settings_includes() -> &'static str {
@@ -91,13 +117,15 @@ fn permutation_settings_includes() -> &'static str {
 }
 
 fn create_permutation_settings_file(permutation: &Permutation) -> String {
-
     println!("Permutation: {:?}", permutation);
     let columns_per_set = permutation.left.cols.len();
     // TODO(md): Throw an error if no attribute is provided for the permutation
     // TODO(md): In the future we will need to condense off the back of this - combining those with the same inverse column
-    let permutation_name = permutation.attribute.clone().expect("Inverse column name must be provided"); // TODO(md): catch this earlier than here
-    
+    let permutation_name = permutation
+        .attribute
+        .clone()
+        .expect("Inverse column name must be provided"); // TODO(md): catch this earlier than here
+
     // NOTE: syntax is not flexible enough to enable the single row case right now :(:(:(:(:))))
     // This also will need to work for both sides of this !
     let selector = permutation.left.selector.clone().unwrap(); // TODO: deal with unwrap
@@ -114,12 +142,12 @@ fn create_permutation_settings_file(permutation: &Permutation) -> String {
         permutation_name.clone(),
         selector.clone(),
         selector.clone(),
-        selector.clone() // TODO: update this away from the simple example
-    ].to_vec();
+        selector.clone(), // TODO: update this away from the simple example
+    ]
+    .to_vec();
 
     perm_entities.extend(lhs_cols);
     perm_entities.extend(rhs_cols);
-
 
     let permutation_settings_includes = permutation_settings_includes();
     let inverse_computed_at = create_inverse_computed_at(selector);
@@ -188,10 +216,7 @@ fn create_permutation_settings_file(permutation: &Permutation) -> String {
     }}
         "
     )
-    
 }
-
-
 
 // TODO: make this dynamic such that there can be more than one
 fn create_inverse_computed_at(inverse_selector: String) -> String {
@@ -202,42 +227,54 @@ fn create_inverse_computed_at(inverse_selector: String) -> String {
     }}")
 }
 
-fn create_get_const_entities (settings: &[String]) -> String {
+fn create_get_const_entities(settings: &[String]) -> String {
     let forward = create_forward_as_tuple(settings);
-    format!("
+    format!(
+        "
     template <typename AllEntities> static inline auto get_const_entities(const AllEntities& in) {{
         {forward}
     }}
-    ")
+    "
+    )
 }
 
-fn create_get_nonconst_entities (settings: &[String]) -> String {
+fn create_get_nonconst_entities(settings: &[String]) -> String {
     let forward = create_forward_as_tuple(settings);
-    format!("
+    format!(
+        "
     template <typename AllEntities> static inline auto get_nonconst_entities(AllEntities& in) {{
         {forward}
     }}
-    ")
+    "
+    )
 }
-
 
 fn create_forward_as_tuple(settings: &[String]) -> String {
     let adjusted = settings.iter().map(|col| format!("in.{col}")).join(",\n");
-    format!("
+    format!(
+        "
         return std::forward_as_tuple(
             {}
         );
-    ", adjusted)
+    ",
+        adjusted
+    )
 }
 
-fn get_perm_side<F: FieldElement>(def: &SelectedExpressions<AlgebraicExpression<F>>) -> PermutationSide {
+fn get_perm_side<F: FieldElement>(
+    def: &SelectedExpressions<AlgebraicExpression<F>>,
+) -> PermutationSide {
     let get_name = |expr: &AlgebraicExpression<F>| match expr {
         AlgebraicExpression::Reference(a_ref) => sanitize_name(&a_ref.name),
-        _ => panic!("Expected reference")
+        _ => panic!("Expected reference"),
     };
 
     PermutationSide {
-        selector: def.selector.as_ref().map(|expr| get_name(&expr)),
-        cols: def.expressions.iter().map(|expr| get_name(&expr)).collect_vec()
+        selector: def.selector.as_ref().map(|expr| get_name(expr)),
+        cols: def
+            .expressions
+            .iter()
+            .map(|expr| get_name(expr))
+            .collect_vec(),
     }
 }
