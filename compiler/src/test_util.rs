@@ -16,7 +16,7 @@ pub fn resolve_test_file(file_name: &str) -> PathBuf {
 pub fn verify_test_file<T: FieldElement>(
     file_name: &str,
     inputs: Vec<T>,
-    external_witness_values: Vec<(&str, Vec<T>)>,
+    external_witness_values: Vec<(String, Vec<T>)>,
 ) {
     let pipeline = Pipeline::default().from_file(resolve_test_file(file_name));
     verify_pipeline(pipeline, inputs, external_witness_values)
@@ -26,7 +26,7 @@ pub fn verify_asm_string<T: FieldElement>(
     file_name: &str,
     contents: &str,
     inputs: Vec<T>,
-    external_witness_values: Vec<(&str, Vec<T>)>,
+    external_witness_values: Vec<(String, Vec<T>)>,
 ) {
     let pipeline =
         Pipeline::default().from_asm_string(contents.to_string(), Some(PathBuf::from(file_name)));
@@ -36,7 +36,7 @@ pub fn verify_asm_string<T: FieldElement>(
 pub fn verify_pipeline<T: FieldElement>(
     pipeline: Pipeline<T>,
     inputs: Vec<T>,
-    external_witness_values: Vec<(&str, Vec<T>)>,
+    external_witness_values: Vec<(String, Vec<T>)>,
 ) {
     let mut pipeline = pipeline
         .with_tmp_output()

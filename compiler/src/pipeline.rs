@@ -1,6 +1,7 @@
 use std::{
     fmt::Display,
     fs,
+    io::{BufWriter, Read, Write},
     path::{Path, PathBuf},
     time::Instant,
 };
@@ -20,11 +21,11 @@ use executor::{
 };
 use log::Level;
 use mktemp::Temp;
-use number::FieldElement;
+use number::{write_polys_csv_file, write_polys_file, CsvRenderMode, FieldElement};
 
 use crate::{
     inputs_to_query_callback,
-    verify::{write_commits_to_fs, write_constants_to_fs, write_constraints_to_fs},
+    util::{read_poly_set, FixedPolySet, WitnessPolySet},
 };
 
 pub struct GeneratedWitness<T: FieldElement> {
@@ -101,11 +102,23 @@ enum Artifact<T: FieldElement> {
     Proof(ProofResult<T>),
 }
 
+/// Optional Arguments for various stages of the pipeline.
 #[derive(Default)]
 struct Arguments<T: FieldElement> {
+    /// Externally computed witness values for witness generation.
     external_witness_values: Vec<(String, Vec<T>)>,
+    /// Callback for queries for witness generation.
     query_callback: Option<Box<dyn QueryCallback<T>>>,
+    /// Backend to use for proving. If None, proving will fail.
     backend: Option<BackendType>,
+    /// CSV render mode for witness generation.
+    csv_render_mode: CsvRenderMode,
+    /// Whether to export the witness as a CSV file.
+    export_witness_csv: bool,
+    /// The optional setup file to use for proving.
+    setup_file: Option<PathBuf>,
+    /// The optional existing proof file to use for aggregation.
+    existing_proof_file: Option<PathBuf>,
 }
 
 pub struct Pipeline<T: FieldElement> {
@@ -127,6 +140,7 @@ pub struct Pipeline<T: FieldElement> {
     // Note that there is some redundancy with `output_dir`, but the Temp
     // object has to live for the lifetime of the pipeline, so we keep it here.
     tmp_dir: Option<Temp>,
+    /// Optional arguments for various stages of the pipeline.
     arguments: Arguments<T>,
 }
 
@@ -180,7 +194,7 @@ where
 ///   .with_backend(BackendType::PilStarkCli);
 ///
 /// // Advance to some stage (which might have side effects)
-/// pipeline.advance_to(Stage::Proof).unwrap();
+/// pipeline.advance_to(Stage::OptimizedPil).unwrap();
 ///
 /// // Get the result
 /// let proof = pipeline.proof().unwrap();
@@ -204,47 +218,48 @@ impl<T: FieldElement> Pipeline<T> {
     }
 
     pub fn with_external_witness_values(
-        self,
-        external_witness_values: Vec<(&str, Vec<T>)>,
+        mut self,
+        external_witness_values: Vec<(String, Vec<T>)>,
     ) -> Self {
-        Pipeline {
-            arguments: Arguments {
-                external_witness_values: external_witness_values
-                    .into_iter()
-                    .map(|(name, values)| (name.to_string(), values))
-                    .collect(),
-                ..self.arguments
-            },
-            ..self
-        }
+        self.arguments.external_witness_values = external_witness_values;
+        self
+    }
+    pub fn with_witness_csv_settings(
+        mut self,
+        export_witness_csv: bool,
+        csv_render_mode: CsvRenderMode,
+    ) -> Self {
+        self.arguments.export_witness_csv = export_witness_csv;
+        self.arguments.csv_render_mode = csv_render_mode;
+        self
     }
 
-    pub fn add_query_callback(self, query_callback: Box<dyn QueryCallback<T>>) -> Self {
+    pub fn add_query_callback(mut self, query_callback: Box<dyn QueryCallback<T>>) -> Self {
         let query_callback = match self.arguments.query_callback {
             Some(old_callback) => Box::new(chain_callbacks(old_callback, query_callback)),
             None => query_callback,
         };
-        Pipeline {
-            arguments: Arguments {
-                query_callback: Some(query_callback),
-                ..self.arguments
-            },
-            ..self
-        }
+        self.arguments.query_callback = Some(query_callback);
+        self
     }
 
     pub fn with_prover_inputs(self, inputs: Vec<T>) -> Self {
         self.add_query_callback(Box::new(inputs_to_query_callback(inputs)))
     }
 
-    pub fn with_backend(self, backend: BackendType) -> Self {
-        Pipeline {
-            arguments: Arguments {
-                backend: Some(backend),
-                ..self.arguments
-            },
-            ..self
-        }
+    pub fn with_backend(mut self, backend: BackendType) -> Self {
+        self.arguments.backend = Some(backend);
+        self
+    }
+
+    pub fn with_setup_file(mut self, setup_file: Option<PathBuf>) -> Self {
+        self.arguments.setup_file = setup_file;
+        self
+    }
+
+    pub fn with_existing_proof_file(mut self, existing_proof_file: Option<PathBuf>) -> Self {
+        self.arguments.existing_proof_file = existing_proof_file;
+        self
     }
 
     pub fn from_file(self, asm_file: PathBuf) -> Self {
@@ -285,6 +300,30 @@ impl<T: FieldElement> Pipeline<T> {
     pub fn from_pil_string(self, pil_string: String) -> Self {
         Pipeline {
             artifact: Some(Artifact::PilString(pil_string)),
+            ..self
+        }
+    }
+
+    /// Reads a previously generated witness from the provided directory and
+    /// advances the pipeline to the `GeneratedWitness` stage.
+    pub fn read_generated_witness(mut self, directory: &Path) -> Self {
+        self.advance_to(Stage::OptimizedPil).unwrap();
+
+        let pil = match self.artifact.unwrap() {
+            Artifact::OptimzedPil(pil) => pil,
+            _ => panic!(),
+        };
+
+        let (fixed, degree_fixed) = read_poly_set::<FixedPolySet, T>(&pil, directory);
+        let (witness, degree_witness) = read_poly_set::<WitnessPolySet, T>(&pil, directory);
+        assert_eq!(degree_fixed, degree_witness);
+
+        Pipeline {
+            artifact: Some(Artifact::GeneratedWitness(GeneratedWitness {
+                pil,
+                constants: fixed,
+                witness: Some(witness),
+            })),
             ..self
         }
     }
@@ -372,7 +411,8 @@ impl<T: FieldElement> Pipeline<T> {
                 let constants = constants
                     .into_iter()
                     .map(|(k, v)| (k.to_string(), v))
-                    .collect();
+                    .collect::<Vec<_>>();
+                self.maybe_write_constants(&constants)?;
                 self.log(&format!("Took {}", start.elapsed().as_secs_f32()));
                 Artifact::PilWithConstants(PilWithConstants { pil, constants })
             }
@@ -398,6 +438,8 @@ impl<T: FieldElement> Pipeline<T> {
                         .map(|(name, c)| (name.to_string(), c))
                         .collect::<Vec<_>>()
                 });
+
+                self.maybe_write_witness(&constants, &witness)?;
                 Artifact::GeneratedWitness(GeneratedWitness {
                     pil,
                     constants,
@@ -412,10 +454,20 @@ impl<T: FieldElement> Pipeline<T> {
                 let backend = self
                     .arguments
                     .backend
-                    .take()
                     .expect("backend must be set before calling proving!");
                 let factory = backend.factory::<T>();
-                let backend = factory.create(pil.degree());
+                let backend = if let Some(path) = self.arguments.setup_file.as_ref() {
+                    let mut file = fs::File::open(path).unwrap();
+                    factory.create_from_setup(&mut file).unwrap()
+                } else {
+                    factory.create(pil.degree())
+                };
+
+                let existing_proof = self.arguments.existing_proof_file.as_ref().map(|path| {
+                    let mut buf = Vec::new();
+                    fs::File::open(path).unwrap().read_to_end(&mut buf).unwrap();
+                    buf
+                });
 
                 // Even if we don't have all constants and witnesses, some backends will
                 // still output the constraint serialization.
@@ -423,53 +475,123 @@ impl<T: FieldElement> Pipeline<T> {
                     &pil,
                     &constants,
                     witness.as_deref().unwrap_or_default(),
-                    None,
+                    existing_proof,
                 );
 
-                if let Some(output_dir) = &self.output_dir {
-                    write_constants_to_fs(&constants, output_dir);
-                    if let Some(witness) = &witness {
-                        write_commits_to_fs(witness, output_dir);
-                    }
-                    if let Some(constraints_serialization) = &constraints_serialization {
-                        write_constraints_to_fs(constraints_serialization, output_dir);
-                    }
-                };
-
-                Artifact::Proof(ProofResult {
+                let proof_result = ProofResult {
                     constants,
                     witness,
                     proof,
                     constraints_serialization,
-                })
+                };
+
+                self.maybe_wite_proof(&proof_result)?;
+
+                Artifact::Proof(proof_result)
             }
             Artifact::Proof(_) => panic!("Last pipeline step!"),
         });
         Ok(())
     }
 
+    /// Returns the path to the output file if the output directory is set.
+    /// Fails if the file already exists and `force_overwrite` is false.
+    fn path_if_should_write<F: FnOnce(&str) -> String>(
+        &self,
+        file_name_from_pipeline_name: F,
+    ) -> Result<Option<PathBuf>, Vec<String>> {
+        self.output_dir
+            .as_ref()
+            .map(|output_dir| {
+                let name = self
+                    .name
+                    .as_ref()
+                    .expect("name must be set if output_dir is set");
+                let path = output_dir.join(file_name_from_pipeline_name(name));
+                if path.exists() && !self.force_overwrite {
+                    Err(vec![format!(
+                        "{} already exists! Use --force to overwrite.",
+                        path.to_str().unwrap()
+                    )])?;
+                }
+                log::info!("Writing {}.", path.to_str().unwrap());
+                Ok(path)
+            })
+            .transpose()
+    }
+
     fn maybe_write_pil<C: Display>(&self, content: &C, suffix: &str) -> Result<(), Vec<String>> {
-        if let Some(output_dir) = &self.output_dir {
-            let name = self
-                .name
-                .as_ref()
-                .expect("name must be set if output_dir is set");
-            let output_file = output_dir.join(format!("{name}{suffix}.pil"));
-            if !output_file.exists() || self.force_overwrite {
-                fs::write(&output_file, format!("{content}")).map_err(|e| {
-                    vec![format!(
-                        "Error writing {}: {e}",
-                        output_file.to_str().unwrap()
-                    )]
-                })?;
-                self.log(&format!("Wrote {}.", output_file.to_str().unwrap()));
-            } else {
-                return Err(vec![format!(
-                    "{} already exists! Use --force to overwrite.",
-                    output_file.to_str().unwrap()
-                )]);
+        if let Some(path) = self.path_if_should_write(|name| format!("{name}{suffix}.pil"))? {
+            fs::write(&path, format!("{content}"))
+                .map_err(|e| vec![format!("Error writing {}: {e}", path.to_str().unwrap())])?;
+        }
+        Ok(())
+    }
+
+    fn maybe_write_constants(&self, constants: &[(String, Vec<T>)]) -> Result<(), Vec<String>> {
+        if let Some(path) = self.path_if_should_write(|_| "constants.bin".to_string())? {
+            write_polys_file(
+                &mut BufWriter::new(&mut fs::File::create(path).unwrap()),
+                constants,
+            );
+        }
+        Ok(())
+    }
+
+    fn maybe_write_witness(
+        &self,
+        fixed: &[(String, Vec<T>)],
+        witness: &Option<Vec<(String, Vec<T>)>>,
+    ) -> Result<(), Vec<String>> {
+        if let Some(witness) = witness.as_ref() {
+            if let Some(path) = self.path_if_should_write(|_| "commits.bin".to_string())? {
+                write_polys_file(
+                    &mut BufWriter::new(&mut fs::File::create(path).unwrap()),
+                    witness,
+                );
             }
         }
+
+        if self.arguments.export_witness_csv {
+            if let Some(path) = self.path_if_should_write(|_| "columns.csv".to_string())? {
+                let columns = fixed
+                    .iter()
+                    .chain(match witness.as_ref() {
+                        Some(witness) => witness.iter(),
+                        None => [].iter(),
+                    })
+                    .collect::<Vec<_>>();
+
+                let mut csv_file = fs::File::create(path).map_err(|e| vec![format!("{}", e)])?;
+                let mut csv_writer = BufWriter::new(&mut csv_file);
+
+                write_polys_csv_file(&mut csv_writer, self.arguments.csv_render_mode, &columns);
+            }
+        }
+
+        Ok(())
+    }
+
+    fn maybe_wite_proof(&self, proof_result: &ProofResult<T>) -> Result<(), Vec<String>> {
+        if let Some(constraints_serialization) = &proof_result.constraints_serialization {
+            if let Some(path) = self.path_if_should_write(|_| "constraints.json".to_string())? {
+                let mut file = fs::File::create(path).unwrap();
+                file.write_all(constraints_serialization.as_bytes())
+                    .unwrap();
+            }
+        }
+        if let Some(proof) = &proof_result.proof {
+            let fname = if self.arguments.existing_proof_file.is_some() {
+                "proof_aggr.bin"
+            } else {
+                "proof.bin"
+            };
+            if let Some(path) = self.path_if_should_write(|_| fname.to_string())? {
+                let mut proof_file = fs::File::create(path).unwrap();
+                proof_file.write_all(proof).unwrap();
+            }
+        }
+
         Ok(())
     }
 
@@ -498,6 +620,14 @@ impl<T: FieldElement> Pipeline<T> {
             self.advance()?;
         }
         Ok(())
+    }
+
+    pub fn asm_string(mut self) -> Result<String, Vec<String>> {
+        self.advance_to(Stage::AsmString)?;
+        match self.artifact.unwrap() {
+            Artifact::AsmString(_, asm_string) => Ok(asm_string),
+            _ => panic!(),
+        }
     }
 
     pub fn analyzed_asm(mut self) -> Result<AnalysisASMFile<T>, Vec<String>> {

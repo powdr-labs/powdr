@@ -49,15 +49,12 @@ fn transposed_trace<F: FieldElement>(trace: &ExecutionTrace) -> HashMap<String, 
 pub fn rust_continuations<F: FieldElement, PipelineFactory, PipelineCallback, E>(
     pipeline_factory: PipelineFactory,
     pipeline_callback: PipelineCallback,
-    inputs: Vec<F>,
+    bootloader_inputs: Vec<Vec<F>>,
 ) -> Result<(), E>
 where
     PipelineFactory: Fn() -> Pipeline<F>,
     PipelineCallback: Fn(Pipeline<F>) -> Result<(), E>,
 {
-    log::info!("Dry running execution to collect bootloader inputs...");
-    let pipeline = pipeline_factory();
-    let bootloader_inputs = rust_continuations_dry_run(pipeline, inputs.clone());
     let num_chunks = bootloader_inputs.len();
 
     bootloader_inputs
@@ -65,6 +62,9 @@ where
         .enumerate()
         .map(|(i, bootloader_inputs)| -> Result<(), E> {
             log::info!("Running chunk {} / {}...", i + 1, num_chunks);
+            // TODO(#840): If Pipeline implemented Clone, we could advance it once to
+            // the OptimizedPil stage and clone it here instead of creating and
+            // running a fresh pipeline for each chunk.
             let pipeline = pipeline_factory();
             let pipeline = add_bootloader_inputs(pipeline, bootloader_inputs);
             pipeline_callback(pipeline)?;

@@ -186,7 +186,8 @@ fn test_many_chunks() {
         verify_pipeline(pipeline, vec![], vec![]);
         Ok(())
     };
-    rust_continuations(pipeline_factory, pipeline_callback, vec![]).unwrap();
+    let bootloader_inputs = rust_continuations_dry_run(pipeline_factory(), vec![]);
+    rust_continuations(pipeline_factory, pipeline_callback, bootloader_inputs).unwrap();
 }
 
 fn verify_file(case: &str, inputs: Vec<GoldilocksField>, coprocessors: &CoProcessors) {
