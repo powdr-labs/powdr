@@ -19,7 +19,6 @@ use executor::{
     witgen::{chain_callbacks, QueryCallback},
 };
 use log::Level;
-use mktemp::Temp;
 use number::FieldElement;
 
 use crate::{
@@ -27,17 +26,20 @@ use crate::{
     verify::{write_commits_to_fs, write_constants_to_fs, write_constraints_to_fs},
 };
 
+#[derive(Clone)]
 pub struct GeneratedWitness<T: FieldElement> {
     pub pil: Analyzed<T>,
     pub constants: Vec<(String, Vec<T>)>,
     pub witness: Option<Vec<(String, Vec<T>)>>,
 }
 
+#[derive(Clone)]
 pub struct PilWithConstants<T: FieldElement> {
     pub pil: Analyzed<T>,
     pub constants: Vec<(String, Vec<T>)>,
 }
 
+#[derive(Clone)]
 pub struct ProofResult<T: FieldElement> {
     /// Constant columns, potentially incomplete (if success is false)
     pub constants: Vec<(String, Vec<T>)>,
@@ -68,6 +70,7 @@ pub enum Stage {
     Proof,
 }
 
+#[derive(Clone)]
 enum Artifact<T: FieldElement> {
     /// The path to the .asm file.
     AsmFile(PathBuf),
@@ -108,6 +111,21 @@ struct Arguments<T: FieldElement> {
     backend: Option<BackendType>,
 }
 
+impl<T: FieldElement> Clone for Arguments<T> {
+    fn clone(&self) -> Self {
+        assert!(
+            self.query_callback.is_none(),
+            "query_callback is not clonable"
+        );
+        Arguments {
+            external_witness_values: self.external_witness_values.clone(),
+            query_callback: None,
+            backend: self.backend,
+        }
+    }
+}
+
+#[derive(Clone)]
 pub struct Pipeline<T: FieldElement> {
     /// The current artifact. It is never None in practice, making it an Option is
     /// only necessary so that we can take ownership of it in advance().
@@ -123,10 +141,6 @@ pub struct Pipeline<T: FieldElement> {
     force_overwrite: bool,
     /// The log level to use for this pipeline.
     log_level: Level,
-    // The output directory if `Pipeline::with_tmp_output` was called.
-    // Note that there is some redundancy with `output_dir`, but the Temp
-    // object has to live for the lifetime of the pipeline, so we keep it here.
-    tmp_dir: Option<Temp>,
     arguments: Arguments<T>,
 }
 
@@ -142,7 +156,6 @@ where
             log_level: Level::Debug,
             name: None,
             force_overwrite: false,
-            tmp_dir: None,
             arguments: Arguments::default(),
         }
     }
@@ -186,15 +199,6 @@ where
 /// let proof = pipeline.proof().unwrap();
 /// ```
 impl<T: FieldElement> Pipeline<T> {
-    pub fn with_tmp_output(self) -> Self {
-        let tmp_dir = mktemp::Temp::new_dir().unwrap();
-        Pipeline {
-            output_dir: Some(tmp_dir.to_path_buf()),
-            tmp_dir: Some(tmp_dir),
-            ..self
-        }
-    }
-
     pub fn with_output(self, output_dir: PathBuf, force_overwrite: bool) -> Self {
         Pipeline {
             output_dir: Some(output_dir),
@@ -546,9 +550,5 @@ impl<T: FieldElement> Pipeline<T> {
             panic!()
         };
         Ok(proof)
-    }
-
-    pub fn tmp_dir(&self) -> &Path {
-        self.tmp_dir.as_ref().unwrap()
     }
 }

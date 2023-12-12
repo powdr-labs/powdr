@@ -22,13 +22,14 @@ impl Location {
     }
 }
 
+#[derive(Clone)]
 pub struct PILGraph<T> {
     pub main: Machine,
     pub entry_points: Vec<Operation<T>>,
     pub objects: BTreeMap<Location, Object<T>>,
 }
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct Object<T> {
     pub degree: Option<u64>,
     /// the pil identities for this machine

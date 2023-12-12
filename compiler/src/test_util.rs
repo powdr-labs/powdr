@@ -1,4 +1,5 @@
 use backend::BackendType;
+use mktemp::Temp;
 use number::FieldElement;
 use number::{Bn254Field, GoldilocksField};
 use std::path::PathBuf;
@@ -38,8 +39,9 @@ pub fn verify_pipeline<T: FieldElement>(
     inputs: Vec<T>,
     external_witness_values: Vec<(&str, Vec<T>)>,
 ) {
+    let tmp_dir = Temp::new_dir().unwrap();
     let mut pipeline = pipeline
-        .with_tmp_output()
+        .with_output(tmp_dir.to_path_buf(), false)
         .with_external_witness_values(external_witness_values)
         .with_prover_inputs(inputs)
         .with_backend(BackendType::PilStarkCli);
@@ -48,13 +50,14 @@ pub fn verify_pipeline<T: FieldElement>(
     // which owns the temporary directory.
     pipeline.advance_to(Stage::Proof).unwrap();
 
-    verify(pipeline.tmp_dir());
+    verify(&tmp_dir);
 }
 
 pub fn gen_estark_proof(file_name: &str, inputs: Vec<GoldilocksField>) {
     let file_name = format!("{}/../test_data/{file_name}", env!("CARGO_MANIFEST_DIR"));
+    let tmp_dir = Temp::new_dir().unwrap();
     Pipeline::default()
-        .with_tmp_output()
+        .with_output(tmp_dir.to_path_buf(), false)
         .from_file(PathBuf::from(file_name))
         .with_prover_inputs(inputs)
         .with_backend(backend::BackendType::EStark)
@@ -65,8 +68,9 @@ pub fn gen_estark_proof(file_name: &str, inputs: Vec<GoldilocksField>) {
 #[cfg(feature = "halo2")]
 pub fn gen_halo2_proof(file_name: &str, inputs: Vec<Bn254Field>) {
     let file_name = format!("{}/../test_data/{file_name}", env!("CARGO_MANIFEST_DIR"));
+    let tmp_dir = Temp::new_dir().unwrap();
     Pipeline::default()
-        .with_tmp_output()
+        .with_output(tmp_dir.to_path_buf(), false)
         .from_file(PathBuf::from(file_name))
         .with_prover_inputs(inputs)
         .with_backend(backend::BackendType::Halo2)
