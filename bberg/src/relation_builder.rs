@@ -1,34 +1,113 @@
 use ast::analyzed::Identity;
+use ast::analyzed::AlgebraicExpression;
 use ast::analyzed::{
     AlgebraicBinaryOperator, AlgebraicExpression as Expression, AlgebraicUnaryOperator,
     IdentityKind,
 };
 use ast::parsed::SelectedExpressions;
+use itertools::Itertools;
+use std::collections::HashMap;
 use std::collections::HashSet;
 
 use number::{DegreeType, FieldElement};
 
 use crate::file_writer::BBFiles;
+use crate::utils::capitalize;
 use crate::utils::map_with_newline;
 
+/// Returned back to the vm builder from the create_relations call
+pub struct RelationOutput {
+    /// A list of the names of the created relations
+    pub relations: Vec<String>,
+    /// A list of the names of all of the 'used' shifted polys
+    pub shifted_polys: Vec<String>,
+}
+
+/// Each created bb Identity is passed around with its degree so as needs to be manually
+/// provided for sumcheck
+type BBIdentity = (DegreeType, String);
+
 pub trait RelationBuilder {
-    fn create_relations(
+    /// Create Relations 
+    /// 
+    /// Takes in the ast ( for relations ), groups each of them by file, and then 
+    /// calls 'create relation' for each
+    /// 
+    /// Relation output is passed back to the caller as the prover requires both:
+    /// - The shifted polys
+    /// - The names of the relations files created
+    fn create_relations<F: FieldElement>(
+        &self,
+        root_name: &str,
+        identities: &[Identity<AlgebraicExpression<F>>],
+    ) -> RelationOutput;
+    
+    /// Create Relation
+    /// 
+    /// Name and root name are required to determine the file path, e.g. it will be in the bberg/relations/generated
+    /// followed by /root_name/name
+    /// - root name should be the name provided with the --name flag
+    /// - name will be a pil namespace
+    /// 
+    /// - Identities are the identities that will be used to create the relations, they are generated within create_relations
+    /// - row_type contains all of the columns that the relations namespace touches.
+    fn create_relation(
         &self,
         root_name: &str,
         name: &str,
         sub_relations: &[String],
         identities: &[BBIdentity],
-        row_type: &str,
-    );
+        row_type: &str);
 
+    /// Declare views
+    /// 
+    /// Declare views is a macro that generates a reference for each of the columns 
+    /// This reference will be a span into a sumcheck related object, it must be declared for EACH sub-relation
+    /// as the sumcheck object is sensitive to the degree of the relation.
     fn create_declare_views(&self, name: &str, all_cols_and_shifts: &[String]);
 }
 
-// TODO: MOve -> to gen code we need to know the degree of each poly
-type BBIdentity = (DegreeType, String);
-
 impl RelationBuilder for BBFiles {
-    fn create_relations(
+
+fn create_relations<F: FieldElement>(&self,  file_name: &str, analyzed_identities: &[Identity<AlgebraicExpression<F>>]) -> RelationOutput {
+    // Group relations per file
+    let grouped_relations: HashMap<String, Vec<Identity<AlgebraicExpression<F>>>> = group_relations_per_file(&analyzed_identities);
+    let relations = grouped_relations.keys().cloned().collect_vec();
+
+    // Contains all of the rows in each relation, will be useful for creating composite builder types
+    let mut all_rows: HashMap<String, String> = HashMap::new();
+    let mut shifted_polys: Vec<String> = Vec::new();
+
+    // ----------------------- Create the relation files -----------------------
+    for (relation_name, analyzed_idents) in grouped_relations.iter() {
+        let (subrelations, identities, collected_polys, collected_shifts) =
+            create_identities(file_name,analyzed_idents);
+
+        shifted_polys.extend(collected_shifts);
+
+        // let all_cols_with_shifts = combine_cols(collected_polys, collected_shifts);
+        // TODO: This can probably be moved into the create_identities function
+        let row_type = create_row_type(&capitalize(relation_name), &collected_polys);
+
+        all_rows.insert(relation_name.to_owned(), row_type.clone());
+
+        self.create_relation(
+            file_name,
+            relation_name,
+            &subrelations,
+            &identities,
+            &row_type,
+        );
+    }
+
+    RelationOutput {
+        relations,
+        shifted_polys
+    }
+
+}
+
+    fn create_relation(
         &self,
         root_name: &str,
         name: &str,
@@ -83,6 +162,36 @@ namespace proof_system::{root_name}_vm {{
         );
     }
 }
+
+/// Group relations per file
+///
+/// The compiler returns all relations in one large vector, however we want to distinguish
+/// which files .pil files the relations belong to for later code gen
+///
+/// Say we have two files foo.pil and bar.pil
+/// foo.pil contains the following relations:
+///    - foo1
+///    - foo2
+/// bar.pil contains the following relations:
+///    - bar1
+///    - bar2
+///
+/// This function will return a hashmap with the following structure:
+/// {
+///  "foo": [foo1, foo2],
+///  "bar": [bar1, bar2]
+/// }
+///
+/// This allows us to generate a relation.hpp file containing ONLY the relations for that .pil file
+fn group_relations_per_file<F: FieldElement>(
+    identities: &[Identity<AlgebraicExpression<F>>],
+) -> HashMap<String, Vec<Identity<AlgebraicExpression<F>>>> {
+    identities
+        .iter()
+        .cloned()
+        .into_group_map_by(|identity| identity.source.file.clone().replace(".pil", ""))
+}
+
 
 fn relation_class_boilerplate(
     name: &str,

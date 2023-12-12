@@ -60,7 +60,6 @@ fn create_permutations(bb_files: &BBFiles, project_name: &str, permutations: &Ve
     for permutation in permutations {
         let perm_settings = create_permutation_settings_file(permutation);
         
-        // TODO: temp this is not going to be the final configuration, maybe we use the trait construction again to have access to bb
         let folder = format!("{}/{}", bb_files.rel, project_name);
         let file_name = format!("{}{}", permutation.attribute.clone().unwrap_or("NONAME".to_owned()), ".hpp".to_owned());
         bb_files.write_file(&folder, &file_name, &perm_settings);
@@ -122,7 +121,6 @@ fn create_permutation_settings_file(permutation: &Permutation) -> String {
     perm_entities.extend(rhs_cols);
 
 
-    // TODO: below here should really be in a new function as we have just got the settings extracted from the parsed type
     let permutation_settings_includes = permutation_settings_includes();
     let inverse_computed_at = create_inverse_computed_at(selector);
     let const_entities = create_get_const_entities(&perm_entities);

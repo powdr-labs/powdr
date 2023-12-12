@@ -138,7 +138,7 @@ dependencies = [
 [[package]]
 name = "algebraic"
 version = "0.0.1"
-source = "git+https://github.com/0xEigenLabs/eigen-zkvm.git?branch=main#4b9d8d840f70995c0fe75ee5aed63ce3e171ae10"
+source = "git+https://github.com/0xEigenLabs/eigen-zkvm.git?rev=4ed1da7#4ed1da7766f7aa8740f355d8c1f3d213411ccf4b"
 dependencies = [
  "byteorder",
  "ff_ce 0.11.0",
@@ -3462,7 +3462,6 @@ dependencies = [
 name = "pil_analyzer"
 version = "0.1.0"
 dependencies = [
- "analysis 0.1.0",
  "ast 0.1.0",
  "env_logger",
  "itertools 0.10.5",
@@ -3522,7 +3521,7 @@ dependencies = [
 [[package]]
 name = "plonky"
 version = "0.0.2"
-source = "git+https://github.com/0xEigenLabs/eigen-zkvm.git?branch=main#4b9d8d840f70995c0fe75ee5aed63ce3e171ae10"
+source = "git+https://github.com/0xEigenLabs/eigen-zkvm.git?rev=4ed1da7#4ed1da7766f7aa8740f355d8c1f3d213411ccf4b"
 dependencies = [
  "algebraic",
  "bellman_vk_codegen",
@@ -3635,6 +3634,7 @@ dependencies = [
  "parser 0.1.0",
  "pilopt",
  "riscv",
+ "riscv_executor",
  "strum",
  "tempfile",
 ]
@@ -4271,8 +4271,22 @@ dependencies = [
  "number 0.1.0",
  "parser_util 0.1.0",
  "regex-syntax 0.6.29",
+ "riscv_executor",
  "serde_json",
  "test-log",
+]
+
+[[package]]
+name = "riscv_executor"
+version = "0.1.0"
+dependencies = [
+ "analysis 0.1.0",
+ "ast 0.1.0",
+ "importer",
+ "itertools 0.11.0",
+ "log",
+ "number 0.1.0",
+ "parser 0.1.0",
 ]
 
 [[package]]
@@ -4699,7 +4713,7 @@ checksum = "a8f112729512f8e442d81f95a8a7ddf2b7c6b8a1a6f509a95864142b30cab2d3"
 [[package]]
 name = "starky"
 version = "0.0.1"
-source = "git+https://github.com/0xEigenLabs/eigen-zkvm.git?branch=main#4b9d8d840f70995c0fe75ee5aed63ce3e171ae10"
+source = "git+https://github.com/0xEigenLabs/eigen-zkvm.git?rev=4ed1da7#4ed1da7766f7aa8740f355d8c1f3d213411ccf4b"
 dependencies = [
  "algebraic",
  "array_tool",

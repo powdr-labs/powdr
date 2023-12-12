@@ -1,10 +1,6 @@
-use std::collections::HashMap;
 
-use ast::analyzed::AlgebraicExpression;
 use ast::analyzed::Analyzed;
-use ast::analyzed::Identity;
 
-use itertools::Itertools;
 use number::FieldElement;
 
 use crate::circuit_builder::CircuitBuilder;
@@ -15,8 +11,8 @@ use crate::permutation_builder::Permutation;
 use crate::permutation_builder::PermutationBuilder;
 use crate::permutation_builder::get_inverses_from_permutations;
 use crate::prover_builder::ProverBuilder;
-use crate::relation_builder::{create_identities, create_row_type, RelationBuilder};
-use crate::utils::capitalize;
+use crate::relation_builder::RelationBuilder;
+use crate::relation_builder::RelationOutput;
 use crate::utils::collect_col;
 use crate::utils::flatten;
 use crate::utils::sanitize_name;
@@ -61,7 +57,7 @@ pub(crate) fn analyzed_to_cpp<F: FieldElement>(
     let RelationOutput {
         relations,
         shifted_polys
-     } = create_relation_files(&bb_files, file_name, &analyzed_identities);
+     } = bb_files.create_relations(file_name, &analyzed_identities);
 
     // ----------------------- Handle Lookup / Permutation Relation Identities -----------------------
     let permutations = bb_files.create_permutation_files(file_name, analyzed);
@@ -124,85 +120,6 @@ pub(crate) fn analyzed_to_cpp<F: FieldElement>(
 }
 
 
-struct RelationOutput {
-    relations: Vec<String>,
-    shifted_polys: Vec<String>,
-}
-
-/// TODO: MOVE THIS OUT OF THIS FILE????
-/// Does this need to return all of the shifted polys that it collects>
-/// TODO: restructure this so that we do not have to pass in bb files abd the name at the top level
-fn create_relation_files<F: FieldElement>(bb_files: &BBFiles, file_name: &str, analyzed_identities: &Vec<Identity<AlgebraicExpression<F>>>) -> RelationOutput {
-    // Group relations per file
-    let grouped_relations: HashMap<String, Vec<Identity<AlgebraicExpression<F>>>> = group_relations_per_file(&analyzed_identities);
-    let relations = grouped_relations.keys().cloned().collect_vec();
-
-    // Contains all of the rows in each relation, will be useful for creating composite builder types
-    // TODO: this will change up
-    let mut all_rows: HashMap<String, String> = HashMap::new();
-    let mut shifted_polys: Vec<String> = Vec::new();
-
-    // ----------------------- Create the relation files -----------------------
-    for (relation_name, analyzed_idents) in grouped_relations.iter() {
-        // TODO: make this more granular instead of doing everything at once
-        let (subrelations, identities, collected_polys, collected_shifts) =
-            create_identities(file_name,analyzed_idents);
-
-        shifted_polys.extend(collected_shifts);
-
-        // let all_cols_with_shifts = combine_cols(collected_polys, collected_shifts);
-        // TODO: This can probably be moved into the create_identities function
-        let row_type = create_row_type(&capitalize(relation_name), &collected_polys);
-
-        all_rows.insert(relation_name.clone(), row_type.clone());
-
-        bb_files.create_relations(
-            file_name,
-            relation_name,
-            &subrelations,
-            &identities,
-            &row_type,
-        );
-    }
-
-    RelationOutput {
-        relations,
-        shifted_polys
-    }
-
-}
-
-
-
-/// Group relations per file
-///
-/// The compiler returns all relations in one large vector, however we want to distinguish
-/// which files .pil files the relations belong to for later code gen
-///
-/// Say we have two files foo.pil and bar.pil
-/// foo.pil contains the following relations:
-///    - foo1
-///    - foo2
-/// bar.pil contains the following relations:
-///    - bar1
-///    - bar2
-///
-/// This function will return a hashmap with the following structure:
-/// {
-///  "foo": [foo1, foo2],
-///  "bar": [bar1, bar2]
-/// }
-///
-/// This allows us to generate a relation.hpp file containing ONLY the relations for that .pil file
-fn group_relations_per_file<F: FieldElement>(
-    identities: &[Identity<AlgebraicExpression<F>>],
-) -> HashMap<String, Vec<Identity<AlgebraicExpression<F>>>> {
-    identities
-        .iter()
-        .cloned()
-        .into_group_map_by(|identity| identity.source.file.clone().replace(".pil", ""))
-}
-
 /// Get all col names
 ///
 /// In the flavor file, there are a number of different groups of columns that we need to keep track of
@@ -241,7 +158,6 @@ fn get_all_col_names<F: FieldElement>(
     let all_cols_with_shifts: Vec<String> =
         flatten(&[fixed_names.clone(), witness_names.clone(), shifted.clone()]);
 
-    // TODO: remove dup
     ColumnGroups {
         fixed: fixed_names,
         witness: witness_names,
