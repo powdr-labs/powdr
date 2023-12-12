@@ -62,6 +62,9 @@ where
         .enumerate()
         .map(|(i, bootloader_inputs)| -> Result<(), E> {
             log::info!("Running chunk {} / {}...", i + 1, num_chunks);
+            // TODO(#840): If Pipeline implemented Clone, we could advance it once to
+            // the OptimizedPil stage and clone it here instead of creating and
+            // running a fresh pipeline for each chunk.
             let pipeline = pipeline_factory();
             let pipeline = add_bootloader_inputs(pipeline, bootloader_inputs);
             pipeline_callback(pipeline)?;

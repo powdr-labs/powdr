@@ -18,6 +18,8 @@ use std::path::PathBuf;
 use std::{borrow::Cow, fs, io::Write, path::Path};
 use strum::{Display, EnumString, EnumVariantNames};
 
+/// Transforms a pipeline factory into a pipeline factory that binds CLI arguments like
+/// the output directory and the CSV export settings to the pipeline.
 #[allow(clippy::too_many_arguments)]
 fn bind_cli_args<F: FieldElement>(
     pipeline_factory: impl Fn() -> Pipeline<F>,
@@ -43,6 +45,9 @@ fn bind_cli_args<F: FieldElement>(
     };
 
     move || {
+        // Note that we can't just take an existing pipeline here instead of
+        // a factory, as Pipeline doesn't currently implement Clone, so we need to
+        // create a new one each time.
         pipeline_factory()
             .with_output(output_dir.clone(), force_overwrite)
             .with_external_witness_values(witness_values.clone())
@@ -648,7 +653,7 @@ fn run_pil<F: FieldElement>(
     let inputs = split_inputs::<F>(&inputs);
 
     let pipeline_factory = bind_cli_args(
-        || Pipeline::<F>::default().from_asm_file(PathBuf::from(&file)),
+        || Pipeline::<F>::default().from_file(PathBuf::from(&file)),
         inputs.clone(),
         PathBuf::from(output_directory),
         force,
@@ -666,7 +671,6 @@ fn run_pil<F: FieldElement>(
     Ok(())
 }
 
-#[allow(clippy::too_many_arguments)]
 fn run<F: FieldElement>(
     pipeline_factory: impl Fn() -> Pipeline<F>,
     inputs: Vec<F>,
@@ -678,6 +682,12 @@ fn run<F: FieldElement>(
         rust_continuations_dry_run(pipeline_factory(), inputs.clone())
     } else {
         vec![]
+    };
+
+    let generate_witness_and_prove_maybe = |mut pipeline: Pipeline<F>| -> Result<(), Vec<String>> {
+        pipeline.advance_to(Stage::GeneratedWitness)?;
+        prove_with.map(|backend| pipeline.with_backend(backend).proof().unwrap());
+        Ok(())
     };
 
     match (just_execute, continuations) {
@@ -695,20 +705,14 @@ fn run<F: FieldElement>(
             );
         }
         (false, true) => {
-            let pipeline_callback = |mut pipeline: Pipeline<F>| -> Result<(), Vec<String>> {
-                pipeline.advance_to(Stage::GeneratedWitness)?;
-                if let Some(backend) = prove_with {
-                    pipeline.with_backend(backend).proof()?;
-                }
-                Ok(())
-            };
-
-            rust_continuations(pipeline_factory, pipeline_callback, bootloader_inputs)?;
+            rust_continuations(
+                pipeline_factory,
+                generate_witness_and_prove_maybe,
+                bootloader_inputs,
+            )?;
         }
         (false, false) => {
-            let mut pipeline = pipeline_factory();
-            pipeline.advance_to(Stage::GeneratedWitness).unwrap();
-            prove_with.map(|backend| pipeline.with_backend(backend).proof().unwrap());
+            generate_witness_and_prove_maybe(pipeline_factory())?;
         }
     }
     Ok(())
