@@ -48,7 +48,7 @@ pub fn verify_pipeline<T: FieldElement>(
     // which owns the temporary directory.
     pipeline.advance_to(Stage::Proof).unwrap();
 
-    verify(pipeline.tmp_dir());
+    verify(pipeline.tmp_dir(), pipeline.name());
 }
 
 pub fn gen_estark_proof(file_name: &str, inputs: Vec<GoldilocksField>) {

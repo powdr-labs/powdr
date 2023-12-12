@@ -66,6 +66,8 @@ where
             // the OptimizedPil stage and clone it here instead of creating and
             // running a fresh pipeline for each chunk.
             let pipeline = pipeline_factory();
+            let name = format!("{}_chunk_{}", pipeline.name(), i);
+            let pipeline = pipeline.with_name(name);
             let pipeline = add_bootloader_inputs(pipeline, bootloader_inputs);
             pipeline_callback(pipeline)?;
             Ok(())

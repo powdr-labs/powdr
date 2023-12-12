@@ -34,6 +34,7 @@ impl PolySet for WitnessPolySet {
 pub fn read_poly_set<P: PolySet, T: FieldElement>(
     pil: &Analyzed<T>,
     dir: &Path,
+    name: &str,
 ) -> (Vec<(String, Vec<T>)>, DegreeType) {
     let column_names: Vec<String> = P::get_polys(pil)
         .iter()
@@ -41,8 +42,10 @@ pub fn read_poly_set<P: PolySet, T: FieldElement>(
         .map(|(name, _id)| name)
         .collect();
 
+    let fname = format!("{name}_{}", P::FILE_NAME);
+
     read_polys_file(
-        &mut BufReader::new(File::open(dir.join(P::FILE_NAME)).unwrap()),
+        &mut BufReader::new(File::open(dir.join(fname)).unwrap()),
         &column_names,
     )
 }
