@@ -102,14 +102,22 @@ enum Artifact<T: FieldElement> {
     Proof(ProofResult<T>),
 }
 
+/// Optional Arguments for various stages of the pipeline.
 #[derive(Default)]
 struct Arguments<T: FieldElement> {
+    /// Externally computed witness values for witness generation.
     external_witness_values: Vec<(String, Vec<T>)>,
+    /// Callback for queries for witness generation.
     query_callback: Option<Box<dyn QueryCallback<T>>>,
+    /// Backend to use for proving. If None, proving will fail.
     backend: Option<BackendType>,
+    /// CSV render mode for witness generation.
     csv_render_mode: CsvRenderMode,
+    /// Whether to export the witness as a CSV file.
     export_witness_csv: bool,
+    /// The optional setup file to use for proving.
     setup_file: Option<PathBuf>,
+    /// The optional existing proof file to use for aggregation.
     existing_proof_file: Option<PathBuf>,
 }
 
@@ -132,6 +140,7 @@ pub struct Pipeline<T: FieldElement> {
     // Note that there is some redundancy with `output_dir`, but the Temp
     // object has to live for the lifetime of the pipeline, so we keep it here.
     tmp_dir: Option<Temp>,
+    /// Optional arguments for various stages of the pipeline.
     arguments: Arguments<T>,
 }
 
@@ -185,7 +194,7 @@ where
 ///   .with_backend(BackendType::PilStarkCli);
 ///
 /// // Advance to some stage (which might have side effects)
-/// pipeline.advance_to(Stage::Proof).unwrap();
+/// pipeline.advance_to(Stage::OptimizedPil).unwrap();
 ///
 /// // Get the result
 /// let proof = pipeline.proof().unwrap();
@@ -485,39 +494,46 @@ impl<T: FieldElement> Pipeline<T> {
         Ok(())
     }
 
+    /// Returns the path to the output file if the output directory is set.
+    /// Fails if the file already exists and `force_overwrite` is false.
+    fn path_if_should_write<F: FnOnce(&str) -> String>(
+        &self,
+        file_name_from_pipeline_name: F,
+    ) -> Result<Option<PathBuf>, Vec<String>> {
+        self.output_dir
+            .as_ref()
+            .map(|output_dir| {
+                let name = self
+                    .name
+                    .as_ref()
+                    .expect("name must be set if output_dir is set");
+                let path = output_dir.join(file_name_from_pipeline_name(name));
+                if path.exists() && !self.force_overwrite {
+                    Err(vec![format!(
+                        "{} already exists! Use --force to overwrite.",
+                        path.to_str().unwrap()
+                    )])?;
+                }
+                log::info!("Writing {}.", path.to_str().unwrap());
+                Ok(path)
+            })
+            .transpose()
+    }
+
     fn maybe_write_pil<C: Display>(&self, content: &C, suffix: &str) -> Result<(), Vec<String>> {
-        if let Some(output_dir) = &self.output_dir {
-            let name = self
-                .name
-                .as_ref()
-                .expect("name must be set if output_dir is set");
-            let output_file = output_dir.join(format!("{name}{suffix}.pil"));
-            if !output_file.exists() || self.force_overwrite {
-                fs::write(&output_file, format!("{content}")).map_err(|e| {
-                    vec![format!(
-                        "Error writing {}: {e}",
-                        output_file.to_str().unwrap()
-                    )]
-                })?;
-                self.log(&format!("Wrote {}.", output_file.to_str().unwrap()));
-            } else {
-                return Err(vec![format!(
-                    "{} already exists! Use --force to overwrite.",
-                    output_file.to_str().unwrap()
-                )]);
-            }
+        if let Some(path) = self.path_if_should_write(|name| format!("{name}{suffix}.pil"))? {
+            fs::write(&path, format!("{content}"))
+                .map_err(|e| vec![format!("Error writing {}: {e}", path.to_str().unwrap())])?;
         }
         Ok(())
     }
 
     fn maybe_write_constants(&self, constants: &[(String, Vec<T>)]) -> Result<(), Vec<String>> {
-        if let Some(output_dir) = &self.output_dir {
-            let to_write = output_dir.join("constants.bin");
+        if let Some(path) = self.path_if_should_write(|_| "constants.bin".to_string())? {
             write_polys_file(
-                &mut BufWriter::new(&mut fs::File::create(&to_write).unwrap()),
+                &mut BufWriter::new(&mut fs::File::create(path).unwrap()),
                 constants,
             );
-            log::info!("Wrote {}.", to_write.display());
         }
         Ok(())
     }
@@ -527,17 +543,17 @@ impl<T: FieldElement> Pipeline<T> {
         fixed: &[(String, Vec<T>)],
         witness: &Option<Vec<(String, Vec<T>)>>,
     ) -> Result<(), Vec<String>> {
-        if let Some(output_dir) = &self.output_dir {
-            if let Some(witness) = witness.as_ref() {
-                let to_write = output_dir.join("commits.bin");
+        if let Some(witness) = witness.as_ref() {
+            if let Some(path) = self.path_if_should_write(|_| "commits.bin".to_string())? {
                 write_polys_file(
-                    &mut BufWriter::new(&mut fs::File::create(&to_write).unwrap()),
+                    &mut BufWriter::new(&mut fs::File::create(path).unwrap()),
                     witness,
                 );
-                log::info!("Wrote {}.", to_write.display());
             }
+        }
 
-            if self.arguments.export_witness_csv {
+        if self.arguments.export_witness_csv {
+            if let Some(path) = self.path_if_should_write(|_| "columns.csv".to_string())? {
                 let columns = fixed
                     .iter()
                     .chain(match witness.as_ref() {
@@ -546,41 +562,36 @@ impl<T: FieldElement> Pipeline<T> {
                     })
                     .collect::<Vec<_>>();
 
-                let csv_path = Path::new(output_dir).join("columns.csv");
-                let mut csv_file =
-                    fs::File::create(&csv_path).map_err(|e| vec![format!("{}", e)])?;
+                let mut csv_file = fs::File::create(path).map_err(|e| vec![format!("{}", e)])?;
                 let mut csv_writer = BufWriter::new(&mut csv_file);
 
                 write_polys_csv_file(&mut csv_writer, self.arguments.csv_render_mode, &columns);
-                log::info!("Wrote {}.", csv_path.display());
             }
         }
+
         Ok(())
     }
 
     fn maybe_wite_proof(&self, proof_result: &ProofResult<T>) -> Result<(), Vec<String>> {
-        if let Some(output_dir) = &self.output_dir {
-            if let Some(constraints_serialization) = &proof_result.constraints_serialization {
-                let to_write = output_dir.join("constraints.json");
-                let mut file = fs::File::create(&to_write).unwrap();
+        if let Some(constraints_serialization) = &proof_result.constraints_serialization {
+            if let Some(path) = self.path_if_should_write(|_| "constraints.json".to_string())? {
+                let mut file = fs::File::create(path).unwrap();
                 file.write_all(constraints_serialization.as_bytes())
                     .unwrap();
-                log::info!("Wrote {}.", to_write.display());
-            }
-            if let Some(proof) = &proof_result.proof {
-                // No need to bufferize the writing, because we write the whole
-                // proof in one call.
-                let fname = if self.arguments.existing_proof_file.is_some() {
-                    "proof_aggr.bin"
-                } else {
-                    "proof.bin"
-                };
-                let to_write = output_dir.join(fname);
-                let mut proof_file = fs::File::create(&to_write).unwrap();
-                proof_file.write_all(proof).unwrap();
-                log::info!("Wrote {}.", to_write.display());
             }
         }
+        if let Some(proof) = &proof_result.proof {
+            let fname = if self.arguments.existing_proof_file.is_some() {
+                "proof_aggr.bin"
+            } else {
+                "proof.bin"
+            };
+            if let Some(path) = self.path_if_should_write(|_| fname.to_string())? {
+                let mut proof_file = fs::File::create(path).unwrap();
+                proof_file.write_all(proof).unwrap();
+            }
+        }
+
         Ok(())
     }
 
