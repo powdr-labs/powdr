@@ -318,7 +318,7 @@ impl<T: FieldElement> TypeChecker<T> {
             let errors: Vec<_> = statements
                 .iter()
                 .filter_map(|s| match s {
-                    ast::parsed::PilStatement::PolynomialIdentity(_, _) => None,
+                    ast::parsed::PilStatement::PolynomialIdentity(_, _, _) => None,
                     ast::parsed::PilStatement::PermutationIdentity(
                         _, //
                         _, //

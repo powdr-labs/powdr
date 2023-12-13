@@ -199,8 +199,17 @@ where
 
     fn handle_identity_statement(&mut self, statement: PilStatement<T>) -> Vec<PILItem<T>> {
         let (start, kind, attribute, left, right) = match statement {
-            PilStatement::PolynomialIdentity(start, expression)
-            | PilStatement::Expression(start, expression) => (
+            PilStatement::PolynomialIdentity(start, attr, expression) => (
+                start,
+                IdentityKind::Polynomial,
+                attr,
+                SelectedExpressions {
+                    selector: Some(self.process_expression(expression)),
+                    expressions: vec![],
+                },
+                SelectedExpressions::default(),
+            ),
+            PilStatement::Expression(start, expression) => (
                 start,
                 IdentityKind::Polynomial,
                 None,

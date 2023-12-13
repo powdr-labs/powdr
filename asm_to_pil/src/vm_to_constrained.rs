@@ -144,6 +144,7 @@ impl<T: FieldElement> ASMPILConverter<T> {
                                     ),
                                     PilStatement::PolynomialIdentity(
                                         0,
+                                        None,
                                         lhs - (Expression::from(T::one())
                                             - next_reference("first_step"))
                                             * direct_reference(pc_update_name),
@@ -154,10 +155,14 @@ impl<T: FieldElement> ASMPILConverter<T> {
                             ReadOnly => {
                                 let not_reset: Expression<T> =
                                     Expression::from(T::one()) - direct_reference("instr__reset");
-                                vec![PilStatement::PolynomialIdentity(0, not_reset * (lhs - rhs))]
+                                vec![PilStatement::PolynomialIdentity(
+                                    0,
+                                    None,
+                                    not_reset * (lhs - rhs),
+                                )]
                             }
                             _ => {
-                                vec![PilStatement::PolynomialIdentity(0, lhs - rhs)]
+                                vec![PilStatement::PolynomialIdentity(0, None, lhs - rhs)]
                             }
                         }
                     })
@@ -389,7 +394,7 @@ impl<T: FieldElement> ASMPILConverter<T> {
                 });
 
                 for mut statement in body {
-                    if let PilStatement::PolynomialIdentity(_start, expr) = statement {
+                    if let PilStatement::PolynomialIdentity(_start, _attr, expr) = statement {
                         match extract_update(expr) {
                             (Some(var), expr) => {
                                 let reference = direct_reference(&instruction_flag);
@@ -406,6 +411,7 @@ impl<T: FieldElement> ASMPILConverter<T> {
                             }
                             (None, expr) => self.pil.push(PilStatement::PolynomialIdentity(
                                 0,
+                                None,
                                 direct_reference(&instruction_flag) * expr.clone(),
                             )),
                         }
@@ -715,6 +721,7 @@ impl<T: FieldElement> ASMPILConverter<T> {
             .sum();
         self.pil.push(PilStatement::PolynomialIdentity(
             0,
+            None,
             direct_reference(register) - assign_constraint,
         ));
     }

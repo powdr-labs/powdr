@@ -127,7 +127,7 @@ PolynomialCommitDeclaration: PilStatement<T> = {
 }
 
 PolynomialIdentity: PilStatement<T> = {
-    <start:@L> <l:BoxedExpression> "=" <r:BoxedExpression> => PilStatement::PolynomialIdentity(start, Expression::BinaryOperation(l, BinaryOperator::Sub, r))
+    <start:@L> <attr:Attribute?> <l:BoxedExpression> "=" <r:BoxedExpression> => PilStatement::PolynomialIdentity(start, attr, Expression::BinaryOperation(l, BinaryOperator::Sub, r))
 }
 
 PolynomialNameList: Vec<PolynomialName<T>> = {

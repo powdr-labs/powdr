@@ -208,7 +208,7 @@ impl<T> ExpressionVisitable<Expression<T, NamespacedPolynomialReference>> for Pi
 
             PilStatement::Namespace(_, _, e)
             | PilStatement::PolynomialDefinition(_, _, e)
-            | PilStatement::PolynomialIdentity(_, e)
+            | PilStatement::PolynomialIdentity(_, _, e)
             | PilStatement::PublicDeclaration(_, _, _, None, e)
             | PilStatement::ConstantDefinition(_, _, e)
             | PilStatement::LetStatement(_, _, Some(e)) => e.visit_expressions_mut(f, o),
@@ -250,7 +250,7 @@ impl<T> ExpressionVisitable<Expression<T, NamespacedPolynomialReference>> for Pi
 
             PilStatement::Namespace(_, _, e)
             | PilStatement::PolynomialDefinition(_, _, e)
-            | PilStatement::PolynomialIdentity(_, e)
+            | PilStatement::PolynomialIdentity(_, _, e)
             | PilStatement::PublicDeclaration(_, _, _, None, e)
             | PilStatement::ConstantDefinition(_, _, e)
             | PilStatement::LetStatement(_, _, Some(e)) => e.visit_expressions(f, o),

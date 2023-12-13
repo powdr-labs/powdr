@@ -79,7 +79,7 @@ impl CircuitBuilder for BBFiles {
             |name: &String| format!("polys.{name}_shift = Polynomial(polys.{name}.shifted());");
         let check_circuit_transformation = |relation_name: &String| {
             format!(
-                    "if (!evaluate_relation.template operator()<{name}_vm::{relation_name}<FF>>(\"{relation_name}\")) {{
+                    "if (!evaluate_relation.template operator()<{name}_vm::{relation_name}<FF>>(\"{relation_name}\", {name}_vm::get_relation_label_{relation_name})) {{
                         return false;
                     }}",
                     name = name,
@@ -220,7 +220,7 @@ fn get_permutation_check_closure() -> String {
                 }
                 for (auto r : permutation_result) {
                     if (r != 0) {
-                        info(\"Tuple\", permutation_name, \"failed.\");
+                        info(\"Tuple \", permutation_name, \" failed.\");
                         return false;
                     }
                 }
@@ -231,7 +231,8 @@ fn get_permutation_check_closure() -> String {
 
 fn get_relation_check_closure() -> String {
     "
-            const auto evaluate_relation = [&]<typename Relation>(const std::string& relation_name) {
+            const auto evaluate_relation = [&]<typename Relation>(const std::string& relation_name,
+                                                                    std::string (*debug_label)(int)) {
                 typename Relation::SumcheckArrayOfValuesOverSubrelations result;
                 for (auto& r : result) {
                     r = 0;
@@ -244,8 +245,9 @@ fn get_relation_check_closure() -> String {
                     bool x = true;
                     for (size_t j = 0; j < NUM_SUBRELATIONS; ++j) {
                         if (result[j] != 0) {
+                            std::string row_name = debug_label(static_cast<int>(j));
                             throw_or_abort(
-                                format(\"Relation \", relation_name, \", subrelation index \", j, \" failed at row \", i));
+                                format(\"Relation \", relation_name, \", subrelation index \", row_name, \" failed at row \", i));
                             x = false;
                         }
                     }
