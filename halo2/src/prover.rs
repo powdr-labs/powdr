@@ -74,7 +74,7 @@ impl Halo2Prover {
 
         log::info!("Starting proof generation...");
 
-        let circuit = analyzed_to_circuit(pil, fixed, witness);
+        let (circuit, publics) = analyzed_to_circuit(pil, fixed, witness);
 
         log::debug!("{}", PlafDisplayBaseTOML(&circuit.plaf));
 
@@ -85,13 +85,12 @@ impl Halo2Prover {
         log::info!("Generating proof...");
         let start = Instant::now();
 
-        let inputs = vec![];
         let proof = gen_proof::<
             _,
             _,
             aggregation::PoseidonTranscript<NativeLoader, _>,
             aggregation::PoseidonTranscript<NativeLoader, _>,
-        >(&params, &pk, circuit, inputs);
+        >(&params, &pk, circuit, publics);
 
         let duration = start.elapsed();
         log::info!("Time taken: {:?}", duration);
@@ -119,7 +118,12 @@ impl Halo2Prover {
         };
 
         log::info!("Generating circuit for app snark...");
-        let circuit_app = analyzed_to_circuit(pil, fixed, witness);
+        let (circuit_app, publics) = analyzed_to_circuit(pil, fixed, witness);
+
+        assert_eq!(publics.len(), 1);
+        if !publics[0].is_empty() {
+            unimplemented!("Public inputs are not supported yet");
+        }
 
         log::debug!("{}", PlafDisplayBaseTOML(&circuit_app.plaf));
 

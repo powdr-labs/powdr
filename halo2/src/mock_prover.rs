@@ -15,7 +15,7 @@ pub fn mock_prove<T: FieldElement>(
         panic!("powdr modulus doesn't match halo2 modulus. Make sure you are using Bn254");
     }
 
-    let circuit = analyzed_to_circuit(pil, constants, witness);
+    let (circuit, publics) = analyzed_to_circuit(pil, constants, witness);
 
     // double the row count in order to make space for the cells introduced by the backend
     // TODO: use a precise count of the extra rows needed to avoid using so many rows
@@ -26,9 +26,7 @@ pub fn mock_prove<T: FieldElement>(
 
     log::debug!("{}", PlafDisplayBaseTOML(&circuit.plaf));
 
-    let inputs = vec![];
-
-    let mock_prover = MockProver::<Fr>::run(expanded_row_count_log, &circuit, inputs).unwrap();
+    let mock_prover = MockProver::<Fr>::run(expanded_row_count_log, &circuit, publics).unwrap();
     mock_prover.assert_satisfied();
 }
 
