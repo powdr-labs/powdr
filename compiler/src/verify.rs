@@ -1,11 +1,12 @@
 use std::{path::Path, process::Command};
 
-pub fn verify(temp_dir: &Path) {
+pub fn verify(temp_dir: &Path, name: &str) {
     let pilcom = std::env::var("PILCOM")
         .expect("Please set the PILCOM environment variable to the path to the pilcom repository.");
 
-    let constants_file = format!("{}/constants.bin", temp_dir.to_str().unwrap());
-    let commits_file = format!("{}/commits.bin", temp_dir.to_str().unwrap());
+    let constants_file = format!("{}/{name}_constants.bin", temp_dir.to_str().unwrap());
+    let commits_file = format!("{}/{name}_commits.bin", temp_dir.to_str().unwrap());
+    let constraints_file = format!("{}/{name}_constraints.json", temp_dir.to_str().unwrap());
 
     let verifier_output = Command::new("node")
         .args([
@@ -13,7 +14,7 @@ pub fn verify(temp_dir: &Path) {
             format!("{pilcom}/src/main_pilverifier.js"),
             commits_file,
             "-j".to_string(),
-            format!("{}/constraints.json", temp_dir.to_str().unwrap()),
+            constraints_file,
             "-c".to_string(),
             constants_file,
         ])

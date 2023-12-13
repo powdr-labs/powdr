@@ -262,6 +262,11 @@ impl<T: FieldElement> Pipeline<T> {
         self
     }
 
+    pub fn with_name(mut self, name: String) -> Self {
+        self.name = Some(name);
+        self
+    }
+
     pub fn from_file(self, asm_file: PathBuf) -> Self {
         if asm_file.extension().unwrap() == "asm" {
             self.from_asm_file(asm_file)
@@ -314,8 +319,10 @@ impl<T: FieldElement> Pipeline<T> {
             _ => panic!(),
         };
 
-        let (fixed, degree_fixed) = read_poly_set::<FixedPolySet, T>(&pil, directory);
-        let (witness, degree_witness) = read_poly_set::<WitnessPolySet, T>(&pil, directory);
+        // Can't use self.name() because self is partially moved...
+        let name = self.name.as_ref().expect("name must be set!");
+        let (fixed, degree_fixed) = read_poly_set::<FixedPolySet, T>(&pil, directory, name);
+        let (witness, degree_witness) = read_poly_set::<WitnessPolySet, T>(&pil, directory, name);
         assert_eq!(degree_fixed, degree_witness);
 
         Pipeline {
@@ -529,7 +536,7 @@ impl<T: FieldElement> Pipeline<T> {
     }
 
     fn maybe_write_constants(&self, constants: &[(String, Vec<T>)]) -> Result<(), Vec<String>> {
-        if let Some(path) = self.path_if_should_write(|_| "constants.bin".to_string())? {
+        if let Some(path) = self.path_if_should_write(|name| format!("{name}_constants.bin"))? {
             write_polys_file(
                 &mut BufWriter::new(&mut fs::File::create(path).unwrap()),
                 constants,
@@ -544,7 +551,7 @@ impl<T: FieldElement> Pipeline<T> {
         witness: &Option<Vec<(String, Vec<T>)>>,
     ) -> Result<(), Vec<String>> {
         if let Some(witness) = witness.as_ref() {
-            if let Some(path) = self.path_if_should_write(|_| "commits.bin".to_string())? {
+            if let Some(path) = self.path_if_should_write(|name| format!("{name}_commits.bin"))? {
                 write_polys_file(
                     &mut BufWriter::new(&mut fs::File::create(path).unwrap()),
                     witness,
@@ -553,7 +560,7 @@ impl<T: FieldElement> Pipeline<T> {
         }
 
         if self.arguments.export_witness_csv {
-            if let Some(path) = self.path_if_should_write(|_| "columns.csv".to_string())? {
+            if let Some(path) = self.path_if_should_write(|name| format!("{name}_columns.csv"))? {
                 let columns = fixed
                     .iter()
                     .chain(match witness.as_ref() {
@@ -574,7 +581,9 @@ impl<T: FieldElement> Pipeline<T> {
 
     fn maybe_wite_proof(&self, proof_result: &ProofResult<T>) -> Result<(), Vec<String>> {
         if let Some(constraints_serialization) = &proof_result.constraints_serialization {
-            if let Some(path) = self.path_if_should_write(|_| "constraints.json".to_string())? {
+            if let Some(path) =
+                self.path_if_should_write(|name| format!("{name}_constraints.json"))?
+            {
                 let mut file = fs::File::create(path).unwrap();
                 file.write_all(constraints_serialization.as_bytes())
                     .unwrap();
@@ -586,7 +595,7 @@ impl<T: FieldElement> Pipeline<T> {
             } else {
                 "proof.bin"
             };
-            if let Some(path) = self.path_if_should_write(|_| fname.to_string())? {
+            if let Some(path) = self.path_if_should_write(|name| format!("{name}_{fname}"))? {
                 let mut proof_file = fs::File::create(path).unwrap();
                 proof_file.write_all(proof).unwrap();
             }
@@ -680,5 +689,9 @@ impl<T: FieldElement> Pipeline<T> {
 
     pub fn tmp_dir(&self) -> &Path {
         self.tmp_dir.as_ref().unwrap()
+    }
+
+    pub fn name(&self) -> &str {
+        self.name.as_ref().unwrap()
     }
 }

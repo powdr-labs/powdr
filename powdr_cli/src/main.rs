@@ -779,7 +779,7 @@ mod test {
         {
             let file = output_dir
                 .path()
-                .join("simple_sum_opt.pil")
+                .join("simple_sum.pil")
                 .to_string_lossy()
                 .to_string();
             let prove_command = Commands::Prove {
