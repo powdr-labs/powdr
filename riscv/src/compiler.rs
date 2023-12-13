@@ -191,7 +191,7 @@ pub fn compile(
     );
 
     let bootloader_lines = if with_bootloader {
-        let (bootloader, _) = bootloader();
+        let bootloader = bootloader();
         log::debug!("Adding Bootloader:\n{}", bootloader);
         bootloader
             .split('\n')
@@ -204,9 +204,9 @@ pub fn compile(
     let program: Vec<String> = file_ids
         .into_iter()
         .map(|(id, dir, file)| format!("debug file {id} {} {};", quote(&dir), quote(&file)))
+        .chain(call_every_submachine(coprocessors))
         .chain(bootloader_lines)
         .chain(["call __data_init;".to_string()])
-        .chain(call_every_submachine(coprocessors))
         .chain([
             format!("// Set stack pointer\nx2 <=X= {stack_start};"),
             "call __runtime_start;".to_string(),
@@ -566,6 +566,7 @@ fn preamble(degree: u64, coprocessors: &CoProcessors) -> String {
     instr jump l: label { pc' = l }
     instr load_label l: label -> X { X = l }
     instr jump_dyn X { pc' = X }
+    instr jump_dyn_if_nonzero X { pc' = (1 - XIsZero) * X + XIsZero * (pc + 1) }
     instr jump_and_link_dyn X { pc' = X, x1' = pc + 1 }
     instr call l: label { pc' = l, x1' = pc + 1 }
     instr ret { pc' = x1 }
