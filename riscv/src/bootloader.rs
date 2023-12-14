@@ -21,9 +21,8 @@ pub const BYTES_PER_WORD: usize = 4;
 /// - For each page:
 ///   - The page number
 ///   - The 256 words of the page
-pub fn bootloader() -> (String, usize) {
+pub fn bootloader() -> String {
     let mut bootloader = String::new();
-    let mut instructions = 0;
 
     let num_registers = REGISTER_NAMES.len();
     let page_size_bytes = 1 << PAGE_SIZE_BYTES_LOG;
@@ -69,7 +68,6 @@ P6 <=X= 0;
 P7 <=X= 0;
 "#
     ));
-    instructions += 14;
 
     for i in 0..words_per_page {
         let reg_index = (i % 4) + 4;
@@ -78,7 +76,6 @@ P7 <=X= 0;
 P{reg_index} <=X= ${{ ("bootloader_input", x2 * ({words_per_page} + 1) + {num_registers} + 2 + {i})}};
 mstore x3 * {page_size_bytes} + {i} * {BYTES_PER_WORD}, P{reg_index};"#
         ));
-        instructions += 2;
 
         // Hash if buffer is full
         if i % 4 == 3 {
@@ -87,7 +84,6 @@ mstore x3 * {page_size_bytes} + {i} * {BYTES_PER_WORD}, P{reg_index};"#
 P0, P1, P2, P3 <== poseidon_gl(P0, P1, P2, P3, P4, P5, P6, P7, P8, P9, P10, P11);
 "#,
             );
-            instructions += 1;
         }
     }
 
@@ -130,7 +126,6 @@ level_{i}_end::
 P0, P1, P2, P3 <== poseidon_gl(P0, P1, P2, P3, P4, P5, P6, P7, P8, P9, P10, P11);
 "#
         ));
-        instructions += 16;
     }
 
     bootloader.push_str(
@@ -145,26 +140,31 @@ end_page_loop::
 // Initialize registers, starting with index 0
 "#,
     );
-    instructions += 2;
 
-    for (i, reg) in REGISTER_NAMES.iter().enumerate() {
+    // Go over all registers except the PC
+    let register_iter = REGISTER_NAMES.iter().take(REGISTER_NAMES.len() - 1);
+
+    for (i, reg) in register_iter.enumerate() {
         let reg = reg.strip_prefix("main.").unwrap();
-        if i != PC_INDEX {
-            bootloader.push_str(&format!(r#"{reg} <=X= ${{ ("bootloader_input", {i}) }};"#));
-        } else {
-            bootloader.push_str(&format!(r#"jump_dyn ${{ ("bootloader_input", {}) }};"#, i));
-        }
+        bootloader.push_str(&format!(r#"{reg} <=X= ${{ ("bootloader_input", {i}) }};"#));
         bootloader.push('\n');
-        instructions += 1;
     }
+    bootloader.push_str(&format!(
+        r#"
+// Default PC is 0, but we already started from 0, so in that case we do nothing.
+// Otherwise, we jump to the PC.
+jump_dyn_if_nonzero ${{ ("bootloader_input", {}) }};
+"#,
+        PC_INDEX
+    ));
 
     bootloader.push_str("\n// END OF BOOTLOADER\n");
 
-    (bootloader, instructions)
+    bootloader
 }
 
 /// The names of the registers in the order in which they are expected by the bootloader.
-pub const REGISTER_NAMES: [&str; 37] = [
+pub const REGISTER_NAMES: [&str; 49] = [
     "main.x1",
     "main.x2",
     "main.x3",
@@ -201,6 +201,18 @@ pub const REGISTER_NAMES: [&str; 37] = [
     "main.tmp3",
     "main.tmp4",
     "main.lr_sc_reservation",
+    "main.P0",
+    "main.P1",
+    "main.P2",
+    "main.P3",
+    "main.P4",
+    "main.P5",
+    "main.P6",
+    "main.P7",
+    "main.P8",
+    "main.P9",
+    "main.P10",
+    "main.P11",
     "main.pc",
 ];
 
@@ -209,15 +221,8 @@ pub const PC_INDEX: usize = REGISTER_NAMES.len() - 1;
 
 /// The bootloader input that is equivalent to not using a bootloader, i.e.:
 /// - No pages are initialized
-/// - All registers are set to 0
-/// - The PC is set to 51 (the first instruction after the bootloader)
+/// - All registers are set to 0 (including the PC, which causes the bootloader to do nothing)
 pub fn default_input<T: FieldElement>() -> Vec<T> {
     // Set all registers and the number of pages to zero
-    let mut bootloader_inputs = vec![T::zero(); REGISTER_NAMES.len() + 1];
-
-    // PC should be set to the next instruction after the dispatcher (2 instructions) and bootloader
-    let (_, num_instructions) = bootloader();
-    bootloader_inputs[PC_INDEX] = T::from(num_instructions as u64 + 2);
-
-    bootloader_inputs
+    vec![T::zero(); REGISTER_NAMES.len() + 1]
 }

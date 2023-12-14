@@ -502,6 +502,13 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
                 Vec::new()
             }
+            "jump_dyn_if_nonzero" => {
+                if args[0].0 != 0 {
+                    self.proc.set_pc(args[0]);
+                }
+
+                Vec::new()
+            }
             "jump_and_link_dyn" => {
                 let pc = self.proc.get_reg("pc");
                 self.proc.set_reg("x1", pc.u() + 1);
