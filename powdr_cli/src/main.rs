@@ -50,7 +50,7 @@ fn bind_cli_args<F: FieldElement>(
         // create a new one each time.
         pipeline_factory()
             .with_output(output_dir.clone(), force_overwrite)
-            .with_external_witness_values(witness_values.clone())
+            .add_external_witness_values(witness_values.clone())
             .with_witness_csv_settings(export_csv, csv_mode)
             .with_prover_inputs(inputs.clone())
     }

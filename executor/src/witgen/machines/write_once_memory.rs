@@ -220,6 +220,11 @@ impl<'a, T: FieldElement> Machine<'a, T> for WriteOnceMemory<'a, T> {
                 let column = self.fixed_data.witness_cols[poly]
                     .external_values
                     .clone()
+                    .map(|mut external_values| {
+                        // External witness values might only be provided partially.
+                        external_values.resize(self.fixed_data.degree as usize, T::zero());
+                        external_values
+                    })
                     .unwrap_or_else(|| {
                         let mut column = vec![T::zero(); self.fixed_data.degree as usize];
                         for (row, values) in self.data.iter() {

@@ -69,6 +69,12 @@ impl From<u32> for Elem {
     }
 }
 
+impl From<u64> for Elem {
+    fn from(value: u64) -> Self {
+        Self(value as i64)
+    }
+}
+
 impl From<i32> for Elem {
     fn from(value: i32) -> Self {
         Self(value as i64)
@@ -491,6 +497,12 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
                 vec![val.into(), rem.into()]
             }
+            "load_bootloader_input" => {
+                let addr = args[0].0 as usize;
+                let val = self.bootloader_inputs[addr].to_degree();
+
+                vec![val.into()]
+            }
             "jump" => {
                 self.proc.set_pc(args[0]);
 
@@ -502,9 +514,11 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
                 Vec::new()
             }
-            "jump_dyn_if_nonzero" => {
-                if args[0].0 != 0 {
-                    self.proc.set_pc(args[0]);
+            "jump_to_bootloader_input_if_nonzero" => {
+                let bootloader_input_idx = args[0].0 as usize;
+                let addr = self.bootloader_inputs[bootloader_input_idx].to_degree();
+                if addr != 0 {
+                    self.proc.set_pc(addr.into());
                 }
 
                 Vec::new()

@@ -1,32 +1,12 @@
 use std::collections::{BTreeSet, HashMap};
 
-use compiler::{access_element, parse_query, pipeline::Pipeline};
-use executor::witgen::QueryCallback;
-use itertools::Itertools;
+use compiler::pipeline::Pipeline;
 use number::FieldElement;
 use riscv_executor::ExecutionTrace;
 
 use crate::bootloader::{
     default_input, BYTES_PER_WORD, PAGE_SIZE_BYTES_LOG, PC_INDEX, REGISTER_NAMES,
 };
-
-fn make_query_callback<T: FieldElement>(bootloader_inputs: Vec<T>) -> impl QueryCallback<T> {
-    move |query: &str| -> Result<Option<T>, String> {
-        match &parse_query(query)?[..] {
-            ["\"bootloader_input\"", index] => {
-                access_element("bootloader input", &bootloader_inputs, index)
-            }
-            k => Err(format!("Unsupported query: {}", k.iter().format(", "))),
-        }
-    }
-}
-
-fn add_bootloader_inputs<F: FieldElement>(
-    pipeline: Pipeline<F>,
-    bootload_inputs: Vec<F>,
-) -> Pipeline<F> {
-    pipeline.add_query_callback(Box::new(make_query_callback(bootload_inputs)))
-}
 
 fn transposed_trace<F: FieldElement>(trace: &ExecutionTrace) -> HashMap<String, Vec<F>> {
     let mut reg_values: HashMap<&str, Vec<F>> = HashMap::with_capacity(trace.reg_map.len());
@@ -68,7 +48,10 @@ where
             let pipeline = pipeline_factory();
             let name = format!("{}_chunk_{}", pipeline.name(), i);
             let pipeline = pipeline.with_name(name);
-            let pipeline = add_bootloader_inputs(pipeline, bootloader_inputs);
+            let pipeline = pipeline.add_external_witness_values(vec![(
+                "main.bootloader_input_value".to_string(),
+                bootloader_inputs,
+            )]);
             pipeline_callback(pipeline)?;
             Ok(())
         })

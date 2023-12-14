@@ -217,13 +217,27 @@ impl<T: FieldElement> Pipeline<T> {
         }
     }
 
-    pub fn with_external_witness_values(
+    pub fn add_external_witness_values(
         mut self,
         external_witness_values: Vec<(String, Vec<T>)>,
     ) -> Self {
-        self.arguments.external_witness_values = external_witness_values;
+        for (name, _) in &external_witness_values {
+            assert!(
+                !self
+                    .arguments
+                    .external_witness_values
+                    .iter()
+                    .any(|(n, _)| n == name),
+                "Duplicate witness column name: {}",
+                name
+            );
+        }
+        self.arguments
+            .external_witness_values
+            .extend(external_witness_values);
         self
     }
+
     pub fn with_witness_csv_settings(
         mut self,
         export_witness_csv: bool,
