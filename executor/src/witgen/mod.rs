@@ -195,9 +195,14 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
             ));
 
         if !external_witness_values.is_empty() {
+            let available_columns = witness_cols
+                .iter()
+                .map(|(_, witness)| &witness.poly.name)
+                .collect::<Vec<_>>();
             panic!(
-                "External witness values for non-existent columns: {:?}",
-                external_witness_values.keys()
+                "External witness values for non-existent columns: {:?}\nAvailable columns: {:?}",
+                external_witness_values.keys(),
+                available_columns
             );
         }
 
