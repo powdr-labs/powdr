@@ -193,7 +193,12 @@ impl<T> ExpressionVisitable<Expression<T, NamespacedPolynomialReference>> for Pi
         match self {
             PilStatement::Expression(_, e) => e.visit_expressions_mut(f, o),
             PilStatement::PlookupIdentity(_, left, right)
-            | PilStatement::PermutationIdentity(_, left, right) => [left, right]
+            | PilStatement::PermutationIdentity(
+                _, //
+                _, //
+                left,
+                right,
+            ) => [left, right] //
                 .into_iter()
                 .try_for_each(|e| e.visit_expressions_mut(f, o)),
             PilStatement::ConnectIdentity(_start, left, right) => left
@@ -203,7 +208,7 @@ impl<T> ExpressionVisitable<Expression<T, NamespacedPolynomialReference>> for Pi
 
             PilStatement::Namespace(_, _, e)
             | PilStatement::PolynomialDefinition(_, _, e)
-            | PilStatement::PolynomialIdentity(_, e)
+            | PilStatement::PolynomialIdentity(_, _, e)
             | PilStatement::PublicDeclaration(_, _, _, None, e)
             | PilStatement::ConstantDefinition(_, _, e)
             | PilStatement::LetStatement(_, _, Some(e)) => e.visit_expressions_mut(f, o),
@@ -230,7 +235,12 @@ impl<T> ExpressionVisitable<Expression<T, NamespacedPolynomialReference>> for Pi
         match self {
             PilStatement::Expression(_, e) => e.visit_expressions(f, o),
             PilStatement::PlookupIdentity(_, left, right)
-            | PilStatement::PermutationIdentity(_, left, right) => [left, right]
+            | PilStatement::PermutationIdentity(
+                _, //
+                _, //
+                left,
+                right,
+            ) => [left, right] //
                 .into_iter()
                 .try_for_each(|e| e.visit_expressions(f, o)),
             PilStatement::ConnectIdentity(_start, left, right) => left
@@ -240,7 +250,7 @@ impl<T> ExpressionVisitable<Expression<T, NamespacedPolynomialReference>> for Pi
 
             PilStatement::Namespace(_, _, e)
             | PilStatement::PolynomialDefinition(_, _, e)
-            | PilStatement::PolynomialIdentity(_, e)
+            | PilStatement::PolynomialIdentity(_, _, e)
             | PilStatement::PublicDeclaration(_, _, _, None, e)
             | PilStatement::ConstantDefinition(_, _, e)
             | PilStatement::LetStatement(_, _, Some(e)) => e.visit_expressions(f, o),

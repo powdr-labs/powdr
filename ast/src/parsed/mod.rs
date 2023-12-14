@@ -34,7 +34,7 @@ pub enum PilStatement<T> {
     PolynomialConstantDeclaration(usize, Vec<PolynomialName<T>>),
     PolynomialConstantDefinition(usize, String, FunctionDefinition<T>),
     PolynomialCommitDeclaration(usize, Vec<PolynomialName<T>>, Option<FunctionDefinition<T>>),
-    PolynomialIdentity(usize, Expression<T>),
+    PolynomialIdentity(usize, Option<String>, Expression<T>),
     PlookupIdentity(
         usize,
         SelectedExpressions<Expression<T>>,
@@ -42,12 +42,18 @@ pub enum PilStatement<T> {
     ),
     PermutationIdentity(
         usize,
+        Option<String>,
         SelectedExpressions<Expression<T>>,
         SelectedExpressions<Expression<T>>,
     ),
     ConnectIdentity(usize, Vec<Expression<T>>, Vec<Expression<T>>),
     ConstantDefinition(usize, String, Expression<T>),
     Expression(usize, Expression<T>),
+}
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
+pub struct Attribute {
+    pub name: Option<String>,
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]

@@ -383,7 +383,7 @@ impl<T: Display> Display for PilStatement<T> {
                     value.as_ref().map(|v| format!("{v}")).unwrap_or_default()
                 )
             }
-            PilStatement::PolynomialIdentity(_, expression) => {
+            PilStatement::PolynomialIdentity(_, _attr, expression) => {
                 if let Expression::BinaryOperation(left, BinaryOperator::Sub, right) = expression {
                     write!(f, "{left} = {right};")
                 } else {
@@ -391,7 +391,12 @@ impl<T: Display> Display for PilStatement<T> {
                 }
             }
             PilStatement::PlookupIdentity(_, left, right) => write!(f, "{left} in {right};"),
-            PilStatement::PermutationIdentity(_, left, right) => write!(f, "{left} is {right};"),
+            PilStatement::PermutationIdentity(
+                _, //
+                _, //
+                left,
+                right,
+            ) => write!(f, "{left} is {right};"), //
             PilStatement::ConnectIdentity(_, left, right) => write!(
                 f,
                 "{{ {} }} connect {{ {} }};",

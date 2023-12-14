@@ -1,35 +1,44 @@
-use std::collections::HashMap;
-
-use ast::analyzed::AlgebraicExpression as Expression;
 use ast::analyzed::Analyzed;
-use ast::analyzed::Identity;
 
-use itertools::Itertools;
 use number::FieldElement;
 
 use crate::circuit_builder::CircuitBuilder;
 use crate::composer_builder::ComposerBuilder;
 use crate::file_writer::BBFiles;
 use crate::flavor_builder::FlavorBuilder;
+use crate::permutation_builder::get_inverses_from_permutations;
+use crate::permutation_builder::Permutation;
+use crate::permutation_builder::PermutationBuilder;
 use crate::prover_builder::ProverBuilder;
-use crate::relation_builder::{create_identities, create_row_type, RelationBuilder};
-use crate::utils::capitalize;
+use crate::relation_builder::RelationBuilder;
+use crate::relation_builder::RelationOutput;
 use crate::utils::collect_col;
 use crate::utils::flatten;
 use crate::utils::sanitize_name;
 use crate::utils::transform_map;
 use crate::verifier_builder::VerifierBuilder;
 
+/// All of the combinations of columns that are used in a bberg flavor file
 struct ColumnGroups {
+    /// fixed or constant columns in pil -> will be found in vk
     fixed: Vec<String>,
+    /// witness or commit columns in pil -> will be found in proof
     witness: Vec<String>,
+    /// fixed + witness columns
     all_cols: Vec<String>,
+    /// Columns that will not be shifted
     unshifted: Vec<String>,
+    /// Columns that will be shifted
     to_be_shifted: Vec<String>,
+    /// The shifts of the columns that will be shifted
     shifted: Vec<String>,
+    /// fixed + witness + shifted
     all_cols_with_shifts: Vec<String>,
 }
 
+/// Analyzed to cpp
+///
+/// Converts an analyzed pil AST into a set of cpp files that can be used to generate a proof
 pub(crate) fn analyzed_to_cpp<F: FieldElement>(
     analyzed: &Analyzed<F>,
     fixed: &[(String, Vec<F>)],
@@ -42,37 +51,16 @@ pub(crate) fn analyzed_to_cpp<F: FieldElement>(
     // Inlining step to remove the intermediate poly definitions
     let analyzed_identities = analyzed.identities_with_inlined_intermediate_polynomials();
 
-    // Group relations per file
-    let grouped_relations = group_relations_per_file(&analyzed_identities);
-    let relations = grouped_relations.keys().cloned().collect_vec();
+    // ----------------------- Handle Standard Relation Identities -----------------------
+    // We collect all references to shifts as we traverse all identities and create relation files
+    let RelationOutput {
+        relations,
+        shifted_polys,
+    } = bb_files.create_relations(file_name, &analyzed_identities);
 
-    // Contains all of the rows in each relation, will be useful for creating composite builder types
-    // TODO: this will change up
-    let mut all_rows: HashMap<String, String> = HashMap::new();
-    let mut shifted_polys: Vec<String> = Vec::new();
-
-    // ----------------------- Create the relation files -----------------------
-    for (relation_name, analyzed_idents) in grouped_relations.iter() {
-        // TODO: make this more granular instead of doing everything at once
-        let (subrelations, identities, collected_polys, collected_shifts) =
-            create_identities(analyzed_idents);
-
-        shifted_polys.extend(collected_shifts);
-
-        // let all_cols_with_shifts = combine_cols(collected_polys, collected_shifts);
-        // TODO: This can probably be moved into the create_identities function
-        let row_type = create_row_type(&capitalize(relation_name), &collected_polys);
-
-        all_rows.insert(relation_name.clone(), row_type.clone());
-
-        bb_files.create_relations(
-            file_name,
-            relation_name,
-            &subrelations,
-            &identities,
-            &row_type,
-        );
-    }
+    // ----------------------- Handle Lookup / Permutation Relation Identities -----------------------
+    let permutations = bb_files.create_permutation_files(file_name, analyzed);
+    let inverses = get_inverses_from_permutations(&permutations);
 
     // TODO: hack - this can be removed with some restructuring
     let shifted_polys: Vec<String> = shifted_polys
@@ -90,7 +78,7 @@ pub(crate) fn analyzed_to_cpp<F: FieldElement>(
         to_be_shifted,
         shifted,
         all_cols_with_shifts,
-    } = get_all_col_names(fixed, witness, &shifted_polys);
+    } = get_all_col_names(fixed, witness, &shifted_polys, &permutations);
 
     bb_files.create_declare_views(file_name, &all_cols_with_shifts);
 
@@ -98,6 +86,7 @@ pub(crate) fn analyzed_to_cpp<F: FieldElement>(
     bb_files.create_circuit_builder_hpp(
         file_name,
         &relations,
+        &inverses,
         &all_cols,
         &to_be_shifted,
         &all_cols_with_shifts,
@@ -107,6 +96,7 @@ pub(crate) fn analyzed_to_cpp<F: FieldElement>(
     bb_files.create_flavor_hpp(
         file_name,
         &relations,
+        &permutations,
         &fixed,
         &witness,
         &all_cols,
@@ -128,35 +118,6 @@ pub(crate) fn analyzed_to_cpp<F: FieldElement>(
     bb_files.create_prover_hpp(file_name);
 }
 
-/// Group relations per file
-///
-/// The compiler returns all relations in one large vector, however we want to distinguish
-/// which files .pil files the relations belong to for later code gen
-///
-/// Say we have two files foo.pil and bar.pil
-/// foo.pil contains the following relations:
-///    - foo1
-///    - foo2
-/// bar.pil contains the following relations:
-///    - bar1
-///    - bar2
-///
-/// This function will return a hashmap with the following structure:
-/// {
-///  "foo": [foo1, foo2],
-///  "bar": [bar1, bar2]
-/// }
-///
-/// This allows us to generate a relation.hpp file containing ONLY the relations for that .pil file
-fn group_relations_per_file<F: FieldElement>(
-    identities: &[Identity<Expression<F>>],
-) -> HashMap<String, Vec<Identity<Expression<F>>>> {
-    identities
-        .iter()
-        .cloned()
-        .into_group_map_by(|identity| identity.source.file.clone().replace(".pil", ""))
-}
-
 /// Get all col names
 ///
 /// In the flavor file, there are a number of different groups of columns that we need to keep track of
@@ -171,14 +132,18 @@ fn get_all_col_names<F: FieldElement>(
     fixed: &[(String, Vec<F>)],
     witness: &[(String, Vec<F>)],
     to_be_shifted: &[String],
+    permutations: &[Permutation],
 ) -> ColumnGroups {
     // Transformations
     let sanitize = |(name, _): &(String, Vec<F>)| sanitize_name(name).to_owned();
     let append_shift = |name: &String| format!("{}_shift", *name);
 
+    let perm_inverses = get_inverses_from_permutations(permutations);
+
     // Gather sanitized column names
     let fixed_names = collect_col(fixed, sanitize);
     let witness_names = collect_col(witness, sanitize);
+    let witness_names = flatten(&[witness_names, perm_inverses]);
 
     // Group columns by properties
     let shifted = transform_map(to_be_shifted, append_shift);
@@ -191,7 +156,6 @@ fn get_all_col_names<F: FieldElement>(
     let all_cols_with_shifts: Vec<String> =
         flatten(&[fixed_names.clone(), witness_names.clone(), shifted.clone()]);
 
-    // TODO: remove dup
     ColumnGroups {
         fixed: fixed_names,
         witness: witness_names,

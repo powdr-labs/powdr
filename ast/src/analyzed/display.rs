@@ -149,7 +149,13 @@ impl<T: Display> Display for Identity<Expression<T>> {
                 }
             }
             IdentityKind::Plookup => write!(f, "{} in {};", self.left, self.right),
-            IdentityKind::Permutation => write!(f, "{} is {};", self.left, self.right),
+            IdentityKind::Permutation => write!(
+                f,
+                "#[{}] {} is {};",
+                self.attribute.clone().unwrap_or_default(),
+                self.left,
+                self.right
+            ),
             IdentityKind::Connect => write!(f, "{} connect {};", self.left, self.right),
         }
     }

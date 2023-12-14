@@ -1,5 +1,6 @@
 use crate::{
     file_writer::BBFiles,
+    permutation_builder::{get_inverses_from_permutations, Permutation},
     utils::{get_relations_imports, map_with_newline},
 };
 
@@ -9,6 +10,7 @@ pub trait FlavorBuilder {
         &mut self,
         name: &str,
         relation_file_names: &[String],
+        permutations: &[Permutation],
         fixed: &[String],
         witness: &[String],
         all_cols: &[String],
@@ -24,6 +26,7 @@ impl FlavorBuilder for BBFiles {
         &mut self,
         name: &str,
         relation_file_names: &[String],
+        permutations: &[Permutation],
         fixed: &[String],
         witness: &[String],
         all_cols: &[String],
@@ -31,15 +34,19 @@ impl FlavorBuilder for BBFiles {
         shifted: &[String],
         all_cols_and_shifts: &[String],
     ) {
+        // TODO: move elsewhere and rename
+        let inverses = get_inverses_from_permutations(permutations);
+
         let first_poly = &witness[0];
-        let includes = flavor_includes(name, relation_file_names);
+        let includes = flavor_includes(name, relation_file_names, &inverses);
         let num_precomputed = fixed.len();
         let num_witness = witness.len();
         let num_all = all_cols_and_shifts.len();
 
         // Top of file boilerplate
         let class_aliases = create_class_aliases();
-        let relation_definitions = create_relation_definitions(name, relation_file_names);
+        let relation_definitions =
+            create_relation_definitions(name, relation_file_names, permutations);
         let container_size_definitions =
             container_size_definitions(num_precomputed, num_witness, num_all);
 
@@ -57,6 +64,8 @@ impl FlavorBuilder for BBFiles {
         let verification_commitments = create_verifier_commitments(fixed);
 
         let transcript = generate_transcript(witness);
+
+        let declare_permutation_sumcheck = create_permuation_sumcheck_declaration(&inverses, name);
 
         let flavor_hpp = format!(
             "
@@ -96,6 +105,10 @@ class {name}Flavor {{
 }};
 
 }} // namespace proof_system::honk::flavor
+
+namespace sumcheck {{
+    {declare_permutation_sumcheck}
+}}
 }} // namespace proof_system::honk
     
     
@@ -107,8 +120,8 @@ class {name}Flavor {{
 }
 
 /// Imports located at the top of the flavor files
-fn flavor_includes(name: &str, relation_file_names: &[String]) -> String {
-    let relation_imports = get_relations_imports(name, relation_file_names);
+fn flavor_includes(name: &str, relation_file_names: &[String], permutations: &[String]) -> String {
+    let relation_imports = get_relations_imports(name, relation_file_names, permutations);
 
     format!(
         "
@@ -118,6 +131,8 @@ fn flavor_includes(name: &str, relation_file_names: &[String]) -> String {
 #include \"barretenberg/commitment_schemes/kzg/kzg.hpp\"
 #include \"barretenberg/polynomials/barycentric.hpp\"
 #include \"barretenberg/polynomials/univariate.hpp\"
+
+#include \"barretenberg/relations/generic_permutation/generic_permutation_relation.hpp\"
 
 #include \"barretenberg/flavor/flavor_macros.hpp\"
 #include \"barretenberg/transcript/transcript.hpp\"
@@ -134,6 +149,16 @@ fn create_relations_tuple(master_name: &str, relation_file_names: &[String]) -> 
     relation_file_names
         .iter()
         .map(|name| format!("{master_name}_vm::{name}<FF>"))
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+/// Creates comma separated relations tuple file
+/// TODO(md): maybe need the filename in here too if we scope these
+fn create_permutations_tuple(permutations: &[Permutation]) -> String {
+    permutations
+        .iter()
+        .map(|perm| format!("sumcheck::{}_relation<FF>", perm.attribute.clone().unwrap()))
         .collect::<Vec<_>>()
         .join(", ")
 }
@@ -165,12 +190,21 @@ fn create_class_aliases() -> &'static str {
 /// definitions.
 ///
 /// We then also define some constants, making use of the preprocessor.
-fn create_relation_definitions(name: &str, relation_file_names: &[String]) -> String {
+fn create_relation_definitions(
+    name: &str,
+    relation_file_names: &[String],
+    permutations: &[Permutation],
+) -> String {
     // Relations tuple = ns::relation_name_0, ns::relation_name_1, ... ns::relation_name_n (comma speratated)
     let comma_sep_relations = create_relations_tuple(name, relation_file_names);
+    let comma_sep_perms: String = create_permutations_tuple(permutations);
+    let mut all_relations = comma_sep_relations.to_string();
+    if !permutations.is_empty() {
+        all_relations = all_relations + &format!(", {comma_sep_perms}");
+    }
 
     format!("
-        using Relations = std::tuple<{comma_sep_relations}>;
+        using Relations = std::tuple<{all_relations}>;
 
         static constexpr size_t MAX_PARTIAL_RELATION_LENGTH = compute_max_partial_relation_length<Relations>();
 
@@ -445,12 +479,11 @@ fn generate_transcript(witness: &[String]) -> String {
     let declaration_transform = |c: &_| format!("Commitment {c};");
     let deserialize_transform = |name: &_| {
         format!(
-                "{name} = deserialize_from_buffer<Commitment>(Transcript::proof_data, num_bytes_read);",
-    )
+            "{name} = deserialize_from_buffer<Commitment>(Transcript::proof_data, num_bytes_read);",
+        )
     };
-    let serialize_transform = |name: &_| {
-        format!("serialize_to_buffer<Commitment>({name}, Transcript::proof_data);")
-    };
+    let serialize_transform =
+        |name: &_| format!("serialize_to_buffer<Commitment>({name}, Transcript::proof_data);");
 
     // Perform Transformations
     let declarations = map_with_newline(witness, declaration_transform);
@@ -523,4 +556,16 @@ fn generate_transcript(witness: &[String]) -> String {
         }}
     }};
     ")
+}
+
+fn create_permuation_sumcheck_declaration(permutations: &[String], name: &str) -> String {
+    let sumcheck_transformation = |perm: &String| {
+        format!(
+            "
+            DECLARE_SUMCHECK_RELATION_CLASS({perm}, flavor::{name}Flavor);
+            ",
+        )
+    };
+
+    map_with_newline(permutations, sumcheck_transformation)
 }

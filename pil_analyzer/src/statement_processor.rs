@@ -198,11 +198,21 @@ where
     }
 
     fn handle_identity_statement(&mut self, statement: PilStatement<T>) -> Vec<PILItem<T>> {
-        let (start, kind, left, right) = match statement {
-            PilStatement::PolynomialIdentity(start, expression)
-            | PilStatement::Expression(start, expression) => (
+        let (start, kind, attribute, left, right) = match statement {
+            PilStatement::PolynomialIdentity(start, attr, expression) => (
                 start,
                 IdentityKind::Polynomial,
+                attr,
+                SelectedExpressions {
+                    selector: Some(self.process_expression(expression)),
+                    expressions: vec![],
+                },
+                SelectedExpressions::default(),
+            ),
+            PilStatement::Expression(start, expression) => (
+                start,
+                IdentityKind::Polynomial,
+                None,
                 SelectedExpressions {
                     selector: Some(self.process_expression(expression)),
                     expressions: vec![],
@@ -212,18 +222,21 @@ where
             PilStatement::PlookupIdentity(start, key, haystack) => (
                 start,
                 IdentityKind::Plookup,
+                None,
                 self.process_selected_expressions(key),
                 self.process_selected_expressions(haystack),
             ),
-            PilStatement::PermutationIdentity(start, left, right) => (
+            PilStatement::PermutationIdentity(start, attribute, left, right) => (
                 start,
                 IdentityKind::Permutation,
+                attribute.clone(),
                 self.process_selected_expressions(left),
                 self.process_selected_expressions(right),
             ),
             PilStatement::ConnectIdentity(start, left, right) => (
                 start,
                 IdentityKind::Connect,
+                None,
                 SelectedExpressions {
                     selector: None,
                     expressions: self.expression_processor().process_expressions(left),
@@ -242,6 +255,7 @@ where
         vec![PILItem::Identity(Identity {
             id: self.counters.dispense_identity_id(kind),
             kind,
+            attribute,
             source: self.driver.source_position_to_source_ref(start),
             left,
             right,

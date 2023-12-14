@@ -10,9 +10,11 @@ impl VerifierBuilder for BBFiles {
     fn create_verifier_cpp(&mut self, name: &str, witness: &[String]) {
         let include_str = includes_cpp(name);
 
-        let wire_transformation = |n: &String| format!(
+        let wire_transformation = |n: &String| {
+            format!(
             "commitments.{n} = transcript->template receive_from_prover<Commitment>(commitment_labels.{n});"
-        );
+        )
+        };
         let wire_commitments = map_with_newline(witness, wire_transformation);
 
         let ver_cpp = format!("
