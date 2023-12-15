@@ -1,9 +1,12 @@
 use ast::parsed::SelectedExpressions;
+use halo2_curves::bn256::Fr;
+use halo2_curves::ff::FromUniformBytes;
 use num_bigint::BigUint;
 use polyexen::expr::{ColumnKind, ColumnQuery, Expr, PlonkVar};
 use polyexen::plaf::backends::halo2::PlafH2Circuit;
 use polyexen::plaf::{
-    ColumnFixed, ColumnWitness, Columns, Info, Lookup, Plaf, Poly, Shuffle, Witness,
+    ColumnFixed, ColumnPublic, ColumnWitness, Columns, CopyC, Info, Lookup, Plaf, Poly, Shuffle,
+    Witness,
 };
 
 use ast::analyzed::{
@@ -14,11 +17,12 @@ use number::{BigInt, FieldElement};
 
 use super::circuit_data::CircuitData;
 
+/// Converts an analyzed PIL, fixed and witness columns to a PlafH2Circuit and publics for the halo2 backend.
 pub(crate) fn analyzed_to_circuit<T: FieldElement>(
     analyzed: &Analyzed<T>,
     fixed: &[(String, Vec<T>)],
     witness: &[(String, Vec<T>)],
-) -> PlafH2Circuit {
+) -> (PlafH2Circuit, Vec<Vec<Fr>>) {
     // The structure of the table is as following
     //
     // | constant columns | __enable_cur | __enable_next |  witness columns | \
@@ -76,7 +80,7 @@ pub(crate) fn analyzed_to_circuit<T: FieldElement>(
             .iter()
             .map(|(name, _)| ColumnWitness::new(name.to_string(), 0))
             .collect(),
-        public: vec![],
+        public: vec![ColumnPublic::new("public".to_string())],
     };
 
     // build Plaf info. -------------------------------------------------------------------------
@@ -166,6 +170,54 @@ pub(crate) fn analyzed_to_circuit<T: FieldElement>(
             _ => unimplemented!(),
         }
     }
+
+    assert!(
+        analyzed.public_declarations.len() <= num_rows,
+        "More publics than rows!"
+    );
+
+    // Enforce publics by copy-constraining to cells in the instance column.
+    // For example, if we have the following public declarations:
+    // - public out1 = A(2);
+    // - public out2 = B(0);
+    // This would lead to the corresponding values being copied into the public
+    // column as follows:
+    // | Row | A   | B   | public |
+    // |-----|-----|-----|--------|
+    // |  0  |  0  | *5* |  *2*   |
+    // |  1  |  1  |  6  |  *5*   |
+    // |  2  | *2* |  7  |        |
+    // |  3  |  4  |  8  |        |
+    let mut copies = vec![];
+    let mut publics = vec![];
+
+    for public_declaration in analyzed.public_declarations.values() {
+        let witness_name = public_declaration.referenced_poly_name();
+        let witness_col = cd.col(&witness_name);
+        let witness_offset = public_declaration.index as usize;
+        let public_col = cd.public_column;
+        let public_offset = copies.len();
+
+        // Add copy constraint
+        copies.push(CopyC {
+            columns: (public_col, witness_col),
+            // We could also create one copy constraint per column pair wih several offsets.
+            // I don't think there is a difference though...
+            offsets: vec![(public_offset, witness_offset)],
+        });
+
+        // Evaluate the given cell and add it to the publics.
+        let value = cd.eval_witness(&witness_name, witness_offset);
+
+        // Convert from Bn254Field to halo2_curves::bn256::Fr by converting to little endian bytes and back.
+        let mut buffer = [0u8; 64];
+        let bytes = value.to_bytes_le();
+        buffer[..bytes.len()].copy_from_slice(&bytes);
+        let value = Fr::from_uniform_bytes(&buffer);
+
+        // Add to publics.
+        publics.push(value);
+    }
     if lookups.is_empty() {
         // TODO something inside halo2 breaks (only in debug mode) if lookups is empty,
         // so just add an empty lookup.
@@ -213,8 +265,6 @@ pub(crate) fn analyzed_to_circuit<T: FieldElement>(
         witness,
     };
 
-    let copys = vec![];
-
     // build plaf. -------------------------------------------------------------------------
 
     let plaf = Plaf {
@@ -224,13 +274,13 @@ pub(crate) fn analyzed_to_circuit<T: FieldElement>(
         metadata: Default::default(),
         lookups,
         shuffles,
-        copys,
+        copys: copies,
         fixed,
     };
 
     // return circuit description + witness. -------------
 
-    PlafH2Circuit { plaf, wit }
+    (PlafH2Circuit { plaf, wit }, vec![publics])
 }
 
 fn expression_2_expr<T: FieldElement>(cd: &CircuitData<T>, expr: &Expression<T>) -> Expr<PlonkVar> {

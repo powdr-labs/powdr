@@ -499,6 +499,15 @@ pub struct PublicDeclaration {
     pub index: DegreeType,
 }
 
+impl PublicDeclaration {
+    pub fn referenced_poly_name(&self) -> String {
+        match self.array_index {
+            Some(index) => format!("{}[{}]", self.polynomial.name, index),
+            None => self.polynomial.name.clone(),
+        }
+    }
+}
+
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Identity<Expr> {
     /// The ID is specific to the identity kind.

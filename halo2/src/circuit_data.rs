@@ -9,7 +9,8 @@ use polyexen::expr::{Column, ColumnKind};
 pub(crate) struct CircuitData<'a, T> {
     pub(crate) fixed: Vec<(String, Vec<T>)>,
     pub(crate) witness: &'a [(String, Vec<T>)],
-    columns: HashMap<String, Column>,
+    pub(crate) public_column: Column,
+    pub columns: HashMap<String, Column>,
 }
 
 impl<'a, T: FieldElement> CircuitData<'a, T> {
@@ -42,11 +43,16 @@ impl<'a, T: FieldElement> CircuitData<'a, T> {
         });
 
         let columns = const_cols.chain(witness_cols).collect();
+        let public_column = Column {
+            kind: ColumnKind::Public,
+            index: 0,
+        };
 
         Self {
             fixed,
             witness,
             columns,
+            public_column,
         }
     }
 
@@ -55,6 +61,11 @@ impl<'a, T: FieldElement> CircuitData<'a, T> {
             .columns
             .get(name)
             .unwrap_or_else(|| panic!("{name} column not found"))
+    }
+
+    pub fn eval_witness(&self, name: &str, row: usize) -> T {
+        let col = self.col(name);
+        *self.witness.get(col.index).unwrap().1.get(row).unwrap()
     }
 
     pub fn len(&self) -> usize {
