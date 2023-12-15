@@ -9,6 +9,14 @@ pub const PAGE_SIZE_BYTES_LOG: usize = 10;
 // 32-Bit architecture -> 4 bytes per word
 pub const BYTES_PER_WORD: usize = 4;
 
+// Derived constants
+pub const WORDS_PER_PAGE: usize = (1 << (PAGE_SIZE_BYTES_LOG)) / BYTES_PER_WORD;
+pub const MERKLE_TREE_DEPTH: usize = MEMORY_SIZE_LOG - PAGE_SIZE_BYTES_LOG;
+pub const NUM_WORDS: usize = ((1u64 << MEMORY_SIZE_LOG) / BYTES_PER_WORD as u64) as usize;
+pub const PAGE_SIZE_BYTES: usize = 1 << PAGE_SIZE_BYTES_LOG;
+pub const PAGE_NUMBER_MASK: usize = (1 << MERKLE_TREE_DEPTH) - 1;
+pub const BOOTLOADER_INPUTS_PER_PAGE: usize = WORDS_PER_PAGE + 1;
+
 pub fn bootloader_preamble() -> String {
     let mut preamble = r#"
     // ============== bootloader-specific instructions =======================
@@ -53,9 +61,8 @@ pub fn bootloader_preamble() -> String {
 /// The bootloader: An assembly program that can be executed at the beginning a RISC-V execution.
 /// It lets the prover provide arbitrary memory pages and writes them to memory, as well as values for
 /// the registers (including the PC, which is set last).
-/// This can be used to implement continuations. Note that this is completely non-sound as the prover
-/// can provide arbitrary values. In the future, these should be exposed as public inputs (with Merkle
-/// proofs for the memory pages).
+/// This can be used to implement continuations. Note that this is completely non-sound. Progress to
+/// make it sound is tracked in https://github.com/powdr-labs/powdr/issues/814.
 /// Bootloader inputs are in the format:
 /// - First 37 values: Values of x1-x31, tmp1-tmp4, lr_sc_reservation, and the PC
 /// - Number of pages
@@ -66,12 +73,6 @@ pub fn bootloader() -> String {
     let mut bootloader = String::new();
 
     let num_registers = REGISTER_NAMES.len();
-    let page_size_bytes = 1 << PAGE_SIZE_BYTES_LOG;
-    let words_per_page = (1 << (PAGE_SIZE_BYTES_LOG)) / BYTES_PER_WORD;
-    let merkle_tree_depth = MEMORY_SIZE_LOG - PAGE_SIZE_BYTES_LOG;
-    let page_number_mask = (1 << merkle_tree_depth) - 1;
-
-    let bootloader_inputs_per_page = words_per_page + 1;
 
     bootloader.push_str(&format!(
         r#"
@@ -89,12 +90,12 @@ branch_if_zero x1, end_page_loop;
 start_page_loop::
 
 // Page number
-x3 <== load_bootloader_input(x2 * {bootloader_inputs_per_page} + {num_registers} + 1);
-x3 <== and(x3, {page_number_mask});
+x3 <== load_bootloader_input(x2 * {BOOTLOADER_INPUTS_PER_PAGE} + {num_registers} + 1);
+x3 <== and(x3, {PAGE_NUMBER_MASK});
 
-// Store & hash {words_per_page} page words. This is an unrolled loop that for each each word:
+// Store & hash {WORDS_PER_PAGE} page words. This is an unrolled loop that for each each word:
 // - Loads the word into the P{{(i % 4) + 4}} register
-// - Stores the word at the address x3 * {page_size_bytes} + i * {BYTES_PER_WORD}
+// - Stores the word at the address x3 * {PAGE_SIZE_BYTES} + i * {BYTES_PER_WORD}
 // - If i % 4 == 3: Hashes registers P0-P11, storing the result in P0-P3
 //
 // At the end of the loop, we'll have a linear hash of the page in P0-P3, using a Merkle-Damgard
@@ -112,12 +113,12 @@ P7 <=X= 0;
 "#,
     ));
 
-    for i in 0..words_per_page {
+    for i in 0..WORDS_PER_PAGE {
         let reg_index = (i % 4) + 4;
         bootloader.push_str(&format!(
             r#"
-P{reg_index} <== load_bootloader_input(x2 * {bootloader_inputs_per_page} + {num_registers} + 2 + {i});
-mstore x3 * {page_size_bytes} + {i} * {BYTES_PER_WORD}, P{reg_index};"#
+P{reg_index} <== load_bootloader_input(x2 * {BOOTLOADER_INPUTS_PER_PAGE} + {num_registers} + 2 + {i});
+mstore x3 * {PAGE_SIZE_BYTES} + {i} * {BYTES_PER_WORD}, P{reg_index};"#
         ));
 
         // Hash if buffer is full
@@ -130,9 +131,15 @@ P0, P1, P2, P3 <== poseidon_gl(P0, P1, P2, P3, P4, P5, P6, P7, P8, P9, P10, P11)
         }
     }
 
-    bootloader.push_str(
+    bootloader.push_str(&format!(
         r#"
-// Simulate a Merkle proof, using 0 as the sibling hashes for now...
+// == Merkle proof validation ==
+// We commit to the memory content by hashing it in pages of {WORDS_PER_PAGE} words each.
+// These hashes are stored in a binary Merkle tree of depth {MERKLE_TREE_DEPTH}.
+// At this point, the current page hash is in P0-P3. In order to validate the Merkle proof,
+// we need to re-compute the Merkle root from the prover-provided sibling page hashes.
+// For now, we simulate a Merkle proof using 0 as the sibling hashes...
+//
 // This is an unrolled loop that for each level:
 // - If the ith bit of the page number is 0:
 //   - Load sibling into registers P4-P7
@@ -143,9 +150,9 @@ P0, P1, P2, P3 <== poseidon_gl(P0, P1, P2, P3, P4, P5, P6, P7, P8, P9, P10, P11)
 //
 // At the end of the loop, we'll have the Merkle root in P0-P3.
 "#,
-    );
+    ));
 
-    for i in 0..merkle_tree_depth {
+    for i in 0..MERKLE_TREE_DEPTH {
         let mask = 1 << i;
         bootloader.push_str(&format!(
             r#"
