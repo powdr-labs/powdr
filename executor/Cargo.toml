@@ -5,7 +5,7 @@ edition = "2021"
 
 [dependencies]
 itertools = "^0.10"
-log = { version = "0.4.17", features = ["release_max_level_debug"] }
+log = { version = "0.4.17" }
 ast = { path = "../ast" }
 number = { path = "../number" }
 parser_util = { path = "../parser_util" }
