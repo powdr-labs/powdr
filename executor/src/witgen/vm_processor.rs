@@ -53,6 +53,7 @@ pub struct VmProcessor<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> {
     /// (precomputed once for performance reasons)
     identities_without_next_ref: Vec<&'a Identity<Expression<T>>>,
     last_report: DegreeType,
+    report_frequency: DegreeType,
     last_report_time: Instant,
     row_factory: RowFactory<'a, T>,
     processor: Processor<'a, 'b, 'c, T, Q>,
@@ -73,6 +74,8 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
             .partition(|identity| identity.contains_next_ref());
         let processor = Processor::new(row_offset, data, mutable_state, fixed_data, witnesses);
 
+        let report_frequency = max(fixed_data.degree / 10, 1000);
+
         VmProcessor {
             row_offset,
             witnesses: witnesses.clone(),
@@ -81,6 +84,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
             identities_without_next_ref: identities_without_next,
             row_factory,
             last_report: 0,
+            report_frequency,
             last_report_time: Instant::now(),
             processor,
         }
@@ -462,7 +466,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
     }
 
     fn maybe_log_performance(&mut self, row_index: DegreeType) {
-        if row_index >= self.last_report + 1000 {
+        if row_index >= self.last_report + self.report_frequency {
             let duration = self.last_report_time.elapsed();
             self.last_report_time = Instant::now();
 
