@@ -162,9 +162,7 @@ mod tests {
             env!("CARGO_MANIFEST_DIR")
         ));
         let file_name = base_path.join(path);
-        let expected = fs::read_to_string(file_name)
-            .unwrap()
-            .replace("machine Main", "machine ::Main");
+        let expected = fs::read_to_string(file_name).unwrap();
 
         // remove the batch comments from the expected output before compiling
         let input = expected

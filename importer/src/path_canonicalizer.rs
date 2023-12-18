@@ -14,6 +14,8 @@ use ast::parsed::{
     folder::Folder,
 };
 
+/// Changes all symbol references (symbol paths) from relative paths
+/// to absolute paths, and removes all import statements.
 pub fn canonicalize_paths<T: FieldElement>(
     program: ASMProgram<T>,
 ) -> Result<ASMProgram<T>, String> {

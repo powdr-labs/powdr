@@ -77,7 +77,7 @@ pub fn evaluate_unary_operation<T: FieldElement>(op: UnaryOperator, v: T) -> T {
 }
 
 /// quick and dirty String to String indentation
-fn indent<S: ToString>(s: S, indentation: usize) -> String {
+pub fn indent<S: ToString>(s: S, indentation: usize) -> String {
     s.to_string()
         .split('\n')
         .map(|line| match line {
@@ -85,6 +85,14 @@ fn indent<S: ToString>(s: S, indentation: usize) -> String {
             _ => format!("{}{line}", "    ".repeat(indentation)),
         })
         .join("\n")
+}
+
+pub fn write_indented_by<S, W>(f: &mut W, s: S, indentation: usize) -> Result
+where
+    S: Display,
+    W: Write,
+{
+    write!(f, "{}", indent(s, indentation))
 }
 
 fn write_items<S, I, W>(f: &mut W, items: I) -> Result
@@ -112,7 +120,8 @@ where
     W: Write,
 {
     for item in items.into_iter() {
-        writeln!(f, "{}", indent(item, by))?;
+        write_indented_by(f, item, by)?;
+        writeln!(f)?;
     }
     Ok(())
 }
