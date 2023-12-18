@@ -186,7 +186,15 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
                         .map(|(name, poly_id)| {
                             let external_values = external_witness_values.remove(name.as_str());
                             if let Some(external_values) = &external_values {
-                                assert_eq!(external_values.len(), analyzed.degree() as usize);
+                                if external_values.len() != analyzed.degree() as usize {
+                                    log::warn!(
+                                        "External witness values for column {} were only partially provided \
+                                         (length is {} but the degree is {})",
+                                        name,
+                                        external_values.len(),
+                                        analyzed.degree()
+                                    );
+                                }
                             }
                             WitnessColumn::new(poly_id.id as usize, &name, value, external_values)
                         })
@@ -244,7 +252,7 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
         self.witness_cols[column]
             .external_values
             .as_ref()
-            .map(|v| v[row as usize])
+            .and_then(|v| v.get(row as usize).cloned())
     }
 }
 

@@ -9,6 +9,47 @@ pub const PAGE_SIZE_BYTES_LOG: usize = 10;
 // 32-Bit architecture -> 4 bytes per word
 pub const BYTES_PER_WORD: usize = 4;
 
+pub fn bootloader_preamble() -> String {
+    let mut preamble = r#"
+    // ============== bootloader-specific instructions =======================
+    // Write-once memory
+    let BOOTLOADER_INPUT_ADDRESS = |i| i;
+    let bootloader_input_value;
+    // Loads a value. If the cell is empty, the prover can choose a value.
+    instr load_bootloader_input X -> Y { {X, Y} in {BOOTLOADER_INPUT_ADDRESS, bootloader_input_value} }
+
+    // HACK: We should not use these columns & constraints and instead be able to use X.
+    // However, this seems to currently violate some constraints, because X is neither
+    // an input nor an output of the jump_to_bootloader_input_if_nonzero instruction.
+    col witness tmp_addr;
+    col witness tmp_addrInv;
+    col witness tmp_addrIsZero;
+    tmp_addrIsZero = 1 - tmp_addr * tmp_addrInv;
+    tmp_addrIsZero * tmp_addr = 0;
+    tmp_addrIsZero * (1 - tmp_addrIsZero) = 0;
+    (1 - instr_jump_to_bootloader_input_if_nonzero) * tmp_addr = 0;
+
+    // Sets the PC to the bootloader input at the provided index if it is nonzero
+    instr jump_to_bootloader_input_if_nonzero Y {
+        // Atomically reads the bootloader input at index Y and jumps to it if it is nonzero
+        // (otherwise, the PC is incremented by 1).
+        {Y, tmp_addr} in {BOOTLOADER_INPUT_ADDRESS, bootloader_input_value},
+        pc' = (1 - tmp_addrIsZero) * tmp_addr + tmp_addrIsZero * (pc + 1)
+    }
+
+    // Expose initial register values as public outputs
+"#.to_string();
+
+    for (i, reg) in REGISTER_NAMES.iter().enumerate() {
+        let reg = reg.strip_prefix("main.").unwrap();
+        preamble.push_str(&format!(
+            "    public initial_{reg} = bootloader_input_value({i});\n"
+        ));
+    }
+
+    preamble
+}
+
 /// The bootloader: An assembly program that can be executed at the beginning a RISC-V execution.
 /// It lets the prover provide arbitrary memory pages and writes them to memory, as well as values for
 /// the registers (including the PC, which is set last).
@@ -30,12 +71,14 @@ pub fn bootloader() -> String {
     let merkle_tree_depth = MEMORY_SIZE_LOG - PAGE_SIZE_BYTES_LOG;
     let page_number_mask = (1 << merkle_tree_depth) - 1;
 
+    let bootloader_inputs_per_page = words_per_page + 1;
+
     bootloader.push_str(&format!(
         r#"
 // START OF BOOTLOADER
 
 // Number of pages
-x1 <=X= ${{ ("bootloader_input", {num_registers}) }};
+x1 <== load_bootloader_input({num_registers});
 x1 <== wrap(x1);
 
 // Current page index
@@ -46,7 +89,7 @@ branch_if_zero x1, end_page_loop;
 start_page_loop::
 
 // Page number
-x3 <=X= ${{ ("bootloader_input", x2 * ({words_per_page} + 1) + {num_registers} + 1) }};
+x3 <== load_bootloader_input(x2 * {bootloader_inputs_per_page} + {num_registers} + 1);
 x3 <== and(x3, {page_number_mask});
 
 // Store & hash {words_per_page} page words. This is an unrolled loop that for each each word:
@@ -66,14 +109,14 @@ P4 <=X= 0;
 P5 <=X= 0;
 P6 <=X= 0;
 P7 <=X= 0;
-"#
+"#,
     ));
 
     for i in 0..words_per_page {
         let reg_index = (i % 4) + 4;
         bootloader.push_str(&format!(
             r#"
-P{reg_index} <=X= ${{ ("bootloader_input", x2 * ({words_per_page} + 1) + {num_registers} + 2 + {i})}};
+P{reg_index} <== load_bootloader_input(x2 * {bootloader_inputs_per_page} + {num_registers} + 2 + {i});
 mstore x3 * {page_size_bytes} + {i} * {BYTES_PER_WORD}, P{reg_index};"#
         ));
 
@@ -146,16 +189,15 @@ end_page_loop::
 
     for (i, reg) in register_iter.enumerate() {
         let reg = reg.strip_prefix("main.").unwrap();
-        bootloader.push_str(&format!(r#"{reg} <=X= ${{ ("bootloader_input", {i}) }};"#));
+        bootloader.push_str(&format!(r#"{reg} <== load_bootloader_input({i});"#));
         bootloader.push('\n');
     }
     bootloader.push_str(&format!(
         r#"
 // Default PC is 0, but we already started from 0, so in that case we do nothing.
 // Otherwise, we jump to the PC.
-jump_dyn_if_nonzero ${{ ("bootloader_input", {}) }};
-"#,
-        PC_INDEX
+jump_to_bootloader_input_if_nonzero {PC_INDEX};
+"#
     ));
 
     bootloader.push_str("\n// END OF BOOTLOADER\n");

@@ -16,7 +16,7 @@ use asm_utils::{
 };
 use itertools::Itertools;
 
-use crate::bootloader::bootloader;
+use crate::bootloader::{bootloader, bootloader_preamble};
 use crate::coprocessors::*;
 use crate::disambiguator;
 use crate::parser::RiscParser;
@@ -240,7 +240,7 @@ pub fn compile(
 
     riscv_machine(
         &coprocessors.machine_imports(),
-        &preamble(degree, coprocessors),
+        &preamble(degree, coprocessors, with_bootloader),
         &coprocessors.declarations(),
         program,
     )
@@ -452,7 +452,13 @@ machine Main {{
     )
 }
 
-fn preamble(degree: u64, coprocessors: &CoProcessors) -> String {
+fn preamble(degree: u64, coprocessors: &CoProcessors, with_bootloader: bool) -> String {
+    let bootloader_preamble_if_included = if with_bootloader {
+        bootloader_preamble()
+    } else {
+        "".to_string()
+    };
+
     format!("degree {degree};")
         + r#"
     reg pc[@pc];
@@ -474,7 +480,9 @@ fn preamble(degree: u64, coprocessors: &CoProcessors) -> String {
             .map(|i| format!("\t\treg x{i};\n"))
             .collect::<Vec<_>>()
             .concat()
+        + &bootloader_preamble_if_included
         + r#"
+    // ============== Constraint on x0 =======================
 
     x0 = 0;
 
@@ -566,7 +574,6 @@ fn preamble(degree: u64, coprocessors: &CoProcessors) -> String {
     instr jump l: label { pc' = l }
     instr load_label l: label -> X { X = l }
     instr jump_dyn X { pc' = X }
-    instr jump_dyn_if_nonzero X { pc' = (1 - XIsZero) * X + XIsZero * (pc + 1) }
     instr jump_and_link_dyn X { pc' = X, x1' = pc + 1 }
     instr call l: label { pc' = l, x1' = pc + 1 }
     instr ret { pc' = x1 }

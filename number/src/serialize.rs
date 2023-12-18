@@ -97,6 +97,9 @@ pub fn write_polys_file<T: FieldElement>(file: &mut impl Write, polys: &[(String
     // TODO maybe the witness should have a proper type that
     // explicitly has a degree or length?
     let degree = polys[0].1.len();
+    for (_, values) in polys {
+        assert_eq!(values.len(), degree);
+    }
 
     for i in 0..degree {
         for (_name, constant) in polys {

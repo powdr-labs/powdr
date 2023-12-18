@@ -40,7 +40,7 @@ pub fn verify_pipeline<T: FieldElement>(
 ) {
     let mut pipeline = pipeline
         .with_tmp_output()
-        .with_external_witness_values(external_witness_values)
+        .add_external_witness_values(external_witness_values)
         .with_prover_inputs(inputs)
         .with_backend(BackendType::PilStarkCli);
 
