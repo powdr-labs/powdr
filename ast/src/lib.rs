@@ -80,7 +80,10 @@ pub fn evaluate_unary_operation<T: FieldElement>(op: UnaryOperator, v: T) -> T {
 fn indent<S: ToString>(s: S, indentation: usize) -> String {
     s.to_string()
         .split('\n')
-        .map(|line| format!("{}{line}", "\t".repeat(indentation)))
+        .map(|line| match line {
+            "" => "".to_string(),
+            _ => format!("{}{line}", "    ".repeat(indentation)),
+        })
         .join("\n")
 }
 
