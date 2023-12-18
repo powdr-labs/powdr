@@ -173,12 +173,12 @@ mod tests {
 
         let batched: AnalysisASMFile<GoldilocksField> = batch_str(&input);
 
-        assert_eq!(
-            format!("{batched}")
-                .replace("\n\n", "\n")
-                .replace('\t', "    "),
-            expected.replace("\n\n", "\n").replace('\t', "    "),
-        );
+        let result = format!("{batched}").replace("\n\n", "\n");
+        let expected = expected.replace("\n\n", "\n");
+        // The stdlib is added by the importer, so we only check for the initial part.
+        assert!(result.len() >= expected.len());
+        assert!(expected.len() >= 50);
+        assert_eq!(result[..expected.len()], expected);
     }
 
     #[test]

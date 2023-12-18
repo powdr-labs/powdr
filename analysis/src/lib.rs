@@ -62,11 +62,11 @@ pub mod utils {
 #[cfg(test)]
 mod test_util {
     use ast::asm_analysis::AnalysisASMFile;
+    use importer::resolve_str;
     use number::FieldElement;
-    use parser::parse_asm;
 
     /// A test utility to process a source file until after type checking
     pub fn typecheck_str<T: FieldElement>(source: &str) -> Result<AnalysisASMFile<T>, Vec<String>> {
-        type_check::check(parse_asm(None, source).unwrap())
+        type_check::check(resolve_str(source))
     }
 }
