@@ -268,7 +268,7 @@ impl<T: FieldElement> TypeChecker<T> {
                                     errors.extend(e);
                                 }
                                 Ok(machine) => {
-                                    res.insert(ctx.clone().join(name), machine);
+                                    res.insert(ctx.with_part(&name), machine);
                                 }
                             };
                         }
@@ -277,7 +277,7 @@ impl<T: FieldElement> TypeChecker<T> {
                         }
                         asm::SymbolValue::Module(m) => {
                             // add the name of this module to the context
-                            let ctx = ctx.clone().join(name.clone());
+                            let ctx = ctx.with_part(&name);
 
                             let m = match m {
                                 asm::Module::External(_) => unreachable!(),

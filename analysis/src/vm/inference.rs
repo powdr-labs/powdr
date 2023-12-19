@@ -124,7 +124,7 @@ mod tests {
         let file = infer_str::<Bn254Field>(file).unwrap();
 
         if let FunctionStatement::Assignment(AssignmentStatement { lhs_with_reg, .. }) = file
-            .machines[&parse_absolute_path("Machine")]
+            .machines[&parse_absolute_path("::Machine")]
             .functions()
             .next()
             .unwrap()
@@ -163,7 +163,7 @@ mod tests {
         let file = infer_str::<Bn254Field>(file).unwrap();
 
         if let FunctionStatement::Assignment(AssignmentStatement { lhs_with_reg, .. }) = &file
-            .machines[&parse_absolute_path("Machine")]
+            .machines[&parse_absolute_path("::Machine")]
             .functions()
             .next()
             .unwrap()

@@ -5,7 +5,11 @@ use std::{
 
 use itertools::Itertools;
 
-use crate::{indent, write_items_indented};
+use crate::{
+    indent,
+    parsed::asm::{AbsoluteSymbolPath, Part},
+    write_indented_by, write_items_indented,
+};
 
 use super::{
     AnalysisASMFile, AssignmentStatement, CallableSymbol, CallableSymbolDefinitionRef,
@@ -17,9 +21,36 @@ use super::{
 
 impl<T: Display> Display for AnalysisASMFile<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        let mut current_path = AbsoluteSymbolPath::default();
+
         for (name, machine) in &self.machines {
-            write!(f, "machine {name}{machine}")?;
+            let [diff @ .., Part::Named(machine_name)] = &name.relative_to(&current_path).parts[..]
+            else {
+                unreachable!()
+            };
+            for part in diff {
+                match part {
+                    Part::Super => {
+                        current_path.pop();
+                        write_indented_by(f, "}\n", current_path.parts.len())?;
+                    }
+                    Part::Named(m) => {
+                        write_indented_by(f, format!("mod {m} {{\n"), current_path.parts.len())?;
+                        current_path.push(m.clone());
+                    }
+                }
+            }
+
+            write_indented_by(
+                f,
+                format!("machine {machine_name}{machine}"),
+                current_path.parts.len(),
+            )?;
         }
+        for (i, _) in current_path.parts.iter().enumerate().rev() {
+            write_indented_by(f, "}\n", i)?;
+        }
+
         Ok(())
     }
 }
@@ -245,5 +276,61 @@ impl Display for Incompatible {
 impl Display for IncompatibleSet {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(f, "{}", self.0.iter().format(", "))
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::parsed::asm::parse_absolute_path;
+    use number::GoldilocksField;
+    use pretty_assertions::assert_eq;
+
+    #[test]
+    fn display_asm_analysis_file() {
+        let file = AnalysisASMFile::<GoldilocksField> {
+            machines: [
+                "::x::Y",
+                "::x::r::T",
+                "::x::f::Y",
+                "::M",
+                "::t::x::y::R",
+                "::t::F",
+                "::X",
+            ]
+            .into_iter()
+            .map(|s| (parse_absolute_path(s), Machine::default()))
+            .collect(),
+        };
+        assert_eq!(
+            file.to_string(),
+            r#"machine M {
+}
+machine X {
+}
+mod t {
+    machine F {
+    }
+    mod x {
+        mod y {
+            machine R {
+            }
+        }
+    }
+}
+mod x {
+    machine Y {
+    }
+    mod f {
+        machine Y {
+        }
+    }
+    mod r {
+        machine T {
+        }
+    }
+}
+"#
+        );
     }
 }

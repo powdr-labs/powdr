@@ -1,4 +1,7 @@
-use std::{collections::VecDeque, fmt::Display};
+use std::{
+    fmt::Display,
+    iter::{once, repeat},
+};
 
 use number::AbstractNumberType;
 
@@ -92,63 +95,123 @@ pub struct Import {
     pub path: SymbolPath,
 }
 
+/// A symbol path is a sequence of strings separated by ``::`.
+/// It can contain the special word `super`, which goes up a level.
+/// If it does not start with `::`, it is relative.
 #[derive(Default, Debug, PartialEq, Eq, Clone, PartialOrd, Ord)]
 pub struct SymbolPath {
-    pub parts: VecDeque<Part>,
+    /// The parts between each `::`.
+    pub parts: Vec<Part>,
 }
 
+impl SymbolPath {
+    pub fn join<P: Into<Self>>(mut self, other: P) -> Self {
+        self.parts.extend(other.into().parts);
+        self
+    }
+}
+
+/// An absolute symbol path is a resolved SymbolPath,
+/// which means it has to start with `::` and it cannot contain
+/// the word `super`.
 #[derive(Default, Debug, PartialEq, Eq, Clone, PartialOrd, Ord)]
 pub struct AbsoluteSymbolPath {
-    pub parts: VecDeque<String>,
+    /// Contains the parts after the initial `::`.
+    pub parts: Vec<String>,
 }
 
-impl<S: Into<String>> From<S> for AbsoluteSymbolPath {
-    fn from(name: S) -> Self {
-        Self {
-            parts: [name.into()].into(),
-        }
-    }
-}
-
-/// parses a path like `path::to::symbol`
+/// Parses a path like `::path::to::symbol`.
+/// Panics if the path does not start with '::'.
 pub fn parse_absolute_path(s: &str) -> AbsoluteSymbolPath {
-    s.split("::")
-        .fold(AbsoluteSymbolPath::default(), |path, part| path.join(part))
-}
-
-impl AbsoluteSymbolPath {
-    pub fn pop_front(&mut self) -> Option<String> {
-        self.parts.pop_front()
-    }
-
-    pub fn pop_back(&mut self) -> Option<String> {
-        self.parts.pop_back()
+    match s.strip_prefix("::") {
+        Some("") => AbsoluteSymbolPath::default(),
+        Some(s) => s
+            .split("::")
+            .fold(AbsoluteSymbolPath::default(), |path, part| {
+                path.with_part(part)
+            }),
+        None => panic!("Absolute symbol path does not start with '::': {s}"),
     }
 }
 
 impl AbsoluteSymbolPath {
-    pub fn join<P: Into<SymbolPath>>(self, other: P) -> Self {
-        other
-            .into()
+    /// Removes and returns the last path component (unless empty).
+    pub fn pop(&mut self) -> Option<String> {
+        self.parts.pop()
+    }
+
+    /// Appends a part to the end of the path.
+    pub fn push(&mut self, part: String) {
+        self.parts.push(part);
+    }
+
+    /// Returns the relative path from base to self.
+    /// In other words, base.join(self.relative_to(base)) == self.
+    pub fn relative_to(&self, base: &AbsoluteSymbolPath) -> SymbolPath {
+        let common_prefix_len = self.common_prefix(base).parts.len();
+        // Start with max(0, base.parts.len() - common_root.parts.len())
+        // repetitions of "super".
+        let parts = repeat(Part::Super)
+            .take(base.parts.len().saturating_sub(common_prefix_len))
+            // append the parts of self after the common root.
+            .chain(
+                self.parts
+                    .iter()
+                    .skip(common_prefix_len)
+                    .cloned()
+                    .map(Part::Named),
+            )
+            .collect();
+        SymbolPath { parts }
+    }
+
+    /// Returns the common prefix of two paths.
+    pub fn common_prefix(&self, other: &AbsoluteSymbolPath) -> AbsoluteSymbolPath {
+        let parts = self
             .parts
-            .into_iter()
-            .fold(self, |mut acc, part| match part {
+            .iter()
+            .zip(other.parts.iter())
+            .map_while(|(a, b)| if a == b { Some(a.clone()) } else { None })
+            .collect();
+
+        AbsoluteSymbolPath { parts }
+    }
+
+    /// Resolves a relative path in the context of this absolute path.
+    pub fn join<P: Into<SymbolPath> + Display>(mut self, other: P) -> Self {
+        for part in other.into().parts {
+            match part {
                 Part::Super => {
-                    acc.pop_back().unwrap();
-                    acc
+                    self.pop().unwrap();
                 }
                 Part::Named(name) => {
-                    acc.parts.push_back(name);
-                    acc
+                    if name.is_empty() {
+                        self.parts.clear();
+                    } else {
+                        self.parts.push(name);
+                    }
                 }
-            })
+            }
+        }
+        self
+    }
+
+    /// Appends a part to the end of the path and returns a new copy.
+    pub fn with_part(&self, part: &str) -> Self {
+        assert!(!part.is_empty());
+        let mut parts = self.parts.clone();
+        parts.push(part.to_string());
+        Self { parts }
     }
 }
 
 impl From<AbsoluteSymbolPath> for SymbolPath {
     fn from(value: AbsoluteSymbolPath) -> Self {
         Self {
-            parts: value.parts.into_iter().map(Part::Named).collect(),
+            parts: once(String::new())
+                .chain(value.parts)
+                .map(Part::Named)
+                .collect(),
         }
     }
 }
@@ -168,31 +231,6 @@ impl TryInto<String> for Part {
         } else {
             Err(())
         }
-    }
-}
-
-impl SymbolPath {
-    pub fn pop_front(&mut self) -> Option<Part> {
-        self.parts.pop_front()
-    }
-
-    pub fn pop_back(&mut self) -> Option<Part> {
-        self.parts.pop_back()
-    }
-}
-
-impl<S: Into<String>> From<S> for SymbolPath {
-    fn from(name: S) -> Self {
-        Self {
-            parts: [Part::Named(name.into())].into(),
-        }
-    }
-}
-
-impl SymbolPath {
-    pub fn join<P: Into<Self>>(mut self, other: P) -> Self {
-        self.parts.extend(other.into().parts);
-        self
     }
 }
 
@@ -340,4 +378,81 @@ pub struct Param<T> {
     pub name: String,
     pub index: Option<T>,
     pub ty: Option<String>,
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn common_prefix() {
+        assert_eq!(
+            parse_absolute_path("::a::b").common_prefix(&parse_absolute_path("::a::c")),
+            parse_absolute_path("::a")
+        );
+        assert_eq!(
+            parse_absolute_path("::a::b").common_prefix(&parse_absolute_path("::a")),
+            parse_absolute_path("::a")
+        );
+        assert_eq!(
+            parse_absolute_path("::a").common_prefix(&parse_absolute_path("::a::c")),
+            parse_absolute_path("::a")
+        );
+        assert_eq!(
+            parse_absolute_path("::x").common_prefix(&parse_absolute_path("::y::t")),
+            parse_absolute_path("::")
+        );
+        assert_eq!(
+            parse_absolute_path("::x::r::v").common_prefix(&parse_absolute_path("::x::r::t")),
+            parse_absolute_path("::x::r")
+        );
+    }
+
+    #[test]
+    fn relative_to() {
+        assert_eq!(
+            parse_absolute_path("::a::b")
+                .relative_to(&parse_absolute_path("::a::c"))
+                .to_string(),
+            "super::b".to_string()
+        );
+        assert_eq!(
+            parse_absolute_path("::a::b")
+                .relative_to(&parse_absolute_path("::a"))
+                .to_string(),
+            "b".to_string()
+        );
+        assert_eq!(
+            parse_absolute_path("::x")
+                .relative_to(&parse_absolute_path("::y::t"))
+                .to_string(),
+            "super::super::x".to_string()
+        );
+        assert_eq!(
+            parse_absolute_path("::x::r::v")
+                .relative_to(&parse_absolute_path("::x::r"))
+                .to_string(),
+            "v".to_string()
+        );
+        assert_eq!(
+            parse_absolute_path("::x")
+                .relative_to(&parse_absolute_path("::x::t::k"))
+                .to_string(),
+            "super::super".to_string()
+        );
+        assert_eq!(
+            parse_absolute_path("::x")
+                .relative_to(&parse_absolute_path("::x"))
+                .to_string(),
+            "".to_string()
+        );
+    }
+
+    #[test]
+    fn relative_to_join() {
+        let v = parse_absolute_path("::x::r::v");
+        let base = parse_absolute_path("::x::t");
+        let rel = v.relative_to(&base);
+        assert_eq!(base.join(rel), v);
+    }
 }
