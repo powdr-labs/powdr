@@ -42,19 +42,19 @@ machine Palindrome {
         ADDR <=X= 0;
         mstore CNT;
 
-        store_values::
+        store_values:
         jmpz CNT, check_start;
         ADDR <=X= CNT;
         mstore ${ ("input", CNT) };
         CNT <=X= CNT - 1;
         jmp store_values;
 
-        check_start::
+        check_start:
         ADDR <=X= 0;
         mload CNT;
         I <=X= 0;
 
-        check::
+        check:
         jmpz I - CNT, end;
         ADDR <=X= I + 1;
         mload A;
@@ -64,7 +64,7 @@ machine Palindrome {
         I <=X= I + 1;
         jmp check;
 
-        end::
+        end:
         return;
     }
 }

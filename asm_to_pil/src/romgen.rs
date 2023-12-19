@@ -90,7 +90,7 @@ pub fn generate_machine_rom<T: FieldElement>(
         // add the beginning of the dispatcher
         rom.extend(vec![
             Batch::from(vec![
-                parse_function_statement("_start::"),
+                parse_function_statement("_start:"),
                 parse_function_statement(&format!("{RESET_NAME};")),
             ])
             .reason(IncompatibleSet::from(Incompatible::Unimplemented)),
@@ -189,7 +189,7 @@ pub fn generate_machine_rom<T: FieldElement>(
                 .first_mut()
                 .expect("function should have at least one statement as it must return")
                 .statements
-                .insert(0, parse_function_statement(&format!("_{}::", name)));
+                .insert(0, parse_function_statement(&format!("_{}:", name)));
 
             // modify the last batch to be caused by the coming label
             let last = batches
@@ -217,7 +217,7 @@ pub fn generate_machine_rom<T: FieldElement>(
         let sink_id = T::from(rom.len() as u64);
 
         rom.extend(vec![Batch::from(vec![
-            parse_function_statement("_sink::"),
+            parse_function_statement("_sink:"),
             parse_function_statement("_loop;"),
         ])]);
 
@@ -283,12 +283,12 @@ mod tests {
                 .to_string()
                 .replace('\t', "    "),
             r#"
-_start::
+_start:
 _reset;
 // END BATCH Unimplemented
 _jump_to_operation;
 // END BATCH Label
-_sink::
+_sink:
 _loop;
 // END BATCH
 "#
@@ -321,15 +321,15 @@ _loop;
                 .to_string()
                 .replace('\t', "    "),
             r#"
-_start::
+_start:
 _reset;
 // END BATCH Unimplemented
 _jump_to_operation;
 // END BATCH Label
-_identity::
+_identity:
 return _input_0;
 // END BATCH Label
-_sink::
+_sink:
 _loop;
 // END BATCH
 "#
@@ -380,22 +380,22 @@ _loop;
                 .to_string()
                 .replace('\t', "    "),
             r#"
-_start::
+_start:
 _reset;
 // END BATCH Unimplemented
 _jump_to_operation;
 // END BATCH Label
-_f_add::
+_f_add:
 A <=Z= add(_input_0, _input_1);
 // END BATCH
 return A;
 // END BATCH Label
-_f_assert_zero::
+_f_assert_zero:
 assert_zero _input_0;
 // END BATCH
 return 0;
 // END BATCH Label
-_sink::
+_sink:
 _loop;
 // END BATCH
 "#

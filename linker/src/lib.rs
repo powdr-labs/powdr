@@ -443,7 +443,7 @@ machine Machine {
 
     function main {
         inc_fp 7;
-        loop::
+        loop:
         adjust_fp -2, loop;
     }
 }

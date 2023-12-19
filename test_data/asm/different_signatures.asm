@@ -14,7 +14,7 @@ machine Main {
     instr nothing = sub.nothing
 
     function main {
-        start::
+        start:
         A <== one();
         return;
     }

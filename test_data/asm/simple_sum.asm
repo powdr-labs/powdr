@@ -31,14 +31,14 @@ machine Main {
     function main {
         CNT <=X= ${ ("input", 1) };
 
-        start::
+        start:
         jmpz CNT, check;
         A <=X= A + ${ ("input", CNT + 1) };
         // Could use "CNT <=X= CNT - 1", but that would need X.
         dec_CNT;
         jmp start;
 
-        check::
+        check:
         A <=X= A - ${ ("input", 0) };
         assert_zero A;
         return;

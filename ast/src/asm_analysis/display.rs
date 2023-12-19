@@ -140,7 +140,7 @@ impl<T: Display> Display for Return<T> {
 
 impl Display for LabelStatement {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write!(f, "{}::", self.name)
+        write!(f, "{}:", self.name)
     }
 }
 

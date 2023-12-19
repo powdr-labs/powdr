@@ -217,7 +217,7 @@ pub fn compile(
                 .into_iter()
                 .flat_map(|v| process_statement(v, coprocessors)),
         )
-        .chain(["// This is the data initialization routine.\n__data_init::".to_string()])
+        .chain(["// This is the data initialization routine.\n__data_init:".to_string()])
         .chain(data_code)
         .chain(["// This is the end of the data initialization routine.\nret;".to_string()])
         .collect();
@@ -746,7 +746,7 @@ fn runtime(coprocessors: &CoProcessors) -> String {
 
 fn process_statement(s: Statement, coprocessors: &CoProcessors) -> Vec<String> {
     match &s {
-        Statement::Label(l) => vec![format!("{}::", escape_label(l))],
+        Statement::Label(l) => vec![format!("{}:", escape_label(l))],
         Statement::Directive(directive, args) => match (directive.as_str(), &args[..]) {
             (
                 ".loc",
