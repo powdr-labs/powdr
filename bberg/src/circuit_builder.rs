@@ -131,7 +131,7 @@ class {name}CircuitBuilder {{
 
         // TODO: template
         using Polynomial = Flavor::Polynomial;
-        using AllPolynomials = Flavor::AllPolynomials;
+        using ProverPolynomials = Flavor::ProverPolynomials;
 
         static constexpr size_t num_fixed_columns = {num_cols};
         static constexpr size_t num_polys = {num_polys};
@@ -139,9 +139,9 @@ class {name}CircuitBuilder {{
 
         void set_trace(std::vector<Row>&& trace) {{ rows = std::move(trace); }}
 
-        AllPolynomials compute_polynomials() {{
+        ProverPolynomials compute_polynomials() {{
             const auto num_rows = get_circuit_subgroup_size();
-            AllPolynomials polys;
+            ProverPolynomials polys;
 
             // Allocate mem for each column
             for (auto& poly : polys.get_all()) {{

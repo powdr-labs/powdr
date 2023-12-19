@@ -56,7 +56,7 @@ impl FlavorBuilder for BBFiles {
         let all_entities =
             create_all_entities(all_cols, to_be_shifted, shifted, all_cols_and_shifts);
 
-        let proving_and_verification_key = create_proving_and_verification_key();
+        let proving_and_verification_key = create_proving_and_verification_key(to_be_shifted);
         let polynomial_views = create_polynomial_views(first_poly);
 
         let commitment_labels_class = create_commitment_labels(all_cols);
@@ -336,26 +336,29 @@ fn create_all_entities(
     )
 }
 
-fn create_proving_and_verification_key() -> &'static str {
-    r#"
+fn create_proving_and_verification_key(to_be_shifted: &[String]) -> String {
+    let get_to_be_shifted = return_ref_vector("get_to_be_shifted", to_be_shifted);
+
+    format!("
         public:
-        class ProvingKey : public ProvingKey_<PrecomputedEntities<Polynomial>, WitnessEntities<Polynomial>> {
+        class ProvingKey : public ProvingKey_<PrecomputedEntities<Polynomial>, WitnessEntities<Polynomial>> {{
             public:
             // Expose constructors on the base class
             using Base = ProvingKey_<PrecomputedEntities<Polynomial>, WitnessEntities<Polynomial>>;
             using Base::Base;
 
+            {get_to_be_shifted}
+
             // The plookup wires that store plookup read data.
-            std::array<PolynomialHandle, 0> get_table_column_wires() { return {}; };
-        };
+            std::array<PolynomialHandle, 0> get_table_column_wires() {{ return {{}}; }};
+        }};
 
         using VerificationKey = VerificationKey_<PrecomputedEntities<Commitment>>;
-    "#
+    ")
 }
 
 fn create_polynomial_views(first_poly: &String) -> String {
     format!("
-    using ProverPolynomials = AllEntities<PolynomialHandle>;
 
     using FoldedPolynomials = AllEntities<std::vector<FF>>;
 
@@ -365,16 +368,30 @@ fn create_polynomial_views(first_poly: &String) -> String {
           using Base::Base;
       }};
   
-    class AllPolynomials : public AllEntities<Polynomial> {{
+    /**
+     * @brief A container for the prover polynomials handles.
+    */
+    class ProverPolynomials : public AllEntities<Polynomial> {{
       public:
-        [[nodiscard]] size_t get_polynomial_size() const {{ return this->{first_poly}.size(); }}
-        [[nodiscard]] AllValues get_row(const size_t row_idx) const
+        // Define all operations as default, except move construction/assignment
+        ProverPolynomials() = default;
+        ProverPolynomials& operator=(const ProverPolynomials&) = delete;
+        ProverPolynomials(const ProverPolynomials& o) = delete;
+        ProverPolynomials(ProverPolynomials&& o) noexcept = default;
+        ProverPolynomials& operator=(ProverPolynomials&& o) noexcept = default;
+        ~ProverPolynomials() = default;
+        [[nodiscard]] size_t get_polynomial_size() const {{ return {first_poly}.size(); }}
+        /**
+         * @brief Returns the evaluations of all prover polynomials at one point on the boolean hypercube, which
+        * represents one row in the execution trace.
+        */
+        [[nodiscard]] AllValues get_row(size_t row_idx) const
         {{
             AllValues result;
-            for (auto [result_field, polynomial] : zip_view(result.get_all(), get_all())) {{
+            for (auto [result_field, polynomial] : zip_view(result.get_all(), this->get_all())) {{
                 result_field = polynomial[row_idx];
             }}
-            return result;
+          return result;
         }}
     }};
 

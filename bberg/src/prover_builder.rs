@@ -1,7 +1,7 @@
-use crate::{file_writer::BBFiles, utils::map_with_newline};
+use crate::file_writer::BBFiles;
 
 pub trait ProverBuilder {
-    fn create_prover_cpp(&mut self, name: &str, fixed: &[String], to_be_shifted: &[String]);
+    fn create_prover_cpp(&mut self, name: &str);
 
     fn create_prover_hpp(&mut self, name: &str);
 }
@@ -68,21 +68,8 @@ impl ProverBuilder for BBFiles {
         self.write_file(&self.prover, &format!("{}_prover.hpp", name), &prover_hpp);
     }
 
-    fn create_prover_cpp(&mut self, name: &str, fixed: &[String], to_be_shifted: &[String]) {
+    fn create_prover_cpp(&mut self, name: &str) {
         let include_str = includes_cpp(name);
-
-        // Create the wire assignments, prover_polynomial = key
-        let fixed_assignments = map_with_newline(fixed, |name| {
-            format!("prover_polynomials.{name} = key->{name};")
-        });
-        let committed_assignments = map_with_newline(to_be_shifted, |name| {
-            format!(
-                "
-prover_polynomials.{name} = key->{name};
-prover_polynomials.{name}_shift = key->{name}.shifted();
-",
-            )
-        });
 
         let prover_cpp = format!("
     {include_str}
@@ -104,13 +91,16 @@ prover_polynomials.{name}_shift = key->{name}.shifted();
         : key(input_key)
         , commitment_key(commitment_key)
     {{
-        // TODO: take every polynomial and assign it to the key!!
-        {fixed_assignments}
-        {committed_assignments}
-    
-        // prover_polynomials.lookup_inverses = key->lookup_inverses;
-        // key->z_perm = Polynomial(key->circuit_size);
-        // prover_polynomials.z_perm = key->z_perm;
+        for (auto [prover_poly, key_poly] : zip_view(prover_polynomials.get_unshifted(), key->get_all())) {{
+            ASSERT(proof_system::flavor_get_label(prover_polynomials, prover_poly) ==
+                   proof_system::flavor_get_label(*key, key_poly));
+            prover_poly = key_poly.share();
+        }}
+        for (auto [prover_poly, key_poly] : zip_view(prover_polynomials.get_shifted(), key->get_to_be_shifted())) {{
+            ASSERT(proof_system::flavor_get_label(prover_polynomials, prover_poly) ==
+                   proof_system::flavor_get_label(*key, key_poly) + \"_shift\");
+            prover_poly = key_poly.shifted();
+        }}
     }}
     
 

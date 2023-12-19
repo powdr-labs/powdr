@@ -74,7 +74,7 @@ pub(crate) fn analyzed_to_cpp<F: FieldElement>(
         fixed,
         witness,
         all_cols,
-        unshifted,
+        unshifted: _unshifted,
         to_be_shifted,
         shifted,
         all_cols_with_shifts,
@@ -106,7 +106,7 @@ pub(crate) fn analyzed_to_cpp<F: FieldElement>(
     );
 
     // ----------------------- Create the composer files -----------------------
-    bb_files.create_composer_cpp(file_name, &all_cols);
+    bb_files.create_composer_cpp(file_name);
     bb_files.create_composer_hpp(file_name);
 
     // ----------------------- Create the Verifier files -----------------------
@@ -114,7 +114,7 @@ pub(crate) fn analyzed_to_cpp<F: FieldElement>(
     bb_files.create_verifier_hpp(file_name);
 
     // ----------------------- Create the Prover files -----------------------
-    bb_files.create_prover_cpp(file_name, &unshifted, &to_be_shifted);
+    bb_files.create_prover_cpp(file_name);
     bb_files.create_prover_hpp(file_name);
 }
 
