@@ -43,7 +43,7 @@ machine Machine {
         CNT <=X= 3;
         // ANCHOR_END: literals
         // ANCHOR: label
-        start::
+        start:
         // ANCHOR_END: label
         // if `CNT` is `0`, jump to `end`
         jmpz CNT, end;
@@ -57,7 +57,7 @@ machine Machine {
         // ANCHOR_END: instruction
         // jump back to `start`
         jmp start;
-        end::
+        end:
         // check that `A == ((2**2)**2)**2`
         // ANCHOR: instruction_statement
         assert_zero A - ((2**2)**2)**2;

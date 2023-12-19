@@ -41,7 +41,7 @@ machine Main {
     instr nothing = sub.nothing
 
     function main {
-        start::
+        start:
         A <== one();
         return;
     }
@@ -115,21 +115,21 @@ For our example, we get one ROM for each virtual machine. For `DifferentSignatur
 
 ```
 rom {
-        _start::
+        _start:
         _reset;
         // END BATCH Unimplemented
         _jump_to_operation;
         // END BATCH Label
-        _identity::
+        _identity:
         return _input_0;
         // END BATCH Label
-        _nothing::
+        _nothing:
         return 0;
         // END BATCH Label
-        _one::
+        _one:
         return 1;
         // END BATCH Label
-        _sink::
+        _sink:
         _loop;
         // END BATCH
 }
@@ -138,18 +138,18 @@ rom {
 For `Main`:
 ```
 rom {
-        _start::
+        _start:
         _reset;
         // END BATCH Unimplemented
         _jump_to_operation;
         // END BATCH Label
-        _main::
-        start::
+        _main:
+        start:
         A <=Y= one();
         // END BATCH Unimplemented
         return;
         // END BATCH Label
-        _sink::
+        _sink:
         _loop;
         // END BATCH
 }
@@ -234,7 +234,7 @@ The diff for our example program is as follows:
 -       instr nothing = sub.nothing;
 -
 -       function main {
--               start::
+-               start:
 -               A <=Y= one();
 -               // END BATCH Unimplemented
 -               return;

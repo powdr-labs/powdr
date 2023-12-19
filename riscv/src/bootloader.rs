@@ -86,7 +86,7 @@ x2 <=X= 0;
 
 branch_if_zero x1, end_page_loop;
 
-start_page_loop::
+start_page_loop:
 
 // Page number
 x3 <== load_bootloader_input(x2 * {bootloader_inputs_per_page} + {num_registers} + 1);
@@ -156,7 +156,7 @@ P5 <=X= 0;
 P6 <=X= 0;
 P7 <=X= 0;
 jump level_{i}_end;
-level_{i}_is_right::
+level_{i}_is_right:
 P4 <=X= P0;
 P5 <=X= P1;
 P6 <=X= P2;
@@ -165,7 +165,7 @@ P0 <=X= 0;
 P1 <=X= 0;
 P2 <=X= 0;
 P3 <=X= 0;
-level_{i}_end::
+level_{i}_end:
 P0, P1, P2, P3 <== poseidon_gl(P0, P1, P2, P3, P4, P5, P6, P7, P8, P9, P10, P11);
 "#
         ));
@@ -178,7 +178,7 @@ x2 <=X= x2 + 1;
 
 branch_if_nonzero x2 - x1, start_page_loop;
 
-end_page_loop::
+end_page_loop:
 
 // Initialize registers, starting with index 0
 "#,

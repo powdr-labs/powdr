@@ -57,13 +57,13 @@ machine Pow {
         A <=X= 1;
         CNT <=X= y;
 
-        start::
+        start:
         jmpz CNT, done;
         A <== mul(A, x);
         CNT <=X= CNT - 1;
         jmp start;
 
-        done::
+        done:
         return A;
     }
 

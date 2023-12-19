@@ -333,7 +333,7 @@ DebugDirectiveStatement: FunctionStatement<T> = {
 }
 
 LabelStatement: FunctionStatement<T> = {
-    <@L> <Identifier> "::" => FunctionStatement::Label(<>)
+    <@L> <Identifier> ":" => FunctionStatement::Label(<>)
 }
 
 // ---------------------------- Expressions -----------------------------

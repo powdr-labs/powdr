@@ -214,7 +214,7 @@ impl<T: Display> Display for FunctionStatement<T> {
                     format!(" {}", inputs.iter().format(", "))
                 }
             ),
-            FunctionStatement::Label(_, name) => write!(f, "{name}::"),
+            FunctionStatement::Label(_, name) => write!(f, "{name}:"),
             FunctionStatement::DebugDirective(_, dir) => write!(f, "{dir}"),
             FunctionStatement::Return(_, values) => write!(
                 f,
