@@ -473,7 +473,7 @@ Term: Box<Expression<T>> = {
     FunctionCall => Box::new(Expression::FunctionCall(<>)),
     ConstantIdentifier => Box::new(Expression::Reference(NamespacedPolynomialReference{namespace: None, name: <>})),
     NamespacedPolynomialReference => Box::new(Expression::Reference(<>)),
-    PublicReference => Box::new(Expression::PublicReference(<>)),
+    PublicIdentifier => Box::new(Expression::PublicReference(<>)),
     FieldElement => Box::new(Expression::Number(<>)),
     StringLiteral => Box::new(Expression::String(<>)),
     MatchExpression,
@@ -494,10 +494,6 @@ FunctionCall: FunctionCall<T> = {
 
 NamespacedPolynomialReference: NamespacedPolynomialReference = {
     <namespace:( <Identifier> "." )?> <name:Identifier> => NamespacedPolynomialReference{<>},
-}
-
-PublicReference: String = {
-    ":" <Identifier>
 }
 
 MatchExpression: Box<Expression<T>> = {
@@ -540,6 +536,11 @@ ConstantIdentifier: String = {
     // TODO it seems the lexer splits the token after %
     "%N" => <>.to_string(),
     r"%[a-zA-Z_][a-zA-Z$_0-9@]*" => <>.to_string(),
+}
+
+PublicIdentifier: String = {
+    r":[a-zA-Z_][a-zA-Z$_0-9@]*" => <>.strip_prefix(":").unwrap().to_string()
+
 }
 
 FieldElement: T = {
