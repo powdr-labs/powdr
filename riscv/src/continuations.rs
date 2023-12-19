@@ -4,9 +4,11 @@ use compiler::pipeline::Pipeline;
 use number::FieldElement;
 use riscv_executor::ExecutionTrace;
 
-use crate::bootloader::{
-    default_input, BYTES_PER_WORD, PAGE_SIZE_BYTES_LOG, PC_INDEX, REGISTER_NAMES,
-};
+mod memory_merkle_tree;
+
+use memory_merkle_tree::MerkleTree;
+
+use crate::bootloader::{default_input, PAGE_SIZE_BYTES_LOG, PC_INDEX, REGISTER_NAMES};
 
 fn transposed_trace<F: FieldElement>(trace: &ExecutionTrace) -> HashMap<String, Vec<F>> {
     let mut reg_values: HashMap<&str, Vec<F>> = HashMap::with_capacity(trace.reg_map.len());
@@ -63,6 +65,9 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
     pipeline: Pipeline<F>,
     inputs: Vec<F>,
 ) -> Vec<Vec<F>> {
+    log::info!("Initializing memory merkle tree...");
+    let mut merkle_tree = MerkleTree::<F>::new();
+
     // All inputs for all chunks.
     let mut all_bootloader_inputs = vec![];
 
@@ -91,7 +96,6 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
 
     let mut proven_trace = 0;
     let mut chunk_index = 0;
-    let mut memory_snapshot = HashMap::new();
 
     loop {
         all_bootloader_inputs.push(bootloader_inputs.clone());
@@ -118,7 +122,7 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
             (transposed_trace(&trace), memory_snapshot_update)
         };
         log::info!("{} memory slots updated.", memory_snapshot_update.len());
-        memory_snapshot.extend(memory_snapshot_update);
+        merkle_tree.update(memory_snapshot_update.into_iter());
         log::info!("Chunk trace length: {}", chunk_trace["main.pc"].len());
 
         log::info!("Validating chunk...");
@@ -198,14 +202,10 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
             bootloader_inputs.push(*chunk_trace[reg].last().unwrap());
         }
         bootloader_inputs.push((accessed_pages.len() as u64).into());
-        for &page in accessed_pages.iter() {
-            let start_addr = page << PAGE_SIZE_BYTES_LOG;
-            bootloader_inputs.push(page.into());
-            let words_per_page = (1 << (PAGE_SIZE_BYTES_LOG)) / BYTES_PER_WORD;
-            for i in 0..words_per_page {
-                let addr = start_addr + (i * BYTES_PER_WORD) as u32;
-                bootloader_inputs.push((*memory_snapshot.get(&addr).unwrap_or(&0)).into());
-            }
+        for &page_index in accessed_pages.iter() {
+            bootloader_inputs.push(page_index.into());
+            let (page, _proof) = merkle_tree.get(page_index as usize);
+            bootloader_inputs.extend(page);
         }
 
         log::info!("Inputs length: {}", bootloader_inputs.len());

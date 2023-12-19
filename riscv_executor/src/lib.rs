@@ -21,7 +21,7 @@ use ast::{
 use builder::TraceBuilder;
 use number::{BigInt, FieldElement};
 
-mod poseidon_gl;
+pub mod poseidon_gl;
 
 /// Initial value of the PC.
 ///
