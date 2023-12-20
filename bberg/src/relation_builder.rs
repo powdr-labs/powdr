@@ -6,6 +6,7 @@ use ast::analyzed::{
 };
 use ast::parsed::SelectedExpressions;
 use itertools::Itertools;
+use num_bigint::BigUint;
 use std::collections::HashMap;
 use std::collections::HashSet;
 
@@ -328,7 +329,27 @@ fn craft_expression<T: FieldElement>(
     collected_public_identities: &mut HashSet<String>,
 ) -> BBIdentity {
     match expr {
-        Expression::Number(n) => (1, format!("FF({})", n.to_arbitrary_integer())),
+        Expression::Number(n) => {
+            let number: BigUint = n.to_arbitrary_integer();
+            if number.bits() < 32 {
+                return (1, format!("FF({})", number));
+            }
+            if number.bits() < 64 {
+                return (1, format!("FF({}UL)", number));
+            }
+            if number.bits() < 256 {
+                let mut chunks: Vec<u64> = number.iter_u64_digits().collect::<Vec<u64>>();
+                chunks.resize(4, 0);
+                return (
+                    1,
+                    format!(
+                        "FF(uint256_t{{{}, {}, {}, {}}})",
+                        chunks[0], chunks[1], chunks[2], chunks[3],
+                    ),
+                );
+            }
+            unimplemented!("{:?}", expr);
+        }
         Expression::Reference(polyref) => {
             let mut poly_name = polyref.name.replace('.', "_").to_string();
             if polyref.next {
