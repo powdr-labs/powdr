@@ -213,7 +213,7 @@ mod test {
 
     #[test]
     fn test_get() {
-        let g = |x: u64| GoldilocksField::from(x);
+        let g = GoldilocksField::from;
         let mut tree = MerkleTree::<GoldilocksField, 2, 8>::new();
         tree.update(
             [

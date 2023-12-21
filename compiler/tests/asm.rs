@@ -291,7 +291,7 @@ mod book {
         // passing 0 to all tests currently works as they either take no prover input or 0 works
         let i = [0];
 
-        verify_asm::<GoldilocksField>(&format!("{file}"), slice_to_vec(&i));
+        verify_asm::<GoldilocksField>(file, slice_to_vec(&i));
         gen_halo2_proof(file, slice_to_vec(&i));
         gen_estark_proof(file, slice_to_vec(&i));
     }
