@@ -426,6 +426,7 @@ fn riscv_machine(
 ) -> String {
     format!(
         r#"
+use std;
 {}
 machine Main {{
 {}
@@ -492,7 +493,7 @@ fn preamble(degree: u64, coprocessors: &CoProcessors, with_bootloader: bool) -> 
     col witness XIsZero;
     XIsZero = 1 - X * XInv;
     XIsZero * X = 0;
-    XIsZero * (1 - XIsZero) = 0;
+    std::force_bool(XIsZero);
 
     // ============== control-flow instructions ==============
 
@@ -655,9 +656,9 @@ fn memory(with_bootloader: bool) -> String {
     col witness m_is_read;
 
     // All operation flags are boolean and either all 0 or exactly 1 is set.
-    m_is_write * (1 - m_is_write) = 0;
-    m_is_read * (1 - m_is_read) = 0;
-    m_is_bootloader_write * (1 - m_is_bootloader_write) = 0;
+    std::force_bool(m_is_write);
+    std::force_bool(m_is_read);
+    std::force_bool(m_is_bootloader_write);
     m_is_read * m_is_write = 0;
     m_is_read * m_is_bootloader_write = 0;
     m_is_bootloader_write * m_is_write = 0;
@@ -690,8 +691,8 @@ fn memory(with_bootloader: bool) -> String {
     col witness m_is_read;
 
     // All operation flags are boolean and either all 0 or exactly 1 is set.
-    m_is_write * (1 - m_is_write) = 0;
-    m_is_read * (1 - m_is_read) = 0;
+    std::force_bool(m_is_write);
+    std::force_bool(m_is_read);
     m_is_read * m_is_write = 0;
 
     // If the next line is a not a write and we have an address change,
@@ -732,7 +733,7 @@ fn memory(with_bootloader: bool) -> String {
     {m_diff_lower} in {BIT16};
     {m_diff_upper} in {BIT16};
 
-    m_change * (1 - m_change) = 0;
+    std::force_bool(m_change);
 
     // if m_change is zero, m_addr has to stay the same.
     (m_addr' - m_addr) * (1 - m_change) = 0;
