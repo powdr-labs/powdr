@@ -4,11 +4,12 @@ use compiler::pipeline::Pipeline;
 use number::FieldElement;
 use riscv_executor::ExecutionTrace;
 
+pub mod bootloader;
 mod memory_merkle_tree;
 
 use memory_merkle_tree::MerkleTree;
 
-use crate::bootloader::{default_input, PAGE_SIZE_BYTES_LOG, PC_INDEX, REGISTER_NAMES};
+use bootloader::{default_input, PAGE_SIZE_BYTES_LOG, PC_INDEX, REGISTER_NAMES};
 
 fn transposed_trace<F: FieldElement>(trace: &ExecutionTrace) -> HashMap<String, Vec<F>> {
     let mut reg_values: HashMap<&str, Vec<F>> = HashMap::with_capacity(trace.reg_map.len());
@@ -201,11 +202,15 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
         for &reg in REGISTER_NAMES.iter() {
             bootloader_inputs.push(*chunk_trace[reg].last().unwrap());
         }
+        bootloader_inputs.extend(merkle_tree.root_hash());
         bootloader_inputs.push((accessed_pages.len() as u64).into());
         for &page_index in accessed_pages.iter() {
             bootloader_inputs.push(page_index.into());
-            let (page, _proof) = merkle_tree.get(page_index as usize);
+            let (page, proof) = merkle_tree.get(page_index as usize);
             bootloader_inputs.extend(page);
+            for sibling in proof {
+                bootloader_inputs.extend(sibling);
+            }
         }
 
         log::info!("Inputs length: {}", bootloader_inputs.len());

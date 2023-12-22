@@ -15,7 +15,6 @@ use std::fs;
 use crate::compiler::{FunctionKind, Register};
 pub use crate::coprocessors::CoProcessors;
 
-pub mod bootloader;
 pub mod compiler;
 pub mod continuations;
 mod coprocessors;
