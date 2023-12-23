@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
-use crate::bootloader::{
-    BYTES_PER_WORD, MERKLE_TREE_DEPTH as MERKLE_TREE_DEPTH_BOOTLOADER,
+use super::bootloader::{
+    BYTES_PER_WORD, N_LEAVES_LOG as N_LEAVES_LOG_BOOTLOADER,
     WORDS_PER_PAGE as WORDS_PER_PAGE_BOOTLOADER,
 };
 use number::FieldElement;
@@ -10,12 +10,12 @@ use riscv_executor::poseidon_gl::poseidon_gl;
 /// A Merkle tree of memory pages.
 pub struct MerkleTree<
     T: FieldElement,
-    const MERKLE_TREE_DEPTH: usize = MERKLE_TREE_DEPTH_BOOTLOADER,
+    const N_LEAVES_LOG: usize = N_LEAVES_LOG_BOOTLOADER,
     const WORDS_PER_PAGE: usize = WORDS_PER_PAGE_BOOTLOADER,
 > {
-    /// Hashes of all nodes of the Merkle tree. The vector has MERKLE_TREE_DEPTH + 1 entries
+    /// Hashes of all nodes of the Merkle tree. The vector has N_LEAVES_LOG + 1 entries
     /// where hashes[0] is [root_hash], hashes[1] is [level_1_hash_0, level_1_hash_1], etc.
-    /// The last entry hashes[MERKLE_TREE_DEPTH] is the hash of the leaves.
+    /// The last entry hashes[N_LEAVES_LOG] is the hash of the leaves.
     /// These hashes should be updated whenever the data is updated.
     hashes: Vec<Vec<[T; 4]>>,
     /// Memory pages, contiguous.
@@ -30,26 +30,38 @@ fn hash_cap0<T: FieldElement>(data1: &[T; 4], data2: &[T; 4]) -> [T; 4] {
     poseidon_gl(&buffer)
 }
 
-impl<T: FieldElement, const MERKLE_TREE_DEPTH: usize, const WORDS_PER_PAGE: usize>
-    MerkleTree<T, MERKLE_TREE_DEPTH, WORDS_PER_PAGE>
+impl<T: FieldElement, const N_LEAVES_LOG: usize, const WORDS_PER_PAGE: usize>
+    MerkleTree<T, N_LEAVES_LOG, WORDS_PER_PAGE>
 {
     /// Build a new Merkle tree starting from an all-zero memory.
     pub fn new() -> Self {
         let zero_page = [T::zero(); WORDS_PER_PAGE];
         let mut hash = Self::hash_page(&zero_page);
-        let mut hashes = vec![vec![]; MERKLE_TREE_DEPTH + 1];
+        let mut hashes = vec![vec![]; N_LEAVES_LOG + 1];
 
-        assert!(usize::BITS >= MERKLE_TREE_DEPTH as u32);
-        for level in (0..=MERKLE_TREE_DEPTH).rev() {
+        assert!(usize::BITS >= N_LEAVES_LOG as u32);
+        for level in (0..=N_LEAVES_LOG).rev() {
             hashes[level] = vec![hash; 1 << level];
             hash = hash_cap0(&hash, &hash);
         }
 
         assert_eq!(hashes[0].len(), 1);
 
-        let data = vec![zero_page; 1 << MERKLE_TREE_DEPTH];
+        let data = vec![zero_page; 1 << N_LEAVES_LOG];
 
         Self { hashes, data }
+    }
+
+    /// The root hash of an empty Merkle tree.
+    /// This is equivalent to `Self::new().root_hash()`, but more memory-efficient,
+    /// because it doesn't materialize the tree.
+    pub fn empty_hash() -> [T; 4] {
+        assert!(usize::BITS >= N_LEAVES_LOG as u32);
+
+        let zero_page = [T::zero(); WORDS_PER_PAGE];
+        (0..N_LEAVES_LOG).fold(Self::hash_page(&zero_page), |hash, _| {
+            hash_cap0(&hash, &hash)
+        })
     }
 
     /// Computes the linearly iterated hash of a single page
@@ -89,7 +101,7 @@ impl<T: FieldElement, const MERKLE_TREE_DEPTH: usize, const WORDS_PER_PAGE: usiz
 
     /// Updates the hashes of a page and all its ancestors.
     fn update_hashes(&mut self, page_index: usize) {
-        self.hashes[MERKLE_TREE_DEPTH][page_index] = Self::hash_page(&self.data[page_index]);
+        self.hashes[N_LEAVES_LOG][page_index] = Self::hash_page(&self.data[page_index]);
         for (level, index) in self.iter_path(page_index).skip(1) {
             self.hashes[level][index] = hash_cap0(
                 &self.hashes[level + 1][index * 2],
@@ -98,7 +110,6 @@ impl<T: FieldElement, const MERKLE_TREE_DEPTH: usize, const WORDS_PER_PAGE: usiz
         }
     }
 
-    #[allow(dead_code)]
     /// Returns the root hash of the Merkle tree.
     pub fn root_hash(&self) -> &[T; 4] {
         &self.hashes[0][0]
@@ -107,19 +118,19 @@ impl<T: FieldElement, const MERKLE_TREE_DEPTH: usize, const WORDS_PER_PAGE: usiz
     /// Returns the data and Merkle proof for a given page.
     pub fn get(&self, page_index: usize) -> (&[T; WORDS_PER_PAGE], Vec<&[T; 4]>) {
         let mut proof = vec![];
-        for (level, index) in self.iter_path(page_index).take(MERKLE_TREE_DEPTH) {
+        for (level, index) in self.iter_path(page_index).take(N_LEAVES_LOG) {
             let sibling_index = index ^ 1;
             proof.push(&self.hashes[level][sibling_index]);
         }
-        assert_eq!(proof.len(), MERKLE_TREE_DEPTH);
+        assert_eq!(proof.len(), N_LEAVES_LOG);
 
         (&self.data[page_index], proof)
     }
 
     /// Yields (level, index) pairs for the path from the given page to the root.
     fn iter_path(&self, page_index: usize) -> impl Iterator<Item = (usize, usize)> {
-        (0..=MERKLE_TREE_DEPTH).rev().map(move |level| {
-            let index = page_index >> (MERKLE_TREE_DEPTH - level);
+        (0..=N_LEAVES_LOG).rev().map(move |level| {
+            let index = page_index >> (N_LEAVES_LOG - level);
             (level, index)
         })
     }
@@ -158,7 +169,9 @@ mod test {
         let tree = MerkleTree::<GoldilocksField, 2, 8>::new();
         let data = [[0; 8]; 4];
         let expected_root_hash = root_hash::<GoldilocksField>(&data);
+        let empty_hash = MerkleTree::<GoldilocksField, 2, 8>::empty_hash();
         assert_eq!(tree.root_hash(), &expected_root_hash);
+        assert_eq!(tree.root_hash(), &empty_hash);
     }
 
     #[test]

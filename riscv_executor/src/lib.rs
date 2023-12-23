@@ -19,7 +19,7 @@ use ast::{
     parsed::{asm::DebugDirective, Expression, FunctionCall},
 };
 use builder::TraceBuilder;
-use number::{BigInt, FieldElement};
+use number::{BigInt, FieldElement, GoldilocksField};
 
 pub mod poseidon_gl;
 
@@ -501,7 +501,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 let addr = args[0].0 as usize;
                 let val = self.bootloader_inputs[addr].to_degree();
 
-                vec![val.into()]
+                vec![Elem::from_fe(GoldilocksField::from(val))]
             }
             "jump" => {
                 self.proc.set_pc(args[0]);

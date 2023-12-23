@@ -16,7 +16,7 @@ use asm_utils::{
 };
 use itertools::Itertools;
 
-use crate::bootloader::{bootloader, bootloader_preamble};
+use crate::continuations::bootloader::{bootloader, bootloader_preamble};
 use crate::coprocessors::*;
 use crate::disambiguator;
 use crate::parser::RiscParser;

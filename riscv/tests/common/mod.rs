@@ -1,6 +1,6 @@
 use compiler::{pipeline::Pipeline, test_util::verify_pipeline};
 use number::GoldilocksField;
-use riscv::bootloader::default_input;
+use riscv::continuations::bootloader::default_input;
 use std::{collections::HashMap, path::PathBuf};
 
 /// Like compiler::test_util::verify_asm_string, but also runs RISCV executor.
