@@ -1,5 +1,5 @@
-use ::compiler::inputs_to_query_callback;
-use ::compiler::pipeline::Pipeline;
+use ::pipeline::inputs_to_query_callback;
+use ::pipeline::Pipeline;
 use ast::analyzed::Analyzed;
 use criterion::{criterion_group, criterion_main, Criterion};
 

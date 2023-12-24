@@ -20,7 +20,7 @@ regex-syntax = { version = "0.6", default_features = false, features = [
 ] }
 executor = { path = "../executor" }
 riscv_executor = { path = "../riscv_executor" }
-compiler = { path = "../compiler" }
+pipeline = { path = "../pipeline" }
 
 [build-dependencies]
 lalrpop = "^0.19"

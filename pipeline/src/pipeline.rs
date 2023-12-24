@@ -185,7 +185,7 @@ where
 ///
 /// # Example
 /// ```rust
-/// use compiler::{pipeline::Pipeline, pipeline::Stage, verify, BackendType, test_util::resolve_test_file};
+/// use pipeline::{Pipeline, Stage, verify, BackendType, test_util::resolve_test_file};
 /// use std::path::PathBuf;
 /// use number::GoldilocksField;
 ///

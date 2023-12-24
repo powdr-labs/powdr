@@ -10,7 +10,7 @@ members = [
     "riscv",
     "parser_util",
     "pil_analyzer",
-    "compiler",
+    "pipeline",
     "pilopt",
     "asm_to_pil",
     "halo2",

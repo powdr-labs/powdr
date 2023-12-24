@@ -1,7 +1,7 @@
 use std::collections::{BTreeSet, HashMap};
 
-use compiler::pipeline::Pipeline;
 use number::FieldElement;
+use pipeline::Pipeline;
 use riscv_executor::ExecutionTrace;
 
 pub mod bootloader;

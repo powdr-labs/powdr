@@ -1,5 +1,5 @@
-use compiler::{pipeline::Pipeline, test_util::verify_pipeline};
 use number::GoldilocksField;
+use pipeline::{test_util::verify_pipeline, Pipeline};
 use riscv::continuations::bootloader::default_input;
 use std::{collections::HashMap, path::PathBuf};
 

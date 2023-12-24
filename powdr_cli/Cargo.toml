@@ -5,13 +5,13 @@ edition = "2021"
 
 [features]
 default = [] # halo2 is disabled by default
-halo2 = ["dep:halo2", "backend/halo2", "compiler/halo2"]
+halo2 = ["dep:halo2", "backend/halo2", "pipeline/halo2"]
 
 [dependencies]
 clap = { version = "^4.3", features = ["derive"] }
 env_logger = "0.10.0"
 log = "0.4.17"
-compiler = { path = "../compiler" }
+pipeline = { path = "../pipeline" }
 parser = { path = "../parser" }
 riscv = { path = "../riscv" }
 riscv_executor = { path = "../riscv_executor" }
