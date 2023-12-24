@@ -1,5 +1,5 @@
-use compiler::test_util::{gen_estark_proof, gen_halo2_proof, verify_test_file};
 use number::{FieldElement, GoldilocksField};
+use pipeline::test_util::{gen_estark_proof, gen_halo2_proof, verify_test_file};
 use test_log::test;
 
 fn verify_asm<T: FieldElement>(file_name: &str, inputs: Vec<T>) {

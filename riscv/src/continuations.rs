@@ -4,8 +4,8 @@ use ast::{
     asm_analysis::{AnalysisASMFile, RegisterTy},
     parsed::asm::parse_absolute_path,
 };
-use compiler::pipeline::Pipeline;
 use number::FieldElement;
+use pipeline::Pipeline;
 use riscv_executor::ExecutionTrace;
 
 pub mod bootloader;

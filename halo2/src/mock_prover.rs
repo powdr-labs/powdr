@@ -32,8 +32,8 @@ pub fn mock_prove<T: FieldElement>(
 
 #[cfg(test)]
 mod test {
-    use compiler::{pipeline::Pipeline, test_util::resolve_test_file};
     use number::Bn254Field;
+    use pipeline::{test_util::resolve_test_file, Pipeline};
     use test_log::test;
 
     use super::*;
