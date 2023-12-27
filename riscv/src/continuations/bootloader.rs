@@ -19,6 +19,11 @@ pub const PAGE_SIZE_BYTES: usize = 1 << PAGE_SIZE_BYTES_LOG;
 pub const PAGE_NUMBER_MASK: usize = (1 << N_LEAVES_LOG) - 1;
 pub const BOOTLOADER_INPUTS_PER_PAGE: usize = WORDS_PER_PAGE + 1 + (MERKLE_TREE_DEPTH - 1) * 4;
 
+pub const BOOTLOADER_SPECIFIC_INSTRUCTION_NAMES: [&str; 2] = [
+    "load_bootloader_input",
+    "jump_to_bootloader_input_if_nonzero",
+];
+
 pub fn bootloader_preamble() -> String {
     let mut preamble = r#"
     // ============== bootloader-specific instructions =======================

@@ -35,6 +35,13 @@ pub fn compile_rust(
     coprocessors: &CoProcessors,
     with_bootloader: bool,
 ) -> Option<(PathBuf, String)> {
+    if with_bootloader {
+        assert!(
+            coprocessors.has("poseidon_gl"),
+            "PoseidonGL coprocessor is required for bootloader"
+        );
+    }
+
     let riscv_asm = if file_name.ends_with("Cargo.toml") {
         compile_rust_crate_to_riscv_asm(file_name, output_dir)
     } else if fs::metadata(file_name).unwrap().is_dir() {
