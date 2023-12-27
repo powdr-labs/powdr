@@ -1,5 +1,9 @@
 use std::collections::{BTreeSet, HashMap};
 
+use ast::{
+    asm_analysis::{AnalysisASMFile, RegisterTy},
+    parsed::asm::parse_absolute_path,
+};
 use compiler::pipeline::Pipeline;
 use number::FieldElement;
 use riscv_executor::ExecutionTrace;
@@ -7,9 +11,10 @@ use riscv_executor::ExecutionTrace;
 pub mod bootloader;
 mod memory_merkle_tree;
 
+use bootloader::{default_input, PAGE_SIZE_BYTES_LOG, PC_INDEX, REGISTER_NAMES};
 use memory_merkle_tree::MerkleTree;
 
-use bootloader::{default_input, PAGE_SIZE_BYTES_LOG, PC_INDEX, REGISTER_NAMES};
+use crate::continuations::bootloader::BOOTLOADER_SPECIFIC_INSTRUCTION_NAMES;
 
 fn transposed_trace<F: FieldElement>(trace: &ExecutionTrace) -> HashMap<String, Vec<F>> {
     let mut reg_values: HashMap<&str, Vec<F>> = HashMap::with_capacity(trace.reg_map.len());
@@ -62,6 +67,38 @@ where
     Ok(())
 }
 
+fn sanity_check<T>(program: &AnalysisASMFile<T>) {
+    let main_machine = program.get_machine(parse_absolute_path("::Main"));
+    for expected_instruction in BOOTLOADER_SPECIFIC_INSTRUCTION_NAMES {
+        if !main_machine
+            .instructions
+            .iter()
+            .any(|i| i.name == expected_instruction)
+        {
+            log::error!(
+                "Main machine is missing bootloader-specific instruction: {}. Did you set `with_bootloader` to true?",
+                expected_instruction
+            );
+            panic!();
+        }
+    }
+
+    // Check that the registers of the machine are as expected.
+    let machine_registers = main_machine
+        .registers
+        .iter()
+        .filter_map(|r| {
+            ((r.ty == RegisterTy::Pc || r.ty == RegisterTy::Write) && r.name != "x0")
+                .then_some(format!("main.{}", r.name))
+        })
+        .collect::<BTreeSet<_>>();
+    let expected_registers = REGISTER_NAMES
+        .iter()
+        .map(|s| s.to_string())
+        .collect::<BTreeSet<_>>();
+    assert_eq!(machine_registers, expected_registers);
+}
+
 pub fn rust_continuations_dry_run<F: FieldElement>(
     pipeline: Pipeline<F>,
     inputs: Vec<F>,
@@ -76,6 +113,7 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
     let mut bootloader_inputs = default_input();
 
     let program = pipeline.analyzed_asm().unwrap();
+    sanity_check(&program);
 
     let inputs: HashMap<F, Vec<F>> = vec![(F::from(0), inputs)].into_iter().collect();
 
