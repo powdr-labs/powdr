@@ -25,10 +25,9 @@ pub struct DiffMonitor {
 impl DiffMonitor {
     /// push a new program and log::trace! how it differs from the previous one, if any
     pub fn push<S: ToString>(&mut self, s: S) {
-        std::mem::swap(&mut self.previous, &mut self.current);
-        self.current = Some(s.to_string());
-
         if log_enabled!(log::Level::Trace) {
+            std::mem::swap(&mut self.previous, &mut self.current);
+            self.current = Some(s.to_string());
             if let (Some(current), Some(previous)) = (&self.current, &self.previous) {
                 for diff in diff::lines(previous, current) {
                     match diff {
