@@ -63,10 +63,10 @@ pub fn bootloader_preamble() -> String {
     }
     preamble.push_str(&format!(
         r#"
-    public initial_memory_hash = bootloader_input_value({});
-    public initial_memory_hash = bootloader_input_value({});
-    public initial_memory_hash = bootloader_input_value({});
-    public initial_memory_hash = bootloader_input_value({});
+    public initial_memory_hash_1 = bootloader_input_value({});
+    public initial_memory_hash_2 = bootloader_input_value({});
+    public initial_memory_hash_3 = bootloader_input_value({});
+    public initial_memory_hash_4 = bootloader_input_value({});
 "#,
         REGISTER_NAMES.len(),
         REGISTER_NAMES.len() + 1,
