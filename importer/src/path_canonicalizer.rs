@@ -168,8 +168,7 @@ fn check_path_internal<'a, T>(
     chain.push(path.clone())?;
 
     // walk down the tree of modules
-    path.parts
-        .iter()
+    path.parts()
         .try_fold(
             (
                 AbsoluteSymbolPath::default(),
@@ -217,7 +216,7 @@ fn check_path_internal<'a, T>(
             },
         )
         .map(|(canonical_path, symbol, chain)| {
-            state.paths.insert(path, canonical_path.clone());
+            state.paths.insert(path.clone(), canonical_path.clone());
             (canonical_path, symbol, chain)
         })
 }

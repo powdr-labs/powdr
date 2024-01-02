@@ -66,27 +66,6 @@ impl Display for Import {
     }
 }
 
-impl Display for SymbolPath {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write!(f, "{}", self.parts.iter().format("::"))
-    }
-}
-
-impl Display for AbsoluteSymbolPath {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write!(f, "::{}", self.parts.iter().format("::"))
-    }
-}
-
-impl Display for Part {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        match self {
-            Part::Super => write!(f, "super"),
-            Part::Named(name) => write!(f, "{name}"),
-        }
-    }
-}
-
 impl<T: Display> Display for Machine<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         writeln!(f, "{{")?;
@@ -642,13 +621,11 @@ mod tests {
 
     #[test]
     fn symbol_paths() {
-        let s = SymbolPath {
-            parts: vec![
-                Part::Named("x".to_string()),
-                Part::Super,
-                Part::Named("y".to_string()),
-            ],
-        };
+        let s = SymbolPath::from_parts(vec![
+            Part::Named("x".to_string()),
+            Part::Super,
+            Part::Named("y".to_string()),
+        ]);
         assert_eq!(s.to_string(), "x::super::y");
         let p = parse_absolute_path("::abc");
         assert_eq!(p.to_string(), "::abc");

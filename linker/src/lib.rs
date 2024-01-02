@@ -45,7 +45,7 @@ pub fn link<T: FieldElement>(graph: PILGraph<T>) -> Result<PILFile<T>, Vec<Strin
             // create a namespace for this object
             pil.push(PilStatement::Namespace(
                 0,
-                SymbolPath{parts: vec![Part::Named(location.to_string())]},
+                SymbolPath::from_parts(vec![Part::Named(location.to_string())]),
                 Expression::Number(T::from(main_degree)),
             ));
             pil.extend(object.pil);

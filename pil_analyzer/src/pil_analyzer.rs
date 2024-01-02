@@ -157,9 +157,7 @@ impl<T: FieldElement> PILAnalyzer<T> {
     fn collect_names(&mut self, statement: &PilStatement<T>) {
         match statement {
             PilStatement::Namespace(_, name, _) => {
-                self.current_namespace = AbsoluteSymbolPath {
-                    parts: vec![name.to_string()],
-                };
+                self.current_namespace = AbsoluteSymbolPath::default().join(name.clone());
             }
             PilStatement::Include(_, _) => unreachable!(),
             _ => {

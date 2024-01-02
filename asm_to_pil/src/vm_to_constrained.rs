@@ -12,7 +12,7 @@ use ast::{
         LinkDefinitionStatement, Machine, RegisterDeclarationStatement, RegisterTy, Rom,
     },
     parsed::{
-        asm::{InstructionBody, Part},
+        asm::InstructionBody,
         build::{direct_reference, next_reference},
         folder::ExpressionFolder,
         visitor::ExpressionVisitable,
@@ -383,8 +383,7 @@ impl<T: FieldElement> ASMPILConverter<T> {
                         if let Expression::Reference(r) = e {
                             if let Some(name) = r.try_to_identifier() {
                                 if let Some(sub) = substitutions.get(name) {
-                                    *r.path.parts.last_mut().unwrap() =
-                                        Part::Named(sub.to_string());
+                                    *r.path.try_last_part_mut().unwrap() = sub.to_string();
                                 }
                             }
                         }
