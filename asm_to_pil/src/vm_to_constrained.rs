@@ -841,14 +841,20 @@ impl<T: FieldElement> ASMPILConverter<T> {
             .collect::<Vec<_>>();
         self.pil.extend(free_value_pil);
         for (name, values) in rom_constants {
+            let array_expression = if values.iter().all(|v| v == &values[0]) {
+                // Performance optimization: The block below converts every T to an Expression<T>,
+                // which has a 7x larger memory footprint. This is wasteful for constant columns,
+                // of which there are a lot because this code has not been optimized yet.
+                ArrayExpression::RepeatedValue(vec![values[0].into()])
+            } else {
+                ArrayExpression::value(values.into_iter().map(Expression::from).collect())
+                    .pad_with_last()
+                    .unwrap_or_else(|| ArrayExpression::RepeatedValue(vec![T::zero().into()]))
+            };
             self.pil.push(PilStatement::PolynomialConstantDefinition(
                 0,
                 name.clone(),
-                FunctionDefinition::Array(
-                    ArrayExpression::value(values.into_iter().map(Expression::from).collect())
-                        .pad_with_last()
-                        .unwrap_or_else(|| ArrayExpression::RepeatedValue(vec![T::zero().into()])),
-                ),
+                FunctionDefinition::Array(array_expression),
             ));
         }
     }

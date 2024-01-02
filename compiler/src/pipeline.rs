@@ -405,7 +405,6 @@ impl<T: FieldElement> Pipeline<T> {
             }
             Artifact::Graph(graph) => {
                 self.log("Run linker");
-                self.log("Linker done");
                 let linked = linker::link(graph)?;
                 self.diff_monitor.push(&linked);
                 log::trace!("{linked}");
@@ -413,10 +412,18 @@ impl<T: FieldElement> Pipeline<T> {
                 Artifact::Linked(linked)
             }
             Artifact::Linked(linked) => {
-                Artifact::AnaylyzedPil(pil_analyzer::analyze_string(&format!("{linked}")))
+                // TODO: We should probably offer a way to analyze a PILFile directly
+                self.log("Materialize linked file");
+                let linked = format!("{linked}");
+                self.log("Anylyzing pil...");
+                Artifact::AnaylyzedPil(pil_analyzer::analyze_string(&linked))
             }
-            Artifact::PilFile(pil_file) => Artifact::AnaylyzedPil(pil_analyzer::analyze(&pil_file)),
+            Artifact::PilFile(pil_file) => {
+                self.log("Anylyzing pil...");
+                Artifact::AnaylyzedPil(pil_analyzer::analyze(&pil_file))
+            }
             Artifact::PilString(pil_string) => {
+                self.log("Anylyzing pil...");
                 Artifact::AnaylyzedPil(pil_analyzer::analyze_string(&pil_string))
             }
             Artifact::AnaylyzedPil(analyzed_pil) => {
