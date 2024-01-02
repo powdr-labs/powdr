@@ -12,7 +12,7 @@ use super::*;
 impl<T: Display> Display for Analyzed<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         let degree = self.degree.unwrap_or_default();
-        let mut current_namespace = "Global".to_string();
+        let mut current_namespace = String::default();
         let mut update_namespace = |name: &str, f: &mut Formatter<'_>| {
             let new_name = if let Some(dot) = name.find('.') {
                 if name[..dot] != current_namespace {
@@ -23,7 +23,7 @@ impl<T: Display> Display for Analyzed<T> {
             } else {
                 name
             };
-            Ok((new_name.to_string(), &current_namespace != "Global"))
+            Ok((new_name.to_string(), !current_namespace.is_empty()))
         };
 
         for statement in &self.source_order {

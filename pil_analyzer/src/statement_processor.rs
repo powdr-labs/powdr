@@ -90,6 +90,31 @@ where
         }
     }
 
+    /// Returns all names of the symbols defined inside the given statement.
+    pub fn symbol_definition_names(&self, statement: &PilStatement<T>) -> Vec<String> {
+        match statement {
+            PilStatement::PolynomialDefinition(_, name, _)
+            | PilStatement::PolynomialConstantDefinition(_, name, _)
+            | PilStatement::ConstantDefinition(_, name, _)
+            | PilStatement::PublicDeclaration(_, name, _, _, _)
+            | PilStatement::LetStatement(_, name, _) => vec![name.clone()],
+            PilStatement::PolynomialConstantDeclaration(_, polynomials)
+            | PilStatement::PolynomialCommitDeclaration(_, polynomials, _) => {
+                polynomials.iter().map(|p| p.name.clone()).collect()
+            }
+            PilStatement::Include(_, _)
+            | PilStatement::Namespace(_, _, _)
+            | PilStatement::PolynomialIdentity(_, _)
+            | PilStatement::PlookupIdentity(_, _, _)
+            | PilStatement::PermutationIdentity(_, _, _)
+            | PilStatement::ConnectIdentity(_, _, _)
+            | PilStatement::Expression(_, _) => vec![],
+        }
+        .into_iter()
+        .map(|name| self.driver.resolve_decl(&name))
+        .collect()
+    }
+
     pub fn handle_statement(&mut self, statement: PilStatement<T>) -> Vec<PILItem<T>> {
         match statement {
             PilStatement::Include(_, _) => {
@@ -335,7 +360,7 @@ where
         let id = self.counters.dispense_public_id();
         let polynomial = self
             .expression_processor()
-            .process_namespaced_polynomial_reference(poly);
+            .process_namespaced_polynomial_reference(&poly.path);
         let array_index = array_index.map(|i| {
             let index = self.evaluate_expression(i).unwrap().to_degree();
             assert!(index <= usize::MAX as u64);

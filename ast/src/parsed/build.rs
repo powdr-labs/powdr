@@ -2,21 +2,22 @@ use number::FieldElement;
 
 use crate::parsed::Expression;
 
-use super::{IndexAccess, NamespacedPolynomialReference, UnaryOperator};
+use super::{
+    asm::{Part, SymbolPath},
+    IndexAccess, NamespacedPolynomialReference, UnaryOperator,
+};
 
 pub fn direct_reference<S: Into<String>, T>(name: S) -> Expression<T> {
-    NamespacedPolynomialReference {
-        namespace: None,
-        name: name.into(),
-    }
+    NamespacedPolynomialReference::from(SymbolPath {
+        parts: vec![Part::Named(name.into())],
+    })
     .into()
 }
 
 pub fn namespaced_reference<S: Into<String>, T>(namespace: String, name: S) -> Expression<T> {
-    NamespacedPolynomialReference {
-        namespace: Some(namespace),
-        name: name.into(),
-    }
+    NamespacedPolynomialReference::from(SymbolPath {
+        parts: vec![Part::Named(namespace), Part::Named(name.into())],
+    })
     .into()
 }
 

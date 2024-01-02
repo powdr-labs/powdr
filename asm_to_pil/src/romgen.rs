@@ -7,6 +7,7 @@ use ast::asm_analysis::{
     Machine, OperationSymbol, Rom,
 };
 use ast::parsed::visitor::ExpressionVisitable;
+use ast::parsed::NamespacedPolynomialReference;
 use ast::parsed::{
     asm::{OperationId, Param, ParamList, Params},
     Expression,
@@ -30,8 +31,8 @@ fn substitute_name_in_statement_expressions<T>(
 ) {
     fn substitute<T>(e: &mut Expression<T>, substitution: &HashMap<String, String>) {
         if let Expression::Reference(r) = e {
-            if let Some(v) = substitution.get(&r.name).cloned() {
-                r.name = v;
+            if let Some(v) = substitution.get(r.try_to_identifier().unwrap()).cloned() {
+                *r = NamespacedPolynomialReference::from_identifier(v);
             }
         };
     }

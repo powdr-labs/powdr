@@ -23,9 +23,8 @@ impl<T: Display> Display for AnalysisASMFile<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         let mut current_path = AbsoluteSymbolPath::default();
 
-        for (name, machine) in &self.machines {
-            let [diff @ .., Part::Named(machine_name)] = &name.relative_to(&current_path).parts[..]
-            else {
+        for (path, machine) in &self.machines {
+            let [diff @ .., Part::Named(name)] = &path.relative_to(&current_path).parts[..] else {
                 unreachable!()
             };
             for part in diff {
@@ -43,7 +42,7 @@ impl<T: Display> Display for AnalysisASMFile<T> {
 
             write_indented_by(
                 f,
-                format!("machine {machine_name}{machine}"),
+                format!("machine {name}{machine}"),
                 current_path.parts.len(),
             )?;
         }

@@ -3,6 +3,7 @@ use std::{
     iter::{once, repeat},
 };
 
+use itertools::Itertools;
 use number::AbstractNumberType;
 
 use derive_more::From;
@@ -109,6 +110,13 @@ impl SymbolPath {
         self.parts.extend(other.into().parts);
         self
     }
+
+    /// Formats the path and uses `.` as separator if
+    /// there are at most two components.
+    pub fn to_dotted_string(&self) -> String {
+        let separator = if self.parts.len() <= 2 { "." } else { "::" };
+        self.parts.iter().format(separator).to_string()
+    }
 }
 
 /// An absolute symbol path is a resolved SymbolPath,
@@ -138,6 +146,19 @@ impl AbsoluteSymbolPath {
     /// Removes and returns the last path component (unless empty).
     pub fn pop(&mut self) -> Option<String> {
         self.parts.pop()
+    }
+
+    /// Returns the path one level higher.
+    pub fn parent(mut self) -> AbsoluteSymbolPath {
+        self.pop().unwrap();
+        self
+    }
+
+    /// Returns an iterator over all paths from self to the root.
+    pub fn iter_to_root(&self) -> impl Iterator<Item = AbsoluteSymbolPath> + '_ {
+        (0..=self.parts.len()).rev().map(|i| AbsoluteSymbolPath {
+            parts: self.parts[..i].to_vec(),
+        })
     }
 
     /// Appends a part to the end of the path.
@@ -202,6 +223,13 @@ impl AbsoluteSymbolPath {
         let mut parts = self.parts.clone();
         parts.push(part.to_string());
         Self { parts }
+    }
+
+    /// Formats the path without leading `::` and uses `.` as separator if
+    /// there are at most two components.
+    pub fn to_dotted_string(&self) -> String {
+        let separator = if self.parts.len() <= 2 { "." } else { "::" };
+        self.parts.join(separator)
     }
 }
 
