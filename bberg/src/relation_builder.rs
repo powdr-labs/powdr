@@ -365,14 +365,21 @@ fn craft_expression<T: FieldElement>(
 
             let degree = std::cmp::max(ld, rd);
             match op {
-                AlgebraicBinaryOperator::Add => (degree, format!("({} + {})", lhs, rhs)),
+                AlgebraicBinaryOperator::Add => match lhe.as_ref() {
+                    // BBerg hack, we do not want a field on the lhs of an expression
+                    Expression::Number(_) => (degree, format!("({} + {})", rhs, lhs)),
+                    _ => (degree, format!("({} + {})", lhs, rhs)),
+                },
                 AlgebraicBinaryOperator::Sub => match lhe.as_ref() {
                     // BBerg hack, we do not want a field on the lhs of an expression
                     Expression::Number(_) => (degree, format!("(-{} + {})", rhs, lhs)),
                     _ => (degree, format!("({} - {})", lhs, rhs)),
                 },
-
-                AlgebraicBinaryOperator::Mul => (ld + rd, format!("({} * {})", lhs, rhs)),
+                AlgebraicBinaryOperator::Mul => match lhe.as_ref() {
+                    // BBerg hack, we do not want a field on the lhs of an expression
+                    Expression::Number(_) => (ld + rd, format!("({} * {})", rhs, lhs)),
+                    _ => (ld + rd, format!("({} * {})", lhs, rhs)),
+                },
                 _ => unimplemented!("{:?}", expr),
             }
         }
