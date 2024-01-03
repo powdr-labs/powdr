@@ -6,7 +6,6 @@ use std::{
     time::Instant,
 };
 
-use analysis::convert_analyzed_to_pil_constraints;
 use ast::{
     analyzed::Analyzed,
     asm_analysis::AnalysisASMFile,
@@ -34,9 +33,9 @@ pub struct GeneratedWitness<T: FieldElement> {
     pub witness: Option<Vec<(String, Vec<T>)>>,
 }
 
-pub struct PilWithConstants<T: FieldElement> {
+pub struct PilWithEvaluatedFixedCols<T: FieldElement> {
     pub pil: Analyzed<T>,
-    pub constants: Vec<(String, Vec<T>)>,
+    pub fixed_cols: Vec<(String, Vec<T>)>,
 }
 
 pub struct ProofResult<T: FieldElement> {
@@ -52,51 +51,54 @@ pub struct ProofResult<T: FieldElement> {
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum Stage {
-    AsmFile,
+    AsmFilePath,
     AsmString,
-    Parsed,
-    Resolved,
+    ParsedAsmFile,
+    ResolvedModuleTree,
     AnalyzedAsm,
-    PilConstraints,
-    Graph,
-    Linked,
-    PilFile,
+    ConstrainedMachineCollection,
+    LinkedMachineGraph,
+    ParsedPilFile,
+    PilFilePath,
     PilString,
     AnalyzedPil,
     OptimizedPil,
-    PilWithConstants,
+    PilWithEvaluatedFixedCols,
     GeneratedWitness,
     Proof,
 }
 
 enum Artifact<T: FieldElement> {
-    /// The path to the .asm file.
-    AsmFile(PathBuf),
-    /// The contents of the .asm file, with an optional Path (for error messages).
+    /// The path to a single .asm file.
+    AsmFilePath(PathBuf),
+    /// The contents of a single .asm file, with an optional Path (for imports).
     AsmString(Option<PathBuf>, String),
-    /// The parsed .asm file, with an optional Path (for error messages).
-    Parsed(Option<PathBuf>, ASMProgram<T>),
-    /// The resolved .asm file.
-    Resolved(ASMProgram<T>),
-    /// The analyzed .asm file.
+    /// A parsed .asm file, with an optional Path (for imports).
+    ParsedAsmFile(Option<PathBuf>, ASMProgram<T>),
+    /// A tree of .asm modules (with all dependencies potentially imported
+    /// from other files) with all references resolved to absolute symbol paths.
+    ResolvedModuleTree(ASMProgram<T>),
+    /// The analyzed .asm file: Assignment registers are inferred, instructions
+    /// are batched and some properties are checked.
     AnalyzedAsm(AnalysisASMFile<T>),
-    /// The pil constraints.
-    PilConstraints(AnalysisASMFile<T>),
-    /// The airgen graph.
-    Graph(PILGraph<T>),
-    /// The linked pil.
-    Linked(PILFile<T>),
-    /// The path to the .pil file.
-    PilFile(PathBuf),
-    /// The contents of the .pil file.
+    /// A machine collection that only contains constrained machines.
+    ConstrainedMachineCollection(AnalysisASMFile<T>),
+    /// The airgen graph, i.e. a collection of constrained machines with resolved
+    /// links between them.
+    LinkedMachineGraph(PILGraph<T>),
+    /// A single parsed pil file.
+    ParsedPilFile(PILFile<T>),
+    /// The path to a single .pil file.
+    PilFilePath(PathBuf),
+    /// The contents of a single .pil file.
     PilString(String),
-    /// The analyzed .pil file.
-    AnaylyzedPil(Analyzed<T>),
-    /// The optimized .pil file.
+    /// An analyzed .pil file, with all dependencies imported, potentially from other files.
+    AnalyzedPil(Analyzed<T>),
+    /// An optimized .pil file.
     OptimzedPil(Analyzed<T>),
-    /// The optimized .pil file with constants.
-    PilWithConstants(PilWithConstants<T>),
-    /// The generated witness.
+    /// An optimized .pil file with fixed columns fully evaluated.
+    PilWithEvaluatedFixedCols(PilWithEvaluatedFixedCols<T>),
+    /// Generated witnesses including fixed columns and the corresponding PIL file.
     GeneratedWitness(GeneratedWitness<T>),
     /// The proof (if successful)
     Proof(ProofResult<T>),
@@ -167,19 +169,19 @@ where
 /// The pipeline steps are:
 /// ```mermaid
 ///  graph TD
-///      AsmFile --> AsmString
+///      AsmFilePath --> AsmString
 ///      AsmString --> Parsed
-///      Parsed --> Resolved
-///      Resolved --> AnalyzedAsm
-///      AnalyzedAsm --> PilConstraints
-///      PilConstraints --> Graph
-///      Graph --> Linked
-///      Linked --> AnaylyzedPil
-///      PilFile --> AnaylyzedPil
-///      PilString --> AnaylyzedPil
-///      AnaylyzedPil --> OptimzedPil
-///      OptimzedPil --> PilWithConstants
-///      PilWithConstants --> GeneratedWitness
+///      ParsedAsmFile --> ResolvedModuleTree
+///      ResolvedModuleTree --> AnalyzedAsm
+///      AnalyzedAsm --> ConstrainedMachineCollection
+///      ConstrainedMachineCollection --> LinkedMachineGraph
+///      LinkedMachineGraph --> ParsedPilFile
+///      ParsedPilFile --> AnalyzedPil
+///      PilFilePath --> AnalyzedPil
+///      PilString --> AnalyzedPil
+///      AnalyzedPil --> OptimzedPil
+///      OptimzedPil --> PilWithEvaluatedFixedCols
+///      PilWithEvaluatedFixedCols --> GeneratedWitness
 ///      GeneratedWitness --> Proof
 /// ```
 ///
@@ -292,7 +294,7 @@ impl<T: FieldElement> Pipeline<T> {
     pub fn from_asm_file(self, asm_file: PathBuf) -> Self {
         let name = self.name.or(Some(Self::name_from_path(&asm_file)));
         Pipeline {
-            artifact: Some(Artifact::AsmFile(asm_file)),
+            artifact: Some(Artifact::AsmFilePath(asm_file)),
             name,
             ..self
         }
@@ -310,7 +312,7 @@ impl<T: FieldElement> Pipeline<T> {
     pub fn from_pil_file(self, pil_file: PathBuf) -> Self {
         let name = self.name.or(Some(Self::name_from_path(&pil_file)));
         Pipeline {
-            artifact: Some(Artifact::PilFile(pil_file)),
+            artifact: Some(Artifact::PilFilePath(pil_file)),
             name,
             ..self
         }
@@ -361,7 +363,7 @@ impl<T: FieldElement> Pipeline<T> {
     fn advance(&mut self) -> Result<(), Vec<String>> {
         let artifact = std::mem::take(&mut self.artifact).unwrap();
         self.artifact = Some(match artifact {
-            Artifact::AsmFile(path) => Artifact::AsmString(
+            Artifact::AsmFilePath(path) => Artifact::AsmString(
                 Some(path.clone()),
                 fs::read_to_string(&path).map_err(|e| {
                     vec![format!("Error reading .asm file: {}\n{e}", path.display())]
@@ -377,56 +379,58 @@ impl<T: FieldElement> Pipeline<T> {
                     panic!();
                 });
                 self.diff_monitor.push(&parsed_asm);
-                Artifact::Parsed(path, parsed_asm)
+                Artifact::ParsedAsmFile(path, parsed_asm)
             }
-            Artifact::Parsed(path, parsed) => {
-                self.log("Resolve imports");
-                let resolved = importer::resolve(path, parsed).map_err(|e| vec![e])?;
+            Artifact::ParsedAsmFile(path, parsed) => {
+                self.log("Loading dependencies and resolving references");
+                let resolved =
+                    importer::load_dependencies_and_resolve(path, parsed).map_err(|e| vec![e])?;
                 self.diff_monitor.push(&resolved);
-                Artifact::Resolved(resolved)
+                Artifact::ResolvedModuleTree(resolved)
             }
-            Artifact::Resolved(resolved) => {
+            Artifact::ResolvedModuleTree(resolved) => {
                 self.log("Run analysis");
-                self.log("Analysis done");
                 let analyzed_asm = analysis::analyze(resolved, &mut self.diff_monitor)?;
+                self.log("Analysis done");
                 log::trace!("{analyzed_asm}");
                 Artifact::AnalyzedAsm(analyzed_asm)
             }
-            Artifact::AnalyzedAsm(analyzed_asm) => Artifact::PilConstraints(
-                convert_analyzed_to_pil_constraints(analyzed_asm, &mut self.diff_monitor),
+            Artifact::AnalyzedAsm(analyzed_asm) => Artifact::ConstrainedMachineCollection(
+                analysis::convert_vms_to_constrained(analyzed_asm, &mut self.diff_monitor),
             ),
-            Artifact::PilConstraints(analyzed_asm) => {
+            Artifact::ConstrainedMachineCollection(analyzed_asm) => {
                 self.log("Run airgen");
                 let graph = airgen::compile(analyzed_asm);
                 self.diff_monitor.push(&graph);
                 self.log("Airgen done");
                 log::trace!("{graph}");
-                Artifact::Graph(graph)
+                Artifact::LinkedMachineGraph(graph)
             }
-            Artifact::Graph(graph) => {
+            Artifact::LinkedMachineGraph(graph) => {
                 self.log("Run linker");
                 let linked = linker::link(graph)?;
                 self.diff_monitor.push(&linked);
                 log::trace!("{linked}");
                 self.maybe_write_pil(&linked, "")?;
-                Artifact::Linked(linked)
+                Artifact::ParsedPilFile(linked)
             }
-            Artifact::Linked(linked) => {
-                // TODO: We should probably offer a way to analyze a PILFile directly
+            Artifact::ParsedPilFile(linked) => {
+                // TODO: We should probably offer a way to analyze a PILFile directly,
+                // i.e. without going through a string.
                 self.log("Materialize linked file");
                 let linked = format!("{linked}");
-                self.log("Anylyzing pil...");
-                Artifact::AnaylyzedPil(pil_analyzer::analyze_string(&linked))
+                self.log("Analyzing pil...");
+                Artifact::AnalyzedPil(pil_analyzer::analyze_string(&linked))
             }
-            Artifact::PilFile(pil_file) => {
-                self.log("Anylyzing pil...");
-                Artifact::AnaylyzedPil(pil_analyzer::analyze(&pil_file))
+            Artifact::PilFilePath(pil_file) => {
+                self.log("Analyzing pil...");
+                Artifact::AnalyzedPil(pil_analyzer::analyze(&pil_file))
             }
             Artifact::PilString(pil_string) => {
-                self.log("Anylyzing pil...");
-                Artifact::AnaylyzedPil(pil_analyzer::analyze_string(&pil_string))
+                self.log("Analyzing pil...");
+                Artifact::AnalyzedPil(pil_analyzer::analyze_string(&pil_string))
             }
-            Artifact::AnaylyzedPil(analyzed_pil) => {
+            Artifact::AnalyzedPil(analyzed_pil) => {
                 self.log("Optimizing pil...");
                 let optimized = pilopt::optimize(analyzed_pil);
                 self.maybe_write_pil(&optimized, "_opt")?;
@@ -435,17 +439,17 @@ impl<T: FieldElement> Pipeline<T> {
             Artifact::OptimzedPil(pil) => {
                 self.log("Evaluating fixed columns...");
                 let start = Instant::now();
-                let constants = constant_evaluator::generate(&pil);
-                let constants = constants
+                let fixed_cols = constant_evaluator::generate(&pil);
+                let fixed_cols = fixed_cols
                     .into_iter()
                     .map(|(k, v)| (k.to_string(), v))
                     .collect::<Vec<_>>();
-                self.maybe_write_constants(&constants)?;
+                self.maybe_write_constants(&fixed_cols)?;
                 self.log(&format!("Took {}", start.elapsed().as_secs_f32()));
-                Artifact::PilWithConstants(PilWithConstants { pil, constants })
+                Artifact::PilWithEvaluatedFixedCols(PilWithEvaluatedFixedCols { pil, fixed_cols })
             }
-            Artifact::PilWithConstants(PilWithConstants { pil, constants }) => {
-                let witness = (pil.constant_count() == constants.len()).then(|| {
+            Artifact::PilWithEvaluatedFixedCols(PilWithEvaluatedFixedCols { pil, fixed_cols }) => {
+                let witness = (pil.constant_count() == fixed_cols.len()).then(|| {
                     self.log("Deducing witness columns...");
                     let start = Instant::now();
                     let external_witness_values =
@@ -456,7 +460,7 @@ impl<T: FieldElement> Pipeline<T> {
                         .take()
                         .unwrap_or_else(|| Box::new(executor::witgen::unused_query_callback()));
                     let witness =
-                        executor::witgen::WitnessGenerator::new(&pil, &constants, query_callback)
+                        executor::witgen::WitnessGenerator::new(&pil, &fixed_cols, query_callback)
                             .with_external_witness_values(external_witness_values)
                             .generate();
 
@@ -467,10 +471,10 @@ impl<T: FieldElement> Pipeline<T> {
                         .collect::<Vec<_>>()
                 });
 
-                self.maybe_write_witness(&constants, &witness)?;
+                self.maybe_write_witness(&fixed_cols, &witness)?;
                 Artifact::GeneratedWitness(GeneratedWitness {
                     pil,
-                    constants,
+                    constants: fixed_cols,
                     witness,
                 })
             }
@@ -627,19 +631,19 @@ impl<T: FieldElement> Pipeline<T> {
 
     fn stage(&self) -> Stage {
         match self.artifact.as_ref().unwrap() {
-            Artifact::AsmFile(_) => Stage::AsmFile,
+            Artifact::AsmFilePath(_) => Stage::AsmFilePath,
             Artifact::AsmString(_, _) => Stage::AsmString,
-            Artifact::Parsed(_, _) => Stage::Parsed,
-            Artifact::Resolved(_) => Stage::Resolved,
+            Artifact::ParsedAsmFile(_, _) => Stage::ParsedAsmFile,
+            Artifact::ResolvedModuleTree(_) => Stage::ResolvedModuleTree,
             Artifact::AnalyzedAsm(_) => Stage::AnalyzedAsm,
-            Artifact::PilConstraints(_) => Stage::PilConstraints,
-            Artifact::Graph(_) => Stage::Graph,
-            Artifact::Linked(_) => Stage::Linked,
-            Artifact::PilFile(_) => Stage::PilFile,
+            Artifact::ConstrainedMachineCollection(_) => Stage::ConstrainedMachineCollection,
+            Artifact::LinkedMachineGraph(_) => Stage::LinkedMachineGraph,
+            Artifact::ParsedPilFile(_) => Stage::ParsedPilFile,
+            Artifact::PilFilePath(_) => Stage::PilFilePath,
             Artifact::PilString(_) => Stage::PilString,
-            Artifact::AnaylyzedPil(_) => Stage::AnalyzedPil,
+            Artifact::AnalyzedPil(_) => Stage::AnalyzedPil,
             Artifact::OptimzedPil(_) => Stage::OptimizedPil,
-            Artifact::PilWithConstants(_) => Stage::PilWithConstants,
+            Artifact::PilWithEvaluatedFixedCols(_) => Stage::PilWithEvaluatedFixedCols,
             Artifact::GeneratedWitness(_) => Stage::GeneratedWitness,
             Artifact::Proof(_) => Stage::Proof,
         }
@@ -684,9 +688,11 @@ impl<T: FieldElement> Pipeline<T> {
         Ok(optimized_pil)
     }
 
-    pub fn optimized_pil_with_constants(mut self) -> Result<PilWithConstants<T>, Vec<String>> {
-        self.advance_to(Stage::PilWithConstants)?;
-        let Artifact::PilWithConstants(pil_with_constants) = self.artifact.unwrap() else {
+    pub fn optimized_pil_with_constants(
+        mut self,
+    ) -> Result<PilWithEvaluatedFixedCols<T>, Vec<String>> {
+        self.advance_to(Stage::PilWithEvaluatedFixedCols)?;
+        let Artifact::PilWithEvaluatedFixedCols(pil_with_constants) = self.artifact.unwrap() else {
             panic!()
         };
         Ok(pil_with_constants)
