@@ -486,7 +486,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
                 "{row} of {} rows ({}%) - {} rows/s, {identities_per_sec}k identities/s, {progress_percentage}% progress",
                 self.fixed_data.degree,
                 row * 100 / self.fixed_data.degree,
-                1_000_000_000 / duration.as_micros()
+                self.report_frequency as u128 * 1_000_000 / duration.as_micros()
             );
             self.last_report = row_index;
         }
