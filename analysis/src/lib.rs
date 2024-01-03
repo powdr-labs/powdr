@@ -11,7 +11,7 @@ pub fn convert_asm_to_pil<T: FieldElement>(
 ) -> Result<AnalysisASMFile<T>, Vec<String>> {
     let mut monitor = DiffMonitor::default();
     let file = analyze(file, &mut monitor)?;
-    Ok(convert_analyzed_to_pil_constraints(file, &mut monitor))
+    Ok(convert_vms_to_constrained(file, &mut monitor))
 }
 
 pub fn analyze<T: FieldElement>(
@@ -23,7 +23,7 @@ pub fn analyze<T: FieldElement>(
     let file = type_check::check(file)?;
     monitor.push(&file);
 
-    // run analysis on virtual machines, reducing them to constrained machines
+    // run analysis on virtual machines, batching instructions
     log::debug!("Start asm analysis");
     let file = vm::analyze(file, monitor)?;
     log::debug!("End asm analysis");
@@ -31,7 +31,9 @@ pub fn analyze<T: FieldElement>(
     Ok(file)
 }
 
-pub fn convert_analyzed_to_pil_constraints<T: FieldElement>(
+/// Converts all VMs to constrained machines, replacing
+/// assembly instructions by lookups to programs.
+pub fn convert_vms_to_constrained<T: FieldElement>(
     file: AnalysisASMFile<T>,
     monitor: &mut DiffMonitor,
 ) -> AnalysisASMFile<T> {
@@ -62,11 +64,11 @@ pub mod utils {
 #[cfg(test)]
 mod test_util {
     use ast::asm_analysis::AnalysisASMFile;
-    use importer::resolve_str;
+    use importer::load_dependencies_and_resolve_str;
     use number::FieldElement;
 
     /// A test utility to process a source file until after type checking
     pub fn typecheck_str<T: FieldElement>(source: &str) -> Result<AnalysisASMFile<T>, Vec<String>> {
-        type_check::check(resolve_str(source))
+        type_check::check(load_dependencies_and_resolve_str(source))
     }
 }

@@ -340,7 +340,7 @@ impl<T: FieldElement> TypeChecker<T> {
 
 #[cfg(test)]
 mod tests {
-    use importer::resolve_str;
+    use importer::load_dependencies_and_resolve_str;
     use number::Bn254Field;
 
     use crate::check;
@@ -348,7 +348,7 @@ mod tests {
     // A utility to test behavior of the type checker on source inputs
     // TODO: test returned values, not just success
     fn expect_check_str(src: &str, expected: Result<(), Vec<&str>>) {
-        let resolved = resolve_str::<Bn254Field>(src);
+        let resolved = load_dependencies_and_resolve_str::<Bn254Field>(src);
         let checked = check(resolved);
         assert_eq!(
             checked.map(|_| ()),

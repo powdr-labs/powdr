@@ -13,7 +13,7 @@ use parser::parse_asm;
 use path_canonicalizer::canonicalize_paths;
 use powdr_std::add_std;
 
-pub fn resolve<T: FieldElement>(
+pub fn load_dependencies_and_resolve<T: FieldElement>(
     path: Option<PathBuf>,
     module: ASMProgram<T>,
 ) -> Result<ASMProgram<T>, String> {
@@ -23,6 +23,6 @@ pub fn resolve<T: FieldElement>(
 }
 
 /// A test utility to process a source file until after import resolution
-pub fn resolve_str<T: FieldElement>(source: &str) -> ASMProgram<T> {
-    resolve(None, parse_asm(None, source).unwrap()).unwrap()
+pub fn load_dependencies_and_resolve_str<T: FieldElement>(source: &str) -> ASMProgram<T> {
+    load_dependencies_and_resolve(None, parse_asm(None, source).unwrap()).unwrap()
 }

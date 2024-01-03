@@ -161,7 +161,7 @@ mod test {
 
     fn parse_analyse_and_compile<T: FieldElement>(input: &str) -> PILGraph<T> {
         let parsed = parse_asm(None, input).unwrap();
-        let resolved = importer::resolve(None, parsed).unwrap();
+        let resolved = importer::load_dependencies_and_resolve(None, parsed).unwrap();
         airgen::compile(convert_asm_to_pil(resolved).unwrap())
     }
 

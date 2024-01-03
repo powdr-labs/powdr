@@ -888,7 +888,7 @@ pub fn execute<F: FieldElement>(
     log::info!("Parsing...");
     let parsed = parser::parse_asm::<F>(None, asm_source).unwrap();
     log::info!("Resolving imports...");
-    let resolved = importer::resolve(None, parsed).unwrap();
+    let resolved = importer::load_dependencies_and_resolve(None, parsed).unwrap();
     log::info!("Analyzing...");
     let analyzed = analysis::analyze(resolved, &mut ast::DiffMonitor::default()).unwrap();
 

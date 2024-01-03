@@ -33,7 +33,7 @@ fn criterion_benchmark(c: &mut Criterion) {
         b.iter(|| {
             run_witgen(
                 &pil_with_constants.pil,
-                pil_with_constants.constants.clone(),
+                pil_with_constants.fixed_cols.clone(),
             )
         })
     });
