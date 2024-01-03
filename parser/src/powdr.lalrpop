@@ -35,20 +35,18 @@ ModuleDefinition: SymbolDefinition<T> = {
 Import: SymbolDefinition<T> = {
     "use" <path:SymbolPath> <name:( "as" <Identifier> )?> ";" =>
         SymbolDefinition {
-            name: name.unwrap_or(path.parts.last().unwrap().clone().try_into().unwrap()),
+            name: name.unwrap_or(path.name().clone().try_into().unwrap()),
             value: Import {path}.into()
         }
 }
 
 pub SymbolPath: SymbolPath = {
     <abs:"::"?> <parts:( <Part> "::" )*> <end:Part>  => {
-        SymbolPath {
-            parts: [
-                abs.map(|_| vec![Part::Named(String::new())]).unwrap_or_default(),
-                parts,
-                vec![end],
-            ].concat()
-        }
+        SymbolPath::from_parts([
+            abs.map(|_| vec![Part::Named(String::new())]).unwrap_or_default(),
+            parts,
+            vec![end],
+        ].concat())
     },
 }
 
@@ -506,7 +504,7 @@ FunctionCall: FunctionCall<T> = {
 
 NamespacedPolynomialReference: NamespacedPolynomialReference = {
     <SymbolPath> => <>.into(),
-    <namespace:Identifier> "." <name:Identifier> => SymbolPath{parts: [namespace, name].into_iter().map(Part::Named).collect()}.into(),
+    <namespace:Identifier> "." <name:Identifier> => SymbolPath::from_parts([namespace, name].into_iter().map(Part::Named)).into(),
 }
 
 MatchExpression: Box<Expression<T>> = {

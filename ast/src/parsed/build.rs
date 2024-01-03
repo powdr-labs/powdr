@@ -8,16 +8,14 @@ use super::{
 };
 
 pub fn direct_reference<S: Into<String>, T>(name: S) -> Expression<T> {
-    NamespacedPolynomialReference::from(SymbolPath {
-        parts: vec![Part::Named(name.into())],
-    })
-    .into()
+    NamespacedPolynomialReference::from(SymbolPath::from_identifier(name.into())).into()
 }
 
 pub fn namespaced_reference<S: Into<String>, T>(namespace: String, name: S) -> Expression<T> {
-    NamespacedPolynomialReference::from(SymbolPath {
-        parts: vec![Part::Named(namespace), Part::Named(name.into())],
-    })
+    NamespacedPolynomialReference::from(SymbolPath::from_parts(vec![
+        Part::Named(namespace),
+        Part::Named(name.into()),
+    ]))
     .into()
 }
 

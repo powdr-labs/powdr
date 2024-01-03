@@ -24,7 +24,7 @@ pub fn compile<T: FieldElement>(input: AnalysisASMFile<T>) -> PILGraph<T> {
     let non_std_machines = input
         .machines
         .iter()
-        .filter(|(k, _)| k.parts[0] != "std")
+        .filter(|(k, _)| k.parts().next() != Some("std"))
         .collect::<BTreeMap<_, _>>();
 
     // we start from the main machine

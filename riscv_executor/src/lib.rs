@@ -393,7 +393,7 @@ mod builder {
 
 fn get_main_machine<T: FieldElement>(program: &AnalysisASMFile<T>) -> &Machine<T> {
     for (name, m) in program.machines.iter() {
-        if name.parts.len() == 1 && name.parts[0] == "Main" {
+        if name.len() == 1 && name.parts().next() == Some("Main") {
             return m;
         }
     }

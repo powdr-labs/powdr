@@ -103,9 +103,8 @@ impl<T: FieldElement> Folder<T> for StdAdder {
 
         if !has_std {
             // If not, add `use super::std;`
-            let std_import_path = SymbolPath {
-                parts: [Part::Super, Part::Named("std".to_string())].into(),
-            };
+            let std_import_path =
+                SymbolPath::from_parts([Part::Super, Part::Named("std".to_string())]);
             statements.push(ModuleStatement::SymbolDefinition(SymbolDefinition {
                 name: "std".to_string(),
                 value: SymbolValue::Import(Import {

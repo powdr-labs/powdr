@@ -1,5 +1,5 @@
 use std::{
-    fmt::Display,
+    fmt::{Display, Formatter, Result},
     iter::{once, repeat},
 };
 
@@ -102,10 +102,22 @@ pub struct Import {
 #[derive(Default, Debug, PartialEq, Eq, Clone, PartialOrd, Ord)]
 pub struct SymbolPath {
     /// The parts between each `::`.
-    pub parts: Vec<Part>,
+    parts: Vec<Part>,
 }
 
 impl SymbolPath {
+    pub fn from_identifier(name: String) -> Self {
+        Self {
+            parts: vec![Part::Named(name)],
+        }
+    }
+
+    pub fn from_parts<P: IntoIterator<Item = Part>>(parts: P) -> Self {
+        Self {
+            parts: parts.into_iter().collect(),
+        }
+    }
+
     pub fn join<P: Into<Self>>(mut self, other: P) -> Self {
         self.parts.extend(other.into().parts);
         self
@@ -117,6 +129,53 @@ impl SymbolPath {
         let separator = if self.parts.len() <= 2 { "." } else { "::" };
         self.parts.iter().format(separator).to_string()
     }
+
+    pub fn try_to_identifier(&self) -> Option<&String> {
+        match &self.parts[..] {
+            [Part::Named(name)] => Some(name),
+            _ => None,
+        }
+    }
+
+    pub fn try_last_part_mut(&mut self) -> Option<&mut String> {
+        self.parts.last_mut().and_then(|p| match p {
+            Part::Super => None,
+            Part::Named(n) => Some(n),
+        })
+    }
+
+    pub fn try_last_part(&self) -> Option<&String> {
+        self.parts.last().and_then(|p| match p {
+            Part::Super => None,
+            Part::Named(n) => Some(n),
+        })
+    }
+
+    /// Returns the last part of the path. Panics if it is "super" or if the path is empty.
+    pub fn name(&self) -> &String {
+        self.try_last_part().unwrap()
+    }
+
+    pub fn parts(&self) -> impl DoubleEndedIterator + ExactSizeIterator<Item = &Part> {
+        self.parts.iter()
+    }
+}
+
+impl From<AbsoluteSymbolPath> for SymbolPath {
+    fn from(value: AbsoluteSymbolPath) -> Self {
+        Self {
+            parts: once(String::new())
+                .chain(value.parts)
+                .map(Part::Named)
+                .collect(),
+        }
+    }
+}
+
+impl Display for SymbolPath {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(f, "{}", self.parts.iter().format("::"))
+    }
 }
 
 /// An absolute symbol path is a resolved SymbolPath,
@@ -125,7 +184,7 @@ impl SymbolPath {
 #[derive(Default, Debug, PartialEq, Eq, Clone, PartialOrd, Ord)]
 pub struct AbsoluteSymbolPath {
     /// Contains the parts after the initial `::`.
-    pub parts: Vec<String>,
+    parts: Vec<String>,
 }
 
 /// Parses a path like `::path::to::symbol`.
@@ -154,7 +213,19 @@ impl AbsoluteSymbolPath {
         self
     }
 
-    /// Returns an iterator over all paths from self to the root.
+    pub fn len(&self) -> usize {
+        self.parts.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    pub fn parts(&self) -> impl DoubleEndedIterator + ExactSizeIterator<Item = &str> {
+        self.parts.iter().map(|p| p.as_str())
+    }
+
+    /// Returns an iterator over all paths (not parts!) from self to the root.
     pub fn iter_to_root(&self) -> impl Iterator<Item = AbsoluteSymbolPath> + '_ {
         (0..=self.parts.len()).rev().map(|i| AbsoluteSymbolPath {
             parts: self.parts[..i].to_vec(),
@@ -199,7 +270,7 @@ impl AbsoluteSymbolPath {
     }
 
     /// Resolves a relative path in the context of this absolute path.
-    pub fn join<P: Into<SymbolPath> + Display>(mut self, other: P) -> Self {
+    pub fn join<P: Into<SymbolPath>>(mut self, other: P) -> Self {
         for part in other.into().parts {
             match part {
                 Part::Super => {
@@ -233,14 +304,9 @@ impl AbsoluteSymbolPath {
     }
 }
 
-impl From<AbsoluteSymbolPath> for SymbolPath {
-    fn from(value: AbsoluteSymbolPath) -> Self {
-        Self {
-            parts: once(String::new())
-                .chain(value.parts)
-                .map(Part::Named)
-                .collect(),
-        }
+impl Display for AbsoluteSymbolPath {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(f, "::{}", self.parts.iter().format("::"))
     }
 }
 
@@ -253,11 +319,20 @@ pub enum Part {
 impl TryInto<String> for Part {
     type Error = ();
 
-    fn try_into(self) -> Result<String, Self::Error> {
+    fn try_into(self) -> std::result::Result<String, Self::Error> {
         if let Part::Named(name) = self {
             Ok(name)
         } else {
             Err(())
+        }
+    }
+}
+
+impl Display for Part {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        match self {
+            Part::Super => write!(f, "super"),
+            Part::Named(name) => write!(f, "{name}"),
         }
     }
 }

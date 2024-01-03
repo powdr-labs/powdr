@@ -173,17 +173,11 @@ impl From<SymbolPath> for NamespacedPolynomialReference {
 
 impl NamespacedPolynomialReference {
     pub fn from_identifier(name: String) -> Self {
-        SymbolPath {
-            parts: vec![Part::Named(name)],
-        }
-        .into()
+        SymbolPath::from_parts(vec![Part::Named(name)]).into()
     }
 
     pub fn try_to_identifier(&self) -> Option<&String> {
-        match &self.path.parts[..] {
-            [Part::Named(name)] => Some(name),
-            _ => None,
-        }
+        self.path.try_to_identifier()
     }
 }
 
