@@ -25,8 +25,15 @@ pub const BOOTLOADER_SPECIFIC_INSTRUCTION_NAMES: [&str; 2] =
 pub fn bootloader_preamble() -> String {
     let mut preamble = r#"
     // ============== extra rules on memory when compiled with continuations =======================
-    // The first operation can't be a read (because we expect this page to be paged-in)
-    m_change * m_is_read' = 0;
+
+    col witness m_is_bootloader_write;
+    m_is_bootloader_write * (1 - m_is_bootloader_write) = 0;
+    m_is_read * m_is_bootloader_write = 0;
+    m_is_bootloader_write * m_is_write = 0;
+
+    // The first operation has to be a write by the bootloader
+    // TODO: Comment, and is this sound? Could we insert rows of nothing before the first read?
+    m_change * (m_is_write' + m_is_read') = 0;
 
     // ============== bootloader-specific instructions =======================
     // Write-once memory
@@ -42,6 +49,15 @@ pub fn bootloader_preamble() -> String {
         // TODO: Putting {X, pc'} on the left-hand side should work, but this leads to a wrong PC update rule.
         {X, tmp_bootloader_value} in {BOOTLOADER_INPUT_ADDRESS, bootloader_input_value},
         pc' = tmp_bootloader_value
+    }
+
+
+    /// Stores Z at address Y % 2**32. Y can be between 0 and 2**33.
+    /// Y should be a multiple of 4, but this instruction does not enforce it.
+    instr mstore_bootloader Y, Z {
+        { X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000, STEP, Z } is m_is_bootloader_write { m_addr, m_step, m_value },
+        // Wrap the addr value
+        Y = (X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000) + wrap_bit * 2**32
     }
 
     // Expose initial register values as public outputs
@@ -151,7 +167,7 @@ P7 <=X= 0;
         bootloader.push_str(&format!(
             r#"
 P{reg_index} <== load_bootloader_input(x2 * {BOOTLOADER_INPUTS_PER_PAGE} + {page_inputs_offset} + 1 + {i});
-mstore x3 * {PAGE_SIZE_BYTES} + {i} * {BYTES_PER_WORD}, P{reg_index};"#
+mstore_bootloader x3 * {PAGE_SIZE_BYTES} + {i} * {BYTES_PER_WORD}, P{reg_index};"#
         ));
 
         // Hash if buffer is full

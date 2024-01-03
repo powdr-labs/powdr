@@ -538,11 +538,11 @@ fn preamble(degree: u64, coprocessors: &CoProcessors, with_bootloader: bool) -> 
 
     // If the next line is a read and we stay at the same address, then the
     // value cannot change.
-    (1 - m_is_write') * (1 - m_change) * (m_value' - m_value) = 0;
+    m_is_read' * (1 - m_change) * (m_value' - m_value) = 0;
 
     // If the next line is a read and we have an address change,
     // then the value is zero.
-    (1 - m_is_write') * m_change * m_value' = 0;
+    m_is_read' * m_change * m_value' = 0;
 
     // ============== memory instructions ==============
 

@@ -490,7 +490,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
             .collect::<Vec<_>>();
 
         match name {
-            "mstore" => {
+            "mstore" | "mstore_bootloader" => {
                 let addr = args[0].0 as u32;
                 assert_eq!(addr % 4, 0);
                 self.proc.set_mem(args[0].0 as u32, args[1].u());
