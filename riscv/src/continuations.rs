@@ -1,7 +1,7 @@
 use std::collections::{BTreeSet, HashMap};
 
 use ast::{
-    asm_analysis::{AnalysisASMFile, RegisterTy},
+    asm_analysis::{AnalysisASMFile, CallableSymbol, FunctionStatement, RegisterTy},
     parsed::asm::parse_absolute_path,
 };
 use compiler::pipeline::Pipeline;
@@ -67,6 +67,30 @@ where
     Ok(())
 }
 
+fn last_bootloader_specific_instruction_index<T: FieldElement>(
+    program: &AnalysisASMFile<T>,
+) -> usize {
+    let main_machine = program.get_machine(parse_absolute_path("::Main"));
+    let mut last_bootloader_specific_instruction_index = 0;
+    let main_symbol = main_machine.callable.0.get(&"main".to_string()).unwrap();
+    if let CallableSymbol::Function(f) = main_symbol {
+        for (i, b) in f.body.statements.iter_batches().enumerate() {
+            for s in b.statements {
+                if let FunctionStatement::Instruction(current_instruction) = s {
+                    if BOOTLOADER_SPECIFIC_INSTRUCTION_NAMES
+                        .contains(&current_instruction.instruction.as_str())
+                    {
+                        last_bootloader_specific_instruction_index = i;
+                    }
+                }
+            }
+        }
+    } else {
+        panic!("Main symbol is not a function");
+    }
+    last_bootloader_specific_instruction_index
+}
+
 fn sanity_check<T>(program: &AnalysisASMFile<T>) {
     let main_machine = program.get_machine(parse_absolute_path("::Main"));
     for expected_instruction in BOOTLOADER_SPECIFIC_INSTRUCTION_NAMES {
@@ -109,8 +133,8 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
     // All inputs for all chunks.
     let mut all_bootloader_inputs = vec![];
 
-    // Bootloader inputs for the current chunk.
-    let mut bootloader_inputs = default_input();
+    // Initial register values for the current chunk.
+    let mut register_values = vec![F::zero(); REGISTER_NAMES.len()];
 
     let program = pipeline.analyzed_asm().unwrap();
     sanity_check(&program);
@@ -122,7 +146,7 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
         let trace = riscv_executor::execute_ast::<F>(
             &program,
             &inputs,
-            &bootloader_inputs,
+            &default_input(),
             usize::MAX,
             riscv_executor::ExecMode::Trace,
         )
@@ -133,23 +157,60 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
     let full_trace_length = full_trace["main.pc"].len();
     log::info!("Total trace length: {}", full_trace_length);
 
-    let mut proven_trace = 0;
+    let mut proven_trace = last_bootloader_specific_instruction_index(&program);
+    println!("Proven trace length: {}", proven_trace);
     let mut chunk_index = 0;
 
+    // Run for 2**degree - 2 steps, because the executor doesn't run the dispatcher,
+    // which takes 2 rows.
+    let degree = program
+        .machines
+        .iter()
+        .fold(None, |acc, (_, m)| acc.or(m.degree.clone()))
+        .unwrap()
+        .degree;
+    let degree = F::from(degree).to_degree();
+    let num_rows = degree as usize - 2;
+
     loop {
+        log::info!("Building inputs for chunk {}...", chunk_index);
+        let mut accessed_pages = BTreeSet::new();
+        let start_idx = memory_accesses
+            .binary_search_by_key(&proven_trace, |a| a.idx)
+            .unwrap_or_else(|v| v);
+
+        for access in &memory_accesses[start_idx..] {
+            // proven_trace + num_rows is an upper bound for the last row index we'll reach in the next chunk.
+            // In practice, we'll stop earlier, because the bootloader needs to run as well, but we don't know for
+            // how long as that depends on the number of pages.
+            if access.idx >= proven_trace + num_rows {
+                break;
+            }
+            accessed_pages.insert(access.address >> PAGE_SIZE_BYTES_LOG);
+        }
+        log::info!(
+            "{} accessed pages: {:?}",
+            accessed_pages.len(),
+            accessed_pages
+        );
+
+        let mut bootloader_inputs = register_values.clone();
+        bootloader_inputs.extend(merkle_tree.root_hash());
+        bootloader_inputs.push((accessed_pages.len() as u64).into());
+        for &page_index in accessed_pages.iter() {
+            bootloader_inputs.push(page_index.into());
+            let (page, proof) = merkle_tree.get(page_index as usize);
+            bootloader_inputs.extend(page);
+            for sibling in proof {
+                bootloader_inputs.extend(sibling);
+            }
+        }
+
+        log::info!("Inputs length: {}", bootloader_inputs.len());
+
         all_bootloader_inputs.push(bootloader_inputs.clone());
 
         log::info!("\nRunning chunk {}...", chunk_index);
-        // Run for 2**degree - 2 steps, because the executor doesn't run the dispatcher,
-        // which takes 2 rows.
-        let degree = program
-            .machines
-            .iter()
-            .fold(None, |acc, (_, m)| acc.or(m.degree.clone()))
-            .unwrap()
-            .degree;
-        let degree = F::from(degree).to_degree();
-        let num_rows = degree as usize - 2;
         let (chunk_trace, memory_snapshot_update) = {
             let (trace, memory_snapshot_update) = riscv_executor::execute_ast::<F>(
                 &program,
@@ -170,12 +231,13 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
             .enumerate()
             .find(|(_, &pc)| pc == bootloader_inputs[PC_INDEX])
             .unwrap();
-        let full_trace_start = match chunk_index {
-            // The bootloader execution in the first chunk is part of the full trace.
-            0 => start,
-            // Any other chunk starts at where we left off in the full trace.
-            _ => proven_trace - 1,
-        };
+        // let full_trace_start = match chunk_index {
+        //     // The bootloader execution in the first chunk is part of the full trace.
+        //     0 => start,
+        //     // Any other chunk starts at where we left off in the full trace.
+        //     _ => proven_trace - 1,
+        // };
+        let full_trace_start = proven_trace - 1;
         log::info!("Bootloader used {} rows.", start);
         for i in 0..(chunk_trace["main.pc"].len() - start) {
             for &reg in REGISTER_NAMES.iter() {
@@ -215,43 +277,11 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
         proven_trace += new_rows;
         log::info!("Proved {} rows.", new_rows);
 
-        log::info!("Building inputs for chunk {}...", chunk_index + 1);
-        let mut accessed_pages = BTreeSet::new();
-        let start_idx = memory_accesses
-            .binary_search_by_key(&proven_trace, |a| a.idx)
-            .unwrap_or_else(|v| v);
-
-        for access in &memory_accesses[start_idx..] {
-            // proven_trace + num_rows is an upper bound for the last row index we'll reach in the next chunk.
-            // In practice, we'll stop earlier, because the bootloader needs to run as well, but we don't know for
-            // how long as that depends on the number of pages.
-            if access.idx >= proven_trace + num_rows {
-                break;
-            }
-            accessed_pages.insert(access.address >> PAGE_SIZE_BYTES_LOG);
-        }
-        log::info!(
-            "{} accessed pages: {:?}",
-            accessed_pages.len(),
-            accessed_pages
-        );
-
-        bootloader_inputs = vec![];
-        for &reg in REGISTER_NAMES.iter() {
-            bootloader_inputs.push(*chunk_trace[reg].last().unwrap());
-        }
-        bootloader_inputs.extend(merkle_tree.root_hash());
-        bootloader_inputs.push((accessed_pages.len() as u64).into());
-        for &page_index in accessed_pages.iter() {
-            bootloader_inputs.push(page_index.into());
-            let (page, proof) = merkle_tree.get(page_index as usize);
-            bootloader_inputs.extend(page);
-            for sibling in proof {
-                bootloader_inputs.extend(sibling);
-            }
-        }
-
-        log::info!("Inputs length: {}", bootloader_inputs.len());
+        // Update initial register values for the next chunk.
+        register_values = REGISTER_NAMES
+            .iter()
+            .map(|&r| *chunk_trace[r].last().unwrap())
+            .collect();
 
         chunk_index += 1;
     }
