@@ -14,6 +14,7 @@ use self::generator::Generator;
 
 use self::identity_processor::Machines;
 use self::machines::machine_extractor::ExtractionOutput;
+use self::machines::profiling::{record_end, record_start, reset_and_print_profile_summary};
 use self::machines::{FixedLookup, Machine};
 
 mod affine_expression;
@@ -35,6 +36,8 @@ pub mod symbolic_evaluator;
 mod symbolic_witness_evaluator;
 mod util;
 mod vm_processor;
+
+static OUTER_CODE_NAME: &str = "witgen (outer code)";
 
 pub trait QueryCallback<T>: FnMut(&str) -> Result<Option<T>, String> + Send + Sync {}
 impl<T, F> QueryCallback<T> for F where F: FnMut(&str) -> Result<Option<T>, String> + Send + Sync {}
@@ -92,6 +95,7 @@ impl<'a, 'b, T: FieldElement, Q: QueryCallback<T>> WitnessGenerator<'a, 'b, T, Q
     /// Generates the committed polynomial values
     /// @returns the values (in source order) and the degree of the polynomials.
     pub fn generate(self) -> Vec<(String, Vec<T>)> {
+        record_start(OUTER_CODE_NAME);
         let fixed = FixedData::new(
             self.analyzed,
             self.fixed_col_values,
@@ -124,6 +128,7 @@ impl<'a, 'b, T: FieldElement, Q: QueryCallback<T>> WitnessGenerator<'a, 'b, T, Q
             query_callback: &mut query_callback,
         };
         let mut generator = Generator::new(
+            "Main Machine".to_string(),
             &fixed,
             &base_identities,
             base_witnesses,
@@ -148,6 +153,9 @@ impl<'a, 'b, T: FieldElement, Q: QueryCallback<T>> WitnessGenerator<'a, 'b, T, Q
             })
             .chain(main_columns)
             .collect::<BTreeMap<_, _>>();
+
+        record_end(OUTER_CODE_NAME);
+        reset_and_print_profile_summary();
 
         // Order columns according to the order of declaration.
         self.analyzed

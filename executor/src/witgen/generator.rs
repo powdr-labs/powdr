@@ -6,6 +6,7 @@ use number::{DegreeType, FieldElement};
 use std::collections::{HashMap, HashSet};
 
 use crate::witgen::data_structures::finalizable_data::FinalizableData;
+use crate::witgen::machines::profiling::{record_end, record_start};
 use crate::witgen::processor::OuterQuery;
 use crate::witgen::rows::CellValue;
 use crate::witgen::EvalValue;
@@ -32,9 +33,14 @@ pub struct Generator<'a, T: FieldElement> {
     global_range_constraints: GlobalConstraints<T>,
     data: FinalizableData<'a, T>,
     latch: Option<Expression<T>>,
+    name: String,
 }
 
 impl<'a, T: FieldElement> Machine<'a, T> for Generator<'a, T> {
+    fn name(&self) -> &str {
+        &self.name
+    }
+
     fn process_plookup<Q: QueryCallback<T>>(
         &mut self,
         mutable_state: &mut MutableState<'a, '_, T, Q>,
@@ -103,6 +109,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for Generator<'a, T> {
 
 impl<'a, T: FieldElement> Generator<'a, T> {
     pub fn new(
+        name: String,
         fixed_data: &'a FixedData<'a, T>,
         identities: &[&'a Identity<Expression<T>>],
         witnesses: HashSet<PolyID>,
@@ -111,6 +118,7 @@ impl<'a, T: FieldElement> Generator<'a, T> {
     ) -> Self {
         let data = FinalizableData::new(&witnesses);
         Self {
+            name,
             fixed_data,
             identities: identities.to_vec(),
             witnesses,
@@ -120,23 +128,13 @@ impl<'a, T: FieldElement> Generator<'a, T> {
         }
     }
 
-    pub fn name(&self) -> &str {
-        let first_witness = self.witnesses.iter().next().unwrap();
-        let first_witness_name = self.fixed_data.column_name(first_witness);
-        let namespace = first_witness_name
-            .rfind('.')
-            .map(|idx| &first_witness_name[..idx]);
-
-        // For machines compiled using Powdr ASM we'll always have a namespace, but as a last
-        // resort we'll use the first witness name.
-        namespace.unwrap_or(first_witness_name)
-    }
-
     /// Runs the machine without any arguments from the first row.
     pub fn run<'b, Q: QueryCallback<T>>(&mut self, mutable_state: &mut MutableState<'a, 'b, T, Q>) {
+        record_start(self.name());
         assert!(self.data.is_empty());
         let first_row = self.compute_partial_first_row(mutable_state);
         self.data = self.process(first_row, 0, mutable_state, None).block;
+        record_end(self.name());
     }
 
     fn fill_remaining_rows<Q: QueryCallback<T>>(

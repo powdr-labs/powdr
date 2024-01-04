@@ -11,11 +11,14 @@ use number::FieldElement;
 
 use crate::witgen::affine_expression::AffineExpression;
 use crate::witgen::global_constraints::{GlobalConstraints, RangeConstraintSet};
+use crate::witgen::machines::record_start;
 use crate::witgen::range_constraints::RangeConstraint;
 use crate::witgen::rows::RowPair;
 use crate::witgen::util::try_to_simple_poly_ref;
 use crate::witgen::{EvalError, EvalValue, IncompleteCause};
 use crate::witgen::{EvalResult, FixedData};
+
+use super::record_end;
 
 type Application = (Vec<PolyID>, Vec<PolyID>);
 type Index<T> = BTreeMap<Vec<T>, IndexValue>;
@@ -171,6 +174,20 @@ impl<T: FieldElement> FixedLookup<T> {
             global_constraints,
             indices: Default::default(),
         }
+    }
+
+    pub fn process_plookup_timed<'b>(
+        &mut self,
+        fixed_data: &FixedData<T>,
+        rows: &RowPair<'_, '_, T>,
+        kind: IdentityKind,
+        left: &[AffineExpression<&'b AlgebraicReference, T>],
+        right: &'b SelectedExpressions<Expression<T>>,
+    ) -> Option<EvalResult<'b, T>> {
+        record_start("FixedLookup");
+        let result = self.process_plookup(fixed_data, rows, kind, left, right);
+        record_end("FixedLookup");
+        result
     }
 
     pub fn process_plookup<'b>(

@@ -29,6 +29,7 @@ pub struct DoubleSortedWitnesses<T> {
     trace: BTreeMap<(T, T), Operation<T>>,
     data: BTreeMap<T, T>,
     namespace: String,
+    name: String,
 }
 
 struct Operation<T> {
@@ -42,6 +43,7 @@ impl<T: FieldElement> DoubleSortedWitnesses<T> {
     }
 
     pub fn try_new(
+        name: String,
         fixed_data: &FixedData<T>,
         _identities: &[&Identity<Expression<T>>],
         witness_cols: &HashSet<PolyID>,
@@ -82,7 +84,7 @@ impl<T: FieldElement> DoubleSortedWitnesses<T> {
             .is_none()
         {
             Some(Self {
-                // store the namespace
+                name,
                 namespace,
                 degree: fixed_data.degree,
                 ..Default::default()
@@ -94,6 +96,10 @@ impl<T: FieldElement> DoubleSortedWitnesses<T> {
 }
 
 impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses<T> {
+    fn name(&self) -> &str {
+        &self.name
+    }
+
     fn process_plookup<Q: QueryCallback<T>>(
         &mut self,
         _mutable_state: &mut MutableState<'a, '_, T, Q>,
