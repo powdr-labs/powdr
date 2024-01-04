@@ -47,7 +47,7 @@ mod test {
             .unwrap();
         mock_prove(
             &result.pil,
-            &result.constants,
+            &result.fixed_cols,
             result.witness.as_ref().unwrap(),
         );
     }
@@ -62,7 +62,7 @@ mod test {
             .unwrap();
         mock_prove(
             &result.pil,
-            &result.constants,
+            &result.fixed_cols,
             result.witness.as_ref().unwrap(),
         );
     }

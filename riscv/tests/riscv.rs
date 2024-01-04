@@ -176,12 +176,23 @@ fn test_many_chunks() {
         riscv::compile_rust_to_riscv_asm(&format!("tests/riscv_data/{case}"), &temp_dir);
     let powdr_asm = riscv::compiler::compile(riscv_asm, &coprocessors, true);
 
+    // Manually create tmp dir, so that it is the same in all chunks.
+    let tmp_dir = mktemp::Temp::new_dir().unwrap();
+
     let pipeline_factory = || {
         Pipeline::<GoldilocksField>::default()
             .from_asm_string(powdr_asm.clone(), Some(PathBuf::from(case)))
             .with_prover_inputs(vec![])
+            .with_output(tmp_dir.to_path_buf(), false)
     };
     let pipeline_callback = |pipeline: Pipeline<GoldilocksField>| -> Result<(), ()> {
+        // The continuations code runs the pipeline until the point were fixed columns
+        // are evaluated and then renames the pipeline. This doesn't play well with
+        // verify_pipeline, so we copy the artifacts here.
+        // Specifically, we copy many_chunks_constants.bin to <pipeline_name>_constants.bin.
+        let tmp_dir = pipeline.output_dir().unwrap();
+        let constants_file = tmp_dir.join(format!("{}_constants.bin", pipeline.name()));
+        std::fs::copy(tmp_dir.join("many_chunks_constants.bin"), constants_file).unwrap();
         verify_pipeline(pipeline, vec![], vec![]);
         Ok(())
     };

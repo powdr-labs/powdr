@@ -14,11 +14,11 @@ type T = GoldilocksField;
 
 fn run_witgen<T: FieldElement>(
     analyzed: &Analyzed<T>,
-    constants: Vec<(String, Vec<T>)>,
+    constants: &Vec<(String, Vec<T>)>,
     external_witness_values: Vec<(String, Vec<T>)>,
 ) {
     let query_callback = inputs_to_query_callback(vec![]);
-    executor::witgen::WitnessGenerator::new(analyzed, &constants, query_callback)
+    executor::witgen::WitnessGenerator::new(analyzed, constants, query_callback)
         .with_external_witness_values(external_witness_values)
         .generate();
 }
@@ -34,14 +34,14 @@ fn criterion_benchmark(c: &mut Criterion) {
     let contents = compiler::compile(riscv_asm_files, &CoProcessors::base(), false);
     let pil_with_constants = Pipeline::<T>::default()
         .from_asm_string(contents, None)
-        .optimized_pil_with_constants()
+        .pil_with_evaluated_fixed_cols()
         .unwrap();
 
     group.bench_function("keccak", |b| {
         b.iter(|| {
             run_witgen(
                 &pil_with_constants.pil,
-                pil_with_constants.fixed_cols.clone(),
+                &pil_with_constants.fixed_cols,
                 vec![],
             )
         })
@@ -53,14 +53,14 @@ fn criterion_benchmark(c: &mut Criterion) {
     let contents = compiler::compile(riscv_asm_files, &CoProcessors::base().with_poseidon(), true);
     let pil_with_constants = Pipeline::<T>::default()
         .from_asm_string(contents, None)
-        .optimized_pil_with_constants()
+        .pil_with_evaluated_fixed_cols()
         .unwrap();
 
     group.bench_function("many_chunks_chunk_0", |b| {
         b.iter(|| {
             run_witgen(
                 &pil_with_constants.pil,
-                pil_with_constants.fixed_cols.clone(),
+                &pil_with_constants.fixed_cols,
                 vec![("main.bootloader_input_value".to_string(), default_input())],
             )
         })

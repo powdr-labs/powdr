@@ -39,16 +39,19 @@ pub fn verify_pipeline<T: FieldElement>(
     external_witness_values: Vec<(String, Vec<T>)>,
 ) {
     let mut pipeline = pipeline
-        .with_tmp_output()
         .add_external_witness_values(external_witness_values)
         .with_prover_inputs(inputs)
         .with_backend(BackendType::PilStarkCli);
+
+    if pipeline.output_dir().is_none() {
+        pipeline = pipeline.with_tmp_output();
+    }
 
     // Don't get the proof, because that would destroy the pipeline
     // which owns the temporary directory.
     pipeline.advance_to(Stage::Proof).unwrap();
 
-    verify(pipeline.tmp_dir(), pipeline.name());
+    verify(pipeline.output_dir().unwrap(), pipeline.name());
 }
 
 pub fn gen_estark_proof(file_name: &str, inputs: Vec<GoldilocksField>) {
