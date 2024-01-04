@@ -2,9 +2,8 @@
 use number::FieldElement;
 
 use std::{
-    collections::{BTreeMap, BTreeSet},
+    collections::{BTreeMap, BTreeSet, HashSet},
     convert::Infallible,
-    ops::ControlFlow,
 };
 
 use ast::{
@@ -16,6 +15,7 @@ use ast::{
         },
         folder::Folder,
         visitor::ExpressionVisitable,
+        ArrayLiteral, FunctionCall, IndexAccess, LambdaExpression, MatchArm,
     },
 };
 
@@ -80,11 +80,7 @@ impl<'a, T> Folder<T> for Canonicalizer<'a> {
                                 .transpose(),
                             },
                             SymbolValue::Expression(mut e) => {
-                                canonicalize_inside_expression(
-                                    &mut e,
-                                    self.path.clone(),
-                                    self.paths,
-                                );
+                                canonicalize_inside_expression(&mut e, &self.path, self.paths);
                                 Some(Ok(SymbolValue::Expression(e)))
                             }
                         }
@@ -102,13 +98,11 @@ impl<'a, T> Folder<T> for Canonicalizer<'a> {
                     let p = self.path.clone().join(path.clone());
                     *path = self.paths.get(&p).cloned().unwrap().into();
                 }
-                MachineStatement::Pil(_start, statement) => match statement {
-                    ast::parsed::PilStatement::LetStatement(_, _, Some(e))
-                    | ast::parsed::PilStatement::Expression(_, e) => {
-                        canonicalize_inside_expression(e, self.path.clone(), self.paths);
+                MachineStatement::Pil(_start, statement) => {
+                    for e in statement.expressions_mut() {
+                        canonicalize_inside_expression(e, &self.path, self.paths);
                     }
-                    _ => {}
-                },
+                }
                 _ => {}
             }
         }
@@ -119,15 +113,16 @@ impl<'a, T> Folder<T> for Canonicalizer<'a> {
 
 fn canonicalize_inside_expression<T>(
     e: &mut Expression<T>,
-    path: AbsoluteSymbolPath,
+    path: &AbsoluteSymbolPath,
     paths: &'_ PathMap,
 ) {
     e.pre_visit_expressions_mut(&mut |e| {
         if let Expression::Reference(reference) = e {
-            let name = reference.try_to_identifier().unwrap();
-            //TODO we ignore errors for now because local variables are not yet properly implemented.
-            if let Some(n) = paths.get(&path.clone().with_part(name)) {
+            // If resolving the reference fails, we assume it is a local variable that has been checked below.
+            if let Some(n) = paths.get(&path.clone().join(reference.path.clone())) {
                 *reference = n.relative_to(&Default::default()).into();
+            } else {
+                assert!(reference.path.try_to_identifier().is_some());
             }
         }
     });
@@ -326,7 +321,9 @@ fn check_module<T: Clone>(
                 check_module(location.with_part(name), m, state)?;
             }
             SymbolValue::Import(s) => check_import(location.clone(), s.clone(), state)?,
-            SymbolValue::Expression(e) => check_expressions(location.clone(), e, state)?,
+            SymbolValue::Expression(e) => {
+                check_expression(&location, e, state, &HashSet::default())?
+            }
         }
     }
     Ok(())
@@ -343,15 +340,23 @@ fn check_machine<T: Clone>(
     state: &mut State<'_, T>,
 ) -> Result<(), String> {
     // we check the path in the context of the parent module
-    let module_location = location.parent();
+    let module_location = location.clone().parent();
+
+    // Find all local variables.
+    let mut local_variables = HashSet::<String>::default();
+    for name in m.local_names() {
+        if !local_variables.insert(name.clone()) {
+            return Err(format!("Duplicate name `{name}` in machine `{location}`"));
+        }
+    }
     for statement in &m.statements {
         match statement {
             MachineStatement::Submachine(_, path, _) => {
                 check_path(module_location.clone().join(path.clone()), state)?
             }
-            MachineStatement::Pil(_, statement) => {
-                check_expressions(module_location.clone(), statement, state)?
-            }
+            MachineStatement::Pil(_, statement) => statement
+                .expressions()
+                .try_for_each(|e| check_expression(&module_location, e, state, &local_variables))?,
             _ => {}
         }
     }
@@ -360,38 +365,86 @@ fn check_machine<T: Clone>(
 
 /// Checks an expression, checking the paths it contains.
 ///
+/// Local variables are those that do not have a global path. They can be referenced by direct name only.
+///
 /// # Errors
 ///
 /// This function will return an error if any of the paths does not resolve to anything
-fn check_expressions<T: Clone>(
-    location: AbsoluteSymbolPath,
-    e: &impl ExpressionVisitable<Expression<T>>,
+fn check_expression<T: Clone>(
+    location: &AbsoluteSymbolPath,
+    e: &Expression<T>,
     state: &mut State<'_, T>,
+    local_variables: &HashSet<String>,
 ) -> Result<(), String> {
-    // TODO To handle local variables correctly, we first have detect them and transform the references
-    // so that they include local variables. Then we can check all other references.
-    let x = e.pre_visit_expressions_return(&mut |e| match e {
+    // We cannot use the visitor here because we need to change the local variables
+    // inside lambda expressions.
+    match e {
         Expression::Reference(reference) => {
-            let name = reference.try_to_identifier().unwrap();
-            match check_path(location.clone().with_part(name), state) {
-                Ok(()) => ControlFlow::<String>::Continue(()),
-                Err(_e) => {
-                    // TODO we ignore errors for now because of local variables.
-                    ControlFlow::Continue(())
-                    // std::ops::ControlFlow::Break(e),
+            if let Some(name) = reference.try_to_identifier() {
+                if local_variables.contains(name) {
+                    return Ok(());
                 }
             }
+            check_path(location.clone().join(reference.path.clone()), state)
         }
-        _ => ControlFlow::Continue(()),
-    });
-
-    match x {
-        std::ops::ControlFlow::Continue(()) => Ok(()),
-        std::ops::ControlFlow::Break(_err) => {
-            // TODO we ignore errors for now because of local variables.
-            Ok(())
+        Expression::PublicReference(_) | Expression::Number(_) | Expression::String(_) => Ok(()),
+        Expression::Tuple(items) | Expression::ArrayLiteral(ArrayLiteral { items }) => {
+            check_expressions(location, items, state, local_variables)
+        }
+        Expression::LambdaExpression(LambdaExpression { params, body }) => {
+            // Add the local variables, ignore collisions.
+            let mut local_variables = local_variables.clone();
+            local_variables.extend(params.iter().cloned());
+            check_expression(location, body, state, &local_variables)
+        }
+        Expression::BinaryOperation(a, _, b)
+        | Expression::IndexAccess(IndexAccess { array: a, index: b }) => {
+            check_expression(location, a.as_ref(), state, local_variables)?;
+            check_expression(location, b.as_ref(), state, local_variables)
+        }
+        Expression::UnaryOperation(_, e) | Expression::FreeInput(e) => {
+            check_expression(location, e, state, local_variables)
+        }
+        Expression::FunctionCall(FunctionCall {
+            function,
+            arguments,
+        }) => {
+            check_expression(location, function, state, local_variables)?;
+            check_expressions(location, arguments, state, local_variables)
+        }
+        Expression::MatchExpression(scrutinee, arms) => {
+            check_expression(location, scrutinee, state, local_variables)?;
+            arms.iter().try_for_each(|MatchArm { pattern, value }| {
+                match pattern {
+                    ast::parsed::MatchPattern::CatchAll => Ok(()),
+                    ast::parsed::MatchPattern::Pattern(e) => {
+                        check_expression(location, e, state, local_variables)
+                    }
+                }?;
+                check_expression(location, value, state, local_variables)
+            })
+        }
+        Expression::IfExpression(ast::parsed::IfExpression {
+            condition,
+            body,
+            else_body,
+        }) => {
+            check_expression(location, condition, state, local_variables)?;
+            check_expression(location, body, state, local_variables)?;
+            check_expression(location, else_body, state, local_variables)
         }
     }
+}
+
+fn check_expressions<T: Clone>(
+    location: &AbsoluteSymbolPath,
+    expressions: &[Expression<T>],
+    state: &mut State<'_, T>,
+    local_variables: &HashSet<String>,
+) -> Result<(), String> {
+    expressions
+        .iter()
+        .try_for_each(|e| check_expression(location, e, state, local_variables))
 }
 
 #[cfg(test)]

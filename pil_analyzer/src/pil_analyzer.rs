@@ -161,11 +161,8 @@ impl<T: FieldElement> PILAnalyzer<T> {
             }
             PilStatement::Include(_, _) => unreachable!(),
             _ => {
-                let mut counters = Default::default();
-                for absolute_name in
-                    StatementProcessor::new(self.driver(), &mut counters, self.polynomial_degree)
-                        .symbol_definition_names(statement)
-                {
+                for name in statement.symbol_definition_names() {
+                    let absolute_name = self.driver().resolve_decl(name);
                     if !self.known_symbols.insert(absolute_name.clone()) {
                         panic!("Duplicate symbol definition: {absolute_name}");
                     }
