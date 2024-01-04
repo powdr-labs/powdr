@@ -270,8 +270,8 @@ pub struct IfExpression<T, Ref = NamespacedPolynomialReference> {
 pub enum FunctionDefinition<T> {
     /// Array expression.
     Array(ArrayExpression<T>),
-    /// Prover query.
-    Query(Vec<String>, Expression<T>),
+    /// Prover query. The Expression usually is a LambdaExpression.
+    Query(Expression<T>),
     /// Generic expression
     Expression(Expression<T>),
 }

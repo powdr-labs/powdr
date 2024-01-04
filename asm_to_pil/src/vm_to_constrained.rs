@@ -16,9 +16,9 @@ use ast::{
         build::{direct_reference, next_reference},
         folder::ExpressionFolder,
         visitor::ExpressionVisitable,
-        ArrayExpression, BinaryOperator, Expression, FunctionCall, FunctionDefinition, MatchArm,
-        MatchPattern, NamespacedPolynomialReference, PilStatement, PolynomialName,
-        SelectedExpressions, UnaryOperator,
+        ArrayExpression, BinaryOperator, Expression, FunctionCall, FunctionDefinition,
+        LambdaExpression, MatchArm, MatchPattern, NamespacedPolynomialReference, PilStatement,
+        PolynomialName, SelectedExpressions, UnaryOperator,
     },
 };
 
@@ -824,16 +824,16 @@ impl<T: FieldElement> ASMPILConverter<T> {
                 let free_value = format!("{reg}_free_value");
                 let prover_query_arms = free_value_query_arms.remove(reg).unwrap();
                 let prover_query = (!prover_query_arms.is_empty()).then_some({
-                    FunctionDefinition::Query(
-                        vec!["i".to_string()],
-                        Expression::MatchExpression(
+                    FunctionDefinition::Query(Expression::LambdaExpression(LambdaExpression {
+                        params: vec!["i".to_string()],
+                        body: Box::new(Expression::MatchExpression(
                             Box::new(Expression::FunctionCall(FunctionCall {
                                 function: Box::new(direct_reference(pc_name.as_ref().unwrap())),
                                 arguments: vec![direct_reference("i")],
                             })),
                             prover_query_arms,
-                        ),
-                    )
+                        )),
+                    }))
                 });
                 witness_column(0, free_value, prover_query)
             })

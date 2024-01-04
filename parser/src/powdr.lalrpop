@@ -132,8 +132,12 @@ ArrayLiteralTerm: ArrayExpression<T> = {
 
 PolynomialCommitDeclaration: PilStatement<T> = {
     <@L> PolCol CommitWitness <PolynomialNameList> => PilStatement::PolynomialCommitDeclaration(<>, None),
-    <start:@L> PolCol CommitWitness <name:PolynomialName> "(" <param:ParameterList> ")" "query" <value:Expression>
-     => PilStatement::PolynomialCommitDeclaration(start, vec![name], Some(FunctionDefinition::Query(param, value)))
+    <start:@L> PolCol CommitWitness <name:PolynomialName> "(" <params:ParameterList> ")" "query" <body:BoxedExpression>
+     => PilStatement::PolynomialCommitDeclaration(
+        start,
+        vec![name],
+        Some(FunctionDefinition::Query(Expression::LambdaExpression(LambdaExpression{params, body})))
+    )
 }
 
 PolynomialIdentity: PilStatement<T> = {

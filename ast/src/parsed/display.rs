@@ -407,20 +407,26 @@ impl<T: Display> Display for FunctionDefinition<T> {
             FunctionDefinition::Array(array_expression) => {
                 write!(f, " = {array_expression}")
             }
-            FunctionDefinition::Query(params, value) => {
-                write!(f, "({}) query {value}", params.join(", "),)
+            FunctionDefinition::Query(Expression::LambdaExpression(lambda)) => write!(
+                f,
+                "({}) query {}",
+                lambda.params.iter().format(", "),
+                lambda.body,
+            ),
+            FunctionDefinition::Query(e) => {
+                write!(f, " query = {e}")
             }
-            FunctionDefinition::Expression(e) => match e {
-                Expression::LambdaExpression(lambda) if lambda.params.len() == 1 => {
-                    write!(
-                        f,
-                        "({}) {{ {} }}",
-                        lambda.params.iter().format(", "),
-                        lambda.body
-                    )
-                }
-                _ => write!(f, " = {e}"),
-            },
+            FunctionDefinition::Expression(Expression::LambdaExpression(lambda))
+                if lambda.params.len() == 1 =>
+            {
+                write!(
+                    f,
+                    "({}) {{ {} }}",
+                    lambda.params.iter().format(", "),
+                    lambda.body,
+                )
+            }
+            FunctionDefinition::Expression(e) => write!(f, " = {e}"),
         }
     }
 }
