@@ -62,10 +62,12 @@ pub struct BlockMachine<'a, T: FieldElement> {
     /// to make progress most quickly.
     processing_sequence_cache: ProcessingSequenceCache,
     fixed_data: &'a FixedData<'a, T>,
+    name: String,
 }
 
 impl<'a, T: FieldElement> BlockMachine<'a, T> {
     pub fn try_new(
+        name: String,
         fixed_data: &'a FixedData<'a, T>,
         connecting_identities: &[&'a Identity<Expression<T>>],
         identities: &[&'a Identity<Expression<T>>],
@@ -120,6 +122,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
                     (0..block_size).map(|i| row_factory.fresh_row(i as DegreeType)),
                 );
                 BlockMachine {
+                    name,
                     block_size,
                     connecting_rhs,
                     identities: identities.to_vec(),
@@ -200,6 +203,10 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
             }
             result
         })
+    }
+
+    fn name(&self) -> &str {
+        &self.name
     }
 
     fn take_witness_col_values<'b, Q: QueryCallback<T>>(
@@ -287,18 +294,6 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
 
     fn rows(&self) -> DegreeType {
         self.data.len() as DegreeType
-    }
-
-    fn name(&self) -> &str {
-        let first_witness = self.witness_cols.iter().next().unwrap();
-        let first_witness_name = self.fixed_data.column_name(first_witness);
-        let namespace = first_witness_name
-            .rfind('.')
-            .map(|idx| &first_witness_name[..idx]);
-
-        // For machines compiled using Powdr ASM we'll always have a namespace, but as a last
-        // resort we'll use the first witness name.
-        namespace.unwrap_or(first_witness_name)
     }
 
     fn process_plookup_internal<'b, Q: QueryCallback<T>>(
