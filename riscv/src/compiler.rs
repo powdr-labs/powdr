@@ -711,10 +711,12 @@ fn preamble(degree: u64, coprocessors: &CoProcessors, with_bootloader: bool) -> 
 
 fn runtime(coprocessors: &CoProcessors) -> String {
     [
+        "__divdi3",
         "__udivdi3",
         "__udivti3",
         "__divdf3",
         "__muldf3",
+        "__moddi3",
         "__umoddi3",
         "__umodti3",
         "__eqdf2",
