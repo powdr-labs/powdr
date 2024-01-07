@@ -10,6 +10,7 @@ use ast::{
         Expression, PILFile, PilStatement, SelectedExpressions,
     },
 };
+use itertools::Itertools;
 use number::FieldElement;
 
 const DEFAULT_DEGREE: u64 = 1024;
@@ -29,16 +30,23 @@ pub fn link<T: FieldElement>(graph: PILGraph<T>) -> Result<PILFile<T>, Vec<Strin
     let mut errors = vec![];
 
     // Extract the utilities and sort them into namespaces where possible.
-    let mut current_namespace = None;
+    let mut current_namespace = Default::default();
     let mut pil = graph
         .definitions
         .into_iter()
+        .sorted_by_cached_key(|(namespace, _)| {
+            let mut namespace = namespace.clone();
+            let name = namespace.pop();
+            // Group by namespace and then sort by name.
+            (namespace, name)
+        })
         .flat_map(|(mut namespace, e)| {
             let name = namespace.pop().unwrap();
             let def = PilStatement::LetStatement(0, name.to_string(), Some(e));
 
-            if current_namespace != Some(namespace.clone()) {
-                current_namespace = Some(namespace.clone());
+            // If there is a namespace change, insert a namespace statement.
+            if current_namespace != namespace {
+                current_namespace = namespace.clone();
                 vec![
                     PilStatement::Namespace(
                         0,
