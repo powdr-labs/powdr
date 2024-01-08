@@ -19,10 +19,8 @@ pub const PAGE_SIZE_BYTES: usize = 1 << PAGE_SIZE_BYTES_LOG;
 pub const PAGE_NUMBER_MASK: usize = (1 << N_LEAVES_LOG) - 1;
 pub const BOOTLOADER_INPUTS_PER_PAGE: usize = WORDS_PER_PAGE + 1 + (MERKLE_TREE_DEPTH - 1) * 4;
 
-pub const BOOTLOADER_SPECIFIC_INSTRUCTION_NAMES: [&str; 2] = [
-    "load_bootloader_input",
-    "jump_to_bootloader_input_if_nonzero",
-];
+pub const BOOTLOADER_SPECIFIC_INSTRUCTION_NAMES: [&str; 2] =
+    ["load_bootloader_input", "jump_to_bootloader_input"];
 
 pub fn bootloader_preamble() -> String {
     let mut preamble = r#"
@@ -33,23 +31,13 @@ pub fn bootloader_preamble() -> String {
     // Loads a value. If the cell is empty, the prover can choose a value.
     instr load_bootloader_input X -> Y { {X, Y} in {BOOTLOADER_INPUT_ADDRESS, bootloader_input_value} }
 
-    // HACK: We should not use these columns & constraints and instead be able to use X.
-    // However, this seems to currently violate some constraints, because X is neither
-    // an input nor an output of the jump_to_bootloader_input_if_nonzero instruction.
-    col witness tmp_addr;
-    col witness tmp_addrInv;
-    col witness tmp_addrIsZero;
-    tmp_addrIsZero = 1 - tmp_addr * tmp_addrInv;
-    tmp_addrIsZero * tmp_addr = 0;
-    tmp_addrIsZero * (1 - tmp_addrIsZero) = 0;
-    (1 - instr_jump_to_bootloader_input_if_nonzero) * tmp_addr = 0;
+    let tmp_bootloader_value;
 
     // Sets the PC to the bootloader input at the provided index if it is nonzero
-    instr jump_to_bootloader_input_if_nonzero Y {
-        // Atomically reads the bootloader input at index Y and jumps to it if it is nonzero
-        // (otherwise, the PC is incremented by 1).
-        {Y, tmp_addr} in {BOOTLOADER_INPUT_ADDRESS, bootloader_input_value},
-        pc' = (1 - tmp_addrIsZero) * tmp_addr + tmp_addrIsZero * (pc + 1)
+    instr jump_to_bootloader_input X {
+        // TODO: Putting {X, pc'} on the left-hand side should work, but this leads to a wrong PC update rule.
+        {X, tmp_bootloader_value} in {BOOTLOADER_INPUT_ADDRESS, bootloader_input_value},
+        pc' = tmp_bootloader_value
     }
 
     // Expose initial register values as public outputs
@@ -91,12 +79,29 @@ pub fn bootloader_preamble() -> String {
 ///   - The 256 words of the page
 ///   - For each level of the Merkle tree, except the root (1..=22):
 ///     - The hash (4 elements) of the sibling page
-pub fn bootloader() -> String {
+pub fn bootloader(submachine_initialization: &[String]) -> String {
     let mut bootloader = String::new();
 
     let memory_hash_start_index = REGISTER_NAMES.len();
     let num_pages_index = memory_hash_start_index + 4;
     let page_inputs_offset = num_pages_index + 1;
+
+    bootloader.push_str(&format!(
+        r#"
+// Skip the next instruction
+jump submachine_init;
+
+// For convenience, this instruction has a known fixed PC ({DEFAULT_PC}) and just jumps
+// to whatever comes after the bootloader. This avoids having to count the instructions
+// of the bootloader and the submachine initialization.
+jump end_of_bootloader;
+
+// Submachine initialization: Calls each submachine once, because that helps witness
+// generation figure out default values that can be used if the machine is never used.
+submachine_init:
+"#
+    ));
+    bootloader.push_str(&submachine_initialization.join("\n"));
 
     bootloader.push_str(&format!(
         r#"
@@ -241,7 +246,9 @@ end_page_loop:
         r#"
 // Default PC is 0, but we already started from 0, so in that case we do nothing.
 // Otherwise, we jump to the PC.
-jump_to_bootloader_input_if_nonzero {PC_INDEX};
+jump_to_bootloader_input {PC_INDEX};
+
+end_of_bootloader:
 "#
     ));
 
@@ -306,13 +313,28 @@ pub const REGISTER_NAMES: [&str; 49] = [
 /// Index of the PC in the bootloader input.
 pub const PC_INDEX: usize = REGISTER_NAMES.len() - 1;
 
+/// The default PC that can be used in first chunk, will just continue with whatever comes after the bootloader.
+/// The value is 3, because we added a jump instruction at the beginning of the code.
+/// Specifically, the first instructions are:
+/// 0: reset
+/// 1: jump_to_operation
+/// 2: jump submachine_init
+/// 3: jump end_of_bootloader
+const DEFAULT_PC: u64 = 3;
+
 /// The bootloader input that is equivalent to not using a bootloader, i.e.:
 /// - No pages are initialized
 /// - All registers are set to 0 (including the PC, which causes the bootloader to do nothing)
 pub fn default_input<T: FieldElement>() -> Vec<T> {
     // Set all registers and the number of pages to zero
     let mut inputs = vec![T::zero(); REGISTER_NAMES.len() + 1 + 4];
+
+    // Set the memory hash to the empty hash
     let empty_memory_hash = MerkleTree::<T>::empty_hash();
     inputs[REGISTER_NAMES.len()..REGISTER_NAMES.len() + 4].copy_from_slice(&empty_memory_hash);
+
+    // Set the default PC
+    inputs[PC_INDEX] = T::from(DEFAULT_PC);
+
     inputs
 }

@@ -514,12 +514,10 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
                 Vec::new()
             }
-            "jump_to_bootloader_input_if_nonzero" => {
+            "jump_to_bootloader_input" => {
                 let bootloader_input_idx = args[0].0 as usize;
                 let addr = self.bootloader_inputs[bootloader_input_idx].to_degree();
-                if addr != 0 {
-                    self.proc.set_pc(addr.into());
-                }
+                self.proc.set_pc(addr.into());
 
                 Vec::new()
             }

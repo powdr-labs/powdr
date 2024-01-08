@@ -190,21 +190,21 @@ pub fn compile(
         },
     );
 
+    let submachine_init = call_every_submachine(coprocessors);
     let bootloader_lines = if with_bootloader {
-        let bootloader = bootloader();
+        let bootloader = bootloader(&submachine_init);
         log::debug!("Adding Bootloader:\n{}", bootloader);
         bootloader
             .split('\n')
             .map(|l| l.to_string())
             .collect::<Vec<_>>()
     } else {
-        vec![]
+        submachine_init
     };
 
     let program: Vec<String> = file_ids
         .into_iter()
         .map(|(id, dir, file)| format!("debug file {id} {} {};", quote(&dir), quote(&file)))
-        .chain(call_every_submachine(coprocessors))
         .chain(bootloader_lines)
         .chain(["call __data_init;".to_string()])
         .chain([
