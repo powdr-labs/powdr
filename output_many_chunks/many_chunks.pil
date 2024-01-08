@@ -1925,7 +1925,37 @@ P8' = ((((((((((((((((((reg_write_A0_P8 * A0) + (reg_write_A1_P8 * A1)) + (reg_w
 P9' = ((((((((((((((((((reg_write_A0_P9 * A0) + (reg_write_A1_P9 * A1)) + (reg_write_A10_P9 * A10)) + (reg_write_A11_P9 * A11)) + (reg_write_A2_P9 * A2)) + (reg_write_A3_P9 * A3)) + (reg_write_A4_P9 * A4)) + (reg_write_A5_P9 * A5)) + (reg_write_A6_P9 * A6)) + (reg_write_A7_P9 * A7)) + (reg_write_A8_P9 * A8)) + (reg_write_A9_P9 * A9)) + (reg_write_W_P9 * W)) + (reg_write_X_P9 * X)) + (reg_write_Y_P9 * Y)) + (reg_write_Z_P9 * Z)) + (instr__reset * 0)) + ((1 - ((((((((((((((((reg_write_A0_P9 + reg_write_A1_P9) + reg_write_A10_P9) + reg_write_A11_P9) + reg_write_A2_P9) + reg_write_A3_P9) + reg_write_A4_P9) + reg_write_A5_P9) + reg_write_A6_P9) + reg_write_A7_P9) + reg_write_A8_P9) + reg_write_A9_P9) + reg_write_W_P9) + reg_write_X_P9) + reg_write_Y_P9) + reg_write_Z_P9) + instr__reset)) * P9));
 lr_sc_reservation' = ((((((((((((((((((reg_write_A0_lr_sc_reservation * A0) + (reg_write_A1_lr_sc_reservation * A1)) + (reg_write_A10_lr_sc_reservation * A10)) + (reg_write_A11_lr_sc_reservation * A11)) + (reg_write_A2_lr_sc_reservation * A2)) + (reg_write_A3_lr_sc_reservation * A3)) + (reg_write_A4_lr_sc_reservation * A4)) + (reg_write_A5_lr_sc_reservation * A5)) + (reg_write_A6_lr_sc_reservation * A6)) + (reg_write_A7_lr_sc_reservation * A7)) + (reg_write_A8_lr_sc_reservation * A8)) + (reg_write_A9_lr_sc_reservation * A9)) + (reg_write_W_lr_sc_reservation * W)) + (reg_write_X_lr_sc_reservation * X)) + (reg_write_Y_lr_sc_reservation * Y)) + (reg_write_Z_lr_sc_reservation * Z)) + (instr__reset * 0)) + ((1 - ((((((((((((((((reg_write_A0_lr_sc_reservation + reg_write_A1_lr_sc_reservation) + reg_write_A10_lr_sc_reservation) + reg_write_A11_lr_sc_reservation) + reg_write_A2_lr_sc_reservation) + reg_write_A3_lr_sc_reservation) + reg_write_A4_lr_sc_reservation) + reg_write_A5_lr_sc_reservation) + reg_write_A6_lr_sc_reservation) + reg_write_A7_lr_sc_reservation) + reg_write_A8_lr_sc_reservation) + reg_write_A9_lr_sc_reservation) + reg_write_W_lr_sc_reservation) + reg_write_X_lr_sc_reservation) + reg_write_Y_lr_sc_reservation) + reg_write_Z_lr_sc_reservation) + instr__reset)) * lr_sc_reservation));
 pol pc_update = ((((((((((((((instr_jump_to_bootloader_input_if_nonzero * (instr_jump_to_bootloader_input_if_nonzero_pc_update + instr_jump_to_bootloader_input_if_nonzero_pc_update_1)) + (instr_jump * instr_jump_param_l)) + (instr_jump_dyn * X)) + (instr_jump_and_link_dyn * X)) + (instr_call * instr_call_param_l)) + (instr_ret * x1)) + (instr_branch_if_nonzero * (instr_branch_if_nonzero_pc_update + instr_branch_if_nonzero_pc_update_1))) + (instr_branch_if_zero * (instr_branch_if_zero_pc_update + instr_branch_if_zero_pc_update_1))) + (instr_skip_if_zero * ((pc + 1) + instr_skip_if_zero_pc_update))) + (instr_branch_if_positive * (instr_branch_if_positive_pc_update + instr_branch_if_positive_pc_update_1))) + (instr__jump_to_operation * _operation_id)) + (instr__loop * pc)) + (instr_return * 0)) + ((1 - ((((((((((((instr_jump_to_bootloader_input_if_nonzero + instr_jump) + instr_jump_dyn) + instr_jump_and_link_dyn) + instr_call) + instr_ret) + instr_branch_if_nonzero) + instr_branch_if_zero) + instr_skip_if_zero) + instr_branch_if_positive) + instr__jump_to_operation) + instr__loop) + instr_return)) * (pc + 1)));
-pc' = ((1 - first_step') * pc_update);
+
+
+// BEGIN MODIFICATION
+
+// === Add boolean witness polynomial
+let jump_to_shutdown_routine;
+jump_to_shutdown_routine * (1 - jump_to_shutdown_routine) = 0;
+
+// === Enforce jump_to_shutdown_routine to be 1 exactly once
+let jump_to_shutdown_routine_sum;
+first_step * jump_to_shutdown_routine_sum = 0;
+first_step' * jump_to_shutdown_routine_sum = 1;
+(1 - first_step') * (jump_to_shutdown_routine_sum' - jump_to_shutdown_routine_sum - jump_to_shutdown_routine) = 0;
+
+// === If jump_to_shutdown_routine is active, set the PC to the start of the shutdown routine
+// TODO: Set the correct PC
+let shutdown_routine_start = 1234;
+// Not necessary to start with jump_to_shutdown_routine = 1, and this helps keeping the next identity degree-2
+first_step * jump_to_shutdown_routine = 0;
+// 0 on the first step, <shutdown_routine_start> if jump_to_shutdown_routine == 1, else <pc_update>
+pc' = (1 - first_step' - jump_to_shutdown_routine') * pc_update + jump_to_shutdown_routine' * shutdown_routine_start;
+
+// === Assert that shutdown routine actually finishes
+// TODO: Set sink correctly
+let shutdown_routine_sink = 2345;
+first_step' * pc = shutdown_routine_sink;
+
+
+// END MODIFICATION
+
+
 tmp1' = ((((((((((((((((((reg_write_A0_tmp1 * A0) + (reg_write_A1_tmp1 * A1)) + (reg_write_A10_tmp1 * A10)) + (reg_write_A11_tmp1 * A11)) + (reg_write_A2_tmp1 * A2)) + (reg_write_A3_tmp1 * A3)) + (reg_write_A4_tmp1 * A4)) + (reg_write_A5_tmp1 * A5)) + (reg_write_A6_tmp1 * A6)) + (reg_write_A7_tmp1 * A7)) + (reg_write_A8_tmp1 * A8)) + (reg_write_A9_tmp1 * A9)) + (reg_write_W_tmp1 * W)) + (reg_write_X_tmp1 * X)) + (reg_write_Y_tmp1 * Y)) + (reg_write_Z_tmp1 * Z)) + (instr__reset * 0)) + ((1 - ((((((((((((((((reg_write_A0_tmp1 + reg_write_A1_tmp1) + reg_write_A10_tmp1) + reg_write_A11_tmp1) + reg_write_A2_tmp1) + reg_write_A3_tmp1) + reg_write_A4_tmp1) + reg_write_A5_tmp1) + reg_write_A6_tmp1) + reg_write_A7_tmp1) + reg_write_A8_tmp1) + reg_write_A9_tmp1) + reg_write_W_tmp1) + reg_write_X_tmp1) + reg_write_Y_tmp1) + reg_write_Z_tmp1) + instr__reset)) * tmp1));
 tmp2' = ((((((((((((((((((reg_write_A0_tmp2 * A0) + (reg_write_A1_tmp2 * A1)) + (reg_write_A10_tmp2 * A10)) + (reg_write_A11_tmp2 * A11)) + (reg_write_A2_tmp2 * A2)) + (reg_write_A3_tmp2 * A3)) + (reg_write_A4_tmp2 * A4)) + (reg_write_A5_tmp2 * A5)) + (reg_write_A6_tmp2 * A6)) + (reg_write_A7_tmp2 * A7)) + (reg_write_A8_tmp2 * A8)) + (reg_write_A9_tmp2 * A9)) + (reg_write_W_tmp2 * W)) + (reg_write_X_tmp2 * X)) + (reg_write_Y_tmp2 * Y)) + (reg_write_Z_tmp2 * Z)) + (instr__reset * 0)) + ((1 - ((((((((((((((((reg_write_A0_tmp2 + reg_write_A1_tmp2) + reg_write_A10_tmp2) + reg_write_A11_tmp2) + reg_write_A2_tmp2) + reg_write_A3_tmp2) + reg_write_A4_tmp2) + reg_write_A5_tmp2) + reg_write_A6_tmp2) + reg_write_A7_tmp2) + reg_write_A8_tmp2) + reg_write_A9_tmp2) + reg_write_W_tmp2) + reg_write_X_tmp2) + reg_write_Y_tmp2) + reg_write_Z_tmp2) + instr__reset)) * tmp2));
 tmp3' = ((((((((((((((((((reg_write_A0_tmp3 * A0) + (reg_write_A1_tmp3 * A1)) + (reg_write_A10_tmp3 * A10)) + (reg_write_A11_tmp3 * A11)) + (reg_write_A2_tmp3 * A2)) + (reg_write_A3_tmp3 * A3)) + (reg_write_A4_tmp3 * A4)) + (reg_write_A5_tmp3 * A5)) + (reg_write_A6_tmp3 * A6)) + (reg_write_A7_tmp3 * A7)) + (reg_write_A8_tmp3 * A8)) + (reg_write_A9_tmp3 * A9)) + (reg_write_W_tmp3 * W)) + (reg_write_X_tmp3 * X)) + (reg_write_Y_tmp3 * Y)) + (reg_write_Z_tmp3 * Z)) + (instr__reset * 0)) + ((1 - ((((((((((((((((reg_write_A0_tmp3 + reg_write_A1_tmp3) + reg_write_A10_tmp3) + reg_write_A11_tmp3) + reg_write_A2_tmp3) + reg_write_A3_tmp3) + reg_write_A4_tmp3) + reg_write_A5_tmp3) + reg_write_A6_tmp3) + reg_write_A7_tmp3) + reg_write_A8_tmp3) + reg_write_A9_tmp3) + reg_write_W_tmp3) + reg_write_X_tmp3) + reg_write_Y_tmp3) + reg_write_Z_tmp3) + instr__reset)) * tmp3));
