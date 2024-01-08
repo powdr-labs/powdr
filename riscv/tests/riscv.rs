@@ -124,12 +124,10 @@ fn test_password() {
 mstore(0, 666)
 return(0, 32)
 */
-/*
- * Commented out because our CI still can't run this
 static BYTECODE: &str = "61029a60005260206000f3";
 
+#[cfg(feature = "complex-tests")]
 #[test]
-#[ignore = "Too slow"]
 fn test_evm() {
     let case = "evm";
     let bytes = hex::decode(BYTECODE).unwrap();
@@ -140,7 +138,6 @@ fn test_evm() {
 
     verify_riscv_crate(case, u64_bytes, &CoProcessors::base());
 }
-*/
 
 #[test]
 #[ignore = "Too slow"]

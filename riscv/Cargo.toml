@@ -4,6 +4,10 @@ version = "0.1.0"
 edition = "2021"
 build = "build.rs"
 
+[features]
+default = [] # complex-tests is disabled by default
+complex-tests = []
+
 [dependencies]
 itertools = "^0.10"
 lalrpop-util = { version = "^0.19", features = ["lexer"] }
