@@ -525,12 +525,8 @@ fn preamble(degree: u64, coprocessors: &CoProcessors, with_bootloader: bool) -> 
     // m_change has to be 1 in the last row, so that a first read on row zero is constrained to return 0
     (1 - m_change) * LAST = 0;
 
-    m_op * (1 - m_op) = 0;
     m_is_write * (1 - m_is_write) = 0;
     m_is_read * (1 - m_is_read) = 0;
-    // m_is_write can only be 1 if m_op is 1.
-    m_is_write * (1 - m_op) = 0;
-    m_is_read * (1 - m_op) = 0;
     m_is_read * m_is_write = 0;
 
 

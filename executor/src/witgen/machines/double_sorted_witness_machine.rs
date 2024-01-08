@@ -72,7 +72,6 @@ impl<T: FieldElement> DoubleSortedWitnesses<T> {
             "m_addr",
             "m_step",
             "m_change",
-            "m_op",
             "m_is_write",
             "m_is_read",
         ]
@@ -125,7 +124,6 @@ impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses<T> {
         let mut addr = vec![];
         let mut step = vec![];
         let mut value = vec![];
-        let mut op = vec![];
         let mut is_write = vec![];
         let mut is_read = vec![];
 
@@ -140,7 +138,6 @@ impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses<T> {
             addr.push(a);
             step.push(s);
             value.push(o.value);
-            op.push(1.into());
 
             is_write.push(o.is_write.into());
             is_read.push((!o.is_write).into());
@@ -150,7 +147,6 @@ impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses<T> {
             addr.push(0.into());
             step.push(0.into());
             value.push(0.into());
-            op.push(0.into());
             is_write.push(0.into());
             is_read.push(0.into());
         }
@@ -158,7 +154,6 @@ impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses<T> {
             addr.push(*addr.last().unwrap());
             step.push(*step.last().unwrap() + T::from(1));
             value.push(*value.last().unwrap());
-            op.push(0.into());
             is_write.push(0.into());
             is_read.push(0.into());
         }
@@ -176,7 +171,6 @@ impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses<T> {
             (self.namespaced("m_addr"), addr),
             (self.namespaced("m_step"), step),
             (self.namespaced("m_change"), change),
-            (self.namespaced("m_op"), op),
             (self.namespaced("m_is_write"), is_write),
             (self.namespaced("m_is_read"), is_read),
         ]
