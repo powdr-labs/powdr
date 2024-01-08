@@ -20,8 +20,6 @@ machine MemReadWrite {
     col witness m_step;
     col witness m_change;
     col witness m_value;
-    // If we have an operation at all (needed because this needs to be a permutation)
-    col witness m_op;
     // If the operation is a write operation.
     col witness m_is_write;
     col witness m_is_read;
@@ -44,12 +42,8 @@ machine MemReadWrite {
     // m_change has to be 1 in the last row, so that a first read on row zero is constrained to return 0
     (1 - m_change) * LAST = 0;
 
-    m_op * (1 - m_op) = 0;
     m_is_write * (1 - m_is_write) = 0;
     m_is_read * (1 - m_is_read) = 0;
-    // m_is_write can only be 1 if m_op is 1.
-    m_is_write * (1 - m_op) = 0;
-    m_is_read * (1 - m_op) = 0;
     m_is_read * m_is_write = 0;
 
 
