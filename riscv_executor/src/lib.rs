@@ -246,6 +246,11 @@ mod builder {
             }
         }
 
+        /// get current value of PC
+        pub(crate) fn get_pc(&self) -> Elem {
+            self.get_reg_idx(self.pc_idx)
+        }
+
         /// get current value of register
         pub(crate) fn get_reg(&self, idx: &str) -> Elem {
             self.get_reg_idx(self.trace.reg_map[idx])
@@ -524,14 +529,14 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 Vec::new()
             }
             "jump_and_link_dyn" => {
-                let pc = self.proc.get_reg("pc");
+                let pc = self.proc.get_pc();
                 self.proc.set_reg("x1", pc.u() + 1);
                 self.proc.set_pc(args[0]);
 
                 Vec::new()
             }
             "call" => {
-                let pc = self.proc.get_reg("pc");
+                let pc = self.proc.get_pc();
                 self.proc.set_reg("x1", pc.u() + 1);
                 self.proc.set_pc(args[0]);
 
@@ -565,7 +570,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
             }
             "skip_if_zero" => {
                 if args[0].0 == 0 {
-                    let pc = self.proc.get_reg("pc").s();
+                    let pc = self.proc.get_pc().s();
                     self.proc.set_pc((pc + args[1].s() + 1).into());
                 }
 
