@@ -122,7 +122,7 @@ pub struct ExecutionTrace {
     pub mem: Vec<MemOperation>,
 
     /// The length of the trace.
-    pub len: u64,
+    pub len: usize,
 }
 
 impl ExecutionTrace {
@@ -230,7 +230,7 @@ mod builder {
                     reg_map,
                     regs: values,
                     mem: Vec::new(),
-                    len: 0,
+                    len: PC_INITIAL_VAL + 1,
                 },
                 next_statement_line: 1,
                 batch_to_line_map,
@@ -296,10 +296,6 @@ mod builder {
         /// advance to next row, returns the index to the statement that must be
         /// executed now, or None if the execution is finished
         pub fn advance(&mut self, was_nop: bool) -> Option<u32> {
-            if !was_nop {
-                self.trace.len += 1;
-            }
-
             if self.get_reg_idx(self.pc_idx) != self.get_reg_idx_next(self.pc_idx) {
                 if let ExecMode::Trace = self.mode {
                     // PC changed, create a new line
@@ -309,6 +305,8 @@ mod builder {
                     let next_idx = self.curr_idx + self.reg_len();
                     self.trace.regs.copy_within(next_idx.., self.curr_idx);
                 }
+
+                self.trace.len += 1;
 
                 // If we are at the limit of rows, stop the execution
                 if self.has_enough_rows() {
@@ -334,7 +332,7 @@ mod builder {
         pub(crate) fn set_mem(&mut self, addr: u32, val: u32) {
             if let ExecMode::Trace = self.mode {
                 self.trace.mem.push(MemOperation {
-                    idx: self.curr_idx / self.reg_len() + 1,
+                    idx: self.trace.len,
                     kind: MemOperationKind::Write,
                     address: addr,
                 });
@@ -346,7 +344,7 @@ mod builder {
         pub(crate) fn get_mem(&mut self, addr: u32) -> u32 {
             if let ExecMode::Trace = self.mode {
                 self.trace.mem.push(MemOperation {
-                    idx: self.curr_idx / self.reg_len() + 1,
+                    idx: self.trace.len,
                     kind: MemOperationKind::Read,
                     address: addr,
                 });
@@ -358,6 +356,10 @@ mod builder {
         pub fn finish(mut self) -> (ExecutionTrace, MemoryState) {
             // remove the last row (future row), as it is not part of the trace
             self.trace.regs.drain((self.curr_idx + self.reg_len())..);
+
+            if let ExecMode::Trace = self.mode {
+                assert_eq!(self.trace.regs.len() / self.reg_len(), self.trace.len);
+            }
             (self.trace, self.mem)
         }
 
