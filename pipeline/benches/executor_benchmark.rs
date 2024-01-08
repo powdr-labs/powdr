@@ -61,7 +61,10 @@ fn criterion_benchmark(c: &mut Criterion) {
             run_witgen(
                 &pil_with_constants.pil,
                 &pil_with_constants.fixed_cols,
-                vec![("main.bootloader_input_value".to_string(), default_input())],
+                vec![(
+                    "main.bootloader_input_value".to_string(),
+                    default_input(&[63, 64, 65]),
+                )],
             )
         })
     });
