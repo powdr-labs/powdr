@@ -45,15 +45,23 @@ where
 {
     let num_chunks = bootloader_inputs.len();
 
+    log::info!("Advancing pipeline to PilWithEvaluatedFixedCols stage...");
+    let pipeline = pipeline_factory();
+    let pil_with_evaluated_fixed_cols = pipeline.pil_with_evaluated_fixed_cols().unwrap();
+
+    // This returns the same pipeline as pipeline_factory() (with the same name, output dir, etc...)
+    // but starting from the PilWithEvaluatedFixedCols stage. This is more efficient, because we can advance
+    // to that stage once before we branch into different chunks.
+    let optimized_pipeline_factory = || {
+        pipeline_factory().from_pil_with_evaluated_fixed_cols(pil_with_evaluated_fixed_cols.clone())
+    };
+
     bootloader_inputs
         .into_iter()
         .enumerate()
         .map(|(i, bootloader_inputs)| -> Result<(), E> {
             log::info!("Running chunk {} / {}...", i + 1, num_chunks);
-            // TODO(#840): If Pipeline implemented Clone, we could advance it once to
-            // the OptimizedPil stage and clone it here instead of creating and
-            // running a fresh pipeline for each chunk.
-            let pipeline = pipeline_factory();
+            let pipeline = optimized_pipeline_factory();
             let name = format!("{}_chunk_{}", pipeline.name(), i);
             let pipeline = pipeline.with_name(name);
             let pipeline = pipeline.add_external_witness_values(vec![(

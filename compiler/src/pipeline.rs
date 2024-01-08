@@ -3,6 +3,7 @@ use std::{
     fs,
     io::{BufWriter, Read, Write},
     path::{Path, PathBuf},
+    rc::Rc,
     time::Instant,
 };
 
@@ -28,19 +29,20 @@ use crate::{
 };
 
 pub struct GeneratedWitness<T: FieldElement> {
-    pub pil: Analyzed<T>,
-    pub constants: Vec<(String, Vec<T>)>,
+    pub pil: Rc<Analyzed<T>>,
+    pub fixed_cols: Rc<Vec<(String, Vec<T>)>>,
     pub witness: Option<Vec<(String, Vec<T>)>>,
 }
 
+#[derive(Clone)]
 pub struct PilWithEvaluatedFixedCols<T: FieldElement> {
-    pub pil: Analyzed<T>,
-    pub fixed_cols: Vec<(String, Vec<T>)>,
+    pub pil: Rc<Analyzed<T>>,
+    pub fixed_cols: Rc<Vec<(String, Vec<T>)>>,
 }
 
 pub struct ProofResult<T: FieldElement> {
-    /// Constant columns, potentially incomplete (if success is false)
-    pub constants: Vec<(String, Vec<T>)>,
+    /// Fixed columns, potentially incomplete (if success is false)
+    pub fixed_cols: Rc<Vec<(String, Vec<T>)>>,
     /// Witness columns, potentially None (if success is false)
     pub witness: Option<Vec<(String, Vec<T>)>>,
     /// Proof, potentially None (if success is false)
@@ -141,7 +143,7 @@ pub struct Pipeline<T: FieldElement> {
     // The output directory if `Pipeline::with_tmp_output` was called.
     // Note that there is some redundancy with `output_dir`, but the Temp
     // object has to live for the lifetime of the pipeline, so we keep it here.
-    tmp_dir: Option<Temp>,
+    _tmp_dir: Option<Temp>,
     /// Optional arguments for various stages of the pipeline.
     arguments: Arguments<T>,
 }
@@ -158,7 +160,7 @@ where
             log_level: Level::Debug,
             name: None,
             force_overwrite: false,
-            tmp_dir: None,
+            _tmp_dir: None,
             arguments: Arguments::default(),
         }
     }
@@ -206,7 +208,7 @@ impl<T: FieldElement> Pipeline<T> {
         let tmp_dir = mktemp::Temp::new_dir().unwrap();
         Pipeline {
             output_dir: Some(tmp_dir.to_path_buf()),
-            tmp_dir: Some(tmp_dir),
+            _tmp_dir: Some(tmp_dir),
             ..self
         }
     }
@@ -325,6 +327,16 @@ impl<T: FieldElement> Pipeline<T> {
         }
     }
 
+    pub fn from_pil_with_evaluated_fixed_cols(
+        self,
+        pil_with_constants: PilWithEvaluatedFixedCols<T>,
+    ) -> Self {
+        Pipeline {
+            artifact: Some(Artifact::PilWithEvaluatedFixedCols(pil_with_constants)),
+            ..self
+        }
+    }
+
     /// Reads a previously generated witness from the provided directory and
     /// advances the pipeline to the `GeneratedWitness` stage.
     pub fn read_generated_witness(mut self, directory: &Path) -> Self {
@@ -343,8 +355,8 @@ impl<T: FieldElement> Pipeline<T> {
 
         Pipeline {
             artifact: Some(Artifact::GeneratedWitness(GeneratedWitness {
-                pil,
-                constants: fixed,
+                pil: Rc::new(pil),
+                fixed_cols: Rc::new(fixed),
                 witness: Some(witness),
             })),
             ..self
@@ -446,7 +458,10 @@ impl<T: FieldElement> Pipeline<T> {
                     .collect::<Vec<_>>();
                 self.maybe_write_constants(&fixed_cols)?;
                 self.log(&format!("Took {}", start.elapsed().as_secs_f32()));
-                Artifact::PilWithEvaluatedFixedCols(PilWithEvaluatedFixedCols { pil, fixed_cols })
+                Artifact::PilWithEvaluatedFixedCols(PilWithEvaluatedFixedCols {
+                    pil: Rc::new(pil),
+                    fixed_cols: Rc::new(fixed_cols),
+                })
             }
             Artifact::PilWithEvaluatedFixedCols(PilWithEvaluatedFixedCols { pil, fixed_cols }) => {
                 let witness = (pil.constant_count() == fixed_cols.len()).then(|| {
@@ -474,13 +489,13 @@ impl<T: FieldElement> Pipeline<T> {
                 self.maybe_write_witness(&fixed_cols, &witness)?;
                 Artifact::GeneratedWitness(GeneratedWitness {
                     pil,
-                    constants: fixed_cols,
+                    fixed_cols,
                     witness,
                 })
             }
             Artifact::GeneratedWitness(GeneratedWitness {
                 pil,
-                constants,
+                fixed_cols,
                 witness,
             }) => {
                 let backend = self
@@ -505,13 +520,13 @@ impl<T: FieldElement> Pipeline<T> {
                 // still output the constraint serialization.
                 let (proof, constraints_serialization) = backend.prove(
                     &pil,
-                    &constants,
+                    &fixed_cols,
                     witness.as_deref().unwrap_or_default(),
                     existing_proof,
                 );
 
                 let proof_result = ProofResult {
-                    constants,
+                    fixed_cols,
                     witness,
                     proof,
                     constraints_serialization,
@@ -688,7 +703,7 @@ impl<T: FieldElement> Pipeline<T> {
         Ok(optimized_pil)
     }
 
-    pub fn optimized_pil_with_constants(
+    pub fn pil_with_evaluated_fixed_cols(
         mut self,
     ) -> Result<PilWithEvaluatedFixedCols<T>, Vec<String>> {
         self.advance_to(Stage::PilWithEvaluatedFixedCols)?;
@@ -714,8 +729,8 @@ impl<T: FieldElement> Pipeline<T> {
         Ok(proof)
     }
 
-    pub fn tmp_dir(&self) -> &Path {
-        self.tmp_dir.as_ref().unwrap()
+    pub fn output_dir(&self) -> Option<&Path> {
+        self.output_dir.as_ref().map(|p| p.as_ref())
     }
 
     pub fn name(&self) -> &str {
