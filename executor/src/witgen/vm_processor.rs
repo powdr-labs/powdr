@@ -392,8 +392,8 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
             )
         );
         log::debug!("Set RUST_LOG=trace to understand why these values were chosen.");
-        log::debug!(
-            "Assuming these values are correct, the following identities fail:\n{}\n",
+        log::error!(
+            "Errors:\n{}\n",
             failures
                 .iter()
                 .map(|r| indent(&r.to_string(), "    "))

@@ -130,6 +130,13 @@ impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses<T> {
         let mut is_read = vec![];
 
         for ((a, s), o) in std::mem::take(&mut self.trace) {
+            if let Some(prev_address) = addr.last() {
+                assert!(a >= *prev_address, "Expected addresses to be sorted");
+                if (a - *prev_address).to_degree() >= self.degree {
+                    log::error!("Jump in memory accesses between {prev_address:x} and {a:x} is larger than or equal to the degree {}! This will violate the constraints.", self.degree);
+                }
+            }
+
             addr.push(a);
             step.push(s);
             value.push(o.value);
@@ -202,13 +209,6 @@ impl<T: FieldElement> DoubleSortedWitnesses<T> {
             }
         };
 
-        if addr.to_degree() >= self.degree {
-            return Err(format!(
-                "Memory access to too large address: 0x{addr:x} (must be less than 0x{:x})",
-                self.degree
-            )
-            .into());
-        }
         let step = left[1]
             .constant_value()
             .ok_or_else(|| format!("Step must be known: {} = {}", left[1], right.expressions[1]))?;
@@ -238,7 +238,7 @@ impl<T: FieldElement> DoubleSortedWitnesses<T> {
                 }
             };
 
-            log::debug!(
+            log::trace!(
                 "Memory write: addr={:x}, step={step}, value={:x}",
                 addr,
                 value
@@ -255,7 +255,7 @@ impl<T: FieldElement> DoubleSortedWitnesses<T> {
                     value: *value,
                 },
             );
-            log::debug!(
+            log::trace!(
                 "Memory read: addr={:x}, step={step}, value={:x}",
                 addr,
                 value
