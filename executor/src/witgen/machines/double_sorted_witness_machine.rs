@@ -7,6 +7,7 @@ use num_traits::Zero;
 
 use super::{FixedLookup, Machine};
 use crate::witgen::affine_expression::AffineExpression;
+use crate::witgen::global_constraints::GlobalConstraints;
 use crate::witgen::util::is_simple_poly_of_name;
 use crate::witgen::{EvalResult, FixedData, MutableState, QueryCallback};
 use crate::witgen::{EvalValue, IncompleteCause};
@@ -30,6 +31,9 @@ pub struct DoubleSortedWitnesses<T> {
     data: BTreeMap<T, T>,
     namespace: String,
     name: String,
+    /// If the machine has the `m_diff_upper` and `m_diff_lower` columns, this is the base of the
+    /// two digits.
+    diff_columns_base: Option<u64>,
 }
 
 struct Operation<T> {
@@ -47,6 +51,7 @@ impl<T: FieldElement> DoubleSortedWitnesses<T> {
         fixed_data: &FixedData<T>,
         _identities: &[&Identity<Expression<T>>],
         witness_cols: &HashSet<PolyID>,
+        global_range_constraints: &GlobalConstraints<T>,
     ) -> Option<Self> {
         // get the namespaces and column names
         let (mut namespaces, columns): (HashSet<_>, HashSet<_>) = witness_cols
@@ -77,19 +82,47 @@ impl<T: FieldElement> DoubleSortedWitnesses<T> {
         ]
         .into_iter()
         .collect();
-        if expected_witnesses
+        let difference = expected_witnesses
             .symmetric_difference(&columns)
-            .next()
-            .is_none()
-        {
-            Some(Self {
+            .collect::<HashSet<_>>();
+        match difference.len() {
+            0 => Some(Self {
                 name,
                 namespace,
                 degree: fixed_data.degree,
+                // No diff columns.
+                diff_columns_base: None,
                 ..Default::default()
-            })
-        } else {
-            None
+            }),
+            2 if difference == ["m_diff_upper", "m_diff_lower"].iter().collect() => {
+                // We have the `m_diff_upper` and `m_diff_lower` columns.
+                // Now, we check that they both have the same range constraint and use it to determine
+                // the base of the two digits.
+                let upper_poly_id =
+                    fixed_data.try_column_by_name(&format!("{namespace}.m_diff_upper"))?;
+                let upper_range_constraint =
+                    global_range_constraints.witness_constraints[&upper_poly_id].as_ref()?;
+                let lower_poly_id =
+                    fixed_data.try_column_by_name(&format!("{namespace}.m_diff_lower"))?;
+                let lower_range_constraint =
+                    global_range_constraints.witness_constraints[&lower_poly_id].as_ref()?;
+
+                let (min, max) = upper_range_constraint.range();
+
+                if upper_range_constraint == lower_range_constraint && min == T::zero() {
+                    let diff_columns_base = Some(max.to_degree() + 1);
+                    Some(Self {
+                        name,
+                        namespace,
+                        degree: fixed_data.degree,
+                        diff_columns_base,
+                        ..Default::default()
+                    })
+                } else {
+                    None
+                }
+            }
+            _ => None,
         }
     }
 }
@@ -126,13 +159,24 @@ impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses<T> {
         let mut value = vec![];
         let mut is_write = vec![];
         let mut is_read = vec![];
+        let mut diff = vec![];
 
         for ((a, s), o) in std::mem::take(&mut self.trace) {
             if let Some(prev_address) = addr.last() {
                 assert!(a >= *prev_address, "Expected addresses to be sorted");
-                if (a - *prev_address).to_degree() >= self.degree {
+                if self.diff_columns_base.is_none()
+                    && (a - *prev_address).to_degree() >= self.degree
+                {
                     log::error!("Jump in memory accesses between {prev_address:x} and {a:x} is larger than or equal to the degree {}! This will violate the constraints.", self.degree);
                 }
+
+                let current_diff = if a != *prev_address {
+                    a - *prev_address
+                } else {
+                    s - *step.last().unwrap()
+                };
+                assert!(current_diff > T::zero());
+                diff.push(current_diff.to_degree() - 1);
             }
 
             addr.push(a);
@@ -153,10 +197,15 @@ impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses<T> {
         while addr.len() < self.degree as usize {
             addr.push(*addr.last().unwrap());
             step.push(*step.last().unwrap() + T::from(1));
+            diff.push(0);
             value.push(*value.last().unwrap());
             is_write.push(0.into());
             is_read.push(0.into());
         }
+
+        // We have all diffs, except from the last to the first element, which is unconstrained.
+        assert_eq!(diff.len(), self.degree as usize - 1);
+        diff.push(0);
 
         let change = addr
             .iter()
@@ -165,6 +214,23 @@ impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses<T> {
             .chain(once(1.into()))
             .collect::<Vec<_>>();
         assert_eq!(change.len(), addr.len());
+
+        let diff_columns = if let Some(diff_columns_base) = self.diff_columns_base {
+            let diff_upper = diff
+                .iter()
+                .map(|d| T::from(*d / diff_columns_base))
+                .collect::<Vec<_>>();
+            let diff_lower = diff
+                .iter()
+                .map(|d| T::from(*d % diff_columns_base))
+                .collect::<Vec<_>>();
+            vec![
+                (self.namespaced("m_diff_upper"), diff_upper),
+                (self.namespaced("m_diff_lower"), diff_lower),
+            ]
+        } else {
+            vec![]
+        };
 
         [
             (self.namespaced("m_value"), value),
@@ -175,6 +241,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses<T> {
             (self.namespaced("m_is_read"), is_read),
         ]
         .into_iter()
+        .chain(diff_columns)
         .collect()
     }
 }
