@@ -1,9 +1,7 @@
 use std::collections::{BTreeMap, HashMap};
 use std::marker::PhantomData;
 
-use ast::parsed::{
-    self, FunctionDefinition, LambdaExpression, PilStatement, PolynomialName, SelectedExpressions,
-};
+use ast::parsed::{self, FunctionDefinition, PilStatement, PolynomialName, SelectedExpressions};
 use number::{DegreeType, FieldElement};
 
 use ast::analyzed::{
@@ -325,14 +323,10 @@ where
                 assert!(symbol_kind != SymbolKind::Poly(PolynomialType::Committed));
                 FunctionValueDefinition::Expression(self.process_expression(expr))
             }
-            FunctionDefinition::Query(params, expr) => {
+            FunctionDefinition::Query(expr) => {
                 assert!(!have_array_size);
                 assert_eq!(symbol_kind, SymbolKind::Poly(PolynomialType::Committed));
-                let body = Box::new(self.expression_processor().process_function(&params, expr));
-                FunctionValueDefinition::Query(Expression::LambdaExpression(LambdaExpression {
-                    params,
-                    body,
-                }))
+                FunctionValueDefinition::Query(self.process_expression(expr))
             }
             FunctionDefinition::Array(value) => {
                 let size = value.solve(self.degree.unwrap());
