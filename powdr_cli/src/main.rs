@@ -679,6 +679,7 @@ fn run<F: FieldElement>(
     continuations: bool,
 ) -> Result<(), Vec<String>> {
     let bootloader_inputs = if continuations {
+        let inputs: HashMap<F, Vec<F>> = vec![(F::from(0), inputs.clone())].into_iter().collect();
         rust_continuations_dry_run(pipeline_factory(), inputs.clone())
     } else {
         vec![]

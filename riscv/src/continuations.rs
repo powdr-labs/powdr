@@ -111,7 +111,7 @@ fn sanity_check<T>(program: &AnalysisASMFile<T>) {
 
 pub fn rust_continuations_dry_run<F: FieldElement>(
     pipeline: Pipeline<F>,
-    inputs: Vec<F>,
+    inputs: HashMap<F, Vec<F>>,
 ) -> Vec<Vec<F>> {
     log::info!("Initializing memory merkle tree...");
     let mut merkle_tree = MerkleTree::<F>::new();
@@ -124,8 +124,6 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
 
     let program = pipeline.analyzed_asm().unwrap();
     sanity_check(&program);
-
-    let inputs: HashMap<F, Vec<F>> = vec![(F::from(0), inputs)].into_iter().collect();
 
     log::info!("Executing powdr-asm...");
     let (full_trace, memory_accesses) = {
