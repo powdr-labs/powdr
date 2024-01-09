@@ -125,6 +125,7 @@ pub fn split_out_machines<'a, T: FieldElement>(
             fixed,
             &machine_identities,
             &machine_witnesses,
+            global_range_constraints,
         ) {
             log::info!("Detected machine: memory");
             machines.push(KnownMachine::DoubleSortedWitnesses(machine));
