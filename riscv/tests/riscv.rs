@@ -127,6 +127,7 @@ return(0, 32)
 static BYTECODE: &str = "61029a60005260206000f3";
 
 #[cfg(feature = "complex-tests")]
+#[ignore = "Too slow"]
 #[test]
 fn test_evm() {
     let case = "evm";

@@ -7,4 +7,7 @@ edition = "2021"
 revm = { version = "3.5.0", default-features = false }
 runtime = { path = "../../../runtime" }
 
+# TODO: remove when we update the cargo riscv nightly
+ahash = { version = "=0.8.6", default-features = false }
+
 [workspace]
