@@ -486,7 +486,7 @@ impl Display for NamespacedPolynomialReference {
 
 impl<T: Display, Ref: Display> Display for LambdaExpression<T, Ref> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write!(f, "|{}| {}", self.params.iter().format(", "), self.body)
+        write!(f, "(|{}| {})", self.params.iter().format(", "), self.body)
     }
 }
 
