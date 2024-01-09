@@ -192,7 +192,7 @@ impl<T> ExpressionVisitable<Expression<T, NamespacedPolynomialReference>> for Pi
     {
         match self {
             PilStatement::Expression(_, e) => e.visit_expressions_mut(f, o),
-            PilStatement::PlookupIdentity(_, left, right)
+            PilStatement::PlookupIdentity(_, _, left, right)
             | PilStatement::PermutationIdentity(
                 _, //
                 _, //
@@ -234,7 +234,7 @@ impl<T> ExpressionVisitable<Expression<T, NamespacedPolynomialReference>> for Pi
     {
         match self {
             PilStatement::Expression(_, e) => e.visit_expressions(f, o),
-            PilStatement::PlookupIdentity(_, left, right)
+            PilStatement::PlookupIdentity(_, _, left, right)
             | PilStatement::PermutationIdentity(
                 _, //
                 _, //

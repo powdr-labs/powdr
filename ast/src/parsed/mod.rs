@@ -37,6 +37,7 @@ pub enum PilStatement<T> {
     PolynomialIdentity(usize, Option<String>, Expression<T>),
     PlookupIdentity(
         usize,
+        Option<String>,
         SelectedExpressions<Expression<T>>,
         SelectedExpressions<Expression<T>>,
     ),

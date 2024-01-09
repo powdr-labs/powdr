@@ -219,10 +219,10 @@ where
                 },
                 SelectedExpressions::default(),
             ),
-            PilStatement::PlookupIdentity(start, key, haystack) => (
+            PilStatement::PlookupIdentity(start, attribute, key, haystack) => (
                 start,
                 IdentityKind::Plookup,
-                None,
+                attribute.clone(),
                 self.process_selected_expressions(key),
                 self.process_selected_expressions(haystack),
             ),

@@ -28,6 +28,7 @@ fn circuit_hpp_includes(name: &str, relations: &[String], permutations: &[String
     #include \"barretenberg/ecc/curves/bn254/fr.hpp\"
     #include \"barretenberg/proof_system/circuit_builder/circuit_builder_base.hpp\"
     #include \"barretenberg/relations/generic_permutation/generic_permutation_relation.hpp\"
+    #include \"barretenberg/relations/generic_lookup/generic_lookup_relation.hpp\"
     #include \"barretenberg/honk/proof_system/logderivative_library.hpp\"
     
     #include \"barretenberg/flavor/generated/{name}_flavor.hpp\"
@@ -86,12 +87,11 @@ impl CircuitBuilder for BBFiles {
                     relation_name = relation_name
                 )
         };
-        let check_permutation_transformation = |permutation_name: &String| {
+        let check_lookup_transformation = |lookup_name: &String| {
             format!(
-                    "if (!evaluate_permutation.template operator()<honk::sumcheck::{permutation_name}_relation<FF>>(\"{permutation_name}\")) {{
+                    "if (!evaluate_logderivative.template operator()<honk::sumcheck::{lookup_name}_relation<FF>>(\"{lookup_name}\")) {{
                         return false;
-                    }}",
-                    permutation_name = permutation_name
+                    }}"
                 )
         };
 
@@ -100,11 +100,11 @@ impl CircuitBuilder for BBFiles {
         let all_poly_shifts = map_with_newline(to_be_shifted, all_polys_transformation);
         let check_circuit_for_each_relation =
             map_with_newline(relations, check_circuit_transformation);
-        let check_circuit_for_each_permutation =
-            map_with_newline(permutations, check_permutation_transformation);
+        let check_circuit_for_each_lookup =
+            map_with_newline(permutations, check_lookup_transformation);
 
-        let (params, permutation_check_closure) = if !permutations.is_empty() {
-            (get_params(), get_permutation_check_closure())
+        let (params, lookup_check_closure) = if !permutations.is_empty() {
+            (get_params(), get_lookup_check_closure())
         } else {
             ("", "".to_owned())
         };
@@ -166,11 +166,11 @@ class {name}CircuitBuilder {{
     
             {relation_check_closure}
 
-            {permutation_check_closure}
+            {lookup_check_closure}
 
             {check_circuit_for_each_relation}
 
-            {check_circuit_for_each_permutation}
+            {check_circuit_for_each_lookup}
 
             return true;
         }}
@@ -199,28 +199,28 @@ class {name}CircuitBuilder {{
     }
 }
 
-fn get_permutation_check_closure() -> String {
+fn get_lookup_check_closure() -> String {
     "
-            const auto evaluate_permutation = [&]<typename PermutationSettings>(const std::string& permutation_name) {
+            const auto evaluate_logderivative = [&]<typename LogDerivativeSettings>(const std::string& lookup_name) {
 
-                // Check the tuple permutation relation
+                // Check the logderivative relation
                 proof_system::honk::logderivative_library::compute_logderivative_inverse<
                     Flavor,
-                    PermutationSettings>(
+                    LogDerivativeSettings>(
                     polys, params, num_rows);
         
-                typename PermutationSettings::SumcheckArrayOfValuesOverSubrelations
-                    permutation_result;
+                typename LogDerivativeSettings::SumcheckArrayOfValuesOverSubrelations
+                    lookup_result;
 
-                for (auto& r : permutation_result) {
+                for (auto& r : lookup_result) {
                     r = 0;
                 }
                 for (size_t i = 0; i < num_rows; ++i) {
-                    PermutationSettings::accumulate(permutation_result, polys.get_row(i), params, 1);
+                    LogDerivativeSettings::accumulate(lookup_result, polys.get_row(i), params, 1);
                 }
-                for (auto r : permutation_result) {
+                for (auto r : lookup_result) {
                     if (r != 0) {
-                        info(\"Tuple \", permutation_name, \" failed.\");
+                        info(\"Lookup \", lookup_name, \" failed.\");
                         return false;
                     }
                 }

@@ -1,4 +1,7 @@
-use crate::file_writer::BBFiles;
+use crate::{
+    file_writer::BBFiles,
+    utils::{create_get_const_entities, create_get_nonconst_entities},
+};
 use ast::{
     analyzed::{AlgebraicExpression, Analyzed, Identity, IdentityKind},
     parsed::SelectedExpressions,
@@ -225,40 +228,6 @@ fn create_inverse_computed_at(inverse_selector: String) -> String {
     template <typename AllEntities> static inline auto inverse_polynomial_is_computed_at_row(const AllEntities& in) {{
         return ({inverse_computed_selector} == 1);
     }}")
-}
-
-fn create_get_const_entities(settings: &[String]) -> String {
-    let forward = create_forward_as_tuple(settings);
-    format!(
-        "
-    template <typename AllEntities> static inline auto get_const_entities(const AllEntities& in) {{
-        {forward}
-    }}
-    "
-    )
-}
-
-fn create_get_nonconst_entities(settings: &[String]) -> String {
-    let forward = create_forward_as_tuple(settings);
-    format!(
-        "
-    template <typename AllEntities> static inline auto get_nonconst_entities(AllEntities& in) {{
-        {forward}
-    }}
-    "
-    )
-}
-
-fn create_forward_as_tuple(settings: &[String]) -> String {
-    let adjusted = settings.iter().map(|col| format!("in.{col}")).join(",\n");
-    format!(
-        "
-        return std::forward_as_tuple(
-            {}
-        );
-    ",
-        adjusted
-    )
 }
 
 fn get_perm_side<F: FieldElement>(

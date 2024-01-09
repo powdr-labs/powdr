@@ -98,6 +98,7 @@ mod test {
             parsed,
             PILFile(vec![PilStatement::PlookupIdentity(
                 0,
+                None,
                 SelectedExpressions {
                     selector: None,
                     expressions: vec![direct_reference("f")]

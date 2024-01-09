@@ -101,7 +101,7 @@ pub fn link<T: FieldElement>(graph: PILGraph<T>) -> Result<PILFile<T>, Vec<Strin
                     .collect(),
                 };
 
-                let lookup = PilStatement::PlookupIdentity(0, lhs, rhs);
+                let lookup = PilStatement::PlookupIdentity(0, None, lhs, rhs);
                 pil.push(lookup);
             }
 

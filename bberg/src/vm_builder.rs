@@ -6,6 +6,10 @@ use crate::circuit_builder::CircuitBuilder;
 use crate::composer_builder::ComposerBuilder;
 use crate::file_writer::BBFiles;
 use crate::flavor_builder::FlavorBuilder;
+use crate::lookup_builder::get_counts_from_lookups;
+use crate::lookup_builder::get_inverses_from_lookups;
+use crate::lookup_builder::Lookup;
+use crate::lookup_builder::LookupBuilder;
 use crate::permutation_builder::get_inverses_from_permutations;
 use crate::permutation_builder::Permutation;
 use crate::permutation_builder::PermutationBuilder;
@@ -34,6 +38,8 @@ struct ColumnGroups {
     shifted: Vec<String>,
     /// fixed + witness + shifted
     all_cols_with_shifts: Vec<String>,
+    /// Inverses from lookups and permuations
+    inverses: Vec<String>,
 }
 
 /// Analyzed to cpp
@@ -60,7 +66,7 @@ pub(crate) fn analyzed_to_cpp<F: FieldElement>(
 
     // ----------------------- Handle Lookup / Permutation Relation Identities -----------------------
     let permutations = bb_files.create_permutation_files(file_name, analyzed);
-    let inverses = get_inverses_from_permutations(&permutations);
+    let lookups = bb_files.create_lookup_files(file_name, analyzed);
 
     // TODO: hack - this can be removed with some restructuring
     let shifted_polys: Vec<String> = shifted_polys
@@ -78,7 +84,8 @@ pub(crate) fn analyzed_to_cpp<F: FieldElement>(
         to_be_shifted,
         shifted,
         all_cols_with_shifts,
-    } = get_all_col_names(fixed, witness, &shifted_polys, &permutations);
+        inverses,
+    } = get_all_col_names(fixed, witness, &shifted_polys, &permutations, &lookups);
 
     bb_files.create_declare_views(file_name, &all_cols_with_shifts);
 
@@ -133,17 +140,21 @@ fn get_all_col_names<F: FieldElement>(
     witness: &[(String, Vec<F>)],
     to_be_shifted: &[String],
     permutations: &[Permutation],
+    lookups: &[Lookup],
 ) -> ColumnGroups {
     // Transformations
     let sanitize = |(name, _): &(String, Vec<F>)| sanitize_name(name).to_owned();
     let append_shift = |name: &String| format!("{}_shift", *name);
 
     let perm_inverses = get_inverses_from_permutations(permutations);
+    let lookup_inverses = get_inverses_from_lookups(lookups);
+    let lookup_counts = get_counts_from_lookups(lookups);
 
     // Gather sanitized column names
     let fixed_names = collect_col(fixed, sanitize);
     let witness_names = collect_col(witness, sanitize);
-    let witness_names = flatten(&[witness_names, perm_inverses]);
+    let inverses = flatten(&[perm_inverses, lookup_inverses]);
+    let witness_names = flatten(&[witness_names, inverses.clone(), lookup_counts]);
 
     // Group columns by properties
     let shifted = transform_map(to_be_shifted, append_shift);
@@ -164,5 +175,6 @@ fn get_all_col_names<F: FieldElement>(
         to_be_shifted: to_be_shifted.to_vec(),
         shifted,
         all_cols_with_shifts,
+        inverses,
     }
 }

@@ -139,7 +139,7 @@ PolynomialName: PolynomialName<T> = {
 }
 
 PlookupIdentity: PilStatement<T> = {
-    <@L> <SelectedExpressions> "in" <SelectedExpressions> => PilStatement::PlookupIdentity(<>)
+    <@L> <Attribute?> <SelectedExpressions> "in" <SelectedExpressions> => PilStatement::PlookupIdentity(<>)
 }
 
 SelectedExpressions: SelectedExpressions<Expression<T>> = {

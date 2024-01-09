@@ -180,6 +180,7 @@ impl<T: FieldElement> ASMPILConverter<T> {
 
         self.pil.push(PilStatement::PlookupIdentity(
             0,
+            None,
             SelectedExpressions {
                 selector: None,
                 expressions: self
@@ -417,8 +418,8 @@ impl<T: FieldElement> ASMPILConverter<T> {
                         }
                     } else {
                         match &mut statement {
-                            PilStatement::PermutationIdentity(_, _, left, _)
-                            | PilStatement::PlookupIdentity(_, left, _) => {
+                            PilStatement::PermutationIdentity(_, _attr, left, _)
+                            | PilStatement::PlookupIdentity(_, _attr, left, _) => {
                                 assert!(
                                     left.selector.is_none(),
                                     "LHS selector not supported, could and-combine with instruction flag later."

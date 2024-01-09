@@ -325,7 +325,7 @@ impl<T: FieldElement> TypeChecker<T> {
                         l,
                         _,
                     )
-                    | ast::parsed::PilStatement::PlookupIdentity(_, l, _) => l
+                    | ast::parsed::PilStatement::PlookupIdentity(_, _, l, _) => l
                         .selector
                         .is_some()
                         .then_some(format!("LHS selector not yet supported in {s}.")),

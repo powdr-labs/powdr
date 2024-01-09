@@ -390,7 +390,7 @@ impl<T: Display> Display for PilStatement<T> {
                     write!(f, "{expression} = 0;")
                 }
             }
-            PilStatement::PlookupIdentity(_, left, right) => write!(f, "{left} in {right};"),
+            PilStatement::PlookupIdentity(_, _, left, right) => write!(f, "{left} in {right};"),
             PilStatement::PermutationIdentity(
                 _, //
                 _, //
