@@ -21,7 +21,7 @@ rand = "0.8.5"
 [dev-dependencies]
 importer = { path = "../importer" }
 analysis = { path = "../analysis" }
-compiler = { path = "../compiler" }
+pipeline = { path = "../pipeline" }
 executor = { path = "../executor" }
 parser = { path = "../parser" }
 airgen = { path = "../airgen" }

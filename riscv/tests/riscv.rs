@@ -3,12 +3,12 @@ mod common;
 use std::path::PathBuf;
 
 use common::verify_riscv_asm_string;
-use compiler::{
-    pipeline::Pipeline,
-    test_util::{verify_asm_string, verify_pipeline},
-};
 use mktemp::Temp;
 use number::GoldilocksField;
+use pipeline::{
+    test_util::{verify_asm_string, verify_pipeline},
+    Pipeline,
+};
 use test_log::test;
 
 use riscv::{

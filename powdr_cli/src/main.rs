@@ -4,12 +4,12 @@ mod util;
 
 use backend::{Backend, BackendType};
 use clap::{CommandFactory, Parser, Subcommand};
-use compiler::pipeline::{Pipeline, Stage};
 use env_logger::fmt::Color;
 use env_logger::{Builder, Target};
 use log::LevelFilter;
 use number::{read_polys_csv_file, CsvRenderMode};
 use number::{Bn254Field, FieldElement, GoldilocksField};
+use pipeline::{Pipeline, Stage};
 use riscv::continuations::{rust_continuations, rust_continuations_dry_run};
 use riscv::{compile_riscv_asm, compile_rust};
 use std::collections::HashMap;
