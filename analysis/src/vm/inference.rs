@@ -2,7 +2,7 @@
 
 use ast::{
     asm_analysis::{AnalysisASMFile, Expression, FunctionStatement, Machine},
-    parsed::{asm::AssignmentRegister, NamespacedPolynomialReference},
+    parsed::asm::AssignmentRegister,
 };
 use number::FieldElement;
 
@@ -37,13 +37,12 @@ fn infer_machine<T: FieldElement>(mut machine: Machine<T>) -> Result<Machine<T>,
                 // Map function calls to the list of assignment registers and all other expressions to a list of None.
                 let expr_regs = match &*a.rhs {
                     Expression::FunctionCall(c) => {
-                        let Expression::Reference(NamespacedPolynomialReference {
-                            namespace: None,
-                            name: instr_name,
-                        }) = c.function.as_ref()
-                        else {
-                            panic!("Only instructions allowed.");
-                        };
+                        let instr_name =
+                            if let Expression::Reference(reference) = c.function.as_ref() {
+                                reference.try_to_identifier().unwrap()
+                            } else {
+                                panic!("Only instructions allowed.");
+                            };
                         let def = machine
                             .instructions
                             .iter()

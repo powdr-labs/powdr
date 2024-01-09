@@ -4,6 +4,7 @@ use analysis::utils::parse_pil_statement;
 use ast::{
     object::{Location, PILGraph},
     parsed::{
+        asm::{Part, SymbolPath},
         build::{direct_reference, index_access, namespaced_reference},
         Expression, PILFile, PilStatement, SelectedExpressions,
     },
@@ -44,7 +45,7 @@ pub fn link<T: FieldElement>(graph: PILGraph<T>) -> Result<PILFile<T>, Vec<Strin
             // create a namespace for this object
             pil.push(PilStatement::Namespace(
                 0,
-                location.to_string(),
+                SymbolPath::from_parts(vec![Part::Named(location.to_string())]),
                 Expression::Number(T::from(main_degree)),
             ));
             pil.extend(object.pil);
@@ -160,7 +161,7 @@ mod test {
 
     fn parse_analyse_and_compile<T: FieldElement>(input: &str) -> PILGraph<T> {
         let parsed = parse_asm(None, input).unwrap();
-        let resolved = importer::resolve(None, parsed).unwrap();
+        let resolved = importer::load_dependencies_and_resolve(None, parsed).unwrap();
         airgen::compile(convert_asm_to_pil(resolved).unwrap())
     }
 
@@ -229,7 +230,7 @@ pol constant p_line = [0, 1, 2] + [2]*;
 pol constant p_instr__jump_to_operation = [0, 1, 0] + [0]*;
 pol constant p_instr__loop = [0, 0, 1] + [1]*;
 pol constant p_instr__reset = [1, 0, 0] + [0]*;
-pol constant p_instr_return = [0, 0, 0] + [0]*;
+pol constant p_instr_return = [0]*;
 { pc, instr__jump_to_operation, instr__reset, instr__loop, instr_return } in { p_line, p_instr__jump_to_operation, p_instr__reset, p_instr__loop, p_instr_return };
 pol constant _block_enforcer_last_step = [0]* + [1];
 pol commit _operation_id_no_change;
@@ -282,22 +283,22 @@ pc' = ((1 - first_step') * pc_update);
 pol constant p_line = [0, 1, 2, 3, 4] + [4]*;
 pol commit X_free_value;
 pol commit Y_free_value;
-pol constant p_X_const = [0, 0, 0, 0, 0] + [0]*;
-pol constant p_X_read_free = [0, 0, 0, 0, 0] + [0]*;
-pol constant p_Y_const = [0, 0, 0, 0, 0] + [0]*;
+pol constant p_X_const = [0]*;
+pol constant p_X_read_free = [0]*;
+pol constant p_Y_const = [0]*;
 pol constant p_Y_read_free = [0, 0, 1, 0, 0] + [0]*;
 pol constant p_instr__jump_to_operation = [0, 1, 0, 0, 0] + [0]*;
 pol constant p_instr__loop = [0, 0, 0, 0, 1] + [1]*;
 pol constant p_instr__reset = [1, 0, 0, 0, 0] + [0]*;
-pol constant p_instr_identity = [0, 0, 0, 0, 0] + [0]*;
-pol constant p_instr_nothing = [0, 0, 0, 0, 0] + [0]*;
+pol constant p_instr_identity = [0]*;
+pol constant p_instr_nothing = [0]*;
 pol constant p_instr_one = [0, 0, 1, 0, 0] + [0]*;
 pol constant p_instr_return = [0, 0, 0, 1, 0] + [0]*;
-pol constant p_read_X_A = [0, 0, 0, 0, 0] + [0]*;
-pol constant p_read_X_pc = [0, 0, 0, 0, 0] + [0]*;
-pol constant p_read_Y_A = [0, 0, 0, 0, 0] + [0]*;
-pol constant p_read_Y_pc = [0, 0, 0, 0, 0] + [0]*;
-pol constant p_reg_write_X_A = [0, 0, 0, 0, 0] + [0]*;
+pol constant p_read_X_A = [0]*;
+pol constant p_read_X_pc = [0]*;
+pol constant p_read_Y_A = [0]*;
+pol constant p_read_Y_pc = [0]*;
+pol constant p_reg_write_X_A = [0]*;
 pol constant p_reg_write_Y_A = [0, 0, 1, 0, 0] + [0]*;
 { pc, reg_write_X_A, reg_write_Y_A, instr_identity, instr_one, instr_nothing, instr__jump_to_operation, instr__reset, instr__loop, instr_return, X_const, X_read_free, read_X_A, read_X_pc, Y_const, Y_read_free, read_Y_A, read_Y_pc } in { p_line, p_reg_write_X_A, p_reg_write_Y_A, p_instr_identity, p_instr_one, p_instr_nothing, p_instr__jump_to_operation, p_instr__reset, p_instr__loop, p_instr_return, p_X_const, p_X_read_free, p_read_X_A, p_read_X_pc, p_Y_const, p_Y_read_free, p_read_Y_A, p_read_Y_pc };
 pol constant _block_enforcer_last_step = [0]* + [1];
@@ -330,13 +331,13 @@ pc' = ((1 - first_step') * pc_update);
 pol constant p_line = [0, 1, 2, 3, 4, 5] + [5]*;
 pol commit _output_0_free_value;
 pol constant p__output_0_const = [0, 0, 0, 0, 1, 0] + [0]*;
-pol constant p__output_0_read_free = [0, 0, 0, 0, 0, 0] + [0]*;
+pol constant p__output_0_read_free = [0]*;
 pol constant p_instr__jump_to_operation = [0, 1, 0, 0, 0, 0] + [0]*;
 pol constant p_instr__loop = [0, 0, 0, 0, 0, 1] + [1]*;
 pol constant p_instr__reset = [1, 0, 0, 0, 0, 0] + [0]*;
 pol constant p_instr_return = [0, 0, 1, 1, 1, 0] + [0]*;
 pol constant p_read__output_0__input_0 = [0, 0, 1, 0, 0, 0] + [0]*;
-pol constant p_read__output_0_pc = [0, 0, 0, 0, 0, 0] + [0]*;
+pol constant p_read__output_0_pc = [0]*;
 { pc, instr__jump_to_operation, instr__reset, instr__loop, instr_return, _output_0_const, _output_0_read_free, read__output_0_pc, read__output_0__input_0 } in { p_line, p_instr__jump_to_operation, p_instr__reset, p_instr__loop, p_instr_return, p__output_0_const, p__output_0_read_free, p_read__output_0_pc, p_read__output_0__input_0 };
 pol constant _block_enforcer_last_step = [0]* + [1];
 pol commit _operation_id_no_change;
@@ -395,7 +396,7 @@ pol pc_update = ((((((instr_jmpz * (instr_jmpz_pc_update + instr_jmpz_pc_update_
 pc' = ((1 - first_step') * pc_update);
 pol constant p_line = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10] + [10]*;
 pol commit X_free_value(i) query match pc(i) { 2 => ("input", 1), 4 => ("input", (CNT(i) + 1)), 7 => ("input", 0), };
-pol constant p_X_const = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0] + [0]*;
+pol constant p_X_const = [0]*;
 pol constant p_X_read_free = [0, 0, 1, 0, 1, 0, 0, -1, 0, 0, 0] + [0]*;
 pol constant p_instr__jump_to_operation = [0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0] + [0]*;
 pol constant p_instr__loop = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1] + [1]*;
@@ -409,7 +410,7 @@ pol constant p_instr_jmpz_param_l = [0, 0, 0, 7, 0, 0, 0, 0, 0, 0, 0] + [0]*;
 pol constant p_instr_return = [0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0] + [0]*;
 pol constant p_read_X_A = [0, 0, 0, 0, 1, 0, 0, 1, 1, 0, 0] + [0]*;
 pol constant p_read_X_CNT = [0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0] + [0]*;
-pol constant p_read_X_pc = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0] + [0]*;
+pol constant p_read_X_pc = [0]*;
 pol constant p_reg_write_X_A = [0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0] + [0]*;
 pol constant p_reg_write_X_CNT = [0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0] + [0]*;
 { pc, reg_write_X_A, reg_write_X_CNT, instr_jmpz, instr_jmpz_param_l, instr_jmp, instr_jmp_param_l, instr_dec_CNT, instr_assert_zero, instr__jump_to_operation, instr__reset, instr__loop, instr_return, X_const, X_read_free, read_X_A, read_X_CNT, read_X_pc } in { p_line, p_reg_write_X_A, p_reg_write_X_CNT, p_instr_jmpz, p_instr_jmpz_param_l, p_instr_jmp, p_instr_jmp_param_l, p_instr_dec_CNT, p_instr_assert_zero, p_instr__jump_to_operation, p_instr__reset, p_instr__loop, p_instr_return, p_X_const, p_X_read_free, p_read_X_A, p_read_X_CNT, p_read_X_pc };
@@ -475,7 +476,7 @@ pol constant p_instr_adjust_fp_param_amount = [0, 0, 0, -2, 0] + [0]*;
 pol constant p_instr_adjust_fp_param_t = [0, 0, 0, 3, 0] + [0]*;
 pol constant p_instr_inc_fp = [0, 0, 1, 0, 0] + [0]*;
 pol constant p_instr_inc_fp_param_amount = [0, 0, 7, 0, 0] + [0]*;
-pol constant p_instr_return = [0, 0, 0, 0, 0] + [0]*;
+pol constant p_instr_return = [0]*;
 { pc, instr_inc_fp, instr_inc_fp_param_amount, instr_adjust_fp, instr_adjust_fp_param_amount, instr_adjust_fp_param_t, instr__jump_to_operation, instr__reset, instr__loop, instr_return } in { p_line, p_instr_inc_fp, p_instr_inc_fp_param_amount, p_instr_adjust_fp, p_instr_adjust_fp_param_amount, p_instr_adjust_fp_param_t, p_instr__jump_to_operation, p_instr__reset, p_instr__loop, p_instr_return };
 pol constant _block_enforcer_last_step = [0]* + [1];
 pol commit _operation_id_no_change;

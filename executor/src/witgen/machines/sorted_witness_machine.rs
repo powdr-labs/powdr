@@ -29,10 +29,12 @@ pub struct SortedWitnesses<'a, T> {
     witness_positions: HashMap<PolyID, usize>,
     data: BTreeMap<T, Vec<Option<T>>>,
     fixed_data: &'a FixedData<'a, T>,
+    name: String,
 }
 
 impl<'a, T: FieldElement> SortedWitnesses<'a, T> {
     pub fn try_new(
+        name: String,
         fixed_data: &'a FixedData<T>,
         identities: &[&Identity<Expression<T>>],
         witnesses: &HashSet<PolyID>,
@@ -50,6 +52,7 @@ impl<'a, T: FieldElement> SortedWitnesses<'a, T> {
                 .collect();
 
             SortedWitnesses {
+                name,
                 key_col,
                 witness_positions,
                 data: Default::default(),
@@ -123,6 +126,10 @@ fn check_constraint<T: FieldElement>(constraint: &Expression<T>) -> Option<PolyI
 }
 
 impl<'a, T: FieldElement> Machine<'a, T> for SortedWitnesses<'a, T> {
+    fn name(&self) -> &str {
+        &self.name
+    }
+
     fn process_plookup<Q: QueryCallback<T>>(
         &mut self,
         _mutable_state: &mut MutableState<'a, '_, T, Q>,

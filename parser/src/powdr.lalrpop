@@ -35,13 +35,19 @@ ModuleDefinition: SymbolDefinition<T> = {
 Import: SymbolDefinition<T> = {
     "use" <path:SymbolPath> <name:( "as" <Identifier> )?> ";" =>
         SymbolDefinition {
-            name: name.unwrap_or(path.parts.last().unwrap().clone().try_into().unwrap()),
+            name: name.unwrap_or(path.name().clone().try_into().unwrap()),
             value: Import {path}.into()
         }
 }
 
 pub SymbolPath: SymbolPath = {
-    <mut parts:( <Part> "::" )*> <end:Part>  => { parts.push(end); SymbolPath { parts: parts.into() } },
+    <abs:"::"?> <parts:( <Part> "::" )*> <end:Part>  => {
+        SymbolPath::from_parts([
+            abs.map(|_| vec![Part::Named(String::new())]).unwrap_or_default(),
+            parts,
+            vec![end],
+        ].concat())
+    },
 }
 
 Part: Part = {
@@ -73,7 +79,7 @@ Include: PilStatement<T> = {
 };
 
 Namespace: PilStatement<T> = {
-    <start:@L> "namespace" <name:Identifier> "(" <pol_degree:Expression> ")" => PilStatement::Namespace(<>)
+    <start:@L> "namespace" <name:SymbolPath> "(" <pol_degree:Expression> ")" => PilStatement::Namespace(<>)
 }
 
 LetStatement: PilStatement<T> = {
@@ -126,8 +132,12 @@ ArrayLiteralTerm: ArrayExpression<T> = {
 
 PolynomialCommitDeclaration: PilStatement<T> = {
     <@L> PolCol CommitWitness <PolynomialNameList> => PilStatement::PolynomialCommitDeclaration(<>, None),
-    <start:@L> PolCol CommitWitness <name:PolynomialName> "(" <param:ParameterList> ")" "query" <value:Expression>
-     => PilStatement::PolynomialCommitDeclaration(start, vec![name], Some(FunctionDefinition::Query(param, value)))
+    <start:@L> PolCol CommitWitness <name:PolynomialName> "(" <params:ParameterList> ")" "query" <body:BoxedExpression>
+     => PilStatement::PolynomialCommitDeclaration(
+        start,
+        vec![name],
+        Some(FunctionDefinition::Query(Expression::LambdaExpression(LambdaExpression{params, body})))
+    )
 }
 
 PolynomialIdentity: PilStatement<T> = {
@@ -475,7 +485,7 @@ PostfixUnaryOp: UnaryOperator = {
 Term: Box<Expression<T>> = {
     IndexAccess => Box::new(Expression::IndexAccess(<>)),
     FunctionCall => Box::new(Expression::FunctionCall(<>)),
-    ConstantIdentifier => Box::new(Expression::Reference(NamespacedPolynomialReference{namespace: None, name: <>})),
+    ConstantIdentifier => Box::new(Expression::Reference(NamespacedPolynomialReference::from_identifier(<>))),
     NamespacedPolynomialReference => Box::new(Expression::Reference(<>)),
     PublicIdentifier => Box::new(Expression::PublicReference(<>)),
     FieldElement => Box::new(Expression::Number(<>)),
@@ -497,7 +507,8 @@ FunctionCall: FunctionCall<T> = {
 }
 
 NamespacedPolynomialReference: NamespacedPolynomialReference = {
-    <namespace:( <Identifier> "." )?> <name:Identifier> => NamespacedPolynomialReference{<>},
+    <SymbolPath> => <>.into(),
+    <namespace:Identifier> "." <name:Identifier> => SymbolPath::from_parts([namespace, name].into_iter().map(Part::Named)).into(),
 }
 
 MatchExpression: Box<Expression<T>> = {

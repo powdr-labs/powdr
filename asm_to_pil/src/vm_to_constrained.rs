@@ -16,9 +16,9 @@ use ast::{
         build::{direct_reference, next_reference},
         folder::ExpressionFolder,
         visitor::ExpressionVisitable,
-        ArrayExpression, BinaryOperator, Expression, FunctionCall, FunctionDefinition, MatchArm,
-        MatchPattern, NamespacedPolynomialReference, PilStatement, PolynomialName,
-        SelectedExpressions, UnaryOperator,
+        ArrayExpression, BinaryOperator, Expression, FunctionCall, FunctionDefinition,
+        LambdaExpression, MatchArm, MatchPattern, NamespacedPolynomialReference, PilStatement,
+        PolynomialName, SelectedExpressions, UnaryOperator,
     },
 };
 
@@ -381,8 +381,10 @@ impl<T: FieldElement> ASMPILConverter<T> {
                 body.iter_mut().for_each(|s| {
                     s.post_visit_expressions_mut(&mut |e| {
                         if let Expression::Reference(r) = e {
-                            if let Some(sub) = substitutions.get(&r.name) {
-                                r.name = sub.to_string();
+                            if let Some(name) = r.try_to_identifier() {
+                                if let Some(sub) = substitutions.get(name) {
+                                    *r.path.try_last_part_mut().unwrap() = sub.to_string();
+                                }
                             }
                         }
                     });
@@ -466,16 +468,13 @@ impl<T: FieldElement> ASMPILConverter<T> {
         function: Expression<T>,
         mut args: Vec<Expression<T>>,
     ) -> CodeLine<T> {
-        let Expression::Reference(NamespacedPolynomialReference {
-            namespace: _,
-            name: instr_name,
-        }) = function
-        else {
+        let Expression::Reference(reference) = function else {
             panic!("Expected instruction name");
         };
+        let instr_name = reference.try_to_identifier().unwrap();
         let instr = &self
             .instructions
-            .get(&instr_name)
+            .get(instr_name)
             .unwrap_or_else(|| panic!("Instruction not found: {instr_name}"));
         let output = instr.outputs.clone();
 
@@ -487,7 +486,7 @@ impl<T: FieldElement> ASMPILConverter<T> {
         }
 
         args.extend(lhs_with_regs.iter().map(|(lhs, _)| direct_reference(lhs)));
-        self.handle_instruction(instr_name, args)
+        self.handle_instruction(instr_name.clone(), args)
     }
 
     fn handle_instruction(&mut self, instr_name: String, args: Vec<Expression<T>>) -> CodeLine<T> {
@@ -517,7 +516,7 @@ impl<T: FieldElement> ASMPILConverter<T> {
                         Input::Literal(_, LiteralKind::Label) => {
                             if let Expression::Reference(r) = a {
                                 instruction_literal_arg
-                                    .push(InstructionLiteralArg::LabelRef(r.name));
+                                    .push(InstructionLiteralArg::LabelRef(r.try_to_identifier().unwrap().clone()));
                             } else {
                                 panic!();
                             }
@@ -558,7 +557,7 @@ impl<T: FieldElement> ASMPILConverter<T> {
             .map(|(reg, a)| {
                 // Output a value trough assignment register "reg"
                 if let Expression::Reference(r) = a {
-                    (reg.clone(), vec![r.name])
+                    (reg.clone(), vec![r.try_to_identifier().unwrap().clone()])
                 } else {
                     panic!("Expected direct register to assign to in instruction call.");
                 }
@@ -585,10 +584,8 @@ impl<T: FieldElement> ASMPILConverter<T> {
             Expression::FunctionCall(_) => panic!(),
             Expression::Reference(reference) => {
                 // TODO check it actually is a register
-                vec![(
-                    1.into(),
-                    AffineExpressionComponent::Register(reference.name),
-                )]
+                let name = reference.try_to_identifier().unwrap();
+                vec![(1.into(), AffineExpressionComponent::Register(name.clone()))]
             }
             Expression::Number(value) => vec![(value, AffineExpressionComponent::Constant)],
             Expression::String(_) => panic!(),
@@ -827,30 +824,36 @@ impl<T: FieldElement> ASMPILConverter<T> {
                 let free_value = format!("{reg}_free_value");
                 let prover_query_arms = free_value_query_arms.remove(reg).unwrap();
                 let prover_query = (!prover_query_arms.is_empty()).then_some({
-                    FunctionDefinition::Query(
-                        vec!["i".to_string()],
-                        Expression::MatchExpression(
+                    FunctionDefinition::Query(Expression::LambdaExpression(LambdaExpression {
+                        params: vec!["i".to_string()],
+                        body: Box::new(Expression::MatchExpression(
                             Box::new(Expression::FunctionCall(FunctionCall {
                                 function: Box::new(direct_reference(pc_name.as_ref().unwrap())),
                                 arguments: vec![direct_reference("i")],
                             })),
                             prover_query_arms,
-                        ),
-                    )
+                        )),
+                    }))
                 });
                 witness_column(0, free_value, prover_query)
             })
             .collect::<Vec<_>>();
         self.pil.extend(free_value_pil);
         for (name, values) in rom_constants {
+            let array_expression = if values.iter().all(|v| v == &values[0]) {
+                // Performance optimization: The block below converts every T to an Expression<T>,
+                // which has a 7x larger memory footprint. This is wasteful for constant columns,
+                // of which there are a lot because this code has not been optimized yet.
+                ArrayExpression::RepeatedValue(vec![values[0].into()])
+            } else {
+                ArrayExpression::value(values.into_iter().map(Expression::from).collect())
+                    .pad_with_last()
+                    .unwrap_or_else(|| ArrayExpression::RepeatedValue(vec![T::zero().into()]))
+            };
             self.pil.push(PilStatement::PolynomialConstantDefinition(
                 0,
                 name.clone(),
-                FunctionDefinition::Array(
-                    ArrayExpression::value(values.into_iter().map(Expression::from).collect())
-                        .pad_with_last()
-                        .unwrap_or_else(|| ArrayExpression::RepeatedValue(vec![T::zero().into()])),
-                ),
+                FunctionDefinition::Array(array_expression),
             ));
         }
     }
@@ -1090,7 +1093,9 @@ fn extract_update<T: FieldElement>(expr: Expression<T>) -> (Option<String>, Expr
     if let Expression::BinaryOperation(left, BinaryOperator::Sub, right) = expr {
         match *left {
             Expression::UnaryOperation(UnaryOperator::Next, column) => match *column {
-                Expression::Reference(column) => (Some(column.name), *right),
+                Expression::Reference(column) => {
+                    (Some(column.try_to_identifier().unwrap().clone()), *right)
+                }
                 _ => (
                     None,
                     Expression::UnaryOperation(UnaryOperator::Next, column) - *right,

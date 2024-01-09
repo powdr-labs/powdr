@@ -23,31 +23,26 @@ impl<T: Display> Display for AnalysisASMFile<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         let mut current_path = AbsoluteSymbolPath::default();
 
-        for (name, machine) in &self.machines {
-            let [diff @ .., Part::Named(machine_name)] = &name.relative_to(&current_path).parts[..]
-            else {
-                unreachable!()
-            };
-            for part in diff {
+        for (path, machine) in &self.machines {
+            let relative_path = path.relative_to(&current_path);
+            let name = relative_path.name();
+            // Skip the name (last) part
+            for part in relative_path.parts().rev().skip(1).rev() {
                 match part {
                     Part::Super => {
                         current_path.pop();
-                        write_indented_by(f, "}\n", current_path.parts.len())?;
+                        write_indented_by(f, "}\n", current_path.len())?;
                     }
                     Part::Named(m) => {
-                        write_indented_by(f, format!("mod {m} {{\n"), current_path.parts.len())?;
+                        write_indented_by(f, format!("mod {m} {{\n"), current_path.len())?;
                         current_path.push(m.clone());
                     }
                 }
             }
 
-            write_indented_by(
-                f,
-                format!("machine {machine_name}{machine}"),
-                current_path.parts.len(),
-            )?;
+            write_indented_by(f, format!("machine {name}{machine}"), current_path.len())?;
         }
-        for (i, _) in current_path.parts.iter().enumerate().rev() {
+        for i in (0..current_path.len()).rev() {
             write_indented_by(f, "}\n", i)?;
         }
 

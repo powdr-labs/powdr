@@ -24,7 +24,7 @@ pub fn compile<T: FieldElement>(input: AnalysisASMFile<T>) -> PILGraph<T> {
     let non_std_machines = input
         .machines
         .iter()
-        .filter(|(k, _)| k.parts[0] != "std")
+        .filter(|(k, _)| k.parts().next() != Some("std"))
         .collect::<BTreeMap<_, _>>();
 
     // we start from the main machine
@@ -120,6 +120,7 @@ impl<'a, T: FieldElement> ASMPILConverter<'a, T> {
     }
 
     fn convert_machine_inner(mut self, ty: &AbsoluteSymbolPath) -> Object<T> {
+        // TODO: This clone doubles the current memory usage
         let input = self.machines.get(ty).unwrap().clone();
 
         let degree = input.degree.map(|s| T::from(s.degree).to_degree());

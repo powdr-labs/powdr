@@ -9,6 +9,8 @@ use std::ops;
 
 use number::{DegreeType, FieldElement};
 
+use self::asm::{Part, SymbolPath};
+
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct PILFile<T>(pub Vec<PilStatement<T>>);
 
@@ -17,7 +19,7 @@ pub enum PilStatement<T> {
     /// File name
     Include(usize, String),
     /// Name of namespace and polynomial degree (constant)
-    Namespace(usize, String, Expression<T>),
+    Namespace(usize, SymbolPath, Expression<T>),
     LetStatement(usize, String, Option<Expression<T>>),
     PolynomialDefinition(usize, String, Expression<T>),
     PublicDeclaration(
@@ -158,11 +160,25 @@ pub struct PolynomialName<T> {
 
 #[derive(Debug, PartialEq, Eq, Default, Clone, PartialOrd, Ord)]
 /// A polynomial with an optional namespace
+/// This is different from SymbolPath mainly due to different formatting.
 pub struct NamespacedPolynomialReference {
-    /// The optional namespace, if `None` then this polynomial inherits the next enclosing namespace, if any
-    pub namespace: Option<String>,
-    /// The name of the polynomial / symbol.
-    pub name: String,
+    pub path: SymbolPath,
+}
+
+impl From<SymbolPath> for NamespacedPolynomialReference {
+    fn from(value: SymbolPath) -> Self {
+        Self { path: value }
+    }
+}
+
+impl NamespacedPolynomialReference {
+    pub fn from_identifier(name: String) -> Self {
+        SymbolPath::from_parts(vec![Part::Named(name)]).into()
+    }
+
+    pub fn try_to_identifier(&self) -> Option<&String> {
+        self.path.try_to_identifier()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -254,8 +270,8 @@ pub struct IfExpression<T, Ref = NamespacedPolynomialReference> {
 pub enum FunctionDefinition<T> {
     /// Array expression.
     Array(ArrayExpression<T>),
-    /// Prover query.
-    Query(Vec<String>, Expression<T>),
+    /// Prover query. The Expression usually is a LambdaExpression.
+    Query(Expression<T>),
     /// Generic expression
     Expression(Expression<T>),
 }

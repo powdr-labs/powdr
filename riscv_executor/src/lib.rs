@@ -122,7 +122,7 @@ pub struct ExecutionTrace {
     pub mem: Vec<MemOperation>,
 
     /// The length of the trace.
-    pub len: u64,
+    pub len: usize,
 }
 
 impl ExecutionTrace {
@@ -230,7 +230,7 @@ mod builder {
                     reg_map,
                     regs: values,
                     mem: Vec::new(),
-                    len: 0,
+                    len: PC_INITIAL_VAL + 1,
                 },
                 next_statement_line: 1,
                 batch_to_line_map,
@@ -244,6 +244,11 @@ mod builder {
             } else {
                 Ok(ret)
             }
+        }
+
+        /// get current value of PC
+        pub(crate) fn get_pc(&self) -> Elem {
+            self.get_reg_idx(self.pc_idx)
         }
 
         /// get current value of register
@@ -291,10 +296,6 @@ mod builder {
         /// advance to next row, returns the index to the statement that must be
         /// executed now, or None if the execution is finished
         pub fn advance(&mut self, was_nop: bool) -> Option<u32> {
-            if !was_nop {
-                self.trace.len += 1;
-            }
-
             if self.get_reg_idx(self.pc_idx) != self.get_reg_idx_next(self.pc_idx) {
                 if let ExecMode::Trace = self.mode {
                     // PC changed, create a new line
@@ -304,6 +305,8 @@ mod builder {
                     let next_idx = self.curr_idx + self.reg_len();
                     self.trace.regs.copy_within(next_idx.., self.curr_idx);
                 }
+
+                self.trace.len += 1;
 
                 // If we are at the limit of rows, stop the execution
                 if self.has_enough_rows() {
@@ -329,7 +332,7 @@ mod builder {
         pub(crate) fn set_mem(&mut self, addr: u32, val: u32) {
             if let ExecMode::Trace = self.mode {
                 self.trace.mem.push(MemOperation {
-                    idx: self.curr_idx / self.reg_len() + 1,
+                    idx: self.trace.len,
                     kind: MemOperationKind::Write,
                     address: addr,
                 });
@@ -341,7 +344,7 @@ mod builder {
         pub(crate) fn get_mem(&mut self, addr: u32) -> u32 {
             if let ExecMode::Trace = self.mode {
                 self.trace.mem.push(MemOperation {
-                    idx: self.curr_idx / self.reg_len() + 1,
+                    idx: self.trace.len,
                     kind: MemOperationKind::Read,
                     address: addr,
                 });
@@ -353,6 +356,10 @@ mod builder {
         pub fn finish(mut self) -> (ExecutionTrace, MemoryState) {
             // remove the last row (future row), as it is not part of the trace
             self.trace.regs.drain((self.curr_idx + self.reg_len())..);
+
+            if let ExecMode::Trace = self.mode {
+                assert_eq!(self.trace.regs.len() / self.reg_len(), self.trace.len);
+            }
             (self.trace, self.mem)
         }
 
@@ -393,7 +400,7 @@ mod builder {
 
 fn get_main_machine<T: FieldElement>(program: &AnalysisASMFile<T>) -> &Machine<T> {
     for (name, m) in program.machines.iter() {
-        if name.parts.len() == 1 && name.parts[0] == "Main" {
+        if name.len() == 1 && name.parts().next() == Some("Main") {
             return m;
         }
     }
@@ -514,24 +521,22 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
                 Vec::new()
             }
-            "jump_to_bootloader_input_if_nonzero" => {
+            "jump_to_bootloader_input" => {
                 let bootloader_input_idx = args[0].0 as usize;
                 let addr = self.bootloader_inputs[bootloader_input_idx].to_degree();
-                if addr != 0 {
-                    self.proc.set_pc(addr.into());
-                }
+                self.proc.set_pc(addr.into());
 
                 Vec::new()
             }
             "jump_and_link_dyn" => {
-                let pc = self.proc.get_reg("pc");
+                let pc = self.proc.get_pc();
                 self.proc.set_reg("x1", pc.u() + 1);
                 self.proc.set_pc(args[0]);
 
                 Vec::new()
             }
             "call" => {
-                let pc = self.proc.get_reg("pc");
+                let pc = self.proc.get_pc();
                 self.proc.set_reg("x1", pc.u() + 1);
                 self.proc.set_pc(args[0]);
 
@@ -565,7 +570,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
             }
             "skip_if_zero" => {
                 if args[0].0 == 0 {
-                    let pc = self.proc.get_reg("pc").s();
+                    let pc = self.proc.get_pc().s();
                     self.proc.set_pc((pc + args[1].s() + 1).into());
                 }
 
@@ -675,17 +680,15 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
         match expression {
             Expression::Reference(r) => {
                 // an identifier looks like this:
-                assert!(r.namespace.is_none());
-
-                let name = r.name.as_str();
+                let name = r.try_to_identifier().unwrap();
 
                 // labels share the identifier space with registers:
                 // try one, then the other
                 let val = self
                     .label_map
-                    .get(name)
+                    .get(name.as_str())
                     .cloned()
-                    .unwrap_or_else(|| self.proc.get_reg(name));
+                    .unwrap_or_else(|| self.proc.get_reg(name.as_str()));
                 vec![val]
             }
             Expression::PublicReference(_) => todo!(),
@@ -750,8 +753,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 arguments,
             }) => match function.as_ref() {
                 Expression::Reference(f) => {
-                    assert!(f.namespace.is_none());
-                    self.exec_instruction(&f.name, arguments)
+                    self.exec_instruction(f.try_to_identifier().unwrap(), arguments)
                 }
                 _ => panic!(),
             },
@@ -891,7 +893,7 @@ pub fn execute<F: FieldElement>(
     log::info!("Parsing...");
     let parsed = parser::parse_asm::<F>(None, asm_source).unwrap();
     log::info!("Resolving imports...");
-    let resolved = importer::resolve(None, parsed).unwrap();
+    let resolved = importer::load_dependencies_and_resolve(None, parsed).unwrap();
     log::info!("Analyzing...");
     let analyzed = analysis::analyze(resolved, &mut ast::DiffMonitor::default()).unwrap();
 

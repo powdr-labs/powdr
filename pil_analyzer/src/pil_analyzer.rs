@@ -1,8 +1,11 @@
 use std::collections::{HashMap, HashSet};
+
 use std::fs;
+use std::iter::once;
 use std::path::{Path, PathBuf};
 
-use ast::parsed::PilStatement;
+use ast::parsed::asm::{AbsoluteSymbolPath, SymbolPath};
+use ast::parsed::{PILFile, PilStatement};
 use number::{DegreeType, FieldElement};
 
 use ast::analyzed::{
@@ -16,22 +19,29 @@ use crate::statement_processor::{Counters, PILItem, StatementProcessor};
 use crate::{condenser, evaluator, expression_processor::ExpressionProcessor};
 
 pub fn process_pil_file<T: FieldElement>(path: &Path) -> Analyzed<T> {
+    let files = import_all_dependencies(path);
+
     let mut analyzer = PILAnalyzer::new();
-    analyzer.process_file(path);
+    analyzer.process(files);
     analyzer.condense()
 }
 
 pub fn process_pil_file_contents<T: FieldElement>(contents: &str) -> Analyzed<T> {
+    let file_name = Path::new("input");
     let mut analyzer = PILAnalyzer::new();
-    analyzer.process_file_contents(Path::new("input"), contents);
+
+    analyzer.process(
+        [(file_name.to_owned(), ParsedFile::parse(file_name, contents))]
+            .into_iter()
+            .collect(),
+    );
     analyzer.condense()
 }
 
-// TODO we could further extract a component that is only responsible for
-// collecting definitions, assigning IDs and maintaining the source order.
-
+#[derive(Default)]
 struct PILAnalyzer<T> {
-    namespace: String,
+    known_symbols: HashSet<String>,
+    current_namespace: AbsoluteSymbolPath,
     polynomial_degree: Option<DegreeType>,
     definitions: HashMap<String, (Symbol, Option<FunctionValueDefinition<T>>)>,
     public_declarations: HashMap<String, PublicDeclaration>,
@@ -40,60 +50,97 @@ struct PILAnalyzer<T> {
     /// appear in the source.
     source_order: Vec<StatementIdentifier>,
     symbol_counters: Option<Counters>,
-    included_files: HashSet<PathBuf>,
-    line_starts: Vec<usize>,
     current_file: PathBuf,
+    current_line_starts: Vec<usize>,
+}
+
+struct ParsedFile<T> {
+    line_starts: Vec<usize>,
+    ast: PILFile<T>,
+}
+
+impl<T: FieldElement> ParsedFile<T> {
+    #[allow(clippy::print_stderr)]
+    pub fn parse(path: &Path, contents: &str) -> Self {
+        let line_starts = parser_util::lines::compute_line_starts(contents);
+        let ast = parser::parse(Some(path.to_str().unwrap()), contents).unwrap_or_else(|err| {
+            eprintln!("Error parsing .pil file:");
+            err.output_to_stderr();
+            panic!();
+        });
+        ParsedFile { line_starts, ast }
+    }
+}
+
+/// Reads and parses the given path and all its imports.
+fn import_all_dependencies<T: FieldElement>(path: &Path) -> Vec<(PathBuf, ParsedFile<T>)> {
+    let mut processed = Default::default();
+    import_all_dependencies_internal(path, &mut processed)
+}
+
+fn import_all_dependencies_internal<T: FieldElement>(
+    path: &Path,
+    processed: &mut HashSet<PathBuf>,
+) -> Vec<(PathBuf, ParsedFile<T>)> {
+    let path = path
+        .canonicalize()
+        .unwrap_or_else(|e| panic!("File {path:?} not found: {e}"));
+    if !processed.insert(path.clone()) {
+        return vec![];
+    }
+
+    let contents = fs::read_to_string(path.clone()).unwrap();
+    let parsed = ParsedFile::parse(&path, &contents);
+
+    // Filter out non-includes and compute the relative paths of includes.
+    let (non_includes, includes) = parsed.ast.0.into_iter().fold(
+        (vec![], vec![]),
+        |(mut non_includes, mut included_paths), s| {
+            match s {
+                PilStatement::Include(_, include) => {
+                    included_paths.push(path.parent().unwrap().join(include));
+                }
+                _ => non_includes.push(s),
+            }
+            (non_includes, included_paths)
+        },
+    );
+    // Process includes and add the file itself.
+    includes
+        .into_iter()
+        .flat_map(|path| import_all_dependencies_internal(&path, processed))
+        .chain(once((
+            path,
+            ParsedFile {
+                ast: PILFile(non_includes),
+                ..parsed
+            },
+        )))
+        .collect::<Vec<_>>()
 }
 
 impl<T: FieldElement> PILAnalyzer<T> {
     pub fn new() -> PILAnalyzer<T> {
         PILAnalyzer {
-            namespace: "Global".to_string(),
-            polynomial_degree: None,
-            definitions: Default::default(),
-            public_declarations: Default::default(),
-            identities: vec![],
-            source_order: vec![],
-            included_files: Default::default(),
-            line_starts: Default::default(),
-            current_file: Default::default(),
             symbol_counters: Some(Default::default()),
+            ..Default::default()
         }
     }
 
-    pub fn process_file(&mut self, path: &Path) {
-        let path = path
-            .canonicalize()
-            .unwrap_or_else(|e| panic!("File {path:?} not found: {e}"));
-        if !self.included_files.insert(path.clone()) {
-            return;
-        }
-        let contents = fs::read_to_string(path.clone()).unwrap();
-
-        self.process_file_contents(&path, &contents);
-    }
-
-    #[allow(clippy::print_stderr)]
-    pub fn process_file_contents(&mut self, path: &Path, contents: &str) {
-        let old_current_file = std::mem::take(&mut self.current_file);
-        let old_line_starts = std::mem::take(&mut self.line_starts);
-
-        // TODO make this work for other line endings
-        self.line_starts = parser_util::lines::compute_line_starts(contents);
-        self.current_file = path.to_path_buf();
-        let pil_file =
-            parser::parse(Some(path.to_str().unwrap()), contents).unwrap_or_else(|err| {
-                eprintln!("Error parsing .pil file:");
-                err.output_to_stderr();
-                panic!();
-            });
-
-        for statement in pil_file.0 {
-            self.handle_statement(statement);
+    pub fn process(&mut self, files: Vec<(PathBuf, ParsedFile<T>)>) {
+        self.current_namespace = Default::default();
+        for statement in files.iter().flat_map(|(_, f)| f.ast.0.iter()) {
+            self.collect_names(statement);
         }
 
-        self.current_file = old_current_file;
-        self.line_starts = old_line_starts;
+        self.current_namespace = Default::default();
+        for (name, parsed) in files {
+            self.current_file = name;
+            self.current_line_starts = parsed.line_starts;
+            for statement in parsed.ast.0 {
+                self.handle_statement(statement);
+            }
+        }
     }
 
     pub fn condense(self) -> Analyzed<T> {
@@ -106,9 +153,30 @@ impl<T: FieldElement> PILAnalyzer<T> {
         )
     }
 
+    /// A step to collect all defined names in the statement.
+    fn collect_names(&mut self, statement: &PilStatement<T>) {
+        match statement {
+            PilStatement::Namespace(_, name, _) => {
+                self.current_namespace = AbsoluteSymbolPath::default().join(name.clone());
+            }
+            PilStatement::Include(_, _) => unreachable!(),
+            _ => {
+                let mut counters = Default::default();
+                for absolute_name in
+                    StatementProcessor::new(self.driver(), &mut counters, self.polynomial_degree)
+                        .symbol_definition_names(statement)
+                {
+                    if !self.known_symbols.insert(absolute_name.clone()) {
+                        panic!("Duplicate symbol definition: {absolute_name}");
+                    }
+                }
+            }
+        }
+    }
+
     fn handle_statement(&mut self, statement: PilStatement<T>) {
         match statement {
-            PilStatement::Include(_, include) => self.handle_include(include),
+            PilStatement::Include(_, _) => unreachable!(),
             PilStatement::Namespace(_, name, degree) => self.handle_namespace(name, degree),
             _ => {
                 // We need a mutable reference to the counter, but it is short-lived.
@@ -146,13 +214,7 @@ impl<T: FieldElement> PILAnalyzer<T> {
         }
     }
 
-    fn handle_include(&mut self, path: String) {
-        let mut dir = self.current_file.parent().unwrap().to_owned();
-        dir.push(path);
-        self.process_file(&dir);
-    }
-
-    fn handle_namespace(&mut self, name: String, degree: ::ast::parsed::Expression<T>) {
+    fn handle_namespace(&mut self, name: SymbolPath, degree: ::ast::parsed::Expression<T>) {
         // TODO: the polynomial degree should be handled without going through a field element. This requires having types in Expression
         let degree = ExpressionProcessor::new(self.driver()).process_expression(degree);
         let namespace_degree = evaluator::evaluate_expression(&degree, &self.definitions)
@@ -168,7 +230,7 @@ impl<T: FieldElement> PILAnalyzer<T> {
         } else {
             self.polynomial_degree = Some(namespace_degree);
         }
-        self.namespace = name;
+        self.current_namespace = AbsoluteSymbolPath::default().join(name);
     }
 
     fn driver(&self) -> Driver<T> {
@@ -181,31 +243,34 @@ struct Driver<'a, T>(&'a PILAnalyzer<T>);
 
 impl<'a, T: FieldElement> AnalysisDriver<T> for Driver<'a, T> {
     fn resolve_decl(&self, name: &str) -> String {
-        if name.starts_with('%') {
+        (if name.starts_with('%') {
             // Constants are not namespaced
-            name.to_string()
+            AbsoluteSymbolPath::default()
         } else {
-            format!("{}.{name}", self.0.namespace)
-        }
+            self.0.current_namespace.clone()
+        })
+        .with_part(name)
+        .to_dotted_string()
     }
 
-    fn resolve_ref(&self, namespace: &Option<String>, name: &str) -> String {
-        let definitions = &self.0.definitions;
-        if name.starts_with('%') || definitions.contains_key(&name.to_string()) {
-            assert!(namespace.is_none());
-            // Constants are not namespaced
-            name.to_string()
-        } else if namespace.is_none() && definitions.contains_key(&format!("Global.{name}")) {
-            format!("Global.{name}")
-        } else {
-            format!("{}.{name}", namespace.as_ref().unwrap_or(&self.0.namespace))
-        }
+    fn resolve_ref(&self, path: &SymbolPath) -> String {
+        // Try to resolve the name starting at the current namespace and then
+        // go up level by level until the root.
+
+        self.0
+            .current_namespace
+            .iter_to_root()
+            .find_map(|prefix| {
+                let path = prefix.join(path.clone()).to_dotted_string();
+                self.0.known_symbols.contains(&path).then_some(path)
+            })
+            .unwrap_or_else(|| panic!("Symbol not found: {}", path.to_dotted_string()))
     }
 
     fn source_position_to_source_ref(&self, pos: usize) -> SourceRef {
         let file = self.0.current_file.file_name().unwrap().to_str().unwrap();
         SourceRef {
-            line: parser_util::lines::offset_to_line(pos, &self.0.line_starts),
+            line: parser_util::lines::offset_to_line(pos, &self.0.current_line_starts),
             file: file.to_string(),
         }
     }

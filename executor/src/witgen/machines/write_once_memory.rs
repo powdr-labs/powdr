@@ -41,10 +41,12 @@ pub struct WriteOnceMemory<'a, T: FieldElement> {
     key_to_index: BTreeMap<Vec<T>, DegreeType>,
     /// The memory content
     data: BTreeMap<DegreeType, Vec<Option<T>>>,
+    name: String,
 }
 
 impl<'a, T: FieldElement> WriteOnceMemory<'a, T> {
     pub fn try_new(
+        name: String,
         fixed_data: &'a FixedData<'a, T>,
         connecting_identities: &[&'a Identity<Expression<T>>],
         identities: &[&Identity<Expression<T>>],
@@ -103,6 +105,7 @@ impl<'a, T: FieldElement> WriteOnceMemory<'a, T> {
         }
 
         Some(Self {
+            name,
             fixed_data,
             rhs,
             value_polys,
@@ -197,6 +200,10 @@ impl<'a, T: FieldElement> WriteOnceMemory<'a, T> {
 }
 
 impl<'a, T: FieldElement> Machine<'a, T> for WriteOnceMemory<'a, T> {
+    fn name(&self) -> &str {
+        &self.name
+    }
+
     fn process_plookup<'b, Q: QueryCallback<T>>(
         &mut self,
         _mutable_state: &'b mut MutableState<'a, 'b, T, Q>,

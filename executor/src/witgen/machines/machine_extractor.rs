@@ -37,6 +37,7 @@ pub fn split_out_machines<'a, T: FieldElement>(
     let all_witnesses = fixed.witness_cols.keys().collect::<HashSet<_>>();
     let mut remaining_witnesses = all_witnesses.clone();
     let mut base_identities = identities.clone();
+    let mut id_counter = 0;
     for id in &identities {
         // Extract all witness columns in the RHS of the lookup.
         let lookup_witnesses = &refs_in_selected_expressions(&id.right) & (&remaining_witnesses);
@@ -98,22 +99,45 @@ pub fn split_out_machines<'a, T: FieldElement>(
                 .join("\n"),
         );
 
-        if let Some(machine) =
-            SortedWitnesses::try_new(fixed, &machine_identities, &machine_witnesses)
-        {
+        let first_witness = machine_witnesses.iter().next().unwrap();
+        let first_witness_name = fixed.column_name(first_witness);
+        let namespace = first_witness_name
+            .rfind('.')
+            .map(|idx| &first_witness_name[..idx]);
+
+        // For machines compiled using Powdr ASM we'll always have a namespace, but as a last
+        // resort we'll use the first witness name.
+        let name = namespace.unwrap_or(first_witness_name);
+        let id = id_counter;
+        id_counter += 1;
+        let name_with_type = |t: &str| format!("Secondary machine {id}: {name} ({t})");
+
+        if let Some(machine) = SortedWitnesses::try_new(
+            name_with_type("SortedWitness"),
+            fixed,
+            &machine_identities,
+            &machine_witnesses,
+        ) {
             log::info!("Detected machine: sorted witnesses / write-once memory");
             machines.push(KnownMachine::SortedWitnesses(machine));
-        } else if let Some(machine) =
-            DoubleSortedWitnesses::try_new(fixed, &machine_identities, &machine_witnesses)
-        {
+        } else if let Some(machine) = DoubleSortedWitnesses::try_new(
+            name_with_type("DoubleSortedWitnesses"),
+            fixed,
+            &machine_identities,
+            &machine_witnesses,
+        ) {
             log::info!("Detected machine: memory");
             machines.push(KnownMachine::DoubleSortedWitnesses(machine));
-        } else if let Some(machine) =
-            WriteOnceMemory::try_new(fixed, &connecting_identities, &machine_identities)
-        {
+        } else if let Some(machine) = WriteOnceMemory::try_new(
+            name_with_type("WriteOnceMemory"),
+            fixed,
+            &connecting_identities,
+            &machine_identities,
+        ) {
             log::info!("Detected machine: write-once memory");
             machines.push(KnownMachine::WriteOnceMemory(machine));
         } else if let Some(machine) = BlockMachine::try_new(
+            name_with_type("BlockMachine"),
             fixed,
             &connecting_identities,
             &machine_identities,
@@ -144,6 +168,7 @@ pub fn split_out_machines<'a, T: FieldElement>(
                 })
                 .unwrap();
             machines.push(KnownMachine::Vm(Generator::new(
+                name_with_type("Vm"),
                 fixed,
                 &machine_identities,
                 machine_witnesses,

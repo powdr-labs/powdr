@@ -66,27 +66,6 @@ impl Display for Import {
     }
 }
 
-impl Display for SymbolPath {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write!(f, "{}", self.parts.iter().format("::"))
-    }
-}
-
-impl Display for AbsoluteSymbolPath {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write!(f, "::{}", self.parts.iter().format("::"))
-    }
-}
-
-impl Display for Part {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        match self {
-            Part::Super => write!(f, "super"),
-            Part::Named(name) => write!(f, "{name}"),
-        }
-    }
-}
-
 impl<T: Display> Display for Machine<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         writeln!(f, "{{")?;
@@ -428,20 +407,26 @@ impl<T: Display> Display for FunctionDefinition<T> {
             FunctionDefinition::Array(array_expression) => {
                 write!(f, " = {array_expression}")
             }
-            FunctionDefinition::Query(params, value) => {
-                write!(f, "({}) query {value}", params.join(", "),)
+            FunctionDefinition::Query(Expression::LambdaExpression(lambda)) => write!(
+                f,
+                "({}) query {}",
+                lambda.params.iter().format(", "),
+                lambda.body,
+            ),
+            FunctionDefinition::Query(e) => {
+                write!(f, " query = {e}")
             }
-            FunctionDefinition::Expression(e) => match e {
-                Expression::LambdaExpression(lambda) if lambda.params.len() == 1 => {
-                    write!(
-                        f,
-                        "({}) {{ {} }}",
-                        lambda.params.iter().format(", "),
-                        lambda.body
-                    )
-                }
-                _ => write!(f, " = {e}"),
-            },
+            FunctionDefinition::Expression(Expression::LambdaExpression(lambda))
+                if lambda.params.len() == 1 =>
+            {
+                write!(
+                    f,
+                    "({}) {{ {} }}",
+                    lambda.params.iter().format(", "),
+                    lambda.body,
+                )
+            }
+            FunctionDefinition::Expression(e) => write!(f, " = {e}"),
         }
     }
 }
@@ -495,15 +480,7 @@ impl<T: Display> Display for PolynomialName<T> {
 
 impl Display for NamespacedPolynomialReference {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write!(
-            f,
-            "{}{}",
-            self.namespace
-                .as_ref()
-                .map(|n| format!("{n}."))
-                .unwrap_or_default(),
-            self.name
-        )
+        write!(f, "{}", self.path.to_dotted_string())
     }
 }
 
@@ -650,13 +627,11 @@ mod tests {
 
     #[test]
     fn symbol_paths() {
-        let s = SymbolPath {
-            parts: vec![
-                Part::Named("x".to_string()),
-                Part::Super,
-                Part::Named("y".to_string()),
-            ],
-        };
+        let s = SymbolPath::from_parts(vec![
+            Part::Named("x".to_string()),
+            Part::Super,
+            Part::Named("y".to_string()),
+        ]);
         assert_eq!(s.to_string(), "x::super::y");
         let p = parse_absolute_path("::abc");
         assert_eq!(p.to_string(), "::abc");

@@ -3,8 +3,8 @@ use std::{collections::HashMap, marker::PhantomData};
 use ast::{
     analyzed::{Expression, PolynomialReference, Reference, RepeatedArray},
     parsed::{
-        self, ArrayExpression, ArrayLiteral, IfExpression, LambdaExpression, MatchArm,
-        MatchPattern, NamespacedPolynomialReference, SelectedExpressions,
+        self, asm::SymbolPath, ArrayExpression, ArrayLiteral, IfExpression, LambdaExpression,
+        MatchArm, MatchPattern, NamespacedPolynomialReference, SelectedExpressions,
     },
 };
 use number::DegreeType;
@@ -138,11 +138,12 @@ impl<T, D: AnalysisDriver<T>> ExpressionProcessor<T, D> {
     }
 
     fn process_reference(&mut self, reference: NamespacedPolynomialReference) -> Reference {
-        if reference.namespace.is_none() && self.local_variables.contains_key(&reference.name) {
-            let id = self.local_variables[&reference.name];
-            Reference::LocalVar(id, reference.name.to_string())
-        } else {
-            Reference::Poly(self.process_namespaced_polynomial_reference(reference))
+        match reference.try_to_identifier() {
+            Some(name) if self.local_variables.contains_key(name) => {
+                let id = self.local_variables[name];
+                Reference::LocalVar(id, name.to_string())
+            }
+            _ => Reference::Poly(self.process_namespaced_polynomial_reference(&reference.path)),
         }
     }
 
@@ -173,10 +174,10 @@ impl<T, D: AnalysisDriver<T>> ExpressionProcessor<T, D> {
 
     pub fn process_namespaced_polynomial_reference(
         &mut self,
-        poly: ::ast::parsed::NamespacedPolynomialReference,
+        path: &SymbolPath,
     ) -> PolynomialReference {
         PolynomialReference {
-            name: self.driver.resolve_ref(&poly.namespace, &poly.name),
+            name: self.driver.resolve_ref(path),
             poly_id: None,
         }
     }

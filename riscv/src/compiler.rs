@@ -190,21 +190,21 @@ pub fn compile(
         },
     );
 
+    let submachine_init = call_every_submachine(coprocessors);
     let bootloader_lines = if with_bootloader {
-        let bootloader = bootloader();
+        let bootloader = bootloader(&submachine_init);
         log::debug!("Adding Bootloader:\n{}", bootloader);
         bootloader
             .split('\n')
             .map(|l| l.to_string())
             .collect::<Vec<_>>()
     } else {
-        vec![]
+        submachine_init
     };
 
     let program: Vec<String> = file_ids
         .into_iter()
         .map(|(id, dir, file)| format!("debug file {id} {} {};", quote(&dir), quote(&file)))
-        .chain(call_every_submachine(coprocessors))
         .chain(bootloader_lines)
         .chain(["call __data_init;".to_string()])
         .chain([
@@ -522,12 +522,11 @@ fn preamble(degree: u64, coprocessors: &CoProcessors, with_bootloader: bool) -> 
     // if it is zero, m_step has to increase.
     (1 - LAST) { m_change * (m_addr' - m_addr) + (1 - m_change) * (m_step' - m_step) } in POSITIVE;
 
-    m_op * (1 - m_op) = 0;
+    // m_change has to be 1 in the last row, so that a first read on row zero is constrained to return 0
+    (1 - m_change) * LAST = 0;
+
     m_is_write * (1 - m_is_write) = 0;
     m_is_read * (1 - m_is_read) = 0;
-    // m_is_write can only be 1 if m_op is 1.
-    m_is_write * (1 - m_op) = 0;
-    m_is_read * (1 - m_op) = 0;
     m_is_read * m_is_write = 0;
 
 

@@ -156,7 +156,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> IdentityProcessor<'a, 'b,
         // TODO could it be that multiple machines match?
 
         // query the fixed lookup "machine"
-        if let Some(result) = self.mutable_state.fixed_lookup.process_plookup(
+        if let Some(result) = self.mutable_state.fixed_lookup.process_plookup_timed(
             self.fixed_data,
             rows,
             identity.kind,
@@ -174,9 +174,12 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> IdentityProcessor<'a, 'b,
                 query_callback: self.mutable_state.query_callback,
             };
 
-            if let Some(result) =
-                current.process_plookup(&mut mutable_state, identity.kind, &left, &identity.right)
-            {
+            if let Some(result) = current.process_plookup_timed(
+                &mut mutable_state,
+                identity.kind,
+                &left,
+                &identity.right,
+            ) {
                 return result;
             }
         }
