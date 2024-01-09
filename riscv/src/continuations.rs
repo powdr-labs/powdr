@@ -14,7 +14,9 @@ mod memory_merkle_tree;
 use bootloader::{default_input, PAGE_SIZE_BYTES_LOG, PC_INDEX, REGISTER_NAMES};
 use memory_merkle_tree::MerkleTree;
 
-use crate::continuations::bootloader::BOOTLOADER_SPECIFIC_INSTRUCTION_NAMES;
+use crate::continuations::bootloader::{
+    default_register_values, BOOTLOADER_SPECIFIC_INSTRUCTION_NAMES, DEFAULT_PC,
+};
 
 fn transposed_trace<F: FieldElement>(trace: &ExecutionTrace) -> HashMap<String, Vec<F>> {
     let mut reg_values: HashMap<&str, Vec<F>> = HashMap::with_capacity(trace.reg_map.len());
@@ -117,8 +119,8 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
     // All inputs for all chunks.
     let mut all_bootloader_inputs = vec![];
 
-    // Bootloader inputs for the current chunk.
-    let mut bootloader_inputs = default_input();
+    // Initial register values for the current chunk.
+    let mut register_values = default_register_values();
 
     let program = pipeline.analyzed_asm().unwrap();
     sanity_check(&program);
@@ -130,7 +132,11 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
         let trace = riscv_executor::execute_ast::<F>(
             &program,
             &inputs,
-            &bootloader_inputs,
+            // Run full trace without any accessed pages. This would actually violate the
+            // constraints, but the executor does the right thing (read zero if the memory
+            // cell has never been accessed). We can't pass the accessed pages here, because
+            // we only know them after the full trace has been generated.
+            &default_input(&[]),
             usize::MAX,
             riscv_executor::ExecMode::Trace,
         )
@@ -141,23 +147,71 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
     let full_trace_length = full_trace["main.pc"].len();
     log::info!("Total trace length: {}", full_trace_length);
 
-    let mut proven_trace = 0;
+    let (first_real_execution_row, _) = full_trace["main.pc"]
+        .iter()
+        .enumerate()
+        .find(|(_, &pc)| pc == F::from(DEFAULT_PC))
+        .unwrap();
+
+    // The number of rows of the full trace that we consider proven.
+    // Initialized with `first_real_execution_row`, because the bootloader
+    // execution in the first chunk will be different from the full trace
+    // execution (because of paged-in memeory).
+    let mut proven_trace = first_real_execution_row;
     let mut chunk_index = 0;
 
+    // Run for 2**degree - 2 steps, because the executor doesn't run the dispatcher,
+    // which takes 2 rows.
+    let degree = program
+        .machines
+        .iter()
+        .fold(None, |acc, (_, m)| acc.or(m.degree.clone()))
+        .unwrap()
+        .degree;
+    let degree = F::from(degree).to_degree();
+    let num_rows = degree as usize - 2;
+
     loop {
+        log::info!("\nRunning chunk {}...", chunk_index);
+
+        log::info!("Building bootloader inputs for chunk {}...", chunk_index);
+        let mut accessed_pages = BTreeSet::new();
+        let start_idx = memory_accesses
+            .binary_search_by_key(&proven_trace, |a| a.idx)
+            .unwrap_or_else(|v| v);
+
+        for access in &memory_accesses[start_idx..] {
+            // proven_trace + num_rows is an upper bound for the last row index we'll reach in the next chunk.
+            // In practice, we'll stop earlier, because the bootloader needs to run as well, but we don't know for
+            // how long as that depends on the number of pages.
+            if access.idx >= proven_trace + num_rows {
+                break;
+            }
+            accessed_pages.insert(access.address >> PAGE_SIZE_BYTES_LOG);
+        }
+        log::info!(
+            "{} accessed pages: {:?}",
+            accessed_pages.len(),
+            accessed_pages
+        );
+
+        let mut bootloader_inputs = register_values.clone();
+        bootloader_inputs.extend(merkle_tree.root_hash());
+        bootloader_inputs.push((accessed_pages.len() as u64).into());
+        for &page_index in accessed_pages.iter() {
+            bootloader_inputs.push(page_index.into());
+            let (page, proof) = merkle_tree.get(page_index as usize);
+            bootloader_inputs.extend(page);
+            for sibling in proof {
+                bootloader_inputs.extend(sibling);
+            }
+        }
+
+        log::info!("Bootloader inputs length: {}", bootloader_inputs.len());
+
         all_bootloader_inputs.push(bootloader_inputs.clone());
 
-        log::info!("\nRunning chunk {}...", chunk_index);
-        // Run for 2**degree - 2 steps, because the executor doesn't run the dispatcher,
-        // which takes 2 rows.
-        let degree = program
-            .machines
-            .iter()
-            .fold(None, |acc, (_, m)| acc.or(m.degree.clone()))
-            .unwrap()
-            .degree;
-        let degree = F::from(degree).to_degree();
-        let num_rows = degree as usize - 2;
+        log::info!("Simulating chunk execution...");
         let (chunk_trace, memory_snapshot_update) = {
             let (trace, memory_snapshot_update) = riscv_executor::execute_ast::<F>(
                 &program,
@@ -178,21 +232,15 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
             .enumerate()
             .find(|(_, &pc)| pc == bootloader_inputs[PC_INDEX])
             .unwrap();
-        let full_trace_start = match chunk_index {
-            // The bootloader execution in the first chunk is part of the full trace.
-            0 => start,
-            // Any other chunk starts at where we left off in the full trace.
-            _ => proven_trace - 1,
-        };
         log::info!("Bootloader used {} rows.", start);
         for i in 0..(chunk_trace["main.pc"].len() - start) {
             for &reg in REGISTER_NAMES.iter() {
                 let chunk_i = i + start;
-                let full_i = i + full_trace_start;
+                let full_i = i + proven_trace;
                 if chunk_trace[reg][chunk_i] != full_trace[reg][full_i] {
                     log::error!("The Chunk trace differs from the full trace!");
                     log::error!(
-                        "Started comparing from row {start} in the chunk to row {full_trace_start} in the full trace; the difference is at offset {i}."
+                        "Started comparing from row {start} in the chunk to row {proven_trace} in the full trace; the difference is at offset {i}."
                     );
                     log::error!(
                         "The PCs are {} and {}.",
@@ -215,51 +263,16 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
             break;
         }
 
-        let new_rows = match chunk_index {
-            0 => num_rows,
-            // Minus 1 because the first row was proven already.
-            _ => num_rows - start - 1,
-        };
+        // Minus one, because the last row will have to be repeated in the next chunk.
+        let new_rows = num_rows - start - 1;
         proven_trace += new_rows;
         log::info!("Proved {} rows.", new_rows);
 
-        log::info!("Building inputs for chunk {}...", chunk_index + 1);
-        let mut accessed_pages = BTreeSet::new();
-        let start_idx = memory_accesses
-            .binary_search_by_key(&proven_trace, |a| a.idx)
-            .unwrap_or_else(|v| v);
-
-        for access in &memory_accesses[start_idx..] {
-            // proven_trace + num_rows is an upper bound for the last row index we'll reach in the next chunk.
-            // In practice, we'll stop earlier, because the bootloader needs to run as well, but we don't know for
-            // how long as that depends on the number of pages.
-            if access.idx >= proven_trace + num_rows {
-                break;
-            }
-            accessed_pages.insert(access.address >> PAGE_SIZE_BYTES_LOG);
-        }
-        log::info!(
-            "{} accessed pages: {:?}",
-            accessed_pages.len(),
-            accessed_pages
-        );
-
-        bootloader_inputs = vec![];
-        for &reg in REGISTER_NAMES.iter() {
-            bootloader_inputs.push(*chunk_trace[reg].last().unwrap());
-        }
-        bootloader_inputs.extend(merkle_tree.root_hash());
-        bootloader_inputs.push((accessed_pages.len() as u64).into());
-        for &page_index in accessed_pages.iter() {
-            bootloader_inputs.push(page_index.into());
-            let (page, proof) = merkle_tree.get(page_index as usize);
-            bootloader_inputs.extend(page);
-            for sibling in proof {
-                bootloader_inputs.extend(sibling);
-            }
-        }
-
-        log::info!("Inputs length: {}", bootloader_inputs.len());
+        // Update initial register values for the next chunk.
+        register_values = REGISTER_NAMES
+            .iter()
+            .map(|&r| *chunk_trace[r].last().unwrap())
+            .collect();
 
         chunk_index += 1;
     }
