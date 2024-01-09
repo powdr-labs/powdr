@@ -501,8 +501,6 @@ fn preamble(degree: u64, coprocessors: &CoProcessors, with_bootloader: bool) -> 
     col witness m_step;
     col witness m_change;
     col witness m_value;
-    // If we have an operation at all (needed because this needs to be a permutation)
-    col witness m_op;
     // If the operation is a write operation.
     col witness m_is_write;
     col witness m_is_read;
