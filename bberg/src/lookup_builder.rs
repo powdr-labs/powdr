@@ -211,7 +211,7 @@ fn create_lookup_settings_file(lookup: &Lookup) -> String {
          *
          * @details To create your own lookup:
          * 1) Create a copy of this class and rename it
-         * 2) Update all the values with the ones needed for your lookuputation
+         * 2) Update all the values with the ones needed for your lookup
          * 3) Update \"DECLARE_LOOKUP_IMPLEMENTATIONS_FOR_ALL_SETTINGS\" and \"DEFINE_LOOKUP_IMPLEMENTATIONS_FOR_ALL_SETTINGS\" to
          * include the new settings
          * 4) Add the relation with the chosen settings to Relations in the flavor (for example,\"`
