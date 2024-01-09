@@ -24,6 +24,8 @@ members = [
     "riscv_executor",
 ]
 
+exclude = [ "powdr_riscv_rt" ]
+
 [patch."https://github.com/privacy-scaling-explorations/halo2.git"]
 # TODO change back to this once the PR is merged
 #halo2_proofs = { git = "https://github.com/appliedzkp/halo2.git", rev = "d3746109d7d38be53afc8ddae8fdfaf1f02ad1d7" }
