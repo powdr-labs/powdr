@@ -10,7 +10,7 @@ pub fn verify_pil(file_name: &str, inputs: Vec<GoldilocksField>) {
 #[test]
 fn test_fibonacci() {
     let f = "pil/fibonacci.pil";
-    verify_pil(f, vec![]);
+    verify_pil(f, Default::default());
     gen_halo2_proof(f, Default::default());
     gen_estark_proof(f, Default::default());
 }
@@ -18,7 +18,7 @@ fn test_fibonacci() {
 #[test]
 fn test_constant_in_identity() {
     let f = "pil/constant_in_identity.pil";
-    verify_pil(f, vec![]);
+    verify_pil(f, Default::default());
     gen_halo2_proof(f, Default::default());
     gen_estark_proof(f, Default::default());
 }
@@ -26,7 +26,7 @@ fn test_constant_in_identity() {
 #[test]
 fn fib_arrays() {
     let f = "pil/fib_arrays.pil";
-    verify_pil(f, vec![]);
+    verify_pil(f, Default::default());
     gen_halo2_proof(f, Default::default());
     gen_estark_proof(f, Default::default());
 }
@@ -35,21 +35,21 @@ fn fib_arrays() {
 #[should_panic = "Witness generation failed."]
 fn test_external_witgen_fails_if_none_provided() {
     let f = "pil/external_witgen.pil";
-    verify_pil(f, vec![]);
+    verify_pil(f, Default::default());
 }
 
 #[test]
 fn test_external_witgen_a_provided() {
     let f = "pil/external_witgen.pil";
     let external_witness = vec![("main.a".to_string(), vec![GoldilocksField::from(3); 16])];
-    verify_test_file(f, vec![], external_witness);
+    verify_test_file(f, Default::default(), external_witness);
 }
 
 #[test]
 fn test_external_witgen_b_provided() {
     let f = "pil/external_witgen.pil";
     let external_witness = vec![("main.b".to_string(), vec![GoldilocksField::from(4); 16])];
-    verify_test_file(f, vec![], external_witness);
+    verify_test_file(f, Default::default(), external_witness);
 }
 
 #[test]
@@ -59,7 +59,7 @@ fn test_external_witgen_both_provided() {
         ("main.a".to_string(), vec![GoldilocksField::from(3); 16]),
         ("main.b".to_string(), vec![GoldilocksField::from(4); 16]),
     ];
-    verify_test_file(f, vec![], external_witness);
+    verify_test_file(f, Default::default(), external_witness);
 }
 
 #[test]
@@ -71,12 +71,12 @@ fn test_external_witgen_fails_on_conflicting_external_witness() {
         // Does not satisfy b = a + 1
         ("main.b".to_string(), vec![GoldilocksField::from(3); 16]),
     ];
-    verify_test_file(f, vec![], external_witness);
+    verify_test_file(f, Default::default(), external_witness);
 }
 
 #[test]
 fn test_global() {
-    verify_pil("pil/global.pil", vec![]);
+    verify_pil("pil/global.pil", Default::default());
     // Halo2 would take too long for this.
     // Starky requires at least one witness column, this test has none.
 }
@@ -107,13 +107,16 @@ fn test_witness_lookup() {
 #[test]
 #[should_panic(expected = "Witness generation failed.")]
 fn test_underdetermined_zero_no_solution() {
-    verify_pil("pil/underdetermined_zero_no_solution.pil", vec![]);
+    verify_pil(
+        "pil/underdetermined_zero_no_solution.pil",
+        Default::default(),
+    );
 }
 
 #[test]
 fn test_pair_lookup() {
     let f = "pil/pair_lookup.pil";
-    verify_pil(f, vec![]);
+    verify_pil(f, Default::default());
     // halo2 would take too long for this
     // starky would take too long for this in debug mode
 }
@@ -121,7 +124,7 @@ fn test_pair_lookup() {
 #[test]
 fn test_block_lookup_or() {
     let f = "pil/block_lookup_or.pil";
-    verify_pil(f, vec![]);
+    verify_pil(f, Default::default());
     // halo2 would take too long for this
     // starky would take too long for this in debug mode
 }
@@ -129,7 +132,7 @@ fn test_block_lookup_or() {
 #[test]
 fn test_halo_without_lookup() {
     let f = "pil/halo_without_lookup.pil";
-    verify_pil(f, vec![]);
+    verify_pil(f, Default::default());
     gen_halo2_proof(f, Default::default());
     gen_estark_proof(f, Default::default());
 }
@@ -137,39 +140,39 @@ fn test_halo_without_lookup() {
 #[test]
 fn test_simple_div() {
     let f = "pil/simple_div.pil";
-    verify_pil(f, vec![]);
+    verify_pil(f, Default::default());
     // starky would take too long for this in debug mode
 }
 
 #[test]
 fn test_single_line_blocks() {
     let f = "pil/single_line_blocks.pil";
-    verify_pil(f, vec![]);
+    verify_pil(f, Default::default());
     gen_estark_proof(f, Default::default());
 }
 
 #[test]
 fn test_two_block_machine_functions() {
     let f = "pil/two_block_machine_functions.pil";
-    verify_pil(f, vec![]);
+    verify_pil(f, Default::default());
     gen_estark_proof(f, Default::default());
 }
 
 #[test]
 fn test_fixed_columns() {
     let f = "pil/fixed_columns.pil";
-    verify_pil(f, vec![]);
+    verify_pil(f, Default::default());
     // Starky requires at least one witness column, this test has none.
 }
 
 #[test]
 fn test_witness_via_let() {
-    verify_pil("pil/witness_via_let.pil", vec![]);
+    verify_pil("pil/witness_via_let.pil", Default::default());
 }
 
 #[test]
 fn conditional_fixed_constraints() {
-    verify_pil("pil/conditional_fixed_constraints.pil", vec![]);
+    verify_pil("pil/conditional_fixed_constraints.pil", Default::default());
 }
 
 #[test]
@@ -187,7 +190,7 @@ mod book {
     use test_log::test;
 
     fn run_book_test(file: &str) {
-        verify_pil(file, vec![]);
+        verify_pil(file, Default::default());
         gen_halo2_proof(file, Default::default());
         gen_estark_proof(file, Default::default());
     }

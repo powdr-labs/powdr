@@ -24,6 +24,8 @@ analysis = { path = "../analysis" }
 linker = { path = "../linker" }
 airgen = { path = "../airgen" }
 importer = { path = "../importer" }
+serde = { version = "1.0", default-features = false, features = ["alloc", "derive", "rc"] }
+serde_cbor = "0.11.2"
 
 [dev-dependencies]
 test-log = "0.2.12"

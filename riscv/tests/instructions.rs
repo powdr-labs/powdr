@@ -14,7 +14,7 @@ mod instruction_tests {
             false,
         );
 
-        verify_riscv_asm_string(&format!("{name}.asm"), &powdr_asm, vec![]);
+        verify_riscv_asm_string(&format!("{name}.asm"), &powdr_asm, Default::default());
     }
 
     include!(concat!(env!("OUT_DIR"), "/instruction_tests.rs"));

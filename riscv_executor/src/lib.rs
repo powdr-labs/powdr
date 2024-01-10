@@ -9,10 +9,7 @@
 //! TODO: perform determinism verification for each instruction independently
 //! from execution.
 
-use std::{
-    collections::HashMap,
-    io::{self, Write},
-};
+use std::{collections::HashMap, io};
 
 use ast::{
     asm_analysis::{
@@ -37,10 +34,6 @@ const PC_INITIAL_VAL: usize = 2;
 pub struct Elem(pub i64);
 
 impl Elem {
-    const fn zero() -> Self {
-        Self(0)
-    }
-
     fn u(&self) -> u32 {
         self.0.try_into().unwrap()
     }
@@ -517,12 +510,14 @@ fn preprocess_main_function<T: FieldElement>(machine: &Machine<T>) -> Preprocess
     }
 }
 
+type Callback<'a, F> = dyn executor::witgen::QueryCallback<F> + 'a;
+
 struct Executor<'a, 'b, F: FieldElement> {
     proc: TraceBuilder<'b>,
     label_map: HashMap<&'a str, Elem>,
-    inputs: HashMap<F, Vec<F>>,
+    inputs: &'b Callback<'b, F>,
     bootloader_inputs: &'b [F],
-    stdout: io::Stdout,
+    _stdout: io::Stdout,
 }
 
 impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
@@ -800,37 +795,27 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 }
                 _ => panic!(),
             },
-            Expression::FreeInput(expr) => 'input: {
+            Expression::FreeInput(expr) => {
                 if let Expression::Tuple(t) = &**expr {
-                    if let Expression::String(name) = &t[0] {
-                        let val = self.eval_expression(&t[1])[0];
-                        break 'input vec![match name.as_str() {
-                            "input" => {
-                                let idx = val.u() as usize;
-                                to_u32(&self.inputs[&F::zero()][idx]).unwrap().into()
-                            }
-                            "data" => {
-                                let idx = val.u() as usize;
-                                let what = self.eval_expression(&t[2])[0];
-                                let what = what.u();
-                                to_u32(&self.inputs[&what.into()][idx]).unwrap().into()
-                            }
-                            "bootloader_input" => {
-                                let idx = val.u() as usize;
-                                to_u32(&self.bootloader_inputs[idx]).unwrap().into()
-                            }
-                            "print_char" => {
-                                self.stdout.write_all(&[val.u() as u8]).unwrap();
-                                // what is print_char supposed to return?
-                                Elem::zero()
-                            }
-                            unk => {
-                                panic!("unknown IO command: {unk}");
-                            }
-                        }];
+                    let mut all_strings: Vec<String> = Vec::new();
+                    for expr in t {
+                        if let Expression::String(_) = expr {
+                            all_strings.push(expr.to_string());
+                        } else {
+                            let val = self.eval_expression(expr)[0];
+                            all_strings.push(val.0.to_string());
+                        }
                     }
-                };
-                panic!("does not matched IO pattern")
+                    let query = format!("({})", all_strings.join(","));
+                    match (self.inputs)(&query).unwrap() {
+                        Some(val) => vec![Elem::from_fe(val)],
+                        None => {
+                            panic!("unknown query command: {query}");
+                        }
+                    }
+                } else {
+                    panic!("does not match IO pattern")
+                }
             }
             Expression::MatchExpression(_, _) => todo!(),
             Expression::IfExpression(_) => panic!(),
@@ -841,7 +826,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
 pub fn execute_ast<T: FieldElement>(
     program: &AnalysisASMFile<T>,
-    inputs: &HashMap<T, Vec<T>>,
+    inputs: &Callback<T>,
     bootloader_inputs: &[T],
     max_steps_to_execute: usize,
     mode: ExecMode,
@@ -863,9 +848,9 @@ pub fn execute_ast<T: FieldElement>(
     let mut e = Executor {
         proc,
         label_map,
-        inputs: inputs.clone(),
+        inputs,
         bootloader_inputs,
-        stdout: io::stdout(),
+        _stdout: io::stdout(),
     };
 
     let mut curr_pc = 0u32;
@@ -923,7 +908,7 @@ pub enum ExecMode {
 /// converted to i64, so it is important to the execution itself.
 pub fn execute<F: FieldElement>(
     asm_source: &str,
-    inputs: &HashMap<F, Vec<F>>,
+    inputs: &Callback<F>,
     bootloader_inputs: &[F],
     mode: ExecMode,
 ) -> (ExecutionTrace, MemoryState) {

@@ -5,7 +5,7 @@ use ast::{
     parsed::asm::parse_absolute_path,
 };
 use number::FieldElement;
-use pipeline::Pipeline;
+use pipeline::{Pipeline, Stage};
 use riscv_executor::ExecutionTrace;
 
 pub mod bootloader;
@@ -120,10 +120,7 @@ fn sanity_check<T>(program: &AnalysisASMFile<T>) {
     assert_eq!(machine_registers, expected_registers);
 }
 
-pub fn rust_continuations_dry_run<F: FieldElement>(
-    pipeline: Pipeline<F>,
-    inputs: HashMap<F, Vec<F>>,
-) -> Vec<Vec<F>> {
+pub fn rust_continuations_dry_run<F: FieldElement>(mut pipeline: Pipeline<F>) -> Vec<Vec<F>> {
     log::info!("Initializing memory merkle tree...");
     let mut merkle_tree = MerkleTree::<F>::new();
 
@@ -133,14 +130,15 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
     // Initial register values for the current chunk.
     let mut register_values = default_register_values();
 
-    let program = pipeline.analyzed_asm().unwrap();
-    sanity_check(&program);
+    pipeline.advance_to(Stage::AnalyzedAsm).unwrap();
+    let program = pipeline.artifact().unwrap().to_analyzed_asm().unwrap();
+    sanity_check(program);
 
     log::info!("Executing powdr-asm...");
     let (full_trace, memory_accesses) = {
         let trace = riscv_executor::execute_ast::<F>(
-            &program,
-            &inputs,
+            program,
+            pipeline.data_callback().unwrap(),
             // Run full trace without any accessed pages. This would actually violate the
             // constraints, but the executor does the right thing (read zero if the memory
             // cell has never been accessed). We can't pass the accessed pages here, because
@@ -236,8 +234,8 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
         log::info!("Simulating chunk execution...");
         let (chunk_trace, memory_snapshot_update) = {
             let (trace, memory_snapshot_update) = riscv_executor::execute_ast::<F>(
-                &program,
-                &inputs,
+                program,
+                pipeline.data_callback().unwrap(),
                 &bootloader_inputs,
                 num_rows,
                 riscv_executor::ExecMode::Trace,

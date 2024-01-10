@@ -254,7 +254,7 @@ fn poseidon_gl_call() -> String {
 }
 
 fn prover_input_call() -> String {
-    "x10 <=X= ${ (\"data\", x11, x10) };".to_string()
+    "x10 <=X= ${ (\"data_identifier\", x11, x10) };".to_string()
 }
 
 // This could also potentially go in the impl of CoProcessors,
