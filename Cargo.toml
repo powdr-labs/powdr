@@ -3,6 +3,7 @@
 resolver = "2"
 
 members = [
+    "powdr",
     "number",
     "parser",
     "powdr_cli",

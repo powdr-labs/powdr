@@ -1,0 +1,11 @@
+[package]
+name = "powdr"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+executor = { path = "../executor" }
+number = { path = "../number" }
+pipeline = { path = "../pipeline" }
+riscv = { path = "../riscv" }
+riscv_executor = { path = "../riscv_executor" }
