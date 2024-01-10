@@ -33,8 +33,8 @@ impl<T: FieldElement> BackendImplWithSetup<T> for halo2::Halo2Prover {
         Halo2Prover::new_from_setup(&mut input)
     }
 
-    fn write_setup(&self, mut output: &mut dyn io::Write) -> Result<(), io::Error> {
-        self.write_setup(&mut output)
+    fn write_setup(&self, pil: &Analyzed<F>, fixed: &[(String, Vec<F>)], output: &mut dyn io::Write) -> Result<(), io::Error> {
+        self.write_setup(pil, fixed, &mut output)
     }
 }
 

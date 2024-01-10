@@ -18,6 +18,7 @@ use starky::{
 
 pub struct EStark {
     params: StarkStruct,
+    setup: Option<StarkSetup>,
 }
 
 impl<F: FieldElement> BackendImpl<F> for EStark {
@@ -46,7 +47,7 @@ impl<F: FieldElement> BackendImpl<F> for EStark {
             steps,
         };
 
-        Self { params }
+        Self { setup: None, params }
     }
 
     fn prove(
@@ -61,6 +62,63 @@ impl<F: FieldElement> BackendImpl<F> for EStark {
         }
 
         log::info!("Creating eSTARK proof.");
+
+        // TODO: recover const_pols from setup
+        let const_pols = to_starky_pols_array(&fixed, &pil, PolKind::Constant);
+
+        if witness.is_empty() {
+            return (None, None);
+        }
+
+        let cm_pols = to_starky_pols_array(witness, &pil, PolKind::Commit);
+        let mut setup = self.setup.unwrap();
+
+        let start = Instant::now();
+        let starkproof = StarkProof::<MerkleTreeGL>::stark_gen::<TranscriptGL>(
+            cm_pols,
+            const_pols,
+            &setup.const_tree,
+            &setup.starkinfo,
+            &setup.program,
+            &pil,
+            &self.params,
+            "",
+        )
+        .unwrap();
+        let duration = start.elapsed();
+
+        log::info!("Proof done in: {:?}", duration);
+
+        assert!(stark_verify::<MerkleTreeGL, TranscriptGL>(
+            &starkproof,
+            &setup.const_root,
+            &setup.starkinfo,
+            &self.params,
+            &mut setup.program,
+        )
+        .unwrap());
+        let proofs: Vec<Proof> = vec![
+            serde_json::to_vec(&starkproof).unwrap(),
+        ];
+
+        (
+            Some(proofs),
+            Some(serde_json::to_string(&pil).unwrap()),
+        )
+    }
+}
+
+impl<T: FieldElement> BackendImplWithSetup<T> for EStark {
+    fn new_from_setup(mut input: &mut dyn io::Read) -> Result<Self, io::Error> {
+        let setup = StarkSetup::load(input)?;
+        let self = Self::new();
+        Ok(EStark {
+            setup: Some(setup),
+            params:
+        })
+    }
+
+    fn write_setup(&self, pil: &Analyzed<F>, fixed: &[(String, Vec<F>)], output: &mut dyn io::Write) -> Result<(), io::Error> {
 
         let degree = pil.degree();
 
@@ -100,62 +158,14 @@ impl<F: FieldElement> BackendImpl<F> for EStark {
 
         let const_pols = to_starky_pols_array(&fixed, &pil, PolKind::Constant);
 
-        if witness.is_empty() {
-            return (None, None);
-        }
-
-        let cm_pols = to_starky_pols_array(witness, &pil, PolKind::Commit);
-
-        let mut setup = StarkSetup::<MerkleTreeGL>::new(
+        let setup = StarkSetup::<MerkleTreeGL>::new(
             &const_pols,
             &mut pil,
             &self.params,
             Some("main.first_step".to_string()),
         )
         .unwrap();
-
-        let start = Instant::now();
-        let starkproof = StarkProof::<MerkleTreeGL>::stark_gen::<TranscriptGL>(
-            cm_pols,
-            const_pols,
-            &setup.const_tree,
-            &setup.starkinfo,
-            &setup.program,
-            &pil,
-            &self.params,
-            "",
-        )
-        .unwrap();
-        let duration = start.elapsed();
-
-        log::info!("Proof done in: {:?}", duration);
-
-        assert!(stark_verify::<MerkleTreeGL, TranscriptGL>(
-            &starkproof,
-            &setup.const_root,
-            &setup.starkinfo,
-            &self.params,
-            &mut setup.program,
-        )
-        .unwrap());
-        let proofs: Vec<Proof> = vec![
-            serde_json::to_vec(&starkproof).unwrap(),
-        ];
-
-        (
-            Some(proofs),
-            Some(serde_json::to_string(&pil).unwrap()),
-        )
-    }
-}
-
-impl<T: FieldElement> BackendImplWithSetup<T> for EStark {
-    fn new_from_setup(mut input: &mut dyn io::Read) -> Result<Self, io::Error> {
-        let starkproof
-    }
-
-    fn write_setup(&self, mut output: &mut dyn io::Write) -> Result<(), io::Error> {
-        self.write_setup(&mut output)
+        setup.save(output)
     }
 }
 
