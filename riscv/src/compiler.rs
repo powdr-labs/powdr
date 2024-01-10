@@ -501,17 +501,19 @@ fn preamble(degree: u64, coprocessors: &CoProcessors, with_bootloader: bool) -> 
     col witness m_step;
     col witness m_change;
     col witness m_value;
-    // If we have an operation at all (needed because this needs to be a permutation)
-    col witness m_op;
     // If the operation is a write operation.
     col witness m_is_write;
     col witness m_is_read;
+    col witness m_diff_lower;
+    col witness m_diff_upper;
 
-    // positive numbers (assumed to be much smaller than the field order)
-    col fixed POSITIVE(i) { i + 1 };
     col fixed FIRST = [1] + [0]*;
     col fixed LAST(i) { FIRST(i + 1) };
     col fixed STEP(i) { i };
+    col fixed BIT16(i) { i & 0xffff };
+
+    {m_diff_lower} in {BIT16};
+    {m_diff_upper} in {BIT16};
 
     m_change * (1 - m_change) = 0;
 
@@ -520,7 +522,11 @@ fn preamble(degree: u64, coprocessors: &CoProcessors, with_bootloader: bool) -> 
 
     // Except for the last row, if m_change is 1, then m_addr has to increase,
     // if it is zero, m_step has to increase.
-    (1 - LAST) { m_change * (m_addr' - m_addr) + (1 - m_change) * (m_step' - m_step) } in POSITIVE;
+    // `m_diff_upper * 2**16 + m_diff_lower` has to be equal to the difference **minus one**.
+    // Since we know that both m_addr and m_step can only be 32-Bit, this enforces that
+    // the values are strictly increasing.
+    col diff = (m_change * (m_addr' - m_addr) + (1 - m_change) * (m_step' - m_step));
+    (1 - LAST) * (diff - 1 - m_diff_upper * 2**16 - m_diff_lower) = 0;
 
     // m_change has to be 1 in the last row, so that a first read on row zero is constrained to return 0
     (1 - m_change) * LAST = 0;
@@ -711,10 +717,12 @@ fn preamble(degree: u64, coprocessors: &CoProcessors, with_bootloader: bool) -> 
 
 fn runtime(coprocessors: &CoProcessors) -> String {
     [
+        "__divdi3",
         "__udivdi3",
         "__udivti3",
         "__divdf3",
         "__muldf3",
+        "__moddi3",
         "__umoddi3",
         "__umodti3",
         "__eqdf2",

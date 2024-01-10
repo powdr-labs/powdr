@@ -1,5 +1,5 @@
-use compiler::test_util::{gen_estark_proof, gen_halo2_proof, verify_test_file};
 use number::{FieldElement, GoldilocksField};
+use pipeline::test_util::{gen_estark_proof, gen_halo2_proof, verify_test_file};
 use test_log::test;
 
 fn verify_asm<T: FieldElement>(file_name: &str, inputs: Vec<T>) {
@@ -187,6 +187,14 @@ fn vm_to_vm_to_vm() {
 #[test]
 fn test_mem_read_write() {
     let f = "asm/mem_read_write.asm";
+    verify_asm::<GoldilocksField>(f, Default::default());
+    gen_halo2_proof(f, Default::default());
+    gen_estark_proof(f, Default::default());
+}
+
+#[test]
+fn test_mem_read_write_large_diffs() {
+    let f = "asm/mem_read_write_large_diffs.asm";
     verify_asm::<GoldilocksField>(f, Default::default());
     gen_halo2_proof(f, Default::default());
     gen_estark_proof(f, Default::default());

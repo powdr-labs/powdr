@@ -24,6 +24,10 @@ pub const BOOTLOADER_SPECIFIC_INSTRUCTION_NAMES: [&str; 2] =
 
 pub fn bootloader_preamble() -> String {
     let mut preamble = r#"
+    // ============== extra rules on memory when compiled with continuations =======================
+    // The first operation can't be a read (because we expect this page to be paged-in)
+    m_change * m_is_read' = 0;
+
     // ============== bootloader-specific instructions =======================
     // Write-once memory
     let BOOTLOADER_INPUT_ADDRESS = |i| i;
@@ -320,21 +324,37 @@ pub const PC_INDEX: usize = REGISTER_NAMES.len() - 1;
 /// 1: jump_to_operation
 /// 2: jump submachine_init
 /// 3: jump end_of_bootloader
-const DEFAULT_PC: u64 = 3;
+pub const DEFAULT_PC: u64 = 3;
+
+pub fn default_register_values<T: FieldElement>() -> Vec<T> {
+    let mut register_values = vec![T::zero(); REGISTER_NAMES.len()];
+    register_values[PC_INDEX] = T::from(DEFAULT_PC);
+    register_values
+}
 
 /// The bootloader input that is equivalent to not using a bootloader, i.e.:
 /// - No pages are initialized
 /// - All registers are set to 0 (including the PC, which causes the bootloader to do nothing)
-pub fn default_input<T: FieldElement>() -> Vec<T> {
+pub fn default_input<T: FieldElement>(accessed_pages: &[u64]) -> Vec<T> {
     // Set all registers and the number of pages to zero
-    let mut inputs = vec![T::zero(); REGISTER_NAMES.len() + 1 + 4];
+    let mut bootloader_inputs = default_register_values();
 
-    // Set the memory hash to the empty hash
-    let empty_memory_hash = MerkleTree::<T>::empty_hash();
-    inputs[REGISTER_NAMES.len()..REGISTER_NAMES.len() + 4].copy_from_slice(&empty_memory_hash);
+    if accessed_pages.is_empty() {
+        bootloader_inputs.extend(MerkleTree::<T>::empty_hash());
+        bootloader_inputs.push(T::zero());
+    } else {
+        let merkle_tree = MerkleTree::<T>::new();
+        bootloader_inputs.extend(merkle_tree.root_hash());
+        bootloader_inputs.push((accessed_pages.len() as u64).into());
+        for &page_index in accessed_pages.iter() {
+            bootloader_inputs.push(page_index.into());
+            let (page, proof) = merkle_tree.get(page_index as usize);
+            bootloader_inputs.extend(page);
+            for sibling in proof {
+                bootloader_inputs.extend(sibling);
+            }
+        }
+    }
 
-    // Set the default PC
-    inputs[PC_INDEX] = T::from(DEFAULT_PC);
-
-    inputs
+    bootloader_inputs
 }

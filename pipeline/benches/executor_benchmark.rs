@@ -1,5 +1,5 @@
-use ::compiler::inputs_to_query_callback;
-use ::compiler::pipeline::Pipeline;
+use ::pipeline::inputs_to_query_callback;
+use ::pipeline::Pipeline;
 use ast::analyzed::Analyzed;
 use criterion::{criterion_group, criterion_main, Criterion};
 
@@ -61,7 +61,10 @@ fn criterion_benchmark(c: &mut Criterion) {
             run_witgen(
                 &pil_with_constants.pil,
                 &pil_with_constants.fixed_cols,
-                vec![("main.bootloader_input_value".to_string(), default_input())],
+                vec![(
+                    "main.bootloader_input_value".to_string(),
+                    default_input(&[63, 64, 65]),
+                )],
             )
         })
     });

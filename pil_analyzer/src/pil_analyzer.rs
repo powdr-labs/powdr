@@ -391,7 +391,7 @@ namespace N(65536);
     constant z = 2;
     col fixed t(i) { (i + N.z) };
     let other = [1, N.z];
-    let other_fun = |i, j| ((i + 7), |k| (k - i));
+    let other_fun = (|i, j| ((i + 7), (|k| (k - i))));
 "#;
         let formatted = process_pil_file_contents::<GoldilocksField>(input).to_string();
         assert_eq!(formatted, expected);
@@ -470,7 +470,7 @@ namespace N(65536);
     col fixed ISLAST(i) { match i { N.last_row => 1, _ => 0, } };
     col witness x;
     col witness y;
-    let constrain_equal_expr = |A, B| (A - B);
+    let constrain_equal_expr = (|A, B| (A - B));
     col fixed on_regular_row(cond) { ((1 - N.ISLAST) * cond) };
     ((1 - N.ISLAST) * (N.x' - N.y)) = 0;
     ((1 - N.ISLAST) * (N.y' - (N.x + N.y))) = 0;
@@ -518,6 +518,20 @@ namespace N(65536);
     col witness y;
     (N.y - 0) = 0;
     (N.x - N.ISLAST) = 0;
+"#;
+        let formatted = process_pil_file_contents::<GoldilocksField>(input).to_string();
+        assert_eq!(formatted, expected);
+    }
+
+    #[test]
+    fn parentheses_lambda() {
+        let input = r#"namespace N(16);
+    let w = || 2;
+    let x = (|i| || w())(2)();
+    "#;
+        let expected = r#"namespace N(16);
+    let w = (|| 2);
+    constant x = (|i| (|| N.w()))(2)();
 "#;
         let formatted = process_pil_file_contents::<GoldilocksField>(input).to_string();
         assert_eq!(formatted, expected);

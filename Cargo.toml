@@ -10,7 +10,7 @@ members = [
     "riscv",
     "parser_util",
     "pil_analyzer",
-    "compiler",
+    "pipeline",
     "pilopt",
     "asm_to_pil",
     "halo2",
@@ -23,6 +23,8 @@ members = [
     "type_check",
     "riscv_executor",
 ]
+
+exclude = [ "powdr_riscv_rt" ]
 
 [patch."https://github.com/privacy-scaling-explorations/halo2.git"]
 # TODO change back to this once the PR is merged
