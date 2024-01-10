@@ -12,7 +12,7 @@ pub fn main() {
     // -> Does not access memory but also does not get optimized out...
     let mut a = 1;
     let mut b = 1;
-    for _ in 0..100000 {
+    for _ in 0..150000 {
         let tmp = a + b;
         a = b;
         b = tmp;

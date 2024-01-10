@@ -7,6 +7,9 @@ pub mod test_util;
 pub mod util;
 pub mod verify;
 
+pub use pipeline::Pipeline;
+pub use pipeline::Stage;
+
 pub use backend::{BackendType, Proof};
 use executor::witgen::QueryCallback;
 use itertools::Itertools;

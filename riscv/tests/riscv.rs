@@ -3,12 +3,12 @@ mod common;
 use std::path::PathBuf;
 
 use common::verify_riscv_asm_string;
-use compiler::{
-    pipeline::Pipeline,
-    test_util::{verify_asm_string, verify_pipeline},
-};
 use mktemp::Temp;
 use number::GoldilocksField;
+use pipeline::{
+    test_util::{verify_asm_string, verify_pipeline},
+    Pipeline,
+};
 use test_log::test;
 
 use riscv::{
@@ -160,7 +160,7 @@ fn test_many_chunks_dry() {
     let powdr_asm = riscv::compiler::compile(riscv_asm, &coprocessors, true);
 
     let pipeline = Pipeline::default().from_asm_string(powdr_asm, Some(PathBuf::from(case)));
-    rust_continuations_dry_run::<GoldilocksField>(pipeline, vec![]);
+    rust_continuations_dry_run::<GoldilocksField>(pipeline, Default::default());
 }
 
 #[test]
@@ -196,7 +196,7 @@ fn test_many_chunks() {
         verify_pipeline(pipeline, vec![], vec![]);
         Ok(())
     };
-    let bootloader_inputs = rust_continuations_dry_run(pipeline_factory(), vec![]);
+    let bootloader_inputs = rust_continuations_dry_run(pipeline_factory(), Default::default());
     rust_continuations(pipeline_factory, pipeline_callback, bootloader_inputs).unwrap();
 }
 
