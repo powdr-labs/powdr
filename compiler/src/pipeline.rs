@@ -46,7 +46,7 @@ pub struct ProofResult<T: FieldElement> {
     /// Witness columns, potentially None (if success is false)
     pub witness: Option<Vec<(String, Vec<T>)>>,
     /// Proof, potentially None (if success is false)
-    pub proof: Option<Proof>,
+    pub proof: Option<Vec<Proof>>,
     /// Serialized low level constraints, potentially None (if success is false)
     pub constraints_serialization: Option<String>,
 }

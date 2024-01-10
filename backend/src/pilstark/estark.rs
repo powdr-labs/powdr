@@ -1,7 +1,8 @@
 use std::iter::{once, repeat};
 use std::time::Instant;
+use std::io;
 
-use crate::{pilstark, BackendImpl};
+use crate::{pilstark, BackendImpl, BackendImplWithSetup, Proof};
 use ast::analyzed::Analyzed;
 use number::{BigInt, DegreeType, FieldElement, GoldilocksField};
 
@@ -53,8 +54,8 @@ impl<F: FieldElement> BackendImpl<F> for EStark {
         pil: &Analyzed<F>,
         fixed: &[(String, Vec<F>)],
         witness: &[(String, Vec<F>)],
-        prev_proof: Option<crate::Proof>,
-    ) -> (Option<crate::Proof>, Option<String>) {
+        prev_proof: Option<Vec<Proof>>,
+    ) -> (Option<Vec<Proof>>, Option<String>) {
         if prev_proof.is_some() {
             unimplemented!("aggregration is not implemented");
         }
@@ -137,11 +138,24 @@ impl<F: FieldElement> BackendImpl<F> for EStark {
             &mut setup.program,
         )
         .unwrap());
+        let proofs: Vec<Proof> = vec![
+            serde_json::to_vec(&starkproof).unwrap(),
+        ];
 
         (
-            Some(serde_json::to_vec(&starkproof).unwrap()),
+            Some(proofs),
             Some(serde_json::to_string(&pil).unwrap()),
         )
+    }
+}
+
+impl<T: FieldElement> BackendImplWithSetup<T> for EStark {
+    fn new_from_setup(mut input: &mut dyn io::Read) -> Result<Self, io::Error> {
+        let starkproof
+    }
+
+    fn write_setup(&self, mut output: &mut dyn io::Write) -> Result<(), io::Error> {
+        self.write_setup(&mut output)
     }
 }
 

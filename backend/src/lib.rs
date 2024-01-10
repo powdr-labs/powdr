@@ -70,8 +70,8 @@ impl<F: FieldElement, B: BackendImpl<F>> Backend<F> for ConcreteBackendWithoutSe
         pil: &Analyzed<F>,
         fixed: &[(String, Vec<F>)],
         witness: &[(String, Vec<F>)],
-        prev_proof: Option<Proof>,
-    ) -> (Option<Proof>, Option<String>) {
+        prev_proof: Option<Vec<Proof>>,
+    ) -> (Option<Vec<Proof>>, Option<String>) {
         self.0.prove(pil, fixed, witness, prev_proof)
     }
 
@@ -108,8 +108,8 @@ impl<F: FieldElement, B: BackendImplWithSetup<F>> Backend<F> for ConcreteBackend
         pil: &Analyzed<F>,
         fixed: &[(String, Vec<F>)],
         witness: &[(String, Vec<F>)],
-        prev_proof: Option<Proof>,
-    ) -> (Option<Proof>, Option<String>) {
+        prev_proof: Option<Vec<Proof>>,
+    ) -> (Option<Vec<Proof>>, Option<String>) {
         self.0.prove(pil, fixed, witness, prev_proof)
     }
 
@@ -146,8 +146,8 @@ pub trait Backend<F: FieldElement> {
         pil: &Analyzed<F>,
         fixed: &[(String, Vec<F>)],
         witness: &[(String, Vec<F>)],
-        prev_proof: Option<Proof>,
-    ) -> (Option<Proof>, Option<String>);
+        prev_proof: Option<Vec<Proof>>,
+    ) -> (Option<Vec<Proof>>, Option<String>);
 
     /// Write the prover setup to a file, so that it can be loaded later.
     fn write_setup(&self, output: &mut dyn io::Write) -> Result<(), Error>;
@@ -175,8 +175,8 @@ trait BackendImpl<F: FieldElement> {
         pil: &Analyzed<F>,
         fixed: &[(String, Vec<F>)],
         witness: &[(String, Vec<F>)],
-        prev_proof: Option<Proof>,
-    ) -> (Option<Proof>, Option<String>);
+        prev_proof: Option<Vec<Proof>>,
+    ) -> (Option<Vec<Proof>>, Option<String>);
 }
 
 /// Trait implemented by backends that have a setup phase that must be saved to
