@@ -124,21 +124,22 @@ fn test_password() {
 mstore(0, 666)
 return(0, 32)
 */
-/*
 static BYTECODE: &str = "61029a60005260206000f3";
 
-#[test]
+#[cfg(feature = "complex-tests")]
 #[ignore = "Too slow"]
+#[test]
 fn test_evm() {
     let case = "evm";
     let bytes = hex::decode(BYTECODE).unwrap();
-    verify_crate(
-        case,
-        bytes.into_iter().map(|x| (x as u64).into()).collect(),
-        &CoProcessors::base(),
-    );
+
+    let length: GoldilocksField = (bytes.len() as u64).into();
+    let mut u64_bytes: Vec<GoldilocksField> = vec![length];
+    u64_bytes.extend(bytes.into_iter().map(|x| GoldilocksField::from(x as u64)));
+
+    verify_riscv_crate(case, u64_bytes, &CoProcessors::base());
 }
-*/
+
 #[test]
 #[ignore = "Too slow"]
 #[should_panic(expected = "Witness generation failed.")]
