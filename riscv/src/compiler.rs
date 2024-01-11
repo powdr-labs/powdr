@@ -481,6 +481,7 @@ fn preamble(degree: u64, coprocessors: &CoProcessors, with_bootloader: bool) -> 
             .collect::<Vec<_>>()
             .concat()
         + &bootloader_preamble_if_included
+        + &memory()
         + r#"
     // ============== Constraint on x0 =======================
 
@@ -492,87 +493,6 @@ fn preamble(degree: u64, coprocessors: &CoProcessors, with_bootloader: bool) -> 
     XIsZero = 1 - X * XInv;
     XIsZero * X = 0;
     XIsZero * (1 - XIsZero) = 0;
-
-    // =============== read-write memory =======================
-    // Read-write memory. Columns are sorted by m_addr and
-    // then by m_step. m_change is 1 if and only if m_addr changes
-    // in the next row.
-    col witness m_addr;
-    col witness m_step;
-    col witness m_change;
-    col witness m_value;
-    // If the operation is a write operation.
-    col witness m_is_write;
-    col witness m_is_read;
-    col witness m_diff_lower;
-    col witness m_diff_upper;
-
-    col fixed FIRST = [1] + [0]*;
-    col fixed LAST(i) { FIRST(i + 1) };
-    col fixed STEP(i) { i };
-    col fixed BIT16(i) { i & 0xffff };
-
-    {m_diff_lower} in {BIT16};
-    {m_diff_upper} in {BIT16};
-
-    m_change * (1 - m_change) = 0;
-
-    // if m_change is zero, m_addr has to stay the same.
-    (m_addr' - m_addr) * (1 - m_change) = 0;
-
-    // Except for the last row, if m_change is 1, then m_addr has to increase,
-    // if it is zero, m_step has to increase.
-    // `m_diff_upper * 2**16 + m_diff_lower` has to be equal to the difference **minus one**.
-    // Since we know that both m_addr and m_step can only be 32-Bit, this enforces that
-    // the values are strictly increasing.
-    col diff = (m_change * (m_addr' - m_addr) + (1 - m_change) * (m_step' - m_step));
-    (1 - LAST) * (diff - 1 - m_diff_upper * 2**16 - m_diff_lower) = 0;
-
-    // m_change has to be 1 in the last row, so that a first read on row zero is constrained to return 0
-    (1 - m_change) * LAST = 0;
-
-    m_is_write * (1 - m_is_write) = 0;
-    m_is_read * (1 - m_is_read) = 0;
-    m_is_read * m_is_write = 0;
-
-
-    // If the next line is a read and we stay at the same address, then the
-    // value cannot change.
-    (1 - m_is_write') * (1 - m_change) * (m_value' - m_value) = 0;
-
-    // If the next line is a read and we have an address change,
-    // then the value is zero.
-    (1 - m_is_write') * m_change * m_value' = 0;
-
-    // ============== memory instructions ==============
-
-    let up_to_three = |i| i % 4;
-    let six_bits = |i| i % 2**6;
-    /// Loads one word from an address Y, where Y can be between 0 and 2**33 (sic!),
-    /// wraps the address to 32 bits and rounds it down to the next multiple of 4.
-    /// Returns the loaded word and the remainder of the division by 4.
-    instr mload Y -> X, Z {
-        // Z * (Z - 1) * (Z - 2) * (Z - 3) = 0,
-        { Z } in { up_to_three },
-        Y = wrap_bit * 2**32 + X_b4 * 0x1000000 + X_b3 * 0x10000 + X_b2 * 0x100 + X_b1 * 4 + Z,
-        { X_b1 } in { six_bits },
-        {
-            X_b4 * 0x1000000 + X_b3 * 0x10000 + X_b2 * 0x100 + X_b1 * 4,
-            STEP,
-            X
-        } is m_is_read { m_addr, m_step, m_value }
-        // If we could access the shift machine here, we
-        // could even do the following to complete the mload:
-        // { W, X, Z} in { shr.value, shr.amount, shr.amount}
-    }
-
-    /// Stores Z at address Y % 2**32. Y can be between 0 and 2**33.
-    /// Y should be a multiple of 4, but this instruction does not enforce it.
-    instr mstore Y, Z {
-        { X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000, STEP, Z } is m_is_write { m_addr, m_step, m_value },
-        // Wrap the addr value
-        Y = (X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000) + wrap_bit * 2**32
-    }
 
     // ============== control-flow instructions ==============
 
@@ -713,6 +633,92 @@ fn preamble(degree: u64, coprocessors: &CoProcessors, with_bootloader: bool) -> 
         Y = Y_b5 + Y_b6 * 0x100 + Y_b7 * 0x10000 + Y_b8 * 0x1000000
     }
 "#
+}
+
+fn memory() -> String {
+    r#"
+
+    // =============== read-write memory =======================
+    // Read-write memory. Columns are sorted by m_addr and
+    // then by m_step. m_change is 1 if and only if m_addr changes
+    // in the next row.
+    col witness m_addr;
+    col witness m_step;
+    col witness m_change;
+    col witness m_value;
+    // If the operation is a write operation.
+    col witness m_is_write;
+    col witness m_is_read;
+    col witness m_diff_lower;
+    col witness m_diff_upper;
+
+    col fixed FIRST = [1] + [0]*;
+    col fixed LAST(i) { FIRST(i + 1) };
+    col fixed STEP(i) { i };
+    col fixed BIT16(i) { i & 0xffff };
+
+    {m_diff_lower} in {BIT16};
+    {m_diff_upper} in {BIT16};
+
+    m_change * (1 - m_change) = 0;
+
+    // if m_change is zero, m_addr has to stay the same.
+    (m_addr' - m_addr) * (1 - m_change) = 0;
+
+    // Except for the last row, if m_change is 1, then m_addr has to increase,
+    // if it is zero, m_step has to increase.
+    // `m_diff_upper * 2**16 + m_diff_lower` has to be equal to the difference **minus one**.
+    // Since we know that both m_addr and m_step can only be 32-Bit, this enforces that
+    // the values are strictly increasing.
+    col diff = (m_change * (m_addr' - m_addr) + (1 - m_change) * (m_step' - m_step));
+    (1 - LAST) * (diff - 1 - m_diff_upper * 2**16 - m_diff_lower) = 0;
+
+    // m_change has to be 1 in the last row, so that a first read on row zero is constrained to return 0
+    (1 - m_change) * LAST = 0;
+
+    m_is_write * (1 - m_is_write) = 0;
+    m_is_read * (1 - m_is_read) = 0;
+    m_is_read * m_is_write = 0;
+
+
+    // If the next line is a read and we stay at the same address, then the
+    // value cannot change.
+    (1 - m_is_write') * (1 - m_change) * (m_value' - m_value) = 0;
+
+    // If the next line is a read and we have an address change,
+    // then the value is zero.
+    (1 - m_is_write') * m_change * m_value' = 0;
+
+    // ============== memory instructions ==============
+
+    let up_to_three = |i| i % 4;
+    let six_bits = |i| i % 2**6;
+    /// Loads one word from an address Y, where Y can be between 0 and 2**33 (sic!),
+    /// wraps the address to 32 bits and rounds it down to the next multiple of 4.
+    /// Returns the loaded word and the remainder of the division by 4.
+    instr mload Y -> X, Z {
+        // Z * (Z - 1) * (Z - 2) * (Z - 3) = 0,
+        { Z } in { up_to_three },
+        Y = wrap_bit * 2**32 + X_b4 * 0x1000000 + X_b3 * 0x10000 + X_b2 * 0x100 + X_b1 * 4 + Z,
+        { X_b1 } in { six_bits },
+        {
+            X_b4 * 0x1000000 + X_b3 * 0x10000 + X_b2 * 0x100 + X_b1 * 4,
+            STEP,
+            X
+        } is m_is_read { m_addr, m_step, m_value }
+        // If we could access the shift machine here, we
+        // could even do the following to complete the mload:
+        // { W, X, Z} in { shr.value, shr.amount, shr.amount}
+    }
+
+    /// Stores Z at address Y % 2**32. Y can be between 0 and 2**33.
+    /// Y should be a multiple of 4, but this instruction does not enforce it.
+    instr mstore Y, Z {
+        { X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000, STEP, Z } is m_is_write { m_addr, m_step, m_value },
+        // Wrap the addr value
+        Y = (X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000) + wrap_bit * 2**32
+    }
+    "#.to_string()
 }
 
 fn runtime(coprocessors: &CoProcessors) -> String {
