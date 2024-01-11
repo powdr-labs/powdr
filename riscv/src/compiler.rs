@@ -481,7 +481,7 @@ fn preamble(degree: u64, coprocessors: &CoProcessors, with_bootloader: bool) -> 
             .collect::<Vec<_>>()
             .concat()
         + &bootloader_preamble_if_included
-        + &memory()
+        + &memory(with_bootloader)
         + r#"
     // ============== Constraint on x0 =======================
 
@@ -635,7 +635,78 @@ fn preamble(degree: u64, coprocessors: &CoProcessors, with_bootloader: bool) -> 
 "#
 }
 
-fn memory() -> String {
+fn memory(with_bootloader: bool) -> String {
+    // There are subtle differences between the memory machines with and without continuations:
+    // - There is an extra `mstore_bootloader` instruction. For the most part, it behaves just
+    //   like `mstore`.
+    // - When `m_change` is true, the `m_is_bootloader_write` has to be true in the next row.
+    // - The `(1 - m_is_write') * m_change * m_value' = 0` constraint is removed, as we no longer can
+    //   have a read as the first operation on a new address.
+    // - The `(1 - m_change) * LAST = 0` constraint is replaced with
+    //   `LAST * (1 - m_change) * (m_addr + 1) = 0`. This allows for a valid assignment in the case
+    //   where there is no memory operation in the entire chunk: The address can be set to -1 (which
+    //   cannot be represented in 32 bits, hence there is can't be an actual memory operation
+    //   associated with it). In that case, `m_change` can be 0 everywhere.
+    let bootloader_specific_parts = if with_bootloader {
+        r#"
+    // Memory operation flags
+    col witness m_is_write;
+    col witness m_is_bootloader_write;
+    col witness m_is_read;
+
+    // All operation flags are boolean and either all 0 or exactly 1 is set.
+    m_is_write * (1 - m_is_write) = 0;
+    m_is_read * (1 - m_is_read) = 0;
+    m_is_bootloader_write * (1 - m_is_bootloader_write) = 0;
+    m_is_read * m_is_write = 0;
+    m_is_read * m_is_bootloader_write = 0;
+    m_is_bootloader_write * m_is_write = 0;
+
+    // The first operation of a new address has to be a bootloader write
+    m_change * (1 - m_is_bootloader_write') = 0;
+
+    // m_change has to be 1 in the last row, so that the above constraint is triggered.
+    // An exception to this when the last address is -1, which is only possible if there is
+    // no memory operation in the entire chunk (because addresses are 32 bit unsigned).
+    // This exception is necessary so that there can be valid assignment in this case.
+    pol m_change_or_no_memory_operations = (1 - m_change) * (m_addr + 1);
+    LAST * m_change_or_no_memory_operations = 0;
+
+    // If the next line is a read and we stay at the same address, then the
+    // value cannot change.
+    (1 - m_is_write' - m_is_bootloader_write') * (1 - m_change) * (m_value' - m_value) = 0;
+
+    /// Like mstore, but setting the m_is_bootloader_write flag.
+    instr mstore_bootloader Y, Z {
+        { X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000, STEP, Z } is m_is_bootloader_write { m_addr, m_step, m_value },
+        // Wrap the addr value
+        Y = (X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000) + wrap_bit * 2**32
+    }
+"#
+    } else {
+        r#"
+    // Memory operation flags
+    col witness m_is_write;
+    col witness m_is_read;
+
+    // All operation flags are boolean and either all 0 or exactly 1 is set.
+    m_is_write * (1 - m_is_write) = 0;
+    m_is_read * (1 - m_is_read) = 0;
+    m_is_read * m_is_write = 0;
+
+    // If the next line is a not a write and we have an address change,
+    // then the value is zero.
+    (1 - m_is_write') * m_change * m_value' = 0;
+
+    // m_change has to be 1 in the last row, so that a first read on row zero is constrained to return 0
+    (1 - m_change) * LAST = 0;
+
+    // If the next line is a read and we stay at the same address, then the
+    // value cannot change.
+    (1 - m_is_write') * (1 - m_change) * (m_value' - m_value) = 0;
+"#
+    };
+
     r#"
 
     // =============== read-write memory =======================
@@ -646,9 +717,10 @@ fn memory() -> String {
     col witness m_step;
     col witness m_change;
     col witness m_value;
-    // If the operation is a write operation.
-    col witness m_is_write;
-    col witness m_is_read;
+"#
+    .to_string()
+        + bootloader_specific_parts
+        + r#"
     col witness m_diff_lower;
     col witness m_diff_upper;
 
@@ -672,22 +744,6 @@ fn memory() -> String {
     // the values are strictly increasing.
     col diff = (m_change * (m_addr' - m_addr) + (1 - m_change) * (m_step' - m_step));
     (1 - LAST) * (diff - 1 - m_diff_upper * 2**16 - m_diff_lower) = 0;
-
-    // m_change has to be 1 in the last row, so that a first read on row zero is constrained to return 0
-    (1 - m_change) * LAST = 0;
-
-    m_is_write * (1 - m_is_write) = 0;
-    m_is_read * (1 - m_is_read) = 0;
-    m_is_read * m_is_write = 0;
-
-
-    // If the next line is a read and we stay at the same address, then the
-    // value cannot change.
-    (1 - m_is_write') * (1 - m_change) * (m_value' - m_value) = 0;
-
-    // If the next line is a read and we have an address change,
-    // then the value is zero.
-    (1 - m_is_write') * m_change * m_value' = 0;
 
     // ============== memory instructions ==============
 
@@ -718,7 +774,7 @@ fn memory() -> String {
         // Wrap the addr value
         Y = (X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000) + wrap_bit * 2**32
     }
-    "#.to_string()
+    "#
 }
 
 fn runtime(coprocessors: &CoProcessors) -> String {

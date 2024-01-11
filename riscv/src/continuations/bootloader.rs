@@ -24,10 +24,6 @@ pub const BOOTLOADER_SPECIFIC_INSTRUCTION_NAMES: [&str; 2] =
 
 pub fn bootloader_preamble() -> String {
     let mut preamble = r#"
-    // ============== extra rules on memory when compiled with continuations =======================
-    // The first operation can't be a read (because we expect this page to be paged-in)
-    m_change * m_is_read' = 0;
-
     // ============== bootloader-specific instructions =======================
     // Write-once memory
     let BOOTLOADER_INPUT_ADDRESS = |i| i;
@@ -151,7 +147,7 @@ P7 <=X= 0;
         bootloader.push_str(&format!(
             r#"
 P{reg_index} <== load_bootloader_input(x2 * {BOOTLOADER_INPUTS_PER_PAGE} + {page_inputs_offset} + 1 + {i});
-mstore x3 * {PAGE_SIZE_BYTES} + {i} * {BYTES_PER_WORD}, P{reg_index};"#
+mstore_bootloader x3 * {PAGE_SIZE_BYTES} + {i} * {BYTES_PER_WORD}, P{reg_index};"#
         ));
 
         // Hash if buffer is full
