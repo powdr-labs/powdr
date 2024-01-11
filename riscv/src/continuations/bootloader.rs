@@ -17,7 +17,7 @@ pub const N_LEAVES_LOG: usize = MEMORY_SIZE_LOG - PAGE_SIZE_BYTES_LOG;
 pub const MERKLE_TREE_DEPTH: usize = N_LEAVES_LOG + 1;
 pub const PAGE_SIZE_BYTES: usize = 1 << PAGE_SIZE_BYTES_LOG;
 pub const PAGE_NUMBER_MASK: usize = (1 << N_LEAVES_LOG) - 1;
-pub const BOOTLOADER_INPUTS_PER_PAGE: usize = WORDS_PER_PAGE + 1 + (MERKLE_TREE_DEPTH - 1) * 4;
+pub const BOOTLOADER_INPUTS_PER_PAGE: usize = WORDS_PER_PAGE + 1 + 4 + (MERKLE_TREE_DEPTH - 1) * 4;
 
 pub const BOOTLOADER_SPECIFIC_INSTRUCTION_NAMES: [&str; 2] =
     ["load_bootloader_input", "jump_to_bootloader_input"];
@@ -61,6 +61,18 @@ pub fn bootloader_preamble() -> String {
         REGISTER_NAMES.len() + 2,
         REGISTER_NAMES.len() + 3,
     ));
+    preamble.push_str(&format!(
+        r#"
+    public final_memory_hash_1 = bootloader_input_value({});
+    public final_memory_hash_2 = bootloader_input_value({});
+    public final_memory_hash_3 = bootloader_input_value({});
+    public final_memory_hash_4 = bootloader_input_value({});
+"#,
+        REGISTER_NAMES.len() + 4,
+        REGISTER_NAMES.len() + 5,
+        REGISTER_NAMES.len() + 6,
+        REGISTER_NAMES.len() + 7,
+    ));
 
     preamble
 }
@@ -73,17 +85,19 @@ pub fn bootloader_preamble() -> String {
 /// Bootloader inputs are in the format:
 /// - First 49 values: Values of x1-x31, tmp1-tmp4, lr_sc_reservation, P0-P11, and the PC
 /// - The root hash of the memory Merkle tree (4 elements)
+/// - The root hash of the memory Merkle tree *after this chunk's execution* (4 elements)
 /// - Number of pages
 /// - For each page:
 ///   - The page number
 ///   - The 256 words of the page
+///   - The hash of the page *after* this chunk's execution
 ///   - For each level of the Merkle tree, except the root (1..=22):
 ///     - The hash (4 elements) of the sibling page
 pub fn bootloader(submachine_initialization: &[String]) -> String {
     let mut bootloader = String::new();
 
     let memory_hash_start_index = REGISTER_NAMES.len();
-    let num_pages_index = memory_hash_start_index + 4;
+    let num_pages_index = memory_hash_start_index + 8;
     let page_inputs_offset = num_pages_index + 1;
 
     bootloader.push_str(&format!(
@@ -186,20 +200,20 @@ P0, P1, P2, P3 <== poseidon_gl(P0, P1, P2, P3, P4, P5, P6, P7, P8, P9, P10, P11)
             r#"
 x4 <== and(x3, {mask});
 branch_if_nonzero x4, level_{i}_is_right;
-P4 <== load_bootloader_input(x2 * {BOOTLOADER_INPUTS_PER_PAGE} + {page_inputs_offset} + 1 + {WORDS_PER_PAGE} + {i} * 4 + 0);
-P5 <== load_bootloader_input(x2 * {BOOTLOADER_INPUTS_PER_PAGE} + {page_inputs_offset} + 1 + {WORDS_PER_PAGE} + {i} * 4 + 1);
-P6 <== load_bootloader_input(x2 * {BOOTLOADER_INPUTS_PER_PAGE} + {page_inputs_offset} + 1 + {WORDS_PER_PAGE} + {i} * 4 + 2);
-P7 <== load_bootloader_input(x2 * {BOOTLOADER_INPUTS_PER_PAGE} + {page_inputs_offset} + 1 + {WORDS_PER_PAGE} + {i} * 4 + 3);
+P4 <== load_bootloader_input(x2 * {BOOTLOADER_INPUTS_PER_PAGE} + {page_inputs_offset} + 1 + {WORDS_PER_PAGE} + 4 + {i} * 4 + 0);
+P5 <== load_bootloader_input(x2 * {BOOTLOADER_INPUTS_PER_PAGE} + {page_inputs_offset} + 1 + {WORDS_PER_PAGE} + 4 + {i} * 4 + 1);
+P6 <== load_bootloader_input(x2 * {BOOTLOADER_INPUTS_PER_PAGE} + {page_inputs_offset} + 1 + {WORDS_PER_PAGE} + 4 + {i} * 4 + 2);
+P7 <== load_bootloader_input(x2 * {BOOTLOADER_INPUTS_PER_PAGE} + {page_inputs_offset} + 1 + {WORDS_PER_PAGE} + 4 + {i} * 4 + 3);
 jump level_{i}_end;
 level_{i}_is_right:
 P4 <=X= P0;
 P5 <=X= P1;
 P6 <=X= P2;
 P7 <=X= P3;
-P0 <== load_bootloader_input(x2 * {BOOTLOADER_INPUTS_PER_PAGE} + {page_inputs_offset} + 1 + {WORDS_PER_PAGE} + {i} * 4 + 0);
-P1 <== load_bootloader_input(x2 * {BOOTLOADER_INPUTS_PER_PAGE} + {page_inputs_offset} + 1 + {WORDS_PER_PAGE} + {i} * 4 + 1);
-P2 <== load_bootloader_input(x2 * {BOOTLOADER_INPUTS_PER_PAGE} + {page_inputs_offset} + 1 + {WORDS_PER_PAGE} + {i} * 4 + 2);
-P3 <== load_bootloader_input(x2 * {BOOTLOADER_INPUTS_PER_PAGE} + {page_inputs_offset} + 1 + {WORDS_PER_PAGE} + {i} * 4 + 3);
+P0 <== load_bootloader_input(x2 * {BOOTLOADER_INPUTS_PER_PAGE} + {page_inputs_offset} + 1 + {WORDS_PER_PAGE} + 4 + {i} * 4 + 0);
+P1 <== load_bootloader_input(x2 * {BOOTLOADER_INPUTS_PER_PAGE} + {page_inputs_offset} + 1 + {WORDS_PER_PAGE} + 4 + {i} * 4 + 1);
+P2 <== load_bootloader_input(x2 * {BOOTLOADER_INPUTS_PER_PAGE} + {page_inputs_offset} + 1 + {WORDS_PER_PAGE} + 4 + {i} * 4 + 2);
+P3 <== load_bootloader_input(x2 * {BOOTLOADER_INPUTS_PER_PAGE} + {page_inputs_offset} + 1 + {WORDS_PER_PAGE} + 4 + {i} * 4 + 3);
 level_{i}_end:
 P0, P1, P2, P3 <== poseidon_gl(P0, P1, P2, P3, P4, P5, P6, P7, P8, P9, P10, P11);
 "#
@@ -337,15 +351,23 @@ pub fn default_input<T: FieldElement>(accessed_pages: &[u64]) -> Vec<T> {
 
     if accessed_pages.is_empty() {
         bootloader_inputs.extend(MerkleTree::<T>::empty_hash());
+        bootloader_inputs.extend(MerkleTree::<T>::empty_hash());
         bootloader_inputs.push(T::zero());
     } else {
+        // TODO: We don't have a way to know the memory state *after* the execution.
+        // For now, we'll just claim that the memory doesn't change.
+        // This is fine for now, because the bootloader does not yet enforce that the memory
+        // state is actually as claimed. In the future, the `accessed_pages` argument won't be
+        // supported anymore (it's anyway only used by the benchmark).
         let merkle_tree = MerkleTree::<T>::new();
+        bootloader_inputs.extend(merkle_tree.root_hash());
         bootloader_inputs.extend(merkle_tree.root_hash());
         bootloader_inputs.push((accessed_pages.len() as u64).into());
         for &page_index in accessed_pages.iter() {
             bootloader_inputs.push(page_index.into());
-            let (page, proof) = merkle_tree.get(page_index as usize);
+            let (page, page_hash, proof) = merkle_tree.get(page_index as usize);
             bootloader_inputs.extend(page);
+            bootloader_inputs.extend(page_hash);
             for sibling in proof {
                 bootloader_inputs.extend(sibling);
             }
