@@ -18,6 +18,9 @@ pub const MERKLE_TREE_DEPTH: usize = N_LEAVES_LOG + 1;
 pub const PAGE_SIZE_BYTES: usize = 1 << PAGE_SIZE_BYTES_LOG;
 pub const PAGE_NUMBER_MASK: usize = (1 << N_LEAVES_LOG) - 1;
 pub const BOOTLOADER_INPUTS_PER_PAGE: usize = WORDS_PER_PAGE + 1 + 4 + (MERKLE_TREE_DEPTH - 1) * 4;
+pub const MEMORY_HASH_START_INDEX: usize = REGISTER_NAMES.len();
+pub const NUM_PAGES_INDEX: usize = MEMORY_HASH_START_INDEX + 8;
+pub const PAGE_INPUTS_OFFSET: usize = NUM_PAGES_INDEX + 1;
 
 pub const BOOTLOADER_SPECIFIC_INSTRUCTION_NAMES: [&str; 2] =
     ["load_bootloader_input", "jump_to_bootloader_input"];
@@ -96,10 +99,6 @@ pub fn bootloader_preamble() -> String {
 pub fn bootloader(submachine_initialization: &[String]) -> String {
     let mut bootloader = String::new();
 
-    let memory_hash_start_index = REGISTER_NAMES.len();
-    let num_pages_index = memory_hash_start_index + 8;
-    let page_inputs_offset = num_pages_index + 1;
-
     bootloader.push_str(&format!(
         r#"
 // Skip the next instruction
@@ -135,14 +134,14 @@ submachine_init:
 //   - P8-P11 will contain the capacity elements (0 throughout the execution)
 
 // Number of pages
-x1 <== load_bootloader_input({num_pages_index});
+x1 <== load_bootloader_input({NUM_PAGES_INDEX});
 x1 <== wrap(x1);
 
 // Initialize memory hash
-x5 <== load_bootloader_input({memory_hash_start_index});
-x6 <== load_bootloader_input({memory_hash_start_index} + 1);
-x7 <== load_bootloader_input({memory_hash_start_index} + 2);
-x8 <== load_bootloader_input({memory_hash_start_index} + 3);
+x5 <== load_bootloader_input({MEMORY_HASH_START_INDEX});
+x6 <== load_bootloader_input({MEMORY_HASH_START_INDEX} + 1);
+x7 <== load_bootloader_input({MEMORY_HASH_START_INDEX} + 2);
+x8 <== load_bootloader_input({MEMORY_HASH_START_INDEX} + 3);
 
 // Current page index
 x2 <=X= 0;
@@ -152,7 +151,7 @@ branch_if_zero x1, end_page_loop;
 start_page_loop:
 
 // Page number
-x3 <== load_bootloader_input(x2 * {BOOTLOADER_INPUTS_PER_PAGE} + {page_inputs_offset});
+x3 <== load_bootloader_input(x2 * {BOOTLOADER_INPUTS_PER_PAGE} + {PAGE_INPUTS_OFFSET});
 x3 <== and(x3, {PAGE_NUMBER_MASK});
 
 // Store & hash {WORDS_PER_PAGE} page words. This is an unrolled loop that for each each word:
@@ -179,7 +178,7 @@ P7 <=X= 0;
         let reg_index = (i % 4) + 4;
         bootloader.push_str(&format!(
             r#"
-P{reg_index} <== load_bootloader_input(x2 * {BOOTLOADER_INPUTS_PER_PAGE} + {page_inputs_offset} + 1 + {i});
+P{reg_index} <== load_bootloader_input(x2 * {BOOTLOADER_INPUTS_PER_PAGE} + {PAGE_INPUTS_OFFSET} + 1 + {i});
 mstore_bootloader x3 * {PAGE_SIZE_BYTES} + {i} * {BYTES_PER_WORD}, P{reg_index};"#
         ));
 
@@ -236,20 +235,20 @@ merkle_proof_validation_loop:
             r#"
 x4 <== and(x3, {mask});
 branch_if_nonzero x4, level_{i}_is_right;
-P4 <== load_bootloader_input(x2 * {BOOTLOADER_INPUTS_PER_PAGE} + {page_inputs_offset} + 1 + {WORDS_PER_PAGE} + 4 + {i} * 4 + 0);
-P5 <== load_bootloader_input(x2 * {BOOTLOADER_INPUTS_PER_PAGE} + {page_inputs_offset} + 1 + {WORDS_PER_PAGE} + 4 + {i} * 4 + 1);
-P6 <== load_bootloader_input(x2 * {BOOTLOADER_INPUTS_PER_PAGE} + {page_inputs_offset} + 1 + {WORDS_PER_PAGE} + 4 + {i} * 4 + 2);
-P7 <== load_bootloader_input(x2 * {BOOTLOADER_INPUTS_PER_PAGE} + {page_inputs_offset} + 1 + {WORDS_PER_PAGE} + 4 + {i} * 4 + 3);
+P4 <== load_bootloader_input(x2 * {BOOTLOADER_INPUTS_PER_PAGE} + {PAGE_INPUTS_OFFSET} + 1 + {WORDS_PER_PAGE} + 4 + {i} * 4 + 0);
+P5 <== load_bootloader_input(x2 * {BOOTLOADER_INPUTS_PER_PAGE} + {PAGE_INPUTS_OFFSET} + 1 + {WORDS_PER_PAGE} + 4 + {i} * 4 + 1);
+P6 <== load_bootloader_input(x2 * {BOOTLOADER_INPUTS_PER_PAGE} + {PAGE_INPUTS_OFFSET} + 1 + {WORDS_PER_PAGE} + 4 + {i} * 4 + 2);
+P7 <== load_bootloader_input(x2 * {BOOTLOADER_INPUTS_PER_PAGE} + {PAGE_INPUTS_OFFSET} + 1 + {WORDS_PER_PAGE} + 4 + {i} * 4 + 3);
 jump level_{i}_end;
 level_{i}_is_right:
 P4 <=X= P0;
 P5 <=X= P1;
 P6 <=X= P2;
 P7 <=X= P3;
-P0 <== load_bootloader_input(x2 * {BOOTLOADER_INPUTS_PER_PAGE} + {page_inputs_offset} + 1 + {WORDS_PER_PAGE} + 4 + {i} * 4 + 0);
-P1 <== load_bootloader_input(x2 * {BOOTLOADER_INPUTS_PER_PAGE} + {page_inputs_offset} + 1 + {WORDS_PER_PAGE} + 4 + {i} * 4 + 1);
-P2 <== load_bootloader_input(x2 * {BOOTLOADER_INPUTS_PER_PAGE} + {page_inputs_offset} + 1 + {WORDS_PER_PAGE} + 4 + {i} * 4 + 2);
-P3 <== load_bootloader_input(x2 * {BOOTLOADER_INPUTS_PER_PAGE} + {page_inputs_offset} + 1 + {WORDS_PER_PAGE} + 4 + {i} * 4 + 3);
+P0 <== load_bootloader_input(x2 * {BOOTLOADER_INPUTS_PER_PAGE} + {PAGE_INPUTS_OFFSET} + 1 + {WORDS_PER_PAGE} + 4 + {i} * 4 + 0);
+P1 <== load_bootloader_input(x2 * {BOOTLOADER_INPUTS_PER_PAGE} + {PAGE_INPUTS_OFFSET} + 1 + {WORDS_PER_PAGE} + 4 + {i} * 4 + 1);
+P2 <== load_bootloader_input(x2 * {BOOTLOADER_INPUTS_PER_PAGE} + {PAGE_INPUTS_OFFSET} + 1 + {WORDS_PER_PAGE} + 4 + {i} * 4 + 2);
+P3 <== load_bootloader_input(x2 * {BOOTLOADER_INPUTS_PER_PAGE} + {PAGE_INPUTS_OFFSET} + 1 + {WORDS_PER_PAGE} + 4 + {i} * 4 + 3);
 level_{i}_end:
 P0, P1, P2, P3 <== poseidon_gl(P0, P1, P2, P3, P4, P5, P6, P7, P8, P9, P10, P11);
 "#
@@ -274,10 +273,10 @@ memory_hash_ok:
 x9 <=X= 1;
 
 // Load claimed updated page hash into P0-P3
-P0 <== load_bootloader_input(x2 * {BOOTLOADER_INPUTS_PER_PAGE} + {page_inputs_offset} + 1 + {WORDS_PER_PAGE} + 0);
-P1 <== load_bootloader_input(x2 * {BOOTLOADER_INPUTS_PER_PAGE} + {page_inputs_offset} + 1 + {WORDS_PER_PAGE} + 1);
-P2 <== load_bootloader_input(x2 * {BOOTLOADER_INPUTS_PER_PAGE} + {page_inputs_offset} + 1 + {WORDS_PER_PAGE} + 2);
-P3 <== load_bootloader_input(x2 * {BOOTLOADER_INPUTS_PER_PAGE} + {page_inputs_offset} + 1 + {WORDS_PER_PAGE} + 3);
+P0 <== load_bootloader_input(x2 * {BOOTLOADER_INPUTS_PER_PAGE} + {PAGE_INPUTS_OFFSET} + 1 + {WORDS_PER_PAGE} + 0);
+P1 <== load_bootloader_input(x2 * {BOOTLOADER_INPUTS_PER_PAGE} + {PAGE_INPUTS_OFFSET} + 1 + {WORDS_PER_PAGE} + 1);
+P2 <== load_bootloader_input(x2 * {BOOTLOADER_INPUTS_PER_PAGE} + {PAGE_INPUTS_OFFSET} + 1 + {WORDS_PER_PAGE} + 2);
+P3 <== load_bootloader_input(x2 * {BOOTLOADER_INPUTS_PER_PAGE} + {PAGE_INPUTS_OFFSET} + 1 + {WORDS_PER_PAGE} + 3);
 
 // Repeat Merkle proof validation loop to compute updated Merkle root
 jump merkle_proof_validation_loop;
@@ -297,10 +296,10 @@ branch_if_nonzero x2 - x1, start_page_loop;
 end_page_loop:
 
 // Assert final Merkle root is as claimed
-P0 <== load_bootloader_input({memory_hash_start_index} + 4);
-P1 <== load_bootloader_input({memory_hash_start_index} + 5);
-P2 <== load_bootloader_input({memory_hash_start_index} + 6);
-P3 <== load_bootloader_input({memory_hash_start_index} + 7);
+P0 <== load_bootloader_input({MEMORY_HASH_START_INDEX} + 4);
+P1 <== load_bootloader_input({MEMORY_HASH_START_INDEX} + 5);
+P2 <== load_bootloader_input({MEMORY_HASH_START_INDEX} + 6);
+P3 <== load_bootloader_input({MEMORY_HASH_START_INDEX} + 7);
 
 branch_if_nonzero P0 - x5, final_memory_hash_mismatch;
 branch_if_nonzero P1 - x6, final_memory_hash_mismatch;
