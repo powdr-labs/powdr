@@ -68,7 +68,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for Generator<'a, T> {
                 right,
             };
             let ProcessResult { eval_value, block } =
-                self.process(first_row, 0, mutable_state, Some(outer_query));
+                self.process(first_row, 0, mutable_state, Some(outer_query), false);
 
             if eval_value.is_complete() {
                 log::trace!("End processing VM '{}' (successfully)", self.name());
@@ -133,7 +133,7 @@ impl<'a, T: FieldElement> Generator<'a, T> {
         record_start(self.name());
         assert!(self.data.is_empty());
         let first_row = self.compute_partial_first_row(mutable_state);
-        self.data = self.process(first_row, 0, mutable_state, None).block;
+        self.data = self.process(first_row, 0, mutable_state, None, true).block;
         record_end(self.name());
     }
 
@@ -150,6 +150,7 @@ impl<'a, T: FieldElement> Generator<'a, T> {
                 self.data.len() as DegreeType,
                 mutable_state,
                 None,
+                false,
             );
             assert!(eval_value.is_complete());
 
@@ -201,6 +202,7 @@ impl<'a, T: FieldElement> Generator<'a, T> {
         row_offset: DegreeType,
         mutable_state: &mut MutableState<'a, '_, T, Q>,
         outer_query: Option<OuterQuery<'a, T>>,
+        is_main_run: bool,
     ) -> ProcessResult<'a, T> {
         log::trace!(
             "Running main machine from row {row_offset} with the following initial values in the first row:\n{}", first_row.render_values(false, None)
@@ -222,7 +224,7 @@ impl<'a, T: FieldElement> Generator<'a, T> {
         if let Some(outer_query) = outer_query {
             processor = processor.with_outer_query(outer_query);
         }
-        let eval_value = processor.run();
+        let eval_value = processor.run(is_main_run);
         let block = processor.finish();
         ProcessResult { eval_value, block }
     }

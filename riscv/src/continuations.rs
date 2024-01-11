@@ -62,7 +62,7 @@ where
         .into_iter()
         .enumerate()
         .map(|(i, bootloader_inputs)| -> Result<(), E> {
-            log::info!("Running chunk {} / {}...", i + 1, num_chunks);
+            log::info!("\nRunning chunk {} / {}...", i + 1, num_chunks);
             let pipeline = optimized_pipeline_factory();
             let name = format!("{}_chunk_{}", pipeline.name(), i);
             let pipeline = pipeline.with_name(name);

@@ -195,7 +195,7 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
                             let external_values = external_witness_values.remove(name.as_str());
                             if let Some(external_values) = &external_values {
                                 if external_values.len() != analyzed.degree() as usize {
-                                    log::warn!(
+                                    log::debug!(
                                         "External witness values for column {} were only partially provided \
                                          (length is {} but the degree is {})",
                                         name,

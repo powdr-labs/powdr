@@ -1,6 +1,7 @@
 use ast::analyzed::{
     AlgebraicExpression as Expression, AlgebraicReference, Identity, IdentityKind, PolyID,
 };
+use indicatif::{ProgressBar, ProgressStyle};
 use itertools::Itertools;
 use number::{DegreeType, FieldElement};
 use parser_util::lines::indent;
@@ -19,6 +20,8 @@ use super::{Constraints, EvalError, EvalValue, FixedData, MutableState, QueryCal
 
 /// Maximal period checked during loop detection.
 const MAX_PERIOD: usize = 4;
+
+const REPORT_FREQUENCY: u64 = 1_000;
 
 /// A list of identities with a flag whether it is complete.
 struct CompletableIdentities<'a, T: FieldElement> {
@@ -53,10 +56,10 @@ pub struct VmProcessor<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> {
     /// (precomputed once for performance reasons)
     identities_without_next_ref: Vec<&'a Identity<Expression<T>>>,
     last_report: DegreeType,
-    report_frequency: DegreeType,
     last_report_time: Instant,
     row_factory: RowFactory<'a, T>,
     processor: Processor<'a, 'b, 'c, T, Q>,
+    progress_bar: ProgressBar,
 }
 
 impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T, Q> {
@@ -74,7 +77,13 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
             .partition(|identity| identity.contains_next_ref());
         let processor = Processor::new(row_offset, data, mutable_state, fixed_data, witnesses);
 
-        let report_frequency = max(fixed_data.degree / 10, 1000);
+        let progress_bar = ProgressBar::new(fixed_data.degree);
+        progress_bar.set_style(
+            ProgressStyle::with_template(
+                "[{elapsed_precise} (ETA: {eta_precise})] {bar} {percent}% - {msg}",
+            )
+            .unwrap(),
+        );
 
         VmProcessor {
             row_offset,
@@ -84,9 +93,9 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
             identities_without_next_ref: identities_without_next,
             row_factory,
             last_report: 0,
-            report_frequency,
             last_report_time: Instant::now(),
             processor,
+            progress_bar,
         }
     }
 
@@ -101,18 +110,31 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
 
     /// Starting out with a single row (at a given offset), iteratively append rows
     /// until we have exhausted the rows or the latch expression (if available) evaluates to 1.
-    pub fn run(&mut self) -> EvalValue<&'a AlgebraicReference, T> {
+    pub fn run(&mut self, is_main_run: bool) -> EvalValue<&'a AlgebraicReference, T> {
         assert!(self.processor.len() == 1);
+
+        if is_main_run {
+            log::info!("Running main machine for {} rows", self.fixed_data.degree);
+            self.progress_bar.reset();
+            self.progress_bar.set_message("Starting...");
+            self.progress_bar.tick();
+        }
 
         let mut outer_assignments = vec![];
 
         // Are we in an infinite loop and can just re-use the old values?
         let mut looping_period = None;
-        let mut loop_detection_log_level = log::Level::Info;
+        let mut loop_detection_log_level = if is_main_run {
+            log::Level::Info
+        } else {
+            log::Level::Debug
+        };
         let rows_left = self.fixed_data.degree - self.row_offset + 1;
         let mut finalize_start = 1;
         for row_index in 0..rows_left {
-            self.maybe_log_performance(row_index);
+            if is_main_run {
+                self.maybe_log_performance(row_index);
+            }
 
             if (row_index + 1) % 10000 == 0 {
                 // Periodically make sure most rows are finalized.
@@ -120,6 +142,12 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
                 let finalize_end = row_index as usize - MAX_PERIOD;
                 self.processor.finalize_range(finalize_start..finalize_end);
                 finalize_start = finalize_end;
+            }
+
+            if row_index >= rows_left - 2 {
+                // On th last few rows, it is quite normal for the constraints to be different,
+                // so we reduce the log level for loop detection.
+                loop_detection_log_level = log::Level::Debug;
             }
 
             // Check if we are in a loop.
@@ -137,7 +165,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
                 if !self.try_proposed_row(row_index, proposed_row) {
                     log::log!(
                         loop_detection_log_level,
-                        "Looping failed. Trying to generate regularly again. (Use RUST_LOG=debug to see whether this happens more often.)"
+                        "Looping failed. Trying to generate regularly again. (Use RUST_LOG=debug to see whether this happens more often.) {row_index} {rows_left}"
                     );
                     looping_period = None;
                     // For some programs, loop detection will often find loops and then fail.
@@ -178,6 +206,10 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
             self.processor.len() as DegreeType + self.row_offset,
             self.fixed_data.degree + 1
         );
+
+        if is_main_run {
+            self.progress_bar.finish();
+        }
 
         EvalValue::complete(outer_assignments)
     }
@@ -466,7 +498,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
     }
 
     fn maybe_log_performance(&mut self, row_index: DegreeType) {
-        if row_index >= self.last_report + self.report_frequency {
+        if row_index >= self.last_report + REPORT_FREQUENCY {
             let duration = self.last_report_time.elapsed();
             self.last_report_time = Instant::now();
 
@@ -482,12 +514,12 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
                 / identities_count;
 
             let row = row_index + self.row_offset;
-            log::info!(
-                "{row} of {} rows ({}%) - {} rows/s, {identities_per_sec}k identities/s, {progress_percentage}% progress",
-                self.fixed_data.degree,
-                row * 100 / self.fixed_data.degree,
-                self.report_frequency as u128 * 1_000_000 / duration.as_micros()
+            self.progress_bar.set_position(row);
+            let message = format!(
+                "{} rows/s, {identities_per_sec}k identities/s, {progress_percentage}% progress",
+                REPORT_FREQUENCY as u128 * 1_000_000 / duration.as_micros()
             );
+            self.progress_bar.set_message(message);
             self.last_report = row_index;
         }
     }
