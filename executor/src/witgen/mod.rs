@@ -157,6 +157,14 @@ impl<'a, 'b, T: FieldElement, Q: QueryCallback<T>> WitnessGenerator<'a, 'b, T, Q
         record_end(OUTER_CODE_NAME);
         reset_and_print_profile_summary();
 
+        log::debug!("Publics:");
+        for (name, public_declaration) in self.analyzed.public_declarations_in_source_order() {
+            let poly_name = &public_declaration.referenced_poly_name();
+            let poly_index = public_declaration.index;
+            let value = columns[poly_name][poly_index as usize];
+            log::debug!("  {name:>30}: {value}");
+        }
+
         // Order columns according to the order of declaration.
         self.analyzed
             .committed_polys_in_source_order()
