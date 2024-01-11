@@ -106,6 +106,20 @@ impl<T> Analyzed<T> {
             .collect()
     }
 
+    pub fn public_declarations_in_source_order(&self) -> Vec<(&String, &PublicDeclaration)> {
+        self.source_order
+            .iter()
+            .filter_map(move |statement| {
+                if let StatementIdentifier::PublicDeclaration(name) = statement {
+                    if let Some(public_declaration) = self.public_declarations.get(name) {
+                        return Some((name, public_declaration));
+                    }
+                }
+                None
+            })
+            .collect()
+    }
+
     fn declaration_type_count(&self, poly_type: PolynomialType) -> usize {
         self.definitions
             .iter()
