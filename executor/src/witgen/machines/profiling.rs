@@ -55,7 +55,7 @@ pub fn reset_and_print_profile_summary() {
         // Taking the events out is actually important, because there might be
         // multiple (consecutive) runs of witgen in the same thread.
         let event_log = std::mem::take(&mut (*event_log.borrow_mut()));
-        log::info!("\n == Witgen profile ({} events)", event_log.len());
+        log::debug!("\n == Witgen profile ({} events)", event_log.len());
 
         // Aggregate time spent in each machine.
         let mut time_by_machine = BTreeMap::new();
@@ -115,15 +115,15 @@ pub fn reset_and_print_profile_summary() {
 
         for (id, duration) in time_by_machine {
             let percentage = (duration.as_secs_f64() / total_time.as_secs_f64()) * 100.0;
-            log::info!(
+            log::debug!(
                 "  {:>5.1}% ({:>8.1?}): {}",
                 percentage,
                 duration,
                 id_to_name[&id]
             );
         }
-        log::info!("  ---------------------------");
-        log::info!("    ==> Total: {:?}", total_time);
-        log::info!("\n");
+        log::debug!("  ---------------------------");
+        log::debug!("    ==> Total: {:?}", total_time);
+        log::debug!("\n");
     });
 }
