@@ -121,9 +121,28 @@ submachine_init:
         r#"
 // START OF BOOTLOADER
 
+// During the execution of the bootloader, registers are used as follows:
+// - x1: Number of pages (constant throughout the execution)
+// - x2: Current page index
+// - x3: Currenr page number
+// - x4: The ith bit of the page number (during Merkle proof validation)
+// - x5-x8: The current memory hash
+// - x9: 0: Merkle tree validation phase; 1: Merkle tree update phase
+// - P0-P11: Hash registers:
+//   - P0-P3 will usually contain the "current" hash (either in the context
+//     of page hashing or Merkle proof validation)
+//   - P4-P7 will contain some other inputs to the hash function
+//   - P8-P11 will contain the capacity elements (0 throughout the execution)
+
 // Number of pages
 x1 <== load_bootloader_input({num_pages_index});
 x1 <== wrap(x1);
+
+// Initialize memory hash
+x5 <== load_bootloader_input({memory_hash_start_index});
+x6 <== load_bootloader_input({memory_hash_start_index} + 1);
+x7 <== load_bootloader_input({memory_hash_start_index} + 2);
+x8 <== load_bootloader_input({memory_hash_start_index} + 3);
 
 // Current page index
 x2 <=X= 0;
@@ -179,9 +198,26 @@ P0, P1, P2, P3 <== poseidon_gl(P0, P1, P2, P3, P4, P5, P6, P7, P8, P9, P10, P11)
 // == Merkle proof validation ==
 // We commit to the memory content by hashing it in pages of {WORDS_PER_PAGE} words each.
 // These hashes are stored in a binary Merkle tree of depth {MERKLE_TREE_DEPTH}.
-// At this point, the current page hash is in P0-P3. In order to validate the Merkle proof,
-// we need to re-compute the Merkle root from the prover-provided sibling page hashes.
+// At this point, the current page hash is in P0-P3.
+// 
+// Now, we re-computed the Merkle root twice, in two phases:
+// - First using the current page hash, as computed by the bootloader. The prover provides
+//   the sibling values. At the end of this phase, the re-computed Merkle root is asserted
+//   to be equal to the "current" Merkle root, stored in x5-x8.
+// - Second, we repeat the same process (using the *same* siblings!), but using the claimed
+//   updated page hash. At the end of this phase, the re-computed Merkle root stored as the
+//   "current" Merkle root in x5-x8.
 //
+// So, any Merkle proof is expected to be based on the Merkle tree with all previous pages
+// already updated. In the shutdown routine, we will validate that the final page hashes
+// are as claimed. Also, at the end of the bootloader, we will assert that the final Merkle
+// root is as claimed.
+
+// Set phase to validation
+x9 <=X= 0;
+
+merkle_proof_validation_loop:
+
 // This is an unrolled loop that for each level:
 // - If the ith bit of the page number is 0:
 //   - Load sibling into registers P4-P7
@@ -222,20 +258,36 @@ P0, P1, P2, P3 <== poseidon_gl(P0, P1, P2, P3, P4, P5, P6, P7, P8, P9, P10, P11)
 
     bootloader.push_str(&format!(
         r#"
+branch_if_nonzero x9, update_memory_hash;
+
 // Assert Correct Merkle Root
-// At this point, the re-computed Merkle root is in P0-P3 and P4-P7 are not needed anymore.
-P4 <== load_bootloader_input({memory_hash_start_index});
-P5 <== load_bootloader_input({memory_hash_start_index} + 1);
-P6 <== load_bootloader_input({memory_hash_start_index} + 2);
-P7 <== load_bootloader_input({memory_hash_start_index} + 3);
-branch_if_nonzero P0 - P4, memory_hash_mismatch;
-branch_if_nonzero P1 - P5, memory_hash_mismatch;
-branch_if_nonzero P2 - P6, memory_hash_mismatch;
-branch_if_nonzero P3 - P7, memory_hash_mismatch;
+branch_if_nonzero P0 - x5, memory_hash_mismatch;
+branch_if_nonzero P1 - x6, memory_hash_mismatch;
+branch_if_nonzero P2 - x7, memory_hash_mismatch;
+branch_if_nonzero P3 - x8, memory_hash_mismatch;
 jump memory_hash_ok;
 memory_hash_mismatch:
 fail;
 memory_hash_ok:
+
+// Set phase to update
+x9 <=X= 1;
+
+// Load claimed updated page hash into P0-P3
+P0 <== load_bootloader_input(x2 * {BOOTLOADER_INPUTS_PER_PAGE} + {page_inputs_offset} + 1 + {WORDS_PER_PAGE} + 0);
+P1 <== load_bootloader_input(x2 * {BOOTLOADER_INPUTS_PER_PAGE} + {page_inputs_offset} + 1 + {WORDS_PER_PAGE} + 1);
+P2 <== load_bootloader_input(x2 * {BOOTLOADER_INPUTS_PER_PAGE} + {page_inputs_offset} + 1 + {WORDS_PER_PAGE} + 2);
+P3 <== load_bootloader_input(x2 * {BOOTLOADER_INPUTS_PER_PAGE} + {page_inputs_offset} + 1 + {WORDS_PER_PAGE} + 3);
+
+// Repeat Merkle proof validation loop to compute updated Merkle root
+jump merkle_proof_validation_loop;
+
+update_memory_hash:
+
+x5 <=X= P0;
+x6 <=X= P1;
+x7 <=X= P2;
+x8 <=X= P3;
 
 // Increment page index
 x2 <=X= x2 + 1;
@@ -243,6 +295,22 @@ x2 <=X= x2 + 1;
 branch_if_nonzero x2 - x1, start_page_loop;
 
 end_page_loop:
+
+// Assert final Merkle root is as claimed
+P0 <== load_bootloader_input({memory_hash_start_index} + 4);
+P1 <== load_bootloader_input({memory_hash_start_index} + 5);
+P2 <== load_bootloader_input({memory_hash_start_index} + 6);
+P3 <== load_bootloader_input({memory_hash_start_index} + 7);
+
+branch_if_nonzero P0 - x5, final_memory_hash_mismatch;
+branch_if_nonzero P1 - x6, final_memory_hash_mismatch;
+branch_if_nonzero P2 - x7, final_memory_hash_mismatch;
+branch_if_nonzero P3 - x8, final_memory_hash_mismatch;
+jump final_memory_hash_ok;
+final_memory_hash_mismatch:
+fail;
+final_memory_hash_ok:
+
 
 // Initialize registers, starting with index 0
 "#
