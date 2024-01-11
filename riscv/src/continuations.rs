@@ -195,11 +195,15 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
 
         let mut bootloader_inputs = register_values.clone();
         bootloader_inputs.extend(merkle_tree.root_hash());
+        // For now, just claim that the page doesn't change.
+        bootloader_inputs.extend(merkle_tree.root_hash());
         bootloader_inputs.push((accessed_pages.len() as u64).into());
         for &page_index in accessed_pages.iter() {
             bootloader_inputs.push(page_index.into());
-            let (page, proof) = merkle_tree.get(page_index as usize);
+            let (page, page_hash, proof) = merkle_tree.get(page_index as usize);
             bootloader_inputs.extend(page);
+            // For now, just claim that the page doesn't change.
+            bootloader_inputs.extend(page_hash);
             for sibling in proof {
                 bootloader_inputs.extend(sibling);
             }

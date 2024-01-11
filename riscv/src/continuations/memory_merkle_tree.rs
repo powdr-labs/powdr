@@ -116,7 +116,7 @@ impl<T: FieldElement, const N_LEAVES_LOG: usize, const WORDS_PER_PAGE: usize>
     }
 
     /// Returns the data and Merkle proof for a given page.
-    pub fn get(&self, page_index: usize) -> (&[T; WORDS_PER_PAGE], Vec<&[T; 4]>) {
+    pub fn get(&self, page_index: usize) -> (&[T; WORDS_PER_PAGE], &[T; 4], Vec<&[T; 4]>) {
         let mut proof = vec![];
         for (level, index) in self.iter_path(page_index).take(N_LEAVES_LOG) {
             let sibling_index = index ^ 1;
@@ -124,7 +124,9 @@ impl<T: FieldElement, const N_LEAVES_LOG: usize, const WORDS_PER_PAGE: usize>
         }
         assert_eq!(proof.len(), N_LEAVES_LOG);
 
-        (&self.data[page_index], proof)
+        let page_hash = &self.hashes[N_LEAVES_LOG][page_index];
+
+        (&self.data[page_index], page_hash, proof)
     }
 
     /// Yields (level, index) pairs for the path from the given page to the root.
@@ -241,46 +243,50 @@ mod test {
         let root_hash = tree.root_hash();
 
         // Get page 0
-        let (page, proof) = tree.get(0);
+        let (page, page_hash, proof) = tree.get(0);
         let expected_page = [g(0), g(0), g(0), g(5), g(1), g(0), g(0), g(0)];
         assert_eq!(page, &expected_page);
+        assert_eq!(page_hash, &hash_page(&[0, 0, 0, 5, 1, 0, 0, 0]));
 
         // Verify Merkle proof
         assert_eq!(proof.len(), 2);
-        let computed_hash = hash_cap0(&hash_page(&[0, 0, 0, 5, 1, 0, 0, 0]), proof[0]);
+        let computed_hash = hash_cap0(&page_hash, proof[0]);
         let computed_hash = hash_cap0(&computed_hash, proof[1]);
         assert_eq!(computed_hash, *root_hash);
 
         // Get page 1
-        let (page, proof) = tree.get(1);
+        let (page, page_hash, proof) = tree.get(1);
         let expected_page = [g(0), g(0), g(0), g(2), g(0), g(0), g(0), g(0)];
         assert_eq!(page, &expected_page);
+        assert_eq!(page_hash, &hash_page(&[0, 0, 0, 2, 0, 0, 0, 0]));
 
         // Verify Merkle proof
         assert_eq!(proof.len(), 2);
-        let computed_hash = hash_cap0(proof[0], &hash_page(&[0, 0, 0, 2, 0, 0, 0, 0]));
+        let computed_hash = hash_cap0(proof[0], &page_hash);
         let computed_hash = hash_cap0(&computed_hash, proof[1]);
         assert_eq!(computed_hash, *root_hash);
 
         // Get page 2
-        let (page, proof) = tree.get(2);
+        let (page, page_hash, proof) = tree.get(2);
         let expected_page = [g(0), g(0), g(0), g(0), g(0), g(0), g(0), g(3)];
         assert_eq!(page, &expected_page);
+        assert_eq!(page_hash, &hash_page(&[0, 0, 0, 0, 0, 0, 0, 3]));
 
         // Verify Merkle proof
         assert_eq!(proof.len(), 2);
-        let computed_hash = hash_cap0(&hash_page(&[0, 0, 0, 0, 0, 0, 0, 3]), proof[0]);
+        let computed_hash = hash_cap0(&page_hash, proof[0]);
         let computed_hash = hash_cap0(proof[1], &computed_hash);
         assert_eq!(computed_hash, *root_hash);
 
         // Get page 3
-        let (page, proof) = tree.get(3);
+        let (page, page_hash, proof) = tree.get(3);
         let expected_page = [g(0), g(0), g(0), g(0), g(0), g(0), g(4), g(0)];
         assert_eq!(page, &expected_page);
+        assert_eq!(page_hash, &hash_page(&[0, 0, 0, 0, 0, 0, 4, 0]));
 
         // Verify Merkle proof
         assert_eq!(proof.len(), 2);
-        let computed_hash = hash_cap0(proof[0], &hash_page(&[0, 0, 0, 0, 0, 0, 4, 0]));
+        let computed_hash = hash_cap0(proof[0], &page_hash);
         let computed_hash = hash_cap0(proof[1], &computed_hash);
         assert_eq!(computed_hash, *root_hash);
     }
