@@ -166,18 +166,18 @@ mod test {
         #[test]
         fn reparse() {
             let input = r#"
-constant %N = 16;
+    constant %N = 16;
 namespace Fibonacci(%N);
-constant %last_row = (%N - 1);
-let bool = [(|X| (X * (1 - X)))][0];
-let one_hot = (|i, which| match i { which => 1, _ => 0, });
-pol constant ISLAST(i) { one_hot(i, %last_row) };
-pol commit arr[8];
-pol commit x, y;
-{ (x + 2), y' } in { ISLAST, 7 };
-y { (x + 2), y' } is ISLAST { ISLAST, 7 };
-((x - 2) * y) = 8;
-public out = y(%last_row);"#;
+    constant %last_row = (%N - 1);
+    let bool = [(|X| (X * (1 - X)))][0];
+    let one_hot = (|i, which| match i { which => 1, _ => 0, });
+    pol constant ISLAST(i) { one_hot(i, %last_row) };
+    pol commit arr[8];
+    pol commit x, y;
+    { (x + 2), y' } in { ISLAST, 7 };
+    y { (x + 2), y' } is ISLAST { ISLAST, 7 };
+    ((x - 2) * y) = 8;
+    public out = y(%last_row);"#;
             let printed = format!(
                 "{}",
                 parse::<GoldilocksField>(Some("input"), input).unwrap()
@@ -197,7 +197,7 @@ public out = y(%last_row);"#;
 
         #[test]
         fn reparse_arrays() {
-            let input = "pol commit y[3];\n(y - 2) = 0;\n(y[2] - 2) = 0;\npublic out = y[1](2);";
+            let input = "    pol commit y[3];\n    (y - 2) = 0;\n    (y[2] - 2) = 0;\n    public out = y[1](2);";
             let printed = format!(
                 "{}",
                 parse::<GoldilocksField>(Some("input"), input).unwrap()
