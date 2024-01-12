@@ -89,5 +89,5 @@ Arbitrary parentheses are allowed.
 The following example illustrates how you can still use the generic language:
 
 ```
-{{#include ../../../test_data/pil/generic_to_algebraic.pil}}
+{{#include ../../../test_data/pil/book/generic_to_algebraic.pil}}
 ```
