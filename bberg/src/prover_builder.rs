@@ -139,9 +139,14 @@ impl ProverBuilder for BBFiles {
         using Sumcheck = sumcheck::SumcheckProver<Flavor>;
     
         auto sumcheck = Sumcheck(key->circuit_size, transcript);
-        auto alpha = transcript->get_challenge(\"alpha\");
-    
-        sumcheck_output = sumcheck.prove(prover_polynomials, relation_parameters, alpha);
+
+        FF alpha = transcript->get_challenge(\"Sumcheck:alpha\");
+        std::vector<FF> gate_challenges(numeric::get_msb(key->circuit_size));
+
+        for (size_t idx = 0; idx < gate_challenges.size(); idx++) {{
+            gate_challenges[idx] = transcript->get_challenge(\"Sumcheck:gate_challenge_\" + std::to_string(idx));
+        }}
+        sumcheck_output = sumcheck.prove(prover_polynomials, relation_parameters, alpha, gate_challenges);
     }}
 
 
@@ -229,7 +234,6 @@ fn includes_cpp(name: &str) -> String {
     #include \"barretenberg/commitment_schemes/commitment_key.hpp\"
     #include \"barretenberg/honk/proof_system/logderivative_library.hpp\"
     #include \"barretenberg/honk/proof_system/permutation_library.hpp\"
-    #include \"barretenberg/honk/proof_system/power_polynomial.hpp\"
     #include \"barretenberg/polynomials/polynomial.hpp\"
     #include \"barretenberg/proof_system/library/grand_product_library.hpp\"
     #include \"barretenberg/relations/lookup_relation.hpp\"

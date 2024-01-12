@@ -69,8 +69,7 @@ impl FlavorBuilder for BBFiles {
             "
 {includes}
 
-namespace proof_system::honk {{
-namespace flavor {{
+namespace proof_system::honk::flavor {{
 
 class {name}Flavor {{
     public: 
@@ -102,7 +101,6 @@ class {name}Flavor {{
     {transcript}
 }};
 
-}} // namespace proof_system::honk::flavor
 }} // namespace proof_system::honk
     
     
@@ -120,7 +118,7 @@ fn flavor_includes(name: &str, relation_file_names: &[String], permutations: &[S
     format!(
         "
 #pragma once
-#include \"../relation_definitions_fwd.hpp\"
+#include \"../relation_definitions.hpp\"
 #include \"barretenberg/ecc/curves/bn254/g1.hpp\"
 #include \"barretenberg/commitment_schemes/kzg/kzg.hpp\"
 #include \"barretenberg/polynomials/barycentric.hpp\"
@@ -174,6 +172,7 @@ fn create_class_aliases() -> &'static str {
         using CommitmentHandle = G1::affine_element;
         using CommitmentKey = pcs::CommitmentKey<Curve>;
         using VerifierCommitmentKey = pcs::VerifierCommitmentKey<Curve>;
+        using RelationSeparator = FF;
     "#
 }
 
