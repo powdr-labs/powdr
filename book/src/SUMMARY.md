@@ -11,6 +11,7 @@
 - [CLI](./cli/README.md)
 - [asm](./asm/README.md)
     - [Modules](./asm/modules.md)
+    - [Declarations](./asm/declarations.md)
     - [Machines](./asm/machines.md)
     - [Registers](./asm/registers.md)
     - [Functions](./asm/functions.md)

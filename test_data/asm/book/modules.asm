@@ -9,6 +9,17 @@ mod submodule_in_folder;
 use submodule::Other as SubmoduleOther;
 use submodule_in_folder::Other as FolderSubmoduleOther;
 
+let zero = 0;
+
+// we can also define modules inline
+mod utils {
+    // Each module has a fresh symbol list. Every external symbol needs to be imported,
+    // even from the parent module.
+    use super::zero;
+
+    let one = zero + 1;
+}
+
 machine Main {
     // use a machine from another module by relative path
     my_module::Other a;
