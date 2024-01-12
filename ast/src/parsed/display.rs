@@ -333,15 +333,17 @@ impl<T: Display> Display for PilStatement<T> {
             PilStatement::Namespace(_, name, poly_length) => {
                 write!(f, "namespace {name}({poly_length});")
             }
-            PilStatement::LetStatement(_, name, None) => write!(f, "let {name};"),
-            PilStatement::LetStatement(_, name, Some(expr)) => write!(f, "let {name} = {expr};"),
+            PilStatement::LetStatement(_, name, None) => write!(f, "    let {name};"),
+            PilStatement::LetStatement(_, name, Some(expr)) => {
+                write!(f, "    let {name} = {expr};")
+            }
             PilStatement::PolynomialDefinition(_, name, value) => {
-                write!(f, "pol {name} = {value};")
+                write!(f, "    pol {name} = {value};")
             }
             PilStatement::PublicDeclaration(_, name, poly, array_index, index) => {
                 write!(
                     f,
-                    "public {name} = {poly}{}({index});",
+                    "    public {name} = {poly}{}({index});",
                     array_index
                         .as_ref()
                         .map(|i| format!("[{i}]"))
@@ -349,39 +351,41 @@ impl<T: Display> Display for PilStatement<T> {
                 )
             }
             PilStatement::PolynomialConstantDeclaration(_, names) => {
-                write!(f, "pol constant {};", names.iter().format(", "))
+                write!(f, "    pol constant {};", names.iter().format(", "))
             }
             PilStatement::PolynomialConstantDefinition(_, name, definition) => {
-                write!(f, "pol constant {name}{definition};")
+                write!(f, "    pol constant {name}{definition};")
             }
             PilStatement::PolynomialCommitDeclaration(_, names, value) => {
                 write!(
                     f,
-                    "pol commit {}{};",
+                    "    pol commit {}{};",
                     names.iter().format(", "),
                     value.as_ref().map(|v| format!("{v}")).unwrap_or_default()
                 )
             }
             PilStatement::PolynomialIdentity(_, expression) => {
                 if let Expression::BinaryOperation(left, BinaryOperator::Sub, right) = expression {
-                    write!(f, "{left} = {right};")
+                    write!(f, "    {left} = {right};")
                 } else {
-                    write!(f, "{expression} = 0;")
+                    write!(f, "    {expression} = 0;")
                 }
             }
-            PilStatement::PlookupIdentity(_, left, right) => write!(f, "{left} in {right};"),
-            PilStatement::PermutationIdentity(_, left, right) => write!(f, "{left} is {right};"),
+            PilStatement::PlookupIdentity(_, left, right) => write!(f, "    {left} in {right};"),
+            PilStatement::PermutationIdentity(_, left, right) => {
+                write!(f, "    {left} is {right};")
+            }
             PilStatement::ConnectIdentity(_, left, right) => write!(
                 f,
-                "{{ {} }} connect {{ {} }};",
+                "    {{ {} }} connect {{ {} }};",
                 format_expressions(left),
                 format_expressions(right)
             ),
             PilStatement::ConstantDefinition(_, name, value) => {
-                write!(f, "constant {name} = {value};")
+                write!(f, "    constant {name} = {value};")
             }
             PilStatement::Expression(_, e) => {
-                write!(f, "{e};")
+                write!(f, "    {e};")
             }
         }
     }
