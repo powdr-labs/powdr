@@ -7,13 +7,12 @@ use std::{
 use itertools::Itertools;
 use powdr_ast::{
     analyzed::{Expression, FunctionValueDefinition, Reference, Symbol},
-    evaluate_binary_operation, evaluate_unary_operation,
     parsed::{
         display::quote, BinaryOperator, FunctionCall, LambdaExpression, MatchArm, MatchPattern,
         UnaryOperator,
     },
 };
-use powdr_number::FieldElement;
+use powdr_number::{BigInt, FieldElement};
 
 /// Evaluates an expression given a hash map of definitions.
 pub fn evaluate_expression<'a, T: FieldElement>(
@@ -36,6 +35,8 @@ pub fn evaluate_function_call<'a, T: FieldElement, C: Custom>(
     function: Value<'a, T, C>,
     arguments: Vec<Rc<Value<'a, T, C>>>,
     symbols: &impl SymbolLookup<'a, T, C>,
+    // TODO maybe we should also make this return an Rc<Value>.
+    // Otherwise we might have to clone big nested objects.
 ) -> Result<Value<'a, T, C>, EvalError> {
     match function {
         Value::BuiltinFunction(b) => internal::evaluate_builtin_function(b, arguments),
@@ -101,7 +102,9 @@ impl Display for EvalError {
 
 #[derive(Clone, PartialEq, Debug)]
 pub enum Value<'a, T, C> {
-    Number(T),
+    Bool(bool),
+    Integer(num_bigint::BigInt),
+    FieldElement(T),
     String(String),
     Tuple(Vec<Self>),
     Array(Vec<Self>),
@@ -110,25 +113,57 @@ pub enum Value<'a, T, C> {
     Custom(C),
 }
 
-impl<'a, T, C> From<T> for Value<'a, T, C> {
+impl<'a, T: FieldElement, C> From<T> for Value<'a, T, C> {
     fn from(value: T) -> Self {
-        Value::Number(value)
+        Value::FieldElement(value)
     }
 }
 
-// TODO somehow, implementing TryFrom or TryInto did not work.
-
 impl<'a, T: FieldElement, C: Custom> Value<'a, T, C> {
-    pub fn try_to_number(self) -> Result<T, EvalError> {
+    /// Tries to convert the value to a field element. For integers, this only works
+    /// if the integer is non-negative and less than the modulus.
+    pub fn try_to_field_element(self) -> Result<T, EvalError> {
         match self {
-            Value::Number(x) => Ok(x),
-            v => Err(EvalError::TypeError(format!("Expected number but got {v}"))),
+            Value::FieldElement(x) => Ok(x),
+            Value::Integer(x) => {
+                if let Some(x) = x.to_biguint() {
+                    if x < T::modulus().to_arbitrary_integer() {
+                        Ok(T::from(x))
+                    } else {
+                        Err(EvalError::TypeError(format!(
+                            "Expected field element but got integer outside field range: {x}"
+                        )))
+                    }
+                } else {
+                    Err(EvalError::TypeError(format!(
+                        "Expected field element but got negative integer: {x}"
+                    )))
+                }
+            }
+            v => Err(EvalError::TypeError(format!(
+                "Expected field element but got {v}"
+            ))),
+        }
+    }
+
+    /// Tries to convert the result into a integer.
+    /// Everything else than Value::Integer results in an error.
+    pub fn try_to_integer(self) -> Result<num_bigint::BigInt, EvalError> {
+        match self {
+            Value::Integer(x) => Ok(x),
+            Value::FieldElement(x) => Ok(x.to_arbitrary_integer().into()),
+            v => Err(EvalError::TypeError(format!(
+                "Expected integer but got {v}: {}",
+                v.type_name()
+            ))),
         }
     }
 
     pub fn type_name(&self) -> String {
         match self {
-            Value::Number(_) => "num".to_string(),
+            Value::Bool(_) => "bool".to_string(),
+            Value::Integer(_) => "int".to_string(),
+            Value::FieldElement(_) => "fe".to_string(),
             Value::String(_) => "string".to_string(),
             Value::Tuple(elements) => {
                 format!("({})", elements.iter().map(|e| e.type_name()).format(", "))
@@ -143,22 +178,32 @@ impl<'a, T: FieldElement, C: Custom> Value<'a, T, C> {
     }
 }
 
-const BUILTINS: [(&str, BuiltinFunction); 3] = [
+const BUILTINS: [(&str, BuiltinFunction); 6] = [
     ("std::array::len", BuiltinFunction::ArrayLen),
     ("std::check::panic", BuiltinFunction::Panic),
+    ("std::convert::fe", BuiltinFunction::ToFe),
+    ("std::convert::int", BuiltinFunction::ToInt),
     ("std::debug::print", BuiltinFunction::Print),
+    ("std::field::modulus", BuiltinFunction::Modulus),
 ];
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum BuiltinFunction {
     /// std::array::len: [_] -> int, returns the length of an array
     ArrayLen,
+    /// std::field::modulus: -> int, returns the field modulus as int
+    Modulus,
     /// std::check::panic: string -> !, fails evaluation and uses its parameter for error reporting.
     /// Does not return.
     Panic,
+    /// std::dbg::print: string -> [], prints its argument on stdout.
     /// std::debug::print: string -> [], prints its argument on stdout.
     /// Returns an empty array.
     Print,
+    /// std::convert::int: fe/int -> int, converts fe to int
+    ToInt,
+    /// std::convert::fe: int/fe -> fe, converts int to fe
+    ToFe,
 }
 
 pub trait Custom: Display + fmt::Debug + Clone + PartialEq {
@@ -168,7 +213,9 @@ pub trait Custom: Display + fmt::Debug + Clone + PartialEq {
 impl<'a, T: Display, C: Custom> Display for Value<'a, T, C> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Value::Number(x) => write!(f, "{x}"),
+            Value::Bool(b) => write!(f, "{b}"),
+            Value::Integer(x) => write!(f, "{x}"),
+            Value::FieldElement(x) => write!(f, "{x}"),
             Value::String(s) => write!(f, "{}", quote(s)),
             Value::Tuple(items) => write!(f, "({})", items.iter().format(", ")),
             Value::Array(elements) => write!(f, "[{}]", elements.iter().format(", ")),
@@ -294,6 +341,8 @@ pub trait SymbolLookup<'a, T, C> {
 }
 
 mod internal {
+    use num_traits::{Signed, ToPrimitive};
+
     use super::*;
 
     pub fn evaluate<'a, T: FieldElement, C: Custom>(
@@ -304,7 +353,9 @@ mod internal {
         Ok(match expr {
             Expression::Reference(reference) => evaluate_reference(reference, locals, symbols)?,
             Expression::PublicReference(name) => symbols.lookup_public_reference(name)?,
-            Expression::Number(n) => Value::Number(*n),
+            // TODO Default is to convert literals to integers.
+            // We need to change the parser here to parse integers, not field elements.
+            Expression::Number(n) => Value::Integer(n.to_arbitrary_integer().into()),
             Expression::String(s) => Value::String(s.clone()),
             Expression::Tuple(items) => Value::Tuple(
                 items
@@ -334,8 +385,23 @@ mod internal {
                         l.push_str(r);
                         Value::String(std::mem::take(l))
                     }
-                    (Value::Number(l), _, Value::Number(r)) => {
-                        Value::Number(evaluate_binary_operation(*l, *op, *r))
+                    (Value::Bool(l), BinaryOperator::LogicalOr, Value::Bool(r)) => {
+                        Value::Bool(*l || *r)
+                    }
+                    (Value::Bool(l), BinaryOperator::LogicalAnd, Value::Bool(r)) => {
+                        Value::Bool(*l && *r)
+                    }
+                    (Value::Integer(l), _, Value::Integer(r)) => {
+                        evaluate_binary_operation_integer(l, *op, r)
+                    }
+                    (Value::FieldElement(l), _, Value::FieldElement(r)) => {
+                        evaluate_binary_operation_field(*l, *op, *r)
+                    }
+                    (Value::FieldElement(l), BinaryOperator::Pow, Value::Integer(r)) => {
+                        let exp = r.to_u64().ok_or_else(|| {
+                            EvalError::TypeError(format!("Exponent in {l}**{r} is too large."))
+                        })?;
+                        Value::FieldElement(l.pow(exp.into()))
                     }
                     _ => Err(EvalError::TypeError(format!(
                         "Operator {op} not supported on types: {left}: {}, {right}: {}",
@@ -344,10 +410,12 @@ mod internal {
                     )))?,
                 }
             }
-            Expression::UnaryOperation(op, expr) => match evaluate(expr, locals, symbols)? {
-                Value::Custom(inner) => symbols.eval_unary_operation(*op, inner)?,
-                Value::Number(n) => Value::Number(evaluate_unary_operation(*op, n)),
-                inner => Err(EvalError::TypeError(format!(
+            Expression::UnaryOperation(op, expr) => match (op, evaluate(expr, locals, symbols)?) {
+                (_, Value::Custom(inner)) => symbols.eval_unary_operation(*op, inner)?,
+                (UnaryOperator::Minus, Value::FieldElement(e)) => Value::FieldElement(-e),
+                (UnaryOperator::LogicalNot, Value::Bool(b)) => Value::Bool(!b),
+                (UnaryOperator::Minus, Value::Integer(n)) => Value::Integer(-n),
+                (_, inner) => Err(EvalError::TypeError(format!(
                     "Operator {op} not supported on types: {inner}: {}",
                     inner.type_name()
                 )))?,
@@ -363,18 +431,24 @@ mod internal {
             Expression::IndexAccess(index_access) => {
                 match evaluate(&index_access.array, locals, symbols)? {
                     Value::Array(elements) => {
-                        let index =
-                            evaluate(&index_access.index, locals, symbols)?.try_to_number()?;
-                        if index.to_integer() >= (elements.len() as u64).into() {
-                            Err(EvalError::OutOfBounds(format!(
-                                "Index access out of bounds: Tried to access element {index} of array of size {} in: {expr}.",
-                                elements.len()
-                            )))?;
+                        match evaluate(&index_access.index, locals, symbols)? {
+                            Value::Integer(index)
+                                if index.is_negative()
+                                    || index >= (elements.len() as u64).into() =>
+                            {
+                                Err(EvalError::OutOfBounds(format!(
+                                    "Index access out of bounds: Tried to access element {index} of array of size {} in: {expr}.",
+                                    elements.len()
+                                )))?
+                            }
+                            Value::Integer(index) => {
+                                elements.into_iter().nth(index.try_into().unwrap()).unwrap()
+                            }
+                            index => Err(EvalError::TypeError(format!(
+                                    "Expected integer for array index access but got {index}: {}",
+                                    index.type_name()
+                            )))?,
                         }
-                        elements
-                            .into_iter()
-                            .nth(index.to_degree() as usize)
-                            .unwrap()
                     }
                     e => Err(EvalError::TypeError(format!("Expected array, but got {e}")))?,
                 }
@@ -398,7 +472,15 @@ mod internal {
                         MatchPattern::Pattern(p) => {
                             // TODO this uses PartialEq. As soon as we have proper match patterns
                             // instead of value, we can remove the PartialEq requirement on Value.
-                            (evaluate(p, locals, symbols).unwrap() == v).then_some(value)
+                            let p = evaluate(p, locals, symbols).unwrap();
+                            if p == v {
+                                Some(value)
+                            } else {
+                                match (p.try_to_integer(), v.clone().try_to_integer()) {
+                                    (Ok(p), Ok(v)) if p == v => Some(value),
+                                    _ => None,
+                                }
+                            }
                         }
                         MatchPattern::CatchAll => Some(value),
                     })
@@ -406,8 +488,13 @@ mod internal {
                 evaluate(body, locals, symbols)?
             }
             Expression::IfExpression(if_expr) => {
-                let v = evaluate(&if_expr.condition, locals, symbols)?.try_to_number()?;
-                let body = if !v.is_zero() {
+                let condition = match evaluate(&if_expr.condition, locals, symbols)? {
+                    Value::Bool(b) => Ok(b),
+                    x => Err(EvalError::TypeError(format!(
+                        "Expected boolean value but got {x}"
+                    ))),
+                }?;
+                let body = if condition {
                     &if_expr.body
                 } else {
                     &if_expr.else_body
@@ -445,8 +532,11 @@ mod internal {
     ) -> Result<Value<'_, T, C>, EvalError> {
         let params = match b {
             BuiltinFunction::ArrayLen => 1,
+            BuiltinFunction::Modulus => 0,
             BuiltinFunction::Panic => 1,
             BuiltinFunction::Print => 1,
+            BuiltinFunction::ToFe => 1,
+            BuiltinFunction::ToInt => 1,
         };
 
         if arguments.len() != params {
@@ -457,7 +547,7 @@ mod internal {
         }
         Ok(match b {
             BuiltinFunction::ArrayLen => match arguments.pop().unwrap().as_ref() {
-                Value::Array(arr) => Value::Number((arr.len() as u64).into()),
+                Value::Array(arr) => Value::Integer((arr.len() as u64).into()),
                 v => Err(EvalError::TypeError(format!(
                     "Expected array for std::array::len, but got {v}: {}",
                     v.type_name()
@@ -480,7 +570,58 @@ mod internal {
                 print!("{msg}");
                 Value::Array(Default::default())
             }
+            BuiltinFunction::ToInt => {
+                let arg = arguments.pop().unwrap().as_ref().clone();
+                Value::Integer(arg.try_to_integer()?)
+            }
+            BuiltinFunction::ToFe => {
+                let arg = arguments.pop().unwrap().as_ref().clone();
+                Value::FieldElement(arg.try_to_field_element()?)
+            }
+            BuiltinFunction::Modulus => Value::Integer(T::modulus().to_arbitrary_integer().into()),
         })
+    }
+}
+
+pub fn evaluate_binary_operation_field<'a, T: FieldElement, C>(
+    left: T,
+    op: BinaryOperator,
+    right: T,
+) -> Value<'a, T, C> {
+    match op {
+        BinaryOperator::Add => Value::FieldElement(left + right),
+        BinaryOperator::Sub => Value::FieldElement(left - right),
+        BinaryOperator::Mul => Value::FieldElement(left * right),
+        BinaryOperator::Equal => Value::Bool(left == right),
+        BinaryOperator::NotEqual => Value::Bool(left != right),
+        _ => panic!("Invalid operation {op} on field element"),
+    }
+}
+
+pub fn evaluate_binary_operation_integer<'a, T, C>(
+    left: &num_bigint::BigInt,
+    op: BinaryOperator,
+    right: &num_bigint::BigInt,
+) -> Value<'a, T, C> {
+    match op {
+        BinaryOperator::Add => Value::Integer(left + right),
+        BinaryOperator::Sub => Value::Integer(left - right),
+        BinaryOperator::Mul => Value::Integer(left * right),
+        BinaryOperator::Div => Value::Integer(left / right),
+        BinaryOperator::Pow => Value::Integer(left.pow(u32::try_from(right).unwrap())),
+        BinaryOperator::Mod => Value::Integer(left % right),
+        BinaryOperator::BinaryAnd => Value::Integer(left & right),
+        BinaryOperator::BinaryXor => Value::Integer(left ^ right),
+        BinaryOperator::BinaryOr => Value::Integer(left | right),
+        BinaryOperator::ShiftLeft => Value::Integer(left << u32::try_from(right).unwrap()),
+        BinaryOperator::ShiftRight => Value::Integer(left >> u32::try_from(right).unwrap()),
+        BinaryOperator::Less => Value::Bool(left < right),
+        BinaryOperator::LessEqual => Value::Bool(left <= right),
+        BinaryOperator::Equal => Value::Bool(left == right),
+        BinaryOperator::NotEqual => Value::Bool(left != right),
+        BinaryOperator::GreaterEqual => Value::Bool(left >= right),
+        BinaryOperator::Greater => Value::Bool(left > right),
+        _ => panic!("Invalid operator {op} on integers"),
     }
 }
 

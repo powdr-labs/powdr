@@ -159,10 +159,7 @@ impl<T: FieldElement> Condenser<T> {
         evaluator::evaluate(e, &self)
             .and_then(|result| match result {
                 Value::Custom(Condensate::Expression(expr)) => Ok(expr),
-                Value::Number(n) => Ok(n.into()),
-                _ => Err(EvalError::TypeError(format!(
-                    "Expected expression, but got {result}"
-                ))),
+                x => Ok(x.try_to_field_element()?.into()),
             })
             .unwrap_or_else(|err| {
                 panic!("Error reducing expression to constraint:\nExpression: {e}\nError: {err:?}")
@@ -269,13 +266,13 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T, Condensate<T>> for &'a Condenser<T
             }) if poly_id.ptype == PolynomialType::Constant => {
                 let arguments = if next {
                     assert_eq!(arguments.len(), 1);
-                    let Value::Number(arg) = *arguments[0] else {
+                    let Value::Integer(ref arg) = *arguments[0] else {
                         return Err(EvalError::TypeError(
-                            "Expected numeric argument when evaluating function with next ref."
+                            "Expected integer argument when evaluating function with next ref."
                                 .to_string(),
                         ));
                     };
-                    vec![Rc::new(Value::Number(arg + 1.into()))]
+                    vec![Rc::new(Value::Integer(arg + num_bigint::BigInt::from(1)))]
                 } else {
                     arguments.to_vec()
                 };
@@ -403,7 +400,9 @@ impl<'a, T: FieldElement> TryFrom<Value<'a, T, Self>> for Condensate<T> {
 
     fn try_from(value: Value<'a, T, Self>) -> Result<Self, Self::Error> {
         match value {
-            Value::Number(n) => Ok(Condensate::Expression(n.into())),
+            Value::FieldElement(_) | Value::Integer(_) => {
+                Ok(Condensate::Expression(value.try_to_field_element()?.into()))
+            }
             Value::Custom(v) => Ok(v),
             value => Err(EvalError::TypeError(format!(
                 "Expected algebraic expression, got {value}"

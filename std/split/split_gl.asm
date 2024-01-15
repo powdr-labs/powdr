@@ -4,7 +4,7 @@ machine SplitGL(RESET, _) {
     operation split in_acc -> output_low, output_high;
 
     // Latch and operation ID
-    col fixed RESET(i) { i % 8 == 7 };
+    col fixed RESET(i) { if i % 8 == 7 { 1 } else { 0 } };
 
     // 1. Decompose the input into bytes
 
@@ -13,7 +13,7 @@ machine SplitGL(RESET, _) {
     // previous block)
     // A hint is provided because automatic witness generation does not
     // understand step 3 to figure out that the byte decomposition is unique.
-    col witness bytes(i) query ("hint", (in_acc(i + 1) >> (((i + 1) % 8) * 8)) % 0xff);
+    col witness bytes(i) query ("hint", (std::convert::int(in_acc(i + 1)) >> (((i + 1) % 8) * 8)) % 0xff);
     // Puts the bytes together to form the input
     col witness in_acc;
     // Factors to multiply the bytes by
@@ -58,8 +58,8 @@ machine SplitGL(RESET, _) {
     // Byte comparison block machine
     col fixed P_A(i) { i % 256 };
     col fixed P_B(i) { (i >> 8) % 256 };
-    col fixed P_LT(i) { (P_A(i) < P_B(i)) };
-    col fixed P_GT(i) { (P_A(i) > P_B(i)) };
+    col fixed P_LT(i) { if std::convert::int(P_A(i)) < std::convert::int(P_B(i)) { 1 } else { 0 } };
+    col fixed P_GT(i) { if std::convert::int(P_A(i)) > std::convert::int(P_B(i)) { 1 } else { 0 } };
 
     // Compare the current byte with the corresponding byte of the maximum value.
     col witness lt;

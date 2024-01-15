@@ -384,7 +384,7 @@ where
             &ExpressionProcessor::new(self.driver).process_expression(expr),
             self.driver.definitions(),
         )?
-        .try_to_number()
+        .try_to_field_element()
     }
 
     fn expression_processor(&self) -> ExpressionProcessor<T, D> {

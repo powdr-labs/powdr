@@ -10,10 +10,10 @@ constant %N = 2**20;
 
 namespace Global(%N);
     col fixed L1 = [1] + [0]*;
-    col fixed LLAST(i) { i == %N - 1 };
+    col fixed LLAST(i) { if i == %N - 1 { 1 } else { 0 } };
     col fixed BYTE(i) { i & 0xff };
     col fixed BYTE2(i) { i & 0xffff };
-    col fixed BYTE_2A(i) { BYTE2(i) >> 8 };
+    col fixed BYTE_2A(i) { (i & 0xffff) >> 8 };
     // TODO it might be confusing to remember which one is the array index
     // and which one is the polynomial parameter.
     // Here, k is the array index and i is the polynomial parameter.

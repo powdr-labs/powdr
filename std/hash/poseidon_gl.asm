@@ -30,8 +30,14 @@ machine PoseidonGL(LASTBLOCK, operation_id) {
     constant %rowsPerHash = %nRoundsF + %nRoundsP + 1;
 
     pol constant L0 = [1] + [0]*;
-    pol constant FIRSTBLOCK(i) { (i % %rowsPerHash) == 0 };
-    pol constant LASTBLOCK(i) { (i % %rowsPerHash) == %rowsPerHash - 1 };
+    pol constant FIRSTBLOCK(i) { match i % %rowsPerHash {
+        0 => 1,
+        _ => 0
+    }};
+    pol constant LASTBLOCK(i) { match i % %rowsPerHash {
+        %rowsPerHash - 1 => 1,
+        _ => 0
+    }};
     // Like LASTBLOCK, but also 1 in the last row of the table
     // Specified this way because we can't access the degree in the match statement
     pol constant LAST = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]* + [1];
