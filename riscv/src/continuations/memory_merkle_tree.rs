@@ -73,10 +73,10 @@ impl<T: FieldElement, const N_LEAVES_LOG: usize, const WORDS_PER_PAGE: usize>
         hash
     }
 
-    /// Applies updates, given an iterator of (memory address, value) pairs.
-    /// Memory addresses are assumed to be word-aligned.
-    pub fn update(&mut self, updates: impl Iterator<Item = (u32, u32)>) {
-        // Organize by page
+    pub fn organize_updates_by_page(
+        &self,
+        updates: impl Iterator<Item = (u32, u32)>,
+    ) -> BTreeMap<usize, Vec<(usize, u32)>> {
         let mut updates_by_page: BTreeMap<usize, Vec<(usize, u32)>> = BTreeMap::new();
         for (addr, value) in updates {
             assert!(addr % BYTES_PER_WORD as u32 == 0);
@@ -88,15 +88,26 @@ impl<T: FieldElement, const N_LEAVES_LOG: usize, const WORDS_PER_PAGE: usize>
                 .or_default()
                 .push((index_within_page, value));
         }
+        updates_by_page
+    }
 
-        // Update each page
-        for (page_index, updates) in updates_by_page {
-            let page = &mut self.data[page_index];
-            for (index, value) in updates {
-                page[index] = T::from(value);
-            }
-            self.update_hashes(page_index)
+    /// Applies updates, given an iterator of (memory address, value) pairs.
+    /// Memory addresses are assumed to be word-aligned.
+    #[allow(dead_code)]
+    pub fn update(&mut self, updates: impl Iterator<Item = (u32, u32)>) {
+        for (page_index, updates) in self.organize_updates_by_page(updates) {
+            self.update_page(page_index, updates.into_iter());
         }
+    }
+
+    /// Applies updates to a single page, given an iterator of (word index, value) pairs.
+    /// Word indices addresses are assumed to be word-aligned.
+    pub fn update_page(&mut self, page_index: usize, updates: impl Iterator<Item = (usize, u32)>) {
+        let page = &mut self.data[page_index];
+        for (index, value) in updates {
+            page[index] = T::from(value);
+        }
+        self.update_hashes(page_index)
     }
 
     /// Updates the hashes of a page and all its ancestors.
