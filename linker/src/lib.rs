@@ -4,11 +4,13 @@ use analysis::utils::parse_pil_statement;
 use ast::{
     object::{Location, PILGraph},
     parsed::{
-        asm::{Part, SymbolPath},
+        asm::AbsoluteSymbolPath,
+        asm::SymbolPath,
         build::{direct_reference, index_access, namespaced_reference},
         Expression, PILFile, PilStatement, SelectedExpressions,
     },
 };
+use itertools::Itertools;
 use number::FieldElement;
 
 const DEFAULT_DEGREE: u64 = 1024;
@@ -27,113 +29,155 @@ pub fn link<T: FieldElement>(graph: PILGraph<T>) -> Result<PILFile<T>, Vec<Strin
 
     let mut errors = vec![];
 
-    let pil = graph
-        .objects
+    // Extract the utilities and sort them into namespaces where possible.
+    let mut current_namespace = Default::default();
+    let mut pil = graph
+        .definitions
         .into_iter()
-        .flat_map(|(location, object)| {
-            let mut pil = vec![];
+        .sorted_by_cached_key(|(namespace, _)| {
+            let mut namespace = namespace.clone();
+            let name = namespace.pop();
+            // Group by namespace and then sort by name.
+            (namespace, name)
+        })
+        .flat_map(|(mut namespace, e)| {
+            let name = namespace.pop().unwrap();
+            let def = PilStatement::LetStatement(0, name.to_string(), Some(e));
 
-            if let Some(degree) = object.degree {
-                if degree != main_degree {
-                    errors.push(format!(
-                        "Machine {location} should have degree {main_degree}, found {}",
-                        degree
-                    ))
-                }
+            // If there is a namespace change, insert a namespace statement.
+            if current_namespace != namespace {
+                current_namespace = namespace.clone();
+                vec![
+                    PilStatement::Namespace(
+                        0,
+                        namespace.relative_to(&AbsoluteSymbolPath::default()),
+                        Expression::Number(T::from(main_degree)),
+                    ),
+                    def,
+                ]
+            } else {
+                vec![def]
             }
+        })
+        .collect::<Vec<_>>();
+    pil.extend(graph.objects.into_iter().flat_map(|(location, object)| {
+        let mut pil = vec![];
 
-            // create a namespace for this object
-            pil.push(PilStatement::Namespace(
-                0,
-                SymbolPath::from_parts(vec![Part::Named(location.to_string())]),
-                Expression::Number(T::from(main_degree)),
-            ));
-            pil.extend(object.pil);
-            for link in object.links {
-                // add the link to this namespace as a lookup
+        if let Some(degree) = object.degree {
+            if degree != main_degree {
+                errors.push(format!(
+                    "Machine {location} should have degree {main_degree}, found {}",
+                    degree
+                ))
+            }
+        }
 
-                let from = link.from;
-                let to = link.to;
+        // create a namespace for this object
+        pil.push(PilStatement::Namespace(
+            0,
+            SymbolPath::from_identifier(location.to_string()),
+            Expression::Number(T::from(main_degree)),
+        ));
+        pil.extend(object.pil);
+        for link in object.links {
+            // add the link to this namespace as a lookup
 
-                // the lhs is `instr_flag { inputs, outputs }`
-                let lhs = SelectedExpressions {
-                    selector: Some(from.flag),
-                    expressions: to.operation.id.map(Expression::Number).into_iter()
-                        .chain(
-                            from.params
-                                .inputs
-                                .params
-                                .into_iter()
-                                .chain(
-                                    from.params
-                                        .outputs
-                                        .into_iter()
-                                        .flat_map(|o| o.params.into_iter()),
-                                )
-                                .map(|i| {
-                                    assert!(i.ty.is_none());
-                                    (i.name, i.index)
-                                })
-                                .map(|(name, index)| index_access(direct_reference(name), index)),
-                        )
-                        .collect(),
-                };
-                // the rhs is `(instr_flag * latch) { inputs, outputs }`
-                // get the instruction in the submachine
+            let from = link.from;
+            let to = link.to;
 
-                let params = to.operation.params;
+            // the lhs is `instr_flag { inputs, outputs }`
+            let lhs = SelectedExpressions {
+                selector: Some(from.flag),
+                expressions: to
+                    .operation
+                    .id
+                    .map(Expression::Number)
+                    .into_iter()
+                    .chain(
+                        from.params
+                            .inputs
+                            .params
+                            .into_iter()
+                            .chain(
+                                from.params
+                                    .outputs
+                                    .into_iter()
+                                    .flat_map(|o| o.params.into_iter()),
+                            )
+                            .map(|i| {
+                                assert!(i.ty.is_none());
+                                (i.name, i.index)
+                            })
+                            .map(|(name, index)| index_access(direct_reference(name), index)),
+                    )
+                    .collect(),
+            };
+            // the rhs is `(instr_flag * latch) { inputs, outputs }`
+            // get the instruction in the submachine
 
-                let to_namespace = to.machine.location.clone().to_string();
+            let params = to.operation.params;
 
-                let rhs = SelectedExpressions {
-                    selector: Some(namespaced_reference(to_namespace.clone(), to.machine.latch.unwrap())),
-                    expressions: to.machine.operation_id.map(|operation_id| namespaced_reference(
-                        to_namespace.clone(),
-                        operation_id,
-                    )).into_iter()
+            let to_namespace = to.machine.location.clone().to_string();
+
+            let rhs = SelectedExpressions {
+                selector: Some(namespaced_reference(
+                    to_namespace.clone(),
+                    to.machine.latch.unwrap(),
+                )),
+                expressions: to
+                    .machine
+                    .operation_id
+                    .map(|operation_id| namespaced_reference(to_namespace.clone(), operation_id))
+                    .into_iter()
                     .chain(
                         params
                             .inputs
                             .params
                             .iter()
                             .chain(params.outputs.iter().flat_map(|o| o.params.iter()))
-                            .map(|i| index_access(namespaced_reference(to_namespace.clone(), &i.name), i.index)),
+                            .map(|i| {
+                                index_access(
+                                    namespaced_reference(to_namespace.clone(), &i.name),
+                                    i.index,
+                                )
+                            }),
                     )
                     .collect(),
-                };
+            };
 
-                let lookup = PilStatement::PlookupIdentity(0, lhs, rhs);
-                pil.push(lookup);
-            }
+            let lookup = PilStatement::PlookupIdentity(0, lhs, rhs);
+            pil.push(lookup);
+        }
 
-            if location == Location::main() {
-                if let Some(main_operation) = graph
-                    .entry_points
-                    .iter()
-                    .find(|f| f.name == MAIN_OPERATION_NAME)
-                {
-                    let main_operation_id = main_operation.id;
-                    let operation_id = main_machine.operation_id.clone();
-                    match (operation_id, main_operation_id) {
-                        (Some(operation_id), Some(main_operation_id)) => {
-                            // call the main operation by initialising `operation_id` to that of the main operation
-                            let linker_first_step = "_linker_first_step";
-                            pil.extend([
-                                parse_pil_statement(&format!("col fixed {linker_first_step} = [1] + [0]*")),
-                                parse_pil_statement(&format!(
-                                    "{linker_first_step} * ({operation_id} - {main_operation_id}) = 0"
-                                )),
-                            ]);
-                        }
-                        (None, None) => {}
-                        _ => unreachable!()
+        if location == Location::main() {
+            if let Some(main_operation) = graph
+                .entry_points
+                .iter()
+                .find(|f| f.name == MAIN_OPERATION_NAME)
+            {
+                let main_operation_id = main_operation.id;
+                let operation_id = main_machine.operation_id.clone();
+                match (operation_id, main_operation_id) {
+                    (Some(operation_id), Some(main_operation_id)) => {
+                        // call the main operation by initialising `operation_id` to that of the main operation
+                        let linker_first_step = "_linker_first_step";
+                        pil.extend([
+                            parse_pil_statement(&format!(
+                                "col fixed {linker_first_step} = [1] + [0]*"
+                            )),
+                            parse_pil_statement(&format!(
+                                "{linker_first_step} * ({operation_id} - {main_operation_id}) = 0"
+                            )),
+                        ]);
                     }
+                    (None, None) => {}
+                    _ => unreachable!(),
                 }
             }
+        }
 
-            pil
-        })
-        .collect();
+        pil
+    }));
 
     if !errors.is_empty() {
         Err(errors)
@@ -175,6 +219,7 @@ mod test {
                 latch: Some("latch".into()),
             },
             entry_points: vec![],
+            definitions: Default::default(),
             objects: [
                 (Location::main(), Object::default().with_degree(main_degree)),
                 (

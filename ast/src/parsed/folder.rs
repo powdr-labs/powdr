@@ -25,6 +25,11 @@ pub trait Folder<T> {
                     SymbolValue::Machine(machine) => self.fold_machine(machine).map(From::from),
                     SymbolValue::Import(import) => self.fold_import(import).map(From::from),
                     SymbolValue::Module(module) => self.fold_module(module).map(From::from),
+                    SymbolValue::Expression(e) => {
+                        // Not folding expressions by default because the ExpressionFolder
+                        // is a different trait.
+                        Ok(SymbolValue::Expression(e))
+                    }
                 }
                 .map(|value| ModuleStatement::SymbolDefinition(SymbolDefinition { value, ..d })),
             })

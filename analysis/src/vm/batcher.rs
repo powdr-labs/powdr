@@ -4,7 +4,8 @@ use std::marker::PhantomData;
 
 use ast::{
     asm_analysis::{
-        AnalysisASMFile, BatchMetadata, FunctionStatement, Incompatible, IncompatibleSet, Machine,
+        AnalysisASMFile, BatchMetadata, FunctionStatement, Incompatible, IncompatibleSet, Item,
+        Machine,
     },
     parsed::asm::AbsoluteSymbolPath,
 };
@@ -136,7 +137,10 @@ impl<T: FieldElement> RomBatcher<T> {
     }
 
     pub fn batch(&mut self, mut asm_file: AnalysisASMFile<T>) -> AnalysisASMFile<T> {
-        for (name, machine) in asm_file.machines.iter_mut() {
+        for (name, machine) in asm_file.items.iter_mut().filter_map(|(n, m)| match m {
+            Item::Machine(m) => Some((n, m)),
+            Item::Expression(_) => None,
+        }) {
             self.extract_batches(name, machine);
         }
 

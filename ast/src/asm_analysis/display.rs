@@ -15,7 +15,7 @@ use super::{
     AnalysisASMFile, AssignmentStatement, CallableSymbol, CallableSymbolDefinitionRef,
     DebugDirective, DegreeStatement, FunctionBody, FunctionStatement, FunctionStatements,
     Incompatible, IncompatibleSet, Instruction, InstructionDefinitionStatement,
-    InstructionStatement, LabelStatement, LinkDefinitionStatement, Machine,
+    InstructionStatement, Item, LabelStatement, LinkDefinitionStatement, Machine,
     RegisterDeclarationStatement, RegisterTy, Return, Rom, SubmachineDeclaration,
 };
 
@@ -23,7 +23,7 @@ impl<T: Display> Display for AnalysisASMFile<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         let mut current_path = AbsoluteSymbolPath::default();
 
-        for (path, machine) in &self.machines {
+        for (path, item) in &self.items {
             let relative_path = path.relative_to(&current_path);
             let name = relative_path.name();
             // Skip the name (last) part
@@ -40,7 +40,16 @@ impl<T: Display> Display for AnalysisASMFile<T> {
                 }
             }
 
-            write_indented_by(f, format!("machine {name}{machine}"), current_path.len())?;
+            match item {
+                Item::Machine(machine) => {
+                    write_indented_by(f, format!("machine {name}{machine}"), current_path.len())?;
+                }
+                Item::Expression(expression) => write_indented_by(
+                    f,
+                    format!("let {name} = {expression};\n"),
+                    current_path.len(),
+                )?,
+            }
         }
         for i in (0..current_path.len()).rev() {
             write_indented_by(f, "}\n", i)?;
@@ -284,7 +293,7 @@ mod test {
     #[test]
     fn display_asm_analysis_file() {
         let file = AnalysisASMFile::<GoldilocksField> {
-            machines: [
+            items: [
                 "::x::Y",
                 "::x::r::T",
                 "::x::f::Y",
@@ -294,7 +303,7 @@ mod test {
                 "::X",
             ]
             .into_iter()
-            .map(|s| (parse_absolute_path(s), Machine::default()))
+            .map(|s| (parse_absolute_path(s), Item::Machine(Machine::default())))
             .collect(),
         };
         assert_eq!(

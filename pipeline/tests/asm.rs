@@ -306,6 +306,14 @@ fn intermediate_nested() {
     gen_estark_proof(f, Default::default());
 }
 
+#[test]
+fn pil_at_module_level() {
+    let f = "asm/pil_at_module_level.asm";
+    verify_asm::<GoldilocksField>(f, Default::default());
+    gen_halo2_proof(f, Default::default());
+    gen_estark_proof(f, Default::default());
+}
+
 mod book {
     use super::*;
     use number::GoldilocksField;

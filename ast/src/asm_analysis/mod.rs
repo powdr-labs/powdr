@@ -666,6 +666,23 @@ pub struct SubmachineDeclaration {
     pub ty: AbsoluteSymbolPath,
 }
 
+/// An item that is part of the module tree after all modules,
+/// imports and references have been resolved.
+#[derive(Clone, Debug)]
+pub enum Item<T> {
+    Machine(Machine<T>),
+    Expression(Expression<T>),
+}
+
+impl<T> Item<T> {
+    pub fn try_to_machine(&self) -> Option<&Machine<T>> {
+        match self {
+            Item::Machine(m) => Some(m),
+            Item::Expression(_) => None,
+        }
+    }
+}
+
 #[derive(Clone, Default, Debug)]
 pub struct Machine<T> {
     /// The degree if any, i.e. the number of rows in instances of this machine type
@@ -774,11 +791,21 @@ pub struct Rom<T> {
 
 #[derive(Default, Debug)]
 pub struct AnalysisASMFile<T> {
-    pub machines: BTreeMap<AbsoluteSymbolPath, Machine<T>>,
+    pub items: BTreeMap<AbsoluteSymbolPath, Item<T>>,
 }
+
 impl<T> AnalysisASMFile<T> {
-    pub fn get_machine(&self, path: AbsoluteSymbolPath) -> &Machine<T> {
-        self.machines.get(&path).unwrap()
+    pub fn machines(&self) -> impl Iterator<Item = (&AbsoluteSymbolPath, &Machine<T>)> {
+        self.items.iter().filter_map(|(n, m)| match m {
+            Item::Machine(m) => Some((n, m)),
+            Item::Expression(_) => None,
+        })
+    }
+    pub fn machines_mut(&mut self) -> impl Iterator<Item = (&AbsoluteSymbolPath, &mut Machine<T>)> {
+        self.items.iter_mut().filter_map(|(n, m)| match m {
+            Item::Machine(m) => Some((n, m)),
+            Item::Expression(_) => None,
+        })
     }
 }
 

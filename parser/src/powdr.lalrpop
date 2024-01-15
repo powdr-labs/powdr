@@ -23,6 +23,7 @@ pub ASMModule: ASMModule<T> = {
 
 ModuleStatement: ModuleStatement<T> = {
     <MachineDefinition> => ModuleStatement::SymbolDefinition(<>),
+    <LetStatementAtModuleLevel> => ModuleStatement::SymbolDefinition(<>),
     <Import> => ModuleStatement::SymbolDefinition(<>),
     <ModuleDefinition> => ModuleStatement::SymbolDefinition(<>),
 }
@@ -53,6 +54,10 @@ pub SymbolPath: SymbolPath = {
 Part: Part = {
     "super" => Part::Super,
     <name:Identifier> => Part::Named(name),
+}
+
+LetStatementAtModuleLevel: SymbolDefinition<T> = {
+    "let" <name:Identifier> "=" <value:Expression> ";" => SymbolDefinition { name, value: SymbolValue::Expression(value) }
 }
 
 // ---------------------------- PIL part -----------------------------

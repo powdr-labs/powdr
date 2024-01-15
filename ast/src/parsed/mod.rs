@@ -5,7 +5,10 @@ pub mod folder;
 pub mod utils;
 pub mod visitor;
 
-use std::ops;
+use std::{
+    iter::{empty, once},
+    ops,
+};
 
 use number::{DegreeType, FieldElement};
 
@@ -52,6 +55,89 @@ pub enum PilStatement<T> {
     Expression(usize, Expression<T>),
 }
 
+impl<T> PilStatement<T> {
+    /// If the statement is a symbol definition, returns all (local) names of defined symbols.
+    pub fn symbol_definition_names(&self) -> Box<dyn Iterator<Item = &String> + '_> {
+        match self {
+            PilStatement::PolynomialDefinition(_, name, _)
+            | PilStatement::PolynomialConstantDefinition(_, name, _)
+            | PilStatement::ConstantDefinition(_, name, _)
+            | PilStatement::PublicDeclaration(_, name, _, _, _)
+            | PilStatement::LetStatement(_, name, _) => Box::new(once(name)),
+            PilStatement::PolynomialConstantDeclaration(_, polynomials)
+            | PilStatement::PolynomialCommitDeclaration(_, polynomials, _) => {
+                Box::new(polynomials.iter().map(|p| &p.name))
+            }
+
+            PilStatement::Include(_, _)
+            | PilStatement::Namespace(_, _, _)
+            | PilStatement::PolynomialIdentity(_, _)
+            | PilStatement::PlookupIdentity(_, _, _)
+            | PilStatement::PermutationIdentity(_, _, _)
+            | PilStatement::ConnectIdentity(_, _, _)
+            | PilStatement::Expression(_, _) => Box::new(empty()),
+        }
+    }
+
+    /// Returns an iterator over all (top-level) expressions in this statement.
+    pub fn expressions(&self) -> Box<dyn Iterator<Item = &Expression<T>> + '_> {
+        match self {
+            PilStatement::PlookupIdentity(_, left, right)
+            | PilStatement::PermutationIdentity(_, left, right) => {
+                Box::new(left.expressions().chain(right.expressions()))
+            }
+            PilStatement::ConnectIdentity(_start, left, right) => {
+                Box::new(left.iter().chain(right.iter()))
+            }
+            PilStatement::Expression(_, e)
+            | PilStatement::Namespace(_, _, e)
+            | PilStatement::PolynomialDefinition(_, _, e)
+            | PilStatement::PolynomialIdentity(_, e)
+            | PilStatement::ConstantDefinition(_, _, e)
+            | PilStatement::LetStatement(_, _, Some(e)) => Box::new(once(e)),
+
+            PilStatement::PublicDeclaration(_, _, _, i, e) => Box::new(i.iter().chain(once(e))),
+
+            PilStatement::PolynomialConstantDefinition(_, _, fundef)
+            | PilStatement::PolynomialCommitDeclaration(_, _, Some(fundef)) => fundef.expressions(),
+            PilStatement::PolynomialCommitDeclaration(_, _, None)
+            | PilStatement::Include(_, _)
+            | PilStatement::PolynomialConstantDeclaration(_, _)
+            | PilStatement::LetStatement(_, _, None) => Box::new(empty()),
+        }
+    }
+
+    /// Returns an iterator over all (top-level) expressions in this statement.
+    pub fn expressions_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression<T>> + '_> {
+        match self {
+            PilStatement::PlookupIdentity(_, left, right)
+            | PilStatement::PermutationIdentity(_, left, right) => {
+                Box::new(left.expressions_mut().chain(right.expressions_mut()))
+            }
+            PilStatement::ConnectIdentity(_start, left, right) => {
+                Box::new(left.iter_mut().chain(right.iter_mut()))
+            }
+            PilStatement::Expression(_, e)
+            | PilStatement::Namespace(_, _, e)
+            | PilStatement::PolynomialDefinition(_, _, e)
+            | PilStatement::PolynomialIdentity(_, e)
+            | PilStatement::ConstantDefinition(_, _, e)
+            | PilStatement::LetStatement(_, _, Some(e)) => Box::new(once(e)),
+
+            PilStatement::PublicDeclaration(_, _, _, i, e) => Box::new(i.iter_mut().chain(once(e))),
+
+            PilStatement::PolynomialConstantDefinition(_, _, fundef)
+            | PilStatement::PolynomialCommitDeclaration(_, _, Some(fundef)) => {
+                fundef.expressions_mut()
+            }
+            PilStatement::PolynomialCommitDeclaration(_, _, None)
+            | PilStatement::Include(_, _)
+            | PilStatement::PolynomialConstantDeclaration(_, _)
+            | PilStatement::LetStatement(_, _, None) => Box::new(empty()),
+        }
+    }
+}
+
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub struct SelectedExpressions<Expr> {
     pub selector: Option<Expr>,
@@ -64,6 +150,18 @@ impl<Expr> Default for SelectedExpressions<Expr> {
             selector: Default::default(),
             expressions: Default::default(),
         }
+    }
+}
+
+impl<Expr> SelectedExpressions<Expr> {
+    /// Returns an iterator over all (top-level) expressions in this SelectedExpressions.
+    pub fn expressions(&self) -> impl Iterator<Item = &Expr> {
+        self.selector.iter().chain(self.expressions.iter())
+    }
+
+    /// Returns an iterator over all (top-level) expressions in this SelectedExpressions.
+    pub fn expressions_mut(&mut self) -> impl Iterator<Item = &mut Expr> {
+        self.selector.iter_mut().chain(self.expressions.iter_mut())
     }
 }
 
@@ -276,6 +374,24 @@ pub enum FunctionDefinition<T> {
     Expression(Expression<T>),
 }
 
+impl<T> FunctionDefinition<T> {
+    /// Returns an iterator over all (top-level) expressions.
+    pub fn expressions(&self) -> Box<dyn Iterator<Item = &Expression<T>> + '_> {
+        match self {
+            FunctionDefinition::Array(ae) => ae.expressions(),
+            FunctionDefinition::Query(e) | FunctionDefinition::Expression(e) => Box::new(once(e)),
+        }
+    }
+
+    /// Returns an iterator over all (top-level) expressions.
+    pub fn expressions_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression<T>> + '_> {
+        match self {
+            FunctionDefinition::Array(ae) => ae.expressions_mut(),
+            FunctionDefinition::Query(e) | FunctionDefinition::Expression(e) => Box::new(once(e)),
+        }
+    }
+}
+
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub enum ArrayExpression<T> {
     Value(Vec<Expression<T>>),
@@ -332,6 +448,26 @@ impl<T> ArrayExpression<T> {
         );
         // Fill up the remaining space with the repeated array
         degree - len
+    }
+
+    /// Returns an iterator over all (top-level) expressions.
+    pub fn expressions(&self) -> Box<dyn Iterator<Item = &Expression<T>> + '_> {
+        match self {
+            ArrayExpression::Value(v) | ArrayExpression::RepeatedValue(v) => Box::new(v.iter()),
+            ArrayExpression::Concat(left, right) => {
+                Box::new(left.expressions().chain(right.expressions()))
+            }
+        }
+    }
+
+    /// Returns all (top-level) expressions.
+    pub fn expressions_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression<T>> + '_> {
+        match self {
+            ArrayExpression::Value(v) | ArrayExpression::RepeatedValue(v) => Box::new(v.iter_mut()),
+            ArrayExpression::Concat(left, right) => {
+                Box::new(left.expressions_mut().chain(right.expressions_mut()))
+            }
+        }
     }
 
     /// The number of times the `*` operator is used

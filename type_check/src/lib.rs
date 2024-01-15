@@ -6,7 +6,7 @@ use ast::{
     asm_analysis::{
         AnalysisASMFile, AssignmentStatement, CallableSymbolDefinitions, DebugDirective,
         DegreeStatement, FunctionBody, FunctionStatements, FunctionSymbol, Instruction,
-        InstructionDefinitionStatement, InstructionStatement, LabelStatement,
+        InstructionDefinitionStatement, InstructionStatement, Item, LabelStatement,
         LinkDefinitionStatement, Machine, OperationSymbol, RegisterDeclarationStatement,
         RegisterTy, Return, SubmachineDeclaration,
     },
@@ -25,7 +25,7 @@ pub fn check<T: FieldElement>(file: ASMProgram<T>) -> Result<AnalysisASMFile<T>,
     let ctx = AbsoluteSymbolPath::default();
     let machines = TypeChecker::default().check_module(file.main, &ctx)?;
     Ok(AnalysisASMFile {
-        machines: machines.into_iter().collect(),
+        items: machines.into_iter().collect(),
     })
 }
 
@@ -253,10 +253,10 @@ impl<T: FieldElement> TypeChecker<T> {
         &mut self,
         module: ASMModule<T>,
         ctx: &AbsoluteSymbolPath,
-    ) -> Result<BTreeMap<AbsoluteSymbolPath, Machine<T>>, Vec<String>> {
+    ) -> Result<BTreeMap<AbsoluteSymbolPath, Item<T>>, Vec<String>> {
         let mut errors = vec![];
 
-        let mut res: BTreeMap<AbsoluteSymbolPath, Machine<T>> = BTreeMap::default();
+        let mut res: BTreeMap<AbsoluteSymbolPath, Item<T>> = BTreeMap::default();
 
         for m in module.statements {
             match m {
@@ -268,7 +268,7 @@ impl<T: FieldElement> TypeChecker<T> {
                                     errors.extend(e);
                                 }
                                 Ok(machine) => {
-                                    res.insert(ctx.with_part(&name), machine);
+                                    res.insert(ctx.with_part(&name), Item::Machine(machine));
                                 }
                             };
                         }
@@ -292,6 +292,9 @@ impl<T: FieldElement> TypeChecker<T> {
                                     res.extend(m);
                                 }
                             };
+                        }
+                        asm::SymbolValue::Expression(e) => {
+                            res.insert(ctx.clone().with_part(&name), Item::Expression(e));
                         }
                     }
                 }
