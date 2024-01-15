@@ -209,12 +209,14 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
         // Note that while we do know the accessed pages, we don't yet know the hashes
         // of those pages at the end of the execution, because that will depend on how
         // long the bootloader runs.
-        // So, we do a bit of a hack: For now, we'll just pretend that pages don't change, i.e.,
-        // the updated page hash is equal to the current page hash and the updated root hash
-        // is equal to the current root hash.
-        // After simulating the chunk execution, we'll replace the updated page hashes, root hash,
-        // and Merkle proofs with the actual values.
+        // Similarly, we don't yet know the final register values.
+        // So, we do a bit of a hack: For now, we'll just pretend that the state does not change, i.e.:
+        // - The final register values are equal to the initial register values.
+        // - The updated page hashes are equal to the current page hashes.
+        // - The updated root hash is equal to the current root hash.
+        // After simulating the chunk execution, we'll replace those values with the actual values.
         let mut bootloader_inputs = register_values.clone();
+        bootloader_inputs.extend(register_values.clone());
         bootloader_inputs.extend(merkle_tree.root_hash());
         bootloader_inputs.extend(merkle_tree.root_hash());
         bootloader_inputs.push((accessed_pages.len() as u64).into());
@@ -281,6 +283,16 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
                 .copy_from_slice(page_hash);
         }
 
+        // Update initial register values for the next chunk.
+        register_values = REGISTER_NAMES
+            .iter()
+            .map(|&r| *chunk_trace[r].last().unwrap())
+            .collect();
+
+        // Replace final register values of the current chunk
+        bootloader_inputs[REGISTER_NAMES.len()..2 * REGISTER_NAMES.len()]
+            .copy_from_slice(&register_values);
+
         // Replace the updated root hash
         let updated_root_hash_index = MEMORY_HASH_START_INDEX + 4;
         bootloader_inputs[updated_root_hash_index..updated_root_hash_index + 4]
@@ -341,12 +353,6 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
         let new_rows = num_rows - start - 1;
         proven_trace += new_rows;
         log::info!("Proved {} rows.", new_rows);
-
-        // Update initial register values for the next chunk.
-        register_values = REGISTER_NAMES
-            .iter()
-            .map(|&r| *chunk_trace[r].last().unwrap())
-            .collect();
 
         chunk_index += 1;
     }
