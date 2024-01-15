@@ -18,7 +18,7 @@ pub const MERKLE_TREE_DEPTH: usize = N_LEAVES_LOG + 1;
 pub const PAGE_SIZE_BYTES: usize = 1 << PAGE_SIZE_BYTES_LOG;
 pub const PAGE_NUMBER_MASK: usize = (1 << N_LEAVES_LOG) - 1;
 pub const BOOTLOADER_INPUTS_PER_PAGE: usize = WORDS_PER_PAGE + 1 + 4 + (MERKLE_TREE_DEPTH - 1) * 4;
-pub const MEMORY_HASH_START_INDEX: usize = REGISTER_NAMES.len();
+pub const MEMORY_HASH_START_INDEX: usize = 2 * REGISTER_NAMES.len();
 pub const NUM_PAGES_INDEX: usize = MEMORY_HASH_START_INDEX + 8;
 pub const PAGE_INPUTS_OFFSET: usize = NUM_PAGES_INDEX + 1;
 
@@ -52,6 +52,13 @@ pub fn bootloader_preamble() -> String {
             "    public initial_{reg} = bootloader_input_value({i});\n"
         ));
     }
+    for (i, reg) in REGISTER_NAMES.iter().enumerate() {
+        let reg = reg.strip_prefix("main.").unwrap();
+        preamble.push_str(&format!(
+            "    public final_{reg} = bootloader_input_value({});\n",
+            i + REGISTER_NAMES.len()
+        ));
+    }
     preamble.push_str(&format!(
         r#"
     public initial_memory_hash_1 = bootloader_input_value({});
@@ -59,10 +66,10 @@ pub fn bootloader_preamble() -> String {
     public initial_memory_hash_3 = bootloader_input_value({});
     public initial_memory_hash_4 = bootloader_input_value({});
 "#,
-        REGISTER_NAMES.len(),
-        REGISTER_NAMES.len() + 1,
-        REGISTER_NAMES.len() + 2,
-        REGISTER_NAMES.len() + 3,
+        MEMORY_HASH_START_INDEX,
+        MEMORY_HASH_START_INDEX + 1,
+        MEMORY_HASH_START_INDEX + 2,
+        MEMORY_HASH_START_INDEX + 3,
     ));
     preamble.push_str(&format!(
         r#"
@@ -71,10 +78,10 @@ pub fn bootloader_preamble() -> String {
     public final_memory_hash_3 = bootloader_input_value({});
     public final_memory_hash_4 = bootloader_input_value({});
 "#,
-        REGISTER_NAMES.len() + 4,
-        REGISTER_NAMES.len() + 5,
-        REGISTER_NAMES.len() + 6,
-        REGISTER_NAMES.len() + 7,
+        MEMORY_HASH_START_INDEX + 4,
+        MEMORY_HASH_START_INDEX + 5,
+        MEMORY_HASH_START_INDEX + 6,
+        MEMORY_HASH_START_INDEX + 7,
     ));
 
     preamble
@@ -87,6 +94,7 @@ pub fn bootloader_preamble() -> String {
 /// make it sound is tracked in https://github.com/powdr-labs/powdr/issues/814.
 /// Bootloader inputs are in the format:
 /// - First 49 values: Values of x1-x31, tmp1-tmp4, lr_sc_reservation, P0-P11, and the PC
+/// - Second 49 values: The same values, but after this chunk's execution
 /// - The root hash of the memory Merkle tree (4 elements)
 /// - The root hash of the memory Merkle tree *after this chunk's execution* (4 elements)
 /// - Number of pages
@@ -412,9 +420,13 @@ pub fn default_register_values<T: FieldElement>() -> Vec<T> {
 /// The bootloader input that is equivalent to not using a bootloader, i.e.:
 /// - No pages are initialized
 /// - All registers are set to 0 (including the PC, which causes the bootloader to do nothing)
+/// - The state at the end of the execution is the same as the beginning
 pub fn default_input<T: FieldElement>(accessed_pages: &[u64]) -> Vec<T> {
     // Set all registers and the number of pages to zero
     let mut bootloader_inputs = default_register_values();
+
+    // Claim that the final register values are the same as the initial ones
+    bootloader_inputs.extend(default_register_values::<T>());
 
     if accessed_pages.is_empty() {
         bootloader_inputs.extend(MerkleTree::<T>::empty_hash());
