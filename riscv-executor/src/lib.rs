@@ -549,6 +549,15 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
                 vec![Elem::from_fe(GoldilocksField::from(val))]
             }
+            "assert_bootloader_input" => {
+                let addr = args[0].0 as usize;
+                let expected_val = args[1].fe::<F>();
+                let actual_val = self.bootloader_inputs[addr];
+
+                assert_eq!(expected_val, actual_val);
+
+                vec![]
+            }
             "jump" => {
                 self.proc.set_pc(args[0]);
 
