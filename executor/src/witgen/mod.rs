@@ -39,12 +39,12 @@ mod vm_processor;
 
 static OUTER_CODE_NAME: &str = "witgen (outer code)";
 
-pub trait QueryCallback<T>: FnMut(&str) -> Result<Option<T>, String> + Send + Sync {}
-impl<T, F> QueryCallback<T> for F where F: FnMut(&str) -> Result<Option<T>, String> + Send + Sync {}
+pub trait QueryCallback<T>: Fn(&str) -> Result<Option<T>, String> + Send + Sync {}
+impl<T, F> QueryCallback<T> for F where F: Fn(&str) -> Result<Option<T>, String> + Send + Sync {}
 
 pub fn chain_callbacks<T: FieldElement>(
-    mut c1: Box<dyn QueryCallback<T>>,
-    mut c2: Box<dyn QueryCallback<T>>,
+    c1: Box<dyn QueryCallback<T>>,
+    c2: Box<dyn QueryCallback<T>>,
 ) -> impl QueryCallback<T> {
     move |query| c1(query).or_else(|_| c2(query))
 }
