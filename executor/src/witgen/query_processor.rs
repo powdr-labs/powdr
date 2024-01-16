@@ -51,7 +51,10 @@ impl<'a, 'b, T: FieldElement, QueryCallback: super::QueryCallback<T>>
                         Ok(EvalValue::incomplete(IncompleteCause::DataNotYetAvailable))
                     }
                     // All other errors are non-recoverable
-                    e => Err(super::EvalError::ProverQueryError(format!("{e:?}"))),
+                    e => Err(super::EvalError::ProverQueryError(format!(
+                        "Error occurred when evaluating prover query {query} on {}:\n{e:?}",
+                        rows.current_row_index
+                    ))),
                 };
             }
         };
@@ -143,7 +146,7 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T, Reference<'a>> for Symbols<'a, T> 
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 struct Reference<'a> {
     name: &'a str,
     poly_id: PolyID,
