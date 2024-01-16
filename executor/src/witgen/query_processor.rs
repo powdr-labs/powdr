@@ -143,7 +143,7 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T, Reference<'a>> for Symbols<'a, T> 
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 struct Reference<'a> {
     name: &'a str,
     poly_id: PolyID,

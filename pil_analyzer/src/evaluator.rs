@@ -1,3 +1,4 @@
+use std::fmt;
 use std::{collections::HashMap, fmt::Display, rc::Rc};
 
 use ast::{
@@ -76,7 +77,7 @@ pub enum EvalError {
     DataNotAvailable,
 }
 
-#[derive(Clone, PartialEq)]
+#[derive(Clone, PartialEq, Debug)]
 pub enum Value<'a, T, C> {
     Number(T),
     String(String),
@@ -103,7 +104,7 @@ impl<'a, T: FieldElement, C: Custom> Value<'a, T, C> {
     }
 }
 
-pub trait Custom: Display + Clone + PartialEq {}
+pub trait Custom: Display + fmt::Debug + Clone + PartialEq {}
 
 impl<'a, T: Display, C: Custom> Display for Value<'a, T, C> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -118,7 +119,7 @@ impl<'a, T: Display, C: Custom> Display for Value<'a, T, C> {
     }
 }
 
-#[derive(Clone, PartialEq)]
+#[derive(Clone, PartialEq, Debug)]
 pub enum NoCustom {}
 
 impl Custom for NoCustom {}
@@ -129,7 +130,7 @@ impl Display for NoCustom {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Closure<'a, T, C> {
     pub lambda: &'a LambdaExpression<T, Reference>,
     pub environment: Vec<Rc<Value<'a, T, C>>>,
