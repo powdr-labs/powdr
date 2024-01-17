@@ -1,4 +1,4 @@
-use std::utils::map;
+use std::array::map;
 use std::utils::unchanged_until;
 
 // Implements the poseidon permutation for the BN254 curve.
@@ -112,7 +112,6 @@ machine PoseidonBN254(LASTBLOCK, operation_id) {
 
     map(
         [input_in0, input_in1, input_cap],
-        3,
         |c| unchanged_until(c, LAST)
     );
 }
