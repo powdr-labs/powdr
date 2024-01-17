@@ -245,7 +245,10 @@ pub fn generate_machine_rom<T: FieldElement>(
 mod tests {
     use std::collections::BTreeMap;
 
-    use ast::parsed::asm::{parse_absolute_path, AbsoluteSymbolPath};
+    use ast::{
+        asm_analysis::Item,
+        parsed::asm::{parse_absolute_path, AbsoluteSymbolPath},
+    };
     use number::Bn254Field;
     use pretty_assertions::assert_eq;
 
@@ -256,9 +259,12 @@ mod tests {
         let parsed = parser::parse_asm(None, src).unwrap();
         let checked = type_check::check(parsed).unwrap();
         checked
-            .machines
+            .items
             .into_iter()
-            .map(|(name, m)| (name, generate_machine_rom(m)))
+            .filter_map(|(name, m)| match m {
+                Item::Machine(m) => Some((name, generate_machine_rom(m))),
+                Item::Expression(_) => None,
+            })
             .collect()
     }
 

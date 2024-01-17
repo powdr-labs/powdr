@@ -17,9 +17,22 @@ use ast::analyzed::{
     AlgebraicExpression as Expression, AlgebraicReference, Identity, IdentityKind, PolyID,
 };
 
+const EXPECTED_WITNESSES: [&str; 7] = [
+    "m_value",
+    "m_addr",
+    "m_step",
+    "m_change",
+    "m_is_write",
+    "m_is_read",
+    "m_is_bootloader_write",
+];
+
+const DIFF_COLUMNS: [&str; 2] = ["m_diff_upper", "m_diff_lower"];
+
+const BOOTLOADER_WRITE_COLUMN: &str = "m_is_bootloader_write";
+
 /// TODO make this generic
 
-#[derive(Default)]
 pub struct DoubleSortedWitnesses<T> {
     degree: DegreeType,
     //key_col: String,
@@ -34,11 +47,20 @@ pub struct DoubleSortedWitnesses<T> {
     /// If the machine has the `m_diff_upper` and `m_diff_lower` columns, this is the base of the
     /// two digits.
     diff_columns_base: Option<u64>,
+    /// Whether this machine has a `m_is_bootloader_write` column.
+    has_bootloader_write_column: bool,
 }
 
 struct Operation<T> {
-    pub is_write: bool,
+    pub is_normal_write: bool,
+    pub is_bootloader_write: bool,
     pub value: T,
+}
+
+impl<T: FieldElement> Operation<T> {
+    pub fn is_write(&self) -> bool {
+        self.is_normal_write || self.is_bootloader_write
+    }
 }
 
 impl<T: FieldElement> DoubleSortedWitnesses<T> {
@@ -72,57 +94,57 @@ impl<T: FieldElement> DoubleSortedWitnesses<T> {
         let namespace = namespaces.drain().next().unwrap().into();
 
         // TODO check the identities.
-        let expected_witnesses: HashSet<_> = [
-            "m_value",
-            "m_addr",
-            "m_step",
-            "m_change",
-            "m_is_write",
-            "m_is_read",
-        ]
-        .into_iter()
-        .collect();
-        let difference = expected_witnesses
-            .symmetric_difference(&columns)
-            .collect::<HashSet<_>>();
-        match difference.len() {
-            0 => Some(Self {
+        let allowed_witnesses: HashSet<_> = EXPECTED_WITNESSES
+            .into_iter()
+            .chain(DIFF_COLUMNS)
+            .chain([BOOTLOADER_WRITE_COLUMN])
+            .collect();
+        if !columns.iter().all(|c| allowed_witnesses.contains(c)) {
+            return None;
+        }
+
+        let has_diff_columns = DIFF_COLUMNS.iter().all(|c| columns.contains(c));
+        let has_bootloader_write_column = columns.contains(&BOOTLOADER_WRITE_COLUMN);
+
+        if has_diff_columns {
+            // We have the `m_diff_upper` and `m_diff_lower` columns.
+            // Now, we check that they both have the same range constraint and use it to determine
+            // the base of the two digits.
+            let upper_poly_id =
+                fixed_data.try_column_by_name(&format!("{namespace}.{}", DIFF_COLUMNS[0]))?;
+            let upper_range_constraint =
+                global_range_constraints.witness_constraints[&upper_poly_id].as_ref()?;
+            let lower_poly_id =
+                fixed_data.try_column_by_name(&format!("{namespace}.{}", DIFF_COLUMNS[1]))?;
+            let lower_range_constraint =
+                global_range_constraints.witness_constraints[&lower_poly_id].as_ref()?;
+
+            let (min, max) = upper_range_constraint.range();
+
+            if upper_range_constraint == lower_range_constraint && min == T::zero() {
+                let diff_columns_base = Some(max.to_degree() + 1);
+                Some(Self {
+                    name,
+                    namespace,
+                    degree: fixed_data.degree,
+                    diff_columns_base,
+                    has_bootloader_write_column,
+                    trace: Default::default(),
+                    data: Default::default(),
+                })
+            } else {
+                None
+            }
+        } else {
+            Some(Self {
                 name,
                 namespace,
                 degree: fixed_data.degree,
-                // No diff columns.
                 diff_columns_base: None,
-                ..Default::default()
-            }),
-            2 if difference == ["m_diff_upper", "m_diff_lower"].iter().collect() => {
-                // We have the `m_diff_upper` and `m_diff_lower` columns.
-                // Now, we check that they both have the same range constraint and use it to determine
-                // the base of the two digits.
-                let upper_poly_id =
-                    fixed_data.try_column_by_name(&format!("{namespace}.m_diff_upper"))?;
-                let upper_range_constraint =
-                    global_range_constraints.witness_constraints[&upper_poly_id].as_ref()?;
-                let lower_poly_id =
-                    fixed_data.try_column_by_name(&format!("{namespace}.m_diff_lower"))?;
-                let lower_range_constraint =
-                    global_range_constraints.witness_constraints[&lower_poly_id].as_ref()?;
-
-                let (min, max) = upper_range_constraint.range();
-
-                if upper_range_constraint == lower_range_constraint && min == T::zero() {
-                    let diff_columns_base = Some(max.to_degree() + 1);
-                    Some(Self {
-                        name,
-                        namespace,
-                        degree: fixed_data.degree,
-                        diff_columns_base,
-                        ..Default::default()
-                    })
-                } else {
-                    None
-                }
-            }
-            _ => None,
+                has_bootloader_write_column,
+                trace: Default::default(),
+                data: Default::default(),
+            })
         }
     }
 }
@@ -139,9 +161,14 @@ impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses<T> {
         left: &[AffineExpression<&'a AlgebraicReference, T>],
         right: &'a SelectedExpressions<Expression<T>>,
     ) -> Option<EvalResult<'a, T>> {
+        let right_selector = right.selector.as_ref()?;
         if kind != IdentityKind::Permutation
-            || !(is_simple_poly_of_name(right.selector.as_ref()?, &self.namespaced("m_is_read"))
-                || is_simple_poly_of_name(right.selector.as_ref()?, &self.namespaced("m_is_write")))
+            || !(is_simple_poly_of_name(right_selector, &self.namespaced("m_is_read"))
+                || is_simple_poly_of_name(right_selector, &self.namespaced("m_is_write"))
+                || is_simple_poly_of_name(
+                    right_selector,
+                    &self.namespaced(BOOTLOADER_WRITE_COLUMN),
+                ))
         {
             return None;
         }
@@ -157,7 +184,8 @@ impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses<T> {
         let mut addr = vec![];
         let mut step = vec![];
         let mut value = vec![];
-        let mut is_write = vec![];
+        let mut is_normal_write = vec![];
+        let mut is_bootloader_write = vec![];
         let mut is_read = vec![];
         let mut diff = vec![];
 
@@ -183,15 +211,17 @@ impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses<T> {
             step.push(s);
             value.push(o.value);
 
-            is_write.push(o.is_write.into());
-            is_read.push((!o.is_write).into());
+            is_normal_write.push(o.is_normal_write.into());
+            is_bootloader_write.push(o.is_bootloader_write.into());
+            is_read.push((!o.is_write()).into());
         }
         if addr.is_empty() {
             // No memory access at all - fill a first row with something.
-            addr.push(0.into());
+            addr.push(-T::one());
             step.push(0.into());
             value.push(0.into());
-            is_write.push(0.into());
+            is_normal_write.push(0.into());
+            is_bootloader_write.push(0.into());
             is_read.push(0.into());
         }
         while addr.len() < self.degree as usize {
@@ -199,7 +229,8 @@ impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses<T> {
             step.push(*step.last().unwrap() + T::from(1));
             diff.push(0);
             value.push(*value.last().unwrap());
-            is_write.push(0.into());
+            is_normal_write.push(0.into());
+            is_bootloader_write.push(0.into());
             is_read.push(0.into());
         }
 
@@ -207,11 +238,18 @@ impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses<T> {
         assert_eq!(diff.len(), self.degree as usize - 1);
         diff.push(0);
 
+        let last_row_change_value = match self.has_bootloader_write_column {
+            true => (&addr[0] != addr.last().unwrap()).into(),
+            // In the machine without the bootloader write column, m_change is constrained
+            // to be 1 in the last row.
+            false => 1.into(),
+        };
+
         let change = addr
             .iter()
             .tuple_windows()
             .map(|(a, a_next)| if a == a_next { 0.into() } else { 1.into() })
-            .chain(once(1.into()))
+            .chain(once(last_row_change_value))
             .collect::<Vec<_>>();
         assert_eq!(change.len(), addr.len());
 
@@ -232,16 +270,26 @@ impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses<T> {
             vec![]
         };
 
+        let is_bootloader_write = if self.has_bootloader_write_column {
+            vec![(
+                self.namespaced(BOOTLOADER_WRITE_COLUMN),
+                is_bootloader_write,
+            )]
+        } else {
+            vec![]
+        };
+
         [
             (self.namespaced("m_value"), value),
             (self.namespaced("m_addr"), addr),
             (self.namespaced("m_step"), step),
             (self.namespaced("m_change"), change),
-            (self.namespaced("m_is_write"), is_write),
+            (self.namespaced("m_is_write"), is_normal_write),
             (self.namespaced("m_is_read"), is_read),
         ]
         .into_iter()
         .chain(diff_columns)
+        .chain(is_bootloader_write)
         .collect()
     }
 }
@@ -257,10 +305,15 @@ impl<T: FieldElement> DoubleSortedWitnesses<T> {
         // or
         // OP { ADDR, STEP, X } is m_is_read { m_addr, m_step, m_value }
 
-        let is_write = match &right.selector {
+        let is_bootloader_write = match &right.selector {
+            Some(Expression::Reference(p)) => p.name == self.namespaced(BOOTLOADER_WRITE_COLUMN),
+            _ => panic!(),
+        };
+        let is_normal_write = match &right.selector {
             Some(Expression::Reference(p)) => p.name == self.namespaced("m_is_write"),
             _ => panic!(),
         };
+        let is_write = is_bootloader_write || is_normal_write;
         let addr = match left[0].constant_value() {
             Some(v) => v,
             None => {
@@ -305,14 +358,21 @@ impl<T: FieldElement> DoubleSortedWitnesses<T> {
                 value
             );
             self.data.insert(addr, value);
-            self.trace
-                .insert((addr, step), Operation { is_write, value });
+            self.trace.insert(
+                (addr, step),
+                Operation {
+                    is_normal_write,
+                    is_bootloader_write,
+                    value,
+                },
+            );
         } else {
             let value = self.data.entry(addr).or_default();
             self.trace.insert(
                 (addr, step),
                 Operation {
-                    is_write,
+                    is_normal_write,
+                    is_bootloader_write,
                     value: *value,
                 },
             );

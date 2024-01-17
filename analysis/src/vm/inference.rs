@@ -1,30 +1,33 @@
 //! Infer assignment registers in asm statements
 
 use ast::{
-    asm_analysis::{AnalysisASMFile, Expression, FunctionStatement, Machine},
+    asm_analysis::{AnalysisASMFile, Expression, FunctionStatement, Item, Machine},
     parsed::asm::AssignmentRegister,
 };
 use number::FieldElement;
 
 pub fn infer<T: FieldElement>(file: AnalysisASMFile<T>) -> Result<AnalysisASMFile<T>, Vec<String>> {
     let mut errors = vec![];
-    let mut res = AnalysisASMFile::default();
 
-    for (name, m) in file.machines {
-        match infer_machine(m) {
-            Ok(m) => {
-                res.machines.insert(name, m);
-            }
-            Err(e) => {
-                errors.extend(e);
-            }
-        }
-    }
+    let items = file
+        .items
+        .into_iter()
+        .filter_map(|(name, m)| match m {
+            Item::Machine(m) => match infer_machine(m) {
+                Ok(m) => Some((name, Item::Machine(m))),
+                Err(e) => {
+                    errors.extend(e);
+                    None
+                }
+            },
+            Item::Expression(e) => Some((name, Item::Expression(e))),
+        })
+        .collect();
 
     if !errors.is_empty() {
         Err(errors)
     } else {
-        Ok(res)
+        Ok(AnalysisASMFile { items })
     }
 }
 
@@ -122,8 +125,10 @@ mod tests {
 
         let file = infer_str::<Bn254Field>(file).unwrap();
 
-        if let FunctionStatement::Assignment(AssignmentStatement { lhs_with_reg, .. }) = file
-            .machines[&parse_absolute_path("::Machine")]
+        let machine = &file.items[&parse_absolute_path("::Machine")]
+            .try_to_machine()
+            .unwrap();
+        if let FunctionStatement::Assignment(AssignmentStatement { lhs_with_reg, .. }) = machine
             .functions()
             .next()
             .unwrap()
@@ -161,8 +166,10 @@ mod tests {
 
         let file = infer_str::<Bn254Field>(file).unwrap();
 
-        if let FunctionStatement::Assignment(AssignmentStatement { lhs_with_reg, .. }) = &file
-            .machines[&parse_absolute_path("::Machine")]
+        let machine = &file.items[&parse_absolute_path("::Machine")]
+            .try_to_machine()
+            .unwrap();
+        if let FunctionStatement::Assignment(AssignmentStatement { lhs_with_reg, .. }) = &machine
             .functions()
             .next()
             .unwrap()

@@ -355,7 +355,7 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T, Condensate<T>> for &'a Condenser<T
     }
 }
 
-#[derive(Clone, PartialEq)]
+#[derive(Clone, PartialEq, Debug)]
 enum Condensate<T> {
     Expression(AlgebraicExpression<T>),
     Identity(AlgebraicExpression<T>, AlgebraicExpression<T>),
@@ -389,7 +389,14 @@ impl<T: Display> Display for Condensate<T> {
     }
 }
 
-impl<T: FieldElement> Custom for Condensate<T> {}
+impl<T: FieldElement> Custom for Condensate<T> {
+    fn type_name(&self) -> String {
+        match self {
+            Condensate::Expression(_) => "expr".to_string(),
+            Condensate::Identity(_, _) => "identity".to_string(),
+        }
+    }
+}
 
 impl<'a, T: FieldElement> TryFrom<Value<'a, T, Self>> for Condensate<T> {
     type Error = EvalError;

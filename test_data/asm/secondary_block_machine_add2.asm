@@ -18,8 +18,9 @@ machine Main {
     // The input column needs to be constant for the entire block
     col witness add_two_input;
 
+    col fixed _first_step = [1] + [0]*;
     // Because constraints are not cyclic, we need to explicitly constrain the first state
-    first_step * (add_two_state - add_two_input) = 0;
+    _first_step * (add_two_state - add_two_input) = 0;
 
     // Add %offset in a single step of computation
     constant %offset = 1;

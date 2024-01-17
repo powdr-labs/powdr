@@ -17,17 +17,16 @@ pub const N_LEAVES_LOG: usize = MEMORY_SIZE_LOG - PAGE_SIZE_BYTES_LOG;
 pub const MERKLE_TREE_DEPTH: usize = N_LEAVES_LOG + 1;
 pub const PAGE_SIZE_BYTES: usize = 1 << PAGE_SIZE_BYTES_LOG;
 pub const PAGE_NUMBER_MASK: usize = (1 << N_LEAVES_LOG) - 1;
-pub const BOOTLOADER_INPUTS_PER_PAGE: usize = WORDS_PER_PAGE + 1 + (MERKLE_TREE_DEPTH - 1) * 4;
+pub const BOOTLOADER_INPUTS_PER_PAGE: usize = WORDS_PER_PAGE + 1 + 4 + (MERKLE_TREE_DEPTH - 1) * 4;
+pub const MEMORY_HASH_START_INDEX: usize = 2 * REGISTER_NAMES.len();
+pub const NUM_PAGES_INDEX: usize = MEMORY_HASH_START_INDEX + 8;
+pub const PAGE_INPUTS_OFFSET: usize = NUM_PAGES_INDEX + 1;
 
 pub const BOOTLOADER_SPECIFIC_INSTRUCTION_NAMES: [&str; 2] =
     ["load_bootloader_input", "jump_to_bootloader_input"];
 
 pub fn bootloader_preamble() -> String {
     let mut preamble = r#"
-    // ============== extra rules on memory when compiled with continuations =======================
-    // The first operation can't be a read (because we expect this page to be paged-in)
-    m_change * m_is_read' = 0;
-
     // ============== bootloader-specific instructions =======================
     // Write-once memory
     let BOOTLOADER_INPUT_ADDRESS = |i| i;
@@ -53,6 +52,13 @@ pub fn bootloader_preamble() -> String {
             "    public initial_{reg} = bootloader_input_value({i});\n"
         ));
     }
+    for (i, reg) in REGISTER_NAMES.iter().enumerate() {
+        let reg = reg.strip_prefix("main.").unwrap();
+        preamble.push_str(&format!(
+            "    public final_{reg} = bootloader_input_value({});\n",
+            i + REGISTER_NAMES.len()
+        ));
+    }
     preamble.push_str(&format!(
         r#"
     public initial_memory_hash_1 = bootloader_input_value({});
@@ -60,10 +66,22 @@ pub fn bootloader_preamble() -> String {
     public initial_memory_hash_3 = bootloader_input_value({});
     public initial_memory_hash_4 = bootloader_input_value({});
 "#,
-        REGISTER_NAMES.len(),
-        REGISTER_NAMES.len() + 1,
-        REGISTER_NAMES.len() + 2,
-        REGISTER_NAMES.len() + 3,
+        MEMORY_HASH_START_INDEX,
+        MEMORY_HASH_START_INDEX + 1,
+        MEMORY_HASH_START_INDEX + 2,
+        MEMORY_HASH_START_INDEX + 3,
+    ));
+    preamble.push_str(&format!(
+        r#"
+    public final_memory_hash_1 = bootloader_input_value({});
+    public final_memory_hash_2 = bootloader_input_value({});
+    public final_memory_hash_3 = bootloader_input_value({});
+    public final_memory_hash_4 = bootloader_input_value({});
+"#,
+        MEMORY_HASH_START_INDEX + 4,
+        MEMORY_HASH_START_INDEX + 5,
+        MEMORY_HASH_START_INDEX + 6,
+        MEMORY_HASH_START_INDEX + 7,
     ));
 
     preamble
@@ -76,19 +94,18 @@ pub fn bootloader_preamble() -> String {
 /// make it sound is tracked in https://github.com/powdr-labs/powdr/issues/814.
 /// Bootloader inputs are in the format:
 /// - First 49 values: Values of x1-x31, tmp1-tmp4, lr_sc_reservation, P0-P11, and the PC
+/// - Second 49 values: The same values, but after this chunk's execution
 /// - The root hash of the memory Merkle tree (4 elements)
+/// - The root hash of the memory Merkle tree *after this chunk's execution* (4 elements)
 /// - Number of pages
 /// - For each page:
 ///   - The page number
 ///   - The 256 words of the page
+///   - The hash of the page *after* this chunk's execution
 ///   - For each level of the Merkle tree, except the root (1..=22):
 ///     - The hash (4 elements) of the sibling page
 pub fn bootloader(submachine_initialization: &[String]) -> String {
     let mut bootloader = String::new();
-
-    let memory_hash_start_index = REGISTER_NAMES.len();
-    let num_pages_index = memory_hash_start_index + 4;
-    let page_inputs_offset = num_pages_index + 1;
 
     bootloader.push_str(&format!(
         r#"
@@ -111,9 +128,28 @@ submachine_init:
         r#"
 // START OF BOOTLOADER
 
+// During the execution of the bootloader, registers are used as follows:
+// - x1: Number of pages (constant throughout the execution)
+// - x2: Current page index
+// - x3: Currenr page number
+// - x4: The ith bit of the page number (during Merkle proof validation)
+// - x5-x8: The current memory hash
+// - x9: 0: Merkle tree validation phase; 1: Merkle tree update phase
+// - P0-P11: Hash registers:
+//   - P0-P3 will usually contain the "current" hash (either in the context
+//     of page hashing or Merkle proof validation)
+//   - P4-P7 will contain some other inputs to the hash function
+//   - P8-P11 will contain the capacity elements (0 throughout the execution)
+
 // Number of pages
-x1 <== load_bootloader_input({num_pages_index});
+x1 <== load_bootloader_input({NUM_PAGES_INDEX});
 x1 <== wrap(x1);
+
+// Initialize memory hash
+x5 <== load_bootloader_input({MEMORY_HASH_START_INDEX});
+x6 <== load_bootloader_input({MEMORY_HASH_START_INDEX} + 1);
+x7 <== load_bootloader_input({MEMORY_HASH_START_INDEX} + 2);
+x8 <== load_bootloader_input({MEMORY_HASH_START_INDEX} + 3);
 
 // Current page index
 x2 <=X= 0;
@@ -123,7 +159,7 @@ branch_if_zero x1, end_page_loop;
 start_page_loop:
 
 // Page number
-x3 <== load_bootloader_input(x2 * {BOOTLOADER_INPUTS_PER_PAGE} + {page_inputs_offset});
+x3 <== load_bootloader_input(x2 * {BOOTLOADER_INPUTS_PER_PAGE} + {PAGE_INPUTS_OFFSET});
 x3 <== and(x3, {PAGE_NUMBER_MASK});
 
 // Store & hash {WORDS_PER_PAGE} page words. This is an unrolled loop that for each each word:
@@ -150,8 +186,8 @@ P7 <=X= 0;
         let reg_index = (i % 4) + 4;
         bootloader.push_str(&format!(
             r#"
-P{reg_index} <== load_bootloader_input(x2 * {BOOTLOADER_INPUTS_PER_PAGE} + {page_inputs_offset} + 1 + {i});
-mstore x3 * {PAGE_SIZE_BYTES} + {i} * {BYTES_PER_WORD}, P{reg_index};"#
+P{reg_index} <== load_bootloader_input(x2 * {BOOTLOADER_INPUTS_PER_PAGE} + {PAGE_INPUTS_OFFSET} + 1 + {i});
+mstore_bootloader x3 * {PAGE_SIZE_BYTES} + {i} * {BYTES_PER_WORD}, P{reg_index};"#
         ));
 
         // Hash if buffer is full
@@ -169,9 +205,26 @@ P0, P1, P2, P3 <== poseidon_gl(P0, P1, P2, P3, P4, P5, P6, P7, P8, P9, P10, P11)
 // == Merkle proof validation ==
 // We commit to the memory content by hashing it in pages of {WORDS_PER_PAGE} words each.
 // These hashes are stored in a binary Merkle tree of depth {MERKLE_TREE_DEPTH}.
-// At this point, the current page hash is in P0-P3. In order to validate the Merkle proof,
-// we need to re-compute the Merkle root from the prover-provided sibling page hashes.
+// At this point, the current page hash is in P0-P3.
+// 
+// Now, we re-computed the Merkle root twice, in two phases:
+// - First using the current page hash, as computed by the bootloader. The prover provides
+//   the sibling values. At the end of this phase, the re-computed Merkle root is asserted
+//   to be equal to the "current" Merkle root, stored in x5-x8.
+// - Second, we repeat the same process (using the *same* siblings!), but using the claimed
+//   updated page hash. At the end of this phase, the re-computed Merkle root stored as the
+//   "current" Merkle root in x5-x8.
 //
+// So, any Merkle proof is expected to be based on the Merkle tree with all previous pages
+// already updated. In the shutdown routine, we will validate that the final page hashes
+// are as claimed. Also, at the end of the bootloader, we will assert that the final Merkle
+// root is as claimed.
+
+// Set phase to validation
+x9 <=X= 0;
+
+merkle_proof_validation_loop:
+
 // This is an unrolled loop that for each level:
 // - If the ith bit of the page number is 0:
 //   - Load sibling into registers P4-P7
@@ -190,20 +243,20 @@ P0, P1, P2, P3 <== poseidon_gl(P0, P1, P2, P3, P4, P5, P6, P7, P8, P9, P10, P11)
             r#"
 x4 <== and(x3, {mask});
 branch_if_nonzero x4, level_{i}_is_right;
-P4 <== load_bootloader_input(x2 * {BOOTLOADER_INPUTS_PER_PAGE} + {page_inputs_offset} + 1 + {WORDS_PER_PAGE} + {i} * 4 + 0);
-P5 <== load_bootloader_input(x2 * {BOOTLOADER_INPUTS_PER_PAGE} + {page_inputs_offset} + 1 + {WORDS_PER_PAGE} + {i} * 4 + 1);
-P6 <== load_bootloader_input(x2 * {BOOTLOADER_INPUTS_PER_PAGE} + {page_inputs_offset} + 1 + {WORDS_PER_PAGE} + {i} * 4 + 2);
-P7 <== load_bootloader_input(x2 * {BOOTLOADER_INPUTS_PER_PAGE} + {page_inputs_offset} + 1 + {WORDS_PER_PAGE} + {i} * 4 + 3);
+P4 <== load_bootloader_input(x2 * {BOOTLOADER_INPUTS_PER_PAGE} + {PAGE_INPUTS_OFFSET} + 1 + {WORDS_PER_PAGE} + 4 + {i} * 4 + 0);
+P5 <== load_bootloader_input(x2 * {BOOTLOADER_INPUTS_PER_PAGE} + {PAGE_INPUTS_OFFSET} + 1 + {WORDS_PER_PAGE} + 4 + {i} * 4 + 1);
+P6 <== load_bootloader_input(x2 * {BOOTLOADER_INPUTS_PER_PAGE} + {PAGE_INPUTS_OFFSET} + 1 + {WORDS_PER_PAGE} + 4 + {i} * 4 + 2);
+P7 <== load_bootloader_input(x2 * {BOOTLOADER_INPUTS_PER_PAGE} + {PAGE_INPUTS_OFFSET} + 1 + {WORDS_PER_PAGE} + 4 + {i} * 4 + 3);
 jump level_{i}_end;
 level_{i}_is_right:
 P4 <=X= P0;
 P5 <=X= P1;
 P6 <=X= P2;
 P7 <=X= P3;
-P0 <== load_bootloader_input(x2 * {BOOTLOADER_INPUTS_PER_PAGE} + {page_inputs_offset} + 1 + {WORDS_PER_PAGE} + {i} * 4 + 0);
-P1 <== load_bootloader_input(x2 * {BOOTLOADER_INPUTS_PER_PAGE} + {page_inputs_offset} + 1 + {WORDS_PER_PAGE} + {i} * 4 + 1);
-P2 <== load_bootloader_input(x2 * {BOOTLOADER_INPUTS_PER_PAGE} + {page_inputs_offset} + 1 + {WORDS_PER_PAGE} + {i} * 4 + 2);
-P3 <== load_bootloader_input(x2 * {BOOTLOADER_INPUTS_PER_PAGE} + {page_inputs_offset} + 1 + {WORDS_PER_PAGE} + {i} * 4 + 3);
+P0 <== load_bootloader_input(x2 * {BOOTLOADER_INPUTS_PER_PAGE} + {PAGE_INPUTS_OFFSET} + 1 + {WORDS_PER_PAGE} + 4 + {i} * 4 + 0);
+P1 <== load_bootloader_input(x2 * {BOOTLOADER_INPUTS_PER_PAGE} + {PAGE_INPUTS_OFFSET} + 1 + {WORDS_PER_PAGE} + 4 + {i} * 4 + 1);
+P2 <== load_bootloader_input(x2 * {BOOTLOADER_INPUTS_PER_PAGE} + {PAGE_INPUTS_OFFSET} + 1 + {WORDS_PER_PAGE} + 4 + {i} * 4 + 2);
+P3 <== load_bootloader_input(x2 * {BOOTLOADER_INPUTS_PER_PAGE} + {PAGE_INPUTS_OFFSET} + 1 + {WORDS_PER_PAGE} + 4 + {i} * 4 + 3);
 level_{i}_end:
 P0, P1, P2, P3 <== poseidon_gl(P0, P1, P2, P3, P4, P5, P6, P7, P8, P9, P10, P11);
 "#
@@ -212,20 +265,36 @@ P0, P1, P2, P3 <== poseidon_gl(P0, P1, P2, P3, P4, P5, P6, P7, P8, P9, P10, P11)
 
     bootloader.push_str(&format!(
         r#"
+branch_if_nonzero x9, update_memory_hash;
+
 // Assert Correct Merkle Root
-// At this point, the re-computed Merkle root is in P0-P3 and P4-P7 are not needed anymore.
-P4 <== load_bootloader_input({memory_hash_start_index});
-P5 <== load_bootloader_input({memory_hash_start_index} + 1);
-P6 <== load_bootloader_input({memory_hash_start_index} + 2);
-P7 <== load_bootloader_input({memory_hash_start_index} + 3);
-branch_if_nonzero P0 - P4, memory_hash_mismatch;
-branch_if_nonzero P1 - P5, memory_hash_mismatch;
-branch_if_nonzero P2 - P6, memory_hash_mismatch;
-branch_if_nonzero P3 - P7, memory_hash_mismatch;
+branch_if_nonzero P0 - x5, memory_hash_mismatch;
+branch_if_nonzero P1 - x6, memory_hash_mismatch;
+branch_if_nonzero P2 - x7, memory_hash_mismatch;
+branch_if_nonzero P3 - x8, memory_hash_mismatch;
 jump memory_hash_ok;
 memory_hash_mismatch:
 fail;
 memory_hash_ok:
+
+// Set phase to update
+x9 <=X= 1;
+
+// Load claimed updated page hash into P0-P3
+P0 <== load_bootloader_input(x2 * {BOOTLOADER_INPUTS_PER_PAGE} + {PAGE_INPUTS_OFFSET} + 1 + {WORDS_PER_PAGE} + 0);
+P1 <== load_bootloader_input(x2 * {BOOTLOADER_INPUTS_PER_PAGE} + {PAGE_INPUTS_OFFSET} + 1 + {WORDS_PER_PAGE} + 1);
+P2 <== load_bootloader_input(x2 * {BOOTLOADER_INPUTS_PER_PAGE} + {PAGE_INPUTS_OFFSET} + 1 + {WORDS_PER_PAGE} + 2);
+P3 <== load_bootloader_input(x2 * {BOOTLOADER_INPUTS_PER_PAGE} + {PAGE_INPUTS_OFFSET} + 1 + {WORDS_PER_PAGE} + 3);
+
+// Repeat Merkle proof validation loop to compute updated Merkle root
+jump merkle_proof_validation_loop;
+
+update_memory_hash:
+
+x5 <=X= P0;
+x6 <=X= P1;
+x7 <=X= P2;
+x8 <=X= P3;
 
 // Increment page index
 x2 <=X= x2 + 1;
@@ -233,6 +302,22 @@ x2 <=X= x2 + 1;
 branch_if_nonzero x2 - x1, start_page_loop;
 
 end_page_loop:
+
+// Assert final Merkle root is as claimed
+P0 <== load_bootloader_input({MEMORY_HASH_START_INDEX} + 4);
+P1 <== load_bootloader_input({MEMORY_HASH_START_INDEX} + 5);
+P2 <== load_bootloader_input({MEMORY_HASH_START_INDEX} + 6);
+P3 <== load_bootloader_input({MEMORY_HASH_START_INDEX} + 7);
+
+branch_if_nonzero P0 - x5, final_memory_hash_mismatch;
+branch_if_nonzero P1 - x6, final_memory_hash_mismatch;
+branch_if_nonzero P2 - x7, final_memory_hash_mismatch;
+branch_if_nonzero P3 - x8, final_memory_hash_mismatch;
+jump final_memory_hash_ok;
+final_memory_hash_mismatch:
+fail;
+final_memory_hash_ok:
+
 
 // Initialize registers, starting with index 0
 "#
@@ -335,21 +420,33 @@ pub fn default_register_values<T: FieldElement>() -> Vec<T> {
 /// The bootloader input that is equivalent to not using a bootloader, i.e.:
 /// - No pages are initialized
 /// - All registers are set to 0 (including the PC, which causes the bootloader to do nothing)
+/// - The state at the end of the execution is the same as the beginning
 pub fn default_input<T: FieldElement>(accessed_pages: &[u64]) -> Vec<T> {
     // Set all registers and the number of pages to zero
     let mut bootloader_inputs = default_register_values();
 
+    // Claim that the final register values are the same as the initial ones
+    bootloader_inputs.extend(default_register_values::<T>());
+
     if accessed_pages.is_empty() {
+        bootloader_inputs.extend(MerkleTree::<T>::empty_hash());
         bootloader_inputs.extend(MerkleTree::<T>::empty_hash());
         bootloader_inputs.push(T::zero());
     } else {
+        // TODO: We don't have a way to know the memory state *after* the execution.
+        // For now, we'll just claim that the memory doesn't change.
+        // This is fine for now, because the bootloader does not yet enforce that the memory
+        // state is actually as claimed. In the future, the `accessed_pages` argument won't be
+        // supported anymore (it's anyway only used by the benchmark).
         let merkle_tree = MerkleTree::<T>::new();
+        bootloader_inputs.extend(merkle_tree.root_hash());
         bootloader_inputs.extend(merkle_tree.root_hash());
         bootloader_inputs.push((accessed_pages.len() as u64).into());
         for &page_index in accessed_pages.iter() {
             bootloader_inputs.push(page_index.into());
-            let (page, proof) = merkle_tree.get(page_index as usize);
+            let (page, page_hash, proof) = merkle_tree.get(page_index as usize);
             bootloader_inputs.extend(page);
+            bootloader_inputs.extend(page_hash);
             for sibling in proof {
                 bootloader_inputs.extend(sibling);
             }

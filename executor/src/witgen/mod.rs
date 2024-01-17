@@ -39,12 +39,12 @@ mod vm_processor;
 
 static OUTER_CODE_NAME: &str = "witgen (outer code)";
 
-pub trait QueryCallback<T>: FnMut(&str) -> Result<Option<T>, String> + Send + Sync {}
-impl<T, F> QueryCallback<T> for F where F: FnMut(&str) -> Result<Option<T>, String> + Send + Sync {}
+pub trait QueryCallback<T>: Fn(&str) -> Result<Option<T>, String> + Send + Sync {}
+impl<T, F> QueryCallback<T> for F where F: Fn(&str) -> Result<Option<T>, String> + Send + Sync {}
 
 pub fn chain_callbacks<T: FieldElement>(
-    mut c1: Box<dyn QueryCallback<T>>,
-    mut c2: Box<dyn QueryCallback<T>>,
+    c1: Box<dyn QueryCallback<T>>,
+    c2: Box<dyn QueryCallback<T>>,
 ) -> impl QueryCallback<T> {
     move |query| c1(query).or_else(|_| c2(query))
 }
@@ -157,6 +157,14 @@ impl<'a, 'b, T: FieldElement, Q: QueryCallback<T>> WitnessGenerator<'a, 'b, T, Q
         record_end(OUTER_CODE_NAME);
         reset_and_print_profile_summary();
 
+        log::debug!("Publics:");
+        for (name, public_declaration) in self.analyzed.public_declarations_in_source_order() {
+            let poly_name = &public_declaration.referenced_poly_name();
+            let poly_index = public_declaration.index;
+            let value = columns[poly_name][poly_index as usize];
+            log::debug!("  {name:>30}: {value}");
+        }
+
         // Order columns according to the order of declaration.
         self.analyzed
             .committed_polys_in_source_order()
@@ -195,7 +203,7 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
                             let external_values = external_witness_values.remove(name.as_str());
                             if let Some(external_values) = &external_values {
                                 if external_values.len() != analyzed.degree() as usize {
-                                    log::warn!(
+                                    log::debug!(
                                         "External witness values for column {} were only partially provided \
                                          (length is {} but the degree is {})",
                                         name,

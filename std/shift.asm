@@ -1,3 +1,5 @@
+use std::utils::unchanged_until;
+
 machine Shift(latch, operation_id) {
     // lower bound degree is 262144
 
@@ -30,7 +32,7 @@ machine Shift(latch, operation_id) {
     col witness C;
 
     A' = A * (1 - latch) + A_byte * FACTOR;
-    (B' - B) * (1 - latch) = 0;
+    unchanged_until(B, latch);
     C' = C * (1 - latch) + C_part;
 
     // TODO this way, we cannot prove anything that shifts by more than 31 bits.

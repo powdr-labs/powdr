@@ -31,7 +31,7 @@ pub fn verify(temp_dir: &Path, name: &str) {
         let output = String::from_utf8(verifier_output.stdout).unwrap();
         log::error!("PIL verifier output: {}", output);
         if !output.trim().ends_with("PIL OK!!") {
-            panic!("Verified did not say 'PIL OK'.");
+            panic!("Verified did not say 'PIL OK' for {name}.");
         }
     }
 }

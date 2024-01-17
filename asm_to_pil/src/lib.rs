@@ -1,6 +1,6 @@
 #![deny(clippy::print_stdout)]
 
-use ast::asm_analysis::AnalysisASMFile;
+use ast::asm_analysis::{AnalysisASMFile, Item};
 use number::FieldElement;
 use romgen::generate_machine_rom;
 mod common;
@@ -10,14 +10,20 @@ mod vm_to_constrained;
 /// Remove all ASM from the machine tree. Takes a tree of virtual or constrained machines and returns a tree of constrained machines
 pub fn compile<T: FieldElement>(file: AnalysisASMFile<T>) -> AnalysisASMFile<T> {
     AnalysisASMFile {
-        machines: file
-            .machines
+        items: file
+            .items
             .into_iter()
             .map(|(name, m)| {
-                (name, {
-                    let (m, rom) = generate_machine_rom(m);
-                    vm_to_constrained::convert_machine(m, rom)
-                })
+                (
+                    name,
+                    match m {
+                        Item::Machine(m) => {
+                            let (m, rom) = generate_machine_rom(m);
+                            Item::Machine(vm_to_constrained::convert_machine(m, rom))
+                        }
+                        Item::Expression(e) => Item::Expression(e),
+                    },
+                )
             })
             .collect(),
     }

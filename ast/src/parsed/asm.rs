@@ -1,6 +1,6 @@
 use std::{
     fmt::{Display, Formatter, Result},
-    iter::{once, repeat},
+    iter::{empty, once, repeat},
 };
 
 use itertools::Itertools;
@@ -47,6 +47,8 @@ pub enum SymbolValue<T> {
     Import(Import),
     /// A module definition
     Module(Module<T>),
+    /// A generic symbol / function.
+    Expression(Expression<T>),
 }
 
 impl<T> SymbolValue<T> {
@@ -55,6 +57,7 @@ impl<T> SymbolValue<T> {
             SymbolValue::Machine(machine) => SymbolValueRef::Machine(machine),
             SymbolValue::Import(i) => SymbolValueRef::Import(i),
             SymbolValue::Module(m) => SymbolValueRef::Module(m.as_ref()),
+            SymbolValue::Expression(e) => SymbolValueRef::Expression(e),
         }
     }
 }
@@ -67,6 +70,8 @@ pub enum SymbolValueRef<'a, T> {
     Import(&'a Import),
     /// A module definition
     Module(ModuleRef<'a, T>),
+    /// A generic symbol / function.
+    Expression(&'a Expression<T>),
 }
 
 #[derive(Debug, PartialEq, Eq, From)]
@@ -341,6 +346,22 @@ impl Display for Part {
 pub struct Machine<T> {
     pub arguments: MachineArguments,
     pub statements: Vec<MachineStatement<T>>,
+}
+
+impl<T: Clone> Machine<T> {
+    /// Returns a vector of all local variables / names defined in the machine.
+    pub fn local_names(&self) -> Box<dyn Iterator<Item = &String> + '_> {
+        Box::new(self.statements.iter().flat_map(|s| match s {
+            MachineStatement::RegisterDeclaration(_, name, _) => Box::new(once(name)),
+            MachineStatement::Pil(_, statement) => statement.symbol_definition_names(),
+            MachineStatement::Degree(_, _)
+            | MachineStatement::Submachine(_, _, _)
+            | MachineStatement::InstructionDeclaration(_, _, _)
+            | MachineStatement::LinkDeclaration(_)
+            | MachineStatement::FunctionDeclaration(_, _, _, _)
+            | MachineStatement::OperationDeclaration(_, _, _, _) => Box::new(empty()),
+        }))
+    }
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Default, Clone)]

@@ -15,7 +15,8 @@ use bootloader::{default_input, PAGE_SIZE_BYTES_LOG, PC_INDEX, REGISTER_NAMES};
 use memory_merkle_tree::MerkleTree;
 
 use crate::continuations::bootloader::{
-    default_register_values, BOOTLOADER_SPECIFIC_INSTRUCTION_NAMES, DEFAULT_PC,
+    default_register_values, BOOTLOADER_INPUTS_PER_PAGE, BOOTLOADER_SPECIFIC_INSTRUCTION_NAMES,
+    DEFAULT_PC, MEMORY_HASH_START_INDEX, PAGE_INPUTS_OFFSET, WORDS_PER_PAGE,
 };
 
 fn transposed_trace<F: FieldElement>(trace: &ExecutionTrace) -> HashMap<String, Vec<F>> {
@@ -34,6 +35,13 @@ fn transposed_trace<F: FieldElement>(trace: &ExecutionTrace) -> HashMap<String, 
         .into_iter()
         .map(|(n, c)| (format!("main.{}", n), c))
         .collect()
+}
+
+fn render_hash<F: FieldElement>(hash: &[F]) -> String {
+    hash.iter()
+        .map(|&f| format!("{:016x}", f.to_arbitrary_integer()))
+        .collect::<Vec<_>>()
+        .join("")
 }
 
 pub fn rust_continuations<F: FieldElement, PipelineFactory, PipelineCallback, E>(
@@ -62,7 +70,7 @@ where
         .into_iter()
         .enumerate()
         .map(|(i, bootloader_inputs)| -> Result<(), E> {
-            log::info!("Running chunk {} / {}...", i + 1, num_chunks);
+            log::info!("\nRunning chunk {} / {}...", i + 1, num_chunks);
             let pipeline = optimized_pipeline_factory();
             let name = format!("{}_chunk_{}", pipeline.name(), i);
             let pipeline = pipeline.with_name(name);
@@ -78,7 +86,9 @@ where
 }
 
 fn sanity_check<T>(program: &AnalysisASMFile<T>) {
-    let main_machine = program.get_machine(parse_absolute_path("::Main"));
+    let main_machine = program.items[&parse_absolute_path("::Main")]
+        .try_to_machine()
+        .unwrap();
     for expected_instruction in BOOTLOADER_SPECIFIC_INSTRUCTION_NAMES {
         if !main_machine
             .instructions
@@ -161,8 +171,7 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
     // Run for 2**degree - 2 steps, because the executor doesn't run the dispatcher,
     // which takes 2 rows.
     let degree = program
-        .machines
-        .iter()
+        .machines()
         .fold(None, |acc, (_, m)| acc.or(m.degree.clone()))
         .unwrap()
         .degree;
@@ -174,6 +183,7 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
 
         log::info!("Building bootloader inputs for chunk {}...", chunk_index);
         let mut accessed_pages = BTreeSet::new();
+        let mut accessed_addresses = BTreeSet::new();
         let start_idx = memory_accesses
             .binary_search_by_key(&proven_trace, |a| a.idx)
             .unwrap_or_else(|v| v);
@@ -185,29 +195,42 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
             if access.idx >= proven_trace + num_rows {
                 break;
             }
+            accessed_addresses.insert(access.address);
             accessed_pages.insert(access.address >> PAGE_SIZE_BYTES_LOG);
         }
         log::info!(
-            "{} accessed pages: {:?}",
+            "{} unique memory accesses over {} accessed pages: {:?}",
+            accessed_addresses.len(),
             accessed_pages.len(),
             accessed_pages
         );
 
+        // Build the bootloader inputs for the current chunk.
+        // Note that while we do know the accessed pages, we don't yet know the hashes
+        // of those pages at the end of the execution, because that will depend on how
+        // long the bootloader runs.
+        // Similarly, we don't yet know the final register values.
+        // So, we do a bit of a hack: For now, we'll just pretend that the state does not change, i.e.:
+        // - The final register values are equal to the initial register values.
+        // - The updated page hashes are equal to the current page hashes.
+        // - The updated root hash is equal to the current root hash.
+        // After simulating the chunk execution, we'll replace those values with the actual values.
         let mut bootloader_inputs = register_values.clone();
+        bootloader_inputs.extend(register_values.clone());
+        bootloader_inputs.extend(merkle_tree.root_hash());
         bootloader_inputs.extend(merkle_tree.root_hash());
         bootloader_inputs.push((accessed_pages.len() as u64).into());
         for &page_index in accessed_pages.iter() {
             bootloader_inputs.push(page_index.into());
-            let (page, proof) = merkle_tree.get(page_index as usize);
+            let (page, page_hash, proof) = merkle_tree.get(page_index as usize);
             bootloader_inputs.extend(page);
+            bootloader_inputs.extend(page_hash);
             for sibling in proof {
                 bootloader_inputs.extend(sibling);
             }
         }
 
         log::info!("Bootloader inputs length: {}", bootloader_inputs.len());
-
-        all_bootloader_inputs.push(bootloader_inputs.clone());
 
         log::info!("Simulating chunk execution...");
         let (chunk_trace, memory_snapshot_update) = {
@@ -220,10 +243,75 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
             );
             (transposed_trace(&trace), memory_snapshot_update)
         };
-        log::info!("{} memory slots updated.", memory_snapshot_update.len());
-        merkle_tree.update(memory_snapshot_update.into_iter());
-        log::info!("Chunk trace length: {}", chunk_trace["main.pc"].len());
+        let mut memory_updates_by_page =
+            merkle_tree.organize_updates_by_page(memory_snapshot_update.into_iter());
+        for (i, &page_index) in accessed_pages.iter().enumerate() {
+            let page_index = page_index as usize;
+            let (_, _, proof) = merkle_tree.get(page_index);
 
+            // Replace the proof
+            let proof_start_index =
+                PAGE_INPUTS_OFFSET + BOOTLOADER_INPUTS_PER_PAGE * i + 1 + WORDS_PER_PAGE + 4;
+            for (j, sibling) in proof.into_iter().enumerate() {
+                bootloader_inputs[proof_start_index + j * 4..proof_start_index + j * 4 + 4]
+                    .copy_from_slice(sibling);
+            }
+
+            // Update one child of the Merkle tree
+            merkle_tree.update_page(
+                page_index,
+                memory_updates_by_page
+                    .remove(&page_index)
+                    .unwrap()
+                    .into_iter(),
+            );
+
+            let (_, page_hash, proof) = merkle_tree.get(page_index);
+
+            // Assert the proof hasn't changed (because we didn't update any page except the current).
+            for (j, sibling) in proof.into_iter().enumerate() {
+                assert_eq!(
+                    &bootloader_inputs[proof_start_index + j * 4..proof_start_index + j * 4 + 4],
+                    sibling
+                );
+            }
+
+            // Replace the page hash
+            let updated_page_hash_index =
+                PAGE_INPUTS_OFFSET + BOOTLOADER_INPUTS_PER_PAGE * i + 1 + WORDS_PER_PAGE;
+            bootloader_inputs[updated_page_hash_index..updated_page_hash_index + 4]
+                .copy_from_slice(page_hash);
+        }
+
+        // Update initial register values for the next chunk.
+        register_values = REGISTER_NAMES
+            .iter()
+            .map(|&r| *chunk_trace[r].last().unwrap())
+            .collect();
+
+        // Replace final register values of the current chunk
+        bootloader_inputs[REGISTER_NAMES.len()..2 * REGISTER_NAMES.len()]
+            .copy_from_slice(&register_values);
+
+        // Replace the updated root hash
+        let updated_root_hash_index = MEMORY_HASH_START_INDEX + 4;
+        bootloader_inputs[updated_root_hash_index..updated_root_hash_index + 4]
+            .copy_from_slice(merkle_tree.root_hash());
+
+        log::info!(
+            "Initial memory root hash: {}",
+            render_hash(&bootloader_inputs[MEMORY_HASH_START_INDEX..MEMORY_HASH_START_INDEX + 4])
+        );
+        log::info!(
+            "Final memory root hash: {}",
+            render_hash(
+                &bootloader_inputs[MEMORY_HASH_START_INDEX + 4..MEMORY_HASH_START_INDEX + 8]
+            )
+        );
+
+        all_bootloader_inputs.push(bootloader_inputs.clone());
+
+        log::info!("Chunk trace length: {}", chunk_trace["main.pc"].len());
         log::info!("Validating chunk...");
         let (start, _) = chunk_trace["main.pc"]
             .iter()
@@ -265,12 +353,6 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
         let new_rows = num_rows - start - 1;
         proven_trace += new_rows;
         log::info!("Proved {} rows.", new_rows);
-
-        // Update initial register values for the next chunk.
-        register_values = REGISTER_NAMES
-            .iter()
-            .map(|&r| *chunk_trace[r].last().unwrap())
-            .collect();
 
         chunk_index += 1;
     }

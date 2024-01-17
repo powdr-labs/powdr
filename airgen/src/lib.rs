@@ -5,7 +5,7 @@
 use std::collections::BTreeMap;
 
 use ast::{
-    asm_analysis::{AnalysisASMFile, LinkDefinitionStatement, Machine, SubmachineDeclaration},
+    asm_analysis::{AnalysisASMFile, Item, LinkDefinitionStatement, SubmachineDeclaration},
     object::{Link, LinkFrom, LinkTo, Location, Object, Operation, PILGraph},
     parsed::{
         asm::{parse_absolute_path, AbsoluteSymbolPath, CallableRef},
@@ -22,8 +22,7 @@ pub fn compile<T: FieldElement>(input: AnalysisASMFile<T>) -> PILGraph<T> {
     let main_location = Location::main();
 
     let non_std_machines = input
-        .machines
-        .iter()
+        .machines()
         .filter(|(k, _)| k.parts().next() != Some("std"))
         .collect::<BTreeMap<_, _>>();
 
@@ -34,7 +33,7 @@ pub fn compile<T: FieldElement>(input: AnalysisASMFile<T>) -> PILGraph<T> {
         // otherwise, use the machine called `MAIN`
         _ => {
             let p = parse_absolute_path(MAIN_MACHINE);
-            assert!(input.machines.contains_key(&p));
+            assert!(input.items.contains_key(&p));
             p
         }
     };
@@ -45,7 +44,7 @@ pub fn compile<T: FieldElement>(input: AnalysisASMFile<T>) -> PILGraph<T> {
     let mut instances = vec![];
 
     while let Some((location, ty)) = queue.pop() {
-        let machine = input.machines.get(&ty).unwrap();
+        let machine = input.items.get(&ty).unwrap().try_to_machine().unwrap();
 
         queue.extend(machine.submachines.iter().map(|def| {
             (
@@ -68,31 +67,50 @@ pub fn compile<T: FieldElement>(input: AnalysisASMFile<T>) -> PILGraph<T> {
         })
         .collect();
 
-    let main_ty = input.machines.get(&main_ty).unwrap();
+    let Item::Machine(main_ty) = input.items.get(&main_ty).unwrap() else {
+        panic!()
+    };
+
+    let main = ast::object::Machine {
+        location: main_location,
+        latch: main_ty.latch.clone(),
+        operation_id: main_ty.operation_id.clone(),
+    };
+    let entry_points = main_ty
+        .operations()
+        .map(|o| Operation {
+            name: MAIN_FUNCTION.to_string(),
+            id: o.id.id,
+            params: o.params.clone(),
+        })
+        .collect();
+
+    // Extract all the pil utility definitions
+    let definitions = input
+        .items
+        .into_iter()
+        .filter_map(|(n, v)| {
+            if let Item::Expression(e) = v {
+                Some((n, e))
+            } else {
+                None
+            }
+        })
+        .collect();
 
     PILGraph {
-        main: ast::object::Machine {
-            location: main_location,
-            latch: main_ty.latch.clone(),
-            operation_id: main_ty.operation_id.clone(),
-        },
-        entry_points: main_ty
-            .operations()
-            .map(|o| Operation {
-                name: MAIN_FUNCTION.to_string(),
-                id: o.id.id,
-                params: o.params.clone(),
-            })
-            .collect(),
+        main,
+        entry_points,
         objects,
+        definitions,
     }
 }
 
 struct ASMPILConverter<'a, T> {
     /// Location in the machine tree
     location: &'a Location,
-    /// Machine types
-    machines: &'a BTreeMap<AbsoluteSymbolPath, Machine<T>>,
+    /// Input definitions and machines.
+    items: &'a BTreeMap<AbsoluteSymbolPath, Item<T>>,
     pil: Vec<PilStatement<T>>,
     submachines: Vec<SubmachineDeclaration>,
 }
@@ -101,7 +119,7 @@ impl<'a, T: FieldElement> ASMPILConverter<'a, T> {
     fn new(location: &'a Location, input: &'a AnalysisASMFile<T>) -> Self {
         Self {
             location,
-            machines: &input.machines,
+            items: &input.items,
             pil: Default::default(),
             submachines: Default::default(),
         }
@@ -121,7 +139,9 @@ impl<'a, T: FieldElement> ASMPILConverter<'a, T> {
 
     fn convert_machine_inner(mut self, ty: &AbsoluteSymbolPath) -> Object<T> {
         // TODO: This clone doubles the current memory usage
-        let input = self.machines.get(ty).unwrap().clone();
+        let Item::Machine(input) = self.items.get(ty).unwrap().clone() else {
+            panic!();
+        };
 
         let degree = input.degree.map(|s| T::from(s.degree).to_degree());
 
@@ -172,7 +192,9 @@ impl<'a, T: FieldElement> ASMPILConverter<'a, T> {
             .ty
             .clone();
         // get the machine type from the machine map
-        let instance_ty = self.machines.get(&instance_ty_name).unwrap();
+        let Item::Machine(instance_ty) = self.items.get(&instance_ty_name).unwrap() else {
+            panic!();
+        };
         // get the instance location from the current location joined with the instance name
         let instance_location = self.location.clone().join(instance);
 

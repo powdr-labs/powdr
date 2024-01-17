@@ -15,7 +15,9 @@ use std::{
 };
 
 use ast::{
-    asm_analysis::{AnalysisASMFile, CallableSymbol, FunctionStatement, LabelStatement, Machine},
+    asm_analysis::{
+        AnalysisASMFile, CallableSymbol, FunctionStatement, Item, LabelStatement, Machine,
+    },
     parsed::{asm::DebugDirective, Expression, FunctionCall},
 };
 use builder::TraceBuilder;
@@ -399,8 +401,11 @@ mod builder {
 }
 
 fn get_main_machine<T: FieldElement>(program: &AnalysisASMFile<T>) -> &Machine<T> {
-    for (name, m) in program.machines.iter() {
+    for (name, m) in program.items.iter() {
         if name.len() == 1 && name.parts().next() == Some("Main") {
+            let Item::Machine(m) = m else {
+                panic!();
+            };
             return m;
         }
     }
@@ -490,7 +495,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
             .collect::<Vec<_>>();
 
         match name {
-            "mstore" => {
+            "mstore" | "mstore_bootloader" => {
                 let addr = args[0].0 as u32;
                 assert_eq!(addr % 4, 0);
                 self.proc.set_mem(args[0].0 as u32, args[1].u());

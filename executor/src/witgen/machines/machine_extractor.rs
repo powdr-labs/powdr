@@ -118,7 +118,7 @@ pub fn split_out_machines<'a, T: FieldElement>(
             &machine_identities,
             &machine_witnesses,
         ) {
-            log::info!("Detected machine: sorted witnesses / write-once memory");
+            log::debug!("Detected machine: sorted witnesses / write-once memory");
             machines.push(KnownMachine::SortedWitnesses(machine));
         } else if let Some(machine) = DoubleSortedWitnesses::try_new(
             name_with_type("DoubleSortedWitnesses"),
@@ -127,7 +127,7 @@ pub fn split_out_machines<'a, T: FieldElement>(
             &machine_witnesses,
             global_range_constraints,
         ) {
-            log::info!("Detected machine: memory");
+            log::debug!("Detected machine: memory");
             machines.push(KnownMachine::DoubleSortedWitnesses(machine));
         } else if let Some(machine) = WriteOnceMemory::try_new(
             name_with_type("WriteOnceMemory"),
@@ -135,7 +135,7 @@ pub fn split_out_machines<'a, T: FieldElement>(
             &connecting_identities,
             &machine_identities,
         ) {
-            log::info!("Detected machine: write-once memory");
+            log::debug!("Detected machine: write-once memory");
             machines.push(KnownMachine::WriteOnceMemory(machine));
         } else if let Some(machine) = BlockMachine::try_new(
             name_with_type("BlockMachine"),
@@ -145,10 +145,10 @@ pub fn split_out_machines<'a, T: FieldElement>(
             &machine_witnesses,
             global_range_constraints,
         ) {
-            log::info!("Detected machine: block");
+            log::debug!("Detected machine: block");
             machines.push(KnownMachine::BlockMachine(machine));
         } else {
-            log::info!("Detected machine: VM.");
+            log::debug!("Detected machine: VM.");
             let latch = connecting_identities
                 .iter()
                 .fold(None, |existing_latch, identity| {

@@ -193,6 +193,22 @@ fn test_mem_read_write() {
 }
 
 #[test]
+fn test_mem_read_write_no_memory_accesses() {
+    let f = "asm/mem_read_write_no_memory_accesses.asm";
+    verify_asm::<GoldilocksField>(f, Default::default());
+    gen_halo2_proof(f, Default::default());
+    gen_estark_proof(f, Default::default());
+}
+
+#[test]
+fn test_mem_read_write_with_bootloader() {
+    let f = "asm/mem_read_write_with_bootloader.asm";
+    verify_asm::<GoldilocksField>(f, Default::default());
+    gen_halo2_proof(f, Default::default());
+    gen_estark_proof(f, Default::default());
+}
+
+#[test]
 fn test_mem_read_write_large_diffs() {
     let f = "asm/mem_read_write_large_diffs.asm";
     verify_asm::<GoldilocksField>(f, Default::default());
@@ -285,6 +301,14 @@ fn intermediate() {
 #[test]
 fn intermediate_nested() {
     let f = "asm/intermediate_nested.asm";
+    verify_asm::<GoldilocksField>(f, Default::default());
+    gen_halo2_proof(f, Default::default());
+    gen_estark_proof(f, Default::default());
+}
+
+#[test]
+fn pil_at_module_level() {
+    let f = "asm/pil_at_module_level.asm";
     verify_asm::<GoldilocksField>(f, Default::default());
     gen_halo2_proof(f, Default::default());
     gen_estark_proof(f, Default::default());
