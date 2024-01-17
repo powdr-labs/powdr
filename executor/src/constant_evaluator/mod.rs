@@ -13,7 +13,13 @@ pub fn generate<T: FieldElement>(analyzed: &Analyzed<T>) -> Vec<(&str, Vec<T>)> 
     let mut other_constants = HashMap::new();
     for (poly, value) in analyzed.constant_polys_in_source_order() {
         if let Some(value) = value {
-            let values = generate_values(analyzed, analyzed.degree(), value, &other_constants);
+            let values = generate_values(
+                analyzed,
+                analyzed.degree(),
+                &poly.absolute_name,
+                value,
+                &other_constants,
+            );
             other_constants.insert(&poly.absolute_name, values);
         }
     }
@@ -27,6 +33,7 @@ pub fn generate<T: FieldElement>(analyzed: &Analyzed<T>) -> Vec<(&str, Vec<T>)> 
 fn generate_values<T: FieldElement>(
     analyzed: &Analyzed<T>,
     degree: DegreeType,
+    name: &str,
     body: &FunctionValueDefinition<T>,
     computed_columns: &HashMap<&str, Vec<T>>,
 ) -> Vec<T> {
@@ -35,7 +42,7 @@ fn generate_values<T: FieldElement>(
         computed_columns,
     };
     // TODO we should maybe pre-compute some symbols here.
-    match body {
+    let result = match body {
         FunctionValueDefinition::Expression(e) => (0..degree)
             .into_par_iter()
             .map(|i| {
@@ -43,37 +50,38 @@ fn generate_values<T: FieldElement>(
                 // but the data is not thread-safe.
                 let fun = evaluator::evaluate(e, &symbols).unwrap();
                 evaluator::evaluate_function_call(fun, vec![Rc::new(T::from(i).into())], &symbols)
-                    .unwrap()
-                    .try_to_number()
-                    .unwrap()
+                    .and_then(|v| v.try_to_number())
             })
-            .collect(),
-        FunctionValueDefinition::Array(values) => {
-            let values: Vec<_> = values
-                .iter()
-                .flat_map(|elements| {
-                    let items = elements
-                        .pattern()
-                        .iter()
-                        .map(|v| {
-                            evaluator::evaluate(v, &symbols)
-                                .unwrap()
-                                .try_to_number()
-                                .unwrap()
-                        })
-                        .collect::<Vec<_>>();
+            .collect::<Result<Vec<_>, _>>(),
+        FunctionValueDefinition::Array(values) => values
+            .iter()
+            .map(|elements| {
+                let items = elements
+                    .pattern()
+                    .iter()
+                    .map(|v| evaluator::evaluate(v, &symbols).and_then(|v| v.try_to_number()))
+                    .collect::<Result<Vec<_>, _>>()?;
 
-                    items
-                        .into_iter()
-                        .cycle()
-                        .take(elements.size() as usize)
-                        .collect::<Vec<_>>()
-                })
-                .collect();
-            assert_eq!(values.len(), degree as usize);
-            values
-        }
+                Ok(items
+                    .into_iter()
+                    .cycle()
+                    .take(elements.size() as usize)
+                    .collect::<Vec<_>>())
+            })
+            .collect::<Result<Vec<_>, _>>()
+            .map(|values| {
+                let values: Vec<T> = values.into_iter().flatten().collect();
+                assert_eq!(values.len(), degree as usize);
+                values
+            }),
         FunctionValueDefinition::Query(_) => panic!("Query used for fixed column."),
+    };
+    match result {
+        Err(err) => {
+            eprintln!("Error evaluating fixed polynomial {name} = {body}:\n{err}");
+            panic!("{err}");
+        }
+        Ok(v) => v,
     }
 }
 
@@ -134,7 +142,11 @@ pub struct FixedColumnRef<'a> {
     pub name: &'a str,
 }
 
-impl<'a> Custom for FixedColumnRef<'a> {}
+impl<'a> Custom for FixedColumnRef<'a> {
+    fn type_name(&self) -> String {
+        "col".to_string()
+    }
+}
 
 impl<'a> Display for FixedColumnRef<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
