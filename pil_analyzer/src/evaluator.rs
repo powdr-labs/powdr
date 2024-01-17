@@ -1,5 +1,8 @@
-use std::fmt;
-use std::{collections::HashMap, fmt::Display, rc::Rc};
+use std::{
+    collections::HashMap,
+    fmt::{self, Display},
+    rc::Rc,
+};
 
 use ast::{
     analyzed::{Expression, FunctionValueDefinition, Reference, Symbol},
@@ -77,6 +80,19 @@ pub enum EvalError {
     DataNotAvailable,
 }
 
+impl Display for EvalError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            EvalError::TypeError(msg) => write!(f, "Type error: {msg}"),
+            EvalError::Unsupported(msg) => write!(f, "Operation unsupported: {msg}"),
+            EvalError::OutOfBounds(msg) => write!(f, "Out of bounds access: {msg}"),
+            EvalError::NoMatch() => write!(f, "Unable to match pattern."),
+            EvalError::SymbolNotFound(msg) => write!(f, "Symbol not found: {msg}"),
+            EvalError::DataNotAvailable => write!(f, "Data not (yet) available."),
+        }
+    }
+}
+
 #[derive(Clone, PartialEq, Debug)]
 pub enum Value<'a, T, C> {
     Number(T),
@@ -102,9 +118,26 @@ impl<'a, T: FieldElement, C: Custom> Value<'a, T, C> {
             v => Err(EvalError::TypeError(format!("Expected number but got {v}"))),
         }
     }
+
+    pub fn type_name(&self) -> String {
+        match self {
+            Value::Number(_) => "num".to_string(),
+            Value::String(_) => "string".to_string(),
+            Value::Tuple(elements) => {
+                format!("({})", elements.iter().map(|e| e.type_name()).format(", "))
+            }
+            Value::Array(elements) => {
+                format!("[{}]", elements.iter().map(|e| e.type_name()).format(", "))
+            }
+            Value::Closure(c) => c.type_name(),
+            Value::Custom(c) => c.type_name(),
+        }
+    }
 }
 
-pub trait Custom: Display + fmt::Debug + Clone + PartialEq {}
+pub trait Custom: Display + Clone + PartialEq + fmt::Debug {
+    fn type_name(&self) -> String;
+}
 
 impl<'a, T: Display, C: Custom> Display for Value<'a, T, C> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -122,7 +155,11 @@ impl<'a, T: Display, C: Custom> Display for Value<'a, T, C> {
 #[derive(Clone, PartialEq, Debug)]
 pub enum NoCustom {}
 
-impl Custom for NoCustom {}
+impl Custom for NoCustom {
+    fn type_name(&self) -> String {
+        unreachable!();
+    }
+}
 
 impl Display for NoCustom {
     fn fmt(&self, _f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -153,6 +190,13 @@ impl<'a, T: Display, C> Display for Closure<'a, T, C> {
 impl<'a, T, C> From<Closure<'a, T, C>> for Value<'a, T, C> {
     fn from(value: Closure<'a, T, C>) -> Self {
         Value::Closure(value)
+    }
+}
+
+impl<'a, T, C> Closure<'a, T, C> {
+    pub fn type_name(&self) -> String {
+        // TODO should use proper types as soon as we have them
+        "closure".to_string()
     }
 }
 
@@ -263,7 +307,9 @@ mod internal {
                         Value::Number(evaluate_binary_operation(*l, *op, *r))
                     }
                     _ => Err(EvalError::TypeError(format!(
-                        "Operator {op} not supported on types: {left} {op} {right}"
+                        "Operator {op} not supported on types: {left}: {}, {right}: {}",
+                        left.type_name(),
+                        right.type_name()
                     )))?,
                 }
             }
@@ -271,7 +317,8 @@ mod internal {
                 Value::Custom(inner) => symbols.eval_unary_operation(*op, inner)?,
                 Value::Number(n) => Value::Number(evaluate_unary_operation(*op, n)),
                 inner => Err(EvalError::TypeError(format!(
-                    "Operator {op} not supported on types: {op} {inner}"
+                    "Operator {op} not supported on types: {inner}: {}",
+                    inner.type_name()
                 )))?,
             },
             Expression::LambdaExpression(lambda) => {

@@ -164,4 +164,8 @@ impl<'a> Display for Reference<'a> {
     }
 }
 
-impl<'a> Custom for Reference<'a> {}
+impl<'a> Custom for Reference<'a> {
+    fn type_name(&self) -> String {
+        "col".to_string()
+    }
+}
