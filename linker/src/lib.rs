@@ -258,6 +258,18 @@ mod test {
         );
     }
 
+    const STD_UTILS: &str = "
+    let fold = (|length, f, initial, folder| if (length <= 0) { initial } else { folder(std::utils::fold((length - 1), f, initial, folder), f((length - 1))) });
+    let force_bool = (|c| ((c * (1 - c)) == 0));
+    let make_array = (|length, f| std::utils::fold(length, f, [], (|acc, e| (acc + [e]))));
+    let map = (|arr, length, f| std::utils::make_array(length, (|i| f(arr[i]))));
+    let sum = (|length, f| std::utils::fold(length, f, 0, (|acc, e| (acc + e))));
+    let unchanged_until = (|c, latch| (((c' - c) * (1 - latch)) == 0));";
+
+    fn std_utils(degree: usize) -> String {
+        format!("namespace std::utils({degree});{STD_UTILS}")
+    }
+
     #[test]
     fn compile_empty_vm() {
         let expectation = r#"
@@ -290,7 +302,10 @@ namespace main(8);
         let contents = fs::read_to_string(file_name).unwrap();
         let graph = parse_analyse_and_compile::<GoldilocksField>(&contents);
         let pil = link(graph).unwrap();
-        assert_eq!(format!("{pil}").trim(), expectation.trim());
+        assert_eq!(
+            format!("{pil}").trim(),
+            format!("{}{expectation}", std_utils(8)).trim()
+        );
     }
 
     #[test]
@@ -396,7 +411,10 @@ namespace main_sub(16);
         let contents = fs::read_to_string(file_name).unwrap();
         let graph = parse_analyse_and_compile::<GoldilocksField>(&contents);
         let pil = link(graph).unwrap();
-        assert_eq!(format!("{pil}").trim(), expectation.trim());
+        assert_eq!(
+            format!("{pil}").trim(),
+            format!("{}{expectation}", std_utils(16)).trim()
+        );
     }
 
     #[test]
@@ -473,7 +491,10 @@ namespace main(1024);
         let contents = fs::read_to_string(file_name).unwrap();
         let graph = parse_analyse_and_compile::<GoldilocksField>(&contents);
         let pil = link(graph).unwrap();
-        assert_eq!(format!("{pil}").trim(), expectation.trim());
+        assert_eq!(
+            format!("{pil}").trim(),
+            format!("{}{expectation}", std_utils(1024)).trim()
+        );
     }
 
     #[test]
@@ -531,7 +552,10 @@ namespace main(1024);
 "#;
         let graph = parse_analyse_and_compile::<GoldilocksField>(source);
         let pil = link(graph).unwrap();
-        assert_eq!(format!("{pil}").trim(), expectation.trim());
+        assert_eq!(
+            format!("{pil}").trim(),
+            format!("{}{expectation}", std_utils(1024)).trim()
+        );
     }
 
     #[test]

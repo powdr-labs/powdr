@@ -1,3 +1,6 @@
+use std::utils::fold;
+use std::utils::make_array;
+
 // Implements the Poseidon permutation for the Goldilocks field.
 machine PoseidonGL(LASTBLOCK, operation_id) {
 
@@ -164,12 +167,6 @@ machine PoseidonGL(LASTBLOCK, operation_id) {
         41*b0 + 16*b1 +  2*b2 + 28*b3 + 13*b4 + 13*b5 + 39*b6 + 18*b7 + 34*b8 + 20*b9 + 17*b10 + 15*b11,
         15*b0 + 41*b1 + 16*b2 +  2*b3 + 28*b4 + 13*b5 + 13*b6 + 39*b7 + 18*b8 + 34*b9 + 20*b10 + 17*b11
     ];
-
-    let fold = |length, f, initial, folder| match length {
-        0 => initial,
-        _ => folder(fold(length - 1, f, initial, folder), f(length - 1))
-    };
-    let make_array = |length, f| fold(length, f, [], |acc, e| acc + [e]);
 
     let equal_unless_last = |a, b| (1 - LAST) * (a - b) == 0;
     make_array(8, |i| equal_unless_last(inp[i]', c[i]));
