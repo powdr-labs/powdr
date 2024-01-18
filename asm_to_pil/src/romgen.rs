@@ -12,6 +12,7 @@ use ast::parsed::{
     asm::{OperationId, Param, ParamList, Params},
     Expression,
 };
+use ast::SourceRef;
 use number::FieldElement;
 
 use crate::{
@@ -202,7 +203,7 @@ pub fn generate_machine_rom<T: FieldElement>(
 
             // replace the function by an operation
             *callable.symbol = OperationSymbol {
-                start: 0,
+                source: SourceRef::unknown(),
                 id: OperationId {
                     id: Some(operation_id),
                 },

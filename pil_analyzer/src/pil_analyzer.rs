@@ -9,7 +9,7 @@ use ast::parsed::{PILFile, PilStatement};
 use number::{DegreeType, FieldElement};
 
 use ast::analyzed::{
-    Analyzed, Expression, FunctionValueDefinition, Identity, PublicDeclaration, SourceRef,
+    Analyzed, Expression, FunctionValueDefinition, Identity, PublicDeclaration,
     StatementIdentifier, Symbol,
 };
 
@@ -26,16 +26,20 @@ pub fn process_pil_file<T: FieldElement>(path: &Path) -> Analyzed<T> {
     analyzer.condense()
 }
 
-pub fn process_pil_file_contents<T: FieldElement>(contents: &str) -> Analyzed<T> {
-    let file_name = Path::new("input");
+pub fn process_pil_ast<T: FieldElement>(pil_file: PILFile<T>) -> Analyzed<T> {
     let mut analyzer = PILAnalyzer::new();
-
-    analyzer.process(
-        [(file_name.to_owned(), ParsedFile::parse(file_name, contents))]
-            .into_iter()
-            .collect(),
-    );
+    analyzer.process(vec![pil_file]);
     analyzer.condense()
+}
+
+pub fn process_pil_file_contents<T: FieldElement>(contents: &str) -> Analyzed<T> {
+    let pil_file = parser::parse(Some("input"), contents).unwrap_or_else(|err| {
+        eprintln!("Error parsing .pil file:");
+        err.output_to_stderr();
+        panic!();
+    });
+
+    process_pil_ast(pil_file)
 }
 
 #[derive(Default)]
@@ -50,30 +54,10 @@ struct PILAnalyzer<T> {
     /// appear in the source.
     source_order: Vec<StatementIdentifier>,
     symbol_counters: Option<Counters>,
-    current_file: PathBuf,
-    current_line_starts: Vec<usize>,
-}
-
-struct ParsedFile<T> {
-    line_starts: Vec<usize>,
-    ast: PILFile<T>,
-}
-
-impl<T: FieldElement> ParsedFile<T> {
-    #[allow(clippy::print_stderr)]
-    pub fn parse(path: &Path, contents: &str) -> Self {
-        let line_starts = parser_util::lines::compute_line_starts(contents);
-        let ast = parser::parse(Some(path.to_str().unwrap()), contents).unwrap_or_else(|err| {
-            eprintln!("Error parsing .pil file:");
-            err.output_to_stderr();
-            panic!();
-        });
-        ParsedFile { line_starts, ast }
-    }
 }
 
 /// Reads and parses the given path and all its imports.
-fn import_all_dependencies<T: FieldElement>(path: &Path) -> Vec<(PathBuf, ParsedFile<T>)> {
+fn import_all_dependencies<T: FieldElement>(path: &Path) -> Vec<PILFile<T>> {
     let mut processed = Default::default();
     import_all_dependencies_internal(path, &mut processed)
 }
@@ -81,7 +65,7 @@ fn import_all_dependencies<T: FieldElement>(path: &Path) -> Vec<(PathBuf, Parsed
 fn import_all_dependencies_internal<T: FieldElement>(
     path: &Path,
     processed: &mut HashSet<PathBuf>,
-) -> Vec<(PathBuf, ParsedFile<T>)> {
+) -> Vec<PILFile<T>> {
     let path = path
         .canonicalize()
         .unwrap_or_else(|e| panic!("File {path:?} not found: {e}"));
@@ -90,10 +74,15 @@ fn import_all_dependencies_internal<T: FieldElement>(
     }
 
     let contents = fs::read_to_string(path.clone()).unwrap();
-    let parsed = ParsedFile::parse(&path, &contents);
+
+    let ast = parser::parse(Some(path.to_str().unwrap()), &contents).unwrap_or_else(|err| {
+        eprintln!("Error parsing .pil file:");
+        err.output_to_stderr();
+        panic!();
+    });
 
     // Filter out non-includes and compute the relative paths of includes.
-    let (non_includes, includes) = parsed.ast.0.into_iter().fold(
+    let (non_includes, includes) = ast.0.into_iter().fold(
         (vec![], vec![]),
         |(mut non_includes, mut included_paths), s| {
             match s {
@@ -109,13 +98,7 @@ fn import_all_dependencies_internal<T: FieldElement>(
     includes
         .into_iter()
         .flat_map(|path| import_all_dependencies_internal(&path, processed))
-        .chain(once((
-            path,
-            ParsedFile {
-                ast: PILFile(non_includes),
-                ..parsed
-            },
-        )))
+        .chain(once(PILFile(non_includes)))
         .collect::<Vec<_>>()
 }
 
@@ -127,19 +110,15 @@ impl<T: FieldElement> PILAnalyzer<T> {
         }
     }
 
-    pub fn process(&mut self, files: Vec<(PathBuf, ParsedFile<T>)>) {
+    pub fn process(&mut self, files: Vec<PILFile<T>>) {
         self.current_namespace = Default::default();
-        for statement in files.iter().flat_map(|(_, f)| f.ast.0.iter()) {
+        for statement in files.iter().flat_map(|f| f.0.iter()) {
             self.collect_names(statement);
         }
 
         self.current_namespace = Default::default();
-        for (name, parsed) in files {
-            self.current_file = name;
-            self.current_line_starts = parsed.line_starts;
-            for statement in parsed.ast.0 {
-                self.handle_statement(statement);
-            }
+        for statement in files.into_iter().flat_map(|f| f.0.into_iter()) {
+            self.handle_statement(statement);
         }
     }
 
@@ -262,14 +241,6 @@ impl<'a, T: FieldElement> AnalysisDriver<T> for Driver<'a, T> {
                 self.0.known_symbols.contains(&path).then_some(path)
             })
             .unwrap_or_else(|| panic!("Symbol not found: {}", path.to_dotted_string()))
-    }
-
-    fn source_position_to_source_ref(&self, pos: usize) -> SourceRef {
-        let file = self.0.current_file.file_name().unwrap().to_str().unwrap();
-        SourceRef {
-            line: parser_util::lines::offset_to_line(pos, &self.0.current_line_starts),
-            file: file.to_string(),
-        }
     }
 
     fn definitions(&self) -> &HashMap<String, (Symbol, Option<FunctionValueDefinition<T>>)> {

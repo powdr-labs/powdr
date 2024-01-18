@@ -55,8 +55,9 @@ pub mod utils {
     use number::FieldElement;
 
     pub fn parse_pil_statement<T: FieldElement>(input: &str) -> PilStatement<T> {
+        let ctx = parser::ParserContext::new(None, input);
         parser::powdr::PilStatementParser::new()
-            .parse(input)
+            .parse(&ctx, input)
             .unwrap()
     }
 }

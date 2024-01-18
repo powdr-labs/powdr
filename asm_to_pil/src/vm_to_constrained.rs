@@ -20,6 +20,7 @@ use ast::{
         LambdaExpression, MatchArm, MatchPattern, NamespacedPolynomialReference, PilStatement,
         PolynomialName, SelectedExpressions, UnaryOperator,
     },
+    SourceRef,
 };
 
 use number::FieldElement;
@@ -97,7 +98,7 @@ impl<T: FieldElement> ASMPILConverter<T> {
         // introduce `return` instruction
         assert!(
             self.handle_instruction_def(InstructionDefinitionStatement {
-                start: 0,
+                source: SourceRef::unknown(),
                 name: RETURN_NAME.into(),
                 instruction: self.return_instruction()
             })
@@ -115,7 +116,7 @@ impl<T: FieldElement> ASMPILConverter<T> {
 
         // introduce `first_step` which is used for register updates
         self.pil.push(PilStatement::PolynomialConstantDefinition(
-            0,
+            SourceRef::unknown(),
             "first_step".to_string(),
             FunctionDefinition::Array(
                 ArrayExpression::value(vec![T::one().into()]).pad_with_zeroes(),
@@ -138,12 +139,12 @@ impl<T: FieldElement> ASMPILConverter<T> {
 
                                 vec![
                                     PilStatement::PolynomialDefinition(
-                                        0,
+                                        SourceRef::unknown(),
                                         pc_update_name.to_string(),
                                         rhs,
                                     ),
                                     PilStatement::PolynomialIdentity(
-                                        0,
+                                        SourceRef::unknown(),
                                         lhs - (Expression::from(T::one())
                                             - next_reference("first_step"))
                                             * direct_reference(pc_update_name),
@@ -154,10 +155,16 @@ impl<T: FieldElement> ASMPILConverter<T> {
                             ReadOnly => {
                                 let not_reset: Expression<T> =
                                     Expression::from(T::one()) - direct_reference("instr__reset");
-                                vec![PilStatement::PolynomialIdentity(0, not_reset * (lhs - rhs))]
+                                vec![PilStatement::PolynomialIdentity(
+                                    SourceRef::unknown(),
+                                    not_reset * (lhs - rhs),
+                                )]
                             }
                             _ => {
-                                vec![PilStatement::PolynomialIdentity(0, lhs - rhs)]
+                                vec![PilStatement::PolynomialIdentity(
+                                    SourceRef::unknown(),
+                                    lhs - rhs,
+                                )]
                             }
                         }
                     })
@@ -174,7 +181,7 @@ impl<T: FieldElement> ASMPILConverter<T> {
         self.translate_code_lines();
 
         self.pil.push(PilStatement::PlookupIdentity(
-            0,
+            SourceRef::unknown(),
             SelectedExpressions {
                 selector: None,
                 expressions: self
@@ -229,7 +236,7 @@ impl<T: FieldElement> ASMPILConverter<T> {
     fn handle_statement(&mut self, statement: FunctionStatement<T>) -> CodeLine<T> {
         match statement {
             FunctionStatement::Assignment(AssignmentStatement {
-                start,
+                source,
                 lhs_with_reg,
                 rhs,
             }) => {
@@ -243,7 +250,7 @@ impl<T: FieldElement> ASMPILConverter<T> {
                     Expression::FunctionCall(c) => {
                         self.handle_functional_instruction(lhs_with_reg, *c.function, c.arguments)
                     }
-                    _ => self.handle_non_functional_assignment(start, lhs_with_reg, *rhs),
+                    _ => self.handle_non_functional_assignment(source, lhs_with_reg, *rhs),
                 }
             }
             FunctionStatement::Instruction(InstructionStatement {
@@ -265,7 +272,7 @@ impl<T: FieldElement> ASMPILConverter<T> {
 
     fn handle_register_declaration(
         &mut self,
-        RegisterDeclarationStatement { start, ty, name }: RegisterDeclarationStatement,
+        RegisterDeclarationStatement { source, ty, name }: RegisterDeclarationStatement,
     ) {
         let mut conditioned_updates = vec![];
         let mut default_update = None;
@@ -292,7 +299,7 @@ impl<T: FieldElement> ASMPILConverter<T> {
                 // TODO do this at the same place where we set up the read flags.
                 for reg in assignment_regs {
                     let write_flag = format!("reg_write_{reg}_{name}");
-                    self.create_witness_fixed_pair(start, &write_flag);
+                    self.create_witness_fixed_pair(source.clone(), &write_flag);
                     conditioned_updates
                         .push((direct_reference(&write_flag), direct_reference(&reg)));
                 }
@@ -307,7 +314,7 @@ impl<T: FieldElement> ASMPILConverter<T> {
                 ty,
             },
         );
-        self.pil.push(witness_column(start, name, None));
+        self.pil.push(witness_column(source, name, None));
     }
 
     fn handle_instruction_def(
@@ -316,7 +323,7 @@ impl<T: FieldElement> ASMPILConverter<T> {
     ) -> Option<LinkDefinitionStatement<T>> {
         let instruction_name = s.name.clone();
         let instruction_flag = format!("instr_{instruction_name}");
-        self.create_witness_fixed_pair(s.start, &instruction_flag);
+        self.create_witness_fixed_pair(s.source.clone(), &instruction_flag);
 
         let inputs: Vec<_> = s
             .instruction
@@ -374,7 +381,7 @@ impl<T: FieldElement> ASMPILConverter<T> {
                     .literal_arg_names()
                     .map(|arg_name| {
                         let param_col_name = format!("instr_{instruction_name}_param_{arg_name}");
-                        self.create_witness_fixed_pair(s.start, &param_col_name);
+                        self.create_witness_fixed_pair(s.source.clone(), &param_col_name);
                         (arg_name.clone(), param_col_name)
                     })
                     .collect::<HashMap<_, _>>();
@@ -407,7 +414,7 @@ impl<T: FieldElement> ASMPILConverter<T> {
                                     .push((reference, expr));
                             }
                             (None, expr) => self.pil.push(PilStatement::PolynomialIdentity(
-                                0,
+                                SourceRef::unknown(),
                                 direct_reference(&instruction_flag) * expr.clone(),
                             )),
                         }
@@ -431,7 +438,7 @@ impl<T: FieldElement> ASMPILConverter<T> {
                 None
             }
             InstructionBody::CallableRef(to) => Some(LinkDefinitionStatement {
-                start: s.start,
+                source: s.source,
                 flag: direct_reference(instruction_flag),
                 params: s.instruction.params,
                 to,
@@ -443,7 +450,7 @@ impl<T: FieldElement> ASMPILConverter<T> {
 
     fn handle_non_functional_assignment(
         &mut self,
-        _start: usize,
+        _source: SourceRef,
         lhs_with_reg: Vec<(String, String)>,
         value: Expression<T>,
     ) -> CodeLine<T> {
@@ -687,9 +694,9 @@ impl<T: FieldElement> ASMPILConverter<T> {
 
     fn create_constraints_for_assignment_reg(&mut self, register: String) {
         let assign_const = format!("{register}_const");
-        self.create_witness_fixed_pair(0, &assign_const);
+        self.create_witness_fixed_pair(SourceRef::unknown(), &assign_const);
         let read_free = format!("{register}_read_free");
-        self.create_witness_fixed_pair(0, &read_free);
+        self.create_witness_fixed_pair(SourceRef::unknown(), &read_free);
         let free_value = format!("{register}_free_value");
         // we can read from write registers, pc and read-only registers
         let read_registers = self
@@ -702,7 +709,7 @@ impl<T: FieldElement> ASMPILConverter<T> {
             .iter()
             .map(|name| {
                 let read_coefficient = format!("read_{register}_{name}");
-                self.create_witness_fixed_pair(0, &read_coefficient);
+                self.create_witness_fixed_pair(SourceRef::unknown(), &read_coefficient);
                 direct_reference(read_coefficient) * direct_reference(name.clone())
             })
             .chain([
@@ -711,7 +718,7 @@ impl<T: FieldElement> ASMPILConverter<T> {
             ])
             .sum();
         self.pil.push(PilStatement::PolynomialIdentity(
-            0,
+            SourceRef::unknown(),
             direct_reference(register) - assign_constraint,
         ));
     }
@@ -720,7 +727,7 @@ impl<T: FieldElement> ASMPILConverter<T> {
     /// the query hints for the free inputs.
     fn translate_code_lines(&mut self) {
         self.pil.push(PilStatement::PolynomialConstantDefinition(
-            0,
+            SourceRef::unknown(),
             "p_line".to_string(),
             FunctionDefinition::Array(
                 ArrayExpression::Value(
@@ -835,7 +842,7 @@ impl<T: FieldElement> ASMPILConverter<T> {
                         )),
                     }))
                 });
-                witness_column(0, free_value, prover_query)
+                witness_column(SourceRef::unknown(), free_value, prover_query)
             })
             .collect::<Vec<_>>();
         self.pil.extend(free_value_pil);
@@ -851,7 +858,7 @@ impl<T: FieldElement> ASMPILConverter<T> {
                     .unwrap_or_else(|| ArrayExpression::RepeatedValue(vec![T::zero().into()]))
             };
             self.pil.push(PilStatement::PolynomialConstantDefinition(
-                0,
+                SourceRef::unknown(),
                 name.clone(),
                 FunctionDefinition::Array(array_expression),
             ));
@@ -870,9 +877,9 @@ impl<T: FieldElement> ASMPILConverter<T> {
     }
 
     /// Creates a pair of witness and fixed column and matches them in the lookup.
-    fn create_witness_fixed_pair(&mut self, start: usize, name: &str) {
+    fn create_witness_fixed_pair(&mut self, source: SourceRef, name: &str) {
         let fixed_name = format!("p_{name}");
-        self.pil.push(witness_column(start, name, None));
+        self.pil.push(witness_column(source, name, None));
         self.line_lookup
             .push((name.to_string(), fixed_name.clone()));
         self.rom_constant_names.push(fixed_name);
@@ -944,7 +951,7 @@ impl<T: FieldElement> ASMPILConverter<T> {
                         }
                     );
                     self.pil.push(PilStatement::PolynomialDefinition(
-                        0,
+                        SourceRef::unknown(),
                         intermediate_name.to_string(),
                         left * right,
                     ));
@@ -1074,12 +1081,12 @@ enum InstructionLiteralArg<T> {
 }
 
 fn witness_column<S: Into<String>, T>(
-    start: usize,
+    source: SourceRef,
     name: S,
     def: Option<FunctionDefinition<T>>,
 ) -> PilStatement<T> {
     PilStatement::PolynomialCommitDeclaration(
-        start,
+        source,
         vec![PolynomialName {
             name: name.into(),
             array_size: None,

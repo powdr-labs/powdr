@@ -2,6 +2,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::marker::PhantomData;
 
 use ast::parsed::{self, FunctionDefinition, PilStatement, PolynomialName, SelectedExpressions};
+use ast::SourceRef;
 use number::{DegreeType, FieldElement};
 
 use ast::analyzed::{
@@ -121,57 +122,61 @@ where
             PilStatement::Namespace(_, _, _) => {
                 panic!("Namespaces must be handled outside the statement processor.")
             }
-            PilStatement::PolynomialDefinition(start, name, value) => self
+            PilStatement::PolynomialDefinition(source, name, value) => self
                 .handle_symbol_definition(
-                    start,
+                    source,
                     name,
                     None,
                     SymbolKind::Poly(PolynomialType::Intermediate),
                     Some(FunctionDefinition::Expression(value)),
                 ),
-            PilStatement::PublicDeclaration(start, name, polynomial, array_index, index) => {
-                self.handle_public_declaration(start, name, polynomial, array_index, index)
+            PilStatement::PublicDeclaration(source, name, polynomial, array_index, index) => {
+                self.handle_public_declaration(source, name, polynomial, array_index, index)
             }
-            PilStatement::PolynomialConstantDeclaration(start, polynomials) => {
-                self.handle_polynomial_declarations(start, polynomials, PolynomialType::Constant)
+            PilStatement::PolynomialConstantDeclaration(source, polynomials) => {
+                self.handle_polynomial_declarations(source, polynomials, PolynomialType::Constant)
             }
-            PilStatement::PolynomialConstantDefinition(start, name, definition) => self
+            PilStatement::PolynomialConstantDefinition(source, name, definition) => self
                 .handle_symbol_definition(
-                    start,
+                    source,
                     name,
                     None,
                     SymbolKind::Poly(PolynomialType::Constant),
                     Some(definition),
                 ),
-            PilStatement::PolynomialCommitDeclaration(start, polynomials, None) => {
-                self.handle_polynomial_declarations(start, polynomials, PolynomialType::Committed)
+            PilStatement::PolynomialCommitDeclaration(source, polynomials, None) => {
+                self.handle_polynomial_declarations(source, polynomials, PolynomialType::Committed)
             }
-            PilStatement::PolynomialCommitDeclaration(start, mut polynomials, Some(definition)) => {
+            PilStatement::PolynomialCommitDeclaration(
+                source,
+                mut polynomials,
+                Some(definition),
+            ) => {
                 assert!(polynomials.len() == 1);
                 let name = polynomials.pop().unwrap();
                 self.handle_symbol_definition(
-                    start,
+                    source,
                     name.name,
                     name.array_size,
                     SymbolKind::Poly(PolynomialType::Committed),
                     Some(definition),
                 )
             }
-            PilStatement::ConstantDefinition(start, name, value) => {
+            PilStatement::ConstantDefinition(source, name, value) => {
                 // Check it is a constant.
                 if let Err(err) = self.evaluate_expression(value.clone()) {
                     panic!("Could not evaluate constant: {name} = {value}: {err:?}");
                 }
                 self.handle_symbol_definition(
-                    start,
+                    source,
                     name,
                     None,
                     SymbolKind::Constant(),
                     Some(FunctionDefinition::Expression(value)),
                 )
             }
-            PilStatement::LetStatement(start, name, value) => {
-                self.handle_generic_definition(start, name, value)
+            PilStatement::LetStatement(source, name, value) => {
+                self.handle_generic_definition(source, name, value)
             }
             _ => self.handle_identity_statement(statement),
         }
@@ -179,7 +184,7 @@ where
 
     fn handle_generic_definition(
         &mut self,
-        start: usize,
+        source: SourceRef,
         name: String,
         value: Option<::ast::parsed::Expression<T>>,
     ) -> Vec<PILItem<T>> {
@@ -191,7 +196,7 @@ where
             None => {
                 // No value provided => treat it as a witness column.
                 self.handle_symbol_definition(
-                    start,
+                    source,
                     name,
                     None,
                     SymbolKind::Poly(PolynomialType::Committed),
@@ -210,7 +215,7 @@ where
                     SymbolKind::Other()
                 };
                 self.handle_symbol_definition(
-                    start,
+                    source,
                     name,
                     None,
                     symbol_kind,
@@ -221,10 +226,10 @@ where
     }
 
     fn handle_identity_statement(&mut self, statement: PilStatement<T>) -> Vec<PILItem<T>> {
-        let (start, kind, left, right) = match statement {
-            PilStatement::PolynomialIdentity(start, expression)
-            | PilStatement::Expression(start, expression) => (
-                start,
+        let (source, kind, left, right) = match statement {
+            PilStatement::PolynomialIdentity(source, expression)
+            | PilStatement::Expression(source, expression) => (
+                source,
                 IdentityKind::Polynomial,
                 SelectedExpressions {
                     selector: Some(self.process_expression(expression)),
@@ -232,20 +237,20 @@ where
                 },
                 SelectedExpressions::default(),
             ),
-            PilStatement::PlookupIdentity(start, key, haystack) => (
-                start,
+            PilStatement::PlookupIdentity(source, key, haystack) => (
+                source,
                 IdentityKind::Plookup,
                 self.process_selected_expressions(key),
                 self.process_selected_expressions(haystack),
             ),
-            PilStatement::PermutationIdentity(start, left, right) => (
-                start,
+            PilStatement::PermutationIdentity(source, left, right) => (
+                source,
                 IdentityKind::Permutation,
                 self.process_selected_expressions(left),
                 self.process_selected_expressions(right),
             ),
-            PilStatement::ConnectIdentity(start, left, right) => (
-                start,
+            PilStatement::ConnectIdentity(source, left, right) => (
+                source,
                 IdentityKind::Connect,
                 SelectedExpressions {
                     selector: None,
@@ -265,7 +270,7 @@ where
         vec![PILItem::Identity(Identity {
             id: self.counters.dispense_identity_id(kind),
             kind,
-            source: self.driver.source_position_to_source_ref(start),
+            source,
             left,
             right,
         })]
@@ -273,7 +278,7 @@ where
 
     fn handle_polynomial_declarations(
         &mut self,
-        start: usize,
+        source: SourceRef,
         polynomials: Vec<PolynomialName<T>>,
         polynomial_type: PolynomialType,
     ) -> Vec<PILItem<T>> {
@@ -281,7 +286,7 @@ where
             .into_iter()
             .flat_map(|PolynomialName { name, array_size }| {
                 self.handle_symbol_definition(
-                    start,
+                    source.clone(),
                     name,
                     array_size,
                     SymbolKind::Poly(polynomial_type),
@@ -293,13 +298,12 @@ where
 
     fn handle_symbol_definition(
         &mut self,
-        start: usize,
+        source: SourceRef,
         name: String,
         array_size: Option<::ast::parsed::Expression<T>>,
         symbol_kind: SymbolKind,
         value: Option<FunctionDefinition<T>>,
     ) -> Vec<PILItem<T>> {
-        let source = self.driver.source_position_to_source_ref(start);
         let have_array_size = array_size.is_some();
         let length = array_size
             .map(|l| self.evaluate_expression(l).unwrap())
@@ -345,7 +349,7 @@ where
 
     fn handle_public_declaration(
         &mut self,
-        start: usize,
+        source: SourceRef,
         name: String,
         poly: parsed::NamespacedPolynomialReference,
         array_index: Option<parsed::Expression<T>>,
@@ -362,7 +366,7 @@ where
         });
         vec![PILItem::PublicDeclaration(PublicDeclaration {
             id,
-            source: self.driver.source_position_to_source_ref(start),
+            source,
             name: name.to_string(),
             polynomial,
             array_index,

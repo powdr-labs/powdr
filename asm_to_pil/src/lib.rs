@@ -41,17 +41,19 @@ pub mod utils {
         },
     };
     use number::FieldElement;
+    use parser::ParserContext;
 
     pub fn parse_instruction_definition<T: FieldElement>(
         input: &str,
     ) -> InstructionDefinitionStatement<T> {
+        let ctx = ParserContext::new(None, input);
         match parser::powdr::InstructionDeclarationParser::new()
-            .parse(input)
+            .parse(&ctx, input)
             .unwrap()
         {
-            MachineStatement::InstructionDeclaration(start, name, instruction) => {
+            MachineStatement::InstructionDeclaration(source, name, instruction) => {
                 InstructionDefinitionStatement {
-                    start,
+                    source,
                     name,
                     instruction: Instruction {
                         params: instruction.params,
@@ -64,8 +66,9 @@ pub mod utils {
     }
 
     pub fn parse_instruction<T: FieldElement>(input: &str) -> Instruction<T> {
+        let ctx = ParserContext::new(None, input);
         let instr = parser::powdr::InstructionParser::new()
-            .parse(input)
+            .parse(&ctx, input)
             .unwrap();
         Instruction {
             params: instr.params,
@@ -74,19 +77,21 @@ pub mod utils {
     }
 
     pub fn parse_instruction_body<T: FieldElement>(input: &str) -> InstructionBody<T> {
+        let ctx = ParserContext::new(None, input);
         parser::powdr::InstructionBodyParser::new()
-            .parse(input)
+            .parse(&ctx, input)
             .unwrap()
     }
 
     pub fn parse_function_statement<T: FieldElement>(input: &str) -> FunctionStatement<T> {
+        let ctx = ParserContext::new(None, input);
         match parser::powdr::FunctionStatementParser::new()
-            .parse::<T>(input)
+            .parse::<T>(&ctx, input)
             .unwrap()
         {
-            ast::parsed::asm::FunctionStatement::Assignment(start, lhs, reg, rhs) => {
+            ast::parsed::asm::FunctionStatement::Assignment(source, lhs, reg, rhs) => {
                 AssignmentStatement {
-                    start,
+                    source,
                     lhs_with_reg: {
                         let lhs_len = lhs.len();
                         lhs.into_iter()
@@ -97,42 +102,44 @@ pub mod utils {
                 }
                 .into()
             }
-            ast::parsed::asm::FunctionStatement::Instruction(start, instruction, inputs) => {
+            ast::parsed::asm::FunctionStatement::Instruction(source, instruction, inputs) => {
                 InstructionStatement {
-                    start,
+                    source,
                     instruction,
                     inputs,
                 }
                 .into()
             }
-            ast::parsed::asm::FunctionStatement::Label(start, name) => {
-                LabelStatement { start, name }.into()
+            ast::parsed::asm::FunctionStatement::Label(source, name) => {
+                LabelStatement { source, name }.into()
             }
             _ => unimplemented!(),
         }
     }
 
     pub fn parse_pil_statement<T: FieldElement>(input: &str) -> PilStatement<T> {
+        let ctx = ParserContext::new(None, input);
         parser::powdr::PilStatementParser::new()
-            .parse(input)
+            .parse(&ctx, input)
             .unwrap()
     }
 
     pub fn parse_register_declaration<T: FieldElement>(
         input: &str,
     ) -> RegisterDeclarationStatement {
+        let ctx = ParserContext::new(None, input);
         match parser::powdr::RegisterDeclarationParser::new()
-            .parse::<T>(input)
+            .parse::<T>(&ctx, input)
             .unwrap()
         {
-            MachineStatement::RegisterDeclaration(start, name, flag) => {
+            MachineStatement::RegisterDeclaration(source, name, flag) => {
                 let ty = match flag {
                     Some(RegisterFlag::IsAssignment) => RegisterTy::Assignment,
                     Some(RegisterFlag::IsPC) => RegisterTy::Pc,
                     Some(RegisterFlag::IsReadOnly) => RegisterTy::ReadOnly,
                     None => RegisterTy::Write,
                 };
-                RegisterDeclarationStatement { start, name, ty }
+                RegisterDeclarationStatement { source, name, ty }
             }
             _ => unreachable!(),
         }

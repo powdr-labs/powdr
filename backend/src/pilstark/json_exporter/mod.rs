@@ -1,6 +1,6 @@
 use number::FieldElement;
-use std::cmp;
 use std::collections::HashMap;
+use std::{cmp, path::PathBuf};
 
 use ast::analyzed::{
     AlgebraicBinaryOperator, AlgebraicExpression as Expression, AlgebraicUnaryOperator, Analyzed,
@@ -77,7 +77,18 @@ pub fn export<T: FieldElement>(analyzed: &Analyzed<T>) -> PIL {
             }
             StatementIdentifier::Identity(id) => {
                 let identity = &analyzed.identities[*id];
-                let file_name = identity.source.file.clone();
+                // PILCOM strips the path from filenames, we do the same here for compatibility
+                let file_name = identity
+                    .source
+                    .file
+                    .as_deref()
+                    .and_then(|s| {
+                        PathBuf::from(s)
+                            .file_name()
+                            .and_then(|n| n.to_str())
+                            .map(String::from)
+                    })
+                    .unwrap_or_default();
                 let line = identity.source.line;
                 let selector_degree = if identity.kind == IdentityKind::Polynomial {
                     2
@@ -444,6 +455,8 @@ mod test {
 
     fn compare_export_file(file: &str) {
         let (json_out, pilcom_parsed) = generate_json_pair(file);
+        // TODO: test fails because PILCOM "fileName" fields output the filename
+        // stripped of its path
         assert_eq!(json_out, pilcom_parsed);
     }
 
