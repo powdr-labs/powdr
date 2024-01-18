@@ -4,7 +4,7 @@ use powdr_ast::{
     asm_analysis::{AnalysisASMFile, RegisterTy},
     parsed::{asm::parse_absolute_path, Expression, PilStatement},
 };
-use powdr_number::{FieldElement, LargeInt};
+use powdr_number::FieldElement;
 use powdr_pipeline::Pipeline;
 use powdr_riscv_executor::{get_main_machine, Elem, ExecutionTrace, MemoryState};
 
@@ -100,7 +100,7 @@ where
     Ok(())
 }
 
-fn sanity_check<T>(program: &AnalysisASMFile<T>) {
+fn sanity_check(program: &AnalysisASMFile) {
     let main_machine = program.items[&parse_absolute_path("::Main")]
         .try_to_machine()
         .unwrap();
@@ -134,7 +134,7 @@ fn sanity_check<T>(program: &AnalysisASMFile<T>) {
     assert_eq!(machine_registers, expected_registers);
 }
 
-fn load_initial_memory<F: FieldElement>(program: &AnalysisASMFile<F>) -> MemoryState {
+fn load_initial_memory(program: &AnalysisASMFile) -> MemoryState {
     let machine = get_main_machine(program);
     let Some(expr) = machine.pil.iter().find_map(|v| match v {
         PilStatement::LetStatement(_, n, _, expr) if n == "initial_memory" => expr.as_ref(),
@@ -163,10 +163,7 @@ fn load_initial_memory<F: FieldElement>(program: &AnalysisASMFile<F>) -> MemoryS
                 panic!("initial_memory entry value is not a number");
             };
 
-            (
-                key.to_integer().try_into_u32().unwrap(),
-                value.to_integer().try_into_u32().unwrap(),
-            )
+            (key.try_into().unwrap(), value.try_into().unwrap())
         })
         .collect()
 }

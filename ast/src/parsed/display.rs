@@ -11,25 +11,25 @@ use super::{asm::*, *};
 
 // TODO indentation
 
-impl<T: Display> Display for PILFile<T> {
+impl Display for PILFile {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write_items(f, &self.0)
     }
 }
 
-impl<T: Display> Display for ASMProgram<T> {
+impl Display for ASMProgram {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(f, "{}", self.main)
     }
 }
 
-impl<T: Display> Display for ASMModule<T> {
+impl Display for ASMModule {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write_items(f, &self.statements)
     }
 }
 
-impl<T: Display> Display for ModuleStatement<T> {
+impl Display for ModuleStatement {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
             ModuleStatement::SymbolDefinition(SymbolDefinition { name, value }) => match value {
@@ -69,7 +69,7 @@ impl<T: Display> Display for ModuleStatement<T> {
     }
 }
 
-impl<T: Display> Display for Module<T> {
+impl Display for Module {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
             Module::External(name) => write!(f, "{name};"),
@@ -88,7 +88,7 @@ impl Display for Import {
     }
 }
 
-impl<T: Display> Display for Machine<T> {
+impl Display for Machine {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         writeln!(f, "{{")?;
         write_items_indented(f, &self.statements)?;
@@ -96,7 +96,7 @@ impl<T: Display> Display for Machine<T> {
     }
 }
 
-impl<T: Display> Display for InstructionBody<T> {
+impl Display for InstructionBody {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
             InstructionBody::Local(elements) => write!(
@@ -112,7 +112,7 @@ impl<T: Display> Display for InstructionBody<T> {
     }
 }
 
-fn format_instruction_statement<T: Display>(stmt: &PilStatement<T>) -> String {
+fn format_instruction_statement(stmt: &PilStatement) -> String {
     match stmt {
         PilStatement::Expression(_, _)
         | PilStatement::PlookupIdentity(_, _, _)
@@ -127,7 +127,7 @@ fn format_instruction_statement<T: Display>(stmt: &PilStatement<T>) -> String {
     }
 }
 
-impl<T: Display> Display for Instruction<T> {
+impl Display for Instruction {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(
             f,
@@ -138,19 +138,19 @@ impl<T: Display> Display for Instruction<T> {
     }
 }
 
-impl<T: Display> Display for LinkDeclaration<T> {
+impl Display for LinkDeclaration {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(f, "link {} => {};", self.flag, self.to)
     }
 }
 
-impl<T: Display> Display for CallableRef<T> {
+impl Display for CallableRef {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(f, "{}.{} {}", self.instance, self.callable, self.params)
     }
 }
 
-impl<T: Display> Display for MachineStatement<T> {
+impl Display for MachineStatement {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
             MachineStatement::Degree(_, degree) => write!(f, "degree {};", degree),
@@ -186,7 +186,7 @@ impl<T: Display> Display for MachineStatement<T> {
     }
 }
 
-impl<T: Display> Display for OperationId<T> {
+impl Display for OperationId {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match &self.id {
             Some(id) => write!(f, "<{id}>"),
@@ -208,7 +208,7 @@ impl Display for AssignmentRegister {
     }
 }
 
-impl<T: Display> Display for FunctionStatement<T> {
+impl Display for FunctionStatement {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
             FunctionStatement::Assignment(_, write_regs, assignment_reg, expression) => write!(
@@ -272,7 +272,7 @@ impl Display for RegisterFlag {
     }
 }
 
-impl<T: Display> Display for Params<T> {
+impl Display for Params {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(
             f,
@@ -290,13 +290,13 @@ impl<T: Display> Display for Params<T> {
     }
 }
 
-impl<T: Display, Ref: Display> Display for IndexAccess<T, Ref> {
+impl<Ref: Display> Display for IndexAccess<Ref> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(f, "{}[{}]", self.array, self.index)
     }
 }
 
-impl<T: Display, Ref: Display> Display for FunctionCall<T, Ref> {
+impl<Ref: Display> Display for FunctionCall<Ref> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(
             f,
@@ -307,13 +307,13 @@ impl<T: Display, Ref: Display> Display for FunctionCall<T, Ref> {
     }
 }
 
-impl<T: Display, Ref: Display> Display for MatchArm<T, Ref> {
+impl<Ref: Display> Display for MatchArm<Ref> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(f, "{} => {},", self.pattern, self.value,)
     }
 }
 
-impl<T: Display, Ref: Display> Display for MatchPattern<T, Ref> {
+impl<Ref: Display> Display for MatchPattern<Ref> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
             MatchPattern::CatchAll => write!(f, "_"),
@@ -322,7 +322,7 @@ impl<T: Display, Ref: Display> Display for MatchPattern<T, Ref> {
     }
 }
 
-impl<T: Display, Ref: Display> Display for IfExpression<T, Ref> {
+impl<Ref: Display> Display for IfExpression<Ref> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(
             f,
@@ -332,7 +332,7 @@ impl<T: Display, Ref: Display> Display for IfExpression<T, Ref> {
     }
 }
 
-impl<T: Display> Display for Param<T> {
+impl Display for Param {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(
             f,
@@ -354,7 +354,7 @@ pub fn quote(input: &str) -> String {
     format!("\"{}\"", input.escape_default())
 }
 
-impl<T: Display> Display for PilStatement<T> {
+impl Display for PilStatement {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
             PilStatement::Include(_, path) => write!(f, "include {};", quote(path)),
@@ -419,7 +419,7 @@ impl<T: Display> Display for PilStatement<T> {
     }
 }
 
-impl<T: Display> Display for ArrayExpression<T> {
+impl Display for ArrayExpression {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
             ArrayExpression::Value(expressions) => {
@@ -433,7 +433,7 @@ impl<T: Display> Display for ArrayExpression<T> {
     }
 }
 
-impl<T: Display> Display for FunctionDefinition<T> {
+impl Display for FunctionDefinition {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
             FunctionDefinition::Array(array_expression) => {
@@ -463,11 +463,11 @@ impl<T: Display> Display for FunctionDefinition<T> {
     }
 }
 
-pub fn format_expressions<T: Display, Ref: Display>(expressions: &[Expression<T, Ref>]) -> String {
+pub fn format_expressions<Ref: Display>(expressions: &[Expression<Ref>]) -> String {
     format!("{}", expressions.iter().format(", "))
 }
 
-impl<T: Display, Ref: Display> Display for Expression<T, Ref> {
+impl<Ref: Display> Display for Expression<Ref> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
             Expression::Reference(reference) => write!(f, "{reference}"),
@@ -496,7 +496,7 @@ impl<T: Display, Ref: Display> Display for Expression<T, Ref> {
     }
 }
 
-impl<T: Display> Display for PolynomialName<T> {
+impl Display for PolynomialName {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(
             f,
@@ -516,13 +516,13 @@ impl Display for NamespacedPolynomialReference {
     }
 }
 
-impl<T: Display, Ref: Display> Display for LambdaExpression<T, Ref> {
+impl<Ref: Display> Display for LambdaExpression<Ref> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(f, "(|{}| {})", self.params.iter().format(", "), self.body)
     }
 }
 
-impl<T: Display, Ref: Display> Display for ArrayLiteral<T, Ref> {
+impl<Ref: Display> Display for ArrayLiteral<Ref> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(f, "[{}]", self.items.iter().format(", "))
     }
@@ -677,26 +677,24 @@ impl Display for TypeBounds {
 #[cfg(test)]
 mod tests {
 
-    use powdr_number::GoldilocksField;
-
     use super::*;
 
     #[test]
     fn params() {
-        let p = Param::<GoldilocksField> {
+        let p = Param {
             name: "abc".into(),
             index: None,
             ty: Some("ty".into()),
         };
         assert_eq!(p.to_string(), "abc: ty");
-        let empty = Params::<GoldilocksField>::default();
+        let empty = Params::default();
         assert_eq!(empty.to_string(), "");
         assert_eq!(empty.prepend_space_if_non_empty(), "");
-        let in_out = Params::<GoldilocksField> {
+        let in_out = Params {
             inputs: vec![
                 Param {
                     name: "abc".into(),
-                    index: Some(7.into()),
+                    index: Some(7u32.into()),
                     ty: Some("ty0".into()),
                 },
                 Param {
@@ -713,7 +711,7 @@ mod tests {
                 },
                 Param {
                     name: "def".into(),
-                    index: Some(2.into()),
+                    index: Some(2u32.into()),
                     ty: Some("ty1".into()),
                 },
             ],
@@ -726,7 +724,7 @@ mod tests {
             in_out.prepend_space_if_non_empty(),
             " abc[7]: ty0, def: ty1 -> abc: ty0, def[2]: ty1"
         );
-        let out = Params::<GoldilocksField> {
+        let out = Params {
             inputs: vec![],
             outputs: vec![Param {
                 name: "abc".into(),
@@ -736,7 +734,7 @@ mod tests {
         };
         assert_eq!(out.to_string(), "-> abc: ty");
         assert_eq!(out.prepend_space_if_non_empty(), " -> abc: ty");
-        let _in = Params::<GoldilocksField> {
+        let _in = Params {
             inputs: vec![Param {
                 name: "abc".into(),
                 index: None,

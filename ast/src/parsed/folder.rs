@@ -7,16 +7,16 @@ use super::{
     MatchPattern,
 };
 
-pub trait Folder<T> {
+pub trait Folder {
     type Error;
 
-    fn fold_program(&mut self, p: ASMProgram<T>) -> Result<ASMProgram<T>, Self::Error> {
+    fn fold_program(&mut self, p: ASMProgram) -> Result<ASMProgram, Self::Error> {
         let main = self.fold_module_value(p.main)?;
 
         Ok(ASMProgram { main })
     }
 
-    fn fold_module_value(&mut self, module: ASMModule<T>) -> Result<ASMModule<T>, Self::Error> {
+    fn fold_module_value(&mut self, module: ASMModule) -> Result<ASMModule, Self::Error> {
         let statements = module
             .statements
             .into_iter()
@@ -38,14 +38,14 @@ pub trait Folder<T> {
         Ok(ASMModule { statements })
     }
 
-    fn fold_module(&mut self, m: Module<T>) -> Result<Module<T>, Self::Error> {
+    fn fold_module(&mut self, m: Module) -> Result<Module, Self::Error> {
         Ok(match m {
             Module::External(e) => Module::External(e),
             Module::Local(m) => Module::Local(self.fold_module_value(m)?),
         })
     }
 
-    fn fold_machine(&mut self, machine: Machine<T>) -> Result<Machine<T>, Self::Error> {
+    fn fold_machine(&mut self, machine: Machine) -> Result<Machine, Self::Error> {
         Ok(machine)
     }
 
@@ -54,19 +54,16 @@ pub trait Folder<T> {
     }
 }
 
-pub trait ExpressionFolder<T, Ref> {
+pub trait ExpressionFolder<Ref> {
     type Error;
-    fn fold_expression(
-        &mut self,
-        e: Expression<T, Ref>,
-    ) -> Result<Expression<T, Ref>, Self::Error> {
+    fn fold_expression(&mut self, e: Expression<Ref>) -> Result<Expression<Ref>, Self::Error> {
         self.fold_expression_default(e)
     }
 
     fn fold_expression_default(
         &mut self,
-        e: Expression<T, Ref>,
-    ) -> Result<Expression<T, Ref>, Self::Error> {
+        e: Expression<Ref>,
+    ) -> Result<Expression<Ref>, Self::Error> {
         Ok(match e {
             Expression::Reference(r) => Expression::Reference(self.fold_reference(r)?),
             Expression::PublicReference(r) => Expression::PublicReference(r),
@@ -112,8 +109,8 @@ pub trait ExpressionFolder<T, Ref> {
 
     fn fold_lambda(
         &mut self,
-        l: LambdaExpression<T, Ref>,
-    ) -> Result<LambdaExpression<T, Ref>, Self::Error> {
+        l: LambdaExpression<Ref>,
+    ) -> Result<LambdaExpression<Ref>, Self::Error> {
         Ok(LambdaExpression {
             params: l.params,
             body: self.fold_boxed_expression(*l.body)?,
@@ -122,8 +119,8 @@ pub trait ExpressionFolder<T, Ref> {
 
     fn fold_index_access(
         &mut self,
-        IndexAccess { array, index }: IndexAccess<T, Ref>,
-    ) -> Result<IndexAccess<T, Ref>, Self::Error> {
+        IndexAccess { array, index }: IndexAccess<Ref>,
+    ) -> Result<IndexAccess<Ref>, Self::Error> {
         Ok(IndexAccess {
             array: self.fold_boxed_expression(*array)?,
             index: self.fold_boxed_expression(*index)?,
@@ -135,8 +132,8 @@ pub trait ExpressionFolder<T, Ref> {
         FunctionCall {
             function,
             arguments,
-        }: FunctionCall<T, Ref>,
-    ) -> Result<FunctionCall<T, Ref>, Self::Error> {
+        }: FunctionCall<Ref>,
+    ) -> Result<FunctionCall<Ref>, Self::Error> {
         Ok(FunctionCall {
             function: self.fold_boxed_expression(*function)?,
             arguments: self.fold_expressions(arguments)?,
@@ -145,8 +142,8 @@ pub trait ExpressionFolder<T, Ref> {
 
     fn fold_match_arm(
         &mut self,
-        MatchArm { pattern, value }: MatchArm<T, Ref>,
-    ) -> Result<MatchArm<T, Ref>, Self::Error> {
+        MatchArm { pattern, value }: MatchArm<Ref>,
+    ) -> Result<MatchArm<Ref>, Self::Error> {
         Ok(MatchArm {
             pattern: self.fold_match_pattern(pattern)?,
             value: self.fold_expression(value)?,
@@ -155,8 +152,8 @@ pub trait ExpressionFolder<T, Ref> {
 
     fn fold_match_pattern(
         &mut self,
-        pattern: MatchPattern<T, Ref>,
-    ) -> Result<MatchPattern<T, Ref>, Self::Error> {
+        pattern: MatchPattern<Ref>,
+    ) -> Result<MatchPattern<Ref>, Self::Error> {
         Ok(match pattern {
             MatchPattern::CatchAll => MatchPattern::CatchAll,
             MatchPattern::Pattern(p) => MatchPattern::Pattern(self.fold_expression(p)?),
@@ -169,8 +166,8 @@ pub trait ExpressionFolder<T, Ref> {
             condition,
             body,
             else_body,
-        }: IfExpression<T, Ref>,
-    ) -> Result<IfExpression<T, Ref>, Self::Error> {
+        }: IfExpression<Ref>,
+    ) -> Result<IfExpression<Ref>, Self::Error> {
         Ok(IfExpression {
             condition: self.fold_boxed_expression(*condition)?,
             body: self.fold_boxed_expression(*body)?,
@@ -180,15 +177,15 @@ pub trait ExpressionFolder<T, Ref> {
 
     fn fold_boxed_expression(
         &mut self,
-        e: Expression<T, Ref>,
-    ) -> Result<Box<Expression<T, Ref>>, Self::Error> {
+        e: Expression<Ref>,
+    ) -> Result<Box<Expression<Ref>>, Self::Error> {
         Ok(Box::new(self.fold_expression(e)?))
     }
 
-    fn fold_expressions<I: IntoIterator<Item = Expression<T, Ref>>>(
+    fn fold_expressions<I: IntoIterator<Item = Expression<Ref>>>(
         &mut self,
         items: I,
-    ) -> Result<Vec<Expression<T, Ref>>, Self::Error> {
+    ) -> Result<Vec<Expression<Ref>>, Self::Error> {
         items
             .into_iter()
             .map(|x| self.fold_expression(x))

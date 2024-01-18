@@ -45,7 +45,7 @@ fn generate_values<T: FieldElement>(
     analyzed: &Analyzed<T>,
     degree: DegreeType,
     name: &str,
-    body: &FunctionValueDefinition<T>,
+    body: &FunctionValueDefinition,
     index: Option<u64>,
 ) -> Vec<T> {
     let symbols = CachedSymbols {
@@ -70,7 +70,7 @@ fn generate_values<T: FieldElement>(
             let e = if let Some(index) = index {
                 index_expr = Expression::IndexAccess(IndexAccess {
                     array: e.clone().into(),
-                    index: Box::new(T::from(index).into()),
+                    index: Box::new(Expression::Number(index.into(), None)),
                 });
                 &index_expr
             } else {
@@ -130,7 +130,7 @@ fn generate_values<T: FieldElement>(
 
 #[derive(Clone)]
 pub struct CachedSymbols<'a, T> {
-    symbols: &'a HashMap<String, (Symbol, Option<FunctionValueDefinition<T>>)>,
+    symbols: &'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
     cache: Arc<RwLock<HashMap<String, Arc<Value<'a, T>>>>>,
 }
 

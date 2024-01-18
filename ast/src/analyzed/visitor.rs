@@ -80,10 +80,10 @@ impl<Expr: ExpressionVisitable<Expr>> ExpressionVisitable<Expr> for Identity<Exp
     }
 }
 
-impl<T> ExpressionVisitable<Expression<T>> for FunctionValueDefinition<T> {
+impl ExpressionVisitable<Expression> for FunctionValueDefinition {
     fn visit_expressions_mut<F, B>(&mut self, f: &mut F, o: VisitOrder) -> ControlFlow<B>
     where
-        F: FnMut(&mut Expression<T>) -> ControlFlow<B>,
+        F: FnMut(&mut Expression) -> ControlFlow<B>,
     {
         match self {
             FunctionValueDefinition::Query(e)
@@ -98,7 +98,7 @@ impl<T> ExpressionVisitable<Expression<T>> for FunctionValueDefinition<T> {
 
     fn visit_expressions<F, B>(&self, f: &mut F, o: VisitOrder) -> ControlFlow<B>
     where
-        F: FnMut(&Expression<T>) -> ControlFlow<B>,
+        F: FnMut(&Expression) -> ControlFlow<B>,
     {
         match self {
             FunctionValueDefinition::Query(e)
@@ -112,10 +112,10 @@ impl<T> ExpressionVisitable<Expression<T>> for FunctionValueDefinition<T> {
     }
 }
 
-impl<T> ExpressionVisitable<Expression<T>> for RepeatedArray<T> {
+impl ExpressionVisitable<Expression> for RepeatedArray {
     fn visit_expressions_mut<F, B>(&mut self, f: &mut F, o: VisitOrder) -> ControlFlow<B>
     where
-        F: FnMut(&mut Expression<T>) -> ControlFlow<B>,
+        F: FnMut(&mut Expression) -> ControlFlow<B>,
     {
         self.pattern
             .iter_mut()
@@ -124,7 +124,7 @@ impl<T> ExpressionVisitable<Expression<T>> for RepeatedArray<T> {
 
     fn visit_expressions<F, B>(&self, f: &mut F, o: VisitOrder) -> ControlFlow<B>
     where
-        F: FnMut(&Expression<T>) -> ControlFlow<B>,
+        F: FnMut(&Expression) -> ControlFlow<B>,
     {
         self.pattern
             .iter()

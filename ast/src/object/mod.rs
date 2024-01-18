@@ -1,5 +1,7 @@
 use std::collections::BTreeMap;
 
+use powdr_number::BigUint;
+
 use crate::parsed::{
     asm::{AbsoluteSymbolPath, Params},
     Expression, ExpressionWithTypeScheme, PilStatement,
@@ -26,23 +28,23 @@ impl Location {
 }
 
 #[derive(Clone)]
-pub struct PILGraph<T> {
+pub struct PILGraph {
     pub main: Machine,
-    pub entry_points: Vec<Operation<T>>,
-    pub objects: BTreeMap<Location, Object<T>>,
-    pub definitions: BTreeMap<AbsoluteSymbolPath, ExpressionWithTypeScheme<T>>,
+    pub entry_points: Vec<Operation>,
+    pub objects: BTreeMap<Location, Object>,
+    pub definitions: BTreeMap<AbsoluteSymbolPath, ExpressionWithTypeScheme>,
 }
 
 #[derive(Default, Clone)]
-pub struct Object<T> {
+pub struct Object {
     pub degree: Option<u64>,
     /// the pil identities for this machine
-    pub pil: Vec<PilStatement<T>>,
+    pub pil: Vec<PilStatement>,
     /// the links from this machine to its children
-    pub links: Vec<Link<T>>,
+    pub links: Vec<Link>,
 }
 
-impl<T> Object<T> {
+impl Object {
     pub fn with_degree(mut self, degree: Option<u64>) -> Self {
         self.degree = degree;
         self
@@ -51,25 +53,25 @@ impl<T> Object<T> {
 
 #[derive(Clone)]
 /// A link between two machines
-pub struct Link<T> {
+pub struct Link {
     /// the link source, i.e. a flag and some arguments
-    pub from: LinkFrom<T>,
+    pub from: LinkFrom,
     /// the link target, i.e. a callable in some machine
-    pub to: LinkTo<T>,
+    pub to: LinkTo,
 }
 
 #[derive(Clone)]
-pub struct LinkFrom<T> {
-    pub flag: Expression<T>,
-    pub params: Params<T>,
+pub struct LinkFrom {
+    pub flag: Expression,
+    pub params: Params,
 }
 
 #[derive(Clone)]
-pub struct LinkTo<T> {
+pub struct LinkTo {
     /// the machine we link to
     pub machine: Machine,
     /// the operation we link to
-    pub operation: Operation<T>,
+    pub operation: Operation,
 }
 
 #[derive(Clone)]
@@ -83,11 +85,11 @@ pub struct Machine {
 }
 
 #[derive(Clone)]
-pub struct Operation<T> {
+pub struct Operation {
     /// the name of the operation
     pub name: String,
     /// the value of the operation id of this machine which activates this operation
-    pub id: Option<T>,
+    pub id: Option<BigUint>,
     /// the parameters
-    pub params: Params<T>,
+    pub params: Params,
 }

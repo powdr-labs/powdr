@@ -1,6 +1,6 @@
 #![deny(clippy::print_stdout)]
 
-use std::{collections::BTreeMap, marker::PhantomData};
+use std::collections::BTreeMap;
 
 use powdr_ast::{
     asm_analysis::{
@@ -21,11 +21,10 @@ use powdr_ast::{
     },
     SourceRef,
 };
-use powdr_number::FieldElement;
 
 /// Verifies certain properties of each machine and constructs the Machine objects.
 /// Also transfers generic PIL definitions but does not verify anything about them.
-pub fn check<T: FieldElement>(file: ASMProgram<T>) -> Result<AnalysisASMFile<T>, Vec<String>> {
+pub fn check(file: ASMProgram) -> Result<AnalysisASMFile, Vec<String>> {
     let ctx = AbsoluteSymbolPath::default();
     let machines = TypeChecker::default().check_module(file.main, &ctx)?;
     Ok(AnalysisASMFile {
@@ -34,16 +33,14 @@ pub fn check<T: FieldElement>(file: ASMProgram<T>) -> Result<AnalysisASMFile<T>,
 }
 
 #[derive(Default)]
-struct TypeChecker<T> {
-    marker: PhantomData<T>,
-}
+struct TypeChecker {}
 
-impl<T: FieldElement> TypeChecker<T> {
+impl TypeChecker {
     fn check_machine_type(
         &mut self,
-        machine: asm::Machine<T>,
+        machine: asm::Machine,
         ctx: &AbsoluteSymbolPath,
-    ) -> Result<Machine<T>, Vec<String>> {
+    ) -> Result<Machine, Vec<String>> {
         let mut errors = vec![];
 
         let mut degree = None;
@@ -283,12 +280,12 @@ impl<T: FieldElement> TypeChecker<T> {
 
     fn check_module(
         &mut self,
-        module: ASMModule<T>,
+        module: ASMModule,
         ctx: &AbsoluteSymbolPath,
-    ) -> Result<BTreeMap<AbsoluteSymbolPath, Item<T>>, Vec<String>> {
+    ) -> Result<BTreeMap<AbsoluteSymbolPath, Item>, Vec<String>> {
         let mut errors = vec![];
 
-        let mut res: BTreeMap<AbsoluteSymbolPath, Item<T>> = BTreeMap::default();
+        let mut res: BTreeMap<AbsoluteSymbolPath, Item> = BTreeMap::default();
 
         for m in module.statements {
             match m {
@@ -343,8 +340,8 @@ impl<T: FieldElement> TypeChecker<T> {
     fn check_instruction(
         &self,
         name: &str,
-        instruction: parsed::asm::Instruction<T>,
-    ) -> Result<Instruction<T>, Vec<String>> {
+        instruction: parsed::asm::Instruction,
+    ) -> Result<Instruction, Vec<String>> {
         if name == "return" {
             return Err(vec!["Instruction cannot use reserved name `return`".into()]);
         }
@@ -376,9 +373,9 @@ impl<T: FieldElement> TypeChecker<T> {
     fn check_link_declaration(
         &self,
         source: SourceRef,
-        flag: Expression<T>,
-        to: CallableRef<T>,
-    ) -> Result<LinkDefinitionStatement<T>, Vec<String>> {
+        flag: Expression,
+        to: CallableRef,
+    ) -> Result<LinkDefinitionStatement, Vec<String>> {
         let mut err = vec![];
 
         to.params.inputs_and_outputs().for_each(|p| {
@@ -401,14 +398,13 @@ impl<T: FieldElement> TypeChecker<T> {
 #[cfg(test)]
 mod tests {
     use powdr_importer::load_dependencies_and_resolve_str;
-    use powdr_number::Bn254Field;
 
     use super::check;
 
     // A utility to test behavior of the type checker on source inputs
     // TODO: test returned values, not just success
     fn expect_check_str(src: &str, expected: Result<(), Vec<&str>>) {
-        let resolved = load_dependencies_and_resolve_str::<Bn254Field>(src);
+        let resolved = load_dependencies_and_resolve_str(src);
         let checked = check(resolved);
         assert_eq!(
             checked.map(|_| ()),

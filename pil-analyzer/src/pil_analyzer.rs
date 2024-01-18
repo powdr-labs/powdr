@@ -24,11 +24,11 @@ use crate::{condenser, evaluator, expression_processor::ExpressionProcessor};
 
 pub fn analyze_file<T: FieldElement>(path: &Path) -> Analyzed<T> {
     let files = import_all_dependencies(path);
-    analyze(files)
+    analyze::<T>(files)
 }
 
-pub fn analyze_ast<T: FieldElement>(pil_file: PILFile<T>) -> Analyzed<T> {
-    analyze(vec![pil_file])
+pub fn analyze_ast<T: FieldElement>(pil_file: PILFile) -> Analyzed<T> {
+    analyze::<T>(vec![pil_file])
 }
 
 pub fn analyze_string<T: FieldElement>(contents: &str) -> Analyzed<T> {
@@ -40,21 +40,21 @@ pub fn analyze_string<T: FieldElement>(contents: &str) -> Analyzed<T> {
     analyze(vec![pil_file])
 }
 
-fn analyze<T: FieldElement>(files: Vec<PILFile<T>>) -> Analyzed<T> {
+fn analyze<T: FieldElement>(files: Vec<PILFile>) -> Analyzed<T> {
     let mut analyzer = PILAnalyzer::new();
     analyzer.process(files);
     analyzer.type_check();
-    analyzer.condense()
+    analyzer.condense::<T>()
 }
 
 #[derive(Default)]
-struct PILAnalyzer<T> {
+struct PILAnalyzer {
     known_symbols: HashSet<String>,
     current_namespace: AbsoluteSymbolPath,
     polynomial_degree: Option<DegreeType>,
-    definitions: HashMap<String, (Symbol, Option<FunctionValueDefinition<T>>)>,
+    definitions: HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
     public_declarations: HashMap<String, PublicDeclaration>,
-    identities: Vec<Identity<Expression<T>>>,
+    identities: Vec<Identity<Expression>>,
     /// The order in which definitions and identities
     /// appear in the source.
     source_order: Vec<StatementIdentifier>,
@@ -62,15 +62,12 @@ struct PILAnalyzer<T> {
 }
 
 /// Reads and parses the given path and all its imports.
-fn import_all_dependencies<T: FieldElement>(path: &Path) -> Vec<PILFile<T>> {
+fn import_all_dependencies(path: &Path) -> Vec<PILFile> {
     let mut processed = Default::default();
     import_all_dependencies_internal(path, &mut processed)
 }
 
-fn import_all_dependencies_internal<T: FieldElement>(
-    path: &Path,
-    processed: &mut HashSet<PathBuf>,
-) -> Vec<PILFile<T>> {
+fn import_all_dependencies_internal(path: &Path, processed: &mut HashSet<PathBuf>) -> Vec<PILFile> {
     let path = path
         .canonicalize()
         .unwrap_or_else(|e| panic!("File {path:?} not found: {e}"));
@@ -107,15 +104,15 @@ fn import_all_dependencies_internal<T: FieldElement>(
         .collect::<Vec<_>>()
 }
 
-impl<T: FieldElement> PILAnalyzer<T> {
-    pub fn new() -> PILAnalyzer<T> {
+impl PILAnalyzer {
+    pub fn new() -> PILAnalyzer {
         PILAnalyzer {
             symbol_counters: Some(Default::default()),
             ..Default::default()
         }
     }
 
-    pub fn process(&mut self, files: Vec<PILFile<T>>) {
+    pub fn process(&mut self, files: Vec<PILFile>) {
         for PILFile(file) in &files {
             self.current_namespace = Default::default();
             for statement in file {
@@ -132,9 +129,7 @@ impl<T: FieldElement> PILAnalyzer<T> {
     }
 
     pub fn type_check(&mut self) {
-        let query_type: Type = parse_type_name::<GoldilocksField>("int -> (string, fe)")
-            .unwrap()
-            .into();
+        let query_type: Type = parse_type_name("int -> (string, fe)").unwrap().into();
         let mut expressions = vec![];
         // Collect all definitions with their types and expressions.
         // For Arrays, we also collect the inner expressions and expect them to be field elements.
@@ -223,8 +218,8 @@ impl<T: FieldElement> PILAnalyzer<T> {
         }
     }
 
-    pub fn condense(self) -> Analyzed<T> {
-        condenser::condense(
+    pub fn condense<T: FieldElement>(self) -> Analyzed<T> {
+        condenser::condense::<T>(
             self.polynomial_degree,
             self.definitions,
             self.public_declarations,
@@ -234,7 +229,7 @@ impl<T: FieldElement> PILAnalyzer<T> {
     }
 
     /// A step to collect all defined names in the statement.
-    fn collect_names(&mut self, statement: &PilStatement<T>) {
+    fn collect_names(&mut self, statement: &PilStatement) {
         match statement {
             PilStatement::Namespace(_, name, _) => {
                 self.current_namespace = AbsoluteSymbolPath::default().join(name.clone());
@@ -251,7 +246,7 @@ impl<T: FieldElement> PILAnalyzer<T> {
         }
     }
 
-    fn handle_statement(&mut self, statement: PilStatement<T>) {
+    fn handle_statement(&mut self, statement: PilStatement) {
         match statement {
             PilStatement::Include(_, _) => unreachable!(),
             PilStatement::Namespace(_, name, degree) => self.handle_namespace(name, degree),
@@ -291,10 +286,12 @@ impl<T: FieldElement> PILAnalyzer<T> {
         }
     }
 
-    fn handle_namespace(&mut self, name: SymbolPath, degree: ::powdr_ast::parsed::Expression<T>) {
+    fn handle_namespace(&mut self, name: SymbolPath, degree: ::powdr_ast::parsed::Expression) {
         let degree = ExpressionProcessor::new(self.driver()).process_expression(degree);
+        // TODO we should maybe implement a separate evaluator that is able to run before type checking
+        // and is field-independent (only uses integers)?
         let namespace_degree: u64 = u64::try_from(
-            evaluator::evaluate_expression(&degree, &self.definitions)
+            evaluator::evaluate_expression::<GoldilocksField>(&degree, &self.definitions)
                 .unwrap()
                 .try_to_integer()
                 .unwrap(),
@@ -311,15 +308,15 @@ impl<T: FieldElement> PILAnalyzer<T> {
         self.current_namespace = AbsoluteSymbolPath::default().join(name);
     }
 
-    fn driver(&self) -> Driver<T> {
+    fn driver(&self) -> Driver {
         Driver(self)
     }
 }
 
 #[derive(Clone, Copy)]
-struct Driver<'a, T>(&'a PILAnalyzer<T>);
+struct Driver<'a>(&'a PILAnalyzer);
 
-impl<'a, T: FieldElement> AnalysisDriver<T> for Driver<'a, T> {
+impl<'a> AnalysisDriver for Driver<'a> {
     fn resolve_decl(&self, name: &str) -> String {
         (if name.starts_with('%') {
             // Constants are not namespaced
@@ -345,7 +342,7 @@ impl<'a, T: FieldElement> AnalysisDriver<T> for Driver<'a, T> {
             .unwrap_or_else(|| panic!("Symbol not found: {}", path.to_dotted_string()))
     }
 
-    fn definitions(&self) -> &HashMap<String, (Symbol, Option<FunctionValueDefinition<T>>)> {
+    fn definitions(&self) -> &HashMap<String, (Symbol, Option<FunctionValueDefinition>)> {
         &self.0.definitions
     }
 }

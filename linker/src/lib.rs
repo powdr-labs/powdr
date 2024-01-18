@@ -11,7 +11,6 @@ use powdr_ast::{
     },
     SourceRef,
 };
-use powdr_number::FieldElement;
 
 use itertools::Itertools;
 
@@ -20,7 +19,7 @@ const MAIN_OPERATION_NAME: &str = "main";
 
 /// a monolithic linker which outputs a single AIR
 /// It sets the degree of submachines to the degree of the main machine, and errors out if a submachine has an explicit degree which doesn't match the main one
-pub fn link<T: FieldElement>(graph: PILGraph<T>) -> Result<PILFile<T>, Vec<String>> {
+pub fn link(graph: PILGraph) -> Result<PILFile, Vec<String>> {
     let main_machine = graph.main;
     let main_degree = graph
         .objects
@@ -59,7 +58,7 @@ pub fn link<T: FieldElement>(graph: PILGraph<T>) -> Result<PILFile<T>, Vec<Strin
                         PilStatement::Namespace(
                             SourceRef::unknown(),
                             namespace.relative_to(&AbsoluteSymbolPath::default()),
-                            Expression::Number(T::from(main_degree), None),
+                            Expression::Number(main_degree.into(), None),
                         ),
                         def,
                     ]
@@ -85,7 +84,7 @@ pub fn link<T: FieldElement>(graph: PILGraph<T>) -> Result<PILFile<T>, Vec<Strin
         pil.push(PilStatement::Namespace(
             SourceRef::unknown(),
             SymbolPath::from_identifier(location.to_string()),
-            Expression::Number(T::from(main_degree), None),
+            Expression::Number(main_degree.into(), None),
         ));
         pil.extend(object.pil);
         for link in object.links {
@@ -136,7 +135,10 @@ pub fn link<T: FieldElement>(graph: PILGraph<T>) -> Result<PILFile<T>, Vec<Strin
                 )),
                 expressions: op_id
                     .chain(to.operation.params.inputs_and_outputs().map(|i| {
-                        index_access(namespaced_reference(to_namespace.clone(), &i.name), i.index)
+                        index_access(
+                            namespaced_reference(to_namespace.clone(), &i.name),
+                            i.index.clone(),
+                        )
                     }))
                     .collect(),
             };
@@ -151,7 +153,7 @@ pub fn link<T: FieldElement>(graph: PILGraph<T>) -> Result<PILFile<T>, Vec<Strin
                 .iter()
                 .find(|f| f.name == MAIN_OPERATION_NAME)
             {
-                let main_operation_id = main_operation.id;
+                let main_operation_id = main_operation.id.clone();
                 let operation_id = main_machine.operation_id.clone();
                 match (operation_id, main_operation_id) {
                     (Some(operation_id), Some(main_operation_id)) => {
@@ -190,7 +192,7 @@ mod test {
         object::{Location, Object, PILGraph},
         parsed::{Expression, PILFile},
     };
-    use powdr_number::{Bn254Field, FieldElement, GoldilocksField};
+    use powdr_number::{FieldElement, GoldilocksField};
 
     use powdr_analysis::convert_asm_to_pil;
     use powdr_parser::parse_asm;
@@ -199,10 +201,10 @@ mod test {
 
     use crate::{link, DEFAULT_DEGREE};
 
-    fn parse_analyse_and_compile<T: FieldElement>(input: &str) -> PILGraph<T> {
+    fn parse_analyse_and_compile<T: FieldElement>(input: &str) -> PILGraph {
         let parsed = parse_asm(None, input).unwrap();
         let resolved = powdr_importer::load_dependencies_and_resolve(None, parsed).unwrap();
-        powdr_airgen::compile(convert_asm_to_pil(resolved).unwrap())
+        powdr_airgen::compile(convert_asm_to_pil::<T>(resolved).unwrap())
     }
 
     #[test]
@@ -227,25 +229,25 @@ mod test {
             .collect(),
         };
         // a test over a pil file `f` checking if all namespaces have degree `n`
-        let all_namespaces_have_degree = |f: PILFile<Bn254Field>, n| {
+        let all_namespaces_have_degree = |f: PILFile, n: u64| {
             f.0.iter().all(|s| match s {
                 powdr_ast::parsed::PilStatement::Namespace(_, _, e) => {
-                    *e == Expression::Number(Bn254Field::from(n), None)
+                    *e == Expression::Number(n.into(), None)
                 }
                 _ => true,
             })
         };
 
-        let inferred: PILGraph<Bn254Field> = test_graph(Some(8), None);
+        let inferred: PILGraph = test_graph(Some(8), None);
         assert!(all_namespaces_have_degree(link(inferred).unwrap(), 8));
-        let matches: PILGraph<Bn254Field> = test_graph(Some(8), Some(8));
+        let matches: PILGraph = test_graph(Some(8), Some(8));
         assert!(all_namespaces_have_degree(link(matches).unwrap(), 8));
-        let default_infer: PILGraph<Bn254Field> = test_graph(None, Some(DEFAULT_DEGREE));
+        let default_infer: PILGraph = test_graph(None, Some(DEFAULT_DEGREE));
         assert!(all_namespaces_have_degree(
             link(default_infer).unwrap(),
             1024
         ));
-        let default_no_match: PILGraph<Bn254Field> = test_graph(None, Some(8));
+        let default_no_match: PILGraph = test_graph(None, Some(8));
         assert_eq!(
             link(default_no_match),
             Err(vec![

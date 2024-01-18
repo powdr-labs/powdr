@@ -105,10 +105,10 @@ pub trait ExpressionVisitable<Expr> {
         F: FnMut(&mut Expr) -> ControlFlow<B>;
 }
 
-impl<T, Ref> ExpressionVisitable<Expression<T, Ref>> for Expression<T, Ref> {
+impl<Ref> ExpressionVisitable<Expression<Ref>> for Expression<Ref> {
     fn visit_expressions_mut<F, B>(&mut self, f: &mut F, o: VisitOrder) -> ControlFlow<B>
     where
-        F: FnMut(&mut Expression<T, Ref>) -> ControlFlow<B>,
+        F: FnMut(&mut Expression<Ref>) -> ControlFlow<B>,
     {
         if o == VisitOrder::Pre {
             f(self)?;
@@ -147,7 +147,7 @@ impl<T, Ref> ExpressionVisitable<Expression<T, Ref>> for Expression<T, Ref> {
 
     fn visit_expressions<F, B>(&self, f: &mut F, o: VisitOrder) -> ControlFlow<B>
     where
-        F: FnMut(&Expression<T, Ref>) -> ControlFlow<B>,
+        F: FnMut(&Expression<Ref>) -> ControlFlow<B>,
     {
         if o == VisitOrder::Pre {
             f(self)?;
@@ -185,10 +185,10 @@ impl<T, Ref> ExpressionVisitable<Expression<T, Ref>> for Expression<T, Ref> {
     }
 }
 
-impl<T> ExpressionVisitable<Expression<T, NamespacedPolynomialReference>> for PilStatement<T> {
+impl ExpressionVisitable<Expression<NamespacedPolynomialReference>> for PilStatement {
     fn visit_expressions_mut<F, B>(&mut self, f: &mut F, o: VisitOrder) -> ControlFlow<B>
     where
-        F: FnMut(&mut Expression<T, NamespacedPolynomialReference>) -> ControlFlow<B>,
+        F: FnMut(&mut Expression<NamespacedPolynomialReference>) -> ControlFlow<B>,
     {
         match self {
             PilStatement::Expression(_, e) => e.visit_expressions_mut(f, o),
@@ -232,7 +232,7 @@ impl<T> ExpressionVisitable<Expression<T, NamespacedPolynomialReference>> for Pi
 
     fn visit_expressions<F, B>(&self, f: &mut F, o: VisitOrder) -> ControlFlow<B>
     where
-        F: FnMut(&Expression<T>) -> ControlFlow<B>,
+        F: FnMut(&Expression) -> ControlFlow<B>,
     {
         match self {
             PilStatement::Expression(_, e) => e.visit_expressions(f, o),
@@ -299,10 +299,10 @@ impl<Expr: ExpressionVisitable<Expr>> ExpressionVisitable<Expr> for SelectedExpr
     }
 }
 
-impl<T> ExpressionVisitable<Expression<T>> for FunctionDefinition<T> {
+impl ExpressionVisitable<Expression> for FunctionDefinition {
     fn visit_expressions_mut<F, B>(&mut self, f: &mut F, o: VisitOrder) -> ControlFlow<B>
     where
-        F: FnMut(&mut Expression<T>) -> ControlFlow<B>,
+        F: FnMut(&mut Expression) -> ControlFlow<B>,
     {
         match self {
             FunctionDefinition::Query(e) | FunctionDefinition::Expression(e) => {
@@ -314,7 +314,7 @@ impl<T> ExpressionVisitable<Expression<T>> for FunctionDefinition<T> {
 
     fn visit_expressions<F, B>(&self, f: &mut F, o: VisitOrder) -> ControlFlow<B>
     where
-        F: FnMut(&Expression<T>) -> ControlFlow<B>,
+        F: FnMut(&Expression) -> ControlFlow<B>,
     {
         match self {
             FunctionDefinition::Query(e) | FunctionDefinition::Expression(e) => {
@@ -325,10 +325,10 @@ impl<T> ExpressionVisitable<Expression<T>> for FunctionDefinition<T> {
     }
 }
 
-impl<T> ExpressionVisitable<Expression<T>> for ArrayExpression<T> {
+impl ExpressionVisitable<Expression> for ArrayExpression {
     fn visit_expressions_mut<F, B>(&mut self, f: &mut F, o: VisitOrder) -> ControlFlow<B>
     where
-        F: FnMut(&mut Expression<T>) -> ControlFlow<B>,
+        F: FnMut(&mut Expression) -> ControlFlow<B>,
     {
         match self {
             ArrayExpression::Value(expressions) | ArrayExpression::RepeatedValue(expressions) => {
@@ -344,7 +344,7 @@ impl<T> ExpressionVisitable<Expression<T>> for ArrayExpression<T> {
 
     fn visit_expressions<F, B>(&self, f: &mut F, o: VisitOrder) -> ControlFlow<B>
     where
-        F: FnMut(&Expression<T>) -> ControlFlow<B>,
+        F: FnMut(&Expression) -> ControlFlow<B>,
     {
         match self {
             ArrayExpression::Value(expressions) | ArrayExpression::RepeatedValue(expressions) => {
@@ -359,26 +359,26 @@ impl<T> ExpressionVisitable<Expression<T>> for ArrayExpression<T> {
     }
 }
 
-impl<T, Ref> ExpressionVisitable<Expression<T, Ref>> for LambdaExpression<T, Ref> {
+impl<Ref> ExpressionVisitable<Expression<Ref>> for LambdaExpression<Ref> {
     fn visit_expressions_mut<F, B>(&mut self, f: &mut F, o: VisitOrder) -> ControlFlow<B>
     where
-        F: FnMut(&mut Expression<T, Ref>) -> ControlFlow<B>,
+        F: FnMut(&mut Expression<Ref>) -> ControlFlow<B>,
     {
         self.body.visit_expressions_mut(f, o)
     }
 
     fn visit_expressions<F, B>(&self, f: &mut F, o: VisitOrder) -> ControlFlow<B>
     where
-        F: FnMut(&Expression<T, Ref>) -> ControlFlow<B>,
+        F: FnMut(&Expression<Ref>) -> ControlFlow<B>,
     {
         self.body.visit_expressions(f, o)
     }
 }
 
-impl<T, Ref> ExpressionVisitable<Expression<T, Ref>> for ArrayLiteral<T, Ref> {
+impl<Ref> ExpressionVisitable<Expression<Ref>> for ArrayLiteral<Ref> {
     fn visit_expressions_mut<F, B>(&mut self, f: &mut F, o: VisitOrder) -> ControlFlow<B>
     where
-        F: FnMut(&mut Expression<T, Ref>) -> ControlFlow<B>,
+        F: FnMut(&mut Expression<Ref>) -> ControlFlow<B>,
     {
         self.items
             .iter_mut()
@@ -387,7 +387,7 @@ impl<T, Ref> ExpressionVisitable<Expression<T, Ref>> for ArrayLiteral<T, Ref> {
 
     fn visit_expressions<F, B>(&self, f: &mut F, o: VisitOrder) -> ControlFlow<B>
     where
-        F: FnMut(&Expression<T, Ref>) -> ControlFlow<B>,
+        F: FnMut(&Expression<Ref>) -> ControlFlow<B>,
     {
         self.items
             .iter()
@@ -395,10 +395,10 @@ impl<T, Ref> ExpressionVisitable<Expression<T, Ref>> for ArrayLiteral<T, Ref> {
     }
 }
 
-impl<T, Ref> ExpressionVisitable<Expression<T, Ref>> for IndexAccess<T, Ref> {
+impl<Ref> ExpressionVisitable<Expression<Ref>> for IndexAccess<Ref> {
     fn visit_expressions_mut<F, B>(&mut self, f: &mut F, o: VisitOrder) -> ControlFlow<B>
     where
-        F: FnMut(&mut Expression<T, Ref>) -> ControlFlow<B>,
+        F: FnMut(&mut Expression<Ref>) -> ControlFlow<B>,
     {
         self.array.visit_expressions_mut(f, o)?;
         self.index.visit_expressions_mut(f, o)
@@ -406,17 +406,17 @@ impl<T, Ref> ExpressionVisitable<Expression<T, Ref>> for IndexAccess<T, Ref> {
 
     fn visit_expressions<F, B>(&self, f: &mut F, o: VisitOrder) -> ControlFlow<B>
     where
-        F: FnMut(&Expression<T, Ref>) -> ControlFlow<B>,
+        F: FnMut(&Expression<Ref>) -> ControlFlow<B>,
     {
         self.array.visit_expressions(f, o)?;
         self.index.visit_expressions(f, o)
     }
 }
 
-impl<T, Ref> ExpressionVisitable<Expression<T, Ref>> for FunctionCall<T, Ref> {
+impl<Ref> ExpressionVisitable<Expression<Ref>> for FunctionCall<Ref> {
     fn visit_expressions_mut<F, B>(&mut self, f: &mut F, o: VisitOrder) -> ControlFlow<B>
     where
-        F: FnMut(&mut Expression<T, Ref>) -> ControlFlow<B>,
+        F: FnMut(&mut Expression<Ref>) -> ControlFlow<B>,
     {
         once(self.function.as_mut())
             .chain(&mut self.arguments)
@@ -425,7 +425,7 @@ impl<T, Ref> ExpressionVisitable<Expression<T, Ref>> for FunctionCall<T, Ref> {
 
     fn visit_expressions<F, B>(&self, f: &mut F, o: VisitOrder) -> ControlFlow<B>
     where
-        F: FnMut(&Expression<T, Ref>) -> ControlFlow<B>,
+        F: FnMut(&Expression<Ref>) -> ControlFlow<B>,
     {
         once(self.function.as_ref())
             .chain(&self.arguments)
@@ -433,10 +433,10 @@ impl<T, Ref> ExpressionVisitable<Expression<T, Ref>> for FunctionCall<T, Ref> {
     }
 }
 
-impl<T, Ref> ExpressionVisitable<Expression<T, Ref>> for MatchArm<T, Ref> {
+impl<Ref> ExpressionVisitable<Expression<Ref>> for MatchArm<Ref> {
     fn visit_expressions_mut<F, B>(&mut self, f: &mut F, o: VisitOrder) -> ControlFlow<B>
     where
-        F: FnMut(&mut Expression<T, Ref>) -> ControlFlow<B>,
+        F: FnMut(&mut Expression<Ref>) -> ControlFlow<B>,
     {
         self.pattern.visit_expressions_mut(f, o)?;
         self.value.visit_expressions_mut(f, o)
@@ -444,17 +444,17 @@ impl<T, Ref> ExpressionVisitable<Expression<T, Ref>> for MatchArm<T, Ref> {
 
     fn visit_expressions<F, B>(&self, f: &mut F, o: VisitOrder) -> ControlFlow<B>
     where
-        F: FnMut(&Expression<T, Ref>) -> ControlFlow<B>,
+        F: FnMut(&Expression<Ref>) -> ControlFlow<B>,
     {
         self.pattern.visit_expressions(f, o)?;
         self.value.visit_expressions(f, o)
     }
 }
 
-impl<T, Ref> ExpressionVisitable<Expression<T, Ref>> for MatchPattern<T, Ref> {
+impl<Ref> ExpressionVisitable<Expression<Ref>> for MatchPattern<Ref> {
     fn visit_expressions_mut<F, B>(&mut self, f: &mut F, o: VisitOrder) -> ControlFlow<B>
     where
-        F: FnMut(&mut Expression<T, Ref>) -> ControlFlow<B>,
+        F: FnMut(&mut Expression<Ref>) -> ControlFlow<B>,
     {
         match self {
             MatchPattern::CatchAll => ControlFlow::Continue(()),
@@ -464,7 +464,7 @@ impl<T, Ref> ExpressionVisitable<Expression<T, Ref>> for MatchPattern<T, Ref> {
 
     fn visit_expressions<F, B>(&self, f: &mut F, o: VisitOrder) -> ControlFlow<B>
     where
-        F: FnMut(&Expression<T, Ref>) -> ControlFlow<B>,
+        F: FnMut(&Expression<Ref>) -> ControlFlow<B>,
     {
         match self {
             MatchPattern::CatchAll => ControlFlow::Continue(()),
@@ -473,10 +473,10 @@ impl<T, Ref> ExpressionVisitable<Expression<T, Ref>> for MatchPattern<T, Ref> {
     }
 }
 
-impl<T, Ref> ExpressionVisitable<Expression<T, Ref>> for IfExpression<T, Ref> {
+impl<Ref> ExpressionVisitable<Expression<Ref>> for IfExpression<Ref> {
     fn visit_expressions_mut<F, B>(&mut self, f: &mut F, o: VisitOrder) -> ControlFlow<B>
     where
-        F: FnMut(&mut Expression<T, Ref>) -> ControlFlow<B>,
+        F: FnMut(&mut Expression<Ref>) -> ControlFlow<B>,
     {
         [&mut self.condition, &mut self.body, &mut self.else_body]
             .into_iter()
@@ -485,7 +485,7 @@ impl<T, Ref> ExpressionVisitable<Expression<T, Ref>> for IfExpression<T, Ref> {
 
     fn visit_expressions<F, B>(&self, f: &mut F, o: VisitOrder) -> ControlFlow<B>
     where
-        F: FnMut(&Expression<T, Ref>) -> ControlFlow<B>,
+        F: FnMut(&Expression<Ref>) -> ControlFlow<B>,
     {
         [&self.condition, &self.body, &self.else_body]
             .into_iter()

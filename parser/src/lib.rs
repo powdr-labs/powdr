@@ -7,7 +7,6 @@ use powdr_ast::parsed::asm::ASMProgram;
 use powdr_ast::parsed::TypeBounds;
 use powdr_ast::SourceRef;
 
-use powdr_number::{FieldElement, GoldilocksField};
 use powdr_parser_util::{handle_parse_error, ParseError};
 
 use std::sync::Arc;
@@ -48,36 +47,36 @@ lazy_static::lazy_static! {
     static ref TYPE_VAR_BOUNDS_PARSER: powdr::TypeVarBoundsParser = powdr::TypeVarBoundsParser::new();
 }
 
-pub fn parse<'a, T: FieldElement>(
+pub fn parse<'a>(
     file_name: Option<&str>,
     input: &'a str,
-) -> Result<powdr_ast::parsed::PILFile<T>, ParseError<'a>> {
+) -> Result<powdr_ast::parsed::PILFile, ParseError<'a>> {
     let ctx = ParserContext::new(file_name, input);
     PIL_FILE_PARSER
         .parse(&ctx, input)
         .map_err(|err| handle_parse_error(err, file_name, input))
 }
 
-pub fn parse_asm<'a, T: FieldElement>(
+pub fn parse_asm<'a>(
     file_name: Option<&str>,
     input: &'a str,
-) -> Result<powdr_ast::parsed::asm::ASMProgram<T>, ParseError<'a>> {
+) -> Result<powdr_ast::parsed::asm::ASMProgram, ParseError<'a>> {
     parse_module(file_name, input).map(|main| ASMProgram { main })
 }
 
-pub fn parse_module<'a, T: FieldElement>(
+pub fn parse_module<'a>(
     file_name: Option<&str>,
     input: &'a str,
-) -> Result<powdr_ast::parsed::asm::ASMModule<T>, ParseError<'a>> {
+) -> Result<powdr_ast::parsed::asm::ASMModule, ParseError<'a>> {
     let ctx = ParserContext::new(file_name, input);
     ASM_MODULE_PARSER
         .parse(&ctx, input)
         .map_err(|err| handle_parse_error(err, file_name, input))
 }
 
-pub fn parse_type_name<T: FieldElement>(
+pub fn parse_type_name(
     input: &str,
-) -> Result<powdr_ast::parsed::TypeName<powdr_ast::parsed::Expression<T>>, ParseError<'_>> {
+) -> Result<powdr_ast::parsed::TypeName<powdr_ast::parsed::Expression>, ParseError<'_>> {
     let ctx = ParserContext::new(None, input);
     TYPE_NAME_PARSER
         .parse(&ctx, input)
@@ -89,7 +88,7 @@ pub fn parse_type_var_bounds(input: &str) -> Result<TypeBounds, ParseError<'_>> 
     // We use GoldilocksField here, because we need to specify a concrete type,
     // even though the grammar for TypeBounds does not depend on the field.
     TYPE_VAR_BOUNDS_PARSER
-        .parse::<GoldilocksField>(&ctx, input)
+        .parse(&ctx, input)
         .map_err(|err| handle_parse_error(err, None, input))
 }
 
@@ -123,8 +122,6 @@ mod test {
         asm::ASMProgram, build::direct_reference, PILFile, PilStatement, PolynomialName,
         SelectedExpressions,
     };
-    use powdr_number::Bn254Field;
-    use powdr_number::GoldilocksField;
     use powdr_parser_util::UnwrapErrToStderr;
     use similar::TextDiff;
     use test_log::test;
@@ -134,18 +131,14 @@ mod test {
     fn empty() {
         let input = "";
         let ctx = ParserContext::new(None, input);
-        assert!(powdr::PILFileParser::new()
-            .parse::<GoldilocksField>(&ctx, input)
-            .is_ok());
+        assert!(powdr::PILFileParser::new().parse(&ctx, input).is_ok());
     }
 
     #[test]
     fn simple_include() {
         let input = "include \"x\";";
         let ctx = ParserContext::new(None, input);
-        let parsed = powdr::PILFileParser::new()
-            .parse::<GoldilocksField>(&ctx, input)
-            .unwrap();
+        let parsed = powdr::PILFileParser::new().parse(&ctx, input).unwrap();
         assert_eq!(
             parsed,
             PILFile(vec![PilStatement::Include(
@@ -163,9 +156,7 @@ mod test {
     fn start_offsets() {
         let input = "include \"x\"; pol commit t;";
         let ctx = ParserContext::new(None, input);
-        let parsed = powdr::PILFileParser::new()
-            .parse::<GoldilocksField>(&ctx, input)
-            .unwrap();
+        let parsed = powdr::PILFileParser::new().parse(&ctx, input).unwrap();
         assert_eq!(
             parsed,
             PILFile(vec![
@@ -197,9 +188,7 @@ mod test {
     fn simple_plookup() {
         let input = "f in g;";
         let ctx = ParserContext::new(None, input);
-        let parsed = powdr::PILFileParser::new()
-            .parse::<GoldilocksField>(&ctx, "f in g;")
-            .unwrap();
+        let parsed = powdr::PILFileParser::new().parse(&ctx, "f in g;").unwrap();
         assert_eq!(
             parsed,
             PILFile(vec![PilStatement::PlookupIdentity(
@@ -242,11 +231,11 @@ mod test {
     }
 
     // helper function to clear SourceRef's inside the AST so we can compare for equality
-    fn pil_clear_source_refs<T>(ast: &mut PILFile<T>) {
+    fn pil_clear_source_refs(ast: &mut PILFile) {
         ast.0.iter_mut().for_each(pil_statement_clear_source_ref);
     }
 
-    fn pil_statement_clear_source_ref<T>(stmt: &mut PilStatement<T>) {
+    fn pil_statement_clear_source_ref(stmt: &mut PilStatement) {
         match stmt {
             PilStatement::Include(s, _)
             | PilStatement::Namespace(s, _, _)
@@ -265,13 +254,13 @@ mod test {
     }
 
     // helper function to clear SourceRef's inside the AST so we can compare for equality
-    fn asm_clear_source_refs<T>(ast: &mut ASMProgram<T>) {
+    fn asm_clear_source_refs(ast: &mut ASMProgram) {
         use powdr_ast::parsed::asm::{
             ASMModule, FunctionStatement, Instruction, InstructionBody, Machine, MachineStatement,
             Module, ModuleStatement, SymbolDefinition, SymbolValue,
         };
 
-        fn clear_machine_stmt<T>(stmt: &mut MachineStatement<T>) {
+        fn clear_machine_stmt(stmt: &mut MachineStatement) {
             match stmt {
                 MachineStatement::Degree(s, _)
                 | MachineStatement::Submachine(s, _, _)
@@ -307,7 +296,7 @@ mod test {
             }
         }
 
-        fn clear_module_stmt<T>(stmt: &mut ModuleStatement<T>) {
+        fn clear_module_stmt(stmt: &mut ModuleStatement) {
             let ModuleStatement::SymbolDefinition(SymbolDefinition { value, .. }) = stmt;
             match value {
                 SymbolValue::Machine(Machine { statements, .. }) => {
@@ -332,10 +321,9 @@ mod test {
         let basedir = std::path::PathBuf::from(format!("{crate_dir}/../test_data/"));
         let asm_files = find_files_with_ext(basedir, "asm".into());
         for (file, orig_string) in asm_files {
-            let mut orig_asm =
-                parse_asm::<Bn254Field>(Some(&file), &orig_string).unwrap_err_to_stderr();
+            let mut orig_asm = parse_asm(Some(&file), &orig_string).unwrap_err_to_stderr();
             let orig_asm_to_string = format!("{}", orig_asm);
-            let mut reparsed_asm = parse_asm::<Bn254Field>(
+            let mut reparsed_asm = parse_asm(
                 Some((file.clone() + " reparsed").as_ref()),
                 &orig_asm_to_string,
             )
@@ -367,10 +355,9 @@ mod test {
         let basedir = std::path::PathBuf::from(format!("{crate_dir}/../test_data/"));
         let pil_files = find_files_with_ext(basedir, "pil".into());
         for (file, orig_string) in pil_files {
-            let mut orig_pil =
-                parse::<Bn254Field>(Some(&file), &orig_string).unwrap_err_to_stderr();
+            let mut orig_pil = parse(Some(&file), &orig_string).unwrap_err_to_stderr();
             let orig_pil_to_string = format!("{}", orig_pil);
-            let mut reparsed_pil = parse::<Bn254Field>(
+            let mut reparsed_pil = parse(
                 Some((file.clone() + " reparsed").as_ref()),
                 &orig_pil_to_string,
             )
@@ -397,8 +384,6 @@ mod test {
     }
 
     mod display {
-        use powdr_number::GoldilocksField;
-
         use powdr_parser_util::UnwrapErrToStderr;
         use pretty_assertions::assert_eq;
 
@@ -419,50 +404,35 @@ namespace Fibonacci(%N);
     y { (x + 2), y' } is ISLAST { ISLAST, 7 };
     (((x - 2) * y) = 8);
     public out = y(%last_row);"#;
-            let printed = format!(
-                "{}",
-                parse::<GoldilocksField>(Some("input"), input).unwrap()
-            );
+            let printed = format!("{}", parse(Some("input"), input).unwrap());
             assert_eq!(input.trim(), printed.trim());
         }
 
         #[test]
         fn reparse_witness_query() {
             let input = r#"pol commit wit(i) query (x(i), y(i));"#;
-            let printed = format!(
-                "{}",
-                parse::<GoldilocksField>(Some("input"), input).unwrap()
-            );
+            let printed = format!("{}", parse(Some("input"), input).unwrap());
             assert_eq!(input.trim(), printed.trim());
         }
 
         #[test]
         fn reparse_arrays() {
             let input = "    pol commit y[3];\n    ((y - 2) = 0);\n    ((y[2] - 2) = 0);\n    public out = y[1](2);";
-            let printed = format!(
-                "{}",
-                parse::<GoldilocksField>(Some("input"), input).unwrap()
-            );
+            let printed = format!("{}", parse(Some("input"), input).unwrap());
             assert_eq!(input.trim(), printed.trim());
         }
 
         #[test]
         fn reparse_strings_and_tuples() {
             let input = r#"constant %N = ("abc", 3);"#;
-            let printed = format!(
-                "{}",
-                parse::<GoldilocksField>(Some("input"), input).unwrap()
-            );
+            let printed = format!("{}", parse(Some("input"), input).unwrap());
             assert_eq!(input.trim(), printed.trim());
         }
 
         #[test]
         fn array_literals() {
             let input = r#"let x = [[1], [2], [(3 + 7)]];"#;
-            let printed = format!(
-                "{}",
-                parse::<GoldilocksField>(Some("input"), input).unwrap_err_to_stderr()
-            );
+            let printed = format!("{}", parse(Some("input"), input).unwrap_err_to_stderr());
             assert_eq!(input.trim(), printed.trim());
         }
 
@@ -475,10 +445,7 @@ namespace Fibonacci(%N);
     let d: int[];
     let e: int[7];
     let f: (int, fe, fe[3])[2];"#;
-            let printed = format!(
-                "{}",
-                parse::<GoldilocksField>(Some("input"), input).unwrap()
-            );
+            let printed = format!("{}", parse(Some("input"), input).unwrap());
             assert_eq!(input.trim(), printed.trim());
         }
 
@@ -493,10 +460,7 @@ namespace Fibonacci(%N);
     let f: ((int, fe), fe[2] -> (fe -> int))[];
     let g: (int -> fe) -> int;
     let h: int -> (fe -> int);"#;
-            let printed = format!(
-                "{}",
-                parse::<GoldilocksField>(Some("input"), input).unwrap()
-            );
+            let printed = format!("{}", parse(Some("input"), input).unwrap());
             assert_eq!(input.trim(), printed.trim());
         }
     }

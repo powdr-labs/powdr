@@ -543,7 +543,7 @@ fn run_command(command: Commands) {
         }
         Commands::Reformat { file } => {
             let contents = fs::read_to_string(&file).unwrap();
-            match powdr_parser::parse::<GoldilocksField>(Some(&file), &contents) {
+            match powdr_parser::parse(Some(&file), &contents) {
                 Ok(ast) => println!("{ast}"),
                 Err(err) => err.output_to_stderr(),
             };

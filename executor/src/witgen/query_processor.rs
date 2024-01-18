@@ -38,7 +38,7 @@ impl<'a, 'b, T: FieldElement, QueryCallback: super::QueryCallback<T>>
 
     fn process_witness_query(
         &mut self,
-        query: &'a Expression<T>,
+        query: &'a Expression,
         poly: &'a AlgebraicReference,
         rows: &RowPair<T>,
     ) -> EvalResult<'a, T> {
@@ -75,7 +75,7 @@ impl<'a, 'b, T: FieldElement, QueryCallback: super::QueryCallback<T>>
 
     fn interpolate_query(
         &self,
-        query: &'a Expression<T>,
+        query: &'a Expression,
         rows: &RowPair<T>,
     ) -> Result<String, EvalError> {
         let arguments = vec![Arc::new(Value::Integer(BigInt::from(u64::from(

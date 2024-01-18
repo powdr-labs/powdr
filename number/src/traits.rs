@@ -132,6 +132,9 @@ pub trait FieldElement:
 
     fn from_str_radix(s: &str, radix: u32) -> Result<Self, String>;
 
+    /// Only converts the value to a field element if it is less than the modulus.
+    fn checked_from(value: BigUint) -> Option<Self>;
+
     /// Returns true if the value is in the "lower half" of the field,
     /// i.e. the value <= (modulus() - 1) / 2
     fn is_in_lower_half(&self) -> bool;

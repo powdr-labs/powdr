@@ -4,9 +4,8 @@ use powdr_ast::{
     asm_analysis::{AnalysisASMFile, Expression, FunctionStatement, Item, Machine},
     parsed::asm::AssignmentRegister,
 };
-use powdr_number::FieldElement;
 
-pub fn infer<T: FieldElement>(file: AnalysisASMFile<T>) -> Result<AnalysisASMFile<T>, Vec<String>> {
+pub fn infer(file: AnalysisASMFile) -> Result<AnalysisASMFile, Vec<String>> {
     let mut errors = vec![];
 
     let items = file
@@ -31,7 +30,7 @@ pub fn infer<T: FieldElement>(file: AnalysisASMFile<T>) -> Result<AnalysisASMFil
     }
 }
 
-fn infer_machine<T: FieldElement>(mut machine: Machine<T>) -> Result<Machine<T>, Vec<String>> {
+fn infer_machine(mut machine: Machine) -> Result<Machine, Vec<String>> {
     let mut errors = vec![];
 
     for f in machine.callable.functions_mut() {
@@ -99,7 +98,6 @@ fn infer_machine<T: FieldElement>(mut machine: Machine<T>) -> Result<Machine<T>,
 #[cfg(test)]
 mod tests {
     use powdr_ast::{asm_analysis::AssignmentStatement, parsed::asm::parse_absolute_path};
-    use powdr_number::Bn254Field;
 
     use crate::vm::test_utils::infer_str;
 
@@ -122,7 +120,7 @@ mod tests {
             }
         "#;
 
-        let file = infer_str::<Bn254Field>(file).unwrap();
+        let file = infer_str(file).unwrap();
 
         let machine = &file.items[&parse_absolute_path("::Machine")]
             .try_to_machine()
@@ -163,7 +161,7 @@ mod tests {
             }
         "#;
 
-        let file = infer_str::<Bn254Field>(file).unwrap();
+        let file = infer_str(file).unwrap();
 
         let machine = &file.items[&parse_absolute_path("::Machine")]
             .try_to_machine()
@@ -204,7 +202,7 @@ mod tests {
             }
         "#;
 
-        assert_eq!(infer_str::<Bn254Field>(file).unwrap_err(), vec!["Assignment register `Y` is incompatible with `foo()`. Try using `<==` with no explicit assignment registers."]);
+        assert_eq!(infer_str(file).unwrap_err(), vec!["Assignment register `Y` is incompatible with `foo()`. Try using `<==` with no explicit assignment registers."]);
     }
 
     #[test]
@@ -223,7 +221,7 @@ mod tests {
         "#;
 
         assert_eq!(
-            infer_str::<Bn254Field>(file).unwrap_err(),
+            infer_str(file).unwrap_err(),
             vec![
                 "Impossible to infer the assignment register to write to register `A`".to_string()
             ]

@@ -146,7 +146,7 @@ impl<T: Display> Display for Analyzed<T> {
     }
 }
 
-impl<T: Display> Display for FunctionValueDefinition<T> {
+impl Display for FunctionValueDefinition {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
             FunctionValueDefinition::Array(items) => {
@@ -172,11 +172,7 @@ impl<T: Display> Display for FunctionValueDefinition<T> {
     }
 }
 
-fn format_outer_function<T: Display>(
-    e: &Expression<T>,
-    qualifier: Option<&str>,
-    f: &mut Formatter<'_>,
-) -> Result {
+fn format_outer_function(e: &Expression, qualifier: Option<&str>, f: &mut Formatter<'_>) -> Result {
     let q = qualifier.map(|s| format!(" {s}")).unwrap_or_default();
     match e {
         parsed::Expression::LambdaExpression(lambda) if lambda.params.len() == 1 => {
@@ -191,7 +187,7 @@ fn format_outer_function<T: Display>(
     }
 }
 
-impl<T: Display> Display for RepeatedArray<T> {
+impl Display for RepeatedArray {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         if self.is_empty() {
             return Ok(());
@@ -204,7 +200,7 @@ impl<T: Display> Display for RepeatedArray<T> {
     }
 }
 
-impl<T: Display> Display for Identity<Expression<T>> {
+impl Display for Identity<Expression> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self.kind {
             IdentityKind::Polynomial => {

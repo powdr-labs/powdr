@@ -1,6 +1,4 @@
 /// Values which are common to many steps from asm to PIL
-use powdr_number::FieldElement;
-
 use crate::utils::parse_instruction;
 
 /// The name for the `return` keyword in the PIL constraints
@@ -28,10 +26,10 @@ pub fn output_at(i: usize) -> String {
 }
 
 /// The return instruction for `output_count` outputs and `pc_name` the name of the pc
-pub fn return_instruction<T: FieldElement>(
+pub fn return_instruction(
     output_count: usize,
     pc_name: &str,
-) -> powdr_ast::asm_analysis::Instruction<T> {
+) -> powdr_ast::asm_analysis::Instruction {
     parse_instruction(&format!(
         "{} {{ {pc_name}' = 0 }}",
         output_registers(output_count).join(", ")

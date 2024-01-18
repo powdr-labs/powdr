@@ -330,6 +330,15 @@ macro_rules! powdr_field {
                 }
             }
 
+            fn checked_from(value: BigUint) -> Option<Self> {
+                let modulus = <$ark_type>::MODULUS.to_bytes_le();
+                if value < BigUint::from_le_bytes(&modulus) {
+                    Some(value.into())
+                } else {
+                    None
+                }
+            }
+
             fn to_degree(&self) -> DegreeType {
                 let degree: BigUint = self.to_integer().to_arbitrary_integer();
                 degree.try_into().unwrap()
