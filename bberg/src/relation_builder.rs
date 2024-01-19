@@ -135,7 +135,7 @@ impl RelationBuilder for BBFiles {
 
         let relations = format!(
             "{includes}
-namespace proof_system::{root_name}_vm {{
+namespace bb::{root_name}_vm {{
 
 {row_type};
 

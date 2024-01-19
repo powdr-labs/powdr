@@ -11,7 +11,7 @@ impl ProverBuilder for BBFiles {
         let include_str = includes_hpp(name);
         let prover_hpp = format!("
     {include_str} 
-    namespace proof_system::honk {{
+    namespace bb::honk {{
     
     class {name}Prover {{
     
@@ -41,7 +41,7 @@ impl ProverBuilder for BBFiles {
     
         std::vector<FF> public_inputs;
     
-        proof_system::RelationParameters<FF> relation_parameters;
+        bb::RelationParameters<FF> relation_parameters;
     
         std::shared_ptr<ProvingKey> key;
     
@@ -62,7 +62,7 @@ impl ProverBuilder for BBFiles {
         plonk::proof proof;
     }};
     
-    }} // namespace proof_system::honk
+    }} // namespace bb::honk
      
     ");
         self.write_file(&self.prover, &format!("{}_prover.hpp", name), &prover_hpp);
@@ -74,7 +74,7 @@ impl ProverBuilder for BBFiles {
         let prover_cpp = format!("
     {include_str}
     
-    namespace proof_system::honk {{
+    namespace bb::honk {{
 
     using Flavor = honk::flavor::{name}Flavor;
     
@@ -92,13 +92,13 @@ impl ProverBuilder for BBFiles {
         , commitment_key(commitment_key)
     {{
         for (auto [prover_poly, key_poly] : zip_view(prover_polynomials.get_unshifted(), key->get_all())) {{
-            ASSERT(proof_system::flavor_get_label(prover_polynomials, prover_poly) ==
-                   proof_system::flavor_get_label(*key, key_poly));
+            ASSERT(bb::flavor_get_label(prover_polynomials, prover_poly) ==
+                   bb::flavor_get_label(*key, key_poly));
             prover_poly = key_poly.share();
         }}
         for (auto [prover_poly, key_poly] : zip_view(prover_polynomials.get_shifted(), key->get_to_be_shifted())) {{
-            ASSERT(proof_system::flavor_get_label(prover_polynomials, prover_poly) ==
-                   proof_system::flavor_get_label(*key, key_poly) + \"_shift\");
+            ASSERT(bb::flavor_get_label(prover_polynomials, prover_poly) ==
+                   bb::flavor_get_label(*key, key_poly) + \"_shift\");
             prover_poly = key_poly.shifted();
         }}
     }}
@@ -201,7 +201,7 @@ impl ProverBuilder for BBFiles {
         return export_proof();
     }}
     
-    }} // namespace proof_system::honk
+    }} // namespace bb::honk
      
     
     ");

@@ -14,7 +14,7 @@ impl ComposerBuilder for BBFiles {
         "
 {include_str}
 
-namespace proof_system::honk {{
+namespace bb::honk {{
 
 using Flavor = honk::flavor::{name}Flavor;
 void {name}Composer::compute_witness(CircuitConstructor& circuit)
@@ -109,7 +109,7 @@ std::shared_ptr<Flavor::VerificationKey> {name}Composer::compute_verification_ke
         "
 {include_str}
 
-namespace proof_system::honk {{
+namespace bb::honk {{
 class {name}Composer {{
     public:
         using Flavor = honk::flavor::{name}Flavor;
@@ -129,7 +129,7 @@ class {name}Composer {{
         std::shared_ptr<VerificationKey> verification_key;
 
         // The crs_factory holds the path to the srs and exposes methods to extract the srs elements
-        std::shared_ptr<barretenberg::srs::factories::CrsFactory<Flavor::Curve>> crs_factory_;
+        std::shared_ptr<bb::srs::factories::CrsFactory<Flavor::Curve>> crs_factory_;
 
         // The commitment key is passed to the prover but also used herein to compute the verfication key commitments
         std::shared_ptr<CommitmentKey> commitment_key;
@@ -140,7 +140,7 @@ class {name}Composer {{
 
         {name}Composer() 
         {{
-            crs_factory_ = barretenberg::srs::get_crs_factory();
+            crs_factory_ = bb::srs::get_crs_factory();
         }}
 
         {name}Composer(std::shared_ptr<ProvingKey> p_key, std::shared_ptr<VerificationKey> v_key)
@@ -162,7 +162,7 @@ class {name}Composer {{
         {name}Prover create_prover(CircuitConstructor& circuit_constructor);
         {name}Verifier create_verifier(CircuitConstructor& circuit_constructor);
 
-        void add_table_column_selector_poly_to_proving_key(barretenberg::polynomial& small, const std::string& tag);
+        void add_table_column_selector_poly_to_proving_key(bb::polynomial& small, const std::string& tag);
 
         void compute_commitment_key(size_t circuit_size)
         {{
@@ -170,7 +170,7 @@ class {name}Composer {{
         }};
 }};
 
-}} // namespace proof_system::honk
+}} // namespace bb::honk
 "
     );
 

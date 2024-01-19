@@ -69,7 +69,7 @@ impl FlavorBuilder for BBFiles {
             "
 {includes}
 
-namespace proof_system::honk::flavor {{
+namespace bb::honk::flavor {{
 
 class {name}Flavor {{
     public: 
@@ -101,7 +101,7 @@ class {name}Flavor {{
     {transcript}
 }};
 
-}} // namespace proof_system::honk
+}} // namespace bb::honk
     
     
     "
@@ -165,7 +165,7 @@ fn create_class_aliases() -> &'static str {
         using PCS = pcs::kzg::KZG<Curve>;
 
         using FF = G1::subgroup_field;
-        using Polynomial = barretenberg::Polynomial<FF>;
+        using Polynomial = bb::Polynomial<FF>;
         using PolynomialHandle = std::span<FF>;
         using GroupElement = G1::element;
         using Commitment = G1::affine_element;
@@ -408,7 +408,7 @@ fn create_polynomial_views(first_poly: &String) -> String {
      * @details During folding and sumcheck, the prover evaluates the relations on these univariates.
      */
     template <size_t LENGTH>
-    using ProverUnivariates = AllEntities<barretenberg::Univariate<FF, LENGTH>>;
+    using ProverUnivariates = AllEntities<bb::Univariate<FF, LENGTH>>;
 
     /**
      * @brief A container for univariates produced during the hot loop in sumcheck.
@@ -507,7 +507,7 @@ fn generate_transcript(witness: &[String]) -> String {
 
         {declarations}
 
-        std::vector<barretenberg::Univariate<FF, BATCHED_RELATION_PARTIAL_LENGTH>> sumcheck_univariates;
+        std::vector<bb::Univariate<FF, BATCHED_RELATION_PARTIAL_LENGTH>> sumcheck_univariates;
         std::array<FF, NUM_ALL_ENTITIES> sumcheck_evaluations;
         std::vector<Commitment> zm_cq_comms;
         Commitment zm_cq_comm;
@@ -529,7 +529,7 @@ fn generate_transcript(witness: &[String]) -> String {
 
             for (size_t i = 0; i < log_n; ++i) {{
                 sumcheck_univariates.emplace_back(
-                    deserialize_from_buffer<barretenberg::Univariate<FF, BATCHED_RELATION_PARTIAL_LENGTH>>(
+                    deserialize_from_buffer<bb::Univariate<FF, BATCHED_RELATION_PARTIAL_LENGTH>>(
                         Transcript::proof_data, num_bytes_read));
             }}
             sumcheck_evaluations = deserialize_from_buffer<std::array<FF, NUM_ALL_ENTITIES>>(

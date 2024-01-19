@@ -20,10 +20,10 @@ impl VerifierBuilder for BBFiles {
         let ver_cpp = format!("
 {include_str} 
 
-    using namespace barretenberg;
-    using namespace proof_system::honk::sumcheck;
+    using namespace bb;
+    using namespace bb::honk::sumcheck;
     
-    namespace proof_system::honk {{
+    namespace bb::honk {{
     {name}Verifier::{name}Verifier(std::shared_ptr<Flavor::VerificationKey> verifier_key)
         : key(verifier_key)
     {{}}
@@ -106,7 +106,7 @@ impl VerifierBuilder for BBFiles {
     }}
     
     
-    }} // namespace proof_system::honk
+    }} // namespace bb::honk
     
     
     ");
@@ -120,7 +120,7 @@ impl VerifierBuilder for BBFiles {
             "
 {include_str}
     
-    namespace proof_system::honk {{
+    namespace bb::honk {{
     class {name}Verifier {{
         using Flavor = honk::flavor::{name}Flavor;
         using FF = Flavor::FF;
@@ -145,7 +145,7 @@ impl VerifierBuilder for BBFiles {
         std::shared_ptr<Transcript> transcript;
     }};
     
-    }} // namespace proof_system::honk
+    }} // namespace bb::honk
      
     
     "

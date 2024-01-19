@@ -41,7 +41,7 @@ fn get_params() -> &'static str {
     r#"
     const FF gamma = FF::random_element();
     const FF beta = FF::random_element();
-    proof_system::RelationParameters<typename Flavor::FF> params{
+    bb::RelationParameters<typename Flavor::FF> params{
         .eta = 0,
         .beta = beta,
         .gamma = gamma,
@@ -117,15 +117,15 @@ impl CircuitBuilder for BBFiles {
         let circuit_hpp = format!("
 {includes}
 
-using namespace barretenberg;
+using namespace bb;
 
-namespace proof_system {{
+namespace bb {{
 
 {row_with_all_included};
 
 class {name}CircuitBuilder {{
     public:
-        using Flavor = proof_system::honk::flavor::{name}Flavor;
+        using Flavor = bb::honk::flavor::{name}Flavor;
         using FF = Flavor::FF;
         using Row = {name}FullRow<FF>;
 
@@ -204,7 +204,7 @@ fn get_lookup_check_closure() -> String {
             const auto evaluate_logderivative = [&]<typename LogDerivativeSettings>(const std::string& lookup_name) {
 
                 // Check the logderivative relation
-                proof_system::honk::logderivative_library::compute_logderivative_inverse<
+                bb::honk::logderivative_library::compute_logderivative_inverse<
                     Flavor,
                     LogDerivativeSettings>(
                     polys, params, num_rows);
