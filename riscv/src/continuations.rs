@@ -22,12 +22,13 @@ use crate::continuations::bootloader::{
 fn transposed_trace<F: FieldElement>(trace: &ExecutionTrace) -> HashMap<String, Vec<F>> {
     let mut reg_values: HashMap<&str, Vec<F>> = HashMap::with_capacity(trace.reg_map.len());
 
-    for row in trace.regs_rows() {
+    let mut rows = trace.replay();
+    while let Some(row) = rows.next_row() {
         for (reg_name, &index) in trace.reg_map.iter() {
             reg_values
                 .entry(reg_name)
                 .or_default()
-                .push(row[index].0.into());
+                .push(row[index as usize].0.into());
         }
     }
 
@@ -149,7 +150,7 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
             riscv_executor::ExecMode::Trace,
         )
         .0;
-        (transposed_trace::<F>(&trace), trace.mem)
+        (transposed_trace::<F>(&trace), trace.mem_ops)
     };
 
     let full_trace_length = full_trace["main.pc"].len();
@@ -185,14 +186,14 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
         let mut accessed_pages = BTreeSet::new();
         let mut accessed_addresses = BTreeSet::new();
         let start_idx = memory_accesses
-            .binary_search_by_key(&proven_trace, |a| a.idx)
+            .binary_search_by_key(&proven_trace, |a| a.row)
             .unwrap_or_else(|v| v);
 
         for access in &memory_accesses[start_idx..] {
             // proven_trace + num_rows is an upper bound for the last row index we'll reach in the next chunk.
             // In practice, we'll stop earlier, because the bootloader needs to run as well, but we don't know for
             // how long as that depends on the number of pages.
-            if access.idx >= proven_trace + num_rows {
+            if access.row >= proven_trace + num_rows {
                 break;
             }
             accessed_addresses.insert(access.address);
