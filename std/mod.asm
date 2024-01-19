@@ -1,3 +1,4 @@
+mod array;
 mod binary;
 mod hash;
 mod shift;
