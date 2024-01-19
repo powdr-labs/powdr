@@ -22,17 +22,17 @@ fn simple_sum_asm() {
 #[test]
 fn secondary_block_machine_add2() {
     let f = "asm/secondary_block_machine_add2.asm";
-    verify_asm::<GoldilocksField>(f, vec![]);
-    gen_halo2_proof(f, vec![]);
-    gen_estark_proof(f, vec![]);
+    verify_asm::<GoldilocksField>(f, Default::default());
+    gen_halo2_proof(f, Default::default());
+    gen_estark_proof(f, Default::default());
 }
 
 #[test]
 fn mem_write_once() {
     let f = "asm/mem_write_once.asm";
-    verify_asm::<GoldilocksField>(f, vec![]);
-    gen_halo2_proof(f, vec![]);
-    gen_estark_proof(f, vec![]);
+    verify_asm::<GoldilocksField>(f, Default::default());
+    gen_halo2_proof(f, Default::default());
+    gen_estark_proof(f, Default::default());
 }
 
 #[test]
@@ -42,15 +42,15 @@ fn mem_write_once_external_write() {
     mem[17] = GoldilocksField::from(42);
     mem[62] = GoldilocksField::from(123);
     mem[255] = GoldilocksField::from(-1);
-    verify_test_file::<GoldilocksField>(f, vec![], vec![("main.v".to_string(), mem)]);
+    verify_test_file::<GoldilocksField>(f, Default::default(), vec![("main.v".to_string(), mem)]);
 }
 
 #[test]
 fn block_machine_cache_miss() {
     let f = "asm/block_machine_cache_miss.asm";
-    verify_asm::<GoldilocksField>(f, vec![]);
-    gen_halo2_proof(f, vec![]);
-    gen_estark_proof(f, vec![]);
+    verify_asm::<GoldilocksField>(f, Default::default());
+    gen_halo2_proof(f, Default::default());
+    gen_estark_proof(f, Default::default());
 }
 
 #[test]
