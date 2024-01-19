@@ -45,10 +45,12 @@ pub fn evaluate_function_call<'a, T: FieldElement, C: Custom>(
         }) => {
             if lambda.params.len() != arguments.len() {
                 Err(EvalError::TypeError(format!(
-                    "Invalid function call: Supplied {} arguments to function that takes {} parameters.",
+                    "Invalid function call: Supplied {} arguments to function that takes {} parameters.\nFunction: {lambda}\nArguments: {}",
                     arguments.len(),
-                    lambda.params.len())
-                ))?
+                    lambda.params.len(),
+                    arguments.iter().format(", ")
+
+                )))?
             }
 
             let local_vars = arguments.into_iter().chain(environment).collect::<Vec<_>>();
