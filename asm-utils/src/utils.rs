@@ -1,7 +1,34 @@
 use crate::ast::{Argument, Expression, FunctionOpKind, Register};
 
-pub fn next_multiple_of_four(x: usize) -> usize {
-    ((x + 3) / 4) * 4
+pub fn next_aligned(val: usize, alignment: usize) -> usize {
+    // Alignment will probably always be a power of two, which can be aligned in
+    // a much faster bitwise operation. But then we would have to assert!() it,
+    // so it is just better to use the generic version.
+    ((val + (alignment - 1)) / alignment) * alignment
+}
+
+/// Padding to next alignment boundary, in bytes.
+pub fn alignment_size(from: usize, alignment: usize) -> usize {
+    let dest = next_aligned(from, alignment);
+    dest - from
+}
+
+/// Split an slice as before and after the first occurrence of an element.
+///
+/// The second return value is None if the element is not found.
+pub fn split_at_first<'a, T: Eq>(s: &'a [T], elem: &T) -> (&'a [T], Option<&'a [T]>) {
+    match s.iter().position(|e| e == elem) {
+        Some(idx) => (&s[..idx], Some(&s[(idx + 1)..])),
+        None => (s, None),
+    }
+}
+
+/// Find the position of the next given element in an iterable.
+pub fn find_position<T: Eq, I: Iterator<Item = T>>(
+    seq: impl IntoIterator<IntoIter = I>,
+    elem: T,
+) -> Option<usize> {
+    seq.into_iter().position(|e| e == elem)
 }
 
 pub fn quote(s: &str) -> String {

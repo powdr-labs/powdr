@@ -10,24 +10,34 @@ use crate::ast::{Argument, Expression, FunctionOpKind, Register, Statement};
 /// Processes the statements and removes all statements and objects that are
 /// not reachable from the label `label`.
 /// Keeps the order of the statements.
-pub fn filter_reachable_from<R: Register, F: FunctionOpKind, A: Architecture>(
+pub fn filter_reachable_from<'a, R: Register, F: FunctionOpKind, A: Architecture>(
     label: &str,
     statements: &mut Vec<Statement<R, F>>,
-    objects: &mut BTreeMap<String, Vec<DataValue>>,
-) {
+    data_sections: &'a mut Vec<Vec<(Option<String>, Vec<DataValue>)>>,
+) -> HashSet<&'a str> {
     let replacements = extract_replacements(statements);
     let replacement_refs = replacements
         .iter()
         .map(|(k, v)| (k.as_str(), v.as_str()))
         .collect();
-    let referenced_labels =
-        find_reachable_labels::<R, F, A>(label, statements, objects, &replacement_refs)
-            .into_iter()
-            .map(|s| s.to_owned())
-            .collect::<HashSet<_>>();
+    let (referenced_labels, referenced_data_sections) =
+        find_reachable_labels::<R, F, A>(label, statements, data_sections, &replacement_refs);
 
-    objects.retain(|name, _value| referenced_labels.contains(name));
-    for (_name, value) in objects.iter_mut() {
+    {
+        let mut iter_idx = 0usize;
+        data_sections.retain(|_| {
+            let must_retain = referenced_data_sections.contains(&iter_idx);
+            iter_idx += 1;
+            must_retain
+        });
+    }
+
+    let mut remaining_data_labels = HashSet::new();
+    for (name, value) in data_sections.iter_mut().flatten() {
+        if let Some(label) = name {
+            remaining_data_labels.insert(label.as_str());
+        }
+
         apply_replacement_to_object(value, &replacement_refs)
     }
 
@@ -42,10 +52,12 @@ pub fn filter_reachable_from<R: Register, F: FunctionOpKind, A: Architecture>(
                 true
             } else {
                 if let Statement::Label(l) = &s {
-                    active = referenced_labels.contains(l) && !objects.contains_key(l);
+                    active = referenced_labels.contains(l)
+                        && !remaining_data_labels.contains(l.as_str());
                 }
                 active
             };
+
             if include {
                 apply_replacement_to_instruction(&mut s, &replacement_refs);
                 Some(s)
@@ -54,27 +66,44 @@ pub fn filter_reachable_from<R: Register, F: FunctionOpKind, A: Architecture>(
             }
         })
         .collect();
+
+    remaining_data_labels
 }
 
 #[allow(clippy::print_stderr)]
 pub fn find_reachable_labels<'a, R: Register, F: FunctionOpKind, A: Architecture>(
     label: &'a str,
     statements: &'a [Statement<R, F>],
-    objects: &'a mut BTreeMap<String, Vec<DataValue>>,
+    data_sections: &'a [Vec<(Option<String>, Vec<DataValue>)>],
     replacements: &BTreeMap<&str, &'a str>,
-) -> BTreeSet<&'a str> {
+) -> (HashSet<String>, HashSet<usize>) {
+    // Maps each data label to the section they belong to
+    let all_data_labels: BTreeMap<&str, usize> = data_sections
+        .iter()
+        .enumerate()
+        .flat_map(|(section_idx, entries)| {
+            entries
+                .iter()
+                .filter_map(move |(name, _)| name.as_ref().map(|name| (name.as_str(), section_idx)))
+        })
+        .collect();
+
     let label_offsets = extract_label_offsets(statements);
     let mut queued_labels = BTreeSet::from([label]);
-    let mut processed_labels = BTreeSet::<&str>::new();
+    let mut processed_labels = HashSet::new();
+    let mut reached_data_sections = HashSet::new();
     while let Some(l) = queued_labels.pop_first() {
         let l = *replacements.get(l).unwrap_or(&l);
-        if !processed_labels.insert(l) {
+        if !processed_labels.insert(l.to_owned()) {
             continue;
         }
 
-        let new_references = if let Some(data_values) = objects.get(l) {
-            data_values
+        let new_references = if let Some(section_idx) = all_data_labels.get(l) {
+            reached_data_sections.insert(*section_idx);
+            let section = &data_sections[*section_idx];
+            section
                 .iter()
+                .flat_map(|(_, values)| values.iter())
                 .filter_map(|v| {
                     if let DataValue::Reference(sym) = v {
                         Some(sym.as_str())
@@ -86,7 +115,7 @@ pub fn find_reachable_labels<'a, R: Register, F: FunctionOpKind, A: Architecture
         } else if let Some(offset) = label_offsets.get(l) {
             let (referenced_labels_in_block, seen_labels_in_block) =
                 basic_block_references_starting_from::<R, F, A>(&statements[*offset..]);
-            processed_labels.extend(seen_labels_in_block);
+            processed_labels.extend(seen_labels_in_block.into_iter().map(|s| s.to_string()));
             referenced_labels_in_block
         } else {
             eprintln!(
@@ -102,7 +131,7 @@ pub fn find_reachable_labels<'a, R: Register, F: FunctionOpKind, A: Architecture
         }
     }
 
-    processed_labels
+    (processed_labels, reached_data_sections)
 }
 
 fn extract_replacements<R: Register, F: FunctionOpKind>(

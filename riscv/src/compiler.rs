@@ -1,12 +1,12 @@
 use std::{
-    collections::{BTreeMap, BTreeSet},
+    collections::{BTreeMap, BTreeSet, HashSet},
     fmt,
 };
 
 use itertools::Itertools;
 use powdr_asm_utils::{
     ast::{BinaryOpKind, UnaryOpKind},
-    data_parser::{self, DataValue},
+    data_parser,
     data_storage::{store_data_objects, SingleDataValue},
     parser::parse_asm,
     reachability::{self, symbols_in_args},
@@ -123,35 +123,25 @@ pub fn compile(
             .map(|(name, contents)| (name, parse_asm(RiscParser::default(), &contents)))
             .collect(),
     );
-    let (mut objects, object_order) = data_parser::extract_data_objects(&statements);
-    assert_eq!(objects.keys().len(), object_order.len());
+    let mut data_sections = data_parser::extract_data_objects(&statements);
 
     // Reduce to the code that is actually reachable from main
     // (and the objects that are referred from there)
-    reachability::filter_reachable_from::<_, _, RiscvArchitecture>(
+    let data_labels = reachability::filter_reachable_from::<_, _, RiscvArchitecture>(
         "__runtime_start",
         &mut statements,
-        &mut objects,
+        &mut data_sections,
     );
 
     // Replace dynamic references to code labels
-    replace_dynamic_label_references(&mut statements, &objects);
+    replace_dynamic_label_references(&mut statements, &data_labels);
 
     // Remove the riscv asm stub function, which is used
     // for compilation, and will not be called.
     statements = replace_coprocessor_stubs(statements, coprocessors).collect::<Vec<_>>();
 
-    let sorted_objects = object_order
-        .into_iter()
-        .filter_map(|n| {
-            let value = objects.get_mut(&n).map(std::mem::take);
-            value.map(|v| (n, v))
-        })
-        .collect::<Vec<_>>();
-    let (data_code, data_positions) = store_data_objects(
-        &sorted_objects,
-        data_start,
-        &mut |addr, value| match value {
+    let (data_code, data_positions) =
+        store_data_objects(data_sections, data_start, &mut |addr, value| match value {
             SingleDataValue::Value(v) => {
                 vec![format!("mstore 0x{addr:x}, 0x{v:x};")]
             }
@@ -179,8 +169,7 @@ pub fn compile(
                 ]);
                 */
             }
-        },
-    );
+        });
 
     let submachine_init = call_every_submachine(coprocessors);
     let bootloader_lines = if with_bootloader {
@@ -241,10 +230,7 @@ pub fn compile(
 /// Replace certain patterns of references to code labels by
 /// special instructions. We ignore any references to data objects
 /// because they will be handled differently.
-fn replace_dynamic_label_references(
-    statements: &mut Vec<Statement>,
-    data_objects: &BTreeMap<String, Vec<DataValue>>,
-) {
+fn replace_dynamic_label_references(statements: &mut Vec<Statement>, data_labels: &HashSet<&str>) {
     /*
     Find patterns of the form
     lui	a0, %hi(LABEL)
@@ -272,7 +258,7 @@ fn replace_dynamic_label_references(
     let mut to_delete = BTreeSet::default();
     for (i1, i2) in instruction_indices.into_iter().tuple_windows() {
         if let Some(r) =
-            replace_dynamic_label_reference(&statements[i1], &statements[i2], data_objects)
+            replace_dynamic_label_reference(&statements[i1], &statements[i2], data_labels)
         {
             to_delete.insert(i1);
             statements[i2] = r;
@@ -286,7 +272,7 @@ fn replace_dynamic_label_references(
 fn replace_dynamic_label_reference(
     s1: &Statement,
     s2: &Statement,
-    data_objects: &BTreeMap<String, Vec<DataValue>>,
+    data_labels: &HashSet<&str>,
 ) -> Option<Statement> {
     let Statement::Instruction(instr1, args1) = s1 else {
         return None;
@@ -314,7 +300,7 @@ fn replace_dynamic_label_reference(
     let Expression::Symbol(label2) = expr2.as_ref() else {
         return None;
     };
-    if r1 != r3 || label1 != label2 || data_objects.contains_key(label1) {
+    if r1 != r3 || label1 != label2 || data_labels.contains(label1.as_str()) {
         return None;
     }
     Some(Statement::Instruction(
