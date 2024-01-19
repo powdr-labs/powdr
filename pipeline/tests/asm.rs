@@ -338,3 +338,11 @@ fn hello_world_asm_fail() {
     let i = [1];
     verify_asm::<GoldilocksField>(f, slice_to_vec(&i));
 }
+
+#[test]
+#[should_panic = "FailedAssertion(\"This should fail.\")"]
+fn test_failing_assertion() {
+    let f = "asm/failing_assertion.asm";
+    let i = [];
+    verify_asm::<GoldilocksField>(f, slice_to_vec(&i));
+}
