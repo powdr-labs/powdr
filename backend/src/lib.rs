@@ -75,7 +75,7 @@ impl<F: FieldElement, B: BackendImpl<F>> Backend<F> for ConcreteBackendWithoutSe
         self.0.prove(pil, fixed, witness, prev_proof)
     }
 
-    fn write_setup(&self, pil: &Analyzed<F>, fixed: &[(String, Vec<F>)], output: &mut dyn io::Write) -> Result<(), io::Error> {
+    fn write_setup(&self, _output: &mut dyn io::Write) -> Result<(), Error> {
         Err(Error::NoSetupAvailable)
     }
 }
@@ -113,8 +113,8 @@ impl<F: FieldElement, B: BackendImplWithSetup<F>> Backend<F> for ConcreteBackend
         self.0.prove(pil, fixed, witness, prev_proof)
     }
 
-    fn write_setup(&self, pil: &Analyzed<F>, fixed: &[(String, Vec<F>)], output: &mut dyn io::Write) -> Result<(), io::Error> {
-        Ok(self.0.write_setup(pil, fixed, output)?)
+    fn write_setup(&self, output: &mut dyn io::Write) -> Result<(), Error> {
+        Ok(self.0.write_setup(output)?)
     }
 }
 
@@ -150,7 +150,7 @@ pub trait Backend<F: FieldElement> {
     ) -> (Option<Vec<Proof>>, Option<String>);
 
     /// Write the prover setup to a file, so that it can be loaded later.
-    fn write_setup(&self, pil: &Analyzed<F>, fixed: &[(String, Vec<F>)], output: &mut dyn io::Write) -> Result<(), io::Error>;
+    fn write_setup(&self, output: &mut dyn io::Write) -> Result<(), Error>;
 }
 
 /// Dynamic interface for a backend factory.
@@ -189,5 +189,5 @@ where
     fn new_from_setup(input: &mut dyn io::Read) -> Result<Self, io::Error>;
 
     /// Write the setup to a file.
-    fn write_setup(&self, pil: &Analyzed<F>, fixed: &[(String, Vec<F>)], output: &mut dyn io::Write) -> Result<(), io::Error>;
+    fn write_setup(&self, output: &mut dyn io::Write) -> Result<(), io::Error>;
 }

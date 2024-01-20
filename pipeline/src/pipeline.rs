@@ -569,7 +569,7 @@ impl<T: FieldElement> Pipeline<T> {
                 let existing_proof = self.arguments.existing_proof_file.as_ref().map(|path| {
                     let mut buf = Vec::new();
                     fs::File::open(path).unwrap().read_to_end(&mut buf).unwrap();
-                    buf
+                    vec![buf]
                 });
 
                 // Even if we don't have all constants and witnesses, some backends will
@@ -685,16 +685,21 @@ impl<T: FieldElement> Pipeline<T> {
                     .unwrap();
             }
         }
-        if let Some(proof) = &proof_result.proof {
-            let fname = if self.arguments.existing_proof_file.is_some() {
-                "proof_aggr.bin"
-            } else {
-                "proof.bin"
-            };
-            if let Some(path) = self.path_if_should_write(|name| format!("{name}_{fname}"))? {
-                let mut proof_file = fs::File::create(path).unwrap();
-                proof_file.write_all(proof).unwrap();
-            }
+        if let Some(proofs) = &proof_result.proof {
+            proofs.iter().enumerate().for_each(|(idx, proof)| {
+                let fname = if self.arguments.existing_proof_file.is_some() {
+                    "proof_aggr.bin"
+                } else {
+                    "proof.bin"
+                };
+                if let Some(path) = self
+                    .path_if_should_write(|name| format!("{name}_{fname}_{idx}"))
+                    .unwrap()
+                {
+                    let mut proof_file = fs::File::create(path).unwrap();
+                    proof_file.write_all(proof).unwrap();
+                }
+            })
         }
 
         Ok(())
