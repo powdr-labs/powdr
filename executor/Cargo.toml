@@ -1,15 +1,16 @@
 [package]
-name = "executor"
+name = "powdr-executor"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+powdr-ast = { path = "../ast" }
+powdr-number = { path = "../number" }
+powdr-parser-util = { path = "../parser-util" }
+powdr-pil-analyzer = { path = "../pil-analyzer" }
+
 itertools = "^0.10"
 log = { version = "0.4.17" }
-ast = { path = "../ast" }
-number = { path = "../number" }
-parser_util = { path = "../parser_util" }
-pil_analyzer = { path = "../pil_analyzer" }
 rayon = "1.7.0"
 bit-vec = "0.6.3"
 num-traits = "0.2.15"

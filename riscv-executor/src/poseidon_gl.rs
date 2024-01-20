@@ -1,4 +1,4 @@
-use number::FieldElement;
+use powdr_number::FieldElement;
 
 #[rustfmt::skip]
 const ROUND_CONSTANTS: [[u64; 30]; 12] = [
@@ -69,7 +69,7 @@ pub fn poseidon_gl<F: FieldElement>(inputs: &[F]) -> [F; 4] {
 #[cfg(test)]
 mod tests {
     use itertools::Itertools;
-    use number::{FieldElement, GoldilocksField};
+    use powdr_number::{FieldElement, GoldilocksField};
 
     use super::*;
 

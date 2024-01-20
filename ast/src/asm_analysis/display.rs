@@ -287,7 +287,7 @@ impl Display for IncompatibleSet {
 mod test {
     use super::*;
     use crate::parsed::asm::parse_absolute_path;
-    use number::GoldilocksField;
+    use powdr_number::GoldilocksField;
     use pretty_assertions::assert_eq;
 
     #[test]

@@ -1,5 +1,5 @@
-use number::GoldilocksField;
-use pipeline::test_util::{gen_estark_proof, gen_halo2_proof, verify_test_file};
+use powdr_number::GoldilocksField;
+use powdr_pipeline::test_util::{gen_estark_proof, gen_halo2_proof, verify_test_file};
 use test_log::test;
 
 #[test]

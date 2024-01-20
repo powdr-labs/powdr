@@ -1,9 +1,9 @@
 use std::collections::HashMap;
 
-use ast::analyzed::AlgebraicExpression as Expression;
-use ast::analyzed::AlgebraicReference;
-use ast::parsed::SelectedExpressions;
-use number::FieldElement;
+use powdr_ast::analyzed::AlgebraicExpression as Expression;
+use powdr_ast::analyzed::AlgebraicReference;
+use powdr_ast::parsed::SelectedExpressions;
+use powdr_number::FieldElement;
 
 use self::block_machine::BlockMachine;
 use self::double_sorted_witness_machine::DoubleSortedWitnesses;
@@ -12,7 +12,7 @@ use self::profiling::record_end;
 use self::profiling::record_start;
 use self::sorted_witness_machine::SortedWitnesses;
 use self::write_once_memory::WriteOnceMemory;
-use ast::analyzed::IdentityKind;
+use powdr_ast::analyzed::IdentityKind;
 
 use super::affine_expression::AffineExpression;
 use super::generator::Generator;

@@ -1,11 +1,11 @@
 use std::collections::{BTreeMap, HashSet};
 
-use ast::{
+use powdr_ast::{
     analyzed::{AlgebraicExpression as Expression, AlgebraicReference, Identity, PolyID},
     parsed::SelectedExpressions,
 };
-use number::{DegreeType, FieldElement};
-use parser_util::lines::indent;
+use powdr_number::{DegreeType, FieldElement};
+use powdr_parser_util::lines::indent;
 
 use crate::witgen::{query_processor::QueryProcessor, util::try_to_simple_poly, Constraint};
 

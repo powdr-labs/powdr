@@ -1,14 +1,14 @@
-use ::pipeline::inputs_to_query_callback;
-use ::pipeline::Pipeline;
-use ast::analyzed::Analyzed;
+use ::powdr_pipeline::inputs_to_query_callback;
+use ::powdr_pipeline::Pipeline;
 use criterion::{criterion_group, criterion_main, Criterion};
+use powdr_ast::analyzed::Analyzed;
 
 use mktemp::Temp;
-use number::{FieldElement, GoldilocksField};
-use riscv::continuations::bootloader::default_input;
-use riscv::{compile_rust_crate_to_riscv_asm, compile_rust_to_riscv_asm, compiler};
+use powdr_number::{FieldElement, GoldilocksField};
+use powdr_riscv::continuations::bootloader::default_input;
+use powdr_riscv::{compile_rust_crate_to_riscv_asm, compile_rust_to_riscv_asm, compiler};
 
-use riscv::CoProcessors;
+use powdr_riscv::CoProcessors;
 
 type T = GoldilocksField;
 
@@ -18,7 +18,7 @@ fn run_witgen<T: FieldElement>(
     external_witness_values: Vec<(String, Vec<T>)>,
 ) {
     let query_callback = inputs_to_query_callback(vec![]);
-    executor::witgen::WitnessGenerator::new(analyzed, constants, query_callback)
+    powdr_executor::witgen::WitnessGenerator::new(analyzed, constants, query_callback)
         .with_external_witness_values(external_witness_values)
         .generate();
 }

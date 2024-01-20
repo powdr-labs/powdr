@@ -1,13 +1,13 @@
 use std::{collections::HashMap, marker::PhantomData};
 
-use ast::{
+use powdr_ast::{
     analyzed::{Expression, PolynomialReference, Reference, RepeatedArray},
     parsed::{
         self, asm::SymbolPath, ArrayExpression, ArrayLiteral, IfExpression, LambdaExpression,
         MatchArm, MatchPattern, NamespacedPolynomialReference, SelectedExpressions,
     },
 };
-use number::DegreeType;
+use powdr_number::DegreeType;
 
 use crate::AnalysisDriver;
 
@@ -41,7 +41,7 @@ impl<T, D: AnalysisDriver<T>> ExpressionProcessor<T, D> {
 
     pub fn process_array_expression(
         &mut self,
-        array_expression: ::ast::parsed::ArrayExpression<T>,
+        array_expression: ::powdr_ast::parsed::ArrayExpression<T>,
         size: DegreeType,
     ) -> Vec<RepeatedArray<T>> {
         match array_expression {
@@ -150,7 +150,7 @@ impl<T, D: AnalysisDriver<T>> ExpressionProcessor<T, D> {
     pub fn process_function(
         &mut self,
         params: &[String],
-        expression: ::ast::parsed::Expression<T>,
+        expression: ::powdr_ast::parsed::Expression<T>,
     ) -> Expression<T> {
         let previous_local_vars = std::mem::take(&mut self.local_variables);
 

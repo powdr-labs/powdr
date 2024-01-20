@@ -1,11 +1,11 @@
 use std::marker::PhantomData;
 
-use ast::analyzed::{
+use powdr_ast::analyzed::{
     AlgebraicBinaryOperator, AlgebraicExpression as Expression, AlgebraicReference,
     AlgebraicUnaryOperator,
 };
 
-use number::FieldElement;
+use powdr_number::FieldElement;
 
 use super::{affine_expression::AffineResult, IncompleteCause};
 

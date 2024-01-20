@@ -550,7 +550,7 @@ impl Display for UnaryOperator {
 #[cfg(test)]
 mod tests {
 
-    use number::GoldilocksField;
+    use powdr_number::GoldilocksField;
 
     use super::*;
 

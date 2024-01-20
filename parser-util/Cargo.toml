@@ -1,5 +1,5 @@
 [package]
-name = "parser_util"
+name = "powdr-parser-util"
 version = "0.1.0"
 edition = "2021"
 

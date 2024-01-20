@@ -2,8 +2,8 @@ mod common;
 
 mod instruction_tests {
     use crate::common::verify_riscv_asm_string;
-    use riscv::compiler::compile;
-    use riscv::CoProcessors;
+    use powdr_riscv::compiler::compile;
+    use powdr_riscv::CoProcessors;
     use test_log::test;
 
     fn run_instruction_test(assembly: &str, name: &str) {

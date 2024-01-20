@@ -1,5 +1,5 @@
-use ast::analyzed::AlgebraicReference;
-use number::{DegreeType, FieldElement};
+use powdr_ast::analyzed::AlgebraicReference;
+use powdr_number::{DegreeType, FieldElement};
 
 use super::{affine_expression::AffineResult, expression_evaluator::SymbolicVariables, FixedData};
 

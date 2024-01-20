@@ -1,10 +1,10 @@
 use std::path::PathBuf;
 
-use ast::parsed::{
+use powdr_ast::parsed::{
     asm::{ASMProgram, Module},
     folder::Folder,
 };
-use number::FieldElement;
+use powdr_number::FieldElement;
 
 static ASM_EXTENSION: &str = "asm";
 static FOLDER_MODULE_NAME: &str = "mod";
@@ -61,7 +61,7 @@ impl<T: FieldElement> Folder<T> for Loader {
                         )),
                     }
                     .map(|(file, path)| {
-                        parser::parse_module(None, &file)
+                        powdr_parser::parse_module(None, &file)
                             .map(|res| (res, path))
                             .unwrap_or_else(|err| {
                                 eprintln!(
@@ -87,8 +87,8 @@ impl<T: FieldElement> Folder<T> for Loader {
 mod tests {
     use std::path::Path;
 
-    use number::Bn254Field;
-    use parser::parse_asm;
+    use powdr_number::Bn254Field;
+    use powdr_parser::parse_asm;
 
     use super::*;
 

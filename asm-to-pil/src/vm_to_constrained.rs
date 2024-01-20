@@ -5,7 +5,7 @@ use std::{
     convert::Infallible,
 };
 
-use ast::{
+use powdr_ast::{
     asm_analysis::{
         AssignmentStatement, Batch, DebugDirective, FunctionStatement,
         InstructionDefinitionStatement, InstructionStatement, LabelStatement,
@@ -23,7 +23,7 @@ use ast::{
     SourceRef,
 };
 
-use number::FieldElement;
+use powdr_number::FieldElement;
 
 use crate::common::{instruction_flag, return_instruction, RETURN_NAME};
 
@@ -909,7 +909,7 @@ impl<T: FieldElement> ASMPILConverter<T> {
             .filter_map(|(n, r)| r.ty.is_read_only().then_some(n))
     }
 
-    fn return_instruction(&self) -> ast::asm_analysis::Instruction<T> {
+    fn return_instruction(&self) -> powdr_ast::asm_analysis::Instruction<T> {
         return_instruction(self.output_count, self.pc_name.as_ref().unwrap())
     }
 

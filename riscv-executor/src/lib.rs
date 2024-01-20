@@ -11,14 +11,14 @@
 
 use std::{collections::HashMap, io};
 
-use ast::{
+use builder::TraceBuilder;
+use powdr_ast::{
     asm_analysis::{
         AnalysisASMFile, CallableSymbol, FunctionStatement, Item, LabelStatement, Machine,
     },
     parsed::{asm::DebugDirective, Expression, FunctionCall},
 };
-use builder::TraceBuilder;
-use number::{BigInt, FieldElement, GoldilocksField};
+use powdr_number::{BigInt, FieldElement, GoldilocksField};
 
 pub mod poseidon_gl;
 
@@ -181,8 +181,8 @@ impl<'a> TraceReplay<'a> {
 mod builder {
     use std::{cmp, collections::HashMap};
 
-    use ast::asm_analysis::{Machine, RegisterTy};
-    use number::FieldElement;
+    use powdr_ast::asm_analysis::{Machine, RegisterTy};
+    use powdr_number::FieldElement;
 
     use crate::{
         Elem, ExecMode, ExecutionTrace, MemOperation, MemOperationKind, MemoryState, RegWrite,
@@ -510,7 +510,7 @@ fn preprocess_main_function<T: FieldElement>(machine: &Machine<T>) -> Preprocess
     }
 }
 
-type Callback<'a, F> = dyn executor::witgen::QueryCallback<F> + 'a;
+type Callback<'a, F> = dyn powdr_executor::witgen::QueryCallback<F> + 'a;
 
 struct Executor<'a, 'b, F: FieldElement> {
     proc: TraceBuilder<'b>,
@@ -746,31 +746,31 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 let r = self.eval_expression(r)[0];
 
                 let result = match op {
-                    ast::parsed::BinaryOperator::Add => l.0 + r.0,
-                    ast::parsed::BinaryOperator::Sub => l.0 - r.0,
-                    ast::parsed::BinaryOperator::Mul => {
+                    powdr_ast::parsed::BinaryOperator::Add => l.0 + r.0,
+                    powdr_ast::parsed::BinaryOperator::Sub => l.0 - r.0,
+                    powdr_ast::parsed::BinaryOperator::Mul => {
                         // Do multiplication in the field, in case we overflow.
                         let l: F = l.fe();
                         let r: F = r.fe();
                         let res = l * r;
                         Elem::from_fe(res).0
                     }
-                    ast::parsed::BinaryOperator::Div => l.0 / r.0,
-                    ast::parsed::BinaryOperator::Mod => l.0 % r.0,
-                    ast::parsed::BinaryOperator::Pow => l.0.pow(r.u()),
-                    ast::parsed::BinaryOperator::BinaryAnd => todo!(),
-                    ast::parsed::BinaryOperator::BinaryXor => todo!(),
-                    ast::parsed::BinaryOperator::BinaryOr => todo!(),
-                    ast::parsed::BinaryOperator::ShiftLeft => todo!(),
-                    ast::parsed::BinaryOperator::ShiftRight => todo!(),
-                    ast::parsed::BinaryOperator::LogicalOr => todo!(),
-                    ast::parsed::BinaryOperator::LogicalAnd => todo!(),
-                    ast::parsed::BinaryOperator::Less => todo!(),
-                    ast::parsed::BinaryOperator::LessEqual => todo!(),
-                    ast::parsed::BinaryOperator::Equal => todo!(),
-                    ast::parsed::BinaryOperator::NotEqual => todo!(),
-                    ast::parsed::BinaryOperator::GreaterEqual => todo!(),
-                    ast::parsed::BinaryOperator::Greater => todo!(),
+                    powdr_ast::parsed::BinaryOperator::Div => l.0 / r.0,
+                    powdr_ast::parsed::BinaryOperator::Mod => l.0 % r.0,
+                    powdr_ast::parsed::BinaryOperator::Pow => l.0.pow(r.u()),
+                    powdr_ast::parsed::BinaryOperator::BinaryAnd => todo!(),
+                    powdr_ast::parsed::BinaryOperator::BinaryXor => todo!(),
+                    powdr_ast::parsed::BinaryOperator::BinaryOr => todo!(),
+                    powdr_ast::parsed::BinaryOperator::ShiftLeft => todo!(),
+                    powdr_ast::parsed::BinaryOperator::ShiftRight => todo!(),
+                    powdr_ast::parsed::BinaryOperator::LogicalOr => todo!(),
+                    powdr_ast::parsed::BinaryOperator::LogicalAnd => todo!(),
+                    powdr_ast::parsed::BinaryOperator::Less => todo!(),
+                    powdr_ast::parsed::BinaryOperator::LessEqual => todo!(),
+                    powdr_ast::parsed::BinaryOperator::Equal => todo!(),
+                    powdr_ast::parsed::BinaryOperator::NotEqual => todo!(),
+                    powdr_ast::parsed::BinaryOperator::GreaterEqual => todo!(),
+                    powdr_ast::parsed::BinaryOperator::Greater => todo!(),
                 };
 
                 vec![result.into()]
@@ -778,9 +778,9 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
             Expression::UnaryOperation(op, arg) => {
                 let arg = self.eval_expression(arg)[0];
                 let result = match op {
-                    ast::parsed::UnaryOperator::Minus => -arg.0,
-                    ast::parsed::UnaryOperator::LogicalNot => todo!(),
-                    ast::parsed::UnaryOperator::Next => unreachable!(),
+                    powdr_ast::parsed::UnaryOperator::Minus => -arg.0,
+                    powdr_ast::parsed::UnaryOperator::LogicalNot => todo!(),
+                    powdr_ast::parsed::UnaryOperator::Next => unreachable!(),
                 };
 
                 vec![result.into()]
@@ -903,7 +903,7 @@ pub enum ExecMode {
 
 /// Execute a Powdr/RISCV assembly source.
 ///
-/// Generic argument F is just used by the parser, before everything is
+/// Generic argument F is just used by the powdr_parser, before everything is
 /// converted to i64, so it is important to the execution itself.
 pub fn execute<F: FieldElement>(
     asm_source: &str,
@@ -912,11 +912,12 @@ pub fn execute<F: FieldElement>(
     mode: ExecMode,
 ) -> (ExecutionTrace, MemoryState) {
     log::info!("Parsing...");
-    let parsed = parser::parse_asm::<F>(None, asm_source).unwrap();
+    let parsed = powdr_parser::parse_asm::<F>(None, asm_source).unwrap();
     log::info!("Resolving imports...");
-    let resolved = importer::load_dependencies_and_resolve(None, parsed).unwrap();
+    let resolved = powdr_importer::load_dependencies_and_resolve(None, parsed).unwrap();
     log::info!("Analyzing...");
-    let analyzed = analysis::analyze(resolved, &mut ast::DiffMonitor::default()).unwrap();
+    let analyzed =
+        powdr_analysis::analyze(resolved, &mut powdr_ast::DiffMonitor::default()).unwrap();
 
     log::info!("Executing...");
     execute_ast(&analyzed, inputs, bootloader_inputs, usize::MAX, mode)

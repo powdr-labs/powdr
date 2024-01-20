@@ -1,4 +1,4 @@
-use ast::analyzed::{AlgebraicExpression as Expression, AlgebraicReference};
+use powdr_ast::analyzed::{AlgebraicExpression as Expression, AlgebraicReference};
 
 /// Checks if an expression is
 /// - a polynomial

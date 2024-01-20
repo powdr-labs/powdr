@@ -2,12 +2,12 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use num_traits::Zero;
 
-use ast::analyzed::{
+use powdr_ast::analyzed::{
     AlgebraicBinaryOperator, AlgebraicExpression as Expression, AlgebraicReference, Identity,
     IdentityKind, PolyID, PolynomialType,
 };
 
-use number::FieldElement;
+use powdr_number::FieldElement;
 
 use crate::witgen::data_structures::column_map::{FixedColumnMap, WitnessColumnMap};
 
@@ -297,8 +297,8 @@ fn smallest_period_candidate<T: FieldElement>(fixed: &[T]) -> Option<u64> {
 mod test {
     use std::collections::BTreeMap;
 
-    use ast::analyzed::{PolyID, PolynomialType};
-    use number::GoldilocksField;
+    use powdr_ast::analyzed::{PolyID, PolynomialType};
+    use powdr_number::GoldilocksField;
     use pretty_assertions::assert_eq;
     use test_log::test;
 
@@ -372,7 +372,7 @@ namespace Global(2**20);
     { D } in { BYTE };
     { D } in { SHIFTED };
 ";
-        let analyzed = pil_analyzer::analyze_string::<GoldilocksField>(pil_source);
+        let analyzed = powdr_pil_analyzer::analyze_string::<GoldilocksField>(pil_source);
         let constants = crate::constant_evaluator::generate(&analyzed);
         let fixed_polys = (0..constants.len())
             .map(|i| constant_poly_id(i as u64))
@@ -435,7 +435,7 @@ namespace Global(1024);
     let X;
     { X * 4 } in { bytes };
 ";
-        let analyzed = pil_analyzer::analyze_string::<GoldilocksField>(pil_source);
+        let analyzed = powdr_pil_analyzer::analyze_string::<GoldilocksField>(pil_source);
         let known_constraints = vec![(constant_poly_id(0), RangeConstraint::from_max_bit(7))]
             .into_iter()
             .collect();

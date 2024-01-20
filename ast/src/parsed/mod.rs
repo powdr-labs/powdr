@@ -10,7 +10,7 @@ use std::{
     ops,
 };
 
-use number::{DegreeType, FieldElement};
+use powdr_number::{DegreeType, FieldElement};
 
 use self::asm::{Part, SymbolPath};
 use crate::SourceRef;

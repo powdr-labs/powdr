@@ -1,13 +1,13 @@
 use std::collections::{BTreeMap, HashMap};
 
-use ast::{
+use powdr_ast::{
     analyzed::{
         AlgebraicExpression as Expression, AlgebraicReference, Identity, IdentityKind, PolyID,
         PolynomialType,
     },
     parsed::SelectedExpressions,
 };
-use number::{DegreeType, FieldElement};
+use powdr_number::{DegreeType, FieldElement};
 
 use crate::witgen::{
     affine_expression::AffineExpression, util::try_to_simple_poly, EvalError, EvalResult,

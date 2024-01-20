@@ -8,11 +8,11 @@ pub mod statement_processor;
 
 use std::{collections::HashMap, path::Path};
 
-use ast::{
+use powdr_ast::{
     analyzed::{Analyzed, FunctionValueDefinition, Symbol},
     parsed::{asm::SymbolPath, PILFile},
 };
-use number::FieldElement;
+use powdr_number::FieldElement;
 
 pub fn analyze<T: FieldElement>(path: &Path) -> Analyzed<T> {
     pil_analyzer::process_pil_file(path)

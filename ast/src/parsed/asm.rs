@@ -4,7 +4,7 @@ use std::{
 };
 
 use itertools::Itertools;
-use number::AbstractNumberType;
+use powdr_number::AbstractNumberType;
 
 use derive_more::From;
 

@@ -1,7 +1,9 @@
 use std::collections::HashSet;
 
-use ast::analyzed::{AlgebraicExpression as Expression, AlgebraicReference, Identity, PolyID};
-use number::FieldElement;
+use powdr_ast::analyzed::{
+    AlgebraicExpression as Expression, AlgebraicReference, Identity, PolyID,
+};
+use powdr_number::FieldElement;
 
 use super::{
     data_structures::finalizable_data::FinalizableData,
@@ -96,9 +98,9 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> BlockProcessor<'a, 'b, 'c
 mod tests {
     use std::collections::BTreeMap;
 
-    use ast::analyzed::{PolyID, PolynomialType};
-    use number::{FieldElement, GoldilocksField};
-    use pil_analyzer::analyze_string;
+    use powdr_ast::analyzed::{PolyID, PolynomialType};
+    use powdr_number::{FieldElement, GoldilocksField};
+    use powdr_pil_analyzer::analyze_string;
 
     use crate::{
         constant_evaluator::generate,

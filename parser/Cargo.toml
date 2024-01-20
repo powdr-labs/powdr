@@ -1,16 +1,17 @@
 [package]
-name = "parser"
+name = "powdr-parser"
 version = "0.1.0"
 edition = "2021"
 build = "build.rs"
 
 [dependencies]
+powdr-ast = { path = "../ast" }
+powdr-number = { path = "../number" }
+powdr-parser-util = { path = "../parser-util" }
+
 lalrpop-util = {version = "^0.19", features = ["lexer"]}
 num-bigint = "0.4.3"
 num-traits = "0.2.15"
-number = { path = "../number" }
-ast = { path = "../ast" }
-parser_util = { path = "../parser_util" }
 # This is only here to work around https://github.com/lalrpop/lalrpop/issues/750
 # It should be removed once that workaround is no longer needed.
 regex-syntax = { version = "0.6", default_features = false, features = ["unicode"] }

@@ -1,7 +1,7 @@
 //! For all machines, enforce that the `operation_id` can only change when the `latch` is on
 
-use ast::asm_analysis::AnalysisASMFile;
-use number::FieldElement;
+use powdr_ast::asm_analysis::AnalysisASMFile;
+use powdr_number::FieldElement;
 
 use crate::utils::parse_pil_statement;
 

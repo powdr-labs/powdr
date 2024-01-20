@@ -2,8 +2,8 @@
 
 use itertools::Itertools;
 use log::log_enabled;
-use number::FieldElement;
 use parsed::{BinaryOperator, UnaryOperator};
+use powdr_number::FieldElement;
 use std::fmt::{Display, Result, Write};
 use std::sync::Arc;
 

@@ -3,7 +3,8 @@
 
 use std::{collections::HashMap, fmt::Display, rc::Rc};
 
-use ast::{
+use itertools::Itertools;
+use powdr_ast::{
     analyzed::{
         AlgebraicExpression, AlgebraicReference, Analyzed, Expression, FunctionValueDefinition,
         Identity, IdentityKind, PolynomialReference, PolynomialType, PublicDeclaration, Reference,
@@ -11,8 +12,7 @@ use ast::{
     },
     parsed::{visitor::ExpressionVisitable, BinaryOperator, SelectedExpressions, UnaryOperator},
 };
-use itertools::Itertools;
-use number::{DegreeType, FieldElement};
+use powdr_number::{DegreeType, FieldElement};
 
 use crate::evaluator::{
     self, evaluate, evaluate_function_call, Custom, EvalError, SymbolLookup, Value,
@@ -303,7 +303,7 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T, Condensate<T>> for &'a Condenser<T
     fn eval_binary_operation(
         &self,
         left: Value<'a, T, Condensate<T>>,
-        op: ast::parsed::BinaryOperator,
+        op: powdr_ast::parsed::BinaryOperator,
         right: Value<'a, T, Condensate<T>>,
     ) -> Result<Value<'a, T, Condensate<T>>, EvalError> {
         let left: Condensate<T> = left.try_into()?;

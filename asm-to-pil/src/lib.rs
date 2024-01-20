@@ -1,7 +1,7 @@
 #![deny(clippy::print_stdout)]
 
-use ast::asm_analysis::{AnalysisASMFile, Item};
-use number::FieldElement;
+use powdr_ast::asm_analysis::{AnalysisASMFile, Item};
+use powdr_number::FieldElement;
 use romgen::generate_machine_rom;
 mod common;
 mod romgen;
@@ -30,7 +30,7 @@ pub fn compile<T: FieldElement>(file: AnalysisASMFile<T>) -> AnalysisASMFile<T> 
 }
 
 pub mod utils {
-    use ast::{
+    use powdr_ast::{
         asm_analysis::{
             AssignmentStatement, FunctionStatement, Instruction, InstructionDefinitionStatement,
             InstructionStatement, LabelStatement, RegisterDeclarationStatement, RegisterTy,
@@ -40,14 +40,14 @@ pub mod utils {
             PilStatement,
         },
     };
-    use number::FieldElement;
-    use parser::ParserContext;
+    use powdr_number::FieldElement;
+    use powdr_parser::ParserContext;
 
     pub fn parse_instruction_definition<T: FieldElement>(
         input: &str,
     ) -> InstructionDefinitionStatement<T> {
         let ctx = ParserContext::new(None, input);
-        match parser::powdr::InstructionDeclarationParser::new()
+        match powdr_parser::powdr::InstructionDeclarationParser::new()
             .parse(&ctx, input)
             .unwrap()
         {
@@ -67,7 +67,7 @@ pub mod utils {
 
     pub fn parse_instruction<T: FieldElement>(input: &str) -> Instruction<T> {
         let ctx = ParserContext::new(None, input);
-        let instr = parser::powdr::InstructionParser::new()
+        let instr = powdr_parser::powdr::InstructionParser::new()
             .parse(&ctx, input)
             .unwrap();
         Instruction {
@@ -78,18 +78,18 @@ pub mod utils {
 
     pub fn parse_instruction_body<T: FieldElement>(input: &str) -> InstructionBody<T> {
         let ctx = ParserContext::new(None, input);
-        parser::powdr::InstructionBodyParser::new()
+        powdr_parser::powdr::InstructionBodyParser::new()
             .parse(&ctx, input)
             .unwrap()
     }
 
     pub fn parse_function_statement<T: FieldElement>(input: &str) -> FunctionStatement<T> {
         let ctx = ParserContext::new(None, input);
-        match parser::powdr::FunctionStatementParser::new()
+        match powdr_parser::powdr::FunctionStatementParser::new()
             .parse::<T>(&ctx, input)
             .unwrap()
         {
-            ast::parsed::asm::FunctionStatement::Assignment(source, lhs, reg, rhs) => {
+            powdr_ast::parsed::asm::FunctionStatement::Assignment(source, lhs, reg, rhs) => {
                 AssignmentStatement {
                     source,
                     lhs_with_reg: {
@@ -102,7 +102,7 @@ pub mod utils {
                 }
                 .into()
             }
-            ast::parsed::asm::FunctionStatement::Instruction(source, instruction, inputs) => {
+            powdr_ast::parsed::asm::FunctionStatement::Instruction(source, instruction, inputs) => {
                 InstructionStatement {
                     source,
                     instruction,
@@ -110,7 +110,7 @@ pub mod utils {
                 }
                 .into()
             }
-            ast::parsed::asm::FunctionStatement::Label(source, name) => {
+            powdr_ast::parsed::asm::FunctionStatement::Label(source, name) => {
                 LabelStatement { source, name }.into()
             }
             _ => unimplemented!(),
@@ -119,7 +119,7 @@ pub mod utils {
 
     pub fn parse_pil_statement<T: FieldElement>(input: &str) -> PilStatement<T> {
         let ctx = ParserContext::new(None, input);
-        parser::powdr::PilStatementParser::new()
+        powdr_parser::powdr::PilStatementParser::new()
             .parse(&ctx, input)
             .unwrap()
     }
@@ -128,7 +128,7 @@ pub mod utils {
         input: &str,
     ) -> RegisterDeclarationStatement {
         let ctx = ParserContext::new(None, input);
-        match parser::powdr::RegisterDeclarationParser::new()
+        match powdr_parser::powdr::RegisterDeclarationParser::new()
             .parse::<T>(&ctx, input)
             .unwrap()
         {

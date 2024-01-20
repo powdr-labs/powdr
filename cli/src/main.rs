@@ -2,16 +2,16 @@
 
 mod util;
 
-use backend::{Backend, BackendType};
 use clap::{CommandFactory, Parser, Subcommand};
 use env_logger::fmt::Color;
 use env_logger::{Builder, Target};
 use log::LevelFilter;
-use number::{read_polys_csv_file, CsvRenderMode};
-use number::{Bn254Field, FieldElement, GoldilocksField};
-use pipeline::{Pipeline, Stage};
-use riscv::continuations::{rust_continuations, rust_continuations_dry_run};
-use riscv::{compile_riscv_asm, compile_rust};
+use powdr_backend::{Backend, BackendType};
+use powdr_number::{read_polys_csv_file, CsvRenderMode};
+use powdr_number::{Bn254Field, FieldElement, GoldilocksField};
+use powdr_pipeline::{Pipeline, Stage};
+use powdr_riscv::continuations::{rust_continuations, rust_continuations_dry_run};
+use powdr_riscv::{compile_riscv_asm, compile_rust};
 use std::io::{self, BufReader, BufWriter};
 use std::path::PathBuf;
 use std::{borrow::Cow, fs, io::Write, path::Path};
@@ -398,9 +398,10 @@ fn run_command(command: Commands) {
         } => {
             let coprocessors = match coprocessors {
                 Some(list) => {
-                    riscv::CoProcessors::try_from(list.split(',').collect::<Vec<_>>()).unwrap()
+                    powdr_riscv::CoProcessors::try_from(list.split(',').collect::<Vec<_>>())
+                        .unwrap()
                 }
-                None => riscv::CoProcessors::base(),
+                None => powdr_riscv::CoProcessors::base(),
             };
             call_with_field!(run_rust::<field>(
                 &file,
@@ -437,9 +438,10 @@ fn run_command(command: Commands) {
 
             let coprocessors = match coprocessors {
                 Some(list) => {
-                    riscv::CoProcessors::try_from(list.split(',').collect::<Vec<_>>()).unwrap()
+                    powdr_riscv::CoProcessors::try_from(list.split(',').collect::<Vec<_>>())
+                        .unwrap()
                 }
-                None => riscv::CoProcessors::base(),
+                None => powdr_riscv::CoProcessors::base(),
             };
             call_with_field!(run_riscv_asm::<field>(
                 &name,
@@ -457,7 +459,7 @@ fn run_command(command: Commands) {
         }
         Commands::Reformat { file } => {
             let contents = fs::read_to_string(&file).unwrap();
-            match parser::parse::<GoldilocksField>(Some(&file), &contents) {
+            match powdr_parser::parse::<GoldilocksField>(Some(&file), &contents) {
                 Ok(ast) => println!("{ast}"),
                 Err(err) => err.output_to_stderr(),
             };
@@ -547,7 +549,7 @@ fn run_rust<F: FieldElement>(
     prove_with: Option<BackendType>,
     export_csv: bool,
     csv_mode: CsvRenderModeCLI,
-    coprocessors: riscv::CoProcessors,
+    coprocessors: powdr_riscv::CoProcessors,
     just_execute: bool,
     continuations: bool,
 ) -> Result<(), Vec<String>> {
@@ -596,7 +598,7 @@ fn run_riscv_asm<F: FieldElement>(
     prove_with: Option<BackendType>,
     export_csv: bool,
     csv_mode: CsvRenderModeCLI,
-    coprocessors: riscv::CoProcessors,
+    coprocessors: powdr_riscv::CoProcessors,
     just_execute: bool,
     continuations: bool,
 ) -> Result<(), Vec<String>> {
@@ -698,11 +700,11 @@ fn run<F: FieldElement>(
             let mut pipeline = pipeline_factory().with_prover_inputs(inputs);
             pipeline.advance_to(Stage::AsmString).unwrap();
             let program = pipeline.artifact().unwrap().to_asm_string().unwrap();
-            riscv_executor::execute::<F>(
+            powdr_riscv_executor::execute::<F>(
                 program,
                 pipeline.data_callback().unwrap(),
                 &[],
-                riscv_executor::ExecMode::Fast,
+                powdr_riscv_executor::ExecMode::Fast,
             );
         }
         (false, true) => {
@@ -750,7 +752,7 @@ fn optimize_and_output<T: FieldElement>(file: &str) {
 #[cfg(test)]
 mod test {
     use crate::{run_command, Commands, CsvRenderModeCLI, FieldArgument};
-    use backend::BackendType;
+    use powdr_backend::BackendType;
 
     #[test]
     fn test_simple_sum() {

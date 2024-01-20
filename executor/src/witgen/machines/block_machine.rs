@@ -13,12 +13,12 @@ use crate::witgen::sequence_iterator::{ProcessingSequenceCache, ProcessingSequen
 use crate::witgen::util::try_to_simple_poly;
 use crate::witgen::{machines::Machine, EvalError, EvalValue, IncompleteCause};
 use crate::witgen::{MutableState, QueryCallback};
-use ast::analyzed::{
+use powdr_ast::analyzed::{
     AlgebraicExpression as Expression, AlgebraicReference, Identity, IdentityKind, PolyID,
     PolynomialType,
 };
-use ast::parsed::SelectedExpressions;
-use number::{DegreeType, FieldElement};
+use powdr_ast::parsed::SelectedExpressions;
+use powdr_number::{DegreeType, FieldElement};
 
 enum ProcessResult<'a, T: FieldElement> {
     Success(FinalizableData<'a, T>, EvalValue<&'a AlgebraicReference, T>),

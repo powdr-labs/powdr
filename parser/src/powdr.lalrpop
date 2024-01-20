@@ -1,6 +1,6 @@
 use std::str::FromStr;
-use ast::parsed::{*, asm::*};
-use number::{AbstractNumberType, FieldElement};
+use powdr_ast::parsed::{*, asm::*};
+use powdr_number::{AbstractNumberType, FieldElement};
 use num_traits::Num;
 use crate::ParserContext;
 

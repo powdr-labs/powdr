@@ -1,7 +1,7 @@
 use std::fmt;
 
-use ast::analyzed::AlgebraicReference;
-use number::FieldElement;
+use powdr_ast::analyzed::AlgebraicReference;
+use powdr_number::FieldElement;
 
 use super::range_constraints::RangeConstraint;
 

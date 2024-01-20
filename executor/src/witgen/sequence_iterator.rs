@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use number::FieldElement;
+use powdr_number::FieldElement;
 
 use super::affine_expression::AffineExpression;
 
