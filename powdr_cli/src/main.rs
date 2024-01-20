@@ -12,7 +12,6 @@ use number::{Bn254Field, FieldElement, GoldilocksField};
 use pipeline::{Pipeline, Stage};
 use riscv::continuations::{rust_continuations, rust_continuations_dry_run};
 use riscv::{compile_riscv_asm, compile_rust};
-use std::collections::HashMap;
 use std::io::{self, BufReader, BufWriter};
 use std::path::PathBuf;
 use std::{borrow::Cow, fs, io::Write, path::Path};
@@ -679,8 +678,8 @@ fn run<F: FieldElement>(
     continuations: bool,
 ) -> Result<(), Vec<String>> {
     let bootloader_inputs = if continuations {
-        let inputs: HashMap<F, Vec<F>> = vec![(F::from(0), inputs.clone())].into_iter().collect();
-        rust_continuations_dry_run(pipeline_factory(), inputs.clone())
+        let pipeline = pipeline_factory().with_prover_inputs(inputs.clone());
+        rust_continuations_dry_run(pipeline)
     } else {
         vec![]
     };
@@ -696,11 +695,12 @@ fn run<F: FieldElement>(
             // Already ran when computing bootloader inputs, nothing else to do.
         }
         (true, false) => {
-            let mut inputs_hash: HashMap<F, Vec<F>> = HashMap::default();
-            inputs_hash.insert(0u32.into(), inputs);
+            let mut pipeline = pipeline_factory().with_prover_inputs(inputs);
+            pipeline.advance_to(Stage::AsmString).unwrap();
+            let program = pipeline.artifact().unwrap().to_asm_string().unwrap();
             riscv_executor::execute::<F>(
-                &pipeline_factory().asm_string().unwrap(),
-                &inputs_hash,
+                program,
+                pipeline.data_callback().unwrap(),
                 &[],
                 riscv_executor::ExecMode::Fast,
             );

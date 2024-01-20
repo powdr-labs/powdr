@@ -5,7 +5,7 @@ use ast::{
     parsed::asm::parse_absolute_path,
 };
 use number::FieldElement;
-use pipeline::Pipeline;
+use pipeline::{Pipeline, Stage};
 use riscv_executor::ExecutionTrace;
 
 pub mod bootloader;
@@ -22,12 +22,13 @@ use crate::continuations::bootloader::{
 fn transposed_trace<F: FieldElement>(trace: &ExecutionTrace) -> HashMap<String, Vec<F>> {
     let mut reg_values: HashMap<&str, Vec<F>> = HashMap::with_capacity(trace.reg_map.len());
 
-    for row in trace.regs_rows() {
+    let mut rows = trace.replay();
+    while let Some(row) = rows.next_row() {
         for (reg_name, &index) in trace.reg_map.iter() {
             reg_values
                 .entry(reg_name)
                 .or_default()
-                .push(row[index].0.into());
+                .push(row[index as usize].0.into());
         }
     }
 
@@ -119,10 +120,7 @@ fn sanity_check<T>(program: &AnalysisASMFile<T>) {
     assert_eq!(machine_registers, expected_registers);
 }
 
-pub fn rust_continuations_dry_run<F: FieldElement>(
-    pipeline: Pipeline<F>,
-    inputs: HashMap<F, Vec<F>>,
-) -> Vec<Vec<F>> {
+pub fn rust_continuations_dry_run<F: FieldElement>(mut pipeline: Pipeline<F>) -> Vec<Vec<F>> {
     log::info!("Initializing memory merkle tree...");
     let mut merkle_tree = MerkleTree::<F>::new();
 
@@ -132,14 +130,15 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
     // Initial register values for the current chunk.
     let mut register_values = default_register_values();
 
-    let program = pipeline.analyzed_asm().unwrap();
-    sanity_check(&program);
+    pipeline.advance_to(Stage::AnalyzedAsm).unwrap();
+    let program = pipeline.artifact().unwrap().to_analyzed_asm().unwrap();
+    sanity_check(program);
 
     log::info!("Executing powdr-asm...");
     let (full_trace, memory_accesses) = {
         let trace = riscv_executor::execute_ast::<F>(
-            &program,
-            &inputs,
+            program,
+            pipeline.data_callback().unwrap(),
             // Run full trace without any accessed pages. This would actually violate the
             // constraints, but the executor does the right thing (read zero if the memory
             // cell has never been accessed). We can't pass the accessed pages here, because
@@ -149,7 +148,7 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
             riscv_executor::ExecMode::Trace,
         )
         .0;
-        (transposed_trace::<F>(&trace), trace.mem)
+        (transposed_trace::<F>(&trace), trace.mem_ops)
     };
 
     let full_trace_length = full_trace["main.pc"].len();
@@ -185,14 +184,14 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
         let mut accessed_pages = BTreeSet::new();
         let mut accessed_addresses = BTreeSet::new();
         let start_idx = memory_accesses
-            .binary_search_by_key(&proven_trace, |a| a.idx)
+            .binary_search_by_key(&proven_trace, |a| a.row)
             .unwrap_or_else(|v| v);
 
         for access in &memory_accesses[start_idx..] {
             // proven_trace + num_rows is an upper bound for the last row index we'll reach in the next chunk.
             // In practice, we'll stop earlier, because the bootloader needs to run as well, but we don't know for
             // how long as that depends on the number of pages.
-            if access.idx >= proven_trace + num_rows {
+            if access.row >= proven_trace + num_rows {
                 break;
             }
             accessed_addresses.insert(access.address);
@@ -235,8 +234,8 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
         log::info!("Simulating chunk execution...");
         let (chunk_trace, memory_snapshot_update) = {
             let (trace, memory_snapshot_update) = riscv_executor::execute_ast::<F>(
-                &program,
-                &inputs,
+                program,
+                pipeline.data_callback().unwrap(),
                 &bootloader_inputs,
                 num_rows,
                 riscv_executor::ExecMode::Trace,

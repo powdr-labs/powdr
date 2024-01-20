@@ -258,22 +258,14 @@ mod test {
         );
     }
 
-    const STD_UTILS: &str = "
-    let fold = (|length, f, initial, folder| if (length <= 0) { initial } else { folder(std::utils::fold((length - 1), f, initial, folder), f((length - 1))) });
-    let force_bool = (|c| ((c * (1 - c)) == 0));
-    let make_array = (|length, f| std::utils::fold(length, f, [], (|acc, e| (acc + [e]))));
-    let map = (|arr, length, f| std::utils::make_array(length, (|i| f(arr[i]))));
-    let sum = (|length, f| std::utils::fold(length, f, 0, (|acc, e| (acc + e))));
-    let unchanged_until = (|c, latch| (((c' - c) * (1 - latch)) == 0));";
-
-    fn std_utils(degree: usize) -> String {
-        format!("namespace std::utils({degree});{STD_UTILS}")
+    fn extract_main(code: &str) -> &str {
+        let start = code.find("namespace main").unwrap();
+        &code[start..]
     }
 
     #[test]
     fn compile_empty_vm() {
-        let expectation = r#"
-namespace main(8);
+        let expectation = r#"namespace main(8);
     pol commit _operation_id(i) query ("hint", 2);
     pol commit pc;
     pol commit instr__jump_to_operation;
@@ -302,16 +294,12 @@ namespace main(8);
         let contents = fs::read_to_string(file_name).unwrap();
         let graph = parse_analyse_and_compile::<GoldilocksField>(&contents);
         let pil = link(graph).unwrap();
-        assert_eq!(
-            format!("{pil}").trim(),
-            format!("{}{expectation}", std_utils(8)).trim()
-        );
+        assert_eq!(extract_main(&format!("{pil}")), expectation);
     }
 
     #[test]
     fn compile_different_signatures() {
-        let expectation = r#"
-namespace main(16);
+        let expectation = r#"namespace main(16);
     pol commit _operation_id(i) query ("hint", 4);
     pol commit pc;
     pol commit X;
@@ -411,16 +399,12 @@ namespace main_sub(16);
         let contents = fs::read_to_string(file_name).unwrap();
         let graph = parse_analyse_and_compile::<GoldilocksField>(&contents);
         let pil = link(graph).unwrap();
-        assert_eq!(
-            format!("{pil}").trim(),
-            format!("{}{expectation}", std_utils(16)).trim()
-        );
+        assert_eq!(extract_main(&format!("{pil}")), expectation);
     }
 
     #[test]
     fn compile_simple_sum() {
-        let expectation = r#"
-namespace main(1024);
+        let expectation = r#"namespace main(1024);
     pol commit XInv;
     pol commit XIsZero;
     XIsZero = (1 - (X * XInv));
@@ -491,10 +475,7 @@ namespace main(1024);
         let contents = fs::read_to_string(file_name).unwrap();
         let graph = parse_analyse_and_compile::<GoldilocksField>(&contents);
         let pil = link(graph).unwrap();
-        assert_eq!(
-            format!("{pil}").trim(),
-            format!("{}{expectation}", std_utils(1024)).trim()
-        );
+        assert_eq!(extract_main(&format!("{pil}")), expectation);
     }
 
     #[test]
@@ -514,8 +495,7 @@ machine Machine {
     }
 }
 "#;
-        let expectation = r#"
-namespace main(1024);
+        let expectation = r#"namespace main(1024);
     pol commit _operation_id(i) query ("hint", 4);
     pol commit pc;
     pol commit fp;
@@ -552,10 +532,7 @@ namespace main(1024);
 "#;
         let graph = parse_analyse_and_compile::<GoldilocksField>(source);
         let pil = link(graph).unwrap();
-        assert_eq!(
-            format!("{pil}").trim(),
-            format!("{}{expectation}", std_utils(1024)).trim()
-        );
+        assert_eq!(extract_main(&format!("{pil}")), expectation);
     }
 
     #[test]

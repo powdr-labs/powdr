@@ -792,6 +792,7 @@ fn runtime(coprocessors: &CoProcessors) -> String {
         "__nedf2",
         "__unorddf2",
         "__floatundidf",
+        "__extendsfdf2",
         "memcpy",
         "memmove",
         "memset",

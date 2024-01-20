@@ -7,7 +7,7 @@ use revm::{
     },
     EVM,
 };
-use runtime::{print, coprocessors::{get_data, get_data_len}};
+use powdr_riscv_rt::{print, coprocessors::get_data_serde};
 
 extern crate alloc;
 use alloc::vec;
@@ -20,10 +20,7 @@ fn main() {
         b256!("e3c84e69bac71c159b2ff0d62b9a5c231887a809a96cb4a262a4b96ed78a1db2");
     let mut db = CacheDB::new(EmptyDB::default());
 
-    let bytecode_len = get_data_len(0);
-    let mut bytecode = vec![0; bytecode_len];
-    get_data(0, &mut bytecode);
-    let bytecode: Vec<u8> = bytecode.into_iter().map(|x| x as u8).collect();
+    let bytecode: Vec<u8> = get_data_serde(666);
 
     // Fill database:
     let bytecode = Bytes::from(bytecode);

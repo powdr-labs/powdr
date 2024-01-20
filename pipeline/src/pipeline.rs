@@ -2,6 +2,7 @@ use std::{
     fmt::Display,
     fs,
     io::{BufWriter, Read, Write},
+    marker::Send,
     path::{Path, PathBuf},
     rc::Rc,
     time::Instant,
@@ -24,7 +25,7 @@ use mktemp::Temp;
 use number::{write_polys_csv_file, write_polys_file, CsvRenderMode, FieldElement};
 
 use crate::{
-    inputs_to_query_callback,
+    inputs_to_query_callback, serde_data_to_query_callback,
     util::{read_poly_set, FixedPolySet, WitnessPolySet},
 };
 
@@ -70,7 +71,7 @@ pub enum Stage {
     Proof,
 }
 
-enum Artifact<T: FieldElement> {
+pub enum Artifact<T: FieldElement> {
     /// The path to a single .asm file.
     AsmFilePath(PathBuf),
     /// The contents of a single .asm file, with an optional Path (for imports).
@@ -104,6 +105,53 @@ enum Artifact<T: FieldElement> {
     GeneratedWitness(GeneratedWitness<T>),
     /// The proof (if successful)
     Proof(ProofResult<T>),
+}
+
+// These are implementations of specific artifacts we want to retrieve
+// from Pipeline, in a way that allows us to get immutable references
+// to the artifacts.
+impl<T: FieldElement> Artifact<T> {
+    pub fn to_asm_string(&self) -> Option<&String> {
+        match self {
+            Artifact::AsmString(_, asm_string) => Some(asm_string),
+            _ => None,
+        }
+    }
+
+    pub fn to_analyzed_asm(&self) -> Option<&AnalysisASMFile<T>> {
+        match self {
+            Artifact::AnalyzedAsm(analyzed_asm) => Some(analyzed_asm),
+            _ => None,
+        }
+    }
+
+    pub fn to_optimized_pil(&self) -> Option<&Analyzed<T>> {
+        match self {
+            Artifact::OptimzedPil(optimized_pil) => Some(optimized_pil),
+            _ => None,
+        }
+    }
+
+    pub fn to_pil_with_evaluated_fixed_cols(&self) -> Option<&PilWithEvaluatedFixedCols<T>> {
+        match self {
+            Artifact::PilWithEvaluatedFixedCols(pil_with_constants) => Some(pil_with_constants),
+            _ => None,
+        }
+    }
+
+    pub fn to_generated_witness(&self) -> Option<&GeneratedWitness<T>> {
+        match self {
+            Artifact::GeneratedWitness(generated_witness) => Some(generated_witness),
+            _ => None,
+        }
+    }
+
+    pub fn to_proof(&self) -> Option<&ProofResult<T>> {
+        match self {
+            Artifact::Proof(proof) => Some(proof),
+            _ => None,
+        }
+    }
 }
 
 /// Optional Arguments for various stages of the pipeline.
@@ -259,6 +307,14 @@ impl<T: FieldElement> Pipeline<T> {
         };
         self.arguments.query_callback = Some(query_callback);
         self
+    }
+
+    pub fn add_data<S: serde::Serialize + Send + Sync + 'static>(
+        self,
+        channel: u32,
+        data: &S,
+    ) -> Self {
+        self.add_query_callback(Box::new(serde_data_to_query_callback(channel, data)))
     }
 
     pub fn with_prover_inputs(self, inputs: Vec<T>) -> Self {
@@ -735,5 +791,13 @@ impl<T: FieldElement> Pipeline<T> {
 
     pub fn name(&self) -> &str {
         self.name.as_ref().unwrap()
+    }
+
+    pub fn artifact(&self) -> Option<&Artifact<T>> {
+        self.artifact.as_ref()
+    }
+
+    pub fn data_callback(&self) -> Option<&dyn QueryCallback<T>> {
+        self.arguments.query_callback.as_deref()
     }
 }

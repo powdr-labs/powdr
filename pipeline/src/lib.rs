@@ -2,6 +2,8 @@
 
 #![deny(clippy::print_stdout)]
 
+use std::marker::{Send, Sync};
+
 pub mod pipeline;
 pub mod test_util;
 pub mod util;
@@ -46,6 +48,38 @@ pub fn access_element<T: FieldElement>(
 }
 
 #[allow(clippy::print_stdout)]
+pub fn serde_data_to_query_callback<T: FieldElement, S: serde::Serialize + Send + Sync>(
+    channel: u32,
+    data: &S,
+) -> impl QueryCallback<T> {
+    let bytes = serde_cbor::to_vec(&data).unwrap();
+    move |query: &str| -> Result<Option<T>, String> {
+        match &parse_query(query)?[..] {
+            ["\"data_identifier\"", index, cb_channel] => {
+                let cb_channel = cb_channel
+                    .parse::<u32>()
+                    .map_err(|e| format!("Error parsing callback data channel: {e})"))?;
+
+                if channel != cb_channel {
+                    return Ok(None);
+                }
+
+                let index = index
+                    .parse::<usize>()
+                    .map_err(|e| format!("Error parsing index: {e})"))?;
+
+                // query index 0 means the length
+                Ok(Some(match index {
+                    0 => (bytes.len() as u64).into(),
+                    index => (bytes[index - 1] as u64).into(),
+                }))
+            }
+            k => Err(format!("Unsupported query: {}", k.iter().format(", "))),
+        }
+    }
+}
+
+#[allow(clippy::print_stdout)]
 pub fn inputs_to_query_callback<T: FieldElement>(inputs: Vec<T>) -> impl QueryCallback<T> {
     move |query: &str| -> Result<Option<T>, String> {
         // TODO In the future, when match statements need to be exhaustive,
@@ -54,14 +88,6 @@ pub fn inputs_to_query_callback<T: FieldElement>(inputs: Vec<T>) -> impl QueryCa
 
         match &parse_query(query)?[..] {
             ["\"input\"", index] => access_element("prover inputs", &inputs, index),
-            ["\"data\"", index, what] => {
-                let what = what
-                    .parse::<usize>()
-                    .map_err(|e| format!("Error parsing what: {e})"))?;
-                assert_eq!(what, 0);
-
-                access_element("prover inputs", &inputs, index)
-            }
             ["\"print_char\"", ch] => {
                 print!(
                     "{}",

@@ -20,21 +20,25 @@ use riscv::{
 #[ignore = "Too slow"]
 fn test_trivial() {
     let case = "trivial.rs";
-    verify_riscv_file(case, vec![], &CoProcessors::base())
+    verify_riscv_file(case, Default::default(), &CoProcessors::base())
 }
 
 #[test]
 #[ignore = "Too slow"]
 fn test_zero_with_values() {
     let case = "zero_with_values.rs";
-    verify_riscv_file(case, vec![], &CoProcessors::base())
+    verify_riscv_file(case, Default::default(), &CoProcessors::base())
 }
 
 #[test]
 #[ignore = "Too slow"]
 fn test_poseidon_gl() {
     let case = "poseidon_gl_via_coprocessor.rs";
-    verify_riscv_file(case, vec![], &CoProcessors::base().with_poseidon());
+    verify_riscv_file(
+        case,
+        Default::default(),
+        &CoProcessors::base().with_poseidon(),
+    );
 }
 
 #[test]
@@ -89,14 +93,14 @@ fn test_double_word() {
 #[ignore = "Too slow"]
 fn test_memfuncs() {
     let case = "memfuncs";
-    verify_riscv_crate(case, vec![], &CoProcessors::base());
+    verify_riscv_crate(case, Default::default(), &CoProcessors::base());
 }
 
 #[test]
 #[ignore = "Too slow"]
 fn test_keccak() {
     let case = "keccak";
-    verify_riscv_crate(case, vec![], &CoProcessors::base());
+    verify_riscv_crate(case, Default::default(), &CoProcessors::base());
 }
 
 #[test]
@@ -117,7 +121,7 @@ fn test_vec_median() {
 #[ignore = "Too slow"]
 fn test_password() {
     let case = "password_checker";
-    verify_riscv_crate(case, vec![], &CoProcessors::base());
+    verify_riscv_crate(case, Default::default(), &CoProcessors::base());
 }
 
 /*
@@ -132,13 +136,16 @@ static BYTECODE: &str = "61029a60005260206000f3";
 #[test]
 fn test_evm() {
     let case = "evm";
+    let powdr_asm = compile_riscv_crate(case, &CoProcessors::base());
+
     let bytes = hex::decode(BYTECODE).unwrap();
 
-    let length: GoldilocksField = (bytes.len() as u64).into();
-    let mut u64_bytes: Vec<GoldilocksField> = vec![length];
-    u64_bytes.extend(bytes.into_iter().map(|x| GoldilocksField::from(x as u64)));
+    let pipeline = Pipeline::<GoldilocksField>::default()
+        .with_name(case.to_string())
+        .from_asm_string(powdr_asm, None)
+        .add_data(666, &bytes);
 
-    verify_riscv_crate(case, u64_bytes, &CoProcessors::base());
+    verify_pipeline(pipeline, Default::default(), vec![]);
 }
 
 #[test]
@@ -146,7 +153,7 @@ fn test_evm() {
 #[should_panic(expected = "Witness generation failed.")]
 fn test_print() {
     let case = "print.rs";
-    verify_file(case, vec![], &CoProcessors::base());
+    verify_file(case, Default::default(), &CoProcessors::base());
 }
 
 #[test]
@@ -161,8 +168,10 @@ fn test_many_chunks_dry() {
         riscv::compile_rust_to_riscv_asm(&format!("tests/riscv_data/{case}"), &temp_dir);
     let powdr_asm = riscv::compiler::compile(riscv_asm, &coprocessors, true);
 
-    let pipeline = Pipeline::default().from_asm_string(powdr_asm, Some(PathBuf::from(case)));
-    rust_continuations_dry_run::<GoldilocksField>(pipeline, Default::default());
+    let pipeline = Pipeline::default()
+        .from_asm_string(powdr_asm, Some(PathBuf::from(case)))
+        .with_prover_inputs(Default::default());
+    rust_continuations_dry_run::<GoldilocksField>(pipeline);
 }
 
 #[test]
@@ -184,7 +193,7 @@ fn test_many_chunks() {
     let pipeline_factory = || {
         Pipeline::<GoldilocksField>::default()
             .from_asm_string(powdr_asm.clone(), Some(PathBuf::from(case)))
-            .with_prover_inputs(vec![])
+            .with_prover_inputs(Default::default())
             .with_output(tmp_dir.to_path_buf(), false)
     };
     let pipeline_callback = |pipeline: Pipeline<GoldilocksField>| -> Result<(), ()> {
@@ -195,10 +204,10 @@ fn test_many_chunks() {
         let tmp_dir = pipeline.output_dir().unwrap();
         let constants_file = tmp_dir.join(format!("{}_constants.bin", pipeline.name()));
         std::fs::copy(tmp_dir.join("many_chunks_constants.bin"), constants_file).unwrap();
-        verify_pipeline(pipeline, vec![], vec![]);
+        verify_pipeline(pipeline, Default::default(), vec![]);
         Ok(())
     };
-    let bootloader_inputs = rust_continuations_dry_run(pipeline_factory(), Default::default());
+    let bootloader_inputs = rust_continuations_dry_run(pipeline_factory());
     rust_continuations(pipeline_factory, pipeline_callback, bootloader_inputs).unwrap();
 }
 
@@ -216,7 +225,7 @@ fn verify_file(case: &str, inputs: Vec<GoldilocksField>, coprocessors: &CoProces
 #[should_panic(expected = "index out of bounds: the len is 0 but the index is 0")]
 fn test_print_rv32_executor() {
     let case = "print.rs";
-    verify_riscv_file(case, vec![], &CoProcessors::base());
+    verify_riscv_file(case, Default::default(), &CoProcessors::base());
 }
 
 fn verify_riscv_file(case: &str, inputs: Vec<GoldilocksField>, coprocessors: &CoProcessors) {
@@ -229,12 +238,16 @@ fn verify_riscv_file(case: &str, inputs: Vec<GoldilocksField>, coprocessors: &Co
 }
 
 fn verify_riscv_crate(case: &str, inputs: Vec<GoldilocksField>, coprocessors: &CoProcessors) {
+    let powdr_asm = compile_riscv_crate(case, coprocessors);
+
+    verify_riscv_asm_string(&format!("{case}.asm"), &powdr_asm, inputs);
+}
+
+fn compile_riscv_crate(case: &str, coprocessors: &CoProcessors) -> String {
     let temp_dir = Temp::new_dir().unwrap();
     let riscv_asm = riscv::compile_rust_crate_to_riscv_asm(
         &format!("tests/riscv_data/{case}/Cargo.toml"),
         &temp_dir,
     );
-    let powdr_asm = riscv::compiler::compile(riscv_asm, coprocessors, false);
-
-    verify_riscv_asm_string(&format!("{case}.asm"), &powdr_asm, inputs);
+    riscv::compiler::compile(riscv_asm, coprocessors, false)
 }

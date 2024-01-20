@@ -11,3 +11,4 @@ number = { path = "../number" }
 parser = { path = "../parser" }
 importer = { path = "../importer" }
 analysis = { path = "../analysis" }
+executor = { path = "../executor" }
