@@ -14,6 +14,8 @@ let inverse = |x, modulus|
 /// Computes `x + y` modulo the modulus.
 let add = |x, y, modulus| reduce(x + y, modulus);
 
+let double = |x, modulus| add(x, x, modulus);
+
 /// Computes `x - y` modulo the modulus.
 let sub = |x, y, modulus| reduce(x - y, modulus);
 
