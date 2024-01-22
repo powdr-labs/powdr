@@ -111,14 +111,18 @@ impl<T: FieldElement> PILAnalyzer<T> {
     }
 
     pub fn process(&mut self, files: Vec<PILFile<T>>) {
-        self.current_namespace = Default::default();
-        for statement in files.iter().flat_map(|f| f.0.iter()) {
-            self.collect_names(statement);
+        for PILFile(file) in &files {
+            self.current_namespace = Default::default();
+            for statement in file {
+                self.collect_names(statement);
+            }
         }
 
-        self.current_namespace = Default::default();
-        for statement in files.into_iter().flat_map(|f| f.0.into_iter()) {
-            self.handle_statement(statement);
+        for PILFile(file) in files {
+            self.current_namespace = Default::default();
+            for statement in file {
+                self.handle_statement(statement);
+            }
         }
     }
 
