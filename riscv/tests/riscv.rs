@@ -222,7 +222,9 @@ fn verify_file(case: &str, inputs: Vec<GoldilocksField>, coprocessors: &CoProces
 
 #[test]
 #[ignore = "Too slow"]
-#[should_panic(expected = "index out of bounds: the len is 0 but the index is 0")]
+#[should_panic(
+    expected = "called `Result::unwrap()` on an `Err` value: \"Error accessing prover inputs: Index 0 out of bounds 0\""
+)]
 fn test_print_rv32_executor() {
     let case = "print.rs";
     verify_riscv_file(case, Default::default(), &CoProcessors::base());
