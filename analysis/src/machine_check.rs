@@ -21,6 +21,8 @@ use ast::{
 };
 use number::FieldElement;
 
+/// Verifies certain properties of each machine and constructs the Machine objects.
+/// Also transfers generic PIL definitions but does not verify anything about them.
 pub fn check<T: FieldElement>(file: ASMProgram<T>) -> Result<AnalysisASMFile<T>, Vec<String>> {
     let ctx = AbsoluteSymbolPath::default();
     let machines = TypeChecker::default().check_module(file.main, &ctx)?;
