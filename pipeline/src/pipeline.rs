@@ -129,6 +129,13 @@ impl<T: FieldElement> Artifact<T> {
         }
     }
 
+    pub fn to_analyzed_pil(&self) -> Option<&Analyzed<T>> {
+        match self {
+            Artifact::AnalyzedPil(analyzed) => Some(analyzed),
+            _ => None,
+        }
+    }
+
     pub fn to_optimized_pil(&self) -> Option<&Analyzed<T>> {
         match self {
             Artifact::OptimzedPil(optimized_pil) => Some(optimized_pil),
@@ -743,6 +750,14 @@ impl<T: FieldElement> Pipeline<T> {
             Artifact::AnalyzedAsm(analyzed_asm) => Ok(analyzed_asm),
             _ => panic!(),
         }
+    }
+
+    pub fn analyzed_pil(mut self) -> Result<Analyzed<T>, Vec<String>> {
+        self.advance_to(Stage::AnalyzedPil)?;
+        let Artifact::AnalyzedPil(analyzed) = self.artifact.unwrap() else {
+            panic!()
+        };
+        Ok(analyzed)
     }
 
     pub fn optimized_pil(mut self) -> Result<Analyzed<T>, Vec<String>> {
