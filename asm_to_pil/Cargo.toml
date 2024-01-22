@@ -12,4 +12,4 @@ pretty_assertions = "1.4.0"
 parser = { path = "../parser" }
 
 [dev-dependencies]
-type_check = { path = "../type_check" }
+analysis = { path = "../analysis" }
