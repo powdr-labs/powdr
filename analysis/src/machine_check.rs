@@ -348,7 +348,7 @@ mod tests {
     use importer::load_dependencies_and_resolve_str;
     use number::Bn254Field;
 
-    use crate::check;
+    use super::check;
 
     // A utility to test behavior of the type checker on source inputs
     // TODO: test returned values, not just success

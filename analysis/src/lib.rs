@@ -1,7 +1,7 @@
 #![deny(clippy::print_stdout)]
 
 mod block_enforcer;
-mod machine_check;
+pub mod machine_check;
 mod vm;
 
 use ast::{asm_analysis::AnalysisASMFile, parsed::asm::ASMProgram, DiffMonitor};
@@ -58,17 +58,5 @@ pub mod utils {
         parser::powdr::PilStatementParser::new()
             .parse(input)
             .unwrap()
-    }
-}
-
-#[cfg(test)]
-mod test_util {
-    use ast::asm_analysis::AnalysisASMFile;
-    use importer::load_dependencies_and_resolve_str;
-    use number::FieldElement;
-
-    /// A test utility to process a source file until after type checking
-    pub fn typecheck_str<T: FieldElement>(source: &str) -> Result<AnalysisASMFile<T>, Vec<String>> {
-        analysis::machine_check::check(load_dependencies_and_resolve_str(source))
     }
 }
