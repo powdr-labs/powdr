@@ -1,10 +1,11 @@
 [package]
-name = "importer"
+name = "powdr-importer"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-ast = { path = "../ast" }
-number = { path = "../number" }
-parser = { path = "../parser" }
+powdr-ast = { path = "../ast" }
+powdr-number = { path = "../number" }
+powdr-parser = { path = "../parser" }
+
 pretty_assertions = "1.4.0"

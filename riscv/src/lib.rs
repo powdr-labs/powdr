@@ -21,9 +21,9 @@ mod coprocessors;
 mod disambiguator;
 pub mod parser;
 
-type Statement = asm_utils::ast::Statement<Register, FunctionKind>;
-type Argument = asm_utils::ast::Argument<Register, FunctionKind>;
-type Expression = asm_utils::ast::Expression<FunctionKind>;
+type Statement = powdr_asm_utils::ast::Statement<Register, FunctionKind>;
+type Argument = powdr_asm_utils::ast::Argument<Register, FunctionKind>;
+type Expression = powdr_asm_utils::ast::Expression<FunctionKind>;
 
 /// Compiles a rust file all the way down to PIL and generates
 /// fixed and witness columns.

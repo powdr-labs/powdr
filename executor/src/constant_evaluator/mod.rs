@@ -1,9 +1,9 @@
 use std::{collections::HashMap, fmt::Display, rc::Rc};
 
-use ast::analyzed::{Analyzed, FunctionValueDefinition};
 use itertools::Itertools;
-use number::{DegreeType, FieldElement};
-use pil_analyzer::evaluator::{self, Custom, EvalError, SymbolLookup, Value};
+use powdr_ast::analyzed::{Analyzed, FunctionValueDefinition};
+use powdr_number::{DegreeType, FieldElement};
+use powdr_pil_analyzer::evaluator::{self, Custom, EvalError, SymbolLookup, Value};
 use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 
 /// Generates the constant polynomial values for all constant polynomials
@@ -156,8 +156,8 @@ impl<'a> Display for FixedColumnRef<'a> {
 
 #[cfg(test)]
 mod test {
-    use number::GoldilocksField;
-    use pil_analyzer::analyze_string;
+    use powdr_number::GoldilocksField;
+    use powdr_pil_analyzer::analyze_string;
     use pretty_assertions::assert_eq;
     use test_log::test;
 

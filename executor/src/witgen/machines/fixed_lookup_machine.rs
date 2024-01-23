@@ -2,12 +2,12 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::mem;
 use std::num::NonZeroUsize;
 
-use ast::analyzed::{
+use itertools::Itertools;
+use powdr_ast::analyzed::{
     AlgebraicExpression as Expression, AlgebraicReference, IdentityKind, PolyID, PolynomialType,
 };
-use ast::parsed::SelectedExpressions;
-use itertools::Itertools;
-use number::FieldElement;
+use powdr_ast::parsed::SelectedExpressions;
+use powdr_number::FieldElement;
 
 use crate::witgen::affine_expression::AffineExpression;
 use crate::witgen::global_constraints::{GlobalConstraints, RangeConstraintSet};

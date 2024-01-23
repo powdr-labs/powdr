@@ -1,0 +1,15 @@
+[package]
+name = "powdr-riscv-executor"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+powdr-analysis = { path = "../analysis" }
+powdr-ast = { path = "../ast" }
+powdr-executor = { path = "../executor" }
+powdr-importer = { path = "../importer" }
+powdr-number = { path = "../number" }
+powdr-parser = { path = "../parser" }
+
+log = "0.4.17"
+itertools = "0.11"

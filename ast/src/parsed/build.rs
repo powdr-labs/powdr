@@ -1,4 +1,4 @@
-use number::FieldElement;
+use powdr_number::FieldElement;
 
 use crate::parsed::Expression;
 

@@ -1,10 +1,10 @@
 use std::collections::{BTreeMap, HashMap};
 
-use ast::analyzed::{
+use powdr_ast::analyzed::{
     AlgebraicReference, Analyzed, Expression, FunctionValueDefinition, PolyID, PolynomialType,
     SymbolKind,
 };
-use number::{DegreeType, FieldElement};
+use powdr_number::{DegreeType, FieldElement};
 
 use self::data_structures::column_map::{FixedColumnMap, WitnessColumnMap};
 pub use self::eval_result::{

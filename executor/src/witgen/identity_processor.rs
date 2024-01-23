@@ -1,12 +1,12 @@
 use std::{collections::HashMap, sync::Mutex};
 
-use ast::{
+use itertools::{Either, Itertools};
+use lazy_static::lazy_static;
+use powdr_ast::{
     analyzed::{AlgebraicExpression as Expression, AlgebraicReference, Identity, IdentityKind},
     parsed::SelectedExpressions,
 };
-use itertools::{Either, Itertools};
-use lazy_static::lazy_static;
-use number::FieldElement;
+use powdr_number::FieldElement;
 
 use crate::witgen::machines::Machine;
 

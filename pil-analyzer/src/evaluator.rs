@@ -4,7 +4,8 @@ use std::{
     rc::Rc,
 };
 
-use ast::{
+use itertools::Itertools;
+use powdr_ast::{
     analyzed::{Expression, FunctionValueDefinition, Reference, Symbol},
     evaluate_binary_operation, evaluate_unary_operation,
     parsed::{
@@ -12,8 +13,7 @@ use ast::{
         UnaryOperator,
     },
 };
-use itertools::Itertools;
-use number::FieldElement;
+use powdr_number::FieldElement;
 
 /// Evaluates an expression given a hash map of definitions.
 pub fn evaluate_expression<'a, T: FieldElement>(
@@ -403,7 +403,7 @@ mod internal {
 
 #[cfg(test)]
 mod test {
-    use number::GoldilocksField;
+    use powdr_number::GoldilocksField;
     use pretty_assertions::assert_eq;
 
     use crate::analyze_string;

@@ -1,8 +1,8 @@
-use number::FieldElement;
+use powdr_number::FieldElement;
 use std::collections::HashMap;
 use std::{cmp, path::PathBuf};
 
-use ast::analyzed::{
+use powdr_ast::analyzed::{
     AlgebraicBinaryOperator, AlgebraicExpression as Expression, AlgebraicUnaryOperator, Analyzed,
     IdentityKind, PolyID, PolynomialType, StatementIdentifier, SymbolKind,
 };
@@ -372,13 +372,13 @@ impl<'a, T: FieldElement> Exporter<'a, T> {
 
 #[cfg(test)]
 mod test {
-    use pil_analyzer::analyze;
+    use powdr_pil_analyzer::analyze;
     use pretty_assertions::assert_eq;
     use serde_json::Value as JsonValue;
     use std::{fs, process::Command};
     use test_log::test;
 
-    use number::GoldilocksField;
+    use powdr_number::GoldilocksField;
 
     use super::*;
 

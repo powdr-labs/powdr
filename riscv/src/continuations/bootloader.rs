@@ -1,4 +1,4 @@
-use number::FieldElement;
+use powdr_number::FieldElement;
 
 use super::memory_merkle_tree::MerkleTree;
 

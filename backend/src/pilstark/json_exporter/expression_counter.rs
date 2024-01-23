@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use ast::{
+use powdr_ast::{
     analyzed::{
         Analyzed, Identity, PolynomialType, PublicDeclaration, StatementIdentifier, Symbol,
         SymbolKind,

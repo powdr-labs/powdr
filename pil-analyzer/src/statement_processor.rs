@@ -1,11 +1,13 @@
 use std::collections::{BTreeMap, HashMap};
 use std::marker::PhantomData;
 
-use ast::parsed::{self, FunctionDefinition, PilStatement, PolynomialName, SelectedExpressions};
-use ast::SourceRef;
-use number::{DegreeType, FieldElement};
+use powdr_ast::parsed::{
+    self, FunctionDefinition, PilStatement, PolynomialName, SelectedExpressions,
+};
+use powdr_ast::SourceRef;
+use powdr_number::{DegreeType, FieldElement};
 
-use ast::analyzed::{
+use powdr_ast::analyzed::{
     Expression, FunctionValueDefinition, Identity, IdentityKind, PolynomialType, PublicDeclaration,
     Symbol, SymbolKind,
 };
@@ -186,7 +188,7 @@ where
         &mut self,
         source: SourceRef,
         name: String,
-        value: Option<::ast::parsed::Expression<T>>,
+        value: Option<::powdr_ast::parsed::Expression<T>>,
     ) -> Vec<PILItem<T>> {
         // Determine whether this is a fixed column, a constant or something else
         // depending on the structure of the value and if we can evaluate
@@ -300,7 +302,7 @@ where
         &mut self,
         source: SourceRef,
         name: String,
-        array_size: Option<::ast::parsed::Expression<T>>,
+        array_size: Option<::powdr_ast::parsed::Expression<T>>,
         symbol_kind: SymbolKind,
         value: Option<FunctionDefinition<T>>,
     ) -> Vec<PILItem<T>> {
@@ -374,7 +376,10 @@ where
         })]
     }
 
-    fn evaluate_expression(&self, expr: ::ast::parsed::Expression<T>) -> Result<T, EvalError> {
+    fn evaluate_expression(
+        &self,
+        expr: ::powdr_ast::parsed::Expression<T>,
+    ) -> Result<T, EvalError> {
         evaluator::evaluate_expression(
             &ExpressionProcessor::new(self.driver).process_expression(expr),
             self.driver.definitions(),
@@ -386,13 +391,13 @@ where
         ExpressionProcessor::new(self.driver)
     }
 
-    fn process_expression(&self, expr: ::ast::parsed::Expression<T>) -> Expression<T> {
+    fn process_expression(&self, expr: ::powdr_ast::parsed::Expression<T>) -> Expression<T> {
         self.expression_processor().process_expression(expr)
     }
 
     fn process_selected_expressions(
         &self,
-        expr: ::ast::parsed::SelectedExpressions<::ast::parsed::Expression<T>>,
+        expr: ::powdr_ast::parsed::SelectedExpressions<::powdr_ast::parsed::Expression<T>>,
     ) -> SelectedExpressions<Expression<T>> {
         self.expression_processor()
             .process_selected_expressions(expr)

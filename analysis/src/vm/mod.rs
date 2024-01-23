@@ -1,8 +1,8 @@
 //! Analysis for VM machines, reducing them to constrained machines
 //! Machines which do not have a pc should be left unchanged by this
 
-use ast::{asm_analysis::AnalysisASMFile, DiffMonitor};
-use number::FieldElement;
+use powdr_ast::{asm_analysis::AnalysisASMFile, DiffMonitor};
+use powdr_number::FieldElement;
 
 pub mod batcher;
 pub mod inference;
@@ -30,7 +30,7 @@ mod test_utils {
     /// A test utility to process a source file until after inference
     pub fn infer_str<T: FieldElement>(source: &str) -> Result<AnalysisASMFile<T>, Vec<String>> {
         let machines =
-            crate::machine_check::check(importer::load_dependencies_and_resolve_str(source))
+            crate::machine_check::check(powdr_importer::load_dependencies_and_resolve_str(source))
                 .unwrap();
         inference::infer(machines)
     }

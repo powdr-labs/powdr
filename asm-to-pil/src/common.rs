@@ -1,5 +1,5 @@
 /// Values which are common to many steps from asm to PIL
-use number::FieldElement;
+use powdr_number::FieldElement;
 
 use crate::utils::parse_instruction;
 
@@ -31,7 +31,7 @@ pub fn output_at(i: usize) -> String {
 pub fn return_instruction<T: FieldElement>(
     output_count: usize,
     pc_name: &str,
-) -> ast::asm_analysis::Instruction<T> {
+) -> powdr_ast::asm_analysis::Instruction<T> {
     parse_instruction(&format!(
         "{} {{ {pc_name}' = 0 }}",
         output_registers(output_count).join(", ")

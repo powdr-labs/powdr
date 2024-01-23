@@ -4,11 +4,11 @@ use std::fs;
 use std::iter::once;
 use std::path::{Path, PathBuf};
 
-use ast::parsed::asm::{AbsoluteSymbolPath, SymbolPath};
-use ast::parsed::{PILFile, PilStatement};
-use number::{DegreeType, FieldElement};
+use powdr_ast::parsed::asm::{AbsoluteSymbolPath, SymbolPath};
+use powdr_ast::parsed::{PILFile, PilStatement};
+use powdr_number::{DegreeType, FieldElement};
 
-use ast::analyzed::{
+use powdr_ast::analyzed::{
     Analyzed, Expression, FunctionValueDefinition, Identity, PublicDeclaration,
     StatementIdentifier, Symbol,
 };
@@ -33,7 +33,7 @@ pub fn process_pil_ast<T: FieldElement>(pil_file: PILFile<T>) -> Analyzed<T> {
 }
 
 pub fn process_pil_file_contents<T: FieldElement>(contents: &str) -> Analyzed<T> {
-    let pil_file = parser::parse(Some("input"), contents).unwrap_or_else(|err| {
+    let pil_file = powdr_parser::parse(Some("input"), contents).unwrap_or_else(|err| {
         eprintln!("Error parsing .pil file:");
         err.output_to_stderr();
         panic!();
@@ -75,7 +75,7 @@ fn import_all_dependencies_internal<T: FieldElement>(
 
     let contents = fs::read_to_string(path.clone()).unwrap();
 
-    let ast = parser::parse(Some(path.to_str().unwrap()), &contents).unwrap_or_else(|err| {
+    let ast = powdr_parser::parse(Some(path.to_str().unwrap()), &contents).unwrap_or_else(|err| {
         eprintln!("Error parsing .pil file:");
         err.output_to_stderr();
         panic!();
@@ -194,7 +194,7 @@ impl<T: FieldElement> PILAnalyzer<T> {
         }
     }
 
-    fn handle_namespace(&mut self, name: SymbolPath, degree: ::ast::parsed::Expression<T>) {
+    fn handle_namespace(&mut self, name: SymbolPath, degree: ::powdr_ast::parsed::Expression<T>) {
         // TODO: the polynomial degree should be handled without going through a field element. This requires having types in Expression
         let degree = ExpressionProcessor::new(self.driver()).process_expression(degree);
         let namespace_degree = evaluator::evaluate_expression(&degree, &self.definitions)
@@ -254,7 +254,7 @@ impl<'a, T: FieldElement> AnalysisDriver<T> for Driver<'a, T> {
 
 #[cfg(test)]
 mod test {
-    use number::GoldilocksField;
+    use powdr_number::GoldilocksField;
     use test_log::test;
 
     use pretty_assertions::assert_eq;

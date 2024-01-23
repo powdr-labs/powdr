@@ -1,12 +1,12 @@
 use std::collections::{BTreeSet, HashMap};
 
-use ast::{
+use powdr_ast::{
     asm_analysis::{AnalysisASMFile, RegisterTy},
     parsed::asm::parse_absolute_path,
 };
-use number::FieldElement;
-use pipeline::{Pipeline, Stage};
-use riscv_executor::ExecutionTrace;
+use powdr_number::FieldElement;
+use powdr_pipeline::{Pipeline, Stage};
+use powdr_riscv_executor::ExecutionTrace;
 
 pub mod bootloader;
 mod memory_merkle_tree;
@@ -136,7 +136,7 @@ pub fn rust_continuations_dry_run<F: FieldElement>(mut pipeline: Pipeline<F>) ->
 
     log::info!("Executing powdr-asm...");
     let (full_trace, memory_accesses) = {
-        let trace = riscv_executor::execute_ast::<F>(
+        let trace = powdr_riscv_executor::execute_ast::<F>(
             program,
             pipeline.data_callback().unwrap(),
             // Run full trace without any accessed pages. This would actually violate the
@@ -145,7 +145,7 @@ pub fn rust_continuations_dry_run<F: FieldElement>(mut pipeline: Pipeline<F>) ->
             // we only know them after the full trace has been generated.
             &default_input(&[]),
             usize::MAX,
-            riscv_executor::ExecMode::Trace,
+            powdr_riscv_executor::ExecMode::Trace,
         )
         .0;
         (transposed_trace::<F>(&trace), trace.mem_ops)
@@ -233,12 +233,12 @@ pub fn rust_continuations_dry_run<F: FieldElement>(mut pipeline: Pipeline<F>) ->
 
         log::info!("Simulating chunk execution...");
         let (chunk_trace, memory_snapshot_update) = {
-            let (trace, memory_snapshot_update) = riscv_executor::execute_ast::<F>(
+            let (trace, memory_snapshot_update) = powdr_riscv_executor::execute_ast::<F>(
                 program,
                 pipeline.data_callback().unwrap(),
                 &bootloader_inputs,
                 num_rows,
-                riscv_executor::ExecMode::Trace,
+                powdr_riscv_executor::ExecMode::Trace,
             );
             (transposed_trace(&trace), memory_snapshot_update)
         };

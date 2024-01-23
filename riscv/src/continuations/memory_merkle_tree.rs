@@ -4,8 +4,8 @@ use super::bootloader::{
     BYTES_PER_WORD, N_LEAVES_LOG as N_LEAVES_LOG_BOOTLOADER,
     WORDS_PER_PAGE as WORDS_PER_PAGE_BOOTLOADER,
 };
-use number::FieldElement;
-use riscv_executor::poseidon_gl::poseidon_gl;
+use powdr_number::FieldElement;
+use powdr_riscv_executor::poseidon_gl::poseidon_gl;
 
 /// A Merkle tree of memory pages.
 pub struct MerkleTree<
@@ -151,7 +151,7 @@ impl<T: FieldElement, const N_LEAVES_LOG: usize, const WORDS_PER_PAGE: usize>
 
 #[cfg(test)]
 mod test {
-    use number::GoldilocksField;
+    use powdr_number::GoldilocksField;
 
     use super::*;
 

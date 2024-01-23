@@ -1,10 +1,10 @@
-use ast::analyzed::{
-    AlgebraicExpression as Expression, AlgebraicReference, Identity, IdentityKind, PolyID,
-};
 use indicatif::{ProgressBar, ProgressStyle};
 use itertools::Itertools;
-use number::{DegreeType, FieldElement};
-use parser_util::lines::indent;
+use powdr_ast::analyzed::{
+    AlgebraicExpression as Expression, AlgebraicReference, Identity, IdentityKind, PolyID,
+};
+use powdr_number::{DegreeType, FieldElement};
+use powdr_parser_util::lines::indent;
 use std::cmp::max;
 use std::collections::HashSet;
 use std::time::Instant;

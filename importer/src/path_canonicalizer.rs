@@ -1,12 +1,12 @@
 /// Replace all relative paths in the program with absolute paths to the canonical symbol they point to, and remove all import statements in the program
-use number::FieldElement;
+use powdr_number::FieldElement;
 
 use std::{
     collections::{BTreeMap, BTreeSet, HashSet},
     convert::Infallible,
 };
 
-use ast::{
+use powdr_ast::{
     parsed::Expression,
     parsed::{
         asm::{
@@ -416,15 +416,15 @@ fn check_expression<T: Clone>(
             check_expression(location, scrutinee, state, local_variables)?;
             arms.iter().try_for_each(|MatchArm { pattern, value }| {
                 match pattern {
-                    ast::parsed::MatchPattern::CatchAll => Ok(()),
-                    ast::parsed::MatchPattern::Pattern(e) => {
+                    powdr_ast::parsed::MatchPattern::CatchAll => Ok(()),
+                    powdr_ast::parsed::MatchPattern::Pattern(e) => {
                         check_expression(location, e, state, local_variables)
                     }
                 }?;
                 check_expression(location, value, state, local_variables)
             })
         }
-        Expression::IfExpression(ast::parsed::IfExpression {
+        Expression::IfExpression(powdr_ast::parsed::IfExpression {
             condition,
             body,
             else_body,
@@ -452,7 +452,7 @@ mod tests {
     use std::path::PathBuf;
 
     use super::*;
-    use number::Bn254Field;
+    use powdr_number::Bn254Field;
     use pretty_assertions::assert_eq;
 
     fn expect(path: &str, expected: Result<(), &str>) {
@@ -460,7 +460,7 @@ mod tests {
             .join(path)
             .with_extension("asm");
         let input_str = std::fs::read_to_string(input_path).unwrap();
-        let parsed = parser::parse_asm::<Bn254Field>(None, &input_str).unwrap();
+        let parsed = powdr_parser::parse_asm::<Bn254Field>(None, &input_str).unwrap();
 
         let res = canonicalize_paths(parsed).map(|res| res.to_string().replace('\t', "    "));
         let expected = expected

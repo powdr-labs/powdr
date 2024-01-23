@@ -1,4 +1,3 @@
-use ast::parsed::SelectedExpressions;
 use halo2_curves::bn256::Fr;
 use halo2_curves::ff::FromUniformBytes;
 use num_bigint::BigUint;
@@ -8,12 +7,13 @@ use polyexen::plaf::{
     ColumnFixed, ColumnPublic, ColumnWitness, Columns, CopyC, Info, Lookup, Plaf, Poly, Shuffle,
     Witness,
 };
+use powdr_ast::parsed::SelectedExpressions;
 
-use ast::analyzed::{
+use num_traits::{One, ToPrimitive};
+use powdr_ast::analyzed::{
     AlgebraicBinaryOperator, AlgebraicExpression as Expression, Analyzed, IdentityKind,
 };
-use num_traits::{One, ToPrimitive};
-use number::{BigInt, FieldElement};
+use powdr_number::{BigInt, FieldElement};
 
 use super::circuit_data::CircuitData;
 

@@ -4,8 +4,8 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-executor = { path = "../executor" }
-number = { path = "../number" }
-pipeline = { path = "../pipeline" }
-riscv = { path = "../riscv" }
-riscv_executor = { path = "../riscv_executor" }
+powdr-executor = { path = "../executor" }
+powdr-number = { path = "../number" }
+powdr-pipeline = { path = "../pipeline" }
+powdr-riscv = { path = "../riscv" }
+powdr-riscv-executor = { path = "../riscv-executor" }

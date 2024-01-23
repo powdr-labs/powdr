@@ -11,7 +11,7 @@ use std::{
 
 use itertools::Either;
 use num_bigint::BigUint;
-use number::FieldElement;
+use powdr_number::FieldElement;
 
 use crate::parsed::{
     asm::{

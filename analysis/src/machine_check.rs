@@ -2,7 +2,7 @@
 
 use std::{collections::BTreeMap, marker::PhantomData};
 
-use ast::{
+use powdr_ast::{
     asm_analysis::{
         AnalysisASMFile, AssignmentStatement, CallableSymbolDefinitions, DebugDirective,
         DegreeStatement, FunctionBody, FunctionStatements, FunctionSymbol, Instruction,
@@ -19,7 +19,7 @@ use ast::{
         },
     },
 };
-use number::FieldElement;
+use powdr_number::FieldElement;
 
 /// Verifies certain properties of each machine and constructs the Machine objects.
 /// Also transfers generic PIL definitions but does not verify anything about them.
@@ -323,9 +323,9 @@ impl<T: FieldElement> TypeChecker<T> {
             let errors: Vec<_> = statements
                 .iter()
                 .filter_map(|s| match s {
-                    ast::parsed::PilStatement::PolynomialIdentity(_, _) => None,
-                    ast::parsed::PilStatement::PermutationIdentity(_, l, _)
-                    | ast::parsed::PilStatement::PlookupIdentity(_, l, _) => l
+                    powdr_ast::parsed::PilStatement::PolynomialIdentity(_, _) => None,
+                    powdr_ast::parsed::PilStatement::PermutationIdentity(_, l, _)
+                    | powdr_ast::parsed::PilStatement::PlookupIdentity(_, l, _) => l
                         .selector
                         .is_some()
                         .then_some(format!("LHS selector not yet supported in {s}.")),
@@ -345,8 +345,8 @@ impl<T: FieldElement> TypeChecker<T> {
 
 #[cfg(test)]
 mod tests {
-    use importer::load_dependencies_and_resolve_str;
-    use number::Bn254Field;
+    use powdr_importer::load_dependencies_and_resolve_str;
+    use powdr_number::Bn254Field;
 
     use super::check;
 

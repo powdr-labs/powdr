@@ -2,18 +2,18 @@
 
 use std::{collections::HashMap, iter::repeat};
 
-use ast::asm_analysis::{
+use powdr_ast::asm_analysis::{
     Batch, CallableSymbol, FunctionStatement, FunctionSymbol, Incompatible, IncompatibleSet,
     Machine, OperationSymbol, Rom,
 };
-use ast::parsed::visitor::ExpressionVisitable;
-use ast::parsed::NamespacedPolynomialReference;
-use ast::parsed::{
+use powdr_ast::parsed::visitor::ExpressionVisitable;
+use powdr_ast::parsed::NamespacedPolynomialReference;
+use powdr_ast::parsed::{
     asm::{OperationId, Param, ParamList, Params},
     Expression,
 };
-use ast::SourceRef;
-use number::FieldElement;
+use powdr_ast::SourceRef;
+use powdr_number::FieldElement;
 
 use crate::{
     common::{input_at, output_at, RESET_NAME},
@@ -246,19 +246,19 @@ pub fn generate_machine_rom<T: FieldElement>(
 mod tests {
     use std::collections::BTreeMap;
 
-    use ast::{
+    use powdr_ast::{
         asm_analysis::Item,
         parsed::asm::{parse_absolute_path, AbsoluteSymbolPath},
     };
-    use number::Bn254Field;
+    use powdr_number::Bn254Field;
     use pretty_assertions::assert_eq;
 
     // generate the rom from source. Note that only type checking is applied before this.
     fn generate_rom_str<T: FieldElement>(
         src: &str,
     ) -> BTreeMap<AbsoluteSymbolPath, (Machine<T>, Option<Rom<T>>)> {
-        let parsed = parser::parse_asm(None, src).unwrap();
-        let checked = analysis::machine_check::check(parsed).unwrap();
+        let parsed = powdr_parser::parse_asm(None, src).unwrap();
+        let checked = powdr_analysis::machine_check::check(parsed).unwrap();
         checked
             .items
             .into_iter()

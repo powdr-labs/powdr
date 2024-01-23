@@ -3,7 +3,7 @@ use std::{
     ops::{Index, IndexMut},
 };
 
-use ast::analyzed::{PolyID, PolynomialType};
+use powdr_ast::analyzed::{PolyID, PolynomialType};
 
 // Marker types for each PolynomialType
 #[derive(Clone, Copy)]

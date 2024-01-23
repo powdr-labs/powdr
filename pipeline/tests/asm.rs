@@ -1,5 +1,5 @@
-use number::{FieldElement, GoldilocksField};
-use pipeline::test_util::{gen_estark_proof, gen_halo2_proof, verify_test_file};
+use powdr_number::{FieldElement, GoldilocksField};
+use powdr_pipeline::test_util::{gen_estark_proof, gen_halo2_proof, verify_test_file};
 use test_log::test;
 
 fn verify_asm<T: FieldElement>(file_name: &str, inputs: Vec<T>) {
@@ -316,7 +316,7 @@ fn pil_at_module_level() {
 
 mod book {
     use super::*;
-    use number::GoldilocksField;
+    use powdr_number::GoldilocksField;
     use test_log::test;
 
     fn run_book_test(file: &str) {

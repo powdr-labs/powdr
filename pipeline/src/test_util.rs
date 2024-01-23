@@ -1,6 +1,6 @@
-use backend::BackendType;
-use number::FieldElement;
-use number::{Bn254Field, GoldilocksField};
+use powdr_backend::BackendType;
+use powdr_number::FieldElement;
+use powdr_number::{Bn254Field, GoldilocksField};
 use std::path::PathBuf;
 
 use crate::pipeline::{Pipeline, Stage};
@@ -60,7 +60,7 @@ pub fn gen_estark_proof(file_name: &str, inputs: Vec<GoldilocksField>) {
         .with_tmp_output()
         .from_file(PathBuf::from(file_name))
         .with_prover_inputs(inputs)
-        .with_backend(backend::BackendType::EStark)
+        .with_backend(powdr_backend::BackendType::EStark)
         .proof()
         .unwrap();
 }
@@ -72,7 +72,7 @@ pub fn gen_halo2_proof(file_name: &str, inputs: Vec<Bn254Field>) {
         .with_tmp_output()
         .from_file(PathBuf::from(file_name))
         .with_prover_inputs(inputs)
-        .with_backend(backend::BackendType::Halo2)
+        .with_backend(powdr_backend::BackendType::Halo2)
         .proof()
         .unwrap();
 }

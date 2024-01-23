@@ -12,11 +12,11 @@ pub mod verify;
 pub use pipeline::Pipeline;
 pub use pipeline::Stage;
 
-pub use backend::{BackendType, Proof};
-use executor::witgen::QueryCallback;
 use itertools::Itertools;
+pub use powdr_backend::{BackendType, Proof};
+use powdr_executor::witgen::QueryCallback;
 
-use number::FieldElement;
+use powdr_number::FieldElement;
 
 pub fn parse_query(query: &str) -> Result<Vec<&str>, String> {
     // We are expecting a tuple

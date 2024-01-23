@@ -6,7 +6,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fmt::Display;
 use std::ops::{self, ControlFlow};
 
-use number::{DegreeType, FieldElement};
+use powdr_number::{DegreeType, FieldElement};
 
 use crate::parsed::utils::expr_any;
 use crate::parsed::visitor::ExpressionVisitable;

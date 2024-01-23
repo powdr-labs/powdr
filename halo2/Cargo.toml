@@ -1,12 +1,13 @@
 [package]
-name = "halo2"
+name = "powdr-halo2"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-number = { path = "../number" }
-pil_analyzer = { path = "../pil_analyzer" }
-ast = { path = "../ast" }
+powdr-ast = { path = "../ast" }
+powdr-number = { path = "../number" }
+powdr-pil-analyzer = { path = "../pil-analyzer" }
+
 polyexen = { git = "https://github.com/Dhole/polyexen", branch = "feature/shuffles" }
 halo2_proofs = "0.2"
 halo2_curves = { git = "https://github.com/privacy-scaling-explorations/halo2curves", tag = "0.3.2", package = "halo2curves" }
@@ -19,12 +20,13 @@ log = "0.4.17"
 rand = "0.8.5"
 
 [dev-dependencies]
-importer = { path = "../importer" }
-analysis = { path = "../analysis" }
-pipeline = { path = "../pipeline" }
-executor = { path = "../executor" }
-parser = { path = "../parser" }
-airgen = { path = "../airgen" }
+powdr-airgen = { path = "../airgen" }
+powdr-analysis = { path = "../analysis" }
+powdr-executor = { path = "../executor" }
+powdr-importer = { path = "../importer" }
+powdr-linker = { path = "../linker" }
+powdr-parser = { path = "../parser" }
+powdr-pipeline = { path = "../pipeline" }
+
 test-log = "0.2.12"
 env_logger = "0.10.0"
-linker = { path = "../linker" }

@@ -3,9 +3,9 @@ use std::{
     ops::{Index, IndexMut},
 };
 
-use ast::analyzed::PolyID;
 use bit_vec::BitVec;
-use number::FieldElement;
+use powdr_ast::analyzed::PolyID;
+use powdr_number::FieldElement;
 
 use crate::witgen::rows::Row;
 

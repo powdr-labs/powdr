@@ -1,10 +1,10 @@
 //! Infer assignment registers in asm statements
 
-use ast::{
+use powdr_ast::{
     asm_analysis::{AnalysisASMFile, Expression, FunctionStatement, Item, Machine},
     parsed::asm::AssignmentRegister,
 };
-use number::FieldElement;
+use powdr_number::FieldElement;
 
 pub fn infer<T: FieldElement>(file: AnalysisASMFile<T>) -> Result<AnalysisASMFile<T>, Vec<String>> {
     let mut errors = vec![];
@@ -99,8 +99,8 @@ fn infer_machine<T: FieldElement>(mut machine: Machine<T>) -> Result<Machine<T>,
 
 #[cfg(test)]
 mod tests {
-    use ast::{asm_analysis::AssignmentStatement, parsed::asm::parse_absolute_path};
-    use number::Bn254Field;
+    use powdr_ast::{asm_analysis::AssignmentStatement, parsed::asm::parse_absolute_path};
+    use powdr_number::Bn254Field;
 
     use crate::vm::test_utils::infer_str;
 

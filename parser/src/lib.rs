@@ -2,12 +2,12 @@
 
 #![deny(clippy::print_stdout)]
 
-use ast::parsed::asm::ASMProgram;
-use ast::SourceRef;
 use lalrpop_util::*;
+use powdr_ast::parsed::asm::ASMProgram;
+use powdr_ast::SourceRef;
 
-use number::FieldElement;
-use parser_util::{handle_parse_error, ParseError};
+use powdr_number::FieldElement;
+use powdr_parser_util::{handle_parse_error, ParseError};
 
 use std::sync::Arc;
 
@@ -26,12 +26,12 @@ impl ParserContext {
     pub fn new(file_name: Option<&str>, input: &str) -> Self {
         Self {
             file_name: file_name.map(|s| s.into()),
-            line_starts: parser_util::lines::compute_line_starts(input),
+            line_starts: powdr_parser_util::lines::compute_line_starts(input),
         }
     }
 
     pub fn source_ref(&self, offset: usize) -> SourceRef {
-        let (line, col) = parser_util::lines::offset_to_line_col(offset, &self.line_starts);
+        let (line, col) = powdr_parser_util::lines::offset_to_line_col(offset, &self.line_starts);
         SourceRef {
             file: self.file_name.clone(),
             line,
@@ -43,7 +43,7 @@ impl ParserContext {
 pub fn parse<'a, T: FieldElement>(
     file_name: Option<&str>,
     input: &'a str,
-) -> Result<ast::parsed::PILFile<T>, ParseError<'a>> {
+) -> Result<powdr_ast::parsed::PILFile<T>, ParseError<'a>> {
     let ctx = ParserContext::new(file_name, input);
     powdr::PILFileParser::new()
         .parse(&ctx, input)
@@ -53,14 +53,14 @@ pub fn parse<'a, T: FieldElement>(
 pub fn parse_asm<'a, T: FieldElement>(
     file_name: Option<&str>,
     input: &'a str,
-) -> Result<ast::parsed::asm::ASMProgram<T>, ParseError<'a>> {
+) -> Result<powdr_ast::parsed::asm::ASMProgram<T>, ParseError<'a>> {
     parse_module(file_name, input).map(|main| ASMProgram { main })
 }
 
 pub fn parse_module<'a, T: FieldElement>(
     file_name: Option<&str>,
     input: &'a str,
-) -> Result<ast::parsed::asm::ASMModule<T>, ParseError<'a>> {
+) -> Result<powdr_ast::parsed::asm::ASMModule<T>, ParseError<'a>> {
     let ctx = ParserContext::new(file_name, input);
     powdr::ASMModuleParser::new()
         .parse(&ctx, input)
@@ -70,11 +70,11 @@ pub fn parse_module<'a, T: FieldElement>(
 #[cfg(test)]
 mod test {
     use super::*;
-    use ast::parsed::{
+    use powdr_ast::parsed::{
         build::direct_reference, PILFile, PilStatement, PolynomialName, SelectedExpressions,
     };
-    use number::GoldilocksField;
-    use parser_util::UnwrapErrToStderr;
+    use powdr_number::GoldilocksField;
+    use powdr_parser_util::UnwrapErrToStderr;
     use std::fs;
     use test_log::test;
 
@@ -214,9 +214,9 @@ mod test {
     }
 
     mod display {
-        use number::GoldilocksField;
+        use powdr_number::GoldilocksField;
 
-        use parser_util::UnwrapErrToStderr;
+        use powdr_parser_util::UnwrapErrToStderr;
         use pretty_assertions::assert_eq;
 
         use crate::parse;
