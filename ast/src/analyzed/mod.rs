@@ -674,14 +674,12 @@ impl TryFrom<BinaryOperator> for AlgebraicBinaryOperator {
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
 pub enum AlgebraicUnaryOperator {
-    Plus,
     Minus,
 }
 
 impl From<AlgebraicUnaryOperator> for UnaryOperator {
     fn from(op: AlgebraicUnaryOperator) -> UnaryOperator {
         match op {
-            AlgebraicUnaryOperator::Plus => UnaryOperator::Plus,
             AlgebraicUnaryOperator::Minus => UnaryOperator::Minus,
         }
     }
@@ -692,7 +690,6 @@ impl TryFrom<UnaryOperator> for AlgebraicUnaryOperator {
 
     fn try_from(op: UnaryOperator) -> Result<Self, Self::Error> {
         match op {
-            UnaryOperator::Plus => Ok(AlgebraicUnaryOperator::Plus),
             UnaryOperator::Minus => Ok(AlgebraicUnaryOperator::Minus),
             _ => Err(format!(
                 "Unary operator {op} not allowed in algebraic expression."

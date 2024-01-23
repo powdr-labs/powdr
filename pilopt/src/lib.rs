@@ -113,7 +113,6 @@ fn simplify_expression_single<T: FieldElement>(e: &mut AlgebraicExpression<T>) {
     if let AlgebraicExpression::UnaryOperation(op, inner) = e {
         if let AlgebraicExpression::Number(inner) = **inner {
             *e = AlgebraicExpression::Number(match op {
-                AlgebraicUnaryOperator::Plus => inner,
                 AlgebraicUnaryOperator::Minus => -inner,
             });
             return;

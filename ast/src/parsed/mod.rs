@@ -292,7 +292,6 @@ pub struct ArrayLiteral<T, Ref = NamespacedPolynomialReference> {
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
 pub enum UnaryOperator {
-    Plus,
     Minus,
     LogicalNot,
     Next,
@@ -302,7 +301,7 @@ impl UnaryOperator {
     /// Returns true if the operator is a prefix-operator and false if it is a postfix operator.
     pub fn is_prefix(&self) -> bool {
         match self {
-            UnaryOperator::Plus | UnaryOperator::Minus | UnaryOperator::LogicalNot => true,
+            UnaryOperator::Minus | UnaryOperator::LogicalNot => true,
             UnaryOperator::Next => false,
         }
     }
