@@ -778,7 +778,6 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
             Expression::UnaryOperation(op, arg) => {
                 let arg = self.eval_expression(arg)[0];
                 let result = match op {
-                    ast::parsed::UnaryOperator::Plus => arg.0,
                     ast::parsed::UnaryOperator::Minus => -arg.0,
                     ast::parsed::UnaryOperator::LogicalNot => todo!(),
                     ast::parsed::UnaryOperator::Next => unreachable!(),

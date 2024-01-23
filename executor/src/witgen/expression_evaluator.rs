@@ -105,7 +105,6 @@ where
         expr: &'a Expression<T>,
     ) -> AffineResult<&'a AlgebraicReference, T> {
         self.evaluate(expr).map(|v| match op {
-            AlgebraicUnaryOperator::Plus => v,
             AlgebraicUnaryOperator::Minus => -v,
         })
     }

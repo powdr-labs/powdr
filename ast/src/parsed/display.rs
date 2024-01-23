@@ -540,7 +540,6 @@ impl Display for UnaryOperator {
             "{}",
             match self {
                 UnaryOperator::Minus => "-",
-                UnaryOperator::Plus => "+",
                 UnaryOperator::LogicalNot => "!",
                 UnaryOperator::Next => "'",
             }

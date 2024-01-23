@@ -335,7 +335,6 @@ impl<'a, T: FieldElement> Exporter<'a, T> {
             Expression::UnaryOperation(op, value) => {
                 let (deg, value) = self.expression_to_json(value);
                 match op {
-                    AlgebraicUnaryOperator::Plus => (deg, value),
                     AlgebraicUnaryOperator::Minus => (
                         deg,
                         StarkyExpr {

@@ -473,7 +473,6 @@ Unary: Box<Expression<T>> = {
 }
 
 PrefixUnaryOp: UnaryOperator = {
-    "+" => UnaryOperator::Plus,
     "-" => UnaryOperator::Minus,
     "!" => UnaryOperator::LogicalNot,
 }

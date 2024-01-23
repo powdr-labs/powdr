@@ -86,7 +86,6 @@ pub fn evaluate_binary_operation<T: FieldElement>(left: T, op: BinaryOperator, r
 
 pub fn evaluate_unary_operation<T: FieldElement>(op: UnaryOperator, v: T) -> T {
     match op {
-        UnaryOperator::Plus => v,
         UnaryOperator::Minus => -v,
         UnaryOperator::LogicalNot => v.is_zero().into(),
         UnaryOperator::Next => panic!("Cannot evaluate \"'\"."),
