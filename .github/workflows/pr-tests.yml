@@ -48,7 +48,7 @@ jobs:
     - name: Install pilcom
       run: git clone https://github.com/0xPolygonHermez/pilcom.git  && cd pilcom && npm install
     - name: Build
-      run: cargo build --all --all-features --profile pr-tests
+      run: cargo build --all-targets --all --all-features --profile pr-tests
     - name: Run default tests
       run: PILCOM=$(pwd)/pilcom/ cargo test --all --all-features --profile pr-tests --verbose
     - name: Run slow tests
