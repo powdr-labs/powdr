@@ -548,7 +548,20 @@ StringLiteral: String = {
 }
 
 Identifier: String = {
-    r"[a-zA-Z_][a-zA-Z$_0-9@]*" => <>.to_string()
+    r"[a-zA-Z_][a-zA-Z$_0-9@]*" => <>.to_string(),
+    SpecialIdentifier => <>.to_string(),
+}
+
+// These identifier are special in the way that the lexer would treat them as keywords,
+// but these keywords can never occur in a place where an identifier can be expected,
+// so we allow them as identifiers as well.
+SpecialIdentifier: &'input str = {
+    "file",
+    "loc",
+    "insn",
+    "int",
+    "fe",
+    "bool",
 }
 
 ConstantIdentifier: String = {
