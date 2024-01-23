@@ -13,6 +13,7 @@ use std::{
 use number::{DegreeType, FieldElement};
 
 use self::asm::{Part, SymbolPath};
+use crate::SourceRef;
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct PILFile<T>(pub Vec<PilStatement<T>>);
@@ -20,13 +21,13 @@ pub struct PILFile<T>(pub Vec<PilStatement<T>>);
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub enum PilStatement<T> {
     /// File name
-    Include(usize, String),
+    Include(SourceRef, String),
     /// Name of namespace and polynomial degree (constant)
-    Namespace(usize, SymbolPath, Expression<T>),
-    LetStatement(usize, String, Option<Expression<T>>),
-    PolynomialDefinition(usize, String, Expression<T>),
+    Namespace(SourceRef, SymbolPath, Expression<T>),
+    LetStatement(SourceRef, String, Option<Expression<T>>),
+    PolynomialDefinition(SourceRef, String, Expression<T>),
     PublicDeclaration(
-        usize,
+        SourceRef,
         /// The name of the public value.
         String,
         /// The polynomial/column that contains the public value.
@@ -36,23 +37,27 @@ pub enum PilStatement<T> {
         /// The row number of the public value.
         Expression<T>,
     ),
-    PolynomialConstantDeclaration(usize, Vec<PolynomialName<T>>),
-    PolynomialConstantDefinition(usize, String, FunctionDefinition<T>),
-    PolynomialCommitDeclaration(usize, Vec<PolynomialName<T>>, Option<FunctionDefinition<T>>),
-    PolynomialIdentity(usize, Expression<T>),
+    PolynomialConstantDeclaration(SourceRef, Vec<PolynomialName<T>>),
+    PolynomialConstantDefinition(SourceRef, String, FunctionDefinition<T>),
+    PolynomialCommitDeclaration(
+        SourceRef,
+        Vec<PolynomialName<T>>,
+        Option<FunctionDefinition<T>>,
+    ),
+    PolynomialIdentity(SourceRef, Expression<T>),
     PlookupIdentity(
-        usize,
+        SourceRef,
         SelectedExpressions<Expression<T>>,
         SelectedExpressions<Expression<T>>,
     ),
     PermutationIdentity(
-        usize,
+        SourceRef,
         SelectedExpressions<Expression<T>>,
         SelectedExpressions<Expression<T>>,
     ),
-    ConnectIdentity(usize, Vec<Expression<T>>, Vec<Expression<T>>),
-    ConstantDefinition(usize, String, Expression<T>),
-    Expression(usize, Expression<T>),
+    ConnectIdentity(SourceRef, Vec<Expression<T>>, Vec<Expression<T>>),
+    ConstantDefinition(SourceRef, String, Expression<T>),
+    Expression(SourceRef, Expression<T>),
 }
 
 impl<T> PilStatement<T> {

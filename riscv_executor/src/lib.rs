@@ -489,7 +489,7 @@ fn preprocess_main_function<T: FieldElement>(machine: &Machine<T>) -> Preprocess
                         }
                     }
                 }
-                FunctionStatement::Label(LabelStatement { start: _, name }) => {
+                FunctionStatement::Label(LabelStatement { source: _, name }) => {
                     // assert there are no statements in the middle of a block
                     assert!(!statement_seen);
                     label_map.insert(name.as_str(), ((batch_idx + PC_INITIAL_VAL) as i64).into());

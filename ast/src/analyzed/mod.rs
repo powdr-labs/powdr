@@ -13,6 +13,7 @@ use crate::parsed::visitor::ExpressionVisitable;
 pub use crate::parsed::BinaryOperator;
 pub use crate::parsed::UnaryOperator;
 use crate::parsed::{self, SelectedExpressions};
+use crate::SourceRef;
 
 #[derive(Debug)]
 pub enum StatementIdentifier {
@@ -810,10 +811,4 @@ impl Display for PolynomialType {
             }
         )
     }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SourceRef {
-    pub file: String, // TODO should maybe be a shared pointer
-    pub line: usize,
 }

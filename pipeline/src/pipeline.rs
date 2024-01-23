@@ -483,12 +483,8 @@ impl<T: FieldElement> Pipeline<T> {
                 Artifact::ParsedPilFile(linked)
             }
             Artifact::ParsedPilFile(linked) => {
-                // TODO: We should probably offer a way to analyze a PILFile directly,
-                // i.e. without going through a string.
-                self.log("Materialize linked file");
-                let linked = format!("{linked}");
                 self.log("Analyzing pil...");
-                Artifact::AnalyzedPil(pil_analyzer::analyze_string(&linked))
+                Artifact::AnalyzedPil(pil_analyzer::analyze_ast(linked))
             }
             Artifact::PilFilePath(pil_file) => {
                 self.log("Analyzing pil...");

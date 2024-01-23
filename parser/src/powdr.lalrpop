@@ -2,8 +2,9 @@ use std::str::FromStr;
 use ast::parsed::{*, asm::*};
 use number::{AbstractNumberType, FieldElement};
 use num_traits::Num;
+use crate::ParserContext;
 
-grammar<T> where T: FieldElement;
+grammar<T>(ctx: &ParserContext) where T: FieldElement;
 
 match {
     r"\s*" => { },
@@ -14,7 +15,6 @@ match {
 
 pub PILFile: PILFile<T> = {
     (<PilStatement> ";")* => PILFile(<>)
-
 };
 
 pub ASMModule: ASMModule<T> = {
@@ -80,39 +80,39 @@ pub PilStatement = {
 };
 
 Include: PilStatement<T> = {
-    <start:@L> "include" <file:StringLiteral> => PilStatement::Include(<>)
+    <start:@L> "include" <file:StringLiteral> => PilStatement::Include(ctx.source_ref(start), file)
 };
 
 Namespace: PilStatement<T> = {
-    <start:@L> "namespace" <name:SymbolPath> "(" <pol_degree:Expression> ")" => PilStatement::Namespace(<>)
+    <start:@L> "namespace" <name:SymbolPath> "(" <pol_degree:Expression> ")" => PilStatement::Namespace(ctx.source_ref(start), name, pol_degree)
 }
 
 LetStatement: PilStatement<T> = {
-    <@L> "let" <Identifier> <( "=" <Expression> )?> => PilStatement::LetStatement(<>)
+    <start:@L> "let" <id:Identifier> <expr:( "=" <Expression> )?> => PilStatement::LetStatement(ctx.source_ref(start), id, expr)
 }
 
 ConstantDefinition: PilStatement<T> = {
-    <@L> "constant" <ConstantIdentifier> "=" <Expression> => PilStatement::ConstantDefinition(<>)
+    <start:@L> "constant" <id:ConstantIdentifier> "=" <expr:Expression> => PilStatement::ConstantDefinition(ctx.source_ref(start), id, expr)
 }
 
 PolynomialDefinition: PilStatement<T> = {
-    <@L> PolCol <Identifier> "=" <Expression> => PilStatement::PolynomialDefinition(<>)
+    <start:@L> PolCol <id:Identifier> "=" <expr:Expression> => PilStatement::PolynomialDefinition(ctx.source_ref(start), id, expr)
 }
 
 PublicDeclaration: PilStatement<T> = {
-    <@L> "public" <Identifier> "="
-        <NamespacedPolynomialReference>
-        <("[" <Expression> "]")?>
-        "(" <Expression> ")" => PilStatement::PublicDeclaration(<>)
+    <start:@L> "public" <id:Identifier> "="
+        <poly:NamespacedPolynomialReference>
+        <expr1:("[" <Expression> "]")?>
+        "(" <expr2:Expression> ")" => PilStatement::PublicDeclaration(ctx.source_ref(start), id, poly, expr1, expr2)
 }
 
 PolynomialConstantDeclaration: PilStatement<T> = {
-    <@L> PolCol ConstantFixed <PolynomialNameList> => PilStatement::PolynomialConstantDeclaration(<>)
+    <start:@L> PolCol ConstantFixed <list:PolynomialNameList> => PilStatement::PolynomialConstantDeclaration(ctx.source_ref(start), list)
 }
 
 PolynomialConstantDefinition: PilStatement<T> = {
-    <@L> PolCol ConstantFixed <Identifier> <FunctionDefinition>
-        => PilStatement::PolynomialConstantDefinition(<>)
+    <start:@L> PolCol ConstantFixed <id:Identifier> <def:FunctionDefinition>
+        => PilStatement::PolynomialConstantDefinition(ctx.source_ref(start), id, def)
 }
 
 FunctionDefinition: FunctionDefinition<T> = {
@@ -136,17 +136,17 @@ ArrayLiteralTerm: ArrayExpression<T> = {
 }
 
 PolynomialCommitDeclaration: PilStatement<T> = {
-    <@L> PolCol CommitWitness <PolynomialNameList> => PilStatement::PolynomialCommitDeclaration(<>, None),
+    <start:@L> PolCol CommitWitness <list:PolynomialNameList> => PilStatement::PolynomialCommitDeclaration(ctx.source_ref(start), list, None),
     <start:@L> PolCol CommitWitness <name:PolynomialName> "(" <params:ParameterList> ")" "query" <body:BoxedExpression>
      => PilStatement::PolynomialCommitDeclaration(
-        start,
+        ctx.source_ref(start),
         vec![name],
         Some(FunctionDefinition::Query(Expression::LambdaExpression(LambdaExpression{params, body})))
     )
 }
 
 PolynomialIdentity: PilStatement<T> = {
-    <start:@L> <l:BoxedExpression> "=" <r:BoxedExpression> => PilStatement::PolynomialIdentity(start, Expression::BinaryOperation(l, BinaryOperator::Sub, r))
+    <start:@L> <l:BoxedExpression> "=" <r:BoxedExpression> => PilStatement::PolynomialIdentity(ctx.source_ref(start), Expression::BinaryOperation(l, BinaryOperator::Sub, r))
 }
 
 PolynomialNameList: Vec<PolynomialName<T>> = {
@@ -158,7 +158,7 @@ PolynomialName: PolynomialName<T> = {
 }
 
 PlookupIdentity: PilStatement<T> = {
-    <@L> <SelectedExpressions> "in" <SelectedExpressions> => PilStatement::PlookupIdentity(<>)
+    <start:@L> <se1:SelectedExpressions> "in" <se2:SelectedExpressions> => PilStatement::PlookupIdentity(ctx.source_ref(start), se1, se2)
 }
 
 SelectedExpressions: SelectedExpressions<Expression<T>> = {
@@ -167,15 +167,15 @@ SelectedExpressions: SelectedExpressions<Expression<T>> = {
 }
 
 PermutationIdentity: PilStatement<T> = {
-    <@L> <SelectedExpressions> "is" <SelectedExpressions> => PilStatement::PermutationIdentity(<>)
+    <start:@L> <se1:SelectedExpressions> "is" <se2:SelectedExpressions> => PilStatement::PermutationIdentity(ctx.source_ref(start), se1, se2)
 }
 
 ConnectIdentity: PilStatement<T> = {
-    <@L> "{" <ExpressionList> "}" "connect" "{" <ExpressionList> "}" => PilStatement::ConnectIdentity(<>)
+    <start:@L> "{" <list1:ExpressionList> "}" "connect" "{" <list2:ExpressionList> "}" => PilStatement::ConnectIdentity(ctx.source_ref(start), list1, list2)
 }
 
 ExpressionStatement: PilStatement<T> = {
-    <@L> <Expression> => PilStatement::Expression(<>)
+    <start:@L> <expr:Expression> => PilStatement::Expression(ctx.source_ref(start), expr)
 }
 
 PolCol = {
@@ -193,7 +193,7 @@ ConstantFixed = {
 // ---------------------------- ASM part -----------------------------
 
 MachineDefinition: SymbolDefinition<T> = {
-    <start:@L> "machine" <name:Identifier> <arguments:MachineArguments> "{" <statements:(MachineStatement)*> "}" => SymbolDefinition { name, value: Machine { arguments, statements}.into() }
+    "machine" <name:Identifier> <arguments:MachineArguments> "{" <statements:(MachineStatement)*> "}" => SymbolDefinition { name, value: Machine { arguments, statements}.into() }
 }
 
 MachineArguments: MachineArguments = {
@@ -216,20 +216,20 @@ MachineStatement: MachineStatement<T> = {
 }
 
 PilStatementWithSemiColon: MachineStatement<T> = {
-    <@L> <PilStatement> ";" => MachineStatement::Pil(<>)
+    <start:@L> <stmt:PilStatement> ";" => MachineStatement::Pil(ctx.source_ref(start), stmt)
 }
 
 Degree: MachineStatement<T> = {
-    <@L> "degree" <Integer> ";" => MachineStatement::Degree(<>)
+    <start:@L> "degree" <deg:Integer> ";" => MachineStatement::Degree(ctx.source_ref(start), deg)
 }
 
 Submachine: MachineStatement<T> = {
-    <@L> <SymbolPath> <Identifier> ";" => MachineStatement::Submachine(<>)
+    <start:@L> <path:SymbolPath> <id:Identifier> ";" => MachineStatement::Submachine(ctx.source_ref(start), path, id)
 }
 
 pub RegisterDeclaration: MachineStatement<T> = {
     // TODO default update
-    <@L> "reg" <Identifier> <( "[" <RegisterFlag> "]" )?> ";" => MachineStatement::RegisterDeclaration(<>)
+    <start:@L> "reg" <id:Identifier> <flag:( "[" <RegisterFlag> "]" )?> ";" => MachineStatement::RegisterDeclaration(ctx.source_ref(start), id, flag)
 
 }
 
@@ -240,7 +240,7 @@ RegisterFlag: RegisterFlag = {
 }
 
 pub InstructionDeclaration: MachineStatement<T> = {
-    <@L> "instr" <Identifier> <Instruction> => MachineStatement::InstructionDeclaration(<>)
+    <start:@L> "instr" <id:Identifier> <instr:Instruction> => MachineStatement::InstructionDeclaration(ctx.source_ref(start), id, instr)
 }
 
 pub Instruction: Instruction<T> = {
@@ -248,7 +248,7 @@ pub Instruction: Instruction<T> = {
 }
 
 pub LinkDeclaration: MachineStatement<T> = {
-    <start:@L> "link" <flag:Expression> <params:Params> "=" <to:CallableRef> ";" => MachineStatement::LinkDeclaration(LinkDeclaration { start, flag, params, to })
+    <start:@L> "link" <flag:Expression> <params:Params> "=" <to:CallableRef> ";" => MachineStatement::LinkDeclaration(LinkDeclaration { source: ctx.source_ref(start), flag, params, to })
 }
 
 pub InstructionBody: InstructionBody<T> = {
@@ -290,11 +290,11 @@ Param: Param<T> = {
 }
 
 FunctionDeclaration: MachineStatement<T> = {
-    <@L> "function" <Identifier> <Params> "{" <(<FunctionStatement>)*> "}" => MachineStatement::FunctionDeclaration(<>)
+    <start:@L> "function" <id:Identifier> <params:Params> "{" <stmt:(<FunctionStatement>)*> "}" => MachineStatement::FunctionDeclaration(ctx.source_ref(start), id, params, stmt)
 }
 
 OperationDeclaration: MachineStatement<T> = {
-    <@L> "operation" <Identifier> <OperationId> <Params> ";" => MachineStatement::OperationDeclaration(<>)
+    <start:@L> "operation" <id:Identifier> <op:OperationId> <params:Params> ";" => MachineStatement::OperationDeclaration(ctx.source_ref(start), id, op, params)
 }
 
 OperationId: OperationId<T> = {
@@ -311,7 +311,7 @@ pub FunctionStatement: FunctionStatement<T> = {
 }
 
 AssignmentStatement: FunctionStatement<T> = {
-    <@L> <IdentifierList> <AssignOperator> <BoxedExpression> ";" => FunctionStatement::Assignment(<>)
+    <start:@L> <ids:IdentifierList> <op:AssignOperator> <expr:BoxedExpression> ";" => FunctionStatement::Assignment(ctx.source_ref(start), ids, op, expr)
 }
 
 IdentifierList: Vec<String> = {
@@ -335,24 +335,24 @@ AssignmentRegister: AssignmentRegister = {
 }
 
 ReturnStatement: FunctionStatement<T> = {
-    <@L> "return" <ExpressionList> ";" => FunctionStatement::Return(<>)
+    <start:@L> "return" <list:ExpressionList> ";" => FunctionStatement::Return(ctx.source_ref(start), list)
 }
 
 InstructionStatement: FunctionStatement<T> = {
-    <@L> <Identifier> <ExpressionList> ";" => FunctionStatement::Instruction(<>)
+    <start:@L> <id:Identifier> <list:ExpressionList> ";" => FunctionStatement::Instruction(ctx.source_ref(start), id, list)
 }
 
 DebugDirectiveStatement: FunctionStatement<T> = {
-    <l:@L> "debug" "file" <n:Integer> <d:StringLiteral> <f:StringLiteral> ";"
-        => FunctionStatement::DebugDirective(l, DebugDirective::File(n.try_into().unwrap(), d, f)),
-    <l:@L> "debug" "loc" <f:Integer> <line:Integer> <col:Integer> ";"
-        => FunctionStatement::DebugDirective(l, DebugDirective::Loc(f.try_into().unwrap(), line.try_into().unwrap(), col.try_into().unwrap())),
-    <l:@L> "debug" "insn" <insn:StringLiteral> ";"
-        => FunctionStatement::DebugDirective(l, DebugDirective::OriginalInstruction(insn)),
+    <start:@L> "debug" "file" <n:Integer> <d:StringLiteral> <f:StringLiteral> ";"
+        => FunctionStatement::DebugDirective(ctx.source_ref(start), DebugDirective::File(n.try_into().unwrap(), d, f)),
+    <start:@L> "debug" "loc" <f:Integer> <line:Integer> <col:Integer> ";"
+        => FunctionStatement::DebugDirective(ctx.source_ref(start), DebugDirective::Loc(f.try_into().unwrap(), line.try_into().unwrap(), col.try_into().unwrap())),
+    <start:@L> "debug" "insn" <insn:StringLiteral> ";"
+        => FunctionStatement::DebugDirective(ctx.source_ref(start), DebugDirective::OriginalInstruction(insn)),
 }
 
 LabelStatement: FunctionStatement<T> = {
-    <@L> <Identifier> ":" => FunctionStatement::Label(<>)
+    <start:@L> <id:Identifier> ":" => FunctionStatement::Label(ctx.source_ref(start), id)
 }
 
 // ---------------------------- Expressions -----------------------------

@@ -59,19 +59,19 @@ impl<T: FieldElement> TypeChecker<T> {
                         degree: degree_value,
                     });
                 }
-                MachineStatement::RegisterDeclaration(start, name, flag) => {
+                MachineStatement::RegisterDeclaration(source, name, flag) => {
                     let ty = match flag {
                         Some(RegisterFlag::IsAssignment) => RegisterTy::Assignment,
                         Some(RegisterFlag::IsPC) => RegisterTy::Pc,
                         Some(RegisterFlag::IsReadOnly) => RegisterTy::ReadOnly,
                         None => RegisterTy::Write,
                     };
-                    registers.push(RegisterDeclarationStatement { start, name, ty });
+                    registers.push(RegisterDeclarationStatement { source, name, ty });
                 }
-                MachineStatement::InstructionDeclaration(start, name, instruction) => {
+                MachineStatement::InstructionDeclaration(source, name, instruction) => {
                     match self.check_instruction(&name, instruction) {
                         Ok(instruction) => instructions.push(InstructionDefinitionStatement {
-                            start,
+                            source,
                             name,
                             instruction,
                         }),
@@ -79,19 +79,19 @@ impl<T: FieldElement> TypeChecker<T> {
                     }
                 }
                 MachineStatement::LinkDeclaration(LinkDeclaration {
-                    start,
+                    source,
                     flag,
                     params,
                     to,
                 }) => {
                     links.push(LinkDefinitionStatement {
-                        start,
+                        source,
                         flag,
                         params,
                         to,
                     });
                 }
-                MachineStatement::Pil(_start, statement) => {
+                MachineStatement::Pil(_source, statement) => {
                     pil.push(statement);
                 }
                 MachineStatement::Submachine(_, ty, name) => {
@@ -100,12 +100,12 @@ impl<T: FieldElement> TypeChecker<T> {
                         ty: AbsoluteSymbolPath::default().join(ty),
                     });
                 }
-                MachineStatement::FunctionDeclaration(start, name, params, statements) => {
+                MachineStatement::FunctionDeclaration(source, name, params, statements) => {
                     let mut function_statements = vec![];
                     for s in statements {
                         let statement_string = s.to_string();
                         match s {
-                            FunctionStatement::Assignment(start, lhs, using_reg, rhs) => {
+                            FunctionStatement::Assignment(source, lhs, using_reg, rhs) => {
                                 if let Some(using_reg) = &using_reg {
                                     if using_reg.len() != lhs.len() {
                                         errors.push(format!(
@@ -123,32 +123,32 @@ impl<T: FieldElement> TypeChecker<T> {
                                     .collect::<Vec<_>>();
                                 function_statements.push(
                                     AssignmentStatement {
-                                        start,
+                                        source,
                                         lhs_with_reg,
                                         rhs,
                                     }
                                     .into(),
                                 );
                             }
-                            FunctionStatement::Instruction(start, instruction, inputs) => {
+                            FunctionStatement::Instruction(source, instruction, inputs) => {
                                 function_statements.push(
                                     InstructionStatement {
-                                        start,
+                                        source,
                                         instruction,
                                         inputs,
                                     }
                                     .into(),
                                 );
                             }
-                            FunctionStatement::Label(start, name) => {
-                                function_statements.push(LabelStatement { start, name }.into());
+                            FunctionStatement::Label(source, name) => {
+                                function_statements.push(LabelStatement { source, name }.into());
                             }
-                            FunctionStatement::DebugDirective(start, directive) => {
+                            FunctionStatement::DebugDirective(source, directive) => {
                                 function_statements
-                                    .push(DebugDirective { start, directive }.into());
+                                    .push(DebugDirective { source, directive }.into());
                             }
-                            FunctionStatement::Return(start, values) => {
-                                function_statements.push(Return { start, values }.into());
+                            FunctionStatement::Return(source, values) => {
+                                function_statements.push(Return { source, values }.into());
                             }
                         }
                     }
@@ -156,7 +156,7 @@ impl<T: FieldElement> TypeChecker<T> {
                         .insert(
                             name,
                             FunctionSymbol {
-                                start,
+                                source,
                                 params,
                                 body: FunctionBody {
                                     statements: FunctionStatements::new(function_statements),
@@ -165,9 +165,9 @@ impl<T: FieldElement> TypeChecker<T> {
                         )
                         .is_none());
                 }
-                MachineStatement::OperationDeclaration(start, name, id, params) => {
+                MachineStatement::OperationDeclaration(source, name, id, params) => {
                     assert!(callable
-                        .insert(name, OperationSymbol { start, id, params })
+                        .insert(name, OperationSymbol { source, id, params })
                         .is_none());
                 }
             }

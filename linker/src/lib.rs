@@ -1,6 +1,7 @@
 #![deny(clippy::print_stdout)]
 
 use analysis::utils::parse_pil_statement;
+use ast::SourceRef;
 use ast::{
     object::{Location, PILGraph},
     parsed::{
@@ -42,14 +43,14 @@ pub fn link<T: FieldElement>(graph: PILGraph<T>) -> Result<PILFile<T>, Vec<Strin
         })
         .flat_map(|(mut namespace, e)| {
             let name = namespace.pop().unwrap();
-            let def = PilStatement::LetStatement(0, name.to_string(), Some(e));
+            let def = PilStatement::LetStatement(SourceRef::unknown(), name.to_string(), Some(e));
 
             // If there is a namespace change, insert a namespace statement.
             if current_namespace != namespace {
                 current_namespace = namespace.clone();
                 vec![
                     PilStatement::Namespace(
-                        0,
+                        SourceRef::unknown(),
                         namespace.relative_to(&AbsoluteSymbolPath::default()),
                         Expression::Number(T::from(main_degree)),
                     ),
@@ -74,7 +75,7 @@ pub fn link<T: FieldElement>(graph: PILGraph<T>) -> Result<PILFile<T>, Vec<Strin
 
         // create a namespace for this object
         pil.push(PilStatement::Namespace(
-            0,
+            SourceRef::unknown(),
             SymbolPath::from_identifier(location.to_string()),
             Expression::Number(T::from(main_degree)),
         ));
@@ -145,7 +146,7 @@ pub fn link<T: FieldElement>(graph: PILGraph<T>) -> Result<PILFile<T>, Vec<Strin
                     .collect(),
             };
 
-            let lookup = PilStatement::PlookupIdentity(0, lhs, rhs);
+            let lookup = PilStatement::PlookupIdentity(SourceRef::unknown(), lhs, rhs);
             pil.push(lookup);
         }
 

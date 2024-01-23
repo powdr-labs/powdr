@@ -9,13 +9,17 @@ pub mod statement_processor;
 use std::{collections::HashMap, path::Path};
 
 use ast::{
-    analyzed::{Analyzed, FunctionValueDefinition, SourceRef, Symbol},
-    parsed::asm::SymbolPath,
+    analyzed::{Analyzed, FunctionValueDefinition, Symbol},
+    parsed::{asm::SymbolPath, PILFile},
 };
 use number::FieldElement;
 
 pub fn analyze<T: FieldElement>(path: &Path) -> Analyzed<T> {
     pil_analyzer::process_pil_file(path)
+}
+
+pub fn analyze_ast<T: FieldElement>(pil_file: PILFile<T>) -> Analyzed<T> {
+    pil_analyzer::process_pil_ast(pil_file)
 }
 
 pub fn analyze_string<T: FieldElement>(contents: &str) -> Analyzed<T> {
@@ -27,7 +31,5 @@ pub trait AnalysisDriver<T>: Clone + Copy {
     fn resolve_decl(&self, name: &str) -> String;
     /// Turns a reference to a name with an optional namespace into an absolute name.
     fn resolve_ref(&self, path: &SymbolPath) -> String;
-    /// Translates a file-local source position into a proper SourceRef.
-    fn source_position_to_source_ref(&self, pos: usize) -> SourceRef;
     fn definitions(&self) -> &HashMap<String, (Symbol, Option<FunctionValueDefinition<T>>)>;
 }

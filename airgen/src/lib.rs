@@ -172,7 +172,7 @@ impl<'a, T: FieldElement> ASMPILConverter<'a, T> {
     fn handle_link_def(
         &mut self,
         LinkDefinitionStatement {
-            start: _,
+            source: _,
             flag,
             params,
             to: CallableRef { instance, callable },
