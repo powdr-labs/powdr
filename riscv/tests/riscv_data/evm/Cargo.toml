@@ -5,7 +5,7 @@ edition = "2021"
 
 [dependencies]
 revm = { version = "3.5.0", default-features = false }
-powdr_riscv_rt = { path = "../../../../powdr_riscv_rt" }
+powdr-riscv-runtime = { path = "../../../../riscv-runtime" }
 serde = { version = "1.0", default-features = false, features = ["alloc", "derive", "rc"] }
 serde_cbor = { version = "0.11.2", default-features = false, features = ["alloc"] }
 

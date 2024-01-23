@@ -24,7 +24,7 @@ members = [
     "riscv-executor",
 ]
 
-exclude = [ "riscv-rt" ]
+exclude = [ "riscv-runtime" ]
 
 [patch."https://github.com/privacy-scaling-explorations/halo2.git"]
 # TODO change back to this once the PR is merged
