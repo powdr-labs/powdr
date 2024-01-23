@@ -26,7 +26,7 @@ jobs:
     - name: Deploy GitHub Pages
       run: |
         # generate cli docs and inject them into the book
-        cargo run --package powdr_cli -- --markdown-help > book/src/cli/README.md
+        cargo run --package powdr-cli -- --markdown-help > book/src/cli/README.md
         # build the book
         cd book
         mdbook build
