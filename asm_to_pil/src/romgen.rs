@@ -257,7 +257,7 @@ mod tests {
         src: &str,
     ) -> BTreeMap<AbsoluteSymbolPath, (Machine<T>, Option<Rom<T>>)> {
         let parsed = parser::parse_asm(None, src).unwrap();
-        let checked = type_check::check(parsed).unwrap();
+        let checked = analysis::machine_check::check(parsed).unwrap();
         checked
             .items
             .into_iter()

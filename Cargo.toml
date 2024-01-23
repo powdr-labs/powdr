@@ -21,7 +21,6 @@ members = [
     "linker",
     "asm_utils",
     "airgen",
-    "type_check",
     "riscv_executor",
 ]
 

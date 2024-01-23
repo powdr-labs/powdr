@@ -25,23 +25,18 @@ pub(crate) fn analyze<T: FieldElement>(
 
 #[cfg(test)]
 mod test_utils {
-    use crate::test_util::typecheck_str;
-
     use super::*;
 
     /// A test utility to process a source file until after inference
     pub fn infer_str<T: FieldElement>(source: &str) -> Result<AnalysisASMFile<T>, Vec<String>> {
-        inference::infer(typecheck_str(source).unwrap())
+        let machines =
+            crate::machine_check::check(importer::load_dependencies_and_resolve_str(source))
+                .unwrap();
+        inference::infer(machines)
     }
 
     /// A test utility to process a source file until after batching
     pub fn batch_str<T: FieldElement>(source: &str) -> AnalysisASMFile<T> {
         batcher::batch(infer_str(source).unwrap())
-    }
-
-    /// A test utility to process a source file until after asm to pil reduction
-    #[allow(dead_code)]
-    pub fn asm_to_pil_str<T: FieldElement>(source: &str) -> AnalysisASMFile<T> {
-        asm_to_pil::compile(batch_str(source))
     }
 }
