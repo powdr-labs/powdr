@@ -38,16 +38,19 @@ pub fn evaluate_function_call<'a, T: FieldElement, C: Custom>(
     symbols: &impl SymbolLookup<'a, T, C>,
 ) -> Result<Value<'a, T, C>, EvalError> {
     match function {
+        Value::BuiltinFunction(b) => internal::evaluate_builtin_function(b, arguments),
         Value::Closure(Closure {
             lambda,
             environment,
         }) => {
             if lambda.params.len() != arguments.len() {
                 Err(EvalError::TypeError(format!(
-                    "Invalid function call: Supplied {} arguments to function that takes {} parameters.",
+                    "Invalid function call: Supplied {} arguments to function that takes {} parameters.\nFunction: {lambda}\nArguments: {}",
                     arguments.len(),
-                    lambda.params.len())
-                ))?
+                    lambda.params.len(),
+                    arguments.iter().format(", ")
+
+                )))?
             }
 
             let local_vars = arguments.into_iter().chain(environment).collect::<Vec<_>>();
@@ -78,6 +81,8 @@ pub enum EvalError {
     SymbolNotFound(String),
     /// Data not (yet) available
     DataNotAvailable,
+    /// Failed assertion, with reason.
+    FailedAssertion(String),
 }
 
 impl Display for EvalError {
@@ -89,6 +94,7 @@ impl Display for EvalError {
             EvalError::NoMatch() => write!(f, "Unable to match pattern."),
             EvalError::SymbolNotFound(msg) => write!(f, "Symbol not found: {msg}"),
             EvalError::DataNotAvailable => write!(f, "Data not (yet) available."),
+            EvalError::FailedAssertion(msg) => write!(f, "Assertion failed: {msg}"),
         }
     }
 }
@@ -100,6 +106,7 @@ pub enum Value<'a, T, C> {
     Tuple(Vec<Self>),
     Array(Vec<Self>),
     Closure(Closure<'a, T, C>),
+    BuiltinFunction(BuiltinFunction),
     Custom(C),
 }
 
@@ -130,12 +137,27 @@ impl<'a, T: FieldElement, C: Custom> Value<'a, T, C> {
                 format!("[{}]", elements.iter().map(|e| e.type_name()).format(", "))
             }
             Value::Closure(c) => c.type_name(),
+            Value::BuiltinFunction(b) => format!("builtin_{b:?}"),
             Value::Custom(c) => c.type_name(),
         }
     }
 }
 
-pub trait Custom: Display + Clone + PartialEq + fmt::Debug {
+const BUILTINS: [(&str, BuiltinFunction); 2] = [
+    ("std::array::len", BuiltinFunction::ArrayLen),
+    ("std::check::panic", BuiltinFunction::Panic),
+];
+
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub enum BuiltinFunction {
+    /// std::array::len: [_] -> int, returns the length of an array
+    ArrayLen,
+    /// std::check::panic: string -> !, fails evaluation and uses its parameter for error reporting.
+    /// Returns the empty tuple.
+    Panic,
+}
+
+pub trait Custom: Display + fmt::Debug + Clone + PartialEq {
     fn type_name(&self) -> String;
 }
 
@@ -147,6 +169,7 @@ impl<'a, T: Display, C: Custom> Display for Value<'a, T, C> {
             Value::Tuple(items) => write!(f, "({})", items.iter().format(", ")),
             Value::Array(elements) => write!(f, "[{}]", elements.iter().format(", ")),
             Value::Closure(closure) => write!(f, "{closure}"),
+            Value::BuiltinFunction(b) => write!(f, "{b:?}"),
             Value::Custom(c) => write!(f, "{c}"),
         }
     }
@@ -396,7 +419,48 @@ mod internal {
     ) -> Result<Value<'a, T, C>, EvalError> {
         Ok(match reference {
             Reference::LocalVar(i, _name) => (*locals[*i as usize]).clone(),
-            Reference::Poly(poly) => symbols.lookup(&poly.name)?,
+
+            Reference::Poly(poly) => {
+                if let Some((_, b)) = BUILTINS.iter().find(|(n, _)| (n == &poly.name)) {
+                    Value::BuiltinFunction(*b)
+                } else {
+                    symbols.lookup(&poly.name)?
+                }
+            }
+        })
+    }
+
+    pub fn evaluate_builtin_function<T: FieldElement, C: Custom>(
+        b: BuiltinFunction,
+        mut arguments: Vec<Rc<Value<'_, T, C>>>,
+    ) -> Result<Value<'_, T, C>, EvalError> {
+        let params = match b {
+            BuiltinFunction::ArrayLen => 1,
+            BuiltinFunction::Panic => 1,
+        };
+
+        if arguments.len() != params {
+            Err(EvalError::TypeError(format!(
+                "Invalid function call: Supplied {} arguments to function that takes {params} parameters.",
+                arguments.len(),
+            )))?
+        }
+        Ok(match b {
+            BuiltinFunction::ArrayLen => match arguments.pop().unwrap().as_ref() {
+                Value::Array(arr) => Value::Number((arr.len() as u64).into()),
+                v => Err(EvalError::TypeError(format!(
+                    "Expected array for std::array::len, but got {v}: {}",
+                    v.type_name()
+                )))?,
+            },
+            BuiltinFunction::Panic => {
+                let msg = match arguments.pop().unwrap().as_ref() {
+                    Value::String(msg) => msg.clone(),
+                    // As long as we do not yet have types, we just format any argument.
+                    x => x.to_string(),
+                };
+                Err(EvalError::FailedAssertion(msg))?
+            }
         })
     }
 }
@@ -467,5 +531,45 @@ mod test {
             parse_and_evaluate_symbol(src, "Main.result"),
             "99".to_string()
         );
+    }
+
+    #[test]
+    pub fn array_len() {
+        let src = r#"
+            constant %N = 2;
+            namespace std::array(%N);
+            let len = 123;
+            namespace F(%N);
+            let x = std::array::len([1, 2, 3]);
+            let y = std::array::len([]);
+        "#;
+        assert_eq!(parse_and_evaluate_symbol(src, "F.x"), "3".to_string());
+        assert_eq!(parse_and_evaluate_symbol(src, "F.y"), "0".to_string());
+    }
+
+    #[test]
+    #[should_panic = r#"FailedAssertion("[1, \"text\"]")"#]
+    pub fn panic_complex() {
+        let src = r#"
+            constant %N = 2;
+            namespace std::check(%N);
+            let panic = 123;
+            namespace F(%N);
+            let x = (|i| if i == 1 { std::check::panic([i, "text"]) } else { 9 })(1);
+        "#;
+        parse_and_evaluate_symbol(src, "F.x");
+    }
+
+    #[test]
+    #[should_panic = r#"FailedAssertion("text")"#]
+    pub fn panic_string() {
+        let src = r#"
+            constant %N = 2;
+            namespace std::check(%N);
+            let panic = 123;
+            namespace F(%N);
+            let x = std::check::panic("text");
+        "#;
+        parse_and_evaluate_symbol(src, "F.x");
     }
 }

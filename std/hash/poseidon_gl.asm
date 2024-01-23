@@ -1,5 +1,5 @@
 use std::utils::fold;
-use std::utils::make_array;
+use std::array;
 
 // Implements the Poseidon permutation for the Goldilocks field.
 machine PoseidonGL(LASTBLOCK, operation_id) {
@@ -169,12 +169,12 @@ machine PoseidonGL(LASTBLOCK, operation_id) {
     ];
 
     let equal_unless_last = |a, b| (1 - LAST) * (a - b) == 0;
-    make_array(8, |i| equal_unless_last(inp[i]', c[i]));
-    make_array(4, |i| equal_unless_last(cap[i]', c[8 + i]));
-    make_array(8, |i| equal_unless_last(input_inp[i], input_inp[i]'));
-    make_array(4, |i| equal_unless_last(input_cap[i], input_cap[i]'));
+    array::new(array::len(inp), |i| equal_unless_last(inp[i]', c[i]));
+    array::new(array::len(cap), |i| equal_unless_last(cap[i]', c[8 + i]));
+    array::map(input_inp, |x| equal_unless_last(x, x'));
+    array::map(input_cap, |x| equal_unless_last(x, x'));
 
     let equal_on_first_block = |a, b| FIRSTBLOCK * (a - b) == 0;
-    make_array(8, |i| equal_on_first_block(input_inp[i], inp[i]));
-    make_array(4, |i| equal_on_first_block(input_cap[i], cap[i]));
+    array::new(array::len(input_inp), |i| equal_on_first_block(input_inp[i], inp[i]));
+    array::new(array::len(input_cap), |i| equal_on_first_block(input_cap[i], cap[i]));
 }
