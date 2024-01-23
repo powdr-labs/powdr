@@ -326,7 +326,7 @@ impl<T: Display> Display for Param<T> {
 }
 
 pub fn quote(input: &str) -> String {
-    format!("\"{}\"", input.replace('\\', "\\\\").replace('"', "\\\""))
+    format!("\"{}\"", input.escape_default())
 }
 
 impl<T: Display> Display for PilStatement<T> {
@@ -448,7 +448,7 @@ impl<T: Display, Ref: Display> Display for Expression<T, Ref> {
             Expression::Reference(reference) => write!(f, "{reference}"),
             Expression::PublicReference(name) => write!(f, ":{name}"),
             Expression::Number(value) => write!(f, "{value}"),
-            Expression::String(value) => write!(f, "\"{value}\""), // TODO quote?
+            Expression::String(value) => write!(f, "{}", quote(value)),
             Expression::Tuple(items) => write!(f, "({})", format_expressions(items)),
             Expression::LambdaExpression(lambda) => write!(f, "{}", lambda),
             Expression::ArrayLiteral(array) => write!(f, "{array}"),

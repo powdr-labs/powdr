@@ -2,7 +2,7 @@ use std::str::FromStr;
 use powdr_ast::parsed::{*, asm::*};
 use powdr_number::{AbstractNumberType, FieldElement};
 use num_traits::Num;
-use crate::ParserContext;
+use crate::{ParserContext, unescape_string};
 
 grammar<T>(ctx: &ParserContext) where T: FieldElement;
 
@@ -544,7 +544,7 @@ IfExpression: Box<Expression<T>> = {
 
 
 StringLiteral: String = {
-    r#""[^"]*""# => <>[1..<>.len() - 1].to_string()
+    r#""[^\\"\n\r]*(\\[tnfbrx'"\\0-9][^\\"\n\r]*)*""# => unescape_string(<>)
 }
 
 Identifier: String = {

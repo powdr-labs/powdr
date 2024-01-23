@@ -143,9 +143,10 @@ impl<'a, T: FieldElement, C: Custom> Value<'a, T, C> {
     }
 }
 
-const BUILTINS: [(&str, BuiltinFunction); 2] = [
+const BUILTINS: [(&str, BuiltinFunction); 3] = [
     ("std::array::len", BuiltinFunction::ArrayLen),
     ("std::check::panic", BuiltinFunction::Panic),
+    ("std::debug::print", BuiltinFunction::Print),
 ];
 
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -153,8 +154,11 @@ pub enum BuiltinFunction {
     /// std::array::len: [_] -> int, returns the length of an array
     ArrayLen,
     /// std::check::panic: string -> !, fails evaluation and uses its parameter for error reporting.
-    /// Returns the empty tuple.
+    /// Does not return.
     Panic,
+    /// std::debug::print: string -> [], prints its argument on stdout.
+    /// Returns an empty array.
+    Print,
 }
 
 pub trait Custom: Display + fmt::Debug + Clone + PartialEq {
@@ -326,6 +330,10 @@ mod internal {
                         l.extend(std::mem::take(r));
                         Value::Array(std::mem::take(l))
                     }
+                    (Value::String(l), BinaryOperator::Add, Value::String(r)) => {
+                        l.push_str(r);
+                        Value::String(std::mem::take(l))
+                    }
                     (Value::Number(l), _, Value::Number(r)) => {
                         Value::Number(evaluate_binary_operation(*l, *op, *r))
                     }
@@ -430,6 +438,7 @@ mod internal {
         })
     }
 
+    #[allow(clippy::print_stdout)]
     pub fn evaluate_builtin_function<T: FieldElement, C: Custom>(
         b: BuiltinFunction,
         mut arguments: Vec<Rc<Value<'_, T, C>>>,
@@ -437,6 +446,7 @@ mod internal {
         let params = match b {
             BuiltinFunction::ArrayLen => 1,
             BuiltinFunction::Panic => 1,
+            BuiltinFunction::Print => 1,
         };
 
         if arguments.len() != params {
@@ -460,6 +470,15 @@ mod internal {
                     x => x.to_string(),
                 };
                 Err(EvalError::FailedAssertion(msg))?
+            }
+            BuiltinFunction::Print => {
+                let msg = match arguments.pop().unwrap().as_ref() {
+                    Value::String(msg) => msg.clone(),
+                    // As long as we do not yet have types, we just format any argument.
+                    x => x.to_string(),
+                };
+                print!("{msg}");
+                Value::Array(Default::default())
             }
         })
     }
