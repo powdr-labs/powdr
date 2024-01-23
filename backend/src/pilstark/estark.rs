@@ -115,8 +115,8 @@ impl<F: FieldElement> BackendImpl<F> for EStark {
 
         let start = Instant::now();
         let starkproof = StarkProof::<MerkleTreeGL>::stark_gen::<TranscriptGL>(
-            &cm_pols,
-            &const_pols,
+            cm_pols,
+            const_pols,
             &setup.const_tree,
             &setup.starkinfo,
             &setup.program,
