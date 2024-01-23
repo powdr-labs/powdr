@@ -1,5 +1,5 @@
 [package]
-name = "powdr-riscv-rt"
+name = "powdr-riscv-runtime"
 version = "0.1.0"
 edition = "2021"
 
