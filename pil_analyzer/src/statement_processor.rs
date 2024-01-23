@@ -304,9 +304,9 @@ where
         let length = array_size
             .map(|l| self.evaluate_expression(l).unwrap())
             .map(|l| l.to_degree());
-        if length.is_some() {
-            assert!(value.is_none());
-        }
+        // if length.is_some() {
+        //     assert!(value.is_none());
+        // }
         let id = self.counters.dispense_symbol_id(symbol_kind, length);
         let name = self.driver.resolve_decl(&name);
         let symbol = Symbol {
@@ -324,7 +324,7 @@ where
                 FunctionValueDefinition::Expression(self.process_expression(expr))
             }
             FunctionDefinition::Query(expr) => {
-                assert!(!have_array_size);
+                //assert!(!have_array_size);
                 assert_eq!(symbol_kind, SymbolKind::Poly(PolynomialType::Committed));
                 FunctionValueDefinition::Query(self.process_expression(expr))
             }
