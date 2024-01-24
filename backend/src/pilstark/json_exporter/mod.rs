@@ -454,9 +454,11 @@ mod test {
 
     fn compare_export_file(file: &str) {
         let (json_out, pilcom_parsed) = generate_json_pair(file);
-        // TODO: test fails because PILCOM "fileName" fields output the filename
-        // stripped of its path
-        assert_eq!(json_out, pilcom_parsed);
+        if json_out != pilcom_parsed {
+            // Computing the pretty diff can take minutes, so we are printing an error already here.
+            eprintln!("Exported json and file re-exported by pilcom differ:");
+            assert_eq!(json_out, pilcom_parsed);
+        }
     }
 
     /// Normalizes the json in that it replaces all idQ values by "99"
