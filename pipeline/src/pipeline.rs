@@ -30,6 +30,45 @@ use crate::{
     util::{read_poly_set, FixedPolySet, WitnessPolySet},
 };
 
+const OLD_PC_UPDATE_RULE: &str = "    pc' = ((1 - first_step') * pc_update);";
+const NEW_PC_UPDATE_RULE: &str = r#"
+// BEGIN MODIFICATION
+
+// === Put constraints on jump_to_shutdown_routine
+// Make sure that:
+// - jump_to_shutdown_routine can only be activated *after* we exit the bootloader
+// - jump_to_shutdown_routine must be activated exactly once
+
+// Count the number of times we leave the bootloader or enter the shutdown routine
+let continuations_action_count;
+first_step * continuations_action_count = 0;
+(1 - first_step') * (continuations_action_count' - continuations_action_count - jump_to_shutdown_routine - instr_jump_to_bootloader_input) = 0;
+
+// When we leave the bootloader, the action count should be 0
+instr_jump_to_bootloader_input * continuations_action_count = 0;
+
+// When we enter the shutdown routine, the action count should be 1
+jump_to_shutdown_routine * (continuations_action_count - 1) = 0;
+
+// By the end, the count should be 2
+first_step' * (continuations_action_count - 2) = 0;
+
+// === If jump_to_shutdown_routine is active, set the PC to the start of the shutdown routine
+let shutdown_routine_start = 4;
+// 0 on the first step, <shutdown_routine_start> if jump_to_shutdown_routine == 1, else <pc_update>
+pc' = (1 - first_step' - jump_to_shutdown_routine') * pc_update + jump_to_shutdown_routine' * shutdown_routine_start;
+
+// Also, assert that the PC *would have been set* to the value claimed in the bootloader inputs
+jump_to_shutdown_routine' {97, pc_update} in {BOOTLOADER_INPUT_ADDRESS, bootloader_input_value};
+
+// Assert that the shutdown routine was completed:
+// - We know by previous constraints that we have entered the shutdown routine
+// - Once entered, the only way to reach the shutdown sink is to complete the shutdown routine
+LAST * (pc - 5) = 0;
+
+// END MODIFICATION
+"#;
+
 #[derive(Clone)]
 pub struct GeneratedWitness<T: FieldElement> {
     pub pil: Rc<Analyzed<T>>,
@@ -473,8 +512,14 @@ impl<T: FieldElement> Pipeline<T> {
                 Artifact::ParsedPilFile(linked)
             }
             Artifact::ParsedPilFile(linked) => {
+                self.log("Modifying pil...");
+
+                let modified_pil =
+                    format!("{linked}").replace(OLD_PC_UPDATE_RULE, NEW_PC_UPDATE_RULE);
+                self.maybe_write_pil(&modified_pil, "_modified")?;
+
                 self.log("Analyzing pil...");
-                let analyzed = powdr_pil_analyzer::analyze_ast(linked);
+                let analyzed = powdr_pil_analyzer::analyze_string(&modified_pil);
                 self.maybe_write_pil(&analyzed, "_analyzed")?;
                 Artifact::AnalyzedPil(analyzed)
             }
