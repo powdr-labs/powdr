@@ -1,0 +1,17 @@
+[package]
+name = "powdr-pil-analyzer"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+powdr-ast = { path = "../ast" }
+powdr-number = { path = "../number" }
+powdr-parser = { path = "../parser" }
+powdr-parser-util = { path = "../parser-util" }
+
+itertools = "^0.10"
+
+[dev-dependencies]
+test-log = "0.2.12"
+env_logger = "0.10.0"
+pretty_assertions = "1.3.0"

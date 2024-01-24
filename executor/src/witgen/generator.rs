@@ -1,8 +1,8 @@
-use ast::analyzed::{
+use powdr_ast::analyzed::{
     AlgebraicExpression as Expression, AlgebraicReference, Identity, IdentityKind, PolyID,
 };
-use ast::parsed::SelectedExpressions;
-use number::{DegreeType, FieldElement};
+use powdr_ast::parsed::SelectedExpressions;
+use powdr_number::{DegreeType, FieldElement};
 use std::collections::{HashMap, HashSet};
 
 use crate::witgen::data_structures::finalizable_data::FinalizableData;

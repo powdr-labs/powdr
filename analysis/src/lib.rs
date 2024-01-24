@@ -4,8 +4,8 @@ mod block_enforcer;
 pub mod machine_check;
 mod vm;
 
-use ast::{asm_analysis::AnalysisASMFile, parsed::asm::ASMProgram, DiffMonitor};
-use number::FieldElement;
+use powdr_ast::{asm_analysis::AnalysisASMFile, parsed::asm::ASMProgram, DiffMonitor};
+use powdr_number::FieldElement;
 
 pub fn convert_asm_to_pil<T: FieldElement>(
     file: ASMProgram<T>,
@@ -39,7 +39,7 @@ pub fn convert_vms_to_constrained<T: FieldElement>(
 ) -> AnalysisASMFile<T> {
     // remove all asm (except external instructions)
     log::debug!("Run asm_to_pil");
-    let file = asm_to_pil::compile(file);
+    let file = powdr_asm_to_pil::compile(file);
     monitor.push(&file);
 
     // enforce blocks using `operation_id` and `latch`
@@ -51,12 +51,13 @@ pub fn convert_vms_to_constrained<T: FieldElement>(
 }
 
 pub mod utils {
-    use ast::parsed::PilStatement;
-    use number::FieldElement;
+    use powdr_ast::parsed::PilStatement;
+    use powdr_number::FieldElement;
 
     pub fn parse_pil_statement<T: FieldElement>(input: &str) -> PilStatement<T> {
-        parser::powdr::PilStatementParser::new()
-            .parse(input)
+        let ctx = powdr_parser::ParserContext::new(None, input);
+        powdr_parser::powdr::PilStatementParser::new()
+            .parse(&ctx, input)
             .unwrap()
     }
 }

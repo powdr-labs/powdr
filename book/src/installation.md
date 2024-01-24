@@ -15,7 +15,7 @@ installed with the "Desktop Development With C++" Workloads option.
 Using a single Cargo command:
 
 ```sh
-cargo install --git https://github.com/powdr-labs/powdr powdr_cli
+cargo install --git https://github.com/powdr-labs/powdr powdr-cli
 ```
 
 Or, by manually building from a local copy of the [powdr repository](https://github.com/powdr-labs/powdr):
@@ -24,6 +24,6 @@ Or, by manually building from a local copy of the [powdr repository](https://git
 # clone the repository
 git clone https://github.com/powdr-labs/powdr.git
 cd powdr
-# install powdr_cli
-cargo install --path ./powdr_cli
+# install powdr-cli
+cargo install --path ./cli
 ```

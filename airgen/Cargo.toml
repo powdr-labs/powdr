@@ -1,10 +1,11 @@
 [package]
-name = "airgen"
+name = "powdr-airgen"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-log = "0.4.17"
-number = { path = "../number" }
+powdr-ast = { path = "../ast" }
+powdr-number = { path = "../number" }
+
 num-bigint = "0.4.3"
-ast = { path = "../ast" }
+log = "0.4.17"

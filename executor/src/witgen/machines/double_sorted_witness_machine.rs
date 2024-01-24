@@ -1,9 +1,9 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::iter::once;
 
-use ast::parsed::SelectedExpressions;
 use itertools::Itertools;
 use num_traits::Zero;
+use powdr_ast::parsed::SelectedExpressions;
 
 use super::{FixedLookup, Machine};
 use crate::witgen::affine_expression::AffineExpression;
@@ -11,9 +11,9 @@ use crate::witgen::global_constraints::GlobalConstraints;
 use crate::witgen::util::is_simple_poly_of_name;
 use crate::witgen::{EvalResult, FixedData, MutableState, QueryCallback};
 use crate::witgen::{EvalValue, IncompleteCause};
-use number::{DegreeType, FieldElement};
+use powdr_number::{DegreeType, FieldElement};
 
-use ast::analyzed::{
+use powdr_ast::analyzed::{
     AlgebraicExpression as Expression, AlgebraicReference, Identity, IdentityKind, PolyID,
 };
 

@@ -11,7 +11,7 @@ use std::{
 
 use itertools::Either;
 use num_bigint::BigUint;
-use number::FieldElement;
+use powdr_number::FieldElement;
 
 use crate::parsed::{
     asm::{
@@ -20,12 +20,13 @@ use crate::parsed::{
     visitor::{ExpressionVisitable, VisitOrder},
     NamespacedPolynomialReference, PilStatement,
 };
+use crate::SourceRef;
 
 pub use crate::parsed::Expression;
 
 #[derive(Clone, Debug)]
 pub struct RegisterDeclarationStatement {
-    pub start: usize,
+    pub source: SourceRef,
     pub name: String,
     pub ty: RegisterTy,
 }
@@ -58,7 +59,7 @@ impl RegisterTy {
 
 #[derive(Clone, Debug)]
 pub struct InstructionDefinitionStatement<T> {
-    pub start: usize,
+    pub source: SourceRef,
     pub name: String,
     pub instruction: Instruction<T>,
 }
@@ -71,7 +72,7 @@ pub struct Instruction<T> {
 
 #[derive(Clone, Debug)]
 pub struct LinkDefinitionStatement<T> {
-    pub start: usize,
+    pub source: SourceRef,
     /// the flag which activates this link. Should be boolean.
     pub flag: Expression<T>,
     /// the parameters to pass to the callable
@@ -510,7 +511,7 @@ impl<'a, T> TryFrom<&'a mut CallableSymbol<T>> for &'a mut OperationSymbol<T> {
 
 #[derive(Clone, Debug)]
 pub struct FunctionSymbol<T> {
-    pub start: usize,
+    pub source: SourceRef,
     /// the parameters of this function, in the form of values
     pub params: Params<T>,
     /// the body of the function
@@ -519,7 +520,7 @@ pub struct FunctionSymbol<T> {
 
 #[derive(Clone, Debug)]
 pub struct OperationSymbol<T> {
-    pub start: usize,
+    pub source: SourceRef,
     /// the id of this operation. This machine's operation id must be set to this value in order for this operation to be active.
     pub id: OperationId<T>,
     /// the parameters of this operation, in the form of columns defined in some constraints block of this machine
@@ -618,7 +619,7 @@ impl<T> From<Return<T>> for FunctionStatement<T> {
 
 #[derive(Clone, Debug)]
 pub struct AssignmentStatement<T> {
-    pub start: usize,
+    pub source: SourceRef,
     pub lhs_with_reg: Vec<(String, AssignmentRegister)>,
     pub rhs: Box<Expression<T>>,
 }
@@ -635,26 +636,26 @@ impl<T> AssignmentStatement<T> {
 
 #[derive(Clone, Debug)]
 pub struct InstructionStatement<T> {
-    pub start: usize,
+    pub source: SourceRef,
     pub instruction: String,
     pub inputs: Vec<Expression<T>>,
 }
 
 #[derive(Clone, Debug)]
 pub struct LabelStatement {
-    pub start: usize,
+    pub source: SourceRef,
     pub name: String,
 }
 
 #[derive(Clone, Debug)]
 pub struct DebugDirective {
-    pub start: usize,
+    pub source: SourceRef,
     pub directive: crate::parsed::asm::DebugDirective,
 }
 
 #[derive(Clone, Debug)]
 pub struct Return<T> {
-    pub start: usize,
+    pub source: SourceRef,
     pub values: Vec<Expression<T>>,
 }
 

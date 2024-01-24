@@ -1,5 +1,5 @@
-use number::GoldilocksField;
-use pipeline::test_util::{gen_estark_proof, gen_halo2_proof, verify_test_file};
+use powdr_number::GoldilocksField;
+use powdr_pipeline::test_util::{gen_estark_proof, gen_halo2_proof, verify_test_file};
 use std::path::Path;
 use test_log::test;
 
@@ -178,7 +178,7 @@ fn conditional_fixed_constraints() {
 #[test]
 fn arith_improved() {
     let f = "pil/arith_improved.pil";
-    pil_analyzer::analyze::<GoldilocksField>(
+    powdr_pil_analyzer::analyze::<GoldilocksField>(
         &Path::new(&format!("{}/../test_data/{f}", env!("CARGO_MANIFEST_DIR")))
             .canonicalize()
             .unwrap(),

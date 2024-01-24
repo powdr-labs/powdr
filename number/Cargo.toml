@@ -1,5 +1,5 @@
 [package]
-name = "number"
+name = "powdr-number"
 version = "0.1.0"
 edition = "2021"
 

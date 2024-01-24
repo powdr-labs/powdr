@@ -1,4 +1,3 @@
-use ast::analyzed::Analyzed;
 use halo2_proofs::{
     dev::MockProver,
     halo2curves::bn256::{Fr, G1Affine},
@@ -14,8 +13,9 @@ use halo2_proofs::{
     },
     transcript::{EncodedChallenge, TranscriptReadBuffer, TranscriptWriterBuffer},
 };
-use number::{BigInt, DegreeType, FieldElement};
 use polyexen::plaf::PlafDisplayBaseTOML;
+use powdr_ast::analyzed::Analyzed;
+use powdr_number::{BigInt, DegreeType, FieldElement};
 use snark_verifier::{
     loader::native::NativeLoader,
     system::halo2::{compile, transcript::evm::EvmTranscript, Config},

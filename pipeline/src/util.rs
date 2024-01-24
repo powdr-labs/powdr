@@ -1,5 +1,5 @@
-use ast::analyzed::{Analyzed, FunctionValueDefinition, Symbol};
-use number::{read_polys_file, DegreeType, FieldElement};
+use powdr_ast::analyzed::{Analyzed, FunctionValueDefinition, Symbol};
+use powdr_number::{read_polys_file, DegreeType, FieldElement};
 use std::{fs::File, io::BufReader, path::Path};
 
 pub trait PolySet {

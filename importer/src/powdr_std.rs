@@ -1,14 +1,14 @@
 use std::{env, path::PathBuf};
 
-use ast::parsed::{
+use powdr_ast::parsed::{
     asm::{
         ASMModule, ASMProgram, Import, Module, ModuleStatement, Part, SymbolDefinition, SymbolPath,
         SymbolValue,
     },
     folder::Folder,
 };
-use number::FieldElement;
-use parser::parse_asm;
+use powdr_number::FieldElement;
+use powdr_parser::parse_asm;
 
 use crate::load_module_files;
 

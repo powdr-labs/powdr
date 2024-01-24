@@ -1,6 +1,6 @@
 #![no_std]
 
-use runtime::get_prover_input;
+use powdr_riscv_runtime::get_prover_input;
 
 #[no_mangle]
 pub fn main() {

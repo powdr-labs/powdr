@@ -6,11 +6,11 @@ mod powdr_std;
 
 use std::path::PathBuf;
 
-use ast::parsed::asm::ASMProgram;
 pub use module_loader::load_module_files;
-use number::FieldElement;
-use parser::parse_asm;
 use path_canonicalizer::canonicalize_paths;
+use powdr_ast::parsed::asm::ASMProgram;
+use powdr_number::FieldElement;
+use powdr_parser::parse_asm;
 use powdr_std::add_std;
 
 pub fn load_dependencies_and_resolve<T: FieldElement>(

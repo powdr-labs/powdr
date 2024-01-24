@@ -4,14 +4,14 @@ use std::path::PathBuf;
 
 use common::verify_riscv_asm_string;
 use mktemp::Temp;
-use number::GoldilocksField;
-use pipeline::{
+use powdr_number::GoldilocksField;
+use powdr_pipeline::{
     test_util::{verify_asm_string, verify_pipeline},
     Pipeline,
 };
 use test_log::test;
 
-use riscv::{
+use powdr_riscv::{
     continuations::{rust_continuations, rust_continuations_dry_run},
     CoProcessors,
 };
@@ -165,8 +165,8 @@ fn test_many_chunks_dry() {
     let coprocessors = CoProcessors::base().with_poseidon();
     let temp_dir = Temp::new_dir().unwrap();
     let riscv_asm =
-        riscv::compile_rust_to_riscv_asm(&format!("tests/riscv_data/{case}"), &temp_dir);
-    let powdr_asm = riscv::compiler::compile(riscv_asm, &coprocessors, true);
+        powdr_riscv::compile_rust_to_riscv_asm(&format!("tests/riscv_data/{case}"), &temp_dir);
+    let powdr_asm = powdr_riscv::compiler::compile(riscv_asm, &coprocessors, true);
 
     let pipeline = Pipeline::default()
         .from_asm_string(powdr_asm, Some(PathBuf::from(case)))
@@ -184,8 +184,8 @@ fn test_many_chunks() {
     let coprocessors = CoProcessors::base().with_poseidon();
     let temp_dir = Temp::new_dir().unwrap();
     let riscv_asm =
-        riscv::compile_rust_to_riscv_asm(&format!("tests/riscv_data/{case}"), &temp_dir);
-    let powdr_asm = riscv::compiler::compile(riscv_asm, &coprocessors, true);
+        powdr_riscv::compile_rust_to_riscv_asm(&format!("tests/riscv_data/{case}"), &temp_dir);
+    let powdr_asm = powdr_riscv::compiler::compile(riscv_asm, &coprocessors, true);
 
     // Manually create tmp dir, so that it is the same in all chunks.
     let tmp_dir = mktemp::Temp::new_dir().unwrap();
@@ -214,8 +214,8 @@ fn test_many_chunks() {
 fn verify_file(case: &str, inputs: Vec<GoldilocksField>, coprocessors: &CoProcessors) {
     let temp_dir = Temp::new_dir().unwrap();
     let riscv_asm =
-        riscv::compile_rust_to_riscv_asm(&format!("tests/riscv_data/{case}"), &temp_dir);
-    let powdr_asm = riscv::compiler::compile(riscv_asm, coprocessors, false);
+        powdr_riscv::compile_rust_to_riscv_asm(&format!("tests/riscv_data/{case}"), &temp_dir);
+    let powdr_asm = powdr_riscv::compiler::compile(riscv_asm, coprocessors, false);
 
     verify_asm_string(&format!("{case}.asm"), &powdr_asm, inputs, vec![]);
 }
@@ -233,8 +233,8 @@ fn test_print_rv32_executor() {
 fn verify_riscv_file(case: &str, inputs: Vec<GoldilocksField>, coprocessors: &CoProcessors) {
     let temp_dir = Temp::new_dir().unwrap();
     let riscv_asm =
-        riscv::compile_rust_to_riscv_asm(&format!("tests/riscv_data/{case}"), &temp_dir);
-    let powdr_asm = riscv::compiler::compile(riscv_asm, coprocessors, false);
+        powdr_riscv::compile_rust_to_riscv_asm(&format!("tests/riscv_data/{case}"), &temp_dir);
+    let powdr_asm = powdr_riscv::compiler::compile(riscv_asm, coprocessors, false);
 
     verify_riscv_asm_string(&format!("{case}.asm"), &powdr_asm, inputs);
 }
@@ -247,9 +247,9 @@ fn verify_riscv_crate(case: &str, inputs: Vec<GoldilocksField>, coprocessors: &C
 
 fn compile_riscv_crate(case: &str, coprocessors: &CoProcessors) -> String {
     let temp_dir = Temp::new_dir().unwrap();
-    let riscv_asm = riscv::compile_rust_crate_to_riscv_asm(
+    let riscv_asm = powdr_riscv::compile_rust_crate_to_riscv_asm(
         &format!("tests/riscv_data/{case}/Cargo.toml"),
         &temp_dir,
     );
-    riscv::compiler::compile(riscv_asm, coprocessors, false)
+    powdr_riscv::compiler::compile(riscv_asm, coprocessors, false)
 }

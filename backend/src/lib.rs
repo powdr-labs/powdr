@@ -4,8 +4,8 @@
 mod halo2_impl;
 mod pilstark;
 
-use ast::analyzed::Analyzed;
-use number::{DegreeType, FieldElement};
+use powdr_ast::analyzed::Analyzed;
+use powdr_number::{DegreeType, FieldElement};
 use std::{io, marker::PhantomData};
 use strum::{Display, EnumString, EnumVariantNames};
 
@@ -26,7 +26,8 @@ pub enum BackendType {
 impl BackendType {
     pub fn factory<T: FieldElement>(&self) -> &'static dyn BackendFactory<T> {
         #[cfg(feature = "halo2")]
-        const HALO2_FACTORY: WithSetupFactory<halo2::Halo2Prover> = WithSetupFactory(PhantomData);
+        const HALO2_FACTORY: WithSetupFactory<powdr_halo2::Halo2Prover> =
+            WithSetupFactory(PhantomData);
         #[cfg(feature = "halo2")]
         const HALO2_MOCK_FACTORY: WithoutSetupFactory<halo2_impl::Halo2Mock> =
             WithoutSetupFactory(PhantomData);

@@ -3,7 +3,7 @@ use std::fmt::Display;
 use itertools::{Either, Itertools};
 
 use num_traits::Zero;
-use number::{BigInt, FieldElement};
+use powdr_number::{BigInt, FieldElement};
 
 use super::global_constraints::RangeConstraintSet;
 use super::range_constraints::RangeConstraint;
@@ -552,7 +552,7 @@ mod test {
 
     use super::*;
     use crate::witgen::{range_constraints::RangeConstraint, EvalError};
-    use number::{FieldElement, GoldilocksField};
+    use powdr_number::{FieldElement, GoldilocksField};
     use pretty_assertions::assert_eq;
     use test_log::test;
 

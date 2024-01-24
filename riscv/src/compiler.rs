@@ -3,7 +3,8 @@ use std::{
     fmt,
 };
 
-use asm_utils::{
+use itertools::Itertools;
+use powdr_asm_utils::{
     ast::{BinaryOpKind, UnaryOpKind},
     data_parser::{self, DataValue},
     data_storage::{store_data_objects, SingleDataValue},
@@ -14,7 +15,6 @@ use asm_utils::{
     },
     Architecture,
 };
-use itertools::Itertools;
 
 use crate::continuations::bootloader::{bootloader, bootloader_preamble};
 use crate::coprocessors::*;
@@ -37,7 +37,7 @@ impl Register {
     }
 }
 
-impl asm_utils::ast::Register for Register {}
+impl powdr_asm_utils::ast::Register for Register {}
 
 impl fmt::Display for Register {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -51,7 +51,7 @@ pub enum FunctionKind {
     LoDataRef,
 }
 
-impl asm_utils::ast::FunctionOpKind for FunctionKind {}
+impl powdr_asm_utils::ast::FunctionOpKind for FunctionKind {}
 
 impl fmt::Display for FunctionKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -83,9 +83,13 @@ impl Architecture for RiscvArchitecture {
         }
     }
 
-    fn get_references<'a, R: asm_utils::ast::Register, F: asm_utils::ast::FunctionOpKind>(
+    fn get_references<
+        'a,
+        R: powdr_asm_utils::ast::Register,
+        F: powdr_asm_utils::ast::FunctionOpKind,
+    >(
         instr: &str,
-        args: &'a [asm_utils::ast::Argument<R, F>],
+        args: &'a [powdr_asm_utils::ast::Argument<R, F>],
     ) -> Vec<&'a str> {
         // fence arguments are not symbols, they are like reserved
         // keywords affecting the instruction behavior
@@ -192,7 +196,7 @@ pub fn compile(
 
     let program: Vec<String> = file_ids
         .into_iter()
-        .map(|(id, dir, file)| format!("debug file {id} {} {};", quote(&dir), quote(&file)))
+        .map(|(id, dir, file)| format!(".debug file {id} {} {};", quote(&dir), quote(&file)))
         .chain(bootloader_lines)
         .chain(["call __data_init;".to_string()])
         .chain([
@@ -810,7 +814,7 @@ fn process_statement(s: Statement, coprocessors: &CoProcessors) -> Vec<String> {
                 ".loc",
                 [Argument::Expression(Expression::Number(file)), Argument::Expression(Expression::Number(line)), Argument::Expression(Expression::Number(column)), ..],
             ) => {
-                vec![format!("  debug loc {file} {line} {column};")]
+                vec![format!("  .debug loc {file} {line} {column};")]
             }
             (".file", _) => {
                 // We ignore ".file" directives because they have been extracted to the top.
@@ -826,7 +830,7 @@ fn process_statement(s: Statement, coprocessors: &CoProcessors) -> Vec<String> {
             let stmt_str = format!("{s}");
             // remove indentation and trailing newline
             let stmt_str = &stmt_str[2..(stmt_str.len() - 1)];
-            let mut ret = vec![format!("  debug insn \"{stmt_str}\";")];
+            let mut ret = vec![format!("  .debug insn \"{stmt_str}\";")];
             ret.extend(
                 process_instruction(instr, args, coprocessors)
                     .into_iter()

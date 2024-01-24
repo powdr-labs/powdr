@@ -2,15 +2,15 @@
 
 use std::marker::PhantomData;
 
-use ast::{
+use itertools::Itertools;
+use powdr_ast::{
     asm_analysis::{
         AnalysisASMFile, BatchMetadata, FunctionStatement, Incompatible, IncompatibleSet, Item,
         Machine,
     },
     parsed::asm::AbsoluteSymbolPath,
 };
-use itertools::Itertools;
-use number::FieldElement;
+use powdr_number::FieldElement;
 
 pub fn batch<T: FieldElement>(file: AnalysisASMFile<T>) -> AnalysisASMFile<T> {
     RomBatcher::default().batch(file)
@@ -153,8 +153,8 @@ mod tests {
 
     use std::{fs, path::PathBuf};
 
-    use ast::asm_analysis::AnalysisASMFile;
-    use number::GoldilocksField;
+    use powdr_ast::asm_analysis::AnalysisASMFile;
+    use powdr_number::GoldilocksField;
     use pretty_assertions::assert_eq;
     use test_log::test;
 

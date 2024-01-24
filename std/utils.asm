@@ -11,12 +11,6 @@ let fold = |length, f, initial, folder|
         folder(fold((length - 1), f, initial, folder), f((length - 1)))
     };
 
-/// Evaluates to the array [f(0), f(1), ..., f(length - 1)].
-let make_array = |length, f| fold(length, f, [], |acc, e| (acc + [e]));
-
-/// Evaluates to the array [f(arr[0]), f(arr[1]), ..., f(arr[length - 1])].
-let map = |arr, length, f| make_array(length, |i| f(arr[i]));
-
 /// Evaluates to f(0) + f(1) + ... + f(length - 1).
 let sum = |length, f| fold(length, f, 0, |acc, e| (acc + e));
 

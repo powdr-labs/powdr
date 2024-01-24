@@ -4,9 +4,11 @@ use std::{
 };
 
 use itertools::Itertools;
-use number::AbstractNumberType;
+use powdr_number::AbstractNumberType;
 
 use derive_more::From;
+
+use crate::SourceRef;
 
 use super::{Expression, PilStatement};
 
@@ -424,19 +426,19 @@ pub struct Instruction<T> {
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub enum MachineStatement<T> {
-    Degree(usize, AbstractNumberType),
-    Pil(usize, PilStatement<T>),
-    Submachine(usize, SymbolPath, String),
-    RegisterDeclaration(usize, String, Option<RegisterFlag>),
-    InstructionDeclaration(usize, String, Instruction<T>),
+    Degree(SourceRef, AbstractNumberType),
+    Pil(SourceRef, PilStatement<T>),
+    Submachine(SourceRef, SymbolPath, String),
+    RegisterDeclaration(SourceRef, String, Option<RegisterFlag>),
+    InstructionDeclaration(SourceRef, String, Instruction<T>),
     LinkDeclaration(LinkDeclaration<T>),
-    FunctionDeclaration(usize, String, Params<T>, Vec<FunctionStatement<T>>),
-    OperationDeclaration(usize, String, OperationId<T>, Params<T>),
+    FunctionDeclaration(SourceRef, String, Params<T>, Vec<FunctionStatement<T>>),
+    OperationDeclaration(SourceRef, String, OperationId<T>, Params<T>),
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub struct LinkDeclaration<T> {
-    pub start: usize,
+    pub source: SourceRef,
     pub flag: Expression<T>,
     pub params: Params<T>,
     pub to: CallableRef,
@@ -472,15 +474,15 @@ impl AssignmentRegister {
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub enum FunctionStatement<T> {
     Assignment(
-        usize,
+        SourceRef,
         Vec<String>,
         Option<Vec<AssignmentRegister>>,
         Box<Expression<T>>,
     ),
-    Instruction(usize, String, Vec<Expression<T>>),
-    Label(usize, String),
-    DebugDirective(usize, DebugDirective),
-    Return(usize, Vec<Expression<T>>),
+    Instruction(SourceRef, String, Vec<Expression<T>>),
+    Label(SourceRef, String),
+    DebugDirective(SourceRef, DebugDirective),
+    Return(SourceRef, Vec<Expression<T>>),
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]

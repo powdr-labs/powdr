@@ -1,8 +1,8 @@
 use super::affine_expression::AffineResult;
 use super::expression_evaluator::SymbolicVariables;
 use super::FixedData;
-use ast::analyzed::AlgebraicReference;
-use number::FieldElement;
+use powdr_ast::analyzed::AlgebraicReference;
+use powdr_number::FieldElement;
 
 /// Evaluates only fixed columns on a specific row.
 pub struct FixedEvaluator<'a, T> {

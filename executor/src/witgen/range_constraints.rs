@@ -3,7 +3,7 @@ use std::{cmp, ops};
 
 use num_traits::Zero;
 
-use number::{log2_exact, BigInt, FieldElement};
+use powdr_number::{log2_exact, BigInt, FieldElement};
 
 /// Constraint on the values of a variable X.
 /// It does not have to be an interval.
@@ -245,7 +245,7 @@ impl<T: FieldElement> Display for RangeConstraint<T> {
 
 #[cfg(test)]
 mod test {
-    use number::GoldilocksField;
+    use powdr_number::GoldilocksField;
     use pretty_assertions::assert_eq;
     use test_log::test;
 

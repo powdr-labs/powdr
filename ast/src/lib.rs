@@ -2,9 +2,10 @@
 
 use itertools::Itertools;
 use log::log_enabled;
-use number::FieldElement;
 use parsed::{BinaryOperator, UnaryOperator};
+use powdr_number::FieldElement;
 use std::fmt::{Display, Result, Write};
+use std::sync::Arc;
 
 /// Analyzed PIL
 pub mod analyzed;
@@ -20,6 +21,23 @@ pub mod parsed;
 pub struct DiffMonitor {
     previous: Option<String>,
     current: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct SourceRef {
+    pub file: Option<Arc<str>>,
+    pub line: usize,
+    pub col: usize,
+}
+
+impl SourceRef {
+    pub fn unknown() -> Self {
+        Self {
+            file: None,
+            line: 0,
+            col: 0,
+        }
+    }
 }
 
 impl DiffMonitor {
@@ -68,7 +86,6 @@ pub fn evaluate_binary_operation<T: FieldElement>(left: T, op: BinaryOperator, r
 
 pub fn evaluate_unary_operation<T: FieldElement>(op: UnaryOperator, v: T) -> T {
     match op {
-        UnaryOperator::Plus => v,
         UnaryOperator::Minus => -v,
         UnaryOperator::LogicalNot => v.is_zero().into(),
         UnaryOperator::Next => panic!("Cannot evaluate \"'\"."),

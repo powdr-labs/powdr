@@ -8,21 +8,21 @@ use std::{
     time::Instant,
 };
 
-use ast::{
+use log::Level;
+use mktemp::Temp;
+use powdr_ast::{
     analyzed::Analyzed,
     asm_analysis::AnalysisASMFile,
     object::PILGraph,
     parsed::{asm::ASMProgram, PILFile},
     DiffMonitor,
 };
-use backend::{BackendType, Proof};
-use executor::{
+use powdr_backend::{BackendType, Proof};
+use powdr_executor::{
     constant_evaluator,
     witgen::{chain_callbacks, QueryCallback},
 };
-use log::Level;
-use mktemp::Temp;
-use number::{write_polys_csv_file, write_polys_file, CsvRenderMode, FieldElement};
+use powdr_number::{write_polys_csv_file, write_polys_file, CsvRenderMode, FieldElement};
 
 use crate::{
     inputs_to_query_callback, serde_data_to_query_callback,
@@ -237,9 +237,9 @@ where
 ///
 /// # Example
 /// ```rust
-/// use pipeline::{Pipeline, Stage, verify, BackendType, test_util::resolve_test_file};
+/// use powdr_pipeline::{Pipeline, Stage, verify, BackendType, test_util::resolve_test_file};
 /// use std::path::PathBuf;
-/// use number::GoldilocksField;
+/// use powdr_number::GoldilocksField;
 ///
 /// let mut pipeline = Pipeline::<GoldilocksField>::default()
 ///   .from_file(resolve_test_file("pil/fibonacci.pil"))
@@ -438,7 +438,7 @@ impl<T: FieldElement> Pipeline<T> {
                 })?,
             ),
             Artifact::AsmString(path, asm_string) => {
-                let parsed_asm = parser::parse_asm(None, &asm_string).unwrap_or_else(|err| {
+                let parsed_asm = powdr_parser::parse_asm(None, &asm_string).unwrap_or_else(|err| {
                     match path.as_ref() {
                         Some(path) => eprintln!("Error parsing .asm file: {}", path.display()),
                         None => eprintln!("Error parsing .asm file:"),
@@ -451,24 +451,24 @@ impl<T: FieldElement> Pipeline<T> {
             }
             Artifact::ParsedAsmFile(path, parsed) => {
                 self.log("Loading dependencies and resolving references");
-                let resolved =
-                    importer::load_dependencies_and_resolve(path, parsed).map_err(|e| vec![e])?;
+                let resolved = powdr_importer::load_dependencies_and_resolve(path, parsed)
+                    .map_err(|e| vec![e])?;
                 self.diff_monitor.push(&resolved);
                 Artifact::ResolvedModuleTree(resolved)
             }
             Artifact::ResolvedModuleTree(resolved) => {
                 self.log("Run analysis");
-                let analyzed_asm = analysis::analyze(resolved, &mut self.diff_monitor)?;
+                let analyzed_asm = powdr_analysis::analyze(resolved, &mut self.diff_monitor)?;
                 self.log("Analysis done");
                 log::trace!("{analyzed_asm}");
                 Artifact::AnalyzedAsm(analyzed_asm)
             }
             Artifact::AnalyzedAsm(analyzed_asm) => Artifact::ConstrainedMachineCollection(
-                analysis::convert_vms_to_constrained(analyzed_asm, &mut self.diff_monitor),
+                powdr_analysis::convert_vms_to_constrained(analyzed_asm, &mut self.diff_monitor),
             ),
             Artifact::ConstrainedMachineCollection(analyzed_asm) => {
                 self.log("Run airgen");
-                let graph = airgen::compile(analyzed_asm);
+                let graph = powdr_airgen::compile(analyzed_asm);
                 self.diff_monitor.push(&graph);
                 self.log("Airgen done");
                 log::trace!("{graph}");
@@ -476,31 +476,27 @@ impl<T: FieldElement> Pipeline<T> {
             }
             Artifact::LinkedMachineGraph(graph) => {
                 self.log("Run linker");
-                let linked = linker::link(graph)?;
+                let linked = powdr_linker::link(graph)?;
                 self.diff_monitor.push(&linked);
                 log::trace!("{linked}");
                 self.maybe_write_pil(&linked, "")?;
                 Artifact::ParsedPilFile(linked)
             }
             Artifact::ParsedPilFile(linked) => {
-                // TODO: We should probably offer a way to analyze a PILFile directly,
-                // i.e. without going through a string.
-                self.log("Materialize linked file");
-                let linked = format!("{linked}");
                 self.log("Analyzing pil...");
-                Artifact::AnalyzedPil(pil_analyzer::analyze_string(&linked))
+                Artifact::AnalyzedPil(powdr_pil_analyzer::analyze_ast(linked))
             }
             Artifact::PilFilePath(pil_file) => {
                 self.log("Analyzing pil...");
-                Artifact::AnalyzedPil(pil_analyzer::analyze(&pil_file))
+                Artifact::AnalyzedPil(powdr_pil_analyzer::analyze(&pil_file))
             }
             Artifact::PilString(pil_string) => {
                 self.log("Analyzing pil...");
-                Artifact::AnalyzedPil(pil_analyzer::analyze_string(&pil_string))
+                Artifact::AnalyzedPil(powdr_pil_analyzer::analyze_string(&pil_string))
             }
             Artifact::AnalyzedPil(analyzed_pil) => {
                 self.log("Optimizing pil...");
-                let optimized = pilopt::optimize(analyzed_pil);
+                let optimized = powdr_pilopt::optimize(analyzed_pil);
                 self.maybe_write_pil(&optimized, "_opt")?;
                 Artifact::OptimzedPil(optimized)
             }
@@ -525,15 +521,17 @@ impl<T: FieldElement> Pipeline<T> {
                     let start = Instant::now();
                     let external_witness_values =
                         std::mem::take(&mut self.arguments.external_witness_values);
-                    let query_callback = self
-                        .arguments
-                        .query_callback
-                        .take()
-                        .unwrap_or_else(|| Box::new(executor::witgen::unused_query_callback()));
-                    let witness =
-                        executor::witgen::WitnessGenerator::new(&pil, &fixed_cols, query_callback)
-                            .with_external_witness_values(external_witness_values)
-                            .generate();
+                    let query_callback =
+                        self.arguments.query_callback.take().unwrap_or_else(|| {
+                            Box::new(powdr_executor::witgen::unused_query_callback())
+                        });
+                    let witness = powdr_executor::witgen::WitnessGenerator::new(
+                        &pil,
+                        &fixed_cols,
+                        query_callback,
+                    )
+                    .with_external_witness_values(external_witness_values)
+                    .generate();
 
                     self.log(&format!("Took {}", start.elapsed().as_secs_f32()));
                     witness

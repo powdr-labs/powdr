@@ -1,6 +1,6 @@
 #![no_std]
 
-use runtime::coprocessors::{poseidon_gl, poseidon_gl_unsafe};
+use powdr_riscv_runtime::coprocessors::{poseidon_gl, poseidon_gl_unsafe};
 
 #[no_mangle]
 fn main() {

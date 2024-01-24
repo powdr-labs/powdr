@@ -1,16 +1,17 @@
 [package]
-name = "linker"
+name = "powdr-linker"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-ast = { path = "../ast" }
-number = { path = "../number" }
-analysis = { path = "../analysis" }
+powdr-analysis = { path = "../analysis" }
+powdr-ast = { path = "../ast" }
+powdr-number = { path = "../number" }
+
 pretty_assertions = "1.3.0"
 itertools = "^0.10"
 
 [dev-dependencies]
-parser = { path = "../parser" }
-airgen = { path = "../airgen" }
-importer = { path = "../importer" }
+powdr-airgen = { path = "../airgen" }
+powdr-importer = { path = "../importer" }
+powdr-parser = { path = "../parser" }

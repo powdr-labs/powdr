@@ -1,7 +1,7 @@
 #![deny(clippy::print_stdout)]
 
-use analysis::utils::parse_pil_statement;
-use ast::{
+use powdr_analysis::utils::parse_pil_statement;
+use powdr_ast::{
     object::{Location, PILGraph},
     parsed::{
         asm::AbsoluteSymbolPath,
@@ -9,9 +9,11 @@ use ast::{
         build::{direct_reference, index_access, namespaced_reference},
         Expression, PILFile, PilStatement, SelectedExpressions,
     },
+    SourceRef,
 };
+use powdr_number::FieldElement;
+
 use itertools::Itertools;
-use number::FieldElement;
 
 const DEFAULT_DEGREE: u64 = 1024;
 const MAIN_OPERATION_NAME: &str = "main";
@@ -42,14 +44,14 @@ pub fn link<T: FieldElement>(graph: PILGraph<T>) -> Result<PILFile<T>, Vec<Strin
         })
         .flat_map(|(mut namespace, e)| {
             let name = namespace.pop().unwrap();
-            let def = PilStatement::LetStatement(0, name.to_string(), Some(e));
+            let def = PilStatement::LetStatement(SourceRef::unknown(), name.to_string(), Some(e));
 
             // If there is a namespace change, insert a namespace statement.
             if current_namespace != namespace {
                 current_namespace = namespace.clone();
                 vec![
                     PilStatement::Namespace(
-                        0,
+                        SourceRef::unknown(),
                         namespace.relative_to(&AbsoluteSymbolPath::default()),
                         Expression::Number(T::from(main_degree)),
                     ),
@@ -74,7 +76,7 @@ pub fn link<T: FieldElement>(graph: PILGraph<T>) -> Result<PILFile<T>, Vec<Strin
 
         // create a namespace for this object
         pil.push(PilStatement::Namespace(
-            0,
+            SourceRef::unknown(),
             SymbolPath::from_identifier(location.to_string()),
             Expression::Number(T::from(main_degree)),
         ));
@@ -145,7 +147,7 @@ pub fn link<T: FieldElement>(graph: PILGraph<T>) -> Result<PILFile<T>, Vec<Strin
                     .collect(),
             };
 
-            let lookup = PilStatement::PlookupIdentity(0, lhs, rhs);
+            let lookup = PilStatement::PlookupIdentity(SourceRef::unknown(), lhs, rhs);
             pil.push(lookup);
         }
 
@@ -190,14 +192,14 @@ pub fn link<T: FieldElement>(graph: PILGraph<T>) -> Result<PILFile<T>, Vec<Strin
 mod test {
     use std::fs;
 
-    use ast::{
+    use powdr_ast::{
         object::{Location, Object, PILGraph},
         parsed::{Expression, PILFile},
     };
-    use number::{Bn254Field, FieldElement, GoldilocksField};
+    use powdr_number::{Bn254Field, FieldElement, GoldilocksField};
 
-    use analysis::convert_asm_to_pil;
-    use parser::parse_asm;
+    use powdr_analysis::convert_asm_to_pil;
+    use powdr_parser::parse_asm;
 
     use pretty_assertions::assert_eq;
 
@@ -205,15 +207,15 @@ mod test {
 
     fn parse_analyse_and_compile<T: FieldElement>(input: &str) -> PILGraph<T> {
         let parsed = parse_asm(None, input).unwrap();
-        let resolved = importer::load_dependencies_and_resolve(None, parsed).unwrap();
-        airgen::compile(convert_asm_to_pil(resolved).unwrap())
+        let resolved = powdr_importer::load_dependencies_and_resolve(None, parsed).unwrap();
+        powdr_airgen::compile(convert_asm_to_pil(resolved).unwrap())
     }
 
     #[test]
     fn degree() {
         // a graph with two objects of degree `main_degree` and `foo_degree`
         let test_graph = |main_degree, foo_degree| PILGraph {
-            main: ast::object::Machine {
+            main: powdr_ast::object::Machine {
                 location: Location::main(),
                 operation_id: Some("operation_id".into()),
                 latch: Some("latch".into()),
@@ -233,7 +235,7 @@ mod test {
         // a test over a pil file `f` checking if all namespaces have degree `n`
         let all_namespaces_have_degree = |f: PILFile<Bn254Field>, n| {
             f.0.iter().all(|s| match s {
-                ast::parsed::PilStatement::Namespace(_, _, e) => {
+                powdr_ast::parsed::PilStatement::Namespace(_, _, e) => {
                     *e == Expression::Number(Bn254Field::from(n))
                 }
                 _ => true,

@@ -1,8 +1,8 @@
-use number::FieldElement;
-use std::cmp;
+use powdr_number::FieldElement;
 use std::collections::HashMap;
+use std::{cmp, path::PathBuf};
 
-use ast::analyzed::{
+use powdr_ast::analyzed::{
     AlgebraicBinaryOperator, AlgebraicExpression as Expression, AlgebraicUnaryOperator, Analyzed,
     IdentityKind, PolyID, PolynomialType, StatementIdentifier, SymbolKind,
 };
@@ -77,7 +77,18 @@ pub fn export<T: FieldElement>(analyzed: &Analyzed<T>) -> PIL {
             }
             StatementIdentifier::Identity(id) => {
                 let identity = &analyzed.identities[*id];
-                let file_name = identity.source.file.clone();
+                // PILCOM strips the path from filenames, we do the same here for compatibility
+                let file_name = identity
+                    .source
+                    .file
+                    .as_deref()
+                    .and_then(|s| {
+                        PathBuf::from(s)
+                            .file_name()
+                            .and_then(|n| n.to_str())
+                            .map(String::from)
+                    })
+                    .unwrap_or_default();
                 let line = identity.source.line;
                 let selector_degree = if identity.kind == IdentityKind::Polynomial {
                     2
@@ -324,7 +335,6 @@ impl<'a, T: FieldElement> Exporter<'a, T> {
             Expression::UnaryOperation(op, value) => {
                 let (deg, value) = self.expression_to_json(value);
                 match op {
-                    AlgebraicUnaryOperator::Plus => (deg, value),
                     AlgebraicUnaryOperator::Minus => (
                         deg,
                         StarkyExpr {
@@ -362,13 +372,13 @@ impl<'a, T: FieldElement> Exporter<'a, T> {
 
 #[cfg(test)]
 mod test {
-    use pil_analyzer::analyze;
+    use powdr_pil_analyzer::analyze;
     use pretty_assertions::assert_eq;
     use serde_json::Value as JsonValue;
     use std::{fs, process::Command};
     use test_log::test;
 
-    use number::GoldilocksField;
+    use powdr_number::GoldilocksField;
 
     use super::*;
 
@@ -444,7 +454,11 @@ mod test {
 
     fn compare_export_file(file: &str) {
         let (json_out, pilcom_parsed) = generate_json_pair(file);
-        assert_eq!(json_out, pilcom_parsed);
+        if json_out != pilcom_parsed {
+            // Computing the pretty diff can take minutes, so we are printing an error already here.
+            eprintln!("Exported json and file re-exported by pilcom differ:");
+            assert_eq!(json_out, pilcom_parsed);
+        }
     }
 
     /// Normalizes the json in that it replaces all idQ values by "99"

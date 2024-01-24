@@ -6,13 +6,14 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fmt::Display;
 use std::ops::{self, ControlFlow};
 
-use number::{DegreeType, FieldElement};
+use powdr_number::{DegreeType, FieldElement};
 
 use crate::parsed::utils::expr_any;
 use crate::parsed::visitor::ExpressionVisitable;
 pub use crate::parsed::BinaryOperator;
 pub use crate::parsed::UnaryOperator;
 use crate::parsed::{self, SelectedExpressions};
+use crate::SourceRef;
 
 #[derive(Debug)]
 pub enum StatementIdentifier {
@@ -674,14 +675,12 @@ impl TryFrom<BinaryOperator> for AlgebraicBinaryOperator {
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
 pub enum AlgebraicUnaryOperator {
-    Plus,
     Minus,
 }
 
 impl From<AlgebraicUnaryOperator> for UnaryOperator {
     fn from(op: AlgebraicUnaryOperator) -> UnaryOperator {
         match op {
-            AlgebraicUnaryOperator::Plus => UnaryOperator::Plus,
             AlgebraicUnaryOperator::Minus => UnaryOperator::Minus,
         }
     }
@@ -692,7 +691,6 @@ impl TryFrom<UnaryOperator> for AlgebraicUnaryOperator {
 
     fn try_from(op: UnaryOperator) -> Result<Self, Self::Error> {
         match op {
-            UnaryOperator::Plus => Ok(AlgebraicUnaryOperator::Plus),
             UnaryOperator::Minus => Ok(AlgebraicUnaryOperator::Minus),
             _ => Err(format!(
                 "Unary operator {op} not allowed in algebraic expression."
@@ -810,10 +808,4 @@ impl Display for PolynomialType {
             }
         )
     }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SourceRef {
-    pub file: String, // TODO should maybe be a shared pointer
-    pub line: usize,
 }

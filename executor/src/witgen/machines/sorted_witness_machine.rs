@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 
-use ast::parsed::SelectedExpressions;
 use itertools::Itertools;
+use powdr_ast::parsed::SelectedExpressions;
 
 use super::super::affine_expression::AffineExpression;
 use super::{EvalResult, FixedData};
@@ -11,10 +11,10 @@ use crate::witgen::{
     symbolic_evaluator::SymbolicEvaluator,
 };
 use crate::witgen::{EvalValue, IncompleteCause, MutableState, QueryCallback};
-use ast::analyzed::{
+use powdr_ast::analyzed::{
     AlgebraicExpression as Expression, AlgebraicReference, Identity, IdentityKind, PolyID,
 };
-use number::FieldElement;
+use powdr_number::FieldElement;
 
 /// A machine that can support a lookup in a set of columns that are sorted
 /// by one specific column and values in that column have to be unique.

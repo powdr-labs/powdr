@@ -1,5 +1,5 @@
-use number::{FieldElement, GoldilocksField};
-use pipeline::test_util::{gen_estark_proof, gen_halo2_proof, verify_test_file};
+use powdr_number::{FieldElement, GoldilocksField};
+use powdr_pipeline::test_util::{gen_estark_proof, gen_halo2_proof, verify_test_file};
 use test_log::test;
 
 fn verify_asm<T: FieldElement>(file_name: &str, inputs: Vec<T>) {
@@ -316,7 +316,7 @@ fn pil_at_module_level() {
 
 mod book {
     use super::*;
-    use number::GoldilocksField;
+    use powdr_number::GoldilocksField;
     use test_log::test;
 
     fn run_book_test(file: &str) {
@@ -336,5 +336,13 @@ mod book {
 fn hello_world_asm_fail() {
     let f = "asm/book/hello_world.asm";
     let i = [1];
+    verify_asm::<GoldilocksField>(f, slice_to_vec(&i));
+}
+
+#[test]
+#[should_panic = "FailedAssertion(\"This should fail.\")"]
+fn test_failing_assertion() {
+    let f = "asm/failing_assertion.asm";
+    let i = [];
     verify_asm::<GoldilocksField>(f, slice_to_vec(&i));
 }

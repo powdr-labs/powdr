@@ -2,8 +2,8 @@ pub mod estark;
 mod json_exporter;
 
 use crate::{BackendImpl, Proof};
-use ast::analyzed::Analyzed;
-use number::{DegreeType, FieldElement};
+use powdr_ast::analyzed::Analyzed;
+use powdr_number::{DegreeType, FieldElement};
 
 pub struct PilStarkCli;
 

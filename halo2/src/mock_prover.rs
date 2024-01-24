@@ -1,9 +1,9 @@
-use ast::analyzed::Analyzed;
 use polyexen::plaf::PlafDisplayBaseTOML;
+use powdr_ast::analyzed::Analyzed;
 
 use super::circuit_builder::analyzed_to_circuit;
 use halo2_proofs::{dev::MockProver, halo2curves::bn256::Fr};
-use number::{BigInt, FieldElement};
+use powdr_number::{BigInt, FieldElement};
 
 // Can't depend on compiler::pipeline::GeneratedWitness because of circular dependencies...
 pub fn mock_prove<T: FieldElement>(
@@ -32,8 +32,8 @@ pub fn mock_prove<T: FieldElement>(
 
 #[cfg(test)]
 mod test {
-    use number::Bn254Field;
-    use pipeline::{test_util::resolve_test_file, Pipeline};
+    use powdr_number::Bn254Field;
+    use powdr_pipeline::{test_util::resolve_test_file, Pipeline};
     use test_log::test;
 
     use super::*;

@@ -1,8 +1,8 @@
 use super::affine_expression::{AffineExpression, AffineResult};
 use super::expression_evaluator::SymbolicVariables;
 
-use ast::analyzed::AlgebraicReference;
-use number::FieldElement;
+use powdr_ast::analyzed::AlgebraicReference;
+use powdr_number::FieldElement;
 
 /// A purely symbolic evaluator, uses AlgebraicReference as keys
 /// and neither resolves fixed columns nor witness columns.

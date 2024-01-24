@@ -7,7 +7,7 @@ use revm::{
     },
     EVM,
 };
-use powdr_riscv_rt::{print, coprocessors::get_data_serde};
+use powdr_riscv_runtime::{print, coprocessors::get_data_serde};
 
 extern crate alloc;
 use alloc::vec;

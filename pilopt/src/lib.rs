@@ -3,16 +3,16 @@
 
 use std::collections::{BTreeMap, HashSet};
 
-use ast::analyzed::{
+use powdr_ast::analyzed::{
     AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicUnaryOperator, Reference,
 };
-use ast::analyzed::{
+use powdr_ast::analyzed::{
     AlgebraicReference, Analyzed, Expression, FunctionValueDefinition, IdentityKind, PolyID,
     PolynomialReference,
 };
-use ast::parsed::visitor::ExpressionVisitable;
+use powdr_ast::parsed::visitor::ExpressionVisitable;
 
-use number::FieldElement;
+use powdr_number::FieldElement;
 
 pub fn optimize<T: FieldElement>(mut pil_file: Analyzed<T>) -> Analyzed<T> {
     let col_count_pre = (pil_file.commitment_count(), pil_file.constant_count());
@@ -113,7 +113,6 @@ fn simplify_expression_single<T: FieldElement>(e: &mut AlgebraicExpression<T>) {
     if let AlgebraicExpression::UnaryOperation(op, inner) = e {
         if let AlgebraicExpression::Number(inner) = **inner {
             *e = AlgebraicExpression::Number(match op {
-                AlgebraicUnaryOperator::Plus => inner,
                 AlgebraicUnaryOperator::Minus => -inner,
             });
             return;
@@ -339,8 +338,8 @@ fn remove_trivial_identities<T: FieldElement>(pil_file: &mut Analyzed<T>) {
 
 #[cfg(test)]
 mod test {
-    use number::GoldilocksField;
-    use pil_analyzer::pil_analyzer::process_pil_file_contents;
+    use powdr_number::GoldilocksField;
+    use powdr_pil_analyzer::pil_analyzer::process_pil_file_contents;
 
     use crate::optimize;
 

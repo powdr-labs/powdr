@@ -3,8 +3,8 @@
 use std::collections::HashMap;
 
 use num_bigint::BigInt;
-use number::{AbstractNumberType, FieldElement};
 use polyexen::expr::{Column, ColumnKind};
+use powdr_number::{AbstractNumberType, FieldElement};
 
 pub(crate) struct CircuitData<'a, T> {
     pub(crate) fixed: Vec<(String, Vec<T>)>,

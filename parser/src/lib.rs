@@ -2,11 +2,14 @@
 
 #![deny(clippy::print_stdout)]
 
-use ast::parsed::asm::ASMProgram;
 use lalrpop_util::*;
+use powdr_ast::parsed::asm::ASMProgram;
+use powdr_ast::SourceRef;
 
-use number::FieldElement;
-use parser_util::{handle_parse_error, ParseError};
+use powdr_number::FieldElement;
+use powdr_parser_util::{handle_parse_error, ParseError};
+
+use std::sync::Arc;
 
 lalrpop_mod!(
     #[allow(clippy::all)]
@@ -14,71 +17,120 @@ lalrpop_mod!(
     "/powdr.rs"
 );
 
+pub struct ParserContext {
+    file_name: Option<Arc<str>>,
+    line_starts: Vec<usize>,
+}
+
+impl ParserContext {
+    pub fn new(file_name: Option<&str>, input: &str) -> Self {
+        Self {
+            file_name: file_name.map(|s| s.into()),
+            line_starts: powdr_parser_util::lines::compute_line_starts(input),
+        }
+    }
+
+    pub fn source_ref(&self, offset: usize) -> SourceRef {
+        let (line, col) = powdr_parser_util::lines::offset_to_line_col(offset, &self.line_starts);
+        SourceRef {
+            file: self.file_name.clone(),
+            line,
+            col,
+        }
+    }
+}
+
 pub fn parse<'a, T: FieldElement>(
     file_name: Option<&str>,
     input: &'a str,
-) -> Result<ast::parsed::PILFile<T>, ParseError<'a>> {
+) -> Result<powdr_ast::parsed::PILFile<T>, ParseError<'a>> {
+    let ctx = ParserContext::new(file_name, input);
     powdr::PILFileParser::new()
-        .parse(input)
+        .parse(&ctx, input)
         .map_err(|err| handle_parse_error(err, file_name, input))
 }
 
 pub fn parse_asm<'a, T: FieldElement>(
     file_name: Option<&str>,
     input: &'a str,
-) -> Result<ast::parsed::asm::ASMProgram<T>, ParseError<'a>> {
+) -> Result<powdr_ast::parsed::asm::ASMProgram<T>, ParseError<'a>> {
     parse_module(file_name, input).map(|main| ASMProgram { main })
 }
 
 pub fn parse_module<'a, T: FieldElement>(
     file_name: Option<&str>,
     input: &'a str,
-) -> Result<ast::parsed::asm::ASMModule<T>, ParseError<'a>> {
+) -> Result<powdr_ast::parsed::asm::ASMModule<T>, ParseError<'a>> {
+    let ctx = ParserContext::new(file_name, input);
     powdr::ASMModuleParser::new()
-        .parse(input)
+        .parse(&ctx, input)
         .map_err(|err| handle_parse_error(err, file_name, input))
 }
 
 #[cfg(test)]
 mod test {
     use super::*;
-    use ast::parsed::{
+    use powdr_ast::parsed::{
         build::direct_reference, PILFile, PilStatement, PolynomialName, SelectedExpressions,
     };
-    use number::GoldilocksField;
-    use parser_util::UnwrapErrToStderr;
+    use powdr_number::GoldilocksField;
+    use powdr_parser_util::UnwrapErrToStderr;
     use std::fs;
     use test_log::test;
 
     #[test]
     fn empty() {
+        let input = "";
+        let ctx = ParserContext::new(None, input);
         assert!(powdr::PILFileParser::new()
-            .parse::<GoldilocksField>("")
+            .parse::<GoldilocksField>(&ctx, input)
             .is_ok());
     }
 
     #[test]
     fn simple_include() {
+        let input = "include \"x\";";
+        let ctx = ParserContext::new(None, input);
         let parsed = powdr::PILFileParser::new()
-            .parse::<GoldilocksField>("include \"x\";")
+            .parse::<GoldilocksField>(&ctx, input)
             .unwrap();
         assert_eq!(
             parsed,
-            PILFile(vec![PilStatement::Include(0, "x".to_string())])
+            PILFile(vec![PilStatement::Include(
+                SourceRef {
+                    file: None,
+                    line: 1,
+                    col: 0,
+                },
+                "x".to_string()
+            )])
         );
     }
 
     #[test]
     fn start_offsets() {
+        let input = "include \"x\"; pol commit t;";
+        let ctx = ParserContext::new(None, input);
         let parsed = powdr::PILFileParser::new()
-            .parse::<GoldilocksField>("include \"x\"; pol commit t;")
+            .parse::<GoldilocksField>(&ctx, input)
             .unwrap();
         assert_eq!(
             parsed,
             PILFile(vec![
-                PilStatement::Include(0, "x".to_string()),
+                PilStatement::Include(
+                    SourceRef {
+                        file: None,
+                        line: 1,
+                        col: 0,
+                    },
+                    "x".to_string()
+                ),
                 PilStatement::PolynomialCommitDeclaration(
-                    13,
+                    SourceRef {
+                        file: None,
+                        line: 1,
+                        col: 13,
+                    },
                     vec![PolynomialName {
                         name: "t".to_string(),
                         array_size: None
@@ -91,13 +143,19 @@ mod test {
 
     #[test]
     fn simple_plookup() {
+        let input = "f in g;";
+        let ctx = ParserContext::new(None, input);
         let parsed = powdr::PILFileParser::new()
-            .parse::<GoldilocksField>("f in g;")
+            .parse::<GoldilocksField>(&ctx, "f in g;")
             .unwrap();
         assert_eq!(
             parsed,
             PILFile(vec![PilStatement::PlookupIdentity(
-                0,
+                SourceRef {
+                    file: None,
+                    line: 1,
+                    col: 0,
+                },
                 SelectedExpressions {
                     selector: None,
                     expressions: vec![direct_reference("f")]
@@ -156,9 +214,9 @@ mod test {
     }
 
     mod display {
-        use number::GoldilocksField;
+        use powdr_number::GoldilocksField;
 
-        use parser_util::UnwrapErrToStderr;
+        use powdr_parser_util::UnwrapErrToStderr;
         use pretty_assertions::assert_eq;
 
         use crate::parse;

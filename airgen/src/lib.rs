@@ -4,7 +4,7 @@
 
 use std::collections::BTreeMap;
 
-use ast::{
+use powdr_ast::{
     asm_analysis::{AnalysisASMFile, Item, LinkDefinitionStatement, SubmachineDeclaration},
     object::{Link, LinkFrom, LinkTo, Location, Object, Operation, PILGraph},
     parsed::{
@@ -16,7 +16,7 @@ use ast::{
 const MAIN_MACHINE: &str = "::Main";
 const MAIN_FUNCTION: &str = "main";
 
-use number::FieldElement;
+use powdr_number::FieldElement;
 
 pub fn compile<T: FieldElement>(input: AnalysisASMFile<T>) -> PILGraph<T> {
     let main_location = Location::main();
@@ -71,7 +71,7 @@ pub fn compile<T: FieldElement>(input: AnalysisASMFile<T>) -> PILGraph<T> {
         panic!()
     };
 
-    let main = ast::object::Machine {
+    let main = powdr_ast::object::Machine {
         location: main_location,
         latch: main_ty.latch.clone(),
         operation_id: main_ty.operation_id.clone(),
@@ -172,7 +172,7 @@ impl<'a, T: FieldElement> ASMPILConverter<'a, T> {
     fn handle_link_def(
         &mut self,
         LinkDefinitionStatement {
-            start: _,
+            source: _,
             flag,
             params,
             to: CallableRef { instance, callable },
@@ -204,7 +204,7 @@ impl<'a, T: FieldElement> ASMPILConverter<'a, T> {
                 .operation_definitions()
                 .find(|o| o.name == callable)
                 .map(|d| LinkTo {
-                    machine: ast::object::Machine {
+                    machine: powdr_ast::object::Machine {
                         location: instance_location,
                         latch: instance_ty.latch.clone(),
                         operation_id: instance_ty.operation_id.clone(),

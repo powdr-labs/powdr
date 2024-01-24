@@ -1,0 +1,12 @@
+[package]
+name = "powdr-parser-util"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+lalrpop-util = {version = "^0.19", features = ["lexer"]}
+codespan-reporting = "^0.11"
+
+[dev-dependencies]
+test-log = "0.2.12"
+env_logger = "0.10.0"

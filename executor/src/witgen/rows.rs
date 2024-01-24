@@ -1,8 +1,8 @@
 use std::{collections::HashSet, fmt::Debug};
 
-use ast::analyzed::{AlgebraicExpression as Expression, AlgebraicReference, PolyID};
 use itertools::Itertools;
-use number::{DegreeType, FieldElement};
+use powdr_ast::analyzed::{AlgebraicExpression as Expression, AlgebraicReference, PolyID};
+use powdr_number::{DegreeType, FieldElement};
 
 use crate::witgen::Constraint;
 

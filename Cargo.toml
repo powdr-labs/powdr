@@ -6,25 +6,25 @@ members = [
     "powdr",
     "number",
     "parser",
-    "powdr_cli",
+    "cli",
     "executor",
     "riscv",
-    "parser_util",
-    "pil_analyzer",
+    "parser-util",
+    "pil-analyzer",
     "pipeline",
     "pilopt",
-    "asm_to_pil",
+    "asm-to-pil",
     "halo2",
     "backend",
     "ast",
     "analysis",
     "linker",
-    "asm_utils",
+    "asm-utils",
     "airgen",
-    "riscv_executor",
+    "riscv-executor",
 ]
 
-exclude = [ "powdr_riscv_rt" ]
+exclude = [ "riscv-runtime" ]
 
 [patch."https://github.com/privacy-scaling-explorations/halo2.git"]
 # TODO change back to this once the PR is merged

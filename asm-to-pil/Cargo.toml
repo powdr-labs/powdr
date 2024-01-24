@@ -1,0 +1,16 @@
+[package]
+name = "powdr-asm-to-pil"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+powdr-ast = { path = "../ast" }
+powdr-number = { path = "../number" }
+powdr-parser = { path = "../parser" }
+
+log = "0.4.17"
+num-bigint = "0.4.3"
+pretty_assertions = "1.4.0"
+
+[dev-dependencies]
+powdr-analysis = { path = "../analysis" }

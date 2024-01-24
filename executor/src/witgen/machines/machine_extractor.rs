@@ -9,11 +9,11 @@ use super::KnownMachine;
 use crate::witgen::generator::Generator;
 use crate::witgen::global_constraints::GlobalConstraints;
 use crate::witgen::machines::write_once_memory::WriteOnceMemory;
-use ast::analyzed::{AlgebraicExpression as Expression, Identity, IdentityKind, PolyID};
-use ast::parsed::visitor::ExpressionVisitable;
-use ast::parsed::SelectedExpressions;
 use itertools::Itertools;
-use number::FieldElement;
+use powdr_ast::analyzed::{AlgebraicExpression as Expression, Identity, IdentityKind, PolyID};
+use powdr_ast::parsed::visitor::ExpressionVisitable;
+use powdr_ast::parsed::SelectedExpressions;
+use powdr_number::FieldElement;
 
 pub struct ExtractionOutput<'a, T: FieldElement> {
     pub fixed_lookup: FixedLookup<T>,

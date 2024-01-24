@@ -2,8 +2,9 @@ use std::iter::{once, repeat};
 use std::time::Instant;
 
 use crate::{pilstark, BackendImpl, Proof};
-use ast::analyzed::Analyzed;
-use number::{BigInt, DegreeType, FieldElement, GoldilocksField};
+use powdr_ast::analyzed::Analyzed;
+use powdr_number::{BigInt, DegreeType, FieldElement, GoldilocksField};
+
 
 use starky::{
     merklehash::MerkleTreeGL,
