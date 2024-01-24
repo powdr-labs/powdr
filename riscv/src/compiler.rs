@@ -196,7 +196,7 @@ pub fn compile(
 
     let program: Vec<String> = file_ids
         .into_iter()
-        .map(|(id, dir, file)| format!("debug file {id} {} {};", quote(&dir), quote(&file)))
+        .map(|(id, dir, file)| format!(".debug file {id} {} {};", quote(&dir), quote(&file)))
         .chain(bootloader_lines)
         .chain(["call __data_init;".to_string()])
         .chain([
@@ -814,7 +814,7 @@ fn process_statement(s: Statement, coprocessors: &CoProcessors) -> Vec<String> {
                 ".loc",
                 [Argument::Expression(Expression::Number(file)), Argument::Expression(Expression::Number(line)), Argument::Expression(Expression::Number(column)), ..],
             ) => {
-                vec![format!("  debug loc {file} {line} {column};")]
+                vec![format!("  .debug loc {file} {line} {column};")]
             }
             (".file", _) => {
                 // We ignore ".file" directives because they have been extracted to the top.
@@ -830,7 +830,7 @@ fn process_statement(s: Statement, coprocessors: &CoProcessors) -> Vec<String> {
             let stmt_str = format!("{s}");
             // remove indentation and trailing newline
             let stmt_str = &stmt_str[2..(stmt_str.len() - 1)];
-            let mut ret = vec![format!("  debug insn \"{stmt_str}\";")];
+            let mut ret = vec![format!("  .debug insn \"{stmt_str}\";")];
             ret.extend(
                 process_instruction(instr, args, coprocessors)
                     .into_iter()

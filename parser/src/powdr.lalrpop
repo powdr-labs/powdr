@@ -343,11 +343,11 @@ InstructionStatement: FunctionStatement<T> = {
 }
 
 DebugDirectiveStatement: FunctionStatement<T> = {
-    <start:@L> "debug" "file" <n:Integer> <d:StringLiteral> <f:StringLiteral> ";"
+    <start:@L> ".debug" "file" <n:Integer> <d:StringLiteral> <f:StringLiteral> ";"
         => FunctionStatement::DebugDirective(ctx.source_ref(start), DebugDirective::File(n.try_into().unwrap(), d, f)),
-    <start:@L> "debug" "loc" <f:Integer> <line:Integer> <col:Integer> ";"
+    <start:@L> ".debug" "loc" <f:Integer> <line:Integer> <col:Integer> ";"
         => FunctionStatement::DebugDirective(ctx.source_ref(start), DebugDirective::Loc(f.try_into().unwrap(), line.try_into().unwrap(), col.try_into().unwrap())),
-    <start:@L> "debug" "insn" <insn:StringLiteral> ";"
+    <start:@L> ".debug" "insn" <insn:StringLiteral> ";"
         => FunctionStatement::DebugDirective(ctx.source_ref(start), DebugDirective::OriginalInstruction(insn)),
 }
 
