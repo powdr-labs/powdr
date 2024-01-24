@@ -753,6 +753,14 @@ impl<T: FieldElement> Pipeline<T> {
         Ok(optimized_pil)
     }
 
+    pub fn optimized_pil_ref(&mut self) -> Result<&Analyzed<T>, Vec<String>> {
+        self.advance_to(Stage::OptimizedPil)?;
+        match self.artifact.as_ref().unwrap() {
+            Artifact::OptimzedPil(optimized_pil) => Ok(optimized_pil),
+            _ => panic!(),
+        }
+    }
+
     pub fn pil_with_evaluated_fixed_cols(
         mut self,
     ) -> Result<PilWithEvaluatedFixedCols<T>, Vec<String>> {

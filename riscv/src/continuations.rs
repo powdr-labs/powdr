@@ -15,8 +15,9 @@ use bootloader::{default_input, PAGE_SIZE_BYTES_LOG, PC_INDEX, REGISTER_NAMES};
 use memory_merkle_tree::MerkleTree;
 
 use crate::continuations::bootloader::{
-    default_register_values, BOOTLOADER_INPUTS_PER_PAGE, BOOTLOADER_SPECIFIC_INSTRUCTION_NAMES,
-    DEFAULT_PC, MEMORY_HASH_START_INDEX, PAGE_INPUTS_OFFSET, WORDS_PER_PAGE,
+    default_register_values, shutdown_routine_upper_bound, BOOTLOADER_INPUTS_PER_PAGE,
+    BOOTLOADER_SPECIFIC_INSTRUCTION_NAMES, DEFAULT_PC, MEMORY_HASH_START_INDEX, PAGE_INPUTS_OFFSET,
+    WORDS_PER_PAGE,
 };
 
 fn transposed_trace<F: FieldElement>(trace: &ExecutionTrace) -> HashMap<String, Vec<F>> {
@@ -45,15 +46,25 @@ fn render_hash<F: FieldElement>(hash: &[F]) -> String {
         .join("")
 }
 
+/// Calls the provided `pipeline_callback` for each chunk of the execution.
+///
+/// # Arguments
+/// - `pipeline`: The pipeline that should be the starting point for all the chunks.
+/// - `pipeline_callback`: A function that will be called for each chunk. It will be passed the `pipeline`,
+///   but with the `PilWithEvaluatedFixedCols` stage already advanced to and all chunk-specific parameters set.
+/// - `bootloader_inputs`: The inputs to the bootloader and the index of the row at which the shutdown routine
+///   is supposed to execute, for each chunk, as returned by `rust_continuations_dry_run`.
 pub fn rust_continuations<F: FieldElement, PipelineCallback, E>(
     mut pipeline: Pipeline<F>,
     pipeline_callback: PipelineCallback,
-    bootloader_inputs: Vec<Vec<F>>,
+    bootloader_inputs: Vec<(Vec<F>, u64)>,
 ) -> Result<(), E>
 where
     PipelineCallback: Fn(Pipeline<F>) -> Result<(), E>,
 {
     let num_chunks = bootloader_inputs.len();
+
+    let length = pipeline.optimized_pil_ref().unwrap().degree();
 
     // Advance the pipeline to the PilWithEvaluatedFixedCols stage and then clone it
     // for each chunk. This is more efficient, because we'll run all steps until then
@@ -66,18 +77,29 @@ where
     bootloader_inputs
         .into_iter()
         .enumerate()
-        .map(move |(i, bootloader_inputs)| -> Result<(), E> {
-            log::info!("\nRunning chunk {} / {}...", i + 1, num_chunks);
-            let pipeline = pipeline.clone();
-            let name = format!("{}_chunk_{}", pipeline.name(), i);
-            let pipeline = pipeline.with_name(name);
-            let pipeline = pipeline.add_external_witness_values(vec![(
-                "main.bootloader_input_value".to_string(),
-                bootloader_inputs,
-            )]);
-            pipeline_callback(pipeline)?;
-            Ok(())
-        })
+        .map(
+            |(i, (bootloader_inputs, start_of_shutdown_routine))| -> Result<(), E> {
+                log::info!("\nRunning chunk {} / {}...", i + 1, num_chunks);
+                let pipeline = pipeline.clone();
+                let name = format!("{}_chunk_{}", pipeline.name(), i);
+                let pipeline = pipeline.with_name(name);
+                // The `jump_to_shutdown_routine` column indicates when the execution should jump to the shutdown routine.
+                // In that row, the normal PC update is ignored and the PC is set to the address of the shutdown routine.
+                // In other words, it should be a one-hot encoding of `start_of_shutdown_routine`.
+                let jump_to_shutdown_routine = (0..length)
+                    .map(|i| (i == start_of_shutdown_routine - 1).into())
+                    .collect();
+                let pipeline = pipeline.add_external_witness_values(vec![
+                    ("main.bootloader_input_value".to_string(), bootloader_inputs),
+                    (
+                        "main.jump_to_shutdown_routine".to_string(),
+                        jump_to_shutdown_routine,
+                    ),
+                ]);
+                pipeline_callback(pipeline)?;
+                Ok(())
+            },
+        )
         .collect::<Result<Vec<_>, E>>()?;
     Ok(())
 }
@@ -116,12 +138,17 @@ fn sanity_check<T>(program: &AnalysisASMFile<T>) {
     assert_eq!(machine_registers, expected_registers);
 }
 
-pub fn rust_continuations_dry_run<F: FieldElement>(pipeline: &mut Pipeline<F>) -> Vec<Vec<F>> {
+/// Runs the entire execution using the RISC-V executor. For each chunk, it collects:
+/// - The inputs to the bootloader, needed to restore the correct state.
+/// - The number of rows after which the prover should jump to the shutdown routine.
+pub fn rust_continuations_dry_run<F: FieldElement>(
+    pipeline: &mut Pipeline<F>,
+) -> Vec<(Vec<F>, u64)> {
     log::info!("Initializing memory merkle tree...");
     let mut merkle_tree = MerkleTree::<F>::new();
 
     // All inputs for all chunks.
-    let mut all_bootloader_inputs = vec![];
+    let mut bootloader_inputs_and_num_rows = vec![];
 
     // Initial register values for the current chunk.
     let mut register_values = default_register_values();
@@ -163,15 +190,12 @@ pub fn rust_continuations_dry_run<F: FieldElement>(pipeline: &mut Pipeline<F>) -
     let mut proven_trace = first_real_execution_row;
     let mut chunk_index = 0;
 
-    // Run for 2**degree - 2 steps, because the executor doesn't run the dispatcher,
-    // which takes 2 rows.
-    let degree = program
+    let length = program
         .machines()
         .fold(None, |acc, (_, m)| acc.or(m.degree.clone()))
         .unwrap()
         .degree;
-    let degree = F::from(degree).to_degree();
-    let num_rows = degree as usize - 2;
+    let length = F::from(length).to_degree() as usize;
 
     loop {
         log::info!("\nRunning chunk {}...", chunk_index);
@@ -184,10 +208,10 @@ pub fn rust_continuations_dry_run<F: FieldElement>(pipeline: &mut Pipeline<F>) -
             .unwrap_or_else(|v| v);
 
         for access in &memory_accesses[start_idx..] {
-            // proven_trace + num_rows is an upper bound for the last row index we'll reach in the next chunk.
-            // In practice, we'll stop earlier, because the bootloader needs to run as well, but we don't know for
-            // how long as that depends on the number of pages.
-            if access.row >= proven_trace + num_rows {
+            // proven_trace + length is an upper bound for the last row index we'll reach in the next chunk.
+            // In practice, we'll stop earlier, because the bootloader & shutdown routine need to run as well,
+            // but we don't know for how long as that depends on the number of pages.
+            if access.row >= proven_trace + length {
                 break;
             }
             accessed_addresses.insert(access.address);
@@ -199,6 +223,13 @@ pub fn rust_continuations_dry_run<F: FieldElement>(pipeline: &mut Pipeline<F>) -
             accessed_pages.len(),
             accessed_pages
         );
+
+        let shutdown_routine_rows = shutdown_routine_upper_bound(accessed_pages.len());
+        log::info!(
+            "Estimating the shutdown routine to use {} rows.",
+            shutdown_routine_rows
+        );
+        let num_rows = length - shutdown_routine_rows;
 
         // Build the bootloader inputs for the current chunk.
         // Note that while we do know the accessed pages, we don't yet know the hashes
@@ -257,7 +288,7 @@ pub fn rust_continuations_dry_run<F: FieldElement>(pipeline: &mut Pipeline<F>) -
                 page_index,
                 memory_updates_by_page
                     .remove(&page_index)
-                    .unwrap()
+                    .unwrap_or_default()
                     .into_iter(),
             );
 
@@ -304,7 +335,8 @@ pub fn rust_continuations_dry_run<F: FieldElement>(pipeline: &mut Pipeline<F>) -
             )
         );
 
-        all_bootloader_inputs.push(bootloader_inputs.clone());
+        let actual_num_rows = chunk_trace["main.pc"].len();
+        bootloader_inputs_and_num_rows.push((bootloader_inputs.clone(), actual_num_rows as u64));
 
         log::info!("Chunk trace length: {}", chunk_trace["main.pc"].len());
         log::info!("Validating chunk...");
@@ -314,6 +346,12 @@ pub fn rust_continuations_dry_run<F: FieldElement>(pipeline: &mut Pipeline<F>) -
             .find(|(_, &pc)| pc == bootloader_inputs[PC_INDEX])
             .unwrap();
         log::info!("Bootloader used {} rows.", start);
+        log::info!(
+            "  => {} / {} ({}%) of rows are used for the actual computation!",
+            length - start - shutdown_routine_rows,
+            length,
+            (length - start - shutdown_routine_rows) * 100 / length
+        );
         for i in 0..(chunk_trace["main.pc"].len() - start) {
             for &reg in REGISTER_NAMES.iter() {
                 let chunk_i = i + start;
@@ -351,5 +389,5 @@ pub fn rust_continuations_dry_run<F: FieldElement>(pipeline: &mut Pipeline<F>) -
 
         chunk_index += 1;
     }
-    all_bootloader_inputs
+    bootloader_inputs_and_num_rows
 }
