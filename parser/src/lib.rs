@@ -67,6 +67,29 @@ pub fn parse_module<'a, T: FieldElement>(
         .map_err(|err| handle_parse_error(err, file_name, input))
 }
 
+/// Parse an escaped string - used in the grammar.
+pub fn unescape_string(s: &str) -> String {
+    assert!(s.len() >= 2);
+    assert!(s.starts_with('"') && s.ends_with('"'));
+    let mut chars = s[1..s.len() - 1].chars();
+    let mut result: String = Default::default();
+    while let Some(c) = chars.next() {
+        result.push(if c == '\\' {
+            match chars.next().unwrap() {
+                'n' => '\n',
+                'r' => '\r',
+                't' => '\t',
+                'b' => 8 as char,
+                'f' => 12 as char,
+                other => other,
+            }
+        } else {
+            c
+        })
+    }
+    result
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
