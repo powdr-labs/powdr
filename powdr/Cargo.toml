@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+powdr-backend = { path = "../backend" }
 powdr-executor = { path = "../executor" }
 powdr-number = { path = "../number" }
 powdr-pipeline = { path = "../pipeline" }
