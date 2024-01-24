@@ -760,4 +760,12 @@ mod test {
         "#;
         parse_and_evaluate_symbol(src, "N");
     }
+
+    #[test]
+    pub fn zero_power_zero() {
+        let src = r#"
+            let zpz = 0**0;
+        "#;
+        assert_eq!(parse_and_evaluate_symbol(src, "zpz"), "1".to_string());
+    }
 }
