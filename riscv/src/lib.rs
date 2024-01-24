@@ -152,7 +152,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-runtime = {{ path = "./runtime" }}
+powdr-riscv-runtime = {{ git = "https://github.com/powdr-labs/powdr", branch = "main" }}
             "#,
             Path::new(input_file).file_stem().unwrap().to_str().unwrap()
         ),
@@ -164,43 +164,6 @@ runtime = {{ path = "./runtime" }}
     fs::create_dir(&src_file).unwrap();
     src_file.push("lib.rs");
     fs::write(src_file, fs::read_to_string(input_file).unwrap()).unwrap();
-
-    let mut runtime_file = crate_dir.clone();
-    runtime_file.push("runtime");
-    fs::create_dir_all(&runtime_file).unwrap();
-    let mut cargo_file_runtime = runtime_file.clone();
-    cargo_file_runtime.push("Cargo.toml");
-    fs::write(
-        cargo_file_runtime.clone(),
-        include_bytes!("../runtime/Cargo.toml"),
-    )
-    .unwrap();
-    runtime_file.push("src");
-    fs::create_dir(&runtime_file).unwrap();
-
-    let mut lib_file = runtime_file.clone();
-    lib_file.push("lib.rs");
-    fs::write(lib_file, include_bytes!("../runtime/src/lib.rs")).unwrap();
-
-    let mut allocator_file = runtime_file.clone();
-    allocator_file.push("allocator.rs");
-    fs::write(
-        allocator_file,
-        include_bytes!("../runtime/src/allocator.rs"),
-    )
-    .unwrap();
-
-    let mut fmt_file = runtime_file.clone();
-    fmt_file.push("fmt.rs");
-    fs::write(fmt_file, include_bytes!("../runtime/src/fmt.rs")).unwrap();
-
-    let mut coprocessors_file = runtime_file.clone();
-    coprocessors_file.push("coprocessors.rs");
-    fs::write(
-        coprocessors_file,
-        include_bytes!("../runtime/src/coprocessors.rs"),
-    )
-    .unwrap();
 
     compile_rust_crate_to_riscv_asm(cargo_file.to_str().unwrap(), output_dir)
 }

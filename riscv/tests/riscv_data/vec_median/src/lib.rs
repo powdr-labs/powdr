@@ -16,7 +16,7 @@
 extern crate alloc;
 
 use alloc::vec::Vec;
-use runtime::{get_prover_input, print};
+use powdr_riscv_runtime::{get_prover_input, print};
 
 #[no_mangle]
 fn main() {
