@@ -1,15 +1,16 @@
 use std::{
+    borrow::Borrow,
     fmt::Display,
     fs,
     io::{BufWriter, Read, Write},
     marker::Send,
     path::{Path, PathBuf},
     rc::Rc,
+    sync::Arc,
     time::Instant,
 };
 
 use log::Level;
-use mktemp::Temp;
 use powdr_ast::{
     analyzed::Analyzed,
     asm_analysis::AnalysisASMFile,
@@ -29,6 +30,7 @@ use crate::{
     util::{read_poly_set, FixedPolySet, WitnessPolySet},
 };
 
+#[derive(Clone)]
 pub struct GeneratedWitness<T: FieldElement> {
     pub pil: Rc<Analyzed<T>>,
     pub fixed_cols: Rc<Vec<(String, Vec<T>)>>,
@@ -41,6 +43,7 @@ pub struct PilWithEvaluatedFixedCols<T: FieldElement> {
     pub fixed_cols: Rc<Vec<(String, Vec<T>)>>,
 }
 
+#[derive(Clone)]
 pub struct ProofResult<T: FieldElement> {
     /// Fixed columns, potentially incomplete (if success is false)
     pub fixed_cols: Rc<Vec<(String, Vec<T>)>>,
@@ -71,6 +74,7 @@ pub enum Stage {
     Proof,
 }
 
+#[derive(Clone)]
 pub enum Artifact<T: FieldElement> {
     /// The path to a single .asm file.
     AsmFilePath(PathBuf),
@@ -155,12 +159,12 @@ impl<T: FieldElement> Artifact<T> {
 }
 
 /// Optional Arguments for various stages of the pipeline.
-#[derive(Default)]
+#[derive(Default, Clone)]
 struct Arguments<T: FieldElement> {
     /// Externally computed witness values for witness generation.
     external_witness_values: Vec<(String, Vec<T>)>,
     /// Callback for queries for witness generation.
-    query_callback: Option<Box<dyn QueryCallback<T>>>,
+    query_callback: Option<Arc<dyn QueryCallback<T>>>,
     /// Backend to use for proving. If None, proving will fail.
     backend: Option<BackendType>,
     /// CSV render mode for witness generation.
@@ -173,6 +177,7 @@ struct Arguments<T: FieldElement> {
     existing_proof_file: Option<PathBuf>,
 }
 
+#[derive(Clone)]
 pub struct Pipeline<T: FieldElement> {
     /// The current artifact. It is never None in practice, making it an Option is
     /// only necessary so that we can take ownership of it in advance().
@@ -188,10 +193,6 @@ pub struct Pipeline<T: FieldElement> {
     force_overwrite: bool,
     /// The log level to use for this pipeline.
     log_level: Level,
-    // The output directory if `Pipeline::with_tmp_output` was called.
-    // Note that there is some redundancy with `output_dir`, but the Temp
-    // object has to live for the lifetime of the pipeline, so we keep it here.
-    _tmp_dir: Option<Temp>,
     /// Optional arguments for various stages of the pipeline.
     arguments: Arguments<T>,
 }
@@ -208,7 +209,6 @@ where
             log_level: Level::Debug,
             name: None,
             force_overwrite: false,
-            _tmp_dir: None,
             arguments: Arguments::default(),
         }
     }
@@ -252,11 +252,11 @@ where
 /// let proof = pipeline.proof().unwrap();
 /// ```
 impl<T: FieldElement> Pipeline<T> {
-    pub fn with_tmp_output(self) -> Self {
-        let tmp_dir = mktemp::Temp::new_dir().unwrap();
+    /// Initializes the output directory to a temporary directory.
+    /// Note that the user is responsible for keeping the temporary directory alive.
+    pub fn with_tmp_output(self, tmp_dir: &mktemp::Temp) -> Self {
         Pipeline {
             output_dir: Some(tmp_dir.to_path_buf()),
-            _tmp_dir: Some(tmp_dir),
             ..self
         }
     }
@@ -300,9 +300,9 @@ impl<T: FieldElement> Pipeline<T> {
         self
     }
 
-    pub fn add_query_callback(mut self, query_callback: Box<dyn QueryCallback<T>>) -> Self {
+    pub fn add_query_callback(mut self, query_callback: Arc<dyn QueryCallback<T>>) -> Self {
         let query_callback = match self.arguments.query_callback {
-            Some(old_callback) => Box::new(chain_callbacks(old_callback, query_callback)),
+            Some(old_callback) => Arc::new(chain_callbacks(old_callback, query_callback)),
             None => query_callback,
         };
         self.arguments.query_callback = Some(query_callback);
@@ -314,11 +314,11 @@ impl<T: FieldElement> Pipeline<T> {
         channel: u32,
         data: &S,
     ) -> Self {
-        self.add_query_callback(Box::new(serde_data_to_query_callback(channel, data)))
+        self.add_query_callback(Arc::new(serde_data_to_query_callback(channel, data)))
     }
 
     pub fn with_prover_inputs(self, inputs: Vec<T>) -> Self {
-        self.add_query_callback(Box::new(inputs_to_query_callback(inputs)))
+        self.add_query_callback(Arc::new(inputs_to_query_callback(inputs)))
     }
 
     pub fn with_backend(mut self, backend: BackendType) -> Self {
@@ -523,12 +523,12 @@ impl<T: FieldElement> Pipeline<T> {
                         std::mem::take(&mut self.arguments.external_witness_values);
                     let query_callback =
                         self.arguments.query_callback.take().unwrap_or_else(|| {
-                            Box::new(powdr_executor::witgen::unused_query_callback())
+                            Arc::new(powdr_executor::witgen::unused_query_callback())
                         });
                     let witness = powdr_executor::witgen::WitnessGenerator::new(
                         &pil,
                         &fixed_cols,
-                        query_callback,
+                        query_callback.borrow(),
                     )
                     .with_external_witness_values(external_witness_values)
                     .generate();

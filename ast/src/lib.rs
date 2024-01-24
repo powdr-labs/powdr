@@ -14,7 +14,7 @@ pub mod object;
 /// A parsed ASM + PIL AST
 pub mod parsed;
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 /// A monitor of the changes applied to the program as we run through the analysis pipeline
 pub struct DiffMonitor {
     previous: Option<String>,

@@ -1,4 +1,5 @@
 use std::collections::{BTreeMap, HashMap};
+use std::sync::Arc;
 
 use powdr_ast::analyzed::{
     AlgebraicReference, Analyzed, Expression, FunctionValueDefinition, PolyID, PolynomialType,
@@ -43,8 +44,8 @@ pub trait QueryCallback<T>: Fn(&str) -> Result<Option<T>, String> + Send + Sync 
 impl<T, F> QueryCallback<T> for F where F: Fn(&str) -> Result<Option<T>, String> + Send + Sync {}
 
 pub fn chain_callbacks<T: FieldElement>(
-    c1: Box<dyn QueryCallback<T>>,
-    c2: Box<dyn QueryCallback<T>>,
+    c1: Arc<dyn QueryCallback<T>>,
+    c2: Arc<dyn QueryCallback<T>>,
 ) -> impl QueryCallback<T> {
     move |query| c1(query).or_else(|_| c2(query))
 }
@@ -61,18 +62,18 @@ pub struct MutableState<'a, 'b, T: FieldElement, Q: QueryCallback<T>> {
     pub query_callback: &'b mut Q,
 }
 
-pub struct WitnessGenerator<'a, 'b, T: FieldElement, Q: QueryCallback<T>> {
+pub struct WitnessGenerator<'a, 'b, T: FieldElement> {
     analyzed: &'a Analyzed<T>,
     fixed_col_values: &'b [(String, Vec<T>)],
-    query_callback: Q,
+    query_callback: &'b dyn QueryCallback<T>,
     external_witness_values: Vec<(String, Vec<T>)>,
 }
 
-impl<'a, 'b, T: FieldElement, Q: QueryCallback<T>> WitnessGenerator<'a, 'b, T, Q> {
+impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
     pub fn new(
         analyzed: &'a Analyzed<T>,
         fixed_col_values: &'b [(String, Vec<T>)],
-        query_callback: Q,
+        query_callback: &'b dyn QueryCallback<T>,
     ) -> Self {
         WitnessGenerator {
             analyzed,

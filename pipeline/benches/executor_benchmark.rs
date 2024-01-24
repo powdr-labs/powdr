@@ -18,7 +18,7 @@ fn run_witgen<T: FieldElement>(
     external_witness_values: Vec<(String, Vec<T>)>,
 ) {
     let query_callback = inputs_to_query_callback(vec![]);
-    powdr_executor::witgen::WitnessGenerator::new(analyzed, constants, query_callback)
+    powdr_executor::witgen::WitnessGenerator::new(analyzed, constants, &query_callback)
         .with_external_witness_values(external_witness_values)
         .generate();
 }

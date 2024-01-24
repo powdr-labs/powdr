@@ -13,12 +13,12 @@ use crate::SourceRef;
 
 use super::{Expression, PilStatement};
 
-#[derive(Default, Debug, PartialEq, Eq)]
+#[derive(Default, Clone, Debug, PartialEq, Eq)]
 pub struct ASMProgram<T> {
     pub main: ASMModule<T>,
 }
 
-#[derive(Default, Debug, PartialEq, Eq)]
+#[derive(Default, Clone, Debug, PartialEq, Eq)]
 pub struct ASMModule<T> {
     pub statements: Vec<ModuleStatement<T>>,
 }
@@ -31,18 +31,18 @@ impl<T> ASMModule<T> {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, From)]
+#[derive(Debug, Clone, PartialEq, Eq, From)]
 pub enum ModuleStatement<T> {
     SymbolDefinition(SymbolDefinition<T>),
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SymbolDefinition<T> {
     pub name: String,
     pub value: SymbolValue<T>,
 }
 
-#[derive(Debug, PartialEq, Eq, From)]
+#[derive(Debug, Clone, PartialEq, Eq, From)]
 pub enum SymbolValue<T> {
     /// A machine definition
     Machine(Machine<T>),
@@ -77,7 +77,7 @@ pub enum SymbolValueRef<'a, T> {
     Expression(&'a Expression<T>),
 }
 
-#[derive(Debug, PartialEq, Eq, From)]
+#[derive(Debug, Clone, PartialEq, Eq, From)]
 pub enum Module<T> {
     External(String),
     Local(ASMModule<T>),
