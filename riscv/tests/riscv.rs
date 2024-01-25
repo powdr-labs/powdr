@@ -4,11 +4,7 @@ use common::verify_riscv_asm_string;
 use mktemp::Temp;
 use powdr_backend::BackendType;
 use powdr_number::GoldilocksField;
-use powdr_pipeline::{
-    test_util::{verify_asm_string, verify_pipeline},
-    verify::verify,
-    Pipeline, Stage,
-};
+use powdr_pipeline::{test_util::verify_asm_string, verify::verify, Pipeline, Stage};
 use std::path::PathBuf;
 use test_log::test;
 
@@ -177,7 +173,7 @@ fn test_evm() {
         .from_asm_string(powdr_asm, None)
         .add_data(666, &bytes);
 
-    verify_pipeline(pipeline);
+    powdr_pipeline::test_util::verify_pipeline(pipeline);
 }
 
 #[test]
