@@ -1,6 +1,7 @@
 use std::{
     fmt::{Display, Formatter, Result},
     iter::{empty, once, repeat},
+    str::FromStr,
 };
 
 use itertools::Itertools;
@@ -165,6 +166,29 @@ impl SymbolPath {
 
     pub fn parts(&self) -> impl DoubleEndedIterator + ExactSizeIterator<Item = &Part> {
         self.parts.iter()
+    }
+}
+
+impl FromStr for SymbolPath {
+    type Err = String;
+
+    /// Parses a symbol path both in the "a.b" and the "a::b" notation.
+    fn from_str(s: &str) -> std::result::Result<Self, String> {
+        let (dots, double_colons) = (s.matches('.').count(), s.matches("::").count());
+        if dots != 0 && double_colons != 0 {
+            Err(format!("Path mixes \"::\" and \".\" separators: {s}"))?
+        }
+        let parts = s
+            .split(if double_colons > 0 { "::" } else { "." })
+            .map(|s| {
+                if s == "super" {
+                    Part::Super
+                } else {
+                    Part::Named(s.to_string())
+                }
+            })
+            .collect();
+        Ok(Self { parts })
     }
 }
 

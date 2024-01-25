@@ -3,27 +3,34 @@
 //! These are not meant to be 1-1 reproductions, they will have errors.
 //! Do not use this to re-generate PIL files!
 
-use std::fmt::{Display, Formatter, Result};
+use std::{
+    fmt::{Display, Formatter, Result},
+    str::FromStr,
+};
 
 use itertools::Itertools;
+
+use self::parsed::asm::{AbsoluteSymbolPath, SymbolPath};
 
 use super::*;
 
 impl<T: Display> Display for Analyzed<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         let degree = self.degree.unwrap_or_default();
-        let mut current_namespace = String::default();
+        let mut current_namespace = AbsoluteSymbolPath::default();
         let mut update_namespace = |name: &str, f: &mut Formatter<'_>| {
-            let new_name = if let Some(dot) = name.find('.') {
-                if name[..dot] != current_namespace {
-                    current_namespace = name[..dot].to_string();
-                    writeln!(f, "namespace {current_namespace}({degree});")?;
-                }
-                &name[dot + 1..]
-            } else {
-                name
+            let mut namespace =
+                AbsoluteSymbolPath::default().join(SymbolPath::from_str(name).unwrap());
+            let name = namespace.pop().unwrap();
+            if namespace != current_namespace {
+                current_namespace = namespace;
+                writeln!(
+                    f,
+                    "namespace {}({degree});",
+                    current_namespace.relative_to(&Default::default())
+                )?;
             };
-            Ok((new_name.to_string(), !current_namespace.is_empty()))
+            Ok((name, !current_namespace.is_empty()))
         };
 
         for statement in &self.source_order {
@@ -74,10 +81,11 @@ impl<T: Display> Display for Analyzed<T> {
                 }
                 StatementIdentifier::PublicDeclaration(name) => {
                     let decl = &self.public_declarations[name];
-                    let (name, _) = update_namespace(&decl.name, f)?;
+                    let (name, is_local) = update_namespace(&decl.name, f)?;
+                    let indentation = if is_local { "    " } else { "" };
                     writeln!(
                         f,
-                        "    public {name} = {}{}({});",
+                        "{indentation}public {name} = {}{}({});",
                         decl.polynomial,
                         decl.array_index
                             .map(|i| format!("[{i}]"))
