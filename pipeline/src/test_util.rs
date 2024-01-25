@@ -18,8 +18,11 @@ pub fn verify_test_file<T: FieldElement>(
     inputs: Vec<T>,
     external_witness_values: Vec<(String, Vec<T>)>,
 ) {
-    let pipeline = Pipeline::default().from_file(resolve_test_file(file_name));
-    verify_pipeline(pipeline, inputs, external_witness_values)
+    let pipeline = Pipeline::default()
+        .from_file(resolve_test_file(file_name))
+        .with_prover_inputs(inputs)
+        .add_external_witness_values(external_witness_values);
+    verify_pipeline(pipeline)
 }
 
 pub fn verify_asm_string<T: FieldElement>(
@@ -28,20 +31,15 @@ pub fn verify_asm_string<T: FieldElement>(
     inputs: Vec<T>,
     external_witness_values: Vec<(String, Vec<T>)>,
 ) {
-    let pipeline =
-        Pipeline::default().from_asm_string(contents.to_string(), Some(PathBuf::from(file_name)));
-    verify_pipeline(pipeline, inputs, external_witness_values)
+    let pipeline = Pipeline::default()
+        .from_asm_string(contents.to_string(), Some(PathBuf::from(file_name)))
+        .with_prover_inputs(inputs)
+        .add_external_witness_values(external_witness_values);
+    verify_pipeline(pipeline)
 }
 
-pub fn verify_pipeline<T: FieldElement>(
-    pipeline: Pipeline<T>,
-    inputs: Vec<T>,
-    external_witness_values: Vec<(String, Vec<T>)>,
-) {
-    let mut pipeline = pipeline
-        .add_external_witness_values(external_witness_values)
-        .with_prover_inputs(inputs)
-        .with_backend(BackendType::PilStarkCli);
+pub fn verify_pipeline<T: FieldElement>(pipeline: Pipeline<T>) {
+    let mut pipeline = pipeline.with_backend(BackendType::PilStarkCli);
 
     if pipeline.output_dir().is_none() {
         pipeline = pipeline.with_tmp_output();
@@ -51,7 +49,7 @@ pub fn verify_pipeline<T: FieldElement>(
     // which owns the temporary directory.
     pipeline.advance_to(Stage::Proof).unwrap();
 
-    verify(pipeline.output_dir().unwrap(), pipeline.name());
+    verify(pipeline.output_dir().unwrap(), pipeline.name(), None);
 }
 
 pub fn gen_estark_proof(file_name: &str, inputs: Vec<GoldilocksField>) {

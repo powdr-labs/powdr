@@ -33,6 +33,7 @@ lalrpop = "^0.19"
 
 [dev-dependencies]
 powdr-number = { path = "../number" }
+powdr-backend = { path = "../backend" }
 
 test-log = "0.2.12"
 env_logger = "0.10.0"
