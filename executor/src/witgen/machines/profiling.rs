@@ -73,10 +73,14 @@ pub fn reset_and_print_profile_summary() {
             });
 
             // Finish the execution of the currently running machine.
-            let duration = time.duration_since(current_time).unwrap();
-            *time_by_machine
-                .entry(current_machine_id)
-                .or_insert(Duration::default()) += duration;
+            // This should almost always return Ok(), but it could be that the system
+            // clock was synced during the execution, in which case current_time might
+            // be before the time of the previous event. In that case, we ignore the entry.
+            if let Ok(duration) = time.duration_since(current_time) {
+                *time_by_machine
+                    .entry(current_machine_id)
+                    .or_insert(Duration::default()) += duration;
+            }
             current_time = time;
 
             // Update the call stack.
@@ -103,15 +107,6 @@ pub fn reset_and_print_profile_summary() {
         time_by_machine.sort_by(|a, b| b.1.cmp(&a.1));
 
         let total_time = time_by_machine.iter().map(|(_, d)| *d).sum::<Duration>();
-        assert_eq!(
-            event_log
-                .last()
-                .unwrap()
-                .2
-                .duration_since(event_log[0].2)
-                .unwrap(),
-            total_time
-        );
 
         for (id, duration) in time_by_machine {
             let percentage = (duration.as_secs_f64() / total_time.as_secs_f64()) * 100.0;
