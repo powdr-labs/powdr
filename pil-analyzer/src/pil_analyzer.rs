@@ -195,13 +195,14 @@ impl<T: FieldElement> PILAnalyzer<T> {
     }
 
     fn handle_namespace(&mut self, name: SymbolPath, degree: ::powdr_ast::parsed::Expression<T>) {
-        // TODO: the polynomial degree should be handled without going through a field element. This requires having types in Expression
         let degree = ExpressionProcessor::new(self.driver()).process_expression(degree);
-        let namespace_degree = evaluator::evaluate_expression(&degree, &self.definitions)
-            .unwrap()
-            .try_to_number()
-            .unwrap()
-            .to_degree();
+        let namespace_degree: u64 = u64::try_from(
+            evaluator::evaluate_expression(&degree, &self.definitions)
+                .unwrap()
+                .try_to_integer()
+                .unwrap(),
+        )
+        .unwrap();
         if let Some(degree) = self.polynomial_degree {
             assert_eq!(
                 degree, namespace_degree,

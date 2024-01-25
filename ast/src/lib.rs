@@ -2,8 +2,6 @@
 
 use itertools::Itertools;
 use log::log_enabled;
-use parsed::{BinaryOperator, UnaryOperator};
-use powdr_number::FieldElement;
 use std::fmt::{Display, Result, Write};
 use std::sync::Arc;
 
@@ -57,38 +55,6 @@ impl DiffMonitor {
                 log::trace!("");
             }
         }
-    }
-}
-
-pub fn evaluate_binary_operation<T: FieldElement>(left: T, op: BinaryOperator, right: T) -> T {
-    match op {
-        BinaryOperator::Add => left + right,
-        BinaryOperator::Sub => left - right,
-        BinaryOperator::Mul => left * right,
-        BinaryOperator::Div => left.integer_div(right),
-        BinaryOperator::Pow => left.pow(right.to_integer()),
-        BinaryOperator::Mod => (left.to_arbitrary_integer() % right.to_arbitrary_integer()).into(),
-        BinaryOperator::BinaryAnd => (left.to_integer() & right.to_integer()).into(),
-        BinaryOperator::BinaryXor => (left.to_integer() ^ right.to_integer()).into(),
-        BinaryOperator::BinaryOr => (left.to_integer() | right.to_integer()).into(),
-        BinaryOperator::ShiftLeft => (left.to_integer() << right.to_degree()).into(),
-        BinaryOperator::ShiftRight => (left.to_integer() >> right.to_degree()).into(),
-        BinaryOperator::LogicalOr => (!left.is_zero() || !right.is_zero()).into(),
-        BinaryOperator::LogicalAnd => (!left.is_zero() && !right.is_zero()).into(),
-        BinaryOperator::Less => (left.to_integer() < right.to_integer()).into(),
-        BinaryOperator::LessEqual => (left.to_integer() <= right.to_integer()).into(),
-        BinaryOperator::Equal => (left == right).into(),
-        BinaryOperator::NotEqual => (left != right).into(),
-        BinaryOperator::GreaterEqual => (left.to_integer() >= right.to_integer()).into(),
-        BinaryOperator::Greater => (left.to_integer() > right.to_integer()).into(),
-    }
-}
-
-pub fn evaluate_unary_operation<T: FieldElement>(op: UnaryOperator, v: T) -> T {
-    match op {
-        UnaryOperator::Minus => -v,
-        UnaryOperator::LogicalNot => v.is_zero().into(),
-        UnaryOperator::Next => panic!("Cannot evaluate \"'\"."),
     }
 }
 

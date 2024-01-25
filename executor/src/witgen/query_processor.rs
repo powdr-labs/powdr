@@ -2,7 +2,7 @@ use std::{fmt::Display, rc::Rc};
 
 use num_traits::ToPrimitive;
 use powdr_ast::analyzed::{AlgebraicReference, Expression, PolyID, PolynomialType};
-use powdr_number::FieldElement;
+use powdr_number::{DegreeType, FieldElement};
 use powdr_pil_analyzer::evaluator::{self, Custom, EvalError, SymbolLookup, Value};
 
 use super::{rows::RowPair, Constraint, EvalResult, EvalValue, FixedData, IncompleteCause};
@@ -77,7 +77,9 @@ impl<'a, 'b, T: FieldElement, QueryCallback: super::QueryCallback<T>>
         query: &'a Expression<T>,
         rows: &RowPair<T>,
     ) -> Result<String, EvalError> {
-        let arguments = vec![Rc::new(T::from(rows.current_row_index).into())];
+        let arguments = vec![Rc::new(Value::Integer(num_bigint::BigInt::from(
+            rows.current_row_index,
+        )))];
         let symbols = Symbols {
             fixed_data: self.fixed_data,
             rows,
@@ -114,17 +116,20 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T, Reference<'a>> for Symbols<'a, T> 
                 arguments.len()
             )))?
         };
-        let Value::Number(row) = arguments[0].as_ref() else {
+        let Value::Integer(row) = arguments[0].as_ref() else {
             return Err(EvalError::TypeError(format!(
-                "Expected number but got {}",
+                "Expected integer but got {}",
                 arguments[0]
             )));
         };
-        Ok(Value::Number(match function.poly_id.ptype {
+        Ok(Value::FieldElement(match function.poly_id.ptype {
             PolynomialType::Committed | PolynomialType::Intermediate => {
-                let next = self.rows.is_row_number_next(row.to_degree()).map_err(|_| {
-                    EvalError::OutOfBounds(format!("Referenced row outside of window: {row}"))
-                })?;
+                let next = self
+                    .rows
+                    .is_row_number_next(DegreeType::try_from(row).unwrap())
+                    .map_err(|_| {
+                        EvalError::OutOfBounds(format!("Referenced row outside of window: {row}"))
+                    })?;
                 let poly_ref = AlgebraicReference {
                     name: function.name.to_string(),
                     poly_id: function.poly_id,
@@ -137,8 +142,7 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T, Reference<'a>> for Symbols<'a, T> 
             }
             PolynomialType::Constant => {
                 let values = self.fixed_data.fixed_cols[&function.poly_id].values;
-                // TODO can we avoid bigint?
-                values[(row.to_arbitrary_integer() % values.len())
+                values[(usize::try_from(row).unwrap() % values.len())
                     .to_u64()
                     .unwrap() as usize]
             }

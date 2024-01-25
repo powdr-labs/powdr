@@ -912,8 +912,9 @@ namespace Arith(%N);
 	pol eq1_30 =
 		(s[15] * x2[15] - s[15] * x1[15] + 65535 * q0[15])
 		    - 262140;
-	pol eq1_31 =
-		    - 262140;
+// We cannot properly handle intermediates that are just negative numbers.
+//	pol eq1_31 =
+//		    - 262140;
 
     /*******
     *
@@ -1223,8 +1224,9 @@ namespace Arith(%N);
 	pol eq2_30 =
 		(s[15] * y1[15] + s[15] * y1[15] - x1[15] * x1[15] - x1[15] * x1[15] - x1[15] * x1[15] + 65535 * q0[15])
 		    - 262140;
-	pol eq2_31 =
-		    - 262140;
+// We cannot properly handle intermediates that are just negative numbers.
+//	pol eq2_31 =
+//		    - 262140;
 
     /*******
     *
@@ -1550,8 +1552,9 @@ namespace Arith(%N);
 	pol eq3_30 =
 		(s[15] * s[15] + 65535 * q1[15])
 		    - 262140;
-	pol eq3_31 =
-		    - 262140;
+// We cannot properly handle intermediates that are just negative numbers.
+//	pol eq3_31 =
+//		    - 262140;
 
     /*******
     *
@@ -1877,8 +1880,9 @@ namespace Arith(%N);
 	pol eq4_30 =
 		(s[15] * x1[15] - s[15] * x3[15] + 65535 * q2[15])
 		    - 262140;
-	pol eq4_31 =
-		    - 262140;
+// We cannot properly handle intermediates that are just negative numbers.
+//	pol eq4_31 =
+//		    - 262140;
 
     pol eq0 = eq0_0*Global.CLK32[0] + eq0_1*Global.CLK32[1] + eq0_2*Global.CLK32[2] + eq0_3*Global.CLK32[3] + eq0_4*Global.CLK32[4] + eq0_5*Global.CLK32[5] + eq0_6*Global.CLK32[6] + eq0_7*Global.CLK32[7]
 	   + eq0_8*Global.CLK32[8] + eq0_9*Global.CLK32[9] + eq0_10*Global.CLK32[10] + eq0_11*Global.CLK32[11] + eq0_12*Global.CLK32[12] + eq0_13*Global.CLK32[13] + eq0_14*Global.CLK32[14] + eq0_15*Global.CLK32[15]
@@ -1887,19 +1891,23 @@ namespace Arith(%N);
     pol eq1 = eq1_0*Global.CLK32[0] + eq1_1*Global.CLK32[1] + eq1_2*Global.CLK32[2] + eq1_3*Global.CLK32[3] + eq1_4*Global.CLK32[4] + eq1_5*Global.CLK32[5] + eq1_6*Global.CLK32[6] + eq1_7*Global.CLK32[7]
 	   + eq1_8*Global.CLK32[8] + eq1_9*Global.CLK32[9] + eq1_10*Global.CLK32[10] + eq1_11*Global.CLK32[11] + eq1_12*Global.CLK32[12] + eq1_13*Global.CLK32[13] + eq1_14*Global.CLK32[14] + eq1_15*Global.CLK32[15]
 	   + eq1_16*Global.CLK32[16] + eq1_17*Global.CLK32[17] + eq1_18*Global.CLK32[18] + eq1_19*Global.CLK32[19] + eq1_20*Global.CLK32[20] + eq1_21*Global.CLK32[21] + eq1_22*Global.CLK32[22] + eq1_23*Global.CLK32[23]
-	   + eq1_24*Global.CLK32[24] + eq1_25*Global.CLK32[25] + eq1_26*Global.CLK32[26] + eq1_27*Global.CLK32[27] + eq1_28*Global.CLK32[28] + eq1_29*Global.CLK32[29] + eq1_30*Global.CLK32[30] + eq1_31*Global.CLK32[31];
+	   + eq1_24*Global.CLK32[24] + eq1_25*Global.CLK32[25] + eq1_26*Global.CLK32[26] + eq1_27*Global.CLK32[27] + eq1_28*Global.CLK32[28] + eq1_29*Global.CLK32[29] + eq1_30*Global.CLK32[30]
+	   - 262140*Global.CLK32[31];
     pol eq2 = eq2_0*Global.CLK32[0] + eq2_1*Global.CLK32[1] + eq2_2*Global.CLK32[2] + eq2_3*Global.CLK32[3] + eq2_4*Global.CLK32[4] + eq2_5*Global.CLK32[5] + eq2_6*Global.CLK32[6] + eq2_7*Global.CLK32[7]
 	   + eq2_8*Global.CLK32[8] + eq2_9*Global.CLK32[9] + eq2_10*Global.CLK32[10] + eq2_11*Global.CLK32[11] + eq2_12*Global.CLK32[12] + eq2_13*Global.CLK32[13] + eq2_14*Global.CLK32[14] + eq2_15*Global.CLK32[15]
 	   + eq2_16*Global.CLK32[16] + eq2_17*Global.CLK32[17] + eq2_18*Global.CLK32[18] + eq2_19*Global.CLK32[19] + eq2_20*Global.CLK32[20] + eq2_21*Global.CLK32[21] + eq2_22*Global.CLK32[22] + eq2_23*Global.CLK32[23]
-	   + eq2_24*Global.CLK32[24] + eq2_25*Global.CLK32[25] + eq2_26*Global.CLK32[26] + eq2_27*Global.CLK32[27] + eq2_28*Global.CLK32[28] + eq2_29*Global.CLK32[29] + eq2_30*Global.CLK32[30] + eq2_31*Global.CLK32[31];
+	   + eq2_24*Global.CLK32[24] + eq2_25*Global.CLK32[25] + eq2_26*Global.CLK32[26] + eq2_27*Global.CLK32[27] + eq2_28*Global.CLK32[28] + eq2_29*Global.CLK32[29] + eq2_30*Global.CLK32[30]
+	   - 262140*Global.CLK32[31];
     pol eq3 = eq3_0*Global.CLK32[0] + eq3_1*Global.CLK32[1] + eq3_2*Global.CLK32[2] + eq3_3*Global.CLK32[3] + eq3_4*Global.CLK32[4] + eq3_5*Global.CLK32[5] + eq3_6*Global.CLK32[6] + eq3_7*Global.CLK32[7]
 	   + eq3_8*Global.CLK32[8] + eq3_9*Global.CLK32[9] + eq3_10*Global.CLK32[10] + eq3_11*Global.CLK32[11] + eq3_12*Global.CLK32[12] + eq3_13*Global.CLK32[13] + eq3_14*Global.CLK32[14] + eq3_15*Global.CLK32[15]
 	   + eq3_16*Global.CLK32[16] + eq3_17*Global.CLK32[17] + eq3_18*Global.CLK32[18] + eq3_19*Global.CLK32[19] + eq3_20*Global.CLK32[20] + eq3_21*Global.CLK32[21] + eq3_22*Global.CLK32[22] + eq3_23*Global.CLK32[23]
-	   + eq3_24*Global.CLK32[24] + eq3_25*Global.CLK32[25] + eq3_26*Global.CLK32[26] + eq3_27*Global.CLK32[27] + eq3_28*Global.CLK32[28] + eq3_29*Global.CLK32[29] + eq3_30*Global.CLK32[30] + eq3_31*Global.CLK32[31];
+	   + eq3_24*Global.CLK32[24] + eq3_25*Global.CLK32[25] + eq3_26*Global.CLK32[26] + eq3_27*Global.CLK32[27] + eq3_28*Global.CLK32[28] + eq3_29*Global.CLK32[29] + eq3_30*Global.CLK32[30]
+	   - 262140*Global.CLK32[31];
     pol eq4 = eq4_0*Global.CLK32[0] + eq4_1*Global.CLK32[1] + eq4_2*Global.CLK32[2] + eq4_3*Global.CLK32[3] + eq4_4*Global.CLK32[4] + eq4_5*Global.CLK32[5] + eq4_6*Global.CLK32[6] + eq4_7*Global.CLK32[7]
 	   + eq4_8*Global.CLK32[8] + eq4_9*Global.CLK32[9] + eq4_10*Global.CLK32[10] + eq4_11*Global.CLK32[11] + eq4_12*Global.CLK32[12] + eq4_13*Global.CLK32[13] + eq4_14*Global.CLK32[14] + eq4_15*Global.CLK32[15]
 	   + eq4_16*Global.CLK32[16] + eq4_17*Global.CLK32[17] + eq4_18*Global.CLK32[18] + eq4_19*Global.CLK32[19] + eq4_20*Global.CLK32[20] + eq4_21*Global.CLK32[21] + eq4_22*Global.CLK32[22] + eq4_23*Global.CLK32[23]
-	   + eq4_24*Global.CLK32[24] + eq4_25*Global.CLK32[25] + eq4_26*Global.CLK32[26] + eq4_27*Global.CLK32[27] + eq4_28*Global.CLK32[28] + eq4_29*Global.CLK32[29] + eq4_30*Global.CLK32[30] + eq4_31*Global.CLK32[31];
+	   + eq4_24*Global.CLK32[24] + eq4_25*Global.CLK32[25] + eq4_26*Global.CLK32[26] + eq4_27*Global.CLK32[27] + eq4_28*Global.CLK32[28] + eq4_29*Global.CLK32[29] + eq4_30*Global.CLK32[30]
+	   - 262140*Global.CLK32[31];
 
     pol commit selEq[4];
 

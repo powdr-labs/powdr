@@ -1,3 +1,5 @@
+use std::convert::int;
+
 machine Binary(latch, operation_id) {
 
     // lower bound degree is 262144
@@ -10,7 +12,7 @@ machine Binary(latch, operation_id) {
 
     col witness operation_id;
 
-    col fixed latch(i) { (i % 4) == 3 };
+    col fixed latch(i) { if (i % 4) == 3 { 1 } else { 0 } };
     col fixed FACTOR(i) { 1 << (((i + 1) % 4) * 8) };
 
     col fixed P_A(i) { i % 256 };
@@ -18,9 +20,9 @@ machine Binary(latch, operation_id) {
     col fixed P_operation(i) { (i / (256 * 256)) % 3 };
     col fixed P_C(i) {
         match P_operation(i) {
-            0 => P_A(i) & P_B(i),
-            1 => P_A(i) | P_B(i),
-            2 => P_A(i) ^ P_B(i),
+            0 => int(P_A(i)) & int(P_B(i)),
+            1 => int(P_A(i)) | int(P_B(i)),
+            2 => int(P_A(i)) ^ int(P_B(i)),
         } & 0xff
     };
 
