@@ -253,6 +253,18 @@ macro_rules! powdr_field {
             }
         }
 
+        impl FromStr for $name {
+            type Err = String;
+            fn from_str(s: &str) -> Result<Self, Self::Err> {
+                let n = BigUint::from_str(s).map_err(|e| e.to_string())?;
+                if n >= <$ark_type>::MODULUS.into() {
+                    Err(format!("Decimal number \"{s}\" too large for field."))
+                } else {
+                    Ok(n.into())
+                }
+            }
+        }
+
         impl fmt::LowerHex for $name {
             fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
                 fmt::LowerHex::fmt(&self.to_integer(), f)
@@ -267,16 +279,13 @@ macro_rules! powdr_field {
                 Some(KnownField::$name)
             }
 
-            fn from_str(s: &str) -> Self {
-                Self {
-                    value: <$ark_type>::from_str(s).unwrap(),
-                }
-            }
-
             fn from_str_radix(s: &str, radix: u32) -> Result<Self, String> {
-                BigUint::from_str_radix(s, radix)
-                    .map(|n| n.into())
-                    .map_err(|e| e.to_string())
+                let n = BigUint::from_str_radix(s, radix).map_err(|e| e.to_string())?;
+                if n >= <$ark_type>::MODULUS.into() {
+                    Err(format!("Hexadecimal number \"0x{s}\" too large for field."))
+                } else {
+                    Ok(n.into())
+                }
             }
 
             fn to_degree(&self) -> DegreeType {

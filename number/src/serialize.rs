@@ -68,9 +68,9 @@ pub fn read_polys_csv_file<T: FieldElement>(file: &mut impl Read) -> Vec<(String
             let value = if let Some(value) = value.strip_prefix("0x") {
                 T::from_str_radix(value, 16).unwrap()
             } else if let Some(value) = value.strip_prefix('-') {
-                -T::from_str(value)
+                -T::from_str(value).unwrap()
             } else {
-                T::from_str(value)
+                T::from_str(value).unwrap()
             };
             polys[idx].1.push(value);
         }
