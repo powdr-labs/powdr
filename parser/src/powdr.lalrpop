@@ -576,7 +576,7 @@ PublicIdentifier: String = {
 }
 
 FieldElement: T = {
-    r"[0-9][0-9_]*" => T::from_str(&<>.replace('_', "")),
+    r"[0-9][0-9_]*" => T::from_str(&<>.replace('_', "")).unwrap(),
     r"0x[0-9A-Fa-f][0-9A-Fa-f_]*" => T::from_str_radix(&<>[2..].replace('_', ""), 16).unwrap(),
 }
 

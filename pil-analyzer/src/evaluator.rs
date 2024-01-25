@@ -591,4 +591,28 @@ mod test {
         "#;
         parse_and_evaluate_symbol(src, "F.x");
     }
+
+    #[test]
+    #[should_panic = r#"Hexadecimal number \"0x9999999999999999999999999999999\" too large for field"#]
+    pub fn hex_number_outside_field() {
+        // This tests that the parser does not lose precision when parsing large integers.
+        // We are currently going through FieldElements in the parser, which have limited precision.
+        // As soon as we use Integers there, this test should succeed.
+        let src = r#"
+            let N = 0x9999999999999999999999999999999;
+        "#;
+        parse_and_evaluate_symbol(src, "N");
+    }
+
+    #[test]
+    #[should_panic = r#"Decimal number \"9999999999999999999999999999999\" too large for field"#]
+    pub fn decimal_number_outside_field() {
+        // This tests that the parser does not lose precision when parsing large integers.
+        // We are currently going through FieldElements in the parser, which have limited precision.
+        // As soon as we use Integers there, this test should succeed.
+        let src = r#"
+            let N = 9999999999999999999999999999999;
+        "#;
+        parse_and_evaluate_symbol(src, "N");
+    }
 }
