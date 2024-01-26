@@ -45,5 +45,4 @@ RVTEST_DATA_END
     .bss
     .align 3
 amo_operand:
-    .word 0
-    .word 0
+    .dword 0
