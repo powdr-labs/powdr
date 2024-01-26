@@ -1,8 +1,12 @@
 [package]
 name = "powdr-riscv"
-version = "0.1.0"
-edition = "2021"
 build = "build.rs"
+description = "powdr RISCV frontend"
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+homepage = { workspace = true }
+repository = { workspace = true }
 
 [features]
 default = [] # complex-tests is disabled by default

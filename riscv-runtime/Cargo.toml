@@ -1,7 +1,11 @@
 [package]
 name = "powdr-riscv-runtime"
-version = "0.1.0"
+description = "powdr runtime provider for RISCV programs"
+version = "0.1.0-alpha.1"
 edition = "2021"
+license = "MIT"
+homepage = "https://powdr.org"
+repository = "https://github.com/powdr-labs/powdr"
 
 [dependencies]
 serde = { version = "1.0", default-features = false, features = ["alloc", "derive", "rc"] }
