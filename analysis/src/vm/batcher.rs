@@ -139,7 +139,7 @@ impl<T: FieldElement> RomBatcher<T> {
     pub fn batch(&mut self, mut asm_file: AnalysisASMFile<T>) -> AnalysisASMFile<T> {
         for (name, machine) in asm_file.items.iter_mut().filter_map(|(n, m)| match m {
             Item::Machine(m) => Some((n, m)),
-            Item::Expression(_) => None,
+            Item::Expression(_, _) => None,
         }) {
             self.extract_batches(name, machine);
         }

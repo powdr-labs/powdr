@@ -21,7 +21,7 @@ pub fn compile<T: FieldElement>(file: AnalysisASMFile<T>) -> AnalysisASMFile<T> 
                             let (m, rom) = generate_machine_rom(m);
                             Item::Machine(vm_to_constrained::convert_machine(m, rom))
                         }
-                        Item::Expression(e) => Item::Expression(e),
+                        Item::Expression(e, type_name) => Item::Expression(e, type_name),
                     },
                 )
             })

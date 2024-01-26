@@ -11,8 +11,15 @@ impl Display for Location {
 impl<T: Display> Display for PILGraph<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         writeln!(f, "// Utilities")?;
-        for (name, e) in &self.definitions {
-            writeln!(f, "let {name} = {e};")?;
+        for (name, (e, type_name)) in &self.definitions {
+            writeln!(
+                f,
+                "let {name}{} = {e};",
+                type_name
+                    .as_ref()
+                    .map(|tn| format!(": {tn}"))
+                    .unwrap_or_default()
+            )?;
         }
         for (location, object) in &self.objects {
             writeln!(f, "// Object {}", location)?;

@@ -42,10 +42,14 @@ pub fn link<T: FieldElement>(graph: PILGraph<T>) -> Result<PILFile<T>, Vec<Strin
             // Group by namespace and then sort by name.
             (namespace, name)
         })
-        .flat_map(|(mut namespace, e)| {
+        .flat_map(|(mut namespace, (e, type_name))| {
             let name = namespace.pop().unwrap();
-            let def =
-                PilStatement::LetStatement(SourceRef::unknown(), name.to_string(), None, Some(e));
+            let def = PilStatement::LetStatement(
+                SourceRef::unknown(),
+                name.to_string(),
+                type_name,
+                Some(e),
+            );
 
             // If there is a namespace change, insert a namespace statement.
             if current_namespace != namespace {

@@ -90,8 +90,8 @@ pub fn compile<T: FieldElement>(input: AnalysisASMFile<T>) -> PILGraph<T> {
         .items
         .into_iter()
         .filter_map(|(n, v)| {
-            if let Item::Expression(e) = v {
-                Some((n, e))
+            if let Item::Expression(e, type_name) = v {
+                Some((n, (e, type_name)))
             } else {
                 None
             }

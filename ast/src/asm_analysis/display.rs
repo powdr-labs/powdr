@@ -44,9 +44,15 @@ impl<T: Display> Display for AnalysisASMFile<T> {
                 Item::Machine(machine) => {
                     write_indented_by(f, format!("machine {name}{machine}"), current_path.len())?;
                 }
-                Item::Expression(expression) => write_indented_by(
+                Item::Expression(expression, type_name) => write_indented_by(
                     f,
-                    format!("let {name} = {expression};\n"),
+                    format!(
+                        "let {name}{} = {expression};\n",
+                        type_name
+                            .as_ref()
+                            .map(|tn| format!(": {tn}"))
+                            .unwrap_or_default()
+                    ),
                     current_path.len(),
                 )?,
             }

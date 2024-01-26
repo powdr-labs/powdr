@@ -20,7 +20,7 @@ pub fn infer<T: FieldElement>(file: AnalysisASMFile<T>) -> Result<AnalysisASMFil
                     None
                 }
             },
-            Item::Expression(e) => Some((name, Item::Expression(e))),
+            Item::Expression(e, type_name) => Some((name, Item::Expression(e, type_name))),
         })
         .collect();
 
