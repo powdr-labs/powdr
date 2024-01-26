@@ -214,7 +214,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> IdentityProcessor<'a, 'b,
         for (l, r) in left.iter().zip(right.expressions.iter()) {
             match current_rows.evaluate(r) {
                 Ok(r) => {
-                    let result = (l.clone() - r).solve()?;
+                    let result = (l.clone() - r).solve_with_range_constraints(current_rows)?;
                     updates.combine(result);
                 }
                 Err(e) => {
