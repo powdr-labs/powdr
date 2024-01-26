@@ -29,8 +29,7 @@ namespace Arith(N);
     /// returns f(0) + f(1) + ... + f(length - 1)
     let sum = |length, f| fold(length, f, 0, |acc, e| acc + e);
 
-    // TODO the weird syntax is needed so that this is not classified as a constant column
-    let force_boolean = (|| |x| x * (1 - x) == 0)();
+    let force_boolean: expr -> identity = |x| x * (1 - x) == 0;
 
     let clock = |j, row| if row % 32 == j { 1 } else { 0 };
     // Arrays of fixed columns are not supported yet.
@@ -140,8 +139,7 @@ namespace Arith(N);
     // That way we could even support functions returning lookups.
 
     // x can only change between two blocks of 32 rows.
-    // TODO the weird syntax is needed so that this is not classified as a fixed column.
-    let fixed_inside_32_block = (|| |x| (x - x') * (1 - CLK32[31]) == 0)();
+    let fixed_inside_32_block: expr -> identity = |x| (x - x') * (1 - CLK32[31]) == 0;
 
     make_array(16, |i| fixed_inside_32_block(x1[i]));
     make_array(16, |i| fixed_inside_32_block(y1[i]));
@@ -209,12 +207,11 @@ namespace Arith(N);
 	let q2f = array_as_fun(q2, 16);
 
 	// Defined for arguments from 0 to 31 (inclusive)
-	let eq0 = (|| |nr|
+	let eq0: int -> expr = |nr|
 		product(x1f, y1f)(nr)
 		+ x2f(nr)
 		- shift_right(y2f, 16)(nr)
-		- y3f(nr)
-	)();
+		- y3f(nr);
 
 
     /*******
@@ -224,16 +221,16 @@ namespace Arith(N);
     *******/
 
 	// 0xffffffffffffffffffffffffffffffffffffffffffffffffffff fffe ffff fc2f
-    let p = array_as_fun([
+    let p: col = array_as_fun([
         0xfc2f, 0xffff, 0xfffe, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff,
         0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff
     ], 16);
 
-	// The "- 4 * shift_right(p, 16)" effectively subtracts 4 * (p << 16 * 16) = 2 ** 258 * p
-    // As a result, the term computes `(x - 2 ** 258) * p`.
-	let product_with_p = (|| |x| |nr| product(p, x)(nr) - 4 * shift_right(p, 16)(nr))();
+        // The "- 4 * shift_right(p, 16)" effectively subtracts 4 * (p << 16 * 16) = 2 ** 258 * p
+        // As a result, the term computes `(x - 2 ** 258) * p`.
+	let product_with_p: int -> (int -> expr) = |x| |nr| product(p, x)(nr) - 4 * shift_right(p, 16)(nr);
 
-	let eq1 = (|| |nr| product(sf, x2f)(nr) - product(sf, x1f)(nr) - y2f(nr) + y1f(nr) + product_with_p(q0f)(nr))();
+	let eq1: int -> expr = |nr| product(sf, x2f)(nr) - product(sf, x1f)(nr) - y2f(nr) + y1f(nr) + product_with_p(q0f)(nr);
 
     /*******
     *
@@ -241,7 +238,7 @@ namespace Arith(N);
     *
     *******/
 
-	let eq2 = (|| |nr| 2 * product(sf, y1f)(nr) - 3 * product(x1f, x1f)(nr) + product_with_p(q0f)(nr))();
+	let eq2: int -> expr = |nr| 2 * product(sf, y1f)(nr) - 3 * product(x1f, x1f)(nr) + product_with_p(q0f)(nr);
 
     /*******
     *
@@ -249,7 +246,7 @@ namespace Arith(N);
     *
     *******/
 
-	let eq3 = (|| |nr| product(sf, sf)(nr) - x1f(nr) - x2f(nr) - x3f(nr) + product_with_p(q1f)(nr))();
+	let eq3: int -> expr = |nr| product(sf, sf)(nr) - x1f(nr) - x2f(nr) - x3f(nr) + product_with_p(q1f)(nr);
 
 
     /*******
@@ -258,7 +255,7 @@ namespace Arith(N);
     *
     *******/
 
-	let eq4 = (|| |nr| product(sf, x1f)(nr) - product(sf, x3f)(nr) - y1f(nr) - y3f(nr) + product_with_p(q2f)(nr))();
+	let eq4: int -> expr = |nr| product(sf, x1f)(nr) - product(sf, x3f)(nr) - y1f(nr) - y3f(nr) + product_with_p(q2f)(nr);
 
     pol commit selEq[4];
 

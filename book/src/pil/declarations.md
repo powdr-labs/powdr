@@ -31,7 +31,9 @@ let sum = |f, i| match i {
     0 => f(0),
     _ => f(i) + sum(f, i - 1)
 };
-// The same function as "square" above, but employing a trick to avoid it
-// being classified as a column.
-let square_non_column = (|| |x| x*x)();
+// The same function as "square" above, but if we specify the type
+// and it is not "col" or "int -> fe", it will be stored as a utility
+// function instead of as a column. Utility functions cannot be
+// used in identities without being evaluated.
+let square_non_column: int -> int = |x| x*x;
 ```
