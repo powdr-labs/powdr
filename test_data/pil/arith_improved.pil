@@ -29,8 +29,7 @@ namespace Arith(N);
     /// returns f(0) + f(1) + ... + f(length - 1)
     let sum = |length, f| fold(length, f, 0, |acc, e| acc + e);
 
-    // TODO the weird syntax is needed so that this is not classified as a constant column
-    let force_boolean = (|| |x| x * (1 - x) == 0)();
+    let force_boolean: expr -> identity = |x| x * (1 - x) == 0;
 
     let clock = |j, row| row % 32 == j;
     // Arrays of fixed columns are not supported yet.
@@ -140,8 +139,7 @@ namespace Arith(N);
     // That way we could even support functions returning lookups.
 
     // x can only change between two blocks of 32 rows.
-    // TODO the weird syntax is needed so that this is not classified as a fixed column.
-    let fixed_inside_32_block = (|| |x| (x - x') * (1 - CLK32[31]) == 0)();
+    let fixed_inside_32_block: expr -> identity = |x| (x - x') * (1 - CLK32[31]) == 0;
 
     make_array(16, |i| fixed_inside_32_block(x1[i]));
     make_array(16, |i| fixed_inside_32_block(y1[i]));
@@ -204,12 +202,11 @@ namespace Arith(N);
 	let q2f = array_as_fun(q2, 16);
 
 	// Defined for arguments from 0 to 31 (inclusive)
-	let eq0 = (|| |nr|
+	let eq0: int -> expr = |nr|
 		product(x1f, y1f)(nr)
 		+ x2f(nr)
 		- prepend_zeros(y2f, 16)(nr)
-		- y3f(nr)
-	)();
+		- y3f(nr);
 
 
     /*******
@@ -219,7 +216,7 @@ namespace Arith(N);
     *******/
 
 	// 0xffffffffffffffffffffffffffffffffffffffffffffffffffff fffe ffff fc2f
-	let p = (|| |nr| match nr >= 16 {
+	let p: int -> fe = |nr| match nr >= 16 {
 		1 => 0,
 		_ => match nr {
 			0 => 0xfc2f,
@@ -227,12 +224,12 @@ namespace Arith(N);
 			2 => 0xfffe,
 			_ => 0xffff
 		}
-	})();
+	};
 
 	// I have no idea where the "- 4 * prepend_zeros(p, 16)" comes from, but it was in the original constraints.
-	let product_with_p = (|| |x| |nr| product(p, x)(nr) - 4 * prepend_zeros(p, 16)(nr))();
+	let product_with_p: int -> (int -> expr) = |x| |nr| product(p, x)(nr) - 4 * prepend_zeros(p, 16)(nr);
 
-	let eq1 = (|| |nr| std::field::modulus() + product(sf, x2f)(nr) - product(sf, x1f)(nr) - y2f(nr) + y1f(nr) + product_with_p(q0f)(nr))();
+	let eq1: int -> expr = |nr| std::field::modulus() + product(sf, x2f)(nr) - product(sf, x1f)(nr) - y2f(nr) + y1f(nr) + product_with_p(q0f)(nr);
 
     /*******
     *
@@ -240,7 +237,7 @@ namespace Arith(N);
     *
     *******/
 
-	let eq2 = (|| |nr| std::field::modulus() + 2 * product(sf, y1f)(nr) - 3 * product(x1f, x1f)(nr) + product_with_p(q0f)(nr))();
+	let eq2: int -> expr = |nr| std::field::modulus() + 2 * product(sf, y1f)(nr) - 3 * product(x1f, x1f)(nr) + product_with_p(q0f)(nr);
 
     /*******
     *
@@ -248,7 +245,7 @@ namespace Arith(N);
     *
     *******/
 
-	let eq3 = (|| |nr| std::field::modulus() + product(sf, sf)(nr) - x1f(nr) - x2f(nr) - x3f(nr) + product_with_p(q1f)(nr))();
+	let eq3: int -> expr = |nr| std::field::modulus() + product(sf, sf)(nr) - x1f(nr) - x2f(nr) - x3f(nr) + product_with_p(q1f)(nr);
 
 
     /*******
@@ -257,7 +254,7 @@ namespace Arith(N);
     *
     *******/
 
-	let eq4 = (|| |nr| std::field::modulus() + product(sf, x1f)(nr) - product(sf, x3f)(nr) - y1f(nr) - y3f(nr) + product_with_p(q2f)(nr))();
+	let eq4: int -> expr = |nr| std::field::modulus() + product(sf, x1f)(nr) - product(sf, x3f)(nr) - y1f(nr) - y3f(nr) + product_with_p(q2f)(nr);
 
     pol commit selEq[4];
 

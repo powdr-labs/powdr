@@ -6,20 +6,17 @@ namespace Main(16);
     };
     // returns f(0) + f(1) + ... + f(length - 1)
     let sum = |length, f| fold(length, f, 0, |acc, e| acc + e);
-    // If called with a single value, this function evaluates the equality,
-    // otherwise, it returns a constraint (if called with a column or
-    // an algebraic expression).
-    // If we write "|x| x == 20", it will be classified as a fixed column,
-    // so we use a trick that makes it not look like a function with a single
-    // parameter.
-    let equals_twenty = [|x| x == 20][0];
-    // declares an array of 16 witness columns.
+    // This function takes an algebraic expression (a column or expression
+    // involving columns) and returns an identity that forces this expression
+    // to equal 20.
+    let equals_twenty: expr -> identity = |x| x == 20;
+    // This declares an array of 16 witness columns.
     col witness wit[16];
-    // This expression has to evaluate to a constraint, but we can still use
+    // This expression has to evaluate to an identity, but we can still use
     // higher order functions and all the flexibility of the language.
     // The sub-expression "sum(16, |i| wit[i]" evaluates to the algebraic
     // expression "wit[0] + wit[1] + ... + wit[15]", which is then
-    // turned by "equals_twenty" into the constraint
+    // turned by "equals_twenty" into the identity
     // wit[0] + wit[1] + ... + wit[15] == 20.
     equals_twenty(sum(16, |i| wit[i]));
 

@@ -13,4 +13,5 @@ let map = |arr, f| new(len(arr), |i| f(arr[i]));
 let fold = |arr, initial, folder| std::utils::fold(len(arr), |i| arr[i], initial, folder);
 
 /// Returns the sum of the array elements.
+/// TODO we need generic types in order to remove the [..][0]-workaround.
 let sum = [|arr| fold(arr, 0, |a, b| a + b)][0];

@@ -250,7 +250,7 @@ mod test {
     constant %N = 16;
 namespace Fibonacci(%N);
     constant %last_row = (%N - 1);
-    let bool = [(|X| (X * (1 - X)))][0];
+    let bool: expr -> expr = (|X| (X * (1 - X)));
     let one_hot = (|i, which| match i { which => 1, _ => 0, });
     pol constant ISLAST(i) { one_hot(i, %last_row) };
     pol commit arr[8];

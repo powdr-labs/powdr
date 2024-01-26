@@ -272,7 +272,7 @@ mod test {
         let src = r#"
             constant %N = 8;
             namespace F(%N);
-            let minus_one = [|x| x - 1][0];
+            let minus_one: int -> int = |x| x - 1;
             pol constant EVEN(i) { 2 * minus_one(i) + 2 };
         "#;
         let analyzed = analyze_string(src);
