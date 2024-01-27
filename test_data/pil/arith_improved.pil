@@ -14,6 +14,9 @@ let N = 2**16;
 
 let BYTE2 = |i| i & 0xffff;
 
+namespace std::field(N);
+    let modulus = || modulus();
+
 namespace Arith(N);
     let fold = |length, f, initial, folder| match length {
         0 => initial,
@@ -229,7 +232,7 @@ namespace Arith(N);
 	// I have no idea where the "- 4 * prepend_zeros(p, 16)" comes from, but it was in the original constraints.
 	let product_with_p = (|| |x| |nr| product(p, x)(nr) - 4 * prepend_zeros(p, 16)(nr))();
 
-	let eq1 = (|| |nr| product(sf, x2f)(nr) - product(sf, x1f)(nr) - y2f(nr) + y1f(nr) + product_with_p(q0f)(nr))();
+	let eq1 = (|| |nr| std::field::modulus() + product(sf, x2f)(nr) - product(sf, x1f)(nr) - y2f(nr) + y1f(nr) + product_with_p(q0f)(nr))();
 
     /*******
     *
@@ -237,7 +240,7 @@ namespace Arith(N);
     *
     *******/
 
-	let eq2 = (|| |nr| 2 * product(sf, y1f)(nr) - 3 * product(x1f, x1f)(nr) + product_with_p(q0f)(nr))();
+	let eq2 = (|| |nr| std::field::modulus() + 2 * product(sf, y1f)(nr) - 3 * product(x1f, x1f)(nr) + product_with_p(q0f)(nr))();
 
     /*******
     *
@@ -245,7 +248,7 @@ namespace Arith(N);
     *
     *******/
 
-	let eq3 = (|| |nr| product(sf, sf)(nr) - x1f(nr) - x2f(nr) - x3f(nr) + product_with_p(q1f)(nr))();
+	let eq3 = (|| |nr| std::field::modulus() + product(sf, sf)(nr) - x1f(nr) - x2f(nr) - x3f(nr) + product_with_p(q1f)(nr))();
 
 
     /*******
@@ -254,7 +257,7 @@ namespace Arith(N);
     *
     *******/
 
-	let eq4 = (|| |nr| product(sf, x1f)(nr) - product(sf, x3f)(nr) - y1f(nr) - y3f(nr) + product_with_p(q2f)(nr))();
+	let eq4 = (|| |nr| std::field::modulus() + product(sf, x1f)(nr) - product(sf, x3f)(nr) - y1f(nr) - y3f(nr) + product_with_p(q2f)(nr))();
 
     pol commit selEq[4];
 

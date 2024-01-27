@@ -195,13 +195,14 @@ impl<T: FieldElement> PILAnalyzer<T> {
     }
 
     fn handle_namespace(&mut self, name: SymbolPath, degree: ::powdr_ast::parsed::Expression<T>) {
-        // TODO: the polynomial degree should be handled without going through a field element. This requires having types in Expression
         let degree = ExpressionProcessor::new(self.driver()).process_expression(degree);
-        let namespace_degree = evaluator::evaluate_expression(&degree, &self.definitions)
-            .unwrap()
-            .try_to_number()
-            .unwrap()
-            .to_degree();
+        let namespace_degree: u64 = u64::try_from(
+            evaluator::evaluate_expression(&degree, &self.definitions)
+                .unwrap()
+                .try_to_integer()
+                .unwrap(),
+        )
+        .unwrap();
         if let Some(degree) = self.polynomial_degree {
             assert_eq!(
                 degree, namespace_degree,
@@ -265,7 +266,7 @@ mod test {
     fn parse_print_analyzed() {
         // This is rather a test for the Display trait than for the analyzer.
         let input = r#"constant %N = 65536;
-    public P = T.pc(2);
+public P = T.pc(2);
 namespace Bin(65536);
     col witness bla;
 namespace T(65536);
@@ -371,11 +372,11 @@ namespace N(65536);
 
     #[test]
     fn reparse_arrays() {
-        let input = r#"namespace N(16);
+        let input = r#"public out = N.y[1](2);
+namespace N(16);
     col witness y[3];
     (N.y[1] - 2) = 0;
     (N.y[2]' - 2) = 0;
-    public out = N.y[1](2);
 "#;
         let formatted = process_pil_file_contents::<GoldilocksField>(input).to_string();
         assert_eq!(formatted, input);

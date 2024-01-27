@@ -49,8 +49,12 @@ fn generate_values<T: FieldElement>(
                 // We could try to avoid the first evaluation to be run for each iteration,
                 // but the data is not thread-safe.
                 let fun = evaluator::evaluate(e, &symbols).unwrap();
-                evaluator::evaluate_function_call(fun, vec![Rc::new(T::from(i).into())], &symbols)
-                    .and_then(|v| v.try_to_number())
+                evaluator::evaluate_function_call(
+                    fun,
+                    vec![Rc::new(Value::Integer(num_bigint::BigInt::from(i)))],
+                    &symbols,
+                )
+                .and_then(|v| v.try_to_field_element())
             })
             .collect::<Result<Vec<_>, _>>(),
         FunctionValueDefinition::Array(values) => values
@@ -59,7 +63,9 @@ fn generate_values<T: FieldElement>(
                 let items = elements
                     .pattern()
                     .iter()
-                    .map(|v| evaluator::evaluate(v, &symbols).and_then(|v| v.try_to_number()))
+                    .map(|v| {
+                        evaluator::evaluate(v, &symbols).and_then(|v| v.try_to_field_element())
+                    })
                     .collect::<Result<Vec<_>, _>>()?;
 
                 Ok(items
@@ -126,14 +132,16 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T, FixedColumnRef<'a>> for Symbols<'a
                 arguments.len()
             )))?
         };
-        let Value::Number(row) = arguments[0].as_ref() else {
+        let Value::Integer(row) = arguments[0].as_ref() else {
             return Err(EvalError::TypeError(format!(
-                "Expected number but got {}",
+                "Expected integer but got {}",
                 arguments[0]
             )));
         };
         let data = &self.computed_columns[function.name];
-        Ok(Value::Number(data[row.to_degree() as usize % data.len()]))
+        Ok(Value::FieldElement(
+            data[usize::try_from(row).unwrap() % data.len()],
+        ))
     }
 }
 
@@ -191,14 +199,14 @@ mod test {
         let src = r#"
             constant %N = 8;
             namespace F(%N);
-            pol constant EVEN(i) { 2 * (i - 1) };
+            pol constant EVEN(i) { 2 * (i - 1) + 4 };
         "#;
         let analyzed = analyze_string(src);
         assert_eq!(analyzed.degree(), 8);
         let constants = generate(&analyzed);
         assert_eq!(
             constants,
-            vec![("F.EVEN", convert(vec![-2, 0, 2, 4, 6, 8, 10, 12]))]
+            vec![("F.EVEN", convert(vec![2, 4, 6, 8, 10, 12, 14, 16]))]
         );
     }
 
@@ -261,14 +269,14 @@ mod test {
             constant %N = 8;
             namespace F(%N);
             let minus_one = [|x| x - 1][0];
-            pol constant EVEN(i) { 2 * minus_one(i) };
+            pol constant EVEN(i) { 2 * minus_one(i) + 2 };
         "#;
         let analyzed = analyze_string(src);
         assert_eq!(analyzed.degree(), 8);
         let constants = generate(&analyzed);
         assert_eq!(
             constants,
-            vec![("F.EVEN", convert(vec![-2, 0, 2, 4, 6, 8, 10, 12]))]
+            vec![("F.EVEN", convert(vec![0, 2, 4, 6, 8, 10, 12, 14]))]
         );
     }
 
@@ -276,9 +284,11 @@ mod test {
     pub fn test_poly_call() {
         let src = r#"
             constant %N = 10;
+            namespace std::convert(%N);
+            let int = [];
             namespace F(%N);
             col fixed seq(i) { i };
-            col fixed doub(i) { seq((2 * i) % %N) + 1 };
+            col fixed doub(i) { std::convert::int(seq((2 * i) % %N)) + 1 };
             col fixed half_nibble(i) { i & 0x7 };
             col fixed doubled_half_nibble(i) { half_nibble(i / 2) };
         "#;
@@ -361,20 +371,23 @@ mod test {
     pub fn comparisons() {
         let src = r#"
             constant %N = 6;
+            namespace std::convert(%N);
+            let int = 9;
+            let fe = 8;
             namespace F(%N);
             col fixed id(i) { i };
             col fixed inv(i) { %N - i };
             col fixed a = [0, 1, 0, 1, 2, 1];
             col fixed b = [0, 0, 1, 1, 0, 5];
-            col fixed or(i) { a(i) || b(i) };
-            col fixed and(i) { a(i) && b(i) };
-            col fixed not(i) { !a(i) };
-            col fixed less(i) { id(i) < inv(i) };
-            col fixed less_eq(i) { id(i) <= inv(i) };
-            col fixed eq(i) { id(i) == inv(i) };
-            col fixed not_eq(i) { id(i) != inv(i) };
-            col fixed greater(i) { id(i) > inv(i) };
-            col fixed greater_eq(i) { id(i) >= inv(i) };
+            col fixed or(i) { if (a(i) != std::convert::fe(0)) || (b(i) != std::convert::fe(0)) { 1 } else { 0 } };
+            col fixed and(i) { if (a(i) != std::convert::fe(0)) && (b(i) != std::convert::fe(0)) { 1 } else { 0 } };
+            col fixed not(i) { if !(a(i) != std::convert::fe(0)) { 1 } else { 0 } };
+            col fixed less(i) { if std::convert::int(id(i)) < std::convert::int(inv(i)) { 1 } else { 0 } };
+            col fixed less_eq(i) { if std::convert::int(id(i)) <= std::convert::int(inv(i)) { 1 } else { 0 } };
+            col fixed eq(i) { if id(i) == inv(i) { 1 } else { 0 } };
+            col fixed not_eq(i) { if id(i) != inv(i) { 1 } else { 0 } };
+            col fixed greater(i) { if std::convert::int(id(i)) > std::convert::int(inv(i)) { 1 } else { 0 } };
+            col fixed greater_eq(i) { if std::convert::int(id(i)) >= std::convert::int(inv(i)) { 1 } else { 0 } };
         "#;
         let analyzed = analyze_string(src);
         assert_eq!(analyzed.degree(), 6);
@@ -470,5 +483,40 @@ mod test {
         let constants = generate(&analyzed);
         assert_eq!(constants[0], ("F.x", convert([21, 22, 23, 24].to_vec())));
         assert_eq!(constants[1], ("F.y", convert([20, 21, 22, 23].to_vec())));
+    }
+
+    #[test]
+    pub fn bigint_arith() {
+        let src = r#"
+            constant %N = 4;
+            namespace std::convert(%N);
+            let int = [];
+            let fe = [];
+            namespace F(%N);
+            let x = |i| std::convert::fe((std::convert::int(1) << (2000 + i)) >> 2000);
+        "#;
+        let analyzed = analyze_string::<GoldilocksField>(src);
+        assert_eq!(analyzed.degree(), 4);
+        let constants = generate(&analyzed);
+        assert_eq!(constants[0], ("F.x", convert([1, 2, 4, 8].to_vec())));
+    }
+
+    #[test]
+    pub fn modulo_negative() {
+        let src = r#"
+            constant %N = 4;
+            namespace std::convert(%N);
+            let int = [];
+            let fe = [];
+            namespace F(%N);
+            let x_arr = [ 3 % 4, (-3) % 4, 3 % (-4), (-3) % (-4)];
+            let x = |i| 100 + x_arr[i];
+        "#;
+        let analyzed = analyze_string::<GoldilocksField>(src);
+        assert_eq!(analyzed.degree(), 4);
+        let constants = generate(&analyzed);
+        // Semantics of p % q involving negative numbers:
+        // sgn(p) * |p| % |q|
+        assert_eq!(constants[0], ("F.x", convert([103, 97, 103, 97].to_vec())));
     }
 }

@@ -20,5 +20,5 @@ pub fn verify_riscv_asm_string(file_name: &str, contents: &str, inputs: Vec<Gold
         usize::MAX,
         powdr_riscv_executor::ExecMode::Fast,
     );
-    verify_pipeline(pipeline, inputs, vec![]);
+    verify_pipeline(pipeline);
 }

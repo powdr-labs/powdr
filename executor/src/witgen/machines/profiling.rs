@@ -1,7 +1,7 @@
 use std::{
     cell::RefCell,
     collections::BTreeMap,
-    time::{Duration, SystemTime},
+    time::{Duration, Instant},
 };
 
 #[derive(PartialEq, Debug, Copy, Clone)]
@@ -12,7 +12,7 @@ enum Event {
 
 thread_local! {
     /// The event log is a list of (event, <ID>, time) tuples.
-    static EVENT_LOG: RefCell<Vec<(Event, usize, SystemTime)>> = RefCell::new(Vec::new());
+    static EVENT_LOG: RefCell<Vec<(Event, usize, Instant)>> = RefCell::new(Vec::new());
     /// Maps a machine name (assumed to be globally unique) to an ID.
     /// This is done so that we can use a usize in the event log.
     static NAME_TO_ID: RefCell<BTreeMap<String, usize>> = RefCell::new(BTreeMap::new());
@@ -33,13 +33,13 @@ fn id_from_name(name: &str) -> usize {
 /// Adds the start of a computation to the event log.
 pub fn record_start(name: &str) {
     let id = id_from_name(name);
-    EVENT_LOG.with(|s| s.borrow_mut().push((Event::Start, id, SystemTime::now())));
+    EVENT_LOG.with(|s| s.borrow_mut().push((Event::Start, id, Instant::now())));
 }
 
 /// Adds the end of a computation to the event log.
 pub fn record_end(name: &str) {
     let id = id_from_name(name);
-    EVENT_LOG.with(|s| s.borrow_mut().push((Event::End, id, SystemTime::now())));
+    EVENT_LOG.with(|s| s.borrow_mut().push((Event::End, id, Instant::now())));
 }
 
 pub fn reset_and_print_profile_summary() {
@@ -73,7 +73,7 @@ pub fn reset_and_print_profile_summary() {
             });
 
             // Finish the execution of the currently running machine.
-            let duration = time.duration_since(current_time).unwrap();
+            let duration = time.duration_since(current_time);
             *time_by_machine
                 .entry(current_machine_id)
                 .or_insert(Duration::default()) += duration;
@@ -104,12 +104,7 @@ pub fn reset_and_print_profile_summary() {
 
         let total_time = time_by_machine.iter().map(|(_, d)| *d).sum::<Duration>();
         assert_eq!(
-            event_log
-                .last()
-                .unwrap()
-                .2
-                .duration_since(event_log[0].2)
-                .unwrap(),
+            event_log.last().unwrap().2.duration_since(event_log[0].2),
             total_time
         );
 

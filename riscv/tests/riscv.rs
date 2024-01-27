@@ -1,20 +1,48 @@
 mod common;
 
-use std::path::PathBuf;
-
 use common::verify_riscv_asm_string;
 use mktemp::Temp;
+use powdr_backend::BackendType;
 use powdr_number::GoldilocksField;
-use powdr_pipeline::{
-    test_util::{verify_asm_string, verify_pipeline},
-    Pipeline,
-};
+use powdr_pipeline::{test_util::verify_asm_string, verify::verify, Pipeline, Stage};
+use std::path::PathBuf;
 use test_log::test;
 
 use powdr_riscv::{
     continuations::{rust_continuations, rust_continuations_dry_run},
     CoProcessors,
 };
+
+/// Compiles and runs a rust file with continuations, runs the full
+/// witness generation & verifies it using Pilcom.
+pub fn test_continuations(case: &str) {
+    let rust_file = format!("{case}.rs");
+    let coprocessors = CoProcessors::base().with_poseidon();
+    let temp_dir = Temp::new_dir().unwrap();
+    let riscv_asm =
+        powdr_riscv::compile_rust_to_riscv_asm(&format!("tests/riscv_data/{rust_file}"), &temp_dir);
+    let powdr_asm = powdr_riscv::compiler::compile(riscv_asm, &coprocessors, true);
+
+    // Manually create tmp dir, so that it is the same in all chunks.
+    let tmp_dir = mktemp::Temp::new_dir().unwrap();
+
+    let pipeline_factory = || {
+        Pipeline::<GoldilocksField>::default()
+            .from_asm_string(powdr_asm.clone(), Some(PathBuf::from(&rust_file)))
+            .with_prover_inputs(Default::default())
+            .with_output(tmp_dir.to_path_buf(), false)
+    };
+    let pipeline_callback = |pipeline: Pipeline<GoldilocksField>| -> Result<(), ()> {
+        // Can't use `verify_pipeline`, because the pipeline was renamed in the middle of after
+        // computing the constants file.
+        let mut pipeline = pipeline.with_backend(BackendType::PilStarkCli);
+        pipeline.advance_to(Stage::Proof).unwrap();
+        verify(pipeline.output_dir().unwrap(), pipeline.name(), Some(case));
+        Ok(())
+    };
+    let bootloader_inputs = rust_continuations_dry_run(pipeline_factory());
+    rust_continuations(pipeline_factory, pipeline_callback, bootloader_inputs).unwrap();
+}
 
 #[test]
 #[ignore = "Too slow"]
@@ -145,7 +173,7 @@ fn test_evm() {
         .from_asm_string(powdr_asm, None)
         .add_data(666, &bytes);
 
-    verify_pipeline(pipeline, Default::default(), vec![]);
+    powdr_pipeline::test_util::verify_pipeline(pipeline);
 }
 
 #[test]
@@ -177,38 +205,13 @@ fn test_many_chunks_dry() {
 #[test]
 #[ignore = "Too slow"]
 fn test_many_chunks() {
-    // Compiles and runs the many_chunks.rs example with continuations, runs the full
-    // witness generation & verifies it using Pilcom.
-    // TODO: Make this test pass!
-    let case = "many_chunks.rs";
-    let coprocessors = CoProcessors::base().with_poseidon();
-    let temp_dir = Temp::new_dir().unwrap();
-    let riscv_asm =
-        powdr_riscv::compile_rust_to_riscv_asm(&format!("tests/riscv_data/{case}"), &temp_dir);
-    let powdr_asm = powdr_riscv::compiler::compile(riscv_asm, &coprocessors, true);
+    test_continuations("many_chunks")
+}
 
-    // Manually create tmp dir, so that it is the same in all chunks.
-    let tmp_dir = mktemp::Temp::new_dir().unwrap();
-
-    let pipeline_factory = || {
-        Pipeline::<GoldilocksField>::default()
-            .from_asm_string(powdr_asm.clone(), Some(PathBuf::from(case)))
-            .with_prover_inputs(Default::default())
-            .with_output(tmp_dir.to_path_buf(), false)
-    };
-    let pipeline_callback = |pipeline: Pipeline<GoldilocksField>| -> Result<(), ()> {
-        // The continuations code runs the pipeline until the point were fixed columns
-        // are evaluated and then renames the pipeline. This doesn't play well with
-        // verify_pipeline, so we copy the artifacts here.
-        // Specifically, we copy many_chunks_constants.bin to <pipeline_name>_constants.bin.
-        let tmp_dir = pipeline.output_dir().unwrap();
-        let constants_file = tmp_dir.join(format!("{}_constants.bin", pipeline.name()));
-        std::fs::copy(tmp_dir.join("many_chunks_constants.bin"), constants_file).unwrap();
-        verify_pipeline(pipeline, Default::default(), vec![]);
-        Ok(())
-    };
-    let bootloader_inputs = rust_continuations_dry_run(pipeline_factory());
-    rust_continuations(pipeline_factory, pipeline_callback, bootloader_inputs).unwrap();
+#[test]
+#[ignore = "Too slow"]
+fn test_many_chunks_memory() {
+    test_continuations("many_chunks_memory")
 }
 
 fn verify_file(case: &str, inputs: Vec<GoldilocksField>, coprocessors: &CoProcessors) {

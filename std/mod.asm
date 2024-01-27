@@ -1,6 +1,9 @@
 mod array;
 mod binary;
 mod check;
+mod convert;
+mod debug;
+mod field;
 mod hash;
 mod shift;
 mod split;

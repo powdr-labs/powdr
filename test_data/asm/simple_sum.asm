@@ -7,6 +7,10 @@
 // Code in `${`...`}` is rust-like code that is run by the prover
 // to generate free inputs.
 
+// This imports the `conv` module which contains functions to convert
+// between integers and field elements.
+use std::convert::int;
+
 machine Main {
     reg pc[@pc]; // "@pc" means "pc' = pc + 1" is the default propagation (instead of pc' = pc) and it tracks the line in the program.
     reg X[<=]; // "<=" means it is the default assignment register.
@@ -33,7 +37,7 @@ machine Main {
 
         start:
         jmpz CNT, check;
-        A <=X= A + ${ ("input", CNT + 1) };
+        A <=X= A + ${ ("input", std::convert::int(CNT) + 1) };
         // Could use "CNT <=X= CNT - 1", but that would need X.
         dec_CNT;
         jmp start;

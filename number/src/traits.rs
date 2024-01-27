@@ -1,4 +1,4 @@
-use std::{fmt, hash::Hash, ops::*};
+use std::{fmt, hash::Hash, ops::*, str::FromStr};
 
 use num_traits::{One, Zero};
 
@@ -78,6 +78,7 @@ pub trait FieldElement:
     + fmt::Debug
     + From<Self::Integer>
     + From<num_bigint::BigUint>
+    + FromStr<Err = String>
     + From<u32>
     + From<u64>
     + From<i32>
@@ -109,8 +110,6 @@ pub trait FieldElement:
     fn to_bytes_le(&self) -> Vec<u8>;
 
     fn from_bytes_le(bytes: &[u8]) -> Self;
-
-    fn from_str(s: &str) -> Self;
 
     fn from_str_radix(s: &str, radix: u32) -> Result<Self, String>;
 

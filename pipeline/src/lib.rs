@@ -99,7 +99,7 @@ pub fn inputs_to_query_callback<T: FieldElement>(inputs: Vec<T>) -> impl QueryCa
                 // called again.
                 Ok(Some(0.into()))
             }
-            ["\"hint\"", value] => Ok(Some(T::from_str(value))),
+            ["\"hint\"", value] => Ok(Some(T::from_str(value).unwrap())),
             k => Err(format!("Unsupported query: {}", k.iter().format(", "))),
         }
     }

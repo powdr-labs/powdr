@@ -1,10 +1,15 @@
 use std::{path::Path, process::Command};
 
-pub fn verify(temp_dir: &Path, name: &str) {
+pub fn verify(temp_dir: &Path, name: &str, constants_name: Option<&str>) {
     let pilcom = std::env::var("PILCOM")
         .expect("Please set the PILCOM environment variable to the path to the pilcom repository.");
 
-    let constants_file = format!("{}/{name}_constants.bin", temp_dir.to_str().unwrap());
+    let constants_name = constants_name.unwrap_or(name);
+
+    let constants_file = format!(
+        "{}/{constants_name}_constants.bin",
+        temp_dir.to_str().unwrap()
+    );
     let commits_file = format!("{}/{name}_commits.bin", temp_dir.to_str().unwrap());
     let constraints_file = format!("{}/{name}_constraints.json", temp_dir.to_str().unwrap());
 

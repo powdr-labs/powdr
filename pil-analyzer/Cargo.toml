@@ -10,6 +10,8 @@ powdr-parser = { path = "../parser" }
 powdr-parser-util = { path = "../parser-util" }
 
 itertools = "^0.10"
+num-bigint = "0.4.3"
+num-traits = "0.2.15"
 
 [dev-dependencies]
 test-log = "0.2.12"
