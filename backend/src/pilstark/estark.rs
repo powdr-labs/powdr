@@ -143,7 +143,7 @@ impl<F: FieldElement> BackendImpl<F> for EStark {
         // generate circom
         let opt = pil2circom::StarkOption {
             enable_input: false,
-            verkey_input: true,
+            verkey_input: false,
             skip_main: false,
             agg_stage: false,
         };
