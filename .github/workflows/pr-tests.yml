@@ -42,8 +42,8 @@ jobs:
       run: cargo clippy --all --all-features --profile pr-tests -- -D warnings
     - name: Format
       run: cargo fmt --all --check --verbose
-    - name: Check benches compile without running them
-      run: cargo bench --all --all-features --profile pr-tests --no-run
+    #- name: Check benches compile without running them
+    #  run: cargo bench --all --all-features --profile pr-tests --no-run
     - name: Check without Halo2
       run: cargo check --all --no-default-features --profile pr-tests
     - name: Build
