@@ -1,7 +1,11 @@
 [package]
 name = "powdr-executor"
-version = "0.1.0"
-edition = "2021"
+description = "powdr executor for powdr-PIL code, also known as 'witness generator' or 'witgen'"
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+homepage = { workspace = true }
+repository = { workspace = true }
 
 [dependencies]
 powdr-ast = { path = "../ast" }

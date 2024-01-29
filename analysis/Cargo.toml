@@ -1,7 +1,11 @@
 [package]
 name = "powdr-analysis"
-version = "0.1.0"
-edition = "2021"
+description = "powdr compiler for high level asm machines to a fully analyzed asm machine"
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+homepage = { workspace = true }
+repository = { workspace = true }
 
 [dependencies]
 powdr-asm-to-pil = { path = "../asm-to-pil" }

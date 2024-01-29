@@ -1,7 +1,11 @@
 [package]
 name = "powdr-backend"
-version = "0.1.0"
-edition = "2021"
+description = "powdr backend types and API"
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+homepage = { workspace = true }
+repository = { workspace = true }
 
 [features]
 halo2 = ["dep:powdr-halo2"]

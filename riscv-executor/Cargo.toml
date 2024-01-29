@@ -1,7 +1,11 @@
 [package]
 name = "powdr-riscv-executor"
-version = "0.1.0"
-edition = "2021"
+description = "powdr-asm RISCV executor"
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+homepage = { workspace = true }
+repository = { workspace = true }
 
 [dependencies]
 powdr-analysis = { path = "../analysis" }

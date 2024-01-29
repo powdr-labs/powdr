@@ -1,7 +1,11 @@
 [package]
 name = "powdr-ast"
-version = "0.1.0"
-edition = "2021"
+description = "powdr AST definitions"
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+homepage = { workspace = true }
+repository = { workspace = true }
 
 [dependencies]
 powdr-number = { path = "../number" }

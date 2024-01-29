@@ -1,7 +1,11 @@
 [package]
 name = "powdr-pipeline"
-version = "0.1.0"
-edition = "2021"
+description = "powdr compiler pipeline from asm to proof"
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+homepage = { workspace = true }
+repository = { workspace = true }
 
 [features]
 halo2 = ["dep:powdr-halo2", "powdr-backend/halo2"]
