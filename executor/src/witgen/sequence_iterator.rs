@@ -44,6 +44,7 @@ impl DefaultSequenceIterator {
             row_deltas: (-1..=max_row)
                 .chain((-1..max_row).rev())
                 .chain(0..=max_row)
+                .chain((-1..max_row).rev())
                 .collect(),
             outer_query_row,
             progress_in_current_round: false,
