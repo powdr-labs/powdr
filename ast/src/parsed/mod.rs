@@ -49,7 +49,6 @@ pub enum PilStatement<T> {
         Vec<PolynomialName<T>>,
         Option<FunctionDefinition<T>>,
     ),
-    PolynomialIdentity(SourceRef, Expression<T>),
     PlookupIdentity(
         SourceRef,
         SelectedExpressions<Expression<T>>,
@@ -81,7 +80,6 @@ impl<T> PilStatement<T> {
 
             PilStatement::Include(_, _)
             | PilStatement::Namespace(_, _, _)
-            | PilStatement::PolynomialIdentity(_, _)
             | PilStatement::PlookupIdentity(_, _, _)
             | PilStatement::PermutationIdentity(_, _, _)
             | PilStatement::ConnectIdentity(_, _, _)
@@ -102,7 +100,6 @@ impl<T> PilStatement<T> {
             PilStatement::Expression(_, e)
             | PilStatement::Namespace(_, _, e)
             | PilStatement::PolynomialDefinition(_, _, e)
-            | PilStatement::PolynomialIdentity(_, e)
             | PilStatement::ConstantDefinition(_, _, e) => Box::new(once(e)),
 
             PilStatement::LetStatement(_, _, type_name, value) => {
@@ -132,7 +129,6 @@ impl<T> PilStatement<T> {
             PilStatement::Expression(_, e)
             | PilStatement::Namespace(_, _, e)
             | PilStatement::PolynomialDefinition(_, _, e)
-            | PilStatement::PolynomialIdentity(_, e)
             | PilStatement::ConstantDefinition(_, _, e) => Box::new(once(e)),
 
             PilStatement::LetStatement(_, _, type_name, value) => Box::new(
@@ -342,6 +338,7 @@ pub enum BinaryOperator {
     Less,
     LessEqual,
     Equal,
+    Identity,
     NotEqual,
     GreaterEqual,
     Greater,

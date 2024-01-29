@@ -106,7 +106,6 @@ where
             }
             PilStatement::Include(_, _)
             | PilStatement::Namespace(_, _, _)
-            | PilStatement::PolynomialIdentity(_, _)
             | PilStatement::PlookupIdentity(_, _, _)
             | PilStatement::PermutationIdentity(_, _, _)
             | PilStatement::ConnectIdentity(_, _, _)
@@ -287,8 +286,7 @@ where
 
     fn handle_identity_statement(&mut self, statement: PilStatement<T>) -> Vec<PILItem<T>> {
         let (source, kind, left, right) = match statement {
-            PilStatement::PolynomialIdentity(source, expression)
-            | PilStatement::Expression(source, expression) => (
+            PilStatement::Expression(source, expression) => (
                 source,
                 IdentityKind::Polynomial,
                 SelectedExpressions {

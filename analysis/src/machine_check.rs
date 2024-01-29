@@ -323,7 +323,8 @@ impl<T: FieldElement> TypeChecker<T> {
             let errors: Vec<_> = statements
                 .iter()
                 .filter_map(|s| match s {
-                    powdr_ast::parsed::PilStatement::PolynomialIdentity(_, _) => None,
+                    // TODO this could be a function call that returns an identity including a selector in the future.
+                    powdr_ast::parsed::PilStatement::Expression(_, _) => None,
                     powdr_ast::parsed::PilStatement::PermutationIdentity(_, l, _)
                     | powdr_ast::parsed::PilStatement::PlookupIdentity(_, l, _) => l
                         .selector

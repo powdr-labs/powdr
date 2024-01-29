@@ -4,7 +4,7 @@ use crate::parsed::Expression;
 
 use super::{
     asm::{Part, SymbolPath},
-    IndexAccess, NamespacedPolynomialReference, UnaryOperator,
+    BinaryOperator, IndexAccess, NamespacedPolynomialReference, UnaryOperator,
 };
 
 pub fn direct_reference<S: Into<String>, T>(name: S) -> Expression<T> {
@@ -32,4 +32,8 @@ pub fn index_access<T: FieldElement>(expr: Expression<T>, index: Option<T>) -> E
         }),
         None => expr,
     }
+}
+
+pub fn identity<T: FieldElement>(lhs: Expression<T>, rhs: Expression<T>) -> Expression<T> {
+    Expression::BinaryOperation(Box::new(lhs), BinaryOperator::Identity, Box::new(rhs))
 }

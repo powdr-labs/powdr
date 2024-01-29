@@ -34,11 +34,11 @@ mod R {
         let w: col[sum(2, |i| 1)];
 
         // This and the next line are the same.
-        super::utils::sum(2, |i| w[i]) == 8;
-        sum(2, |i| w[i]) == 8;
+        super::utils::sum(2, |i| w[i]) = 8;
+        sum(2, |i| w[i]) = 8;
 
         // Try to see if we only clear local variables
         // if they not already exist in the outer scope.
-        make_array(2, |i| ((|i| w)(2))[i] == 4);
+        make_array(2, |i| ((|i| w)(2))[i] = 4);
     }
 }

@@ -76,7 +76,6 @@ pub PilStatement = {
     PolynomialConstantDeclaration,
     PolynomialConstantDefinition,
     PolynomialCommitDeclaration,
-    PolynomialIdentity,
     PlookupIdentity,
     PermutationIdentity,
     ConnectIdentity,
@@ -147,10 +146,6 @@ PolynomialCommitDeclaration: PilStatement<T> = {
         vec![name],
         Some(FunctionDefinition::Query(Expression::LambdaExpression(LambdaExpression{params, body})))
     )
-}
-
-PolynomialIdentity: PilStatement<T> = {
-    <start:@L> <l:BoxedExpression> "=" <r:BoxedExpression> => PilStatement::PolynomialIdentity(ctx.source_ref(start), Expression::BinaryOperation(l, BinaryOperator::Sub, r))
 }
 
 PolynomialNameList: Vec<PolynomialName<T>> = {
@@ -252,7 +247,7 @@ pub Instruction: Instruction<T> = {
 }
 
 pub LinkDeclaration: MachineStatement<T> = {
-    <start:@L> "link" <flag:Expression> <params:Params> "=" <to:CallableRef> ";" => MachineStatement::LinkDeclaration(LinkDeclaration { source: ctx.source_ref(start), flag, params, to })
+    <start:@L> "link" <flag:Expression> <params:Params> "=>" <to:CallableRef> ";" => MachineStatement::LinkDeclaration(LinkDeclaration { source: ctx.source_ref(start), flag, params, to })
 }
 
 pub InstructionBody: InstructionBody<T> = {
@@ -271,7 +266,6 @@ InstructionBodyElements: Vec<PilStatement<T>> = {
 }
 
 InstructionBodyElement: PilStatement<T> = {
-    PolynomialIdentity,
     PlookupIdentity,
     PermutationIdentity,
     ExpressionStatement,
@@ -399,6 +393,7 @@ ComparisonOp: BinaryOperator = {
     "<" => BinaryOperator::Less,
     "<=" => BinaryOperator::LessEqual,
     "==" => BinaryOperator::Equal,
+    "=" => BinaryOperator::Identity,
     "!=" => BinaryOperator::NotEqual,
     ">=" => BinaryOperator::GreaterEqual,
     ">" => BinaryOperator::Greater,

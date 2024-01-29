@@ -13,7 +13,7 @@ use powdr_ast::{
     },
     parsed::{
         asm::InstructionBody,
-        build::{direct_reference, next_reference},
+        build::{self, direct_reference, next_reference},
         folder::ExpressionFolder,
         visitor::ExpressionVisitable,
         ArrayExpression, BinaryOperator, Expression, FunctionCall, FunctionDefinition,
@@ -143,11 +143,14 @@ impl<T: FieldElement> ASMPILConverter<T> {
                                         pc_update_name.to_string(),
                                         rhs,
                                     ),
-                                    PilStatement::PolynomialIdentity(
+                                    PilStatement::Expression(
                                         SourceRef::unknown(),
-                                        lhs - (Expression::from(T::one())
-                                            - next_reference("first_step"))
-                                            * direct_reference(pc_update_name),
+                                        build::identity(
+                                            lhs,
+                                            (Expression::from(T::one())
+                                                - next_reference("first_step"))
+                                                * direct_reference(pc_update_name),
+                                        ),
                                     ),
                                 ]
                             }
@@ -155,15 +158,15 @@ impl<T: FieldElement> ASMPILConverter<T> {
                             ReadOnly => {
                                 let not_reset: Expression<T> =
                                     Expression::from(T::one()) - direct_reference("instr__reset");
-                                vec![PilStatement::PolynomialIdentity(
+                                vec![PilStatement::Expression(
                                     SourceRef::unknown(),
-                                    not_reset * (lhs - rhs),
+                                    build::identity(not_reset * (lhs - rhs), T::zero().into()),
                                 )]
                             }
                             _ => {
-                                vec![PilStatement::PolynomialIdentity(
+                                vec![PilStatement::Expression(
                                     SourceRef::unknown(),
-                                    lhs - rhs,
+                                    build::identity(lhs, rhs),
                                 )]
                             }
                         }
@@ -398,8 +401,13 @@ impl<T: FieldElement> ASMPILConverter<T> {
                 });
 
                 for mut statement in body {
-                    if let PilStatement::PolynomialIdentity(_start, expr) = statement {
-                        match extract_update(expr) {
+                    // TODO take expr
+                    if let PilStatement::Expression(
+                        _,
+                        Expression::BinaryOperation(lhs, BinaryOperator::Identity, rhs),
+                    ) = statement
+                    {
+                        match extract_update(*lhs, *rhs) {
                             (Some(var), expr) => {
                                 let reference = direct_reference(&instruction_flag);
 
@@ -413,9 +421,12 @@ impl<T: FieldElement> ASMPILConverter<T> {
                                     .conditioned_updates
                                     .push((reference, expr));
                             }
-                            (None, expr) => self.pil.push(PilStatement::PolynomialIdentity(
+                            (None, expr) => self.pil.push(PilStatement::Expression(
                                 SourceRef::unknown(),
-                                direct_reference(&instruction_flag) * expr.clone(),
+                                build::identity(
+                                    direct_reference(&instruction_flag) * expr.clone(),
+                                    T::zero().into(),
+                                ),
                             )),
                         }
                     } else {
@@ -662,6 +673,7 @@ impl<T: FieldElement> ASMPILConverter<T> {
                 | BinaryOperator::Less
                 | BinaryOperator::LessEqual
                 | BinaryOperator::Equal
+                | BinaryOperator::Identity
                 | BinaryOperator::NotEqual
                 | BinaryOperator::GreaterEqual
                 | BinaryOperator::Greater => {
@@ -717,9 +729,9 @@ impl<T: FieldElement> ASMPILConverter<T> {
                 direct_reference(read_free) * direct_reference(free_value),
             ])
             .sum();
-        self.pil.push(PilStatement::PolynomialIdentity(
+        self.pil.push(PilStatement::Expression(
             SourceRef::unknown(),
-            direct_reference(register) - assign_constraint,
+            build::identity(direct_reference(register), assign_constraint),
         ));
     }
 
@@ -1095,22 +1107,21 @@ fn witness_column<S: Into<String>, T>(
     )
 }
 
-fn extract_update<T: FieldElement>(expr: Expression<T>) -> (Option<String>, Expression<T>) {
+fn extract_update<T: FieldElement>(
+    left: Expression<T>,
+    right: Expression<T>,
+) -> (Option<String>, Expression<T>) {
     // TODO check that there are no other "next" references in the expression
-    if let Expression::BinaryOperation(left, BinaryOperator::Sub, right) = expr {
-        match *left {
-            Expression::UnaryOperation(UnaryOperator::Next, column) => match *column {
-                Expression::Reference(column) => {
-                    (Some(column.try_to_identifier().unwrap().clone()), *right)
-                }
-                _ => (
-                    None,
-                    Expression::UnaryOperation(UnaryOperator::Next, column) - *right,
-                ),
-            },
-            _ => (None, *left - *right),
-        }
-    } else {
-        (None, expr)
+    match left {
+        Expression::UnaryOperation(UnaryOperator::Next, column) => match *column {
+            Expression::Reference(column) => {
+                (Some(column.try_to_identifier().unwrap().clone()), right)
+            }
+            _ => (
+                None,
+                Expression::UnaryOperation(UnaryOperator::Next, column) - right,
+            ),
+        },
+        _ => (None, left - right),
     }
 }

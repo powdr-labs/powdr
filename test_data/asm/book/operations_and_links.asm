@@ -7,7 +7,7 @@ machine Main(latch, operation_id) {
     // - on every row (the boolean flag is `1`)
     // - constrain the values of `x`, `y`, and `z` so that `z = adder.add(x, y)`
     // TODO: uncomment the link once witness generation supports it
-    // link 1 x, y -> z = adder.add;
+    // link 1 x, y -> z => adder.add;
 
     col fixed operation_id = [0]*;
     col fixed latch = [1]*;
