@@ -344,6 +344,7 @@ fn substitute_intermediate<T: Copy>(
                                 poly.poly_id.id,
                                 intermediate_polynomials,
                                 cache,
+                                poly.next,
                             );
                         }
                     }
@@ -359,31 +360,40 @@ fn substitute_intermediate<T: Copy>(
 fn inlined_expression_from_intermediate_poly_id<T: Copy>(
     poly_id: u64,
     intermediate_polynomials: &HashMap<u64, &AlgebraicExpression<T>>,
-    cache: &mut HashMap<u64, AlgebraicExpression<T>>,
+    cache: &mut HashMap<(u64, bool), AlgebraicExpression<T>>,
+    next: bool,
 ) -> AlgebraicExpression<T> {
-    if let Some(e) = cache.get(&poly_id) {
+    if let Some(e) = cache.get(&(poly_id, next)) {
         return e.clone();
     }
     let mut expr = intermediate_polynomials[&poly_id].clone();
     expr.post_visit_expressions_mut(&mut |e| {
         if let AlgebraicExpression::Reference(r) = e {
+            if next {
+                assert!(!r.next, "Next operator is applied twice!");
+                r.next = true;
+            }
             match r.poly_id.ptype {
                 PolynomialType::Committed => {}
                 PolynomialType::Constant => {}
                 PolynomialType::Intermediate => {
                     // read from the cache, if no cache hit, compute the inlined expression
-                    *e = cache.get(&r.poly_id.id).cloned().unwrap_or_else(|| {
-                        inlined_expression_from_intermediate_poly_id(
-                            r.poly_id.id,
-                            intermediate_polynomials,
-                            cache,
-                        )
-                    });
+                    *e = cache
+                        .get(&(r.poly_id.id, r.next))
+                        .cloned()
+                        .unwrap_or_else(|| {
+                            inlined_expression_from_intermediate_poly_id(
+                                r.poly_id.id,
+                                intermediate_polynomials,
+                                cache,
+                                r.next,
+                            )
+                        });
                 }
             }
         }
     });
-    cache.insert(poly_id, expr.clone());
+    cache.insert((poly_id, next), expr.clone());
     expr
 }
 
