@@ -11,6 +11,7 @@ fn poseidon_bn254_test() {
 #[test]
 fn poseidon_gl_test() {
     let f = "std/poseidon_gl_test.asm";
+
     verify_test_file::<GoldilocksField>(f, Default::default(), vec![]);
     gen_estark_proof(f, Default::default());
 }
