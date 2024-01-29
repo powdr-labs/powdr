@@ -393,8 +393,8 @@ mod test {
             let or: col = bool_to_col(|i| (a(i) != fe(0)) || (b(i) != fe(0)));
             let and: col = bool_to_col(|i| (a(i) != fe(0)) && (b(i) != fe(0)) );
             let not: col = bool_to_col(|i| !(a(i) != fe(0)) );
-            let less: col = bool_to_col(|i| fe(id(i)) < fe(inv(i)) );
-            let less_eq: col = bool_to_col(|i| fe(id(i)) <= fe(inv(i)) );
+            let less: col = bool_to_col(|i| int(id(i)) < int(inv(i)) );
+            let less_eq: col = bool_to_col(|i| int(id(i)) <= int(inv(i)) );
             let eq: col = bool_to_col(|i| id(i) == inv(i) );
             let not_eq: col = bool_to_col(|i| id(i) != inv(i) );
             let greater: col = bool_to_col(|i| int(id(i)) > int(inv(i)) );
