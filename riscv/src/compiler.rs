@@ -885,6 +885,10 @@ fn rro(args: &[Argument]) -> (Register, Register, u32) {
             *r2,
             expression_to_number(off.as_ref().unwrap_or(&Expression::Number(0))),
         ),
+        [Argument::Register(r1), Argument::Expression(off)] => {
+            // If the register is not specified, it defaults to x0
+            (*r1, Register::new(0), expression_to_number(off))
+        }
         _ => panic!(),
     }
 }
@@ -897,6 +901,10 @@ fn rrro(args: &[Argument]) -> (Register, Register, Register, u32) {
             *r3,
             expression_to_number(off.as_ref().unwrap_or(&Expression::Number(0))),
         ),
+        [Argument::Register(r1), Argument::Register(r2), Argument::Expression(off)] => {
+            // If the register is not specified, it defaults to x0
+            (*r1, *r2, Register::new(0), expression_to_number(off))
+        }
         _ => panic!(),
     }
 }
