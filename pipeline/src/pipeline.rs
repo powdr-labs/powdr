@@ -484,15 +484,21 @@ impl<T: FieldElement> Pipeline<T> {
             }
             Artifact::ParsedPilFile(linked) => {
                 self.log("Analyzing pil...");
-                Artifact::AnalyzedPil(powdr_pil_analyzer::analyze_ast(linked))
+                let analyzed = powdr_pil_analyzer::analyze_ast(linked);
+                self.maybe_write_pil(&analyzed, "_analyzed")?;
+                Artifact::AnalyzedPil(analyzed)
             }
             Artifact::PilFilePath(pil_file) => {
                 self.log("Analyzing pil...");
-                Artifact::AnalyzedPil(powdr_pil_analyzer::analyze(&pil_file))
+                let analyzed = powdr_pil_analyzer::analyze(&pil_file);
+                self.maybe_write_pil(&analyzed, "_analyzed")?;
+                Artifact::AnalyzedPil(analyzed)
             }
             Artifact::PilString(pil_string) => {
                 self.log("Analyzing pil...");
-                Artifact::AnalyzedPil(powdr_pil_analyzer::analyze_string(&pil_string))
+                let analyzed = powdr_pil_analyzer::analyze_string(&pil_string);
+                self.maybe_write_pil(&analyzed, "_analyzed")?;
+                Artifact::AnalyzedPil(analyzed)
             }
             Artifact::AnalyzedPil(analyzed_pil) => {
                 self.log("Optimizing pil...");
