@@ -543,16 +543,16 @@ namespace N(16);
     #[test]
     fn expr_and_identity() {
         let input = r#"namespace N(16);
-    let f: expr, expr -> constr[] = |x, y| [x == y];
-    let g: expr -> constr[1] = |x| [x == 0];
+    let f: expr, expr -> constr[] = |x, y| [x = y];
+    let g: expr -> constr[1] = |x| [x = 0];
     let x: col;
     let y: col;
     f(x, y);
     g((x));
     "#;
         let expected = r#"namespace N(16);
-    let f: expr, expr -> constr[] = (|x, y| [(x == y)]);
-    let g: expr -> constr[1] = (|x| [(x == 0)]);
+    let f: expr, expr -> constr[] = (|x, y| [(x = y)]);
+    let g: expr -> constr[1] = (|x| [(x = 0)]);
     col witness x;
     col witness y;
     N.x = N.y;
@@ -560,5 +560,27 @@ namespace N(16);
 "#;
         let formatted = analyze_string::<GoldilocksField>(input).to_string();
         assert_eq!(formatted, expected);
+    }
+
+    #[test]
+    #[should_panic = "Expected constraint or array of constraints"]
+    fn expression_but_expected_constraint() {
+        let input = r#"namespace N(16);
+    col witness y;
+    (N.y - 2);
+"#;
+        let formatted = analyze_string::<GoldilocksField>(input).to_string();
+        assert_eq!(formatted, input);
+    }
+
+    #[test]
+    #[should_panic = "Expected field element but got"] // TODO improve this error message
+    fn constraint_but_expected_expression() {
+        let input = r#"namespace N(16);
+    col witness y;
+    { (N.y - 2) = 0 } in { N.y };
+"#;
+        let formatted = analyze_string::<GoldilocksField>(input).to_string();
+        assert_eq!(formatted, input);
     }
 }

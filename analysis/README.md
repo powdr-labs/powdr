@@ -298,9 +298,9 @@ The diff for our example program is as follows:
 +
 +
 // we use links to encode cross-machine calls
-+       link instr_identity X -> Y = sub.identity;
-+       link instr_one -> Y = sub.one;
-+       link instr_nothing = sub.nothing;
++       link instr_identity X -> Y => sub.identity;
++       link instr_one -> Y => sub.one;
++       link instr_nothing => sub.nothing;
 ```
 
 ### Block enforcer
@@ -445,9 +445,9 @@ machine Main(instr_return, _operation_id) {
         }
 
 
-        link instr_identity X -> Y = sub.identity;
-        link instr_one -> Y = sub.one;
-        link instr_nothing = sub.nothing;
+        link instr_identity X -> Y => sub.identity;
+        link instr_one -> Y => sub.one;
+        link instr_nothing => sub.nothing;
 
 }
 ```

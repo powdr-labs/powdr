@@ -19,7 +19,7 @@ let sum = |length, f| fold(length, f, 0, |acc, e| (acc + e));
 /// `c` is allowed to change.
 ///
 /// Note: `latch` needs to be equal to `1`, and not merely non-zero for `c` to be able to change.
-let unchanged_until = |c, latch| (c' - c) * (1 - latch) == 0;
+let unchanged_until = |c, latch| (c' - c) * (1 - latch) = 0;
 
 /// Evaluates to a constraint that forces `c` to be either 0 or 1.
-let force_bool: expr -> constr = |c| c * (1 - c) == 0;
+let force_bool: expr -> constr = |c| c * (1 - c) = 0;

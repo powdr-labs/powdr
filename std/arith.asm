@@ -170,7 +170,7 @@ machine Arith(CLK32_31, operation_id){
     pol carry2 = carry_high[2] * 2**16 + carry_low[2] - 2 ** 31;
     let carry = [carry0, carry1, carry2];
     
-    array::map(carry, |c| c * CLK32[0] == 0);
+    array::map(carry, |c| c * CLK32[0] = 0);
 
     // TODO: Somehow witgen fails if a carry is unconstrained
     selEq[0] * carry[1] = 0;
