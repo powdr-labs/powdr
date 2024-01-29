@@ -84,7 +84,7 @@ fn generate_values<T: FieldElement>(
     };
     match result {
         Err(err) => {
-            eprintln!("Error evaluating fixed polynomial {name} = {body}:\n{err}");
+            eprintln!("Error evaluating fixed polynomial {name}{body}:\n{err}");
             panic!("{err}");
         }
         Ok(v) => v,
