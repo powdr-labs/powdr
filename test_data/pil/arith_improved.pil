@@ -32,7 +32,7 @@ namespace Arith(N);
     // TODO the weird syntax is needed so that this is not classified as a constant column
     let force_boolean = (|| |x| x * (1 - x) == 0)();
 
-    let clock = |j, row| row % 32 == j;
+    let clock = |j, row| if row % 32 == j { 1 } else { 0 };
     // Arrays of fixed columns are not supported yet.
     // These need an explicit lambda, otherwise they are not recognized as fixed columns.
     // The type system will handle that in the future.
@@ -105,7 +105,7 @@ namespace Arith(N);
 
     pol constant BYTE2_BIT19(r) { r % (2**19 + 2**16) };
 	// TODO this is way too large for our tests.
-    pol constant SEL_BYTE2_BIT19(r) { r >= 2**16 };
+    pol constant SEL_BYTE2_BIT19(r) { if r >= 2**16 {1} else {0} };
 	// TODO not sure how that constant is defined
     // pol constant GL_SIGNED_22BITS;
 
@@ -186,11 +186,16 @@ namespace Arith(N);
 	/// returns |n| a(0) * b(n) + ... + a(n) * b(0)
 	let product = |a, b| |n| dot_prod(n + 1, a, |i| b(n - i));
 	/// Converts array to function, extended by zeros.
-	let array_as_fun = |arr, len| |i| match i < len {
-		1 => arr[i],
-		_ => 0,
+	let array_as_fun = |arr, len| |i| if i < len {
+		if i >= 0 {
+			arr[i]
+		} else {
+			0
+		}
+	} else {
+		0
 	};
-	let prepend_zeros = |arr, amount| |i| match i < amount { 1 => 0, _ => arr(i - amount) };
+	let shift_right = |fn, amount| |i| fn(i - amount);
 
 	let x1f = array_as_fun(x1, 16);
 	let y1f = array_as_fun(y1, 16);
@@ -207,7 +212,7 @@ namespace Arith(N);
 	let eq0 = (|| |nr|
 		product(x1f, y1f)(nr)
 		+ x2f(nr)
-		- prepend_zeros(y2f, 16)(nr)
+		- shift_right(y2f, 16)(nr)
 		- y3f(nr)
 	)();
 
@@ -219,20 +224,16 @@ namespace Arith(N);
     *******/
 
 	// 0xffffffffffffffffffffffffffffffffffffffffffffffffffff fffe ffff fc2f
-	let p = (|| |nr| match nr >= 16 {
-		1 => 0,
-		_ => match nr {
-			0 => 0xfc2f,
-			1 => 0xffff,
-			2 => 0xfffe,
-			_ => 0xffff
-		}
-	})();
+    let p = array_as_fun([
+        0xfc2f, 0xffff, 0xfffe, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff,
+        0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff
+    ], 16);
 
-	// I have no idea where the "- 4 * prepend_zeros(p, 16)" comes from, but it was in the original constraints.
-	let product_with_p = (|| |x| |nr| product(p, x)(nr) - 4 * prepend_zeros(p, 16)(nr))();
+	// The "- 4 * shift_right(p, 16)" effectively subtracts 4 * (p << 16 * 16) = 2 ** 258 * p
+    // As a result, the term computes `(x - 2 ** 258) * p`.
+	let product_with_p = (|| |x| |nr| product(p, x)(nr) - 4 * shift_right(p, 16)(nr))();
 
-	let eq1 = (|| |nr| std::field::modulus() + product(sf, x2f)(nr) - product(sf, x1f)(nr) - y2f(nr) + y1f(nr) + product_with_p(q0f)(nr))();
+	let eq1 = (|| |nr| product(sf, x2f)(nr) - product(sf, x1f)(nr) - y2f(nr) + y1f(nr) + product_with_p(q0f)(nr))();
 
     /*******
     *
@@ -240,7 +241,7 @@ namespace Arith(N);
     *
     *******/
 
-	let eq2 = (|| |nr| std::field::modulus() + 2 * product(sf, y1f)(nr) - 3 * product(x1f, x1f)(nr) + product_with_p(q0f)(nr))();
+	let eq2 = (|| |nr| 2 * product(sf, y1f)(nr) - 3 * product(x1f, x1f)(nr) + product_with_p(q0f)(nr))();
 
     /*******
     *
@@ -248,7 +249,7 @@ namespace Arith(N);
     *
     *******/
 
-	let eq3 = (|| |nr| std::field::modulus() + product(sf, sf)(nr) - x1f(nr) - x2f(nr) - x3f(nr) + product_with_p(q1f)(nr))();
+	let eq3 = (|| |nr| product(sf, sf)(nr) - x1f(nr) - x2f(nr) - x3f(nr) + product_with_p(q1f)(nr))();
 
 
     /*******
@@ -257,7 +258,7 @@ namespace Arith(N);
     *
     *******/
 
-	let eq4 = (|| |nr| std::field::modulus() + product(sf, x1f)(nr) - product(sf, x3f)(nr) - y1f(nr) - y3f(nr) + product_with_p(q2f)(nr))();
+	let eq4 = (|| |nr| product(sf, x1f)(nr) - product(sf, x3f)(nr) - y1f(nr) - y3f(nr) + product_with_p(q2f)(nr))();
 
     pol commit selEq[4];
 
