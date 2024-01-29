@@ -317,7 +317,7 @@ impl<T: FieldElement> Analyzed<T> {
         let intermediates = &self
             .intermediate_polys_in_source_order()
             .iter()
-            .map(|(symbol, def)| (symbol.id, def))
+            .map(|(symbol, def)| (PolyID::from(symbol), def))
             .collect();
 
         substitute_intermediate(self.identities.clone(), intermediates)
@@ -326,9 +326,9 @@ impl<T: FieldElement> Analyzed<T> {
 
 /// Takes identities as values and inlines intermediate polynomials everywhere, returning a vector of the updated identities
 /// TODO: this could return an iterator
-fn substitute_intermediate<T: Copy>(
+fn substitute_intermediate<T: Copy + Display>(
     identities: impl IntoIterator<Item = Identity<AlgebraicExpression<T>>>,
-    intermediate_polynomials: &HashMap<u64, &AlgebraicExpression<T>>,
+    intermediate_polynomials: &HashMap<PolyID, &AlgebraicExpression<T>>,
 ) -> Vec<Identity<AlgebraicExpression<T>>> {
     identities
         .into_iter()
@@ -341,10 +341,9 @@ fn substitute_intermediate<T: Copy>(
                         PolynomialType::Intermediate => {
                             // recursively inline intermediate polynomials, updating the cache
                             *e = inlined_expression_from_intermediate_poly_id(
-                                poly.poly_id.id,
+                                poly.clone(),
                                 intermediate_polynomials,
                                 cache,
-                                poly.next,
                             );
                         }
                     }
@@ -357,43 +356,42 @@ fn substitute_intermediate<T: Copy>(
 
 /// Recursively inlines intermediate polynomials inside an expression and returns the new expression
 /// This uses a cache to avoid resolving an intermediate polynomial twice
-fn inlined_expression_from_intermediate_poly_id<T: Copy>(
-    poly_id: u64,
-    intermediate_polynomials: &HashMap<u64, &AlgebraicExpression<T>>,
-    cache: &mut HashMap<(u64, bool), AlgebraicExpression<T>>,
-    next: bool,
+///
+/// poly_to_replace can be a "next" reference, but then its value cannot contain any next references.
+fn inlined_expression_from_intermediate_poly_id<T: Copy + Display>(
+    poly_to_replace: AlgebraicReference,
+    intermediate_polynomials: &HashMap<PolyID, &AlgebraicExpression<T>>,
+    cache: &mut HashMap<AlgebraicReference, AlgebraicExpression<T>>,
 ) -> AlgebraicExpression<T> {
-    if let Some(e) = cache.get(&(poly_id, next)) {
+    assert_eq!(poly_to_replace.poly_id.ptype, PolynomialType::Intermediate);
+    if let Some(e) = cache.get(&poly_to_replace) {
         return e.clone();
     }
-    let mut expr = intermediate_polynomials[&poly_id].clone();
+    let mut expr = intermediate_polynomials[&poly_to_replace.poly_id].clone();
     expr.post_visit_expressions_mut(&mut |e| {
-        if let AlgebraicExpression::Reference(r) = e {
-            if next {
-                assert!(!r.next, "Next operator is applied twice!");
-                r.next = true;
-            }
-            match r.poly_id.ptype {
-                PolynomialType::Committed => {}
-                PolynomialType::Constant => {}
-                PolynomialType::Intermediate => {
-                    // read from the cache, if no cache hit, compute the inlined expression
-                    *e = cache
-                        .get(&(r.poly_id.id, r.next))
-                        .cloned()
-                        .unwrap_or_else(|| {
-                            inlined_expression_from_intermediate_poly_id(
-                                r.poly_id.id,
-                                intermediate_polynomials,
-                                cache,
-                                r.next,
-                            )
-                        });
-                }
+        let AlgebraicExpression::Reference(r) = e else { return; };
+        // "forward" the next operator from the polynomial to be replaced.
+        if poly_to_replace.next && r.next {
+            let value = intermediate_polynomials[&poly_to_replace.poly_id];
+            panic!(
+                "Error inlining intermediate polynomial {poly_to_replace} = ({value})':\nNext operator already applied to {} and then again to {} - cannot apply it twice!",
+                r.name,
+                poly_to_replace.name
+            );
+        }
+        r.next = r.next || poly_to_replace.next;
+        match r.poly_id.ptype {
+            PolynomialType::Committed | PolynomialType::Constant => {}
+            PolynomialType::Intermediate => {
+                *e = inlined_expression_from_intermediate_poly_id(
+                    r.clone(),
+                    intermediate_polynomials,
+                    cache,
+                );
             }
         }
     });
-    cache.insert((poly_id, next), expr.clone());
+    cache.insert(poly_to_replace, expr.clone());
     expr
 }
 
