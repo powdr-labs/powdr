@@ -250,7 +250,11 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
         let outer_assignments = updates
             .constraints
             .into_iter()
-            .filter(|(poly, _)| !self.witness_cols.contains(&poly.poly_id))
+            .filter(|(poly, update)| match update {
+                Constraint::Assignment(_) => !self.witness_cols.contains(&poly.poly_id),
+                // Range constraints are currently not communicated between callee and caller.
+                Constraint::RangeConstraint(_) => false,
+            })
             .collect::<Vec<_>>();
 
         Ok((progress, outer_assignments))
@@ -311,19 +315,22 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
         let (current, next) = self.data.mutable_row_pair(row_index);
         let mut row_updater = RowUpdater::new(current, next, self.row_offset + row_index as u64);
 
+        let mut progress = false;
         for (poly, c) in &updates.constraints {
             if self.witness_cols.contains(&poly.poly_id) {
                 row_updater.apply_update(poly, c);
+                progress = true;
             } else if let Constraint::Assignment(v) = c {
                 let left = &mut self.outer_query.as_mut().unwrap().left;
                 log::trace!("      => {} (outer) = {}", poly, v);
                 for l in left.iter_mut() {
                     l.assign(poly, *v);
                 }
+                progress = true;
             };
         }
 
-        true
+        progress
     }
 
     pub fn len(&self) -> usize {
