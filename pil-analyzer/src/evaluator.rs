@@ -392,10 +392,10 @@ mod internal {
                         Value::Bool(*l && *r)
                     }
                     (Value::Integer(l), _, Value::Integer(r)) => {
-                        evaluate_binary_operation_integer(l, *op, r)
+                        evaluate_binary_operation_integer(l, *op, r)?
                     }
                     (Value::FieldElement(l), _, Value::FieldElement(r)) => {
-                        evaluate_binary_operation_field(*l, *op, *r)
+                        evaluate_binary_operation_field(*l, *op, *r)?
                     }
                     (Value::FieldElement(l), BinaryOperator::Pow, Value::Integer(r)) => {
                         let exp = r.to_u64().ok_or_else(|| {
@@ -587,23 +587,25 @@ pub fn evaluate_binary_operation_field<'a, T: FieldElement, C>(
     left: T,
     op: BinaryOperator,
     right: T,
-) -> Value<'a, T, C> {
-    match op {
+) -> Result<Value<'a, T, C>, EvalError> {
+    Ok(match op {
         BinaryOperator::Add => Value::FieldElement(left + right),
         BinaryOperator::Sub => Value::FieldElement(left - right),
         BinaryOperator::Mul => Value::FieldElement(left * right),
         BinaryOperator::Equal => Value::Bool(left == right),
         BinaryOperator::NotEqual => Value::Bool(left != right),
-        _ => panic!("Invalid operation {op} on field element"),
-    }
+        _ => Err(EvalError::TypeError(format!(
+            "Invalid operator {op} on field elements: {left} {op} {right}"
+        )))?,
+    })
 }
 
 pub fn evaluate_binary_operation_integer<'a, T, C>(
     left: &num_bigint::BigInt,
     op: BinaryOperator,
     right: &num_bigint::BigInt,
-) -> Value<'a, T, C> {
-    match op {
+) -> Result<Value<'a, T, C>, EvalError> {
+    Ok(match op {
         BinaryOperator::Add => Value::Integer(left + right),
         BinaryOperator::Sub => Value::Integer(left - right),
         BinaryOperator::Mul => Value::Integer(left * right),
@@ -621,8 +623,10 @@ pub fn evaluate_binary_operation_integer<'a, T, C>(
         BinaryOperator::NotEqual => Value::Bool(left != right),
         BinaryOperator::GreaterEqual => Value::Bool(left >= right),
         BinaryOperator::Greater => Value::Bool(left > right),
-        _ => panic!("Invalid operator {op} on integers"),
-    }
+        _ => Err(EvalError::TypeError(format!(
+            "Invalid operator {op} on integers: {left} {op} {right}"
+        )))?,
+    })
 }
 
 #[cfg(test)]
