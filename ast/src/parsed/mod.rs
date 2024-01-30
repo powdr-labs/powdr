@@ -641,3 +641,9 @@ impl<E> FunctionTypeName<E> {
         )
     }
 }
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
+pub struct ExpressionWithTypeName<T, Ref = NamespacedPolynomialReference> {
+    pub e: Expression<T, Ref>,
+    pub type_name: Option<TypeName<Expression<T, Ref>>>,
+}

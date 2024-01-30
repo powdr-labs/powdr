@@ -295,11 +295,8 @@ impl<T: FieldElement> TypeChecker<T> {
                                 }
                             };
                         }
-                        asm::SymbolValue::Expression(e, type_name) => {
-                            res.insert(
-                                ctx.clone().with_part(&name),
-                                Item::Expression(e, type_name),
-                            );
+                        asm::SymbolValue::Expression(e) => {
+                            res.insert(ctx.clone().with_part(&name), Item::Expression(e));
                         }
                     }
                 }

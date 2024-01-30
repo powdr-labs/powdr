@@ -1,5 +1,7 @@
 use std::fmt::{Display, Formatter, Result};
 
+use crate::parsed::ExpressionWithTypeName;
+
 use super::{Link, LinkFrom, LinkTo, Location, Machine, Object, Operation, PILGraph};
 
 impl Display for Location {
@@ -11,7 +13,7 @@ impl Display for Location {
 impl<T: Display> Display for PILGraph<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         writeln!(f, "// Utilities")?;
-        for (name, (e, type_name)) in &self.definitions {
+        for (name, ExpressionWithTypeName { e, type_name }) in &self.definitions {
             writeln!(
                 f,
                 "let {name}{} = {e};",

@@ -266,7 +266,7 @@ mod tests {
             .into_iter()
             .filter_map(|(name, m)| match m {
                 Item::Machine(m) => Some((name, generate_machine_rom(m))),
-                Item::Expression(_, _) => None,
+                Item::Expression(_) => None,
             })
             .collect()
     }

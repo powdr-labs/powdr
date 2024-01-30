@@ -18,7 +18,7 @@ use crate::parsed::{
         AbsoluteSymbolPath, AssignmentRegister, CallableRef, InstructionBody, OperationId, Params,
     },
     visitor::{ExpressionVisitable, VisitOrder},
-    NamespacedPolynomialReference, PilStatement, TypeName,
+    ExpressionWithTypeName, NamespacedPolynomialReference, PilStatement,
 };
 use crate::SourceRef;
 
@@ -672,14 +672,14 @@ pub struct SubmachineDeclaration {
 #[derive(Clone, Debug)]
 pub enum Item<T> {
     Machine(Machine<T>),
-    Expression(Expression<T>, Option<TypeName<Expression<T>>>),
+    Expression(ExpressionWithTypeName<T>),
 }
 
 impl<T> Item<T> {
     pub fn try_to_machine(&self) -> Option<&Machine<T>> {
         match self {
             Item::Machine(m) => Some(m),
-            Item::Expression(_, _) => None,
+            Item::Expression(_) => None,
         }
     }
 }
@@ -799,13 +799,13 @@ impl<T> AnalysisASMFile<T> {
     pub fn machines(&self) -> impl Iterator<Item = (&AbsoluteSymbolPath, &Machine<T>)> {
         self.items.iter().filter_map(|(n, m)| match m {
             Item::Machine(m) => Some((n, m)),
-            Item::Expression(_, _) => None,
+            Item::Expression(_) => None,
         })
     }
     pub fn machines_mut(&mut self) -> impl Iterator<Item = (&AbsoluteSymbolPath, &mut Machine<T>)> {
         self.items.iter_mut().filter_map(|(n, m)| match m {
             Item::Machine(m) => Some((n, m)),
-            Item::Expression(_, _) => None,
+            Item::Expression(_) => None,
         })
     }
 }

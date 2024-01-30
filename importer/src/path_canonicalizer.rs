@@ -15,7 +15,8 @@ use powdr_ast::{
         },
         folder::Folder,
         visitor::ExpressionVisitable,
-        ArrayLiteral, FunctionCall, IndexAccess, LambdaExpression, MatchArm,
+        ArrayLiteral, ExpressionWithTypeName, FunctionCall, IndexAccess, LambdaExpression,
+        MatchArm,
     },
 };
 
@@ -79,13 +80,14 @@ impl<'a, T> Folder<T> for Canonicalizer<'a> {
                                 .map(Some)
                                 .transpose(),
                             },
-                            SymbolValue::Expression(mut e, mut type_name) => {
-                                for tne in type_name.iter_mut().flat_map(|tn| tn.expressions_mut())
+                            SymbolValue::Expression(mut exp) => {
+                                for tne in
+                                    exp.type_name.iter_mut().flat_map(|tn| tn.expressions_mut())
                                 {
                                     canonicalize_inside_expression(tne, &self.path, self.paths);
                                 }
-                                canonicalize_inside_expression(&mut e, &self.path, self.paths);
-                                Some(Ok(SymbolValue::Expression(e, type_name)))
+                                canonicalize_inside_expression(&mut exp.e, &self.path, self.paths);
+                                Some(Ok(SymbolValue::Expression(exp)))
                             }
                         }
                         .map(|value| value.map(|value| SymbolDefinition { name, value }.into()))
@@ -217,7 +219,7 @@ fn check_path_internal<'a, T>(
             |(mut location, value, chain), member| {
                 match value {
                     // machines and expressions do not expose symbols
-                    SymbolValueRef::Machine(_) | SymbolValueRef::Expression(_, _) => {
+                    SymbolValueRef::Machine(_) | SymbolValueRef::Expression(_) => {
                         Err(format!("symbol not found in `{location}`: `{member}`"))
                     }
                     // modules expose symbols
@@ -325,7 +327,7 @@ fn check_module<T: Clone>(
                 check_module(location.with_part(name), m, state)?;
             }
             SymbolValue::Import(s) => check_import(location.clone(), s.clone(), state)?,
-            SymbolValue::Expression(e, type_name) => {
+            SymbolValue::Expression(ExpressionWithTypeName { e, type_name }) => {
                 for tne in type_name.iter().flat_map(|tn| tn.expressions()) {
                     check_expression(&location, tne, state, &HashSet::default())?
                 }

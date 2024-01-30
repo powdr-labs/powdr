@@ -7,7 +7,10 @@ use itertools::Itertools;
 
 use crate::{
     indent,
-    parsed::asm::{AbsoluteSymbolPath, Part},
+    parsed::{
+        asm::{AbsoluteSymbolPath, Part},
+        ExpressionWithTypeName,
+    },
     write_indented_by, write_items_indented,
 };
 
@@ -44,10 +47,10 @@ impl<T: Display> Display for AnalysisASMFile<T> {
                 Item::Machine(machine) => {
                     write_indented_by(f, format!("machine {name}{machine}"), current_path.len())?;
                 }
-                Item::Expression(expression, type_name) => write_indented_by(
+                Item::Expression(ExpressionWithTypeName { e, type_name }) => write_indented_by(
                     f,
                     format!(
-                        "let {name}{} = {expression};\n",
+                        "let {name}{} = {e};\n",
                         type_name
                             .as_ref()
                             .map(|tn| format!(": {tn}"))

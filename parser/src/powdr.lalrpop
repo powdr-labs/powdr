@@ -57,7 +57,11 @@ Part: Part = {
 }
 
 LetStatementAtModuleLevel: SymbolDefinition<T> = {
-    "let" <name:Identifier> <type_name:(":" <TypeName>)?> "=" <value:Expression> ";" => SymbolDefinition { name, value: SymbolValue::Expression(value, type_name) }
+    "let" <name:Identifier> <type_name:(":" <TypeName>)?> "=" <value:Expression> ";" =>
+        SymbolDefinition {
+            name,
+            value: SymbolValue::Expression(ExpressionWithTypeName{ e: value, type_name })
+        }
 }
 
 // ---------------------------- PIL part -----------------------------

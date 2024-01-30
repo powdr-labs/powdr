@@ -90,9 +90,7 @@ impl<T: FieldElement> Folder<T> for StdAdder {
                         <StdAdder as Folder<T>>::fold_import(self, import).map(From::from)
                     }
                     SymbolValue::Module(module) => self.fold_module(module).map(From::from),
-                    SymbolValue::Expression(e, type_name) => {
-                        Ok(SymbolValue::Expression(e, type_name))
-                    }
+                    SymbolValue::Expression(e) => Ok(SymbolValue::Expression(e)),
                 }
                 .map(|value| ModuleStatement::SymbolDefinition(SymbolDefinition { value, ..d })),
             })
