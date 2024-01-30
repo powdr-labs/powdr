@@ -85,32 +85,31 @@
   # Arithmetic tests
   #-------------------------------------------------------------
 
-  test_2: li x10, 2; ebreak; li x1, 0x00000001; li x2, 0; sll x3, x1, x2;; li x29, 0x00000001; li x28, 2; bne x3, x29, fail;;
-  test_3: li x10, 3; ebreak; li x1, 0x00000001; li x2, 1; sll x3, x1, x2;; li x29, 0x00000002; li x28, 3; bne x3, x29, fail;;
-  test_4: li x10, 4; ebreak; li x1, 0x00000001; li x2, 7; sll x3, x1, x2;; li x29, 0x00000080; li x28, 4; bne x3, x29, fail;;
-  test_5: li x10, 5; ebreak; li x1, 0x00000001; li x2, 14; sll x3, x1, x2;; li x29, 0x00004000; li x28, 5; bne x3, x29, fail;;
-  test_6: li x10, 6; ebreak; li x1, 0x00000001; li x2, 31; sll x3, x1, x2;; li x29, 0x80000000; li x28, 6; bne x3, x29, fail;;
+  test_2: li x10, 2; ebreak; li x1, 0x0000000000000001; li x2, 0; sll x3, x1, x2;; li x29, 0x0000000000000001; li x28, 2; bne x3, x29, fail;;
+  test_3: li x10, 3; ebreak; li x1, 0x0000000000000001; li x2, 1; sll x3, x1, x2;; li x29, 0x0000000000000002; li x28, 3; bne x3, x29, fail;;
+  test_4: li x10, 4; ebreak; li x1, 0x0000000000000001; li x2, 7; sll x3, x1, x2;; li x29, 0x0000000000000080; li x28, 4; bne x3, x29, fail;;
+  test_5: li x10, 5; ebreak; li x1, 0x0000000000000001; li x2, 14; sll x3, x1, x2;; li x29, 0x0000000000004000; li x28, 5; bne x3, x29, fail;;
+  test_6: li x10, 6; ebreak; li x1, 0x0000000000000001; li x2, 31; sll x3, x1, x2;; li x29, 0x0000000080000000; li x28, 6; bne x3, x29, fail;;
 
-  test_7: li x10, 7; ebreak; li x1, 0xffffffff; li x2, 0; sll x3, x1, x2;; li x29, 0xffffffff; li x28, 7; bne x3, x29, fail;;
-  test_8: li x10, 8; ebreak; li x1, 0xffffffff; li x2, 1; sll x3, x1, x2;; li x29, 0xfffffffe; li x28, 8; bne x3, x29, fail;;
-  test_9: li x10, 9; ebreak; li x1, 0xffffffff; li x2, 7; sll x3, x1, x2;; li x29, 0xffffff80; li x28, 9; bne x3, x29, fail;;
-  test_10: li x10, 10; ebreak; li x1, 0xffffffff; li x2, 14; sll x3, x1, x2;; li x29, 0xffffc000; li x28, 10; bne x3, x29, fail;;
-  test_11: li x10, 11; ebreak; li x1, 0xffffffff; li x2, 31; sll x3, x1, x2;; li x29, 0x80000000; li x28, 11; bne x3, x29, fail;;
+  test_7: li x10, 7; ebreak; li x1, 0xffffffffffffffff; li x2, 0; sll x3, x1, x2;; li x29, 0xffffffffffffffff; li x28, 7; bne x3, x29, fail;;
+  test_8: li x10, 8; ebreak; li x1, 0xffffffffffffffff; li x2, 1; sll x3, x1, x2;; li x29, 0xfffffffffffffffe; li x28, 8; bne x3, x29, fail;;
+  test_9: li x10, 9; ebreak; li x1, 0xffffffffffffffff; li x2, 7; sll x3, x1, x2;; li x29, 0xffffffffffffff80; li x28, 9; bne x3, x29, fail;;
+  test_10: li x10, 10; ebreak; li x1, 0xffffffffffffffff; li x2, 14; sll x3, x1, x2;; li x29, 0xffffffffffffc000; li x28, 10; bne x3, x29, fail;;
+  test_11: li x10, 11; ebreak; li x1, 0xffffffffffffffff; li x2, 31; sll x3, x1, x2;; li x29, 0xffffffff80000000; li x28, 11; bne x3, x29, fail;;
 
-  test_12: li x10, 12; ebreak; li x1, 0x21212121; li x2, 0; sll x3, x1, x2;; li x29, 0x21212121; li x28, 12; bne x3, x29, fail;;
-  test_13: li x10, 13; ebreak; li x1, 0x21212121; li x2, 1; sll x3, x1, x2;; li x29, 0x42424242; li x28, 13; bne x3, x29, fail;;
-  test_14: li x10, 14; ebreak; li x1, 0x21212121; li x2, 7; sll x3, x1, x2;; li x29, 0x90909080; li x28, 14; bne x3, x29, fail;;
-  test_15: li x10, 15; ebreak; li x1, 0x21212121; li x2, 14; sll x3, x1, x2;; li x29, 0x48484000; li x28, 15; bne x3, x29, fail;;
-  test_16: li x10, 16; ebreak; li x1, 0x21212121; li x2, 31; sll x3, x1, x2;; li x29, 0x80000000; li x28, 16; bne x3, x29, fail;;
+  test_12: li x10, 12; ebreak; li x1, 0x0000000021212121; li x2, 0; sll x3, x1, x2;; li x29, 0x0000000021212121; li x28, 12; bne x3, x29, fail;;
+  test_13: li x10, 13; ebreak; li x1, 0x0000000021212121; li x2, 1; sll x3, x1, x2;; li x29, 0x0000000042424242; li x28, 13; bne x3, x29, fail;;
+  test_14: li x10, 14; ebreak; li x1, 0x0000000021212121; li x2, 7; sll x3, x1, x2;; li x29, 0x0000001090909080; li x28, 14; bne x3, x29, fail;;
+  test_15: li x10, 15; ebreak; li x1, 0x0000000021212121; li x2, 14; sll x3, x1, x2;; li x29, 0x0000084848484000; li x28, 15; bne x3, x29, fail;;
+  test_16: li x10, 16; ebreak; li x1, 0x0000000021212121; li x2, 31; sll x3, x1, x2;; li x29, 0x1090909080000000; li x28, 16; bne x3, x29, fail;;
 
-  # Verify that shifts only use bottom five bits
+  # Verify that shifts only use bottom six(rv64) or five(rv32) bits
 
-  test_17: li x10, 17; ebreak; li x1, 0x21212121; li x2, 0xffffffe0; sll x3, x1, x2;; li x29, 0x21212121; li x28, 17; bne x3, x29, fail;;
-  test_18: li x10, 18; ebreak; li x1, 0x21212121; li x2, 0xffffffe1; sll x3, x1, x2;; li x29, 0x42424242; li x28, 18; bne x3, x29, fail;;
-  test_19: li x10, 19; ebreak; li x1, 0x21212121; li x2, 0xffffffe7; sll x3, x1, x2;; li x29, 0x90909080; li x28, 19; bne x3, x29, fail;;
-  test_20: li x10, 20; ebreak; li x1, 0x21212121; li x2, 0xffffffee; sll x3, x1, x2;; li x29, 0x48484000; li x28, 20; bne x3, x29, fail;;
-  test_21: li x10, 21; ebreak; li x1, 0x21212120; li x2, 0xffffffff; sll x3, x1, x2;; li x29, 0x00000000; li x28, 21; bne x3, x29, fail;;
-
+  test_17: li x10, 17; ebreak; li x1, 0x0000000021212121; li x2, 0xffffffffffffffc0; sll x3, x1, x2;; li x29, 0x0000000021212121; li x28, 17; bne x3, x29, fail;;
+  test_18: li x10, 18; ebreak; li x1, 0x0000000021212121; li x2, 0xffffffffffffffc1; sll x3, x1, x2;; li x29, 0x0000000042424242; li x28, 18; bne x3, x29, fail;;
+  test_19: li x10, 19; ebreak; li x1, 0x0000000021212121; li x2, 0xffffffffffffffc7; sll x3, x1, x2;; li x29, 0x0000001090909080; li x28, 19; bne x3, x29, fail;;
+  test_20: li x10, 20; ebreak; li x1, 0x0000000021212121; li x2, 0xffffffffffffffce; sll x3, x1, x2;; li x29, 0x0000084848484000; li x28, 20; bne x3, x29, fail;;
+# 52 "sources/sll.S"
   #-------------------------------------------------------------
   # Source/Destination tests
   #-------------------------------------------------------------
@@ -123,23 +122,23 @@
   # Bypassing tests
   #-------------------------------------------------------------
 
-  test_25: li x10, 25; ebreak; li x4, 0; test_25_l1: li x1, 0x00000001; li x2, 7; sll x3, x1, x2; addi x6, x3, 0; addi x4, x4, 1; li x5, 2; bne x4, x5, test_25_l1; li x29, 0x00000080; li x28, 25; bne x6, x29, fail;;
-  test_26: li x10, 26; ebreak; li x4, 0; test_26_l1: li x1, 0x00000001; li x2, 14; sll x3, x1, x2; nop; addi x6, x3, 0; addi x4, x4, 1; li x5, 2; bne x4, x5, test_26_l1; li x29, 0x00004000; li x28, 26; bne x6, x29, fail;;
-  test_27: li x10, 27; ebreak; li x4, 0; test_27_l1: li x1, 0x00000001; li x2, 31; sll x3, x1, x2; nop; nop; addi x6, x3, 0; addi x4, x4, 1; li x5, 2; bne x4, x5, test_27_l1; li x29, 0x80000000; li x28, 27; bne x6, x29, fail;;
+  test_25: li x10, 25; ebreak; li x4, 0; test_25_l1: li x1, 0x0000000000000001; li x2, 7; sll x3, x1, x2; addi x6, x3, 0; addi x4, x4, 1; li x5, 2; bne x4, x5, test_25_l1; li x29, 0x0000000000000080; li x28, 25; bne x6, x29, fail;;
+  test_26: li x10, 26; ebreak; li x4, 0; test_26_l1: li x1, 0x0000000000000001; li x2, 14; sll x3, x1, x2; nop; addi x6, x3, 0; addi x4, x4, 1; li x5, 2; bne x4, x5, test_26_l1; li x29, 0x0000000000004000; li x28, 26; bne x6, x29, fail;;
+  test_27: li x10, 27; ebreak; li x4, 0; test_27_l1: li x1, 0x0000000000000001; li x2, 31; sll x3, x1, x2; nop; nop; addi x6, x3, 0; addi x4, x4, 1; li x5, 2; bne x4, x5, test_27_l1; li x29, 0x0000000080000000; li x28, 27; bne x6, x29, fail;;
 
-  test_28: li x10, 28; ebreak; li x4, 0; test_28_l1: li x1, 0x00000001; li x2, 7; sll x3, x1, x2; addi x4, x4, 1; li x5, 2; bne x4, x5, test_28_l1; li x29, 0x00000080; li x28, 28; bne x3, x29, fail;;
-  test_29: li x10, 29; ebreak; li x4, 0; test_29_l1: li x1, 0x00000001; li x2, 14; nop; sll x3, x1, x2; addi x4, x4, 1; li x5, 2; bne x4, x5, test_29_l1; li x29, 0x00004000; li x28, 29; bne x3, x29, fail;;
-  test_30: li x10, 30; ebreak; li x4, 0; test_30_l1: li x1, 0x00000001; li x2, 31; nop; nop; sll x3, x1, x2; addi x4, x4, 1; li x5, 2; bne x4, x5, test_30_l1; li x29, 0x80000000; li x28, 30; bne x3, x29, fail;;
-  test_31: li x10, 31; ebreak; li x4, 0; test_31_l1: li x1, 0x00000001; nop; li x2, 7; sll x3, x1, x2; addi x4, x4, 1; li x5, 2; bne x4, x5, test_31_l1; li x29, 0x00000080; li x28, 31; bne x3, x29, fail;;
-  test_32: li x10, 32; ebreak; li x4, 0; test_32_l1: li x1, 0x00000001; nop; li x2, 14; nop; sll x3, x1, x2; addi x4, x4, 1; li x5, 2; bne x4, x5, test_32_l1; li x29, 0x00004000; li x28, 32; bne x3, x29, fail;;
-  test_33: li x10, 33; ebreak; li x4, 0; test_33_l1: li x1, 0x00000001; nop; nop; li x2, 31; sll x3, x1, x2; addi x4, x4, 1; li x5, 2; bne x4, x5, test_33_l1; li x29, 0x80000000; li x28, 33; bne x3, x29, fail;;
+  test_28: li x10, 28; ebreak; li x4, 0; test_28_l1: li x1, 0x0000000000000001; li x2, 7; sll x3, x1, x2; addi x4, x4, 1; li x5, 2; bne x4, x5, test_28_l1; li x29, 0x0000000000000080; li x28, 28; bne x3, x29, fail;;
+  test_29: li x10, 29; ebreak; li x4, 0; test_29_l1: li x1, 0x0000000000000001; li x2, 14; nop; sll x3, x1, x2; addi x4, x4, 1; li x5, 2; bne x4, x5, test_29_l1; li x29, 0x0000000000004000; li x28, 29; bne x3, x29, fail;;
+  test_30: li x10, 30; ebreak; li x4, 0; test_30_l1: li x1, 0x0000000000000001; li x2, 31; nop; nop; sll x3, x1, x2; addi x4, x4, 1; li x5, 2; bne x4, x5, test_30_l1; li x29, 0x0000000080000000; li x28, 30; bne x3, x29, fail;;
+  test_31: li x10, 31; ebreak; li x4, 0; test_31_l1: li x1, 0x0000000000000001; nop; li x2, 7; sll x3, x1, x2; addi x4, x4, 1; li x5, 2; bne x4, x5, test_31_l1; li x29, 0x0000000000000080; li x28, 31; bne x3, x29, fail;;
+  test_32: li x10, 32; ebreak; li x4, 0; test_32_l1: li x1, 0x0000000000000001; nop; li x2, 14; nop; sll x3, x1, x2; addi x4, x4, 1; li x5, 2; bne x4, x5, test_32_l1; li x29, 0x0000000000004000; li x28, 32; bne x3, x29, fail;;
+  test_33: li x10, 33; ebreak; li x4, 0; test_33_l1: li x1, 0x0000000000000001; nop; nop; li x2, 31; sll x3, x1, x2; addi x4, x4, 1; li x5, 2; bne x4, x5, test_33_l1; li x29, 0x0000000080000000; li x28, 33; bne x3, x29, fail;;
 
-  test_34: li x10, 34; ebreak; li x4, 0; test_34_l1: li x2, 7; li x1, 0x00000001; sll x3, x1, x2; addi x4, x4, 1; li x5, 2; bne x4, x5, test_34_l1; li x29, 0x00000080; li x28, 34; bne x3, x29, fail;;
-  test_35: li x10, 35; ebreak; li x4, 0; test_35_l1: li x2, 14; li x1, 0x00000001; nop; sll x3, x1, x2; addi x4, x4, 1; li x5, 2; bne x4, x5, test_35_l1; li x29, 0x00004000; li x28, 35; bne x3, x29, fail;;
-  test_36: li x10, 36; ebreak; li x4, 0; test_36_l1: li x2, 31; li x1, 0x00000001; nop; nop; sll x3, x1, x2; addi x4, x4, 1; li x5, 2; bne x4, x5, test_36_l1; li x29, 0x80000000; li x28, 36; bne x3, x29, fail;;
-  test_37: li x10, 37; ebreak; li x4, 0; test_37_l1: li x2, 7; nop; li x1, 0x00000001; sll x3, x1, x2; addi x4, x4, 1; li x5, 2; bne x4, x5, test_37_l1; li x29, 0x00000080; li x28, 37; bne x3, x29, fail;;
-  test_38: li x10, 38; ebreak; li x4, 0; test_38_l1: li x2, 14; nop; li x1, 0x00000001; nop; sll x3, x1, x2; addi x4, x4, 1; li x5, 2; bne x4, x5, test_38_l1; li x29, 0x00004000; li x28, 38; bne x3, x29, fail;;
-  test_39: li x10, 39; ebreak; li x4, 0; test_39_l1: li x2, 31; nop; nop; li x1, 0x00000001; sll x3, x1, x2; addi x4, x4, 1; li x5, 2; bne x4, x5, test_39_l1; li x29, 0x80000000; li x28, 39; bne x3, x29, fail;;
+  test_34: li x10, 34; ebreak; li x4, 0; test_34_l1: li x2, 7; li x1, 0x0000000000000001; sll x3, x1, x2; addi x4, x4, 1; li x5, 2; bne x4, x5, test_34_l1; li x29, 0x0000000000000080; li x28, 34; bne x3, x29, fail;;
+  test_35: li x10, 35; ebreak; li x4, 0; test_35_l1: li x2, 14; li x1, 0x0000000000000001; nop; sll x3, x1, x2; addi x4, x4, 1; li x5, 2; bne x4, x5, test_35_l1; li x29, 0x0000000000004000; li x28, 35; bne x3, x29, fail;;
+  test_36: li x10, 36; ebreak; li x4, 0; test_36_l1: li x2, 31; li x1, 0x0000000000000001; nop; nop; sll x3, x1, x2; addi x4, x4, 1; li x5, 2; bne x4, x5, test_36_l1; li x29, 0x0000000080000000; li x28, 36; bne x3, x29, fail;;
+  test_37: li x10, 37; ebreak; li x4, 0; test_37_l1: li x2, 7; nop; li x1, 0x0000000000000001; sll x3, x1, x2; addi x4, x4, 1; li x5, 2; bne x4, x5, test_37_l1; li x29, 0x0000000000000080; li x28, 37; bne x3, x29, fail;;
+  test_38: li x10, 38; ebreak; li x4, 0; test_38_l1: li x2, 14; nop; li x1, 0x0000000000000001; nop; sll x3, x1, x2; addi x4, x4, 1; li x5, 2; bne x4, x5, test_38_l1; li x29, 0x0000000000004000; li x28, 38; bne x3, x29, fail;;
+  test_39: li x10, 39; ebreak; li x4, 0; test_39_l1: li x2, 31; nop; nop; li x1, 0x0000000000000001; sll x3, x1, x2; addi x4, x4, 1; li x5, 2; bne x4, x5, test_39_l1; li x29, 0x0000000080000000; li x28, 39; bne x3, x29, fail;;
 
   test_40: li x10, 40; ebreak; li x1, 15; sll x2, x0, x1;; li x29, 0; li x28, 40; bne x2, x29, fail;;
   test_41: li x10, 41; ebreak; li x1, 32; sll x2, x1, x0;; li x29, 32; li x28, 41; bne x2, x29, fail;;

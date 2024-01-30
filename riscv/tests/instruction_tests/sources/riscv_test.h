@@ -54,4 +54,8 @@ __return_pointer:			\
 
 #define RVTEST_DATA_END
 
+// Aparently they expect the __riscv_xlen to be defined by the preprocessor
+// itself.
+#define __riscv_xlen 32
+
 #endif
