@@ -1,6 +1,7 @@
 use std::collections::{BTreeMap, HashMap};
 use std::marker::PhantomData;
 
+use num_traits::ToPrimitive;
 use powdr_ast::analyzed::types::{ArrayType, Type, TypedExpression};
 use powdr_ast::parsed::{
     self, FunctionDefinition, PilStatement, PolynomialName, SelectedExpressions, TypeName,
@@ -168,16 +169,19 @@ where
                 )
             }
             PilStatement::ConstantDefinition(source, name, value) => {
-                // Check it is a constant.
-                if let Err(err) = self.evaluate_expression(value.clone()) {
-                    panic!("Could not evaluate constant: {name} = {value}: {err:?}");
-                }
+                // Check it is a constant. If it evaluates to a field element or an integer in range
+                // of the field element, replace it by the number.
+                let value = self
+                    .evaluate_expression_to_field_element(value.clone())
+                    .unwrap_or_else(|err| {
+                        panic!("Could not evaluate constant: {name} = {value}: {err:?}");
+                    });
                 self.handle_symbol_definition(
                     source,
                     name,
                     SymbolKind::Constant(),
                     Some(Type::Fe),
-                    Some(FunctionDefinition::Expression(value)),
+                    Some(FunctionDefinition::Expression(value.into())),
                 )
             }
             PilStatement::LetStatement(source, name, type_name, value) => {
@@ -195,11 +199,10 @@ where
             None => Type::col(),
             Some(len) => {
                 let length = self
-                    .evaluate_expression(len)
+                    .evaluate_expression_to_u64(len)
                     .map_err(|e| {
                         panic!("Error evaluating array length of witness column {name}:\n{e}")
                     })
-                    .map(|length| length.to_degree())
                     .ok();
                 Type::Array(ArrayType {
                     base: Box::new(Type::col()),
@@ -260,7 +263,10 @@ where
                         SymbolKind::Poly(PolynomialType::Constant),
                     )
                 } else if ty == Some(Type::Fe)
-                    || (ty.is_none() && self.evaluate_expression(value.clone()).is_ok())
+                    || (ty.is_none()
+                        && self
+                            .evaluate_expression_to_field_element(value.clone())
+                            .is_ok())
                 {
                     // Value evaluates to a constant number => treat it as a constant
                     (Some(Type::Fe), SymbolKind::Constant())
@@ -421,7 +427,7 @@ where
             .expression_processor()
             .process_namespaced_polynomial_reference(&poly.path);
         let array_index = array_index.map(|i| {
-            let index = self.evaluate_expression(i).unwrap().to_degree();
+            let index = self.evaluate_expression_to_u64(i).unwrap();
             assert!(index <= usize::MAX as u64);
             index as usize
         });
@@ -431,7 +437,7 @@ where
             name: name.to_string(),
             polynomial,
             array_index,
-            index: self.evaluate_expression(index).unwrap().to_degree(),
+            index: self.evaluate_expression_to_u64(index).unwrap(),
         })]
     }
 
@@ -440,22 +446,44 @@ where
     fn resolve_type_name(&self, mut n: TypeName<parsed::Expression<T>>) -> Result<Type, EvalError> {
         // Replace all expressions by number literals.
         for e in n.expressions_mut() {
-            // TODO as soon as we have integers in the parser, this should be
-            // expected to be an integer, not a field element.
-            // But since this is an array length, it probably does not matter much.
-            let v = self.evaluate_expression(e.clone())?;
-            *e = parsed::Expression::Number(v);
+            let v = self.evaluate_expression_to_u64(e.clone())?;
+            *e = parsed::Expression::Number(v.into());
         }
         Ok(n.into())
     }
 
-    fn evaluate_expression(&self, expr: parsed::Expression<T>) -> Result<T, EvalError> {
+    fn evaluate_expression_to_integer(
+        &self,
+        expr: parsed::Expression<T>,
+    ) -> Result<num_bigint::BigInt, EvalError> {
         evaluator::evaluate_expression(
             &ExpressionProcessor::new(self.driver).process_expression(expr),
             self.driver.definitions(),
         )?
-        // TODO fix
-        .try_to_field_element()
+        .try_as_integer()
+    }
+
+    fn evaluate_expression_to_u64(&self, expr: parsed::Expression<T>) -> Result<u64, EvalError> {
+        let length = self.evaluate_expression_to_integer(expr)?;
+        length
+            .to_biguint()
+            .and_then(|length| length.to_u64())
+            .ok_or_else(|| {
+                EvalError::TypeError(format!(
+                    "Expected non-negative number less than 2**64, but got: {length}"
+                ))
+            })
+    }
+
+    fn evaluate_expression_to_field_element(
+        &self,
+        expr: parsed::Expression<T>,
+    ) -> Result<T, EvalError> {
+        evaluator::evaluate_expression(
+            &ExpressionProcessor::new(self.driver).process_expression(expr),
+            self.driver.definitions(),
+        )?
+        .try_as_field_element()
     }
 
     fn expression_processor(&self) -> ExpressionProcessor<T, D> {

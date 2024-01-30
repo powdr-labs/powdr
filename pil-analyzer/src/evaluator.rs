@@ -157,12 +157,24 @@ impl<'a, T: FieldElement, C: Custom> Value<'a, T, C> {
         }
     }
 
-    /// Tries to convert the result into a integer.
-    /// Everything else than Value::Integer results in an error.
+    /// Tries to convert the result into a integer, accepts field element as well as integer.
+    /// Everything else than Value::Integer and Value::FieldElement results in an error.
     pub fn try_to_integer(self) -> Result<num_bigint::BigInt, EvalError> {
         match self {
             Value::Integer(x) => Ok(x),
             Value::FieldElement(x) => Ok(x.to_arbitrary_integer().into()),
+            v => Err(EvalError::TypeError(format!(
+                "Expected integer but got {v}: {}",
+                v.type_name()
+            ))),
+        }
+    }
+
+    /// Tries to convert the result into a integer.
+    /// Everything else than Value::Integer results in an error.
+    pub fn try_as_integer(self) -> Result<num_bigint::BigInt, EvalError> {
+        match self {
+            Value::Integer(x) => Ok(x),
             v => Err(EvalError::TypeError(format!(
                 "Expected integer but got {v}: {}",
                 v.type_name()

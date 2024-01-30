@@ -199,7 +199,7 @@ impl<T: FieldElement> PILAnalyzer<T> {
         let namespace_degree: u64 = u64::try_from(
             evaluator::evaluate_expression(&degree, &self.definitions)
                 .unwrap()
-                .try_to_integer()
+                .try_as_integer()
                 .unwrap(),
         )
         .unwrap();
