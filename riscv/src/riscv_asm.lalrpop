@@ -158,8 +158,9 @@ ExprProduct: Expression = {
 }
 
 ExprUnary: Expression = {
-    "-" <ExprTerm> => un_op(UOp::Negation, <>),
-    "+" <ExprTerm>,
+    "~" <ExprUnary> => un_op(UOp::BitwiseNot, <>),
+    "-" <ExprUnary> => un_op(UOp::Negation, <>),
+    "+" <ExprUnary>,
     ExprTerm,
 }
 
