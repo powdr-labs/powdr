@@ -159,12 +159,14 @@ impl<T: FieldElement> Condenser<T> {
 
     fn condense_expression(&self, e: &Expression<T>) -> AlgebraicExpression<T> {
         evaluator::evaluate(e, &self)
-            .and_then(|result| match result {
-                Value::Custom(Condensate::Expression(expr)) => Ok(expr),
-                x => Ok(x.try_to_field_element()?.into()),
+            .and_then(|result| match Condensate::try_from(result)? {
+                Condensate::Expression(expr) => Ok(expr),
+                id @ Condensate::Identity(_, _) => Err(EvalError::TypeError(format!(
+                    "Expected algebraic expression, got constraint {id}"
+                ))),
             })
             .unwrap_or_else(|err| {
-                panic!("Error reducing expression to constraint:\nExpression: {e}\nError: {err:?}")
+                panic!("Error reducing expression to algebraic expression:\nExpression: {e}\nError: {err:?}")
             })
     }
 

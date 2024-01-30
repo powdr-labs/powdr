@@ -146,6 +146,17 @@ impl<'a, T: FieldElement, C: Custom> Value<'a, T, C> {
         }
     }
 
+    /// Tries to convert the value to a field element.
+    /// Fails for all other types (including integers).
+    pub fn try_as_field_element(self) -> Result<T, EvalError> {
+        match self {
+            Value::FieldElement(x) => Ok(x),
+            v => Err(EvalError::TypeError(format!(
+                "Expected field element but got {v}"
+            ))),
+        }
+    }
+
     /// Tries to convert the result into a integer.
     /// Everything else than Value::Integer results in an error.
     pub fn try_to_integer(self) -> Result<num_bigint::BigInt, EvalError> {

@@ -454,6 +454,7 @@ where
             &ExpressionProcessor::new(self.driver).process_expression(expr),
             self.driver.definitions(),
         )?
+        // TODO fix
         .try_to_field_element()
     }
 

@@ -58,7 +58,7 @@ fn generate_values<T: FieldElement>(
                         vec![Rc::new(Value::Integer(num_bigint::BigInt::from(i)))],
                         &symbols,
                     )
-                    .and_then(|v| v.try_to_field_element())
+                    .and_then(|v| v.try_as_field_element())
                 })
                 .collect::<Result<Vec<_>, _>>()
         }
