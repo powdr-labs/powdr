@@ -189,7 +189,7 @@ const BUILTINS: [(&str, BuiltinFunction); 6] = [
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum BuiltinFunction {
-    /// std::array::len: [_] -> int, returns the length of an array
+    /// std::array::len: _[] -> int, returns the length of an array
     ArrayLen,
     /// std::field::modulus: -> int, returns the field modulus as int
     Modulus,
