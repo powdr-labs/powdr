@@ -520,8 +520,8 @@ mod test {
             let int = [];
             let fe = [];
             namespace F(%N);
-            let x_arr = [ 3 % 4, (-3) % 4, 3 % (-4), (-3) % (-4)];
-            let x = |i| 100 + x_arr[i];
+            let x_arr: int[] = [ 3 % 4, (-3) % 4, 3 % (-4), (-3) % (-4)];
+            let x: col = |i| std::convert::fe(100 + x_arr[i]);
         "#;
         let analyzed = analyze_string::<GoldilocksField>(src);
         assert_eq!(analyzed.degree(), 4);
