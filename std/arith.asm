@@ -1,12 +1,19 @@
 use std::array;
 use std::utils::unchanged_until;
+use std::utils::force_bool;
 use std::utils::sum;
 
 // Arithmetic machine, ported mainly from Polygon: https://github.com/0xPolygonHermez/zkevm-proverjs/blob/main/pil/arith.pil
 // Currently only supports "Equation 0", i.e., 256-Bit addition and multiplication.
 machine Arith(CLK32_31, operation_id){
-    operation eq0<0> x1_0, x1_1, x1_2, x1_3, x1_4, x1_5, x1_6, x1_7, y1_0, y1_1, y1_2, y1_3, y1_4, y1_5, y1_6, y1_7, x2_0, x2_1, x2_2, x2_3, x2_4, x2_5, x2_6, x2_7 -> y2_0, y2_1, y2_2, y2_3, y2_4, y2_5, y2_6, y2_7, y3_0, y3_1, y3_2, y3_3, y3_4, y3_5, y3_6, y3_7;
+    
+    // The operation ID will be bit-decomosed to yield selEq[4], controlling which equations are activated.
     col witness operation_id;
+
+    // Computes x1 * y1 + x2, where all inputs / outputs are 256-bit words (represented as 32-Bit limbs in little-endian order).
+    // More precisely, affine_256(x1, y1, x2) = (y2, y3), where x1 * y1 + x2 = 2**256 * y2 + y3
+    // Operation ID is 1 = 0b0001, i.e., we activate equation 0.
+    operation affine_256<1> x1_0, x1_1, x1_2, x1_3, x1_4, x1_5, x1_6, x1_7, y1_0, y1_1, y1_2, y1_3, y1_4, y1_5, y1_6, y1_7, x2_0, x2_1, x2_2, x2_3, x2_4, x2_5, x2_6, x2_7 -> y2_0, y2_1, y2_2, y2_3, y2_4, y2_5, y2_6, y2_7, y3_0, y3_1, y3_2, y3_3, y3_4, y3_5, y3_6, y3_7;
 
     let BYTE = |i| i & 0xff;
     let BYTE2 = |i| i & 0xffff;
@@ -161,6 +168,15 @@ machine Arith(CLK32_31, operation_id){
 		- shift_right(y2f, 16)(nr)
 		- y3f(nr)
 	)();
+
+    // Binary selectors for the equations that are activated. Determined from the operation ID via bit-decomposition.
+    // Note that there are only 4 selectors because equation 4 is activated iff. equation 3 is activated, so we can
+    // re-use the same selector.
+    pol commit selEq[4];
+    // Note that this is not necessary, because the operation ID is already constant within the block
+    // array::map(selEq, |e| unchanged_until(e, CLK32[31]));
+	array::map(selEq, |c| force_bool(c));
+    sum(4, |i| 2 ** i * selEq[i]) = operation_id;
     
     // Note that Polygon uses a single 22-Bit column. However, this approach allows for a lower degree (2**16)
     // while still preventing overflows: The 32-bit carry gets added to 32 16-Bit values, which can't overflow
@@ -173,6 +189,8 @@ machine Arith(CLK32_31, operation_id){
     
     carry * CLK32[0] = 0;
 
-    let eq0_sum = sum(32, |i| eq0(i) * CLK32[i]);
-    carry + eq0_sum = carry' * 2**16;
+    // Works
+    (sum(32, |i| eq0(i) * CLK32[i]) + carry) = carry' * 2**16;
+    // Doesn't work
+    selEq[0] * (sum(32, |i| eq0(i) * CLK32[i]) + carry) = selEq[0] * carry' * 2**16;
 }

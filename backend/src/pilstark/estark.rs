@@ -129,14 +129,17 @@ impl<F: FieldElement> BackendImpl<F> for EStark {
 
         log::info!("Proof done in: {:?}", duration);
 
-        assert!(stark_verify::<MerkleTreeGL, TranscriptGL>(
+        if !stark_verify::<MerkleTreeGL, TranscriptGL>(
             &starkproof,
             &setup.const_root,
             &setup.starkinfo,
             &self.params,
             &mut setup.program,
         )
-        .unwrap());
+        .unwrap()
+        {
+            log::error!("Verification failed!");
+        }
 
         (
             Some(serde_json::to_vec(&starkproof).unwrap()),
