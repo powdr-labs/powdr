@@ -44,7 +44,9 @@ fn generate_values<T: FieldElement>(
     // TODO we should maybe pre-compute some symbols here.
     let result = match body {
         FunctionValueDefinition::Expression(TypedExpression { e, ty }) => {
-            ty.as_ref().map(|ty| assert_eq!(ty.to_string(), "col"));
+            if let Some(ty) = ty {
+                assert_eq!(ty.to_string(), "col")
+            };
             (0..degree)
                 .into_par_iter()
                 .map(|i| {

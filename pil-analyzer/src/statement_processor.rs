@@ -252,7 +252,7 @@ where
             Some(value) => {
                 // TODO if we have proper type deduction here in the future, we can rely only on the type.
                 let (ty, symbol_kind) = if ty == Some(Type::col())
-                    || (ty == None
+                    || (ty.is_none()
                         && matches!(&value, parsed::Expression::LambdaExpression(lambda) if lambda.params.len() == 1))
                 {
                     (
@@ -260,7 +260,7 @@ where
                         SymbolKind::Poly(PolynomialType::Constant),
                     )
                 } else if ty == Some(Type::Fe)
-                    || (ty == None && self.evaluate_expression(value.clone()).is_ok())
+                    || (ty.is_none() && self.evaluate_expression(value.clone()).is_ok())
                 {
                     // Value evaluates to a constant number => treat it as a constant
                     (Some(Type::Fe), SymbolKind::Constant())
@@ -389,7 +389,7 @@ where
             }
             FunctionDefinition::Query(expr) => {
                 assert_eq!(symbol_kind, SymbolKind::Poly(PolynomialType::Committed));
-                assert!(ty == None || ty == Some(Type::col()));
+                assert!(ty.is_none() || ty == Some(Type::col()));
                 FunctionValueDefinition::Query(self.process_expression(expr))
             }
             FunctionDefinition::Array(value) => {
@@ -401,7 +401,7 @@ where
                     expression.iter().map(|e| e.size()).sum::<DegreeType>(),
                     self.degree.unwrap()
                 );
-                assert!(ty == None || ty == Some(Type::col()));
+                assert!(ty.is_none() || ty == Some(Type::col()));
                 FunctionValueDefinition::Array(expression)
             }
         });

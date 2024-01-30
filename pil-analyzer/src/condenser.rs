@@ -59,7 +59,7 @@ pub fn condense<T: FieldElement>(
                 let Some(FunctionValueDefinition::Expression(e)) = definition else {
                     panic!("Expected expression")
                 };
-                assert!(e.ty == None || e.ty == Some(Type::col()));
+                assert!(e.ty.is_none() || e.ty == Some(Type::col()));
                 Some((
                     name.clone(),
                     (symbol.clone(), condenser.condense_expression(&e.e)),
