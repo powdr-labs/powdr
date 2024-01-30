@@ -1,3 +1,5 @@
+use std::convert::to_col;
+
 // Very simple write-once memory, but without an mstore operation.
 // As a result, this only works if the content of the `v` column has
 // been provided externally.
@@ -11,7 +13,7 @@ machine MemReadWrite {
     reg A;
 
     // Write-once memory
-    let ADDR = |i| i;
+    let ADDR: col = to_col(|i| i);
     let v;
     // Loads a value. If the cell is empty, the prover can choose a value.
     instr mload X -> Y { {X, Y} in {ADDR, v} }

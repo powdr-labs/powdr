@@ -1,3 +1,5 @@
+use std::convert::to_col;
+
 machine Sqrt(latch, operation_id) {
 
     operation sqrt<0> x -> y;
@@ -5,7 +7,7 @@ machine Sqrt(latch, operation_id) {
     col fixed operation_id = [0]*;
     col fixed latch = [1]*;
     // Only works for small results, to keep the degree of this example small.
-    col fixed range(i) { i % 8 };
+    let range: col = to_col(|i| i % 8 );
     col witness x;
 
     // Witness generation is not smart enough to figure out that

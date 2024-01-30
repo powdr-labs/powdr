@@ -1,3 +1,5 @@
+use std::convert::fe;
+
 machine BitAccess {
     reg pc[@pc];
     reg X[<=];
@@ -15,7 +17,7 @@ machine BitAccess {
     // Requires 0 <= Y < 2**33
     instr wrap Y -> X { Y = X + wrap_bit * 2**32, X = XB1 + 0x100 * XB2 + 0x10000 * XB3 + 0x1000000 * XB4 }
 
-    col fixed BYTE(i) { i & 0xff };
+    col fixed BYTE(i) { fe(i & 0xff) };
     col witness XB1;
     col witness XB2;
     col witness XB3;

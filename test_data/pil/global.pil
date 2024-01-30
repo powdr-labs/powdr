@@ -8,12 +8,16 @@
 
 constant %N = 2**20;
 
+namespace std::convert(%N);
+    let fe = [];
+
 namespace Global(%N);
+    let fe = std::convert::fe;
     col fixed L1 = [1] + [0]*;
-    col fixed LLAST(i) { if i == %N - 1 { 1 } else { 0 } };
-    col fixed BYTE(i) { i & 0xff };
-    col fixed BYTE2(i) { i & 0xffff };
-    col fixed BYTE_2A(i) { (i & 0xffff) >> 8 };
+    col fixed LLAST(i) { fe(if i == %N - 1 { 1 } else { 0 }) };
+    col fixed BYTE(i) { fe(i & 0xff) };
+    col fixed BYTE2(i) { fe(i & 0xffff) };
+    col fixed BYTE_2A(i) { fe((i & 0xffff) >> 8) };
     // TODO it might be confusing to remember which one is the array index
     // and which one is the polynomial parameter.
     // Here, k is the array index and i is the polynomial parameter.
@@ -27,7 +31,7 @@ namespace Global(%N);
                                   // [1] = 0:4, 1,256,256**2,256**3, 0:24 (cyclic)
                                   // [7] = 0:28, 1,256,256**2,256**3 (cyclic)
 
-    col fixed STEP(i) { i };  // 0, 1, 2, 3, ...... N-1
+    col fixed STEP(i) { fe(i) };  // 0, 1, 2, 3, ...... N-1
 
-    col fixed STEP32(i) { i % 32 };
+    col fixed STEP32(i) { fe(i % 32) };
 

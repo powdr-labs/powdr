@@ -1,7 +1,10 @@
 constant %N = 0x10000;
 
+namespace std::convert(%N);
+    let fe = 9;
+
 namespace SimpleDiv(%N);
-    col fixed BYTE(i) { i & 0xff };
+    col fixed BYTE(i) { std::convert::fe(i & 0xff) };
 
     col witness X;
     col witness Y;

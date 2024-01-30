@@ -1,3 +1,5 @@
+use std::convert::to_col;
+
 machine FunctionalInstructions {
     reg pc[@pc];
     reg X[<=];
@@ -16,7 +18,7 @@ machine FunctionalInstructions {
     // Requires 0 <= Y < 2**33
     instr wrap Y -> X { Y = X + wrap_bit * 2**32, X = XB1 + 0x100 * XB2 + 0x10000 * XB3 + 0x1000000 * XB4 }
 
-    col fixed BYTES(i) { i & 0xff };
+    let BYTES: col = to_col(|i| i & 0xff );
     col commit XB1;
     col commit XB2;
     col commit XB3;

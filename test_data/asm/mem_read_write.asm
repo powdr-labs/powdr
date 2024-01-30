@@ -1,3 +1,5 @@
+use std::convert::to_col;
+
 machine MemReadWrite {
     reg pc[@pc];
     reg X[<=];
@@ -25,10 +27,10 @@ machine MemReadWrite {
     col witness m_is_read;
 
     // positive numbers (assumed to be much smaller than the field order)
-    col fixed POSITIVE(i) { i + 1 };
+    let POSITIVE: col = to_col(|i| i + 1);
     col fixed FIRST = [1] + [0]*;
     col fixed LAST  = [0]* + [1];
-    col fixed STEP(i) { i };
+    let STEP: col = to_col(|i| i);
 
     m_change * (1 - m_change) = 0;
 

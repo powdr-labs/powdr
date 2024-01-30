@@ -357,10 +357,12 @@ mod test {
     #[test]
     fn test_propagate_constraints() {
         let pil_source = r"
-namespace Global(2**20);
-    col fixed BYTE(i) { i & 0xff };
-    col fixed BYTE2(i) { i & 0xffff };
-    col fixed SHIFTED(i) { i & 0xff0 };
+    namespace std::convert(2**20);
+        let fe = [];
+    namespace Global(2**20);
+    col fixed BYTE(i) { std::convert::fe(i & 0xff) };
+    col fixed BYTE2(i) { std::convert::fe(i & 0xffff) };
+    col fixed SHIFTED(i) { std::convert::fe(i & 0xff0) };
     col witness A;
     // A bit more complicated to see that the 'pattern matcher' works properly.
     (1 - A + 0) * (A + 1 - 1) = 0;

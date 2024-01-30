@@ -26,7 +26,7 @@ mod R {
     machine FullConstant {
         degree 2;
 
-        let C: int -> fe = |i| match i % 2 {
+        let C: fe = |i| match i % 2 {
             0 => x,
             1 => y,
         };

@@ -1,9 +1,13 @@
 let N = 16;
+
+namespace std::convert(N);
+    let fe = [];
+
 namespace FibArrays(N);
-    col fixed ISLAST(i) { match i {
+    col fixed ISLAST(i) { std::convert::fe(match i {
         N - 1 => 1,
         _ => 0,
-    } };
+    })};
     col witness unused;
     col witness x[2];
     col witness unused2;

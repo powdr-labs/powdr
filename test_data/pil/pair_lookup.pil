@@ -1,15 +1,18 @@
 constant %N = 65536;
 namespace std::convert(%N);
     let int = [];
+	let fe = [];
 
 namespace Main(%N);
-	col fixed A(i) { i % 256 };
-	col fixed B(i) { (i >> 8) % 256 };
-	col fixed C(i) { (std::convert::int(A(i)) + std::convert::int(B(i))) & 0xff };
+	let to_col: (int -> int) -> col = |f| |i| std::convert::fe(f(i));
+
+	let A: col = to_col(|i| i % 256);
+	let B: col = to_col(|i| (i >> 8) % 256);
+	let C: col = to_col(|i| (std::convert::int(A(i)) + std::convert::int(B(i))) & 0xff);
 
 
-	col fixed a(i) { (i + 13) * 29 & 0xff };
-	col fixed b(i) { (i * 17 + 3) & 0xff };
+	let a: col = to_col(|i| (i + 13) * 29 & 0xff);
+	let b: col = to_col(|i| (i * 17 + 3) & 0xff);
 	col witness c;
 
 	{a, b, c} in {Main.A, Main.B, Main.C};

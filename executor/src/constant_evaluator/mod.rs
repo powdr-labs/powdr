@@ -185,11 +185,14 @@ mod test {
     pub fn test_last() {
         let src = r#"
             constant %N = 8;
+            namespace std::convert(%N);
+            let int = [];
+            let fe = [];
             namespace F(%N);
-            pol constant LAST(i) { match i {
+            pol constant LAST(i) { std::convert::fe(match i {
                 %N - 1 => 1,
                 _ => 0,
-            } };
+            }) };
         "#;
         let analyzed = analyze_string(src);
         assert_eq!(analyzed.degree(), 8);
@@ -204,8 +207,10 @@ mod test {
     pub fn test_counter() {
         let src = r#"
             constant %N = 8;
+            namespace std::convert(%N);
+            let fe = [];
             namespace F(%N);
-            pol constant EVEN(i) { 2 * (i - 1) + 4 };
+            pol constant EVEN(i) { std::convert::fe(2 * (i - 1) + 4) };
         "#;
         let analyzed = analyze_string(src);
         assert_eq!(analyzed.degree(), 8);
@@ -220,8 +225,11 @@ mod test {
     pub fn test_xor() {
         let src = r#"
             constant %N = 8;
+            namespace std::convert(%N);
+            let int = [];
+            let fe = [];
             namespace F(%N);
-            pol constant X(i) { i ^ (i + 17) | 3 };
+            pol constant X(i) { std::convert::fe(i ^ (i + 17) | 3) };
         "#;
         let analyzed = analyze_string(src);
         assert_eq!(analyzed.degree(), 8);
@@ -236,13 +244,16 @@ mod test {
     pub fn test_match() {
         let src = r#"
             constant %N = 8;
+            namespace std::convert(%N);
+            let int = [];
+            let fe = [];
             namespace F(%N);
-            pol constant X(i) { match i {
+            pol constant X(i) { std::convert::fe(match i {
                 0 => 7,
                 3 => 9,
                 5 => 2,
                 _ => 4,
-            } + 1 };
+            } + 1) };
         "#;
         let analyzed = analyze_string(src);
         assert_eq!(analyzed.degree(), 8);
@@ -257,8 +268,10 @@ mod test {
     pub fn test_if() {
         let src = r#"
             constant %N = 8;
+            namespace std::convert(%N);
+            let fe = 8;
             namespace F(%N);
-            let X = |i| if i < 3 { 7 } else { 9 };
+            let X: col = |i| std::convert::fe(if i < 3 { 7 } else { 9 });
         "#;
         let analyzed = analyze_string(src);
         assert_eq!(analyzed.degree(), 8);
@@ -273,9 +286,12 @@ mod test {
     pub fn test_macro() {
         let src = r#"
             constant %N = 8;
+            namespace std::convert(%N);
+            let int = [];
+            let fe = [];
             namespace F(%N);
             let minus_one: int -> int = |x| x - 1;
-            pol constant EVEN(i) { 2 * minus_one(i) + 2 };
+            pol constant EVEN(i) { std::convert::fe(2 * minus_one(i) + 2) };
         "#;
         let analyzed = analyze_string(src);
         assert_eq!(analyzed.degree(), 8);
@@ -292,11 +308,13 @@ mod test {
             constant %N = 10;
             namespace std::convert(%N);
             let int = [];
+            let fe = [];
             namespace F(%N);
-            col fixed seq(i) { i };
-            col fixed doub(i) { std::convert::int(seq((2 * i) % %N)) + 1 };
-            col fixed half_nibble(i) { i & 0x7 };
-            col fixed doubled_half_nibble(i) { half_nibble(i / 2) };
+            let fe = std::convert::fe;
+            col fixed seq(i) { fe(i) };
+            col fixed doub(i) { fe(std::convert::int(seq((2 * i) % %N)) + 1) };
+            col fixed half_nibble(i) { fe(i & 0x7) };
+            col fixed doubled_half_nibble(i) { fe(half_nibble(i / 2)) };
         "#;
         let analyzed = analyze_string(src);
         assert_eq!(analyzed.degree(), 10);
@@ -472,8 +490,11 @@ mod test {
     pub fn forward_reference_to_array() {
         let src = r#"
             constant %N = 10;
+            namespace std::convert(%N);
+            let int = [];
+            let fe = [];
             namespace F(%N);
-            let x: col = |i| y(i) + 1;
+            let x: col = |i| std::convert::fe(std::convert::int(y(i)) + 1);
             col fixed y = [1, 2, 3]*;
         "#;
         let analyzed = analyze_string::<GoldilocksField>(src);
@@ -485,9 +506,12 @@ mod test {
     pub fn forward_reference_to_function() {
         let src = r#"
             constant %N = 4;
+            namespace std::convert(%N);
+            let int = [];
+            let fe = [];
             namespace F(%N);
-            let x = |i| y(i) + 1;
-            let y = |i| i + 20;
+            let x = |i| std::convert::fe(std::convert::int(y(i)) + 1);
+            let y = |i| std::convert::fe(i + 20);
         "#;
         let analyzed = analyze_string::<GoldilocksField>(src);
         assert_eq!(analyzed.degree(), 4);

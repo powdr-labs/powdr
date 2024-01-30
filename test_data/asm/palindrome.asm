@@ -1,6 +1,8 @@
 // Verfies that the input is a palindrome.
 // Input: length, x_1, x_2, ..., x_length
 
+use std::convert::to_col;
+
 machine Palindrome {
     degree 1024;
 
@@ -23,7 +25,7 @@ machine Palindrome {
     col witness m_value;
 
     // positive numbers (assumed to be less than half the field order)
-    col fixed POSITIVE(i) { i + 1 };
+    let POSITIVE: col = to_col(|i| i + 1 );
     col fixed FIRST = [1] + [0]*;
     col fixed NOTLAST = [1]* + [0];
 

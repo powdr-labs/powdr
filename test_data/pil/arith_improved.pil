@@ -12,7 +12,10 @@
 
 let N = 2**16;
 
-let BYTE2 = |i| i & 0xffff;
+let BYTE2 = |i| std::convert::fe(i & 0xffff);
+
+namespace std::convert(N);
+    let fe = 20;
 
 namespace std::field(N);
     let modulus = || modulus();

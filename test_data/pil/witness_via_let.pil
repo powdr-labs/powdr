@@ -1,10 +1,13 @@
 let N = 16;
 
+namespace std::convert(N);
+    let fe = [];
+
 namespace Fibonacci(N);
-    let ISLAST = |i| match i {
+    let ISLAST: col = |i| std::convert::fe(match i {
         N - 1 => 1,
         _ => 0,
-    };
+    });
 
     let x;
     let y;

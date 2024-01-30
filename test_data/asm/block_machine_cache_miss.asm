@@ -1,3 +1,4 @@
+use std::convert::fe;
 
 machine Arith(latch, operation_id) {
 
@@ -8,9 +9,9 @@ machine Arith(latch, operation_id) {
 
     col witness operation_id;
     col fixed latch = [1]*;
-    col fixed X(i) {i};
-    col fixed DOUBLE(i) {2*i};
-    col fixed SQUARE(i) {i*i};
+    col fixed X(i) { fe(i) };
+    col fixed DOUBLE(i) { fe(2 * i) };
+    col fixed SQUARE(i) { fe(i * i) };
     col witness x;
     col witness y;
 

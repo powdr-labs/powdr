@@ -3,7 +3,9 @@ mod utils {
     // computes the sum of an array of values.
     let sum = |len, arr| match len { 0 => 0, _ => arr[len - 1] + sum(len - 1, arr) };
     // A simple function that returns the input incremented by one.
-    let incremented = |x| x + 1;
+    // The signature tells that it works on expressions, which means the function
+    // does not really compute "x + 1" bit instead returns the expression "x + 1".
+    let incremented: expr -> expr = |x| x + 1;
     // This is a function that takes an expression as input and returns
     // a constraint enforcing this expression increments by a certain value
     // between rows.

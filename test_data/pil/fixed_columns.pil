@@ -1,3 +1,6 @@
+namespace std::convert(8);
+    let fe = [];
+
 namespace Main(8);
 
 // ANCHOR: declare_and_define
@@ -14,10 +17,10 @@ col fixed A = [1, 2] + [3, 4]* + [5];
 // ANCHOR_END: repetitions
 
 // ANCHOR: mapping
-col fixed B(i) { i + 1 };
+col fixed B(i) { std::convert::fe(i + 1) };
 
-col fixed C(i) {match i {
+col fixed C(i) { std::convert::fe(match i {
     0 => 1,
     _ => 0
-}};
+})};
 // ANCHOR_END: mapping

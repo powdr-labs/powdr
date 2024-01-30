@@ -1,3 +1,5 @@
+use std::convert::to_col;
+
 // calls a constrained machine from a constrained machine
 machine Arith(latch, operation_id) {
 
@@ -25,8 +27,8 @@ machine Main(latch, operation_id) {
     link instr_add x, y -> z = arith.add;
 
     col fixed operation_id = [0]*;
-    col fixed x(i) { i / 4 };
-    col fixed y(i) { i / 4 + 1 };
+    let x: col = to_col(|i| i / 4);
+    let y: col = to_col(|i| i / 4 + 1);
     col witness z;
     col witness res;
     col fixed latch = [0, 0, 0, 1]*; // return every 4th row

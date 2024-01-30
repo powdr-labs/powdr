@@ -1,3 +1,5 @@
+use std::convert::to_col;
+
 // A variant of the `mem_read_write` machine which does not have the limitation that
 // gaps between accessed memory cells must not be larger than the degree.
 // This test uses two 8-bit digits to represent the diff, so the diff has to be
@@ -32,8 +34,8 @@ machine MemReadWrite {
 
     col fixed FIRST = [1] + [0]*;
     col fixed LAST  = [0]* + [1];
-    col fixed STEP(i) { i };
-    col fixed BYTE(i) { i & 0xff };
+    let STEP: col = to_col(|i| i);
+    let BYTE: col = to_col(|i| i & 0xff);
 
     {m_diff_lower} in {BYTE};
     {m_diff_upper} in {BYTE};

@@ -1,5 +1,8 @@
 constant %N = 4;
 
+namespace std::convert(%N);
+    let fe = 9;
+
 // a block machine which performs addition
 namespace Add(%N);
     col witness A;
@@ -9,8 +12,8 @@ namespace Add(%N);
 
 // a machine which calls `Add` every other row on made up inputs
 namespace Main(%N);
-    col fixed a(i) { (i + 13) & 0xffffffff };
-    col fixed b(i) { ((i + 19) * 17) & 0xffffffff };
+    col fixed a(i) { std::convert::fe((i + 13) & 0xffffffff) };
+    col fixed b(i) { std::convert::fe(((i + 19) * 17) & 0xffffffff) };
     col witness c;
 
     // only make a call every other row, otherwise set `c` to 0

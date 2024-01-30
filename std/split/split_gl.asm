@@ -1,10 +1,12 @@
+use std::convert::to_col;
+
 // Splits an arbitrary field element into two u32s, on the Goldilocks field.
 machine SplitGL(RESET, _) {
 
     operation split in_acc -> output_low, output_high;
 
     // Latch and operation ID
-    col fixed RESET(i) { if i % 8 == 7 { 1 } else { 0 } };
+    let RESET: col = to_col(|i| if i % 8 == 7 { 1 } else { 0 });
 
     // 1. Decompose the input into bytes
 
@@ -17,7 +19,7 @@ machine SplitGL(RESET, _) {
     // Puts the bytes together to form the input
     col witness in_acc;
     // Factors to multiply the bytes by
-    col fixed FACTOR(i) { 1 << (((i + 1) % 8) * 8) };
+    let FACTOR: col = to_col(|i| 1 << (((i + 1) % 8) * 8));
 
     in_acc' = (1 - RESET) * in_acc + bytes * FACTOR;
 
@@ -56,10 +58,10 @@ machine SplitGL(RESET, _) {
     col fixed BYTES_MAX = [0, 0, 0, 0xff, 0xff, 0xff, 0xff, 0]*;
 
     // Byte comparison block machine
-    col fixed P_A(i) { i % 256 };
-    col fixed P_B(i) { (i >> 8) % 256 };
-    col fixed P_LT(i) { if std::convert::int(P_A(i)) < std::convert::int(P_B(i)) { 1 } else { 0 } };
-    col fixed P_GT(i) { if std::convert::int(P_A(i)) > std::convert::int(P_B(i)) { 1 } else { 0 } };
+    let P_A: col = to_col(|i| i % 256);
+    let P_B: col = to_col(|i| (i >> 8) % 256);
+    let P_LT: col = to_col(|i| if std::convert::int(P_A(i)) < std::convert::int(P_B(i)) { 1 } else { 0 });
+    let P_GT: col = to_col(|i| if std::convert::int(P_A(i)) > std::convert::int(P_B(i)) { 1 } else { 0 });
 
     // Compare the current byte with the corresponding byte of the maximum value.
     col witness lt;
