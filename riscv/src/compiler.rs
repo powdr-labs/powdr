@@ -357,6 +357,7 @@ fn substitute_symbols_with_values(
                 Expression::UnaryOp(op, subexpr) => {
                     if let Expression::Number(num) = subexpr.as_ref() {
                         let result = match op {
+                            UnaryOpKind::BitwiseNot => !num,
                             UnaryOpKind::Negation => -num,
                         };
                         *expression = Expression::Number(result);
