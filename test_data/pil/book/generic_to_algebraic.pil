@@ -9,7 +9,7 @@ namespace Main(16);
     // This function takes an algebraic expression (a column or expression
     // involving columns) and returns an identity that forces this expression
     // to equal 20.
-    let equals_twenty: expr -> identity = |x| x == 20;
+    let equals_twenty: expr -> constr = |x| x == 20;
     // This declares an array of 16 witness columns.
     col witness wit[16];
     // This expression has to evaluate to an identity, but we can still use

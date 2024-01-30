@@ -543,16 +543,16 @@ namespace N(16);
     #[test]
     fn expr_and_identity() {
         let input = r#"namespace N(16);
-    let f: expr, expr -> identity[] = |x, y| [x == y];
-    let g: expr -> identity[1] = |x| [x == 0];
+    let f: expr, expr -> constr[] = |x, y| [x == y];
+    let g: expr -> constr[1] = |x| [x == 0];
     let x: col;
     let y: col;
     f(x, y);
     g((x));
     "#;
         let expected = r#"namespace N(16);
-    let f: expr, expr -> identity[] = (|x, y| [(x == y)]);
-    let g: expr -> identity[1] = (|x| [(x == 0)]);
+    let f: expr, expr -> constr[] = (|x, y| [(x == y)]);
+    let g: expr -> constr[1] = (|x| [(x == 0)]);
     col witness x;
     col witness y;
     N.x = N.y;
