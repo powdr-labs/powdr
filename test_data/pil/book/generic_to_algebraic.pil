@@ -14,7 +14,7 @@ namespace Main(16);
     col witness wit[16];
     // This expression has to evaluate to an identity, but we can still use
     // higher order functions and all the flexibility of the language.
-    // The sub-expression "sum(16, |i| wit[i]" evaluates to the algebraic
+    // The sub-expression `sum(16, |i| wit[i])` evaluates to the algebraic
     // expression "wit[0] + wit[1] + ... + wit[15]", which is then
     // turned into the identity by `equals_twenty`
     // wit[0] + wit[1] + ... + wit[15] == 20.
