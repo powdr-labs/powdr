@@ -69,6 +69,8 @@ fn generate_values<T: FieldElement>(
                     .pattern()
                     .iter()
                     .map(|v| {
+                        // TODO this is probably the only place where we still perform
+                        // implicit conversions.
                         evaluator::evaluate(v, &symbols).and_then(|v| v.try_to_field_element())
                     })
                     .collect::<Result<Vec<_>, _>>()?;
