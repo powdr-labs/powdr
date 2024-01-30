@@ -45,34 +45,30 @@ fn render_hash<F: FieldElement>(hash: &[F]) -> String {
         .join("")
 }
 
-pub fn rust_continuations<F: FieldElement, PipelineFactory, PipelineCallback, E>(
-    pipeline_factory: PipelineFactory,
+pub fn rust_continuations<F: FieldElement, PipelineCallback, E>(
+    mut pipeline: Pipeline<F>,
     pipeline_callback: PipelineCallback,
     bootloader_inputs: Vec<Vec<F>>,
 ) -> Result<(), E>
 where
-    PipelineFactory: Fn() -> Pipeline<F>,
     PipelineCallback: Fn(Pipeline<F>) -> Result<(), E>,
 {
     let num_chunks = bootloader_inputs.len();
 
+    // Advance the pipeline to the PilWithEvaluatedFixedCols stage and then clone it
+    // for each chunk. This is more efficient, because we'll run all steps until then
+    // only once.
     log::info!("Advancing pipeline to PilWithEvaluatedFixedCols stage...");
-    let pipeline = pipeline_factory();
-    let pil_with_evaluated_fixed_cols = pipeline.pil_with_evaluated_fixed_cols().unwrap();
-
-    // This returns the same pipeline as pipeline_factory() (with the same name, output dir, etc...)
-    // but starting from the PilWithEvaluatedFixedCols stage. This is more efficient, because we can advance
-    // to that stage once before we branch into different chunks.
-    let optimized_pipeline_factory = || {
-        pipeline_factory().from_pil_with_evaluated_fixed_cols(pil_with_evaluated_fixed_cols.clone())
-    };
+    pipeline
+        .advance_to(Stage::PilWithEvaluatedFixedCols)
+        .unwrap();
 
     bootloader_inputs
         .into_iter()
         .enumerate()
-        .map(|(i, bootloader_inputs)| -> Result<(), E> {
+        .map(move |(i, bootloader_inputs)| -> Result<(), E> {
             log::info!("\nRunning chunk {} / {}...", i + 1, num_chunks);
-            let pipeline = optimized_pipeline_factory();
+            let pipeline = pipeline.clone();
             let name = format!("{}_chunk_{}", pipeline.name(), i);
             let pipeline = pipeline.with_name(name);
             let pipeline = pipeline.add_external_witness_values(vec![(
@@ -120,7 +116,7 @@ fn sanity_check<T>(program: &AnalysisASMFile<T>) {
     assert_eq!(machine_registers, expected_registers);
 }
 
-pub fn rust_continuations_dry_run<F: FieldElement>(mut pipeline: Pipeline<F>) -> Vec<Vec<F>> {
+pub fn rust_continuations_dry_run<F: FieldElement>(pipeline: &mut Pipeline<F>) -> Vec<Vec<F>> {
     log::info!("Initializing memory merkle tree...");
     let mut merkle_tree = MerkleTree::<F>::new();
 
