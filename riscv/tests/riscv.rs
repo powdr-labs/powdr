@@ -26,12 +26,10 @@ pub fn test_continuations(case: &str) {
     // Manually create tmp dir, so that it is the same in all chunks.
     let tmp_dir = mktemp::Temp::new_dir().unwrap();
 
-    let pipeline_factory = || {
-        Pipeline::<GoldilocksField>::default()
-            .from_asm_string(powdr_asm.clone(), Some(PathBuf::from(&rust_file)))
-            .with_prover_inputs(Default::default())
-            .with_output(tmp_dir.to_path_buf(), false)
-    };
+    let mut pipeline = Pipeline::<GoldilocksField>::default()
+        .from_asm_string(powdr_asm.clone(), Some(PathBuf::from(&rust_file)))
+        .with_prover_inputs(Default::default())
+        .with_output(tmp_dir.to_path_buf(), false);
     let pipeline_callback = |pipeline: Pipeline<GoldilocksField>| -> Result<(), ()> {
         // Can't use `verify_pipeline`, because the pipeline was renamed in the middle of after
         // computing the constants file.
@@ -40,8 +38,8 @@ pub fn test_continuations(case: &str) {
         verify(pipeline.output_dir().unwrap(), pipeline.name(), Some(case));
         Ok(())
     };
-    let bootloader_inputs = rust_continuations_dry_run(pipeline_factory());
-    rust_continuations(pipeline_factory, pipeline_callback, bootloader_inputs).unwrap();
+    let bootloader_inputs = rust_continuations_dry_run(&mut pipeline);
+    rust_continuations(pipeline, pipeline_callback, bootloader_inputs).unwrap();
 }
 
 #[test]
@@ -196,10 +194,10 @@ fn test_many_chunks_dry() {
         powdr_riscv::compile_rust_to_riscv_asm(&format!("tests/riscv_data/{case}"), &temp_dir);
     let powdr_asm = powdr_riscv::compiler::compile(riscv_asm, &coprocessors, true);
 
-    let pipeline = Pipeline::default()
+    let mut pipeline = Pipeline::default()
         .from_asm_string(powdr_asm, Some(PathBuf::from(case)))
         .with_prover_inputs(Default::default());
-    rust_continuations_dry_run::<GoldilocksField>(pipeline);
+    rust_continuations_dry_run::<GoldilocksField>(&mut pipeline);
 }
 
 #[test]

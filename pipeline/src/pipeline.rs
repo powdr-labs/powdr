@@ -383,16 +383,6 @@ impl<T: FieldElement> Pipeline<T> {
         }
     }
 
-    pub fn from_pil_with_evaluated_fixed_cols(
-        self,
-        pil_with_constants: PilWithEvaluatedFixedCols<T>,
-    ) -> Self {
-        Pipeline {
-            artifact: Some(Artifact::PilWithEvaluatedFixedCols(pil_with_constants)),
-            ..self
-        }
-    }
-
     /// Reads a previously generated witness from the provided directory and
     /// advances the pipeline to the `GeneratedWitness` stage.
     pub fn read_generated_witness(mut self, directory: &Path) -> Self {

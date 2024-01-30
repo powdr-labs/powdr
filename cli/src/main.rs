@@ -17,18 +17,18 @@ use std::path::PathBuf;
 use std::{borrow::Cow, fs, io::Write, path::Path};
 use strum::{Display, EnumString, EnumVariantNames};
 
-/// Transforms a pipeline factory into a pipeline factory that binds CLI arguments like
+/// Transforms a pipeline into a pipeline that binds CLI arguments like
 /// the output directory and the CSV export settings to the pipeline.
 #[allow(clippy::too_many_arguments)]
 fn bind_cli_args<F: FieldElement>(
-    pipeline_factory: impl Fn() -> Pipeline<F>,
+    pipeline: Pipeline<F>,
     inputs: Vec<F>,
     output_dir: PathBuf,
     force_overwrite: bool,
     witness_values: Option<String>,
     export_csv: bool,
     csv_mode: CsvRenderModeCLI,
-) -> impl Fn() -> Pipeline<F> {
+) -> Pipeline<F> {
     let witness_values = witness_values
         .map(|csv_path| {
             let csv_file = fs::File::open(csv_path).unwrap();
@@ -43,16 +43,11 @@ fn bind_cli_args<F: FieldElement>(
         CsvRenderModeCLI::Hex => CsvRenderMode::Hex,
     };
 
-    move || {
-        // Note that we can't just take an existing pipeline here instead of
-        // a factory, as Pipeline doesn't currently implement Clone, so we need to
-        // create a new one each time.
-        pipeline_factory()
-            .with_output(output_dir.clone(), force_overwrite)
-            .add_external_witness_values(witness_values.clone())
-            .with_witness_csv_settings(export_csv, csv_mode)
-            .with_prover_inputs(inputs.clone())
-    }
+    pipeline
+        .with_output(output_dir.clone(), force_overwrite)
+        .add_external_witness_values(witness_values.clone())
+        .with_witness_csv_settings(export_csv, csv_mode)
+        .with_prover_inputs(inputs.clone())
 }
 
 #[derive(Clone, EnumString, EnumVariantNames, Display)]
@@ -562,15 +557,13 @@ fn run_rust<F: FieldElement>(
     )
     .ok_or_else(|| vec!["could not compile rust".to_string()])?;
 
-    let pipeline_factory = || {
-        Pipeline::<F>::default().from_asm_string(
-            asm_contents.clone(),
-            Some(PathBuf::from(asm_file_path.to_str().unwrap())),
-        )
-    };
+    let pipeline = Pipeline::<F>::default().from_asm_string(
+        asm_contents.clone(),
+        Some(PathBuf::from(asm_file_path.to_str().unwrap())),
+    );
 
-    let pipeline_factory = bind_cli_args(
-        pipeline_factory,
+    let pipeline = bind_cli_args(
+        pipeline,
         inputs.clone(),
         output_dir.to_path_buf(),
         force_overwrite,
@@ -578,13 +571,7 @@ fn run_rust<F: FieldElement>(
         export_csv,
         csv_mode,
     );
-    run(
-        pipeline_factory,
-        inputs,
-        prove_with,
-        just_execute,
-        continuations,
-    )?;
+    run(pipeline, inputs, prove_with, just_execute, continuations)?;
     Ok(())
 }
 
@@ -612,15 +599,13 @@ fn run_riscv_asm<F: FieldElement>(
     )
     .ok_or_else(|| vec!["could not compile RISC-V assembly".to_string()])?;
 
-    let pipeline_factory = || {
-        Pipeline::<F>::default().from_asm_string(
-            asm_contents.clone(),
-            Some(PathBuf::from(asm_file_path.to_str().unwrap())),
-        )
-    };
+    let pipeline = Pipeline::<F>::default().from_asm_string(
+        asm_contents.clone(),
+        Some(PathBuf::from(asm_file_path.to_str().unwrap())),
+    );
 
-    let pipeline_factory = bind_cli_args(
-        pipeline_factory,
+    let pipeline = bind_cli_args(
+        pipeline,
         inputs.clone(),
         output_dir.to_path_buf(),
         force_overwrite,
@@ -628,13 +613,7 @@ fn run_riscv_asm<F: FieldElement>(
         export_csv,
         csv_mode,
     );
-    run(
-        pipeline_factory,
-        inputs,
-        prove_with,
-        just_execute,
-        continuations,
-    )?;
+    run(pipeline, inputs, prove_with, just_execute, continuations)?;
     Ok(())
 }
 
@@ -653,8 +632,8 @@ fn run_pil<F: FieldElement>(
 ) -> Result<(), Vec<String>> {
     let inputs = split_inputs::<F>(&inputs);
 
-    let pipeline_factory = bind_cli_args(
-        || Pipeline::<F>::default().from_file(PathBuf::from(&file)),
+    let pipeline = bind_cli_args(
+        Pipeline::<F>::default().from_file(PathBuf::from(&file)),
         inputs.clone(),
         PathBuf::from(output_directory),
         force,
@@ -662,26 +641,20 @@ fn run_pil<F: FieldElement>(
         export_csv,
         csv_mode,
     );
-    run(
-        pipeline_factory,
-        inputs,
-        prove_with,
-        just_execute,
-        continuations,
-    )?;
+    run(pipeline, inputs, prove_with, just_execute, continuations)?;
     Ok(())
 }
 
 fn run<F: FieldElement>(
-    pipeline_factory: impl Fn() -> Pipeline<F>,
+    mut pipeline: Pipeline<F>,
     inputs: Vec<F>,
     prove_with: Option<BackendType>,
     just_execute: bool,
     continuations: bool,
 ) -> Result<(), Vec<String>> {
     let bootloader_inputs = if continuations {
-        let pipeline = pipeline_factory().with_prover_inputs(inputs.clone());
-        rust_continuations_dry_run(pipeline)
+        pipeline = pipeline.with_prover_inputs(inputs.clone());
+        rust_continuations_dry_run(&mut pipeline)
     } else {
         vec![]
     };
@@ -697,7 +670,7 @@ fn run<F: FieldElement>(
             // Already ran when computing bootloader inputs, nothing else to do.
         }
         (true, false) => {
-            let mut pipeline = pipeline_factory().with_prover_inputs(inputs);
+            let mut pipeline = pipeline.with_prover_inputs(inputs);
             pipeline.advance_to(Stage::AsmString).unwrap();
             let program = pipeline.artifact().unwrap().to_asm_string().unwrap();
             powdr_riscv_executor::execute::<F>(
@@ -709,13 +682,13 @@ fn run<F: FieldElement>(
         }
         (false, true) => {
             rust_continuations(
-                pipeline_factory,
+                pipeline,
                 generate_witness_and_prove_maybe,
                 bootloader_inputs,
             )?;
         }
         (false, false) => {
-            generate_witness_and_prove_maybe(pipeline_factory())?;
+            generate_witness_and_prove_maybe(pipeline)?;
         }
     }
     Ok(())
