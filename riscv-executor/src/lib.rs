@@ -47,13 +47,14 @@ impl Elem {
     }
 
     // Rust doesn't allow us to implement From<F> for Elem...
+    // Panics if the value can't be represented as i64, i.e., the value interpreted
+    // as a signed integer (-(p - v) if v > p/2) is not in the range of i64.
+    // This can happen for some fields with a modulus larger than 64 bit.
     fn from_fe<F: FieldElement>(value: F) -> Self {
-        let value = value.to_degree();
-        let p: u64 = F::modulus().to_arbitrary_integer().try_into().unwrap();
-        if value < p >> 1 {
-            (value as i64).into()
+        if value.is_in_lower_half() {
+            (i64::try_from(value.to_arbitrary_integer()).unwrap()).into()
         } else {
-            (-((p - value) as i64)).into()
+            (-(i64::try_from((-value).to_arbitrary_integer()).unwrap())).into()
         }
     }
 }
