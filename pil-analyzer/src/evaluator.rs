@@ -689,7 +689,7 @@ mod test {
     #[test]
     pub fn capturing() {
         let src = r#"namespace Main(16);
-            let f = |n, g| match n { 99 => |i| n, 1 => g(3) };
+            let f: int, int -> int = |n, g| match n { 99 => |i| n, 1 => g(3) };
             let result = f(1, f(99, |x| x + 3000));
         "#;
         // If the lambda function returned by the expression f(99, ...) does not

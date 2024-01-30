@@ -9,14 +9,14 @@ namespace Main(16);
     // This function takes an algebraic expression (a column or expression
     // involving columns) and returns an identity that forces this expression
     // to equal 20.
-    let equals_twenty: expr -> identity = |x| x == 20;
+    let equals_twenty: expr -> constr = |x| x == 20;
     // This declares an array of 16 witness columns.
     col witness wit[16];
     // This expression has to evaluate to an identity, but we can still use
     // higher order functions and all the flexibility of the language.
-    // The sub-expression "sum(16, |i| wit[i]" evaluates to the algebraic
+    // The sub-expression `sum(16, |i| wit[i])` evaluates to the algebraic
     // expression "wit[0] + wit[1] + ... + wit[15]", which is then
-    // turned by "equals_twenty" into the identity
+    // turned into the identity by `equals_twenty`
     // wit[0] + wit[1] + ... + wit[15] == 20.
     equals_twenty(sum(16, |i| wit[i]));
 

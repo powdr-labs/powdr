@@ -29,7 +29,7 @@ namespace Arith(N);
     /// returns f(0) + f(1) + ... + f(length - 1)
     let sum = |length, f| fold(length, f, 0, |acc, e| acc + e);
 
-    let force_boolean: expr -> identity = |x| x * (1 - x) == 0;
+    let force_boolean: expr -> constr = |x| x * (1 - x) == 0;
 
     let clock = |j, row| if row % 32 == j { 1 } else { 0 };
     // Arrays of fixed columns are not supported yet.
@@ -139,7 +139,7 @@ namespace Arith(N);
     // That way we could even support functions returning lookups.
 
     // x can only change between two blocks of 32 rows.
-    let fixed_inside_32_block: expr -> identity = |x| (x - x') * (1 - CLK32[31]) == 0;
+    let fixed_inside_32_block: expr -> constr = |x| (x - x') * (1 - CLK32[31]) == 0;
 
     make_array(16, |i| fixed_inside_32_block(x1[i]));
     make_array(16, |i| fixed_inside_32_block(y1[i]));
