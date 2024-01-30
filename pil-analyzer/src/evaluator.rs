@@ -196,7 +196,7 @@ pub enum BuiltinFunction {
     /// std::check::panic: string -> !, fails evaluation and uses its parameter for error reporting.
     /// Does not return.
     Panic,
-    /// std::dbg::print: string -> [], prints its argument on stdout.
+    /// std::debug::print: string -> [], prints its argument on stdout.
     /// std::debug::print: string -> [], prints its argument on stdout.
     /// Returns an empty array.
     Print,
@@ -767,5 +767,15 @@ mod test {
             let zpz = 0**0;
         "#;
         assert_eq!(parse_and_evaluate_symbol(src, "zpz"), "1".to_string());
+    }
+
+    #[test]
+    pub fn debug_print() {
+        let src = r#"
+            namespace std::debug(8);
+            let print = 2;
+            let N = std::debug::print("test output\n");
+        "#;
+        parse_and_evaluate_symbol(src, "std::debug::N");
     }
 }
