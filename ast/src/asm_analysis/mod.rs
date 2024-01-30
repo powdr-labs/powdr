@@ -790,7 +790,7 @@ pub struct Rom<T> {
     pub statements: FunctionStatements<T>,
 }
 
-#[derive(Default, Debug)]
+#[derive(Default, Clone, Debug)]
 pub struct AnalysisASMFile<T> {
     pub items: BTreeMap<AbsoluteSymbolPath, Item<T>>,
 }

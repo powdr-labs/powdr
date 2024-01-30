@@ -41,8 +41,9 @@ pub fn verify_asm_string<T: FieldElement>(
 pub fn verify_pipeline<T: FieldElement>(pipeline: Pipeline<T>) {
     let mut pipeline = pipeline.with_backend(BackendType::PilStarkCli);
 
+    let tmp_dir = mktemp::Temp::new_dir().unwrap();
     if pipeline.output_dir().is_none() {
-        pipeline = pipeline.with_tmp_output();
+        pipeline = pipeline.with_tmp_output(&tmp_dir);
     }
 
     // Don't get the proof, because that would destroy the pipeline
@@ -54,8 +55,9 @@ pub fn verify_pipeline<T: FieldElement>(pipeline: Pipeline<T>) {
 
 pub fn gen_estark_proof(file_name: &str, inputs: Vec<GoldilocksField>) {
     let file_name = format!("{}/../test_data/{file_name}", env!("CARGO_MANIFEST_DIR"));
+    let tmp_dir = mktemp::Temp::new_dir().unwrap();
     Pipeline::default()
-        .with_tmp_output()
+        .with_tmp_output(&tmp_dir)
         .from_file(PathBuf::from(file_name))
         .with_prover_inputs(inputs)
         .with_backend(powdr_backend::BackendType::EStark)
@@ -66,8 +68,9 @@ pub fn gen_estark_proof(file_name: &str, inputs: Vec<GoldilocksField>) {
 #[cfg(feature = "halo2")]
 pub fn gen_halo2_proof(file_name: &str, inputs: Vec<Bn254Field>) {
     let file_name = format!("{}/../test_data/{file_name}", env!("CARGO_MANIFEST_DIR"));
+    let tmp_dir = mktemp::Temp::new_dir().unwrap();
     Pipeline::default()
-        .with_tmp_output()
+        .with_tmp_output(&tmp_dir)
         .from_file(PathBuf::from(file_name))
         .with_prover_inputs(inputs)
         .with_backend(powdr_backend::BackendType::Halo2)

@@ -15,7 +15,7 @@ pub use crate::parsed::UnaryOperator;
 use crate::parsed::{self, SelectedExpressions};
 use crate::SourceRef;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum StatementIdentifier {
     /// Either an intermediate column or a definition.
     Definition(String),
@@ -24,7 +24,7 @@ pub enum StatementIdentifier {
     Identity(usize),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Analyzed<T> {
     /// The degree of all namespaces, which must match. If there are no namespaces, then `None`.
     pub degree: Option<DegreeType>,
@@ -511,7 +511,7 @@ impl<T> RepeatedArray<T> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct PublicDeclaration {
     pub id: u64,
     pub source: SourceRef,
