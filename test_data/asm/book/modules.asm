@@ -35,9 +35,9 @@ machine Main {
 
     reg pc[@pc];
 
-    instr nothing = a.nothing
-    instr also_nothing = b.nothing
-    instr still_nothing = c.nothing
+    instr nothing = a.nothing;
+    instr also_nothing = b.nothing;
+    instr still_nothing = c.nothing;
 
     function main {
         nothing;

@@ -10,8 +10,8 @@ machine Main {
     reg Z[<=];
     reg A;
 
-    instr add X, Y -> Z = arith.add
-    instr mul X, Y -> Z = arith.mul
+    instr add X, Y -> Z = arith.add;
+    instr mul X, Y -> Z = arith.mul;
     instr assert_eq X, Y { X = Y }
 
     function main {

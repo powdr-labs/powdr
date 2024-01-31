@@ -96,10 +96,11 @@ mod test {
     use powdr_ast::parsed::{
         build::direct_reference, PILFile, PilStatement, PolynomialName, SelectedExpressions,
     };
+    use powdr_number::Bn254Field;
     use powdr_number::GoldilocksField;
     use powdr_parser_util::UnwrapErrToStderr;
-    use std::fs;
     use test_log::test;
+    use walkdir::WalkDir;
 
     #[test]
     fn empty() {
@@ -191,49 +192,60 @@ mod test {
         );
     }
 
-    fn parse_file(name: &str) -> PILFile<GoldilocksField> {
-        let file = std::path::PathBuf::from(format!(
-            "{}/../test_data/{name}",
-            env!("CARGO_MANIFEST_DIR")
-        ));
-
-        let input = fs::read_to_string(file).unwrap();
-        parse(Some(name), &input).unwrap_err_to_stderr()
-    }
-
-    fn parse_asm_file(name: &str) -> ASMProgram<GoldilocksField> {
-        let file = std::path::PathBuf::from(format!(
-            "{}/../test_data/{name}",
-            env!("CARGO_MANIFEST_DIR")
-        ));
-
-        let input = fs::read_to_string(file).unwrap();
-        parse_asm(Some(name), &input).unwrap_err_to_stderr()
+    fn find_files_with_ext(
+        dir: std::path::PathBuf,
+        ext: String,
+    ) -> impl Iterator<Item = (String, String)> {
+        WalkDir::new(&dir).into_iter().filter_map(move |e| {
+            let entry = e.unwrap();
+            let path = entry.path();
+            match path.extension() {
+                Some(path_ext) if path_ext.to_str() == Some(&ext) => Some((
+                    path.to_str().unwrap().into(),
+                    std::fs::read_to_string(path).unwrap(),
+                )),
+                _ => None,
+            }
+        })
     }
 
     #[test]
-    fn parse_example_files() {
-        parse_file("polygon-hermez/arith.pil");
-        parse_file("polygon-hermez/binary.pil");
-        parse_file("polygon-hermez/byte4.pil");
-        parse_file("polygon-hermez/config.pil");
-        parse_file("polygon-hermez/global.pil");
-        parse_file("polygon-hermez/keccakf.pil");
-        parse_file("polygon-hermez/main.pil");
-        parse_file("polygon-hermez/mem_align.pil");
-        parse_file("polygon-hermez/mem.pil");
-        parse_file("polygon-hermez/nine2one.pil");
-        parse_file("polygon-hermez/padding_kk.pil");
-        parse_file("polygon-hermez/padding_kkbit.pil");
-        parse_file("polygon-hermez/padding_pg.pil");
-        parse_file("polygon-hermez/poseidong.pil");
-        parse_file("polygon-hermez/rom.pil");
-        parse_file("polygon-hermez/storage.pil");
+    /// Test that (source -> AST -> source -> AST) works properly
+    fn parse_write_reparse_asm() {
+        let crate_dir = env!("CARGO_MANIFEST_DIR");
+        let basedir = std::path::PathBuf::from(format!("{crate_dir}/../test_data/"));
+        let asm_files = find_files_with_ext(basedir, "asm".into());
+        for (file, orig_string) in asm_files {
+            let orig_asm =
+                parse_asm::<Bn254Field>(Some(&file), &orig_string).unwrap_err_to_stderr();
+            let orig_asm_to_string = format!("{}", orig_asm);
+            let reparsed_asm =
+                parse_asm::<Bn254Field>(Some((file + " reparsed").as_ref()), &orig_asm_to_string)
+                    .unwrap_err_to_stderr();
+            // TODO: we can't directly assert ASTs because SourceRefs will differ
+            // assert_eq!(orig_asm, reparsed_asm);
+            let reparsed_asm_to_string = format!("{}", reparsed_asm);
+            assert_eq!(reparsed_asm_to_string, orig_asm_to_string);
+        }
     }
 
     #[test]
-    fn parse_example_asm_files() {
-        parse_asm_file("asm/simple_sum.asm");
+    /// Test that (source -> AST -> source -> AST) works properly
+    fn parse_write_reparse_pil() {
+        let crate_dir = env!("CARGO_MANIFEST_DIR");
+        let basedir = std::path::PathBuf::from(format!("{crate_dir}/../test_data/"));
+        let pil_files = find_files_with_ext(basedir, "pil".into());
+        for (file, orig_string) in pil_files {
+            let orig_pil = parse::<Bn254Field>(Some(&file), &orig_string).unwrap_err_to_stderr();
+            let orig_pil_to_string = format!("{}", orig_pil);
+            let reparsed_pil =
+                parse::<Bn254Field>(Some((file + " reparsed").as_ref()), &orig_pil_to_string)
+                    .unwrap_err_to_stderr();
+            // TODO: we can't directly assert ASTs because SourceRefs will differ
+            // assert_eq!(orig_pil, reparsed_pil);
+            let reparsed_pil_to_string = format!("{}", reparsed_pil);
+            assert_eq!(reparsed_pil_to_string, orig_pil_to_string);
+        }
     }
 
     mod display {

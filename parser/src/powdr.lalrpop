@@ -254,7 +254,7 @@ pub LinkDeclaration: MachineStatement<T> = {
 pub InstructionBody: InstructionBody<T> = {
     "{}" => InstructionBody::Local(vec![]),
     "{" <InstructionBodyElements> "}" => InstructionBody::Local(<>),
-    "=" <f_ref:CallableRef> => InstructionBody::CallableRef(f_ref),
+    "=" <f_ref:CallableRef> ";" => InstructionBody::CallableRef(f_ref),
 }
 
 pub CallableRef: CallableRef = {
@@ -566,7 +566,6 @@ SpecialIdentifier: &'input str = {
 
 ConstantIdentifier: String = {
     // TODO it seems the lexer splits the token after %
-    "%N" => <>.to_string(),
     r"%[a-zA-Z_][a-zA-Z$_0-9@]*" => <>.to_string(),
 }
 

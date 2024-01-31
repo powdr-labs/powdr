@@ -36,9 +36,9 @@ machine Main {
     reg Y[<=];
     reg A;
 
-    instr identity X -> Y = sub.identity
-    instr one -> Y = sub.one
-    instr nothing = sub.nothing
+    instr identity X -> Y = sub.identity;
+    instr one -> Y = sub.one;
+    instr nothing = sub.nothing;
 
     function main {
         start:

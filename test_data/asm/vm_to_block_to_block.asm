@@ -40,7 +40,7 @@ machine Main {
     reg X[<=];
     reg A;
 
-    instr assert1 X -> = assert1.assert1
+    instr assert1 X -> = assert1.assert1;
 
     instr loop {
         pc' = pc

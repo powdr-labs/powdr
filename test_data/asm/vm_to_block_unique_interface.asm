@@ -43,10 +43,10 @@ machine Main {
     reg Z[<=];
     reg A;
 
-    instr add X, Y -> Z = arith.add
-    instr sub X, Y -> Z = arith.sub
-    instr and X, Y -> Z = binary.and
-    instr or X, Y -> Z = binary.or
+    instr add X, Y -> Z = arith.add;
+    instr sub X, Y -> Z = arith.sub;
+    instr and X, Y -> Z = binary.and;
+    instr or X, Y -> Z = binary.or;
     instr assert_eq X, Y { X = Y }
 
     function main {

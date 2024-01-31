@@ -37,9 +37,12 @@ impl<T: Display> Display for ModuleStatement<T> {
                     write!(f, "machine {name} {m}")
                 }
                 SymbolValue::Import(i) => {
-                    write!(f, "{i} as {name}")
+                    write!(f, "{i} as {name};")
                 }
-                SymbolValue::Module(m) => {
+                SymbolValue::Module(m @ Module::External(_)) => {
+                    write!(f, "mod {m}")
+                }
+                SymbolValue::Module(m @ Module::Local(_)) => {
                     write!(f, "mod {name} {m}")
                 }
                 SymbolValue::Expression(e) => {
@@ -80,9 +83,31 @@ impl<T: Display> Display for Machine<T> {
 impl<T: Display> Display for InstructionBody<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
-            InstructionBody::Local(elements) => write!(f, "{{ {} }}", elements.iter().format(", ")),
+            InstructionBody::Local(elements) => write!(
+                f,
+                "{{ {} }}",
+                elements
+                    .iter()
+                    .map(format_instruction_statement)
+                    .format(", ")
+            ),
             InstructionBody::CallableRef(r) => write!(f, " = {r};"),
         }
+    }
+}
+
+fn format_instruction_statement<T: Display>(stmt: &PilStatement<T>) -> String {
+    match stmt {
+        PilStatement::PolynomialIdentity(_, _)
+        | PilStatement::PlookupIdentity(_, _, _)
+        | PilStatement::PermutationIdentity(_, _, _)
+        | PilStatement::ConnectIdentity(_, _, _) => {
+            // statements inside instruction definition don't end in semicolon
+            let mut s = format!("{stmt}");
+            assert_eq!(s.pop(), Some(';'));
+            s
+        }
+        _ => panic!("invalid statement inside instruction body: {}", stmt),
     }
 }
 
@@ -119,7 +144,7 @@ impl<T: Display> Display for MachineStatement<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
             MachineStatement::Degree(_, degree) => write!(f, "degree {};", degree),
-            MachineStatement::Pil(_, statement) => write!(f, "{statement};"),
+            MachineStatement::Pil(_, statement) => write!(f, "{statement}"),
             MachineStatement::Submachine(_, ty, name) => write!(f, "{ty} {name};"),
             MachineStatement::RegisterDeclaration(_, name, flag) => write!(
                 f,

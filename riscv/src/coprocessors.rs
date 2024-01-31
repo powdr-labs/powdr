@@ -20,9 +20,9 @@ static BINARY_COPROCESSOR: CoProcessor = CoProcessor {
     import: "use std::binary::Binary;",
     instructions: r#"
     // ================= binary/bitwise instructions =================
-    instr and Y, Z -> X = binary.and
-    instr or Y, Z -> X = binary.or
-    instr xor Y, Z -> X = binary.xor
+    instr and Y, Z -> X = binary.and;
+    instr or Y, Z -> X = binary.or;
+    instr xor Y, Z -> X = binary.xor;
 
             "#,
     runtime_function_impl: None,
@@ -34,8 +34,8 @@ static SHIFT_COPROCESSOR: CoProcessor = CoProcessor {
     import: "use std::shift::Shift;",
     instructions: r#"
     // ================= shift instructions =================
-    instr shl Y, Z -> X = shift.shl
-    instr shr Y, Z -> X = shift.shr
+    instr shl Y, Z -> X = shift.shl;
+    instr shr Y, Z -> X = shift.shr;
 
             "#,
     runtime_function_impl: None,
@@ -47,7 +47,7 @@ static SPLIT_GL_COPROCESSOR: CoProcessor = CoProcessor {
     import: "use std::split::split_gl::SplitGL;",
     instructions: r#"
 // ================== wrapping instructions ==============
-instr split_gl Z -> X, Y = split_gl.split
+instr split_gl Z -> X, Y = split_gl.split;
 
     "#,
     runtime_function_impl: None,
@@ -59,7 +59,7 @@ static POSEIDON_GL_COPROCESSOR: CoProcessor = CoProcessor {
     import: "use std::hash::poseidon_gl::PoseidonGL;",
     instructions: r#"
 // ================== hashing instructions ==============
-instr poseidon_gl A0, A1, A2, A3, A4, A5, A6, A7, A8, A9, A10, A11 -> X, Y, Z, W = poseidon_gl.poseidon_permutation
+instr poseidon_gl A0, A1, A2, A3, A4, A5, A6, A7, A8, A9, A10, A11 -> X, Y, Z, W = poseidon_gl.poseidon_permutation;
 
 "#,
     runtime_function_impl: Some(("poseidon_gl_coprocessor", poseidon_gl_call)),
