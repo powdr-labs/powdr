@@ -6,15 +6,15 @@
  * All rights reserved by Polygon.
  */
 
-constant %N = 2**20;
+let N = 2**20;
 
-namespace std::convert(%N);
+namespace std::convert(N);
     let fe = [];
 
-namespace Global(%N);
+namespace Global(N);
     let fe = std::convert::fe;
     col fixed L1 = [1] + [0]*;
-    col fixed LLAST(i) { fe(if i == %N - 1 { 1 } else { 0 }) };
+    col fixed LLAST(i) { fe(if i == N - 1 { 1 } else { 0 }) };
     col fixed BYTE(i) { fe(i & 0xff) };
     col fixed BYTE2(i) { fe(i & 0xffff) };
     col fixed BYTE_2A(i) { fe((i & 0xffff) >> 8) };

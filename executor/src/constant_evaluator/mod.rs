@@ -186,13 +186,13 @@ mod test {
     #[test]
     pub fn test_last() {
         let src = r#"
-            constant %N = 8;
-            namespace std::convert(%N);
+            let N = 8;
+            namespace std::convert(N);
             let int = [];
             let fe = [];
-            namespace F(%N);
+            namespace F(N);
             pol constant LAST(i) { std::convert::fe(match i {
-                %N - 1 => 1,
+                N - 1 => 1,
                 _ => 0,
             }) };
         "#;
@@ -208,10 +208,10 @@ mod test {
     #[test]
     pub fn test_counter() {
         let src = r#"
-            constant %N = 8;
-            namespace std::convert(%N);
+            let N = 8;
+            namespace std::convert(N);
             let fe = [];
-            namespace F(%N);
+            namespace F(N);
             pol constant EVEN(i) { std::convert::fe(2 * (i - 1) + 4) };
         "#;
         let analyzed = analyze_string(src);
@@ -226,11 +226,11 @@ mod test {
     #[test]
     pub fn test_xor() {
         let src = r#"
-            constant %N = 8;
-            namespace std::convert(%N);
+            let N = 8;
+            namespace std::convert(N);
             let int = [];
             let fe = [];
-            namespace F(%N);
+            namespace F(N);
             pol constant X(i) { std::convert::fe(i ^ (i + 17) | 3) };
         "#;
         let analyzed = analyze_string(src);
@@ -245,11 +245,11 @@ mod test {
     #[test]
     pub fn test_match() {
         let src = r#"
-            constant %N = 8;
-            namespace std::convert(%N);
+            let N = 8;
+            namespace std::convert(N);
             let int = [];
             let fe = [];
-            namespace F(%N);
+            namespace F(N);
             pol constant X(i) { std::convert::fe(match i {
                 0 => 7,
                 3 => 9,
