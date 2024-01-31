@@ -22,6 +22,26 @@ pub const MEMORY_HASH_START_INDEX: usize = 2 * REGISTER_NAMES.len();
 pub const NUM_PAGES_INDEX: usize = MEMORY_HASH_START_INDEX + 8;
 pub const PAGE_INPUTS_OFFSET: usize = NUM_PAGES_INDEX + 1;
 
+/// Computes an upper bound of how long the shutdown routine will run, for a given number of pages.
+pub fn shutdown_routine_upper_bound(num_pages: usize) -> usize {
+    // Regardless of the number of pages, we have to:
+    // - Jump to the start of the routine
+    // - Assert all register values are correct (except the PC)
+    // - Start the page loop
+    // - Jump to shutdown sink
+    let constant_overhead = 6 + REGISTER_NAMES.len() - 1;
+
+    // For each page, we have to:
+    // - Start the page loop (14 instructions)
+    // - Load all words of the page
+    // - Invoke the hash function once every 4 words
+    // - Assert the page hash is as claimed (4 instructions)
+    // - Increment the page index and jump back to the loop start (2 instructions)
+    let cost_per_page = 14 + WORDS_PER_PAGE + WORDS_PER_PAGE / 4 + 4 + 2;
+
+    constant_overhead + num_pages * cost_per_page
+}
+
 pub const BOOTLOADER_SPECIFIC_INSTRUCTION_NAMES: [&str; 2] =
     ["load_bootloader_input", "jump_to_bootloader_input"];
 
@@ -43,6 +63,13 @@ pub fn bootloader_preamble() -> String {
         {X, tmp_bootloader_value} in {BOOTLOADER_INPUT_ADDRESS, bootloader_input_value},
         pc' = tmp_bootloader_value
     }
+
+    // ============== Shutdown routine constraints =======================
+    // Insert a `jump_to_shutdown_routine` witness column, which will let the prover indicate that
+    // the normal PC update rule should be bypassed and instead set to the start of the shutdown routine.
+    // Nothing of this is enforced yet, and the flag will be ignored.
+    let jump_to_shutdown_routine;
+    jump_to_shutdown_routine * (1 - jump_to_shutdown_routine) = 0;
 
     // Expose initial register values as public outputs
 "#.to_string();
@@ -121,6 +148,9 @@ jump computation_start;
 // Similarly, this instruction has a known fixed PC ({SHUTDOWN_START}) and just jumps
 // to the shutdown routine.
 jump shutdown_start;
+
+shutdown_sink:
+jump shutdown_sink;
 
 // Submachine initialization: Calls each submachine once, because that helps witness
 // generation figure out default values that can be used if the machine is never used.
@@ -448,7 +478,7 @@ branch_if_nonzero x2 - x1, shutdown_start_page_loop;
 shutdown_end_page_loop:
 
 
-return;
+jump shutdown_sink;
 
 // END OF SHUTDOWN ROUTINE
 
