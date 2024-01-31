@@ -1,10 +1,13 @@
 Tests from https://github.com/riscv/riscv-tests/tree/master/isa/
 
 Powdr partially implements riscv32imac userspace ISA. One major difference is
-that our zkVM "text" section doesn't have a 1-to-1 correspondence to the RISC-V
-instructions section, so we don't support any kind of arithmetic over `.text`
-label and addresses, nor alignment or spacing directives in `.text` sections.
-Most unsupported instructions are related to this limitation.
+that the code in our zkVM is interpreted at a higher abstraction level than the
+binary representation of a RISC-V "text" section, and we use code labels as
+absolute references, not relative to the PC like in binary format RISC-V. Thus
+labels in code sections are treated as opaque values, and we don't support any
+kind of arithmetic over `.text` label and addresses, nor alignment or spacing
+directives in `.text` sections. Most unsupported instructions are related to
+this limitation.
 
 Following there is a list of tests from the test suite that we do not support:
 
@@ -13,18 +16,13 @@ Following there is a list of tests from the test suite that we do not support:
 - auipc
 
 This test is not supported because we don't support any kind of arithmetic over
-`.text` label and addresses.
-
-Also, `lla` and `jal` (pseudo-)instructions are not yet implemented.
+`.text` label and addresses, nor the `lla` pseudoinstruction.
 
 - fence_i
 
-Our zkVM "text" is static. We don't support dynamic binary code, so it makes no
-sense to implement `fence_i` instruction.
-
-- jal
-
-Not yet implemented.
+This test is not supported because our zkVM "text" is static: we don't support
+dynamic binary code or self modifying programs. Thus, our `fence.i` instruction
+is just a nop.
 
 - jalr
 
