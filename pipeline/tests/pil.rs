@@ -1,6 +1,5 @@
 use powdr_number::GoldilocksField;
 use powdr_pipeline::test_util::{gen_estark_proof, gen_halo2_proof, verify_test_file};
-use std::path::Path;
 use test_log::test;
 
 pub fn verify_pil(file_name: &str, inputs: Vec<GoldilocksField>) {
@@ -173,16 +172,6 @@ fn test_witness_via_let() {
 #[test]
 fn conditional_fixed_constraints() {
     verify_pil("pil/conditional_fixed_constraints.pil", Default::default());
-}
-
-#[test]
-fn arith_improved() {
-    let f = "pil/arith_improved.pil";
-    powdr_pil_analyzer::analyze_file::<GoldilocksField>(
-        &Path::new(&format!("{}/../test_data/{f}", env!("CARGO_MANIFEST_DIR")))
-            .canonicalize()
-            .unwrap(),
-    );
 }
 
 #[test]

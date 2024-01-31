@@ -102,7 +102,7 @@ jobs:
     strategy:
       matrix:
         test:
-        - "'test(=test_keccak) | test(=test_vec_median) | test(=instruction_tests::addi)'"
+        - "'test(=test_keccak) | test(=test_vec_median) | test(=instruction_tests::addi) | test(=arith_test)'"
         - "'test(=test_many_chunks)'"
     needs: build
     runs-on: ubuntu-latest

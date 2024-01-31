@@ -34,6 +34,7 @@ fn split_gl_test() {
 }
 
 #[test]
+#[ignore = "Too slow"]
 fn arith_test() {
     let f = "std/arith_test.asm";
     verify_test_file::<GoldilocksField>(f, Default::default(), vec![]);
