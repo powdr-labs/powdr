@@ -39,6 +39,7 @@ fn remove_constant_fixed_columns<T: FieldElement>(pil_file: &mut Analyzed<T>) {
     let constant_polys = pil_file
         .constant_polys_in_source_order()
         .iter()
+        .filter(|(p, _)| !p.is_array())
         .filter_map(|(poly, definition)| {
             let Some(definition) = definition else {
                 return None;

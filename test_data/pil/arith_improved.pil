@@ -31,76 +31,8 @@ namespace Arith(N);
 
     let force_boolean: expr -> constr = |x| x * (1 - x) == 0;
 
-    let clock = |j, row| if row % 32 == j { 1 } else { 0 };
-    // Arrays of fixed columns are not supported yet.
-    // These need an explicit lambda, otherwise they are not recognized as fixed columns.
-    // The type system will handle that in the future.
-    let CLK32_0 = |row| clock(0, row);
-    let CLK32_1 = |row| clock(1, row);
-    let CLK32_2 = |row| clock(2, row);
-    let CLK32_3 = |row| clock(3, row);
-    let CLK32_4 = |row| clock(4, row);
-    let CLK32_5 = |row| clock(5, row);
-    let CLK32_6 = |row| clock(6, row);
-    let CLK32_7 = |row| clock(7, row);
-    let CLK32_8 = |row| clock(8, row);
-    let CLK32_9 = |row| clock(9, row);
-    let CLK32_10 = |row| clock(10, row);
-    let CLK32_11 = |row| clock(11, row);
-    let CLK32_12 = |row| clock(12, row);
-    let CLK32_13 = |row| clock(13, row);
-    let CLK32_14 = |row| clock(14, row);
-    let CLK32_15 = |row| clock(15, row);
-    let CLK32_16 = |row| clock(16, row);
-    let CLK32_17 = |row| clock(17, row);
-    let CLK32_18 = |row| clock(18, row);
-    let CLK32_19 = |row| clock(19, row);
-    let CLK32_20 = |row| clock(20, row);
-    let CLK32_21 = |row| clock(21, row);
-    let CLK32_22 = |row| clock(22, row);
-    let CLK32_23 = |row| clock(23, row);
-    let CLK32_24 = |row| clock(24, row);
-    let CLK32_25 = |row| clock(25, row);
-    let CLK32_26 = |row| clock(26, row);
-    let CLK32_27 = |row| clock(27, row);
-    let CLK32_28 = |row| clock(28, row);
-    let CLK32_29 = |row| clock(29, row);
-    let CLK32_30 = |row| clock(30, row);
-    let CLK32_31 = |row| clock(31, row);
-    let CLK32 = [
-        CLK32_0,
-        CLK32_1,
-        CLK32_2,
-        CLK32_3,
-        CLK32_4,
-        CLK32_5,
-        CLK32_6,
-        CLK32_7,
-        CLK32_8,
-        CLK32_9,
-        CLK32_10,
-        CLK32_11,
-        CLK32_12,
-        CLK32_13,
-        CLK32_14,
-        CLK32_15,
-        CLK32_16,
-        CLK32_17,
-        CLK32_18,
-        CLK32_19,
-        CLK32_20,
-        CLK32_21,
-        CLK32_22,
-        CLK32_23,
-        CLK32_24,
-        CLK32_25,
-        CLK32_26,
-        CLK32_27,
-        CLK32_28,
-        CLK32_29,
-        CLK32_30,
-        CLK32_31
-    ];
+    let clock = |k| |row| if row % 32 == k { 1 } else { 0 };
+    let CLK32: col[32] = make_array(32, |k| clock(k));
 
     pol constant BYTE2_BIT19(r) { r % (2**19 + 2**16) };
 	// TODO this is way too large for our tests.
