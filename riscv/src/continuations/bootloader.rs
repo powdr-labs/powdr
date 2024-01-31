@@ -33,6 +33,7 @@ pub fn bootloader_preamble() -> String {
     let bootloader_input_value;
     // Loads a value. If the cell is empty, the prover can choose a value.
     instr load_bootloader_input X -> Y { {X, Y} in {BOOTLOADER_INPUT_ADDRESS, bootloader_input_value} }
+    instr assert_bootloader_input X, Y { {X, Y} in {BOOTLOADER_INPUT_ADDRESS, bootloader_input_value} }
 
     let tmp_bootloader_value;
 
@@ -104,7 +105,7 @@ pub fn bootloader_preamble() -> String {
 ///   - The hash of the page *after* this chunk's execution
 ///   - For each level of the Merkle tree, except the root (1..=22):
 ///     - The hash (4 elements) of the sibling page
-pub fn bootloader(submachine_initialization: &[String]) -> String {
+pub fn bootloader_and_shutdown_routine(submachine_initialization: &[String]) -> String {
     let mut bootloader = String::new();
 
     bootloader.push_str(&format!(
@@ -113,9 +114,13 @@ pub fn bootloader(submachine_initialization: &[String]) -> String {
 jump submachine_init;
 
 // For convenience, this instruction has a known fixed PC ({DEFAULT_PC}) and just jumps
-// to whatever comes after the bootloader. This avoids having to count the instructions
-// of the bootloader and the submachine initialization.
-jump end_of_bootloader;
+// to whatever comes after the bootloader + shutdown routine. This avoids having to count
+// the instructions of the bootloader and the submachine initialization.
+jump computation_start;
+
+// Similarly, this instruction has a known fixed PC ({SHUTDOWN_START}) and just jumps
+// to the shutdown routine.
+jump shutdown_start;
 
 // Submachine initialization: Calls each submachine once, because that helps witness
 // generation figure out default values that can be used if the machine is never used.
@@ -131,7 +136,7 @@ submachine_init:
 // During the execution of the bootloader, registers are used as follows:
 // - x1: Number of pages (constant throughout the execution)
 // - x2: Current page index
-// - x3: Currenr page number
+// - x3: Current page number
 // - x4: The ith bit of the page number (during Merkle proof validation)
 // - x5-x8: The current memory hash
 // - x9: 0: Merkle tree validation phase; 1: Merkle tree update phase
@@ -154,9 +159,9 @@ x8 <== load_bootloader_input({MEMORY_HASH_START_INDEX} + 3);
 // Current page index
 x2 <=X= 0;
 
-branch_if_zero x1, end_page_loop;
+branch_if_zero x1, bootloader_end_page_loop;
 
-start_page_loop:
+bootloader_start_page_loop:
 
 // Page number
 x3 <== load_bootloader_input(x2 * {BOOTLOADER_INPUTS_PER_PAGE} + {PAGE_INPUTS_OFFSET});
@@ -167,7 +172,7 @@ x3 <== and(x3, {PAGE_NUMBER_MASK});
 // - Stores the word at the address x3 * {PAGE_SIZE_BYTES} + i * {BYTES_PER_WORD}
 // - If i % 4 == 3: Hashes registers P0-P11, storing the result in P0-P3
 //
-// At the end of the loop, we'll have a linear hash of the page in P0-P3, using a Merkle-Damgard
+// At the end of the loop, we'll have a linear hash of the page in P0-P3, using a Merkle-Damgård
 // construction. The initial P0-P3 values are 0, and the capacity (P8-P11) is 0 throughout the
 // booloader execution.
 
@@ -223,7 +228,7 @@ P0, P1, P2, P3 <== poseidon_gl(P0, P1, P2, P3, P4, P5, P6, P7, P8, P9, P10, P11)
 // Set phase to validation
 x9 <=X= 0;
 
-merkle_proof_validation_loop:
+bootloader_merkle_proof_validation_loop:
 
 // This is an unrolled loop that for each level:
 // - If the ith bit of the page number is 0:
@@ -242,13 +247,13 @@ merkle_proof_validation_loop:
         bootloader.push_str(&format!(
             r#"
 x4 <== and(x3, {mask});
-branch_if_nonzero x4, level_{i}_is_right;
+branch_if_nonzero x4, bootloader_level_{i}_is_right;
 P4 <== load_bootloader_input(x2 * {BOOTLOADER_INPUTS_PER_PAGE} + {PAGE_INPUTS_OFFSET} + 1 + {WORDS_PER_PAGE} + 4 + {i} * 4 + 0);
 P5 <== load_bootloader_input(x2 * {BOOTLOADER_INPUTS_PER_PAGE} + {PAGE_INPUTS_OFFSET} + 1 + {WORDS_PER_PAGE} + 4 + {i} * 4 + 1);
 P6 <== load_bootloader_input(x2 * {BOOTLOADER_INPUTS_PER_PAGE} + {PAGE_INPUTS_OFFSET} + 1 + {WORDS_PER_PAGE} + 4 + {i} * 4 + 2);
 P7 <== load_bootloader_input(x2 * {BOOTLOADER_INPUTS_PER_PAGE} + {PAGE_INPUTS_OFFSET} + 1 + {WORDS_PER_PAGE} + 4 + {i} * 4 + 3);
-jump level_{i}_end;
-level_{i}_is_right:
+jump bootloader_level_{i}_end;
+bootloader_level_{i}_is_right:
 P4 <=X= P0;
 P5 <=X= P1;
 P6 <=X= P2;
@@ -257,7 +262,7 @@ P0 <== load_bootloader_input(x2 * {BOOTLOADER_INPUTS_PER_PAGE} + {PAGE_INPUTS_OF
 P1 <== load_bootloader_input(x2 * {BOOTLOADER_INPUTS_PER_PAGE} + {PAGE_INPUTS_OFFSET} + 1 + {WORDS_PER_PAGE} + 4 + {i} * 4 + 1);
 P2 <== load_bootloader_input(x2 * {BOOTLOADER_INPUTS_PER_PAGE} + {PAGE_INPUTS_OFFSET} + 1 + {WORDS_PER_PAGE} + 4 + {i} * 4 + 2);
 P3 <== load_bootloader_input(x2 * {BOOTLOADER_INPUTS_PER_PAGE} + {PAGE_INPUTS_OFFSET} + 1 + {WORDS_PER_PAGE} + 4 + {i} * 4 + 3);
-level_{i}_end:
+bootloader_level_{i}_end:
 P0, P1, P2, P3 <== poseidon_gl(P0, P1, P2, P3, P4, P5, P6, P7, P8, P9, P10, P11);
 "#
         ));
@@ -265,17 +270,17 @@ P0, P1, P2, P3 <== poseidon_gl(P0, P1, P2, P3, P4, P5, P6, P7, P8, P9, P10, P11)
 
     bootloader.push_str(&format!(
         r#"
-branch_if_nonzero x9, update_memory_hash;
+branch_if_nonzero x9, bootloader_update_memory_hash;
 
 // Assert Correct Merkle Root
-branch_if_nonzero P0 - x5, memory_hash_mismatch;
-branch_if_nonzero P1 - x6, memory_hash_mismatch;
-branch_if_nonzero P2 - x7, memory_hash_mismatch;
-branch_if_nonzero P3 - x8, memory_hash_mismatch;
-jump memory_hash_ok;
-memory_hash_mismatch:
+branch_if_nonzero P0 - x5, bootloader_memory_hash_mismatch;
+branch_if_nonzero P1 - x6, bootloader_memory_hash_mismatch;
+branch_if_nonzero P2 - x7, bootloader_memory_hash_mismatch;
+branch_if_nonzero P3 - x8, bootloader_memory_hash_mismatch;
+jump bootloader_memory_hash_ok;
+bootloader_memory_hash_mismatch:
 fail;
-memory_hash_ok:
+bootloader_memory_hash_ok:
 
 // Set phase to update
 x9 <=X= 1;
@@ -287,9 +292,9 @@ P2 <== load_bootloader_input(x2 * {BOOTLOADER_INPUTS_PER_PAGE} + {PAGE_INPUTS_OF
 P3 <== load_bootloader_input(x2 * {BOOTLOADER_INPUTS_PER_PAGE} + {PAGE_INPUTS_OFFSET} + 1 + {WORDS_PER_PAGE} + 3);
 
 // Repeat Merkle proof validation loop to compute updated Merkle root
-jump merkle_proof_validation_loop;
+jump bootloader_merkle_proof_validation_loop;
 
-update_memory_hash:
+bootloader_update_memory_hash:
 
 x5 <=X= P0;
 x6 <=X= P1;
@@ -299,25 +304,15 @@ x8 <=X= P3;
 // Increment page index
 x2 <=X= x2 + 1;
 
-branch_if_nonzero x2 - x1, start_page_loop;
+branch_if_nonzero x2 - x1, bootloader_start_page_loop;
 
-end_page_loop:
+bootloader_end_page_loop:
 
 // Assert final Merkle root is as claimed
-P0 <== load_bootloader_input({MEMORY_HASH_START_INDEX} + 4);
-P1 <== load_bootloader_input({MEMORY_HASH_START_INDEX} + 5);
-P2 <== load_bootloader_input({MEMORY_HASH_START_INDEX} + 6);
-P3 <== load_bootloader_input({MEMORY_HASH_START_INDEX} + 7);
-
-branch_if_nonzero P0 - x5, final_memory_hash_mismatch;
-branch_if_nonzero P1 - x6, final_memory_hash_mismatch;
-branch_if_nonzero P2 - x7, final_memory_hash_mismatch;
-branch_if_nonzero P3 - x8, final_memory_hash_mismatch;
-jump final_memory_hash_ok;
-final_memory_hash_mismatch:
-fail;
-final_memory_hash_ok:
-
+assert_bootloader_input {MEMORY_HASH_START_INDEX} + 4, x5;
+assert_bootloader_input {MEMORY_HASH_START_INDEX} + 5, x6;
+assert_bootloader_input {MEMORY_HASH_START_INDEX} + 6, x7;
+assert_bootloader_input {MEMORY_HASH_START_INDEX} + 7, x8;
 
 // Initialize registers, starting with index 0
 "#
@@ -337,11 +332,129 @@ final_memory_hash_ok:
 // Otherwise, we jump to the PC.
 jump_to_bootloader_input {PC_INDEX};
 
-end_of_bootloader:
+// END OF BOOTLOADER
+
 "#
     ));
 
-    bootloader.push_str("\n// END OF BOOTLOADER\n");
+    bootloader.push_str(
+        r#"
+// START OF SHUTDOWN ROUTINE
+//
+// This code is currently never executed in practice!
+//
+// The shutdown routine is responsible for:
+// - Validating that the final register values are equal to those in the bootloader inputs
+//   (which are exposed as public outputs)
+// - Validating that the final page hashes are equal to the claimed values provided in the
+//   bootloader inputs (which have previously been used to update the Merkle tree)
+//
+// During the execution of the shutdown routine, registers are used as follows:
+// - x1: Number of pages (constant throughout the execution)
+// - x2: Current page index
+// - x3: Current page number
+// - P0-P11: Hash registers, used to compute the page hash
+
+shutdown_start:
+
+// Assert final register values are as claimed
+// Note that we cannot assert that the final PC is correct, because it will already
+// have changed at this point. This will need to be done by whatever mechanism is used
+// to jump to the shutdown routine.
+"#,
+    );
+
+    // Go over all registers except the PC
+    let register_iter = REGISTER_NAMES.iter().take(REGISTER_NAMES.len() - 1);
+
+    for (i, reg) in register_iter.enumerate() {
+        let reg = reg.strip_prefix("main.").unwrap();
+        bootloader.push_str(&format!(
+            "assert_bootloader_input {}, {reg};\n",
+            i + REGISTER_NAMES.len()
+        ));
+    }
+
+    bootloader.push_str(&format!(
+        r#"
+// Number of pages
+x1 <== load_bootloader_input({NUM_PAGES_INDEX});
+x1 <== wrap(x1);
+
+// Current page index
+x2 <=X= 0;
+
+branch_if_zero x1, shutdown_end_page_loop;
+
+shutdown_start_page_loop:
+
+// Page number
+x3 <== load_bootloader_input(x2 * {BOOTLOADER_INPUTS_PER_PAGE} + {PAGE_INPUTS_OFFSET});
+x3 <== and(x3, {PAGE_NUMBER_MASK});
+
+// Store & hash {WORDS_PER_PAGE} page words. This is an unrolled loop that for each each word:
+// - Loads the word at the address x3 * {PAGE_SIZE_BYTES} + i * {BYTES_PER_WORD}
+//   into the P{{(i % 4) + 4}} register
+// - If i % 4 == 3: Hashes registers P0-P11, storing the result in P0-P3
+//
+// At the end of the loop, we'll have a linear hash of the page in P0-P3, using a Merkle-Damgård
+// construction. The initial P0-P3 values are 0, and the capacity (P8-P11) is 0 throughout the
+// execution of the shutdown routine.
+
+P0 <=X= 0;
+P1 <=X= 0;
+P2 <=X= 0;
+P3 <=X= 0;
+P4 <=X= 0;
+P5 <=X= 0;
+P6 <=X= 0;
+P7 <=X= 0;
+P8 <=X= 0;
+P9 <=X= 0;
+P10 <=X= 0;
+P11 <=X= 0;
+"#,
+    ));
+
+    for i in 0..WORDS_PER_PAGE {
+        let reg_index = (i % 4) + 4;
+        bootloader.push_str(&format!(
+            "P{reg_index}, x0 <== mload(x3 * {PAGE_SIZE_BYTES} + {i} * {BYTES_PER_WORD});\n"
+        ));
+
+        // Hash if buffer is full
+        if i % 4 == 3 {
+            bootloader.push_str(
+                "P0, P1, P2, P3 <== poseidon_gl(P0, P1, P2, P3, P4, P5, P6, P7, P8, P9, P10, P11);\n",
+            );
+        }
+    }
+
+    bootloader.push_str(&format!(
+        r#"
+
+// Assert page hash is as claimed
+// At this point, P0-P3 contain the actual page hash at the end of the execution.
+assert_bootloader_input x2 * {BOOTLOADER_INPUTS_PER_PAGE} + {PAGE_INPUTS_OFFSET} + {WORDS_PER_PAGE} + 1 + 0, P0;
+assert_bootloader_input x2 * {BOOTLOADER_INPUTS_PER_PAGE} + {PAGE_INPUTS_OFFSET} + {WORDS_PER_PAGE} + 1 + 1, P1;
+assert_bootloader_input x2 * {BOOTLOADER_INPUTS_PER_PAGE} + {PAGE_INPUTS_OFFSET} + {WORDS_PER_PAGE} + 1 + 2, P2;
+assert_bootloader_input x2 * {BOOTLOADER_INPUTS_PER_PAGE} + {PAGE_INPUTS_OFFSET} + {WORDS_PER_PAGE} + 1 + 3, P3;
+
+// Increment page index
+x2 <=X= x2 + 1;
+
+branch_if_nonzero x2 - x1, shutdown_start_page_loop;
+
+shutdown_end_page_loop:
+
+
+return;
+
+// END OF SHUTDOWN ROUTINE
+
+computation_start:
+"#,
+    ));
 
     bootloader
 }
@@ -408,8 +521,11 @@ pub const PC_INDEX: usize = REGISTER_NAMES.len() - 1;
 /// 0: reset
 /// 1: jump_to_operation
 /// 2: jump submachine_init
-/// 3: jump end_of_bootloader
+/// 3: jump computation_start
 pub const DEFAULT_PC: u64 = 3;
+
+/// Analogous to the `DEFAULT_PC`, this well-known PC jumps to the shutdown routine.
+pub const SHUTDOWN_START: u64 = 4;
 
 pub fn default_register_values<T: FieldElement>() -> Vec<T> {
     let mut register_values = vec![T::zero(); REGISTER_NAMES.len()];

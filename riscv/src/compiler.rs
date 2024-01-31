@@ -16,7 +16,7 @@ use powdr_asm_utils::{
     Architecture,
 };
 
-use crate::continuations::bootloader::{bootloader, bootloader_preamble};
+use crate::continuations::bootloader::{bootloader_and_shutdown_routine, bootloader_preamble};
 use crate::coprocessors::*;
 use crate::disambiguator;
 use crate::parser::RiscParser;
@@ -172,10 +172,10 @@ pub fn compile(
         });
 
     let submachine_init = call_every_submachine(coprocessors);
-    let bootloader_lines = if with_bootloader {
-        let bootloader = bootloader(&submachine_init);
-        log::debug!("Adding Bootloader:\n{}", bootloader);
-        bootloader
+    let bootloader_and_shutdown_routine_lines = if with_bootloader {
+        let bootloader_and_shutdown_routine = bootloader_and_shutdown_routine(&submachine_init);
+        log::debug!("Adding Bootloader:\n{}", bootloader_and_shutdown_routine);
+        bootloader_and_shutdown_routine
             .split('\n')
             .map(|l| l.to_string())
             .collect::<Vec<_>>()
@@ -186,7 +186,7 @@ pub fn compile(
     let program: Vec<String> = file_ids
         .into_iter()
         .map(|(id, dir, file)| format!(".debug file {id} {} {};", quote(&dir), quote(&file)))
-        .chain(bootloader_lines)
+        .chain(bootloader_and_shutdown_routine_lines)
         .chain(["call __data_init;".to_string()])
         .chain([
             format!("// Set stack pointer\nx2 <=X= {stack_start};"),
