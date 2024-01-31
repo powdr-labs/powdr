@@ -19,8 +19,8 @@ Also, `lla` and `jal` (pseudo-)instructions are not yet implemented.
 
 - fence_i
 
-Our zkVM "text" is a static feature of the prover. We don't support dynamic
-binary code, so it makes no sense to implement `fence_i` instruction.
+Our zkVM "text" is static. We don't support dynamic binary code, so it makes no
+sense to implement `fence_i` instruction.
 
 - jal
 
@@ -41,6 +41,13 @@ We don't yet support misaligned data access.
 - sra
 
 Not yet implemented.
+
+## From the "M" (multiplication) extension (rv32um):
+
+- div
+- rem
+
+These instructions are not yet implemented.
 
 ## From the "A" (atomic) extension (rv32ua):
 
