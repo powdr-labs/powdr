@@ -187,10 +187,10 @@ pub fn compile(
         .into_iter()
         .map(|(id, dir, file)| format!(".debug file {id} {} {};", quote(&dir), quote(&file)))
         .chain(bootloader_and_shutdown_routine_lines)
-        .chain(["call __data_init;".to_string()])
+        .chain(["x1 <== jump(__data_init);".to_string()])
         .chain([
             format!("// Set stack pointer\nx2 <=X= {stack_start};"),
-            "call __runtime_start;".to_string(),
+            "x1 <== jump(__runtime_start);".to_string(),
             "return;".to_string(), // This is not "riscv ret", but "return from powdr asm function".
         ])
         .chain(
@@ -200,7 +200,10 @@ pub fn compile(
         )
         .chain(["// This is the data initialization routine.\n__data_init:".to_string()])
         .chain(data_code)
-        .chain(["// This is the end of the data initialization routine.\nret;".to_string()])
+        .chain([
+            "// This is the end of the data initialization routine.\ntmp1 <== jump_dyn(x1);"
+                .to_string(),
+        ])
         .collect();
 
     // The program ROM needs to fit the degree, so we use the next power of 2.
@@ -475,12 +478,10 @@ fn preamble(degree: u64, coprocessors: &CoProcessors, with_bootloader: bool) -> 
 
     // ============== control-flow instructions ==============
 
-    instr jump l: label { pc' = l }
     instr load_label l: label -> X { X = l }
-    instr jump_dyn X { pc' = X }
-    instr jump_and_link_dyn X { pc' = X, x1' = pc + 1 }
-    instr call l: label { pc' = l, x1' = pc + 1 }
-    instr ret { pc' = x1 }
+
+    instr jump l: label -> Y { pc' = l, Y = pc + 1}
+    instr jump_dyn X -> Y { pc' = X, Y = pc + 1}
 
     instr branch_if_nonzero X, l: label { pc' = (1 - XIsZero) * l + XIsZero * (pc + 1) }
     instr branch_if_zero X, l: label { pc' = XIsZero * l + (1 - XIsZero) * (pc + 1) }
@@ -933,7 +934,11 @@ fn try_coprocessor_substitution(label: &str, coprocessors: &CoProcessors) -> Opt
 fn process_instruction(instr: &str, args: &[Argument], coprocessors: &CoProcessors) -> Vec<String> {
     match instr {
         // load/store registers
-        "li" => {
+        "li" | "la" => {
+            // The difference between "li" and "la" in RISC-V is that the former
+            // is for loading values as is, and the later is for loading PC
+            // relative values. But since we work on a higher abstraction level,
+            // for us they are the same thing.
             let (rd, imm) = ri(args);
             only_if_no_write_to_zero(format!("{rd} <=X= {imm};"), rd)
         }
@@ -941,10 +946,6 @@ fn process_instruction(instr: &str, args: &[Argument], coprocessors: &CoProcesso
         "lui" => {
             let (rd, imm) = ri(args);
             only_if_no_write_to_zero(format!("{rd} <=X= {};", imm << 12), rd)
-        }
-        "la" => {
-            let (rd, addr) = ri(args);
-            only_if_no_write_to_zero(format!("{rd} <=X= {};", addr), rd)
         }
         "mv" => {
             let (rd, rs) = rr(args);
@@ -1250,14 +1251,17 @@ fn process_instruction(instr: &str, args: &[Argument], coprocessors: &CoProcesso
         // jump and call
         "j" => {
             if let [label] = args {
-                vec![format!("jump {};", argument_to_escaped_symbol(label))]
+                vec![format!(
+                    "tmp1 <== jump({});",
+                    argument_to_escaped_symbol(label)
+                )]
             } else {
                 panic!()
             }
         }
         "jr" => {
             let rs = r(args);
-            vec![format!("jump_dyn {rs};")]
+            vec![format!("tmp1 <== jump_dyn({rs});")]
         }
         "jal" => {
             let (_rd, _label) = rl(args);
@@ -1266,7 +1270,7 @@ fn process_instruction(instr: &str, args: &[Argument], coprocessors: &CoProcesso
         "jalr" => {
             // TODO there is also a form that takes more arguments
             let rs = r(args);
-            vec![format!("jump_and_link_dyn {rs};")]
+            vec![format!("x1 <== jump_dyn({rs});")]
         }
         "call" | "tail" => {
             // Depending on what symbol is called, the call is replaced by a
@@ -1282,9 +1286,9 @@ fn process_instruction(instr: &str, args: &[Argument], coprocessors: &CoProcesso
             };
             match (replacement, instr) {
                 (None, instr) => {
-                    let instr = if instr == "tail" { "jump" } else { instr };
                     let arg = argument_to_escaped_symbol(label);
-                    vec![format!("{instr} {arg};")]
+                    let dest = if instr == "tail" { "tmp1" } else { "x1" };
+                    vec![format!("{dest} <== jump({arg});")]
                 }
                 // Both "call" and "tail" are pseudoinstructions that are
                 // supposed to use x6 to calculate the high bits of the
@@ -1292,7 +1296,9 @@ fn process_instruction(instr: &str, args: &[Argument], coprocessors: &CoProcesso
                 // but no sane program would rely on this behavior, so we are
                 // probably fine.
                 (Some(replacement), "call") => vec![replacement],
-                (Some(replacement), "tail") => vec![replacement, "ret;".to_string()],
+                (Some(replacement), "tail") => {
+                    vec![replacement, "tmp1 <== jump_dyn(x1);".to_string()]
+                }
                 (Some(_), _) => unreachable!(),
             }
         }
@@ -1308,7 +1314,7 @@ fn process_instruction(instr: &str, args: &[Argument], coprocessors: &CoProcesso
         }
         "ret" => {
             assert!(args.is_empty());
-            vec!["ret;".to_string()]
+            vec!["tmp1 <== jump_dyn(x1);".to_string()]
         }
 
         // memory access
@@ -1402,7 +1408,7 @@ fn process_instruction(instr: &str, args: &[Argument], coprocessors: &CoProcesso
                 format!("mstore {rd} + {off} - tmp2, tmp1;"),
             ]
         }
-        "nop" => vec![],
+        "fence" | "fence.i" | "nop" => vec![],
         "unimp" => vec!["fail;".to_string()],
 
         // Special instruction that is inserted to allow dynamic label references
@@ -1411,9 +1417,7 @@ fn process_instruction(instr: &str, args: &[Argument], coprocessors: &CoProcesso
             only_if_no_write_to_zero(format!("{rd} <== load_label({label});"), rd)
         }
 
-        // atomic and synchronization
-        "fence" | "fence.i" => vec![],
-
+        // atomic instructions
         insn if insn.starts_with("amoadd.w") => {
             let (rd, rs2, rs1, off) = rrro(args);
             assert_eq!(off, 0);
