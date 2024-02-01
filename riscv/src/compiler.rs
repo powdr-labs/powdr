@@ -1150,11 +1150,14 @@ fn process_instruction(instr: &str, args: &[Argument], coprocessors: &CoProcesso
         }
         "slt" => {
             let (rd, r1, r2) = rrr(args);
-            vec![
-                format!("tmp1 <== to_signed({r1});"),
-                format!("tmp2 <== to_signed({r2});"),
-                format!("{rd} <=Y= is_positive(tmp2 - tmp1);"),
-            ]
+            only_if_no_write_to_zero_vec(
+                vec![
+                    format!("tmp1 <== to_signed({r1});"),
+                    format!("tmp2 <== to_signed({r2});"),
+                    format!("{rd} <=Y= is_positive(tmp2 - tmp1);"),
+                ],
+                rd,
+            )
         }
         "sltiu" => {
             let (rd, rs, imm) = rri(args);
@@ -1166,10 +1169,13 @@ fn process_instruction(instr: &str, args: &[Argument], coprocessors: &CoProcesso
         }
         "sgtz" => {
             let (rd, rs) = rr(args);
-            vec![
-                format!("tmp1 <== to_signed({rs});"),
-                format!("{rd} <=Y= is_positive(tmp1);"),
-            ]
+            only_if_no_write_to_zero_vec(
+                vec![
+                    format!("tmp1 <== to_signed({rs});"),
+                    format!("{rd} <=Y= is_positive(tmp1);"),
+                ],
+                rd,
+            )
         }
 
         // branching
