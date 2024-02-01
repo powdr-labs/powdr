@@ -1270,8 +1270,20 @@ fn process_instruction(instr: &str, args: &[Argument], coprocessors: &CoProcesso
             vec![format!("tmp1 <== jump_dyn({rs});")]
         }
         "jal" => {
-            let (_rd, _label) = rl(args);
-            todo!();
+            if let [label] = args {
+                vec![format!(
+                    "x1 <== jump({});",
+                    argument_to_escaped_symbol(label)
+                )]
+            } else {
+                let (rd, label) = rl(args);
+                let statement = if rd.is_zero() {
+                    format!("tmp1 <== jump({label})")
+                } else {
+                    format!("{rd} <== jump({label})")
+                };
+                vec![statement]
+            }
         }
         "jalr" => {
             // TODO there is also a form that takes more arguments
