@@ -99,7 +99,7 @@ ConstantDefinition: PilStatement<T> = {
 }
 
 PolynomialDefinition: PilStatement<T> = {
-    <start:@L> PolCol <id:Identifier> "=" <expr:Expression> => PilStatement::PolynomialDefinition(ctx.source_ref(start), id, expr)
+    <start:@L> PolCol <id:Identifier> <type_name:(":" <TypeName>)?> "=" <expr:Expression> => PilStatement::PolynomialDefinition(ctx.source_ref(start), id, type_name, expr)
 }
 
 PublicDeclaration: PilStatement<T> = {

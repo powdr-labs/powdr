@@ -353,8 +353,15 @@ impl<T: Display> Display for PilStatement<T> {
                 }
                 write!(f, ";")
             }
-            PilStatement::PolynomialDefinition(_, name, value) => {
-                write!(f, "    pol {name} = {value};")
+            PilStatement::PolynomialDefinition(_, name, type_name, value) => {
+                write!(
+                    f,
+                    "    pol {name}{} = {value};",
+                    type_name
+                        .as_ref()
+                        .map(|t| format!(": {t}"))
+                        .unwrap_or_default()
+                )
             }
             PilStatement::PublicDeclaration(_, name, poly, array_index, index) => {
                 write!(

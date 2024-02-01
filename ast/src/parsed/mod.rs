@@ -30,7 +30,12 @@ pub enum PilStatement<T> {
         Option<TypeName<Expression<T>>>,
         Option<Expression<T>>,
     ),
-    PolynomialDefinition(SourceRef, String, Expression<T>),
+    PolynomialDefinition(
+        SourceRef,
+        String,
+        Option<TypeName<Expression<T>>>,
+        Expression<T>,
+    ),
     PublicDeclaration(
         SourceRef,
         /// The name of the public value.
@@ -68,7 +73,7 @@ impl<T> PilStatement<T> {
     /// If the statement is a symbol definition, returns all (local) names of defined symbols.
     pub fn symbol_definition_names(&self) -> Box<dyn Iterator<Item = &String> + '_> {
         match self {
-            PilStatement::PolynomialDefinition(_, name, _)
+            PilStatement::PolynomialDefinition(_, name, _, _)
             | PilStatement::PolynomialConstantDefinition(_, name, _)
             | PilStatement::ConstantDefinition(_, name, _)
             | PilStatement::PublicDeclaration(_, name, _, _, _)
@@ -99,9 +104,14 @@ impl<T> PilStatement<T> {
             }
             PilStatement::Expression(_, e)
             | PilStatement::Namespace(_, _, e)
-            | PilStatement::PolynomialDefinition(_, _, e)
             | PilStatement::ConstantDefinition(_, _, e) => Box::new(once(e)),
 
+            PilStatement::PolynomialDefinition(_, _, type_name, value) => Box::new(
+                type_name
+                    .iter()
+                    .flat_map(|t| t.expressions())
+                    .chain(once(value)),
+            ),
             PilStatement::LetStatement(_, _, type_name, value) => {
                 Box::new(type_name.iter().flat_map(|t| t.expressions()).chain(value))
             }
@@ -128,8 +138,14 @@ impl<T> PilStatement<T> {
             }
             PilStatement::Expression(_, e)
             | PilStatement::Namespace(_, _, e)
-            | PilStatement::PolynomialDefinition(_, _, e)
             | PilStatement::ConstantDefinition(_, _, e) => Box::new(once(e)),
+
+            PilStatement::PolynomialDefinition(_, _, type_name, value) => Box::new(
+                type_name
+                    .iter_mut()
+                    .flat_map(|t| t.expressions_mut())
+                    .chain(once(value)),
+            ),
 
             PilStatement::LetStatement(_, _, type_name, value) => Box::new(
                 type_name

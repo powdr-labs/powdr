@@ -95,7 +95,7 @@ where
     /// Returns all names of the symbols defined inside the given statement.
     pub fn symbol_definition_names(&self, statement: &PilStatement<T>) -> Vec<String> {
         match statement {
-            PilStatement::PolynomialDefinition(_, name, _)
+            PilStatement::PolynomialDefinition(_, name, _, _)
             | PilStatement::PolynomialConstantDefinition(_, name, _)
             | PilStatement::ConstantDefinition(_, name, _)
             | PilStatement::PublicDeclaration(_, name, _, _, _)

@@ -202,9 +202,15 @@ impl<T> ExpressionVisitable<Expression<T, NamespacedPolynomialReference>> for Pi
                 .try_for_each(|e| e.visit_expressions_mut(f, o)),
 
             PilStatement::Namespace(_, _, e)
-            | PilStatement::PolynomialDefinition(_, _, e)
             | PilStatement::PublicDeclaration(_, _, _, None, e)
             | PilStatement::ConstantDefinition(_, _, e) => e.visit_expressions_mut(f, o),
+
+            PilStatement::PolynomialDefinition(_, _, type_name, value) => {
+                if let Some(t) = type_name {
+                    t.visit_expressions_mut(f, o)?;
+                };
+                value.visit_expressions_mut(f, o)
+            }
 
             PilStatement::LetStatement(_, _, type_name, value) => {
                 if let Some(t) = type_name {
@@ -246,9 +252,15 @@ impl<T> ExpressionVisitable<Expression<T, NamespacedPolynomialReference>> for Pi
                 .try_for_each(|e| e.visit_expressions(f, o)),
 
             PilStatement::Namespace(_, _, e)
-            | PilStatement::PolynomialDefinition(_, _, e)
             | PilStatement::PublicDeclaration(_, _, _, None, e)
             | PilStatement::ConstantDefinition(_, _, e) => e.visit_expressions(f, o),
+
+            PilStatement::PolynomialDefinition(_, _, type_name, value) => {
+                if let Some(t) = type_name {
+                    t.visit_expressions(f, o)?;
+                };
+                value.visit_expressions(f, o)
+            }
 
             PilStatement::LetStatement(_, _, type_name, value) => {
                 if let Some(t) = type_name {
