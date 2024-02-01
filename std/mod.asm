@@ -8,3 +8,4 @@ mod hash;
 mod shift;
 mod split;
 mod utils;
+mod arith;
