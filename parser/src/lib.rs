@@ -72,6 +72,15 @@ pub fn parse_module<'a, T: FieldElement>(
         .map_err(|err| handle_parse_error(err, file_name, input))
 }
 
+pub fn parse_type_name<T: FieldElement>(
+    input: &str,
+) -> Result<powdr_ast::parsed::TypeName<powdr_ast::parsed::Expression<T>>, ParseError<'_>> {
+    let ctx = ParserContext::new(None, input);
+    powdr::TypeNameParser::new()
+        .parse(&ctx, input)
+        .map_err(|err| handle_parse_error(err, None, input))
+}
+
 /// Parse an escaped string - used in the grammar.
 pub fn unescape_string(s: &str) -> String {
     assert!(s.len() >= 2);

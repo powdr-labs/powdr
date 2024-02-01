@@ -525,6 +525,7 @@ pub enum TypeName<E> {
     Array(ArrayTypeName<E>),
     Tuple(TupleTypeName<E>),
     Function(FunctionTypeName<E>),
+    TypeVar(String),
 }
 
 impl<E> TypeName<E> {
@@ -540,7 +541,8 @@ impl<E> TypeName<E> {
             | TypeName::Expr
             | TypeName::Constr
             | TypeName::Array(_)
-            | TypeName::Tuple(_) => false,
+            | TypeName::Tuple(_)
+            | TypeName::TypeVar(_) => false,
             TypeName::Function(_) => true,
         }
     }
@@ -554,7 +556,8 @@ impl<E> TypeName<E> {
             | TypeName::String
             | TypeName::Col
             | TypeName::Expr
-            | TypeName::Constr => Box::new(empty()),
+            | TypeName::Constr
+            | TypeName::TypeVar(_) => Box::new(empty()),
             TypeName::Array(a) => a.expressions(),
             TypeName::Tuple(t) => t.expressions(),
             TypeName::Function(f) => f.expressions(),
@@ -570,7 +573,8 @@ impl<E> TypeName<E> {
             | TypeName::String
             | TypeName::Col
             | TypeName::Expr
-            | TypeName::Constr => Box::new(empty()),
+            | TypeName::Constr
+            | TypeName::TypeVar(_) => Box::new(empty()),
             TypeName::Array(a) => a.expressions_mut(),
             TypeName::Tuple(t) => t.expressions_mut(),
             TypeName::Function(f) => f.expressions_mut(),

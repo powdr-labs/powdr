@@ -505,7 +505,8 @@ impl<E: ExpressionVisitable<E>> ExpressionVisitable<E> for TypeName<E> {
             | TypeName::String
             | TypeName::Col
             | TypeName::Expr
-            | TypeName::Constr => ControlFlow::Continue(()),
+            | TypeName::Constr
+            | TypeName::TypeVar(_) => ControlFlow::Continue(()),
             TypeName::Array(a) => a.visit_expressions_mut(f, o),
             TypeName::Tuple(t) => t.visit_expressions_mut(f, o),
             TypeName::Function(fun) => fun.visit_expressions_mut(f, o),
@@ -523,7 +524,8 @@ impl<E: ExpressionVisitable<E>> ExpressionVisitable<E> for TypeName<E> {
             | TypeName::String
             | TypeName::Col
             | TypeName::Expr
-            | TypeName::Constr => ControlFlow::Continue(()),
+            | TypeName::Constr
+            | TypeName::TypeVar(_) => ControlFlow::Continue(()),
             TypeName::Array(a) => a.visit_expressions(f, o),
             TypeName::Tuple(t) => t.visit_expressions(f, o),
             TypeName::Function(fun) => fun.visit_expressions(f, o),

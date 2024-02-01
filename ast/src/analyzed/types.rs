@@ -29,6 +29,7 @@ pub enum Type {
     Array(ArrayType),
     Tuple(TupleType),
     Function(FunctionType),
+    TypeVar(String),
 }
 
 impl Type {
@@ -37,19 +38,38 @@ impl Type {
         Type::Function(FunctionType::col())
     }
 
+    pub fn is_elementary(&self) -> bool {
+        match self {
+            Type::Bool | Type::Int | Type::Fe | Type::String | Type::Expr | Type::Constr => true,
+            Type::Array(_) | Type::Tuple(_) | Type::Function(_) | Type::TypeVar(_) => false,
+        }
+    }
+
     /// Returns true if the type name needs parentheses around it during formatting
     /// when used inside a complex expression.
     pub fn needs_parentheses(&self) -> bool {
         match self {
-            Type::Bool
-            | Type::Int
-            | Type::Fe
-            | Type::String
-            | Type::Expr
-            | Type::Constr
-            | Type::Array(_)
-            | Type::Tuple(_) => false,
+            _ if self.is_elementary() => false,
+            Type::Array(_) | Type::Tuple(_) => false,
             Type::Function(fun) => fun.needs_parentheses(),
+            Type::TypeVar(_) => false,
+            _ => unreachable!(),
+        }
+    }
+
+    pub fn contains_type_var(&self, name: &str) -> bool {
+        match self {
+            Type::TypeVar(n) => n == name,
+            Type::Array(ar) => ar.base.contains_type_var(name),
+            Type::Tuple(tu) => tu.items.iter().any(|t| t.contains_type_var(name)),
+            Type::Function(fun) => {
+                fun.params.iter().any(|t| t.contains_type_var(name))
+                    || fun.value.contains_type_var(name)
+            }
+            _ => {
+                assert!(self.is_elementary());
+                false
+            }
         }
     }
 }
@@ -67,6 +87,7 @@ impl<T: FieldElement, Ref: Display> From<TypeName<Expression<T, Ref>>> for Type 
             TypeName::Array(ar) => Type::Array(ar.into()),
             TypeName::Tuple(tu) => Type::Tuple(tu.into()),
             TypeName::Function(fun) => Type::Function(fun.into()),
+            TypeName::TypeVar(v) => Type::TypeVar(v),
         }
     }
 }
@@ -135,4 +156,10 @@ impl<T: FieldElement, Ref: Display> From<FunctionTypeName<Expression<T, Ref>>> f
             value: Box::new(Type::from(*name.value)),
         }
     }
+}
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
+pub struct TypeScheme {
+    pub vars: Vec<String>,
+    pub ty: Type,
 }

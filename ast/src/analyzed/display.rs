@@ -292,6 +292,7 @@ impl Display for Type {
             Type::Array(ar) => write!(f, "{ar}"),
             Type::Tuple(tu) => write!(f, "{tu}"),
             Type::Function(fun) => write!(f, "{fun}"),
+            Type::TypeVar(v) => write!(f, "{v}"),
         }
     }
 }

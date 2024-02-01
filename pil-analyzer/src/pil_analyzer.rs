@@ -13,6 +13,7 @@ use powdr_ast::analyzed::{
     StatementIdentifier, Symbol,
 };
 
+use crate::type_inference::infer_types;
 use crate::AnalysisDriver;
 
 use crate::statement_processor::{Counters, PILItem, StatementProcessor};
@@ -23,12 +24,16 @@ pub fn analyze_file<T: FieldElement>(path: &Path) -> Analyzed<T> {
 
     let mut analyzer = PILAnalyzer::new();
     analyzer.process(files);
+    // TODO error reporting
+    infer_types(&analyzer.definitions).unwrap();
     analyzer.condense()
 }
 
 pub fn analyze_ast<T: FieldElement>(pil_file: PILFile<T>) -> Analyzed<T> {
     let mut analyzer = PILAnalyzer::new();
     analyzer.process(vec![pil_file]);
+    // TODO error reporting
+    infer_types(&analyzer.definitions).unwrap();
     analyzer.condense()
 }
 

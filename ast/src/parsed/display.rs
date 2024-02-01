@@ -604,6 +604,7 @@ impl<E: Display> Display for TypeName<E> {
             TypeName::Array(array) => write!(f, "{array}"),
             TypeName::Tuple(tuple) => write!(f, "{tuple}"),
             TypeName::Function(fun) => write!(f, "{fun}"),
+            TypeName::TypeVar(name) => write!(f, "{name}"),
         }
     }
 }
