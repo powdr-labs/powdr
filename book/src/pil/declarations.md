@@ -12,10 +12,11 @@ This syntax can be used for constants, fixed columns, witness columns and even (
 functions that can transform expressions. The kind of symbol is deduced by its type and the
 way the symbol is used:
 
-- symbols without a value are witness columns, if their type is not given or given as ``col`` or ``int -> fe``,
-- symbols evaluating to a number or with type ``fe`` are constants,
-- symbols defined (with a value) as a function with a single parameter or with a type given as ``col`` or ``int -> fe`` are fixed columns and
-- everything else is a "generic symbol" that is not a column.
+- Symbols without a value are witness columns. Their type can be omitted. If it is given, it must be ``int -> fe`` or its shorthand ``col``.
+- Symbols evaluating to a number or with type ``fe`` are constants.
+- Symbols without type but with a value that is a function with a single parameter are fixed columns.
+- Symbols defined with a value and type ``int -> fe`` or its shorthand ``col`` are also fixed columns.
+- Everything else is a "generic symbol" that is not a column or constant.
 
 Examples:
 
