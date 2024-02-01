@@ -521,7 +521,7 @@ pub enum TypeName<E> {
     String,
     /// Column, shorthand for "int -> fe"
     Col,
-    /// (Algebraic) expression
+    /// Algebraic expression
     Expr,
     /// Polynomial identity
     Constr,

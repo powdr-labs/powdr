@@ -22,7 +22,7 @@ pub enum Type {
     Fe,
     /// String
     String,
-    /// (Algebraic) expression
+    /// Algebraic expression
     Expr,
     /// Polynomial identity or lookup (not yet supported)
     Constr,
