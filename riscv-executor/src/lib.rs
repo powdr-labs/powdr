@@ -558,47 +558,17 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
                 vec![]
             }
-            "jump" => {
-                self.proc.set_pc(args[0]);
-
-                Vec::new()
-            }
             "load_label" => args,
-            "jump_dyn" => {
+            "jump" | "jump_dyn" => {
+                let next_pc = self.proc.get_pc().u() + 1;
                 self.proc.set_pc(args[0]);
 
-                Vec::new()
+                vec![next_pc.into()]
             }
             "jump_to_bootloader_input" => {
                 let bootloader_input_idx = args[0].0 as usize;
                 let addr = self.bootloader_inputs[bootloader_input_idx].to_degree();
                 self.proc.set_pc(addr.into());
-
-                Vec::new()
-            }
-            "jump_and_link_dyn" => {
-                let pc = self.proc.get_pc();
-                self.proc.set_reg("x1", pc.u() + 1);
-                self.proc.set_pc(args[0]);
-
-                Vec::new()
-            }
-            "call" => {
-                let pc = self.proc.get_pc();
-                self.proc.set_reg("x1", pc.u() + 1);
-                self.proc.set_pc(args[0]);
-
-                Vec::new()
-            }
-            "tail" => {
-                self.proc.set_pc(args[0]);
-                self.proc.set_reg("x6", args[0]);
-
-                Vec::new()
-            }
-            "ret" => {
-                let target = self.proc.get_reg("x1");
-                self.proc.set_pc(target);
 
                 Vec::new()
             }
