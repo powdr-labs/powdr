@@ -138,19 +138,19 @@ pub fn bootloader_and_shutdown_routine(submachine_initialization: &[String]) -> 
     bootloader.push_str(&format!(
         r#"
 // Skip the next instruction
-jump submachine_init;
+tmp1 <== jump(submachine_init);
 
 // For convenience, this instruction has a known fixed PC ({DEFAULT_PC}) and just jumps
 // to whatever comes after the bootloader + shutdown routine. This avoids having to count
 // the instructions of the bootloader and the submachine initialization.
-jump computation_start;
+tmp1 <== jump(computation_start);
 
 // Similarly, this instruction has a known fixed PC ({SHUTDOWN_START}) and just jumps
 // to the shutdown routine.
-jump shutdown_start;
+tmp1 <== jump(shutdown_start);
 
 shutdown_sink:
-jump shutdown_sink;
+tmp1 <== jump(shutdown_sink);
 
 // Submachine initialization: Calls each submachine once, because that helps witness
 // generation figure out default values that can be used if the machine is never used.
@@ -282,7 +282,7 @@ P4 <== load_bootloader_input(x2 * {BOOTLOADER_INPUTS_PER_PAGE} + {PAGE_INPUTS_OF
 P5 <== load_bootloader_input(x2 * {BOOTLOADER_INPUTS_PER_PAGE} + {PAGE_INPUTS_OFFSET} + 1 + {WORDS_PER_PAGE} + 4 + {i} * 4 + 1);
 P6 <== load_bootloader_input(x2 * {BOOTLOADER_INPUTS_PER_PAGE} + {PAGE_INPUTS_OFFSET} + 1 + {WORDS_PER_PAGE} + 4 + {i} * 4 + 2);
 P7 <== load_bootloader_input(x2 * {BOOTLOADER_INPUTS_PER_PAGE} + {PAGE_INPUTS_OFFSET} + 1 + {WORDS_PER_PAGE} + 4 + {i} * 4 + 3);
-jump bootloader_level_{i}_end;
+tmp1 <== jump(bootloader_level_{i}_end);
 bootloader_level_{i}_is_right:
 P4 <=X= P0;
 P5 <=X= P1;
@@ -307,7 +307,7 @@ branch_if_nonzero P0 - x5, bootloader_memory_hash_mismatch;
 branch_if_nonzero P1 - x6, bootloader_memory_hash_mismatch;
 branch_if_nonzero P2 - x7, bootloader_memory_hash_mismatch;
 branch_if_nonzero P3 - x8, bootloader_memory_hash_mismatch;
-jump bootloader_memory_hash_ok;
+tmp1 <== jump(bootloader_memory_hash_ok);
 bootloader_memory_hash_mismatch:
 fail;
 bootloader_memory_hash_ok:
@@ -322,7 +322,7 @@ P2 <== load_bootloader_input(x2 * {BOOTLOADER_INPUTS_PER_PAGE} + {PAGE_INPUTS_OF
 P3 <== load_bootloader_input(x2 * {BOOTLOADER_INPUTS_PER_PAGE} + {PAGE_INPUTS_OFFSET} + 1 + {WORDS_PER_PAGE} + 3);
 
 // Repeat Merkle proof validation loop to compute updated Merkle root
-jump bootloader_merkle_proof_validation_loop;
+tmp1 <== jump(bootloader_merkle_proof_validation_loop);
 
 bootloader_update_memory_hash:
 
@@ -478,7 +478,7 @@ branch_if_nonzero x2 - x1, shutdown_start_page_loop;
 shutdown_end_page_loop:
 
 
-jump shutdown_sink;
+tmp1 <== jump(shutdown_sink);
 
 // END OF SHUTDOWN ROUTINE
 
