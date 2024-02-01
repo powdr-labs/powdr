@@ -233,7 +233,7 @@ where
                     .map(|t| {
                         if let Type::Array(ArrayType { base, length }) = &t {
                             if base.as_ref() != &Type::col() {
-                                panic!("This declaration has no value and thus must be a witness column array, but its type is {t} instead of col[]");
+                                panic!("Symbol {name} is declared without value and thus must be a witness column array, but its type is {t} instead of col[].");
                             }
                             if length.is_none() {
                                 panic!("Explicit array length required for column {name}: {t}");
@@ -241,7 +241,7 @@ where
                             t
                         } else {
                             if t != Type::col() {
-                                panic!("This declaration has no value and thus must be a witness column, but its type is {t} instead of col");
+                                panic!("Symbol {name} is declared without value and thus must be a witness column, but its type is {t} instead of col.");
                             }
                             t
                         }
