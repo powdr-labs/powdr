@@ -197,7 +197,7 @@ where
                 let length = self
                     .evaluate_expression(len)
                     .map_err(|e| {
-                        panic!("Error evaluating array length of witness column {name}:\n{e}")
+                        panic!("Error evaluating length of array of witness columns {name}:\n{e}")
                     })
                     .map(|length| length.to_degree())
                     .ok();
@@ -232,11 +232,17 @@ where
                 let ty = ty
                     .map(|t| {
                         if let Type::Array(ArrayType { base, length }) = &t {
-                            assert!(length.is_some());
-                            assert_eq!(base.as_ref(), &Type::col());
+                            if base.as_ref() != &Type::col() {
+                                panic!("This declaration has no value and thus must be a witness column array, but its type is {t} instead of col[]");
+                            }
+                            if length.is_none() {
+                                panic!("Explicit array length required for column {name}: {t}");
+                            }
                             t
                         } else {
-                            assert_eq!(t, Type::col());
+                            if t != Type::col() {
+                                panic!("This declaration has no value and thus must be a witness column, but its type is {t} instead of col");
+                            }
                             t
                         }
                     })

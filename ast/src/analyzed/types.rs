@@ -32,6 +32,7 @@ pub enum Type {
 }
 
 impl Type {
+    /// Returns the column type `int -> fe`.
     pub fn col() -> Self {
         Type::Function(FunctionType::col())
     }
@@ -117,6 +118,7 @@ pub struct FunctionType {
 }
 
 impl FunctionType {
+    /// Returns the column type `int -> fe`.
     pub fn col() -> Self {
         FunctionType {
             params: vec![Type::Int],

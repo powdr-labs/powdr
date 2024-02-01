@@ -1,7 +1,10 @@
 use std::{collections::HashMap, fmt::Display, rc::Rc};
 
 use itertools::Itertools;
-use powdr_ast::analyzed::{types::TypedExpression, Analyzed, FunctionValueDefinition};
+use powdr_ast::analyzed::{
+    types::{Type, TypedExpression},
+    Analyzed, FunctionValueDefinition,
+};
 use powdr_number::{DegreeType, FieldElement};
 use powdr_pil_analyzer::evaluator::{self, Custom, EvalError, SymbolLookup, Value};
 use rayon::prelude::{IntoParallelIterator, ParallelIterator};
@@ -45,7 +48,7 @@ fn generate_values<T: FieldElement>(
     let result = match body {
         FunctionValueDefinition::Expression(TypedExpression { e, ty }) => {
             if let Some(ty) = ty {
-                assert_eq!(ty.to_string(), "col")
+                assert_eq!(ty, &Type::col())
             };
             (0..degree)
                 .into_par_iter()
