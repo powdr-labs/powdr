@@ -372,7 +372,7 @@ impl<'a, T: FieldElement> Exporter<'a, T> {
 
 #[cfg(test)]
 mod test {
-    use powdr_pil_analyzer::analyze;
+    use powdr_pil_analyzer::analyze_file;
     use pretty_assertions::assert_eq;
     use serde_json::Value as JsonValue;
     use std::{fs, process::Command};
@@ -392,7 +392,7 @@ mod test {
         ))
         .join(file);
 
-        let analyzed = analyze::<GoldilocksField>(&file);
+        let analyzed = analyze_file::<GoldilocksField>(&file);
         let pil_out = export(&analyzed);
 
         let pilcom = std::env::var("PILCOM").expect(

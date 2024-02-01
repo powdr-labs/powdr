@@ -178,7 +178,7 @@ fn conditional_fixed_constraints() {
 #[test]
 fn arith_improved() {
     let f = "pil/arith_improved.pil";
-    powdr_pil_analyzer::analyze::<GoldilocksField>(
+    powdr_pil_analyzer::analyze_file::<GoldilocksField>(
         &Path::new(&format!("{}/../test_data/{f}", env!("CARGO_MANIFEST_DIR")))
             .canonicalize()
             .unwrap(),

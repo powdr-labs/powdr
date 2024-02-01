@@ -18,7 +18,7 @@ use crate::AnalysisDriver;
 use crate::statement_processor::{Counters, PILItem, StatementProcessor};
 use crate::{condenser, evaluator, expression_processor::ExpressionProcessor};
 
-pub fn process_pil_file<T: FieldElement>(path: &Path) -> Analyzed<T> {
+pub fn analyze_file<T: FieldElement>(path: &Path) -> Analyzed<T> {
     let files = import_all_dependencies(path);
 
     let mut analyzer = PILAnalyzer::new();
@@ -26,20 +26,20 @@ pub fn process_pil_file<T: FieldElement>(path: &Path) -> Analyzed<T> {
     analyzer.condense()
 }
 
-pub fn process_pil_ast<T: FieldElement>(pil_file: PILFile<T>) -> Analyzed<T> {
+pub fn analyze_ast<T: FieldElement>(pil_file: PILFile<T>) -> Analyzed<T> {
     let mut analyzer = PILAnalyzer::new();
     analyzer.process(vec![pil_file]);
     analyzer.condense()
 }
 
-pub fn process_pil_file_contents<T: FieldElement>(contents: &str) -> Analyzed<T> {
+pub fn analyze_string<T: FieldElement>(contents: &str) -> Analyzed<T> {
     let pil_file = powdr_parser::parse(Some("input"), contents).unwrap_or_else(|err| {
         eprintln!("Error parsing .pil file:");
         err.output_to_stderr();
         panic!();
     });
 
-    process_pil_ast(pil_file)
+    analyze_ast(pil_file)
 }
 
 #[derive(Default)]
@@ -308,7 +308,7 @@ namespace T(65536);
     col fixed p_reg_write_X_CNT = [1, 0, 0, 0, 0, 0, 0, 0, 0] + [0]*;
     { T.pc, T.reg_write_X_A, T.reg_write_X_CNT } in (1 - T.first_step) { T.line, T.p_reg_write_X_A, T.p_reg_write_X_CNT };
 "#;
-        let formatted = process_pil_file_contents::<GoldilocksField>(input).to_string();
+        let formatted = analyze_string::<GoldilocksField>(input).to_string();
         assert_eq!(input, formatted);
     }
 
@@ -324,7 +324,7 @@ namespace T(65536);
     col intermediate = N.x;
     N.intermediate = N.intermediate;
 "#;
-        let formatted = process_pil_file_contents::<GoldilocksField>(input).to_string();
+        let formatted = analyze_string::<GoldilocksField>(input).to_string();
         assert_eq!(formatted, expected);
     }
 
@@ -344,7 +344,7 @@ namespace T(65536);
     col int3 = (N.int2 + N.intermediate);
     N.int3 = (2 * N.x);
 "#;
-        let formatted = process_pil_file_contents::<GoldilocksField>(input).to_string();
+        let formatted = analyze_string::<GoldilocksField>(input).to_string();
         assert_eq!(formatted, expected);
     }
 
@@ -366,7 +366,7 @@ namespace N(65536);
     let other = [1, N.z];
     let other_fun = (|i, j| ((i + 7), (|k| (k - i))));
 "#;
-        let formatted = process_pil_file_contents::<GoldilocksField>(input).to_string();
+        let formatted = analyze_string::<GoldilocksField>(input).to_string();
         assert_eq!(formatted, expected);
     }
 
@@ -378,7 +378,7 @@ namespace N(16);
     (N.y[1] - 2) = 0;
     (N.y[2]' - 2) = 0;
 "#;
-        let formatted = process_pil_file_contents::<GoldilocksField>(input).to_string();
+        let formatted = analyze_string::<GoldilocksField>(input).to_string();
         assert_eq!(formatted, input);
     }
 
@@ -389,7 +389,7 @@ namespace N(16);
     col witness y[3];
     (N.y - 2) = 0;
 "#;
-        let formatted = process_pil_file_contents::<GoldilocksField>(input).to_string();
+        let formatted = analyze_string::<GoldilocksField>(input).to_string();
         assert_eq!(formatted, input);
     }
 
@@ -400,7 +400,7 @@ namespace N(16);
     col witness y[3];
     (N.y[3] - 2) = 0;
 "#;
-        let formatted = process_pil_file_contents::<GoldilocksField>(input).to_string();
+        let formatted = analyze_string::<GoldilocksField>(input).to_string();
         assert_eq!(formatted, input);
     }
 
@@ -411,7 +411,7 @@ namespace N(16);
     col fixed C(i) { (Assembly.A((i + 2)) + 3) };
     col fixed D(i) { Assembly.C((i + 3)) };
 "#;
-        let formatted = process_pil_file_contents::<GoldilocksField>(input).to_string();
+        let formatted = analyze_string::<GoldilocksField>(input).to_string();
         assert_eq!(formatted, input);
     }
 
@@ -422,7 +422,7 @@ namespace N(16);
     col fixed C(i) { if (i < 3) { Assembly.A(i) } else { (i + 9) } };
     col fixed D(i) { if Assembly.C(i) { 3 } else { 2 } };
 "#;
-        let formatted = process_pil_file_contents::<GoldilocksField>(input).to_string();
+        let formatted = analyze_string::<GoldilocksField>(input).to_string();
         assert_eq!(formatted, input);
     }
 
@@ -448,7 +448,7 @@ namespace N(16);
     ((1 - N.ISLAST) * (N.x' - N.y)) = 0;
     ((1 - N.ISLAST) * (N.y' - (N.x + N.y))) = 0;
 "#;
-        let formatted = process_pil_file_contents::<GoldilocksField>(input).to_string();
+        let formatted = analyze_string::<GoldilocksField>(input).to_string();
         assert_eq!(formatted, expected);
     }
 
@@ -470,7 +470,7 @@ namespace N(16);
     col fixed next_is_seven(t) { (t' - 7) };
     (N.y' - 7) = 0;
 "#;
-        let formatted = process_pil_file_contents::<GoldilocksField>(input).to_string();
+        let formatted = analyze_string::<GoldilocksField>(input).to_string();
         assert_eq!(formatted, expected);
     }
 
@@ -492,7 +492,7 @@ namespace N(16);
     (N.y - 0) = 0;
     (N.x - N.ISLAST) = 0;
 "#;
-        let formatted = process_pil_file_contents::<GoldilocksField>(input).to_string();
+        let formatted = analyze_string::<GoldilocksField>(input).to_string();
         assert_eq!(formatted, expected);
     }
 
@@ -506,7 +506,7 @@ namespace N(16);
     let w = (|| 2);
     constant x = (|i| (|| N.w()))(2)();
 "#;
-        let formatted = process_pil_file_contents::<GoldilocksField>(input).to_string();
+        let formatted = analyze_string::<GoldilocksField>(input).to_string();
         assert_eq!(formatted, expected);
     }
 }
