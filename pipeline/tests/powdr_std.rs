@@ -1,4 +1,4 @@
-use powdr_number::{FieldElement, GoldilocksField};
+use powdr_number::GoldilocksField;
 
 use powdr_pipeline::test_util::{
     evaluate_integer_function, gen_estark_proof, gen_halo2_proof, std_analyzed, verify_test_file,
@@ -163,4 +163,5 @@ fn ff_inv_big() {
         "std::math::ff::inverse",
         vec![x.clone(), modulus.clone()],
     );
+    assert_eq!((result * x) % modulus, 1.into());
 }
