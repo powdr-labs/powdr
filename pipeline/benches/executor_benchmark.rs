@@ -1,14 +1,16 @@
-use ::powdr_pipeline::inputs_to_query_callback;
-use ::powdr_pipeline::Pipeline;
-use criterion::{criterion_group, criterion_main, Criterion};
+use ::powdr_pipeline::{inputs_to_query_callback, Pipeline};
 use powdr_ast::analyzed::Analyzed;
-
-use mktemp::Temp;
 use powdr_number::{FieldElement, GoldilocksField};
-use powdr_riscv::continuations::bootloader::default_input;
-use powdr_riscv::{compile_rust_crate_to_riscv_asm, compile_rust_to_riscv_asm, compiler};
 
-use powdr_riscv::CoProcessors;
+use powdr_pipeline::test_util::{evaluate_integer_function, std_analyzed};
+use powdr_riscv::{
+    compile_rust_crate_to_riscv_asm, compile_rust_to_riscv_asm, compiler,
+    continuations::bootloader::default_input, CoProcessors,
+};
+
+use criterion::{criterion_group, criterion_main, Criterion};
+use mktemp::Temp;
+use num_traits::Num;
 
 type T = GoldilocksField;
 
@@ -23,7 +25,7 @@ fn run_witgen<T: FieldElement>(
         .generate();
 }
 
-fn criterion_benchmark(c: &mut Criterion) {
+fn executor_benchmark(c: &mut Criterion) {
     let mut group = c.benchmark_group("executor-benchmark");
     group.sample_size(10);
 
@@ -71,5 +73,65 @@ fn criterion_benchmark(c: &mut Criterion) {
     group.finish();
 }
 
-criterion_group!(benches, criterion_benchmark);
+fn evaluator_benchmark(c: &mut Criterion) {
+    let mut group = c.benchmark_group("evaluator-benchmark");
+
+    let analyzed = std_analyzed::<GoldilocksField>();
+
+    group.bench_function("std::math::ff::inverse", |b| {
+        b.iter(|| {
+            let modulus = num_bigint::BigInt::from_str_radix(
+                "fffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc2f",
+                16,
+            )
+            .unwrap();
+            let x = modulus.clone() - num_bigint::BigInt::from(17);
+
+            evaluate_integer_function(
+                &analyzed,
+                "std::math::ff::inverse",
+                vec![x.clone(), modulus.clone()],
+            );
+        })
+    });
+
+    group.bench_function("std::math::ff::reduce", |b| {
+        b.iter(|| {
+            let modulus = num_bigint::BigInt::from_str_radix(
+                "fffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc2f",
+                16,
+            )
+            .unwrap();
+            let x = modulus.clone() + num_bigint::BigInt::from(17);
+
+            evaluate_integer_function(
+                &analyzed,
+                "std::math::ff::reduce",
+                vec![x.clone(), modulus.clone()],
+            );
+        })
+    });
+
+    group.bench_function("std::math::ff::mul", |b| {
+        b.iter(|| {
+            let modulus = num_bigint::BigInt::from_str_radix(
+                "fffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc2f",
+                16,
+            )
+            .unwrap();
+            let x = modulus.clone() - num_bigint::BigInt::from(17);
+            let y = modulus.clone() - num_bigint::BigInt::from(11);
+
+            evaluate_integer_function(
+                &analyzed,
+                "std::math::ff::mul",
+                vec![x.clone(), y.clone(), modulus.clone()],
+            );
+        })
+    });
+
+    group.finish();
+}
+
+criterion_group!(benches, evaluator_benchmark, executor_benchmark);
 criterion_main!(benches);

@@ -1,7 +1,9 @@
+use powdr_ast::analyzed::Analyzed;
 use powdr_backend::BackendType;
-use powdr_number::FieldElement;
-use powdr_number::{Bn254Field, GoldilocksField};
+use powdr_number::{Bn254Field, FieldElement, GoldilocksField};
+use powdr_pil_analyzer::evaluator::{self, SymbolLookup};
 use std::path::PathBuf;
+use std::rc::Rc;
 
 use crate::pipeline::{Pipeline, Stage};
 use crate::verify::verify;
@@ -80,3 +82,40 @@ pub fn gen_halo2_proof(file_name: &str, inputs: Vec<Bn254Field>) {
 
 #[cfg(not(feature = "halo2"))]
 pub fn gen_halo2_proof(_file_name: &str, _inputs: Vec<Bn254Field>) {}
+
+/// Returns the analyzed PIL containing only the std library.
+pub fn std_analyzed<T: FieldElement>() -> Analyzed<T> {
+    // airgen needs a main machine.
+    let code = "machine Main { }".to_string();
+    let mut pipeline = Pipeline::default().from_asm_string(code, None);
+    pipeline.advance_to(Stage::AnalyzedPil).unwrap();
+    pipeline.analyzed_pil().unwrap()
+}
+
+/// Evaluates a function call.
+pub fn evaluate_function<'a, T: FieldElement>(
+    analyzed: &'a Analyzed<T>,
+    function: &'a str,
+    arguments: Vec<Rc<evaluator::Value<'a, T, evaluator::NoCustom>>>,
+) -> evaluator::Value<'a, T, evaluator::NoCustom> {
+    let symbols = evaluator::Definitions(&analyzed.definitions);
+    let function = symbols.lookup(function).unwrap();
+    evaluator::evaluate_function_call(function, arguments, &symbols).unwrap()
+}
+
+/// Evaluates a function call assuming inputs and outputs are integers.
+pub fn evaluate_integer_function<T: FieldElement>(
+    analyzed: &Analyzed<T>,
+    function: &str,
+    arguments: Vec<num_bigint::BigInt>,
+) -> num_bigint::BigInt {
+    let arguments = arguments
+        .into_iter()
+        .map(|x| Rc::new(evaluator::Value::Integer(x)))
+        .collect();
+    if let evaluator::Value::Integer(x) = evaluate_function(analyzed, function, arguments) {
+        x
+    } else {
+        panic!("Expected integer.");
+    }
+}
