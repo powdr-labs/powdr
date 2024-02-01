@@ -652,7 +652,7 @@ impl<T: FieldElement> ASMPILConverter<T> {
                         }
                         Input::Literal(_, LiteralKind::UnsignedConstant) => {
                             // TODO evaluate expression
-                            if let Expression::Number(n) = a {
+                            if let Expression::Number(n, _) = a {
                                 assert!(n.is_in_lower_half(), "Number passed to unsigned parameter is negative or too large: {n}");
                                 instruction_literal_arg.push(InstructionLiteralArg::Number(n));
                             } else {
@@ -661,11 +661,11 @@ impl<T: FieldElement> ASMPILConverter<T> {
                         }
                         Input::Literal(_, LiteralKind::SignedConstant) => {
                             // TODO evaluate expression
-                            if let Expression::Number(n) = a {
+                            if let Expression::Number(n, _) = a {
                                 instruction_literal_arg.push(InstructionLiteralArg::Number(n));
                             } else if let Expression::UnaryOperation(UnaryOperator::Minus, expr) = a
                             {
-                                if let Expression::Number(n) = *expr {
+                                if let Expression::Number(n, _) = *expr {
                                     instruction_literal_arg.push(InstructionLiteralArg::Number(-n));
                                 } else {
                                     panic!();
@@ -716,7 +716,7 @@ impl<T: FieldElement> ASMPILConverter<T> {
                 let name = reference.try_to_identifier().unwrap();
                 vec![(1.into(), AffineExpressionComponent::Register(name.clone()))]
             }
-            Expression::Number(value) => vec![(value, AffineExpressionComponent::Constant)],
+            Expression::Number(value, _) => vec![(value, AffineExpressionComponent::Constant)],
             Expression::String(_) => panic!(),
             Expression::Tuple(_) => panic!(),
             Expression::ArrayLiteral(_) => panic!(),

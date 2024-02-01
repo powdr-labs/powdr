@@ -59,13 +59,15 @@ fn generate_values<T: FieldElement>(
     };
     // TODO we should maybe pre-compute some symbols here.
     let result = match body {
-        FunctionValueDefinition::Expression(TypedExpression { e, ty }) => {
-            if let Some(ty) = ty {
-                if ty == &Type::col() {
+        FunctionValueDefinition::Expression(TypedExpression { e, type_scheme }) => {
+            if let Some(type_scheme) = type_scheme {
+                assert!(type_scheme.vars.is_empty());
+                let ty = &type_scheme.ty;
+                if ty == &Type::Col {
                     assert!(index.is_none());
                 } else if let Type::Array(ArrayType { base, length: _ }) = ty {
                     assert!(index.is_some());
-                    assert_eq!(base.as_ref(), &Type::col());
+                    assert_eq!(base.as_ref(), &Type::Col);
                 } else {
                     panic!("Invalid fixed column type: {}", ty);
                 }
@@ -138,15 +140,16 @@ struct Symbols<'a, T> {
 }
 
 impl<'a, T: FieldElement> SymbolLookup<'a, T, FixedColumnRef<'a>> for Symbols<'a, T> {
-    fn lookup(&self, name: &str) -> Result<Value<'a, T, FixedColumnRef<'a>>, EvalError> {
+    fn lookup<'b>(&self, name: &str) -> Result<Value<'a, T, FixedColumnRef<'a>>, EvalError> {
         Ok(
             if let Some((name, _)) = self.computed_columns.get_key_value(name) {
                 Value::Custom(FixedColumnRef { name })
             } else if let Some((_, value)) = self.analyzed.definitions.get(&name.to_string()) {
                 match value {
-                    Some(FunctionValueDefinition::Expression(TypedExpression { e, ty: _ })) => {
-                        evaluator::evaluate(e, self)?
-                    }
+                    Some(FunctionValueDefinition::Expression(TypedExpression {
+                        e,
+                        type_scheme: _,
+                    })) => evaluator::evaluate(e, self)?,
                     Some(_) => Err(EvalError::Unsupported(
                         "Cannot evaluate arrays and queries.".to_string(),
                     ))?,
@@ -299,7 +302,7 @@ mod test {
         let src = r#"
             constant %N = 8;
             namespace F(%N);
-            let X = |i| if i < 3 { 7 } else { 9 };
+            let X: col = |i| if i < 3 { 7 } else { 9 };
         "#;
         let analyzed = analyze_string(src);
         assert_eq!(analyzed.degree(), 8);
@@ -513,7 +516,7 @@ mod test {
             constant %N = 10;
             namespace F(%N);
             let w;
-            let x = |i| w(i) + 1;
+            let x: col = |i| w(i) + 1;
         "#;
         let analyzed = analyze_string::<GoldilocksField>(src);
         assert_eq!(analyzed.degree(), 10);
@@ -539,7 +542,7 @@ mod test {
         let src = r#"
             constant %N = 10;
             namespace F(%N);
-            let x = |i| y(i) + 1;
+            let x: col = |i| y(i) + 1;
             col fixed y = [1, 2, 3]*;
         "#;
         let analyzed = analyze_string::<GoldilocksField>(src);
@@ -552,8 +555,8 @@ mod test {
         let src = r#"
             constant %N = 4;
             namespace F(%N);
-            let x = |i| y(i) + 1;
-            let y = |i| i + 20;
+            let x: col = |i| y(i) + 1;
+            let y: col = |i| i + 20;
         "#;
         let analyzed = analyze_string::<GoldilocksField>(src);
         assert_eq!(analyzed.degree(), 4);
@@ -576,7 +579,7 @@ mod test {
             let int = [];
             let fe = [];
             namespace F(%N);
-            let x = |i| std::convert::fe((std::convert::int(1) << (2000 + i)) >> 2000);
+            let x: col = |i| std::convert::fe((std::convert::int(1) << (2000 + i)) >> 2000);
         "#;
         let analyzed = analyze_string::<GoldilocksField>(src);
         assert_eq!(analyzed.degree(), 4);
@@ -596,7 +599,7 @@ mod test {
             let fe = [];
             namespace F(%N);
             let x_arr = [ 3 % 4, (-3) % 4, 3 % (-4), (-3) % (-4)];
-            let x = |i| 100 + x_arr[i];
+            let x: col = |i| 100 + x_arr[i];
         "#;
         let analyzed = analyze_string::<GoldilocksField>(src);
         assert_eq!(analyzed.degree(), 4);

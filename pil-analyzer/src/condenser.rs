@@ -6,7 +6,7 @@ use std::{collections::HashMap, fmt::Display, rc::Rc};
 use itertools::Itertools;
 use powdr_ast::{
     analyzed::{
-        types::{ArrayType, Type, TypedExpression},
+        types::{format_type_scheme_around_name, ArrayType, Type, TypedExpression},
         AlgebraicExpression, AlgebraicReference, Analyzed, Expression, FunctionValueDefinition,
         Identity, IdentityKind, PolynomialReference, PolynomialType, PublicDeclaration, Reference,
         StatementIdentifier, Symbol, SymbolKind,
@@ -55,33 +55,36 @@ pub fn condense<T: FieldElement>(
     let intermediate_columns: HashMap<_, _> = definitions
         .iter()
         .filter_map(|(name, (symbol, definition))| {
-            if matches!(symbol.kind, SymbolKind::Poly(PolynomialType::Intermediate)) {
-                let Some(FunctionValueDefinition::Expression(e)) = definition else {
-                    panic!("Expected expression")
-                };
-                let values =
-                    if let Some(length) = symbol.length {
-                        assert!(
-                            e.ty.is_none() ||
-                            matches!(&e.ty, Some(Type::Array(ArrayType{base, ..})) if base.as_ref() == &Type::Expr),
-                            "Intermediate column type has to be expr[], but got: {}", e.ty.as_ref().map(|t| t.to_string()).unwrap_or_default()
-                        );
-                        let result = condenser.condense_to_array_of_algebraic_expressions(&e.e);
-                        assert_eq!(result.len() as u64, length);
-                        result
-                    } else {
-                        assert!(
-                            e.ty.is_none() ||
-                            e.ty == Some(Type::Expr),
-                            "Intermediate column type has to be expr, but got: {}", e.ty.as_ref().map(|t| t.to_string()).unwrap_or_default()
-                        );
-                        vec![condenser.condense_to_algebraic_expression(&e.e)]
-                    };
-
-                Some((name.clone(), (symbol.clone(), values)))
-            } else {
-                None
+            if !matches!(symbol.kind, SymbolKind::Poly(PolynomialType::Intermediate)) {
+                return None;
             }
+            let Some(FunctionValueDefinition::Expression(e)) = definition else {
+                panic!("Expected expression")
+            };
+            let value = if let Some(length) = symbol.length {
+                let scheme = e.type_scheme.as_ref();
+                assert!(
+                    scheme.is_none()
+                        || (scheme.unwrap().vars.is_empty()
+                            && matches!(
+                                &scheme.unwrap().ty,
+                                Type::Array(ArrayType { base, length: _ })
+                                if base.as_ref() == &Type::Expr)),
+                    "Intermediate column type has to be expr[], but got: {}",
+                    format_type_scheme_around_name(name, &e.type_scheme)
+                );
+                let result = condenser.condense_to_array_of_algebraic_expressions(&e.e);
+                assert_eq!(result.len() as u64, length);
+                result
+            } else {
+                assert!(
+                    e.type_scheme.is_none() || e.type_scheme == Some(Type::Expr.into()),
+                    "Intermediate column type has to be expr, but got: {}",
+                    format_type_scheme_around_name(name, &e.type_scheme)
+                );
+                vec![condenser.condense_to_algebraic_expression(&e.e)]
+            };
+            Some((name.clone(), (symbol.clone(), value)))
         })
         .collect();
     definitions.retain(|name, _| !intermediate_columns.contains_key(name));
@@ -264,9 +267,10 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T, Condensate<T>> for &'a Condenser<T
             }
         } else {
             match value {
-                Some(FunctionValueDefinition::Expression(TypedExpression { e: value, ty: _ })) => {
-                    evaluator::evaluate(value, self)?
-                }
+                Some(FunctionValueDefinition::Expression(TypedExpression {
+                    e: value,
+                    type_scheme: _,
+                })) => evaluator::evaluate(value, self)?,
                 _ => Err(EvalError::Unsupported(
                     "Cannot evaluate arrays and queries.".to_string(),
                 ))?,
@@ -311,7 +315,10 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T, Condensate<T>> for &'a Condenser<T
                 };
 
                 match self.symbols[&name].1.as_ref() {
-                    Some(FunctionValueDefinition::Expression(TypedExpression { e, ty: _ })) => {
+                    Some(FunctionValueDefinition::Expression(TypedExpression {
+                        e,
+                        type_scheme: _,
+                    })) => {
                         let function = evaluate(e, self)?;
                         evaluate_function_call(function, arguments, self)
                     }

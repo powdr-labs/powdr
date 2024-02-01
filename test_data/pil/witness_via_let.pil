@@ -1,7 +1,7 @@
 let N = 16;
 
 namespace Fibonacci(N);
-    let ISLAST = |i| match i {
+    let ISLAST: col = |i| match i {
         N - 1 => 1,
         _ => 0,
     };

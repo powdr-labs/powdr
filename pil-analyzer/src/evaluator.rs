@@ -178,9 +178,10 @@ impl<'a, T: FieldElement, C: Custom> Value<'a, T, C> {
     }
 }
 
-const BUILTINS: [(&str, BuiltinFunction); 6] = [
+const BUILTINS: [(&str, BuiltinFunction); 7] = [
     ("std::array::len", BuiltinFunction::ArrayLen),
     ("std::check::panic", BuiltinFunction::Panic),
+    ("std::convert::expr", BuiltinFunction::ToExpr),
     ("std::convert::fe", BuiltinFunction::ToFe),
     ("std::convert::int", BuiltinFunction::ToInt),
     ("std::debug::print", BuiltinFunction::Print),
@@ -200,6 +201,8 @@ pub enum BuiltinFunction {
     /// std::debug::print: string -> [], prints its argument on stdout.
     /// Returns an empty array.
     Print,
+    /// std::convert::expr: fe -> expr, converts fe to expr
+    ToExpr,
     /// std::convert::int: fe/int -> int, converts fe to int
     ToInt,
     /// std::convert::fe: int/fe -> fe, converts int to fe
@@ -282,9 +285,10 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T, NoCustom> for Definitions<'a, T> {
     fn lookup(&self, name: &'a str) -> Result<Value<'a, T, NoCustom>, EvalError> {
         Ok(match self.0.get(&name.to_string()) {
             Some((_, value)) => match value {
-                Some(FunctionValueDefinition::Expression(TypedExpression { e, ty: _ })) => {
-                    evaluate(e, self)?
-                }
+                Some(FunctionValueDefinition::Expression(TypedExpression {
+                    e,
+                    type_scheme: _,
+                })) => evaluate(e, self)?,
                 _ => Err(EvalError::Unsupported(
                     "Cannot evaluate arrays and queries.".to_string(),
                 ))?,
@@ -344,6 +348,7 @@ pub trait SymbolLookup<'a, T, C> {
 
 mod internal {
     use num_traits::{Signed, ToPrimitive};
+    use powdr_ast::parsed::{NoArrayLengths, TypeName};
 
     use super::*;
 
@@ -355,9 +360,7 @@ mod internal {
         Ok(match expr {
             Expression::Reference(reference) => evaluate_reference(reference, locals, symbols)?,
             Expression::PublicReference(name) => symbols.lookup_public_reference(name)?,
-            // TODO Default is to convert literals to integers.
-            // We need to change the parser here to parse integers, not field elements.
-            Expression::Number(n) => Value::Integer(n.to_arbitrary_integer().into()),
+            Expression::Number(n, ty) => evaluate_literal(n, ty)?,
             Expression::String(s) => Value::String(s.clone()),
             Expression::Tuple(items) => Value::Tuple(
                 items
@@ -509,6 +512,18 @@ mod internal {
         })
     }
 
+    fn evaluate_literal<'a, T: FieldElement, C: Custom>(
+        n: &T,
+        ty: &Option<TypeName<NoArrayLengths>>,
+    ) -> Result<Value<'a, T, C>, EvalError> {
+        assert!(
+            ty.is_none(),
+            "Type can only be introduced by the type checker"
+        );
+
+        Ok(Value::Integer(n.to_arbitrary_integer().into()))
+    }
+
     fn evaluate_reference<'a, T: FieldElement, C: Custom>(
         reference: &'a Reference,
         locals: &[Rc<Value<'a, T, C>>],
@@ -537,6 +552,7 @@ mod internal {
             BuiltinFunction::Modulus => 0,
             BuiltinFunction::Panic => 1,
             BuiltinFunction::Print => 1,
+            BuiltinFunction::ToExpr => 1,
             BuiltinFunction::ToFe => 1,
             BuiltinFunction::ToInt => 1,
         };
@@ -571,6 +587,10 @@ mod internal {
                 };
                 print!("{msg}");
                 Value::Array(Default::default())
+            }
+            BuiltinFunction::ToExpr => {
+                // TODO to implement this properly, we need 'expr' as a type of the evaluator.
+                arguments.pop().unwrap().as_ref().clone()
             }
             BuiltinFunction::ToInt => {
                 let arg = arguments.pop().unwrap().as_ref().clone();
@@ -642,8 +662,10 @@ mod test {
 
     fn parse_and_evaluate_symbol(input: &str, symbol: &str) -> String {
         let analyzed = analyze_string::<GoldilocksField>(input);
-        let Some(FunctionValueDefinition::Expression(TypedExpression { e: symbol, ty: _ })) =
-            &analyzed.definitions[symbol].1
+        let Some(FunctionValueDefinition::Expression(TypedExpression {
+            e: symbol,
+            type_scheme: _,
+        })) = &analyzed.definitions[symbol].1
         else {
             panic!()
         };

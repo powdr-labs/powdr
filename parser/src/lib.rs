@@ -4,9 +4,10 @@
 
 use lalrpop_util::*;
 use powdr_ast::parsed::asm::ASMProgram;
+use powdr_ast::parsed::TypeBounds;
 use powdr_ast::SourceRef;
 
-use powdr_number::FieldElement;
+use powdr_number::{FieldElement, GoldilocksField};
 use powdr_parser_util::{handle_parse_error, ParseError};
 
 use std::sync::Arc;
@@ -43,6 +44,8 @@ impl ParserContext {
 lazy_static::lazy_static! {
     static ref PIL_FILE_PARSER: powdr::PILFileParser = powdr::PILFileParser::new();
     static ref ASM_MODULE_PARSER: powdr::ASMModuleParser = powdr::ASMModuleParser::new();
+    static ref TYPE_NAME_PARSER: powdr::TypeNameParser = powdr::TypeNameParser::new();
+    static ref TYPE_VAR_BOUNDS_PARSER: powdr::TypeVarBoundsParser = powdr::TypeVarBoundsParser::new();
 }
 
 pub fn parse<'a, T: FieldElement>(
@@ -70,6 +73,24 @@ pub fn parse_module<'a, T: FieldElement>(
     ASM_MODULE_PARSER
         .parse(&ctx, input)
         .map_err(|err| handle_parse_error(err, file_name, input))
+}
+
+pub fn parse_type_name<T: FieldElement>(
+    input: &str,
+) -> Result<powdr_ast::parsed::TypeName<powdr_ast::parsed::Expression<T>>, ParseError<'_>> {
+    let ctx = ParserContext::new(None, input);
+    TYPE_NAME_PARSER
+        .parse(&ctx, input)
+        .map_err(|err| handle_parse_error(err, None, input))
+}
+
+pub fn parse_type_var_bounds(input: &str) -> Result<TypeBounds, ParseError<'_>> {
+    let ctx = ParserContext::new(None, input);
+    // We use GoldilocksField here, because we need to specify a concrete type,
+    // even though the grammar for TypeBounds does not depend on the field.
+    TYPE_VAR_BOUNDS_PARSER
+        .parse::<GoldilocksField>(&ctx, input)
+        .map_err(|err| handle_parse_error(err, None, input))
 }
 
 /// Parse an escaped string - used in the grammar.

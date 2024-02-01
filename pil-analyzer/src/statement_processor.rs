@@ -1,7 +1,9 @@
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::marker::PhantomData;
 
-use powdr_ast::analyzed::types::{ArrayType, Type, TypedExpression};
+use itertools::Itertools;
+use num_traits::ToPrimitive;
+use powdr_ast::analyzed::types::{ArrayType, Type, TypeScheme, TypedExpression};
 use powdr_ast::parsed::{
     self, FunctionDefinition, PilStatement, PolynomialName, SelectedExpressions, TypeName,
 };
@@ -105,7 +107,7 @@ where
                     source,
                     name,
                     SymbolKind::Poly(PolynomialType::Intermediate),
-                    Some(Type::Expr),
+                    Some(Type::Expr.into()),
                     Some(FunctionDefinition::Expression(value)),
                 ),
             PilStatement::PublicDeclaration(source, name, polynomial, array_index, index) => {
@@ -119,7 +121,7 @@ where
                     source,
                     name,
                     SymbolKind::Poly(PolynomialType::Constant),
-                    Some(Type::col()),
+                    Some(Type::Col.into()),
                     Some(definition),
                 ),
             PilStatement::PolynomialCommitDeclaration(source, polynomials, None) => {
@@ -138,25 +140,25 @@ where
                     source,
                     name,
                     SymbolKind::Poly(PolynomialType::Committed),
-                    ty,
+                    ty.map(Into::into),
                     Some(definition),
                 )
             }
             PilStatement::ConstantDefinition(source, name, value) => {
                 // Check it is a constant.
-                if let Err(err) = self.evaluate_expression(value.clone()) {
+                if let Err(err) = self.evaluate_expression_to_fe(value.clone()) {
                     panic!("Could not evaluate constant: {name} = {value}: {err:?}");
                 }
                 self.handle_symbol_definition(
                     source,
                     name,
                     SymbolKind::Constant(),
-                    Some(Type::Fe),
+                    Some(Type::Fe.into()),
                     Some(FunctionDefinition::Expression(value)),
                 )
             }
-            PilStatement::LetStatement(source, name, type_name, value) => {
-                self.handle_generic_definition(source, name, type_name, value)
+            PilStatement::LetStatement(source, name, type_scheme, value) => {
+                self.handle_generic_definition(source, name, type_scheme, value)
             }
             _ => self.handle_identity_statement(statement),
         }
@@ -167,17 +169,21 @@ where
         PolynomialName { name, array_size }: PolynomialName<T>,
     ) -> (String, Option<Type>) {
         let ty = Some(match array_size {
-            None => Type::col(),
+            None => Type::Col,
             Some(len) => {
                 let length = self
-                    .evaluate_expression(len)
+                    .evaluate_expression_to_int(len)
+                    .map(|length| {
+                        length
+                            .to_u64()
+                            .unwrap_or_else(|| panic!("Array length too large."))
+                    })
                     .map_err(|e| {
                         panic!("Error evaluating length of array of witness columns {name}:\n{e}")
                     })
-                    .map(|length| length.to_degree())
                     .ok();
                 Type::Array(ArrayType {
-                    base: Box::new(Type::col()),
+                    base: Box::new(Type::Col),
                     length,
                 })
             }
@@ -189,62 +195,55 @@ where
         &mut self,
         source: SourceRef,
         name: String,
-        type_name: Option<TypeName<parsed::Expression<T>>>,
+        type_scheme: Option<parsed::TypeScheme<parsed::Expression<T>>>,
         value: Option<parsed::Expression<T>>,
     ) -> Vec<PILItem<T>> {
-        let ty = type_name.map(|n|
-            self.resolve_type_name(n.clone())
-                .map_err(|e| panic!("Error evaluating expressions in type name \"{n}\" to reduce it to a type:\n{e})"))
-                .unwrap()
-        );
-        // Determine whether this is a fixed column, a constant or something else
-        // depending on the structure of the value and if we can evaluate
-        // it to a single number.
-        // Later, this should depend on the type.
+        let type_scheme = type_scheme.map(|ts| {
+            let vars = ts.type_vars;
+            let duplicates = vars.vars().duplicates().collect::<Vec<_>>();
+            if !duplicates.is_empty() {
+                panic!("Duplicate type variables in declaration of \"{name}\":\n{}", duplicates.iter().format(", "));
+            }
+
+            let ty = self.resolve_type_name(ts.type_name.clone())
+                .map_err(|e| panic!("Error evaluating expressions in type name \"{}\" to reduce it to a type:\n{e})", ts.type_name))
+                .unwrap();
+            if ty.contained_type_vars().collect::<HashSet<_>>() != vars.vars().collect::<HashSet<_>>() {
+                panic!("Set of declared and used type variables are not the same in declaration:\nlet<{vars}> {name}: {ty}");
+            };
+            TypeScheme{vars, ty}
+        });
+
         match value {
             None => {
                 // No value provided => treat it as a witness column.
-                let ty = ty
-                    .map(|t| {
-                        if let Type::Array(ArrayType { base, length }) = &t {
-                            if base.as_ref() != &Type::col() {
-                                panic!("Symbol {name} is declared without value and thus must be a witness column array, but its type is {t} instead of col[].");
+                let ty = type_scheme
+                    .map(|ts| {
+                        assert!(ts.vars.is_empty());
+                        let ty = ts.ty;
+                        if let Type::Array(ArrayType { base, length }) = &ty {
+                            if base.as_ref() != &Type::Col {
+                                panic!("Symbol {name} is declared without value and thus must be a witness column array, but its type is {ty} instead of col[].");
                             }
                             if length.is_none() {
-                                panic!("Explicit array length required for column {name}: {t}");
+                                panic!("Explicit array length required for column {name}: {ty}");
                             }
-                            t
-                        } else {
-                            if t != Type::col() {
-                                panic!("Symbol {name} is declared without value and thus must be a witness column, but its type is {t} instead of col.");
-                            }
-                            t
+                        } else if ty != Type::Col {
+                            panic!("Symbol {name} is declared without value and thus must be a witness column, but its type is {ty} instead of col.");
                         }
+                        ty
                     })
-                    .unwrap_or(Type::col());
+                    .unwrap_or(Type::Col);
                 self.handle_symbol_definition(
                     source,
                     name,
                     SymbolKind::Poly(PolynomialType::Committed),
-                    Some(ty),
+                    Some(ty.into()),
                     None,
                 )
             }
             Some(value) => {
-                // TODO if we have proper type deduction here in the future, we can rely only on the type.
-
-                let ty = ty.or_else(|| {
-                    if matches!(&value, parsed::Expression::LambdaExpression(lambda) if lambda.params.len() == 1) {
-                        Some(Type::col())
-                    } else if self.evaluate_expression(value.clone()).is_ok() {
-                        // Value evaluates to a constant number => treat it as a constant
-                        Some(Type::Fe)
-                    } else {
-                        // Otherwise, treat it as "generic definition"
-                        None
-                    }
-                });
-                let symbol_kind = ty
+                let symbol_kind = type_scheme
                     .as_ref()
                     .map(Self::symbol_kind_from_type)
                     .unwrap_or(SymbolKind::Other());
@@ -253,19 +252,22 @@ where
                     source,
                     name,
                     symbol_kind,
-                    ty,
+                    type_scheme,
                     Some(FunctionDefinition::Expression(value)),
                 )
             }
         }
     }
 
-    fn symbol_kind_from_type(ty: &Type) -> SymbolKind {
-        match ty {
+    fn symbol_kind_from_type(ts: &TypeScheme) -> SymbolKind {
+        if !ts.vars.is_empty() {
+            return SymbolKind::Other();
+        }
+        match &ts.ty {
             Type::Expr => SymbolKind::Poly(PolynomialType::Intermediate),
             Type::Fe => SymbolKind::Constant(),
-            t if *t == Type::col() => SymbolKind::Poly(PolynomialType::Constant),
-            Type::Array(ArrayType { base, length: _ }) if base.as_ref() == &Type::col() => {
+            Type::Col => SymbolKind::Poly(PolynomialType::Constant),
+            Type::Array(ArrayType { base, length: _ }) if base.as_ref() == &Type::Col => {
                 // Array of fixed columns
                 SymbolKind::Poly(PolynomialType::Constant)
             }
@@ -341,7 +343,7 @@ where
                     source.clone(),
                     name,
                     SymbolKind::Poly(polynomial_type),
-                    ty,
+                    ty.map(Into::into),
                     None,
                 )
             })
@@ -353,15 +355,17 @@ where
         source: SourceRef,
         name: String,
         symbol_kind: SymbolKind,
-        ty: Option<Type>,
+        type_scheme: Option<TypeScheme>,
         value: Option<FunctionDefinition<T>>,
     ) -> Vec<PILItem<T>> {
-        let length = ty.as_ref().and_then(|t| {
-            if let Type::Array(ArrayType { length, base: _ }) = t {
+        let length = type_scheme.as_ref().and_then(|t| {
+            if symbol_kind == SymbolKind::Other() {
+                None
+            } else if let Type::Array(ArrayType { length, base: _ }) = t.ty {
                 if length.is_none() && symbol_kind != SymbolKind::Other() {
                     panic!("Explicit array length required for column {name}.");
                 }
-                *length
+                length
             } else {
                 None
             }
@@ -381,12 +385,12 @@ where
                 assert!(symbol_kind != SymbolKind::Poly(PolynomialType::Committed));
                 FunctionValueDefinition::Expression(TypedExpression {
                     e: self.process_expression(expr),
-                    ty,
+                    type_scheme,
                 })
             }
             FunctionDefinition::Query(expr) => {
                 assert_eq!(symbol_kind, SymbolKind::Poly(PolynomialType::Committed));
-                assert!(ty.is_none() || ty == Some(Type::col()));
+                assert!(type_scheme.is_none() || type_scheme == Some(Type::Col.into()));
                 FunctionValueDefinition::Query(self.process_expression(expr))
             }
             FunctionDefinition::Array(value) => {
@@ -398,7 +402,7 @@ where
                     expression.iter().map(|e| e.size()).sum::<DegreeType>(),
                     self.degree.unwrap()
                 );
-                assert!(ty.is_none() || ty == Some(Type::col()));
+                assert!(type_scheme.is_none() || type_scheme == Some(Type::Col.into()));
                 FunctionValueDefinition::Array(expression)
             }
         });
@@ -418,7 +422,11 @@ where
             .expression_processor()
             .process_namespaced_polynomial_reference(&poly.path);
         let array_index = array_index.map(|i| {
-            let index = self.evaluate_expression(i).unwrap().to_degree();
+            let index = self
+                .evaluate_expression_to_int(i)
+                .unwrap()
+                .to_u64()
+                .unwrap();
             assert!(index <= usize::MAX as u64);
             index as usize
         });
@@ -428,7 +436,11 @@ where
             name: name.to_string(),
             polynomial,
             array_index,
-            index: self.evaluate_expression(index).unwrap().to_degree(),
+            index: self
+                .evaluate_expression_to_int(index)
+                .unwrap()
+                .to_u64()
+                .unwrap(),
         })]
     }
 
@@ -436,19 +448,35 @@ where
     /// This routine mainly evaluates array length expressions.
     fn resolve_type_name(&self, mut n: TypeName<parsed::Expression<T>>) -> Result<Type, EvalError> {
         // Replace all expressions by number literals.
+        // Any expression inside a type name has to be an array length,
+        // so we expect an integer that fits u64.
         for e in n.expressions_mut() {
-            let v = self.evaluate_expression(e.clone())?;
-            *e = parsed::Expression::Number(v);
+            let v = self.evaluate_expression_to_int(e.clone())?;
+            let v_u64 = v.to_u64().ok_or(EvalError::TypeError(format!(
+                "Number too large, expected u64, but got {v}"
+            )))?;
+            *e = parsed::Expression::Number(v_u64.into(), None);
         }
         Ok(n.into())
     }
 
-    fn evaluate_expression(&self, expr: parsed::Expression<T>) -> Result<T, EvalError> {
+    fn evaluate_expression_to_fe(&self, expr: parsed::Expression<T>) -> Result<T, EvalError> {
         evaluator::evaluate_expression(
             &ExpressionProcessor::new(self.driver).process_expression(expr),
             self.driver.definitions(),
         )?
         .try_to_field_element()
+    }
+
+    fn evaluate_expression_to_int(
+        &self,
+        expr: parsed::Expression<T>,
+    ) -> Result<num_bigint::BigInt, EvalError> {
+        evaluator::evaluate_expression(
+            &ExpressionProcessor::new(self.driver).process_expression(expr),
+            self.driver.definitions(),
+        )?
+        .try_to_integer()
     }
 
     fn expression_processor(&self) -> ExpressionProcessor<T, D> {

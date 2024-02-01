@@ -12,7 +12,7 @@ use itertools::Itertools;
 
 use self::{
     parsed::asm::{AbsoluteSymbolPath, SymbolPath},
-    types::{ArrayType, FunctionType, TupleType, Type},
+    types::{format_type_scheme_around_name, ArrayType, FunctionType, TupleType, Type},
 };
 
 use super::*;
@@ -57,8 +57,11 @@ impl<T: Display> Display for Analyzed<T> {
                                         // Do not print an array size, because we will do it as part of the type.
                                         assert!(matches!(
                                             definition,
-                                            Some(FunctionValueDefinition::Expression(
-                                                TypedExpression { e: _, ty: Some(_) }
+                                            None | Some(FunctionValueDefinition::Expression(
+                                                TypedExpression {
+                                                    e: _,
+                                                    type_scheme: Some(_)
+                                                }
                                             ))
                                         ));
                                     }
@@ -73,7 +76,7 @@ impl<T: Display> Display for Analyzed<T> {
                                 let indentation = if is_local { "    " } else { "" };
                                 let Some(FunctionValueDefinition::Expression(TypedExpression {
                                     e,
-                                    ty: Some(Type::Fe),
+                                    type_scheme,
                                 })) = &definition
                                 else {
                                     panic!(
@@ -81,16 +84,28 @@ impl<T: Display> Display for Analyzed<T> {
                                         definition.as_ref().unwrap()
                                     );
                                 };
+                                assert!(
+                                    type_scheme.is_none()
+                                        || type_scheme == &Some((Type::Fe).into())
+                                );
 
                                 writeln!(f, "{indentation}constant {name} = {e};",)?;
                             }
-                            SymbolKind::Other() => {
-                                write!(f, "    let {name}")?;
-                                if let Some(value) = definition {
-                                    write!(f, "{value}")?
+                            SymbolKind::Other() => match definition {
+                                Some(FunctionValueDefinition::Expression(TypedExpression {
+                                    e,
+                                    type_scheme,
+                                })) => {
+                                    writeln!(
+                                        f,
+                                        "    let{} = {e};",
+                                        format_type_scheme_around_name(&name, type_scheme)
+                                    )?;
                                 }
-                                writeln!(f, ";")?
-                            }
+                                _ => {
+                                    unreachable!("Invalid definition for symbol: {}", name)
+                                }
+                            },
                         }
                     } else if let Some((symbol, definition)) = self.intermediate_columns.get(name) {
                         let (name, _) = update_namespace(name, f)?;
@@ -138,16 +153,20 @@ impl<T: Display> Display for FunctionValueDefinition<T> {
                 write!(f, " = {}", items.iter().format(" + "))
             }
             FunctionValueDefinition::Query(e) => format_outer_function(e, Some("query"), f),
-            FunctionValueDefinition::Expression(TypedExpression { e, ty: None }) => {
-                format_outer_function(e, None, f)
-            }
-            FunctionValueDefinition::Expression(TypedExpression { e, ty: Some(ty) })
-                if *ty == Type::col() =>
-            {
-                format_outer_function(e, None, f)
-            }
-            FunctionValueDefinition::Expression(TypedExpression { e, ty: Some(ty) }) => {
-                write!(f, ": {ty} = {e}")
+            FunctionValueDefinition::Expression(TypedExpression {
+                e,
+                type_scheme: None,
+            }) => format_outer_function(e, None, f),
+            FunctionValueDefinition::Expression(TypedExpression {
+                e,
+                type_scheme: Some(ty),
+            }) if *ty == Type::Col.into() => format_outer_function(e, None, f),
+            FunctionValueDefinition::Expression(TypedExpression {
+                e,
+                type_scheme: Some(ts),
+            }) => {
+                assert!(ts.vars.is_empty(), "Should not have called this display function, since we cannot properly format the type vars.");
+                write!(f, ": {} = {e}", ts.ty)
             }
         }
     }
@@ -292,15 +311,18 @@ impl Display for PolynomialReference {
 impl Display for Type {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
+            Type::Bottom => write!(f, "!"),
             Type::Bool => write!(f, "bool"),
             Type::Int => write!(f, "int"),
             Type::Fe => write!(f, "fe"),
             Type::String => write!(f, "string"),
             Type::Expr => write!(f, "expr"),
             Type::Constr => write!(f, "constr"),
+            Type::Col => write!(f, "col"),
             Type::Array(ar) => write!(f, "{ar}"),
             Type::Tuple(tu) => write!(f, "{tu}"),
             Type::Function(fun) => write!(f, "{fun}"),
+            Type::TypeVar(v) => write!(f, "{v}"),
         }
     }
 }
@@ -324,16 +346,12 @@ impl Display for TupleType {
 
 impl Display for FunctionType {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        if *self == Self::col() {
-            write!(f, "col")
-        } else {
-            write!(
-                f,
-                "{} -> {}",
-                format_list_of_types(&self.params),
-                self.value
-            )
-        }
+        write!(
+            f,
+            "{} -> {}",
+            format_list_of_types(&self.params),
+            self.value
+        )
     }
 }
 

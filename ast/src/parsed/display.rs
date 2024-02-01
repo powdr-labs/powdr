@@ -57,14 +57,11 @@ impl<T: Display> Display for ModuleStatement<T> {
                 SymbolValue::Module(m @ Module::Local(_)) => {
                     write!(f, "mod {name} {m}")
                 }
-                SymbolValue::Expression(ExpressionWithTypeName { e, type_name }) => {
+                SymbolValue::Expression(ExpressionWithTypeScheme { e, type_scheme }) => {
                     write!(
                         f,
-                        "let {name}{} = {e};",
-                        type_name
-                            .as_ref()
-                            .map(|t| format!(": {t}"))
-                            .unwrap_or_default()
+                        "let{} = {e};",
+                        format_type_scheme_around_name(name, type_scheme)
                     )
                 }
             },
@@ -370,11 +367,12 @@ impl<T: Display> Display for PilStatement<T> {
             PilStatement::Namespace(_, name, poly_length) => {
                 write!(f, "namespace {name}({poly_length});")
             }
-            PilStatement::LetStatement(_, name, type_name, value) => {
-                write!(f, "    let {name}")?;
-                if let Some(type_name) = type_name {
-                    write!(f, ": {type_name}")?;
-                }
+            PilStatement::LetStatement(_, name, type_scheme, value) => {
+                write!(
+                    f,
+                    "    let{}",
+                    format_type_scheme_around_name(name, type_scheme)
+                )?;
                 if let Some(value) = &value {
                     write!(f, " = {value}")?;
                 }
@@ -480,7 +478,7 @@ impl<T: Display, Ref: Display> Display for Expression<T, Ref> {
         match self {
             Expression::Reference(reference) => write!(f, "{reference}"),
             Expression::PublicReference(name) => write!(f, ":{name}"),
-            Expression::Number(value) => write!(f, "{value}"),
+            Expression::Number(value, _) => write!(f, "{value}"),
             Expression::String(value) => write!(f, "{}", quote(value)),
             Expression::Tuple(items) => write!(f, "({})", format_expressions(items)),
             Expression::LambdaExpression(lambda) => write!(f, "{}", lambda),
@@ -581,9 +579,16 @@ impl Display for UnaryOperator {
     }
 }
 
+impl Display for NoArrayLengths {
+    fn fmt(&self, _: &mut Formatter<'_>) -> Result {
+        unreachable!("This type should not have an instance.");
+    }
+}
+
 impl<E: Display> Display for TypeName<E> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
+            TypeName::Bottom => write!(f, "!"),
             TypeName::Bool => write!(f, "bool"),
             TypeName::Int => write!(f, "int"),
             TypeName::Fe => write!(f, "fe"),
@@ -594,6 +599,7 @@ impl<E: Display> Display for TypeName<E> {
             TypeName::Array(array) => write!(f, "{array}"),
             TypeName::Tuple(tuple) => write!(f, "{tuple}"),
             TypeName::Function(fun) => write!(f, "{fun}"),
+            TypeName::TypeVar(name) => write!(f, "{name}"),
         }
     }
 }
@@ -646,6 +652,37 @@ impl<E: Display> Display for FunctionTypeName<E> {
                 format!("{}", self.value)
             }
         )
+    }
+}
+
+pub fn format_type_scheme_around_name<E: Display>(
+    name: &str,
+    type_scheme: &Option<TypeScheme<E>>,
+) -> String {
+    if let Some(type_scheme) = type_scheme {
+        format!(
+            "{} {name}: {}",
+            type_scheme.type_vars_to_string(),
+            type_scheme.type_name
+        )
+    } else {
+        format!(" {name}")
+    }
+}
+
+impl Display for TypeBounds {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        fn format_var((var, bounds): &(String, BTreeSet<String>)) -> String {
+            format!(
+                "{var}{}",
+                if bounds.is_empty() {
+                    String::new()
+                } else {
+                    format!(": {}", bounds.iter().join(" + "))
+                }
+            )
+        }
+        write!(f, "{}", self.0.iter().map(format_var).format(", "))
     }
 }
 

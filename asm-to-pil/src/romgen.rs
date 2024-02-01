@@ -48,7 +48,7 @@ fn pad_return_arguments<T: FieldElement>(s: &mut FunctionStatement<T>, output_co
     if let FunctionStatement::Return(ret) = s {
         ret.values = std::mem::take(&mut ret.values)
             .into_iter()
-            .chain(repeat(Expression::Number(T::from(0))))
+            .chain(repeat(Expression::Number(T::from(0), None)))
             .take(output_count)
             .collect();
     };

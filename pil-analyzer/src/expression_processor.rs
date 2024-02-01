@@ -80,7 +80,7 @@ impl<T, D: AnalysisDriver<T>> ExpressionProcessor<T, D> {
         match expr {
             PExpression::Reference(poly) => Expression::Reference(self.process_reference(poly)),
             PExpression::PublicReference(name) => Expression::PublicReference(name),
-            PExpression::Number(n) => Expression::Number(n),
+            PExpression::Number(n, t) => Expression::Number(n, t),
             PExpression::String(value) => Expression::String(value),
             PExpression::Tuple(items) => Expression::Tuple(self.process_expressions(items)),
             PExpression::ArrayLiteral(ArrayLiteral { items }) => {

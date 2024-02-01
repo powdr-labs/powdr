@@ -731,8 +731,8 @@ fn memory(with_bootloader: bool) -> String {
 
     // ============== memory instructions ==============
 
-    let up_to_three = |i| i % 4;
-    let six_bits = |i| i % 2**6;
+    let up_to_three: col = |i| i % 4;
+    let six_bits: col = |i| i % 2**6;
     /// Loads one word from an address Y, where Y can be between 0 and 2**33 (sic!),
     /// wraps the address to 32 bits and rounds it down to the next multiple of 4.
     /// Returns the loaded word and the remainder of the division by 4.

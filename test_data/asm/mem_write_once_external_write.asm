@@ -11,7 +11,7 @@ machine MemReadWrite {
     reg A;
 
     // Write-once memory
-    let ADDR = |i| i;
+    let ADDR: col = |i| i;
     let v;
     // Loads a value. If the cell is empty, the prover can choose a value.
     instr mload X -> Y { {X, Y} in {ADDR, v} }

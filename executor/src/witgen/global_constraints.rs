@@ -431,7 +431,7 @@ namespace Global(2**20);
         // be able to derive the full constraint.
         let pil_source = r"
 namespace Global(1024);
-    let bytes = |i| i % 256;
+    let bytes: col = |i| i % 256;
     let X;
     { X * 4 } in { bytes };
 ";

@@ -307,9 +307,10 @@ impl<T> Analyzed<T> {
                     .iter_mut()
                     .flat_map(|e| e.pattern.iter_mut())
                     .for_each(|e| e.post_visit_expressions_mut(f)),
-                Some(FunctionValueDefinition::Expression(TypedExpression { e, ty: _ })) => {
-                    e.post_visit_expressions_mut(f)
-                }
+                Some(FunctionValueDefinition::Expression(TypedExpression {
+                    e,
+                    type_scheme: _,
+                })) => e.post_visit_expressions_mut(f),
                 None => {}
             });
     }
@@ -586,6 +587,12 @@ impl<Expr> Identity<Expr> {
     pub fn expression_for_poly_id(&self) -> &Expr {
         assert_eq!(self.kind, IdentityKind::Polynomial);
         self.left.selector.as_ref().unwrap()
+    }
+
+    /// Returns the expression in case this is a polynomial identity.
+    pub fn expression_for_poly_id_mut(&mut self) -> &mut Expr {
+        assert_eq!(self.kind, IdentityKind::Polynomial);
+        self.left.selector.as_mut().unwrap()
     }
 }
 

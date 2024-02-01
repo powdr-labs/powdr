@@ -754,7 +754,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 vec![val]
             }
             Expression::PublicReference(_) => todo!(),
-            Expression::Number(n) => {
+            Expression::Number(n, _) => {
                 vec![if let Some(unsigned) = to_u32(n) {
                     unsigned.into()
                 } else {
