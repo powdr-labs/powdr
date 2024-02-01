@@ -1,11 +1,13 @@
-constant %N = 65536;
-namespace std::convert(%N);
+let N: int = 65536;
+namespace std::convert(N);
     let int = [];
 
-namespace Main(%N);
-	col fixed A(i) { i % 256 };
-	col fixed B(i) { (i >> 8) % 256 };
-	col fixed C(i) { (std::convert::int(A(i)) + std::convert::int(B(i))) & 0xff };
+namespace Main(N);
+	let af = |i| i % 256;
+	let bf = |i| (i >> 8) % 256;
+	col fixed A(i) { af(i) };
+	col fixed B(i) { bf(i) };
+	col fixed C(i) { (af(i) + bf(i)) & 0xff };
 
 
 	col fixed a(i) { (i + 13) * 29 & 0xff };

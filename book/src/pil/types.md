@@ -9,13 +9,77 @@ The powdr-pil language has the following types:
 - tuple
 - array
 - function type
-- expression
-- constraint
+- `expr` (expression)
+- `constr` (constraint)
+- `!` ("bottom" or "unreachable" type)
 
-Since powdr-pil does not yet have a compile-time type checker, it is only dynamically typed:
-Values during evaluation have a (runtime) type and operations on them are performed according to this section.
-If an expression (for example in the definition of a fixed column) references a column, that column
-is assumed to have the type `int -> fe` (i.e. a function mapping integers (row indices) to field elements).
+> The `col` type is special in that it is only used for declaring columns, but cannot appear as the type of an expression.
+> See [Declaring and Referencing Columns](#declaring-and-referencing-columns) for details.
+
+Powdr-pil performs Hindley-Milner type inference. This means that, similar to Rust, the type of
+a symbol does not always have to be specified. The compiler will try to find a type for every
+symbol depending both on the value assigned to the symbol and on the context the symbol is used in.
+It is an error if the type is not uniquely determined.
+
+Symbols can have a generic type, but in those cases, you have to explicitly specify the generic type.
+Such declarations can require type variables to satisfy certain trait bounds.
+Currently, only built-in traits are supported (see the next section).
+
+Literal numbers do not have a specific type, they can be either `int`, `fe` or `expr` (the types that
+implement the `FromLiteral` trait), and their type can also stay generic until evaluation.
+
+### Example
+
+The following snippet defines a function that takes a value of a generic type and returns the value incremented by one.
+The type bounds on the generic type are `FromLiteral` and `Add`. The type checker will complain if we do not specify
+the type bounds. The bound `Add` is required because we use the `+` operator in the function and `FromLiteral` is needed
+because we use the literal `1` as a value of that type.
+
+```rust
+let<T: FromLiteral + Add> add_one: T -> T = |i| i + 1;
+```
+
+## Declaring and Referencing Columns
+
+A symbol declared to have type `col` (or `col[k]`) is a bit special:
+
+If you assign it a value, that value is expected to have type `int -> fe` or `int -> int` (or an array thereof).
+This allows the simple declaration of a column `let byte: col = |i| i & 0xff;` without complicated conversions.
+The integer value is converted to a field element during evaluation, but it has to be non-negative and less than
+the field modulus.
+
+If you reference such a symbol, the type of the reference is `expr`.
+A byte constraint is as easy as `{ X } in { byte }`, since the expected types in plookup columns is `expr`.
+The downside is that you cannot evaluate columns as functions. If you want to do that, you have to assign
+a copy to an `int -> int` symbol: `let byte_f: int -> int = |i| i & 0xff; let byte: col = byte_f;`.
+
+All other symbols use their declared type both for their value and for references to these symbols.
+
+## Built-in Traits
+
+`FromLiteral`:
+Implemented by `int`, `fe`, `expr`. The type of a number literal needs to implement `FromLiteral`.
+
+``Add``: Implemented by `int`, `fe`, `expr`, `T[]`, `string`. Used by `<T: Add> +: T, T -> T` (binary plus).
+
+`Sub`:
+Implemented by `int`, `fe`, `expr`. Used by `<T: Sub> -: T, T -> T` (binary minus).
+
+`Neg`:
+Implemented by `int`, `fe`, `expr`. Used by `<T: Neg> -: T -> T` (unary minus).
+
+`Mul`:
+Implemented by `int`, `fe`, `expr`. Used by `<T: Mul> *: T, T -> T` (binary multiplication).
+
+`Pow`:
+Implemented by `int`, `fe`, `expr`, Used by `<T: Pow> **: T, int -> T` (exponentiation).
+
+`Ord`:
+Implemented by `int`. Used by `<T: Ord> op: T, T, -> bool` for `op` being one of `<`, `>`, `<=`, `>=`.
+
+`Eq`:
+Implemented by `int`, `fe`, `expr`. Used by `<T: Eq> op: T, T -> bool` for `op` being one of `==`, `!=`.
+
 
 ## List of Types
 
@@ -36,9 +100,11 @@ This means that `(1 == 1) || std::check::panic("reason")` will cause a panic abo
 
 Type name: `int`
 
-Integers in powdr-pil have unlimited size. Literal numbers are always integers.
+Integers in powdr-pil have unlimited size.
 Array index requires an integer and row indices (for example the input to a fixed
 column defined through a function) are also integers.
+
+Integer implements `FromLiteral`, which means that literal numbers can be used in contexts where `int` is expected.
 
 Integers allow the following operators, whose result is always an integer:
 
@@ -72,12 +138,11 @@ Type name: `fe`
 Field elements are elements of a particular but unspecified prime field. The exact field is
 chosen when powdr is run. The modulus of that field can be accessed via `std::field::modulus()`.
 
-Field elements are the values stored in (fixed, witness and intermediate) columns.
+Field elements are the values stored in (fixed and witness) columns.
 Arithmetic inside constraints (algebraic expressions) is also always finite field arithmetic.
 
-Since literal numbers in the source code are integers, those have to be converted to field elements
-using the `std::convert::fe` function. In some situations (see below), integers
-(including literal numbers) are converted to field elements implicitly.
+The type `fe` implements `FromLiteral`, which means that literal numbers can be used in contexts where `fe` is expected.
+If the literal number is not less than the field modulus, a runtime error is caused.
 
 Field elements allow the following operators, where the result is always a field element:
 
@@ -135,6 +200,8 @@ two elements one and two).
 The built-in function `std::array::len` can be used to retrieve the length of an array (statically or dynamically sized)
 and the elements of an array `a` can be accessed using `a[0]`, `a[1]`, etc.
 
+The type checker currently only knows dynamically-sized arrays, which means that it does not compare the sizes of statically-sized array types.
+
 Arrays allow the following operators:
 
 - `+`: array concatenation
@@ -154,8 +221,6 @@ For example `|x, y| x + y` returns a function that performs addition.
 The lambda expression `|| 7` is a function that returns a constant (has no parameters).
 Lambda functions can capture anything in their environment and thus form closures.
 
-Due to the dynamic typing of powdr-pil, it is often not possible to exactly determine the type of a lambda expression.
-
 Functions allow the following operators:
 
 - `_(...)`: function evaluation
@@ -170,27 +235,23 @@ Expressions are eagerly evaluated from left to right.
 Type name: `expr`
 
 Expressions are the elements of the algebraic expressions used in constraints.
-Expressions cannot be explicitly constructed. At statement level / in constraint contexts,
-references to columns are implicitly converted to expressions, as are integers and field elements.
+
+References to columns have type `expr` and `expr` also implements `FromLiteral`,
+which means that literal numbers can be used in contexts where `expr` is expected.
 
 Example:
 ```rust
-let x;
-let y;
-let f = || x + y;
+let x: col;
+let y: col;
+let f: -> expr = || x + y;
 let g = || 7;
-f() == g();
+f() = g();
 ```
 The first two lines define the witness columns `x` and `y`.
 The next two lines define the utility functions `f` and `g`.
+The function `f` adds the two columns `x` and `y` symbolically - it essentially returns the expression `x + y`.
 The last line is at statement level and it is expected that it evaluates to a constraint, in this case, a polynomial identity.
-Because of that, `f()` is expected to evaluate to an expression, which means that the references
-to `x` and `y` that appear when evaluating `f` are already turned into expressions.
-The same is true about the `7` inside `g`.
-
-If `f` is called in a different context (for example inside a function that defines a constant column),
-then the column references `x` and `y` are interpreted to have the type `int -> fe` and thus
-adding them results in a type error.
+Because of that, `g` is inferred to have type `-> expr`, which is compatible with the literal `7`.
 
 Since expressions are built from abstract column references, applying operators
 does not perform any operations but instead constructs an abstract expression structure / syntax tree.
@@ -202,7 +263,7 @@ Expressions allow the following operators, which always construct new expression
 - `**`: exponential combination of an expression with an integer constant
 - `'`: reference to the next row of a column, can only be applied directly to columns and only once
 
-The operator `==` on expressions constructs a constraint (see below);
+The operator `=` on expressions constructs a constraint (see below);
 
 
 ### Constraints
@@ -215,35 +276,14 @@ or in an array of constraints.
 Generally, constraints include polynomial identities, plookups, permutations and connection identities.
 
 The only constraint currently constructible in the powdr-pil language are polynomial identities.
-These can be constructed from expressions by applying the `==` operator as in `x == 7`.
+These can be constructed from expressions by applying the `=` operator as in `x = 7`.
 
 Constraints do not allow any operators.
 
+### Bottom Type
 
-## Implicit Conversions
+Type name: `!`
 
-Usually, type conversions all have to be explicit using the built-in functions in the
-`std::convert` module, but there are some situations in which implicit type conversions happen:
-
-### Conversion to Expression
-
-If an expression is evaluated starting from statement level (i.e. the result is expected to be
-a constraint), references to columns are
-converted to expressions. If the column is a fixed column, it can still be called as
-a function with signature `int -> fe`.
-
-If an expression is combined with another value using a binary operator, the other value
-is converted to an expression according to the following rules:
-
-- field elements are converted without modification
-- non-negative integers less than the field modulus are converted to a field element and then to an expression
-- all other values cause a type error
-
-### Conversion to Field Elements
-
-Fixed columns have the signature `int -> fe` and all return values of
-such functions are implicitly converted to field elements according to the following rules:
-
-- field elements are returned without modification
-- non-negative integers less than the field modulus are converted to field elements
-- all other values cause a type error
+The bottom type essentially is the return type of a function that never returns, which currently only happens
+if you call the `panic` function. The bottom type is compatible with any other type, which means
+that you can call the `panic` function in any context.

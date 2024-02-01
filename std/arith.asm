@@ -40,7 +40,7 @@ machine Arith(CLK32_31, operation_id){
     let y3c: expr[8] = combine(y3);
 
     let CLK32: col[32] = array::new(32, |i| |row| if row % 32 == i { 1 } else { 0 });
-    let CLK32_31 = CLK32[31];
+    let CLK32_31: expr = CLK32[31];
 
     // TODO: Add the equivalent of these constraints for soundness: https://github.com/0xPolygonHermez/zkevm-proverjs/blob/main/pil/arith.pil#L43-L243
 

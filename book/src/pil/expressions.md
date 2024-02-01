@@ -50,7 +50,7 @@ The "default" arm with the pattern `_` matches all values.
 
 Example:
 
-```
+```rust
 let fib = |i| match i {
     0 => 1,
     1 => 1,
@@ -62,12 +62,12 @@ let fib = |i| match i {
 
 If expressions take the form ``if <condition> { <true value> } else { <false value> }``, where the "else" part is not optional.
 
-If the condition evaluates to a non-zero number, `<true value>` is evaluated, otherwise `<false value>` is.
+If the condition evaluates to ``true``, then `<true value>` is evaluated, otherwise `<false value>` is.
 
 
 Example:
 
-```
+```rust
 let is_seven = |i| if i == 7 { 1 } else { 0 };
 ```
 
@@ -88,6 +88,6 @@ Arbitrary parentheses are allowed.
 
 The following example illustrates how you can still use the generic language:
 
-```
+```rust
 {{#include ../../../test_data/pil/book/generic_to_algebraic.pil}}
 ```

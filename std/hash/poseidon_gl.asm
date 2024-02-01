@@ -18,13 +18,13 @@ machine PoseidonGL(FIRSTBLOCK, operation_id) {
     // - https://github.com/0xPolygonHermez/zkevm-proverjs/blob/main/src/sm/sm_poseidong.js
 
     // Number of field elements in the state
-    let STATE_SIZE = 12;
+    let STATE_SIZE: int = 12;
     // Number of output elements
-    let OUTPUT_SIZE = 4;
+    let OUTPUT_SIZE: int = 4;
     // Number of full rounds
-    let FULL_ROUNDS = 8;
+    let FULL_ROUNDS: int = 8;
     // Number of partial rounds (half of them before and half of them after the full rounds)
-    let PARTIAL_ROUNDS = 22;
+    let PARTIAL_ROUNDS: int = 22;
     let ROWS_PER_HASH = FULL_ROUNDS + PARTIAL_ROUNDS + 1;
 
     pol constant L0 = [1] + [0]*;

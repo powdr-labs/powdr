@@ -269,6 +269,7 @@ fn substitute_polynomial_references<T: FieldElement>(
         if let Expression::Reference(Reference::Poly(PolynomialReference {
             name: _,
             poly_id: Some(poly_id),
+            generic_args: _,
         })) = e
         {
             if let Some(value) = substitutions.get(poly_id) {

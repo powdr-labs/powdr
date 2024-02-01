@@ -12,6 +12,7 @@ powdr-ast = { path = "../ast" }
 powdr-number = { path = "../number" }
 powdr-parser = { path = "../parser" }
 powdr-parser-util = { path = "../parser-util" }
+lazy_static = "1.4.0"
 
 itertools = "^0.10"
 num-bigint = "0.4.3"

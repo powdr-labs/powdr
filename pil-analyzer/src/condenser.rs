@@ -16,7 +16,8 @@ use powdr_ast::{
 use powdr_number::{DegreeType, FieldElement};
 
 use crate::evaluator::{
-    self, evaluate, evaluate_function_call, Custom, EvalError, SymbolLookup, Value,
+    self, evaluate, evaluate_function_call, generic_arg_mapping, Custom, EvalError, SymbolLookup,
+    Value,
 };
 
 pub fn condense<T: FieldElement>(
@@ -64,12 +65,11 @@ pub fn condense<T: FieldElement>(
             let value = if let Some(length) = symbol.length {
                 let scheme = e.type_scheme.as_ref();
                 assert!(
-                    scheme.is_none()
-                        || (scheme.unwrap().vars.is_empty()
-                            && matches!(
-                                &scheme.unwrap().ty,
-                                Type::Array(ArrayType { base, length: _ })
-                                if base.as_ref() == &Type::Expr)),
+                    scheme.unwrap().vars.is_empty()
+                        && matches!(
+                            &scheme.unwrap().ty,
+                            Type::Array(ArrayType { base, length: _ })
+                            if base.as_ref() == &Type::Expr),
                     "Intermediate column type has to be expr[], but got: {}",
                     format_type_scheme_around_name(name, &e.type_scheme)
                 );
@@ -77,8 +77,9 @@ pub fn condense<T: FieldElement>(
                 assert_eq!(result.len() as u64, length);
                 result
             } else {
-                assert!(
-                    e.type_scheme.is_none() || e.type_scheme == Some(Type::Expr.into()),
+                assert_eq!(
+                    e.type_scheme,
+                    Some(Type::Expr.into()),
                     "Intermediate column type has to be expr, but got: {}",
                     format_type_scheme_around_name(name, &e.type_scheme)
                 );
@@ -235,7 +236,11 @@ impl<T: FieldElement> Condenser<T> {
 }
 
 impl<'a, T: FieldElement> SymbolLookup<'a, T, Condensate<T>> for &'a Condenser<T> {
-    fn lookup(&self, name: &str) -> Result<Value<'a, T, Condensate<T>>, EvalError> {
+    fn lookup<'b>(
+        &self,
+        name: &str,
+        generic_args: Option<Vec<Type>>,
+    ) -> Result<Value<'a, T, Condensate<T>>, EvalError> {
         let name = name.to_string();
         let (symbol, value) = &self
             .symbols
@@ -269,8 +274,11 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T, Condensate<T>> for &'a Condenser<T
             match value {
                 Some(FunctionValueDefinition::Expression(TypedExpression {
                     e: value,
-                    type_scheme: _,
-                })) => evaluator::evaluate(value, self)?,
+                    type_scheme,
+                })) => {
+                    let generic_args = generic_arg_mapping(type_scheme, generic_args);
+                    evaluator::evaluate_generic(value, &generic_args, self)?
+                }
                 _ => Err(EvalError::Unsupported(
                     "Cannot evaluate arrays and queries.".to_string(),
                 ))?,

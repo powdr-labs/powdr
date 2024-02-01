@@ -6,7 +6,10 @@ use std::{
 
 use itertools::Itertools;
 use powdr_ast::{
-    analyzed::{types::TypedExpression, Expression, FunctionValueDefinition, Reference, Symbol},
+    analyzed::{
+        types::{Type, TypeScheme, TypedExpression},
+        Expression, FunctionValueDefinition, Reference, Symbol,
+    },
     parsed::{
         display::quote, BinaryOperator, FunctionCall, LambdaExpression, MatchArm, MatchPattern,
         UnaryOperator,
@@ -27,7 +30,17 @@ pub fn evaluate<'a, T: FieldElement, C: Custom>(
     expr: &'a Expression<T>,
     symbols: &impl SymbolLookup<'a, T, C>,
 ) -> Result<Value<'a, T, C>, EvalError> {
-    internal::evaluate(expr, &[], symbols)
+    evaluate_generic(expr, &Default::default(), symbols)
+}
+
+/// Evaluates a generic expression given a symbol lookup implementation
+/// and values for the generic type parameters.
+pub fn evaluate_generic<'a, 'b, T: FieldElement, C: Custom>(
+    expr: &'a Expression<T>,
+    generic_args: &'b HashMap<String, Type>,
+    symbols: &impl SymbolLookup<'a, T, C>,
+) -> Result<Value<'a, T, C>, EvalError> {
+    internal::evaluate(expr, &[], generic_args, symbols)
 }
 
 /// Evaluates a function call.
@@ -43,6 +56,7 @@ pub fn evaluate_function_call<'a, T: FieldElement, C: Custom>(
         Value::Closure(Closure {
             lambda,
             environment,
+            generic_args,
         }) => {
             if lambda.params.len() != arguments.len() {
                 Err(EvalError::TypeError(format!(
@@ -56,13 +70,44 @@ pub fn evaluate_function_call<'a, T: FieldElement, C: Custom>(
 
             let local_vars = arguments.into_iter().chain(environment).collect::<Vec<_>>();
 
-            internal::evaluate(&lambda.body, &local_vars, symbols)
+            internal::evaluate(&lambda.body, &local_vars, &generic_args, symbols)
         }
         Value::Custom(value) => symbols.eval_function_application(value, &arguments),
         e => Err(EvalError::TypeError(format!(
             "Expected function but got {e}"
         ))),
     }
+}
+
+/// Turns an optional type scheme and a list of generic type arguments into a mapping
+/// from type name to type.
+pub fn generic_arg_mapping(
+    type_scheme: &Option<TypeScheme>,
+    args: Option<Vec<Type>>,
+) -> HashMap<String, Type> {
+    let Some(type_scheme) = type_scheme else {
+        return Default::default();
+    };
+    let Some(args) = args else {
+        assert!(
+            type_scheme.vars.is_empty(),
+            "Tried to call a generic function without properly set type parameters."
+        );
+        return Default::default();
+    };
+    assert_eq!(
+        type_scheme.vars.len(),
+        args.len(),
+        "Invalid number of generic arguments:\ngiven: {}\nexpected: {}.\nThis might happen if you call generic functions for array length type expressions.",
+        args.iter().format(", "),
+        type_scheme.vars.vars().format(", ")
+    );
+    type_scheme
+        .vars
+        .vars()
+        .cloned()
+        .zip(args.iter().cloned())
+        .collect()
 }
 
 /// Evaluation errors.
@@ -248,6 +293,7 @@ impl Display for NoCustom {
 pub struct Closure<'a, T, C> {
     pub lambda: &'a LambdaExpression<T, Reference>,
     pub environment: Vec<Rc<Value<'a, T, C>>>,
+    pub generic_args: HashMap<String, Type>,
 }
 
 impl<'a, T, C> PartialEq for Closure<'a, T, C> {
@@ -282,13 +328,17 @@ pub struct Definitions<'a, T>(
 );
 
 impl<'a, T: FieldElement> SymbolLookup<'a, T, NoCustom> for Definitions<'a, T> {
-    fn lookup(&self, name: &'a str) -> Result<Value<'a, T, NoCustom>, EvalError> {
+    fn lookup<'b>(
+        &self,
+        name: &'a str,
+        generic_args: Option<Vec<Type>>,
+    ) -> Result<Value<'a, T, NoCustom>, EvalError> {
         Ok(match self.0.get(&name.to_string()) {
             Some((_, value)) => match value {
-                Some(FunctionValueDefinition::Expression(TypedExpression {
-                    e,
-                    type_scheme: _,
-                })) => evaluate(e, self)?,
+                Some(FunctionValueDefinition::Expression(TypedExpression { e, type_scheme })) => {
+                    let generic_args = generic_arg_mapping(type_scheme, generic_args);
+                    evaluate_generic(e, &generic_args, self)?
+                }
                 _ => Err(EvalError::Unsupported(
                     "Cannot evaluate arrays and queries.".to_string(),
                 ))?,
@@ -316,7 +366,11 @@ impl<'a, T: FieldElement> From<&'a HashMap<String, (Symbol, Option<FunctionValue
 }
 
 pub trait SymbolLookup<'a, T, C> {
-    fn lookup(&self, name: &'a str) -> Result<Value<'a, T, C>, EvalError>;
+    fn lookup(
+        &self,
+        name: &'a str,
+        generic_args: Option<Vec<Type>>,
+    ) -> Result<Value<'a, T, C>, EvalError>;
     fn lookup_public_reference(&self, name: &'a str) -> Result<Value<'a, T, C>, EvalError> {
         Err(EvalError::Unsupported(format!(
             "Cannot evaluate public reference: {name}"
@@ -352,32 +406,35 @@ mod internal {
 
     use super::*;
 
-    pub fn evaluate<'a, T: FieldElement, C: Custom>(
+    pub fn evaluate<'a, 'b, T: FieldElement, C: Custom>(
         expr: &'a Expression<T>,
         locals: &[Rc<Value<'a, T, C>>],
+        generic_args: &'b HashMap<String, Type>,
         symbols: &impl SymbolLookup<'a, T, C>,
     ) -> Result<Value<'a, T, C>, EvalError> {
         Ok(match expr {
-            Expression::Reference(reference) => evaluate_reference(reference, locals, symbols)?,
+            Expression::Reference(reference) => {
+                evaluate_reference(reference, locals, generic_args, symbols)?
+            }
             Expression::PublicReference(name) => symbols.lookup_public_reference(name)?,
-            Expression::Number(n, ty) => evaluate_literal(n, ty)?,
+            Expression::Number(n, ty) => evaluate_literal(n, ty, generic_args)?,
             Expression::String(s) => Value::String(s.clone()),
             Expression::Tuple(items) => Value::Tuple(
                 items
                     .iter()
-                    .map(|e| evaluate(e, locals, symbols))
+                    .map(|e| evaluate(e, locals, generic_args, symbols))
                     .collect::<Result<_, _>>()?,
             ),
             Expression::ArrayLiteral(elements) => Value::Array(
                 elements
                     .items
                     .iter()
-                    .map(|e| evaluate(e, locals, symbols))
+                    .map(|e| evaluate(e, locals, generic_args, symbols))
                     .collect::<Result<_, _>>()?,
             ),
             Expression::BinaryOperation(left, op, right) => {
-                let left = evaluate(left, locals, symbols)?;
-                let right = evaluate(right, locals, symbols)?;
+                let left = evaluate(left, locals, generic_args, symbols)?;
+                let right = evaluate(right, locals, generic_args, symbols)?;
                 match (left, op, right) {
                     (l @ Value::Custom(_), _, r) | (l, _, r @ Value::Custom(_)) => {
                         symbols.eval_binary_operation(l, *op, r)?
@@ -415,28 +472,31 @@ mod internal {
                     )))?,
                 }
             }
-            Expression::UnaryOperation(op, expr) => match (op, evaluate(expr, locals, symbols)?) {
-                (_, Value::Custom(inner)) => symbols.eval_unary_operation(*op, inner)?,
-                (UnaryOperator::Minus, Value::FieldElement(e)) => Value::FieldElement(-e),
-                (UnaryOperator::LogicalNot, Value::Bool(b)) => Value::Bool(!b),
-                (UnaryOperator::Minus, Value::Integer(n)) => Value::Integer(-n),
-                (_, inner) => Err(EvalError::TypeError(format!(
-                    "Operator {op} not supported on types: {inner}: {}",
-                    inner.type_name()
-                )))?,
-            },
+            Expression::UnaryOperation(op, expr) => {
+                match (op, evaluate(expr, locals, generic_args, symbols)?) {
+                    (_, Value::Custom(inner)) => symbols.eval_unary_operation(*op, inner)?,
+                    (UnaryOperator::Minus, Value::FieldElement(e)) => Value::FieldElement(-e),
+                    (UnaryOperator::LogicalNot, Value::Bool(b)) => Value::Bool(!b),
+                    (UnaryOperator::Minus, Value::Integer(n)) => Value::Integer(-n),
+                    (_, inner) => Err(EvalError::TypeError(format!(
+                        "Operator {op} not supported on types: {inner}: {}",
+                        inner.type_name()
+                    )))?,
+                }
+            }
             Expression::LambdaExpression(lambda) => {
                 // TODO only copy the part of the environment that is actually referenced?
                 (Closure {
                     lambda,
                     environment: locals.to_vec(),
+                    generic_args: generic_args.clone(),
                 })
                 .into()
             }
             Expression::IndexAccess(index_access) => {
-                match evaluate(&index_access.array, locals, symbols)? {
+                match evaluate(&index_access.array, locals, generic_args, symbols)? {
                     Value::Array(elements) => {
-                        match evaluate(&index_access.index, locals, symbols)? {
+                        match evaluate(&index_access.index, locals, generic_args,symbols)? {
                             Value::Integer(index)
                                 if index.is_negative()
                                     || index >= (elements.len() as u64).into() =>
@@ -462,22 +522,22 @@ mod internal {
                 function,
                 arguments,
             }) => {
-                let function = evaluate(function, locals, symbols)?;
+                let function = evaluate(function, locals, generic_args, symbols)?;
                 let arguments = arguments
                     .iter()
-                    .map(|a| evaluate(a, locals, symbols).map(Rc::new))
+                    .map(|a| evaluate(a, locals, generic_args, symbols).map(Rc::new))
                     .collect::<Result<Vec<_>, _>>()?;
                 evaluate_function_call(function, arguments, symbols)?
             }
             Expression::MatchExpression(scrutinee, arms) => {
-                let v = evaluate(scrutinee, locals, symbols)?;
+                let v = evaluate(scrutinee, locals, generic_args, symbols)?;
                 let body = arms
                     .iter()
                     .find_map(|MatchArm { pattern, value }| match pattern {
                         MatchPattern::Pattern(p) => {
                             // TODO this uses PartialEq. As soon as we have proper match patterns
                             // instead of value, we can remove the PartialEq requirement on Value.
-                            let p = evaluate(p, locals, symbols).unwrap();
+                            let p = evaluate(p, locals, generic_args, symbols).unwrap();
                             if p == v {
                                 Some(value)
                             } else {
@@ -490,10 +550,10 @@ mod internal {
                         MatchPattern::CatchAll => Some(value),
                     })
                     .ok_or_else(EvalError::NoMatch)?;
-                evaluate(body, locals, symbols)?
+                evaluate(body, locals, generic_args, symbols)?
             }
             Expression::IfExpression(if_expr) => {
-                let condition = match evaluate(&if_expr.condition, locals, symbols)? {
+                let condition = match evaluate(&if_expr.condition, locals, generic_args, symbols)? {
                     Value::Bool(b) => Ok(b),
                     x => Err(EvalError::TypeError(format!(
                         "Expected boolean value but got {x}"
@@ -504,7 +564,7 @@ mod internal {
                 } else {
                     &if_expr.else_body
                 };
-                evaluate(body.as_ref(), locals, symbols)?
+                evaluate(body.as_ref(), locals, generic_args, symbols)?
             }
             Expression::FreeInput(_) => Err(EvalError::Unsupported(
                 "Cannot evaluate free input.".to_string(),
@@ -515,18 +575,41 @@ mod internal {
     fn evaluate_literal<'a, T: FieldElement, C: Custom>(
         n: &T,
         ty: &Option<TypeName<NoArrayLengths>>,
+        generic_args: &HashMap<String, Type>,
     ) -> Result<Value<'a, T, C>, EvalError> {
-        assert!(
-            ty.is_none(),
-            "Type can only be introduced by the type checker"
-        );
-
-        Ok(Value::Integer(n.to_arbitrary_integer().into()))
+        let ty = if let Some(TypeName::TypeVar(tv)) = ty {
+            match &generic_args[tv] {
+                Type::Fe => TypeName::Fe,
+                Type::Int => TypeName::Int,
+                Type::Expr => TypeName::Expr,
+                t => Err(EvalError::TypeError(format!(
+                    "Invalid type name for number literal: {t}"
+                )))?,
+            }
+        } else {
+            // TODO Default is to convert literals to integers.
+            // We need to change the parser here to parse integers, not field elements,
+            // so that we can process larger numbers.
+            ty.as_ref().cloned().unwrap_or_else(|| TypeName::Int)
+        };
+        Ok(match ty {
+            TypeName::Fe => Value::FieldElement(*n),
+            TypeName::Int => Value::Integer(n.to_arbitrary_integer().into()),
+            TypeName::Expr => {
+                // TODO Once we lower `expr` to a type supported by evaluator natively,
+                // then use expr here.
+                Value::Integer(n.to_arbitrary_integer().into())
+            }
+            t => Err(EvalError::TypeError(format!(
+                "Invalid type name for number literal: {t}"
+            )))?,
+        })
     }
 
     fn evaluate_reference<'a, T: FieldElement, C: Custom>(
         reference: &'a Reference,
         locals: &[Rc<Value<'a, T, C>>],
+        generic_args: &HashMap<String, Type>,
         symbols: &impl SymbolLookup<'a, T, C>,
     ) -> Result<Value<'a, T, C>, EvalError> {
         Ok(match reference {
@@ -536,7 +619,13 @@ mod internal {
                 if let Some((_, b)) = BUILTINS.iter().find(|(n, _)| (n == &poly.name)) {
                     Value::BuiltinFunction(*b)
                 } else {
-                    symbols.lookup(&poly.name)?
+                    let generic_args = poly.generic_args.clone().map(|mut ga| {
+                        for ty in &mut ga {
+                            ty.substitute_type_vars(generic_args);
+                        }
+                        ga
+                    });
+                    symbols.lookup(&poly.name, generic_args)?
                 }
             }
         })
@@ -695,7 +784,7 @@ mod test {
     #[test]
     pub fn fibonacci() {
         let src = r#"namespace Main(16);
-            let fib = |i| match i {
+            let fib: int -> int = |i| match i {
                 0 => 0,
                 1 => 1,
                 _ => fib(i - 1) + fib(i - 2),
@@ -725,26 +814,29 @@ mod test {
     #[test]
     pub fn array_len() {
         let src = r#"
-            constant %N = 2;
-            namespace std::array(%N);
+            let N: int = 2;
+            namespace std::array(N);
             let len = 123;
-            namespace F(%N);
-            let x = std::array::len([1, 2, 3]);
-            let y = std::array::len([]);
+            namespace F(N);
+            let x = std::array::len([1, N, 3]);
+            let empty: int[] = [];
+            let y = std::array::len(empty);
         "#;
         assert_eq!(parse_and_evaluate_symbol(src, "F.x"), "3".to_string());
         assert_eq!(parse_and_evaluate_symbol(src, "F.y"), "0".to_string());
     }
 
     #[test]
-    #[should_panic = r#"FailedAssertion("[1, \"text\"]")"#]
+    #[should_panic = r#"FailedAssertion("this text")"#]
     pub fn panic_complex() {
         let src = r#"
             constant %N = 2;
             namespace std::check(%N);
             let panic = 123;
             namespace F(%N);
-            let x = (|i| if i == 1 { std::check::panic([i, "text"]) } else { 9 })(1);
+            let concat = |a, b| a + b;
+            let arg: int = 1;
+            let x: int[] = (|i| if i == 1 { std::check::panic(concat("this ", "text")) } else { [9] })(arg);
         "#;
         parse_and_evaluate_symbol(src, "F.x");
     }
@@ -757,7 +849,7 @@ mod test {
             namespace std::check(%N);
             let panic = 123;
             namespace F(%N);
-            let x = std::check::panic("text");
+            let x: int = std::check::panic("text");
         "#;
         parse_and_evaluate_symbol(src, "F.x");
     }
@@ -789,9 +881,11 @@ mod test {
     #[test]
     pub fn zero_power_zero() {
         let src = r#"
-            let zpz = 0**0;
+        let zpz_int: int = 0**0;
+        let zpz_fe: fe = 0**0;
         "#;
-        assert_eq!(parse_and_evaluate_symbol(src, "zpz"), "1".to_string());
+        assert_eq!(parse_and_evaluate_symbol(src, "zpz_int"), "1".to_string());
+        assert_eq!(parse_and_evaluate_symbol(src, "zpz_fe"), "1".to_string());
     }
 
     #[test]

@@ -208,8 +208,17 @@ where
             let ty = self.resolve_type_name(ts.type_name.clone())
                 .map_err(|e| panic!("Error evaluating expressions in type name \"{}\" to reduce it to a type:\n{e})", ts.type_name))
                 .unwrap();
-            if ty.contained_type_vars().collect::<HashSet<_>>() != vars.vars().collect::<HashSet<_>>() {
-                panic!("Set of declared and used type variables are not the same in declaration:\nlet<{vars}> {name}: {ty}");
+            let contained_type_vars = ty.contained_type_vars().collect::<HashSet<_>>();
+            let declared_type_vars = vars.vars().collect::<HashSet<_>>();
+            if contained_type_vars != declared_type_vars {
+                let excess_declared = declared_type_vars.difference(&contained_type_vars).format(", ").to_string();
+                let excess_contained = contained_type_vars.difference(&declared_type_vars).format(", ").to_string();
+                let details = (!excess_declared.is_empty()).then(||
+                    format!("Excess type variables in declaration: {excess_declared}")
+                ).iter().chain((!excess_contained.is_empty()).then(||
+                    format!("Excess type variables in type: {excess_contained}")
+                ).iter()).format("\n").to_string();
+                panic!("Set of declared and used type variables are not the same in declaration:\nlet<{vars}> {name}: {ty}\n{details}");
             };
             TypeScheme{vars, ty}
         });

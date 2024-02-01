@@ -11,6 +11,7 @@ use powdr_number::{DegreeType, FieldElement};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+use crate::analyzed::types::ArrayType;
 use crate::parsed::utils::expr_any;
 use crate::parsed::visitor::ExpressionVisitable;
 pub use crate::parsed::BinaryOperator;
@@ -18,7 +19,7 @@ pub use crate::parsed::UnaryOperator;
 use crate::parsed::{self, SelectedExpressions};
 use crate::SourceRef;
 
-use self::types::TypedExpression;
+use self::types::{Type, TypeScheme, TypedExpression};
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub enum StatementIdentifier {
@@ -141,6 +142,12 @@ impl<T> Analyzed<T> {
                 _ => None,
             })
             .sum()
+    }
+
+    /// Returns the type (scheme) of a symbol with the given name.
+    pub fn type_of_symbol(&self, name: &str) -> TypeScheme {
+        let (sym, value) = &self.definitions[name];
+        type_from_definition(sym, value).unwrap()
     }
 
     /// Removes the specified polynomials and updates the IDs of the other polynomials
@@ -419,6 +426,39 @@ fn inlined_expression_from_intermediate_poly_id<T: Copy + Display>(
     expr
 }
 
+/// Extracts the declared (or implicit) type from a definition.
+pub fn type_from_definition<T>(
+    symbol: &Symbol,
+    value: &Option<FunctionValueDefinition<T>>,
+) -> Option<TypeScheme> {
+    if let Some(value) = value {
+        match value {
+            FunctionValueDefinition::Array(_) | FunctionValueDefinition::Query(_) => {
+                Some(Type::Col.into())
+            }
+            FunctionValueDefinition::Expression(TypedExpression { e: _, type_scheme }) => {
+                type_scheme.clone()
+            }
+        }
+    } else {
+        assert!(
+            symbol.kind == SymbolKind::Poly(PolynomialType::Committed)
+                || symbol.kind == SymbolKind::Poly(PolynomialType::Constant)
+        );
+        if symbol.length.is_some() {
+            Some(
+                Type::Array(ArrayType {
+                    base: Box::new(Type::Col),
+                    length: None,
+                })
+                .into(),
+            )
+        } else {
+            Some(Type::Col.into())
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct Symbol {
     pub id: u64,
@@ -524,6 +564,11 @@ impl<T> RepeatedArray<T> {
     /// Returns the pattern to be repeated
     pub fn pattern(&self) -> &[Expression<T>] {
         &self.pattern
+    }
+
+    /// Returns the pattern to be repeated
+    pub fn pattern_mut(&mut self) -> &mut [Expression<T>] {
+        &mut self.pattern
     }
 
     /// Returns true iff this array is empty.
@@ -828,6 +873,9 @@ pub struct PolynomialReference {
     /// Optional because it is filled in in a second stage of analysis.
     /// TODO make this non-optional
     pub poly_id: Option<PolyID>,
+    /// The type arguments if the symbol is generic.
+    /// Guarenteed to be Some(_) after type checking is completed.
+    pub generic_args: Option<Vec<Type>>,
 }
 
 #[derive(

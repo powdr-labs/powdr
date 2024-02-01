@@ -2,11 +2,13 @@ use std::{fmt::Display, rc::Rc};
 
 use num_traits::ToPrimitive;
 use powdr_ast::analyzed::{
-    types::TypedExpression, AlgebraicReference, Expression, FunctionValueDefinition, PolyID,
-    PolynomialType,
+    types::{Type, TypedExpression},
+    AlgebraicReference, Expression, FunctionValueDefinition, PolyID, PolynomialType,
 };
 use powdr_number::{DegreeType, FieldElement};
-use powdr_pil_analyzer::evaluator::{self, Custom, EvalError, SymbolLookup, Value};
+use powdr_pil_analyzer::evaluator::{
+    self, generic_arg_mapping, Custom, EvalError, SymbolLookup, Value,
+};
 
 use super::{
     rows::{RowIndex, RowPair},
@@ -102,7 +104,11 @@ struct Symbols<'a, T: FieldElement> {
 }
 
 impl<'a, T: FieldElement> SymbolLookup<'a, T, Reference<'a>> for Symbols<'a, T> {
-    fn lookup(&self, name: &'a str) -> Result<Value<'a, T, Reference<'a>>, EvalError> {
+    fn lookup<'b>(
+        &self,
+        name: &'a str,
+        generic_args: Option<Vec<Type>>,
+    ) -> Result<Value<'a, T, Reference<'a>>, EvalError> {
         match self.fixed_data.try_column_by_name(name) {
             Some(poly_id) => Ok(Value::Custom(Reference { name, poly_id })),
             None => match self.fixed_data.analyzed.definitions.get(&name.to_string()) {
@@ -111,10 +117,10 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T, Reference<'a>> for Symbols<'a, T> 
                         .as_ref()
                         .expect("Witness columns should have been found by try_column_by_name()");
                     match value {
-                        FunctionValueDefinition::Expression(TypedExpression {
-                            e,
-                            type_scheme: _,
-                        }) => evaluator::evaluate(e, self),
+                        FunctionValueDefinition::Expression(TypedExpression { e, type_scheme }) => {
+                            let generic_args = generic_arg_mapping(type_scheme, generic_args);
+                            evaluator::evaluate_generic(e, &generic_args, self)
+                        }
                         _ => panic!(
                             "Arrays and queries should have been found by try_column_by_name()"
                         ),
@@ -143,6 +149,7 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T, Reference<'a>> for Symbols<'a, T> 
                 arguments[0]
             )));
         };
+        // TODO change this mechanism to use a built-in "eval" function instead.
         Ok(Value::FieldElement(match function.poly_id.ptype {
             PolynomialType::Committed | PolynomialType::Intermediate => {
                 let row_index = RowIndex::from_degree(

@@ -179,6 +179,10 @@ impl<T, D: AnalysisDriver<T>> ExpressionProcessor<T, D> {
         PolynomialReference {
             name: self.driver.resolve_ref(path),
             poly_id: None,
+            // These will be filled by the type checker.
+            // TODO at some point we should support the turbofish operator
+            // in the parser.
+            generic_args: Default::default(),
         }
     }
 }

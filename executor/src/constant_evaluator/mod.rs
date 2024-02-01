@@ -9,7 +9,9 @@ use powdr_ast::{
     parsed::IndexAccess,
 };
 use powdr_number::{DegreeType, FieldElement};
-use powdr_pil_analyzer::evaluator::{self, Custom, EvalError, SymbolLookup, Value};
+use powdr_pil_analyzer::evaluator::{
+    self, generic_arg_mapping, Custom, EvalError, SymbolLookup, Value,
+};
 use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 
 /// Generates the fixed column values for all fixed columns that are defined
@@ -51,6 +53,7 @@ fn generate_values<T: FieldElement>(
     name: &str,
     body: &FunctionValueDefinition<T>,
     index: Option<u64>,
+    // TODO replace computed_columns by a cache
     computed_columns: &HashMap<String, (PolyID, Vec<T>)>,
 ) -> Vec<T> {
     let symbols = Symbols {
@@ -140,16 +143,25 @@ struct Symbols<'a, T> {
 }
 
 impl<'a, T: FieldElement> SymbolLookup<'a, T, FixedColumnRef<'a>> for Symbols<'a, T> {
-    fn lookup<'b>(&self, name: &str) -> Result<Value<'a, T, FixedColumnRef<'a>>, EvalError> {
+    fn lookup<'b>(
+        &self,
+        name: &str,
+        generic_args: Option<Vec<Type>>,
+    ) -> Result<Value<'a, T, FixedColumnRef<'a>>, EvalError> {
         Ok(
             if let Some((name, _)) = self.computed_columns.get_key_value(name) {
+                // TODO it is actually not possible anymore to reference another fixed column,
+                // so we could eliminate the whole member of Symbols.
                 Value::Custom(FixedColumnRef { name })
             } else if let Some((_, value)) = self.analyzed.definitions.get(&name.to_string()) {
                 match value {
                     Some(FunctionValueDefinition::Expression(TypedExpression {
                         e,
-                        type_scheme: _,
-                    })) => evaluator::evaluate(e, self)?,
+                        type_scheme,
+                    })) => {
+                        let generic_args = generic_arg_mapping(type_scheme, generic_args);
+                        evaluator::evaluate_generic(e, &generic_args, self)?
+                    }
                     Some(_) => Err(EvalError::Unsupported(
                         "Cannot evaluate arrays and queries.".to_string(),
                     ))?,
@@ -222,10 +234,10 @@ mod test {
     #[test]
     pub fn test_last() {
         let src = r#"
-            constant %N = 8;
-            namespace F(%N);
+            let N = 8;
+            namespace F(N);
             pol constant LAST(i) { match i {
-                %N - 1 => 1,
+                N - 1 => 1,
                 _ => 0,
             } };
         "#;
@@ -336,14 +348,16 @@ mod test {
     #[test]
     pub fn test_poly_call() {
         let src = r#"
-            constant %N = 10;
-            namespace std::convert(%N);
+            let N = 10;
+            namespace std::convert(N);
             let int = [];
-            namespace F(%N);
+            namespace F(N);
+            let seq_f = |i| i;
             col fixed seq(i) { i };
-            col fixed doub(i) { std::convert::int(seq((2 * i) % %N)) + 1 };
-            col fixed half_nibble(i) { i & 0x7 };
-            col fixed doubled_half_nibble(i) { half_nibble(i / 2) };
+            col fixed doub(i) { std::convert::int(seq_f((2 * i) % N)) + 1 };
+            let half_nibble_f = |i| i & 0x7;
+            col fixed half_nibble(i) { half_nibble_f(i) };
+            col fixed doubled_half_nibble(i) { half_nibble_f(i / 2) };
         "#;
         let analyzed = analyze_string(src);
         assert_eq!(analyzed.degree(), 10);
@@ -379,11 +393,13 @@ mod test {
     #[test]
     pub fn test_arrays() {
         let src = r#"
-            constant %N = 10;
-            namespace F(%N);
+            let N: int = 10;
+            let n: fe = 10;
+            namespace F(N);
+            let f = |i| i  + 20;
             col fixed alt = [0, 1, 0, 1, 0, 1] + [0]*;
             col fixed empty = [] + [0]*;
-            col fixed ref_other = [%N-1, alt(1), 8] + [0]*;
+            col fixed ref_other = [n-1, f(1), 8] + [0]*;
         "#;
         let analyzed = analyze_string(src);
         assert_eq!(analyzed.degree(), 10);
@@ -404,7 +420,7 @@ mod test {
             constants[2],
             (
                 "F.ref_other".to_string(),
-                convert([9i32, 1, 8, 0, 0, 0, 0, 0, 0, 0].to_vec())
+                convert([9i32, 21, 8, 0, 0, 0, 0, 0, 0, 0].to_vec())
             )
         );
     }
@@ -432,76 +448,68 @@ mod test {
     #[test]
     pub fn comparisons() {
         let src = r#"
-            constant %N = 6;
-            namespace std::convert(%N);
+            let N: int = 6;
+            namespace std::convert(N);
             let int = 9;
             let fe = 8;
-            namespace F(%N);
-            col fixed id(i) { i };
-            col fixed inv(i) { %N - i };
-            col fixed a = [0, 1, 0, 1, 2, 1];
-            col fixed b = [0, 0, 1, 1, 0, 5];
-            col fixed or(i) { if (a(i) != std::convert::fe(0)) || (b(i) != std::convert::fe(0)) { 1 } else { 0 } };
-            col fixed and(i) { if (a(i) != std::convert::fe(0)) && (b(i) != std::convert::fe(0)) { 1 } else { 0 } };
-            col fixed not(i) { if !(a(i) != std::convert::fe(0)) { 1 } else { 0 } };
-            col fixed less(i) { if std::convert::int(id(i)) < std::convert::int(inv(i)) { 1 } else { 0 } };
-            col fixed less_eq(i) { if std::convert::int(id(i)) <= std::convert::int(inv(i)) { 1 } else { 0 } };
+            namespace F(N);
+            let id = |i| i;
+            let inv = |i| N - i;
+            let a: int -> int = |i| [0, 1, 0, 1, 2, 1][i];
+            let b: int -> int = |i| [0, 0, 1, 1, 0, 5][i];
+            col fixed or(i) { if (a(i) != 0) || (b(i) != 0) { 1 } else { 0 } };
+            col fixed and(i) { if (a(i) != 0) && (b(i) != 0) { 1 } else { 0 } };
+            col fixed not(i) { if !(a(i) != 0) { 1 } else { 0 } };
+            col fixed less(i) { if id(i) < inv(i) { 1 } else { 0 } };
+            col fixed less_eq(i) { if id(i) <= inv(i) { 1 } else { 0 } };
             col fixed eq(i) { if id(i) == inv(i) { 1 } else { 0 } };
             col fixed not_eq(i) { if id(i) != inv(i) { 1 } else { 0 } };
-            col fixed greater(i) { if std::convert::int(id(i)) > std::convert::int(inv(i)) { 1 } else { 0 } };
-            col fixed greater_eq(i) { if std::convert::int(id(i)) >= std::convert::int(inv(i)) { 1 } else { 0 } };
+            col fixed greater(i) { if id(i) > inv(i) { 1 } else { 0 } };
+            col fixed greater_eq(i) { if id(i) >= inv(i) { 1 } else { 0 } };
         "#;
         let analyzed = analyze_string(src);
         assert_eq!(analyzed.degree(), 6);
         let constants = generate(&analyzed);
         assert_eq!(
             constants[0],
-            ("F.id".to_string(), convert([0, 1, 2, 3, 4, 5].to_vec()))
-        );
-        assert_eq!(
-            constants[1],
-            ("F.inv".to_string(), convert([6, 5, 4, 3, 2, 1].to_vec()))
-        );
-        assert_eq!(
-            constants[4],
             ("F.or".to_string(), convert([0, 1, 1, 1, 1, 1].to_vec()))
         );
         assert_eq!(
-            constants[5],
+            constants[1],
             ("F.and".to_string(), convert([0, 0, 0, 1, 0, 1].to_vec()))
         );
         assert_eq!(
-            constants[6],
+            constants[2],
             ("F.not".to_string(), convert([1, 0, 1, 0, 0, 0].to_vec()))
         );
         assert_eq!(
-            constants[7],
+            constants[3],
             ("F.less".to_string(), convert([1, 1, 1, 0, 0, 0].to_vec()))
         );
         assert_eq!(
-            constants[8],
+            constants[4],
             (
                 "F.less_eq".to_string(),
                 convert([1, 1, 1, 1, 0, 0].to_vec())
             )
         );
         assert_eq!(
-            constants[9],
+            constants[5],
             ("F.eq".to_string(), convert([0, 0, 0, 1, 0, 0].to_vec()))
         );
         assert_eq!(
-            constants[10],
+            constants[6],
             ("F.not_eq".to_string(), convert([1, 1, 1, 0, 1, 1].to_vec()))
         );
         assert_eq!(
-            constants[11],
+            constants[7],
             (
                 "F.greater".to_string(),
                 convert([0, 0, 0, 0, 1, 1].to_vec())
             )
         );
         assert_eq!(
-            constants[12],
+            constants[8],
             (
                 "F.greater_eq".to_string(),
                 convert([0, 0, 0, 1, 1, 1].to_vec())
@@ -510,7 +518,7 @@ mod test {
     }
 
     #[test]
-    #[should_panic = "Cannot evaluate witness columns"]
+    #[should_panic = "got `expr` when calling function F.w"]
     pub fn calling_witness() {
         let src = r#"
             constant %N = 10;
@@ -537,7 +545,7 @@ mod test {
     }
 
     #[test]
-    #[should_panic = "Cannot evaluate arrays"]
+    #[should_panic = "got `expr` when calling function F.y"]
     pub fn forward_reference_to_array() {
         let src = r#"
             constant %N = 10;
@@ -555,19 +563,21 @@ mod test {
         let src = r#"
             constant %N = 4;
             namespace F(%N);
-            let x: col = |i| y(i) + 1;
-            let y: col = |i| i + 20;
+            let x = |i| y(i) + 1;
+            let y = |i| i + 20;
+            let X: col = x;
+            let Y: col = y;
         "#;
         let analyzed = analyze_string::<GoldilocksField>(src);
         assert_eq!(analyzed.degree(), 4);
         let constants = generate(&analyzed);
         assert_eq!(
             constants[0],
-            ("F.x".to_string(), convert([21, 22, 23, 24].to_vec()))
+            ("F.X".to_string(), convert([21, 22, 23, 24].to_vec()))
         );
         assert_eq!(
             constants[1],
-            ("F.y".to_string(), convert([20, 21, 22, 23].to_vec()))
+            ("F.Y".to_string(), convert([20, 21, 22, 23].to_vec()))
         );
     }
 
@@ -579,7 +589,7 @@ mod test {
             let int = [];
             let fe = [];
             namespace F(%N);
-            let x: col = |i| std::convert::fe((std::convert::int(1) << (2000 + i)) >> 2000);
+            let x: col = |i| (1 << (2000 + i)) >> 2000;
         "#;
         let analyzed = analyze_string::<GoldilocksField>(src);
         assert_eq!(analyzed.degree(), 4);
@@ -616,8 +626,10 @@ mod test {
     pub fn arrays_of_fixed() {
         let src = r#"
             namespace F(4);
-                let x: int -> col = |k| |i| i + k;
+                let x: fe -> (int -> fe) = |k| |i| std::convert::fe(i) + k;
                 let y: col[2] = [x(0), x(1)];
+            namespace std::convert(4);
+                let fe = || fe();
         "#;
         let analyzed = analyze_string::<GoldilocksField>(src);
         assert_eq!(analyzed.degree(), 4);

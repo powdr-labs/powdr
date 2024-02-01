@@ -6,11 +6,11 @@
  * All rights reserved by Polygon.
  */
 
-constant %N = 2**20;
+let N = 2**20;
 
-namespace Global(%N);
+namespace Global(N);
     col fixed L1 = [1] + [0]*;
-    col fixed LLAST(i) { if i == %N - 1 { 1 } else { 0 } };
+    col fixed LLAST(i) { if i == N - 1 { 1 } else { 0 } };
     col fixed BYTE(i) { i & 0xff };
     col fixed BYTE2(i) { i & 0xffff };
     col fixed BYTE_2A(i) { (i & 0xffff) >> 8 };

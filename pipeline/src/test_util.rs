@@ -160,7 +160,7 @@ pub fn evaluate_function<'a, T: FieldElement>(
     arguments: Vec<Rc<evaluator::Value<'a, T, evaluator::NoCustom>>>,
 ) -> evaluator::Value<'a, T, evaluator::NoCustom> {
     let symbols = evaluator::Definitions(&analyzed.definitions);
-    let function = symbols.lookup(function).unwrap();
+    let function = symbols.lookup(function, None).unwrap();
     evaluator::evaluate_function_call(function, arguments, &symbols).unwrap()
 }
 
