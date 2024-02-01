@@ -487,7 +487,7 @@ impl<T: FieldElement> Pipeline<T> {
             }
             Artifact::PilFilePath(pil_file) => {
                 self.log("Analyzing pil...");
-                let analyzed = powdr_pil_analyzer::analyze(&pil_file);
+                let analyzed = powdr_pil_analyzer::analyze_file(&pil_file);
                 self.maybe_write_pil(&analyzed, "_analyzed")?;
                 Artifact::AnalyzedPil(analyzed)
             }

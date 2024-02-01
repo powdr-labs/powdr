@@ -3,28 +3,17 @@
 mod condenser;
 pub mod evaluator;
 pub mod expression_processor;
-pub mod pil_analyzer;
+mod pil_analyzer;
 pub mod statement_processor;
 
-use std::{collections::HashMap, path::Path};
+use std::collections::HashMap;
 
 use powdr_ast::{
-    analyzed::{Analyzed, FunctionValueDefinition, Symbol},
-    parsed::{asm::SymbolPath, PILFile},
+    analyzed::{FunctionValueDefinition, Symbol},
+    parsed::asm::SymbolPath,
 };
-use powdr_number::FieldElement;
 
-pub fn analyze<T: FieldElement>(path: &Path) -> Analyzed<T> {
-    pil_analyzer::process_pil_file(path)
-}
-
-pub fn analyze_ast<T: FieldElement>(pil_file: PILFile<T>) -> Analyzed<T> {
-    pil_analyzer::process_pil_ast(pil_file)
-}
-
-pub fn analyze_string<T: FieldElement>(contents: &str) -> Analyzed<T> {
-    pil_analyzer::process_pil_file_contents(contents)
-}
+pub use pil_analyzer::{analyze_ast, analyze_file, analyze_string};
 
 pub trait AnalysisDriver<T>: Clone + Copy {
     /// Turns a declaration into an absolute name.

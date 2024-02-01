@@ -339,7 +339,7 @@ fn remove_trivial_identities<T: FieldElement>(pil_file: &mut Analyzed<T>) {
 #[cfg(test)]
 mod test {
     use powdr_number::GoldilocksField;
-    use powdr_pil_analyzer::pil_analyzer::process_pil_file_contents;
+    use powdr_pil_analyzer::analyze_string;
 
     use crate::optimize;
 
@@ -361,7 +361,7 @@ mod test {
     N.X = N.Y;
     N.Y = (7 * N.X);
 "#;
-        let optimized = optimize(process_pil_file_contents::<GoldilocksField>(input)).to_string();
+        let optimized = optimize(analyze_string::<GoldilocksField>(input)).to_string();
         assert_eq!(optimized, expectation);
     }
 
@@ -395,7 +395,7 @@ mod test {
     N.A = (1 + N.A);
     N.Z = (1 + N.A);
 "#;
-        let optimized = optimize(process_pil_file_contents::<GoldilocksField>(input)).to_string();
+        let optimized = optimize(analyze_string::<GoldilocksField>(input)).to_string();
         assert_eq!(optimized, expectation);
     }
 
@@ -411,7 +411,7 @@ mod test {
     col intermediate = N.x;
     N.intermediate = N.intermediate;
 "#;
-        let optimized = optimize(process_pil_file_contents::<GoldilocksField>(input)).to_string();
+        let optimized = optimize(analyze_string::<GoldilocksField>(input)).to_string();
         assert_eq!(optimized, expectation);
     }
 }
