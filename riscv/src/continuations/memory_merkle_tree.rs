@@ -261,7 +261,7 @@ mod test {
 
         // Verify Merkle proof
         assert_eq!(proof.len(), 2);
-        let computed_hash = hash_cap0(&page_hash, proof[0]);
+        let computed_hash = hash_cap0(page_hash, proof[0]);
         let computed_hash = hash_cap0(&computed_hash, proof[1]);
         assert_eq!(computed_hash, *root_hash);
 
@@ -273,7 +273,7 @@ mod test {
 
         // Verify Merkle proof
         assert_eq!(proof.len(), 2);
-        let computed_hash = hash_cap0(proof[0], &page_hash);
+        let computed_hash = hash_cap0(proof[0], page_hash);
         let computed_hash = hash_cap0(&computed_hash, proof[1]);
         assert_eq!(computed_hash, *root_hash);
 
@@ -285,7 +285,7 @@ mod test {
 
         // Verify Merkle proof
         assert_eq!(proof.len(), 2);
-        let computed_hash = hash_cap0(&page_hash, proof[0]);
+        let computed_hash = hash_cap0(page_hash, proof[0]);
         let computed_hash = hash_cap0(proof[1], &computed_hash);
         assert_eq!(computed_hash, *root_hash);
 
@@ -297,7 +297,7 @@ mod test {
 
         // Verify Merkle proof
         assert_eq!(proof.len(), 2);
-        let computed_hash = hash_cap0(proof[0], &page_hash);
+        let computed_hash = hash_cap0(proof[0], page_hash);
         let computed_hash = hash_cap0(proof[1], &computed_hash);
         assert_eq!(computed_hash, *root_hash);
     }
