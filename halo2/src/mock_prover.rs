@@ -1,7 +1,7 @@
 use polyexen::plaf::PlafDisplayBaseTOML;
 use powdr_ast::analyzed::Analyzed;
 
-use super::circuit_builder::analyzed_to_circuit;
+use super::circuit_builder::{analyzed_to_circuit_with_witness, analyzed_to_plaf};
 use halo2_proofs::{dev::MockProver, halo2curves::bn256::Fr};
 use powdr_number::{BigInt, FieldElement};
 
@@ -15,7 +15,8 @@ pub fn mock_prove<T: FieldElement>(
         panic!("powdr modulus doesn't match halo2 modulus. Make sure you are using Bn254");
     }
 
-    let (circuit, publics) = analyzed_to_circuit(pil, constants, witness);
+    let plaf_circuit = analyzed_to_plaf(pil, constants);
+    let (circuit, publics) = analyzed_to_circuit_with_witness(pil, plaf_circuit, witness);
 
     // double the row count in order to make space for the cells introduced by the backend
     // TODO: use a precise count of the extra rows needed to avoid using so many rows

@@ -2,6 +2,8 @@ use powdr_ast::analyzed::Analyzed;
 use powdr_backend::BackendType;
 use powdr_number::{Bn254Field, FieldElement, GoldilocksField};
 use powdr_pil_analyzer::evaluator::{self, SymbolLookup};
+use std::fs::File;
+use std::io::{BufWriter, Write};
 use std::path::PathBuf;
 use std::rc::Rc;
 
@@ -71,13 +73,50 @@ pub fn gen_estark_proof(file_name: &str, inputs: Vec<GoldilocksField>) {
 pub fn gen_halo2_proof(file_name: &str, inputs: Vec<Bn254Field>) {
     let file_name = format!("{}/../test_data/{file_name}", env!("CARGO_MANIFEST_DIR"));
     let tmp_dir = mktemp::Temp::new_dir().unwrap();
-    Pipeline::default()
+    let mut pipeline = Pipeline::default()
         .with_tmp_output(&tmp_dir)
         .from_file(PathBuf::from(file_name))
         .with_prover_inputs(inputs)
-        .with_backend(powdr_backend::BackendType::Halo2)
-        .proof()
-        .unwrap();
+        .with_backend(powdr_backend::BackendType::Halo2);
+
+    let pil = pipeline.optimized_pil_ref().unwrap();
+
+    // We need to create the backend explicitly in order to
+    // compute the setup separated from the proof path as well.
+    let backend = powdr_backend::BackendType::Halo2
+        .factory::<Bn254Field>()
+        .create(pil.degree());
+
+    // Setup
+    let setup_file_path = tmp_dir.as_path().join("params.bin");
+    let mut setup_file = File::create(&setup_file_path).unwrap();
+    let mut setup_writer = BufWriter::new(&mut setup_file);
+    backend.write_setup(&mut setup_writer).unwrap();
+    setup_writer.flush().unwrap();
+
+    // Verification Key
+    let vkey_file_path = tmp_dir.as_path().join("verification_key.bin");
+    let vkey = pipeline.verification_key().unwrap();
+    let mut vkey_file = File::create(&vkey_file_path).unwrap();
+    vkey_file.write_all(&vkey).unwrap();
+
+    // Create the proof before adding the setup and vkey to the backend,
+    // so that they're generated during the proof
+    let proof = pipeline.clone().proof().unwrap().proof.unwrap();
+
+    // Now we add the previously generated setup and verification key
+    // and verify the proof.
+    let mut pipeline = pipeline
+        .with_setup_file(Some(setup_file_path))
+        .with_vkey_file(Some(vkey_file_path));
+
+    pipeline.verify(proof, &[vec![]]).unwrap();
+
+    // We can also run the same proof path as the first proof generation above,
+    // to make sure the proof also works when the setup and vkey are given
+    // and not generated on-the-fly.
+
+    pipeline.proof().unwrap().proof.unwrap();
 }
 
 #[cfg(not(feature = "halo2"))]

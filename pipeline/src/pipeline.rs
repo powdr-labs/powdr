@@ -180,6 +180,8 @@ struct Arguments<T: FieldElement> {
     export_witness_csv: bool,
     /// The optional setup file to use for proving.
     setup_file: Option<PathBuf>,
+    /// The optional verification key file to use for proving.
+    vkey_file: Option<PathBuf>,
     /// The optional existing proof file to use for aggregation.
     existing_proof_file: Option<PathBuf>,
 }
@@ -264,6 +266,7 @@ impl<T: FieldElement> Pipeline<T> {
     pub fn with_tmp_output(self, tmp_dir: &mktemp::Temp) -> Self {
         Pipeline {
             output_dir: Some(tmp_dir.to_path_buf()),
+            force_overwrite: true,
             ..self
         }
     }
@@ -338,6 +341,11 @@ impl<T: FieldElement> Pipeline<T> {
         self
     }
 
+    pub fn with_vkey_file(mut self, vkey_file: Option<PathBuf>) -> Self {
+        self.arguments.vkey_file = vkey_file;
+        self
+    }
+
     pub fn with_existing_proof_file(mut self, existing_proof_file: Option<PathBuf>) -> Self {
         self.arguments.existing_proof_file = existing_proof_file;
         self
@@ -386,6 +394,33 @@ impl<T: FieldElement> Pipeline<T> {
     pub fn from_pil_string(self, pil_string: String) -> Self {
         Pipeline {
             artifact: Some(Artifact::PilString(pil_string)),
+            ..self
+        }
+    }
+
+    /// Reads previously generated constants from the provided directory and
+    /// advances the pipeline to the `PilWithEvaluatedFixedCols` stage.
+    pub fn read_constants(mut self, directory: &Path) -> Self {
+        self.advance_to(Stage::OptimizedPil).unwrap();
+
+        let pil = match self.artifact.unwrap() {
+            Artifact::OptimzedPil(pil) => pil,
+            _ => panic!(),
+        };
+
+        // Can't use self.name() because self is partially moved...
+        let name = self.name.as_ref().expect("name must be set!");
+        let (fixed, degree_fixed) = read_poly_set::<FixedPolySet, T>(&pil, directory, name);
+
+        assert_eq!(pil.degree.unwrap(), degree_fixed);
+
+        Pipeline {
+            artifact: Some(Artifact::PilWithEvaluatedFixedCols(
+                PilWithEvaluatedFixedCols {
+                    pil: Rc::new(pil),
+                    fixed_cols: Rc::new(fixed),
+                },
+            )),
             ..self
         }
     }
@@ -560,12 +595,18 @@ impl<T: FieldElement> Pipeline<T> {
                     .backend
                     .expect("backend must be set before calling proving!");
                 let factory = backend.factory::<T>();
-                let backend = if let Some(path) = self.arguments.setup_file.as_ref() {
+                let mut backend = if let Some(path) = self.arguments.setup_file.as_ref() {
                     let mut file = fs::File::open(path).unwrap();
                     factory.create_from_setup(&mut file).unwrap()
                 } else {
                     factory.create(pil.degree())
                 };
+
+                if let Some(ref path) = self.arguments.vkey_file {
+                    let mut buf = Vec::new();
+                    fs::File::open(path).unwrap().read_to_end(&mut buf).unwrap();
+                    backend.add_verification_key(&pil, &fixed_cols, buf)
+                }
 
                 let existing_proof = self.arguments.existing_proof_file.as_ref().map(|path| {
                     let mut buf = Vec::new();
@@ -575,17 +616,23 @@ impl<T: FieldElement> Pipeline<T> {
 
                 // Even if we don't have all constants and witnesses, some backends will
                 // still output the constraint serialization.
-                let (proof, constraints_serialization) = backend.prove(
+                let (proof, constraints_serialization) = match backend.prove(
                     &pil,
                     &fixed_cols,
                     witness.as_deref().unwrap_or_default(),
                     existing_proof,
-                );
+                ) {
+                    Ok(proof) => proof,
+                    Err(powdr_backend::Error::ProofFailed(e)) => {
+                        return Err(vec![e.to_string()]);
+                    }
+                    _ => panic!(),
+                };
 
                 let proof_result = ProofResult {
                     fixed_cols,
                     witness,
-                    proof,
+                    proof: Some(proof),
                     constraints_serialization,
                 };
 
@@ -816,5 +863,66 @@ impl<T: FieldElement> Pipeline<T> {
 
     pub fn data_callback(&self) -> Option<&dyn QueryCallback<T>> {
         self.arguments.query_callback.as_deref()
+    }
+
+    pub fn verification_key(&mut self) -> Result<Vec<u8>, Vec<String>> {
+        self.advance_to(Stage::PilWithEvaluatedFixedCols)?;
+        match self.artifact.as_ref().unwrap() {
+            Artifact::PilWithEvaluatedFixedCols(PilWithEvaluatedFixedCols { pil, fixed_cols }) => {
+                let backend = self
+                    .arguments
+                    .backend
+                    .expect("backend must be set before generating verification key!");
+                let factory = backend.factory::<T>();
+                let backend = if let Some(path) = self.arguments.setup_file.as_ref() {
+                    let mut file = fs::File::open(path).unwrap();
+                    factory.create_from_setup(&mut file).unwrap()
+                } else {
+                    factory.create(pil.degree())
+                };
+
+                match backend.verification_key(pil, fixed_cols) {
+                    Ok(vkey) => Ok(vkey),
+                    Err(powdr_backend::Error::VerificationKeyFailed(e)) => Err(vec![e]),
+                    _ => panic!(),
+                }
+            }
+            _ => panic!(),
+        }
+    }
+
+    pub fn verify(&mut self, proof: Vec<u8>, instances: &[Vec<T>]) -> Result<(), Vec<String>> {
+        self.advance_to(Stage::PilWithEvaluatedFixedCols)?;
+        match self.artifact.as_ref().unwrap() {
+            Artifact::PilWithEvaluatedFixedCols(PilWithEvaluatedFixedCols { pil, fixed_cols }) => {
+                let backend = self
+                    .arguments
+                    .backend
+                    .expect("backend must be set before generating verification key!");
+                let factory = backend.factory::<T>();
+
+                let mut backend = if let Some(path) = self.arguments.setup_file.as_ref() {
+                    let mut file = fs::File::open(path).unwrap();
+                    factory.create_from_setup(&mut file).unwrap()
+                } else {
+                    panic!("Setup should have been provided for verification")
+                };
+
+                if let Some(ref path) = self.arguments.vkey_file {
+                    let mut buf = Vec::new();
+                    fs::File::open(path).unwrap().read_to_end(&mut buf).unwrap();
+                    backend.add_verification_key(pil, fixed_cols, buf)
+                } else {
+                    panic!("Verification key should have been provided for verification")
+                }
+
+                match backend.verify(&proof, instances) {
+                    Ok(_) => Ok(()),
+                    Err(powdr_backend::Error::VerificationFailed(e)) => Err(vec![e]),
+                    _ => panic!(),
+                }
+            }
+            _ => panic!(),
+        }
     }
 }
