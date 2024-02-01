@@ -5,6 +5,7 @@ pub mod evaluator;
 pub mod expression_processor;
 mod pil_analyzer;
 pub mod statement_processor;
+mod type_inference;
 
 use std::collections::HashMap;
 
