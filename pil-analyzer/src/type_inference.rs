@@ -373,8 +373,11 @@ fn binary_operator_schemes() -> BTreeMap<BinaryOperator, TypeScheme> {
         (BinaryOperator::Div, "", "int, int -> int"),
         (BinaryOperator::Mod, "", "int, int -> int"),
         (BinaryOperator::Pow, "T: Pow", "T, int -> T"),
-        // TODO shifts
-        // TODO bit operators
+        (BinaryOperator::ShiftLeft, "", "int, int -> int"),
+        (BinaryOperator::ShiftRight, "", "int, int -> int"),
+        (BinaryOperator::BinaryAnd, "", "int, int -> int"),
+        (BinaryOperator::BinaryOr, "", "int, int -> int"),
+        (BinaryOperator::BinaryXor, "", "int, int -> int"),
         (BinaryOperator::Less, "T: Ord", "T, T -> bool"),
         (BinaryOperator::LessEqual, "T: Ord", "T, T -> bool"),
         (BinaryOperator::Equal, "T: Eq", "T, T -> bool"),
