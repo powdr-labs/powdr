@@ -23,13 +23,59 @@ struct TypeChecker<'a, T> {
     /// Types for symbols, might contain type variables.
     /// TODO could these be type schemes?
     types: HashMap<String, Type>,
+    state: TypeCheckerState,
+    next_type_var: usize,
+}
+
+#[derive(Default, Clone)]
+struct TypeCheckerState {
     /// Types for local variables, might contain type variables.
     local_var_types: Vec<Type>,
     /// Inferred type constraints (traits) on type variables.
     type_var_bounds: HashMap<String, HashSet<String>>,
     /// Substitutions for type variables
     substitutions: HashMap<String, Type>,
-    next_type_var: usize,
+}
+
+impl TypeCheckerState {
+    pub fn substitutions(&self) -> &HashMap<String, Type> {
+        &self.substitutions
+    }
+
+    pub fn type_var_bounds(&self, type_var: &String) -> HashSet<String> {
+        self.type_var_bounds
+            .get(type_var)
+            .cloned()
+            .unwrap_or_default()
+    }
+
+    pub fn add_type_var_bound(&mut self, type_var: String, bound: String) {
+        self.type_var_bounds
+            .entry(type_var)
+            .or_insert_with(HashSet::new)
+            .insert(bound);
+    }
+
+    pub fn local_var_type(&self, id: u64) -> Type {
+        self.local_var_types[id as usize].clone()
+    }
+
+    pub fn push_new_local_vars(&mut self, types: Vec<Type>) {
+        self.local_var_types = [types, self.local_var_types.clone()].concat();
+    }
+
+    pub fn pop_local_var_types(&mut self, count: usize) -> Vec<Type> {
+        self.local_var_types.drain(0..count).collect()
+    }
+
+    pub fn add_substitution(&mut self, type_var: String, ty: Type) {
+        let subs = [(type_var.clone(), ty.clone())].into();
+        self.substitutions
+            .values_mut()
+            .for_each(|t| t.substitute_type_vars(&subs));
+        //println!("Adding substitution: {name} := {ty}");
+        self.substitutions.insert(type_var, ty);
+    }
 }
 
 impl<'a, T: FieldElement> TypeChecker<'a, T> {
@@ -39,9 +85,7 @@ impl<'a, T: FieldElement> TypeChecker<'a, T> {
         let mut tc = Self {
             definitions,
             types: HashMap::new(),
-            local_var_types: vec![],
-            type_var_bounds: HashMap::new(),
-            substitutions: HashMap::new(),
+            state: Default::default(),
             next_type_var: 1,
         };
         for n in definitions.keys() {
@@ -84,17 +128,12 @@ impl<'a, T: FieldElement> TypeChecker<'a, T> {
             .types
             .into_iter()
             .map(|(name, mut ty)| {
-                ty.substitute_type_vars(&self.substitutions);
+                ty.substitute_type_vars(self.state.substitutions());
                 // TODO is this properly generalized?
                 let vars = ty
                     .contained_type_vars()
                     .into_iter()
-                    .map(|v| {
-                        (
-                            v.clone(),
-                            self.type_var_bounds.get(v).cloned().unwrap_or_default(),
-                        )
-                    })
+                    .map(|v| (v.clone(), self.state.type_var_bounds(v)))
                     .collect();
                 (name, TypeScheme { vars, ty }.simplify_type_vars())
             })
@@ -125,7 +164,7 @@ impl<'a, T: FieldElement> TypeChecker<'a, T> {
         //println!("Unifying {e}: {ty}");
         match e {
             Expression::Reference(Reference::LocalVar(id, _name)) => {
-                self.unify_types(ty, self.local_var_types[*id as usize].clone())
+                self.unify_types(ty, self.state.local_var_type(*id))
             }
             Expression::Reference(Reference::Poly(PolynomialReference { name, poly_id: _ })) => {
                 self.unify_types(ty, self.types[name].clone())
@@ -138,9 +177,9 @@ impl<'a, T: FieldElement> TypeChecker<'a, T> {
                 let param_types = (0..params.len())
                     .map(|_| self.new_type_var())
                     .collect::<Vec<_>>();
-                self.local_var_types = [param_types, self.local_var_types.clone()].concat();
+                self.state.push_new_local_vars(param_types);
                 let body_type = self.unify_new_expression(body)?;
-                let param_types = self.local_var_types.drain(0..params.len()).collect();
+                let param_types = self.state.pop_local_var_types(params.len());
                 self.unify_types(
                     ty,
                     Type::Function(FunctionType {
@@ -209,7 +248,7 @@ impl<'a, T: FieldElement> TypeChecker<'a, T> {
 
     /// Applies the current substitutions to the type.
     fn substitute(&self, ty: &mut Type) {
-        ty.substitute_type_vars(&self.substitutions);
+        ty.substitute_type_vars(&self.state.substitutions());
     }
 
     /// Instantiates a type scheme by creating new type variables for the quantified
@@ -252,15 +291,10 @@ impl<'a, T: FieldElement> TypeChecker<'a, T> {
                 if ty.contains_type_var(&name) {
                     Err(format!("Cannot unify types {ty} and {name}"))
                 } else {
-                    for bound in self.type_var_bounds.get(&name).cloned().unwrap_or_default() {
+                    for bound in self.state.type_var_bounds(&name) {
                         self.ensure_bound(&ty, bound)?;
                     }
-                    let subs = [(name.clone(), ty.clone())].into();
-                    self.substitutions
-                        .values_mut()
-                        .for_each(|t| t.substitute_type_vars(&subs));
-                    //println!("Adding substitution: {name} := {ty}");
-                    self.substitutions.insert(name, ty);
+                    self.state.add_substitution(name, ty);
                     Ok(())
                 }
             }
@@ -300,44 +334,10 @@ impl<'a, T: FieldElement> TypeChecker<'a, T> {
     fn ensure_bound(&mut self, ty: &Type, bound: String) -> Result<(), String> {
         //println!("Ensuring type bound {ty}: {bound}");
         if let Type::TypeVar(n) = ty {
-            self.type_var_bounds
-                .entry(n.clone())
-                .or_insert_with(HashSet::new)
-                .insert(bound);
+            self.state.add_type_var_bound(n.clone(), bound);
             Ok(())
         } else {
-            let bounds = match ty {
-                Type::Bool => vec![],
-                Type::Int => vec![
-                    "FromLiteral",
-                    "Add",
-                    "Sub",
-                    "Neg",
-                    "Mul",
-                    "Div",
-                    "Mod",
-                    "Pow",
-                    "Ord",
-                    "Eq",
-                ],
-                Type::Fe => vec![
-                    "FromLiteral",
-                    "Add",
-                    "Sub",
-                    "Neg",
-                    "Mul",
-                    "Pow",
-                    "Neg",
-                    "Eq",
-                ],
-                Type::String => vec!["Add"],
-                Type::Expr => vec!["Add", "Sub", "Neg", "Mul", "Pow", "Neg", "Eq"],
-                Type::Constr => vec![],
-                Type::Array(_) => vec!["Add"],
-                Type::Tuple(_) => vec![],
-                Type::Function(_) => vec![],
-                Type::TypeVar(_) => unreachable!(),
-            };
+            let bounds = elementary_type_bounds(&ty);
             if bounds.contains(&bound.as_str()) {
                 Ok(())
             } else {
@@ -392,6 +392,41 @@ fn unary_operator_scheme(op: UnaryOperator) -> TypeScheme {
     TypeScheme {
         vars: parse_type_var_bounds(vars).unwrap(),
         ty: parse_type_name::<GoldilocksField>(ty).unwrap().into(),
+    }
+}
+
+fn elementary_type_bounds(ty: &Type) -> Vec<&'static str> {
+    match ty {
+        Type::Bool => vec![],
+        Type::Int => vec![
+            "FromLiteral",
+            "Add",
+            "Sub",
+            "Neg",
+            "Mul",
+            "Div",
+            "Mod",
+            "Pow",
+            "Ord",
+            "Eq",
+        ],
+        Type::Fe => vec![
+            "FromLiteral",
+            "Add",
+            "Sub",
+            "Neg",
+            "Mul",
+            "Pow",
+            "Neg",
+            "Eq",
+        ],
+        Type::String => vec!["Add"],
+        Type::Expr => vec!["Add", "Sub", "Neg", "Mul", "Pow", "Neg", "Eq"],
+        Type::Constr => vec![],
+        Type::Array(_) => vec!["Add"],
+        Type::Tuple(_) => vec![],
+        Type::Function(_) => vec![],
+        Type::TypeVar(_) => unreachable!(),
     }
 }
 

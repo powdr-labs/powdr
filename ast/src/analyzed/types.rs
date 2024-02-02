@@ -109,14 +109,12 @@ impl Type {
             Type::Tuple(tu) => Box::new(
                 tu.items
                     .iter()
-                    .map(|t| t.contained_type_vars_with_repetitions())
-                    .flatten(),
+                    .flat_map(|t| t.contained_type_vars_with_repetitions()),
             ),
             Type::Function(fun) => Box::new(
                 fun.params
                     .iter()
-                    .map(|t| t.contained_type_vars_with_repetitions())
-                    .flatten()
+                    .flat_map(|t| t.contained_type_vars_with_repetitions())
                     .chain(fun.value.contained_type_vars_with_repetitions()),
             ),
             _ => {
@@ -239,7 +237,7 @@ impl TypeScheme {
         ty.substitute_type_vars(
             &name_substitutions
                 .iter()
-                .map(|(n, s)| (n.clone(), Type::TypeVar(s.clone())).into())
+                .map(|(n, s)| (n.clone(), Type::TypeVar(s.clone())))
                 .collect(),
         );
         TypeScheme {
