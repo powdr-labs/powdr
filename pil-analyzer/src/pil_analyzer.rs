@@ -25,7 +25,7 @@ pub fn analyze_file<T: FieldElement>(path: &Path) -> Analyzed<T> {
     let mut analyzer = PILAnalyzer::new();
     analyzer.process(files);
     // TODO error reporting
-    infer_types(&analyzer.definitions).unwrap();
+    infer_types(&analyzer.definitions, &analyzer.identities).unwrap();
     analyzer.condense()
 }
 
@@ -33,7 +33,7 @@ pub fn analyze_ast<T: FieldElement>(pil_file: PILFile<T>) -> Analyzed<T> {
     let mut analyzer = PILAnalyzer::new();
     analyzer.process(vec![pil_file]);
     // TODO error reporting
-    infer_types(&analyzer.definitions).unwrap();
+    infer_types(&analyzer.definitions, &analyzer.identities).unwrap();
     analyzer.condense()
 }
 
@@ -45,6 +45,24 @@ pub fn analyze_string<T: FieldElement>(contents: &str) -> Analyzed<T> {
     });
 
     analyze_ast(pil_file)
+}
+
+#[cfg(test)]
+pub fn process_before_type_checking<T: FieldElement>(
+    contents: &str,
+) -> (
+    HashMap<String, (Symbol, Option<FunctionValueDefinition<T>>)>,
+    Vec<Identity<Expression<T>>>,
+) {
+    let pil_file = powdr_parser::parse(Some("input"), contents).unwrap_or_else(|err| {
+        eprintln!("Error parsing .pil file:");
+        err.output_to_stderr();
+        panic!();
+    });
+
+    let mut analyzer = PILAnalyzer::new();
+    analyzer.process(vec![pil_file]);
+    (analyzer.definitions, analyzer.identities)
 }
 
 #[derive(Default)]

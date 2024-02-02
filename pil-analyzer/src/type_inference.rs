@@ -3,7 +3,8 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use powdr_ast::{
     analyzed::{
         types::{FunctionType, Type, TypeScheme},
-        Expression, FunctionValueDefinition, PolynomialReference, Reference, Symbol,
+        Expression, FunctionValueDefinition, Identity, IdentityKind, PolynomialReference,
+        Reference, Symbol,
     },
     parsed::{BinaryOperator, FunctionCall, LambdaExpression, UnaryOperator},
 };
@@ -12,8 +13,9 @@ use powdr_parser::{parse_type_name, parse_type_var_bounds};
 
 pub fn infer_types<T: FieldElement>(
     definitions: &HashMap<String, (Symbol, Option<FunctionValueDefinition<T>>)>,
+    identities: &Vec<Identity<Expression<T>>>,
 ) -> Result<HashMap<String, TypeScheme>, String> {
-    TypeChecker::new(definitions).infer_types()
+    TypeChecker::new(definitions).infer_types(identities)
 }
 
 struct TypeChecker<'a, T> {
@@ -60,10 +62,27 @@ impl<'a, T: FieldElement> TypeChecker<'a, T> {
         tc
     }
 
-    fn infer_types(mut self) -> Result<HashMap<String, TypeScheme>, String> {
+    fn infer_types(
+        mut self,
+        identities: &Vec<Identity<Expression<T>>>,
+    ) -> Result<HashMap<String, TypeScheme>, String> {
         for (name, value) in self.definitions {
             let ty = self.types[name].clone();
             self.unify(&ty, value)?;
+        }
+        for id in identities {
+            if id.kind == IdentityKind::Polynomial {
+                self.unify_expression(Type::Constr, id.expression_for_poly_id())?;
+            } else {
+                for part in [&id.left, &id.right] {
+                    if let Some(selector) = &part.selector {
+                        self.unify_expression(Type::Expr, selector)?;
+                    }
+                    for e in &part.expressions {
+                        self.unify_expression(Type::Expr, e)?;
+                    }
+                }
+            }
         }
         Ok(self
             .types
@@ -401,11 +420,11 @@ mod test {
 
     use pretty_assertions::assert_eq;
 
-    use crate::analyze_string;
+    use crate::pil_analyzer::process_before_type_checking;
 
     fn parse_and_type_check(input: &str) -> Result<HashMap<String, TypeScheme>, String> {
-        let analyzed = analyze_string::<GoldilocksField>(input);
-        infer_types(&analyzed.definitions)
+        let (definitions, identities) = process_before_type_checking::<GoldilocksField>(input);
+        infer_types(&definitions, &identities)
     }
 
     fn check(types: &Result<HashMap<String, TypeScheme>, String>, expected: &[(&str, &str, &str)]) {
@@ -520,6 +539,22 @@ mod test {
     #[test]
     fn if_statement() {
         let input = "let g = || g(); let x = |a, b| if g() { a } else { b + 2 };";
+        let result = parse_and_type_check(input);
+        check(
+            &result,
+            // TODO " -> bool" is also not formatted correctly.
+            // TODO this test shows that we do not have let-polymorphism,
+            // since the type of g is determined by how it is used in x.
+            &[
+                ("g", "", " -> bool"),
+                ("x", "T: Add + FromLiteral", "T, T -> T"),
+            ],
+        );
+    }
+
+    #[test]
+    fn constraints() {
+        let input = "let a; let BYTE = |i| i & 0xff; {a} in {BYTE};";
         let result = parse_and_type_check(input);
         check(
             &result,
