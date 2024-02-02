@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{HashMap, HashSet};
 
 use powdr_ast::{
     analyzed::{
@@ -23,8 +23,6 @@ struct TypeChecker<'a, T> {
     /// Types for symbols, might contain type variables.
     /// TODO could these be type schemes?
     types: HashMap<String, Type>,
-    binary_operator_schemes: BTreeMap<BinaryOperator, TypeScheme>,
-    unary_operator_schemes: BTreeMap<UnaryOperator, TypeScheme>,
     /// Types for local variables, might contain type variables.
     local_var_types: Vec<Type>,
     /// Inferred type constraints (traits) on type variables.
@@ -41,8 +39,6 @@ impl<'a, T: FieldElement> TypeChecker<'a, T> {
         let mut tc = Self {
             definitions,
             types: HashMap::new(),
-            binary_operator_schemes: binary_operator_schemes(),
-            unary_operator_schemes: unary_operator_schemes(),
             local_var_types: vec![],
             type_var_bounds: HashMap::new(),
             substitutions: HashMap::new(),
@@ -155,14 +151,14 @@ impl<'a, T: FieldElement> TypeChecker<'a, T> {
             }
             Expression::ArrayLiteral(_) => todo!(),
             Expression::BinaryOperation(left, op, right) => {
-                let fun_type = self.instantiate_scheme(self.binary_operator_schemes[op].clone());
+                let fun_type = self.instantiate_scheme(binary_operator_scheme(*op));
                 let value = self
                     .unify_function_call(fun_type, [left, right].into_iter().map(AsRef::as_ref))?;
                 self.unify_types(ty, value)?;
                 Ok(())
             }
             Expression::UnaryOperation(op, inner) => {
-                let fun_type = self.instantiate_scheme(self.unary_operator_schemes[op].clone());
+                let fun_type = self.instantiate_scheme(unary_operator_scheme(*op));
                 let value =
                     self.unify_function_call(fun_type, [inner].into_iter().map(AsRef::as_ref))?;
                 self.unify_types(ty, value)?;
@@ -304,7 +300,10 @@ impl<'a, T: FieldElement> TypeChecker<'a, T> {
     fn ensure_bound(&mut self, ty: &Type, bound: String) -> Result<(), String> {
         //println!("Ensuring type bound {ty}: {bound}");
         if let Type::TypeVar(n) = ty {
-            self.add_type_var_bound(n.clone(), bound);
+            self.type_var_bounds
+                .entry(n.clone())
+                .or_insert_with(HashSet::new)
+                .insert(bound);
             Ok(())
         } else {
             let bounds = match ty {
@@ -349,14 +348,6 @@ impl<'a, T: FieldElement> TypeChecker<'a, T> {
         }
     }
 
-    fn add_type_var_bound(&mut self, type_var: String, bound: String) {
-        //println!("Adding type var bound: {type_var}: {bound}");
-        self.type_var_bounds
-            .entry(type_var)
-            .or_insert_with(HashSet::new)
-            .insert(bound);
-    }
-
     fn new_type_var(&mut self) -> Type {
         let name = format!("T{}", self.next_type_var);
         self.next_type_var += 1;
@@ -364,55 +355,44 @@ impl<'a, T: FieldElement> TypeChecker<'a, T> {
     }
 }
 
-fn binary_operator_schemes() -> BTreeMap<BinaryOperator, TypeScheme> {
-    [
-        // These only on int and fe
-        (BinaryOperator::Add, "T: Add", "T, T -> T"),
-        (BinaryOperator::Sub, "T: Sub", "T, T -> T"),
-        (BinaryOperator::Mul, "T: Mul", "T, T -> T"),
-        (BinaryOperator::Div, "", "int, int -> int"),
-        (BinaryOperator::Mod, "", "int, int -> int"),
-        (BinaryOperator::Pow, "T: Pow", "T, int -> T"),
-        (BinaryOperator::ShiftLeft, "", "int, int -> int"),
-        (BinaryOperator::ShiftRight, "", "int, int -> int"),
-        (BinaryOperator::BinaryAnd, "", "int, int -> int"),
-        (BinaryOperator::BinaryOr, "", "int, int -> int"),
-        (BinaryOperator::BinaryXor, "", "int, int -> int"),
-        (BinaryOperator::Less, "T: Ord", "T, T -> bool"),
-        (BinaryOperator::LessEqual, "T: Ord", "T, T -> bool"),
-        (BinaryOperator::Equal, "T: Eq", "T, T -> bool"),
-        (BinaryOperator::NotEqual, "T: Eq", "T, T -> bool"),
-        (BinaryOperator::GreaterEqual, "T: Ord", "T, T -> bool"),
-        (BinaryOperator::Greater, "T: Ord", "T, T -> bool"),
-        (BinaryOperator::LogicalOr, "", "bool, bool -> bool"),
-        (BinaryOperator::LogicalAnd, "", "bool, bool -> bool"),
-    ]
-    .into_iter()
-    .map(|(op, vars, ty)| {
-        let scheme = TypeScheme {
-            vars: parse_type_var_bounds(vars).unwrap(),
-            ty: parse_type_name::<GoldilocksField>(ty).unwrap().into(),
-        };
-        (op, scheme)
-    })
-    .collect()
+fn binary_operator_scheme(op: BinaryOperator) -> TypeScheme {
+    let (vars, ty) = match op {
+        BinaryOperator::Add => ("T: Add", "T, T -> T"),
+        BinaryOperator::Sub => ("T: Sub", "T, T -> T"),
+        BinaryOperator::Mul => ("T: Mul", "T, T -> T"),
+        BinaryOperator::Div => ("", "int, int -> int"),
+        BinaryOperator::Mod => ("", "int, int -> int"),
+        BinaryOperator::Pow => ("T: Pow", "T, int -> T"),
+        BinaryOperator::ShiftLeft => ("", "int, int -> int"),
+        BinaryOperator::ShiftRight => ("", "int, int -> int"),
+        BinaryOperator::BinaryAnd => ("", "int, int -> int"),
+        BinaryOperator::BinaryOr => ("", "int, int -> int"),
+        BinaryOperator::BinaryXor => ("", "int, int -> int"),
+        BinaryOperator::Less => ("T: Ord", "T, T -> bool"),
+        BinaryOperator::LessEqual => ("T: Ord", "T, T -> bool"),
+        BinaryOperator::Equal => ("T: Eq", "T, T -> bool"),
+        BinaryOperator::NotEqual => ("T: Eq", "T, T -> bool"),
+        BinaryOperator::GreaterEqual => ("T: Ord", "T, T -> bool"),
+        BinaryOperator::Greater => ("T: Ord", "T, T -> bool"),
+        BinaryOperator::LogicalOr => ("", "bool, bool -> bool"),
+        BinaryOperator::LogicalAnd => ("", "bool, bool -> bool"),
+    };
+    TypeScheme {
+        vars: parse_type_var_bounds(vars).unwrap(),
+        ty: parse_type_name::<GoldilocksField>(ty).unwrap().into(),
+    }
 }
 
-fn unary_operator_schemes() -> BTreeMap<UnaryOperator, TypeScheme> {
-    [
-        (UnaryOperator::Minus, "T: Neg", "T -> T"),
-        (UnaryOperator::LogicalNot, "", "bool -> bool"),
-        (UnaryOperator::Next, "", "expr -> expr"),
-    ]
-    .into_iter()
-    .map(|(op, vars, ty)| {
-        let scheme = TypeScheme {
-            vars: parse_type_var_bounds(vars).unwrap(),
-            ty: parse_type_name::<GoldilocksField>(ty).unwrap().into(),
-        };
-        (op, scheme)
-    })
-    .collect()
+fn unary_operator_scheme(op: UnaryOperator) -> TypeScheme {
+    let (vars, ty) = match op {
+        UnaryOperator::Minus => ("T: Neg", "T -> T"),
+        UnaryOperator::LogicalNot => ("", "bool -> bool"),
+        UnaryOperator::Next => ("", "expr -> expr"),
+    };
+    TypeScheme {
+        vars: parse_type_var_bounds(vars).unwrap(),
+        ty: parse_type_name::<GoldilocksField>(ty).unwrap().into(),
+    }
 }
 
 #[cfg(test)]
@@ -557,7 +537,7 @@ mod test {
 
     #[test]
     fn constraints() {
-        let input = "let a; let BYTE = |i| i & 0xff; {a} in {BYTE};";
+        let input = "let a; let BYTE = |i| i & 0xff; {a + 1} in {BYTE};";
         let result = parse_and_type_check(input);
         check(
             &result,
