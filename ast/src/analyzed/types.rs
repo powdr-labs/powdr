@@ -1,5 +1,9 @@
-use std::fmt::Display;
+use std::{
+    collections::{HashMap, HashSet},
+    fmt::Display,
+};
 
+use itertools::Itertools;
 use powdr_number::FieldElement;
 
 use crate::parsed::{ArrayTypeName, Expression, FunctionTypeName, TupleTypeName, TypeName};
@@ -58,17 +62,66 @@ impl Type {
     }
 
     pub fn contains_type_var(&self, name: &str) -> bool {
+        self.contained_type_vars_with_repetitions()
+            .any(|n| n == name)
+    }
+
+    /// Returns the list of contained type vars in order of first occurrence.
+    pub fn contained_type_vars(&self) -> Vec<&String> {
+        self.contained_type_vars_with_repetitions()
+            .unique()
+            .collect()
+    }
+
+    /// Substitutes all occurrences of the given type variables with the given types.
+    /// Type variables to be substituted must not occur in the replacement types.
+    pub fn substitute_type_vars(&mut self, substitutions: &HashMap<String, Type>) {
         match self {
-            Type::TypeVar(n) => n == name,
-            Type::Array(ar) => ar.base.contains_type_var(name),
-            Type::Tuple(tu) => tu.items.iter().any(|t| t.contains_type_var(name)),
-            Type::Function(fun) => {
-                fun.params.iter().any(|t| t.contains_type_var(name))
-                    || fun.value.contains_type_var(name)
+            Type::TypeVar(n) => {
+                if let Some(t) = substitutions.get(n) {
+                    *self = t.clone();
+                }
+            }
+            Type::Array(ArrayType { base, length: _ }) => {
+                base.substitute_type_vars(substitutions);
+            }
+            Type::Tuple(TupleType { items }) => {
+                items
+                    .iter_mut()
+                    .for_each(|t| t.substitute_type_vars(substitutions));
+            }
+            Type::Function(FunctionType { params, value }) => {
+                params
+                    .iter_mut()
+                    .for_each(|t| t.substitute_type_vars(substitutions));
+                value.substitute_type_vars(substitutions);
             }
             _ => {
                 assert!(self.is_elementary());
-                false
+            }
+        }
+    }
+
+    fn contained_type_vars_with_repetitions(&self) -> Box<dyn Iterator<Item = &String> + '_> {
+        match self {
+            Type::TypeVar(n) => Box::new(std::iter::once(n)),
+            Type::Array(ar) => ar.base.contained_type_vars_with_repetitions(),
+            Type::Tuple(tu) => Box::new(
+                tu.items
+                    .iter()
+                    .map(|t| t.contained_type_vars_with_repetitions())
+                    .flatten(),
+            ),
+            Type::Function(fun) => Box::new(
+                fun.params
+                    .iter()
+                    .map(|t| t.contained_type_vars_with_repetitions())
+                    .flatten()
+                    .chain(fun.value.contained_type_vars_with_repetitions()),
+            ),
+            _ => {
+                assert!(self.is_elementary());
+                Box::new(std::iter::empty())
             }
         }
     }
@@ -158,8 +211,61 @@ impl<T: FieldElement, Ref: Display> From<FunctionTypeName<Expression<T, Ref>>> f
     }
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
+#[derive(Debug, Clone)]
 pub struct TypeScheme {
-    pub vars: Vec<String>,
+    /// Type variables and their trait bounds
+    pub vars: HashMap<String, HashSet<String>>,
     pub ty: Type,
+}
+
+impl TypeScheme {
+    pub fn simplify_type_vars(self) -> TypeScheme {
+        let name_substitutions: HashMap<_, _> = match self.vars.len() {
+            0 => return self,
+            1 => {
+                let var = self.vars.keys().next().unwrap();
+                [(var.clone(), "T".to_string())].into()
+            }
+            _ => self
+                .ty
+                .contained_type_vars()
+                .iter()
+                .enumerate()
+                .map(|(i, v)| ((*v).clone(), format!("T{}", i + 1)))
+                .collect(),
+        };
+        assert!(name_substitutions.len() == self.vars.len());
+        let mut ty = self.ty;
+        ty.substitute_type_vars(
+            &name_substitutions
+                .iter()
+                .map(|(n, s)| (n.clone(), Type::TypeVar(s.clone())).into())
+                .collect(),
+        );
+        TypeScheme {
+            vars: self
+                .vars
+                .into_iter()
+                .map(|(v, b)| (name_substitutions[&v].clone(), b))
+                .collect(),
+            ty,
+        }
+    }
+
+    pub fn bounds_to_string(&self) -> String {
+        self.vars
+            .iter()
+            .sorted_by(|(v1, _), (v2, _)| v1.cmp(v2))
+            .map(|(v, b)| {
+                format!(
+                    "{v}{}",
+                    if b.is_empty() {
+                        String::new()
+                    } else {
+                        format!(": {}", b.iter().sorted().join(" + "))
+                    }
+                )
+            })
+            .join(", ")
+    }
 }

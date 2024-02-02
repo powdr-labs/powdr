@@ -1,18 +1,18 @@
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 use powdr_ast::{
     analyzed::{
-        types::{ArrayType, FunctionType, TupleType, Type, TypeScheme},
+        types::{FunctionType, Type, TypeScheme},
         Expression, FunctionValueDefinition, PolynomialReference, Reference, Symbol,
     },
-    parsed::{FunctionCall, LambdaExpression},
+    parsed::{BinaryOperator, FunctionCall, LambdaExpression, UnaryOperator},
 };
 use powdr_number::{FieldElement, GoldilocksField};
-use powdr_parser::parse_type_name;
+use powdr_parser::{parse_type_name, parse_type_var_bounds};
 
 pub fn infer_types<T: FieldElement>(
     definitions: &HashMap<String, (Symbol, Option<FunctionValueDefinition<T>>)>,
-) -> Result<HashMap<String, Type>, String> {
+) -> Result<HashMap<String, TypeScheme>, String> {
     TypeChecker::new(definitions).infer_types()
 }
 
@@ -21,8 +21,12 @@ struct TypeChecker<'a, T> {
     /// Types for symbols, might contain type variables.
     /// TODO could these be type schemes?
     types: HashMap<String, Type>,
+    binary_operator_schemes: BTreeMap<BinaryOperator, TypeScheme>,
+    unary_operator_schemes: BTreeMap<UnaryOperator, TypeScheme>,
     /// Types for local variables, might contain type variables.
     local_var_types: Vec<Type>,
+    /// Inferred type constraints (traits) on type variables.
+    type_var_bounds: HashMap<String, HashSet<String>>,
     /// Substitutions for type variables
     substitutions: HashMap<String, Type>,
     next_type_var: usize,
@@ -35,7 +39,10 @@ impl<'a, T: FieldElement> TypeChecker<'a, T> {
         let mut tc = Self {
             definitions,
             types: HashMap::new(),
+            binary_operator_schemes: binary_operator_schemes(),
+            unary_operator_schemes: unary_operator_schemes(),
             local_var_types: vec![],
+            type_var_bounds: HashMap::new(),
             substitutions: HashMap::new(),
             next_type_var: 1,
         };
@@ -47,21 +54,36 @@ impl<'a, T: FieldElement> TypeChecker<'a, T> {
             let tv = tc.new_type_var();
             tc.types.insert(n.clone(), tv);
         }
+        // TODO this whole system works by just restricting the types more and more.
+        // when we look up a symbol, we cannot use the type annotation, instead,
+        // we just infer the type and in the end compare the annotations...
         tc
     }
 
-    fn infer_types(mut self) -> Result<HashMap<String, Type>, String> {
+    fn infer_types(mut self) -> Result<HashMap<String, TypeScheme>, String> {
         for (name, value) in self.definitions {
             let ty = self.types[name].clone();
             self.unify(&ty, value)?;
-            // TODO apply substitutions
         }
-        // TODO this shows that we probably need a sub-struct just for the substitutions.
-        let mut types = std::mem::take(&mut self.types);
-        for t in types.values_mut() {
-            self.substitute(t);
-        }
-        Ok(types)
+        Ok(self
+            .types
+            .into_iter()
+            .map(|(name, mut ty)| {
+                ty.substitute_type_vars(&self.substitutions);
+                // TODO is this properly generalized?
+                let vars = ty
+                    .contained_type_vars()
+                    .into_iter()
+                    .map(|v| {
+                        (
+                            v.clone(),
+                            self.type_var_bounds.get(v).cloned().unwrap_or_default(),
+                        )
+                    })
+                    .collect();
+                (name, TypeScheme { vars, ty }.simplify_type_vars())
+            })
+            .collect())
     }
 
     fn unify(
@@ -85,6 +107,7 @@ impl<'a, T: FieldElement> TypeChecker<'a, T> {
     }
 
     fn unify_expression(&mut self, ty: Type, e: &Expression<T>) -> Result<(), String> {
+        //println!("Unifying {e}: {ty}");
         match e {
             Expression::Reference(Reference::LocalVar(id, _name)) => {
                 self.unify_types(ty, self.local_var_types[*id as usize].clone())
@@ -93,10 +116,7 @@ impl<'a, T: FieldElement> TypeChecker<'a, T> {
                 self.unify_types(ty, self.types[name].clone())
             }
             Expression::PublicReference(_) => todo!(),
-            Expression::Number(_) => {
-                // TODO unify ty with a new type var T: FromLiteral
-                self.unify_types(ty, Type::Int)
-            }
+            Expression::Number(_) => self.ensure_bound(&ty, "FromLiteral".to_string()),
             Expression::String(_) => self.unify_types(ty, Type::String),
             Expression::Tuple(_) => todo!(),
             Expression::LambdaExpression(LambdaExpression { params, body }) => {
@@ -115,25 +135,20 @@ impl<'a, T: FieldElement> TypeChecker<'a, T> {
                 )
             }
             Expression::ArrayLiteral(_) => todo!(),
-            Expression::BinaryOperation(left, _op, right) => {
-                // Function application instantiates a type scheme.
-                // Or does symbol lookup instantiatet it?
-                // TODO: We actually have: let<T: Sum> +: T, T -> T;
-                // So for the newly instantiated type, we also add the restriction
-                // that it has to implement Sum.
-                let scheme = TypeScheme {
-                    vars: vec!["T".to_string()],
-                    ty: parse_type_name::<GoldilocksField>("T, T -> T")
-                        .unwrap()
-                        .into(),
-                };
-                let fun_type = self.instantiate_scheme(scheme);
+            Expression::BinaryOperation(left, op, right) => {
+                let fun_type = self.instantiate_scheme(self.binary_operator_schemes[op].clone());
                 let value = self
                     .unify_function_call(fun_type, [left, right].into_iter().map(AsRef::as_ref))?;
                 self.unify_types(ty, value)?;
                 Ok(())
             }
-            Expression::UnaryOperation(_, _) => todo!(),
+            Expression::UnaryOperation(op, inner) => {
+                let fun_type = self.instantiate_scheme(self.unary_operator_schemes[op].clone());
+                let value =
+                    self.unify_function_call(fun_type, [inner].into_iter().map(AsRef::as_ref))?;
+                self.unify_types(ty, value)?;
+                Ok(())
+            }
             Expression::IndexAccess(_) => todo!(),
             Expression::FunctionCall(FunctionCall {
                 function,
@@ -146,7 +161,15 @@ impl<'a, T: FieldElement> TypeChecker<'a, T> {
             }
             Expression::FreeInput(_) => todo!(),
             Expression::MatchExpression(_, _) => todo!(),
-            Expression::IfExpression(_) => todo!(),
+            Expression::IfExpression(if_expr) => {
+                let cond_type = self.unify_new_expression(&if_expr.condition)?;
+                self.unify_types(cond_type, Type::Bool)?;
+                let true_type = self.unify_new_expression(&if_expr.body)?;
+                let false_type = self.unify_new_expression(&if_expr.else_body)?;
+                self.unify_types(true_type.clone(), false_type)?;
+                self.unify_types(ty, true_type)?;
+                Ok(())
+            }
         }
     }
 
@@ -171,64 +194,28 @@ impl<'a, T: FieldElement> TypeChecker<'a, T> {
 
     /// Applies the current substitutions to the type.
     fn substitute(&self, ty: &mut Type) {
-        match ty {
-            Type::TypeVar(name) => {
-                if let Some(t) = self.substitutions.get(name) {
-                    *ty = t.clone();
-                }
-            }
-            Type::Array(ArrayType { base, length: _ }) => {
-                self.substitute(base);
-            }
-            Type::Tuple(TupleType { items }) => {
-                items.iter_mut().for_each(|t| self.substitute(t));
-            }
-            Type::Function(FunctionType { params, value }) => {
-                params.iter_mut().for_each(|t| self.substitute(t));
-                self.substitute(value);
-            }
-            _ => {
-                assert!(ty.is_elementary());
-            }
-        }
+        ty.substitute_type_vars(&self.substitutions);
     }
 
-    /// Applies the given substitutions to the type.
-    fn substitute_single(ty: &mut Type, name: &str, sub: &Type) {
-        match ty {
-            Type::TypeVar(n) => {
-                if n.as_str() == name {
-                    *ty = sub.clone();
-                }
-            }
-            Type::Array(ArrayType { base, length: _ }) => {
-                Self::substitute_single(base, name, sub);
-            }
-            Type::Tuple(TupleType { items }) => {
-                items
-                    .iter_mut()
-                    .for_each(|t| Self::substitute_single(t, name, sub));
-            }
-            Type::Function(FunctionType { params, value }) => {
-                params
-                    .iter_mut()
-                    .for_each(|t| Self::substitute_single(t, name, sub));
-                Self::substitute_single(value, name, sub);
-            }
-            _ => {
-                assert!(ty.is_elementary());
-            }
-        }
-    }
-
+    /// Instantiates a type scheme by creating new type variables for the quantified
+    /// type variables in the scheme and adds the required trait bounds for the
+    /// new type variables.
     fn instantiate_scheme(&mut self, scheme: TypeScheme) -> Type {
-        scheme.vars.into_iter().fold(scheme.ty, |mut ty, v| {
-            Self::substitute_single(&mut ty, &v, &self.new_type_var());
-            ty
-        })
+        let mut ty = scheme.ty;
+        //println!("Instantiating scheme {ty}");
+        for (var, bounds) in scheme.vars {
+            let new_var = self.new_type_var();
+            ty.substitute_type_vars(&[(var.clone(), new_var.clone())].into());
+            for b in bounds {
+                self.ensure_bound(&new_var, b).unwrap();
+            }
+        }
+        //println!("   -> instantiated to {ty}");
+        ty
     }
 
     fn unify_types(&mut self, mut ty1: Type, mut ty2: Type) -> Result<(), String> {
+        //println!("Unify start: {ty1}  <->  {ty2}");
         if let (Type::TypeVar(n1), Type::TypeVar(n2)) = (&ty1, &ty2) {
             if n1 == n2 {
                 return Ok(());
@@ -237,14 +224,28 @@ impl<'a, T: FieldElement> TypeChecker<'a, T> {
         // TODO this should not be needed for recursive calls, should it?
         self.substitute(&mut ty1);
         self.substitute(&mut ty2);
-        println!("Unify {ty1}   <=>   {ty2}");
+        //println!("Unify {ty1}   <=>   {ty2}");
         match (ty1, ty2) {
+            (Type::Bool, Type::Bool)
+            | (Type::Int, Type::Int)
+            | (Type::Fe, Type::Fe)
+            | (Type::String, Type::String)
+            | (Type::Expr, Type::Expr)
+            | (Type::Constr, Type::Constr) => Ok(()),
             (Type::TypeVar(n1), Type::TypeVar(n2)) if n1 == n2 => Ok(()),
             (Type::TypeVar(name), ty) | (ty, Type::TypeVar(name)) => {
                 if ty.contains_type_var(&name) {
                     Err(format!("Cannot unify types {ty} and {name}"))
                 } else {
-                    self.add_substitution(name, ty);
+                    for bound in self.type_var_bounds.get(&name).cloned().unwrap_or_default() {
+                        self.ensure_bound(&ty, bound)?;
+                    }
+                    let subs = [(name.clone(), ty.clone())].into();
+                    self.substitutions
+                        .values_mut()
+                        .for_each(|t| t.substitute_type_vars(&subs));
+                    //println!("Adding substitution: {name} := {ty}");
+                    self.substitutions.insert(name, ty);
                     Ok(())
                 }
             }
@@ -259,18 +260,82 @@ impl<'a, T: FieldElement> TypeChecker<'a, T> {
                 }
                 self.unify_types(*f1.value, *f2.value)
             }
-            _ => todo!(),
+            (Type::Array(a1), Type::Array(a2)) => {
+                if a1.length != a2.length {
+                    Err(format!("Array types have different lengths: {a1} and {a2}"))?;
+                }
+                self.unify_types(*a1.base, *a2.base)
+            }
+            (Type::Tuple(t1), Type::Tuple(t2)) => {
+                if t1.items.len() != t2.items.len() {
+                    Err(format!(
+                        "Tuple types have different number of items: {t1} and {t2}"
+                    ))?;
+                }
+                t1.items
+                    .into_iter()
+                    .zip(t2.items)
+                    .try_for_each(|(i1, i2)| self.unify_types(i1.clone(), i2.clone()))
+            }
+
+            (ty1, ty2) => Err(format!("Cannot unify types {ty1} and {ty2}")),
         }
     }
 
-    /// Adds a substitution of a type variable to a type.
-    /// Note that this requires the type to be fully substituted.
-    fn add_substitution(&mut self, name: String, ty: Type) {
-        self.substitutions
-            .values_mut()
-            .for_each(|t| Self::substitute_single(t, &name, &ty));
-        println!("Adding substitution: {name} := {ty}");
-        self.substitutions.insert(name, ty);
+    fn ensure_bound(&mut self, ty: &Type, bound: String) -> Result<(), String> {
+        //println!("Ensuring type bound {ty}: {bound}");
+        if let Type::TypeVar(n) = ty {
+            self.add_type_var_bound(n.clone(), bound);
+            Ok(())
+        } else {
+            let bounds = match ty {
+                Type::Bool => vec![],
+                Type::Int => vec![
+                    "FromLiteral",
+                    "Add",
+                    "Sub",
+                    "Neg",
+                    "Mul",
+                    "Div",
+                    "Mod",
+                    "Pow",
+                    "Ord",
+                    "Eq",
+                ],
+                Type::Fe => vec![
+                    "FromLiteral",
+                    "Add",
+                    "Sub",
+                    "Neg",
+                    "Mul",
+                    "Pow",
+                    "Neg",
+                    "Eq",
+                ],
+                Type::String => vec!["Add"],
+                Type::Expr => vec!["Add", "Sub", "Neg", "Mul", "Pow", "Neg", "Eq"],
+                Type::Constr => vec![],
+                Type::Array(_) => vec!["Add"],
+                Type::Tuple(_) => vec![],
+                Type::Function(_) => vec![],
+                Type::TypeVar(_) => unreachable!(),
+            };
+            if bounds.contains(&bound.as_str()) {
+                Ok(())
+            } else {
+                Err(format!(
+                    "Type {ty} is required to satisfy trait {bound}, but does not."
+                ))
+            }
+        }
+    }
+
+    fn add_type_var_bound(&mut self, type_var: String, bound: String) {
+        //println!("Adding type var bound: {type_var}: {bound}");
+        self.type_var_bounds
+            .entry(type_var)
+            .or_insert_with(HashSet::new)
+            .insert(bound);
     }
 
     fn new_type_var(&mut self) -> Type {
@@ -280,38 +345,109 @@ impl<'a, T: FieldElement> TypeChecker<'a, T> {
     }
 }
 
+fn binary_operator_schemes() -> BTreeMap<BinaryOperator, TypeScheme> {
+    [
+        // These only on int and fe
+        (BinaryOperator::Add, "T: Add", "T, T -> T"),
+        (BinaryOperator::Sub, "T: Sub", "T, T -> T"),
+        (BinaryOperator::Mul, "T: Mul", "T, T -> T"),
+        (BinaryOperator::Div, "", "int, int -> int"),
+        (BinaryOperator::Mod, "", "int, int -> int"),
+        (BinaryOperator::Pow, "T: Pow", "T, int -> T"),
+        // TODO shifts
+        // TODO bit operators
+        (BinaryOperator::Less, "T: Ord", "T, T -> bool"),
+        (BinaryOperator::LessEqual, "T: Ord", "T, T -> bool"),
+        (BinaryOperator::Equal, "T: Eq", "T, T -> bool"),
+        (BinaryOperator::NotEqual, "T: Eq", "T, T -> bool"),
+        (BinaryOperator::GreaterEqual, "T: Ord", "T, T -> bool"),
+        (BinaryOperator::Greater, "T: Ord", "T, T -> bool"),
+        (BinaryOperator::LogicalOr, "", "bool, bool -> bool"),
+        (BinaryOperator::LogicalAnd, "", "bool, bool -> bool"),
+    ]
+    .into_iter()
+    .map(|(op, vars, ty)| {
+        let scheme = TypeScheme {
+            vars: parse_type_var_bounds(vars).unwrap(),
+            ty: parse_type_name::<GoldilocksField>(ty).unwrap().into(),
+        };
+        (op, scheme)
+    })
+    .collect()
+}
+
+fn unary_operator_schemes() -> BTreeMap<UnaryOperator, TypeScheme> {
+    [
+        (UnaryOperator::Minus, "T: Neg", "T -> T"),
+        (UnaryOperator::LogicalNot, "", "bool -> bool"),
+        (UnaryOperator::Next, "", "expr -> expr"),
+    ]
+    .into_iter()
+    .map(|(op, vars, ty)| {
+        let scheme = TypeScheme {
+            vars: parse_type_var_bounds(vars).unwrap(),
+            ty: parse_type_name::<GoldilocksField>(ty).unwrap().into(),
+        };
+        (op, scheme)
+    })
+    .collect()
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
 
     use powdr_number::GoldilocksField;
 
+    use pretty_assertions::assert_eq;
+
     use crate::analyze_string;
 
-    fn parse_and_type_check(input: &str) -> Result<HashMap<String, Type>, String> {
+    fn parse_and_type_check(input: &str) -> Result<HashMap<String, TypeScheme>, String> {
         let analyzed = analyze_string::<GoldilocksField>(input);
         infer_types(&analyzed.definitions)
     }
 
-    fn check(types: &Result<HashMap<String, Type>, String>, expected: &[(&str, &str)]) {
+    fn check(types: &Result<HashMap<String, TypeScheme>, String>, expected: &[(&str, &str, &str)]) {
         let types = types.as_ref().unwrap();
-        for (name, ty) in expected {
-            assert_eq!(types[&name.to_string()].to_string(), *ty);
+        for (name, bounds, ty) in expected {
+            let scheme = &types[&name.to_string()];
+            assert_eq!(
+                (*bounds, *ty),
+                (
+                    scheme.bounds_to_string().as_str(),
+                    scheme.ty.to_string().as_str()
+                ),
+                "Failure for symbol {name}"
+            );
         }
     }
 
     #[test]
     fn assignment() {
-        let input = "let x: int -> int = |i| i; let y = x(2);";
+        let input = "let x = |i| i; let y = x(2);";
         let result = parse_and_type_check(input);
-        check(&result, &[("x", "int -> int"), ("y", "int")]);
+        check(
+            &result,
+            &[
+                ("x", "T: FromLiteral", "T -> T"),
+                ("y", "T: FromLiteral", "T"),
+            ],
+        );
     }
 
     #[test]
     fn higher_order() {
         let input = "let x = |i| |f| i + f(i); let y = x(2)(|k| k + 8);";
         let result = parse_and_type_check(input);
-        check(&result, &[("x", "int -> int"), ("y", "int")]);
+        check(
+            &result,
+            &[
+                // TODO don't we need parentheses in the type here? How does it parse?
+                ("x", "T: Add + FromLiteral", "T -> (T -> T) -> T"),
+                ("y", "T: Add + FromLiteral", "T"),
+            ],
+        );
     }
 
     #[test]
@@ -321,11 +457,79 @@ mod test {
         parse_and_type_check(input).unwrap();
     }
 
-    // Test the following, once we can parse it:
-    // Question: Do we instantiate type schemes on lookup or function applitaino?
-    //     Does s need to be generic?
-    // let<T> sum: T, T -> T = |a, b| a + b;
-    // let<T> s: -> (T, T -> T) = || sum;
-    // let x = s()(2, 3);
-    // let y = s()(std::convert::fe(4), std::convert::fe(5));
+    #[test]
+    fn fold() {
+        let input = "let fold = |length, f, initial, folder|
+            if length <= 0 {
+                initial
+            } else {
+                folder(fold((length - 1), f, initial, folder), f((length - 1)))
+            };";
+        let result = parse_and_type_check(input);
+        check(
+            &result,
+            &[(
+                "fold",
+                "T1: FromLiteral + Ord + Sub, T2, T3",
+                "T1, (T1 -> T2), T3, (T3, T2 -> T3) -> T3",
+            )],
+        );
+    }
+
+    #[test]
+    fn sum() {
+        let input = "let sum = |a, b| a + b;";
+        let result = parse_and_type_check(input);
+        check(&result, &[("sum", "T: Add", "T, T -> T")]);
+    }
+
+    #[test]
+    fn sum_via_fold() {
+        let input = "let fold = |length, f, initial, folder|
+            if length <= 0 {
+                initial
+            } else {
+                folder(fold((length - 1), f, initial, folder), f((length - 1)))
+            };
+        let sum = |n, f| fold(n, f, 0, |a, b| a + b);
+        ";
+        let result = parse_and_type_check(input);
+        check(
+            &result,
+            &[(
+                "sum",
+                "T1: FromLiteral + Ord + Sub, T2: Add + FromLiteral",
+                "T1, (T1 -> T2) -> T2",
+            )],
+        );
+    }
+
+    #[test]
+    fn pow() {
+        let input = "let pow = |a, b| a ** b; let x = pow(2, 3);";
+        let result = parse_and_type_check(input);
+        check(
+            &result,
+            &[
+                ("pow", "T: FromLiteral + Pow", "T, int -> T"),
+                ("x", "T: FromLiteral + Pow", "T"),
+            ],
+        );
+    }
+
+    #[test]
+    fn if_statement() {
+        let input = "let g = || g(); let x = |a, b| if g() { a } else { b + 2 };";
+        let result = parse_and_type_check(input);
+        check(
+            &result,
+            // TODO " -> bool" is also not formatted correctly.
+            // TODO this test shows that we do not have let-polymorphism,
+            // since the type of g is determined by how it is used in x.
+            &[
+                ("g", "", " -> bool"),
+                ("x", "T: Add + FromLiteral", "T, T -> T"),
+            ],
+        );
+    }
 }

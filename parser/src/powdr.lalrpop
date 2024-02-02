@@ -1,4 +1,5 @@
 use std::str::FromStr;
+use std::collections::{HashMap, HashSet};
 use powdr_ast::parsed::{*, asm::*};
 use powdr_number::{AbstractNumberType, FieldElement};
 use num_traits::Num;
@@ -556,7 +557,7 @@ TypeNameTermBox: Box<TypeName<Expression<T>>> = {
 }
 
 TypeNameTerm: TypeName<Expression<T>> = {
-    UppercaseIdentifier => TypeName::TypeVar(<>),
+    TypeVar => TypeName::TypeVar(<>),
     "bool" => TypeName::Bool,
     "int" => TypeName::Int,
     "fe" => TypeName::Fe,
@@ -570,7 +571,24 @@ TypeNameTerm: TypeName<Expression<T>> = {
     "(" <TypeName> ")",
 }
 
+TypeVar: String = {
+    UppercaseIdentifier => <>,
+}
+
+// TODO check that we do not mention type vars or bounds multiple times
+// bounds should be SymbolPaths in the future.
+pub TypeVarBounds: HashMap<String, HashSet<String>> = {
+    => Default::default(),
+    <list:( <TypeVarWithBounds> "," )*> <end:TypeVarWithBounds> => list.into_iter().chain(std::iter::once(end)).collect()
+}
+
+TypeVarWithBounds: (String, HashSet<String>) = {
+    <type_var:TypeVar> <bounds:(":" <Identifier> ("+" <Identifier>)*)?> => (type_var, bounds.into_iter().collect())
+}
+
+
 // ---------------------------- Terminals -----------------------------
+
 
 
 StringLiteral: String = {
