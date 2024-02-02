@@ -446,7 +446,7 @@ namespace main_sub(16);
     pol constant p_line = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10] + [10]*;
     pol commit X_free_value(i) query match pc(i) { 2 => ("input", 1), 4 => ("input", (std::convert::int(CNT(i)) + 1)), 7 => ("input", 0), };
     pol constant p_X_const = [0]*;
-    pol constant p_X_read_free = [0, 0, 1, 0, 1, 0, 0, -1, 0, 0, 0] + [0]*;
+    pol constant p_X_read_free = [0, 0, 1, 0, 1, 0, 0, 18446744069414584320, 0, 0, 0] + [0]*;
     pol constant p_instr__jump_to_operation = [0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0] + [0]*;
     pol constant p_instr__loop = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1] + [1]*;
     pol constant p_instr__reset = [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0] + [0]*;
@@ -519,7 +519,7 @@ machine Machine {
     pol constant p_instr__loop = [0, 0, 0, 0, 1] + [1]*;
     pol constant p_instr__reset = [1, 0, 0, 0, 0] + [0]*;
     pol constant p_instr_adjust_fp = [0, 0, 0, 1, 0] + [0]*;
-    pol constant p_instr_adjust_fp_param_amount = [0, 0, 0, -2, 0] + [0]*;
+    pol constant p_instr_adjust_fp_param_amount = [0, 0, 0, 18446744069414584319, 0] + [0]*;
     pol constant p_instr_adjust_fp_param_t = [0, 0, 0, 3, 0] + [0]*;
     pol constant p_instr_inc_fp = [0, 0, 1, 0, 0] + [0]*;
     pol constant p_instr_inc_fp_param_amount = [0, 0, 7, 0, 0] + [0]*;

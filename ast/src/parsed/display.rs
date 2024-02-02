@@ -33,9 +33,21 @@ impl<T: Display> Display for ModuleStatement<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
             ModuleStatement::SymbolDefinition(SymbolDefinition { name, value }) => match value {
-                SymbolValue::Machine(m) => {
-                    write!(f, "machine {name} {m}")
-                }
+                SymbolValue::Machine(
+                    m @ Machine {
+                        arguments:
+                            MachineArguments {
+                                latch,
+                                operation_id,
+                            },
+                        ..
+                    },
+                ) => match (latch, operation_id) {
+                    (None, None) => write!(f, "machine {name} {m}"),
+                    (Some(latch), None) => write!(f, "machine {name}({latch}, _) {m}"),
+                    (None, Some(op_id)) => write!(f, "machine {name}(_, {op_id}) {m}"),
+                    (Some(latch), Some(op_id)) => write!(f, "machine {name}({latch}, {op_id}) {m}"),
+                },
                 SymbolValue::Import(i) => {
                     write!(f, "{i} as {name};")
                 }

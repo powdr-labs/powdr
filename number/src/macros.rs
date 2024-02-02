@@ -433,13 +433,7 @@ macro_rules! powdr_field {
         impl fmt::Display for $name {
             fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
                 let value = self.to_integer().value;
-                if self.is_in_lower_half() {
-                    write!(f, "{value}")
-                } else {
-                    let mut res = Self::modulus();
-                    assert!(!res.value.sub_with_borrow(&value));
-                    write!(f, "-{}", res)
-                }
+                write!(f, "{value}")
             }
         }
     };

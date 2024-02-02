@@ -565,7 +565,6 @@ SpecialIdentifier: &'input str = {
 }
 
 ConstantIdentifier: String = {
-    // TODO it seems the lexer splits the token after %
     r"%[a-zA-Z_][a-zA-Z$_0-9@]*" => <>.to_string(),
 }
 
