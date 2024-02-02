@@ -1,5 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
+use itertools::Itertools;
 use powdr_ast::{
     analyzed::{
         types::{FunctionType, Type, TypeScheme},
@@ -236,14 +237,46 @@ impl<'a, T: FieldElement> TypeChecker<'a, T> {
             .map(|a| self.unify_new_expression(a))
             .collect::<Result<Vec<_>, _>>()?;
         let value = self.new_type_var();
-        self.unify_types(
-            function_type,
+        println!(
+            "Unifying function call \"{function_type}\" with \"{} -> {value}\"",
+            args.iter().format(", ")
+        );
+        let snapshot = self.state.clone();
+        match self.unify_types(
+            function_type.clone(),
             Type::Function(FunctionType {
-                params: args,
+                params: args.clone(),
                 value: Box::new(value.clone()),
             }),
-        )?;
-        Ok(value)
+        ) {
+            Err(e) => {
+                // TODO add much more conditions.
+                if let Some(pos) = args.iter().position(|x| {
+                    let mut y = x.clone();
+                    self.substitute(&mut y);
+                    y == Type::col()
+                }) {
+                    println!("Unificatino faild, but we have a 'col' argument. Trying to add conversion to expr.");
+                    // Ok try to convert the col to an expr
+                    self.state = snapshot;
+                    let converted = self.new_type_var();
+                    self.unify_types(converted.clone(), Type::Expr)?;
+                    let mut new_args = args;
+                    new_args[pos] = converted;
+                    self.unify_types(
+                        function_type,
+                        Type::Function(FunctionType {
+                            params: new_args,
+                            value: Box::new(value.clone()),
+                        }),
+                    )?;
+                    Ok(value)
+                } else {
+                    Err(e)
+                }
+            }
+            Ok(_) => Ok(value),
+        }
     }
 
     /// Applies the current substitutions to the type.
@@ -278,7 +311,7 @@ impl<'a, T: FieldElement> TypeChecker<'a, T> {
         // TODO this should not be needed for recursive calls, should it?
         self.substitute(&mut ty1);
         self.substitute(&mut ty2);
-        //println!("Unify {ty1}   <=>   {ty2}");
+        println!("Unify {ty1}   <=>   {ty2}");
         match (ty1, ty2) {
             (Type::Bool, Type::Bool)
             | (Type::Int, Type::Int)
@@ -421,7 +454,16 @@ fn elementary_type_bounds(ty: &Type) -> Vec<&'static str> {
             "Eq",
         ],
         Type::String => vec!["Add"],
-        Type::Expr => vec!["Add", "Sub", "Neg", "Mul", "Pow", "Neg", "Eq"],
+        Type::Expr => vec![
+            "FromLiteral",
+            "Add",
+            "Sub",
+            "Neg",
+            "Mul",
+            "Pow",
+            "Neg",
+            "Eq",
+        ],
         Type::Constr => vec![],
         Type::Array(_) => vec!["Add"],
         Type::Tuple(_) => vec![],
@@ -572,7 +614,7 @@ mod test {
 
     #[test]
     fn constraints() {
-        let input = "let a; let BYTE = |i| i & 0xff; {a + 1} in {BYTE};";
+        let input = "let a; let BYTE = |i| i & 0xff; { a + 1 } in {BYTE};";
         let result = parse_and_type_check(input);
         check(
             &result,
