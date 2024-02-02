@@ -12,10 +12,10 @@ installed with the "Desktop Development With C++" Workloads option.
 
 ## Building
 
-Using a single Cargo command:
+Using a single Cargo command (enable the halo2 backend to use it with the cli):
 
 ```sh
-cargo install --git https://github.com/powdr-labs/powdr powdr-cli
+cargo install --git https://github.com/powdr-labs/powdr --features halo2 powdr-cli
 ```
 
 Or, by manually building from a local copy of the [powdr repository](https://github.com/powdr-labs/powdr):
@@ -25,5 +25,5 @@ Or, by manually building from a local copy of the [powdr repository](https://git
 git clone https://github.com/powdr-labs/powdr.git
 cd powdr
 # install powdr-cli
-cargo install --path ./cli
+cargo install --features halo2 --path ./cli
 ```
