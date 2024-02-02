@@ -589,7 +589,7 @@ impl<T: FieldElement> Pipeline<T> {
                     constraints_serialization,
                 };
 
-                self.maybe_wite_proof(&proof_result)?;
+                self.maybe_write_proof(&proof_result)?;
 
                 Artifact::Proof(proof_result)
             }
@@ -676,7 +676,7 @@ impl<T: FieldElement> Pipeline<T> {
         Ok(())
     }
 
-    fn maybe_wite_proof(&self, proof_result: &ProofResult<T>) -> Result<(), Vec<String>> {
+    fn maybe_write_proof(&self, proof_result: &ProofResult<T>) -> Result<(), Vec<String>> {
         if let Some(constraints_serialization) = &proof_result.constraints_serialization {
             if let Some(path) =
                 self.path_if_should_write(|name| format!("{name}_constraints.json"))?
