@@ -1,12 +1,14 @@
 use std::iter::{once, repeat};
 use std::time::Instant;
 
-use crate::{pilstark, BackendImpl};
+use crate::{pilstark, BackendImpl, Proof};
 use powdr_ast::analyzed::Analyzed;
 use powdr_number::{BigInt, DegreeType, FieldElement, GoldilocksField};
 
+
 use starky::{
     merklehash::MerkleTreeGL,
+    pil2circom,
     polsarray::{PolKind, PolsArray},
     stark_gen::StarkProof,
     stark_setup::StarkSetup,
@@ -53,8 +55,8 @@ impl<F: FieldElement> BackendImpl<F> for EStark {
         pil: &Analyzed<F>,
         fixed: &[(String, Vec<F>)],
         witness: &[(String, Vec<F>)],
-        prev_proof: Option<crate::Proof>,
-    ) -> (Option<crate::Proof>, Option<String>) {
+        prev_proof: Option<Vec<Proof>>,
+    ) -> (Option<Vec<Proof>>, Option<String>) {
         if prev_proof.is_some() {
             unimplemented!("aggregration is not implemented");
         }
@@ -138,10 +140,29 @@ impl<F: FieldElement> BackendImpl<F> for EStark {
         )
         .unwrap());
 
-        (
-            Some(serde_json::to_vec(&starkproof).unwrap()),
-            Some(serde_json::to_string(&pil).unwrap()),
-        )
+        // generate circom
+        let opt = pil2circom::StarkOption {
+            enable_input: false,
+            verkey_input: true,
+            skip_main: false,
+            agg_stage: false,
+        };
+        let mut proofs: Vec<Proof> = vec![serde_json::to_vec(&starkproof).unwrap()];
+
+        if !setup.starkinfo.qs.is_empty() {
+            let str_ver = pil2circom::pil2circom(
+                &pil,
+                &setup.const_root,
+                &self.params,
+                &mut setup.starkinfo,
+                &mut setup.program,
+                &opt,
+            )
+            .unwrap();
+            proofs.push(str_ver.as_bytes().to_vec())
+        }
+
+        (Some(proofs), Some(serde_json::to_string(&pil).unwrap()))
     }
 }
 
