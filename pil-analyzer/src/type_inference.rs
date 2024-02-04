@@ -495,6 +495,7 @@ fn binary_operator_scheme(op: BinaryOperator) -> TypeScheme {
         BinaryOperator::Less => ("T: Ord", "T, T -> bool"),
         BinaryOperator::LessEqual => ("T: Ord", "T, T -> bool"),
         BinaryOperator::Equal => ("T: Eq", "T, T -> bool"),
+        BinaryOperator::Identity => ("", "Expr, Expr -> Constr"),
         BinaryOperator::NotEqual => ("T: Eq", "T, T -> bool"),
         BinaryOperator::GreaterEqual => ("T: Ord", "T, T -> bool"),
         BinaryOperator::Greater => ("T: Ord", "T, T -> bool"),
