@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 
 use powdr_ast::{
     analyzed::{
@@ -8,7 +8,7 @@ use powdr_ast::{
     },
     parsed::{
         ArrayLiteral, BinaryOperator, FunctionCall, IndexAccess, LambdaExpression, MatchArm,
-        MatchPattern, UnaryOperator,
+        MatchPattern, TypeBounds, UnaryOperator,
     },
 };
 use powdr_number::{FieldElement, GoldilocksField};
@@ -38,27 +38,32 @@ pub fn infer_types<T: FieldElement>(
 fn type_and_expr_from_definition<'a, T>(
     symbol: &'a Symbol,
     value: &'a Option<FunctionValueDefinition<T>>,
-) -> (Option<Type>, Option<&'a Expression<T>>) {
+) -> (Option<TypeScheme>, Option<&'a Expression<T>>) {
     // TODO extract his function to a different type so that type_inference.rs only needs to deal with Expressions
     if let Some(value) = value {
         match value {
-            FunctionValueDefinition::Array(_) => (Some(Type::col()), None), // TODO we could check inisde the array
-            FunctionValueDefinition::Query(_) => (Some(Type::col()), None), // TODO we could check inisde the query string
-            FunctionValueDefinition::Expression(TypedExpression { e, ty }) => (ty.clone(), Some(e)),
+            FunctionValueDefinition::Array(_) => (Some(Type::col().into()), None), // TODO we could check inisde the array
+            FunctionValueDefinition::Query(_) => (Some(Type::col().into()), None), // TODO we could check inisde the query string
+            FunctionValueDefinition::Expression(TypedExpression { e, type_scheme }) => {
+                (type_scheme.clone(), Some(e))
+            }
         }
     } else {
         assert_eq!(symbol.kind, SymbolKind::Poly(PolynomialType::Committed));
         if let Some(_) = symbol.length {
             // TODO fixed length arrays?
             (
-                Some(Type::Array(ArrayType {
-                    base: Box::new(Type::col()),
-                    length: None,
-                })),
+                Some(
+                    Type::Array(ArrayType {
+                        base: Box::new(Type::col()),
+                        length: None,
+                    })
+                    .into(),
+                ),
                 None,
             )
         } else {
-            (Some(Type::col()), None)
+            (Some(Type::col().into()), None)
         }
     }
 }
@@ -126,7 +131,7 @@ impl TypeCheckerState {
 impl TypeChecker {
     fn infer_types<T: FieldElement>(
         mut self,
-        definitions: &HashMap<String, (Option<Type>, Option<&Expression<T>>)>,
+        definitions: &HashMap<String, (Option<TypeScheme>, Option<&Expression<T>>)>,
         identities: &Vec<Identity<Expression<T>>>,
     ) -> Result<HashMap<String, TypeScheme>, String> {
         // Add types from declarations.
@@ -211,10 +216,10 @@ impl TypeChecker {
             }
             let ty = self.substitute_to(self.types[name].clone());
             if !ty.contained_type_vars().is_empty() {
-                let scheme = self.to_type_scheme(ty.clone());
+                let scheme = self.to_type_scheme(ty.clone()).simplify_type_vars();
                 Err(format!(
-                "Could not determine a concrete type for symbol {name}.\nInferred type scheme: <{}>: {}",
-                scheme.bounds_to_string(),
+                "Could not determine a concrete type for symbol {name}.\nInferred type scheme: {} {}",
+                scheme.type_vars_to_string(),
                 scheme.ty
             ))?;
             }
@@ -449,11 +454,11 @@ impl TypeChecker {
     fn instantiate_scheme(&mut self, scheme: TypeScheme) -> Type {
         let mut ty = scheme.ty;
         //println!("Instantiating scheme {ty}");
-        for (var, bounds) in scheme.vars {
+        for (var, bounds) in scheme.vars.bounds() {
             let new_var = self.new_type_var();
             ty.substitute_type_vars(&[(var.clone(), new_var.clone())].into());
             for b in bounds {
-                self.ensure_bound(&new_var, b).unwrap();
+                self.ensure_bound(&new_var, b.clone()).unwrap();
             }
         }
         //println!("   -> instantiated to {ty}");
@@ -547,11 +552,15 @@ impl TypeChecker {
     fn to_type_scheme(&self, ty: Type) -> TypeScheme {
         // TODO this generalizes all type vars - is that correct?
         let ty = self.substitute_to(ty);
-        let vars = ty
-            .contained_type_vars()
-            .into_iter()
-            .map(|v| (v.clone(), self.state.type_var_bounds(v)))
-            .collect();
+        let vars = TypeBounds::new(ty.contained_type_vars().into_iter().map(|v| {
+            (
+                v.clone(),
+                self.state
+                    .type_var_bounds(v)
+                    .into_iter()
+                    .collect::<BTreeSet<_>>(),
+            )
+        }));
         TypeScheme { vars, ty }.simplify_type_vars()
     }
 }
@@ -691,7 +700,7 @@ mod test {
             assert_eq!(
                 (*bounds, *ty),
                 (
-                    scheme.bounds_to_string().as_str(),
+                    scheme.vars.to_string().as_str(),
                     scheme.ty.to_string().as_str()
                 ),
                 "Failure for symbol {name}"

@@ -87,7 +87,7 @@ impl<T> ExpressionVisitable<Expression<T>> for FunctionValueDefinition<T> {
     {
         match self {
             FunctionValueDefinition::Query(e)
-            | FunctionValueDefinition::Expression(TypedExpression { e, ty: _ }) => {
+            | FunctionValueDefinition::Expression(TypedExpression { e, type_scheme: _ }) => {
                 e.visit_expressions_mut(f, o)
             }
             FunctionValueDefinition::Array(array) => array
@@ -103,7 +103,7 @@ impl<T> ExpressionVisitable<Expression<T>> for FunctionValueDefinition<T> {
     {
         match self {
             FunctionValueDefinition::Query(e)
-            | FunctionValueDefinition::Expression(TypedExpression { e, ty: _ }) => {
+            | FunctionValueDefinition::Expression(TypedExpression { e, type_scheme: _ }) => {
                 e.visit_expressions(f, o)
             }
             FunctionValueDefinition::Array(array) => array

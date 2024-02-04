@@ -306,9 +306,10 @@ impl<T> Analyzed<T> {
                     .iter_mut()
                     .flat_map(|e| e.pattern.iter_mut())
                     .for_each(|e| e.post_visit_expressions_mut(f)),
-                Some(FunctionValueDefinition::Expression(TypedExpression { e, ty: _ })) => {
-                    e.post_visit_expressions_mut(f)
-                }
+                Some(FunctionValueDefinition::Expression(TypedExpression {
+                    e,
+                    type_scheme: _,
+                })) => e.post_visit_expressions_mut(f),
                 None => {}
             });
     }

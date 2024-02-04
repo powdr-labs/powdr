@@ -59,7 +59,7 @@ fn generate_values<T: FieldElement>(
     };
     // TODO we should maybe pre-compute some symbols here.
     let result = match body {
-        FunctionValueDefinition::Expression(TypedExpression { e, ty }) => {
+        FunctionValueDefinition::Expression(TypedExpression { e, type_scheme: ty }) => {
             if let Some(ty) = ty {
                 if ty == &Type::col() {
                     assert!(index.is_none());
@@ -144,9 +144,10 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T, FixedColumnRef<'a>> for Symbols<'a
                 Value::Custom(FixedColumnRef { name })
             } else if let Some((_, value)) = self.analyzed.definitions.get(&name.to_string()) {
                 match value {
-                    Some(FunctionValueDefinition::Expression(TypedExpression { e, ty: _ })) => {
-                        evaluator::evaluate(e, self)?
-                    }
+                    Some(FunctionValueDefinition::Expression(TypedExpression {
+                        e,
+                        type_scheme: _,
+                    })) => evaluator::evaluate(e, self)?,
                     Some(_) => Err(EvalError::Unsupported(
                         "Cannot evaluate arrays and queries.".to_string(),
                     ))?,

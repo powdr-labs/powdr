@@ -57,13 +57,17 @@ impl<T: Display> Display for ModuleStatement<T> {
                 SymbolValue::Module(m @ Module::Local(_)) => {
                     write!(f, "mod {name} {m}")
                 }
-                SymbolValue::Expression(ExpressionWithTypeName { e, type_name }) => {
+                SymbolValue::Expression(ExpressionWithTypeScheme { e, type_scheme }) => {
                     write!(
                         f,
-                        "let {name}{} = {e};",
-                        type_name
+                        "let{} {name}{} = {e};",
+                        type_scheme
                             .as_ref()
-                            .map(|t| format!(": {t}"))
+                            .map(|ts| ts.type_vars_to_string())
+                            .unwrap_or_default(),
+                        type_scheme
+                            .as_ref()
+                            .map(|t| format!(": {}", t.type_name))
                             .unwrap_or_default()
                     )
                 }
@@ -380,11 +384,19 @@ impl<T: Display> Display for PilStatement<T> {
             PilStatement::Namespace(_, name, poly_length) => {
                 write!(f, "namespace {name}({poly_length});")
             }
-            PilStatement::LetStatement(_, name, type_name, value) => {
-                write!(f, "    let {name}")?;
-                if let Some(type_name) = type_name {
-                    write!(f, ": {type_name}")?;
-                }
+            PilStatement::LetStatement(_, name, type_scheme, value) => {
+                write!(
+                    f,
+                    "    let{} {name}{}",
+                    type_scheme
+                        .as_ref()
+                        .map(|ts| ts.type_vars.to_string())
+                        .unwrap_or_default(),
+                    type_scheme
+                        .as_ref()
+                        .map(|ts| format!(": {}", ts.type_name))
+                        .unwrap_or_default()
+                )?;
                 if let Some(value) = &value {
                     write!(f, " = {value}")?;
                 }
@@ -656,6 +668,28 @@ impl<E: Display> Display for FunctionTypeName<E> {
             } else {
                 format!("{}", self.value)
             }
+        )
+    }
+}
+
+impl Display for TypeBounds {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(
+            f,
+            "{}",
+            self.0
+                .iter()
+                .map(|(v, b)| {
+                    format!(
+                        "{v}{}",
+                        if b.is_empty() {
+                            String::new()
+                        } else {
+                            format!(": {}", b.iter().sorted().join(" + "))
+                        }
+                    )
+                })
+                .format(", ")
         )
     }
 }

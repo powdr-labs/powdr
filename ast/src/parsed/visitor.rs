@@ -206,9 +206,9 @@ impl<T> ExpressionVisitable<Expression<T, NamespacedPolynomialReference>> for Pi
             | PilStatement::PublicDeclaration(_, _, _, None, e)
             | PilStatement::ConstantDefinition(_, _, e) => e.visit_expressions_mut(f, o),
 
-            PilStatement::LetStatement(_, _, type_name, value) => {
-                if let Some(t) = type_name {
-                    t.visit_expressions_mut(f, o)?;
+            PilStatement::LetStatement(_, _, type_scheme, value) => {
+                if let Some(t) = type_scheme {
+                    t.type_name.visit_expressions_mut(f, o)?;
                 };
                 if let Some(v) = value {
                     v.visit_expressions_mut(f, o)?;
@@ -250,9 +250,9 @@ impl<T> ExpressionVisitable<Expression<T, NamespacedPolynomialReference>> for Pi
             | PilStatement::PublicDeclaration(_, _, _, None, e)
             | PilStatement::ConstantDefinition(_, _, e) => e.visit_expressions(f, o),
 
-            PilStatement::LetStatement(_, _, type_name, value) => {
-                if let Some(t) = type_name {
-                    t.visit_expressions(f, o)?;
+            PilStatement::LetStatement(_, _, type_scheme, value) => {
+                if let Some(t) = type_scheme {
+                    t.type_name.visit_expressions(f, o)?;
                 };
                 if let Some(v) = value {
                     v.visit_expressions(f, o)?;

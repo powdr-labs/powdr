@@ -1,19 +1,18 @@
-use std::{
-    collections::{HashMap, HashSet},
-    fmt::Display,
-};
+use std::{collections::HashMap, fmt::Display};
 
 use itertools::Itertools;
 use powdr_number::FieldElement;
 
-use crate::parsed::{ArrayTypeName, Expression, FunctionTypeName, TupleTypeName, TypeName};
+use crate::parsed::{
+    ArrayTypeName, Expression, FunctionTypeName, TupleTypeName, TypeBounds, TypeName,
+};
 
 use super::Reference;
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub struct TypedExpression<T, Ref = Reference> {
     pub e: Expression<T, Ref>,
-    pub ty: Option<Type>,
+    pub type_scheme: Option<TypeScheme>,
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
@@ -209,10 +208,10 @@ impl<T: FieldElement, Ref: Display> From<FunctionTypeName<Expression<T, Ref>>> f
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct TypeScheme {
     /// Type variables and their trait bounds
-    pub vars: HashMap<String, HashSet<String>>,
+    pub vars: TypeBounds,
     pub ty: Type,
 }
 
@@ -221,7 +220,7 @@ impl TypeScheme {
         let name_substitutions: HashMap<_, _> = match self.vars.len() {
             0 => return self,
             1 => {
-                let var = self.vars.keys().next().unwrap();
+                let var = self.vars.vars().next().unwrap();
                 [(var.clone(), "T".to_string())].into()
             }
             _ => self
@@ -241,29 +240,30 @@ impl TypeScheme {
                 .collect(),
         );
         TypeScheme {
-            vars: self
-                .vars
-                .into_iter()
-                .map(|(v, b)| (name_substitutions[&v].clone(), b))
-                .collect(),
+            vars: TypeBounds::new(
+                self.vars
+                    .bounds()
+                    .map(|(v, b)| (name_substitutions[v].clone(), b.clone())),
+            ),
             ty,
         }
     }
 
-    pub fn bounds_to_string(&self) -> String {
-        self.vars
-            .iter()
-            .sorted_by(|(v1, _), (v2, _)| v1.cmp(v2))
-            .map(|(v, b)| {
-                format!(
-                    "{v}{}",
-                    if b.is_empty() {
-                        String::new()
-                    } else {
-                        format!(": {}", b.iter().sorted().join(" + "))
-                    }
-                )
-            })
-            .join(", ")
+    pub fn type_vars_to_string(&self) -> String {
+        if self.vars.is_empty() {
+            return String::new();
+        } else {
+            format!("<{}>", self.vars)
+        }
+    }
+}
+
+impl From<Type> for TypeScheme {
+    fn from(value: Type) -> Self {
+        // TODO check that value does not contain any type variables?
+        TypeScheme {
+            vars: Default::default(),
+            ty: value,
+        }
     }
 }

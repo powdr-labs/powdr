@@ -58,7 +58,10 @@ impl<T: Display> Display for Analyzed<T> {
                                         assert!(matches!(
                                             definition,
                                             Some(FunctionValueDefinition::Expression(
-                                                TypedExpression { e: _, ty: Some(_) }
+                                                TypedExpression {
+                                                    e: _,
+                                                    type_scheme: Some(_)
+                                                }
                                             ))
                                         ));
                                     }
@@ -73,7 +76,7 @@ impl<T: Display> Display for Analyzed<T> {
                                 let indentation = if is_local { "    " } else { "" };
                                 let Some(FunctionValueDefinition::Expression(TypedExpression {
                                     e,
-                                    ty: Some(Type::Fe),
+                                    type_scheme,
                                 })) = &definition
                                 else {
                                     panic!(
@@ -81,10 +84,15 @@ impl<T: Display> Display for Analyzed<T> {
                                         definition.as_ref().unwrap()
                                     );
                                 };
+                                assert!(
+                                    type_scheme.is_none()
+                                        || type_scheme == &Some((Type::Fe).into())
+                                );
 
                                 writeln!(f, "{indentation}constant {name} = {e};",)?;
                             }
                             SymbolKind::Other() => {
+                                // TODO format type vars
                                 write!(f, "    let {name}")?;
                                 if let Some(value) = definition {
                                     write!(f, "{value}")?
@@ -129,16 +137,20 @@ impl<T: Display> Display for FunctionValueDefinition<T> {
                 write!(f, " = {}", items.iter().format(" + "))
             }
             FunctionValueDefinition::Query(e) => format_outer_function(e, Some("query"), f),
-            FunctionValueDefinition::Expression(TypedExpression { e, ty: None }) => {
-                format_outer_function(e, None, f)
-            }
-            FunctionValueDefinition::Expression(TypedExpression { e, ty: Some(ty) })
-                if *ty == Type::col() =>
-            {
-                format_outer_function(e, None, f)
-            }
-            FunctionValueDefinition::Expression(TypedExpression { e, ty: Some(ty) }) => {
-                write!(f, ": {ty} = {e}")
+            FunctionValueDefinition::Expression(TypedExpression {
+                e,
+                type_scheme: None,
+            }) => format_outer_function(e, None, f),
+            FunctionValueDefinition::Expression(TypedExpression {
+                e,
+                type_scheme: Some(ty),
+            }) if *ty == Type::col().into() => format_outer_function(e, None, f),
+            FunctionValueDefinition::Expression(TypedExpression {
+                e,
+                type_scheme: Some(ts),
+            }) => {
+                // TODO format type vars
+                write!(f, ": {} = {e}", ts.ty)
             }
         }
     }

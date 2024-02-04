@@ -11,7 +11,7 @@ use derive_more::From;
 
 use crate::SourceRef;
 
-use super::{Expression, ExpressionWithTypeName, PilStatement};
+use super::{Expression, ExpressionWithTypeScheme, PilStatement};
 
 #[derive(Default, Clone, Debug, PartialEq, Eq)]
 pub struct ASMProgram<T> {
@@ -51,7 +51,7 @@ pub enum SymbolValue<T> {
     /// A module definition
     Module(Module<T>),
     /// A generic symbol / function.
-    Expression(ExpressionWithTypeName<T>),
+    Expression(ExpressionWithTypeScheme<T>),
 }
 
 impl<T> SymbolValue<T> {
@@ -74,7 +74,7 @@ pub enum SymbolValueRef<'a, T> {
     /// A module definition
     Module(ModuleRef<'a, T>),
     /// A generic symbol / function.
-    Expression(&'a ExpressionWithTypeName<T>),
+    Expression(&'a ExpressionWithTypeScheme<T>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, From)]

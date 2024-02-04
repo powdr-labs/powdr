@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use crate::parsed::{
     asm::{AbsoluteSymbolPath, Params},
-    Expression, ExpressionWithTypeName, PilStatement,
+    Expression, ExpressionWithTypeScheme, PilStatement,
 };
 
 mod display;
@@ -30,7 +30,7 @@ pub struct PILGraph<T> {
     pub main: Machine,
     pub entry_points: Vec<Operation<T>>,
     pub objects: BTreeMap<Location, Object<T>>,
-    pub definitions: BTreeMap<AbsoluteSymbolPath, ExpressionWithTypeName<T>>,
+    pub definitions: BTreeMap<AbsoluteSymbolPath, ExpressionWithTypeScheme<T>>,
 }
 
 #[derive(Default, Clone)]

@@ -4,12 +4,12 @@
 
 use lalrpop_util::*;
 use powdr_ast::parsed::asm::ASMProgram;
+use powdr_ast::parsed::TypeBounds;
 use powdr_ast::SourceRef;
 
 use powdr_number::{FieldElement, GoldilocksField};
 use powdr_parser_util::{handle_parse_error, ParseError};
 
-use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 lalrpop_mod!(
@@ -82,9 +82,7 @@ pub fn parse_type_name<T: FieldElement>(
         .map_err(|err| handle_parse_error(err, None, input))
 }
 
-pub fn parse_type_var_bounds(
-    input: &str,
-) -> Result<HashMap<String, HashSet<String>>, ParseError<'_>> {
+pub fn parse_type_var_bounds(input: &str) -> Result<TypeBounds, ParseError<'_>> {
     let ctx = ParserContext::new(None, input);
     powdr::TypeVarBoundsParser::new()
         .parse::<GoldilocksField>(&ctx, input)

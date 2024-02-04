@@ -6,6 +6,7 @@ pub mod utils;
 pub mod visitor;
 
 use std::{
+    collections::{BTreeMap, BTreeSet},
     iter::{empty, once},
     ops,
 };
@@ -27,7 +28,7 @@ pub enum PilStatement<T> {
     LetStatement(
         SourceRef,
         String,
-        Option<TypeName<Expression<T>>>,
+        Option<TypeScheme<Expression<T>>>,
         Option<Expression<T>>,
     ),
     PolynomialDefinition(SourceRef, String, Expression<T>),
@@ -102,9 +103,12 @@ impl<T> PilStatement<T> {
             | PilStatement::PolynomialDefinition(_, _, e)
             | PilStatement::ConstantDefinition(_, _, e) => Box::new(once(e)),
 
-            PilStatement::LetStatement(_, _, type_name, value) => {
-                Box::new(type_name.iter().flat_map(|t| t.expressions()).chain(value))
-            }
+            PilStatement::LetStatement(_, _, type_scheme, value) => Box::new(
+                type_scheme
+                    .iter()
+                    .flat_map(|t| t.type_name.expressions())
+                    .chain(value),
+            ),
 
             PilStatement::PublicDeclaration(_, _, _, i, e) => Box::new(i.iter().chain(once(e))),
 
@@ -134,7 +138,7 @@ impl<T> PilStatement<T> {
             PilStatement::LetStatement(_, _, type_name, value) => Box::new(
                 type_name
                     .iter_mut()
-                    .flat_map(|t| t.expressions_mut())
+                    .flat_map(|t| t.type_name.expressions_mut())
                     .chain(value),
             ),
 
@@ -643,7 +647,49 @@ impl<E> FunctionTypeName<E> {
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
-pub struct ExpressionWithTypeName<T, Ref = NamespacedPolynomialReference> {
+pub struct TypeScheme<E> {
+    /// Type variables and their trait bounds.
+    pub type_vars: TypeBounds,
+    pub type_name: TypeName<E>,
+}
+
+impl<E> TypeScheme<E> {
+    pub fn type_vars_to_string(&self) -> String {
+        if self.type_vars.is_empty() {
+            return String::new();
+        } else {
+            format!("<{}>", self.type_vars)
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Default)]
+pub struct TypeBounds(BTreeMap<String, BTreeSet<String>>);
+
+impl TypeBounds {
+    pub fn new<J: Into<BTreeSet<String>>, I: Iterator<Item = (String, J)>>(vars: I) -> Self {
+        Self(vars.map(|(n, x)| (n, x.into())).collect())
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn vars(&self) -> impl Iterator<Item = &String> {
+        self.0.keys()
+    }
+
+    pub fn bounds(&self) -> impl Iterator<Item = (&String, &BTreeSet<String>)> {
+        self.0.iter()
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
+pub struct ExpressionWithTypeScheme<T, Ref = NamespacedPolynomialReference> {
     pub e: Expression<T, Ref>,
-    pub type_name: Option<TypeName<Expression<T, Ref>>>,
+    pub type_scheme: Option<TypeScheme<Expression<T, Ref>>>,
 }

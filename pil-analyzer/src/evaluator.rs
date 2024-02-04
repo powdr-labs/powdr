@@ -282,9 +282,10 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T, NoCustom> for Definitions<'a, T> {
     fn lookup(&self, name: &'a str) -> Result<Value<'a, T, NoCustom>, EvalError> {
         Ok(match self.0.get(&name.to_string()) {
             Some((_, value)) => match value {
-                Some(FunctionValueDefinition::Expression(TypedExpression { e, ty: _ })) => {
-                    evaluate(e, self)?
-                }
+                Some(FunctionValueDefinition::Expression(TypedExpression {
+                    e,
+                    type_scheme: _,
+                })) => evaluate(e, self)?,
                 _ => Err(EvalError::Unsupported(
                     "Cannot evaluate arrays and queries.".to_string(),
                 ))?,
@@ -642,8 +643,10 @@ mod test {
 
     fn parse_and_evaluate_symbol(input: &str, symbol: &str) -> String {
         let analyzed = analyze_string::<GoldilocksField>(input);
-        let Some(FunctionValueDefinition::Expression(TypedExpression { e: symbol, ty: _ })) =
-            &analyzed.definitions[symbol].1
+        let Some(FunctionValueDefinition::Expression(TypedExpression {
+            e: symbol,
+            type_scheme: _,
+        })) = &analyzed.definitions[symbol].1
         else {
             panic!()
         };

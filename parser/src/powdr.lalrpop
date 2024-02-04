@@ -1,5 +1,5 @@
 use std::str::FromStr;
-use std::collections::{HashMap, HashSet};
+use std::collections::BTreeSet;
 use powdr_ast::parsed::{*, asm::*};
 use powdr_number::{AbstractNumberType, FieldElement};
 use num_traits::Num;
@@ -58,10 +58,10 @@ Part: Part = {
 }
 
 LetStatementAtModuleLevel: SymbolDefinition<T> = {
-    "let" <name:Identifier> <type_name:(":" <TypeName>)?> "=" <value:Expression> ";" =>
+    "let" <name:GenericTypedName>  "=" <value:Expression> ";" =>
         SymbolDefinition {
-            name,
-            value: SymbolValue::Expression(ExpressionWithTypeName{ e: value, type_name })
+            name: name.0,
+            value: SymbolValue::Expression(ExpressionWithTypeScheme{ e: value, type_scheme: name.1 })
         }
 }
 
@@ -92,7 +92,8 @@ Namespace: PilStatement<T> = {
 }
 
 LetStatement: PilStatement<T> = {
-    <start:@L> "let" <id:Identifier> <type_name:(":" <TypeName>)?> <expr:( "=" <Expression> )?> => PilStatement::LetStatement(ctx.source_ref(start), id, type_name, expr)
+    <start:@L> "let" <name:GenericTypedName> <expr:( "=" <Expression> )?> =>
+        PilStatement::LetStatement(ctx.source_ref(start), name.0, name.1, expr)
 }
 
 ConstantDefinition: PilStatement<T> = {
@@ -188,7 +189,14 @@ CommitWitness = {
 
 ConstantFixed = {
     "constant", "fixed"
-} 
+}
+
+GenericTypedName: (String, Option<TypeScheme<Expression<T>>>) = {
+    <name:Identifier> => (name, None),
+    <type_vars:("<" <TypeVarBounds> ">")?> <name:Identifier> <type_name:(":" <TypeName>)> =>
+        (name, Some(TypeScheme{ type_vars: type_vars.unwrap_or_default(), type_name }))
+}
+
 
 // ---------------------------- ASM part -----------------------------
 
@@ -577,12 +585,12 @@ TypeVar: String = {
 
 // TODO check that we do not mention type vars or bounds multiple times
 // bounds should be SymbolPaths in the future.
-pub TypeVarBounds: HashMap<String, HashSet<String>> = {
+pub TypeVarBounds: TypeBounds = {
     => Default::default(),
-    <list:( <TypeVarWithBounds> "," )*> <end:TypeVarWithBounds> => list.into_iter().chain(std::iter::once(end)).collect()
+    <list:( <TypeVarWithBounds> "," )*> <end:TypeVarWithBounds> => TypeBounds::new(list.into_iter().chain(std::iter::once(end)))
 }
 
-TypeVarWithBounds: (String, HashSet<String>) = {
+TypeVarWithBounds: (String, BTreeSet<String>) = {
     <type_var:TypeVar> <bounds:(":" <Identifier> ("+" <Identifier>)*)?> => (type_var, bounds.into_iter().collect())
 }
 
