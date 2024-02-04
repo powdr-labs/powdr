@@ -25,7 +25,12 @@ pub fn analyze_file<T: FieldElement>(path: &Path) -> Analyzed<T> {
     let mut analyzer = PILAnalyzer::new();
     analyzer.process(files);
     // TODO error reporting
-    infer_types(&analyzer.definitions, &analyzer.identities).unwrap();
+    infer_types(&analyzer.definitions, &analyzer.identities)
+        .map_err(|e| {
+            eprintln!("Error during type inference:\n{e}");
+            e
+        })
+        .unwrap();
     analyzer.condense()
 }
 
@@ -33,7 +38,13 @@ pub fn analyze_ast<T: FieldElement>(pil_file: PILFile<T>) -> Analyzed<T> {
     let mut analyzer = PILAnalyzer::new();
     analyzer.process(vec![pil_file]);
     // TODO error reporting
-    infer_types(&analyzer.definitions, &analyzer.identities).unwrap();
+    infer_types(&analyzer.definitions, &analyzer.identities)
+        .map_err(|e| {
+            eprintln!("Error during type inference:\n{e}");
+            e
+        })
+        .unwrap();
+
     analyzer.condense()
 }
 

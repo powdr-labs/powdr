@@ -7,10 +7,17 @@ use powdr_ast::{
         Expression, FunctionValueDefinition, Identity, IdentityKind, PolynomialReference,
         Reference, Symbol,
     },
-    parsed::{BinaryOperator, FunctionCall, LambdaExpression, UnaryOperator},
+    parsed::{
+        BinaryOperator, FunctionCall, LambdaExpression, MatchArm, MatchPattern, UnaryOperator,
+    },
 };
 use powdr_number::{FieldElement, GoldilocksField};
 use powdr_parser::{parse_type_name, parse_type_var_bounds};
+
+// TODO in the end, this needs to modify the expressions,
+// because it has to ineject implict conversions
+// and it has to change generic trait function calls to concrete ones
+// and it might also need to add the FromLiteral calls.
 
 pub fn infer_types<T: FieldElement>(
     definitions: &HashMap<String, (Symbol, Option<FunctionValueDefinition<T>>)>,
@@ -283,7 +290,23 @@ impl<'a, T: FieldElement> TypeChecker<'a, T> {
                 Ok(())
             }
             Expression::FreeInput(_) => todo!(),
-            Expression::MatchExpression(_, _) => todo!(),
+            Expression::MatchExpression(scrutinee, arms) => {
+                let scrutinee_type = self.unify_new_expression(&scrutinee)?;
+                let arm_types = arms
+                    .iter()
+                    .map(|MatchArm { pattern, value }| {
+                        if let MatchPattern::Pattern(pattern) = pattern {
+                            let pat_type = self.unify_new_expression(pattern)?;
+                            self.unify_types(scrutinee_type.clone(), pat_type)?;
+                        }
+                        self.unify_new_expression(value)
+                    })
+                    .collect::<Result<Vec<_>, _>>()?;
+                for arm_type in arm_types {
+                    self.unify_types(ty.clone(), arm_type)?;
+                }
+                Ok(())
+            }
             Expression::IfExpression(if_expr) => {
                 let cond_type = self.unify_new_expression(&if_expr.condition)?;
                 self.unify_types(cond_type, Type::Bool)?;
