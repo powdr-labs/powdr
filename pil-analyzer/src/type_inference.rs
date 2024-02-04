@@ -3,7 +3,7 @@ use std::collections::{HashMap, HashSet};
 use itertools::Itertools;
 use powdr_ast::{
     analyzed::{
-        types::{FunctionType, Type, TypeScheme},
+        types::{ArrayType, FunctionType, Type, TypeScheme},
         Expression, FunctionValueDefinition, Identity, IdentityKind, PolynomialReference,
         Reference, Symbol,
     },
@@ -122,20 +122,35 @@ impl<'a, T: FieldElement> TypeChecker<'a, T> {
         }
         for id in identities {
             if id.kind == IdentityKind::Polynomial {
-                self.unify_expression(Type::Constr, id.expression_for_poly_id())
-                    .map_err(|e| {
-                        format!("Expresison is expected to evaluate to a constraint: {id}:\n{e}")
-                    })?;
+                let snapshot = self.state.clone();
+                match self.unify_expression(Type::Constr, id.expression_for_poly_id()) {
+                    Ok(()) => Ok(()),
+                    Err(original_err) => {
+                        // Unification with constr failed, let's try constr[].
+                        self.state = snapshot;
+                        self.unify_expression(
+                            Type::Array(ArrayType {
+                                base: Box::new(Type::Constr),
+                                length: None,
+                            }),
+                            id.expression_for_poly_id(),
+                        )
+                        .map_err(|_| original_err)
+                    }
+                }
+                .map_err(|e| {
+                    format!("Expresison is expected to evaluate to a constraint: {id}:\n{e}")
+                })?;
             } else {
                 for part in [&id.left, &id.right] {
                     if let Some(selector) = &part.selector {
-                        self.unify_expression(Type::Expr, selector)
+                        self.unify_expression_allow_implicit_conversion(Type::Expr, selector)
                             .map_err(|e| {
                                 format!("Selector is expected to evaluate to an algebraic expresison: {selector}:\n{e}")
                             })?;
                     }
                     for e in &part.expressions {
-                        self.unify_expression(Type::Expr, e)
+                        self.unify_expression_allow_implicit_conversion(Type::Expr, e)
                             .map_err(|err| {
                                 format!("Expression in lookup is expected to evaluate to an algebraic expresison: {e}:\n{err}")
                             })?;
@@ -177,6 +192,34 @@ impl<'a, T: FieldElement> TypeChecker<'a, T> {
         let ty = self.new_type_var();
         self.unify_expression(ty.clone(), e)?;
         Ok(ty)
+    }
+
+    fn unify_expression_allow_implicit_conversion(
+        &mut self,
+        ty: Type,
+        e: &Expression<T>,
+    ) -> Result<(), String> {
+        let expr_type = self.unify_new_expression(e)?;
+        let snapshot = self.state.clone();
+        match self.unify_types(ty.clone(), expr_type.clone()) {
+            Err(e) => {
+                if self.substitute_to(ty.clone()) == Type::Expr
+                    && self.substitute_to(expr_type.clone()) == Type::col()
+                {
+                    // TODO is it OK to check for col?
+                    println!("Unification faild, but we are expecting an 'expr' type and have a 'col'. Trying to add conversion to expr.");
+                    // Ok try to convert the col to an expr
+                    self.state = snapshot;
+                    self.unify_types(Type::col(), expr_type)?;
+                    let converted = self.new_type_var();
+                    self.unify_types(Type::Expr, converted.clone())?;
+                    self.unify_types(ty, converted)
+                } else {
+                    Err(e)
+                }
+            }
+            Ok(_) => Ok(()),
+        }
     }
 
     fn unify_expression(&mut self, ty: Type, e: &Expression<T>) -> Result<(), String> {
@@ -276,12 +319,11 @@ impl<'a, T: FieldElement> TypeChecker<'a, T> {
         ) {
             Err(e) => {
                 // TODO add much more conditions.
-                if let Some(pos) = args.iter().position(|x| {
-                    let mut y = x.clone();
-                    self.substitute(&mut y);
-                    y == Type::col()
-                }) {
-                    println!("Unificatino faild, but we have a 'col' argument. Trying to add conversion to expr.");
+                if let Some(pos) = args
+                    .iter()
+                    .position(|x| self.substitute_to(x.clone()) == Type::col())
+                {
+                    println!("Unification faild, but we have a 'col' argument. Trying to add conversion to expr.");
                     // Ok try to convert the col to an expr
                     self.state = snapshot;
                     let converted = self.new_type_var();
@@ -307,6 +349,11 @@ impl<'a, T: FieldElement> TypeChecker<'a, T> {
     /// Applies the current substitutions to the type.
     fn substitute(&self, ty: &mut Type) {
         ty.substitute_type_vars(&self.state.substitutions());
+    }
+
+    fn substitute_to(&self, mut ty: Type) -> Type {
+        ty.substitute_type_vars(&self.state.substitutions());
+        ty
     }
 
     /// Instantiates a type scheme by creating new type variables for the quantified
@@ -664,17 +711,8 @@ mod test {
 
     #[test]
     fn constraints() {
-        let input = "namespace std::convert(8); let fe = 8; let a; let BYTE = |i| std::convert::fe(i & 0xff); { a + 1 } in {BYTE};";
+        let input = "let a; let BYTE = |i| std::convert::fe(i & 0xff); { a + 1 } in {BYTE}; namespace std::convert(8); let fe = 8;";
         let result = parse_and_type_check(input);
-        check(
-            &result,
-            // TODO " -> bool" is also not formatted correctly.
-            // TODO this test shows that we do not have let-polymorphism,
-            // since the type of g is determined by how it is used in x.
-            &[
-                ("g", "", " -> bool"),
-                ("x", "T: Add + FromLiteral", "T, T -> T"),
-            ],
-        );
+        check(&result, &[("a", "", "col"), ("BYTE", "", "col")]);
     }
 }
