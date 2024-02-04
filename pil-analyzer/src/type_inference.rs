@@ -1,11 +1,10 @@
 use std::collections::{HashMap, HashSet};
 
-use itertools::Itertools;
 use powdr_ast::{
     analyzed::{
-        types::{ArrayType, FunctionType, Type, TypeScheme},
+        types::{ArrayType, FunctionType, Type, TypeScheme, TypedExpression},
         Expression, FunctionValueDefinition, Identity, IdentityKind, PolynomialReference,
-        Reference, Symbol,
+        PolynomialType, Reference, Symbol, SymbolKind,
     },
     parsed::{
         BinaryOperator, FunctionCall, LambdaExpression, MatchArm, MatchPattern, UnaryOperator,
@@ -23,16 +22,53 @@ pub fn infer_types<T: FieldElement>(
     definitions: &HashMap<String, (Symbol, Option<FunctionValueDefinition<T>>)>,
     identities: &Vec<Identity<Expression<T>>>,
 ) -> Result<HashMap<String, TypeScheme>, String> {
-    TypeChecker::new(definitions).infer_types(identities)
+    let definitions = definitions
+        .iter()
+        .map(|(n, (symbol, value))| {
+            let (ty, value) = type_and_expr_from_definition(symbol, value);
+            assert!(ty.is_some() || value.is_some());
+            (n.clone(), (ty, value))
+        })
+        .collect();
+    TypeChecker::default().infer_types(&definitions, identities)
 }
 
-struct TypeChecker<'a, T> {
-    definitions: &'a HashMap<String, (Symbol, Option<FunctionValueDefinition<T>>)>,
+/// Extracts the declared type and the expression from a definition.
+fn type_and_expr_from_definition<'a, T>(
+    symbol: &'a Symbol,
+    value: &'a Option<FunctionValueDefinition<T>>,
+) -> (Option<Type>, Option<&'a Expression<T>>) {
+    // TODO extract his function to a different type so that type_inference.rs only needs to deal with Expressions
+    if let Some(value) = value {
+        match value {
+            FunctionValueDefinition::Array(_) => (Some(Type::col()), None), // TODO we could check inisde the array
+            FunctionValueDefinition::Query(_) => (Some(Type::col()), None), // TODO we could check inisde the query string
+            FunctionValueDefinition::Expression(TypedExpression { e, ty }) => (ty.clone(), Some(e)),
+        }
+    } else {
+        assert_eq!(symbol.kind, SymbolKind::Poly(PolynomialType::Committed));
+        if let Some(_) = symbol.length {
+            // TODO fixed length arrays?
+            (
+                Some(Type::Array(ArrayType {
+                    base: Box::new(Type::col()),
+                    length: None,
+                })),
+                None,
+            )
+        } else {
+            (Some(Type::col()), None)
+        }
+    }
+}
+
+#[derive(Default)]
+struct TypeChecker {
     /// Types for symbols, might contain type variables.
     /// TODO could these be type schemes?
     types: HashMap<String, Type>,
     state: TypeCheckerState,
-    next_type_var: usize,
+    last_type_var: usize,
 }
 
 #[derive(Default, Clone)]
@@ -86,46 +122,32 @@ impl TypeCheckerState {
     }
 }
 
-impl<'a, T: FieldElement> TypeChecker<'a, T> {
-    pub fn new(
-        definitions: &'a HashMap<String, (Symbol, Option<FunctionValueDefinition<T>>)>,
-    ) -> Self {
-        let mut tc = Self {
-            definitions,
-            types: HashMap::new(),
-            state: Default::default(),
-            next_type_var: 1,
-        };
-        for n in definitions.keys() {
-            // TODO do not just create new types.
-            // if we create new types, this forces concrete types.
-            // Instead, look at the definition and take the type schemes from there.
-            // But we should not instantiate the type schemes, should we?
-            let tv = tc.new_type_var();
-            tc.types.insert(n.clone(), tv);
-        }
-        // TODO this whole system works by just restricting the types more and more.
-        // when we look up a symbol, we cannot use the type annotation, instead,
-        // we just infer the type and in the end compare the annotations...
-        tc
-    }
-
-    fn infer_types(
+impl TypeChecker {
+    fn infer_types<T: FieldElement>(
         mut self,
+        definitions: &HashMap<String, (Option<Type>, Option<&Expression<T>>)>,
         identities: &Vec<Identity<Expression<T>>>,
     ) -> Result<HashMap<String, TypeScheme>, String> {
-        for (name, value) in self.definitions {
+        // Add types from declarations.
+        // If we add type schemes for declarations, add them here without instantiating.
+        for (name, (declared_type, _)) in definitions {
+            let ty = declared_type.clone().unwrap_or_else(|| self.new_type_var());
+            self.types.insert(name.clone(), ty);
+        }
+        // Now check the declarations for consistency or derive a concrete type
+        // (or check against consistency of the type scheme in the declaration).
+        for (name, (_, value)) in definitions {
+            let Some(value) = value else { continue };
             let ty = self.types[name].clone();
-            self.unify(&ty, value).map_err(|e| {
-                format!(
-                    "Error type checking the symbol {name}{}:\n{e}",
-                    value
-                        .1
-                        .as_ref()
-                        .map(|x| format!(" = {x}"))
-                        .unwrap_or_default()
-                )
-            })?;
+            self.unify_expression(ty.clone(), value)
+                .map_err(|e| format!("Error type checking the symbol {name} = {value}:\n{e}",))?;
+            let ty = self.substitute_to(ty);
+            if !ty.contained_type_vars().is_empty() {
+                Err(format!(
+                    "Could not determine a concrete type for symbol {name}.\nInferred: {ty}",
+                ))?;
+            }
+            println!("{name} -> {ty}");
         }
         for id in identities {
             if id.kind == IdentityKind::Polynomial {
@@ -181,27 +203,13 @@ impl<'a, T: FieldElement> TypeChecker<'a, T> {
             .collect())
     }
 
-    fn unify(
-        &mut self,
-        ty: &Type,
-        value: &(Symbol, Option<FunctionValueDefinition<T>>),
-    ) -> Result<(), String> {
-        match (value.0.kind, value.0.length, &value.1) {
-            (_, _, Some(FunctionValueDefinition::Expression(v))) => {
-                self.unify_expression(ty.clone(), &v.e)
-            } // TODO Type name
-            (_, _, None) => self.unify_types(ty.clone(), Type::col()),
-            _ => todo!(),
-        }
-    }
-
-    fn unify_new_expression(&mut self, e: &Expression<T>) -> Result<Type, String> {
+    fn unify_new_expression<T: FieldElement>(&mut self, e: &Expression<T>) -> Result<Type, String> {
         let ty = self.new_type_var();
         self.unify_expression(ty.clone(), e)?;
         Ok(ty)
     }
 
-    fn unify_expression_allow_implicit_conversion(
+    fn unify_expression_allow_implicit_conversion<T: FieldElement>(
         &mut self,
         ty: Type,
         e: &Expression<T>,
@@ -214,7 +222,7 @@ impl<'a, T: FieldElement> TypeChecker<'a, T> {
                     && self.substitute_to(expr_type.clone()) == Type::col()
                 {
                     // TODO is it OK to check for col?
-                    println!("Unification faild, but we are expecting an 'expr' type and have a 'col'. Trying to add conversion to expr.");
+                    //println!("Unification faild, but we are expecting an 'expr' type and have a 'col'. Trying to add conversion to expr.");
                     // Ok try to convert the col to an expr
                     self.state = snapshot;
                     self.unify_types(Type::col(), expr_type)?;
@@ -229,7 +237,11 @@ impl<'a, T: FieldElement> TypeChecker<'a, T> {
         }
     }
 
-    fn unify_expression(&mut self, ty: Type, e: &Expression<T>) -> Result<(), String> {
+    fn unify_expression<T: FieldElement>(
+        &mut self,
+        ty: Type,
+        e: &Expression<T>,
+    ) -> Result<(), String> {
         //println!("Unifying {e}: {ty}");
         match e {
             Expression::Reference(Reference::LocalVar(id, _name)) => {
@@ -319,7 +331,7 @@ impl<'a, T: FieldElement> TypeChecker<'a, T> {
         }
     }
 
-    fn unify_function_call<'b>(
+    fn unify_function_call<'b, T: FieldElement>(
         &mut self,
         function_type: Type,
         arguments: impl Iterator<Item = &'b Expression<T>>,
@@ -328,10 +340,13 @@ impl<'a, T: FieldElement> TypeChecker<'a, T> {
             .map(|a| self.unify_new_expression(a))
             .collect::<Result<Vec<_>, _>>()?;
         let value = self.new_type_var();
-        println!(
-            "Unifying function call \"{function_type}\" with \"{} -> {value}\"",
-            args.iter().format(", ")
-        );
+        // println!(
+        //     "Unifying function call \"{function_type}\" with \"{} -> {value}\"",
+        //     args.iter().format(", ")
+        // );
+        // TODO maybe instead of trying and rolling back, we could store
+        // the implicit conversion ("T1 -> (T1 | T2)") and the first try to solve without conversions
+        // and later on inject them?
         let snapshot = self.state.clone();
         match self.unify_types(
             function_type.clone(),
@@ -346,7 +361,7 @@ impl<'a, T: FieldElement> TypeChecker<'a, T> {
                     .iter()
                     .position(|x| self.substitute_to(x.clone()) == Type::col())
                 {
-                    println!("Unification faild, but we have a 'col' argument. Trying to add conversion to expr.");
+                    // println!("Unification faild, but we have a 'col' argument. Trying to add conversion to expr.");
                     // Ok try to convert the col to an expr
                     self.state = snapshot;
                     let converted = self.new_type_var();
@@ -406,7 +421,6 @@ impl<'a, T: FieldElement> TypeChecker<'a, T> {
         // TODO this should not be needed for recursive calls, should it?
         self.substitute(&mut ty1);
         self.substitute(&mut ty2);
-        println!("Unify {ty1}   <=>   {ty2}");
         match (ty1, ty2) {
             (Type::Bool, Type::Bool)
             | (Type::Int, Type::Int)
@@ -477,9 +491,8 @@ impl<'a, T: FieldElement> TypeChecker<'a, T> {
     }
 
     fn new_type_var(&mut self) -> Type {
-        let name = format!("T{}", self.next_type_var);
-        self.next_type_var += 1;
-        Type::TypeVar(name)
+        self.last_type_var += 1;
+        Type::TypeVar(format!("T{}", self.last_type_var))
     }
 }
 
