@@ -109,18 +109,36 @@ impl<'a, T: FieldElement> TypeChecker<'a, T> {
     ) -> Result<HashMap<String, TypeScheme>, String> {
         for (name, value) in self.definitions {
             let ty = self.types[name].clone();
-            self.unify(&ty, value)?;
+            self.unify(&ty, value).map_err(|e| {
+                format!(
+                    "Error type checking the symbol {name}{}:\n{e}",
+                    value
+                        .1
+                        .as_ref()
+                        .map(|x| format!(" = {x}"))
+                        .unwrap_or_default()
+                )
+            })?;
         }
         for id in identities {
             if id.kind == IdentityKind::Polynomial {
-                self.unify_expression(Type::Constr, id.expression_for_poly_id())?;
+                self.unify_expression(Type::Constr, id.expression_for_poly_id())
+                    .map_err(|e| {
+                        format!("Expresison is expected to evaluate to a constraint: {id}:\n{e}")
+                    })?;
             } else {
                 for part in [&id.left, &id.right] {
                     if let Some(selector) = &part.selector {
-                        self.unify_expression(Type::Expr, selector)?;
+                        self.unify_expression(Type::Expr, selector)
+                            .map_err(|e| {
+                                format!("Selector is expected to evaluate to an algebraic expresison: {selector}:\n{e}")
+                            })?;
                     }
                     for e in &part.expressions {
-                        self.unify_expression(Type::Expr, e)?;
+                        self.unify_expression(Type::Expr, e)
+                            .map_err(|err| {
+                                format!("Expression in lookup is expected to evaluate to an algebraic expresison: {e}:\n{err}")
+                            })?;
                     }
                 }
             }
@@ -514,7 +532,13 @@ mod test {
     }
 
     fn check(types: &Result<HashMap<String, TypeScheme>, String>, expected: &[(&str, &str, &str)]) {
-        let types = types.as_ref().unwrap();
+        let types = types
+            .as_ref()
+            .map_err(|e| {
+                eprintln!("{e}");
+                e
+            })
+            .unwrap();
         for (name, bounds, ty) in expected {
             let scheme = &types[&name.to_string()];
             assert_eq!(
