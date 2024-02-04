@@ -168,7 +168,14 @@ impl<'a, T: FieldElement> TypeChecker<'a, T> {
                 self.unify_types(ty, self.state.local_var_type(*id))
             }
             Expression::Reference(Reference::Poly(PolynomialReference { name, poly_id: _ })) => {
-                self.unify_types(ty, self.types[name].clone())
+                let type_of_symbol = if let Some(builtin) = builtin_schemes().get(name) {
+                    self.instantiate_scheme(builtin.clone())
+                } else {
+                    // TODO these  should be schemes as well and we should instantiate here
+                    // TODO but does that work for checking recursive calls?
+                    self.types[name].clone()
+                };
+                self.unify_types(ty, type_of_symbol)
             }
             Expression::PublicReference(_) => todo!(),
             Expression::Number(_) => self.ensure_bound(&ty, "FromLiteral".to_string()),
@@ -386,6 +393,25 @@ impl<'a, T: FieldElement> TypeChecker<'a, T> {
         self.next_type_var += 1;
         Type::TypeVar(name)
     }
+}
+
+fn builtin_schemes() -> HashMap<String, TypeScheme> {
+    [
+        ("std::convert::fe", ("T: FromLiteral", "T -> fe")),
+        ("std::convert::int", ("T: FromLiteral", "T -> int")),
+        ("std::array::len", ("T", "T[] -> int")),
+    ]
+    .into_iter()
+    .map(|(name, (vars, ty))| {
+        (
+            name.to_string(),
+            TypeScheme {
+                vars: parse_type_var_bounds(vars).unwrap(),
+                ty: parse_type_name::<GoldilocksField>(ty).unwrap().into(),
+            },
+        )
+    })
+    .collect()
 }
 
 fn binary_operator_scheme(op: BinaryOperator) -> TypeScheme {
@@ -614,7 +640,7 @@ mod test {
 
     #[test]
     fn constraints() {
-        let input = "let a; let BYTE = |i| i & 0xff; { a + 1 } in {BYTE};";
+        let input = "namespace std::convert(8); let fe = 8; let a; let BYTE = |i| std::convert::fe(i & 0xff); { a + 1 } in {BYTE};";
         let result = parse_and_type_check(input);
         check(
             &result,
