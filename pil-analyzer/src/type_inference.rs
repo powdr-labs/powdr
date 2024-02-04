@@ -138,6 +138,10 @@ impl TypeChecker {
         // (or check against consistency of the type scheme in the declaration).
         for (name, (_, value)) in definitions {
             let Some(value) = value else { continue };
+            // TODO in the future, we just add them as type schemes.
+            if builtin_schemes().contains_key(name) {
+                continue;
+            }
             let ty = self.types[name].clone();
             self.unify_expression(ty.clone(), value)
                 .map_err(|e| format!("Error type checking the symbol {name} = {value}:\n{e}",))?;
@@ -501,6 +505,7 @@ fn builtin_schemes() -> HashMap<String, TypeScheme> {
         ("std::convert::fe", ("T: FromLiteral", "T -> fe")),
         ("std::convert::int", ("T: FromLiteral", "T -> int")),
         ("std::array::len", ("T", "T[] -> int")),
+        ("std::field::modulus", ("", "-> int")),
     ]
     .into_iter()
     .map(|(name, (vars, ty))| {
