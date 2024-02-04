@@ -7,7 +7,8 @@ use powdr_ast::{
         PolynomialType, Reference, Symbol, SymbolKind,
     },
     parsed::{
-        BinaryOperator, FunctionCall, LambdaExpression, MatchArm, MatchPattern, UnaryOperator,
+        ArrayLiteral, BinaryOperator, FunctionCall, IndexAccess, LambdaExpression, MatchArm,
+        MatchPattern, UnaryOperator,
     },
 };
 use powdr_number::{FieldElement, GoldilocksField};
@@ -136,6 +137,11 @@ impl TypeChecker {
         }
         // Now check the declarations for consistency or derive a concrete type
         // (or check against consistency of the type scheme in the declaration).
+
+        // actually do the full run on everything (that's what we would also do for local vairables)
+        // and then check that it matechs the declarations.
+        // When referring to names, also already use the declarations (and instantiate type schemes)
+
         for (name, (_, value)) in definitions {
             let Some(value) = value else { continue };
             // TODO in the future, we just add them as type schemes.
@@ -143,15 +149,22 @@ impl TypeChecker {
                 continue;
             }
             let ty = self.types[name].clone();
-            self.unify_expression(ty.clone(), value)
-                .map_err(|e| format!("Error type checking the symbol {name} = {value}:\n{e}",))?;
-            let ty = self.substitute_to(ty);
-            if !ty.contained_type_vars().is_empty() {
-                Err(format!(
-                    "Could not determine a concrete type for symbol {name}.\nInferred: {ty}",
-                ))?;
-            }
-            println!("{name} -> {ty}");
+            let snapshot = self.state.clone();
+            (match self.unify_expression(ty.clone(), value) {
+                Err(err) if self.substitute_to(ty.clone()) == Type::col() => {
+                    self.state = snapshot;
+                    self.unify_expression(
+                        Type::Function(FunctionType {
+                            params: vec![Type::Int],
+                            value: Box::new(Type::Int),
+                        }),
+                        value,
+                    )
+                    .map_err(|_| err)
+                }
+                x => x,
+            })
+            .map_err(|e| format!("Error type checking the symbol {name} = {value}:\n{e}",))?;
         }
         for id in identities {
             if id.kind == IdentityKind::Polynomial {
@@ -191,25 +204,33 @@ impl TypeChecker {
                 }
             }
         }
+        for name in definitions.keys() {
+            // TODO in the future, we just add them as type schemes.
+            if builtin_schemes().contains_key(name) {
+                continue;
+            }
+            let ty = self.substitute_to(self.types[name].clone());
+            if !ty.contained_type_vars().is_empty() {
+                let scheme = self.to_type_scheme(ty.clone());
+                Err(format!(
+                "Could not determine a concrete type for symbol {name}.\nInferred type scheme: <{}>: {}",
+                scheme.bounds_to_string(),
+                scheme.ty
+            ))?;
+            }
+            println!("{name} -> {ty}");
+        }
         Ok(self
             .types
-            .into_iter()
-            .map(|(name, mut ty)| {
-                ty.substitute_type_vars(self.state.substitutions());
-                // TODO is this properly generalized?
-                let vars = ty
-                    .contained_type_vars()
-                    .into_iter()
-                    .map(|v| (v.clone(), self.state.type_var_bounds(v)))
-                    .collect();
-                (name, TypeScheme { vars, ty }.simplify_type_vars())
-            })
+            .iter()
+            .map(|(name, ty)| (name.clone(), self.to_type_scheme(ty.clone())))
             .collect())
     }
 
     fn unify_new_expression<T: FieldElement>(&mut self, e: &Expression<T>) -> Result<Type, String> {
         let ty = self.new_type_var();
         self.unify_expression(ty.clone(), e)?;
+        println!("Type of {e}: {}", self.substitute_to(ty.clone()));
         Ok(ty)
     }
 
@@ -246,7 +267,7 @@ impl TypeChecker {
         ty: Type,
         e: &Expression<T>,
     ) -> Result<(), String> {
-        //println!("Unifying {e}: {ty}");
+        println!("Unifying {e}: {ty}");
         match e {
             Expression::Reference(Reference::LocalVar(id, _name)) => {
                 self.unify_types(ty, self.state.local_var_type(*id))
@@ -280,7 +301,19 @@ impl TypeChecker {
                     }),
                 )
             }
-            Expression::ArrayLiteral(_) => todo!(),
+            Expression::ArrayLiteral(ArrayLiteral { items }) => {
+                let item_type = self.new_type_var();
+                self.unify_types(
+                    ty,
+                    Type::Array(ArrayType {
+                        base: Box::new(item_type.clone()),
+                        length: None,
+                    }),
+                )?;
+                items
+                    .iter()
+                    .try_for_each(|e| self.unify_expression(item_type.clone(), e))
+            }
             Expression::BinaryOperation(left, op, right) => {
                 let fun_type = self.instantiate_scheme(binary_operator_scheme(*op));
                 let value = self
@@ -295,7 +328,19 @@ impl TypeChecker {
                 self.unify_types(ty, value)?;
                 Ok(())
             }
-            Expression::IndexAccess(_) => todo!(),
+            Expression::IndexAccess(IndexAccess { array, index }) => {
+                let array_type = self.unify_new_expression(array)?;
+                self.unify_types(
+                    array_type,
+                    Type::Array(ArrayType {
+                        base: Box::new(ty.clone()),
+                        length: None,
+                    }),
+                )?;
+
+                let index_type = self.unify_new_expression(index)?;
+                self.unify_types(index_type, Type::Int)
+            }
             Expression::FunctionCall(FunctionCall {
                 function,
                 arguments,
@@ -498,13 +543,26 @@ impl TypeChecker {
         self.last_type_var += 1;
         Type::TypeVar(format!("T{}", self.last_type_var))
     }
+
+    fn to_type_scheme(&self, ty: Type) -> TypeScheme {
+        // TODO this generalizes all type vars - is that correct?
+        let ty = self.substitute_to(ty);
+        let vars = ty
+            .contained_type_vars()
+            .into_iter()
+            .map(|v| (v.clone(), self.state.type_var_bounds(v)))
+            .collect();
+        TypeScheme { vars, ty }.simplify_type_vars()
+    }
 }
 
 fn builtin_schemes() -> HashMap<String, TypeScheme> {
     [
+        ("std::array::len", ("T", "T[] -> int")),
+        ("std::check::panic", ("", "string -> constr[]")), // TODO should be the !-type. Also should be T: ToString
         ("std::convert::fe", ("T: FromLiteral", "T -> fe")),
         ("std::convert::int", ("T: FromLiteral", "T -> int")),
-        ("std::array::len", ("T", "T[] -> int")),
+        ("std::debug::print", ("", "string -> constr[]")),
         ("std::field::modulus", ("", "-> int")),
     ]
     .into_iter()

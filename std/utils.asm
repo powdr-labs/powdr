@@ -4,7 +4,7 @@
 /// using the function `folder`, starting with the value `initial`.
 ///
 /// See `sum` for an example use.
-let<T, Q> fold: int, (int -> Q), T, (T, Q -> T) -> T = |length, f, initial, folder|
+let fold = |length, f, initial, folder|
     if length <= 0 {
         initial
     } else {
@@ -12,7 +12,7 @@ let<T, Q> fold: int, (int -> Q), T, (T, Q -> T) -> T = |length, f, initial, fold
     };
 
 /// Evaluates to f(0) + f(1) + ... + f(length - 1).
-let<T: Add + FromLiteral> sum: int, (int -> T) -> T = |length, f| fold(length, f, 0, |acc, e| (acc + e));
+let sum = |length, f| fold(length, f, 0, |acc, e| (acc + e));
 
 // TODO what happens if we drop the FromLiteral requirement? Would it type check? Would it just add the requirement to the uses of 'sum'?
 
