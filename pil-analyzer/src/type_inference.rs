@@ -52,7 +52,10 @@ fn type_and_expr_from_definition<'a, T>(
             }
         }
     } else {
-        assert_eq!(symbol.kind, SymbolKind::Poly(PolynomialType::Committed));
+        assert!(
+            symbol.kind == SymbolKind::Poly(PolynomialType::Committed)
+                || symbol.kind == SymbolKind::Poly(PolynomialType::Constant)
+        );
         if let Some(_) = symbol.length {
             // TODO fixed length arrays?
             (
