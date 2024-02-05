@@ -85,22 +85,22 @@ _str_dispatchTable:
 
 .text
 
-.globl main
-main:
+.globl __runtime_start
+__runtime_start:
   lui a0, 8192                             # Initialize heap size (in multiples of 4KB)
   add s11, s11, a0                         # Save heap size
   jal heap.init                            # Call heap.init routine
   mv gp, a0                                # Initialize heap pointer
   mv s10, gp                               # Set beginning of heap
   add s11, s10, s11                        # Set end of heap (= start of heap + heap size)
-  mv ra, zero                              # No normal return from main program.
+  mv ra, zero                              # No normal return from __runtime_start program.
   mv fp, zero                              # No preceding frame.
   mv fp, zero                              # Top saved FP is 0.
   mv ra, zero                              # No function return from top level.
-  addi sp, sp, -@..main.size               # Reserve space for stack frame.
-  sw ra, @..main.size-4(sp)                # return address
-  sw fp, @..main.size-8(sp)                # control link
-  addi fp, sp, @..main.size                # New fp is at old SP.
+  addi sp, sp, -@..__runtime_start.size               # Reserve space for stack frame.
+  sw ra, @..__runtime_start.size-4(sp)                # return address
+  sw fp, @..__runtime_start.size-8(sp)                # control link
+  addi fp, sp, @..__runtime_start.size                # New fp is at old SP.
   jal initchars                            # Initialize one-character strings.
   li a0, 4                                 # Load integer literal 4
   sw a0, -28(fp)                           # Push argument 5 from last.
@@ -116,28 +116,28 @@ main:
   sw a0, -48(fp)                           # Push argument 0 from last.
   addi sp, fp, -48                         # Set SP to last argument.
   jal conslist                             # Move values to new list object
-  addi sp, fp, -@..main.size               # Set SP to stack frame top.
+  addi sp, fp, -@..__runtime_start.size               # Set SP to stack frame top.
   sw a0, -12(fp)                           # Push argument 1 from last.
   li a0, 15                                # Load integer literal 15
   sw a0, -16(fp)                           # Push argument 0 from last.
   addi sp, fp, -16                         # Set SP to last argument.
   jal _contains                            # Invoke function: contains
-  addi sp, fp, -@..main.size               # Set SP to stack frame top.
+  addi sp, fp, -@..__runtime_start.size               # Set SP to stack frame top.
   beqz a0, label_2                         # Branch on false.
   la a0, const_2                           # Load string literal
   sw a0, -16(fp)                           # Push argument 0 from last.
   addi sp, fp, -16                         # Set SP to last argument.
   jal _print                               # Invoke function: print
-  addi sp, fp, -@..main.size               # Set SP to stack frame top.
+  addi sp, fp, -@..__runtime_start.size               # Set SP to stack frame top.
   j label_1                                # Then body complete; jump to end-if
 label_2:                                   # Else body
   la a0, const_3                           # Load string literal
   sw a0, -16(fp)                           # Push argument 0 from last.
   addi sp, fp, -16                         # Set SP to last argument.
   jal _print                               # Invoke function: print
-  addi sp, fp, -@..main.size               # Set SP to stack frame top.
+  addi sp, fp, -@..__runtime_start.size               # Set SP to stack frame top.
 label_1:                                   # End of if-else statement
-  .equiv @..main.size, 48
+  .equiv @..__runtime_start.size, 48
 label_0:                                   # End of program
   li a0, 10                                # Code for ecall: exit
   ecall
