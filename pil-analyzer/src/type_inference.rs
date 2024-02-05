@@ -146,13 +146,6 @@ impl TypeChecker {
             if builtins.contains_key(name) {
                 continue;
             }
-            println!(
-                "Decl: {name}: {}",
-                declared_type_scheme
-                    .as_ref()
-                    .map(|ts| ts.type_vars_to_string())
-                    .unwrap_or_default()
-            );
             // This stores an (uninstantiated) type scheme for symbols with a declared
             // polymorphic type and it creates a new (unquantified) type variable for
             // symbols without declared type. This forces a single concrete type for the latter.
@@ -190,8 +183,6 @@ impl TypeChecker {
                 .map(|(n, (_, e))| (n.as_str(), e.clone())),
         );
 
-        println!("Visitation order: {}", names.iter().format("\n"));
-
         for name in names {
             if builtin_schemes().contains_key(name) {
                 continue;
@@ -200,20 +191,8 @@ impl TypeChecker {
                 continue;
             };
 
-            println!(
-                "Pre inst:  {} {}",
-                self.types[name].type_vars_to_string(),
-                self.types[name].ty
-            );
             let ty = self.instantiate_scheme(self.types[name].clone());
-            println!("Pre subst: {ty}");
-            println!(
-                "================\n  Checking {name}: {}\n{value}",
-                self.substitute_to(ty.clone())
-            );
-            println!("Creating snapshot...");
             let snapshot = self.state.clone();
-            println!("Done.");
             (match self.unify_expression(ty.clone(), value) {
                 Err(err) if self.substitute_to(ty.clone()) == Type::col() => {
                     self.state = snapshot;
@@ -238,10 +217,6 @@ impl TypeChecker {
                 // of the bounds are actually not needed.
                 // So maybe we should instantiate the scheme differently? Or maybe just start with a fresh type if it is a scheme?
                 let inferred = self.to_type_scheme(ty);
-                println!(
-                    "Before simplify: {}",
-                    &self.types[name].type_vars_to_string()
-                );
                 let declared = self.types[name].clone().simplify_type_vars();
                 if inferred != declared {
                     // TODO we could also collect those.
@@ -357,7 +332,7 @@ impl TypeChecker {
     fn unify_new_expression<T: FieldElement>(&mut self, e: &Expression<T>) -> Result<Type, String> {
         let ty = self.new_type_var();
         self.unify_expression(ty.clone(), e)?;
-        println!("Type of {e}: {}", self.substitute_to(ty.clone()));
+        //println!("Type of {e}: {}", self.substitute_to(ty.clone()));
         Ok(ty)
     }
 
@@ -394,10 +369,10 @@ impl TypeChecker {
         ty: Type,
         e: &Expression<T>,
     ) -> Result<(), String> {
-        println!(
-            "Unifying {e}, expecting it to be {}",
-            self.substitute_to(ty.clone())
-        );
+        // println!(
+        //     "Unifying {e}, expecting it to be {}",
+        //     self.substitute_to(ty.clone())
+        // );
         match e {
             Expression::Reference(Reference::LocalVar(id, _name)) => {
                 self.unify_types(ty, self.state.local_var_type(*id))
