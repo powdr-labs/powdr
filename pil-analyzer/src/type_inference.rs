@@ -183,6 +183,9 @@ impl TypeChecker {
             (match self.unify_expression(ty.clone(), value) {
                 Err(err) if self.substitute_to(ty.clone()) == Type::col() => {
                     self.state = snapshot;
+                    // Ok, this did not work, but we are expecting a column.
+                    // Let's see if we can add an implicit conversion int -> fe
+                    // at the end, i.e. type check it as int- > int.
                     self.unify_expression(
                         Type::Function(FunctionType {
                             params: vec![Type::Int],
@@ -352,7 +355,10 @@ impl TypeChecker {
         ty: Type,
         e: &Expression<T>,
     ) -> Result<(), String> {
-        println!("Unifying {e}: {ty}");
+        println!(
+            "Unifying {e}, expecting it to be {}",
+            self.substitute_to(ty.clone())
+        );
         match e {
             Expression::Reference(Reference::LocalVar(id, _name)) => {
                 self.unify_types(ty, self.state.local_var_type(*id))
