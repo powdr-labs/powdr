@@ -57,7 +57,7 @@ impl<T: Display> Display for Analyzed<T> {
                                         // Do not print an array size, because we will do it as part of the type.
                                         assert!(matches!(
                                             definition,
-                                            Some(FunctionValueDefinition::Expression(
+                                            None | Some(FunctionValueDefinition::Expression(
                                                 TypedExpression {
                                                     e: _,
                                                     type_scheme: Some(_)

@@ -196,7 +196,7 @@ impl TypeChecker {
 
             let ty = self.instantiate_scheme(self.types[name].clone());
             let snapshot = self.state.clone();
-            (match self.unify_expression(ty.clone(), value) {
+            (match self.unify_expression_allow_implicit_conversion(ty.clone(), value) {
                 Err(err) if self.substitute_to(ty.clone()) == Type::col() => {
                     self.state = snapshot;
                     // Ok, this did not work, but we are expecting a column.
@@ -833,6 +833,13 @@ mod test {
                 "Failure for symbol {name}"
             );
         }
+    }
+
+    #[test]
+    fn single_literal() {
+        let input = "let x = [1,2];";
+        let result = parse_and_type_check(input);
+        check(&result, &[("x", "T: FromLiteral", "T")]);
     }
 
     #[test]
