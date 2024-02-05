@@ -186,6 +186,11 @@ impl TypeChecker {
                 .map(|(n, (_, e))| (n.as_str(), e.clone())),
         );
 
+        // TODO in order to fix type inference on recursive functions, we need to:
+        // - collect all groups of functions that call each other recursively
+        // - analyze each such group in an environment, where their type schemes
+        //   are instantiated once at the start and not anymore for the symbol lookup.
+
         for name in names {
             if builtin_schemes().contains_key(name) {
                 continue;
