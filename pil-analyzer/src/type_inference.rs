@@ -530,26 +530,33 @@ impl TypeChecker {
         ) {
             Err(e) => {
                 // TODO add much more conditions.
-                if let Some((pos, converted)) = args.iter().enumerate().find_map(|(i, x)| {
-                    self.can_convert_implicitly(&self.substitute_to(x.clone()))
-                        .map(|t| (i, t))
-                }) {
-                    // println!("Unification faild, but we have a 'col' argument. Trying to add conversion to expr.");
-                    // Ok try to convert the col to an expr
-                    self.state = snapshot;
-                    let mut new_args = args;
-                    new_args[pos] = converted;
-                    self.unify_types(
-                        function_type,
-                        Type::Function(FunctionType {
-                            params: new_args,
-                            value: Box::new(value.clone()),
-                        }),
-                    )?;
-                    Ok(value)
-                } else {
-                    Err(e)
+                let conversions = args
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(i, x)| {
+                        self.can_convert_implicitly(&self.substitute_to(x.clone()))
+                            .map(|t| (i, t))
+                    })
+                    .collect::<Vec<_>>();
+                if conversions.is_empty() {
+                    return Err(e);
                 }
+
+                // println!("Unification faild, but we have a 'col' argument. Trying to add conversion to expr.");
+                // Ok try to convert the col to an expr
+                self.state = snapshot;
+                let mut new_args = args;
+                for (pos, converted) in conversions {
+                    new_args[pos] = converted;
+                }
+                self.unify_types(
+                    function_type,
+                    Type::Function(FunctionType {
+                        params: new_args,
+                        value: Box::new(value.clone()),
+                    }),
+                )?;
+                Ok(value)
             }
             Ok(_) => Ok(value),
         }
