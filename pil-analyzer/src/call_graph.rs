@@ -36,7 +36,6 @@ fn topo_sort_visit<'a, 'b>(
     }
     if let Some(called) = graph.get(name) {
         for c in called {
-            println!(" - {c}");
             let n = graph.get_key_value(c.as_str()).unwrap().0;
             topo_sort_visit(n, graph, visited, result);
         }
