@@ -670,8 +670,8 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
             "and" => vec![(args[0].u() & args[1].u()).into()],
             "or" => vec![(args[0].u() | args[1].u()).into()],
             "xor" => vec![(args[0].u() ^ args[1].u()).into()],
-            "shl" => vec![(args[0].u() << args[1].u()).into()],
-            "shr" => vec![(args[0].u() >> args[1].u()).into()],
+            "shl" => vec![(args[0].u() >> args[1].u()).into()],
+            "shr" => vec![(args[0].u() << args[1].u()).into()],
             "split_gl" => {
                 let arg: u64 = args[0].fe::<F>().to_degree();
                 let lo = (arg & 0xffffffff) as u32;
