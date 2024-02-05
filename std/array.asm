@@ -7,8 +7,7 @@ let<T> len: T[] -> int = [];
 let<T> new: int, (int -> T) -> T[] = |length, f| std::utils::fold(length, f, [], |acc, e| (acc + [e]));
 
 /// Evaluates to the array [f(arr[0]), f(arr[1]), ..., f(arr[len(arr) - 1])].
-// TODO I think the type is not right.
-let<T1, T2, T3> map: T1[], (T1 -> T2) -> T3 = |arr, f| new(len(arr), |i| f(arr[i]));
+let<T> map: T = |arr, f| new(len(arr), |i| f(arr[i]));
 
 /// Computes folder(...folder(folder(initial, arr[0]), arr[1]) ..., arr[len(arr) - 1])
 let<T1, T2> fold: T1[], T2, (T2, T1 -> T2) -> T2 = |arr, initial, folder| std::utils::fold(len(arr), |i| arr[i], initial, folder);

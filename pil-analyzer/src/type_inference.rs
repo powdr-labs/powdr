@@ -530,15 +530,13 @@ impl TypeChecker {
         ) {
             Err(e) => {
                 // TODO add much more conditions.
-                if let Some(pos) = args
-                    .iter()
-                    .position(|x| self.substitute_to(x.clone()) == Type::col())
-                {
+                if let Some((pos, converted)) = args.iter().enumerate().find_map(|(i, x)| {
+                    self.can_convert_implicitly(&self.substitute_to(x.clone()))
+                        .map(|t| (i, t))
+                }) {
                     // println!("Unification faild, but we have a 'col' argument. Trying to add conversion to expr.");
                     // Ok try to convert the col to an expr
                     self.state = snapshot;
-                    let converted = self.new_type_var();
-                    self.unify_types(converted.clone(), Type::Expr)?;
                     let mut new_args = args;
                     new_args[pos] = converted;
                     self.unify_types(
@@ -554,6 +552,24 @@ impl TypeChecker {
                 }
             }
             Ok(_) => Ok(value),
+        }
+    }
+
+    fn can_convert_implicitly(&self, from: &Type) -> Option<Type> {
+        if from == &Type::col() {
+            Some(Type::Expr)
+        } else if from
+            == &Type::Array(ArrayType {
+                base: Box::new(Type::col()),
+                length: None,
+            })
+        {
+            Some(Type::Array(ArrayType {
+                base: Box::new(Type::Expr),
+                length: None,
+            }))
+        } else {
+            None
         }
     }
 
