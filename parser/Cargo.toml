@@ -13,6 +13,7 @@ powdr-ast = { path = "../ast" }
 powdr-number = { path = "../number" }
 powdr-parser-util = { path = "../parser-util" }
 
+lazy_static = "1.4.0"
 lalrpop-util = {version = "^0.19", features = ["lexer"]}
 num-bigint = "0.4.3"
 num-traits = "0.2.15"

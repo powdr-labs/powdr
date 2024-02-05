@@ -53,11 +53,14 @@ pub fn convert_vms_to_constrained<T: FieldElement>(
 pub mod utils {
     use powdr_ast::parsed::PilStatement;
     use powdr_number::FieldElement;
+    use powdr_parser::powdr;
+
+    lazy_static::lazy_static! {
+        static ref PIL_STATEMENT_PARSER: powdr::PilStatementParser = powdr::PilStatementParser::new();
+    }
 
     pub fn parse_pil_statement<T: FieldElement>(input: &str) -> PilStatement<T> {
         let ctx = powdr_parser::ParserContext::new(None, input);
-        powdr_parser::powdr::PilStatementParser::new()
-            .parse(&ctx, input)
-            .unwrap()
+        PIL_STATEMENT_PARSER.parse(&ctx, input).unwrap()
     }
 }
