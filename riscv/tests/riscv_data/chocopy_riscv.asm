@@ -61,7 +61,7 @@ _str_prototype:
 
 .globl _.list_prototype
 _.list_prototype:
-  .word -1                                 # Type tag for class: .list
+  .word 0xffffffff                         # Changed this from -1!
   .word 4                                  # Object size
   .word 0                                  # Pointer to dispatch table
   .word 0                                  # Initial value of attribute: __len__
