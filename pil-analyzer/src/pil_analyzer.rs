@@ -40,7 +40,7 @@ pub fn analyze_ast<T: FieldElement>(pil_file: PILFile<T>) -> Analyzed<T> {
     // TODO error reporting
     infer_types(&analyzer.definitions, &analyzer.identities)
         .map_err(|e| {
-            eprintln!("Error during type inference:\n{e}");
+            eprintln!("\nError during type inference:\n{e}");
             e
         })
         .unwrap();

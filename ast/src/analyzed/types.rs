@@ -60,6 +60,10 @@ impl Type {
         }
     }
 
+    pub fn is_concrete_type(&self) -> bool {
+        self.contained_type_vars_with_repetitions().next().is_none()
+    }
+
     pub fn contains_type_var(&self, name: &str) -> bool {
         self.contained_type_vars_with_repetitions()
             .any(|n| n == name)

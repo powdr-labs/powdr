@@ -59,8 +59,10 @@ fn generate_values<T: FieldElement>(
     };
     // TODO we should maybe pre-compute some symbols here.
     let result = match body {
-        FunctionValueDefinition::Expression(TypedExpression { e, type_scheme: ty }) => {
-            if let Some(ty) = ty {
+        FunctionValueDefinition::Expression(TypedExpression { e, type_scheme }) => {
+            if let Some(type_scheme) = type_scheme {
+                assert!(type_scheme.vars.is_empty());
+                let ty = &type_scheme.ty;
                 if ty == &Type::col() {
                     assert!(index.is_none());
                 } else if let Type::Array(ArrayType { base, length: _ }) = ty {

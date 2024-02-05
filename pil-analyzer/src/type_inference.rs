@@ -1,5 +1,6 @@
-use std::collections::{BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
+use itertools::Itertools;
 use powdr_ast::{
     analyzed::{
         types::{ArrayType, FunctionType, Type, TypeScheme, TypedExpression},
@@ -22,7 +23,7 @@ use powdr_parser::{parse_type_name, parse_type_var_bounds};
 pub fn infer_types<T: FieldElement>(
     definitions: &HashMap<String, (Symbol, Option<FunctionValueDefinition<T>>)>,
     identities: &Vec<Identity<Expression<T>>>,
-) -> Result<HashMap<String, TypeScheme>, String> {
+) -> Result<BTreeMap<String, TypeScheme>, String> {
     let definitions = definitions
         .iter()
         .map(|(n, (symbol, value))| {
@@ -70,9 +71,9 @@ fn type_and_expr_from_definition<'a, T>(
 
 #[derive(Default)]
 struct TypeChecker {
-    /// Types for symbols, might contain type variables.
-    /// TODO could these be type schemes?
-    types: HashMap<String, Type>,
+    /// Declared types for symbols. Type scheme for polymorphic symbols
+    /// and unquantified type variables for symbols without type.
+    types: HashMap<String, TypeScheme>,
     state: TypeCheckerState,
     last_type_var: usize,
 }
@@ -129,31 +130,55 @@ impl TypeCheckerState {
 }
 
 impl TypeChecker {
-    fn infer_types<T: FieldElement>(
+    pub fn infer_types<T: FieldElement>(
         mut self,
         definitions: &HashMap<String, (Option<TypeScheme>, Option<&Expression<T>>)>,
         identities: &Vec<Identity<Expression<T>>>,
-    ) -> Result<HashMap<String, TypeScheme>, String> {
-        // Add types from declarations.
-        // If we add type schemes for declarations, add them here without instantiating.
-        for (name, (declared_type, _)) in definitions {
-            let ty = declared_type.clone().unwrap_or_else(|| self.new_type_var());
+    ) -> Result<BTreeMap<String, TypeScheme>, String> {
+        let builtins = builtin_schemes();
+        // TODO we should actually cross-check them with the definitions and not just override!
+        self.types = builtins.clone();
+        // Add types from declarations. Type schemes are added without instantiating.
+        for (name, (declared_type_scheme, _)) in definitions {
+            if builtins.contains_key(name) {
+                continue;
+            }
+            // This stores an (uninstantiated) type scheme for symbols with a declared
+            // polymorphic type and it creates a new (unquantified) type variable for
+            // symbols without declared type. This forces a single concrete type for the latter.
+            let ty = declared_type_scheme
+                .clone()
+                .unwrap_or_else(|| self.new_type_var().into());
             self.types.insert(name.clone(), ty);
         }
+
+        self.infer_types_inner(definitions, identities)
+            .map_err(|err| {
+                format!(
+                    "{err}\n\nInferred types:\n{}",
+                    self.inferred_types()
+                        .iter()
+                        .map(|(n, t)| format!("let{} {n}: {}", t.type_vars_to_string(), t.ty))
+                        .format("\n")
+                )
+            })
+    }
+
+    fn infer_types_inner<T: FieldElement>(
+        &mut self,
+        definitions: &HashMap<String, (Option<TypeScheme>, Option<&Expression<T>>)>,
+        identities: &Vec<Identity<Expression<T>>>,
+    ) -> Result<BTreeMap<String, TypeScheme>, String> {
         // Now check the declarations for consistency or derive a concrete type
         // (or check against consistency of the type scheme in the declaration).
 
-        // actually do the full run on everything (that's what we would also do for local vairables)
-        // and then check that it matechs the declarations.
-        // When referring to names, also already use the declarations (and instantiate type schemes)
-
         for (name, (_, value)) in definitions {
-            let Some(value) = value else { continue };
-            // TODO in the future, we just add them as type schemes.
             if builtin_schemes().contains_key(name) {
                 continue;
             }
-            let ty = self.types[name].clone();
+            let Some(value) = value else { continue };
+
+            let ty = self.instantiate_scheme(self.types[name].clone());
             let snapshot = self.state.clone();
             (match self.unify_expression(ty.clone(), value) {
                 Err(err) if self.substitute_to(ty.clone()) == Type::col() => {
@@ -170,7 +195,65 @@ impl TypeChecker {
                 x => x,
             })
             .map_err(|e| format!("Error type checking the symbol {name} = {value}:\n{e}",))?;
+            if !self.types[name].vars.is_empty() {
+                // It is a type scheme, so we need to check if it conforms to its declared type now.
+                // TODO the instantiation adds type var bounds. But this routine cannot check that they
+                // are not too tight. So maybe we should instantiate the scheme differently? Or maybe just start with a fresh type if it is a scheme?
+                let inferred = self.to_type_scheme(ty);
+                let declared = self.types[name].clone().simplify_type_vars();
+                if inferred != declared {
+                    // TODO we could also collect those.
+                    Err(format!(
+                        "Inferred type scheme for symbol {name} does not match the declared type.\nInferred: {} {}\nDeclared: {} {}",
+                        inferred.type_vars_to_string(),
+                        inferred.ty,
+                        self.types[name].type_vars_to_string(),
+                        self.types[name].ty
+                    ))?;
+                }
+            }
         }
+
+        self.check_identities(identities)?;
+
+        // for name in definitions.keys() {
+        //     // TODO in the future, we just add them as type schemes.
+        //     if builtin_schemes().contains_key(name) {
+        //         continue;
+        //     }
+        //     let ty = self.substitute_to(self.derived_types[name].clone());
+        //     if !ty.contained_type_vars().is_empty() {
+        //         let scheme = self.to_type_scheme(ty.clone()).simplify_type_vars();
+        //         Err(format!(
+        //         "Could not determine a concrete type for symbol {name}.\nInferred type scheme: {} {}",
+        //         scheme.type_vars_to_string(),
+        //         scheme.ty
+        //     ))?;
+        //     }
+        //     println!("{name} -> {ty}");
+        // }
+        for name in definitions.keys() {
+            if self.types[name].vars.is_empty() {
+                // It is not a type scheme, see if we were able to derive a concrete type.
+                let inferred = self.substitute_to(self.types[name].ty.clone());
+                if !inferred.is_concrete_type() {
+                    let inferred_scheme = self.to_type_scheme(inferred);
+                    Err(format!(
+                        "Could not derive a concrete type for symbol {name}.\nInferred type scheme: {} {}\n",
+                        inferred_scheme.type_vars_to_string(),
+                        inferred_scheme.ty
+                    ))?;
+                }
+            }
+        }
+
+        Ok(self.inferred_types())
+    }
+
+    fn check_identities<T: FieldElement>(
+        &mut self,
+        identities: &[Identity<Expression<T>>],
+    ) -> Result<(), String> {
         for id in identities {
             if id.kind == IdentityKind::Polynomial {
                 let snapshot = self.state.clone();
@@ -209,27 +292,24 @@ impl TypeChecker {
                 }
             }
         }
-        for name in definitions.keys() {
-            // TODO in the future, we just add them as type schemes.
-            if builtin_schemes().contains_key(name) {
-                continue;
-            }
-            let ty = self.substitute_to(self.types[name].clone());
-            if !ty.contained_type_vars().is_empty() {
-                let scheme = self.to_type_scheme(ty.clone()).simplify_type_vars();
-                Err(format!(
-                "Could not determine a concrete type for symbol {name}.\nInferred type scheme: {} {}",
-                scheme.type_vars_to_string(),
-                scheme.ty
-            ))?;
-            }
-            println!("{name} -> {ty}");
-        }
-        Ok(self
-            .types
+        Ok(())
+    }
+
+    fn inferred_types(&mut self) -> BTreeMap<String, TypeScheme> {
+        let types = self.types.clone();
+        types
             .iter()
-            .map(|(name, ty)| (name.clone(), self.to_type_scheme(ty.clone())))
-            .collect())
+            .map(|(name, ty)| {
+                // TODO for concrete types we want to run substitution.
+                // for type schemes we don't. Maybe implement substitution also on type schemes?
+                let ty = self.instantiate_scheme(ty.clone());
+                (
+                    name.clone(),
+                    //TODO this is probably wrong
+                    self.to_type_scheme(ty),
+                )
+            })
+            .collect()
     }
 
     fn unify_new_expression<T: FieldElement>(&mut self, e: &Expression<T>) -> Result<Type, String> {
@@ -278,13 +358,7 @@ impl TypeChecker {
                 self.unify_types(ty, self.state.local_var_type(*id))
             }
             Expression::Reference(Reference::Poly(PolynomialReference { name, poly_id: _ })) => {
-                let type_of_symbol = if let Some(builtin) = builtin_schemes().get(name) {
-                    self.instantiate_scheme(builtin.clone())
-                } else {
-                    // TODO these  should be schemes as well and we should instantiate here
-                    // TODO but does that work for checking recursive calls?
-                    self.types[name].clone()
-                };
+                let type_of_symbol = self.instantiate_scheme(self.types[name].clone());
                 self.unify_types(ty, type_of_symbol)
             }
             Expression::PublicReference(_) => todo!(),
@@ -568,7 +642,7 @@ impl TypeChecker {
 fn builtin_schemes() -> HashMap<String, TypeScheme> {
     [
         ("std::array::len", ("T", "T[] -> int")),
-        ("std::check::panic", ("", "string -> constr[]")), // TODO should be the !-type. Also should be T: ToString
+        ("std::check::panic", ("T", "string -> constr[]")), // TODO should be the !-type. Also should be T: ToString
         ("std::convert::fe", ("T: FromLiteral", "T -> fe")),
         ("std::convert::int", ("T: FromLiteral", "T -> int")),
         ("std::debug::print", ("", "string -> constr[]")),
@@ -682,12 +756,15 @@ mod test {
 
     use crate::pil_analyzer::process_before_type_checking;
 
-    fn parse_and_type_check(input: &str) -> Result<HashMap<String, TypeScheme>, String> {
+    fn parse_and_type_check(input: &str) -> Result<BTreeMap<String, TypeScheme>, String> {
         let (definitions, identities) = process_before_type_checking::<GoldilocksField>(input);
         infer_types(&definitions, &identities)
     }
 
-    fn check(types: &Result<HashMap<String, TypeScheme>, String>, expected: &[(&str, &str, &str)]) {
+    fn check(
+        types: &Result<BTreeMap<String, TypeScheme>, String>,
+        expected: &[(&str, &str, &str)],
+    ) {
         let types = types
             .as_ref()
             .map_err(|e| {

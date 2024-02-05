@@ -1,7 +1,7 @@
 /// This is a built-in function taking a string argument and terminating
 /// evaluation unsuccessfully with this argument as explanation.
 /// This symbol is not an empty array, the actual semantics are overridden.
-let panic = [];
+let  panic: string -> constr[] = [];
 
 /// Checks the condition and panics if it is false.
 /// IMPORTANT: Since this does not generate any constraints, the verifier will not

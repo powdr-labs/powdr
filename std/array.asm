@@ -1,7 +1,7 @@
 /// This is a built-in function taking an array argument and returning
 /// the length of the array.
 /// This symbol is not an empty array, the actual semantics are overridden.
-let len = [];
+let<T> len: T[] -> int = [];
 
 /// Evaluates to the array [f(0), f(1), ..., f(length - 1)].
 let new = |length, f| std::utils::fold(length, f, [], |acc, e| (acc + [e]));
