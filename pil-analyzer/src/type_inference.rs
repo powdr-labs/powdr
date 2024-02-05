@@ -137,6 +137,7 @@ impl TypeChecker {
     ) -> Result<BTreeMap<String, TypeScheme>, String> {
         let builtins = builtin_schemes();
         // TODO we should actually cross-check them with the definitions and not just override!
+        // TODO we should make self.types immutable after construction.
         self.types = builtins.clone();
         // Add types from declarations. Type schemes are added without instantiating.
         for (name, (declared_type_scheme, _)) in definitions {
@@ -153,15 +154,15 @@ impl TypeChecker {
         }
 
         self.infer_types_inner(definitions, identities)
-            .map_err(|err| {
-                format!(
-                    "{err}\n\nInferred types:\n{}",
-                    self.inferred_types()
-                        .iter()
-                        .map(|(n, t)| format!("let{} {n}: {}", t.type_vars_to_string(), t.ty))
-                        .format("\n")
-                )
-            })
+        // .map_err(|err| {
+        //     format!(
+        //         "{err}\n\nInferred types:\n{}",
+        //         self.inferred_types()
+        //             .iter()
+        //             .map(|(n, t)| format!("let{} {n}: {}", t.type_vars_to_string(), t.ty))
+        //             .format("\n")
+        //     )
+        // })
     }
 
     fn infer_types_inner<T: FieldElement>(
@@ -169,6 +170,9 @@ impl TypeChecker {
         definitions: &HashMap<String, (Option<TypeScheme>, Option<&Expression<T>>)>,
         identities: &Vec<Identity<Expression<T>>>,
     ) -> Result<BTreeMap<String, TypeScheme>, String> {
+        // TODO we should probably create a call graph and check according to that (inner to outer).
+        // but how would that work for local variables? Create a call graph for the locals as well, once we check the function?
+
         // Now check the declarations for consistency or derive a concrete type
         // (or check against consistency of the type scheme in the declaration).
 
@@ -179,7 +183,13 @@ impl TypeChecker {
             let Some(value) = value else { continue };
 
             let ty = self.instantiate_scheme(self.types[name].clone());
+            println!(
+                "================\n  Checking {name}: {}\n{value}",
+                self.substitute_to(ty.clone())
+            );
+            println!("Creating snapshot...");
             let snapshot = self.state.clone();
+            println!("Done.");
             (match self.unify_expression(ty.clone(), value) {
                 Err(err) if self.substitute_to(ty.clone()) == Type::col() => {
                     self.state = snapshot;
@@ -200,14 +210,15 @@ impl TypeChecker {
             .map_err(|e| format!("Error type checking the symbol {name} = {value}:\n{e}",))?;
             if !self.types[name].vars.is_empty() {
                 // It is a type scheme, so we need to check if it conforms to its declared type now.
-                // TODO the instantiation adds type var bounds. But this routine cannot check that they
-                // are not too tight. So maybe we should instantiate the scheme differently? Or maybe just start with a fresh type if it is a scheme?
+                // TODO the instantiation adds type var bounds. But this routine cannot check if some
+                // of the bounds are actually not needed.
+                // So maybe we should instantiate the scheme differently? Or maybe just start with a fresh type if it is a scheme?
                 let inferred = self.to_type_scheme(ty);
                 let declared = self.types[name].clone().simplify_type_vars();
                 if inferred != declared {
                     // TODO we could also collect those.
                     Err(format!(
-                        "Inferred type scheme for symbol {name} does not match the declared type.\nInferred: {} {}\nDeclared: {} {}",
+                        "Inferred type scheme for symbol {name} does not match the declared type.\nInferred: let{} {name}: {}\nDeclared: let{} {name}: {}",
                         inferred.type_vars_to_string(),
                         inferred.ty,
                         self.types[name].type_vars_to_string(),
@@ -827,7 +838,7 @@ mod test {
 
     #[test]
     fn fold() {
-        let input = "let fold = |length, f, initial, folder|
+        let input = "let<T1, T2> fold: int, (int -> T1), T2, (T2, T1 -> T2) -> T2 = |length, f, initial, folder|
             if length <= 0 {
                 initial
             } else {
@@ -838,8 +849,8 @@ mod test {
             &result,
             &[(
                 "fold",
-                "T1: FromLiteral + Ord + Sub, T2, T3",
-                "T1, (T1 -> T2), T3, (T3, T2 -> T3) -> T3",
+                "T1, T2",
+                "int, (int -> T1), T2, (T2, T1 -> T2) -> T2",
             )],
         );
     }
@@ -853,7 +864,8 @@ mod test {
 
     #[test]
     fn sum_via_fold() {
-        let input = "let fold = |length, f, initial, folder|
+        let input = "
+        let<T1, T2> fold: int, (int -> T1), T2, (T2, T1 -> T2) -> T2 = |length, f, initial, folder|
             if length <= 0 {
                 initial
             } else {

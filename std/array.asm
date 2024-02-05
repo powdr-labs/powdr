@@ -4,14 +4,16 @@
 let<T> len: T[] -> int = [];
 
 /// Evaluates to the array [f(0), f(1), ..., f(length - 1)].
-let new = |length, f| std::utils::fold(length, f, [], |acc, e| (acc + [e]));
+let<T> new: int, (int -> T) -> T[] = |length, f| std::utils::fold(length, f, [], |acc, e| (acc + [e]));
 
 /// Evaluates to the array [f(arr[0]), f(arr[1]), ..., f(arr[len(arr) - 1])].
-let map = |arr, f| new(len(arr), |i| f(arr[i]));
+// TODO I think the type is not right.
+let<T1, T2, T3> map: T1[], (T1 -> T2) -> T3 = |arr, f| new(len(arr), |i| f(arr[i]));
 
 /// Computes folder(...folder(folder(initial, arr[0]), arr[1]) ..., arr[len(arr) - 1])
-let fold = |arr, initial, folder| std::utils::fold(len(arr), |i| arr[i], initial, folder);
+let<T1, T2> fold: T1[], T2, (T2, T1 -> T2) -> T2 = |arr, initial, folder| std::utils::fold(len(arr), |i| arr[i], initial, folder);
 
 /// Returns the sum of the array elements.
-/// This actually also works on field elements, so the type is currently too restrictive.
-let sum: int[] -> int = |arr| fold(arr, 0, |a, b| a + b);
+// TODO: Should make use of the Default or Zero trait instead of FromLiteral (then we can also
+// use this function to flatten an array of arrays.
+let<T: Add + FromLiteral> sum: T[] -> T = |arr| fold(arr, 0, |a, b| a + b);
