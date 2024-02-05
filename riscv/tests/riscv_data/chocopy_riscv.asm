@@ -27,61 +27,61 @@
 
 .data
 
-.globl $object$prototype
-$object$prototype:
+.globl _object_prototype
+_object_prototype:
   .word 0                                  # Type tag for class: object
   .word 3                                  # Object size
-  .word $object$dispatchTable              # Pointer to dispatch table
+  .word _object_dispatchTable              # Pointer to dispatch table
   .align 2
 
-.globl $int$prototype
-$int$prototype:
+.globl _int_prototype
+_int_prototype:
   .word 1                                  # Type tag for class: int
   .word 4                                  # Object size
-  .word $int$dispatchTable                 # Pointer to dispatch table
+  .word _int_dispatchTable                 # Pointer to dispatch table
   .word 0                                  # Initial value of attribute: __int__
   .align 2
 
-.globl $bool$prototype
-$bool$prototype:
+.globl _bool_prototype
+_bool_prototype:
   .word 2                                  # Type tag for class: bool
   .word 4                                  # Object size
-  .word $bool$dispatchTable                # Pointer to dispatch table
+  .word _bool_dispatchTable                # Pointer to dispatch table
   .word 0                                  # Initial value of attribute: __bool__
   .align 2
 
-.globl $str$prototype
-$str$prototype:
+.globl _str_prototype
+_str_prototype:
   .word 3                                  # Type tag for class: str
   .word 5                                  # Object size
-  .word $str$dispatchTable                 # Pointer to dispatch table
+  .word _str_dispatchTable                 # Pointer to dispatch table
   .word 0                                  # Initial value of attribute: __len__
   .word 0                                  # Initial value of attribute: __str__
   .align 2
 
-.globl $.list$prototype
-$.list$prototype:
+.globl _.list_prototype
+_.list_prototype:
   .word -1                                 # Type tag for class: .list
   .word 4                                  # Object size
   .word 0                                  # Pointer to dispatch table
   .word 0                                  # Initial value of attribute: __len__
   .align 2
 
-.globl $object$dispatchTable
-$object$dispatchTable:
-  .word $object.__init__                   # Implementation for method: object.__init__
+.globl _object_dispatchTable
+_object_dispatchTable:
+  .word _object.__init__                   # Implementation for method: object.__init__
 
-.globl $int$dispatchTable
-$int$dispatchTable:
-  .word $object.__init__                   # Implementation for method: int.__init__
+.globl _int_dispatchTable
+_int_dispatchTable:
+  .word _object.__init__                   # Implementation for method: int.__init__
 
-.globl $bool$dispatchTable
-$bool$dispatchTable:
-  .word $object.__init__                   # Implementation for method: bool.__init__
+.globl _bool_dispatchTable
+_bool_dispatchTable:
+  .word _object.__init__                   # Implementation for method: bool.__init__
 
-.globl $str$dispatchTable
-$str$dispatchTable:
-  .word $object.__init__                   # Implementation for method: str.__init__
+.globl _str_dispatchTable
+_str_dispatchTable:
+  .word _object.__init__                   # Implementation for method: str.__init__
 
 .text
 
@@ -121,20 +121,20 @@ main:
   li a0, 15                                # Load integer literal 15
   sw a0, -16(fp)                           # Push argument 0 from last.
   addi sp, fp, -16                         # Set SP to last argument.
-  jal $contains                            # Invoke function: contains
+  jal _contains                            # Invoke function: contains
   addi sp, fp, -@..main.size               # Set SP to stack frame top.
   beqz a0, label_2                         # Branch on false.
   la a0, const_2                           # Load string literal
   sw a0, -16(fp)                           # Push argument 0 from last.
   addi sp, fp, -16                         # Set SP to last argument.
-  jal $print                               # Invoke function: print
+  jal _print                               # Invoke function: print
   addi sp, fp, -@..main.size               # Set SP to stack frame top.
   j label_1                                # Then body complete; jump to end-if
 label_2:                                   # Else body
   la a0, const_3                           # Load string literal
   sw a0, -16(fp)                           # Push argument 0 from last.
   addi sp, fp, -16                         # Set SP to last argument.
-  jal $print                               # Invoke function: print
+  jal _print                               # Invoke function: print
   addi sp, fp, -@..main.size               # Set SP to stack frame top.
 label_1:                                   # End of if-else statement
   .equiv @..main.size, 48
@@ -142,14 +142,14 @@ label_0:                                   # End of program
   li a0, 10                                # Code for ecall: exit
   ecall
 
-.globl $object.__init__
-$object.__init__:
+.globl _object.__init__
+_object.__init__:
 # Init method for type object.	
   mv a0, zero                              # `None` constant
   jr ra                                    # Return
 
-.globl $print
-$print:
+.globl _print
+_print:
 # Function print
   lw a0, 0(sp)                             # Load arg
   beq a0, zero, print_6                    # None is an illegal argument
@@ -203,8 +203,8 @@ print_5:                                   # End of function
   mv a0, zero                              # Load None
   jr ra                                    # Return to caller
 
-.globl $len
-$len:
+.globl _len
+_len:
 # Function len
       # We do not save/restore fp/ra for this function
       # because we know that it does not use the stack or does not
@@ -226,8 +226,8 @@ len_13:                                    # Get length of string
   lw a0, @.__len__(a0)                     # Load attribute: __len__
   jr ra                                    # Return to caller
 
-.globl $input
-$input:
+.globl _input
+_input:
 
   addi sp, sp, -16
   sw ra, 12(sp)
@@ -237,14 +237,14 @@ $input:
   li a0, @fill_line_buffer
   ecall
   bgez a0, input_nonempty
-  la a0, $str$prototype
+  la a0, _str_prototype
   j input_done
 input_nonempty:
   mv s1, a0
   addi t0, s1, 5
   addi t0, t0, @.__str__
   srli a1, t0, 2
-  la a0, $str$prototype
+  la a0, _str_prototype
   jal ra, alloc2
   sw s1, @.__len__(a0)
   mv a2, s1
@@ -266,8 +266,8 @@ input_done:
   addi sp, sp, 16
   jr ra
 
-.globl $contains
-$contains:
+.globl _contains
+_contains:
   addi sp, sp, -@contains.size             # Reserve space for stack frame.
   sw ra, @contains.size-4(sp)              # return address
   sw fp, @contains.size-8(sp)              # control link
@@ -311,7 +311,7 @@ label_6:                                   # Test loop condition
   lw a0, 4(fp)                             # Load var: contains.items
   sw a0, -32(fp)                           # Push argument 0 from last.
   addi sp, fp, -32                         # Set SP to last argument.
-  jal $len                                 # Invoke function: len
+  jal _len                                 # Invoke function: len
   addi sp, fp, -@contains.size             # Set SP to stack frame top.
   lw t0, -16(fp)                           # Pop stack slot 4
   blt t0, a0, label_5                      # Branch on <
@@ -406,7 +406,7 @@ concat:
         lw t1, @.__len__(t1)
         add s5, t0, t1
         addi a1, s5, @listHeaderWords
-        la a0, $.list$prototype
+        la a0, _.list_prototype
         jal alloc2
         sw s5, @.__len__(a0)
 	mv s5, a0
@@ -461,7 +461,7 @@ conslist:
         sw fp, 0(sp)
         addi fp, sp, 8
         lw a1, 0(fp)
-        la a0, $.list$prototype
+        la a0, _.list_prototype
         beqz a1, conslist_done
         addi a1, a1, @listHeaderWords
         jal alloc2
@@ -502,7 +502,7 @@ strcat:
         addi t1, t1, 4
         srli t1, t1, 2
         addi a1, t1, @listHeaderWords
-        la a0, $str$prototype
+        la a0, _str_prototype
         jal alloc2
         lw t0, -12(fp)
         sw t0, @.__len__(a0)
@@ -613,7 +613,7 @@ makeint:
         addi sp, sp, -8
         sw ra, 4(sp)
         sw a0, 0(sp)
-        la a0, $int$prototype
+        la a0, _int_prototype
         jal ra, alloc
         lw t0, 0(sp)
         sw t0, @.__int__(a0)
@@ -670,7 +670,7 @@ error.OOB:
 const_0:
   .word 2                                  # Type tag for class: bool
   .word 4                                  # Object size
-  .word $bool$dispatchTable                # Pointer to dispatch table
+  .word _bool_dispatchTable                # Pointer to dispatch table
   .word 0                                  # Constant value of attribute: __bool__
   .align 2
 
@@ -678,7 +678,7 @@ const_0:
 const_1:
   .word 2                                  # Type tag for class: bool
   .word 4                                  # Object size
-  .word $bool$dispatchTable                # Pointer to dispatch table
+  .word _bool_dispatchTable                # Pointer to dispatch table
   .word 1                                  # Constant value of attribute: __bool__
   .align 2
 
@@ -686,7 +686,7 @@ const_1:
 const_3:
   .word 3                                  # Type tag for class: str
   .word 8                                  # Object size
-  .word $str$dispatchTable                 # Pointer to dispatch table
+  .word _str_dispatchTable                 # Pointer to dispatch table
   .word 15                                 # Constant value of attribute: __len__
   .string "Item not found."                # Constant value of attribute: __str__
   .align 2
@@ -695,7 +695,7 @@ const_3:
 const_9:
   .word 3                                  # Type tag for class: str
   .word 9                                  # Object size
-  .word $str$dispatchTable                 # Pointer to dispatch table
+  .word _str_dispatchTable                 # Pointer to dispatch table
   .word 16                                 # Constant value of attribute: __len__
   .string "Division by zero"               # Constant value of attribute: __str__
   .align 2
@@ -704,7 +704,7 @@ const_9:
 const_7:
   .word 3                                  # Type tag for class: str
   .word 8                                  # Object size
-  .word $str$dispatchTable                 # Pointer to dispatch table
+  .word _str_dispatchTable                 # Pointer to dispatch table
   .word 13                                 # Constant value of attribute: __len__
   .string "Out of memory"                  # Constant value of attribute: __str__
   .align 2
@@ -713,7 +713,7 @@ const_7:
 const_10:
   .word 3                                  # Type tag for class: str
   .word 9                                  # Object size
-  .word $str$dispatchTable                 # Pointer to dispatch table
+  .word _str_dispatchTable                 # Pointer to dispatch table
   .word 19                                 # Constant value of attribute: __len__
   .string "Index out of bounds"            # Constant value of attribute: __str__
   .align 2
@@ -722,7 +722,7 @@ const_10:
 const_5:
   .word 3                                  # Type tag for class: str
   .word 6                                  # Object size
-  .word $str$dispatchTable                 # Pointer to dispatch table
+  .word _str_dispatchTable                 # Pointer to dispatch table
   .word 4                                  # Constant value of attribute: __len__
   .string "True"                           # Constant value of attribute: __str__
   .align 2
@@ -731,7 +731,7 @@ const_5:
 const_8:
   .word 3                                  # Type tag for class: str
   .word 9                                  # Object size
-  .word $str$dispatchTable                 # Pointer to dispatch table
+  .word _str_dispatchTable                 # Pointer to dispatch table
   .word 17                                 # Constant value of attribute: __len__
   .string "Operation on None"              # Constant value of attribute: __str__
   .align 2
@@ -740,7 +740,7 @@ const_8:
 const_2:
   .word 3                                  # Type tag for class: str
   .word 7                                  # Object size
-  .word $str$dispatchTable                 # Pointer to dispatch table
+  .word _str_dispatchTable                 # Pointer to dispatch table
   .word 11                                 # Constant value of attribute: __len__
   .string "Item found!"                    # Constant value of attribute: __str__
   .align 2
@@ -749,7 +749,7 @@ const_2:
 const_4:
   .word 3                                  # Type tag for class: str
   .word 9                                  # Object size
-  .word $str$dispatchTable                 # Pointer to dispatch table
+  .word _str_dispatchTable                 # Pointer to dispatch table
   .word 16                                 # Constant value of attribute: __len__
   .string "Invalid argument"               # Constant value of attribute: __str__
   .align 2
@@ -758,7 +758,7 @@ const_4:
 const_6:
   .word 3                                  # Type tag for class: str
   .word 6                                  # Object size
-  .word $str$dispatchTable                 # Pointer to dispatch table
+  .word _str_dispatchTable                 # Pointer to dispatch table
   .word 5                                  # Constant value of attribute: __len__
   .string "False"                          # Constant value of attribute: __str__
   .align 2
