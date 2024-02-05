@@ -176,7 +176,7 @@ impl<T: Display> Display for MachineStatement<T> {
             MachineStatement::InstructionDeclaration(_, name, instruction) => {
                 write!(f, "instr {}{}", name, instruction)
             }
-            MachineStatement::LinkDeclaration(link) => {
+            MachineStatement::LinkDeclaration(_, link) => {
                 write!(f, "{link}")
             }
             MachineStatement::FunctionDeclaration(_, name, params, statements) => {

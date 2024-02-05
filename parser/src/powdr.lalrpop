@@ -252,7 +252,7 @@ pub Instruction: Instruction<T> = {
 }
 
 pub LinkDeclaration: MachineStatement<T> = {
-    <start:@L> "link" <flag:Expression> <params:Params> "=" <to:CallableRef> ";" => MachineStatement::LinkDeclaration(LinkDeclaration { source: ctx.source_ref(start), flag, params, to })
+    <start:@L> "link" <flag:Expression> <params:Params> "=" <to:CallableRef> ";" => MachineStatement::LinkDeclaration(ctx.source_ref(start), LinkDeclaration { flag, params, to })
 }
 
 pub InstructionBody: InstructionBody<T> = {

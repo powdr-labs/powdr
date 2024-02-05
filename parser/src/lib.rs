@@ -247,8 +247,8 @@ mod test {
     // helper function to clear SourceRef's inside the AST so we can compare for equality
     fn asm_clear_source_refs<T>(ast: &mut ASMProgram<T>) {
         use powdr_ast::parsed::asm::{
-            ASMModule, FunctionStatement, Instruction, InstructionBody, LinkDeclaration, Machine,
-            MachineStatement, Module, ModuleStatement, SymbolDefinition, SymbolValue,
+            ASMModule, FunctionStatement, Instruction, InstructionBody, Machine, MachineStatement,
+            Module, ModuleStatement, SymbolDefinition, SymbolValue,
         };
 
         fn clear_machine_stmt<T>(stmt: &mut MachineStatement<T>) {
@@ -257,7 +257,7 @@ mod test {
                 | MachineStatement::Submachine(s, _, _)
                 | MachineStatement::RegisterDeclaration(s, _, _)
                 | MachineStatement::OperationDeclaration(s, _, _, _)
-                | MachineStatement::LinkDeclaration(LinkDeclaration { source: s, .. }) => {
+                | MachineStatement::LinkDeclaration(s, _) => {
                     *s = SourceRef::unknown();
                 }
                 MachineStatement::Pil(s, stmt) => {

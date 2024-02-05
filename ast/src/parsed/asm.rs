@@ -383,7 +383,7 @@ impl<T: Clone> Machine<T> {
             MachineStatement::Degree(_, _)
             | MachineStatement::Submachine(_, _, _)
             | MachineStatement::InstructionDeclaration(_, _, _)
-            | MachineStatement::LinkDeclaration(_)
+            | MachineStatement::LinkDeclaration(_, _)
             | MachineStatement::FunctionDeclaration(_, _, _, _)
             | MachineStatement::OperationDeclaration(_, _, _, _) => Box::new(empty()),
         }))
@@ -455,14 +455,13 @@ pub enum MachineStatement<T> {
     Submachine(SourceRef, SymbolPath, String),
     RegisterDeclaration(SourceRef, String, Option<RegisterFlag>),
     InstructionDeclaration(SourceRef, String, Instruction<T>),
-    LinkDeclaration(LinkDeclaration<T>),
+    LinkDeclaration(SourceRef, LinkDeclaration<T>),
     FunctionDeclaration(SourceRef, String, Params<T>, Vec<FunctionStatement<T>>),
     OperationDeclaration(SourceRef, String, OperationId<T>, Params<T>),
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub struct LinkDeclaration<T> {
-    pub source: SourceRef,
     pub flag: Expression<T>,
     pub params: Params<T>,
     pub to: CallableRef,
