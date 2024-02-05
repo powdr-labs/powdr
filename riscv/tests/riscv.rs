@@ -5,7 +5,7 @@ use mktemp::Temp;
 use powdr_backend::BackendType;
 use powdr_number::GoldilocksField;
 use powdr_pipeline::{test_util::verify_asm_string, verify::verify, Pipeline, Stage};
-use std::path::PathBuf;
+use std::{collections::BTreeMap, fs, path::PathBuf};
 use test_log::test;
 
 use powdr_riscv::{
@@ -127,6 +127,19 @@ fn test_memfuncs() {
 fn test_keccak() {
     let case = "keccak";
     verify_riscv_crate(case, Default::default(), &CoProcessors::base());
+}
+
+#[test]
+fn test_chocopy() {
+    let riscv_asm: BTreeMap<String, String> = vec![(
+        "chocopy-riscv".to_string(),
+        fs::read_to_string("tests/riscv_data/chocopy_riscv.asm").unwrap(),
+    )]
+    .into_iter()
+    .collect();
+
+    let asm_string = powdr_riscv::compiler::compile(riscv_asm, &CoProcessors::base(), false);
+    verify_riscv_asm_string(&format!("keccak.asm"), &asm_string, Default::default());
 }
 
 #[test]
