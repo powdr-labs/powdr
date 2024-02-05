@@ -591,7 +591,12 @@ pub TypeVarBounds: TypeBounds = {
 }
 
 TypeVarWithBounds: (String, BTreeSet<String>) = {
-    <type_var:TypeVar> <bounds:(":" <Identifier> ("+" <Identifier>)*)?> => (type_var, bounds.into_iter().collect())
+    <TypeVar> <TypeBoundsList> => (<>)
+}
+
+TypeBoundsList: BTreeSet<String> = {
+    => Default::default(),
+    ":" <list:( <Identifier> "+" )*> <end:Identifier>  => list.into_iter().chain(std::iter::once(end)).collect(),
 }
 
 

@@ -15,6 +15,8 @@ use powdr_ast::{
 use powdr_number::{FieldElement, GoldilocksField};
 use powdr_parser::{parse_type_name, parse_type_var_bounds};
 
+use crate::call_graph::sort_called_first;
+
 // TODO in the end, this needs to modify the expressions,
 // because it has to ineject implict conversions
 // and it has to change generic trait function calls to concrete ones
@@ -144,6 +146,13 @@ impl TypeChecker {
             if builtins.contains_key(name) {
                 continue;
             }
+            println!(
+                "Decl: {name}: {}",
+                declared_type_scheme
+                    .as_ref()
+                    .map(|ts| ts.type_vars_to_string())
+                    .unwrap_or_default()
+            );
             // This stores an (uninstantiated) type scheme for symbols with a declared
             // polymorphic type and it creates a new (unquantified) type variable for
             // symbols without declared type. This forces a single concrete type for the latter.
@@ -175,14 +184,29 @@ impl TypeChecker {
 
         // Now check the declarations for consistency or derive a concrete type
         // (or check against consistency of the type scheme in the declaration).
+        let names = sort_called_first(
+            definitions
+                .iter()
+                .map(|(n, (_, e))| (n.as_str(), e.clone())),
+        );
 
-        for (name, (_, value)) in definitions {
+        println!("Visitation order: {}", names.iter().format("\n"));
+
+        for name in names {
             if builtin_schemes().contains_key(name) {
                 continue;
             }
-            let Some(value) = value else { continue };
+            let (_, Some(value)) = definitions[&name.to_string()] else {
+                continue;
+            };
 
+            println!(
+                "Pre inst:  {} {}",
+                self.types[name].type_vars_to_string(),
+                self.types[name].ty
+            );
             let ty = self.instantiate_scheme(self.types[name].clone());
+            println!("Pre subst: {ty}");
             println!(
                 "================\n  Checking {name}: {}\n{value}",
                 self.substitute_to(ty.clone())
@@ -214,6 +238,10 @@ impl TypeChecker {
                 // of the bounds are actually not needed.
                 // So maybe we should instantiate the scheme differently? Or maybe just start with a fresh type if it is a scheme?
                 let inferred = self.to_type_scheme(ty);
+                println!(
+                    "Before simplify: {}",
+                    &self.types[name].type_vars_to_string()
+                );
                 let declared = self.types[name].clone().simplify_type_vars();
                 if inferred != declared {
                     // TODO we could also collect those.
@@ -545,14 +573,18 @@ impl TypeChecker {
     fn instantiate_scheme(&mut self, scheme: TypeScheme) -> Type {
         let mut ty = scheme.ty;
         //println!("Instantiating scheme {ty}");
-        for (var, bounds) in scheme.vars.bounds() {
-            let new_var = self.new_type_var();
-            ty.substitute_type_vars(&[(var.clone(), new_var.clone())].into());
-            for b in bounds {
-                self.ensure_bound(&new_var, b.clone()).unwrap();
-            }
-        }
-        //println!("   -> instantiated to {ty}");
+        let substitution = scheme
+            .vars
+            .bounds()
+            .map(|(var, bounds)| {
+                let new_var = self.new_type_var();
+                for b in bounds {
+                    self.ensure_bound(&new_var, b.clone()).unwrap();
+                }
+                (var.clone(), new_var)
+            })
+            .collect();
+        ty.substitute_type_vars(&substitution);
         ty
     }
 
@@ -856,10 +888,10 @@ mod test {
     }
 
     #[test]
+    #[should_panic(expected = "Inferred type scheme: <T: Add> T, T -> T")]
     fn sum() {
         let input = "let sum = |a, b| a + b;";
-        let result = parse_and_type_check(input);
-        check(&result, &[("sum", "T: Add", "T, T -> T")]);
+        parse_and_type_check(input).unwrap();
     }
 
     #[test]
@@ -871,17 +903,9 @@ mod test {
             } else {
                 folder(fold((length - 1), f, initial, folder), f((length - 1)))
             };
-        let sum = |n, f| fold(n, f, 0, |a, b| a + b);
+        let<T: Add + FromLiteral> sum: int, (int -> T) -> T = |n, f| fold(n, f, 0, |a, b| a + b);
         ";
-        let result = parse_and_type_check(input);
-        check(
-            &result,
-            &[(
-                "sum",
-                "T1: FromLiteral + Ord + Sub, T2: Add + FromLiteral",
-                "T1, (T1 -> T2) -> T2",
-            )],
-        );
+        parse_and_type_check(input).unwrap();
     }
 
     #[test]

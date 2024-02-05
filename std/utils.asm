@@ -17,7 +17,7 @@ let<T1, T2>
         };
 
 /// Evaluates to f(0) + f(1) + ... + f(length - 1).
-let<T> sum: T = |length, f| fold(length, f, 0, |acc, e| (acc + e));
+let<T: Add + FromLiteral> sum: int, (int -> T) -> T = |length, f| fold(length, f, 0, |acc, e| (acc + e));
 
 // TODO what happens if we drop the FromLiteral requirement? Would it type check? Would it just add the requirement to the uses of 'sum'?
 

@@ -390,7 +390,7 @@ impl<T: Display> Display for PilStatement<T> {
                     "    let{} {name}{}",
                     type_scheme
                         .as_ref()
-                        .map(|ts| ts.type_vars.to_string())
+                        .map(|ts| ts.type_vars_to_string())
                         .unwrap_or_default(),
                     type_scheme
                         .as_ref()
@@ -685,7 +685,7 @@ impl Display for TypeBounds {
                         if b.is_empty() {
                             String::new()
                         } else {
-                            format!(": {}", b.iter().sorted().join(" + "))
+                            format!(": {}", b.iter().join(" + "))
                         }
                     )
                 })

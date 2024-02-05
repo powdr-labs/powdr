@@ -71,6 +71,8 @@ pub fn process_before_type_checking<T: FieldElement>(
         panic!();
     });
 
+    println!("Parsed: {pil_file}");
+
     let mut analyzer = PILAnalyzer::new();
     analyzer.process(vec![pil_file]);
     (analyzer.definitions, analyzer.identities)
