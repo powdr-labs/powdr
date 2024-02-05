@@ -44,6 +44,8 @@ impl ParserContext {
 lazy_static::lazy_static! {
     static ref PIL_FILE_PARSER: powdr::PILFileParser = powdr::PILFileParser::new();
     static ref ASM_MODULE_PARSER: powdr::ASMModuleParser = powdr::ASMModuleParser::new();
+    static ref TYPE_NAME_PARSER: powdr::TypeNameParser = powdr::TypeNameParser::new();
+    static ref TYPE_VAR_BOUNDS_PARSER: powdr::TypeVarBoundsParser = powdr::TypeVarBoundsParser::new();
 }
 
 pub fn parse<'a, T: FieldElement>(
@@ -77,14 +79,14 @@ pub fn parse_type_name<T: FieldElement>(
     input: &str,
 ) -> Result<powdr_ast::parsed::TypeName<powdr_ast::parsed::Expression<T>>, ParseError<'_>> {
     let ctx = ParserContext::new(None, input);
-    powdr::TypeNameParser::new()
+    TYPE_NAME_PARSER
         .parse(&ctx, input)
         .map_err(|err| handle_parse_error(err, None, input))
 }
 
 pub fn parse_type_var_bounds(input: &str) -> Result<TypeBounds, ParseError<'_>> {
     let ctx = ParserContext::new(None, input);
-    powdr::TypeVarBoundsParser::new()
+    TYPE_VAR_BOUNDS_PARSER
         .parse::<GoldilocksField>(&ctx, input)
         .map_err(|err| handle_parse_error(err, None, input))
 }
