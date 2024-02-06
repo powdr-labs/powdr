@@ -370,7 +370,7 @@ impl Display for Part {
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Machine<T> {
-    pub arguments: MachineArguments,
+    pub arguments: MachineArguments<T>,
     pub statements: Vec<MachineStatement<T>>,
 }
 
@@ -391,8 +391,8 @@ impl<T: Clone> Machine<T> {
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Default, Clone)]
-pub struct MachineArguments {
-    pub latch: Option<String>,
+pub struct MachineArguments<T> {
+    pub latch: Option<Expression<T>>,
     pub operation_id: Option<String>,
 }
 

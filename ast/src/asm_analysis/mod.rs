@@ -689,7 +689,7 @@ pub struct Machine<T> {
     /// The degree if any, i.e. the number of rows in instances of this machine type
     pub degree: Option<DegreeStatement>,
     /// The latch, i.e. the boolean column whose values must be 1 in order for this machine to be accessed. Must be defined in one of the constraint blocks of this machine.
-    pub latch: Option<String>,
+    pub latch: Option<Expression<T>>,
     /// The operation id, i.e. the column whose values determine which operation is being invoked in the current block. Must be defined in one of the constraint blocks of this machine.
     pub operation_id: Option<String>,
     /// The set of registers for this machine

@@ -176,7 +176,8 @@ impl<T: FieldElement> ASMPILConverter<T> {
             self.handle_batch(batch);
         }
 
-        input.latch = Some(instruction_flag(RETURN_NAME));
+        assert!(input.latch.is_none());
+        input.latch = Some(direct_reference(instruction_flag(RETURN_NAME)));
 
         self.translate_code_lines();
 
