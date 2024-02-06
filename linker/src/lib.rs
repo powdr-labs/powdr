@@ -126,6 +126,7 @@ pub fn link<T: FieldElement>(graph: PILGraph<T>) -> Result<PILFile<T>, Vec<Strin
 
             let to_namespace = to.machine.location.clone().to_string();
 
+            println!("Runnig linker: {}", to.machine.latch.as_ref().unwrap());
             let rhs = SelectedExpressions {
                 selector: Some(to.machine.latch.unwrap()),
                 expressions: to

@@ -82,6 +82,10 @@ impl<T: FieldElement> ASMPILConverter<T> {
             return input;
         }
 
+        for p in &self.pil {
+            println!("{p}");
+        }
+
         // turn registers into constraints
         for reg in input.registers.drain(..) {
             self.handle_register_declaration(reg);
@@ -177,6 +181,9 @@ impl<T: FieldElement> ASMPILConverter<T> {
         }
 
         assert!(input.latch.is_none());
+        // TOOD here, the latch is introduced as a local reference (which is perfectly fine)
+        // but later in the linker, we need to reference it by its global name.
+        // so somehow we need to run the canonicalizer again only on this one?
         input.latch = Some(direct_reference(instruction_flag(RETURN_NAME)));
 
         self.translate_code_lines();
