@@ -150,6 +150,17 @@ fn test_password() {
     verify_riscv_crate(case, Default::default(), &CoProcessors::base());
 }
 
+#[test]
+#[ignore = "Too slow"]
+fn test_function_pointer() {
+    let case = "function_pointer";
+    verify_riscv_crate(
+        case,
+        [2734, 735, 1999].into_iter().map(|x| x.into()).collect(),
+        &CoProcessors::base(),
+    );
+}
+
 /*
 mstore(0, 666)
 return(0, 32)
