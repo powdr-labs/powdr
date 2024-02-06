@@ -26,11 +26,12 @@ mod R {
     machine FullConstant {
         degree 2;
 
-        let C = |i| match i % 2 {
+        let C: int -> fe = |i| match i % 2 {
             0 => x,
             1 => y,
         };
-        col commit w[2];
+        // Use some weird type just for the sake of it.
+        let w: col[sum(2, |i| 1)];
 
         // This and the next line are the same.
         super::utils::sum(2, |i| w[i]) == 8;

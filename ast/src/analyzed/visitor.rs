@@ -86,7 +86,8 @@ impl<T> ExpressionVisitable<Expression<T>> for FunctionValueDefinition<T> {
         F: FnMut(&mut Expression<T>) -> ControlFlow<B>,
     {
         match self {
-            FunctionValueDefinition::Query(e) | FunctionValueDefinition::Expression(e) => {
+            FunctionValueDefinition::Query(e)
+            | FunctionValueDefinition::Expression(TypedExpression { e, ty: _ }) => {
                 e.visit_expressions_mut(f, o)
             }
             FunctionValueDefinition::Array(array) => array
@@ -101,7 +102,8 @@ impl<T> ExpressionVisitable<Expression<T>> for FunctionValueDefinition<T> {
         F: FnMut(&Expression<T>) -> ControlFlow<B>,
     {
         match self {
-            FunctionValueDefinition::Query(e) | FunctionValueDefinition::Expression(e) => {
+            FunctionValueDefinition::Query(e)
+            | FunctionValueDefinition::Expression(TypedExpression { e, ty: _ }) => {
                 e.visit_expressions(f, o)
             }
             FunctionValueDefinition::Array(array) => array

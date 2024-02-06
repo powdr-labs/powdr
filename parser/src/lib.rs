@@ -224,7 +224,7 @@ mod test {
         match stmt {
             PilStatement::Include(s, _)
             | PilStatement::Namespace(s, _, _)
-            | PilStatement::LetStatement(s, _, _)
+            | PilStatement::LetStatement(s, _, _, _)
             | PilStatement::PolynomialDefinition(s, _, _)
             | PilStatement::PublicDeclaration(s, _, _, _, _)
             | PilStatement::PolynomialConstantDeclaration(s, _)
@@ -385,7 +385,7 @@ mod test {
     constant %N = 16;
 namespace Fibonacci(%N);
     constant %last_row = (%N - 1);
-    let bool = [(|X| (X * (1 - X)))][0];
+    let bool: expr -> expr = (|X| (X * (1 - X)));
     let one_hot = (|i, which| match i { which => 1, _ => 0, });
     pol constant ISLAST(i) { one_hot(i, %last_row) };
     pol commit arr[8];
@@ -437,6 +437,40 @@ namespace Fibonacci(%N);
             let printed = format!(
                 "{}",
                 parse::<GoldilocksField>(Some("input"), input).unwrap_err_to_stderr()
+            );
+            assert_eq!(input.trim(), printed.trim());
+        }
+
+        #[test]
+        fn type_names_simple() {
+            let input = r#"
+    let a: col;
+    let b: int;
+    let c: fe;
+    let d: int[];
+    let e: int[7];
+    let f: (int, fe, fe[3])[2];"#;
+            let printed = format!(
+                "{}",
+                parse::<GoldilocksField>(Some("input"), input).unwrap()
+            );
+            assert_eq!(input.trim(), printed.trim());
+        }
+
+        #[test]
+        fn type_names_complex() {
+            let input = r#"
+    let a: int -> fe;
+    let b: int -> ();
+    let c: -> ();
+    let d: int, int -> fe;
+    let e: int, int -> (fe, int[2]);
+    let f: ((int, fe), fe[2] -> (fe -> int))[];
+    let g: (int -> fe) -> int;
+    let h: int -> (fe -> int);"#;
+            let printed = format!(
+                "{}",
+                parse::<GoldilocksField>(Some("input"), input).unwrap()
             );
             assert_eq!(input.trim(), printed.trim());
         }

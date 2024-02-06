@@ -137,11 +137,11 @@ machine Arith(CLK32_31, operation_id){
     /// returns |n| a(0) * b(n) + ... + a(n) * b(0)
     let product = |a, b| |n| dot_prod(n + 1, a, |i| b(n - i));
     /// Converts array to function, extended by zeros.
-    let array_as_fun = [|arr| |i| if 0 <= i && i < array::len(arr) {
+    let array_as_fun: expr[] -> (int -> expr) = |arr| |i| if 0 <= i && i < array::len(arr) {
         arr[i]
     } else {
         0
-    }][0];
+    };
     let shift_right = |fn, amount| |i| fn(i - amount);
 
     let x1f = array_as_fun(x1);
@@ -151,12 +151,11 @@ machine Arith(CLK32_31, operation_id){
     let y3f = array_as_fun(y3);
 
     // Defined for arguments from 0 to 31 (inclusive)
-    let eq0 = (|| |nr|
+    let eq0: int -> expr = |nr|
         product(x1f, y1f)(nr)
         + x2f(nr)
         - shift_right(y2f, 16)(nr)
-        - y3f(nr)
-    )();
+        - y3f(nr);
     
     // Note that Polygon uses a single 22-Bit column. However, this approach allows for a lower degree (2**16)
     // while still preventing overflows: The 32-bit carry gets added to 32 16-Bit values, which can't overflow

@@ -13,4 +13,5 @@ let map = |arr, f| new(len(arr), |i| f(arr[i]));
 let fold = |arr, initial, folder| std::utils::fold(len(arr), |i| arr[i], initial, folder);
 
 /// Returns the sum of the array elements.
-let sum = [|arr| fold(arr, 0, |a, b| a + b)][0];
+/// This actually also works on field elements, so the type is currently too restrictive.
+let sum: int[] -> int = |arr| fold(arr, 0, |a, b| a + b);

@@ -57,7 +57,11 @@ Part: Part = {
 }
 
 LetStatementAtModuleLevel: SymbolDefinition<T> = {
-    "let" <name:Identifier> "=" <value:Expression> ";" => SymbolDefinition { name, value: SymbolValue::Expression(value) }
+    "let" <name:Identifier> <type_name:(":" <TypeName>)?> "=" <value:Expression> ";" =>
+        SymbolDefinition {
+            name,
+            value: SymbolValue::Expression(ExpressionWithTypeName{ e: value, type_name })
+        }
 }
 
 // ---------------------------- PIL part -----------------------------
@@ -88,7 +92,7 @@ Namespace: PilStatement<T> = {
 }
 
 LetStatement: PilStatement<T> = {
-    <start:@L> "let" <id:Identifier> <expr:( "=" <Expression> )?> => PilStatement::LetStatement(ctx.source_ref(start), id, expr)
+    <start:@L> "let" <id:Identifier> <type_name:(":" <TypeName>)?> <expr:( "=" <Expression> )?> => PilStatement::LetStatement(ctx.source_ref(start), id, type_name, expr)
 }
 
 ConstantDefinition: PilStatement<T> = {
@@ -540,6 +544,36 @@ IfExpression: Box<Expression<T>> = {
         "{" <else_body:BoxedExpression> "}" => Box::new(Expression::IfExpression(IfExpression{<>}))
 }
 
+// ---------------------------- Type Names -----------------------------
+
+TypeName: TypeName<Expression<T>> = {
+    <params:TypeNameTermList> "->" <value:TypeNameTermBox> => TypeName::Function(FunctionTypeName{<>}),
+    TypeNameTerm
+}
+
+TypeNameTermList: Vec<TypeName<Expression<T>>> = {
+    => vec![],
+    <mut list:( <TypeNameTerm> "," )*> <end:TypeNameTerm>  => { list.push(end); list }
+}
+
+TypeNameTermBox: Box<TypeName<Expression<T>>> = {
+    TypeNameTerm => Box::new(<>)
+}
+
+TypeNameTerm: TypeName<Expression<T>> = {
+    "bool" => TypeName::Bool,
+    "int" => TypeName::Int,
+    "fe" => TypeName::Fe,
+    "string" => TypeName::String,
+    "col" => TypeName::Col,
+    "expr" => TypeName::Expr,
+    "constr" => TypeName::Constr,
+    <base:TypeNameTerm> "[" <length:Expression?> "]" => TypeName::Array(ArrayTypeName{base: Box::new(base), length}),
+    "(" <mut items:( <TypeNameTerm> "," )+> <end:TypeNameTerm> ")" => { items.push(end); TypeName::Tuple(TupleTypeName{items}) },
+    "(" ")" => TypeName::Tuple(TupleTypeName{items: vec![]}),
+    "(" <TypeName> ")",
+}
+
 // ---------------------------- Terminals -----------------------------
 
 
@@ -561,6 +595,8 @@ SpecialIdentifier: &'input str = {
     "insn",
     "int",
     "fe",
+    "expr",
+    "constr",
     "bool",
 }
 
