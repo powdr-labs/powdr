@@ -105,7 +105,7 @@ where
                     source,
                     name,
                     SymbolKind::Poly(PolynomialType::Intermediate),
-                    Some(Type::col()),
+                    Some(Type::Expr),
                     Some(FunctionDefinition::Expression(value)),
                 ),
             PilStatement::PublicDeclaration(source, name, polynomial, array_index, index) => {
@@ -232,23 +232,23 @@ where
             }
             Some(value) => {
                 // TODO if we have proper type deduction here in the future, we can rely only on the type.
-                let (ty, symbol_kind) = if ty == Some(Type::col())
-                    || (ty.is_none()
-                        && matches!(&value, parsed::Expression::LambdaExpression(lambda) if lambda.params.len() == 1))
-                {
-                    (
-                        Some(Type::col()),
-                        SymbolKind::Poly(PolynomialType::Constant),
-                    )
-                } else if ty == Some(Type::Fe)
-                    || (ty.is_none() && self.evaluate_expression(value.clone()).is_ok())
-                {
-                    // Value evaluates to a constant number => treat it as a constant
-                    (Some(Type::Fe), SymbolKind::Constant())
-                } else {
-                    // Otherwise, treat it as "generic definition"
-                    (ty, SymbolKind::Other())
-                };
+
+                let ty = ty.or_else(|| {
+                    if matches!(&value, parsed::Expression::LambdaExpression(lambda) if lambda.params.len() == 1) {
+                        Some(Type::col())
+                    } else if self.evaluate_expression(value.clone()).is_ok() {
+                        // Value evaluates to a constant number => treat it as a constant
+                        Some(Type::Fe)
+                    } else {
+                        // Otherwise, treat it as "generic definition"
+                        None
+                    }
+                });
+                let symbol_kind = ty
+                    .as_ref()
+                    .map(Self::symbol_kind_from_type)
+                    .unwrap_or(SymbolKind::Other());
+
                 self.handle_symbol_definition(
                     source,
                     name,
@@ -257,6 +257,23 @@ where
                     Some(FunctionDefinition::Expression(value)),
                 )
             }
+        }
+    }
+
+    fn symbol_kind_from_type(ty: &Type) -> SymbolKind {
+        match ty {
+            Type::Expr => SymbolKind::Poly(PolynomialType::Intermediate),
+            Type::Fe => SymbolKind::Constant(),
+            t if *t == Type::col() => SymbolKind::Poly(PolynomialType::Constant),
+            Type::Array(ArrayType { base, length: _ }) if base.as_ref() == &Type::col() => {
+                // Array of fixed columns
+                SymbolKind::Poly(PolynomialType::Constant)
+            }
+            Type::Array(ArrayType { base, length: _ }) if base.as_ref() == &Type::Expr => {
+                SymbolKind::Poly(PolynomialType::Intermediate)
+            }
+            // Otherwise, treat it as "generic definition"
+            _ => SymbolKind::Other(),
         }
     }
 

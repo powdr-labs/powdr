@@ -6,7 +6,7 @@ use std::{collections::HashMap, fmt::Display, rc::Rc};
 use itertools::Itertools;
 use powdr_ast::{
     analyzed::{
-        types::{Type, TypedExpression},
+        types::{ArrayType, Type, TypedExpression},
         AlgebraicExpression, AlgebraicReference, Analyzed, Expression, FunctionValueDefinition,
         Identity, IdentityKind, PolynomialReference, PolynomialType, PublicDeclaration, Reference,
         StatementIdentifier, Symbol, SymbolKind,
@@ -59,7 +59,12 @@ pub fn condense<T: FieldElement>(
                 let Some(FunctionValueDefinition::Expression(e)) = definition else {
                     panic!("Expected expression")
                 };
-                assert!(e.ty.is_none() || e.ty == Some(Type::col()));
+                assert!(
+                    e.ty.is_none() ||
+                    e.ty == Some(Type::Expr) ||
+                    matches!(&e.ty, Some(Type::Array(ArrayType{base, ..})) if base.as_ref() == &Type::Expr),
+                    "Intermediate column type has to be expr or expr[], but got: {}", e.ty.as_ref().map(|t| t.to_string()).unwrap_or_default()
+                );
                 Some((
                     name.clone(),
                     (symbol.clone(), condenser.condense_expression(&e.e)),
