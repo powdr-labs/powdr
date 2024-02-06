@@ -14,6 +14,7 @@ powdr-number = { path = "../number" }
 powdr-parser = { path = "../parser" }
 
 itertools = "^0.10"
+lazy_static = "1.4.0"
 log = "0.4.18"
 
 [dev-dependencies]
