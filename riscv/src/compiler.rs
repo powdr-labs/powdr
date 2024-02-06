@@ -239,13 +239,13 @@ fn replace_dynamic_label_references(statements: &mut Vec<Statement>, data_labels
     lui	a0, %hi(LABEL)
     addi	s10, a0, %lo(LABEL)
     -
-    turn this into the pseudo-riscv-instruction
-    load_dynamic s10, LABEL
+    turn this into the pseudoinstruction
+    li s10, LABEL
     which is then turned into
 
     s10 <== load_label(LABEL)
 
-    It gets more complicated by the fact that sometimes, labels
+    It gets complicated by the fact that sometimes, labels
     and debugging directives occur between the two statements
     matching that pattern...
     */
@@ -307,7 +307,7 @@ fn replace_dynamic_label_reference(
         return None;
     }
     Some(Statement::Instruction(
-        "load_dynamic".to_string(),
+        "li".to_string(),
         vec![
             Argument::Register(*r2),
             Argument::Expression(Expression::Symbol(label1.clone())),
@@ -1433,12 +1433,6 @@ fn process_instruction(instr: &str, args: &[Argument], coprocessors: &CoProcesso
         }
         "fence" | "fence.i" | "nop" => vec![],
         "unimp" => vec!["fail;".to_string()],
-
-        // Special instruction that is inserted to allow dynamic label references
-        "load_dynamic" => {
-            let (rd, label) = rl(args);
-            only_if_no_write_to_zero(format!("{rd} <== load_label({label});"), rd)
-        }
 
         // atomic instructions
         insn if insn.starts_with("amoadd.w") => {
