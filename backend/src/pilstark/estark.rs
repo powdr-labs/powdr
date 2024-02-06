@@ -1,7 +1,7 @@
 use std::iter::{once, repeat};
 use std::time::Instant;
 
-use crate::{pilstark, BackendImpl};
+use crate::{pilstark, BackendImpl, Error};
 use powdr_ast::analyzed::Analyzed;
 use powdr_number::{BigInt, DegreeType, FieldElement, GoldilocksField};
 
@@ -48,13 +48,34 @@ impl<F: FieldElement> BackendImpl<F> for EStark {
         Self { params }
     }
 
+    fn add_verification_key(
+        &mut self,
+        _pil: &Analyzed<F>,
+        _fixed: &[(String, Vec<F>)],
+        _vkey: Vec<u8>,
+    ) {
+        unimplemented!("eSTARK backend does not yet support verification key");
+    }
+
+    fn verification_key(
+        &self,
+        _pil: &Analyzed<F>,
+        _fixed: &[(String, Vec<F>)],
+    ) -> Result<Vec<u8>, Error> {
+        unimplemented!("eSTARK backend does not yet support verification key");
+    }
+
+    fn verify(&self, _proof: &crate::Proof, _instances: &[Vec<F>]) -> Result<(), Error> {
+        unimplemented!("eSTARK backend does not yet support separate proof verification");
+    }
+
     fn prove(
         &self,
         pil: &Analyzed<F>,
         fixed: &[(String, Vec<F>)],
         witness: &[(String, Vec<F>)],
         prev_proof: Option<crate::Proof>,
-    ) -> (Option<crate::Proof>, Option<String>) {
+    ) -> Result<(crate::Proof, Option<String>), Error> {
         if prev_proof.is_some() {
             unimplemented!("aggregration is not implemented");
         }
@@ -99,8 +120,9 @@ impl<F: FieldElement> BackendImpl<F> for EStark {
 
         let const_pols = to_starky_pols_array(&fixed, &pil, PolKind::Constant);
 
+        // TODO error
         if witness.is_empty() {
-            return (None, None);
+            return Err(Error::EmptyWitness);
         }
 
         let cm_pols = to_starky_pols_array(witness, &pil, PolKind::Commit);
@@ -138,10 +160,10 @@ impl<F: FieldElement> BackendImpl<F> for EStark {
         )
         .unwrap());
 
-        (
-            Some(serde_json::to_vec(&starkproof).unwrap()),
+        Ok((
+            serde_json::to_vec(&starkproof).unwrap(),
             Some(serde_json::to_string(&pil).unwrap()),
-        )
+        ))
     }
 }
 

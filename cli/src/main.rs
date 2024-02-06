@@ -12,7 +12,7 @@ use powdr_number::{Bn254Field, FieldElement, GoldilocksField};
 use powdr_pipeline::{Pipeline, Stage};
 use powdr_riscv::continuations::{rust_continuations, rust_continuations_dry_run};
 use powdr_riscv::{compile_riscv_asm, compile_rust};
-use std::io::{self, BufReader, BufWriter};
+use std::io::{self, BufReader, BufWriter, Read};
 use std::path::PathBuf;
 use std::{borrow::Cow, fs, io::Write, path::Path};
 use strum::{Display, EnumString, EnumVariantNames};
@@ -281,7 +281,70 @@ enum Commands {
         #[arg(long)]
         proof: Option<String>,
 
+        /// File containing previously generated verification key.
+        #[arg(long)]
+        vkey: Option<String>,
+
         /// File containing previously generated setup parameters.
+        #[arg(long)]
+        params: Option<String>,
+    },
+
+    Verify {
+        /// Input PIL file
+        file: String,
+
+        /// Directory to find the fixed values
+        #[arg(short, long)]
+        #[arg(default_value_t = String::from("."))]
+        dir: String,
+
+        /// The field to use
+        #[arg(long)]
+        #[arg(default_value_t = FieldArgument::Gl)]
+        #[arg(value_parser = clap_enum_variants!(FieldArgument))]
+        field: FieldArgument,
+
+        /// Generate a proof with a given backend.
+        #[arg(short, long)]
+        #[arg(value_parser = clap_enum_variants!(BackendType))]
+        backend: BackendType,
+
+        /// File containing the proof.
+        #[arg(long)]
+        proof: String,
+
+        /// File containing the verification ley.
+        #[arg(long)]
+        vkey: String,
+
+        /// File containing the params.
+        #[arg(long)]
+        params: Option<String>,
+    },
+
+    VerificationKey {
+        /// Input PIL file
+        file: String,
+
+        /// Directory to find the fixed values
+        #[arg(short, long)]
+        #[arg(default_value_t = String::from("."))]
+        dir: String,
+
+        /// The field to use
+        #[arg(long)]
+        #[arg(default_value_t = FieldArgument::Gl)]
+        #[arg(value_parser = clap_enum_variants!(FieldArgument))]
+        field: FieldArgument,
+
+        /// Chosen backend.
+        #[arg(short, long)]
+        #[arg(value_parser = clap_enum_variants!(BackendType))]
+        backend: BackendType,
+
+        /// File containing previously generated setup parameters.
+        /// This will be needed for SNARK verification keys but not for STARK.
         #[arg(long)]
         params: Option<String>,
     },
@@ -496,11 +559,40 @@ fn run_command(command: Commands) {
             field,
             backend,
             proof,
+            vkey,
             params,
         } => {
             let pil = Path::new(&file);
             let dir = Path::new(&dir);
-            call_with_field!(read_and_prove::<field>(pil, dir, &backend, proof, params))
+            call_with_field!(read_and_prove::<field>(
+                pil, dir, &backend, proof, vkey, params
+            ))
+        }
+        Commands::Verify {
+            file,
+            dir,
+            field,
+            backend,
+            proof,
+            params,
+            vkey,
+        } => {
+            let pil = Path::new(&file);
+            let dir = Path::new(&dir);
+            call_with_field!(read_and_verify::<field>(
+                pil, dir, &backend, proof, params, vkey
+            ))
+        }
+        Commands::VerificationKey {
+            file,
+            dir,
+            field,
+            backend,
+            params,
+        } => {
+            let pil = Path::new(&file);
+            let dir = Path::new(&dir);
+            call_with_field!(verification_key::<field>(pil, dir, &backend, params))
         }
         Commands::Setup {
             size,
@@ -518,6 +610,32 @@ fn run_command(command: Commands) {
         }
         std::process::exit(1);
     }
+}
+
+fn verification_key<T: FieldElement>(
+    file: &Path,
+    dir: &Path,
+    backend_type: &BackendType,
+    params: Option<String>,
+) -> Result<(), Vec<String>> {
+    let mut pipeline = Pipeline::<T>::default()
+        .from_file(file.to_path_buf())
+        .read_constants(dir)
+        .with_setup_file(params.map(PathBuf::from))
+        .with_backend(*backend_type);
+
+    let vkey = pipeline.verification_key()?;
+
+    write_verification_key_to_fs(vkey, dir);
+
+    Ok(())
+}
+
+fn write_verification_key_to_fs(vkey: Vec<u8>, output_dir: &Path) {
+    let mut vkey_file = fs::File::create(output_dir.join("vkey.bin")).unwrap();
+    let mut vkey_writer = BufWriter::new(&mut vkey_file);
+    vkey_writer.write_all(&vkey).unwrap();
+    log::info!("Wrote vkey.bin.");
 }
 
 fn setup<F: FieldElement>(size: u64, dir: String, backend_type: BackendType) {
@@ -699,15 +817,52 @@ fn read_and_prove<T: FieldElement>(
     dir: &Path,
     backend_type: &BackendType,
     proof_path: Option<String>,
+    vkey: Option<String>,
     params: Option<String>,
 ) -> Result<(), Vec<String>> {
     Pipeline::<T>::default()
         .from_file(file.to_path_buf())
+        .with_output(dir.to_path_buf(), true)
         .read_generated_witness(dir)
         .with_setup_file(params.map(PathBuf::from))
+        .with_vkey_file(vkey.map(PathBuf::from))
         .with_existing_proof_file(proof_path.map(PathBuf::from))
         .with_backend(*backend_type)
         .proof()?;
+    Ok(())
+}
+
+fn read_and_verify<T: FieldElement>(
+    file: &Path,
+    dir: &Path,
+    backend_type: &BackendType,
+    proof: String,
+    params: Option<String>,
+    vkey: String,
+) -> Result<(), Vec<String>> {
+    let proof = Path::new(&proof);
+    let vkey = Path::new(&vkey).to_path_buf();
+
+    let proof = {
+        let mut buf = Vec::new();
+        fs::File::open(proof)
+            .unwrap()
+            .read_to_end(&mut buf)
+            .unwrap();
+        buf
+    };
+
+    let mut pipeline = Pipeline::<T>::default()
+        .from_file(file.to_path_buf())
+        .read_constants(dir)
+        .with_setup_file(params.map(PathBuf::from))
+        .with_vkey_file(Some(vkey))
+        .with_backend(*backend_type);
+
+    // TODO add support for publics
+    pipeline.verify(proof, &[vec![]])?;
+    println!("Proof is valid!");
+
     Ok(())
 }
 
@@ -764,6 +919,7 @@ mod test {
                 field: FieldArgument::Bn254,
                 backend: BackendType::Halo2Mock,
                 proof: None,
+                vkey: None,
                 params: None,
             };
             run_command(prove_command);

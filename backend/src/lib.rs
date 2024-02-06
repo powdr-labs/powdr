@@ -66,13 +66,34 @@ struct ConcreteBackendWithoutSetup<B>(B);
 
 /// Concrete implementation for backends with setup.
 impl<F: FieldElement, B: BackendImpl<F>> Backend<F> for ConcreteBackendWithoutSetup<B> {
+    fn add_verification_key(
+        &mut self,
+        pil: &Analyzed<F>,
+        fixed: &[(String, Vec<F>)],
+        vkey: Vec<u8>,
+    ) {
+        self.0.add_verification_key(pil, fixed, vkey);
+    }
+
+    fn verification_key(
+        &self,
+        pil: &Analyzed<F>,
+        fixed: &[(String, Vec<F>)],
+    ) -> Result<Vec<u8>, Error> {
+        self.0.verification_key(pil, fixed)
+    }
+
+    fn verify(&self, proof: &Proof, instances: &[Vec<F>]) -> Result<(), Error> {
+        self.0.verify(proof, instances)
+    }
+
     fn prove(
         &self,
         pil: &Analyzed<F>,
         fixed: &[(String, Vec<F>)],
         witness: &[(String, Vec<F>)],
         prev_proof: Option<Proof>,
-    ) -> (Option<Proof>, Option<String>) {
+    ) -> Result<(Proof, Option<String>), Error> {
         self.0.prove(pil, fixed, witness, prev_proof)
     }
 
@@ -104,13 +125,34 @@ struct ConcreteBackendWithSetup<B>(B);
 
 /// Concrete implementation for backends with setup.
 impl<F: FieldElement, B: BackendImplWithSetup<F>> Backend<F> for ConcreteBackendWithSetup<B> {
+    fn add_verification_key(
+        &mut self,
+        pil: &Analyzed<F>,
+        fixed: &[(String, Vec<F>)],
+        vkey: Vec<u8>,
+    ) {
+        self.0.add_verification_key(pil, fixed, vkey);
+    }
+
+    fn verification_key(
+        &self,
+        pil: &Analyzed<F>,
+        fixed: &[(String, Vec<F>)],
+    ) -> Result<Vec<u8>, Error> {
+        self.0.verification_key(pil, fixed)
+    }
+
+    fn verify(&self, proof: &Proof, instances: &[Vec<F>]) -> Result<(), Error> {
+        self.0.verify(proof, instances)
+    }
+
     fn prove(
         &self,
         pil: &Analyzed<F>,
         fixed: &[(String, Vec<F>)],
         witness: &[(String, Vec<F>)],
         prev_proof: Option<Proof>,
-    ) -> (Option<Proof>, Option<String>) {
+    ) -> Result<(Proof, Option<String>), Error> {
         self.0.prove(pil, fixed, witness, prev_proof)
     }
 
@@ -123,8 +165,16 @@ impl<F: FieldElement, B: BackendImplWithSetup<F>> Backend<F> for ConcreteBackend
 pub enum Error {
     #[error("input/output error")]
     IO(#[from] std::io::Error),
-    #[error("the backend has not setup operations")]
+    #[error("the witness is empty")]
+    EmptyWitness,
+    #[error("the backend has no setup operations")]
     NoSetupAvailable,
+    #[error("proof generation failed")]
+    ProofFailed(String),
+    #[error("proof verification failed")]
+    VerificationFailed(String),
+    #[error("verification key generation failed")]
+    VerificationKeyFailed(String),
 }
 
 pub type Proof = Vec<u8>;
@@ -136,6 +186,21 @@ pub type Proof = Vec<u8>;
 
 /// Dynamic interface for a backend.
 pub trait Backend<F: FieldElement> {
+    fn add_verification_key(
+        &mut self,
+        pil: &Analyzed<F>,
+        fixed: &[(String, Vec<F>)],
+        vkey: Vec<u8>,
+    );
+
+    fn verification_key(
+        &self,
+        pil: &Analyzed<F>,
+        fixed: &[(String, Vec<F>)],
+    ) -> Result<Vec<u8>, Error>;
+
+    fn verify(&self, proof: &Proof, instances: &[Vec<F>]) -> Result<(), Error>;
+
     /// Perform the proving.
     ///
     /// If prev_proof is provided, proof aggregation is performed.
@@ -148,7 +213,7 @@ pub trait Backend<F: FieldElement> {
         fixed: &[(String, Vec<F>)],
         witness: &[(String, Vec<F>)],
         prev_proof: Option<Proof>,
-    ) -> (Option<Proof>, Option<String>);
+    ) -> Result<(Proof, Option<String>), Error>;
 
     /// Write the prover setup to a file, so that it can be loaded later.
     fn write_setup(&self, output: &mut dyn io::Write) -> Result<(), Error>;
@@ -171,13 +236,28 @@ pub trait BackendFactory<F: FieldElement> {
 trait BackendImpl<F: FieldElement> {
     fn new(degree: DegreeType) -> Self;
 
+    fn add_verification_key(
+        &mut self,
+        pil: &Analyzed<F>,
+        fixed: &[(String, Vec<F>)],
+        vkey: Vec<u8>,
+    );
+
+    fn verification_key(
+        &self,
+        pil: &Analyzed<F>,
+        fixed: &[(String, Vec<F>)],
+    ) -> Result<Vec<u8>, Error>;
+
+    fn verify(&self, proof: &Proof, instances: &[Vec<F>]) -> Result<(), Error>;
+
     fn prove(
         &self,
         pil: &Analyzed<F>,
         fixed: &[(String, Vec<F>)],
         witness: &[(String, Vec<F>)],
         prev_proof: Option<Proof>,
-    ) -> (Option<Proof>, Option<String>);
+    ) -> Result<(Proof, Option<String>), Error>;
 }
 
 /// Trait implemented by backends that have a setup phase that must be saved to

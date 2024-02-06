@@ -1,7 +1,7 @@
 use halo2_proofs::{
     dev::MockProver,
     halo2curves::bn256::{Fr, G1Affine},
-    plonk::{create_proof, keygen_pk, keygen_vk, verify_proof, Circuit, ProvingKey},
+    plonk::{create_proof, keygen_pk, keygen_vk, verify_proof, Circuit, ProvingKey, VerifyingKey},
     poly::{
         commitment::{Params, ParamsProver},
         kzg::{
@@ -9,10 +9,11 @@ use halo2_proofs::{
             multiopen::{ProverGWC, VerifierGWC},
             strategy::AccumulatorStrategy,
         },
-        VerificationStrategy,
     },
     transcript::{EncodedChallenge, TranscriptReadBuffer, TranscriptWriterBuffer},
+    SerdeFormat,
 };
+use polyexen::plaf::backends::halo2::PlafH2Circuit;
 use polyexen::plaf::PlafDisplayBaseTOML;
 use powdr_ast::analyzed::Analyzed;
 use powdr_number::{BigInt, DegreeType, FieldElement};
@@ -22,7 +23,10 @@ use snark_verifier::{
 };
 
 use crate::aggregation;
-use crate::circuit_builder::analyzed_to_circuit;
+use crate::circuit_builder::{
+    analyzed_to_circuit_with_witness, analyzed_to_circuit_with_zeroed_witness, analyzed_to_plaf,
+    powdr_ff_to_fr,
+};
 
 use itertools::Itertools;
 use rand::rngs::OsRng;
@@ -38,6 +42,7 @@ pub use halo2_proofs::poly::kzg::commitment::ParamsKZG;
 /// We use KZG ([GWC variant](https://eprint.iacr.org/2019/953)) and Keccak256
 pub struct Halo2Prover {
     params: ParamsKZG<Bn256>,
+    vkey: Option<VerifyingKey<G1Affine>>,
 }
 
 impl Halo2Prover {
@@ -45,13 +50,30 @@ impl Halo2Prover {
         let degree = DegreeType::BITS - size.leading_zeros() + 1;
         Self {
             params: ParamsKZG::<Bn256>::new(degree),
+            vkey: None,
         }
     }
 
     pub fn new_from_setup(input: &mut impl io::Read) -> Result<Self, io::Error> {
         let params = ParamsKZG::<Bn256>::read(input)?;
 
-        Ok(Self { params })
+        Ok(Self { params, vkey: None })
+    }
+
+    pub fn add_verification_key<F: FieldElement>(
+        &mut self,
+        pil: &Analyzed<F>,
+        fixed: &[(String, Vec<F>)],
+        vkey: Vec<u8>,
+    ) {
+        let plaf = analyzed_to_plaf(pil, fixed);
+        let vkey: VerifyingKey<G1Affine> = VerifyingKey::<G1Affine>::from_bytes::<PlafH2Circuit>(
+            &vkey,
+            SerdeFormat::Processed,
+            plaf,
+        )
+        .unwrap();
+        self.vkey = Some(vkey);
     }
 
     pub fn write_setup(&self, output: &mut impl io::Write) -> Result<(), io::Error> {
@@ -63,7 +85,7 @@ impl Halo2Prover {
         pil: &Analyzed<F>,
         fixed: &[(String, Vec<F>)],
         witness: &[(String, Vec<F>)],
-    ) -> Vec<u8> {
+    ) -> Result<Vec<u8>, String> {
         // TODO this is hacky
         let degree = usize::BITS - pil.degree().leading_zeros() + 1;
         let params = {
@@ -74,30 +96,40 @@ impl Halo2Prover {
 
         log::info!("Starting proof generation...");
 
-        let (circuit, publics) = analyzed_to_circuit(pil, fixed, witness);
+        let plaf_circuit = analyzed_to_plaf(pil, fixed);
+        let (circuit, publics) = analyzed_to_circuit_with_witness(pil, plaf_circuit, witness);
 
         log::debug!("{}", PlafDisplayBaseTOML(&circuit.plaf));
 
-        log::info!("Generating VK and PK for snark...");
-        let vk = keygen_vk(&params, &circuit).unwrap();
-        let pk = keygen_pk(&params, vk, &circuit).unwrap();
+        log::info!("Generating PK for snark...");
+        let vk = match self.vkey {
+            Some(ref vk) => vk.clone(),
+            None => keygen_vk(&params, &circuit).unwrap(),
+        };
+        let pk = keygen_pk(&params, vk.clone(), &circuit).unwrap();
 
         log::info!("Generating proof...");
         let start = Instant::now();
 
-        let proof = gen_proof::<
-            _,
-            _,
-            aggregation::PoseidonTranscript<NativeLoader, _>,
-            aggregation::PoseidonTranscript<NativeLoader, _>,
-        >(&params, &pk, circuit, publics);
+        let proof = gen_proof::<_, _, aggregation::PoseidonTranscript<NativeLoader, _>>(
+            &params, &pk, circuit, &publics,
+        );
 
         let duration = start.elapsed();
         log::info!("Time taken: {:?}", duration);
 
+        match self.verify_inner::<_, aggregation::PoseidonTranscript<NativeLoader, _>>(
+            &vk, &params, &proof, &publics,
+        ) {
+            Ok(_) => {}
+            Err(e) => {
+                return Err(e.to_string());
+            }
+        }
+
         log::info!("Proof generation done.");
 
-        proof
+        Ok(proof)
     }
 
     pub fn prove_aggr<F: FieldElement>(
@@ -106,7 +138,7 @@ impl Halo2Prover {
         fixed: &[(String, Vec<F>)],
         witness: &[(String, Vec<F>)],
         proof: Vec<u8>,
-    ) -> Vec<u8> {
+    ) -> Result<Vec<u8>, String> {
         log::info!("Starting proof aggregation...");
 
         // TODO this is hacky
@@ -118,7 +150,9 @@ impl Halo2Prover {
         };
 
         log::info!("Generating circuit for app snark...");
-        let (circuit_app, publics) = analyzed_to_circuit(pil, fixed, witness);
+        let plaf_circuit_app = analyzed_to_plaf(pil, fixed);
+        let (circuit_app, publics) =
+            analyzed_to_circuit_with_witness(pil, plaf_circuit_app, witness);
 
         assert_eq!(publics.len(), 1);
         if !publics[0].is_empty() {
@@ -142,7 +176,7 @@ impl Halo2Prover {
 
         log::info!("Generating VK and PK for compression snark...");
         let vk_aggr = keygen_vk(&self.params, &agg_circuit).unwrap();
-        let pk_aggr = keygen_pk(&self.params, vk_aggr, &agg_circuit).unwrap();
+        let pk_aggr = keygen_pk(&self.params, vk_aggr.clone(), &agg_circuit).unwrap();
 
         log::info!("Generating compressed snark verifier...");
         let deployment_code = aggregation::gen_aggregation_evm_verifier(
@@ -156,22 +190,33 @@ impl Halo2Prover {
         let start = Instant::now();
         let snark = aggregation::Snark::new(protocol_app, vec![], proof);
         let agg_circuit_with_proof = aggregation::AggregationCircuit::new(&params_app, [snark]);
-        let proof =
-            gen_proof::<_, _, EvmTranscript<G1Affine, _, _, _>, EvmTranscript<G1Affine, _, _, _>>(
-                &self.params,
-                &pk_aggr,
-                agg_circuit_with_proof.clone(),
-                agg_circuit_with_proof.instances(),
-            );
+        let proof = gen_proof::<_, _, EvmTranscript<G1Affine, _, _, _>>(
+            &self.params,
+            &pk_aggr,
+            agg_circuit_with_proof.clone(),
+            &agg_circuit_with_proof.instances(),
+        );
         let duration = start.elapsed();
         log::info!("Time taken: {:?}", duration);
+
+        match self.verify_inner::<_, EvmTranscript<G1Affine, _, _, _>>(
+            &vk_aggr,
+            &self.params,
+            &proof,
+            &publics,
+        ) {
+            Ok(_) => {}
+            Err(e) => {
+                return Err(e.to_string());
+            }
+        }
 
         log::info!("Verifying aggregated proof in the EVM...");
         aggregation::evm_verify(deployment_code, agg_circuit_with_proof.instances(), &proof);
 
         log::info!("Proof aggregation done.");
 
-        proof
+        Ok(proof)
     }
 
     pub fn assert_field_is_compatible<F: FieldElement>() {
@@ -179,20 +224,95 @@ impl Halo2Prover {
             panic!("powdr modulus doesn't match halo2 modulus. Make sure you are using Bn254");
         }
     }
+
+    fn verification_key_inner<F: FieldElement>(
+        &self,
+        pil: &Analyzed<F>,
+        fixed: &[(String, Vec<F>)],
+    ) -> Result<VerifyingKey<G1Affine>, String> {
+        let plaf_circuit = analyzed_to_plaf(pil, fixed);
+        let circuit = analyzed_to_circuit_with_zeroed_witness(plaf_circuit, pil);
+        match keygen_vk(&self.params, &circuit) {
+            Ok(vkey) => Ok(vkey),
+            Err(e) => Err(e.to_string()),
+        }
+    }
+
+    pub fn verification_key<F: FieldElement>(
+        &self,
+        pil: &Analyzed<F>,
+        fixed: &[(String, Vec<F>)],
+    ) -> Result<Vec<u8>, String> {
+        let vk = self.verification_key_inner(pil, fixed)?;
+        Ok(vk.to_bytes(SerdeFormat::Processed))
+    }
+
+    fn verify_inner<
+        E: EncodedChallenge<G1Affine>,
+        TR: TranscriptReadBuffer<Cursor<Vec<u8>>, G1Affine, E>,
+    >(
+        &self,
+        vkey: &VerifyingKey<G1Affine>,
+        params: &ParamsKZG<Bn256>,
+        proof: &[u8],
+        instances: &[Vec<Fr>],
+    ) -> Result<(), String> {
+        let instances = instances
+            .iter()
+            .map(|instances| instances.as_slice())
+            .collect_vec();
+
+        let mut transcript = TR::init(Cursor::new(proof.to_owned()));
+
+        let res = verify_proof::<_, VerifierGWC<_>, _, TR, _>(
+            params.verifier_params(),
+            vkey,
+            AccumulatorStrategy::new(self.params.verifier_params()),
+            &[instances.as_slice()],
+            &mut transcript,
+        );
+
+        match res {
+            Err(e) => Err(e.to_string()),
+            Ok(_) => Ok(()),
+        }
+    }
+
+    pub fn verify<F: FieldElement>(
+        &self,
+        proof: &[u8],
+        instances: &[Vec<F>],
+    ) -> Result<(), String> {
+        let instances = instances
+            .iter()
+            .map(|instance| {
+                instance
+                    .iter()
+                    .map(|x| powdr_ff_to_fr(*x))
+                    .collect::<Vec<_>>()
+            })
+            .collect_vec();
+
+        self.verify_inner::<_, aggregation::PoseidonTranscript<NativeLoader, _>>(
+            self.vkey.as_ref().unwrap(),
+            &self.params,
+            proof,
+            &instances,
+        )
+    }
 }
 
 fn gen_proof<
     C: Circuit<Fr>,
     E: EncodedChallenge<G1Affine>,
-    TR: TranscriptReadBuffer<Cursor<Vec<u8>>, G1Affine, E>,
     TW: TranscriptWriterBuffer<Vec<u8>, G1Affine, E>,
 >(
     params: &ParamsKZG<Bn256>,
     pk: &ProvingKey<G1Affine>,
     circuit: C,
-    instances: Vec<Vec<Fr>>,
+    instances: &[Vec<Fr>],
 ) -> Vec<u8> {
-    MockProver::run(params.k(), &circuit, instances.clone())
+    MockProver::run(params.k(), &circuit, instances.to_vec().clone())
         .unwrap()
         .assert_satisfied();
 
@@ -213,21 +333,6 @@ fn gen_proof<
         .unwrap();
         transcript.finalize()
     };
-
-    let accept = {
-        let mut transcript = TR::init(Cursor::new(proof.clone()));
-        VerificationStrategy::<_, VerifierGWC<_>>::finalize(
-            verify_proof::<_, VerifierGWC<_>, _, TR, _>(
-                params.verifier_params(),
-                pk.get_vk(),
-                AccumulatorStrategy::new(params.verifier_params()),
-                &[instances.as_slice()],
-                &mut transcript,
-            )
-            .unwrap(),
-        )
-    };
-    assert!(accept);
 
     proof
 }
