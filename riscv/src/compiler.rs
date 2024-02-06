@@ -939,8 +939,13 @@ fn process_instruction(instr: &str, args: &[Argument], coprocessors: &CoProcesso
             // is for loading values as is, and the later is for loading PC
             // relative values. But since we work on a higher abstraction level,
             // for us they are the same thing.
-            let (rd, imm) = ri(args);
-            only_if_no_write_to_zero(format!("{rd} <=X= {imm};"), rd)
+            if let [_, Argument::Expression(Expression::Symbol(_))] = args {
+                let (rd, label) = rl(args);
+                only_if_no_write_to_zero(format!("{rd} <== load_label({label});"), rd)
+            } else {
+                let (rd, imm) = ri(args);
+                only_if_no_write_to_zero(format!("{rd} <=X= {imm};"), rd)
+            }
         }
         // TODO check if it is OK to clear the lower order bits
         "lui" => {
@@ -1278,9 +1283,9 @@ fn process_instruction(instr: &str, args: &[Argument], coprocessors: &CoProcesso
             } else {
                 let (rd, label) = rl(args);
                 let statement = if rd.is_zero() {
-                    format!("tmp1 <== jump({label})")
+                    format!("tmp1 <== jump({label});")
                 } else {
-                    format!("{rd} <== jump({label})")
+                    format!("{rd} <== jump({label});")
                 };
                 vec![statement]
             }
