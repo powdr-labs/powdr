@@ -78,12 +78,7 @@ impl<T: FieldElement> TypeChecker<T> {
                         Err(e) => errors.extend(e),
                     }
                 }
-                MachineStatement::LinkDeclaration(LinkDeclaration {
-                    source,
-                    flag,
-                    params,
-                    to,
-                }) => {
+                MachineStatement::LinkDeclaration(source, LinkDeclaration { flag, params, to }) => {
                     links.push(LinkDefinitionStatement {
                         source,
                         flag,
