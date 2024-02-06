@@ -500,9 +500,15 @@ impl TypeChecker {
         //     "Unifying function call \"{function_type}\" with \"{} -> {value}\"",
         //     args.iter().format(", ")
         // );
-        // TODO maybe instead of trying and rolling back, we could store
-        // the implicit conversion ("T1 -> (T1 | T2)") and the first try to solve without conversions
-        // and later on inject them?
+
+        // TODO If we change unify_type to not change state (but instead return an additional substitution
+        // and bounds), then we do not have to do the snapshot.
+
+        // TODO This is more or less the algorithm by  Luo, which depends on the order
+        // of evaluation. A better version is "Extending Hindley-Milner Type Inference with
+        // "Coercive Structural Subtyping" by "Dmitriy Traytel, Stefan Berghofer, and Tobias Nipkow",
+        // which does HM and collects subtying constraints during the process and then solves
+        // these constraints only at the end.
         let snapshot = self.state.clone();
         match self.unify_types(
             function_type.clone(),
