@@ -62,7 +62,10 @@ pub fn condense<T: FieldElement>(
                 assert!(e.ty.is_none() || e.ty == Some(Type::col()));
                 Some((
                     name.clone(),
-                    (symbol.clone(), condenser.condense_expression(&e.e)),
+                    (
+                        symbol.clone(),
+                        condenser.condense_to_algebraic_expression(&e.e),
+                    ),
                 ))
             } else {
                 None
@@ -116,7 +119,7 @@ impl<T: FieldElement> Condenser<T> {
         identity: &Identity<Expression<T>>,
     ) -> Vec<Identity<AlgebraicExpression<T>>> {
         if identity.kind == IdentityKind::Polynomial {
-            self.condense_expression_to_constraints(identity.expression_for_poly_id())
+            self.condense_to_constraints(identity.expression_for_poly_id())
                 .into_iter()
                 .map(|constraint| Identity {
                     id: identity.id,
@@ -130,13 +133,19 @@ impl<T: FieldElement> Condenser<T> {
                 })
                 .collect()
         } else {
-            vec![Identity {
+            let identity = Identity {
                 id: identity.id,
                 kind: identity.kind,
                 source: identity.source.clone(),
                 left: self.condense_selected_expressions(&identity.left),
                 right: self.condense_selected_expressions(&identity.right),
-            }]
+            };
+            if identity.left.expressions.len() != identity.right.expressions.len() {
+                panic!(
+                    "Left and right side of identity have different number of expressions: {identity}"
+                );
+            }
+            vec![identity]
         }
     }
 
@@ -148,28 +157,54 @@ impl<T: FieldElement> Condenser<T> {
             selector: sel_expr
                 .selector
                 .as_ref()
-                .map(|expr| self.condense_expression(expr)),
+                .map(|expr| self.condense_to_algebraic_expression(expr)),
             expressions: sel_expr
                 .expressions
                 .iter()
-                .map(|expr| self.condense_expression(expr))
+                .flat_map(|expr| self.condense_to_algebraic_expression_or_array(expr))
                 .collect(),
         }
     }
 
-    fn condense_expression(&self, e: &Expression<T>) -> AlgebraicExpression<T> {
+    /// Evaluates an expression and expects an algebraic expression.
+    fn condense_to_algebraic_expression(&self, e: &Expression<T>) -> AlgebraicExpression<T> {
         evaluator::evaluate(e, &self)
             .and_then(|result| match result {
                 Value::Custom(Condensate::Expression(expr)) => Ok(expr),
                 x => Ok(x.try_to_field_element()?.into()),
             })
             .unwrap_or_else(|err| {
-                panic!("Error reducing expression to constraint:\nExpression: {e}\nError: {err:?}")
+                panic!("Error reducing expression to algebraic expression:\nExpression: {e}\nError: {err:?}")
+            })
+    }
+
+    /// Evaluates an expression and expects an algebraic expression or an array of algebraic expressions.
+    fn condense_to_algebraic_expression_or_array(
+        &self,
+        e: &Expression<T>,
+    ) -> Vec<AlgebraicExpression<T>> {
+        evaluator::evaluate(e, &self)
+            .and_then(|result| match result {
+                Value::Custom(Condensate::Expression(expr)) => Ok(vec![expr]),
+                Value::Array(items) => {
+                    items
+                        .into_iter()
+                        .map(|item| match item {
+                            Value::Custom(Condensate::Expression(expr)) => Ok(expr),
+                            x =>
+                                Ok(x.try_to_field_element()?.into())
+                        })
+                        .collect::<Result<_, _>>()
+                }
+                x => Ok(vec![x.try_to_field_element()?.into()]),
+            })
+            .unwrap_or_else(|err| {
+                panic!("Error reducing expression to algebraic expression or array:\nExpression: {e}\nError: {err:?}")
             })
     }
 
     /// Evaluates an expression and expects a single constraint or an array of constraints.
-    fn condense_expression_to_constraints(&self, e: &Expression<T>) -> Vec<AlgebraicExpression<T>> {
+    fn condense_to_constraints(&self, e: &Expression<T>) -> Vec<AlgebraicExpression<T>> {
         evaluator::evaluate(e, &self)
             .and_then(|result| match result {
                 // TODO We have to allow expressions here because the parser

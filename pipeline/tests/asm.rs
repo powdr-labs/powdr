@@ -314,6 +314,30 @@ fn pil_at_module_level() {
     gen_estark_proof(f, Default::default());
 }
 
+#[test]
+#[should_panic = "Witness generation failed."]
+fn hello_world_asm_fail() {
+    let f = "asm/book/hello_world.asm";
+    let i = [1];
+    verify_asm::<GoldilocksField>(f, slice_to_vec(&i));
+}
+
+#[test]
+#[should_panic = "FailedAssertion(\"This should fail.\")"]
+fn test_failing_assertion() {
+    let f = "asm/failing_assertion.asm";
+    let i = [];
+    verify_asm::<GoldilocksField>(f, slice_to_vec(&i));
+}
+
+#[test]
+fn operation_array() {
+    let f = "asm/operation_array.asm";
+    verify_asm::<GoldilocksField>(f, Default::default());
+    gen_halo2_proof(f, Default::default());
+    gen_estark_proof(f, Default::default());
+}
+
 mod book {
     use super::*;
     use powdr_number::GoldilocksField;
@@ -329,20 +353,4 @@ mod book {
     }
 
     include!(concat!(env!("OUT_DIR"), "/asm_book_tests.rs"));
-}
-
-#[test]
-#[should_panic = "Witness generation failed."]
-fn hello_world_asm_fail() {
-    let f = "asm/book/hello_world.asm";
-    let i = [1];
-    verify_asm::<GoldilocksField>(f, slice_to_vec(&i));
-}
-
-#[test]
-#[should_panic = "FailedAssertion(\"This should fail.\")"]
-fn test_failing_assertion() {
-    let f = "asm/failing_assertion.asm";
-    let i = [];
-    verify_asm::<GoldilocksField>(f, slice_to_vec(&i));
 }
