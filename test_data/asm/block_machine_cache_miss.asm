@@ -38,8 +38,8 @@ machine Main {
     reg Y[<=];
     reg A;
 
-    instr double X -> Y = arith.double
-    instr square X -> Y = arith.square
+    instr double X -> Y = arith.double;
+    instr square X -> Y = arith.square;
     instr assert_eq X, Y { X = Y }
 
     function main {

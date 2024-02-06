@@ -10,7 +10,7 @@ machine Main {
     reg Z[<=];
     reg A;
 
-    instr pow X, Y -> Z = pow.pow
+    instr pow X, Y -> Z = pow.pow;
     instr assert_eq X, Y { X = Y }
 
     function main {

@@ -94,12 +94,15 @@ pub fn unescape_string(s: &str) -> String {
 mod test {
     use super::*;
     use powdr_ast::parsed::{
-        build::direct_reference, PILFile, PilStatement, PolynomialName, SelectedExpressions,
+        asm::ASMProgram, build::direct_reference, PILFile, PilStatement, PolynomialName,
+        SelectedExpressions,
     };
+    use powdr_number::Bn254Field;
     use powdr_number::GoldilocksField;
     use powdr_parser_util::UnwrapErrToStderr;
-    use std::fs;
+    use similar::TextDiff;
     use test_log::test;
+    use walkdir::WalkDir;
 
     #[test]
     fn empty() {
@@ -191,49 +194,181 @@ mod test {
         );
     }
 
-    fn parse_file(name: &str) -> PILFile<GoldilocksField> {
-        let file = std::path::PathBuf::from(format!(
-            "{}/../test_data/{name}",
-            env!("CARGO_MANIFEST_DIR")
-        ));
-
-        let input = fs::read_to_string(file).unwrap();
-        parse(Some(name), &input).unwrap_err_to_stderr()
+    fn find_files_with_ext(
+        dir: std::path::PathBuf,
+        ext: String,
+    ) -> impl Iterator<Item = (String, String)> {
+        WalkDir::new(&dir).into_iter().filter_map(move |e| {
+            let entry = e.unwrap();
+            let path = entry.path();
+            match path.extension() {
+                Some(path_ext) if path_ext.to_str() == Some(&ext) => Some((
+                    std::fs::canonicalize(path)
+                        .unwrap()
+                        .to_str()
+                        .unwrap()
+                        .into(),
+                    std::fs::read_to_string(path).unwrap(),
+                )),
+                _ => None,
+            }
+        })
     }
 
-    fn parse_asm_file(name: &str) -> ASMProgram<GoldilocksField> {
-        let file = std::path::PathBuf::from(format!(
-            "{}/../test_data/{name}",
-            env!("CARGO_MANIFEST_DIR")
-        ));
+    // helper function to clear SourceRef's inside the AST so we can compare for equality
+    fn pil_clear_source_refs<T>(ast: &mut PILFile<T>) {
+        ast.0.iter_mut().for_each(pil_statement_clear_source_ref);
+    }
 
-        let input = fs::read_to_string(file).unwrap();
-        parse_asm(Some(name), &input).unwrap_err_to_stderr()
+    fn pil_statement_clear_source_ref<T>(stmt: &mut PilStatement<T>) {
+        match stmt {
+            PilStatement::Include(s, _)
+            | PilStatement::Namespace(s, _, _)
+            | PilStatement::LetStatement(s, _, _)
+            | PilStatement::PolynomialDefinition(s, _, _)
+            | PilStatement::PublicDeclaration(s, _, _, _, _)
+            | PilStatement::PolynomialConstantDeclaration(s, _)
+            | PilStatement::PolynomialConstantDefinition(s, _, _)
+            | PilStatement::PolynomialCommitDeclaration(s, _, _)
+            | PilStatement::PolynomialIdentity(s, _)
+            | PilStatement::PlookupIdentity(s, _, _)
+            | PilStatement::PermutationIdentity(s, _, _)
+            | PilStatement::ConnectIdentity(s, _, _)
+            | PilStatement::ConstantDefinition(s, _, _)
+            | PilStatement::Expression(s, _) => *s = SourceRef::unknown(),
+        }
+    }
+
+    // helper function to clear SourceRef's inside the AST so we can compare for equality
+    fn asm_clear_source_refs<T>(ast: &mut ASMProgram<T>) {
+        use powdr_ast::parsed::asm::{
+            ASMModule, FunctionStatement, Instruction, InstructionBody, LinkDeclaration, Machine,
+            MachineStatement, Module, ModuleStatement, SymbolDefinition, SymbolValue,
+        };
+
+        fn clear_machine_stmt<T>(stmt: &mut MachineStatement<T>) {
+            match stmt {
+                MachineStatement::Degree(s, _)
+                | MachineStatement::Submachine(s, _, _)
+                | MachineStatement::RegisterDeclaration(s, _, _)
+                | MachineStatement::OperationDeclaration(s, _, _, _)
+                | MachineStatement::LinkDeclaration(LinkDeclaration { source: s, .. }) => {
+                    *s = SourceRef::unknown();
+                }
+                MachineStatement::Pil(s, stmt) => {
+                    *s = SourceRef::unknown();
+                    pil_statement_clear_source_ref(stmt)
+                }
+                MachineStatement::InstructionDeclaration(s, _, Instruction { body, .. }) => {
+                    *s = SourceRef::unknown();
+                    if let InstructionBody::Local(statements) = body {
+                        statements
+                            .iter_mut()
+                            .for_each(pil_statement_clear_source_ref)
+                    }
+                }
+                MachineStatement::FunctionDeclaration(s, _, _, statements) => {
+                    *s = SourceRef::unknown();
+                    for fstmt in statements {
+                        match fstmt {
+                            FunctionStatement::Assignment(s, _, _, _)
+                            | FunctionStatement::Instruction(s, _, _)
+                            | FunctionStatement::Label(s, _)
+                            | FunctionStatement::DebugDirective(s, _)
+                            | FunctionStatement::Return(s, _) => *s = SourceRef::unknown(),
+                        }
+                    }
+                }
+            }
+        }
+
+        fn clear_module_stmt<T>(stmt: &mut ModuleStatement<T>) {
+            let ModuleStatement::SymbolDefinition(SymbolDefinition { value, .. }) = stmt;
+            match value {
+                SymbolValue::Machine(Machine { statements, .. }) => {
+                    statements.iter_mut().for_each(clear_machine_stmt)
+                }
+                SymbolValue::Module(Module::Local(ASMModule { statements })) => {
+                    statements.iter_mut().for_each(clear_module_stmt);
+                }
+                SymbolValue::Module(Module::External(_))
+                | SymbolValue::Import(_)
+                | SymbolValue::Expression(_) => (),
+            }
+        }
+
+        ast.main.statements.iter_mut().for_each(clear_module_stmt);
     }
 
     #[test]
-    fn parse_example_files() {
-        parse_file("polygon-hermez/arith.pil");
-        parse_file("polygon-hermez/binary.pil");
-        parse_file("polygon-hermez/byte4.pil");
-        parse_file("polygon-hermez/config.pil");
-        parse_file("polygon-hermez/global.pil");
-        parse_file("polygon-hermez/keccakf.pil");
-        parse_file("polygon-hermez/main.pil");
-        parse_file("polygon-hermez/mem_align.pil");
-        parse_file("polygon-hermez/mem.pil");
-        parse_file("polygon-hermez/nine2one.pil");
-        parse_file("polygon-hermez/padding_kk.pil");
-        parse_file("polygon-hermez/padding_kkbit.pil");
-        parse_file("polygon-hermez/padding_pg.pil");
-        parse_file("polygon-hermez/poseidong.pil");
-        parse_file("polygon-hermez/rom.pil");
-        parse_file("polygon-hermez/storage.pil");
+    /// Test that (source -> AST -> source -> AST) works properly for asm files
+    fn parse_write_reparse_asm() {
+        let crate_dir = env!("CARGO_MANIFEST_DIR");
+        let basedir = std::path::PathBuf::from(format!("{crate_dir}/../test_data/"));
+        let asm_files = find_files_with_ext(basedir, "asm".into());
+        for (file, orig_string) in asm_files {
+            let mut orig_asm =
+                parse_asm::<Bn254Field>(Some(&file), &orig_string).unwrap_err_to_stderr();
+            let orig_asm_to_string = format!("{}", orig_asm);
+            let mut reparsed_asm = parse_asm::<Bn254Field>(
+                Some((file.clone() + " reparsed").as_ref()),
+                &orig_asm_to_string,
+            )
+            .unwrap_err_to_stderr();
+            asm_clear_source_refs(&mut orig_asm);
+            asm_clear_source_refs(&mut reparsed_asm);
+            if orig_asm != reparsed_asm {
+                let orig_ast = format!("{orig_asm:#?}");
+                let reparsed_ast = format!("{reparsed_asm:#?}");
+                let diff = TextDiff::from_lines(&orig_ast, &reparsed_ast);
+                eprintln!("parsed and re-parsed ASTs differ:");
+                for change in diff.iter_all_changes() {
+                    let sign = match change.tag() {
+                        similar::ChangeTag::Delete => "-",
+                        similar::ChangeTag::Insert => "+",
+                        similar::ChangeTag::Equal => " ",
+                    };
+                    eprint!("\t{}{}", sign, change);
+                }
+                panic!("parsed and re-parsed ASTs differ for file: {file}");
+            }
+        }
     }
 
     #[test]
-    fn parse_example_asm_files() {
-        parse_asm_file("asm/simple_sum.asm");
+    /// Test that (source -> AST -> source -> AST) works properly for pil files
+    fn parse_write_reparse_pil() {
+        let crate_dir = env!("CARGO_MANIFEST_DIR");
+        let basedir = std::path::PathBuf::from(format!("{crate_dir}/../test_data/"));
+        let pil_files = find_files_with_ext(basedir, "pil".into());
+        for (file, orig_string) in pil_files {
+            let mut orig_pil =
+                parse::<Bn254Field>(Some(&file), &orig_string).unwrap_err_to_stderr();
+            let orig_pil_to_string = format!("{}", orig_pil);
+            let mut reparsed_pil = parse::<Bn254Field>(
+                Some((file.clone() + " reparsed").as_ref()),
+                &orig_pil_to_string,
+            )
+            .unwrap_err_to_stderr();
+            pil_clear_source_refs(&mut orig_pil);
+            pil_clear_source_refs(&mut reparsed_pil);
+            assert_eq!(orig_pil, reparsed_pil);
+            if orig_pil != reparsed_pil {
+                let orig_ast = format!("{orig_pil:#?}");
+                let reparsed_ast = format!("{reparsed_pil:#?}");
+                let diff = TextDiff::from_lines(&orig_ast, &reparsed_ast);
+                eprintln!("parsed and re-parsed ASTs differ:");
+                for change in diff.iter_all_changes() {
+                    let sign = match change.tag() {
+                        similar::ChangeTag::Delete => "-",
+                        similar::ChangeTag::Insert => "+",
+                        similar::ChangeTag::Equal => " ",
+                    };
+                    eprint!("\t{}{}", sign, change);
+                }
+                panic!("parsed and re-parsed ASTs differ for file: {file}");
+            }
+        }
     }
 
     mod display {
