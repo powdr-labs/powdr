@@ -9,6 +9,10 @@ machine Main {
     reg Y[<=];
     reg A;
 
+    let x = |i| 7;
+    let z;
+    z = x;
+
     instr identity X -> Y = sub.identity;
     instr one -> Y = sub.one;
     instr nothing = sub.nothing;

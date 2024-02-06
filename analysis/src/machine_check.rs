@@ -364,6 +364,7 @@ mod tests {
         mod A {
         }
         machine M(l, i) {
+            let l;
             A a;
         }"#;
         expect_check_str(

@@ -200,11 +200,11 @@ MachineDefinition: SymbolDefinition<T> = {
     "machine" <name:Identifier> <arguments:MachineArguments> "{" <statements:(MachineStatement)*> "}" => SymbolDefinition { name, value: Machine { arguments, statements}.into() }
 }
 
-MachineArguments: MachineArguments = {
+MachineArguments: MachineArguments<T> = {
     "(" "_" "," "_" ")" => MachineArguments::default(),
-    "(" <latch:Identifier> "," "_" ")" => MachineArguments { latch: Some(latch), operation_id: None },
+    "(" <latch:Expression> "," "_" ")" => MachineArguments { latch: Some(latch), operation_id: None },
     "(" "_" "," <operation_id:Identifier> ")" => MachineArguments { latch: None, operation_id: Some(operation_id) },
-    "(" <latch:Identifier> "," <operation_id:Identifier> ")" => MachineArguments { latch: Some(latch), operation_id: Some(operation_id) },
+    "(" <latch:Expression> "," <operation_id:Identifier> ")" => MachineArguments { latch: Some(latch), operation_id: Some(operation_id) },
     => MachineArguments::default(),
 }
 

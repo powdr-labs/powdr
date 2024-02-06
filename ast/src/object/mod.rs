@@ -27,7 +27,7 @@ impl Location {
 
 #[derive(Clone)]
 pub struct PILGraph<T> {
-    pub main: Machine,
+    pub main: Machine<T>,
     pub entry_points: Vec<Operation<T>>,
     pub objects: BTreeMap<Location, Object<T>>,
     pub definitions: BTreeMap<AbsoluteSymbolPath, ExpressionWithTypeName<T>>,
@@ -67,17 +67,17 @@ pub struct LinkFrom<T> {
 #[derive(Clone)]
 pub struct LinkTo<T> {
     /// the machine we link to
-    pub machine: Machine,
+    pub machine: Machine<T>,
     /// the operation we link to
     pub operation: Operation<T>,
 }
 
 #[derive(Clone)]
-pub struct Machine {
+pub struct Machine<T> {
     /// the location of this instance
     pub location: Location,
     /// its latch
-    pub latch: Option<String>,
+    pub latch: Option<Expression<T>>,
     /// its operation id
     pub operation_id: Option<String>,
 }

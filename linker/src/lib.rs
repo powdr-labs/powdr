@@ -126,11 +126,9 @@ pub fn link<T: FieldElement>(graph: PILGraph<T>) -> Result<PILFile<T>, Vec<Strin
 
             let to_namespace = to.machine.location.clone().to_string();
 
+            println!("Runnig linker: {}", to.machine.latch.as_ref().unwrap());
             let rhs = SelectedExpressions {
-                selector: Some(namespaced_reference(
-                    to_namespace.clone(),
-                    to.machine.latch.unwrap(),
-                )),
+                selector: Some(to.machine.latch.unwrap()),
                 expressions: to
                     .machine
                     .operation_id
@@ -199,7 +197,7 @@ mod test {
 
     use powdr_ast::{
         object::{Location, Object, PILGraph},
-        parsed::{Expression, PILFile},
+        parsed::{build::direct_reference, Expression, PILFile},
     };
     use powdr_number::{Bn254Field, FieldElement, GoldilocksField};
 
@@ -223,7 +221,7 @@ mod test {
             main: powdr_ast::object::Machine {
                 location: Location::main(),
                 operation_id: Some("operation_id".into()),
-                latch: Some("latch".into()),
+                latch: Some(direct_reference("latch".to_string())),
             },
             entry_points: vec![],
             definitions: Default::default(),

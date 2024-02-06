@@ -68,12 +68,17 @@ impl<T: Display> Display for LinkTo<T> {
     }
 }
 
-impl Display for Machine {
+impl<T: Display> Display for Machine<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(
             f,
-            "object at location \"{}\" with latch \"{:?}\" and operation_id \"{:?}\"",
-            self.location, self.latch, self.operation_id
+            "object at location \"{}\" with latch \"{}\" and operation_id \"{:?}\"",
+            self.location,
+            self.latch
+                .as_ref()
+                .map(|l| l.to_string())
+                .unwrap_or_default(),
+            self.operation_id
         )
     }
 }

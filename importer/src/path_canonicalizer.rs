@@ -46,7 +46,7 @@ struct Canonicalizer<'a> {
     paths: &'a PathMap,
 }
 
-impl<'a, T> Folder<T> for Canonicalizer<'a> {
+impl<'a, T: FieldElement> Folder<T> for Canonicalizer<'a> {
     // once the paths are resolved, canonicalization cannot fail
     type Error = Infallible;
 
@@ -98,6 +98,12 @@ impl<'a, T> Folder<T> for Canonicalizer<'a> {
     }
 
     fn fold_machine(&mut self, mut machine: Machine<T>) -> Result<Machine<T>, Self::Error> {
+        println!("Folding machine");
+        if let Some(latch) = &mut machine.arguments.latch {
+            println!("Latch before: {latch}");
+            canonicalize_inside_expression(latch, &self.path, self.paths);
+            println!("Latch after: {latch}");
+        }
         for s in &mut machine.statements {
             match s {
                 MachineStatement::Submachine(_, path, _) => {
@@ -357,6 +363,9 @@ fn check_machine<T: Clone>(
         if !local_variables.insert(name.clone()) {
             return Err(format!("Duplicate name `{name}` in machine `{location}`"));
         }
+    }
+    if let Some(latch) = &m.arguments.latch {
+        check_expression(&module_location, latch, state, &local_variables)?;
     }
     for statement in &m.statements {
         match statement {
