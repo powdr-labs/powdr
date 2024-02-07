@@ -2,10 +2,14 @@ use powdr_ast::analyzed::Analyzed;
 use powdr_backend::BackendType;
 use powdr_number::{Bn254Field, FieldElement, GoldilocksField};
 use powdr_pil_analyzer::evaluator::{self, SymbolLookup};
-use std::fs::File;
-use std::io::{BufWriter, Write};
 use std::path::PathBuf;
 use std::rc::Rc;
+
+#[cfg(feature = "halo2")]
+use std::{
+    fs::File,
+    io::{BufWriter, Write},
+};
 
 use crate::pipeline::{Pipeline, Stage};
 use crate::verify::verify;

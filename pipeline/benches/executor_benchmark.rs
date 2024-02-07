@@ -16,7 +16,7 @@ type T = GoldilocksField;
 
 fn run_witgen<T: FieldElement>(
     analyzed: &Analyzed<T>,
-    constants: &Vec<(String, Vec<T>)>,
+    constants: &[(String, Vec<T>)],
     external_witness_values: Vec<(String, Vec<T>)>,
 ) {
     let query_callback = inputs_to_query_callback(vec![]);

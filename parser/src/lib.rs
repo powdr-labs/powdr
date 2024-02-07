@@ -203,7 +203,7 @@ mod test {
         dir: std::path::PathBuf,
         ext: String,
     ) -> impl Iterator<Item = (String, String)> {
-        WalkDir::new(&dir).into_iter().filter_map(move |e| {
+        WalkDir::new(dir).into_iter().filter_map(move |e| {
             let entry = e.unwrap();
             let path = entry.path();
             match path.extension() {
