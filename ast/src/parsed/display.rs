@@ -117,7 +117,7 @@ impl<T: Display> Display for InstructionBody<T> {
 
 fn format_instruction_statement<T: Display>(stmt: &PilStatement<T>) -> String {
     match stmt {
-        PilStatement::PolynomialIdentity(_, _)
+        PilStatement::Expression(_, _)
         | PilStatement::PlookupIdentity(_, _, _)
         | PilStatement::PermutationIdentity(_, _, _)
         | PilStatement::ConnectIdentity(_, _, _) => {
@@ -145,7 +145,7 @@ impl<T: Display> Display for LinkDeclaration<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(
             f,
-            "link {}{} = {};",
+            "link {}{} => {};",
             self.flag,
             self.params.prepend_space_if_non_empty(),
             self.to
@@ -417,13 +417,6 @@ impl<T: Display> Display for PilStatement<T> {
                     value.as_ref().map(|v| format!("{v}")).unwrap_or_default()
                 )
             }
-            PilStatement::PolynomialIdentity(_, expression) => {
-                if let Expression::BinaryOperation(left, BinaryOperator::Sub, right) = expression {
-                    write!(f, "    {left} = {right};")
-                } else {
-                    write!(f, "    {expression} = 0;")
-                }
-            }
             PilStatement::PlookupIdentity(_, left, right) => write!(f, "    {left} in {right};"),
             PilStatement::PermutationIdentity(_, left, right) => {
                 write!(f, "    {left} is {right};")
@@ -575,6 +568,7 @@ impl Display for BinaryOperator {
                 BinaryOperator::Less => "<",
                 BinaryOperator::LessEqual => "<=",
                 BinaryOperator::Equal => "==",
+                BinaryOperator::Identity => "=",
                 BinaryOperator::NotEqual => "!=",
                 BinaryOperator::GreaterEqual => ">=",
                 BinaryOperator::Greater => ">",

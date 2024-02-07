@@ -177,11 +177,6 @@ impl<T: FieldElement> Condenser<T> {
     fn condense_expression_to_constraints(&self, e: &Expression<T>) -> Vec<AlgebraicExpression<T>> {
         evaluator::evaluate(e, &self)
             .and_then(|result| match result {
-                // TODO We have to allow expressions here because the parser
-                // turns polynomial constraints "a = b" into expressions "a - b".
-                // If we change the parser, we need to distinguish between constraints
-                // like "a = b" and expressions like "f()".
-                Value::Custom(Condensate::Expression(e)) => Ok(vec![e]),
                 Value::Custom(Condensate::Identity(left, right)) => Ok(vec![left - right]),
                 Value::Array(items) => items
                     .into_iter()
@@ -314,7 +309,7 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T, Condensate<T>> for &'a Condenser<T
         let right: Condensate<T> = right.try_into()?;
         let left_expr = left.try_to_expression()?;
         let right_expr = right.try_to_expression()?;
-        Ok(if op == BinaryOperator::Equal {
+        Ok(if op == BinaryOperator::Identity {
             Value::Custom(Condensate::Identity(left_expr, right_expr))
         } else {
             AlgebraicExpression::BinaryOperation(

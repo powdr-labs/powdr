@@ -235,7 +235,6 @@ mod test {
             | PilStatement::PolynomialConstantDeclaration(s, _)
             | PilStatement::PolynomialConstantDefinition(s, _, _)
             | PilStatement::PolynomialCommitDeclaration(s, _, _)
-            | PilStatement::PolynomialIdentity(s, _)
             | PilStatement::PlookupIdentity(s, _, _)
             | PilStatement::PermutationIdentity(s, _, _)
             | PilStatement::ConnectIdentity(s, _, _)
@@ -397,7 +396,7 @@ namespace Fibonacci(%N);
     pol commit x, y;
     { (x + 2), y' } in { ISLAST, 7 };
     y { (x + 2), y' } is ISLAST { ISLAST, 7 };
-    ((x - 2) * y) = 8;
+    (((x - 2) * y) = 8);
     public out = y(%last_row);"#;
             let printed = format!(
                 "{}",
@@ -418,7 +417,7 @@ namespace Fibonacci(%N);
 
         #[test]
         fn reparse_arrays() {
-            let input = "    pol commit y[3];\n    (y - 2) = 0;\n    (y[2] - 2) = 0;\n    public out = y[1](2);";
+            let input = "    pol commit y[3];\n    ((y - 2) = 0);\n    ((y[2] - 2) = 0);\n    public out = y[1](2);";
             let printed = format!(
                 "{}",
                 parse::<GoldilocksField>(Some("input"), input).unwrap()

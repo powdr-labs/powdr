@@ -748,6 +748,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     powdr_ast::parsed::BinaryOperator::Less => todo!(),
                     powdr_ast::parsed::BinaryOperator::LessEqual => todo!(),
                     powdr_ast::parsed::BinaryOperator::Equal => todo!(),
+                    powdr_ast::parsed::BinaryOperator::Identity => todo!(),
                     powdr_ast::parsed::BinaryOperator::NotEqual => todo!(),
                     powdr_ast::parsed::BinaryOperator::GreaterEqual => todo!(),
                     powdr_ast::parsed::BinaryOperator::Greater => todo!(),

@@ -7,7 +7,7 @@ mod utils {
     // This is a function that takes an expression as input and returns
     // a constraint enforcing this expression increments by a certain value
     // between rows.
-    let constrain_incremented_by = |x, inc| x' == x + inc;
+    let constrain_incremented_by = |x, inc| x' = x + inc;
 }
 
 machine Main {

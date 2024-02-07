@@ -8,8 +8,8 @@ namespace Main(16);
     let sum = |length, f| fold(length, f, 0, |acc, e| acc + e);
     // This function takes an algebraic expression (a column or expression
     // involving columns) and returns an identity that forces this expression
-    // to equal 20.
-    let equals_twenty: expr -> constr = |x| x == 20;
+    // to equal 20. Note that `=` is not an assignment but creates an identity constraint.
+    let equals_twenty: expr -> constr = |x| x = 20;
     // This declares an array of 16 witness columns.
     col witness wit[16];
     // This expression has to evaluate to an identity, but we can still use
@@ -17,7 +17,7 @@ namespace Main(16);
     // The sub-expression `sum(16, |i| wit[i])` evaluates to the algebraic
     // expression "wit[0] + wit[1] + ... + wit[15]", which is then
     // turned into the identity by `equals_twenty`
-    // wit[0] + wit[1] + ... + wit[15] == 20.
+    // wit[0] + wit[1] + ... + wit[15] = 20.
     equals_twenty(sum(16, |i| wit[i]));
 
     // We constrained the sum to equal twenty, but there is no unique solution
@@ -28,4 +28,4 @@ namespace Main(16);
     let make_array = |length, f| fold(length, f, [], |acc, e| acc + [e]);
     // If an expression evaluates to an array of constraints, all the
     // constraints in the array are added to the system.
-    make_array(15, |i| wit[i] == 1);
+    make_array(15, |i| wit[i] = 1);

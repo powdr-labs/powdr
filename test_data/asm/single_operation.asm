@@ -10,5 +10,5 @@ machine SingleOperation(latch, _) {
 machine Main {
     SingleOperation m;
 
-    link 1 = m.nothing;
+    link 1 => m.nothing;
 }

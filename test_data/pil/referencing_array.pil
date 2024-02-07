@@ -9,7 +9,7 @@ namespace Main(N);
     let clocks: col[4] = make_array(4, nth_clock);
     let wit: col[4];
 
-    make_array(4, |k| wit[k] == clocks[k]);
+    make_array(4, |k| wit[k] = clocks[k]);
 
     // The constraint above is already sufficient.
     // These are here to check that the correct witnesses and the correct clocks are

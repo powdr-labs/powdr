@@ -174,13 +174,13 @@ machine PoseidonGL(LASTBLOCK, operation_id) {
         15*b0 + 41*b1 + 16*b2 +  2*b3 + 28*b4 + 13*b5 + 13*b6 + 39*b7 + 18*b8 + 34*b9 + 20*b10 + 17*b11
     ];
 
-    let equal_unless_last = |a, b| (1 - LAST) * (a - b) == 0;
+    let equal_unless_last = |a, b| (1 - LAST) * (a - b) = 0;
     array::new(array::len(inp), |i| equal_unless_last(inp[i]', c[i]));
     array::new(array::len(cap), |i| equal_unless_last(cap[i]', c[8 + i]));
     array::map(input_inp, |x| equal_unless_last(x, x'));
     array::map(input_cap, |x| equal_unless_last(x, x'));
 
-    let equal_on_first_block = |a, b| FIRSTBLOCK * (a - b) == 0;
+    let equal_on_first_block = |a, b| FIRSTBLOCK * (a - b) = 0;
     array::new(array::len(input_inp), |i| equal_on_first_block(input_inp[i], inp[i]));
     array::new(array::len(input_cap), |i| equal_on_first_block(input_cap[i], cap[i]));
 }
