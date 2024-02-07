@@ -241,19 +241,8 @@ impl<T> Analyzed<T> {
             .max()
             .unwrap_or_default()
             + 1;
-        self.identities.push(Identity {
-            id,
-            kind: IdentityKind::Polynomial,
-            source,
-            left: SelectedExpressions {
-                selector: Some(identity),
-                expressions: vec![],
-            },
-            right: SelectedExpressions {
-                selector: None,
-                expressions: vec![],
-            },
-        });
+        self.identities
+            .push(Identity::from_polynomial_identity(id, source, identity));
         self.source_order
             .push(StatementIdentifier::Identity(id as usize));
         id
@@ -549,6 +538,19 @@ pub struct Identity<Expr> {
 }
 
 impl<Expr> Identity<Expr> {
+    /// Constructs an Identity from a polynomial identity (expression assumed to be identical zero).
+    pub fn from_polynomial_identity(id: u64, source: SourceRef, identity: Expr) -> Self {
+        Identity {
+            id,
+            kind: IdentityKind::Polynomial,
+            source,
+            left: SelectedExpressions {
+                selector: Some(identity),
+                expressions: vec![],
+            },
+            right: Default::default(),
+        }
+    }
     /// Returns the expression in case this is a polynomial identity.
     pub fn expression_for_poly_id(&self) -> &Expr {
         assert_eq!(self.kind, IdentityKind::Polynomial);

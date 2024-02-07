@@ -67,7 +67,7 @@ pub fn condense<T: FieldElement>(
                 );
                 Some((
                     name.clone(),
-                    (symbol.clone(), condenser.condense_expression(&e.e)),
+                    (symbol.clone(), condenser.condense_to_algebraic_expression(&e.e)),
                 ))
             } else {
                 None
@@ -121,17 +121,14 @@ impl<T: FieldElement> Condenser<T> {
         identity: &Identity<Expression<T>>,
     ) -> Vec<Identity<AlgebraicExpression<T>>> {
         if identity.kind == IdentityKind::Polynomial {
-            self.condense_expression_to_constraints(identity.expression_for_poly_id())
+            self.condense_to_constraint_or_array(identity.expression_for_poly_id())
                 .into_iter()
-                .map(|constraint| Identity {
-                    id: identity.id,
-                    kind: identity.kind,
-                    source: identity.source.clone(),
-                    left: SelectedExpressions {
-                        selector: Some(constraint),
-                        expressions: vec![],
-                    },
-                    right: Default::default(),
+                .map(|constraint| {
+                    Identity::from_polynomial_identity(
+                        identity.id,
+                        identity.source.clone(),
+                        constraint,
+                    )
                 })
                 .collect()
         } else {
@@ -153,16 +150,17 @@ impl<T: FieldElement> Condenser<T> {
             selector: sel_expr
                 .selector
                 .as_ref()
-                .map(|expr| self.condense_expression(expr)),
+                .map(|expr| self.condense_to_algebraic_expression(expr)),
             expressions: sel_expr
                 .expressions
                 .iter()
-                .map(|expr| self.condense_expression(expr))
+                .map(|expr| self.condense_to_algebraic_expression(expr))
                 .collect(),
         }
     }
 
-    fn condense_expression(&self, e: &Expression<T>) -> AlgebraicExpression<T> {
+    /// Evaluates the expression and expects it to result in an algebraic expression.
+    fn condense_to_algebraic_expression(&self, e: &Expression<T>) -> AlgebraicExpression<T> {
         evaluator::evaluate(e, &self)
             .and_then(|result| match result {
                 Value::Custom(Condensate::Expression(expr)) => Ok(expr),
@@ -174,7 +172,7 @@ impl<T: FieldElement> Condenser<T> {
     }
 
     /// Evaluates an expression and expects a single constraint or an array of constraints.
-    fn condense_expression_to_constraints(&self, e: &Expression<T>) -> Vec<AlgebraicExpression<T>> {
+    fn condense_to_constraint_or_array(&self, e: &Expression<T>) -> Vec<AlgebraicExpression<T>> {
         evaluator::evaluate(e, &self)
             .and_then(|result| match result {
                 Value::Custom(Condensate::Identity(left, right)) => Ok(vec![left - right]),
