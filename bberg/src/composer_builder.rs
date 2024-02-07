@@ -14,9 +14,9 @@ impl ComposerBuilder for BBFiles {
         "
 {include_str}
 
-namespace bb::honk {{
+namespace bb {{
 
-using Flavor = honk::flavor::{name}Flavor;
+using Flavor = {name}Flavor;
 void {name}Composer::compute_witness(CircuitConstructor& circuit)
 {{
     if (computed_witness) {{
@@ -109,10 +109,10 @@ std::shared_ptr<Flavor::VerificationKey> {name}Composer::compute_verification_ke
         "
 {include_str}
 
-namespace bb::honk {{
+namespace bb {{
 class {name}Composer {{
     public:
-        using Flavor = honk::flavor::{name}Flavor;
+        using Flavor = {name}Flavor;
         using CircuitConstructor = {name}CircuitBuilder;
         using ProvingKey = Flavor::ProvingKey;
         using VerificationKey = Flavor::VerificationKey;
@@ -170,7 +170,7 @@ class {name}Composer {{
         }};
 }};
 
-}} // namespace bb::honk
+}} // namespace bb
 "
     );
 

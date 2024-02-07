@@ -11,11 +11,11 @@ impl ProverBuilder for BBFiles {
         let include_str = includes_hpp(name);
         let prover_hpp = format!("
     {include_str} 
-    namespace bb::honk {{
+    namespace bb {{
     
     class {name}Prover {{
     
-        using Flavor = honk::flavor::{name}Flavor;
+        using Flavor = {name}Flavor;
         using FF = Flavor::FF;
         using PCS = Flavor::PCS;
         using PCSCommitmentKey = Flavor::CommitmentKey;
@@ -34,8 +34,8 @@ impl ProverBuilder for BBFiles {
         void execute_relation_check_rounds();
         void execute_zeromorph_rounds();
     
-        plonk::proof& export_proof();
-        plonk::proof& construct_proof();
+        HonkProof& export_proof();
+        HonkProof& construct_proof();
     
         std::shared_ptr<Transcript> transcript = std::make_shared<Transcript>();
     
@@ -52,17 +52,17 @@ impl ProverBuilder for BBFiles {
 
         Polynomial quotient_W;
     
-        sumcheck::SumcheckOutput<Flavor> sumcheck_output;
+        SumcheckOutput<Flavor> sumcheck_output;
     
         std::shared_ptr<PCSCommitmentKey> commitment_key;
     
-        using ZeroMorph = pcs::zeromorph::ZeroMorphProver_<Curve>;
+        using ZeroMorph = ZeroMorphProver_<Curve>;
     
       private:
-        plonk::proof proof;
+        HonkProof proof;
     }};
     
-    }} // namespace bb::honk
+    }} // namespace bb
      
     ");
         self.write_file(&self.prover, &format!("{}_prover.hpp", name), &prover_hpp);
@@ -74,9 +74,10 @@ impl ProverBuilder for BBFiles {
         let prover_cpp = format!("
     {include_str}
     
-    namespace bb::honk {{
+    namespace bb {{
 
-    using Flavor = honk::flavor::{name}Flavor;
+    using Flavor = {name}Flavor;
+    using FF = Flavor::FF;
     
     /**
      * Create {name}Prover from proving key, witness and manifest.
@@ -136,7 +137,7 @@ impl ProverBuilder for BBFiles {
      */
     void {name}Prover::execute_relation_check_rounds()
     {{
-        using Sumcheck = sumcheck::SumcheckProver<Flavor>;
+        using Sumcheck = SumcheckProver<Flavor>;
     
         auto sumcheck = Sumcheck(key->circuit_size, transcript);
 
@@ -168,13 +169,13 @@ impl ProverBuilder for BBFiles {
     }}
 
     
-    plonk::proof& {name}Prover::export_proof()
+    HonkProof& {name}Prover::export_proof()
     {{
-        proof.proof_data = transcript->proof_data;
+        proof = transcript->proof_data;
         return proof;
     }}
     
-    plonk::proof& {name}Prover::construct_proof()
+    HonkProof& {name}Prover::construct_proof()
     {{
         // Add circuit size public input size and public inputs to transcript.
         execute_preamble_round();
@@ -201,7 +202,7 @@ impl ProverBuilder for BBFiles {
         return export_proof();
     }}
     
-    }} // namespace bb::honk
+    }} // namespace bb
      
     
     ");

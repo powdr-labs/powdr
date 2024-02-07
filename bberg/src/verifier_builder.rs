@@ -20,10 +20,7 @@ impl VerifierBuilder for BBFiles {
         let ver_cpp = format!("
 {include_str} 
 
-    using namespace bb;
-    using namespace bb::honk::sumcheck;
-    
-    namespace bb::honk {{
+    namespace bb {{
     {name}Verifier::{name}Verifier(std::shared_ptr<Flavor::VerificationKey> verifier_key)
         : key(verifier_key)
     {{}}
@@ -45,19 +42,19 @@ impl VerifierBuilder for BBFiles {
      * @brief This function verifies an {name} Honk proof for given program settings.
      *
      */
-    bool {name}Verifier::verify_proof(const plonk::proof& proof)
+    bool {name}Verifier::verify_proof(const HonkProof& proof)
     {{
-        using Flavor = honk::flavor::{name}Flavor;
+        using Flavor = {name}Flavor;
         using FF = Flavor::FF;
         using Commitment = Flavor::Commitment;
         // using Curve = Flavor::Curve;
-        // using ZeroMorph = pcs::zeromorph::ZeroMorphVerifier_<Curve>;
+        // using ZeroMorph = ZeroMorphVerifier_<Curve>;
         using VerifierCommitments = Flavor::VerifierCommitments;
         using CommitmentLabels = Flavor::CommitmentLabels;
     
         RelationParameters<FF> relation_parameters;
     
-        transcript = std::make_shared<Transcript>(proof.proof_data);
+        transcript = std::make_shared<Transcript>(proof);
     
         VerifierCommitments commitments {{ key }};
         CommitmentLabels commitment_labels;
@@ -106,7 +103,7 @@ impl VerifierBuilder for BBFiles {
     }}
     
     
-    }} // namespace bb::honk
+    }} // namespace bb
     
     
     ");
@@ -120,9 +117,9 @@ impl VerifierBuilder for BBFiles {
             "
 {include_str}
     
-    namespace bb::honk {{
+    namespace bb {{
     class {name}Verifier {{
-        using Flavor = honk::flavor::{name}Flavor;
+        using Flavor = {name}Flavor;
         using FF = Flavor::FF;
         using Commitment = Flavor::Commitment;
         using VerificationKey = Flavor::VerificationKey;
@@ -137,7 +134,7 @@ impl VerifierBuilder for BBFiles {
         {name}Verifier& operator=(const {name}Verifier& other) = delete;
         {name}Verifier& operator=({name}Verifier&& other) noexcept;
     
-        bool verify_proof(const plonk::proof& proof);
+        bool verify_proof(const HonkProof& proof);
     
         std::shared_ptr<VerificationKey> key;
         std::map<std::string, Commitment> commitments;
@@ -145,7 +142,7 @@ impl VerifierBuilder for BBFiles {
         std::shared_ptr<Transcript> transcript;
     }};
     
-    }} // namespace bb::honk
+    }} // namespace bb
      
     
     "

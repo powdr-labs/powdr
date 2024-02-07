@@ -203,7 +203,7 @@ fn create_lookup_settings_file(lookup: &Lookup) -> String {
         "
         {lookup_settings_includes}
 
-        namespace bb::honk::sumcheck {{
+        namespace bb::sumcheck {{
 
         /**
          * @brief This class contains an example of how to set LookupSettings classes used by the
@@ -215,7 +215,7 @@ fn create_lookup_settings_file(lookup: &Lookup) -> String {
          * 3) Update \"DECLARE_LOOKUP_IMPLEMENTATIONS_FOR_ALL_SETTINGS\" and \"DEFINE_LOOKUP_IMPLEMENTATIONS_FOR_ALL_SETTINGS\" to
          * include the new settings
          * 4) Add the relation with the chosen settings to Relations in the flavor (for example,\"`
-         *   using Relations = std::tuple<sumcheck::GenericLookupRelation<sumcheck::ExampleXorLookupSettings,
+         *   using Relations = std::tuple<GenericLookupRelation<ExampleXorLookupSettings,
          * FF>>;)`
          *
          */

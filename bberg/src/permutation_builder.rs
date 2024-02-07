@@ -163,7 +163,7 @@ fn create_permutation_settings_file(permutation: &Permutation) -> String {
         "
         {permutation_settings_includes}
 
-        namespace bb::honk::sumcheck {{
+        namespace bb::sumcheck {{
 
         class {permutation_name}_permutation_settings {{
             public:

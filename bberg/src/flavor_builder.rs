@@ -69,7 +69,7 @@ impl FlavorBuilder for BBFiles {
             "
 {includes}
 
-namespace bb::honk::flavor {{
+namespace bb {{
 
 class {name}Flavor {{
     public: 
@@ -101,7 +101,7 @@ class {name}Flavor {{
     {transcript}
 }};
 
-}} // namespace bb::honk
+}} // namespace bb
     
     
     "
@@ -150,7 +150,7 @@ fn create_relations_tuple(master_name: &str, relation_file_names: &[String]) -> 
 fn create_permutations_tuple(permutations: &[Permutation]) -> String {
     permutations
         .iter()
-        .map(|perm| format!("sumcheck::{}_relation<FF>", perm.attribute.clone().unwrap()))
+        .map(|perm| format!("{}_relation<FF>", perm.attribute.clone().unwrap()))
         .collect::<Vec<_>>()
         .join(", ")
 }
@@ -162,7 +162,7 @@ fn create_class_aliases() -> &'static str {
     r#"
         using Curve = curve::BN254;
         using G1 = Curve::Group;
-        using PCS = pcs::kzg::KZG<Curve>;
+        using PCS = KZG<Curve>;
 
         using FF = G1::subgroup_field;
         using Polynomial = bb::Polynomial<FF>;
@@ -170,8 +170,8 @@ fn create_class_aliases() -> &'static str {
         using GroupElement = G1::element;
         using Commitment = G1::affine_element;
         using CommitmentHandle = G1::affine_element;
-        using CommitmentKey = pcs::CommitmentKey<Curve>;
-        using VerifierCommitmentKey = pcs::VerifierCommitmentKey<Curve>;
+        using CommitmentKey = bb::CommitmentKey<Curve>;
+        using VerifierCommitmentKey = bb::VerifierCommitmentKey<Curve>;
         using RelationSeparator = FF;
     "#
 }
@@ -489,7 +489,7 @@ fn generate_transcript(witness: &[String]) -> String {
     let declaration_transform = |c: &_| format!("Commitment {c};");
     let deserialize_transform = |name: &_| {
         format!(
-            "{name} = deserialize_from_buffer<Commitment>(Transcript::proof_data, num_bytes_read);",
+            "{name} = deserialize_from_buffer<Commitment>(Transcript::proof_data, num_frs_read);",
         )
     };
     let serialize_transform =
@@ -515,14 +515,14 @@ fn generate_transcript(witness: &[String]) -> String {
 
         Transcript() = default;
 
-        Transcript(const std::vector<uint8_t>& proof)
+        Transcript(const std::vector<FF>& proof)
             : BaseTranscript(proof)
         {{}}
 
         void deserialize_full_transcript()
         {{
-            size_t num_bytes_read = 0;
-            circuit_size = deserialize_from_buffer<uint32_t>(proof_data, num_bytes_read);
+            size_t num_frs_read = 0;
+            circuit_size = deserialize_from_buffer<uint32_t>(proof_data, num_frs_read);
             size_t log_n = numeric::get_msb(circuit_size);
 
             {deserialize_wires}
@@ -530,15 +530,15 @@ fn generate_transcript(witness: &[String]) -> String {
             for (size_t i = 0; i < log_n; ++i) {{
                 sumcheck_univariates.emplace_back(
                     deserialize_from_buffer<bb::Univariate<FF, BATCHED_RELATION_PARTIAL_LENGTH>>(
-                        Transcript::proof_data, num_bytes_read));
+                        Transcript::proof_data, num_frs_read));
             }}
             sumcheck_evaluations = deserialize_from_buffer<std::array<FF, NUM_ALL_ENTITIES>>(
-                Transcript::proof_data, num_bytes_read);
+                Transcript::proof_data, num_frs_read);
             for (size_t i = 0; i < log_n; ++i) {{
-                zm_cq_comms.push_back(deserialize_from_buffer<Commitment>(proof_data, num_bytes_read));
+                zm_cq_comms.push_back(deserialize_from_buffer<Commitment>(proof_data, num_frs_read));
             }}
-            zm_cq_comm = deserialize_from_buffer<Commitment>(proof_data, num_bytes_read);
-            zm_pi_comm = deserialize_from_buffer<Commitment>(proof_data, num_bytes_read);
+            zm_cq_comm = deserialize_from_buffer<Commitment>(proof_data, num_frs_read);
+            zm_pi_comm = deserialize_from_buffer<Commitment>(proof_data, num_frs_read);
         }}
 
         void serialize_full_transcript()
