@@ -1,7 +1,10 @@
 use std::{fmt::Display, rc::Rc};
 
 use num_traits::ToPrimitive;
-use powdr_ast::analyzed::{AlgebraicReference, Expression, PolyID, PolynomialType};
+use powdr_ast::analyzed::{
+    types::TypedExpression, AlgebraicReference, Expression, FunctionValueDefinition, PolyID,
+    PolynomialType,
+};
 use powdr_number::{DegreeType, FieldElement};
 use powdr_pil_analyzer::evaluator::{self, Custom, EvalError, SymbolLookup, Value};
 
@@ -91,7 +94,6 @@ impl<'a, 'b, T: FieldElement, QueryCallback: super::QueryCallback<T>>
 
 #[derive(Clone)]
 struct Symbols<'a, T: FieldElement> {
-    // TODO we should also provide access to non-column symbols.
     fixed_data: &'a FixedData<'a, T>,
     rows: &'a RowPair<'a, 'a, T>,
 }
@@ -100,9 +102,24 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T, Reference<'a>> for Symbols<'a, T> 
     fn lookup(&self, name: &'a str) -> Result<Value<'a, T, Reference<'a>>, EvalError> {
         match self.fixed_data.try_column_by_name(name) {
             Some(poly_id) => Ok(Value::Custom(Reference { name, poly_id })),
-            None => Err(EvalError::SymbolNotFound(format!(
-                "Symbol {name} not found."
-            ))),
+            None => match self.fixed_data.analyzed.definitions.get(&name.to_string()) {
+                Some((_, value)) => {
+                    let value = value
+                        .as_ref()
+                        .expect("Witness columns should have been found by try_column_by_name()");
+                    match value {
+                        FunctionValueDefinition::Expression(TypedExpression { e, ty: _ }) => {
+                            evaluator::evaluate(e, self)
+                        }
+                        _ => panic!(
+                            "Arrays and queries should have been found by try_column_by_name()"
+                        ),
+                    }
+                }
+                None => Err(EvalError::SymbolNotFound(format!(
+                    "Symbol {name} not found."
+                ))),
+            },
         }
     }
     fn eval_function_application(
