@@ -59,16 +59,26 @@ pub fn condense<T: FieldElement>(
                 let Some(FunctionValueDefinition::Expression(e)) = definition else {
                     panic!("Expected expression")
                 };
-                assert!(
-                    e.ty.is_none() ||
-                    e.ty == Some(Type::Expr) ||
-                    matches!(&e.ty, Some(Type::Array(ArrayType{base, ..})) if base.as_ref() == &Type::Expr),
-                    "Intermediate column type has to be expr or expr[], but got: {}", e.ty.as_ref().map(|t| t.to_string()).unwrap_or_default()
-                );
-                Some((
-                    name.clone(),
-                    (symbol.clone(), condenser.condense_to_algebraic_expression(&e.e)),
-                ))
+                let values =
+                    if let Some(length) = symbol.length {
+                        assert!(
+                            e.ty.is_none() ||
+                            matches!(&e.ty, Some(Type::Array(ArrayType{base, ..})) if base.as_ref() == &Type::Expr),
+                            "Intermediate column type has to be expr[], but got: {}", e.ty.as_ref().map(|t| t.to_string()).unwrap_or_default()
+                        );
+                        let result = condenser.condense_to_array_of_algebraic_expressions(&e.e);
+                        assert_eq!(result.len() as u64, length);
+                        result
+                    } else {
+                        assert!(
+                            e.ty.is_none() ||
+                            e.ty == Some(Type::Expr),
+                            "Intermediate column type has to be expr, but got: {}", e.ty.as_ref().map(|t| t.to_string()).unwrap_or_default()
+                        );
+                        vec![condenser.condense_to_algebraic_expression(&e.e)]
+                    };
+
+                Some((name.clone(), (symbol.clone(), values)))
             } else {
                 None
             }
@@ -165,6 +175,29 @@ impl<T: FieldElement> Condenser<T> {
             .and_then(|result| match result {
                 Value::Custom(Condensate::Expression(expr)) => Ok(expr),
                 x => Ok(x.try_to_field_element()?.into()),
+            })
+            .unwrap_or_else(|err| {
+                panic!("Error reducing expression to constraint:\nExpression: {e}\nError: {err:?}")
+            })
+    }
+
+    /// Evaluates the expression and expects it to result in an array of algebraic expressions.
+    fn condense_to_array_of_algebraic_expressions(
+        &self,
+        e: &Expression<T>,
+    ) -> Vec<AlgebraicExpression<T>> {
+        evaluator::evaluate(e, &self)
+            .and_then(|result| match result {
+                Value::Array(items) => items
+                    .into_iter()
+                    .map(|item| match item {
+                        Value::Custom(Condensate::Expression(expr)) => Ok(expr),
+                        x => Ok(x.try_to_field_element()?.into()),
+                    })
+                    .collect::<Result<_, _>>(),
+                _ => Err(EvalError::TypeError(format!(
+                    "Expected array of algebraic expressions, but got {result}"
+                ))),
             })
             .unwrap_or_else(|err| {
                 panic!("Error reducing expression to constraint:\nExpression: {e}\nError: {err:?}")

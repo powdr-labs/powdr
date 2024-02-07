@@ -48,11 +48,13 @@ pub fn export<T: FieldElement>(analyzed: &Analyzed<T>) -> PIL {
             StatementIdentifier::Definition(name) => {
                 if let Some((poly, value)) = analyzed.intermediate_columns.get(name) {
                     assert_eq!(poly.kind, SymbolKind::Poly(PolynomialType::Intermediate));
-                    let expression_id = exporter.extract_expression(value, 1);
-                    assert_eq!(
-                        expression_id,
-                        exporter.intermediate_poly_expression_ids[&poly.id] as usize
-                    );
+                    for ((_, id), value) in poly.array_elements().zip(value) {
+                        let expression_id = exporter.extract_expression(value, 1);
+                        assert_eq!(
+                            expression_id,
+                            exporter.intermediate_poly_expression_ids[&id.id] as usize
+                        );
+                    }
                 }
             }
             StatementIdentifier::PublicDeclaration(name) => {

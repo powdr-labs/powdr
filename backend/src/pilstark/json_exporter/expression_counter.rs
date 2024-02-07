@@ -20,7 +20,9 @@ pub fn compute_intermediate_expression_ids<T>(analyzed: &Analyzed<T>) -> HashMap
                     poly.expression_count()
                 } else if let Some((poly, _)) = analyzed.intermediate_columns.get(name) {
                     assert!(poly.kind == SymbolKind::Poly(PolynomialType::Intermediate));
-                    ids.insert(poly.id, expression_counter as u64);
+                    for (index, (_, id)) in poly.array_elements().enumerate() {
+                        ids.insert(id.id, (expression_counter + index) as u64);
+                    }
                     poly.expression_count()
                 } else {
                     unreachable!()
@@ -48,7 +50,11 @@ impl<Expr> ExpressionCounter for Identity<Expr> {
 
 impl ExpressionCounter for Symbol {
     fn expression_count(&self) -> usize {
-        (self.kind == SymbolKind::Poly(PolynomialType::Intermediate)).into()
+        if self.kind == SymbolKind::Poly(PolynomialType::Intermediate) {
+            self.length.unwrap_or(1) as usize
+        } else {
+            0
+        }
     }
 }
 
