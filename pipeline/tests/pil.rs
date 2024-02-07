@@ -185,6 +185,14 @@ fn arith_improved() {
     );
 }
 
+#[test]
+fn referencing_arrays() {
+    let f = "pil/referencing_array.pil";
+    verify_pil(f, Default::default());
+    gen_halo2_proof(f, Default::default());
+    gen_estark_proof(f, Default::default());
+}
+
 mod book {
     use super::*;
     use test_log::test;

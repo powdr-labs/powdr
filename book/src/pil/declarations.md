@@ -12,11 +12,13 @@ This syntax can be used for constants, fixed columns, witness columns and even (
 functions that can transform expressions. The kind of symbol is deduced by its type and the
 way the symbol is used:
 
-- Symbols without a value are witness columns. Their type can be omitted. If it is given, it must be ``int -> fe`` or its shorthand ``col``.
+- Symbols without a value are witness columns or arrays of witness columns. Their type can be omitted. If it is given, it must be ``col`` or ``col[]``.
 - Symbols evaluating to a number or with type ``fe`` are constants.
 - Symbols without type but with a value that is a function with a single parameter are fixed columns.
-- Symbols defined with a value and type ``int -> fe`` or its shorthand ``col`` are also fixed columns.
+- Symbols defined with a value and type ``col`` (or ``col[]``) are fixed columns (or arrays of fixed columns).
 - Everything else is a "generic symbol" that is not a column or constant.
+
+> Note that the type ``col`` is the same as ``int -> fe``, so ``let w: int -> fe`` also declares a witness column.
 
 Examples:
 
