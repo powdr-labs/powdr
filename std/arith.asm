@@ -124,7 +124,7 @@ machine Arith(CLK32_31, operation_id){
     /// returns |n| a(0) * b(n) + ... + a(n) * b(0)
     let product = |a, b| |n| dot_prod(n + 1, a, |i| b(n - i));
     /// Converts array to function, extended by zeros.
-    let array_as_fun: expr[] -> (int -> expr) = [|arr| |i| if 0 <= i && i < array::len(arr) {
+    let array_as_fun: expr[] -> (int -> expr) = |arr| |i| if 0 <= i && i < array::len(arr) {
         arr[i]
     } else {
         0
