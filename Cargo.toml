@@ -33,16 +33,6 @@ license = "MIT"
 homepage = "https://powdr.org"
 repository = "https://github.com/powdr-labs/powdr"
 
-[patch."https://github.com/privacy-scaling-explorations/halo2.git"]
-# TODO change back to this once the PR is merged
-#halo2_proofs = { git = "https://github.com/appliedzkp/halo2.git", rev = "d3746109d7d38be53afc8ddae8fdfaf1f02ad1d7" }
-halo2_proofs = { git = "https://github.com/powdr-org/halo2", branch = "kilic/shuffle" }
-
-[patch.crates-io]
-# TODO change back to this once the PR is merged
-#halo2_proofs = { git = "https://github.com/appliedzkp/halo2.git", rev = "d3746109d7d38be53afc8ddae8fdfaf1f02ad1d7" }
-halo2_proofs = { git = "https://github.com/powdr-org/halo2", branch = "kilic/shuffle" }
-
 [profile.pr-tests]
 inherits = "dev"
 opt-level = 3
