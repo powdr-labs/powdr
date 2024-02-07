@@ -17,6 +17,9 @@ pub struct TypedExpression<T, Ref = Reference> {
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub enum Type {
+    /// The bottom type `!`, which cannot have a value but is
+    /// compatible with all other types.
+    Bottom,
     /// Boolean
     Bool,
     /// Integer (arbitrary precision)
@@ -43,7 +46,13 @@ impl Type {
 
     pub fn is_elementary(&self) -> bool {
         match self {
-            Type::Bool | Type::Int | Type::Fe | Type::String | Type::Expr | Type::Constr => true,
+            Type::Bottom
+            | Type::Bool
+            | Type::Int
+            | Type::Fe
+            | Type::String
+            | Type::Expr
+            | Type::Constr => true,
             Type::Array(_) | Type::Tuple(_) | Type::Function(_) | Type::TypeVar(_) => false,
         }
     }
@@ -131,6 +140,7 @@ impl Type {
 impl<T: FieldElement, Ref: Display> From<TypeName<Expression<T, Ref>>> for Type {
     fn from(value: TypeName<Expression<T, Ref>>) -> Self {
         match value {
+            TypeName::Bottom => Type::Bottom,
             TypeName::Bool => Type::Bool,
             TypeName::Int => Type::Int,
             TypeName::Fe => Type::Fe,

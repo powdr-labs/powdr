@@ -295,6 +295,7 @@ impl Display for PolynomialReference {
 impl Display for Type {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
+            Type::Bottom => write!(f, "!"),
             Type::Bool => write!(f, "bool"),
             Type::Int => write!(f, "int"),
             Type::Fe => write!(f, "fe"),

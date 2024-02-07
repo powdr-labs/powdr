@@ -606,6 +606,7 @@ impl Display for UnaryOperator {
 impl<E: Display> Display for TypeName<E> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
+            TypeName::Bottom => write!(f, "!"),
             TypeName::Bool => write!(f, "bool"),
             TypeName::Int => write!(f, "int"),
             TypeName::Fe => write!(f, "fe"),

@@ -499,17 +499,12 @@ impl<E: ExpressionVisitable<E>> ExpressionVisitable<E> for TypeName<E> {
         F: FnMut(&mut E) -> ControlFlow<B>,
     {
         match self {
-            TypeName::Bool
-            | TypeName::Int
-            | TypeName::Fe
-            | TypeName::String
-            | TypeName::Col
-            | TypeName::Expr
-            | TypeName::Constr
-            | TypeName::TypeVar(_) => ControlFlow::Continue(()),
+            _ if self.is_elementary() => ControlFlow::Continue(()),
+            TypeName::TypeVar(_) => ControlFlow::Continue(()),
             TypeName::Array(a) => a.visit_expressions_mut(f, o),
             TypeName::Tuple(t) => t.visit_expressions_mut(f, o),
             TypeName::Function(fun) => fun.visit_expressions_mut(f, o),
+            _ => unreachable!(),
         }
     }
 
@@ -518,17 +513,12 @@ impl<E: ExpressionVisitable<E>> ExpressionVisitable<E> for TypeName<E> {
         F: FnMut(&E) -> ControlFlow<B>,
     {
         match self {
-            TypeName::Bool
-            | TypeName::Int
-            | TypeName::Fe
-            | TypeName::String
-            | TypeName::Col
-            | TypeName::Expr
-            | TypeName::Constr
-            | TypeName::TypeVar(_) => ControlFlow::Continue(()),
+            _ if self.is_elementary() => ControlFlow::Continue(()),
+            TypeName::TypeVar(_) => ControlFlow::Continue(()),
             TypeName::Array(a) => a.visit_expressions(f, o),
             TypeName::Tuple(t) => t.visit_expressions(f, o),
             TypeName::Function(fun) => fun.visit_expressions(f, o),
+            _ => unreachable!(),
         }
     }
 }

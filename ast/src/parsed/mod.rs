@@ -512,6 +512,9 @@ impl<T> ArrayExpression<T> {
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub enum TypeName<E> {
+    /// The bottom type `!`, which cannot have a value but is
+    /// compatible with all other types.
+    Bottom,
     /// Boolean
     Bool,
     /// Integer (arbitrary precision)
@@ -533,55 +536,56 @@ pub enum TypeName<E> {
 }
 
 impl<E> TypeName<E> {
-    /// Returns true if the type name needs parentheses during formatting
-    /// when used inside a complex expression.
-    pub fn needs_parentheses(&self) -> bool {
+    /// Returns true if it is a non-complex type.
+    /// Type variables are not considered elementary.
+    pub fn is_elementary(&self) -> bool {
         match self {
-            TypeName::Bool
+            TypeName::Bottom
+            | TypeName::Bool
             | TypeName::Int
             | TypeName::Fe
             | TypeName::String
             | TypeName::Col
             | TypeName::Expr
-            | TypeName::Constr
-            | TypeName::Array(_)
+            | TypeName::Constr => true,
+            TypeName::Array(_)
             | TypeName::Tuple(_)
+            | TypeName::Function(_)
             | TypeName::TypeVar(_) => false,
+        }
+    }
+    /// Returns true if the type name needs parentheses during formatting
+    /// when used inside a complex expression.
+    pub fn needs_parentheses(&self) -> bool {
+        match self {
+            _ if self.is_elementary() => false,
+            TypeName::Array(_) | TypeName::Tuple(_) | TypeName::TypeVar(_) => false,
             TypeName::Function(_) => true,
+            _ => unreachable!(),
         }
     }
 
     /// Returns an iterator over all (top-level) expressions in this type name.
     pub fn expressions(&self) -> Box<dyn Iterator<Item = &E> + '_> {
         match self {
-            TypeName::Bool
-            | TypeName::Int
-            | TypeName::Fe
-            | TypeName::String
-            | TypeName::Col
-            | TypeName::Expr
-            | TypeName::Constr
-            | TypeName::TypeVar(_) => Box::new(empty()),
+            _ if self.is_elementary() => Box::new(empty()),
+            TypeName::TypeVar(_) => Box::new(empty()),
             TypeName::Array(a) => a.expressions(),
             TypeName::Tuple(t) => t.expressions(),
             TypeName::Function(f) => f.expressions(),
+            _ => unreachable!(),
         }
     }
 
     /// Returns an iterator over all (top-level) expressions in this type name.
     pub fn expressions_mut(&mut self) -> Box<dyn Iterator<Item = &mut E> + '_> {
         match self {
-            TypeName::Bool
-            | TypeName::Int
-            | TypeName::Fe
-            | TypeName::String
-            | TypeName::Col
-            | TypeName::Expr
-            | TypeName::Constr
-            | TypeName::TypeVar(_) => Box::new(empty()),
+            _ if self.is_elementary() => Box::new(empty()),
+            TypeName::TypeVar(_) => Box::new(empty()),
             TypeName::Array(a) => a.expressions_mut(),
             TypeName::Tuple(t) => t.expressions_mut(),
             TypeName::Function(f) => f.expressions_mut(),
+            _ => unreachable!(),
         }
     }
 }

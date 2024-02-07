@@ -566,6 +566,7 @@ TypeNameTermBox: Box<TypeName<Expression<T>>> = {
 
 TypeNameTerm: TypeName<Expression<T>> = {
     TypeVar => TypeName::TypeVar(<>),
+    "!" => TypeName::Bottom,
     "bool" => TypeName::Bool,
     "int" => TypeName::Int,
     "fe" => TypeName::Fe,
