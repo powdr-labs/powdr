@@ -610,13 +610,12 @@ impl TypeChecker {
         // TODO this should not be needed for recursive calls, should it?
         self.substitute(&mut ty1);
         self.substitute(&mut ty2);
+        // TODO erm, do we really need the is_elementory check here?
+        if ty1.is_elementary() && ty2.is_elementary() && ty1 == ty2 {
+            return Ok(());
+        }
         match (ty1, ty2) {
-            (Type::Bool, Type::Bool)
-            | (Type::Int, Type::Int)
-            | (Type::Fe, Type::Fe)
-            | (Type::String, Type::String)
-            | (Type::Expr, Type::Expr)
-            | (Type::Constr, Type::Constr) => Ok(()),
+            (Type::Bottom, _) | (_, Type::Bottom) => Ok(()),
             (Type::TypeVar(n1), Type::TypeVar(n2)) if n1 == n2 => Ok(()),
             (Type::TypeVar(name), ty) | (ty, Type::TypeVar(name)) => {
                 if ty.contains_type_var(&name) {
@@ -703,7 +702,7 @@ impl TypeChecker {
 fn builtin_schemes() -> HashMap<String, TypeScheme> {
     [
         ("std::array::len", ("T", "T[] -> int")),
-        ("std::check::panic", ("T", "string -> constr[]")), // TODO should be the !-type. Also should be T: ToString
+        ("std::check::panic", ("", "string -> !")), // TODO should be T: ToString
         ("std::convert::fe", ("T: FromLiteral", "T -> fe")),
         ("std::convert::int", ("T: FromLiteral", "T -> int")),
         ("std::debug::print", ("", "string -> constr[]")),
@@ -765,6 +764,7 @@ fn unary_operator_scheme(op: UnaryOperator) -> TypeScheme {
 
 fn elementary_type_bounds(ty: &Type) -> Vec<&'static str> {
     match ty {
+        Type::Bottom => vec![], // TODO or all of them?
         Type::Bool => vec![],
         Type::Int => vec![
             "FromLiteral",
@@ -961,5 +961,15 @@ mod test {
         let input = "let a; let BYTE = |i| std::convert::fe(i & 0xff); { a + 1 } in {BYTE}; namespace std::convert(8); let fe = 8;";
         let result = parse_and_type_check(input);
         check(&result, &[("a", "", "col"), ("BYTE", "", "col")]);
+    }
+
+    #[test]
+    fn bottom() {
+        let input = "
+        namespace std::check(8);
+            let panic: string -> ! = panic();
+            let div: int, int -> int = |x, y| if y == 0 { panic(\"Division by zero\") } else { x / y };";
+        let result = parse_and_type_check(input);
+        check(&result, &[("std::check::div", "", "int, int -> int")]);
     }
 }
