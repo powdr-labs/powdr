@@ -44,12 +44,10 @@ jobs:
       run: cargo clippy --all --all-targets --no-default-features --profile pr-tests -- -D warnings
     - name: Format
       run: cargo fmt --all --check --verbose
-    - name: Check benches compile without running them
-      run: cargo bench --all --all-features --profile pr-tests --no-run
-    - name: Check without Halo2
-      run: cargo check --all --no-default-features --profile pr-tests
     - name: Build
       run: cargo build --all-targets --all --all-features --profile pr-tests
+    - name: Check without Halo2
+      run: cargo check --all --no-default-features --profile pr-tests
     - uses: taiki-e/install-action@nextest
     - name: Create tests archive
       run: cargo nextest archive --archive-file tests.tar.zst --cargo-profile pr-tests --workspace --all-features
