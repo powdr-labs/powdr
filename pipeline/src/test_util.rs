@@ -75,6 +75,8 @@ pub fn gen_estark_proof(file_name: &str, inputs: Vec<GoldilocksField>) {
 
 #[cfg(feature = "halo2")]
 pub fn gen_halo2_proof(file_name: &str, inputs: Vec<Bn254Field>) {
+    use std::fs;
+
     let file_name = format!("{}/../test_data/{file_name}", env!("CARGO_MANIFEST_DIR"));
     let tmp_dir = mktemp::Temp::new_dir().unwrap();
     let mut pipeline = Pipeline::default()
@@ -93,16 +95,13 @@ pub fn gen_halo2_proof(file_name: &str, inputs: Vec<Bn254Field>) {
 
     // Setup
     let setup_file_path = tmp_dir.as_path().join("params.bin");
-    let mut setup_file = File::create(&setup_file_path).unwrap();
-    let mut setup_writer = BufWriter::new(&mut setup_file);
-    backend.write_setup(&mut setup_writer).unwrap();
-    setup_writer.flush().unwrap();
+    let mut setup_file = BufWriter::new(File::create(&setup_file_path).unwrap());
+    backend.write_setup(&mut setup_file).unwrap();
+    setup_file.flush().unwrap();
 
     // Verification Key
     let vkey_file_path = tmp_dir.as_path().join("verification_key.bin");
-    let vkey = pipeline.verification_key().unwrap();
-    let mut vkey_file = File::create(&vkey_file_path).unwrap();
-    vkey_file.write_all(&vkey).unwrap();
+    fs::write(&vkey_file_path, pipeline.verification_key().unwrap()).unwrap();
 
     // Create the proof before adding the setup and vkey to the backend,
     // so that they're generated during the proof

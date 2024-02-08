@@ -20,7 +20,7 @@ impl Default for CsvRenderMode {
 const ROW_NAME: &str = "Row";
 
 pub fn write_polys_csv_file<T: FieldElement>(
-    file: &mut impl Write,
+    file: impl Write,
     render_mode: CsvRenderMode,
     polys: &[&(String, Vec<T>)],
 ) {
@@ -53,7 +53,7 @@ pub fn write_polys_csv_file<T: FieldElement>(
     writer.flush().unwrap();
 }
 
-pub fn read_polys_csv_file<T: FieldElement>(file: &mut impl Read) -> Vec<(String, Vec<T>)> {
+pub fn read_polys_csv_file<T: FieldElement>(file: impl Read) -> Vec<(String, Vec<T>)> {
     let mut reader = Reader::from_reader(file);
     let headers = reader.headers().unwrap();
 
