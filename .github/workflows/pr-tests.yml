@@ -36,8 +36,8 @@ jobs:
         path: |
           ~/pilcom/node_modules
         key: ${{ runner.os }}-pilcom-node-modules
-    - name: Install Rust toolchain 1.72 (with clippy and rustfmt)
-      run: rustup toolchain install 1.72-x86_64-unknown-linux-gnu && rustup component add clippy --toolchain 1.72-x86_64-unknown-linux-gnu && rustup component add rustfmt --toolchain 1.72-x86_64-unknown-linux-gnu
+    - name: Install Rust toolchain 1.74 (with clippy and rustfmt)
+      run: rustup toolchain install 1.74-x86_64-unknown-linux-gnu && rustup component add clippy --toolchain 1.74-x86_64-unknown-linux-gnu && rustup component add rustfmt --toolchain 1.74-x86_64-unknown-linux-gnu
     - name: Lint
       run: cargo clippy --all --all-targets --all-features --profile pr-tests -- -D warnings
     - name: Lint
@@ -84,8 +84,8 @@ jobs:
         path: |
           ~/pilcom/node_modules
         key: ${{ runner.os }}-pilcom-node-modules
-    - name: Install Rust toolchain 1.72 (with clippy and rustfmt)
-      run: rustup toolchain install 1.72-x86_64-unknown-linux-gnu && rustup component add clippy --toolchain 1.72-x86_64-unknown-linux-gnu && rustup component add rustfmt --toolchain 1.72-x86_64-unknown-linux-gnu
+    - name: Install Rust toolchain 1.74 (with clippy and rustfmt)
+      run: rustup toolchain install 1.74-x86_64-unknown-linux-gnu && rustup component add clippy --toolchain 1.74-x86_64-unknown-linux-gnu && rustup component add rustfmt --toolchain 1.74-x86_64-unknown-linux-gnu
     - name: Install nightly
       run: rustup toolchain install nightly-2023-01-03-x86_64-unknown-linux-gnu
     - name: Install riscv target
@@ -121,8 +121,8 @@ jobs:
         path: |
           ~/pilcom/node_modules
         key: ${{ runner.os }}-pilcom-node-modules
-    - name: Install Rust toolchain 1.72 (with clippy and rustfmt)
-      run: rustup toolchain install 1.72-x86_64-unknown-linux-gnu && rustup component add clippy --toolchain 1.72-x86_64-unknown-linux-gnu && rustup component add rustfmt --toolchain 1.72-x86_64-unknown-linux-gnu
+    - name: Install Rust toolchain 1.74 (with clippy and rustfmt)
+      run: rustup toolchain install 1.74-x86_64-unknown-linux-gnu && rustup component add clippy --toolchain 1.74-x86_64-unknown-linux-gnu && rustup component add rustfmt --toolchain 1.74-x86_64-unknown-linux-gnu
     - name: Install nightly
       run: rustup toolchain install nightly-2023-01-03-x86_64-unknown-linux-gnu
     - name: Install riscv target

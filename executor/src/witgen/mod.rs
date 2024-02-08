@@ -242,10 +242,8 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
             column_by_name: analyzed
                 .definitions
                 .iter()
-                .filter_map(|(name, (symbol, _))| {
-                    matches!(symbol.kind, SymbolKind::Poly(_))
-                        .then(|| (name.clone(), symbol.into()))
-                })
+                .filter(|(_, (symbol, _))| matches!(symbol.kind, SymbolKind::Poly(_)))
+                .map(|(name, (symbol, _))| (name.clone(), symbol.into()))
                 .collect(),
         }
     }

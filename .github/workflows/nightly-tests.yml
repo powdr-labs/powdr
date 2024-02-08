@@ -63,8 +63,8 @@ jobs:
         path: |
           ~/pilcom/node_modules
         key: ${{ runner.os }}-pilcom-node-modules
-    - name: Install Rust toolchain 1.72
-      run: rustup toolchain install 1.72-x86_64-unknown-linux-gnu
+    - name: Install Rust toolchain 1.74
+      run: rustup toolchain install 1.74-x86_64-unknown-linux-gnu
     - name: Install nightly
       run: rustup toolchain install nightly-2023-01-03-x86_64-unknown-linux-gnu
     - name: Install riscv target

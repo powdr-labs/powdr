@@ -723,25 +723,24 @@ impl<T> Machine<T> {
     pub fn write_register_names(&self) -> impl Iterator<Item = &str> {
         self.registers
             .iter()
-            .filter_map(|r: &RegisterDeclarationStatement| r.ty.is_write().then(|| r.name.as_ref()))
+            .filter(|r| r.ty.is_write())
+            .map(|r| r.name.as_ref())
     }
 
     /// Returns an iterator over references to the names of the assignment registers
     pub fn assignment_register_names(&self) -> impl Iterator<Item = &str> {
         self.registers
             .iter()
-            .filter_map(|r: &RegisterDeclarationStatement| {
-                r.ty.is_assignment().then(|| r.name.as_ref())
-            })
+            .filter(|r| r.ty.is_assignment())
+            .map(|r| r.name.as_ref())
     }
 
     /// Returns an iterator over references to the names of the read-only registers
     pub fn read_only_register_names(&self) -> impl Iterator<Item = &str> {
         self.registers
             .iter()
-            .filter_map(|r: &RegisterDeclarationStatement| {
-                r.ty.is_read_only().then(|| r.name.as_ref())
-            })
+            .filter(|r| r.ty.is_read_only())
+            .map(|r| r.name.as_ref())
     }
 
     /// Returns an iterator over references to the operation definitions    

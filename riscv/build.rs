@@ -22,7 +22,7 @@ fn build_lalrpop() {
 fn build_instruction_tests() {
     let out_dir = env::var("OUT_DIR").unwrap();
     let destination = Path::new(&out_dir).join("instruction_tests.rs");
-    let mut test_file = File::create(&destination).unwrap();
+    let mut test_file = File::create(destination).unwrap();
 
     let generated_path = "./tests/instruction_tests/generated";
     println!("cargo:rerun-if-changed={generated_path}");
