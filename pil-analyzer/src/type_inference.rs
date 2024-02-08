@@ -132,6 +132,87 @@ impl TypeCheckerState {
         //println!("Adding substitution: {name} := {ty}");
         self.substitutions.insert(type_var, ty);
     }
+
+    fn unify_types(&mut self, mut ty1: Type, mut ty2: Type) -> Result<(), String> {
+        //println!("Unify start: {ty1}  <->  {ty2}");
+        if let (Type::TypeVar(n1), Type::TypeVar(n2)) = (&ty1, &ty2) {
+            if n1 == n2 {
+                return Ok(());
+            }
+        }
+        // TODO this should not be needed for recursive calls, should it?
+        ty1.substitute_type_vars(&self.substitutions);
+        ty2.substitute_type_vars(&self.substitutions);
+
+        // TODO erm, do we really need the is_elementory check here?
+        if ty1.is_elementary() && ty2.is_elementary() && ty1 == ty2 {
+            return Ok(());
+        }
+        match (ty1, ty2) {
+            (Type::Bottom, _) | (_, Type::Bottom) => Ok(()),
+            (Type::TypeVar(n1), Type::TypeVar(n2)) if n1 == n2 => Ok(()),
+            (Type::TypeVar(name), ty) | (ty, Type::TypeVar(name)) => {
+                if ty.contains_type_var(&name) {
+                    Err(format!(
+                        "Cannot unify types {ty} and {name}: They depend on each other"
+                    ))
+                } else {
+                    for bound in self.type_var_bounds(&name) {
+                        self.ensure_bound(&ty, bound)?;
+                    }
+                    self.add_substitution(name, ty);
+                    Ok(())
+                }
+            }
+            (Type::Function(f1), Type::Function(f2)) => {
+                if f1.params.len() != f2.params.len() {
+                    Err(format!(
+                        "Function types have different number of parameters: {f1} and {f2}"
+                    ))?;
+                }
+                for (p1, p2) in f1.params.iter().zip(f2.params.iter()) {
+                    self.unify_types(p1.clone(), p2.clone())?;
+                }
+                self.unify_types(*f1.value, *f2.value)
+            }
+            (Type::Array(a1), Type::Array(a2)) => {
+                if a1.length != a2.length {
+                    Err(format!("Array types have different lengths: {a1} and {a2}"))?;
+                }
+                self.unify_types(*a1.base, *a2.base)
+            }
+            (Type::Tuple(t1), Type::Tuple(t2)) => {
+                if t1.items.len() != t2.items.len() {
+                    Err(format!(
+                        "Tuple types have different number of items: {t1} and {t2}"
+                    ))?;
+                }
+                t1.items
+                    .into_iter()
+                    .zip(t2.items)
+                    .try_for_each(|(i1, i2)| self.unify_types(i1.clone(), i2.clone()))
+            }
+
+            (ty1, ty2) => Err(format!("Cannot unify types {ty1} and {ty2}")),
+        }
+    }
+
+    fn ensure_bound(&mut self, ty: &Type, bound: String) -> Result<(), String> {
+        //println!("Ensuring type bound {ty}: {bound}");
+        if let Type::TypeVar(n) = ty {
+            self.add_type_var_bound(n.clone(), bound);
+            Ok(())
+        } else {
+            let bounds = elementary_type_bounds(&ty);
+            if bounds.contains(&bound.as_str()) {
+                Ok(())
+            } else {
+                Err(format!(
+                    "Type {ty} is required to satisfy trait {bound}, but does not."
+                ))
+            }
+        }
+    }
 }
 
 impl TypeChecker {
@@ -200,25 +281,26 @@ impl TypeChecker {
             };
 
             let ty = self.instantiate_scheme(self.types[name].clone());
-            let snapshot = self.state.clone();
-            (match self.unify_expression_allow_implicit_conversion(ty.clone(), value) {
-                Err(err) if self.substitute_to(ty.clone()) == Type::col() => {
-                    self.state = snapshot;
-                    // Ok, this did not work, but we are expecting a column.
-                    // Let's see if we can add an implicit conversion int -> fe
-                    // at the end, i.e. type check it as int- > int.
-                    self.unify_expression(
-                        Type::Function(FunctionType {
-                            params: vec![Type::Int],
-                            value: Box::new(Type::Int),
-                        }),
-                        value,
-                    )
-                    .map_err(|_| err)
-                }
-                x => x,
-            })
-            .map_err(|e| format!("Error type checking the symbol {name} = {value}:\n{e}",))?;
+            //let snapshot = self.state.clone();
+            self.unify_expression(ty.clone(), value)?;
+            // (match self.unify_expression_allow_implicit_conversion(ty.clone(), value) {
+            //     Err(err) if self.substitute_to(ty.clone()) == Type::col() => {
+            //         self.state = snapshot;
+            //         // Ok, this did not work, but we are expecting a column.
+            //         // Let's see if we can add an implicit conversion int -> fe
+            //         // at the end, i.e. type check it as int- > int.
+            //         self.unify_expression(
+            //             Type::Function(FunctionType {
+            //                 params: vec![Type::Int],
+            //                 value: Box::new(Type::Int),
+            //             }),
+            //             value,
+            //         )
+            //         .map_err(|_| err)
+            //     }
+            //     x => x,
+            // })
+            // .map_err(|e| format!("Error type checking the symbol {name} = {value}:\n{e}",))?;
             if !self.types[name].vars.is_empty() {
                 // It is a type scheme, so we need to check if it conforms to its declared type now.
                 // TODO the instantiation adds type var bounds. But this routine cannot check if some
@@ -281,25 +363,26 @@ impl TypeChecker {
     ) -> Result<(), String> {
         for id in identities {
             if id.kind == IdentityKind::Polynomial {
-                let snapshot = self.state.clone();
-                match self.unify_expression(Type::Constr, id.expression_for_poly_id()) {
-                    Ok(()) => Ok(()),
-                    Err(original_err) => {
-                        // Unification with constr failed, let's try constr[].
-                        self.state = snapshot;
-                        self.unify_expression(
-                            Type::Array(ArrayType {
-                                base: Box::new(Type::Constr),
-                                length: None,
-                            }),
-                            id.expression_for_poly_id(),
-                        )
-                        .map_err(|_| original_err)
-                    }
-                }
-                .map_err(|e| {
-                    format!("Expresison is expected to evaluate to a constraint: {id}:\n{e}")
-                })?;
+                self.unify_expression(Type::Constr, id.expression_for_poly_id())?;
+                // let snapshot = self.state.clone();
+                // match self.unify_expression(Type::Constr, id.expression_for_poly_id()) {
+                //     Ok(()) => Ok(()),
+                //     Err(original_err) => {
+                //         // Unification with constr failed, let's try constr[].
+                //         self.state = snapshot;
+                //         self.unify_expression(
+                //             Type::Array(ArrayType {
+                //                 base: Box::new(Type::Constr),
+                //                 length: None,
+                //             }),
+                //             id.expression_for_poly_id(),
+                //         )
+                //         .map_err(|_| original_err)
+                //     }
+                // }
+                // .map_err(|e| {
+                //     format!("Expresison is expected to evaluate to a constraint: {id}:\n{e}")
+                // })?;
             } else {
                 for part in [&id.left, &id.right] {
                     if let Some(selector) = &part.selector {
@@ -350,26 +433,27 @@ impl TypeChecker {
         e: &Expression<T>,
     ) -> Result<(), String> {
         let expr_type = self.unify_new_expression(e)?;
-        let snapshot = self.state.clone();
-        match self.unify_types(ty.clone(), expr_type.clone()) {
-            Err(e) => {
-                if self.substitute_to(ty.clone()) == Type::Expr
-                    && self.substitute_to(expr_type.clone()) == Type::col()
-                {
-                    // TODO is it OK to check for col?
-                    //println!("Unification faild, but we are expecting an 'expr' type and have a 'col'. Trying to add conversion to expr.");
-                    // Ok try to convert the col to an expr
-                    self.state = snapshot;
-                    self.unify_types(Type::col(), expr_type)?;
-                    let converted = self.new_type_var();
-                    self.unify_types(Type::Expr, converted.clone())?;
-                    self.unify_types(ty, converted)
-                } else {
-                    Err(e)
-                }
-            }
-            Ok(_) => Ok(()),
-        }
+        self.state.unify_types(ty.clone(), expr_type.clone())
+        //let snapshot = self.state.clone();
+        // match self.state.unify_types(ty.clone(), expr_type.clone()) {
+        //     Err(e) => {
+        //         if self.substitute_to(ty.clone()) == Type::Expr
+        //             && self.substitute_to(expr_type.clone()) == Type::col()
+        //         {
+        //             // TODO is it OK to check for col?
+        //             //println!("Unification faild, but we are expecting an 'expr' type and have a 'col'. Trying to add conversion to expr.");
+        //             // Ok try to convert the col to an expr
+        //             self.state = snapshot;
+        //             self.state.unify_types(Type::col(), expr_type)?;
+        //             let converted = self.new_type_var();
+        //             self.state.unify_types(Type::Expr, converted.clone())?;
+        //             self.state.unify_types(ty, converted)
+        //         } else {
+        //             Err(e)
+        //         }
+        //     }
+        //     Ok(_) => Ok(()),
+        // }
     }
 
     fn unify_expression<T: FieldElement>(
@@ -383,15 +467,15 @@ impl TypeChecker {
         // );
         match e {
             Expression::Reference(Reference::LocalVar(id, _name)) => {
-                self.unify_types(ty, self.state.local_var_type(*id))
+                self.state.unify_types(ty, self.state.local_var_type(*id))
             }
             Expression::Reference(Reference::Poly(PolynomialReference { name, poly_id: _ })) => {
                 let type_of_symbol = self.instantiate_scheme(self.types[name].clone());
-                self.unify_types(ty, type_of_symbol)
+                self.state.unify_types(ty, type_of_symbol)
             }
             Expression::PublicReference(_) => todo!(),
-            Expression::Number(_) => self.ensure_bound(&ty, "FromLiteral".to_string()),
-            Expression::String(_) => self.unify_types(ty, Type::String),
+            Expression::Number(_) => self.state.ensure_bound(&ty, "FromLiteral".to_string()),
+            Expression::String(_) => self.state.unify_types(ty, Type::String),
             Expression::Tuple(_) => todo!(),
             Expression::LambdaExpression(LambdaExpression { params, body }) => {
                 let param_types = (0..params.len())
@@ -400,7 +484,7 @@ impl TypeChecker {
                 self.state.push_new_local_vars(param_types);
                 let body_type = self.unify_new_expression(body)?;
                 let param_types = self.state.pop_local_var_types(params.len());
-                self.unify_types(
+                self.state.unify_types(
                     ty,
                     Type::Function(FunctionType {
                         params: param_types,
@@ -410,7 +494,7 @@ impl TypeChecker {
             }
             Expression::ArrayLiteral(ArrayLiteral { items }) => {
                 let item_type = self.new_type_var();
-                self.unify_types(
+                self.state.unify_types(
                     ty,
                     Type::Array(ArrayType {
                         base: Box::new(item_type.clone()),
@@ -425,19 +509,19 @@ impl TypeChecker {
                 let fun_type = self.instantiate_scheme(binary_operator_scheme(*op));
                 let value = self
                     .unify_function_call(fun_type, [left, right].into_iter().map(AsRef::as_ref))?;
-                self.unify_types(ty, value)?;
+                self.state.unify_types(ty, value)?;
                 Ok(())
             }
             Expression::UnaryOperation(op, inner) => {
                 let fun_type = self.instantiate_scheme(unary_operator_scheme(*op));
                 let value =
                     self.unify_function_call(fun_type, [inner].into_iter().map(AsRef::as_ref))?;
-                self.unify_types(ty, value)?;
+                self.state.unify_types(ty, value)?;
                 Ok(())
             }
             Expression::IndexAccess(IndexAccess { array, index }) => {
                 let array_type = self.unify_new_expression(array)?;
-                self.unify_types(
+                self.state.unify_types(
                     array_type,
                     Type::Array(ArrayType {
                         base: Box::new(ty.clone()),
@@ -446,7 +530,7 @@ impl TypeChecker {
                 )?;
 
                 let index_type = self.unify_new_expression(index)?;
-                self.unify_types(index_type, Type::Int)
+                self.state.unify_types(index_type, Type::Int)
             }
             Expression::FunctionCall(FunctionCall {
                 function,
@@ -454,7 +538,7 @@ impl TypeChecker {
             }) => {
                 let ft = self.unify_new_expression(function)?;
                 let value = self.unify_function_call(ft, arguments.iter())?;
-                self.unify_types(ty, value)?;
+                self.state.unify_types(ty, value)?;
                 Ok(())
             }
             Expression::FreeInput(_) => todo!(),
@@ -465,23 +549,23 @@ impl TypeChecker {
                     .map(|MatchArm { pattern, value }| {
                         if let MatchPattern::Pattern(pattern) = pattern {
                             let pat_type = self.unify_new_expression(pattern)?;
-                            self.unify_types(scrutinee_type.clone(), pat_type)?;
+                            self.state.unify_types(scrutinee_type.clone(), pat_type)?;
                         }
                         self.unify_new_expression(value)
                     })
                     .collect::<Result<Vec<_>, _>>()?;
                 for arm_type in arm_types {
-                    self.unify_types(ty.clone(), arm_type)?;
+                    self.state.unify_types(ty.clone(), arm_type)?;
                 }
                 Ok(())
             }
             Expression::IfExpression(if_expr) => {
                 let cond_type = self.unify_new_expression(&if_expr.condition)?;
-                self.unify_types(cond_type, Type::Bool)?;
+                self.state.unify_types(cond_type, Type::Bool)?;
                 let true_type = self.unify_new_expression(&if_expr.body)?;
                 let false_type = self.unify_new_expression(&if_expr.else_body)?;
-                self.unify_types(true_type.clone(), false_type)?;
-                self.unify_types(ty, true_type)?;
+                self.state.unify_types(true_type.clone(), false_type)?;
+                self.state.unify_types(ty, true_type)?;
                 Ok(())
             }
         }
@@ -510,43 +594,44 @@ impl TypeChecker {
         // which does HM and collects subtying constraints during the process and then solves
         // these constraints only at the end.
         let snapshot = self.state.clone();
-        match self.unify_types(
+        match self.state.unify_types(
             function_type.clone(),
             Type::Function(FunctionType {
                 params: args.clone(),
                 value: Box::new(value.clone()),
             }),
         ) {
-            Err(e) => {
-                // TODO add much more conditions.
-                let conversions = args
-                    .iter()
-                    .enumerate()
-                    .filter_map(|(i, x)| {
-                        self.can_convert_implicitly(&self.substitute_to(x.clone()))
-                            .map(|t| (i, t))
-                    })
-                    .collect::<Vec<_>>();
-                if conversions.is_empty() {
-                    return Err(e);
-                }
+            Err(e) => Err(e),
+            // {
+            //     // TODO add much more conditions.
+            //     let conversions = args
+            //         .iter()
+            //         .enumerate()
+            //         .filter_map(|(i, x)| {
+            //             self.can_convert_implicitly(&self.substitute_to(x.clone()))
+            //                 .map(|t| (i, t))
+            //         })
+            //         .collect::<Vec<_>>();
+            //     if conversions.is_empty() {
+            //         return Err(e);
+            //     }
 
-                // println!("Unification faild, but we have a 'col' argument. Trying to add conversion to expr.");
-                // Ok try to convert the col to an expr
-                self.state = snapshot;
-                let mut new_args = args;
-                for (pos, converted) in conversions {
-                    new_args[pos] = converted;
-                }
-                self.unify_types(
-                    function_type,
-                    Type::Function(FunctionType {
-                        params: new_args,
-                        value: Box::new(value.clone()),
-                    }),
-                )?;
-                Ok(value)
-            }
+            //     // println!("Unification faild, but we have a 'col' argument. Trying to add conversion to expr.");
+            //     // Ok try to convert the col to an expr
+            //     self.state = snapshot;
+            //     let mut new_args = args;
+            //     for (pos, converted) in conversions {
+            //         new_args[pos] = converted;
+            //     }
+            //     self.state.unify_types(
+            //         function_type,
+            //         Type::Function(FunctionType {
+            //             params: new_args,
+            //             value: Box::new(value.clone()),
+            //         }),
+            //     )?;
+            //     Ok(value)
+            // }
             Ok(_) => Ok(value),
         }
     }
@@ -569,11 +654,6 @@ impl TypeChecker {
         }
     }
 
-    /// Applies the current substitutions to the type.
-    fn substitute(&self, ty: &mut Type) {
-        ty.substitute_type_vars(&self.state.substitutions());
-    }
-
     fn substitute_to(&self, mut ty: Type) -> Type {
         ty.substitute_type_vars(&self.state.substitutions());
         ty
@@ -591,91 +671,13 @@ impl TypeChecker {
             .map(|(var, bounds)| {
                 let new_var = self.new_type_var();
                 for b in bounds {
-                    self.ensure_bound(&new_var, b.clone()).unwrap();
+                    self.state.ensure_bound(&new_var, b.clone()).unwrap();
                 }
                 (var.clone(), new_var)
             })
             .collect();
         ty.substitute_type_vars(&substitution);
         ty
-    }
-
-    fn unify_types(&mut self, mut ty1: Type, mut ty2: Type) -> Result<(), String> {
-        //println!("Unify start: {ty1}  <->  {ty2}");
-        if let (Type::TypeVar(n1), Type::TypeVar(n2)) = (&ty1, &ty2) {
-            if n1 == n2 {
-                return Ok(());
-            }
-        }
-        // TODO this should not be needed for recursive calls, should it?
-        self.substitute(&mut ty1);
-        self.substitute(&mut ty2);
-        // TODO erm, do we really need the is_elementory check here?
-        if ty1.is_elementary() && ty2.is_elementary() && ty1 == ty2 {
-            return Ok(());
-        }
-        match (ty1, ty2) {
-            (Type::Bottom, _) | (_, Type::Bottom) => Ok(()),
-            (Type::TypeVar(n1), Type::TypeVar(n2)) if n1 == n2 => Ok(()),
-            (Type::TypeVar(name), ty) | (ty, Type::TypeVar(name)) => {
-                if ty.contains_type_var(&name) {
-                    Err(format!("Cannot unify types {ty} and {name}"))
-                } else {
-                    for bound in self.state.type_var_bounds(&name) {
-                        self.ensure_bound(&ty, bound)?;
-                    }
-                    self.state.add_substitution(name, ty);
-                    Ok(())
-                }
-            }
-            (Type::Function(f1), Type::Function(f2)) => {
-                if f1.params.len() != f2.params.len() {
-                    Err(format!(
-                        "Function types have different number of parameters: {f1} and {f2}"
-                    ))?;
-                }
-                for (p1, p2) in f1.params.iter().zip(f2.params.iter()) {
-                    self.unify_types(p1.clone(), p2.clone())?;
-                }
-                self.unify_types(*f1.value, *f2.value)
-            }
-            (Type::Array(a1), Type::Array(a2)) => {
-                if a1.length != a2.length {
-                    Err(format!("Array types have different lengths: {a1} and {a2}"))?;
-                }
-                self.unify_types(*a1.base, *a2.base)
-            }
-            (Type::Tuple(t1), Type::Tuple(t2)) => {
-                if t1.items.len() != t2.items.len() {
-                    Err(format!(
-                        "Tuple types have different number of items: {t1} and {t2}"
-                    ))?;
-                }
-                t1.items
-                    .into_iter()
-                    .zip(t2.items)
-                    .try_for_each(|(i1, i2)| self.unify_types(i1.clone(), i2.clone()))
-            }
-
-            (ty1, ty2) => Err(format!("Cannot unify types {ty1} and {ty2}")),
-        }
-    }
-
-    fn ensure_bound(&mut self, ty: &Type, bound: String) -> Result<(), String> {
-        //println!("Ensuring type bound {ty}: {bound}");
-        if let Type::TypeVar(n) = ty {
-            self.state.add_type_var_bound(n.clone(), bound);
-            Ok(())
-        } else {
-            let bounds = elementary_type_bounds(&ty);
-            if bounds.contains(&bound.as_str()) {
-                Ok(())
-            } else {
-                Err(format!(
-                    "Type {ty} is required to satisfy trait {bound}, but does not."
-                ))
-            }
-        }
     }
 
     fn new_type_var(&mut self) -> Type {
@@ -848,27 +850,25 @@ mod test {
 
     #[test]
     fn single_literal() {
-        let input = "let x = [1,2];";
+        let input = "let<T: FromLiteral> x: T[] = [1,2];";
         let result = parse_and_type_check(input);
-        check(&result, &[("x", "T: FromLiteral", "T")]);
+        check(&result, &[("x", "T: FromLiteral", "T[]")]);
     }
 
     #[test]
     fn assignment() {
-        let input = "let x = |i| i; let y = x(2);";
+        // This should derive a concrete type for x due to how it is used by y.
+        let input = "let x = [|i| i]; let y: int[] = [x[0](2)];";
         let result = parse_and_type_check(input);
-        check(
-            &result,
-            &[
-                ("x", "T: FromLiteral", "T -> T"),
-                ("y", "T: FromLiteral", "T"),
-            ],
-        );
+        check(&result, &[("x", "", "(int -> int)[]"), ("y", "", "int[]")]);
     }
 
     #[test]
     fn higher_order() {
-        let input = "let x = |i| |f| i + f(i); let y = x(2)(|k| k + 8);";
+        let input = "
+            let<T: Add + FromLiteral> x: T -> ((T -> T) -> T) = |i| |f| i + f(i);
+            let<T: Add + FromLiteral> y: T = x(2)(|k| k + 8);
+        ";
         let result = parse_and_type_check(input);
         check(
             &result,
@@ -929,7 +929,8 @@ mod test {
 
     #[test]
     fn pow() {
-        let input = "let pow = |a, b| a ** b; let x = pow(2, 3);";
+        let input =
+            "let<T: FromLiteral + Pow> pow: T, int -> T = |a, b| a ** b; let<T: FromLiteral + Pow> x: T = pow(2, 3);";
         let result = parse_and_type_check(input);
         check(
             &result,
@@ -942,23 +943,34 @@ mod test {
 
     #[test]
     fn if_statement() {
-        let input = "let g = || g(); let x = |a, b| if g() { a } else { b + 2 };";
+        let input = "
+            let g = || g();
+            let x = |a, b| if g() { a } else { b + 2 };
+            let c: int = 2;
+            let y = [|i| x(c, i)];
+        ";
         let result = parse_and_type_check(input);
         check(
             &result,
             // TODO " -> bool" is also not formatted correctly.
-            // TODO this test shows that we do not have let-polymorphism,
-            // since the type of g is determined by how it is used in x.
             &[
                 ("g", "", " -> bool"),
-                ("x", "T: Add + FromLiteral", "T, T -> T"),
+                ("x", "", "int, int -> int"),
+                ("c", "", "int"),
+                ("y", "", "(int -> int)[]"),
             ],
         );
     }
 
     #[test]
     fn constraints() {
-        let input = "let a; let BYTE = |i| std::convert::fe(i & 0xff); { a + 1 } in {BYTE}; namespace std::convert(8); let fe = 8;";
+        let input = "
+            let a;
+            let BYTE = |i| std::convert::fe(i & 0xff);
+            { a + 1 } in {BYTE};
+            namespace std::convert(8);
+            let fe = 8;
+        ";
         let result = parse_and_type_check(input);
         check(&result, &[("a", "", "col"), ("BYTE", "", "col")]);
     }
