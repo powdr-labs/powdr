@@ -182,6 +182,7 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
 
 /// Data that is fixed for witness generation.
 pub struct FixedData<'a, T> {
+    analyzed: &'a Analyzed<T>,
     degree: DegreeType,
     fixed_cols: FixedColumnMap<FixedColumn<'a, T>>,
     witness_cols: WitnessColumnMap<WitnessColumn<'a, T>>,
@@ -234,6 +235,7 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
         let fixed_cols =
             FixedColumnMap::from(fixed_col_values.iter().map(|(n, v)| FixedColumn::new(n, v)));
         FixedData {
+            analyzed,
             degree: analyzed.degree(),
             fixed_cols,
             witness_cols,

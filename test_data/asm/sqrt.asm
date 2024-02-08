@@ -10,10 +10,13 @@ machine Sqrt(latch, operation_id) {
 
     // Witness generation is not smart enough to figure out that
     // there is a unique witness, so we provide it as a hint.
-    // This is a dummy example that hard-codes the answer for an input of 4.
-    // Once we have a sqrt function that we can run to compute the query result,
-    // this can be used to compute the hint from x.
-    col witness y(i) query ("hint", 2);
+    // This is a dummy example that hard-codes the answer for inputs 1 and 4.
+    let sqrt_hint: int -> int = |x| match x {
+        1 => 1,
+        4 => 2
+    };
+
+    col witness y(i) query ("hint", sqrt_hint(x(i)));
     
     y * y = x;
     
@@ -48,6 +51,9 @@ machine Main {
 
         A <== sqrt(4);
         assert_zero A - 2;
+
+        A <== sqrt(1);
+        assert_zero A - 1;
 
         return;
     }
