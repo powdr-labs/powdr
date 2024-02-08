@@ -102,8 +102,8 @@ jobs:
     strategy:
       matrix:
         test:
-        - "'test(=test_keccak) | test(=test_vec_median) | test(=instruction_tests::addi) | test(=arith_test)'"
-        - "'test(=test_many_chunks)'"
+        - "subset1"
+        - "subset2"
     needs: build
     runs-on: ubuntu-latest
 
@@ -134,6 +134,11 @@ jobs:
     - uses: taiki-e/install-action@nextest
     - name: Run slow tests
       # Number threads is set to 1 because the runner does not have enough memory for more.
-      run: >
-        PILCOM=$(pwd)/pilcom/ cargo nextest run --archive-file tests.tar.zst --verbose --run-ignored=ignored-only --no-capture
-        -E ${{ matrix.test }}
+      run: |
+        if [[ "${{ matrix.test }}" == "subset1" ]]; then
+          TESTS="test(=test_keccak) | test(=test_vec_median) | test(=instruction_tests::addi) | test(=arith_test)"
+        elif [[ "${{ matrix.test }}" == "subset2" ]]; then
+          TESTS="test(=test_many_chunks)"
+        fi
+        PILCOM=$(pwd)/pilcom/ cargo nextest run --archive-file tests.tar.zst --verbose --run-ignored=ignored-only --no-capture -E "$TESTS"
+      shell: bash
