@@ -254,7 +254,7 @@ impl ProcessingSequenceCache {
         K: Copy + Ord,
         T: FieldElement,
     {
-        self.cache.entry(left.into()).or_insert(vec![]);
+        self.cache.entry(left.into()).or_default();
     }
 
     pub fn report_processing_sequence<K, T>(

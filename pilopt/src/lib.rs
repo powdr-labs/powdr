@@ -242,14 +242,16 @@ fn remove_constant_witness_columns<T: FieldElement>(pil_file: &mut Analyzed<T>) 
     let mut constant_polys = pil_file
         .identities
         .iter()
-        .filter_map(|id| (id.kind == IdentityKind::Polynomial).then(|| id.expression_for_poly_id()))
+        .filter(|&id| (id.kind == IdentityKind::Polynomial))
+        .map(|id| id.expression_for_poly_id())
         .filter_map(constrained_to_constant)
         .collect::<BTreeMap<PolyID, _>>();
     // We cannot remove arrays or array elements, so filter them out.
     let columns = pil_file
         .committed_polys_in_source_order()
         .iter()
-        .filter_map(|(s, _)| (!s.is_array()).then(|| s.into()))
+        .filter(|&(s, _)| (!s.is_array()))
+        .map(|(s, _)| s.into())
         .collect::<HashSet<PolyID>>();
     constant_polys.retain(|id, _| columns.contains(id));
 

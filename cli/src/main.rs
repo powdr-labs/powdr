@@ -35,7 +35,7 @@ fn bind_cli_args<F: FieldElement>(
             let mut csv_writer = BufReader::new(&csv_file);
             read_polys_csv_file::<F>(&mut csv_writer)
         })
-        .unwrap_or(vec![]);
+        .unwrap_or_default();
 
     let csv_mode = match csv_mode {
         CsvRenderModeCLI::SignedBase10 => CsvRenderMode::SignedBase10,
