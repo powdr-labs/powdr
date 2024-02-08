@@ -6,10 +6,7 @@ use std::path::PathBuf;
 use std::rc::Rc;
 
 #[cfg(feature = "halo2")]
-use std::{
-    fs::File,
-    io::{BufWriter, Write},
-};
+use std::{fs::File, io::BufWriter};
 
 use crate::pipeline::{Pipeline, Stage};
 use crate::verify::verify;
@@ -101,7 +98,7 @@ pub fn test_halo2(_file_name: &str, _inputs: Vec<Bn254Field>) {}
 
 #[cfg(feature = "halo2")]
 pub fn gen_halo2_proof(file_name: &str, inputs: Vec<Bn254Field>) {
-    use std::fs;
+    use crate::util::write_or_panic;
 
     let file_name = format!("{}/../test_data/{file_name}", env!("CARGO_MANIFEST_DIR"));
     let tmp_dir = mktemp::Temp::new_dir().unwrap();
@@ -113,21 +110,22 @@ pub fn gen_halo2_proof(file_name: &str, inputs: Vec<Bn254Field>) {
 
     let pil = pipeline.optimized_pil_ref().unwrap();
 
-    // We need to create the backend explicitly in order to
-    // compute the setup separated from the proof path as well.
-    let backend = powdr_backend::BackendType::Halo2
-        .factory::<Bn254Field>()
-        .create(pil.degree());
-
     // Setup
     let setup_file_path = tmp_dir.as_path().join("params.bin");
-    let mut setup_file = BufWriter::new(File::create(&setup_file_path).unwrap());
-    backend.write_setup(&mut setup_file).unwrap();
-    setup_file.flush().unwrap();
+    let setup_file = BufWriter::new(File::create(&setup_file_path).unwrap());
+    write_or_panic(setup_file, |writer| {
+        powdr_backend::BackendType::Halo2
+            .factory::<Bn254Field>()
+            .generate_setup(pil.degree(), writer)
+            .unwrap()
+    });
 
     // Verification Key
     let vkey_file_path = tmp_dir.as_path().join("verification_key.bin");
-    fs::write(&vkey_file_path, pipeline.verification_key().unwrap()).unwrap();
+    let vkey_file = BufWriter::new(File::create(&vkey_file_path).unwrap());
+    write_or_panic(vkey_file, |writer| {
+        pipeline.export_verification_key(writer).unwrap()
+    });
 
     // Create the proof before adding the setup and vkey to the backend,
     // so that they're generated during the proof

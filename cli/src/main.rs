@@ -6,9 +6,10 @@ use clap::{CommandFactory, Parser, Subcommand};
 use env_logger::fmt::Color;
 use env_logger::{Builder, Target};
 use log::LevelFilter;
-use powdr_backend::{Backend, BackendType};
+use powdr_backend::BackendType;
 use powdr_number::{read_polys_csv_file, CsvRenderMode};
 use powdr_number::{Bn254Field, FieldElement, GoldilocksField};
+use powdr_pipeline::util::write_or_panic;
 use powdr_pipeline::{Pipeline, Stage};
 use powdr_riscv::continuations::{rust_continuations, rust_continuations_dry_run};
 use powdr_riscv::{compile_riscv_asm, compile_rust};
@@ -623,29 +624,23 @@ fn verification_key<T: FieldElement>(
         .with_setup_file(params.map(PathBuf::from))
         .with_backend(*backend_type);
 
-    let vkey = pipeline.verification_key()?;
-
-    write_verification_key_to_fs(vkey, dir);
+    let vkey_file = BufWriter::new(fs::File::create(dir.join("vkey.bin")).unwrap());
+    write_or_panic(vkey_file, |w| pipeline.export_verification_key(w))?;
+    log::info!("Wrote vkey.bin.");
 
     Ok(())
-}
-
-fn write_verification_key_to_fs(vkey: Vec<u8>, output_dir: &Path) {
-    fs::write(output_dir.join("vkey.bin"), vkey).unwrap();
-    log::info!("Wrote vkey.bin.");
 }
 
 fn setup<F: FieldElement>(size: u64, dir: String, backend_type: BackendType) {
     let dir = Path::new(&dir);
 
-    let backend = backend_type.factory::<F>().create(size);
-    write_backend_to_fs(backend.as_ref(), dir);
-}
-
-fn write_backend_to_fs<F: FieldElement>(be: &dyn Backend<F>, output_dir: &Path) {
-    let mut params_file = BufWriter::new(fs::File::create(output_dir.join("params.bin")).unwrap());
-    be.write_setup(&mut params_file).unwrap();
-    params_file.flush().unwrap();
+    let params_file = BufWriter::new(fs::File::create(dir.join("params.bin")).unwrap());
+    write_or_panic(params_file, |writer| {
+        backend_type
+            .factory::<F>()
+            .generate_setup(size, writer)
+            .unwrap()
+    });
     log::info!("Wrote params.bin.");
 }
 

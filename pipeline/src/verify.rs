@@ -11,7 +11,7 @@ pub fn verify(temp_dir: &Path, name: &str, constants_name: Option<&str>) {
         temp_dir.to_str().unwrap()
     );
     let commits_file = format!("{}/{name}_commits.bin", temp_dir.to_str().unwrap());
-    let constraints_file = format!("{}/{name}_constraints.json", temp_dir.to_str().unwrap());
+    let constraints_file = format!("{}/constraints.json", temp_dir.to_str().unwrap());
 
     let verifier_output = Command::new("node")
         .args([

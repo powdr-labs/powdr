@@ -6,7 +6,7 @@ mod pilstark;
 
 use powdr_ast::analyzed::Analyzed;
 use powdr_number::{DegreeType, FieldElement};
-use std::{io, marker::PhantomData};
+use std::{io, path::Path};
 use strum::{Display, EnumString, EnumVariantNames};
 
 #[derive(Clone, EnumString, EnumVariantNames, Display, Copy)]
@@ -26,138 +26,20 @@ pub enum BackendType {
 impl BackendType {
     pub fn factory<T: FieldElement>(&self) -> &'static dyn BackendFactory<T> {
         #[cfg(feature = "halo2")]
-        const HALO2_FACTORY: WithSetupFactory<powdr_halo2::Halo2Prover> =
-            WithSetupFactory(PhantomData);
+        const HALO2_FACTORY: halo2_impl::Halo2ProverFactory = halo2_impl::Halo2ProverFactory;
         #[cfg(feature = "halo2")]
-        const HALO2_MOCK_FACTORY: WithoutSetupFactory<halo2_impl::Halo2Mock> =
-            WithoutSetupFactory(PhantomData);
-        const ESTARK_FACTORY: WithoutSetupFactory<pilstark::estark::EStark> =
-            WithoutSetupFactory(PhantomData);
-        const PIL_STARK_CLI_FACTORY: WithoutSetupFactory<pilstark::PilStarkCli> =
-            WithoutSetupFactory(PhantomData);
+        const HALO2_MOCK_FACTORY: halo2_impl::Halo2MockFactory = halo2_impl::Halo2MockFactory;
+        const ESTARK_FACTORY: pilstark::estark::EStarkFactory = pilstark::estark::EStarkFactory;
+        const PIL_STARK_CLI_FACTORY: pilstark::PilStarkCliFactory = pilstark::PilStarkCliFactory;
 
         match self {
             #[cfg(feature = "halo2")]
             BackendType::Halo2 => &HALO2_FACTORY,
             #[cfg(feature = "halo2")]
             BackendType::Halo2Mock => &HALO2_MOCK_FACTORY,
-            BackendType::PilStarkCli => &PIL_STARK_CLI_FACTORY,
             BackendType::EStark => &ESTARK_FACTORY,
+            BackendType::PilStarkCli => &PIL_STARK_CLI_FACTORY,
         }
-    }
-}
-
-/// Factory for backends without setup.
-struct WithoutSetupFactory<B>(PhantomData<B>);
-
-/// Factory implementation for backends without setup.
-impl<F: FieldElement, B: BackendImpl<F> + 'static> BackendFactory<F> for WithoutSetupFactory<B> {
-    fn create(&self, degree: DegreeType) -> Box<dyn Backend<F>> {
-        Box::new(ConcreteBackendWithoutSetup(B::new(degree)))
-    }
-
-    fn create_from_setup(&self, _input: &mut dyn io::Read) -> Result<Box<dyn Backend<F>>, Error> {
-        Err(Error::NoSetupAvailable)
-    }
-}
-
-/// Concrete dynamic dispatch Backend object, for backends without setup.
-struct ConcreteBackendWithoutSetup<B>(B);
-
-/// Concrete implementation for backends with setup.
-impl<F: FieldElement, B: BackendImpl<F>> Backend<F> for ConcreteBackendWithoutSetup<B> {
-    fn add_verification_key(
-        &mut self,
-        pil: &Analyzed<F>,
-        fixed: &[(String, Vec<F>)],
-        vkey: Vec<u8>,
-    ) {
-        self.0.add_verification_key(pil, fixed, vkey);
-    }
-
-    fn verification_key(
-        &self,
-        pil: &Analyzed<F>,
-        fixed: &[(String, Vec<F>)],
-    ) -> Result<Vec<u8>, Error> {
-        self.0.verification_key(pil, fixed)
-    }
-
-    fn verify(&self, proof: &Proof, instances: &[Vec<F>]) -> Result<(), Error> {
-        self.0.verify(proof, instances)
-    }
-
-    fn prove(
-        &self,
-        pil: &Analyzed<F>,
-        fixed: &[(String, Vec<F>)],
-        witness: &[(String, Vec<F>)],
-        prev_proof: Option<Proof>,
-    ) -> Result<(Proof, Option<String>), Error> {
-        self.0.prove(pil, fixed, witness, prev_proof)
-    }
-
-    fn write_setup(&self, _output: &mut dyn io::Write) -> Result<(), Error> {
-        Err(Error::NoSetupAvailable)
-    }
-}
-
-/// Factory for backends with setup.
-struct WithSetupFactory<B>(PhantomData<B>);
-
-/// Factory implementation for backends with setup.
-impl<F: FieldElement, B: BackendImplWithSetup<F> + 'static> BackendFactory<F>
-    for WithSetupFactory<B>
-{
-    fn create(&self, degree: DegreeType) -> Box<dyn Backend<F>> {
-        Box::new(ConcreteBackendWithSetup(B::new(degree)))
-    }
-
-    fn create_from_setup(&self, input: &mut dyn io::Read) -> Result<Box<dyn Backend<F>>, Error> {
-        Ok(Box::new(ConcreteBackendWithSetup(B::new_from_setup(
-            input,
-        )?)))
-    }
-}
-
-/// Concrete dynamic dispatch Backend object, for backends with setup.
-struct ConcreteBackendWithSetup<B>(B);
-
-/// Concrete implementation for backends with setup.
-impl<F: FieldElement, B: BackendImplWithSetup<F>> Backend<F> for ConcreteBackendWithSetup<B> {
-    fn add_verification_key(
-        &mut self,
-        pil: &Analyzed<F>,
-        fixed: &[(String, Vec<F>)],
-        vkey: Vec<u8>,
-    ) {
-        self.0.add_verification_key(pil, fixed, vkey);
-    }
-
-    fn verification_key(
-        &self,
-        pil: &Analyzed<F>,
-        fixed: &[(String, Vec<F>)],
-    ) -> Result<Vec<u8>, Error> {
-        self.0.verification_key(pil, fixed)
-    }
-
-    fn verify(&self, proof: &Proof, instances: &[Vec<F>]) -> Result<(), Error> {
-        self.0.verify(proof, instances)
-    }
-
-    fn prove(
-        &self,
-        pil: &Analyzed<F>,
-        fixed: &[(String, Vec<F>)],
-        witness: &[(String, Vec<F>)],
-        prev_proof: Option<Proof>,
-    ) -> Result<(Proof, Option<String>), Error> {
-        self.0.prove(pil, fixed, witness, prev_proof)
-    }
-
-    fn write_setup(&self, output: &mut dyn io::Write) -> Result<(), Error> {
-        Ok(self.0.write_setup(output)?)
     }
 }
 
@@ -169,12 +51,18 @@ pub enum Error {
     EmptyWitness,
     #[error("the backend has no setup operations")]
     NoSetupAvailable,
-    #[error("proof generation failed")]
-    ProofFailed(String),
-    #[error("proof verification failed")]
-    VerificationFailed(String),
-    #[error("verification key generation failed")]
-    VerificationKeyFailed(String),
+    #[error("the backend does not implement proof verification")]
+    NoVerificationAvailable,
+    #[error("the backend does not support proof aggregation")]
+    NoAggregationAvailable,
+    #[error("internal backend error")]
+    BackendError(String),
+}
+
+impl From<String> for Error {
+    fn from(s: String) -> Self {
+        Error::BackendError(s)
+    }
 }
 
 pub type Proof = Vec<u8>;
@@ -184,91 +72,51 @@ pub type Proof = Vec<u8>;
     module, wrapping the traits implemented by each backend.
 */
 
-/// Dynamic interface for a backend.
-pub trait Backend<F: FieldElement> {
-    fn add_verification_key(
-        &mut self,
-        pil: &Analyzed<F>,
-        fixed: &[(String, Vec<F>)],
-        vkey: Vec<u8>,
-    );
-
-    fn verification_key(
+/// Dynamic interface for a backend factory.
+pub trait BackendFactory<F: FieldElement> {
+    /// Create a new backend object.
+    fn create<'a>(
         &self,
-        pil: &Analyzed<F>,
-        fixed: &[(String, Vec<F>)],
-    ) -> Result<Vec<u8>, Error>;
+        pil: &'a Analyzed<F>,
+        fixed: &'a [(String, Vec<F>)],
+        output_dir: Option<&'a Path>,
+        setup: Option<&mut dyn io::Read>,
+        verification_key: Option<&mut dyn io::Read>,
+    ) -> Result<Box<dyn Backend<'a, F> + 'a>, Error>;
 
-    fn verify(&self, proof: &Proof, instances: &[Vec<F>]) -> Result<(), Error>;
+    /// Generate a new setup.
+    fn generate_setup(&self, _size: DegreeType, _output: &mut dyn io::Write) -> Result<(), Error> {
+        Err(Error::NoSetupAvailable)
+    }
+}
 
+/// Dynamic interface for a backend.
+pub trait Backend<'a, F: FieldElement> {
     /// Perform the proving.
     ///
     /// If prev_proof is provided, proof aggregation is performed.
     ///
-    /// Returns the generated proof, and the string serialization of the
-    /// constraints.
+    /// Returns the generated proof.
     fn prove(
         &self,
-        pil: &Analyzed<F>,
-        fixed: &[(String, Vec<F>)],
         witness: &[(String, Vec<F>)],
         prev_proof: Option<Proof>,
-    ) -> Result<(Proof, Option<String>), Error>;
+    ) -> Result<Proof, Error>;
 
-    /// Write the prover setup to a file, so that it can be loaded later.
-    fn write_setup(&self, output: &mut dyn io::Write) -> Result<(), Error>;
-}
+    /// Verifies a proof.
+    fn verify(&self, _proof: &Proof, _instances: &[Vec<F>]) -> Result<(), Error> {
+        Err(Error::NoVerificationAvailable)
+    }
 
-/// Dynamic interface for a backend factory.
-pub trait BackendFactory<F: FieldElement> {
-    /// Maybe perform the setup, and create a new backend object.
-    fn create(&self, degree: DegreeType) -> Box<dyn Backend<F>>;
+    /// Exports the setup in a backend specific format. Can be used to create a
+    /// new backend object of the same kind.
+    fn export_setup(&self, _output: &mut dyn io::Write) -> Result<(), Error> {
+        Err(Error::NoSetupAvailable)
+    }
 
-    /// Create a backend object from a prover setup loaded from a file.
-    fn create_from_setup(&self, input: &mut dyn io::Read) -> Result<Box<dyn Backend<F>>, Error>;
-}
-
-/*
-    Below are the traits implemented by the backends.
-*/
-
-/// Trait implemented by all backends.
-trait BackendImpl<F: FieldElement> {
-    fn new(degree: DegreeType) -> Self;
-
-    fn add_verification_key(
-        &mut self,
-        pil: &Analyzed<F>,
-        fixed: &[(String, Vec<F>)],
-        vkey: Vec<u8>,
-    );
-
-    fn verification_key(
-        &self,
-        pil: &Analyzed<F>,
-        fixed: &[(String, Vec<F>)],
-    ) -> Result<Vec<u8>, Error>;
-
-    fn verify(&self, proof: &Proof, instances: &[Vec<F>]) -> Result<(), Error>;
-
-    fn prove(
-        &self,
-        pil: &Analyzed<F>,
-        fixed: &[(String, Vec<F>)],
-        witness: &[(String, Vec<F>)],
-        prev_proof: Option<Proof>,
-    ) -> Result<(Proof, Option<String>), Error>;
-}
-
-/// Trait implemented by backends that have a setup phase that must be saved to
-/// a file.
-trait BackendImplWithSetup<F: FieldElement>
-where
-    Self: Sized + BackendImpl<F>,
-{
-    /// Create a backend object from a setup loaded from a file.
-    fn new_from_setup(input: &mut dyn io::Read) -> Result<Self, io::Error>;
-
-    /// Write the setup to a file.
-    fn write_setup(&self, output: &mut dyn io::Write) -> Result<(), io::Error>;
+    /// Exports the verification key in a backend specific format. Can be used
+    /// to create a new backend object of the same kind.
+    fn export_verification_key(&self, _output: &mut dyn io::Write) -> Result<(), Error> {
+        Err(Error::NoVerificationAvailable)
+    }
 }

@@ -1,7 +1,7 @@
 use std::iter::{once, repeat};
 use std::time::Instant;
 
-use crate::{pilstark, BackendImpl, Error};
+use crate::{pilstark, Backend, BackendFactory, Error};
 use powdr_ast::analyzed::Analyzed;
 use powdr_number::{BigInt, DegreeType, FieldElement, GoldilocksField};
 
@@ -15,19 +15,31 @@ use starky::{
     types::{StarkStruct, Step, PIL},
 };
 
-pub struct EStark {
-    params: StarkStruct,
-}
+pub struct EStarkFactory;
 
-impl<F: FieldElement> BackendImpl<F> for EStark {
-    /// Creates our default configuration stark struct.
-    fn new(degree: DegreeType) -> Self {
+impl<F: FieldElement> BackendFactory<F> for EStarkFactory {
+    fn create<'a>(
+        &self,
+        pil: &'a Analyzed<F>,
+        fixed: &'a [(String, Vec<F>)],
+        _output_dir: Option<&std::path::Path>,
+        setup: Option<&mut dyn std::io::Read>,
+        verification_key: Option<&mut dyn std::io::Read>,
+    ) -> Result<Box<dyn crate::Backend<'a, F> + 'a>, Error> {
         if F::modulus().to_arbitrary_integer() != GoldilocksField::modulus().to_arbitrary_integer()
         {
             unimplemented!("eSTARK is only implemented for Goldilocks field");
         }
-        assert!(degree > 1);
 
+        if setup.is_some() {
+            return Err(Error::NoSetupAvailable);
+        }
+        if verification_key.is_some() {
+            return Err(Error::NoVerificationAvailable);
+        }
+
+        let degree = pil.degree();
+        assert!(degree > 1);
         let n_bits = (DegreeType::BITS - (degree - 1).leading_zeros()) as usize;
         let n_bits_ext = n_bits + 1;
 
@@ -37,54 +49,44 @@ impl<F: FieldElement> BackendImpl<F> for EStark {
             .map(|b| Step { nBits: b })
             .collect();
 
-        let params = StarkStruct {
-            nBits: n_bits,
-            nBitsExt: n_bits_ext,
-            nQueries: 2,
-            verificationHashType: "GL".to_owned(),
-            steps,
-        };
-
-        Self { params }
+        Ok(Box::new(EStark {
+            pil,
+            fixed,
+            params: StarkStruct {
+                nBits: n_bits,
+                nBitsExt: n_bits_ext,
+                nQueries: 2,
+                verificationHashType: "GL".to_owned(),
+                steps,
+            },
+        }))
     }
+}
 
-    fn add_verification_key(
-        &mut self,
-        _pil: &Analyzed<F>,
-        _fixed: &[(String, Vec<F>)],
-        _vkey: Vec<u8>,
-    ) {
-        unimplemented!("eSTARK backend does not yet support verification key");
-    }
+pub struct EStark<'a, F: FieldElement> {
+    pil: &'a Analyzed<F>,
+    fixed: &'a [(String, Vec<F>)],
+    params: StarkStruct,
+}
 
-    fn verification_key(
-        &self,
-        _pil: &Analyzed<F>,
-        _fixed: &[(String, Vec<F>)],
-    ) -> Result<Vec<u8>, Error> {
-        unimplemented!("eSTARK backend does not yet support verification key");
-    }
-
-    fn verify(&self, _proof: &crate::Proof, _instances: &[Vec<F>]) -> Result<(), Error> {
-        unimplemented!("eSTARK backend does not yet support separate proof verification");
-    }
-
+impl<'a, F: FieldElement> Backend<'a, F> for EStark<'a, F> {
     fn prove(
         &self,
-        pil: &Analyzed<F>,
-        fixed: &[(String, Vec<F>)],
         witness: &[(String, Vec<F>)],
         prev_proof: Option<crate::Proof>,
-    ) -> Result<(crate::Proof, Option<String>), Error> {
+    ) -> Result<crate::Proof, Error> {
         if prev_proof.is_some() {
-            unimplemented!("aggregration is not implemented");
+            return Err(Error::NoAggregationAvailable);
+        }
+        if witness.is_empty() {
+            return Err(Error::EmptyWitness);
         }
 
         log::info!("Creating eSTARK proof.");
 
-        let degree = pil.degree();
+        let degree = self.pil.degree();
 
-        let mut pil: PIL = pilstark::json_exporter::export(pil);
+        let mut pil: PIL = pilstark::json_exporter::export(self.pil);
 
         // TODO starky requires a fixed column with the equivalent
         // semantics to Polygon zkEVM's `L1` column.
@@ -93,7 +95,7 @@ impl<F: FieldElement> BackendImpl<F> for EStark {
         // but directly given PIL may not have it.
         // This is a hack to inject such column if it doesn't exist.
         // It should be eventually improved.
-        let mut fixed = fixed.to_vec();
+        let mut fixed = self.fixed.to_vec();
         if !fixed.iter().any(|(k, _)| k == "main.first_step") {
             use starky::types::Reference;
             pil.nConstants += 1;
@@ -119,12 +121,6 @@ impl<F: FieldElement> BackendImpl<F> for EStark {
         }
 
         let const_pols = to_starky_pols_array(&fixed, &pil, PolKind::Constant);
-
-        // TODO error
-        if witness.is_empty() {
-            return Err(Error::EmptyWitness);
-        }
-
         let cm_pols = to_starky_pols_array(witness, &pil, PolKind::Commit);
 
         let mut setup = StarkSetup::<MerkleTreeGL>::new(
@@ -160,10 +156,7 @@ impl<F: FieldElement> BackendImpl<F> for EStark {
         )
         .unwrap());
 
-        Ok((
-            serde_json::to_vec(&starkproof).unwrap(),
-            Some(serde_json::to_string(&pil).unwrap()),
-        ))
+        Ok(serde_json::to_vec(&starkproof).unwrap())
     }
 }
 

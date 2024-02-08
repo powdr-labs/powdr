@@ -3,7 +3,7 @@ use halo2_proofs::{
     halo2curves::bn256::{Fr, G1Affine},
     plonk::{create_proof, keygen_pk, keygen_vk, verify_proof, Circuit, ProvingKey, VerifyingKey},
     poly::{
-        commitment::{Params, ParamsProver},
+        commitment::ParamsProver,
         kzg::{
             commitment::KZGCommitmentScheme,
             multiopen::{ProverGWC, VerifierGWC},
@@ -11,12 +11,11 @@ use halo2_proofs::{
         },
     },
     transcript::{EncodedChallenge, TranscriptReadBuffer, TranscriptWriterBuffer},
-    SerdeFormat,
 };
 use polyexen::plaf::backends::halo2::PlafH2Circuit;
-use polyexen::plaf::PlafDisplayBaseTOML;
+use polyexen::plaf::{Plaf, PlafDisplayBaseTOML};
 use powdr_ast::analyzed::Analyzed;
-use powdr_number::{BigInt, DegreeType, FieldElement};
+use powdr_number::{BigInt, DegreeType, FieldElement, KnownField};
 use snark_verifier::{
     loader::native::NativeLoader,
     system::halo2::{compile, transcript::evm::EvmTranscript, Config},
@@ -36,90 +35,96 @@ use std::{
 };
 
 pub use halo2_proofs::halo2curves::bn256::Bn256;
+pub use halo2_proofs::poly::commitment::Params;
 pub use halo2_proofs::poly::kzg::commitment::ParamsKZG;
+pub use halo2_proofs::SerdeFormat;
 
-/// Create a halo2 proof for a given PIL, fixed column values and witness column values
-/// We use KZG ([GWC variant](https://eprint.iacr.org/2019/953)) and Keccak256
-pub struct Halo2Prover {
+/// Create a halo2 proof for a given PIL, fixed column values and witness column
+/// values. We use KZG ([GWC variant](https://eprint.iacr.org/2019/953)) and
+/// Keccak256
+///
+/// This only works with Bn254, so it really shouldn't be generic over the field
+/// element, but without RFC #1210, the only alternative I found is a very ugly
+/// "unsafe" code, and unsafe code is harder to explain and maintain.
+pub struct Halo2Prover<'a, F: FieldElement> {
+    pil: &'a Analyzed<F>,
+    plaf: Plaf,
     params: ParamsKZG<Bn256>,
     vkey: Option<VerifyingKey<G1Affine>>,
 }
 
-impl Halo2Prover {
-    pub fn new(size: DegreeType) -> Self {
-        let degree = DegreeType::BITS - size.leading_zeros() + 1;
-        Self {
-            params: ParamsKZG::<Bn256>::new(degree),
-            vkey: None,
-        }
-    }
+fn degree_bits(degree: DegreeType) -> u32 {
+    DegreeType::BITS - degree.leading_zeros() + 1
+}
 
-    pub fn new_from_setup(input: &mut impl io::Read) -> Result<Self, io::Error> {
-        let params = ParamsKZG::<Bn256>::read(input)?;
+pub fn generate_setup(size: DegreeType) -> ParamsKZG<Bn256> {
+    ParamsKZG::<Bn256>::new(degree_bits(size))
+}
 
-        Ok(Self { params, vkey: None })
-    }
-
-    pub fn add_verification_key<F: FieldElement>(
-        &mut self,
-        pil: &Analyzed<F>,
+impl<'a, F: FieldElement> Halo2Prover<'a, F> {
+    pub fn new(
+        pil: &'a Analyzed<F>,
         fixed: &[(String, Vec<F>)],
-        vkey: Vec<u8>,
-    ) {
+        setup: Option<&mut dyn io::Read>,
+    ) -> Result<Self, io::Error> {
+        Self::assert_field_is_bn254();
+
+        let params = setup
+            .map(|mut setup| ParamsKZG::<Bn256>::read(&mut setup))
+            .transpose()?
+            .map(|mut params| {
+                params.downsize(degree_bits(pil.degree()));
+                params
+            })
+            .unwrap_or_else(|| generate_setup(pil.degree()));
+
         let plaf = analyzed_to_plaf(pil, fixed);
-        let vkey: VerifyingKey<G1Affine> = VerifyingKey::<G1Affine>::from_bytes::<PlafH2Circuit>(
-            &vkey,
-            SerdeFormat::Processed,
+
+        Ok(Self {
+            pil,
             plaf,
-        )
-        .unwrap();
-        self.vkey = Some(vkey);
+            params,
+            vkey: None,
+        })
     }
 
     pub fn write_setup(&self, output: &mut impl io::Write) -> Result<(), io::Error> {
         self.params.write(output)
     }
 
-    pub fn prove_ast<F: FieldElement>(
-        &self,
-        pil: &Analyzed<F>,
-        fixed: &[(String, Vec<F>)],
-        witness: &[(String, Vec<F>)],
-    ) -> Result<Vec<u8>, String> {
-        // TODO this is hacky
-        let degree = usize::BITS - pil.degree().leading_zeros() + 1;
-        let params = {
-            let mut params = self.params.clone();
-            params.downsize(degree);
-            params
-        };
-
+    pub fn prove_ast(&self, witness: &[(String, Vec<F>)]) -> Result<Vec<u8>, String> {
         log::info!("Starting proof generation...");
 
-        let plaf_circuit = analyzed_to_plaf(pil, fixed);
-        let (circuit, publics) = analyzed_to_circuit_with_witness(pil, plaf_circuit, witness);
+        let (circuit, publics) =
+            analyzed_to_circuit_with_witness(self.pil, self.plaf.clone(), witness);
 
         log::debug!("{}", PlafDisplayBaseTOML(&circuit.plaf));
 
         log::info!("Generating PK for snark...");
         let vk = match self.vkey {
             Some(ref vk) => vk.clone(),
-            None => keygen_vk(&params, &circuit).unwrap(),
+            None => keygen_vk(&self.params, &circuit).unwrap(),
         };
-        let pk = keygen_pk(&params, vk.clone(), &circuit).unwrap();
+        let pk = keygen_pk(&self.params, vk.clone(), &circuit).unwrap();
 
         log::info!("Generating proof...");
         let start = Instant::now();
 
         let proof = gen_proof::<_, _, aggregation::PoseidonTranscript<NativeLoader, _>>(
-            &params, &pk, circuit, &publics,
+            &self.params,
+            &pk,
+            circuit,
+            &publics,
         );
 
         let duration = start.elapsed();
         log::info!("Time taken: {:?}", duration);
 
         match self.verify_inner::<_, aggregation::PoseidonTranscript<NativeLoader, _>>(
-            &vk, &params, &proof, &publics,
+            &vk,
+            &self.params,
+            &proof,
+            &publics,
         ) {
             Ok(_) => {}
             Err(e) => {
@@ -132,27 +137,16 @@ impl Halo2Prover {
         Ok(proof)
     }
 
-    pub fn prove_aggr<F: FieldElement>(
+    pub fn prove_aggr(
         &self,
-        pil: &Analyzed<F>,
-        fixed: &[(String, Vec<F>)],
         witness: &[(String, Vec<F>)],
         proof: Vec<u8>,
     ) -> Result<Vec<u8>, String> {
         log::info!("Starting proof aggregation...");
 
-        // TODO this is hacky
-        let degree = usize::BITS - pil.degree().leading_zeros() + 1;
-        let params_app = {
-            let mut params = self.params.clone();
-            params.downsize(degree);
-            params
-        };
-
         log::info!("Generating circuit for app snark...");
-        let plaf_circuit_app = analyzed_to_plaf(pil, fixed);
         let (circuit_app, publics) =
-            analyzed_to_circuit_with_witness(pil, plaf_circuit_app, witness);
+            analyzed_to_circuit_with_witness(self.pil, self.plaf.clone(), witness);
 
         assert_eq!(publics.len(), 1);
         if !publics[0].is_empty() {
@@ -162,17 +156,17 @@ impl Halo2Prover {
         log::debug!("{}", PlafDisplayBaseTOML(&circuit_app.plaf));
 
         log::info!("Generating VK for app snark...");
-        let vk_app = keygen_vk(&params_app, &circuit_app).unwrap();
+        let vk_app = keygen_vk(&self.params, &circuit_app).unwrap();
 
         log::info!("Generating circuit for compression snark...");
         let protocol_app = compile(
-            &params_app,
+            &self.params,
             &vk_app,
             Config::kzg().with_num_instance(vec![]),
         );
         let empty_snark = aggregation::Snark::new_without_witness(protocol_app.clone());
         let agg_circuit =
-            aggregation::AggregationCircuit::new_without_witness(&params_app, [empty_snark]);
+            aggregation::AggregationCircuit::new_without_witness(&self.params, [empty_snark]);
 
         log::info!("Generating VK and PK for compression snark...");
         let vk_aggr = keygen_vk(&self.params, &agg_circuit).unwrap();
@@ -189,7 +183,7 @@ impl Halo2Prover {
         log::info!("Generating aggregated proof...");
         let start = Instant::now();
         let snark = aggregation::Snark::new(protocol_app, vec![], proof);
-        let agg_circuit_with_proof = aggregation::AggregationCircuit::new(&params_app, [snark]);
+        let agg_circuit_with_proof = aggregation::AggregationCircuit::new(&self.params, [snark]);
         let proof = gen_proof::<_, _, EvmTranscript<G1Affine, _, _, _>>(
             &self.params,
             &pk_aggr,
@@ -219,32 +213,19 @@ impl Halo2Prover {
         Ok(proof)
     }
 
-    pub fn assert_field_is_compatible<F: FieldElement>() {
-        if polyexen::expr::get_field_p::<Fr>() != F::modulus().to_arbitrary_integer() {
-            panic!("powdr modulus doesn't match halo2 modulus. Make sure you are using Bn254");
-        }
+    pub fn add_verification_key(&mut self, mut vkey: &mut dyn io::Read) {
+        let vkey = VerifyingKey::<G1Affine>::read::<&mut dyn io::Read, PlafH2Circuit>(
+            &mut vkey,
+            SerdeFormat::Processed,
+            self.plaf.clone(),
+        )
+        .unwrap();
+        self.vkey = Some(vkey);
     }
 
-    fn verification_key_inner<F: FieldElement>(
-        &self,
-        pil: &Analyzed<F>,
-        fixed: &[(String, Vec<F>)],
-    ) -> Result<VerifyingKey<G1Affine>, String> {
-        let plaf_circuit = analyzed_to_plaf(pil, fixed);
-        let circuit = analyzed_to_circuit_with_zeroed_witness(plaf_circuit, pil);
-        match keygen_vk(&self.params, &circuit) {
-            Ok(vkey) => Ok(vkey),
-            Err(e) => Err(e.to_string()),
-        }
-    }
-
-    pub fn verification_key<F: FieldElement>(
-        &self,
-        pil: &Analyzed<F>,
-        fixed: &[(String, Vec<F>)],
-    ) -> Result<Vec<u8>, String> {
-        let vk = self.verification_key_inner(pil, fixed)?;
-        Ok(vk.to_bytes(SerdeFormat::Processed))
+    pub fn verification_key(&self) -> Result<VerifyingKey<G1Affine>, String> {
+        let circuit = analyzed_to_circuit_with_zeroed_witness(self.plaf.clone(), self.pil);
+        keygen_vk(&self.params, &circuit).map_err(|e| e.to_string())
     }
 
     fn verify_inner<
@@ -278,11 +259,7 @@ impl Halo2Prover {
         }
     }
 
-    pub fn verify<F: FieldElement>(
-        &self,
-        proof: &[u8],
-        instances: &[Vec<F>],
-    ) -> Result<(), String> {
+    pub fn verify(&self, proof: &[u8], instances: &[Vec<F>]) -> Result<(), String> {
         let instances = instances
             .iter()
             .map(|instance| {
@@ -299,6 +276,14 @@ impl Halo2Prover {
             proof,
             &instances,
         )
+    }
+
+    fn assert_field_is_bn254() {
+        if !matches!(F::known_field(), Some(KnownField::Bn254Field))
+            || polyexen::expr::get_field_p::<Fr>() != F::modulus().to_arbitrary_integer()
+        {
+            panic!("powdr modulus doesn't match halo2 modulus. Make sure you are using Bn254");
+        }
     }
 }
 
