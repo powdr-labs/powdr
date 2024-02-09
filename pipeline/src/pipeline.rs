@@ -2,7 +2,7 @@ use std::{
     borrow::Borrow,
     fmt::Display,
     fs,
-    io::{BufWriter, Read, Write},
+    io::{BufReader, BufWriter, Write},
     marker::Send,
     path::{Path, PathBuf},
     rc::Rc,
@@ -596,23 +596,21 @@ impl<T: FieldElement> Pipeline<T> {
                     .expect("backend must be set before calling proving!");
                 let factory = backend.factory::<T>();
                 let mut backend = if let Some(path) = self.arguments.setup_file.as_ref() {
-                    let mut file = fs::File::open(path).unwrap();
+                    let mut file = BufReader::new(fs::File::open(path).unwrap());
                     factory.create_from_setup(&mut file).unwrap()
                 } else {
                     factory.create(pil.degree())
                 };
 
                 if let Some(ref path) = self.arguments.vkey_file {
-                    let mut buf = Vec::new();
-                    fs::File::open(path).unwrap().read_to_end(&mut buf).unwrap();
-                    backend.add_verification_key(&pil, &fixed_cols, buf)
+                    backend.add_verification_key(&pil, &fixed_cols, fs::read(path).unwrap())
                 }
 
-                let existing_proof = self.arguments.existing_proof_file.as_ref().map(|path| {
-                    let mut buf = Vec::new();
-                    fs::File::open(path).unwrap().read_to_end(&mut buf).unwrap();
-                    buf
-                });
+                let existing_proof = self
+                    .arguments
+                    .existing_proof_file
+                    .as_ref()
+                    .map(|path| fs::read(path).unwrap());
 
                 // Even if we don't have all constants and witnesses, some backends will
                 // still output the constraint serialization.
@@ -681,10 +679,9 @@ impl<T: FieldElement> Pipeline<T> {
 
     fn maybe_write_constants(&self, constants: &[(String, Vec<T>)]) -> Result<(), Vec<String>> {
         if let Some(path) = self.path_if_should_write(|name| format!("{name}_constants.bin"))? {
-            write_polys_file(
-                &mut BufWriter::new(&mut fs::File::create(path).unwrap()),
-                constants,
-            );
+            let mut file = BufWriter::new(fs::File::create(path).unwrap());
+            write_polys_file(&mut file, constants);
+            file.flush().unwrap();
         }
         Ok(())
     }
@@ -696,10 +693,9 @@ impl<T: FieldElement> Pipeline<T> {
     ) -> Result<(), Vec<String>> {
         if let Some(witness) = witness.as_ref() {
             if let Some(path) = self.path_if_should_write(|name| format!("{name}_commits.bin"))? {
-                write_polys_file(
-                    &mut BufWriter::new(&mut fs::File::create(path).unwrap()),
-                    witness,
-                );
+                let mut file = BufWriter::new(fs::File::create(path).unwrap());
+                write_polys_file(&mut file, witness);
+                file.flush().unwrap();
             }
         }
 
@@ -713,10 +709,8 @@ impl<T: FieldElement> Pipeline<T> {
                     })
                     .collect::<Vec<_>>();
 
-                let mut csv_file = fs::File::create(path).map_err(|e| vec![format!("{}", e)])?;
-                let mut csv_writer = BufWriter::new(&mut csv_file);
-
-                write_polys_csv_file(&mut csv_writer, self.arguments.csv_render_mode, &columns);
+                let csv_file = fs::File::create(path).map_err(|e| vec![format!("{}", e)])?;
+                write_polys_csv_file(csv_file, self.arguments.csv_render_mode, &columns);
             }
         }
 
@@ -728,9 +722,7 @@ impl<T: FieldElement> Pipeline<T> {
             if let Some(path) =
                 self.path_if_should_write(|name| format!("{name}_constraints.json"))?
             {
-                let mut file = fs::File::create(path).unwrap();
-                file.write_all(constraints_serialization.as_bytes())
-                    .unwrap();
+                fs::write(path, constraints_serialization.as_bytes()).unwrap();
             }
         }
         if let Some(proof) = &proof_result.proof {
@@ -740,8 +732,7 @@ impl<T: FieldElement> Pipeline<T> {
                 "proof.bin"
             };
             if let Some(path) = self.path_if_should_write(|name| format!("{name}_{fname}"))? {
-                let mut proof_file = fs::File::create(path).unwrap();
-                proof_file.write_all(proof).unwrap();
+                fs::write(path, proof).unwrap();
             }
         }
 
@@ -875,7 +866,7 @@ impl<T: FieldElement> Pipeline<T> {
                     .expect("backend must be set before generating verification key!");
                 let factory = backend.factory::<T>();
                 let backend = if let Some(path) = self.arguments.setup_file.as_ref() {
-                    let mut file = fs::File::open(path).unwrap();
+                    let mut file = BufReader::new(fs::File::open(path).unwrap());
                     factory.create_from_setup(&mut file).unwrap()
                 } else {
                     factory.create(pil.degree())
@@ -902,16 +893,14 @@ impl<T: FieldElement> Pipeline<T> {
                 let factory = backend.factory::<T>();
 
                 let mut backend = if let Some(path) = self.arguments.setup_file.as_ref() {
-                    let mut file = fs::File::open(path).unwrap();
+                    let mut file = BufReader::new(fs::File::open(path).unwrap());
                     factory.create_from_setup(&mut file).unwrap()
                 } else {
                     panic!("Setup should have been provided for verification")
                 };
 
                 if let Some(ref path) = self.arguments.vkey_file {
-                    let mut buf = Vec::new();
-                    fs::File::open(path).unwrap().read_to_end(&mut buf).unwrap();
-                    backend.add_verification_key(pil, fixed_cols, buf)
+                    backend.add_verification_key(pil, fixed_cols, fs::read(path).unwrap())
                 } else {
                     panic!("Verification key should have been provided for verification")
                 }

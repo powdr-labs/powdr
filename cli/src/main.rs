@@ -12,7 +12,7 @@ use powdr_number::{Bn254Field, FieldElement, GoldilocksField};
 use powdr_pipeline::{Pipeline, Stage};
 use powdr_riscv::continuations::{rust_continuations, rust_continuations_dry_run};
 use powdr_riscv::{compile_riscv_asm, compile_rust};
-use std::io::{self, BufReader, BufWriter, Read};
+use std::io::{self, BufWriter};
 use std::path::PathBuf;
 use std::{borrow::Cow, fs, io::Write, path::Path};
 use strum::{Display, EnumString, EnumVariantNames};
@@ -32,8 +32,7 @@ fn bind_cli_args<F: FieldElement>(
     let witness_values = witness_values
         .map(|csv_path| {
             let csv_file = fs::File::open(csv_path).unwrap();
-            let mut csv_writer = BufReader::new(&csv_file);
-            read_polys_csv_file::<F>(&mut csv_writer)
+            read_polys_csv_file::<F>(csv_file)
         })
         .unwrap_or_default();
 
@@ -632,9 +631,7 @@ fn verification_key<T: FieldElement>(
 }
 
 fn write_verification_key_to_fs(vkey: Vec<u8>, output_dir: &Path) {
-    let mut vkey_file = fs::File::create(output_dir.join("vkey.bin")).unwrap();
-    let mut vkey_writer = BufWriter::new(&mut vkey_file);
-    vkey_writer.write_all(&vkey).unwrap();
+    fs::write(output_dir.join("vkey.bin"), vkey).unwrap();
     log::info!("Wrote vkey.bin.");
 }
 
@@ -646,10 +643,9 @@ fn setup<F: FieldElement>(size: u64, dir: String, backend_type: BackendType) {
 }
 
 fn write_backend_to_fs<F: FieldElement>(be: &dyn Backend<F>, output_dir: &Path) {
-    let mut params_file = fs::File::create(output_dir.join("params.bin")).unwrap();
-    let mut params_writer = BufWriter::new(&mut params_file);
-    be.write_setup(&mut params_writer).unwrap();
-    params_writer.flush().unwrap();
+    let mut params_file = BufWriter::new(fs::File::create(output_dir.join("params.bin")).unwrap());
+    be.write_setup(&mut params_file).unwrap();
+    params_file.flush().unwrap();
     log::info!("Wrote params.bin.");
 }
 
@@ -843,14 +839,7 @@ fn read_and_verify<T: FieldElement>(
     let proof = Path::new(&proof);
     let vkey = Path::new(&vkey).to_path_buf();
 
-    let proof = {
-        let mut buf = Vec::new();
-        fs::File::open(proof)
-            .unwrap()
-            .read_to_end(&mut buf)
-            .unwrap();
-        buf
-    };
+    let proof = fs::read(proof).unwrap();
 
     let mut pipeline = Pipeline::<T>::default()
         .from_file(file.to_path_buf())
