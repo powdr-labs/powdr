@@ -739,7 +739,7 @@ impl<T: FieldElement> Pipeline<T> {
         Ok(())
     }
 
-    fn stage(&self) -> Stage {
+    pub fn stage(&self) -> Stage {
         match self.artifact.as_ref().unwrap() {
             Artifact::AsmFilePath(_) => Stage::AsmFilePath,
             Artifact::AsmString(_, _) => Stage::AsmString,
@@ -822,6 +822,16 @@ impl<T: FieldElement> Pipeline<T> {
             panic!()
         };
         Ok(pil_with_constants)
+    }
+
+    pub fn pil_with_evaluated_fixed_cols_ref(
+        &mut self,
+    ) -> Result<&PilWithEvaluatedFixedCols<T>, Vec<String>> {
+        self.advance_to(Stage::PilWithEvaluatedFixedCols)?;
+        match self.artifact.as_ref().unwrap() {
+            Artifact::PilWithEvaluatedFixedCols(pil_with_constants) => Ok(pil_with_constants),
+            _ => panic!(),
+        }
     }
 
     pub fn generated_witness(mut self) -> Result<GeneratedWitness<T>, Vec<String>> {
