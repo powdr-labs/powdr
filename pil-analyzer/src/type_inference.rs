@@ -203,15 +203,157 @@ impl TypeCheckerState {
             self.simplify_coercion(from, to)?;
         }
 
-        if self.coercions.is_empty() {
-            println!("Terminated early.");
-            return Ok(());
-        }
+        let only_type_vars_and_elementary_remaining = self
+            .coercions
+            .iter()
+            .flat_map(|(from, to)| [from, to])
+            .all(|t| t == &Type::col() || t.is_elementary() || matches!(t, Type::TypeVar(_)));
+        assert!(only_type_vars_and_elementary_remaining);
+
         println!("Final graph:");
         for (from, to) in &self.coercions {
             println!("Coercion: {from}   ->   {to}");
+            if let Type::TypeVar(tv) = from {
+                for bound in self.type_var_bounds(tv) {
+                    println!("    {tv}: {bound}");
+                }
+            }
+            if let Type::TypeVar(tv) = to {
+                for bound in self.type_var_bounds(tv) {
+                    println!("    {tv}: {bound}");
+                }
+            }
         }
-        todo!("Now solve the graph...");
+        // TODO for our case it is simple, since our subtype relation
+        // is just "col -> expr". All other base types are not involved with
+        // coercion. This means if a type variable (that does not have a type bound)
+        // has expr as a successor, we can just set it to expr.
+        // If it has col as a predecessor, set it to col.
+        // if it has both, fail.
+        // If it has a trait bound, set it to the base type that fulfills the trait bound.
+        // Remove 'col -> expr' edges from the graph.
+        // If an `expr -> col` edge is present, fail.
+        // If there are only type variables left, unify along edges.
+        // TODO check if this algorithm is consistent with the paper.
+        // https://www21.in.tum.de/~nipkow/pubs/coercions.pdf
+
+        // TODO we might have to loop this.
+        let coercions = std::mem::take(&mut self.coercions).into_iter().collect();
+
+        // TODO ok this is very crude now, but might actually work.
+        let coercions = self.try_replace_by_expr(coercions)?;
+        // TODO loop this properly.
+        let coercions = self.try_replace_by_expr(coercions)?;
+        let coercions = self.try_replace_by_expr(coercions)?;
+        let coercions = self.try_replace_by_expr(coercions)?;
+        let coercions = self.try_replace_by_col(coercions)?;
+        let coercions = self.try_replace_by_col(coercions)?;
+        let coercions = self.try_replace_by_col(coercions)?;
+        let coercions = self.try_replace_by_col(coercions)?;
+        let coercions = self.try_replace_by_col(coercions)?;
+
+        let coercions = self.try_replace_reverse_by_expr(coercions)?;
+        let coercions = self.try_replace_reverse_by_expr(coercions)?;
+
+        let coercions = self.try_replace_reverse_by_col(coercions)?;
+        let coercions = self.try_replace_reverse_by_col(coercions)?;
+
+        if coercions
+            .iter()
+            .flat_map(|(from, to)| [from, to])
+            .all(|t| matches!(t, Type::TypeVar(_)))
+        {
+            for (from, to) in coercions {
+                self.unify_types(from, to)?;
+            }
+            Ok(())
+        } else {
+            println!("There are elementary types left in the coercions: ");
+            for (from, to) in &coercions {
+                println!("Coercion: {from}   ->   {to}");
+                if let Type::TypeVar(tv) = from {
+                    for bound in self.type_var_bounds(tv) {
+                        println!("    {tv}: {bound}");
+                    }
+                }
+                if let Type::TypeVar(tv) = to {
+                    for bound in self.type_var_bounds(tv) {
+                        println!("    {tv}: {bound}");
+                    }
+                }
+            }
+            Err(format!("There are elementary types left in the coercions"))
+        }
+    }
+
+    fn try_replace_by_expr(
+        &mut self,
+        edges: Vec<(Type, Type)>,
+    ) -> Result<Vec<(Type, Type)>, String> {
+        let mut remaining = vec![];
+        for (from, to) in edges {
+            let from = self.substitute_to(from);
+            let to = self.substitute_to(to);
+            if from == Type::col() && to == Type::Expr {
+            } else if to == Type::Expr {
+                self.unify_types(from, Type::Expr)?
+            } else {
+                remaining.push((from, to));
+            }
+        }
+        Ok(remaining)
+    }
+
+    fn try_replace_by_col(
+        &mut self,
+        edges: Vec<(Type, Type)>,
+    ) -> Result<Vec<(Type, Type)>, String> {
+        let mut remaining = vec![];
+        for (from, to) in edges {
+            let from = self.substitute_to(from);
+            let to = self.substitute_to(to);
+            if from == Type::col() && to == Type::Expr {
+            } else if from == Type::col() {
+                self.unify_types(Type::col(), from)?
+            } else {
+                remaining.push((from, to));
+            }
+        }
+        Ok(remaining)
+    }
+
+    fn try_replace_reverse_by_expr(
+        &mut self,
+        edges: Vec<(Type, Type)>,
+    ) -> Result<Vec<(Type, Type)>, String> {
+        let mut remaining = vec![];
+        for (from, to) in edges {
+            let from = self.substitute_to(from);
+            let to = self.substitute_to(to);
+            if from == Type::Expr {
+                self.unify_types(Type::Expr, to)?
+            } else {
+                remaining.push((from, to));
+            }
+        }
+        Ok(remaining)
+    }
+
+    fn try_replace_reverse_by_col(
+        &mut self,
+        edges: Vec<(Type, Type)>,
+    ) -> Result<Vec<(Type, Type)>, String> {
+        let mut remaining = vec![];
+        for (from, to) in edges {
+            let from = self.substitute_to(from);
+            let to = self.substitute_to(to);
+            if from == Type::col() {
+                self.unify_types(Type::col(), to)?
+            } else {
+                remaining.push((from, to));
+            }
+        }
+        Ok(remaining)
     }
 
     /// Tries to simplify a coercion.
@@ -314,6 +456,11 @@ impl TypeCheckerState {
             }
         }
     }
+
+    fn substitute_to(&self, mut ty: Type) -> Type {
+        ty.substitute_type_vars(&self.substitutions);
+        ty
+    }
 }
 
 impl TypeChecker {
@@ -403,6 +550,11 @@ impl TypeChecker {
             // })
             // .map_err(|e| format!("Error type checking the symbol {name} = {value}:\n{e}",))?;
             if !self.types[name].vars.is_empty() {
+                // TODO we haven't solved coercions yet, so these types are not really finished yet.
+                // When we check the generic symbol itself, do not instantiate the typ escheme but
+                // just use a fresh type variable instead. Store that type variable (but don't use it for lookups!).
+                // At the end, compare that type variable with the type scheme.
+
                 // It is a type scheme, so we need to check if it conforms to its declared type now.
                 // (because we still have this concrete instantiation)
                 // TODO we could also save the instantitaiton somewhere.
@@ -468,26 +620,25 @@ impl TypeChecker {
     ) -> Result<(), String> {
         for id in identities {
             if id.kind == IdentityKind::Polynomial {
-                self.unify_expression(Type::Constr, id.expression_for_poly_id())?;
-                // let snapshot = self.state.clone();
-                // match self.unify_expression(Type::Constr, id.expression_for_poly_id()) {
-                //     Ok(()) => Ok(()),
-                //     Err(original_err) => {
-                //         // Unification with constr failed, let's try constr[].
-                //         self.state = snapshot;
-                //         self.unify_expression(
-                //             Type::Array(ArrayType {
-                //                 base: Box::new(Type::Constr),
-                //                 length: None,
-                //             }),
-                //             id.expression_for_poly_id(),
-                //         )
-                //         .map_err(|_| original_err)
-                //     }
-                // }
-                // .map_err(|e| {
-                //     format!("Expresison is expected to evaluate to a constraint: {id}:\n{e}")
-                // })?;
+                let snapshot = self.state.clone();
+                match self.unify_expression(Type::Constr, id.expression_for_poly_id()) {
+                    Ok(()) => Ok(()),
+                    Err(original_err) => {
+                        // Unification with constr failed, let's try constr[].
+                        self.state = snapshot;
+                        self.unify_expression(
+                            Type::Array(ArrayType {
+                                base: Box::new(Type::Constr),
+                                length: None,
+                            }),
+                            id.expression_for_poly_id(),
+                        )
+                        .map_err(|_| original_err)
+                    }
+                }
+                .map_err(|e| {
+                    format!("Expresison is expected to evaluate to a constraint: {id}:\n{e}")
+                })?;
             } else {
                 for part in [&id.left, &id.right] {
                     if let Some(selector) = &part.selector {
@@ -1161,5 +1312,21 @@ mod test {
             let div: int, int -> int = |x, y| if y == 0 { panic(\"Division by zero\") } else { x / y };";
         let result = parse_and_type_check(input);
         check(&result, &[("std::check::div", "", "int, int -> int")]);
+    }
+
+    #[test]
+    fn lambda() {
+        let input = "
+        let x: col[3];
+        let y: col;
+        let set_equal: expr, expr -> constr = |a, b| a = b;
+        let<T1, T2> array_map: int, T1[], (T1 -> T2) -> T2[] = |n, a, f| if n == 0 { [] } else { array_map(n - 1, a, f) + [f(a[n - 1])] };
+        // This does not type check, because based on `x`, it instantiates array_map
+        // with col instead of expr. but then it fails on the third argument.
+        array_map(3, x, |i| set_equal(i, y));
+        ";
+        parse_and_type_check(input)
+            .map_err(|e| println!("{e}"))
+            .unwrap();
     }
 }
