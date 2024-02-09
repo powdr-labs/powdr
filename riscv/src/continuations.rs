@@ -64,8 +64,6 @@ where
 {
     let num_chunks = bootloader_inputs.len();
 
-    let length = pipeline.optimized_pil_ref().unwrap().degree();
-
     // Advance the pipeline to the PilWithEvaluatedFixedCols stage and then clone it
     // for each chunk. This is more efficient, because we'll run all steps until then
     // only once.
@@ -73,6 +71,12 @@ where
     pipeline
         .advance_to(Stage::PilWithEvaluatedFixedCols)
         .unwrap();
+
+    let length = pipeline
+        .pil_with_evaluated_fixed_cols_ref()
+        .unwrap()
+        .pil
+        .degree();
 
     bootloader_inputs
         .into_iter()
