@@ -7,15 +7,15 @@ use polyexen::expr::{Column, ColumnKind};
 use powdr_ast::analyzed::Analyzed;
 use powdr_number::{AbstractNumberType, FieldElement};
 
-pub(crate) struct CircuitData<T> {
-    pub(crate) fixed: Vec<(String, Vec<T>)>,
+pub(crate) struct CircuitData {
     pub(crate) public_column: Column,
     pub columns: HashMap<String, Column>,
+    fixed_id_counter: usize,
 }
 
-impl<'a, T: FieldElement> CircuitData<T> {
-    pub fn from(pil: &Analyzed<T>, fixed: Vec<(String, Vec<T>)>) -> Self {
-        let const_cols = fixed.iter().enumerate().map(|(index, (name, _))| {
+impl CircuitData {
+    pub fn from<T: FieldElement>(pil: &Analyzed<T>, fixed_names: &[String]) -> Self {
+        let const_cols = fixed_names.iter().enumerate().map(|(index, name)| {
             (
                 name.to_string(),
                 Column {
@@ -47,9 +47,9 @@ impl<'a, T: FieldElement> CircuitData<T> {
         };
 
         Self {
-            fixed,
             columns,
             public_column,
+            fixed_id_counter: fixed_names.len(),
         }
     }
 
@@ -58,29 +58,5 @@ impl<'a, T: FieldElement> CircuitData<T> {
             .columns
             .get(name)
             .unwrap_or_else(|| panic!("{name} column not found"))
-    }
-
-    pub fn len(&self) -> usize {
-        self.fixed.get(0).unwrap().1.len()
-    }
-
-    pub fn insert_constant<IT: IntoIterator<Item = T>>(
-        &mut self,
-        name: &'a str,
-        values: IT,
-    ) -> Column {
-        let values = values.into_iter().collect::<Vec<_>>();
-
-        if !self.fixed.is_empty() {
-            assert_eq!(values.len(), self.len());
-        }
-
-        self.fixed.push((name.to_string(), values));
-        let column = Column {
-            kind: ColumnKind::Fixed,
-            index: self.fixed.len() - 1,
-        };
-        self.columns.insert(name.to_string(), column);
-        column
     }
 }

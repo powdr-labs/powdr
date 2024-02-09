@@ -24,7 +24,7 @@ mod R {
     use super::utils::make_array;
 
     machine FullConstant {
-        degree 2;
+        degree 4;
 
         let C: int -> fe = |i| match i % 2 {
             0 => x,

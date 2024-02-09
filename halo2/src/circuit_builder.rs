@@ -19,6 +19,33 @@ use powdr_number::{BigInt, FieldElement};
 
 use super::circuit_data::CircuitData;
 
+/// Name of the __enable column
+const ENABLE_NAME: &str = "__enable";
+
+/// Converts a column of size $2^k$ and type T to a column of size $2^{k+1}$ and type Option<BigUint>:
+/// - The first $2^k$ elements are Some(value.to_arbitrary_integer())
+/// - Value $2^k + 1$ is the first value again
+/// - The rest of the values are `None``
+fn convert_column<T: FieldElement>(column: &[T]) -> Vec<Option<BigUint>> {
+    let original_size = column.len();
+    assert_eq!(
+        original_size & (original_size - 1),
+        0,
+        "Expected a power of 2 size. Got {}",
+        original_size
+    );
+
+    column
+        .iter()
+        // Convert to Some(value.to_arbitrary_integer())
+        .map(|value| Some(value.to_arbitrary_integer()))
+        // Repeat the first value
+        .chain(std::iter::once(Some(column[0].to_arbitrary_integer())))
+        // Pad with None
+        .chain(itertools::repeat_n(None, original_size - 1))
+        .collect::<Vec<_>>()
+}
+
 /// Converts an analyzed PIL and fixed to a Plaf circuit.
 /// A Plaf circuit only contains the shape of the circuit.
 pub(crate) fn analyzed_to_plaf<T: FieldElement>(
@@ -27,43 +54,44 @@ pub(crate) fn analyzed_to_plaf<T: FieldElement>(
 ) -> Plaf {
     // The structure of the table is as following
     //
-    // | constant columns | __enable_cur | __enable_next |  witness columns | \
-    // |  c[0]            |    1         |       1       |   w[0]           |  |
-    // |  c[1]            |    1         |       1       |   w[1]           |  |>  N actual circuit rows
-    // |  ...             |   ...        |      ...      |   ...            |  |
-    // |  c[N - 2]        |    1         |       1       |   w[N - 2]       |  |
-    // |  c[N - 1]        |    1         |       0       |   w[N - 1]       | /     <- __enable_next == 0 since there's no state transition
-    // |  0               |    0         |       0       |   0              | \
-    // |  0               |    0         |       0       |   0              |  |
-    // |  ...             |   ...        |      ...      |   ...            |  |>  (2**(ceil(log2(N)) + 1) - N) padding rows to fit the halo2 unusable rows
-    // |  0               |    0         |       0       |   0              |  |
-    // |  0               |    0         |       0       |   <unusable>     |  |
-    // |  0               |    0         |       0       |   <unusable>     | /
+    // | constant columns | __enable     |  witness columns | \
+    // |  c[0]            |    1         |   w[0]           |  |
+    // |  c[1]            |    1         |   w[1]           |  |>  N actual circuit rows
+    // |  ...             |   ...        |   ...            |  |
+    // |  c[N - 2]        |    1         |   w[N - 2]       |  |
+    // |  c[N - 1]        |    1         |   w[N - 1]       | /
+    // |  c[0]            |    0         |   w[0]           | \  <-- Row 0 is copy-constrained to row N
+    // |  None            |    None      |   None           |  |
+    // |  ...             |   ...        |   ...            |  |>  2**(ceil(log2(N)) padding rows to fit the halo2 unusable rows
+    // |  None            |    None      |   None           |  |
+    // |  None            |    None      |   None           |  | <-- Halo2 will put blinding factors in the last few rows
+    // |  None            |    None      |   None           | /      of the witness columns.
 
     // generate fixed and witness (witness).
 
     let query = |column, rotation| Expr::Var(PlonkVar::Query(ColumnQuery { column, rotation }));
 
-    let mut cd = CircuitData::from(analyzed, fixed.to_owned());
+    let fixed_names = fixed
+        .iter()
+        .map(|(name, _)| name.clone())
+        // Append __enable fixed column
+        .chain(std::iter::once(ENABLE_NAME.to_string()))
+        .collect::<Vec<_>>();
 
-    // append two fixed columns:
-    // - one that enables constraints that do not have rotations (__enable_cur) in the actual circuit
-    // - and another that enables constraints that have a rotation (__enable_next) in the actual circuit except in the last actual row
+    let original_size: usize = analyzed.degree() as usize;
+    let fixed = fixed
+        .iter()
+        .map(|(_, column)| convert_column(column))
+        // Append __enable fixed column
+        .chain(std::iter::once(
+            itertools::repeat_n(Some(BigUint::from(1u8)), original_size)
+                .chain(std::iter::once(Some(BigUint::from(0u8))))
+                .chain(itertools::repeat_n(None, original_size - 1))
+                .collect(),
+        ))
+        .collect::<Vec<_>>();
 
-    let num_rows: usize = analyzed.degree() as usize;
-
-    let q_enable_cur = query(
-        cd.insert_constant("__enable_cur", itertools::repeat_n(T::from(1), num_rows)),
-        0,
-    );
-
-    let q_enable_next = query(
-        cd.insert_constant(
-            "__enable_next",
-            itertools::repeat_n(T::from(1), num_rows - 1).chain(std::iter::once(T::from(0))),
-        ),
-        0,
-    );
+    let cd = CircuitData::from(analyzed, &fixed_names);
 
     let mut lookups = vec![];
     let mut shuffles = vec![];
@@ -79,11 +107,7 @@ pub(crate) fn analyzed_to_plaf<T: FieldElement>(
     // build Plaf columns -------------------------------------------------
 
     let columns = Columns {
-        fixed: cd
-            .fixed
-            .iter()
-            .map(|(name, _)| ColumnFixed::new(name.to_string()))
-            .collect(),
+        fixed: fixed_names.into_iter().map(ColumnFixed::new).collect(),
         witness: wit_columns,
         public: vec![ColumnPublic::new("public".to_string())],
     };
@@ -92,12 +116,13 @@ pub(crate) fn analyzed_to_plaf<T: FieldElement>(
 
     let info = Info {
         p: T::modulus().to_arbitrary_integer(),
-        num_rows: cd.len(),
+        num_rows: original_size,
         challenges: vec![],
     };
 
     // build Plaf polys. -------------------------------------------------------------------------
 
+    let q_enable = query(cd.col(ENABLE_NAME), 0);
     let apply_selectors_to_set = |set: &SelectedExpressions<Expression<T>>| {
         let selector = set
             .selector
@@ -106,16 +131,7 @@ pub(crate) fn analyzed_to_plaf<T: FieldElement>(
                 expression_2_expr(&cd, &expr)
             });
 
-        let contains_next_ref = set.expressions.iter().any(|exp| exp.contains_next_ref());
-
-        let selector = Expr::Mul(vec![
-            selector,
-            if contains_next_ref {
-                q_enable_next.clone()
-            } else {
-                q_enable_cur.clone()
-            },
-        ]);
+        let selector = Expr::Mul(vec![selector, q_enable.clone()]);
 
         set.expressions
             .iter()
@@ -134,21 +150,12 @@ pub(crate) fn analyzed_to_plaf<T: FieldElement>(
                 assert_eq!(id.left.expressions.len(), 0);
 
                 let exp = id.expression_for_poly_id();
-                let contains_next_ref = exp.contains_next_ref();
-
                 let exp = expression_2_expr(&cd, exp);
 
                 // depending whether this polynomial contains a rotation,
                 // enable for all rows or all except the last one.
 
-                let exp = Expr::Mul(vec![
-                    exp,
-                    if contains_next_ref {
-                        q_enable_next.clone()
-                    } else {
-                        q_enable_cur.clone()
-                    },
-                ]);
+                let exp = Expr::Mul(vec![exp, q_enable.clone()]);
                 polys.push(Poly {
                     name: "".to_string(),
                     exp,
@@ -187,16 +194,6 @@ pub(crate) fn analyzed_to_plaf<T: FieldElement>(
 
     // build Plaf fixed. -------------------------------------------------------------------------
 
-    let fixed: Vec<Vec<_>> = cd
-        .fixed
-        .iter()
-        .map(|(_, row)| {
-            row.iter()
-                .map(|value| Some(value.to_arbitrary_integer()))
-                .collect()
-        })
-        .collect();
-
     Plaf {
         info,
         columns,
@@ -209,7 +206,9 @@ pub(crate) fn analyzed_to_plaf<T: FieldElement>(
     }
 }
 
-fn copy_constraints<T: FieldElement>(pil: &Analyzed<T>, cd: &CircuitData<T>) -> Vec<CopyC> {
+fn copy_constraints<T: FieldElement>(pil: &Analyzed<T>, cd: &CircuitData) -> Vec<CopyC> {
+    let mut copies = vec![];
+
     // Enforce publics by copy-constraining to cells in the instance column.
     // For example, if we have the following public declarations:
     // - public out1 = A(2);
@@ -222,7 +221,6 @@ fn copy_constraints<T: FieldElement>(pil: &Analyzed<T>, cd: &CircuitData<T>) -> 
     // |  1  |  1  |  6  |  *5*   |
     // |  2  | *2* |  7  |        |
     // |  3  |  4  |  8  |        |
-    let mut copies = vec![];
     for public_declaration in pil.public_declarations.values() {
         let witness_name = public_declaration.referenced_poly_name();
         let witness_col = cd.col(&witness_name);
@@ -236,6 +234,19 @@ fn copy_constraints<T: FieldElement>(pil: &Analyzed<T>, cd: &CircuitData<T>) -> 
             // We could also create one copy constraint per column pair wih several offsets.
             // I don't think there is a difference though...
             offsets: vec![(public_offset, witness_offset)],
+        });
+    }
+
+    // Also, copy row 0 to row N.
+    for (poly_name, _) in pil
+        .committed_polys_in_source_order()
+        .into_iter()
+        .flat_map(|(p, _)| p.array_elements())
+    {
+        let witness_col = cd.col(&poly_name);
+        copies.push(CopyC {
+            columns: (witness_col, witness_col),
+            offsets: vec![(0, pil.degree() as usize)],
         });
     }
 
@@ -318,11 +329,7 @@ pub(crate) fn analyzed_to_circuit_with_witness<T: FieldElement>(
 
     let converted_witness: Vec<Vec<_>> = witness
         .iter()
-        .map(|(_, row)| {
-            row.iter()
-                .map(|value| Some(value.to_arbitrary_integer()))
-                .collect()
-        })
+        .map(|(_, column)| convert_column(column))
         .collect();
 
     let wit = Witness {
@@ -342,7 +349,7 @@ pub(crate) fn analyzed_to_circuit_with_witness<T: FieldElement>(
     )
 }
 
-fn expression_2_expr<T: FieldElement>(cd: &CircuitData<T>, expr: &Expression<T>) -> Expr<PlonkVar> {
+fn expression_2_expr<T: FieldElement>(cd: &CircuitData, expr: &Expression<T>) -> Expr<PlonkVar> {
     match expr {
         Expression::Number(n) => Expr::Const(n.to_arbitrary_integer()),
         Expression::Reference(polyref) => {
