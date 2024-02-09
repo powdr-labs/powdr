@@ -13,77 +13,31 @@ machine Arith(CLK32_31, operation_id){
     // Computes x1 * y1 + x2, where all inputs / outputs are 256-bit words (represented as 32-Bit limbs in little-endian order).
     // More precisely, affine_256(x1, y1, x2) = (y2, y3), where x1 * y1 + x2 = 2**256 * y2 + y3
     // Operation ID is 1 = 0b0001, i.e., we activate equation 0.
-    operation affine_256<1> x1_0, x1_1, x1_2, x1_3, x1_4, x1_5, x1_6, x1_7, y1_0, y1_1, y1_2, y1_3, y1_4, y1_5, y1_6, y1_7, x2_0, x2_1, x2_2, x2_3, x2_4, x2_5, x2_6, x2_7 -> y2_0, y2_1, y2_2, y2_3, y2_4, y2_5, y2_6, y2_7, y3_0, y3_1, y3_2, y3_3, y3_4, y3_5, y3_6, y3_7;
+    operation affine_256<1> x1c[0], x1c[1], x1c[2], x1c[3], x1c[4], x1c[5], x1c[6], x1c[7], y1c[0], y1c[1], y1c[2], y1c[3], y1c[4], y1c[5], y1c[6], y1c[7], x2c[0], x2c[1], x2c[2], x2c[3], x2c[4], x2c[5], x2c[6], x2c[7] -> y2c[0], y2c[1], y2c[2], y2c[3], y2c[4], y2c[5], y2c[6], y2c[7], y3c[0], y3c[1], y3c[2], y3c[3], y3c[4], y3c[5], y3c[6], y3c[7];
     
     // Performs elliptic curve addition of points (x1, y2) and (x2, y2).
     // Operation ID is 10 = 0b1010, i.e., we activate equations 1, 3, and 4.
     // TODO: Witgen doesn't work for that yet.
-    operation ec_add<10> x1_0, x1_1, x1_2, x1_3, x1_4, x1_5, x1_6, x1_7, y1_0, y1_1, y1_2, y1_3, y1_4, y1_5, y1_6, y1_7, x2_0, x2_1, x2_2, x2_3, x2_4, x2_5, x2_6, x2_7, y2_0, y2_1, y2_2, y2_3, y2_4, y2_5, y2_6, y2_7 -> x3_0, x3_1, x3_2, x3_3, x3_4, x3_5, x3_6, x3_7, y3_0, y3_1, y3_2, y3_3, y3_4, y3_5, y3_6, y3_7;
+    operation ec_add<10> x1c[0], x1c[1], x1c[2], x1c[3], x1c[4], x1c[5], x1c[6], x1c[7], y1c[0], y1c[1], y1c[2], y1c[3], y1c[4], y1c[5], y1c[6], y1c[7], x2c[0], x2c[1], x2c[2], x2c[3], x2c[4], x2c[5], x2c[6], x2c[7], y2c[0], y2c[1], y2c[2], y2c[3], y2c[4], y2c[5], y2c[6], y2c[7] -> x3c[0], x3c[1], x3c[2], x3c[3], x3c[4], x3c[5], x3c[6], x3c[7], y3c[0], y3c[1], y3c[2], y3c[3], y3c[4], y3c[5], y3c[6], y3c[7];
     
     // Performs elliptic curve doubling of point (x1, y2).
     // Operation ID is 12 = 0b1100, i.e., we activate equations 2, 3, and 4.
     // TODO: Witgen doesn't work for that yet.
-    operation ec_double<12> x1_0, x1_1, x1_2, x1_3, x1_4, x1_5, x1_6, x1_7, y1_0, y1_1, y1_2, y1_3, y1_4, y1_5, y1_6, y1_7 -> x3_0, x3_1, x3_2, x3_3, x3_4, x3_5, x3_6, x3_7, y3_0, y3_1, y3_2, y3_3, y3_4, y3_5, y3_6, y3_7;
+    operation ec_double<12> x1c[0], x1c[1], x1c[2], x1c[3], x1c[4], x1c[5], x1c[6], x1c[7], y1c[0], y1c[1], y1c[2], y1c[3], y1c[4], y1c[5], y1c[6], y1c[7] -> x3c[0], x3c[1], x3c[2], x3c[3], x3c[4], x3c[5], x3c[6], x3c[7], y3c[0], y3c[1], y3c[2], y3c[3], y3c[4], y3c[5], y3c[6], y3c[7];
     
     let BYTE = |i| i & 0xff;
     let BYTE2 = |i| i & 0xffff;
 
     pol commit x1[16], y1[16], x2[16], y2[16], x3[16], y3[16], s[16], q0[16], q1[16], q2[16];
 
-    // Intermediate polynomials, 32-Bit each
-    pol x1_0 = x1[1] * 2**16 + x1[0];
-    pol x1_1 = x1[3] * 2**16 + x1[2];
-    pol x1_2 = x1[5] * 2**16 + x1[4];
-    pol x1_3 = x1[7] * 2**16 + x1[6];
-    pol x1_4 = x1[9] * 2**16 + x1[8];
-    pol x1_5 = x1[11] * 2**16 + x1[10];
-    pol x1_6 = x1[13] * 2**16 + x1[12];
-    pol x1_7 = x1[15] * 2**16 + x1[14];
-
-    pol x2_0 = x2[1] * 2**16 + x2[0];
-    pol x2_1 = x2[3] * 2**16 + x2[2];
-    pol x2_2 = x2[5] * 2**16 + x2[4];
-    pol x2_3 = x2[7] * 2**16 + x2[6];
-    pol x2_4 = x2[9] * 2**16 + x2[8];
-    pol x2_5 = x2[11] * 2**16 + x2[10];
-    pol x2_6 = x2[13] * 2**16 + x2[12];
-    pol x2_7 = x2[15] * 2**16 + x2[14];
-
-    pol y1_0 = y1[1] * 2**16 + y1[0];
-    pol y1_1 = y1[3] * 2**16 + y1[2];
-    pol y1_2 = y1[5] * 2**16 + y1[4];
-    pol y1_3 = y1[7] * 2**16 + y1[6];
-    pol y1_4 = y1[9] * 2**16 + y1[8];
-    pol y1_5 = y1[11] * 2**16 + y1[10];
-    pol y1_6 = y1[13] * 2**16 + y1[12];
-    pol y1_7 = y1[15] * 2**16 + y1[14];
-
-    pol y2_0 = y2[1] * 2**16 + y2[0];
-    pol y2_1 = y2[3] * 2**16 + y2[2];
-    pol y2_2 = y2[5] * 2**16 + y2[4];
-    pol y2_3 = y2[7] * 2**16 + y2[6];
-    pol y2_4 = y2[9] * 2**16 + y2[8];
-    pol y2_5 = y2[11] * 2**16 + y2[10];
-    pol y2_6 = y2[13] * 2**16 + y2[12];
-    pol y2_7 = y2[15] * 2**16 + y2[14];
-
-    pol x3_0 = x3[1] * 2**16 + x3[0];
-    pol x3_1 = x3[3] * 2**16 + x3[2];
-    pol x3_2 = x3[5] * 2**16 + x3[4];
-    pol x3_3 = x3[7] * 2**16 + x3[6];
-    pol x3_4 = x3[9] * 2**16 + x3[8];
-    pol x3_5 = x3[11] * 2**16 + x3[10];
-    pol x3_6 = x3[13] * 2**16 + x3[12];
-    pol x3_7 = x3[15] * 2**16 + x3[14];
-
-    pol y3_0 = y3[1] * 2**16 + y3[0];
-    pol y3_1 = y3[3] * 2**16 + y3[2];
-    pol y3_2 = y3[5] * 2**16 + y3[4];
-    pol y3_3 = y3[7] * 2**16 + y3[6];
-    pol y3_4 = y3[9] * 2**16 + y3[8];
-    pol y3_5 = y3[11] * 2**16 + y3[10];
-    pol y3_6 = y3[13] * 2**16 + y3[12];
-    pol y3_7 = y3[15] * 2**16 + y3[14];
+    let combine: expr[] -> expr[] = |x| array::new(array::len(x) / 2, |i| x[2 * i + 1] * 2**16 + x[2 * i]);
+    // Intermediate polynomials, arrays of 8 columns, 32 bit per column.
+    let x1c: expr[8] = combine(x1);
+    let y1c: expr[8] = combine(y1);
+    let x2c: expr[8] = combine(x2);
+    let y2c: expr[8] = combine(y2);
+    let x3c: expr[8] = combine(x3);
+    let y3c: expr[8] = combine(y3);
 
     let CLK32: col[32] = array::new(32, |i| |row| if row % 32 == i { 1 } else { 0 });
     let CLK32_31 = CLK32[31];
@@ -260,10 +214,7 @@ machine Arith(CLK32_31, operation_id){
     { carry_high[2] } in { BYTE2 };
 
     // Carries can be any integer in the range [-2**31, 2**31 - 1)
-    pol carry0 = carry_high[0] * 2**16 + carry_low[0] - 2 ** 31;
-    pol carry1 = carry_high[1] * 2**16 + carry_low[1] - 2 ** 31;
-    pol carry2 = carry_high[2] * 2**16 + carry_low[2] - 2 ** 31;
-    let carry = [carry0, carry1, carry2];
+    let carry: expr[3] = array::new(3, |i| carry_high[i] * 2**16 + carry_low[i] - 2 ** 31);
     
     array::map(carry, |c| c * CLK32[0] = 0);
 

@@ -33,7 +33,7 @@ pub struct Analyzed<T> {
     pub degree: Option<DegreeType>,
     pub definitions: HashMap<String, (Symbol, Option<FunctionValueDefinition<T>>)>,
     pub public_declarations: HashMap<String, PublicDeclaration>,
-    pub intermediate_columns: HashMap<String, (Symbol, AlgebraicExpression<T>)>,
+    pub intermediate_columns: HashMap<String, (Symbol, Vec<AlgebraicExpression<T>>)>,
     pub identities: Vec<Identity<AlgebraicExpression<T>>>,
     /// The order in which definitions and identities
     /// appear in the source.
@@ -51,7 +51,10 @@ impl<T> Analyzed<T> {
     }
     /// @returns the number of intermediate polynomials (with multiplicities for arrays)
     pub fn intermediate_count(&self) -> usize {
-        self.intermediate_columns.len()
+        self.intermediate_columns
+            .iter()
+            .map(|(_, (sym, _))| sym.length.unwrap_or(1) as usize)
+            .sum()
     }
     /// @returns the number of constant polynomials (with multiplicities for arrays)
     pub fn constant_count(&self) -> usize {
@@ -70,7 +73,9 @@ impl<T> Analyzed<T> {
         self.definitions_in_source_order(PolynomialType::Committed)
     }
 
-    pub fn intermediate_polys_in_source_order(&self) -> Vec<&(Symbol, AlgebraicExpression<T>)> {
+    pub fn intermediate_polys_in_source_order(
+        &self,
+    ) -> Vec<&(Symbol, Vec<AlgebraicExpression<T>>)> {
         self.source_order
             .iter()
             .filter_map(move |statement| {
@@ -179,9 +184,10 @@ impl<T> Analyzed<T> {
 
         // We assume for now that intermediate columns are not removed.
         for (poly, _) in self.intermediate_columns.values() {
-            let poly_id: PolyID = poly.into();
-            assert!(!to_remove.contains(&poly_id));
-            replacements.insert(poly_id, poly_id);
+            poly.array_elements().for_each(|(_name, id)| {
+                assert!(!to_remove.contains(&id));
+                replacements.insert(id, id);
+            });
         }
 
         let mut names_to_remove: HashSet<String> = Default::default();
@@ -241,19 +247,8 @@ impl<T> Analyzed<T> {
             .max()
             .unwrap_or_default()
             + 1;
-        self.identities.push(Identity {
-            id,
-            kind: IdentityKind::Polynomial,
-            source,
-            left: SelectedExpressions {
-                selector: Some(identity),
-                expressions: vec![],
-            },
-            right: SelectedExpressions {
-                selector: None,
-                expressions: vec![],
-            },
-        });
+        self.identities
+            .push(Identity::from_polynomial_identity(id, source, identity));
         self.source_order
             .push(StatementIdentifier::Identity(id as usize));
         id
@@ -290,7 +285,11 @@ impl<T> Analyzed<T> {
             .for_each(|i| i.post_visit_expressions_mut(f));
         self.intermediate_columns
             .values_mut()
-            .for_each(|(_sym, value)| value.post_visit_expressions_mut(f));
+            .for_each(|(_sym, value)| {
+                value
+                    .iter_mut()
+                    .for_each(|v| v.post_visit_expressions_mut(f))
+            });
     }
 
     pub fn post_visit_expressions_in_definitions_mut<F>(&mut self, f: &mut F)
@@ -322,7 +321,12 @@ impl<T: FieldElement> Analyzed<T> {
         let intermediates = &self
             .intermediate_polys_in_source_order()
             .iter()
-            .map(|(symbol, def)| (PolyID::from(symbol), def))
+            .flat_map(|(symbol, def)| {
+                symbol
+                    .array_elements()
+                    .zip(def)
+                    .map(|((_, poly_id), def)| (poly_id, def))
+            })
             .collect();
 
         substitute_intermediate(self.identities.clone(), intermediates)
@@ -549,6 +553,19 @@ pub struct Identity<Expr> {
 }
 
 impl<Expr> Identity<Expr> {
+    /// Constructs an Identity from a polynomial identity (expression assumed to be identical zero).
+    pub fn from_polynomial_identity(id: u64, source: SourceRef, identity: Expr) -> Self {
+        Identity {
+            id,
+            kind: IdentityKind::Polynomial,
+            source,
+            left: SelectedExpressions {
+                selector: Some(identity),
+                expressions: vec![],
+            },
+            right: Default::default(),
+        }
+    }
     /// Returns the expression in case this is a polynomial identity.
     pub fn expression_for_poly_id(&self) -> &Expr {
         assert_eq!(self.kind, IdentityKind::Polynomial);

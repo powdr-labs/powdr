@@ -95,7 +95,16 @@ impl<T: Display> Display for Analyzed<T> {
                     } else if let Some((symbol, definition)) = self.intermediate_columns.get(name) {
                         let (name, _) = update_namespace(name, f)?;
                         assert_eq!(symbol.kind, SymbolKind::Poly(PolynomialType::Intermediate));
-                        writeln!(f, "    col {name} = {definition};")?;
+                        if let Some(length) = symbol.length {
+                            writeln!(
+                                f,
+                                "    col {name}[{length}] = [{}];",
+                                definition.iter().format(", ")
+                            )?;
+                        } else {
+                            assert_eq!(definition.len(), 1);
+                            writeln!(f, "    col {name} = {};", definition[0])?;
+                        }
                     } else {
                         panic!()
                     }
