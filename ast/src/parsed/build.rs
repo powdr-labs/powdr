@@ -19,7 +19,7 @@ pub fn namespaced_reference<S: Into<String>, T>(namespace: String, name: S) -> E
     .into()
 }
 
-pub fn next_reference<T>(name: &str) -> Expression<T> {
+pub fn next_reference<S: Into<String>, T>(name: S) -> Expression<T> {
     Expression::UnaryOperation(UnaryOperator::Next, Box::new(direct_reference(name)))
 }
 

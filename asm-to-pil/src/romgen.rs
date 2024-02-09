@@ -9,7 +9,7 @@ use powdr_ast::asm_analysis::{
 use powdr_ast::parsed::visitor::ExpressionVisitable;
 use powdr_ast::parsed::NamespacedPolynomialReference;
 use powdr_ast::parsed::{
-    asm::{OperationId, Param, ParamList, Params},
+    asm::{OperationId, Param, Params},
     Expression,
 };
 use powdr_ast::SourceRef;
@@ -105,18 +105,12 @@ pub fn generate_machine_rom<T: FieldElement>(
         // the number of inputs is the max of the number of inputs needed in each function
         let input_count = machine
             .functions()
-            .map(|f| f.params.inputs.params.len())
+            .map(|f| f.params.inputs.len())
             .max()
             .unwrap_or(0);
         let output_count = machine
             .functions()
-            .map(|f| {
-                f.params
-                    .outputs
-                    .as_ref()
-                    .map(|o| o.params.len())
-                    .unwrap_or(0)
-            })
+            .map(|f| f.params.outputs.len())
             .max()
             .unwrap_or(0);
         // create one read-only register for each input
@@ -146,38 +140,33 @@ pub fn generate_machine_rom<T: FieldElement>(
             let input_substitution = function
                 .params
                 .inputs
-                .params
                 .iter()
                 .enumerate()
                 .map(|(index, param)| (param.name.clone(), input_at(index)))
                 .collect();
 
-            let operation_inputs = ParamList {
-                params: function
-                    .params
-                    .inputs
-                    .params
-                    .iter()
-                    .enumerate()
-                    .map(|(i, _)| Param {
-                        name: input_at(i),
-                        index: None,
-                        ty: None,
-                    })
-                    .collect(),
-            };
-            let operation_outputs = function.params.outputs.clone().map(|outputs| ParamList {
-                params: outputs
-                    .params
-                    .into_iter()
-                    .enumerate()
-                    .map(|(i, _)| Param {
-                        name: output_at(i),
-                        index: None,
-                        ty: None,
-                    })
-                    .collect(),
-            });
+            let operation_inputs = function
+                .params
+                .inputs
+                .iter()
+                .enumerate()
+                .map(|(i, _)| Param {
+                    name: input_at(i),
+                    index: None,
+                    ty: None,
+                })
+                .collect();
+            let operation_outputs = function
+                .params
+                .outputs
+                .iter()
+                .enumerate()
+                .map(|(i, _)| Param {
+                    name: output_at(i),
+                    index: None,
+                    ty: None,
+                })
+                .collect();
 
             // substitute the names in the operation body and extend the return arguments
             for s in function.body.statements.iter_mut() {

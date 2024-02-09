@@ -6,7 +6,7 @@ use powdr_ast::{
     parsed::{
         asm::AbsoluteSymbolPath,
         asm::SymbolPath,
-        build::{direct_reference, index_access, namespaced_reference},
+        build::{direct_reference, index_access, namespaced_reference, next_reference},
         Expression, ExpressionWithTypeName, PILFile, PilStatement, SelectedExpressions,
     },
     SourceRef,
@@ -92,63 +92,45 @@ pub fn link<T: FieldElement>(graph: PILGraph<T>) -> Result<PILFile<T>, Vec<Strin
             let from = link.from;
             let to = link.to;
 
-            // the lhs is `instr_flag { inputs, outputs }`
+            // the lhs is `instr_flag { operation_id, inputs, outputs }`
+            let op_id = to.operation.id.iter().cloned().map(Expression::Number);
+            let inputs = from
+                .params
+                .inputs
+                .into_iter()
+                .map(|i| {
+                    assert!(i.ty.is_none() || i.ty == Some("write".to_string()));
+                    (i.name, i.index)
+                })
+                .map(|(name, index)| index_access(direct_reference(name), index));
+            let outputs = from.params.outputs.into_iter().map(|p| match p.ty {
+                None => index_access(direct_reference(p.name), p.index),
+                // write register as output is mapped as a next ref in the plookup
+                Some(s) if s == "write" => index_access(next_reference(p.name), p.index),
+                _ => panic!(),
+            });
             let lhs = SelectedExpressions {
                 selector: Some(from.flag),
-                expressions: to
-                    .operation
-                    .id
-                    .map(Expression::Number)
-                    .into_iter()
-                    .chain(
-                        from.params
-                            .inputs
-                            .params
-                            .into_iter()
-                            .chain(
-                                from.params
-                                    .outputs
-                                    .into_iter()
-                                    .flat_map(|o| o.params.into_iter()),
-                            )
-                            .map(|i| {
-                                assert!(i.ty.is_none());
-                                (i.name, i.index)
-                            })
-                            .map(|(name, index)| index_access(direct_reference(name), index)),
-                    )
-                    .collect(),
+                expressions: op_id.chain(inputs).chain(outputs).collect(),
             };
-            // the rhs is `(instr_flag * latch) { inputs, outputs }`
-            // get the instruction in the submachine
 
-            let params = to.operation.params;
-
+            // the rhs is `latch { operation_id, inputs, outputs }`
             let to_namespace = to.machine.location.clone().to_string();
+            let op_id = to
+                .machine
+                .operation_id
+                .map(|oid| namespaced_reference(to_namespace.clone(), oid))
+                .into_iter();
 
             let rhs = SelectedExpressions {
                 selector: Some(namespaced_reference(
                     to_namespace.clone(),
                     to.machine.latch.unwrap(),
                 )),
-                expressions: to
-                    .machine
-                    .operation_id
-                    .map(|operation_id| namespaced_reference(to_namespace.clone(), operation_id))
-                    .into_iter()
-                    .chain(
-                        params
-                            .inputs
-                            .params
-                            .iter()
-                            .chain(params.outputs.iter().flat_map(|o| o.params.iter()))
-                            .map(|i| {
-                                index_access(
-                                    namespaced_reference(to_namespace.clone(), &i.name),
-                                    i.index,
-                                )
-                            }),
-                    )
+                expressions: op_id
+                    .chain(to.operation.params.inputs_and_outputs().map(|i| {
+                        index_access(namespaced_reference(to_namespace.clone(), &i.name), i.index)
+                    }))
                     .collect(),
             };
 
@@ -559,5 +541,90 @@ machine NegativeForUnsigned {
 "#;
         let graph = parse_analyse_and_compile::<GoldilocksField>(source);
         let _ = link(graph);
+    }
+
+    #[test]
+    pub fn instr_external_generated_pil() {
+        let asm = r"
+machine SubVM(latch, operation_id) {
+    operation add5<0> x -> y;
+
+    col witness operation_id;
+    col fixed latch = [1]*;
+
+    col witness x;
+    col witness y;
+
+    y = x + 5;
+}
+
+machine Main {
+    reg pc[@pc];
+    reg X[<=];
+    reg A;
+
+    SubVM vm;
+
+    instr add5_into_A X = vm.add5 X -> A;
+
+    function main {
+        add5_into_A 10; // A <== 15
+    }
+}
+";
+        let expected = r#"namespace main(1024);
+    pol commit _operation_id(i) query ("hint", 3);
+    pol commit pc;
+    pol commit X;
+    pol commit reg_write_X_A;
+    pol commit A;
+    pol commit instr_add5_into_A;
+    pol commit instr__jump_to_operation;
+    pol commit instr__reset;
+    pol commit instr__loop;
+    pol commit instr_return;
+    pol commit X_const;
+    pol commit X_read_free;
+    pol commit read_X_A;
+    pol commit read_X_pc;
+    (X = ((((read_X_A * A) + (read_X_pc * pc)) + X_const) + (X_read_free * X_free_value)));
+    pol constant first_step = [1] + [0]*;
+    (A' = ((((reg_write_X_A * X) + (instr_add5_into_A * A')) + (instr__reset * 0)) + ((1 - ((reg_write_X_A + instr_add5_into_A) + instr__reset)) * A)));
+    pol pc_update = ((((instr__jump_to_operation * _operation_id) + (instr__loop * pc)) + (instr_return * 0)) + ((1 - ((instr__jump_to_operation + instr__loop) + instr_return)) * (pc + 1)));
+    (pc' = ((1 - first_step') * pc_update));
+    pol constant p_line = [0, 1, 2, 3] + [3]*;
+    pol commit X_free_value;
+    pol constant p_X_const = [0, 0, 10, 0] + [0]*;
+    pol constant p_X_read_free = [0]*;
+    pol constant p_instr__jump_to_operation = [0, 1, 0, 0] + [0]*;
+    pol constant p_instr__loop = [0, 0, 0, 1] + [1]*;
+    pol constant p_instr__reset = [1, 0, 0, 0] + [0]*;
+    pol constant p_instr_add5_into_A = [0, 0, 1, 0] + [0]*;
+    pol constant p_instr_return = [0]*;
+    pol constant p_read_X_A = [0]*;
+    pol constant p_read_X_pc = [0]*;
+    pol constant p_reg_write_X_A = [0]*;
+    { pc, reg_write_X_A, instr_add5_into_A, instr__jump_to_operation, instr__reset, instr__loop, instr_return, X_const, X_read_free, read_X_A, read_X_pc } in { p_line, p_reg_write_X_A, p_instr_add5_into_A, p_instr__jump_to_operation, p_instr__reset, p_instr__loop, p_instr_return, p_X_const, p_X_read_free, p_read_X_A, p_read_X_pc };
+    pol constant _block_enforcer_last_step = [0]* + [1];
+    pol commit _operation_id_no_change;
+    (_operation_id_no_change = ((1 - _block_enforcer_last_step) * (1 - instr_return)));
+    ((_operation_id_no_change * (_operation_id' - _operation_id)) = 0);
+    instr_add5_into_A { 0, X, A' } in main_vm.latch { main_vm.operation_id, main_vm.x, main_vm.y };
+    pol constant _linker_first_step = [1] + [0]*;
+    ((_linker_first_step * (_operation_id - 2)) = 0);
+namespace main_vm(1024);
+    pol commit operation_id;
+    pol constant latch = [1]*;
+    pol commit x;
+    pol commit y;
+    (y = (x + 5));
+    pol constant _block_enforcer_last_step = [0]* + [1];
+    pol commit _operation_id_no_change;
+    (_operation_id_no_change = ((1 - _block_enforcer_last_step) * (1 - latch)));
+    ((_operation_id_no_change * (operation_id' - operation_id)) = 0);
+"#;
+        let graph = parse_analyse_and_compile::<GoldilocksField>(asm);
+        let pil = link(graph).unwrap();
+        assert_eq!(extract_main(&(pil.to_string())), expected);
     }
 }

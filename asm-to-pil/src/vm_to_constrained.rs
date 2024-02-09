@@ -12,7 +12,7 @@ use powdr_ast::{
         LinkDefinitionStatement, Machine, RegisterDeclarationStatement, RegisterTy, Rom,
     },
     parsed::{
-        asm::InstructionBody,
+        asm::{CallableRef, InstructionBody, Params},
         build::{self, direct_reference, next_reference},
         folder::ExpressionFolder,
         visitor::ExpressionVisitable,
@@ -30,13 +30,7 @@ use crate::common::{instruction_flag, return_instruction, RETURN_NAME};
 pub fn convert_machine<T: FieldElement>(machine: Machine<T>, rom: Option<Rom<T>>) -> Machine<T> {
     let output_count = machine
         .operations()
-        .map(|f| {
-            f.params
-                .outputs
-                .as_ref()
-                .map(|list| list.params.len())
-                .unwrap_or(0)
-        })
+        .map(|f| f.params.outputs.len())
         .max()
         .unwrap_or_default();
     ASMPILConverter::with_output_count(output_count).convert_machine(machine, rom)
@@ -88,22 +82,18 @@ impl<T: FieldElement> ASMPILConverter<T> {
         }
 
         // turn internal instructions into constraints and external ones into links
-        input.links.extend(
-            input
-                .instructions
-                .drain(..)
-                .filter_map(|instr| self.handle_instruction_def(instr)),
-        );
+        for instr in std::mem::take(&mut input.instructions) {
+            self.handle_instruction_def(&mut input, instr);
+        }
 
         // introduce `return` instruction
-        assert!(
-            self.handle_instruction_def(InstructionDefinitionStatement {
+        self.handle_instruction_def(
+            &mut input,
+            InstructionDefinitionStatement {
                 source: SourceRef::unknown(),
                 name: RETURN_NAME.into(),
-                instruction: self.return_instruction()
-            })
-            .is_none(),
-            "return instruction cannot link to an external function"
+                instruction: self.return_instruction(),
+            },
         );
 
         let assignment_registers = self
@@ -322,136 +312,259 @@ impl<T: FieldElement> ASMPILConverter<T> {
 
     fn handle_instruction_def(
         &mut self,
+        input: &mut Machine<T>,
         s: InstructionDefinitionStatement<T>,
-    ) -> Option<LinkDefinitionStatement<T>> {
+    ) {
         let instruction_name = s.name.clone();
         let instruction_flag = format!("instr_{instruction_name}");
         self.create_witness_fixed_pair(s.source.clone(), &instruction_flag);
 
-        let inputs: Vec<_> = s
-            .instruction
-            .params
-            .clone()
-            .inputs
-            .params
-            .into_iter()
-            .map(|param| {
-                assert!(
-                    param.index.is_none(),
-                    "Cannot use array elements for instruction parameters."
+        let params = s.instruction.params;
+
+        match s.instruction.body {
+            InstructionBody::Local(body) => self.handle_local_instruction_def(
+                s.source,
+                &instruction_name,
+                instruction_flag,
+                &params,
+                body,
+            ),
+            InstructionBody::CallableRef(callable) => {
+                let link = self.handle_external_instruction_def(
+                    s.source,
+                    instruction_flag,
+                    &params,
+                    callable,
                 );
-                match param.ty {
-                    Some(ty) if ty == "label" => Input::Literal(param.name, LiteralKind::Label),
-                    Some(ty) if ty == "signed" => {
-                        Input::Literal(param.name, LiteralKind::SignedConstant)
-                    }
-                    Some(ty) if ty == "unsigned" => {
-                        Input::Literal(param.name, LiteralKind::UnsignedConstant)
-                    }
-                    None => Input::Register(param.name),
-                    Some(_) => unreachable!(),
+                input.links.push(link);
+            }
+        }
+
+        let inputs: Vec<_> = params
+            .inputs
+            .into_iter()
+            .map(|param| match param.ty {
+                Some(ty) if ty == "label" => Input::Literal(param.name, LiteralKind::Label),
+                Some(ty) if ty == "signed" => {
+                    Input::Literal(param.name, LiteralKind::SignedConstant)
                 }
+                Some(ty) if ty == "unsigned" => {
+                    Input::Literal(param.name, LiteralKind::UnsignedConstant)
+                }
+                Some(ty) if ty == "write" => Input::Register(param.name),
+                None => Input::Register(param.name),
+                Some(ty) => panic!("Invalid param type {}", ty),
             })
             .collect();
 
-        let outputs = s
-            .instruction
-            .params
-            .clone()
-            .outputs
-            .map(|outputs| {
-                outputs
-                    .params
-                    .into_iter()
-                    .map(|param| {
-                        assert!(
-                            param.index.is_none(),
-                            "Cannot use array elements for instruction outputs."
-                        );
-                        assert!(param.ty.is_none(), "output must be a register");
-                        param.name
-                    })
-                    .collect()
-            })
-            .unwrap_or_default();
+        let outputs = params.outputs.into_iter().map(|param| param.name).collect();
 
         let instruction = Instruction { inputs, outputs };
+        self.instructions.insert(instruction_name, instruction);
+    }
 
-        let res = match s.instruction.body {
-            InstructionBody::Local(mut body) => {
-                // Substitute parameter references by the column names
-                let substitutions = instruction
-                    .literal_arg_names()
-                    .map(|arg_name| {
-                        let param_col_name = format!("instr_{instruction_name}_param_{arg_name}");
-                        self.create_witness_fixed_pair(s.source.clone(), &param_col_name);
-                        (arg_name.clone(), param_col_name)
-                    })
-                    .collect::<HashMap<_, _>>();
-                body.iter_mut().for_each(|s| {
-                    s.post_visit_expressions_mut(&mut |e| {
-                        if let Expression::Reference(r) = e {
-                            if let Some(name) = r.try_to_identifier() {
-                                if let Some(sub) = substitutions.get(name) {
-                                    *r.path.try_last_part_mut().unwrap() = sub.to_string();
-                                }
-                            }
-                        }
-                    });
-                });
+    /// check parameters are valid and extend PIL from the definition
+    fn handle_local_instruction_def(
+        &mut self,
+        source: SourceRef,
+        name: &String,
+        flag: String,
+        params: &Params<T>,
+        mut body: Vec<PilStatement<T>>,
+    ) {
+        // check inputs are literals or assignment registers
+        let mut literal_arg_names = vec![];
+        for param in &params.inputs {
+            assert!(
+                param.index.is_none(),
+                "Cannot use array elements for instruction parameters."
+            );
+            match &param.ty {
+                Some(ty) if ty == "label" || ty == "signed" || ty == "unsigned" => {
+                    literal_arg_names.push(&param.name)
+                }
+                None => {
+                    if !self
+                        .registers
+                        .get(&param.name)
+                        .is_some_and(|r| r.ty.is_assignment())
+                    {
+                        panic!(
+                            "Register '{}' used for instruction input is not an assignment register.",
+                            &param.name
+                        );
+                    }
+                }
+                Some(ty) => panic!("Invalid param type '{}'", ty),
+            }
+        }
 
-                for mut statement in body {
-                    if let PilStatement::Expression(source, expr) = statement {
-                        match extract_update(expr) {
-                            (Some(var), expr) => {
-                                let reference = direct_reference(&instruction_flag);
+        // check outputs are assignment registers
+        for param in &params.outputs {
+            assert!(
+                param.index.is_none(),
+                "Cannot use array elements for instruction outputs."
+            );
+            assert!(
+                param.ty.is_none() && self.registers[&param.name].ty.is_assignment(),
+                "Register '{}' used for instruction output is not an assignment register.",
+                &param.name
+            );
+        }
 
-                                // reduce the update to linear by introducing intermediate variables
-                                let expr = self
-                                    .linearize(&format!("{instruction_flag}_{var}_update"), expr);
+        // generate PIL from instruction body
 
-                                self.registers
-                                    .get_mut(&var)
-                                    .unwrap()
-                                    .conditioned_updates
-                                    .push((reference, expr));
-                            }
-                            (None, expr) => self.pil.push(PilStatement::Expression(
-                                source,
-                                build::identity(
-                                    direct_reference(&instruction_flag) * expr.clone(),
-                                    T::zero().into(),
-                                ),
-                            )),
-                        }
-                    } else {
-                        match &mut statement {
-                            PilStatement::PermutationIdentity(_, left, _)
-                            | PilStatement::PlookupIdentity(_, left, _) => {
-                                assert!(
-                                    left.selector.is_none(),
-                                    "LHS selector not supported, could and-combine with instruction flag later."
-                                );
-                                left.selector = Some(direct_reference(&instruction_flag));
-                                self.pil.push(statement)
-                            }
-                            _ => {
-                                panic!("Invalid statement for instruction body: {statement}");
-                            }
+        let substitutions = literal_arg_names
+            .into_iter()
+            .map(|arg_name| {
+                let param_col_name = format!("instr_{name}_param_{arg_name}");
+                self.create_witness_fixed_pair(source.clone(), &param_col_name);
+                (arg_name.clone(), param_col_name)
+            })
+            .collect::<HashMap<_, _>>();
+        body.iter_mut().for_each(|s| {
+            s.post_visit_expressions_mut(&mut |e| {
+                if let Expression::Reference(r) = e {
+                    if let Some(name) = r.try_to_identifier() {
+                        if let Some(sub) = substitutions.get(name) {
+                            *r.path.try_last_part_mut().unwrap() = sub.to_string();
                         }
                     }
                 }
-                None
+            });
+        });
+
+        for mut statement in body {
+            if let PilStatement::Expression(source, expr) = statement {
+                match extract_update(expr) {
+                    (Some(var), expr) => {
+                        let reference = direct_reference(&flag);
+
+                        // reduce the update to linear by introducing intermediate variables
+                        let expr = self.linearize(&format!("{flag}_{var}_update"), expr);
+
+                        self.registers
+                            .get_mut(&var)
+                            .unwrap()
+                            .conditioned_updates
+                            .push((reference, expr));
+                    }
+                    (None, expr) => self.pil.push(PilStatement::Expression(
+                        source,
+                        build::identity(direct_reference(&flag) * expr.clone(), T::zero().into()),
+                    )),
+                }
+            } else {
+                match &mut statement {
+                    PilStatement::PermutationIdentity(_, left, _)
+                    | PilStatement::PlookupIdentity(_, left, _) => {
+                        assert!(
+                                    left.selector.is_none(),
+                                    "LHS selector not supported, could and-combine with instruction flag later."
+                                );
+                        left.selector = Some(direct_reference(&flag));
+                        self.pil.push(statement)
+                    }
+                    _ => {
+                        panic!("Invalid statement for instruction body: {statement}");
+                    }
+                }
             }
-            InstructionBody::CallableRef(to) => Some(LinkDefinitionStatement {
-                source: s.source,
-                flag: direct_reference(instruction_flag),
-                params: s.instruction.params,
-                to,
-            }),
-        };
-        self.instructions.insert(instruction_name, instruction);
-        res
+        }
+    }
+
+    /// check parameters on LHS and RHS are valid, and create a link from the definition
+    fn handle_external_instruction_def(
+        &mut self,
+        source: SourceRef,
+        flag: String,
+        params: &Params<T>,
+        mut callable: CallableRef<T>,
+    ) -> LinkDefinitionStatement<T> {
+        let lhs = params;
+        let rhs = &mut callable.params;
+
+        // lhs params must all be assignment registers when mapping instruction to operation
+        lhs.inputs_and_outputs().for_each(|p| {
+            assert!(
+                p.index.is_none(),
+                "Cannot use array elements for instruction outputs."
+            );
+
+            let is_assignment_register = self
+                .registers
+                .get(&p.name)
+                .is_some_and(|r| r.ty.is_assignment());
+
+            assert!(
+                p.ty.is_none() && is_assignment_register,
+                "All lhs params must be assignment registers"
+            );
+        });
+
+        // if rhs is not empty, check it's valid
+        if !rhs.is_empty() {
+            // rhs params must either be assignment registers declared in the lhs or write registers
+            rhs
+                .inputs
+                .iter_mut()
+                .chain(rhs.outputs.iter_mut())
+                .for_each(|p| {
+                    let reg = self.registers.get(&p.name).expect("All rhs params must be registers");
+                    assert!(p.ty.is_none());
+                    match reg.ty {
+                        RegisterTy::Assignment => {
+                            assert!(lhs.inputs_and_outputs().any(|p_lhs| p_lhs.name == p.name),
+                                    "Assignment register '{}' on rhs must be also present on lhs params", p.name);
+                        }
+                        RegisterTy::Write => {
+                            // the linker needs this information to build the
+                            // plookup when a write register is used as output.
+                            // TODO: less hackish way of passing this info? proper type for param.ty?
+                            p.ty = Some("write".to_string());
+                        },
+                        _ => panic!("The rhs of an external instruction declaration must only use write or assignment registers"),
+                    }
+                });
+
+            // all lhs params must be used on rhs
+            lhs.inputs_and_outputs().for_each(|p| {
+                assert!(
+                    rhs.inputs_and_outputs().any(|rhs_p| rhs_p.name == p.name),
+                    "'{}' is declared on lhs but not used on the rhs",
+                    p.name
+                )
+            });
+
+            // can't repeat registers on output of rhs
+            let uniq: BTreeSet<_> = rhs.outputs.iter().map(|p| &p.name).collect();
+            assert_eq!(
+                rhs.outputs.len(),
+                uniq.len(),
+                "rhs of external instruction can't have repeated output registers"
+            );
+        }
+
+        // if a write register is used as output in an external instruction mapping, we
+        // must induce a tautology in the update clause (Reg' = Reg') when the
+        // instruction is active, to allow the operation plookup to match.
+        for p in rhs.outputs.iter() {
+            let reg = self
+                .registers
+                .get_mut(&p.name)
+                .expect("All rhs params must be registers");
+            if reg.ty.is_write() {
+                let value = next_reference(&p.name);
+                reg.conditioned_updates
+                    .push((direct_reference(&flag), value));
+            }
+        }
+        LinkDefinitionStatement {
+            source,
+            flag: direct_reference(flag),
+            params: params.clone(),
+            to: callable,
+        }
     }
 
     fn handle_non_functional_assignment(
@@ -1118,5 +1231,140 @@ fn extract_update<T: FieldElement>(expr: Expression<T>) -> (Option<String>, Expr
             ),
         },
         _ => (None, *left - *right),
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use powdr_ast::asm_analysis::AnalysisASMFile;
+    use powdr_number::{FieldElement, GoldilocksField};
+
+    fn parse_analyse_and_compile<T: FieldElement>(input: &str) -> AnalysisASMFile<T> {
+        let parsed = powdr_parser::parse_asm(None, input).unwrap();
+        // let resolved = powdr_importer::load_dependencies_and_resolve(None, parsed).unwrap();
+        let analyzed = powdr_analysis::analyze(parsed, &mut Default::default()).unwrap();
+        powdr_analysis::convert_vms_to_constrained(analyzed, &mut Default::default())
+    }
+
+    #[test]
+    #[should_panic(expected = "All lhs params must be assignment registers")]
+    fn instr_external_lhs_not_assignment_reg() {
+        let asm = r"
+machine Main {
+  degree 8;
+  reg pc[@pc];
+  reg A;
+
+  instr foo A = vm.foo A;
+
+  function main {
+    foo;
+  }
+}
+";
+        parse_analyse_and_compile::<GoldilocksField>(asm);
+    }
+
+    #[test]
+    #[should_panic(expected = "All rhs params must be registers")]
+    fn instr_external_rhs_not_register1() {
+        let asm = r"
+machine Main {
+  degree 8;
+  reg pc[@pc];
+  reg X[<=];
+  reg A;
+
+  instr foo X = vm.foo B;
+
+  function main {
+    foo;
+  }
+}
+";
+        parse_analyse_and_compile::<GoldilocksField>(asm);
+    }
+
+    #[test]
+    #[should_panic(expected = "All rhs params must be registers")]
+    fn instr_external_rhs_not_register2() {
+        let asm = r"
+machine Main {
+  degree 8;
+  reg pc[@pc];
+  reg X[<=];
+  reg A;
+
+  instr foo = vm.foo l: label;
+
+  function main {
+    foo;
+  }
+}
+";
+        parse_analyse_and_compile::<GoldilocksField>(asm);
+    }
+
+    #[test]
+    #[should_panic(expected = "'X' is declared on lhs but not used on the rhs")]
+    fn instr_external_lhs_register_not_used() {
+        let asm = r"
+machine Main {
+  degree 8;
+  reg pc[@pc];
+  reg X[<=];
+  reg Y[<=];
+  reg A;
+
+  instr foo X -> Y = vm.foo Y;
+
+  function main {
+    foo;
+  }
+}
+";
+        parse_analyse_and_compile::<GoldilocksField>(asm);
+    }
+
+    #[test]
+    #[should_panic(expected = "Assignment register 'Y' on rhs must be also present on lhs params")]
+    fn instr_external_rhs_register_not_on_lhs() {
+        let asm = r"
+machine Main {
+  degree 8;
+  reg pc[@pc];
+  reg X[<=];
+  reg Y[<=];
+  reg A;
+
+  instr foo X = vm.foo X -> Y;
+
+  function main {
+    foo;
+  }
+}
+";
+        parse_analyse_and_compile::<GoldilocksField>(asm);
+    }
+
+    #[test]
+    #[should_panic(expected = "rhs of external instruction can't have repeated output registers")]
+    fn instr_external_rhs_repeated_output_register() {
+        let asm = r"
+machine Main {
+  degree 8;
+  reg pc[@pc];
+  reg X[<=];
+  reg Y[<=];
+  reg A;
+
+  instr foo X  = vm.foo X -> A, A;
+
+  function main {
+    foo;
+  }
+}
+";
+        parse_analyse_and_compile::<GoldilocksField>(asm);
     }
 }

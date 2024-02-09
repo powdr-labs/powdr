@@ -153,9 +153,9 @@ impl<T: Display> Display for LinkDeclaration<T> {
     }
 }
 
-impl Display for CallableRef {
+impl<T: Display> Display for CallableRef<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write!(f, "{}.{}", self.instance, self.callable)
+        write!(f, "{}.{} {}", self.instance, self.callable, self.params)
     }
 }
 
@@ -285,27 +285,17 @@ impl<T: Display> Display for Params<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(
             f,
-            "{}{}",
-            self.inputs,
-            self.outputs
-                .as_ref()
-                .map(|outputs| format!(
-                    "{}-> {}",
-                    if self.inputs.params.is_empty() {
-                        ""
-                    } else {
-                        " "
-                    },
-                    outputs
-                ))
-                .unwrap_or_default()
+            "{}{}{}",
+            self.inputs.iter().format(", "),
+            if self.outputs.is_empty() {
+                ""
+            } else if self.inputs.is_empty() {
+                "-> "
+            } else {
+                " -> "
+            },
+            self.outputs.iter().format(", ")
         )
-    }
-}
-
-impl<T: Display> Display for ParamList<T> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write!(f, "{}", self.params.iter().format(", "))
     }
 }
 
@@ -674,40 +664,34 @@ mod tests {
             ty: Some("ty".into()),
         };
         assert_eq!(p.to_string(), "abc: ty");
-        let l = ParamList { params: vec![p] };
-        assert_eq!(l.to_string(), "abc: ty");
         let empty = Params::<GoldilocksField>::default();
         assert_eq!(empty.to_string(), "");
         assert_eq!(empty.prepend_space_if_non_empty(), "");
         let in_out = Params::<GoldilocksField> {
-            inputs: ParamList {
-                params: vec![
-                    Param {
-                        name: "abc".into(),
-                        index: Some(7.into()),
-                        ty: Some("ty0".into()),
-                    },
-                    Param {
-                        name: "def".into(),
-                        index: None,
-                        ty: Some("ty1".into()),
-                    },
-                ],
-            },
-            outputs: Some(ParamList {
-                params: vec![
-                    Param {
-                        name: "abc".into(),
-                        index: None,
-                        ty: Some("ty0".into()),
-                    },
-                    Param {
-                        name: "def".into(),
-                        index: Some(2.into()),
-                        ty: Some("ty1".into()),
-                    },
-                ],
-            }),
+            inputs: vec![
+                Param {
+                    name: "abc".into(),
+                    index: Some(7.into()),
+                    ty: Some("ty0".into()),
+                },
+                Param {
+                    name: "def".into(),
+                    index: None,
+                    ty: Some("ty1".into()),
+                },
+            ],
+            outputs: vec![
+                Param {
+                    name: "abc".into(),
+                    index: None,
+                    ty: Some("ty0".into()),
+                },
+                Param {
+                    name: "def".into(),
+                    index: Some(2.into()),
+                    ty: Some("ty1".into()),
+                },
+            ],
         };
         assert_eq!(
             in_out.to_string(),
@@ -718,26 +702,22 @@ mod tests {
             " abc[7]: ty0, def: ty1 -> abc: ty0, def[2]: ty1"
         );
         let out = Params::<GoldilocksField> {
-            inputs: ParamList { params: vec![] },
-            outputs: Some(ParamList {
-                params: vec![Param {
-                    name: "abc".into(),
-                    index: None,
-                    ty: Some("ty".into()),
-                }],
-            }),
+            inputs: vec![],
+            outputs: vec![Param {
+                name: "abc".into(),
+                index: None,
+                ty: Some("ty".into()),
+            }],
         };
         assert_eq!(out.to_string(), "-> abc: ty");
         assert_eq!(out.prepend_space_if_non_empty(), " -> abc: ty");
         let _in = Params::<GoldilocksField> {
-            inputs: ParamList {
-                params: vec![Param {
-                    name: "abc".into(),
-                    index: None,
-                    ty: Some("ty".into()),
-                }],
-            },
-            outputs: None,
+            inputs: vec![Param {
+                name: "abc".into(),
+                index: None,
+                ty: Some("ty".into()),
+            }],
+            outputs: vec![],
         };
         assert_eq!(_in.to_string(), "abc: ty");
         assert_eq!(_in.prepend_space_if_non_empty(), " abc: ty");

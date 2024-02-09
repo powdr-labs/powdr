@@ -256,8 +256,8 @@ pub InstructionBody: InstructionBody<T> = {
     "=" <f_ref:CallableRef> ";" => InstructionBody::CallableRef(f_ref),
 }
 
-pub CallableRef: CallableRef = {
-    <instance:Identifier> "." <callable:Identifier> => CallableRef { instance, callable }
+pub CallableRef: CallableRef<T> = {
+    <instance:Identifier> "." <callable:Identifier> <params:Params> => CallableRef { instance, callable, params },
 }
 
 InstructionBodyElements: Vec<PilStatement<T>> = {
@@ -272,15 +272,14 @@ InstructionBodyElement: PilStatement<T> = {
 }
 
 Params: Params<T> = {
-    <_input: ParamList> "->" <output: ParamList> => Params::new(_input, Some(output)),
+    <_input: ParamList> "->" <output: ParamList> => Params::new(_input, output),
     // we can ommit the arrow if there are no outputs
-    <_input: ParamList> => Params::new(_input, None)
-
+    <_input: ParamList> => Params::new(_input, vec![])
 }
 
-ParamList: ParamList<T> = {
-    => ParamList::new(vec![]),
-    <mut list:( <Param> "," )*> <end:Param>  => { list.push(end); ParamList::new(list) }
+ParamList: Vec<Param<T>> = {
+    => vec![],
+    <mut list:( <Param> "," )*> <end:Param>  => { list.push(end); list }
 }
 
 Param: Param<T> = {
