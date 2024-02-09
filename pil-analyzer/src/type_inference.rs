@@ -77,6 +77,8 @@ fn type_and_expr_from_definition<'a, T>(
 
 #[derive(Default)]
 struct TypeChecker {
+    /// Types for local variables, might contain type variables.
+    local_var_types: Vec<Type>,
     /// Declared types for symbols. Type scheme for polymorphic symbols
     /// and unquantified type variables for symbols without type.
     types: HashMap<String, TypeScheme>,
@@ -86,8 +88,6 @@ struct TypeChecker {
 
 #[derive(Default, Clone)]
 struct TypeCheckerState {
-    /// Types for local variables, might contain type variables.
-    local_var_types: Vec<Type>,
     /// Inferred type constraints (traits) on type variables.
     type_var_bounds: HashMap<String, HashSet<String>>,
     /// Substitutions for type variables
@@ -114,18 +114,6 @@ impl TypeCheckerState {
             .entry(type_var)
             .or_insert_with(HashSet::new)
             .insert(bound);
-    }
-
-    pub fn local_var_type(&self, id: u64) -> Type {
-        self.local_var_types[id as usize].clone()
-    }
-
-    pub fn push_new_local_vars(&mut self, types: Vec<Type>) {
-        self.local_var_types = [types, self.local_var_types.clone()].concat();
-    }
-
-    pub fn pop_local_var_types(&mut self, count: usize) -> Vec<Type> {
-        self.local_var_types.drain(0..count).collect()
     }
 
     pub fn add_substitution(&mut self, type_var: String, ty: Type) {
@@ -610,7 +598,7 @@ impl TypeChecker {
         // );
         match e {
             Expression::Reference(Reference::LocalVar(id, _name)) => {
-                self.state.unify_types(ty, self.state.local_var_type(*id))
+                self.state.unify_types(ty, self.local_var_type(*id))
             }
             Expression::Reference(Reference::Poly(PolynomialReference { name, poly_id: _ })) => {
                 let type_of_symbol = self.instantiate_scheme(self.types[name].clone());
@@ -624,9 +612,10 @@ impl TypeChecker {
                 let param_types = (0..params.len())
                     .map(|_| self.new_type_var())
                     .collect::<Vec<_>>();
-                self.state.push_new_local_vars(param_types);
-                let body_type = self.unify_new_expression(body)?;
-                let param_types = self.state.pop_local_var_types(params.len());
+                self.push_new_local_vars(param_types);
+                let body_type_result = self.unify_new_expression(body);
+                let param_types = self.pop_local_var_types(params.len());
+                let body_type = body_type_result?;
                 self.state.unify_types(
                     ty,
                     Type::Function(FunctionType {
@@ -846,6 +835,18 @@ impl TypeChecker {
         }));
         TypeScheme { vars, ty }.simplify_type_vars()
     }
+
+    pub fn local_var_type(&self, id: u64) -> Type {
+        self.local_var_types[id as usize].clone()
+    }
+
+    pub fn push_new_local_vars(&mut self, types: Vec<Type>) {
+        self.local_var_types = [types, self.local_var_types.clone()].concat();
+    }
+
+    pub fn pop_local_var_types(&mut self, count: usize) -> Vec<Type> {
+        self.local_var_types.drain(0..count).collect()
+    }
 }
 
 fn allows_implicit_conversion(from: &Type, to: &Type) -> bool {
@@ -929,6 +930,17 @@ fn unary_operator_scheme(op: UnaryOperator) -> TypeScheme {
         ty: parse_type_name::<GoldilocksField>(ty).unwrap().into(),
     }
 }
+
+// trait FromLiteral<T> {
+//     from_literal: int -> T;
+// }
+// injeted as from_literal::<fe>(...)
+//
+// at the point of evaluation, can we generally assume all those to be properly substituted?
+// I don't think so, because we still have generic calls in generic code.
+// so the evaluator nedes to be able to do trait lookups.
+//
+// Maybe this is special for the FromLiteral trait.
 
 fn elementary_type_bounds(ty: &Type) -> Vec<&'static str> {
     match ty {

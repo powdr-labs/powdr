@@ -614,6 +614,9 @@ mod test {
 
     #[test]
     pub fn arrays_of_fixed() {
+        // TODO this test is currently failing because in x(0), the zero
+        // is not converted to a field element. We need to inject the
+        // correct from_literal call.
         let src = r#"
             namespace F(4);
                 let x: int -> col = |k| |i| i + k;
