@@ -12,10 +12,12 @@ powdr-ast = { path = "../ast" }
 powdr-number = { path = "../number" }
 powdr-pil-analyzer = { path = "../pil-analyzer" }
 
-polyexen = { git = "https://github.com/Dhole/polyexen", branch = "feature/shuffles" }
-halo2_proofs = "0.2"
-halo2_curves = { git = "https://github.com/privacy-scaling-explorations/halo2curves", tag = "0.3.2", package = "halo2curves" }
-snark-verifier = { git = "https://github.com/privacy-scaling-explorations/snark-verifier", rev = "c400ffcd629c337111c4e3cbf95acfe1230b068b" }
+polyexen = { git = "https://github.com/leonardoalt/polyexen", rev = "16a85c5" }
+
+halo2_proofs = { git = "https://github.com/privacy-scaling-explorations/halo2", tag = "v0.3.0" }
+halo2_curves = { version = "0.6.1", package = "halo2curves" }
+snark-verifier = { git = "https://github.com/privacy-scaling-explorations/snark-verifier", tag = "v2024_01_31" }
+
 num-traits = "0.2.15"
 num-integer = "0.1.45"
 itertools = "^0.10"
