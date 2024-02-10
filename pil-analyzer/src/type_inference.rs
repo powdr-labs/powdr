@@ -408,10 +408,23 @@ impl TypeCheckerState {
             (from, Type::TypeVar(to)) if is_implicitly_convertible_type(&from) == Some(false) => {
                 self.unify_types(from, Type::TypeVar(to))
             }
+            (Type::TypeVar(from), Type::Array(ArrayType { base, length })) => {
+                // TODO shit, we need new type variables here?
+                let left_base = self.new_type_var();
+                self.add_substitution(
+                    from,
+                    Type::Array(ArrayType {
+                        base: left_base,
+                        // TODO if we do this, we prevent implicit conversions between arrays
+                        length,
+                    }),
+                );
+                self.add_coercion(left_base, *base)
+            }
             (Type::TypeVar(from), to)
                 if to != Type::col() && !to.is_elementary() && !matches!(to, Type::TypeVar(_)) =>
             {
-                todo!("Destructure '{to}')")
+                todo!("Destructure");
             }
             (from, Type::TypeVar(to))
                 if from != Type::col()
