@@ -1,7 +1,5 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
-use itertools::Itertools;
-use num_traits::FromBytes;
 use powdr_ast::{
     analyzed::{
         types::{ArrayType, FunctionType, Type, TypeScheme, TypedExpression},
@@ -110,27 +108,42 @@ impl TypeCheckerState {
     }
 
     pub fn add_type_var_bound(&mut self, type_var: String, bound: String) {
+        assert!(!self.substitutions.contains_key(&type_var));
         self.type_var_bounds
             .entry(type_var)
             .or_insert_with(HashSet::new)
             .insert(bound);
     }
 
-    pub fn add_substitution(&mut self, type_var: String, ty: Type) {
+    pub fn add_substitution(&mut self, type_var: String, ty: Type) -> Result<(), String> {
+        for bound in self.type_var_bounds(&type_var) {
+            self.ensure_bound(&ty, bound)?;
+        }
+
         let subs = [(type_var.clone(), ty.clone())].into();
+        self.coercions = self
+            .coercions
+            .iter()
+            .map(|(from, to)| {
+                let mut from = from.clone();
+                from.substitute_type_vars(&subs);
+                let mut to = to.clone();
+                to.substitute_type_vars(&subs);
+                (from, to)
+            })
+            .filter(|(from, to)| !allows_implicit_conversion(from, to))
+            .collect();
+
         self.substitutions
             .values_mut()
             .for_each(|t| t.substitute_type_vars(&subs));
-        //println!("Adding substitution: {name} := {ty}");
+        println!("Adding substitution: {type_var} := {ty}");
         self.substitutions.insert(type_var, ty);
-    }
-
-    pub fn add_coercion(&mut self, from: Type, to: Type) {
-        self.coercions.insert(from, to);
+        Ok(())
     }
 
     fn unify_types(&mut self, mut ty1: Type, mut ty2: Type) -> Result<(), String> {
-        //println!("Unify start: {ty1}  <->  {ty2}");
+        println!("Unify start: {ty1}  <->  {ty2}");
         if let (Type::TypeVar(n1), Type::TypeVar(n2)) = (&ty1, &ty2) {
             if n1 == n2 {
                 return Ok(());
@@ -138,6 +151,7 @@ impl TypeCheckerState {
         }
         ty1.substitute_type_vars(&self.substitutions);
         ty2.substitute_type_vars(&self.substitutions);
+        println!("   in other words {ty1}  <->  {ty2}");
 
         // TODO erm, do we really need the is_elementory check here?
         if ty1.is_elementary() && ty2.is_elementary() && ty1 == ty2 {
@@ -152,11 +166,7 @@ impl TypeCheckerState {
                         "Cannot unify types {ty} and {name}: They depend on each other"
                     ))
                 } else {
-                    for bound in self.type_var_bounds(&name) {
-                        self.ensure_bound(&ty, bound)?;
-                    }
-                    self.add_substitution(name, ty);
-                    Ok(())
+                    self.add_substitution(name, ty)
                 }
             }
             (Type::Function(f1), Type::Function(f2)) => {
@@ -192,15 +202,19 @@ impl TypeCheckerState {
         }
     }
 
-    fn simplify_coercions(&mut self) -> Result<(), String> {
+    fn solve_coercions(&mut self) -> Result<(), String> {
         // TODO we could do a weak unification test to check if the following
         // algorithm terminates.
 
         // TODO maybe we have to loop this
         let coercions = std::mem::take(&mut self.coercions);
 
+        // Re-add all coercions to simplify them.
+        // TODO we could also, after adding a substitution that had an effect on a coercion, simplify that coercion.
+        // That would actually be good because then we could keep the coercions on base types only.
+        // We have to make sure that this does not generate infinite recursion, though.
         for (from, to) in coercions {
-            self.simplify_coercion(from, to)?;
+            self.add_coercion(from, to)?;
         }
 
         let only_type_vars_and_elementary_remaining = self
@@ -213,6 +227,11 @@ impl TypeCheckerState {
         println!("Final graph:");
         for (from, to) in &self.coercions {
             println!("Coercion: {from}   ->   {to}");
+            println!(
+                "          {}      ->      {}",
+                self.substitute_to(from.clone()),
+                self.substitute_to(to.clone())
+            );
             if let Type::TypeVar(tv) = from {
                 for bound in self.type_var_bounds(tv) {
                     println!("    {tv}: {bound}");
@@ -237,9 +256,24 @@ impl TypeCheckerState {
         // TODO check if this algorithm is consistent with the paper.
         // https://www21.in.tum.de/~nipkow/pubs/coercions.pdf
 
-        // TODO we might have to loop this.
-        let coercions = std::mem::take(&mut self.coercions).into_iter().collect();
+        // loop {
+        //     let coercions = std::mem::take(&mut self.coercions);
+        //     let type_vars = coercions
+        //         .iter()
+        //         .flat_map(|(from, to)| [from, to])
+        //         .filter(|t| matches!(t, Type::TypeVar(_)))
+        //         .collect::<BTreeSet<_>>();
 
+        //     let type_var_with_base_type_successor = coercions
+        //         .iter()
+        //         .filter_map(|(from, to)| (to == &Type::col() || to.is_elementary()).then_some(from))
+        //         .collect::BTreeSet<_>();
+        //     // TODO compute the infimum of the successors and check that it is larger than all predecessors.
+        // }
+
+        // TODO this is wrong. If we have col < T < col, T < expr, then we have to unify it with col.
+
+        let coercions = std::mem::take(&mut self.coercions).into_iter().collect();
         // TODO ok this is very crude now, but might actually work.
         let coercions = self.try_replace_by_expr(coercions)?;
         // TODO loop this properly.
@@ -357,7 +391,7 @@ impl TypeCheckerState {
     }
 
     /// Tries to simplify a coercion.
-    fn simplify_coercion(&mut self, mut from: Type, mut to: Type) -> Result<(), String> {
+    fn add_coercion(&mut self, mut from: Type, mut to: Type) -> Result<(), String> {
         from.substitute_type_vars(&self.substitutions);
         to.substitute_type_vars(&self.substitutions);
 
@@ -429,18 +463,19 @@ impl TypeCheckerState {
                 t1.items
                     .into_iter()
                     .zip(t2.items)
-                    .try_for_each(|(i1, i2)| self.simplify_coercion(i1.clone(), i2.clone()))
+                    .try_for_each(|(i1, i2)| self.add_coercion(i1.clone(), i2.clone()))
             }
 
             (from, to) => {
                 println!("Re-adding coercion {from}     ===>     {to}");
-                self.add_coercion(from, to);
+                self.coercions.insert(from, to);
                 Ok(())
             }
         }
     }
 
     fn ensure_bound(&mut self, ty: &Type, bound: String) -> Result<(), String> {
+        let ty = self.substitute_to(ty.clone());
         //println!("Ensuring type bound {ty}: {bound}");
         if let Type::TypeVar(n) = ty {
             self.add_type_var_bound(n.clone(), bound);
@@ -667,9 +702,7 @@ impl TypeChecker {
             println!("    {from}   ->   {to}");
             //self.state.unify_types(from, to)?;
         }
-        self.state.simplify_coercions()?;
-        // now check for cycles
-        Ok(())
+        self.state.solve_coercions()
     }
 
     fn inferred_types(&mut self) -> BTreeMap<String, TypeScheme> {
@@ -697,12 +730,13 @@ impl TypeChecker {
     ) -> Result<Type, String> {
         let expr_type = self.unify_new_expression(e)?;
         let coerced_type = self.new_type_var();
-        self.state.add_coercion(expr_type, coerced_type.clone());
+        self.state.add_coercion(expr_type, coerced_type.clone())?;
         Ok(coerced_type)
     }
 
     fn unify_new_expression<T: FieldElement>(&mut self, e: &Expression<T>) -> Result<Type, String> {
         let ty = self.new_type_var();
+        println!("{ty} := {e}");
         self.unify_expression(ty.clone(), e)?;
         //println!("Type of {e}: {}", self.substitute_to(ty.clone()));
         Ok(ty)
@@ -743,10 +777,10 @@ impl TypeChecker {
         ty: Type,
         e: &Expression<T>,
     ) -> Result<(), String> {
-        // println!(
-        //     "Unifying {e}, expecting it to be {}",
-        //     self.substitute_to(ty.clone())
-        // );
+        println!(
+            "Unifying {e}, expecting it to be {}",
+            self.substitute_to(ty.clone())
+        );
         match e {
             Expression::Reference(Reference::LocalVar(id, _name)) => {
                 self.state.unify_types(ty, self.local_var_type(*id))
@@ -1001,7 +1035,7 @@ impl TypeChecker {
 }
 
 fn allows_implicit_conversion(from: &Type, to: &Type) -> bool {
-    if from == &Type::col() && to == &Type::Expr {
+    if from == to || (from == &Type::col() && to == &Type::Expr) {
         true
     } else {
         false
