@@ -24,10 +24,12 @@ jobs:
       uses: actions/cache/restore@v3
       with:
         path: |
-          ~/.cargo/registry
-          ~/.cargo/git
-          target
-        key: ${{ runner.os }}-cargo-pr-tests-${{ hashFiles('**/Cargo.toml') }}
+          ~/.cargo/registry/index/
+          ~/.cargo/registry/cache/
+          ~/.cargo/git/db/
+          target/
+          Cargo.lock
+        key: ${{ runner.os }}-cargo-pr-tests-${{ hashFiles('**/Cargo.lock') }}
         restore-keys: |
           ${{ runner.os }}-cargo-pr-tests-
     - name: Install Rust toolchain 1.74 (with clippy and rustfmt)
@@ -45,15 +47,6 @@ jobs:
     - uses: taiki-e/install-action@nextest
     - name: Create tests archive
       run: cargo nextest archive --archive-file tests.tar.zst --cargo-profile pr-tests --workspace --all-features
-    - name: ⚡ Save rust cache
-      if: github.ref == 'refs/heads/main'
-      uses: actions/cache/save@v3
-      with:
-        path: |
-          ~/.cargo/registry
-          ~/.cargo/git
-          target
-        key: ${{ runner.os }}-cargo-pr-tests-${{ hashFiles('**/Cargo.toml') }}
     - name: Upload tests archive
       uses: actions/upload-artifact@v2
       with:
