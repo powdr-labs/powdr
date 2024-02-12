@@ -45,8 +45,7 @@ fn arith_test() {
     let f = "std/arith_test.asm";
     verify_test_file::<GoldilocksField>(f, Default::default(), vec![]);
     gen_estark_proof(f, Default::default());
-    // Halo2 test runs out of memory on CI
-    // test_halo2(f, Default::default());
+    test_halo2(f, Default::default());
 }
 
 #[test]
