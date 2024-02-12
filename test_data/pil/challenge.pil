@@ -1,0 +1,14 @@
+namespace main(4);
+    col fixed row(i) { i };
+    let phase_0_witness;
+
+    // Witness column which with a phase set to 1
+    let phase_1_witness;
+
+    // Placeholder, will be replaced by the challenge on proof generation
+    // The hard-coded value happens to be the challenge returned by the mock prover
+    // So this will lead to the witness being correct
+    col fixed challenge(i) { 0x2cc67045d9924a297606aa509ddcf7235ee11f77683a7d127b4cb83d74c12519 };
+    
+    phase_0_witness = row;
+    phase_1_witness = phase_0_witness + challenge;

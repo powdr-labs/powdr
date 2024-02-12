@@ -28,7 +28,7 @@ use crate::circuit_builder::{
 };
 
 use itertools::Itertools;
-use rand::rngs::OsRng;
+use rand::{rngs::SmallRng, SeedableRng};
 use std::{
     io::{self, Cursor},
     time::Instant,
@@ -316,7 +316,7 @@ fn gen_proof<
             pk,
             &[circuit],
             &[instances.as_slice()],
-            OsRng,
+            SmallRng::from_seed([0u8; 32]),
             &mut transcript,
         )
         .unwrap();

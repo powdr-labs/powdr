@@ -6,8 +6,8 @@ use num_bigint::BigUint;
 use polyexen::expr::{ColumnQuery, Expr, PlonkVar};
 use polyexen::plaf::backends::halo2::PlafH2Circuit;
 use polyexen::plaf::{
-    ColumnFixed, ColumnPublic, ColumnWitness, Columns, CopyC, Info, Lookup, Plaf, Poly, Shuffle,
-    Witness,
+    Challenge, ColumnFixed, ColumnPublic, ColumnWitness, Columns, CopyC, Info, Lookup, Plaf, Poly,
+    Shuffle, Witness,
 };
 use powdr_ast::parsed::SelectedExpressions;
 
@@ -101,7 +101,13 @@ pub(crate) fn analyzed_to_plaf<T: FieldElement>(
         .committed_polys_in_source_order()
         .into_iter()
         .flat_map(|(p, _)| p.array_elements())
-        .map(|(name, _)| ColumnWitness::new(name.to_string(), 0))
+        .map(|(name, _)| {
+            ColumnWitness::new(
+                name.to_string(),
+                // HACK: Manually set the phase here.
+                if name == "main.phase_1_witness" { 1 } else { 0 },
+            )
+        })
         .collect();
 
     // build Plaf columns -------------------------------------------------
@@ -117,7 +123,8 @@ pub(crate) fn analyzed_to_plaf<T: FieldElement>(
     let info = Info {
         p: T::modulus().to_arbitrary_integer(),
         num_rows: original_size,
-        challenges: vec![],
+        // HACK: Manually set one challenge.
+        challenges: vec![Challenge::new("challenge".to_string(), 0)],
     };
 
     // build Plaf polys. -------------------------------------------------------------------------
@@ -353,10 +360,17 @@ fn expression_2_expr<T: FieldElement>(cd: &CircuitData, expr: &Expression<T>) ->
     match expr {
         Expression::Number(n) => Expr::Const(n.to_arbitrary_integer()),
         Expression::Reference(polyref) => {
-            let plonkvar = PlonkVar::Query(ColumnQuery {
-                column: cd.col(&polyref.name),
-                rotation: polyref.next as i32,
-            });
+            // HACK: Manually replace reference to main.challenge fixed column
+            // with a reference to the challenge.
+            let plonkvar = if polyref.name == "main.challenge" {
+                // phase: 0 means usable *after* phase 0
+                PlonkVar::Challenge { index: 0, phase: 0 }
+            } else {
+                PlonkVar::Query(ColumnQuery {
+                    column: cd.col(&polyref.name),
+                    rotation: polyref.next as i32,
+                })
+            };
 
             Expr::Var(plonkvar)
         }

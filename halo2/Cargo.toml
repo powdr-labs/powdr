@@ -12,7 +12,7 @@ powdr-ast = { path = "../ast" }
 powdr-number = { path = "../number" }
 powdr-pil-analyzer = { path = "../pil-analyzer" }
 
-polyexen = { git = "https://github.com/leonardoalt/polyexen", rev = "16a85c5" }
+polyexen = { git = "https://github.com/georgwiese/polyexen" }
 
 halo2_proofs = { git = "https://github.com/privacy-scaling-explorations/halo2", tag = "v0.3.0" }
 halo2_curves = { version = "0.6.1", package = "halo2curves" }
@@ -23,7 +23,7 @@ num-integer = "0.1.45"
 itertools = "^0.10"
 num-bigint = "^0.4"
 log = "0.4.17"
-rand = "0.8.5"
+rand = { version= "0.8.5", features=["small_rng"]}
 
 [dev-dependencies]
 powdr-airgen = { path = "../airgen" }
