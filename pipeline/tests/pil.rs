@@ -243,6 +243,26 @@ fn referencing_arrays() {
     gen_estark_proof(f, Default::default());
 }
 
+#[test]
+fn serialize_deserialize_optimized_pil() {
+    let f = "pil/fibonacci.pil";
+    let path = powdr_pipeline::test_util::resolve_test_file(f);
+
+    let optimized = powdr_pipeline::Pipeline::<powdr_number::Bn254Field>::default()
+        .from_file(path)
+        .optimized_pil()
+        .unwrap();
+
+    let optimized_serialized = serde_cbor::to_vec(&optimized).unwrap();
+    let optimized_deserialized: powdr_ast::analyzed::Analyzed<powdr_number::Bn254Field> =
+        serde_cbor::from_slice(&optimized_serialized[..]).unwrap();
+
+    let input_pil_file = format!("{}", optimized);
+    let output_pil_file = format!("{}", optimized_deserialized);
+
+    assert_eq!(input_pil_file, output_pil_file);
+}
+
 mod book {
     use super::*;
     use test_log::test;

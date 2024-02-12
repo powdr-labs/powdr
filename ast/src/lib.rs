@@ -2,6 +2,7 @@
 
 use itertools::Itertools;
 use log::log_enabled;
+use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Result, Write};
 use std::sync::Arc;
 
@@ -21,7 +22,7 @@ pub struct DiffMonitor {
     current: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct SourceRef {
     pub file: Option<Arc<str>>,
     pub line: usize,

@@ -8,6 +8,7 @@ use std::fmt::Display;
 use std::ops::{self, ControlFlow};
 
 use powdr_number::{DegreeType, FieldElement};
+use serde::{Deserialize, Serialize};
 
 use crate::parsed::utils::expr_any;
 use crate::parsed::visitor::ExpressionVisitable;
@@ -18,7 +19,7 @@ use crate::SourceRef;
 
 use self::types::TypedExpression;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum StatementIdentifier {
     /// Either an intermediate column or a definition.
     Definition(String),
@@ -27,7 +28,7 @@ pub enum StatementIdentifier {
     Identity(usize),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Analyzed<T> {
     /// The degree of all namespaces, which must match. If there are no namespaces, then `None`.
     pub degree: Option<DegreeType>,
@@ -404,7 +405,7 @@ fn inlined_expression_from_intermediate_poly_id<T: Copy + Display>(
     expr
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Symbol {
     pub id: u64,
     pub source: SourceRef,
@@ -461,7 +462,7 @@ impl Symbol {
 
 /// The "kind" of a symbol. In the future, this will be mostly
 /// replaced by its type.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum SymbolKind {
     /// Fixed, witness or intermediate polynomial
     Poly(PolynomialType),
@@ -472,7 +473,7 @@ pub enum SymbolKind {
     Other(),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum FunctionValueDefinition<T> {
     Array(Vec<RepeatedArray<T>>),
     Query(Expression<T>),
@@ -480,7 +481,7 @@ pub enum FunctionValueDefinition<T> {
 }
 
 /// An array of elements that might be repeated.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RepeatedArray<T> {
     /// The pattern to be repeated
     pattern: Vec<Expression<T>>,
@@ -520,7 +521,7 @@ impl<T> RepeatedArray<T> {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PublicDeclaration {
     pub id: u64,
     pub source: SourceRef,
@@ -540,7 +541,7 @@ impl PublicDeclaration {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
 pub struct Identity<Expr> {
     /// The ID is specific to the identity kind.
     pub id: u64,
@@ -579,7 +580,7 @@ impl<T> Identity<AlgebraicExpression<T>> {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Hash, Serialize, Deserialize)]
 pub enum IdentityKind {
     Polynomial,
     Plookup,
@@ -600,13 +601,13 @@ impl<T> SelectedExpressions<AlgebraicExpression<T>> {
 
 pub type Expression<T> = parsed::Expression<T, Reference>;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Reference {
     LocalVar(u64, String),
     Poly(PolynomialReference),
 }
 
-#[derive(Debug, Clone, Eq)]
+#[derive(Debug, Clone, Eq, Serialize, Deserialize)]
 pub struct AlgebraicReference {
     /// Name of the polynomial - just for informational purposes.
     /// Comparisons are based on polynomial ID.
@@ -653,7 +654,7 @@ impl Hash for AlgebraicReference {
         self.next.hash(state);
     }
 }
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize)]
 pub enum AlgebraicExpression<T> {
     Reference(AlgebraicReference),
     PublicReference(String),
@@ -667,7 +668,7 @@ pub enum AlgebraicExpression<T> {
     UnaryOperation(AlgebraicUnaryOperator, Box<AlgebraicExpression<T>>),
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Serialize, Deserialize)]
 pub enum AlgebraicBinaryOperator {
     Add,
     Sub,
@@ -703,7 +704,7 @@ impl TryFrom<BinaryOperator> for AlgebraicBinaryOperator {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Serialize, Deserialize)]
 pub enum AlgebraicUnaryOperator {
     Minus,
 }
@@ -790,7 +791,7 @@ impl<T> From<T> for AlgebraicExpression<T> {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PolynomialReference {
     /// Name of the polynomial - just for informational purposes.
     /// Comparisons are based on polynomial ID.
@@ -801,7 +802,7 @@ pub struct PolynomialReference {
     pub poly_id: Option<PolyID>,
 }
 
-#[derive(Debug, Copy, Clone, PartialOrd, Ord, PartialEq, Eq, Hash)]
+#[derive(Debug, Copy, Clone, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct PolyID {
     pub id: u64,
     pub ptype: PolynomialType,
@@ -819,7 +820,7 @@ impl From<&Symbol> for PolyID {
     }
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub enum PolynomialType {
     Committed,
     Constant,

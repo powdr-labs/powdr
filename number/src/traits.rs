@@ -1,6 +1,7 @@
 use std::{fmt, hash::Hash, ops::*, str::FromStr};
 
 use num_traits::{One, Zero};
+use serde::{de::DeserializeOwned, Serialize};
 
 use crate::{AbstractNumberType, DegreeType};
 
@@ -85,6 +86,8 @@ pub trait FieldElement:
     + From<i64>
     + From<bool>
     + fmt::LowerHex
+    + Serialize
+    + DeserializeOwned
 {
     /// The underlying fixed-width integer type
     type Integer: BigInt;

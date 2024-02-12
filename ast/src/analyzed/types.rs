@@ -1,18 +1,19 @@
 use std::fmt::Display;
 
 use powdr_number::FieldElement;
+use serde::{Deserialize, Serialize};
 
 use crate::parsed::{ArrayTypeName, Expression, FunctionTypeName, TupleTypeName, TypeName};
 
 use super::Reference;
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize)]
 pub struct TypedExpression<T, Ref = Reference> {
     pub e: Expression<T, Ref>,
     pub ty: Option<Type>,
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize)]
 pub enum Type {
     /// Boolean
     Bool,
@@ -71,7 +72,7 @@ impl<T: FieldElement, Ref: Display> From<TypeName<Expression<T, Ref>>> for Type 
     }
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize)]
 pub struct ArrayType {
     pub base: Box<Type>,
     pub length: Option<u64>,
@@ -95,7 +96,7 @@ impl<T: FieldElement, Ref: Display> From<ArrayTypeName<Expression<T, Ref>>> for 
     }
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize)]
 pub struct TupleType {
     pub items: Vec<Type>,
 }
@@ -108,7 +109,7 @@ impl<T: FieldElement, Ref: Display> From<TupleTypeName<Expression<T, Ref>>> for 
     }
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize)]
 pub struct FunctionType {
     pub params: Vec<Type>,
     pub value: Box<Type>,

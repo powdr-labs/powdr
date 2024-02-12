@@ -1,4 +1,5 @@
 use ark_ff::{Fp64, MontBackend, MontConfig};
+use serde::{Deserialize, Serialize};
 
 #[derive(MontConfig)]
 #[modulus = "18446744069414584321"]
