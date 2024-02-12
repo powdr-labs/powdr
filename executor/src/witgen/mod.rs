@@ -96,6 +96,8 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
     /// Generates the committed polynomial values
     /// @returns the values (in source order) and the degree of the polynomials.
     pub fn generate(self) -> Vec<(String, Vec<T>)> {
+        return self.external_witness_values;
+
         record_start(OUTER_CODE_NAME);
         let fixed = FixedData::new(
             self.analyzed,

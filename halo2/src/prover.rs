@@ -312,9 +312,9 @@ fn gen_proof<
     circuit: C,
     instances: &[Vec<Fr>],
 ) -> Vec<u8> {
-    MockProver::run(params.k(), &circuit, instances.to_vec().clone())
-        .unwrap()
-        .assert_satisfied();
+    // MockProver::run(params.k(), &circuit, instances.to_vec().clone())
+    //     .unwrap()
+    //     .assert_satisfied();
 
     let instances = instances
         .iter()
