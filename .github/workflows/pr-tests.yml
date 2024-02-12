@@ -84,6 +84,8 @@ jobs:
     - uses: taiki-e/install-action@nextest
     - name: Run default tests
       run: PILCOM=$(pwd)/pilcom/ cargo nextest run --archive-file tests.tar.zst --verbose
+    - name: Run examples
+      run: cargo run --example hello_world
 
   test_slow:
     strategy:
