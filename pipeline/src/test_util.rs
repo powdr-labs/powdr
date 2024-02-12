@@ -74,6 +74,32 @@ pub fn gen_estark_proof(file_name: &str, inputs: Vec<GoldilocksField>) {
 }
 
 #[cfg(feature = "halo2")]
+pub fn test_halo2(file_name: &str, inputs: Vec<Bn254Field>) {
+    use std::env;
+
+    // Generate a mock proof (fast and has good error messages)
+    let full_file_name = format!("{}/../test_data/{file_name}", env!("CARGO_MANIFEST_DIR"));
+    Pipeline::default()
+        .from_file(PathBuf::from(full_file_name))
+        .with_prover_inputs(inputs.clone())
+        .with_backend(powdr_backend::BackendType::Halo2Mock)
+        .proof()
+        .unwrap();
+
+    // `gen_halo2_proof` is rather slow, because it computes two Halo2 proofs.
+    // Therefore, we only run it in the nightly tests.
+    let is_nightly_test = env::var("IS_NIGHTLY_TEST")
+        .map(|v| v == "true")
+        .unwrap_or(false);
+    if is_nightly_test {
+        gen_halo2_proof(file_name, inputs)
+    }
+}
+
+#[cfg(not(feature = "halo2"))]
+pub fn test_halo2(_file_name: &str, _inputs: Vec<Bn254Field>) {}
+
+#[cfg(feature = "halo2")]
 pub fn gen_halo2_proof(file_name: &str, inputs: Vec<Bn254Field>) {
     use std::fs;
 

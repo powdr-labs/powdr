@@ -1,5 +1,5 @@
 use powdr_number::GoldilocksField;
-use powdr_pipeline::test_util::{gen_estark_proof, gen_halo2_proof, verify_test_file};
+use powdr_pipeline::test_util::{gen_estark_proof, test_halo2, verify_test_file};
 use test_log::test;
 
 pub fn verify_pil(file_name: &str, inputs: Vec<GoldilocksField>) {
@@ -10,7 +10,7 @@ pub fn verify_pil(file_name: &str, inputs: Vec<GoldilocksField>) {
 fn test_fibonacci() {
     let f = "pil/fibonacci.pil";
     verify_pil(f, Default::default());
-    gen_halo2_proof(f, Default::default());
+    test_halo2(f, Default::default());
     gen_estark_proof(f, Default::default());
 }
 
@@ -18,7 +18,7 @@ fn test_fibonacci() {
 fn test_constant_in_identity() {
     let f = "pil/constant_in_identity.pil";
     verify_pil(f, Default::default());
-    gen_halo2_proof(f, Default::default());
+    test_halo2(f, Default::default());
     gen_estark_proof(f, Default::default());
 }
 
@@ -26,7 +26,7 @@ fn test_constant_in_identity() {
 fn fib_arrays() {
     let f = "pil/fib_arrays.pil";
     verify_pil(f, Default::default());
-    gen_halo2_proof(f, Default::default());
+    test_halo2(f, Default::default());
     gen_estark_proof(f, Default::default());
 }
 
@@ -132,7 +132,7 @@ fn test_block_lookup_or() {
 fn test_halo_without_lookup() {
     let f = "pil/halo_without_lookup.pil";
     verify_pil(f, Default::default());
-    gen_halo2_proof(f, Default::default());
+    test_halo2(f, Default::default());
     gen_estark_proof(f, Default::default());
 }
 
@@ -178,7 +178,7 @@ fn conditional_fixed_constraints() {
 fn referencing_arrays() {
     let f = "pil/referencing_array.pil";
     verify_pil(f, Default::default());
-    gen_halo2_proof(f, Default::default());
+    test_halo2(f, Default::default());
     gen_estark_proof(f, Default::default());
 }
 
@@ -188,7 +188,7 @@ mod book {
 
     fn run_book_test(file: &str) {
         verify_pil(file, Default::default());
-        gen_halo2_proof(file, Default::default());
+        test_halo2(file, Default::default());
         gen_estark_proof(file, Default::default());
     }
 
