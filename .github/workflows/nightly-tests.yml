@@ -6,6 +6,7 @@ on:
 
 env:
     CARGO_TERM_COLOR: always
+    IS_NIGHTLY_TEST: true
 
 jobs:
   check_if_needs_running:

@@ -1,7 +1,8 @@
 use powdr_number::GoldilocksField;
 
 use powdr_pipeline::test_util::{
-    evaluate_integer_function, gen_estark_proof, gen_halo2_proof, std_analyzed, verify_test_file,
+    evaluate_integer_function, gen_estark_proof, gen_halo2_proof, std_analyzed, test_halo2,
+    verify_test_file,
 };
 use test_log::test;
 
@@ -10,6 +11,11 @@ use num_traits::Num;
 #[test]
 fn poseidon_bn254_test() {
     let f = "std/poseidon_bn254_test.asm";
+    test_halo2(f, Default::default());
+
+    // `test_halo2` only does a mock proof in the PR tests.
+    // This makes sure we test the whole proof generation for one example
+    // file even in the PR tests.
     gen_halo2_proof(f, Default::default());
 }
 
@@ -23,7 +29,7 @@ fn poseidon_gl_test() {
 #[test]
 fn split_bn254_test() {
     let f = "std/split_bn254_test.asm";
-    gen_halo2_proof(f, Default::default());
+    test_halo2(f, Default::default());
 }
 
 #[test]
@@ -40,7 +46,7 @@ fn arith_test() {
     verify_test_file::<GoldilocksField>(f, Default::default(), vec![]);
     gen_estark_proof(f, Default::default());
     // Halo2 test runs out of memory on CI
-    // gen_halo2_proof(f, Default::default());
+    // test_halo2(f, Default::default());
 }
 
 #[test]
