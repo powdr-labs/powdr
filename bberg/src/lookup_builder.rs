@@ -203,7 +203,7 @@ fn create_lookup_settings_file(lookup: &Lookup) -> String {
         "
         {lookup_settings_includes}
 
-        namespace bb::sumcheck {{
+        namespace bb {{
 
         /**
          * @brief This class contains an example of how to set LookupSettings classes used by the

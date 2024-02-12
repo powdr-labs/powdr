@@ -89,7 +89,7 @@ impl CircuitBuilder for BBFiles {
         };
         let check_lookup_transformation = |lookup_name: &String| {
             format!(
-                    "if (!evaluate_logderivative.template operator()<honk::{lookup_name}_relation<FF>>(\"{lookup_name}\")) {{
+                    "if (!evaluate_logderivative.template operator()<{lookup_name}_relation<FF>>(\"{lookup_name}\")) {{
                         return false;
                     }}"
                 )
@@ -116,8 +116,6 @@ impl CircuitBuilder for BBFiles {
 
         let circuit_hpp = format!("
 {includes}
-
-using namespace bb;
 
 namespace bb {{
 
@@ -204,7 +202,7 @@ fn get_lookup_check_closure() -> String {
             const auto evaluate_logderivative = [&]<typename LogDerivativeSettings>(const std::string& lookup_name) {
 
                 // Check the logderivative relation
-                bb::logderivative_library::compute_logderivative_inverse<
+                bb::compute_logderivative_inverse<
                     Flavor,
                     LogDerivativeSettings>(
                     polys, params, num_rows);

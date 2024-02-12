@@ -163,7 +163,7 @@ fn create_permutation_settings_file(permutation: &Permutation) -> String {
         "
         {permutation_settings_includes}
 
-        namespace bb::sumcheck {{
+        namespace bb {{
 
         class {permutation_name}_permutation_settings {{
             public:
