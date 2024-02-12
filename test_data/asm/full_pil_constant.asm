@@ -1,5 +1,5 @@
 machine FullConstant {
-	degree 2;
+	degree 4;
 
 	pol constant C = [0, 1]*;
 	col commit w;
