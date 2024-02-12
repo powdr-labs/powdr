@@ -14,3 +14,7 @@ powdr-number = { path = "../number" }
 powdr-pipeline = { path = "../pipeline" }
 powdr-riscv = { path = "../riscv" }
 powdr-riscv-executor = { path = "../riscv-executor" }
+
+[features]
+default = ["halo2"] # halo2 is enabled by default
+halo2 = ["powdr-backend/halo2", "powdr-pipeline/halo2"]
