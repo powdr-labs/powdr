@@ -98,6 +98,8 @@ pub fn test_halo2(_file_name: &str, _inputs: Vec<Bn254Field>) {}
 
 #[cfg(feature = "halo2")]
 pub fn gen_halo2_proof(file_name: &str, inputs: Vec<Bn254Field>) {
+    use powdr_executor::witgen::extract_publics;
+
     use crate::util::write_or_panic;
 
     let file_name = format!("{}/../test_data/{file_name}", env!("CARGO_MANIFEST_DIR"));
@@ -112,7 +114,7 @@ pub fn gen_halo2_proof(file_name: &str, inputs: Vec<Bn254Field>) {
     pipeline.clone().proof().unwrap().proof.unwrap();
 
     // Repeat the proof generation, but with an externally generated setup and verification key
-    let pil = pipeline.optimized_pil_ref().unwrap();
+    let pil = pipeline.optimized_pil_ref().unwrap().clone();
 
     // Setup
     let setup_file_path = tmp_dir.as_path().join("params.bin");
@@ -135,9 +137,16 @@ pub fn gen_halo2_proof(file_name: &str, inputs: Vec<Bn254Field>) {
 
     // Create the proof before adding the setup and vkey to the backend,
     // so that they're generated during the proof
-    let proof = pipeline.clone().proof().unwrap().proof.unwrap();
+    let proof_artifact = pipeline.clone().proof().unwrap();
 
-    pipeline.verify(proof, &[vec![]]).unwrap();
+    let publics = extract_publics(proof_artifact.witness.as_ref().unwrap(), &pil)
+        .iter()
+        .map(|(_name, v)| *v)
+        .collect();
+
+    pipeline
+        .verify(proof_artifact.proof.unwrap(), &[publics])
+        .unwrap();
 }
 
 #[cfg(not(feature = "halo2"))]
