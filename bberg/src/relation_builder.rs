@@ -13,8 +13,7 @@ use std::collections::HashSet;
 use number::{DegreeType, FieldElement};
 
 use crate::file_writer::BBFiles;
-use crate::utils::capitalize;
-use crate::utils::map_with_newline;
+use crate::utils::{capitalize, map_with_newline, snake_case};
 
 /// Returned back to the vm builder from the create_relations call
 pub struct RelationOutput {
@@ -149,8 +148,8 @@ namespace bb::{root_name}_vm {{
         );
 
         self.write_file(
-            &format!("{}/{}", &self.rel, root_name),
-            &format!("{}.hpp", name),
+            &format!("{}/{}", &self.rel, snake_case(root_name)),
+            &format!("{}.hpp", snake_case(name)),
             &relations,
         );
     }
@@ -172,7 +171,7 @@ namespace bb::{root_name}_vm {{
         );
 
         self.write_file(
-            &format!("{}/{name}", &self.rel),
+            &format!("{}/{}", &self.rel, snake_case(name)),
             "declare_views.hpp",
             &declare_views,
         );

@@ -1,4 +1,7 @@
-use crate::{file_writer::BBFiles, utils::map_with_newline};
+use crate::{
+    file_writer::BBFiles,
+    utils::{map_with_newline, snake_case},
+};
 
 pub trait VerifierBuilder {
     fn create_verifier_cpp(&mut self, name: &str, witness: &[String]);
@@ -8,7 +11,7 @@ pub trait VerifierBuilder {
 
 impl VerifierBuilder for BBFiles {
     fn create_verifier_cpp(&mut self, name: &str, witness: &[String]) {
-        let include_str = includes_cpp(name);
+        let include_str = includes_cpp(&snake_case(name));
 
         let wire_transformation = |n: &String| {
             format!(
@@ -108,11 +111,15 @@ impl VerifierBuilder for BBFiles {
     
     ");
 
-        self.write_file(&self.prover, &format!("{}_verifier.cpp", name), &ver_cpp);
+        self.write_file(
+            &self.prover,
+            &format!("{}_verifier.cpp", snake_case(name)),
+            &ver_cpp,
+        );
     }
 
     fn create_verifier_hpp(&mut self, name: &str) {
-        let include_str = include_hpp(name);
+        let include_str = include_hpp(&snake_case(name));
         let ver_hpp = format!(
             "
 {include_str}
@@ -148,7 +155,11 @@ impl VerifierBuilder for BBFiles {
     "
         );
 
-        self.write_file(&self.prover, &format!("{}_verifier.hpp", name), &ver_hpp);
+        self.write_file(
+            &self.prover,
+            &format!("{}_verifier.hpp", snake_case(name)),
+            &ver_hpp,
+        );
     }
 }
 

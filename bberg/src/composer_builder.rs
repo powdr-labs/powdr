@@ -1,4 +1,5 @@
 use crate::file_writer::BBFiles;
+use crate::utils::snake_case;
 
 pub trait ComposerBuilder {
     fn create_composer_cpp(&mut self, name: &str);
@@ -8,7 +9,7 @@ pub trait ComposerBuilder {
 impl ComposerBuilder for BBFiles {
     fn create_composer_cpp(&mut self, name: &str) {
         // Create a composer file, this is used to a prover and verifier for our flavour
-        let include_str = cpp_includes(name);
+        let include_str = cpp_includes(&snake_case(name));
 
         let composer_cpp = format!(
         "
@@ -97,13 +98,13 @@ std::shared_ptr<Flavor::VerificationKey> {name}Composer::compute_verification_ke
 ");
         self.write_file(
             &self.composer,
-            &format!("{}_composer.cpp", name),
+            &format!("{}_composer.cpp", snake_case(name)),
             &composer_cpp,
         );
     }
 
     fn create_composer_hpp(&mut self, name: &str) {
-        let include_str = hpp_includes(name);
+        let include_str = hpp_includes(&snake_case(name));
 
         let composer_hpp = format!(
         "
@@ -176,7 +177,7 @@ class {name}Composer {{
 
         self.write_file(
             &self.composer,
-            &format!("{}_composer.hpp", name),
+            &format!("{}_composer.hpp", snake_case(name)),
             &composer_hpp,
         );
     }
