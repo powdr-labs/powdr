@@ -1,9 +1,71 @@
+#[cfg(feature = "halo2")]
+use powdr_number::Bn254Field;
 use powdr_number::GoldilocksField;
-use powdr_pipeline::test_util::{gen_estark_proof, test_halo2, verify_test_file};
+use powdr_pipeline::{
+    test_util::{
+        gen_estark_proof, resolve_test_file, test_halo2, verify_pipeline, verify_test_file,
+    },
+    Pipeline,
+};
 use test_log::test;
 
 pub fn verify_pil(file_name: &str, inputs: Vec<GoldilocksField>) {
     verify_test_file(file_name, inputs, vec![]);
+}
+
+#[test]
+#[should_panic = "Pil verifier run was unsuccessful."]
+fn test_invalid_witness_pilcom() {
+    let f = "pil/trivial.pil";
+    let pipeline = Pipeline::default()
+        .from_file(resolve_test_file(f))
+        .skip_witness_generation(vec![(
+            "main.w".to_string(),
+            vec![GoldilocksField::from(0); 4],
+        )]);
+    verify_pipeline(pipeline);
+}
+
+#[test]
+#[should_panic = "assertion failed: stark_verify::<MerkleTreeGL,\\n            TranscriptGL>(&starkproof, &setup.const_root, &setup.starkinfo,\\n        &self.params, &mut setup.program).unwrap()"]
+fn test_invalid_witness_estark() {
+    let f = "pil/trivial.pil";
+    Pipeline::default()
+        .from_file(resolve_test_file(f))
+        .skip_witness_generation(vec![(
+            "main.w".to_string(),
+            vec![GoldilocksField::from(0); 4],
+        )])
+        .with_backend(powdr_backend::BackendType::EStark)
+        .proof()
+        .unwrap();
+}
+
+#[test]
+#[should_panic = "circuit was not satisfied"]
+#[cfg(feature = "halo2")]
+fn test_invalid_witness_halo2mock() {
+    let f = "pil/trivial.pil";
+    Pipeline::default()
+        .from_file(resolve_test_file(f))
+        .skip_witness_generation(vec![("main.w".to_string(), vec![Bn254Field::from(0); 4])])
+        .with_backend(powdr_backend::BackendType::Halo2Mock)
+        .proof()
+        .unwrap();
+}
+
+// TODO: This test should panic but currently succeeds. See:
+// https://github.com/powdr-labs/powdr/pull/1051
+#[test]
+#[cfg(feature = "halo2")]
+fn test_invalid_witness_halo2() {
+    let f = "pil/trivial.pil";
+    Pipeline::default()
+        .from_file(resolve_test_file(f))
+        .skip_witness_generation(vec![("main.w".to_string(), vec![Bn254Field::from(0); 4])])
+        .with_backend(powdr_backend::BackendType::Halo2)
+        .proof()
+        .unwrap();
 }
 
 #[test]
