@@ -1,6 +1,6 @@
 use crate::{
     file_writer::BBFiles,
-    utils::{create_get_const_entities, create_get_nonconst_entities},
+    utils::{create_get_const_entities, create_get_nonconst_entities, snake_case},
 };
 use ast::{
     analyzed::{AlgebraicExpression, Analyzed, Identity, IdentityKind},
@@ -83,7 +83,7 @@ fn create_permutations(bb_files: &BBFiles, project_name: &str, permutations: &Ve
     for permutation in permutations {
         let perm_settings = create_permutation_settings_file(permutation);
 
-        let folder = format!("{}/{}", bb_files.rel, project_name);
+        let folder = format!("{}/{}", bb_files.rel, &snake_case(project_name));
         let file_name = format!(
             "{}{}",
             permutation.attribute.clone().unwrap_or("NONAME".to_owned()),
