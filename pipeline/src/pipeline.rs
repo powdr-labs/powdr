@@ -2,7 +2,7 @@ use std::{
     borrow::Borrow,
     fmt::Display,
     fs,
-    io::{BufReader, BufWriter, Write},
+    io::{self, BufReader, BufWriter},
     marker::Send,
     path::{Path, PathBuf},
     rc::Rc,
@@ -27,7 +27,7 @@ use powdr_number::{write_polys_csv_file, write_polys_file, CsvRenderMode, FieldE
 
 use crate::{
     inputs_to_query_callback, serde_data_to_query_callback,
-    util::{read_poly_set, FixedPolySet, WitnessPolySet},
+    util::{read_poly_set, write_or_panic, FixedPolySet, WitnessPolySet},
 };
 
 #[derive(Clone)]
@@ -51,8 +51,6 @@ pub struct ProofResult<T: FieldElement> {
     pub witness: Option<Vec<(String, Vec<T>)>>,
     /// Proof, potentially None (if success is false)
     pub proof: Option<Proof>,
-    /// Serialized low level constraints, potentially None (if success is false)
-    pub constraints_serialization: Option<String>,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
@@ -109,6 +107,18 @@ pub enum Artifact<T: FieldElement> {
     GeneratedWitness(GeneratedWitness<T>),
     /// The proof (if successful)
     Proof(ProofResult<T>),
+}
+
+/// Helper trait to make it prettier to get an `Option<&mut dyn io::Read>`` from
+/// an `Option<F: io::Read>`.
+trait AsIoRead {
+    fn as_io_read(&mut self) -> Option<&mut dyn io::Read>;
+}
+
+impl<R: io::Read> AsIoRead for Option<R> {
+    fn as_io_read(&mut self) -> Option<&mut dyn io::Read> {
+        self.as_mut().map(|r| r as &mut dyn io::Read)
+    }
 }
 
 // These are implementations of specific artifacts we want to retrieve
@@ -617,17 +627,33 @@ impl<T: FieldElement> Pipeline<T> {
                     .backend
                     .expect("backend must be set before calling proving!");
                 let factory = backend.factory::<T>();
-                let mut backend = if let Some(path) = self.arguments.setup_file.as_ref() {
-                    let mut file = BufReader::new(fs::File::open(path).unwrap());
-                    factory.create_from_setup(&mut file).unwrap()
-                } else {
-                    factory.create(pil.degree())
-                };
 
-                if let Some(ref path) = self.arguments.vkey_file {
-                    backend.add_verification_key(&pil, &fixed_cols, fs::read(path).unwrap())
-                }
+                // Opens the setup file, if set.
+                let mut setup = self
+                    .arguments
+                    .setup_file
+                    .as_ref()
+                    .map(|path| BufReader::new(fs::File::open(path).unwrap()));
 
+                // Opens the verification key file, if set.
+                let mut vkey = self
+                    .arguments
+                    .vkey_file
+                    .as_ref()
+                    .map(|path| BufReader::new(fs::File::open(path).unwrap()));
+
+                /* Create the backend */
+                let backend = factory
+                    .create(
+                        pil.borrow(),
+                        &fixed_cols[..],
+                        self.output_dir(),
+                        setup.as_io_read(),
+                        vkey.as_io_read(),
+                    )
+                    .unwrap();
+
+                // Reads the existing proof file, if set.
                 let existing_proof = self
                     .arguments
                     .existing_proof_file
@@ -636,24 +662,20 @@ impl<T: FieldElement> Pipeline<T> {
 
                 // Even if we don't have all constants and witnesses, some backends will
                 // still output the constraint serialization.
-                let (proof, constraints_serialization) = match backend.prove(
-                    &pil,
-                    &fixed_cols,
-                    witness.as_deref().unwrap_or_default(),
-                    existing_proof,
-                ) {
-                    Ok(proof) => proof,
-                    Err(powdr_backend::Error::ProofFailed(e)) => {
-                        return Err(vec![e.to_string()]);
-                    }
-                    _ => panic!(),
-                };
+                let proof =
+                    match backend.prove(witness.as_deref().unwrap_or_default(), existing_proof) {
+                        Ok(proof) => proof,
+                        Err(powdr_backend::Error::BackendError(e)) => {
+                            return Err(vec![e.to_string()]);
+                        }
+                        _ => panic!(),
+                    };
+                drop(backend);
 
                 let proof_result = ProofResult {
                     fixed_cols,
                     witness,
                     proof: Some(proof),
-                    constraints_serialization,
                 };
 
                 self.maybe_write_proof(&proof_result)?;
@@ -701,9 +723,8 @@ impl<T: FieldElement> Pipeline<T> {
 
     fn maybe_write_constants(&self, constants: &[(String, Vec<T>)]) -> Result<(), Vec<String>> {
         if let Some(path) = self.path_if_should_write(|name| format!("{name}_constants.bin"))? {
-            let mut file = BufWriter::new(fs::File::create(path).unwrap());
-            write_polys_file(&mut file, constants);
-            file.flush().unwrap();
+            let writer = BufWriter::new(fs::File::create(path).unwrap());
+            write_or_panic(writer, |writer| write_polys_file(writer, constants));
         }
         Ok(())
     }
@@ -715,9 +736,8 @@ impl<T: FieldElement> Pipeline<T> {
     ) -> Result<(), Vec<String>> {
         if let Some(witness) = witness.as_ref() {
             if let Some(path) = self.path_if_should_write(|name| format!("{name}_commits.bin"))? {
-                let mut file = BufWriter::new(fs::File::create(path).unwrap());
-                write_polys_file(&mut file, witness);
-                file.flush().unwrap();
+                let file = BufWriter::new(fs::File::create(path).unwrap());
+                write_or_panic(file, |file| write_polys_file(file, witness));
             }
         }
 
@@ -740,13 +760,6 @@ impl<T: FieldElement> Pipeline<T> {
     }
 
     fn maybe_write_proof(&self, proof_result: &ProofResult<T>) -> Result<(), Vec<String>> {
-        if let Some(constraints_serialization) = &proof_result.constraints_serialization {
-            if let Some(path) =
-                self.path_if_should_write(|name| format!("{name}_constraints.json"))?
-            {
-                fs::write(path, constraints_serialization.as_bytes()).unwrap();
-            }
-        }
         if let Some(proof) = &proof_result.proof {
             let fname = if self.arguments.existing_proof_file.is_some() {
                 "proof_aggr.bin"
@@ -888,7 +901,10 @@ impl<T: FieldElement> Pipeline<T> {
         self.arguments.query_callback.as_deref()
     }
 
-    pub fn verification_key(&mut self) -> Result<Vec<u8>, Vec<String>> {
+    pub fn export_verification_key<W: io::Write>(
+        &mut self,
+        mut writer: W,
+    ) -> Result<(), Vec<String>> {
         self.advance_to(Stage::PilWithEvaluatedFixedCols)?;
         match self.artifact.as_ref().unwrap() {
             Artifact::PilWithEvaluatedFixedCols(PilWithEvaluatedFixedCols { pil, fixed_cols }) => {
@@ -897,16 +913,28 @@ impl<T: FieldElement> Pipeline<T> {
                     .backend
                     .expect("backend must be set before generating verification key!");
                 let factory = backend.factory::<T>();
-                let backend = if let Some(path) = self.arguments.setup_file.as_ref() {
-                    let mut file = BufReader::new(fs::File::open(path).unwrap());
-                    factory.create_from_setup(&mut file).unwrap()
-                } else {
-                    factory.create(pil.degree())
-                };
 
-                match backend.verification_key(pil, fixed_cols) {
-                    Ok(vkey) => Ok(vkey),
-                    Err(powdr_backend::Error::VerificationKeyFailed(e)) => Err(vec![e]),
+                let mut setup_file = self
+                    .arguments
+                    .setup_file
+                    .as_ref()
+                    .map(|path| BufReader::new(fs::File::open(path).unwrap()));
+
+                let backend = factory
+                    .create(
+                        pil.borrow(),
+                        &fixed_cols[..],
+                        self.output_dir(),
+                        setup_file
+                            .as_mut()
+                            .map(|file| file as &mut dyn std::io::Read),
+                        None,
+                    )
+                    .unwrap();
+
+                match backend.export_verification_key(&mut writer) {
+                    Ok(()) => Ok(()),
+                    Err(powdr_backend::Error::BackendError(e)) => Err(vec![e]),
                     _ => panic!(),
                 }
             }
@@ -924,22 +952,31 @@ impl<T: FieldElement> Pipeline<T> {
                     .expect("backend must be set before generating verification key!");
                 let factory = backend.factory::<T>();
 
-                let mut backend = if let Some(path) = self.arguments.setup_file.as_ref() {
-                    let mut file = BufReader::new(fs::File::open(path).unwrap());
-                    factory.create_from_setup(&mut file).unwrap()
+                let mut setup_file = if let Some(path) = &self.arguments.setup_file {
+                    BufReader::new(fs::File::open(path).unwrap())
                 } else {
                     panic!("Setup should have been provided for verification")
                 };
 
-                if let Some(ref path) = self.arguments.vkey_file {
-                    backend.add_verification_key(pil, fixed_cols, fs::read(path).unwrap())
+                let mut vkey_file = if let Some(ref path) = self.arguments.vkey_file {
+                    BufReader::new(fs::File::open(path).unwrap())
                 } else {
                     panic!("Verification key should have been provided for verification")
-                }
+                };
+
+                let backend = factory
+                    .create(
+                        pil.borrow(),
+                        &fixed_cols[..],
+                        self.output_dir(),
+                        Some(&mut setup_file),
+                        Some(&mut vkey_file),
+                    )
+                    .unwrap();
 
                 match backend.verify(&proof, instances) {
                     Ok(_) => Ok(()),
-                    Err(powdr_backend::Error::VerificationFailed(e)) => Err(vec![e]),
+                    Err(powdr_backend::Error::BackendError(e)) => Err(vec![e]),
                     _ => panic!(),
                 }
             }
