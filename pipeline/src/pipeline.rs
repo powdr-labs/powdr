@@ -451,6 +451,28 @@ impl<T: FieldElement> Pipeline<T> {
         }
     }
 
+    /// Advances to PilWithEvaluatedFixedCols and then sets the witness to the provided value,
+    /// skipping witness generation.
+    pub fn skip_witness_generation(mut self, witness: Vec<(String, Vec<T>)>) -> Self {
+        self.advance_to(Stage::PilWithEvaluatedFixedCols).unwrap();
+
+        let (pil, fixed_cols) = match self.artifact.unwrap() {
+            Artifact::PilWithEvaluatedFixedCols(PilWithEvaluatedFixedCols { pil, fixed_cols }) => {
+                (pil, fixed_cols)
+            }
+            _ => panic!(),
+        };
+
+        Pipeline {
+            artifact: Some(Artifact::GeneratedWitness(GeneratedWitness {
+                pil,
+                fixed_cols,
+                witness: Some(witness),
+            })),
+            ..self
+        }
+    }
+
     fn name_from_path(path: &Path) -> String {
         path.file_stem().unwrap().to_str().unwrap().to_string()
     }

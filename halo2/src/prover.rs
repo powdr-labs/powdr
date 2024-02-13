@@ -1,5 +1,4 @@
 use halo2_proofs::{
-    dev::MockProver,
     halo2curves::bn256::{Fr, G1Affine},
     plonk::{create_proof, keygen_pk, keygen_vk, verify_proof, Circuit, ProvingKey, VerifyingKey},
     poly::{
@@ -312,10 +311,6 @@ fn gen_proof<
     circuit: C,
     instances: &[Vec<Fr>],
 ) -> Vec<u8> {
-    MockProver::run(params.k(), &circuit, instances.to_vec().clone())
-        .unwrap()
-        .assert_satisfied();
-
     let instances = instances
         .iter()
         .map(|instances| instances.as_slice())
