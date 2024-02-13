@@ -812,7 +812,7 @@ fn read_and_prove<T: FieldElement>(
     params: Option<String>,
 ) -> Result<(), Vec<String>> {
     Pipeline::<T>::default()
-        .from_maybe_pil_object(file.to_path_buf())
+        .from_maybe_pil_object(file.to_path_buf())?
         .with_output(dir.to_path_buf(), true)
         .read_generated_witness(dir)
         .with_setup_file(params.map(PathBuf::from))

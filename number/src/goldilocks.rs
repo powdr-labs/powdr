@@ -1,4 +1,5 @@
 use ark_ff::{Fp64, MontBackend, MontConfig};
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 #[derive(MontConfig)]

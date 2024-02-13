@@ -8,6 +8,7 @@ use std::fmt::Display;
 use std::ops::{self, ControlFlow};
 
 use powdr_number::{DegreeType, FieldElement};
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::parsed::utils::expr_any;
@@ -19,7 +20,7 @@ use crate::SourceRef;
 
 use self::types::TypedExpression;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub enum StatementIdentifier {
     /// Either an intermediate column or a definition.
     Definition(String),
@@ -28,7 +29,7 @@ pub enum StatementIdentifier {
     Identity(usize),
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct Analyzed<T> {
     /// The degree of all namespaces, which must match. If there are no namespaces, then `None`.
     pub degree: Option<DegreeType>,
@@ -332,6 +333,18 @@ impl<T: FieldElement> Analyzed<T> {
 
         substitute_intermediate(self.identities.clone(), intermediates)
     }
+
+    pub fn get_struct_schema() -> schemars::schema::RootSchema {
+        schemars::schema_for!(Self)
+    }
+
+    pub fn serialize(&self) -> Result<Vec<u8>, String> {
+        serde_cbor::to_vec(self).map_err(|e| format!("Failed to serialize analyzed: {}", e))
+    }
+
+    pub fn deserialize(bytes: &[u8]) -> Result<Self, String> {
+        serde_cbor::from_slice(bytes).map_err(|e| format!("Failed to deserialize analyzed: {}", e))
+    }
 }
 
 /// Takes identities as values and inlines intermediate polynomials everywhere, returning a vector of the updated identities
@@ -405,7 +418,7 @@ fn inlined_expression_from_intermediate_poly_id<T: Copy + Display>(
     expr
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct Symbol {
     pub id: u64,
     pub source: SourceRef,
@@ -462,7 +475,9 @@ impl Symbol {
 
 /// The "kind" of a symbol. In the future, this will be mostly
 /// replaced by its type.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, JsonSchema,
+)]
 pub enum SymbolKind {
     /// Fixed, witness or intermediate polynomial
     Poly(PolynomialType),
@@ -473,7 +488,7 @@ pub enum SymbolKind {
     Other(),
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub enum FunctionValueDefinition<T> {
     Array(Vec<RepeatedArray<T>>),
     Query(Expression<T>),
@@ -481,7 +496,7 @@ pub enum FunctionValueDefinition<T> {
 }
 
 /// An array of elements that might be repeated.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct RepeatedArray<T> {
     /// The pattern to be repeated
     pattern: Vec<Expression<T>>,
@@ -521,7 +536,7 @@ impl<T> RepeatedArray<T> {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct PublicDeclaration {
     pub id: u64,
     pub source: SourceRef,
@@ -541,7 +556,7 @@ impl PublicDeclaration {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct Identity<Expr> {
     /// The ID is specific to the identity kind.
     pub id: u64,
@@ -580,7 +595,7 @@ impl<T> Identity<AlgebraicExpression<T>> {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy, Hash, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Hash, Serialize, Deserialize, JsonSchema)]
 pub enum IdentityKind {
     Polynomial,
     Plookup,
@@ -601,13 +616,13 @@ impl<T> SelectedExpressions<AlgebraicExpression<T>> {
 
 pub type Expression<T> = parsed::Expression<T, Reference>;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub enum Reference {
     LocalVar(u64, String),
     Poly(PolynomialReference),
 }
 
-#[derive(Debug, Clone, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct AlgebraicReference {
     /// Name of the polynomial - just for informational purposes.
     /// Comparisons are based on polynomial ID.
@@ -654,7 +669,7 @@ impl Hash for AlgebraicReference {
         self.next.hash(state);
     }
 }
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
 pub enum AlgebraicExpression<T> {
     Reference(AlgebraicReference),
     PublicReference(String),
@@ -668,7 +683,9 @@ pub enum AlgebraicExpression<T> {
     UnaryOperation(AlgebraicUnaryOperator, Box<AlgebraicExpression<T>>),
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Serialize, Deserialize)]
+#[derive(
+    Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Serialize, Deserialize, JsonSchema,
+)]
 pub enum AlgebraicBinaryOperator {
     Add,
     Sub,
@@ -704,7 +721,9 @@ impl TryFrom<BinaryOperator> for AlgebraicBinaryOperator {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Serialize, Deserialize)]
+#[derive(
+    Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Serialize, Deserialize, JsonSchema,
+)]
 pub enum AlgebraicUnaryOperator {
     Minus,
 }
@@ -791,7 +810,7 @@ impl<T> From<T> for AlgebraicExpression<T> {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct PolynomialReference {
     /// Name of the polynomial - just for informational purposes.
     /// Comparisons are based on polynomial ID.
@@ -802,7 +821,9 @@ pub struct PolynomialReference {
     pub poly_id: Option<PolyID>,
 }
 
-#[derive(Debug, Copy, Clone, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(
+    Debug, Copy, Clone, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema,
+)]
 pub struct PolyID {
     pub id: u64,
     pub ptype: PolynomialType,
@@ -820,7 +841,9 @@ impl From<&Symbol> for PolyID {
     }
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[derive(
+    Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, JsonSchema,
+)]
 pub enum PolynomialType {
     Committed,
     Constant,

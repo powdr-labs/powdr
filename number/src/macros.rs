@@ -23,12 +23,14 @@ macro_rules! powdr_field {
             Hash,
             Serialize,
             Deserialize,
+            JsonSchema,
         )]
         pub struct $name {
             #[serde(
                 serialize_with = "crate::serialize::ark_se",
                 deserialize_with = "crate::serialize::ark_de"
             )]
+            #[schemars(skip)]
             value: $ark_type,
         }
 

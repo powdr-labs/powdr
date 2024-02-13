@@ -24,6 +24,7 @@ use powdr_executor::{
     witgen::{chain_callbacks, QueryCallback},
 };
 use powdr_number::{write_polys_csv_file, write_polys_file, CsvRenderMode, FieldElement};
+use powdr_schemas::SerializedAnalyzed;
 
 use crate::{
     inputs_to_query_callback, serde_data_to_query_callback,
@@ -408,24 +409,29 @@ impl<T: FieldElement> Pipeline<T> {
         }
     }
 
-    pub fn from_maybe_pil_object(self, file: PathBuf) -> Self {
+    pub fn from_maybe_pil_object(self, file: PathBuf) -> Result<Self, Vec<String>> {
         if file.extension().unwrap() == "pilo" {
             self.from_pil_object(file)
         } else {
-            self.from_file(file)
+            Ok(self.from_file(file))
         }
     }
 
-    pub fn from_pil_object(self, pil_file: PathBuf) -> Self {
+    pub fn from_pil_object(self, pil_file: PathBuf) -> Result<Self, Vec<String>> {
         let name = self
             .name
             .or(Some(Self::name_from_path_with_suffix(&pil_file)));
-        let analyzed = serde_cbor::from_reader(fs::File::open(&pil_file).unwrap()).unwrap();
-        Pipeline {
+
+        let analyzed = SerializedAnalyzed::deserialize_from(pil_file)
+            .map_err(|e| vec![format!("Error deserializing .pilo file: {}", e)])?
+            .try_into()
+            .map_err(|e| vec![e])?;
+
+        Ok(Pipeline {
             artifact: Some(Artifact::OptimzedPil(analyzed)),
             name,
             ..self
-        }
+        })
     }
 
     /// Reads previously generated constants from the provided directory and
@@ -752,8 +758,10 @@ impl<T: FieldElement> Pipeline<T> {
 
     fn maybe_write_pil_object(&self, pil: &Analyzed<T>, suffix: &str) -> Result<(), Vec<String>> {
         if let Some(path) = self.path_if_should_write(|name| format!("{name}{suffix}.pilo"))? {
-            serde_cbor::to_writer(&mut fs::File::create(&path).unwrap(), pil)
-                .map_err(|e| vec![format!("Error writing {}: {e}", path.to_str().unwrap())])?;
+            SerializedAnalyzed::try_from(pil)
+                .map_err(|e| vec![e])?
+                .serialize_to(path)
+                .map_err(|e| vec![e])?;
         }
         Ok(())
     }
