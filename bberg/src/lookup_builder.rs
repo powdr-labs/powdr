@@ -1,6 +1,6 @@
 use crate::{
     file_writer::BBFiles,
-    utils::{create_get_const_entities, create_get_nonconst_entities},
+    utils::{create_get_const_entities, create_get_nonconst_entities, snake_case},
 };
 use ast::{
     analyzed::{AlgebraicExpression, Analyzed, Identity, IdentityKind},
@@ -95,7 +95,7 @@ fn create_lookups(bb_files: &BBFiles, project_name: &str, lookups: &Vec<Lookup>)
     for lookup in lookups {
         let lookup_settings = create_lookup_settings_file(lookup);
 
-        let folder = format!("{}/{}", bb_files.rel, project_name);
+        let folder = format!("{}/{}", bb_files.rel, &snake_case(project_name));
         let file_name = format!(
             "{}{}",
             lookup.attribute.clone().unwrap_or("NONAME".to_owned()),
