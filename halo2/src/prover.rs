@@ -9,6 +9,7 @@ use halo2_proofs::{
             multiopen::{ProverGWC, VerifierGWC},
             strategy::AccumulatorStrategy,
         },
+        VerificationStrategy,
     },
     transcript::{EncodedChallenge, TranscriptReadBuffer, TranscriptWriterBuffer},
     SerdeFormat,
@@ -270,11 +271,19 @@ impl Halo2Prover {
             AccumulatorStrategy::new(self.params.verifier_params()),
             &[instances.as_slice()],
             &mut transcript,
-        );
+        )
+        .map(|strategy| {
+            <AccumulatorStrategy<'_, _> as VerificationStrategy<'_, _, VerifierGWC<_>>>::finalize(
+                strategy,
+            )
+        });
 
         match res {
             Err(e) => Err(e.to_string()),
-            Ok(_) => Ok(()),
+            Ok(valid) => match valid {
+                true => Ok(()),
+                false => Err("Proof is invalid".to_string()),
+            },
         }
     }
 
