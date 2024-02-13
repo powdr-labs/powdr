@@ -1,0 +1,14 @@
+[package]
+name = "powdr-test"
+description = "Tests and examples for the powdr crate"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+
+[dependencies]
+powdr = { path = "../powdr" }
+
+[dev-dependencies]
+env_logger = "0.10.2"
