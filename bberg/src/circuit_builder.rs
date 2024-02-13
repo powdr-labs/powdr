@@ -1,7 +1,7 @@
 use crate::{
     file_writer::BBFiles,
     relation_builder::create_row_type,
-    utils::{get_relations_imports, map_with_newline},
+    utils::{get_relations_imports, map_with_newline, snake_case},
 };
 
 pub trait CircuitBuilder {
@@ -66,7 +66,7 @@ impl CircuitBuilder for BBFiles {
         to_be_shifted: &[String],
         all_cols_with_shifts: &[String],
     ) {
-        let includes = circuit_hpp_includes(name, relations, permutations);
+        let includes = circuit_hpp_includes(&snake_case(name), relations, permutations);
 
         let row_with_all_included = create_row_type(&format!("{name}Full"), all_cols_with_shifts);
 
@@ -191,7 +191,7 @@ class {name}CircuitBuilder {{
 
         self.write_file(
             &self.circuit,
-            &format!("{}_circuit_builder.hpp", name),
+            &format!("{}_circuit_builder.hpp", snake_case(name)),
             &circuit_hpp,
         );
     }

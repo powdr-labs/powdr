@@ -110,3 +110,32 @@ pub fn create_get_nonconst_entities(settings: &[String]) -> String {
     "
     )
 }
+
+/// Snake Case
+///
+/// Transform camel case string into snake case, such as: RedFlower --> red_flower
+pub fn snake_case(input: &str) -> String {
+    let mut result = String::new();
+
+    // Handle the first character
+    if input.is_empty() {
+        return result; // Empty input
+    }
+    let mut first_char = input.chars().next().unwrap();
+    if first_char.is_uppercase() {
+        first_char = first_char.to_ascii_lowercase();
+    }
+    result.push(first_char);
+
+    // Process remaining characters
+    for ch in input.chars().skip(1) {
+        if ch.is_uppercase() {
+            result.push('_');
+            result.push(ch.to_ascii_lowercase());
+        } else {
+            result.push(ch);
+        }
+    }
+
+    result
+}

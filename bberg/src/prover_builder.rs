@@ -1,4 +1,5 @@
 use crate::file_writer::BBFiles;
+use crate::utils::snake_case;
 
 pub trait ProverBuilder {
     fn create_prover_cpp(&mut self, name: &str);
@@ -8,7 +9,7 @@ pub trait ProverBuilder {
 
 impl ProverBuilder for BBFiles {
     fn create_prover_hpp(&mut self, name: &str) {
-        let include_str = includes_hpp(name);
+        let include_str = includes_hpp(&snake_case(name));
         let prover_hpp = format!("
     {include_str} 
     namespace bb {{
@@ -65,11 +66,15 @@ impl ProverBuilder for BBFiles {
     }} // namespace bb
      
     ");
-        self.write_file(&self.prover, &format!("{}_prover.hpp", name), &prover_hpp);
+        self.write_file(
+            &self.prover,
+            &format!("{}_prover.hpp", snake_case(name)),
+            &prover_hpp,
+        );
     }
 
     fn create_prover_cpp(&mut self, name: &str) {
-        let include_str = includes_cpp(name);
+        let include_str = includes_cpp(&snake_case(name));
 
         let prover_cpp = format!("
     {include_str}
@@ -207,7 +212,11 @@ impl ProverBuilder for BBFiles {
     
     ");
 
-        self.write_file(&self.prover, &format!("{}_prover.cpp", name), &prover_cpp);
+        self.write_file(
+            &self.prover,
+            &format!("{}_prover.cpp", snake_case(name)),
+            &prover_cpp,
+        );
     }
 }
 

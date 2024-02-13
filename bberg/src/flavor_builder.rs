@@ -1,7 +1,7 @@
 use crate::{
     file_writer::BBFiles,
     permutation_builder::{get_inverses_from_permutations, Permutation},
-    utils::{get_relations_imports, map_with_newline},
+    utils::{get_relations_imports, map_with_newline, snake_case},
 };
 
 pub trait FlavorBuilder {
@@ -38,7 +38,7 @@ impl FlavorBuilder for BBFiles {
         let inverses = get_inverses_from_permutations(permutations);
 
         let first_poly = &witness[0];
-        let includes = flavor_includes(name, relation_file_names, &inverses);
+        let includes = flavor_includes(&snake_case(name), relation_file_names, &inverses);
         let num_precomputed = fixed.len();
         let num_witness = witness.len();
         let num_all = all_cols_and_shifts.len();
@@ -107,7 +107,11 @@ class {name}Flavor {{
     "
         );
 
-        self.write_file(&self.flavor, &format!("{}_flavor.hpp", name), &flavor_hpp);
+        self.write_file(
+            &self.flavor,
+            &format!("{}_flavor.hpp", snake_case(name)),
+            &flavor_hpp,
+        );
     }
 }
 
