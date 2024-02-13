@@ -54,9 +54,8 @@ fn test_invalid_witness_halo2mock() {
         .unwrap();
 }
 
-// TODO: This test should panic but currently succeeds. See:
-// https://github.com/powdr-labs/powdr/pull/1051
 #[test]
+#[should_panic = "called `Result::unwrap()` on an `Err` value: [\"Proof is invalid\"]"]
 #[cfg(feature = "halo2")]
 fn test_invalid_witness_halo2() {
     let f = "pil/trivial.pil";
