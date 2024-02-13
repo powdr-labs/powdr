@@ -11,8 +11,24 @@ macro_rules! powdr_field {
         use std::ops::*;
         use std::str::FromStr;
 
-        #[derive(Clone, Copy, PartialEq, Eq, Debug, Default, PartialOrd, Ord, Hash)]
+        #[derive(
+            Clone,
+            Copy,
+            PartialEq,
+            Eq,
+            Debug,
+            Default,
+            PartialOrd,
+            Ord,
+            Hash,
+            Serialize,
+            Deserialize,
+        )]
         pub struct $name {
+            #[serde(
+                serialize_with = "crate::serialize::ark_se",
+                deserialize_with = "crate::serialize::ark_de"
+            )]
             value: $ark_type,
         }
 

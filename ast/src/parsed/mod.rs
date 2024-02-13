@@ -11,6 +11,7 @@ use std::{
 };
 
 use powdr_number::{DegreeType, FieldElement};
+use serde::{Deserialize, Serialize};
 
 use self::asm::{Part, SymbolPath};
 use crate::SourceRef;
@@ -151,7 +152,7 @@ impl<T> PilStatement<T> {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize)]
 pub struct SelectedExpressions<Expr> {
     pub selector: Option<Expr>,
     pub expressions: Vec<Expr>,
@@ -178,7 +179,7 @@ impl<Expr> SelectedExpressions<Expr> {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize)]
 pub enum Expression<T, Ref = NamespacedPolynomialReference> {
     Reference(Ref),
     PublicReference(String),
@@ -292,18 +293,18 @@ impl NamespacedPolynomialReference {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct LambdaExpression<T, Ref = NamespacedPolynomialReference> {
     pub params: Vec<String>,
     pub body: Box<Expression<T, Ref>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct ArrayLiteral<T, Ref = NamespacedPolynomialReference> {
     pub items: Vec<Expression<T, Ref>>,
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Serialize, Deserialize)]
 pub enum UnaryOperator {
     Minus,
     LogicalNot,
@@ -320,7 +321,7 @@ impl UnaryOperator {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Serialize, Deserialize)]
 pub enum BinaryOperator {
     Add,
     Sub,
@@ -344,32 +345,32 @@ pub enum BinaryOperator {
     Greater,
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize)]
 pub struct IndexAccess<T, Ref = NamespacedPolynomialReference> {
     pub array: Box<Expression<T, Ref>>,
     pub index: Box<Expression<T, Ref>>,
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize)]
 pub struct FunctionCall<T, Ref = NamespacedPolynomialReference> {
     pub function: Box<Expression<T, Ref>>,
     pub arguments: Vec<Expression<T, Ref>>,
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize)]
 pub struct MatchArm<T, Ref = NamespacedPolynomialReference> {
     pub pattern: MatchPattern<T, Ref>,
     pub value: Expression<T, Ref>,
 }
 
 /// A pattern for a match arm. We could extend this in the future.
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize)]
 pub enum MatchPattern<T, Ref = NamespacedPolynomialReference> {
     CatchAll,
     Pattern(Expression<T, Ref>),
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize)]
 pub struct IfExpression<T, Ref = NamespacedPolynomialReference> {
     pub condition: Box<Expression<T, Ref>>,
     pub body: Box<Expression<T, Ref>>,

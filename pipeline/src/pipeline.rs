@@ -408,6 +408,26 @@ impl<T: FieldElement> Pipeline<T> {
         }
     }
 
+    pub fn from_maybe_pil_object(self, file: PathBuf) -> Self {
+        if file.extension().unwrap() == "pilo" {
+            self.from_pil_object(file)
+        } else {
+            self.from_file(file)
+        }
+    }
+
+    pub fn from_pil_object(self, pil_file: PathBuf) -> Self {
+        let name = self
+            .name
+            .or(Some(Self::name_from_path_with_suffix(&pil_file)));
+        let analyzed = serde_cbor::from_reader(fs::File::open(&pil_file).unwrap()).unwrap();
+        Pipeline {
+            artifact: Some(Artifact::OptimzedPil(analyzed)),
+            name,
+            ..self
+        }
+    }
+
     /// Reads previously generated constants from the provided directory and
     /// advances the pipeline to the `PilWithEvaluatedFixedCols` stage.
     pub fn read_constants(mut self, directory: &Path) -> Self {
@@ -485,6 +505,14 @@ impl<T: FieldElement> Pipeline<T> {
 
     fn name_from_path(path: &Path) -> String {
         path.file_stem().unwrap().to_str().unwrap().to_string()
+    }
+
+    // This is used for parsing file names than ends with '_{suffix}'
+    fn name_from_path_with_suffix(path: &Path) -> String {
+        let file_name = Self::name_from_path(path);
+        let mut split = file_name.split('_').collect::<Vec<_>>();
+        split.pop();
+        split.join("_")
     }
 
     fn log(&self, msg: &str) {
@@ -568,6 +596,7 @@ impl<T: FieldElement> Pipeline<T> {
                 self.log("Optimizing pil...");
                 let optimized = powdr_pilopt::optimize(analyzed_pil);
                 self.maybe_write_pil(&optimized, "_opt")?;
+                self.maybe_write_pil_object(&optimized, "_opt")?;
                 Artifact::OptimzedPil(optimized)
             }
             Artifact::OptimzedPil(pil) => {
@@ -716,6 +745,14 @@ impl<T: FieldElement> Pipeline<T> {
     fn maybe_write_pil<C: Display>(&self, content: &C, suffix: &str) -> Result<(), Vec<String>> {
         if let Some(path) = self.path_if_should_write(|name| format!("{name}{suffix}.pil"))? {
             fs::write(&path, format!("{content}"))
+                .map_err(|e| vec![format!("Error writing {}: {e}", path.to_str().unwrap())])?;
+        }
+        Ok(())
+    }
+
+    fn maybe_write_pil_object(&self, pil: &Analyzed<T>, suffix: &str) -> Result<(), Vec<String>> {
+        if let Some(path) = self.path_if_should_write(|name| format!("{name}{suffix}.pilo"))? {
+            serde_cbor::to_writer(&mut fs::File::create(&path).unwrap(), pil)
                 .map_err(|e| vec![format!("Error writing {}: {e}", path.to_str().unwrap())])?;
         }
         Ok(())
