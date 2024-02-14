@@ -2,7 +2,11 @@
 /// Assumes that `modulus` is prime, but does not check it.
 let inverse = |x, modulus|
     if x <= 0 || x >= modulus {
-        std::check::panic("Tried to compute the inverse of zero, of a negative number or a number outside the field.")
+        if x == 0 {
+            std::check::panic("Tried to compute the inverse of zero.")
+        } else {
+            std::check::panic("Tried to compute the inverse of a negative number or a number outside the field.")
+        }
     } else {
         reduce(extended_gcd(x, modulus)[0], modulus)
     };
