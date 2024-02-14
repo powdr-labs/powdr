@@ -124,7 +124,11 @@ pub(crate) fn analyzed_to_plaf<T: FieldElement>(
         p: T::modulus().to_arbitrary_integer(),
         num_rows: original_size,
         // HACK: Manually set one challenge.
-        challenges: vec![Challenge::new("challenge".to_string(), 0)],
+        challenges: vec![Challenge {
+            name: "challenge".to_string(),
+            alias: None,
+            phase: 0,
+        }],
     };
 
     // build Plaf polys. -------------------------------------------------------------------------

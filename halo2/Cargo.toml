@@ -12,7 +12,7 @@ powdr-ast = { path = "../ast" }
 powdr-number = { path = "../number" }
 powdr-pil-analyzer = { path = "../pil-analyzer" }
 
-polyexen = { git = "https://github.com/georgwiese/polyexen" }
+polyexen = { git = "https://github.com/Dhole/polyexen", branch="feature/halo2-backend-challenge" }
 
 halo2_proofs = { git = "https://github.com/privacy-scaling-explorations/halo2", tag = "v0.3.0" }
 halo2_curves = { version = "0.6.1", package = "halo2curves" }
