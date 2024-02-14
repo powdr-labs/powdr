@@ -65,16 +65,20 @@ impl<'a, 'b> WordWriter<'a, 'b> {
         self.current_pos = next_pos;
     }
 
-    fn align(&mut self, alignment: u32) {
+    fn align(&mut self, alignment: u32, pad_value: u8) {
         let padding_size = alignment_size(self.current_pos as usize, alignment as usize);
         if padding_size != 0 {
-            self.advance(padding_size as u32);
+            if pad_value == 0 {
+                self.advance(padding_size as u32);
+            } else {
+                self.write_bytes(std::iter::repeat(pad_value).take(padding_size));
+            }
         }
     }
 
-    fn write_bytes(&mut self, bytes: &[u8]) {
+    fn write_bytes<I: IntoIterator<Item = u8>>(&mut self, bytes: I) {
         for b in bytes {
-            self.partial |= (*b as u32) << (8 * (self.current_pos % 4));
+            self.partial |= (b as u32) << (8 * (self.current_pos % 4));
             self.advance(1);
         }
     }
@@ -136,18 +140,18 @@ pub fn store_data_objects(
                     writer.advance(*length as u32);
                 }
                 DataValue::Direct(bytes) => {
-                    writer.write_bytes(bytes);
+                    writer.write_bytes(bytes.iter().copied());
                 }
                 DataValue::Reference(sym) => {
                     if let Some(p) = positions.get(sym) {
-                        writer.write_bytes(&p.to_le_bytes());
+                        writer.write_bytes(p.to_le_bytes().iter().copied());
                     } else {
                         // code reference
                         writer.write_label_reference(sym);
                     }
                 }
-                DataValue::Alignment(bytes) => {
-                    writer.align(*bytes as u32);
+                DataValue::Alignment(bytes, pad_value) => {
+                    writer.align(*bytes as u32, *pad_value);
                 }
                 DataValue::Offset(_l, _r) => unimplemented!(),
             }
