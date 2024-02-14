@@ -17,10 +17,10 @@ machine Binary(latch, operation_id) {
     col fixed FACTOR(i) { 1 << (((i + 1) % 4) * 8) };
 
     // TOOD would be nice with destructuring assignment for arrays.
-    let inputs: (int -> int)[] = cross_product([3, 256, 256]);
-    let a = inputs[2];
+    let inputs: (int -> int)[] = cross_product([256, 256, 3]);
+    let a = inputs[0];
     let b = inputs[1];
-    let op = inputs[0];
+    let op = inputs[2];
     col fixed P_A(i) { a(i) };
     col fixed P_B(i) { b(i) };
     col fixed P_operation(i) { op(i)};

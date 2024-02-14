@@ -1,4 +1,5 @@
 use std::utils::unchanged_until;
+use std::utils::cross_product;
 use std::convert::int;
 
 machine Shift(latch, operation_id) {
@@ -14,14 +15,19 @@ machine Shift(latch, operation_id) {
     col fixed FACTOR_ROW(i) { (i + 1) % 4 };
     col fixed FACTOR(i) { 1 << (((i + 1) % 4) * 8) };
 
-    col fixed P_A(i) { i % 256 };
-    col fixed P_B(i) { (i / 256) % 32 };
-    col fixed P_ROW(i) { (i / (256 * 32)) % 4 };
-    col fixed P_operation(i) { (i / (256 * 32 * 4)) % 2 };
+    let inputs = cross_product([256, 32, 4, 2]);
+    let a: int -> int = inputs[0];
+    let b: int -> int = inputs[1];
+    let row: int -> int = inputs[2];
+    let op: int -> int = inputs[3];
+    let P_A: col = a;
+    let P_B: col = b;
+    let P_ROW: col = row;
+    let P_operation: col = op;
     col fixed P_C(i) {
-        match P_operation(i) {
-            0 => (int(P_A(i)) << (int(P_B(i)) + (int(P_ROW(i)) * 8))),
-            1 => (int(P_A(i)) << (int(P_ROW(i)) * 8)) >> int(P_B(i)),
+        match op(i) {
+            0 => a(i) << (b(i) + (row(i) * 8)),
+            1 => (a(i) << (row(i) * 8)) >> b(i),
         } & 0xffffffff
     };
 
