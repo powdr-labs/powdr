@@ -83,4 +83,42 @@ mod tests {
     fn div_by_zero() {
         let _ = Bn254Field::from(1) / Bn254Field::from(0);
     }
+
+    #[test]
+    fn try_into_i32() {
+        let valid_values = [
+            i32::MIN as i64,
+            i32::MIN as i64 + 1,
+            i32::MIN as i64 + 4242,
+            -0x6faa2185,
+            -3456,
+            -1,
+            0,
+            0x6faa2185,
+            1,
+            3456,
+            i32::MAX as i64 - 4242,
+            i32::MAX as i64 - 1,
+            i32::MAX as i64,
+        ];
+        for &value in &valid_values {
+            let field_value = Bn254Field::from(value);
+            let i32_value = field_value.try_into_i32();
+            assert_eq!(i32_value, Some(i32::try_from(value).unwrap()));
+        }
+
+        let invalid_values = [
+            i64::MIN,
+            -0x4c9039be0185fcba,
+            i32::MIN as i64 - 1,
+            i32::MAX as i64 + 1,
+            0x4c9039be0185fcba,
+            i64::MAX,
+        ];
+        for &value in &invalid_values {
+            let field_value = Bn254Field::from(value);
+            let i32_value = field_value.try_into_i32();
+            assert_eq!(i32_value, None);
+        }
+    }
 }
