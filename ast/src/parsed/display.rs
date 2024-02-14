@@ -140,13 +140,7 @@ impl<T: Display> Display for Instruction<T> {
 
 impl<T: Display> Display for LinkDeclaration<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write!(
-            f,
-            "link {}{} => {};",
-            self.flag,
-            self.params.prepend_space_if_non_empty(),
-            self.to
-        )
+        write!(f, "link {} => {};", self.flag, self.to)
     }
 }
 

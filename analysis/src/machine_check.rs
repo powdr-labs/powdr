@@ -13,11 +13,13 @@ use powdr_ast::{
     parsed::{
         self,
         asm::{
-            self, ASMModule, ASMProgram, AbsoluteSymbolPath, AssignmentRegister, FunctionStatement,
-            InstructionBody, LinkDeclaration, MachineStatement, ModuleStatement, RegisterFlag,
-            SymbolDefinition,
+            self, ASMModule, ASMProgram, AbsoluteSymbolPath, AssignmentRegister, CallableRef,
+            FunctionStatement, InstructionBody, LinkDeclaration, MachineStatement, ModuleStatement,
+            RegisterFlag, SymbolDefinition,
         },
+        Expression,
     },
+    SourceRef,
 };
 use powdr_number::FieldElement;
 
@@ -78,13 +80,11 @@ impl<T: FieldElement> TypeChecker<T> {
                         Err(e) => errors.extend(e),
                     }
                 }
-                MachineStatement::LinkDeclaration(source, LinkDeclaration { flag, params, to }) => {
-                    links.push(LinkDefinitionStatement {
-                        source,
-                        flag,
-                        params,
-                        to,
-                    });
+                MachineStatement::LinkDeclaration(source, LinkDeclaration { flag, to }) => {
+                    match self.check_link_declaration(source, flag, to) {
+                        Ok(link_definition) => links.push(link_definition),
+                        Err(e) => errors.extend(e),
+                    }
                 }
                 MachineStatement::Pil(_source, statement) => {
                     pil.push(statement);
@@ -179,18 +179,48 @@ impl<T: FieldElement> TypeChecker<T> {
                     ctx
                 ));
             }
-            if operation_count > 1 && operation_id.is_none() {
+
+            if operation_id.is_some() {
+                for o in callable.operation_definitions() {
+                    if o.operation.id.id.is_none() {
+                        errors.push(format!(
+                            "Operation `{}` in machine {} needs an operation id because the machine has an operation id column",
+                            o.name, ctx
+                        ))
+                    }
+                }
+            } else {
+                // no operation id column
+                if operation_count > 1 {
+                    errors.push(format!(
+                        "Machine {} should have an operation id column as it does not have a pc and has more than one operation",
+                        ctx
+                    ));
+                }
+                if let Some(o) = callable.operation_definitions().next() {
+                    if o.operation.id.id.is_some() {
+                        errors.push(format!(
+                            "Operation `{}` in machine {} can't have an operation id because the machine does not have an operation id column",
+                            o.name, ctx
+                        ))
+                    }
+                }
+            }
+
+            for r in &registers {
                 errors.push(format!(
-                    "Machine {} should have an operation id column as it does not have a pc and has more than one operation",
-                    ctx
+                    "Machine {} should not have registers as it does not have a pc, found `{}`",
+                    ctx, r.name
                 ));
             }
+
             for f in callable.function_definitions() {
                 errors.push(format!(
                     "Machine {} should not have functions as it does not have a pc, found `{}`",
                     ctx, f.name
                 ))
             }
+
             for i in &instructions {
                 errors.push(format!(
                     "Machine {} should not have instructions as it does not have a pc, found `{}`",
@@ -208,6 +238,12 @@ impl<T: FieldElement> TypeChecker<T> {
                 errors.push(format!(
                     "Machine {} should not have an operation id column as it has a pc",
                     ctx
+                ));
+            }
+            for l in &links {
+                errors.push(format!(
+                    "Machine {} should not have links as it has a pc, found `{}`. Use an external instruction instead.",
+                    ctx, l.flag
                 ));
             }
             for o in callable.operation_definitions() {
@@ -229,8 +265,7 @@ impl<T: FieldElement> TypeChecker<T> {
             pc: registers
                 .iter()
                 .enumerate()
-                .filter_map(|(i, r)| (r.ty.is_pc()).then_some(i))
-                .next(),
+                .find_map(|(i, r)| (r.ty.is_pc()).then_some(i)),
             registers,
             links,
             instructions,
@@ -260,7 +295,7 @@ impl<T: FieldElement> TypeChecker<T> {
                 ModuleStatement::SymbolDefinition(SymbolDefinition { name, value }) => {
                     match value {
                         asm::SymbolValue::Machine(m) => {
-                            match self.check_machine_type(m, ctx) {
+                            match self.check_machine_type(m, &ctx.with_part(&name)) {
                                 Err(e) => {
                                     errors.extend(e);
                                 }
@@ -306,7 +341,7 @@ impl<T: FieldElement> TypeChecker<T> {
     }
 
     fn check_instruction(
-        &mut self,
+        &self,
         name: &str,
         instruction: parsed::asm::Instruction<T>,
     ) -> Result<Instruction<T>, Vec<String>> {
@@ -336,6 +371,30 @@ impl<T: FieldElement> TypeChecker<T> {
             params: instruction.params,
             body: instruction.body,
         })
+    }
+
+    fn check_link_declaration(
+        &self,
+        source: SourceRef,
+        flag: Expression<T>,
+        to: CallableRef<T>,
+    ) -> Result<LinkDefinitionStatement<T>, Vec<String>> {
+        let mut err = vec![];
+
+        to.params.inputs_and_outputs().for_each(|p| {
+            if let Some(ty) = &p.ty {
+                err.push(format!(
+                    "Invalid type '{}: {}' in link declaration",
+                    p.name, ty
+                ));
+            }
+        });
+
+        if err.is_empty() {
+            Ok(LinkDefinitionStatement { source, flag, to })
+        } else {
+            Err(err)
+        }
     }
 }
 
@@ -373,5 +432,72 @@ mod tests {
                 "Expected A to be of type Machine, but found type module",
             ]),
         );
+    }
+
+    #[test]
+    fn constrained_machine_has_no_registers() {
+        let src = r#"
+machine Main(latch, id) {
+   reg A;
+}
+"#;
+        expect_check_str(
+            src,
+            Err(vec![
+                "Machine ::Main should not have registers as it does not have a pc, found `A`",
+            ]),
+        );
+    }
+
+    #[test]
+    fn virtual_machine_has_no_links() {
+        let src = r#"
+machine Main {
+   reg pc[@pc];
+   reg A;
+   reg B;
+
+   link foo => submachine.foo A -> B;
+}
+"#;
+        expect_check_str(
+            src,
+            Err(vec![
+                "Machine ::Main should not have links as it has a pc, found `foo`. Use an external instruction instead.",
+            ]),
+        );
+    }
+
+    #[test]
+    fn multiple_ops_need_op_id() {
+        let src = r#"
+machine Arith(latch, _) {
+   operation add a, b -> c;
+   operation sub a, b -> c;
+}
+"#;
+        expect_check_str(src, Err(vec!["Machine ::Arith should have an operation id column as it does not have a pc and has more than one operation"]));
+    }
+
+    #[test]
+    fn id_column_requires_op_id() {
+        let src = r#"
+machine Arith(latch, id) {
+   operation add a, b -> c;
+   operation sub a, b -> c;
+}
+"#;
+        expect_check_str(src, Err(vec!["Operation `add` in machine ::Arith needs an operation id because the machine has an operation id column",
+                                       "Operation `sub` in machine ::Arith needs an operation id because the machine has an operation id column"]));
+    }
+
+    #[test]
+    fn id_op_id_requires_id_column() {
+        let src = r#"
+machine Arith(latch, _) {
+   operation add<0> a, b -> c;
+}
+"#;
+        expect_check_str(src, Err(vec!["Operation `add` in machine ::Arith can't have an operation id because the machine does not have an operation id column"]));
     }
 }

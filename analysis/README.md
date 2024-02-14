@@ -298,8 +298,8 @@ The diff for our example program is as follows:
 +
 +
 // we use links to encode cross-machine calls
-+       link instr_identity X -> Y => sub.identity;
-+       link instr_one -> Y => sub.one;
++       link instr_identity => sub.identity X -> Y;
++       link instr_one => sub.one -> Y;
 +       link instr_nothing => sub.nothing;
 ```
 

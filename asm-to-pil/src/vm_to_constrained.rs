@@ -502,8 +502,11 @@ impl<T: FieldElement> ASMPILConverter<T> {
             );
         });
 
-        // if rhs is not empty, check it's valid
-        if !rhs.is_empty() {
+        if rhs.is_empty() {
+            // we allow declarations with an empty RHS as syntactic sugar for when RHS = LHS.
+            *rhs = lhs.clone();
+        } else {
+            // if rhs is not empty, check it's valid
             // rhs params must either be assignment registers declared in the lhs or write registers
             rhs
                 .inputs
@@ -562,7 +565,6 @@ impl<T: FieldElement> ASMPILConverter<T> {
         LinkDefinitionStatement {
             source,
             flag: direct_reference(flag),
-            params: params.clone(),
             to: callable,
         }
     }

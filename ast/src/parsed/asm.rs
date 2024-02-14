@@ -457,7 +457,6 @@ pub enum MachineStatement<T> {
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub struct LinkDeclaration<T> {
     pub flag: Expression<T>,
-    pub params: Params<T>,
     pub to: CallableRef<T>,
 }
 

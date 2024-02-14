@@ -174,24 +174,14 @@ impl<'a, T: FieldElement> ASMPILConverter<'a, T> {
         LinkDefinitionStatement {
             source: _,
             flag,
-            params: lhs_params,
             to:
                 CallableRef {
                     instance,
                     callable,
-                    params: rhs_params,
+                    params,
                 },
         }: LinkDefinitionStatement<T>,
     ) -> Link<T> {
-        // The actual mapping of parameters used for the link constraint comes
-        // from the RHS of the instr/link declaration (as it allows for extra
-        // registers/columns being used and parameter reordering).
-        // We allow declarations with an empty RHS as syntactic sugar for when RHS = LHS.
-        let params = if rhs_params.is_empty() {
-            lhs_params
-        } else {
-            rhs_params
-        };
         let from = LinkFrom {
             params,
             flag: flag.clone(),
