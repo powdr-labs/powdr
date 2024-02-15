@@ -776,7 +776,7 @@ impl<T: FieldElement> Pipeline<T> {
 
     fn maybe_write_witness(
         &self,
-        fixed: &[(String, Vec<T>)],
+        _fixed: &[(String, Vec<T>)],
         witness: &Option<Vec<(String, Vec<T>)>>,
     ) -> Result<(), Vec<String>> {
         if let Some(witness) = witness.as_ref() {

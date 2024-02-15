@@ -1,5 +1,5 @@
 use std::{
-    collections::{BTreeMap, BTreeSet},
+    collections::BTreeSet,
     io::{Read, Write},
 };
 
@@ -36,6 +36,7 @@ pub fn write_polys_csv_file<T: FieldElement>(
         .filter_map(|(name, _)| {
             if name == "main.bootloader_input_value"
                 || name == "main.jump_to_shutdown_routine"
+                || name.starts_with("main.m_")
                 || !name.starts_with("main.")
             {
                 None
