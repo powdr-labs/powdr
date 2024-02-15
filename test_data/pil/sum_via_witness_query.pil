@@ -7,7 +7,13 @@ namespace Sum(%N);
     pol fixed ISALMOSTLAST(i) { if i == %last_row - 1 { 1 } else { 0 } };
     pol fixed ISFIRST = [ 1, 0 ] + [0]*;
 
-    col witness input(i) query ("input", i);
+    col witness input(i) query match i {
+        // A non-exhaustive match statement is the only way to return "None"
+        0 => ("input", 0),
+        1 => ("input", 1),
+        2 => ("input", 2),
+        // No response in the case of i == 3
+    };
     col witness sum;
 
     ISLAST * sum' = 0;
