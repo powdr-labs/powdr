@@ -7,7 +7,8 @@ use crate::{
 pub enum DataValue {
     Direct(Vec<u8>),
     Zero(usize),
-    Alignment(usize),
+    // alignment size and the byte value used as padding
+    Alignment(usize, u8),
     Reference(String),
     // This is needed for .word diretives such as
     // .word	.Lfunc_begin0-.Lfunc_begin0
@@ -23,7 +24,7 @@ impl DataValue {
         match self {
             DataValue::Direct(data) => data.len(),
             DataValue::Zero(length) => *length,
-            DataValue::Alignment(bytes) => alignment_size(from_addr, *bytes),
+            DataValue::Alignment(bytes, _) => alignment_size(from_addr, *bytes),
             DataValue::Reference(_) => 4,
             DataValue::Offset(..) => 4,
         }
@@ -112,18 +113,38 @@ pub fn extract_data_objects<R: Register, F: FunctionOpKind>(
                 (".balign", [Argument::Expression(Expression::Number(byte_size))]) => {
                     if is_in_data_section {
                         data.current_entry()
-                            .push(DataValue::Alignment(*byte_size as usize));
+                            .push(DataValue::Alignment(*byte_size as usize, 0));
+                    }
+                }
+                (
+                    ".balign",
+                    [Argument::Expression(Expression::Number(byte_size)), Argument::Expression(Expression::Number(pad_value))],
+                ) => {
+                    if is_in_data_section {
+                        data.current_entry()
+                            .push(DataValue::Alignment(*byte_size as usize, *pad_value as u8));
                     }
                 }
                 (".p2align", [Argument::Expression(Expression::Number(pow_of_2))]) => {
                     if is_in_data_section {
                         data.current_entry()
-                            .push(DataValue::Alignment((1 << pow_of_2) as usize));
+                            .push(DataValue::Alignment((1 << pow_of_2) as usize, 0));
                     }
                 }
-                (".balign" | ".p2align", _) => {
-                    // TODO: implement the optional arguments of .balign and .p2align
-                    unimplemented!()
+                (
+                    ".p2align",
+                    [Argument::Expression(Expression::Number(pow_of_2)), Argument::Expression(Expression::Number(pad_value))],
+                ) => {
+                    if is_in_data_section {
+                        data.current_entry().push(DataValue::Alignment(
+                            (1 << pow_of_2) as usize,
+                            *pad_value as u8,
+                        ));
+                    }
+                }
+                (n @ ".balign" | n @ ".p2align", arg) => {
+                    // TODO: implement last optional argument of .balign and .p2align
+                    unimplemented!("{n} {arg:?}");
                 }
                 _ => {}
             },
