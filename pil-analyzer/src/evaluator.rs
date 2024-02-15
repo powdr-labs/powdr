@@ -135,9 +135,14 @@ impl<'a, T: FieldElement, C: Custom> Value<'a, T, C> {
                         )))
                     }
                 } else {
-                    Err(EvalError::TypeError(format!(
-                        "Expected field element but got negative integer: {x}"
-                    )))
+                    let x = (-x).to_biguint().unwrap();
+                    if x < T::modulus().to_arbitrary_integer() {
+                        Ok(-T::from(x))
+                    } else {
+                        Err(EvalError::TypeError(format!(
+                            "Expected field element but got integer outside field range: {x}"
+                        )))
+                    }
                 }
             }
             v => Err(EvalError::TypeError(format!(
