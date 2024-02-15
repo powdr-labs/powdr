@@ -1,7 +1,8 @@
 use std::{fmt, hash::Hash, ops::*, str::FromStr};
 
 use num_traits::{One, Zero};
-use serde::{de::DeserializeOwned, Serialize};
+use schemars::JsonSchema;
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 
 use crate::{AbstractNumberType, DegreeType};
 
@@ -47,6 +48,7 @@ pub trait BigInt:
     fn is_one(&self) -> bool;
 }
 
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub enum KnownField {
     GoldilocksField,
     Bn254Field,
@@ -88,6 +90,7 @@ pub trait FieldElement:
     + fmt::LowerHex
     + Serialize
     + DeserializeOwned
+    + JsonSchema
 {
     /// The underlying fixed-width integer type
     type Integer: BigInt;

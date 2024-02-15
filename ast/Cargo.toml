@@ -17,8 +17,9 @@ diff = "0.1"
 log = "0.4.18"
 derive_more = "0.99.17"
 serde = { version = "1.0", default-features = false, features = ["alloc", "derive", "rc"] }
+schemars = { version = "0.8.16", features = ["preserve_order"]}
+serde_cbor = "0.11.2"
 
 [dev-dependencies]
 pretty_assertions = "1.3.0"
-
 

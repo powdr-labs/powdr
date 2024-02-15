@@ -26,6 +26,7 @@ powdr-parser = { path = "../parser" }
 powdr-parser-util = { path = "../parser-util" }
 powdr-pilopt = { path = "../pilopt" }
 powdr-pil-analyzer = { path = "../pil-analyzer" }
+powdr-schemas = { path = "../schemas" }
 
 itertools = "^0.10"
 log = "0.4.17"

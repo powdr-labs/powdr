@@ -2,6 +2,7 @@
 
 use itertools::Itertools;
 use log::log_enabled;
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Result, Write};
 use std::sync::Arc;
@@ -22,7 +23,7 @@ pub struct DiffMonitor {
     current: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, JsonSchema)]
 pub struct SourceRef {
     pub file: Option<Arc<str>>,
     pub line: usize,

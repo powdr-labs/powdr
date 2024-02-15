@@ -1,4 +1,5 @@
 use ark_bn254::Fr;
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 powdr_field!(Bn254Field, Fr);

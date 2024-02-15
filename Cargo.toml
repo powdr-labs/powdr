@@ -23,6 +23,7 @@ members = [
     "asm-utils",
     "airgen",
     "riscv-executor",
+    "schemas",
 ]
 
 exclude = [ "riscv-runtime" ]
