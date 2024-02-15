@@ -1,4 +1,7 @@
-use std::io::{Read, Write};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    io::{Read, Write},
+};
 
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, Compress, Validate};
 use csv::{Reader, Writer};
@@ -28,19 +31,40 @@ pub fn write_polys_csv_file<T: FieldElement>(
 ) {
     let mut writer = Writer::from_writer(file);
 
-    // Write headers, adding a "Row" column
-    let mut headers = vec![ROW_NAME];
-    headers.extend(polys.iter().map(|(name, _)| {
+    let column_whitelist = polys
+        .iter()
+        .filter_map(|(name, _)| {
+            if name == "main.bootloader_input_value"
+                || name == "main.jump_to_shutdown_routine"
+                || !name.starts_with("main.")
+            {
+                None
+            } else {
+                Some(name.as_str())
+            }
+        })
+        .collect::<BTreeSet<_>>();
+
+    let mut headers = vec![];
+    headers.extend(polys.iter().filter_map(|(name, _)| {
         assert!(name != ROW_NAME);
-        name.as_str()
+        if column_whitelist.contains(name.as_str()) {
+            Some(name.as_str())
+        } else {
+            None
+        }
     }));
     writer.write_record(&headers).unwrap();
 
     let len = polys[0].1.len();
     for row_index in 0..len {
         let mut row = Vec::new();
-        row.push(format!("{}", row_index));
-        for (_, values) in polys {
+        // row.push(format!("{}", row_index));
+        for (name, values) in polys {
+            if !column_whitelist.contains(name.as_str()) {
+                continue;
+            }
+
             assert!(values.len() == len);
             let value = match render_mode {
                 CsvRenderMode::SignedBase10 => format!("{}", values[row_index]),

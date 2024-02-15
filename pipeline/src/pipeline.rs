@@ -788,13 +788,11 @@ impl<T: FieldElement> Pipeline<T> {
 
         if self.arguments.export_witness_csv {
             if let Some(path) = self.path_if_should_write(|name| format!("{name}_columns.csv"))? {
-                let columns = fixed
-                    .iter()
-                    .chain(match witness.as_ref() {
-                        Some(witness) => witness.iter(),
-                        None => [].iter(),
-                    })
-                    .collect::<Vec<_>>();
+                let columns = match witness.as_ref() {
+                    Some(witness) => witness.iter(),
+                    None => [].iter(),
+                }
+                .collect::<Vec<_>>();
 
                 let csv_file = fs::File::create(path).map_err(|e| vec![format!("{}", e)])?;
                 write_polys_csv_file(csv_file, self.arguments.csv_render_mode, &columns);
