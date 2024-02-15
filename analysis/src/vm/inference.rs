@@ -50,12 +50,11 @@ fn infer_machine<T: FieldElement>(mut machine: Machine<T>) -> Result<Machine<T>,
                             .instructions
                             .iter()
                             .find(|i| i.name == *instr_name)
-                            .unwrap();
+                            .unwrap_or_else(|| panic!("invalid instruction: {}", instr_name));
 
-                        let outputs = def.instruction.params.outputs.clone().unwrap_or_default();
-
-                        outputs
+                        def.instruction
                             .params
+                            .outputs
                             .iter()
                             .map(|o| {
                                 assert!(o.ty.is_none());

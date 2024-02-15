@@ -397,34 +397,28 @@ pub struct MachineArguments {
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Default)]
-pub struct ParamList<T> {
-    pub params: Vec<Param<T>>,
-}
-
-impl<T> ParamList<T> {
-    pub fn new(params: Vec<Param<T>>) -> Self {
-        Self { params }
-    }
-}
-
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Default)]
 pub struct Params<T> {
-    pub inputs: ParamList<T>,
-    pub outputs: Option<ParamList<T>>,
+    pub inputs: Vec<Param<T>>,
+    pub outputs: Vec<Param<T>>,
+}
+
+impl<T> Params<T> {
+    pub fn inputs_and_outputs(&self) -> impl Iterator<Item = &Param<T>> {
+        self.inputs.iter().chain(self.outputs.iter())
+    }
+
+    pub fn inputs_and_outputs_mut(&mut self) -> impl Iterator<Item = &mut Param<T>> {
+        self.inputs.iter_mut().chain(self.outputs.iter_mut())
+    }
 }
 
 impl<T: Display> Params<T> {
-    pub fn new(inputs: ParamList<T>, outputs: Option<ParamList<T>>) -> Self {
+    pub fn new(inputs: Vec<Param<T>>, outputs: Vec<Param<T>>) -> Self {
         Self { inputs, outputs }
     }
 
-    fn is_empty(&self) -> bool {
-        self.inputs.params.is_empty()
-            && self
-                .outputs
-                .as_ref()
-                .map(|outputs| outputs.params.is_empty())
-                .unwrap_or(true)
+    pub fn is_empty(&self) -> bool {
+        self.inputs.is_empty() && self.outputs.is_empty()
     }
 
     pub fn prepend_space_if_non_empty(&self) -> String {
@@ -464,19 +458,20 @@ pub enum MachineStatement<T> {
 pub struct LinkDeclaration<T> {
     pub flag: Expression<T>,
     pub params: Params<T>,
-    pub to: CallableRef,
+    pub to: CallableRef<T>,
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
-pub struct CallableRef {
+pub struct CallableRef<T> {
     pub instance: String,
     pub callable: String,
+    pub params: Params<T>,
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub enum InstructionBody<T> {
     Local(Vec<PilStatement<T>>),
-    CallableRef(CallableRef),
+    CallableRef(CallableRef<T>),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]

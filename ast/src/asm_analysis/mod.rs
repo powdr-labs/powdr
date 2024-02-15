@@ -78,7 +78,7 @@ pub struct LinkDefinitionStatement<T> {
     /// the parameters to pass to the callable
     pub params: Params<T>,
     /// the callable to invoke when the flag is on. TODO: check this during type checking
-    pub to: CallableRef,
+    pub to: CallableRef<T>,
 }
 
 #[derive(Clone, Debug, Default)]
