@@ -179,16 +179,22 @@ impl<'a, T: FieldElement> Generator<'a, T> {
             ]
             .into_iter(),
         );
+
+        let identities_with_next_reference = self
+            .identities
+            .iter()
+            .filter_map(|identity| identity.contains_next_ref().then(|| *identity))
+            .collect::<Vec<_>>();
         let mut processor = BlockProcessor::new(
             RowIndex::from_i64(-1, self.fixed_data),
             data,
             mutable_state,
-            &self.identities,
+            &identities_with_next_reference,
             self.fixed_data,
             &self.witnesses,
         );
         let mut sequence_iterator = ProcessingSequenceIterator::Default(
-            DefaultSequenceIterator::new(0, self.identities.len(), None),
+            DefaultSequenceIterator::new(0, identities_with_next_reference.len(), None),
         );
         processor.solve(&mut sequence_iterator).unwrap();
         let first_row = processor.finish().remove(1);
