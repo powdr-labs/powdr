@@ -116,6 +116,10 @@ pub fn compile(
         .insert("__runtime".to_string(), runtime(coprocessors))
         .is_none());
 
+    assert!(assemblies
+        .insert("__extra_symbols".to_string(), EXTRA_SYMBOLS.to_string())
+        .is_none());
+
     // TODO remove unreferenced files.
     let (mut statements, file_ids) = disambiguator::disambiguate(
         assemblies
@@ -757,6 +761,19 @@ fn memory(with_bootloader: bool) -> String {
     "#
 }
 
+/// some extra symbols expected by rust code:
+/// - __rust_no_alloc_shim_is_unstable: compilation time acknowledgment that this feature is unstable.
+/// - __rust_alloc_error_handler_should_panic: needed by the default alloc error handler,
+///  not sure why it's not present in the asm.
+///  https://github.com/rust-lang/rust/blob/ae9d7b0c6434b27e4e2effe8f05b16d37e7ef33f/library/alloc/src/alloc.rs#L415
+static EXTRA_SYMBOLS: &str = r".data
+.globl __rust_alloc_error_handler_should_panic
+__rust_alloc_error_handler_should_panic: .byte 0
+.globl __rust_no_alloc_shim_is_unstable
+__rust_no_alloc_shim_is_unstable: .byte 0
+.text
+";
+
 fn runtime(coprocessors: &CoProcessors) -> String {
     [
         "__divdi3",
@@ -782,15 +799,9 @@ fn runtime(coprocessors: &CoProcessors) -> String {
     ]
     .map(|n| format!(".globl {n}@plt\n.globl {n}\n.set {n}@plt, {n}\n"))
     .join("\n\n")
-        + &[
-            ("__rust_alloc", "__rg_alloc"),
-            ("__rust_dealloc", "__rg_dealloc"),
-            ("__rust_realloc", "__rg_realloc"),
-            ("__rust_alloc_zeroed", "__rg_alloc_zeroed"),
-            ("__rust_alloc_error_handler", "__rg_oom"),
-        ]
-        .map(|(n, m)| format!(".globl {n}\n.set {n}, {m}\n"))
-        .join("\n\n")
+        + &[("__rust_alloc_error_handler", "__rg_oom")]
+            .map(|(n, m)| format!(".globl {n}\n.set {n}, {m}\n"))
+            .join("\n\n")
         + &coprocessors.runtime()
 }
 
@@ -806,6 +817,10 @@ fn process_statement(s: Statement, coprocessors: &CoProcessors) -> Vec<String> {
             }
             (".file", _) => {
                 // We ignore ".file" directives because they have been extracted to the top.
+                vec![]
+            }
+            (".size", _) => {
+                // We ignore ".size" directives
                 vec![]
             }
             _ if directive.starts_with(".cfi_") => vec![],

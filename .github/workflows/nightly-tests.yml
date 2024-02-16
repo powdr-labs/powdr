@@ -67,11 +67,11 @@ jobs:
     - name: Install Rust toolchain 1.74
       run: rustup toolchain install 1.74-x86_64-unknown-linux-gnu
     - name: Install nightly
-      run: rustup toolchain install nightly-2023-01-03-x86_64-unknown-linux-gnu
+      run: rustup toolchain install nightly-2024-02-01-x86_64-unknown-linux-gnu
     - name: Install riscv target
-      run: rustup target add riscv32imac-unknown-none-elf --toolchain nightly-2023-01-03-x86_64-unknown-linux-gnu
+      run: rustup target add riscv32imac-unknown-none-elf --toolchain nightly-2024-02-01-x86_64-unknown-linux-gnu
     - name: Install stdlib
-      run: rustup component add rust-src --toolchain nightly-2023-01-03-x86_64-unknown-linux-gnu
+      run: rustup component add rust-src --toolchain nightly-2024-02-01-x86_64-unknown-linux-gnu
     - name: Install pilcom
       run: git clone https://github.com/0xPolygonHermez/pilcom.git  && cd pilcom && npm install
     - name: Check without Halo2

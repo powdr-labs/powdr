@@ -220,7 +220,7 @@ fn build_cargo_command(input_dir: &str, target_dir: &Path, produce_build_plan: b
 
     let args = as_ref![
         OsStr;
-        "+nightly-2023-01-03",
+        "+nightly-2024-02-01",
         "build",
         "--release",
         "-Z",

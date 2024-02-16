@@ -253,6 +253,9 @@ fn iterate_basic_block<'a, R: Register, F: FunctionOpKind, A: Architecture>(
 
 fn ends_control_flow<R: Register, F: FunctionOpKind, A: Architecture>(s: &Statement<R, F>) -> bool {
     match s {
+        // The rust compiler allows functions that end in the panic handler (`begin_unwind`) to never return.
+        // We use this directive to identify the end of these non-returning functions.
+        Statement::Directive(dir, _) if dir == ".cfi_endproc" => true,
         Statement::Instruction(instruction, _) => {
             A::instruction_ends_control_flow(instruction.as_str())
         }
