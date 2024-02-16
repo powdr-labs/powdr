@@ -34,10 +34,7 @@ pub fn write_polys_csv_file<T: FieldElement>(
     let column_whitelist = polys
         .iter()
         .filter_map(|(name, _)| {
-            if name == "main.bootloader_input_value"
-                || name == "main.jump_to_shutdown_routine"
-                || name.starts_with("main.m_")
-            {
+            if name == "main.bootloader_input_value" || name == "main.jump_to_shutdown_routine" {
                 None
             } else {
                 Some(name.as_str())
