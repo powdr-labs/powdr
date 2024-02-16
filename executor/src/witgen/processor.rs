@@ -53,7 +53,7 @@ pub struct IdentityResult {
 /// - `'c`: The duration of this Processor's lifetime (e.g. the reference to the identity processor)
 pub struct Processor<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> {
     /// The global index of the first row of [Processor::data].
-    row_offset: u64,
+    row_offset: RowIndex,
     /// The rows that are being processed.
     data: FinalizableData<'a, T>,
     /// The mutable state
@@ -72,7 +72,7 @@ pub struct Processor<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> {
 
 impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, Q> {
     pub fn new(
-        row_offset: u64,
+        row_offset: RowIndex,
         data: FinalizableData<'a, T>,
         mutable_state: &'c mut MutableState<'a, 'b, T, Q>,
         fixed_data: &'a FixedData<'a, T>,
@@ -129,7 +129,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
     pub fn latch_value(&self, row_index: usize) -> Option<bool> {
         let row_pair = RowPair::from_single_row(
             &self.data[row_index],
-            RowIndex::from_degree(row_index as u64 + self.row_offset, self.fixed_data),
+            self.row_offset + row_index as u64,
             self.fixed_data,
             UnknownStrategy::Unknown,
         );
@@ -144,8 +144,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
     pub fn process_queries(&mut self, row_index: usize) -> Result<bool, EvalError<T>> {
         let mut query_processor =
             QueryProcessor::new(self.fixed_data, self.mutable_state.query_callback);
-        let global_row_index =
-            RowIndex::from_degree(self.row_offset + row_index as u64, self.fixed_data);
+        let global_row_index = self.row_offset + row_index as u64;
         let row_pair = RowPair::new(
             &self.data[row_index],
             &self.data[row_index + 1],
@@ -171,8 +170,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
         unknown_strategy: UnknownStrategy,
     ) -> Result<IdentityResult, EvalError<T>> {
         // Create row pair
-        let global_row_index =
-            RowIndex::from_degree(self.row_offset + row_index as u64, self.fixed_data);
+        let global_row_index = self.row_offset + row_index as u64;
         let row_pair = RowPair::new(
             &self.data[row_index],
             &self.data[row_index + 1],
@@ -228,7 +226,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
         let row_pair = RowPair::new(
             &self.data[row_index],
             &self.data[row_index + 1],
-            RowIndex::from_degree(self.row_offset + row_index as u64, self.fixed_data),
+            self.row_offset + row_index as u64,
             self.fixed_data,
             UnknownStrategy::Unknown,
         );
@@ -379,10 +377,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
                 RowPair::new(
                     &self.data[row_index - 1],
                     proposed_row,
-                    RowIndex::from_degree(
-                        row_index as DegreeType + self.row_offset - 1,
-                        self.fixed_data,
-                    ),
+                    self.row_offset + (row_index - 1) as DegreeType,
                     self.fixed_data,
                     UnknownStrategy::Zero,
                 )
@@ -392,7 +387,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
             // Because we never access the next row, we can use [RowPair::from_single_row] here.
             false => RowPair::from_single_row(
                 proposed_row,
-                RowIndex::from_degree(row_index as DegreeType + self.row_offset, self.fixed_data),
+                self.row_offset + row_index as DegreeType,
                 self.fixed_data,
                 UnknownStrategy::Zero,
             ),

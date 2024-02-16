@@ -117,9 +117,11 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
                 // Start out with a block filled with unknown values so that we do not have to deal with wrap-around
                 // when storing machine witness data.
                 // This will be filled with the default block in `take_witness_col_values`
+                let start_index = RowIndex::from_i64(-(block_size as i64), fixed_data);
                 let data = FinalizableData::with_initial_rows_in_progress(
                     witness_cols,
-                    (0..block_size).map(|i| row_factory.fresh_row(i as DegreeType)),
+                    (0..block_size)
+                        .map(|i| row_factory.fresh_row((start_index + i as DegreeType).into())),
                 );
                 BlockMachine {
                     name,
@@ -198,7 +200,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
             if let Ok(assignments) = &result {
                 if !assignments.is_complete() {
                     // rollback the changes.
-                    self.data.truncate(previous_len);
+                    self.data.truncate(previous_len + self.block_size);
                 }
             }
             result
@@ -231,6 +233,8 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
                     .map(|(v, known)| known.then_some(v))
                     .collect::<Vec<_>>();
 
+                let dummy_block = values.drain(0..self.block_size).collect::<Vec<_>>();
+
                 // For all constraints to be satisfied, unused cells have to be filled with valid values.
                 // We do this, we construct a default block, by repeating the first input to the block machine.
                 values.resize(self.fixed_data.degree as usize, None);
@@ -244,8 +248,8 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
                 // As a result, the default block consists of values of the first block if they are set, otherwise
                 // the values of the second block.
                 // TODO: Determine the row-extend per column
-                let default_block = values
-                    .iter()
+                let default_block = dummy_block
+                    .into_iter()
                     .take(self.block_size)
                     .zip(second_block_values)
                     .map(|(first_block, second_block)| {
@@ -293,7 +297,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
     }
 
     fn rows(&self) -> DegreeType {
-        self.data.len() as DegreeType
+        (self.data.len() - self.block_size) as DegreeType
     }
 
     fn process_plookup_internal<'b, Q: QueryCallback<T>>(
@@ -311,12 +315,12 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         // First check if we already store the value.
         // This can happen in the loop detection case, where this function is just called
         // to validate the constraints.
-        if left.iter().all(|v| v.is_constant()) && self.rows() > 0 {
+        if left.iter().all(|v| v.is_constant()) && self.rows() > self.block_size as DegreeType {
             // All values on the left hand side are known, check if this is a query
             // to the last row.
             let row = self.rows() - 1;
 
-            let current = &self.data[row as usize];
+            let current = &self.data[row as usize + self.block_size];
             // We don't have the next row, because it would be the first row of the next block.
             // We'll use a fresh row instead.
             let next = self.row_factory.fresh_row(row + 1);
@@ -400,13 +404,13 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         sequence_iterator: &mut ProcessingSequenceIterator,
     ) -> Result<ProcessResult<'a, T>, EvalError<T>> {
         // We start at the last row of the previous block.
-        let row_offset = self.rows() - 1;
+        let row_offset = RowIndex::from_i64(self.rows() as i64 - 1, self.fixed_data);
         // Make the block two rows larger than the block size, it includes the last row of the previous block
         // and the first row of the next block.
         let block = FinalizableData::with_initial_rows_in_progress(
             &self.witness_cols,
             (0..(self.block_size + 2))
-                .map(|i| self.row_factory.fresh_row(i as DegreeType + row_offset)),
+                .map(|i| self.row_factory.fresh_row((row_offset + i as u64).into())),
         );
         let mut processor = BlockProcessor::new(
             row_offset,
@@ -439,9 +443,10 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         // 1. Ignore the first row of the next block:
         new_block.pop();
         // 2. Merge the last row of the previous block
-        let last_row_index = self.rows() as usize - 1;
         let updated_last_row = new_block.get_mut(0).unwrap();
-        for (poly_id, existing_value) in self.data[last_row_index].iter() {
+        for (poly_id, existing_value) in
+            self.data[self.rows() as usize + self.block_size - 1].iter()
+        {
             if let CellValue::Known(v) = existing_value.value {
                 if updated_last_row[&poly_id].value.is_known()
                     && updated_last_row[&poly_id].value != existing_value.value

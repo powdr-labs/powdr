@@ -15,7 +15,7 @@ use crate::witgen::IncompleteCause;
 use super::data_structures::finalizable_data::FinalizableData;
 use super::processor::{OuterQuery, Processor};
 
-use super::rows::{Row, RowFactory, UnknownStrategy};
+use super::rows::{Row, RowFactory, RowIndex, UnknownStrategy};
 use super::{Constraints, EvalError, EvalValue, FixedData, MutableState, QueryCallback};
 
 /// Maximal period checked during loop detection.
@@ -75,7 +75,13 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
         let (identities_with_next, identities_without_next): (Vec<_>, Vec<_>) = identities
             .iter()
             .partition(|identity| identity.contains_next_ref());
-        let processor = Processor::new(row_offset, data, mutable_state, fixed_data, witnesses);
+        let processor = Processor::new(
+            RowIndex::from_degree(row_offset, fixed_data),
+            data,
+            mutable_state,
+            fixed_data,
+            witnesses,
+        );
 
         let progress_bar = ProgressBar::new(fixed_data.degree);
         progress_bar.set_style(

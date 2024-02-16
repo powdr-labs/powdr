@@ -8,7 +8,7 @@ use powdr_number::FieldElement;
 use super::{
     data_structures::finalizable_data::FinalizableData,
     processor::{OuterQuery, Processor},
-    rows::UnknownStrategy,
+    rows::{RowIndex, UnknownStrategy},
     sequence_iterator::{Action, ProcessingSequenceIterator, SequenceStep},
     EvalError, EvalValue, FixedData, IncompleteCause, MutableState, QueryCallback,
 };
@@ -27,7 +27,7 @@ pub struct BlockProcessor<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> {
 
 impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> BlockProcessor<'a, 'b, 'c, T, Q> {
     pub fn new(
-        row_offset: u64,
+        row_offset: RowIndex,
         data: FinalizableData<'a, T>,
         mutable_state: &'c mut MutableState<'a, 'b, T, Q>,
         identities: &'c [&'a Identity<Expression<T>>],
@@ -105,12 +105,11 @@ mod tests {
     use crate::{
         constant_evaluator::generate,
         witgen::{
-            data_structures::column_map::FixedColumnMap,
-            data_structures::finalizable_data::FinalizableData,
+            data_structures::{column_map::FixedColumnMap, finalizable_data::FinalizableData},
             global_constraints::GlobalConstraints,
             identity_processor::Machines,
             machines::FixedLookup,
-            rows::RowFactory,
+            rows::{RowFactory, RowIndex},
             sequence_iterator::{DefaultSequenceIterator, ProcessingSequenceIterator},
             unused_query_callback, FixedData, MutableState, QueryCallback,
         },
@@ -169,7 +168,7 @@ mod tests {
             machines: Machines::from(machines.iter_mut()),
             query_callback: &mut query_callback,
         };
-        let row_offset = 0;
+        let row_offset = RowIndex::from_degree(0, &fixed_data);
         let identities = analyzed.identities.iter().collect::<Vec<_>>();
         let witness_cols = fixed_data.witness_cols.keys().collect();
 

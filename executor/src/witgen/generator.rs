@@ -16,7 +16,7 @@ use super::block_processor::BlockProcessor;
 use super::data_structures::column_map::WitnessColumnMap;
 use super::global_constraints::GlobalConstraints;
 use super::machines::{FixedLookup, Machine};
-use super::rows::{Row, RowFactory};
+use super::rows::{Row, RowFactory, RowIndex};
 use super::sequence_iterator::{DefaultSequenceIterator, ProcessingSequenceIterator};
 use super::vm_processor::VmProcessor;
 use super::{EvalResult, FixedData, MutableState, QueryCallback};
@@ -180,7 +180,7 @@ impl<'a, T: FieldElement> Generator<'a, T> {
             .into_iter(),
         );
         let mut processor = BlockProcessor::new(
-            self.fixed_data.degree - 1,
+            RowIndex::from_i64(-1, self.fixed_data),
             data,
             mutable_state,
             &self.identities,

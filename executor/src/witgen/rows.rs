@@ -272,14 +272,14 @@ impl<T: FieldElement> From<Row<'_, T>> for WitnessColumnMap<T> {
 pub struct RowUpdater<'row, 'a, T: FieldElement> {
     current: &'row mut Row<'a, T>,
     next: &'row mut Row<'a, T>,
-    current_row_index: DegreeType,
+    current_row_index: RowIndex,
 }
 
 impl<'row, 'a, T: FieldElement> RowUpdater<'row, 'a, T> {
     pub fn new(
         current: &'row mut Row<'a, T>,
         next: &'row mut Row<'a, T>,
-        current_row_index: DegreeType,
+        current_row_index: RowIndex,
     ) -> Self {
         Self {
             current,
@@ -317,7 +317,7 @@ impl<'row, 'a, T: FieldElement> RowUpdater<'row, 'a, T> {
         }
     }
 
-    fn row_number(&self, poly: &AlgebraicReference) -> DegreeType {
+    fn row_number(&self, poly: &AlgebraicReference) -> RowIndex {
         match poly.next {
             false => self.current_row_index,
             true => self.current_row_index + 1,
