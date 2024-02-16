@@ -602,7 +602,8 @@ impl<T: FieldElement> Pipeline<T> {
                 self.log("Optimizing pil...");
                 let optimized = powdr_pilopt::optimize(analyzed_pil);
                 self.maybe_write_pil(&optimized, "_opt")?;
-                self.maybe_write_pil_object(&optimized, "_opt")?;
+                // Seems to take a long time
+                // self.maybe_write_pil_object(&optimized, "_opt")?;
                 Artifact::OptimzedPil(optimized)
             }
             Artifact::OptimzedPil(pil) => {
