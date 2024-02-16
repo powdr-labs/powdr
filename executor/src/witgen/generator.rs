@@ -183,7 +183,7 @@ impl<'a, T: FieldElement> Generator<'a, T> {
         let identities_with_next_reference = self
             .identities
             .iter()
-            .filter_map(|identity| identity.contains_next_ref().then(|| *identity))
+            .filter_map(|identity| identity.contains_next_ref().then_some(*identity))
             .collect::<Vec<_>>();
         let mut processor = BlockProcessor::new(
             RowIndex::from_i64(-1, self.fixed_data),

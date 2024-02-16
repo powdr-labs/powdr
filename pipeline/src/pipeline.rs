@@ -757,15 +757,15 @@ impl<T: FieldElement> Pipeline<T> {
         Ok(())
     }
 
-    fn maybe_write_pil_object(&self, pil: &Analyzed<T>, suffix: &str) -> Result<(), Vec<String>> {
-        if let Some(path) = self.path_if_should_write(|name| format!("{name}{suffix}.pilo"))? {
-            SerializedAnalyzed::try_from(pil)
-                .map_err(|e| vec![e])?
-                .serialize_to(path)
-                .map_err(|e| vec![e])?;
-        }
-        Ok(())
-    }
+    // fn maybe_write_pil_object(&self, pil: &Analyzed<T>, suffix: &str) -> Result<(), Vec<String>> {
+    //     if let Some(path) = self.path_if_should_write(|name| format!("{name}{suffix}.pilo"))? {
+    //         SerializedAnalyzed::try_from(pil)
+    //             .map_err(|e| vec![e])?
+    //             .serialize_to(path)
+    //             .map_err(|e| vec![e])?;
+    //     }
+    //     Ok(())
+    // }
 
     fn maybe_write_constants(&self, constants: &[(String, Vec<T>)]) -> Result<(), Vec<String>> {
         if let Some(path) = self.path_if_should_write(|name| format!("{name}_constants.bin"))? {

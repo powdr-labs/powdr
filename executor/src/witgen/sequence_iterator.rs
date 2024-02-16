@@ -169,27 +169,29 @@ where
 pub enum ProcessingSequenceIterator {
     Default(DefaultSequenceIterator),
     Cached(<Vec<SequenceStep> as IntoIterator>::IntoIter),
+    Incomplete,
 }
 
 impl ProcessingSequenceIterator {
     pub fn report_progress(&mut self, progress_in_last_step: bool) {
         match self {
             Self::Default(it) => it.report_progress(progress_in_last_step),
-            Self::Cached(_) => {} // Progress is ignored
+            Self::Cached(_) => {}  // Progress is ignored
+            Self::Incomplete => {} // TODO: Is this reachable?
         }
     }
 
     pub fn has_steps(&self) -> bool {
         match self {
-            Self::Default(_) => true,
-            Self::Cached(it) => it.len() > 0,
+            Self::Default(_) | Self::Cached(_) => true,
+            Self::Incomplete => false,
         }
     }
 
     pub fn is_cached(&self) -> bool {
         match self {
             Self::Default(_) => false,
-            Self::Cached(_) => true,
+            Self::Cached(_) | Self::Incomplete => true,
         }
     }
 }
@@ -201,14 +203,20 @@ impl Iterator for ProcessingSequenceIterator {
         match self {
             Self::Default(it) => it.next(),
             Self::Cached(it) => it.next(),
+            Self::Incomplete => unreachable!(),
         }
     }
+}
+
+enum CacheEntry {
+    Cached(Vec<SequenceStep>),
+    Incomplete,
 }
 
 pub struct ProcessingSequenceCache {
     block_size: usize,
     identities_count: usize,
-    cache: BTreeMap<SequenceCacheKey, Vec<SequenceStep>>,
+    cache: BTreeMap<SequenceCacheKey, CacheEntry>,
 }
 
 impl ProcessingSequenceCache {
@@ -229,10 +237,11 @@ impl ProcessingSequenceCache {
         T: FieldElement,
     {
         match self.cache.get(&left.into()) {
-            Some(cached_sequence) => {
+            Some(CacheEntry::Cached(cached_sequence)) => {
                 log::trace!("Using cached sequence");
                 ProcessingSequenceIterator::Cached(cached_sequence.clone().into_iter())
             }
+            Some(CacheEntry::Incomplete) => ProcessingSequenceIterator::Incomplete,
             None => {
                 log::trace!("Using default sequence");
                 self.get_default_sequence_iterator()
@@ -254,7 +263,9 @@ impl ProcessingSequenceCache {
         K: Copy + Ord,
         T: FieldElement,
     {
-        self.cache.entry(left.into()).or_default();
+        self.cache
+            .entry(left.into())
+            .or_insert(CacheEntry::Incomplete);
     }
 
     pub fn report_processing_sequence<K, T>(
@@ -267,8 +278,11 @@ impl ProcessingSequenceCache {
     {
         match sequence_iterator {
             ProcessingSequenceIterator::Default(it) => {
-                self.cache.entry(left.into()).or_insert(it.progress_steps);
+                self.cache
+                    .entry(left.into())
+                    .or_insert(CacheEntry::Cached(it.progress_steps));
             }
+            ProcessingSequenceIterator::Incomplete => unreachable!(),
             ProcessingSequenceIterator::Cached(_) => {} // Already cached, do nothing
         }
     }
