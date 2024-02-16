@@ -15,3 +15,9 @@ let fold = |arr, initial, folder| std::utils::fold(len(arr), |i| arr[i], initial
 /// Returns the sum of the array elements.
 /// This actually also works on field elements, so the type is currently too restrictive.
 let sum: int[] -> int = |arr| fold(arr, 0, |a, b| a + b);
+
+/// Zips two arrays
+let zip2 = |array1, array2, fn| new(len(array1), |i| fn(array1[i], array2[i]));
+
+/// Zip three arrays
+let zip3 = |array1, array2, array3, fn| new(len(array1), |i| fn(array1[i], array2[i], array3[i]));
