@@ -239,7 +239,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
                 // We do this, we construct a default block, by repeating the first input to the block machine.
                 values.resize(self.fixed_data.degree as usize, None);
 
-                let second_block_values = values.iter().skip(self.block_size).take(self.block_size);
+                let first_block_values = values.iter().take(self.block_size);
 
                 // The first block is a dummy block (filled mostly with None), the second block is the first block
                 // resulting of an actual evaluation.
@@ -250,8 +250,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
                 // TODO: Determine the row-extend per column
                 let default_block = dummy_block
                     .into_iter()
-                    .take(self.block_size)
-                    .zip(second_block_values)
+                    .zip(first_block_values)
                     .map(|(first_block, second_block)| {
                         first_block.or(*second_block).unwrap_or_default()
                     })
