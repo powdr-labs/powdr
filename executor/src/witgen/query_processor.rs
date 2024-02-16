@@ -8,7 +8,10 @@ use powdr_ast::analyzed::{
 use powdr_number::{DegreeType, FieldElement};
 use powdr_pil_analyzer::evaluator::{self, Custom, EvalError, SymbolLookup, Value};
 
-use super::{rows::RowPair, Constraint, EvalResult, EvalValue, FixedData, IncompleteCause};
+use super::{
+    rows::{RowIndex, RowPair},
+    Constraint, EvalResult, EvalValue, FixedData, IncompleteCause,
+};
 
 /// Computes value updates that result from a query.
 pub struct QueryProcessor<'a, 'b, T: FieldElement, QueryCallback: Send + Sync> {
@@ -81,7 +84,7 @@ impl<'a, 'b, T: FieldElement, QueryCallback: super::QueryCallback<T>>
         rows: &RowPair<T>,
     ) -> Result<String, EvalError> {
         let arguments = vec![Rc::new(Value::Integer(num_bigint::BigInt::from(
-            rows.current_row_index,
+            u64::from(rows.current_row_index),
         )))];
         let symbols = Symbols {
             fixed_data: self.fixed_data,
@@ -141,12 +144,11 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T, Reference<'a>> for Symbols<'a, T> 
         };
         Ok(Value::FieldElement(match function.poly_id.ptype {
             PolynomialType::Committed | PolynomialType::Intermediate => {
-                let next = self
-                    .rows
-                    .is_row_number_next(DegreeType::try_from(row).unwrap())
-                    .map_err(|_| {
-                        EvalError::OutOfBounds(format!("Referenced row outside of window: {row}"))
-                    })?;
+                let row_index =
+                    RowIndex::from_degree(DegreeType::try_from(row).unwrap(), self.fixed_data);
+                let next = self.rows.is_row_number_next(row_index).map_err(|_| {
+                    EvalError::OutOfBounds(format!("Referenced row outside of window: {row}"))
+                })?;
                 let poly_ref = AlgebraicReference {
                     name: function.name.to_string(),
                     poly_id: function.poly_id,

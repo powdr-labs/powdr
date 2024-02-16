@@ -8,7 +8,7 @@ use crate::witgen::data_structures::finalizable_data::FinalizableData;
 use crate::witgen::global_constraints::GlobalConstraints;
 use crate::witgen::identity_processor::IdentityProcessor;
 use crate::witgen::processor::OuterQuery;
-use crate::witgen::rows::{CellValue, RowFactory, RowPair, UnknownStrategy};
+use crate::witgen::rows::{CellValue, RowFactory, RowIndex, RowPair, UnknownStrategy};
 use crate::witgen::sequence_iterator::{ProcessingSequenceCache, ProcessingSequenceIterator};
 use crate::witgen::util::try_to_simple_poly;
 use crate::witgen::{machines::Machine, EvalError, EvalValue, IncompleteCause};
@@ -323,7 +323,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
             let row_pair = RowPair::new(
                 current,
                 &next,
-                row,
+                RowIndex::from_degree(row, self.fixed_data),
                 self.fixed_data,
                 UnknownStrategy::Unknown,
             );

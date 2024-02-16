@@ -1,4 +1,8 @@
-use std::{collections::HashSet, fmt::Debug};
+use std::{
+    collections::HashSet,
+    fmt::Debug,
+    ops::{Add, Sub},
+};
 
 use itertools::Itertools;
 use powdr_ast::analyzed::{AlgebraicExpression as Expression, AlgebraicReference, PolyID};
@@ -15,6 +19,72 @@ use super::{
     symbolic_witness_evaluator::{SymoblicWitnessEvaluator, WitnessColumnEvaluator},
     FixedData,
 };
+
+#[derive(Clone, Copy)]
+pub struct RowIndex {
+    index: DegreeType,
+    degree: DegreeType,
+}
+
+impl From<RowIndex> for DegreeType {
+    fn from(row_index: RowIndex) -> Self {
+        row_index.index
+    }
+}
+
+impl RowIndex {
+    pub fn from_i64<T: FieldElement>(index: i64, fixed_data: &FixedData<'_, T>) -> Self {
+        let degree = fixed_data.degree as i64;
+        assert!(index >= -degree);
+        Self {
+            index: ((index + degree) % degree) as DegreeType,
+            degree: fixed_data.degree,
+        }
+    }
+
+    pub fn from_degree<T>(index: DegreeType, fixed_data: &FixedData<'_, T>) -> Self {
+        Self {
+            index: (index % fixed_data.degree) as DegreeType,
+            degree: fixed_data.degree,
+        }
+    }
+}
+
+impl Add<DegreeType> for RowIndex {
+    type Output = RowIndex;
+
+    fn add(self, rhs: DegreeType) -> RowIndex {
+        RowIndex {
+            index: (self.index + rhs) % self.degree,
+            degree: self.degree,
+        }
+    }
+}
+
+impl Sub<RowIndex> for RowIndex {
+    type Output = i64;
+
+    fn sub(self, rhs: RowIndex) -> i64 {
+        assert_eq!(self.degree, rhs.degree);
+        let degree = self.degree as i64;
+        let lhs = self.index as i64;
+        let rhs = rhs.index as i64;
+        let diff = lhs - rhs;
+        if diff <= -degree / 2 {
+            diff + degree
+        } else if diff >= degree / 2 {
+            diff - degree
+        } else {
+            diff
+        }
+    }
+}
+
+impl std::fmt::Display for RowIndex {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.index)
+    }
+}
 
 #[derive(Clone, PartialEq, Debug)]
 pub enum CellValue<T: FieldElement> {
@@ -268,7 +338,7 @@ pub enum UnknownStrategy {
 pub struct RowPair<'row, 'a, T: FieldElement> {
     pub current: &'row Row<'a, T>,
     pub next: Option<&'row Row<'a, T>>,
-    pub current_row_index: DegreeType,
+    pub current_row_index: RowIndex,
     fixed_data: &'a FixedData<'a, T>,
     unknown_strategy: UnknownStrategy,
 }
@@ -277,7 +347,7 @@ impl<'row, 'a, T: FieldElement> RowPair<'row, 'a, T> {
     pub fn new(
         current: &'row Row<'a, T>,
         next: &'row Row<'a, T>,
-        current_row_index: DegreeType,
+        current_row_index: RowIndex,
         fixed_data: &'a FixedData<'a, T>,
         unknown_strategy: UnknownStrategy,
     ) -> Self {
@@ -293,7 +363,7 @@ impl<'row, 'a, T: FieldElement> RowPair<'row, 'a, T> {
     /// Creates a new row pair from a single row, setting the next row to None.
     pub fn from_single_row(
         current: &'row Row<'a, T>,
-        current_row_index: DegreeType,
+        current_row_index: RowIndex,
         fixed_data: &'a FixedData<'a, T>,
         unknown_strategy: UnknownStrategy,
     ) -> Self {
@@ -335,7 +405,7 @@ impl<'row, 'a, T: FieldElement> RowPair<'row, 'a, T> {
     pub fn evaluate<'b>(&self, expr: &'b Expression<T>) -> AffineResult<&'b AlgebraicReference, T> {
         ExpressionEvaluator::new(SymoblicWitnessEvaluator::new(
             self.fixed_data,
-            self.current_row_index,
+            self.current_row_index.into(),
             self,
         ))
         .evaluate(expr)
@@ -343,7 +413,7 @@ impl<'row, 'a, T: FieldElement> RowPair<'row, 'a, T> {
 
     /// Returns Ok(true) if the given row number references the "next" row,
     /// Ok(false) if it references the "current" row and Err if it is out of range.
-    pub fn is_row_number_next(&self, row_number: DegreeType) -> Result<bool, ()> {
+    pub fn is_row_number_next(&self, row_number: RowIndex) -> Result<bool, ()> {
         match row_number - self.current_row_index {
             0 => Ok(false),
             1 => Ok(true),
