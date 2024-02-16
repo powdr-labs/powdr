@@ -17,4 +17,5 @@ let fold = |arr, initial, folder| std::utils::fold(len(arr), |i| arr[i], initial
 let sum: int[] -> int = |arr| fold(arr, 0, |a, b| a + b);
 
 /// Zips two arrays
+// TODO: Assert that lengths are equal when expressions are supported.
 let zip = |array1, array2, fn| new(len(array1), |i| fn(array1[i], array2[i]));
