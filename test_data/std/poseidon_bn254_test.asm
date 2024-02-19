@@ -39,6 +39,8 @@ machine Main {
 
     PoseidonBN254 poseidon;
 
+    // TODO: This doesn't work. Change this in the PIL
+    // instr poseidon X0, X1, STEP -> = poseidon.poseidon_permutation;
     instr poseidon X0, X1 -> = poseidon.poseidon_permutation;
 
     instr assert_eq X0, X1 {
