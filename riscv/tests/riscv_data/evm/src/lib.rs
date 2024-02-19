@@ -1,5 +1,6 @@
 #![no_std]
 
+use powdr_riscv_runtime::{coprocessors::get_data_serde, print};
 use revm::{
     db::{CacheDB, EmptyDB},
     primitives::{
@@ -7,10 +8,8 @@ use revm::{
     },
     EVM,
 };
-use powdr_riscv_runtime::{print, coprocessors::get_data_serde};
 
 extern crate alloc;
-use alloc::vec;
 use alloc::vec::Vec;
 
 #[no_mangle]
