@@ -65,7 +65,10 @@ fn executor_benchmark(c: &mut Criterion) {
                 &pil_with_constants.fixed_cols,
                 vec![(
                     "main.bootloader_input_value".to_string(),
-                    default_input(&[63, 64, 65]),
+                    default_input(&[63, 64, 65])
+                        .into_iter()
+                        .map(|e| e.into_fe())
+                        .collect(),
                 )],
             )
         })

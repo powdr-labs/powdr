@@ -149,6 +149,14 @@ impl<T: FieldElement, const N_LEAVES_LOG: usize, const WORDS_PER_PAGE: usize>
     }
 }
 
+impl<T: FieldElement, const N_LEAVES_LOG: usize, const WORDS_PER_PAGE: usize> Default
+    for MerkleTree<T, N_LEAVES_LOG, WORDS_PER_PAGE>
+{
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[cfg(test)]
 mod test {
     use powdr_number::GoldilocksField;
