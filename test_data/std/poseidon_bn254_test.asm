@@ -1,4 +1,5 @@
 use std::hash::poseidon_bn254::PoseidonBN254;
+use std::array;
 
 machine Main {
     degree 512;
@@ -15,8 +16,12 @@ machine Main {
     col witness m_step;
     col witness m_change;
     col witness m_value;
-    col witness m_is_write;
-    col witness m_is_read;
+    col witness m_is_write, m_is_write_poseidon;
+    col witness m_is_read, m_is_read_poseidon;
+
+    // Makes sure all m_is_* columns are boolean and at most one is active
+    let ONE_HOT_OR_NONE: col[4] = array::new(4, |i| |row| if row % 5 == i { 1 } else { 0 });
+    {m_is_write, m_is_write_poseidon, m_is_read, m_is_read_poseidon } in { ONE_HOT_OR_NONE[0], ONE_HOT_OR_NONE[1], ONE_HOT_OR_NONE[2], ONE_HOT_OR_NONE[3] };
 
     col fixed POSITIVE(i) { i + 1 };
     col fixed LAST  = [0]* + [1];
@@ -26,11 +31,8 @@ machine Main {
     (m_addr' - m_addr) * (1 - m_change) = 0;
     (1 - LAST) { m_change * (m_addr' - m_addr) + (1 - m_change) * (m_step' - m_step) } in POSITIVE;
     (1 - m_change) * LAST = 0;
-    m_is_write * (1 - m_is_write) = 0;
-    m_is_read * (1 - m_is_read) = 0;
-    m_is_read * m_is_write = 0;
-    (1 - m_is_write') * (1 - m_change) * (m_value' - m_value) = 0;
-    (1 - m_is_write') * m_change * m_value' = 0;
+    (1 - m_is_write' - m_is_write_poseidon') * (1 - m_change) * (m_value' - m_value) = 0;
+    (1 - m_is_write' - m_is_write_poseidon') * m_change * m_value' = 0;
 
     instr mstore X0, X1 { { X0, STEP, X1 } is m_is_write { m_addr, m_step, m_value } }
     instr mload X0 -> X1 { { X0, STEP, X1 } is m_is_read { m_addr, m_step, m_value } }
