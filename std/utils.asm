@@ -28,17 +28,17 @@ let force_bool: expr -> constr = |c| c * (1 - c) = 0;
 /// first `size[i]` numbers (i.e. `0` until `size[i] - 1`, inclusive), such that all combinations
 /// of values of these functions appear as combined outputs.
 /// Each of the functions cycles through its values, advancing to the next number whenever the
-/// next function has completed a cycle (or always advancing if it is the last function).
+/// previous function has completed a cycle (or always advancing if it is the first function).
 /// This function is useful for combined range checks or building the inputs for function
 /// that is implemented in a lookup.
 /// See binary.asm for an example.
-let cross_product: int[] -> (int -> int)[] = |sizes| cross_product_internal(1, std::array::len(sizes), sizes);
+let cross_product: int[] -> (int -> int)[] = |sizes| cross_product_internal(1, 0, sizes);
 
-let cross_product_internal: int, int[] -> (int -> int)[] = |cycle_len, len, sizes|
-    if len == 0 {
+let cross_product_internal: int, int, int[] -> (int -> int)[] = |cycle_len, pos, sizes|
+    if pos >= std::array::len(sizes) {
         // We could assert here that the degree is at least `cycle_len`
         []
     } else {
-        cross_product_internal(cycle_len * sizes[len - 1], len - 1, sizes)
-            + [|i| (i / cycle_len) % (sizes[len - 1])]
+        [|i| (i / cycle_len) % sizes[pos]] +
+            cross_product_internal(cycle_len * sizes[pos], pos + 1, sizes)
     };

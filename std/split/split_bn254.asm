@@ -1,3 +1,5 @@
+use std::utils::cross_product;
+
 // Splits an arbitrary field element into 8 u32s (in little endian order), on the BN254 field.
 machine SplitBN254(RESET, _) {
 
@@ -60,10 +62,13 @@ machine SplitBN254(RESET, _) {
     col fixed BYTES_MAX = [0x00, 0x00, 0xf0, 0x93, 0xf5, 0xe1, 0x43, 0x91, 0x70, 0xb9, 0x79, 0x48, 0xe8, 0x33, 0x28, 0x5d, 0x58, 0x81, 0x81, 0xb6, 0x45, 0x50, 0xb8, 0x29, 0xa0, 0x31, 0xe1, 0x72, 0x4e, 0x64, 0x30, 0x00]*;
 
     // Byte comparison block machine
-    col fixed P_A(i) { i % 256 };
-    col fixed P_B(i) { (i >> 8) % 256 };
-    col fixed P_LT(i) { if std::convert::int(P_A(i)) < std::convert::int(P_B(i)) { 1 } else { 0 } };
-    col fixed P_GT(i) { if std::convert::int(P_A(i)) > std::convert::int(P_B(i)) { 1 } else { 0 } };
+    let compare_inputs = cross_product([256, 256]);
+    let a = compare_inputs[1];
+    let b = compare_inputs[0];
+    let P_A: col = a;
+    let P_B: col = b;
+    col fixed P_LT(i) { if a(i) < b(i) { 1 } else { 0 } };
+    col fixed P_GT(i) { if a(i) > b(i) { 1 } else { 0 } };
 
     // Compare the current byte with the corresponding byte of the maximum value.
     col witness lt;

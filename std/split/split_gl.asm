@@ -1,3 +1,5 @@
+use std::utils::cross_product;
+
 // Splits an arbitrary field element into two u32s, on the Goldilocks field.
 machine SplitGL(RESET, _) {
 
@@ -56,10 +58,13 @@ machine SplitGL(RESET, _) {
     col fixed BYTES_MAX = [0, 0, 0, 0xff, 0xff, 0xff, 0xff, 0]*;
 
     // Byte comparison block machine
-    col fixed P_A(i) { i % 256 };
-    col fixed P_B(i) { (i >> 8) % 256 };
-    col fixed P_LT(i) { if std::convert::int(P_A(i)) < std::convert::int(P_B(i)) { 1 } else { 0 } };
-    col fixed P_GT(i) { if std::convert::int(P_A(i)) > std::convert::int(P_B(i)) { 1 } else { 0 } };
+    let inputs = cross_product([256, 256]);
+    let a: int -> int = inputs[0];
+    let b: int -> int = inputs[1];
+    let P_A: col = a;
+    let P_B: col = b;
+    col fixed P_LT(i) { if a(i) < b(i) { 1 } else { 0 } };
+    col fixed P_GT(i) { if a(i) > b(i) { 1 } else { 0 } };
 
     // Compare the current byte with the corresponding byte of the maximum value.
     col witness lt;
