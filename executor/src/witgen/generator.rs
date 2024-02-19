@@ -179,16 +179,26 @@ impl<'a, T: FieldElement> Generator<'a, T> {
             ]
             .into_iter(),
         );
+
+        // We're only interested in the first row anyway, so identities without a next reference
+        // are irrelevant.
+        // Also, they can lead to problems in the case where some witness columns are provided
+        // externally, e.g. if the last row happens to call into a stateful machine like memory.
+        let identities_with_next_reference = self
+            .identities
+            .iter()
+            .filter_map(|identity| identity.contains_next_ref().then_some(*identity))
+            .collect::<Vec<_>>();
         let mut processor = BlockProcessor::new(
             self.fixed_data.degree - 1,
             data,
             mutable_state,
-            &self.identities,
+            &identities_with_next_reference,
             self.fixed_data,
             &self.witnesses,
         );
         let mut sequence_iterator = ProcessingSequenceIterator::Default(
-            DefaultSequenceIterator::new(0, self.identities.len(), None),
+            DefaultSequenceIterator::new(0, identities_with_next_reference.len(), None),
         );
         processor.solve(&mut sequence_iterator).unwrap();
         let first_row = processor.finish().remove(1);
