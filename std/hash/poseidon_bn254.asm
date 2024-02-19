@@ -1,18 +1,18 @@
 use std::array;
 use std::utils::unchanged_until;
 
-// Implements the Poseidon permutation for the BN254 curve.
+// Implements the poseidon permutation for the BN254 curve.
 // Note that this relies on the trace table being non-wrapping, so it will
 // only work with the Halo2 backend (which is the only backend that supports
 // the BN254 curve).
-machine PoseidonBN254(FIRSTBLOCK, operation_id) {
+machine PoseidonBN254(LASTBLOCK, operation_id) {
 
     // Hashes two "rate" elements and one "capacity" element to one field element
     // by applying the Poseidon permutation and returning the first rate element.
     // When the hash function is used only once, the capacity element should be
     // set to a constant, where different constants can be used to define different
     // hash functions.
-    operation poseidon_permutation<0> state[0], state[1], state[2] -> output[0];
+    operation poseidon_permutation<0> input_addr, output_addr ->;
 
     col witness operation_id;
 
@@ -24,8 +24,6 @@ machine PoseidonBN254(FIRSTBLOCK, operation_id) {
 
     // Number of field elements in the state
     let STATE_SIZE = 3;
-    // Number of output elements
-    let OUTPUT_SIZE = 1;
     // Number of full rounds
     let FULL_ROUNDS = 8;
     // Number of partial rounds (half of them before and half of them after the full rounds)
@@ -61,9 +59,7 @@ machine PoseidonBN254(FIRSTBLOCK, operation_id) {
     // State of the Poseidon permutation (2 rate elements and 1 capacity element)
     pol commit state[STATE_SIZE];
 
-    // The first OUTPUT_SIZE elements of the *final* state
-    // (constrained to be constant within the block and equal to parts of the state in the last row)
-    pol commit output[OUTPUT_SIZE];
+    pol commit input_addr, output_addr, step;
 
     // Add round constants
     let a: expr[STATE_SIZE] = array::zip(state, C, |state, C| state + C);
@@ -88,15 +84,15 @@ machine PoseidonBN254(FIRSTBLOCK, operation_id) {
     ];
 
     // Multiply with MDS Matrix
-    let dot_product = |v1, v2| array::sum(array::zip(v1, v2, |v1_i, v2_i| v1_i * v2_i));
-    let c: expr[STATE_SIZE] = array::map(M, |M_row_i| dot_product(M_row_i, b));
+    let c: expr[STATE_SIZE] = array::map(M, |M| M[0] * b[0] + M[1] * b[1] + M[2] * b[2]);
 
     // Copy c to state in the next row
     array::zip(state, c, |state, c| (state' - c) * (1-LAST) = 0);
 
-    // In the last row, the first OUTPUT_SIZE elements of the state should equal output
-    array::zip(output, state, |output, state| LASTBLOCK * (output - state) = 0);
+    // TODO: Replace hard-coded values with memory reads!
+    array::zip([0, 1, 2], state, |input_state, state| FIRSTBLOCK * (input_state - state) = 0);
 
-    // The output should stay constant in the block
-    array::map(output, |c| unchanged_until(c, LAST));
+    unchanged_until(input_addr, LAST);
+    unchanged_until(output_addr, LAST);
+    unchanged_until(step, LAST);
 }
