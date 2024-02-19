@@ -136,7 +136,12 @@ namespace main(512);
     pol commit _operation_id_no_change;
     (_operation_id_no_change = ((1 - _block_enforcer_last_step) * (1 - instr_return)));
     ((_operation_id_no_change * (_operation_id' - _operation_id)) = 0);
-    instr_poseidon { 0, X0, X1 } in main_poseidon.LASTBLOCK { main_poseidon.operation_id, main_poseidon.input_addr, main_poseidon.output_addr };
+
+
+    // CHANGED
+    instr_poseidon { 0, X0, X1, STEP } in main_poseidon.LASTBLOCK { main_poseidon.operation_id, main_poseidon.input_addr, main_poseidon.output_addr, main_poseidon.step };
+
+
     pol constant _linker_first_step = [1] + [0]*;
     ((_linker_first_step * (_operation_id - 2)) = 0);
 namespace main_poseidon(512);
@@ -169,7 +174,6 @@ namespace main_poseidon(512);
     pol commit c[STATE_SIZE];
     std::array::zip2(c, M, (|c, M| (c = (((M[0] * b[0]) + (M[1] * b[1])) + (M[2] * b[2])))));
     std::array::zip2(state, c, (|state, c| (((state' - c) * (1 - LAST)) = 0)));
-    std::array::zip2([0, 1, 2], state, (|input_state, state| ((FIRSTBLOCK * (input_state - state)) = 0)));
     std::utils::unchanged_until(input_addr, LAST);
     std::utils::unchanged_until(output_addr, LAST);
     std::utils::unchanged_until(step, LAST);
@@ -177,3 +181,24 @@ namespace main_poseidon(512);
     pol commit _operation_id_no_change;
     (_operation_id_no_change = ((1 - _block_enforcer_last_step) * (1 - LASTBLOCK)));
     ((_operation_id_no_change * (operation_id' - operation_id)) = 0);
+
+    // Replaces this constraint with memory reads:
+    // std::array::zip2([0, 1, 2], state, (|input_state, state| ((FIRSTBLOCK * (input_state - state)) = 0)));
+    
+    // This alternative works, but requires one lookup per word (in this case only 3, for Goldilocks it would be 12)
+    // FIRSTBLOCK { input_addr, step, state[0] } is main.m_is_read_poseidon { main.m_addr, main.m_step, main.m_value };
+    // FIRSTBLOCK { input_addr + 4, step, state[1] } is main.m_is_read_poseidon { main.m_addr, main.m_step, main.m_value };
+    // FIRSTBLOCK { input_addr + 8, step, state[2] } is main.m_is_read_poseidon { main.m_addr, main.m_step, main.m_value };
+
+    // This has the disadvantage of needing more fixed columns, but only needs one lookup!
+    col witness input_state[3];
+    std::array::map(input_state, |input_state| std::utils::unchanged_until(input_state, LAST));
+    std::array::zip2(input_state, state, |input_state, state| FIRSTBLOCK * (input_state - state) = 0);
+    pol constant SECONDBLOCK(i) { match (i % ROWS_PER_HASH) { 1 => 1, _ => 0, } };
+    pol constant THIRDBLOCK(i) { match (i % ROWS_PER_HASH) { 2 => 1, _ => 0, } };
+    let do_read = FIRSTBLOCK + SECONDBLOCK + THIRDBLOCK;
+    let addr = FIRSTBLOCK * input_addr + SECONDBLOCK * (input_addr + 4) + THIRDBLOCK * (input_addr + 8);
+    let dest = FIRSTBLOCK * input_state[0] + SECONDBLOCK * input_state[1] + THIRDBLOCK * input_state[2];
+    do_read { addr, step, dest } is main.m_is_read_poseidon { main.m_addr, main.m_step, main.m_value };
+
+    LASTBLOCK { output_addr, step, state[0] } is main.m_is_write_poseidon { main.m_addr, main.m_step, main.m_value };
