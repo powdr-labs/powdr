@@ -20,23 +20,23 @@ pub fn execute<F: FieldElement>(
 
     vec![
         ("main._operation_id".to_string(), ctx.operation_id),
-        ("main.pc".to_string(), ctx.pc),
-        ("main.X".to_string(), ctx.x),
-        ("main.Y".to_string(), ctx.y),
-        ("main.reg_write_X_A".to_string(), ctx.reg_write_x_a),
-        ("main.A".to_string(), ctx.a),
-        ("main.instr_inc".to_string(), ctx.instr_inc),
-        ("main.instr_dec".to_string(), ctx.instr_dec),
-        ("main.instr_assert_eq".to_string(), ctx.instr_assert_eq),
-        ("main.instr__jump_to_operation".to_string(), ctx.instr_jump_to_operation),
-        ("main.instr__reset".to_string(), ctx.instr_reset),
-        ("main.instr__loop".to_string(), ctx.instr_loop),
-        ("main.X_const".to_string(), ctx.x_const),
-        ("main.read_X_A".to_string(), ctx.read_x_a),
-        ("main.Y_const".to_string(), ctx.y_const),
-        ("main.X_free_value".to_string(), ctx.x_free_value),
-        ("main.Y_free_value".to_string(), ctx.y_free_value),
         ("main._operation_id_no_change".to_string(), ctx.operation_id_no_change),
+        ("main._pc".to_string(), ctx.pc),
+        ("main._x".to_string(), ctx.x),
+        ("main._y".to_string(), ctx.y),
+        ("main._a".to_string(), ctx.a),
+        ("main._reg_write_X_A".to_string(), ctx.reg_write_x_a),
+        ("main._instr_inc".to_string(), ctx.instr_inc),
+        ("main._instr_dec".to_string(), ctx.instr_dec),
+        ("main._instr_assert_eq".to_string(), ctx.instr_assert_eq),
+        ("main._instr_jump_to_operation".to_string(), ctx.instr_jump_to_operation),
+        ("main._instr_reset".to_string(), ctx.instr_reset),
+        ("main._instr_loop".to_string(), ctx.instr_loop),
+        ("main._X_const".to_string(), ctx.x_const),
+        ("main._read_X_A".to_string(), ctx.read_x_a),
+        ("main._Y_const".to_string(), ctx.y_const),
+        ("main._X_free_value".to_string(), ctx.x_free_value),
+        ("main._Y_free_value".to_string(), ctx.y_free_value),
     ]
 }
 
@@ -91,39 +91,48 @@ impl<F: FieldElement> Context<F> {
             self.update();
             self.current_row += 1;
 
+            // Leo: can remove this for now
             if self.current_row >= 6 {
                 self.running = false;
             }
         }
 
+        // Leo: can remove this for now, maybe Georg's PR already solves it
         // TODO fix
         *self.a.first_mut().unwrap() = self.a.last().unwrap().clone();
     }
 
+    // Leo: for pc + each state register
     fn init(&mut self) {
         self.pc.push(F::zero());
         println!("push inside init");
         self.a.push(F::zero());
     }
 
+    // Leo: for each instruction, empty function
     fn inc(&mut self) {
         let a = self.a.last().unwrap();
         println!("push inside inc");
         self.a.push(a.clone() + F::one());
     }
 
+    // Leo: for each instruction, empty function
     fn dec(&mut self) {
         let a = self.a.last().unwrap();
         println!("push inside dec");
         self.a.push(a.clone() - F::one());
     }
 
+    // Leo: for each instruction, empty function
     fn assert_eq(&mut self) {
         let x = self.x.last().unwrap();
         let y = self.y.last().unwrap();
         assert_eq!(x, y);
     }
 
+    // Collect all instructions
+    // For each instruction flag, check if == 1
+    // If yes, run the instruction
     fn run_instructions(&mut self) {
         let instr_inc = self.instr_inc.last().unwrap();
         let instr_dec = self.instr_dec.last().unwrap();
@@ -143,6 +152,7 @@ impl<F: FieldElement> Context<F> {
         }
     }
 
+    // Probably no need to change
     fn update(&mut self) {
         // order matters here:
         // - the starting point is pc = 0, state registers = 0
@@ -168,11 +178,13 @@ impl<F: FieldElement> Context<F> {
         println!("a = {:?}", self.a);
     }
 
+    // Leo: need QueryCallback to check for prover inputs
     fn update_inputs(&mut self) {
         self.x_free_value.push(F::zero());
         self.y_free_value.push(F::zero());
     }
 
+    // Check every pair read_ASSGN_STATE
     fn update_writes_to_assignment_registers(&mut self) {
         let mut x_prime = self.x_const.last().unwrap().clone();
 
@@ -187,26 +199,26 @@ impl<F: FieldElement> Context<F> {
         self.y.push(self.y_const.last().unwrap().clone());
     }
 
+    // Check all pairs reg_write_ASSGN_STATE
     fn update_writes_to_state_registers(&mut self) {
         let reg_write_x_a = self.reg_write_x_a.last().unwrap();
-        let instr_inc = self.instr_inc.last().unwrap();
-        let instr_dec = self.instr_dec.last().unwrap();
-        let instr_touches_a = instr_inc == &F::one() || instr_dec == &F::one();
 
-        if !instr_touches_a {
-            let a = self.a.last().cloned().unwrap_or_else(|| F::zero().clone());
+        // inc (done)
+        // dec (done)
+        // reg_write_x_a (done)
+        // a (default)
 
-            let a_prime = if reg_write_x_a == &F::one() {
-                self.x.last().unwrap().clone()
-            } else {
-                a
-            };
+        let a = self.a.last().cloned().unwrap_or_else(|| F::zero().clone());
 
-            println!("a_prime inside updates = {:?}", a_prime);
-            self.a.push(a_prime);
-        }
+        if reg_write_x_a == &F::one() {
+            self.a.push(self.x.last().unwrap().clone())
+        } else if self.a.len() < self.pc.len() {
+            self.a.push(a);
+        };
     }
 
+    // Can be created in the same place where
+    // the pc update rule constraint is created
     fn update_pc(&mut self) {
         let pc = self.pc.last().unwrap();
         let pc_prime = if self.instr_jump_to_operation.last().unwrap().is_one() {
@@ -219,6 +231,8 @@ impl<F: FieldElement> Context<F> {
         self.pc.push(pc_prime);
     }
 
+    // If we know the length, which we can via
+    // the riscv-executor, we can set reset and loop too
     fn update_control_flow_flags(&mut self) {
         self.operation_id.push(F::from(2));
 
@@ -241,6 +255,7 @@ impl<F: FieldElement> Context<F> {
         }
     }
 
+    // For each rom flag
     fn update_flags(&mut self) {
         let pc = self
             .pc
