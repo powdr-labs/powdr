@@ -15,5 +15,7 @@ powdr-importer = { path = "../importer" }
 powdr-number = { path = "../number" }
 powdr-parser = { path = "../parser" }
 
+num-traits = "0.2.15"
+
 log = "0.4.17"
 itertools = "0.11"

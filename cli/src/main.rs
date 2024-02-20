@@ -13,6 +13,7 @@ use powdr_pipeline::util::write_or_panic;
 use powdr_pipeline::{Pipeline, Stage};
 use powdr_riscv::continuations::{rust_continuations, rust_continuations_dry_run};
 use powdr_riscv::{compile_riscv_asm, compile_rust};
+use std::collections::HashMap;
 use std::io::{self, BufWriter};
 use std::path::PathBuf;
 use std::{borrow::Cow, fs, io::Write, path::Path};
@@ -769,7 +770,14 @@ fn run<F: FieldElement>(
     };
 
     let generate_witness_and_prove_maybe = |mut pipeline: Pipeline<F>| -> Result<(), Vec<String>> {
-        pipeline.advance_to(Stage::GeneratedWitness)?;
+        //pipeline.advance_to(Stage::GeneratedWitness)?;
+        pipeline.advance_to(Stage::PilWithEvaluatedFixedCols)?;
+        let pil = pipeline.pil_with_evaluated_fixed_cols_ref()?;
+        let degree = pil.pil.degree();
+        let cols: HashMap<String, Vec<F>> = (*pil.fixed_cols).clone().into_iter().collect();
+        let witness = powdr_riscv_executor::inc_main_pil::execute(degree as usize, cols);
+        println!("Witness: {:?}", witness);
+        pipeline.add_witness(witness).unwrap();
         prove_with.map(|backend| pipeline.with_backend(backend).proof().unwrap());
         Ok(())
     };

@@ -1028,4 +1028,21 @@ impl<T: FieldElement> Pipeline<T> {
             _ => panic!(),
         }
     }
+
+    pub fn add_witness(&mut self, witness: Vec<(String, Vec<T>)>) -> Result<(), Vec<String>> {
+        let artifact = std::mem::take(&mut self.artifact).unwrap();
+        self.artifact = Some(match artifact {
+            Artifact::PilWithEvaluatedFixedCols(PilWithEvaluatedFixedCols { pil, fixed_cols }) => {
+                let witness = Some(witness);
+                self.maybe_write_witness(&fixed_cols, &witness)?;
+                Artifact::GeneratedWitness(GeneratedWitness {
+                    pil,
+                    fixed_cols,
+                    witness,
+                })
+            }
+            _ => panic!("Can only add witness after PilWithEvaluatedFixedCols"),
+        });
+        Ok(())
+    }
 }

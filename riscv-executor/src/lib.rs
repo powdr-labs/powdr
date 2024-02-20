@@ -20,7 +20,10 @@ use powdr_ast::{
 };
 use powdr_number::{BigInt, FieldElement, GoldilocksField};
 
+//pub mod binary_pil;
+pub mod inc_main_pil;
 pub mod poseidon_gl;
+//pub mod shift_pil;
 
 /// Initial value of the PC.
 ///
@@ -511,7 +514,7 @@ fn preprocess_main_function<T: FieldElement>(machine: &Machine<T>) -> Preprocess
     }
 }
 
-type Callback<'a, F> = dyn powdr_executor::witgen::QueryCallback<F> + 'a;
+pub type Callback<'a, F> = dyn powdr_executor::witgen::QueryCallback<F> + 'a;
 
 struct Executor<'a, 'b, F: FieldElement> {
     proc: TraceBuilder<'b>,
