@@ -271,18 +271,21 @@ pub fn call_every_submachine(coprocessors: &CoProcessors) -> Vec<String> {
     if coprocessors.has(SHIFT_COPROCESSOR.name) {
         calls.push("x10 <== shl(x10, x10);".to_string());
     }
-    if coprocessors.has(SPLIT_GL_COPROCESSOR.name) {
-        calls.push("x10, x11 <== split_gl(x10);".to_string());
-    }
     if coprocessors.has(POSEIDON_GL_COPROCESSOR.name) {
         calls.extend(vec![
-            "P0, P1, P2, P3 <== poseidon_gl(P0, P1, P2, P3, P4, P5, P6, P7, P8, P9, P10, P11);"
+            "P0, P1, P2, x10 <== poseidon_gl(P0, P1, P2, P3, P4, P5, P6, P7, P8, P9, P10, P11);"
                 .to_string(),
             "P0 <=X= 0;".to_string(),
             "P1 <=X= 0;".to_string(),
             "P2 <=X= 0;".to_string(),
-            "P3 <=X= 0;".to_string(),
         ]);
+    }
+    if coprocessors.has(SPLIT_GL_COPROCESSOR.name) {
+        // SplitGL only makes sense when used with PoseidonGL, because there is
+        // no other way to get a value in the full range of Goldilocks into a
+        // register of the RISC-V zkVM.
+        assert!(coprocessors.has(POSEIDON_GL_COPROCESSOR.name));
+        calls.push("x10, x11 <== split_gl(x10);".to_string());
     }
 
     calls.extend(vec!["x10 <=X= 0;".to_string(), "x11 <=X= 0;".to_string()]);

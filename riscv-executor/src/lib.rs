@@ -93,6 +93,13 @@ impl<F: FieldElement> Elem<F> {
     fn s(&self) -> i32 {
         self.bin().try_into().unwrap()
     }
+
+    fn is_zero(&self) -> bool {
+        match self {
+            Self::Binary(b) => *b == 0,
+            Self::Field(f) => f.is_zero(),
+        }
+    }
 }
 
 impl<F: FieldElement> From<u32> for Elem<F> {
@@ -101,25 +108,11 @@ impl<F: FieldElement> From<u32> for Elem<F> {
     }
 }
 
-/*impl<F: FieldElement> From<u64> for Elem<F> {
-    fn from(value: u64) -> Self {
-        Self(value as i64)
-    }
-}*/
-
 impl<F: FieldElement> From<i32> for Elem<F> {
     fn from(value: i32) -> Self {
         Self::Binary(value as i64)
     }
 }
-
-/*
-impl<F: FieldElement> From<i64> for Elem<F> {
-    fn from(value: i64) -> Self {
-        Self(value)
-    }
-}
-*/
 
 impl<F: FieldElement> From<usize> for Elem<F> {
     fn from(value: usize) -> Self {
@@ -619,21 +612,21 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 Vec::new()
             }
             "branch_if_nonzero" => {
-                if args[0].bin() != 0 {
+                if !args[0].is_zero() {
                     self.proc.set_pc(args[1]);
                 }
 
                 Vec::new()
             }
             "branch_if_zero" => {
-                if args[0].bin() == 0 {
+                if args[0].is_zero() {
                     self.proc.set_pc(args[1]);
                 }
 
                 Vec::new()
             }
             "skip_if_zero" => {
-                if args[0].bin() == 0 {
+                if args[0].is_zero() {
                     let pc = self.proc.get_pc().s();
                     self.proc.set_pc((pc + args[1].s() + 1).into());
                 }
@@ -731,7 +724,11 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 vec![lo.into(), hi.into()]
             }
             "poseidon_gl" => {
-                let inputs = args.iter().take(12).map(|arg| arg.fe()).collect::<Vec<_>>();
+                let inputs = args
+                    .iter()
+                    .take(12)
+                    .map(|arg| arg.into_fe())
+                    .collect::<Vec<_>>();
                 let result = poseidon_gl::poseidon_gl(&inputs);
                 result.into_iter().map(Elem::Field).collect()
             }
@@ -769,39 +766,36 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
             Expression::LambdaExpression(_) => todo!(),
             Expression::ArrayLiteral(_) => todo!(),
             Expression::BinaryOperation(l, op, r) => {
-                let l = self.eval_expression(l)[0].bin();
-                let r = self.eval_expression(r)[0].bin();
+                let l = &self.eval_expression(l)[0];
+                let r = &self.eval_expression(r)[0];
 
-                let result = match op {
-                    powdr_ast::parsed::BinaryOperator::Add => l + r,
-                    powdr_ast::parsed::BinaryOperator::Sub => l - r,
-                    powdr_ast::parsed::BinaryOperator::Mul => {
-                        // Do multiplication in the field, in case we overflow.
-                        let l: F = l.into();
-                        let r: F = r.into();
-                        let res = l * r;
-                        return vec![Elem::new_from_fe_as_bin(&res)];
+                let result = match (l, r) {
+                    (Elem::Binary(l), Elem::Binary(r)) => {
+                        let result = match op {
+                            powdr_ast::parsed::BinaryOperator::Add => l + r,
+                            powdr_ast::parsed::BinaryOperator::Sub => l - r,
+                            powdr_ast::parsed::BinaryOperator::Mul => l * r,
+                            powdr_ast::parsed::BinaryOperator::Div => l / r,
+                            powdr_ast::parsed::BinaryOperator::Mod => l % r,
+                            powdr_ast::parsed::BinaryOperator::Pow => {
+                                l.pow(u32::try_from(*r).unwrap())
+                            }
+                            _ => todo!(),
+                        };
+                        Elem::Binary(result)
                     }
-                    powdr_ast::parsed::BinaryOperator::Div => l / r,
-                    powdr_ast::parsed::BinaryOperator::Mod => l % r,
-                    powdr_ast::parsed::BinaryOperator::Pow => l.pow(r as u32),
-                    powdr_ast::parsed::BinaryOperator::BinaryAnd => todo!(),
-                    powdr_ast::parsed::BinaryOperator::BinaryXor => todo!(),
-                    powdr_ast::parsed::BinaryOperator::BinaryOr => todo!(),
-                    powdr_ast::parsed::BinaryOperator::ShiftLeft => todo!(),
-                    powdr_ast::parsed::BinaryOperator::ShiftRight => todo!(),
-                    powdr_ast::parsed::BinaryOperator::LogicalOr => todo!(),
-                    powdr_ast::parsed::BinaryOperator::LogicalAnd => todo!(),
-                    powdr_ast::parsed::BinaryOperator::Less => todo!(),
-                    powdr_ast::parsed::BinaryOperator::LessEqual => todo!(),
-                    powdr_ast::parsed::BinaryOperator::Equal => todo!(),
-                    powdr_ast::parsed::BinaryOperator::Identity => todo!(),
-                    powdr_ast::parsed::BinaryOperator::NotEqual => todo!(),
-                    powdr_ast::parsed::BinaryOperator::GreaterEqual => todo!(),
-                    powdr_ast::parsed::BinaryOperator::Greater => todo!(),
+                    (Elem::Field(l), Elem::Field(r)) => {
+                        let result = match op {
+                            // We need to subtract field elements in the bootloader:
+                            powdr_ast::parsed::BinaryOperator::Sub => *l - *r,
+                            _ => todo!(),
+                        };
+                        Elem::Field(result)
+                    }
+                    _ => panic!("tried to operate a binary value with a field value"),
                 };
 
-                vec![Elem::Binary(result)]
+                vec![result]
             }
             Expression::UnaryOperation(op, arg) => {
                 let arg = self.eval_expression(arg)[0].bin();
