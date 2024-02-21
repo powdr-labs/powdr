@@ -15,7 +15,7 @@ use crate::witgen::IncompleteCause;
 use super::data_structures::finalizable_data::FinalizableData;
 use super::processor::{OuterQuery, Processor};
 
-use super::rows::{Row, RowFactory, UnknownStrategy};
+use super::rows::{Row, RowFactory, RowIndex, UnknownStrategy};
 use super::{Constraints, EvalError, EvalValue, FixedData, MutableState, QueryCallback};
 
 /// Maximal period checked during loop detection.
@@ -64,7 +64,7 @@ pub struct VmProcessor<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> {
 
 impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T, Q> {
     pub fn new(
-        row_offset: DegreeType,
+        row_offset: RowIndex,
         fixed_data: &'a FixedData<'a, T>,
         identities: &[&'a Identity<Expression<T>>],
         witnesses: &'c HashSet<PolyID>,
@@ -86,7 +86,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
         );
 
         VmProcessor {
-            row_offset,
+            row_offset: row_offset.into(),
             witnesses: witnesses.clone(),
             fixed_data,
             identities_with_next_ref: identities_with_next,
@@ -238,7 +238,8 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
         if row_index == self.processor.len() as DegreeType - 1 {
             self.processor.set_row(
                 self.processor.len(),
-                self.row_factory.fresh_row(row_index + 1),
+                self.row_factory
+                    .fresh_row(RowIndex::from_degree(row_index, self.fixed_data.degree) + 1),
             );
         }
     }

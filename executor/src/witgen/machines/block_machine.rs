@@ -8,7 +8,7 @@ use crate::witgen::data_structures::finalizable_data::FinalizableData;
 use crate::witgen::global_constraints::GlobalConstraints;
 use crate::witgen::identity_processor::IdentityProcessor;
 use crate::witgen::processor::OuterQuery;
-use crate::witgen::rows::{CellValue, RowFactory, RowPair, UnknownStrategy};
+use crate::witgen::rows::{CellValue, Row, RowFactory, RowIndex, RowPair, UnknownStrategy};
 use crate::witgen::sequence_iterator::{ProcessingSequenceCache, ProcessingSequenceIterator};
 use crate::witgen::util::try_to_simple_poly;
 use crate::witgen::{machines::Machine, EvalError, EvalValue, IncompleteCause};
@@ -114,12 +114,15 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
             .map(|(block_size, connecting_rhs)| {
                 assert!(block_size <= fixed_data.degree as usize);
                 let row_factory = RowFactory::new(fixed_data, global_range_constraints.clone());
-                // Start out with a block filled with unknown values so that we do not have to deal with wrap-around
-                // when storing machine witness data.
-                // This will be filled with the default block in `take_witness_col_values`
+                // Because block shapes are not always rectangular, we add the last block to the data at the
+                // beginning. It starts out with unknown values. Should the first block decide to write to
+                // rows < 0, they will be writen to this block.
+                // In `take_witness_col_values()`, this block will be removed and its values will be used to
+                // construct the "default" block used to fill up unused rows.
+                let start_index = RowIndex::from_i64(-(block_size as i64), fixed_data.degree);
                 let data = FinalizableData::with_initial_rows_in_progress(
                     witness_cols,
-                    (0..block_size).map(|i| row_factory.fresh_row(i as DegreeType)),
+                    (0..block_size).map(|i| row_factory.fresh_row(start_index + i)),
                 );
                 BlockMachine {
                     name,
@@ -192,7 +195,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
         if !self.connecting_rhs.contains(right) || kind != IdentityKind::Plookup {
             return None;
         }
-        let previous_len = self.rows() as usize;
+        let previous_len = self.data.len();
         Some({
             let result = self.process_plookup_internal(mutable_state, left, right);
             if let Ok(assignments) = &result {
@@ -231,25 +234,38 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
                     .map(|(v, known)| known.then_some(v))
                     .collect::<Vec<_>>();
 
+                // Remove the "last" block added to the beginning of self.data.
+                // It contains the values the first block wrote to it and otherwise unknown values.
+                let dummy_block = values.drain(0..self.block_size).collect::<Vec<_>>();
+
                 // For all constraints to be satisfied, unused cells have to be filled with valid values.
                 // We do this, we construct a default block, by repeating the first input to the block machine.
                 values.resize(self.fixed_data.degree as usize, None);
 
-                let second_block_values = values.iter().skip(self.block_size).take(self.block_size);
-
-                // The first block is a dummy block (filled mostly with None), the second block is the first block
-                // resulting of an actual evaluation.
-                // However, if the block machine already sets some registers in the last row of the previous block,
-                // they will be set in the "dummy block". In this case, we want to use these values.
-                // As a result, the default block consists of values of the first block if they are set, otherwise
-                // the values of the second block.
+                // Use the block as the default block. However, it needs to be merged with the dummy block,
+                // to handle blocks of non-rectangular shape.
+                // For example, let's say, the situation might look like this (block size = 3 in this example):
+                //  Row  Latch   C1  C2  C3
+                //  -3     0
+                //  -2     0
+                //  -1     1             X  <- This value belongs to the first block
+                //   0     0     X   X   X
+                //   1     0     X   X   X
+                //   2     1     X   X   X  <- This value belongs to the second block
+                //
+                // The following code constructs the default block as follows:
+                // - All values will come from rows 0-2, EXCEPT
+                // - In the last row, the value of C3 is whatever value was written to the dummy block
+                //
+                // Constructed like this, we can repeat the default block forever.
+                //
                 // TODO: Determine the row-extend per column
-                let default_block = values
-                    .iter()
-                    .take(self.block_size)
-                    .zip(second_block_values)
-                    .map(|(first_block, second_block)| {
-                        first_block.or(*second_block).unwrap_or_default()
+                let first_block_values = values.iter().take(self.block_size);
+                let default_block = dummy_block
+                    .into_iter()
+                    .zip(first_block_values)
+                    .map(|(dummy_block, first_block)| {
+                        dummy_block.or(*first_block).unwrap_or_default()
                     })
                     .collect::<Vec<_>>();
 
@@ -292,8 +308,20 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         }
     }
 
+    /// Returns the current number of rows *not counting the dummy block* inserted at the beginning
+    /// (with row numbers (-block_size..0)).
     fn rows(&self) -> DegreeType {
-        self.data.len() as DegreeType
+        (self.data.len() - self.block_size) as DegreeType
+    }
+
+    fn last_row_index(&self) -> RowIndex {
+        RowIndex::from_i64(self.rows() as i64 - 1, self.fixed_data.degree)
+    }
+
+    fn get_row(&self, row: RowIndex) -> &Row<'a, T> {
+        // The first block is a dummy block corresponding to rows (-block_size, 0),
+        // so we have to add the block size to the row index.
+        &self.data[(row + self.block_size).into()]
     }
 
     fn process_plookup_internal<'b, Q: QueryCallback<T>>(
@@ -314,16 +342,16 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         if left.iter().all(|v| v.is_constant()) && self.rows() > 0 {
             // All values on the left hand side are known, check if this is a query
             // to the last row.
-            let row = self.rows() - 1;
+            let row_index = self.last_row_index();
 
-            let current = &self.data[row as usize];
+            let current = &self.get_row(row_index);
             // We don't have the next row, because it would be the first row of the next block.
             // We'll use a fresh row instead.
-            let next = self.row_factory.fresh_row(row + 1);
+            let next = self.row_factory.fresh_row(row_index + 1);
             let row_pair = RowPair::new(
                 current,
                 &next,
-                row,
+                row_index,
                 self.fixed_data,
                 UnknownStrategy::Unknown,
             );
@@ -400,13 +428,12 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         sequence_iterator: &mut ProcessingSequenceIterator,
     ) -> Result<ProcessResult<'a, T>, EvalError<T>> {
         // We start at the last row of the previous block.
-        let row_offset = self.rows() - 1;
+        let row_offset = self.last_row_index();
         // Make the block two rows larger than the block size, it includes the last row of the previous block
         // and the first row of the next block.
         let block = FinalizableData::with_initial_rows_in_progress(
             &self.witness_cols,
-            (0..(self.block_size + 2))
-                .map(|i| self.row_factory.fresh_row(i as DegreeType + row_offset)),
+            (0..(self.block_size + 2)).map(|i| self.row_factory.fresh_row(row_offset + i)),
         );
         let mut processor = BlockProcessor::new(
             row_offset,
@@ -439,9 +466,8 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         // 1. Ignore the first row of the next block:
         new_block.pop();
         // 2. Merge the last row of the previous block
-        let last_row_index = self.rows() as usize - 1;
         let updated_last_row = new_block.get_mut(0).unwrap();
-        for (poly_id, existing_value) in self.data[last_row_index].iter() {
+        for (poly_id, existing_value) in self.get_row(self.last_row_index()).iter() {
             if let CellValue::Known(v) = existing_value.value {
                 if updated_last_row[&poly_id].value.is_known()
                     && updated_last_row[&poly_id].value != existing_value.value
