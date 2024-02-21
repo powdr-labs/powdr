@@ -59,7 +59,7 @@ impl<T: FieldElement> RangeConstraintSet<&AlgebraicReference, T> for GlobalConst
 /// TODO at some point, we should check that they still hold.
 pub fn determine_global_constraints<'a, T: FieldElement>(
     fixed_data: &'a FixedData<T>,
-    identities: Vec<&'a Identity<Expression<T>>>,
+    identities: impl IntoIterator<Item = &'a Identity<Expression<T>>>,
 ) -> (GlobalConstraints<T>, Vec<&'a Identity<Expression<T>>>) {
     let mut known_constraints = BTreeMap::new();
     // For these columns, we know that they are not only constrained to those bits
@@ -81,7 +81,7 @@ pub fn determine_global_constraints<'a, T: FieldElement>(
 
     let mut retained_identities = vec![];
     let mut removed_identities = vec![];
-    for identity in identities {
+    for identity in identities.into_iter() {
         let remove;
         (known_constraints, remove) =
             propagate_constraints(known_constraints, identity, &full_span);

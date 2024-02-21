@@ -13,13 +13,13 @@ pub trait WitnessColumnEvaluator<T> {
 /// An evaluator (to be used together with ExpressionEvaluator) that performs concrete
 /// evaluation of all fixed columns but falls back to a generic WitnessColumnEvaluator
 /// to evaluate the witness columns either symbolically or concretely.
-pub struct SymoblicWitnessEvaluator<'a, T, WA: WitnessColumnEvaluator<T>> {
+pub struct SymbolicWitnessEvaluator<'a, T, WA: WitnessColumnEvaluator<T>> {
     fixed_data: &'a FixedData<'a, T>,
     row: DegreeType,
     witness_access: &'a WA,
 }
 
-impl<'a, T, WA> SymoblicWitnessEvaluator<'a, T, WA>
+impl<'a, T, WA> SymbolicWitnessEvaluator<'a, T, WA>
 where
     WA: WitnessColumnEvaluator<T>,
 {
@@ -35,7 +35,7 @@ where
     }
 }
 
-impl<'a, T: FieldElement, WA> SymbolicVariables<T> for SymoblicWitnessEvaluator<'a, T, WA>
+impl<'a, T: FieldElement, WA> SymbolicVariables<T> for SymbolicWitnessEvaluator<'a, T, WA>
 where
     WA: WitnessColumnEvaluator<T>,
 {

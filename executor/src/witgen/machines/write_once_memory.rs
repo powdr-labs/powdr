@@ -1,5 +1,7 @@
 use std::collections::{BTreeMap, HashMap};
 
+use itertools::{Either, Itertools};
+
 use powdr_ast::{
     analyzed::{
         AlgebraicExpression as Expression, AlgebraicReference, Identity, IdentityKind, PolyID,
@@ -74,23 +76,14 @@ impl<'a, T: FieldElement> WriteOnceMemory<'a, T> {
         let rhs_polys = rhs_polys?;
 
         // Build a Vec<PolyID> for the key and value polynomials
-        let (key_polys, value_polys): (Vec<_>, Vec<_>) = rhs_polys
-            .into_iter()
-            .partition(|p| p.poly_id.ptype == PolynomialType::Constant);
-        let key_polys = key_polys
-            .into_iter()
-            .map(|p| {
-                assert!(!p.next);
-                p.poly_id
-            })
-            .collect::<Vec<_>>();
-        let value_polys = value_polys
-            .into_iter()
-            .map(|p| {
-                assert!(!p.next);
-                p.poly_id
-            })
-            .collect::<Vec<_>>();
+        let (key_polys, value_polys): (Vec<_>, Vec<_>) = rhs_polys.into_iter().partition_map(|p| {
+            assert!(!p.next);
+            if p.poly_id.ptype == PolynomialType::Constant {
+                Either::Left(p.poly_id)
+            } else {
+                Either::Right(p.poly_id)
+            }
+        });
 
         let mut key_to_index = BTreeMap::new();
         for row in 0..fixed_data.degree {

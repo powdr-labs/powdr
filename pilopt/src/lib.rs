@@ -54,7 +54,7 @@ fn remove_constant_fixed_columns<T: FieldElement>(pil_file: &mut Analyzed<T>) {
         .collect::<BTreeMap<PolyID, _>>();
 
     substitute_polynomial_references(pil_file, &constant_polys);
-    pil_file.remove_polynomials(&constant_polys.keys().cloned().collect());
+    pil_file.remove_polynomials(&constant_polys.into_keys().collect());
 }
 
 /// Checks if a fixed column defined through a function has a constant

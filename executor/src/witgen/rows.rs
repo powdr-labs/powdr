@@ -16,7 +16,7 @@ use super::{
     expression_evaluator::ExpressionEvaluator,
     global_constraints::{GlobalConstraints, RangeConstraintSet},
     range_constraints::RangeConstraint,
-    symbolic_witness_evaluator::{SymoblicWitnessEvaluator, WitnessColumnEvaluator},
+    symbolic_witness_evaluator::{SymbolicWitnessEvaluator, WitnessColumnEvaluator},
     FixedData,
 };
 
@@ -417,7 +417,7 @@ impl<'row, 'a, T: FieldElement> RowPair<'row, 'a, T> {
     /// taking current values of polynomials into account.
     /// @returns an expression affine in the witness polynomials
     pub fn evaluate<'b>(&self, expr: &'b Expression<T>) -> AffineResult<&'b AlgebraicReference, T> {
-        ExpressionEvaluator::new(SymoblicWitnessEvaluator::new(
+        ExpressionEvaluator::new(SymbolicWitnessEvaluator::new(
             self.fixed_data,
             self.current_row_index.into(),
             self,
