@@ -646,12 +646,12 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 vec![r.into()]
             }
             "is_equal_zero" => {
-                let r = if args[0].bin() == 0 { 1 } else { 0 };
+                let r = if args[0].is_zero() { 1 } else { 0 };
 
                 vec![r.into()]
             }
             "is_not_equal_zero" => {
-                let r = if args[0].bin() != 0 { 1 } else { 0 };
+                let r = if !args[0].is_zero() { 1 } else { 0 };
 
                 vec![r.into()]
             }
