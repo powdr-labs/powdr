@@ -111,7 +111,7 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
             // Removes identities like X * (X - 1) = 0 or { A } in { BYTES }
             // These are already captured in the range constraints.
             retained_identities,
-        ) = global_constraints::determine_global_constraints(&fixed, identities.iter().collect());
+        ) = global_constraints::determine_global_constraints(&fixed, &identities);
         let ExtractionOutput {
             mut fixed_lookup,
             mut machines,
@@ -131,9 +131,9 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
         let mut generator = Generator::new(
             "Main Machine".to_string(),
             &fixed,
-            &base_identities,
+            base_identities,
             base_witnesses,
-            &constraints,
+            constraints.clone(),
             // We could set the latch of the main VM here, but then we would have to detect it.
             // Instead, the main VM will be computed in one block, directly continuing into the
             // infinite loop after the first return.

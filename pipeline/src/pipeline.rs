@@ -609,10 +609,6 @@ impl<T: FieldElement> Pipeline<T> {
                 self.log("Evaluating fixed columns...");
                 let start = Instant::now();
                 let fixed_cols = constant_evaluator::generate(&pil);
-                let fixed_cols = fixed_cols
-                    .into_iter()
-                    .map(|(k, v)| (k.to_string(), v))
-                    .collect::<Vec<_>>();
                 self.maybe_write_constants(&fixed_cols)?;
                 self.log(&format!("Took {}", start.elapsed().as_secs_f32()));
                 Artifact::PilWithEvaluatedFixedCols(PilWithEvaluatedFixedCols {
@@ -640,9 +636,6 @@ impl<T: FieldElement> Pipeline<T> {
 
                     self.log(&format!("Took {}", start.elapsed().as_secs_f32()));
                     witness
-                        .into_iter()
-                        .map(|(name, c)| (name.to_string(), c))
-                        .collect::<Vec<_>>()
                 });
 
                 self.maybe_write_witness(&fixed_cols, &witness)?;

@@ -171,9 +171,9 @@ pub fn split_out_machines<'a, T: FieldElement>(
             machines.push(KnownMachine::Vm(Generator::new(
                 name_with_type("Vm"),
                 fixed,
-                &machine_identities,
+                machine_identities,
                 machine_witnesses,
-                global_range_constraints,
+                global_range_constraints.clone(),
                 Some(latch),
             )));
         }

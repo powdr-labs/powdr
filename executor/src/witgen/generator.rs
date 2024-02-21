@@ -111,18 +111,18 @@ impl<'a, T: FieldElement> Generator<'a, T> {
     pub fn new(
         name: String,
         fixed_data: &'a FixedData<'a, T>,
-        identities: &[&'a Identity<Expression<T>>],
+        identities: Vec<&'a Identity<Expression<T>>>,
         witnesses: HashSet<PolyID>,
-        global_range_constraints: &GlobalConstraints<T>,
+        global_range_constraints: GlobalConstraints<T>,
         latch: Option<Expression<T>>,
     ) -> Self {
         let data = FinalizableData::new(&witnesses);
         Self {
             name,
             fixed_data,
-            identities: identities.to_vec(),
+            identities,
             witnesses,
-            global_range_constraints: global_range_constraints.clone(),
+            global_range_constraints,
             data,
             latch,
         }
