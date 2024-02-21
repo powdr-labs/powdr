@@ -207,14 +207,16 @@ impl Iterator for ProcessingSequenceIterator {
 
 pub struct ProcessingSequenceCache {
     block_size: usize,
+    outer_query_row: usize,
     identities_count: usize,
     cache: BTreeMap<SequenceCacheKey, Vec<SequenceStep>>,
 }
 
 impl ProcessingSequenceCache {
-    pub fn new(block_size: usize, identities_count: usize) -> Self {
+    pub fn new(block_size: usize, outer_query_row: usize, identities_count: usize) -> Self {
         ProcessingSequenceCache {
             block_size,
+            outer_query_row,
             identities_count,
             cache: Default::default(),
         }
@@ -244,8 +246,7 @@ impl ProcessingSequenceCache {
         ProcessingSequenceIterator::Default(DefaultSequenceIterator::new(
             self.block_size,
             self.identities_count,
-            // Run the outer query on the last row of the block.
-            Some(self.block_size as i64 - 1),
+            Some(self.outer_query_row as i64),
         ))
     }
 

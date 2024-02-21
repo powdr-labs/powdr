@@ -80,15 +80,11 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
             .map(|id| try_to_period(&id.right.selector, fixed_data))
             .collect::<Vec<_>>();
 
-        let period = periods[0].and_then(|first_period| {
-            periods
-                .iter()
-                .all(|p| *p == Some(first_period))
-                .then_some(first_period)
-        });
+        let period =
+            periods[0].and_then(|first| periods.iter().all(|p| *p == Some(first)).then_some(first));
 
         period
-            .and_then(|block_size| {
+            .and_then(|(latch_row, block_size)| {
                 // Collect all right-hand sides of the connecting identities.
                 // This is used later to decide to which lookup the machine should respond.
                 let connecting_rhs = connecting_identities
@@ -109,9 +105,9 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
                     }
                 }
 
-                Some((block_size, connecting_rhs))
+                Some((latch_row, block_size, connecting_rhs))
             })
-            .map(|(block_size, connecting_rhs)| {
+            .map(|(latch_row, block_size, connecting_rhs)| {
                 assert!(block_size <= fixed_data.degree as usize);
                 let row_factory = RowFactory::new(fixed_data, global_range_constraints.clone());
                 // Start out with a block filled with unknown values so that we do not have to deal with wrap-around
@@ -131,6 +127,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
                     witness_cols: witness_cols.clone(),
                     processing_sequence_cache: ProcessingSequenceCache::new(
                         block_size,
+                        latch_row,
                         identities.len(),
                     ),
                     fixed_data,
@@ -140,19 +137,18 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
 }
 
 /// Check if `expr` is a reference to a function of the form
-/// f(i) { if (i + 1) % k == 0 { 1 } else { 0 } }
-/// for some k
-/// TODO we could make this more generic and only detect the period
-/// but not enforce the offset.
+/// f(i) { if (i + o) % k == 0 { 1 } else { 0 } }
+/// for some k, o.
+/// If so, returns (o, k).
 fn try_to_period<T: FieldElement>(
     expr: &Option<Expression<T>>,
     fixed_data: &FixedData<T>,
-) -> Option<usize> {
+) -> Option<(usize, usize)> {
     match expr {
         Some(expr) => {
             if let Expression::Number(ref n) = expr {
                 if *n == T::one() {
-                    return Some(1);
+                    return Some((0, 1));
                 }
             }
 
@@ -163,21 +159,22 @@ fn try_to_period<T: FieldElement>(
 
             let values = fixed_data.fixed_cols[&poly.poly_id].values;
 
-            let period = 1 + values.iter().position(|v| v.is_one())?;
+            let offset = values.iter().position(|v| v.is_one())?;
+            let period = 1 + values.iter().skip(offset + 1).position(|v| v.is_one())?;
             values
                 .iter()
                 .enumerate()
                 .all(|(i, v)| {
-                    let expected = if (i + 1) % period == 0 {
+                    let expected = if i % period == offset {
                         1.into()
                     } else {
                         0.into()
                     };
                     *v == expected
                 })
-                .then_some(period)
+                .then_some((offset, period))
         }
-        None => Some(1),
+        None => Some((0, 1)),
     }
 }
 
