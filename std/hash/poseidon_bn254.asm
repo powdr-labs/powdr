@@ -65,21 +65,18 @@ machine PoseidonBN254(LASTBLOCK, operation_id) {
     pol commit input_state[STATE_SIZE];
 
     // Add round constants
-    pol commit a[STATE_SIZE];
-    array::zip3(a, state, C, |a, state, C| a = state + C);
+    let a: expr[STATE_SIZE] = array::zip(state, C, |state, C| state + C);
 
     // Compute S-Boxes (x^5)
-    pol commit x2[STATE_SIZE], x4[STATE_SIZE], x5[STATE_SIZE];
-    array::zip2(x2, a, |x2, a| x2 = a * a);
-    array::zip2(x4, x2, |x4, x2| x4 = x2 * x2);
-    array::zip3(x5, x4, a, |x5, x4, a| x5 = x4 * a);
+    let x2: expr[STATE_SIZE] = array::map(a, |a| a * a);
+    let x4: expr[STATE_SIZE] = array::map(x2, |x2| x2 * x2);
+    let x5: expr[STATE_SIZE] = array::zip(x4, a, |x4, a| x4 * a);
 
     // Apply S-Boxes on the first element and otherwise if it is a full round.
-    pol commit b[STATE_SIZE];
-    array::new(STATE_SIZE, |i| if i == 0 {
-        b[i] = x5[i]
+    let b: expr[STATE_SIZE] = array::new(STATE_SIZE, |i| if i == 0 {
+        x5[i]
     } else {
-        b[i] = PARTIAL * (a[i] - x5[i]) + x5[i]
+        PARTIAL * (a[i] - x5[i]) + x5[i]
     });
 
     // The MDS matrix
@@ -90,14 +87,13 @@ machine PoseidonBN254(LASTBLOCK, operation_id) {
     ];
 
     // Multiply with MDS Matrix
-    pol commit c[STATE_SIZE];
-    array::zip2(c, M, |c, M| c = M[0] * b[0] + M[1] * b[1] + M[2] * b[2]);
+    let c: expr[STATE_SIZE] = array::map(M, |M| M[0] * b[0] + M[1] * b[1] + M[2] * b[2]);
 
     // Copy c to state in the next row
-    array::zip2(state, c, |state, c| (state' - c) * (1-LAST) = 0);
+    array::zip(state, c, |state, c| (state' - c) * (1-LAST) = 0);
 
     // In first row, the state should equal the input state
-    array::zip2(input_state, state, |input_state, state| FIRSTBLOCK * (input_state - state) = 0);
+    array::zip(input_state, state, |input_state, state| FIRSTBLOCK * (input_state - state) = 0);
 
     // The input state should stay constant in the block
     array::map(input_state, |c| unchanged_until(c, LAST));
