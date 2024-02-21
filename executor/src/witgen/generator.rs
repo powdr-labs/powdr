@@ -16,7 +16,7 @@ use super::block_processor::BlockProcessor;
 use super::data_structures::column_map::WitnessColumnMap;
 use super::global_constraints::GlobalConstraints;
 use super::machines::{FixedLookup, Machine};
-use super::rows::{Row, RowFactory};
+use super::rows::{Row, RowFactory, RowIndex};
 use super::sequence_iterator::{DefaultSequenceIterator, ProcessingSequenceIterator};
 use super::vm_processor::VmProcessor;
 use super::{EvalResult, FixedData, MutableState, QueryCallback};
@@ -174,8 +174,8 @@ impl<'a, T: FieldElement> Generator<'a, T> {
         let data = FinalizableData::with_initial_rows_in_progress(
             &self.witnesses,
             [
-                row_factory.fresh_row(self.fixed_data.degree - 1),
-                row_factory.fresh_row(0),
+                row_factory.fresh_row(RowIndex::from_i64(-1, self.fixed_data.degree)),
+                row_factory.fresh_row(RowIndex::from_i64(0, self.fixed_data.degree)),
             ]
             .into_iter(),
         );
@@ -190,7 +190,7 @@ impl<'a, T: FieldElement> Generator<'a, T> {
             .filter_map(|identity| identity.contains_next_ref().then_some(*identity))
             .collect::<Vec<_>>();
         let mut processor = BlockProcessor::new(
-            self.fixed_data.degree - 1,
+            RowIndex::from_i64(-1, self.fixed_data.degree),
             data,
             mutable_state,
             &identities_with_next_reference,
@@ -223,7 +223,7 @@ impl<'a, T: FieldElement> Generator<'a, T> {
             [first_row].into_iter(),
         );
         let mut processor = VmProcessor::new(
-            row_offset,
+            RowIndex::from_degree(row_offset, self.fixed_data.degree),
             self.fixed_data,
             &self.identities,
             &self.witnesses,
