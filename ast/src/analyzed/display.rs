@@ -216,7 +216,7 @@ impl<T: Display> Display for Identity<AlgebraicExpression<T>> {
                 {
                     write!(f, "{left} = {right};")
                 } else {
-                    write!(f, "{expression} = 0;")
+                    write!(f, "{expression};")
                 }
             }
             IdentityKind::Plookup => write!(f, "{} in {};", self.left, self.right),
