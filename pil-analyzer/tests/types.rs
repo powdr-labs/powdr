@@ -17,7 +17,7 @@ fn type_scheme_simplify_type_vars_basic() {
     let ts = parse_type_scheme("A, B, C", "B -> (C -> (A, B))").simplify_type_vars();
     assert_eq!(
         format_type_scheme_around_name("x", &Some(ts)),
-        "<T1, T2, T3> x: T2 -> T3 -> (T1, T2)"
+        "<T1, T2, T3> x: T2 -> (T3 -> (T1, T2))"
     );
 }
 

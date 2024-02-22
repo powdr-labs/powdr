@@ -541,6 +541,17 @@ namespace N(16);
     }
 
     #[test]
+    fn function_type_display() {
+        let input = r#"namespace N(16);
+    let f: (-> int)[] = [(|| 10), (|| 12)];
+    let g: (int -> int) -> int = (|f| f(0));
+    let h: int -> (int -> int) = (|x| (|i| (x + i)));
+"#;
+        let formatted = analyze_string::<GoldilocksField>(input).to_string();
+        assert_eq!(formatted, input);
+    }
+
+    #[test]
     fn expr_and_identity() {
         let input = r#"namespace N(16);
     let f: expr, expr -> constr[] = |x, y| [x = y];
