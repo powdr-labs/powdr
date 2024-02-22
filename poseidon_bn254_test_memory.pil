@@ -1,3 +1,5 @@
+// Search for "CHANGED" to find the differences to the compiled PIL
+
 namespace std::array(512);
     let fold = (|arr, initial, folder| std::utils::fold(std::array::len(arr), (|i| arr[i]), initial, folder));
     let len = [];
@@ -139,7 +141,7 @@ namespace main(512);
 
 
     // CHANGED
-    instr_poseidon { 0, X0, X1, STEP } in main_poseidon.LASTBLOCK { main_poseidon.operation_id, main_poseidon.input_addr, main_poseidon.output_addr, main_poseidon.step };
+    instr_poseidon { 0, X0, X1, STEP } is (main_poseidon.LASTBLOCK * main_poseidon.used) { main_poseidon.operation_id, main_poseidon.input_addr, main_poseidon.output_addr, main_poseidon.step };
 
 
     pol constant _linker_first_step = [1] + [0]*;
@@ -182,6 +184,12 @@ namespace main_poseidon(512);
     (_operation_id_no_change = ((1 - _block_enforcer_last_step) * (1 - LASTBLOCK)));
     ((_operation_id_no_change * (operation_id' - operation_id)) = 0);
 
+    // CHANGED
+    col witness used;
+    std::utils::force_bool(used);
+    std::utils::unchanged_until(used, LAST);
+
+
     // Replaces this constraint with memory reads:
     // std::array::zip2([0, 1, 2], state, (|input_state, state| ((FIRSTBLOCK * (input_state - state)) = 0)));
     
@@ -199,6 +207,6 @@ namespace main_poseidon(512);
     let do_read = FIRSTBLOCK + SECONDBLOCK + THIRDBLOCK;
     let addr = FIRSTBLOCK * input_addr + SECONDBLOCK * (input_addr + 4) + THIRDBLOCK * (input_addr + 8);
     let dest = FIRSTBLOCK * input_state[0] + SECONDBLOCK * input_state[1] + THIRDBLOCK * input_state[2];
-    do_read { addr, step, dest } is main.m_is_read_poseidon { main.m_addr, main.m_step, main.m_value };
+    (do_read * used) { addr, step, dest } is main.m_is_read_poseidon { main.m_addr, main.m_step, main.m_value };
 
-    LASTBLOCK { output_addr, step, state[0] } is main.m_is_write_poseidon { main.m_addr, main.m_step, main.m_value };
+    (LASTBLOCK * used) { output_addr, step, state[0] } is main.m_is_write_poseidon { main.m_addr, main.m_step, main.m_value };
