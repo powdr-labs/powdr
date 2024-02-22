@@ -104,7 +104,7 @@ pub trait Backend<'a, F: FieldElement> {
     ) -> Result<Proof, Error>;
 
     /// Verifies a proof.
-    fn verify(&self, _proof: &Proof, _instances: &[Vec<F>]) -> Result<(), Error> {
+    fn verify(&self, _proof: &[u8], _instances: &[Vec<F>]) -> Result<(), Error> {
         Err(Error::NoVerificationAvailable)
     }
 

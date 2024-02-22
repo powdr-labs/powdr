@@ -41,31 +41,26 @@ mod test {
 
     #[allow(clippy::print_stdout)]
     fn mock_prove_asm(file_name: &str, inputs: &[Bn254Field]) {
-        let result = Pipeline::default()
+        let mut pipeline = Pipeline::default()
             .from_file(resolve_test_file(file_name))
-            .with_prover_inputs(inputs.to_vec())
-            .generated_witness()
-            .unwrap();
-        mock_prove(
-            &result.pil,
-            &result.fixed_cols,
-            result.witness.as_ref().unwrap(),
-        );
+            .with_prover_inputs(inputs.to_vec());
+
+        let pil = pipeline.compute_optimized_pil().unwrap();
+        let fixed_cols = pipeline.compute_fixed_cols().unwrap();
+        let witness = pipeline.compute_witness().unwrap();
+        mock_prove(&pil, &fixed_cols, &witness);
     }
 
     #[test]
     fn simple_pil_halo2() {
         let content = "namespace Global(8); pol fixed z = [1, 2]*; pol witness a; a = z + 1;";
 
-        let result = Pipeline::<Bn254Field>::default()
-            .from_pil_string(content.to_string())
-            .generated_witness()
-            .unwrap();
-        mock_prove(
-            &result.pil,
-            &result.fixed_cols,
-            result.witness.as_ref().unwrap(),
-        );
+        let mut pipeline = Pipeline::<Bn254Field>::default().from_pil_string(content.to_string());
+
+        let pil = pipeline.compute_optimized_pil().unwrap();
+        let fixed_cols = pipeline.compute_fixed_cols().unwrap();
+        let witness = pipeline.compute_witness().unwrap();
+        mock_prove(&pil, &fixed_cols, &witness);
     }
 
     #[test]

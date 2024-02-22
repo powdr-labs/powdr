@@ -4,7 +4,7 @@ use common::verify_riscv_asm_string;
 use mktemp::Temp;
 use powdr_backend::BackendType;
 use powdr_number::GoldilocksField;
-use powdr_pipeline::{test_util::verify_asm_string, verify::verify, Pipeline, Stage};
+use powdr_pipeline::{test_util::verify_asm_string, verify::verify, Pipeline};
 use std::path::PathBuf;
 use test_log::test;
 
@@ -34,7 +34,7 @@ pub fn test_continuations(case: &str) {
         // Can't use `verify_pipeline`, because the pipeline was renamed in the middle of after
         // computing the constants file.
         let mut pipeline = pipeline.with_backend(BackendType::PilStarkCli);
-        pipeline.advance_to(Stage::Proof).unwrap();
+        pipeline.compute_proof().unwrap();
         verify(pipeline.output_dir().unwrap(), pipeline.name(), Some(case));
         Ok(())
     };

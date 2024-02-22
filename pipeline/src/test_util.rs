@@ -8,7 +8,7 @@ use std::rc::Rc;
 #[cfg(feature = "halo2")]
 use std::{fs::File, io::BufWriter};
 
-use crate::pipeline::{Pipeline, Stage};
+use crate::pipeline::Pipeline;
 use crate::verify::verify;
 
 pub fn resolve_test_file(file_name: &str) -> PathBuf {
@@ -51,9 +51,7 @@ pub fn verify_pipeline<T: FieldElement>(pipeline: Pipeline<T>) {
         pipeline = pipeline.with_tmp_output(&tmp_dir);
     }
 
-    // Don't get the proof, because that would destroy the pipeline
-    // which owns the temporary directory.
-    pipeline.advance_to(Stage::Proof).unwrap();
+    pipeline.compute_proof().unwrap();
 
     verify(pipeline.output_dir().unwrap(), pipeline.name(), None);
 }
@@ -66,7 +64,7 @@ pub fn gen_estark_proof(file_name: &str, inputs: Vec<GoldilocksField>) {
         .from_file(PathBuf::from(file_name))
         .with_prover_inputs(inputs)
         .with_backend(powdr_backend::BackendType::EStark)
-        .proof()
+        .compute_proof()
         .unwrap();
 }
 
@@ -80,7 +78,7 @@ pub fn test_halo2(file_name: &str, inputs: Vec<Bn254Field>) {
         .from_file(PathBuf::from(full_file_name))
         .with_prover_inputs(inputs.clone())
         .with_backend(powdr_backend::BackendType::Halo2Mock)
-        .proof()
+        .compute_proof()
         .unwrap();
 
     // `gen_halo2_proof` is rather slow, because it computes two Halo2 proofs.
@@ -111,10 +109,10 @@ pub fn gen_halo2_proof(file_name: &str, inputs: Vec<Bn254Field>) {
         .with_backend(powdr_backend::BackendType::Halo2);
 
     // Generate a proof with the setup and verification key generated on the fly
-    pipeline.clone().proof().unwrap().proof.unwrap();
+    pipeline.clone().compute_proof().unwrap();
 
     // Repeat the proof generation, but with an externally generated setup and verification key
-    let pil = pipeline.optimized_pil_ref().unwrap().clone();
+    let pil = pipeline.compute_optimized_pil().unwrap();
 
     // Setup
     let setup_file_path = tmp_dir.as_path().join("params.bin");
@@ -137,16 +135,14 @@ pub fn gen_halo2_proof(file_name: &str, inputs: Vec<Bn254Field>) {
 
     // Create the proof before adding the setup and vkey to the backend,
     // so that they're generated during the proof
-    let proof_artifact = pipeline.clone().proof().unwrap();
+    let proof = pipeline.compute_proof().unwrap().clone();
 
-    let publics = extract_publics(proof_artifact.witness.as_ref().unwrap(), &pil)
+    let publics: Vec<Bn254Field> = extract_publics(&pipeline.witness().unwrap(), &pil)
         .iter()
         .map(|(_name, v)| *v)
         .collect();
 
-    pipeline
-        .verify(proof_artifact.proof.unwrap(), &[publics])
-        .unwrap();
+    pipeline.verify(&proof, &[publics]).unwrap();
 }
 
 #[cfg(not(feature = "halo2"))]
@@ -157,8 +153,7 @@ pub fn std_analyzed<T: FieldElement>() -> Analyzed<T> {
     // airgen needs a main machine.
     let code = "machine Main { }".to_string();
     let mut pipeline = Pipeline::default().from_asm_string(code, None);
-    pipeline.advance_to(Stage::AnalyzedPil).unwrap();
-    pipeline.analyzed_pil().unwrap()
+    pipeline.compute_analyzed_pil().unwrap().clone()
 }
 
 /// Evaluates a function call.

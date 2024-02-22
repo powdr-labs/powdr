@@ -10,7 +10,6 @@ pub mod util;
 pub mod verify;
 
 pub use pipeline::Pipeline;
-pub use pipeline::Stage;
 
 use itertools::Itertools;
 pub use powdr_backend::{BackendType, Proof};

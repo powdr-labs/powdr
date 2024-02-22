@@ -10,7 +10,7 @@ use powdr_backend::BackendType;
 use powdr_number::{read_polys_csv_file, CsvRenderMode};
 use powdr_number::{Bn254Field, FieldElement, GoldilocksField};
 use powdr_pipeline::util::write_or_panic;
-use powdr_pipeline::{Pipeline, Stage};
+use powdr_pipeline::Pipeline;
 use powdr_riscv::continuations::{rust_continuations, rust_continuations_dry_run};
 use powdr_riscv::{compile_riscv_asm, compile_rust};
 use std::io::{self, BufWriter};
@@ -803,8 +803,10 @@ fn run<F: FieldElement>(
     };
 
     let generate_witness_and_prove_maybe = |mut pipeline: Pipeline<F>| -> Result<(), Vec<String>> {
-        pipeline.advance_to(Stage::GeneratedWitness)?;
-        prove_with.map(|backend| pipeline.with_backend(backend).proof().unwrap());
+        pipeline.compute_witness().unwrap();
+        if let Some(backend) = prove_with {
+            pipeline.with_backend(backend).compute_proof().unwrap();
+        }
         Ok(())
     };
 
@@ -814,10 +816,9 @@ fn run<F: FieldElement>(
         }
         (true, false) => {
             let mut pipeline = pipeline.with_prover_inputs(inputs);
-            pipeline.advance_to(Stage::AsmString).unwrap();
-            let program = pipeline.artifact().unwrap().to_asm_string().unwrap();
+            let program = pipeline.compute_asm_string().unwrap().clone();
             powdr_riscv_executor::execute::<F>(
-                program,
+                &program.1,
                 pipeline.data_callback().unwrap(),
                 &[],
                 powdr_riscv_executor::ExecMode::Fast,
@@ -848,12 +849,12 @@ fn read_and_prove<T: FieldElement>(
     Pipeline::<T>::default()
         .from_maybe_pil_object(file.to_path_buf())?
         .with_output(dir.to_path_buf(), true)
-        .read_generated_witness(dir)
+        .read_witness(dir)
         .with_setup_file(params.map(PathBuf::from))
         .with_vkey_file(vkey.map(PathBuf::from))
         .with_existing_proof_file(proof_path.map(PathBuf::from))
         .with_backend(*backend_type)
-        .proof()?;
+        .compute_proof()?;
     Ok(())
 }
 
@@ -878,7 +879,7 @@ fn read_and_verify<T: FieldElement>(
         .with_backend(*backend_type);
 
     // TODO add support for publics
-    pipeline.verify(proof, &[vec![]])?;
+    pipeline.verify(&proof, &[vec![]])?;
     println!("Proof is valid!");
 
     Ok(())
@@ -890,7 +891,7 @@ fn optimize_and_output<T: FieldElement>(file: &str) {
         "{}",
         Pipeline::<T>::default()
             .from_file(PathBuf::from(file))
-            .optimized_pil()
+            .compute_optimized_pil()
             .unwrap()
     );
 }
