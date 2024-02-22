@@ -606,53 +606,47 @@ impl<E: Display> Display for TypeName<E> {
 
 impl<E: Display> Display for ArrayTypeName<E> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        if self.base.needs_parentheses() {
-            write!(f, "({})", self.base)
-        } else {
-            write!(f, "{}", self.base)
-        }?;
         write!(
             f,
-            "[{}]",
-            self.length
-                .as_ref()
-                .map(|l| l.to_string())
-                .unwrap_or_default()
+            "{}[{}]",
+            format_type_name_with_parentheses(&self.base),
+            self.length.iter().format("")
         )
     }
 }
 
 impl<E: Display> Display for TupleTypeName<E> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write!(f, "({})", self.items.iter().format(", "))
+        write!(f, "({})", format_list_of_type_names(&self.items))
     }
 }
 
 impl<E: Display> Display for FunctionTypeName<E> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        let params = self
-            .params
-            .iter()
-            .map(|x| {
-                if x.needs_parentheses() {
-                    format!("({x})")
-                } else {
-                    format!("{x}")
-                }
-            })
-            .join(", ")
-            + if self.params.is_empty() { "" } else { " " };
-
         write!(
             f,
-            "{params}-> {}",
-            if self.value.needs_parentheses() {
-                format!("({})", self.value)
-            } else {
-                format!("{}", self.value)
-            }
+            "{}{}-> {}",
+            format_list_of_type_names(&self.params),
+            if self.params.is_empty() { "" } else { " " },
+            format_type_name_with_parentheses(&self.value)
         )
     }
+}
+
+fn format_type_name_with_parentheses<E: Display>(name: &TypeName<E>) -> String {
+    if name.needs_parentheses() {
+        format!("({name})")
+    } else {
+        name.to_string()
+    }
+}
+
+fn format_list_of_type_names<E: Display>(type_names: &[TypeName<E>]) -> String {
+    type_names
+        .iter()
+        .map(format_type_name_with_parentheses)
+        .format(", ")
+        .to_string()
 }
 
 pub fn format_type_scheme_around_name<E: Display>(

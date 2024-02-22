@@ -329,12 +329,12 @@ impl Display for Type {
 
 impl Display for ArrayType {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        let length = self.length.iter().format("");
-        if self.base.needs_parentheses() {
-            write!(f, "({})[{length}]", self.base)
-        } else {
-            write!(f, "{}[{length}]", self.base)
-        }
+        write!(
+            f,
+            "{}[{}]",
+            format_type_with_parentheses(&self.base),
+            self.length.iter().format("")
+        )
     }
 }
 
@@ -348,23 +348,26 @@ impl Display for FunctionType {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(
             f,
-            "{} -> {}",
+            "{}{}-> {}",
             format_list_of_types(&self.params),
-            self.value
+            if self.params.is_empty() { "" } else { " " },
+            format_type_with_parentheses(&self.value)
         )
+    }
+}
+
+fn format_type_with_parentheses(ty: &Type) -> String {
+    if ty.needs_parentheses() {
+        format!("({ty})")
+    } else {
+        ty.to_string()
     }
 }
 
 fn format_list_of_types(types: &[Type]) -> String {
     types
         .iter()
-        .map(|x| {
-            if x.needs_parentheses() {
-                format!("({x})")
-            } else {
-                x.to_string()
-            }
-        })
+        .map(format_type_with_parentheses)
         .format(", ")
         .to_string()
 }
